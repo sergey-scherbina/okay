@@ -253,13 +253,17 @@ And the variant is not always lossless: Spark's variant decimal holds
 38 digits, `Data.I` is unbounded — an integer beyond that is written
 into the variant as a string, and the bytes stay the exact form.
 
-Detection is not a list of type names: `Schema.fold` already calls
-`Algebra.ref(name)` exactly when a strict algebra meets the back edge
-of a recursive type (Schema.scala, `inProgress`). The Spark algebra
-answers `ref` with a marker, and a product/sum node whose own name was
-referred to from below collapses itself to the binary+variant pair.
-So a recursive type nobody listed — a future scalus model change —
-still produces a valid DataFrame schema instead of a stack overflow.
+Detection is not a list of type names. A FIRST fold records, per
+named node, the named nodes directly below it (the fold's `ref` is a
+back edge); a node is recursive iff it is reachable from itself in
+that graph. The encoder then collapses such a node to the
+binary+variant pair WITHOUT forcing its (lazy) edges. So a recursive
+type nobody listed — a future scalus model change — still produces a
+valid DataFrame schema instead of a stack overflow. (As built,
+2026-09-23: the first design — collapse the node whose own name comes
+back through `ref` — misses mutual recursion: in A → B → A, only A's
+name returns, and B would be left holding a placeholder; the closure
+catches both, `TestSparkSchema` pins it from either root.)
 
 Refuted: bounded unrolling (spark-protobuf's
 `recursive.fields.max.depth`): a datum nested one level deeper than
@@ -401,14 +405,12 @@ until Spark stage 2 has run on mainnet.
         okay-scalus-spark: its only consumer is the Spark encoder, and
         writing them before it would guess its needs
 - **Stage 2 — okay-scalus-spark: batch + confirmed streaming**
-  - [ ] generic `SparkSchema`: `Schema.fold` algebra → `(DataType,
-        A => InternalRow value)`, §4.1–4.6, including the `ref`
-        collapse (§4.3); lives in okay-spark (generic, not Cardano:
-        SparkInterop's own comment reserved the slot), used by
-        okay-scalus-spark
-  - [ ] invariants of §4.2 as tests; a Parquet write/read of every
-        table (the empty-struct trap); schema evolution: a type with
-        a case added reads an old file
+  - [x] generic `SparkSchema`: `Schema.fold` algebra → `(DataType,
+        external Row value)`, §4.1–4.6, recursion by reachability
+        (§4.3); lives in okay-spark (generic, not Cardano)
+  - [x] invariants of §4.2 as tests; a Parquet write/read (the
+        empty-struct trap); schema evolution: a type with a case added
+        reads an old file under `mergeSchema`
   - [ ] DataSource V2 batch + `MicroBatchStream`; replay test: the
         same offsets planned twice give identical rows
   - [ ] the §5 views; a docs page with the SQL examples above, each

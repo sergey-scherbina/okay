@@ -42,6 +42,44 @@ element boundary and a boxed element where Spark boxes it too. It is
 the RDD level, not Catalyst: the Wrocław GTFS join reads 18 s here
 against 7 s through DataFrames, and 4 s in one JVM through `Chunks`.
 
+**ADTs as DataFrames.** `SparkSchema` folds an okay `Schema[A]` into a
+Spark `StructType` and rows — the Catalyst side, where Spark's own
+`ExpressionEncoder` (Scala 2 `TypeTag` reflection) sees no Scala 3
+enum. Spark has no sum type and no recursion, so those carry the
+decisions (specs/scalus.md §4):
+
+```scala
+val df = SparkSchema.dataFrame(spark, Seq(
+  Output(1, Credential.KeyHash(Array[Byte](1)), BigInt(2_000_000)),
+  Output(2, Credential.ScriptHash(Array[Byte](2)), BigInt(5_000_000))))
+// owner: struct<kind: string, KeyHash: struct<hash: binary>, ScriptHash: struct<hash: binary>>
+df.createOrReplaceTempView("outputs")
+val scripts = spark.sql("SELECT id, lovelace FROM outputs WHERE owner.kind = 'ScriptHash'").collect()
+// Array([2,5000000])
+```
+
+- a **pure enum** (no case has fields) is a `string` holding the case
+  NAME — an ordinal would be renumbered under every old file by the
+  next inserted case;
+- a **sum with payloads** is a *tagged sparse struct*: `kind` plus one
+  nullable struct per case that has fields, exactly one set. A
+  field-less case has no branch, because Parquet refuses an empty
+  `struct<>`. This is how spark-avro maps a union and spark-protobuf a
+  `oneof`, with the discriminator they lack; a new case is a new
+  nullable column, so old Parquet files read under the new schema
+  (`mergeSchema`), which the tests check;
+- a **recursive type** — a named node reachable from itself, found by a
+  first fold over the schema graph (mutual recursion included) — is
+  `struct<cbor: binary, json: variant>`: okay's CBOR, lossless, and the
+  same value as a Spark 4 VARIANT, so `variant_get(t.json, '$.kids[1].label',
+  'string')` queries into it. Bounded unrolling was refused: it
+  truncates silently;
+- `Option` is nullable, `List`/`Vector` an array, `BigInt` a
+  `decimal(38,0)` (a uint64 fits; a value past 38 digits is refused).
+
+References: Apache Avro Specification, "Unions"; Protocol Buffers
+Language Guide, "Oneof"; Spark SQL `VariantType` (Spark 4.0); Apache Parquet format, nested encoding (definition levels).
+
 ## Tutorial
 
 ```scala
@@ -76,6 +114,9 @@ revenue(using okay.localBulk)     // one JVM, the same answer
 | `aggregateByKey` | `(rdd)(agg)(using CTs) => RDD[(K, Out)]` | per-key, one pass |
 | `toSpark` | `(agg)(using Encoders) => sql.expressions.Aggregator` | the Dataset form |
 | `SparkBulk` | `(spark) => Bulk[SparkBulk.Rows]` | the ETL seam on an RDD; `Rows[A]` is an opaque `RDD[Any]` |
+| `SparkSchema.structOf` / `rows` / `dataFrame` | `[A](using Schema[A])` | an okay `Schema` as a Spark struct and external rows |
+| `SparkSchema.column` | `(Schema[A]) => Col[A]` | one column: type, nullability, value writer |
+| `SparkSchema.recursiveNames` | `(Schema[?]) => Set[String]` | the named nodes reachable from themselves |
 | `SparkBulk.sort` | `A ! (Sort + F) => A ! (State % Tables.Heap[Rows] + F)` | the `Sort` effect answered natively, over the heap `Tables.via` threads |
 
 ## Gotchas

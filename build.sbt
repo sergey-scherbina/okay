@@ -1051,7 +1051,8 @@ lazy val LegacyStdlib = config("legacyStdlib").hide
 /** Spark via the Aggregator triple (P4); Spark ships for 2.13 only,
  * so the standard for3Use2_13 cross applies */
 lazy val okaySpark = (project in file("okay-spark"))
-  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
+  // okay-codec for `Schema` (SparkSchema: the DataFrame encoder is a fold of it)
+  .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm, compare % "test->compile")
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(
