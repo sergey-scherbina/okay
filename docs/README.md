@@ -290,6 +290,7 @@ API reference, gotchas.
 | [`okay-scala2-mcp`](modules/okay-scala2-mcp.md) | okay-mcp for Scala 2.13: MCP client and server, JSON as text, tools from okay-scala2-agent |
 | [`okay-scala2-optics`](modules/okay-scala2-optics.md) | okay-optics for Scala 2.13: lens, prism, affine, traversal, iso as Scala 2 classes over okay's optics |
 | [`okay-scala2-workflow`](modules/okay-scala2-workflow.md) | okay-workflow for Scala 2.13: durable programs over a journal, and durable agents |
+| [`okay-scala2-services`](modules/okay-scala2-services.md) | okay-actor, -outbox, -obs, -ops, -kafka, -pg for Scala 2.13: the operations that answer programs |
 | [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |

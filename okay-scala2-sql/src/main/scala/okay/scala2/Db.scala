@@ -20,6 +20,10 @@ import okay.sql.{Bad, Drift, Isolation, SqlValue, Typed}
  */
 final class Db private (sql: okay.sql.Sql) {
 
+  /** the driver, for the other facade modules (okay-scala2-services'
+   * outbox runs in the same database, and so the same transaction) */
+  private[scala2] def underlying: okay.sql.Sql = sql
+
   /** every row, streamed; a row that does not decode is a `Left(Bad)` in
    * the stream, never a throw */
   def rows[A](query: String, params: SqlValue*)(using s: Schema[A]): Source[Either[Bad, A]] =

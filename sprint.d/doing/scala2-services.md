@@ -1,1 +1,0 @@
-- [ ] **scala2-services** — okay-actor, okay-kafka, okay-pg, okay-outbox, okay-obs, okay-ops from Scala 2.13. Probe first, wrap only what 2.13 cannot use (specs/scala2-facade.md, stage 15, item 8). Operator: "Да бери делай всё что возможно чтобы работало в скале 2" (2026-09-23).

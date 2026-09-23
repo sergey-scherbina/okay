@@ -1371,6 +1371,111 @@ backed by a table is enough. `onRepeat` says, per tool, what a call means
 if the journal holds its intent but not its outcome. The default refuses
 (`Fail`); `Redo` runs it again, for a tool that is safe to repeat.
 
+## 8q. Services: actors, outbox, logs, traces, ops, Kafka, Postgres
+
+Module `okay-scala2-services`. In these libraries the values and the
+builders are plain, and Scala 2 uses them directly: `ActorRef`,
+`Supervise`, `Reply`, `new Outbox()`, `new Inbox()`, `Dialect`,
+`Log.Line`, `new Tracer(topic)`, `new Red(name)`, `new Lifecycle()`,
+`new KafkaStore(bootstrap)`. What does not carry over is each
+operation that answers a program. Those are the objects `Actors`,
+`Outboxes`, `Logs`, `Tracing`, `Operations`, `Kafkas` and `Postgres`,
+each named apart from the library's own. The code below is copied from
+`okay-scala2/probe/src/test/scala/TestServicesFromScala2.scala`.
+
+**Actors** (okay-actor). An actor is a state and what a message does to
+it. `ask` sends a message carrying a `Reply` box and waits a bounded time
+for the answer:
+
+```scala
+val counter: (Int, Msg) => Eff[Async, Int] = {
+  case (n, Add(k)) => Eff.pure(n + k)
+  case (n, Get(reply)) => Async.delay { reply(n); n }
+  case (_, Boom) => Async.delay(throw new IllegalStateException("boom"))
+}
+```
+
+```scala
+val prog = for {
+  actor <- Actors.spawn(0)(counter)
+  _ <- Actors.tell(actor, Add(2))
+  _ <- Actors.tell(actor, Add(3))
+  total <- Actors.ask[Msg, Int](actor, 1000)(Get(_))
+  _ <- Actors.stop(actor)
+  after <- Actors.tell(actor, Add(1))
+} yield (total, after)
+assertEquals(Eff.runAsync(prog), (Some(5), false))
+```
+
+A behaviour that throws stops the actor, unless it was spawned with a
+policy: `Actors.spawn(init, Supervise.Restart(() => fresh), capacity)`
+starts again from a fresh state, and `Supervise.Resume` keeps the state
+and drops the message. `Actors.child(parent, ...)` is stopped with its
+parent.
+
+**The outbox** (okay-outbox) writes a message in the same database, and
+so the same transaction, as the change it announces; a relay publishes
+it to an okay-persist store later, exactly once per message. An inbox
+runs a message's handler once per message id:
+
+```scala
+_ <- Outboxes.enqueue(outbox, db, "orders", "order-1".getBytes)
+waiting <- Outboxes.pending(outbox, db)
+relayed <- Outboxes.relayOnce(outbox, db, store)
+```
+
+```scala
+first <- Outboxes.once(inbox, db, "msg-1")(Async.delay { handled += 1; "done" })
+second <- Outboxes.once(inbox, db, "msg-1")(Async.delay { handled += 1; "done" })
+```
+
+`db` is okay-scala2-sql's `Db` (section 8c). Call `enqueue` inside its
+`transaction` to commit the message with the change. The pattern is the
+transactional outbox of Richardson, *Microservices Patterns* (Manning,
+2018), chapter 3.
+
+**Logs and traces** (okay-obs). A log line is a `Writer` of `Log.Line`,
+so logging is a capability like any other, and `Logs.to` sends each line
+to a sink as it is said:
+
+```scala
+val work: Eff[Writer[Log.Line], Int] = for {
+  _ <- Logs.debug("noise")
+  _ <- Logs.info("started", "job" -> "42")
+  _ <- Logs.failure("failed", new IllegalStateException("disk"))
+} yield 7
+val answer = Eff.run(Logs.to[Any, Int](l => lines += l, Log.Level.Info, () => 1000L)(work))
+```
+
+`Tracing.span(tracer, name, attrs*)(program)` runs a program inside a
+span; the tracer writes finished spans to an okay-persist topic, and
+`okay.obs.Otlp` exports them.
+
+**Ops** (okay-ops): the health, readiness, metrics and stats endpoints,
+in the HTTP facade's terms (section 8b), and a RED meter (rate, errors,
+duration) around any routes:
+
+```scala
+val health = Eff.runAsync(Operations.routes(store)(Request.get("/healthz")))
+assertEquals((health.status, health.text), (200, "live=true"))
+val red = new Red("api")
+val app = Operations.measured(red, _ => "hello") { case _ => Eff.pure(Response.text("hi")) }
+```
+
+`Operations.admitted(lifecycle)(routes)` refuses new requests once
+draining begins, and `Operations.drain(lifecycle, graceMillis)` waits for
+the requests in flight: a graceful shutdown.
+
+**Kafka and Postgres.** `new KafkaStore(bootstrap)` is an okay-persist
+`Store`, so section 8k works over Kafka unchanged. `Kafkas.send`,
+`Kafkas.source` and `Kafkas.commit` drive a plain Kafka producer and
+consumer. `Postgres.connect(host, port, user, password, database)` is a
+`Db` over okay-pg's own implementation of the wire protocol. Its SQL is
+Postgres' own, with numbered placeholders (`$1, $2`) where JDBC writes
+`?`. Both are tested against real servers in
+`TestServicesLiveFromScala2`, which is tagged `Live` and runs under
+`sbt integrationTest`.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |

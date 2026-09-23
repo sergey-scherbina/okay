@@ -840,3 +840,16 @@ metaprogramming.
   `Durable.Journal` and wraps its gated tool handler in
   `Durable.tools`. 2 tests, one of them the control (no journal: the
   restart pays twice).
+- STAGE 15.8 (2026-09-23). okay-scala2-services: `Actors`, `Outboxes`,
+  `Logs`, `Tracing`, `Operations`, `Kafkas`, `Postgres`. The builders and
+  values of all six libraries are plain; only the program-answering
+  operations are wrapped. `Db` gained `private[scala2] def underlying`
+  so the outbox runs over the SQL facade's connection (and transaction).
+  6 offline tests (actors plain and supervised, outbox relay plus inbox
+  once over H2 and a MemoryStore, logs streamed, a span written, ops
+  routes plus a RED meter) and 2 Live ones, run once here against
+  `postgres:16` and `apache/kafka:3.9.0` in throwaway containers: GREEN.
+  Two mistakes of the lane's own, both caught by those tests: the ops
+  endpoints are `/healthz` and `/readyz` (the facade's comment first said
+  `/health`), and okay-pg's SQL takes `$1`-numbered placeholders, not
+  JDBC's `?` (by design: the SQL string is the dialect's).
