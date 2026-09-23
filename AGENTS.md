@@ -278,6 +278,21 @@ force, all already practiced, none previously written down:
   implementation; check `- [ ]` behavior items off as tests cover
   them; record findings and refuted alternatives in the spec's
   Decisions/Results — that history is why the specs exist.
+- **A doc's Scala example is a line of a compiled source**
+  (doc-snippets-pin-all, 2026-09-23). `TestDocSnippets` (okay-deploy)
+  checks every line of every ```scala block under docs/ against the
+  repository's test, benchmark and library sources, verbatim after
+  trimming; comment-only lines and `...` are prose and skipped. What
+  was already unpinned is `docs/snippet-debt.txt`, and it only
+  SHRINKS: a new or EDITED example line must be pinned (the
+  `TestDocExamples*` suites hold a page's lines verbatim, answer
+  comment included, then assert), and a debt entry you paid must be
+  deleted — `OKAY_SNIPPET_DEBT=write scripts/gate.sh
+  "okayDeploy/testOnly okay.deploy.TestDocSnippets"` does that and can
+  never add a line. The first pass found five examples that did not
+  compile or were stale, on pages that had passed every gate. NOTE:
+  `affected master` maps a docs-only diff to no project, so run that
+  command yourself on a docs lane (backlog: affected-docs-run-no-doc-tests).
 
 ## Code rules the operator has set
 - NO CAST WITHOUT A REAL NECESSITY (operator, 2026-09-02). An
