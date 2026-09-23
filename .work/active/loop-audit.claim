@@ -1,0 +1,6 @@
+feature/loop-audit 2026-09-23T06:03:10Z
+agent: claude-code
+heartbeat: 2026-09-23T06:03:10Z
+status: in-progress
+done-so-far: sprint entry
+next: worktree; read the six loops; rewrite/record; gate; docs; land
