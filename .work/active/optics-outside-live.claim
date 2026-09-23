@@ -1,0 +1,6 @@
+feature/optics-outside-live 2026-09-23T08:31:21Z
+agent: claude-code
+heartbeat: 2026-09-23T08:31:21Z
+status: in-progress
+done-so-far: design: a Watched[A] document (Json in a TRef) with LENS-keyed subscriptions (the dotted key is the wire form of the lens: JsonOptic.path(schema, key)); a change pushes only the focused part, only where it changed; set(key, v) is the client write through the same affine; okay-live gains okayCodec
+next: build.sbt dep; okay-live Watched.scala; TestWatched; spec stage 10; docs (frontend-guide Live, module page, cursors page §5); changelog
