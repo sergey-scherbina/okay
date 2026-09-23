@@ -32,6 +32,14 @@ object Clj {
         case _ => Left(s"no bound var $ns/$name")
     }
 
+  /** the value a var holds (a `def`), its namespace loaded first */
+  def value(ns: String, name: String): Either[String, AnyRef] =
+    require(ns).flatMap { _ =>
+      Clojure.`var`(ns, name) match
+        case v: Var if v.isBound => Right(v.deref())
+        case _ => Left(s"no bound var $ns/$name")
+    }
+
   /** read and evaluate Clojure source; the last form's value */
   def eval(source: String): Either[String, AnyRef] =
     try Right(loadString.invoke(source))

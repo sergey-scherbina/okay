@@ -808,7 +808,8 @@ lazy val okayJava = (project in file("okay-java"))
  * JVM; Clojure 1.12 runs on JDK 8+, so the build's default floor.
  */
 lazy val okayClojure = (project in file("okay-clojure"))
-  .dependsOn(okay.jvm, okayStream.jvm)
+  // okayAsync + okayPlatform: `Ops.sleep` builds an Async operation on the platform Timer
+  .dependsOn(okay.jvm, okayStream.jvm, okayAsync.jvm, okayPlatform.jvm)
   .settings(
     name := "okay-clojure",
     libraryDependencies ++= Seq(
