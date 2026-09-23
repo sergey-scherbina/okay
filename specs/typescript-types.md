@@ -137,7 +137,7 @@ Each stage is a lane; Results below record what each found.
 
 ## Stage T8 — Scala code as TypeScript (okay-js)
 
-- [ ] `Direct.ts { … }` reads the same closed subset as `Direct.js`
+- [x] `Direct.ts { … }` reads the same closed subset as `Direct.js`
       and gives a tree whose `var`s and function parameters carry their
       types. The type is the one the Scala compiler inferred:
       - `Int`/`Long`/`Double`/… is `number`, `String` is `string`,
@@ -146,12 +146,12 @@ Each stage is a lane; Results below record what each found.
         untyped JavaScript;
       - a Scala function type is `(a: A) => B`.
       A type outside that list is refused by name.
-- [ ] `Direct.tsSource { … }` is the TypeScript text as a compile-time
+- [x] `Direct.tsSource { … }` is the TypeScript text as a compile-time
       constant, like `Direct.source`.
-- [ ] `Js.print` prints the typed tree as JavaScript with the types
+- [x] `Js.print` prints the typed tree as JavaScript with the types
       dropped, and `Js.printTs` keeps them. A typed tree runs as the
       same JavaScript.
-- [ ] (Live) `tsc --strict --noEmit` accepts the printed TypeScript,
+- [x] (Live) `tsc --strict --noEmit` accepts the printed TypeScript,
       and refuses it when a Scala type was wrong for the value.
 
 ## Stage T9 — okay on npm
@@ -338,3 +338,26 @@ Each stage is a lane; Results below record what each found.
   - Refuted alternative: a TypeScript compiler API walk. TS 7 (the
     native port) ships none. tsc's own declaration output, read by the
     T3 parser, gets the inferred types without it.
+
+- T8 (ts-js-typed, 2026-09-23).
+  - `Direct.ts`/`tsSource` exist, and `Js.printTs` prints the tree. There
+    are two new typed nodes, `Stmt.TypedVar` and `Js.TypedFun`. The
+    printer is one class with a `ts` flag, so the JavaScript and the
+    TypeScript differ only in the types.
+  - TestDirectTs runs in the default gate on JVM, JS and Native.
+    TestDirectTsc (Live) has `tsc --strict` accept a printed program and
+    refuse a string under `number`.
+  - Mutant: dropping the parameter types fails the typed test.
+  - Two defects of `js { }` found on the way. Both were in
+    `Direct.js` before T8, and both printed JavaScript that runs and does
+    the wrong thing:
+    - `f(1)` on a function val printed `f.apply(1)`. The typed test's
+      expected text found it: the untyped suite never called a
+      function value.
+    - `d.f = v` on a Dyn printed `d.updateDynamic("f", v)`. tsc found it:
+      "Property 'updateDynamic' does not exist on type 'Document'". A
+      type checker on the output is a test of the translator too.
+  - A function's return type is deliberately not annotated. A
+    `js { }` lambda's body is a statement, so the function returns
+    `undefined`, and annotating Scala's result type would be a claim tsc
+    rejects.

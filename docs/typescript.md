@@ -412,6 +412,41 @@ const t: Totals = await shop.total({ sku: "tea", qty: 4 });
 - **Why `expose` and not `export`.** `export` is a reserved word in
   Scala 3.
 
+## Scala code as TypeScript: `Direct.ts { }`
+
+The sections above generate TypeScript TYPES from Scala. okay-js also
+turns a small closed subset of Scala CODE into JavaScript. `Direct.ts`
+does the same, and adds to each variable and function parameter the type
+the Scala compiler inferred:
+
+```scala
+    val p = Direct.ts {
+      val n = 1
+      val s = "a"
+      val b = n > 0
+      val d = global.document.body
+      val f = (x: Int, y: String) => global.console.log(y + x)
+      global.console.log(b, d, f(n, s))
+    }
+```
+
+`Js.printTs(p)` is:
+
+```typescript
+var n: number = 1;
+var s: string = "a";
+var b: boolean = n > 0;
+var d: any = document.body;
+var f: (a0: number, a1: string) => void = function (x: number, y: string) {
+  console.log(y + x);
+};
+console.log(b, d, f(n, s));
+```
+
+A `Dyn` is `any`, because it is untyped JavaScript. A type outside the
+subset's short list is refused by name. The subset and its limits are in
+[okay-js](modules/okay-js.md).
+
 ## TypeScript libraries, used from okay
 
 To call an existing TypeScript library from okay on Scala.js, generate

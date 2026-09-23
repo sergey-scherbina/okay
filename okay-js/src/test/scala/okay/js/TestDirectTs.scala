@@ -14,15 +14,18 @@ class TestDirectTs extends munit.FunSuite:
       val f = (x: Int, y: String) => global.console.log(y + x)
       global.console.log(b, d, f(n, s))
     }
-    assertEquals(Js.printTs(p).trim,
-      """var n: number = 1;
-        |var s: string = "a";
-        |var b: boolean = n > 0;
-        |var d: any = document.body;
-        |var f: (a0: number, a1: string) => void = function (x: number, y: string) {
-        |  console.log(y + x);
-        |};
-        |console.log(b, d, f(n, s));""".stripMargin)
+    // no margin: the docs quote these lines
+    val expected = """
+var n: number = 1;
+var s: string = "a";
+var b: boolean = n > 0;
+var d: any = document.body;
+var f: (a0: number, a1: string) => void = function (x: number, y: string) {
+  console.log(y + x);
+};
+console.log(b, d, f(n, s));
+"""
+    assertEquals(Js.printTs(p).trim, expected.trim)
   }
 
   test("the same tree prints as the same JavaScript, the types dropped") {

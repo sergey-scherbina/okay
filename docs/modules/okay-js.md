@@ -66,7 +66,9 @@ in it:
 | `+ - * / %`, `< > <= >=`, `&& \|\| !` | the same operators |
 | `==` and `!=` on a primitive | `===` and `!==` |
 | `d.f`, `d.f(a)` on a `Dyn` | `d.f`, `d.f(a)` |
+| `d.f = v` on a `Dyn` | `d.f = v;` |
 | `(a, b) => …` | `function (a, b) { … }` |
+| `f(a)` on a function `val` | `f(a)` |
 | a value of type `Js` | spliced in place |
 
 `global` is a `Dyn`: a `scala.Dynamic` whose only job is to let
@@ -94,6 +96,36 @@ means equality; JavaScript's `==` coerces and `===` does not. The
 macro maps to `===` when the operand type is `Int`, `Long`, `Double`,
 `String`, `Boolean` or `Dyn`, and refuses otherwise rather than
 guessing at what equality means for some other type.
+
+### TypeScript: `Direct.ts { }`
+
+`Direct.ts` reads the same subset and keeps the types the Scala compiler
+inferred. `Js.printTs` prints the result as TypeScript, and `Js.print`
+prints the same tree as the same JavaScript as before.
+`Direct.tsSource { }` is the TypeScript text as a compile-time constant.
+
+| Scala type | TypeScript |
+| --- | --- |
+| `Int`, `Long`, `Double`, `Float`, `Short`, `Byte` | `number` |
+| `String` | `string` |
+| `Boolean` | `boolean` |
+| `Unit` | `void` |
+| `Dyn`, a spliced `Js` | `any` (untyped JavaScript, and it says so) |
+| `(A, B) => C` | `(a0: A, a1: B) => C` |
+
+Any other type is refused by name. A function's return is not
+annotated: a `js { }` lambda's body is a statement, so the JavaScript
+function returns nothing, and annotating the Scala result would be
+false. A test checks the printed text with `tsc --strict`. A second test
+shows that the annotations bind: a string under `number` is refused.
+
+Two defects of `js { }` itself were found by the first typed program,
+and both printed JavaScript that runs and does the wrong thing:
+- `f(1)` on a function-typed `val` printed `f.apply(1)`, which is
+  `Function.prototype.apply` with `this` set to 1 and no arguments;
+- `global.document.title = t` printed `document.updateDynamic("title", t)`.
+
+Both are now the call and the assignment they read as, with tests.
 
 ### The escape hatch is named
 
