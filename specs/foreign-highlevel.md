@@ -367,6 +367,43 @@ handler that resumes twice is refused by name, not answered wrongly.
 - [ ] A module name that is not an identifier is refused where the
       module is made.
 
+## Stage 5 — foreign-module-trait, built as a GENERATED facade
+
+### Why not the trait macro the backlog named
+
+A macro that implements a user's trait needs to synthesise a class with
+methods, which in Scala 3 is `Symbol.newClass` — experimental API, and
+this build does not take experimental features into main code. The trait
+also has to be written by hand, so it repeats what the Python or R code
+already says, and drifts from it silently. The facade is generated FROM
+the foreign code instead: the worker describes a module, and okay writes
+the Scala object. Its drift is visible, because regenerating it changes
+the diff.
+
+### Behavior
+
+- [ ] `okay.describe(module)` in the Python shim (a function of the
+      injected `okay` module, so an ordinary `Call` reaches it — no new
+      wire operation): each public function's name, its parameters (name,
+      annotation, whether it has a default) and its return annotation, and
+      the first line of its docstring.
+- [ ] `okay_describe(pkg_or_module)` in the R shim: each function's name
+      and its formals (R has no annotations, so every type is open).
+- [ ] `PyFacade.render(obj, pkg, module, sigs)` and `RFacade.render(...)`
+      write a Scala object: one method per function, calling it through
+      `Py.fn`/`R.fn`. Annotations map to types (`int` Long, `float`
+      Double, `str` String, `bool` Boolean, `bytes` Array[Byte],
+      `list[T]` Vector[T], `Optional[T]`/`T | None` Option[T]); an
+      unannotated parameter becomes a type parameter with `ToPy`/`ToR`,
+      an unannotated return a type parameter with `Schema`, so nothing is
+      guessed. A parameter with a default is left out and SAID so in the
+      method's comment.
+- [ ] `runMain okay.py.PyFacade <module> <Object> <package>` (and
+      okay.r.RFacade) prints the source, to be checked in.
+- [ ] A golden facade in the test sources: generated from a module, it
+      COMPILES with the tests, and a live test regenerates it and compares
+      it with the file.
+
 ## Results
 
 - Stage 1 (foreign-journalled, 2026-09-23). Eight tests with no live
