@@ -35,6 +35,20 @@ object Validate:
   /** the paths and messages alone — what a form renders under its fields */
   def errors[A](s: Schema[A])(j: Json): Errors = decode(s)(j).left.getOrElse(Vector.empty)
 
+  /**
+   * THE BRIDGE (two-accumulating-validators, 2026-09-23): the same
+   * walk read as the core's `Validated`, so a schema walk is one leaf
+   * among others under `app`/`traverse` — a form built from two
+   * schemas, a config whose sections are each a schema — and both
+   * sides' errors, paths included, survive the combination. `Errors`
+   * is a `Vector`, whose `Semigroup` is concatenation, so the instance
+   * needs no import. This is a reading, not a rewrite: the walk stays
+   * `Either` inside (it is the schema hot path, and `gather` below is
+   * `Validated.app` written on it by hand).
+   */
+  def validated[A](s: Schema[A])(j: Json): okay.Validated[Errors, A] =
+    okay.Validated.fromEither(decode(s)(j))
+
   private type Out = Either[Errors, Any]
   private type Acc = Either[Errors, Vector[Any]]
   /** the path as it is walked: segments, innermost first — a cons per
@@ -56,10 +70,10 @@ object Validate:
    *
    * This IS `Validated.app` (Validated.scala), written by hand on
    * `Either` because this walk predates that type and carries paths
-   * its errors need. The two are kept apart deliberately for now —
-   * this one is tested and in the schema hot path — and BACKLOG
-   * `two-accumulating-validators` holds the note and the trigger for
-   * bridging them.
+   * its errors need. The two are kept apart deliberately — this one
+   * is tested and in the schema hot path — and BRIDGED by `validated`
+   * above (two-accumulating-validators, 2026-09-23): a walk's answer
+   * is a `Validated[Errors, A]` on request, and combines there.
    */
   private def gather(acc: Acc, r: Out): Acc = (acc, r) match
     case (Right(xs), Right(a)) => Right(xs :+ a)

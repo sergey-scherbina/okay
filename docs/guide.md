@@ -103,7 +103,18 @@ below the monad is where two of them earn their keep. `Validated[E, A]`
 collects EVERY error instead of stopping at the first, because an
 applicative has no way to stop (it needs a `Semigroup[E]`, has no
 `flatMap` by design, and `okay-conf` uses it to report every bad
-environment variable in one run). The
+environment variable in one run). okay-codec's schema walk speaks
+it too: `Validate.validated(schema)(json)` is the accumulating decode
+read as a `Validated[Validate.Errors, A]`, so two schemas' errors —
+each at its dotted path — combine under one `app`:
+
+```scala
+val o: Validated[Validate.Errors, Order] = Validate.validated(summon[Schema[Order]])(bad)
+val a: Validated[Validate.Errors, Address] = Validate.validated(summon[Schema[Address]])(addr)
+val both = Validated.valid[Validate.Errors, Order => Address => (Order, Address)](x => y => (x, y)).app(o).app(a)
+```
+
+The
 rung below the monad is worth reaching for on purpose: a program
 written as a `Static` (the free selective — `Pure | Op | Ap | Select`,
 no `Bind`) can be READ before it runs — `leaves` lists the operations

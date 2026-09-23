@@ -73,6 +73,11 @@ argument for having built them generically.
 - [x] A `Semigroup` instance is required, not a `List` assumed: the
       accumulation works for `Chunk`, for a count, for a
       `Map[Field, Seq[Problem]]`, and the test uses a non-list one.
+- [x] `Validate.validated(schema)(json)` reads okay-codec's accumulating
+      schema walk as a `Validated[Validate.Errors, A]`: equal to
+      `decode` as an `Either`, and two walks combined under `app` keep
+      both sides' errors with their paths (TestValidate, the bridge —
+      two-accumulating-validators, 2026-09-23)
 - [x] `okay-conf` reports every BAD variable of a configuration in one
       run — the first real consumer, and the one that decides whether
       the type earns its place.
@@ -119,6 +124,17 @@ newtype over `Either` does not.
   leaf and fixes a shape three consumers disagree about).
 
 ## Results
+
+- **The bridge, not a merge** (two-accumulating-validators,
+  2026-09-23). `Validate.gather` stays `Either` by hand — it is the
+  schema hot path and carries paths — and `Validate.validated` is one
+  `fromEither` on the way out; `Errors` being a `Vector`, the
+  `Semigroup` is concatenation and the instance resolves from the
+  companions with no import. What the bridge buys is a schema walk as
+  a LEAF: two schemas' errors in one `app`, a config of sections each
+  walked, a form whose fields are schemas — without a second
+  accumulator being taught.
+
 
 Stage 0 (this spec): written 2026-09-18, out of the strategy review in
 ROADMAP P13. The predictions above are the bars.

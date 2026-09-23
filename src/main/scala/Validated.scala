@@ -25,8 +25,10 @@ package okay
  *
  * NOT THE ONLY ACCUMULATOR HERE. `okay-codec`'s `Validate` walks a
  * schema with the same rule written by hand on `Either`, because it
- * predates this type and its errors carry paths. Both stay for now;
- * BACKLOG `two-accumulating-validators` holds the note.
+ * predates this type and its errors carry paths. Both stay, and
+ * `Validate.validated` reads a walk as this type (the bridge,
+ * two-accumulating-validators, 2026-09-23), so a schema walk is one
+ * leaf under `app`/`traverse` like any other.
  *
  * THERE IS DELIBERATELY NO `Monad[Validated]`. The monad-applicative
  * consistency law says `app` must agree with the `flatMap`

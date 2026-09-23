@@ -91,3 +91,27 @@ class TestValidate extends munit.FunSuite:
   test("errors: the form-shaped view, empty on a valid document") {
     assertEquals(Validate.errors(summon[Schema[Order]])(Json.parse(Json.write(good))), Vector.empty)
   }
+
+  test("the bridge: a walk read as a Validated equals decode, and two walks combined keep both sides' paths") {
+    import okay.Validated
+    val bad = Json.parse("""{"id":"x","tags":[],"colour":"Red","amounts":[],"address":{"city":"K"}}""")
+    val addr = Json.parse("""{"city": 5}""")
+    val o: Validated[Validate.Errors, Order] = Validate.validated(summon[Schema[Order]])(bad)
+    val a: Validated[Validate.Errors, Address] = Validate.validated(summon[Schema[Address]])(addr)
+    assertEquals(o.toEither, Validate.decode(summon[Schema[Order]])(bad))
+    // `app` from Validated's own instance; Errors is a Vector, so its
+    // Semigroup is concatenation and nothing is imported
+    val both = Validated.valid[Validate.Errors, Order => Address => (Order, Address)](x => y => (x, y)).app(o).app(a)
+    both.toEither match
+      case Left(es) =>
+        assert(es.exists(_._1 == "id"), es.toString)
+        assert(es.exists(_._1 == "city"), es.toString)
+        assertEquals(es, Validate.errors(summon[Schema[Order]])(bad) ++ Validate.errors(summon[Schema[Address]])(addr),
+          "both walks' errors, in order, paths intact")
+      case Right(v) => fail(s"valid: $v")
+    // and two good walks are a Valid pair
+    val goodO = Validate.validated(summon[Schema[Order]])(Json.parse(Json.write(good)))
+    val goodA = Validate.validated(summon[Schema[Address]])(Json.parse("""{"city":"Kraków"}"""))
+    assertEquals(Validated.valid[Validate.Errors, Order => Address => (Order, Address)](x => y => (x, y)).app(goodO).app(goodA).toEither,
+      Right((good, Address("Kraków", 0))))
+  }
