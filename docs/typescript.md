@@ -310,6 +310,45 @@ function returning it is an okay program a TypeScript caller simply
 val program = okay.pure[Async, Totals](Totals("tea", 12.0, None))
 ```
 
+### A module of functions, with its declaration
+
+For more than one function, give each a name with `Ts.expose` and group
+them with `Ts.module`. The declaration TypeScript compiles against is
+generated from the same Schemas that encode the values:
+
+```scala
+  val shop = Ts.module("shop")(
+    Ts.expose[Order, Totals]("total")(o =>
+      pure[Async, Totals](Totals(o.sku, prices.getOrElse(o.sku, 0.0) * o.qty, None))),
+    Ts.expose[Vector[String], Int]("count")(skus => pure[Async, Int](skus.size)),
+  )
+```
+
+`shop.js` is the object to export (`@JSExportTopLevel("shop")`), and
+`shop.declaration` is the file to save as its `.d.ts`. That file holds the
+types, then one signature per function:
+
+```typescript
+export declare const shop: {
+  total(input: Order): Promise<Totals>;
+  count(input: string[]): Promise<Int>;
+};
+```
+
+A TypeScript caller then writes ordinary typed code:
+
+```typescript
+const t: Totals = await shop.total({ sku: "tea", qty: 4 });
+```
+
+- **A wrong argument.** The promise is rejected with a `TypeError` that
+  names the function (`total: ...`).
+- **Checked by tsc.** The test compiles a caller with `tsc --strict`
+  against the generated declaration. A field the Scala type does not
+  have (`t.price`) is refused.
+- **Why `expose` and not `export`.** `export` is a reserved word in
+  Scala 3.
+
 ## TypeScript libraries, used from okay
 
 To call an existing TypeScript library from okay on Scala.js, generate

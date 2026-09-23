@@ -45,10 +45,12 @@ class TestTsExport extends munit.FunSuite {
   test("the declaration: the codec's types and one signature per exposed function") {
     val d = shop.declaration
     assert(d.contains("export interface Order {\n  sku: string;\n  qty: Int;\n}"), d)
-    assert(d.contains("""export declare const shop: {
+    val signatures = """
+export declare const shop: {
   total(input: Order): Promise<Totals>;
   count(input: string[]): Promise<Int>;
-};"""), d)
+};"""
+    assert(d.contains(signatures), d)
   }
 
   test("tsc --strict accepts a caller written against the declaration and refuses a wrong field".tag(new munit.Tag("Live"))) {

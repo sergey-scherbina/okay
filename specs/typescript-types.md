@@ -87,16 +87,16 @@ Each stage is a lane; Results below record what each found.
 
 ## Stage T6 — Scala.js functions, TypeScript callers (S2)
 
-- [ ] `Ts.expose[A, B](name)(f: A => B ! Async)` is one function a
+- [x] `Ts.expose[A, B](name)(f: A => B ! Async)` is one function a
       TypeScript caller awaits: its argument is read with okay's JSON codec,
       its answer written with it, and a wrong argument REJECTS the promise,
       naming the function and the reason.
-- [ ] `Ts.module(name)(exposed*)` gives two things: `.js`, the object to put
+- [x] `Ts.module(name)(exposed*)` gives two things: `.js`, the object to put
       behind `@JSExportTopLevel`, and `.declaration`, the declaration
       file TypeScript reads for it. That file holds `Stubs.typescript`'s
       types for every argument and answer, and
       `export declare const name: { f(input: A): Promise<B>; ... }`.
-- [ ] `tsc --strict` accepts a TypeScript caller written against the
+- [x] `tsc --strict` accepts a TypeScript caller written against the
       declaration and refuses a wrong field. The declaration is generated
       by the same code that encodes the values, so the two cannot drift.
 
@@ -197,3 +197,23 @@ Each stage is a lane; Results below record what each found.
     below ES2018. The same generator runs on JS for a browser-side
     build, so it is a scan now, and the shape test runs on both
     platforms.
+
+- T6 (ts-export, 2026-09-23).
+  - `Ts.expose` and `Ts.module` exist in okay-ts; `TsModule.js` is typed
+    `js.Object & js.Dynamic` (a `Dynamic.literal`), so no cast was
+    needed.
+  - TestTsExport (Scala.js, on Node) checks four things:
+    - a call gives the codec's shape;
+    - a missing field rejects with a `TypeError` that names the
+      function;
+    - the declaration text is pinned;
+    - (Live) `tsc --strict` accepts a caller and refuses `t.price`. tsc
+      runs through Node's `process.getBuiltinModule("child_process")`,
+      since okay-ts links without a module system (no `require`).
+  - Mutant: declaring the answer with the argument's type fails both the
+    pinned declaration and tsc.
+  - Two naming findings:
+    - `export` is a hard keyword in Scala 3, so the spec's `Ts.export`
+      is `Ts.expose`;
+    - a class named `Module` inside `object Ts` shadows `java.lang.Module`
+      (E177), so it is `TsModule`.
