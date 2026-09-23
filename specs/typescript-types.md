@@ -102,15 +102,15 @@ Each stage is a lane; Results below record what each found.
 
 ## Stage T7 — a TypeScript module as a Scala facade (S3)
 
-- [ ] `TsFacade.declarations(dir, module)` runs
+- [x] `TsFacade.declarations(dir, module)` runs
       `tsc --declaration --emitDeclarationOnly` on the module. The
       compiler, not a guess, answers each function's types, including a
       return type the source did not write.
-- [ ] `TsTypes.parseModule` reads those declarations: the data subset
+- [x] `TsTypes.parseModule` reads those declarations: the data subset
       T3 reads, plus `export declare function f(a: T, b?: U): R;`. The
       names a `import type { … }` brings in are known types (they
       typically came from Scala through `Stubs.typescript`).
-- [ ] `TsFacade.render(obj, pkg, module, dts, imports)` is Scala source.
+- [x] `TsFacade.render(obj, pkg, module, dts, imports)` is Scala source.
       It holds the module's own data types (T3's output) and an object
       with one method per function, each calling it through `Ts.fn`
       in the JSON shape:
@@ -120,7 +120,7 @@ Each stage is a lane; Results below record what each found.
       - an optional parameter is left out and named in the comment;
       - a function the facade cannot type is a comment saying why,
         never a guess.
-- [ ] Live: the facade of a real module is checked in, and a test
+- [x] Live: the facade of a real module is checked in, and a test
       asserts the generator writes it unchanged; its methods call the
       TypeScript worker and answer typed values.
 
@@ -241,3 +241,27 @@ Each stage is a lane; Results below record what each found.
       is `Ts.expose`;
     - a class named `Module` inside `object Ts` shadows `java.lang.Module`
       (E177), so it is `TsModule`.
+
+- T7 (ts-facade, 2026-09-23).
+  - `TsTypes.parseModule` reads exported functions. A function it cannot
+    type becomes an `Unread` with the reason, instead of refusing the
+    module. `TsTypes.scalaType` and `renderData` are the type mapping,
+    shared with T3.
+  - `TsFacade.declarations` and `render` are in okay-py.
+  - The facade of `golden/facadets.ts` is checked in (`FacadeTs.scala`).
+    TestTsFacade (Live, tsc + Node) checks three things:
+    - the generator writes that file unchanged;
+    - its methods call the worker (a case class from Scala's model, an
+      async function whose answer type only tsc knew, an optional
+      parameter left out, an open type);
+    - a module tsc refuses comes back with tsc's reason.
+  - TestTsFacadeRender (default gate) covers the reading and the imports
+    on handwritten declarations.
+  - Mutant: without Promise unwrapping, the golden differs.
+  - A finding: the parser reported a callback parameter
+    (`f: (x: number) => number`) as "expected ')', found ':'". It now
+    recognises an arrow's parameter list and says "a function type is
+    not data".
+  - Refuted alternative: a TypeScript compiler API walk. TS 7 (the
+    native port) ships none. tsc's own declaration output, read by the
+    T3 parser, gets the inferred types without it.

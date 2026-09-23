@@ -34,7 +34,8 @@ class TestDocSnippets extends munit.FunSuite:
     "docs/typescript.md" -> Vector("okay-py/src/test", "okay-ts/src/test", "okay-codec/src/test", "okay-http/src/test"),
   )
 
-  private val sourceSuffixes = Vector(".scala", ".clj", ".fr")
+  // a .ts module a test runs (okay-py/src/test/resources) is a tested source too
+  private val sourceSuffixes = Vector(".scala", ".clj", ".fr", ".ts")
 
   private def sourceLines(roots: Vector[String]): Set[String] =
     roots.flatMap { r =>

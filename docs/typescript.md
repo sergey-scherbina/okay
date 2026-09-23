@@ -226,6 +226,69 @@ What the name in `call("price_of", ...)` is, and why a callback is a
 name rather than a function, is explained in
 [okay with Python and R](python-and-r.md#what-is-the-name-in-okaycallprice_of-x).
 
+## A typed Scala facade for a TypeScript module
+
+Addresses like `"shop:total"` and hand-written type arguments work, but
+the TypeScript module already declares its types. `TsFacade` reads them
+and writes the Scala side, much as `PyFacade` does for Python. The types
+come from the compiler: `TsFacade.declarations` runs
+`tsc --declaration --emitDeclarationOnly`. So a function whose answer
+type was left to inference gets the type tsc inferred:
+
+```typescript
+export async function receipt(items: string[], each: number) {
+  const r: Receipt = { lines: items, total: items.length * each, note: null };
+  return r;
+}
+```
+
+`TsFacade.render` turns those declarations into Scala:
+
+- the module's own types become case classes and enums (the same
+  reading as "Types written in TypeScript first");
+- each exported function becomes one method, which calls the worker
+  through `Ts.fn`:
+
+```scala
+  def receipt(items: Vector[String], each: Double): Either[Condition, Receipt] ! PyEval =
+    Ts.fn[Receipt]("facadets:receipt")(items, each)
+```
+
+- **Promises.** `Promise<T>` answers `T`, because the worker awaits it.
+- **Open types.** `unknown`, `any` and `void` become type parameters:
+
+```scala
+  def echo[Out: Schema, A1: ToPy](x: A1): Either[Condition, Out] ! PyEval =
+```
+
+- **Optional parameters.** An optional parameter is left out, and the
+  method's comment says so.
+- **What it cannot type.** A generic, a callback parameter, a `Prog<T>`
+  or a `const` gets no guessed method. It gets a comment saying why:
+
+```scala
+  // twice: not generated — line 12: a function type is not data
+```
+
+- **Imported types.** A type the module imports from `model.ts` (usually
+  written from Scala with `Stubs.typescript`) is assumed to be in scope.
+  Pass the Scala import that puts it there.
+
+The whole loop:
+
+1. Write the types once in Scala.
+2. Generate `model.ts` with `Stubs.typescript`.
+3. Write the TypeScript module against `model.ts`.
+4. Generate the facade with `TsFacade`.
+
+The test compares a checked-in facade with what the generator writes
+today, so a changed signature in the TypeScript module shows up as a
+diff in the Scala facade:
+
+```scala
+    assertEquals(FacadeTs.receipt(Vector("a", "b"), 2.5).runWith, Right(Receipt(Vector("a", "b"), 5.0, None)))
+```
+
 ## Programs as data, many answers
 
 ```typescript

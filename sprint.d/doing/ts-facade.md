@@ -1,1 +1,0 @@
-- [ ] ts-facade — T7 of specs/typescript-types.md (Scala and TypeScript both on the backend): a TypeScript module's exported signatures, read by the compiler, written as a typed Scala facade — the TypeScript twin of PyFacade.
