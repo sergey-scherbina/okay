@@ -85,7 +85,10 @@ lanes start smuggling closures through it.
 ## What this is not
 
 - Not a resource manager. Where workers come from is okay-deploy's
-  and the operator's business (specs/deploy.md, specs/ops.md).
+  and the operator's business (specs/deploy.md, specs/ops.md) — and,
+  since 2026-09-23, specs/cluster-pool.md's: a POOL of identical
+  processes the manager keeps alive, discovered by its own DNS, any of
+  which takes a submission. The engine still never calls a manager.
 - Not SQL. A relational front end over this plan is a separate arc;
   `Sql` is a seam to databases, not to this engine.
 - Not exactly-once EXECUTION. The persistence arc settled this
@@ -210,7 +213,10 @@ than trusting the author.
 - **12 — the network.** The cross-process harness on machines that
   are not this one, or containers with injected latency and loss.
   BLOCKED on machines; the boxes are written so that the day they
-  exist the work is a run and not a design.
+  exist the work is a run and not a design. The machines are stage 2
+  of specs/cluster-pool.md: N pods on kind, a member and the
+  coordinator killed by `kubectl delete pod`, `kubectl scale` between
+  epochs (backlog: cluster-pool-targets).
 - **13 — rescale at an epoch boundary.** LANDED (box 1 and box 3;
   see Results). A stream stops at N running `parts` ways and resumes
   at N+1 running `parts'` ways, and the answer is the batch answer —

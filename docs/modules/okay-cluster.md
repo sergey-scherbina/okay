@@ -598,4 +598,9 @@ machine and which wait for machines. What is left besides: `dataflow-run-complet
 a third of a fan's time is in none of its sinks), and
 `dataflow-coordinator`, which is what a journalled coordinator would
 need for exactly-once ACROSS runs — and a real CLUSTER, which §20's
-distributed section declines to estimate.
+distributed section declines to estimate. The cluster is
+specs/cluster-pool.md (2026-09-23): the four roads above become a POOL
+— N copies of one process the manager (Kubernetes, Nomad, YARN, Slurm,
+compose, a cloud) keeps alive, found by its DNS, any of which takes a
+job by name over HTTP and coordinates it. Stage 1 is
+`cluster-pool-process` in the sprint queue.
