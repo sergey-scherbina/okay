@@ -144,3 +144,9 @@
       failed) — a lane that added okay-scala2-workflow and touched
       okay-scala2-agent, no okay-sql source. Recorded per the ledger;
       nothing changes the settled cause.
+
+      2026-09-23, okayCacheNative, GREEN on the rerun alone: lost its test
+      process in the affected-set gate of x402-signers (6970 tests, 0
+      failed) — a lane that added okay-x402-signers and touched
+      okay-x402-evm/okay-x402-cdp, no okay-cache source. Recorded per the
+      ledger; nothing changes the settled cause.
