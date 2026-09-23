@@ -69,7 +69,7 @@ class TestPar extends munit.FunSuite {
     assertEquals(prog.seq.runWith, here)
   }
 
-  test("the two spellings that resolve — and the one that does not") {
+  test("the three spellings, all of them resolving to Par's own") {
     def user(id: Int): String ! Async = async(s"u$id")
     def orders(id: Int): Int ! Async = async(id * 2)
 
@@ -81,15 +81,12 @@ class TestPar extends munit.FunSuite {
     val fn = A.fmap(Par(user(1)), (u: String) => (o: Int) => (u, o))
     assertEquals(fn.app(Par(orders(1))).seq.runWith, ("u1", 2))
 
-    // and what a reader tries first, which does NOT mean what it says:
-    // Monad.scala's `given Comonad[Id]` puts `map` on every type in
-    // lexical scope, and lexical beats an extension in Par's own
-    // object, so `Par(p).map(f)` is the identity comonad's map and
-    // answers an Id. Pinned as a compile error, so the day the
-    // footgun is fixed this line says so.
-    assert(compiletime.testing.typeChecks("""
-      val bad: Par[Int] = Par(async(1)).map(_ + 1)
-    """) == false, "Par(p).map now resolves to Par's own map — update Par.map2's comment and the docs")
+    // and what a reader tries first. It used to type-check as the
+    // IDENTITY comonad's map, a package-level given that put `map` on
+    // every type; since comonad-id-map-capture that instance lives in
+    // `Comonad`'s companion and `Par(p).map(f)` is Par's own.
+    val mapped: Par[Int] = Par(user(1)).map(_.length)
+    assertEquals(mapped.seq.runWith, 2)
   }
 
   test("a failing leaf fails the spine at once, in either order") {

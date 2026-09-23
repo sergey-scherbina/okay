@@ -139,9 +139,7 @@ into opaque infix type throws[+A, +E <: Unsafe] =
  * for-comprehension in the direct style — `import throws.*` where
  * used. The extensions live in the companion of the union on purpose:
  * at the package level they would capture foreign flatMaps through
- * the Conversion givens below, while a bare `.map` is contested by
- * Comonad[Pure] (the identity functor maps everything) — the local
- * import wins over both.
+ * the Conversion givens below — the local import wins.
  */
 object throws {
   /** the union absorbs values, errors, Either and Try as they are */

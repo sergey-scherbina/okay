@@ -66,8 +66,6 @@ runChoice(back)                                // Seq(1, 2, 3), every branch
 
 - kyo wants evidence in places: `Tag[W]` AND `Tag[Emit[W]]` for Emit,
   `SafeClassTag[E]` for Abort.run, `Flat` for eval.
-- In `package okay` scopes, `Comonad[Id]` puts `.map` on every type —
-  kyo lambdas may need an ascribed parameter, or use flatMap.
 - kyo evaluates at CONSTRUCTION (its eagerness contract): see
   compare/TestLaziness for the exact differences the bridges
   preserve rather than paper over.

@@ -211,9 +211,10 @@ object Optic {
     def wander[S, T, A, B](w: Walk[S, T, A, B])(p: P[A, B]): P[S, T]
     def eachVector[A, B](p: P[A, B]): P[Vector[A], Vector[B]] = wander(vectorWalk[A, B])(p)
 
-  /** NOT a given: an `Applicative[[X] =>> X]` in scope would be ambiguous
-   * with the package's `Comonad[Id]`, which already puts `map` on every
-   * type; `Function1`'s `wander` passes this one explicitly */
+  /** NOT a given: a given `Applicative[[X] =>> X]` would put `map` and
+   * `app` on every type in lexical scope — the capture that
+   * comonad-id-map-capture took off `Comonad[Id]`; `Function1`'s
+   * `wander` passes this one explicitly */
   val idApplicative: Applicative[Id] = new Applicative[Id]:
     def pure[A](a: A): A = a
     extension [A, B](f: A => B) def app(a: A): B = f(a)

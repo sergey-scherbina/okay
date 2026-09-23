@@ -2,10 +2,13 @@ package okay.sql
 
 import okay.{!, Async, Chunk, pure, Source}
 import okay.given
-// with `okay.given` in scope the package's `Comonad[Id]` offers a
-// `.map` on everything, lexically closer than the facade's — this
-// import is the documented answer (docs/guide.md, "Typestate on a
-// program"), and this test is where it is exercised on purpose
+// the facade's own extensions, imported: found only through `Prog`'s
+// companion, `flatMap` does not infer its continuation's index
+// (`Required: Prog.Rep[Async, B, R, T]`, B and T uninstantiated) — the
+// documented answer (docs/guide.md, "Typestate on a program"). It was
+// once blamed on a package-level `Comonad[Id]` capturing `.map`; that
+// given moved to `Comonad`'s companion (comonad-id-map-capture) and
+// this import is still needed.
 import okay.Prog.{flatMap, map}
 import scala.collection.mutable.ArrayBuffer
 

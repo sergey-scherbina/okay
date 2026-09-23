@@ -360,11 +360,9 @@ same material with the measurements attached.
   `app` joins two leaves with `Async.par`. Choosing this instance is
   what makes generic applicative code concurrent — `Par.traverse` /
   `Par.sequence` are the named doors, `Par.map2` joins two leaves of
-  different types, `Par(prog)` and `.seq` are the two ends. Do NOT
-  write `.map` on one: `given Comonad[Id]` is lexically visible and
-  beats an extension in `Par`'s own object, so it means the identity
-  comonad's map and the next `.app` stops compiling (pinned as a
-  compile error in TestPar). `fmap` deliberately does NOT fork (one leaf, nothing to run
+  different types, `Par(prog)` and `.seq` are the two ends, and
+  `.map` is the instance's own (it was the identity comonad's until
+  comonad-id-map-capture; TestPar pins it). `fmap` deliberately does NOT fork (one leaf, nothing to run
   beside it), and there is deliberately no `Monad`: a `flatMap` would
   sequence the spine while the type still claimed independence.
   Cancellation is inherited from `Async.par`, symmetric since
@@ -506,8 +504,9 @@ same material with the measurements attached.
     an ordinary lens does not compose into that road — the
     classifying lens stands in its place.
   - `Optic.idApplicative` and `Optic.zipLazy` are NOT givens.
-    `Applicative[Id]` would be ambiguous with the package's
-    `Comonad[Id]`, and a lawful zip applicative on a finite sequence
+    A given `Applicative[Id]` would put `map`/`app` on every type in
+    lexical scope (the capture comonad-id-map-capture took off
+    `Comonad[Id]`), and a lawful zip applicative on a finite sequence
     does not exist (`pure` for zipping must be the infinite repeat),
     which is why the zip one is a `LazyList`.
   - a bottom-up rewrite is NOT a traversal — applying `f` to a
@@ -1132,8 +1131,11 @@ gotcha for anyone extending the facade:
 - Postfix `.map`/`.flatMap` on program carriers are the MONAD's (they
   transform the answer, not stream elements) — elementwise operations
   are spelled `Stream.map`, `Chunks.map`, etc.
-- `Comonad[Id]` puts `map`/`extract` on every type in package scope —
-  when a foreign `.map` misbehaves, use flatMap or qualify.
+- `Comonad[Id]` lives in `Comonad`'s companion, NOT at package level
+  (comonad-id-map-capture): `summon[Comonad[Id]]` finds it, a bare
+  value gets no `map`/`extract`. A package-level given whose type
+  class carries an extension puts that extension on every receiver it
+  fits — for `Id`, on everything.
 - Same-name extensions in different files of one package are NOT
   overloads; toplevel defs across files cannot overload either (that
   is why the stream `take` lives beside the Loop `take`).

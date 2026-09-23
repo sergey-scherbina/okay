@@ -62,9 +62,6 @@ class TestStructured extends munit.FunSuite {
 
   test("one token at a time, arriving character by character") {
     val pulled = java.util.concurrent.atomic.AtomicInteger(0)
-    // .toList first: a bare String.map is hijacked by the package's
-    // Comonad[Id] extension (an extension beats the StringOps
-    // conversion) — the library's own documented footgun
     val chars = "{\"city\": \"Kyiv\", \"country\": \"Ukraine\"} and then some prose"
       .toList.map(_.toString)
     val c = Structured.cut[Answer](stream(chars, pulled))

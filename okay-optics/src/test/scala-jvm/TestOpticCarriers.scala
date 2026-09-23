@@ -84,15 +84,8 @@ class TestOpticCarriers extends munit.FunSuite {
   enum Prices[+A]:
     case Of(sku: String) extends Prices[Int]
 
-  /** `fmap` THROUGH THE INSTANCE, not `.map`: the package's
-   * `given Comonad[Id]` puts a `map` on every type in lexical scope
-   * and wins, so `Static.op(...).map(f)` type-checks as the identity
-   * comonad's and hands `f` the program instead of its answer
-   * (Monad.scala names this footgun; it has caught three carriers). */
-  private val S = summon[Selective[[X] =>> Static[Prices, X]]]
-
   private def priceLine(l: Line): Static[Prices, Line] =
-    S.fmap(Static.op(Prices.Of(l.sku)), (p: Int) => l.copy(qty = p))
+    Static.op(Prices.Of(l.sku)).map(p => l.copy(qty = p))
 
   test("Static: the operations a walk would perform, listed before running") {
     val spine = eachLine.traverseOf[[X] =>> Static[Prices, X]](priceLine)(order)

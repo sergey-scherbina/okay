@@ -612,10 +612,12 @@ ends inside a transaction, nor `tx.begin().free`. The same facade puts
 `Delim`'s prompt stack in the type, so a `shift` to a prompt that is
 not installed is a compile error rather than `NoPrompt`
 ([continuations in practice](continuations-in-practice.md#the-stack-in-the-type)).
-One trap, stated in `Prog`'s own comment: with `import okay.given` in
-scope the package's `Comonad[Id]` offers a `.map` on everything,
-lexically closer than the facade's — write `import okay.Prog.{flatMap,
-map}` beside it (`Static` became a class for the same reason).
+One trap: write `import okay.Prog.{flatMap, map}` where you sequence
+`Prog`s. Found only through the facade's companion, `flatMap` does not
+infer the next step's index (`Required: Prog.Rep[Async, B, R, T]` with
+`B` and `T` uninstantiated); imported, it does. (This was once blamed
+on a package-level `Comonad[Id]` capturing `.map` — that instance now
+lives in `Comonad`'s companion, and the import is still needed.)
 
 > Atkey, *Parameterised notions of computation*, JFP 19(3–4), 2009,
 > [doi:10.1017/S095679680900728X](https://doi.org/10.1017/S095679680900728X)
@@ -737,9 +739,8 @@ the plumbing: `Par` reads `A ! Async` as one leaf of an applicative
 spine, so `Par.traverse`/`Par.sequence` — and any generic code over
 `Applicative` — run their leaves at once, while `traverse` at the
 program's own instance still sequences. `Par.map2` joins two leaves of
-different types. It has no `flatMap` by design, and `.map` on it is
-the identity comonad's (the package footgun `Monad.scala` names) —
-use `map2` or the instance. For a FLAT sequence of same-typed programs on the JVM,
+different types. It has no `flatMap` by design; `.map` is the
+instance's own. For a FLAT sequence of same-typed programs on the JVM,
 `parAll`/`parTraverse` (one fiber per leaf, joined in order) are
 measurably cheaper; `Par` is for spines with leaves of different
 types and for code that never heard of `Async`

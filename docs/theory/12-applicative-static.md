@@ -127,17 +127,21 @@ parallelism would vanish exactly where it read most naturally. Haxl
 refuses the same instance for the same reason. A program that needs
 one answer to build the next is an `A ! Async` and says so in its type.
 
-**And `.map` on a `Par` is not `Par`'s.** `Monad.scala`'s
-`given Comonad[Id]` puts a `map` on *every* type in lexical scope —
-its own doc comment calls this a known footgun and names two things it
-has already hijacked. An extension written in `object Par` does not
-win that race, because lexical scope beats the implicit scope of the
-receiver: a probe wrote `Par(user(id)).map(...)` the way a reader
-would, and it type-checked as the identity comonad's map, returning an
-`Id` whose next `.app` was "not a member". The answer is `Par.map2`, a
-plain method that resolves no extension at all, and a test that pins
-the bad spelling as a compile error so that the day the footgun is
-fixed, it says so.
+**`.map` on a `Par` was not always `Par`'s.** Until
+comonad-id-map-capture (2026-09-23), `Monad.scala` declared
+`given Comonad[Id]` at package level, and through `Functor` it put a
+`map` on *every* type in lexical scope. An extension found in
+`object Par` loses to a lexical one, because lexical scope beats the
+implicit scope of the receiver: a probe wrote `Par(user(id)).map(...)`
+the way a reader would, and it type-checked as the identity comonad's
+map, returning an `Id` whose next `.app` was "not a member". `Par.map2`,
+a plain method that resolves no extension at all, was the way around,
+and a test pinned the bad spelling as a compile error so that the day
+the footgun was fixed, it would say so. It did: the instance now lives
+in `Comonad`'s companion — still found by `summon[Comonad[Id]]`, since
+a companion is in the implicit scope of its own type, but no longer in
+the lexical scope of a bare value — and the same test now asserts that
+`Par(p).map(f)` is `Par`'s.
 
 What it costs is measured, not asserted, and the number is not
 flattering in every direction. Eight trivial leaves, JMH, `-f 3`,

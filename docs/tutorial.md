@@ -180,12 +180,8 @@ Par.map2(Par(user(id)), Par(orders(id)))(Profile.apply).seq
 ```
 
 `Par` has no `flatMap`, on purpose: a bind would sequence the spine
-while the type still claimed independence. Use `map2` (or the
-instance's own `fmap`/`app`) rather than `.map` — `Monad.scala`'s
-`given Comonad[Id]` puts a `map` on every type in scope and wins the
-lexical race, so `Par(p).map(f)` quietly means the identity comonad's
-map. TestPar pins that as a compile error so the day it changes, it
-says so. For a flat sequence of same-typed programs on the JVM,
+while the type still claimed independence. `.map` maps one leaf's
+answer, and `map2` joins two leaves of different types. For a flat sequence of same-typed programs on the JVM,
 `parAll` is cheaper still (one fiber per leaf, no nesting) — chapter
 12 of the [theory book](theory/12-applicative-static.md) has the
 numbers and the reason.
@@ -809,12 +805,6 @@ plan.leaves        // Vector(Of("pen"), Of("ink"), Of("pad"))
 plan.toFree.runWith  // and the same value, run the ordinary way
 plan.foldMap(toBatch)  // or answered in ONE call
 ```
-
-One caution that catches everyone once: write `fmap` through the
-instance rather than `.map` on these carriers. The package's
-`given Comonad[Id]` puts a `map` on every type in lexical scope and
-wins the race, so `Static.op(x).map(f)` hands `f` the program instead
-of its answer.
 
 The worked versions of all three are `TestOpticCarriers`, which is
 where the outputs above come from.

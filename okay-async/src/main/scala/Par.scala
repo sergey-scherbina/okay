@@ -64,18 +64,10 @@ object Par:
 
   /**
    * Two leaves at once, joined by a plain function — the workhorse
-   * for a spine whose leaves have DIFFERENT types, and the spelling
-   * that does not step on the package's known footgun.
-   *
-   * `Monad.scala`'s `given Comonad[Id]` puts `map` on every type in
-   * lexical scope, and lexical scope beats an extension in this
-   * object, even for a type only this object can see through: a
-   * probe wrote `Par(user(id)).map(...)` the way a reader would, and
-   * it type-checked as the IDENTITY comonad's map, returning an `Id`
-   * whose next `.app` was "not a member". A method taking its
-   * arguments by name resolves no extension at all, so it cannot
-   * lose that race. `app` is unaffected — nothing else in scope has
-   * one.
+   * for a spine whose leaves have DIFFERENT types. (`Par(p).map(f)`
+   * is the instance's own map since comonad-id-map-capture; before
+   * it, a package-level `Comonad[Id]` won that race and this method
+   * was the only spelling that could not lose it.)
    */
   def map2[A, B, C](a: Rep[A], b: Rep[B])(f: (A, B) => C)(using Scheduler): Rep[C] =
     Async.par(a, b).map(f(_, _))

@@ -214,22 +214,28 @@ trait Comonad[F[_]] extends Functor[F]:
     def extract: A
     def coflatMap[B](f: F[A] => B): F[B]
 
-/**
- * the identity context (the Id functor): a bare value. CAUTION, a known footgun: the
- * given Comonad[Id] below puts map/extract extensions on EVERY type
- * in lexical scope of the package — it has contested `.map` on the
- * throws union and hijacked kyo's `.map` in benchmarks; prefer
- * flatMap or explicit calls when a foreign `.map` misbehaves here.
- */
+/** the identity context (the Id functor): a bare value */
 type Id[A] = A
 
-/** a value is trivially its own context */
-given Comonad[Id] with
-  override inline def fmap[A, B](a: A, f: A => B): B = f(a)
-  extension [A](a: A) {
-    override inline def extract: A = a
-    override inline def coflatMap[B](f: A => B): B = f(a)
-  }
+object Comonad:
+  /**
+   * a value is trivially its own context. HERE, not at package level
+   * (comonad-id-map-capture, 2026-09-23): as a package-level given it
+   * put `Functor`'s `map` extension on EVERY type in package `okay`
+   * and under `import okay.given`, where it beat facade companions
+   * (`Static` became a class for it; `Cont` and `Prog` needed an
+   * explicit `import ….{flatMap, map}`), contested the throws union's
+   * `.map` and hijacked kyo's. In the companion it is still in the
+   * implicit scope of `Comonad[Id]` — `summon`, and the `Handler[Id]`
+   * derived from it, find it unchanged — but not in the lexical scope
+   * of a bare value.
+   */
+  given id: Comonad[Id] with
+    override inline def fmap[A, B](a: A, f: A => B): B = f(a)
+    extension [A](a: A) {
+      override inline def extract: A = a
+      override inline def coflatMap[B](f: A => B): B = f(a)
+    }
 
 /**
  * Option is a Monad, globally (optics-core, at the operator's ask): the

@@ -775,6 +775,14 @@ that the probe could not, each a round that failed:
   given, `import okay.Prog.{flatMap, map}`, stated in `Prog`'s doc, in
   docs/guide.md, and exercised on purpose in TestTx. `inline` was not
   the cause (tried, refuted).
+  REVISED 2026-09-23 (comonad-id-map-capture): with `Comonad[Id]`
+  moved into its companion the capture is gone, and the import is
+  STILL needed — dropped, TestProg's stacked shapes fail with "value +
+  is not a member of A" and TestTx with `Required: Prog.Rep[Async, B,
+  R, T]`. The resolved method is `Prog`'s own in both; what fails is
+  inference of the continuation's type when the extension is reached
+  through the companion's implicit scope rather than lexically. So
+  the capture masked a second cause, and the import answers that one.
 - **`push`/`run` need their type arguments spelled** inside `Stacked`:
   from an argument typed `R ! ([A] =>> Delim[A] | F[A])` the compiler
   does not recover `Delim + F`. Two call sites, explicit `[R, F]`.

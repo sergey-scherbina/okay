@@ -57,11 +57,11 @@ enum Static[F[+_], A]:
 
   /**
    * A pure function over the answer — one `Ap` of a `Pure`, which is
-   * what the instance's `fmap` is. A METHOD, not an extension: with
-   * `okay.given` in scope the lexical `map` for `Id` wins over a
-   * companion extension and types the lambda's argument as the spine
-   * itself (lexical-extension-beats-companion, met again here by
-   * di-needs-from-static). A member is found first.
+   * what the instance's `fmap` is. A METHOD, not an extension: it was
+   * made one when a package-level `Comonad[Id]` put a lexical `map`
+   * on every type (lexical-extension-beats-companion, di-needs-from-
+   * static); that given lives in `Comonad`'s companion since
+   * comonad-id-map-capture, and a member is found first regardless.
    */
   def map[B](f: A => B): Static[F, B] = Ap(Pure(f), this)
 
