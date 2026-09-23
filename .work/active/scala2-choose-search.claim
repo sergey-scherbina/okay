@@ -1,0 +1,6 @@
+feature/scala2-choose-search 2026-09-23T08:34:15Z
+agent: claude-code
+heartbeat: 2026-09-23T08:34:15Z
+status: in-progress
+done-so-far: design: Choose capability (from/fail/guard; all/cut/ifte), Search over it; fairness deferred to residual-row-typeable
+next: facade, 2.13 tests, docs
