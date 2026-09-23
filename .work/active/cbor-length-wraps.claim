@@ -1,0 +1,6 @@
+feature/cbor-length-wraps 2026-09-23T06:08:09Z
+agent: claude-code
+heartbeat: 2026-09-23T06:08:09Z
+status: in-progress
+done-so-far: picked (operator)
+next: red test, guard lengths
