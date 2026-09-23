@@ -1,0 +1,6 @@
+feature/clojure-core-async 2026-09-23T09:21:15Z
+agent: claude-code
+heartbeat: 2026-09-23T09:21:15Z
+status: in-progress
+done-so-far: design — an okay Channel view over a core.async chan (one take!/put! in flight, local waiters/stash), checked by TestChannelLaws made reusable
+next: spec; ChannelLawsSuite refactor; CoreAsync.channel
