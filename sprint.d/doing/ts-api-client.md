@@ -1,1 +1,0 @@
-- [ ] ts-api-client — T5 of specs/typescript-types.md (Scala backend, TypeScript frontend): a typed `client.ts` generated from okay-http's declared routes — one fetch function per route, request and answer types from the route's Schemas; a renamed field breaks `tsc` in the frontend, not a user's session.

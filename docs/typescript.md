@@ -146,6 +146,43 @@ than reach a user. `TsCheck.sameAs(file, schemas*)` compares a file
 against the declarations the Scala types generate
 ([specs/typescript-types.md](../specs/typescript-types.md)).
 
+## A Scala backend, a TypeScript frontend: the typed client
+
+The routes of an okay-http server are already typed. Each route knows
+its path parameters, its query, the `Schema` it decodes a body with, and
+the `Schema` it encodes the answer with:
+
+```scala
+.out[Int *: EmptyTuple, Task](Method.Get, byId)(id => pure(store.get(id)))
+.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board, status = 201) { (_, t) =>
+```
+
+`TsClient.model(router)` writes the types (`model.ts`), and
+`TsClient.client(router)` writes one async function per route
+(`client.ts`). The frontend then calls the backend as ordinary typed
+functions:
+
+```typescript
+const made: Task = await postTasks(o, { title: "write the docs", tags: ["docs"] });
+const again: Task = await getTasksById(o, made.id);
+const docs: Task[] = await getTagged(o, { tag: ["docs"] });
+```
+
+- **Naming.** A function's name comes from the method and the path:
+  `GET /tasks/{id}` is `getTasksById`.
+- **Parameters.** The path's parameters, the body and the query are the
+  function's parameters.
+- **Answers.** The answer's type is the `Schema` the router ENCODES
+  with, so the client cannot promise what the server does not send. A
+  route that answers a page or a stream answers the `Response`.
+- **Errors.** A non-2xx answer throws `OkayHttpError` with its status
+  and body.
+
+The test runs a real okay-http server and a Node program calling it
+through the generated client. `tsc --strict` compiles that program and
+refuses `t.name` where `Task` has no `name`. A renamed Scala field is
+caught when the frontend compiles, not when a user clicks.
+
 ## A module
 
 ```typescript

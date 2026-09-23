@@ -158,3 +158,22 @@ Each stage is a lane; Results below record what each found.
     named.
   - Mutant: a one-way `Same` misses the optional field, and the test
     fails.
+
+- T5 (ts-api-client, 2026-09-23).
+  - A router entry now carries its Scala types beside their JSON Schemas
+    (`Entry.bodyType`, `Answer.tpe`), filled by the constructors that
+    decode or encode (`json`, `out`, `jsonOut`, and their `At` and
+    headed forms). `Stubs.typescriptType` gives the TypeScript expression
+    for one schema.
+  - `okay.http.TsClient.model/client` write `model.ts` and `client.ts`.
+  - TestTsClient (Live) starts a real server and a Node program that
+    creates, reads and filters through the generated client and gets a
+    400 for a bad body. `tsc --strict` accepts that program and refuses a
+    wrong field. TestTsClientShape (default gate) pins the signatures.
+  - Mutant: a client that does not fill in the path parameter fails the
+    end-to-end test.
+  - Two test-side findings: query parameters are not part of a
+    function's name (`getTagged`, not `getTaggedTag`, which my own test
+    first assumed); and `tsc` needs `"type": "module"` in a
+    `package.json` for top-level `await`, which Node had guessed from the
+    syntax.
