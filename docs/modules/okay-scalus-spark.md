@@ -56,12 +56,15 @@ the executor opens its own session to the relay and block-fetches the
 range — so the relay must be reachable from the executors
 (`registered:` wires only exist in the same JVM, i.e. local mode). The
 rows are the same: a confirmed range is the same bytes whoever fetches
-it. It is NOT the default, because it did not measure faster: a
-1 000-block preprod backfill read 86.6 / 164.3 s with the driver
-fetching and 175.0 / 71.2 s with executors (alternated, same box), and
-following the HEADERS alone took 43.7 s — about one relay round trip
-per header, which both modes pay on the driver. That scan, not the body
-transfer, is the lever (backlog `scalus-chainsync-pipelining`).
+it. Use it for a BACKFILL — a batch over history, a stream started far
+behind: a 1 000-block preprod backfill reads in 5.8 / 5.7 s with
+executors against 10.2 / 9.0 s with the driver fetching (alternated,
+same box). Keep `driver` (the default) for following the tip, where a
+block comes every ~20 s and a session per micro-batch buys nothing.
+
+Chain-sync is PIPELINED: behind the tip the driver keeps up to 100
+header requests in flight (at the tip, one). Before it, the same 1 000
+headers took 43.7 s — a relay round trip each — and now 2.26 s.
 
 **Rollbacks as rows (`mode = events`).** A confirmed stream never
 shows a block that is not final — and waits `confirmations` blocks for

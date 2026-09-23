@@ -483,6 +483,18 @@ until Spark stage 2 has run on mainnet.
   - [x] measured, `Live`: a preprod backfill, driver vs executor, same
         blocks, same local cluster — the number that decides the default
 
+- **Stage 6 — chain-sync pipelining** (scalus-chainsync-pipelining,
+  operator: "scalus-chainsync-pipelining сделай")
+  - [x] `HeaderSync` keeps up to `depth` (100) `RequestNext` in flight,
+        never more than the blocks that remain to the relay's tip — at
+        the tip, one, as before; an `AwaitReply` is not a final answer
+        and does not free a slot; a `RollBackward` does
+  - [x] tests: five blocks behind, more than one request in flight
+        (counted on the wire: 1 before, failing first) and the headers
+        in order; a rollback mid-pipeline reads exactly as one request at
+        a time did
+  - [x] re-measured, the same preprod backfill (Results)
+
 ## Decisions
 
 - 2026-09-23 — **Flink: one split, and shared registries.** A chain is
@@ -495,6 +507,12 @@ until Spark stage 2 has run on mainnet.
   other; `FlinkSchema` is `SparkSchema`'s twin over `Columns` (a `Json`
   column is text: Flink has no VARIANT).
 
+- 2026-09-23 — **after pipelining, executor fetch is FASTER on a backfill
+  (1.6–1.8x) and still not the default.** It needs the relay reachable
+  from every executor and opens a session per partition, which at the
+  tip — one block every ~20 s — buys nothing and costs a handshake per
+  micro-batch. The guidance is explicit instead: `fetch = executor` for
+  a backfill or a batch over history, `driver` for following the tip.
 - 2026-09-23 — **executor fetch is an option, not the default**
   (scalus-executor-fetch). It was built and it is correct; it was not
   faster on the measurement (Results), because the driver's chain-sync
@@ -558,6 +576,13 @@ until Spark stage 2 has run on mainnet.
   exactness over the storage it costs (§4.3 table).
 
 ## Results
+
+- Stage 6 (2026-09-23, scalus-chainsync-pipelining), the same preprod
+  backfill (1 000 blocks from 4 800 000, local[4], arms alternated):
+  headers alone 43.7 s → 2.26 s (19x); `fetch = driver` 86.6 / 164.3 s
+  → 10.2 / 9.0 s; `fetch = executor` 175.0 / 71.2 s → 5.8 / 5.7 s. With
+  the header scan out of the way the comparison stage 5 could not make
+  is made: the executors are 1.6–1.8x faster on a backfill, both rounds.
 
 - Stage 5 (2026-09-23, scalus-executor-fetch): `fetch = executor` reads
   the same rows as `fetch = driver` on the fake relay — batch at 1, 2

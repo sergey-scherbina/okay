@@ -59,6 +59,15 @@ object BlockFetch:
  * fetched at all (`A = Header`, the driver of an executor-fetch read).
  * The result is `Observed` for a `Tracker`.
  *
+ * PIPELINED (scalus-chainsync-pipelining): behind the tip, up to `depth`
+ * `RequestNext` are in flight at once — never more than the blocks that
+ * remain to the relay's tip, so a follower AT the tip keeps one, as
+ * before. Answers come in request order, each request gets exactly one
+ * final answer (RollForward or RollBackward; an AwaitReply is not final,
+ * the real answer follows it), so the order of what `next` returns is
+ * the order of the chain whatever the depth. Measured 2026-09-23: ~44 ms
+ * a header with one in flight — a relay round trip each.
+ *
  * Heights: chain-sync's rollback names a (slot, hash) point, the
  * follower counts blocks. The height of a point is known for every
  * header seen (a bounded map) and for the checkpoint; the relay's
@@ -66,9 +75,16 @@ object BlockFetch:
  * voids nothing and is dropped.
  */
 class HeaderSync[A](session: Session, from: Option[Checkpoint],
-                    batch: Int, remember: Int)(complete: Vector[Header] => Either[String, Vector[A]]):
+                    batch: Int, remember: Int, depth: Int = 100)(complete: Vector[Header] => Either[String, Vector[A]]):
   private val heights = scala.collection.mutable.LinkedHashMap.empty[String, Long]
-  private var outstanding = false
+  // requests sent whose FINAL answer has not been read
+  private var outstanding = 0
+  // the height the next answer extends, and the relay's tip height — the
+  // pipeline never asks past the tip
+  private var seen = from.fold(-1L)(_.blockNo)
+  private var tipNo = -1L
+  private def wanted: Int =
+    if seen < 0 || tipNo < 0 then 1 else math.max(1, math.min(depth.toLong, tipNo - seen).toInt)
   private var observed = false
   from.foreach(c => heights(c.hash) = c.blockNo)
 
@@ -91,7 +107,10 @@ class HeaderSync[A](session: Session, from: Option[Checkpoint],
     def intersect(p: N2N.Pt): Either[String, N2N.Tip] =
       session.send(N2N.ChainSync, N2N.findIntersect(Seq(Some(p))))
       session.receive(N2N.ChainSync).flatMap(N2N.sync).flatMap {
-        case N2N.Sync.IntersectFound(_, tip) => Right(tip)
+        case N2N.Sync.IntersectFound(_, tip) =>
+          tipNo = tip.blockNo
+          heights.get(p.hex).foreach(h => seen = h)
+          Right(tip)
         case N2N.Sync.IntersectNotFound(_) =>
           Left(s"the relay's chain does not contain ${p.slot} ${p.hex}")
         case other => Left(s"expected an intersection, got $other")
@@ -113,16 +132,17 @@ class HeaderSync[A](session: Session, from: Option[Checkpoint],
     var n = 0
     var result: Option[Either[String, Vector[Observed[A]]]] = None
     while result.isEmpty do
-      if !outstanding then { session.send(N2N.ChainSync, N2N.requestNext); outstanding = true }
+      while outstanding < wanted do { session.send(N2N.ChainSync, N2N.requestNext); outstanding += 1 }
       session.receive(N2N.ChainSync).flatMap(N2N.sync) match
         case Left(e) => result = Some(Left(e))
         case Right(N2N.Sync.RollForward(era, bytes, tip)) =>
-          outstanding = false
+          outstanding -= 1
           lastTip = Some(okayTip(tip))
+          tipNo = tip.blockNo
           Header.parse(era, bytes) match
             case Left(e) => result = Some(Left(e))
             case Right(h) =>
-              know(h); headers += h; n += 1
+              know(h); headers += h; n += 1; seen = h.blockNo
               if n >= batch then result = Some(bodies(headers.result()))
         case Right(N2N.Sync.AwaitReply) =>
           // the answer to this request comes later: do not ask again
@@ -130,8 +150,10 @@ class HeaderSync[A](session: Session, from: Option[Checkpoint],
           result = Some((if hs.isEmpty then Right(Vector.empty) else bodies(hs))
             .map(_ ++ lastTip.map(Observed.AtTip(_))))
         case Right(N2N.Sync.RollBackward(to, tip)) =>
-          outstanding = false
+          outstanding -= 1
           lastTip = Some(okayTip(tip))
+          tipNo = tip.blockNo
+          to.flatMap(p => heights.get(p.hex)).foreach(h => seen = h)
           val hs = headers.result()
           val back: Either[String, Vector[Observed[A]]] = to match
             case None => Left("the relay rolled back to the origin")
