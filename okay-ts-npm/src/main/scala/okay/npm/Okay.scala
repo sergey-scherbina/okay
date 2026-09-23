@@ -7,7 +7,7 @@ import okay.{!, Async, Channel, effect, pure}
 import okay.codec.{Json, Schema, Stubs}
 import okay.crdt.{GCounter, NodeId, OrSet, PNCounter}
 import okay.crdt.Wire.given
-import okay.ts.Ts
+import okay.ts.{Journal, Ts}
 
 /**
  * okay for TypeScript projects, as an npm package (typescript-types T9).
@@ -82,7 +82,16 @@ object Okay:
 
   @JSExportTopLevel("run")
   def run(program: js.Any, callbacks: js.Dictionary[js.Function]): js.Promise[js.Any] =
-    val cbs = Ts.callbacks[Async](callbacks.toVector.map { (name, f) =>
+    answer(Ts.runJson[Async](program, jsCallbacks(callbacks)))
+
+  private def answer(p: Either[Ts.Failure, Json] ! Async): js.Promise[js.Any] =
+    Async.runAsync(p).flatMap {
+      case Right(v) => scala.concurrent.Future.successful(plain(v))
+      case Left(f) => scala.concurrent.Future.failed(js.JavaScriptException(js.Error(s"${f.kind}: ${f.message}")))
+    }.toJSPromise
+
+  private def jsCallbacks(callbacks: js.Dictionary[js.Function]): Ts.Callbacks[Async] =
+    Ts.callbacks[Async](callbacks.toVector.map { (name, f) =>
       Ts.Callback[Async](name, args =>
         val in = args match
           case Json.JArr(xs) => xs.map(plain)
@@ -90,10 +99,45 @@ object Okay:
         try settle(f.call(js.undefined, in*))
         catch case js.JavaScriptException(e) => pure(Left(failure(e))))
     }*)
-    Async.runAsync(Ts.runJson[Async](program, cbs)).flatMap {
-      case Right(v) => scala.concurrent.Future.successful(plain(v))
-      case Left(f) => scala.concurrent.Future.failed(js.JavaScriptException(js.Error(s"${f.kind}: ${f.message}")))
-    }.toJSPromise
+
+  // ---------------------------------------------------------- durable flows
+
+  /** a Promise the caller handed over, as an okay step */
+  private def awaiting(p: js.Any): js.Any ! Async =
+    effect[Async, js.Any](Async.Await[js.Any] { k =>
+      js.Promise.resolve[js.Any](p).toFuture.onComplete(t => k(t.toEither))
+      () => ()
+    })
+
+  /** okay's Journal as the JS object the package declares: entries as JSON text */
+  private def exported(j: Journal): js.Object & js.Dynamic = js.Dynamic.literal(
+    load = (flow: String) => Async.runAsync(j.load(flow)).map(_.map(Json.print).toJSArray).toJSPromise,
+    append = (flow: String, step: Double, entry: String) =>
+      Async.runAsync(j.append(flow, step.toInt, Json.parse(entry))).toJSPromise,
+    clear = (flow: String) => Async.runAsync(j.clear(flow)).toJSPromise,
+  )
+
+  /** any object with the declared `Journal` shape — okay's own two, or one
+   * of the caller's (localStorage, a server) — as okay's Journal */
+  private def imported(o: js.Dynamic): Journal = new Journal:
+    def load(flow: String): Vector[Json] ! Async =
+      awaiting(o.load(flow)).map(v => asJson(v) match
+        case Json.JArr(texts) => texts.collect { case Json.JStr(t) => Json.parse(t) }
+        case _ => Vector.empty)
+    def append(flow: String, step: Int, entry: Json): Unit ! Async =
+      awaiting(o.append(flow, step, Json.print(entry))).map(_ => ())
+    def clear(flow: String): Unit ! Async = awaiting(o.clear(flow)).map(_ => ())
+
+  @JSExportTopLevel("memoryJournal")
+  def memoryJournal(): js.Object & js.Dynamic = exported(Journal.memory())
+
+  @JSExportTopLevel("indexedDbJournal")
+  def indexedDbJournal(name: String): js.Object & js.Dynamic = exported(Journal.indexedDb(name))
+
+  /** `run`, with every answer journalled first: a reload resumes the flow */
+  @JSExportTopLevel("durable")
+  def durable(flow: String, program: js.Any, callbacks: js.Dictionary[js.Function], journal: js.Dynamic): js.Promise[js.Any] =
+    answer(Ts.durableJson(flow, program, jsCallbacks(callbacks), imported(journal)))
 
   // ------------------------------------------------------------------- CRDTs
 
@@ -196,6 +240,21 @@ export declare const orset: {
   values(s: OrSet): string[];
   merge(a: OrSet, b: OrSet): OrSet;
 };
+
+/** where a durable flow's answers are kept: one entry per step, as JSON text */
+export interface Journal {
+  load(flow: string): Promise<string[]>;
+  append(flow: string, step: number, entry: string): Promise<void>;
+  clear(flow: string): Promise<void>;
+}
+/** in this page only */
+export declare function memoryJournal(): Journal;
+/** the browser's IndexedDB, database `name`: survives a reload */
+export declare function indexedDbJournal(name: string): Journal;
+/** run, with each answer journalled before the flow continues: a reload resumes it, and a
+ * recorded step asked differently is refused as Drift */
+export declare function durable<T>(flow: string, program: Prog<T>,
+  callbacks: Record<string, (...args: any[]) => unknown>, journal: Journal): Promise<T>;
 
 /** an okay Channel: offer answers whether it was taken; for await reads until close */
 export interface Chan<T> extends AsyncIterable<T> {

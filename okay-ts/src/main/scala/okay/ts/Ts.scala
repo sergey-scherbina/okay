@@ -105,6 +105,61 @@ object Ts:
     catch case js.JavaScriptException(e) => pure(Left(caught(e)))
 
   /**
+   * A DURABLE flow (typescript-types T10): `run`, with each step's answer
+   * written to `journal` before the program continues, so a flow a reload
+   * interrupted resumes where it was.
+   *
+   *  - A step already in the journal is ANSWERED FROM IT; the callback is
+   *    not called again.
+   *  - A recorded step must be the SAME question: the name and arguments the
+   *    program asks now must be the ones recorded. Otherwise the flow is
+   *    refused as `Drift`, naming the step, and never silently handed an
+   *    answer to a different question (the program changed between loads).
+   *  - The crash window is stated rather than hidden: a callback that
+   *    answered but whose entry was not yet stored runs again on resume.
+   *    That is at-least-once for THAT step, as with okay-agent's `Durable`;
+   *    a callback with an outside effect should carry its own idempotency
+   *    key (the flow and the step are good ones).
+   *
+   * Single-shot: a durable flow is a sequence of steps; a `Choice` handler
+   * resuming one twice would write two histories into one flow.
+   */
+  def durable[Out](flow: String, program: js.Any, cbs: Callbacks[Async], journal: Journal)
+                  (using out: Schema[Out]): Either[Failure, Out] ! Async =
+    journalled(flow, cbs, journal)(run[Async, Out](program, _))
+
+  /** `durable` answering the program's final value as JSON (okay-ts-npm) */
+  def durableJson(flow: String, program: js.Any, cbs: Callbacks[Async], journal: Journal): Either[Failure, Json] ! Async =
+    journalled(flow, cbs, journal)(runJson[Async](program, _))
+
+  private def journalled[Out](flow: String, cbs: Callbacks[Async], journal: Journal)
+                             (go: Callbacks[Async] => Either[Failure, Out] ! Async): Either[Failure, Out] ! Async =
+    journal.load(flow).flatMap { recorded =>
+      var step = 0
+      def entry(name: String, args: Json, answer: Json): Json =
+        Json.JObj(Vector("name" -> Json.JStr(name), "args" -> args, "answer" -> answer))
+      val wrapped = Callbacks[Async](cbs.all.map { cb =>
+        Callback[Async](cb.name, args =>
+          val i = step
+          step += 1
+          recorded.lift(i) match
+            case Some(e @ Json.JObj(fields)) =>
+              val m = fields.toMap
+              if m.get("name").contains(Json.JStr(cb.name)) && m.get("args").contains(args) then
+                pure(Right(m.getOrElse("answer", Json.JNull)))
+              else pure(Left(Failure("Drift",
+                s"step $i of '$flow' was recorded as ${Json.print(e)}; the program now asks ${cb.name}(${Json.print(args)})")))
+            case Some(other) => pure(Left(Failure("Drift", s"step $i of '$flow' is not an entry: ${Json.print(other)}")))
+            case None =>
+              cb.run(args).flatMap {
+                case Right(answer) => journal.append(flow, i, entry(cb.name, args, answer)).map(_ => Right(answer))
+                case left => pure(left)
+              })
+      })
+      go(wrapped)
+    }
+
+  /**
    * okay called FROM TypeScript (stage 3): run an `A ! Async` and hand
    * TypeScript a `Promise` of its value, as okay's JSON codec writes it.
    * An `@JSExportTopLevel` function returning this is an okay program a

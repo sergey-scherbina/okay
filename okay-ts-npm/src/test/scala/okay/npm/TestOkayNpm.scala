@@ -40,6 +40,22 @@ class TestOkayNpm extends munit.FunSuite {
     }
   }
 
+  test("durable: a journalled flow run twice calls each callback once, and answers the same") {
+    var prices = 0
+    val counted: js.Function1[String, Double] = _ => { prices += 1; 4.5 }
+    val callbacks = js.Dictionary[js.Function]("price" -> counted, "stock" -> stockOf)
+    val journal = Okay.memoryJournal()
+    for
+      first <- Okay.durable("quote", program, callbacks, journal).toFuture
+      again <- Okay.durable("quote", program, callbacks, journal).toFuture
+      entries <- js.Promise.resolve[js.Any](journal.load("quote")).toFuture
+    yield
+      assertEquals(str(first), """{"price":4.5,"stock":12}""")
+      assertEquals(str(again), str(first))
+      assertEquals(prices, 1)
+      assert(str(entries).contains("price"), str(entries))
+  }
+
   test("CRDT replicas are JSON states; merge joins two replicas' increments") {
     val g = Okay.gcounter
     val a = g.inc(g.inc(g.empty(), "a"), "a")
@@ -88,7 +104,8 @@ class TestOkayNpm extends munit.FunSuite {
   test("the declarations: the CRDT states' types from their Schemas, and every export") {
     val d = Okay.declarations
     assert(d.contains("export type GCounter = "), d)
-    for name <- Vector("done", "perform", "performing", "then", "run", "channel") do
+    for name <- Vector("done", "perform", "performing", "then", "run", "channel", "durable",
+                       "memoryJournal", "indexedDbJournal") do
       assert(d.contains(s"export declare function $name"), name)
     for name <- Vector("gcounter", "pncounter", "orset", "declarations") do
       assert(d.contains(s"export declare const $name"), name)
