@@ -240,6 +240,7 @@ API reference, gotchas.
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector, a Stage IS a Gatherer (JDK 24) |
 | [`okay-clojure`](modules/okay-clojure.md) | Clojure from okay, and a Stage IS a Clojure transducer, both ways |
+| [`okay-frege`](modules/okay-frege.md) | Frege (a Haskell for the JVM) programs as okay programs — a thin Frege monad over okay's effects; multi-shot, no threads |
 | [`okay-scala2`](modules/okay-scala2.md) | okay from Scala 2.13: `Prog`, a fixed-row program type the 2.13 TASTy reader can read, and the two-stdlib classpath it needs |
 | [`okay-scala2-codec`](modules/okay-scala2-codec.md) | okay-codec from Scala 2.13: `Schemas.productN`/`sum` in place of `derives Schema`, JSON as text |
 | [`okay-scala2-http`](modules/okay-scala2-http.md) | okay-http from Scala 2.13: routes as pattern matching, `Server.use`/`start`, a client |

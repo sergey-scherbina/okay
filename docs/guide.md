@@ -595,6 +595,13 @@ as an ordinary transducer, while `Transducers.stage(xf)` runs
 Clojure's own (`(partition-all 3)`, `(dedupe)`) in an okay pipeline —
 docs/modules/okay-clojure.md.
 
+And to **Frege**, a Haskell for the JVM, from the other end: there the
+okay tree itself is written in Frege — `okay.frege.Prog`, with `await`,
+`tell`, `perform` and `liftIO` for existing Frege IO — and okay-frege's
+driver walks it, so a Frege `do` block becomes a `Stage` or an `A ! F`.
+Its continuations are Frege functions, so `Choose` resumes them per
+branch, and no thread is involved — docs/modules/okay-frege.md.
+
 Stages may be EFFECTFUL: a row `Take % I + (Writer % O + G)` carries
 arbitrary operations G (Async above all) between awaits and tells,
 and the `through` overloads forward them through composition in the

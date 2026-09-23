@@ -266,6 +266,20 @@ too: okay-clojure's `Transducers` makes a stage a transducer and a
 transducer a stage, the stage's answer being `reduced` and its last
 tells the completion arity, law-tested against Clojure's own `into`.
 
+Frege, a Haskell for the JVM, shows the other half of the chapter's
+argument. The tempting bridge there is lazy IO — a pure `[a] -> [b]` fed
+a list whose thunks pull from okay — and it fails exactly as the iteratee
+paper says lazy IO fails: the function, not the consumer, decides when
+to read, and a forced thunk cannot suspend. Haskell's own answer to
+effects in a lazy language was to make them a MONAD rather than an
+evaluation order \[[Peyton Jones & Wadler 1993](#ref-pj-wadler-1993)\],
+and okay-frege takes it literally: the okay tree is written in Frege
+(`okay.frege.Prog`, a freer monad over `await`, `tell`, `perform` and
+`liftIO`), okay's handlers interpret it, and because its continuations
+are Frege functions a multi-shot handler resumes them per branch — the
+freer construction \[[Kiselyov & Ishii 2015](#ref-kiselyov-ishii-2015)\]
+crossing a language boundary with nothing but data.
+
 ## Sketches: approximation with stated error
 
 Some aggregations are impossible exactly in bounded space — distinct
@@ -305,6 +319,10 @@ where that property was established.
   Python Enhancement Proposals, 2001.
 - <a id="ref-james-2011"></a>Roshan P. James, Amr Sabry. *[Yield: mainstream delimited continuations.](https://legacy.cs.indiana.edu/~sabry/papers/yield.pdf)*
   Theory and Practice of Delimited Continuations (TPDC) 2011.
+- <a id="ref-pj-wadler-1993"></a>Simon Peyton Jones, Philip Wadler. *[Imperative functional programming.](https://doi.org/10.1145/158511.158524)*
+  POPL 1993.
+- <a id="ref-kiselyov-ishii-2015"></a>Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible effects.](https://doi.org/10.1145/2804302.2804319)*
+  Haskell 2015.
 - <a id="ref-klang-2024"></a>Viktor Klang. *[JEP 485: Stream Gatherers.](https://openjdk.org/jeps/485)*
   OpenJDK, final in JDK 24 (2024; previews JEP 461, 473).
 - <a id="ref-hickey-2014"></a>Rich Hickey. *[Transducers are coming.](https://clojure.org/news/2014/08/06/transducers-are-coming)*
