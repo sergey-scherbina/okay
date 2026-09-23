@@ -104,6 +104,21 @@ bit separately.
 - [x] the interaction table (delim-limits, 2026-09-17): what a
       capture does to `Resource`, `bracket`, `Throws`, `try/finally`,
       `try/catch`, `State`, depth, a lambda, and an async row
+- [ ] A COLLECT THAT STOPS (collect-early-stop, trigger lifted by the
+      operator 2026-09-23): `Delim.collectUntil(using fo: FoldUntil[A,
+      S, R])(body): R ! F` runs the SAME producer a `collect` runs —
+      a body written against `Emitting[A]` — and answers `fo.end` of
+      the state the emits built, stopping the producer where `done`
+      first holds: `take(3)` over a tree walk runs the walk to its
+      third leaf and no further (a counter in the walk says so), the
+      prefix answered with is the state (not the dropped frames),
+      `done(init)` runs no body at all, and a fold that is never done
+      answers what `collect` answers (`collecting` on `take(n)` with
+      n past the end = the whole list). `collectingUntil` is the
+      nested half. `emit` is unchanged for callers: the evidence
+      decides, at the emit, whether the list is built on the way back
+      (`collect`) or the state is passed on the way down
+      (`collectUntil`, the `PState` trick over the prompt's answer).
 
 ## Adoption doctrine (operator, 2026-09-01)
 
