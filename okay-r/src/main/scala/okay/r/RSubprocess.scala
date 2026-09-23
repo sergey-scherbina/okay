@@ -141,6 +141,14 @@ final class RSubprocess private (private var proc: Process,
             "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message)))
         stepOf(send(Json.JObj(Vector(
           "op" -> Json.JStr("resume"), "k" -> Json.JNum(k.toDouble), answered))))
+      case REval.Hold(fn, args) =>
+        answer(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("hold"), "fn" -> Json.JStr(fn),
+          "args" -> Json.JArr(args.map(Wire.enc))))))(v => Wire.asRef(Wire.dec(v)))
+      case REval.Release(r) =>
+        // idempotent: a release of a ref the process does not hold is not
+        // a program's concern (a timeout's respawn already dropped it)
+        val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("release"), "ref" -> Json.JNum(r.id.toDouble))))
 
   /** a call's next message: an ask, or its answer (a timeout included) */
   private def stepOf(e: Either[Condition, Json]): RStep =
@@ -188,7 +196,7 @@ final class RSubprocess private (private var proc: Process,
 
 object RSubprocess:
 
-  val ShimVersion = 4
+  val ShimVersion = 5
 
   /**
    * Start a session: the configured `Rscript` (resolved against PATH

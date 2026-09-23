@@ -1,5 +1,6 @@
 package okay.r
 
+import okay.!
 import okay.codec.Json
 
 /**
@@ -34,6 +35,30 @@ enum RValue:
    * (foreign-typed-calls): before it a named list answered by a call was
    * sent as a frame, which a value decode could not read */
   case Named(kv: Vector[(String, RValue)])
+  /** an object HELD in the R process (foreign-object-handles) — a fitted
+   * model, a formula — passed to any function as an argument */
+  case Ref(ref: RRef)
+
+/**
+ * A handle to an R object kept in its process (foreign-object-handles).
+ * R applies functions TO objects rather than calling methods on them, so
+ * a ref is used as an argument: `R.fn[Vector[Double]]("stats::predict")(fit, newdata)`.
+ * As okay-py's `PyRef`: it names state in one process, so a recovery onto
+ * a fresh process meets a ref it never held and is refused by name.
+ */
+final case class RRef(id: Long, rClass: String):
+  /** drop the object in the R process; idempotent */
+  def release: Unit ! REval = okay.effect[REval, Unit](REval.Release(this))
+
+/** how an argument becomes an `RValue`: through its `Schema`, or as the
+ * handle it is */
+trait ToR[A]:
+  def r(a: A): RValue
+
+object ToR:
+  def apply[A](a: A)(using t: ToR[A]): RValue = t.r(a)
+  given ref: ToR[RRef] = RValue.Ref(_)
+  given schema[A](using s: okay.codec.Schema[A]): ToR[A] = RCodec.encode(_)
 
 enum RType:
   case Logical, Integer, Double, Character
@@ -172,6 +197,10 @@ enum REval[+A] derives okay.Effect:
   /** the answer to an `Ask`, resuming the R frame waiting in `okay_call` */
   case Resume(k: Long, answer: Either[Condition, RValue])
     extends REval[RStep]
+  /** call `fn` and KEEP its result in the R process (foreign-object-handles) */
+  case Hold(fn: String, args: Vector[RValue]) extends REval[Either[Condition, RRef]]
+  /** drop a held object; idempotent */
+  case Release(ref: RRef) extends REval[Unit]
 
 /** where an R call with callbacks stands (foreign-callbacks) */
 enum RStep:
@@ -194,6 +223,8 @@ object REval:
       case Frame(fn, _, _) => fn
       case Start(fn, _, _) => fn
       case Resume(_, _) => "resume"
+      case Hold(fn, _) => s"hold:$fn"
+      case Release(_) => "release"
     def fingerprint[A](op: REval[A]): String = op match
       case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Frame(fn, in, args) =>
@@ -201,6 +232,8 @@ object REval:
       case Start(fn, args, cbs) =>
         s"$fn#${Wire.digest(Json.JArr(Vector(Json.JArr(args.map(Wire.enc)), Json.JArr(cbs.map(Json.JStr(_))))))}"
       case Resume(k, answer) => s"resume/$k#${Wire.digest(Json.parse(Wire.written(answer.map(Wire.enc))))}"
+      case Hold(fn, args) => s"hold:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Release(r) => s"release:${r.id}"
     def withKey[A](op: REval[A], key: String): REval[A] = op
     def perform[A](op: REval[A], inner: okay.Handler[REval]): (A, String) = op match
       case Call(fn, args) =>
@@ -215,11 +248,19 @@ object REval:
       case Resume(k, a) =>
         val step = inner.handle(Resume(k, a))
         (step, Wire.writtenStep(step))
+      case Hold(fn, args) =>
+        val answer = inner.handle(Hold(fn, args))
+        (answer, Wire.written(answer.map(r => Wire.enc(RValue.Ref(r)))))
+      case Release(r) =>
+        inner.handle(Release(r))
+        ((), "released")
     def decode[A](op: REval[A], written: String): A = op match
       case Call(_, _) => Wire.read(written).map(Wire.dec)
       case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
       case Start(_, _, _) => Wire.readStep(written)
       case Resume(_, _) => Wire.readStep(written)
+      case Hold(_, _) => Wire.read(written).flatMap(j => Wire.asRef(Wire.dec(j)))
+      case Release(_) => ()
 
 
 /**
@@ -276,6 +317,11 @@ private[r] object Wire {
     }
     case _ => None
 
+  /** a held object's handle, or the refusal of an answer that is not one */
+  def asRef(v: RValue): Either[Condition, RRef] = v match
+    case RValue.Ref(r) => Right(r)
+    case other => Left(Condition("WireError", s"expected a held object, got $other"))
+
   /** SHA-256 of a value's printed JSON, hex */
   def digest(j: Json): String =
     java.security.MessageDigest.getInstance("SHA-256").nn
@@ -307,6 +353,7 @@ private[r] object Wire {
       case RValue.Str(s) => Json.JStr(s)
       case RValue.Bytes(bs) => tagged("raw",
         "b64" -> Json.JStr(java.util.Base64.getEncoder.encodeToString(bs)))
+      case RValue.Ref(r) => tagged("ref", "id" -> Json.JNum(r.id.toDouble), "type" -> Json.JStr(r.rClass))
       case RValue.Vec(_) | RValue.Named(_) =>
         throw IllegalStateException("unreachable: containers are handled by the work-list")
 
@@ -438,6 +485,11 @@ private[r] object Wire {
           case Some("i") => num("v").map(n => RValue.I32(n.toInt)).getOrElse(RValue.RNull)
           case Some("raw") => str("b64").map(b => RValue.Bytes(java.util.Base64.getDecoder.decode(b)))
             .getOrElse(RValue.RNull)
+          // jsonlite may unbox or box a scalar: read the id and class either way
+          case Some("ref") =>
+            val id = m.get("id").collect { case Json.JNum(n) => n; case Json.JArr(Vector(Json.JNum(n))) => n }
+            val cls = m.get("type").collect { case Json.JStr(t) => t; case Json.JArr(Vector(Json.JStr(t))) => t }
+            id.map(i => RValue.Ref(RRef(i.toLong, cls.getOrElse("?")))).getOrElse(RValue.RNull)
           case _ => RValue.RNull      // an untagged object has no RValue shape
       case Json.JErr(_) => RValue.RNull
       case Json.JArr(_) => throw IllegalStateException("unreachable: JArr is handled by the work-list")

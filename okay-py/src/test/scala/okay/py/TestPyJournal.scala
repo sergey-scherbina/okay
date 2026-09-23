@@ -26,6 +26,13 @@ class TestPyJournal extends munit.FunSuite {
       case PyEval.Frame(fn, in, _) =>
         ran.incrementAndGet(): Unit
         Right(PyFrame(in.cols :+ ("n" -> Vector(I64(in.cols.headOption.fold(0)(_._2.size).toLong)))))
+      case PyEval.Hold(fn, _) =>
+        ran.incrementAndGet(): Unit
+        Right(PyRef(1, fn))
+      case PyEval.Method(_, name, Vector(I64(x)), _) =>
+        ran.incrementAndGet(): Unit
+        Right(I64(x * 10))
+      case PyEval.Release(_) => ran.incrementAndGet(): Unit
       case other => throw IllegalArgumentException(s"not canned: $other")
 
   private val xs = Vector(Arr(Vector(F64(3), F64(1), F64(2))))
@@ -83,5 +90,20 @@ class TestPyJournal extends munit.FunSuite {
   test("withKey is the identity: a subprocess call has nowhere to carry a key") {
     val call = PyEval.Call("statistics:median", xs)
     assertEquals(summon[okay.codec.Journalled[PyEval]].withKey(call, "k-1"), call)
+  }
+
+  test("handles journal too: hold, a method, a release — replayed without Python") {
+    val j = Durable.MemoryJournal()
+    val ran = AtomicInteger()
+    val live = Durable.over[PyEval](canned(ran), j)()
+    val ref = live.handle(PyEval.Hold("m:model", Vector.empty)).toOption.get
+    assertEquals(live.handle(PyEval.Method(ref, "score", Vector(I64(4)), hold = false)), Right(I64(40)))
+    live.handle(PyEval.Release(ref))
+    assertEquals(j.all.map(_.op), Vector("hold:m:model", "method:score", "release"))
+    val replay = Durable.replayingOver[PyEval](j)
+    assertEquals(replay.handle(PyEval.Hold("m:model", Vector.empty)), Right(ref))
+    assertEquals(replay.handle(PyEval.Method(ref, "score", Vector(I64(4)), hold = false)), Right(I64(40)))
+    replay.handle(PyEval.Release(ref))
+    assertEquals(ran.get, 3, "replay touches no Python")
   }
 }

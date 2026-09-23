@@ -207,6 +207,19 @@ object RCodec {
 object R {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
+  /** call `address` and KEEP its result in the R process, answering a
+   * handle (foreign-object-handles): `R.hold("stats::lm")(formula, data)` */
+  def hold(address: String): Hold = Hold(address)
+
+  final class Hold(address: String):
+    def apply(): Either[Condition, RRef] ! REval = go(Vector.empty)
+    def apply[A: ToR](a: A): Either[Condition, RRef] ! REval = go(Vector(ToR(a)))
+    def apply[A: ToR, B: ToR](a: A, b: B): Either[Condition, RRef] ! REval = go(Vector(ToR(a), ToR(b)))
+    def apply[A: ToR, B: ToR, C: ToR](a: A, b: B, c: C): Either[Condition, RRef] ! REval =
+      go(Vector(ToR(a), ToR(b), ToR(c)))
+    private def go(args: Vector[RValue]): Either[Condition, RRef] ! REval =
+      effect[REval, Either[Condition, RRef]](REval.Hold(address, args))
+
   /**
    * A callback R may call by name while okay runs one of its functions
    * (foreign-callbacks): `okay_call("objective", x)` in R decodes `x` as
@@ -235,14 +248,14 @@ object R {
 
   final class Fn[Out](val address: String)(using out: Schema[Out]):
     def apply(): Either[Condition, Out] ! REval = call(Vector.empty)
-    def apply[A: Schema](a: A): Either[Condition, Out] ! REval =
-      call(Vector(RCodec.encode(a)))
-    def apply[A: Schema, B: Schema](a: A, b: B): Either[Condition, Out] ! REval =
-      call(Vector(RCodec.encode(a), RCodec.encode(b)))
-    def apply[A: Schema, B: Schema, C: Schema](a: A, b: B, c: C): Either[Condition, Out] ! REval =
-      call(Vector(RCodec.encode(a), RCodec.encode(b), RCodec.encode(c)))
-    def apply[A: Schema, B: Schema, C: Schema, D: Schema](a: A, b: B, c: C, d: D): Either[Condition, Out] ! REval =
-      call(Vector(RCodec.encode(a), RCodec.encode(b), RCodec.encode(c), RCodec.encode(d)))
+    def apply[A: ToR](a: A): Either[Condition, Out] ! REval =
+      call(Vector(ToR(a)))
+    def apply[A: ToR, B: ToR](a: A, b: B): Either[Condition, Out] ! REval =
+      call(Vector(ToR(a), ToR(b)))
+    def apply[A: ToR, B: ToR, C: ToR](a: A, b: B, c: C): Either[Condition, Out] ! REval =
+      call(Vector(ToR(a), ToR(b), ToR(c)))
+    def apply[A: ToR, B: ToR, C: ToR, D: ToR](a: A, b: B, c: C, d: D): Either[Condition, Out] ! REval =
+      call(Vector(ToR(a), ToR(b), ToR(c), ToR(d)))
 
     private def call(args: Vector[RValue]): Either[Condition, Out] ! REval =
       effect[REval, Either[Condition, RValue]](REval.Call(address, args))
@@ -253,12 +266,12 @@ object R {
 
     final class Calling[F[+_]](cbs: Callbacks[F]):
       def apply(): Either[Condition, Out] ! (F + REval) = dialogue(Vector.empty)
-      def apply[A: Schema](a: A): Either[Condition, Out] ! (F + REval) =
-        dialogue(Vector(RCodec.encode(a)))
-      def apply[A: Schema, B: Schema](a: A, b: B): Either[Condition, Out] ! (F + REval) =
-        dialogue(Vector(RCodec.encode(a), RCodec.encode(b)))
-      def apply[A: Schema, B: Schema, C: Schema](a: A, b: B, c: C): Either[Condition, Out] ! (F + REval) =
-        dialogue(Vector(RCodec.encode(a), RCodec.encode(b), RCodec.encode(c)))
+      def apply[A: ToR](a: A): Either[Condition, Out] ! (F + REval) =
+        dialogue(Vector(ToR(a)))
+      def apply[A: ToR, B: ToR](a: A, b: B): Either[Condition, Out] ! (F + REval) =
+        dialogue(Vector(ToR(a), ToR(b)))
+      def apply[A: ToR, B: ToR, C: ToR](a: A, b: B, c: C): Either[Condition, Out] ! (F + REval) =
+        dialogue(Vector(ToR(a), ToR(b), ToR(c)))
 
       /** start, then per ask run the callback's program and resume, until
        * the function answers — each step one okay node */

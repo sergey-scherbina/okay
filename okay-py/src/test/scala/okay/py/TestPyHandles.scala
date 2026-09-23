@@ -1,6 +1,7 @@
 package okay.py
 
-import okay.given
+import okay.{!, given}
+import okay.agent.Durable
 
 object TestPyHandles:
   val module: String =
@@ -64,6 +65,29 @@ class TestPyHandles extends munit.FunSuite {
     assertEquals(after.left.map(_.kind), Left("LookupError"))
     assert(after.left.exists(_.message.contains("not held")), s"$after")
     acc.release.runWith   // idempotent
+  }
+
+  test("Durable: a program with handles REPLAYS; a recovery onto a fresh process is refused by name") {
+    def steps(n: Int): Either[Condition, Long] ! PyEval =
+      Py.hold("okayh:acc")().flatMap {
+        case Left(c) => okay.pure(Left(c))
+        case Right(acc) =>
+          (1 to n).foldLeft(okay.pure[PyEval, Either[Condition, Long]](Right(0L))) { (p, i) =>
+            p.flatMap(_ => acc.call[Long]("add")(i.toLong))
+          }
+      }
+    val j = Durable.MemoryJournal()
+    assertEquals(steps(3).runWith(using Durable.over[PyEval](w.handler, j)()), Right(6L))
+    // the whole program, answered from the journal: no Python
+    assertEquals(steps(3).runWith(using Durable.replayingOver[PyEval](j)), Right(6L))
+    // a recovery: the journalled steps replay, the FOURTH runs live on a
+    // fresh process, which never held the ref the journal hands back
+    val fresh = PySubprocess.start(TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
+    try
+      val recovered = steps(4).runWith(using Durable.over[PyEval](fresh.handler, j)())
+      assertEquals(recovered.left.map(_.kind), Left("LookupError"))
+      assert(recovered.left.exists(_.message.contains("not held")), s"$recovered")
+    finally fresh.close()
   }
 
   test("a pool of ONE: a held object's calls reach its worker, and plain calls still get through") {

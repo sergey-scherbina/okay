@@ -1,6 +1,7 @@
 # okay-r shim, version 4 (specs/r.md; v3 = foreign-typed-calls: a
 # named list that is not a data.frame is a RECORD on the wire; v4 =
-# foreign-callbacks: `start`/`resume` and `okay_call`). One JSON object per line each
+# foreign-callbacks: `start`/`resume` and `okay_call`; v5 =
+# foreign-object-handles: `hold`/`release`, refs as values). One JSON object per line each
 # way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -9,7 +10,7 @@
 # has no JSON reader, and our own parser at the trust boundary is a
 # worse thing to own than one package every R installation has.
 
-SHIM <- 4
+SHIM <- 5
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA), "\n", sep = "")
@@ -118,6 +119,7 @@ dec <- function(v) {
     if (t == "nan") return(NaN)
     if (t == "i") return(as.integer(v$v))
     if (t == "raw") return(jsonlite::base64_dec(v$b64))
+    if (t == "ref") return(okay_held(v$id))
     if (t == "named") {
       out <- lapply(v$kv, function(p) dec(p[[2]]))
       names(out) <- vapply(v$kv, function(p) p[[1]], character(1))
@@ -206,6 +208,25 @@ okay_call <- function(name, ...) {
   }
 }
 
+# ---- held objects (v5) --------------------------------------------------
+
+.okay_objects <- new.env()
+.okay_next_ref <- 0L
+
+okay_hold <- function(obj) {
+  i <- .okay_next_ref + 1L
+  assign(".okay_next_ref", i, envir = globalenv())
+  assign(as.character(i), obj, envir = .okay_objects)
+  list(t = "ref", id = i, type = class(obj)[1])
+}
+
+okay_held <- function(i) {
+  key <- as.character(i)
+  if (!exists(key, envir = .okay_objects, inherits = FALSE))
+    stop(sprintf("ref %s is not held by this process (released, or held by a process that is gone)", key))
+  get(key, envir = .okay_objects, inherits = FALSE)
+}
+
 okay_push <- function(cbs)
   assign(".okay_offered", c(.okay_offered, list(unlist(cbs))), envir = globalenv())
 okay_pop <- function()
@@ -223,6 +244,13 @@ serve <- function(req) {
       okay_push(req$callbacks)
       res <- tryCatch(do.call(f, lapply(req$args, dec)), finally = okay_pop())
       list(id = rid, ok = enc(res))
+    } else if (op == "hold") {
+      f <- resolve(req$fn)
+      list(id = rid, ok = okay_hold(do.call(f, lapply(req$args, dec))))
+    } else if (op == "release") {
+      key <- as.character(req$ref)
+      if (exists(key, envir = .okay_objects, inherits = FALSE)) rm(list = key, envir = .okay_objects)
+      list(id = rid, ok = NULL)
     } else if (op == "frame") {
       f <- resolve(req$fn)
       res <- do.call(f, c(list(dec(req$`in`)), lapply(req$args, dec)))
