@@ -1,6 +1,0 @@
-feature/okay-frege 2026-09-23T07:01:12Z
-agent: claude-code
-heartbeat: 2026-09-23T07:01:12Z
-status: in-progress
-done-so-far: probe in scratchpad — Frege 3.25.153 on JDK25, -target 17 runs on 17/21/25; IO program on a virtual thread with await/tell handoff: correct, 1e6 stack-safe, interrupt ends it; 10.5us/element
-next: specs/frege.md; project/Frege task; okay-frege bridge (Stage, run with perform, lists)
