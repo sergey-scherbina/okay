@@ -18,15 +18,47 @@ enum PyValue:
   case Str(v: String)
   case Bytes(v: Array[Byte])
   case Arr(v: Vector[PyValue])
+  /** a `dict` with string keys, in insertion order — a record. Wire v2
+   * (foreign-typed-calls): before it a dict answered by a call was sent
+   * as a FRAME and reached okay as None, or failed in the shim */
+  case Dict(kv: Vector[(String, PyValue)])
 
 /** a columnar frame — dict-of-lists on the far side */
-final case class PyFrame(cols: Vector[(String, Vector[PyValue])])
+final case class PyFrame(cols: Vector[(String, Vector[PyValue])]):
+  /** the frame as rows of a case class, a row being the dict of its
+   * cells (foreign-typed-calls): the pair okay-r's `RFrame` has */
+  def rows[A](using okay.codec.Schema[A]): Either[Condition, Vector[A]] =
+    val n = cols.headOption.fold(0)(_._2.length)
+    cols.find(_._2.length != n) match
+      case Some((name, c)) =>
+        Left(Condition("FrameShape", s"column '$name' has ${c.length} cells, the first has $n"))
+      case None =>
+        val out = Vector.newBuilder[A]
+        var bad: Option[Condition] = None
+        var i = 0
+        while bad.isEmpty && i < n do
+          PyCodec.decode[A](PyValue.Dict(cols.map((k, c) => (k, c(i))))) match
+            case Right(a) => out += a
+            case Left(c) => bad = Some(c.copy(message = s"row $i: ${c.message}"))
+          i += 1
+        bad.toLeft(out.result())
+
+object PyFrame:
+  /** rows of a flat case class as a frame, a column per field */
+  def of[A](rows: Seq[A])(using s: okay.codec.Schema[A]): Either[Condition, PyFrame] = s match
+    case p: okay.codec.Schema.SProduct[A] =>
+      val names = p.fields.map(_._1)
+      val cells = rows.toVector.map(PyCodec.encode(_) match
+        case PyValue.Dict(kv) => kv.map(_._2)
+        case other => Vector(other))
+      Right(PyFrame(names.zipWithIndex.map((n, j) => (n, cells.map(_(j))))))
+    case other => Left(Condition("FrameSchema", s"a frame row is a case class; this Schema is $other"))
 
 /** what a failing call answers: the exception's type name and text
  * — data, and the worker survives to take the next call */
 final case class Condition(kind: String, message: String)
 
-enum PyEval[A] derives okay.Effect:
+enum PyEval[+A] derives okay.Effect:
   case Call(fn: String, args: Vector[PyValue])
     extends PyEval[Either[Condition, PyValue]]
   case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
@@ -114,6 +146,9 @@ private[py] object Wire {
     def leaf(v: PyValue): Json = v match
       case PyValue.PyNone => Json.JNull
       case PyValue.Bool(b) => Json.JBool(b)
+      // exact on the JSON wire only up to 2^53; past it, the digits
+      case PyValue.I64(n) if math.abs(n.toDouble) >= Exact =>
+        Json.JObj(Vector("t" -> Json.JStr("int"), "v" -> Json.JStr(n.toString)))
       case PyValue.I64(n) => Json.JNum(n.toDouble)
       case PyValue.F64(d) if d.isNaN => Json.JObj(Vector("t" -> Json.JStr("nan")))
       // an integral F64 would merge with I64 on the json wire; tagged
@@ -123,11 +158,13 @@ private[py] object Wire {
       case PyValue.Str(s) => Json.JStr(s)
       case PyValue.Bytes(bs) => Json.JObj(Vector("t" -> Json.JStr("bytes"),
         "b64" -> Json.JStr(java.util.Base64.getEncoder.encodeToString(bs))))
-      case PyValue.Arr(_) => throw IllegalStateException("unreachable: Arr is handled by the work-list")
+      case PyValue.Arr(_) | PyValue.Dict(_) =>
+        throw IllegalStateException("unreachable: containers are handled by the work-list")
 
     enum Step:
       case Todo(v: PyValue)
       case Combine(n: Int)
+      case CombineDict(keys: Vector[String])
 
     var todo = List[Step](Step.Todo(v0))
     var results = List.empty[Json]
@@ -135,6 +172,8 @@ private[py] object Wire {
       todo.head match
         case Step.Todo(PyValue.Arr(xs)) =>
           todo = xs.toList.map(Step.Todo(_)) ::: Step.Combine(xs.length) :: todo.tail
+        case Step.Todo(PyValue.Dict(kv)) =>
+          todo = kv.toList.map(p => Step.Todo(p._2)) ::: Step.CombineDict(kv.map(_._1)) :: todo.tail
         case Step.Todo(other) =>
           results = leaf(other) :: results
           todo = todo.tail
@@ -142,7 +181,15 @@ private[py] object Wire {
           val (items, rest) = results.splitAt(n)
           results = Json.JArr(items.reverse.toVector) :: rest
           todo = todo.tail
+        case Step.CombineDict(keys) =>
+          val (items, rest) = results.splitAt(keys.length)
+          val pairs = keys.zip(items.reverse).map((k, v) => Json.JArr(Vector(Json.JStr(k), v)))
+          results = Json.JObj(Vector("t" -> Json.JStr("dict"), "kv" -> Json.JArr(pairs))) :: rest
+          todo = todo.tail
     results.head
+
+  /** the largest magnitude a JSON number (a double) carries exactly */
+  private val Exact = 9007199254740992.0
 
   def encFrame(f: PyFrame): Json = Json.JObj(Vector(
     "t" -> Json.JStr("frame"),
@@ -168,6 +215,11 @@ private[py] object Wire {
           case Some(Json.JStr("bytes")) => m.get("b64") match
             case Some(Json.JStr(b)) => PyValue.Bytes(java.util.Base64.getDecoder.decode(b))
             case _ => PyValue.PyNone
+          // a Python int past 2^53: exact as a Long when it fits one,
+          // and its digits when it does not (Python ints are unbounded)
+          case Some(Json.JStr("int")) => m.get("v") match
+            case Some(Json.JStr(d)) => d.toLongOption.fold(PyValue.Str(d))(PyValue.I64(_))
+            case _ => PyValue.PyNone
           case _ => PyValue.PyNone   // an untagged object has no PyValue shape
       case Json.JErr(_) => PyValue.PyNone
       case Json.JArr(_) => throw IllegalStateException("unreachable: JArr is handled by the work-list")
@@ -175,6 +227,13 @@ private[py] object Wire {
     enum Step:
       case Todo(j: Json)
       case Combine(n: Int)
+      case CombineDict(keys: Vector[String])
+
+    def dictPairs(fs: Vector[(String, Json)]): Option[Vector[(String, Json)]] =
+      if !fs.exists(_ == ("t" -> Json.JStr("dict"))) then None
+      else fs.collectFirst { case ("kv", Json.JArr(ps)) => ps.collect {
+        case Json.JArr(Vector(Json.JStr(k), v)) => (k, v)
+      } }
 
     var todo = List[Step](Step.Todo(j0))
     var results = List.empty[PyValue]
@@ -182,12 +241,23 @@ private[py] object Wire {
       todo.head match
         case Step.Todo(Json.JArr(xs)) =>
           todo = xs.toList.map(Step.Todo(_)) ::: Step.Combine(xs.length) :: todo.tail
+        case Step.Todo(o @ Json.JObj(fs)) =>
+          dictPairs(fs) match
+            case Some(kv) =>
+              todo = kv.toList.map(p => Step.Todo(p._2)) ::: Step.CombineDict(kv.map(_._1)) :: todo.tail
+            case None =>
+              results = leaf(o) :: results
+              todo = todo.tail
         case Step.Todo(other) =>
           results = leaf(other) :: results
           todo = todo.tail
         case Step.Combine(n) =>
           val (items, rest) = results.splitAt(n)
           results = PyValue.Arr(items.reverse.toVector) :: rest
+          todo = todo.tail
+        case Step.CombineDict(keys) =>
+          val (items, rest) = results.splitAt(keys.length)
+          results = PyValue.Dict(keys.zip(items.reverse)) :: rest
           todo = todo.tail
     results.head
 

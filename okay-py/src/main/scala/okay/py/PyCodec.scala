@@ -1,0 +1,184 @@
+package okay.py
+
+import okay.{!, effect}
+import okay.codec.Schema
+import PyValue.*
+
+/**
+ * A Scala value as a Python value and back, through its `Schema`
+ * (foreign-typed-calls, specs/foreign-highlevel.md stage 2).
+ *
+ * A product is a `dict` of its fields; a sum is the case's dict with a
+ * `"type"` field naming the case (the discriminated-union shape Python's
+ * own libraries use); `Option` is None; a sequence is a list; a `BigInt`
+ * is an int (its digits past a Long, which the wire carries exactly).
+ *
+ * TYPED: both directions match the `Schema` GADT, so each branch sees the
+ * value at its own type; the product and sum kernels (`eachField`,
+ * `theCase`) hold the only casts, where every codec in okay-codec holds
+ * them. Decoding refuses by PATH (`.orders[2].qty: expected an int, got
+ * Str(x)`), never with a silent default.
+ *
+ * Recursion is the value's own nesting, on the native stack: a record
+ * nested ten thousand deep would overflow here where the WIRE would not.
+ * Records crossing to Python are shallow; say so rather than pretend.
+ */
+object PyCodec {
+
+  /** the field a sum's dict names its case in */
+  val TypeField = "type"
+
+  def encode[A](a: A)(using s: Schema[A]): PyValue = enc(s, a)
+
+  def decode[A](v: PyValue)(using s: Schema[A]): Either[Condition, A] =
+    dec(s, v, "").left.map(Condition("Decode", _))
+
+  private def enc[X](s: Schema[X], x: X): PyValue = s match
+    case Schema.SInt => I64(x.toLong)
+    case Schema.SLong => I64(x)
+    case Schema.SDouble => F64(x)
+    case Schema.SBool => Bool(x)
+    case Schema.SString => Str(x)
+    case Schema.SChar => Str(x.toString)
+    case Schema.SBytes => Bytes(x)
+    case Schema.SBigInt => if x.isValidLong then I64(x.toLong) else Str(x.toString)
+    case o: Schema.SOption[a] => x match
+      case Some(v) => enc(o.of(), v)
+      case None => PyNone
+    case l: Schema.SList[a] => Arr(x.iterator.map(enc(l.of(), _)).toVector)
+    case v: Schema.SVector[a] => Arr(x.map(enc(v.of(), _)))
+    case p: Schema.SProduct[X] =>
+      Dict(p.eachField(x)([Y] => (name: String, sc: Schema[Y], y: Y) => (name, enc(sc, y))))
+    case su: Schema.SSum[X] =>
+      su.theCase(x)([Y <: X] => (name: String, sc: Schema[Y], y: Y) => enc(sc, y) match
+        case Dict(kv) =>
+          if kv.exists(_._1 == TypeField) then throw IllegalArgumentException(
+            s"okay.py: case $name of ${su.name} has a field named '$TypeField', which names the case on the wire")
+          Dict((TypeField -> Str(name)) +: kv)
+        case other => Dict(Vector(TypeField -> Str(name), "value" -> other)))
+    case i: Schema.SIso[X, b] => enc(i.under(), i.from(x))
+
+  private def dec[X](s: Schema[X], v: PyValue, at: String): Either[String, X] =
+    def no(what: String): Either[String, X] = Left(s"${if at.isEmpty then "the value" else at}: expected $what, got $v")
+    s match
+      case Schema.SInt => v match
+        case I64(n) if n.isValidInt => Right(n.toInt)
+        case _ => no("an int that fits 32 bits")
+      case Schema.SLong => v match
+        case I64(n) => Right(n)
+        case _ => no("an int")
+      case Schema.SDouble => v match
+        case F64(d) => Right(d)
+        case I64(n) => Right(n.toDouble)     // statistics.median of ints answers an int
+        case _ => no("a number")
+      case Schema.SBool => v match
+        case Bool(b) => Right(b)
+        case _ => no("a bool")
+      case Schema.SString => v match
+        case Str(t) => Right(t)
+        case _ => no("a str")
+      case Schema.SChar => v match
+        case Str(t) if t.length == 1 => Right(t.charAt(0))
+        case _ => no("a one-character str")
+      case Schema.SBytes => v match
+        case Bytes(b) => Right(b)
+        case _ => no("bytes")
+      case Schema.SBigInt => v match
+        case I64(n) => Right(BigInt(n))
+        case Str(d) if d.nonEmpty && d.stripPrefix("-").forall(_.isDigit) => Right(BigInt(d))
+        case _ => no("an int")
+      case o: Schema.SOption[a] => v match
+        case PyNone => Right(None)
+        case other => dec(o.of(), other, at).map(Some(_))
+      case l: Schema.SList[a] => v match
+        case Arr(xs) => each(xs, at)(dec(l.of(), _, _)).map(_.toList)
+        case _ => no("a list")
+      case sv: Schema.SVector[a] => v match
+        case Arr(xs) => each(xs, at)(dec(sv.of(), _, _))
+        case _ => no("a list")
+      case p: Schema.SProduct[X] => v match
+        case Dict(kv) => product(p, kv.toMap, at)
+        case _ => no(s"a dict for ${p.name}")
+      case su: Schema.SSum[X] => v match
+        case Dict(kv) =>
+          val m = kv.toMap
+          m.get(TypeField) match
+            case Some(Str(name)) =>
+              su.cases.indexWhere(_._1 == name) match
+                case -1 => no(s"one of ${su.cases.map(_._1).mkString(", ")} in '$TypeField'")
+                case i =>
+                  val sc = su.cases(i)._2()
+                  val rest = sc match
+                    case _: Schema.SProduct[?] => Dict(kv.filterNot(_._1 == TypeField))
+                    case _ => m.getOrElse("value", PyNone)
+                  dec(sc, rest, at)
+            case _ => no(s"a dict with a '$TypeField' naming a case of ${su.name}")
+        case _ => no(s"a dict for ${su.name}")
+      case i: Schema.SIso[X, b] =>
+        dec(i.under(), v, at).flatMap(u => i.to(u).left.map(why => s"${if at.isEmpty then "the value" else at}: $why"))
+
+  private def each[Y](xs: Vector[PyValue], at: String)(f: (PyValue, String) => Either[String, Y]): Either[String, Vector[Y]] =
+    val out = Vector.newBuilder[Y]
+    var i = 0
+    var bad: Option[String] = None
+    while bad.isEmpty && i < xs.length do
+      f(xs(i), s"$at[$i]") match
+        case Right(y) => out += y
+        case Left(e) => bad = Some(e)
+      i += 1
+    bad.toLeft(out.result())
+
+  private def product[X](p: Schema.SProduct[X], m: Map[String, PyValue], at: String): Either[String, X] =
+    val vals = Vector.newBuilder[Any]
+    var bad: Option[String] = None
+    var i = 0
+    while bad.isEmpty && i < p.fields.length do
+      val (name, sc) = p.fields(i)
+      val here = s"$at.$name"
+      m.get(name) match
+        case Some(v) => dec(sc(), v, here) match
+          case Right(x) => vals += x
+          case Left(e) => bad = Some(e)
+        case None =>
+          p.defaultAt(i)([Y] => (_: Schema[Y], d: Y) => d: Any) match
+            case Some(d) => vals += d
+            case None => sc() match
+              case _: Schema.SOption[?] => vals += None
+              case _ => bad = Some(s"$here: missing")
+      i += 1
+    bad.toLeft(p.make(vals.result()))
+}
+
+/**
+ * A Python function as a typed Scala function (foreign-typed-calls):
+ *
+ * {{{
+ * val median = Py.fn[Double]("statistics:median")
+ * median(Vector(3.0, 1.0, 2.0))   // Either[Condition, Double] ! PyEval
+ * }}}
+ *
+ * The arguments are encoded through their `Schema`, the answer decoded
+ * through `Out`'s; a Python exception and an answer of the wrong shape
+ * are both a `Left(Condition)`, so a caller matches one channel. The
+ * result is an okay program over `PyEval`, run by whichever handler is
+ * installed — a subprocess, a worker pool, a canned mock, or `Durable`
+ * over any of them.
+ */
+object Py {
+  def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
+
+  final class Fn[Out](val address: String)(using out: Schema[Out]):
+    def apply(): Either[Condition, Out] ! PyEval = call(Vector.empty)
+    def apply[A: Schema](a: A): Either[Condition, Out] ! PyEval =
+      call(Vector(PyCodec.encode(a)))
+    def apply[A: Schema, B: Schema](a: A, b: B): Either[Condition, Out] ! PyEval =
+      call(Vector(PyCodec.encode(a), PyCodec.encode(b)))
+    def apply[A: Schema, B: Schema, C: Schema](a: A, b: B, c: C): Either[Condition, Out] ! PyEval =
+      call(Vector(PyCodec.encode(a), PyCodec.encode(b), PyCodec.encode(c)))
+    def apply[A: Schema, B: Schema, C: Schema, D: Schema](a: A, b: B, c: C, d: D): Either[Condition, Out] ! PyEval =
+      call(Vector(PyCodec.encode(a), PyCodec.encode(b), PyCodec.encode(c), PyCodec.encode(d)))
+
+    private def call(args: Vector[PyValue]): Either[Condition, Out] ! PyEval =
+      effect[PyEval, Either[Condition, PyValue]](PyEval.Call(address, args))
+        .map(_.flatMap(PyCodec.decode[Out](_)))
+}
