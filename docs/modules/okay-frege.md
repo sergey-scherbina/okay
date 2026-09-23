@@ -112,9 +112,19 @@ usesIO = do
 ```
 
 The driver runs a lifted action as ONE step. It never calls back into
-okay, so nothing has to be suspended inside it — which is why no thread
-is needed anywhere, and why a lifted action inside a multi-shot branch
-simply runs once per branch, as the branch asks.
+okay, so nothing has to be suspended inside it, and a lifted action
+inside a multi-shot branch simply runs once per branch, as the branch
+asks.
+
+**Cancellation.** Where the program's row carries `Async`, the lifted
+action runs on a thread of its own, and cancelling the fiber INTERRUPTS
+it, whatever the scheduler (interop-lift-cancellation). Before this, the
+answer depended on the scheduler. Loom interrupts the fiber's own
+virtual thread. A pool-threaded scheduler cannot interrupt a thread it
+shares, so it reported the fiber finished while the lifted `IO` slept on
+(measured in TestFregeCancel, whose control checks that the instrument
+sees the sleep at all). Without `Async` in the row, the action runs in
+place, as before, because there is nothing to cancel.
 
 ## A stage that performs, and Async
 

@@ -50,3 +50,9 @@
   (if (>= i n)
     (ok/done nil)
     (ok/mlet [_ (ok/tell i)] (count-to (inc i) n))))
+
+;; interop-lift-cancellation: blocking Java, lifted, observable — after its
+;; sleep it leaves a mark the test reads, so "the work stopped" is told
+;; apart from "the fiber was reported finished while its thread slept on"
+(defn mark-after [key ms]
+  (ok/lift (fn [] (Thread/sleep (long ms)) (System/setProperty key "woke") "woke")))

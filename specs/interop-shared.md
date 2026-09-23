@@ -89,3 +89,28 @@ per-language classes stay as the names users bind to (Frege natives name
   example). A lesson in method, recorded because it hid a result for one
   run: `sbt "a/test; b/test"` stops at the first red, so a mutant must be
   run against each module alone.
+
+## Follow-up: cancelling a lifted step (interop-lift-cancellation, 2026-09-23)
+
+Filed as a question: does cancelling the fiber stop a lifted Frege IO
+(`liftIO`) or a blocking Clojure step? Measured with an instrument that
+has its own CONTROL. The lifted action sets a system property after its
+sleep, so "the work stopped" is told apart from "the fiber was reported
+finished", and the uncancelled run shows the full sleep and the mark.
+
+- Loom (the default where there are virtual threads): a cancel interrupts
+  the fiber's own virtual thread, and the lifted action STOPPED.
+- `Schedulers.drive()` (pool-threaded): the fiber was reported finished
+  at once, but the lifted action RAN ON to completion. A pool cannot
+  interrupt a thread it shares. The first cut of the test asserted only
+  "the fiber ends promptly" and passed for this broken case: the
+  instrument measured the report, not the work.
+
+The fix is in the walker, not the schedulers. `Foreign.View` gains
+`liftAsOperation`, and where the program's row accepts it (a row with
+`Async`, tested by `Member`), the lifted action becomes
+`okay.Interruptible.await`: an `Async` operation that runs the action on
+a thread of its own and whose canceller interrupts exactly that thread.
+Without `Async` in the row nothing changes. Clojure gained the explicit
+blocking step it lacked, `(ok/lift f)`, with the same treatment. Six
+tests: control, Loom and pool, for each language.

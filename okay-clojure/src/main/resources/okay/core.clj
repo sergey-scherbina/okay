@@ -24,6 +24,7 @@
 (defrecord Done [value])
 (defrecord Step [op k])
 (defrecord Tell [value])
+(defrecord Lift [f])
 
 (defn done
   "a program that has answered `v`"
@@ -53,6 +54,12 @@
 (defn tell
   "emit one output of a stage"
   [x] (->Step (->Tell x) done))
+
+(defn lift
+  "run `(f)` - blocking Clojure or Java code - as ONE step, answering what
+  it returns. Where the okay program's row carries Async, cancelling the
+  fiber INTERRUPTS it, whatever the scheduler (interop-lift-cancellation)."
+  [f] (->Step (->Lift f) done))
 
 (defmacro mlet
   "a monadic let over programs: `(mlet [x p, y q] body)` is

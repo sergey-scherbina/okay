@@ -21,6 +21,8 @@ object Program {
   private lazy val loaded: Unit = Clj.require("okay.core").fold(e => throw IllegalStateException(e), identity)
   private lazy val doneClass: Class[?] = { loaded; RT.classForName("okay.core.Done") }
   private lazy val tellClass: Class[?] = { loaded; RT.classForName("okay.core.Tell") }
+  private lazy val liftClass: Class[?] = { loaded; RT.classForName("okay.core.Lift") }
+  private val kF = Keyword.intern(null, "f")
   private val kValue = Keyword.intern(null, "value")
   private val kOp = Keyword.intern(null, "op")
   private val kK = Keyword.intern(null, "k")
@@ -49,13 +51,20 @@ object Program {
         val op = field(p, kOp)
         if op eq awaitOp then Foreign.Await
         else if tellClass.isInstance(op) then Foreign.Tell
+        else if liftClass.isInstance(op) then Foreign.Lift
         else Foreign.Perform
     def payload(p: AnyRef): AnyRef =
       if doneClass.isInstance(p) then field(p, kValue)
       else
         val op = field(p, kOp)
         if tellClass.isInstance(op) then field(op, kValue) else op
-    def lift(p: AnyRef): AnyRef = throw IllegalStateException("okay.clojure: a program has no lifted steps")
+    /** `(ok/lift f)`: call `f`, in place or on its own thread */
+    def lift(p: AnyRef): AnyRef = field(field(p, kOp), kF) match
+      case f: IFn => f.invoke()
+      case other => throw IllegalArgumentException(s"okay.clojure: a lift's action is not a function: $other")
+    /** on a thread of its own, which a cancel interrupts, when the row
+     * carries Async (interop-lift-cancellation) */
+    override def liftAsOperation(p: AnyRef): Option[AnyRef] = Some(okay.Interruptible.await(() => lift(p)))
     def resume(p: AnyRef, answer: AnyRef): AnyRef = continuation(p).invoke(answer)
     def who = "okay.clojure"
 

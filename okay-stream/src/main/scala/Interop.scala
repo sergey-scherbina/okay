@@ -88,6 +88,13 @@ object Foreign {
     def lift(p: P): AnyRef
     /** the rest of the program, given this step's answer */
     def resume(p: P, answer: AnyRef): P
+    /**
+     * Lift: the lifted action as an OPERATION a cancel can interrupt, when
+     * the language can make one (interop-lift-cancellation). The walker
+     * performs it when the program's row accepts it — a row with `Async` —
+     * and runs the action in place otherwise. None by default.
+     */
+    def liftAsOperation(p: P): Option[AnyRef] = None
     /** the prefix of this language's refusals, e.g. "okay.clojure" */
     def who: String
 
@@ -120,7 +127,9 @@ object Foreign {
       case Done => pure(())
       case Await => effect[R, Option[I]](Take.Await()).flatMap(in => go(v.resume(p, in.fold(null)(obj))))
       case Tell => effect[R, Unit](Writer(as[O](v.payload(p), s"$name's tell", v.who))).flatMap(_ => go(v.resume(p, null)))
-      case Lift => Free.delay(() => go(v.resume(p, v.lift(p))))
+      case Lift => v.liftAsOperation(p).flatMap(m.operation) match
+        case Some(o) => effect[R, Any](o).flatMap(x => go(v.resume(p, obj(x))))
+        case None => Free.delay(() => go(v.resume(p, v.lift(p))))
       case _ =>
         val raw = v.payload(p)
         m.operation(raw) match
@@ -134,7 +143,9 @@ object Foreign {
   def run[F[+_], A: ClassTag, P](prog: => P, name: String)(using v: View[P], m: Member[F]): A ! F =
     def go(p: P): A ! F = v.kind(p) match
       case Done => pure(as[A](v.payload(p), s"$name's answer", v.who))
-      case Lift => Free.delay(() => go(v.resume(p, v.lift(p))))
+      case Lift => v.liftAsOperation(p).flatMap(m.operation) match
+        case Some(o) => effect[F, Any](o).flatMap(x => go(v.resume(p, obj(x))))
+        case None => Free.delay(() => go(v.resume(p, v.lift(p))))
       case Perform =>
         val raw = v.payload(p)
         m.operation(raw) match

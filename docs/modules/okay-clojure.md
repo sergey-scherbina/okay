@@ -104,6 +104,19 @@ program using `ok/await` and `ok/tell`; `Program.stageWith[I, O, F]` lets
 it perform `F` too. This is okay-frege's design (docs/modules/okay-frege.md
 says why it is not lazy IO), and the two drivers are the same walk.
 
+### Blocking code: `ok/lift`
+
+Blocking Clojure or Java code is one explicit step, `(ok/lift f)`:
+
+```clojure
+(defn mark-after [key ms]
+  (ok/lift (fn [] (Thread/sleep (long ms)) (System/setProperty key "woke") "woke")))
+```
+
+Where the okay program's row carries `Async`, the step runs on a thread
+of its own, and cancelling the fiber interrupts it whatever the
+scheduler (interop-lift-cancellation, TestClojureCancel).
+
 ## Lazy seqs, both ways
 
 ```scala

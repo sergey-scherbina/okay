@@ -219,9 +219,13 @@ choosing = do
 val all = !.run(runChoice(Frege.run[Choose, java.lang.Long](P.choosing.call())))   // 11, 12, 21, 22
 ```
 
-Existing Frege `IO` code enters by `liftIO`, as one step — it never
-calls back into okay, so nothing has to be suspended and no thread is
-needed. Frege lists and okay `Chunks` convert lazily both ways:
+Existing Frege `IO` code enters by `liftIO`, as one step. It never
+calls back into okay, so nothing has to be suspended. Where the
+program's row carries `Async`, the step runs on a thread of its own, and
+cancelling the fiber INTERRUPTS it whatever the scheduler. Without that
+thread, a pool-threaded scheduler reported the fiber finished while a
+blocking `liftIO` ran on (interop-lift-cancellation). Clojure's blocking
+step is `(ok/lift f)`, and it gets the same treatment. Frege lists and okay `Chunks` convert lazily both ways:
 
 ```scala
 // an INFINITE Frege list, read partially by okay

@@ -53,6 +53,9 @@ object Frege {
     /** existing Frege IO, run as one step; its answer */
     def lift(p: TProg[?]): AnyRef = TST.performUnsafe(p.asStep().mem1.call().asLift().mem1.call()).call()
     def resume(p: TProg[?], answer: AnyRef): TProg[?] = Frege.resume(p.asStep(), answer)
+    /** `liftIO` on a thread of its own, which a cancel interrupts, when the
+     * row carries Async (interop-lift-cancellation) */
+    override def liftAsOperation(p: TProg[?]): Option[AnyRef] = Some(okay.Interruptible.await(() => lift(p)))
     def who = "okay.frege"
 
   /**

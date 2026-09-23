@@ -111,3 +111,18 @@ sumFirst n xs = sum (take n xs)
 --- lists: Frege filtering an okay source, lazily, into a Frege list
 evensOf :: [Long] -> [Long]
 evensOf = filter even
+
+--- existing Frege IO that BLOCKS, lifted (interop-lift-cancellation):
+--- ten seconds, unless the thread running it is interrupted
+native sleepMs java.lang.Thread.sleep :: Long -> IO () throws InterruptedException
+
+sleepyLift :: Prog String
+sleepyLift = liftIO (sleepMs 10000 >> return "woke")
+
+--- the same, observable: after its sleep the action leaves a mark the
+--- test can read, so "the work stopped" is told apart from "the fiber
+--- was reported finished while its thread slept on"
+native setProp java.lang.System.setProperty :: String -> String -> IO (Maybe String)
+
+markAfter :: String -> Long -> Prog String
+markAfter key ms = liftIO (sleepMs ms >> setProp key "woke" >> return "woke")
