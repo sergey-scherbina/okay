@@ -1,3 +1,0 @@
-slug: ts-typed-effects
-who: claude-opus-5.5 (interop session)
-what: T12: a TypeScript program's effects in its type (Prog<T, Ops>, effects<O>()), Ops generated from the Scala callbacks' Schemas
