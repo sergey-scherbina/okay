@@ -625,28 +625,24 @@ object Wf:
      *
      * `Question` must be COVARIANT in its answer for `okay.Proc`,
      * whose signature parameter is `F[+_]`, to accept it at all. So
-     * matching `Ask` proves `A <: Z` rather than `A = Z`, and a
-     * program `A ! Row` is INVARIANT in its value. The widening is
-     * therefore real work rather than a coincidence of spelling — and
-     * it is a `map`, not an `asInstanceOf`: one node per leaf, beside
-     * a leaf that is an outside call, and the compiler still checks
-     * every arm.
+     * matching `Ask` proves `A <: Z` rather than `A = Z` — and since
+     * free-answer-variance (2026-09-23) a program `A ! Row` IS a
+     * `Z ! Row`, `Free` being covariant in its answer: no node, no
+     * cast, the compiler still checks every arm. Until then each leaf
+     * paid an `up` = `map(v => v)` for exactly this widening.
      */
     private def answerOf[Q, A, R, Z](q: Question[Q, A, Z])
                                     (using w: Asks[Q, A, R, Pure], at: At): Z ! (Delim + Pure) =
       q match
-        case Question.Ask(a) => up(w.pause(a))
-        case Question.Now() => up(w.now)
-        case Question.Uuid() => up(w.uuid)
-        case Question.Random() => up(w.random)
-        case Question.Patched(id) => up(w.patch(id))
-        case Question.Timer(t) => up(Wf.timer[Q, A, R, Pure](t)(using w.in, at))
-        case Question.Signalled(n) => up(w.awaitSignal(n))
-        case Question.Childed(i) => up(w.awaitChild(i))
-        case Question.Cancelled() => up(w.cancelled)
-
-    /** a program's value widened to a supertype the GADT has proved */
-    private def up[Z, V <: Z, Row[+_]](p: V ! Row): Z ! Row = p.map(v => v)
+        case Question.Ask(a) => w.pause(a)
+        case Question.Now() => w.now
+        case Question.Uuid() => w.uuid
+        case Question.Random() => w.random
+        case Question.Patched(id) => w.patch(id)
+        case Question.Timer(t) => Wf.timer[Q, A, R, Pure](t)(using w.in, at)
+        case Question.Signalled(n) => w.awaitSignal(n)
+        case Question.Childed(i) => w.awaitChild(i)
+        case Question.Cancelled() => w.cancelled
 
     /**
      * WHERE THE PROCEDURE STANDS, DERIVED FROM THE TERM — the second

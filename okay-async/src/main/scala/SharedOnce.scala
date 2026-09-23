@@ -80,14 +80,13 @@ final class SharedOnce:
 
   /** one operation, answered. A METHOD, because the GADT refinement
    * holds in a method's match and not inside a polymorphic function
-   * literal — and because `Once[+A]` is covariant the refinement is
-   * `Option[A'] <: X`, not equality, which `Free`'s invariant answer
-   * type cannot take by itself (`Once.step` answers a TUPLE, whose
-   * covariance takes it): the `map(x => x)` is that upcast, one node
-   * per operation on this road only. */
+   * literal. `Once[+A]` is covariant, so the refinement is `Option[A']
+   * <: X` rather than equality — which is enough since `Free` is
+   * covariant in its answer (free-answer-variance, 2026-09-23); until
+   * then each arm paid a `map(x => x)` for that upcast. */
   private def answer[X](o: Once[X]): X ! Async = o match
-    case Once.Force(h) => force(h).map(x => x)
-    case Once.Store(h, v) => store(h, v).map(x => x)
+    case Once.Force(h) => force(h)
+    case Once.Store(h, v) => store(h, v)
 
   /** the `Once` operations of `a` answered from THIS store, the rest
    * of the row forwarded */

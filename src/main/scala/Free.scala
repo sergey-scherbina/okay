@@ -79,7 +79,7 @@ object Free {
       override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = a.flatMap(f)
 }
 
-enum Free[F[+_], A] {
+enum Free[F[+_], +A] {
   /** a finished computation */
   case Return(a: A)
 

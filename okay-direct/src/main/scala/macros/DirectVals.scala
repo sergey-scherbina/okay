@@ -171,7 +171,9 @@ private[okay] trait DirectVals[F[_]] extends DirectMarks[F] with DirectRow[F] wi
         val compiled: Term = compile(body.changeOwner(Symbol.spliceOwner)) match
           case Out.Pure(q) => markTerm(q, elem, dd.pos)
           case Out.Eff(c, e) =>
-            if e.widen =:= elem.widen then c
+            // `<:<`, not `=:=`: with `Free[F, +A]` a program at a narrower
+            // answer IS one at the declared answer (free-answer-variance)
+            if e.widen <:< elem.widen then c
             else bind(c, e, elem)(v => markTerm(v, elem, dd.pos))
         val defn = DefDef(sym, _ => Some(compiled.changeOwner(sym)))
         def prog(): Term = Apply(Ref(sym), Nil)

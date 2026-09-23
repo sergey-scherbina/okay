@@ -207,6 +207,24 @@ invariance of `Free`'s row is therefore a choice with a number behind
 it, not a limitation to be engineered away — which is only knowable
 by measuring the cure rather than reasoning about the disease.
 
+The *answer* axis is the other story, and it went the other way
+(free-answer-variance, 2026-09-23). `Free[F, +A]` also passes the
+check — `A` sits in `Return`'s field, under a covariant `F` in
+`Inject`, and in `Bind`'s result — and on this axis there is no walk
+to lose: nothing rebuilds a tree to move an answer up, so the only
+thing covariance could change is typing. Three doors had been paying
+an identity `map` — a `Bind` node built for the type checker alone —
+to move a GADT-proved `A' <: A` into an `A ! Row`; they are gone, and
+`javap` shows the seven core classes byte for byte unchanged by the
+annotation. The price was four sites where inference had leaned on
+invariance to pin an answer: a handler whose first arm now inferred
+`Right[E, A]` instead of `Either[E, A]` (pinned), a GADT match in a
+`direct` block whose first arm is concrete (ascribed `: X`), and the
+`direct` macro's two element comparisons (`<:<`, not `=:=`, since an
+inlined `raise` is now an `Inject[…, Nothing]`). So `A ! F` reads as
+it should: covariant in what it answers, invariant in what it may do —
+the first by the ordinary rule, the second by the number above.
+
 ## Freer's second dividend: GADT refinement
 
 Storing operations bare means an operation's constructor can carry its

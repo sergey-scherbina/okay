@@ -22,7 +22,10 @@ scope by nesting; a bound prompt still crosses).
 ## 2. Effects: `A ! F`
 
 A computation of `A` performing operations of the signature `F` is
-`A ! F` — a freer-monad tree. Signatures combine as unions:
+`A ! F` — a freer-monad tree, covariant in `A` (an `Int ! F` is an
+`Any ! F`, no node added) and invariant in `F` (widening a row is
+`.at[R]`/`.plus[G]` or the `!.widen` walk — a measured choice,
+specs/writer-covariance.md). Signatures combine as unions:
 `A ! (State % Int + Throws % String)`. The empty signature is `Pure`
 (`A ! Pure` is a pure computation; `F + Pure = F`).
 

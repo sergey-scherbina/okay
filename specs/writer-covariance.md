@@ -343,15 +343,45 @@ doors call it.
 
 ### Behavior — free-answer-variance
 
-- [ ] `Free[F, +A]` compiles across the family, or the refusal is
-      recorded with the site and the road (4) taken
-- [ ] the three identity-`map` doors are gone (SharedOnce twice,
-      Wf.up), their tests unchanged
-- [ ] `p: Int ! F` is an `AnyVal ! F` / `Any ! F` by subtyping
-      (TestFreeVariance), and a covariant GADT handler answers its
-      program with no upcast
-- [ ] bytecode: `javap -c` of `Free`, `Effects` unchanged by the
-      variance annotation alone
+- [x] `Free[F, +A]` compiles across the family — with four typing
+      sites adjusted, recorded below; road (4) not needed
+- [x] the three identity-`map` doors are gone (SharedOnce twice,
+      Wf.up and its nine call sites), their tests unchanged
+- [x] `p: Int ! F` is an `AnyVal ! F` / `Any ! F` by subtyping
+      (TestFreeVariance: the same object, `eq`), and a covariant GADT
+      handler answers its program with no upcast; the row is still
+      invariant (a `compileErrors` pin)
+- [x] bytecode: `javap -c -p` of `Free`, `Free$`, the four cases and
+      `Effects$package$` — 0 differing lines between master and the
+      covariant build; the annotation lives in the Scala signature
+
+### Results — free-answer-variance (2026-09-23)
+
+**Landed as `Free[F[+_], +A]`.** The family compiled after four typing
+fixes, each a place where inference had leaned on invariance to pin
+an answer type:
+
+1. `Throws.runEither`: `handle(a)(a => pure(Right(a)))` inferred the
+   handler's `B` as `Right[E, A]` from its first lambda (the covariant
+   result no longer forces `B` from the expected `Either[E, A] ! F`),
+   and the second lambda's `Left` failed — `pure[F, Either[E, A]]` on
+   both.
+2. `TestDirectOnce`: a GADT match inside a `direct` block at an
+   abstract `X` whose FIRST arm is concrete (`!State.modify[Long]`)
+   now types the match at `Long` — ascribed `(e match …): X`. The one
+   user-visible cost, and it is the shape the test itself calls "the
+   one mark".
+3. The `direct` macro compared a marked value's element to the
+   block's by `=:=` in two places (DirectRow.narrowRow, DirectVals);
+   an inlined `raise[E, Unit](e)` is now an `Inject[Throws % E,
+   Nothing]` — the body types at `Nothing` because covariance lets it
+   — so the comparison is `<:<`.
+
+No interpreter helper was needed: the row spike's "fresh subtype per
+level" did not bite here, because a rewrite's result `Free[F, A']`
+with `A' <: A` IS the `Free[F, A]` wanted, by the very covariance being
+added. The number: bytecode identical (box 4), three `Bind`s per
+program fewer where the doors were.
 
 ## rowlift (2026-09-08): moving an operation into a wider row, for free
 

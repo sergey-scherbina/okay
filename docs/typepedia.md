@@ -144,7 +144,9 @@ same material with the measurements attached.
   encoding cannot leak into inference).
 - **`!.relay`** — tail-resumptive handling; **`Effects.handle`** —
   abortive/multi-shot/forwarding; **`!.widen`** — effect-row
-  subsumption (Free is invariant, so it walks the tree).
+  subsumption (Free is invariant in its ROW, so it walks the tree;
+  it is covariant in its ANSWER, so `Int ! F` is an `Any ! F` for
+  free — free-answer-variance).
 
 - **`Handled[Row, R, A]`** and **`Stager[Row, R]`** (Staged.scala;
   specs/direct-staged.md, direct-stagers.md) — a staged block's

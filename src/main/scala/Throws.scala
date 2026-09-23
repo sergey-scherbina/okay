@@ -33,8 +33,10 @@ inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
 
 /** handle Throws by aborting into Either, forwarding the effects F */
 inline def runEither[A, F[+_], E](a: A ! Throws % E + F): Either[E, A] ! F =
-  Effects[Free].handle[Throws % E, F](a)(a => pure(Right(a))):
-    [X] => e => shift(_ => pure(Left(e.e)))
+  // `B` pinned: with `Free[F, +A]` the first lambda alone would infer
+  // it as `Right[E, A]` (free-answer-variance, 2026-09-23)
+  Effects[Free].handle[Throws % E, F](a)(a => pure[F, Either[E, A]](Right(a))):
+    [X] => e => shift(_ => pure[F, Either[E, A]](Left(e.e)))
 
 /** handle Throws into the throws union (an Either already is one) */
 inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): (A throws E) ! F =

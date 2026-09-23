@@ -67,12 +67,14 @@ type Test = Writer % String + Reader % (Users, Feeds) + State % Long
 
 def test[X](e: Fetch[X]): X ! Test = direct:
   e.show.tell
-  e match
+  // `: X` since Free[F, +A] (free-answer-variance): the block's answer
+  // no longer pins the match's type, so its first arm (`Long`) would
+  (e match
     // the one mark: a GADT branch whose value IS the match's answer
     // types at the abstract X, where colouring cannot reach
     case Fetch.Time() => !State.modify[Long](_ + 10)
     case Fetch.User(t) => read[Users].get(t)
-    case Fetch.Feed(i) => read[Feeds].get(i)
+    case Fetch.Feed(i) => read[Feeds].get(i)): X
 
 object Runner:
   /** the calls a program made, and its answer */

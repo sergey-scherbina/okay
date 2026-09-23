@@ -268,8 +268,11 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     def refuse: Nothing = report.errorAndAbort(
       s"the marked value has type ${m.tpe.show} — neither this block's " +
         s"${TypeRepr.of[F].appliedTo(elem.widen).show} nor an operation of its row ${row.show}", at)
+    // the element by SUBTYPING, not equality (free-answer-variance,
+    // 2026-09-23): `Free[F, +A]`, so an inlined `raise[E, Unit](e)` is
+    // an `Inject[Throws % E, Nothing]`, and `Nothing ! r` IS a `Unit ! r`
     val narrow: Option[TypeRepr] = m.tpe.widen.dealias.baseType(freeClass) match
-      case AppliedType(_, List(r, e)) if e.widen =:= elem.widen => Some(r)
+      case AppliedType(_, List(r, e)) if e.widen <:< elem.widen => Some(r)
       case _ => None
     narrow match
       case None => refuse
