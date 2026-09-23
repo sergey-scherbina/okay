@@ -98,7 +98,33 @@ rest, and everything derives — `cut`, `ifte` (soft cut /
 negation-as-failure), `interleave` and `fairBind` (fair search: two
 infinite branches take turns, so a witness is found where the plain
 bind diverges), `observe(n)`. A `LazyList` of alternatives is an
-infinite choice point. And the typeclass hierarchy earns its keep in
+infinite choice point.
+
+**Probabilistic programming is a weighted choice, and inference is a
+HANDLER over it** — the Hansei design (Kiselyov & Shan, "Embedded
+probabilistic programming", DSL 2009). `Prob.dist` names the choice,
+`Prob.observe` conditions on evidence (a false observation prunes the
+branch — no alternatives, zero weight, exactly `Choose`'s own `empty`),
+and `Prob.runExact` answers the full posterior by EXHAUSTIVE MULTI-SHOT
+capture — the one thing a one-shot effect runtime cannot host at all:
+
+```scala
+import Prob.*
+val wetGrass: Boolean ! Dist =
+  for
+    rain <- dist(true -> 0.3, false -> 0.7)
+    sprinkler <- dist(true -> 0.4, false -> 0.6)
+    _ <- observe(rain || sprinkler)
+  yield rain
+!.run(runExact[Boolean, okay.Pure](wetGrass)).posterior(true)   // 15.0/29.0
+```
+
+`Prob.runRejection` is the other reading of the same program — single-
+shot, comonadic sampling, no capture at all — and both agree on the
+textbook wet-grass Bayes net and a small two-state HMM, checked
+against hand-computed posteriors (specs/prob-effect-hansei.md).
+
+And the typeclass hierarchy earns its keep in
 the generic combinators — `traverse`/`sequence`/`replicateA`,
 `guard` (the pruning conditional of every search), `*>`/`<*`,
 `whenS`/`unlessS` — written once, running over any instance. The rung
