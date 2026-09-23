@@ -1,0 +1,6 @@
+feature/ctx-reader-bridge 2026-09-23T07:28:12Z
+agent: claude-code
+heartbeat: 2026-09-23T07:28:12Z
+status: in-progress
+done-so-far: nothing yet
+next: specs/context-functions.md bridge section; Reader.fromCtx/toCtx + scoped Conversions; TestReaderBridge; guide §9; changelog
