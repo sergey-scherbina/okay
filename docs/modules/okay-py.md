@@ -278,6 +278,13 @@ val env = PyEnv(python = "3.12", packages = Map("six" -> "1.16.0"), cache = Some
 
 ## Programs as data, multi-shot, and Haskell
 
+`OkayEff` (shipped beside `Okay.hs`) types a Haskell program by its
+effects: `Eff '[Shop] a`, `send (PriceOf sku)`. `Hs.ops(name, callbacks)`
+writes the effect's GADT and wire instance from the Scala callbacks, and
+GHC refuses an undeclared effect by name. See
+[typed by their effects](../python-and-r.md#haskell-programs-typed-by-their-effects).
+
+
 `Py.program[Out]("mod:f").calling(cbs)(args)` starts a Python function
 that returns a program built from `okay.done` and
 `okay.perform(name, ...).then(f)`. The worker keeps each continuation by

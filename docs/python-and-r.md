@@ -192,6 +192,43 @@ running. R has it too (`okay_done`, `okay_perform`, `okay_then`, and
 `R.program`), with R closures as the continuations. The protocol is
 [specs/remote-foreign.md](../specs/remote-foreign.md).
 
+### Haskell programs typed by their effects
+
+`perform "price_of" [sku]` names the operation by a string and answers an
+untyped `Value`. GHC checks neither. The jar also ships `OkayEff`, where
+an effect is a GADT of its operations, and a program carries the effects
+it may perform in its TYPE, as in freer-simple or polysemy. You do not
+write the GADT. `Hs.ops` writes it from the Scala callbacks that answer
+the operations:
+
+```scala
+  val priceOf = Py.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+```
+
+`Hs.ops("Shop", Py.callbacks(priceOf, discount))` is a module `Shop` with
+`data Shop a where PriceOf :: String -> Shop Double; Discount :: Double -> Shop Double`
+and its wire instance. The Haskell program declares `Shop` in its type:
+
+```haskell
+total :: String -> Integer -> Eff '[Shop] Double
+total sku qty = do
+  price <- send (PriceOf sku)
+  send (Discount (price * fromInteger qty))
+```
+
+- **An undeclared effect.** If `Shop` is left out of the list,
+  compilation fails with GHC saying *this program does not declare the
+  effect Shop*, not with an obscure missing instance.
+- **Wrong types.** `send (PriceOf qty)` fails with a type mismatch, and
+  `price` is a `Double` because the Scala callback answers one.
+- **Serving it.** `program (total ...)` is an ordinary `Prog Value`, so
+  `serve`, the wire, multi-shot continuations and `Durable` are
+  unchanged. Untyped programs keep working.
+
+Frege, the Haskell on the JVM, cannot go this far: it has no type-level
+lists, so there an operation's answer is typed and the set of operations
+is not ([where each language names okay's effects](jvm-languages.md#where-each-language-names-okays-effects)).
+
 ## The rest of the toolkit
 
 Each of these has a section with its tests in
@@ -306,6 +343,7 @@ backlog as additional engines behind the same interface.
 - Gordon Plotkin, Matija Pretnar. *[Handling algebraic effects.](https://doi.org/10.2168/LMCS-9(4:23)2013)* LMCS 2013. A callback is an operation, and the okay side is its handler.
 - Ana Lúcia de Moura, Roberto Ierusalimschy. *[Revisiting coroutines.](https://doi.org/10.1145/1462166.1462167)* TOPLAS 2009. The waiting Python frame is an asymmetric coroutine, resumed once.
 - Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible effects.](https://doi.org/10.1145/2804302.2804319)* Haskell 2015. The program-as-data shape the dialogue walks.
+- Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an alternative to monad transformers.](https://doi.org/10.1145/2503778.2503791)* Haskell 2013. A program indexed by the effects it may perform, and `Member`: `OkayEff`'s shape.
 - Martin Fowler. *[Event sourcing.](https://martinfowler.com/eaaDev/EventSourcing.html)* 2005. Why a journal of answers is enough to replay a program.
 
 The whole design, stage by stage, with what was found and refuted on the

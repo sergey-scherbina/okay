@@ -66,22 +66,22 @@ may be continued any number of times.
 string and answers an untyped `Value`, so GHC checks neither. Haskell can
 check both, the way freer-simple and polysemy do:
 
-- [ ] `OkayEff` (shipped beside `Okay.hs`) defines `Eff (effs :: [Type -> Type]) a`
+- [x] `OkayEff` (shipped beside `Okay.hs`) defines `Eff (effs :: [Type -> Type]) a`
       over `Prog`, and `send :: (Member op effs, Wire op) => op a -> Eff effs a`.
       An effect is a GADT of its operations, each typed by its argument and
       its answer.
-- [ ] `Member` is a closed type family. A `send` of an effect the program
+- [x] `Member` is a closed type family. A `send` of an effect the program
       did not declare does not compile, and GHC's message NAMES the
       missing effect (a `TypeError`), rather than failing to find an
       instance.
-- [ ] `Wire op` carries an operation across okay's wire: its name and
+- [x] `Wire op` carries an operation across okay's wire: its name and
       arguments, and its typed answer. `FromValue`/`ToValue` cover
       Integer, Double, Bool, String, lists, `Maybe` and `Value`.
-- [ ] `Hs.ops(name, callbacks)` writes the effect's Haskell module, the
+- [x] `Hs.ops(name, callbacks)` writes the effect's Haskell module, the
       GADT and its `Wire` instance, from the Scala callbacks' Schemas, as
       `Ts.ops` does for TypeScript. A type outside that list is `Value`,
       open and said so.
-- [ ] (Live, GHC) A typed program runs in the worker under the Scala
+- [x] (Live, GHC) A typed program runs in the worker under the Scala
       caller's Reader. GHC refuses an undeclared effect, naming it, and
       refuses a wrong argument type. Untyped `Okay` programs are
       unchanged.
@@ -120,3 +120,22 @@ check both, the way freer-simple and polysemy do:
   test fails.
 - The shims move to Python 6 and R 7. `PySubprocess.speaking(command)`
   runs any process that speaks the okay wire.
+
+- hs-typed-effects (2026-09-23).
+  - `OkayEff.hs` (base only, GHC 9.14) has `Eff effs a` over `Prog`,
+    `send`, `Member` as a closed type family with a `TypeError` for the
+    empty list, `Wire`, and `FromValue`/`ToValue` for Integer, Double,
+    Bool, String, lists, Maybe and Value.
+  - `HaskellWorker.build` writes it beside `Okay.hs`. `Hs.ops` writes the
+    effect module from `Py.callback`s, which carry their Schemas since
+    ts-typed-effects.
+  - TestHaskellTypedEffects (Live, GHC) covers:
+    - the generated GADT;
+    - a typed program under the Scala Reader (6.0);
+    - GHC refusing `Eff '[]` with "this program does not declare the
+      effect Shop";
+    - GHC refusing `PriceOf qty` as a type mismatch.
+
+    TestHaskellProgram (untyped) passes unchanged.
+  - Mutant: `Member op '[] = ()` lets the undeclared program compile, and
+    the refusal test fails.

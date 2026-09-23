@@ -299,11 +299,11 @@ much of that reaches the other language differs:
 | TypeScript | the operations and their signatures, `Prog<T, ShopOps>` / `effects<ShopOps>()`, generated from the Scala callbacks by `Ts.ops` ([details](typescript.md#a-programs-effects-in-its-type)) | the type, checked by tsc |
 | Frege | each operation's ANSWER, `perform :: Operation a -> Prog a`; `Prog a` has no row | `Frege.run[F, A]` in Scala, checked per operation at run time |
 | Clojure | nothing; a program is data | `Program.run[F, A]` in Scala, checked per operation at run time |
-| Haskell (GHC worker), Python, R | nothing; an operation is a name | the callbacks the Scala side offers, checked by name at run time |
+| Haskell (GHC worker) | the effects and their operations, `Eff '[Shop] Double` with `send (PriceOf sku)`; the effect's GADT generated from the Scala callbacks by `Hs.ops` ([details](python-and-r.md#haskell-programs-typed-by-their-effects)); untyped `perform` by name still works | the type, checked by GHC |
+| Python, R | nothing; an operation is a name | the callbacks the Scala side offers, checked by name at run time |
 
 Frege has no type-level lists, so the typed answer is as far as it can
-go. For GHC a row-indexed `Prog` is possible and is in the backlog
-(hs-typed-effects).
+go.
 
 ### Bridging a language this guide does not cover
 
