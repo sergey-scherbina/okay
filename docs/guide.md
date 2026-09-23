@@ -547,8 +547,10 @@ Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))   // (Seq((
 Writer.run(through(lines("host: a"))(header))                          // (Seq((host,a)), Left(1))
 ```
 
-`transduce` is this with a step that never answers `Right`. And the
-consumer end of `pipe` has the same door: `Take.foldUntil(using fo)`
+`transduce` is this with a step that never answers `Right`; the
+server-driven UI session (`Wire.serveClosing`, okay-ui) is one — the
+state is the server's own plus the tree it showed, `Right` on a Close
+from either side. And the consumer end of `pipe` has the same door: `Take.foldUntil(using fo)`
 is a `FoldUntil` as a consumer PROGRAM — an iteratee, written over
 `!.loop` — so `pipe(producer)(Take.foldUntil(using fo))` is
 `Writer.foldUntil(producer)(using fo)` by the coroutine road, pulling

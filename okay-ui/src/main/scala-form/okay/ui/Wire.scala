@@ -77,17 +77,19 @@ object Wire {
                       (update: (S, Event) => (S, Boolean)): Stage[String, String, S] =
     def shownView(v: Set[String]): S => Ui = s => Ui.lower(view(s), v)
 
-    def loop(v: Set[String], s: S, shown: Ui): Stage[String, String, S] =
-      Stage.await[String, String].flatMap {
-        case None => pure(s)
-        case Some(line) => step(v, s, shown, line)
-      }
-
-    def step(v: Set[String], s: S, shown: Ui, line: String): Stage[String, String, S] =
+    // The session is ONE `Stage.transduceUntil` (specs/fold-until.md
+    // stage 3; wire-serve-transduce-until): the state is what the
+    // server remembers between lines — its own state and the tree it
+    // showed — a `Left` carries on with the next, a `Right` is the
+    // session's answer, and the input ending is `end`, the state's own
+    // half. It was a hand-written `loop`/`step` pair before, found by
+    // loop-audit counting the doors.
+    def step(v: Set[String])(state: (S, Ui), line: String): Stage[String, String, Either[(S, Ui), S]] =
+      val (s, shown) = state
       Protocol.parse(line) match
-        case None => loop(v, s, shown)                                // damage is dropped
-        case Some(Msg.Close) | Some(Msg.Event(Event.Closed)) => pure(s)
-        case Some(Msg.Event(e)) if !permitted(shown, e) => loop(v, s, shown)   // forged is dropped
+        case None => pure(Left(state))                                       // damage is dropped
+        case Some(Msg.Close) | Some(Msg.Event(Event.Closed)) => pure(Right(s))
+        case Some(Msg.Event(e)) if !permitted(shown, e) => pure(Left(state)) // forged is dropped
         case Some(Msg.Event(e)) =>
           val (s2, done) = update(s, e)
           val next = shownView(v)(s2)
@@ -97,16 +99,23 @@ object Wire {
             case _ => pure(())
           if done then
             tell(patches).flatMap(_ => Stage.tell[String, String](Protocol.line(Msg.Close)))
-              .flatMap(_ => pure(s2))
-          else tell(patches).flatMap(_ => loop(v, s2, next))
-        case Some(_) => loop(v, s, shown)                             // a second hello, a stray tree: ignored
+              .map(_ => Right(s2))
+          else tell(patches).map(_ => Left((s2, next)))
+        case Some(_) => pure(Left(state))                                    // a second hello, a stray tree: ignored
+
+    def session(v: Set[String], state: (S, Ui)): Stage[String, String, S] =
+      Stage.transduceUntil[String, String, (S, Ui), S](state)(step(v), _._1)
 
     def start(v: Set[String], pending: Option[String]): Stage[String, String, S] =
       val first = shownView(v)(init)
       Stage.tell[String, String](Protocol.line(Msg.Tree(first))).flatMap { _ =>
         pending match
-          case Some(line) => step(v, init, first, line)
-          case None => loop(v, init, first)
+          // the line that arrived before any hello is the first step
+          case Some(line) => step(v)((init, first), line).flatMap {
+            case Left(state) => session(v, state)
+            case Right(s) => pure(s)
+          }
+          case None => session(v, (init, first))
       }
 
     Stage.await[String, String].flatMap {

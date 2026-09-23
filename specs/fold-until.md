@@ -325,6 +325,17 @@ needed the same separate-extension-block shape as the effectful
 `.foldUntil`: `xs.foldUntilTo(using fo)` on the `foldTo` block was
 handed a fold where a `Foldable` was expected.
 
+Stage 3's first production consumer (wire-serve-transduce-until,
+2026-09-23): `Wire.serveClosing` — the server-driven UI session,
+lines in, lines out — was a hand-written `loop`/`step` pair over
+`Stage.await` with state `(vocab, s, shown)`; it is one
+`Stage.transduceUntil((init, first))(step(v), _._1)` now, `Left` for a
+dropped line (damage, a forged key, a stray hello) and for an event's
+patches, `Right(s)` on a `Close` from either side, `end = _._1` when
+the line stream ends. The line that arrives before any hello is
+stepped once before the session starts. Six wire suites unchanged,
+29 green.
+
 Unboxed (2026-09-22, fold-until-unboxed; `compare/FoldUntilBoxBenchmark`,
 10k Longs in chunks of 64, summing into a Long, the fold as DATA, the
 stop never firing; three rounds, the third on a quiet box — sbt=0,
