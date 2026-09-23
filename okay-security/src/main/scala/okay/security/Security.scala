@@ -82,14 +82,16 @@ enum Verified:
  * The platform seam: every primitive stage 0 needs, and nothing
  * more. Given on the JVM over JCA; a node:crypto given is the
  * security-node stage. The model above never touches a platform API.
+ * The four primitives (MAC, hash, KDF, randomness) are okay-crypto's
+ * `Crypto`, which this extends: a security `Crypto` serves wherever
+ * that one is asked (okay-pg's SCRAM).
  */
-trait Crypto:
-  def hmacSha256(key: Array[Byte], data: Array[Byte]): Array[Byte]
-  def sha256(data: Array[Byte]): Array[Byte]
+trait Crypto extends okay.crypto.Crypto:
+  // hmacSha256, sha256, pbkdf2, randomBytes: the primitive seam's
+  // (okay-crypto), inherited — implemented ONCE per platform there and
+  // delegated to by this module's givens (security-crypto-dedup)
   def signRsaSha256(key: Crypto.Handle, data: Array[Byte]): Array[Byte]
   def verifyRsaSha256(key: Crypto.Handle, data: Array[Byte], sig: Array[Byte]): Boolean
-  def pbkdf2(password: Array[Char], salt: Array[Byte], iterations: Int, bits: Int): Array[Byte]
-  def randomBytes(n: Int): Array[Byte]
   /** an RSA public key from its material (a JWKS entry's n and e) —
    * None where the platform cannot build one, which is what makes
    * JWKS parseable on every platform and verifying where keys exist */

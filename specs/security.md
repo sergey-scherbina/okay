@@ -481,6 +481,15 @@ object OAuth2:                           // the client flows, over trait Http
   beside okay-ui's wire)
 
 ## Decisions
+- **One implementation of the primitives** (security-crypto-dedup,
+  2026-09-23). `okay.security.Crypto extends okay.crypto.Crypto`; the
+  MAC/hash/KDF/randomness are okay-crypto's givens, delegated to, and
+  this module owns only signing. security-crypto-split (2026-09-01)
+  had made okay-crypto for okay-pg and left a second copy here — the
+  two had already drifted (only this copy cleared the PBKDF2 password
+  spec; the survivor clears it now). `TestCryptoSeam`, shared, pins
+  the vectors on the JVM AND on Node, which okay-crypto's JS leg had
+  never had outside the live SCRAM battery.
 - **Zero dependencies, so PBKDF2** — the JDK's own KDF. Argon2 is
   better and is a dependency; it becomes a satellite for NEW password
   stores, and the stored-form-carries-parameters rule means adopting

@@ -20,7 +20,8 @@ private trait NodeCrypto extends js.Object:
   def pbkdf2Sync(password: String, salt: Int8Array, iterations: Int, keylen: Int, digest: String): Uint8Array = js.native
   def randomBytes(n: Int): Uint8Array = js.native
 
-given Crypto = new Crypto:
+/** named for the reason the JVM leg's is: okay-security delegates here */
+given platform: Crypto = new Crypto:
   private val crypto: NodeCrypto = js.Dynamic.global.require("crypto").asInstanceOf[NodeCrypto]
 
   private def bytesOf(u: Uint8Array): Array[Byte] =

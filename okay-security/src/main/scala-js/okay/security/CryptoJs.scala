@@ -1,9 +1,5 @@
 package okay.security
 
-import scala.scalajs.js
-import scala.scalajs.js.annotation.JSImport
-import scala.scalajs.js.typedarray.Uint8Array
-
 /**
  * The Crypto seam over node:crypto — the security-node stage. What
  * Node has natively is real here: HMAC-SHA256, SHA-256, PBKDF2,
@@ -14,40 +10,16 @@ import scala.scalajs.js.typedarray.Uint8Array
  * service-to-service case (HS256, passwords, API keys, PKCE) is what
  * this stage serves, and serves fully.
  */
-/** a node:crypto Hash/Hmac: update, then a Buffer (a Uint8Array) */
-@js.native
-private trait NodeHash extends js.Object:
-  def update(data: Uint8Array): NodeHash = js.native
-  def digest(): Uint8Array = js.native
-
-@js.native @JSImport("crypto", JSImport.Namespace)
-private object NodeCrypto extends js.Any:
-  def createHmac(alg: String, key: Uint8Array): NodeHash = js.native
-  def createHash(alg: String): NodeHash = js.native
-  def pbkdf2Sync(password: String, salt: Uint8Array, iterations: Int,
-                 keylen: Int, digest: String): Uint8Array = js.native
-  def randomBytes(n: Int): Uint8Array = js.native
-
 given Crypto = new Crypto:
 
-  private def toBytes(u: Uint8Array): Array[Byte] =
-    val out = new Array[Byte](u.length)
-    var i = 0
-    while i < u.length do { out(i) = u(i).toByte; i += 1 }
-    out
-
-  private def ofBytes(a: Array[Byte]): Uint8Array =
-    val u = new Uint8Array(a.length)
-    var i = 0
-    while i < a.length do { u(i) = (a(i) & 0xff).toShort; i += 1 }
-    u
-
-  def hmacSha256(key: Array[Byte], data: Array[Byte]): Array[Byte] =
-    toBytes(NodeCrypto.createHmac("sha256", ofBytes(key))
-      .update(ofBytes(data)).digest())
-
-  def sha256(data: Array[Byte]): Array[Byte] =
-    toBytes(NodeCrypto.createHash("sha256").update(ofBytes(data)).digest())
+  // the four primitives are okay-crypto's node:crypto leg, not a
+  // second binding of the same module (security-crypto-dedup)
+  private val primitives = okay.crypto.platform
+  def hmacSha256(key: Array[Byte], data: Array[Byte]): Array[Byte] = primitives.hmacSha256(key, data)
+  def sha256(data: Array[Byte]): Array[Byte] = primitives.sha256(data)
+  def pbkdf2(password: Array[Char], salt: Array[Byte], iterations: Int, bits: Int): Array[Byte] =
+    primitives.pbkdf2(password, salt, iterations, bits)
+  def randomBytes(n: Int): Array[Byte] = primitives.randomBytes(n)
 
   def signRsaSha256(key: Crypto.Handle, data: Array[Byte]): Array[Byte] =
     // a broken invariant, not hostile input: no RSA key can even be
@@ -58,17 +30,6 @@ given Crypto = new Crypto:
   def verifyRsaSha256(key: Crypto.Handle, data: Array[Byte],
                       sig: Array[Byte]): Boolean =
     false   // a refusal: no verifiable key exists on this platform
-
-  def pbkdf2(password: Array[Char], salt: Array[Byte],
-             iterations: Int, bits: Int): Array[Byte] =
-    // node takes the password as a string; the JVM side's
-    // clear-after-use has no equivalent here, which is the platform's
-    // cost, not the model's
-    toBytes(NodeCrypto.pbkdf2Sync(String(password), ofBytes(salt),
-      iterations, bits / 8, "sha256"))
-
-  def randomBytes(n: Int): Array[Byte] =
-    toBytes(NodeCrypto.randomBytes(n))
 
   def rsaPublicKey(modulus: BigInt, exponent: BigInt): Option[Crypto.Handle] =
     None   // RS256 is JVM until a JWK-native verify arrives

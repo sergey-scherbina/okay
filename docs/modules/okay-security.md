@@ -23,6 +23,12 @@ Node via node:crypto — HS256 JWTs, passwords, API keys, PKCE pinned
 to the RFC 7636 vector. RS256 stays JVM: platform key types are an
 opaque `Crypto.Handle`, built only where material exists.
 
+`okay.security.Crypto` EXTENDS [`okay-crypto`](okay-crypto.md)'s
+primitive seam: the MAC, hash, KDF and randomness are okay-crypto's
+implementation, once per platform, and this module adds only the
+signing surface (RSA/ECDSA, JWKS key handles). So a security `Crypto`
+is also an `okay.crypto.Crypto` — pass it to okay-pg's SCRAM as is.
+
 | `Oidc` | user login: discovery, the code+PKCE url with nonce, callback validating the id_token (signature via JWKS, issuer, audience, nonce, at_hash) into a Principal — every forgery refused by name |
 
 Staged next (BACKLOG): ES256 and an argon2 satellite.

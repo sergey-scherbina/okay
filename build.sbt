@@ -1896,7 +1896,7 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
 lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-security"))
-  .dependsOn(okayHttp, okayData)
+  .dependsOn(okayHttp, okayData, okayCrypto)   // the four primitives are okay-crypto's (security-crypto-dedup)
   .settings(
     name := "okay-security",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
