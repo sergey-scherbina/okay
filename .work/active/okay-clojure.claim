@@ -1,6 +1,0 @@
-feature/okay-clojure 2026-09-23T06:16:15Z
-agent: claude-code
-heartbeat: 2026-09-23T06:16:15Z
-status: in-progress
-done-so-far: design
-next: specs/clojure.md; okay-clojure (JVM): Clj interop + Stage <-> transducer, law tests vs (into [] xf coll)
