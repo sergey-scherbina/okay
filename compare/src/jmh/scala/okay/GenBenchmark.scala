@@ -65,6 +65,30 @@ class GenBenchmark {
   def writerUnfoldFoldUntil: List[Long] =
     !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Nothing](prog)(using summon, collecting))
 
+  /** gen-read-stop-residual: the SAME `prog`, widened ONLY by Stop
+   * (`.plus[Stop]`, what `Gen.of` does) and read through `Gen.foldUntil`
+   * — isolates the row-width cost (the Stop arm in every split) from
+   * whatever `unfold`'s own shape (Free.delay per step, Chain/Xf) adds */
+  @Benchmark
+  def genOfToList: List[Long] = Gen.of(prog).toList
+
+  /** the second isolation: `unfold`'s OWN generative shape — a step
+   * function `S => Option[(W, S)]`, which boxes an `Option`, a
+   * `Tuple2` and (for a `Long` state/element) two `Long`s per step —
+   * written directly for `Writer % Long`, NO Stop anywhere. If this
+   * reads close to `genUnfoldToList` and NOT to `prog`, the tax is
+   * `unfold`'s signature, not Gen's row */
+  def progUnfoldShaped: Unit ! Writer % Long =
+    def go(s: Long): Unit ! Writer % Long = Free.delay(() =>
+      (if s < n then Some((s, s + 1)) else None) match
+        case Some((w, s2)) => Writer.tell(w).flatMap(_ => go(s2))
+        case None => pure(()))
+    go(0L)
+
+  @Benchmark
+  def writerUnfoldShapedFoldUntil: List[Long] =
+    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Nothing](progUnfoldShaped)(using summon, collecting))
+
   // ---- the pipeline
 
   @Benchmark

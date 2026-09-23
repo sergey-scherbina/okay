@@ -230,10 +230,14 @@ thunk per rejected one; a budget that recursed straight through up to
 SLOWER — the runner's trampoline beats a call chain through `split`'s
 closure — and was not kept. The rest is `gen-chain-fusion`'s question
 (the filter fused into the reader, no program between). Between
-them, `Gen.read` over `Writer.foldUntil` on the same program is +40%
-and +24 B/elem — the `Stop` arm in every `split` (a second `TypeableK`
-test per element, the `typeablek-instanceof` residual) plus the
-non-inline walk's per-element closure; `take` re-emits and costs
-+15% / +56 B. `Writer.run` and `Source.runCollect` sit at parity in
+them, `Gen.unfold.toList` over `Writer.foldUntil` on the same program
+is +40% and +24 B/elem — REFUTED as a Stop-row cost
+(gen-read-stop-residual, 2026-09-23): `Gen.of(prog)`, the identical
+`prog` widened by `Stop` and nothing else, allocates LESS than the
+Stop-free `Writer.foldUntil` floor. The whole gap is `unfold`'s own
+`S => Option[(W, S)]` step — an `Option`+`Tuple2`+two boxed `Long`s
+per step, Scala's own `unfold` convention, not worth avoiding for a
+scalar-state benchmark shape production code rarely hits. `take`
+re-emits and costs +15% / +56 B. `Writer.run` and `Source.runCollect` sit at parity in
 time; the Vector road allocates 28 B/elem less than a `delay`-per-step
 program collected into a `List`.

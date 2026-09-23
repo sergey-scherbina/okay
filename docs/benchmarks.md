@@ -5080,12 +5080,26 @@ still be trusted on. Rows in `src/jmh/history.tsv` as `gj-*`
 
 `Gen.iterator` allocates what `Writer.run` allocates, to the byte;
 `toList`'s 48 B/elem over it is the `List` cons and the reverse.
-`Gen.read` over `Writer.foldUntil` on the same program is +40% /
-+24 B/elem: the `Stop` arm in every `split` and the non-inline walk's
-per-element closure — the price of the early end being a member of
-the row. Read a generator through `iterator`, `first`, `find` or
-`exists` when the answer is not a list; those stop where the answer
-is.
+`Gen.unfold.toList` over `Writer.foldUntil` on the same program IS
++40% / +24 B/elem — but not for the reason first written down here.
+gen-read-stop-residual (2026-09-23) isolated it: `Gen.of(prog)` — the
+SAME `prog`, widened by `Stop` and nothing else, read through the
+same `Gen.foldUntil` — allocates **1 917 025 B**, LESS than the
+Stop-free `Writer.foldUntil` floor (2 153 945). Widening a row by
+`Stop` costs nothing; the "Stop arm in every `split`" explanation was
+wrong, superseded by typeablek-instanceof without anyone re-measuring
+it. The whole +24 B/elem is `Gen.unfold`'s OWN signature — a step
+function `S => Option[(W, S)]`, which boxes an `Option`, a `Tuple2`
+and (for a scalar `Long` state) two `Long`s per step. An isolated
+Writer-only replica of that shape (no `Stop` anywhere) pays +71 B/elem
+over the same `Writer.foldUntil` floor for the identical reason.
+Nothing to fix: `Option[(W, S)]` is Scala's own `unfold` convention
+(`LazyList.unfold`, `Iterator.unfold` pay the same tax), and it only
+bites a scalar element/state — `prog`'s hand-written recursion, which
+every production `unfold` call with a non-primitive state already
+resembles, does not pay it. Read a generator through `iterator`,
+`first`, `find` or `exists` when the answer is not a list; those stop
+where the answer is.
 
 **The pipeline, from three walks to one read** — the same
 `Gen.unfold.map(_ * 2).filter(_ % 3 == 0).toList`, and its hand road
