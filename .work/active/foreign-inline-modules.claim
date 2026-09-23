@@ -1,3 +1,0 @@
-slug: foreign-inline-modules
-who: claude-opus-5.5 (interop session)
-what: Python/R source beside the Scala, literal-only, shipped as a module at worker start
