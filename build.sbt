@@ -223,7 +223,10 @@ ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "--exclud
  */
 ThisBuild / Test / parallelExecution := false
 addCommandAlias("integrationTest",
-  "; set every Test / testOptions := Seq(Tests.Argument(TestFrameworks.MUnit, \"--include-tags=Live\")); test")
+  "; set every Test / testOptions := Seq(Tests.Argument(TestFrameworks.MUnit, \"--include-tags=Live\")); test" +
+    // okay-ui-gtk's `test` only compiles (ui-gtk-integration); its suite
+    // runs here, by name, where the box has GTK at all
+    (if (gtkAvailable) "; okayUiGtk/testOnly okay.ui.gtk.TestGtk" else ""))
 
 /**
  * jdk17-compat-check (2026-09-19): "does this module actually RUN on
@@ -2627,6 +2630,20 @@ lazy val okayUiGtk = (project in file("okay-ui-gtk"))
     name := "okay-ui-gtk",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
     nativeConfig ~= { c => c.withLinkingOptions(c.linkingOptions ++ gtkLinkFlags) },
+    // INTEGRATION-ONLY (operator, 2026-09-23): TestGtk drives a real GTK
+    // widget tree through a linked Native binary, and twice in one day the
+    // gate hung at the Native runner's handshake with it — the binaries at
+    // 0.0% CPU, sbt's ComRunner blocked in a socket read, sixteen minutes
+    // until a human looked (backlog gate-watchdog-idle-sbt-cpu). Tagging the
+    // suite `Live` alone is not enough: munit builds the suite to list its
+    // tests, and the suite calls `Gtk.init()` as it is built, inside the
+    // binary. So the gate's `test` here COMPILES the tests — the warning
+    // check still sees them — and runs nothing; `integrationTest` runs the
+    // suite (Live-tagged) by name. specs/integration-test-gate.md.
+    Test / test := {
+      val _ = (Test / compile).value
+      streams.value.log.info("okay-ui-gtk: tests compiled; they RUN under `sbt integrationTest` (a real GTK display)")
+    },
   )
 lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) else Seq.empty
 

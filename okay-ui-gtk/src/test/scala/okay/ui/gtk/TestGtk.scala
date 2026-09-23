@@ -15,6 +15,11 @@ import scala.scalanative.unsigned.*
  */
 class TestGtk extends munit.FunSuite {
 
+  // integration-only (ui-gtk-integration): a real GTK widget tree through
+  // a linked Native binary — `sbt integrationTest` runs it, the gate
+  // compiles it (build.sbt says why)
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   import Ui.*
 
   val display: Boolean = Gtk.init()

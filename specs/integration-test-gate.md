@@ -175,3 +175,22 @@ gate. The real fix is to scope the snapshot to the paths the test
 itself creates, which is a change for whoever owns the module; a shared
 namespace compared across a parallel run cannot be made reliable by
 retrying it.
+
+## okay-ui-gtk runs under integrationTest only (ui-gtk-integration, 2026-09-23, operator)
+
+`TestGtk` drives a real GTK 4 widget tree through a linked Scala Native
+binary. Twice on 2026-09-23 a gate hung at the Native runner's handshake
+with it — both `okay-ui-gtk-test` binaries at 0.0% CPU, sbt's
+`ComRunner receiver` threads blocked in a socket read, sixteen minutes
+before a human looked — and the stall watchdog could not see it (backlog
+`gate-watchdog-idle-sbt-cpu`). A suite whose outcome depends on the box
+(a display, GTK's own startup) is this spec's definition of Live.
+
+The `Live` tag alone does not keep it out: munit constructs a suite to
+list its tests, and `TestGtk` calls `Gtk.init()` as it is constructed —
+inside the Native binary the handshake hangs in. So the module's
+`Test / test` COMPILES its tests (the warning check still reads them)
+and runs nothing, and `integrationTest` runs the suite by name
+(`okayUiGtk/testOnly okay.ui.gtk.TestGtk`), where the box has GTK at all.
+The module stays in the root aggregate, so a change that breaks its
+compile still fails the gate.
