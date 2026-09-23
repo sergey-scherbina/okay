@@ -255,6 +255,30 @@ handler that resumes twice is refused by name, not answered wrongly.
       object (`collections:Counter`, `random:Random` seeded) and an R test
       holds an `lm` fit and calls `predict` on it.
 
+## Stage 4 — foreign-inline-modules
+
+### Behavior
+
+- [ ] `Py.module("scoring", """def score(xs): ...""")` and
+      `R.module("scoring", """score <- function(xs) ...""")`: Python or R
+      source written NEXT TO the Scala that calls it. The methods are
+      `inline` and REFUSE a source that is not a compile-time constant
+      (`requireConst`): an interpolated or computed string does not
+      compile. `PyModule`/`RModule` have private constructors, so there is
+      no other way to make one.
+- [ ] The engine SHIPS the modules at start
+      (`PySubprocess.start(..., modules = Seq(m))`, `PyWorkers.start`,
+      `RSubprocess.start`): Python gets them as files on its `PYTHONPATH`;
+      R `sys.source`s each into its own environment, and `resolve` finds
+      `module::fn` there before trying a package. No wire operation evals a
+      string: the "untrusted input reaches the interpreter only as data"
+      invariant of specs/py.md still holds, and the source is reviewed,
+      versioned code in the jar.
+- [ ] `m.fn[Out]("score")`, `m.hold("Model")`, `m.fn[Out]("fit").calling(cbs)`
+      address the module's functions without spelling its name twice.
+- [ ] A module name that is not an identifier is refused where the
+      module is made.
+
 ## Results
 
 - Stage 1 (foreign-journalled, 2026-09-23). Eight tests with no live
