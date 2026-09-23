@@ -43,7 +43,9 @@ enum PyValue:
  * process never held, and is refused by name. Durable programs keep
  * values, not handles.
  */
-final case class PyRef(id: Long, pyType: String):
+final case class PyRef(id: Long, pyType: String,
+                       /** the shape its methods speak: the API that held it */
+                       shape: Shape = Shape.python):
   /** a method of the held object, answering its value */
   def call[Out: okay.codec.Schema](method: String): PyRef.Method[Out] = PyRef.Method(this, method)
   /** a method of the held object whose result is HELD in turn */
@@ -51,7 +53,7 @@ final case class PyRef(id: Long, pyType: String):
   /** an attribute of the held object */
   def attr[Out: okay.codec.Schema](name: String): Either[Condition, Out] ! PyEval =
     okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Attr(this, name))
-      .map(_.flatMap(PyCodec.decode[Out](_)))
+      .map(_.flatMap(shape.decode[Out](_)))
   /** drop the object in the worker; idempotent */
   def release: Unit ! PyEval = okay.effect[PyEval, Unit](PyEval.Release(this))
   /** this object as a STATEFUL stage over chunks (foreign-streaming):
@@ -64,6 +66,7 @@ final case class PyRef(id: Long, pyType: String):
 
 object PyRef:
   final class Method[Out: okay.codec.Schema](ref: PyRef, name: String):
+    private given Shape = ref.shape
     def apply(): Either[Condition, Out] ! PyEval = go(Vector.empty)
     def apply[A: ToPy](a: A): Either[Condition, Out] ! PyEval = go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
@@ -71,9 +74,10 @@ object PyRef:
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[PyValue]): Either[Condition, Out] ! PyEval =
       okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Method(ref, name, args, hold = false))
-        .map(_.flatMap(PyCodec.decode[Out](_)))
+        .map(_.flatMap(ref.shape.decode[Out](_)))
 
   final class HoldMethod(ref: PyRef, name: String):
+    private given Shape = ref.shape
     def apply(): Either[Condition, PyRef] ! PyEval = go(Vector.empty)
     def apply[A: ToPy](a: A): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
@@ -81,17 +85,19 @@ object PyRef:
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! PyEval =
       okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Method(ref, name, args, hold = true))
-        .map(_.flatMap(Wire.asRef))
+        .map(_.flatMap(Wire.asRef).map(_.copy(shape = ref.shape)))
 
 /** how an argument becomes a `PyValue`: through its `Schema`, or as the
  * handle it is */
 trait ToPy[A]:
-  def py(a: A): PyValue
+  def py(a: A)(using Shape): PyValue
 
 object ToPy:
-  def apply[A](a: A)(using t: ToPy[A]): PyValue = t.py(a)
-  given ref: ToPy[PyRef] = PyValue.Ref(_)
-  given schema[A](using s: okay.codec.Schema[A]): ToPy[A] = PyCodec.encode(_)
+  def apply[A](a: A)(using t: ToPy[A], shape: Shape): PyValue = t.py(a)
+  given ref: ToPy[PyRef] with
+    def py(a: PyRef)(using Shape): PyValue = PyValue.Ref(a)
+  given schema[A](using s: okay.codec.Schema[A]): ToPy[A] with
+    def py(a: A)(using shape: Shape): PyValue = shape.encode(a)
 
 /** a columnar frame — dict-of-lists on the far side */
 final case class PyFrame(cols: Vector[(String, Vector[PyValue])]):

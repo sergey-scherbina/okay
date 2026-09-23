@@ -180,7 +180,7 @@ object Py {
 
   private val runIds = java.util.concurrent.atomic.AtomicLong()
 
-  final class ProgramOf[Out: Schema](address: String):
+  final class ProgramOf[Out: Schema](address: String)(using shape: Shape):
     def calling[F[+_]](cbs: Callbacks[F]): Starting[F] = Starting(cbs)
 
     final class Starting[F[+_]](cbs: Callbacks[F]):
@@ -191,7 +191,7 @@ object Py {
 
   /** one run of a program-as-data: the okay program that walks it, and
    * the release of the continuations the far side keeps for it */
-  final class PyRun[F[+_], Out: Schema](val id: Long, address: String, args: Vector[PyValue], cbs: Callbacks[F]):
+  final class PyRun[F[+_], Out: Schema](val id: Long, address: String, args: Vector[PyValue], cbs: Callbacks[F])(using shape: Shape):
     type R = F + PyEval
 
     /** walk the far program node by node; each named operation is a
@@ -199,7 +199,7 @@ object Py {
     def program: Either[Condition, Out] ! R =
       def step(e: Either[Condition, PyNode]): Either[Condition, Out] ! R = e match
         case Left(c) => pure[R, Either[Condition, Out]](Left(c))
-        case Right(PyNode.Done(v)) => pure[R, Either[Condition, Out]](PyCodec.decode[Out](v))
+        case Right(PyNode.Done(v)) => pure[R, Either[Condition, Out]](shape.decode[Out](v))
         case Right(PyNode.Perform(name, as, k)) => cbs.get(name) match
           case None => pure[R, Either[Condition, Out]](Left(Condition("NoCallback",
             s"'$name' is not among this program's callbacks (${cbs.names.mkString(", ")})")))
@@ -234,14 +234,14 @@ object Py {
    */
   def hold(address: String): Hold = Hold(address)
 
-  final class Hold(address: String):
+  final class Hold(address: String)(using shape: Shape):
     def apply(): Either[Condition, PyRef] ! PyEval = go(Vector.empty)
     def apply[A: ToPy](a: A): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! PyEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! PyEval =
-      effect[PyEval, Either[Condition, PyRef]](PyEval.Hold(address, args))
+      effect[PyEval, Either[Condition, PyRef]](PyEval.Hold(address, args)).map(_.map(_.copy(shape = shape)))
 
   /**
    * A callback Python may call by name while okay runs one of its
@@ -260,14 +260,14 @@ object Py {
    * several effects: callbacks are programs, and a program has one row) */
   def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Callbacks(cbs.toVector)
 
-  final class CallbackOf[Arg: Schema, Res: Schema](name: String):
+  final class CallbackOf[Arg: Schema, Res: Schema](name: String)(using shape: Shape):
     def apply[F[+_]](f: Arg => Res ! F): Callback[F] = Callback(name, args =>
       val in = args match
-        case Vector(one) => PyCodec.decode[Arg](one)
-        case many => PyCodec.decode[Arg](PyValue.Arr(many))
+        case Vector(one) => shape.decode[Arg](one)
+        case many => shape.decode[Arg](PyValue.Arr(many))
       in match
         case Left(c) => pure[F, Either[Condition, PyValue]](Left(c))
-        case Right(i) => f(i).map(o => Right(PyCodec.encode(o))))
+        case Right(i) => f(i).map(o => Right(shape.encode(o))))
 
   final class Callback[F[+_]](val name: String, val run: Vector[PyValue] => Either[Condition, PyValue] ! F)
 
@@ -275,7 +275,7 @@ object Py {
     def names: Vector[String] = all.map(_.name)
     def get(name: String): Option[Callback[F]] = all.find(_.name == name)
 
-  final class Fn[Out](val address: String)(using out: Schema[Out]):
+  final class Fn[Out](val address: String)(using out: Schema[Out], shape: Shape):
     def apply(): Either[Condition, Out] ! PyEval = call(Vector.empty)
     def apply[A: ToPy](a: A): Either[Condition, Out] ! PyEval =
       call(Vector(ToPy(a)))
@@ -288,7 +288,7 @@ object Py {
 
     private def call(args: Vector[PyValue]): Either[Condition, Out] ! PyEval =
       effect[PyEval, Either[Condition, PyValue]](PyEval.Call(address, args))
-        .map(_.flatMap(PyCodec.decode[Out](_)))
+        .map(_.flatMap(shape.decode[Out](_)))
 
     /** this function, offered `cbs` to call back into (foreign-callbacks) */
     def calling[F[+_]](cbs: Callbacks[F]): Calling[F] = Calling(cbs)
@@ -311,7 +311,7 @@ object Py {
       private def dialogue(args: Vector[PyValue]): Either[Condition, Out] ! (F + PyEval) =
         type R = F + PyEval
         def go(step: PyStep): Either[Condition, Out] ! R = step match
-          case PyStep.Done(a) => pure[R, Either[Condition, Out]](a.flatMap(PyCodec.decode[Out](_)))
+          case PyStep.Done(a) => pure[R, Either[Condition, Out]](a.flatMap(shape.decode[Out](_)))
           case PyStep.Ask(name, as, k) =>
             val answered: Either[Condition, PyValue] ! R = cbs.get(name) match
               case Some(cb) => cb.run(as).plus[PyEval]
