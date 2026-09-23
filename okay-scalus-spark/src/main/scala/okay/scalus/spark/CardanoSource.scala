@@ -35,14 +35,24 @@ import scala.jdk.CollectionConverters.*
  * - `start`: `tip`, or a checkpoint `slot:hash:blockNo` (the first block
  *   read extends it)
  * - batch only: `blocks` — how many confirmed blocks after `start`
- * - `blocksPerPartition` (default 10)
+ * - `fetch`: `driver` (default) | `executor` — who fetches the bodies
+ * - `blocksPerPartition` (default 10 with `fetch = driver`, 100 with
+ *   `executor`: each executor partition opens a session of its own)
  *
- * The DRIVER follows the chain (headers and bodies, on a background
- * thread) and keeps the confirmed blocks' bytes; partitions carry those
- * bytes, and executors DECODE and explode them — the expensive part, in
- * parallel. An offset is a confirmed checkpoint, so a re-run batch
- * yields the same rows. A rollback deeper than `confirmations` fails
- * the query rather than yielding rows that were never final.
+ * `fetch = driver`: the DRIVER follows the chain (headers and bodies, on
+ * a background thread) and keeps the confirmed blocks' bytes; partitions
+ * carry those bytes, and executors DECODE and explode them.
+ * `fetch = executor` (specs/scalus.md stage 5): the driver follows
+ * HEADERS only and keeps those; a partition carries its range's headers,
+ * and the executor block-fetches the range from the relay itself — the
+ * network and the decode both in parallel, for a backfill. The relay
+ * must then be reachable from the executors (`registered:` wires only
+ * in the same JVM, i.e. local mode).
+ *
+ * Either way an offset is a confirmed checkpoint, so a re-run batch
+ * yields the same rows — a confirmed range is the same bytes whoever
+ * fetches it. A rollback deeper than `confirmations` fails the query
+ * rather than yielding rows that were never final.
  */
 final class CardanoSource extends TableProvider with DataSourceRegister:
   def shortName(): String = "cardano"
@@ -91,6 +101,12 @@ object CardanoSource:
     case "events" => true
     case other => throw IllegalArgumentException(s"unknown mode '$other'; one of: confirmed, events")
 
+  /** who fetches the bodies: false = the driver, true = the executors */
+  def executorFetch(o: CaseInsensitiveStringMap): Boolean = Option(o.get("fetch")).getOrElse("driver") match
+    case "driver" => false
+    case "executor" => true
+    case other => throw IllegalArgumentException(s"unknown fetch '$other'; one of: driver, executor")
+
   def checkpoint(s: String): Option[Checkpoint] = s match
     case "tip" => None
     case other => other.split(':') match
@@ -106,6 +122,18 @@ object Carried:
   def of(b: CardanoBlock): Carried = Carried(b.header.era, b.header.bytes, b.bytes, b.time)
   /** what the events journal stores (CardanoEvents.scala) */
   given Schema[Carried] = Schema.derived
+
+/** a confirmed block's HEADER, as an executor-fetch partition carries it */
+final case class CarriedHeader(era: Int, bytes: Array[Byte]):
+  def header: Header = Header.parse(era, bytes).fold(e => throw IllegalStateException(e), identity)
+
+object CarriedHeader:
+  def of(h: Header): CarriedHeader = CarriedHeader(h.era, h.bytes)
+
+/** what the driver holds for a confirmed block until it is read */
+enum Held:
+  case Body(c: Carried)
+  case Head(h: CarriedHeader)
 
 /** where a stream stands: the last confirmed block read */
 final case class CardanoOffset(slot: Long, hash: String, blockNo: Long) extends Offset:
@@ -141,6 +169,22 @@ final class CardanoScan(options: CaseInsensitiveStringMap, kind: CardanoSource.K
 /** the rows of carried blocks, decoded where the partition runs */
 final case class BlockPartition(blocks: Vector[Carried]) extends InputPartition
 
+/** a confirmed RANGE, fetched where the partition runs: its headers (in
+ * order, consecutive), the relay, the network */
+final case class RangePartition(relay: String, network: String, headers: Vector[CarriedHeader]) extends InputPartition
+
+/** an executor's fetch of its range: its own session, one range request,
+ * closed after — a failure names the range, and Spark's task retry is
+ * the same fetch again */
+object RangeFetch:
+  def blocks(p: RangePartition): Vector[CardanoBlock] =
+    val net = CardanoSource.network(CaseInsensitiveStringMap(Map("network" -> p.network).asJava))
+    val hs = p.headers.map(_.header)
+    val s = Session.open(Relays.connect(p.relay), net.magic).fold(e => throw IllegalStateException(s"relay ${p.relay}: $e"), identity)
+    try BlockFetch.range(s, net, hs).fold(e =>
+      throw IllegalStateException(s"blocks ${hs.head.blockNo}..${hs.last.blockNo} from ${p.relay}: $e"), identity)
+    finally s.close()
+
 /** shipped to executors: it carries the table's NAME, and finds the
  * table (a `Schema` is not serializable) where it runs */
 final class Readers(table: String) extends PartitionReaderFactory:
@@ -149,6 +193,7 @@ final class Readers(table: String) extends PartitionReaderFactory:
     val toInternal = ExpressionEncoder(kind.schema).createSerializer()
     val rows = p match
       case BlockPartition(bs) => bs.iterator.flatMap(c => kind.rows(CardanoTables.of(c.block)))
+      case r: RangePartition => RangeFetch.blocks(r).iterator.flatMap(b => kind.rows(CardanoTables.of(b)))
       case other => throw IllegalArgumentException(s"not a cardano partition: $other")
     new PartitionReader[InternalRow]:
       private var current: InternalRow = null
@@ -157,32 +202,57 @@ final class Readers(table: String) extends PartitionReaderFactory:
       def get(): InternalRow = current
       def close(): Unit = ()
 
-private def partitions(bs: Vector[Carried], per: Int): Array[InputPartition] =
-  bs.grouped(math.max(per, 1)).map(g => BlockPartition(g): InputPartition).toArray
+/** held blocks cut into partitions: bytes as they are, headers as ranges
+ * for the executors — one kind per read, since `fetch` is one option */
+private def partitions(held: Vector[Held], o: CaseInsensitiveStringMap): Array[InputPartition] =
+  val bodies = held.collect { case Held.Body(c) => c }
+  val heads = held.collect { case Held.Head(h) => h }
+  val size = math.max(per(o), 1)
+  val relay = Option(o.get("relay")).getOrElse("")
+  val network = Option(o.get("network")).getOrElse("mainnet")
+  (bodies.grouped(size).map(g => BlockPartition(g): InputPartition) ++
+    heads.grouped(size).map(g => RangePartition(relay, network, g): InputPartition)).toArray
 
-private def per(o: CaseInsensitiveStringMap): Int = Option(o.get("blocksPerPartition")).fold(10)(_.toInt)
+private def per(o: CaseInsensitiveStringMap): Int =
+  Option(o.get("blocksPerPartition")).fold(if CardanoSource.executorFetch(o) then 100 else 10)(_.toInt)
+
+/** a confirmed block as what the driver holds; a rollback is the same */
+private def held[A](f: A => (CardanoOffset, Held))(e: Event[A]): Event[(CardanoOffset, Held)] = e match
+  case Event.Confirmed(b) => Event.Confirmed(f(b))
+  case Event.RolledBack(to, from) => Event.RolledBack(to, from)
+
+/** a follower of the kind `fetch` asks for, and what the driver holds of
+ * each block it confirms */
+private def follower(o: CaseInsensitiveStringMap, from: Option[Checkpoint])
+    : Either[String, (() => Either[String, Vector[Event[(CardanoOffset, Held)]]], () => Unit)] =
+  val (wire, net) = (CardanoSource.wire(o), CardanoSource.network(o))
+  if CardanoSource.executorFetch(o) then
+    CardanoFollower.headers(wire, net, from, depth(o)).map(f =>
+      (() => f.step().map(_.map(held(h => (CardanoOffset(h.slot, h.hash, h.blockNo), Held.Head(CarriedHeader.of(h)))))), () => f.close()))
+  else
+    CardanoFollower.open(wire, net, from, depth(o)).map(f =>
+      (() => f.step().map(_.map(held(b => (CardanoOffset(b.header.slot, b.header.hash, b.header.blockNo), Held.Body(Carried.of(b)))))), () => f.close()))
 private def depth(o: CaseInsensitiveStringMap): Finality =
   Finality.Depth(Option(o.get("confirmations")).fold(15)(_.toInt))
 
 /** a bounded read: `blocks` confirmed blocks after `start` */
 final class CardanoBatch(options: CaseInsensitiveStringMap, kind: CardanoSource.Kind[?]) extends Batch:
-  private lazy val carried: Vector[Carried] =
+  private lazy val held: Vector[Held] =
     val want = Option(options.get("blocks")).map(_.toInt)
       .getOrElse(throw IllegalArgumentException("a batch read needs option 'blocks'"))
     val from = CardanoSource.checkpoint(Option(options.get("start")).getOrElse("tip"))
-    val f = CardanoFollower.open(CardanoSource.wire(options), CardanoSource.network(options), from, depth(options))
-      .fold(e => throw IllegalStateException(e), identity)
+    val (step, close) = follower(options, from).fold(e => throw IllegalStateException(e), identity)
     try
-      var got = Vector.empty[Carried]
+      var got = Vector.empty[Held]
       while got.size < want do
-        f.step().fold(e => throw IllegalStateException(e), identity).foreach {
-          case Event.Confirmed(b) => if got.size < want then got :+= Carried.of(b)
+        step().fold(e => throw IllegalStateException(e), identity).foreach {
+          case Event.Confirmed((_, h)) => if got.size < want then got :+= h
           case Event.RolledBack(to, _) =>
             throw IllegalStateException(s"a rollback past block ${to.height} reached confirmed blocks — raise 'confirmations'")
         }
       got
-    finally f.close()
-  def planInputPartitions(): Array[InputPartition] = partitions(carried, per(options))
+    finally close()
+  def planInputPartitions(): Array[InputPartition] = partitions(held, options)
   def createReaderFactory(): PartitionReaderFactory = Readers(kind.name)
 
 /**
@@ -192,9 +262,9 @@ final class CardanoBatch(options: CaseInsensitiveStringMap, kind: CardanoSource.
  */
 final class CardanoStream(options: CaseInsensitiveStringMap, kind: CardanoSource.Kind[?])
     extends MicroBatchStream with SupportsAdmissionControl:
-  private val confirmed = java.util.concurrent.ConcurrentSkipListMap[Long, (CardanoOffset, Carried)]()
+  private val confirmed = java.util.concurrent.ConcurrentSkipListMap[Long, (CardanoOffset, Held)]()
   @volatile private var failure: Option[String] = None
-  @volatile private var follower: Option[CardanoFollower] = None
+  @volatile private var closeFollower: Option[() => Unit] = None
   @volatile private var started = false
 
   /** the offset a FRESH query starts from: `start` (tip resolved now) */
@@ -217,16 +287,15 @@ final class CardanoStream(options: CaseInsensitiveStringMap, kind: CardanoSource
       // okay's adaptive pick: a virtual thread where the JVM has them, a
       // daemon otherwise — the build's JDK floor is 17 (-java-output-version)
       val _ = _root_.okay.Threads.spawnThread("okay-cardano-follower") { () =>
-        CardanoFollower.open(CardanoSource.wire(options), CardanoSource.network(options), Some(from.checkpoint), depth(options)) match
+        follower(options, Some(from.checkpoint)) match
           case Left(e) => failure = Some(e)
-          case Right(f) =>
-            follower = Some(f)
+          case Right((step, close)) =>
+            closeFollower = Some(close)
             while failure.isEmpty do
-              f.step() match
+              step() match
                 case Left(e) => failure = Some(e)
                 case Right(es) => es.foreach {
-                  case Event.Confirmed(b) =>
-                    confirmed.put(b.header.blockNo, (CardanoOffset(b.header.slot, b.header.hash, b.header.blockNo), Carried.of(b))): Unit
+                  case Event.Confirmed((o, h)) => confirmed.put(o.blockNo, (o, h)): Unit
                   case Event.RolledBack(to, _) =>
                     failure = Some(s"a rollback past block ${to.height} reached confirmed blocks — raise 'confirmations'")
                 }
@@ -251,7 +320,7 @@ final class CardanoStream(options: CaseInsensitiveStringMap, kind: CardanoSource
     val range = confirmed.subMap(a.blockNo, false, b.blockNo, true).values.asScala.toVector.map(_._2)
     if range.size != (b.blockNo - a.blockNo) then
       throw IllegalStateException(s"blocks ${a.blockNo + 1}..${b.blockNo} are not all held (${range.size}); was the stream restarted past its buffer?")
-    partitions(range, per(options))
+    partitions(range, options)
 
   def createReaderFactory(): PartitionReaderFactory = Readers(kind.name)
   def deserializeOffset(json: String): Offset = CardanoOffset.parse(json)
@@ -259,4 +328,4 @@ final class CardanoStream(options: CaseInsensitiveStringMap, kind: CardanoSource
     confirmed.headMap(CardanoOffset.parse(end.json()).blockNo, true).clear()
   def stop(): Unit =
     failure = failure.orElse(Some("stopped"))
-    follower.foreach(_.close())
+    closeFollower.foreach(_())

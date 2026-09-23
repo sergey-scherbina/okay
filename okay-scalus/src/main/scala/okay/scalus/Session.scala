@@ -41,17 +41,32 @@ object Wire:
 /**
  * One node-to-node connection, single-threaded: `receive(p)` pumps
  * segments off the wire until protocol `p` has a whole message,
- * queueing other protocols' messages as they pass. While a receive
- * waits on a quiet chain, every idle interval sends a keep-alive — the
- * relay drops a peer that says nothing — and its answers are dropped.
+ * queueing other protocols' messages as they pass.
+ *
+ * KEEP-ALIVE BY THE CLOCK, NOT BY SILENCE (scalus-executor-fetch,
+ * 2026-09-23): a relay resets a peer whose keep-alive stops, and the
+ * first version pinged only when the wire was IDLE — a connection
+ * streaming a backfill is never idle, and preprod reset it at 97.5 s
+ * and 98.2 s, twice. So a ping goes out every `keepAliveNanos` whether
+ * the wire is busy or quiet, and — the protocol's rule — never while
+ * one is still unanswered. The answers are consumed here.
  */
-final class Session private (wire: Wire):
+final class Session private (wire: Wire, clock: () => Long, keepAliveNanos: Long):
   private val demux = N2N.Demux()
   private val queues = scala.collection.mutable.Map.empty[Int, scala.collection.mutable.Queue[Cv]]
-  private val started = System.nanoTime()
+  private val started = clock()
   private var cookie = 0
+  private var lastPing = started
+  private var inFlight = false
 
-  private def now: Int = ((System.nanoTime() - started) / 1000).toInt
+  private def ping(): Unit =
+    if !inFlight then
+      cookie = (cookie + 1) & 0xFFFF
+      send(N2N.KeepAlive, N2N.keepAlive(cookie))
+      inFlight = true
+      lastPing = clock()
+
+  private def now: Int = ((clock() - started) / 1000).toInt
 
   def send(protocol: Int, message: Array[Byte]): Unit =
     N2N.segments(protocol, message, now).foreach(wire.write)
@@ -59,16 +74,15 @@ final class Session private (wire: Wire):
   def receive(protocol: Int): Either[String, Cv] =
     var got: Option[Either[String, Cv]] = None
     while got.isEmpty do
+      if clock() - lastPing >= keepAliveNanos then ping()
       queues.get(protocol).filter(_.nonEmpty) match
         case Some(q) => got = Some(Right(q.dequeue()))
         case None => wire.read() match
           case Wire.Read.Got(s) => demux.feed(s) match
             case Left(e) => got = Some(Left(e))
-            case Right(_) if s.protocol == N2N.KeepAlive => ()   // answers to our pings
+            case Right(ms) if s.protocol == N2N.KeepAlive => if ms.nonEmpty then inFlight = false   // the answer to our ping
             case Right(ms) => queues.getOrElseUpdate(s.protocol, scala.collection.mutable.Queue.empty) ++= ms
-          case Wire.Read.Idle =>
-            cookie = (cookie + 1) & 0xFFFF
-            send(N2N.KeepAlive, N2N.keepAlive(cookie))
+          case Wire.Read.Idle => ping()
           case Wire.Read.Closed => got = Some(Left("the relay closed the connection"))
     got.get
 
@@ -76,8 +90,9 @@ final class Session private (wire: Wire):
 
 object Session:
   /** a session over `wire`, handshaken for `magic` */
-  def open(wire: Wire, magic: Long): Either[String, Session] =
-    val s = new Session(wire)
+  def open(wire: Wire, magic: Long, clock: () => Long = () => System.nanoTime(),
+           keepAliveNanos: Long = 20_000_000_000L): Either[String, Session] =
+    val s = new Session(wire, clock, keepAliveNanos)
     s.send(N2N.Handshake, N2N.proposeVersions(magic))
     s.receive(N2N.Handshake).flatMap(N2N.handshaken).flatMap {
       case N2N.Handshaken.Accepted(_, m) if m == magic => Right(s)

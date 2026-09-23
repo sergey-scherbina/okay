@@ -460,13 +460,13 @@ until Spark stage 2 has run on mainnet.
   operator: "scalus-executor-fetch делай"). §6's original plan, beside
   the first version rather than instead of it: option `fetch` =
   `driver` (as before: the driver holds the bodies) | `executor`.
-  - [ ] okay-scalus: block-fetch of a header range as its own function
+  - [x] okay-scalus: block-fetch of a header range as its own function
         (`BlockFetch.range`), used by the chain-sync source AND by an
         executor; the source generic in what it completes a header
         batch into (`HeaderSync[A]`), so the driver can follow HEADERS
         only; `CardanoFollower.headers` — the same `Tracker`, confirming
         headers (`BlockOf[Header]`)
-  - [ ] okay-scalus-spark, `fetch = executor`: the driver follows
+  - [x] okay-scalus-spark, `fetch = executor`: the driver follows
         headers and holds only them (~1 KB a block, not the block);
         a partition carries its range's HEADERS and the relay option;
         the executor opens its own session, `RequestRange`s first..last,
@@ -474,13 +474,13 @@ until Spark stage 2 has run on mainnet.
         explodes rows. Confirmed ranges are deterministic, so a re-run
         batch reads the same rows — the exactly-once argument of §6
         unchanged. Batch and stream both.
-  - [ ] a relay that has lost the range (`NoBlocks`) fails the task with
+  - [x] a relay that has lost the range (`NoBlocks`) fails the task with
         the range named — Spark retries a task, and a retried fetch of a
         confirmed range is the same fetch
-  - [ ] tests (fake relay, every connection a fresh scripted relay): the
+  - [x] tests (fake relay, every connection a fresh scripted relay): the
         DataFrame under `fetch = executor` equals `fetch = driver` row for
         row, batch and stream; a relay without the range fails naming it
-  - [ ] measured, `Live`: a preprod backfill, driver vs executor, same
+  - [x] measured, `Live`: a preprod backfill, driver vs executor, same
         blocks, same local cluster — the number that decides the default
 
 ## Decisions
@@ -495,6 +495,11 @@ until Spark stage 2 has run on mainnet.
   other; `FlinkSchema` is `SparkSchema`'s twin over `Columns` (a `Json`
   column is text: Flink has no VARIANT).
 
+- 2026-09-23 — **executor fetch is an option, not the default**
+  (scalus-executor-fetch). It was built and it is correct; it was not
+  faster on the measurement (Results), because the driver's chain-sync
+  pays a round trip per header in either mode. A default is changed by
+  a number, and the number said no.
 - 2026-09-23 — **the DRIVER fetches, executors decode** (okay-scalus-
   spark, first version). §6 planned executors fetching block ranges
   from relays; the driver already holds a follower with the bodies, so
@@ -553,6 +558,23 @@ until Spark stage 2 has run on mainnet.
   exactness over the storage it costs (§4.3 table).
 
 ## Results
+
+- Stage 5 (2026-09-23, scalus-executor-fetch): `fetch = executor` reads
+  the same rows as `fetch = driver` on the fake relay — batch at 1, 2
+  and 5 blocks per partition, five tables, and the stream — and a relay
+  without the range fails the task naming blocks and relay. MEASURED on
+  preprod (1 000 blocks from 4 800 000, local[4], arms alternated):
+  driver 86.6 s and 164.3 s, executor 175.0 s and 71.2 s — noise wider
+  than any difference — and the HEADERS alone 43.7 s, ~44 ms a header,
+  one relay round trip each. The header scan both modes pay on the
+  driver is about half the time; the executors only take over the other
+  half. Default stays `driver`; the lever is chain-sync pipelining.
+  FOUND on the way: the first measurement's driver arm was RESET by the
+  relay at 98.2 s and 97.5 s — the session pinged only when the wire was
+  idle, and a streaming connection never is. Keep-alive is now by the
+  clock (every 20 s) with one ping in flight, proved by `TestKeepAlive`
+  (a never-idle wire: 0 pings in 55 s before, 1 after); the next driver
+  arm ran 164 s unreset.
 
 - MAINNET (2026-09-23, `Live`): `TestLiveMainnet` followed
   backbone.cardano.iog.io from its tip through blocks 13977824..26 —

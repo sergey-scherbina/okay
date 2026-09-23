@@ -103,9 +103,10 @@ RFC 8949 (CBOR), tag 24 "encoded CBOR data item".
 
 | name | shape | note |
 |---|---|---|
-| `CardanoFollower` | `open(wire, net, from, finality)`, `step()`, `close()` | session + source + `Tracker` |
-| `ChainSyncSource` | `open(): Either[String, N2N.Tip]`, `next(): Either[String, Vector[Observed[CardanoBlock]]]` | the push source alone |
-| `Session`, `Wire` | `Session.open(wire, magic)`; `Wire.tcp(host, port)` | single-threaded; keep-alive when idle |
+| `CardanoFollower` | `open(wire, net, from, finality)`, `headers(...)`, `step()`, `close()` | session + source + `Tracker`; `headers` confirms headers only (`ChainFollower[Header]`) |
+| `ChainSyncSource` | `open(): Either[String, N2N.Tip]`, `next(): Either[String, Vector[Observed[CardanoBlock]]]` | the push source alone; `HeaderSync[A]` is the same source completing a header batch into `A` |
+| `BlockFetch.range` | `(session, net, headers) => Either[String, Vector[CardanoBlock]]` | one range request, bodies paired with their headers |
+| `Session`, `Wire` | `Session.open(wire, magic)`; `Wire.tcp(host, port)` | single-threaded; a keep-alive every 20 s, busy or idle, one in flight |
 | `CardanoNetwork` | `mainnet` / `preprod` / `preview` | CAIP-2 id, magic, slot config |
 | `Checkpoint` | `(slot, hash, blockNo)` | where to resume |
 | `Header` | `era, blockNo, slot, hash, prev` | read from the header bytes |

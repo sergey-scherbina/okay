@@ -20,6 +20,13 @@ object Header:
   def unhex(s: String): Array[Byte] = s.grouped(2).map(Integer.parseInt(_, 16).toByte).toArray
   def blake2b256(b: Array[Byte]): Array[Byte] = platform.blake2b_256(ByteString.fromArray(b)).bytes
 
+  /** a header as a block to the follower: its number, its hash, its
+   * parent — confirming needs nothing else, and it has no transactions */
+  given BlockOf.Aux[Header, Nothing] = new BlockOf[Header]:
+    type Tx = Nothing
+    def ref(h: Header): BlockRef = BlockRef(Point(h.blockNo, BlockId(h.hash)), BlockId(h.prev.getOrElse("")), None)
+    def txs(h: Header): Vector[Nothing] = Vector.empty
+
   def parse(era: Int, bytes: Array[Byte]): Either[String, Header] =
     Cv.read(bytes) match
       case Cv.Read.Done(Cv.Arr(Cv.Arr(body) +: _), _) => body.take(3) match
