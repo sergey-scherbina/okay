@@ -500,6 +500,53 @@ for await (const u of updates) seen.push(u);
   signatures are written beside the exports, in the same file, and it is
   the check above (tsc on the real module) that holds the two together.
 
+## Durable flows in the browser
+
+A checkout, a sign-up wizard, a multi-step form: flows whose steps have
+effects (reserve the item, charge the card) and which a reload must not
+restart from the beginning. `durable` is `run` with a journal:
+
+1. Each step's answer is written to the journal before the program
+   continues.
+2. After a reload, the same flow replays: a recorded step is answered
+   from the journal, and its callback is not called again.
+3. The flow continues from the first step it has no answer for.
+
+```typescript
+const checkout = then(performing("reserve", "tea"), (r) =>
+  then(performing("charge", r), (c) => done({ reserved: r, charged: c })));
+```
+
+```typescript
+  const receipt = await durable("checkout", checkout, {
+    reserve: async (sku) => { count("reserve"); return "R-" + sku; },
+    charge: async (r) => { if (crash) throw new Error("the page was reloaded"); count("charge"); return "C-" + r; },
+  }, indexedDbJournal("okay-check"));
+```
+
+- **The journal.** `indexedDbJournal(name)` keeps the answers in the
+  browser's IndexedDB, and `memoryJournal()` keeps them for this page
+  only. Any object with `load`, `append` and `clear` returning Promises
+  is a journal too, for example one that keeps flows on a server.
+- **Drift.** A replayed step must ask the same question. If the program
+  changed between loads and a recorded step now asks another name or
+  other arguments, the flow is refused as `Drift` and is never handed the
+  old answer.
+- **The crash window.** A callback that answered, but whose entry was
+  not stored yet when the page died, runs again on resume. That is
+  at-least-once for that one step, the same as okay-agent's `Durable`. A
+  callback with an outside effect (a payment) should send an idempotency
+  key, and the flow name with the step number is a natural one.
+
+`scripts/ts-durable-browser-check.sh` runs this in real headless Chrome
+with one profile directory:
+- the first load dies at the charge;
+- the second load finishes the flow, with `reserve` called once in
+  total, answered from IndexedDB the second time.
+
+The same journal is okay-ts's `Ts.durable(flow, program, callbacks,
+journal)` for a Scala.js program.
+
 ## TypeScript libraries, used from okay
 
 To call an existing TypeScript library from okay on Scala.js, generate

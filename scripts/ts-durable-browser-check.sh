@@ -57,14 +57,14 @@ load() {
   node "$here/scripts/chrome-read.mjs" "$chrome" "$profile" "$1" "#out" "waiting" 60000 2>>"$work/chrome.err"
 }
 
-first=$(load "file://$site/index.html?crash=1")
+first=$(load "file://$site/index.html?crash=1") || red "the first load gave no answer: $(tail -5 "$work/chrome.err")"
 echo "first load:  $first"
 case "$first" in
   died*'"reserve":1'*) ;;
   *) red "the first load should die at the charge, having reserved once; it said: $first" ;;
 esac
 
-second=$(load "file://$site/index.html")
+second=$(load "file://$site/index.html") || red "the second load gave no answer: $(tail -5 "$work/chrome.err")"
 echo "second load: $second"
 want='done {"receipt":{"reserved":"R-tea","charged":"C-R-tea"},"calls":{"reserve":1,"charge":1}}'
 [ "$second" = "$want" ] || red "the second load should finish with each callback run once; expected $want"

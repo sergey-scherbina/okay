@@ -169,15 +169,15 @@ Each stage is a lane; Results below record what each found.
 
 ## Stage T10 — durable flows in the browser
 
-- [ ] `Ts.durable(key, program, callbacks, journal)` walks a
+- [x] `Ts.durable(key, program, callbacks, journal)` walks a
       TypeScript program and records each answer, keyed by the flow and
       the step, before the program continues.
       - A replay hands recorded answers back without calling the
         callback again.
       - A replay whose step asks a different name or different
         arguments is refused (drift), not silently answered.
-- [ ] `Journal` has two implementations: in memory, and IndexedDB.
-- [ ] (Live) In a real headless Chrome with one profile directory, a
+- [x] `Journal` has two implementations: in memory, and IndexedDB.
+- [x] (Live) In a real headless Chrome with one profile directory, a
       flow run in two page loads, killed between them, finishes with
       each callback called exactly once.
 
@@ -393,3 +393,38 @@ Each stage is a lane; Results below record what each found.
     task writes a small .mjs file instead.
   - Not done, on purpose: publishing to the npm registry, which is the
     owner's outward step.
+
+- T10 (ts-durable-browser, 2026-09-23).
+  - `Ts.durable`/`durableJson` and `Journal` (memory, IndexedDB) are in
+    okay-ts. `durable`, `memoryJournal` and `indexedDbJournal` are in
+    `@okay/ts`, where a journal is any object with Promise-returning
+    `load`/`append`/`clear`.
+  - An entry is `{name, args, answer}`, so a replay checks the question
+    before it is handed the answer (Drift).
+  - TestTsDurable (Scala.js, memory journal) covers four cases:
+    - replay without calling a callback;
+    - resume after a death at step 2, with step 1 not repeated;
+    - drift refused with its step named;
+    - clear starting the flow afresh.
+
+    TestOkayNpm adds `durable` through the package.
+  - `scripts/ts-durable-browser-check.sh` (Live, GREEN under sh and
+    bash) uses real headless Chrome 154 and IndexedDB: two loads of one
+    profile, the first dying at the charge, the second finishing with
+    `{"reserve":1,"charge":1}`.
+  - Mutant: without the replay, three memory tests fail, and Chrome sees
+    `reserve: 2`.
+  - Three findings on the way to a browser check that works:
+    - `--dump-dom` dumps at the load event, before a module's async work.
+      Under `--virtual-time-budget` it HUNG with IndexedDB pending.
+    - A loopback server started from the tool's shell was not reachable
+      (curl answered 000), so the page is a file:// document.
+    - Inlining the Scala.js module does not work: it exports under
+      internal names (`export { $e_x as x }`), so the names are not
+      bindings of the script that holds them. The page imports the
+      module from a data: URL.
+
+    `scripts/chrome-read.mjs` drives Chrome through the DevTools
+    protocol (Node 26's WebSocket, no dependency). It deletes a stale
+    `DevToolsActivePort`, which a second load of the same profile
+    otherwise reads as the first browser's port.

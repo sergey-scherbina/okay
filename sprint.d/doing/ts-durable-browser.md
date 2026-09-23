@@ -1,1 +1,0 @@
-- [ ] ts-durable-browser — a multi-step flow written as a TypeScript program (done/perform/then) whose answers `Durable` journals in IndexedDB, so a checkout or a wizard resumes where it was after a page reload. okay-ts plus a browser journal.

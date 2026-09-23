@@ -10,6 +10,8 @@ encode its values.
 |---|---|
 | `run(program, callbacks)` | walk a program built with `then`/`performing`/`done`; a callback answers a value or a Promise |
 | `gcounter`, `pncounter`, `orset` | CRDT replicas as plain JSON states, each with `merge` |
+| `durable(flow, program, callbacks, journal)` | `run` whose answers are journalled: a reload resumes the flow |
+| `memoryJournal()`, `indexedDbJournal(name)` | journals; any object with `load`/`append`/`clear` is one |
 | `channel()` | an okay `Channel`: `offer`, `close`, and `for await` |
 | `declarations` | the package's `index.d.ts`, as text |
 
