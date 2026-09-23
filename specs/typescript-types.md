@@ -123,3 +123,24 @@ Each stage is a lane; Results below record what each found.
   the user's build.
   - Mutant: always rewriting fails "left alone while the model does not
     change".
+
+- T3 (ts-types-ts-to-scala, 2026-09-23). `okay.codec.TsTypes` is a
+  parser of the data subset of TypeScript declarations (tokens, then
+  recursive descent) and a Scala writer. It is pure Scala, so it runs on
+  every platform, and needs no Node. The installed TypeScript is 7, the
+  native port, and has no compiler API to load.
+  - `Stubs.typescript` now names the leaves (`Int`, `Long`, `Char`,
+    `BigIntDigits`, `Base64`), emitting only the aliases a file uses, so
+    the round trip is exact.
+  - TestTsTypes has 5 tests (all platforms):
+    - Scala → TS → Scala gives a golden file that compiles;
+    - that file's TS equals the original byte for byte;
+    - a hand-written TS model becomes a case class, an `Option` field and
+      an enum;
+    - the wire's sum shape reads as the same enum;
+    - six refusals by name, with the line where the source has one.
+  - The live `tsc` tests (TestStubsTsc, TestTsOneShape, TestTsWorker) and
+    TestPyStubs all pass with the new aliases.
+  - Mutant: reading `Long` back as `Double` fails the round trip.
+  - A refusal message was sharpened on the way: `Record<…>` was called
+    "generic" and is now "a map is not read; a Schema has no map case".

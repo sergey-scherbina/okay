@@ -189,7 +189,13 @@ checker sees the type too:
 - **`Stubs.typescript(schemas*)`** writes a `.d.ts` in the shape `Json`
   writes. A product is an interface. A sum is `{ "Case": {...} }`. `None`
   is `null`, a `BigInt` a string of digits, and bytes a base64 string. A
-  `Long` gets a comment, because a JS number holds it exactly only to 2^53.
+  `Long` is `export type Long = number`, with a comment that a JS number
+  holds it exactly only to 2^53. `Int`, `Char`, `BigIntDigits` and
+  `Base64` are named the same way, so reading the declarations back is
+  exact.
+- **`TsTypes.scala(source, pkg)`** is the other direction: TypeScript
+  declarations read into `case class`/`enum ... derives Schema`, with
+  anything that is not data refused by name.
 
 Declarations come out once each, in dependency order, and recursive types
 refer to themselves by name. Both are checked by the real checkers:

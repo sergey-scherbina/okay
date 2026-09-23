@@ -88,8 +88,47 @@ tsTypes := (Compile / runMain).toTask(" my.app.WriteTypes ../frontend/src/model.
 
 `StubFiles.python` does the same for a Python worker's `TypedDict`s.
 
-Types written in TypeScript first, and a check that two hand-written
-copies still agree, are the next stages
+### Types written in TypeScript first
+
+The other direction works too. A TypeScript developer writes the model:
+
+```typescript
+export interface User {
+id: number;
+name: string;
+email?: string;
+tags: string[];
+}
+
+export type Event = { Joined: Joined } | { Left: Left };
+```
+
+`TsTypes.scala(source, pkg)` reads it and writes the Scala: `User`
+becomes a `final case class ... derives Schema`, with `email` as an
+`Option[String] = None`, and `Event` becomes an `enum` with cases
+`Joined` and `Left`.
+
+It reads the declaration subset that describes DATA:
+- interfaces;
+- a union of `{ Case: Case }` (the shape okay's JSON gives a sum);
+- `T[]`;
+- `T | null`;
+- optional fields.
+
+Anything else is refused by name and line, never guessed: generics,
+intersections, methods, maps, and string-literal unions (whose JSON
+shape is not a Scala enum's).
+
+**The round trip is exact.** `Stubs.typescript` names the Scala leaves
+TypeScript would otherwise collapse: `Int`, `Long`, `Char`,
+`BigIntDigits` and `Base64`, declared as `export type Long = number`,
+and so on. TypeScript still sees plain numbers and strings, and reading
+the declarations back gives the same Scala types. The test goes Scala to
+TypeScript to Scala and gets the original types. That Scala is a golden
+file which compiles, and its own TypeScript equals the first TypeScript
+byte for byte.
+
+A check that two hand-written copies still agree is the next stage
 ([specs/typescript-types.md](../specs/typescript-types.md)).
 
 ## A module

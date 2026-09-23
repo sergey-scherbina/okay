@@ -1,1 +1,0 @@
-- [ ] ts-types-ts-to-scala — T3 of specs/typescript-types.md: TypeScript → Scala. A Node script in the jar reads interfaces, aliases, literal unions and discriminated unions with the TypeScript compiler API; okay writes `case class`/`enum … derives Schema`; what cannot map is refused by name. Checked by round-tripping through `Stubs.typescript` and `tsc`.
