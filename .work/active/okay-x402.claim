@@ -1,0 +1,6 @@
+feature/okay-x402 2026-09-23T12:07:17Z
+agent: claude-code
+heartbeat: 2026-09-23T12:07:17Z
+status: in-progress
+done-so-far: picked (operator chose okay-x402)
+next: stage 0 types + header codec + goldens; stage 1 gate + client + fake facilitator
