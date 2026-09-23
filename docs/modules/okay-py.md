@@ -119,6 +119,40 @@ worker, and `PyWorkers` keeps one worker for the whole dialogue.
   it \[Plotkin & Pretnar, Handling algebraic effects, LMCS 2013,
   doi:10.2168/LMCS-9(4:23)2013\].
 
+## Held objects
+
+Only values cross a call, so a model fitted in one call is gone by the
+next. `Py.hold` keeps the result IN the worker and answers a handle
+instead. The object's methods are called by name, its attributes are
+read, and the handle can be passed to any function as an argument:
+
+```scala
+val acc = Py.hold("okayh:acc")().runWith.toOption.get
+assertEquals(acc.call[Long]("add")(5L).runWith, Right(5L))
+assertEquals(acc.attr[Long]("total").runWith, Right(8L))
+assertEquals(Py.fn[Long]("okayh:total_of")(acc).runWith, Right(8L))
+val fork = acc.hold("fork")().runWith.toOption.get
+```
+
+A seeded generator keeps its state between calls, as it would inside
+Python:
+
+```scala
+val rng = Py.hold("random:Random")(42L).runWith.toOption.get
+```
+
+- **Release.** `ref.release` drops the object and can be called more
+  than once. A ref used after its release, or on a process that never
+  held it, is refused by name.
+- **Pools.** In a `PyWorkers` pool a ref's calls go to the worker that
+  holds it. The worker stays in the pool, so a pool of one that holds an
+  object still answers plain calls.
+- **Durable.** A handle names state inside ONE process. A whole
+  program with handles replays from its journal without Python. But a
+  recovery that continues live on a fresh process meets a ref that
+  process never held, and is refused by name, not answered wrongly. A
+  program that must survive a crash keeps values, not handles.
+
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own

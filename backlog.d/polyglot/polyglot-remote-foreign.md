@@ -14,3 +14,9 @@
       JS) it is one-shot and a second resume is refused by name, the
       rule `Gather.stage` already keeps. Spec first (specs/polyglot.md);
       the shim protocol is versioned like okay-py's handshake.
+      HALF DONE (2026-09-23, foreign-callbacks): Python and R now PERFORM
+      okay operations mid-call through named callbacks — the Start/Resume
+      dialogue over the existing pipe, one-shot, journalled. What remains
+      is the PROGRAM-AS-DATA form over a wire (a far side that returns
+      `{kind, payload, k}` for every step, continuations kept by id) — the
+      one Haskell/GHC needs for multi-shot, and the reason this item stays.

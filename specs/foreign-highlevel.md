@@ -171,6 +171,59 @@ handler that resumes twice is refused by name, not answered wrongly.
 
 ## Stage 3 — foreign-object-handles
 
+## Stage 7 — foreign-callbacks (taken before 3–6: the operator asked
+for it, 2026-09-23: "А как у питона и r будет у нас с нашими эффектами и
+какими-то обратными вызовами для взаимодействия? Это возможно?")
+
+### The shape
+
+A call that may call back is not one exchange but a short dialogue:
+
+    host  -> {"id": 7, "op": "start", "fn": "m:fit", "args": [...], "callbacks": ["objective"]}
+    shim  <- {"ask": {"cb": "objective", "args": [...], "k": 1}}     # Python called okay.call(...)
+    host  -> {"op": "resume", "k": 1, "ok": 0.25}                    # okay ran the callback
+    shim  <- {"id": 7, "ok": {...}}                                  # the function returned
+
+On the okay side that dialogue is a PROGRAM: `PyEval.Start` and
+`PyEval.Resume` answer a `Step` — `Done(answer)` or `Ask(callback, args,
+k)` — and the loop between them runs each callback as an okay program in
+the caller's row F. So a callback can ask a `Reader`, update `State`,
+sleep on `Async`, write a journal, or call Python AGAIN: the shim, while
+it waits for a resume, serves any request that arrives (the nesting is
+strict, so one wire suffices).
+
+It is the Foreign walker of interop-shared, across a pipe: the
+continuation is Python's blocked stack frame, so it is ONE-SHOT — a
+handler that resumes twice is refused by name, not answered wrongly.
+
+### Behavior
+
+- [x] Python: `import okay; okay.call("name", *args)` inside a function
+      called with callbacks; the shim injects the `okay` module. A
+      callback that fails in okay raises `okay.OkayError` in Python, with
+      the condition's kind and message; Python may catch it.
+- [x] R: `okay_call("name", ...)`, a function the shim defines; a failure
+      is an R condition of class `okay_error` (tryCatch-able).
+- [x] Scala: `Py.fn[Out](addr).calling(cbs)(args...)` answers
+      `Either[Condition, Out] ! (F + PyEval)` where `cbs: Py.Callbacks[F]`
+      is built from `Py.callback[In, Out](name)(f: In => Out ! F)`; `R`
+      the same. Arguments and answers through `Schema` (stage 2).
+- [x] A callback's program runs under the CALLER's handlers: a Python
+      optimiser minimising an objective whose value comes from okay's
+      `Reader`, and a callback counting its calls in `State`.
+- [x] Re-entrancy: a callback that itself calls Python on the same
+      worker is answered (nested exchange).
+- [x] An unknown callback name, and a callback that was not offered to
+      THIS call, are refused by name in the foreign language.
+- [x] `Durable` journals the dialogue (`Start`/`Resume` are ordinary
+      operations): a replay answers every step from the journal and
+      starts no Python; the callbacks' own effects are theirs to journal.
+- [x] The wire change is additive (a new op, a new message); the shim
+      version still bumps (Python 3, R 4) so a host never talks to a shim
+      that cannot answer it.
+
+## Stage 3 — foreign-object-handles
+
 ### Behavior
 
 - [ ] `PyEval.Hold(fn, args)` calls the function and KEEPS its result in
@@ -263,3 +316,20 @@ handler that resumes twice is refused by name, not answered wrongly.
     `okay.call`. The worker stays usable, because the shim serves the
     next request from inside the wait, but that frame never returns. A
     `Left` is the supported failure channel.
+
+- Stage 3 (foreign-object-handles, 2026-09-23).
+  - Python: 6 live tests. A seeded `random.Random` reproduces
+    `0.6394267984578837, 0.025010755222666936`. Also: an object's
+    methods, its attribute, the object as an argument, a held method
+    result, a release refused by name, a pool of one and a pool of two,
+    and the Durable replay versus recovery.
+  - R: 2 live tests, `as.formula`, `lm` and `predict` through handles,
+    and a released ref refused.
+  - Default gate: a journal test of hold, method and release.
+  - Mutant: a pool that forgets to rename a ref to its worker's own id
+    fails "a pool of two".
+  - Design corrected before landing: pinning a worker out of the pool
+    starves a pool of one (a plain call would block for ever). Workers
+    stay pooled, and each exchange locks the worker. A worker that dies
+    while reached through a ref is taken out of the queue before its
+    replacement goes in.

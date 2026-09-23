@@ -188,6 +188,22 @@ the re-entrancy and the journaling are okay-py's (see its
 a step that times out ends the call with the timeout condition, and the
 fresh process refuses the stale resume.
 
+## Held objects
+
+`R.hold` keeps an R object in the R process and answers a handle. R
+applies functions TO objects, so a handle is used as an argument. Here a
+formula is held and passed to `lm`, the fit is held, and `predict` is
+called on it:
+
+```scala
+val formula = R.hold("stats::as.formula")("y ~ x").runWith.toOption.get
+val fit = R.hold("stats::lm")(formula, Data(Vector(1, 2, 3, 4), Vector(3, 5, 7, 9))).runWith.toOption.get
+val predicted = R.fn[Vector[Double]]("stats::predict")(fit, NewData(Vector(10.0, 0.0))).runWith
+```
+
+`ref.release` drops the object. After a timeout the process is replaced,
+and every ref it held is then refused by name.
+
 ## Journalled by Durable
 
 `REval` carries its own `Journalled` instance, as okay-py's `PyEval`
