@@ -1,4 +1,4 @@
-- [ ] runfree-inlined-small-step — runfree-inlined-rotation's side
+- [~] runfree-inlined-small-step — runfree-inlined-rotation's side
       finding: a hand-fused `runFreeInlined` (resume's rotation
       folded into runFree's own loop, no call to `.resume`) read
       0.904x on `effCont24` (`effSteps[Free](24)(produce(0))`, a

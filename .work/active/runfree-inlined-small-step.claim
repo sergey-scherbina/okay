@@ -1,0 +1,6 @@
+feature/runfree-inlined-small-step 2026-09-23T15:17:27Z
+agent: claude-code
+heartbeat: 2026-09-23T15:17:27Z
+status: in-progress
+done-so-far: promoted from backlog
+next: a parameterized (@Param N) prebuilt-tree benchmark isolating step count from rebuild-per-invocation; runFree vs runFreeInlined at N=4,24,100,1000,10000; decide only after the sweep
