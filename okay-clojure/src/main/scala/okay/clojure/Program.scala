@@ -1,6 +1,6 @@
 package okay.clojure
 
-import okay.{!, %, +, Chunk, ChunkBuf, Chunks, Free, Pure, Stage, Take, TypeableK, Writer, effect, pure}
+import okay.{!, %, +, Chunk, ChunkBuf, Chunks, Foreign, Free, Member, Pure, Stage, Take, Writer, pure}
 import clojure.lang.{AFn, Cons, IFn, ILookup, ISeq, Keyword, LazySeq, RT}
 import scala.reflect.ClassTag
 
@@ -35,35 +35,37 @@ object Program {
     case f: IFn => f
     case other => throw IllegalArgumentException(s"okay.clojure: a step's continuation is not a function: $other")
 
-  /** a value from Clojure, as the type the okay side declared */
-  private def as[T](x: Any, what: String)(using ct: ClassTag[T]): T = x match
-    case ct(t) => t
-    case other => throw IllegalArgumentException(
-      s"okay.clojure: $what expected ${ct.runtimeClass.getName}, got " +
-        (if other == null then "nil" else other.getClass.getName))
+  private def as[T: ClassTag](x: Any, what: String): T = Foreign.as[T](x, what, "okay.clojure")
 
-  /** an erased value handed to Clojure, which takes `Object`: it already
-   * IS one at run time, so the ascription checks nothing and cannot fail */
-  private def boxed(a: Any): AnyRef = a.asInstanceOf[AnyRef]
+  private def boxed(a: Any): AnyRef = Foreign.obj(a)
+
+  /** okay.core's records, read for okay-stream's `Foreign` walker
+   * (interop-shared): `(done v)`, `(step op k)` with `op` the keyword
+   * `await`, a `Tell` record, or an operation for the row */
+  private given View: Foreign.View[AnyRef] with
+    def kind(p: AnyRef): Int =
+      if doneClass.isInstance(p) then Foreign.Done
+      else
+        val op = field(p, kOp)
+        if op eq awaitOp then Foreign.Await
+        else if tellClass.isInstance(op) then Foreign.Tell
+        else Foreign.Perform
+    def payload(p: AnyRef): AnyRef =
+      if doneClass.isInstance(p) then field(p, kValue)
+      else
+        val op = field(p, kOp)
+        if tellClass.isInstance(op) then field(op, kValue) else op
+    def lift(p: AnyRef): AnyRef = throw IllegalStateException("okay.clojure: a program has no lifted steps")
+    def resume(p: AnyRef, answer: AnyRef): AnyRef = continuation(p).invoke(answer)
+    def who = "okay.clojure"
 
   /**
-   * Whether a value from Clojure is an operation of the row F — found for
-   * one signature (its `TypeableK`), built with `|` for a union, for the
-   * reason okay-frege's `Frege.Row` states (dotty does not infer the two
-   * sides of a union type lambda).
+   * Whether a value from Clojure is an operation of the row F: the core's
+   * `okay.Member` (interop-shared), found for one signature, built with
+   * `|` for a union — `Program.Row.of[Reader % Long] | Program.Row.of[State % Long]`.
    */
-  trait Row[F[+_]]:
-    def test(x: Any): Boolean
-    def |[G[+_]](g: Row[G]): Row[F + G] = x => test(x) || g.test(x)
-
-  object Row:
-    given one[F[+_]](using t: TypeableK[F]): Row[F] = x => t.test(x)
-    def of[F[+_]](using t: TypeableK[F]): Row[F] = one[F]
-
-  /** the one cast: refined only after the row's test said it IS an F
-   * operation; F is covariant, so its answer needs none */
-  private def operationOf[F[+_]](op: AnyRef)(using r: Row[F]): Option[F[Any]] =
-    if r.test(op) then Some(op.asInstanceOf[F[Any]]) else None
+  type Row[F[+_]] = Member[F]
+  val Row: Member.type = Member
 
   /** a Clojure stage that awaits and tells, as an okay `Stage` */
   def stage[I, O: ClassTag](prog: => AnyRef, name: String = "a Clojure stage"): Stage[I, O, Unit] =
@@ -75,42 +77,14 @@ object Program {
    */
   def stageWith[I, O: ClassTag, F[+_]](prog: => AnyRef, name: String = "a Clojure stage")
                                      (using Row[F]): Unit ! (Take % I + (Writer % O + F)) =
-    type R = Take % I + (Writer % O + F)
-    def go(p: AnyRef): Unit ! R =
-      if doneClass.isInstance(p) then pure(())
-      else
-        val op = field(p, kOp)
-        val k = continuation(p)
-        if op eq awaitOp then
-          effect[R, Option[I]](Take.Await()).flatMap(in => go(k.invoke(in.fold(null)(boxed))))
-        else if tellClass.isInstance(op) then
-          effect[R, Unit](Writer(as[O](field(op, kValue), s"$name's tell"))).flatMap(_ => go(k.invoke(null)))
-        else operationOf[F](op) match
-          case Some(o) => effect[R, Any](o).flatMap(x => go(k.invoke(boxed(x))))
-          case None => throw IllegalArgumentException(
-            s"okay.clojure: $name performed ${if op == null then "nil" else op.getClass.getName}, which is not " +
-              "an operation of this stage's row (a stage's own are await and tell; stageWith[I, O, F] adds F)")
-    Free.delay(() => go(prog))
+    Foreign.stageWith[I, O, F, AnyRef](prog, name)
 
   /**
    * A Clojure program as `A ! F`: each `perform` an operation of F under
    * whatever handlers run the result; `await`/`tell` belong to a stage.
    */
   def run[F[+_], A: ClassTag](prog: => AnyRef, name: String = "a Clojure program")(using Row[F]): A ! F =
-    def go(p: AnyRef): A ! F =
-      if doneClass.isInstance(p) then pure(as[A](field(p, kValue), s"$name's answer"))
-      else
-        val op = field(p, kOp)
-        val k = continuation(p)
-        if (op eq awaitOp) || tellClass.isInstance(op) then throw IllegalStateException(
-          s"okay.clojure: $name used ${if op eq awaitOp then "await" else "tell"} outside a stage; " +
-            "Program.stage runs a program that awaits and tells")
-        else operationOf[F](op) match
-          case Some(o) => effect[F, Any](o).flatMap(x => go(k.invoke(boxed(x))))
-          case None => throw IllegalArgumentException(
-            s"okay.clojure: $name performed ${if op == null then "nil" else op.getClass.getName}, which is not " +
-              "an operation of this program's row")
-    Free.delay(() => go(prog))
+    Foreign.run[F, A, AnyRef](prog, name)
 
   // ------------------------------------------------------------ data
 

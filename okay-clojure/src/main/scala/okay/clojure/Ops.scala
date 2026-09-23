@@ -1,7 +1,6 @@
 package okay.clojure
 
-import okay.{Async, Choose, Reader, State, Throws, Timer}
-import okay.given
+import okay.Operations
 
 /**
  * The core effects' operations, for Clojure to `perform`
@@ -15,20 +14,19 @@ import okay.given
  * }}}
  *
  * The okay row decides at run time whether an operation is its own
- * (refused by name if not). Your own effect's operations are one method
- * each, the same way.
+ * (refused by name if not). The operations themselves are the core's
+ * `okay.Operations` (interop-shared); these are the names Clojure binds.
+ * Your own effect's operations are one method each, the same way.
  */
 object Ops {
-  def ask(): AnyRef = Reader.Ask[Any, Any]()
-  def get(): AnyRef = State.Get[Any, Any]()
-  def set(s: Any): AnyRef = State.Set[Any, Any](s)
-  def raise(e: Any): AnyRef = Throws[Any, Nothing](e)
+  def ask(): AnyRef = Operations.ask()
+  def get(): AnyRef = Operations.get()
+  def set(s: Any): AnyRef = Operations.set(s)
+  def raise(e: Any): AnyRef = Operations.raise(e)
   def choose(options: java.util.List[?]): AnyRef =
-    Choose(scala.jdk.CollectionConverters.ListHasAsScala(options).asScala.toSeq)
+    Operations.choose(scala.jdk.CollectionConverters.ListHasAsScala(options).asScala.toSeq)
 
   /** `Async`: park for `millis` on the platform timer, answering the
    * milliseconds slept */
-  def sleep(millis: Long): AnyRef =
-    val timer = summon[Timer]
-    Async.Await[java.lang.Long](k => timer.after(millis)(() => k(Right(Long.box(millis)))))
+  def sleep(millis: Long): AnyRef = Operations.sleep(millis)
 }

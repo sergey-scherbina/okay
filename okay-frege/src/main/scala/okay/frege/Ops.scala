@@ -1,7 +1,6 @@
 package okay.frege
 
-import okay.{Async, Choose, Reader, State, Throws, Timer}
-import okay.given
+import okay.Operations
 
 /**
  * The core effects' operations, for Frege to `perform` (specs/frege.md):
@@ -18,14 +17,16 @@ import okay.given
  * Untyped on the JVM, TYPED in Frege: the native's `Operation a` names
  * the answer (`Prog.perform :: Operation a -> Prog a`), and the okay row
  * decides at run time whether the operation is its own (refused by name
- * if not). Your own effect's operations are one line each, the same way.
+ * if not). The operations themselves are the core's `okay.Operations`
+ * (interop-shared); these are the names Frege natives bind. Your own
+ * effect's operations are one line each, the same way.
  */
 object Ops {
-  def ask(): AnyRef = Reader.Ask[Any, Any]()
-  def get(): AnyRef = State.Get[Any, Any]()
-  def set(s: Long): AnyRef = State.Set[Any, Any](Long.box(s))
-  def raise(e: String): AnyRef = Throws[String, Nothing](e)
-  def choose2(a: Long, b: Long): AnyRef = Choose(Seq(Long.box(a), Long.box(b)))
+  def ask(): AnyRef = Operations.ask()
+  def get(): AnyRef = Operations.get()
+  def set(s: Long): AnyRef = Operations.set(Long.box(s))
+  def raise(e: String): AnyRef = Operations.raise(e)
+  def choose2(a: Long, b: Long): AnyRef = Operations.choose(Seq(Long.box(a), Long.box(b)))
 
   /**
    * `Async`: park for `millis` on the platform timer (cancellable, as
@@ -33,7 +34,5 @@ object Ops {
    * `Operation Long` rather than `()`, whose Java form in Frege is a
    * `short` and would not take the boxed `Unit` a sleep answers.
    */
-  def sleep(millis: Long): AnyRef =
-    val timer = summon[Timer]
-    Async.Await[java.lang.Long](k => timer.after(millis)(() => k(Right(Long.box(millis)))))
+  def sleep(millis: Long): AnyRef = Operations.sleep(millis)
 }

@@ -1,9 +1,7 @@
 package okay.java
 
-import okay.{!, %, +, Free, Stage, Take, Writer, pure, split}
-import okay.Free.{Bind, Inject, Return}
+import okay.{Free, Push, Stage, pure}
 import java.util.stream.Gatherer
-import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
 /**
@@ -40,44 +38,12 @@ import scala.collection.mutable.ArrayBuffer
  */
 object Gather {
 
-  /** where a driven stage stands, between two calls from the JDK */
-  enum Pos[I, O, A]:
-    /** not started: the stage may tell before its first await, and
-     * there is no downstream to push to until the first element (or
-     * the finisher, on an empty stream) supplies one */
-    case Fresh(stage: Stage[I, O, A])
-    /** suspended at an await; the JDK's next element resumes it */
-    case Waiting(k: Option[I] => Stage[I, O, A])
-    /** answered, or a push was refused: nothing more to do */
-    case Done()
+  import okay.Push.Pos
 
-  /** the Gatherer's mutable state: one cell per evaluation */
+  /** the Gatherer's mutable state: one cell per evaluation; the stage is
+   * driven by okay-stream's `Push` (interop-shared), a refused
+   * `Downstream.push` ending the drive */
   final class Cell[I, O, A](var pos: Pos[I, O, A])
-
-  /**
-   * Run the stage until it awaits or answers, pushing every tell.
-   * `ended`: the input is over, so every await is answered `None` and
-   * the run goes on to the answer — the finisher's mode.
-   *
-   * A refused push ends the drive: `Downstream.push` answering false
-   * means nothing downstream wants more (a `limit`, a `findFirst`),
-   * and the stage's own continuation past that tell is never built.
-   * A final bare `await` (the stage's answer IS the next element) ends
-   * it too: nothing can be told after it.
-   */
-  @tailrec def drive[I, O, A](p: Stage[I, O, A], ds: Gatherer.Downstream[? >: O],
-                              ended: Boolean): Pos[I, O, A] =
-    (p.resume: @unchecked) match
-      case Return(_) => Pos.Done()
-      case Inject(e) => split[Take % I, Writer % O](e)
-        { case Take.Await() => Pos.Done[I, O, A]() }
-        { case Writer.Say(o) => ds.push(o): Unit; Pos.Done[I, O, A]() }
-      case Bind(Inject(e), k) => split[Take % I, Writer % O](e)
-        { case Take.Await() =>
-            if ended then drive(k(None), ds, ended) else Pos.Waiting[I, O, A](k) }
-        { w0 => (w0: @unchecked) match
-            case Writer.Say(o) =>
-              if ds.push(o) then drive(k(()), ds, ended) else Pos.Done[I, O, A]() }
 
   /**
    * A stage as a Gatherer: `stream.gather(Gather.gatherer(stage))`.
@@ -90,21 +56,13 @@ object Gather {
     Gatherer.ofSequential[I, Cell[I, O, A], O](
       () => Cell(Pos.Fresh(stage)),
       (cell: Cell[I, O, A], i: I, ds: Gatherer.Downstream[? >: O]) => {
-        val at = cell.pos match
-          case Pos.Fresh(p) => drive(p, ds, ended = false)
-          case other => other
-        cell.pos = at match
-          case Pos.Waiting(k) => drive(k(Some(i)), ds, ended = false)
-          case other => other
+        cell.pos = Push.offer(cell.pos, i, o => ds.push(o))
         cell.pos match
           case Pos.Waiting(_) => !ds.isRejecting
           case _ => false
       },
       (cell: Cell[I, O, A], ds: Gatherer.Downstream[? >: O]) => {
-        cell.pos = cell.pos match
-          case Pos.Fresh(p) => drive(p, ds, ended = true)
-          case Pos.Waiting(k) => drive(k(None), ds, ended = true)
-          case done => done
+        cell.pos = Push.end(cell.pos, o => ds.push(o))
       })
 
   /**

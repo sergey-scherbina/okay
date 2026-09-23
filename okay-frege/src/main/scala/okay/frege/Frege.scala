@@ -1,7 +1,7 @@
 package okay.frege
 
-import okay.{!, %, +, Chunk, ChunkBuf, Chunks, Free, Pure, Stage, Take, TypeableK, Writer, effect, pure}
-import okay.frege.Prog.{TOp, TProg}
+import okay.{!, %, +, Chunk, ChunkBuf, Chunks, Foreign, Free, Member, Pure, Stage, Take, Writer, pure}
+import okay.frege.Prog.TProg
 import frege.prelude.PreludeBase.{TList, TMaybe}
 import frege.prelude.PreludeBase.TST
 import frege.run8.Thunk
@@ -26,26 +26,34 @@ import scala.reflect.ClassTag
  */
 object Frege {
 
-  /** a Frege value, as the type the okay side declared */
-  private def as[T](x: Any, what: String)(using ct: ClassTag[T]): T = x match
-    case ct(t) => t
-    case other => throw IllegalArgumentException(
-      s"okay.frege: $what expected ${ct.runtimeClass.getName}, got " +
-        (if other == null then "null" else other.getClass.getName))
-
-  /**
-   * An answer handed to a Frege continuation, which takes `Object`: an
-   * erased value already IS one at run time (a primitive arrives boxed),
-   * so the ascription checks nothing and cannot fail.
-   */
-  private def boxed(a: Any): AnyRef = a.asInstanceOf[AnyRef]
+  private def as[T: ClassTag](x: Any, what: String): T = Foreign.as[T](x, what, "okay.frege")
 
   /** the rest of the program, given the answer to its current step */
-  private def resume[A](s: TProg.DStep[A], answer: Any): TProg[A] =
-    s.mem2.call().apply(Thunk.`lazy`[AnyRef](boxed(answer))).call()
+  private def resume[A](s: TProg.DStep[A], answer: AnyRef): TProg[A] =
+    s.mem2.call().apply(Thunk.`lazy`[AnyRef](answer)).call()
 
-  /** existing Frege IO, run as one step; its answer */
-  private def lifted(l: TOp.DLift): AnyRef = TST.performUnsafe(l.mem1.call()).call()
+  /** `Prog`'s constructors, read for okay-stream's `Foreign` walker
+   * (interop-shared): `Done a`, or `Step op k` with `op` one of Await,
+   * Tell, Perform and Lift */
+  private given View: Foreign.View[TProg[?]] with
+    def kind(p: TProg[?]): Int =
+      if p.asDone() != null then Foreign.Done
+      else
+        val op = p.asStep().mem1.call()
+        if op.asPerform() != null then Foreign.Perform
+        else if op.asAwait() != null then Foreign.Await
+        else if op.asTell() != null then Foreign.Tell
+        else Foreign.Lift
+    def payload(p: TProg[?]): AnyRef =
+      val done = p.asDone()
+      if done != null then Foreign.obj(done.mem1.call())
+      else
+        val op = p.asStep().mem1.call()
+        if op.asTell() != null then op.asTell().mem1.call() else op.asPerform().mem1.call()
+    /** existing Frege IO, run as one step; its answer */
+    def lift(p: TProg[?]): AnyRef = TST.performUnsafe(p.asStep().mem1.call().asLift().mem1.call()).call()
+    def resume(p: TProg[?], answer: AnyRef): TProg[?] = Frege.resume(p.asStep(), answer)
+    def who = "okay.frege"
 
   /**
    * A Frege `Prog ()` that uses `await` and `tell`, as a `Stage`. The
@@ -64,67 +72,22 @@ object Frege {
    * asks its threshold from `Reader`, a stage that sleeps between
    * elements. The row is okay-stream's effectful stage row, so the
    * result runs through `through`'s G overloads like any okay stage
-   * written that way.
+   * written that way. The walk is okay-stream's `Foreign`, shared with
+   * okay-clojure's `Program`.
    */
   def stageWith[I, O: ClassTag, F[+_]](prog: => TProg[?], name: String = "a Frege stage")
                                      (using Row[F]): Unit ! (Take % I + (Writer % O + F)) =
-    type R = Take % I + (Writer % O + F)
-    def go[A](p: TProg[A]): Unit ! R =
-      val done = p.asDone()
-      if done != null then pure(())
-      else
-        val s = p.asStep()
-        val op = s.mem1.call()
-        if op.asAwait() != null then
-          effect[R, Option[I]](Take.Await()).flatMap(in => go(resume(s, in.fold(null)(boxed))))
-        else if op.asTell() != null then
-          effect[R, Unit](Writer(as[O](op.asTell().mem1.call(), s"$name's tell"))).flatMap(_ => go(resume(s, null)))
-        else if op.asLift() != null then
-          val l = op.asLift()
-          Free.delay(() => go(resume(s, lifted(l))))
-        else
-          val raw = op.asPerform().mem1.call()
-          operationOf[F](raw) match
-            case Some(o) => effect[R, Any](o).flatMap(x => go(resume(s, x)))
-            case None => throw IllegalArgumentException(
-              s"okay.frege: $name performed ${raw.getClass.getName}, which is not an operation of this " +
-                "stage's row (a stage's own are await and tell; stageWith[I, O, F] adds F)")
-    Free.delay(() => go(prog))
+    Foreign.stageWith[I, O, F, TProg[?]](prog, name)
 
   /**
-   * Whether a value from Frege is an operation of the row F. The core's
-   * `TypeableK` tests ONE signature (a row needs none there: `split`
-   * tests one side and takes the other by exclusion); an operation
-   * arriving as an `Object` has no other side to exclude, so a row is
-   * tested member by member. Resolved at the concrete row of a call
-   * site, never searched at an abstract one (AGENTS.md, the row crash).
+   * Whether a value from Frege is an operation of the row F: the core's
+   * `okay.Member` (interop-shared) under the name this module's users
+   * already bind. A single signature's is FOUND; a union is BUILT with
+   * `|` — `Frege.Row.of[Reader % Long] | Frege.Row.of[State % Long]` —
+   * because dotty does not infer F and G from a union type lambda.
    */
-  trait Row[F[+_]]:
-    def test(x: Any): Boolean
-    /** this row and another, side by side: `Row.of[Reader % Long] |
-     * Row.of[State % Long]` is the row `Reader % Long + State % Long` */
-    def |[G[+_]](g: Row[G]): Row[F + G] = x => test(x) || g.test(x)
-
-  /**
-   * A single signature's row is FOUND (its `TypeableK`); a union row is
-   * BUILT with `|` and passed. Not a given for `F + G`: dotty does not
-   * infer F and G from a union type lambda (it answered Nothing for
-   * both, measured), so a union is spelled once at the call site —
-   * `Frege.run[Reader % Long + State % Long, A](p)(using Row.of[Reader % Long] | Row.of[State % Long])`.
-   */
-  object Row:
-    given one[F[+_]](using t: TypeableK[F]): Row[F] = x => t.test(x)
-    def of[F[+_]](using t: TypeableK[F]): Row[F] = one[F]
-
-  /**
-   * The one cast of this module: an operation arriving from Frege as an
-   * `Object`, refined to the row after the row's own test has said it IS
-   * an operation of F. `F` is covariant, so an `F[X]` is an `F[Any]` and
-   * the answer needs no cast — it goes back to Frege as an `Object`. The
-   * same claim `split` makes for every runner in the core.
-   */
-  private def operationOf[F[+_]](op: AnyRef)(using r: Row[F]): Option[F[Any]] =
-    if r.test(op) then Some(op.asInstanceOf[F[Any]]) else None
+  type Row[F[+_]] = Member[F]
+  val Row: Member.type = Member
 
   /**
    * A Frege `Prog a` as `A ! F`: each `perform op` is performed as an
@@ -134,25 +97,7 @@ object Frege {
    * name; `await`/`tell` belong to `stage`.
    */
   def run[F[+_], A: ClassTag](prog: => TProg[?], name: String = "a Frege program")(using Row[F]): A ! F =
-    def go[X](p: TProg[X]): A ! F =
-      val done = p.asDone()
-      if done != null then pure(as[A](done.mem1.call(), s"$name's answer"))
-      else
-        val s = p.asStep()
-        val op = s.mem1.call()
-        if op.asPerform() != null then
-          val raw = op.asPerform().mem1.call()
-          operationOf[F](raw) match
-            case Some(o) => effect[F, Any](o).flatMap(x => go(resume(s, x)))
-            case None => throw IllegalArgumentException(
-              s"okay.frege: $name performed ${raw.getClass.getName}, which is not an operation of this program's row")
-        else if op.asLift() != null then
-          val l = op.asLift()
-          Free.delay(() => go(resume(s, lifted(l))))
-        else throw IllegalStateException(
-          s"okay.frege: $name used ${if op.asAwait() != null then "await" else "tell"} outside a stage; " +
-            "Frege.stage runs a program that awaits and tells")
-    Free.delay(() => go(prog))
+    Foreign.run[F, A, TProg[?]](prog, name)
 
   // ------------------------------------------------------------ data
 

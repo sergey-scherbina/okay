@@ -1,9 +1,7 @@
 package okay.clojure
 
-import okay.{%, Free, Stage, Take, Writer, pure, split}
-import okay.Free.{Bind, Inject, Return}
+import okay.{Foreign, Free, Push, Stage, pure}
 import clojure.lang.{AFn, IFn, RT, Reduced}
-import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
@@ -30,83 +28,46 @@ import scala.reflect.ClassTag
  */
 object Transducers {
 
-  /** where a driven stage stands between two calls from Clojure */
-  enum Pos[I, O, A]:
-    case Fresh(stage: Stage[I, O, A])
-    case Waiting(k: Option[I] => Stage[I, O, A])
-    case Done()
+  import okay.Push.Pos
 
-  /**
-   * An erased generic value handed to Clojure, which takes `Object`:
-   * at run time it already IS one (a primitive `O` arrives boxed), so
-   * the ascription checks nothing and cannot fail — the one place this
-   * file says so.
-   */
-  private def boxed(a: Any): AnyRef = a.asInstanceOf[AnyRef]
+  private def boxed(a: Any): AnyRef = Foreign.obj(a)
 
   /** an element from Clojure, as the type the okay side declared */
-  private def as[T](x: AnyRef, what: String)(using ct: ClassTag[T]): T = x match
-    case ct(t) => t
-    case other => throw IllegalArgumentException(
-      s"okay.clojure.Transducers: $what expected ${ct.runtimeClass.getName}, got " +
-        (if other == null then "nil" else other.getClass.getName))
+  private def as[T: ClassTag](x: AnyRef, what: String): T = Foreign.as[T](x, what, "okay.clojure.Transducers")
 
   private def unreduced(x: AnyRef): AnyRef = x match
     case r: Reduced => r.deref()
     case v => v
 
   /**
-   * Run the stage until it awaits or answers, feeding each tell to
-   * `rf`. `ended`: the input is over — every await answers `None`
-   * (the completion arity). A reduced answer from `rf` ends the drive:
-   * the downstream wants nothing more, and the stage's continuation
-   * past that tell is never built.
+   * One transducing process: the stage, fresh, bound to one `rf`, driven
+   * by okay-stream's `Push` (interop-shared). The accumulator is threaded
+   * by the process's `emit`: each tell is a call of `rf`, and a reduced
+   * answer refuses the push — the downstream wants nothing more, and the
+   * stage's continuation past that tell is never built.
    */
-  @tailrec private def drive[I, O, A](p: Stage[I, O, A], rf: IFn, acc: AnyRef,
-                                      ended: Boolean): (Pos[I, O, A], AnyRef) =
-    (p.resume: @unchecked) match
-      case Return(_) => (Pos.Done(), acc)
-      case Inject(e) => split[Take % I, Writer % O](e)
-        { case Take.Await() => (Pos.Done[I, O, A](), acc) }
-        { case Writer.Say(o) => (Pos.Done[I, O, A](), rf.invoke(acc, boxed(o))) }
-      case Bind(Inject(e), k) => split[Take % I, Writer % O](e)
-        { case Take.Await() =>
-            if ended then drive(k(None), rf, acc, ended) else (Pos.Waiting[I, O, A](k), acc) }
-        { w0 => (w0: @unchecked) match
-            case Writer.Say(o) =>
-              val next = rf.invoke(acc, boxed(o))
-              if RT.isReduced(next) then (Pos.Done[I, O, A](), next)
-              else drive(k(()), rf, next, ended) }
-
-  /** one transducing process: the stage, fresh, bound to one `rf` */
   private final class Process[I: ClassTag, O, A](rf: IFn, stage: Stage[I, O, A]) extends AFn:
     private var pos: Pos[I, O, A] = Pos.Fresh(stage)
+    private var acc: AnyRef = null
+    private val emit: O => Boolean = o =>
+      acc = rf.invoke(acc, boxed(o))
+      !RT.isReduced(acc)
 
     override def invoke(): AnyRef = rf.invoke()
 
-    override def invoke(acc: AnyRef, x: AnyRef): AnyRef =
+    override def invoke(acc0: AnyRef, x: AnyRef): AnyRef =
       val i = as[I](x, "a transduced element")
-      val (at, acc1) = pos match
-        case Pos.Fresh(p) => drive(p, rf, acc, ended = false)
-        case other => (other, acc)
-      if RT.isReduced(acc1) then { pos = Pos.Done(); acc1 }
-      else at match
-        case Pos.Waiting(k) =>
-          val (next, acc2) = drive(k(Some(i)), rf, acc1, ended = false)
-          pos = next
-          if RT.isReduced(acc2) then acc2
-          else next match
-            case Pos.Waiting(_) => acc2
-            case _ => Reduced(acc2)   // the stage answered: stop the process
-        case _ => pos = Pos.Done(); Reduced(acc1)
+      acc = acc0
+      pos = Push.offer(pos, i, emit)
+      if RT.isReduced(acc) then { pos = Pos.Done(); acc }
+      else pos match
+        case Pos.Waiting(_) => acc
+        case _ => Reduced(acc)   // the stage answered: stop the process
 
-    override def invoke(acc: AnyRef): AnyRef =
-      val (_, flushed) = pos match
-        case Pos.Fresh(p) => drive(p, rf, acc, ended = true)
-        case Pos.Waiting(k) => drive(k(None), rf, acc, ended = true)
-        case done => (done, acc)
-      pos = Pos.Done()
-      rf.invoke(unreduced(flushed))
+    override def invoke(acc0: AnyRef): AnyRef =
+      acc = acc0
+      pos = Push.end(pos, emit)
+      rf.invoke(unreduced(acc))
 
   /**
    * A stage as a Clojure transducer. Each application to a reducing
