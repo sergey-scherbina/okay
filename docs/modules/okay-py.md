@@ -20,6 +20,55 @@ dead for numerics, JEP/ScalaPy share fate with C-extension
 segfaults, GraalPy is watched — the subprocess boundary buys real
 CPython, every wheel, crash isolation, N-workers.
 
+## Typed calls
+
+A Python function can be called as a typed Scala function. Arguments go
+out through their `Schema`, and the answer comes back through `Out`'s:
+
+```scala
+val total = Py.fn[Total]("okaytyped:total")
+assertEquals(total(Order("kyiv-7", 3, 2.5)).runWith, Right(Total("kyiv-7", 7.5, None)))
+```
+
+The Python function receives a plain `dict` (`order["qty"]`). The answer
+may be a `dict` or a dataclass:
+
+```scala
+assertEquals(Py.fn[Order]("okaytyped:an_order")().runWith, Right(Order("kyiv-7", 2, 1.5)))
+```
+
+How values cross:
+
+- A case class is a `dict` of its fields.
+- An enum or sealed trait case is its dict plus a `"type"` field naming
+  the case. This is the discriminated-union shape pydantic and
+  dataclass libraries already read.
+- `Option` is `None`, and a sequence is a list.
+- Integers past 2^53 cross exactly: a JSON number is a double, so the
+  wire carries such an integer as its digits.
+
+`Py.fn` answers `Either[Condition, Out] ! PyEval`, an ordinary okay
+program. It runs under whichever `PyEval` handler is installed: a
+subprocess, a worker pool, a mock, or `Durable` over any of them. A
+Python exception and an answer of the wrong shape arrive on the same
+`Left`. A wrong shape names the field:
+
+```scala
+assertEquals(wrong, Left(Condition("Decode", ".qty: missing")))
+```
+
+Frames get the same treatment. `PyFrame.of(rows)` turns case classes
+into columns, and `frame.rows[A]` turns them back:
+
+```scala
+val frame = PyFrame.of(Vector(Order("a", 1, 1.0), Order("b", 2, 2.0))).toOption.get
+assertEquals(back.flatMap(_.rows[Order]), Right(Vector(Order("a", 2, 1.0), Order("b", 4, 2.0))))
+```
+
+Wire v2 (shim 2) added the record. Before it, the shim sent every
+string-keyed `dict` as a frame. A dict answered by a call either failed
+in the shim or reached okay as `None`.
+
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own

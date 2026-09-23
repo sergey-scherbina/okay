@@ -127,6 +127,40 @@ a number. Collapsing any two of them silently changes what a
 statistical function computes, so `RValue` keeps them apart at the
 type level and the shim carries the distinction across the wire.
 
+## Typed calls
+
+`R.fn` is okay-py's `Py.fn` in R. A case class goes to R as a NAMED LIST
+and comes back from one:
+
+```scala
+val patched = R.fn[Order]("utils::modifyList")(Order("kyiv-7", 2, 1.5), Patch(5)).runWith
+assertEquals(patched, Right(Order("kyiv-7", 5, 1.5)))
+```
+
+R lacks two things Scala has, and the codec says what crosses instead:
+
+- **Scalars.** Every R value is a vector, so the decoder takes a scalar
+  from a length-1 vector:
+
+  ```scala
+  assertEquals(R.fn[Double]("stats::median")(Vector(3.0, 1.0, 2.0)).runWith, Right(2.0))
+  ```
+
+- **A 64-bit integer.** A `Long` is sent as an R integer when it fits 32
+  bits, as a double while the double is exact, and as its digits beyond
+  that:
+
+  ```scala
+  assertEquals(R.fn[Long]("base::identity")(Long.MaxValue).runWith, Right(Long.MaxValue))
+  ```
+
+The frame codec used to truncate a `Long` to 32 bits without any error.
+It now uses the same rule.
+
+A decode failure names the path in R's own notation (`$sku`, `[2]`).
+Wire v3 (shim 3) added the named-list record. Before it, a named list
+that was not a data.frame was sent as a frame.
+
 ## Journalled by Durable
 
 `REval` carries its own `Journalled` instance, as okay-py's `PyEval`
