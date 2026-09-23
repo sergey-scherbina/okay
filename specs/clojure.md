@@ -53,32 +53,32 @@ name: a Clojure transducer's `volatile!` cannot be snapshotted.
 
 ## Behavior
 
-- [ ] build: `okayClojure` (JVM) depends on core + okay-stream and
+- [x] build: `okayClojure` (JVM) depends on core + okay-stream and
       Clojure 1.12.6; in the root aggregate; module page and index row
-- [ ] `Clj.fn(ns, name)` resolves a var (requiring the namespace), and
+- [x] `Clj.fn(ns, name)` resolves a var (requiring the namespace), and
       `Clj.eval(src)` reads and evaluates one form; a missing var or
       namespace is refused BY NAME, not a bare NPE from `invoke`
-- [ ] law, stage -> Clojure: for id, a 3-chunker, mapAccumulate, a
+- [x] law, stage -> Clojure: for id, a 3-chunker, mapAccumulate, a
       transduceUntil take-3, a stage that tells before awaiting —
       `(into [] (Transducers.of s) coll)` equals okay's own run
-- [ ] composes: `(comp (Transducers.of s) (map inc))` and
+- [x] composes: `(comp (Transducers.of s) (map inc))` and
       `(comp (map inc) (Transducers.of s))` both equal the okay-side
       composition
-- [ ] a stage that answers stops an INFINITE `(range)` under `into`
+- [x] a stage that answers stops an INFINITE `(range)` under `into`
       (bounded in the test so a broken bridge fails, not hangs)
-- [ ] a downstream `(take 2)` after the stage stops it mid-element: a
+- [x] a downstream `(take 2)` after the stage stops it mid-element: a
       stage telling 1000 copies of one element makes at most 3 tells
-- [ ] `sequence` (lazy, element-at-a-time through a TransformerIterator)
+- [x] `sequence` (lazy, element-at-a-time through a TransformerIterator)
       and `transduce` with a completing rf agree with `into`
-- [ ] law, Clojure -> stage: `(map inc)`, `(filter odd?)`,
+- [x] law, Clojure -> stage: `(map inc)`, `(filter odd?)`,
       `(partition-all 3)`, `(take 3)`, `(dedupe)`, and a `comp` of them
       run through `Transducers.stage` equal `(into [] xf coll)`
-- [ ] a reduced from a Clojure transducer (take) stops the stage
+- [x] a reduced from a Clojure transducer (take) stops the stage
       awaiting: a 1000-element producer is pulled at most 3 times
-- [ ] round trip: `Transducers.stage(Transducers.of(s))` equals `s`
-- [ ] a built pipeline over `Transducers.stage` refuses a second run by
+- [x] round trip: `Transducers.stage(Transducers.of(s))` equals `s`
+- [x] a built pipeline over `Transducers.stage` refuses a second run by
       name
-- [ ] docs: module page, guide §5 paragraph, theory ch. 7 sentence;
+- [x] docs: module page, guide §5 paragraph, theory ch. 7 sentence;
       every snippet verbatim in a gated test
 
 ## Decisions
@@ -88,8 +88,35 @@ name: a Clojure transducer's `volatile!` cannot be snapshotted.
   the part of Clojure that is a *transformation*, reusable across
   collections, channels and processes — the same reason the JDK side
   bridged `Gatherer` and not `Stream`.
+- **The drive loop is Gather's, copied, not shared.** okay-java's
+  `Gather.drive` and this `drive` are the same twenty lines over
+  `resume`/`split`, differing in how a tell leaves (a `Downstream.push`
+  answering a Boolean vs `rf` threading an accumulator that may come
+  back reduced). A shared push-driver in okay-stream would put both
+  bridges' needs into okay-stream's API and widen its blast radius
+  (~97/113 modules) for two call sites. Trigger for sharing: a THIRD
+  door — grep `split\[Take % I, Writer % O\]` outside okay-stream.
 - **No AOT, no gen-class.** The transducer is a Scala `AFn` subclass;
   Clojure sees an ordinary `IFn`. Nothing is compiled from Clojure
   source, so the module has no Clojure build step.
 
 ## Results
+
+Landed 2026-09-23 (okay-clojure). 13 tests in `TestTransducers`, 3 in
+`TestDocExamplesClojure`, green on the first compile of the bridge.
+
+**Mutants: four, and the fourth survived the first test.** (A) a stage
+that answers not returning `reduced`, (B) a reduced answer from the
+downstream `rf` ignored, (C) a reduced step from a Clojure transducer
+ignored — each failed exactly its own test. (D) the re-run check at a
+STEP removed PASSED: the check in completion still refused the second
+run, because `partition-all` tolerates a step after completion. But
+the step check is the one that refuses BEFORE the spent state is
+touched — the JDK's `windowFixed` NPE'd inside its own array there
+(java-gatherers). The test now uses a strict transducer (it throws
+"stepped after completion" of its own), and D fails it: the message is
+the transducer's, not ours.
+
+**Types at the seam, measured:** `ClassTag[Long]` accepts Clojure's
+`java.lang.Long` elements; a String is refused naming
+`java.lang.String`.

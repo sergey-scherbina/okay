@@ -588,6 +588,13 @@ name — call `through` again instead. `docs/modules/okay-java.md` has
 `Windowed.gatherer`, the event-time window that hands each pane on
 the moment the watermark closes it.
 
+The same translation reaches **Clojure**: a gatherer's integrator and
+finisher are a transducer's step and completion arities, and okay-clojure's
+`Transducers.of(stage)` hands a stage to `into`, `sequence` or `comp`
+as an ordinary transducer, while `Transducers.stage(xf)` runs
+Clojure's own (`(partition-all 3)`, `(dedupe)`) in an okay pipeline —
+docs/modules/okay-clojure.md.
+
 Stages may be EFFECTFUL: a row `Take % I + (Writer % O + G)` carries
 arbitrary operations G (Async above all) between awaits and tells,
 and the `through` overloads forward them through composition in the

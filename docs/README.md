@@ -239,6 +239,7 @@ API reference, gotchas.
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector, a Stage IS a Gatherer (JDK 24) |
+| [`okay-clojure`](modules/okay-clojure.md) | Clojure from okay, and a Stage IS a Clojure transducer, both ways |
 | [`okay-scala2`](modules/okay-scala2.md) | okay from Scala 2.13: `Prog`, a fixed-row program type the 2.13 TASTy reader can read, and the two-stdlib classpath it needs |
 | [`okay-scala2-codec`](modules/okay-scala2-codec.md) | okay-codec from Scala 2.13: `Schemas.productN`/`sum` in place of `derives Schema`, JSON as text |
 | [`okay-scala2-http`](modules/okay-scala2-http.md) | okay-http from Scala 2.13: routes as pattern matching, `Server.use`/`start`, a client |

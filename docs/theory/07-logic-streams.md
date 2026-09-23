@@ -260,7 +260,11 @@ with the element and pushes whatever it `tell`s on the way to the next
 other). What neither side can give the other is a combiner: a
 suspended program is a position in the stream, and positions do not
 merge — which JEP 485 accommodates by running a combiner-less gatherer
-sequentially even inside a parallel stream.
+sequentially even inside a parallel stream. And because the
+transducer is the same enumeratee, the translation goes to Clojure
+too: okay-clojure's `Transducers` makes a stage a transducer and a
+transducer a stage, the stage's answer being `reduced` and its last
+tells the completion arity, law-tested against Clojure's own `into`.
 
 ## Sketches: approximation with stated error
 
