@@ -175,6 +175,48 @@ val fit = R.hold("stats::lm")(formula, Data(Vector(1, 2, 3, 4), Vector(3, 5, 7, 
 val predicted = R.fn[Vector[Double]]("stats::predict")(fit, NewData(Vector(10.0, 0.0))).runWith
 ```
 
+## Types on the other side
+
+okay checks every value against its `Schema` at the boundary, but the
+Python code on the other side does not see those types. `Stubs.python`
+writes them out as a Python module, from the same `Schema`s:
+
+```scala
+val declarations = Stubs.python(summon[Schema[Order]], summon[Schema[Shape]], summon[Schema[Tree]])
+```
+
+For a case class `Order`, an enum `Shape` and a recursive `Tree`, it
+writes:
+
+<!-- not-a-test: generated output, checked by mypy in TestPyStubs -->
+```python
+class Order(TypedDict):
+    id: int
+    lines: list[Line]
+    note: Optional[str]
+    total: int
+    raw: bytes
+
+
+class Circle(TypedDict):
+    type: Literal["Circle"]
+    r: float
+...
+Shape = Union[Circle, Rect]
+```
+
+These are `TypedDict`s, the shape a dict has, because a case class
+reaches Python AS a dict. A sum becomes a union discriminated by its
+`"type"`, which mypy and pyright narrow on. Checked by the real mypy:
+what okay sends passes as the declared type, and `o["lines"][0]["quantity"]`
+fails before anything runs. The same generator writes a TypeScript
+`.d.ts` for values carried by okay's JSON (`Stubs.typescript`, in
+okay-codec; `tsc` checks it the same way).
+
+That check found a defect on its first run. A `BigInt` too big for a
+`Long` crossed to Python as a `str`, not the int Python has for it, and
+now it crosses as an int.
+
 ## What stays safe
 
 - **No string is evaluated.** Every call ADDRESSES an existing function

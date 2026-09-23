@@ -177,6 +177,26 @@ JSON's two roads (native, then `Cont` past `Codecs.NativeThreshold`), so a
 20 000-deep document and a 5 000-link recursive value run on the default
 stack on JVM, JS and Native alike.
 
+## The other side's types: `Stubs`
+
+The codecs make okay's side of a value typed. `Stubs` writes the OTHER
+side's declaration from the same `Schema`, so the other language's type
+checker sees the type too:
+
+- **`Stubs.python(schemas*)`** writes a module of `TypedDict`s in the
+  shape okay-py's `PyCodec` sends: a product is a dict, and a sum is its
+  case's dict plus `"type": Literal["Case"]`.
+- **`Stubs.typescript(schemas*)`** writes a `.d.ts` in the shape `Json`
+  writes. A product is an interface. A sum is `{ "Case": {...} }`. `None`
+  is `null`, a `BigInt` a string of digits, and bytes a base64 string. A
+  `Long` gets a comment, because a JS number holds it exactly only to 2^53.
+
+Declarations come out once each, in dependency order, and recursive types
+refer to themselves by name. Both are checked by the real checkers:
+TestStubsTsc runs `tsc --strict`, and okay-py's TestPyStubs runs
+`mypy --strict`. R, Clojure and Frege get none. R has no types to
+declare, and the JVM languages read okay's own classes. specs/schema-stubs.md.
+
 ## Tutorial
 
 Derive and round-trip both wires:

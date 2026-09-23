@@ -42,7 +42,7 @@ object PyCodec {
     case Schema.SString => Str(x)
     case Schema.SChar => Str(x.toString)
     case Schema.SBytes => Bytes(x)
-    case Schema.SBigInt => if x.isValidLong then I64(x.toLong) else Str(x.toString)
+    case Schema.SBigInt => if x.isValidLong then I64(x.toLong) else BigI(x)
     case o: Schema.SOption[a] => x match
       case Some(v) => enc(o.of(), v)
       case None => PyNone
@@ -86,7 +86,7 @@ object PyCodec {
         case _ => no("bytes")
       case Schema.SBigInt => v match
         case I64(n) => Right(BigInt(n))
-        case Str(d) if d.nonEmpty && d.stripPrefix("-").forall(_.isDigit) => Right(BigInt(d))
+        case BigI(n) => Right(n)
         case _ => no("an int")
       case o: Schema.SOption[a] => v match
         case PyNone => Right(None)

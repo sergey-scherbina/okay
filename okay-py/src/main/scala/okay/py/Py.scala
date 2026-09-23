@@ -15,6 +15,9 @@ enum PyValue:
   case PyNone                          // Python None — DISTINCT from NaN
   case Bool(v: Boolean)
   case I64(v: Long)
+  /** an int past a Long: Python's ints are unbounded (schema-stubs found a
+   * BigInt crossing as a `str`, which a TypedDict saying `int` refused) */
+  case BigI(v: scala.math.BigInt)
   case F64(v: Double)                  // NaN is a value here, not an absence
   case Str(v: String)
   case Bytes(v: Array[Byte])
@@ -308,6 +311,8 @@ private[py] object Wire {
       case PyValue.I64(n) if math.abs(n.toDouble) >= Exact =>
         Json.JObj(Vector("t" -> Json.JStr("int"), "v" -> Json.JStr(n.toString)))
       case PyValue.I64(n) => Json.JNum(n.toDouble)
+      case PyValue.BigI(n) =>
+        Json.JObj(Vector("t" -> Json.JStr("int"), "v" -> Json.JStr(n.toString)))
       case PyValue.F64(d) if d.isNaN => Json.JObj(Vector("t" -> Json.JStr("nan")))
       // an integral F64 would merge with I64 on the json wire; tagged
       case PyValue.F64(d) if d == math.floor(d) && !d.isInfinite && math.abs(d) < 1e15 =>
@@ -378,7 +383,7 @@ private[py] object Wire {
           // a Python int past 2^53: exact as a Long when it fits one,
           // and its digits when it does not (Python ints are unbounded)
           case Some(Json.JStr("int")) => m.get("v") match
-            case Some(Json.JStr(d)) => d.toLongOption.fold(PyValue.Str(d))(PyValue.I64(_))
+            case Some(Json.JStr(d)) => d.toLongOption.fold(PyValue.BigI(scala.math.BigInt(d)))(PyValue.I64(_))
             case _ => PyValue.PyNone
           case Some(Json.JStr("ref")) => (m.get("id"), m.get("type")) match
             case (Some(Json.JNum(i)), Some(Json.JStr(t))) => PyValue.Ref(PyRef(i.toLong, t))
