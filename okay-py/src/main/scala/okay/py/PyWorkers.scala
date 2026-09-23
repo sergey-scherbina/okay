@@ -27,49 +27,131 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
   /**
    * A call with callbacks is a DIALOGUE (foreign-callbacks): `Start`,
    * then a `Resume` per ask, all with ONE worker — its Python frame is
-   * the one waiting. The worker stays checked out from the start to the
-   * `Done`, and each ask's `k` is renamed to a pool-wide one so a resume
-   * finds its worker.
+   * the one waiting. A dialogue that took its worker from the pool keeps
+   * it until the `Done`; each ask's `k` is renamed to a pool-wide one so a
+   * resume finds its worker.
    */
-  private val parked = java.util.concurrent.ConcurrentHashMap[Long, (PySubprocess, Long)]()
+  private val parked = java.util.concurrent.ConcurrentHashMap[Long, (PySubprocess, Long, Boolean)]()
   private val nextK = java.util.concurrent.atomic.AtomicLong()
+
+  /**
+   * A HELD object ties its calls to its worker (foreign-object-handles):
+   * a call naming a ref goes to the worker holding it, whatever the pool
+   * is doing. The worker STAYS in the pool — a pool of one that held an
+   * object must still answer a plain call — so every exchange with a
+   * worker takes that worker's lock, and the pool only chooses which
+   * worker an unpinned call gets. Ref ids are renamed pool-wide.
+   */
+  private val refs = java.util.concurrent.ConcurrentHashMap[Long, (PySubprocess, Long)]()
+  private val nextRef = java.util.concurrent.atomic.AtomicLong()
 
   /** the same shape as one worker's handler — programs cannot tell */
   def handler: Handler[PyEval] = new:
     def handle[A](e: PyEval[A]): A = e match
-      case PyEval.Start(fn, args, cbs) => dialogue(pool.take())(_.handle(PyEval.Start(fn, args, cbs)))
       case PyEval.Resume(k, a) =>
-        val (w, local) = Option(parked.remove(k)).getOrElse(
+        val (w, local, fromPool) = Option(parked.remove(k)).getOrElse(
           throw IllegalStateException(s"okay.py: resume $k matches no waiting call (resumed twice?)"))
-        dialogue(w)(_.handle(PyEval.Resume(local, a)))
+        dialogue(w, fromPool)(_.handle(PyEval.Resume(local, a)))
+      case PyEval.Release(r) =>
+        Option(refs.remove(r.id)).foreach { (w, local) =>
+          w.synchronized(w.handler.handle(PyEval.Release(PyRef(local, r.pyType))))
+        }
       case other =>
-        val w = pool.take()
-        var keep = true
-        try w.handler.handle(other)
-        catch
-          case dead: IllegalStateException if dead.getMessage.contains("DEAD") =>
-            keep = false
-            replace(w)
-            throw dead
-        finally if keep then pool.put(w)
+        owner(named(other)) match
+          case Some(w) => on(w, other, fromPool = false)
+          case None =>
+            val w = pool.take()
+            val dialogueKeepsIt = other match
+              case PyEval.Start(_, _, _) => true
+              case _ => false
+            var back = !dialogueKeepsIt
+            try on(w, other, fromPool = true)
+            catch
+              case dead: IllegalStateException if dead.getMessage.contains("DEAD") =>
+                back = false
+                retire(w)
+                throw dead
+            finally if back then pool.put(w)
 
-  /** one step of a dialogue on `w`: park it again on an ask, return it
-   * to the pool on the answer */
-  private def dialogue(w: PySubprocess)(step: Handler[PyEval] => PyStep): PyStep =
-    try step(w.handler) match
+  /** run one operation on `w` under its lock, its refs renamed to the
+   * worker's own and any ref it answers registered pool-wide */
+  private def on[A](w: PySubprocess, e: PyEval[A], fromPool: Boolean): A = e match
+    case PyEval.Start(fn, args, cbs) => dialogue(w, fromPool)(_.handle(PyEval.Start(fn, args.map(local), cbs)))
+    case PyEval.Call(fn, args) => w.synchronized(w.handler.handle(PyEval.Call(fn, args.map(local))))
+    case PyEval.Frame(fn, f, args) => w.synchronized(w.handler.handle(PyEval.Frame(fn, f, args.map(local))))
+    case PyEval.Hold(fn, args) =>
+      w.synchronized(w.handler.handle(PyEval.Hold(fn, args.map(local)))).map(register(w, _))
+    case PyEval.Method(r, name, args, h) =>
+      w.synchronized(w.handler.handle(PyEval.Method(localRef(r), name, args.map(local), h))).map {
+        case PyValue.Ref(held) if h => PyValue.Ref(register(w, held))
+        case v => v
+      }
+    case PyEval.Attr(r, name) => w.synchronized(w.handler.handle(PyEval.Attr(localRef(r), name)))
+    case PyEval.Resume(_, _) | PyEval.Release(_) =>
+      throw IllegalStateException("unreachable: resume and release are routed by the handler")
+
+  /** the refs an operation names */
+  private def named[A](e: PyEval[A]): Vector[Long] = e match
+    case PyEval.Call(_, args) => args.flatMap(refsIn)
+    case PyEval.Frame(_, _, args) => args.flatMap(refsIn)
+    case PyEval.Start(_, args, _) => args.flatMap(refsIn)
+    case PyEval.Hold(_, args) => args.flatMap(refsIn)
+    case PyEval.Method(r, _, args, _) => r.id +: args.flatMap(refsIn)
+    case PyEval.Attr(r, _) => Vector(r.id)
+    case PyEval.Resume(_, _) | PyEval.Release(_) => Vector.empty
+
+  private def refsIn(v: PyValue): Vector[Long] = v match
+    case PyValue.Ref(r) => Vector(r.id)
+    case PyValue.Arr(xs) => xs.flatMap(refsIn)
+    case PyValue.Dict(kv) => kv.flatMap(p => refsIn(p._2))
+    case _ => Vector.empty
+
+  /** the one worker holding every ref named, or none named at all */
+  private def owner(ids: Vector[Long]): Option[PySubprocess] =
+    val ws = ids.distinct.map(i => Option(refs.get(i)).map(_._1).getOrElse(
+      throw IllegalArgumentException(s"okay.py: ref $i is not held by this pool (released?)")))
+    ws.distinct match
+      case Vector() => None
+      case Vector(w) => Some(w)
+      case _ => throw IllegalArgumentException(
+        s"okay.py: refs ${ids.distinct.mkString(", ")} live in different workers; one call reaches one process")
+
+  private def localRef(r: PyRef): PyRef = PyRef(refs.get(r.id)._2, r.pyType)
+
+  private def local(v: PyValue): PyValue = v match
+    case PyValue.Ref(r) => PyValue.Ref(localRef(r))
+    case PyValue.Arr(xs) => PyValue.Arr(xs.map(local))
+    case PyValue.Dict(kv) => PyValue.Dict(kv.map((k, x) => (k, local(x))))
+    case other => other
+
+  private def register(w: PySubprocess, r: PyRef): PyRef =
+    val g = nextRef.incrementAndGet()
+    refs.put(g, (w, r.id)): Unit
+    PyRef(g, r.pyType)
+
+  /** one step of a dialogue on `w`: park it again on an ask; on the
+   * answer, give it back to the pool if that is where it came from */
+  private def dialogue(w: PySubprocess, fromPool: Boolean)(step: Handler[PyEval] => PyStep): PyStep =
+    try w.synchronized(step(w.handler)) match
       case PyStep.Ask(cb, args, local) =>
         val k = nextK.incrementAndGet()
-        parked.put(k, (w, local)): Unit
+        parked.put(k, (w, local, fromPool)): Unit
         PyStep.Ask(cb, args, k)
       case done =>
-        pool.put(w)
+        if fromPool then pool.put(w)
         done
     catch
       case dead: IllegalStateException if dead.getMessage.contains("DEAD") =>
-        replace(w)
+        retire(w)
         throw dead
 
-  private def replace(w: PySubprocess): Unit =
+  /** a dead worker: its refs die with it (a later use is refused by
+   * name), and a fresh worker takes its place in the pool */
+  private def retire(w: PySubprocess): Unit =
+    refs.entrySet.removeIf(_.getValue._1 eq w): Unit
+    // a worker reached through a ref may still be IN the pool: take it
+    // out, or the pool would hold a corpse beside its replacement
+    pool.remove(w): Unit
     w.close()
     pool.put(PySubprocess.start(python, env))   // the supervisor's move
 

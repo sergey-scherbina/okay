@@ -169,6 +169,22 @@ object Py {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
   /**
+   * Call `address` and KEEP its result in the worker, answering a handle
+   * (foreign-object-handles): `Py.hold("random:Random")(42)` is a seeded
+   * generator living in Python, whose methods `ref.call` reaches.
+   */
+  def hold(address: String): Hold = Hold(address)
+
+  final class Hold(address: String):
+    def apply(): Either[Condition, PyRef] ! PyEval = go(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! PyEval =
+      go(Vector(ToPy(a), ToPy(b), ToPy(c)))
+    private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! PyEval =
+      effect[PyEval, Either[Condition, PyRef]](PyEval.Hold(address, args))
+
+  /**
    * A callback Python may call by name while okay runs one of its
    * functions (foreign-callbacks): `okay.call("objective", x)` in Python
    * decodes `x` as `Arg`, runs `f` as an okay PROGRAM in `F` under the
@@ -202,14 +218,14 @@ object Py {
 
   final class Fn[Out](val address: String)(using out: Schema[Out]):
     def apply(): Either[Condition, Out] ! PyEval = call(Vector.empty)
-    def apply[A: Schema](a: A): Either[Condition, Out] ! PyEval =
-      call(Vector(PyCodec.encode(a)))
-    def apply[A: Schema, B: Schema](a: A, b: B): Either[Condition, Out] ! PyEval =
-      call(Vector(PyCodec.encode(a), PyCodec.encode(b)))
-    def apply[A: Schema, B: Schema, C: Schema](a: A, b: B, c: C): Either[Condition, Out] ! PyEval =
-      call(Vector(PyCodec.encode(a), PyCodec.encode(b), PyCodec.encode(c)))
-    def apply[A: Schema, B: Schema, C: Schema, D: Schema](a: A, b: B, c: C, d: D): Either[Condition, Out] ! PyEval =
-      call(Vector(PyCodec.encode(a), PyCodec.encode(b), PyCodec.encode(c), PyCodec.encode(d)))
+    def apply[A: ToPy](a: A): Either[Condition, Out] ! PyEval =
+      call(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! PyEval =
+      call(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! PyEval =
+      call(Vector(ToPy(a), ToPy(b), ToPy(c)))
+    def apply[A: ToPy, B: ToPy, C: ToPy, D: ToPy](a: A, b: B, c: C, d: D): Either[Condition, Out] ! PyEval =
+      call(Vector(ToPy(a), ToPy(b), ToPy(c), ToPy(d)))
 
     private def call(args: Vector[PyValue]): Either[Condition, Out] ! PyEval =
       effect[PyEval, Either[Condition, PyValue]](PyEval.Call(address, args))
@@ -220,12 +236,12 @@ object Py {
 
     final class Calling[F[+_]](cbs: Callbacks[F]):
       def apply(): Either[Condition, Out] ! (F + PyEval) = dialogue(Vector.empty)
-      def apply[A: Schema](a: A): Either[Condition, Out] ! (F + PyEval) =
-        dialogue(Vector(PyCodec.encode(a)))
-      def apply[A: Schema, B: Schema](a: A, b: B): Either[Condition, Out] ! (F + PyEval) =
-        dialogue(Vector(PyCodec.encode(a), PyCodec.encode(b)))
-      def apply[A: Schema, B: Schema, C: Schema](a: A, b: B, c: C): Either[Condition, Out] ! (F + PyEval) =
-        dialogue(Vector(PyCodec.encode(a), PyCodec.encode(b), PyCodec.encode(c)))
+      def apply[A: ToPy](a: A): Either[Condition, Out] ! (F + PyEval) =
+        dialogue(Vector(ToPy(a)))
+      def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! (F + PyEval) =
+        dialogue(Vector(ToPy(a), ToPy(b)))
+      def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! (F + PyEval) =
+        dialogue(Vector(ToPy(a), ToPy(b), ToPy(c)))
 
       /**
        * The dialogue as a program: start, then per ask run the callback's

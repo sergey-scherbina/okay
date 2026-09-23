@@ -1,6 +1,7 @@
 package okay.py
 
 
+import okay.!
 import okay.codec.Json
 
 /**
@@ -22,6 +23,65 @@ enum PyValue:
    * (foreign-typed-calls): before it a dict answered by a call was sent
    * as a FRAME and reached okay as None, or failed in the shim */
   case Dict(kv: Vector[(String, PyValue)])
+  /** an object HELD in the worker (foreign-object-handles): not its
+   * value, a handle to it — an argument like any other, which the shim
+   * turns back into the object */
+  case Ref(ref: PyRef)
+
+/**
+ * A handle to a Python object kept in its worker (foreign-object-handles):
+ * a fitted model, a tokenizer, an open dataset. Its methods are called by
+ * name, its attributes read, and it is passed to any function as an
+ * argument; `release` drops it on the far side.
+ *
+ * NOT a value a replay can rebuild: it names state inside ONE process. A
+ * whole program replays from its journal (every step answered there), but
+ * a recovery that continues live on a fresh process meets a ref that
+ * process never held, and is refused by name. Durable programs keep
+ * values, not handles.
+ */
+final case class PyRef(id: Long, pyType: String):
+  /** a method of the held object, answering its value */
+  def call[Out: okay.codec.Schema](method: String): PyRef.Method[Out] = PyRef.Method(this, method)
+  /** a method of the held object whose result is HELD in turn */
+  def hold(method: String): PyRef.HoldMethod = PyRef.HoldMethod(this, method)
+  /** an attribute of the held object */
+  def attr[Out: okay.codec.Schema](name: String): Either[Condition, Out] ! PyEval =
+    okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Attr(this, name))
+      .map(_.flatMap(PyCodec.decode[Out](_)))
+  /** drop the object in the worker; idempotent */
+  def release: Unit ! PyEval = okay.effect[PyEval, Unit](PyEval.Release(this))
+
+object PyRef:
+  final class Method[Out: okay.codec.Schema](ref: PyRef, name: String):
+    def apply(): Either[Condition, Out] ! PyEval = go(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, Out] ! PyEval = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! PyEval =
+      go(Vector(ToPy(a), ToPy(b), ToPy(c)))
+    private def go(args: Vector[PyValue]): Either[Condition, Out] ! PyEval =
+      okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Method(ref, name, args, hold = false))
+        .map(_.flatMap(PyCodec.decode[Out](_)))
+
+  final class HoldMethod(ref: PyRef, name: String):
+    def apply(): Either[Condition, PyRef] ! PyEval = go(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! PyEval =
+      go(Vector(ToPy(a), ToPy(b), ToPy(c)))
+    private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! PyEval =
+      okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Method(ref, name, args, hold = true))
+        .map(_.flatMap(Wire.asRef))
+
+/** how an argument becomes a `PyValue`: through its `Schema`, or as the
+ * handle it is */
+trait ToPy[A]:
+  def py(a: A): PyValue
+
+object ToPy:
+  def apply[A](a: A)(using t: ToPy[A]): PyValue = t.py(a)
+  given ref: ToPy[PyRef] = PyValue.Ref(_)
+  given schema[A](using s: okay.codec.Schema[A]): ToPy[A] = PyCodec.encode(_)
 
 /** a columnar frame — dict-of-lists on the far side */
 final case class PyFrame(cols: Vector[(String, Vector[PyValue])]):
@@ -72,6 +132,15 @@ enum PyEval[+A] derives okay.Effect:
    * `okay.call`; the next step is another ask or the call's answer */
   case Resume(k: Long, answer: Either[Condition, PyValue])
     extends PyEval[PyStep]
+  /** call `fn` and KEEP its result in the worker (foreign-object-handles) */
+  case Hold(fn: String, args: Vector[PyValue]) extends PyEval[Either[Condition, PyRef]]
+  /** a method of a held object: its value, or held in turn when `hold` */
+  case Method(ref: PyRef, name: String, args: Vector[PyValue], hold: Boolean)
+    extends PyEval[Either[Condition, PyValue]]
+  /** an attribute of a held object */
+  case Attr(ref: PyRef, name: String) extends PyEval[Either[Condition, PyValue]]
+  /** drop a held object; idempotent */
+  case Release(ref: PyRef) extends PyEval[Unit]
 
 /** where a call with callbacks stands (foreign-callbacks) */
 enum PyStep:
@@ -104,6 +173,10 @@ object PyEval:
       case Frame(fn, _, _) => fn
       case Start(fn, _, _) => fn
       case Resume(_, _) => "resume"
+      case Hold(fn, _) => s"hold:$fn"
+      case Method(_, name, _, _) => s"method:$name"
+      case Attr(_, name) => s"attr:$name"
+      case Release(_) => "release"
     def fingerprint[A](op: PyEval[A]): String = op match
       case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Frame(fn, in, args) =>
@@ -111,6 +184,10 @@ object PyEval:
       case Start(fn, args, cbs) =>
         s"$fn#${Wire.digest(Json.JArr(Vector(Json.JArr(args.map(Wire.enc)), Json.JArr(cbs.map(Json.JStr(_))))))}"
       case Resume(k, answer) => s"resume/$k#${Wire.digest(Json.parse(Wire.written(answer.map(Wire.enc))))}"
+      case Hold(fn, args) => s"hold:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Method(r, name, args, h) => s"method:${r.id}.$name/$h#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Attr(r, name) => s"attr:${r.id}.$name"
+      case Release(r) => s"release:${r.id}"
     def withKey[A](op: PyEval[A], key: String): PyEval[A] = op
     def perform[A](op: PyEval[A], inner: okay.Handler[PyEval]): (A, String) = op match
       case Call(fn, args) =>
@@ -125,11 +202,27 @@ object PyEval:
       case Resume(k, a) =>
         val step = inner.handle(Resume(k, a))
         (step, Wire.writtenStep(step))
+      case Hold(fn, args) =>
+        val answer = inner.handle(Hold(fn, args))
+        (answer, Wire.written(answer.map(r => Wire.enc(PyValue.Ref(r)))))
+      case Method(r, name, args, h) =>
+        val answer = inner.handle(Method(r, name, args, h))
+        (answer, Wire.written(answer.map(Wire.enc)))
+      case Attr(r, name) =>
+        val answer = inner.handle(Attr(r, name))
+        (answer, Wire.written(answer.map(Wire.enc)))
+      case Release(r) =>
+        inner.handle(Release(r))
+        ((), "released")
     def decode[A](op: PyEval[A], written: String): A = op match
       case Call(_, _) => Wire.read(written).map(Wire.dec)
       case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
       case Start(_, _, _) => Wire.readStep(written)
       case Resume(_, _) => Wire.readStep(written)
+      case Hold(_, _) => Wire.read(written).flatMap(j => Wire.asRef(Wire.dec(j)))
+      case Method(_, _, _, _) => Wire.read(written).map(Wire.dec)
+      case Attr(_, _) => Wire.read(written).map(Wire.dec)
+      case Release(_) => ()
 
 
 /** the wire halves shared by every engine: PyValue <-> the tagged
@@ -175,6 +268,11 @@ private[py] object Wire {
     }
     case _ => None
 
+  /** a held object's handle, or the refusal of an answer that is not one */
+  def asRef(v: PyValue): Either[Condition, PyRef] = v match
+    case PyValue.Ref(r) => Right(r)
+    case other => Left(Condition("WireError", s"expected a held object, got $other"))
+
   /** SHA-256 of a value's printed JSON, hex */
   def digest(j: Json): String =
     java.security.MessageDigest.getInstance("SHA-256").nn
@@ -211,6 +309,8 @@ private[py] object Wire {
       case PyValue.Str(s) => Json.JStr(s)
       case PyValue.Bytes(bs) => Json.JObj(Vector("t" -> Json.JStr("bytes"),
         "b64" -> Json.JStr(java.util.Base64.getEncoder.encodeToString(bs))))
+      case PyValue.Ref(r) => Json.JObj(Vector("t" -> Json.JStr("ref"),
+        "id" -> Json.JNum(r.id.toDouble), "type" -> Json.JStr(r.pyType)))
       case PyValue.Arr(_) | PyValue.Dict(_) =>
         throw IllegalStateException("unreachable: containers are handled by the work-list")
 
@@ -272,6 +372,9 @@ private[py] object Wire {
           // and its digits when it does not (Python ints are unbounded)
           case Some(Json.JStr("int")) => m.get("v") match
             case Some(Json.JStr(d)) => d.toLongOption.fold(PyValue.Str(d))(PyValue.I64(_))
+            case _ => PyValue.PyNone
+          case Some(Json.JStr("ref")) => (m.get("id"), m.get("type")) match
+            case (Some(Json.JNum(i)), Some(Json.JStr(t))) => PyValue.Ref(PyRef(i.toLong, t))
             case _ => PyValue.PyNone
           case _ => PyValue.PyNone   // an untagged object has no PyValue shape
       case Json.JErr(_) => PyValue.PyNone

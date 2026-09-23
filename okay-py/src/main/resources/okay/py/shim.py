@@ -1,13 +1,14 @@
 # okay-py shim, version 3 (specs/py.md; v2 = foreign-typed-calls: a dict
 # is a record on the wire, a frame only where a frame is asked; v3 =
-# foreign-callbacks: `start`/`resume` and the injected `okay` module). Stdlib only, deliberately:
+# foreign-callbacks: `start`/`resume` and the injected `okay` module; v4 =
+# foreign-object-handles: `hold`/`method`/`attr`/`release`, refs as values). Stdlib only, deliberately:
 # json wire, one object per line each way; functions are ADDRESSED
 # as module:qualified.name and imported, never eval'd from source.
 # A failing call answers a condition and the worker survives; only a
 # broken wire ends the process.
 import sys, json, base64, importlib, importlib.metadata, math, dataclasses, types
 
-SHIM = 3
+SHIM = 4
 
 # a JSON number is a double: exact only up to 2**53
 EXACT = 2 ** 53
@@ -39,6 +40,24 @@ def enc(v):
     # an unknown type is a CONDITION at the call site, not a guess here
     raise TypeError("cannot encode a %s for the wire" % type(v).__name__)
 
+# ---- held objects (v4) --------------------------------------------------
+
+_held = {}
+_next_ref = [0]
+
+def hold(obj):
+    _next_ref[0] += 1
+    i = _next_ref[0]
+    _held[i] = obj
+    t = type(obj)
+    return {"t": "ref", "id": i, "type": "%s.%s" % (t.__module__, t.__qualname__)}
+
+def held(i):
+    if i not in _held:
+        raise LookupError("ref %s is not held by this process "
+                          "(released, or held by a process that is gone)" % i)
+    return _held[i]
+
 def enc_frame(v):
     # a frame function's answer: a dict of columns, or anything with a
     # pandas-style to_dict(orient="list")
@@ -54,6 +73,7 @@ def dec(v):
         t = v.get("t")
         if t == "dict": return {k: dec(x) for k, x in v["kv"]}
         if t == "int": return int(v["v"])
+        if t == "ref": return held(v["id"])
         if t == "nan": return float("nan")
         if t == "f": return float(v["v"])
         if t == "bytes": return base64.b64decode(v["b64"])
@@ -136,6 +156,18 @@ def serve(req):
             finally:
                 _offered.pop()
             reply({"id": rid, "ok": enc(out)})
+        elif op == "hold":
+            f = resolve(req["fn"])
+            reply({"id": rid, "ok": hold(f(*[dec(a) for a in req.get("args", [])]))})
+        elif op == "method":
+            m = getattr(held(req["ref"]), req["name"])
+            out = m(*[dec(a) for a in req.get("args", [])])
+            reply({"id": rid, "ok": hold(out) if req.get("hold") else enc(out)})
+        elif op == "attr":
+            reply({"id": rid, "ok": enc(getattr(held(req["ref"]), req["name"]))})
+        elif op == "release":
+            _held.pop(req["ref"], None)
+            reply({"id": rid, "ok": None})
         elif op == "frame":
             f = resolve(req["fn"])
             frame = dec(req["in"])

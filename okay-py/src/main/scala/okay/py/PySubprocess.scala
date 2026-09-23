@@ -77,6 +77,22 @@ final class PySubprocess private (proc: Process,
             "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message)))
         stepOf(send(Json.JObj(Vector(
           "op" -> Json.JStr("resume"), "k" -> Json.JNum(k.toDouble), answered))))
+      case PyEval.Hold(fn, args) =>
+        answer(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("hold"), "fn" -> Json.JStr(fn),
+          "args" -> Json.JArr(args.map(Wire.enc))))))(v => Wire.asRef(Wire.dec(v)))
+      case PyEval.Method(r, name, args, h) =>
+        answer(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("method"), "ref" -> Json.JNum(r.id.toDouble), "name" -> Json.JStr(name),
+          "args" -> Json.JArr(args.map(Wire.enc)), "hold" -> Json.JBool(h)))))(v => Right(Wire.dec(v)))
+      case PyEval.Attr(r, name) =>
+        answer(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("attr"), "ref" -> Json.JNum(r.id.toDouble),
+          "name" -> Json.JStr(name)))))(v => Right(Wire.dec(v)))
+      case PyEval.Release(r) =>
+        // idempotent on both sides: releasing twice, or a ref the
+        // process never held, is not an error worth a program's attention
+        val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("release"), "ref" -> Json.JNum(r.id.toDouble))))
 
   /** a call's next message: an ask, or its answer */
   private def stepOf(j: Json): PyStep =
@@ -110,7 +126,7 @@ final class PySubprocess private (proc: Process,
 
 object PySubprocess:
 
-  val ShimVersion = 3
+  val ShimVersion = 4
 
   /**
    * Start a worker: the configured interpreter (resolved against
