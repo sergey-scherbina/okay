@@ -2592,7 +2592,9 @@ lazy val okayLive = project
   .in(file("okay-live"))
   // okay-codec: a Watched document is Json addressed by the dotted
   // keys JsonOptic.path resolves against a Schema (specs/optics-outside.md stage 10)
-  .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm)
+  // okay-http: LiveHttp serves a Watched as server-sent events and a
+  // POST (typescript-types T11)
+  .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm, okayHttp.jvm)
   .settings(
     name := "okay-live",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
