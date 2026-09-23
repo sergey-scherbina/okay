@@ -206,6 +206,17 @@ enum REval[+A] derives okay.Effect:
   case Hold(fn: String, args: Vector[RValue]) extends REval[Either[Condition, RRef]]
   /** drop a held object; idempotent */
   case Release(ref: RRef) extends REval[Unit]
+  /** start an R program-as-data (remote-foreign) under the host's run id */
+  case Program(run: Long, fn: String, args: Vector[RValue]) extends REval[Either[Condition, RNode]]
+  /** continue run `run` at continuation `k`; R keeps it, so again is fine */
+  case Continue(run: Long, k: Long, answer: RValue) extends REval[Either[Condition, RNode]]
+  /** drop every continuation of a run; idempotent */
+  case Forget(run: Long) extends REval[Unit]
+
+/** one node of an R program-as-data (remote-foreign) */
+enum RNode:
+  case Done(value: RValue)
+  case Perform(name: String, args: Vector[RValue], k: Long)
 
 /** where an R call with callbacks stands (foreign-callbacks) */
 enum RStep:
@@ -230,6 +241,9 @@ object REval:
       case Resume(_, _) => "resume"
       case Hold(fn, _) => s"hold:$fn"
       case Release(_) => "release"
+      case Program(_, fn, _) => s"program:$fn"
+      case Continue(_, _, _) => "continue"
+      case Forget(_) => "forget"
     def fingerprint[A](op: REval[A]): String = op match
       case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Frame(fn, in, args) =>
@@ -239,6 +253,9 @@ object REval:
       case Resume(k, answer) => s"resume/$k#${Wire.digest(Json.parse(Wire.written(answer.map(Wire.enc))))}"
       case Hold(fn, args) => s"hold:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Release(r) => s"release:${r.id}"
+      case Program(run, fn, args) => s"program:$run:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Continue(run, k, a) => s"continue:$run/$k#${Wire.digest(Wire.enc(a))}"
+      case Forget(run) => s"forget:$run"
     def withKey[A](op: REval[A], key: String): REval[A] = op
     def perform[A](op: REval[A], inner: okay.Handler[REval]): (A, String) = op match
       case Call(fn, args) =>
@@ -259,6 +276,15 @@ object REval:
       case Release(r) =>
         inner.handle(Release(r))
         ((), "released")
+      case Program(run, fn, args) =>
+        val answer = inner.handle(Program(run, fn, args))
+        (answer, Wire.written(answer.map(Wire.encNode)))
+      case Continue(run, k, a) =>
+        val answer = inner.handle(Continue(run, k, a))
+        (answer, Wire.written(answer.map(Wire.encNode)))
+      case Forget(run) =>
+        inner.handle(Forget(run))
+        ((), "forgotten")
     def decode[A](op: REval[A], written: String): A = op match
       case Call(_, _) => Wire.read(written).map(Wire.dec)
       case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
@@ -266,6 +292,9 @@ object REval:
       case Resume(_, _) => Wire.readStep(written)
       case Hold(_, _) => Wire.read(written).flatMap(j => Wire.asRef(Wire.dec(j)))
       case Release(_) => ()
+      case Program(_, _, _) => Wire.read(written).flatMap(Wire.decNode)
+      case Continue(_, _, _) => Wire.read(written).flatMap(Wire.decNode)
+      case Forget(_) => ()
 
 
 /**
@@ -321,6 +350,29 @@ private[r] object Wire {
         }.getOrElse(-1L))
     }
     case _ => None
+
+  /** a program node on the wire; jsonlite may box a scalar, so the name
+   * and the k are read either way */
+  def encNode(n: RNode): Json = n match
+    case RNode.Done(v) => Json.JObj(Vector("done" -> enc(v)))
+    case RNode.Perform(name, args, k) => Json.JObj(Vector(
+      "perform" -> Json.JStr(name), "args" -> Json.JArr(args.map(enc)), "k" -> Json.JNum(k.toDouble)))
+
+  def decNode(j: Json): Either[Condition, RNode] = j match
+    case Json.JObj(fs) =>
+      val m = fs.toMap
+      def unbox(x: Option[Json]) = x match
+        case Some(Json.JArr(Vector(one))) => Some(one)
+        case other => other
+      (m.get("done"), unbox(m.get("perform"))) match
+        case (Some(v), _) => Right(RNode.Done(dec(v)))
+        case (_, Some(Json.JStr(name))) =>
+          val args = m.get("args").collect { case Json.JArr(xs) => xs.map(dec) }.getOrElse(Vector.empty)
+          unbox(m.get("k")) match
+            case Some(Json.JNum(k)) => Right(RNode.Perform(name, args, k.toLong))
+            case _ => Left(Condition("WireError", s"a perform without a continuation: $j"))
+        case _ => Left(Condition("WireError", s"not a program node: $j"))
+    case other => Left(Condition("WireError", s"not a program node: $other"))
 
   /** a held object's handle, or the refusal of an answer that is not one */
   def asRef(v: RValue): Either[Condition, RRef] = v match

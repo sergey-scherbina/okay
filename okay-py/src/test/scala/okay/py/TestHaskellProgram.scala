@@ -4,40 +4,40 @@ import okay.{Choose, Reader, effect, runChoice, given}
 import okay.agent.Durable
 
 object TestHaskellProgram:
-  val main: String =
-    """module Main (main) where
-      |
-      |import Okay
-      |
-      |asInt :: Value -> Integer
-      |asInt (VInt n) = n
-      |asInt (VDouble d) = round d
-      |asInt v = error ("not an int: " ++ show v)
-      |
-      |asDouble :: Value -> Double
-      |asDouble (VDouble d) = d
-      |asDouble (VInt n) = fromInteger n
-      |asDouble v = error ("not a number: " ++ show v)
-      |
-      |-- two choices; okay's Choice handler continues each continuation twice
-      |pairs :: [Value] -> Prog Value
-      |pairs _ = do
-      |  x <- perform "choose" [VList [VInt 1, VInt 2]]
-      |  y <- perform "choose" [VList [VInt 10, VInt 20]]
-      |  return (VInt (asInt x + asInt y))
-      |
-      |priced :: [Value] -> Prog Value
-      |priced [sku, qty] = do
-      |  p <- perform "price_of" [sku]
-      |  return (VDouble (asDouble p * fromInteger (asInt qty)))
-      |priced _ = error "priced takes a sku and a quantity"
-      |
-      |boom :: [Value] -> Prog Value
-      |boom _ = error "haskell says no"
-      |
-      |main :: IO ()
-      |main = serve [("pairs", pairs), ("priced", priced), ("boom", boom)]
-      |""".stripMargin
+  // no margin: the docs quote these lines, and the snippet check reads them trimmed
+  val main: String = """module Main (main) where
+
+import Okay
+
+asInt :: Value -> Integer
+asInt (VInt n) = n
+asInt (VDouble d) = round d
+asInt v = error ("not an int: " ++ show v)
+
+asDouble :: Value -> Double
+asDouble (VDouble d) = d
+asDouble (VInt n) = fromInteger n
+asDouble v = error ("not a number: " ++ show v)
+
+-- two choices; okay's Choice handler continues each continuation twice
+pairs :: [Value] -> Prog Value
+pairs _ = do
+  x <- perform "choose" [VList [VInt 1, VInt 2]]
+  y <- perform "choose" [VList [VInt 10, VInt 20]]
+  return (VInt (asInt x + asInt y))
+
+priced :: [Value] -> Prog Value
+priced [sku, qty] = do
+  p <- perform "price_of" [sku]
+  return (VDouble (asDouble p * fromInteger (asInt qty)))
+priced _ = error "priced takes a sku and a quantity"
+
+boom :: [Value] -> Prog Value
+boom _ = error "haskell says no"
+
+main :: IO ()
+main = serve [("pairs", pairs), ("priced", priced), ("boom", boom)]
+"""
 
 /** remote-foreign against a LIVE GHC (specs/remote-foreign.md): the same wire, a Haskell far side */
 class TestHaskellProgram extends munit.FunSuite {

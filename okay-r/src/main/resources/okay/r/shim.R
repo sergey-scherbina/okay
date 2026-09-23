@@ -2,7 +2,8 @@
 # named list that is not a data.frame is a RECORD on the wire; v4 =
 # foreign-callbacks: `start`/`resume` and `okay_call`; v5 =
 # foreign-object-handles: `hold`/`release`, refs as values; v6 =
-# foreign-module-trait: `okay_describe`). One JSON object per line each
+# foreign-module-trait: `okay_describe`; v7 = remote-foreign: programs as
+# data, `program`/`continue`/`forget`, continuations kept by id). One JSON object per line each
 # way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -11,7 +12,7 @@
 # has no JSON reader, and our own parser at the trust boundary is a
 # worse thing to own than one package every R installation has.
 
-SHIM <- 6
+SHIM <- 7
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA), "\n", sep = "")
@@ -261,6 +262,38 @@ okay_describe <- function(target) {
   out
 }
 
+# ---- programs as data (v7, remote-foreign) -------------------------------
+# okay_done(v), okay_perform(name, ...) and okay_then(p, f) build a program
+# whose continuations are R closures. The shim hands okay one node at a
+# time and keeps each continuation under an id, so okay may continue the
+# same one more than once (a Choice handler does).
+
+okay_done <- function(value) structure(list(value = value), class = "okay_done")
+okay_perform <- function(name, ...)
+  structure(list(name = name, args = list(...), k = okay_done), class = "okay_step")
+okay_then <- function(p, f) {
+  if (inherits(p, "okay_done")) return(f(p$value))
+  k <- p$k
+  p$k <- function(x) okay_then(k(x), f)
+  p
+}
+
+.okay_runs <- new.env()
+.okay_next_kont <- 0L
+
+okay_node <- function(run, p) {
+  if (inherits(p, "okay_done")) return(list(done = enc(p$value)))
+  if (!inherits(p, "okay_step"))
+    stop(sprintf("a program answers okay_done(v) or okay_perform(name, ...), got %s", class(p)[1]))
+  k <- .okay_next_kont + 1L
+  assign(".okay_next_kont", k, envir = globalenv())
+  key <- as.character(run)
+  table <- if (exists(key, envir = .okay_runs, inherits = FALSE)) get(key, envir = .okay_runs) else list()
+  table[[as.character(k)]] <- p$k
+  assign(key, table, envir = .okay_runs)
+  list(perform = p$name, args = unname(lapply(p$args, enc)), k = k)
+}
+
 okay_push <- function(cbs)
   assign(".okay_offered", c(.okay_offered, list(unlist(cbs))), envir = globalenv())
 okay_pop <- function()
@@ -278,6 +311,20 @@ serve <- function(req) {
       okay_push(req$callbacks)
       res <- tryCatch(do.call(f, lapply(req$args, dec)), finally = okay_pop())
       list(id = rid, ok = enc(res))
+    } else if (op == "program") {
+      f <- resolve(req$fn)
+      list(id = rid, ok = okay_node(req$run, do.call(f, lapply(req$args, dec))))
+    } else if (op == "continue") {
+      key <- as.character(req$run)
+      table <- if (exists(key, envir = .okay_runs, inherits = FALSE)) get(key, envir = .okay_runs) else list()
+      k <- table[[as.character(req$k)]]
+      if (is.null(k))
+        stop(sprintf("continuation %s of run %s is not held here (forgotten, or another process)", req$k, req$run))
+      list(id = rid, ok = okay_node(req$run, k(dec(req$answer))))
+    } else if (op == "forget") {
+      key <- as.character(req$run)
+      if (exists(key, envir = .okay_runs, inherits = FALSE)) rm(list = key, envir = .okay_runs)
+      list(id = rid, ok = NULL)
     } else if (op == "hold") {
       f <- resolve(req$fn)
       list(id = rid, ok = okay_hold(do.call(f, lapply(req$args, dec))))

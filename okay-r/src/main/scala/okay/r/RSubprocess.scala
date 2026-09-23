@@ -145,6 +145,16 @@ final class RSubprocess private (private var proc: Process,
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("hold"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Wire.asRef(Wire.dec(v)))
+      case REval.Program(run, fn, args) =>
+        answer(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
+          "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decNode)
+      case REval.Continue(run, k, a) =>
+        answer(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
+          "answer" -> Wire.enc(a)))))(Wire.decNode)
+      case REval.Forget(run) =>
+        val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("forget"), "run" -> Json.JNum(run.toDouble))))
       case REval.Release(r) =>
         // idempotent: a release of a ref the process does not hold is not
         // a program's concern (a timeout's respawn already dropped it)
@@ -196,7 +206,7 @@ final class RSubprocess private (private var proc: Process,
 
 object RSubprocess:
 
-  val ShimVersion = 6
+  val ShimVersion = 7
 
   /**
    * Start a session: the configured `Rscript` (resolved against PATH

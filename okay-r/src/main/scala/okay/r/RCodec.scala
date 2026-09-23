@@ -207,6 +207,43 @@ object RCodec {
 object R {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
+  /**
+   * An R PROGRAM-AS-DATA (remote-foreign): the function returns
+   * `okay_done(v)` or `okay_then(okay_perform(name, ...), f)`; R keeps each
+   * continuation (a closure) by id, so a Choice handler continues one
+   * twice. okay-py's `Py.program`, in R.
+   */
+  def program[Out: Schema](address: String): ProgramOf[Out] = ProgramOf(address)
+
+  private val runIds = java.util.concurrent.atomic.AtomicLong()
+
+  final class ProgramOf[Out: Schema](address: String):
+    def calling[F[+_]](cbs: Callbacks[F]): Starting[F] = Starting(cbs)
+
+    final class Starting[F[+_]](cbs: Callbacks[F]):
+      def apply(): RRun[F, Out] = RRun(runIds.incrementAndGet(), address, Vector.empty, cbs)
+      def apply[A: ToR](a: A): RRun[F, Out] = RRun(runIds.incrementAndGet(), address, Vector(ToR(a)), cbs)
+      def apply[A: ToR, B: ToR](a: A, b: B): RRun[F, Out] =
+        RRun(runIds.incrementAndGet(), address, Vector(ToR(a), ToR(b)), cbs)
+
+  final class RRun[F[+_], Out: Schema](val id: Long, address: String, args: Vector[RValue], cbs: Callbacks[F]):
+    type Row = F + REval
+
+    def program: Either[Condition, Out] ! Row =
+      def step(e: Either[Condition, RNode]): Either[Condition, Out] ! Row = e match
+        case Left(c) => pure[Row, Either[Condition, Out]](Left(c))
+        case Right(RNode.Done(v)) => pure[Row, Either[Condition, Out]](RCodec.decode[Out](v))
+        case Right(RNode.Perform(name, as, k)) => cbs.get(name) match
+          case None => pure[Row, Either[Condition, Out]](Left(Condition("NoCallback",
+            s"'$name' is not among this program's callbacks (${cbs.names.mkString(", ")})")))
+          case Some(cb) => cb.run(as).plus[REval].flatMap {
+            case Left(c) => pure[Row, Either[Condition, Out]](Left(c))
+            case Right(a) => effect[Row, Either[Condition, RNode]](REval.Continue(id, k, a)).flatMap(step)
+          }
+      effect[Row, Either[Condition, RNode]](REval.Program(id, address, args)).flatMap(step)
+
+    def forget: Unit ! REval = effect[REval, Unit](REval.Forget(id))
+
   /** an R function over a vector as an okay stage over chunks
    * (foreign-streaming): see `RStream` */
   def stage[I: ToR, O: Schema](address: String, chunk: Int = 64): Unit ! RStream.Row[I, O] =
