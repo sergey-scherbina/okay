@@ -285,6 +285,9 @@ API reference, gotchas.
 | [`okay-scala2-persist`](modules/okay-scala2-persist.md) | okay-persist for Scala 2.13: topics with defaults, the typed view, streams of records |
 | [`okay-scala2-stm`](modules/okay-scala2-stm.md) | okay-stm for Scala 2.13: transactions over TRef with retry and orElse |
 | [`okay-scala2-stores`](modules/okay-scala2-stores.md) | okay-cache, okay-blob, okay-docs for Scala 2.13: the stores' operations over Eff and Source |
+| [`okay-scala2-llm`](modules/okay-scala2-llm.md) | okay-llm for Scala 2.13: a completion as a token stream, a typed value cut from it |
+| [`okay-scala2-rag`](modules/okay-scala2-rag.md) | okay-rag for Scala 2.13: a vector index with the embedder as a plain function |
+| [`okay-scala2-mcp`](modules/okay-scala2-mcp.md) | okay-mcp for Scala 2.13: MCP client and server, JSON as text, tools from okay-scala2-agent |
 | [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |

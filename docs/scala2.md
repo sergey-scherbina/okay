@@ -1128,6 +1128,91 @@ val prog = for {
   `new` from Scala 2 makes the TASTy reader read the whole class
   (section 10).
 
+## 8n. Models, retrieval, MCP: okay-llm, okay-rag, okay-mcp
+
+Three modules, one per library: `okay-scala2-llm`, `okay-scala2-rag`,
+`okay-scala2-mcp`. The code below is copied from
+`okay-scala2/probe/src/test/scala/TestLlmFromScala2.scala`,
+`TestRagFromScala2.scala` and `TestMcpFromScala2.scala`.
+
+**A completion as a token stream.** Section 8d holds a model for a
+conversation. `Llm` is the layer under it: one completion, token by
+token, as a `Source[String]`. The transport is `Llm.http` in
+production. In a test it is a function answering the response's lines,
+which is also how a Scala 2 program plugs in an HTTP client it already
+has:
+
+```scala
+val server = Llm.transport((_, _, _) => Source(openAiLine("4"), "", openAiLine("2"), "", "data: [DONE]", ""))
+val answer = Llm.openAi(server, "key", "gpt-test", Seq("user" -> "6 * 7?")).runFold("")(_ + _)
+assertEquals(Eff.runAsync(answer), "42")
+```
+
+`Llm.anthropic(transport, apiKey, model, messages)` is the same for
+Anthropic's Messages API. `Llm.first[A](tokens)` reads the stream only
+until the text so far decodes as an `A` (by its `Schema`, section 8a),
+and stops there. The rest of the completion is never read, and a
+provider that bills by generated tokens is told to stop:
+
+```scala
+val point = Llm.first[Point](Llm.openAi(server, "key", "gpt-test", Seq("user" -> "a point")))
+assertEquals(Eff.runAsync(point), Some(Point(1, 2)))
+assert(pulled.get < 10, s"pulled ${pulled.get} tokens from an endless stream")
+```
+
+**Retrieval.** okay-rag's splitting and keyword search are plain
+functions, used directly: `Ingest.segment(doc, budget)(size)`,
+`Keyword.index(segments)`, `Keyword.search(index, query, k)`. The vector
+side is a `VectorIndex`, which holds the store and the embedding model.
+The model is a plain function, a batch of texts in and one vector per
+text out, so any embedding API fits:
+
+```scala
+val index = Rag.memory(Rag.hashing())
+val progress = index.add(docs)
+assertEquals((progress.sources, progress.embedded, index.size), (3, progress.segments, progress.segments))
+val hits = index.search("multiply numbers", 3)
+assertEquals(hits.head.segment.source, "Math.scala")
+```
+
+- `Rag.hashing()` is a deterministic stand-in (hashed character
+  trigrams), for tests and offline pipelines. It is not semantic.
+- `index.hybrid(keywords, query, k)` fuses the vector hits with keyword
+  hits by reciprocal rank (Cormack, Clarke and Büttcher, SIGIR 2009,
+  [doi:10.1145/1571941.1572114](https://doi.org/10.1145/1571941.1572114)).
+  Use it when queries name exact identifiers as often as ideas.
+
+**MCP.** A server's tools are okay-scala2-agent's `Tools` (section 8d),
+so one declaration serves a local agent and an MCP server. Arguments
+and schemas cross as JSON text. `McpLink.pair()` connects a server and
+a client in one process; `McpLink.of(in, out)` and `McpClient.spawn(command,
+...)` connect over a process's stdio:
+
+```scala
+val tools = Tools.empty.on[Add]("add", "add two numbers")(x => (x.a + x.b).toString)
+```
+
+```scala
+val (serverEnd, clientEnd) = McpLink.pair()
+val prog = for {
+  server <- Async.fork(McpServer.run(serverEnd, "calc", "1.0", tools))
+  client <- McpClient.connect(clientEnd, "probe", "1")
+  listed <- client.tools
+  sum <- client.call("add", "{\"a\": 2, \"b\": 40}")
+  _ <- server.cancel
+} yield (client.server, listed.map(_.name), listed.head.schema.contains("\"b\""), sum)
+assertEquals(Eff.runAsync(prog), (Some(("calc", "1.0")), Seq("add"), true, "42"))
+```
+
+- `McpServer.run(link, name, version, tools, resources)` serves until the
+  link closes. `resources` maps a uri to its text, and a client reads it
+  with `client.read(uri)`, which is `None` for a uri the server lacks.
+- A client also has `resources`, `prompts` and `prompt(name, args)`.
+  The last answers the conversation opening as okay-agent's `Turn`s.
+- Not wrapped: okay-rag's `PgVector` (a vector store across a wire).
+  Its wrapper would need a live Postgres to test, and the default gate
+  runs none. It is the same `VectorIndex` shape when it is asked for.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -1167,7 +1252,7 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 | `a type was inferred to be Any` at `X.handle(...)` | `handle` used for the last effect | use `X.run(...)` (section 5) |
 | `Unsupported Scala 3 union in bounds of type +; found in object okay.Effects$package` (at your `package` line) | code names a Scala 3 class whose CONSTRUCTOR mentions an effect row, such as `okay.http.Response`; or code writes `new` for a class whose METHODS do, such as `new okay.docs.TopicDocs[A](topic)`, because `new` makes the reader complete the whole class | use the `okay.scala2` type (`okay.scala2.Response`), or its factory (`Documents.onTopic`) — a factory that answers the class is fine: `Fs(root)` works where `new TopicDocs` does not |
 | `Unsupported Scala 3 generic tuple type scala.Tuple` | code names okay-http's `Route` | route by pattern matching (section 8b) |
-| `type Chunk is not a member of package okay`, or `not found: type Schema` for an alias you imported (any Scala 3 top-level alias) | Scala 3 top-level aliases are invisible from Scala 2 | name the type the alias stands for: `ArraySeq[Byte]` for `Chunk[Byte]`, `okay.codec.Schema` for `Schema` |
+| `type Chunk is not a member of package okay`, or `not found: type Schema` for an alias you imported, or `can't find type required by method memory ...: okay.Pure; perhaps it is missing from the classpath` (any Scala 3 top-level alias, also when it is only INSIDE a signature you call) | Scala 3 top-level aliases are invisible from Scala 2 | name the type the alias stands for: `ArraySeq[Byte]` for `Chunk[Byte]`, `okay.codec.Schema` for `Schema` |
 | `type mismatch; found: Source[Event.Pressed]; required: Source[Event]` | from Scala 2 a Scala 3 enum case is typed as the case | write the type argument: `Source[Event](...)` |
 | `No suitable driver found for jdbc:...` in tests that pass alone | unforked sbt tests share one JVM, and `DriverManager` serves only drivers visible to the loader that registered them first | open through the driver (`new org.h2.Driver().connect(url, props)`) (section 8c) |
 

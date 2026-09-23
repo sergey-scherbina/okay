@@ -794,3 +794,22 @@ metaprogramming.
   cross-node `drain`, blob put/get/list/stream/head/delete, `putFile`
   with a persist backup and restore, and conditional document writes
   with an indexed query.
+- STAGE 15.5 (2026-09-23). okay-scala2-llm, -rag, -mcp. Probed first:
+  okay-rag's splitting and keyword search are plain and used directly;
+  okay-mcp's `Stdio` links and plain values (`Mcp.Info`, `.Resource`,
+  `.Prompt`) too. `ToolCall`/`ToolSpec` carry `Json` in their
+  constructors, so MCP's JSON crosses as text, and a server's tools are
+  okay-scala2-agent's `Tools`. Two findings: `VectorStore[okay.Pure]`
+  in a facade SIGNATURE fails at the Scala 2 call site ("can't find type
+  required by method memory ...: okay.Pure") — a top-level alias is
+  invisible even inside a type argument — so the store lives in a
+  `VectorIndex` with a body holder; and `Handler.union[Embed, Async]`
+  does not compile (`Embed` has no `TypeableK`), `union[Async, Embed]`
+  does (the tested side is the one with the instance). The Async-store
+  variants built on that were REMOVED before landing: the only async
+  store is PgVector, a Scala 2 test of it needs a live Postgres, and
+  code the default gate cannot run was not shipped. A hang in the
+  first probe run was the test's own bug (an unescaped `"` in a
+  scripted SSE payload, so nothing decoded and `first` read an endless
+  stream); the stream is now bounded at 50 so that failure mode fails
+  instead of hanging. 7 tests.
