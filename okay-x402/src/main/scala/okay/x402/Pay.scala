@@ -19,11 +19,14 @@ trait Facilitator:
 /** a remote facilitator over okay-http: `POST {base}/verify`, `POST
  * {base}/settle` with `{paymentPayload, paymentRequirements}`, `GET
  * {base}/supported`. A transport failure or an unreadable answer is a
- * refusal with its reason — never a payment taken as good. */
-final class HttpFacilitator(http: Http, base: String) extends Facilitator:
+ * refusal with its reason — never a payment taken as good. `headers` is
+ * asked on EVERY request, so a hosted facilitator's API key or a
+ * short-lived token that rotates is read when it is used. */
+final class HttpFacilitator(http: Http, base: String,
+                            headers: () => Seq[(String, String)] = () => Nil) extends Facilitator:
   private def post(path: String, p: PaymentPayload, r: PaymentRequirements): Either[String, Json] ! Async =
     val body = Json.print(JObj(Vector("paymentPayload" -> X402.toJson(p), "paymentRequirements" -> X402.toJson(r))))
-    http.send(Request.post(s"$base/$path", Body.Text(body), Seq("content-type" -> "application/json")))
+    http.send(Request.post(s"$base/$path", Body.Text(body), Seq("content-type" -> "application/json") ++ headers()))
       .flatMap(read(path, _))
 
   private def read(path: String, resp: Response): Either[String, Json] ! Async =
@@ -41,7 +44,7 @@ final class HttpFacilitator(http: Http, base: String) extends Facilitator:
       .fold(e => SettlementResponse(false, "", r.network, None, Some(e)), identity))
 
   def supported: Vector[SupportedKind] ! Async =
-    http.send(Request.get(s"$base/supported")).flatMap(read("supported", _)).map {
+    http.send(Request.get(s"$base/supported", headers())).flatMap(read("supported", _)).map {
       case Right(JObj(fs)) => fs.collectFirst { case ("kinds", JArr(ks)) => ks }.getOrElse(Vector.empty).flatMap {
         case JObj(xs) =>
           val f = (n: String) => xs.collectFirst { case (`n`, JStr(s)) => s }
@@ -62,6 +65,22 @@ object Settled:
     private val keys = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
     def claim(key: String): Boolean = keys.add(key)
     def release(key: String): Unit = keys.remove(key): Unit
+
+  /** the replay record over a journal: rebuilt by folding it, so a
+   * restart does not forget which payments were already used */
+  def journaled(journal: PaymentJournal, clock: () => Long = () => System.currentTimeMillis()): Settled = new Settled:
+    private val keys = scala.collection.mutable.HashSet.empty[String]
+    journal.events.foreach { e =>
+      if e.kind == PaymentEvent.Claimed then keys += e.subject
+      else if e.kind == PaymentEvent.Released then keys -= e.subject
+    }
+    def claim(key: String): Boolean = synchronized {
+      if keys.contains(key) then false
+      else { journal.record(PaymentEvent(clock(), PaymentEvent.Claimed, key)); keys += key; true }
+    }
+    def release(key: String): Unit = synchronized {
+      if keys.remove(key) then journal.record(PaymentEvent(clock(), PaymentEvent.Released, key))
+    }
 
 /**
  * The part of a 402 gate that is not a transport (specs/x402.md stage
@@ -147,12 +166,18 @@ object Gate:
 
 /** which of the accepted requirements a client will pay — never "pay
  * whatever is asked" */
-final case class Policy(accept: PaymentRequirements => Boolean)
+final case class Policy(accept: PaymentRequirements => Boolean):
+  infix def and(that: Policy): Policy = Policy(r => accept(r) && that.accept(r))
 
 object Policy:
   /** at most `max` atomic units, on these networks, in these assets */
   def upTo(max: BigInt, networks: Set[Network], assets: Set[String]): Policy =
     Policy(r => r.amount <= max && networks(r.network) && assets.exists(_.equalsIgnoreCase(r.asset)))
+
+  /** only to these recipients — without it a hostile server directs the
+   * payment to any address inside the limit */
+  def payTo(recipients: Set[String]): Policy =
+    Policy(r => recipients.exists(_.equalsIgnoreCase(r.payTo)))
 
 /**
  * The decision taken BEFORE a payment, with the price in hand (specs/x402.md
@@ -167,6 +192,8 @@ trait Consent:
   def approve(choice: PaymentRequirements, resource: ResourceInfo): Boolean ! Async
   /** an approved payment was not taken: whatever it reserved comes back */
   def returned(choice: PaymentRequirements): Unit = ()
+  /** an approved payment WAS taken, settled as `settlement` */
+  def paid(choice: PaymentRequirements, settlement: SettlementResponse): Unit = ()
 
   /** both must approve; when the second refuses, the first gets its
    * reservation back */
@@ -182,6 +209,7 @@ trait Consent:
           }
         }
       override def returned(c: PaymentRequirements): Unit = { self.returned(c); that.returned(c) }
+      override def paid(c: PaymentRequirements, s: SettlementResponse): Unit = { self.paid(c, s); that.paid(c, s) }
 
 object Consent:
   /** no question asked: `Policy` alone decides */
@@ -193,30 +221,28 @@ object Consent:
 
   /** at most `total` atomic units of `asset` on `network`, over every
    * payment together; anything else is refused */
-  def budget(total: BigInt, network: Network, asset: String): Budget = Budget(total, network, asset)
+  def budget(total: BigInt, network: Network, asset: String): Budget = Budget("budget", total, network, asset)
 
-/**
- * A running total: each approval RESERVES its amount atomically (two calls
- * racing cannot both spend the last of it), and a payment that was not
- * taken gives its reservation back.
- */
-final class Budget(total: BigInt, network: Network, asset: String) extends Consent:
-  private val left = java.util.concurrent.atomic.AtomicReference[BigInt](total)
-  def remaining: BigInt = left.get
-  private def mine(c: PaymentRequirements): Boolean =
-    c.network == network && c.asset.equalsIgnoreCase(asset)
-  def approve(c: PaymentRequirements, r: ResourceInfo): Boolean ! Async = okay.async {
-    mine(c) && {
-      @annotation.tailrec def take(): Boolean =
-        val now = left.get
-        if c.amount > now then false
-        else if left.compareAndSet(now, now - c.amount) then true
-        else take()
-      take()
+  /** only resources this predicate accepts — a host, a path prefix */
+  def resources(accept: String => Boolean): Consent = (_, r) => pure(accept(r.url))
+
+  /**
+   * Every decision into `journal`: `asked` when a price reaches it,
+   * `returned` when an approved payment was not taken, `paid` with the
+   * transaction. It approves everything, so it goes FIRST in a chain —
+   * `audit(j) and budget and ask(f)` — where a later refusal comes back to
+   * it as `returned`.
+   */
+  def audit(journal: PaymentJournal, subject: String = "client",
+            clock: () => Long = () => System.currentTimeMillis()): Consent = new Consent:
+    def approve(c: PaymentRequirements, r: ResourceInfo): Boolean ! Async = okay.async {
+      journal.record(PaymentEvent.about(clock(), PaymentEvent.Asked, subject, c, Some(r)))
+      true
     }
-  }
-  override def returned(c: PaymentRequirements): Unit =
-    if mine(c) then left.updateAndGet(_ + c.amount): Unit
+    override def returned(c: PaymentRequirements): Unit =
+      journal.record(PaymentEvent.about(clock(), PaymentEvent.Returned, subject, c))
+    override def paid(c: PaymentRequirements, s: SettlementResponse): Unit =
+      journal.record(PaymentEvent.about(clock(), PaymentEvent.Paid, subject, c).copy(transaction = Some(s.transaction)))
 
 /** signs a payment for requirements — keys live behind this, never in
  * okay-x402; `None` declines */
@@ -249,13 +275,15 @@ object Paying:
                 val signed = r.copy(headers = r.headers.filterNot(_._1.equalsIgnoreCase(X402.Signature)) :+
                   (X402.Signature -> X402.header(X402.toJson(p))))
                 resp.release.flatMap(_ => http.send(signed)).map { again =>
-                  if !settled(again) then consent.returned(choice)
+                  settlement(again) match
+                    case Some(s) => consent.paid(choice, s)
+                    case None => consent.returned(choice)
                   again
                 }
             }
           }
       }
 
-  /** the answer carries a successful settlement */
-  def settled(resp: Response): Boolean =
-    resp.header(X402.Response).flatMap(h => X402.unheader(h).flatMap(X402.settlement).toOption).exists(_.success)
+  /** the successful settlement the answer carries, if it carries one */
+  def settlement(resp: Response): Option[SettlementResponse] =
+    resp.header(X402.Response).flatMap(h => X402.unheader(h).flatMap(X402.settlement).toOption).filter(_.success)

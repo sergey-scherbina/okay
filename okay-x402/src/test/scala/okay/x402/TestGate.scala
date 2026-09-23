@@ -197,3 +197,103 @@ class TestGate extends munit.FunSuite:
       premium(Paying(server(Counting()), anyUsdc, payer, other)).map(s2 => assertEquals(s2, 402))
     }
   }
+
+  // ---- stage 4: recipients, memory, audit, settings
+
+  private val merchant = price.payTo
+
+  test("Policy.payTo: a recipient not on the list is not paid, whatever the amount") {
+    val payer = Signing("good")
+    val onlyOthers = anyUsdc and Policy.payTo(Set("0x0000000000000000000000000000000000000001"))
+    for s <- premium(Paying(server(Counting()), onlyOthers, payer))
+        t <- premium(Paying(server(Counting()), anyUsdc and Policy.payTo(Set(merchant.toLowerCase)), payer))
+    yield assertEquals((s, t, payer.calls), (402, 200, 1))
+  }
+
+  test("a budget over a durable journal is not refilled by a restart") {
+    val topic = okay.persist.MemoryStore().topic("x402", 1, okay.persist.Policy.default)
+    val first = Budget("agent", BigInt(25000), price.network, usdc, journal = PaymentJournal.on(topic))
+    premium(Paying(server(Counting()), anyUsdc, Signing("good"), first)).map { s =>
+      assertEquals((s, first.remaining), (200, BigInt(15000)))
+      // the process restarts: a new journal over the same topic, a new budget
+      val again = Budget("agent", BigInt(25000), price.network, usdc, journal = PaymentJournal.on(topic))
+      assertEquals(again.remaining, BigInt(15000))
+      val other = Budget("someone-else", BigInt(25000), price.network, usdc, journal = PaymentJournal.on(topic))
+      assertEquals(other.remaining, BigInt(25000))
+    }
+  }
+
+  test("a windowed budget counts only what was reserved inside the window; a return names its reservation") {
+    var now = 1_000_000L
+    val journal = PaymentJournal.inMemory()
+    val daily = Budget("daily", BigInt(15000), price.network, usdc, Some(86_400_000L), journal, () => now)
+    for a <- premium(Paying(server(Counting()), anyUsdc, Signing("good"), daily))
+        b <- premium(Paying(server(Counting()), anyUsdc, Signing("good"), daily))
+        d <- { now += 86_400_001L; premium(Paying(server(Counting()), anyUsdc, Signing("forged"), daily)) }
+        c <- premium(Paying(server(Counting()), anyUsdc, Signing("good"), daily))
+    yield
+      // b: the window still holds a's 10000; d: a new window, reserved and returned; c: paid
+      assertEquals((a, b, d, c), (200, 402, 402, 200))
+      assertEquals(daily.remaining, BigInt(5000))
+      val reserved = journal.events.filter(_.kind == PaymentEvent.Reserved).flatMap(_.ref)
+      val returned = journal.events.filter(_.kind == PaymentEvent.Returned).flatMap(_.ref)
+      assertEquals(reserved.size, 3)
+      assertEquals(returned, Vector(reserved(1)))
+  }
+
+  test("the server's replay record over a journal survives a restart") {
+    val journal = PaymentJournal.inMemory()
+    val before = Settled.journaled(journal)
+    assert(before.claim("k1"))
+    val after = Settled.journaled(journal)
+    assert(!after.claim("k1"))
+    after.release("k1")
+    assert(Settled.journaled(journal).claim("k1"))
+  }
+
+  test("audit: asked, then paid with the transaction; asked, then returned for a refused payment") {
+    val journal = PaymentJournal.inMemory()
+    for _ <- premium(Paying(server(Counting()), anyUsdc, Signing("good"), Consent.audit(journal)))
+        _ <- premium(Paying(server(Counting()), anyUsdc, Signing("forged"), Consent.audit(journal)))
+    yield
+      assertEquals(journal.events.map(e => (e.kind, e.transaction)), Vector(
+        (PaymentEvent.Asked, None), (PaymentEvent.Paid, Some("0xtx")),
+        (PaymentEvent.Asked, None), (PaymentEvent.Returned, None)))
+      assertEquals(journal.events.head.resource, Some(resource.url))
+  }
+
+  test("Consent.resources: only resources the predicate accepts") {
+    val payer = Signing("good")
+    for s <- premium(Paying(server(Counting()), anyUsdc, payer, Consent.resources(_.startsWith("https://other.example/"))))
+    yield assertEquals((s, payer.calls), (402, 0))
+  }
+
+  test("HttpFacilitator asks for its headers on every request") {
+    var sent = Vector.empty[Seq[(String, String)]]
+    var token = 0
+    val service = new Http { def send(r: Request) = { sent :+= r.headers; pure(text("""{"isValid":true}""")) } }
+    val f = HttpFacilitator(service, "https://f.example", () => { token += 1; Seq("authorization" -> s"Bearer t$token") })
+    val p = PaymentPayload(price, JObj(Vector.empty))
+    for _ <- run(f.verify(p, price)); _ <- run(f.verify(p, price))
+    yield assertEquals(sent.map(_.collect { case ("authorization", v) => v }), Vector(Seq("Bearer t1"), Seq("Bearer t2")))
+  }
+
+  private val confJson = s"""{ "client": { "maxAmount": "20000", "networks": ["eip155:84532"], "assets": ["$usdc"],
+    "payTo": ["$merchant"], "budget": { "total": "15000", "network": "eip155:84532", "asset": "$usdc", "windowSeconds": 86400 } },
+    "facilitator": { "url": "https://f.example", "apiKey": "env:X402_TEST_KEY" } }"""
+
+  test("X402Conf: the file builds the policy, the budget and the audit; the facilitator's key is a reference") {
+    val conf = X402Conf.read(confJson).fold(e => fail(e), identity)
+    val journal = PaymentJournal.inMemory()
+    val (policy, consent) = X402Conf.client(conf.client.get, journal)
+    val payer = Signing("good")
+    val secrets = okay.conf.Secrets.memory(Map("env:X402_TEST_KEY" -> "k-123"))
+    assert(X402Conf.facilitator(conf.facilitator.get, server(Counting()), secrets).isRight)
+    assertEquals(X402Conf.facilitator(conf.facilitator.get, server(Counting()), okay.conf.Secrets.memory(Map.empty))
+      .left.map(_.contains("env:X402_TEST_KEY")), Left(true))
+    for a <- premium(Paying(server(Counting()), policy, payer, consent))
+        b <- premium(Paying(server(Counting()), policy, payer, consent))
+    yield
+      assertEquals((a, b, payer.calls), (200, 402, 1))
+      assertEquals(journal.events.map(_.kind).count(_ == PaymentEvent.Paid), 2) // the audit's and the budget's
+  }

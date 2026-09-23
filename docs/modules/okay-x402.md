@@ -65,6 +65,46 @@ reserves its amount atomically, and a payment that was not taken
 reservation. `Paying(http, policy, payer, consent)` takes it; the
 default is `Consent.always`.
 
+**Security and settings** (spec stage 4). What stands between a server's
+402 and your money, in order:
+
+1. `Policy` — which requirements are acceptable at all: `Policy.upTo(max,
+   networks, assets)`, and `Policy.payTo(recipients)`, joined with `and`.
+   Without a recipient list a hostile server can direct a payment to any
+   address inside the limit.
+2. `Consent` — the one chosen requirement, with its resource:
+   `Consent.resources(url => …)`, `Consent.ask(…)`, a `Budget`.
+3. The `Payer` — and behind it the key: okay-x402 never holds one.
+   [okay-x402-evm](okay-x402-evm.md)'s `EvmPayer` signs through a
+   `Signer`, which a KMS, an HSM or a wallet service implements.
+
+What the client decided is kept in a `PaymentJournal` —
+`PaymentJournal.on(topic)` over an okay-persist topic, durable before the
+decision is acted on. `Consent.audit(journal)` writes every price asked,
+every payment made (with its transaction) and every one not taken; a
+`Budget` is the fold of its own records there, so a restart does not
+refill it, and `window` makes it a daily (or hourly) cap. On the server,
+`Settled.journaled(journal)` keeps the replay record across restarts.
+
+The settings are a file, with secrets as references (okay-conf):
+
+```json
+{ "client": { "maxAmount": "20000", "networks": ["eip155:8453"],
+              "assets": ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"],
+              "payTo": ["0x209693Bc6afc0C5328bA36FaF03C514EF312287C"],
+              "resources": ["https://api.example.com/"],
+              "budget": { "total": "50000", "network": "eip155:8453",
+                          "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                          "windowSeconds": 86400 } },
+  "facilitator": { "url": "https://facilitator.example", "apiKey": "env:X402_FACILITATOR_KEY" } }
+```
+
+`X402Conf.client(conf, journal)` builds the `Policy` and the `Consent`
+(audit, resources, budget); `X402Conf.facilitator(conf, http, secrets)`
+the facilitator, its key resolved at once — a missing secret is an error
+naming the reference, at startup. `HttpFacilitator` asks for its headers
+on every request, so a rotating token is read when used.
+
 **The facilitator.** `HttpFacilitator(http, base)` speaks x402's
 facilitator API — `POST /verify` and `POST /settle` with
 `{paymentPayload, paymentRequirements}`, `GET /supported`. A transport
@@ -89,7 +129,12 @@ field is OMITTED, as the protocol does.
 | `Facilitator`, `HttpFacilitator(http, base)` | verify, settle, supported |
 | `Settled` | used payments; `Settled.inMemory()` |
 | `Paying(http, policy, payer, consent)`, `Policy`, `Payer` | the paying client |
-| `Consent`, `Consent.always` / `ask` / `budget`, `and`, `Budget.remaining` | the decision before paying |
+| `Consent`, `Consent.always` / `ask` / `budget` / `resources` / `audit`, `and` | the decision before paying |
+| `Budget(id, total, network, asset, window, journal, clock)`, `remaining` | a running total folded from its journal |
+| `PaymentJournal`, `PaymentJournal.inMemory` / `on(topic)`, `PaymentEvent` | every payment decision, as records |
+| `Policy.payTo`, `Policy.and` | recipients the client will pay |
+| `Settled.journaled(journal)` | the server's replay record, durable |
+| `X402Conf`, `ClientConf`, `BudgetConf`, `FacilitatorConf` | the settings file |
 | `Charge.admit`, `settle`, `release` | the payment rules without a transport — `Gate` and okay-x402-mcp both run them |
 
 ## Verification
@@ -104,8 +149,15 @@ is run by `TestDocExamplesX402`. All of it on JVM and JS.
 
 ## Gotchas
 
-- `Settled.inMemory()` forgets on restart: a multi-instance or
-  restartable server should back `Settled` with a shared store.
+- `Settled.inMemory()` and `PaymentJournal.inMemory()` forget on
+  restart — use `Settled.journaled` and `PaymentJournal.on(topic)` over
+  a durable store. Several processes sharing one budget need one journal
+  they all write and a lock around the reservation; one process per
+  budget is what is tested.
+- A budget reservation is released when the answer carries no
+  SUCCESSFUL settlement. A server that took the money and then lost the
+  answer makes the budget think nothing was paid; the facilitator's
+  record, and settlement tracking (spec stage 2b), are the check.
 - The MCP transport is [okay-x402-mcp](okay-x402-mcp.md); A2A is not here yet.
 
 References: x402 Protocol Specification v2 and its HTTP transport

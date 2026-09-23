@@ -2475,7 +2475,10 @@ lazy val okayNetty = project
 lazy val okayX402 = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-x402"))
-  .dependsOn(okayHttp, okayChain)
+  // okay-persist for the payment journal a budget and a replay record are
+  // folded from (stage 4); okay-conf for the settings file with secrets
+  // as references
+  .dependsOn(okayHttp, okayChain, okayPersist, okayConf)
   .settings(
     name := "okay-x402",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

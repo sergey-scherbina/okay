@@ -133,7 +133,9 @@ object X402Mcp:
                 case None => consent.returned(choice); pure(first)
                 case Some(p) =>
                   session.requestRpc(method, withMeta(params, Payment, X402.toJson(p))).map { again =>
-                    if !paid(again) then consent.returned(choice)
+                    settlement(again) match
+                      case Some(s) => consent.paid(choice, s)
+                      case None => consent.returned(choice)
                     again
                   }
               }
@@ -141,9 +143,9 @@ object X402Mcp:
         case other => pure(other)
       }
 
-    private def paid(o: Session.Outcome): Boolean = o match
-      case Session.Outcome.Answered(result) => receipt(result).exists(_.success)
-      case _ => false
+    private def settlement(o: Session.Outcome): Option[SettlementResponse] = o match
+      case Session.Outcome.Answered(result) => receipt(result).filter(_.success)
+      case _ => None
 
     /** `Session.call`, paying: the tool's text, or `error: <why>` */
     def call(c: ToolCall): String ! Async =

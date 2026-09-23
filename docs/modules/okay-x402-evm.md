@@ -12,6 +12,26 @@ okay-security-argon2 is for okay-security. Spec:
 
 ## Guide
 
+**Paying.** `EvmPayer(signer)` builds x402's `exact` payment as the
+reference client does — `validAfter = now − 600`, `validBefore = now +
+maxTimeoutSeconds`, a random 32-byte nonce, `to = payTo` — and has it
+signed by a `Signer`: `address` plus `sign(digest)`, nothing else. That
+is the whole custody seam: a KMS, an HSM or a wallet service implements
+`Signer` and the key never enters the process. `Signer.local(key)` holds
+a key in memory and is for development only. The payer declines what it
+cannot sign honestly (another scheme, a non-EVM network, no EIP-712
+domain); WHETHER to pay is decided before it is asked, by `Policy` and
+`Consent` ([okay-x402](okay-x402.md)).
+
+```scala
+val conf = X402Conf.load(path).fold(e => sys.error(e), identity)
+val journal = PaymentJournal.on(store.topic("x402-payments", 1, okay.persist.Policy.default))
+val (policy, consent) = X402Conf.client(conf.client.get, journal)
+val client = Paying(http, policy, EvmPayer(signer), consent)   // signer: your KMS-backed Signer
+```
+
+**Verifying.**
+
 ```scala
 val facilitator = LocalFacilitator(remoteFacilitator)   // local checks first, then the remote's balance and simulation
 val paid = Gate(_ => Some(PaymentRequired(ResourceInfo("/report"), Vector(price))), facilitator)(routes)

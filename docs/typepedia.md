@@ -725,6 +725,14 @@ same material with the measurements attached.
   `params._meta`, and a DELIVERED answer (no `isError`) is settled with
   the receipt in `result._meta` — `Charge`'s rules, shared with `Gate`.
   `X402Mcp.Paying` is the client half, a `Session` that pays once.
+- **`EvmPayer` / `Signer`** (okay-x402-evm) — x402's `exact`/EVM payment
+  built as the reference client builds it and signed through a `Signer`
+  (`address`, `sign(digest)`): the one seam a KMS or wallet implements,
+  so no key enters the process. `Signer.local` is development only.
+- **`PaymentJournal` / `Budget`** (okay-x402) — every payment decision as
+  a record, durable over an okay-persist topic; a budget is the FOLD of
+  its own records (reservations with refs, returns naming them), so a
+  restart does not refill it, and a window makes it a daily cap.
 - **`Consent`** (okay-x402) — the decision before an x402 payment, with
   the chosen price and resource in hand: `ask` (a person, a model),
   `budget` (a running total, reserved atomically and given back when a
