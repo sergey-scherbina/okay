@@ -1,0 +1,1 @@
+- [~] **scala2-dir** — move every okay-scala2* module (and the 2.13 probe) under scala2/: build.sbt paths, README links, doc paths, TestDocsIndex learns the grouping directory. Operator: "я предлагаю перенести все scala2 модули в подкаталог scala2" (2026-09-23).
