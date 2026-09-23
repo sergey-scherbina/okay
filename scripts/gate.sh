@@ -29,6 +29,8 @@
 # rerun, and the exit code stands.
 #
 # Usage: scripts/gate.sh [sbt-command]          (default: test)
+#        scripts/gate.sh "a; b; c"              several commands, run in
+#          sequence in one sbt, stopping at the first that fails
 #        scripts/gate.sh --read <log>           read a gate log that
 #          already exists and say what it would have done — which is
 #          how the three branches below are tested without waiting for
@@ -283,7 +285,37 @@ else
         *) cmd="affected $ref test jvm"; phase2="affected $ref test rest" ;;
       esac ;;
   esac
-  if [ -n "$phase2" ]; then
+  # A ";"-CHAIN IS SEVERAL COMMANDS (gate-command-chain, 2026-09-23).
+  # Handed to sbt as ONE argument, `"a; b"` ran `a` and dropped `b`
+  # without a word — twice in one day, and "0 test results" in the
+  # verdict line was the only tell. sbt's own spelling for a sequence
+  # is one argument per command, so the chain is split into exactly
+  # that: in order, trimmed, empty parts dropped, and sbt still stops
+  # at the first that fails. The JVM-first split above applies only to
+  # a single `affected <ref>`; a chain is passed as the caller wrote it.
+  chained=""
+  case "$cmd" in
+    *";"*)
+      chained=1
+      set --
+      rest="$cmd"
+      while :; do
+        part=$(printf '%s' "${rest%%;*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        [ -n "$part" ] && set -- "$@" "$part"
+        case "$rest" in *";"*) rest="${rest#*;}" ;; *) break ;; esac
+      done
+      # zero commands: real sbt with no argument opens its INTERACTIVE
+      # shell and the gate would wait on it for ever
+      if [ "$#" -eq 0 ]; then
+        echo "gate: \"$cmd\" names no command — refusing to start an interactive sbt" >&2
+        exit 2
+      fi
+      phase2="" ;;
+  esac
+  if [ -n "$chained" ]; then
+    echo "gate: sbt$(for c in "$@"; do printf ' "%s"' "$c"; done)  (log: $log)"
+    sbt_run "$log" "$@"
+  elif [ -n "$phase2" ]; then
     echo "gate: sbt \"$cmd\" \"$phase2\"  (log: $log)"
     sbt_run "$log" "$cmd" "$phase2"
   else

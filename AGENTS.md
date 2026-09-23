@@ -414,7 +414,11 @@ force, all already practiced, none previously written down:
   It takes any command in place of the default `test`
   (`scripts/gate.sh "Test/compile"`, `scripts/gate.sh
   "okayOpticsNative/test"`), so there is no check too small to route
-  through it. A bare `sbt <cmd>` silently skips everything above: the
+  through it. Several commands chain with `;` (`scripts/gate.sh
+  "a/testOnly X; b/testOnly Y"`): each reaches sbt as its own
+  command, in order, stopping at the first that fails — until
+  gate-command-chain (2026-09-23) everything after the first `;` was
+  silently dropped. A bare `sbt <cmd>` silently skips everything above: the
   warning check ("no warnings, ever"), the stall watchdog, and the
   native lost-process rerun — which is exactly how a real,
   already-known flake got manually rediscovered and manually re-run

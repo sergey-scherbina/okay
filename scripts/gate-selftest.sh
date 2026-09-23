@@ -88,6 +88,32 @@ rc5=$?
 grep -q "gate: STALLED" "$out5" && bad "killed a compiling host" || ok "not stalled"
 [ "$rc5" -eq 0 ] && ok "reached a verdict (exit 0)" || bad "exit was $rc5, expected 0"
 
+say "6. a \";\"-chained command reaches sbt as SEPARATE commands, none dropped"
+# gate-command-chain: `gate.sh "a; b"` handed sbt ONE argument and sbt
+# ran `a` alone — "0 test results" in the verdict was the only tell.
+out6="$tmp/chain.out"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/chain.log" \
+  run_gate "okayJVM/testOnly A; ; okayJS/testOnly B ;okayNative/test" > "$out6" 2>&1
+rc6=$?
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/chain.log" | tr '\n' '|')
+want='fake-sbt-arg: <okayJVM/testOnly A>|fake-sbt-arg: <okayJS/testOnly B>|fake-sbt-arg: <okayNative/test>|'
+[ "$got" = "$want" ] && ok "three commands, in order, trimmed" || bad "sbt was handed: $got"
+[ "$rc6" -eq 0 ] && ok "exit 0" || bad "exit was $rc6, expected 0"
+out7="$tmp/single.out"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/single.log" \
+  run_gate "okayJVM/testOnly A" > "$out7" 2>&1
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/single.log" | tr '\n' '|')
+[ "$got" = 'fake-sbt-arg: <okayJVM/testOnly A>|' ] && ok "a plain command is untouched" || bad "sbt was handed: $got"
+
+say "7. a chain with NO command in it is refused, not handed to sbt"
+# With zero arguments real sbt opens its INTERACTIVE shell and the gate
+# waits on it for ever — found by trying `gate.sh "; ;"` on this lane.
+out8="$tmp/empty.out"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/empty.log" run_gate " ; ; " > "$out8" 2>&1
+rc8=$?
+[ "$rc8" -eq 2 ] && ok "exit 2" || bad "exit was $rc8, expected 2"
+grep -q "Passed: Total" "$tmp/empty.log" 2>/dev/null && bad "sbt was started anyway" || ok "sbt was not started"
+
 say ""
 # and now the same suite under the OTHER shell, once
 if [ -z "$GATE_SELFTEST_SHELL" ] && [ "$fail" -eq 0 ]; then
