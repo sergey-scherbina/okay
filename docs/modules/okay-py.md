@@ -2,8 +2,9 @@
 
 Python as a handler (specs/py.md; the model is specs/r.md's,
 verbatim): call-shaped foreign compute. Calls are OPERATIONS —
-journalable by `Durable`, mockable by handler swap, supervised by
-dead-process-throws. Named functions only: the enum has no
+mockable by handler swap, supervised by dead-process-throws. (Not
+journalled by `Durable` yet: the `Journalled` seam exists, the
+`PyEval` instance is backlog `foreign-journalled`.) Named functions only: the enum has no
 eval-a-string case, structurally, so untrusted input reaches Python
 only as data.
 
