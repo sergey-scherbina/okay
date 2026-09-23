@@ -424,12 +424,19 @@ extension [A](s: Source[A])
       // capacity counts ELEMENTS, so the channel gets that many
       // divided by what each of its slots now holds
       val slots = math.max(1, capacity / Source.ChunkSize)
+      // NOT `through(...)(Stage.unchunk)` any more (same reason as
+      // `Source.unchunked`, merge-chunk-size-curve-inverted): that
+      // paired two coroutines and made every element of every chunk
+      // cross the handshake, at a cost that GREW with the chunk it
+      // came from — this is the exact lane the entry's numbers were
+      // taken on. `Writer.expand` walks the chunked program once and
+      // re-tells the elements into a plain Free chain, which is what
+      // `Source.unchunked` already does; this path had been left on
+      // the old road when that fix landed.
       pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
-        through(
+        Writer.expand[Chunk[A | B], A | B, Unit, Async](
           Writer.of(Channel.mergeChunked[A | B, S, Async, S, Async](
-            sw, tw, slots, Source.ChunkSize, flushAfter)))(
-          !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
-            Stage.unchunk[A | B]))
+            sw, tw, slots, Source.ChunkSize, flushAfter)))(c => c)
 
   /**
    * `merge`, but keeping which side each element came from instead of

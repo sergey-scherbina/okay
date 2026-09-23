@@ -7506,3 +7506,30 @@ one that type-checked, which is a shape worth removing.
       (1.48x), `lexCodeElementwise`. All four scanners now on
       `ScanInto`; nothing left to convert.
 
+- [x] merge-chunk-size-curve-inverted — DONE 2026-09-23, CLOSED AS A
+      CONSISTENCY FIX, NOT A PERFORMANCE ONE. `merge`'s own
+      `chunked = true` path still called `through(...)(Stage.unchunk)`
+      directly — the SAME coroutine-pairing mechanism the 2026-09-10
+      note already fixed everywhere else via `Writer.expand`
+      (`Source.unchunked`). Wired `merge` onto the same proven fix.
+      Tests unchanged (371/371, okayStreamJVM). The number: three
+      quiet before/after pairs on `ChunkFlushBenchmark.okayChunked`
+      (one `before` round hit a load spike of 1712 µs and was
+      discarded), per-arm minima 197.5 vs 198.4 µs, bytes 4 160 026
+      vs 4 172 129 — PARITY, not a win. Reason, confirmed rather than
+      guessed: `merge`'s chunked flag has NO way to raise the chunk
+      size past `Source.ChunkSize = 16` (`private[okay]`, not exposed
+      by the flag), and the original note's own numbers say the
+      coroutine-pairing overhead was "~0" at k = 16 — the curve only
+      shows past k ≈ 256. Fixing this path could not have moved the
+      curve because it never runs at a chunk size where the curve
+      exists. Kept anyway: one unchunk mechanism instead of two,
+      zero measured cost.
+      WHAT ACTUALLY REMAINS, renamed and re-scoped:
+      `merge-chunked-flag-fixed-chunk-size` (backlog okay-stream) —
+      expose the chunk size `merge(chunked = true)` uses instead of
+      the hard-coded 16, so the flag-based road can be measured (and
+      possibly fixed) at the sizes where the curve actually rises;
+      today only the COMPOSED road (`.chunked(k).merge(...).unchunked`)
+      lets a caller choose, and that road already has the fix.
+
