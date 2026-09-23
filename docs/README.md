@@ -34,6 +34,13 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   parameters, and what does it look like with no request in hand. The
   law that makes it worth reifying, the three spellings the language
   refused, and the defects the conversions turned up.
+- **[Cursors and declarations](cursors-and-declarations.md)** — the
+  map of one arc: a consumer that is a program (`Pull`, `Take.each`),
+  a cursor over a tree (`Zipper`, `JsonEditor`), a cursor whose
+  position is a type (`TypedZipper`, its path as a form's key), where
+  a cursor meets a form (`Form.drill`), and three declarations two
+  interpreters read with a law between them (`Policy`, `Query`,
+  `Toolbox.In`) — with the table of when to reach for which.
 - **[Frontends: one application, any client](frontend-guide.md)** —
   the view as a value with two vocabulary levels, the hosts (terminal,
   React, DOM, Swing, GTK), the server-driven wire and its rendered
