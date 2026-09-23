@@ -312,7 +312,21 @@ object Form {
    * them under their fields and stays; `cancel` answers `None`.
    */
   def drill[A](value: Json)(done: Option[Json] => Nav)(using s: Schema[A]): Screen =
-    Nav.screen(Drilling(value, "", Vector.empty))(drillView[A])((d, e) => drillStep[A](d, e, done))
+    drill[A](value, "")(done)
+
+  /** the same, opened AT a path — the dotted key a typed cursor's
+   * `pathKey` answers, or one a caller wrote; a key not on the schema
+   * shows the root, as `renderAt` does */
+  def drill[A](value: Json, at: String)(done: Option[Json] => Nav)(using s: Schema[A]): Screen =
+    Nav.screen(Drilling(value, at, Vector.empty))(drillView[A])((d, e) => drillStep[A](d, e, done))
+
+  /** a drill over a typed cursor's ROOT, opened at its focus: the
+   * position the code chose, the navigation the user does from there
+   * (specs/form-drill.md; specs/zipper.md stage 5). `None` where the
+   * cursor took a frame by lens rather than by name — no key exists */
+  def drillAt[S, A, Z <: okay.TypedZipper[S, A, Z]](z: okay.TypedZipper[S, A, Z])(done: Option[S] => Nav)
+                                                   (using s: Schema[S]): Option[Screen] =
+    z.pathKey.map(k => drill[S](encoded(z.root), k)(j => done(j.flatMap(decode[S].apply(_).toOption))))
 
   /** the same over an existing `A`: in through the codec, out through
    * the decode (the drift law of the second order, TestFormOptic) */

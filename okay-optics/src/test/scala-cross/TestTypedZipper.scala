@@ -182,4 +182,21 @@ class TestTypedZipper extends munit.FunSuite {
     val walked = TypedZipper(order).down(lines).at(0).get.right.flatMap(_.right).map(_.focus)
     assertEquals(walked, TypedZipper(order).down(lines).at(2).map(_.focus))
   }
+
+  // ---- stage 5: the path as a form's dotted key
+
+  test("pathKey: field, element and case frames spell the router's key; a lens frame has none") {
+    val c = TypedZipper(order).field("customer").field("address")
+    assertEquals(c.pathKey, Some("customer.address"))
+    assertEquals(c.field("city").pathKey, Some("customer.address.city"))
+    assertEquals(TypedZipper(order).pathKey, Some(""))
+    assertEquals(TypedZipper(order).field("lines").at(1).map(_.pathKey), Some(Some("lines[1]")))
+    assertEquals(TypedZipper(order).field("lines").at(1).flatMap(_.downCase[Line.Discount]).map(_.pathKey), Some(Some("lines[1]")))
+    assertEquals(TypedZipper(order).down(customer).pathKey, None)               // a lens knows no name
+    assertEquals(TypedZipper(order).down(customer).field("name").pathKey, None) // and the chain inherits that
+    // the key and the affine agree on where they point
+    val key = TypedZipper(order).field("lines").at(2).get.downCase[Line.Item].get.field("sku")
+    assertEquals(key.pathKey, Some("lines[2].sku"))
+    assertEquals(key.asAffine.preview(order), Some("b"): Option[String])
+  }
 }

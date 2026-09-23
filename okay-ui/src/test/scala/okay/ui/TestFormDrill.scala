@@ -183,4 +183,21 @@ class TestFormDrill extends munit.FunSuite {
     val cancelled = Dialog.run(Scripted(Seq(Pressed("$cancel"))))(Form.askAt(z, "customer")).runWith
     assertEquals(cancelled, Some(None))
   }
+
+  test("drill at a key, and from a typed cursor: opened where the code chose, navigated from there") {
+    val d = Nav.state(Form.drill[Order](doc, "customer.address")(_ => Nav.Pop))
+    assertEquals(texts(Nav.view(d)).head, "customer.address")
+    assertEquals(keysOf(Nav.view(d)).take(2), Vector("customer.address.city", "customer.address.zip"))
+    // from a cursor: pathKey is the position, root is the document
+    var got: Option[Option[Order]] = None
+    val cursor = TypedZipper(order).field("customer").field("address")
+    var stack = Nav.state(Form.drillAt(cursor) { a => got = Some(a); Nav.Pop }.get)
+    assertEquals(texts(Nav.view(stack)).head, "customer.address")
+    for e <- Vector(Edited("customer.address.city", "Gdańsk"), Pressed("$out"), Pressed("$out"), Pressed("$done")) do
+      stack = Nav.update(stack, e)
+    assertEquals(got, Some(Some(order.copy(customer = order.customer.copy(address = Address("Gdańsk", 50001))))))
+    // a lens frame has no key, so no screen — the refusal is a None, not a root
+    val byLens = Lens[Order](_.customer)
+    assertEquals(Form.drillAt(TypedZipper(order).down(byLens))(_ => Nav.Pop).isDefined, false)
+  }
 }

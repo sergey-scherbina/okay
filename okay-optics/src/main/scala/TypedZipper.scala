@@ -52,13 +52,20 @@ sealed trait TypedZipper[S, A, Self <: TypedZipper[S, A, Self]]:
   /** a prism frame: into one case of a sum, if the focus is that case */
   def downCase[B <: A](using ClassTag[B]): Option[TypedZipper.Below[S, A, B, Self]] =
     val p = Prism.of[A, B]
-    p.preview(focus).map(b => TypedZipper.Below(self, a => p.preview(a).toRight(a), (a, b) => p.set(b)(a), b))
+    p.preview(focus).map(b => TypedZipper.Below(self, a => p.preview(a).toRight(a), (a, b) => p.set(b)(a), b, name = Some("")))
 
   /** the path from the root to this focus as an optic on the TREE —
    * the typed twin of stage 1's `Zipper.at`. Affine, because an index
    * or a case frame may not be there on another tree; on the tree the
    * cursor was built from, `preview` is the focus. */
   def asAffine: Affine[S, S, A, A]
+
+  /** the path as the DOTTED KEY a form's router and errors use
+   * (`customer.address.city`, `lines[1].qty`; a case frame is
+   * transparent, as it is to `Form.edit`) — `Some` only when every
+   * frame was taken by NAME (`field`, `at`, `downCase`): a lens
+   * handed to `down` knows no name (specs/zipper.md, stage 5) */
+  def pathKey: Option[String]
 
   /** the focus as a lens on THIS cursor's type, every parameter
    * inferred from the receiver: `State.zoom(c.focusLens)(p)` */
@@ -76,6 +83,7 @@ object TypedZipper:
     def root: S = focus
     def depth: Int = 0
     def asAffine: Affine[S, S, S, S] = Affine(Right(_), (_, v) => v)
+    def pathKey: Option[String] = Some("")
     protected def self: Top[S] = this
 
   /** a frame below `parent`: how to put the focus back into the
@@ -85,13 +93,14 @@ object TypedZipper:
    * TYPE. Two cursors are the same when focus, path and root agree;
    * the flag is not part of that (Zipper.scala says the same). */
   final case class Below[S, P, A, Z <: TypedZipper[S, P, Z]](parent: Z, look: P => Either[P, A], put: (P, A) => P,
-                                                             focus: A, dirty: Boolean = false)
+                                                             focus: A, dirty: Boolean = false, name: Option[String] = None)
     extends TypedZipper[S, A, Below[S, P, A, Z]]:
     def set(a: A): Below[S, P, A, Z] = copy(focus = a, dirty = true)
     def up: Z = if dirty then parent.set(put(parent.focus, focus)) else parent
     def root: S = up.root
     def depth: Int = parent.depth + 1
     def asAffine: Affine[S, S, A, A] = parent.asAffine.andThen(Affine(look, put))
+    def pathKey: Option[String] = for p <- parent.pathKey; n <- name yield TypedZipper.key(p, n)
     protected def self: Below[S, P, A, Z] = this
 
   /**
@@ -118,9 +127,15 @@ object TypedZipper:
     def asAffine: Affine[S, S, B, B] = parent.asAffine.andThen(Affine(
       v => v.lift(i).toRight(v),
       (v, b) => if v.isDefinedAt(i) then v.updated(i, b) else v))
+    def pathKey: Option[String] = parent.pathKey.map(_ + s"[$i]")
     protected def self: Elem[S, B, Z] = this
 
   def apply[S](s: S): Top[S] = Top(s)
+
+  /** a key joined the way `Form.key` joins: a segment onto a prefix,
+   * an empty segment (a case frame) leaving the prefix as it is */
+  private[okay] def key(prefix: String, name: String): String =
+    if name.isEmpty then prefix else if prefix.isEmpty then name else s"$prefix.$name"
 
   /**
    * THE TYPE-CHANGING CURSOR: a focus and the plug — put a `B` back
@@ -154,12 +169,15 @@ object TypedZipper:
   def focus[S, A, Z <: TypedZipper[S, A, Z]]: Lens[Z, Z, A, A] =
     Lens(_.focus, (z, a) => z.set(a))
 
-extension [S, A <: Product, Z <: TypedZipper[S, A, Z]](z: TypedZipper[S, A, Z])
+extension [S, A <: Product, Z <: TypedZipper[S, A, Z]](z: Z)
   /** a field by name, typed by the Mirror — `Lens.field[A](name)` as
-   * a frame; a wrong name is a compile error, as it is there */
+   * a frame that REMEMBERS the name (for `pathKey`); a wrong name is
+   * a compile error, as it is there */
   inline def field[L <: String & Singleton](inline name: L)(using m: Mirror.ProductOf[A])
     : TypedZipper.Below[S, A, Tuple.Elem[m.MirroredElemTypes, Optic.IndexOf[m.MirroredElemLabels, L, 0]], Z] =
-    z.down(Lens.field[A](name))
+    type E = Tuple.Elem[m.MirroredElemTypes, Optic.IndexOf[m.MirroredElemLabels, L, 0]]
+    val l: Lens[A, A, E, E] = Lens.field[A](name: L)
+    TypedZipper.Below[S, A, E, Z](z, a => Right(l.get(a)), (a, b) => l.set(b)(a), l.get(z.focus), name = Some(name))
 
 extension [S, B, Z <: TypedZipper[S, Vector[B], Z]](z: Z)
   /** the i-th element of a `Vector` focus, or None past the end — an
