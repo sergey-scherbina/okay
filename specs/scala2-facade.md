@@ -453,6 +453,121 @@ a program. The facade makes `Dialog` a capability of `Eff` (`show`,
 - [x] a scenario runs on a `ScriptedHost`
 - [x] a stack of Scala 2 screens runs in the ordinary `UiApp.run` loop
 
+## Stage 15 — everything possible (operator, 2026-09-23)
+"Да бери делай всё что возможно чтобы работало в скале 2." Two surveys
+of every module, taken on a fresh `publishLocal` of master:
+
+- FROM THE SOURCES: public `def`s, how many are `inline` (Scala 2 cannot
+  call them), and how many RETURN A PROGRAM (`! ...`, `Source`, `Stage`,
+  `Resource`, `Cont`). A program-returning method needs a facade,
+  because Scala 2 can neither compose nor run the result.
+- FROM SCALAC 2.13: one Scala 2 file per module that names every public
+  `object`, compiled against the published jars. It shows which objects
+  the reader refuses outright.
+
+| module | public defs | inline | return a program | objects | unreadable objects |
+|---|---|---|---|---|---|
+| okay | 915 | 165 | 216 | 50 | 7 (Cont,Eager,Gen,HMap,Handled,Producer,throws) |
+| okay-acme | 35 | 0 | 1 | 3 | 0  |
+| okay-actor | 11 | 0 | 6 | 1 | 0  |
+| okay-admin | 3 | 0 | 0 | 1 | 0  |
+| okay-agent | 181 | 0 | 30 | 17 | 1 (Agent) |
+| okay-async | 47 | 4 | 22 | 4 | 1 (Par) |
+| okay-blob | 47 | 0 | 33 | 7 | 0  |
+| okay-cache | 33 | 0 | 18 | 5 | 0  |
+| okay-cats | 15 | 0 | 12 | 1 | 0  |
+| okay-cdi | 5 | 0 | 1 | 1 | 0  |
+| okay-chain | 28 | 0 | 0 | 8 | 2 (BlockId,TxId) |
+| okay-chat | 14 | 0 | 1 | 1 | 0  |
+| okay-clojure | 46 | 0 | 9 | 5 | 0  |
+| okay-cluster | 372 | 0 | 3 | 18 | 0  |
+| okay-codec | 360 | 4 | 0 | 21 | 1 (<file-level>) |
+| okay-conf | 13 | 0 | 0 | 4 | 0  |
+| okay-crdt | 29 | 0 | 0 | 9 | 1 (NodeId) |
+| okay-crypto | 8 | 0 | 0 |  | -  |
+| okay-data | 46 | 0 | 0 | 3 | 0  |
+| okay-delta | 22 | 0 | 3 | 1 | 0  |
+| okay-demo | 95 | 0 | 15 |  | -  |
+| okay-deploy | 112 | 1 | 0 | 17 | 0  |
+| okay-direct | 186 | 5 | 10 | 2 | 0  |
+| okay-docs | 39 | 0 | 21 | 4 | 0  |
+| okay-flink | 5 | 0 | 0 | 1 | 0  |
+| okay-frame | 34 | 0 | 0 | 4 | 0  |
+| okay-frege | 19 | 0 | 4 | 2 | 0  |
+| okay-fs2 | 3 | 0 | 0 | 1 | 0  |
+| okay-guice | 4 | 0 | 1 | 1 | 0  |
+| okay-http | 228 | 1 | 57 | 19 | 2 (Query,Route) |
+| okay-intent | 230 | 0 | 0 | 31 | 0  |
+| okay-java | 70 | 0 | 7 | 6 | 0  |
+| okay-jdbc | 47 | 0 | 17 | 7 | 0  |
+| okay-jetty | 26 | 0 | 8 | 1 | 0  |
+| okay-js | 40 | 1 | 0 | 4 | 0  |
+| okay-kafka | 18 | 0 | 3 | 2 | 0  |
+| okay-kyo | 11 | 0 | 11 | 1 | 0  |
+| okay-langchain4j | 8 | 0 | 0 | 1 | 0  |
+| okay-langchain4j-embed | 3 | 0 | 0 |  | -  |
+| okay-lex | 45 | 0 | 2 | 4 | 0  |
+| okay-live | 10 | 0 | 0 | 1 | 0  |
+| okay-llm | 54 | 0 | 23 | 7 | 0  |
+| okay-mail | 30 | 0 | 0 | 4 | 0  |
+| okay-mcp | 120 | 0 | 40 | 7 | 0  |
+| okay-netty | 23 | 0 | 7 | 1 | 0  |
+| okay-obs | 32 | 0 | 7 | 7 | 0  |
+| okay-onnx | 7 | 0 | 0 |  | -  |
+| okay-openapi | 4 | 0 | 0 | 1 | 0  |
+| okay-ops | 33 | 0 | 5 | 6 | 0  |
+| okay-optics | 180 | 16 | 4 | 13 | 7 (Affine,AlgebraicLens,Iso,Kaleidoscope,Lens,Prism,Traversal) |
+| okay-outbox | 16 | 0 | 11 | 1 | 0  |
+| okay-parse | 21 | 1 | 0 | 3 | 0  |
+| okay-persist | 266 | 0 | 35 | 32 | 2 (Dialogue,Worker) |
+| okay-pg | 44 | 0 | 19 | 5 | 0  |
+| okay-platform | 61 | 0 | 16 | 4 | 0  |
+| okay-py | 17 | 0 | 0 | 2 | 0  |
+| okay-r | 21 | 0 | 0 | 3 | 0  |
+| okay-r2dbc | 22 | 0 | 7 | 1 | 0  |
+| okay-rag | 111 | 0 | 23 | 13 | 0  |
+| okay-reactive | 14 | 0 | 4 | 1 | 0  |
+| okay-resilience | 69 | 0 | 31 | 12 | 0  |
+| okay-scalus | 58 | 0 | 0 | 10 | 0  |
+| okay-scalus-spark | 39 | 0 | 0 | 4 | 0  |
+| okay-script | 242 | 0 | 9 | 27 | 1 (Live) |
+| okay-security | 87 | 0 | 6 | 16 | 1 (Policy) |
+| okay-security-argon2 | 3 | 0 | 0 | 1 | 0  |
+| okay-spark | 31 | 0 | 1 | 3 | 0  |
+| okay-spring | 14 | 0 | 3 | 3 | 0  |
+| okay-sql | 70 | 0 | 18 | 9 | 0  |
+| okay-staging | 57 | 0 | 0 | 1 | 0  |
+| okay-stm | 33 | 0 | 16 | 2 | 0  |
+| okay-stream | 412 | 40 | 96 | 19 | 5 (ChunkBuf,Chunks,SentinelChannel,Source,Stage) |
+| okay-subscription | 7 | 0 | 0 | 1 | 0  |
+| okay-tls | 21 | 0 | 0 | 1 | 0  |
+| okay-ui | 235 | 1 | 52 | 20 | 0  |
+| okay-ui-gtk | 61 | 0 | 3 |  | -  |
+| okay-workflow | 131 | 1 | 20 | 3 | 0  |
+| okay-zio | 14 | 0 | 3 | 2 | 0  |
+
+Reading it. Unreadable objects are rare. They are optics (their types are
+built with Scala 3 features), `Source`/`Stage`/`Chunks` (type aliases
+over rows), a few core objects (`Cont`, `Gen`, `Producer`, `throws`), and
+`okay-codec`'s `Json`. What stands in the way almost everywhere is the
+program-returning API. The queue, by what it is worth to a Scala 2
+SERVICE:
+
+1. okay-resilience: retry, circuit breaker, bulkhead, limiter.
+2. okay-persist: the durable log.
+3. okay-stm: transactions over `TRef`.
+4. okay-cache, okay-blob, okay-docs: the stores.
+5. okay-mcp, okay-rag, okay-llm: the agent ecosystem around stage 9.
+6. okay-optics: lenses and prisms without the macros.
+7. okay-workflow: durable workflows, which also brings durable agents.
+8. okay-actor, okay-kafka, okay-pg, okay-outbox, okay-obs, okay-ops.
+
+NOT APPLICABLE: the interop modules okay-cats, okay-zio, okay-kyo and
+okay-fs2. Each depends on the `_3` artifacts of its library, and a
+Scala 2 build has that library at `_2.13`. Both on one classpath is a
+conflict, not an interop. okay-direct and okay-staging are Scala 3
+metaprogramming.
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
