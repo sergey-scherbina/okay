@@ -1641,6 +1641,49 @@ lazy val okayTs = crossProject(JSPlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
+/** the npm package of okay-ts-npm: its directory, built by `npmPackage` */
+lazy val npmPackage = taskKey[File]("okay-ts-npm as an npm package directory: the ES module, package.json, and the index.d.ts the module writes of itself (typescript-types T9)")
+
+/**
+ * okay for TypeScript projects, as an npm package (typescript-types T9):
+ * okay-ts, okay-crdt and okay-stream's channels behind an ES module whose
+ * `index.d.ts` the module itself writes, from the same Schemas that
+ * encode its values. `npmPackage` links it (fullLinkJS), copies the module
+ * and npm/package.json into target/npm, and asks Node for the module's
+ * `declarations` export to write index.d.ts. ESModule, unlike okay-ts:
+ * a package a bundler or Node `import`s is an ES module.
+ */
+lazy val okayTsNpm = crossProject(JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-ts-npm"))
+  .dependsOn(okayTs, okayCrdt, okayStream)
+  .settings(
+    name := "okay-ts-npm",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jsSettings(
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule)),
+    npmPackage := {
+      val report = (Compile / fullLinkJS).value.data
+      val linked = (Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value
+      val pkg = target.value / "npm"
+      IO.delete(pkg)
+      IO.createDirectory(pkg)
+      report.publicModules.foreach(m => IO.copyFile(linked / m.jsFileName, pkg / m.jsFileName))
+      val source = baseDirectory.value.getParentFile / "npm"
+      IO.copyFile(source / "package.json", pkg / "package.json")
+      IO.copyFile(source / "README.md", pkg / "README.md")
+      // a FILE with a static import: a dynamic `import()` from `node -e`
+      // never settled here (Node 26, exit 13), while the same module
+      // imported statically loads at once
+      val writer = target.value / "declarations.mjs"
+      IO.write(writer, "import { declarations } from \"./npm/main.js\";\nprocess.stdout.write(declarations);\n")
+      val declarations = scala.sys.process.Process(Seq("node", writer.getAbsolutePath)).!!
+      IO.write(pkg / "index.d.ts", declarations)
+      pkg
+    },
+  )
+
 lazy val okayJs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-js"))
@@ -2921,7 +2964,7 @@ lazy val root = (project in file("."))
     // build stopped at "Error downloading dev.okay:okay-js_3:0.1.1").
     // okay-acme's network suites are Live-tagged, so the default gate
     // runs none of them.
-    okayJs.jvm, okayJs.js, okayJs.native, okayTs.js, okayAcme,
+    okayJs.jvm, okayJs.js, okayJs.native, okayTs.js, okayTsNpm.js, okayAcme,
     // five more that were simply never listed (root-aggregate-unlisted,
     // 2026-09-23), and it had cost two of them already: okay-spring no
     // longer COMPILED (Async left the core on 2026-09-18 and nothing

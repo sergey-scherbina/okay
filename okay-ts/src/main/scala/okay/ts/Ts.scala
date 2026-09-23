@@ -71,9 +71,17 @@ object Ts:
    * program node, so a long program is a loop, not a stack.
    */
   def run[F[+_], Out](program: js.Any, cbs: Callbacks[F])(using out: Schema[Out]): Either[Failure, Out] ! F =
+    walk(program, cbs, fromJs[Out](_))
+
+  /** `run` whose answer is the program's final value as JSON, whatever
+   * its shape (okay-ts-npm's `run`, typescript-types T9) */
+  def runJson[F[+_]](program: js.Any, cbs: Callbacks[F]): Either[Failure, Json] ! F =
+    walk(program, cbs, json)
+
+  private def walk[F[+_], Out](program: js.Any, cbs: Callbacks[F], finish: js.Any => Either[Failure, Out]): Either[Failure, Out] ! F =
     def go(p: js.Dynamic): Either[Failure, Out] ! F =
       (p.selectDynamic("tag"): Any) match
-        case "done" => pure[F, Either[Failure, Out]](fromJs[Out](p.selectDynamic("value")))
+        case "done" => pure[F, Either[Failure, Out]](finish(p.selectDynamic("value")))
         case "perform" =>
           val name = String.valueOf(p.selectDynamic("name"))
           json(p.selectDynamic("args")) match
