@@ -1815,4 +1815,27 @@ codecs, compile-time (`Staged`) and run-time (`RuntimeStaged`).
   first against the old code: `Right(2147483647)`, `Right(1)`,
   `Right(Box(0))`, `Right(LBox(2))`.
 - Found beside it and filed, not fixed: CBOR byte/text lengths narrow
-  through `n.toInt` too (`cbor-length-wraps`).
+  through `n.toInt` too (`cbor-length-wraps`) — fixed the same day,
+  below.
+
+### CBOR lengths and counts (2026-09-23, cbor-length-wraps)
+
+The same class one level down: `Cbor.In` read a string's length and a
+container's count as the raw 64-bit argument and used it as is — a
+byte or text string declared 2^32+5 long narrowed through `n.toInt`
+and read FIVE bytes; an array of 2^63+1 elements read negative, and a
+loop `while left > 0` made it an empty array; skipping an unknown
+field had its own copy of both reads. Each time the rest of the
+document was read from the wrong offset, and the answer was a `Right`.
+
+- [x] a declared length or count is refused unless the bytes LEFT
+      could hold it (every item takes at least one byte; a map's pairs
+      two), in one place, `In.declared` — the typed reads, the skip
+      paths (native and trampolined) and the staged codecs, which call
+      the same reader
+- [x] honest lengths at the boundary still read
+- [x] `TestCborLengths`, run RED first: `Right(List(1, 2, 3, 4, 5))`
+      for the 2^32+5 string, `Right(List())` for the 2^63+1 array,
+      `Right(Box(1))` past a wrapped skipped field
+- Counted the doors: no other CBOR reader exists in the tree
+  (`grep` for a hand-written head parser: none outside `Cbor.scala`).

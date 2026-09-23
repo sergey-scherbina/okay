@@ -257,6 +257,10 @@ the wire sees.
   fold refuses (`okay.codec.Numbers` is the one place that decides).
   Not checked: a JSON number past 2⁵³ into a `Long` — the parser has
   already rounded it; send such values as `BigInt`.
+- A CBOR length or count the remaining bytes cannot hold is refused:
+  a byte string declared 2³²+5 long used to read five bytes, and an
+  array of 2⁶³+1 elements used to read as empty — each leaving the
+  rest of the document read from the wrong place.
 - `Json.write` of a `String` field escapes `"\n\t\r\\` only — exotic
   control characters pass through (the scanner keeps them lossless).
 

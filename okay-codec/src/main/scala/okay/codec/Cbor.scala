@@ -170,6 +170,25 @@ object Cbor {
     private def long(n: Int): Either[String, Long] =
       take(n).map(_.foldLeft(0L)((acc, b) => (acc << 8) | (b & 0xFF)))
 
+    /**
+     * A declared length or count, refused unless the bytes left could
+     * hold it (cbor-length-wraps). `head()`'s argument is the raw 64
+     * bits: past 2^63 it reads negative, and `n.toInt` narrowed the
+     * rest — a byte string declared 2^32+5 long read five bytes, an
+     * array of 2^63+1 elements read as empty — and the document after
+     * it was read from the wrong place, in a `Right`. Every item takes
+     * at least one byte, so `perItem` bytes per element bound a count
+     * (2 for a map's pairs) without trusting the declaration.
+     */
+    private def declared(n: Long, perItem: Int, what: String): Either[String, Long] =
+      val left = bs.length - i
+      if n >= 0 && n <= left / perItem then Right(n)
+      else Left(s"$what declares ${java.lang.Long.toUnsignedString(n)}, but only $left bytes are left")
+
+    /** a string's bytes, by its declared length */
+    private def body(n: Long, what: String): Either[String, Array[Byte]] =
+      declared(n, 1, what).flatMap(k => take(k.toInt))
+
     /** the major type and the argument (a length, a count, or the
      * integer itself) — every item starts here */
     def head(): Either[String, (Int, Long)] =
@@ -211,7 +230,7 @@ object Cbor {
 
     def textItem(): Either[String, String] =
       head().flatMap {
-        case (3, n) => take(n.toInt).map(String(_, "UTF-8"))
+        case (3, n) => body(n, "a text string").map(String(_, "UTF-8"))
         case (m, _) => Left(s"expected a text string, got major $m")
       }
 
@@ -230,7 +249,7 @@ object Cbor {
 
     def byteStringItem(): Either[String, Array[Byte]] =
       head().flatMap {
-        case (2, n) => take(n.toInt)
+        case (2, n) => body(n, "a byte string")
         case (m, _) => Left(s"expected a byte string, got major $m")
       }
 
@@ -239,13 +258,13 @@ object Cbor {
 
     def arrayHeader(): Either[String, Long] =
       head().flatMap {
-        case (4, n) => Right(n)
+        case (4, n) => declared(n, 1, "an array")
         case (m, _) => Left(s"expected an array, got major $m")
       }
 
     def mapHeader(): Either[String, Long] =
       head().flatMap {
-        case (5, n) => Right(n)
+        case (5, n) => declared(n, 2, "a map")
         case (m, _) => Left(s"expected a map, got major $m")
       }
 
@@ -289,9 +308,9 @@ object Cbor {
           // 0/1: the argument WAS the integer; 7: head() consumed the
           // simple value or the float's bits with it
           case 0 | 1 | 7 => Right(())
-          case 2 | 3 => take(n.toInt).map(_ => ())
-          case 4 => manyNative(n)
-          case 5 => manyNative(n * 2)      // a map is its pairs, flattened
+          case 2 | 3 => body(n, "a string").map(_ => ())
+          case 4 => declared(n, 1, "an array").flatMap(manyNative)
+          case 5 => declared(n, 2, "a map").flatMap(k => manyNative(k * 2))   // a map is its pairs, flattened
           case 6 => skipItem()             // the DISPATCHER: depth may
                                             // have crossed the threshold
                                             // by the time a tag's own
@@ -321,9 +340,9 @@ object Cbor {
         case Left(e) => Cont.Pure(Left(e))
         case Right((major, n)) => major match
           case 0 | 1 | 7 => Cont.Pure(Right(()))
-          case 2 | 3 => Cont.Pure(take(n.toInt).map(_ => ()))
-          case 4 => manyC[R](n)
-          case 5 => manyC[R](n * 2)
+          case 2 | 3 => Cont.Pure(body(n, "a string").map(_ => ()))
+          case 4 => declared(n, 1, "an array").fold(e => Cont.Pure(Left(e)), manyC[R](_))
+          case 5 => declared(n, 2, "a map").fold(e => Cont.Pure(Left(e)), k => manyC[R](k * 2))
           case 6 => Cont.delay(() => skipItemInsideC[R])
           case m => Cont.Pure(Left(s"unsupported major type $m"))
       }
