@@ -1,4 +1,0 @@
-feature/scala2-stores 2026-09-23T14:49:03Z
-agent: claude-code
-status: in-progress
-next: probe okay-cache/blob/docs from 2.13; wrap program-returning API
