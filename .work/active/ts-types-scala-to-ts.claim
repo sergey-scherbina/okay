@@ -1,3 +1,0 @@
-slug: ts-types-scala-to-ts
-who: claude-opus-5.5 (interop session)
-what: T2: StubFiles.typescript/python write generated declarations as a build step, only when changed
