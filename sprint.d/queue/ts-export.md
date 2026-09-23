@@ -1,0 +1,1 @@
+- [ ] ts-export — T6 of specs/typescript-types.md (Scala and TypeScript both in the browser): `Ts.export(name)(f)` publishes an okay function to TypeScript on Scala.js with its generated declaration, `export function name(a: A): Promise<B>`.

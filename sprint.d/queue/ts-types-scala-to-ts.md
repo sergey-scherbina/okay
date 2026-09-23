@@ -1,0 +1,1 @@
+- [ ] ts-types-scala-to-ts — T2 of specs/typescript-types.md: Scala → TypeScript as a BUILD STEP — `TsTypes.write(file, schemas*)`, a `runMain`, generated-header, deterministic; a doc with the sbt task that regenerates the declarations into a frontend tree. After ts-one-shape.

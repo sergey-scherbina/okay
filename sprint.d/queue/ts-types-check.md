@@ -1,0 +1,1 @@
+- [ ] ts-types-check — T4 of specs/typescript-types.md: `TsTypes.check(generated, handwritten)` — `tsc` decides by mutual assignability whether each type is the same on both sides; drift reported by type name, as a build failure rather than a user's.
