@@ -10,4 +10,5 @@ set -eu
 root=$(git rev-parse --show-toplevel)
 git config core.hooksPath scripts/githooks
 echo "hooks: core.hooksPath -> scripts/githooks (in $root)"
-echo "they re-index this repo for rag.search after a merge/commit/checkout, and never fail one"
+echo "they re-index this repo for rag.search after a merge/commit/checkout, and never fail one;"
+echo "pre-commit refuses exactly one thing: a board item filed in two places"

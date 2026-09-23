@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+# Tracked hook (installed by scripts/githooks/install.sh). Unlike the
+# re-index hooks beside it, this one REFUSES a commit, and only one kind:
+# a commit that leaves the same board item filed in two places.
+#
+# Why a hook: twice on 2026-09-23 (80a1ccec, dc614d2f) a claim ADDED the
+# sprint item instead of `git mv`-ing it from the backlog, the slug sat
+# in both boards, and TestBoardEntries turned every lane's gate red until
+# somebody noticed. `scripts/board.sh --check` catches it, but only when
+# somebody runs it; a claim is a commit, so the commit is where to stop it.
+#
+# It reads the INDEX (what is being committed), not the working tree: in
+# the main checkout the working tree may hold a sibling's uncommitted files.
+dupes=$(git ls-files -- 'sprint.d/*.md' 'backlog.d/*.md' | sed 's|.*/||' \
+  | grep -v -x -e '_section.md' -e '_preamble.md' | sort | uniq -d)
+[ -z "$dupes" ] && exit 0
+echo "pre-commit: refused — a board item is filed twice (promote with git mv, not a copy):" >&2
+for d in $dupes; do
+  git ls-files -- 'sprint.d/*.md' 'backlog.d/*.md' | grep "/$d\$" | sed 's/^/  /' >&2
+done
+exit 1

@@ -235,7 +235,11 @@ force, all already practiced, none previously written down:
   shape and `TestBoardEntries` runs it in the gate — including the one
   a directory cannot enforce by itself, that the same slug is not
   filed in two places (a promotion done by copy instead of `git mv`
-  lets two agents pick one task). `_order` is the only line two lanes
+  lets two agents pick one task). Since 2026-09-23 a tracked
+  pre-commit hook (`scripts/githooks/pre-commit`, via
+  `sh scripts/githooks/install.sh`) REFUSES a commit whose index files
+  one slug twice: two claims that day copied their item instead of
+  moving it and turned every lane's gate red. `_order` is the only line two lanes
   can both want, and only when a SECTION is added; a landed task writes `changelog.d/<slug>.md` — ONE FILE, named
   after the lane, beginning with a `## ` title and naming the commits.
   It is never the head of `CHANGELOG.md`: that file is the archive of
