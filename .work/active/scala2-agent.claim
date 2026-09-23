@@ -1,6 +1,0 @@
-feature/scala2-agent 2026-09-23T07:09:05Z
-agent: claude-code
-heartbeat: 2026-09-23T07:09:05Z
-status: in-progress
-done-so-far: picked
-next: probe okay-agent/okay-llm from 2.13, spec stage 9, facade
