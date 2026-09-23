@@ -1,4 +1,4 @@
-- [ ] direct-inline-bind-free — a Free `direct` block's binds are
+- [~] direct-inline-bind-free — a Free `direct` block's binds are
       virtual calls on `mm$direct: Monad[F]`; hoisting the val at the
       GIVEN'S precise type and selecting `flatMap` on it makes the
       instance's `override inline` member reduce at compile time,
