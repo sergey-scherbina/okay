@@ -1,6 +1,0 @@
-feature/okay-scalus-spark 2026-09-23T07:34:01Z
-agent: claude-code
-heartbeat: 2026-09-23T07:34:01Z
-status: in-progress
-done-so-far: picked (operator: Делай)
-next: lane 1 SparkSchema in okay-spark; lane 2 scalus Schemas; lane 3 DataSource
