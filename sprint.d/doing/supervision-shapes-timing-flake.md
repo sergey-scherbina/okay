@@ -1,4 +1,4 @@
-- [ ] supervision-shapes-timing-flake — RECURRENCE LEDGER.
+- [~] supervision-shapes-timing-flake — RECURRENCE LEDGER.
       `compare/TestSupervisionShapes` "par supervises its ONE sibling:
       cancelled, not waited for" asserts on elapsed time and failed once
       in a full matrix with "took 422ms — the healthy sibling was waited

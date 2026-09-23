@@ -1,4 +1,4 @@
-- [ ] async-cross-sleep-timer-flake — RECURRENCE LEDGER. `TestAsyncCross`
+- [~] async-cross-sleep-timer-flake — RECURRENCE LEDGER. `TestAsyncCross`
       "sleep then answer completes via runAsync without blocking the
       loop" asserts a 10 ms `Timer.after` fired before a 50 ms
       `Async.sleep` answered. On `okayPlatformNative` under the full
