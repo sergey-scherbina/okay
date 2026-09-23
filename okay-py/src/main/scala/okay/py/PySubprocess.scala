@@ -163,8 +163,20 @@ object PySubprocess:
   /** the seam the handshake test uses: any shim file */
   private[py] def startWith(python: String, shim: java.nio.file.Path,
                             env: Map[String, String]): PySubprocess =
-    val exe = resolve(python)
-    val pb = ProcessBuilder(exe, shim.toString)
+    startCommand(Vector(resolve(python), shim.toString), python, env)
+
+  /**
+   * An engine over ANY process that speaks the okay wire — the handshake
+   * line first, then one JSON request and one answer per line
+   * (remote-foreign). A compiled Haskell worker built on the `Okay` module
+   * this jar ships (`/okay/hs/Okay.hs`) is one: its programs-as-data run
+   * through `Py.program` exactly as Python's do, multi-shot included.
+   */
+  def speaking(command: Seq[String], env: Map[String, String] = Map.empty): PySubprocess =
+    startCommand(command.toVector, command.headOption.getOrElse("?"), env)
+
+  private def startCommand(cmd: Vector[String], python: String, env: Map[String, String]): PySubprocess =
+    val pb = ProcessBuilder(cmd*)
     pb.environment().clear()             // the clean-env rule: nothing leaks
     env.foreach((k, v) => pb.environment().put(k, v))
     pb.redirectErrorStream(false)
