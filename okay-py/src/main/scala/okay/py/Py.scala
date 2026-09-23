@@ -63,6 +63,22 @@ enum PyEval[+A] derives okay.Effect:
     extends PyEval[Either[Condition, PyValue]]
   case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
     extends PyEval[Either[Condition, PyFrame]]
+  /** a call that may CALL BACK (foreign-callbacks): Python may use
+   * `okay.call(name, ...)` for the names offered here, and each use comes
+   * back as a `PyStep.Ask` rather than as the call's answer */
+  case Start(fn: String, args: Vector[PyValue], callbacks: Vector[String])
+    extends PyEval[PyStep]
+  /** the answer to an `Ask`, which resumes the Python frame waiting in
+   * `okay.call`; the next step is another ask or the call's answer */
+  case Resume(k: Long, answer: Either[Condition, PyValue])
+    extends PyEval[PyStep]
+
+/** where a call with callbacks stands (foreign-callbacks) */
+enum PyStep:
+  /** the function returned (or raised) */
+  case Done(answer: Either[Condition, PyValue])
+  /** the function called `okay.call(callback, *args)`; `k` resumes it */
+  case Ask(callback: String, args: Vector[PyValue], k: Long)
 
 object PyEval:
   /**
@@ -86,10 +102,15 @@ object PyEval:
     def name[A](op: PyEval[A]): String = op match
       case Call(fn, _) => fn
       case Frame(fn, _, _) => fn
+      case Start(fn, _, _) => fn
+      case Resume(_, _) => "resume"
     def fingerprint[A](op: PyEval[A]): String = op match
       case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Frame(fn, in, args) =>
         s"$fn#${Wire.digest(Json.JArr(Vector(Wire.encFrame(in), Json.JArr(args.map(Wire.enc)))))}"
+      case Start(fn, args, cbs) =>
+        s"$fn#${Wire.digest(Json.JArr(Vector(Json.JArr(args.map(Wire.enc)), Json.JArr(cbs.map(Json.JStr(_))))))}"
+      case Resume(k, answer) => s"resume/$k#${Wire.digest(Json.parse(Wire.written(answer.map(Wire.enc))))}"
     def withKey[A](op: PyEval[A], key: String): PyEval[A] = op
     def perform[A](op: PyEval[A], inner: okay.Handler[PyEval]): (A, String) = op match
       case Call(fn, args) =>
@@ -98,9 +119,17 @@ object PyEval:
       case Frame(fn, in, args) =>
         val answer = inner.handle(Frame(fn, in, args))
         (answer, Wire.written(answer.map(Wire.encFrame)))
+      case Start(fn, args, cbs) =>
+        val step = inner.handle(Start(fn, args, cbs))
+        (step, Wire.writtenStep(step))
+      case Resume(k, a) =>
+        val step = inner.handle(Resume(k, a))
+        (step, Wire.writtenStep(step))
     def decode[A](op: PyEval[A], written: String): A = op match
       case Call(_, _) => Wire.read(written).map(Wire.dec)
       case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
+      case Start(_, _, _) => Wire.readStep(written)
+      case Resume(_, _) => Wire.readStep(written)
 
 
 /** the wire halves shared by every engine: PyValue <-> the tagged
@@ -121,6 +150,30 @@ private[py] object Wire {
       def field(n: String) = fs.collectFirst { case (`n`, Json.JStr(v)) => v }.getOrElse("")
       Left(Condition(field("kind"), field("message")))
     case other => throw IllegalStateException(s"okay.py: not a journalled answer: ${Json.print(other)}")
+
+  /** a journalled step: `{"done": <written answer>}` or `{"ask": {...}}` */
+  def writtenStep(step: PyStep): String = Json.print(step match
+    case PyStep.Done(a) => Json.JObj(Vector("done" -> Json.JStr(written(a.map(enc)))))
+    case PyStep.Ask(cb, args, k) => Json.JObj(Vector("ask" -> Json.JObj(Vector(
+      "cb" -> Json.JStr(cb), "args" -> Json.JArr(args.map(enc)), "k" -> Json.JStr(k.toString))))))
+
+  def readStep(w: String): PyStep = Json.parse(w) match
+    case Json.JObj(Vector(("done", Json.JStr(a)))) => PyStep.Done(read(a).map(dec))
+    case j => step(j).getOrElse(throw IllegalStateException(s"okay.py: not a journalled step: $w"))
+
+  /** an `ask` message from the shim (or the journal), if this is one */
+  def step(j: Json): Option[PyStep.Ask] = j match
+    case Json.JObj(fs) => fs.collectFirst { case ("ask", Json.JObj(a)) =>
+      val m = a.toMap
+      PyStep.Ask(
+        m.get("cb").collect { case Json.JStr(c) => c }.getOrElse(""),
+        m.get("args").collect { case Json.JArr(xs) => xs.map(dec) }.getOrElse(Vector.empty),
+        m.get("k").collect {
+          case Json.JNum(n) => n.toLong
+          case Json.JStr(n) => n.toLong
+        }.getOrElse(-1L))
+    }
+    case _ => None
 
   /** SHA-256 of a value's printed JSON, hex */
   def digest(j: Json): String =

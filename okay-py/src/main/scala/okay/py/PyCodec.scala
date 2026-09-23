@@ -1,6 +1,7 @@
 package okay.py
 
-import okay.{!, effect}
+import okay.{!, +, effect, pure}
+import okay.RowLift.plus
 import okay.codec.Schema
 import PyValue.*
 
@@ -167,6 +168,38 @@ object PyCodec {
 object Py {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
+  /**
+   * A callback Python may call by name while okay runs one of its
+   * functions (foreign-callbacks): `okay.call("objective", x)` in Python
+   * decodes `x` as `Arg`, runs `f` as an okay PROGRAM in `F` under the
+   * caller's handlers, and hands the `Res` back as the value of
+   * `okay.call`. More than one argument arrives as a list.
+   *
+   * {{{
+   * val objective = Py.callback[Vector[Double], Double]("objective")(x => Reader.ask[Double].map(...))
+   * }}}
+   */
+  def callback[Arg: Schema, Res: Schema](name: String): CallbackOf[Arg, Res] = CallbackOf(name)
+
+  /** the callbacks one call offers, all in one row `F` (a union row for
+   * several effects: callbacks are programs, and a program has one row) */
+  def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Callbacks(cbs.toVector)
+
+  final class CallbackOf[Arg: Schema, Res: Schema](name: String):
+    def apply[F[+_]](f: Arg => Res ! F): Callback[F] = Callback(name, args =>
+      val in = args match
+        case Vector(one) => PyCodec.decode[Arg](one)
+        case many => PyCodec.decode[Arg](PyValue.Arr(many))
+      in match
+        case Left(c) => pure[F, Either[Condition, PyValue]](Left(c))
+        case Right(i) => f(i).map(o => Right(PyCodec.encode(o))))
+
+  final class Callback[F[+_]](val name: String, val run: Vector[PyValue] => Either[Condition, PyValue] ! F)
+
+  final class Callbacks[F[+_]](val all: Vector[Callback[F]]):
+    def names: Vector[String] = all.map(_.name)
+    def get(name: String): Option[Callback[F]] = all.find(_.name == name)
+
   final class Fn[Out](val address: String)(using out: Schema[Out]):
     def apply(): Either[Condition, Out] ! PyEval = call(Vector.empty)
     def apply[A: Schema](a: A): Either[Condition, Out] ! PyEval =
@@ -181,4 +214,34 @@ object Py {
     private def call(args: Vector[PyValue]): Either[Condition, Out] ! PyEval =
       effect[PyEval, Either[Condition, PyValue]](PyEval.Call(address, args))
         .map(_.flatMap(PyCodec.decode[Out](_)))
+
+    /** this function, offered `cbs` to call back into (foreign-callbacks) */
+    def calling[F[+_]](cbs: Callbacks[F]): Calling[F] = Calling(cbs)
+
+    final class Calling[F[+_]](cbs: Callbacks[F]):
+      def apply(): Either[Condition, Out] ! (F + PyEval) = dialogue(Vector.empty)
+      def apply[A: Schema](a: A): Either[Condition, Out] ! (F + PyEval) =
+        dialogue(Vector(PyCodec.encode(a)))
+      def apply[A: Schema, B: Schema](a: A, b: B): Either[Condition, Out] ! (F + PyEval) =
+        dialogue(Vector(PyCodec.encode(a), PyCodec.encode(b)))
+      def apply[A: Schema, B: Schema, C: Schema](a: A, b: B, c: C): Either[Condition, Out] ! (F + PyEval) =
+        dialogue(Vector(PyCodec.encode(a), PyCodec.encode(b), PyCodec.encode(c)))
+
+      /**
+       * The dialogue as a program: start, then per ask run the callback's
+       * program and resume, until the function answers. Each step is an
+       * okay node, so a function that calls back a million times is a loop,
+       * not a million frames.
+       */
+      private def dialogue(args: Vector[PyValue]): Either[Condition, Out] ! (F + PyEval) =
+        type R = F + PyEval
+        def go(step: PyStep): Either[Condition, Out] ! R = step match
+          case PyStep.Done(a) => pure[R, Either[Condition, Out]](a.flatMap(PyCodec.decode[Out](_)))
+          case PyStep.Ask(name, as, k) =>
+            val answered: Either[Condition, PyValue] ! R = cbs.get(name) match
+              case Some(cb) => cb.run(as).plus[PyEval]
+              case None => pure[R, Either[Condition, PyValue]](Left(Condition("NoCallback",
+                s"'$name' is not among this call's callbacks (${cbs.names.mkString(", ")})")))
+            answered.flatMap(a => effect[R, PyStep](PyEval.Resume(k, a))).flatMap(go)
+        effect[R, PyStep](PyEval.Start(address, args, cbs.names)).flatMap(go)
 }

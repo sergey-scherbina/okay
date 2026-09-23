@@ -1,12 +1,13 @@
-# okay-py shim, version 2 (specs/py.md; v2 = foreign-typed-calls:
-# a dict is a record on the wire, a frame only where a frame is asked). Stdlib only, deliberately:
+# okay-py shim, version 3 (specs/py.md; v2 = foreign-typed-calls: a dict
+# is a record on the wire, a frame only where a frame is asked; v3 =
+# foreign-callbacks: `start`/`resume` and the injected `okay` module). Stdlib only, deliberately:
 # json wire, one object per line each way; functions are ADDRESSED
 # as module:qualified.name and imported, never eval'd from source.
 # A failing call answers a condition and the worker survives; only a
 # broken wire ends the process.
-import sys, json, base64, importlib, importlib.metadata, math, dataclasses
+import sys, json, base64, importlib, importlib.metadata, math, dataclasses, types
 
-SHIM = 2
+SHIM = 3
 
 # a JSON number is a double: exact only up to 2**53
 EXACT = 2 ** 53
@@ -74,18 +75,66 @@ def reply(obj):
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
 
-reply({"shim": SHIM, "python": "%d.%d.%d" % sys.version_info[:3]})
+# ---- callbacks into okay (v3) ------------------------------------------
+#
+# `import okay; okay.call("name", *args)` inside a function okay started
+# with callbacks: the ask goes to the host, and THIS frame waits for the
+# resume. While it waits, any request that arrives is served (a callback
+# may call Python again on this very worker: the nesting is strict, so
+# one wire carries it). The waiting frame is resumed ONCE.
 
-for line in sys.stdin:
-    if not line.strip():
-        continue
-    req = json.loads(line)
+class OkayError(Exception):
+    """a callback that failed in okay: its condition's kind and message"""
+    def __init__(self, kind, message):
+        super().__init__("%s: %s" % (kind, message))
+        self.kind = kind
+        self.message = message
+
+_offered = []      # a stack: the callback names each active start offered
+_next_k = [0]
+
+def _call(name, *args):
+    if not _offered:
+        raise RuntimeError("okay.call(%r) outside a call okay started with callbacks" % name)
+    if name not in _offered[-1]:
+        raise LookupError("okay.call(%r): this call was offered %s" % (name, sorted(_offered[-1])))
+    _next_k[0] += 1
+    k = _next_k[0]
+    reply({"ask": {"cb": name, "args": [enc(a) for a in args], "k": k}})
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            raise SystemExit(0)          # the host is gone
+        if not line.strip():
+            continue
+        req = json.loads(line)
+        if req.get("op") == "resume" and req.get("k") == k:
+            if "condition" in req:
+                c = req["condition"]
+                raise OkayError(c.get("kind", ""), c.get("message", ""))
+            return dec(req.get("ok"))
+        serve(req)                       # a nested request, answered in turn
+
+okay_module = types.ModuleType("okay")
+okay_module.call = _call
+okay_module.OkayError = OkayError
+sys.modules["okay"] = okay_module
+
+def serve(req):
     rid = req.get("id")
     try:
         op = req["op"]
         if op == "call":
             f = resolve(req["fn"])
             out = f(*[dec(a) for a in req.get("args", [])])
+            reply({"id": rid, "ok": enc(out)})
+        elif op == "start":
+            f = resolve(req["fn"])
+            _offered.append(set(req.get("callbacks", [])))
+            try:
+                out = f(*[dec(a) for a in req.get("args", [])])
+            finally:
+                _offered.pop()
             reply({"id": rid, "ok": enc(out)})
         elif op == "frame":
             f = resolve(req["fn"])
@@ -101,7 +150,23 @@ for line in sys.stdin:
                     pkgs[name] = None
             reply({"id": rid, "ok": {"python": "%d.%d.%d" % sys.version_info[:3],
                                      "packages": pkgs}})
+        elif op == "resume":
+            raise ValueError("resume %r: no call is waiting for it (resumed twice?)" % req.get("k"))
         else:
             raise ValueError("unknown op %r" % op)
+    except SystemExit:
+        raise
     except Exception as e:
         reply({"id": rid, "condition": {"kind": type(e).__name__, "message": str(e)}})
+
+reply({"shim": SHIM, "python": "%d.%d.%d" % sys.version_info[:3]})
+
+# readline, not `for line in sys.stdin`: okay.call reads the same stream
+# from inside a request, and one reader must own the buffer
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    if not line.strip():
+        continue
+    serve(json.loads(line))

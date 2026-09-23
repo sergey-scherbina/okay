@@ -28,6 +28,11 @@ final class PySubprocess private (proc: Process,
     val body = req match
       case Json.JObj(fs) => Json.JObj(("id" -> Json.JNum(id.toDouble)) +: fs)
       case other => other
+    send(body)
+
+  /** one message out, the next one in — `exchange` without an id, which
+   * is how a `resume` goes: it answers an ask, it opens nothing */
+  private def send(body: Json): Json =
     out.write(Json.print(body)); out.write("\n"); out.flush()
     val line = in.readLine()
     if line == null then
@@ -60,6 +65,22 @@ final class PySubprocess private (proc: Process,
           "op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn),
           "in" -> Wire.encFrame(frame),
           "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decFrame)
+      case PyEval.Start(fn, args, cbs) =>
+        stepOf(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("start"), "fn" -> Json.JStr(fn),
+          "args" -> Json.JArr(args.map(Wire.enc)),
+          "callbacks" -> Json.JArr(cbs.map(Json.JStr(_)))))))
+      case PyEval.Resume(k, a) =>
+        val answered = a match
+          case Right(v) => "ok" -> Wire.enc(v)
+          case Left(c) => "condition" -> Json.JObj(Vector(
+            "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message)))
+        stepOf(send(Json.JObj(Vector(
+          "op" -> Json.JStr("resume"), "k" -> Json.JNum(k.toDouble), answered))))
+
+  /** a call's next message: an ask, or its answer */
+  private def stepOf(j: Json): PyStep =
+    Wire.step(j).getOrElse(PyStep.Done(answer(j)(v => Right(Wire.dec(v)))))
 
   /** presence and version of named packages via importlib.metadata,
    * mismatches as data naming the package — the wrong venv becomes
@@ -89,7 +110,7 @@ final class PySubprocess private (proc: Process,
 
 object PySubprocess:
 
-  val ShimVersion = 2
+  val ShimVersion = 3
 
   /**
    * Start a worker: the configured interpreter (resolved against

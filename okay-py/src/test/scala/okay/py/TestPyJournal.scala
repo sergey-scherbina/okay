@@ -26,6 +26,7 @@ class TestPyJournal extends munit.FunSuite {
       case PyEval.Frame(fn, in, _) =>
         ran.incrementAndGet(): Unit
         Right(PyFrame(in.cols :+ ("n" -> Vector(I64(in.cols.headOption.fold(0)(_._2.size).toLong)))))
+      case other => throw IllegalArgumentException(s"not canned: $other")
 
   private val xs = Vector(Arr(Vector(F64(3), F64(1), F64(2))))
 
