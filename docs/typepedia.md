@@ -243,7 +243,14 @@ same material with the measurements attached.
   that is not on the stack — of the machine that installed it: ONE
   `Delim.run` per program, and the nested forms (`scope`,
   `collecting`, `pausing`) put a delimiter on the machine already
-  running instead of starting a second one (delim-nesting). Inside a
+  running instead of starting a second one (delim-nesting).
+  `Delim.collectUntil(using fo: FoldUntil[A, S, R])(body): R ! F`
+  (collect-early-stop) runs the same producer `collect` runs and stops
+  it where `done` first holds — the state passed on the way DOWN as
+  the prompt's answer-function, the rest of the producer never run;
+  `collectingUntil` nests. `Emitting[A]` is sealed with the two
+  evidences behind it (list on the way back / state on the way down)
+  and `emit` is one inline door over both. Inside a
   `direct` block it is `shift[A]` with ONE type argument
   (delim-one-type): the answer type comes from the evidence and the row
   from the block, and `A` stays because a mark gives its argument no

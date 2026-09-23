@@ -380,13 +380,67 @@ object Delim {
    * the element type as a MEMBER so `emit` can take no type argument
    * and still be precise about what it accepts.
    */
-  final class Emitting[A] private[Delim] (prompted: Prompted[List[A]]):
+  sealed abstract class Emitting[A]:
     type Elem = A
+    /** the prompt's answer: a list for `collect`, a state-passing
+     * function for `collectUntil` (below) */
+    type Res
     // NOT private: `emit` is inline and reaches this, and a private
     // member behind an inline body makes the compiler synthesize an
     // accessor with an unstable name (E192 — the same finding as
     // Cont.Shift's, measured here 2026-09-17)
-    val in: Prompted[List[Elem]] = prompted
+    val in: Prompted[Res]
+    /** what one emit does with the rest of the producer `k`, at the
+     * row `X` the block runs in — the evidence decides, so a producer
+     * written against `Emitting[A]` runs under either collect */
+    def onEmit[X[+_]](a: A)(k: Unit => Res ! X): Res ! X
+
+  /** `collect`'s evidence: the list is built on the way BACK, by the
+   * continuation — `emit` conses after the rest of the producer has
+   * answered, which is why the producer never has to know */
+  private final class Listing[A](prompted: Prompted[List[A]]) extends Emitting[A]:
+    type Res = List[A]
+    val in: Prompted[List[A]] = prompted
+    def onEmit[X[+_]](a: A)(k: Unit => List[A] ! X): List[A] ! X = k(()).map(a :: _)
+
+  /**
+   * `collectUntil`'s evidence (collect-early-stop): the state is
+   * passed on the way DOWN through the prompt's answer, which is a
+   * FUNCTION of it — `PState`'s trick over `Cont` (State.scala),
+   * here over the prompt. An emit answers `s => …` at once; applying
+   * it adds the element, and either ends with `fo.end` — the
+   * continuation never called, the rest of the producer never run —
+   * or resumes `k`, whose own answer is the next such function.
+   * Nothing is mutated, so a multi-shot capture inside the producer
+   * sees its own state, as `collect` sees its own list.
+   *
+   * `G` is the row the evidence was made at: `Delim + F` for the
+   * `collectUntil[A, S, R, F]` that made it.
+   */
+  private final class Stopping[A, S, R, G[+_]](prompted: Prompted[S => R ! G], fo: FoldUntil[A, S, R])
+    extends Emitting[A]:
+    type Res = S => R ! G
+    val in: Prompted[S => R ! G] = prompted
+    def onEmit[X[+_]](a: A)(k: Unit => (S => R ! G) ! X): (S => R ! G) ! X =
+      okay.pure((s: S) => {
+        val s2 = fo.add(s, a)
+        if fo.done(s2) then okay.pure[G, R](fo.end(s2))
+        else Stopping.atRow[R, X, G](k(()).flatMap(f => Stopping.atRow[R, G, X](f(s2))))
+      })
+
+  private object Stopping:
+    /**
+     * THE ONE CAST this door needs, and why it is right: `emit` is
+     * inline and captures at the row of the block it is written in
+     * (`rw.R`, read off the block's `DirectCtx`), while the evidence
+     * was made by `collectUntil[A, S, R, F]` at `Delim + F` — and the
+     * body that emits IS that block, typed `Emitting[A] ?=> Unit !
+     * (Delim + F)`. The two names denote one row; the type system sees
+     * an existential behind `Emitting[?]` on one side and a member of
+     * the block's evidence on the other, and cannot join them. Erasure
+     * makes the coercion free; nothing about the program changes.
+     */
+    def atRow[R, X[+_], Y[+_]](p: R ! X): R ! Y = p.asInstanceOf[R ! Y]
 
   /**
    * Run `body`, which emits, and answer with everything it emitted,
@@ -413,14 +467,49 @@ object Delim {
   private def collectAs[A, F[+_]](what: String)(body: Emitting[A] ?=> Unit ! (Delim + F))
                                  (using At): List[A] ! (Delim + F) =
     scopeAs[List[A], F](what)(
-      body(using new Emitting[A](summon[Prompted[List[A]]]))
+      body(using new Listing[A](summon[Prompted[List[A]]]))
         .map(_ => List.empty[A]))
 
-  /** emit one value into the `collect` in force */
+  /**
+   * A COLLECT THAT STOPS (collect-early-stop; specs/fold-until.md is
+   * the fold): run the SAME producer `collect` runs, fold what it
+   * emits with `fo`, and stop the producer where `done` first holds —
+   * `take(3)` over a tree walk runs the walk to its third leaf and no
+   * further. The answer is `fo.end` of the state the emits built: the
+   * prefix lives in the state, not in the continuation frames a stop
+   * would drop, which is why `exit` inside a `collect` could never
+   * answer with it. `done(init)` runs no body at all.
+   */
+  def collectUntil[A, S, R, F[+_]](using fo: FoldUntil[A, S, R])
+                                   (body: Emitting[A] ?=> Unit ! (Delim + F))
+                                   (using om: OneMachine[F], at: At): R ! F =
+    if fo.done(fo.init) then okay.pure(fo.end(fo.init))
+    else run(collectUntilAs("collectUntil")(fo)(body))(using om)
+
+  /** the nested half of `collectUntil`, as `collecting` is of `collect` */
+  def collectingUntil[A, S, R, F[+_]](using fo: FoldUntil[A, S, R])
+                                      (body: Emitting[A] ?=> Unit ! (Delim + F))
+                                      (using At): R ! (Delim + F) =
+    if fo.done(fo.init) then okay.pure(fo.end(fo.init))
+    else collectUntilAs("collectingUntil")(fo)(body)
+
+  private def collectUntilAs[A, S, R, F[+_]](what: String)(fo: FoldUntil[A, S, R])
+                                            (body: Emitting[A] ?=> Unit ! (Delim + F))
+                                            (using At): R ! (Delim + F) =
+    type G[+X] = (Delim + F)[X]
+    scopeAs[S => R ! G, F](what)(
+      body(using new Stopping[A, S, R, G](summon[Prompted[S => R ! G]], fo))
+        // the producer ended on its own: the state's own answer
+        .map(_ => (s: S) => okay.pure[G, R](fo.end(s))))
+      // the first emit's function, applied to the start; each
+      // application resumes the producer up to the next emit
+      .flatMap(f => f(fo.init))
+
+  /** emit one value into the `collect` (or `collectUntil`) in force */
   inline def emit(using e: Emitting[?])[F[_]]
                  (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                  (a: e.Elem): Unit ! rw.R =
-    shift[Unit](using e.in)(k => k(()).map(a :: _))
+    shift[Unit](using e.in)(k => e.onEmit(a)(k))
 
   /**
    * 3 · STOP IN THE MIDDLE, CARRY ON LATER.

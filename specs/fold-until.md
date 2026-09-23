@@ -325,6 +325,11 @@ needed the same separate-extension-block shape as the effectful
 `.foldUntil`: `xs.foldUntilTo(using fo)` on the `foldTo` block was
 handed a fold where a `Foldable` was expected.
 
+A push-side consumer (collect-early-stop, 2026-09-23):
+`Delim.collectUntil(using fo)(body)` stops a `collect`'s producer
+where the fold is done — the state passed down through the prompt's
+answer-function; `TestCollectUntil` (okay-direct, 8).
+
 Stage 3's first production consumer (wire-serve-transduce-until,
 2026-09-23): `Wire.serveClosing` — the server-driven UI session,
 lines in, lines out — was a hand-written `loop`/`step` pair over

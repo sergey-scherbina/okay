@@ -171,6 +171,25 @@ nothing has to be inverted. The same shape covers paginated APIs, a
 `ResultSet`, a watcher, a parser — anything that pushes when you
 wanted to pull.
 
+**And stopping it.** A `collect` reads the producer to its end;
+`collectUntil` reads it until a `FoldUntil` says it has seen enough,
+and the rest of the producer never runs — the same `walk`, unchanged:
+
+```scala
+Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(t))   // Vector(1, 2) — the third leaf is never visited
+Delim.collectUntil[Int, Option[Int], Option[Int], Pure](using FoldUntil.find[Int](_ > 1))(walk(t))  // Some(2)
+```
+
+Why `exit` inside a `collect` could not do this: `collect` builds its
+list on the way *back*, in the continuation frames, so an early exit
+drops exactly the prefix it would want to answer with. `collectUntil`
+passes the fold's state on the way *down* instead — the prompt's
+answer is a function of the state, Filinski's trick for state over
+`shift`/`reset` — and a stop simply does not call the rest of the
+walk. `take(0)` runs no body at all; a fold that is never done answers
+what `collect` answers. `collectingUntil` is the nested half, as
+`collecting` is of `collect`.
+
 ## 3 · Stop in the middle, carry on later
 
 **The shape:** the program needs an answer from outside — a person, a
@@ -400,7 +419,7 @@ Two more costs that are not tests:
 | it can fail / branch / remember | the effect: `Fail`, `Choice`, `State`, `Once` |
 | leave from the middle with an answer | `Delim.exit` (`Delim.abort` in `for`) |
 | a producer that pushes, a consumer that pulls | `Delim.collect` / `Delim.emit` |
-| ...pulled lazily, or stopped early | `Generate` / `Producer` — a `collect` has no early stop; a fold that stops is `FoldUntil` (`Stream.foldUntil`, `Writer.foldUntil`, `Chunks.foldUntil`, `Source.runFoldUntil`) |
+| ...pulled lazily, or stopped early | `Generate` / `Producer` for the lazy pull; `Delim.collectUntil(using fo)` for a push producer stopped by a `FoldUntil`; on a stream the fold itself (`Stream.foldUntil`, `Writer.foldUntil`, `Chunks.foldUntil`, `Source.runFoldUntil`) |
 | stop now, resume when the answer arrives | `Delim.resumable` / `pause` / `drive` |
 | ...and survive a restart | `Delim.answer` + `Delim.replay` over the journal |
 | ...and keep the journal in a durable log | `okay.persist.Dialogue` |

@@ -107,7 +107,14 @@ theory-meets-implementation:
 The generators are the everyday face of this machinery: `Generate.scala`
 builds `LazyList`, `Producer` and `Teller` from one delimited-control
 unfold (`Loop`/`take`/`put`), which is `shift` capturing "the rest of
-the enumeration" at each element.
+the enumeration" at each element. `Delim.collectUntil` is the other
+half of Filinski's theorem \[[Filinski 1994](#ref-filinski-1994)\] put
+to work: a fold's state threaded through the prompt's *answer* — the
+answer is a function `S => R`, each `emit` answers `s => …` and
+applies the continuation's own function to the next state — which is
+how a `collect` over an unchanged push producer gains an early stop
+without a single mutable cell, and how `PState` (State.scala) is
+written over `Cont`.
 
 ## Why Cont is the bottom of the tower
 
