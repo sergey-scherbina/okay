@@ -564,8 +564,11 @@ same material with the measurements attached.
   the bare loop); `FoldUntil.long(z)(f)(stop)(finish)` and siblings
   build one, `exists`/`forall` are `OfBoolean`, and `Chunks.foldUntil`,
   `Stream.foldUntil` and `Foldable.foldUntil` dispatch on the shape.
-  `Writer.foldUntil`/`Producer.foldUntil` do not: their per-element
-  cost is the tree step, not the box (unmeasured — a trigger).
+  `Writer.foldUntil`/`Producer.foldUntil` do not, and that is measured
+  (writer-fold-until-unboxed): on the tree walk the box is 24 B/elem
+  and no time — the specialised walk reads 73 ± 11 against 80 ± 3 µs
+  per 10k, inside the bars, because a `Bind`, a `Say`, a continuation
+  and a `split` per element dwarf it.
 - **`Gen[W]`** (Gen.scala; specs/generators.md) — a Python-style
   generator: a VALUE CLASS over `Unit ! (Writer % W + Stop)`, the
   program that tells, with `Stop` for the early end. Element-wise

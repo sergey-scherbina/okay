@@ -361,9 +361,27 @@ sbt started mid-run (load 2.9 → 15.7) and the loop lane read
 `OfBoolean`, built by `FoldUntil.long` and siblings, inline for the
 reason `Fold.long` is), `exists`/`forall` are `OfBoolean`, and the
 three iterator/chunk walks dispatch. `Writer.foldUntil` and
-`Producer.foldUntil` do NOT dispatch: their per-element cost is the
-tree step, not the box — unmeasured, and the trigger for measuring
-it is a caller folding a hot writer stream into a primitive.
+`Producer.foldUntil` do NOT dispatch — MEASURED, not guessed
+(writer-fold-until-unboxed, 2026-09-23; `compare/
+WriterFoldUntilBoxBenchmark`, 10k Longs told by a `Source.range`-shaped
+program, per-lane gated runs, `-prof gc`; history `wfu-*`):
+
+| lane | µs / 10k | B / elem |
+|---|---|---|
+| `Writer.foldUntil`, generic `FoldUntil` (shipped) | 79.6 ± 3.1 | 128 |
+| the same, `FoldUntil.long` (the walk ignores the shape) | 80.2 ± 9.1 | 128 |
+| the walk specialised to `OfLong` (the dispatch's ceiling) | 73.1 ± 11.4 | 104 |
+| `Writer.fold(Fold.sumLong)` — the dispatch `Fold` already has here | 92.2 ± 2.2 | 104 |
+
+The accumulator box is real — 24 B/elem, 19% of the walk's bytes —
+and invisible in time: the specialised walk is 8% faster with bars of
+±14% and ±4%, and `Writer.fold`'s existing `OfLong` arm is SLOWER
+than the generic `foldUntil` (it builds the `(S, A)` pair and has no
+early exit). Where `Chunks` paid 25x, the tree pays a `Bind`, a `Say`,
+a continuation and a `split` per element, and the box drowns in them.
+REFUTED as a lever; the arms are not added to either walk. What would
+move this walk is the tree step itself — `typeablek-instanceof`
+(backlog okay-core) is the residual under its `split`.
 
 Stage 2 (2026-09-22, loop-on-bang): `!.loop` in `object !`,
 `TestBangLoop` (3): 1 000 000 iterations at the Pure row on the
