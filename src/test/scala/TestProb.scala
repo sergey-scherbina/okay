@@ -53,7 +53,9 @@ class TestProb extends munit.FunSuite:
         sprinkler <- dist(true -> 0.4, false -> 0.6)
         _ <- observe(rain || sprinkler)
       yield rain
-    assertEqualsDouble(!.run(runExact[Boolean, okay.Pure](wetGrass)).posterior(true), 15.0 / 29.0, 1e-12)
+    val p =
+      !.run(runExact[Boolean, okay.Pure](wetGrass)).posterior(true)   // 15.0/29.0
+    assertEqualsDouble(p, 15.0 / 29.0, 1e-12)
   }
 
   // ---------------------------------------------------------- a small HMM
