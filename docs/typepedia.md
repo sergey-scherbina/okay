@@ -1012,6 +1012,11 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   `Source`. The data types (`SqlValue`, `Bad`, `Drift`, `Isolation`,
   `JdbcSql`) are okay-sql's own and readable from 2.13. `all` turns
   the first undecodable row into a typed `Throws[Bad]`.
+- **`Chat`, `Model`, `Tools`, `Policy`** (okay-scala2-agent) —
+  okay-agent's loop, with the model, tool and context handlers
+  assembled once inside `Chat`. A tool call reaches Scala 2 as
+  `Call(id, name, argsJson)`, because `ToolCall.args` is a `Json` and
+  Scala 2 cannot read it.
 - **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.

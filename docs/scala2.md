@@ -24,6 +24,7 @@ Contents:
 8a. [Codecs: JSON, CBOR, JSON Schema](#8a-codecs-json-cbor-json-schema)
 8b. [HTTP: routes, a server, a client](#8b-http-routes-a-server-a-client)
 8c. [SQL: queries and transactions](#8c-sql-queries-and-transactions)
+8d. [Agents: a model, tools, a conversation](#8d-agents-a-model-tools-a-conversation)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -595,6 +596,71 @@ assertEquals(Eff.runAsync(Throws.run(prog)), Right((2L, Vector(Person(1, "Ada Lo
   first, it answers "No suitable driver found" even though the suite
   passes when run alone. The probe hit exactly this in the full matrix.
 
+## 8d. Agents: a model, tools, a conversation
+
+Module `okay-scala2-agent`. okay-agent's data is readable from Scala 2
+(`okay.agent.Turn`, `Reply`), as long as nothing touches a JSON
+field, because `okay.codec.Json` is not readable. The agent program
+and the assembly of its handlers are not usable. So the module
+provides four things:
+
+- `Model` — scripted (for tests), or a real provider:
+  `Model.anthropic(apiKey, model)` or `Model.openAi(apiKey, model, url)`.
+- `Tools` — declared and implemented in one place, with the arguments
+  decoded by the same `Schema` that declares them to the model.
+- `Policy` — how the conversation is kept within the context:
+  `Policy.all`, or `Policy.window(budget)`.
+- `Chat` — okay-agent's loop (ask the model, run the tools it calls,
+  repeat until it answers), with a conversation that carries over from
+  one `say` to the next.
+
+The code below is copied from
+`okay-scala2/probe/src/test/scala/TestAgentFromScala2.scala`:
+
+```scala
+final case class SearchArgs(query: String, limit: Option[Int])
+object SearchArgs {
+  implicit val schema: Schema[SearchArgs] =
+    Schemas.product2("SearchArgs", "query", "limit")(SearchArgs.apply)(a => (a.query, a.limit))
+}
+
+val searched = scala.collection.mutable.ListBuffer.empty[SearchArgs]
+
+val tools: Tools = Tools.empty.on[SearchArgs]("search", "look something up") { a =>
+  searched += a
+  s"${a.limit.getOrElse(10)} hits for '${a.query}'"
+}
+```
+
+```scala
+val model = Model.scriptedCalls(
+  ("let me look", Seq("search" -> """{"query":"okay","limit":3}""")),
+  ("found 3 hits", Seq.empty))
+val chat = Chat(model, tools, Policy.all)
+assertEquals(Eff.runAsync(chat.say("find okay")), "found 3 hits")
+assertEquals(searched.toList, List(SearchArgs("okay", Some(3))))
+assertEquals(results(chat), Seq("3 hits for 'okay'"))
+```
+
+Here `results(chat)` collects the `Turn.Result` texts from
+`chat.transcript`.
+
+- **Tool approval.** `Chat(..., approve = call => ...)` decides every
+  tool call before it runs. It sees a `Call(id, name, argsJson)`, with
+  the arguments as JSON text. A denied call is answered "denied", and
+  the model sees that answer.
+- **The window policy is visible to the model.** `Policy.window(budget)`
+  pins system turns, evicts the oldest turns past the budget (about
+  four characters per token), and tells the model what it dropped
+  (a `Turn.Summary`).
+- **Handlers are the test doubles.** A scripted `Model` is not a mock
+  of anything: it is another handler for the same effect, which is
+  okay-agent's design.
+- **Real providers were not called while this was written.** No API
+  key was available, so the one test against a real model (Live) was
+  skipped. What `Model.anthropic` and `Model.openAi` do is okay-agent's
+  own `Provider`, the same one the Scala 3 API uses.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -612,6 +678,7 @@ assertEquals(Eff.runAsync(Throws.run(prog)), Right((2L, Vector(Person(1, "Ada Lo
 | `Route / "users" / Route[Int]("id")` + `Router` | `Routes { case GET(Path("users", id)) => ... }` |
 | `okay.http.Response`, `Server.serve` under `Resource` | `okay.scala2.Response`, `Server.use` / `Server.start` |
 | `Typed.rows(db, sql)`, `Typed.transact(db)(...)` | `Db.jdbc(conn).rows[A](sql)` / `.all[A]`, `db.transaction()(tx => ...)` |
+| `Agent.converse(...)` under `Handler.union` of model, tool and context handlers | `Chat(model, tools, policy).say(message)` |
 | `direct { ... }` blocks | not available: use `for` |
 
 ## 10. Errors you may see, and what they mean
@@ -636,10 +703,11 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 - **Direct style** (`direct { ... }`, auto-colouring) is built from
   Scala 3 macros, and Scala 2 cannot expand those. Use
   for-comprehensions instead. It is not planned.
-- **The rest of the library.** Codecs (section 8a), HTTP (8b) and SQL
-  (8c) are covered. The agent stack and UI are queued in that order
-  (specs/scala2-facade.md, stages 9–10). WebSockets are not wrapped
-  yet.
+- **The rest of the library.** Codecs (section 8a), HTTP (8b), SQL
+  (8c) and agents (8d) are covered. UI is queued
+  (specs/scala2-facade.md, stage 10). WebSockets, okay-agent's search
+  strategies (`Search.bestOf` and friends) and durable agents are not
+  wrapped yet.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the
   Scala 3 API builds. What Scala 3 code gets and a 2.13 caller does

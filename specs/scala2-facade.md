@@ -338,6 +338,30 @@ under `Resource.run`.
 - [x] `verify` answers no drift for a matching table and names a
       missing column
 
+## Stage 9 — agents
+Probed from scalac 2.13.18: okay-agent's `Turn`, `Reply`, `ToolCall`,
+`ToolSpec`, `Toolbox`, `Handlers` and `Provider` are readable. Only a
+`Json` FIELD would break (`ToolCall.args`, `ToolSpec.schema`), because
+that is where `okay.codec.Json` gets loaded. The program
+`String ! Agent` and the union of handlers it needs are not usable.
+okay-scala2-agent's `Chat` assembles the handlers once, the way
+okay-agent's own `TestAgent.run` does, and runs `Agent.converse` per
+`say`, keeping the context handler (and so the conversation) between
+calls. `Model` wraps `Handlers.scripted` and `Provider.anthropic`/
+`openAi`. `Tools` wraps `Toolbox`. `Policy` wraps `Compact.all`/
+`window`. A tool call is shown to Scala 2 as `Call`, with its arguments
+as JSON text.
+
+## Behavior (stage 9), all from Scala 2.13
+- [x] a scripted chat answers, and the conversation persists across `say`
+- [x] a tool call's arguments arrive as a case class, and the result
+      goes back to the model
+- [x] `approve` denies a call: the model is told, and the tool never runs
+- [x] the declarations carry the arguments' JSON Schema
+- [x] a window policy keeps within budget and reports the elision
+- [ ] (Live) a real model answers through `Chat`. Written, and SKIPPED
+      here because no API key was available.
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -485,3 +509,8 @@ under `Resource.run`.
   through `org.h2.Driver` directly. Reproduced and verified by running
   `okayJdbc/test` then `okayScala2Probe/test` in one sbt: 75 + 60
   green.
+- STAGE 9 (2026-09-23). okay-scala2-agent. `TestAgentFromScala2` has 5
+  tests in the gate, green under `-Xlint -Werror`. The Live test against
+  Anthropic skips without `ANTHROPIC_API_KEY`, and no key was present,
+  so a real provider has not been exercised through this facade. The
+  providers themselves are okay-agent's, and they are tested there.

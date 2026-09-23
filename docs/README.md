@@ -244,6 +244,7 @@ API reference, gotchas.
 | [`okay-scala2-codec`](modules/okay-scala2-codec.md) | okay-codec from Scala 2.13: `Schemas.productN`/`sum` in place of `derives Schema`, JSON as text |
 | [`okay-scala2-http`](modules/okay-scala2-http.md) | okay-http from Scala 2.13: routes as pattern matching, `Server.use`/`start`, a client |
 | [`okay-scala2-sql`](modules/okay-scala2-sql.md) | okay-sql from Scala 2.13: `Db` — rows, statements, verify and transactions as `Eff` |
+| [`okay-scala2-agent`](modules/okay-scala2-agent.md) | okay-agent from Scala 2.13: `Chat` with a persistent conversation, `Model`, `Tools`, `Policy` |
 | [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |

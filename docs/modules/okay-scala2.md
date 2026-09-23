@@ -15,6 +15,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Schemas`, `Json`, `JsonSchema` (module `okay-scala2-codec`) | okay-codec from 2.13: `Schemas.product1`…`product16`, `sum`/`variant`, `constant` in place of `derives Schema`; JSON as text. `okay.codec.Schema`, `Cbor`, `Yaml` and `Validate` are used directly |
 | `Response`, `Routes`, `GET`/`POST`/…, `Path`, `Requests`, `Server`, `Client` (module `okay-scala2-http`) | okay-http from 2.13: routing as pattern matching, `Server.use`/`start`, a client; `okay.http.Request`, `Method` and `Body` are used directly |
 | `Db` (module `okay-scala2-sql`) | okay-sql from 2.13: `rows`/`all`/`update`/`verify`/`transaction` as `Eff` and `Source`; `okay.sql.SqlValue`, `Bad`, `Drift`, `Isolation` are used directly |
+| `Chat`, `Model`, `Tools`, `Policy`, `Call` (module `okay-scala2-agent`) | okay-agent from 2.13: the agent loop with a persistent conversation, a scripted or real model, tools decoded by `Schema`, the context policy; `okay.agent.Turn` and `Reply` are used directly |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -363,6 +364,12 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 `update(query, params: SqlValue*): Eff[Async, Long]`, `updateOf[P](query, p)`;
 `verify[A](query): Eff[Async, Vector[Drift]]`;
 `transaction[A](isolation: Isolation = ReadCommitted, readOnly: Boolean = false)(body: Db => Eff[Async, A]): Eff[Async, A]`.
+
+**Agents** (module `okay-scala2-agent`) — `Model.scripted(replies: String*)`, `Model.scriptedCalls(replies: (String, Seq[(String, String)])*)` (tool calls as `(name, JSON arguments)`), `Model.anthropic(apiKey, model, maxTokens = 1024)`, `Model.openAi(apiKey, model, url)`;
+`Tools.empty.on[A](name, description)(run: A => String)(implicit Schema[A]): Tools`, `tools.declarations: Seq[(String, String, String)]` (name, description, JSON Schema text);
+`Policy.all`, `Policy.window(budget: Int)`;
+`Chat(model, tools = Tools.empty, policy = Policy.window(4000), maxSteps = 8, approve: Call => Boolean = _ => true)`, `chat.say(message): Eff[Async, String]`, `chat.transcript: Seq[okay.agent.Turn]`;
+`Call(id: String, name: String, argsJson: String)`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
