@@ -1,6 +1,6 @@
 ## polyglot-roadmap - the next language bridges, filed with what is possible
 
-A backlog lane, no code. It adds a new `polyglot` section and eight
+A backlog lane, no code. It adds a new `polyglot` section and nine
 items, answering the operator's question of which other languages okay
 should talk to, and how:
 
@@ -17,5 +17,7 @@ should talk to, and how:
   `Schema` for the other side.
 - Under okay-py: GraalPy as an in-process engine, and Jython as its
   own module. Jython is Python 2 only, which was checked on 2026-09-23.
+- A question to test: whether cancelling a fiber interrupts a lifted
+  Frege or Clojure step.
 - Under okay-scala2: facades for the language bridges, which none of
   the stage-15 lanes covered.
