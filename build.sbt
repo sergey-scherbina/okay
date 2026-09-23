@@ -1,6 +1,11 @@
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
-ThisBuild / version := "0.1.1"
+// The NEXT release, as a snapshot: v0.1.1 was tagged on 2026-09-14,
+// and a build that goes on calling itself 0.1.1 publishes artifacts
+// named like a release they are not. After tagging vX, this line moves
+// to the next -SNAPSHOT in the same push; TestVersionIsNotAReleasedTag
+// (okay-deploy) fails the gate when it has not (version-snapshot).
+ThisBuild / version := "0.2.0-SNAPSHOT"
 // Scala 3.9.0 — the LTS line, opened by 3.9 as 3.3's successor and
 // maintained for at least three years. Until 3.9 this build ran the
 // latest non-LTS release on purpose (specs/modules-infra.md), because

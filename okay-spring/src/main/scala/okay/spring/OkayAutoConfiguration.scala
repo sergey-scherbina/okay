@@ -15,7 +15,7 @@ import org.springframework.web.reactive.result.method.annotation.ResponseBodyRes
  * `WebFluxConfigurationSupport` makes a registry BEAN of its own, and
  * a program registered only on the shared one reaches Jackson, which
  * tries to serialise the program (measured: "No serializer found for
- * class okay.Free$Bind"). So the registrar is a `BeanPostProcessor`
+ * class okay.Free\$Bind"). So the registrar is a `BeanPostProcessor`
  * that teaches every registry bean as it is created — and the shared
  * instance too, for whoever asks it directly.
  */

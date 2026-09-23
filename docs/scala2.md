@@ -37,7 +37,7 @@ scalaVersion := "2.13.18"
 scalacOptions += "-Ytasty-reader"
 
 libraryDependencies +=
-  ("dev.okay" %% "okay-scala2" % "0.1.1")
+  ("dev.okay" %% "okay-scala2" % "0.2.0-SNAPSHOT")
     .cross(CrossVersion.for2_13Use3)
     .exclude("org.scala-lang", "scala-library")
 
@@ -60,8 +60,11 @@ enough:
 scripts/gate.sh "okayJVM/publishLocal; okayAsyncJVM/publishLocal; okayPlatformJVM/publishLocal; okayStreamJVM/publishLocal; okayScala2/publishLocal"
 ```
 
-The version is `ThisBuild / version` in okay's build.sbt (0.1.1 at the
-time of writing).
+The version is `ThisBuild / version` in okay's build.sbt (0.2.0-SNAPSHOT
+at the time of writing: the next release, as a snapshot). A snapshot
+you re-publish is not always noticed by a build that already resolved
+it: `sbt reload`, or delete `~/.ivy2/local/dev.okay/<module>` and publish
+again.
 
 This setup was checked twice. The first check is this repository's own
 2.13 project, `okayScala2Probe` in build.sbt, which uses the same
