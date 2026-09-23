@@ -86,9 +86,7 @@ object Gen:
       ends the whole generation (the spliced program's law).
 - [x] MEASURED: `genFlatMapToList`, `genConcatToList`,
       `genZipWithIndexSum` before/after on quiet alternated pairs; the
-      pipeline and identity lanes unmoved. Rows `gfm-*`. (Bytes
-      recorded from the first pair; times pending a quiet box — see
-      Results.)
+      pipeline and identity lanes unmoved. Rows `gfm-*`.
 
 ## Out of scope
 
@@ -184,6 +182,12 @@ the byte across every contaminated round of every lane this day):
 | `genZipWithIndexSum` — `zipWithIndex.foreach` | 311 | **215** | 0.69 — the `Counted` scalar-replaced |
 | `genPipelineToList`, `genUnfoldToList` | 231 / 239 | 231 / 239 | unmoved |
 
-Times: to be filled from a quiet pair (the runner is armed on load < 4
-and no live fork); until then the bytes are the claim, as
-[[jmh-load-not-just-forks]] says to do.
+Times, from the quiet rounds that came four hours later (after ×2,
+before ×1 at load 3.4–3.9; a fourth round hit a load of 120 and is
+discarded), per-arm minima: `genConcatToList` 550.2 → **403.4 µs**
+(0.73), `genFlatMapToList` 484.3 → **363.3** (0.75; the hand road
+`writerFlatMapCollect` 271.5), `genZipWithIndexSum` 248.7 → **173.0**
+(0.70). The pipeline (213.5 vs 201.9) and the identity chain (232.0
+vs 196.5) moved within the spread quiet rounds show on those lanes
+(196–232 for the identity lane across the day), with bytes identical —
+unmoved.

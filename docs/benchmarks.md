@@ -5103,11 +5103,13 @@ inside `add`. The other stages the same way — infinite
 `take(10k).toList` 246 → 189 µs, 295 → 239 B/elem (the count is a
 `Counted` beside the reader's state, scalar-replaced: the bytes equal
 the plain read's); and the three that had stayed walks
-(gen-flatmap-fusion, bytes from the first alternated pair — the box
-carried sibling gates at load 85–200 that day, times await a quiet
-pair): `++` 287 → 239 B/elem (the plain read's exactly), `flatMap`
-495 → 407 (what is left is building the inner `Gen` per element, the
-API's own), `zipWithIndex` 311 → 215. The identity chain stayed
+(gen-flatmap-fusion; the box carried sibling gates at load 85–200 for
+four hours that day, so the bytes came from the first alternated pair
+and the times from the quiet rounds that finally came, load 3.4–3.9):
+`++` 550 → 403 µs on 20k, 287 → 239 B/elem (the plain read's
+exactly); `flatMap` 484 → 363 µs, 495 → 407 B/elem (the hand road 272
+µs / 295 B — what is left is building the inner `Gen` per element,
+the API's own); `zipWithIndex` 249 → 173 µs, 311 → 215 B/elem. The identity chain stayed
 byte-identical through all of it.
 
 **What the rows refused on the way**, each a believable idea until

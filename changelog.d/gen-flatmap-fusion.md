@@ -17,8 +17,9 @@ Laws (`TestGen` +3): fused = materialised = stepper on 200 random
 chains with all three; the right side never runs when the left is
 enough; a fused `flatMap` lazy to the inner counter.
 Measured (compare `GenBenchmark`, `gfm-*`; bytes from the first
-alternated pair — load-proof; the box carried sibling gates at load
-85–200 for hours, so times await a quiet pair): `++` 287 → 239 B/elem
-(the plain read's exactly), `flatMap` 495 → 407, `zipWithIndex`
-311 → 215; the pipeline and identity lanes unmoved. Docs: the spec's
+alternated pair, times from the quiet rounds four hours later — the
+box carried sibling gates at load 85–200 between): `++` 550 → 403 µs,
+287 → 239 B/elem (the plain read's exactly); `flatMap` 484 → 363 µs,
+495 → 407 B/elem (the hand road 272 / 295); `zipWithIndex` 249 → 173
+µs, 311 → 215 B/elem; the pipeline and identity lanes unmoved. Docs: the spec's
 interface/laws/design, typepedia, direct-style "What it costs".
