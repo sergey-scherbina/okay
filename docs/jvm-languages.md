@@ -279,6 +279,10 @@ docs/modules/okay-frege.md.
   combiner-less gatherer is evaluated in order even in a parallel
   stream); no multi-shot through a thread (there is no thread).
 
+Python and R are not JVM languages, and each runs in its own process. They
+get the same depth by a different road: typed calls, and callbacks into
+okay's effects by name. See [okay with Python and R](python-and-r.md).
+
 ### Bridging a language this guide does not cover
 
 The three bridges share one copy of everything that is not a matter of

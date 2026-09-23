@@ -70,7 +70,8 @@ Start here:
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
 | [Building a chat application](docs/building-a-chat-app.md) | an empty directory to a running streaming chat, outside this repo: depending on an unpublished library, backend, frontend, tests, run |
 | [okay from Scala 2.13](docs/scala2.md) | for a Scala 2 codebase: the build, `Eff` with the row as an intersection, your own effect, streams, fibers — every snippet compiled by scalac 2.13 in the gate |
-| [okay with other languages](docs/jvm-languages.md) | Java streams, Clojure and Frege with okay's effects (a stage IS a JDK gatherer and a transducer, programs as data in THAT language); Python and R are handlers ([okay-py](docs/modules/okay-py.md), [okay-r](docs/modules/okay-r.md)); okay runs on JavaScript through Scala.js ([okay-js](docs/modules/okay-js.md)) |
+| [okay with Python and R](docs/python-and-r.md) | Python and R functions as typed Scala functions, their code calling back into okay's effects (`okay.call("name", x)`), held models, modules beside the Scala, streams, declared environments, a journal; each interpreter in its own process |
+| [okay with other languages](docs/jvm-languages.md) | Java streams, Clojure and Frege with okay's effects (a stage IS a JDK gatherer and a transducer, programs as data in THAT language); Python and R have [their own page](docs/python-and-r.md); okay runs on JavaScript through Scala.js ([okay-js](docs/modules/okay-js.md)) |
 | [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |
 | [Capabilities](docs/capabilities.md) | context functions as the wiring: doors, provide, wire — dependency injection with the container deleted |
 | [The theory of Okay](docs/theory/index.md) | the textbook: the theories the library stands on, the scientists, the papers, and why each design decision |

@@ -30,6 +30,7 @@ class TestDocSnippets extends munit.FunSuite:
     "docs/modules/okay-java.md" -> Vector("okay-java/src/test"),
     "docs/modules/okay-clojure.md" -> Vector("okay-clojure/src/test"),
     "docs/modules/okay-frege.md" -> Vector("okay-frege/src/test"),
+    "docs/python-and-r.md" -> Vector("okay-py/src/test", "okay-r/src/test"),
   )
 
   private val sourceSuffixes = Vector(".scala", ".clj", ".fr")
