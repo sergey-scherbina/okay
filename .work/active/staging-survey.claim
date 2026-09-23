@@ -1,6 +1,0 @@
-feature/staging-survey 2026-09-23T00:18:56Z
-agent: claude-code
-heartbeat: 2026-09-23T00:18:56Z
-status: in-progress
-done-so-far: survey given in chat 2026-09-22; direct-stagers and typeablek-instanceof landed from it
-next: record the survey in specs/continuations-roadmap.md Results; backlog gen-chain-fusion (trigger generators-jmh) and router-trie (trigger a router with dozens of routes); gate; land
