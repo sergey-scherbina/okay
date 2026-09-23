@@ -15,3 +15,13 @@
       signature (Acceptor in accept + no java child) as a stall
       directly. `scripts/gate-selftest.sh` should gain the case: a
       busy-ish parent over idle children must die.
+
+      RECURRENCE 2026-09-23 10:11 (clojure-effects-seqs' affected gate):
+      a DIFFERENT idle shape, same blindness — two okay-ui-gtk Native test
+      binaries at 0.0% CPU for 16 minutes, sbt's `ComRunner receiver`
+      threads blocked in a socket read from them, no ForkTests Acceptor
+      at all; the watchdog printed "quiet for 480s but the tree burned
+      26s of CPU — still working" and would have waited for ever. So
+      the fix is the children-only CPU count, not a dump signature: the
+      two hangs share nothing but idle children under a busy-looking
+      sbt. Killed by PID, rerun.
