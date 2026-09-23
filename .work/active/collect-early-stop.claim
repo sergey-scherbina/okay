@@ -1,0 +1,6 @@
+feature/collect-early-stop 2026-09-23T07:28:32Z
+agent: claude-code
+heartbeat: 2026-09-23T07:28:32Z
+status: in-progress
+done-so-far: picked from the queue
+next: worktree; spec; Delim.collectUntil over FoldUntil (emit does not resume once done); laws; docs; gate; land
