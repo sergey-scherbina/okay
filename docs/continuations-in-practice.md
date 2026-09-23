@@ -114,6 +114,45 @@ delimiters it holds. That is the program's own structure, which is
 what a JVM stack trace cannot show you once a continuation has been
 resumed somewhere else.
 
+### The stack in the type
+
+That error is a run-time one, and it need not be. `Delim.Stacked`
+carries the stack of installed prompts as a lexical given: `delimited`
+starts it empty and runs the machine, `reset` pushes the prompt it
+makes for its body only, and `shift` asks the compiler for evidence
+that its prompt is on the stack in force:
+
+```scala
+val r = !.run(delimited[Int, P] { s =>
+  import s.given
+  shift[Int, Int, P](s.p)(k => k(5).map(_ * 2))
+})   // 10
+```
+
+One `import s.given` per delimiter is the whole cost at a call site;
+the type arguments on `shift` are the ones the unstacked door takes
+today. Three programs that throw `NoPrompt` at run time are refused by
+the compiler: a shift with no reset, a shift to a prompt another reset
+made, and a prompt that ESCAPED its reset into a `var` and is shifted
+to after it returned — once the reset has returned, the stack in force
+is the outer one, and the leaked prompt is not on it. The machinery
+underneath is the ordinary machine (`push`, `run`, the same prompts);
+the stack is a claim about the program and erases entirely (`okay.Prog`,
+specs/freer-base.md stage 2). Not stacked: `shift0`/`control0`, whose
+body runs with the delimiter CONSUMED — their index is the stack below
+the prompt, which this stage leaves unpriced.
+
+> Gunter, Rémy & Riecke, *A generalization of exceptions and control in
+> ML-like languages*, FPCA 1995,
+> [doi:10.1145/224164.224173](https://doi.org/10.1145/224164.224173) —
+> prompts with a typed identity. Dyvbig, Peyton Jones & Sabry, *A
+> monadic framework for delimited continuations*, JFP 17(6), 2007,
+> [doi:10.1017/S0956796807006259](https://doi.org/10.1017/S0956796807006259)
+> — the multi-prompt machine, and the run-time check this replaces.
+> Kiselyov & Shan, *Lightweight static capabilities*, ENTCS 174(7),
+> 2007, [doi:10.1016/j.entcs.2006.10.039](https://doi.org/10.1016/j.entcs.2006.10.039)
+> — evidence as a value the types carry, the shape `Has` follows.
+
 ## 1 · Leave early with an answer
 
 **The shape:** you are deep in nested loops, or inside a lambda, and

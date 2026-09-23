@@ -868,6 +868,115 @@ object Delim {
    * continuation (the 0-variant, so the delimiter goes with it) */
   def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! (Delim + F) =
     shift0[R, A, F](p)(_ => okay.pure(value))
+
+  // ==================================================================
+  // THE PROMPT STACK IN THE TYPE (freer-base stage 2, 2026-09-23)
+  //
+  // `NoPrompt` — a capture naming a prompt that is not installed — is
+  // a run-time exception on every door above. Here it is a compile
+  // error: the stack of installed prompts is carried as a lexical
+  // GIVEN (`Stack`), `reset` pushes the prompt it makes onto it for
+  // its body only, and `shift` asks for evidence (`Has`) that its
+  // prompt is on the stack in force. The three shapes that throw
+  // today are refused by the compiler: a shift with no reset, a shift
+  // to a foreign prompt of the same answer type, and a prompt that
+  // ESCAPED its reset and is shifted to afterwards — the last because
+  // after the reset returns the stack in force is the OUTER one,
+  // which has no `p.type` in it. No region system, no tag on the
+  // program's type: the probe (scripts/stage2-prompt-identity-probe.
+  // scala, 4af08745) found this shape and paid for the four that do
+  // not work — the stack must be a given (a for-comprehension head
+  // has no expected type), not a curried dependent context function
+  // (refused), not carried through a non-curried one (crashes
+  // dotty), and the using clause goes BEFORE the continuation.
+  //
+  //     Delim.Stacked.delimited[Int, okay.Pure] { s =>
+  //       import s.given
+  //       shift[Int, Int, okay.Pure](s.p)(k => k(5).map(_ * 2))   // 10
+  //     }
+  //
+  // One `import s.given` per reset is the whole cost at a call site;
+  // the type arguments on `shift` are what TestDelim writes today.
+  // ADDITIVE: `reset`/`shift` above and every caller keep their
+  // spelling (specs/freer-base.md, Decisions).
+  object Stacked:
+    import scala.annotation.unused
+
+    /** the stack in force, as a lexical given. A type MEMBER, so no
+     * call site spells it and no method has a stack type parameter
+     * that inference could pin to `Tuple` too early. */
+    final class Stack[S0 <: Tuple]:
+      type S = S0
+
+    /** what `reset` hands its body: the prompt, and the stack that
+     * installing it made — `import s.given` puts it in force */
+    final class In[R, S <: Tuple](val p: Prompt[R]):
+      given stack: Stack[p.type *: S] = new Stack[p.type *: S]
+
+    /** "p is on the stack" — the using clause that replaces the throw */
+    @implicitNotFound("prompt ${P} is not on the prompt stack ${S}: a shift names the prompt of a reset it is INSIDE (Delim.Stacked.reset { s => import s.given; … shift(s.p) … }) — not one that has returned, and not one another reset made")
+    sealed trait Has[S <: Tuple, P]
+    object Has:
+      given here[P, S <: Tuple]: Has[P *: S, P] = new Has[P *: S, P] {}
+      given there[P, Q, S <: Tuple](using Has[S, P]): Has[Q *: S, P] = new Has[Q *: S, P] {}
+
+    /** a program under the stack `S`, leaving it as it found it —
+     * every capture here is balanced */
+    type Under[F[+_], A, S <: Tuple] = Prog[Delim + F, A, S, S]
+
+    /** any ordinary program, under the stack in force: the diagonal,
+     * with the index read from the given rather than from an expected
+     * type (which a for-comprehension head does not have) */
+    inline def under[F[+_], A](p: A ! (Delim + F))(using st: Stack[?]): Under[F, A, st.S] =
+      Prog.diag[st.S, Delim + F, A](p)
+
+    /**
+     * The root: a fresh prompt on an EMPTY stack, the body under it,
+     * the machine run — `Delim.delimited`'s job, with the stack in the
+     * type. Every stacked program starts here; `reset` below installs
+     * only, and needs a stack to install on.
+     */
+    def delimited[R, F[+_]](body: (s: In[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
+                           (using om: OneMachine[F], at: At): R ! F =
+      val s = new In[R, EmptyTuple](named[R]("delimited")(using at))
+      run[R, F](push[R, F](s.p)(body(s).free))(using om)
+
+    /**
+     * A fresh prompt pushed on the stack in force, for the body only:
+     * the nested delimiter. After it returns the stack in force is the
+     * one it was called under — which is what refuses a shift to its
+     * prompt from outside.
+     */
+    def reset[R, F[+_]](using st: Stack[?])
+                       (body: (s: In[R, st.S]) => Under[F, R, s.p.type *: st.S])
+                       (using at: At): Under[F, R, st.S] =
+      val s = new In[R, st.S](named[R]("reset")(using at))
+      Prog.diag[st.S, Delim + F, R](push[R, F](s.p)(body(s).free))
+
+    /** capture up to `p` — REQUIRES `p` on the stack in force. The
+     * evidence is the whole point and is otherwise unused. */
+    def shift[R, A, F[+_]](p: Prompt[R])(using st: Stack[?], @unused ev: Has[st.S, p.type])
+                          (f: (A => Under[F, R, st.S]) => Under[F, R, st.S])(using at: At): Under[F, A, st.S] =
+      Prog.diag[st.S, Delim + F, A](
+        Delim.shift[R, A, F](p)(k => f(a => Prog.diag[st.S, Delim + F, R](k(a))).free)(using at))
+
+    /** `Delim.control`, stacked: the continuation is a bare segment,
+     * spliced where `f` invokes it — inside `f`, under the same stack */
+    def control[R, A, F[+_]](p: Prompt[R])(using st: Stack[?], @unused ev: Has[st.S, p.type])
+                            (f: (A => Under[F, R, st.S]) => Under[F, R, st.S])(using at: At): Under[F, A, st.S] =
+      Prog.diag[st.S, Delim + F, A](
+        Delim.control[R, A, F](p)(k => f(a => Prog.diag[st.S, Delim + F, R](k(a))).free)(using at))
+
+    /** drop the continuation and answer `value` at `p` */
+    def abort[R, A, F[+_]](p: Prompt[R])(using st: Stack[?], @unused ev: Has[st.S, p.type])
+                          (value: R)(using at: At): Under[F, A, st.S] =
+      Prog.diag[st.S, Delim + F, A](Delim.abort[R, A, F](p)(value)(using at))
+
+    // `shift0`/`control0` are NOT here: their body runs with the
+    // delimiter CONSUMED, so its stack is the part of `st.S` below
+    // `p` — a match type (`Below[S, P]`) the probe never exercised
+    // and this stage does not price (specs/freer-base.md, "What is
+    // still unpriced"). The unstacked doors above remain.
 }
 
 /** The class IS the whole identity: Delim has no parameter but its

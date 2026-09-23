@@ -52,6 +52,18 @@ transactions). Isolation is declared per transaction and `Granted`
 answers with what the engine actually gave, so a caller can refuse
 a downgrade. Nested transact refuses loudly.
 
+**The transaction protocol as a program.** `Tx(db)` is the same
+begin/commit/rollback with the ORDER in the types (`okay.Prog`,
+specs/freer-base.md stage 2): `begin` is `Idle -> Open`, `commit` and
+`rollback` are `Open -> Idle`, a statement moves nothing, and `Tx.run`
+accepts only a program that begins and ends outside a transaction.
+The nested `begin` that `PgSql` refuses with an `IllegalStateException`,
+a `commit` with no `begin`, and a program that ends inside a
+transaction do not compile; the runtime is exactly `Sql`'s, step for
+step, and the indexes erase. `Typed.region` remains the Resource-
+scoped road (cancel on abort); `Tx` is for a caller who wants the
+steps in hand and the order checked before anything runs.
+
 **Drivers.** okay-jdbc's `JdbcSql` is the first (JVM, blocking
 behind `Async.Run` on virtual threads — the honest default for H2,
 DuckDB, warehouses); okay-pg (the Postgres v3 wire, cross-platform)

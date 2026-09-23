@@ -270,8 +270,12 @@ Recorded so that nobody mistakes "possible" for "planned".
       (specs/direct-staged.md, 5a3af433): 7.50 µs / 85 368 B against
       the hand-written 7.69 / 84 568, 2.24x over the same block as a
       Free block on the shipping runners.
-- [ ] Road 3: `NoPrompt` is a compile error on a `Prog` facade; one
-      module protocol typed.
+- [x] Road 3: `NoPrompt` is a compile error on a `Prog` facade; one
+      module protocol typed — BUILT 2026-09-23 (freer-base-stage2):
+      `okay.Prog`, `Delim.Stacked` (the three throwing shapes refused
+      by the compiler, the escaped prompt included), okay-sql's `Tx`
+      (nested begin / orphan commit / a program left open do not
+      compile). specs/freer-base.md, "Stage 2 — BUILT".
 - [ ] Road 4: a spike with a verdict, not an implementation.
 
 ## Decisions

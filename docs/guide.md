@@ -533,6 +533,40 @@ the primitive, because of the five stages written here NONE are
 one-output-per-input: conditional emission has to say "nothing here"
 with an `Option` that `transduce` never allocates.
 
+**Typestate on a program: `Prog`.** `PState` puts a state's TYPE in a
+continuation's answer; `Prog[F, A, S, R]` puts one on any program — the
+same `Free` tree behind an opaque facade with two phantom indexes, "`S`
+before, `R` after", so that `flatMap` joins a step ending at `R` only to
+one starting at `R`. Nothing is allocated and nothing is matched:
+`Prog.diag(p)` enters at any index, `p.free` leaves at the diagonal
+(a move left open has no way out), and a protocol is written as smart
+constructors that call `Prog.transition` once each and keep it
+private. okay-sql's transaction is the first, over any `Sql`:
+
+```scala
+val tx = Tx(db)
+val n = Tx.run(
+  tx.begin().flatMap { g =>
+    tx.update("insert into t values (1)").flatMap(_ => tx.commit()).map(_ => g.granted)
+  }).runWith
+```
+
+`tx.begin().flatMap(_ => tx.begin())` does not compile — the
+`IllegalStateException("nested transaction")` that `PgSql.begin` throws
+is unrepresentable — nor does `Tx.run(tx.commit())`, nor a program that
+ends inside a transaction, nor `tx.begin().free`. The same facade puts
+`Delim`'s prompt stack in the type, so a `shift` to a prompt that is
+not installed is a compile error rather than `NoPrompt`
+([continuations in practice](continuations-in-practice.md#the-stack-in-the-type)).
+One trap, stated in `Prog`'s own comment: with `import okay.given` in
+scope the package's `Comonad[Id]` offers a `.map` on everything,
+lexically closer than the facade's — write `import okay.Prog.{flatMap,
+map}` beside it (`Static` became a class for the same reason).
+
+> Atkey, *Parameterised notions of computation*, JFP 19(3–4), 2009,
+> [doi:10.1017/S095679680900728X](https://doi.org/10.1017/S095679680900728X)
+> — the parameterised monad `PState` and `Prog` are two instances of.
+
 A stage whose STEP may end it is `Stage.transduceUntil(z)(step, end)`
 (specs/fold-until.md, stage 3): the step answers `Left(next)` to go on
 or `Right(r)` to stop, the stage ends there — so `through` pulls

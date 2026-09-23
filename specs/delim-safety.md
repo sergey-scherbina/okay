@@ -172,11 +172,18 @@ evidence, and nothing has asked for it.
 
 ### Behavior — stage 2
 
-- [ ] a `Prompted` stored in a `var` and used after its `delimited`
-      returned is a compile error
-- [ ] the four inline doors still take the same type arguments at a
-      call site as they do today, or the stage is refused with the
-      reason recorded
+- [x] a prompt stored in a `var` and used after its delimiter
+      returned is a compile error — ANSWERED BY ANOTHER ROAD
+      (freer-base-stage2, 2026-09-23): not a region tag on `Prompted`
+      but `Delim.Stacked`, where the installed prompts are a lexical
+      GIVEN stack and `shift` needs `Has[stack, p.type]`; after the
+      reset returns the stack in force is the outer one (TestProg 8).
+      `Prompted` itself is unchanged and its escape stays a run-time
+      `NoPrompt` — the typed door is beside it, not under it.
+- [x] the four inline doors still take the same type arguments at a
+      call site as they do today — trivially, because the stacked
+      door is a separate object and touches none of them; a stacked
+      `direct`-block door is not built and not asked for
 
 ## Decisions
 

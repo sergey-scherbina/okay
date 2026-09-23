@@ -225,28 +225,28 @@ Stage 1 — `Free` on it:
       construction (no Pure-fusion in `Lift.flatMap`, ever).
 
 Stage 2 — the index as typestate, Delim first (lane freer-base-stage2, 2026-09-23):
-- [ ] `Prog[F, A, S, R]` exists as an opaque facade over `Free[F, A]`
+- [x] `Prog[F, A, S, R]` exists as an opaque facade over `Free[F, A]`
       with `diag`/`pure`/`effect` at the diagonal, `flatMap` composing
       indexes end to end, `map` keeping them, `free` unlifting a
       DIAGONAL program only; `A ! F` is untouched (see Decisions: the
       diagonal is a conversion, not a definition).
-- [ ] Delim carries its prompt stack in the index: `Delim.Stacked.
+- [x] Delim carries its prompt stack in the index: `Delim.Stacked.
       reset` installs `s.p.type` on the stack for its body, `shift(p)`
       requires `Has[stack, p.type]`, and the three `NoPrompt` shapes
       the probe named — a shift with NO reset, a shift to a FOREIGN
       prompt of the same answer type, and a prompt that ESCAPES its
       reset into a `var` and is shifted to afterwards — are
       `compileErrors` in TestProg, with the message naming the stack.
-- [ ] The five positive shapes of the probe run through the REAL
+- [x] The five positive shapes of the probe run through the REAL
       machine and answer the shift/reset laws' values: bare, a
       for-comprehension, an ordinary effect in head position, nesting
       with a shift to the OUTER prompt, a reset as a step of a larger
       program. TestDelim is untouched (the facade is additive).
-- [ ] The spec's own first caveat is a test: a `Throws` abort inside a
+- [x] The spec's own first caveat is a test: a `Throws` abort inside a
       block promising a transition drops the continuation and the
       transition does NOT happen — asserted, so nobody reads the type
       as a run-time guarantee.
-- [ ] One module protocol typed: okay-sql's transaction as a `Prog`
+- [x] One module protocol typed: okay-sql's transaction as a `Prog`
       over any `Sql` (`Tx.begin: Idle -> Open`, `commit`/`rollback`:
       `Open -> Idle`, `query`/`update`/`batch` at any index, `Tx.run`
       accepting only `Idle -> Idle`) — the nested `begin` that
@@ -254,7 +254,7 @@ Stage 2 — the index as typestate, Delim first (lane freer-base-stage2, 2026-09
       with no `begin`, and a program that ends inside a transaction
       are `compileErrors`; a well-bracketed program runs against a
       recording fake `Sql` in the order the type promised.
-- [ ] Zero bytes and zero time: the facade is an opaque alias and
+- [x] Zero bytes and zero time: the facade is an opaque alias and
       every constructor is `inline`, so a `Prog` program IS the `Free`
       tree it wraps — asserted structurally (`free` is identity; the
       same nodes, `eq`) rather than benchmarked, since no node changes.
@@ -750,8 +750,46 @@ absorption off. The representation had to move inside `object Cont`.
 - Stage 1: REFUTED as specified; superseded by the facade above, which
   gets the whole of its goal (one base, `Free` untouched) by the
   opposite move.
-- Stage 2: the LANGUAGE question is answered, the lane is not started.
-  See below.
+- Stage 2: BUILT 2026-09-23 — see "Stage 2 — BUILT" below, after the
+  probe that decided its shape.
+
+### Stage 2 — BUILT (2026-09-23, lane freer-base-stage2)
+
+`Prog[F, A, S, R]` (src/main/scala/Prog.scala), `Delim.Stacked`
+(Delim.scala, the end of the companion) and okay-sql's `Tx` (Tx.scala)
+are in; TestProg and TestTx are the boxes above. What the build found
+that the probe could not, each a round that failed:
+
+- **The opaque type goes INSIDE the companion**, exactly as `Cont`'s
+  `Rep` does (cont-facade-over-free): a top-level `opaque type` is
+  transparent to its whole PACKAGE, and the first cut's `k(5).map(_ *
+  2)` in a package-okay test typed the lambda's argument as the whole
+  program — the package's program-carrier `map` had captured it. As
+  `Prog.Rep` behind the alias `Prog`, five of the seven errors went.
+- **The other two were `Comonad[Id]`**, the package-level given whose
+  extension puts `.map` on EVERY type: in lexical scope for all of
+  package `okay`, and for any user file with `import okay.given`, it is
+  closer than the facade's companion and wins
+  (lexical-extension-beats-companion — `Static` became a class for
+  this; an opaque alias cannot). The answer is one import beside the
+  given, `import okay.Prog.{flatMap, map}`, stated in `Prog`'s doc, in
+  docs/guide.md, and exercised on purpose in TestTx. `inline` was not
+  the cause (tried, refuted).
+- **`push`/`run` need their type arguments spelled** inside `Stacked`:
+  from an argument typed `R ! ([A] =>> Delim[A] | F[A])` the compiler
+  does not recover `Delim + F`. Two call sites, explicit `[R, F]`.
+- **Running an `Async` program takes `CanBlock`**, which JS does not
+  have, so TestTx is a `scala-jvm` test; `Tx` itself is cross.
+- **Zero cost, structurally**: `diag(p).free eq p`, and `flatMap`
+  builds a `Bind` whose head `eq p` — the same nodes, asserted, no
+  benchmark, since no node changed.
+- **`shift0`/`control0` are not stacked** (their body's stack is the
+  part BELOW the prompt, a match type the probe never exercised); the
+  unstacked doors remain. `control` and `abort` are.
+- **specs/delim-safety.md's stage-2 road was not taken.** The region
+  tag needs `S` in the program's type; the given stack closes the
+  escape case with one `import s.given` instead, and leaves the four
+  inline doors untouched because it is a separate door beside them.
 
 ### Stage 2, the Delim half — the identity question, answered by compiling
 
