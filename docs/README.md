@@ -73,6 +73,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   backend (a Node worker, a generated Scala facade). Types are written
   once, in either language, and every generated file is checked by
   `tsc --strict`.
+- **[okay with Rust](rust.md)** — Rust kernels as okay effects: a
+  crate over the C ABI, bound through FFM, answering the same bytes as
+  the JVM implementation (Argon2id); and why Go is a subprocess or Wasm,
+  not in-process.
 - **[okay with Python and R](python-and-r.md)** — Python and R
   functions as typed Scala functions, and their code calling back into
   okay's effects by name, with diagrams; held models, inline modules,
@@ -231,6 +235,7 @@ API reference, gotchas.
 | [`okay-js`](modules/okay-js.md) | JavaScript as a value: a typed tree, a printer, a compile-time constant, and `js { }` |
 | [`okay-ts`](modules/okay-ts.md) | TypeScript programs walked inside okay on Scala.js (multi-shot), and okay handed to TypeScript as a Promise |
 | [`okay-ts-npm`](modules/okay-ts-npm.md) | okay as an npm package, `@okay/ts`: programs with async callbacks, CRDT replicas, channels as `AsyncIterable`; its `index.d.ts` written by the module itself |
+| [`okay-rust`](modules/okay-rust.md) | Rust kernels over the C ABI through FFM, as an okay effect (`Kdf`: Argon2id, byte-equal to BouncyCastle) |
 | [`okay-lex`](modules/okay-lex.md) | total streaming tokenization: chunked, snapshottable, incremental |
 | [`okay-chain`](modules/okay-chain.md) | blockchains and ledgers read uniformly: CAIP ids, a sans-I/O follower (depth or declared finality, rollbacks said), a ledger projection beside the native transaction |
 | [`okay-scalus`](modules/okay-scalus.md) | the Cardano chain as okay-chain events, from a relay over Ouroboros node-to-node, with scalus's ledger model for the blocks |

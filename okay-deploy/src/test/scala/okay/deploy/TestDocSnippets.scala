@@ -31,13 +31,14 @@ class TestDocSnippets extends munit.FunSuite:
     "docs/modules/okay-clojure.md" -> Vector("okay-clojure/src/test"),
     "docs/modules/okay-frege.md" -> Vector("okay-frege/src/test"),
     "docs/python-and-r.md" -> Vector("okay-py/src/test", "okay-r/src/test"),
+    "docs/rust.md" -> Vector("okay-rust/src", "okay-rust/kernels"),
     "docs/typescript.md" -> Vector("okay-py/src/test", "okay-ts/src/test", "okay-codec/src/test", "okay-http/src/test",
       "okay-js/src/test", "scripts", "okay-live/src/test"),
   )
 
   // a .ts module a test runs (okay-py/src/test/resources) is a tested source
   // too, and so is a live check script's program (scripts/ts-npm-check.sh)
-  private val sourceSuffixes = Vector(".scala", ".clj", ".fr", ".ts", ".sh")
+  private val sourceSuffixes = Vector(".scala", ".clj", ".fr", ".ts", ".sh", ".rs")
 
   private def sourceLines(roots: Vector[String]): Set[String] =
     roots.flatMap { r =>
