@@ -85,6 +85,21 @@ Each stage is a lane; Results below record what each found.
 - [x] `Stubs.typescriptWire` stays for callers of `Py.*` on a TS worker;
       docs/typescript.md says to prefer `Ts` and `Stubs.typescript`.
 
+## Stage T6 — Scala.js functions, TypeScript callers (S2)
+
+- [ ] `Ts.expose[A, B](name)(f: A => B ! Async)` is one function a
+      TypeScript caller awaits: its argument is read with okay's JSON codec,
+      its answer written with it, and a wrong argument REJECTS the promise,
+      naming the function and the reason.
+- [ ] `Ts.module(name)(exposed*)` gives two things: `.js`, the object to put
+      behind `@JSExportTopLevel`, and `.declaration`, the declaration
+      file TypeScript reads for it. That file holds `Stubs.typescript`'s
+      types for every argument and answer, and
+      `export declare const name: { f(input: A): Promise<B>; ... }`.
+- [ ] `tsc --strict` accepts a TypeScript caller written against the
+      declaration and refuses a wrong field. The declaration is generated
+      by the same code that encodes the values, so the two cannot drift.
+
 ## Decisions
 
 - **The JSON codec's shape is the one shape**, not the wire's. It is what
