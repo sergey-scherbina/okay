@@ -410,6 +410,33 @@ okay-jetty. Its own module, so okay-scala2-http does not pull Jetty.
 - [x] (Live, run and green) a client talks to a fold session over a real
       socket, and the same server answers an ordinary route
 
+## Stage 13 — nondeterminism and search
+`Choose` joins `Eff` as a capability: `from`/`fail`/`guard`, the handlers
+`all`/`first`, `cut` and `ifte`, and the FAIR `interleave`/`fairBind`.
+`Search.bestOf`/`all`/`majority` build on it and serve okay-agent's use
+("sample until valid") for any `Eff`.
+
+THE RESIDUAL TEST (backlog `residual-row-typeable`, invented here at the
+operator's "выдумай"). `Logic`'s fair combinators declare
+`TypeableK[F]` for the rest of the row. The facade gives the complement
+of the known side: `x => !TypeableK[Choose].test(x)`. Reading
+`Logic.scala` showed that `interleave`, `fairBind` and `observe` never
+CONSULT that instance. Their one split is `msplit`'s
+`split[Choose, F]`, which tests `Choose`. So property (2) of the
+backlog item (nested splits cannot misroute) holds by construction
+today, and the complement stays right for a two-part row if the core
+ever starts using it. Properties (1), (3) and (4) are tests:
+
+- [x] every answer (the Pythagorean triples up to 13)
+- [x] `first(n)` on an infinite search; `cut` commits to the first
+- [x] `ifte`: every answer of the condition, else only when none
+- [x] fairness: an infinite branch does not starve the other (property 4)
+- [x] another effect in the rest (Writer) passes through `interleave`,
+      in order (property 1)
+- [x] State inside the search is per branch, outside it is shared
+      (property 3)
+- [x] `Search.bestOf` stops at the first good sample (2 calls, not 5)
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -581,3 +608,12 @@ okay-jetty. Its own module, so okay-scala2-http does not pull Jetty.
   okay"), but the type it names, `ArraySeq`, is not. So a Scala 2
   caller builds `Frame.Ping(ArraySeq[Byte](...))` directly, and the
   facade adds `binary`/`bytes` for `Array[Byte]`.
+- STAGE 13 (2026-09-23). `Choose`/`Search` in okay-scala2. 7 tests,
+  green. The `R = Any` lint trap came back, for the combinators that
+  KEEP the capability (`cut`, `ifte`, `interleave`, `fairBind`),
+  because `Choose & R` leaves `R` to infer for a program that is only
+  `Choose`. The fix here is better than the `run` workaround of stage 3:
+  take the whole row as `R <: Choose`. That states the same requirement
+  with nothing left to infer. (Whether stage 3's `Effect.handle` can use
+  the same bound is worth a look. It removes, rather than keeps, its
+  capability, so it is a different shape.)

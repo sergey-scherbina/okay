@@ -29,6 +29,7 @@ Contents:
 8e. [UI: the view as a value, the loop as a fold](#8e-ui-the-view-as-a-value-the-loop-as-a-fold)
 8f. [Forms from a Schema](#8f-forms-from-a-schema)
 8g. [WebSockets](#8g-websockets)
+8h. [Nondeterminism and search](#8h-nondeterminism-and-search)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -815,6 +816,51 @@ assertEquals(got, (Vector("1: x", "2: y"), "ok"))
 - The live suite binds a port, so it is tagged `Live`. It was run and
   passed while this was written.
 
+## 8h. Nondeterminism and search
+
+`Choose` is one more capability of `Eff`: a program that performs
+`Choose.from(...)` has several answers, and a handler decides what they
+mean. It is okay's own `Choose` and `Logic` underneath. The code below is
+copied from `okay-scala2/probe/src/test/scala/TestChooseFromScala2.scala`:
+
+```scala
+val triples = for {
+  a <- Choose.from(1 to 13: _*)
+  b <- Choose.from(a to 13: _*)
+  c <- Choose.from(b to 13: _*)
+  _ <- Choose.guard(a * a + b * b == c * c)
+} yield (a, b, c)
+assertEquals(Eff.run(Choose.all(triples)), Seq((3, 4, 5), (5, 12, 13), (6, 8, 10)))
+```
+
+```scala
+// the naturals from n, as an infinite search
+def nats(n: Int): Eff[Choose, Int] = Choose.from(true, false).flatMap(stop => if (stop) Eff.pure(n) else nats(n + 1))
+```
+
+```scala
+val fair = Choose.interleave(nats(0), Choose.from(100, 200))
+val got = Eff.run(Choose.first(6)(fair))
+assert(got.contains(100) && got.contains(200), got.toString)
+```
+
+- **Handlers:** `Choose.all` (every answer), `Choose.first(n)` (lazily,
+  so the search may be infinite), `Choose.cut` (commit to the first
+  answer), `Choose.ifte` (the soft cut: the else branch runs only when
+  the condition has no answer).
+- **Fair search:** `Choose.interleave` and `Choose.fairBind`. A plain
+  `flatMap` over an infinite branch never reaches the second branch;
+  these take turns.
+- **The handler order is the design, as everywhere in okay.** With
+  `State` handled INSIDE the search, each branch has its own state. With
+  it handled OUTSIDE, all branches share one:
+  `Choose.all(State.run(0)(prog))` is `Seq((1, 1), (2, 2))`, while
+  `State.run(0)(Choose.all(prog))` is `(3, Seq(1, 3))`.
+- **Search over samples:** `Search.bestOf(n)(gen)(ok)` runs `gen` up to
+  `n` times and stops at the first result that passes, which is how "ask
+  the model until the JSON parses" is written: `gen` can be `chat.say(...)`.
+  `Search.all` and `Search.majority` (self-consistency) are there too.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -865,17 +911,10 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
   for-comprehensions instead. It is not planned.
 - **The rest of the library.** Codecs (section 8a), HTTP (8b), SQL
   (8c), agents (8d) and UI (8e) are covered. Several pieces are not
-  wrapped yet: okay-agent's search strategies (`Search.bestOf` and
-  friends), durable agents, and okay-ui's `Dialog`/`Nav`. Forms and
-  WebSockets are wrapped (sections 8f and 8g). They are queued in the
-  sprint. The remaining modules are not wrapped either.
-- **Fair search.** okay's `Logic.interleave`, `fairBind` and `observe`
-  need a runtime test for the REST of the effect row. On the Scala 2
-  side that rest is only a phantom type, so there is nothing to test.
-  Inventing that test is on the backlog as `residual-row-typeable`.
-  The candidate is the complement of the side that is known: "not a
-  `Choose` operation". It has four properties to prove first, among
-  them that it cannot misroute in nested splits.
+  wrapped yet: durable agents, and okay-ui's `Dialog`/`Nav` (queued in
+  the sprint). Forms, WebSockets, and nondeterminism with search are
+  wrapped (sections 8f, 8g and 8h). The remaining modules are not
+  wrapped either.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the
   Scala 3 API builds. What Scala 3 code gets and a 2.13 caller does

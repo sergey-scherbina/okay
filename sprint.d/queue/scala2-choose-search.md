@@ -1,1 +1,0 @@
-- [ ] **scala2-choose-search** — nondeterminism as an Eff capability for Scala 2.13 (okay's Choose/Logic: flip, choose, all, first, fair interleaving), and okay-agent's Search.bestOf/validated/all/majority over it (specs/scala2-facade.md, stage 11). Operator: "Продолжай" (2026-09-23), after the five named areas landed.

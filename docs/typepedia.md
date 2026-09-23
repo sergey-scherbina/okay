@@ -964,6 +964,11 @@ and nothing else in the library casts for that reason:
   the decoded fields as a `Seq[Any]` in field order, each decoded by
   the schema at that position, so position `i` holds an `Fi`. Scala 3's
   derivation performs the same cast.
+- **`Choose.residual`** (okay-scala2) — not a cast, but a claim of the
+  same kind: a `TypeableK[Top]` that answers "not a `Choose`". That is
+  right for a two-part row `Choose + rest`, which is the only row the
+  facade builds, and `Logic`'s fair combinators never call it (their
+  split is `msplit`'s, on the `Choose` side).
 - **`Rows.coerce` and `Effect.narrow`** (okay-scala2, Scala 2.13
   facade). On the Scala 2 side a row is a PHANTOM intersection of
   capabilities (`Eff[State[Int] with Writer[String], A]`) that no
@@ -1039,6 +1044,12 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   `Stage.transduce`, and `replay` runs it without a socket. okay's
   `Chunk` alias is invisible from Scala 2, but its expansion
   `ArraySeq` is visible, so a Scala 2 caller passes an `ArraySeq[Byte]`.
+- **`Choose`, `Search`** (okay-scala2) — okay's `Choose`/`Logic` as a
+  capability. The fair combinators get the rest of the row's
+  `TypeableK` as the COMPLEMENT of `Choose` ("not a `Choose`"), and
+  okay's `Logic` turns out never to consult it. A combinator that KEEPS
+  the capability takes the row as `R <: Choose`, not as `Choose & R`,
+  because the second form makes scalac 2.13 infer `Any`.
 - **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.

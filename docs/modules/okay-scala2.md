@@ -18,6 +18,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Chat`, `Model`, `Tools`, `Policy`, `Call` (module `okay-scala2-agent`) | okay-agent from 2.13: the agent loop with a persistent conversation, a scripted or real model, tools decoded by `Schema`, the context policy; `okay.agent.Turn` and `Reply` are used directly |
 | `UiApp`, `UiHost`, `ScriptedHost` (module `okay-scala2-ui`) | okay-ui from 2.13: the loop as an `Eff`, terminal and Swing hosts, a scripted host for tests; `okay.ui.Ui`, `Event` and `Frame` are used directly |
 | `WebSocket`, `WsClient`, `WsSession`, `WsServer` (module `okay-scala2-ws`) | WebSockets from 2.13: a client as `Eff`/`Source`, a server session as a fold, replayable without a socket; `okay.http.Frame` is used directly |
+| `Choose`, `Search` | nondeterminism as a capability of `Eff`: `from`/`fail`/`guard`, `all`/`first`/`cut`/`ifte`, fair `interleave`/`fairBind`; `Search.bestOf`/`all`/`majority` over samples |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -382,6 +383,11 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 `WsClient`: `send(f: Frame)`, `sendText(text)`, `close()` (each `Eff[Async, Unit]`), `frames: Source[Frame]`, `texts: Source[String]`;
 `WsSession.fold[S](init: S)(step: (S, Frame) => (S, Seq[Frame])): WsSession`, `WsSession.echo`, `WsSession.replay(s, incoming: Seq[Frame]): Vector[Frame]`;
 `WsServer.use[A](port)(routes: Request => Eff[Async, Response])(sessions: PartialFunction[Request, WsSession])(body: Int => Eff[Async, A]): Eff[Async, A]`.
+
+**Nondeterminism** — `Choose.from[A](as: A*): Eff[Choose, A]`, `Choose.fail[A]`, `Choose.guard(ok: Boolean)`;
+`Choose.all[R, A](e: Eff[Choose with R, A]): Eff[R, Seq[A]]`, `Choose.first[R, A](n)(e): Eff[R, Seq[A]]`;
+`Choose.cut[R <: Choose, A](e: Eff[R, A]): Eff[R, A]`, `Choose.ifte[R <: Choose, A, B](cond)(th: A => Eff[R, B])(el: => Eff[R, B])`, `Choose.interleave[R <: Choose, A](a, b)`, `Choose.fairBind[R <: Choose, A, B](m)(f)`;
+`Search.bestOf[R, A](n)(gen: Eff[R, A])(ok: A => Boolean): Eff[R, Option[A]]`, `Search.all[R, A](n)(gen)(ok): Eff[R, Seq[A]]`, `Search.majority[A](answers: Seq[A]): Option[A]`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
