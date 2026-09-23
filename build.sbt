@@ -988,7 +988,7 @@ lazy val okayScala2Llm = (project in file("scala2/okay-scala2-llm"))
   )
 
 lazy val okayScala2Rag = (project in file("scala2/okay-scala2-rag"))
-  .dependsOn(okayScala2, okayRag.jvm)
+  .dependsOn(okayScala2, okayScala2Sql, okayRag.jvm)
   .settings(
     name := "okay-scala2-rag",
   )

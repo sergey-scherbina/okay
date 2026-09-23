@@ -853,6 +853,15 @@ metaprogramming.
   endpoints are `/healthz` and `/readyz` (the facade's comment first said
   `/health`), and okay-pg's SQL takes `$1`-numbered placeholders, not
   JDBC's `?` (by design: the SQL string is the dialect's).
+- STAGE 15.5b (2026-09-23, scala2-pgvector; operator: "Доделай"). The
+  PgVector wrapper removed from 15.5 for want of a test is back, now that
+  a Live test runs it: `Rag.pgvector(db, table, dim, embed)` answers a
+  `PgIndex` whose operations are `Eff[Async, _]`. `Embed` still has no
+  TypeableK, so it cannot be `!.translate`d into Async programs; the
+  handler is `Handler.union[okay.Async, Embed]` inside `Async.delay`. The
+  embedding handler moved into its own `Embedder`, shared by both index
+  bodies. `TestRagLiveFromScala2` against `pgvector/pgvector:pg16`: GREEN,
+  and the nearest segment matches the memory index's.
 - LAYOUT (2026-09-23, scala2-dir). Operator: "я предлагаю перенести все
   scala2 модули в подкаталог scala2". Every `okay-scala2*` module and the
   2.13 probe now live under `scala2/`; artifact and project names are

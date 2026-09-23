@@ -1182,6 +1182,24 @@ assertEquals(hits.head.segment.source, "Math.scala")
   [doi:10.1145/1571941.1572114](https://doi.org/10.1145/1571941.1572114)).
   Use it when queries name exact identifiers as often as ideas.
 
+The same index can live in Postgres with the pgvector extension.
+`Rag.pgvector(db, table, dim, embed)` takes a `Db` (section 8c; from
+`Postgres.connect` in section 8q, for example) and creates the extension
+and the table if they are absent. Every operation is then a program.
+From `TestRagLiveFromScala2.scala`, which runs against a real server
+under `sbt integrationTest`:
+
+```scala
+db <- Postgres.connect(host, port, "okay", "okay", "okay")
+index <- Rag.pgvector(db, table, 64, Rag.hashing())
+progress <- index.add(docs)
+stored <- index.size
+hits <- index.search("multiply numbers", 3)
+```
+
+`dim` is the length of the embedder's vectors (64 for `Rag.hashing()`),
+and `add` is an upsert: adding a source again replaces its segments.
+
 **MCP.** A server's tools are okay-scala2-agent's `Tools` (section 8d),
 so one declaration serves a local agent and an MCP server. Arguments
 and schemas cross as JSON text. `McpLink.pair()` connects a server and
@@ -1209,9 +1227,6 @@ assertEquals(Eff.runAsync(prog), (Some(("calc", "1.0")), Seq("add"), true, "42")
   with `client.read(uri)`, which is `None` for a uri the server lacks.
 - A client also has `resources`, `prompts` and `prompt(name, args)`.
   The last answers the conversation opening as okay-agent's `Turn`s.
-- Not wrapped: okay-rag's `PgVector` (a vector store across a wire).
-  Its wrapper would need a live Postgres to test, and the default gate
-  runs none. It is the same `VectorIndex` shape when it is asked for.
 
 ## 8o. Optics: lens, prism, affine, traversal, iso
 

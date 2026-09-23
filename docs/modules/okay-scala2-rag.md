@@ -12,6 +12,7 @@ texts to one vector per text.
 | `index.add(sources)` | split, embed in batches, store |
 | `index.search(query, k)` | the nearest segments |
 | `index.hybrid(keywords, query, k)` | vector and keyword hits fused by reciprocal rank |
+| `Rag.pgvector(db, table, dim, embed)` | the same index in Postgres with pgvector; its operations are programs |
 
 The walkthrough is section 8n of
 [okay from Scala 2.13](../scala2.md#8n-models-retrieval-mcp-okay-llm-okay-rag-okay-mcp), and the signatures are in
