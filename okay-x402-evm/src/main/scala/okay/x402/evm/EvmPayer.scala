@@ -6,15 +6,29 @@ import okay.codec.Json.*
 import okay.x402.*
 
 /**
+ * What `EvmPayer` needs from whoever holds the key (specs/x402.md stage
+ * 4b): an address, and a signature (`r ‖ s ‖ v`, low-s, v 27/28) over an
+ * EIP-3009 AUTHORIZATION in its EIP-712 domain. Two kinds implement it:
+ * a `Signer`, which signs the DIGEST and so sees 32 opaque bytes, and a
+ * service that signs the TYPED DATA itself (`CdpSigner`, okay-x402-cdp)
+ * and so sees what it signs — the kind whose own policies can refuse a
+ * payment (a limit, a contract), which a digest does not allow.
+ */
+trait AuthorizationSigner:
+  def address: String
+  def signAuthorization(domain: Eip712.Domain, a: Eip712.Authorization): Array[Byte] ! Async
+
+/**
  * The key, behind ONE operation (specs/x402.md stage 4): sign a 32-byte
  * digest as `r ‖ s ‖ v` (low-s, v 27/28 — what USDC's FiatToken
  * accepts), and say which address that is. A KMS, an HSM or a remote
  * wallet implements this; nothing else in the payment path ever holds
  * key material.
  */
-trait Signer:
-  def address: String
+trait Signer extends AuthorizationSigner:
   def sign(digest: Array[Byte]): Array[Byte] ! Async
+  def signAuthorization(d: Eip712.Domain, a: Eip712.Authorization): Array[Byte] ! Async =
+    sign(Eip712.digest(Eip712.domainSeparator(d.name, d.version, d.chainId, d.verifyingContract), a))
 
 object Signer:
   /**
@@ -41,7 +55,7 @@ object Signer:
  * checks nothing about WHETHER to pay: that is `Policy` and `Consent`,
  * decided before a payer is asked.
  */
-final class EvmPayer(signer: Signer,
+final class EvmPayer(signer: AuthorizationSigner,
                      clock: () => Long = () => java.lang.System.currentTimeMillis() / 1000,
                      nonce: () => Array[Byte] = EvmPayer.randomNonce) extends Payer:
   def pay(r: PaymentRequirements, resource: ResourceInfo): Option[PaymentPayload] ! Async =
@@ -51,8 +65,7 @@ final class EvmPayer(signer: Signer,
         val now = clock()
         val a = Eip712.Authorization(signer.address, r.payTo, r.amount, BigInt(now - 600),
           BigInt(now + r.maxTimeoutSeconds), nonce())
-        val digest = Eip712.digest(Eip712.domainSeparator(name, version, chainId, r.asset), a)
-        signer.sign(digest).map { sig =>
+        signer.signAuthorization(Eip712.Domain(name, version, chainId, r.asset), a).map { sig =>
           Some(PaymentPayload(r, JObj(Vector(
             "signature" -> JStr("0x" + Evm.hex(sig)),
             "authorization" -> JObj(Vector(

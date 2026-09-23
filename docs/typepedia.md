@@ -725,6 +725,10 @@ same material with the measurements attached.
   `params._meta`, and a DELIVERED answer (no `isError`) is settled with
   the receipt in `result._meta` — `Charge`'s rules, shared with `Gate`.
   `X402Mcp.Paying` is the client half, a `Session` that pays once.
+- **`CdpSigner`** (okay-x402-cdp) — an `AuthorizationSigner` over a
+  Coinbase CDP Server Wallet: the EIP-712 typed data is sent, so CDP's
+  wallet policies see what they sign; both JWTs as Coinbase's SDK builds
+  them; the answer recovered to the account before use.
 - **`EvmPayer` / `Signer`** (okay-x402-evm) — x402's `exact`/EVM payment
   built as the reference client builds it and signed through a `Signer`
   (`address`, `sign(digest)`): the one seam a KMS or wallet implements,

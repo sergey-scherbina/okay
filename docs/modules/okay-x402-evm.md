@@ -15,7 +15,10 @@ okay-security-argon2 is for okay-security. Spec:
 **Paying.** `EvmPayer(signer)` builds x402's `exact` payment as the
 reference client does — `validAfter = now − 600`, `validBefore = now +
 maxTimeoutSeconds`, a random 32-byte nonce, `to = payTo` — and has it
-signed by a `Signer`: `address` plus `sign(digest)`, nothing else. That
+signed by an `AuthorizationSigner`: `address` plus a signature over the
+authorization in its EIP-712 domain. A `Signer` — `address` plus
+`sign(digest)`, nothing else — is one; a service that signs the typed
+data itself (`CdpSigner`, [okay-x402-cdp](okay-x402-cdp.md)) is the other. That
 is the whole custody seam: a KMS, an HSM or a wallet service implements
 `Signer` and the key never enters the process. `Signer.local(key)` holds
 a key in memory and is for development only. The payer declines what it

@@ -25,6 +25,9 @@ object Eip712:
   def domainSeparator(name: String, version: String, chainId: BigInt, verifyingContract: String): Array[Byte] =
     Evm.keccak(domainType ++ utf8Keccak(name) ++ utf8Keccak(version) ++ uint(chainId) ++ addr(verifyingContract))
 
+  /** the EIP-712 domain of a token that implements EIP-3009 */
+  final case class Domain(name: String, version: String, chainId: BigInt, verifyingContract: String)
+
   final case class Authorization(from: String, to: String, value: BigInt, validAfter: BigInt,
                                  validBefore: BigInt, nonce: Array[Byte])
 
