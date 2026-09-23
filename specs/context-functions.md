@@ -404,8 +404,14 @@ Doors added by this sweep (all additive, explicit forms stay):
   ascription site first; and Reader->ctx as a Conversion SAM lambda
   hits an implementation restriction (an explicit `with apply` form
   compiles but inherits the same eagerness). The honest bridge is
-  two small named functions, which is also why it can wait: they
-  are one line each at any call site that wants them.
+  two small named functions. SHIPPED 2026-09-23 (ctx-reader-bridge,
+  the operator lifting the wait: "полезная штука, пусть будет"):
+  `Reader.lift(cf: E ?=> A): A ! Reader % E` and `Reader.unlift(p:
+  A ! Reader % E + F): E ?=> A ! F` in Reader.scala; `TestReaderBridge`
+  (core) pins the round trips — `unlift(lift(cf))` under an ambient
+  E is `cf`, `lift(unlift(p))` run at `e` is `p` run at `e`, one Ask
+  per lift — and `TestCtxReaderElim` now calls the library's two
+  lines where it had its own.
 
 ## Rejected, with the reason
 

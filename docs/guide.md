@@ -850,6 +850,13 @@ The consumer side is one line too: `wire[Http]` pulls the ambient
 capability by naming its type — `val get: Http ?=> Response =
 wire[Http].send(req)` is a door with no `summon` and no parameter.
 
+A context function IS a pure Reader program, and the two spellings
+convert: `Reader.lift(cf: E ?=> A): A ! Reader % E` asks once and
+applies; `Reader.unlift(p): E ?=> A ! F` runs a Reader program under
+the ambient `E`, forwarding the rest of the row. Functions, not
+`Conversion`s — a context function auto-applies before a conversion
+could see it (specs/context-functions.md, E10).
+
 The payoff, on one page (executable: TestShowcase in okay-obs) —
 ONE value whose needs are its type, living in two worlds without
 changing a letter:

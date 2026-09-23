@@ -141,6 +141,26 @@ object Reader {
                       (using f: RowOf[F])(using e: EnvOf[f.R]): e.E ! Reader % e.E =
     ask[e.E]
 
+  /**
+   * THE BRIDGE TO CONTEXT FUNCTIONS (specs/context-functions.md,
+   * ctx-reader-bridge — shipped 2026-09-23 at the operator's word,
+   * "полезная штука, пусть будет"). A context function `E ?=> A` IS
+   * a pure Reader program: `lift` asks once and applies. `unlift`
+   * is the other way — a Reader program becomes a context function
+   * that runs it under the ambient `E`, forwarding the rest of the
+   * row. Named FUNCTIONS, not `Conversion`s, and that was measured
+   * rather than chosen (E10, 2026-09-01): a `Conversion` from a
+   * context function never fires, because the context function
+   * auto-applies at the ascription site first; the other direction
+   * as a SAM lambda hits an implementation restriction and the
+   * `with apply` form inherits the eagerness. One line each, so the
+   * library carries them rather than every call site.
+   */
+  def lift[E, A](cf: E ?=> A): A ! Reader % E = ask[E].map(e => cf(using e))
+
+  /** a Reader program as a context function: run under the ambient E */
+  def unlift[E, A, F[+_]](p: A ! Reader % E + F): E ?=> A ! F = run[E, A, F](summon[E])(p)
+
   /** answer every Ask with r, forwarding the effects F */
   def run[R, A, F[+_]](r: R)(a: A ! Reader % R + F): A ! F =
     relay[A, A, Reader % R, F](a)(pure(_)):

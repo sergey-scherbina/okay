@@ -43,18 +43,12 @@ class TestCtxReaderElim extends munit.FunSuite {
     assertEquals(a, 101)
   }
 
-  test("the one-line bridges, at the call site as the spec promised") {
+  test("the one-line bridges — from the library now (ctx-reader-bridge, 2026-09-23), the same two lines") {
     // ctx -> Reader program: a FUNCTION, never a Conversion (E10)
-    def lift[E, A](cf: E ?=> A): A ! (Reader % E) =
-      effect[Reader % E, E](Reader.Ask()).map(e => cf(using e))
-    // Reader program -> ctx: run under the ambient environment
-    def unlift[E, A, F[+_]](p: A ! (Reader % E + F)): E ?=> A ! F =
-      Reader.run[E, A, F](wire[E])(p)
-
-    val fromCtx: Int ! (Reader % Int) = lift((e: Int) ?=> e * 2)
+    val fromCtx: Int ! (Reader % Int) = Reader.lift((e: Int) ?=> e * 2)
     assertEquals(!.run(Reader.run[Int, Int, okay.Pure](21)(fromCtx)), 42)
 
-    val back: Int ?=> Int ! W = unlift[Int, Int, W](viaReader)
+    val back: Int ?=> Int ! W = Reader.unlift[Int, Int, W](viaReader)
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](provide(7)(back)))
     assertEquals((ws, a), (Seq("env=7"), 8))
   }
