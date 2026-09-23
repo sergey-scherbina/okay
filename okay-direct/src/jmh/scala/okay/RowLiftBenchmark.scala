@@ -82,7 +82,7 @@ class RowLiftBenchmark {
     def atWalk[G[+_]](using i: In[F, G]): A ! G =
       import okay.!.*
       (p.resume: @unchecked) match
-        case Pure(a) => Free.Pure(a)
+        case Return(a) => Free.Return(a)
         case Inject(e) => Free.inject(i.inj(e))
         case Bind(Inject(e), k) => Free.inject(i.inj(e)).flatMap(x => k(x).atWalk[G])
 

@@ -92,7 +92,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     case None => injectTerm(op, elem, row)
 
   lazy val pureApply: Symbol =
-    Symbol.requiredModule("okay.Free.Pure").methodMember("apply").head
+    Symbol.requiredModule("okay.Free.Return").methodMember("apply").head
   lazy val bindApply: Symbol =
     Symbol.requiredModule("okay.Free.Bind").methodMember("apply").head
 
@@ -166,7 +166,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
    * A PROGRAM of the row, staged (specs/direct-staged.md v2): after
    * inlining, `State.modify(f)`, a for-comprehension over the row and
    * a hand-written chain are all one tree — `Free.Inject(op)`,
-   * `Free.Pure(a)`, `Free.Bind(m, x => body)` with the continuation a
+   * `Free.Return(a)`, `Free.Bind(m, x => body)` with the continuation a
    * lambda literal — and that tree is walked here into the same binds
    * a block of marks would emit: an operation becomes `stage(op)`, a
    * `Pure` the carrier's `pure`, a `Bind` a `bind` whose continuation

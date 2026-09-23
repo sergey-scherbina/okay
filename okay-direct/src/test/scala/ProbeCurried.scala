@@ -45,7 +45,7 @@ object ProbeCurried:
     def at[R[+_]](using i: In[F, R]): A ! R =
       import okay.!.*
       (p.resume: @unchecked) match
-        case Pure(a) => Free.Pure(a)
+        case Return(a) => Free.Return(a)
         case Inject(e) => Free.inject(i.inj(e))
         case Bind(Inject(e), k) =>
           Free.inject(i.inj(e)).flatMap(x => k(x).at[R])

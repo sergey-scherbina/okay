@@ -328,7 +328,7 @@ object Gen:
    */
   private[okay] def splice[W, V](g: Unit ! Row[W])(f: W => Unit ! Row[V]): Unit ! Row[V] =
     def loop(x: Unit ! Row[W]): Unit ! Row[V] = (x.resume: @unchecked) match
-      case Pure(_) => pure(())
+      case Return(_) => pure(())
       case Inject(e) => split[Writer % W, Stop](e)
         { case Writer.Say(w) => f(w) }
         { _ => ended[V] }
@@ -340,7 +340,7 @@ object Gen:
 
   private def indexed[W](g: Unit ! Row[W]): Unit ! Row[(W, Int)] =
     def loop(i: Int)(x: Unit ! Row[W]): Unit ! Row[(W, Int)] = (x.resume: @unchecked) match
-      case Pure(_) => pure(())
+      case Return(_) => pure(())
       case Inject(e) => split[Writer % W, Stop](e)
         { case Writer.Say(w) => say((w, i)) } { _ => ended[(W, Int)] }
       case Bind(Inject(e), k) => split[Writer % W, Stop](e)
@@ -353,7 +353,7 @@ object Gen:
     def loop(n: Int)(x: Unit ! Row[W]): Unit ! Row[W] =
       if n <= 0 then pure(())
       else (x.resume: @unchecked) match
-        case Pure(_) => pure(())
+        case Return(_) => pure(())
         case Inject(e) => Inject(e)
         case Bind(Inject(e), k) => split[Writer % W, Stop](e)
           { w0 => (w0: @unchecked) match
@@ -373,7 +373,7 @@ object Gen:
     // and read 7% SLOWER: the runner's trampoline beats a chain of
     // calls through `split`'s closure (gen-filter-as-walk, measured)
     def loop(x: Unit ! Row[W]): Unit ! Row[W] = (x.resume: @unchecked) match
-      case Pure(_) => pure(())
+      case Return(_) => pure(())
       case i @ Inject(e) => split[Writer % W, Stop](e)
         { case Writer.Say(w) => if p(w) then i else pure(()) } { _ => ended[W] }
       case Bind(i @ Inject(e), k) => split[Writer % W, Stop](e)
@@ -386,7 +386,7 @@ object Gen:
 
   private def takingWhile[W](p: W => Boolean)(g: Unit ! Row[W]): Unit ! Row[W] =
     def loop(x: Unit ! Row[W]): Unit ! Row[W] = (x.resume: @unchecked) match
-      case Pure(_) => pure(())
+      case Return(_) => pure(())
       case Inject(e) => split[Writer % W, Stop](e)
         { case Writer.Say(w) => if p(w) then say(w) else pure(()) } { _ => ended[W] }
       case Bind(Inject(e), k) => split[Writer % W, Stop](e)
@@ -399,7 +399,7 @@ object Gen:
     def loop(n: Int)(x: Unit ! Row[W]): Unit ! Row[W] =
       if n <= 0 then x
       else (x.resume: @unchecked) match
-        case Pure(_) => pure(())
+        case Return(_) => pure(())
         case Inject(e) => split[Writer % W, Stop](e)
           { case Writer.Say(_) => pure(()) } { _ => ended[W] }
         case Bind(Inject(e), k) => split[Writer % W, Stop](e)
@@ -413,7 +413,7 @@ object Gen:
     @tailrec def loop(s: S)(x: Unit ! Row[W]): Halt[S] =
       if K.done(s) then Halt(s, false)
       else (x.resume: @unchecked) match
-        case Pure(_) => Halt(s, false)
+        case Return(_) => Halt(s, false)
         case Inject(e) => split[Writer % W, Stop](e)
           { case Writer.Say(w) => Halt(K.add(s, w), false) } { _ => Halt(s, true) }
         case Bind(Inject(e), k) => split[Writer % W, Stop](e)
@@ -453,7 +453,7 @@ object Gen:
         // NOW — this is where the body between two yields runs
         val x: Unit ! Row[W] = if cont != null then { val k = cont.nn; cont = null; k(()) } else rest
         (x.resume: @unchecked) match
-          case Pure(_) => ended = true
+          case Return(_) => ended = true
           case Inject(e) => split[Writer % W, Stop](e)
             { case Writer.Say(w) => head = w; has = true; rest = pure(()) } { _ => ended = true }
           case Bind(Inject(e), k) => split[Writer % W, Stop](e)

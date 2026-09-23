@@ -99,11 +99,11 @@ object Refs:
 
     @tailrec def loop(n: Int, h: Map[Int, Any])(x: A ! (Refs + F)): A ! F =
       (x.resume: @unchecked) match
-        case Pure(a) => Pure(a)
+        case Return(a) => Return(a)
         case Inject(e) => split[Refs, F](e) {
-            case New(init) => Pure(n): A ! F
-            case Read(c) => Pure(slot(h, c)): A ! F
-            case Write(_, s) => Pure(s): A ! F
+            case New(init) => Return(n): A ! F
+            case Read(c) => Return(slot(h, c)): A ! F
+            case Write(_, s) => Return(s): A ! F
           } (e => Inject(e))
         case Bind(Inject(e), k) => split[Refs, F](e) {
             case New(init) => loop(n + 1, h.updated(n, init))(k(n))

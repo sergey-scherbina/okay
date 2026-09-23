@@ -189,9 +189,9 @@ object Condition {
       var p = p0
       while true do
         val next: Either[X ! (Op + F), Out[X] ! F] = (p.resume: @unchecked) match
-          case Pure(x) => Right(pure(Out.Done(x)))
+          case Return(x) => Right(pure(Out.Done(x)))
           case Inject(e) => split[Op, F](e)
-            (op => step(op, (a: X) => Free.Pure(a)))
+            (op => step(op, (a: X) => Free.Return(a)))
             (f => Right(Inject(f).map(Out.Done(_))))
           case Bind(Inject(e), k) => split[Op, F](e)
             (op => step(op, k))

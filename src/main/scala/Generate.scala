@@ -168,7 +168,7 @@ object Producer {
     def again(acc: S)(x: A ! Produce + G): (S, A) ! G = loop(acc)(x)
     @tailrec def loop(acc: S)(x: A ! Produce + G): (S, A) ! G =
       (x.resume: @unchecked) match
-        case Free.Pure(a) => pure((acc, a))
+        case Free.Return(a) => pure((acc, a))
         case Inject(e) => split[G, Produce](e)
           (g => Inject(g).map(a => (acc, a)): (S, A) ! G)
           (w => pure((f(acc, produced[W](w)), produced[A](w))))
@@ -193,7 +193,7 @@ object Producer {
     @tailrec def loop(s: S)(x: A ! Produce + G): R ! G =
       if K.done(s) then pure(K.end(s))
       else (x.resume: @unchecked) match
-        case Free.Pure(_) => pure(K.end(s))
+        case Free.Return(_) => pure(K.end(s))
         case Inject(e) => split[G, Produce](e)
           (g => Inject(g).map(_ => K.end(s)): R ! G)
           (w => pure(K.end(K.add(s, produced[W](w)))))
@@ -215,7 +215,7 @@ object Producer {
   def each[W, A, G[+_] : TypeableK](p: A ! Produce + G)(f: W => Unit): A ! G =
     import !.*
     (p.resume: @unchecked) match
-      case Free.Pure(a) => pure(a)
+      case Free.Return(a) => pure(a)
       case Inject(e) => split[G, Produce](e)
         (g => Inject(g): A ! G)
         (w => { f(produced[W](w)); pure(produced[A](w)) })
@@ -244,8 +244,8 @@ given Stream[Producer, okay.Pure] with
   import scala.annotation.tailrec
 
   def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! okay.Pure = pure((p.resume: @unchecked) match
-    case Free.Pure(_) => None
-    case Inject(e) => Some((e, Free.Pure(e)))
+    case Free.Return(_) => None
+    case Inject(e) => Some((e, Free.Return(e)))
     case Bind(Inject(e), k) => Some((produced[A](e), k(e))))
 
   /** the specialized linear view: a direct walk of the freer tree —
@@ -259,11 +259,11 @@ given Stream[Producer, okay.Pure] with
       private var elem: A = scala.compiletime.uninitialized
 
       @tailrec private def advance(): Unit = cur match
-        case Free.Pure(_) => ended = true
+        case Free.Return(_) => ended = true
         case Inject(e) =>
           elem = e
           ready = true
-          cur = Free.Pure(e)
+          cur = Free.Return(e)
         case Bind(Inject(e), k) =>
           elem = produced[A](e)
           ready = true
@@ -300,11 +300,11 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
   import !.*
 
   def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = (p.resume: @unchecked) match
-    case Free.Pure(_) => pure(None)
+    case Free.Return(_) => pure(None)
     // `split`, not `<|>`: no Either per element (split-over-either)
     case Inject(e) => split[G, Produce](e)
       (g => Inject(g).map(_ => None): Option[(A, A ! Produce + G)] ! G)
-      (w => pure(Some((produced[A](w), Free.Pure(produced[A](w))))))
+      (w => pure(Some((produced[A](w), Free.Return(produced[A](w))))))
     case Bind(Inject(e), k) => split[G, Produce](e)
       (g => Inject(g).flatMap(x => uncons(k(x))): Option[(A, A ! Produce + G)] ! G)
       (w => pure(Some((produced[A](w), k(w)))))
@@ -329,7 +329,7 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
       private var elem: A = scala.compiletime.uninitialized
 
       @tailrec private def advance(): Unit = cur match
-        case Free.Pure(_) => ended = true
+        case Free.Return(_) => ended = true
         case Inject(e) =>
           split[G, Produce](e)(
             g => { val _ = H.handle(g); ended = true }

@@ -133,9 +133,9 @@ object Once:
     import !.*
     def again(c: Cells)(x: A ! (Once + F)): A ! F = loop(c)(x)
     @tailrec def loop(c: Cells)(x: A ! (Once + F)): A ! F = (x.resume: @unchecked) match
-      case Pure(v) => Pure(v)
+      case Return(v) => Return(v)
       case Inject(e) => split[Once, F](e)
-        (o => Pure(step(c, o)._2): A ! F)
+        (o => Return(step(c, o)._2): A ! F)
         (g => Inject(g))
       case Bind(Inject(e), k) => split[Once, F](e)
         (o => { val (c2, x) = step(c, o); loop(c2)(k(x)) })

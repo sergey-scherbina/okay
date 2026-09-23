@@ -48,11 +48,11 @@ class WriterFoldUntilBoxBenchmark {
     import !.*
     def _loop(s: Long)(x: A ! Writer % W + F): R ! F = loop(s)(x)
     @tailrec def loop(s: Long)(x: A ! Writer % W + F): R ! F =
-      if K.doneLong(s) then Pure(K.endLong(s))
+      if K.doneLong(s) then Return(K.endLong(s))
       else (x.resume: @unchecked) match
-        case Pure(_) => Pure(K.endLong(s))
+        case Return(_) => Return(K.endLong(s))
         case Inject(e) => split[Writer % W, F](e) {
-            case Writer.Say(v) => Pure(K.endLong(K.addLong(s, v))): R ! F
+            case Writer.Say(v) => Return(K.endLong(K.addLong(s, v))): R ! F
           } { e => Inject(e).map(_ => K.endLong(s)) }
         case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
             (w0: @unchecked) match

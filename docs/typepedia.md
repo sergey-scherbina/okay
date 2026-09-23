@@ -37,15 +37,15 @@ same material with the measurements attached.
 ## Effects (Effects.scala, Free.scala)
 
 - **`A ! F`** — a computation of `A` over the signature `F` (a freer
-  tree: `Pure | Inject | Bind | Delay`, the node an operation sits in
+  tree: `Return | Inject | Bind | Delay`, the node an operation sits in
   being `Inject` — there is no `Effect` alias any more, that word is
   the `derives` marker). `Free.resume` is the one rotation, a member;
   `Delay` is the trampoline (`!.tailcall`, a capturing handler, the
   codecs past `NativeThreshold`); `Free.defer(t)(f)` is
   `Bind(Delay(t), f)`. **`%`** fixes a binary signature's parameter (`State % Int`);
   **`+`** unions signatures; **`Pure`** (= `Nothing`) is the empty
-  signature — in scopes importing `!.*` write `okay.Pure` (the
-  Free.Pure case shadows it).
+  signature (the tree's answer node is `Return`, since
+  free-return-rename — nothing shadows this name any more).
 - **`!.loop(s)(f: S => Either[S, A] ! F): A ! F`** — `tailRecM` for
   programs (specs/fold-until.md, stage 2): continue from a `Left`,
   answer a `Right`; stack-safe because the recursive call sits inside

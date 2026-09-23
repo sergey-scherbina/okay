@@ -803,7 +803,7 @@ object Delim {
     // themselves are flat.
     @tailrec def loop(state: Next[F, ?, R]): R ! F = state match
       case n: Next[F, a, R] => (n.prog.resume: @unchecked) match
-        case Pure(x) => n.kont match
+        case Return(x) => n.kont match
           case Segs.Done() => okay.pure(x)
           case Segs.K(f, rest) => loop(Next(f(x), rest))
           // the delimited block finished normally: drop its marker

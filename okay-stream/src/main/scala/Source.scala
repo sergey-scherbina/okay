@@ -133,7 +133,7 @@ object Source {
     import !.*
     type R = Writer % W + G
     (p.resume: @unchecked) match
-      case Free.Pure(b) => okay.pure(b)
+      case Free.Return(b) => okay.pure(b)
       case Inject(e) => split[G, Produce](e)
         (g => Inject(g): B ! R)
         (w => okay.effect[R, Unit](Writer(produced[W](w))).map(_ => produced[B](w)))
@@ -194,7 +194,7 @@ object Source {
     import !.*
     type R = Produce + G
     (s.resume: @unchecked) match
-      case Free.Pure(_) => okay.pure(end)
+      case Free.Return(_) => okay.pure(end)
       // Say is Writer's ONLY constructor, so a value that reaches the
       // second arm IS one — `Writer.widen`'s own argument, and its
       // @unchecked: the erased W cannot be verified, only its shape
@@ -280,7 +280,7 @@ extension [A](s: Source[A])
     // before, since every element re-enters through flatMap.
     import !.*
     def loop(x: Source[A]): Unit ! Async = (x.resume: @unchecked) match
-      case Free.Pure(_) => okay.pure(())
+      case Free.Return(_) => okay.pure(())
       case Inject(e) => split[Async, Writer % A](e)
         (g => Inject(g).map(_ => ()): Unit ! Async)
         { case Writer.Say(a) => f(a) }
@@ -504,7 +504,7 @@ extension [A](s: Source[Chunk[A]])
 private def mapFlushing[A, B](a: Flushing[A])(f: A => B): Flushing[B] =
   import !.*
   (a.resume: @unchecked) match
-    case Free.Pure(x) => Free.Pure(x)
+    case Free.Return(x) => Free.Return(x)
     case Inject(e) => split[Flush, Writer % A + Async](e)
       (fl => Inject(fl): Flushing[B])
       (wa => split[Async, Writer % A](wa)

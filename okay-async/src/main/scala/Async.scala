@@ -216,14 +216,14 @@ object Async {
           // runs no user code, and the check that matters, the one
           // before the next operation, is exactly where it was.
           (cur.resume: @unchecked) match
-            case Free.Pure(a) => succeed(a)
+            case Free.Return(a) => succeed(a)
             case Free.Bind(Free.Inject(e), f) =>
               val next = op(e, f)
               if next != null then
                 cur = next
                 looping = !stopped
             case Free.Inject(e) =>
-              val next = op(e, Free.Pure(_))
+              val next = op(e, Free.Return(_))
               if next != null then
                 cur = next
                 looping = !stopped

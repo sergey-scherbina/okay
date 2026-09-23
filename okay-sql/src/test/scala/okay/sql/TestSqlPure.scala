@@ -90,7 +90,7 @@ class TestSqlPure extends munit.FunSuite {
   def pureOf[A, F[+_]](p: A ! F): A =
     import okay.!.*
     (p.resume: @unchecked) match
-      case Pure(a) => a
+      case Return(a) => a
       case other => fail(s"an effect where none was expected: $other")
 
   /** the told chunks, walked purely: `Say` is Writer's only
@@ -100,7 +100,7 @@ class TestSqlPure extends munit.FunSuite {
     import okay.!.*
     def go(rest: Source[Chunk[Either[Bad, A]]], acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =
       (rest.resume: @unchecked) match
-        case Pure(_) => acc
+        case Return(_) => acc
         case Inject(Writer.Say(c)) => acc ++ c
         case Bind(Inject(Writer.Say(c)), k) => go(k(()), acc ++ c)
         case other => fail(s"Async where none was expected: $other")

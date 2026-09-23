@@ -49,7 +49,7 @@ opaque type Rep[A, S, R] = Free[Shift, A]
 
 and `Cont` **is** `Free[Shift, A]`. There is nothing to convert
 between them, because there is nothing between them. `Cont.Pure` is
-`Free.Pure` (`Cont.scala:151`); `Cont.shift(f)` is `Free.Inject`
+`Free.Return` (`Cont.scala:151`); `Cont.shift(f)` is `Free.Inject`
 of the leaf (`Cont.scala:155`); `flatMap` is `Free.Bind`, with one
 refinement below. Read the other way, `Free` is `Cont` whose shift
 body is chosen by the *handler* rather than by the program — which is
@@ -163,7 +163,7 @@ of the tree.
 With one tree there is one rotation. `Free.resume` (`Free.scala:127`)
 is a member of the enum — a member wins resolution, so every `.resume`
 across the library reaches that one loop with nothing imported — and
-it normalizes any tree to one of three head forms, `Pure(a)`,
+it normalizes any tree to one of three head forms, `Return(a)`,
 `Inject(e)`, `Bind(Inject(e), k)`, in constant stack:
 
 ```scala
@@ -201,7 +201,7 @@ put into is. With `Delay` there is nothing to push.
 
 And once `Delay` existed, `Defer(t, f)` was derivable — it is
 `Bind(Delay(t), f)` and the runner treated it identically — so it
-went, and the tree is four cases: `Pure | Inject | Bind | Delay`.
+went, and the tree is four cases: `Return | Inject | Bind | Delay`.
 
 ## The practice: what it measured
 
@@ -252,7 +252,7 @@ Better, concretely:
   programs, delimited control, the streams, the codecs and the direct
   block's deep recursion (chapter 8). Five copies of the rotation
   became two, and the second is there for a measured reason.
-- **Fewer bytes, not more.** `Cont.Pure` *is* `Free.Pure`; a handler's
+- **Fewer bytes, not more.** `Cont.Pure` *is* `Free.Return`; a handler's
   answer is a node the tree already has; a captured continuation is
   one `Delay`. The numbers above are the numbers.
 - **The typestate road stays open.** Stage 2 of the same spec — a

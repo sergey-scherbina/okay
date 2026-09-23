@@ -70,8 +70,10 @@ infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
 /** the empty signature: no operations, so a computation over it is
  * PURE — A ! Pure has nothing to perform. The zero of the union
- * algebra (F + Pure = F). In scopes that import !.* the name is
- * shadowed by the Free.Pure case: write okay.Pure there. */
+ * algebra (F + Pure = F). The answer NODE of the tree is `Return`
+ * (free-return-rename, 2026-09-23), so importing `!.*` no longer
+ * shadows this name — it used to, and every such file wrote
+ * `okay.Pure`; those spellings still compile. */
 type Pure = Nothing
 
 /** fix the parameter of a binary signature: State % S, Throws % E */
@@ -139,7 +141,7 @@ trait Effects[M[_[+_], _]]:
  * relay it in stages — and stay stack-safe on any bind shape.
  */
 given Effects[Free] with
-  override inline def pure[F[+_], A](a: A): Free[F, A] = Free.Pure(a)
+  override inline def pure[F[+_], A](a: A): Free[F, A] = Free.Return(a)
   override inline def perform[F[+_], A](e: F[A]): Free[F, A] = Free.Inject(e)
   override inline def defer[F[+_], A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] =
     Free.defer(thunk)(f)
@@ -155,7 +157,7 @@ given Effects[Free] with
 
   @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A =
     (m.resume: @unchecked) match
-      case Free.Pure(a) => a
+      case Free.Return(a) => a
       case Free.Inject(e) => H.handle(e)
       case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
 
@@ -231,7 +233,7 @@ given Effects[Free] with
       c / (x => Free.delay(() => loop(k(x))))
 
     def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
-      case Free.Pure(a) => ret(a)
+      case Free.Return(a) => ret(a)
       case Free.Inject(e) => last(e)
       case Free.Bind(Free.Inject(e), k) =>
         split[F, G](e)
@@ -340,7 +342,7 @@ object Effects {
     @tailrec def peek: Handler[F] ?=> ? = self match
       case Bind(a, _) => a.peek
       case Inject(e) => summon[Handler[F]].handle(e)
-      case Pure(a) => a
+      case Return(a) => a
       // a peek forces the thunk too, same as `Bind(a, _) => a.peek`
       // discards its own continuation without applying it
       case Delay(t) => t().peek
@@ -379,7 +381,7 @@ object Effects {
   def loop[S, A, F[+_]](s: S)(f: S => Either[S, A] ! F): A ! F =
     f(s).flatMap {
       case Left(next) => loop(next)(f)
-      case Right(a) => Pure(a)
+      case Right(a) => Return(a)
     }
 
   /** run p at most once under `Once.run`: the by-need word, an effect —
@@ -401,7 +403,7 @@ object Effects {
    * paid per pull inside the merge's contended region. An upcast free
    * at the type level is not free operationally. */
   def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = (p.resume: @unchecked) match
-    case Pure(a) => Pure(a)
+    case Return(a) => Return(a)
     case Inject(e) => Inject(e)
     case Bind(Inject(e), k) => Inject(e).flatMap(x => widen[A, F, G](k(x)))
 
@@ -488,7 +490,7 @@ object Effects {
     // recursion is not a loop, so the inlined arms cost no inlining
     // budget the way they would inside `relay`
     (prog.resume: @unchecked) match
-      case Pure(a) => Pure(a)
+      case Return(a) => Return(a)
       case Inject(e) => split[F, G](e)(f => h(f))(g => Inject(g))
       case Bind(Inject(e), k) =>
         // the Bind node types e and k together
@@ -537,7 +539,7 @@ object Effects {
       // `/` since Cont became a facade over Free (specs/freer-base.md)
       case Bind(Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(e => Inject(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
       case Inject(e) => last(e)
-      case Pure(a) => f(a)
+      case Return(a) => f(a)
 
     loop(a)
   }

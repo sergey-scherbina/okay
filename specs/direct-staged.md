@@ -115,7 +115,7 @@ laws apply to it unchanged.
 
 v1 staged a mark only when the marked term was one operation, and
 refused `State.modify(f)`. After inlining, a compound program IS a
-tree the macro can read: `Free.Inject(op)`, `Free.Pure(a)`,
+tree the macro can read: `Free.Inject(op)`, `Free.Return(a)`,
 `Free.Bind(m, x => body)` with the continuation a lambda literal — the
 combinators are `inline def`s, `Free.flatMap` is `Bind(this, f)`,
 `map` is `flatMap(a => Pure(f(a)))`, and RowLift's `.at`/`.plus` are

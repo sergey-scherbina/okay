@@ -60,7 +60,7 @@ class SplitBenchmark {
   @Benchmark
   def writerEither(): Int =
     @tailrec def loop[A](s: Vector[String])(x: A ! WR): (Vector[String], A) = (x.resume: @unchecked) match
-      case Free.Pure(a) => (s, a)
+      case Free.Return(a) => (s, a)
       case Inject(e) => <|>[Writer % String, Produce](e) match
         case Left(Writer.Say(v)) => (s :+ v, ())
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
@@ -83,7 +83,7 @@ class SplitBenchmark {
         case Some(w) => Left(w)
         case None => Right(x.asInstanceOf[Produce[A]])
     @tailrec def loop[A](s: Vector[String])(x: A ! WR): (Vector[String], A) = (x.resume: @unchecked) match
-      case Free.Pure(a) => (s, a)
+      case Free.Return(a) => (s, a)
       case Inject(e) => old(e) match
         case Left(Writer.Say(v)) => (s :+ v, ())
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
@@ -147,9 +147,9 @@ class SplitBenchmark {
     val buf = scala.collection.mutable.ListBuffer.empty[String]
     def _loop(x: A ! Writer % String + F): (Seq[String], A) ! F = loop(x)
     @tailrec def loop(x: A ! Writer % String + F): (Seq[String], A) ! F = (x.resume: @unchecked) match
-      case Free.Pure(a) => Free.Pure((buf.toList, a))
+      case Free.Return(a) => Free.Return((buf.toList, a))
       case Inject(e) => split[Writer % String, F](e) {
-          case Writer.Say(v) => buf += v; Free.Pure((buf.toList, ())): (Seq[String], A) ! F
+          case Writer.Say(v) => buf += v; Free.Return((buf.toList, ())): (Seq[String], A) ! F
         } { e => Inject(e).map(x => (buf.toList, x)) }
       case Bind(Inject(e), k) => split[Writer % String, F](e) { w0 =>
           (w0: @unchecked) match
@@ -171,7 +171,7 @@ class SplitBenchmark {
   @Benchmark
   def stateEither(): Int =
     @tailrec def loop[A](s: Int)(x: A ! SR): (Int, A) = (x.resume: @unchecked) match
-      case Free.Pure(a) => (s, a)
+      case Free.Return(a) => (s, a)
       case Inject(e) => <|>[State % Int, Produce](e) match
         case Left(State.Get()) => (s, s)
         case Left(State.Set(s2)) => (s2, s2)
@@ -193,7 +193,7 @@ class SplitBenchmark {
         case Some(w) => Left(w)
         case None => Right(x.asInstanceOf[Produce[A]])
     @tailrec def loop[A](s: Int)(x: A ! SR): (Int, A) = (x.resume: @unchecked) match
-      case Free.Pure(a) => (s, a)
+      case Free.Return(a) => (s, a)
       case Inject(e) => old(e) match
         case Left(State.Get()) => (s, s)
         case Left(State.Set(s2)) => (s2, s2)

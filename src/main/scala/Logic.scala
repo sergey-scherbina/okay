@@ -44,10 +44,10 @@ object Logic {
       stack match
         case LazyList() => pure(None)
         case p #:: rest => (p.resume: @unchecked) match
-          case Pure(a) => pure(Some((a, alts(rest))))
+          case Return(a) => pure(Some((a, alts(rest))))
           case Inject(e) => split[Choose, F](e)
-            (c => go(c.as.to(LazyList).map(a => Pure(a): A ! (Choose + F)) #::: rest))
-            (g => Inject(g).flatMap(a => go(Pure(a) #:: rest)))
+            (c => go(c.as.to(LazyList).map(a => Return(a): A ! (Choose + F)) #::: rest))
+            (g => Inject(g).flatMap(a => go(Return(a) #:: rest)))
           case Bind(Inject(e), k) => split[Choose, F](e)
             (c => go(c.as.to(LazyList).map(x => k(x)) #::: rest))
             (g => Inject(g).flatMap(x => go(k(x) #:: rest)))

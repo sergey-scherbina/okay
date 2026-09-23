@@ -141,7 +141,7 @@ object Sim {
 
     def step(t: Task): Unit =
       (t.prog().resume: @unchecked) match
-        case Pure(_) =>
+        case Return(_) =>
           steps += s"${t.fiber}:done"
         case Inject(e) =>
           // a terminal operation: perform it, nothing continues

@@ -40,7 +40,7 @@ object Eager {
     case a => value(a.asInstanceOf[A])
 
   /** normalize into the tree world */
-  def toFree[F[+_], A](m: Eager[F, A]): A ! F = fold(m)(Free.Pure(_), identity)
+  def toFree[F[+_], A](m: Eager[F, A]): A ! F = fold(m)(Free.Return(_), identity)
 
   // the Free instance, named: in this scope A ! F conforms to
   // Eager[F, A ! F], so unqualified extension calls would recurse

@@ -52,7 +52,7 @@ object Fused {
                                (using TypeableK[State % S]): ((S, Vector[W]), A) = {
     @tailrec def loop(s: S, w: Vector[W])(x: A ! (State % S + Writer % W)): ((S, Vector[W]), A) =
       (x.resume: @unchecked) match
-        case Pure(a) => ((s, w), a)
+        case Return(a) => ((s, w), a)
         // a RETURNING arm ascribes the outer answer inside the branch:
         // the constructor refines A (to S, to Unit) in there, and the
         // ascription is where the refined value meets the loop's type —
@@ -89,7 +89,7 @@ object Fused {
     type Row = Throws % E + State % S + Writer % W
     @tailrec def loop(s: S, w: Vector[W])(x: A ! Row): Either[E, ((S, Vector[W]), A)] =
       (x.resume: @unchecked) match
-        case Pure(a) => Right(((s, w), a))
+        case Return(a) => Right(((s, w), a))
         // the split tests ONE signature and takes the rest by exclusion,
         // so a three-effect row is split twice, single effect first
         case Inject(e) => split[Throws % E, State % S + Writer % W](e) {

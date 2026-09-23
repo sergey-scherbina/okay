@@ -290,7 +290,7 @@ Stage 4:
 - Changing what `traverse`/`sequence` do for `A ! F`. Their default
   stays the monad-derived, sequential instance; parallelism is opted
   into by name (`parTraverse`) or by instance (`Par`).
-- New nodes in `Free`. The tree is `Pure | Inject | Bind | Delay`
+- New nodes in `Free`. The tree is `Return | Inject | Bind | Delay`
   after core-cleanup and its hot loops sit at a measured inlining
   threshold (specs/core-cleanup.md; freer-base Results); `Static` is
   its own type and converts.

@@ -110,12 +110,12 @@ object Writer {
 
     // `split`, not `<|>` (split-without-either): no Either per tell.
     @tailrec def loop(s: S)(x: A ! Writer % W + F): R ! F = (x.resume: @unchecked) match
-      case Pure(a) => Pure(finish(s, a))
+      case Return(a) => Return(finish(s, a))
       case Inject(e) => split[Writer % W, F](e) {
           // matching the constructor refines the answer type to Unit:
           // the program ends here, and a tell ends it with nothing —
           // the ascription is where the refined value meets the loop
-          case Say(v) => Pure(finish(step(s, v), ())): R ! F
+          case Say(v) => Return(finish(step(s, v), ())): R ! F
         } { e => Inject(e).map(finish(s, _)) }
       case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
           // here it refines the CONTINUATION's domain, so this is an
@@ -131,7 +131,7 @@ object Writer {
 
   /**
    * A fold that STOPS (specs/fold-until.md): `loopWith`'s walk with
-   * an early `Pure(end(s))` the moment the state is done. The
+   * an early `Return(end(s))` the moment the state is done. The
    * `Bind(Inject(Say), k)` arm does not call `k` then, which is what
    * stops the producer: nothing past the satisfying tell is built,
    * and an `F` operation that would have followed it is never
@@ -145,11 +145,11 @@ object Writer {
     def _loop(s: S)(x: A ! Writer % W + F): R ! F = loop(s)(x)
 
     @tailrec def loop(s: S)(x: A ! Writer % W + F): R ! F =
-      if K.done(s) then Pure(K.end(s))
+      if K.done(s) then Return(K.end(s))
       else (x.resume: @unchecked) match
-        case Pure(_) => Pure(K.end(s))
+        case Return(_) => Return(K.end(s))
         case Inject(e) => split[Writer % W, F](e) {
-            case Say(v) => Pure(K.end(K.add(s, v))): R ! F
+            case Say(v) => Return(K.end(K.add(s, v))): R ! F
           } { e => Inject(e).map(_ => K.end(s)) }
         case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
             (w0: @unchecked) match
@@ -204,7 +204,7 @@ object Writer {
    */
   def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
-    case Free.Pure(x) => Free.Pure(x)
+    case Free.Return(x) => Free.Return(x)
     case Inject(e) => split[G, Writer % W](e)
       (g => Inject(g): A ! (Writer % V + G))
       // the constructor refines the answer type to Unit on both
@@ -242,11 +242,11 @@ object Writer {
   def expand[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => IndexedSeq[V])
   : A ! (Writer % V + G) =
     def tellAll(vs: IndexedSeq[V], i: Int): Unit ! (Writer % V + G) =
-      if i >= vs.length then Free.Pure(())
+      if i >= vs.length then Free.Return(())
       else Inject(Writer(vs(i))).flatMap(_ => tellAll(vs, i + 1))
 
     (a.resume: @unchecked) match
-      case Free.Pure(x) => Free.Pure(x)
+      case Free.Return(x) => Free.Return(x)
       case Inject(e) => split[G, Writer % W](e)
         (g => Inject(g): A ! (Writer % V + G))
         { case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! (Writer % V + G)] }
@@ -267,7 +267,7 @@ object Writer {
    */
   def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
-    case Free.Pure(x) => Free.Pure(x)
+    case Free.Return(x) => Free.Return(x)
     case Inject(e) => split[G, Writer % W](e)
       (g => Inject(g): A ! (Writer % V + G))
       // Say is Writer's ONLY constructor, so a value that reaches
@@ -294,7 +294,7 @@ object Writer {
    * Lazy: nothing is pulled until the result is consumed, one element
    * per pull, and the F-operations stay in the row rather than being
    * run behind the caller's back. The deferral is `pure(()).flatMap`
-   * — a `Bind(Pure(()), k)` node `!.resume` must ROTATE away before
+   * — a `Bind(Return(()), k)` node `!.resume` must ROTATE away before
    * reading past it (Effects.scala, the tailrec rotation cases) — and
    * it is load-bearing ONCE: the recursive step below already sits
    * inside the PREVIOUS step's `flatMap`, which is itself deferral
@@ -323,8 +323,8 @@ object Writer {
    * accumulating the Rights.
    */
   def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
-    case Free.Pure(a) => Left(a)
-    case Inject(Say(w)) => Right((w, Free.Pure(())))
+    case Free.Return(a) => Left(a)
+    case Inject(Say(w)) => Right((w, Free.Return(())))
     case Bind(Inject(Say(w)), k) => Right((w, k(())))
 
   /**
@@ -339,10 +339,10 @@ object Writer {
    */
   def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : Either[A, (W, A ! Writer % W + G)] ! G = (a.resume: @unchecked) match
-    case Free.Pure(a) => okay.pure(Left(a))
+    case Free.Return(a) => okay.pure(Left(a))
     case Inject(e) => split[G, Writer % W](e)
       (g => Inject(g).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
-      { case Say(w) => okay.pure(Right((w, Free.Pure(())))) }
+      { case Say(w) => okay.pure(Right((w, Free.Return(())))) }
     case Bind(Inject(e), k) => split[G, Writer % W](e)
       (g => Inject(g).flatMap(x => uncons[W, A, G](k(x))))
       { w0 => (w0: @unchecked) match
@@ -479,7 +479,7 @@ given feedStream[A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
       // `Say` is Writer's only constructor, so the two Inject shapes
       // are exhaustive over what a pure writer program can resume to
       @tailrec private def advance(): Unit = (cur: @unchecked) match
-        case Free.Pure(_) => ended = true
+        case Free.Return(_) => ended = true
         case Inject(Writer.Say(w)) =>
           elem = w
           ready = true
@@ -535,7 +535,7 @@ given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G
       private var elem: W = scala.compiletime.uninitialized
 
       @tailrec private def advance(): Unit = cur match
-        case Free.Pure(_) => ended = true
+        case Free.Return(_) => ended = true
         case Inject(e) =>
           split[G, Writer % W](e)(
             g => { val _ = H.handle(g); ended = true }

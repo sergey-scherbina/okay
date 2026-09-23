@@ -168,7 +168,7 @@ object Chunks {
    * downstream JAR on a mere recompile. */
   def mapWith[A, B](p: Chunks[A])(g: Chunk[A] => Chunk[B]): Chunks[B] = defer:
     (p.resume: @unchecked) match
-      case Pure(_) => end
+      case Return(_) => end
       case Inject(Writer.Say(c)) => Writer.tell(g(c))
       case Bind(Inject(Writer.Say(c)), k) =>
         Writer.tell(g(c)).flatMap(_ => mapWith(k(()))(g))
@@ -181,7 +181,7 @@ object Chunks {
    * binary-compatibility reason as `mapWith` */
   def filterWith[A](p: Chunks[A])(g: Chunk[A] => Chunk[A]): Chunks[A] = defer:
     (p.resume: @unchecked) match
-      case Pure(_) => end
+      case Return(_) => end
       case Inject(Writer.Say(c)) => Writer.tell(g(c))
       case Bind(Inject(Writer.Say(c)), k) =>
         val fc = g(c)
@@ -192,7 +192,7 @@ object Chunks {
   def take[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
     if n <= 0 then end
     else (p.resume: @unchecked) match
-      case Pure(_) => end
+      case Return(_) => end
       case Inject(Writer.Say(c)) => Writer.tell(c.take(n))
       case Bind(Inject(Writer.Say(c)), k) =>
         if c.length >= n then Writer.tell(c.take(n))
@@ -202,7 +202,7 @@ object Chunks {
   def drop[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
     if n <= 0 then p
     else (p.resume: @unchecked) match
-      case Pure(_) => end
+      case Return(_) => end
       case Inject(Writer.Say(c)) => Writer.tell(c.drop(n))
       case Bind(Inject(Writer.Say(c)), k) =>
         if c.length <= n then drop(k(()))(n - c.length)
@@ -211,7 +211,7 @@ object Chunks {
   /** the longest prefix satisfying pred */
   def takeWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
     (p.resume: @unchecked) match
-      case Pure(_) => end
+      case Return(_) => end
       case Inject(Writer.Say(c)) =>
         Writer.tell(c.takeWhile(pred))
       case Bind(Inject(Writer.Say(c)), k) =>
@@ -222,7 +222,7 @@ object Chunks {
   /** the rest, after the longest prefix satisfying pred */
   def dropWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
     (p.resume: @unchecked) match
-      case Pure(_) => end
+      case Return(_) => end
       case Inject(Writer.Say(c)) => Writer.tell(c.dropWhile(pred))
       case Bind(Inject(Writer.Say(c)), k) =>
         val i = c.indexWhere(a => !pred(a))
@@ -512,7 +512,7 @@ object Chunks {
         case None => (None, ch, i, end)
 
     @tailrec def loop(ch: Chunk[W], i: Int, rest: Chunks[W], c: B ! Take % W): B = (c.resume: @unchecked) match
-      case Pure(b) => b
+      case Return(b) => b
       case Inject(Take.Await()) => fetch(ch, i, rest)._1
       case Bind(Inject(Take.Await()), k) =>
         val (o, ch2, i2, r2) = fetch(ch, i, rest)

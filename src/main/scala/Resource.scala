@@ -16,7 +16,7 @@ trait Failing[F[+_]]:
 
 object Failing:
   /** Pure has no failure channel to decorate. `okay.Pure` because this
-   * file's own `import okay.!.*` shadows it with the Free.Pure case
+   * file's own `import okay.!.*` shadows it with the Free.Return case
    * (see Effects.scala's note on the same trap). */
   given pure: Failing[okay.Pure] with
     def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e
@@ -64,7 +64,7 @@ object Resource {
     var x = a
     try
       while true do (x.resume: @unchecked) match
-        case Pure(v) => return (v, () => close())
+        case Return(v) => return (v, () => close())
         case Inject(Acquire(mk, rel)) =>
           val r = mk()
           fin = (() => rel(r)) :: fin
@@ -116,14 +116,14 @@ object Resource {
     // throwing call that list instead, and the loop is a tail call.
     @tailrec def loop(fin: List[() => Unit])(x: A ! Resource + F): A ! F =
       (guarded(fin)(x.resume): @unchecked) match
-        case Pure(a) =>
+        case Return(a) =>
           releaseAll(fin)
-          Pure(a)
+          Return(a)
         case Inject(e) => split[Resource, F](e) {
             case Acquire(mk, rel) =>
               val r = guarded(fin)(mk())
               releaseAll((() => rel(r)) :: fin)
-              Pure(r): A ! F
+              Return(r): A ! F
           } { e => Inject(failing.guard(e, () => releaseAll(fin))).map { a => releaseAll(fin); a } }
         case Bind(Inject(e), k) => split[Resource, F](e) {
             case Acquire(mk, rel) =>

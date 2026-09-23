@@ -873,7 +873,7 @@ object Channel {
             buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
             sendIf(takeChunk(buf, size, full = false))(go(k(()))) })
     def go(p: Flushing[A]): Unit ! Async = (p.resume: @unchecked) match
-      case Pure(_) => sendIf(takeChunk(buf, size, full = true))(okay.pure(()))
+      case Return(_) => sendIf(takeChunk(buf, size, full = true))(okay.pure(()))
       case Inject(e) => step(e, _ => okay.pure(()))
       case Bind(Inject(e), k) => step(e, k)
     go(p)

@@ -36,9 +36,9 @@ object Memory {
       case Context.Restore(m) => (m.stateAs[S], ())
 
     @tailrec def loop(s: S)(x: A ! (Context + F)): (S, A) ! F = (x.resume: @unchecked) match
-      case Pure(a) => Pure((s, a))
+      case Return(a) => Return((s, a))
       case Inject(e) => okay.<|>[Context, F](e) match
-        case Left(c) => Pure(answer(s, c))
+        case Left(c) => Return(answer(s, c))
         case Right(g) => Inject(g).map((s, _))
       case Bind(Inject(e), k) => okay.<|>[Context, F](e) match
         case Left(c) =>

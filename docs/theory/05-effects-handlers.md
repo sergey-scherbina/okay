@@ -284,7 +284,7 @@ re-emitted on the tree — `Inject(e).flatMap(x => loop(k(x)))`, the way
 `relay` has always done — and `Cont` is entered only for an operation
 the handler *claims*. Then `Cont.onAnswer` asks whether the handler
 answered with a plain value (`Cont.Pure`, which every comonadic
-handler builds, and which is `Free.Pure`); if so the loop continues on
+handler builds, and which is `Free.Return`); if so the loop continues on
 the answer with a tail call and nothing is allocated; only a handler
 that really captures its continuation gets the rest of the program
 reified — into one `Delay` node, so deep programs trampoline through

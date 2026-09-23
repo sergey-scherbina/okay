@@ -49,7 +49,7 @@ object KyoInterop {
   /** Reader → Env, ask for ask */
   def toKyoEnv[R, A](p: A ! Reader % R)(using Tag[R], Frame): A < Env[R] =
     (p.resume: @unchecked) match
-      case Pure(a) => a
+      case Return(a) => a
       case Inject(Reader.Ask()) => Env.get[R]
       case Bind(Inject(Reader.Ask()), k) =>
         Env.get[R].flatMap((r: R) => toKyoEnv(k(r)))
@@ -61,7 +61,7 @@ object KyoInterop {
   /** Writer → Emit, tell for tell */
   def toKyoEmit[W, A](p: A ! Writer % W)(using Tag[Emit[W]], Frame): A < Emit[W] =
     (p.resume: @unchecked) match
-      case Pure(a) => a
+      case Return(a) => a
       // matching the constructor gives both halves without a cast: the
       // told value, and the fact that the answer type is Unit
       case Inject(Writer.Say(w)) => Emit.valueWith(w)(())
@@ -79,7 +79,7 @@ object KyoInterop {
   /** Throws → Abort (the continuation after a raise is dead) */
   def toKyoAbort[E, A](p: A ! Throws % E)(using Tag[Abort[E]], Frame): A < Abort[E] =
     (p.resume: @unchecked) match
-      case Pure(a) => a
+      case Return(a) => a
       // the tree types the operation at its E: Throws[E, A], so `e` IS an E
       case Inject(t) => Abort.fail(t.e)
       case Bind(Inject(t), _) => Abort.fail(t.e)
@@ -92,7 +92,7 @@ object KyoInterop {
   /** Choose → Choice — the same arrow, Seq ~> Id, on both sides */
   def toKyoChoice[A](p: A ! Choose)(using Frame): A < Choice =
     (p.resume: @unchecked) match
-      case Pure(a) => a
+      case Return(a) => a
       case Inject(Choose(as)) => Choice.get(as)
       case Bind(Inject(Choose(as)), k) =>
         Choice.get(as).flatMap(x => toKyoChoice(k(x)))

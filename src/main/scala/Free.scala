@@ -18,7 +18,7 @@ import scala.annotation.tailrec
  */
 object Free {
   /** a value as a tree */
-  inline def pure[F[+_], A](a: A): Free[F, A] = Pure(a)
+  inline def pure[F[+_], A](a: A): Free[F, A] = Return(a)
 
   /** an operation as a tree */
   inline def inject[F[+_], A](a: F[A]): Free[F, A] = Inject(a)
@@ -43,7 +43,7 @@ object Free {
    * point (delay-node): that spelling resumes to `Bind(t(), pure)`,
    * and when the thunk answers a `Bind` the rotation pushes a
    * `.flatMap(pure)` tail down EVERY bind of the deferred subprogram —
-   * a closure and a `Bind` per bind, then a chain of `Bind(Pure(a),
+   * a closure and a `Bind` per bind, then a chain of `Bind(Return(a),
    * g)` of the same length at the end. `Delay` has no continuation to
    * push. */
   def delay[F[+_], A](thunk: () => Free[F, A]): Free[F, A] = Delay(thunk)
@@ -74,14 +74,14 @@ object Free {
 
   /** Free[F, *] is a Monad for every signature F, with no constraint on F */
   given [F[+_]]: Monad[Free[F, *]] with
-    override inline def pure[A](a: A): Free[F, A] = Pure(a)
+    override inline def pure[A](a: A): Free[F, A] = Return(a)
     extension [A](a: Free[F, A])
       override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = a.flatMap(f)
 }
 
 enum Free[F[+_], A] {
   /** a finished computation */
-  case Pure(a: A)
+  case Return(a: A)
 
   /** a single operation of the signature F */
   case Inject(a: F[A])
@@ -102,11 +102,11 @@ enum Free[F[+_], A] {
   /** sequencing is a data node: nothing runs until an interpreter walks the tree */
   inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = Bind(this, f)
 
-  inline def map[B](f: A => B): Free[F, B] = flatMap(a => Pure(f(a)))
+  inline def map[B](f: A => B): Free[F, B] = flatMap(a => Return(f(a)))
 
   /**
    * THE rotation, and the only one on this side of the library:
-   * normalize to a head form — `Pure(a)`, `Inject(e)` or
+   * normalize to a head form — `Return(a)`, `Inject(e)` or
    * `Bind(Inject(e), k)` — in constant stack.
    *
    * Sound by the monad associativity law, and linear-time amortized
@@ -136,7 +136,7 @@ enum Free[F[+_], A] {
    */
   @tailrec final def resume: Free[F, A] = this match
     case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume
-    case Bind(Pure(a), f) => f(a).resume
+    case Bind(Return(a), f) => f(a).resume
     // the deferred subprogram is forced HERE, in the loop, and its own
     // binds then rotate through the cases above — constant stack; and
     // nothing is composed onto it: the thunk's tree continues under
@@ -153,8 +153,8 @@ enum Free[F[+_], A] {
   final def fold[B](p: A => B)
                    (h: [X] => F[X] => (X => Free[F, A]) => B): B =
     (this.resume: @unchecked) match
-      case Pure(a) => p(a)
-      case Inject(a) => h(a)(Pure(_))
+      case Return(a) => p(a)
+      case Inject(a) => h(a)(Return(_))
       case Bind(Inject(a), f) => h(a)(f)
 
 }

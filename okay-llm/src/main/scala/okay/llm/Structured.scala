@@ -56,7 +56,7 @@ object Structured {
       else okay.codec.Codecs.json(s).decode(Json.value(session.tree)).toOption
 
     def walk(rest: Unit ! F): Cut[A] = (rest.resume: @unchecked) match
-      case Pure(_) => Cut(None, text, count, stopped = false)
+      case Return(_) => Cut(None, text, count, stopped = false)
       case Inject(e) => okay.<|>[Async, Writer % String](e) match
         case Left(a) => h.handle(a); Cut(None, text, count, stopped = false)
         case Right(Writer.Say(w)) => feed(w) match

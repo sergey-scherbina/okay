@@ -148,7 +148,7 @@ object Cont:
   import Shift.at
 
   /** a finished value (named where the 200-odd call sites already look for it) */
-  def Pure[A, R](a: A): Rep[A, R, R] = Free.Pure(a)
+  def Pure[A, R](a: A): Rep[A, R, R] = Free.Return(a)
 
   /** a computation as a function of its continuation — the shift of
    * Danvy and Filinski, through `Shift.of` */
@@ -236,9 +236,9 @@ object Cont:
   def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] =
     c match
       case Inject(s) => s match
-        case _: Leaf[?, ?, ?] => Bind(c, a => Free.Pure(f(a)))
+        case _: Leaf[?, ?, ?] => Bind(c, a => Free.Return(f(a)))
         case _ => Inject(Leaf.Mapped(s, f))
-      case _ => Bind(c, a => Free.Pure(f(a)))
+      case _ => Bind(c, a => Free.Return(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)

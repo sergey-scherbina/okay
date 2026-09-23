@@ -69,7 +69,7 @@ case Bind(Delay(t), g)   => Bind(t(), g).resume
 ```
 
 Every pass rotates left-nests right and discharges pure prefixes, so
-an interpreter only ever confronts three normal shapes — `Pure(a)`,
+an interpreter only ever confronts three normal shapes — `Return(a)`,
 `Inject(e)`, `Bind(Inject(e), k)` — and handler code across the
 library is a three-case match over exactly those (`Free.fold`,
 `Free.scala:143`, is the model; the comment on `resume` states the

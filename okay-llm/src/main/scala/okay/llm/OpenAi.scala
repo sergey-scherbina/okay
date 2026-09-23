@@ -154,7 +154,7 @@ object OpenAi {
     type F = Writer % String + Async
 
     def go(rest: Unit ! F, buf: List[String]): Unit ! F = (rest.resume: @unchecked) match
-      case Pure(_) => flush(buf)
+      case Return(_) => flush(buf)
       case Inject(e) => okay.<|>[Async, Writer % String](e) match
         case Left(a) => Inject(a).flatMap(_ => flush(buf))
         case Right(Writer.Say(line)) => absorb(line, buf)(b => flush(b))

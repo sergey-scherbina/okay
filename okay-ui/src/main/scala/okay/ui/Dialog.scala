@@ -26,7 +26,7 @@ object Dialog {
   /** show the tree; the answer is what the user did next */
   inline def show(ui: Ui): Event ! Dialog = effect(Show(ui))
 
-  import okay.!.{Bind, Inject, Pure}
+  import okay.!.{Bind, Inject, Return}
 
   /**
    * A scenario, stepped to its next question: either it is done, or
@@ -39,7 +39,7 @@ object Dialog {
     case Done(a: A)
 
   def start[A](prog: A ! Dialog): Running[A] = (prog.resume: @unchecked) match
-    case Pure(a) => Running.Done(a)
+    case Return(a) => Running.Done(a)
     // Dialog is covariant: a bare Show's answer type is above Event,
     // so resuming with the event itself is an upcast, not a cast
     case Inject(Show(ui)) => Running.Showing(ui, e => pure((e: A)))

@@ -160,7 +160,7 @@ literature's `whileS` and an iteration NODE are different things.
 ### The caveat that survives either choice
 
 An applicative does not make the *program* serialisable either.
-`Pure(a)` may hold any value, functions included, and the spine of
+`Return(a)` may hold any value, functions included, and the spine of
 combining lambdas is host code whichever functor you chose. What
 serialises is the **leaves**, not the spine.
 

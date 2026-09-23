@@ -410,7 +410,7 @@ class ProducerWriterCarrierBenchmark {
     def again(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G = loop(acc)(x)
     @tailrec def loop(acc: Vector[W])(x: A ! Writer % W + G): (Vector[W], A) ! G =
       (x.resume: @unchecked) match
-        case Free.Pure(v) => okay.pure((acc, v))
+        case Free.Return(v) => okay.pure((acc, v))
         case Inject(e) => split[G, Writer % W](e)
           (g => Inject(g).map(v => (acc, v)): (Vector[W], A) ! G)
           { w0 => (w0: @unchecked) match
@@ -432,7 +432,7 @@ class ProducerWriterCarrierBenchmark {
     def again(acc: Vector[A])(x: Source[A]): Vector[A] ! Async = loop(acc)(x)
     @tailrec def loop(acc: Vector[A])(x: Source[A]): Vector[A] ! Async =
       (x.resume: @unchecked) match
-        case Free.Pure(_) => okay.pure(acc)
+        case Free.Return(_) => okay.pure(acc)
         case Inject(e) => split[Async, Writer % A](e)
           (g => Inject(g).map(_ => acc): Vector[A] ! Async)
           { case Writer.Say(a) => okay.pure(acc :+ a) }

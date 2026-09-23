@@ -188,7 +188,7 @@ object Anthropic {
     : Unit ! (Writer % String + Async) =
       import okay.!.*
       (rest.resume: @unchecked) match
-        case Pure(_) => flushEvent(buf)
+        case Return(_) => flushEvent(buf)
         case Inject(e) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => Inject(a).flatMap(_ => flushEvent(buf))
           case Right(Writer.Say(line)) => emitFrom(line, buf)(b => flushEvent(b))

@@ -182,7 +182,7 @@ object Stm {
    * transaction body is source code, not a loop counter. */
   private def runWithLog[A](tx: A ! Tx, log: Log): A =
     @tailrec def loop(p: A ! Tx): A = (p.resume: @unchecked) match
-      case Pure(a) => a
+      case Return(a) => a
       case Inject(e) => perform(e, log)
       case Bind(Inject(e), k) => loop(k(perform(e, log)))
     loop(tx)
@@ -234,7 +234,7 @@ object Stm {
   /** the structural fast paths, shared by tl2 and direct: a program
    * that IS one operation needs no log */
   private def fast[A](tx: A ! Tx): Option[A ! Async] = (tx.resume: @unchecked) match
-    case Pure(a) => Some(pure(a))
+    case Return(a) => Some(pure(a))
     case Inject(Tx.Modify(r, f)) => Some(async(r.modify(f)))
     case Inject(Tx.Read(r)) => Some(async(r.get))
     case _ => None
@@ -323,7 +323,7 @@ object Stm {
             case Left(RetryNow) => Sim.sleep(1).flatMap(_ => attempt)
             case Left(t) => throw t
         def loop(p: A ! Tx): A ! Sim.Op = (p.resume: @unchecked) match
-          case Pure(a) => finish(a)
+          case Return(a) => finish(a)
           case Inject(e) => Sim.yieldNow.flatMap(_ => after(step(e))(finish))
           case Bind(Inject(e), k) => Sim.yieldNow.flatMap(_ => after(step(e))(x => loop(k(x))))
         loop(tx)

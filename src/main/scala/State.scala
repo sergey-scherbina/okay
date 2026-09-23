@@ -117,10 +117,10 @@ object State {
     // returning arm ascribes the loop's answer inside the branch,
     // where the constructor has refined the answer type to S.
     @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = (x.resume: @unchecked) match
-      case Pure(a) => Pure((s, a))
+      case Return(a) => Return((s, a))
       case Inject(e) => split[State[S, *], F](e) {
-          case Get() => Pure((s, s)): (S, A) ! F
-          case Set(s) => Pure((s, s)): (S, A) ! F
+          case Get() => Return((s, s)): (S, A) ! F
+          case Set(s) => Return((s, s)): (S, A) ! F
         } { e => Inject(e).map((s, _)) }
       case Bind(Inject(e), k) => split[State[S, *], F](e) {
           case Get() => loop(s)(k(s))
@@ -160,13 +160,13 @@ object State {
 
     def _loop(x: X ! State % A + F): X ! State % S + F = loop(x)
     def loop(x: X ! State % A + F): X ! State % S + F = (x.resume: @unchecked) match
-      case Pure(v) => Pure(v)
+      case Return(v) => Return(v)
       // A LONE OPERATION IS A BIND WITH A PURE CONTINUATION, and the
       // arm below already knows that case. Written out here it would
       // need `A ! row <: X ! row` from the GADT refinement — Free is
       // invariant in its answer, so that is a cast, and this costs one
       // node instead of one.
-      case Inject(e) => loop(Inject(e).flatMap(x => Pure(x)))
+      case Inject(e) => loop(Inject(e).flatMap(x => Return(x)))
       case Bind(Inject(e), k) => split[State[A, *], F](e) {
           case Get() => readPart.flatMap(a => _loop(k(a)))
           case Set(a) => writePart(a).flatMap(x => _loop(k(x)))

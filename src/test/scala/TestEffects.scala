@@ -57,7 +57,7 @@ class TestEffects extends munit.FunSuite {
     assert(!.run(isEven(1000000)))
     assertEquals(!.run(isOdd(1000000)), false)
     // resume and ? (Effects.scala's object !)
-    assertEquals(isEven(1000000).resume, Pure(true))
+    assertEquals(isEven(1000000).resume, Return(true))
     assertEquals(isEven(1000000).peek, true)
   }
 

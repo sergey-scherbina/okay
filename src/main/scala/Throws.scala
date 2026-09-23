@@ -314,7 +314,7 @@ object CanTry:
           case Left(e) => h(e)
           // the stack's convention: resume answers one of three shapes
           case Right(head) => (head: @unchecked) match
-            case Pure(a) => Free.Pure(a)
+            case Return(a) => Free.Return(a)
             case Inject(op) => Free.Inject(op)
             case Bind(Inject(op), k) => Free.Bind(Free.Inject(op), x => step(() => k(x)))
       step(() => fa)

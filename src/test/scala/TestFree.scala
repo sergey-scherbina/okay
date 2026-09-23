@@ -99,7 +99,7 @@ class TestFree extends munit.FunSuite {
     // Cont facade is opaque and its tree is its own business
     import okay.!.*
     def headForm(c: Any): Boolean = c match
-      case Pure(_) => true
+      case Return(_) => true
       case Inject(_) => true
       case Bind(a, _) => a match { case Inject(_) => true; case _ => false }
       case _ => false

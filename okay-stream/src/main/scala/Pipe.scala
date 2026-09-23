@@ -61,7 +61,7 @@ object Take:
  */
 def pipe[W, A, B](p: A ! Writer % W)(c: B ! Take % W): B = {
   @tailrec def loop(p: A ! Writer % W, c: B ! Take % W): B = (c.resume: @unchecked) match
-    case Pure(b) => b
+    case Return(b) => b
     case Inject(Take.Await()) => Writer.uncons(p).toOption.map(_._1)
     case Bind(Inject(Take.Await()), k) => Writer.uncons(p) match
       case Right((w, rest)) => loop(rest, k(Some(w)))
@@ -460,11 +460,11 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
   // its own awaits surface as OUR awaits, in CPS to stay a program
   def pull(u: Stage[I, M, A])(cont: (Option[M], Stage[I, M, A]) => B ! Res): B ! Res =
     (u.resume: @unchecked) match
-      case Pure(_) => cont(None, u)
+      case Return(_) => cont(None, u)
       case Inject(e) => split[Take % I, Writer % M](e)
         // a final await tells nothing more: the upstream is done
         { case Take.Await() => cont(None, u) }
-        { case Writer.Say(w) => cont(Some(w), Free.Pure(())) }
+        { case Writer.Say(w) => cont(Some(w), Free.Return(())) }
       case Bind(Inject(e), k) => split[Take % I, Writer % M](e)
         { case Take.Await() => effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont)) }
         { w0 => (w0: @unchecked) match
@@ -472,7 +472,7 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
 
   def loop(u: Stage[I, M, A], d: Stage[M, O, B], depth: Int = 0): B ! Res =
     (d.resume: @unchecked) match
-      case Pure(b) => pure(b)
+      case Return(b) => pure(b)
       case Inject(e) => split[Take % M, Writer % O](e)
         { case Take.Await() => pull(u)((om, _) => pure(om)) }
         (o => effect[Res, B](Erased.reinject[Res[B]](o)))
@@ -493,7 +493,7 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
 def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = {
   def loop(rest: A ! Writer % W, d: Stage[W, M, B], depth: Int = 0): B ! Writer % M =
     (d.resume: @unchecked) match
-      case Pure(b) => pure(b)
+      case Return(b) => pure(b)
       case Inject(e) => split[Take % W, Writer % M](e)
         { case Take.Await() => pure(Erased.resumeWith[B](Writer.uncons(rest).toOption.map(_._1))) }
         (m => effect[Writer % M, B](Erased.reinject[(Writer % M)[B]](m)))
@@ -532,13 +532,13 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
   // OUR awaits and forwarding its G ops on the way
   def pull(u: A ! Up)(cont: (Option[M], A ! Up) => B ! Res): B ! Res =
     (u.resume: @unchecked) match
-      case Pure(_) => cont(None, u)
+      case Return(_) => cont(None, u)
       case Inject(e) => split[Take % I, Writer % M + G](e)
         { case Take.Await() => cont(None, u) }
         (rest => split[G, Writer % M](rest)
           (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-            .flatMap(_ => cont(None, Free.Pure(Erased.unreachable[A]))))
-          { case Writer.Say(w) => cont(Some(w), Free.Pure(())) })
+            .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A]))))
+          { case Writer.Say(w) => cont(Some(w), Free.Return(())) })
       case Bind(Inject(e), k) => split[Take % I, Writer % M + G](e)
         { case Take.Await() => effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont)) }
         (rest => split[G, Writer % M](rest)
@@ -549,7 +549,7 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
 
   def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G)), depth: Int = 0): B ! Res =
     (d.resume: @unchecked) match
-      case Pure(b) => pure(b)
+      case Return(b) => pure(b)
       case Inject(e) => split[Take % M, Writer % O + G](e)
         { case Take.Await() => pull(u)((om, _) => pure(om)) }
         (o => effect[Res, B](Erased.reinject[Res[B]](o)))
@@ -579,11 +579,11 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
 
   def pull(rest: A ! Src)(cont: (Option[W], A ! Src) => B ! Res): B ! Res =
     (rest.resume: @unchecked) match
-      case Pure(_) => cont(None, rest)
+      case Return(_) => cont(None, rest)
       case Inject(e) => split[G, Writer % W](e)
         (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-          .flatMap(_ => cont(None, Free.Pure(Erased.unreachable[A]))))
-        { case Writer.Say(w) => cont(Some(w), Free.Pure(())) }
+          .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A]))))
+        { case Writer.Say(w) => cont(Some(w), Free.Return(())) }
       case Bind(Inject(e), k) => split[G, Writer % W](e)
         (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
           .flatMap(x => pull(k(Erased.resumeWith(x)))(cont)))
@@ -592,7 +592,7 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
 
   def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G)), depth: Int = 0): B ! Res =
     (d.resume: @unchecked) match
-      case Pure(b) => pure(b)
+      case Return(b) => pure(b)
       case Inject(e) => split[Take % W, Writer % M + G](e)
         { case Take.Await() => pull(rest)((ow, _) => pure(ow)) }
         (o => effect[Res, B](Erased.reinject[Res[B]](o)))
@@ -616,7 +616,7 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
  */
 def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B ! G = {
   def loop(p: A ! Writer % W + G, c: B ! Take % W): B ! G = (c.resume: @unchecked) match
-    case Pure(b) => pure(b)
+    case Return(b) => pure(b)
     case Inject(Take.Await()) => Writer.uncons(p).map(_.toOption.map(_._1))
     case Bind(Inject(Take.Await()), k) => Writer.uncons(p).flatMap:
       case Right((w, rest)) => loop(rest, k(Some(w)))

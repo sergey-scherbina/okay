@@ -227,13 +227,13 @@ object Static:
      * nothing to do afterwards — defer-with-pure-left-nests).
      */
     def toFree: A ! F = s match
-      case Pure(a) => Free.Pure(a)
+      case Pure(a) => Free.Return(a)
       case Op(fa) => Free.Inject(fa)
       case Ap(f, a) => Free.defer(() => f.toFree)(g => a.now.map(g))
       case Select(e, f) =>
         Free.defer(() => e.toFree):
           case Left(x) => f.now.map(_(x))
-          case Right(b) => Free.Pure(b)
+          case Right(b) => Free.Return(b)
 
     /**
      * The right-hand side of an `Ap`, converted — and the `Delay`
@@ -255,7 +255,7 @@ object Static:
      * depth (TestStatic has the 10 000-deep right-nested spine).
      */
     private def now: A ! F = s match
-      case Pure(a) => Free.Pure(a)
+      case Pure(a) => Free.Return(a)
       case Op(fa) => Free.Inject(fa)
       case _ => Free.delay(() => s.toFree)
 
