@@ -1,0 +1,6 @@
+feature/runfree-inlined-rotation 2026-09-23T13:50:00Z
+agent: claude-code
+heartbeat: 2026-09-23T13:50:00Z
+status: in-progress
+done-so-far: promoted from backlog
+next: read Free.resume/runFree/relay's loop; a runFree variant with its own inlined rotation loop, resume untouched; alternated lane first, decide only after the number
