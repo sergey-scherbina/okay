@@ -31,6 +31,7 @@ Contents:
 8g. [WebSockets](#8g-websockets)
 8h. [Nondeterminism and search](#8h-nondeterminism-and-search)
 8i. [Scenarios and screens: Dialog and Nav](#8i-scenarios-and-screens-dialog-and-nav)
+8j. [Resilience: breaker, bulkhead, limiter, hedge, deadline, retry](#8j-resilience-breaker-bulkhead-limiter-hedge-deadline-retry)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -902,6 +903,47 @@ assertEquals(answer, Some("hi ada"))
   loop: `UiApp.run(Nav.state(root))(Nav.view)(Nav.update)(host)`. The
   one unreadable helper, `Nav.screen` (its update answers the union
   `Nav | S`), is `Screens.of(init)(view)(update)`, with an `Either`.
+
+## 8j. Resilience: breaker, bulkhead, limiter, hedge, deadline, retry
+
+Module `okay-scala2-resilience`. okay-resilience's pieces are built with
+their own constructors from Scala 2 (`new Breaker(name, failures,
+openMillis)`, `new Bulkhead(name, permits, queue)`, `new Limiter(name,
+ratePerSecond, burst)`, `Deadline.in(millis)`), and a refusal is its own
+`Refused.*`. `Guards` runs a program through a piece. The code below is
+copied from `okay-scala2/probe/src/test/scala/TestResilienceFromScala2.scala`:
+
+```scala
+val b = new Breaker("pay", 2, 60000L)
+val runs = new AtomicInteger
+val failing = Async.delay[Int] { runs.incrementAndGet(); throw new IllegalStateException("down") }
+assert(outcome(Guards.breaker(b)(failing)).isLeft)
+assert(outcome(Guards.breaker(b)(failing)).isLeft)
+outcome(Guards.breaker(b)(failing)) match {
+  case Left(r: Refused.BreakerOpen) => assertEquals(r.name, "pay")
+  case other => fail("expected BreakerOpen, got " + other)
+}
+assertEquals(runs.get, 2)
+```
+
+```scala
+val calls = new AtomicInteger
+val flaky = Async.delay { if (calls.incrementAndGet() < 3) throw new IllegalStateException("not yet") else "ok" }
+assertEquals(Eff.runAsync(Guards.retry(okay.Retry.immediate(5))(flaky)), "ok")
+```
+
+(`outcome(e)` there is `scala.util.Try(Eff.runAsync(e)).toEither`.)
+
+- The pieces compose by nesting, like the programs they wrap:
+  `Guards.breaker(b)(Guards.bulkhead(h)(Guards.limiter(l, key)(call)))`.
+- A refusal is a thrown `Refused`, carrying `retryAfterMillis` when the
+  piece knows it. That is what a server maps to 429 or 503.
+- `Guards.breaker(b)(prog, failing)` can count a returned value as a
+  failure, for example a response with status 5xx.
+- `Guards.hedge` overlaps attempts, so it is only for operations that
+  are safe to repeat. `Guards.retry` does not overlap: it waits each
+  delay of the policy (`okay.Retry.constant`, `exponential`,
+  `jittered`, `immediate`).
 
 ## 9. Scala 3 and Scala 2, side by side
 

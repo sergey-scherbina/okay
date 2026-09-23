@@ -753,3 +753,12 @@ metaprogramming.
   okay-ui's own `ask` loop waits for `Pressed("$ok")`; the test now
   uses that. With this stage the sprint's Scala 2 queue is empty.
   Durable agents and `Scope` inside a dialog remain unwrapped.
+- STAGE 15.1 (2026-09-23). okay-scala2-resilience. The pieces, the
+  refusals and the retry policies are readable from 2.13 and used
+  directly. `Guards` adds only the program transformations. 7 tests. The
+  bulkhead test first used a `sleep(50)` to be sure the first call held
+  the permit. It now waits on a latch the first call releases from
+  inside the permit, so the refusal cannot depend on timing (the
+  supervision-shapes flake is the reason not to leave a sleep there).
+  Named `Guards` so that it cannot collide with `okay.resilience.Resilient`
+  under two wildcard imports.

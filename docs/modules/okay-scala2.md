@@ -19,6 +19,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `UiApp`, `UiHost`, `ScriptedHost` (module `okay-scala2-ui`) | okay-ui from 2.13: the loop as an `Eff`, terminal and Swing hosts, a scripted host for tests; `okay.ui.Ui`, `Event` and `Frame` are used directly |
 | `WebSocket`, `WsClient`, `WsSession`, `WsServer` (module `okay-scala2-ws`) | WebSockets from 2.13: a client as `Eff`/`Source`, a server session as a fold, replayable without a socket; `okay.http.Frame` is used directly |
 | `Choose`, `Search` | nondeterminism as a capability of `Eff`: `from`/`fail`/`guard`, `all`/`first`/`cut`/`ifte`, fair `interleave`/`fairBind`; `Search.bestOf`/`all`/`majority` over samples |
+| `Guards` (module `okay-scala2-resilience`) | okay-resilience's breaker, bulkhead, limiter, hedge, deadline and retry around an `Eff`; the pieces themselves are used directly |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -389,6 +390,8 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 `Choose.all[R, A](e: Eff[Choose with R, A]): Eff[R, Seq[A]]`, `Choose.first[R, A](n)(e): Eff[R, Seq[A]]`;
 `Choose.cut[R <: Choose, A](e: Eff[R, A]): Eff[R, A]`, `Choose.ifte[R <: Choose, A, B](cond)(th: A => Eff[R, B])(el: => Eff[R, B])`, `Choose.interleave[R <: Choose, A](a, b)`, `Choose.fairBind[R <: Choose, A, B](m)(f)`;
 `Search.bestOf[R, A](n)(gen: Eff[R, A])(ok: A => Boolean): Eff[R, Option[A]]`, `Search.all[R, A](n)(gen)(ok): Eff[R, Seq[A]]`, `Search.majority[A](answers: Seq[A]): Option[A]`.
+
+**Resilience** (module `okay-scala2-resilience`) — `Guards.breaker[A](b: Breaker)(prog: Eff[Async, A], failing: Either[Throwable, A] => Boolean = _.isLeft)`, `Guards.bulkhead[A](b: Bulkhead)(prog)`, `Guards.limiter[A](l: Limiter, key: String = "")(prog)`, `Guards.hedge[A](afterMillis: Long, max: Int = 2)(prog)`, `Guards.deadline[A](d: Deadline)(prog)`, `Guards.retry[A](policy: LazyList[Long])(prog)`, each an `Eff[Async, A]`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
