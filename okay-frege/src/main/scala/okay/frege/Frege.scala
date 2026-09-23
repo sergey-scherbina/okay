@@ -1,7 +1,8 @@
 package okay.frege
 
-import okay.{!, +, Free, Stage, TypeableK, effect, pure}
+import okay.{!, %, +, Chunk, ChunkBuf, Chunks, Free, Pure, Stage, Take, TypeableK, Writer, effect, pure}
 import okay.frege.Prog.{TOp, TProg}
+import frege.prelude.PreludeBase.{TList, TMaybe}
 import frege.prelude.PreludeBase.TST
 import frege.run8.Thunk
 import scala.reflect.ClassTag
@@ -50,25 +51,44 @@ object Frege {
    * A Frege `Prog ()` that uses `await` and `tell`, as a `Stage`. The
    * program is built when the stage starts, so one stage value runs
    * afresh each time; a program that returns early ends the stage, so
-   * `through` pulls nothing more from upstream.
+   * `through` pulls nothing more from upstream. It is `stageWith` at the
+   * empty row: `Pure` is `Nothing`, so `Writer % O + Pure` IS
+   * `Writer % O` and there is one walker, not two.
    */
   def stage[I, O: ClassTag](prog: => TProg[?], name: String = "a Frege stage"): Stage[I, O, Unit] =
-    def go[A](p: TProg[A]): Stage[I, O, Unit] =
+    stageWith[I, O, Pure](prog, name)
+
+  /**
+   * A Frege stage that also PERFORMS: `await` and `tell` are the stage's
+   * own, `perform op` an operation of the row F — a Frege filter that
+   * asks its threshold from `Reader`, a stage that sleeps between
+   * elements. The row is okay-stream's effectful stage row, so the
+   * result runs through `through`'s G overloads like any okay stage
+   * written that way.
+   */
+  def stageWith[I, O: ClassTag, F[+_]](prog: => TProg[?], name: String = "a Frege stage")
+                                     (using Row[F]): Unit ! (Take % I + (Writer % O + F)) =
+    type R = Take % I + (Writer % O + F)
+    def go[A](p: TProg[A]): Unit ! R =
       val done = p.asDone()
       if done != null then pure(())
       else
         val s = p.asStep()
         val op = s.mem1.call()
         if op.asAwait() != null then
-          Stage.await[I, O].flatMap(in => go(resume(s, in.fold(null)(boxed))))
+          effect[R, Option[I]](Take.Await()).flatMap(in => go(resume(s, in.fold(null)(boxed))))
         else if op.asTell() != null then
-          Stage.tell[I, O](as[O](op.asTell().mem1.call(), s"$name's tell")).flatMap(_ => go(resume(s, null)))
+          effect[R, Unit](Writer(as[O](op.asTell().mem1.call(), s"$name's tell"))).flatMap(_ => go(resume(s, null)))
         else if op.asLift() != null then
           val l = op.asLift()
           Free.delay(() => go(resume(s, lifted(l))))
-        else throw IllegalStateException(
-          s"okay.frege: $name performed ${op.asPerform().mem1.call().getClass.getName}, but a stage's " +
-            "operations are await and tell; run it with Frege.run for other operations")
+        else
+          val raw = op.asPerform().mem1.call()
+          operationOf[F](raw) match
+            case Some(o) => effect[R, Any](o).flatMap(x => go(resume(s, x)))
+            case None => throw IllegalArgumentException(
+              s"okay.frege: $name performed ${raw.getClass.getName}, which is not an operation of this " +
+                "stage's row (a stage's own are await and tell; stageWith[I, O, F] adds F)")
     Free.delay(() => go(prog))
 
   /**
@@ -133,4 +153,58 @@ object Frege {
           s"okay.frege: $name used ${if op.asAwait() != null then "await" else "tell"} outside a stage; " +
             "Frege.stage runs a program that awaits and tells")
     Free.delay(() => go(prog))
+
+  // ------------------------------------------------------------ data
+
+  /**
+   * A Frege list as okay `Chunks`, LAZILY: each chunk forces as many
+   * cells of the Frege list as it holds, when okay pulls it — an
+   * infinite Frege list is fine, and nothing past the last pulled chunk
+   * is ever evaluated. Each run of the result walks the list from its
+   * head again (a Frege list is an immutable, memoised value, so a
+   * second run is the same list, not a spent one).
+   */
+  def chunks[A: ClassTag](xs: => TList[?], size: Int = 64): Chunks[A] =
+    def go(rest: TList[?]): Chunks[A] = Free.delay { () =>
+      val buf = ChunkBuf[A](size)
+      var cur = rest
+      var i = 0
+      while i < size && cur.asCons() != null do
+        val c = cur.asCons()
+        buf(i) = as[A](c.mem1.call(), "a Frege list's element")
+        cur = c.mem2.call()
+        i += 1
+      if i == 0 then pure(())
+      else
+        val next = cur
+        Writer.tell(buf.take(i)).flatMap(_ => go(next))
+    }
+    Free.delay(() => go(xs))
+
+  /**
+   * okay `Chunks` as a Frege list, LAZILY: a cell is built when Frege
+   * forces it, and okay pulls the next chunk only when Frege forces past
+   * the last element of the current one. PURE by type — `Chunks` is
+   * `Writer % Chunk[A]` and nothing else — because an effect run from
+   * inside a Frege thunk is lazy IO (specs/frege.md): an effectful okay
+   * source is a `perform` in a `Prog`, not a list.
+   */
+  def list[A](c: Chunks[A]): TList[A] =
+    def cells(chunk: Chunk[A], i: Int, rest: Chunks[A]): TList[A] =
+      if i < chunk.length then
+        TList.DCons.mk[A](Thunk.`lazy`[A](chunk(i)), Thunk.shared[TList[A]](() => cells(chunk, i + 1, rest)))
+      else Chunks.pull(rest) match
+        case Some((next, more)) => cells(next, 0, more)
+        case None => TList.DList.mk[A]()
+    cells(Chunks.emptyChunk[A], 0, c)
+
+  /** Frege's `Maybe` as an `Option` */
+  def option[A: ClassTag](m: TMaybe[?]): Option[A] =
+    val j = m.asJust()
+    if j == null then None else Some(as[A](j.mem1.call(), "a Maybe's value"))
+
+  /** an `Option` as Frege's `Maybe` */
+  def maybe[A](o: Option[A]): TMaybe[A] = o match
+    case Some(a) => TMaybe.DJust.mk[A](Thunk.`lazy`[A](a))
+    case None => TMaybe.DNothing.mk[A]()
 }

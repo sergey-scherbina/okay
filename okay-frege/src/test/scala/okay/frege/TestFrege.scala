@@ -87,8 +87,10 @@ class TestFrege extends munit.FunSuite {
   test("await or tell outside a stage, and perform inside one, are refused by name") {
     val e1 = intercept[IllegalStateException](!.run(Reader.run(1L)(Frege.run[Reader % Long, String](P.usesIO.call()))))
     assert(e1.getMessage.contains("tell outside a stage"), e1.getMessage)
-    val e2 = intercept[IllegalStateException](own(emit(List(1L)), Frege.stage[Long, java.lang.Long](P.readerState.call())))
-    assert(e2.getMessage.contains("await and tell"), e2.getMessage)
+    // a plain stage is stageWith at the empty row: perform is an
+    // operation outside that row, refused by name with the road to take
+    val e2 = intercept[IllegalArgumentException](own(emit(List(1L)), Frege.stage[Long, java.lang.Long](P.readerState.call())))
+    assert(e2.getMessage.contains("stageWith[I, O, F] adds F"), e2.getMessage)
   }
 
   test("a Frege error surfaces at the step that forced it, with Frege's message") {

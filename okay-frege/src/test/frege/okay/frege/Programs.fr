@@ -77,3 +77,37 @@ countTo i n = if i >= n then return () else tell i >> countTo (i + 1) n
 --- existing Frege IO lifted in a program okay RUNS (no tell): its answer
 liftedAnswer :: Prog String
 liftedAnswer = fmap (++ "!") (liftIO (greetIO "okay"))
+
+pure native sleepOp  okay.frege.Ops.sleep   :: Long -> Operation Long
+
+--- STAGE 2: a stage that also performs — keeps the elements above a
+--- threshold it ASKS from okay's Reader (asked once per element, to
+--- show the operations interleave with the stage's own)
+aboveThreshold :: Prog ()
+aboveThreshold = do
+  m <- await
+  case m of
+    Nothing -> return ()
+    Just x  -> do
+      t <- perform (askOp ())
+      when ((x :: Long) > t) (tell x)
+      aboveThreshold
+
+--- Async from Frege: two sleeps, answering the milliseconds slept
+sleepTwice :: Prog Long
+sleepTwice = do
+  a <- perform (sleepOp 20)
+  b <- perform (sleepOp 20)
+  return (a + b)
+
+--- lists: an INFINITE Frege list, for okay to read partially
+squares :: [Long]
+squares = map (\x -> x * x) (iterate (+1) 1)
+
+--- lists: a Frege function over a list okay hands in — possibly infinite
+sumFirst :: Int -> [Long] -> Long
+sumFirst n xs = sum (take n xs)
+
+--- lists: Frege filtering an okay source, lazily, into a Frege list
+evensOf :: [Long] -> [Long]
+evensOf = filter even

@@ -824,7 +824,8 @@ lazy val okayClojure = (project in file("okay-clojure"))
  * src/main/frege BEFORE the Scala driver that reads its classes.
  */
 lazy val okayFrege = (project in file("okay-frege"))
-  .dependsOn(okay.jvm, okayStream.jvm)
+  // okayAsync + okayPlatform: `Ops.sleep` builds an Async operation on the platform Timer
+  .dependsOn(okay.jvm, okayStream.jvm, okayAsync.jvm, okayPlatform.jvm)
   .settings(
     name := "okay-frege",
     libraryDependencies ++= Seq(

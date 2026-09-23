@@ -1,6 +1,7 @@
 package okay.frege
 
-import okay.{Choose, Reader, State, Throws}
+import okay.{Async, Choose, Reader, State, Throws, Timer}
+import okay.given
 
 /**
  * The core effects' operations, for Frege to `perform` (specs/frege.md):
@@ -25,4 +26,14 @@ object Ops {
   def set(s: Long): AnyRef = State.Set[Any, Any](Long.box(s))
   def raise(e: String): AnyRef = Throws[String, Nothing](e)
   def choose2(a: Long, b: Long): AnyRef = Choose(Seq(Long.box(a), Long.box(b)))
+
+  /**
+   * `Async`: park for `millis` on the platform timer (cancellable, as
+   * `Async.sleep` is) and answer the milliseconds slept — an
+   * `Operation Long` rather than `()`, whose Java form in Frege is a
+   * `short` and would not take the boxed `Unit` a sleep answers.
+   */
+  def sleep(millis: Long): AnyRef =
+    val timer = summon[Timer]
+    Async.Await[java.lang.Long](k => timer.after(millis)(() => k(Right(Long.box(millis)))))
 }
