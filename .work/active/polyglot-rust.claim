@@ -1,3 +1,0 @@
-slug: polyglot-rust
-who: claude-opus-5.5 (interop session)
-what: okay-rust: a Rust kernel (argon2id) over the C ABI, bound through FFM, as an okay effect Kdf; byte-equal to BouncyCastle
