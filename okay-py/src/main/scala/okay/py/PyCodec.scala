@@ -168,6 +168,50 @@ object PyCodec {
 object Py {
   def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
 
+  /**
+   * A Python PROGRAM-AS-DATA (remote-foreign, specs/remote-foreign.md): the
+   * function returns `okay.done(v)` or `okay.perform(name, ...).then(f)`,
+   * each name a callback of `cbs`. The far side keeps every continuation
+   * of the run by id, so a handler that resumes twice (`Choice`) continues
+   * the same pure Python function twice — multi-shot across a process. The
+   * run holds its continuations until `forget`.
+   */
+  def program[Out: Schema](address: String): ProgramOf[Out] = ProgramOf(address)
+
+  private val runIds = java.util.concurrent.atomic.AtomicLong()
+
+  final class ProgramOf[Out: Schema](address: String):
+    def calling[F[+_]](cbs: Callbacks[F]): Starting[F] = Starting(cbs)
+
+    final class Starting[F[+_]](cbs: Callbacks[F]):
+      def apply(): PyRun[F, Out] = PyRun(runIds.incrementAndGet(), address, Vector.empty, cbs)
+      def apply[A: ToPy](a: A): PyRun[F, Out] = PyRun(runIds.incrementAndGet(), address, Vector(ToPy(a)), cbs)
+      def apply[A: ToPy, B: ToPy](a: A, b: B): PyRun[F, Out] =
+        PyRun(runIds.incrementAndGet(), address, Vector(ToPy(a), ToPy(b)), cbs)
+
+  /** one run of a program-as-data: the okay program that walks it, and
+   * the release of the continuations the far side keeps for it */
+  final class PyRun[F[+_], Out: Schema](val id: Long, address: String, args: Vector[PyValue], cbs: Callbacks[F]):
+    type R = F + PyEval
+
+    /** walk the far program node by node; each named operation is a
+     * callback of `cbs`, run under the caller's handlers */
+    def program: Either[Condition, Out] ! R =
+      def step(e: Either[Condition, PyNode]): Either[Condition, Out] ! R = e match
+        case Left(c) => pure[R, Either[Condition, Out]](Left(c))
+        case Right(PyNode.Done(v)) => pure[R, Either[Condition, Out]](PyCodec.decode[Out](v))
+        case Right(PyNode.Perform(name, as, k)) => cbs.get(name) match
+          case None => pure[R, Either[Condition, Out]](Left(Condition("NoCallback",
+            s"'$name' is not among this program's callbacks (${cbs.names.mkString(", ")})")))
+          case Some(cb) => cb.run(as).plus[PyEval].flatMap {
+            case Left(c) => pure[R, Either[Condition, Out]](Left(c))
+            case Right(a) => effect[R, Either[Condition, PyNode]](PyEval.Continue(id, k, a)).flatMap(step)
+          }
+      effect[R, Either[Condition, PyNode]](PyEval.Program(id, address, args)).flatMap(step)
+
+    /** drop every continuation the far side keeps for this run */
+    def forget: Unit ! PyEval = effect[PyEval, Unit](PyEval.Forget(id))
+
   /** a Python function over a LIST as an okay stage over chunks
    * (foreign-streaming): see `PyStream` */
   def stage[I: ToPy, O: Schema](address: String, chunk: Int = 64): Unit ! PyStream.Row[I, O] =

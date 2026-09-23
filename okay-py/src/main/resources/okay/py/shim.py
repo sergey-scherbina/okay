@@ -2,14 +2,15 @@
 # is a record on the wire, a frame only where a frame is asked; v3 =
 # foreign-callbacks: `start`/`resume` and the injected `okay` module; v4 =
 # foreign-object-handles: `hold`/`method`/`attr`/`release`, refs as values;
-# v5 = foreign-module-trait: `okay.describe`). Stdlib only, deliberately:
+# v5 = foreign-module-trait: `okay.describe`; v6 = remote-foreign: programs
+# as data, `program`/`continue`/`forget`, continuations kept by id). Stdlib only, deliberately:
 # json wire, one object per line each way; functions are ADDRESSED
 # as module:qualified.name and imported, never eval'd from source.
 # A failing call answers a condition and the worker survives; only a
 # broken wire ends the process.
 import sys, json, base64, importlib, importlib.metadata, math, dataclasses, types, inspect
 
-SHIM = 5
+SHIM = 6
 
 # a JSON number is a double: exact only up to 2**53
 EXACT = 2 ** 53
@@ -161,7 +162,53 @@ def _describe(module):
         out.append({"name": name, "params": params, "returns": _ann(sig.return_annotation), "doc": doc})
     return out
 
+# ---- programs as data (v6, remote-foreign) ------------------------------
+#
+# okay.done(v) and okay.perform(name, *args).then(f): a program is a TREE
+# whose continuations are plain functions. The shim hands okay one node at
+# a time and keeps each continuation in a table under an id, so okay may
+# continue the SAME id more than once (a Choice handler does) - as long as
+# the function is pure, every branch is exact. A run's continuations live
+# until okay forgets the run.
+
+class Done:
+    def __init__(self, value):
+        self.value = value
+    def then(self, f):
+        return f(self.value)
+
+class Step:
+    def __init__(self, name, args, k):
+        self.name, self.args, self.k = name, args, k
+    def then(self, f):
+        k = self.k
+        return Step(self.name, self.args, lambda x: k(x).then(f))
+
+def _done(value):
+    return Done(value)
+
+def _perform(name, *args):
+    return Step(name, list(args), _done)
+
+_runs = {}
+_next_kont = [0]
+
+def _node(run, p):
+    if isinstance(p, Done):
+        return {"done": enc(p.value)}
+    if isinstance(p, Step):
+        _next_kont[0] += 1
+        k = _next_kont[0]
+        _runs.setdefault(run, {})[k] = p.k
+        return {"perform": p.name, "args": [enc(a) for a in p.args], "k": k}
+    raise TypeError("a program answers okay.done(v) or okay.perform(name, ...), got %s"
+                    % type(p).__name__)
+
 okay_module = types.ModuleType("okay")
+okay_module.done = _done
+okay_module.perform = _perform
+okay_module.Done = Done
+okay_module.Step = Step
 okay_module.describe = _describe
 okay_module.call = _call
 okay_module.OkayError = OkayError
@@ -183,6 +230,18 @@ def serve(req):
             finally:
                 _offered.pop()
             reply({"id": rid, "ok": enc(out)})
+        elif op == "program":
+            f = resolve(req["fn"])
+            reply({"id": rid, "ok": _node(req["run"], f(*[dec(a) for a in req.get("args", [])]))})
+        elif op == "continue":
+            run, k = req["run"], req["k"]
+            if run not in _runs or k not in _runs[run]:
+                raise LookupError("continuation %s of run %s is not held here (forgotten, or another process)"
+                                  % (k, run))
+            reply({"id": rid, "ok": _node(run, _runs[run][k](dec(req.get("answer"))))})
+        elif op == "forget":
+            _runs.pop(req["run"], None)
+            reply({"id": rid, "ok": None})
         elif op == "hold":
             f = resolve(req["fn"])
             reply({"id": rid, "ok": hold(f(*[dec(a) for a in req.get("args", [])]))})

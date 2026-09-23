@@ -151,6 +151,20 @@ enum PyEval[+A] derives okay.Effect:
   case Attr(ref: PyRef, name: String) extends PyEval[Either[Condition, PyValue]]
   /** drop a held object; idempotent */
   case Release(ref: PyRef) extends PyEval[Unit]
+  /** start a program-as-data (remote-foreign): the function returns a
+   * Python `okay.done`/`okay.perform(...).then(...)` tree, handed over one
+   * node at a time under the run id the HOST chose */
+  case Program(run: Long, fn: String, args: Vector[PyValue]) extends PyEval[Either[Condition, PyNode]]
+  /** continue run `run` at continuation `k` with `answer`; the far side
+   * keeps `k`, so the same one may be continued again (multi-shot) */
+  case Continue(run: Long, k: Long, answer: PyValue) extends PyEval[Either[Condition, PyNode]]
+  /** drop every continuation of a run; idempotent */
+  case Forget(run: Long) extends PyEval[Unit]
+
+/** one node of a program-as-data (remote-foreign) */
+enum PyNode:
+  case Done(value: PyValue)
+  case Perform(name: String, args: Vector[PyValue], k: Long)
 
 /** where a call with callbacks stands (foreign-callbacks) */
 enum PyStep:
@@ -187,6 +201,9 @@ object PyEval:
       case Method(_, name, _, _) => s"method:$name"
       case Attr(_, name) => s"attr:$name"
       case Release(_) => "release"
+      case Program(_, fn, _) => s"program:$fn"
+      case Continue(_, _, _) => "continue"
+      case Forget(_) => "forget"
     def fingerprint[A](op: PyEval[A]): String = op match
       case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Frame(fn, in, args) =>
@@ -198,6 +215,9 @@ object PyEval:
       case Method(r, name, args, h) => s"method:${r.id}.$name/$h#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Attr(r, name) => s"attr:${r.id}.$name"
       case Release(r) => s"release:${r.id}"
+      case Program(run, fn, args) => s"program:$run:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Continue(run, k, a) => s"continue:$run/$k#${Wire.digest(Wire.enc(a))}"
+      case Forget(run) => s"forget:$run"
     def withKey[A](op: PyEval[A], key: String): PyEval[A] = op
     def perform[A](op: PyEval[A], inner: okay.Handler[PyEval]): (A, String) = op match
       case Call(fn, args) =>
@@ -224,6 +244,15 @@ object PyEval:
       case Release(r) =>
         inner.handle(Release(r))
         ((), "released")
+      case Program(run, fn, args) =>
+        val answer = inner.handle(Program(run, fn, args))
+        (answer, Wire.written(answer.map(Wire.encNode)))
+      case Continue(run, k, a) =>
+        val answer = inner.handle(Continue(run, k, a))
+        (answer, Wire.written(answer.map(Wire.encNode)))
+      case Forget(run) =>
+        inner.handle(Forget(run))
+        ((), "forgotten")
     def decode[A](op: PyEval[A], written: String): A = op match
       case Call(_, _) => Wire.read(written).map(Wire.dec)
       case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
@@ -233,6 +262,9 @@ object PyEval:
       case Method(_, _, _, _) => Wire.read(written).map(Wire.dec)
       case Attr(_, _) => Wire.read(written).map(Wire.dec)
       case Release(_) => ()
+      case Program(_, _, _) => Wire.read(written).flatMap(Wire.decNode)
+      case Continue(_, _, _) => Wire.read(written).flatMap(Wire.decNode)
+      case Forget(_) => ()
 
 
 /** the wire halves shared by every engine: PyValue <-> the tagged
@@ -277,6 +309,25 @@ private[py] object Wire {
         }.getOrElse(-1L))
     }
     case _ => None
+
+  /** a program node on the wire: `{"done": v}` or `{"perform": n, "args": [...], "k": k}` */
+  def encNode(n: PyNode): Json = n match
+    case PyNode.Done(v) => Json.JObj(Vector("done" -> enc(v)))
+    case PyNode.Perform(name, args, k) => Json.JObj(Vector(
+      "perform" -> Json.JStr(name), "args" -> Json.JArr(args.map(enc)), "k" -> Json.JNum(k.toDouble)))
+
+  def decNode(j: Json): Either[Condition, PyNode] = j match
+    case Json.JObj(fs) =>
+      val m = fs.toMap
+      (m.get("done"), m.get("perform")) match
+        case (Some(v), _) => Right(PyNode.Done(dec(v)))
+        case (_, Some(Json.JStr(name))) =>
+          val args = m.get("args").collect { case Json.JArr(xs) => xs.map(dec) }.getOrElse(Vector.empty)
+          m.get("k") match
+            case Some(Json.JNum(k)) => Right(PyNode.Perform(name, args, k.toLong))
+            case _ => Left(Condition("WireError", s"a perform without a continuation: $j"))
+        case _ => Left(Condition("WireError", s"not a program node: $j"))
+    case other => Left(Condition("WireError", s"not a program node: $other"))
 
   /** a held object's handle, or the refusal of an answer that is not one */
   def asRef(v: PyValue): Either[Condition, PyRef] = v match

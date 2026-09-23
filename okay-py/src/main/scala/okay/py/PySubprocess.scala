@@ -89,6 +89,16 @@ final class PySubprocess private (proc: Process,
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("attr"), "ref" -> Json.JNum(r.id.toDouble),
           "name" -> Json.JStr(name)))))(v => Right(Wire.dec(v)))
+      case PyEval.Program(run, fn, args) =>
+        answer(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
+          "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decNode)
+      case PyEval.Continue(run, k, a) =>
+        answer(exchange(Json.JObj(Vector(
+          "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
+          "answer" -> Wire.enc(a)))))(Wire.decNode)
+      case PyEval.Forget(run) =>
+        val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("forget"), "run" -> Json.JNum(run.toDouble))))
       case PyEval.Release(r) =>
         // idempotent on both sides: releasing twice, or a ref the
         // process never held, is not an error worth a program's attention
@@ -126,7 +136,7 @@ final class PySubprocess private (proc: Process,
 
 object PySubprocess:
 
-  val ShimVersion = 5
+  val ShimVersion = 6
 
   /**
    * Start a worker: the configured interpreter (resolved against

@@ -43,6 +43,8 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
    * worker an unpinned call gets. Ref ids are renamed pool-wide.
    */
   private val refs = java.util.concurrent.ConcurrentHashMap[Long, (PySubprocess, Long)]()
+  /** a program-as-data run's continuations live in one worker (remote-foreign) */
+  private val runs = java.util.concurrent.ConcurrentHashMap[Long, PySubprocess]()
   private val nextRef = java.util.concurrent.atomic.AtomicLong()
 
   /** the same shape as one worker's handler — programs cannot tell */
@@ -52,6 +54,12 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
         val (w, local, fromPool) = Option(parked.remove(k)).getOrElse(
           throw IllegalStateException(s"okay.py: resume $k matches no waiting call (resumed twice?)"))
         dialogue(w, fromPool)(_.handle(PyEval.Resume(local, a)))
+      case PyEval.Continue(run, k, a) =>
+        val w = Option(runs.get(run)).getOrElse(
+          throw IllegalArgumentException(s"okay.py: run $run is not known to this pool (forgotten?)"))
+        w.synchronized(w.handler.handle(PyEval.Continue(run, k, local(a))))
+      case PyEval.Forget(run) =>
+        Option(runs.remove(run)).foreach(w => w.synchronized(w.handler.handle(PyEval.Forget(run))))
       case PyEval.Release(r) =>
         Option(refs.remove(r.id)).foreach { (w, local) =>
           w.synchronized(w.handler.handle(PyEval.Release(PyRef(local, r.pyType))))
@@ -87,7 +95,10 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
         case v => v
       }
     case PyEval.Attr(r, name) => w.synchronized(w.handler.handle(PyEval.Attr(localRef(r), name)))
-    case PyEval.Resume(_, _) | PyEval.Release(_) =>
+    case PyEval.Program(run, fn, args) =>
+      runs.put(run, w): Unit
+      w.synchronized(w.handler.handle(PyEval.Program(run, fn, args.map(local))))
+    case PyEval.Resume(_, _) | PyEval.Release(_) | PyEval.Continue(_, _, _) | PyEval.Forget(_) =>
       throw IllegalStateException("unreachable: resume and release are routed by the handler")
 
   /** the refs an operation names */
@@ -98,7 +109,8 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
     case PyEval.Hold(_, args) => args.flatMap(refsIn)
     case PyEval.Method(r, _, args, _) => r.id +: args.flatMap(refsIn)
     case PyEval.Attr(r, _) => Vector(r.id)
-    case PyEval.Resume(_, _) | PyEval.Release(_) => Vector.empty
+    case PyEval.Program(_, _, args) => args.flatMap(refsIn)
+    case PyEval.Resume(_, _) | PyEval.Release(_) | PyEval.Continue(_, _, _) | PyEval.Forget(_) => Vector.empty
 
   private def refsIn(v: PyValue): Vector[Long] = v match
     case PyValue.Ref(r) => Vector(r.id)
@@ -149,6 +161,7 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
    * name), and a fresh worker takes its place in the pool */
   private def retire(w: PySubprocess): Unit =
     refs.entrySet.removeIf(_.getValue._1 eq w): Unit
+    runs.entrySet.removeIf(_.getValue eq w): Unit
     // a worker reached through a ref may still be IN the pool: take it
     // out, or the pool would hold a corpse beside its replacement
     pool.remove(w): Unit
