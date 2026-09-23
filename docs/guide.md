@@ -501,6 +501,25 @@ throws) — and a `Gen` is a value: reading it twice runs the body twice
 (`toLazyList` memoises). The whole story, with the papers, is in
 [direct style](direct-style.md#generators-yield-pulled-by-the-reader).
 
+**`zip`, without materializing either side** — the one construction
+fold-based fusion cannot express (element-wise stages fold ONE source
+to completion; `zip` needs both advanced in lockstep), and strymonas's
+own hard case (Kiselyov, Biboudis, Palladinos & Smaragdakis, "Stream
+fusion, to completeness", POPL 2017): zipping a generator built by
+`flatMap` — several elements per outer step — without a list in
+between:
+
+```scala
+val left = Gen(1, 2, 3, 4).flatMap(i => Gen.from(Vector.fill(i)(i)))   // 1, 2,2, 3,3,3, 4,4,4,4
+val zipped = left.zip(Gen('a', 'b', 'c', 'd', 'e', 'f')).toList
+// zipped == List(1 -> 'a', 2 -> 'b', 2 -> 'c', 3 -> 'd', 3 -> 'e', 3 -> 'f')
+```
+
+The left side would run forever if it came from `Gen.unfold` with no
+end — and does, correctly, since `zip` pulls it one step at a time
+through the same `.resume` every other reader uses, with no special
+case for where a step came from (specs/strymonas-zip-fusion.md).
+
 Why `done` and not a step that answers `Either` at the bottom: a
 `Left` per element is an allocation in every consumer, and this
 library has measured that price out of every walk it has (`split`

@@ -81,6 +81,22 @@ final class Gen[W](val chain: Gen.Chain[W]) extends AnyVal:
   def ++(h: Gen[W]): Gen[W] = new Gen(Gen.Chain.Cat(chain, h.chain, Gen.Xf.Id[W]()))
   def zipWithIndex: Gen[(W, Int)] = new Gen(chain.andThen(Gen.Xf.Indexed[W]()))
 
+  /**
+   * STRYMONAS'S HARD CASE (specs/strymonas-zip-fusion.md; Kiselyov,
+   * Biboudis, Palladinos & Smaragdakis, "Stream fusion, to
+   * completeness", POPL 2017): zip two generators element by element,
+   * stopping when either ends. Not an `Xf` stage — a stage transforms
+   * ONE chain's own elements; zipping needs both sides' NEXT tell at
+   * once, which is pulled directly from each side's `program` (see
+   * `Gen.zipping`'s doc for why that reaches through a `flatMap` with
+   * no special case). Fused with whatever built either side: no `Gen`
+   * wrapper per pair, one tell per pair, and everything chained AFTER
+   * `zip` gets the same `Xf` fusion any other source does.
+   */
+  def zip[V](other: Gen[V]): Gen[(W, V)] = Gen.fromProgram(Gen.zipping(program, other.program))
+  /** `zip`, then apply f to each pair in the same pass */
+  def zipWith[V, U](other: Gen[V])(f: (W, V) => U): Gen[U] = zip(other).map(f.tupled)
+
   // ---- readers: ONE walk of the source, the chain applied per
   // element; every one stops the body where it has read enough
   /** the general stopping reader (specs/fold-until.md): `done` is
@@ -407,6 +423,47 @@ object Gen:
               case Writer.Say(_) => Free.delay(() => loop(n - 1)(k(()))) }
           { _ => ended[W] }
     loop(n)(g)
+
+  /**
+   * ONE STEP of a chain's underlying program, resumed as far as the
+   * next tell: the value and the rest, or `None` at the end (`Return`
+   * or `Stop`) — the same shape `Stepper.advance` holds in a `cont`
+   * var, as a pure function instead. Works uniformly on ANY program
+   * this file builds, `flatMap`'s spliced ones included: `.resume`
+   * walks past however many `Delay`/`Bind` nodes a `splice`/`Cat`
+   * needed to reach the next real tell, so a step through a fused
+   * `flatMap` costs exactly what a step through a plain source does.
+   * That uniformity is `zipping`'s whole trick — see its own doc.
+   */
+  private def pull[A](x: Unit ! Row[A]): Option[(A, Unit ! Row[A])] = (x.resume: @unchecked) match
+    case Return(_) => None
+    case Inject(e) => split[Writer % A, Stop](e)
+      { case Writer.Say(w) => Some((w, pure(()))) } { _ => None }
+    case Bind(Inject(e), k) => split[Writer % A, Stop](e)
+      { w0 => (w0: @unchecked) match { case Writer.Say(w) => Some((w, k(()))) } }
+      { _ => None }
+
+  /**
+   * `zip`, as a walk: pull one element from EACH side and pair them,
+   * stopping the moment either ends. `pull` does not know or care
+   * whether `pa`/`pb` came from `Gen.from`, a fused `flatMap`, a
+   * `Cat`, or another `zip` — it resumes ONE STEP of whatever program
+   * it is handed, which is exactly what makes THIS zip work through
+   * a flatMap with no special case, the shape strymonas's paper
+   * names as the hard one (a `zip` whose side was built by `flatMap`,
+   * needing the fused inner loop's OWN next element without
+   * materializing it first). The recursive call sits inside `say`'s
+   * `flatMap`, so it costs a stack frame only in the DRIVER that
+   * resumes this program — nothing here recurses at build time.
+   */
+  private[okay] def zipping[A, B](pa: Unit ! Row[A], pb: Unit ! Row[B]): Unit ! Row[(A, B)] =
+    def loop(x: Unit ! Row[A], y: Unit ! Row[B]): Unit ! Row[(A, B)] =
+      pull(x) match
+        case None => ended[(A, B)]
+        case Some((a, xRest)) => pull(y) match
+          case None => ended[(A, B)]
+          case Some((b, yRest)) => say((a, b)).flatMap(_ => loop(xRest, yRest))
+    loop(pa, pb)
 
   /** the walk, from a state: where it ended and whether a `Stop` did */
   private[okay] def readState[W, S, R](g: Unit ! Row[W])(K: FoldUntil[W, S, R])(s0: S): Halt[S] =
