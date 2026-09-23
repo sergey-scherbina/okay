@@ -715,6 +715,10 @@ same material with the measurements attached.
   `contentEncoding: base64` in a tool's JSON Schema. The cost it
   carries honestly: `Array[Byte]` has reference equality, so a product
   holding one is not a value for `==`.
+- **`LocalFacilitator`** (okay-x402-evm) — x402's `exact`/EVM payment
+  verified offline (the signature recovered to its payer, the window,
+  the recipient, the amount) before a remote facilitator is asked for
+  what needs the chain; the reference implementation's refusal codes.
 - **`Gate`** (okay-x402) — an okay-http route behind x402: 402 with
   what it accepts, then match, claim (no replay), verify, run, and settle
   only a 2xx answer. `Paying(http, policy, payer)` is the client half;

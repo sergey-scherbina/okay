@@ -58,7 +58,8 @@ facilitator API — `POST /verify` and `POST /settle` with
 `{paymentPayload, paymentRequirements}`, `GET /supported`. A transport
 failure or an unreadable answer is a REFUSAL carrying its reason, never
 a payment taken as good. Verifying `exact` locally needs keccak-256,
-secp256k1 recovery and EIP-712, which okay does not have yet.
+secp256k1 recovery and EIP-712: [okay-x402-evm](okay-x402-evm.md) does it,
+as `LocalFacilitator` in front of the remote one.
 
 **The wire.** Every object has a reader and a writer over okay's `Json`
 (`X402.paymentRequired`, `.paymentPayload`, `.settlement`, …, and

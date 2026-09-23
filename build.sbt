@@ -2470,6 +2470,21 @@ lazy val okayX402 = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * okay-x402-evm (specs/x402.md stage 2a): verifying x402's `exact` scheme
+ * on EVM locally — keccak-256, secp256k1 recovery, EIP-712 — so a server
+ * need not take a facilitator's word for a signature. A JVM satellite
+ * because BouncyCastle is its crypto, as okay-security-argon2 carries its
+ * own; okay-x402 stays dependency-free and cross-built.
+ */
+lazy val okayX402Evm = (project in file("okay-x402-evm"))
+  .dependsOn(okayX402.jvm)
+  .settings(
+    name := "okay-x402-evm",
+    libraryDependencies += "org.bouncycastle" % "bcprov-jdk18on" % "1.78.1",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayHttp = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-http"))
@@ -2744,7 +2759,7 @@ lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
-    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js,
+    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
