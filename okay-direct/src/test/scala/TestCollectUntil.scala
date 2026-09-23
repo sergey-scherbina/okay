@@ -92,6 +92,34 @@ class TestCollectUntil extends munit.FunSuite {
     assertEquals(!.run(Delim.collectUntil[Int, Option[Int], Option[Int], okay.Pure](using FoldUntil.find[Int](_ > 1))(walk(t))), Some(2))
   }
 
+  test("docs/tutorial.md §13, verbatim") {
+    enum Tree[+A]:
+      case Leaf(a: A)
+      case Node(l: Tree[A], r: Tree[A])
+
+    def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! (Delim + Pure) = direct:
+      t match
+        case Tree.Leaf(a)    => !Delim.emit(a)
+        case Tree.Node(l, r) => !walk(l); !walk(r)
+
+    val tree = Tree.Node(Tree.Node(Tree.Leaf(1), Tree.Leaf(2)), Tree.Node(Tree.Leaf(3), Tree.Leaf(4)))
+
+    assertEquals(!.run(Delim.collect[Int, Pure](walk(tree))), List(1, 2, 3, 4))
+    assertEquals(!.run(Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree))), Vector(1, 2))
+    assertEquals(!.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree))), true)
+    // the claims in the comments, counted through a twin of the walk
+    var visited = 0
+    def counted(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! (Delim + Pure) = direct:
+      t match
+        case Tree.Leaf(a)    => visited += 1; !Delim.emit(a)
+        case Tree.Node(l, r) => !counted(l); !counted(r)
+    val _ = !.run(Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(counted(tree)))
+    assertEquals(visited, 2, "the walk stops at its second leaf")
+    visited = 0
+    val _ = !.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(counted(tree)))
+    assertEquals(visited, 3, "true, after three leaves")
+  }
+
   test("collectingUntil nests under a delimited, and stops there too") {
     var n = 0
     val prog: Vector[Int] ! okay.Pure = Delim.delimited[Vector[Int], okay.Pure]:

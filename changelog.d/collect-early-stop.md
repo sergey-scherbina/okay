@@ -22,6 +22,6 @@ reason. `TestCollectUntil` (okay-direct, 8: take(3) over a tree walk
 visits 3 leaves, find(_ == 5) visits 5, take(0) visits 0, never-done
 equals collect, the operator's running-sum `until`, 10 000 emits on
 the default stack, collectingUntil under delimited, the docs snippet
-verbatim); every existing collect suite unchanged, 48 green. Docs:
+verbatim, the tutorial §13 snippet verbatim); every existing collect suite unchanged, 48 green. Docs: tutorial §13,
 continuations-in-practice §2 and the table, typepedia, theory ch. 2;
-specs/delimited-control.md box closed. Landed as 5093ce53.
+specs/delimited-control.md box closed. Landed as f1f30f33.

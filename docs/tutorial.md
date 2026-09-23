@@ -409,6 +409,36 @@ four classic operators are there: `shift`, `shift0`, `control`,
 `control0` (they are two independent bits — does the body keep the
 delimiter, does the continuation re-install it).
 
+The library names the shapes people actually write, so a raw `shift`
+is rarely needed. `collect`/`emit` is the generator above with the
+evidence typed: a producer that pushes — a tree walk — is read as a
+list, and stays an ordinary recursion that knows nothing about lists.
+`collectUntil` reads the SAME producer until a `FoldUntil` (§2) has
+seen enough, and the rest of the walk never runs:
+
+```scala
+enum Tree[+A]:
+  case Leaf(a: A)
+  case Node(l: Tree[A], r: Tree[A])
+
+def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! (Delim + Pure) = direct:
+  t match
+    case Tree.Leaf(a)    => !Delim.emit(a)
+    case Tree.Node(l, r) => !walk(l); !walk(r)
+
+val tree = Tree.Node(Tree.Node(Tree.Leaf(1), Tree.Leaf(2)), Tree.Node(Tree.Leaf(3), Tree.Leaf(4)))
+
+!.run(Delim.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
+!.run(Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
+!.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
+```
+
+`collect` builds its list on the way back, in the continuation;
+`collectUntil` passes the fold's state on the way down as the
+prompt's answer, so a stop is just a continuation never called
+(docs/continuations-in-practice.md §2 has the reasoning, theory ch. 2
+the theorem it rests on).
+
 ## 14. An agent is a program
 
 ```scala

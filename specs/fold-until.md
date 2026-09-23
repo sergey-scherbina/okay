@@ -328,7 +328,7 @@ handed a fold where a `Foldable` was expected.
 A push-side consumer (collect-early-stop, 2026-09-23):
 `Delim.collectUntil(using fo)(body)` stops a `collect`'s producer
 where the fold is done — the state passed down through the prompt's
-answer-function; `TestCollectUntil` (okay-direct, 8).
+answer-function; `TestCollectUntil` (okay-direct, 9).
 
 Stage 3's first production consumer (wire-serve-transduce-until,
 2026-09-23): `Wire.serveClosing` — the server-driven UI session,
