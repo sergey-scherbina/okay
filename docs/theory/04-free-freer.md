@@ -20,15 +20,17 @@ that operations must be *shaped* to carry their continuation. Their
 **freer** monad stores the continuation *beside* the operation instead:
 
 ```scala
-// Free.scala:29
-enum Free[F[+_], A] {
-  case Pure(a: A)
+// Free.scala:82
+enum Free[F[+_], +A] {
+  case Return(a: A)
   // an operation, bare
   case Inject(a: F[A])
-  case Bind[F[+_], A, B](a: Free[F, A], f: A => Free[F, B]) ...
+  case Bind[F[+_], A, B](a: Free[F, A],
+                         f: A => Free[F, B]) extends Free[F, B]
+  case Delay(thunk: () => Free[F, A])
 }
-// Free.scala:22 — the point, in one comment:
-// "Free[F, *] is a Monad for every signature F, with NO constraint on F"
+// Free.scala:75 — the point, in one comment:
+// "Free[F, *] is a Monad for every signature F, with no constraint on F"
 ```
 
 Okay is freer, and the practical payoff shows all over the tree: a
@@ -53,7 +55,7 @@ and Kiselyov's "Reflection without remorse" \[[van der Ploeg & Kiselyov
 Haskell adopted.
 
 Okay takes a third road, already visible in chapter 1: **normalize in
-the one interpreter**. `Free.resume` (`Free.scala:127`) is a
+the one interpreter**. `Free.resume` (`Free.scala:137`) is a
 `@tailrec` member of the enum — a member wins resolution, so every
 interpreter in the library reaches the one loop — whose first two
 cases *are* the monad laws used as rewrite rules:
@@ -62,17 +64,17 @@ cases *are* the monad laws used as rewrite rules:
 // associativity
 case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume
 // left identity
-case Bind(Pure(a), f)    => f(a).resume
+case Bind(Return(a), f) => f(a).resume
 // a deferred subprogram: forced here, continued AS IS
-case Delay(t)            => t().resume
-case Bind(Delay(t), g)   => Bind(t(), g).resume
+case Delay(t) => t().resume
+case Bind(Delay(t), g) => Bind(t(), g).resume
 ```
 
 Every pass rotates left-nests right and discharges pure prefixes, so
 an interpreter only ever confronts three normal shapes — `Return(a)`,
 `Inject(e)`, `Bind(Inject(e), k)` — and handler code across the
 library is a three-case match over exactly those (`Free.fold`,
-`Free.scala:143`, is the model; the comment on `resume` states the
+`Free.scala:153`, is the model; the comment on `resume` states the
 invariant and why every such match is written `@unchecked`). The
 fourth case, `Delay`, is the trampoline: `!.tailcall` builds one, a
 capturing handler reifies the rest of the program into one, and the

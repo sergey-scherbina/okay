@@ -92,18 +92,25 @@ class TestDocSnippets extends munit.FunSuite:
   //    example means pinning it — which is the rule.
   //  - a debt entry that is pinned now (or gone) is red too, so the file
   //    only shrinks: delete the entry, the check has earned it.
-  // `OKAY_SNIPPET_DEBT=write` regenerates the file from the tree — for
-  // SHRINKING it after pinning; growing it by hand defeats the check.
+  // `OKAY_SNIPPET_DEBT=write` rewrites the file after pinning, and it
+  // can only SHRINK it: the new file is the old debt that is still
+  // unpinned, never a line the old one did not hold — so a regenerate
+  // cannot launder the lane's own drift into the debt. (The first file
+  // was written once by a full dump, 2026-09-23; that door is closed.)
 
   private val debtFile: Path = root.resolve("docs/snippet-debt.txt")
 
-  /** every test and benchmark tree, down to three levels
-   * (`scala2/okay-scala2/probe/src/test` is the deepest there is) */
+  /** every test, benchmark and library tree, down to three levels
+   * (`scala2/okay-scala2/probe/src/test` is the deepest there is).
+   * `src/main` counts because a theory page QUOTES the library
+   * (`// Free.scala:82`), and a quotation must match what it quotes —
+   * ch. 4 still showed `case Pure(a: A)` on an invariant `Free` a
+   * week after both had changed. */
   private lazy val allSourceLines: Set[String] =
     val one = dirs(root)
     val two = one.flatMap(dirs)
     val tops = Vector(root) ++ one ++ two ++ two.flatMap(dirs)
-    sourceLines(tops.flatMap(d => Vector("src/test", "src/jmh").map(d.resolve))
+    sourceLines(tops.flatMap(d => Vector("src/test", "src/jmh", "src/main").map(d.resolve))
       .filter(Files.isDirectory(_)).map(root.relativize(_).toString) :+ "scripts")
 
   private def dirs(p: Path): Vector[Path] =
@@ -163,12 +170,13 @@ class TestDocSnippets extends munit.FunSuite:
   test("RATCHET: no example line outside the recorded debt is unpinned") {
     val now = unpinned
     if sys.env.get("OKAY_SNIPPET_DEBT").contains("write") then
+      val old = readDebt
       val header = Vector(
         "# doc-snippets-pin-all: example lines in docs/ that no test or benchmark",
         "# source contains, recorded when the check began (TestDocSnippets). This",
         "# file only SHRINKS: pin a line (copy the tested line into the page, or the",
         "# page's line into a test) and delete its entry here.")
-      val body = now.map((d, _, t) => s"$d\t$t").distinct.sorted
+      val body = now.collect { case (d, _, t) if old((d, t)) => s"$d\t$t" }.distinct.sorted
       Files.write(debtFile, (header ++ body).asJava): Unit
     val debt = readDebt
     val fresh = now.collect { case (d, n, t) if !debt((d, t)) => s"$d:$n: $t" }
