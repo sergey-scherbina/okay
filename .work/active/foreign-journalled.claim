@@ -1,3 +1,0 @@
-slug: foreign-journalled
-who: claude-opus-5.5 (interop session)
-what: Journalled moves to okay-codec; Journalled[PyEval] and [REval]; spec for the whole py/r high-level series
