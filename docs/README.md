@@ -254,6 +254,7 @@ API reference, gotchas.
 | [`okay-scala2-sql`](modules/okay-scala2-sql.md) | okay-sql from Scala 2.13: `Db` — rows, statements, verify and transactions as `Eff` |
 | [`okay-scala2-agent`](modules/okay-scala2-agent.md) | okay-agent from Scala 2.13: `Chat` with a persistent conversation, `Model`, `Tools`, `Policy` |
 | [`okay-scala2-ui`](modules/okay-scala2-ui.md) | okay-ui from Scala 2.13: the Elm loop as an `Eff`, terminal and Swing hosts, a scripted host for tests |
+| [`okay-scala2-ws`](modules/okay-scala2-ws.md) | WebSockets from Scala 2.13: a client, sessions as folds (replayable without a socket), a server over okay-jetty |
 | [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |

@@ -1034,6 +1034,11 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   capture `scala.App`. From Scala 2 a Scala 3 enum case constructor is
   typed as the case, not the enum, so `Source[Event](...)` needs its
   type argument.
+- **`WebSocket`, `WsSession`, `WsServer`** (okay-scala2-ws) — a server
+  session is a fold `(S, Frame) => (S, Seq[Frame])` over
+  `Stage.transduce`, and `replay` runs it without a socket. okay's
+  `Chunk` alias is invisible from Scala 2, but its expansion
+  `ArraySeq` is visible, so a Scala 2 caller passes an `ArraySeq[Byte]`.
 - **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.

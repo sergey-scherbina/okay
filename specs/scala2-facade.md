@@ -394,6 +394,22 @@ an `Eff` capability, with okay-agent's search strategies over it
 (`scala2-choose-search`); okay-ui's `Dialog`/`Nav` scenarios
 (`scala2-dialog-nav`).
 
+## Stage 12 — WebSockets
+Probed from scalac 2.13.18: okay-http's `Frame` is readable and
+matchable, and so are `Socket`, `Transports.sockets()` and okay-jetty's
+`Jetty`. A socket's operations answer programs, and a server session is
+a `Stage` (a program). okay-scala2-ws: `WebSocket.connect` gives a
+`WsClient` (`Eff` operations, a `Source` of frames); `WsSession.fold`
+builds a session over `Stage.transduce`; `WsSession.replay` runs one
+without a socket; `WsServer.use` serves routes and upgrades together on
+okay-jetty. Its own module, so okay-scala2-http does not pull Jetty.
+
+- [x] a fold session, replayed without a socket, answers each text frame
+      and ignores the rest
+- [x] binary frames to and from `Array[Byte]`
+- [x] (Live, run and green) a client talks to a fold session over a real
+      socket, and the same server answers an ordinary route
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -558,3 +574,10 @@ an `Eff` capability, with okay-agent's search strategies over it
   HTTP, SQL, agents, UI) are now covered.
 - STAGE 11 (2026-09-23). `FormState` in okay-scala2-ui.
   `TestFormFromScala2` has 5 tests, all green on their first run.
+- STAGE 12 (2026-09-23). okay-scala2-ws. 3 socket-free tests in the gate,
+  and 1 Live test, run and green, against a real Jetty and a client
+  socket. Found on the way: `okay.Chunk` (a Scala 3 top-level alias) is
+  invisible from Scala 2 ("type Chunk is not a member of package
+  okay"), but the type it names, `ArraySeq`, is not. So a Scala 2
+  caller builds `Frame.Ping(ArraySeq[Byte](...))` directly, and the
+  facade adds `binary`/`bytes` for `Array[Byte]`.

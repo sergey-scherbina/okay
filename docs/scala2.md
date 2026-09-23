@@ -28,6 +28,7 @@ Contents:
 8d. [Agents: a model, tools, a conversation](#8d-agents-a-model-tools-a-conversation)
 8e. [UI: the view as a value, the loop as a fold](#8e-ui-the-view-as-a-value-the-loop-as-a-fold)
 8f. [Forms from a Schema](#8f-forms-from-a-schema)
+8g. [WebSockets](#8g-websockets)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -758,6 +759,62 @@ assertEquals(done.decoded, Right(Signup("Cy", 5, newsletter = false)))
 - `FormState.of(a)` starts filled from a value. `withLabels` gives
   fields human names.
 
+## 8g. WebSockets
+
+Module `okay-scala2-ws`. okay-http's `Frame` is readable from Scala 2,
+and matching on it works. A socket's operations and a server session
+(a `Stage[Frame, Frame, Unit]`, which is a program) are not usable
+directly. So the client here is a set of `Eff` operations and a
+`Source`, and a server session is written as a fold, the way Scala 2
+writes a state machine. The session below is copied from
+`okay-scala2/probe/src/test/scala/TestWsFromScala2.scala`:
+
+```scala
+// each text frame answered with how many have arrived so far
+val counting: WsSession = WsSession.fold(0) {
+  case (n, Frame.Text(t)) => (n + 1, Seq(Frame.Text(s"${n + 1}: $t")))
+  case (n, _) => (n, Seq.empty)
+}
+```
+
+and served, then talked to, from the same file's live suite:
+
+```scala
+val routes = Routes { case GET(Path("health")) => Eff.pure(Response.text("ok")) }
+val got = Eff.runAsync(WsServer.use(0)(routes)({ case _ => counting }) { port =>
+  for {
+    ws <- WebSocket.connect("ws://127.0.0.1:" + port + "/count")
+    _ <- ws.sendText("x")
+    _ <- ws.sendText("y")
+    replies <- ws.texts.take(2).runCollect
+    _ <- ws.close()
+    health <- Client().get("http://127.0.0.1:" + port + "/health")
+  } yield (replies, health.text)
+})
+assertEquals(got, (Vector("1: x", "2: y"), "ok"))
+```
+
+- `WsSession.fold(init)(step)` answers each frame the client sends with
+  the next state and the frames to send back. Underneath is
+  okay-stream's `Stage.transduce`, the same shape a Scala 3 session
+  has. `WsSession.echo` sends text frames straight back.
+- `WsSession.replay(session, frames)` runs a session with no socket and
+  returns what it would send. A session is a pure program, so this is
+  exactly what a client would receive, which makes it the way to test
+  one.
+- `WsServer.use(port)(routes)(sessions)(body)` serves ordinary requests
+  (the `Routes` of section 8b) and WebSocket upgrades on the same port.
+  Underneath is okay-jetty, and a request no session matches is refused
+  the upgrade.
+- `WebSocket.connect(url)` opens a client over okay-http's JDK transport:
+  `send`, `sendText`, `frames`, `texts`, `close`.
+- A binary frame carries okay's `Chunk`, a Scala 3 alias that Scala 2
+  cannot see. The type it names, `ArraySeq[Byte]`, Scala 2 can see:
+  `Frame.Ping(ArraySeq[Byte](1, 2))` works. `WebSocket.binary(bytes)` and
+  `WebSocket.bytes(frame)` convert to and from `Array[Byte]`.
+- The live suite binds a port, so it is tagged `Live`. It was run and
+  passed while this was written.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -808,9 +865,9 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
   for-comprehensions instead. It is not planned.
 - **The rest of the library.** Codecs (section 8a), HTTP (8b), SQL
   (8c), agents (8d) and UI (8e) are covered. Several pieces are not
-  wrapped yet: WebSockets, okay-agent's search strategies
-  (`Search.bestOf` and friends), durable agents, and okay-ui's
-  `Dialog`/`Nav` (forms are, in section 8f). They are queued in the
+  wrapped yet: okay-agent's search strategies (`Search.bestOf` and
+  friends), durable agents, and okay-ui's `Dialog`/`Nav`. Forms and
+  WebSockets are wrapped (sections 8f and 8g). They are queued in the
   sprint. The remaining modules are not wrapped either.
 - **Fair search.** okay's `Logic.interleave`, `fairBind` and `observe`
   need a runtime test for the REST of the effect row. On the Scala 2

@@ -1,1 +1,0 @@
-- [ ] **scala2-ws** — WebSockets for Scala 2.13: a client socket and a server session over okay-http's Ws (a session is a Stage[Frame, Frame, A], a program), as Eff/Source; probe Frame/Socket/Sockets first (specs/scala2-facade.md, stage 11). Operator: "Продолжай" (2026-09-23), after the five named areas landed.

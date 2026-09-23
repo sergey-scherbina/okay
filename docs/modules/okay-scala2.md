@@ -17,6 +17,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Db` (module `okay-scala2-sql`) | okay-sql from 2.13: `rows`/`all`/`update`/`verify`/`transaction` as `Eff` and `Source`; `okay.sql.SqlValue`, `Bad`, `Drift`, `Isolation` are used directly |
 | `Chat`, `Model`, `Tools`, `Policy`, `Call` (module `okay-scala2-agent`) | okay-agent from 2.13: the agent loop with a persistent conversation, a scripted or real model, tools decoded by `Schema`, the context policy; `okay.agent.Turn` and `Reply` are used directly |
 | `UiApp`, `UiHost`, `ScriptedHost` (module `okay-scala2-ui`) | okay-ui from 2.13: the loop as an `Eff`, terminal and Swing hosts, a scripted host for tests; `okay.ui.Ui`, `Event` and `Frame` are used directly |
+| `WebSocket`, `WsClient`, `WsSession`, `WsServer` (module `okay-scala2-ws`) | WebSockets from 2.13: a client as `Eff`/`Source`, a server session as a fold, replayable without a socket; `okay.http.Frame` is used directly |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -376,6 +377,11 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 `UiHost.terminal()`, `UiHost.swing(root: java.awt.Container)`;
 `ScriptedHost(events: Event*)` / `ScriptedHost.open(events: Event*)` (without the closing `Closed`), `.host: UiHost`, `.frames: Vector[Ui]`.
 `FormState.blank[A](implicit Schema[A])`, `FormState.of[A](a: A)`; `form.view: Ui`, `form.edit(e: Event): FormState[A]`, `form.errors: Vector[(String, String)]`, `form.decoded: Either[String, A]`, `form.json: String`, `form.withLabels(labels: Map[String, String])`.
+
+**WebSockets** (module `okay-scala2-ws`) — `WebSocket.connect(url): Eff[Async, WsClient]`, `WebSocket.binary(bytes: Array[Byte]): Frame`, `WebSocket.bytes(f: Frame): Option[Array[Byte]]`;
+`WsClient`: `send(f: Frame)`, `sendText(text)`, `close()` (each `Eff[Async, Unit]`), `frames: Source[Frame]`, `texts: Source[String]`;
+`WsSession.fold[S](init: S)(step: (S, Frame) => (S, Seq[Frame])): WsSession`, `WsSession.echo`, `WsSession.replay(s, incoming: Seq[Frame]): Vector[Frame]`;
+`WsServer.use[A](port)(routes: Request => Eff[Async, Response])(sessions: PartialFunction[Request, WsSession])(body: Int => Eff[Async, A]): Eff[Async, A]`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
