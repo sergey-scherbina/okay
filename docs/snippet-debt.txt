@@ -140,32 +140,6 @@ docs/capabilities.md	val base = providing[Http](prodHttp) and providing[Secrets]
 docs/capabilities.md	val env = effect[Reader % Int + W, Int](Reader.Ask()).!?
 docs/capabilities.md	val getQ: Db ?=> String = wire[Db].q
 docs/capabilities.md	val xs: Seq[Env ?=> Int] = Seq(wire[Env].uid, wire[Env].uid + 1)
-docs/continuations-in-practice.md	!.run(Delim.drive(!.run(Delim.resumable(half)))(_ => pure(2)))  // List(1, 2, 3)
-docs/continuations-in-practice.md	!.run(Delim.drive(start)(answering(List("Kyiv", "3", "yes"))))
-docs/continuations-in-practice.md	.run(Dialogue.asking(oracle))
-docs/continuations-in-practice.md	Delim.collectUntil[Int, Option[Int], Option[Int], Pure](using FoldUntil.find[Int](_ > 1))(walk(t))  // Some(2)
-docs/continuations-in-practice.md	Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(t))   // Vector(1, 2) — the third leaf is never visited
-docs/continuations-in-practice.md	Delim.collect[Int, Pure](walk(t))    // List(1, 2, 3)
-docs/continuations-in-practice.md	Delim.collecting[Int, Pure]:        // nested: installs only
-docs/continuations-in-practice.md	Delim.delimited[Option[Int], Pure]:
-docs/continuations-in-practice.md	Dialogue.workflow[String, String, String, Pure](topic, id, "booking/1")(booking)
-docs/continuations-in-practice.md	back.asking    // Some("Pay 270 for Kyiv?") — the same place
-docs/continuations-in-practice.md	def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
-docs/continuations-in-practice.md	def half(using Delim.Asking[String, Int, List[Int], Delim + Pure]) =
-docs/continuations-in-practice.md	if !w.patch("promo") then s"$city/$n/promo at $when" else s"$city/$n at $when"
-docs/continuations-in-practice.md	if r(t) then !Delim.exit(Some(t))              // obvious
-docs/continuations-in-practice.md	if r(t) then !Delim.shift[Unit](_ => pure(Some(t)))   // a puzzle
-docs/continuations-in-practice.md	txs.foldLeft(Option.empty[Int]): (acc, t) =>
-docs/continuations-in-practice.md	val (p1, j1) = !.run(Delim.answer(p0, Nil)("Kyiv"))
-docs/continuations-in-practice.md	val (p2, j2) = !.run(Delim.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
-docs/continuations-in-practice.md	val back = !.run(Delim.replay(booking)(j2))
-docs/continuations-in-practice.md	val city   = !Delim.pause("Which city?")
-docs/continuations-in-practice.md	val city = !w.pause("city?")          // the world answers
-docs/continuations-in-practice.md	val more = !Delim.pause("more?")  // crosses the collect's delimiter
-docs/continuations-in-practice.md	val n    = !w.pause("nights?")
-docs/continuations-in-practice.md	val pay    = !Delim.pause(s"Pay ${nights.toInt * 90} for $city?")
-docs/continuations-in-practice.md	val when = !w.now                     // the RUNTIME answers, once, and it is journalled
-docs/continuations-in-practice.md	})   // 10
 docs/continuations/01-four-programs.md	???            // ← and here the trouble starts
 docs/continuations/01-four-programs.md	case (Approved, Shipped)            => Shipped
 docs/continuations/01-four-programs.md	case (AwaitingApproval, Approved)   => Approved
@@ -207,7 +181,6 @@ docs/continuations/06-push-as-pull.md	val items: List[A] = !.run(Delim.collect[A
 docs/continuations/07-stop-in-the-middle.md	def prog(using Delim.Asking[Q, A, R, Row]): R ! Row = direct:
 docs/continuations/07-stop-in-the-middle.md	p = !.run(Delim.answer(p, Nil)(()))._1     // hand back an answer, get the next stop
 docs/continuations/07-stop-in-the-middle.md	val (next, _) = !.run(Delim.answer(p, Nil)(answer))
-docs/continuations/07-stop-in-the-middle.md	val city   = !Delim.pause("Which city?")
 docs/continuations/07-stop-in-the-middle.md	val p = !.run(Delim.resumable[Q, A, R, F](prog))
 docs/continuations/07-stop-in-the-middle.md	val result = !.run(Delim.drive(p)(q => okay.pure(answerFor(q))))
 docs/continuations/07-stop-in-the-middle.md	val x = !Delim.pause(question)

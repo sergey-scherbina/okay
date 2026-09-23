@@ -274,7 +274,7 @@ val (p2, j2) = !.run(Delim.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
 
 // ---- the process dies here. p0, p1, p2 go with it; j2 was written down.
 
-val back = !.run(Delim.replay(booking)(j2))
+val back = !.run(Delim.replay[String, String, String, Pure](booking)(j2))
 back.asking    // Some("Pay 270 for Kyiv?") — the same place
 ```
 
@@ -355,14 +355,14 @@ production run replays on a laptop.
 ### A durable program, as it actually reads
 
 ```scala
-def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+def booking(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
   val city = !w.pause("city?")          // the world answers
   val when = !w.now                     // the RUNTIME answers, once, and it is journalled
   val n    = !w.pause("nights?")
   if !w.patch("promo") then s"$city/$n/promo at $when" else s"$city/$n at $when"
 
 Dialogue.workflow[String, String, String, Pure](topic, id, "booking/1")(booking)
-  .run(Dialogue.asking(oracle))
+  .runWorkflow(oracle)
 ```
 
 Three things in that block are not ordinary code and all three are
