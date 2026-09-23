@@ -553,6 +553,28 @@ the diff.
   request-answer loop. A stage that owns the pull is what `through`
   already composes, and one message per chunk is the cost that matters.
 
+## Stage 8 — foreign-managed-env
+
+### Behavior
+
+- [ ] `PyEnv(python = "3.12", packages = Map("six" -> "1.16.0"))`: the
+      environment DECLARED in code. `provision()` builds it with `uv` (a
+      venv of that Python, the packages installed) into a cache directory
+      keyed by a hash of the declaration, and answers its interpreter;
+      the second provision of the same declaration is the cache, not a
+      rebuild. `start()` provisions, starts a worker on it and `verify`s
+      the packages, refusing a drift by name.
+- [ ] A build is marked ready only when it finished; a directory without
+      the mark (a build that died) is rebuilt, never trusted. Concurrent
+      provisions of one declaration take a file lock, so one builds and
+      the other waits for it.
+- [ ] `uv` missing, or a package that does not resolve, refuses at
+      provision with the tool's own message.
+- [ ] `REnv(packages = Seq("praise"))`: a CRAN library keyed the same way,
+      filled by a fixed provisioning script shipped in the jar (package
+      names reach it as data, in environment variables), handed to the
+      session as `R_LIBS`; `start()` also REQUIRES the packages.
+
 ## Results
 
 - Stage 1 (foreign-journalled, 2026-09-23). Eight tests with no live
