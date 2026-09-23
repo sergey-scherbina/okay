@@ -293,6 +293,17 @@ is the coupling: the keys `project` removes are exactly `touches`,
 restricted to the keys the document has. Design and the trigger's
 history in `specs/optics-outside.md`, stage 7.
 
+## 7. A query is an optic-shaped declaration
+
+The same criterion, at the database: `okay.sql.Query` is a predicate
+over rows of `A` built from field NAMES checked against `Schema[A]`,
+and read by two interpreters — `sql` describes (the WHERE clause and
+its parameters, no row in hand) and `test(a)` runs the identical
+predicate in memory, so a unit test needs no database and a database
+run needs no second predicate. `select`/`update` render the
+statements the typed layer decodes and binds. The law, against a real
+SQLite: the engine's rows are `test`'s rows (`TestQuerySqlite`).
+
 ## Where to go next
 
 - [arrows](arrows.md) — the neighbour in the same table: the glyphs,

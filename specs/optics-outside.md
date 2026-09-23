@@ -1451,3 +1451,86 @@ old private `answer`/`fail` helpers of the server went with the
 transducer they served. One test assumption corrected: a bad
 argument to an effectful tool answers `Toolbox.failed`'s JSON, not a
 string with an `error` prefix — the same DATA the pure box answers.
+
+## Stage 9 — a query is an optic-shaped declaration (optics-outside-query, 2026-09-23)
+
+### The trigger, lifted
+
+Candidate 4 was ranked fourth for a reason the spec stated: typed
+query DSLs are a swamp, and the seat (okay-sql) was strings plus
+`Schema` for rows. The operator lifted the wait. What was built
+stays out of the swamp by taking only what the criterion asks for:
+one declaration — a field, an operator, a value, `and`/`or`/`not` —
+and TWO interpreters that read it, one describing (SQL text and
+parameters) and one running (the same predicate over a value), with
+a law against a real engine coupling them. No joins, no expressions,
+no dialect object.
+
+### Interface
+
+okay-sql, `Query.scala`:
+
+```scala
+object Query:
+  def field[A, T](name: String)(using Schema[A], Schema[T]): Either[String, Field[A, T]]
+  final class Field[A, T]:
+    def ===(v: T); def =!=(v: T); def <(v: T); def <=(v: T); def >(v: T); def >=(v: T)
+    infix def like(pattern: String)(using T =:= String); def isNull; def isNotNull
+  final class Where[A]:
+    infix def and(that: Where[A]); infix def or(that: Where[A]); def unary_!
+    def sql: (String, Vector[SqlValue])            // DESCRIBE
+    def fields: Set[String]                        // DESCRIBE, the audit
+    def test(a: A)(using Schema[A]): Boolean       // RUN, in memory
+  def select[A](table: String)(using Schema[A]): Either[String, Select[A]]   // .where(w) / .all
+  def update[A](table: String): Update[A]                                   // .set(f, v).where(w); apply(a)
+  enum Pred                                        // the reified predicate both interpreters read
+```
+
+`Typed` gained `columnOf(schema, name)` and `typeOf(schema)` (both
+`private[sql]`): the field's column type, for the check at
+construction.
+
+### Behavior
+
+- [x] a field is refused by NAME and by TYPE at construction, naming
+      the fault; an `Option[Int]` field takes an `Int` (`TestQueryPure`).
+- [x] DESCRIBE: the clause, its parameters in order, columns as
+      `Typed` names them (`userName` → `user_name`); `fields` without a
+      row; `select` renders the column list off the schema.
+- [x] RUN: the same predicate in memory — NULL compares false in both
+      directions and is asked by `isNull`; LIKE's `%`/`_`; numbers
+      across `I32`/`I64`/`F64`; negation.
+- [x] UPDATE: the statement (sets, then where, parameters in that
+      order) and the same edit in memory through the codec.
+- [x] THE LAW, against SQLite (`TestQuerySqlite`, okay-jdbc, in the
+      default gate — an embedded engine, no docker): for fourteen
+      predicates the engine's rows equal `test`'s rows; an UPDATE
+      rendered by `Query.update` leaves the table as the in-memory
+      edit leaves the rows.
+- [x] the one divergence, said out loud: SQLite's default `LIKE` is
+      case-insensitive for ASCII, SQL's is not — the engine matches
+      `'Dana'` to `d%`, `test` does not.
+
+### Decisions
+
+- **A reified `Pred`, two interpreters over it** — the same shape as
+  stage 7's policy and stage 1's route: the optic principle is that
+  one declaration is read several ways, and a profunctor is not the
+  only way to spell that; the enum is the honest one when one reader
+  must produce TEXT.
+- **The value is checked by column TYPE, not by field type** —
+  `Typed`'s `SqlType` is what the engine sees; an `Int` value against
+  an `Option[Int]` field is right and against a text field is wrong,
+  and the check says so at construction.
+- **No joins, no expressions, no dialect** — the swamp the spec
+  named; each is a lane with a consumer, not a line here.
+- **`like` is SQL's** — case-sensitive, `%`/`_` — and the engine's
+  deviation is a test, not a flag: a flag would be a dialect object.
+
+### Results
+
+2026-09-23. `TestQueryPure` 4 (okay-sql, platform-free),
+`TestQuerySqlite` 3 (okay-jdbc, real SQLite), green through
+`scripts/gate.sh`, no warnings. Alphanumeric operators (`and`, `or`,
+`like`) needed `infix` to be written between operands without a
+warning — the compiler's rule, followed.

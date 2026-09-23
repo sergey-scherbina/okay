@@ -27,6 +27,21 @@ database seam.
 passing verify it means the world changed mid-run, and the caller
 decides.
 
+**A query is a declaration two interpreters read** (specs/optics-
+outside.md, stage 9). `Query.field[Customer, Int]("age")` is a field
+by NAME, refused at construction when the row has no such field or
+the value binds as another column type; `(age >= 18) and (name like
+"a%")` is a `Where[Customer]` whose `sql` is the WHERE clause with
+its parameters (columns as this module names them) and whose
+`test(customer)` is the SAME predicate in memory, the value's fields
+bound by the one binding road — SQL's NULL stays three-valued. `Query
+.select[A](table).where(w)` renders what `Typed.rows[A]` decodes, the
+column list off the schema; `Query.update[A](table).set(f, v).where(w)`
+renders the UPDATE and applies the same edit in memory. The law
+`TestQuerySqlite` pins against a real engine: the rows the database
+returns are the rows `test` keeps, for every predicate — with the one
+divergence said out loud, SQLite's ASCII-case-insensitive `LIKE`.
+
 **The transaction region.** `Typed.transact` is a Resource scope
 over the driver's begin/commit/rollback: commit on normal
 completion; on an exception or a handled abort crossing the scope
