@@ -1001,6 +1001,13 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   JSON as text. `okay.codec.Json` itself is unreadable from 2.13
   (its TASTy crashes the reader), while `okay.codec.Schema`, `Cbor`,
   `Yaml`, `Validate` and the given instances are usable directly.
+- **`Response`, `Routes`, `Server`, `Client`** (okay-scala2-http) —
+  okay-http from Scala 2. `okay.http.Response` cannot be read (its
+  streamed body names the row), and `Route` cannot be read either
+  (Scala 3 generic tuples). Routing is pattern matching over
+  `GET(Path(...))`. An internal class of the facade must not take a
+  common name: `Body` in okay.scala2 once made scalac 2.13 read it
+  while resolving `okay.http.Body`, and refuse it (now `ProgBody`).
 - **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.
@@ -1010,7 +1017,7 @@ gotcha for anyone extending the facade:
 
 - A union type in a CONSTRUCTOR parameter makes scalac refuse the whole
   class, while one in a method is read only when the method is called.
-  So each class keeps its program in a value class (`Body`,
+  So each class keeps its program in a value class (`ProgBody`,
   `EffBody`, ...).
 - A curried handler method that names `R` in several argument lists
   infers `R = Any` at the last position, which `-Xlint` reports. That

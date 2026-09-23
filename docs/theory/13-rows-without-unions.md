@@ -148,7 +148,7 @@ measured
 - **It reads constructor parameter types eagerly.** A union there
   refuses the whole class, and the error points at the user's
   `package` line. This is why the program lives in a value class
-  (`Body`, Prog.scala:69) behind each facade class. Methods are read
+  (`ProgBody`, Prog.scala:69) behind each facade class. Methods are read
   only when called, so they may mention the union freely.
 - **It infers `R = Any` at the last handler of a curried `handle`.**
   `-Xlint` reports that as an error-worthy inference. So a user

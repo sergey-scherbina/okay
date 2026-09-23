@@ -294,6 +294,32 @@ So the facade is small:
       came (okay-codec's own message, "expected SInt, got JStr(old)",
       the same from Scala 3; it does not name the field's path)
 
+## Stage 7 — HTTP
+Probed from scalac 2.13.18: okay-http's `Request`, `Method`, `Body`,
+`Router`, `Http`, `Server` and `Transports` are readable. `Response` is
+not: its body is a `Source`, and so its constructor names the union
+row. `Route` is not either: "Unsupported Scala 3 generic tuple type
+scala.Tuple". So okay-scala2-http supplies:
+
+- `Response`, with the body held in `ResponseBody` for the reason
+  `ProgBody` exists. It has in-memory bodies (text, html, bytes, json)
+  and a streamed one (`lines`).
+- routing as Scala 2 pattern matching: `Routes { case GET(Path(...)) }`,
+  extractors per method, `Path` over the decoded segments, and
+  `Requests` for query, text and JSON. Decoding is okay-http's own,
+  exposed as `okay.http.Urls` so that it is not duplicated.
+- `Server.use` (okay-http's `Server.serve` under `Resource.run`) and
+  `Server.start`, which returns a handle, and `Client` over
+  `Transports.http`, with `lines` streamed.
+
+## Behavior (stage 7), all from Scala 2.13
+- [x] a route matches method and path and answers JSON; a JSON body is
+      decoded and a bad one is a 400; a query parameter is decoded; an
+      unmatched request is a 404
+- [x] (Live) `Server.use` serves while its body runs and a `Client` reads
+      the answer; `Server.start`/`close` stops serving; a streamed
+      response is read line by line
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -320,7 +346,7 @@ So the facade is small:
   kept in a def or in a val all failed. METHODS are read lazily, so a
   public method returning the row compiled against the cold probe (tried
   and reverted). Stage 0 never hit this because its row, `State % Int`,
-  has no `+`. The fix is `Body`, a value class holding the program:
+  has no `+`. The fix is `Body` (renamed `ProgBody` in stage 7, see there), a value class holding the program:
   `Prog`'s constructor names a class, and naming a class does not read
   its constructor. It costs no allocation.
 - REFUTED along the way, and recorded because each one looked
@@ -389,7 +415,7 @@ So the facade is small:
   producer and a consumer over a channel of capacity 4 moving 1 000
   elements in order, cancelling a fiber that is sleeping, and `race`
   and `timeout` against a 5-second sleep. A fiber and a channel are
-  held directly, not through a `Body`: their constructors name the
+  held directly, not through a `ProgBody`: their constructors name the
   core's `Fiber`/`Channel` traits, which contain no union, and scalac
   2.13 reads them fine.
 - DOCS AND A REAL CONSUMER (2026-09-23, scala2-docs). A user guide
@@ -418,3 +444,12 @@ So the facade is small:
   facade: okay-codec's message names the schema and the value
   ("expected SInt, got JStr(old)"), from Scala 3 too. It is pinned as
   it is. Adding the field path is okay-codec's own change to make.
+- STAGE 7 (2026-09-23). okay-scala2-http. 4 socket-free tests in the
+  gate and 3 Live ones, run and green, including a real server, a
+  client and a streamed body. A TRAP found on the way: the facade's
+  internal value class was called `Body`, and a Scala 2 file that
+  imports both `okay.http.Body` and `okay.scala2._` made scalac READ
+  that class while resolving the name. Its constructor names the row,
+  so compilation failed at `Body.Text(...)`, with the error pointing
+  at `okay.Effects$package`. Internal classes of the facade must not
+  take common names, and `Body` is now `ProgBody`.

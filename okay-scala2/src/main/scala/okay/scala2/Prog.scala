@@ -24,7 +24,7 @@ import scala.util.control.NonFatal
  * to `map` or `flatMap` is not suspended by anything and escapes
  * `run()` as a throw — `delay` is the door for code that may throw.
  */
-final class Prog[A] private[scala2] (private val body: Body[A]) {
+final class Prog[A] private[scala2] (private val body: ProgBody[A]) {
 
   private[scala2] def program: A ! Prog.Row = body.program
 
@@ -66,11 +66,11 @@ final class Prog[A] private[scala2] (private val body: Body[A]) {
  * is not a reading of its constructor. A value class, so `Prog` still
  * allocates one object per combinator.
  */
-private[scala2] final class Body[A](val program: A ! Prog.Row) extends AnyVal
+private[scala2] final class ProgBody[A](val program: A ! Prog.Row) extends AnyVal
 
 object Prog {
 
-  private[scala2] def of[A](p: A ! Row): Prog[A] = new Prog(new Body(p))
+  private[scala2] def of[A](p: A ! Row): Prog[A] = new Prog(new ProgBody(p))
 
   /** the row every `Prog` runs in */
   private[scala2] type Row = Async + Throws % Throwable

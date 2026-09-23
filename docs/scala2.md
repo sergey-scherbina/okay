@@ -22,6 +22,7 @@ Contents:
 7. [Streams: `Source`](#7-streams-source)
 8. [Fibers and channels](#8-fibers-and-channels)
 8a. [Codecs: JSON, CBOR, JSON Schema](#8a-codecs-json-cbor-json-schema)
+8b. [HTTP: routes, a server, a client](#8b-http-routes-a-server-a-client)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -454,6 +455,81 @@ assertEquals(Cbor.read[Person](Cbor.write(ada)), Right(ada))
   `expected SInt, got JStr(old)`. They name the expected schema and the
   value found, but not the field's path.
 
+## 8b. HTTP: routes, a server, a client
+
+Module `okay-scala2-http`. okay-http's `Request`, `Method` and `Body`
+are readable from Scala 2, so a request is okay-http's own
+(`okay.http.Request.get(url)`, `Request(Method.Post, url, headers,
+Body.Text(...))`). What is not readable, and what this module provides
+in its place:
+
+- **`Response`.** okay-http's response has a streamed body whose type
+  names the union row, so it cannot be read. `okay.scala2.Response` has
+  `text`, `html`, `bytes`, `json`, `status` and `lines` (a streamed
+  body), and reads back with `.status`, `.header`, `.text`, `.bytes`.
+- **Routes.** okay-http's `Route` uses Scala 3 generic tuples. In
+  Scala 2, routing is pattern matching: `Routes { case ... }` over
+  extractors `GET`/`POST`/`PUT`/`PATCH`/`DELETE` and `Path`, with
+  `Requests.query`/`queryAll`/`json`/`text` for the rest. Path segments
+  and query values are percent-decoded by okay-http's own reader,
+  which is now public as `okay.http.Urls`.
+
+The routes below are copied from
+`okay-scala2/probe/src/test/scala/TestHttpFromScala2.scala`:
+
+```scala
+final case class User(id: Int, name: String)
+object User {
+  implicit val schema: Schema[User] = Schemas.product2("User", "id", "name")(User.apply)(u => (u.id, u.name))
+}
+
+val users = scala.collection.concurrent.TrieMap(1 -> User(1, "ada"))
+
+val routes: Request => Eff[Async, Response] = Routes {
+  case GET(Path("users", id)) =>
+    Async.delay(users.get(id.toInt) match {
+      case Some(u) => Response.json(u)
+      case None => Response.text("no user " + id, 404)
+    })
+  case r @ POST(Path("users")) =>
+    Requests.json[User](r) match {
+      case Right(u) => Async.delay { users.put(u.id, u); Response.json(u, 201) }
+      case Left(e) => Eff.pure(Response.text(e, 400))
+    }
+  case r @ GET(Path("search")) =>
+    Eff.pure(Response.text("q=" + Requests.query(r, "q").getOrElse("") + " tags=" + Requests.queryAll(r, "tag").mkString(",")))
+}
+```
+
+A handler is an ordinary function `Request => Eff[Async, Response]`, so
+it can be tested without a socket: `Eff.runAsync(routes(Request.get("/users/1")))`.
+A request no case matches gets a 404.
+
+Serving, and calling it back, from the same file's live suite:
+
+```scala
+val client = Client()
+val got = Eff.runAsync(Server.use(0)(routes) { port =>
+  client.get("http://127.0.0.1:" + port + "/users/1").map(r => (r.status, r.text))
+})
+assertEquals(got, (200, """{"id":1,"name":"ada"}"""))
+```
+
+- `Server.use(port)(handler)(body)` serves while `body` runs, and stops
+  afterwards, however the body ends. Port `0` means any free port,
+  and `body` receives the port actually bound. Underneath is okay-http's
+  `Server.serve` under okay's `Resource`.
+- `Server.start(port)(handler)` returns a `RunningServer` right away,
+  for a service that serves for the whole life of the process.
+  `server.close()` stops it and waits until it has stopped. If the
+  port cannot be bound, `start` throws.
+- `Client()` has `send`, `get`, `post`, `postJson`, each an
+  `Eff[Async, Response]` with the body read in full, and `lines`,
+  which is a `Source[String]` streamed line by line.
+- The socket tests are tagged `Live`, like every suite in this
+  repository that binds a port, so the default gate runs only the
+  socket-free half. `sbt integrationTest` runs both.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -468,6 +544,8 @@ assertEquals(Cbor.read[Person](Cbor.write(ada)), Right(ada))
 | `Async.spawn`, `Fiber`, `Channel` | `Async.fork`, `Fiber`, `Channel` |
 | `case class P(...) derives Schema` | `Schemas.productN("P", ...)(P.apply)(p => (...))` |
 | `okay.codec.Json.write` / `read` | `okay.scala2.Json.write` / `read` (text in, text out) |
+| `Route / "users" / Route[Int]("id")` + `Router` | `Routes { case GET(Path("users", id)) => ... }` |
+| `okay.http.Response`, `Server.serve` under `Resource` | `okay.scala2.Response`, `Server.use` / `Server.start` |
 | `direct { ... }` blocks | not available: use `for` |
 
 ## 10. Errors you may see, and what they mean
@@ -492,9 +570,10 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 - **Direct style** (`direct { ... }`, auto-colouring) is built from
   Scala 3 macros, and Scala 2 cannot expand those. Use
   for-comprehensions instead. It is not planned.
-- **The rest of the library.** Codecs are covered (section 8a). HTTP,
-  SQL, the agent stack and UI are queued in that order
-  (specs/scala2-facade.md, stages 7–10).
+- **The rest of the library.** Codecs (section 8a) and HTTP (8b) are
+  covered. SQL, the agent stack and UI are queued in that order
+  (specs/scala2-facade.md, stages 8–10). WebSockets are not wrapped
+  yet.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the
   Scala 3 API builds. What Scala 3 code gets and a 2.13 caller does

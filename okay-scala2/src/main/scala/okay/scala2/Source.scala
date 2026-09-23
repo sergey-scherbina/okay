@@ -61,7 +61,7 @@ final class Source[A] private (private val body: SourceBody[A]) {
   def toEff: Eff[Writer[A] & Async, Unit] = Eff.of(coerce(core))
 }
 
-/** held out of `Source`'s constructor, as `Body` is out of `Prog`'s */
+/** held out of `Source`'s constructor, as `ProgBody` is out of `Prog`'s */
 private[scala2] final class SourceBody[A](val s: okay.Source[A]) extends AnyVal
 
 object Source {

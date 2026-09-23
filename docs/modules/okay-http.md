@@ -34,6 +34,7 @@ that module, and it is small because the vocabulary decided most of it:
 | `Transports.http` / `.sockets` (JVM), `.fetch` / `.sockets` (JS) | the two platform seams |
 | `Route` / `Queried` / `Query` / `Router` | a typed path and query: match, build and describe from one declaration; `okay.http.syntax` is the terse form |
 | `Server.serve(port)(route)` | a REST server, JVM only |
+| `Urls.segments(url)` / `Urls.params(url)` | the path's segments and the query's parameters, percent-decoded exactly as `Route` reads them; for code that routes without a `Route` (okay-scala2-http's `Path` extractor) |
 
 ## Routes: one declaration, three interpreters
 

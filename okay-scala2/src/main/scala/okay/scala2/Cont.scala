@@ -24,7 +24,7 @@ final class Cont[A, S, R] private (private val body: ContBody[A, S, R]) {
 }
 
 /** the Scala 3 program, held out of `Cont`'s constructor for the
- * reason `Body` gives in Prog.scala */
+ * reason `ProgBody` gives in Prog.scala */
 private[scala2] final class ContBody[A, S, R](val c: okay.Cont[A, S, R]) extends AnyVal
 
 object Cont {

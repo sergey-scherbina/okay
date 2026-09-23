@@ -241,6 +241,7 @@ API reference, gotchas.
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector, a Stage IS a Gatherer (JDK 24) |
 | [`okay-scala2`](modules/okay-scala2.md) | okay from Scala 2.13: `Prog`, a fixed-row program type the 2.13 TASTy reader can read, and the two-stdlib classpath it needs |
 | [`okay-scala2-codec`](modules/okay-scala2-codec.md) | okay-codec from Scala 2.13: `Schemas.productN`/`sum` in place of `derives Schema`, JSON as text |
+| [`okay-scala2-http`](modules/okay-scala2-http.md) | okay-http from Scala 2.13: routes as pattern matching, `Server.use`/`start`, a client |
 | [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |

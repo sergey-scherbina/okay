@@ -33,7 +33,7 @@ final class Eff[-R, A] private (private val body: EffBody[A]) {
     Eff.of(body.p.flatMap(a => f(a).program))
 }
 
-/** held out of `Eff`'s constructor, as `Body` is out of `Prog`'s */
+/** held out of `Eff`'s constructor, as `ProgBody` is out of `Prog`'s */
 private[scala2] final class EffBody[A](val p: Free[Rows.Top, A]) extends AnyVal
 
 private[scala2] object Rows {

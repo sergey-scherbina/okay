@@ -13,6 +13,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Source[A]` | streams: `Source(...)`, `range`, `unfold`, `fromEff`; `map`, `filter`, `take`, `takeWhile`, `drop`, `zipWithIndex`, `++`, `merge`; `runCollect`, `runForeach`, `runFold` |
 | `Fiber[A]`, `Channel[A]` | concurrency: `Async.fork`, `par`, `race`, `sleep`, `timeout`; a fiber's `join`/`joinEither`/`cancel`; a bounded channel's `send`/`receive` (programs that wait), `offer`, `close`, `source` |
 | `Schemas`, `Json`, `JsonSchema` (module `okay-scala2-codec`) | okay-codec from 2.13: `Schemas.product1`…`product16`, `sum`/`variant`, `constant` in place of `derives Schema`; JSON as text. `okay.codec.Schema`, `Cbor`, `Yaml` and `Validate` are used directly |
+| `Response`, `Routes`, `GET`/`POST`/…, `Path`, `Requests`, `Server`, `Client` (module `okay-scala2-http`) | okay-http from 2.13: routing as pattern matching, `Server.use`/`start`, a client; `okay.http.Request`, `Method` and `Body` are used directly |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -347,6 +348,13 @@ intersection; the Scala 3 source writes `&`.
 `Json.read[A](text: String)(implicit s: Schema[A]): Either[String, A]`,
 `Json.readStrict[A]` (the same, refusing repairable damage);
 `JsonSchema.of[A](s: Schema[A]): String`.
+
+**HTTP** (module `okay-scala2-http`) — `Response.text(body, status = 200)`, `.html`, `.bytes(body, contentType, status)`, `.json[A](a, status)(implicit Schema[A])`, `.status(code)`, `.notFound`, `.lines(src: Source[String], contentType, status)`; on a response `status`, `headers`, `header(name)`, `text`, `bytes`, `ok`, `withHeader`.
+`Routes(pf: PartialFunction[Request, Eff[Async, Response]]): Request => Eff[Async, Response]` (404 when no case matches);
+extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option[Request]`) and `Path` (`unapplySeq(r: Request): Option[Seq[String]]`);
+`Requests.path(r)`, `.query(r, name)`, `.queryAll(r, name)`, `.text(r)`, `.json[A](r)`.
+`Server.use[A](port: Int)(handler)(body: Int => Eff[Async, A]): Eff[Async, A]`, `Server.start(port)(handler): RunningServer` (`port`, `close()`).
+`Client()`: `send(r: Request)`, `get(url)`, `post(url, body, contentType)`, `postJson[A](url, a)`, each an `Eff[Async, Response]`; `lines(r: Request): Source[String]`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
