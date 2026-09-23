@@ -437,6 +437,22 @@ ever starts using it. Properties (1), (3) and (4) are tests:
       (property 3)
 - [x] `Search.bestOf` stops at the first good sample (2 calls, not 5)
 
+## Stage 14 — Dialog and Nav
+Probed from scalac 2.13.18: `okay.ui.Screen` can be IMPLEMENTED in
+Scala 2, and `Nav`'s cases, `Nav.state`, `Nav.update` and `Nav.view` are
+readable. A screen stack written in Scala 2 ran through them in the
+probe. `Dialog` is an effect (`show: Event ! Dialog`), so a scenario is
+a program. The facade makes `Dialog` a capability of `Eff` (`show`,
+`ask` over `Form.ask`, `run` on a host, `replay` with no host), and
+`Screens.of` replaces `Nav.screen`, whose update answers the union
+`Nav | S`.
+
+- [x] a scenario replayed without a host: its screens and its answer,
+      or none if the events stop short
+- [x] `Dialog.ask`: `$ok` submits a decoded value, and `$cancel` answers None
+- [x] a scenario runs on a `ScriptedHost`
+- [x] a stack of Scala 2 screens runs in the ordinary `UiApp.run` loop
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -617,3 +633,8 @@ ever starts using it. Properties (1), (3) and (4) are tests:
   with nothing left to infer. (Whether stage 3's `Effect.handle` can use
   the same bound is worth a look. It removes, rather than keeps, its
   capability, so it is a different shape.)
+- STAGE 14 (2026-09-23). `Dialog`/`Screens` in okay-scala2-ui. 4 tests.
+  The first draft submitted `Dialog.ask` with `Event.Submitted`, but
+  okay-ui's own `ask` loop waits for `Pressed("$ok")`; the test now
+  uses that. With this stage the sprint's Scala 2 queue is empty.
+  Durable agents and `Scope` inside a dialog remain unwrapped.

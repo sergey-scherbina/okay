@@ -30,6 +30,7 @@ Contents:
 8f. [Forms from a Schema](#8f-forms-from-a-schema)
 8g. [WebSockets](#8g-websockets)
 8h. [Nondeterminism and search](#8h-nondeterminism-and-search)
+8i. [Scenarios and screens: Dialog and Nav](#8i-scenarios-and-screens-dialog-and-nav)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -861,6 +862,47 @@ assert(got.contains(100) && got.contains(200), got.toString)
   the model until the JSON parses" is written: `gen` can be `chat.say(...)`.
   `Search.all` and `Search.majority` (self-consistency) are there too.
 
+## 8i. Scenarios and screens: Dialog and Nav
+
+`Dialog` (module `okay-scala2-ui`) is okay-ui's scenario effect, as a
+capability of `Eff`. `Dialog.show(ui)` draws a screen and answers the
+next event, so a whole scenario is one program. The code below is
+copied from `okay-scala2/probe/src/test/scala/TestDialogNavFromScala2.scala`:
+
+```scala
+// a scenario as one program: two questions, then an answer
+val greet: Eff[Dialog, String] = for {
+  first <- Dialog.show(Ui.Column(Vector(Ui.Text("hello?"), Ui.Button("yes", "yes"), Ui.Button("no", "no"))))
+  answer <- first match {
+    case Event.Pressed("yes") => Dialog.show(Ui.Input("", "name", "your name")).map {
+      case Event.Edited(_, name) => "hi " + name
+      case _ => "hi"
+    }
+    case _ => Eff.pure("bye")
+  }
+} yield answer
+```
+
+```scala
+val (drawn, answer) = Dialog.replay(greet, Seq(Event.Pressed("yes"), Event.Edited("name", "ada")))
+assertEquals(answer, Some("hi ada"))
+```
+
+- `Dialog.run(host)(prog)` runs a scenario on a host (`None` if the host
+  closes first). `Dialog.replay(prog, events)` runs it with no host at
+  all and returns every screen it drew, which is how a scenario is
+  tested.
+- `Dialog.ask[A](message)` is a form drawn from `A`'s `Schema` that keeps
+  asking until the value decodes. `$ok` submits and `$cancel` answers
+  `None`.
+- **Screens as a stack need almost no facade.** `okay.ui.Screen` is a
+  plain trait, and Scala 2 implements it directly. `Nav`'s cases
+  (`Push`, `Pop`, `Stay`, `To`, `PopTo`) and `Nav.state`, `Nav.update` and
+  `Nav.view` are readable and pure, so a stack runs in the ordinary
+  loop: `UiApp.run(Nav.state(root))(Nav.view)(Nav.update)(host)`. The
+  one unreadable helper, `Nav.screen` (its update answers the union
+  `Nav | S`), is `Screens.of(init)(view)(update)`, with an `Either`.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -911,9 +953,9 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
   for-comprehensions instead. It is not planned.
 - **The rest of the library.** Codecs (section 8a), HTTP (8b), SQL
   (8c), agents (8d) and UI (8e) are covered. Several pieces are not
-  wrapped yet: durable agents, and okay-ui's `Dialog`/`Nav` (queued in
-  the sprint). Forms, WebSockets, and nondeterminism with search are
-  wrapped (sections 8f, 8g and 8h). The remaining modules are not
+  wrapped yet: durable agents, and okay-ui's cancellable scopes
+  (`Scope`) inside a dialog. Forms, WebSockets, nondeterminism with
+  search, and dialogs with screens are wrapped (sections 8f to 8i). The remaining modules are not
   wrapped either.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the

@@ -1056,6 +1056,11 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   okay's `Logic` turns out never to consult it. A combinator that KEEPS
   the capability takes the row as `R <: Choose`, not as `Choose & R`,
   because the second form makes scalac 2.13 infer `Any`.
+- **`Dialog`, `Screens`** (okay-scala2-ui) — okay-ui's scenario effect as
+  a capability, with `replay` (no host) for tests. `okay.ui.Screen` is
+  implemented directly in Scala 2, and a `Nav` stack runs in `UiApp.run`
+  unchanged. Only `Nav.screen`, whose type is a union, needed a
+  replacement.
 - **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.

@@ -377,6 +377,7 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 **UI** (module `okay-scala2-ui`) — `UiApp.run[S](init: S)(view: S => Ui)(update: (S, Event) => S)(host: UiHost): Eff[Async, S]`, `UiApp.runWith[S](...)(host, external: Source[Event])`, `UiApp.window[S](title)(init)(view)(update)`;
 `UiHost.terminal()`, `UiHost.swing(root: java.awt.Container)`;
 `ScriptedHost(events: Event*)` / `ScriptedHost.open(events: Event*)` (without the closing `Closed`), `.host: UiHost`, `.frames: Vector[Ui]`.
+`Dialog.show(ui: Ui): Eff[Dialog, Event]`, `Dialog.ask[A](message)(implicit Schema[A]): Eff[Dialog, Option[A]]`, `Dialog.run[A](host: UiHost)(prog: Eff[Dialog, A]): Eff[Async, Option[A]]`, `Dialog.replay[A](prog, events: Seq[Event]): (Vector[Ui], Option[A])`; `Screens.of[S](init: S)(view: S => Ui)(update: (S, Event) => Either[Nav, S]): Screen`.
 `FormState.blank[A](implicit Schema[A])`, `FormState.of[A](a: A)`; `form.view: Ui`, `form.edit(e: Event): FormState[A]`, `form.errors: Vector[(String, String)]`, `form.decoded: Either[String, A]`, `form.json: String`, `form.withLabels(labels: Map[String, String])`.
 
 **WebSockets** (module `okay-scala2-ws`) — `WebSocket.connect(url): Eff[Async, WsClient]`, `WebSocket.binary(bytes: Array[Byte]): Frame`, `WebSocket.bytes(f: Frame): Option[Array[Byte]]`;
