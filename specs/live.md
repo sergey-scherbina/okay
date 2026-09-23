@@ -42,6 +42,16 @@ final class Hub[A]:
 
 final class Registry[K, A]:
   def apply(key: K): Channel[A]
+
+/** subscribe to a LENS (specs/optics-outside.md stage 10, 2026-09-23) */
+final class Watched[A](initial: Json)(using Schema[A]):
+  def get: Json
+  def lens(key: String): Either[String, Affine[Json, Json, Json, Json]]   // "" is the root; refused by name
+  def focus(key: String): Either[String, Option[Json]]
+  def subscribe(key: String): Either[String, Channel[Json]]              // told its part, when that part changes
+  def modify(f: Json => Json): Unit
+  def set(key: String, value: Json): Either[String, Unit]                 // a client write, the same lens
+  def put(a: A): Unit                                                     // the typed door, through the codec
 ```
 
 ## Consumers

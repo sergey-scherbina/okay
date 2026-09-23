@@ -211,6 +211,14 @@ from a typed one, and the client needs no schema.
 
 ## 6. Live pages: a frontend with no build step
 
+A page that shows one part of a document need not re-fetch the whole
+of it on every ping: `Watched[A]` (okay-live) lets a viewer subscribe
+to a PATH — `watched.subscribe("board.tasks")` — and be told that part
+when it changes, and only then; a client write goes back through the
+same path as `set`. The path is the wire form of a lens, compiled
+against the schema server-side and refused by name when it names
+nothing (specs/optics-outside.md stage 10).
+
 In okay-script (`docs/okay-script-guide.md`), a page declares an app
 and mounts it:
 

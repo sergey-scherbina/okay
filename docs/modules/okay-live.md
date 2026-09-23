@@ -10,7 +10,9 @@
 Depends on: `okay` (`Channel` is already cross-platform core; only
 the bookkeeping around MANY channels needs `java.util.concurrent`, so
 this module is JVM-only — the same tradeoff `okay-subscription`
-already made). No dependency on any wire, page, or domain.
+already made) and, since `Watched`, `okay-codec` (a document is Json
+addressed by the keys `JsonOptic.path` resolves against a Schema). No
+dependency on any wire, page, or domain.
 
 ## Guide
 
@@ -25,6 +27,19 @@ need no eviction.
 `Channel[A]` lazily on first use and answers the same one on every
 later call for that key. No removal, the same honest limit as `Hub`;
 a real eviction need is a BACKLOG item, not a speculative build.
+
+**Subscribe to a lens.** `Watched[A](json)` is a document many
+viewers watch through PATHS: `subscribe("customer.address")` answers
+a channel that is told the address — and only the address — each
+time it changes; `set("customer.address.city", v)` is a client write
+through the same lens; `subscribe("")` is the whole document. The
+dotted key is the wire form of a lens: it survives serialisation, a
+client can send it, `JsonOptic.path` compiles it against the schema,
+a key the schema does not write is refused by name, and a
+`TypedZipper`'s `pathKey` is such a key. The law `TestWatched` pins:
+over any history of edits, a subscriber receives exactly the distinct
+consecutive values of its focus, and nothing of anyone else's.
+Design and the trigger's history: specs/optics-outside.md stage 10.
 
 **`okay-demo`'s wiring**, the two call sites this module replaced:
 

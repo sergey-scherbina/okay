@@ -1534,3 +1534,76 @@ construction.
 `scripts/gate.sh`, no warnings. Alphanumeric operators (`and`, `or`,
 `like`) needed `infix` to be written between operands without a
 warning — the compiler's rule, followed.
+
+## Stage 10 — subscribe to a lens (optics-outside-live, 2026-09-23)
+
+### The trigger, lifted
+
+Candidate 3 waited for a document large enough that re-fetching it
+on every change was the measured cost; the one live consumer
+(`ChatDemo`, a kind published, `/board.json` re-fetched) was cheaper
+than a delta. The operator lifted the wait. What the entry said the
+lens must be — reifiable, surviving serialisation — the arc had
+already built for other reasons: the dotted key of `Form.edit`,
+`Policy`, `Query.field` and `TypedZipper.pathKey` IS a lens in wire
+form, and `JsonOptic.path` compiles it against a schema. So the lane
+is the document that holds it.
+
+### Interface
+
+okay-live, `Watched.scala` (the module gains okay-codec):
+
+```scala
+final class Watched[A](initial: Json)(using Schema[A]):
+  def get: Json
+  def lens(key: String): Either[String, Affine[Json, Json, Json, Json]]   // "" is the root
+  def focus(key: String): Either[String, Option[Json]]
+  def subscribe(key: String): Either[String, Channel[Json]]
+  def modify(f: Json => Json): Unit
+  def set(key: String, value: Json): Either[String, Unit]
+  def put(a: A): Unit
+```
+
+### Behavior (`TestWatched`, okay-live)
+
+- [x] an unknown key is refused by name at `subscribe`/`set`/`focus`;
+      `""` is the whole document.
+- [x] a subscriber is told its part when it changes and NOT when
+      another part does (a fence: the first thing it receives after
+      an unrelated write is the next related one); a write that
+      changes nothing tells nobody; the whole-document subscriber
+      sees every change.
+- [x] THE LAW: over a history of edits, each of five subscribers
+      (three fields at different depths, an element, the root)
+      receives exactly the distinct consecutive values of its focus —
+      the expected sequence computed from the history by the same
+      lens.
+- [x] `put(a)` replaces the document through the codec and is seen
+      by the subscribers whose part changed.
+
+### Decisions
+
+- **The key is the lens, on the wire** — no serialised optic value,
+  no registry of named lenses: the dotted key already is how every
+  other seam here names a place in a document, and `JsonOptic.path`
+  already checks it against the schema.
+- **Push the PART, compare before pushing** — `preview` before and
+  after on every subscriber's affine, per change; a subscriber of an
+  unchanged part hears nothing. Linear in subscribers per change,
+  which is `Hub`'s cost too, and the honest limit `Hub` states
+  (channels remembered until process end) holds here unchanged.
+- **Absence is a change** — a focus that disappears is told `JNull`
+  once; `null` is the document's own spelling of absence.
+- **The client's write is `set`, not a patch language** — the same
+  affine, the same refusal; a merge-patch road exists in okay-codec
+  (`mergePatch`) for a client that sends one.
+- **Not wired into `ChatDemo`** — its re-fetch was measured cheaper
+  for its handful of tasks; the consumer is the next product with a
+  large document, and the spec says so rather than moving the demo
+  to a slower road.
+
+### Results
+
+2026-09-23. `TestWatched` 4, green through `scripts/gate.sh`, no
+warnings. The build gained one edge (okay-live → okay-codec), which
+the gate priced as the whole family once.

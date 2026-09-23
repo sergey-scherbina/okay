@@ -214,7 +214,16 @@ Server.serveIn[Async](serving)(Server.answering(serving))   // the MCP protocol,
 guard that the generic stage is the old one. A tool's failure is its
 own row's business: a program cannot be `try`-caught from outside.
 
-Spec: specs/optics-outside.md, stages 7–9. Guide: [optics.md](optics.md)
+**A subscription is a lens** (okay-live `Watched`): a document many
+viewers watch through paths — `subscribe("customer.address")` is
+told the address, and only the address, each time it changes;
+`set(key, value)` is the client's write through the same lens; the
+dotted key is the lens's wire form, compiled against the schema and
+refused by name, and a `TypedZipper`'s `pathKey` is one. **Law:**
+over any history of edits a subscriber receives exactly the distinct
+consecutive values of its focus (`TestWatched`).
+
+Spec: specs/optics-outside.md, stages 7–10. Guide: [optics.md](optics.md)
 §6–7, [declaring-an-api.md](declaring-an-api.md).
 
 ## 6. The one-line bridge: `Reader.lift`, `Reader.unlift`
@@ -237,6 +246,7 @@ auto-applies at the ascription site before a conversion could see it
 | a form over a deep record | one level at a time | `Form.drill` — the cursor is the dotted path; `drillAt`/`askAt` from a typed cursor |
 | a source whose next element is a program | a loop in a direct block | `Pull` (`for x <- Pull.of(s) do …`, `Take.each`), `loop(f)` outside a block |
 | a rule about fields you must also be able to AUDIT | a declaration two readers share | `Policy` (fields), `Query` (rows), `Toolbox.In` (tools) |
+| a document many viewers watch, each a part of it | a subscription that is a lens | `Watched[A]` — `subscribe(key)`, `set(key, v)`; the key from a `TypedZipper.pathKey` |
 | `E ?=> A` where a Reader program is wanted, or back | the bridge | `Reader.lift` / `Reader.unlift` |
 
 Two things the walk refused, with the reason recorded where it was
