@@ -5092,3 +5092,12 @@ byte-identical. A variant that recursed straight through a run of
 rejections (budget 64, then a `Delay`) allocated less (330 B/elem) and
 read 7% slower — kept out. What is left over the hand road (272) is
 the walk's `Bind` per kept and `Delay` per rejected element.
+
+**Follow-up, gen-chain-fusion (2026-09-23).** The chain fused into the
+reader (stages as data, one walk of the source): `map.filter.toList`
+282 → **202 µs**, 354 → **231 B/elem** — under the hand road (215 /
+272), which still walks `Writer.map`; infinite `take(10k).toList`
+246 → 189 µs, 295 → 239 B/elem; the identity chain byte-identical.
+Two wrong first cuts, both caught by these rows: a delaying `program`
+def (+96 B/elem on the identity lane) and a boxed `(Int, S)` take
+state (+40 B/elem).

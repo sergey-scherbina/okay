@@ -219,7 +219,14 @@ continuation dropped. Here that is the implementation, not an analogy:
 runs when the second value is asked for — and every stopping reader
 is a `FoldUntil` whose law is that `k` is not called once it is done.
 The first cut applied `k` eagerly and was one yield ahead of Python; a
-step counter caught it.
+step counter caught it. A chain of `map`/`filter`/`take` over a `Gen`
+is not three walks: the stages are DATA — a transducer in Hickey's
+sense \[[Hickey 2014](#ref-hickey-2014)\], a transformer of the
+reader, with the state each stage adds carried as a type member
+(`Xf.St[S]`: `take` wraps `(Int, S)`, `map` adds nothing) — and a
+stopping reader walks the source once, applying every stage inside
+`add`; `program` materialises the same chain as the walks when a road
+needs a program (specs/gen-chain-fusion.md).
 
 ```scala
 enum Tree { case Leaf(v: Int); case Node(l: Tree, r: Tree) }

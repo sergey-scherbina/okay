@@ -579,6 +579,12 @@ same material with the measurements attached.
   `for … yield` emits. Non-memoising (`toLazyList` memoises). A value
   class because an extension on the row alias cannot infer `W` and an
   extension on an opaque lost to the package's `map` in lexical scope.
+  Its one field is a `Gen.Chain[W]` — a source program and an `Xf`
+  chain of stages (gen-chain-fusion): `map`/`filter`/`take`/
+  `takeWhile`/`drop` append a stage, the stopping readers walk the
+  source ONCE applying the stages per element (a transducer with its
+  state type as `St[S]`), and `program` materialises the chain as
+  walks for `iterator`, `flatMap`, `++` and a block.
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.

@@ -973,13 +973,14 @@ against 192 bytes per element, 151 against 134 µs per 10k. `toList`
 adds the list (48 B/elem). `map` IS `Writer.map`. `filter` was
 `splice`, a small program per element, and a `map.filter.toList`
 pipeline read 339 µs / 381 B/elem against 215 / 272 for the same work
-hand-written over `Writer`; written as a walk (gen-filter-as-walk —
-the kept tell is the body's own node re-bound, the rejected one a
-deferred skip) it reads 283 µs / 354 B/elem: 0.83 of the splice, and
-what remains over the hand road is the walk's `Bind` per kept element
-and `Delay` per rejected one — a fusion of the filter INTO the reader
-would remove those (backlog `gen-chain-fusion`). `take` re-emits and
-costs +15%. Prefer `iterator`
+hand-written over `Writer`; as a walk (gen-filter-as-walk) 283 / 354;
+and now the chain is FUSED into the reader (gen-chain-fusion): the
+stages are data, a stopping reader walks the source once applying
+them per element, and the same pipeline reads 202 µs / 231 B/elem —
+under the hand road, which still walks `Writer.map`. `take` fused is
+0.77 of the re-emitting walk. `program` materialises a chain as the
+walks when a road needs a program (`iterator`, `flatMap`, `++`, a
+block). Prefer `iterator`
 or `first`/`find`/`exists` when the answer is not a list; those read
 the generator through `FoldUntil` and stop where the answer is.
 

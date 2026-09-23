@@ -92,6 +92,40 @@ class TestGen extends munit.FunSuite:
     assertEquals(g.withFilter(_ < 3).map(_ * 10).toList, List(0, 10, 20))
   }
 
+  test("FUSED = MATERIALISED: generated chains of map/filter/take/takeWhile/drop read alike three ways") {
+    val rnd = new scala.util.Random(20260927)
+    for _ <- 1 to 200 do
+      val n = rnd.nextInt(30)
+      var g: Gen[Int] = Gen.unfold(0)(i => if i < n then Some((i, i + 1)) else None)
+      for _ <- 1 to rnd.nextInt(5) do
+        rnd.nextInt(5) match
+          case 0 => val k = rnd.nextInt(3) + 1; g = g.map(_ * k)
+          case 1 => val m = rnd.nextInt(3) + 2; g = g.filter(_ % m != 0)
+          case 2 => g = g.take(rnd.nextInt(8))
+          case 3 => val lim = rnd.nextInt(40); g = g.takeWhile(_ < lim)
+          case _ => g = g.drop(rnd.nextInt(4))
+      val fused = g.toList
+      assertEquals(fused, Gen.fromProgram(g.program).toList, "the walks")
+      assertEquals(fused, g.iterator.toList, "the stepper over the walks")
+      assertEquals(g.first, fused.headOption)
+      assertEquals(g.exists(_ > 10), fused.exists(_ > 10))
+  }
+
+  test("a fused take(n) runs the body exactly to its n-th KEPT element; find stops where it finds") {
+    val c = Counted()
+    assertEquals(c.gen.map(_ * 3).filter(_ % 2 == 0).take(2).toList, List(6, 12))
+    assertEquals(c.steps, 4, "kept 6 (step 2) and 12 (step 4): four steps, not one more")
+    val c2 = Counted()
+    assertEquals(c2.gen.map(_ + 1).find(_ == 4), Some(4))
+    assertEquals(c2.steps, 3)
+    val c3 = Counted()
+    assertEquals(c3.gen.take(0).toList, Nil)
+    assertEquals(c3.steps, 0, "take(0) runs nothing")
+    assertEquals(Gen(1, 2).drop(5).toList, Nil)
+    val stopped: Gen[Int] = Gen.emit(1) ++ Gen.emit(2) ++ Gen.stop ++ Gen.emit(3)
+    assertEquals(stopped.map(_ * 10).filter(_ > 5).toList, List(10, 20), "a Stop ends a fused read")
+  }
+
   test("a plain for-comprehension over Gen is a generator — no macro, lazy, nested") {
     val inner = Counted()
     val pairs: Gen[(Int, Int)] =

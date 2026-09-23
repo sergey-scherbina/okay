@@ -51,33 +51,39 @@ enum Stop[+A] derives Effect:
  * the whole generator). A member beats both, and `AnyVal` costs no
  * allocation. `program` is the same value with its own name back.
  */
-final class Gen[W](val program: Unit ! Gen.Row[W]) extends AnyVal:
-  // ---- element-wise: the words a for-comprehension uses
-  def map[V](f: W => V): Gen[V] = Gen.lazily(Writer.map[W, V, Unit, Stop](program)(f))
+final class Gen[W](val chain: Gen.Chain[W]) extends AnyVal:
+  /** the chain MATERIALISED as the walks it stands for, built when
+   * first read (a `Delay`): what the roads that need a PROGRAM read —
+   * `iterator`, the barriers below, a `Gen` marked in a block */
+  def program: Unit ! Gen.Row[W] = chain.program
+
+  // ---- element-wise: a STAGE appended (specs/gen-chain-fusion.md),
+  // nothing walked — the readers apply the chain per element
+  def map[V](f: W => V): Gen[V] = new Gen(chain.andThen(Gen.Xf.Map(f)))
+  def filter(p: W => Boolean): Gen[W] = new Gen(chain.andThen(Gen.Xf.Filter(p)))
+  def withFilter(p: W => Boolean): Gen[W] = filter(p)
+  /** the first n — a fused read is done at the n-th kept element and
+   * the body runs no further; materialised, `taking` drops the
+   * continuation after the n-th tell */
+  def take(n: Int): Gen[W] = new Gen(chain.andThen(Gen.Xf.Take(n)))
+  def takeWhile(p: W => Boolean): Gen[W] = new Gen(chain.andThen(Gen.Xf.TakeWhile(p)))
+  /** skip n: the skipped steps run (they must — the body is between
+   * the tells) */
+  def drop(n: Int): Gen[W] = new Gen(chain.andThen(Gen.Xf.Drop(n)))
+
+  // ---- barriers: a new source from the materialised program
   /** Python's `yield from`: every told w replaced by f(w)'s tells */
   def flatMap[V](f: W => Gen[V]): Gen[V] = Gen.lazily(Gen.splice(program)(w => f(w).program))
-  /** a walk, not a splice (gen-filter-as-walk): the kept tell is the
-   * body's own node re-bound, the rejected one a deferred skip — no
-   * program per element (splice built an emit/empty and a flatMap for
-   * each, measured at +109 B per element by generators-jmh) */
-  def filter(p: W => Boolean): Gen[W] = Gen.lazily(Gen.filtering(p)(program))
-  def withFilter(p: W => Boolean): Gen[W] = filter(p)
   /** sequencing — one after the other */
   def ++(h: Gen[W]): Gen[W] = Gen.fromProgram(program.flatMap(_ => h.program))
   def zipWithIndex: Gen[(W, Int)] = Gen.lazily(Gen.indexed(program))
-  /** the first n — and after the n-th tell the continuation is
-   * DROPPED, not called: the body runs exactly to its n-th yield */
-  def take(n: Int): Gen[W] = Gen.lazily(Gen.taking(n)(program))
-  def takeWhile(p: W => Boolean): Gen[W] = Gen.lazily(Gen.takingWhile(p)(program))
-  /** skip n: the skipped steps run (they must — the body is between
-   * the tells), deferred one at a time so a long skip is flat */
-  def drop(n: Int): Gen[W] = Gen.lazily(Gen.dropping(n)(program))
 
-  // ---- readers: every one stops the body where it has read enough
+  // ---- readers: ONE walk of the source, the chain applied per
+  // element; every one stops the body where it has read enough
   /** the general stopping reader (specs/fold-until.md): `done` is
    * asked before the first element and after each; a `Stop` in the
    * body ends the read as the body's end would */
-  def foldUntil[S, R](using K: FoldUntil[W, S, R]): R = Gen.read(program)(K)
+  def foldUntil[S, R](using K: FoldUntil[W, S, R]): R = Gen.read(chain.source)(chain.xf.fold(K))
   def toList: List[W] = foldUntil(using Gen.collecting[W])
   def toVector: Vector[W] = toList.toVector
   def first: Option[W] = foldUntil(using FoldUntil.headOption[W])
@@ -89,7 +95,8 @@ final class Gen[W](val program: Unit ! Gen.Row[W]) extends AnyVal:
    * hands the value over; the continuation is held and applied only
    * by the call after, so the code between two yields runs when the
    * second is asked for, not when the first is delivered. Reading
-   * again is a fresh walk of the same program. */
+   * again is a fresh walk of the same program. Over `program`: the
+   * stepper's contract is the walks' (Decisions) */
   def iterator: Iterator[W] = new Gen.Stepper[W](program)
   /** memoising, lazy — read it twice and the body ran once */
   def toLazyList: LazyList[W] = LazyList.from(iterator)
@@ -98,20 +105,135 @@ object Gen:
   type Row[W] = Writer % W + Stop
 
   /** a program that tells, as a generator — the same value, named */
-  def fromProgram[W](p: Unit ! Row[W]): Gen[W] = new Gen(p)
+  def fromProgram[W](p: Unit ! Row[W]): Gen[W] = new Gen(Chain(p))
 
   /** a transformed generator, built when first READ: every walk below
    * resumes its input's head, which would run the body's first step at
    * construction — Python runs nothing before `next()`, and neither
    * does this (a `Delay`, which the runners force in constant stack) */
-  private def lazily[W](p: => Unit ! Row[W]): Gen[W] = new Gen(Free.delay(() => p))
+  private def lazily[W](p: => Unit ! Row[W]): Gen[W] = new Gen(Chain(Free.delay(() => p)))
+
+  /**
+   * A source program and the stages to read it through
+   * (specs/gen-chain-fusion.md). The source's element type is an
+   * existential the value class cannot name; a type member names it
+   * once, and every reader is `read(source)(xf.fold(K))`.
+   */
+  abstract class Chain[W]:
+    type A
+    val source: Unit ! Row[A]
+    val xf: Xf[A, W]
+    /** the chain as a program: a plain chain IS its source (no node —
+     * `say(w)` sits on every walk's hot path); a staged one
+     * is its walks, built when first read */
+    def program: Unit ! Row[W]
+    def andThen[V](s: Xf[W, V]): Chain[V] =
+      val self = this
+      new Chain[V]:
+        type A = self.A
+        val source: Unit ! Row[A] = self.source
+        val xf: Xf[A, V] = self.xf.andThen(s)
+        def program: Unit ! Row[V] = Free.delay(() => xf.walk(source))
+
+  object Chain:
+    def apply[W](p: Unit ! Row[W]): Chain[W] = new Chain[W]:
+      type A = W
+      val source: Unit ! Row[W] = p
+      val xf: Xf[W, W] = Xf.Id[W]()
+      def program: Unit ! Row[W] = p
+
+  /**
+   * A stage with two readings: FUSED — a transformer of the reader,
+   * Clojure's transducer with the state type it adds carried as `St`
+   * so the fused reader is a `FoldUntil` at a known state type and
+   * `read` is unchanged — and MATERIALISED, the walk it was (for
+   * `program`). Stateless stages keep `St[S] = S`.
+   */
+  sealed trait Xf[A, B]:
+    type St[S]
+    def fold[S, R](k: FoldUntil[B, S, R]): FoldUntil[A, St[S], R]
+    def walk(p: Unit ! Row[A]): Unit ! Row[B]
+    def andThen[C](that: Xf[B, C]): Xf[A, C] = Xf.Compose(this, that)
+
+  object Xf:
+    final class Id[A] extends Xf[A, A]:
+      type St[S] = S
+      def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, S, R] = k
+      def walk(p: Unit ! Row[A]): Unit ! Row[A] = p
+      override def andThen[C](that: Xf[A, C]): Xf[A, C] = that
+
+    final class Map[A, B](f: A => B) extends Xf[A, B]:
+      type St[S] = S
+      def fold[S, R](k: FoldUntil[B, S, R]): FoldUntil[A, S, R] = new:
+        def init: S = k.init
+        def add(s: S, a: A): S = k.add(s, f(a))
+        def done(s: S): Boolean = k.done(s)
+        def end(s: S): R = k.end(s)
+      def walk(p: Unit ! Row[A]): Unit ! Row[B] = Writer.map[A, B, Unit, Stop](p)(f)
+
+    final class Filter[A](p: A => Boolean) extends Xf[A, A]:
+      type St[S] = S
+      def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, S, R] = new:
+        def init: S = k.init
+        def add(s: S, a: A): S = if p(a) then k.add(s, a) else s
+        def done(s: S): Boolean = k.done(s)
+        def end(s: S): R = k.end(s)
+      def walk(g: Unit ! Row[A]): Unit ! Row[A] = filtering(p)(g)
+
+    /** a count beside the reader's state — a class, not a tuple, so
+     * the count is a field and never boxed (a `(Int, S)` per element
+     * measured at +40 B) */
+    final class Counted[S](val n: Int, val s: S)
+
+    final class Take[A](n: Int) extends Xf[A, A]:
+      type St[S] = Counted[S]
+      def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, Counted[S], R] = new:
+        def init: Counted[S] = Counted(0, k.init)
+        def add(s: Counted[S], a: A): Counted[S] = Counted(s.n + 1, k.add(s.s, a))
+        def done(s: Counted[S]): Boolean = s.n >= n || k.done(s.s)
+        def end(s: Counted[S]): R = k.end(s.s)
+      def walk(g: Unit ! Row[A]): Unit ! Row[A] = taking(n)(g)
+
+    final class TakeWhile[A](p: A => Boolean) extends Xf[A, A]:
+      /** n = 1 once stopped */
+      type St[S] = Counted[S]
+      def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, Counted[S], R] = new:
+        def init: Counted[S] = Counted(0, k.init)
+        def add(s: Counted[S], a: A): Counted[S] = if p(a) then Counted(0, k.add(s.s, a)) else Counted(1, s.s)
+        def done(s: Counted[S]): Boolean = s.n == 1 || k.done(s.s)
+        def end(s: Counted[S]): R = k.end(s.s)
+      def walk(g: Unit ! Row[A]): Unit ! Row[A] = takingWhile(p)(g)
+
+    final class Drop[A](n: Int) extends Xf[A, A]:
+      /** n = skipped so far */
+      type St[S] = Counted[S]
+      def fold[S, R](k: FoldUntil[A, S, R]): FoldUntil[A, Counted[S], R] = new:
+        def init: Counted[S] = Counted(0, k.init)
+        def add(s: Counted[S], a: A): Counted[S] =
+          if s.n < n then Counted(s.n + 1, s.s) else Counted(s.n, k.add(s.s, a))
+        // the reader's `done` decides alone: done before anything was
+        // dropped means nothing needs reading at all
+        def done(s: Counted[S]): Boolean = k.done(s.s)
+        def end(s: Counted[S]): R = k.end(s.s)
+      def walk(g: Unit ! Row[A]): Unit ! Row[A] = dropping(n)(g)
+
+    final class Compose[A, B, C](val a: Xf[A, B], val b: Xf[B, C]) extends Xf[A, C]:
+      type St[S] = a.St[b.St[S]]
+      def fold[S, R](k: FoldUntil[C, S, R]): FoldUntil[A, St[S], R] = a.fold(b.fold(k))
+      def walk(p: Unit ! Row[A]): Unit ! Row[C] = b.walk(a.walk(p))
 
   /** yield one value — a tell. Sequence with `++`; `flatMap` is
    * element-wise (Python's `yield from`) */
-  def emit[W](w: W): Gen[W] = fromProgram(effect[Row[W], Unit](Writer(w)))
+  def emit[W](w: W): Gen[W] = fromProgram(say(w))
 
   /** end the generation here: nothing after it runs, in a loop or not */
-  def stop[W]: Gen[W] = fromProgram(effect[Row[W], Unit](Stop.Now))
+  def stop[W]: Gen[W] = fromProgram(ended[W])
+
+  /** the tell and the end as PROGRAMS, for the walks below: a `Gen`
+   * per element on a walk's hot path is a wrapper, a chain and a
+   * node the reader never asked for (measured: +96 B per element) */
+  private def say[W](w: W): Unit ! Row[W] = effect[Row[W], Unit](Writer(w))
+  private def ended[W]: Unit ! Row[W] = effect[Row[W], Unit](Stop.Now)
 
   def empty[W]: Gen[W] = fromProgram(pure(()))
 
@@ -122,14 +244,14 @@ object Gen:
    * into a memoising LazyList so the Gen stays re-runnable */
   def from[W](it: IterableOnce[W]): Gen[W] =
     def go(rest: LazyList[W]): Unit ! Row[W] = rest match
-      case h #:: tl => emit(h).program.flatMap(_ => go(tl))
+      case h #:: tl => say(h).flatMap(_ => go(tl))
       case _ => pure(())
     fromProgram(Free.delay(() => go(it.iterator.to(LazyList))))
 
   /** the producing side's `loop`: a state that decides when it ends */
   def unfold[S, W](s: S)(f: S => Option[(W, S)]): Gen[W] =
     def go(s: S): Unit ! Row[W] = Free.delay(() => f(s) match
-      case Some((w, s2)) => emit(w).program.flatMap(_ => go(s2))
+      case Some((w, s2)) => say(w).flatMap(_ => go(s2))
       case None => pure(()))
     fromProgram(go(s))
 
@@ -149,22 +271,22 @@ object Gen:
       case Pure(_) => pure(())
       case Inject(e) => split[Writer % W, Stop](e)
         { case Writer.Say(w) => f(w) }
-        { _ => stop[V].program }
+        { _ => ended[V] }
       case Bind(Inject(e), k) => split[Writer % W, Stop](e)
         { w0 => (w0: @unchecked) match
             case Writer.Say(w) => f(w).flatMap(_ => loop(k(()))) }
-        { _ => stop[V].program }
+        { _ => ended[V] }
     loop(g)
 
   private def indexed[W](g: Unit ! Row[W]): Unit ! Row[(W, Int)] =
     def loop(i: Int)(x: Unit ! Row[W]): Unit ! Row[(W, Int)] = (x.resume: @unchecked) match
       case Pure(_) => pure(())
       case Inject(e) => split[Writer % W, Stop](e)
-        { case Writer.Say(w) => emit((w, i)).program } { _ => stop[(W, Int)].program }
+        { case Writer.Say(w) => say((w, i)) } { _ => ended[(W, Int)] }
       case Bind(Inject(e), k) => split[Writer % W, Stop](e)
         { w0 => (w0: @unchecked) match
-            case Writer.Say(w) => emit((w, i)).program.flatMap(_ => loop(i + 1)(k(()))) }
-        { _ => stop[(W, Int)].program }
+            case Writer.Say(w) => say((w, i)).flatMap(_ => loop(i + 1)(k(()))) }
+        { _ => ended[(W, Int)] }
     loop(0)(g)
 
   private def taking[W](n: Int)(g: Unit ! Row[W]): Unit ! Row[W] =
@@ -175,8 +297,8 @@ object Gen:
         case Inject(e) => Inject(e)
         case Bind(Inject(e), k) => split[Writer % W, Stop](e)
           { w0 => (w0: @unchecked) match
-              case Writer.Say(w) => if n == 1 then emit(w).program else emit(w).program.flatMap(_ => loop(n - 1)(k(()))) }
-          { _ => stop[W].program }
+              case Writer.Say(w) => if n == 1 then say(w) else say(w).flatMap(_ => loop(n - 1)(k(()))) }
+          { _ => ended[W] }
     loop(n)(g)
 
   /** keep the tells `p` accepts: the accepted tell is the input's OWN
@@ -193,24 +315,24 @@ object Gen:
     def loop(x: Unit ! Row[W]): Unit ! Row[W] = (x.resume: @unchecked) match
       case Pure(_) => pure(())
       case i @ Inject(e) => split[Writer % W, Stop](e)
-        { case Writer.Say(w) => if p(w) then i else pure(()) } { _ => stop[W].program }
+        { case Writer.Say(w) => if p(w) then i else pure(()) } { _ => ended[W] }
       case Bind(i @ Inject(e), k) => split[Writer % W, Stop](e)
         { w0 => (w0: @unchecked) match
             case Writer.Say(w) =>
               if p(w) then Bind(i, (_: Any) => loop(k(())))
               else Free.delay(() => loop(k(()))) }
-        { _ => stop[W].program }
+        { _ => ended[W] }
     loop(g)
 
   private def takingWhile[W](p: W => Boolean)(g: Unit ! Row[W]): Unit ! Row[W] =
     def loop(x: Unit ! Row[W]): Unit ! Row[W] = (x.resume: @unchecked) match
       case Pure(_) => pure(())
       case Inject(e) => split[Writer % W, Stop](e)
-        { case Writer.Say(w) => if p(w) then emit(w).program else pure(()) } { _ => stop[W].program }
+        { case Writer.Say(w) => if p(w) then say(w) else pure(()) } { _ => ended[W] }
       case Bind(Inject(e), k) => split[Writer % W, Stop](e)
         { w0 => (w0: @unchecked) match
-            case Writer.Say(w) => if p(w) then emit(w).program.flatMap(_ => loop(k(()))) else pure(()) }
-        { _ => stop[W].program }
+            case Writer.Say(w) => if p(w) then say(w).flatMap(_ => loop(k(()))) else pure(()) }
+        { _ => ended[W] }
     loop(g)
 
   private def dropping[W](n: Int)(g: Unit ! Row[W]): Unit ! Row[W] =
@@ -219,11 +341,11 @@ object Gen:
       else (x.resume: @unchecked) match
         case Pure(_) => pure(())
         case Inject(e) => split[Writer % W, Stop](e)
-          { case Writer.Say(_) => pure(()) } { _ => stop[W].program }
+          { case Writer.Say(_) => pure(()) } { _ => ended[W] }
         case Bind(Inject(e), k) => split[Writer % W, Stop](e)
           { w0 => (w0: @unchecked) match
               case Writer.Say(_) => Free.delay(() => loop(n - 1)(k(()))) }
-          { _ => stop[W].program }
+          { _ => ended[W] }
     loop(n)(g)
 
   private def read[W, S, R](g: Unit ! Row[W])(K: FoldUntil[W, S, R]): R =
