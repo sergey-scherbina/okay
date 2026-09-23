@@ -169,6 +169,39 @@ handler that resumes twice is refused by name, not answered wrongly.
       version still bumps (Python 3, R 4) so a host never talks to a shim
       that cannot answer it.
 
+## Stage 3 — foreign-object-handles
+
+### Behavior
+
+- [ ] `PyEval.Hold(fn, args)` calls the function and KEEPS its result in
+      the worker, answering a `PyRef(id, pyType)`; `REval.Hold` the same
+      in R (`RRef(id, rClass)`). A ref is a value on the wire
+      (`{"t": "ref", "id": n}`), so it may be passed as an argument to ANY
+      call — `stats::predict(model, newdata)`, `m:score(model, X)`.
+- [ ] Python: `PyEval.Method(ref, name, args, hold)` calls a method of the
+      held object (answering its value, or holding the result when
+      `hold`), and `PyEval.Attr(ref, name)` reads an attribute.
+- [ ] `Release(ref)` drops the object on the far side; a ref used after
+      its release, or on a process that never held it (after a restart),
+      is refused BY NAME, as a condition.
+- [ ] Typed: `Py.hold(fn)(args)`, `ref.call[Out](method)(args)`,
+      `ref.attr[Out](name)`, `ref.release`; arguments through `ToPy`
+      (`Schema` values and refs alike), answers through `Schema`. R the
+      same with `ToR`, and `R.fn(...)(ref, ...)` for R's
+      function-on-object style.
+- [ ] `PyWorkers`: a hold PINS its worker (out of the pool until every
+      ref it holds is released); calls that name refs go to the owner;
+      refs on two different workers in one call are refused by name.
+- [ ] `Durable`: a whole program with handles replays from its journal
+      (every step answered, no interpreter). RECOVERY past a handle —
+      replay up to the crash, then continue live on a fresh process —
+      meets a ref the new process never held, and that is refused by name
+      rather than answered wrongly. A durable program that must survive a
+      crash keeps VALUES, not handles.
+- [ ] Live: scikit-learn is not assumed; the Python test holds a stdlib
+      object (`collections:Counter`, `random:Random` seeded) and an R test
+      holds an `lm` fit and calls `predict` on it.
+
 ## Results
 
 - Stage 1 (foreign-journalled, 2026-09-23). Eight tests with no live
