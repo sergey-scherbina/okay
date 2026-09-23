@@ -304,6 +304,55 @@ deferred head deferred.**
   `Writer.widen`; TestWidenDelay). The normalisation argument for the
   walk is untouched: it applies from the first node the run reaches.
 
+## free-answer-variance (2026-09-23): the other axis, `Free[F, +A]`
+
+**The question.** `Free[F, A]` is invariant in its ANSWER as it is in
+its row, and the answer side has no `RowLift.coerce`. Three doors pay
+for that today with an identity `map` — a `Bind` node per program
+built only to move `A` up: `SharedOnce.answer` (twice; a `translate`
+handler over the covariant `enum Once[+A]`, where the GADT match gives
+`Option[A'] <: X` and never `=:=`) and okay-workflow's `Wf.up[Z, V <:
+Z, Row](p: V ! Row): Z ! Row = p.map(v => v)`. Every future handler
+that answers a program from a covariant GADT meets the same.
+
+**Why the row's answer need not be this axis's.** The row spike above
+lost on a NUMBER because a walk (`widen`) that covariance would have
+deleted turned out to be a normalisation the merge wanted. There is no
+walk on the answer axis: nothing rebuilds a tree to move `A`, the
+three doors above just add a node. So `+A` deletes nodes and changes
+no code path — the prize can only be zero or positive operationally,
+and the price is entirely in TYPING: `A` occurs only covariantly in
+the tree (`Return(a: A)`, `Inject(a: F[A])` under `F[+_]`, `Bind`'s
+result, `Delay`'s thunk result), but the interpreter's rewrites match
+`Bind(Bind(a, f), g)` and would now bind a fresh `A' <: A` per level,
+as the row spike found for `F' <: F`.
+
+**The spike, in order:** (1) `enum Free[F[+_], +A]`, and the family's
+`Test/compile` says what stops typechecking; (2) if it compiles, the
+three doors lose their `map`, and TestSharedOnce/okay-workflow pin
+that the answer is unchanged; (3) the number: `Free.class` and
+`Effects.class` bytecode is the same except where a `map` was deleted
+— asserted by `javap` diff, because a change that touches no code path
+has nothing to measure and a benchmark would only add noise to that
+sentence; where a door was deleted, the lane it is on (SharedOnce's
+par test is not a benchmark; none exists) is not claimed faster.
+(4) If (1) refuses in the interpreter with more than a helper or two,
+the road is `!.up[A, B >: A](p: A ! F): B ! F`, one commented cast
+beside `RowLift.coerce`, sound by the same argument, and the three
+doors call it.
+
+### Behavior — free-answer-variance
+
+- [ ] `Free[F, +A]` compiles across the family, or the refusal is
+      recorded with the site and the road (4) taken
+- [ ] the three identity-`map` doors are gone (SharedOnce twice,
+      Wf.up), their tests unchanged
+- [ ] `p: Int ! F` is an `AnyVal ! F` / `Any ! F` by subtyping
+      (TestFreeVariance), and a covariant GADT handler answers its
+      program with no upcast
+- [ ] bytecode: `javap -c` of `Free`, `Effects` unchanged by the
+      variance annotation alone
+
 ## rowlift (2026-09-08): moving an operation into a wider row, for free
 
 free-row-variance answered "can the walk be deleted?" with a measured
