@@ -7479,3 +7479,30 @@ one that type-checked, which is a shape worth removing.
       phases recurse through `compile`; specs/direct-macro.md
       "Structure" and its Decisions entry say why. Phase probes:
       src/test/scala/DirectProbe.scala, TestDirectPhases.
+- [x] scan-into-the-other-scanners — DONE 2026-09-23. All four
+      converted from `Scan` (the default `stepInto` delegating to
+      `step`, paying a `Tuple2` per character and a `Vector` per
+      token) to `ScanInto` (writing straight onto the sink). `Markdown`
+      2026-09-19 (min 20.4 vs 29.9 μs/op) and `Xml` 2026-09-19 (28.8
+      vs 39.3 us/op) were mechanical — neither `step` recurses into
+      itself. `Yaml` and `Code` do (`PendingDash`/`PendingColon`
+      falling through to Plain-mode processing of the same character;
+      `Quoting`'s empty-string fall-through and `Pending`'s two-char-
+      marker-miss fall-through) — real conversion work: every
+      recursive `step(...)` call became a `stepInto(...)` call
+      writing into the same sink, with the exact token order the
+      pair built preserved by hand at each site. One correctness trap
+      found before it shipped: Code's Base/InIdent/InWs branch
+      computed a `closing` vector UNCONDITIONALLY in the original but
+      only EMITTED it on some sub-branches (the two same-mode `keep`
+      continuations discarded it on purpose, to not flush a token
+      still being built) — a naive unconditional `flushedInto` call
+      would have flushed early; fixed to call it only where the
+      original tuple used `closing`. `Yaml`: 26.670 → 18.882 μs/op
+      (1.41x), 258 264 → 196 912 B (1.31x), `lexYamlElementwise`.
+      `Code` (Language.scala, the honest workload — doc comments,
+      strings incl. triple-quoted, line/block comments, nested
+      braces): 87.981 → 64.596 μs/op (1.36x), 660 353 → 446 695 B
+      (1.48x), `lexCodeElementwise`. All four scanners now on
+      `ScanInto`; nothing left to convert.
+

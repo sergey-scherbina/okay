@@ -1,1 +1,0 @@
-- [~] scan-into-the-other-scanners — Yaml and okay-rag's Code scanner still answer the pair; Markdown (1.47x) and Xml (1.36x) already converted. These two recurse into their own step, unlike Xml — the conversion is real work: the recursive step(...) calls become stepInto(...) calls writing into the same sink, order preserved. Yaml first (fully read), Code second.

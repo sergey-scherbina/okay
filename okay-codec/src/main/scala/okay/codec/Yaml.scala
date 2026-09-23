@@ -1,7 +1,8 @@
 package okay.codec
 
-import okay.lex.{Channel, Scan, Span, Token}
+import okay.lex.{Channel, Scan, ScanInto, Span, Token}
 import okay.parse.{Cst, Instr, Parse}
+import scala.collection.mutable.Growable
 
 /**
  * The YAML dialect — the INDENTATION prover of specs/codecs.md:
@@ -42,7 +43,13 @@ object Yaml {
 
   final case class S(mode: Mode, buf: String, start: P, at: P)
 
-  val scan: Scan[K, S] = new Scan[K, S]:
+  // extends ScanInto rather than Scan (scan-into-the-other-scanners):
+  // Yaml's step recurses into itself (PendingDash/PendingColon falling
+  // through to Plain-mode processing of the SAME character) — real
+  // work, not a rename, unlike Xml's mechanical move. The recursive
+  // step(...) calls become stepInto(...) calls writing into the same
+  // sink; every branch keeps its exact order of emitted tokens.
+  val scan: Scan[K, S] = new ScanInto[K, S]:
     def init: S = S(Mode.LineStart, "", P(0, 0, 0), P(0, 0, 0))
 
     override def key(s: S): Any = (s.mode.ordinal, s.buf)
@@ -55,77 +62,88 @@ object Yaml {
         case other => other
       S(m, s.buf, shift(s.start), shift(s.at))
 
-    private def tok(k: K, s: S, channel: Channel = Channel.Syntax): Vector[T] =
-      if s.buf.isEmpty then Vector.empty
-      else Vector(Token(k, s.buf,
-        Span(s.start.off, s.start.line, s.start.col, s.buf.length), channel))
+    private def tokInto(k: K, s: S, out: Growable[T], channel: Channel = Channel.Syntax): Unit =
+      if s.buf.nonEmpty then out += Token(k, s.buf,
+        Span(s.start.off, s.start.line, s.start.col, s.buf.length), channel)
 
-    private def one(k: K, c: Char, at: P, channel: Channel = Channel.Syntax): T =
-      Token(k, c.toString, Span(at.off, at.line, at.col, 1), channel)
+    private def oneInto(k: K, c: Char, at: P, out: Growable[T], channel: Channel = Channel.Syntax): Unit =
+      out += Token(k, c.toString, Span(at.off, at.line, at.col, 1), channel)
 
-    private def flushed(s: S): Vector[T] = s.mode match
-      case Mode.LineStart => tok(K.Indent, s, Channel.Trivia)
-      case Mode.Plain => tok(K.Scalar, s)
-      case Mode.PendingDash(_) => tok(K.Scalar, s)     // a lone trailing '-'
-      case Mode.PendingColon(_) => tok(K.Scalar, s)    // 'a:' at EOF: scalar
-      case Mode.InQuote(_) => tok(K.Quoted, s)         // unterminated: still a token
-      case Mode.InComment => tok(K.Comment, s, Channel.Comment)
+    private def flushedInto(s: S, out: Growable[T]): Unit = s.mode match
+      case Mode.LineStart => tokInto(K.Indent, s, out, Channel.Trivia)
+      case Mode.Plain => tokInto(K.Scalar, s, out)
+      case Mode.PendingDash(_) => tokInto(K.Scalar, s, out)     // a lone trailing '-'
+      case Mode.PendingColon(_) => tokInto(K.Scalar, s, out)    // 'a:' at EOF: scalar
+      case Mode.InQuote(_) => tokInto(K.Quoted, s, out)         // unterminated: still a token
+      case Mode.InComment => tokInto(K.Comment, s, out, Channel.Comment)
 
-    def step(s: S, c: Char): (S, Vector[T]) =
+    override def stepInto(s: S, c: Char, out: Growable[T]): S =
       val next = s.at + c
       def fresh(m: Mode) = S(m, "", next, next)
       def keep(m: Mode) = S(m, s.buf + c, if s.buf.isEmpty then s.at else s.start, next)
 
       s.mode match
         case Mode.InComment =>
-          if c == '\n' then (fresh(Mode.LineStart),
-            flushed(s) :+ one(K.Newline, c, s.at, Channel.Trivia))
-          else (keep(Mode.InComment), Vector.empty)
+          if c == '\n' then
+            flushedInto(s, out); oneInto(K.Newline, c, s.at, out, Channel.Trivia)
+            fresh(Mode.LineStart)
+          else keep(Mode.InComment)
         case Mode.InQuote(esc) =>
-          if esc then (keep(Mode.InQuote(false)), Vector.empty)
-          else if c == '\\' then (keep(Mode.InQuote(true)), Vector.empty)
+          if esc then keep(Mode.InQuote(false))
+          else if c == '\\' then keep(Mode.InQuote(true))
           else if c == '"' then
             val done = s.copy(buf = s.buf + c)
-            (fresh(Mode.Plain), tok(K.Quoted, done))
-          else (keep(Mode.InQuote(false)), Vector.empty)
+            tokInto(K.Quoted, done, out)
+            fresh(Mode.Plain)
+          else keep(Mode.InQuote(false))
         case Mode.PendingDash(dashAt) =>
-          if c == ' ' then (fresh(Mode.Plain),
-            Vector(one(K.Dash, '-', dashAt), one(K.Ws, c, s.at, Channel.Trivia)))
-          else if c == '\n' then (fresh(Mode.LineStart),
-            Vector(one(K.Dash, '-', dashAt), one(K.Newline, c, s.at, Channel.Trivia)))
-          else step(S(Mode.Plain, "-", dashAt, s.at), c) match
-            case (s2, ts) => (s2, ts)   // the dash was a scalar's first char
+          if c == ' ' then
+            oneInto(K.Dash, '-', dashAt, out); oneInto(K.Ws, c, s.at, out, Channel.Trivia)
+            fresh(Mode.Plain)
+          else if c == '\n' then
+            oneInto(K.Dash, '-', dashAt, out); oneInto(K.Newline, c, s.at, out, Channel.Trivia)
+            fresh(Mode.LineStart)
+          // the dash was a scalar's first char — the SAME character is
+          // re-processed under Plain, exactly as `step` recursed
+          else stepInto(S(Mode.Plain, "-", dashAt, s.at), c, out)
         case Mode.PendingColon(colonAt) =>
           if c == ' ' || c == '\n' then
             val scalarPart = s.copy(buf = s.buf.dropRight(1))
-            val colon = one(K.Colon, ':', colonAt)
-            if c == ' ' then (fresh(Mode.Plain),
-              tok(K.Scalar, scalarPart) :+ colon :+ one(K.Ws, c, s.at, Channel.Trivia))
-            else (fresh(Mode.LineStart),
-              tok(K.Scalar, scalarPart) :+ colon :+ one(K.Newline, c, s.at, Channel.Trivia))
-          else step(s.copy(mode = Mode.Plain), c)   // ':' stays in the scalar
+            tokInto(K.Scalar, scalarPart, out)
+            oneInto(K.Colon, ':', colonAt, out)
+            if c == ' ' then
+              oneInto(K.Ws, c, s.at, out, Channel.Trivia)
+              fresh(Mode.Plain)
+            else
+              oneInto(K.Newline, c, s.at, out, Channel.Trivia)
+              fresh(Mode.LineStart)
+          else stepInto(s.copy(mode = Mode.Plain), c, out)   // ':' stays in the scalar
         case mode =>   // LineStart or Plain
           c match
-            case '\n' => (fresh(Mode.LineStart),
-              flushed(s) :+ one(K.Newline, c, s.at, Channel.Trivia))
-            case '#' => (S(Mode.InComment, "#", s.at, next), flushed(s))
-            case '"' => (S(Mode.InQuote(false), "\"", s.at, next), flushed(s))
+            case '\n' =>
+              flushedInto(s, out); oneInto(K.Newline, c, s.at, out, Channel.Trivia)
+              fresh(Mode.LineStart)
+            case '#' => flushedInto(s, out); S(Mode.InComment, "#", s.at, next)
+            case '"' => flushedInto(s, out); S(Mode.InQuote(false), "\"", s.at, next)
             case ':' if mode == Mode.Plain =>
-              (keep(Mode.PendingColon(s.at)), Vector.empty)
-            case ':' => (fresh(Mode.Plain), flushed(s) :+ one(K.Colon, c, s.at))
+              keep(Mode.PendingColon(s.at))
+            case ':' => flushedInto(s, out); oneInto(K.Colon, c, s.at, out); fresh(Mode.Plain)
             case '-' if mode == Mode.LineStart || s.buf.isEmpty =>
-              (S(Mode.PendingDash(s.at), "", s.at, next), flushed(s))
-            case ' ' if mode == Mode.LineStart => (keep(Mode.LineStart), Vector.empty)
+              flushedInto(s, out); S(Mode.PendingDash(s.at), "", s.at, next)
+            case ' ' if mode == Mode.LineStart => keep(Mode.LineStart)
             case ' ' if s.buf.isEmpty =>
-              (fresh(Mode.Plain), Vector(one(K.Ws, c, s.at, Channel.Trivia)))
+              oneInto(K.Ws, c, s.at, out, Channel.Trivia); fresh(Mode.Plain)
             case _ if mode == Mode.LineStart =>
-              (S(Mode.Plain, c.toString, s.at, next), flushed(s))
-            case _ => (keep(Mode.Plain), Vector.empty)
+              flushedInto(s, out); S(Mode.Plain, c.toString, s.at, next)
+            case _ => keep(Mode.Plain)
 
     def flush(s: S): Vector[T] = s.mode match
       case Mode.PendingDash(dashAt) =>
         Vector(Token(K.Scalar, "-", Span(dashAt.off, dashAt.line, dashAt.col, 1)))
-      case _ => flushed(s)
+      case _ =>
+        val sink = new Scan.Sink[K]
+        flushedInto(s, sink)
+        sink.result()
 
   // ---------------------------------------------------------------- drive
 

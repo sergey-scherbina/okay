@@ -1,7 +1,8 @@
 package okay.rag
 
-import okay.lex.{Channel, Scan, Span, Token}
+import okay.lex.{Channel, Scan, ScanInto, Span, Token}
 import okay.parse.{Instr, Parse}
+import scala.collection.mutable.Growable
 
 /**
  * Source code as a corpus (specs/rag.md, P10f), for any language a
@@ -52,7 +53,16 @@ object Code {
 
   // ---------------------------------------------------------------- scan
 
-  def scanner(lang: Language): Scan[K, S] = new Scan[K, S]:
+  // extends ScanInto rather than Scan (scan-into-the-other-scanners):
+  // like Yaml, step recurses into itself — Quoting's fall-through to
+  // an empty string followed by a fresh char, and Pending's fall-
+  // through to Base once a two-char marker did not match — so this
+  // is real conversion work. Every recursive step(...) call becomes
+  // stepInto(...) writing into the same sink, in the SAME order the
+  // pair built (a token this branch owns, THEN whatever the
+  // recursive call emits — `tok(...) ++ ts` and `punct +: ts` both
+  // read left-to-right, which `out +=` then `stepInto(...)` matches).
+  def scanner(lang: Language): Scan[K, S] = new ScanInto[K, S]:
 
     private val blockStart = lang.blockComment.map(_._1)
     private val blockEnd = lang.blockComment.map(_._2)
@@ -71,35 +81,34 @@ object Code {
         case other => other
       S(m, s.buf, shift(s.start), shift(s.at))
 
-    private def tok(k: K, s: S, ch: Channel = Channel.Syntax): Vector[T] =
-      if s.buf.isEmpty then Vector.empty
-      else Vector(Token(k, s.buf,
-        Span(s.start.off, s.start.line, s.start.col, s.buf.length), ch))
+    private def tokInto(k: K, s: S, out: Growable[T], ch: Channel = Channel.Syntax): Unit =
+      if s.buf.nonEmpty then out += Token(k, s.buf,
+        Span(s.start.off, s.start.line, s.start.col, s.buf.length), ch)
 
-    private def one(k: K, c: Char, at: P, ch: Channel = Channel.Syntax): T =
-      Token(k, c.toString, Span(at.off, at.line, at.col, 1), ch)
+    private def oneInto(k: K, c: Char, at: P, out: Growable[T], ch: Channel): Unit =
+      out += Token(k, c.toString, Span(at.off, at.line, at.col, 1), ch)
 
     private def isDoc(buf: String): Boolean =
       lang.docPrefix.exists(buf.startsWith)
 
-    private def flushed(s: S): Vector[T] = s.mode match
+    private def flushedInto(s: S, out: Growable[T]): Unit = s.mode match
       case Mode.InIdent =>
-        if lang.definers(s.buf) then tok(K.Keyword, s) else tok(K.Ident, s)
-      case Mode.InWs => tok(K.Ws, s, Channel.Trivia)
-      case Mode.InStr(_, _, _) => tok(K.Str, s)     // unterminated: still a token
-      case Mode.Quoting(_, _) => tok(K.Str, s)      // a bare quote at the end
+        if lang.definers(s.buf) then tokInto(K.Keyword, s, out) else tokInto(K.Ident, s, out)
+      case Mode.InWs => tokInto(K.Ws, s, out, Channel.Trivia)
+      case Mode.InStr(_, _, _) => tokInto(K.Str, s, out)     // unterminated: still a token
+      case Mode.Quoting(_, _) => tokInto(K.Str, s, out)      // a bare quote at the end
       // a doc comment can be a LINE comment: Rust's `///`, Go's
       // convention. Only the block form was checked before, so Rust
       // doc comments were never adopted by their definitions.
       case Mode.InLine =>
-        tok(if isDoc(s.buf) then K.Doc else K.Comment, s, Channel.Comment)
+        tokInto(if isDoc(s.buf) then K.Doc else K.Comment, s, out, Channel.Comment)
       case Mode.InBlock(doc) =>
-        tok(if doc then K.Doc else K.Comment, s, Channel.Comment)
+        tokInto(if doc then K.Doc else K.Comment, s, out, Channel.Comment)
       case Mode.Pending(at, c) =>
-        Vector(Token(K.Punct, c.toString, Span(at.off, at.line, at.col, 1)))
-      case Mode.Base => Vector.empty
+        out += Token(K.Punct, c.toString, Span(at.off, at.line, at.col, 1))
+      case Mode.Base => ()
 
-    def step(s: S, c: Char): (S, Vector[T]) =
+    override def stepInto(s: S, c: Char, out: Growable[T]): S =
       val next = s.at + c
       def fresh(m: Mode) = S(m, "", next, next)
       def begin(m: Mode) = S(m, c.toString, s.at, next)
@@ -108,18 +117,19 @@ object Code {
       s.mode match
         case Mode.InLine =>
           if c == '\n' then
-            (fresh(Mode.Base), flushed(s) :+ one(K.Newline, c, s.at, Channel.Trivia))
-          else (keep(Mode.InLine), Vector.empty)
+            flushedInto(s, out); oneInto(K.Newline, c, s.at, out, Channel.Trivia)
+            fresh(Mode.Base)
+          else keep(Mode.InLine)
 
         case Mode.InBlock(doc) =>
           val b = s.buf + c
           if blockEnd.exists(b.endsWith) then
-            (fresh(Mode.Base), tok(if doc || isDoc(b) then K.Doc else K.Comment,
-              s.copy(buf = b), Channel.Comment))
-          else (keep(Mode.InBlock(doc || isDoc(b))), Vector.empty)
+            tokInto(if doc || isDoc(b) then K.Doc else K.Comment, s.copy(buf = b), out, Channel.Comment)
+            fresh(Mode.Base)
+          else keep(Mode.InBlock(doc || isDoc(b)))
 
         case Mode.InStr(q, esc, triple) =>
-          if esc then (keep(Mode.InStr(q, false, triple)), Vector.empty)
+          if esc then keep(Mode.InStr(q, false, triple))
           // A triple-quoted string ends at the first three quotes,
           // backslash or not. That is exactly Scala's rule (there are
           // no escapes inside a triple) and only approximates Python's
@@ -127,67 +137,76 @@ object Code {
           // not symmetric: closing one string early costs a few
           // mis-shaped leaves, while honouring `\"""` in a language
           // that does not would swallow the rest of the file.
-          else if c == '\\' && !triple then
-            (keep(Mode.InStr(q, true, triple)), Vector.empty)
+          else if c == '\\' && !triple then keep(Mode.InStr(q, true, triple))
           else if c == q then
             val b = s.buf + c
             // a triple only closes on three, a plain one on the first
-            if !triple then (fresh(Mode.Base), tok(K.Str, s.copy(buf = b)))
+            if !triple then
+              tokInto(K.Str, s.copy(buf = b), out); fresh(Mode.Base)
             else if b.endsWith(q.toString * 3) && b.length >= 6 then
-              (fresh(Mode.Base), tok(K.Str, s.copy(buf = b)))
-            else (keep(Mode.InStr(q, false, triple)), Vector.empty)
-          else (keep(Mode.InStr(q, false, triple)), Vector.empty)
+              tokInto(K.Str, s.copy(buf = b), out); fresh(Mode.Base)
+            else keep(Mode.InStr(q, false, triple))
+          else keep(Mode.InStr(q, false, triple))
 
         case Mode.Quoting(q, n) =>
           if c == q then
-            if n == 2 then (keep(Mode.InStr(q, false, triple = true)), Vector.empty)
-            else (keep(Mode.Quoting(q, n + 1)), Vector.empty)
+            if n == 2 then keep(Mode.InStr(q, false, triple = true))
+            else keep(Mode.Quoting(q, n + 1))
           else if n == 2 then
-            // two quotes and no third: that was an empty string
-            val (s2, ts) = step(S(Mode.Base, "", next, s.at), c)
-            (s2, tok(K.Str, s) ++ ts)
+            // two quotes and no third: that was an empty string — its
+            // token comes FIRST, then the fresh character is re-read
+            tokInto(K.Str, s, out)
+            stepInto(S(Mode.Base, "", next, s.at), c, out)
           else
             // one quote: an ordinary string, and c belongs to it
-            step(s.copy(mode = Mode.InStr(q, false, triple = false)), c)
+            stepInto(s.copy(mode = Mode.InStr(q, false, triple = false)), c, out)
 
         case Mode.Pending(at, first) =>
           val two = s"$first$c"
-          if two == lang.lineComment then (S(Mode.InLine, two, at, next), Vector.empty)
-          else if blockStart.contains(two) then
-            (S(Mode.InBlock(doc = false), two, at, next), Vector.empty)
+          if two == lang.lineComment then S(Mode.InLine, two, at, next)
+          else if blockStart.contains(two) then S(Mode.InBlock(doc = false), two, at, next)
           else
-            val punct = Token(K.Punct, first.toString,
-              Span(at.off, at.line, at.col, 1))
-            val (s2, ts) = step(S(Mode.Base, "", s.at, s.at), c)
-            (s2, punct +: ts)
+            // the pending char was ordinary punctuation on its own —
+            // emit it, THEN re-read c fresh, in that order
+            out += Token(K.Punct, first.toString, Span(at.off, at.line, at.col, 1))
+            stepInto(S(Mode.Base, "", s.at, s.at), c, out)
 
         case mode =>   // Base, InIdent, InWs
-          val closing = flushed(s)
-          def emit(t: T) = (fresh(Mode.Base), closing :+ t)
+          // `closing` was flushed ONLY on the branches that actually
+          // finish something — the two continuing-state `keep`
+          // branches below (still InWs, still InIdent) must NOT flush
+          // the in-progress token, so `flushedInto` sits where the
+          // original tuple used `closing`, never before the match
+          def closing(): Unit = flushedInto(s, out)
+          def emit(t: T): S = { closing(); out += t; fresh(Mode.Base) }
           c match
             case '\n' =>
-              (fresh(Mode.Base), closing :+ one(K.Newline, c, s.at, Channel.Trivia))
+              closing(); oneInto(K.Newline, c, s.at, out, Channel.Trivia); fresh(Mode.Base)
             case _ if lang.lineComment.length == 1 && c == lang.lineComment.head =>
-              (S(Mode.InLine, c.toString, s.at, next), closing)
+              closing(); S(Mode.InLine, c.toString, s.at, next)
             case _ if twoCharStarts.exists(_.head == c) =>
-              (S(Mode.Pending(s.at, c), "", s.at, next), closing)
+              closing(); S(Mode.Pending(s.at, c), "", s.at, next)
             case _ if lang.quotes(c) =>
-              if lang.triple then (S(Mode.Quoting(c, 1), c.toString, s.at, next), closing)
-              else (S(Mode.InStr(c, false, triple = false), c.toString, s.at, next), closing)
-            case '{' | '(' | '[' => emit(one(K.Open, c, s.at))
-            case '}' | ')' | ']' => emit(one(K.Close, c, s.at))
+              closing()
+              if lang.triple then S(Mode.Quoting(c, 1), c.toString, s.at, next)
+              else S(Mode.InStr(c, false, triple = false), c.toString, s.at, next)
+            case '{' | '(' | '[' => emit(Token(K.Open, c.toString, Span(s.at.off, s.at.line, s.at.col, 1)))
+            case '}' | ')' | ']' => emit(Token(K.Close, c.toString, Span(s.at.off, s.at.line, s.at.col, 1)))
             case _ if c.isWhitespace =>
-              if mode == Mode.InWs then (keep(Mode.InWs), Vector.empty)
-              else (begin(Mode.InWs), closing)
+              // still InWs: NO flush, the run continues
+              if mode == Mode.InWs then keep(Mode.InWs) else { closing(); begin(Mode.InWs) }
             case _ if c.isLetterOrDigit || c == '_' || c == '$' =>
-              if mode == Mode.InIdent then (keep(Mode.InIdent), Vector.empty)
-              else (begin(Mode.InIdent), closing)
-            case _ => emit(one(K.Punct, c, s.at))
+              // still InIdent: NO flush, the run continues
+              if mode == Mode.InIdent then keep(Mode.InIdent) else { closing(); begin(Mode.InIdent) }
+            case _ => emit(Token(K.Punct, c.toString, Span(s.at.off, s.at.line, s.at.col, 1)))
 
     def flush(s: S): Vector[T] = s.mode match
       case Mode.Pending(at, first) =>
         Vector(Token(K.Punct, first.toString, Span(at.off, at.line, at.col, 1)))
-      case _ => flushed(s)
+      case _ =>
+        val sink = new Scan.Sink[K]
+        flushedInto(s, sink)
+        sink.result()
 
   /** the default scanner: the language this library is written in */
   val scan: Scan[K, S] = scanner(Language.scala)

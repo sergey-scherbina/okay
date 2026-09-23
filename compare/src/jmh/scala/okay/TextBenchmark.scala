@@ -4,8 +4,9 @@ import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import okay.lex.{Scan, Json as JsonLex}
 import okay.parse.{Cst, JsonParse, Parse}
-import okay.codec.{Cbor, Json, Markdown, Xml, Schema}
+import okay.codec.{Cbor, Json, Markdown, Xml, Yaml, Schema}
 import okay.lex.Bpe
+import okay.rag.Code
 import io.circe.syntax.*
 
 /**
@@ -83,6 +84,51 @@ class TextBenchmark {
    * comparison as lexMarkdownElementwise above */
   @Benchmark
   def lexXmlElementwise: Int = Scan.all(Xml.scan)(xmlDoc).tokens.length
+
+  // ~1KB: block mappings, block sequences nested under a key, quoted
+  // scalars, comments, dash-then-colon ("- key: value", the ONE line
+  // shape that visits both PendingDash and PendingColon on the same
+  // row) — every branch of Yaml.scan's stepInto, including the two
+  // that recurse into themselves
+  val yamlDoc: String = (0 until 15)
+    .map(i => s"item$i:\n  name: \"value $i\" # comment $i\n  tags:\n    - a$i\n    - b$i\n  nested:\n    - key$i: val$i\n")
+    .mkString
+
+  /** Yaml.scan on ScanInto (scan-into-the-other-scanners): unlike
+   * Markdown/Xml, `stepInto` here recurses into itself (PendingDash/
+   * PendingColon falling through to Plain-mode processing of the SAME
+   * character) — real conversion work, not a rename */
+  @Benchmark
+  def lexYamlElementwise: Int = Scan.all(Yaml.scan)(yamlDoc).tokens.length
+
+  // ~1.4KB, Scala-shaped: a doc comment, keywords/idents, a line
+  // comment, a block comment, a plain string with an escape, a
+  // triple-quoted string, nested braces/parens/brackets — every mode
+  // of Code.scanner's stepInto, including Quoting's and Pending's
+  // self-recursion (the honest workload the backlog entry asked for:
+  // okay-rag's own code chunker, not a synthetic snippet with one
+  // branch each)
+  val codeDoc: String = (0 until 12)
+    .map(i => s"""/** doc for f$i */
+final case class C$i(x: Int, name: String = "n$i\\n") {
+  // a line comment
+  /* a block
+     comment $i */
+  def f(a: Int, b: List[Int]): Int = {
+    val s = \"\"\"triple $i\"\"\"
+    if (a > b.length) a else b(0)
+  }
+}
+""")
+    .mkString
+
+  /** Code.scanner(Language.scala) on ScanInto (scan-into-the-other-
+   * scanners): the last of the four, and the SECOND that recurses
+   * into itself (Quoting's fall-through to a fresh char after an
+   * empty string, Pending's fall-through to Base after a two-char
+   * comment marker did not match) */
+  @Benchmark
+  def lexCodeElementwise: Int = Scan.all(Code.scan)(codeDoc).tokens.length
 
   // ---- parsing, full and incremental
 
