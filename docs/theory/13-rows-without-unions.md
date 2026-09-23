@@ -136,10 +136,10 @@ parameterised monad, answer-type modification included.
 
 ## What the Scala 2 reader forced, and what it did not
 
-The design above is the theory. Three facts about scalac 2.13, two of
-them about its TASTy reader, decided the rest, and each one was
-measured
-(specs/scala2-facade.md):
+The design above is the theory. A handful of facts about scalac 2.13
+and its TASTy reader decided the rest. Each one was measured, and each
+is recorded with its error message in specs/scala2-facade.md. The
+first three shaped the core facade:
 
 - **It refuses `inline`.** "Unsupported Scala 3 inline method flatMap;
   found in class okay.Free". So okay's own combinators cannot be
@@ -153,6 +153,42 @@ measured
 - **It infers `R = Any` at the last handler of a curried `handle`.**
   `-Xlint` reports that as an error-worthy inference. So a user
   effect's last handler is `run` (Effect.scala:62), which has no `R`.
+
+The rest turned up while wrapping the libraries above the core (codecs,
+HTTP, SQL, agents, UI, WebSockets). They are the same kind of fact, one
+level up:
+
+- **Some TASTy it cannot read at all.** `okay.codec.Json`'s crashes it
+  ("class file ... is broken (class scala.MatchError/49)"). The damage
+  is to every SIGNATURE that names `Json`, not only to `Json` itself,
+  so the facade speaks JSON as text, and holds a `Json` it must keep
+  in a value class (`FormValue`) for the constructor reason.
+- **Scala 3 generic tuples are refused.** okay-http's `Route` builds its
+  parameters as `*:` tuples ("Unsupported Scala 3 generic tuple type
+  scala.Tuple"). Scala 2 routing is pattern matching instead, over
+  okay-http's own decoding (`okay.http.Urls`).
+- **Top-level definitions are invisible.** A Scala 3 `type` alias at
+  package level cannot be seen from 2.13 at all ("type Chunk is not a
+  member of package okay"). What the alias NAMES can be seen. `Chunk`
+  is `ArraySeq`, and a Scala 2 caller passes an `ArraySeq` where a
+  `Chunk` is asked for. So `Schema` keeps its okay-codec name.
+- **Names in the facade's package are read while resolving names.** An
+  internal class named `Body` made scalac read it, and refuse it, while
+  resolving `okay.http.Body` in a file that imported both packages. So
+  internal classes do not take common names (`ProgBody`), and the loop
+  object is `UiApp`, because `App` would capture `object Main extends
+  App`.
+- **An enum case is typed as the case.** Scala 3 widens
+  `Event.Pressed("inc")` to `Event`, and Scala 2 does not. So an
+  invariant container of events needs its type argument written out.
+- **Implicit search DOES find Scala 3 givens.** `Schema[Int]`, and even
+  `Schema[Option[Vector[Long]]]` through by-name `using` clauses, resolve
+  from Scala 2. That is why most of okay-codec needed no facade.
+
+The general lesson is the one the facade was built on. A wrapper is
+written only for what the reader cannot use, because each area was
+probed before it was wrapped, and most of each library's DATA turned
+out to be usable as it is.
 
 ## What this does not claim
 

@@ -795,6 +795,11 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 | ``Expected `<project> / scalaVersion` to be 3.9.0 or later, but found 2.13.18`` | sbt found `scala-library:3.9.0` among the dependencies (SIP-51) | exclude it on the dependency (section 1); do NOT reach for `allowUnsafeScalaLibUpgrade`, which makes 3.9 the compile stdlib and gives the second error of this table |
 | `type mismatch` ... `required: okay.scala2.Eff[okay.scala2.State[Int] with Any,?]` (for a program over `State[Int] with Writer[String]` passed straight to `Eff.run(State.run(1)(...))`) | an effect is left unhandled (here `Writer`); scalac reports it at the handler, not at the missing one | handle it before `Eff.run` |
 | `a type was inferred to be Any` at `X.handle(...)` | `handle` used for the last effect | use `X.run(...)` (section 5) |
+| `Unsupported Scala 3 union in bounds of type +; found in object okay.Effects$package` (at your `package` line) | code names a Scala 3 class whose CONSTRUCTOR mentions an effect row, such as `okay.http.Response` | use the `okay.scala2` type (`okay.scala2.Response`) |
+| `Unsupported Scala 3 generic tuple type scala.Tuple` | code names okay-http's `Route` | route by pattern matching (section 8b) |
+| `type Chunk is not a member of package okay`, or `not found: type Schema` for an alias you imported (any Scala 3 top-level alias) | Scala 3 top-level aliases are invisible from Scala 2 | name the type the alias stands for: `ArraySeq[Byte]` for `Chunk[Byte]`, `okay.codec.Schema` for `Schema` |
+| `type mismatch; found: Source[Event.Pressed]; required: Source[Event]` | from Scala 2 a Scala 3 enum case is typed as the case | write the type argument: `Source[Event](...)` |
+| `No suitable driver found for jdbc:...` in tests that pass alone | unforked sbt tests share one JVM, and `DriverManager` serves only drivers visible to the loader that registered them first | open through the driver (`new org.h2.Driver().connect(url, props)`) (section 8c) |
 
 ## 11. What is not here, and why
 
@@ -807,6 +812,13 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
   (`Search.bestOf` and friends), durable agents, and okay-ui's
   `Dialog`/`Nav` (forms are, in section 8f). They are queued in the
   sprint. The remaining modules are not wrapped either.
+- **Fair search.** okay's `Logic.interleave`, `fairBind` and `observe`
+  need a runtime test for the REST of the effect row. On the Scala 2
+  side that rest is only a phantom type, so there is nothing to test.
+  Inventing that test is on the backlog as `residual-row-typeable`.
+  The candidate is the complement of the side that is known: "not a
+  `Choose` operation". It has four properties to prove first, among
+  them that it cannot misroute in nested splits.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the
   Scala 3 API builds. What Scala 3 code gets and a 2.13 caller does
