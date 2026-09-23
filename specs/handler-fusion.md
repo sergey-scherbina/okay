@@ -222,17 +222,17 @@ of the reordered arc (see "After stage 0").
       `x.isInstanceOf[F[?, …]]` — a constant-class `instanceof` —
       and `ByClass` stays for `typeableK(cls)` alone. Bytes identical
       on every lane (the `fusedSWr` floor 122 624 did not move).
-      Time, per-lane minima over five alternated rounds (before ×2,
-      after ×3; the box never gave a fully quiet before-round, loads
-      3–44 — history rows `tki-*`): `nestedSWr` 15.98 → 13.25
-      (**0.83**), `relayForward` 175.1 → 161.4 (0.92), `fusedSWr`
-      12.99 → 11.99 (0.92), `inline4` 103.1 → 103.6 (1.00). The
-      residual was named on `inline4` and `inline4` did not move:
-      what moved is every walker whose test runs under `split` twice
-      per operation (`State.run(Writer.run(_))`, `relay`) — the field
-      read and the `Class.isInstance` call were the cost there, and
-      the flat macro's chain of tests was already one virtual call
-      the JIT devirtualised. TKI_CLEAN_ROUND
+      Time, per-arm minima over TWO QUIET alternated pairs (after,
+      before, after, before at load 2.4–3.1; history rows `tki-*`):
+      `fusedSWr` 12.76 → 11.75 (**0.92**), `relayForward` 173.5 →
+      158.6 (**0.91**), `nestedSWr` 14.32 → 13.72 (0.96), `inline4`
+      100.8 → 101.4 (1.01). The residual was named on `inline4` and
+      `inline4` did not move — the flat macro's chain of `t.test(a)`
+      was one devirtualised call already; what moved is every walker
+      whose test runs under `split` per operation (`State.run`,
+      `Writer.run`, `relay`). Two earlier rounds at loads 6–44 read
+      `nestedSWr` at 0.83 and were discarded: load, not the change —
+      the quiet pair says 0.96.
 
 ## Out of scope
 

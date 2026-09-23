@@ -13,11 +13,13 @@ the `ClassTag` parameter is gone from `derived`/`derivedEffect`
 unchanged. Law (`TestDerivedInstanceof`): a derived instance is not a
 `ByClass`, `typeableK(cls)` still is, and the two agree on own, foreign
 and `%`-shaped operations.
-Measured (history `tki-*`, per-arm minima over five alternated rounds
-on a box that never went fully quiet, loads 3–44; bytes identical on
-every lane, the `fusedSWr` floor 122 624 unmoved): `nestedSWr`
-15.98 → 13.25 µs (0.83), `relayForward` 175.1 → 161.4 (0.92),
-`fusedSWr` 12.99 → 11.99 (0.92), `inline4` 103.1 → 103.6 (1.00). The
-lane the residual was named on did not move — the flat macro's chain
-of tests was one devirtualised call already; what moved is every
-walker whose test runs under `split` per operation. TKI_CLEAN_ROUND
+Measured (history `tki-*`, per-arm minima over two QUIET alternated
+pairs at load 2.4–3.1; bytes identical on every lane, the `fusedSWr`
+floor 122 624 unmoved): `fusedSWr` 12.76 → 11.75 µs (0.92),
+`relayForward` 173.5 → 158.6 (0.91), `nestedSWr` 14.32 → 13.72
+(0.96), `inline4` 100.8 → 101.4 (1.01). The lane the residual was
+named on did not move — the flat macro's chain of tests was one
+devirtualised call already; what moved is every walker whose test
+runs under `split` per operation. Two rounds at load 6–44 read
+`nestedSWr` at 0.83 first; the quiet pair says 0.96 — recorded so the
+next lane does not quote the loud number.
