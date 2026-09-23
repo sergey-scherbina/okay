@@ -1,6 +1,0 @@
-feature/scala2-ui 2026-09-23T07:23:24Z
-agent: claude-code
-heartbeat: 2026-09-23T07:23:24Z
-status: in-progress
-done-so-far: probe: Ui, Event, Frame, Swing, Terminal, Form readable; Ui.run (a program) is not
-next: App.run/window, UiHost (terminal, swing, scripted), probe suites
