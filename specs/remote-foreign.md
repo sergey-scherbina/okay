@@ -60,6 +60,32 @@ may be continued any number of times.
 - [x] R: `okay_done`, `okay_perform`, `okay_then`, and `R.program` —
       the same, with R closures as the continuations.
 
+## Typed effects for Haskell (hs-typed-effects)
+
+`Okay.perform :: String -> [Value] -> Prog Value` names an operation by a
+string and answers an untyped `Value`, so GHC checks neither. Haskell can
+check both, the way freer-simple and polysemy do:
+
+- [ ] `OkayEff` (shipped beside `Okay.hs`) defines `Eff (effs :: [Type -> Type]) a`
+      over `Prog`, and `send :: (Member op effs, Wire op) => op a -> Eff effs a`.
+      An effect is a GADT of its operations, each typed by its argument and
+      its answer.
+- [ ] `Member` is a closed type family. A `send` of an effect the program
+      did not declare does not compile, and GHC's message NAMES the
+      missing effect (a `TypeError`), rather than failing to find an
+      instance.
+- [ ] `Wire op` carries an operation across okay's wire: its name and
+      arguments, and its typed answer. `FromValue`/`ToValue` cover
+      Integer, Double, Bool, String, lists, `Maybe` and `Value`.
+- [ ] `Hs.ops(name, callbacks)` writes the effect's Haskell module, the
+      GADT and its `Wire` instance, from the Scala callbacks' Schemas, as
+      `Ts.ops` does for TypeScript. A type outside that list is `Value`,
+      open and said so.
+- [ ] (Live, GHC) A typed program runs in the worker under the Scala
+      caller's Reader. GHC refuses an undeclared effect, naming it, and
+      refuses a wrong argument type. Untyped `Okay` programs are
+      unchanged.
+
 ## Decisions
 
 - **Continuations kept by id, released by `forget`.** The far side
