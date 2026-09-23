@@ -386,6 +386,35 @@ Chunks.foldUntil(Chunks.nats[Int]())(using
 // 91 — the running sum stopped itself before 105; one chunk of the infinite stream was ever filled
 ```
 
+A writer program read by a stopping fold is a **generator** in
+Python's sense — the body runs to its next tell when asked and no
+further — and `Gen[W]` (specs/generators.md) is that program with the
+words a for-comprehension uses, a `stop`, and the readers above as
+methods. Three ways to write one: a for-comprehension over `Gen`
+(`map`/`flatMap`/`withFilter` are element-wise, no macro), a
+`generator[W] { … }` block in okay-direct where `Gen.emit`, `Gen.stop`
+and `for … yield` are the words, and `Gen.of` over any writer program
+you already have. `iterator` is the Python semantics made literal:
+`next()` runs the body to its next tell and holds the continuation for
+the call after.
+
+```scala
+val squares: Gen[Long] = for n <- Gen.unfold(1L)(i => Some((i, i + 1))) yield n * n
+squares.take(3).toList                        // List(1, 4, 9) — the body ran three steps, then stopped
+
+val countdown: Gen[Int] = generator[Int] {    // a block: while/if/recursion, emit, stop
+  var i = 3
+  while i > 0 do { Gen.emit(i).!?; i -= 1 }
+}
+countdown.iterator.next()                     // 3 — the body has run to its first yield and no further
+```
+
+A generation ends three ways — the body returns, `Gen.stop` from
+inside a loop, or the reader stops (`take`, `first`, a `foreach` that
+throws) — and a `Gen` is a value: reading it twice runs the body twice
+(`toLazyList` memoises). The whole story, with the papers, is in
+[direct style](direct-style.md#generators-yield-pulled-by-the-reader).
+
 Why `done` and not a step that answers `Either` at the bottom: a
 `Left` per element is an allocation in every consumer, and this
 library has measured that price out of every walk it has (`split`

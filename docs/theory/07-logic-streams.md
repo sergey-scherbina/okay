@@ -201,6 +201,39 @@ the same way, one `step` bound per element (docs/direct-style.md,
 longer spelled `!.loop`; `Pull.loop(f)` is that program by name for
 the places a block is not.
 
+The generator now has its name. `Gen[W]` (Gen.scala; specs/generators.md)
+is a value class over `Unit ! (Writer % W + Stop)` — the program that
+tells, with `Stop` as one more member of the row for the early end —
+and a `generator[W] { … }` block (okay-direct) is a direct block over
+that row in which `for … yield` emits. Two papers fix what the words
+mean. Python's PEP 255 \[[Schemenauer, Peters & Hetland 2001](#ref-pep-255)\]
+gave the everyday semantics — a `yield` suspends the body, the body
+runs again only when the next value is asked for, and the generator
+ends when the body returns, is closed, or is left — and James and
+Sabry \[[James & Sabry 2011](#ref-james-2011)\] showed that this
+`yield` IS a delimited continuation: the operator captures the rest of
+the body up to the generator's boundary, and a reader that stops is a
+continuation dropped. Here that is the implementation, not an analogy:
+`Gen.iterator` hands out the `w` of `Bind(Inject(Say(w)), k)` and holds
+`k`, applying it on the NEXT `next()` — so the code between two yields
+runs when the second value is asked for — and every stopping reader
+is a `FoldUntil` whose law is that `k` is not called once it is done.
+The first cut applied `k` eagerly and was one yield ahead of Python; a
+step counter caught it.
+
+```scala
+enum Tree { case Leaf(v: Int); case Node(l: Tree, r: Tree) }
+import Tree.*
+
+def leaves(t: Tree): Gen[Int] = generator[Int] {     // chapter 2's tree walk, as a Gen
+  t match
+    case Leaf(v)    => Gen.emit(v).!?
+    case Node(l, r) => leaves(l).!?; leaves(r).!?
+}
+val it = leaves(Node(Node(Leaf(1), Leaf(2)), Leaf(3))).iterator
+it.next()                                            // 1 — the walk ran to its first leaf and holds the rest
+```
+
 The enumeratee now has a JDK name. Java 24's stream **gatherers**
 \[[Klang 2024](#ref-klang-2024)\] are user-defined intermediate
 operations of four parts — an initializer, an integrator
@@ -257,6 +290,10 @@ where that property was established.
   FLOPS 2012, LNCS 7294.
 - <a id="ref-kiselyov-2012-yield"></a>Oleg Kiselyov, Simon Peyton Jones, Amr Sabry. *[Lazy v. Yield:
   incremental, linear pretty-printing.](https://doi.org/10.1007/978-3-642-35182-2_14)* APLAS 2012, LNCS 7705.
+- <a id="ref-pep-255"></a>Neil Schemenauer, Tim Peters, Magnus Lie Hetland. *[PEP 255 — Simple Generators.](https://peps.python.org/pep-0255/)*
+  Python Enhancement Proposals, 2001.
+- <a id="ref-james-2011"></a>Roshan P. James, Amr Sabry. *[Yield: mainstream delimited continuations.](https://legacy.cs.indiana.edu/~sabry/papers/yield.pdf)*
+  Theory and Practice of Delimited Continuations (TPDC) 2011.
 - <a id="ref-klang-2024"></a>Viktor Klang. *[JEP 485: Stream Gatherers.](https://openjdk.org/jeps/485)*
   OpenJDK, final in JDK 24 (2024; previews JEP 461, 473).
 - <a id="ref-hickey-2014"></a>Rich Hickey. *[Transducers are coming.](https://clojure.org/news/2014/08/06/transducers-are-coming)*

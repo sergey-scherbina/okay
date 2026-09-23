@@ -566,6 +566,19 @@ same material with the measurements attached.
   `Stream.foldUntil` and `Foldable.foldUntil` dispatch on the shape.
   `Writer.foldUntil`/`Producer.foldUntil` do not: their per-element
   cost is the tree step, not the box (unmeasured — a trigger).
+- **`Gen[W]`** (Gen.scala; specs/generators.md) — a Python-style
+  generator: a VALUE CLASS over `Unit ! (Writer % W + Stop)`, the
+  program that tells, with `Stop` for the early end. Element-wise
+  `map`/`flatMap`/`withFilter`/`take`/`takeWhile`/`drop`/`++`, so a
+  for-comprehension over a `Gen` is a generator with no macro; the
+  readers (`toList`, `first`, `find`, `exists`, `forall`, `foreach`,
+  `foldUntil`) are `FoldUntil` and stop the body where they have read
+  enough; `iterator` holds the continuation and applies it on the NEXT
+  `next()` (the Python law). `Gen.emit`/`stop`/`from`/`unfold`/`of`
+  build one; in okay-direct `generator[W] { … }` is a block where
+  `for … yield` emits. Non-memoising (`toLazyList` memoises). A value
+  class because an extension on the row alias cannot infer `W` and an
+  extension on an opaque lost to the package's `map` in lexical scope.
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.
