@@ -81,26 +81,26 @@ step — so it needs nothing suspended, and no thread.
 
 ## Stage 2 (frege-effects-lists, 2026-09-23)
 
-- [ ] `Frege.stageWith[I, O, F](prog)`: a Frege stage that also
+- [x] `Frege.stageWith[I, O, F](prog)`: a Frege stage that also
       PERFORMS — row `Take % I + (Writer % O + F)`, so it runs through
       okay-stream's effectful `through`; a Frege filter that asks its
       threshold from `Reader` is the test
-- [ ] `Ops.sleep(ms)`: `Async` from Frege — an `Operation Long` (answers
+- [x] `Ops.sleep(ms)`: `Async` from Frege — an `Operation Long` (answers
       the milliseconds slept, not `()`, whose Java form is a `short`);
       two sleeps of 20 ms take at least 40 ms under `Async.run`
-- [ ] `Frege.chunks(xs)`: a Frege list as okay `Chunks`, lazily — an
+- [x] `Frege.chunks(xs)`: a Frege list as okay `Chunks`, lazily — an
       infinite Frege list read partially, forced only as far as okay
       pulled (counted on the Frege side is impossible, so: an infinite
       list completes the test at all, and a bounded `take` answers)
-- [ ] `Frege.list(chunks)`: an okay pure `Chunks` as a Frege lazy list —
+- [x] `Frege.list(chunks)`: an okay pure `Chunks` as a Frege lazy list —
       a Frege function over an INFINITE okay source takes only what it
       needs: the elements okay produced are counted, and bounded by the
       chunk the last demanded element sat in
-- [ ] `Frege.option`/`Frege.maybe`: `Maybe` <-> `Option`, both ways
-- [ ] PURE by type: `list` takes `Chunks` (`Unit ! Writer % Chunk[A]`,
+- [x] `Frege.option`/`Frege.maybe`: `Maybe` <-> `Option`, both ways
+- [x] PURE by type: `list` takes `Chunks` (`Unit ! Writer % Chunk[A]`,
       no other row), so an effectful okay source cannot become a Frege
       list — the lazy-IO argument, enforced by the signature
-- [ ] docs: the module page's list section, guide unchanged
+- [x] docs: the module page's list section, guide unchanged
 
 ## Decisions
 
@@ -170,3 +170,12 @@ includes `unmanagedClasspath`, which is where the Frege output goes —
 the task reads `managedClasspath` (sbt named the cycle). Scala 2's
 nested comments made a `src/<config>/frege/**.fr` in a scaladoc an
 unclosed comment in the build definition.
+
+**Stage 2 (frege-effects-lists).** `stage` became `stageWith` at the
+empty row — `Pure` is `Nothing`, so `Writer % O + Pure` IS `Writer % O`
+and dotty accepted the equality: one walker instead of two. 24 tests in
+the module; two new mutants — a Frege list built EAGERLY over an
+infinite okay source (a StackOverflowError in both laziness tests) and a
+sleep that did not sleep (15 ms against the 40 asserted) — each failed
+its own test. The Async answer is the milliseconds slept, because
+Frege's `()` is a Java `short` and a boxed Unit would not cast.

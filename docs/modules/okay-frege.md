@@ -9,9 +9,12 @@
 |---|---|
 | `okay.frege.Prog` (Frege, src/main/frege) | `await`, `tell`, `perform op`, `liftIO io` — okay's freer tree written in Frege, with `Functor`/`Applicative`/`Monad`, so a Frege programmer writes ordinary `do`; `Operation a` is an okay operation typed by its answer |
 | `Frege.stage(prog)` | a Frege `Prog ()` that awaits and tells, as an okay `Stage` |
+| `Frege.stageWith[I, O, F](prog)` | a Frege stage that also PERFORMS operations of `F` — okay-stream's effectful stage row, through `through` like any |
+| `Frege.chunks(xs)` / `Frege.list(c)` | a Frege list as okay `Chunks` and okay `Chunks` as a Frege list, both LAZY — infinite either way; `list` takes only pure `Chunks` |
+| `Frege.option` / `Frege.maybe` | `Maybe` <-> `Option` |
 | `Frege.run[F](prog)` | a Frege `Prog a` as `A ! F`: each `perform` runs as an operation of the row `F`, under whatever handlers run it |
 | `Frege.Row` | whether a value from Frege is an operation of `F` — found for one signature, built with `|` for a union |
-| `Ops` | the core effects' operations as values for Frege to `perform` (Reader, State, Throws, Choose) — one pure native each |
+| `Ops` | the core effects' operations as values for Frege to `perform` (Reader, State, Throws, Choose, and `sleep` for Async) — one pure native each |
 | project/Frege.scala | compiles `.fr` sources (forked, `-target 17`) before the Scala that reads them, or after the Scala they call |
 
 ## Why not lazy IO
@@ -112,6 +115,55 @@ The driver runs a lifted action as ONE step. It never calls back into
 okay, so nothing has to be suspended inside it — which is why no thread
 is needed anywhere, and why a lifted action inside a multi-shot branch
 simply runs once per branch, as the branch asks.
+
+## A stage that performs, and Async
+
+`Frege.stageWith[I, O, F]` is a stage whose Frege program may also
+`perform` operations of `F` — the effectful stage row of okay-stream,
+`Take % I + (Writer % O + F)`, so it composes with `through` like an okay
+stage written that way. (`Frege.stage` is this at the empty row.)
+
+```haskell
+aboveThreshold :: Prog ()
+aboveThreshold = do
+  m <- await
+  case m of
+    Nothing -> return ()
+    Just x  -> do
+      t <- perform (askOp ())
+      when ((x :: Long) > t) (tell x)
+      aboveThreshold
+```
+
+```scala
+val stage = Frege.stageWith[Long, java.lang.Long, Reader % Long](P.aboveThreshold.call())
+val out = through[Long, java.lang.Long, Reader % Long, Unit, Unit](emitIn[Long, Reader % Long](List(3L, 9L, 5L, 12L, 7L)))(stage)
+// Reader.run(6L)(Writer.run(out)) — told 9, 12, 7
+```
+
+`Async` is an operation like any other: `Ops.sleep(ms)` parks on the
+platform timer (cancellable, as `Async.sleep` is) and answers the
+milliseconds slept — an `Operation Long`, because Frege's `()` is a Java
+`short` and would not take the boxed `Unit` a sleep answers.
+
+## Lists, both ways, lazily
+
+A Frege list and okay's `Chunks` are the same idea — a lazy sequence
+forced from the front — so they convert without forcing anything:
+
+```scala
+// an INFINITE Frege list, read partially by okay
+Chunks.take(Frege.chunks[java.lang.Long](P.squares.call()))(5)      // 1, 4, 9, 16, 25
+
+// an INFINITE okay source, handed to a Frege function that takes 10
+P.sumFirst(10, Frege.list(countedNats(produced, 16)))              // 45, and okay produced ≤ 16
+```
+
+`Frege.list` takes `Chunks` — `Unit ! Writer % Chunk[A]`, nothing else —
+on purpose: an okay source with other effects, forced from inside a
+Frege thunk, would be exactly the lazy IO this module exists to avoid.
+An effectful source is a `perform` in a `Prog`, where Frege's `>>=`
+orders it.
 
 ## What was built first, and dropped
 
