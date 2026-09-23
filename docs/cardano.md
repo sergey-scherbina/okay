@@ -19,7 +19,7 @@ alternative and every finding.
 | chains in general | `okay-chain` | CAIP identifiers, the follower (`Tracker`, `Poller`), the `Ledger` projection — no chain's code |
 | Cardano | `okay-scalus` | the node-to-node client, `CardanoFollower`, `CardanoTables`, `CardanoLedger`, `Schema`s for scalus's ledger model |
 | tables without an engine | `okay-codec` `Columns` | any `Schema` as column types and rows of plain values |
-| Spark | `okay-spark` `SparkSchema` | `Columns` translated into a DataFrame |
+| Spark | `okay-spark` `SparkSchema`, `okay-scalus-spark` | `Columns` translated into a DataFrame; `format("cardano")` |
 
 Only the last row depends on Spark. Everything above it runs in an
 ordinary JVM process.
@@ -160,12 +160,32 @@ can adopt it without moving its sources.
 
 ## 5. Into Spark
 
-With `okay-spark` on the classpath, any of these rows becomes a
-DataFrame through the same `Columns` encoding —
-`SparkSchema.dataFrame(spark, t.outputs)` — and a `Json` column is a
-Spark 4 VARIANT (`variant_get(datum.Inline.data.json, '$.fields[0].int', 'long')`).
-The streaming DataSource over the follower (`spark.readStream.format("cardano")`)
-is the next piece of work (specs/scalus.md §6).
+With `okay-scalus-spark` on the classpath the same tables are a Spark
+DataSource, batch or streaming:
+
+```scala
+val outputs = spark.readStream.format("cardano")
+  .option("relay", "preprod-node.play.dev.cardano.org:3001")
+  .option("network", "preprod")
+  .option("table", "outputs")
+  .option("confirmations", "15")
+  .load()
+outputs.createOrReplaceTempView("outputs")
+
+val withDatums = spark.sql("""
+  SELECT txHash, index, address, lovelace,
+         variant_get(datum.Inline.data.json, '$.Constr.constr', 'string') AS constructor
+  FROM outputs
+  WHERE datum.kind = 'Inline'""")
+// withDatums.writeStream.format("console").start() — one line per inline datum, as blocks confirm
+```
+
+Nothing new is decided on the way: the rows are `CardanoTables`', the
+shape `Columns`', and a `Json` column is a Spark VARIANT. An offset is a
+confirmed block, so a re-run micro-batch yields the same rows; a
+rollback deeper than `confirmations` fails the query instead of
+producing rows that were never final. Details and options:
+[okay-scalus-spark](modules/okay-scalus-spark.md).
 
 ## How this is verified
 
@@ -176,7 +196,10 @@ is the next piece of work (specs/scalus.md §6).
   lovelace, assets and datum presence, and every input reference are
   checked against what Koios reports for the same transactions.
 - `TestLive` follows a real preprod relay to its next block.
-- The code on this page is compiled and run by `TestCardanoGuide`.
+- The code on this page is compiled and run by `TestCardanoGuide`; the
+  Spark snippet is analysed by `TestDocExamplesCardanoSpark`, and the
+  DataSource is checked row for row against `CardanoTables` on the
+  recorded session, streaming included.
 
 ## Limits, stated
 

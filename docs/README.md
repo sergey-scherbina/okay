@@ -212,6 +212,7 @@ API reference, gotchas.
 | [`okay-lex`](modules/okay-lex.md) | total streaming tokenization: chunked, snapshottable, incremental |
 | [`okay-chain`](modules/okay-chain.md) | blockchains and ledgers read uniformly: CAIP ids, a sans-I/O follower (depth or declared finality, rollbacks said), a ledger projection beside the native transaction |
 | [`okay-scalus`](modules/okay-scalus.md) | the Cardano chain as okay-chain events, from a relay over Ouroboros node-to-node, with scalus's ledger model for the blocks |
+| [`okay-scalus-spark`](modules/okay-scalus-spark.md) | `spark.read(Stream).format("cardano")`: confirmed Cardano blocks as the same typed tables, a rollback past `confirmations` fails the query |
 | [`okay-crdt`](modules/okay-crdt.md) | state that merges without a coordinator: the three laws as a runnable check, then GCounter, PNCounter, GSet, OrSet and an Hlc-stamped LwwRegister |
 | [`okay-parse`](modules/okay-parse.md) | total lossless parsing; incremental reparse with reference reuse |
 | [`okay-codec`](modules/okay-codec.md) | the Schema algebra; JSON, CBOR and Markdown dialects |

@@ -1077,6 +1077,71 @@ lazy val LegacyStdlib = config("legacyStdlib").hide
 
 /** Spark via the Aggregator triple (P4); Spark ships for 2.13 only,
  * so the standard for3Use2_13 cross applies */
+/**
+ * How a Spark test JVM has to be started here — shared by okay-spark and
+ * okay-scalus-spark so the two cannot drift. Each line's reason is the
+ * comment it carried in okay-spark's settings, where they were first
+ * found (legacyStdlib order for Spark's Scala 2 reflection, the forked
+ * JDK 25 test JVM, the add-opens Spark needs on 17+).
+ */
+lazy val sparkTestSettings: Seq[Setting[_]] = Seq(
+    ivyConfigurations += LegacyStdlib,
+    libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.18" % LegacyStdlib,
+    Test / unmanagedJars ++= Classpaths.managedJars(LegacyStdlib, Set("jar"), update.value),
+    Test / fork := true,
+    // jdk26-default-runtime: shadow the build-wide JDK26 Test/run
+    // default back down to Spark 4.2.0's own confirmed range
+    // (spark-jdk25-guard-fix) -- 25 rather than .sdkmanrc's ambient
+    // 21, since 25 is verified end to end and strictly newer.
+    Test / javaHome := {
+      val jdk25 = file(System.getProperty("user.home")) / ".sdkman" / "candidates" / "java" / "25.0.4.1-tem"
+      if (jdk25.exists) Some(jdk25) else None
+    },
+    run / javaHome := (Test / javaHome).value,
+    // bench-across-processes: SparkClusterBench starts a REAL
+    // standalone cluster — a Master and Workers as their own JVMs —
+    // and the driver must come out of THIS build, or it serialises a
+    // collection from a different scala-library and the master
+    // answers InvalidClassException.
+    Test / javaOptions += "-Dokay.spark.cp=" +
+      (Test / fullClasspath).value.map(_.data.getAbsolutePath)
+        .mkString(java.io.File.pathSeparator),
+    Test / javaOptions ++= Seq(
+      // Run the fork on the JDK the tests were compiled for. Without
+      // this the fork inherits sbt's JVM, and if sbt itself was
+      // started on a JDK 24+ (JEP 486 removed the Security Manager,
+      // and with it the Subject.getSubject that Hadoop's
+      // UserGroupInformation calls) Spark fails with
+      // "UnsupportedOperationException: getSubject is not supported".
+      // The suite skips itself there rather than failing, but the
+      // clearer arrangement is not to be there at all: .sdkmanrc pins
+      // Java 21, which is what Spark 4.0.0 supports.
+      //
+      // A forked JVM with no -Xmx takes the ergonomic default, which
+      // on this 36g machine is 9g — for a `local[2]` session over ten
+      // thousand doubles. That is not a problem alone, and it is one
+      // in a full build: sbt already holds 6g (see .jvmopts) and an
+      // IDE with its own compile server can hold another 17g, so the
+      // fork asks for memory the machine has already promised away
+      // and Spark's driver fails to come up. Two gigabytes is more
+      // than this suite has ever needed.
+      "-Xmx2g",
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.net=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+      "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+      "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
+    )
+)
+
 lazy val okaySpark = (project in file("okay-spark"))
   // okay-codec for `Schema` (SparkSchema: the DataFrame encoder is a fold of it)
   .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm, compare % "test->compile")
@@ -1145,61 +1210,7 @@ lazy val okaySpark = (project in file("okay-spark"))
      * fork sees it. If Spark ever publishes for Scala 3, delete all of
      * it — the config, the jar, and this comment.
      */
-    ivyConfigurations += LegacyStdlib,
-    libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.18" % LegacyStdlib,
-    Test / unmanagedJars ++= Classpaths.managedJars(LegacyStdlib, Set("jar"), update.value),
-    Test / fork := true,
-    // jdk26-default-runtime: shadow the build-wide JDK26 Test/run
-    // default back down to Spark 4.2.0's own confirmed range
-    // (spark-jdk25-guard-fix) -- 25 rather than .sdkmanrc's ambient
-    // 21, since 25 is verified end to end and strictly newer.
-    Test / javaHome := {
-      val jdk25 = file(System.getProperty("user.home")) / ".sdkman" / "candidates" / "java" / "25.0.4.1-tem"
-      if (jdk25.exists) Some(jdk25) else None
-    },
-    run / javaHome := (Test / javaHome).value,
-    // bench-across-processes: SparkClusterBench starts a REAL
-    // standalone cluster — a Master and Workers as their own JVMs —
-    // and the driver must come out of THIS build, or it serialises a
-    // collection from a different scala-library and the master
-    // answers InvalidClassException.
-    Test / javaOptions += "-Dokay.spark.cp=" +
-      (Test / fullClasspath).value.map(_.data.getAbsolutePath)
-        .mkString(java.io.File.pathSeparator),
-    Test / javaOptions ++= Seq(
-      // Run the fork on the JDK the tests were compiled for. Without
-      // this the fork inherits sbt's JVM, and if sbt itself was
-      // started on a JDK 24+ (JEP 486 removed the Security Manager,
-      // and with it the Subject.getSubject that Hadoop's
-      // UserGroupInformation calls) Spark fails with
-      // "UnsupportedOperationException: getSubject is not supported".
-      // The suite skips itself there rather than failing, but the
-      // clearer arrangement is not to be there at all: .sdkmanrc pins
-      // Java 21, which is what Spark 4.0.0 supports.
-      //
-      // A forked JVM with no -Xmx takes the ergonomic default, which
-      // on this 36g machine is 9g — for a `local[2]` session over ten
-      // thousand doubles. That is not a problem alone, and it is one
-      // in a full build: sbt already holds 6g (see .jvmopts) and an
-      // IDE with its own compile server can hold another 17g, so the
-      // fork asks for memory the machine has already promised away
-      // and Spark's driver fails to come up. Two gigabytes is more
-      // than this suite has ever needed.
-      "-Xmx2g",
-      "--add-opens=java.base/java.lang=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-      "--add-opens=java.base/java.io=ALL-UNNAMED",
-      "--add-opens=java.base/java.net=ALL-UNNAMED",
-      "--add-opens=java.base/java.nio=ALL-UNNAMED",
-      "--add-opens=java.base/java.util=ALL-UNNAMED",
-      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
-      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
-      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
-      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
-      "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
-      "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
-    ),
+    sparkTestSettings,
   )
 
 /** Flink via the same Aggregator triple (P4); flink-core is pure Java */
@@ -1219,6 +1230,24 @@ lazy val okayScalus = (project in file("okay-scalus"))
       "org.scalus" %% "scalus-cardano-ledger" % "1.2.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
+  )
+
+/**
+ * okay-scalus-spark (specs/scalus.md §6): `spark.read(Stream).format("cardano")`
+ * — okay-scalus's follower and CardanoTables as a Spark DataSource V2.
+ * Adds no table logic: the rows are CardanoTables', their shape
+ * Columns', their Spark types SparkSchema's.
+ */
+lazy val okayScalusSpark = (project in file("okay-scalus-spark"))
+  .dependsOn(okayScalus % "compile->compile;test->test", okaySpark)
+  .settings(
+    name := "okay-scalus-spark",
+    libraryDependencies ++= Seq(
+      ("org.apache.spark" %% "spark-sql" % "4.2.0").cross(CrossVersion.for3Use2_13),
+      "org.scala-lang" % "scala-reflect" % "2.13.18",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+    sparkTestSettings,
   )
 
 lazy val okayFlink = (project in file("okay-flink"))
@@ -2651,7 +2680,7 @@ lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
-    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus,
+    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,

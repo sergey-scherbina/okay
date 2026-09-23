@@ -419,14 +419,26 @@ until Spark stage 2 has run on mainnet.
   - [x] invariants of §4.2 as tests; a Parquet write/read (the
         empty-struct trap); schema evolution: a type with a case added
         reads an old file under `mergeSchema`
-  - [ ] DataSource V2 batch + `MicroBatchStream`; replay test: the
-        same offsets planned twice give identical rows
-  - [ ] the §5 views; a docs page with the SQL examples above, each
-        run in a gated test
+  - [x] DataSource V2 batch + `MicroBatchStream` (okay-scalus-spark):
+        the DataFrame equals `CardanoTables` row for row on the recorded
+        session; a streaming query with `confirmations = 2` reads the
+        first three blocks and waits on a quiet chain
+  - [x] the tables (typed rows, §5 as superseded) and the guide
+        docs/cardano.md, its code run by `TestCardanoGuide` and the
+        Spark snippet analysed by `TestDocExamplesCardanoSpark`
 - **Stage 3 — events mode** (journal-backed offsets, rollback rows)
 - **Stage 4 — Flink** (§7)
 
 ## Decisions
+
+- 2026-09-23 — **the DRIVER fetches, executors decode** (okay-scalus-
+  spark, first version). §6 planned executors fetching block ranges
+  from relays; the driver already holds a follower with the bodies, so
+  partitions carry confirmed blocks' BYTES and executors do the decode
+  and explode — the expensive part, still parallel — with no network
+  from executors. Executor-side fetch stays the backfill optimisation
+  (backlog `scalus-executor-fetch`). Restart: `SupportsAdmissionControl`
+  names the offset Spark resumes at, and the follower starts there.
 
 - 2026-09-23 — **no Spark below the Spark adapter** (operator: the
   same tables must work in okay-watch, which does not want Spark as a

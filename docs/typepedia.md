@@ -709,6 +709,11 @@ same material with the measurements attached.
   `contentEncoding: base64` in a tool's JSON Schema. The cost it
   carries honestly: `Array[Byte]` has reference equality, so a product
   holding one is not a value for `==`.
+- **`format("cardano")`** (okay-scalus-spark) — a Spark DataSource V2
+  that decides nothing: the driver follows a relay to confirmed blocks,
+  partitions carry their bytes, executors decode them into
+  `CardanoTables` rows through `Columns`. An offset is a confirmed
+  block, so a re-run micro-batch is the same rows.
 - **`CardanoTables`** (okay-scalus) — a Cardano block as TYPED ROWS
   (transactions, inputs, outputs, assets, mints, certificates,
   withdrawals, redeemers), the explode written once so an engine-free
