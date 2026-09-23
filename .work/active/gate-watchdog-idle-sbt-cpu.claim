@@ -1,0 +1,6 @@
+feature/gate-watchdog-idle-sbt-cpu 2026-09-23T12:43:12Z
+agent: claude-code
+heartbeat: 2026-09-23T12:43:12Z
+status: in-progress
+done-so-far: promoted from backlog
+next: worktree; children-only CPU in the stall check; selftest case busy-parent-over-idle-children; sh+bash; land

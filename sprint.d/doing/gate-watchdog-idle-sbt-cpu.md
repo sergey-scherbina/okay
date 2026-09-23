@@ -1,4 +1,4 @@
-- [ ] gate-watchdog-idle-sbt-cpu — the stall watchdog (gate.sh,
+- [~] gate-watchdog-idle-sbt-cpu — the stall watchdog (gate.sh,
       `GATE_STALL_CPU=5` s per 8 min) did NOT fire on the exact hang
       it was written for. 2026-09-23, docs-adapters-merge's full
       matrix: log frozen at 00:42 for 20+ minutes, `jcmd` showed
