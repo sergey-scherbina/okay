@@ -224,6 +224,25 @@ assertEquals(scoring.fn[Double]("trimmed")(Vector(1.0, 2.0, 3.0, 100.0)).runWith
 - **Load failures.** A module that does not parse refuses at start and
   names itself.
 
+## A generated facade
+
+`okay.r.RFacade` writes a Scala object for an R package or module:
+
+    sbt "okayR/runMain okay.r.RFacade stats Stats my.pkg"
+
+R has no annotations, so the facade fixes NAMES and ARITY, and the
+caller says the types:
+
+```scala
+assertEquals(golden.RFacadeDemo.trimmed[Double, Vector[Double]](Vector(1.0, 2.0, 3.0, 100.0)).runWith, Right(2.5))
+```
+
+- **Names.** An R name with dots (`t.like`) becomes `t_like` and still
+  calls the R name.
+- **Skipped.** Hidden names (a leading dot) are skipped.
+- **Defaults.** Formals with defaults are left out, and the comment says
+  which.
+
 ## Journalled by Durable
 
 `REval` carries its own `Journalled` instance, as okay-py's `PyEval`

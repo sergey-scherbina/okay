@@ -182,6 +182,46 @@ val model = scoring.hold("Model")(10L).runWith.toOption.get
 - **Pools.** `PyWorkers.start(..., modules = ...)` ships the module to
   every worker.
 
+## A generated facade
+
+A whole module can sit behind a typed Scala object, generated from the
+module's own signatures and type hints:
+
+    sbt "okayPy/runMain okay.py.PyFacade statistics Stats my.pkg"
+
+prints a source file to check in. From
+
+```python
+def mean(xs: list[float]) -> float:
+    """The arithmetic mean."""
+```
+
+it writes
+
+```scala
+def mean(xs: Vector[Double]): Either[Condition, Double] ! PyEval =
+  Py.fn[Double]("facadedemo:mean")(xs)
+```
+
+- **Types.** A hint the generator knows becomes a type: `int` is Long,
+  `float` Double, `str` String, `bool` Boolean, `bytes` Array[Byte],
+  `list[T]` Vector[T], and `Optional[T]` or `T | None` Option[T]. A
+  missing or unknown hint becomes a TYPE PARAMETER, so nothing is
+  guessed:
+
+  ```scala
+  assertEquals(FacadeDemo.echo[String, String]("hi").runWith, Right("hi"))
+  ```
+
+- **Defaults.** A parameter with a default is left out, and the method's
+  comment says which.
+- **Where the description comes from.** The worker describes the module
+  through `okay.describe`, a function of the `okay` module its shim
+  injects. No new wire operation was needed.
+- **Why generated.** A trait written by hand repeats the Python code and
+  drifts from it silently. A generated one follows the code, so a change
+  in Python shows up as a diff.
+
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own
