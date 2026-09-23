@@ -824,7 +824,7 @@ lazy val okayClojure = (project in file("okay-clojure"))
  * okay's (await, tell, perform) and whose `liftIO` takes existing Frege
  * IO — runs as an okay Stage or program; its continuations are Frege
  * functions, so multi-shot handlers work and no thread is involved.
- * `.fr` sources are compiled by project/Frege.scala (forked, -target 17):
+ * `.fr` sources are compiled by okay-frege/sbt-plugin (forked, -target 17):
  * src/main/frege BEFORE the Scala driver that reads its classes.
  */
 lazy val okayFrege = (project in file("okay-frege"))
@@ -838,8 +838,10 @@ lazy val okayFrege = (project in file("okay-frege"))
     ),
     Test / fork := true,
   )
-  .settings(Frege.before(Compile))
-  .settings(Frege.in(Test))
+  // the build half is okay-frege/sbt-plugin, what a user of okay-frege enables too
+  .enablePlugins(_root_.okay.frege.sbt.OkayFrege)
+  .settings(_root_.okay.frege.sbt.OkayFrege.before(Compile))
+  .settings(_root_.okay.frege.sbt.OkayFrege.in(Test))
 
 /**
  * okay from SCALA 2.13 (specs/scala2-facade.md): a facade written in

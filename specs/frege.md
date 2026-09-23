@@ -13,7 +13,8 @@ and 25 unchanged; the runtime itself is major 52.
 
 Frege is COMPILED — a `.fr` source becomes Java and then classes — so
 unlike okay-clojure there is no `eval`: `.fr` sources are compiled by
-an sbt task (project/Frege.scala) before the Scala that calls them.
+an sbt plugin (okay-frege/sbt-plugin, `OkayFrege`) before the Scala
+that calls them.
 
 ## The seam: a thin Frege monad over okay's effects (operator, 2026-09-23)
 
@@ -48,7 +49,7 @@ step — so it needs nothing suspended, and no thread.
 
 ## Behavior
 
-- [x] build: `project/Frege.scala` compiles `.fr` with the Frege
+- [x] build: `project/Frege.scala` (since stage 3 the okay-frege-sbt plugin) compiles `.fr` with the Frege
       compiler FORKED, `-target 17`; `Frege.before(Compile)` for sources
       the configuration's own Scala reads (the `Prog` library — its
       classes are a product AND are mapped into the jar), `Frege.in(Test)`
@@ -101,6 +102,20 @@ step — so it needs nothing suspended, and no thread.
       no other row), so an effectful okay source cannot become a Frege
       list — the lazy-IO argument, enforced by the signature
 - [x] docs: the module page's list section, guide unchanged
+
+## Stage 3: the build half as a plugin (frege-sbt-plugin, 2026-09-23)
+
+- [ ] `okay-frege/sbt-plugin`: a SOURCE sbt plugin, `okay-frege-sbt`
+      (`OkayFrege`, `noTrigger`), the okay-deploy-sbt precedent; the
+      repository's project/plugins.sbt depends on it and okay-frege
+      enables it — project/Frege.scala is gone
+- [ ] settings a user can change: `fregeTarget` (17), `fregeJavaOptions`,
+      `fregeFailOnWarnings` (true); `before(c)` / `in(c)`
+- [ ] incremental on the sources AND the compiler's classpath and
+      options: a change in the Scala a native binds to recompiles (the
+      first cut tracked source timestamps only and said so)
+- [ ] the full matrix green with okay-frege built through the plugin
+      (the repository IS the plugin's first user)
 
 ## Decisions
 

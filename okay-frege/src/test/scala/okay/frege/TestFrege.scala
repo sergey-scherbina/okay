@@ -9,7 +9,7 @@ import okay.frege.{Programs as P}
 /**
  * Frege programs written in `okay.frege.Prog` run as okay programs
  * (specs/frege.md). The Frege side is src/test/frege/okay/frege/
- * Programs.fr, compiled by project/Frege.scala before this suite; the
+ * Programs.fr, compiled by okay-frege/sbt-plugin before this suite; the
  * `Prog` library itself is src/main/frege. Every loop is bounded, so a
  * broken driver FAILS rather than hangs.
  */

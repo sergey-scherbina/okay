@@ -15,7 +15,7 @@
 | `Frege.run[F](prog)` | a Frege `Prog a` as `A ! F`: each `perform` runs as an operation of the row `F`, under whatever handlers run it |
 | `Frege.Row` | whether a value from Frege is an operation of `F` — found for one signature, built with `|` for a union |
 | `Ops` | the core effects' operations as values for Frege to `perform` (Reader, State, Throws, Choose, and `sleep` for Async) — one pure native each |
-| project/Frege.scala | compiles `.fr` sources (forked, `-target 17`) before the Scala that reads them, or after the Scala they call |
+| `okay-frege-sbt` (sbt plugin, `OkayFrege`) | compiles `.fr` sources (forked, `-target 17`, warnings fail) before the Scala that reads them, or after the Scala they call — what a user enables to write Frege, and what this repository uses |
 
 ## Why not lazy IO
 
@@ -179,10 +179,32 @@ to reclaim. `Prog` walked by the driver: multi-shot, 0.27 µs per step
 
 ## Building Frege sources
 
-project/Frege.scala compiles `.fr` with the Frege compiler forked (it is
-a whole compiler with its own statics), `-target 17` — Frege generates
-Java and calls javac, which would otherwise emit the running JDK's major
-(69 on the 25 this build compiles on) and refuse to load on 17 or 21.
-`Frege.before(Compile)` for sources the configuration's own Scala reads
-(the `Prog` library: its classes are a product and are mapped into the
-jar), `Frege.in(Test)` for sources that call the Scala side.
+The build half is a published sbt plugin, `okay-frege-sbt` (the source
+directory okay-frege/sbt-plugin, which this repository's own
+project/plugins.sbt depends on — the okay-deploy-sbt precedent). A
+project that writes Frege against okay-frege:
+
+```scala
+// project/plugins.sbt
+addSbtPlugin("dev.okay" % "okay-frege-sbt" % okayVersion)
+
+// build.sbt
+lazy val app = project
+  .enablePlugins(OkayFrege)
+  .settings(libraryDependencies += "dev.okay" %% "okay-frege" % okayVersion)
+  .settings(OkayFrege.before(Compile))     // src/main/frege, read by src/main/scala
+```
+
+`.fr` files go through the Frege compiler forked (a whole compiler with
+its own statics), with `fregeTarget` — default `17`, because Frege
+generates Java and calls javac, which would otherwise emit the running
+JDK's major (69 on the 25 this build compiles on) and refuse to load on
+17 or 21. `OkayFrege.before(c)` is for sources the configuration's own
+Scala reads (their classes are a product and are mapped into the jar —
+`products` alone does not feed `packageBin`); `OkayFrege.in(c)` for
+sources that call the configuration's Scala, as Test does. A Frege
+warning fails the build (`fregeFailOnWarnings`, default true) — one
+that is right to keep is acknowledged in its source with
+`--- nowarn: <message>`, Frege's own way. The compile is redone when a
+source, the compiler's classpath (the jars and class directories the
+natives bind to) or an option changes.
