@@ -1,6 +1,0 @@
-feature/scala2-http 2026-09-23T06:26:01Z
-agent: claude-code
-heartbeat: 2026-09-23T06:26:01Z
-status: in-progress
-done-so-far: probe: Request/Body/Router/Http/Server readable; Response (Source body) and Route (generic tuples) are not
-next: spec stage 7 detail, okay-scala2-http (Response, Server.use, routing extractors, Client)

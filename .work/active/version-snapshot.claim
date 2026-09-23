@@ -1,6 +1,0 @@
-feature/version-snapshot 2026-09-23T06:39:33Z
-agent: claude-code
-heartbeat: 2026-09-23T06:39:33Z
-status: in-progress
-done-so-far: v0.1.1 tagged 2026-09-14, master 1387 commits later still says 0.1.1
-next: ThisBuild/version 0.2.0-SNAPSHOT; docs; re-run chat guide + scala2 consumer
