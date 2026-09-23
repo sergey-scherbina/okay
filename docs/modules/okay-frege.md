@@ -57,9 +57,9 @@ answers exactly that — using the answer as a `String` is a Frege type
 error, not a `ClassCastException` at run time:
 
 ```haskell
-pure native askOp okay.frege.Ops.ask :: () -> Operation Long
-pure native getOp okay.frege.Ops.get :: () -> Operation Long
-pure native setOp okay.frege.Ops.set :: Long -> Operation Long
+pure native askOp    okay.frege.Ops.ask     :: () -> Operation Long
+pure native getOp    okay.frege.Ops.get     :: () -> Operation Long
+pure native setOp    okay.frege.Ops.set     :: Long -> Operation Long
 
 readerState :: Prog Long
 readerState = do
@@ -153,10 +153,10 @@ forced from the front — so they convert without forcing anything:
 
 ```scala
 // an INFINITE Frege list, read partially by okay
-Chunks.take(Frege.chunks[java.lang.Long](P.squares.call()))(5)      // 1, 4, 9, 16, 25
+val firstFive = Chunks.take(Frege.chunks[java.lang.Long](P.squares.call()))(5)      // 1, 4, 9, 16, 25
 
 // an INFINITE okay source, handed to a Frege function that takes 10
-P.sumFirst(10, Frege.list(countedNats(produced, 16)))              // 45, and okay produced ≤ 16
+val sum = P.sumFirst(10, Frege.list(countedNats(produced, 16)))              // 45, and okay produced ≤ 16
 ```
 
 `Frege.list` takes `Chunks` — `Unit ! Writer % Chunk[A]`, nothing else —

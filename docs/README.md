@@ -62,6 +62,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   SQL, agents and UI, a Scala 3 / Scala 2 phrasebook, and every compiler error the setup can produce
   with its cause. Every snippet compiles under scalac 2.13 with
   `-Werror` in the gate.
+- **[okay with other JVM languages](jvm-languages.md)** — Java streams,
+  Clojure and Frege together with okay: a stage IS a JDK gatherer and a
+  Clojure transducer, okay's effects enter Clojure and Frege as a small
+  program-as-data library in THAT language (never as lazy IO), lazy data
+  crosses both ways, and the rules, costs and literature behind it.
 - **[The theory of Okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &

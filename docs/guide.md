@@ -979,6 +979,17 @@ story, with the reasoning and the graveyard of refuted alternatives:
 [direct-style.md](direct-style.md); the theory with the literature:
 [theory ch. 8](theory/08-direct-style.md).
 
+## With other JVM languages, in one paragraph
+
+A `Stage` is a JDK gatherer (okay-java's `Gather`) and a Clojure
+transducer (okay-clojure's `Transducers`), both ways; okay's effects
+reach Clojure and Frege as a small program-as-data library written in
+that language — `okay.core`, `okay.frege.Prog` — which okay walks, so a
+multi-shot handler resumes their continuations and no thread is
+involved; and lazy data (a Clojure seq, a Frege list, okay `Chunks`)
+crosses both ways, pure by type. [okay with other JVM
+languages](jvm-languages.md) is the guide.
+
 ## From Scala 2.13, in one paragraph
 
 A Scala 2.13 build cannot use `A ! F` directly. Two things stand in

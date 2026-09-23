@@ -1,0 +1,311 @@
+# okay with other JVM languages: Java streams, Clojure, Frege
+
+okay is a Scala 3 library, but the JVM has other languages, and each has
+its own way of transforming a stream and of doing effects. This guide is
+about using them TOGETHER with okay: a JDK stream running an okay stage,
+a Clojure transducer inside an okay pipeline, a Frege program asking
+okay's `Reader` and sleeping on okay's timer.
+
+Every Scala, Clojure and Frege example below is copied from a test that
+runs in this repository's gate — `okay-java/…/TestDocExamplesGather.scala`,
+`okay-clojure/…/TestDocExamplesClojure.scala`,
+`okay-frege/…/TestDocExamplesFrege.scala`, and the Clojure and Frege
+source those suites load — so they compile and pass as written; and a
+gated test (`TestDocSnippets`) fails if one of them stops being a
+verbatim copy. The build configuration in §8 is marked as the one block
+a test cannot pin.
+
+Contents:
+
+1. [One idea, three bridges](#1-one-idea-three-bridges)
+2. [Java: `java.util.stream`](#2-java-javautilstream)
+3. [Clojure](#3-clojure)
+4. [Frege](#4-frege)
+5. [Which bridge, for what](#5-which-bridge-for-what)
+6. [The rules the bridges keep](#6-the-rules-the-bridges-keep)
+7. [What it costs](#7-what-it-costs)
+8. [Setting up the build](#8-setting-up-the-build)
+9. [Literature](#9-literature)
+
+## 1. One idea, three bridges
+
+Two things cross between okay and another language, and each has one
+shape on the okay side.
+
+**A stream transformation is a `Stage`.** okay's `Stage[I, O, A]` is a
+program that awaits `I` and tells `O` — a transducer written as a
+program (guide §5). Java's stream *gatherer* (JDK 24) and Clojure's
+*transducer* are the same thing written as a push-style state machine:
+a step that may emit any number of outputs and may say "stop", and a
+flush at the end. So each translates to and from a `Stage` by pure
+mechanics — the other side's state is the stage suspended at its next
+`await`, a `tell` is an emit, a stage that answers is a "stop"
+(theory ch. 7 has the argument; Hickey's transducers and JEP 485 are the
+references).
+
+**An effect crosses as DATA, never as a lazy value.** A lazy language
+tempts you to let a lazy list pull from okay — the element computed when
+a thunk is forced. That is lazy IO, and it fails the way Kiselyov's
+iteratee paper says it fails: the consumer, not you, decides when to
+read; a thunk outlives the resource it reads; a failure surfaces where a
+thunk happened to be forced; and a forced thunk cannot *suspend*, so an
+okay effect that waits cannot run inside one. So an okay effect enters
+Clojure or Frege as an explicit operation of a small program-as-data
+library written in THAT language (`okay.core`, `okay.frege.Prog`) — okay's
+own freer tree, re-spelled — and okay walks it. Its continuations are the
+other language's functions, so a handler may call them twice.
+
+| | a transformation | effects from the other side | lazy data |
+|---|---|---|---|
+| Java | `Gather`: Stage ⇄ `Gatherer`; `Collect`: Aggregator ⇄ `Collector` | — (Java code calls okay directly) | `Streams`: `Chunks` ⇄ `Stream` |
+| Clojure | `Transducers`: Stage ⇄ transducer | `okay.core` + `Program` | `Program`: seq ⇄ `Chunks` |
+| Frege | a `Prog` stage | `okay.frege.Prog` + `Frege` | `Frege`: list ⇄ `Chunks` |
+
+## 2. Java: `java.util.stream`
+
+A stage runs inside a JDK stream as an intermediate operation, and a
+stage that ANSWERS stops even an infinite stream:
+
+```scala
+// a stage that answers after three: the JDK's integrator returns false
+val firstThree: Stage[Int, Int, Unit] =
+  Stage.transduceUntil[Int, Int, Int, Unit](0)(
+    (n, i) => Stage.tell[Int, Int](i * 10).map(_ => if n + 1 >= 3 then Right(()) else Left(n + 1)),
+    _ => ())
+
+val out = Stream.iterate(1, _ + 1).gather(Gather.gatherer(firstThree)).toList   // [10, 20, 30]
+```
+
+and any JDK gatherer — the JDK's own `Gatherers`, a library's — runs in
+an okay pipeline:
+
+```scala
+val windows = through(lines("a", "b", "c"))(Gather.stage(Gatherers.windowFixed[String](2)))
+// Writer.run(windows) — (Seq([a, b], [c]), ()); a built pipeline runs ONCE
+```
+
+An event-time window is a gatherer too, and unlike a `Collector` it
+hands each pane on the moment the watermark closes it:
+
+```scala
+val panes = events
+  .gather(Windowed.gatherer[Ev, String, Long, Long](10, 10, 0)(_.key)(_.ts)(sum))
+  .toList                                   // [Pane(0,10,a,6), Pane(10,20,a,2), Pane(20,30,a,7)]
+```
+
+Gatherers need JDK 24 at run time; okay-java still loads on 17 and 21
+(a JVM links a class only when it is called). docs/modules/okay-java.md.
+
+## 3. Clojure
+
+Calling Clojure is its own Java API with names refused honestly:
+
+```scala
+val upper = Clj.fn("clojure.string", "upper-case")          // Right(#'clojure.string/upper-case)
+```
+
+A stage is a transducer — composed with Clojure's own by `comp`:
+
+```scala
+val xf = comp.invoke(odd, Transducers.of(runningSum))        // (comp (filter odd?) <stage>)
+val out = into.invoke(PersistentVector.EMPTY, xf, Clj.eval("(range 10)").toOption.get)
+// [1 4 9 16 25]
+```
+
+and a Clojure transducer is a stage:
+
+```scala
+val pairs = Transducers.stage[String, AnyRef](fn(Clj.eval("(comp (dedupe) (partition-all 2))").toOption.get))
+val windows = through(lines("a", "a", "b", "c", "c", "d"))(pairs)
+// Writer.run(windows) — (Seq([a b], [c d]), ())
+```
+
+**okay's effects from Clojure** go through `okay.core`, a namespace in
+the okay-clojure jar. A program is data; `mlet` reads like `do`:
+
+```clojure
+(def reader-state
+  "Reader and State, in mlet order: env * 1000 + the state after +1"
+  (ok/mlet [env (ok/perform (Ops/ask))
+            s   (ok/perform (Ops/get))
+            _   (ok/perform (Ops/set (inc s)))
+            s2  (ok/perform (Ops/get))]
+    (ok/done (+ (* env 1000) s2))))
+```
+
+```scala
+val prog = Program.run[Reader % Long + State % Long, java.lang.Long](value("reader-state"))(
+  using summon, Program.Row.of[Reader % Long] | Program.Row.of[State % Long])
+val answer = !.run(State.handle(5L)(Reader.run(7L)(prog)))   // (6, 7006)
+```
+
+A stage that uses `ok/await` and `ok/tell` is `Program.stage`, and one
+that also performs is `Program.stageWith[I, O, F]`. **Lazy seqs** cross
+both ways, as lazily as they are:
+
+```scala
+val c = Program.chunks[java.lang.Long](range)            // a Clojure (range), infinite, as okay Chunks
+val s = Program.seq(Chunks.map(Chunks.range(0, 5))(Long.box))   // okay Chunks as a Clojure lazy seq
+```
+
+docs/modules/okay-clojure.md.
+
+## 4. Frege
+
+Frege is a Haskell for the JVM, and COMPILED: `.fr` sources become
+classes before your Scala calls them (§8). A Frege program that uses
+okay is written in `okay.frege.Prog` — okay's tree in Frege — with
+`await`, `tell`, `perform` and `liftIO`:
+
+```haskell
+--- a running sum, iteratee style: await until Nothing, tell each sum
+runningSum :: Long -> Prog ()
+runningSum acc = do
+  m <- await
+  case m of
+    Nothing -> return ()
+    Just x  -> tell (acc + x) >> runningSum (acc + x)
+```
+
+```scala
+val sums = through(numbers(1, 2, 3, 4))(Frege.stage[Long, java.lang.Long](P.runningSum(Thunk.`lazy`(0L)).call()))
+// Writer.run(sums) — (Seq(1, 3, 6, 10), ())
+```
+
+okay's effects are TYPED operations: the native that makes one names
+its answer, so using it at another type is a Frege type error:
+
+```haskell
+pure native askOp    okay.frege.Ops.ask     :: () -> Operation Long
+pure native getOp    okay.frege.Ops.get     :: () -> Operation Long
+pure native setOp    okay.frege.Ops.set     :: Long -> Operation Long
+
+readerState :: Prog Long
+readerState = do
+  env <- perform (askOp ())
+  s   <- perform (getOp ())
+  _   <- perform (setOp (s + 1))
+  s2  <- perform (getOp ())
+  return (env * 1000 + s2)
+```
+
+Because a continuation is a Frege function, a multi-shot handler simply
+calls it per branch:
+
+```haskell
+choosing :: Prog Long
+choosing = do
+  a <- perform (choose2 1 2)
+  b <- perform (choose2 10 20)
+  return (a + b)
+```
+
+```scala
+val all = !.run(runChoice(Frege.run[Choose, java.lang.Long](P.choosing.call())))   // 11, 12, 21, 22
+```
+
+Existing Frege `IO` code enters by `liftIO`, as one step — it never
+calls back into okay, so nothing has to be suspended and no thread is
+needed. Frege lists and okay `Chunks` convert lazily both ways:
+
+```scala
+// an INFINITE Frege list, read partially by okay
+val firstFive = Chunks.take(Frege.chunks[java.lang.Long](P.squares.call()))(5)      // 1, 4, 9, 16, 25
+
+// an INFINITE okay source, handed to a Frege function that takes 10
+val sum = P.sumFirst(10, Frege.list(countedNats(produced, 16)))              // 45, and okay produced ≤ 16
+```
+
+docs/modules/okay-frege.md.
+
+## 5. Which bridge, for what
+
+- **Reuse a transformation someone wrote** — the JDK's `Gatherers`, a
+  Clojure library's transducer — in an okay pipeline: `Gather.stage`,
+  `Transducers.stage`.
+- **Offer an okay stage to code in another language** — a lexer, a
+  window, a protocol framer — as the thing that language already
+  composes: `Gather.gatherer` for `stream.gather`, `Transducers.of` for
+  `into`/`sequence`/`comp`.
+- **Write logic in the other language that needs okay's effects** —
+  reading config, state, failure, time, choice — as a program okay runs:
+  `okay.core` + `Program.run`, `okay.frege.Prog` + `Frege.run`; as a
+  stage that also performs: `stageWith[I, O, F]`.
+- **Hand lazy data across** — a Clojure `(range)`, a Frege infinite
+  list, an okay source — `chunks` one way, `seq`/`list` the other.
+
+## 6. The rules the bridges keep
+
+- **Lazy data is PURE by type.** `Program.seq` and `Frege.list` accept
+  only `Chunks` — an okay source with no other effect. An effectful
+  source forced from inside a lazy value is lazy IO; it belongs in a
+  program, as a `perform`.
+- **A built pipeline over the other side's mutable state runs once.**
+  `through(p)(stage)` runs a stage eagerly to its first output, so the
+  program it answers already holds that run's state. A JDK gatherer's
+  state and a Clojure transducer's `volatile!` cannot be snapshotted, so
+  `Gather.stage` and `Transducers.stage` REFUSE a second run of the same
+  built program by name — build it again. (`Gather.gatherer` and
+  `Transducers.of` have no such limit: each JDK evaluation, each
+  application to a reducing function, starts afresh.)
+- **Types are checked at the seam, and refused by name.** A value
+  arriving as `Object` is tested against the type the okay side declared
+  (a `ClassTag`; Clojure's integers are `java.lang.Long`); an operation
+  is tested against the program's row (`Row`). A union row is spelled
+  once — `Row.of[F] | Row.of[G]` — because the compiler cannot infer
+  the two sides of a union type.
+- **No bridge claims what it cannot keep.** No combiner from a stage (a
+  suspended program is a position, and positions do not merge — a
+  combiner-less gatherer is evaluated in order even in a parallel
+  stream); no multi-shot through a thread (there is no thread).
+
+## 7. What it costs
+
+Measured in the modules' own suites (`PRICE` lines), on this repository's
+build machine:
+
+| | per step |
+|---|---|
+| a Frege `Prog` step through the driver | 0.27 µs |
+| a Frege program run on its own thread, each operation a handoff — the design built first and dropped | ~10.5 µs |
+| a hundred thousand Clojure `okay.core` steps | 0.33 s in all, on the default stack |
+
+The drivers are trampolined by okay's interpreter, so program length is
+bounded by memory, not by the stack.
+
+## 8. Setting up the build
+
+- **Java**: `okay-java`. Gatherers need a JDK 24+ runtime; nothing else
+  does.
+- **Clojure**: `okay-clojure` brings `org.clojure:clojure` 1.12;
+  `okay.core` is inside the jar — `(require '[okay.core :as ok])`.
+- **Frege**: `okay-frege` brings the Frege runtime; the sbt plugin
+  `okay-frege-sbt` compiles your `.fr` sources:
+
+<!-- not-a-test: sbt build configuration -->
+```scala
+// project/plugins.sbt
+addSbtPlugin("dev.okay" % "okay-frege-sbt" % okayVersion)
+
+// build.sbt
+lazy val app = project
+  .enablePlugins(OkayFrege)
+  .settings(libraryDependencies += "dev.okay" %% "okay-frege" % okayVersion)
+  .settings(OkayFrege.before(Compile))     // src/main/frege, read by src/main/scala
+```
+
+  The Frege compiler targets JDK 17 (`fregeTarget`), and a Frege warning
+  fails the build (`fregeFailOnWarnings`); acknowledge one that is right
+  to keep with `--- nowarn: <message>` in its source.
+
+## 9. Literature
+
+- Rich Hickey. *[Transducers are coming.](https://clojure.org/news/2014/08/06/transducers-are-coming)* 2014.
+- Viktor Klang. *[JEP 485: Stream Gatherers.](https://openjdk.org/jeps/485)* OpenJDK, final in JDK 24.
+- Oleg Kiselyov. *[Iteratees.](https://doi.org/10.1007/978-3-642-29822-6_15)* FLOPS 2012 — why lazy IO fails, and the consumer-as-program answer.
+- Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible effects.](https://doi.org/10.1145/2804302.2804319)* Haskell 2015 — the tree `okay.core` and `Prog` re-spell.
+- Simon Peyton Jones, Philip Wadler. *[Imperative functional programming.](https://doi.org/10.1145/158511.158524)* POPL 1993 — effects as a monad in a lazy language.
+- Gordon Plotkin, Matija Pretnar. *[Handling algebraic effects.](https://doi.org/10.2168/LMCS-9(4:23)2013)* LMCS 2013 — handlers that call a continuation more than once.
+
+Theory ch. 7 (docs/theory/07-logic-streams.md) carries the argument
+that a gatherer and a transducer are the push-form enumeratee.
