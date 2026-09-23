@@ -3,8 +3,12 @@
 okay is a Scala 3 library. This guide is for a codebase that is still
 on **Scala 2.13** and wants to use it: effects, several in one program,
 your own effects, continuations, streams, fibers and channels, and above
-them codecs, HTTP, SQL, agents and UI. It all
-lives in one package, `okay.scala2`, from the module `okay-scala2`.
+them the rest of the library: codecs, HTTP, WebSockets, SQL, agents, UI,
+resilience, the durable log, transactions, stores, models, retrieval,
+MCP, optics, durable workflows and the service libraries. It all lives in
+one package, `okay.scala2`: the core in the module `okay-scala2`, each
+library's part in its own `okay-scala2-<name>` module (section 1 lists
+them).
 
 Every snippet below was copied from
 `scala2/okay-scala2/probe/src/test/scala/TestScala2Guide.scala`. That file is
@@ -32,6 +36,13 @@ Contents:
 8h. [Nondeterminism and search](#8h-nondeterminism-and-search)
 8i. [Scenarios and screens: Dialog and Nav](#8i-scenarios-and-screens-dialog-and-nav)
 8j. [Resilience: breaker, bulkhead, limiter, hedge, deadline, retry](#8j-resilience-breaker-bulkhead-limiter-hedge-deadline-retry)
+8k. [The durable log: okay-persist](#8k-the-durable-log-okay-persist)
+8l. [Transactions: okay-stm](#8l-transactions-okay-stm)
+8m. [Stores: cache, blob, documents](#8m-stores-cache-blob-documents)
+8n. [Models, retrieval, MCP: okay-llm, okay-rag, okay-mcp](#8n-models-retrieval-mcp-okay-llm-okay-rag-okay-mcp)
+8o. [Optics: lens, prism, affine, traversal, iso](#8o-optics-lens-prism-affine-traversal-iso)
+8p. [Durable workflows and durable agents](#8p-durable-workflows-and-durable-agents)
+8q. [Services: actors, outbox, logs, traces, ops, Kafka, Postgres](#8q-services-actors-outbox-logs-traces-ops-kafka-postgres)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -69,6 +80,36 @@ enough:
 scripts/gate.sh "okayJVM/publishLocal; okayAsyncJVM/publishLocal; okayPlatformJVM/publishLocal; okayStreamJVM/publishLocal; okayScala2/publishLocal"
 ```
 
+**The other modules** are added the same way, one line each with the
+same `.cross(CrossVersion.for2_13Use3)` and the same exclusion; the
+Scala 3 stdlib block above is needed once:
+
+```scala
+libraryDependencies ++= Seq("okay-scala2-http", "okay-scala2-sql", "okay-scala2-optics").map(m =>
+  ("dev.okay" %% m % "0.2.0-SNAPSHOT").cross(CrossVersion.for2_13Use3).exclude("org.scala-lang", "scala-library"))
+```
+
+| module | section | wraps |
+|---|---|---|
+| `okay-scala2` | 2–8 | the core: `Prog`, `Eff`, your own effects, `Cont`, `Source`, fibers, channels, `Choose` |
+| `okay-scala2-codec` | 8a | JSON, CBOR, JSON Schema |
+| `okay-scala2-http` | 8b | routes, a server, a client |
+| `okay-scala2-sql` | 8c | `Db`: queries, transactions |
+| `okay-scala2-agent` | 8d, 8p | `Model`, `Tools`, `Chat`, durable agents |
+| `okay-scala2-ui` | 8e, 8f, 8i | views, forms, dialogs, screens |
+| `okay-scala2-ws` | 8g | WebSockets |
+| `okay-scala2-resilience` | 8j | `Guards` |
+| `okay-scala2-persist` | 8k | `Persist` |
+| `okay-scala2-stm` | 8l | `Tx`, `Stm` |
+| `okay-scala2-stores` | 8m | `Caches`, `Blobs`, `Documents` |
+| `okay-scala2-llm`, `-rag`, `-mcp` | 8n | `Llm`, `Rag`, `McpClient`/`McpServer` |
+| `okay-scala2-optics` | 8o | `Lens`, `Prism`, `Affine`, `Traversal`, `Iso` |
+| `okay-scala2-workflow` | 8p | `Workflow`, `Workflows` |
+| `okay-scala2-services` | 8q | `Actors`, `Outboxes`, `Logs`, `Tracing`, `Operations`, `Kafkas`, `Postgres` |
+
+To publish all of them locally, `publishLocal` at okay's root publishes
+every module with its dependencies.
+
 The version is `ThisBuild / version` in okay's build.sbt (0.2.0-SNAPSHOT
 at the time of writing: the next release, as a snapshot). A snapshot
 you re-publish is not always noticed by a build that already resolved
@@ -82,7 +123,11 @@ so excludes the stdlib through `projectDependencies`. The second check
 was a separate sbt project outside the repository, against the
 `publishLocal` above. There, the block above compiled, `sbt run`
 printed the right answers both forked and unforked, and an unforked
-`sbt test` passed.
+`sbt test` passed. The "other modules" snippet was checked the same way on
+2026-09-23: after a root `publishLocal`, an outside 2.13 project whose
+build.sbt was this section's two blocks verbatim compiled a program using
+a composed `Lens`, a `Response` and `State`, and `sbt run` printed the
+expected values.
 
 What each line is for:
 
@@ -1539,12 +1584,17 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 - **Direct style** (`direct { ... }`, auto-colouring) is built from
   Scala 3 macros, and Scala 2 cannot expand those. Use
   for-comprehensions instead. It is not planned.
-- **The rest of the library.** Codecs (section 8a), HTTP (8b), SQL
-  (8c), agents (8d) and UI (8e) are covered. Several pieces are not
-  wrapped yet: durable agents, and okay-ui's cancellable scopes
-  (`Scope`) inside a dialog. Forms, WebSockets, nondeterminism with
-  search, and dialogs with screens are wrapped (sections 8f to 8i). The remaining modules are not
-  wrapped either.
+- **The interop modules** okay-cats, okay-zio, okay-kyo and okay-fs2.
+  Each depends on the Scala 3 (`_3`) artifacts of its library, and a
+  Scala 2 build has that library at `_2.13`: both on one classpath is a
+  conflict, not an interop. A Scala 2 build that uses cats or ZIO reaches
+  okay through `Prog` and `Eff` instead.
+- **okay-direct and okay-staging.** Both are Scala 3 metaprogramming.
+- **okay-ui's cancellable scopes** (`Scope`) inside a dialog.
+- Everything else is wrapped: sections 8a to 8q, one module each (the
+  table in section 1). Where a library's own values and builders are
+  plain, Scala 2 uses them directly and only the operations that answer
+  a program are wrapped; each section says which is which.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the
   Scala 3 API builds. What Scala 3 code gets and a 2.13 caller does

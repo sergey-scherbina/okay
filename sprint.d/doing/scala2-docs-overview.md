@@ -1,1 +1,0 @@
-- [~] **scala2-docs-overview** — the overview pages still describe Scala 2 coverage as of stage 14: docs/scala2.md intro and section 11, README.md, ROADMAP.md, docs/README.md, docs/guide.md. Operator: "Документацию обновил?" (2026-09-23).

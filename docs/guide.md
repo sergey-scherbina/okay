@@ -1073,8 +1073,10 @@ usual vocabulary (`map`, `filter`, `take`, `merge`, `runCollect`). A
 source can also be written as a for-comprehension of `Writer.tell` and
 `Async.delay` and wrapped with `Source.fromEff`. Concurrency is `Async.fork`, `par`, `race` and `timeout`, together with
 a bounded `Channel` whose `send` and `receive` are programs that wait.
-All of it is in the one package `okay.scala2`, under the library's own
-names. The build needs both standard libraries, 2.13's first and 3.9's
+Above that, sixteen `okay-scala2-*` modules cover the rest of the
+library the same way, from codecs, HTTP and SQL to durable workflows,
+optics and the service libraries. All of it is in the one package
+`okay.scala2`, under the library's own names. The build needs both standard libraries, 2.13's first and 3.9's
 behind it. The walkthrough is [okay from Scala 2.13](scala2.md), the
 reference is [modules/okay-scala2.md](modules/okay-scala2.md), and why
 the row becomes an intersection is

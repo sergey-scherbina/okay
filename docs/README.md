@@ -58,8 +58,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   Scala 2: the build (two standard libraries, and in which order),
   `Prog` and `Eff` (several effects in one program, the row as an
   intersection of capabilities), your own effect as a sealed trait and
-  an object, continuations, streams, fibers and channels, codecs, HTTP,
-  SQL, agents and UI, a Scala 3 / Scala 2 phrasebook, and every compiler error the setup can produce
+  an object, continuations, streams, fibers and channels, and the rest
+  of the library in seventeen modules (codecs, HTTP, WebSockets, SQL,
+  agents, UI, resilience, the durable log, STM, stores, models,
+  retrieval, MCP, optics, durable workflows, actors and the service
+  libraries), a Scala 3 / Scala 2 phrasebook, and every compiler error the setup can produce
   with its cause. Every snippet compiles under scalac 2.13 with
   `-Werror` in the gate.
 - **[okay with TypeScript](typescript.md)** — TypeScript on the same

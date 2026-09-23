@@ -32,8 +32,10 @@ The library stands on work by Moggi, Wadler, Felleisen, Danvy & Filinski, Atkey,
 
 Scala 3, just moved to 3.9 LTS. Still on Scala 2.13? `okay-scala2`
 gives a 2.13 build effects, several in one program, your own effects,
-continuations, streams, fibers and channels, and above them codecs,
-HTTP, SQL, agents and UI, through types a Scala 2 compiler can read:
+continuations, streams, fibers and channels, and above them the rest
+of the library (HTTP, SQL, agents, UI, the durable log, STM, stores,
+retrieval, MCP, optics, durable workflows, actors, Kafka, Postgres),
+through types a Scala 2 compiler can read:
 [okay from Scala 2.13](docs/scala2.md).
 Zero dependencies. One source for JVM (JDK 21+, Loom), Scala.js and
 Scala Native — each platform contributes evidence (can it park? what
@@ -69,7 +71,7 @@ Start here:
 | [Continuations: a working book](docs/continuations/index.md) | the long form on the one idea the rest is built from: why a team should care, the four shapes as recipes, the machine, building new effects on it, the costs with numbers, and what it must not be asked to do |
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
 | [Building a chat application](docs/building-a-chat-app.md) | an empty directory to a running streaming chat, outside this repo: depending on an unpublished library, backend, frontend, tests, run |
-| [okay from Scala 2.13](docs/scala2.md) | for a Scala 2 codebase: the build, `Eff` with the row as an intersection, your own effect, streams, fibers — every snippet compiled by scalac 2.13 in the gate |
+| [okay from Scala 2.13](docs/scala2.md) | for a Scala 2 codebase: the build, `Eff` with the row as an intersection, your own effect, streams, fibers, and seventeen modules over the rest of the library — every snippet compiled by scalac 2.13 in the gate |
 | [okay with TypeScript](docs/typescript.md) | TypeScript functions as typed Scala functions, TypeScript calling back into okay's effects, programs as data resumed many times; a Node worker, no build step, types generated from `Schema` and checked by `tsc` |
 | [okay with Python and R](docs/python-and-r.md) | Python and R functions as typed Scala functions, their code calling back into okay's effects (`okay.call("name", x)`), held models, modules beside the Scala, streams, declared environments, a journal; each interpreter in its own process |
 | [okay with other languages](docs/jvm-languages.md) | Java streams, Clojure and Frege with okay's effects (a stage IS a JDK gatherer and a transducer, programs as data in THAT language); Python and R have [their own page](docs/python-and-r.md); okay runs on JavaScript through Scala.js ([okay-js](docs/modules/okay-js.md)) |
