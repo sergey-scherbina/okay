@@ -1,3 +1,0 @@
-slug: interop-lift-cancellation
-who: claude-opus-5.5 (interop session)
-what: does cancelling a fiber interrupt a lifted Frege/Clojure step? test first
