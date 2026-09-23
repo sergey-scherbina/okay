@@ -409,6 +409,9 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 
 **Optics** (module `okay-scala2-optics`) — `Lens[S, A](get: S => A, set: (S, A) => S)`: `get`, `set(a): S => S`, `modify(f): S => S`; `Prism[S, A](preview: S => Option[A], review: A => S)`, `Prism.subtype[S, A <: S](implicit ClassTag[A])`, `Prism.some[A]`: `preview`, `review`, `set`, `modify`; `Affine[S, A](preview, set: (S, A) => S)`: `preview`, `set`, `modify`; `Traversal[S, A](parts: S => Vector[A], rebuild: (S, Vector[A]) => S)`, `Traversal.each[A]`, `Traversal.eachList[A]`: `toVector`, `set`, `modify`; `Iso[S, A](to: S => A, from: A => S)`: `get`, `reverseGet`, `modify`. Every kind has `andThen` with every kind, answering the kind the lattice gives.
 
+**Workflows** (module `okay-scala2-workflow`) — `Workflow[Q, A]` (`Workflow.apply[Q, A]`): `ask(q: Q): Eff[Workflow[Q, A], A]`, `now: Eff[.., Long]`, `uuid`, `random`, `patch(id): Eff[.., Boolean]`, `sleep(millis): Eff[.., Unit]`, `awaitSignal(name): Eff[.., String]`, `awaitChild(id)`, `cancelled: Eff[.., Option[String]]`; `Workflows.drive[Q, A, R](wf, journal: List[Either[Wf.SysA, A]], runtime: Wf.Runtime = Wf.Runtime.live)(oracle: Q => A): (Wf.Step[Q, R], List[Either[Wf.SysA, A]])`, `Workflows.advance(wf, journal, runtime = live)` (same answer, no oracle), `Workflows.replay(wf, journal): Option[R]`, `Workflows.elapsed`, `Workflows.got(payload: String)`.
+**Durable agent** — `Chat(model, tools, policy, maxSteps, approve, journal: Option[okay.agent.Durable.Journal] = None, onRepeat: String => Durable.OnRepeat = _ => Durable.OnRepeat.Fail)`.
+
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
 `runEither(): Either[Throwable, A]`. `object Prog`: `pure`, `delay`,

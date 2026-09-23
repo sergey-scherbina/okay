@@ -1,7 +1,7 @@
 package okay.scala2
 
 import okay.{+, Handler}
-import okay.agent.{Agent, Compact, Context, Handlers, Reply, ToolCall, Toolbox, Turn}
+import okay.agent.{Agent, Compact, Context, Durable, Handlers, Reply, ToolCall, Toolbox, Turn}
 import okay.agent.{Model as ModelEffect, Tool as ToolEffect}
 import okay.codec.Schema
 import okay.given
@@ -87,13 +87,23 @@ object Policy {
  * conversation carries over to the next `say`, kept by the `Policy`.
  * `approve` decides each tool call before it runs; a denied call is
  * answered "denied", and the model sees that.
+ *
+ * With a `journal` the agent is DURABLE (okay-agent's `Durable.tools`):
+ * every tool call is written down with its answer, and a new `Chat` over
+ * the same journal, after a crash or a restart, replays the calls that
+ * already happened instead of running them again. `onRepeat` says, per
+ * tool name, what a call whose outcome the journal does not know
+ * means: run it again (`Redo`), refuse (`Fail`, the default), and so on.
  */
-final class Chat private (model: Model, tools: Tools, policy: Policy, maxSteps: Int, approve: Call => Boolean) {
+final class Chat private (model: Model, tools: Tools, policy: Policy, maxSteps: Int, approve: Call => Boolean,
+                          journal: Option[Durable.Journal], onRepeat: String => Durable.OnRepeat) {
 
   private val (recall, context) = policy.make()
 
-  private val tool: Handler[ToolEffect] =
-    Handlers.gated(tools.box.table)(c => approve(Chat.call(c)))
+  private val tool: Handler[ToolEffect] = {
+    val gated = Handlers.gated(tools.box.table)(c => approve(Chat.call(c)))
+    journal.fold(gated)(j => Durable.tools(gated, j)(onRepeat))
+  }
 
   /** one user message; the agent's final answer */
   def say(message: String): Eff[Async, String] = Async.delay(synchronized {
@@ -115,8 +125,10 @@ final class Chat private (model: Model, tools: Tools, policy: Policy, maxSteps: 
 object Chat {
 
   def apply(model: Model, tools: Tools = Tools.empty, policy: Policy = Policy.window(4000),
-            maxSteps: Int = 8, approve: Call => Boolean = _ => true): Chat =
-    new Chat(model, tools, policy, maxSteps, approve)
+            maxSteps: Int = 8, approve: Call => Boolean = _ => true,
+            journal: Option[Durable.Journal] = None,
+            onRepeat: String => Durable.OnRepeat = _ => Durable.OnRepeat.Fail): Chat =
+    new Chat(model, tools, policy, maxSteps, approve, journal, onRepeat)
 
   private def call(c: ToolCall): Call = Call(c.id, c.name, okay.codec.Json.print(c.args))
 }

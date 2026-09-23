@@ -1274,6 +1274,103 @@ assertEquals(prices.modify(_ * 2)(order).items.map(_.price), Vector(20, 50))
   [doi:10.22152/programming-journal.org/2017/1/7](https://doi.org/10.22152/programming-journal.org/2017/1/7));
   docs/theory/10-optics.md explains it.
 
+## 8p. Durable workflows and durable agents
+
+Module `okay-scala2-workflow`. A durable program is one that survives
+its process. Its whole state is a JOURNAL of the answers it was given,
+and a new process over the same journal replays the program to exactly
+where the old one stood, asking nobody anything twice.
+[Chapter 23 of the continuations book](continuations/23-durable-workflows.md)
+explains the engine; this section is how Scala 2 uses it.
+
+A workflow is an ordinary program, `Eff[Workflow[Q, A], R]`. `Q` is the
+type of the questions it asks the outside world, and `A` the type of the
+answers. `Workflow[Q, A]` holds the operations. Every operation's answer
+is journalled, the clock and ids included, so a replay reads them back.
+The code below is copied from
+`okay-scala2/probe/src/test/scala/TestWorkflowFromScala2.scala`:
+
+```scala
+val wf = Workflow[String, String]
+val runtime = Wf.Runtime.scripted(1700000000000L, "bk-1", 0.25)
+```
+
+```scala
+val booking: Eff[Workflow[String, String], String] = for {
+  city <- wf.ask("which city?")
+  when <- wf.now
+  ref <- wf.uuid
+  nights <- wf.ask(s"how many nights in $city?")
+} yield s"$city/$nights/$when/$ref"
+```
+
+`Workflows.drive` runs it, an oracle answering the questions, and hands
+back where it stopped and the journal. `Workflows.replay` is the "new
+process": it reads only the journal.
+
+```scala
+val (_, journal) = Workflows.drive(booking, Nil, runtime)(oracle)
+assertEquals(Workflows.replay(booking, journal), Some("Kyiv/3/1700000000000/bk-1"))
+```
+
+A worker has no oracle. `Workflows.advance` goes as far as the runtime
+alone can take the run and stops at the author's next question. Whoever
+answers (a person, an API) appends `Right(answer)`, and the next
+`advance` goes on from there:
+
+```scala
+val (first, entries1) = Workflows.advance(booking, Nil, runtime)
+assertEquals(first, Wf.Step.Asking[String, String]("which city?"))
+val journal1 = entries1 :+ Right("Lviv")
+val (second, entries2) = Workflows.advance(booking, journal1, runtime)
+assertEquals(second, Wf.Step.Asking[String, String]("how many nights in Lviv?"))
+```
+
+A durable sleep and a signal stop the run as `Waiting`. Nothing is held
+in memory meanwhile. A scheduler appends `Workflows.elapsed` when the
+instant passes, and whoever sends the signal appends `Workflows.got(payload)`:
+
+```scala
+val (slept, e1) = Workflows.advance(approval, Nil, runtime)
+assertEquals(slept, Wf.Step.Waiting[String, String](Wf.Wait.Until(1700000000000L + 86400000L)))
+val j1 = e1 :+ Workflows.elapsed
+val (waiting, e2) = Workflows.advance(approval, j1, runtime)
+assertEquals(waiting, Wf.Step.Waiting[String, String](Wf.Wait.Signal("approve")))
+```
+
+- `wf.patch("id")` changes a running program safely: it is `true` for new
+  runs and `false` for a journal written before the branch existed
+  (Temporal's `getVersion`).
+- `wf.random`, `wf.awaitChild(id)` and `wf.cancelled` are the rest of the
+  operations. `Wf.Runtime.live` reads the real clock;
+  `Wf.Runtime.scripted` is for tests. A Scala 2 class can implement
+  `Wf.Runtime` too.
+- The journal is `List[Either[Wf.SysA, A]]`, plain data to keep in any
+  store.
+
+**A durable agent** (section 8d's `Chat`) takes a journal of its tool
+calls. A new `Chat` over the same journal, after a restart, replays the
+calls that already happened instead of running them again. A payment is
+not made twice. From `TestDurableAgentFromScala2.scala`:
+
+```scala
+val first = Chat(script, tools, Policy.all, journal = Some(journal))
+assertEquals(Eff.runAsync(first.say("pay ada")), "paid")
+assertEquals(payments, 1)
+```
+
+```scala
+val second = Chat(script, tools, Policy.all, journal = Some(journal))
+assertEquals(Eff.runAsync(second.say("pay ada")), "paid")
+assertEquals(payments, 1)
+```
+
+`journal` is `new Durable.MemoryJournal` there. `okay.agent.Durable.Journal`
+is a three-method trait (`append`, `complete`, `all`), so a Scala 2 class
+backed by a table is enough. `onRepeat` says, per tool, what a call means
+if the journal holds its intent but not its outcome. The default refuses
+(`Fail`); `Redo` runs it again, for a tool that is safe to repeat.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |

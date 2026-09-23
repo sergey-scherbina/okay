@@ -826,3 +826,17 @@ metaprogramming.
   a subtype prism with a lens after it, lens-then-prism as an affine
   (unchanged where absent), a traversal through `each`, and an iso then a
   prism reviewing through both.
+- STAGE 15.7 (2026-09-23). okay-scala2-workflow, and durable agents.
+  The driver's data (`Wf.Step`, `Wait`, `SysA`, `Runtime`) is plain and
+  used directly. The program is not: a body is a context function over
+  `Wf.Asks`, whose doors exist only while the driver runs it. A Scala 2
+  workflow is therefore an ordinary `Eff[Workflow[Q, A], R]` over a
+  facade-owned GADT (`WfOp[Q, A, +X] derives Effect`, so its TypeableK
+  is by class), and `!.translate` rewrites each operation into its
+  `Asks` door inside `Wf.resumable`. Everything after that is okay's
+  engine unchanged. It compiled first time. 5 tests: drive, replay as
+  a new process, the worker loop, sleep plus signal, and `patch` on an
+  old journal. Durable agents: `Chat` takes an optional
+  `Durable.Journal` and wraps its gated tool handler in
+  `Durable.tools`. 2 tests, one of them the control (no journal: the
+  restart pays twice).

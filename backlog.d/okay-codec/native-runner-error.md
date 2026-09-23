@@ -139,3 +139,8 @@
       plus accept timeout, no `Failed 0, Errors 1` line — is a gap in the
       classifier worth closing. Green alone the same minute.
 
+      2026-09-23, okaySqlNative, GREEN on the rerun alone: lost its test
+      process in the full-matrix gate of scala2-workflow (6871 tests, 0
+      failed) — a lane that added okay-scala2-workflow and touched
+      okay-scala2-agent, no okay-sql source. Recorded per the ledger;
+      nothing changes the settled cause.
