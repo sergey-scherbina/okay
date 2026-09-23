@@ -697,6 +697,12 @@ same material with the measurements attached.
   `contentEncoding: base64` in a tool's JSON Schema. The cost it
   carries honestly: `Array[Byte]` has reference equality, so a product
   holding one is not a value for `==`.
+- **`CardanoFollower`** (okay-scalus) — a Cardano relay followed to
+  confirmed blocks with no node and no API key: Ouroboros node-to-node
+  written here (mux, handshake, chain-sync, block-fetch in batches,
+  keep-alive), scalus's ledger model for the bodies, okay-chain's
+  `Tracker` for finality. A block's id is its HEADER hash — scalus's
+  `Block.hash` is the body's.
 - **`Tracker`** (okay-chain) — a blockchain follower as a PURE state
   machine: what a source observed (`Forward`, `Backward`, `AtTip`) in,
   what a consumer may act on (`Confirmed`, `RolledBack`) out, no I/O

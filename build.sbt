@@ -1096,6 +1096,24 @@ lazy val okaySpark = (project in file("okay-spark"))
   )
 
 /** Flink via the same Aggregator triple (P4); flink-core is pure Java */
+/**
+ * okay-scalus (specs/scalus.md, specs/chain.md): the Cardano chain as
+ * okay-chain events. scalus-cardano-ledger is taken for its ledger
+ * MODEL and CBOR codecs only (operator, 2026-09-22); the transport —
+ * Ouroboros node-to-node: mux, handshake, chain-sync, block-fetch,
+ * keep-alive — is written here. JVM: scalus's crypto (blake2b) is
+ * bouncycastle on this platform, and the transport is a socket.
+ */
+lazy val okayScalus = (project in file("okay-scalus"))
+  .dependsOn(okay.jvm, okayCodec.jvm, okayChain.jvm)
+  .settings(
+    name := "okay-scalus",
+    libraryDependencies ++= Seq(
+      "org.scalus" %% "scalus-cardano-ledger" % "1.2.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val okayFlink = (project in file("okay-flink"))
   // okay-java is TEST only, and only for §20's third lane: the same
   // job over java.util.stream, whose `Collector` an okay Aggregator
@@ -2510,7 +2528,7 @@ lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayScala2, okayScala2Codec, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
-    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native,
+    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,

@@ -383,23 +383,23 @@ until Spark stage 2 has run on mainnet.
   - [x] `schema-bigint`: `SBigInt` in okay-codec, every algebra
         (Json, Cbor, Yaml, Xml, JsonSchema, Form, ToolSpec, Typed,
         Compat) — its own lane, its own spec entry in codecs.md
-  - [ ] okay-scalus module in build.sbt (JVM), scalus-cardano-ledger
-        1.2.0; `evicted` report read against okay-spark's classpath
-  - [ ] a real Conway block's CBOR as a fixture (preprod), decoded by
+  - [x] okay-scalus module in build.sbt (JVM), scalus-cardano-ledger
+        1.2.0; `evicted`: one conflict, slf4j-api 2.0.11 over 1.7.36 —
+        the logging API, backward compatible for callers
+  - [x] a real Conway block's CBOR as a fixture (preprod), decoded by
         scalus in a test; header hash computed from the raw header
-        bytes equals the hash the chain names (the `Block.hash` trap
-        pinned by a test that would pass on the body hash only by
-        accident — it cannot)
+        bytes equals the hash the chain names
 - **Stage 1 — okay-scalus: the chain as events**
-  - [ ] mux + handshake + chain-sync + block-fetch + keep-alive,
+  - [x] mux + handshake + chain-sync + block-fetch + keep-alive,
         tested against RECORDED relay sessions (fixture bytes), a
         `Live`-tagged test against a public preprod relay
-  - [ ] `Follower`: depth, parent continuity, shallow rollback
-        absorbed, deep rollback → `RolledBack`/failure, each a test
-        over a scripted chain-sync conversation (fork at depth d−1, d,
-        d+1)
-  - [ ] `Schema` instances for the ledger model; a round-trip test
-        (value → Json → value) over every fixture block's types
+  - [x] the follower is okay-chain's `Tracker` (specs/chain.md): depth,
+        continuity and rollback cases are tested THERE; here the
+        chain-sync source feeds it and the recorded session confirms
+        through it
+  - [ ] `Schema` instances for the ledger model — MOVED to
+        okay-scalus-spark: its only consumer is the Spark encoder, and
+        writing them before it would guess its needs
 - **Stage 2 — okay-scalus-spark: batch + confirmed streaming**
   - [ ] generic `SparkSchema`: `Schema.fold` algebra → `(DataType,
         A => InternalRow value)`, §4.1–4.6, including the `ref`
@@ -417,6 +417,20 @@ until Spark stage 2 has run on mainnet.
 - **Stage 4 — Flink** (§7)
 
 ## Decisions
+
+- 2026-09-23 — **okay-scalus-chain findings.** (1) Two era numberings:
+  chain-sync headers index eras by the hard-fork combinator (Conway 6),
+  block-fetch's `[era, block]` counts Byron's boundary blocks
+  separately (Conway 7) — each read where it belongs. (2) scalus's
+  `MultiAsset` holds quantities as `Long`; the protocol allows uint64.
+  (3) The relay opens chain-sync with a rollback to the intersection;
+  with a checkpoint it is absorbed by the `Tracker`, without one it is
+  dropped. (4) With no checkpoint the source starts at the relay's TIP
+  (real time is the point; genesis would begin with Byron). (5) Bodies
+  are fetched in BATCHES: headers until "wait" or a full batch, then
+  one range request. (6) The transport is single-threaded: keep-alive
+  goes out on the socket's idle timeout while a receive waits, so the
+  whole client replays deterministically from a recording.
 
 - 2026-09-22 — **transport is ours (N2N), model is scalus's.**
   Operator: take scalus's CBOR data model; do everything else
@@ -442,5 +456,12 @@ until Spark stage 2 has run on mainnet.
   exactness over the storage it costs (§4.3 table).
 
 ## Results
+
+- okay-scalus-chain (2026-09-23): a preprod session recorded by an
+  independent Python probe replays byte for byte — the client sends the
+  probe's exact requests; five header hashes, four transaction ids and
+  fees match Koios; tx counts match the probe; Depth(2) confirms the
+  first three through okay-chain's `Tracker`. `TestLive` followed a
+  real preprod relay from its tip to the next block in 28.6 s.
 
 (none yet)
