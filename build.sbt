@@ -2355,7 +2355,9 @@ lazy val okayChat = project
 
 lazy val okayLive = project
   .in(file("okay-live"))
-  .dependsOn(okay.jvm, okayStream.jvm)
+  // okay-codec: a Watched document is Json addressed by the dotted
+  // keys JsonOptic.path resolves against a Schema (specs/optics-outside.md stage 10)
+  .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm)
   .settings(
     name := "okay-live",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
