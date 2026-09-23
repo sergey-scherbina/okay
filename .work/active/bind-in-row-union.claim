@@ -1,0 +1,6 @@
+feature/bind-in-row-union 2026-09-23T08:36:28Z
+agent: claude-code
+heartbeat: 2026-09-23T08:36:28Z
+status: in-progress
+done-so-far: reads done: at/plus/up in RowLift, coerce is one cast; the gain of bindIn is INFERENCE of the other row
+next: RowLift bindIn/thenIn; spec section in specs/writer-covariance.md (rowlift); TestBindIn; guide; changelog
