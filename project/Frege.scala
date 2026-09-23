@@ -70,6 +70,16 @@ object Frege {
             l => lines.append(l).append('\n'), l => lines.append(l).append('\n')))
           lines.toString.linesIterator.foreach(l => log.debug(s"frege: $l"))
           if (code != 0) sys.error(s"fregeCompile: the Frege compiler failed (exit $code):\n$lines")
+          // "no warnings, ever" (AGENTS.md) holds for Frege too: the
+          // compiler reports a warning as a line "W <file>:<line>: ...",
+          // and until frege-typed-operations they reached only the debug
+          // log — the "will diverge" in okay.frege.Prog sat there unseen
+          // by the gate. A Frege warning that is right to keep is
+          // acknowledged IN the source, Frege's own way: a doc comment
+          // "--- nowarn: <the message>" on the definition.
+          val warnings = lines.toString.linesIterator.filter(_.startsWith("W ")).toVector
+          if (warnings.nonEmpty) sys.error(
+            s"fregeCompile: ${warnings.size} Frege warning(s); 'no warnings, ever' (AGENTS.md):\n" + warnings.mkString("\n"))
         }
         (out ** "*.class").get.toSet
       }

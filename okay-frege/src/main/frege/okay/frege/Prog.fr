@@ -15,12 +15,31 @@ module okay.frege.Prog where
 --- a value crossing the seam, as Java sees it
 data Obj = pure native java.lang.Object
 
---- an answer from okay, as the type the program's own signature names
---- (the compiler warns that a polymorphic result "will diverge": it is
---- a Java cast, and it returns)
-pure native fromObj "(Object)" :: Obj -> a
-pure native toObj   "(Object)" :: a -> Obj
-pure native isNull  java.util.Objects.isNull :: Obj -> Bool
+--- An okay operation whose answer is an @a@. The type parameter is a
+--- PHANTOM — Java sees the operation value itself — and it is what the
+--- native that makes the operation declares, the way okay's own
+--- @effect[F, A](op: F[A])@ reads the answer type off the operation:
+---
+--- > pure native askOp okay.frege.Ops.ask :: () -> Operation Long
+---
+--- so 'perform' answers what its operation says, not whatever its caller
+--- wishes.
+data Operation a = pure native java.lang.Object {}
+
+pure native toObj    "(Object)" :: a -> Obj
+pure native opObj    "(Object)" :: Operation a -> Obj
+pure native isNull   java.util.Objects.isNull :: Obj -> Bool
+
+--- nowarn: application of fromObj will diverge
+--- The one place an answer from okay is read at a type: a Java cast,
+--- which Frege emits as a generic @(A)(Object)x@ only for a native of
+--- exactly this shape, @Obj -> a@ — the shape its check flags, since
+--- nothing in the argument fixes @a@. Here the caller does: it is
+--- PRIVATE, and every use reads an answer at the type the operation
+--- ('perform' through 'Operation' @a@), the stage's input ('await') or
+--- the lifted action ('liftIO') already fixed. Acknowledged the way
+--- Frege's own Prelude acknowledges @error :: String -> u@.
+private pure native fromObj "(Object)" :: Obj -> a
 
 --- what one step asks of okay
 data Op = Await            --- the next input of a stage (okay's Take)
@@ -28,7 +47,8 @@ data Op = Await            --- the next input of a stage (okay's Take)
         | Perform Obj      --- an operation of the okay program's row
         | Lift (IO Obj)    --- existing Frege IO, run by the driver as one step
 
---- a program: its answer, or an operation and what follows it
+--- a program: its answer, or an operation and what follows from its
+--- answer (the driver hands the answer over as a Java object)
 data Prog a = Done a | Step Op (Obj -> Prog a)
 
 bindP :: Prog a -> (a -> Prog b) -> Prog b
@@ -45,7 +65,8 @@ instance Applicative Prog where
 instance Monad Prog where
   (>>=) = bindP
 
---- the next element of a stage's input, Nothing at its end
+--- the next element of a stage's input, Nothing at its end (the
+--- element's type is the stage's input type, fixed where it is run)
 await :: Prog (Maybe a)
 await = Step Await (\x -> Done (if isNull x then Nothing else Just (fromObj x)))
 
@@ -53,9 +74,9 @@ await = Step Await (\x -> Done (if isNull x then Nothing else Just (fromObj x)))
 tell :: b -> Prog ()
 tell b = Step (Tell (toObj b)) (\_ -> Done ())
 
---- perform an okay operation (an okay.frege.Ops value, or your own)
-perform :: Obj -> Prog a
-perform op = Step (Perform op) (\x -> Done (fromObj x))
+--- perform an okay operation; its answer is the type the operation names
+perform :: Operation a -> Prog a
+perform op = Step (Perform (opObj op)) (\x -> Done (fromObj x))
 
 --- existing Frege IO, as one step of the program
 liftIO :: IO a -> Prog a

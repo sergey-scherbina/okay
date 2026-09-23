@@ -104,11 +104,32 @@ step — so it needs nothing suspended, and no thread.
 - **The operation crossing is ONE cast, in one function** — after
   `Row.test` has said the `Object` is an operation of F; `F` is
   covariant, so `F[X]` is `F[Any]` and the answer needs none.
-- **Answers cross as `Object`, typed by the Frege signature** — a Java
-  cast native (`"(Object)"`), which the Frege compiler warns "will
-  diverge" (a polymorphic result of `Obj -> a`); it is a cast and it
-  returns. `null` is `Nothing` for `await` (`java.util.Objects.isNull`),
-  so the driver knows no Frege Prelude type.
+- **Operations are typed by their answer** (frege-typed-operations,
+  2026-09-23). `data Operation a = pure native java.lang.Object {}` — a
+  phantom, the `{}` saying the Java type takes no parameters (without it
+  Frege emits `Object<A>`) — and `perform :: Operation a -> Prog a`, so
+  the native that makes an operation fixes its answer type the way
+  `effect[F, A](op: F[A])` does in okay: using an `Operation Long`'s
+  answer as a `String` is a Frege TYPE error (checked), where the first
+  cut's `perform :: Obj -> Prog a` let the caller pick and failed at run
+  time.
+- **The one cast is private and acknowledged, not hidden.** An answer
+  crosses as `Object` and is read at its type by `fromObj :: Obj -> a`, a
+  Java cast native. Frege's check (`Typecheck.checkReturn`) warns "will
+  diverge" for a result that is a bare type variable absent from the
+  arguments — and that shape is the ONLY one for which Frege emits a
+  generic `(A)(Object)x` (an `Answer a -> a` detour came out as a plain
+  `(Object)x` javac refused, measured). So `fromObj` is `private` (not
+  resolvable outside `Prog`, checked) and carries Frege's own
+  acknowledgement, `--- nowarn: application of fromObj will diverge` —
+  the mechanism the Frege Prelude uses for `error :: String -> u`.
+  `null` is `Nothing` for `await` (`java.util.Objects.isNull`), so the
+  driver knows no Frege Prelude type.
+- **Frege warnings fail the build** (frege-typed-operations): the
+  compiler's `W <file>:<line>:` lines were logged at debug and the gate
+  never saw them — the "will diverge" sat there from the first landing.
+  `fregeCompile` fails on any; one that is right to keep is acknowledged
+  in the source with a `nowarn` doc comment.
 - **Refused: sbt-frege** (the 2015 plugin, unmaintained, sbt 0.13).
 
 ## Results

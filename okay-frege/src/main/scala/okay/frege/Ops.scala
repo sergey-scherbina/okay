@@ -9,17 +9,15 @@ import okay.{Choose, Reader, State, Throws}
  * `perform`, which runs it in the okay program's row.
  *
  * {{{
- * data Obj = pure native java.lang.Object
- * pure native askOp okay.frege.Ops.ask :: () -> Obj
- * pure native getOp okay.frege.Ops.get :: () -> Obj
- * pure native setOp okay.frege.Ops.set :: Long -> Obj
+ * pure native askOp okay.frege.Ops.ask :: () -> Operation Long
+ * pure native getOp okay.frege.Ops.get :: () -> Operation Long
+ * pure native setOp okay.frege.Ops.set :: Long -> Operation Long
  * }}}
  *
- * Untyped at this edge on purpose: the operation's answer type lives in
- * the Frege signature of the `perform` that uses it, and the okay row
- * decides at run time whether the operation is its own (a `Left` by
- * name if not). Your own effect's operations are one line each, the
- * same way.
+ * Untyped on the JVM, TYPED in Frege: the native's `Operation a` names
+ * the answer (`Prog.perform :: Operation a -> Prog a`), and the okay row
+ * decides at run time whether the operation is its own (refused by name
+ * if not). Your own effect's operations are one line each, the same way.
  */
 object Ops {
   def ask(): AnyRef = Reader.Ask[Any, Any]()

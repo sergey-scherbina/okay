@@ -7,7 +7,7 @@
 
 | | |
 |---|---|
-| `okay.frege.Prog` (Frege, src/main/frege) | `await`, `tell`, `perform op`, `liftIO io` — okay's freer tree written in Frege, with `Functor`/`Applicative`/`Monad`, so a Frege programmer writes ordinary `do` |
+| `okay.frege.Prog` (Frege, src/main/frege) | `await`, `tell`, `perform op`, `liftIO io` — okay's freer tree written in Frege, with `Functor`/`Applicative`/`Monad`, so a Frege programmer writes ordinary `do`; `Operation a` is an okay operation typed by its answer |
 | `Frege.stage(prog)` | a Frege `Prog ()` that awaits and tells, as an okay `Stage` |
 | `Frege.run[F](prog)` | a Frege `Prog a` as `A ! F`: each `perform` runs as an operation of the row `F`, under whatever handlers run it |
 | `Frege.Row` | whether a value from Frege is an operation of `F` — found for one signature, built with `|` for a union |
@@ -48,18 +48,21 @@ val sums = through(numbers(1, 2, 3, 4))(Frege.stage[Long, java.lang.Long](P.runn
 
 okay's own effects, performed from Frege — each operation a value the
 Frege module binds as one pure native (`okay.frege.Ops`, or your own
-effect's the same way):
+effect's the same way), TYPED by its answer: `Operation Long` is an
+operation answering a `Long`, and `perform :: Operation a -> Prog a`
+answers exactly that — using the answer as a `String` is a Frege type
+error, not a `ClassCastException` at run time:
 
 ```haskell
-pure native askOp okay.frege.Ops.ask :: () -> Obj
-pure native getOp okay.frege.Ops.get :: () -> Obj
-pure native setOp okay.frege.Ops.set :: Long -> Obj
+pure native askOp okay.frege.Ops.ask :: () -> Operation Long
+pure native getOp okay.frege.Ops.get :: () -> Operation Long
+pure native setOp okay.frege.Ops.set :: Long -> Operation Long
 
 readerState :: Prog Long
 readerState = do
   env <- perform (askOp ())
   s   <- perform (getOp ())
-  _   <- (perform (setOp (s + 1)) :: Prog Long)
+  _   <- perform (setOp (s + 1))
   s2  <- perform (getOp ())
   return (env * 1000 + s2)
 ```

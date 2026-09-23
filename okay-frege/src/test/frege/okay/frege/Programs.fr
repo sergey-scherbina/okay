@@ -4,11 +4,11 @@ module okay.frege.Programs where
 import okay.frege.Prog
 
 --- the core effects' operations (okay.frege.Ops), one pure native each
-pure native askOp    okay.frege.Ops.ask     :: () -> Obj
-pure native getOp    okay.frege.Ops.get     :: () -> Obj
-pure native setOp    okay.frege.Ops.set     :: Long -> Obj
-pure native raiseOp  okay.frege.Ops.raise   :: String -> Obj
-pure native choose2  okay.frege.Ops.choose2 :: Long -> Long -> Obj
+pure native askOp    okay.frege.Ops.ask     :: () -> Operation Long
+pure native getOp    okay.frege.Ops.get     :: () -> Operation Long
+pure native setOp    okay.frege.Ops.set     :: Long -> Operation Long
+pure native raiseOp  okay.frege.Ops.raise   :: String -> Operation Long
+pure native choose2  okay.frege.Ops.choose2 :: Long -> Long -> Operation Long
 
 --- a running sum, iteratee style: await until Nothing, tell each sum
 runningSum :: Long -> Prog ()
@@ -41,7 +41,7 @@ readerState :: Prog Long
 readerState = do
   env <- perform (askOp ())
   s   <- perform (getOp ())
-  _   <- (perform (setOp (s + 1)) :: Prog Long)
+  _   <- perform (setOp (s + 1))
   s2  <- perform (getOp ())
   return (env * 1000 + s2)
 
@@ -68,7 +68,7 @@ usesIO = do
 
 --- a Frege failure of its own, inside the tree
 failing :: Prog Long
-failing = perform (askOp ()) >>= \e -> if (e :: Long) > 0 then error "frege says no" else return e
+failing = perform (askOp ()) >>= \e -> if e > 0 then error "frege says no" else return e
 
 --- a long loop, for the stack and the price
 countTo :: Long -> Long -> Prog ()
