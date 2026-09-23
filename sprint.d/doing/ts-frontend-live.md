@@ -1,1 +1,0 @@
-- [ ] ts-frontend-live — an `<OkayLive>` React component and typed `watch("board.tasks", …)` subscriptions (template-literal path types generated from the Schema), so a TypeScript frontend embeds a server-driven okay app and okay-live's Watched paths with the compiler checking the path. Builds on Wire.serve, the Ui protocol and live.js. After the typescript-types stages.

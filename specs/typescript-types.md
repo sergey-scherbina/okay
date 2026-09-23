@@ -183,17 +183,17 @@ Each stage is a lane; Results below record what each found.
 
 ## Stage T11 — a live frontend, typed by path
 
-- [ ] `Stubs.typescriptPaths(schema, name)` writes an interface
+- [x] `Stubs.typescriptPaths(schema, name)` writes an interface
       `NamePaths` mapping every dotted key `JsonOptic.path` accepts to
       the TypeScript type of what it focuses. An array index is a
       template-literal key: `` `tasks[${number}]` ``. Recursion is cut
       at a stated depth.
-- [ ] A TypeScript client
+- [x] A TypeScript client
       `watch<K extends keyof NamePaths>(key: K, f: (v: NamePaths[K]) => void)`
       and `set(key, value)`, over a `Watched` served by okay-http.
       (Live) `tsc` refuses a path the schema does not have, and Node
       sees the pushes.
-- [ ] A framework-free custom element `<okay-live>` and a React hook
+- [x] A framework-free custom element `<okay-live>` and a React hook
       over the same client. The React part is typechecked only where
       `@types/react` is installed, and says so.
 
@@ -428,3 +428,35 @@ Each stage is a lane; Results below record what each found.
     protocol (Node 26's WebSocket, no dependency). It deletes a stale
     `DevToolsActivePort`, which a second load of the same profile
     otherwise reads as the first browser's port.
+
+- T11 (ts-frontend-live, 2026-09-23).
+  - `Stubs.typescriptPaths` walks what `JsonOptic.path` walks:
+    - fields, list elements as template-literal keys, `Option` and sum
+      cases passed through, `$case`;
+    - `| null` wherever the focus can be absent;
+    - one Writer with the declarations, so the type names agree.
+
+    TestStubsPaths holds THE LAW: every declared key (index as 0) is one
+    `JsonOptic.path` accepts, and an undeclared key is refused by both.
+  - `LiveHttp` (okay-live, which now depends on okay-http) serves a
+    `Watched`:
+    - SSE watch, starting with the current value;
+    - POST set: 204, or 409 where the place is absent, or 400 where the
+      schema has none.
+
+    It ships `live.ts` (typed `watch`/`set`, `defineElement`) and
+    `live-react.ts` (`useWatch`).
+  - TestLiveHttp (default gate) covers the four set answers and the
+    stream's media. TestLiveTs (Live) covers:
+    - Node against a real server: the watch sees the value now and the
+      written value, and a write at an absent index is refused;
+    - `tsc --strict` refusing an unknown path and a string written to a
+      boolean.
+  - TestLiveReact typechecks `useWatch` when `@types/react` installs
+    offline from npm's cache, and is skipped with that reason otherwise
+    (skipped here).
+  - Mutant: list elements declared non-null fail the paths test.
+  - A finding: `Watched.set` at an absent index was a silent no-op, since
+    the affine changes nothing where nothing is. Over HTTP that read as a
+    204 for a write that did not happen (the first end-to-end run said
+    "accepted"), so LiveHttp answers 409 there.

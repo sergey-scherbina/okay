@@ -547,6 +547,71 @@ with one profile directory:
 The same journal is okay-ts's `Ts.durable(flow, program, callbacks,
 journal)` for a Scala.js program.
 
+## A live frontend, typed by path
+
+okay-live's `Watched` is a document that many viewers watch through
+paths: `name`, `tasks[0].title`. On every change, each subscriber is told
+only its part, and only when that part changed. `LiveHttp.routes(watched)`
+serves it over plain HTTP:
+- `GET /live/watch?key=…` is a stream of server-sent events: the value
+  now, then each change;
+- `POST /live/set` writes.
+
+The TypeScript side is typed by the document's Scala Schema:
+
+```scala
+  def paths: String = Stubs.typescriptPaths(summon[Schema[Board]], "Board")
+```
+
+`Stubs.typescriptPaths` writes the document's types and an interface
+`BoardPaths`. The interface maps every key the server accepts to the type
+of what that key is told. An array index is a template-literal key, so
+any index is one declaration:
+
+```typescript
+export interface BoardPaths {
+  "": Board;
+  "name": string;
+  "tasks": Task[];
+  [k: `tasks[${number}]`]: Task | null;
+  [k: `tasks[${number}].title`]: string | null;
+  [k: `tasks[${number}].done`]: boolean | null;
+}
+```
+
+`| null` marks what can be absent: an index past the end, a `None`, a
+field of another case of a sum. A subscriber is told `null` there.
+
+The client is `live.ts`, which `LiveHttp.client` hands you:
+
+```typescript
+const board = live<BoardPaths>({ base: process.argv[2] });
+const seen: (string | null)[] = [];
+await new Promise<void>((finished) => {
+  const stop = board.watch("tasks[0].title", (title) => {
+    seen.push(title);
+    if (seen.length === 1) void board.set("tasks[0].title", "write the docs, today");
+    else { stop(); finished(); }
+  });
+});
+```
+
+- **The compiler checks the path.** `board.watch("tasks[0].nope", …)`
+  does not compile. Neither does `board.set("tasks[0].done", "yes")`,
+  because a `done` is a `boolean`. The test asks `tsc --strict` for both.
+- **Writes.** A write where the key's place is absent now answers 409
+  and rejects with `LiveRefused`, rather than a 204 for a write that
+  changed nothing. A key the schema has no place for answers 400.
+- **Without a framework.** `defineElement()` registers
+  `<okay-live base="…" key="…">`, an element whose text is the focused
+  value.
+- **React.** `LiveHttp.react` is `useWatch(client, key)`. Its type check
+  runs only where `@types/react` can be installed from npm's cache, and
+  the test says so when it cannot.
+
+The test runs the whole loop against a real okay-http server from Node:
+it watches `tasks[0].title`, writes it, and sees both values.
+
 ## TypeScript libraries, used from okay
 
 To call an existing TypeScript library from okay on Scala.js, generate

@@ -60,3 +60,8 @@ SSE route in the demo's case, over `Writer.of(...)`.
 | `Hub[A]().subscribe()` | a fresh `Channel[A]`, remembered |
 | `Hub[A]().publish(a)` | offered to every channel remembered so far |
 | `Registry[K, A]()(key)` | the channel for `key`, created once, reused after |
+| `LiveHttp.routes(watched, prefix)` | a `Watched` over HTTP: `GET <prefix>/watch?key=` is server-sent events (the value now, then each change), `POST <prefix>/set` writes (204; 409 where the place is absent; 400 where the schema has none) |
+| `LiveHttp.client` / `LiveHttp.react` | the TypeScript client `live.ts` (typed `watch`/`set`, the `<okay-live>` element) and the React hook `useWatch` |
+
+The TypeScript side, typed by the document's Scala Schema:
+[a live frontend, typed by path](../typescript.md#a-live-frontend-typed-by-path).

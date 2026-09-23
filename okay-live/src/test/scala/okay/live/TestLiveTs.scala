@@ -123,6 +123,21 @@ class TestLiveHttp extends munit.FunSuite {
     assertEquals(post("""{"value":1}"""), 400)
   }
 
+  test("the paths interface a TypeScript frontend is typed by") {
+    // no margin: the docs quote these lines
+    val expected = """
+export interface BoardPaths {
+  "": Board;
+  "name": string;
+  "tasks": Task[];
+  [k: `tasks[${number}]`]: Task | null;
+  [k: `tasks[${number}].title`]: string | null;
+  [k: `tasks[${number}].done`]: boolean | null;
+}
+"""
+    assert(paths.contains(expected), paths)
+  }
+
   test("watch: the focused value first, as a server-sent event") {
     val res = routes(Request(Method.Get, "/live/watch?key=name")).runWith
     assert(res.headers.exists((k, v) => k.equalsIgnoreCase("content-type") && v.contains("text/event-stream")), res.headers)
