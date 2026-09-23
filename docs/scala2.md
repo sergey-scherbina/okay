@@ -21,6 +21,7 @@ Contents:
 6. [Continuations: `Cont`](#6-continuations-cont)
 7. [Streams: `Source`](#7-streams-source)
 8. [Fibers and channels](#8-fibers-and-channels)
+8a. [Codecs: JSON, CBOR, JSON Schema](#8a-codecs-json-cbor-json-schema)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -383,6 +384,76 @@ channel is closed. Also available:
 - On a fiber: `join`, `joinEither`, `cancel`.
 - On a channel: `offer` (does not wait), `close`, `isClosed`.
 
+## 8a. Codecs: JSON, CBOR, JSON Schema
+
+Module `okay-scala2-codec`. Most of okay-codec works from Scala 2.13
+AS IT IS: `okay.codec.Schema` (the type, its cases, `wrap`, `refine`,
+`enumeration`, and the instances for `Int`, `String`, `Option`, `List`
+and the rest, which Scala 2's implicit search finds), `okay.codec.Cbor`,
+`Yaml` and `Validate`. Two things do not, and the module replaces them:
+
+- **`derives Schema`** is a Scala 3 macro. `Schemas.product1` …
+  `product16` build a product's schema from the field names, the
+  companion's `apply` and a projection back to a tuple, the way circe's
+  `forProductN` does. `Schemas.sum`/`variant` build a sealed
+  hierarchy's. `Schemas.constant` builds a case object's.
+- **`okay.codec.Json`** cannot be read by scalac 2.13 at all (its
+  TASTy crashes the reader). `okay.scala2.Json` writes and reads JSON
+  as text, and `okay.scala2.JsonSchema.of` renders a schema's JSON
+  Schema as text.
+
+The model below is copied from
+`okay-scala2/probe/src/test/scala/TestCodecFromScala2.scala`:
+
+```scala
+final case class Person(name: String, age: Int, email: Option[String], tags: List[String])
+object Person {
+  implicit val schema: Schema[Person] =
+    Schemas.product4("Person", "name", "age", "email", "tags")(Person.apply)(p => (p.name, p.age, p.email, p.tags))
+}
+
+sealed trait Shape
+final case class Circle(r: Double) extends Shape
+final case class Rect(w: Double, h: Double) extends Shape
+case object Empty extends Shape
+object Shape {
+  implicit val circle: Schema[Circle] = Schemas.product1("Circle", "r")(Circle.apply)(_.r)
+  implicit val rect: Schema[Rect] = Schemas.product2("Rect", "w", "h")(Rect.apply)(r => (r.w, r.h))
+  implicit val empty: Schema[Empty.type] = Schemas.constant("Empty", Empty)
+  implicit val schema: Schema[Shape] = Schemas.sum[Shape]("Shape")(
+    Schemas.variant[Shape, Circle]("Circle"),
+    Schemas.variant[Shape, Rect]("Rect"),
+    Schemas.variant[Shape, Empty.type]("Empty"))
+}
+
+final case class Tree(label: String, kids: List[Tree])
+object Tree {
+  implicit lazy val schema: Schema[Tree] = Schemas.product2("Tree", "label", "kids")(Tree.apply)(t => (t.label, t.kids))
+}
+```
+
+and the use, from the same file:
+
+```scala
+val text = Json.write(ada)
+assertEquals(text, """{"name":"ada","age":36,"email":"ada@example.org","tags":["math","engines"]}""")
+assertEquals(Json.read[Person](text), Right(ada))
+assertEquals(Cbor.read[Person](Cbor.write(ada)), Right(ada))
+```
+
+- The imports are `okay.codec.{Cbor, Schema}` and
+  `okay.scala2.{Json, JsonSchema, Schemas}`. A Scala 3 top-level alias
+  is invisible to Scala 2, so `Schema` keeps its okay-codec name.
+- A recursive type's schema is an `implicit lazy val`. The field
+  schemas are by-name implicits, so it can refer to itself.
+- The wire format is exactly okay-codec's, so a Scala 2 service and a
+  Scala 3 service read each other's JSON and CBOR. Products are
+  objects keyed by field name, sums are one-entry objects keyed by
+  case name, and `None` is an absent field.
+- Decode errors are `Left`s, in okay-codec's own words, for example
+  `expected SInt, got JStr(old)`. They name the expected schema and the
+  value found, but not the field's path.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -395,6 +466,8 @@ channel is closed. Also available:
 | `shift` / `reset` / `Cont[A, S, R]` | `Cont.shift` / `Cont.reset` / `Cont[A, S, R]` |
 | `Source[A]` (a type alias) | `Source[A]` (a class) |
 | `Async.spawn`, `Fiber`, `Channel` | `Async.fork`, `Fiber`, `Channel` |
+| `case class P(...) derives Schema` | `Schemas.productN("P", ...)(P.apply)(p => (...))` |
+| `okay.codec.Json.write` / `read` | `okay.scala2.Json.write` / `read` (text in, text out) |
 | `direct { ... }` blocks | not available: use `for` |
 
 ## 10. Errors you may see, and what they mean
@@ -406,6 +479,7 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 | message | cause | fix |
 |---|---|---|
 | `Unsupported Scala 3 inline method flatMap; found in class okay.Free` | code calls the Scala 3 API (`okay.*`) directly | use the types in `okay.scala2` |
+| `error while loading Json, class file '.../okay/codec/Json.tasty' is broken (class scala.MatchError/49)` | code names `okay.codec.Json` (or `JsonSchema.of`) from Scala 2 | `okay.scala2.Json` / `okay.scala2.JsonSchema` |
 | `Unsupported Scala 3 union in bounds of type T; found in method wrapRefArray in class scala.LowPriorityImplicits` | the 3.9 stdlib comes BEFORE the 2.13 one on the compile classpath | the exclusion and the appended jar from section 1 |
 | `could not find package scala.annotation.internal` | the 3.9 stdlib is missing at compile time | append it (section 1) |
 | `NoClassDefFoundError: scala/reflect/Enum` | the 3.9 stdlib is missing at run time. On `sbt run` with everything else right, it means the `dependencyClasspathAsJars` line is missing | the whole block of section 1, both lines |
@@ -418,9 +492,9 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 - **Direct style** (`direct { ... }`, auto-colouring) is built from
   Scala 3 macros, and Scala 2 cannot expand those. Use
   for-comprehensions instead. It is not planned.
-- **The rest of the library** (HTTP, SQL, codecs, the agent stack, UI,
-  ...) is not wrapped. Each piece that a 2.13 user needs gets a facade
-  the same way, when someone needs it.
+- **The rest of the library.** Codecs are covered (section 8a). HTTP,
+  SQL, the agent stack and UI are queued in that order
+  (specs/scala2-facade.md, stages 7–10).
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the
   Scala 3 API builds. What Scala 3 code gets and a 2.13 caller does

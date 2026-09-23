@@ -12,6 +12,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Op`, `Effect[F]`, `Handler[F, R, B]` | YOUR OWN effect, declared in plain Scala 2: operations extend `Op`, `object Console extends Effect[Console]` is the whole declaration, and a handler gets each operation together with its continuation |
 | `Source[A]` | streams: `Source(...)`, `range`, `unfold`, `fromEff`; `map`, `filter`, `take`, `takeWhile`, `drop`, `zipWithIndex`, `++`, `merge`; `runCollect`, `runForeach`, `runFold` |
 | `Fiber[A]`, `Channel[A]` | concurrency: `Async.fork`, `par`, `race`, `sleep`, `timeout`; a fiber's `join`/`joinEither`/`cancel`; a bounded channel's `send`/`receive` (programs that wait), `offer`, `close`, `source` |
+| `Schemas`, `Json`, `JsonSchema` (module `okay-scala2-codec`) | okay-codec from 2.13: `Schemas.product1`…`product16`, `sum`/`variant`, `constant` in place of `derives Schema`; JSON as text. `okay.codec.Schema`, `Cbor`, `Yaml` and `Validate` are used directly |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -337,6 +338,15 @@ intersection; the Scala 3 source writes `&`.
 `receive: Eff[Async, Option[A]]` (None once closed and drained),
 `offer(a: A): Boolean`, `close(): Unit`, `isClosed: Boolean`,
 `source: Source[A]`.
+
+**Codecs** (module `okay-scala2-codec`) — `Schemas.productN[A, F1..FN](name: String, n1..nN: String)(make: (F1..FN) => A)(parts: A => (F1..FN))(implicit s1..sN: => Schema[Fi]): Schema[A]` for N in 1..16 (for N = 1, `make: F1 => A` and `parts: A => F1`);
+`Schemas.constant[A](name: String, value: A): Schema[A]`;
+`Schemas.variant[A, C <: A](name: String)(implicit s: => Schema[C], tag: ClassTag[C]): Schemas.Variant[A]`;
+`Schemas.sum[A](name: String)(variants: Schemas.Variant[A]*): Schema[A]`;
+`Json.write[A](a: A)(implicit s: Schema[A]): String`,
+`Json.read[A](text: String)(implicit s: Schema[A]): Either[String, A]`,
+`Json.readStrict[A]` (the same, refusing repairable damage);
+`JsonSchema.of[A](s: Schema[A]): String`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,

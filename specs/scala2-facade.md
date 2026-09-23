@@ -285,12 +285,14 @@ So the facade is small:
   `String`. The `Json` value type stays out of every signature.
 
 ## Behavior (stage 6), all from Scala 2.13
-- [ ] a case class round-trips through Json and Cbor under a
+- [x] a case class round-trips through Json and Cbor under a
       `productN` schema; a missing optional field reads as None
-- [ ] a sealed hierarchy round-trips under `sum`/`variant`
-- [ ] a recursive type (a tree) round-trips
-- [ ] `JsonSchema.of` renders the declaration as a string
-- [ ] a decode error is a `Left` naming the problem
+- [x] a sealed hierarchy round-trips under `sum`/`variant`
+- [x] a recursive type (a tree) round-trips
+- [x] `JsonSchema.of` renders the declaration as a string
+- [x] a decode error is a `Left` saying what was expected and what
+      came (okay-codec's own message, "expected SInt, got JStr(old)",
+      the same from Scala 3; it does not name the field's path)
 
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
@@ -408,3 +410,11 @@ So the facade is small:
   `-XshowSettings:properties` in the forked JVM: its `java.class.path`
   had no 3.9 jar at all. The fix appends to both, and the probe now
   runs UNFORKED (46 tests), the way a user's `sbt test` does.
+- STAGE 6 (2026-09-23). okay-scala2-codec: `Schemas.product1..16`
+  (generated), `constant`, `sum`/`variant`, and `Json`/`JsonSchema`
+  over text. `TestCodecFromScala2` has 6 tests, and the probe has 52,
+  green under `-Xlint -Werror`. The test that expected the decode
+  error to name the field was WRONG about okay-codec, not about the
+  facade: okay-codec's message names the schema and the value
+  ("expected SInt, got JStr(old)"), from Scala 3 too. It is pinned as
+  it is. Adding the field path is okay-codec's own change to make.

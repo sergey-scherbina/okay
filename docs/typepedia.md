@@ -942,6 +942,10 @@ and nothing else in the library casts for that reason:
   and packing a tag WITH an existential does work, which is what
   `Pipeline.Mapped` and `TaggedBuf` do — the tag captured where the
   type was still concrete, not guessed where it is not.
+- **`Schemas.field`** (okay-scala2-codec) — `SProduct` hands `make`
+  the decoded fields as a `Seq[Any]` in field order, each decoded by
+  the schema at that position, so position `i` holds an `Fi`. Scala 3's
+  derivation performs the same cast.
 - **`Rows.coerce` and `Effect.narrow`** (okay-scala2, Scala 2.13
   facade). On the Scala 2 side a row is a PHANTOM intersection of
   capabilities (`Eff[State[Int] with Writer[String], A]`) that no
@@ -986,6 +990,11 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   `Eff[Writer[A] with Async, Unit]`.
 - **`Fiber[A]`, `Channel[A]`** — `Async.fork` returns a `Fiber`; a
   channel's `send`/`receive` are `Eff[Async, _]`.
+- **`Schemas`, `Json`, `JsonSchema`** (okay-scala2-codec) — `derives
+  Schema` for Scala 2 (`productN`, `sum`/`variant`, `constant`) and
+  JSON as text. `okay.codec.Json` itself is unreadable from 2.13
+  (its TASTy crashes the reader), while `okay.codec.Schema`, `Cbor`,
+  `Yaml`, `Validate` and the given instances are usable directly.
 - **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.
