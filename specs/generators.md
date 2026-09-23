@@ -190,7 +190,38 @@ throwing reader, the nested comprehension by the inner counter (≤ 4 for
 two pairs read), the deep laws at 100 000, the generator block by the
 same counter through `iterator` and `take`.
 
-Not measured: a JMH lane (Gen pipeline vs hand-written
-`Writer.loopWith`, vs `Source.runCollect`) — deferred with a note,
-sprint.d/generators-jmh.md; the machinery is `resume`/`FoldUntil`
-already priced by the fold-until lane, and `map` IS `Writer.map`.
+Measured (generators-jmh, 2026-09-23; `compare/GenBenchmark`, 10 000
+Longs unfolded, JDK 26 forks; time from per-lane gated runs — each
+lane `-f 2 -wi 3 -i 5` alone, started only after 20 s with no sibling
+sbt or JMH fork and CPU under 200%, re-run when the box was busy at
+its end, because three whole-matrix rounds on a box running sibling
+gates back to back came out at ±50–110% — and B/op from `-prof gc`
+the same way; src/jmh/history.tsv `gj-*`):
+
+| lane | µs / 10k | B / elem |
+|---|---|---|
+| `Source.range.runCollect` (Async, Vector) | 135.4 ± 1.4 | 164 |
+| the same program at `Writer % Long`, `Writer.run` | 134.2 ± 1.5 | 192 |
+| `Gen.unfold.iterator`, summed (the Stepper) | 150.5 ± 7.3 | **191** |
+| the same program, `Writer.foldUntil(collecting)` | 157.3 ± 0.9 | 215 |
+| `Gen.unfold.toList` (`Gen.read`, collecting) | 219.4 ± 4.7 | 239 |
+| `Writer.map` + a filtering `Writer.fold` step | 214.9 ± 1.4 | 272 |
+| infinite `Gen.unfold.take(10k).toList` | 252.3 ± 3.5 | 295 |
+| `Gen.unfold.map(_ * 2).filter(_ % 3 == 0).toList` | 338.7 ± 2.5 | 381 |
+
+The entry's question answered in two halves. THE VALUE CLASS ADDS NO
+FRAME: `Gen.iterator` allocates what `Writer.run` allocates, to the
+byte (191 vs 192 B/elem), and the 48 B/elem `toList` adds over it is
+the `List` cons and the reverse, not the wrapper. SPLICE DOES:
+`filter` is `splice`, a program (`emit`/`empty` plus its `flatMap`)
+built per element, +109 B and +124 µs on 10k over the hand road —
+the one combinator where the pipeline is not parity, filed as
+`gen-filter-as-walk` (backlog okay-core) with the number: written as
+a walk that re-tells or skips, like `taking`, the frame goes. Between
+them, `Gen.read` over `Writer.foldUntil` on the same program is +40%
+and +24 B/elem — the `Stop` arm in every `split` (a second `TypeableK`
+test per element, the `typeablek-instanceof` residual) plus the
+non-inline walk's per-element closure; `take` re-emits and costs
++15% / +56 B. `Writer.run` and `Source.runCollect` sit at parity in
+time; the Vector road allocates 28 B/elem less than a `delay`-per-step
+program collected into a `List`.

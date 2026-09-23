@@ -5039,3 +5039,48 @@ relative path into this repository, so `Gtfs.dir` reads
 `okay.wroclaw.gtfs` / `OKAY_WROCLAW_GTFS` and is told. All three are
 in `FlinkClusterBench` and `SparkClusterBench`, which start their own
 clusters and shut them down.
+
+## 21. Generators — what `Gen` costs over the program it wraps
+
+`Gen[W]` (specs/generators.md) is a value class over `Unit ! (Writer %
+W + Stop)`: `map` IS `Writer.map`, the readers ARE `FoldUntil` walks,
+`filter` is `splice`, `take` re-emits. The question generators-jmh
+asked is whether the wrapper and `splice` add a frame per element;
+`compare/GenBenchmark`, 10 000 Longs unfolded on both roads, answers
+it in two halves.
+
+**How it was measured, because that is most of the story.** Three
+whole-matrix rounds on a box running sibling gates back to back came
+out at ±50–110% (load 4 → 112 during one of them). The numbers below
+are per-lane gated runs: each lane `-f 2 -wi 3 -i 5` alone, started
+only after 20 s with no sibling sbt or JMH fork and the box's
+instantaneous CPU under 200% (the 1-minute load average lags a gate by
+minutes and never bottoms out between two), and re-run when the box
+was busy at its end — `take` needed five tries. B/op is a `-prof gc`
+pass the same way. All rows in `src/jmh/history.tsv` as `gj-*`.
+
+| lane | µs / 10k | B / elem |
+|---|---|---|
+| `Source.range.runCollect` (Async, Vector) | 135.4 ± 1.4 | 164 |
+| the same program at `Writer % Long`, `Writer.run` | 134.2 ± 1.5 | 192 |
+| `Gen.unfold.iterator`, summed | 150.5 ± 7.3 | **191** |
+| the same program, `Writer.foldUntil(collecting)` | 157.3 ± 0.9 | 215 |
+| `Gen.unfold.toList` | 219.4 ± 4.7 | 239 |
+| `Writer.map` + a filtering `Writer.fold` step | 214.9 ± 1.4 | 272 |
+| infinite `Gen.unfold.take(10k).toList` | 252.3 ± 3.5 | 295 |
+| `Gen.unfold.map(_ * 2).filter(_ % 3 == 0).toList` | 338.7 ± 2.5 | 381 |
+
+**The value class adds no frame.** `Gen.iterator` allocates what
+`Writer.run` allocates, to the byte (191 vs 192 B/elem); `toList`'s
+48 B/elem over it is the `List` cons and the reverse. **`splice`
+does.** `filter` builds an `emit`/`empty` program and its `flatMap`
+per element: +109 B and +124 µs on 10k over the hand-written road,
+the one pipeline combinator that is not parity — filed as
+`gen-filter-as-walk` (backlog okay-core), closed by writing `filter`
+in `taking`'s shape. In between, `Gen.read` over `Writer.foldUntil` on
+the same program is +40% / +24 B/elem: the `Stop` arm in every
+`split` (a second `TypeableK` test per element, the
+`typeablek-instanceof` residual) and the non-inline walk's per-element
+closure. `take` re-emits: +15% / +56 B. Read a generator through
+`iterator`, `first`, `find` or `exists` when the answer is not a list;
+those stop where the answer is and pay the wrapper nothing.

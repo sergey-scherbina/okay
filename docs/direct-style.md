@@ -965,6 +965,20 @@ What is not here, on purpose: sending values INTO a generator
 generator is a `Source`; a body that must release a resource on an
 early stop is a lane of its own (specs/generators.md, Out of scope).
 
+**What it costs**, measured (generators-jmh, 10 000 Longs, per-lane
+gated JMH runs, `-prof gc`; specs/generators.md Results has the
+table): the wrapper is free — `gen.iterator` allocates what the
+underlying `Writer` program read by `Writer.run` allocates, 191
+against 192 bytes per element, 151 against 134 µs per 10k. `toList`
+adds the list (48 B/elem). `map` IS `Writer.map`. The one combinator
+that is not parity is `filter`: it is `splice`, a small program per
+element, and a `map.filter.toList` pipeline reads 339 µs / 381 B/elem
+against 215 / 272 for the same work hand-written over `Writer` —
++109 B per element for the convenience, filed to be closed by writing
+`filter` as a walk. `take` re-emits and costs +15%. Prefer `iterator`
+or `first`/`find`/`exists` when the answer is not a list; those read
+the generator through `FoldUntil` and stop where the answer is.
+
 ## Loops and comprehensions, in full (direct-loops v2)
 
 The one thing a for-comprehension is — Wadler's *Comprehending
