@@ -106,8 +106,8 @@ says why it is not lazy IO), and the two drivers are the same walk.
 ## Lazy seqs, both ways
 
 ```scala
-Program.chunks[java.lang.Long](range)            // a Clojure (range), infinite, as okay Chunks
-Program.seq(Chunks.map(Chunks.range(0, 5))(Long.box))   // okay Chunks as a Clojure lazy seq
+val c = Program.chunks[java.lang.Long](range)            // a Clojure (range), infinite, as okay Chunks
+val s = Program.seq(Chunks.map(Chunks.range(0, 5))(Long.box))   // okay Chunks as a Clojure lazy seq
 ```
 
 A Clojure seq is realised only as far as okay pulls it (counted: five
