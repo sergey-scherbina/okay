@@ -1037,7 +1037,7 @@ final class Router private (val entries: Vector[Router.Entry]):
             case Left(why) => pure(Router.badRequest(why))
         },
       Some(okay.codec.JsonSchema.of(sc)),
-      Router.securityAnswers(route.described)))
+      Router.securityAnswers(route.described)).bodyTyped(sc))
 
   def json[A <: Tuple, Hs <: Tuple, B](method: Method, route: Headed[A, Hs])
                                       (using ar: Route.Arity[A], hr: Route.Arity[Hs])
@@ -1058,7 +1058,7 @@ final class Router private (val entries: Vector[Router.Entry]):
           h(ar(a), hr(hs), r).map(Router.encoded(status, _))),
       None,
       Router.securityAnswers(route.described) :+
-        Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description)))
+        Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description, tpe = Some(sr))))
 
   def out[A <: Tuple, Hs <: Tuple, R](method: Method, route: Headed[A, Hs],
                                       status: Int, description: String)
@@ -1085,8 +1085,8 @@ final class Router private (val entries: Vector[Router.Entry]):
         },
       Some(okay.codec.JsonSchema.of(sb)),
       Router.securityAnswers(route.described) ++
-        Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description),
-               Router.badRequestAnswer)))
+        Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description, tpe = Some(sr)),
+               Router.badRequestAnswer)).bodyTyped(sb))
 
   def jsonOut[A <: Tuple, Hs <: Tuple, B, R](method: Method, route: Headed[A, Hs],
                                              status: Int, description: String)
@@ -1172,7 +1172,7 @@ final class Router private (val entries: Vector[Router.Entry]):
             case Right(b) => h(ar(a), b, r)
             case Left(why) => pure(Router.badRequest(why))
         },
-      Some(okay.codec.JsonSchema.of(sc))))
+      Some(okay.codec.JsonSchema.of(sc))).bodyTyped(sc))
 
   /**
    * THE HANDLER ANSWERS A VALUE, NOT A RESPONSE (openapi-responses).
@@ -1201,7 +1201,7 @@ final class Router private (val entries: Vector[Router.Entry]):
         if r.method != method then None
         else route.unapply(r.url).map(a => h(ar(a), r).map(Router.encoded(status, _))),
       None,
-      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description))))
+      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description, tpe = Some(sr)))))
 
   /** both sides declared: a body in, a value out */
   def jsonOut[A <: Tuple, B, R](method: Method, route: Routed[A], status: Int = 200,
@@ -1228,8 +1228,8 @@ final class Router private (val entries: Vector[Router.Entry]):
             case Left(why) => pure(Router.badRequest(why))
         },
       Some(okay.codec.JsonSchema.of(sb)),
-      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description),
-             Router.badRequestAnswer)))
+      Vector(Router.Answer(status, Some(okay.codec.JsonSchema.of(sr)), description, tpe = Some(sr)),
+             Router.badRequestAnswer)).bodyTyped(sb))
 
   /**
    * A DECLARED ANSWER THAT IS NOT JSON (openapi-media).
@@ -1778,7 +1778,11 @@ object Router:
                           * over a documentation slip would be worse than the
                           * slip.
                           */
-                         headers: Vector[Route.Hdr] = Vector.empty)
+                         headers: Vector[Route.Hdr] = Vector.empty,
+                         /** the Scala Schema the answer is encoded with, where the
+                          * router encodes (ts-api-client): what a generated
+                          * TypeScript client names the answer's type from */
+                         tpe: Option[okay.codec.Schema[?]] = None)
 
   final class Entry private[http] (val method: Method,
                                    /** the url's whole description — template AND
@@ -1816,7 +1820,14 @@ object Router:
                                     * swears is shut, which is worse than having no
                                     * declaration at all.
                                     */
-                                   private[http] val enforced: Boolean = false):
+                                   private[http] val enforced: Boolean = false,
+                                   /** the body's Scala Schema, where the router decodes
+                                    * one (ts-api-client) */
+                                   val bodyType: Option[okay.codec.Schema[?]] = None):
+
+    /** this entry, its body's Scala Schema recorded */
+    private[http] def bodyTyped(s: okay.codec.Schema[?]): Entry =
+      new Entry(method, described, matches, run, body, answers, summary, enforced, Some(s))
 
     /** the same entry, with headers declared on one of its answers —
      * or a new answer, when the status had none */
@@ -1825,15 +1836,15 @@ object Router:
         if answers.exists(_.status == status) then
           answers.map(a => if a.status == status then a.copy(headers = a.headers ++ hs) else a)
         else answers :+ Answer(status, None, "declared", headers = hs)
-      new Entry(method, described, matches, run, body, updated, summary, enforced)
+      new Entry(method, described, matches, run, body, updated, summary, enforced, bodyType)
 
     private[http] def saying(text: String): Entry =
-      new Entry(method, described, matches, run, body, answers, Some(text), enforced)
+      new Entry(method, described, matches, run, body, answers, Some(text), enforced, bodyType)
 
     /** the same entry with its answer guarded — everything else kept,
      * which is why this is a method and not five call sites */
     private[http] def guarded(g: Request => Option[Response ! Async]): Entry =
-      new Entry(method, described, matches, g, body, answers, summary, enforced = true)
+      new Entry(method, described, matches, g, body, answers, summary, enforced = true, bodyType)
 
     /** the path template that dispatches — the query is not part of it */
     def path: String = described.path

@@ -96,6 +96,11 @@ object Stubs:
       (if aliases.isEmpty then "" else "\n" + aliases + "\n") +
       w.decls.map("\n" + _ + "\n").mkString
 
+  /** the TypeScript type EXPRESSION for `s` (`Task`, `Task[]`, `Int | null`),
+   * naming the declarations `typescript` writes for it — what a generated
+   * client uses for a parameter or an answer (ts-api-client) */
+  def typescriptType(s: Schema[?]): String = tsType(s, Writer())
+
   /**
    * The Scala leaves TypeScript would otherwise collapse, as NAMED aliases
    * (typescript-types T3): TypeScript sees exactly `number`/`string`, and
