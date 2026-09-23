@@ -1,0 +1,1925 @@
+# doc-snippets-pin-all: example lines in docs/ that no test or benchmark
+# source contains, recorded when the check began (TestDocSnippets). This
+# file only SHRINKS: pin a line (copy the tested line into the page, or the
+# page's line into a test) and delete its entry here.
+docs/arrows.md	(half >=> dec)(3)   // None
+docs/arrows.md	(half >=> dec)(8)   // Some(3)
+docs/arrows.md	(inc &&& triple)(4)              // (5, 12)     one in, both out
+docs/arrows.md	(inc *** size)((4, "abc"))       // (5, 3)      a pair, each half its own way
+docs/arrows.md	(inc +++ size)(Left(4))          // Left(5)     a sum, each side its own way
+docs/arrows.md	(inc >>> triple)(4)              // 15   — then
+docs/arrows.md	(inc ||| size)(Right("abcd"))    // 4           a sum, one answer
+docs/arrows.md	(triple <<< inc)(4)              // 15   — the other way round
+docs/arrows.md	// Invalid(Vector("ink: 0"))  — every bad line, not the first
+docs/arrows.md	// Vector((1, false), (2, true), (3, false))
+docs/arrows.md	// Vector((2, 3), (0, 3))
+docs/arrows.md	// does not: where would the X come from?
+docs/arrows.md	// exists: hand it the answer
+docs/arrows.md	Mealy.runAll(both, "a1b")
+docs/arrows.md	Mealy.runAll(counting &&& counting, "ab")   // Vector((1, 1), (2, 2))
+docs/arrows.md	Mealy.runAll(labelled, "abc")     // Vector("#1", "#2", "#3")
+docs/arrows.md	PState.zoom(item)(parse)   // item: Lens[Box[String], Box[Int], String, Int]
+docs/arrows.md	def idGiven[X, R, A](x: X): Zooming[X, R][A, A] = shift(k => a => k(x)(a))
+docs/arrows.md	def id[X, R, A]: Zooming[X, R][A, A] = shift(k => a => k(???)(a))
+docs/arrows.md	eachLine.foldMap((l: Line) => Vector(describe(l)))(order)
+docs/arrows.md	eachLine.traverseOf(check)(order)
+docs/arrows.md	final case class Mealy[-A, +B](run: A => (Mealy[A, B], B))
+docs/benchmarks.md	apply(List.empty[A])((s, a: A) => keep(a :: s))(...)
+docs/building-a-chat-app.md	"body" -> body)
+docs/building-a-chat-app.md	"dev.okay" %% "okay-chat" % okay,
+docs/building-a-chat-app.md	"dev.okay" %% "okay-jetty" % okay,
+docs/building-a-chat-app.md	"dev.okay" %%% "okay-ui" % okay,
+docs/building-a-chat-app.md	"headers" -> js.Dictionary("content-type" -> "application/json"),
+docs/building-a-chat-app.md	"messages" -> js.Array(history.map(m => js.Dictionary(
+docs/building-a-chat-app.md	"method" -> "POST",
+docs/building-a-chat-app.md	"org.scalameta" %% "munit" % "1.1.1" % Test,
+docs/building-a-chat-app.md	"org.scalameta" %%% "munit" % "1.1.1" % Test,
+docs/building-a-chat-app.md	"role" -> m.role, "content" -> m.text): js.Any)*)))
+docs/building-a-chat-app.md	"ui/.js/target/scala-3.9.0/chat-ui-fastopt/main.js"))).filter(Files.exists(_))
+docs/building-a-chat-app.md	(): js.Any
+docs/building-a-chat-app.md	(State(history :+ Msg("assistant", ""), "", busy = true), Go.Send(history))
+docs/building-a-chat-app.md	(s.copy(busy = false, messages = s.messages.init :+ last.copy(cut = Some(rule))), Go.Stay)
+docs/building-a-chat-app.md	(s.copy(messages = s.messages.init :+ last.copy(text = last.text + t)), Go.Stay)
+docs/building-a-chat-app.md	),
+docs/building-a-chat-app.md	* browser obeys */
+docs/building-a-chat-app.md	.crossType(CrossType.Pure)
+docs/building-a-chat-app.md	.in(file("app"))
+docs/building-a-chat-app.md	.in(file("ui"))
+docs/building-a-chat-app.md	.jsSettings(
+docs/building-a-chat-app.md	.settings(
+docs/building-a-chat-app.md	/** POST the history, read the SSE frames off the body stream */
+docs/building-a-chat-app.md	/** the linked bundle, if `sbt uiJS/fastLinkJS` has been run */
+docs/building-a-chat-app.md	/** the page: React from a CDN, our linked Scala.js at /app.js */
+docs/building-a-chat-app.md	/** the whole server: okay-chat's route, plus two static ones */
+docs/building-a-chat-app.md	/** what the glue should DO after an event — the fold decides, the
+docs/building-a-chat-app.md	// a forked run's working directory is the PROJECT's, so a
+docs/building-a-chat-app.md	// a second send while a turn is open is refused by the fold itself
+docs/building-a-chat-app.md	// build root, the way the demo does
+docs/building-a-chat-app.md	// relative path to the linked bundle would miss — run from the
+docs/building-a-chat-app.md	// tests run, the JS copy is what the browser runs
+docs/building-a-chat-app.md	// the brain: one source, compiled twice — the JVM copy is what the
+docs/building-a-chat-app.md	// the browser glue lives only on the JS side
+docs/building-a-chat-app.md	: PartialFunction[Request, Response ! Async] =
+docs/building-a-chat-app.md	<body style="font:15px system-ui;max-width:640px;margin:2rem auto">
+docs/building-a-chat-app.md	<div id="root"></div>
+docs/building-a-chat-app.md	<meta charset="utf-8">
+docs/building-a-chat-app.md	<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+docs/building-a-chat-app.md	<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+docs/building-a-chat-app.md	<script src="/app.js"></script>
+docs/building-a-chat-app.md	<title>chat</title>
+docs/building-a-chat-app.md	@main def serve(): Unit =
+docs/building-a-chat-app.md	Chat.chatRoute(model, budget).orElse {
+docs/building-a-chat-app.md	Compile / unmanagedSourceDirectories +=
+docs/building-a-chat-app.md	Http.one(Files.readAllBytes(appJs.get))))
+docs/building-a-chat-app.md	Http.one(body.getBytes(UTF_8)))
+docs/building-a-chat-app.md	Jetty.serve(0)(Server.routes(okay.chat.Chat.scripted, budget))()
+docs/building-a-chat-app.md	Resource.run[Unit, Pure](Jetty.serve(port)(routes(Chat.model))().map { s =>
+docs/building-a-chat-app.md	Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
+docs/building-a-chat-app.md	Some(Path.of(sys.env.getOrElse("APP_JS",
+docs/building-a-chat-app.md	ThisBuild / organization := "example"
+docs/building-a-chat-app.md	ThisBuild / scalaVersion := "3.9.0"
+docs/building-a-chat-app.md	Thread.sleep(Long.MaxValue)
+docs/building-a-chat-app.md	Ui.Button(if s.busy then "..." else "send", key = "send")), key = "bar")))
+docs/building-a-chat-app.md	Ui.Column(Vector(
+docs/building-a-chat-app.md	Ui.Column(s.messages.zipWithIndex.map { (m, i) =>
+docs/building-a-chat-app.md	Ui.Input(s.draft, key = "draft", label = ""),
+docs/building-a-chat-app.md	Ui.Row(Vector(
+docs/building-a-chat-app.md	Ui.Text("okay chat", Style(bold = true)),
+docs/building-a-chat-app.md	Ui.Text(s"cut: $rule", Style(dim = true))), key = s"m$i")
+docs/building-a-chat-app.md	Writer.uncons[Event, Unit, Async](Writer.of(bus)).flatMap {
+docs/building-a-chat-app.md	addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.4.0")
+docs/building-a-chat-app.md	addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.22.0")
+docs/building-a-chat-app.md	assert(r.body().contains("data: "), r.body())
+docs/building-a-chat-app.md	assert(r.body().contains("event: cut"), r.body())
+docs/building-a-chat-app.md	assert(r.body().contains("hi"), r.body())
+docs/building-a-chat-app.md	assert(r.body().contains("token-budget"), r.body())
+docs/building-a-chat-app.md	assert(r.body().trim.endsWith("event: done\ndata:"), r.body())
+docs/building-a-chat-app.md	assert(text(s).contains("bot: Hello there"))
+docs/building-a-chat-app.md	assertEquals(r.headers().firstValue("content-type").orElse(""), "text/event-stream")
+docs/building-a-chat-app.md	async(render(ChatUi.view(s))).flatMap { _ =>
+docs/building-a-chat-app.md	baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+docs/building-a-chat-app.md	buf += decoder.decode(r.value, js.Dictionary("stream" -> true)).asInstanceOf[String]
+docs/building-a-chat-app.md	busy: Boolean = false)
+docs/building-a-chat-app.md	case "cut" => bus.offer(Event.Edited("$cut", data)): Unit
+docs/building-a-chat-app.md	case "data" => bus.offer(Event.Edited("$token",
+docs/building-a-chat-app.md	case ChatUi.Go.Send(history) => send(history)
+docs/building-a-chat-app.md	case ChatUi.Go.Stay => ()
+docs/building-a-chat-app.md	case Event.Edited("$cut", rule) =>
+docs/building-a-chat-app.md	case Event.Edited("$token", t) if s.busy =>
+docs/building-a-chat-app.md	case Event.Edited("draft", v) => (s.copy(draft = v), Go.Stay)
+docs/building-a-chat-app.md	case Event.Pressed("$done") => (s.copy(busy = false), Go.Stay)
+docs/building-a-chat-app.md	case Event.Pressed("send") if !s.busy && s.draft.trim.nonEmpty =>
+docs/building-a-chat-app.md	case None => Ui.Row(Vector(bubble), key = s"m$i")
+docs/building-a-chat-app.md	case Right((e, _)) =>
+docs/building-a-chat-app.md	case Send(history: Vector[Msg])
+docs/building-a-chat-app.md	case Some(rule) => Ui.Column(Vector(bubble,
+docs/building-a-chat-app.md	case Stay
+docs/building-a-chat-app.md	case _ => (s, Go.Stay)
+docs/building-a-chat-app.md	case _ => bus.offer(Event.Pressed("$done")): Unit
+docs/building-a-chat-app.md	case r if r.method == Method.Get && r.url == "/" => pure(html(page))
+docs/building-a-chat-app.md	case r if r.method == Method.Get && r.url == "/app.js" && appJs.isDefined =>
+docs/building-a-chat-app.md	class ChatUiTest extends munit.FunSuite:
+docs/building-a-chat-app.md	class ServerTest extends munit.FunSuite:
+docs/building-a-chat-app.md	client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path"))
+docs/building-a-chat-app.md	current = ui
+docs/building-a-chat-app.md	def appJs: Option[Path] =
+docs/building-a-chat-app.md	def frame(text: String): Unit =
+docs/building-a-chat-app.md	def html(body: String): Response =
+docs/building-a-chat-app.md	def loop(s: ChatUi.State): Unit ! Async =
+docs/building-a-chat-app.md	def post(port: Int, path: String, body: String): HttpResponse[String] =
+docs/building-a-chat-app.md	def pump(): Unit =
+docs/building-a-chat-app.md	def render(ui: Ui): Unit =
+docs/building-a-chat-app.md	def routes(model: Chat.Model, budget: Int = 512)
+docs/building-a-chat-app.md	def text(s: State): String = Frame.render(view(s)).mkString("\n")
+docs/building-a-chat-app.md	def update(s: State, e: Event): (State, Go) = e match
+docs/building-a-chat-app.md	def view(s: State): Ui =
+docs/building-a-chat-app.md	def withServer[A](budget: Int = 512)(f: Int => A): A =
+docs/building-a-chat-app.md	draft: String = "",
+docs/building-a-chat-app.md	e => bus.offer(e): Unit, () => current))
+docs/building-a-chat-app.md	enum Go:
+docs/building-a-chat-app.md	ev match
+docs/building-a-chat-app.md	final case class Msg(role: String, text: String, cut: Option[String] = None)
+docs/building-a-chat-app.md	final case class State(messages: Vector[Msg] = Vector.empty,
+docs/building-a-chat-app.md	for t <- Vector("Hello", " ", "there") do s = update(s, Event.Edited("$token", t))._1
+docs/building-a-chat-app.md	frame(buf.take(idx)); buf = buf.drop(idx + 2)
+docs/building-a-chat-app.md	go match
+docs/building-a-chat-app.md	idx = buf.indexOf("\n\n")
+docs/building-a-chat-app.md	if buf.nonEmpty then frame(buf)
+docs/building-a-chat-app.md	if r.done.asInstanceOf[Boolean] then
+docs/building-a-chat-app.md	import js.Dynamic.global as g
+docs/building-a-chat-app.md	import okay.chat.Chat
+docs/building-a-chat-app.md	import okay.llm.Transports
+docs/building-a-chat-app.md	import okay.ui.{Event, Frame}
+docs/building-a-chat-app.md	import okay.ui.{Event, React, ReactJs, Ui}
+docs/building-a-chat-app.md	import okay.ui.{Event, Style, Ui}
+docs/building-a-chat-app.md	import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
+docs/building-a-chat-app.md	js.JSON.parse(data).asInstanceOf[String])): Unit
+docs/building-a-chat-app.md	lazy val app = project
+docs/building-a-chat-app.md	lazy val ui = crossProject(JVMPlatform, JSPlatform)
+docs/building-a-chat-app.md	libraryDependencies ++= Seq(
+docs/building-a-chat-app.md	loop(s2)
+docs/building-a-chat-app.md	m.cut match
+docs/building-a-chat-app.md	name := "chat-app",
+docs/building-a-chat-app.md	name := "chat-ui",
+docs/building-a-chat-app.md	object ChatUi:
+docs/building-a-chat-app.md	object Main:
+docs/building-a-chat-app.md	object Server:
+docs/building-a-chat-app.md	package example
+docs/building-a-chat-app.md	println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: ${Chat.modeName})")
+docs/building-a-chat-app.md	private def send(history: Vector[ChatUi.Msg]): Unit =
+docs/building-a-chat-app.md	private val bus = Channel[Event]()
+docs/building-a-chat-app.md	private var current: Ui = Ui.Text("")
+docs/building-a-chat-app.md	provide(Transports.http(), Secrets.env)(
+docs/building-a-chat-app.md	provide(deadWire, noSecrets)(Resource.run[A, Pure](
+docs/building-a-chat-app.md	pump()
+docs/building-a-chat-app.md	pure(Response(200, Seq("content-type" -> "text/javascript"),
+docs/building-a-chat-app.md	run / baseDirectory := (ThisBuild / baseDirectory).value,
+docs/building-a-chat-app.md	run / connectInput := true,
+docs/building-a-chat-app.md	run / fork := true,
+docs/building-a-chat-app.md	scalaJSUseMainModuleInitializer := true,
+docs/building-a-chat-app.md	test("a turn streams SSE frames and ends with done") {
+docs/building-a-chat-app.md	test("send opens a turn: history captured, draft cleared, busy") {
+docs/building-a-chat-app.md	test("the budget cuts a long generation, and says which rule cut it") {
+docs/building-a-chat-app.md	test("tokens append to the open bubble; done closes the turn") {
+docs/building-a-chat-app.md	throw new AssertionError(s"an offline test touched the wire: $url")
+docs/building-a-chat-app.md	val (s1, _) = update(State(), Event.Edited("draft", "hello"))
+docs/building-a-chat-app.md	val (s2, go) = ChatUi.update(s, e)
+docs/building-a-chat-app.md	val _ = Async.runAsync(loop(ChatUi.State()))
+docs/building-a-chat-app.md	val _ = g.fetch("/chat", init).`then` { (res: js.Dynamic) =>
+docs/building-a-chat-app.md	val _ = reader.read().`then` { (r: js.Dynamic) =>
+docs/building-a-chat-app.md	val _ = root.render(ReactJs.element(react, React.elem(ui),
+docs/building-a-chat-app.md	val body = js.JSON.stringify(js.Dictionary(
+docs/building-a-chat-app.md	val bubble = Ui.Text((if m.role == "user" then "you: " else "bot: ") + m.text)
+docs/building-a-chat-app.md	val client: HttpClient = HttpClient.newHttpClient()
+docs/building-a-chat-app.md	val data = "(?m)^data: (.*)$".r.findFirstMatchIn(text).map(_.group(1)).getOrElse("")
+docs/building-a-chat-app.md	val decoder = js.Dynamic.newInstance(g.TextDecoder)()
+docs/building-a-chat-app.md	val ev = "(?m)^event: (.*)$".r.findFirstMatchIn(text).map(_.group(1)).getOrElse("data")
+docs/building-a-chat-app.md	val history = s.messages :+ Msg("user", s.draft.trim)
+docs/building-a-chat-app.md	val init = js.Dictionary[js.Any](
+docs/building-a-chat-app.md	val last = s.messages.last
+docs/building-a-chat-app.md	val okay = "0.2.0-SNAPSHOT"
+docs/building-a-chat-app.md	val page: String = """<!doctype html>
+docs/building-a-chat-app.md	val port = sys.env.get("PORT").flatMap(_.toIntOption).getOrElse(8080)
+docs/building-a-chat-app.md	val r = post(port, "/chat", """{"messages":[{"role":"user","content":"hi"}]}""")
+docs/building-a-chat-app.md	val react = g.React
+docs/building-a-chat-app.md	val reader = res.body.getReader()
+docs/building-a-chat-app.md	val root = g.ReactDOM.createRoot(g.document.getElementById("root"))
+docs/building-a-chat-app.md	var buf = ""
+docs/building-a-chat-app.md	var idx = buf.indexOf("\n\n")
+docs/building-a-chat-app.md	while idx >= 0 do
+docs/building-a-chat-app.md	}, key = "log"),
+docs/capabilities.md	(base and providing[Http](stubHttp)) { app }    // override just Http
+docs/capabilities.md	(base and providing[Principal](bob)) { api }
+docs/capabilities.md	//    becomes the Principal, a traceparent becomes the Tracer
+docs/capabilities.md	//    no token, no HTTP machinery
+docs/capabilities.md	// 1. production: the doors install from the wire — a verified JWT
+docs/capabilities.md	// 2. unit test: provide installs the SAME needs directly —
+docs/capabilities.md	// 3. environments are values: one base, one overridden layer
+docs/capabilities.md	// Vector(hello ada, bye) -> 7
+docs/capabilities.md	// factories: the environment arrives when the value is installed
+docs/capabilities.md	// okay-obs: a handler written against `using Tracer`
+docs/capabilities.md	// okay-security: the principal is ambient in the protected route
+docs/capabilities.md	// the elimination: environment as a capability — Reader is GONE
+docs/capabilities.md	// the row spelling: environment as an effect, handled at run
+docs/capabilities.md	Reader.run[E, A, F](wire[E])(p)
+docs/capabilities.md	Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
+docs/capabilities.md	Secure.granted(verify, policy)(route: Principal ?=> PartialFunction[Request, Response ! Async])
+docs/capabilities.md	Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
+docs/capabilities.md	Traced.route(tracer)(route: Tracer ?=> Traced.Route)
+docs/capabilities.md	Writer("bye")
+docs/capabilities.md	Writer(s"env=${wire[Int]}")
+docs/capabilities.md	Writer(s"hello ${wire[Env].user}")   // bare statement: do-notation
+docs/capabilities.md	base { app }                                    // install everything, run
+docs/capabilities.md	def granted(...)(route: Principal ?=> R): R  =  explicit(...)(p => route(using p))
+docs/capabilities.md	def lift[E, A](cf: E ?=> A): A ! (Reader % E) =
+docs/capabilities.md	def unlift[E, A, F[+_]](p: A ! (Reader % E + F)): E ?=> A ! F =
+docs/capabilities.md	def wired(...): Http ?=> Engine              =  explicit(summon[Http], ...)
+docs/capabilities.md	def wired(endpoint: String): Http ?=> Engine
+docs/capabilities.md	effect[Reader % E, E](Reader.Ask()).map(e => cf(using e))
+docs/capabilities.md	effect[Reader % Int + W, Unit](Writer(s"env=$env")).!?
+docs/capabilities.md	f.curried <*> wire[Db] <*> wire[Log] <*> wire[Clock]  :  Db ?=> Log ?=> Clock ?=> String
+docs/capabilities.md	given ctxMonad[E]: Monad[[X] =>> E ?=> X]   // Provide.scala
+docs/capabilities.md	import okay.given   // instances need the given import — `import okay.*` is not enough
+docs/capabilities.md	inline def wire[A]: A ?=> A = summon[A]
+docs/capabilities.md	provide(41)(viaCtx)   // same answers as Reader.run(41)(viaReader)
+docs/capabilities.md	provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+docs/capabilities.md	provide(ada, tracer)(api)
+docs/capabilities.md	provide(prodHttp, Secrets.env) { app }     // the edge
+docs/capabilities.md	provide(stubHttp, testSecrets) { app }     // the test — same program
+docs/capabilities.md	val all: Env ?=> Seq[Int] = sequence(xs)     // F is INFERRED
+docs/capabilities.md	val base = providing[Http](prodHttp) and providing[Secrets](Secrets.env)
+docs/capabilities.md	val env = effect[Reader % Int + W, Int](Reader.Ask()).!?
+docs/capabilities.md	val getQ: Db ?=> String = wire[Db].q
+docs/capabilities.md	val xs: Seq[Env ?=> Int] = Seq(wire[Env].uid, wire[Env].uid + 1)
+docs/continuations-in-practice.md	!.run(Delim.drive(!.run(Delim.resumable(half)))(_ => pure(2)))  // List(1, 2, 3)
+docs/continuations-in-practice.md	!.run(Delim.drive(start)(answering(List("Kyiv", "3", "yes"))))
+docs/continuations-in-practice.md	.run(Dialogue.asking(oracle))
+docs/continuations-in-practice.md	// ---- the process dies here. p0, p1, p2 go with it; j2 was written down.
+docs/continuations-in-practice.md	Delim.collectUntil[Int, Option[Int], Option[Int], Pure](using FoldUntil.find[Int](_ > 1))(walk(t))  // Some(2)
+docs/continuations-in-practice.md	Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(t))   // Vector(1, 2) — the third leaf is never visited
+docs/continuations-in-practice.md	Delim.collect[Int, Pure](walk(t))    // List(1, 2, 3)
+docs/continuations-in-practice.md	Delim.collecting[Int, Pure]:        // nested: installs only
+docs/continuations-in-practice.md	Delim.delimited[Option[Int], Pure]:
+docs/continuations-in-practice.md	Dialogue.workflow[String, String, String, Pure](topic, id, "booking/1")(booking)
+docs/continuations-in-practice.md	back.asking    // Some("Pay 270 for Kyiv?") — the same place
+docs/continuations-in-practice.md	def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+docs/continuations-in-practice.md	def half(using Delim.Asking[String, Int, List[Int], Delim + Pure]) =
+docs/continuations-in-practice.md	if !w.patch("promo") then s"$city/$n/promo at $when" else s"$city/$n at $when"
+docs/continuations-in-practice.md	if r(t) then !Delim.exit(Some(t))              // obvious
+docs/continuations-in-practice.md	if r(t) then !Delim.shift[Unit](_ => pure(Some(t)))   // a puzzle
+docs/continuations-in-practice.md	txs.foldLeft(Option.empty[Int]): (acc, t) =>
+docs/continuations-in-practice.md	val (p1, j1) = !.run(Delim.answer(p0, Nil)("Kyiv"))
+docs/continuations-in-practice.md	val (p2, j2) = !.run(Delim.answer(p1, j1)("3"))    // j2 = List("Kyiv", "3")
+docs/continuations-in-practice.md	val back = !.run(Delim.replay(booking)(j2))
+docs/continuations-in-practice.md	val city   = !Delim.pause("Which city?")
+docs/continuations-in-practice.md	val city = !w.pause("city?")          // the world answers
+docs/continuations-in-practice.md	val more = !Delim.pause("more?")  // crosses the collect's delimiter
+docs/continuations-in-practice.md	val n    = !w.pause("nights?")
+docs/continuations-in-practice.md	val pay    = !Delim.pause(s"Pay ${nights.toInt * 90} for $city?")
+docs/continuations-in-practice.md	val when = !w.now                     // the RUNTIME answers, once, and it is journalled
+docs/continuations-in-practice.md	})   // 10
+docs/continuations/01-four-programs.md	//    the same for allocs
+docs/continuations/01-four-programs.md	// ...and so on, for every pair that can occur
+docs/continuations/01-four-programs.md	???            // ← and here the trouble starts
+docs/continuations/01-four-programs.md	case (Approved, Shipped)            => Shipped
+docs/continuations/01-four-programs.md	case (AwaitingApproval, Approved)   => Approved
+docs/continuations/01-four-programs.md	case (None, line) => checkLine(line)       // ...and checkLine does
+docs/continuations/01-four-programs.md	case (Placed, Submitted)            => AwaitingApproval
+docs/continuations/01-four-programs.md	case (Some(r), _) => Some(r)               // already rejected
+docs/continuations/01-four-programs.md	case Placed, AwaitingApproval, Approved, Rejected, Shipped, Refunded
+docs/continuations/01-four-programs.md	def check(invoice: Invoice): Option[Rejected] =
+docs/continuations/01-four-programs.md	def check(invoice: Invoice): Unit =
+docs/continuations/01-four-programs.md	def handle(req: Request): Response =
+docs/continuations/01-four-programs.md	def load(file: Path, strict: Boolean): Result
+docs/continuations/01-four-programs.md	def onEvent(state: OrderState, e: Event): OrderState = (state, e) match
+docs/continuations/01-four-programs.md	def parse(doc: String)(onToken: Token => Unit): Unit
+docs/continuations/01-four-programs.md	enum OrderState:
+docs/continuations/01-four-programs.md	finally record(now() - started, ???)      // ← and what is the status here?
+docs/continuations/01-four-programs.md	for alloc <- line.allocations do
+docs/continuations/01-four-programs.md	for line <- invoice.lines do
+docs/continuations/01-four-programs.md	if closed(alloc.centre) then
+docs/continuations/01-four-programs.md	if closed(alloc.centre) then exit(Rejected(alloc.centre))
+docs/continuations/01-four-programs.md	if ok then ship(order) else refund(order)
+docs/continuations/01-four-programs.md	invoice.lines.foldLeft(None: Option[Rejected]):
+docs/continuations/01-four-programs.md	record(now() - started, res.status)     // ← does not run if route throws
+docs/continuations/01-four-programs.md	res
+docs/continuations/01-four-programs.md	try route(req)
+docs/continuations/01-four-programs.md	val ok    = approval(order)        // ← a human, some time this week
+docs/continuations/01-four-programs.md	val order = place(request)
+docs/continuations/01-four-programs.md	val res = route(req)
+docs/continuations/01-four-programs.md	val started = now()
+docs/continuations/05-leave-early.md	...
+docs/continuations/05-leave-early.md	...                                 // 2. ordinary code, however deep
+docs/continuations/05-leave-early.md	// ...count each allocation as it is examined...
+docs/continuations/05-leave-early.md	// r is 1, and ranAfter is false
+docs/continuations/05-leave-early.md	Delim.delimited[Answer, Row]:          // 1. name the boundary and its type
+docs/continuations/05-leave-early.md	assertEquals(seen, 4)          // the fifth allocation was never reached
+docs/continuations/05-leave-early.md	fallback                            // 4. what it means to finish normally
+docs/continuations/05-leave-early.md	if condition then !Delim.exit(a)    // 3. leave, with the answer
+docs/continuations/06-push-as-pull.md	!Delim.emit(item)
+docs/continuations/06-push-as-pull.md	...
+docs/continuations/06-push-as-pull.md	// List("/a.txt", "/src/Main.scala", "/src/Util.scala", "/b.log")
+docs/continuations/06-push-as-pull.md	// the consumer: install the boundary, get the items
+docs/continuations/06-push-as-pull.md	// the producer: declare what it emits, and emit
+docs/continuations/06-push-as-pull.md	case Entry.Dir(n, es) => es.foreach(walkCallback(_, here)(onFile))
+docs/continuations/06-push-as-pull.md	def produce(...)(using Delim.Emitting[A]): Unit ! (Delim + F) =
+docs/continuations/06-push-as-pull.md	val files = !.run(Delim.collect[String, Pure](walk(tree)))
+docs/continuations/06-push-as-pull.md	val items: List[A] = !.run(Delim.collect[A, F](produce(...)))
+docs/continuations/07-stop-in-the-middle.md	...
+docs/continuations/07-stop-in-the-middle.md	// ...or run it to the end with an oracle
+docs/continuations/07-stop-in-the-middle.md	// start it: nothing runs yet
+docs/continuations/07-stop-in-the-middle.md	// step it by hand...
+docs/continuations/07-stop-in-the-middle.md	// the SAME start, answered again, differently
+docs/continuations/07-stop-in-the-middle.md	// the program: it asks, and reads as straight-line code
+docs/continuations/07-stop-in-the-middle.md	def prog(using Delim.Asking[Q, A, R, Row]): R ! Row = direct:
+docs/continuations/07-stop-in-the-middle.md	p = !.run(Delim.answer(p, Nil)(()))._1     // hand back an answer, get the next stop
+docs/continuations/07-stop-in-the-middle.md	val (next, _) = !.run(Delim.answer(p, Nil)(answer))
+docs/continuations/07-stop-in-the-middle.md	val city   = !Delim.pause("Which city?")
+docs/continuations/07-stop-in-the-middle.md	val p = !.run(Delim.resumable[Q, A, R, F](prog))
+docs/continuations/07-stop-in-the-middle.md	val result = !.run(Delim.drive(p)(q => okay.pure(answerFor(q))))
+docs/continuations/07-stop-in-the-middle.md	val x = !Delim.pause(question)
+docs/continuations/08-on-the-way-back.md	!Delim.onReturn(a => transform(a))       // 2. register, from the middle
+docs/continuations/08-on-the-way-back.md	"x"
+docs/continuations/08-on-the-way-back.md	...                                      // 3. untouched code
+docs/continuations/08-on-the-way-back.md	// "outer(inner(x))"
+docs/continuations/08-on-the-way-back.md	// hookRan == false
+docs/continuations/08-on-the-way-back.md	// r == 107
+docs/continuations/08-on-the-way-back.md	Delim.delimited[Answer, Row]:
+docs/continuations/08-on-the-way-back.md	answer                                   // 4. leaves through the hook
+docs/continuations/08-on-the-way-back.md	val context = ...                        // 1. whatever the hook needs
+docs/continuations/09-composing.md	!Delim.exit(using outer)("straight out")   // not this boundary — that one
+docs/continuations/09-composing.md	// "inner said 7"
+docs/continuations/09-composing.md	// "straight out"
+docs/continuations/09-composing.md	// 1005
+docs/continuations/09-composing.md	// List(1)
+docs/continuations/09-composing.md	Delim.delimited[Int, Pure]:
+docs/continuations/09-composing.md	Delim.delimited[String, Pure]:              // runs
+docs/continuations/09-composing.md	Delim.delimited[String, Pure]: outer ?=>
+docs/continuations/09-composing.md	assert(e.contains("SECOND machine"))
+docs/continuations/09-composing.md	s"inner said $x"
+docs/continuations/09-composing.md	val inner = !Delim.scope[Int, Pure]:    // installs
+docs/continuations/09-composing.md	val x = !Delim.delimited[Int, Pure]:      // ← a second one, inside
+docs/continuations/10-prompts.md	// "bottom reached"
+docs/continuations/10-prompts.md	// "got 42"
+docs/continuations/10-prompts.md	Delim.delimited[String, Pure]: outer ?=>
+docs/continuations/10-prompts.md	assert(a ne b)
+docs/continuations/10-prompts.md	assert(e.getMessage.contains("Installed here"))
+docs/continuations/10-prompts.md	assert(e.getMessage.contains("delimited @"))
+docs/continuations/10-prompts.md	assert(e.getMessage.contains("is not on the stack"))
+docs/continuations/10-prompts.md	p.label      // "prompt @ TestBookPrompts.scala:29"
+docs/continuations/10-prompts.md	val e = intercept[NoPrompt](...)
+docs/continuations/10-prompts.md	val n = !Delim.scope[Int, Pure]:      // an Int boundary inside a String one
+docs/continuations/11-four-captures.md	.flatMap(s => Delim.shift(p)(_ => okay.pure(s + "-second"))))
+docs/continuations/11-four-captures.md	// "<a><b>" for all four
+docs/continuations/11-four-captures.md	// "[a]" for all four
+docs/continuations/11-four-captures.md	Delim.push(p)(
+docs/continuations/11-four-captures.md	Delim.push(p)(capture(c, p)(k => k("a")).map(s => s"[$s]"))
+docs/continuations/11-four-captures.md	capture(c, p)(_ => capture("shift", p)(_ => okay.pure("inner-caught"))))
+docs/continuations/11-four-captures.md	capture(c, p)(k => k("a").flatMap(x => k("b").map(y => x + y)))
+docs/continuations/12-one-machine.md	...
+docs/continuations/12-one-machine.md	Delim.collect[Int, F]:          // ...and also collect
+docs/continuations/12-one-machine.md	Delim.resumable[Q, A, R, F]:        // I want to pause...
+docs/continuations/12-one-machine.md	def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F
+docs/continuations/13-multi-shot.md	// 99
+docs/continuations/13-multi-shot.md	// List((1,"a"), (1,"b"), (2,"a"), (2,"b"))
+docs/continuations/13-multi-shot.md	// List(10, 20)
+docs/continuations/13-multi-shot.md	// last == 2
+docs/continuations/13-multi-shot.md	// log == List("ran with 1", "ran with 2")
+docs/continuations/13-multi-shot.md	// opened == 1
+docs/continuations/13-multi-shot.md	Delim.delimited[List[Int], Pure]:
+docs/continuations/13-multi-shot.md	log = log :+ s"ran with $x"        // IN the continuation
+docs/continuations/13-multi-shot.md	opened += 1                        // NOT in the continuation
+docs/continuations/13-multi-shot.md	ran = true                                       // never happens
+docs/continuations/13-multi-shot.md	val x = !Delim.shift[Int](k => ...)
+docs/continuations/14-a-new-effect.md	(using Delim.OneMachine[F], At): R ! F
+docs/continuations/14-a-new-effect.md	// "bought three, 10 left"
+docs/continuations/14-a-new-effect.md	// "over budget", and `reached` is false
+docs/continuations/14-a-new-effect.md	// 1. evidence: what the block hands its body, with the answer type as a member
+docs/continuations/14-a-new-effect.md	// 2. the boundary: the ONLY place that runs a machine, passing OneMachine on
+docs/continuations/14-a-new-effect.md	// 3. the operations: named in the user's vocabulary, hiding the capture
+docs/continuations/14-a-new-effect.md	Budget.within[String, Pure](100)("over budget")(shop)
+docs/continuations/14-a-new-effect.md	def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Delim + F)
+docs/continuations/14-a-new-effect.md	def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Delim + F))
+docs/continuations/14-a-new-effect.md	final class Budget[R] private (val left: AtomicInteger,
+docs/continuations/14-a-new-effect.md	final class Cap[R] private (state, fallback, prompt: Prompt[R]):
+docs/continuations/14-a-new-effect.md	val orElse: () => R,
+docs/continuations/14-a-new-effect.md	val prompt: Prompt[R]):
+docs/continuations/15-resumable-exceptions.md	// Vector(10, 20, -1, 40)
+docs/continuations/15-resumable-exceptions.md	// Vector(10, 20, 0, 40)
+docs/continuations/15-resumable-exceptions.md	// Vector(10, 20, 40)
+docs/continuations/15-resumable-exceptions.md	// and a policy may decide per row, because it SEES the condition
+docs/continuations/15-resumable-exceptions.md	// the compliance run: refuse, and name what stopped it
+docs/continuations/15-resumable-exceptions.md	// the migration: substitute, in place
+docs/continuations/15-resumable-exceptions.md	// the nightly batch: drop the row, keep the file
+docs/continuations/15-resumable-exceptions.md	// throws Unhandled(Malformed(3, "oops"), menu = ["skip"])
+docs/continuations/15-resumable-exceptions.md	assertEquals(parsed, 3)      // rows 1,2 not re-parsed; row 4 still reached
+docs/continuations/15-resumable-exceptions.md	case (Malformed(line, _), _) =>
+docs/continuations/15-resumable-exceptions.md	if line > 2 then Resume(-1) else Invoke("skip", ())
+docs/continuations/16-continuations-and-monads.md	// get >>= set  ==  pure(())
+docs/continuations/16-continuations-and-monads.md	// r == ("42", "42!")
+docs/continuations/16-continuations-and-monads.md	// r == (11, 12)
+docs/continuations/16-continuations-and-monads.md	// set x >> get  ==  set x >> pure(x)
+docs/continuations/16-continuations-and-monads.md	State.run[Int, Int](1)(p)   // (11, 12) — the same answer
+docs/continuations/16-continuations-and-monads.md	def sGet[S, R]: Cont[S, S => R, S => R]           = shift(k => s => k(s)(s))
+docs/continuations/16-continuations-and-monads.md	sRun(7) { sGet.flatMap(s => sSet(s)) }              // (7, ())
+docs/continuations/16-continuations-and-monads.md	sRun(7) { sSet(9).flatMap(_ => sGet) }              // (9, 9)
+docs/continuations/17-in-the-effect-system.md	!.run(Delim.delimited[(Int, Int), P](State.handle[Int](0)(inside)))
+docs/continuations/17-in-the-effect-system.md	// (11, 11)
+docs/continuations/17-in-the-effect-system.md	// (11, 12)
+docs/continuations/17-in-the-effect-system.md	State.run[Int, Int](0)(Delim.delimited[Int, State % Int](outside))
+docs/continuations/17-in-the-effect-system.md	type Row = Delim + State % Int          // inside the delimiter
+docs/continuations/18-what-belongs-in-a-library.md	*  `Wf.Runtime`, and it is journalled. These two must not be
+docs/continuations/18-what-belongs-in-a-library.md	*  confused -- one is operational, the other is state. */
+docs/continuations/18-what-belongs-in-a-library.md	/** wall time, for the lease only: the PROGRAM's clock is
+docs/continuations/18-what-belongs-in-a-library.md	clock: () => Long = () => System.currentTimeMillis(),
+docs/continuations/18-what-belongs-in-a-library.md	def attempt[A](times: Int)(f: () => A): Either[Throwable, A]
+docs/continuations/18-what-belongs-in-a-library.md	stamped("hi").runWith        // "hi@7"     -- exactly, every time
+docs/continuations/19-what-a-capture-does.md	!Delim.exit(r * 2)          // log: acquire, release
+docs/continuations/19-what-a-capture-does.md	// a multi-shot capture opens one per branch
+docs/continuations/19-what-a-capture-does.md	// an abandoned continuation still releases
+docs/continuations/19-what-a-capture-does.md	// error, mentioning: Handler
+docs/continuations/19-what-a-capture-does.md	// error, mentioning: SECOND machine
+docs/continuations/19-what-a-capture-does.md	// error, mentioning: finalizer
+docs/continuations/19-what-a-capture-does.md	// log: acquire1, acquire2, release2, release1
+docs/continuations/19-what-a-capture-does.md	// seen == List(1, 10)
+docs/continuations/19-what-a-capture-does.md	// the exception escapes; the catch never fires
+docs/continuations/19-what-a-capture-does.md	// the whole block answers 200
+docs/continuations/19-what-a-capture-does.md	Delim.delimited[Int, P]:
+docs/continuations/19-what-a-capture-does.md	cleaned = true      // never runs
+docs/continuations/19-what-a-capture-does.md	okay.Delim.delimited[Int, okay.Delim + okay.Pure](okay.pure(1))
+docs/continuations/19-what-a-capture-does.md	okay.bracket[Int, Int, okay.Delim + okay.Pure](1)(_ => ())(r => okay.pure(r))
+docs/continuations/20-the-costs-measured.md	s"$what @ $where"
+docs/continuations/21-the-disciplines.md	// DOES NOT RESOLVE
+docs/continuations/21-the-disciplines.md	Delim.delimited[Int, Pure](…)      // At("Booking.scala:31")
+docs/continuations/21-the-disciplines.md	def delimited[R, F[+_]](body: …)(using At): R ! F
+docs/continuations/21-the-disciplines.md	def unchecked[F[+_]]: Replayable[F] = of
+docs/continuations/21-the-disciplines.md	door    // "TestDelimDiagnostics.scala:36" -- the CALLER's line
+docs/continuations/21-the-disciplines.md	given fresh[F[+_]](using NotGiven[Delim[Any] <:< F[Any]]): OneMachine[F]
+docs/continuations/21-the-disciplines.md	given union[F, G](using Replayable[F], Replayable[G]): Replayable[F + G]
+docs/continuations/21-the-disciplines.md	type Safe = Delim[Any] | State[?, Any] | Reader[?, Any] | Throws[?, Any]
+docs/continuations/22-checkpoints.md	"the snapshot changed how much the PROGRAM ran")
+docs/continuations/23-durable-workflows.md	!w.sleep(24 * 3600 * 1000L)              // the run ENDS here, resumes tomorrow
+docs/continuations/23-durable-workflows.md	if !w.patch("promo") then s"$city/promo" else city
+docs/continuations/23-durable-workflows.md	val city  = !w.pause("which city?")      // the WORLD answers
+docs/continuations/23-durable-workflows.md	val ok    = !w.awaitSignal("payment")    // somebody sends this, whenever
+docs/continuations/23-durable-workflows.md	val start = !w.now                       // the RUNTIME answers, once
+docs/continuations/24-a-debugger-for-agents.md	// (Some("FIRST WORLD"), Some("SECOND WORLD"))
+docs/continuations/25-cutting-a-model.md	: Either[Violation, A] ! (Writer % String + Async) =
+docs/continuations/25-cutting-a-model.md	Delim.abort[Either[Violation, A], X, Writer % String + Async](p)(Left(v))
+docs/continuations/25-cutting-a-model.md	Delim.run(Delim.push(p)(gen(p).map(Right(_))))
+docs/continuations/25-cutting-a-model.md	def cut[A, X](p: Prompt[Either[Violation, A]])(v: Violation): X ! ... =
+docs/continuations/25-cutting-a-model.md	def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Delim + Async)))
+docs/continuations/25-cutting-a-model.md	val p = Delim.prompt[Either[Violation, A]]
+docs/continuations/26-cancellable-flows-in-a-ui.md	// and a fold of Options at the call site that is the real flow
+docs/continuations/26-cancellable-flows-in-a-ui.md	Delim.abort[R, A, Dialog](p)(value)
+docs/continuations/26-cancellable-flows-in-a-ui.md	Delim.push(p)(body(p))
+docs/continuations/26-cancellable-flows-in-a-ui.md	def cancel[A, R](p: okay.Prompt[R])(value: R): A ! Row =
+docs/continuations/26-cancellable-flows-in-a-ui.md	def confirm(d: Details): Option[Confirmed]
+docs/continuations/26-cancellable-flows-in-a-ui.md	def details(plan: Plan): Option[Details]
+docs/continuations/26-cancellable-flows-in-a-ui.md	def pay(c: Confirmed): Option[Receipt]
+docs/continuations/26-cancellable-flows-in-a-ui.md	def push[A](body: okay.Prompt[A] => A ! Row): A ! Row =
+docs/continuations/26-cancellable-flows-in-a-ui.md	test("Dialog itself is untouched: a plain scenario still runs beside the scoped one")
+docs/continuations/26-cancellable-flows-in-a-ui.md	test("a scope cancels as a unit: no Option threading between its steps")
+docs/continuations/26-cancellable-flows-in-a-ui.md	test("multi-prompt: an inner scope aborts ACROSS its boundary to the outer one")
+docs/continuations/26-cancellable-flows-in-a-ui.md	val p = Delim.prompt[A]
+docs/continuations/appendix-a-if-you-really-want.md	// before it runs
+docs/continuations/appendix-a-if-you-really-want.md	case Bind[F[+_], A, B](a: Free[F, A],
+docs/continuations/appendix-a-if-you-really-want.md	case Delay(thunk: () => Free[F, A])               // ...and a thunk
+docs/continuations/appendix-a-if-you-really-want.md	case Done[F[+_], Z]()
+docs/continuations/appendix-a-if-you-really-want.md	case Inject(a: F[A])                              // one operation
+docs/continuations/appendix-a-if-you-really-want.md	case Iter(body: Proc[F, X, Either[X, Y]])   // Left goes round, Right leaves
+docs/continuations/appendix-a-if-you-really-want.md	case K[F[+_], X, Y, Z](f: X => Y ! (Delim + F), rest: Segs[F, Y, Z])
+docs/continuations/appendix-a-if-you-really-want.md	case Mark[F[+_], X, Z](p: Prompt[X], rest: Segs[F, X, Z])
+docs/continuations/appendix-a-if-you-really-want.md	case Pure(a: A)                                   // a value
+docs/continuations/appendix-a-if-you-really-want.md	def leaves: Vector[F[Any]]    // every operation the program MAY perform,
+docs/continuations/appendix-a-if-you-really-want.md	f.app(x)     =  e => f(e)(x(e))           //  S
+docs/continuations/appendix-a-if-you-really-want.md	f: A => Free[F, B])        // ...and a function
+docs/continuations/appendix-a-if-you-really-want.md	f: A => Free[F, B]) extends Free[F, B]
+docs/continuations/appendix-a-if-you-really-want.md	for _ <- 1 to nights do !w.pause("which room?")
+docs/continuations/appendix-a-if-you-really-want.md	identity     =  e => e                    //  I
+docs/continuations/appendix-a-if-you-really-want.md	private enum Segs[F[+_], A, Z]:
+docs/continuations/appendix-a-if-you-really-want.md	pure(a)      =  _ => a                    //  K
+docs/continuations/appendix-a-if-you-really-want.md	val nights = !w.pause("how many nights?")
+docs/continuations/appendix-a-if-you-really-want.md	val rooms = Proc.direct: _ =>
+docs/cursors-and-declarations.md	++ box.in[W]                                  // a pure box lifted beside it
+docs/cursors-and-declarations.md	// okay-agent TestToolbox, okay-mcp TestServer
+docs/cursors-and-declarations.md	// okay-codec TestPolicy
+docs/cursors-and-declarations.md	// okay-direct TestDirectSource
+docs/cursors-and-declarations.md	// okay-llm TestTakeLoopInBlock — an iteratee written as a loop: a Stage
+docs/cursors-and-declarations.md	// okay-optics TestTypedZipper
+docs/cursors-and-declarations.md	// okay-optics TestZipper — over any tree with a Plate (Uniplate's children/descend)
+docs/cursors-and-declarations.md	// okay-sql TestQueryPure, okay-jdbc TestQuerySqlite
+docs/cursors-and-declarations.md	// okay-ui TestFormDrill
+docs/cursors-and-declarations.md	Form.askAt(TypedZipper(order).down(customer), "customer")     // the form of the focus, answering the cursor
+docs/cursors-and-declarations.md	Form.drillAt(TypedZipper(order).field("customer").field("address"))(done)   // opened where the TYPE said
+docs/cursors-and-declarations.md	Form.drill[Order](value)(done)          // into pushes the path, out pops, done answers when errors is empty
+docs/cursors-and-declarations.md	Form.renderAt[Order](doc, "customer")   // keys: customer.name, customer.address$into
+docs/cursors-and-declarations.md	Handlers.relayToolsF(effectful.table)(prog)     // the agent, the row one effect shorter
+docs/cursors-and-declarations.md	Query.select[Customer]("customer").toOption.get.where(w)   // what Typed.rows decodes, columns off the schema
+docs/cursors-and-declarations.md	Query.update[Customer]("customer").set(balance, 99.0).where(w)   // the UPDATE, and apply(a) in memory
+docs/cursors-and-declarations.md	Server.serveIn[Async](serving)(Server.answering(serving))   // the MCP protocol, written once, in a row carrying G
+docs/cursors-and-declarations.md	State.run(c)(State.zoom(c.focusLens)(renameCustomer))        // a State % Customer program, parked in an Order
+docs/cursors-and-declarations.md	TypedZipper(order).down(lines).at(1).flatMap(_.downCase[Line.Discount])   // an index, then a case
+docs/cursors-and-declarations.md	Zipper(tree).at(List(2, 0)).get.set(x).right.get.set(y).root // an edit survives a sideways move
+docs/cursors-and-declarations.md	c.field("address").field("zip").focus: Int                   // by NAME, checked against the Mirror
+docs/cursors-and-declarations.md	policy.project(doc)            // RUN: the fields removed — every line's price included
+docs/cursors-and-declarations.md	policy.redact(doc)             // RUN: kept, values replaced
+docs/cursors-and-declarations.md	policy.text(order)             // what an embedding or a log line may see
+docs/cursors-and-declarations.md	policy.touches                 // DESCRIBE, no document: Set("customer.email", "lines.price", ...)
+docs/cursors-and-declarations.md	val c = TypedZipper(order).down(customer)                    // TypedZipper[Order, Customer, _]
+docs/cursors-and-declarations.md	val policy = Policy.hide[Order]("customer.email", "lines.price", "shape.secret", "note").toOption.get
+docs/cursors-and-declarations.md	val top: TypedZipper.Top[Order] = c.down(address).up.up      // the compiler checks the type of `up`
+docs/cursors-and-declarations.md	w.sql        // DESCRIBE: ("((user_name LIKE ?) AND (age >= ?)) AND (NOT (active = ?))", params)
+docs/cursors-and-declarations.md	w.test(ann)  // RUN: the same predicate in memory, NULL three-valued
+docs/cursors-and-declarations.md	z.modify(r => r.copy(label = r.label.toUpperCase)).root     // one node rebuilt, every other subtree shared
+docs/declaring-an-api.md	.at(Method.Post, userPost)((p, r) => usePayload(p, r))
+docs/declaring-an-api.md	.enforcing(Secure.verifier(verify))
+docs/declaring-an-api.md	.on(Method.Get, healthz)(_ => text(200, "live"))
+docs/declaring-an-api.md	.on[Add]("board_add", "Add a task. The owner is whoever asked for it.")(a => ...)
+docs/declaring-an-api.md	.raw("update_state", "Merge a JSON Merge Patch...", objectSchema())(patch => ...)
+docs/declaring-an-api.md	.summarised("open the chat: talk to the agent, which moves the board")
+docs/declaring-an-api.md	// a value, encoded by the schema the entry declares
+docs/declaring-an-api.md	// content that has no schema: a page, a stream, a bundle
+docs/declaring-an-api.md	200, "the task")((id, _) => fetch(id))
+docs/declaring-an-api.md	Health(livenessPath = Site.Ops.healthz.describe, ...)
+docs/declaring-an-api.md	Ops.paths                  // Set("/healthz", "/readyz", "/stats", "/metrics")
+docs/declaring-an-api.md	Router.html(Method.Get, Route.root)(_ => pure(page))
+docs/declaring-an-api.md	Router.json[EmptyTuple, LoginConfirm](Method.Post, Route / "login" / "confirm") { (_, in) =>
+docs/declaring-an-api.md	Router.on(Method.Get, Route / "users" / "id".as[Int])(id => byId(id))
+docs/declaring-an-api.md	Router.on(Method.Get, healthz)(_ => live)
+docs/declaring-an-api.md	Router.on(Method.Get, resume)((_, from) => stream(from))
+docs/declaring-an-api.md	Router.on(Method.Get, userPost)((id, slug) => post(id, slug))
+docs/declaring-an-api.md	Router.on(Method.Post, replay)((_, _) => doReplay())
+docs/declaring-an-api.md	Router.out(Method.Get, (Route / "t" / "id".as[Int]).secured("admin"),
+docs/declaring-an-api.md	Router.out(Method.Get, task)(byId).answering(200, "etag".as[String])
+docs/declaring-an-api.md	case Get(userPost(id, slug)) => ...        // id: Int, slug: String
+docs/declaring-an-api.md	def routes: PartialFunction[Request, Response ! Async] =
+docs/declaring-an-api.md	e.params    // Vector(Var("id", "int", {"type":"integer"}), Var("slug", "string", ...))
+docs/declaring-an-api.md	e.path      // "/users/{id}/posts/{slug}"
+docs/declaring-an-api.md	e.queries   // Vector(Q("tag", "string", required = false, repeated = true, {"type":"array", ...}))
+docs/declaring-an-api.md	final case class LoginConfirm(email: String, code: String)
+docs/declaring-an-api.md	given Schema[LoginConfirm] = Schema.derived
+docs/declaring-an-api.md	if Login.confirm(in.email, in.code) then ok(...) else refused(...)
+docs/declaring-an-api.md	one.unapply("/users/7")   // Some(Tuple1(7))
+docs/declaring-an-api.md	one.url(Tuple1(7))        // "/users/7"
+docs/declaring-an-api.md	r.unapply("/users/7/posts/hello")   // Some(UserPost(7, "hello"))
+docs/declaring-an-api.md	r.url(UserPost(7, "hello world"))   // "/users/7/posts/hello%20world"
+docs/declaring-an-api.md	resume.read(request)              // both halves: Option[(A, H)]
+docs/declaring-an-api.md	resume.readHeaders(request)       // Some(Tuple1(Some(41L)))
+docs/declaring-an-api.md	resume.route.unapply("/events")   // the url prism, untouched
+docs/declaring-an-api.md	router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
+docs/declaring-an-api.md	router.describe  // Vector((Get, "/healthz"), (Post, "/users/{id}/posts/{slug}"))
+docs/declaring-an-api.md	router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
+docs/declaring-an-api.md	router.html(Method.Get, Route.root)(_ => pure(page))
+docs/declaring-an-api.md	router.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board)((_, t) => pure(store(t)))
+docs/declaring-an-api.md	router.media(Method.Get, Route / "report", "application/pdf", 200, "last night's run")(...)
+docs/declaring-an-api.md	router.out[Int *: EmptyTuple, Task](Method.Get, byId)(id => pure(load(id)))
+docs/declaring-an-api.md	router.routes    // PartialFunction[Request, Response ! Async]
+docs/declaring-an-api.md	search.describeFull                      // "/search?q={q}&page={page}"
+docs/declaring-an-api.md	search.unapply("/search?page=2&q=cats")  // Some(("cats", Some(2)))
+docs/declaring-an-api.md	search.url(("cats", None))               // "/search?q=cats"
+docs/declaring-an-api.md	search.url(("cats", Some(2)))            // "/search?q=cats&page=2"
+docs/declaring-an-api.md	tools.specs   // Seq[ToolSpec]                    -- what the model is told
+docs/declaring-an-api.md	tools.table   // Map[String, ToolCall => String]  -- the seam Mcp.Server takes
+docs/declaring-an-api.md	userPost.describe                                 // "/users/{id}/posts/{slug}"
+docs/declaring-an-api.md	userPost.unapply("/users/7/posts/hello%20world")  // Some((7, "hello world"))
+docs/declaring-an-api.md	userPost.url((7, "hello world"))                  // "/users/7/posts/hello%20world"
+docs/declaring-an-api.md	val declared = mine ++ Admin.router()(replay, onReplayed)
+docs/declaring-an-api.md	val e = router.entries.head
+docs/declaring-an-api.md	val healthz  = Route / "healthz"
+docs/declaring-an-api.md	val posts  = Route / "posts" :? paging
+docs/declaring-an-api.md	val replay = (Route / "admin" / "replay").secured("admin")
+docs/declaring-an-api.md	val router = Router
+docs/declaring-an-api.md	val search   = Route / "search" :? "q".as[String] :? "page".opt[Int]
+docs/declaring-an-api.md	val search = Route / "search" :? Query[String]("q") :? Query.opt[Int]("page")
+docs/declaring-an-api.md	val tagged   = Route / "posts" / "id".as[Int] :? "tag".all[String]
+docs/declaring-an-api.md	val tagged = Route / "posts" / Route[Int]("id") :? Query.all[String]("tag")
+docs/declaring-an-api.md	val tools = Toolbox
+docs/declaring-an-api.md	val userPost = Route / "users" / "id".as[Int] / "posts" / "slug".as[String]
+docs/declaring-an-api.md	val users  = Route / "users" :? paging
+docs/di.md	(db and pool and log).plan     // Vector("Db", "Pool", "Log")
+docs/di.md	...
+docs/di.md	.map(install => install((using d: Db) => summon[Db].q))
+docs/di.md	// A FEATURE IS ONE MODULE: its capability and the routes that use it
+docs/di.md	// and a feature that owns NO capability installs nothing
+docs/di.md	// how two contributions merge: `orElse`, the one every server here uses
+docs/di.md	// it may read what came before it, like any module
+docs/di.md	ChatConf ?=> Store ?=> Board ?=> Transport ?=> Secrets ?=> X]
+docs/di.md	Module.value[Admin](Admin(...)).declaring(Surface) {
+docs/di.md	Module.value[Board](Board(...)).declaring(Surface) {
+docs/di.md	Module.value[Secrets](Secrets.env)
+docs/di.md	Module.value[Transport](guarded(Transports.http())) and
+docs/di.md	Needs.of[Root]     // the place's needs; the runtime's are dropped
+docs/di.md	Needs.provisioned[Store, FileStore](
+docs/di.md	Providing([X] => (body: A ?=> X) => body(using a))
+docs/di.md	Resource.acquire(open)(close).map(a => (body: Db ?=> X) => body(using a))
+docs/di.md	Resource.run[Int, Pure]((db and pool) { wire[Pool].borrow() })
+docs/di.md	Resource.run[Unit, Pure](modules.use { Jetty.serve(port)(routes)().map(report) })
+docs/di.md	Resource.scoped(app { serve(wire[Routes]) }) // NOW it opens, serves, and closes
+docs/di.md	Resource.scoped(fresh[Conn].map(c => answer(r, c)))     // one per request
+docs/di.md	Static.op(Provision.Volume(dir)).map(d => FileStore.open(d.resolve("board.log"))))(_.close())
+docs/di.md	Static.op(Provision.Volume(dirOf(path))).map(d => FileStore.open(d.resolve(Path.of(path).getFileName))))(_.close())
+docs/di.md	Store ?=> Board ?=> Transport ?=> Secrets ?=> X] =
+docs/di.md	app { serve(wire[Routes]) }
+docs/di.md	base and Module.value[Db](fake)     // `fake` wins under nearest-wins
+docs/di.md	case r if r.url == "/admin"       => text(wire[Admin].token)
+docs/di.md	def handle(r: Request): New[Conn] ?=> Response =
+docs/di.md	def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
+docs/di.md	def providing[A](a: A): Providing[[X] =>> A ?=> X] =
+docs/di.md	def wiring(using Timer): ChatConf ?=> Module[[X] =>>
+docs/di.md	direct { val c = !fresh[Conn]; c.query(sql) }
+docs/di.md	else Needs.provisioned[Store, FileStore](
+docs/di.md	final case class ChatConf(db: String)
+docs/di.md	given Needs[Pg]    = Needs(Need.Database(Engine.Postgres, "16", "shop"))
+docs/di.md	given Needs[Timer] = Needs.runtime
+docs/di.md	if path == ":memory:" then Module.value[Store](MemoryStore())
+docs/di.md	import okay.deploy.{Needs, Provision}
+docs/di.md	moduleAs[Store, FileStore](FileStore.open(path))(_.close())
+docs/di.md	module[Board](Board(Board.topicOf(wire[Store])))(_ => ())
+docs/di.md	module[Pool](Pool.over(wire[Db]))(_.close())
+docs/di.md	needs = Needs.declared(conf and wiring) :+ Need.Port(8090)
+docs/di.md	new Module(Resource.acquire(acquire)(release).map(a => (providing[A](a), Facts.empty)))
+docs/di.md	store and board and
+docs/di.md	type Root = Timer ?=> Module[[X] =>>
+docs/di.md	type Routes = Request |=> Response ! Async     // `|=>` is PartialFunction, infix
+docs/di.md	val (values, close) = Resource.open(modules.exports)
+docs/di.md	val app = (db and pool).installing(Routes)   // nothing has happened yet
+docs/di.md	val base = db and pool
+docs/di.md	val board: Store ?=> Module[[X] =>> Board ?=> X] =
+docs/di.md	val conns = prototype[Conn](Conn.open(url))(_.close())   // or without a release
+docs/di.md	val db   = module[Db](Db.open(url))(_.close())
+docs/di.md	val db = module[Db](Db.open(url))(_.close())
+docs/di.md	val path = wire[ChatConf].db
+docs/di.md	val store =
+docs/direct-style.md	!.run(Writer.run(Reader.run(41)(prog)))  // (Seq("env=41"), 42)
+docs/direct-style.md	!.run(isEven(1_000_001))   // false, on the default stack
+docs/direct-style.md	!.run(sum(1_000_000))   // 1000000, on the default stack
+docs/direct-style.md	(Gen(1) ++ Gen(2, 3)).toList                                   // List(1, 2, 3); flatMap is `yield from`
+docs/direct-style.md	* (2026-09-17) while Throws answered it on every value in the
+docs/direct-style.md	* generalized. The glyph was retired from 2025 to unwrap-glyph
+docs/direct-style.md	* language, silently. */
+docs/direct-style.md	* spellings: m.reflect and reflect(m) */
+docs/direct-style.md	/** the delimiter: a direct-style block back into its monad */
+docs/direct-style.md	/** the symbolic μ: m.!? and m.? — Rust's postfix question,
+docs/direct-style.md	/** μ: the monadic value as a direct value — one definition, both
+docs/direct-style.md	//    generator, lazy, nested, guarded
+docs/direct-style.md	// && and || keep their short-circuit — the macro desugars them to
+docs/direct-style.md	// 1. with no macro at all — a plain for-comprehension over Gen is a
+docs/direct-style.md	// 2. as a generator block — while/if/recursion, `yield` inside `for` emits
+docs/direct-style.md	// 3. any Writer program you already have, or two generators in sequence
+docs/direct-style.md	// Writer program widened
+docs/direct-style.md	// a guard — `xs.withFilter(x => p)` — runs per element, in source
+docs/direct-style.md	// a value class over the program (no allocation): `.program` is the
+docs/direct-style.md	// broken short-circuit silently):
+docs/direct-style.md	// e == true, log == Seq("look 1", "look 2") — 3 and 4 never looked at
+docs/direct-style.md	// each used twice:   val, lazy val, def, def
+docs/direct-style.md	// filter keeps the matches; foldLeft threads the accumulator
+docs/direct-style.md	// if/match with effects in the scrutinee and the branches —
+docs/direct-style.md	// lies about by-name-ness; hoisting their operands would have
+docs/direct-style.md	// multi-shot comes free, because k is a pure closure:
+docs/direct-style.md	// nothing used:      val
+docs/direct-style.md	// only the taken branch's effects run:
+docs/direct-style.md	// order; a MARKED guard binds before the body runs
+docs/direct-style.md	// program back, `Gen.fromProgram` the name onto one, `Gen.of` a plain
+docs/direct-style.md	// subexpression marks hoist left-to-right (evaluation order kept):
+docs/direct-style.md	// the HOFs: exists/forall/find STOP at the element that decides
+docs/direct-style.md	// the block's own PROGRAMS colour without it
+docs/direct-style.md	// the comprehension's order; a guard between them is honoured
+docs/direct-style.md	// the if they mean (they are compiler intrinsics whose method type
+docs/direct-style.md	// the yield answers the node's own collection: Vector, Set, Map of pairs
+docs/direct-style.md	// then the ordinary handlers:
+docs/direct-style.md	// two generators — `xs.flatMap(x => ys.map(y => …))` — results in
+docs/direct-style.md	Condition.run((_, _) => Resume(41))(prog)   // 42; before, after(41)
+docs/direct-style.md	Fetch.show(e).tell                        // the call, into the log
+docs/direct-style.md	Gen(1, 2, 3).iterator.toList                   // the body ended: exhausted
+docs/direct-style.md	Gen.of(Writer.tell(1).flatMap(_ => Writer.tell(2))).toList   // List(1, 2)
+docs/direct-style.md	Writer(s"env=$env")       // no mark either — see Layer 4
+docs/direct-style.md	Writer(s"env=$env")     // a bare statement of a row type: RUNS
+docs/direct-style.md	Writer(s"env=$env").!?               // an operation
+docs/direct-style.md	Writer(s"hello ${wire[Env].user}")
+docs/direct-style.md	case Fetch.Feed(i) => db.feeds(i)
+docs/direct-style.md	case Fetch.Now() => clock
+docs/direct-style.md	case Fetch.User(t) => db.users(t)
+docs/direct-style.md	case Force[A](h: Once.Handle[A]) extends Once[Option[A]]   // what the cell holds
+docs/direct-style.md	case Store[A](h: Once.Handle[A], a: A) extends Once[A]     // fill it; answers what it holds after
+docs/direct-style.md	countdown(n - 1).!?                       // a recursive generator, flat on the stack
+docs/direct-style.md	def      now     = Fetch.now           // by name:  time moves, read it again
+docs/direct-style.md	def      z = fetch("def")        // by name
+docs/direct-style.md	def count(xs: List[Int], acc: Long): Long ! Pure = direct:
+docs/direct-style.md	def demo(use: Boolean): Int ! (Once + Fetch) = direct:
+docs/direct-style.md	def fib(n: Int): Long ! Pure = direct:
+docs/direct-style.md	def isEven(n: Int): Boolean ! Pure = direct:
+docs/direct-style.md	def isOdd(n: Int): Boolean ! Pure = direct:
+docs/direct-style.md	def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F)     // !.once
+docs/direct-style.md	def one[X](e: Fetch[X]): X ! Row = direct:
+docs/direct-style.md	def run[A, F[+_]](a: A ! (Once + F)): A ! F                  // Once.run
+docs/direct-style.md	def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
+docs/direct-style.md	def sum(n: Int): Long ! Pure = direct:                      // 1 + sum(n - 1): not tail
+docs/direct-style.md	def sumEven(n: Int): Long ! Pure = direct:
+docs/direct-style.md	def sumOdd(n: Int): Long ! Pure = direct:
+docs/direct-style.md	direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }   // 60
+docs/direct-style.md	direct[List]   { List(1,2,3); 7 }   // List(7,7,7) — do-notation multi-shot
+docs/direct-style.md	direct[Option] { None; 2 }          // None — the rest never runs
+docs/direct-style.md	direct[Option] { eff("a", 1).!? + eff("b", 2).!? }  // "a" before "b", always
+docs/direct-style.md	direct[Option] { eff(false).!? && eff(true).!? }   // right side never runs
+docs/direct-style.md	direct[Option] { if c.!? then branch(1).!? else branch(2).!? }
+docs/direct-style.md	direct[[A] =>> A ! State % Int + Writer % String] {
+docs/direct-style.md	enum Once[+A] derives Effect:
+docs/direct-style.md	env + 1                             // plain code
+docs/direct-style.md	evens.take(3).toList                          // List(4, 16, 36) — the body ran to its sixth yield
+docs/direct-style.md	extension [F[_] : Monad, A](m: F[A])
+docs/direct-style.md	fib.drop(10).first                            // Some(55)
+docs/direct-style.md	final class Gen[W](val program: Unit ! (Writer % W + Stop)) extends AnyVal
+docs/direct-style.md	for x <- Pull.toldIn(producer) do            // the producer performs State between tells
+docs/direct-style.md	for x <- xs if isEven(x).!? do say(s"body $x").!?
+docs/direct-style.md	generator[Int] {                               // Gen.stop from inside a loop:
+docs/direct-style.md	given Effect[[X] =>> Reader[Int, X]] with {}    // gate 2: the marker
+docs/direct-style.md	if i >= 100 then Handled.pure(acc)
+docs/direct-style.md	if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)     // coloured, deferred
+docs/direct-style.md	if n == 0 then 0L else 1L + sumEven(n - 1)
+docs/direct-style.md	if n == 0 then 0L else 1L + sumOdd(n - 1)     // NOT tail — deferred anyway
+docs/direct-style.md	if n == 0 then false else isEven(n - 1)
+docs/direct-style.md	if n == 0 then true else isOdd(n - 1)      // deferred: tail position
+docs/direct-style.md	import Direct.{*, given}                    // givens need naming in Scala 3 — for ops;
+docs/direct-style.md	import Monadic.*
+docs/direct-style.md	import okay.Direct.eagerCalls.given    // this scope builds calls where they stand
+docs/direct-style.md	import scala.language.implicitConversions   // the language demands consent
+docs/direct-style.md	infinite.take(5)                               // the reader stopped: the rest never runs
+docs/direct-style.md	inline def ?[B]: Cont[A, F[B], F[B]] =
+docs/direct-style.md	inline def reflect[B]: Cont[A, F[B], F[B]] =
+docs/direct-style.md	inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
+docs/direct-style.md	lazy val x = !told("abc")      // runs at the FIRST use, in that position, once
+docs/direct-style.md	lazy val y = fetch("lazy val")   // by need
+docs/direct-style.md	object Monadic:
+docs/direct-style.md	object Test:
+docs/direct-style.md	p / (a => M.pure(a))
+docs/direct-style.md	provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+docs/direct-style.md	rt.run(Cfg(2, 100), ())(total(List(1, 2, 3)))._2     // Right(12)
+docs/direct-style.md	rt.run(Cfg(2, 5), ())(total(List(1, 2, 3)))._2       // Left("over 6")
+docs/direct-style.md	say(s"got $x after ${State.get[Int].!?} steps").!?
+docs/direct-style.md	shift(k => m.flatMap(k))
+docs/direct-style.md	step(i + 1, acc + a).!?
+docs/direct-style.md	steps :+= s"after($v)"               // ... and this line runs
+docs/direct-style.md	type Row = Writer % String + Reader % Db + State % Long
+docs/direct-style.md	v                                    // ...so this never runs
+docs/direct-style.md	val      started = Fetch.now           // by value: pin the start, once
+docs/direct-style.md	val      x = fetch("val")        // by value
+docs/direct-style.md	val ((state, log), answer) = sw.run(0)(step(0, 0))
+docs/direct-style.md	val (a, b) = Async.par(store.run(p), store.run(p)).runWith   // p ran once; a == b
+docs/direct-style.md	val (log, e) = run(direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) })
+docs/direct-style.md	val clock = !State.modify[Long](_ + 40)   // every call costs 40ms
+docs/direct-style.md	val db = !Reader.ask[Db]                  // your data, straight in
+docs/direct-style.md	val env = Reader.Ask[Int, Int]().!?  // an operation
+docs/direct-style.md	val env: Int = ask
+docs/direct-style.md	val env: Int = ask        // no mark: conversion inserted, macro rewrites it
+docs/direct-style.md	val prog: Int ! (Once + Writer % String) = direct:
+docs/direct-style.md	val prog: Int ! F = direct {          // F inferred from the expected type
+docs/direct-style.md	val r: List[Int] ! W = direct {
+docs/direct-style.md	val sw = Stager.StateWriter[Int, String, Int]()   // the row's staged interpreter
+docs/direct-style.md	val v = signal[Int]("how many?").!?   // raise; Resume(41) lands HERE
+docs/direct-style.md	val v = signal[String]("bad").!?      // policy says Invoke("skip", x)
+docs/direct-style.md	val x = mx.!?
+docs/direct-style.md	val y = !told("de")            // runs here
+docs/direct-style.md	val y = my.!?
+docs/direct-style.md	var i = 0                                    //   nothing after it runs
+docs/direct-style.md	wire[Env].uid
+docs/direct-style.md	x + x + y + !told("f")         // log: de, abc, f
+docs/direct-style.md	x <- List(1, 2, 3).!?
+docs/direct-style.md	x <- mx
+docs/direct-style.md	x <- mx.reflect   // x: Int — a plain value
+docs/direct-style.md	y <- List(10, 20) if y > 10
+docs/direct-style.md	y <- List(10, 20).!?
+docs/direct-style.md	y <- my
+docs/direct-style.md	y <- my.!?         // the same μ, spelled short
+docs/direct-style.md	yield x * y           // List(10,20,20,40,30,60) — k ran 6 times
+docs/direct-style.md	}                                    // List(210, 220); log: look 21, look 22
+docs/direct-style.md	}                                    // Some(Map("aa" -> 10, "bb" -> 20))
+docs/direct-style.md	}(v => s"skipped:$v").!?                // ...and the frame answers
+docs/direct-style.md	}.toList                                       // List(1, 2, 3)
+docs/durable-workflows.md	.apply("promo").oldHalfDead           // ...nobody is on the else any more
+docs/durable-workflows.md	// `Wf.Next`, so the full set is shown on `stage` from the bounded-
+docs/durable-workflows.md	// `seedOf` only means anything for a program that RETURNS a
+docs/durable-workflows.md	// history section rather than on `booking`
+docs/durable-workflows.md	// one replay each: who is still ASKING
+docs/durable-workflows.md	Retire.patches(journals)(booking)       // a replay AND the body
+docs/durable-workflows.md	Retire.states(c.programs("booking/1").ids.toList)(worker.dialogue)
+docs/durable-workflows.md	Worker(..., isolate = Some(Worker.isolating))
+docs/durable-workflows.md	Worker(..., leases = Some(Leases.over(store)), owner = "box-3")
+docs/durable-workflows.md	Worker(..., resume = Some(Resume()))     // default bound: 256 ids
+docs/durable-workflows.md	Worker(..., seedOf = Wf.Next.seed)(stage)
+docs/durable-workflows.md	Worker[String, String, Wf.Next[String, String], Pure, Async](
+docs/durable-workflows.md	c.gone("booking/1")                     // nothing in this topic wrote it
+docs/durable-workflows.md	cancels       = Some(cancels),          // `w.cancelled` can say yes
+docs/durable-workflows.md	charge(idempotencyKey = s"${at.id}/${at.index}")
+docs/durable-workflows.md	children      = Some(kids),             // awaitChild can be answered
+docs/durable-workflows.md	continuations = 64,                     // chapters per drive before handing back
+docs/durable-workflows.md	def booking(using w: Wf.Asks[String, String, String, Pure]) = direct:
+docs/durable-workflows.md	def stage(using w: Wf.Asks[String, String, Wf.Next[String, String], Pure]) =
+docs/durable-workflows.md	drive(childWorker.start(id))      // an ordinary worker, for the child's program
+docs/durable-workflows.md	id
+docs/durable-workflows.md	if !w.patch("promo") then s"$city/promo" else city
+docs/durable-workflows.md	index.needsAttention        // Broken and Incompatible — never Failed
+docs/durable-workflows.md	index.waitingOn("payment")                // who is blocked, as one read
+docs/durable-workflows.md	kids.link(id, parentId, "child/1")
+docs/durable-workflows.md	leases        = Some(leases),           // collisions become rare
+docs/durable-workflows.md	oracle = Worker.retrying(Retry.exponential(100))(askTheUser),
+docs/durable-workflows.md	oracle = q => okay.async:
+docs/durable-workflows.md	resume        = Some(Resume()))(stage)   // replay once, not once per call
+docs/durable-workflows.md	seedOf        = Wf.Next.seed,           // the program may bound its history
+docs/durable-workflows.md	signals       = Some(sigs),             // awaitSignal can be answered
+docs/durable-workflows.md	sigs.send("booking-42", "payment", "ok")  // whenever, from anywhere
+docs/durable-workflows.md	snapshots     = Some(snaps),            // cold starts read a chapter + tail
+docs/durable-workflows.md	statuses      = Some(index),            // the dashboard has something to read
+docs/durable-workflows.md	topic, program = "stage/1", timers, oracle,
+docs/durable-workflows.md	val at = summon[Dialogue.Attempt]     // (id, index)
+docs/durable-workflows.md	val c = Retire.census[Wf.Ans[String]](topic)   // envelopes only: exact
+docs/durable-workflows.md	val city  = !w.pause("which city?")          // the WORLD answers
+docs/durable-workflows.md	val got = !w.awaitChild(id)                   // the run ENDS here
+docs/durable-workflows.md	val id  = !w.pause("start the payment run")   // the ACTIVITY spawns it
+docs/durable-workflows.md	val id = idFor(q)
+docs/durable-workflows.md	val index  = Statuses.over(store)
+docs/durable-workflows.md	val ok    = !w.awaitSignal("payment")        // somebody sends this, whenever
+docs/durable-workflows.md	val sigs   = Signals.over(store)
+docs/durable-workflows.md	val store  = MemoryStore()                       // or any Store
+docs/durable-workflows.md	worker.cancel("booking-42", "customer withdrew")     // an operator, a service, a test
+docs/durable-workflows.md	worker.start("booking-42")        // drives until it waits, then returns
+docs/durable-workflows.md	worker.tick(System.currentTimeMillis())   // everything whose deadline passed
+docs/existentials.md	case Bind(Effect(e), k) => <|>[Take % I, Writer % M](e) match
+docs/existentials.md	case Left(Take.Await())  => effect(Take.Await()).flatMap(oi => pull(k(oi))(cont))   // no cast
+docs/existentials.md	case Nothing => W
+docs/existentials.md	case Right(w)            => cont(Some(okay.out(w)), k(Erased.resumeWith(w)))        // cast
+docs/existentials.md	case Say(w: W) extends Writer[W, Unit]
+docs/existentials.md	case _ => A
+docs/existentials.md	case _ => W & A
+docs/existentials.md	def answer[W, A](w: Writer[W, A]): A = told[W, A].flip(out(w))
+docs/existentials.md	def told[W, A]: A =:= W = refl.asInstanceOf[A =:= W]
+docs/existentials.md	enum Writer[W, +A]:
+docs/existentials.md	opaque type ChunkBuf[A] = Array[?]      // works
+docs/existentials.md	opaque type ChunkBuf[A] = Array[A]      // ClassCastException
+docs/existentials.md	opaque type Writer[W, +A] <: A = W & A
+docs/existentials.md	opaque type Writer[W, +A] = W & A
+docs/existentials.md	opaque type Writer[W, +A] = W & Tag[W, A]
+docs/existentials.md	private val refl: Any =:= Any = summon[Any =:= Any]
+docs/existentials.md	type Kind[K[_]] = { type A; type T = K[A] }
+docs/existentials.md	type Tag[W, A] = A match
+docs/existentials.md	type Type[+F[_]] <: (Any { type T })
+docs/existentials.md	type Writer[W, +A] = A match
+docs/frontend-guide.md	Ui.Row(Vector(Ui.Button("-", "dec"), Ui.Button("+", "inc", Role.Primary)))))
+docs/frontend-guide.md	Ui.Text(s"count: $n", Style(tone = Tone.Emphasis)),
+docs/frontend-guide.md	Wire.serve(init)(view)(update): Stage[String, String, S]
+docs/guide.md	!.run(steps)   // 111 — the Collatz steps from 27, the count carried in the state
+docs/guide.md	(base and providing[Http](stubHttp)) { app }        // override just Http
+docs/guide.md	(base and providing[Principal](bob)) { api }
+docs/guide.md	...
+docs/guide.md	// 91 — the running sum stopped itself before 105; one chunk of the infinite stream was ever filled
+docs/guide.md	// Reader.run(5)(p) == 50; asking OUTSIDE the local still sees 5
+docs/guide.md	// State.run(0)(runEither[Int, State % Int, String](p)) == (5, Right(5)) — the set(5) sticks
+docs/guide.md	// an ordinary function, written against a plain State, run twice
+docs/guide.md	// at two different states in one program:
+docs/guide.md	// becomes the Principal, a traceparent becomes the Tracer
+docs/guide.md	// environments are values: one base, override one layer
+docs/guide.md	// no HTTP machinery; a missing capability would not compile
+docs/guide.md	// production: the doors install from the wire — a verified JWT
+docs/guide.md	// unit test: provide installs the SAME needs directly — no token,
+docs/guide.md	Chunks.foldUntil(Chunks.nats[Int]())(using
+docs/guide.md	Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
+docs/guide.md	Source.range(0, 1000000).runFoldUntil(using FoldUntil.take[Long](3))   // Vector(0, 1, 2) ! Async
+docs/guide.md	Staged.filter(Staged.map(Staged.range(0, 1000000), _ * 2), _ % 3 == 0),
+docs/guide.md	State.zoom(Zipper.focus)(prog)        // a State % T program run AT the focus
+docs/guide.md	Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
+docs/guide.md	Writer.run(through(lines("host: a"))(header))                          // (Seq((host,a)), Left(1))
+docs/guide.md	Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))   // (Seq((host,a), (port,1)), Right(2))
+docs/guide.md	Zipper(doc).first.flatMap(_.right).map(_.set(JStr("grace")).root)   // into, next, edit, fold in
+docs/guide.md	Zipper.at[Ui](path)                   // the path back as an affine — Ui.path
+docs/guide.md	_     <- Writer.tell(s"find($id)").at[R]
+docs/guide.md	b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]
+docs/guide.md	base { app }                                        // the edge
+docs/guide.md	case Find(id) =>
+docs/guide.md	case Save(id: Long, name: String) extends Users[Unit]
+docs/guide.md	city.modify(_.capitalize)(p)     // the write, same path, absent is a no-op
+docs/guide.md	city.preview(p)                  // the read
+docs/guide.md	countdown.iterator.next()                     // 3 — the body has run to its first yield and no further
+docs/guide.md	def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
+docs/guide.md	inline def save(id: Long, name: String): Unit ! Users = effect(Save(id, name))
+docs/guide.md	object Users:                       // optional: `Users.Find(id).perform`
+docs/guide.md	provide(ada, tracer)(api)
+docs/guide.md	provide(prodHttp, Secrets.env) { app }     // the edge
+docs/guide.md	provide(stubHttp, testSecrets) { app }     // the test — same program
+docs/guide.md	squares.take(3).toList                        // List(1, 4, 9) — the body ran three steps, then stopped
+docs/guide.md	store <- State.get[Store].at[R]
+docs/guide.md	stored[A, Writer % String + F](!.tracing(p)([X] => (e: Users[X]) => e.toString))
+docs/guide.md	type Big   = Tag.Of["big",   State % Int]
+docs/guide.md	type R = State % Store + Writer % String + F
+docs/guide.md	val base = providing[Http](prodHttp) and providing[Secrets](Secrets.env)
+docs/guide.md	val p = Reader.local[Int, Int, okay.Pure](_ * 10)(Reader.ask[Int])
+docs/guide.md	val twice: (Int, Int) ! (Small + Big) =
+docs/guide.md	yield store.get(id)
+docs/many-instances.md	Instances.exhausted[State % Int, ...](done)   // asserts none survived
+docs/many-instances.md	State.run(0)(Tag.untag["small", State % Int](twice))
+docs/many-instances.md	a <- Tag.tag["small", State % Int](count).plus[Big]
+docs/many-instances.md	b <- Tag.tag["big",   State % Int][Int, Pure](count).at[Small + Big]
+docs/many-instances.md	case Get() extends State[S, S]
+docs/many-instances.md	case Set(s: S) extends State[S, S]
+docs/many-instances.md	enum State[S, +A]:
+docs/many-instances.md	given writerK[W](using t: Typeable[W]): TypeableK.ByValue[Writer % W]
+docs/many-instances.md	summon[Distinct[Reader % Int + Reader % String]]        // refused
+docs/many-instances.md	summon[Distinct[Reader % Int + Writer % String]]        // fine
+docs/many-instances.md	summon[Distinct[Tag.Of["a", Reader % Int] + Tag.Of["b", Reader % Int]]]  // fine
+docs/many-instances.md	type B = Tag.Of["same", Reader % String]   // same key: back to square one
+docs/many-instances.md	type Big   = Tag.Of["big",   State % Int]
+docs/many-instances.md	val afterSmall = State.handle(1)(Instances.only[State % Int](small)(p))
+docs/many-instances.md	val done       = State.handle(10)(Instances.only[State % Int](big)(afterSmall))
+docs/many-instances.md	val tenants = List("alpha", "beta", "gamma")      // data, not literals
+docs/many-instances.md	val twice: (Int, Int) ! (Small + Big) =
+docs/modules/okay-actor.md	// a mailbox that makes a flooding sender wait; singleConsumer because
+docs/modules/okay-actor.md	// many senders, and their mutual order does not matter
+docs/modules/okay-actor.md	// one that never blocks a sender, bounded only by memory
+docs/modules/okay-actor.md	// the loop is the only reader -- the default spawn says the same
+docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].adaptive.each(256).build, Supervise.Stop)(behaviour)
+docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].bounded(1024, singleConsumer = true).build, Supervise.Stop)(behaviour)
+docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].unbounded.build, Supervise.Stop)(behaviour)
+docs/modules/okay-actor.md	case Escalate(to: Throwable => Unit)   // report it, then stop
+docs/modules/okay-actor.md	case Restart(fresh: () => S)           // new state, drop the message
+docs/modules/okay-actor.md	case Resume                            // keep the state, drop the message
+docs/modules/okay-actor.md	case Stop                              // close the mailbox; the failure ends the stream
+docs/modules/okay-actor.md	counter.stop()
+docs/modules/okay-actor.md	counter.tell(1)
+docs/modules/okay-actor.md	enum Supervise[+S]:
+docs/modules/okay-actor.md	import okay.*, okay.given, okay.actor.*
+docs/modules/okay-actor.md	parent.stop()    // stops child first, and waits for it to DRAIN
+docs/modules/okay-actor.md	val child = parent.spawnChild(0)(behaviour).runWith
+docs/modules/okay-actor.md	val counter = Actor.spawn(0) { (n: Int, m: Int) => async(n + m) }.runWith
+docs/modules/okay-actor.md	val n: Option[Int] = actor.ask(Msg.Get.apply, within = 5000).runWith
+docs/modules/okay-admin.md	() => replayProjections(chatLog), () => marketChanged("replay")))
+docs/modules/okay-admin.md	core.orElse(Admin.routes(Admin.Issuer.verify)(
+docs/modules/okay-agent.md	.on[Add]("board_add", "Add a task. The owner is whoever asked for it.")(a =>
+docs/modules/okay-agent.md	// declared and implemented in one place; the schema is derived
+docs/modules/okay-agent.md	// or: execute, sandbox, record
+docs/modules/okay-agent.md	// policy lives here — and only here:
+docs/modules/okay-agent.md	// the agent: no message list, no truncation, no "if context too big"
+docs/modules/okay-agent.md	Search.bestOf(4)(complete)(_.isValidJson)         // sample until valid, commit
+docs/modules/okay-agent.md	Search.majority(Search.all(5)(complete)(ok))      // self-consistency
+docs/modules/okay-agent.md	Search.validated(attempt)(use)(reprompt)          // soft cut: fallback only if none
+docs/modules/okay-agent.md	Toolbox.empty.raw("update_state", "Merge a patch...", objectSchema())(patch => ...)
+docs/modules/okay-agent.md	board.add(a.text, a.owner).fold(err)(ok))
+docs/modules/okay-agent.md	tools.specs   // Seq[ToolSpec]                      -- what the model is told
+docs/modules/okay-agent.md	tools.table   // Map[String, ToolCall => String]    -- the seam Mcp.Server takes
+docs/modules/okay-agent.md	val (state, ctx) = Handlers.context(Compact.window(4000)(Compact.chars))
+docs/modules/okay-agent.md	val box = Toolbox.on[SearchArgs]("search", "look something up")(a => search(a.query))
+docs/modules/okay-agent.md	val conversation: String ! Agent = Agent.converse("find okay", box.specs)
+docs/modules/okay-agent.md	val tools = Handlers.gated(box.table)(approve = c => askTheHuman(c))
+docs/modules/okay-agent.md	val tools = Toolbox
+docs/modules/okay-async.md	.dependsOn(okay.jvm, okayAsync.jvm)
+docs/modules/okay-async.md	lazy val myModule = (project in file("my-module"))
+docs/modules/okay-cats.md	(a, b).mapN(_ + _)                      // cats syntax on okay programs
+docs/modules/okay-cats.md	.handleErrorWith(effect(Throws("boom")))(_ => pure(42))
+docs/modules/okay-cats.md	// errors through cats vocabulary:
+docs/modules/okay-cats.md	// the runtime bridge:
+docs/modules/okay-cats.md	Async.par(async(1), async(2)).runWith          // fibers on cats-effect
+docs/modules/okay-cats.md	given okay.Scheduler = CatsInterop.scheduler   // needs an IORuntime
+docs/modules/okay-cats.md	import okay.cats.given
+docs/modules/okay-cats.md	type R = Throws % String + Pure
+docs/modules/okay-cats.md	val a: Int ! State % Int = State.get[Int]
+docs/modules/okay-cats.md	val b: Int ! State % Int = pure(2)
+docs/modules/okay-cats.md	val safe: Int ! R = summon[cats.MonadError[[A] =>> A ! R, String]]
+docs/modules/okay-cluster.md	.map(d => Ride(d.ts, d.route, d.stop, d.vehicle, d.delay, tram(d.route)))
+docs/modules/okay-cluster.md	.tumbling(5.minutes, lateness = 30.seconds)(_.route)(_.ts)(Job.stats)
+docs/modules/okay-cluster.md	// is hiding a wrong answer
+docs/modules/okay-cluster.md	// node A:
+docs/modules/okay-cluster.md	// node B:
+docs/modules/okay-cluster.md	Cluster.leading(job, params, parts, workers, take, journal, lease).runWith match
+docs/modules/okay-cluster.md	Served.reconnecting("127.0.0.1", 7102))
+docs/modules/okay-cluster.md	agg.init, agg.merge)
+docs/modules/okay-cluster.md	agg.present(acc)   // exact: every chunk counted once, deaths recomputed
+docs/modules/okay-cluster.md	case None      => sleep(a while)     // somebody else leads
+docs/modules/okay-cluster.md	case Some(run) => report(run)        // the stream ended
+docs/modules/okay-cluster.md	case null => throw RuntimeException("connection lost")   // = dead
+docs/modules/okay-cluster.md	chunksOf(source).foreach(out.send)
+docs/modules/okay-cluster.md	def name = "test.window"
+docs/modules/okay-cluster.md	def params = summon[Schema[Feed]]
+docs/modules/okay-cluster.md	def sink(f: Feed) = Wire.tumbling(Size, Late, _.key, _.ts, value)(paneSum)
+docs/modules/okay-cluster.md	got.dropped    // late elements, COUNTED
+docs/modules/okay-cluster.md	got.merged     // accumulators that reached the coordinator
+docs/modules/okay-cluster.md	got.value      // the answer
+docs/modules/okay-cluster.md	import okay.cluster.Cluster
+docs/modules/okay-cluster.md	import okay.cluster.{Flow, Flows}
+docs/modules/okay-cluster.md	mergeChunks(localSource, /* drain ch into a source */ ...)
+docs/modules/okay-cluster.md	object MyJobs:                       // loading this class registers them
+docs/modules/okay-cluster.md	object WindowJob extends Job[Feed, Sum]:
+docs/modules/okay-cluster.md	run.dropped    // the late elements, COUNTED: an engine that hides these
+docs/modules/okay-cluster.md	run.value      // the answer — equal to the single-threaded one, exactly
+docs/modules/okay-cluster.md	take = 1024, journal).runWith
+docs/modules/okay-cluster.md	val acc = Cluster.distribute(source, Vector(wire1, wire2, local))(
+docs/modules/okay-cluster.md	val ch: Channel[Chunk[Double]] = Remote.listen(ServerSocket(9000))
+docs/modules/okay-cluster.md	val flow = Flow.slices(events, parts = 8)          // arrival order, 8 slices
+docs/modules/okay-cluster.md	val got = Cluster.run(WindowJob, Feed(20000, Late - 1), parts = 8, workers).runWith
+docs/modules/okay-cluster.md	val got = Cluster.stream(WindowJob, params, parts = 8, workers,
+docs/modules/okay-cluster.md	val got = Flows.fan(Flow.slices(events, parts = 8), sink).runWith
+docs/modules/okay-cluster.md	val journal = Checkpoint.Memory()          // or your own store
+docs/modules/okay-cluster.md	val out = Remote.connect[Double]("nodeA", 9000)
+docs/modules/okay-cluster.md	val run = Flows.run(flow, intoTheReport).runWith
+docs/modules/okay-cluster.md	val workers = Vector(Served.reconnecting("127.0.0.1", 7101),
+docs/modules/okay-cluster.md	while running do
+docs/modules/okay-codec.md	// Right(Person("x", 1, Nil, None)) — the tree with holes projects
+docs/modules/okay-codec.md	// the fields that are there
+docs/modules/okay-codec.md	Cbor.read[Person](Cbor.write(p))   // Right(p) — same content, binary
+docs/modules/okay-codec.md	Cst.errors(t).isEmpty               // reframed, not faulted
+docs/modules/okay-codec.md	Cst.lexemes(t) == "*a _b* c_\n"    // every marker kept
+docs/modules/okay-codec.md	Json.read[Person]("""{"name":"x","age":1,"tags":[],"boss":null""")
+docs/modules/okay-codec.md	Json.read[Person](Json.write(p))   // Right(p)
+docs/modules/okay-codec.md	Json.render(Json.cst("{ \"k\":1 ,\"k\": 2 }"))  // the input, byte-for-byte
+docs/modules/okay-codec.md	Json.write(Shape.Circle(1.5))      // {"Circle":{"r":1.5}}
+docs/modules/okay-codec.md	assert(Compat.compare(v1, v2).backward.compatible)
+docs/modules/okay-codec.md	given Schema[Person] = Schema.derived    // recursion needs the explicit given
+docs/modules/okay-codec.md	println(r.render)       // the changes and both verdicts
+docs/modules/okay-codec.md	r.backward.compatible   // false: `currency` is new and required
+docs/modules/okay-codec.md	r.backward.reasons      // why, in words
+docs/modules/okay-codec.md	test("v2 still reads what v1 wrote") {
+docs/modules/okay-codec.md	val p = Person("ann", 41, List("a"), Some(Person("boss", 60, Nil, None)))
+docs/modules/okay-codec.md	val r = Compat.compare(summon[Schema[OrderV1]], summon[Schema[OrderV2]])
+docs/modules/okay-codec.md	val t = Markdown.parse("*a _b* c_\n")
+docs/modules/okay-crdt.md	GCounter                 // grow-only, a count per node, merged by max
+docs/modules/okay-crdt.md	GSet[A]                  // add-only, merged by union
+docs/modules/okay-crdt.md	LwwRegister[A]           // last write wins, stamped with Hlc
+docs/modules/okay-crdt.md	NodeId                   // who is speaking
+docs/modules/okay-crdt.md	OrSet[A]                 // observed-remove: add wins, tags are Uids
+docs/modules/okay-crdt.md	PNCounter                // up and down, as two grow-only counters
+docs/modules/okay-crdt.md	assert(bad.isEmpty, bad.mkString("\n"))
+docs/modules/okay-crdt.md	import okay.crdt.*
+docs/modules/okay-crdt.md	val bad = Crdt.violations(Seq(sampleA, sampleB, sampleC))
+docs/modules/okay-data.md	.dependsOn(okay.jvm, okayData.jvm)
+docs/modules/okay-data.md	lazy val myModule = (project in file("my-module"))
+docs/modules/okay-delta.md	Typed.rows[Reading](JdbcSql(conn), s"select ... from delta_scan('$path')")
+docs/modules/okay-delta.md	st.execute("INSTALL delta"); st.execute("LOAD delta")
+docs/modules/okay-demo.md	Ledger.lines(report.value)                       // okay-ui: a Table, rendered by Frame
+docs/modules/okay-demo.md	ledger.record(Sale(ts, "coffee", 350))           // durable before it returns
+docs/modules/okay-demo.md	run(copy.report())                               // the books up to the last roll
+docs/modules/okay-demo.md	run(ledger.backup(Fs(offsite)))                  // okay-blob: closed segments to a Blob
+docs/modules/okay-demo.md	val (placed, verdict, copy) = run(Restored(Fs(offsite), fresh, 4096))
+docs/modules/okay-demo.md	val ledger = Ledger(root, segmentBytes = 4096)   // an okay-persist FileStore
+docs/modules/okay-demo.md	val report = run(ledger.report())                // okay-cluster: a tumbling day, per item
+docs/modules/okay-demo.md	verdict.restorable                               // the Doctor, before the incident
+docs/modules/okay-deploy.md	.dependsOn(/* ... */, okayDeploy)
+docs/modules/okay-deploy.md	.settings(_root_.okay.deploy.sbt.OkayDeploy.deployable("okay.mysvc.Main"))
+docs/modules/okay-deploy.md	Deploy.write(spec, Deploy.repoRoot()).foreach(p => println(s"wrote $p"))
+docs/modules/okay-deploy.md	Env("MY_SVC_DATA", "/data")),
+docs/modules/okay-deploy.md	Env("MY_SVC_PORT", "8080"),    // however THIS app learns its port
+docs/modules/okay-deploy.md	assertEquals(Deploy.drift(MyDeploy.spec, Deploy.repoRoot()), Vector.empty)
+docs/modules/okay-deploy.md	case r if Ops.routes(store).isDefinedAt(r) => Ops.routes(store)(r)
+docs/modules/okay-deploy.md	class TestMyDeploy extends munit.FunSuite:
+docs/modules/okay-deploy.md	env       = Vector(
+docs/modules/okay-deploy.md	image     = Image("okay/my-svc", "local"),
+docs/modules/okay-deploy.md	import okay.deploy.{Deploy, Env, Image, Resources}
+docs/modules/okay-deploy.md	lazy val okayMySvc = (project in file("okay-my-svc"))
+docs/modules/okay-deploy.md	mainClass = "okay.mysvc.Main",
+docs/modules/okay-deploy.md	module    = "okayMySvc",         // the sbt project id
+docs/modules/okay-deploy.md	moduleDir = "okay-my-svc",       // its directory under the repo root
+docs/modules/okay-deploy.md	name      = "my-svc",            // the release/service name — a DNS label
+docs/modules/okay-deploy.md	object MyDeploy:
+docs/modules/okay-deploy.md	package okay.mysvc
+docs/modules/okay-deploy.md	port      = 8080,                // what the app LISTENS on
+docs/modules/okay-deploy.md	test("okay-my-svc/deploy does not drift from MyDeploy.spec") {
+docs/modules/okay-deploy.md	val spec: Deploy = Deploy(
+docs/modules/okay-direct.md	.dependsOn(okay.jvm, okayDirect.jvm)
+docs/modules/okay-direct.md	lazy val myModule = (project in file("my-module"))
+docs/modules/okay-flink.md	.aggregate(fn)          // merge handles pane consolidation
+docs/modules/okay-flink.md	.keyBy(...)
+docs/modules/okay-flink.md	.window(TumblingEventTimeWindows.of(Time.minutes(5)))
+docs/modules/okay-flink.md	import okay.flink.FlinkInterop.toFlink
+docs/modules/okay-flink.md	stream
+docs/modules/okay-flink.md	val fn: AggregateFunction[Double, ?, Double] = toFlink(Aggregator.variance[Double])
+docs/modules/okay-frame.md	Seq(Where.Onsite -> Map("en" -> "on site", "ru" -> "на месте"),
+docs/modules/okay-frame.md	Where.Remote -> Map("en" -> "remote",  "ru" -> "удалённо")))
+docs/modules/okay-frame.md	frame.assume(mode, Where.Onsite)   // fills it; complete() is now true
+docs/modules/okay-frame.md	frame.assumed                      // Vector("mode") — show these for correction
+docs/modules/okay-frame.md	frame.words                        // what the PERSON said; the assumption is not here
+docs/modules/okay-frame.md	val mode = Slot.choice[Where]("mode",
+docs/modules/okay-fs2.md	// an fs2 stream (with IO inside) as okay chunks, backpressured:
+docs/modules/okay-fs2.md	// okay chunks as a pure fs2 stream:
+docs/modules/okay-fs2.md	Chunks.fold(Chunks.take(ch)(10))(using Fold.sum[Int])   // pulls only what it takes
+docs/modules/okay-fs2.md	capacity = 2)
+docs/modules/okay-fs2.md	import okay.fs2.Fs2Interop
+docs/modules/okay-fs2.md	val ch: Chunks[Int] = Fs2Interop.fromFs2(fs2.Stream.iterate(0)(_ + 1).covary[IO],
+docs/modules/okay-fs2.md	val s: fs2.Stream[fs2.Pure, Long] = Fs2Interop.toFs2(Chunks.range(0, 1000, 4))
+docs/modules/okay-http.md	userPost.describe                                 // DESCRIBE "/users/{id}/posts/{slug}"
+docs/modules/okay-http.md	userPost.unapply("/users/7/posts/hello%20world")  // MATCH    Some((7, "hello world"))
+docs/modules/okay-http.md	userPost.url((7, "hello world"))                  // BUILD    "/users/7/posts/hello%20world"
+docs/modules/okay-http.md	val search   = Route / "search" :? Query[String]("q") :? Query.opt[Int]("page")
+docs/modules/okay-intent.md	.answer("when", "next Tuesday")            // what a person then says
+docs/modules/okay-intent.md	.map(_.valueOf(when))                      // a Temporal.When, not a string
+docs/modules/okay-intent.md	// a test passes a list; nothing here opens a log itself
+docs/modules/okay-intent.md	// recorded (message, intent) pairs — okay-chat reads its ChatLog,
+docs/modules/okay-intent.md	// what ships, with no network and no fitting at startup
+docs/modules/okay-intent.md	Files.writeString(path, Fit.save(model))
+docs/modules/okay-intent.md	Router.Router.offline().route(message) match
+docs/modules/okay-intent.md	case Router.Action.Act(intent, frame)            => act(intent, frame)
+docs/modules/okay-intent.md	case Router.Action.Ask(_, _, question, left)     => ask(question, left)
+docs/modules/okay-intent.md	case Router.Action.Escalate(candidates, why)     => person(candidates, why)
+docs/modules/okay-intent.md	frame.fillFrom(message)                         // what the message already says
+docs/modules/okay-intent.md	val demos = Demonstrations.perClass(recorded, exclude = scored)
+docs/modules/okay-intent.md	val frame = Frame.of("MeetingProposal", when).in("ru")
+docs/modules/okay-intent.md	val loaded = Fit.grams(Files.readString(path))   // Either[String, Trained]
+docs/modules/okay-intent.md	val model = Fit.grams(rows)          // rows: Seq[(message, class)]
+docs/modules/okay-intent.md	val prompt = Classify.prompt[Meeting](message, demos)
+docs/modules/okay-intent.md	val when = Slots.when(today)                    // okay-intent supplies parsers
+docs/modules/okay-jdbc.md	(st, n: Int) => st.setInt(1, n))(chunk))
+docs/modules/okay-jdbc.md	// the connection is closed here — normal exit, abort, or exception
+docs/modules/okay-jdbc.md	_ <- !.widen(async(execute(c, "create table nums(n int)")))
+docs/modules/okay-jdbc.md	_ <- !.widen(batch(c, "insert into nums values (?)")(
+docs/modules/okay-jdbc.md	c <- connection("jdbc:h2:mem:demo")
+docs/modules/okay-jdbc.md	import okay.jdbc.JdbcInterop.*
+docs/modules/okay-jdbc.md	sum <- !.widen(foldRows(query(c, "select n from nums")(_.getInt(1)))(
+docs/modules/okay-jdbc.md	using Fold.sum[Int]))
+docs/modules/okay-jdbc.md	val program = Resource.run:
+docs/modules/okay-jdbc.md	yield sum
+docs/modules/okay-js.md	Js.print(hello)                  // console.log("hi")
+docs/modules/okay-js.md	Js.print(tree)                       // runtime: built when called
+docs/modules/okay-js.md	global.console.log(n)
+docs/modules/okay-js.md	import okay.js.*
+docs/modules/okay-js.md	inline val src = Emit.emit(tree)     // compile time: a constant in the jar
+docs/modules/okay-js.md	val hello = Js.Call(Js.Field(Js.Name("console"), "log"), Vector(Js.Str("hi")))
+docs/modules/okay-js.md	val n = 0
+docs/modules/okay-js.md	val program = Direct.js {
+docs/modules/okay-js.md	while (n < 10) {
+docs/modules/okay-kafka.md	// process-then-commit = at-least-once:
+docs/modules/okay-kafka.md	// producing: one chunk, one batch, flushed
+docs/modules/okay-kafka.md	Resource.run:
+docs/modules/okay-kafka.md	_ <- !.widen(processChunks(source(c)))   // pull, fold, whatever
+docs/modules/okay-kafka.md	c <- managedConsumer[String, String](props, topics)
+docs/modules/okay-kafka.md	commit(c)
+docs/modules/okay-kafka.md	def processChunks(s: KafkaChunks[String, String]) =
+docs/modules/okay-kafka.md	eachChunk(s) { chunk =>
+docs/modules/okay-kafka.md	handle(chunk)
+docs/modules/okay-kafka.md	import okay.kafka.KafkaInterop.*
+docs/modules/okay-kafka.md	sink(producer)(records)
+docs/modules/okay-kyo.md	// a kyo Env computation under an okay Reader handler:
+docs/modules/okay-kyo.md	// okay nondeterminism explored on the kyo side and vice versa:
+docs/modules/okay-kyo.md	Reader.run(21)(okayProg)                       // 42
+docs/modules/okay-kyo.md	import okay.kyo.KyoInterop
+docs/modules/okay-kyo.md	runChoice(back)                                // Seq(1, 2, 3), every branch
+docs/modules/okay-kyo.md	val back: Int ! Choose = KyoInterop.fromKyoChoice(choices)
+docs/modules/okay-kyo.md	val choices: Int < Choice = KyoInterop.toKyoChoice(effect(Choose(Seq(1, 2, 3))))
+docs/modules/okay-kyo.md	val k: Int < Env[Int] = Env.get[Int].map(_ * 2)
+docs/modules/okay-kyo.md	val okayProg: Int ! Reader % Int = KyoInterop.fromKyoEnv(k)
+docs/modules/okay-lex.md	// Chunks[Token[K]]
+docs/modules/okay-lex.md	// re.tokens == Scan.all(JsonLex.scan)(newText).tokens, with fewer steps
+docs/modules/okay-lex.md	Scan.chunks(JsonLex.scan)(Chunks.fromIterator(text.iterator, 64))
+docs/modules/okay-lex.md	editStart, editEndOld, editEndNew)
+docs/modules/okay-lex.md	lexed.tokens.filter(_.channel == Channel.Error)            // the garbage, as data
+docs/modules/okay-lex.md	lexed.tokens.map(_.lexeme).mkString == "{\"a\": 1, oops}"  // lossless law
+docs/modules/okay-lex.md	through(chars(text))(Scan.stage(JsonLex.scan))       // a token producer
+docs/modules/okay-lex.md	val lexed = Scan.all(JsonLex.scan)("{\"a\": 1, oops}")
+docs/modules/okay-lex.md	val old = Scan.all(JsonLex.scan)(oldText, snapshotEvery = 64)
+docs/modules/okay-lex.md	val re  = Scan.relex(JsonLex.scan)(old, oldText, newText,
+docs/modules/okay-live.md	def inbox(email: String): Channel[String] = inboxes(email)
+docs/modules/okay-live.md	def marketChanged(kind: String): Unit = marketFeed.publish(kind)
+docs/modules/okay-live.md	def marketSub(): Channel[String] = marketFeed.subscribe()
+docs/modules/okay-live.md	private val inboxes = Registry[String, String]()
+docs/modules/okay-live.md	private val marketFeed = Hub[String]()
+docs/modules/okay-llm.md	// "hello", " ", "he", "r" — spans exact, whitespace on Trivia
+docs/modules/okay-llm.md	// Right(Answer("Kyiv", "Ukraine")) — cut off, still a value
+docs/modules/okay-llm.md	Anthropic.Request("claude-sonnet-5", 1024,
+docs/modules/okay-llm.md	Anthropic.stream(Transports.http(), apiKey,
+docs/modules/okay-llm.md	Json.read[Answer]("""{"city": "Kyiv", "country": "Ukraine"""")
+docs/modules/okay-llm.md	List(Anthropic.Message("user", "hi")), stream = true))
+docs/modules/okay-llm.md	Scan.all(bpe)("hello her").tokens.map(_.lexeme)
+docs/modules/okay-llm.md	async(collect(tokens)))           // at-least-once, replayable call
+docs/modules/okay-llm.md	import okay.llm.{Anthropic, Transport}
+docs/modules/okay-llm.md	retry(Retry.exponential(100).take(5))(
+docs/modules/okay-llm.md	tokens.toLazyList.take(10).toList   // pull ten tokens, lazily
+docs/modules/okay-llm.md	val bpe = Bpe(List(("h","e"), ("l","l"), ("he","ll"), ("hell","o")))
+docs/modules/okay-llm.md	val tokens: Unit ! (Writer % String + Async) =
+docs/modules/okay-mail.md	case Left(Rejection.MailboxFull(a, _, _))  => // and this one is not
+docs/modules/okay-mail.md	case Left(Rejection.Recipient(a, _, why))  => // tell them THIS address is wrong
+docs/modules/okay-mail.md	case Left(Rejection.RelayRefused(_, _))    => // and this one is ours to fix
+docs/modules/okay-mail.md	case Right(_)                              => // gone
+docs/modules/okay-mail.md	login = Smtp.login("noreply", Secret("env:SMTP_PASSWORD")).toOption)
+docs/modules/okay-mail.md	send(Mail(from, Seq(Address("ada@example.org")), "Ваш код", "Ваш код: 123456")) match
+docs/modules/okay-mail.md	val send: Mail.Send = m => Smtp.blocking(server, Secrets.env, m)
+docs/modules/okay-mail.md	val server = Smtp.Server("smtp.example.com", 587, Address("noreply@example.com"),
+docs/modules/okay-mcp.md	// and the other two, in our own vocabulary
+docs/modules/okay-mcp.md	// serving, with what a server says unasked
+docs/modules/okay-mcp.md	// verified against this exact server (TestLive), 13 tools and all
+docs/modules/okay-mcp.md	Agent.converse("...", session.tools.runWith)   // its tools, discovered
+docs/modules/okay-mcp.md	given Handler[Tool] = session.handler          // the only line that changes
+docs/modules/okay-mcp.md	pushes.resourceUpdated("okay://a")       // to every subscriber, and only them
+docs/modules/okay-mcp.md	roots = Seq(Mcp.Root("file:///work")),
+docs/modules/okay-mcp.md	sample = Some(modelHandler)))          // the SAME Handler[Model] an agent uses
+docs/modules/okay-mcp.md	session.notifications.toLazyList.foreach(n => ...)   // updates, progress, list-changed
+docs/modules/okay-mcp.md	session.subscribe("okay://a").runWith
+docs/modules/okay-mcp.md	val (program, pushes) = Server.duplex(link, serving)
+docs/modules/okay-mcp.md	val corpus = session.corpus.runWith                    // resources as documents
+docs/modules/okay-mcp.md	val link = Stdio.of(Stdio.spawn(Seq("npx", "-y", "@modelcontextprotocol/server-everything")))
+docs/modules/okay-mcp.md	val opening = session.prompt("explain", Map("name" -> "transduce")).runWith
+docs/modules/okay-mcp.md	val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
+docs/modules/okay-mcp.md	val session = Client.connect(link, Mcp.Info("okay", "1"), Duplex.Peer(
+docs/modules/okay-obs.md	_ <- Log.info("order placed", "id" -> o.id)         // no ids, no clock, no logger
+docs/modules/okay-obs.md	def place(o: Order): Receipt ! (Log.Says + Async) =
+docs/modules/okay-obs.md	given Handler[Log.Says] = Log.console(min = Log.Level.Info, tracer = Some(tracer))
+docs/modules/okay-obs.md	r <- charge(o)
+docs/modules/okay-openapi.md	router.bytes(Method.Get, Route / "app.js", "text/javascript")(_ => pure(bundle))
+docs/modules/okay-openapi.md	router.events(Method.Get, Route / "events" / "board")(_ => pure(feed))
+docs/modules/okay-openapi.md	router.html(Method.Get, Route.root)(_ => pure(page))
+docs/modules/okay-openapi.md	router.jsonOut[EmptyTuple, NewTask, Task](Method.Post, board)((_, t) => pure(store(t)))
+docs/modules/okay-openapi.md	router.media(Method.Get, Route / "report", "application/pdf", 200, "last night's run")(...)
+docs/modules/okay-openapi.md	router.out[Int *: EmptyTuple, Task](Method.Get, byId)(t => pure(Task(t.head)))
+docs/modules/okay-openapi.md	val all = app.routes orElse OpenApi.routes(api, app).routes
+docs/modules/okay-openapi.md	val json: Json = OpenApi.document(api, router)
+docs/modules/okay-openapi.md	val text: String = OpenApi.print(api, router)
+docs/modules/okay-ops.md	Jetty.serve(port)(Ops.routes(store, lifecycle = Some(l)).orElse(l.route(app)))().map { s =>
+docs/modules/okay-ops.md	Ops.healthz   // Route[EmptyTuple], describes as "/healthz"
+docs/modules/okay-ops.md	Ops.metrics
+docs/modules/okay-ops.md	Ops.paths     // Set("/healthz", "/readyz", "/stats", "/metrics")
+docs/modules/okay-ops.md	Ops.readyz
+docs/modules/okay-ops.md	Ops.router(store, …)   // the four, declared once
+docs/modules/okay-ops.md	Ops.routes(store, …)   // the same, as the PartialFunction every server takes
+docs/modules/okay-ops.md	Ops.stats
+docs/modules/okay-ops.md	case r if Ops.routes(store).isDefinedAt(r) => Ops.routes(store)(r)
+docs/modules/okay-ops.md	val drained = Signals.awaitSignal(l)   // SIGTERM → ready=false → delay → drain
+docs/modules/okay-ops.md	}).runWith                               // → the region stops Jetty
+docs/modules/okay-optics.md	.dependsOn(okay.jvm, okayOptics.jvm)
+docs/modules/okay-optics.md	State.zoomWith(look: S => A, put: A => S => S)(p)
+docs/modules/okay-optics.md	lazy val myModule = (project in file("my-module"))
+docs/modules/okay-outbox.md	// once, in a migration: Script(3, "outbox", outbox.ddl(Dialect.Postgres))
+docs/modules/okay-outbox.md	DeadLetter.consume(orders, part = 0, group = "shipping", offsets, dlq, attempts = 3) { r =>
+docs/modules/okay-outbox.md	Typed.update[Shipment](db, "insert into shipments ...")(shipment)
+docs/modules/okay-outbox.md	_  <- widen(Typed.update[Order](db, "insert into orders ...")(order))
+docs/modules/okay-outbox.md	id <- widen(outbox.enqueue(db, topic = "orders", value = Cbor.write(OrderPlaced(order))))
+docs/modules/okay-outbox.md	inbox.once(db, id = new String(record.key, "UTF-8")) {
+docs/modules/okay-outbox.md	ship(r)
+docs/modules/okay-outbox.md	val dlq = store.topic("orders.dlq").of[DeadLetter.Dead]()   // okay.persist.of
+docs/modules/okay-outbox.md	val inbox = Inbox()                         // table okay_inbox
+docs/modules/okay-outbox.md	val outbox = Outbox()                       // table okay_outbox
+docs/modules/okay-outbox.md	}                                           // Some(rows) the first time, None after
+docs/modules/okay-parse.md	.toLazyList)
+docs/modules/okay-parse.md	// and for a same-length edit, untouched subtrees are the SAME objects
+docs/modules/okay-parse.md	Cst.errors(cst)              // diagnostics, with exact spans
+docs/modules/okay-parse.md	Cst.errors(holes).nonEmpty              // closed with an "unclosed" marker
+docs/modules/okay-parse.md	Cst.lexemes(cst) == text     // lossless
+docs/modules/okay-parse.md	re.tree == Parse.full(JsonLex.scan, JsonParse.instrs)(edited).tree
+docs/modules/okay-parse.md	session, doc, edited, editStart, editEndOld, editEndNew)
+docs/modules/okay-parse.md	through(through(chars(text))(Scan.stage(JsonLex.scan)))(JsonParse.driver)
+docs/modules/okay-parse.md	val cst = Parse.toCst(
+docs/modules/okay-parse.md	val holes = parse("{\"a\": [1, 2")      // a tree; the array node is
+docs/modules/okay-parse.md	val session = Parse.full(JsonLex.scan, JsonParse.instrs)(doc)
+docs/modules/okay-platform.md	.dependsOn(okay.jvm, okayAsync.jvm, okayPlatform.jvm)
+docs/modules/okay-platform.md	lazy val myModule = (project in file("my-module"))
+docs/modules/okay-r.md	// Right(Vec(Vector(F64(2))))
+docs/modules/okay-r.md	// a call: the function is ADDRESSED, the arguments are values
+docs/modules/okay-r.md	// a frame in, a frame out — and the case class on both sides
+docs/modules/okay-r.md	// one session; the deadline and the required packages are both optional
+docs/modules/okay-r.md	case Left(cond)  => cond                // R's own failure, as data
+docs/modules/okay-r.md	case Right(back) => back.rows[Obs]      // Either[Condition, Vector[Obs]]
+docs/modules/okay-r.md	final case class Obs(site: String, temp: Double, n: Int) derives okay.codec.Schema
+docs/modules/okay-r.md	import okay.r.*, RValue.*
+docs/modules/okay-r.md	r.handler.handle(REval.Call("stats::median", Vector(Vec(Vector(F64(3), F64(1), F64(2))))))
+docs/modules/okay-r.md	r.handler.handle(REval.Frame("summary", frame, Vector.empty)) match
+docs/modules/okay-r.md	require = Map("stats" -> "4.4"))       // verified HERE; a drift refuses by name
+docs/modules/okay-r.md	rscript = "Rscript",
+docs/modules/okay-r.md	timeoutMillis = Some(30000L),          // a call that hangs is killed and answered
+docs/modules/okay-r.md	val frame = RFrame.of(Vector(Obs("kyiv", 21.5, 3))).fold(c => sys.error(c.message), identity)
+docs/modules/okay-r.md	val r = RSubprocess.start(
+docs/modules/okay-rag.md	// a new language is data
+docs/modules/okay-rag.md	// picks the language from the id — ".scala" here, ".py" would get
+docs/modules/okay-rag.md	// structural retrieval, no embeddings involved
+docs/modules/okay-rag.md	// the agent edits a file; re-index the damage, not the file
+docs/modules/okay-rag.md	// the indent driver instead
+docs/modules/okay-rag.md	// whole definitions, each quoting the file exactly. `Code.source`
+docs/modules/okay-rag.md	Async.runAsync(grounded)
+docs/modules/okay-rag.md	Code.parse(text, snapshotEvery = 64, Language.python)   // this grammar
+docs/modules/okay-rag.md	Code.parseFile("a/b/c.rs", text)                        // by extension
+docs/modules/okay-rag.md	Ingest.run(store, files)(_.length).runWith           // split, embed, upsert
+docs/modules/okay-rag.md	Language.of("script.ts").map(_.name)                    // Some("typescript")
+docs/modules/okay-rag.md	Retrieve.handled(Retrieve.vector(store))))         // semantic
+docs/modules/okay-rag.md	Retrieve.hybrid[Pure](Seq(
+docs/modules/okay-rag.md	Retrieve.keyword(postings),                        // BM25
+docs/modules/okay-rag.md	Retrieve.symbols(index, sources),                  // exact
+docs/modules/okay-rag.md	Retrieve.vector(store).retrieve("multiply numbers", 3)
+docs/modules/okay-rag.md	Split.structural(cfg, Yaml.cst(cfg.text), 200)(_.length)
+docs/modules/okay-rag.md	Split.structural(doc, Markdown.parse(doc.text), 800)(countTokens)
+docs/modules/okay-rag.md	Split.windows(doc, bpe, budget = 512, overlap = 64)   // the classic shape, exact
+docs/modules/okay-rag.md	definers = Set("fun", "class", "object", "val", "var", "interface"),
+docs/modules/okay-rag.md	given Handler[Embed] = Vectors.hashingHandler()      // or a provider
+docs/modules/okay-rag.md	given Handler[Embed] = Vectors.hashingHandler()      // or any pure one
+docs/modules/okay-rag.md	idx.definition("hello").map(Symbols.segment(_, src))   // the code, exactly
+docs/modules/okay-rag.md	idx.mentions("Greeter")                                // where it is used
+docs/modules/okay-rag.md	layout = Layout.Braces)
+docs/modules/okay-rag.md	lineComment = "//", blockComment = Some(("/*", "*/")), docPrefix = Some("/**"),
+docs/modules/okay-rag.md	quotes = Set('"'), triple = true,
+docs/modules/okay-rag.md	segs.foreach(s => assert(s.quotes(src)))
+docs/modules/okay-rag.md	val (state, nt) = Grounded.translating(policy, remoteRetriever, budget)(size)
+docs/modules/okay-rag.md	val fresh = Code.reparse(session, oldText, newText, editStart, editEndOld, editEndNew)
+docs/modules/okay-rag.md	val grounded: A ! Async = !.translate(program)(nt)
+docs/modules/okay-rag.md	val idx = Symbols.project(files)      // per-file language, mixed repo is fine
+docs/modules/okay-rag.md	val kotlin = Language("kotlin", Set("kt", "kts"),
+docs/modules/okay-rag.md	val segs = Split.structural(src, Code.source(src).tree, budget = 400)(_.length)
+docs/modules/okay-rag.md	val src = Source("Greeter.scala", scala.io.Source.fromFile(f).mkString)
+docs/modules/okay-reactive.md	import okay.*, okay.given, okay.reactive.Reactive
+docs/modules/okay-reactive.md	val broken: Flow.Publisher[Long] = Reactive.failed(RuntimeException("nope"))
+docs/modules/okay-reactive.md	val p: Flow.Publisher[Long] = Reactive.publisher(Source.range(0, 1000))
+docs/modules/okay-reactive.md	val s: Source[Long]         = Reactive.source(p, capacity = 256)
+docs/modules/okay-resilience.md	Resilient.guarded(inner.post(url, headers, body),
+docs/modules/okay-resilience.md	breaker = Some(breaker), bulkhead = Some(bulkhead),
+docs/modules/okay-resilience.md	breaker.protect(bulkhead.limit(limiter.admit()(http.send(r))))(_.exists(_.status >= 500))
+docs/modules/okay-resilience.md	client.send(Request.get("http://orders/v1/orders/42"))
+docs/modules/okay-resilience.md	import okay.resilience.*
+docs/modules/okay-resilience.md	limiter = Some((limiter, _ => "payments")), hedge = Some((100L, 2)))
+docs/modules/okay-resilience.md	val breaker  = Breaker("payments", failures = 5, openMillis = 10_000)
+docs/modules/okay-resilience.md	val bulkhead = Bulkhead("payments", permits = 32, queue = 64)
+docs/modules/okay-resilience.md	val client = Resilient.http(Transports.http(), breaker = Some(breaker), balanced = Some(Balanced(discovery)))
+docs/modules/okay-resilience.md	val client = Resilient.http(Transports.http(), budgetMillis = Some(2000),
+docs/modules/okay-resilience.md	val discovery = Discovery.chain(DiscoveryJvm.env(), Discovery.cached(DiscoveryJvm.dns(8080), 5_000))
+docs/modules/okay-resilience.md	val guarded: Response ! Async =
+docs/modules/okay-resilience.md	val guardedTransport: Transport = new Transport:
+docs/modules/okay-resilience.md	val limiter  = Limiter("payments", ratePerSecond = 200, burst = 50)
+docs/modules/okay-scala2.md	("dev.okay" %% "okay-scala2" % "0.2.0-SNAPSHOT")
+docs/modules/okay-scala2.md	.cross(CrossVersion.for2_13Use3)
+docs/modules/okay-scala2.md	.exclude("org.scala-lang", "scala-library")
+docs/modules/okay-scala2.md	// Scala 3's standard library, BEHIND 2.13's
+docs/modules/okay-scala2.md	Seq(Compile, Runtime, Test).flatMap(c => Seq(
+docs/modules/okay-scala2.md	c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value),
+docs/modules/okay-scala2.md	c / dependencyClasspathAsJars ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value)))
+docs/modules/okay-scala2.md	ivyConfigurations += Scala3Stdlib
+docs/modules/okay-scala2.md	lazy val Scala3Stdlib = config("scala3Stdlib").hide
+docs/modules/okay-scala2.md	libraryDependencies +=
+docs/modules/okay-scala2.md	libraryDependencies += "org.scala-lang" % "scala-library" % "3.9.0" % Scala3Stdlib
+docs/modules/okay-scala2.md	scalaVersion := "2.13.18"
+docs/modules/okay-scala2.md	scalacOptions += "-Ytasty-reader"
+docs/modules/okay-spark.md	.aggregate(Aggregator.groupBy((kv: (String, (Long, String))) => kv._2._2)(Aggregator.sum[Long].contramap(_._2._1)))
+docs/modules/okay-spark.md	.join(B.csv("shops.csv").map(r => r("id") -> r("city")))
+docs/modules/okay-spark.md	// locally:
+docs/modules/okay-spark.md	// per key:
+docs/modules/okay-spark.md	// the SAME value, distributed:
+docs/modules/okay-spark.md	// the road to it, platform-free (okay.Bulk.* is the collection view):
+docs/modules/okay-spark.md	// typed Dataset column:
+docs/modules/okay-spark.md	B.csv("sales.csv").map(r => r("shop") -> r("amount").toLong)
+docs/modules/okay-spark.md	def revenue[D[_]](using B: Bulk[D]) =
+docs/modules/okay-spark.md	ds.select(toSpark(stats).toColumn)
+docs/modules/okay-spark.md	import okay.spark.SparkInterop.*
+docs/modules/okay-spark.md	revenue(using SparkBulk(spark))   // a cluster
+docs/modules/okay-spark.md	revenue(using okay.localBulk)     // one JVM, the same answer
+docs/modules/okay-spark.md	val (m1, v1) = stats.run(data)
+docs/modules/okay-spark.md	val (m2, v2) = aggregate(sc.parallelize(data, 8))(stats)
+docs/modules/okay-spark.md	val byKey = aggregateByKey(pairs)(Aggregator.variance[Double])
+docs/modules/okay-spark.md	val stats = Aggregator.mean[Double].zip(Aggregator.variance[Double])
+docs/modules/okay-spring.md	app.addInitializers(ctx => OkaySpring.register(ctx, (db and pool).exports))
+docs/modules/okay-spring.md	val db   = module[Db](Db.open(url))(_.close)
+docs/modules/okay-spring.md	val pool: Db ?=> Module[[X] =>> Pool ?=> X] = module[Pool](Pool.over(wire[Db]))(_.close)
+docs/modules/okay-staging.md	// a composite the catalog described: a product over Seq[Any], no case class
+docs/modules/okay-staging.md	Vector("x" -> (() => Schema.SDouble), "y" -> (() => Schema.SDouble)),
+docs/modules/okay-staging.md	codec.decode(Json.parse("""{"x":1}"""))    // Left(missing field 'y' in point) — the fold's own words
+docs/modules/okay-staging.md	codec.encode(Seq(1.5, 2.5))                // {"x":1.5,"y":2.5}
+docs/modules/okay-staging.md	import okay.staging.RuntimeStaged
+docs/modules/okay-staging.md	val codec = RuntimeStaged.json(point)      // generated once, cached by identity
+docs/modules/okay-stm.md	.dependsOn(okay.jvm, okayStm.jvm)
+docs/modules/okay-stm.md	lazy val myModule = (project in file("my-module"))
+docs/modules/okay-stm.md	val cell = TRef(State())          // okay, the core
+docs/modules/okay-stm.md	val out = cell.modify(s => (s.next, s.answer))
+docs/modules/okay-stream.md	.dependsOn(okay.jvm, okayStream.jvm)
+docs/modules/okay-stream.md	lazy val myModule = (project in file("my-module"))
+docs/modules/okay-workflow.md	.dependsOn(okay.jvm, okayWorkflow.jvm)
+docs/modules/okay-workflow.md	lazy val myModule = (project in file("my-module"))
+docs/modules/okay-zio.md	// a ZIO inside an okay program:
+docs/modules/okay-zio.md	// chunked streams across, boundaries kept:
+docs/modules/okay-zio.md	// okay fibers on the ZIO runtime:
+docs/modules/okay-zio.md	// okay program as a ZIO Task:
+docs/modules/okay-zio.md	Async.par(async(1), async(2)).runWith
+docs/modules/okay-zio.md	import okay.zio.ZioInterop
+docs/modules/okay-zio.md	val ch: Chunks[Long] = ZioInterop.fromZStream(zs)   // linear!
+docs/modules/okay-zio.md	val p: Int ! Async = ZioInterop.fromZIO(ZIO.succeed(41).map(_ + 1))
+docs/modules/okay-zio.md	val t: Task[Int] = ZioInterop.toZIO(async(blockingWork()))
+docs/modules/okay-zio.md	val zs: ZStream[Any, Nothing, Long] = ZioInterop.toZStream(Chunks.range(0, 1000))
+docs/okay-script-guide.md	@main def store(): Unit =
+docs/okay-script-guide.md	Resource.run[Unit, Pure](site.serve(8080).map(_ => Thread.sleep(Long.MaxValue))).runWith
+docs/okay-script-guide.md	import okay.*, okay.given, okay.script.*, okay.security.SessionIssuer
+docs/okay-script-guide.md	issue  = Some((subject, scopes) => issuer.issue(subject, scopes)))
+docs/okay-script-guide.md	val site = Site(java.nio.file.Paths.get("store"),
+docs/okay-script-guide.md	verify = Some(issuer.verify(_)),
+docs/optics.md	PState.zoom(item)(parse)     // item: Lens[Box[String], Box[Int], String, Int]
+docs/optics.md	PState.zoomCase(prism)(m)    // answers Option[X]
+docs/optics.md	city.modify(_.capitalize)(here)     // the write, same path
+docs/optics.md	city.modify(_.capitalize)(nowhere)  // absent: answers `nowhere`, not a crash
+docs/optics.md	city.preview(here)                  // Some("Wrocław")
+docs/optics.md	city.preview(nowhere)               // None
+docs/optics.md	eachLine.foldMap((l: Line) => l.qty)(order) // their quantities, summed
+docs/optics.md	eachLine.modify(bump)(order)
+docs/optics.md	eachLine.toVector(order)                    // every line
+docs/optics.md	line = t.span.line + lineDelta))
+docs/optics.md	order.copy(lines = order.lines.map(bump))
+docs/optics.md	p.address.map(_.city)
+docs/optics.md	p.copy(address = p.address.map(a => a.copy(city = a.city.capitalize)))
+docs/optics.md	policy.optic("lines.price")          // the field as a traversal, for anything else
+docs/optics.md	policy.project(json)                 // the fields removed, every line's price included
+docs/optics.md	policy.redact(json)                  // kept, values replaced by "[redacted]"
+docs/optics.md	policy.text(order)                   // what an embedding or a log line may see
+docs/optics.md	policy.touches                       // Set("customer.email", "lines.price") — no document in hand
+docs/optics.md	probeTaxon.set(taxon)(t)
+docs/optics.md	radii.modify(_ * 2)(shapes)   // circles doubled, squares untouched
+docs/optics.md	radii.toVector(shapes)        // the radii that were there: Vector(1.0, 3.0)
+docs/optics.md	shapes.map {
+docs/optics.md	t.copy(probe = t.probe.copy(taxon = taxon))       // okay-intent, WordTfIdf.against
+docs/optics.md	t.copy(span = t.span.copy(offset = t.span.offset + delta,   // okay-parse, Parse.rebase
+docs/optics.md	val policy = Policy.hide[Order]("customer.email", "lines.price").toOption.get
+docs/queues.md	// a handoff with no buffer
+docs/queues.md	// a producer that must never block
+docs/queues.md	// a transactional take from either side
+docs/queues.md	// events where the tail is worthless once the consumer stops
+docs/queues.md	// it needs to allocate -- and the mark type stays private, which is
+docs/queues.md	// polymorphic because the channel stores more than your element type:
+docs/queues.md	// sixteen workers reporting metrics; their mutual order is noise
+docs/queues.md	// take from whichever is ready, atomically
+docs/queues.md	// termination rides the same buffer, so only the channel knows what
+docs/queues.md	// the default: strong contract, bounded ring. Backpressure included.
+docs/queues.md	// the same, when nobody knows how many workers there will be
+docs/queues.md	// what stops a caller forging an end of stream.
+docs/queues.md	// your own mechanism, for the strong contract. The factory is
+docs/queues.md	Queues.strong[Int].adaptive.each(1024).build        // capacity PER PART
+docs/queues.md	Queues.strong[Int].adaptive.parts(4).each(256).build
+docs/queues.md	Queues.strong[Int].adaptive.unbounded.build
+docs/queues.md	Queues.strong[Int].relaxed.parts(8).each(256).build // fixed parts
+docs/queues.md	Queues.strong[Job].bounded(1024, singleConsumer = true).build
+docs/queues.md	Queues.weak[Int].adaptive.parts(4).each(64).build   // the same menu
+docs/queues.md	c.close()           // ends the stream -- what is buffered still drains
+docs/queues.md	c.receive           // an effect: suspends while empty and open
+docs/queues.md	c.send(42)          // an effect: suspends if the buffer is full
+docs/queues.md	val baton = Queues.rendezvous[Unit].build
+docs/queues.md	val c = Channel[Int](1024)
+docs/queues.md	val either = Tx.orElse(left.receiveTx, right.receiveTx)
+docs/queues.md	val log = Queues.strong[String].unbounded.build
+docs/queues.md	val metrics = Queues.strong[Metric].relaxed.parts(16).each(128).build
+docs/queues.md	val mine = Queues.strong[Int].on([T] => (n: Int) => Ring[T](4096)).build
+docs/queues.md	val reports = Queues.strong[Report].adaptive.each(128).build
+docs/queues.md	val total = c.drained.through(Chunks.fold(0)(_ + _)).runLast
+docs/queues.md	val ui = Queues.weak[Event].bounded(256).build
+docs/queues.md	val work = Queues.composable[Job](1024).build
+docs/scala2.md	("dev.okay" %% "okay-scala2" % "0.2.0-SNAPSHOT")
+docs/scala2.md	("dev.okay" %% m % "0.2.0-SNAPSHOT").cross(CrossVersion.for2_13Use3).exclude("org.scala-lang", "scala-library"))
+docs/scala2.md	.cross(CrossVersion.for2_13Use3)
+docs/scala2.md	.exclude("org.scala-lang", "scala-library")
+docs/scala2.md	// Scala 3's standard library, BEHIND 2.13's
+docs/scala2.md	Seq(Compile, Runtime, Test).flatMap(c => Seq(
+docs/scala2.md	c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value),
+docs/scala2.md	c / dependencyClasspathAsJars ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value)))
+docs/scala2.md	ivyConfigurations += Scala3Stdlib
+docs/scala2.md	lazy val Scala3Stdlib = config("scala3Stdlib").hide
+docs/scala2.md	libraryDependencies ++= Seq("okay-scala2-http", "okay-scala2-sql", "okay-scala2-optics").map(m =>
+docs/scala2.md	libraryDependencies +=
+docs/scala2.md	libraryDependencies += "org.scala-lang" % "scala-library" % "3.9.0" % Scala3Stdlib
+docs/scala2.md	scalaVersion := "2.13.18"
+docs/scala2.md	scalacOptions += "-Ytasty-reader"
+docs/schedulers.md	// this deadlocks under `own` and completes under `adaptive`
+docs/schedulers.md	Schedulers.adaptive.build                   // own, plus a worker when a fiber blocks
+docs/schedulers.md	Schedulers.adaptive.workers(8).watched(200.millis).build
+docs/schedulers.md	Schedulers.own.build                        // the defaults, which adapt on their own
+docs/schedulers.md	Schedulers.own.forLongTasks.build           // spread at once — a core per fiber if the machine has one
+docs/schedulers.md	Schedulers.own.forShortTasks.build          // never spread — keep every fiber where it was forked
+docs/schedulers.md	Schedulers.own.workers(4).build             // four threads instead of one per core
+docs/schedulers.md	def fork[A](prog: () => A ! Async): Fiber[A]
+docs/schedulers.md	f.join()                               // blocking here is free
+docs/schedulers.md	filler.join(); got
+docs/schedulers.md	finally crunch.close()
+docs/schedulers.md	given Scheduler = Schedulers.adaptive.workers(1).build
+docs/schedulers.md	given Scheduler = Schedulers.drive(containerPool)
+docs/schedulers.md	given Scheduler = Schedulers.loom      // the JVM default, already given
+docs/schedulers.md	trait Scheduler:
+docs/schedulers.md	try   items.map(i => Async.spawn(async(heavy(i)))(using crunch)).map(_.join())
+docs/schedulers.md	val crunch = Schedulers.own.workers(6).build
+docs/schedulers.md	val crunch = Schedulers.own.workers(6).forLongTasks.build
+docs/schedulers.md	val f = Async.spawn(async(work()))
+docs/schedulers.md	val filler = Async.spawn(async { ch.sendBlocking(9); 0 })
+docs/schedulers.md	val r = Async.spawn(async {
+docs/schedulers.md	val results = items.map(i => Async.spawn(async(heavy(i)))(using crunch)).map(_.join())
+docs/schedulers.md	}).join()
+docs/static-workflows.md	// Asking(at = ".../round2/...", Question.Ask("room 3?"), accepted = 3)
+docs/static-workflows.md	// Asking(par1, Ask("legal?"), accepted = 1)
+docs/static-workflows.md	// Left(Stranded(path, record = 1, "Now() cannot take Right(Kyiv)"))
+docs/static-workflows.md	// Right(Standing.Asking(path, Question.Uuid(), accepted = 2))
+docs/static-workflows.md	// Right(Standing.Done("Kyiv/1700000000000/id-1"))
+docs/static-workflows.md	// Waiting(Vector((par0, Ask("finance?")), (par1, Ask("legal?"))), accepted = 0)
+docs/static-workflows.md	// a Wf.Proc[String, String, Unit, Unit]
+docs/static-workflows.md	// asks: cancel c, cancel b, cancel a
+docs/static-workflows.md	// one room per night, where the number of nights is an ANSWER
+docs/static-workflows.md	Wf.Proc.ask[String, String, (Unit, String)](p => s"$undo ${p._2}") >>> A.arr(_ => ()))
+docs/static-workflows.md	Wf.Proc.compensating(booking)((), journal)
+docs/static-workflows.md	Wf.Proc.compensating(nights)(Nil, List(Right("a"), Right("b"), Right("c")))
+docs/static-workflows.md	Wf.Proc.walk(approvals)((), List(Right("yes")))
+docs/static-workflows.md	Wf.Proc.walk(approvals)((), Nil)
+docs/static-workflows.md	Wf.Proc.walk(booking)((), journal)
+docs/static-workflows.md	Wf.Proc.walk(rooms)((), List(Right("3"), Right("a"), Right("b")))
+docs/static-workflows.md	booking.leaves.map(_.name)        // Vector("ask", "now", "uuid")
+docs/static-workflows.md	booking.mermaid()                 // the shape
+docs/static-workflows.md	booking.mermaid(Some(at))         // ...with a run's position marked
+docs/static-workflows.md	def bookingMonadic(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+docs/static-workflows.md	districted.leaves.map(_.name)   // Vector("ask", "ask") — BOTH branches
+docs/static-workflows.md	guest.andThen(city)(confirmCity)     // Booking ~> Booking
+docs/static-workflows.md	val districted: Wf.Proc[String, String, Unit, String] = Proc.direct: _ =>
+docs/static-workflows.md	val id   = !uuid
+docs/static-workflows.md	val id   = !w.uuid
+docs/static-workflows.md	val nights = Proc.iter(Proc.alongside(bookRoom) >>> A.arr(decide))
+docs/static-workflows.md	val rooms: Wf.Proc[String, String, Unit, List[String]] = Proc.direct: _ =>
+docs/static-workflows.md	val t    = !now
+docs/static-workflows.md	val t    = !w.now
+docs/static-workflows.md	val t: Long      = now
+docs/theory/01-monads.md	(m >>= f) >>= g  ==  m >>= (x => f(x) >>= g)
+docs/theory/01-monads.md	// Effects.scala:40
+docs/theory/01-monads.md	// Effects.scala:43
+docs/theory/01-monads.md	// Effects.scala:46
+docs/theory/01-monads.md	// associativity
+docs/theory/01-monads.md	// left identity
+docs/theory/01-monads.md	// right identity
+docs/theory/01-monads.md	infix type ![A, F[+_]] = Free[F, A]
+docs/theory/01-monads.md	inline def effect[F[+_], A](a: F[A]): A ! F
+docs/theory/01-monads.md	inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = Bind(this, f)
+docs/theory/01-monads.md	inline def map[B](f: A => B): Free[F, B] = flatMap(a => Pure(f(a)))
+docs/theory/01-monads.md	inline def pure[F[+_], A](a: A): A ! F
+docs/theory/01-monads.md	m >>= pure       ==  m
+docs/theory/01-monads.md	pure(a) >>= f    ==  f(a)
+docs/theory/02-continuations.md	// (Danvy–Filinski, with answer-type modification)
+docs/theory/02-continuations.md	// Cont.scala:39 — capture the current continuation
+docs/theory/02-continuations.md	// Cont.scala:41 — delimit: run with the identity continuation
+docs/theory/02-continuations.md	inline def reset[A, R](c: A ^ R): R = c / identity
+docs/theory/02-continuations.md	inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.Shift(f)
+docs/theory/02-continuations.md	reset(c)    // "<one> <two>" — the rest of the block ran once per k
+docs/theory/02-continuations.md	type Str = [X] =>> Cont[X, String, String]        // the diagonal at String
+docs/theory/02-continuations.md	val greeting: String => Int => String = reset[String, Out]:
+docs/theory/03-parameterised.md	// Monad.scala:11
+docs/theory/03-parameterised.md	// composition: (S -> R) o (S2 -> S) = S2 -> R
+docs/theory/03-parameterised.md	// identity: R -> R
+docs/theory/03-parameterised.md	def flatMap[B, S2](f: A => M[B, S2, S]): M[B, S2, R]
+docs/theory/03-parameterised.md	def pure[A, R](a: A): M[A, R, R]
+docs/theory/03-parameterised.md	extends Monad[[A] =>> M[A, R, R]]
+docs/theory/03-parameterised.md	extension [A, S, R](m: M[A, S, R])
+docs/theory/03-parameterised.md	final class DiagonalMonad[M[_, _, _], R](val P: ParaMonad[M])
+docs/theory/03-parameterised.md	given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] = ...
+docs/theory/03-parameterised.md	trait ParaMonad[M[_, _, _]] {
+docs/theory/04-free-freer.md	// "Free[F, *] is a Monad for every signature F, with NO constraint on F"
+docs/theory/04-free-freer.md	// Free.scala:22 — the point, in one comment:
+docs/theory/04-free-freer.md	// Free.scala:29
+docs/theory/04-free-freer.md	// a deferred subprogram: forced here, continued AS IS
+docs/theory/04-free-freer.md	// an operation, bare
+docs/theory/04-free-freer.md	// associativity
+docs/theory/04-free-freer.md	// left identity
+docs/theory/04-free-freer.md	case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume
+docs/theory/04-free-freer.md	case Bind(Delay(t), g)   => Bind(t(), g).resume
+docs/theory/04-free-freer.md	case Bind(Pure(a), f)    => f(a).resume
+docs/theory/04-free-freer.md	case Bind[F[+_], A, B](a: Free[F, A], f: A => Free[F, B]) ...
+docs/theory/04-free-freer.md	case Delay(t)            => t().resume
+docs/theory/04-free-freer.md	case Inject(a: F[A])
+docs/theory/04-free-freer.md	enum Free[F[+_], A] {
+docs/theory/05-effects-handlers.md	/** the same answer as the foldCont definition, in one pass instead of two */
+docs/theory/05-effects-handlers.md	@tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match
+docs/theory/05-effects-handlers.md	A ! (State % Int + Throws % String + Async)
+docs/theory/05-effects-handlers.md	case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)   // rotate
+docs/theory/05-effects-handlers.md	case Bind(Delay(t), g)   => step(Bind(t(), g))(k)
+docs/theory/05-effects-handlers.md	case Bind(Inject(s), f)  => s.at[Any, R](x => run(f(x))(k))    // hand over, then the rest
+docs/theory/05-effects-handlers.md	case Bind(Pure(a), f)    => step(f(a))(k)                      // discharge
+docs/theory/05-effects-handlers.md	case Delay(t)            => step(t())(k)                       // force
+docs/theory/05-effects-handlers.md	case Fork(prog: Unit ! Op)            extends Op[Fiber]  // Sim.scala
+docs/theory/05-effects-handlers.md	case Inject(a: F[A])                 // Free.scala
+docs/theory/05-effects-handlers.md	case Inject(s)           => s.at[S, R](k)                      // hand over
+docs/theory/05-effects-handlers.md	case OrElse[A](a: A ! Tx, b: A ! Tx)  extends Tx[A]      // Stm.scala
+docs/theory/05-effects-handlers.md	case Pure(a)             => pinned[S, R](k(a))
+docs/theory/05-effects-handlers.md	case Shift (f: (A => S) => R, depth) // Cont.scala
+docs/theory/05-effects-handlers.md	m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
+docs/theory/05-effects-handlers.md	override def foldCont[S](h: F !> S): A /> S =
+docs/theory/05-effects-handlers.md	override def runWith(using Handler[F]): A = runFree(m)
+docs/theory/05-effects-handlers.md	split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))
+docs/theory/06-tagless-staging.md	* at compile time — at the Func carrier the program partially
+docs/theory/06-tagless-staging.md	* evaluates to plain nested closures. */
+docs/theory/06-tagless-staging.md	* evaluation half): in an `inline def` program, `val C = Control[M]`
+docs/theory/06-tagless-staging.md	* operations resolve statically and the tagless dispatch evaporates
+docs/theory/06-tagless-staging.md	* summons the instance at its precise type, so the instance's inline
+docs/theory/06-tagless-staging.md	/** Staging via final tagless (Carette–Kiselyov–Shan, the partial
+docs/theory/06-tagless-staging.md	transparent inline def Control[M[_, _, _]]: Control[M] = summonInline[Control[M]]
+docs/theory/07-logic-streams.md	!.loop[Int, Int, Take % String](0) { n =>
+docs/theory/07-logic-streams.md	// as an iteratee: a program that only knows how to ask
+docs/theory/07-logic-streams.md	// by hand: the loop holds the source, and only an Iterator will do
+docs/theory/07-logic-streams.md	Take.await[String].map {
+docs/theory/07-logic-streams.md	case Some(s) if s.nonEmpty => Left(n + 1)
+docs/theory/07-logic-streams.md	case _                     => Right(n)
+docs/theory/07-logic-streams.md	def firstBlank(it: Iterator[String]): Int =
+docs/theory/07-logic-streams.md	if it.next().isEmpty then return n
+docs/theory/07-logic-streams.md	it.next()                                            // 1 — the walk ran to its first leaf and holds the rest
+docs/theory/07-logic-streams.md	pipe(lines)(firstBlank)   // lines: Unit ! Writer % String — a file, a socket, a List
+docs/theory/07-logic-streams.md	val firstBlank: Int ! Take % String =
+docs/theory/07-logic-streams.md	val it = leaves(Node(Node(Leaf(1), Leaf(2)), Leaf(3))).iterator
+docs/theory/08-direct-style.md	// Cont.scala (Monadic), 401–409
+docs/theory/08-direct-style.md	// Direct.scala:73–88
+docs/theory/08-direct-style.md	// Free.scala:61 — the block's own programs, found through the source type's companion
+docs/theory/08-direct-style.md	final class DirectCtx[F[_]] private[Direct] ()
+docs/theory/08-direct-style.md	given directColor[R[+_], A](using Direct.DirectCtx[[X] =>> Free[R, X]]): Conversion[Free[R, A], A]
+docs/theory/08-direct-style.md	given opColor[F[_], G[_], A](using DirectCtx[F], Effect[G]): Conversion[G[A], A]
+docs/theory/08-direct-style.md	given selfColor[F[_], A](using DirectCtx[F]): Conversion[F[A], A]
+docs/theory/08-direct-style.md	inline def reflect[B]: Cont[A, F[B], F[B]] = shift(k => m.flatMap(k))
+docs/theory/08-direct-style.md	inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
+docs/theory/08-direct-style.md	p / (a => M.pure(a))
+docs/theory/08-direct-style.md	trait Effect[G[_]]
+docs/theory/10-optics.md	.flatMap(_.up).flatMap(_.first)                     // back out, into the first
+docs/theory/10-optics.md	.map(_.modify(d => d.copy(pct = d.pct * 2)).root)
+docs/theory/10-optics.md	.map(_.root)                                        // every edit folded in
+docs/theory/10-optics.md	.map(_.set(JStr("grace")))                          // an edit at the focus
+docs/theory/10-optics.md	// Optic.scala:28
+docs/theory/10-optics.md	// Optic.scala:33
+docs/theory/10-optics.md	// Optic.scala:59
+docs/theory/10-optics.md	// State.scala — the body, now the Strong instance's `lens`
+docs/theory/10-optics.md	: Optic[[P[_, _]] =>> C[P] & C2[P], S, T, A2, B2]
+docs/theory/10-optics.md	JsonOptic.field("name").set(JStr("grace"))(doc)
+docs/theory/10-optics.md	State.run(c)(State.zoom(c.focusLens)(renameCustomer))  // a State % Customer program, parked in an Order
+docs/theory/10-optics.md	TypedZipper.Poly.of[Box[String], Box[Int]](Box("hello", "t")).down(item).modify(_.length)   // Box(5, "t")
+docs/theory/10-optics.md	Zipper.at[T: Plate](path): Affine[T, T, T, T]       // the path, on the tree — Ui.path by hand
+docs/theory/10-optics.md	Zipper.focus[T]: Lens[Zipper[T], Zipper[T], T, T]   // the focus, on the cursor
+docs/theory/10-optics.md	c.down(address).down(city).set("Kraków").up.up.up      // a Top[Order], the compiler checked
+docs/theory/10-optics.md	c.down(lines).at(1).flatMap(_.downCase[Line.Discount]) // Option: an index, then a case
+docs/theory/10-optics.md	def andThen[C2[_[_, _]], A2, B2](o: Optic[C2, A, B, A2, B2])
+docs/theory/10-optics.md	def apply[P[_, _]](p: P[A, B])(using C[P]): P[S, T]
+docs/theory/10-optics.md	def first[A, B, C](p: P[A, B]): P[(A, C), (B, C)]
+docs/theory/10-optics.md	def reflected[F[_], A, B](p: P[A, B])(using Applicative[F]): P[F[A], F[B]]
+docs/theory/10-optics.md	final case class Mealy[-A, +B](run: A => (Mealy[A, B], B))
+docs/theory/10-optics.md	measured.andThen(eachColumn).aggregate(mean)(dataset)
+docs/theory/10-optics.md	shift(k => (s1: S1) => (p / (x => (a2: A2) => k(x)(set(s1, a2))))(get(s1)))
+docs/theory/10-optics.md	trait Optic[C[_[_, _]], S, T, A, B]:
+docs/theory/10-optics.md	trait Reflecting[P[_, _]] extends Profunctor[P]:
+docs/theory/10-optics.md	trait Strong[P[_, _]] extends Profunctor[P]:
+docs/theory/10-optics.md	val c = TypedZipper(order).down(customer)              // TypedZipper[Order, Customer, _]
+docs/theory/10-optics.md	val z = Zipper(doc)                                  // Plate[Json] from JsonOptic
+docs/theory/10-optics.md	z.first.flatMap(_.right)                             // into, then the next field
+docs/theory/11-one-tree.md	// Cont.scala:103 — the leaf, as the tree stores it
+docs/theory/11-one-tree.md	// Cont.scala:146 — the representation: the freer tree at that signature
+docs/theory/11-one-tree.md	@tailrec final def resume: Free[F, A] = this match
+docs/theory/11-one-tree.md	case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume   // associativity
+docs/theory/11-one-tree.md	case Bind(Delay(t), g)   => Bind(t(), g).resume
+docs/theory/11-one-tree.md	case Bind(Pure(a), f)    => f(a).resume                       // left identity
+docs/theory/11-one-tree.md	case Delay(t)            => t().resume                        // force, continue AS IS
+docs/theory/11-one-tree.md	case a                   => a
+docs/theory/11-one-tree.md	opaque type Rep[A, S, R] = Free[Shift, A]
+docs/theory/11-one-tree.md	private[okay] type Shift[+X] = (X => Nothing) => Any
+docs/theory/12-applicative-static.md	...
+docs/theory/12-applicative-static.md	Form(name, email)          // both problems, or a Form
+docs/theory/12-applicative-static.md	Par.traverse(keys)(fetch)    // the same program, leaves at once
+docs/theory/12-applicative-static.md	Profile(u, o)                     // so they run together
+docs/theory/12-applicative-static.md	case Ap[F[+_], A, B](f: Static[F, A => B], a: Static[F, A]) extends Static[F, B]
+docs/theory/12-applicative-static.md	case Op(fa: F[A])
+docs/theory/12-applicative-static.md	case Select[F[+_], A, B](e: Static[F, Either[A, B]], f: Static[F, A => B]) extends Static[F, B]
+docs/theory/12-applicative-static.md	def app(a: Rep[A]): Rep[B] = Async.par(f, a).map((g, x) => g(x))
+docs/theory/12-applicative-static.md	enum Static[F[+_], A]:
+docs/theory/12-applicative-static.md	extension [A, B](f: Rep[A => B])
+docs/theory/12-applicative-static.md	f.app(x)     =  e => f(e)(x(e))           //  S
+docs/theory/12-applicative-static.md	identity     =  e => e                    //  I
+docs/theory/12-applicative-static.md	import okay.Direct.parallelBinds.given
+docs/theory/12-applicative-static.md	pure(a)      =  _ => a                    //  K
+docs/theory/12-applicative-static.md	trait Applicative[F[_]] extends Functor[F]           // Monad.scala:80
+docs/theory/12-applicative-static.md	trait Functor[F[_]]                                  // Monad.scala:73
+docs/theory/12-applicative-static.md	trait Monad[F[_]] extends Selective[F]               // Monad.scala:108
+docs/theory/12-applicative-static.md	trait Selective[F[_]] extends Applicative[F]         // Monad.scala:93
+docs/theory/12-applicative-static.md	traverse(keys)(fetch)        // sequential: Free's own Monad-derived app
+docs/theory/12-applicative-static.md	val checked: Checked[Form] = direct:
+docs/theory/12-applicative-static.md	val email = looksLikeEmail(raw.email)
+docs/theory/12-applicative-static.md	val name  = nonEmpty(raw.name)
+docs/theory/12-applicative-static.md	val o = fetchOrders(id).reflect   // mention each other
+docs/theory/12-applicative-static.md	val profile: Profile ! Async = direct:
+docs/theory/12-applicative-static.md	val u = fetchUser(id).reflect     // these two do not
+docs/theory/13-rows-without-unions.md	def apply[X](op: F[X], k: X => Eff[R, B]): Eff[R, B]
+docs/theory/13-rows-without-unions.md	def run[A](e: Eff[Any, A]): A                                        // Eff.scala:68
+docs/theory/13-rows-without-unions.md	def run[S, R, A](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)]   // Eff.scala:88
+docs/theory/13-rows-without-unions.md	final class Eff[-R, A] private (private val body: EffBody[A])      // okay-scala2 Eff.scala:26
+docs/theory/13-rows-without-unions.md	infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]     // Effects.scala:69
+docs/theory/README.md	// Effects.scala:28 — fix a signature's first parameter
+docs/theory/README.md	// Effects.scala:34 — the empty effect row
+docs/theory/README.md	// Effects.scala:40 — "A, computed with effects F"
+docs/theory/README.md	// Effects.scala:59 — a Cont-valued handler
+docs/theory/README.md	// F + G is a union of signatures; a row is built with % and +
+docs/theory/README.md	infix type !>[F[_], S] = Interpr[F, Cont, S]
+docs/theory/README.md	infix type ![A, F[+_]] = Free[F, A]
+docs/theory/README.md	infix type %[F[_, _], S] = F[S, *]
+docs/theory/README.md	type Pure = Nothing
+docs/tutorial.md	!.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree)))  // true, after three leaves
+docs/tutorial.md	!.run(Delim.collectUntil[Int, Vector[Int], Vector[Int], Pure](using FoldUntil.take(2))(walk(tree)))    // Vector(1, 2) — the walk stops at its second leaf
+docs/tutorial.md	!.run(Delim.collect[Int, Pure](walk(tree)))                                                          // List(1, 2, 3, 4)
+docs/tutorial.md	!.run(Writer.run(digits))   // (Seq(4, 2, 0, 2), 1) — the digits told, the answer 1
+docs/tutorial.md	(base and providing[Principal](bob)) { api }    // answers for:Bob
+docs/tutorial.md	.map(_ * 2).filter(_ % 3 == 0).take(1000))(using Fold.sum[Int])
+docs/tutorial.md	.toLazyList)
+docs/tutorial.md	// Invalid(["ink: qty must be > 0", "pad: qty must be > 0"])
+docs/tutorial.md	// Right(Answer("Kyiv", "Ukraine"))
+docs/tutorial.md	// Right(Person("ann", 41, List("a"), None))
+docs/tutorial.md	// Some(999999) — two steps of the million; the rest is never built
+docs/tutorial.md	// Vector(hello ada, bye) -> 7
+docs/tutorial.md	// a generator: a prompt whose answer type is the list being built
+docs/tutorial.md	// a live model — OpenAI-compatible, so most providers and every
+docs/tutorial.md	// a real third-party server, spawned over stdio
+docs/tutorial.md	// a test
+docs/tutorial.md	// an INFINITE choice point is a LazyList of alternatives:
+docs/tutorial.md	// and the third wire, the same Schema, the same decode algebra:
+docs/tutorial.md	// and the untouched subtree is the SAME object, not a rebuild:
+docs/tutorial.md	// chars -> tokens -> instructions -> a lossless tree, all stages:
+docs/tutorial.md	// environments are values: one base, one overridden layer
+docs/tutorial.md	// finds 4 where flatMap diverges
+docs/tutorial.md	// hello | hell | he | r  (whitespace rides the Trivia channel)
+docs/tutorial.md	// leaves of DIFFERENT types, joined by a plain function:
+docs/tutorial.md	// local runtime; Provider.anthropic speaks the Messages API instead
+docs/tutorial.md	// one frame per element: within("skip")(decode(r).map(Some(_)))(_ => None)
+docs/tutorial.md	// production: doors install from the wire — a verified JWT becomes
+docs/tutorial.md	// runChoice(Once.run(p)): a cell per branch; Once.run(runChoice(p)): one cell for all
+docs/tutorial.md	// runs unchanged on the JVM, under Node, and as a native binary:
+docs/tutorial.md	// the Principal, a traceparent becomes the Tracer
+docs/tutorial.md	// the same traverse, two carriers
+docs/tutorial.md	// the same value, distributed (okay-spark):
+docs/tutorial.md	// two differently shaped feeds, joined and consumed by ONE pure stage
+docs/tutorial.md	// unit test: provide installs the SAME needs directly
+docs/tutorial.md	Agent.converse("...", session.tools.runWith)   // its tools, discovered
+docs/tutorial.md	Async.runAsync(Async.par(Async.sleep(20).map(_ => 1),
+docs/tutorial.md	Async.runAsync(Async.sleep(50).map(_ => 42))        // Future(42), loop never blocked
+docs/tutorial.md	Async.sleep(10).map(_ => 2)))   // Future((1, 2))
+docs/tutorial.md	Cbor.read[Person](Cbor.write(p))    // Right(p) — RFC 8949 binary, same content
+docs/tutorial.md	Chunks.map(Chunks.nats[Int]())(_ * 2))(_ % 3 == 0))(1000))(using Fold.sum[Int])
+docs/tutorial.md	Cluster.distribute(source, Vector(wireWorker, localWorker))(agg.init, agg.merge)
+docs/tutorial.md	Code.parse(text, 64, Language.python)   // or say which, explicitly
+docs/tutorial.md	Code.source(src)                // parse a Source as its id names
+docs/tutorial.md	Condition.run { (_, _) => Fail }(loop(in))   // Unhandled(Damaged("x"), menu)
+docs/tutorial.md	Condition.run { case (Damaged(_), _) => Invoke("skip", ()) }(loop(in)) // Vector(1, 3)
+docs/tutorial.md	Condition.run { case (Damaged(_), _) => Resume(2) }(loop(in))       // Vector(1, 2, 3)
+docs/tutorial.md	Cst.errors(cst)                 // the diagnostics ARE in the tree
+docs/tutorial.md	Cst.lexemes(cst) == text        // lossless, damage included
+docs/tutorial.md	Delim.reset[List[Int], Pure] { p =>
+docs/tutorial.md	Delim.shift(p)(k => k(()).map(a :: _))
+docs/tutorial.md	Durable.tools(inner, journal)(policy = {
+docs/tutorial.md	Form(name, email, age)          // three problems, or a Form
+docs/tutorial.md	Json.read[Answer]("""{"city": "Kyiv", "country": "Ukraine"""")
+docs/tutorial.md	Json.read[Person](Json.write(p))    // Right(p) — text
+docs/tutorial.md	List(3, 1, 4, 1, 5).foldUntilTo(using FoldUntil.find[Int](_ > 3))                 // Some(4)
+docs/tutorial.md	Logic.cut(m)                             // the cut: first answer only
+docs/tutorial.md	Logic.fairBind(nats)(x => if x*x == 16 then pure(x) else fail)
+docs/tutorial.md	Logic.ifte(cond)(th)(el)                 // soft cut: el ONLY on no answer
+docs/tutorial.md	Logic.observe(6)(Logic.interleave(evens, odds))   // 0,1,2,3,4,5 — fair turns
+docs/tutorial.md	Once.run(prog)
+docs/tutorial.md	Par.map2(Par(user(id)), Par(orders(id)))(Profile.apply).seq
+docs/tutorial.md	Par.traverse(keys)(fetch)    // the same program, leaves at once
+docs/tutorial.md	Pipeline.generate(0)(identity)(_ + 1)
+docs/tutorial.md	Profile(u, o)
+docs/tutorial.md	Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
+docs/tutorial.md	Retrieve.keyword(repo.keyword)))                      // BM25
+docs/tutorial.md	Retrieve.symbols(repo.index, repo.corpus.sources),    // exact, no vectors
+docs/tutorial.md	Scan.all(bpe)("hello hell her").tokens.map(_.lexeme)
+docs/tutorial.md	Some("/**"), Set('"'), triple = true,
+docs/tutorial.md	SparkInterop.aggregate(rdd)(stats)
+docs/tutorial.md	Staged.filter(Staged.map(Staged.range(0, 1000000), _ * 2), _ % 3 == 0),
+docs/tutorial.md	State.modify[Int](_ + i).!?          // compound programs are walked too
+docs/tutorial.md	State.run(0)(prog)   // (40, 42) — the final state and the answer
+docs/tutorial.md	Symbols.project(files)          // language per file, from the path
+docs/tutorial.md	Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
+docs/tutorial.md	Ui.key(k).modify(field => Ui.Column(Vector(field, Ui.Text(msg))))(t)
+docs/tutorial.md	Writer("bye")
+docs/tutorial.md	Writer(s"hello ${wire[Env].user}")   // a bare statement runs — do-notation
+docs/tutorial.md	Writer.run(through(events)(widen(combine(repo))))   // okay-demo/Combine.scala
+docs/tutorial.md	Yaml.read[Person]("name: ann\nage: 41\ntags:\n  - a\nboss:\n")
+docs/tutorial.md	_ <- State.set(x + 40)
+docs/tutorial.md	case "charge" => Durable.OnRepeat.WithKey   // retry carries the first key
+docs/tutorial.md	case None    => signal[Int](Damaged(raw))   // raise WITHOUT unwinding
+docs/tutorial.md	case _        => Durable.OnRepeat.Redo
+docs/tutorial.md	choose((1 to 20)*).flatMap(a => choose((a to 20)*).flatMap(b =>
+docs/tutorial.md	choose((b to 20)*).flatMap(c =>
+docs/tutorial.md	countdown(1000000).foldUntil(using FoldUntil.find[Int](_ % 7 == 0))
+docs/tutorial.md	countdown(1000000).toLazyList.take(3).toList   // List(1000000, 999999, 999998)
+docs/tutorial.md	cut.stopped    // true: the tokens after the closing brace were never pulled
+docs/tutorial.md	cut.value      // Some(Answer(...)) — decoded mid-stream
+docs/tutorial.md	def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
+docs/tutorial.md	def fib(n: Int): Long ! Pure = direct:
+docs/tutorial.md	def look(i: Int): Int ! (Writer % String) = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
+docs/tutorial.md	def loop(raws: List[String]): Vector[Int] ! Op = ...
+docs/tutorial.md	def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong)))
+docs/tutorial.md	def risky(n: Int): Int ! F =
+docs/tutorial.md	def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
+docs/tutorial.md	def traverseOf[F[_]](f: A => F[B]): S => F[T]      // Applicative[F]
+docs/tutorial.md	def validate(in: Map[String, String]): Validated[Errors, Signup] = direct:
+docs/tutorial.md	def withErrors(tree: Ui, errs: Errors): Ui =
+docs/tutorial.md	definers = Set("fun", "class", "object", "val", "var", "interface"),
+docs/tutorial.md	digest.quantile(0.99)
+docs/tutorial.md	direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }          // 60
+docs/tutorial.md	direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) }   // true, and the log stops at "look 2"
+docs/tutorial.md	direct[Option] { for (k, n) <- Map("a" -> 1) yield (k, Some(n * 10).!?) }   // Some(Map(a -> 10))
+docs/tutorial.md	eachLine.traverseOf(check)(order)
+docs/tutorial.md	eachLine.traverseOf[Par](line => Par(price(line)))(order).seq
+docs/tutorial.md	else pickup
+docs/tutorial.md	emit(p)(1).flatMap(_ => emit(p)(2)).map(_ => Nil)
+docs/tutorial.md	f.cancel()          // stops the drive AND unregisters the parked timer
+docs/tutorial.md	f.joinAsync         // the effect-world join: an Await, good anywhere
+docs/tutorial.md	fib.iterator.drop(10).next()                  // 55 — and the body has run exactly 11 steps
+docs/tutorial.md	gammaNode(re.tree) eq gammaNode(session.tree)   // true
+docs/tutorial.md	given Handler[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
+docs/tutorial.md	given Handler[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
+docs/tutorial.md	given Handler[Tool] = session.handler          // the only line that changes
+docs/tutorial.md	guard[[A] =>> A ! Choose](a*a + b*b == c*c).map(_ => (a, b, c)))))
+docs/tutorial.md	if i >= 100 then Handled.pure(acc)
+docs/tutorial.md	if n < 0 then effect(Throws("negative")) else effect(State.Set(n))
+docs/tutorial.md	if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)   // or !fib(n - 1) + !fib(n - 2)
+docs/tutorial.md	import okay.Direct.parallelBinds.given
+docs/tutorial.md	layout = Layout.Braces)
+docs/tutorial.md	lazy val x = !told("abc")              // runs at the first use, once
+docs/tutorial.md	pipe(countdown(1000000))(Take.foldUntil(using FoldUntil.find[Int](_ % 7 == 0)))   // Some(999999)
+docs/tutorial.md	plan.foldMap(toBatch)       // N leaves, ONE round trip
+docs/tutorial.md	plan.foldMap(toBatch)  // or answered in ONE call
+docs/tutorial.md	plan.leaves                 // every operation it MAY perform, before running
+docs/tutorial.md	plan.leaves        // Vector(Of("pen"), Of("ink"), Of("pad"))
+docs/tutorial.md	plan.toFree.runWith         // the ordinary program, run the ordinary way
+docs/tutorial.md	plan.toFree.runWith  // and the same value, run the ordinary way
+docs/tutorial.md	provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+docs/tutorial.md	provide(ada, tracer)(api)                       // no token anywhere
+docs/tutorial.md	re.tree == Parse.full(JsonLex.scan, JsonParse.instrs)(edited).tree  // exact
+docs/tutorial.md	retry(Retry.exponential(100).take(5))(fetch)   // the policy is a stream
+docs/tutorial.md	runChoice(triples)                       // (3,4,5), (5,12,13), (6,8,10), ...
+docs/tutorial.md	runEither(State.handle(0)(risky(5)))   // handle State, then Throws
+docs/tutorial.md	session, doc, edited, at, at + 3, at + 3)
+docs/tutorial.md	squares.take(3).toList                        // List(1, 4, 9); the body ran three steps
+docs/tutorial.md	step(i + 1, acc + a).!?
+docs/tutorial.md	sw.run(0)(step(0, 0))                    // ((state, log), answer)
+docs/tutorial.md	through(through(chars(text))(Scan.stage(Json.scan)))(JsonParse.driver)
+docs/tutorial.md	traverse(fields)(checkEither)      // Left(first problem)
+docs/tutorial.md	traverse(fields)(checkValidated)   // Invalid(all of them)
+docs/tutorial.md	traverse(keys)(fetch)        // sequential, as ever
+docs/tutorial.md	type Errors = Vector[(String, String)]          // field key -> message
+docs/tutorial.md	type F = State % Int + Throws % String
+docs/tutorial.md	val (_, ctx) = Grounded.context(policy, retriever, budget = 6000, share = 0.6)
+docs/tutorial.md	val (mean, digest) = stats.run(data)        // one pass, both statistics
+docs/tutorial.md	val (state, ctx) = Handlers.context(Compact.window(4000)(Compact.chars))
+docs/tutorial.md	val age   = inRange(raw.age)
+docs/tutorial.md	val age   = number("age", in)
+docs/tutorial.md	val both = Async.par(fetch, async(readFile()))
+docs/tutorial.md	val bpe = Bpe(List(("h","e"), ("l","l"), ("he","ll"), ("hell","o")))
+docs/tutorial.md	val checked: Checked[Form] = direct:
+docs/tutorial.md	val conversation: String ! Agent = Agent.converse("find okay", Seq(spec))
+docs/tutorial.md	val cst = Parse.toCst(
+docs/tutorial.md	val cut = Structured.cut[Answer](tokenStream)
+docs/tutorial.md	val doc = "{\"alpha\": [1, 2, 3],\n \"beta\": 123,\n \"gamma\": {\"x\": true}}"
+docs/tutorial.md	val edited = doc.replace("123", "987")          // same length, one member
+docs/tutorial.md	val email = looksLikeEmail(raw.email)
+docs/tutorial.md	val events: Source[Battery | Charging] = battery merge charging
+docs/tutorial.md	val f = Async.spawn(Async.sleep(50).map(_ => work()))
+docs/tutorial.md	val fast = Async.race(fetch, Async.timeout(500)(fetch).map(_.getOrElse("fallback")))
+docs/tutorial.md	val fetch: String ! Async = async(blockingHttpCall())
+docs/tutorial.md	val fib: Gen[Long] = generator[Long] {        // or a block: while/if/recursion, emit, stop
+docs/tutorial.md	val kotlin = Language("kotlin", Set("kt", "kts"), "//", Some(("/*", "*/")),
+docs/tutorial.md	val link = Stdio.of(Stdio.spawn(Seq("npx", "-y", "@modelcontextprotocol/server-everything")))
+docs/tutorial.md	val name  = nonEmpty("name", in)
+docs/tutorial.md	val name  = nonEmpty(raw.name)
+docs/tutorial.md	val o = fetchOrders(id).reflect   // so both run at once
+docs/tutorial.md	val order: Validated[Errors, Order] = direct:
+docs/tutorial.md	val p = Person("ann", 41, List("a"), None)
+docs/tutorial.md	val plan = eachLine.traverseOf(priceLine)(order)
+docs/tutorial.md	val plan = traverse(keys)(k => Static.op(Get(k)))   // the same traverse
+docs/tutorial.md	val profile: Profile ! Async = direct:
+docs/tutorial.md	val prog: Int ! (Once + Writer % String) = direct:
+docs/tutorial.md	val prog: Int ! State % Int =
+docs/tutorial.md	val prog: List[Int] ! (Writer % String) = direct {
+docs/tutorial.md	val repo = RepoAgent.index(RepoAgent.load(File(".")))   // parse, don't regex
+docs/tutorial.md	val retriever = Retrieve.hybrid(Seq(
+docs/tutorial.md	val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
+docs/tutorial.md	val session = Parse.full(JsonLex.scan, JsonParse.instrs)(doc)
+docs/tutorial.md	val ship = if wantsDelivery(raw.delivery) then checkAddress(raw.address)
+docs/tutorial.md	val source = Chunks.map(Chunks.range(0, 1000, 16))(_ * 0.5)
+docs/tutorial.md	val spec = ToolSpec[SearchArgs]("search", "look something up")  // schema DERIVED
+docs/tutorial.md	val stats = Aggregator.mean[Double].zip(Sketch.tDigest())
+docs/tutorial.md	val sum = Chunks.fold(
+docs/tutorial.md	val sw = Stager.StateWriter[Int, String, Int]()      // the row's staged interpreter
+docs/tutorial.md	val triples =                            // pythagorean, in order
+docs/tutorial.md	val u = fetchUser(id).reflect     // neither mentions the other,
+docs/tutorial.md	val y = !told("de")                    // runs here
+docs/tutorial.md	while true do { Gen.emit(a).!?; val t = a; a = b; b = t + b }
+docs/tutorial.md	wire[Env].uid                        // the capability, inside the block
+docs/tutorial.md	x + x + y + !told("f")                 // log: de, abc, f
+docs/tutorial.md	x <- State.get[Int]
+docs/tutorial.md	y <- List(10, 20) if y > 10        // a guard between generators
+docs/tutorial.md	y <- State.get[Int]
+docs/tutorial.md	yield look(x + y).!?                 // List(210, 220); log: look 21, look 22
+docs/tutorial.md	yield y + 2
+docs/tutorial.md	}                                        // List(1, 2)
+docs/typepedia.md	// a wrapper-taking API:                      // a factory:
+docs/typepedia.md	= explicit(...)(p => route(using p))         explicit(summon[Http], ...)
+docs/typepedia.md	class Step(c: Ctx) { given ctx: Ctx = c }
+docs/typepedia.md	def granted(...)(route: Principal ?=> R): R  def wired(...): Http ?=> Engine =
+docs/typepedia.md	given Conn   = connect()      // load -> resolve -> connect -> ...
+docs/typepedia.md	given TxDone = commit()       // sees TxOpen
+docs/typepedia.md	given TxOpen = begin()        // sees Conn
+docs/typepedia.md	val s1 = step("one");   import s1.given
+docs/typepedia.md	val s2 = step("two");   import s2.given   // sees s1's ctx
+docs/your-own-effect.md	* call site */
+docs/your-own-effect.md	/** replace, ANSWERING what was there — the two above in the order
+docs/your-own-effect.md	// (Map(7 -> grace), (Seq(Find(7), Save(7,grace)), Some(ada)))
+docs/your-own-effect.md	// (Vector((7,grace)), (Seq(Find(7), Save(7,grace)), Some(ada)))
+docs/your-own-effect.md	// an ordinary function, written against a plain State % Int,
+docs/your-own-effect.md	// create the row. The program never asks, and that is the point
+docs/your-own-effect.md	// log == Seq(Find(7), Save(7, "grace"))
+docs/your-own-effect.md	// run twice at two different states in one program:
+docs/your-own-effect.md	// — the guarantee is in the program's type, not in the
+docs/your-own-effect.md	Refs.run(p)   // (2, ada)
+docs/your-own-effect.md	State.get[S].at[R]                // into a row known only by membership
+docs/your-own-effect.md	Users.find(id).plus[Abort]        // Option[String] ! (Users + Abort)
+docs/your-own-effect.md	b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]
+docs/your-own-effect.md	case Get(k: K) extends Cache[K, Option[String]]
+docs/your-own-effect.md	def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (State % S + Writer % String + F) =
+docs/your-own-effect.md	enum Cache[K, +A] derives Effect:     // Cache % K is the row member
+docs/your-own-effect.md	pureRun(Map(7L -> "ada"))
+docs/your-own-effect.md	pureRun(Vector(7L -> "ada"))
+docs/your-own-effect.md	rename(7, "grace").runWith(using mem.tracing(log += _))
+docs/your-own-effect.md	type Big   = Tag.Of["big",   State % Int]
+docs/your-own-effect.md	upsert(c, id, name)
+docs/your-own-effect.md	val twice: (Int, Int) ! (Small + Big) =
