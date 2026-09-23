@@ -1,6 +1,0 @@
-feature/scala2-persist 2026-09-23T10:11:45Z
-agent: claude-code
-heartbeat: 2026-09-23T10:11:45Z
-status: in-progress
-done-so-far: persist core API is synchronous (append/read/Offsets/Snapshots)
-next: probe direct use from 2.13; facade Streams.stream/tail
