@@ -1,0 +1,1 @@
+- [ ] ts-js-typed — T8 of specs/typescript-types.md: `Direct.ts { }` prints the okay-js subset as TypeScript with the Scala-inferred types (polyglot-typescript item 4).

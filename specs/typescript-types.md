@@ -65,6 +65,17 @@ module's signatures read by the compiler and written as a Scala facade
 - T7 — **S3 functions**: a TypeScript module's exported signatures, read
   by the compiler, written as a Scala facade (the TypeScript twin of
   `PyFacade`).
+- T8 — **Scala CODE → TypeScript**: `Direct.ts { … }` prints the okay-js
+  subset as TypeScript, each `var` and each function parameter annotated
+  with the type the Scala compiler gave it.
+- T9 — **okay on npm**: okay-ts linked as an ES module and packed with
+  its `.d.ts`, so a TypeScript project installs okay; CRDT replicas and
+  okay streams (as `AsyncIterable`) exported through it.
+- T10 — **durable flows in the browser**: a TypeScript program's
+  answers journalled in IndexedDB, so a wizard resumes after a reload.
+- T11 — **a live frontend, typed by path**: the dotted paths of a
+  `Watched` document as TypeScript types generated from its Schema, and
+  a client that subscribes to them.
 
 Each stage is a lane; Results below record what each found.
 
@@ -123,6 +134,68 @@ Each stage is a lane; Results below record what each found.
 - [x] Live: the facade of a real module is checked in, and a test
       asserts the generator writes it unchanged; its methods call the
       TypeScript worker and answer typed values.
+
+## Stage T8 — Scala code as TypeScript (okay-js)
+
+- [ ] `Direct.ts { … }` reads the same closed subset as `Direct.js`
+      and gives a tree whose `var`s and function parameters carry their
+      types. The type is the one the Scala compiler inferred:
+      - `Int`/`Long`/`Double`/… is `number`, `String` is `string`,
+        `Boolean` is `boolean`;
+      - a `Dyn` or a spliced `Js` is `any`, which is honest: it is
+        untyped JavaScript;
+      - a Scala function type is `(a: A) => B`.
+      A type outside that list is refused by name.
+- [ ] `Direct.tsSource { … }` is the TypeScript text as a compile-time
+      constant, like `Direct.source`.
+- [ ] `Js.print` prints the typed tree as JavaScript with the types
+      dropped, and `Js.printTs` keeps them. A typed tree runs as the
+      same JavaScript.
+- [ ] (Live) `tsc --strict --noEmit` accepts the printed TypeScript,
+      and refuses it when a Scala type was wrong for the value.
+
+## Stage T9 — okay on npm
+
+- [ ] An npm package directory (`package.json`, an ES module linked
+      by Scala.js, a hand-checked `index.d.ts` written from the same
+      Schemas):
+      - `run(program, callbacks)` walks a TypeScript program;
+      - a CRDT replica type (counter, register, set) is exported with
+        its merge;
+      - an okay stream is exported as an `AsyncIterable`.
+- [ ] (Live) `npm pack`, then `npm install` of the tarball into a fresh
+      TypeScript project, offline. `tsc --strict` compiles a consumer,
+      and Node runs it.
+
+## Stage T10 — durable flows in the browser
+
+- [ ] `Ts.durable(key, program, callbacks, journal)` walks a
+      TypeScript program and records each answer, keyed by the flow and
+      the step, before the program continues.
+      - A replay hands recorded answers back without calling the
+        callback again.
+      - A replay whose step asks a different name or different
+        arguments is refused (drift), not silently answered.
+- [ ] `Journal` has two implementations: in memory, and IndexedDB.
+- [ ] (Live) In a real headless Chrome with one profile directory, a
+      flow run in two page loads, killed between them, finishes with
+      each callback called exactly once.
+
+## Stage T11 — a live frontend, typed by path
+
+- [ ] `Stubs.typescriptPaths(schema, name)` writes an interface
+      `NamePaths` mapping every dotted key `JsonOptic.path` accepts to
+      the TypeScript type of what it focuses. An array index is a
+      template-literal key: `` `tasks[${number}]` ``. Recursion is cut
+      at a stated depth.
+- [ ] A TypeScript client
+      `watch<K extends keyof NamePaths>(key: K, f: (v: NamePaths[K]) => void)`
+      and `set(key, value)`, over a `Watched` served by okay-http.
+      (Live) `tsc` refuses a path the schema does not have, and Node
+      sees the pushes.
+- [ ] A framework-free custom element `<okay-live>` and a React hook
+      over the same client. The React part is typechecked only where
+      `@types/react` is installed, and says so.
 
 ## Decisions
 
