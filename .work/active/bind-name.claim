@@ -1,0 +1,6 @@
+feature/bind-name 2026-09-23T09:11:39Z
+agent: claude-code
+heartbeat: 2026-09-23T09:11:39Z
+status: in-progress
+done-so-far: nothing yet
+next: RowLift.bindIn -> bind (operator); test, spec, guide, changelog; gate; land
