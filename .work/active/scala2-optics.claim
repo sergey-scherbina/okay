@@ -1,0 +1,4 @@
+feature/scala2-optics 2026-09-23T15:20:08Z
+agent: claude-code
+status: in-progress
+next: probe okay-optics from 2.13 (7 objects unreadable); lenses/prisms without macros
