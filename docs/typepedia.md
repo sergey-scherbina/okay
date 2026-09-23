@@ -1008,6 +1008,10 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   `GET(Path(...))`. An internal class of the facade must not take a
   common name: `Body` in okay.scala2 once made scalac 2.13 read it
   while resolving `okay.http.Body`, and refuse it (now `ProgBody`).
+- **`Db`** (okay-scala2-sql) — okay-sql's operations as `Eff` and
+  `Source`. The data types (`SqlValue`, `Bad`, `Drift`, `Isolation`,
+  `JdbcSql`) are okay-sql's own and readable from 2.13. `all` turns
+  the first undecodable row into a typed `Throws[Bad]`.
 - **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.

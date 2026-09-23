@@ -23,6 +23,7 @@ Contents:
 8. [Fibers and channels](#8-fibers-and-channels)
 8a. [Codecs: JSON, CBOR, JSON Schema](#8a-codecs-json-cbor-json-schema)
 8b. [HTTP: routes, a server, a client](#8b-http-routes-a-server-a-client)
+8c. [SQL: queries and transactions](#8c-sql-queries-and-transactions)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -533,6 +534,67 @@ assertEquals(got, (200, """{"id":1,"name":"ada"}"""))
   repository that binds a port, so the default gate runs only the
   socket-free half. `sbt integrationTest` runs both.
 
+## 8c. SQL: queries and transactions
+
+Module `okay-scala2-sql`. okay-sql's data types are readable from
+Scala 2 and used as they are: `okay.sql.SqlValue` (parameters), `Bad`
+(a row that did not decode), `Drift` (a column that no longer matches),
+`Isolation`, and the `Sql` driver trait, together with okay-jdbc's
+`JdbcSql`. What Scala 2 cannot use is every operation, because each one
+answers a program. `okay.scala2.Db` provides those operations as `Eff`
+and `Source`.
+
+The example below is copied from
+`okay-scala2/probe/src/test/scala/TestSqlFromScala2.scala`, where it
+runs against an in-memory H2:
+
+```scala
+final case class Person(id: Long, fullName: String, age: Int)
+object Person {
+  implicit val schema: Schema[Person] =
+    Schemas.product3("Person", "id", "fullName", "age")(Person.apply)(p => (p.id, p.fullName, p.age))
+}
+```
+
+```scala
+val prog = for {
+  a <- db.update("INSERT INTO person VALUES (?, ?, ?)", SqlValue.I64(1L), SqlValue.Text("Ada Lovelace"), SqlValue.I32(36))
+  b <- db.updateOf("INSERT INTO person (id, full_name, age) VALUES (?, ?, ?)", Person(2, "Charles Babbage", 79))
+  people <- db.all[Person]("SELECT * FROM person ORDER BY id")
+} yield (a + b, people)
+assertEquals(Eff.runAsync(Throws.run(prog)), Right((2L, Vector(Person(1, "Ada Lovelace", 36), Person(2, "Charles Babbage", 79)))))
+```
+
+- `Db.jdbc(connection)` goes over a JDBC connection, which the caller
+  owns and closes. `Db(sql)` goes over any okay-sql driver.
+- **Rows are decoded by column LABEL.** A field `fullName` reads the
+  column `full_name`, so a `SELECT *` that reorders columns cannot
+  shear the mapping.
+- **Parameters are always bound**, positionally, through the driver's
+  prepared path: as `SqlValue`s, or from a case class with
+  `updateOf`/`rowsOf`/`allOf`.
+- **A row that does not decode is data, not a throw.** In `rows` (a
+  stream) it is a `Left(Bad)`. In `all` the first one fails the
+  program as a typed `Throws[Bad]`, so `all` answers
+  `Eff[Async with Throws[Bad], Vector[A]]`, and `Throws.run` turns
+  that into an `Either`.
+- **`db.transaction()(tx => ...)`** commits when the body completes and
+  rolls back when it fails. Underneath is okay-sql's `Typed.transact`
+  under `Resource`, the same region as in Scala 3.
+- **`db.verify[A](query)` catches drift at startup.** It returns one
+  `Drift` for each column that no longer matches: a column that is
+  missing, of another type, or nullable where the field is not an
+  `Option`.
+- H2 reports an unquoted column name in upper case, so a `Bad` or a
+  `Drift` from it says `FULL_NAME`.
+- In UNFORKED sbt tests across several modules, open the connection
+  through the driver itself (`new org.h2.Driver().connect(url, props)`)
+  rather than `DriverManager`. `DriverManager` scans for drivers once
+  per JVM and then serves only the ones visible to the caller's class
+  loader. So when another module's suite has registered the same driver
+  first, it answers "No suitable driver found" even though the suite
+  passes when run alone. The probe hit exactly this in the full matrix.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -549,6 +611,7 @@ assertEquals(got, (200, """{"id":1,"name":"ada"}"""))
 | `okay.codec.Json.write` / `read` | `okay.scala2.Json.write` / `read` (text in, text out) |
 | `Route / "users" / Route[Int]("id")` + `Router` | `Routes { case GET(Path("users", id)) => ... }` |
 | `okay.http.Response`, `Server.serve` under `Resource` | `okay.scala2.Response`, `Server.use` / `Server.start` |
+| `Typed.rows(db, sql)`, `Typed.transact(db)(...)` | `Db.jdbc(conn).rows[A](sql)` / `.all[A]`, `db.transaction()(tx => ...)` |
 | `direct { ... }` blocks | not available: use `for` |
 
 ## 10. Errors you may see, and what they mean
@@ -573,9 +636,9 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 - **Direct style** (`direct { ... }`, auto-colouring) is built from
   Scala 3 macros, and Scala 2 cannot expand those. Use
   for-comprehensions instead. It is not planned.
-- **The rest of the library.** Codecs (section 8a) and HTTP (8b) are
-  covered. SQL, the agent stack and UI are queued in that order
-  (specs/scala2-facade.md, stages 8–10). WebSockets are not wrapped
+- **The rest of the library.** Codecs (section 8a), HTTP (8b) and SQL
+  (8c) are covered. The agent stack and UI are queued in that order
+  (specs/scala2-facade.md, stages 9–10). WebSockets are not wrapped
   yet.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the

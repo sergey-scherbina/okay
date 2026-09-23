@@ -320,6 +320,24 @@ scala.Tuple". So okay-scala2-http supplies:
       the answer; `Server.start`/`close` stops serving; a streamed
       response is read line by line
 
+## Stage 8 — SQL
+Probed from scalac 2.13.18: okay-sql's data is readable (`SqlValue`,
+`Bad`, `Drift`, `Isolation`, the `Sql` trait, okay-jdbc's `JdbcSql`),
+but every operation answers a program (`Long ! Async`, a `Source` of
+chunks), which Scala 2 cannot compose. okay-scala2-sql's `Db` is those
+operations, each one a call into `Typed`. `all` reports the first
+undecodable row as `Throws[Bad]`, and `transaction` is `Typed.transact`
+under `Resource.run`.
+
+## Behavior (stage 8), all from Scala 2.13, on in-memory H2
+- [x] insert with `SqlValue` parameters and from a case class; read
+      back by column label, camelCase to snake_case
+- [x] an undecodable row is a `Left(Bad)` in `rows` and a
+      `Throws[Bad]` in `all`
+- [x] a transaction commits on completion and rolls back on failure
+- [x] `verify` answers no drift for a matching table and names a
+      missing column
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -453,3 +471,17 @@ scala.Tuple". So okay-scala2-http supplies:
   so compilation failed at `Body.Text(...)`, with the error pointing
   at `okay.Effects$package`. Internal classes of the facade must not
   take common names, and `Body` is now `ProgBody`.
+- STAGE 8 (2026-09-23). okay-scala2-sql. `TestSqlFromScala2` has 4
+  tests on H2, and the probe has 60, green under `-Xlint -Werror`. Two
+  first-run failures were the TEST's assumptions, not the facade's,
+  and both show okay-sql doing its job. H2 upper-cases an unquoted
+  column name, so `Bad`/`Drift` say `FULL_NAME`. And `verify` reports
+  a NULLABLE column behind a non-`Option` field as drift, so the test
+  table's columns are `NOT NULL`.
+  In the FULL matrix the suite then failed with "No suitable driver
+  found for jdbc:h2:mem:...", although it had passed alone. Unforked
+  tests share sbt's JVM, and okay-jdbc's suite had registered H2 in
+  `DriverManager` from ITS class loader first. The suite now connects
+  through `org.h2.Driver` directly. Reproduced and verified by running
+  `okayJdbc/test` then `okayScala2Probe/test` in one sbt: 75 + 60
+  green.

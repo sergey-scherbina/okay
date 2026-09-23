@@ -14,6 +14,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Fiber[A]`, `Channel[A]` | concurrency: `Async.fork`, `par`, `race`, `sleep`, `timeout`; a fiber's `join`/`joinEither`/`cancel`; a bounded channel's `send`/`receive` (programs that wait), `offer`, `close`, `source` |
 | `Schemas`, `Json`, `JsonSchema` (module `okay-scala2-codec`) | okay-codec from 2.13: `Schemas.product1`…`product16`, `sum`/`variant`, `constant` in place of `derives Schema`; JSON as text. `okay.codec.Schema`, `Cbor`, `Yaml` and `Validate` are used directly |
 | `Response`, `Routes`, `GET`/`POST`/…, `Path`, `Requests`, `Server`, `Client` (module `okay-scala2-http`) | okay-http from 2.13: routing as pattern matching, `Server.use`/`start`, a client; `okay.http.Request`, `Method` and `Body` are used directly |
+| `Db` (module `okay-scala2-sql`) | okay-sql from 2.13: `rows`/`all`/`update`/`verify`/`transaction` as `Eff` and `Source`; `okay.sql.SqlValue`, `Bad`, `Drift`, `Isolation` are used directly |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -355,6 +356,13 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 `Requests.path(r)`, `.query(r, name)`, `.queryAll(r, name)`, `.text(r)`, `.json[A](r)`.
 `Server.use[A](port: Int)(handler)(body: Int => Eff[Async, A]): Eff[Async, A]`, `Server.start(port)(handler): RunningServer` (`port`, `close()`).
 `Client()`: `send(r: Request)`, `get(url)`, `post(url, body, contentType)`, `postJson[A](url, a)`, each an `Eff[Async, Response]`; `lines(r: Request): Source[String]`.
+
+**SQL** (module `okay-scala2-sql`) — `Db.jdbc(connection: java.sql.Connection, fetchSize: Int = 64): Db`, `Db(sql: okay.sql.Sql): Db`;
+`rows[A](query: String, params: SqlValue*)(implicit Schema[A]): Source[Either[Bad, A]]`, `rowsOf[A, P](query, p: P)`;
+`all[A](query, params: SqlValue*): Eff[Async with Throws[Bad], Vector[A]]`, `allOf[A, P](query, p)`;
+`update(query, params: SqlValue*): Eff[Async, Long]`, `updateOf[P](query, p)`;
+`verify[A](query): Eff[Async, Vector[Drift]]`;
+`transaction[A](isolation: Isolation = ReadCommitted, readOnly: Boolean = false)(body: Db => Eff[Async, A]): Eff[Async, A]`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,
