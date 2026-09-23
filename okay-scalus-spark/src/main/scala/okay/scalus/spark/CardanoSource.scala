@@ -209,9 +209,9 @@ final class CardanoStream(options: CaseInsensitiveStringMap, kind: CardanoSource
   private def start(from: CardanoOffset): Unit = synchronized {
     if !started then
       started = true
-      // a daemon: the build targets a JDK where virtual threads are not
-      // assumed, and one follower per stream is one thread
-      val t = Thread(() => {
+      // okay's adaptive pick: a virtual thread where the JVM has them, a
+      // daemon otherwise — the build's JDK floor is 17 (-java-output-version)
+      val _ = _root_.okay.Threads.spawnThread("okay-cardano-follower") { () =>
         CardanoFollower.open(CardanoSource.wire(options), CardanoSource.network(options), Some(from.checkpoint), depth(options)) match
           case Left(e) => failure = Some(e)
           case Right(f) =>
@@ -225,9 +225,7 @@ final class CardanoStream(options: CaseInsensitiveStringMap, kind: CardanoSource
                   case Event.RolledBack(to, _) =>
                     failure = Some(s"a rollback past block ${to.height} reached confirmed blocks — raise 'confirmations'")
                 }
-      }, "okay-cardano-follower")
-      t.setDaemon(true)
-      t.start()
+      }
   }
 
   override def getDefaultReadLimit: ReadLimit = ReadLimit.allAvailable()
