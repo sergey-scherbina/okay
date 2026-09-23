@@ -156,14 +156,14 @@ Each stage is a lane; Results below record what each found.
 
 ## Stage T9 — okay on npm
 
-- [ ] An npm package directory (`package.json`, an ES module linked
+- [x] An npm package directory (`package.json`, an ES module linked
       by Scala.js, a hand-checked `index.d.ts` written from the same
       Schemas):
       - `run(program, callbacks)` walks a TypeScript program;
       - a CRDT replica type (counter, register, set) is exported with
         its merge;
       - an okay stream is exported as an `AsyncIterable`.
-- [ ] (Live) `npm pack`, then `npm install` of the tarball into a fresh
+- [x] (Live) `npm pack`, then `npm install` of the tarball into a fresh
       TypeScript project, offline. `tsc --strict` compiles a consumer,
       and Node runs it.
 
@@ -361,3 +361,35 @@ Each stage is a lane; Results below record what each found.
     `js { }` lambda's body is a statement, so the function returns
     `undefined`, and annotating Scala's result type would be a claim tsc
     rejects.
+
+- T9 (ts-npm, 2026-09-23).
+  - `okay-ts-npm` is a Scala.js ES module, the one ESModule-linked
+    project in the build. `npmPackage` writes target/npm.
+  - Its `index.d.ts` is the module's own `declarations` export: the CRDT
+    state types come from `Stubs.typescript` over okay-crdt's Wire
+    schemas, and the signatures are written beside the exports. Nothing
+    generated can drift, and the hand-written part is held by tsc on the
+    real module.
+  - `Ts.runJson` joins `Ts.run` (one walk, two finishes), since a package
+    caller's program answers any JSON.
+  - TestOkayNpm (Scala.js, default gate, 7 tests) covers:
+    - a synchronous and a Promise callback;
+    - a throwing callback rejecting the run;
+    - GCounter merge in both orders;
+    - an OR-Set keeping a concurrent add;
+    - a wrong state refused with a named TypeError;
+    - a channel read to its end through `Symbol.asyncIterator`;
+    - the declarations naming every export.
+  - `scripts/ts-npm-check.sh` (Live; GREEN under sh and bash):
+    - `npm pack`, then an offline `npm install` into a fresh project;
+    - `tsc --strict` accepts the consumer and refuses a `number` read as
+      a `string`;
+    - Node prints the expected line.
+  - Mutant: declaring `gcounter.value` as `string` turns the check RED
+    at tsc.
+  - A finding in the build: `node -e` with a dynamic `import()` of the
+    linked module never settled (Node 26, exit 13, "unsettled top-level
+    await"), while a static import of the same file loads at once. The
+    task writes a small .mjs file instead.
+  - Not done, on purpose: publishing to the npm registry, which is the
+    owner's outward step.

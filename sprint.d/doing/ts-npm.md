@@ -1,1 +1,0 @@
-- [ ] ts-npm — okay-ts (and okay-crdt, okay streams as AsyncIterable) published as an npm package with its `.d.ts`, so a TypeScript project installs okay rather than building Scala.js; the prerequisite of offering CRDT documents and typed streams to frontend developers.

@@ -447,6 +447,59 @@ A `Dyn` is `any`, because it is untyped JavaScript. A type outside the
 subset's short list is refused by name. The subset and its limits are in
 [okay-js](modules/okay-js.md).
 
+## okay on npm: `@okay/ts`
+
+A TypeScript project should be able to install okay rather than build
+Scala.js. `okay-ts-npm` is okay-ts, okay-crdt and okay's channels
+compiled into one ES module. `sbt okayTsNpmJS/npmPackage` writes the
+package directory: the module, its `package.json`, and an `index.d.ts`
+that the module writes of itself, from the same Schemas that encode its
+values.
+
+```typescript
+import { gcounter, orset, run, then, performing, done, channel, type GCounter } from "@okay/ts";
+
+const a: GCounter = gcounter.inc(gcounter.empty(), "phone", 2);
+const b: GCounter = gcounter.inc(gcounter.empty(), "laptop");
+const total: number = gcounter.value(gcounter.merge(a, b));
+```
+
+- **CRDT replicas.** `gcounter`, `pncounter` and `orset` are plain JSON
+  states with a `merge`. Two replicas changed apart, even offline, merge
+  to the same state in any order. The laws are okay-crdt's and are
+  tested there.
+- **Programs.** `run` walks a program written with `then`, `performing`
+  and `done`. Each operation is one of your callbacks, and a callback may
+  be `async`:
+
+```typescript
+const quote = await run(
+  then(performing<number>("price", "tea"), (price) =>
+    then(performing<number>("stock", "tea"), (stock) => done({ price, stock }))),
+  { price: (sku: string) => (sku === "tea" ? 4.5 : 0), stock: async () => 12 },
+);
+```
+
+- **Channels.** An okay channel is an `AsyncIterable`:
+
+```typescript
+for await (const u of updates) seen.push(u);
+```
+
+`scripts/ts-npm-check.sh` is the check, and it does what a user does:
+1. `npm pack`;
+2. an offline `npm install` of the tarball into a fresh project;
+3. `tsc --strict` on this consumer, and on a wrong one, which must be
+   refused;
+4. Node running the consumer, with its output compared.
+
+**Limits.**
+- The package is built, not published: the npm registry is an outward
+  step for the owner to take.
+- The state types in `index.d.ts` come from Scala Schemas. The function
+  signatures are written beside the exports, in the same file, and it is
+  the check above (tsc on the real module) that holds the two together.
+
 ## TypeScript libraries, used from okay
 
 To call an existing TypeScript library from okay on Scala.js, generate
