@@ -721,19 +721,19 @@ sentence that made the operator ask ("не возражаю — делай").
 
 ```scala
 extension [A, F[+_]](p: A ! F)
-  inline def bindIn[B, G[+_]](f: A => B ! G): B ! (F + G)   // G read off f, F off p
+  inline def bind[B, G[+_]](f: A => B ! G): B ! (F + G)   // G read off f, F off p
   inline def thenIn[B, G[+_]](q: => B ! G): B ! (F + G)
 ```
 
 ### Behavior (`TestBindIn`, core)
 
-- [x] `Reader.ask[Int].bindIn(e => Writer.tell(s"$e"))` typechecks
+- [x] `Reader.ask[Int].bind(e => Writer.tell(s"$e"))` typechecks
       with no type argument written, answers in `Reader % Int + Writer
       % String`, and runs to the same answer and log as the spelling
       with two `plus`es.
-- [x] a chain of three rows: `bindIn` twice lands in the union of all
+- [x] a chain of three rows: `bind` twice lands in the union of all
       three, and the effects run in order.
-- [x] the tree is the same tree: `bindIn` builds one `Bind` whose
+- [x] the tree is the same tree: `bind` builds one `Bind` whose
       continuation is `f` — no walk, no re-injection — checked by
       stepping (`resume`) and by the operation count under a relay.
 - [x] `thenIn` runs both sides, in order, dropping the first answer.
@@ -754,5 +754,5 @@ extension [A, F[+_]](p: A ! F)
 3. **When to reach for which** — one line in the guide beside
    `plus`/`at`: inside a helper, `plus` (say only what you add);
    several operations into one named row, `at`; a bind whose
-   continuation is in another row, `bindIn`; a whole block of mixed
+   continuation is in another row, `bind`; a whole block of mixed
    rows, `direct`.

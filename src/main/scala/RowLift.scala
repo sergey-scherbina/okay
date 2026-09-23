@@ -166,14 +166,16 @@ object RowLift:
      * by construction (`plus`), so no witness is needed and no tree is
      * walked: one `Bind` node, exactly what `flatMap` builds.
      *
-     * Not `flatMap` itself, on purpose: `Free.flatMap` is the hottest
+     * Named `bind` at the operator's word (2026-09-23) — the monad's own
+     * word for the operation, on a receiver where `flatMap` cannot be
+     * it. Not `flatMap` itself, on purpose: `Free.flatMap` is the hottest
      * path in the library and an overload taking a row-polymorphic
      * continuation would put every lambda's typing through overload
      * resolution; and a `for`-comprehension desugars to `flatMap` by
      * name, so mixed rows in a `for` stay `.at[R]` on each generator —
      * or a `direct` block, where marks widen with nothing written.
      */
-    inline def bindIn[B, G[+_]](f: A => B ! G): B ! (F + G) =
+    inline def bind[B, G[+_]](f: A => B ! G): B ! (F + G) =
       coerce[A, F, F + G](p).flatMap(a => coerce[B, G, F + G](f(a)))
 
     /** the same, the answer dropped: `p thenIn q` runs p, then q */
