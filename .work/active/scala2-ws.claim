@@ -1,6 +1,0 @@
-feature/scala2-ws 2026-09-23T08:04:31Z
-agent: claude-code
-heartbeat: 2026-09-23T08:04:31Z
-status: in-progress
-done-so-far: picked
-next: probe Ws/Frame/Socket from 2.13, facade, tests
