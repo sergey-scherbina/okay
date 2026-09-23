@@ -63,6 +63,31 @@ grep -q "gate: STALLED" "$out2" && bad "killed a working build — the CPU signa
 [ "$rc2" -eq 0 ] && ok "reached a verdict (exit 0)" || bad "exit was $rc2, expected 0"
 grep -q "gate: GREEN" "$out2" && ok "said GREEN" || bad "no GREEN line"
 
+# ------------------------------------------ 4. a busy host over idle children
+say "4. idle CHILDREN under a sbt that still burns a little CPU are STALLED"
+# gate-watchdog-idle-sbt-cpu: the whole-tree sum counted sbt's own
+# idle overhead (~3 s/min) as work, so a hang of every child read as
+# "still working" for ever. The host's CPU has its own, higher bar.
+out4="$tmp/idlekids.out"
+GATE_SBT="$here/fake-sbt-idle-children.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 \
+  GATE_STALL_CPU=0 GATE_STALL_HOST_CPU=1000 FAKE_SPIN=100000000 \
+  GATE_LOG="$tmp/idlekids.log" run_gate test > "$out4" 2>&1
+rc4=$?
+[ "$rc4" -eq 124 ] && ok "exit 124" || bad "exit was $rc4, expected 124 — the host's own CPU hid the hang"
+grep -q "gate: STALLED" "$out4" && ok "said STALLED" || bad "no STALLED line"
+if pgrep -f "$here/fake-sbt-idle-children.sh" > /dev/null 2>&1; then
+  bad "the fake build is still alive"
+else ok "the tree was killed by pid"; fi
+
+say "5. the same shape with the host WORKING (a cold compile: sbt busy, no children busy) survives"
+out5="$tmp/busyhost.out"
+GATE_SBT="$here/fake-sbt-idle-children.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 \
+  GATE_STALL_CPU=0 GATE_STALL_HOST_CPU=0 \
+  GATE_LOG="$tmp/busyhost.log" run_gate test > "$out5" 2>&1
+rc5=$?
+grep -q "gate: STALLED" "$out5" && bad "killed a compiling host" || ok "not stalled"
+[ "$rc5" -eq 0 ] && ok "reached a verdict (exit 0)" || bad "exit was $rc5, expected 0"
+
 say ""
 # and now the same suite under the OTHER shell, once
 if [ -z "$GATE_SELFTEST_SHELL" ] && [ "$fail" -eq 0 ]; then

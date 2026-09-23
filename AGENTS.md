@@ -189,7 +189,12 @@ force, all already practiced, none previously written down:
   `gate: STALLED` with exit 124. That is NOT a verdict — like
   `KILLED`, it says nothing about the tree, and `gate-retry.sh`
   retries it. Two signals and not one, because silence alone is a cold
-  compile: the run has to be silent AND burning no CPU.
+  compile: the run has to be silent AND burning no CPU. "Idle" is judged in TWO parts
+  since gate-watchdog-idle-sbt-cpu (2026-09-23): the WORKERS (node,
+  Native test binaries, forked JVMs) under 5 s per window, and sbt's
+  OWN JVM under 60 s — sbt at idle burns ~3 s/min on its own, and one
+  sum over the whole tree read a hang of every child as "still
+  working" twice in one day.
   WHY IT EXISTS: measured the same day, a gate sat **57 minutes** with
   its log frozen and was found only because a human asked how it was
   going. The dump named the cause — `sbt.ForkTests$Acceptor` blocked

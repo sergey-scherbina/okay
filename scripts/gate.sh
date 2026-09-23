@@ -112,7 +112,19 @@ fi
 # CPU in the whole process tree is a build that has stopped being a
 # build.
 stall_secs="${GATE_STALL_SECS:-480}"     # 8 minutes of silence...
-stall_cpu="${GATE_STALL_CPU:-5}"         # ...with under 5s of CPU in it
+stall_cpu="${GATE_STALL_CPU:-5}"         # ...with under 5s of CPU in the WORKERS
+# ...and under 60s in the HOST (gate-watchdog-idle-sbt-cpu, 2026-09-23).
+# The host is sbt's own JVM; the workers are everything under it —
+# node, Native test binaries, forked test JVMs. One sum over the whole
+# tree missed the hang this watchdog was written for, TWICE in a day:
+# sbt at idle burns ~3 s/min (GC, a process-reaper thread per child),
+# 26 s per window, five times the 5 s bar, so a tree of 0%-CPU children
+# read "still working" for ever. The host's bar is its own: 60 s per 8
+# minutes is ~12% of one core, twice its idle overhead and far under a
+# cold compile, which is the HOST working (dotc is in-process) with no
+# worker at all — the case that must survive.
+stall_host_cpu="${GATE_STALL_HOST_CPU:-60}"
+host_pattern="${GATE_HOST_PATTERN:-sbt-launch|sbt[.]script|xsbt[.]boot}"
 tick_secs="${GATE_TICK_SECS:-30}"
 
 # the log's mtime, on BSD (this box) and on GNU. Without the second
@@ -129,12 +141,27 @@ descendants() {
   done
 }
 
-# total CPU SECONDS of a tree. `ps -o pcpu` is the average over a
+# the tree split in two: the HOST (the root pid, and whatever in the
+# tree is sbt's own JVM by its command line) and the WORKERS (the rest).
+# `host_pids`/`worker_pids` print pids; `cpu_of` sums their CPU seconds.
+host_pids() {
+  echo "$1"
+  descendants "$1" | while read -r p; do
+    if ps -o command= -p "$p" 2>/dev/null | grep -Eq "$host_pattern"; then echo "$p"; fi
+  done
+}
+worker_pids() {
+  hosts=$(host_pids "$1")
+  descendants "$1" | while read -r p; do
+    if ! printf '%s\n' "$hosts" | grep -qx "$p"; then echo "$p"; fi
+  done
+}
+# CPU SECONDS of a set of pids. `ps -o pcpu` is the average over a
 # process's whole life and says nothing about now (it read 5.8% for a
 # JVM that had been idle for an hour), so this reads cumulative CPU
 # TIME and the caller differences two samples.
-cpu_secs() {
-  { echo "$1"; descendants "$1"; } | sort -u | while read -r p; do
+cpu_of() {
+  sort -u | while read -r p; do
     ps -o time= -p "$p" 2>/dev/null
   done | awk -F: '
     { n=NF; s=0; m=1
@@ -175,7 +202,7 @@ stall_evidence() {
 # inside ONE sbt, and sbt stops at the first that fails, which is what
 # makes the JVM-first split below cost nothing when it is green
 sbt_run() {
-  local l="$1" pid quiet base now mt last
+  local l="$1" pid quiet base now mt last hbase hnow
   shift
   : > "$l"
   # shellcheck disable=SC2086
@@ -183,24 +210,26 @@ sbt_run() {
   pid=$!
   last=$(mtime_of "$l")
   quiet=0
-  base=$(cpu_secs "$pid")
+  base=$(worker_pids "$pid" | cpu_of); hbase=$(host_pids "$pid" | cpu_of)
   while kill -0 "$pid" 2>/dev/null; do
     sleep "$tick_secs"
     kill -0 "$pid" 2>/dev/null || break
     mt=$(mtime_of "$l")
     if [ "$mt" != "$last" ]; then
-      last="$mt"; quiet=0; base=$(cpu_secs "$pid"); continue
+      last="$mt"; quiet=0
+      base=$(worker_pids "$pid" | cpu_of); hbase=$(host_pids "$pid" | cpu_of); continue
     fi
     quiet=$((quiet + tick_secs))
     [ "$quiet" -lt "$stall_secs" ] && continue
-    now=$(cpu_secs "$pid")
-    if [ $((now - base)) -gt "$stall_cpu" ]; then
-      # silent but working: a long compile. Say it once per window and
-      # keep waiting, with the CPU baseline moved forward.
-      echo "gate: quiet for ${quiet}s but the tree burned $((now - base))s of CPU — still working"
-      quiet=0; base="$now"; continue
+    now=$(worker_pids "$pid" | cpu_of); hnow=$(host_pids "$pid" | cpu_of)
+    if [ $((now - base)) -gt "$stall_cpu" ] || [ $((hnow - hbase)) -gt "$stall_host_cpu" ]; then
+      # silent but working: a long compile (the host) or a long test
+      # (a worker). Say it once per window and keep waiting, with both
+      # baselines moved forward.
+      echo "gate: quiet for ${quiet}s but the workers burned $((now - base))s and sbt $((hnow - hbase))s of CPU — still working"
+      quiet=0; base="$now"; hbase="$hnow"; continue
     fi
-    echo "gate: STALLED — no output for ${quiet}s and $((now - base))s of CPU in that window"
+    echo "gate: STALLED — no output for ${quiet}s; the workers burned $((now - base))s and sbt $((hnow - hbase))s of CPU in that window"
     stall_evidence "$pid" "$l.stall"
     echo "gate: killing the run BY PID ($pid and its tree); this is NOT a verdict about the tree"
     descendants "$pid" | while read -r p; do kill "$p" 2>/dev/null; done
