@@ -1,6 +1,0 @@
-feature/load-flakes 2026-09-23T13:58:45Z
-agent: claude-code
-heartbeat: 2026-09-23T13:58:45Z
-status: in-progress
-done-so-far: four flake entries promoted (async-cross-sleep-timer, supervision-shapes-timing, storefront-timeout-under-load, reactive-tck-gc-under-load)
-next: worktree; each assertion understood, then made load-proof or Live-tagged; land
