@@ -1839,3 +1839,36 @@ document was read from the wrong offset, and the answer was a `Right`.
       `Right(Box(1))` past a wrapped skipped field
 - Counted the doors: no other CBOR reader exists in the tree
   (`grep` for a hand-written head parser: none outside `Cbor.scala`).
+
+## EDN (2026-09-23, edn-codec)
+
+EDN (Clojure's extensible data notation) as a third codec over `Schema`,
+for the operator's Clojure work: `Edn.write`/`Edn.read`, the `Edn` tree,
+`parse`/`show`. Written code-first against spec-dev — this section
+follows the code, and says so.
+
+- [x] the tree: nil, bool, 64-bit integer, `N` BigInt, double (`##Inf`,
+      `##NaN`), `M` decimal, string, character, keyword, symbol, list,
+      vector, map, set, tagged; comments, commas, `#_` discard
+- [x] text read and printed with an explicit stack — 20 000 nested
+      vectors on the default stack; show-then-parse is the identity
+- [x] a `Schema` through EDN: product = keyword-keyed map, sum =
+      `#Sum/Case value` (EDN reserves un-namespaced tags), `SList` a
+      list, `SVector` a vector (either reads as either), bytes
+      `#okay/bytes "base64"`, `None` nil, a missing optional field None
+- [x] exact: `Long.MaxValue` round-trips, a 20-digit integer reads as a
+      BigInt and is refused for `SLong` by name
+- [x] the encoder is the `Step` algebra JSON's is; the decoder has JSON's
+      two roads — a 5 000-link recursive value decodes on the default
+      stack (a mutant without the `Cont` road: StackOverflowError)
+- [x] JVM, JS and Native: 8/8 each
+- [x] against Clojure itself (okay-clojure, TestEdnWithClojure): okay's
+      text read by `clojure.edn/read-string`, Clojure's `pr-str` read by
+      `Edn.read` into the typed value
+
+**Decisions.** Not through JSON: a `Double` number would lose `Long`
+precision past 2^53, and keywords, sets, characters and tags would be
+flattened. Keyword keys are required for a product (string keys are read
+too, leniently, since other EDN writers use them). A tag naming a case is
+accepted namespaced (`#Shape/Rect`) or bare (`#Rect`) on read; written
+namespaced, as the EDN spec asks of user tags.

@@ -150,6 +150,33 @@ frames — a miniature adoption agency. The tree stays well-nested,
 every marker token is kept, and whatever is open at EOF becomes the
 builder's "unclosed" error node.
 
+## EDN, for Clojure and for what JSON cannot say
+
+`Edn.write`/`Edn.read` are a third format beside JSON and CBOR, through
+the same `Schema`. EDN (github.com/edn-format/edn) is what Clojure speaks,
+and it keeps what JSON flattens: a keyword is not a string, an integer is
+exact to 64 bits (and `123N` beyond), a character is `\c`, and a variant
+is NAMED by a tag. A product is a map with keyword keys, a sum a tagged
+value namespaced by the sum:
+
+```scala
+val text = Edn.write(doc)
+```
+
+gives `{:name "okay" :count 9223372036854775807 :big 123456789012345678901234567890N :initial \o …
+:shape #Shape/Rect {:w 2.0 :h 3.5} …}`, which Clojure's `clojure.edn/read-string`
+reads as its own data — and Clojure's `pr-str`, commas and all, reads back
+as the typed value:
+
+```scala
+assertEquals(Edn.read[Doc](printed.toString), Right(doc))
+```
+
+Text is read and printed with an explicit stack and a `Schema` decoded on
+JSON's two roads (native, then `Cont` past `Codecs.NativeThreshold`), so a
+20 000-deep document and a 5 000-link recursive value run on the default
+stack on JVM, JS and Native alike.
+
 ## Tutorial
 
 Derive and round-trip both wires:
@@ -262,6 +289,8 @@ the wire sees.
 | `Json.encode` / `Json.decode` | the two Schema algebras | render / read back (`Either`) |
 | `Json.read` / `Json.write` | `String => Either[String, A]` / `A => String` | one-movers |
 | `Cbor.write` / `Cbor.read` | `A => Array[Byte]` / `Array[Byte] => Either[String, A]` | RFC 8949, same content as JSON |
+| `Edn.write` / `Edn.read` | `A => String` / `String => Either[String, A]` | EDN, Clojure's data notation: keyword keys, exact 64-bit integers, `123N`, `\c`, a sum as a `#Sum/Case` tag; stack-safe both ways |
+| `Edn` (data) / `Edn.parse` / `Edn.show` | `ENil/EBool/ELong/EBig/EDouble/EDec/EStr/EChar/EKeyword/ESymbol/EList/EVector/EMap/ESet/ETagged` | the EDN value tree, read and printed with an explicit stack |
 | `Compat.compare` | `(Schema[A], Schema[B]) => Report` | what changed, and whether each direction still decodes |
 | `Cbor.In.skipItem` | `() => Either[String, Unit]` | one complete item read and discarded — what a decoder does with a field it does not declare |
 | `Validate.decode` / `Validate.errors` | `Schema[A] => Json => Either[Vector[(path, msg)], A]` | `Json.decode`'s applicative twin: EVERY refusal, each at its dotted path, the typed value when there is none — same rules, read off the same decoder; a fold on `Schema.Step` |

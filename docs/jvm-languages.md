@@ -158,6 +158,11 @@ val ch = fn("clojure.core.async", "chan").invoke(Long.box(10L), Transducers.of(r
 val c = CoreAsync.of[java.lang.Long](ch)
 ```
 
+**Clojure data** crosses as EDN: okay-codec's `Edn` writes what
+`clojure.edn/read-string` reads (keyword keys, exact integers, a variant
+as a `#Sum/Case` tag) and reads what Clojure's `pr-str` prints, through
+the same `Schema` as JSON and CBOR — docs/modules/okay-codec.md.
+
 docs/modules/okay-clojure.md.
 
 ## 4. Frege

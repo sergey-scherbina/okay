@@ -811,7 +811,10 @@ lazy val okayClojure = (project in file("okay-clojure"))
   // okayAsync + okayPlatform: `Ops.sleep` builds an Async operation on the platform Timer
   // okayStream test->test: CoreAsyncChannel answers the SAME
   // ChannelLawsSuite every okay channel does (clojure-core-async)
-  .dependsOn(okay.jvm, okayStream.jvm % "compile->compile;test->test", okayAsync.jvm, okayPlatform.jvm)
+  // okayCodec in Test: EDN written by okay is read by clojure.edn, and
+  // Clojure's pr-str is read by okay's Edn (edn-codec)
+  .dependsOn(okay.jvm, okayStream.jvm % "compile->compile;test->test", okayAsync.jvm, okayPlatform.jvm,
+    okayCodec.jvm % Test)
   .settings(
     name := "okay-clojure",
     libraryDependencies ++= Seq(

@@ -46,7 +46,6 @@ enum Edn:
   case ETagged(ns: Option[String], name: String, value: Edn)
 
 object Edn {
-  import Edn.*
 
   // ================================================================ read
 
@@ -297,7 +296,7 @@ object Edn {
           case ESet(xs) => seq("#{", "}", xs)
           case EMap(kvs) => seq("{", "}", kvs.flatMap((k, v) => Vector(k, v)))
           case ETagged(ns, n, value) =>
-            sb.append('#').append(qualified(ns, n)).append(' ')
+            val _ = sb.append('#').append(qualified(ns, n)).append(' ')
             work.push(Right(value))
     sb.toString
 

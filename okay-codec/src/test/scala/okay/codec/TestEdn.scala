@@ -29,8 +29,11 @@ class TestEdn extends munit.FunSuite {
   val doc = Doc("okay", Long.MaxValue, BigInt("123456789012345678901234567890"), 'o',
     List("a", "b"), Vector(1, 2, 3), Shape.Rect(2.0, 3.5), None, Array[Byte](1, 2, 3))
 
+  /** equal but for the array, compared by content: a case class compares
+   * an Array by reference, so the blob is swapped for ONE shared empty */
   def same(a: Doc, b: Doc): Boolean =
-    a.copy(blob = Array.empty) == b.copy(blob = Array.empty) && a.blob.sameElements(b.blob)
+    val none = Array.emptyByteArray
+    a.copy(blob = none) == b.copy(blob = none) && a.blob.sameElements(b.blob)
 
   test("a Schema value through EDN and back, every leaf kind") {
     val text = Edn.write(doc)
