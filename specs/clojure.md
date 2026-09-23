@@ -1,0 +1,95 @@
+# okay-clojure — Clojure interop, and a Stage IS a transducer
+
+## Overview
+
+Clojure runs on the JVM and publishes a Java API for calling it
+(`clojure.java.api.Clojure`: `var(ns, name)` answers an `IFn`, `read`
+answers data), so the plumbing is small. The idea worth a module is the
+one java-gatherers already proved for the JDK: Hickey's **transducers**
+\[Hickey 2014\] are a transformation of a reducing step with early
+termination (`reduced`) and a completion arity for the flush — the
+push-form enumeratee (theory ch. 7) — and okay's `Stage` is the same
+thing as a program. So the bridge is a translation, both ways:
+
+- `Transducers.of(stage)`: an okay `Stage` as a Clojure transducer —
+  usable in `into`, `transduce`, `sequence`, `eduction`, core.async
+  channels, composable with `comp` against Clojure's own.
+- `Transducers.stage(xf)`: any Clojure transducer (`(map inc)`,
+  `(partition-all 3)`, `(dedupe)`, a library's own) as a `Stage` in an
+  okay pipeline.
+- `Clj`: the calling side — `Clj.fn("ns", "name")`, `Clj.require`,
+  `Clj.eval(source)` — thin over the Java API, typed at the edges.
+
+JVM only (Clojure is a JVM language); `org.clojure:clojure` 1.12.6,
+which runs on JDK 8+, so the module takes the build's default floor.
+
+## The transducer contract, and how a Stage meets it
+
+A transducer `xf` is a function of a reducing function `rf` answering
+a new one with three arities: `()` init, `(acc)` completion, `(acc x)`
+step. State (a `volatile!`) is made when `xf` is APPLIED to `rf`, once
+per transducing process. A step may answer `(reduced acc)` to stop the
+process; a process that sees it stops feeding and unwraps it before
+calling completion. A stateful transducer flushes in its completion
+arity, then calls `(rf acc)`.
+
+For `Transducers.of(stage)` applied to `rf`:
+- the process's state is the stage suspended at its next `await` (the
+  java-gatherers `Pos`), made fresh at each application to `rf`;
+- step `(acc x)` resumes the stage with `Some(x)`; each `tell o` is
+  `acc = rf(acc, o)`; if `rf` answers reduced, the stage is abandoned
+  and the reduced value returned (the downstream stopped);
+- a stage that ANSWERS returns `(ensure-reduced acc)` — the upstream
+  stops, like a gatherer's `false`;
+- completion `(acc)` resumes the stage with `None` until it answers,
+  feeding its tells, then calls `rf(acc)`.
+
+For `Transducers.stage(xf)`: `xf` is applied to a collecting `rf` when
+the stage STARTS (a `Free.delay`), steps are `(xrf acc x)`, and a
+reduced answer ends the stage after the completion arity has flushed.
+Like `Gather.stage`, a pipeline BUILT with `through` over it is
+one-shot (through-built-pipeline-one-shot) and refuses a re-run by
+name: a Clojure transducer's `volatile!` cannot be snapshotted.
+
+## Behavior
+
+- [ ] build: `okayClojure` (JVM) depends on core + okay-stream and
+      Clojure 1.12.6; in the root aggregate; module page and index row
+- [ ] `Clj.fn(ns, name)` resolves a var (requiring the namespace), and
+      `Clj.eval(src)` reads and evaluates one form; a missing var or
+      namespace is refused BY NAME, not a bare NPE from `invoke`
+- [ ] law, stage -> Clojure: for id, a 3-chunker, mapAccumulate, a
+      transduceUntil take-3, a stage that tells before awaiting —
+      `(into [] (Transducers.of s) coll)` equals okay's own run
+- [ ] composes: `(comp (Transducers.of s) (map inc))` and
+      `(comp (map inc) (Transducers.of s))` both equal the okay-side
+      composition
+- [ ] a stage that answers stops an INFINITE `(range)` under `into`
+      (bounded in the test so a broken bridge fails, not hangs)
+- [ ] a downstream `(take 2)` after the stage stops it mid-element: a
+      stage telling 1000 copies of one element makes at most 3 tells
+- [ ] `sequence` (lazy, element-at-a-time through a TransformerIterator)
+      and `transduce` with a completing rf agree with `into`
+- [ ] law, Clojure -> stage: `(map inc)`, `(filter odd?)`,
+      `(partition-all 3)`, `(take 3)`, `(dedupe)`, and a `comp` of them
+      run through `Transducers.stage` equal `(into [] xf coll)`
+- [ ] a reduced from a Clojure transducer (take) stops the stage
+      awaiting: a 1000-element producer is pulled at most 3 times
+- [ ] round trip: `Transducers.stage(Transducers.of(s))` equals `s`
+- [ ] a built pipeline over `Transducers.stage` refuses a second run by
+      name
+- [ ] docs: module page, guide §5 paragraph, theory ch. 7 sentence;
+      every snippet verbatim in a gated test
+
+## Decisions
+
+- **A transducer, not a Clojure seq, is the seam.** A lazy seq is a
+  producer and would bridge to `Chunks` in a line; the transducer is
+  the part of Clojure that is a *transformation*, reusable across
+  collections, channels and processes — the same reason the JDK side
+  bridged `Gatherer` and not `Stream`.
+- **No AOT, no gen-class.** The transducer is a Scala `AFn` subclass;
+  Clojure sees an ordinary `IFn`. Nothing is compiled from Clojure
+  source, so the module has no Clojure build step.
+
+## Results
