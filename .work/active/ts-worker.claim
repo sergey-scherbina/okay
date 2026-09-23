@@ -1,3 +1,0 @@
-slug: ts-worker
-who: claude-opus-5.5 (interop session)
-what: a TypeScript worker (Node) on the okay wire: calls, callbacks, handles, programs as data; okay.ts library; wire-shaped .d.ts
