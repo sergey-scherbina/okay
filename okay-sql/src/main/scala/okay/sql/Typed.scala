@@ -136,6 +136,19 @@ object Typed:
       shapesOf(p).left.map(e => s"field ${e}").map(shapes => p.fields.zip(shapes).map((f, sh) => Field(f._1, sh)))
     case _ => Left("a row is a product (a case class)")
 
+  /** a field's column type and whether it is nullable, by name,
+   * read off a row schema — what `Query` checks a comparison's
+   * value against at construction (specs/optics-outside.md stage 9) */
+  private[sql] def columnOf(s: Schema[?], name: String): Either[String, (Int, SqlType, Boolean)] =
+    fieldsOf(s).flatMap { fs =>
+      val i = fs.indexWhere(_.name == name)
+      if i < 0 then Left(s"`$name` is not a field of this row (fields: ${fs.map(_.name).mkString(", ")})")
+      else Right((i, fs(i).tpe, fs(i).optional))
+    }
+
+  /** the column type a VALUE's schema binds as, for the same check */
+  private[sql] def typeOf(s: Schema[?]): Either[String, SqlType] = shapeOf(s).map(_.tpe)
+
   /** camelCase → snake_case, lowercased */
   def snake(name: String): String =
     val sb = new StringBuilder
