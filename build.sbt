@@ -809,11 +809,14 @@ lazy val okayJava = (project in file("okay-java"))
  */
 lazy val okayClojure = (project in file("okay-clojure"))
   // okayAsync + okayPlatform: `Ops.sleep` builds an Async operation on the platform Timer
-  .dependsOn(okay.jvm, okayStream.jvm, okayAsync.jvm, okayPlatform.jvm)
+  // okayStream test->test: CoreAsyncChannel answers the SAME
+  // ChannelLawsSuite every okay channel does (clojure-core-async)
+  .dependsOn(okay.jvm, okayStream.jvm % "compile->compile;test->test", okayAsync.jvm, okayPlatform.jvm)
   .settings(
     name := "okay-clojure",
     libraryDependencies ++= Seq(
       "org.clojure" % "clojure" % "1.12.6",
+      "org.clojure" % "core.async" % "1.9.865",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )

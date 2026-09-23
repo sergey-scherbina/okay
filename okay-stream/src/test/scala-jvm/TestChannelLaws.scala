@@ -27,48 +27,16 @@ import scala.jdk.CollectionConverters.*
  * claim them, and the suite records which laws each implementation
  * signed up for.
  */
-class TestChannelLaws extends munit.ScalaCheckSuite {
+/**
+ * The laws, over ANY list of implementations — `TestChannelLaws` runs them
+ * over okay-stream's own, and a module that implements `Channel` elsewhere
+ * (okay-clojure's view of a core.async channel) runs the SAME battery by
+ * extending this with its own list (clojure-core-async, 2026-09-23). The
+ * Boolean is the DRAIN tier: whether the implementation signs up for
+ * drain-on-close.
+ */
+abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int])]) extends munit.ScalaCheckSuite {
 
-  /** does this implementation promise that a closed channel still
-   * yields what it already accepted? */
-  private val impls: List[(String, Boolean, Int => Channel[Int])] = List(
-    ("StmChannel", true, cap => StmChannel[Int](cap)),
-    ("SentinelChannel", true, cap => SentinelChannel[Int](cap)),
-    // the unbounded one answers for the SAME laws: it ignores the
-    // capacity because it has none, and a law that leans on a full
-    // buffer must still hold when the buffer never fills
-    ("SentinelChannel/unbounded", true, _ => SentinelChannel[Int](Segments[Int | Mark]())),
-    // the RELAXED one answers for every law here, which is the point
-    // of the tier split: what it gives up is the order BETWEEN
-    // producers, and no law states that. Drain-on-close it still
-    // owes, and keeps only because close seals every part
-    // the adaptive one answers for every law too: it may choose its
-    // part count freely, and no law it must keep depends on that
-    ("SentinelChannel/adaptive", true,
-      cap => Queues.strong[Int].adaptive.parts(4).each(math.max(8, cap)).build),
-    ("SentinelChannel/relaxed", true,
-      cap => Queues.strong[Int].relaxed.parts(4).each(math.max(2, cap)).build),
-    // THE DEFAULT ANSWERS HERE TOO, and did not until 2026-09-09.
-    // `growing` became `Channel.apply`'s buffer on 2026-09-08 and was
-    // never added to this list, so the one mechanism every caller
-    // gets by default was the one mechanism these laws never ran. It
-    // was breaking law 4 the whole time — for two producers, which is
-    // the only width at which it partitions at all
-    // (merge-chunked-order).
-    ("SentinelChannel/growing", true,
-      cap => Queues.strong[Int].growing(math.max(2, cap), parts = 8).build),
-    // the single-consumer ring answers for every law but the one with
-    // contending consumers, which it declines by construction (see
-    // `oneConsumer` below): its head moves by a store, not a CAS
-    ("SentinelChannel/single-consumer", true,
-      cap => Queues.strong[Int].bounded(cap, singleConsumer = true).build),
-    ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),
-    // add a mechanism here and it must answer for the whole contract.
-    // These were checked against the withdrawn CasChannel with its
-    // in-flight fix reverted, and law 1 failed in 0.05s naming itself
-    // -- the same defect the FULL GATE caught roughly one run in
-    // three. That is the point of writing them down.
-  )
 
   private def drains(name: String): Boolean = impls.find(_._1 == name).exists(_._2)
 
@@ -423,4 +391,50 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     if drains(n) then
       assertEquals(got.toSet, (0 until 4 * per).toSet, s"$n: contents")
   }
+}
+
+class TestChannelLaws extends ChannelLawsSuite(TestChannelLaws.impls)
+
+object TestChannelLaws {
+
+  /** does this implementation promise that a closed channel still
+   * yields what it already accepted? */
+  val impls: List[(String, Boolean, Int => Channel[Int])] = List(
+    ("StmChannel", true, cap => StmChannel[Int](cap)),
+    ("SentinelChannel", true, cap => SentinelChannel[Int](cap)),
+    // the unbounded one answers for the SAME laws: it ignores the
+    // capacity because it has none, and a law that leans on a full
+    // buffer must still hold when the buffer never fills
+    ("SentinelChannel/unbounded", true, _ => SentinelChannel[Int](Segments[Int | Mark]())),
+    // the RELAXED one answers for every law here, which is the point
+    // of the tier split: what it gives up is the order BETWEEN
+    // producers, and no law states that. Drain-on-close it still
+    // owes, and keeps only because close seals every part
+    // the adaptive one answers for every law too: it may choose its
+    // part count freely, and no law it must keep depends on that
+    ("SentinelChannel/adaptive", true,
+      cap => Queues.strong[Int].adaptive.parts(4).each(math.max(8, cap)).build),
+    ("SentinelChannel/relaxed", true,
+      cap => Queues.strong[Int].relaxed.parts(4).each(math.max(2, cap)).build),
+    // THE DEFAULT ANSWERS HERE TOO, and did not until 2026-09-09.
+    // `growing` became `Channel.apply`'s buffer on 2026-09-08 and was
+    // never added to this list, so the one mechanism every caller
+    // gets by default was the one mechanism these laws never ran. It
+    // was breaking law 4 the whole time — for two producers, which is
+    // the only width at which it partitions at all
+    // (merge-chunked-order).
+    ("SentinelChannel/growing", true,
+      cap => Queues.strong[Int].growing(math.max(2, cap), parts = 8).build),
+    // the single-consumer ring answers for every law but the one with
+    // contending consumers, which it declines by construction (see
+    // `oneConsumer` below): its head moves by a store, not a CAS
+    ("SentinelChannel/single-consumer", true,
+      cap => Queues.strong[Int].bounded(cap, singleConsumer = true).build),
+    ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),
+    // add a mechanism here and it must answer for the whole contract.
+    // These were checked against the withdrawn CasChannel with its
+    // in-flight fix reverted, and law 1 failed in 0.05s naming itself
+    // -- the same defect the FULL GATE caught roughly one run in
+    // three. That is the point of writing them down.
+  )
 }
