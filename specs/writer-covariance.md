@@ -292,6 +292,18 @@ directions: an upcast that is free at the type level is not free
 operationally, and where work is DONE matters more than how much of
 it there is.
 
+**Addendum (2026-09-23, windows-stage-rerun-loses-pane): the walk keeps a
+deferred head deferred.**
+
+- **`widen` keeps a deferred head deferred** (windows-stage-rerun-
+  loses-pane, 2026-09-23). The walk begins with `p.resume`, which
+  forces a `Delay`; a program whose state is made under `Free.delay`
+  therefore started at widen time, and the widened VALUE carried that
+  start into every run. `Delay(t)` and `Bind(Delay(t), f)` are now
+  matched before the resume and rebuilt as deferred (`!.widen`,
+  `Writer.widen`; TestWidenDelay). The normalisation argument for the
+  walk is untouched: it applies from the first node the run reaches.
+
 ## rowlift (2026-09-08): moving an operation into a wider row, for free
 
 free-row-variance answered "can the walk be deleted?" with a measured

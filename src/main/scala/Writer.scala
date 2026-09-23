@@ -266,19 +266,24 @@ object Writer {
    * element `Writer(f(w))` allocation is gone, `f` never runs.
    */
   def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
-  : A ! (Writer % V + G) = (a.resume: @unchecked) match
-    case Free.Return(x) => Free.Return(x)
-    case Inject(e) => split[G, Writer % W](e)
-      (g => Inject(g): A ! (Writer % V + G))
-      // Say is Writer's ONLY constructor, so a value that reaches
-      // here IS one — sound by the enum's shape, same as map's
-      // Say(w) destructure; @unchecked because BINDING the whole
-      // instance (not just its field) needs W's erased type
-      // argument to verify, which map's plain destructure does not
-      { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]) }
-    case Bind(Inject(e), k) => split[G, Writer % W](e)
-      (g => Inject(g).flatMap(x => widen[W, V, A, G](k(x))))
-      { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(()))) }
+  : A ! (Writer % V + G) = a match
+    // a deferred head stays deferred, as in `!.widen`: the walk
+    // begins when the program runs, not when it is widened
+    case Free.Delay(t) => Free.Delay(() => widen[W, V, A, G](t()))
+    case Bind(Free.Delay(t), f) => Free.defer(() => widen(t()))(x => widen[W, V, A, G](f(x)))
+    case _ => (a.resume: @unchecked) match
+      case Free.Return(x) => Free.Return(x)
+      case Inject(e) => split[G, Writer % W](e)
+        (g => Inject(g): A ! (Writer % V + G))
+        // Say is Writer's ONLY constructor, so a value that reaches
+        // here IS one — sound by the enum's shape, same as map's
+        // Say(w) destructure; @unchecked because BINDING the whole
+        // instance (not just its field) needs W's erased type
+        // argument to verify, which map's plain destructure does not
+        { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]) }
+      case Bind(Inject(e), k) => split[G, Writer % W](e)
+        (g => Inject(g).flatMap(x => widen[W, V, A, G](k(x))))
+        { case sw @ (_: Say[W, Unit] @unchecked) => Inject(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(()))) }
 
   /**
    * ANY stream as a writer program: its elements told one by one, its

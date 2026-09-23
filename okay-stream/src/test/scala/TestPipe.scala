@@ -172,8 +172,9 @@ class TestPipe extends munit.FunSuite {
     // 3. effectful stage through effectful stage; 4. effectful producer through it
     starts = 0
     type Row = Take % Int + (Writer % Int + Async)
-    // `!.widen` is a WALK — it resumes its argument — so the delay
-    // goes outside it, or the walk itself would be the first start
+    // `!.widen` is a WALK; it used to force a deferred head (the
+    // sixth door, TestWidenDelay pins the fix), and the delay sits
+    // outside it here so that this test measures `through` alone
     val countingG: Unit ! Row = Free.delay { () =>
       starts += 1; !.widen[Unit, Take % Int + Writer % Int, Async](Stage.id[Int]) }
     val idG: Unit ! Row = !.widen[Unit, Take % Int + Writer % Int, Async](Stage.id[Int])

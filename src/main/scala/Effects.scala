@@ -401,11 +401,24 @@ object Effects {
    * and `Source.merge` without it runs 5-7% slower (specs/writer-
    * covariance.md), since the rotation it saves would otherwise be
    * paid per pull inside the merge's contended region. An upcast free
-   * at the type level is not free operationally. */
-  def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = (p.resume: @unchecked) match
-    case Return(a) => Return(a)
-    case Inject(e) => Inject(e)
-    case Bind(Inject(e), k) => Inject(e).flatMap(x => widen[A, F, G](k(x)))
+   * at the type level is not free operationally.
+   *
+   * A DEFERRED HEAD STAYS DEFERRED (windows-stage-rerun-loses-pane,
+   * 2026-09-23). The walk sees the head by resuming it, and `resume`
+   * forces a `Delay` — so a program whose state is made under
+   * `Free.delay` (`Gather.stage`, `Transducers.stage`) used to START
+   * at widen time, and the widened VALUE then held that start: run
+   * twice, the second run met the first run's state. The two deferred
+   * shapes are therefore rebuilt as deferred, and the walk begins
+   * only when the program runs. `RowLift.plus`/`at` are the no-walk
+   * road: one coercion, nothing forced, nothing normalised. */
+  def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = p match
+    case Free.Delay(t) => Free.Delay(() => widen[A, F, G](t()))
+    case Bind(Free.Delay(t), f) => Free.defer(() => widen(t()))(x => widen[A, F, G](f(x)))
+    case _ => (p.resume: @unchecked) match
+      case Return(a) => Return(a)
+      case Inject(e) => Inject(e)
+      case Bind(Inject(e), k) => Inject(e).flatMap(x => widen[A, F, G](k(x)))
 
   /**
    * Interpret F into ANOTHER ROW rather than into a value.

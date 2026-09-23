@@ -150,8 +150,21 @@ phased/phased3 are the extra door.
   for what remains true: a continuation from INSIDE a run resumed
   after that run finished (multi-shot) cannot be given fresh JDK or
   Clojure state, and is still refused by name — TestGather and
-  TestTransducers reach it through `Writer.uncons`. `!.widen` is a
-  walk and therefore eager; the test puts its `delay` outside it.
+  TestTransducers reach it through `Writer.uncons`.
+  A SIXTH door, found by the counting test itself: `!.widen` and
+  `Writer.widen` see the head by resuming it, and `resume` forces a
+  `Delay`, so a stage made under `Free.delay` started at WIDEN time
+  and the widened value held that start. Both walks now rebuild a
+  deferred head as deferred (`Delay(t)` -> `Delay(() => widen(t()))`,
+  `Bind(Delay(t), f)` -> `Free.defer` of the widened halves;
+  TestWidenDelay, written failing first). `RowLift.plus`/`at` never
+  had the problem — one coercion, no walk — and are the road for a
+  pure stage that only needs a wider row; the walk is for the
+  normalisation `Source.merge` measured (specs/writer-covariance.md).
+  `translate`/`relay`/`interpret` resume the head too, but they are
+  interpreters applied when a program is handled, not values built
+  once and run twice; left as they are, and named here so the next
+  reader does not count them twice.
 - **Multi-channel output** (e.g. instructions + diagnostics) is a
   union of Writers with class-distinct element types, or one Writer of
   a sum — decided per module (see streaming-parse.md); the core does
