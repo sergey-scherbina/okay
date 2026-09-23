@@ -1,0 +1,6 @@
+feature/scala2-form 2026-09-23T07:59:13Z
+agent: claude-code
+heartbeat: 2026-09-23T07:59:13Z
+status: in-progress
+done-so-far: Form API is Json-typed (unreadable from 2.13)
+next: FormState[A] hiding Json; queue ws, choose/search, dialog/nav
