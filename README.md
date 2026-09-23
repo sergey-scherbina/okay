@@ -32,8 +32,9 @@ The library stands on work by Moggi, Wadler, Felleisen, Danvy & Filinski, Atkey,
 
 Scala 3, just moved to 3.9 LTS. Still on Scala 2.13? `okay-scala2`
 gives a 2.13 build effects, several in one program, your own effects,
-continuations, streams, fibers and channels, through types a Scala 2
-compiler can read: [okay from Scala 2.13](docs/scala2.md).
+continuations, streams, fibers and channels, and above them codecs,
+HTTP, SQL, agents and UI, through types a Scala 2 compiler can read:
+[okay from Scala 2.13](docs/scala2.md).
 Zero dependencies. One source for JVM (JDK 21+, Loom), Scala.js and
 Scala Native — each platform contributes evidence (can it park? what
 is its timer? what schedules?), not API: the same Await-based test

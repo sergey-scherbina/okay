@@ -16,6 +16,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Response`, `Routes`, `GET`/`POST`/…, `Path`, `Requests`, `Server`, `Client` (module `okay-scala2-http`) | okay-http from 2.13: routing as pattern matching, `Server.use`/`start`, a client; `okay.http.Request`, `Method` and `Body` are used directly |
 | `Db` (module `okay-scala2-sql`) | okay-sql from 2.13: `rows`/`all`/`update`/`verify`/`transaction` as `Eff` and `Source`; `okay.sql.SqlValue`, `Bad`, `Drift`, `Isolation` are used directly |
 | `Chat`, `Model`, `Tools`, `Policy`, `Call` (module `okay-scala2-agent`) | okay-agent from 2.13: the agent loop with a persistent conversation, a scripted or real model, tools decoded by `Schema`, the context policy; `okay.agent.Turn` and `Reply` are used directly |
+| `UiApp`, `UiHost`, `ScriptedHost` (module `okay-scala2-ui`) | okay-ui from 2.13: the loop as an `Eff`, terminal and Swing hosts, a scripted host for tests; `okay.ui.Ui`, `Event` and `Frame` are used directly |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
 
@@ -370,6 +371,10 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 `Policy.all`, `Policy.window(budget: Int)`;
 `Chat(model, tools = Tools.empty, policy = Policy.window(4000), maxSteps = 8, approve: Call => Boolean = _ => true)`, `chat.say(message): Eff[Async, String]`, `chat.transcript: Seq[okay.agent.Turn]`;
 `Call(id: String, name: String, argsJson: String)`.
+
+**UI** (module `okay-scala2-ui`) — `UiApp.run[S](init: S)(view: S => Ui)(update: (S, Event) => S)(host: UiHost): Eff[Async, S]`, `UiApp.runWith[S](...)(host, external: Source[Event])`, `UiApp.window[S](title)(init)(view)(update)`;
+`UiHost.terminal()`, `UiHost.swing(root: java.awt.Container)`;
+`ScriptedHost(events: Event*)` / `ScriptedHost.open(events: Event*)` (without the closing `Closed`), `.host: UiHost`, `.frames: Vector[Ui]`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,

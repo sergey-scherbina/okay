@@ -1020,6 +1020,11 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   assembled once inside `Chat`. A tool call reaches Scala 2 as
   `Call(id, name, argsJson)`, because `ToolCall.args` is a `Json` and
   Scala 2 cannot read it.
+- **`UiApp`, `UiHost`, `ScriptedHost`** (okay-scala2-ui) — okay-ui's
+  loop as an `Eff`, and its hosts. Named `UiApp` so that it cannot
+  capture `scala.App`. From Scala 2 a Scala 3 enum case constructor is
+  typed as the case, not the enum, so `Source[Event](...)` needs its
+  type argument.
 - **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.

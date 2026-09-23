@@ -362,6 +362,21 @@ as JSON text.
 - [ ] (Live) a real model answers through `Chat`. Written, and SKIPPED
       here because no API key was available.
 
+## Stage 10 — UI
+Probed from scalac 2.13.18: okay-ui's `Ui`, `Event`, `Frame`, `Form`,
+`Swing` and `Terminal` are readable, so a Scala 2 view is built with
+okay-ui's own constructors. `Ui.run` (a program) and `Host` (whose
+methods answer programs) are not usable. okay-scala2-ui's `UiApp` is
+`Ui.run` as an `Eff`, `UiHost` wraps the terminal and Swing hosts, and
+`ScriptedHost` is a host for tests that keeps its frames.
+
+## Behavior (stage 10), all from Scala 2.13
+- [x] the loop folds scripted events, draws each changed view once, and
+      answers the final state
+- [x] a frame renders to text through okay-ui's `Frame`
+- [x] an external source merges in, and its `Closed` ends the loop
+      (deterministic: exactly 3 increments)
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -514,3 +529,13 @@ as JSON text.
   Anthropic skips without `ANTHROPIC_API_KEY`, and no key was present,
   so a real provider has not been exercised through this facade. The
   providers themselves are okay-agent's, and they are tested there.
+- STAGE 10 (2026-09-23). okay-scala2-ui. `TestUiFromScala2` has 3
+  tests. A Scala 2 trap: a Scala 3 enum case's constructor is typed as
+  the CASE from Scala 2, not widened to the enum, so
+  `Source(Event.Pressed(...))` is a `Source[Event.Pressed]`, and the
+  invariant `Source[Event]` refuses it. The loop's object is `UiApp`
+  because `App` would capture `object Main extends App`. The first cut
+  of the external-source test asserted a RANGE, because the host's own
+  `Closed` raced the external events. `ScriptedHost.open` (no
+  `Closed`) made it exact. All five areas the operator named (codecs,
+  HTTP, SQL, agents, UI) are now covered.

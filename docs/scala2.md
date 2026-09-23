@@ -2,7 +2,8 @@
 
 okay is a Scala 3 library. This guide is for a codebase that is still
 on **Scala 2.13** and wants to use it: effects, several in one program,
-your own effects, continuations, streams, fibers and channels. It all
+your own effects, continuations, streams, fibers and channels, and above
+them codecs, HTTP, SQL, agents and UI. It all
 lives in one package, `okay.scala2`, from the module `okay-scala2`.
 
 Every snippet below was copied from
@@ -25,6 +26,7 @@ Contents:
 8b. [HTTP: routes, a server, a client](#8b-http-routes-a-server-a-client)
 8c. [SQL: queries and transactions](#8c-sql-queries-and-transactions)
 8d. [Agents: a model, tools, a conversation](#8d-agents-a-model-tools-a-conversation)
+8e. [UI: the view as a value, the loop as a fold](#8e-ui-the-view-as-a-value-the-loop-as-a-fold)
 9. [Scala 3 and Scala 2, side by side](#9-scala-3-and-scala-2-side-by-side)
 10. [Errors you may see, and what they mean](#10-errors-you-may-see-and-what-they-mean)
 11. [What is not here, and why](#11-what-is-not-here-and-why)
@@ -661,6 +663,57 @@ Here `results(chat)` collects the `Turn.Result` texts from
   skipped. What `Model.anthropic` and `Model.openAi` do is okay-agent's
   own `Provider`, the same one the Scala 3 API uses.
 
+## 8e. UI: the view as a value, the loop as a fold
+
+Module `okay-scala2-ui`. okay-ui's tree `Ui`, its `Event`s and `Frame`
+(the pure text renderer) are readable from Scala 2, so a view is built
+with okay-ui's own constructors and events are matched as they are.
+What Scala 2 cannot use is the loop, `Ui.run`, and a `Host`: both
+answer programs. `UiApp` provides the loop as an `Eff`, and `UiHost`
+the hosts.
+
+The counter below is copied from
+`okay-scala2/probe/src/test/scala/TestUiFromScala2.scala`:
+
+```scala
+// a counter: two buttons, a label
+def view(n: Int): Ui = Ui.Column(Vector(
+  Ui.Text("count: " + n),
+  Ui.Row(Vector(Ui.Button("-", "dec"), Ui.Button("+", "inc")))))
+
+def update(n: Int, e: Event): Int = e match {
+  case Event.Pressed("inc") => n + 1
+  case Event.Pressed("dec") => n - 1
+  case _ => n
+}
+```
+
+```scala
+val host = ScriptedHost(Event.Pressed("inc"), Event.Pressed("inc"), Event.Pressed("dec"), Event.Pressed("nope"))
+assertEquals(Eff.runAsync(UiApp.run(0)(view)(update)(host.host)), 1)
+assertEquals(host.frames, Vector(view(0), view(1), view(2), view(1)))
+```
+
+- `UiApp.run(init)(view)(update)(host)` is okay-ui's own `Ui.run`. It
+  renders the view, folds each event through `update`, renders again
+  only when the view changed (the no-op `"nope"` drew nothing), stops
+  at `Event.Closed`, and returns the final state.
+- **Hosts.** `UiHost.terminal()` draws in this process's terminal.
+  `UiHost.swing(container)` draws in a Swing container, and
+  `UiApp.window(title)(...)` opens a window of its own. For tests,
+  `ScriptedHost(events*)` delivers the given events and then `Closed`,
+  and keeps every frame. `okay.ui.Frame.render(ui)` turns a frame into
+  plain text lines.
+- `UiApp.runWith(...)(host, external)` merges a `Source[Event]` from
+  the world (a timer, a socket) in beside the user's events.
+- **An enum case is typed as the CASE in Scala 2.** Scala 3 widens
+  `Event.Pressed("inc")` to `Event`, and Scala 2 does not. So an
+  invariant container needs the type written out: `Source[Event](...)`.
+- The object is `UiApp`, not `App`, so that `import okay.scala2._`
+  cannot capture a Scala 2 `object Main extends App`.
+- The Swing and terminal hosts are okay-ui's own. They are not
+  exercised by the 2.13 probe, which has no display and no tty.
+
 ## 9. Scala 3 and Scala 2, side by side
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
@@ -679,6 +732,7 @@ Here `results(chat)` collects the `Turn.Result` texts from
 | `okay.http.Response`, `Server.serve` under `Resource` | `okay.scala2.Response`, `Server.use` / `Server.start` |
 | `Typed.rows(db, sql)`, `Typed.transact(db)(...)` | `Db.jdbc(conn).rows[A](sql)` / `.all[A]`, `db.transaction()(tx => ...)` |
 | `Agent.converse(...)` under `Handler.union` of model, tool and context handlers | `Chat(model, tools, policy).say(message)` |
+| `Ui.run(init)(view)(update)(host)` | `UiApp.run(init)(view)(update)(host)`, hosts from `UiHost` |
 | `direct { ... }` blocks | not available: use `for` |
 
 ## 10. Errors you may see, and what they mean
@@ -704,10 +758,11 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
   Scala 3 macros, and Scala 2 cannot expand those. Use
   for-comprehensions instead. It is not planned.
 - **The rest of the library.** Codecs (section 8a), HTTP (8b), SQL
-  (8c) and agents (8d) are covered. UI is queued
-  (specs/scala2-facade.md, stage 10). WebSockets, okay-agent's search
-  strategies (`Search.bestOf` and friends) and durable agents are not
-  wrapped yet.
+  (8c), agents (8d) and UI (8e) are covered. Several pieces are not
+  wrapped yet: WebSockets, okay-agent's search strategies
+  (`Search.bestOf` and friends), durable agents, and okay-ui's
+  `Form`/`Dialog`/`Nav`. `Form` is readable from 2.13 but untested
+  there. The remaining modules are not wrapped either.
 - **Performance.** Every `okay.scala2` combinator calls okay's own
   combinator, and the program underneath is the same `Free` tree the
   Scala 3 API builds. What Scala 3 code gets and a 2.13 caller does
