@@ -1,3 +1,0 @@
-slug: ts-facade
-who: claude-opus-5.5 (interop session)
-what: T7: a TypeScript module (declarations emitted by tsc) as a generated typed Scala facade over the TS worker
