@@ -518,6 +518,17 @@ until Spark stage 2 has run on mainnet.
 
 ## Results
 
+- MAINNET (2026-09-23, `Live`): `TestLiveMainnet` followed
+  backbone.cardano.iog.io from its tip through blocks 13977824..26 —
+  24 transactions, 62 inputs, 48 outputs, 318 assets, 4 mints, 2
+  certificates, 4 withdrawals, 10 redeemers — every table folded into
+  `Columns`, every transaction's `cbor` hashing to its id.
+  `TestLiveMainnetSpark` read two confirmed blocks through
+  `format("cardano")` (12 outputs, 5 with inline datums). Its first
+  run, at `confirmations = 0`, met a REAL tip fork within four minutes
+  (block 13977847 taken back) and confirmed mode failed the query as
+  designed — the measured reason the default is 15.
+
 - okay-scalus-chain (2026-09-23): a preprod session recorded by an
   independent Python probe replays byte for byte — the client sends the
   probe's exact requests; five header hashes, four transaction ids and

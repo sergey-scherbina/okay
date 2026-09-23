@@ -108,6 +108,11 @@ the first `blocks` confirmed blocks after the checkpoint.
 
 ## Gotchas
 
+- Short forks at the TIP are routine on mainnet: a confirmed read at
+  `confirmations = 0` met one within four minutes (2026-09-23) and
+  failed, as it should. Use the default 15, or `mode = events` when
+  latency matters more than finality.
+
 - The driver holds confirmed blocks until a batch commits them; a very
   long-stopped stream resuming far behind the tip catches up through
   the driver. Fetching bodies on executors for backfill is the next
