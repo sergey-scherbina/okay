@@ -1,3 +1,0 @@
-slug: ts-types-ts-to-scala
-who: claude-opus-5.5 (interop session)
-what: T3: TypeScript declarations -> Scala case classes/enums derives Schema; round trip exact (Int/Long aliases in Stubs.typescript)
