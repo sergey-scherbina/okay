@@ -204,6 +204,26 @@ val predicted = R.fn[Vector[Double]]("stats::predict")(fit, NewData(Vector(10.0,
 `ref.release` drops the object. After a timeout the process is replaced,
 and every ref it held is then refused by name.
 
+## Modules beside the Scala
+
+`R.module` is `Py.module` in R:
+
+```scala
+val scoring = R.module("scoring", """
+  trimmed <- function(xs) mean(xs, trim = 0.25)
+```
+
+```scala
+assertEquals(scoring.fn[Double]("trimmed")(Vector(1.0, 2.0, 3.0, 100.0)).runWith, Right(2.5))
+```
+
+- **Where it loads.** The shim `sys.source`s each module into its OWN
+  environment when R starts, and `scoring::trimmed` resolves there
+  before any package. A module's functions do not leak into the global
+  environment, so two modules may define the same name.
+- **Load failures.** A module that does not parse refuses at start and
+  names itself.
+
 ## Journalled by Durable
 
 `REval` carries its own `Journalled` instance, as okay-py's `PyEval`

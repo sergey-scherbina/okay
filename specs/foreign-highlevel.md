@@ -257,6 +257,94 @@ handler that resumes twice is refused by name, not answered wrongly.
 
 ## Stage 4 — foreign-inline-modules
 
+## Stage 3 — foreign-object-handles
+
+## Stage 7 — foreign-callbacks (taken before 3–6: the operator asked
+for it, 2026-09-23: "А как у питона и r будет у нас с нашими эффектами и
+какими-то обратными вызовами для взаимодействия? Это возможно?")
+
+### The shape
+
+A call that may call back is not one exchange but a short dialogue:
+
+    host  -> {"id": 7, "op": "start", "fn": "m:fit", "args": [...], "callbacks": ["objective"]}
+    shim  <- {"ask": {"cb": "objective", "args": [...], "k": 1}}     # Python called okay.call(...)
+    host  -> {"op": "resume", "k": 1, "ok": 0.25}                    # okay ran the callback
+    shim  <- {"id": 7, "ok": {...}}                                  # the function returned
+
+On the okay side that dialogue is a PROGRAM: `PyEval.Start` and
+`PyEval.Resume` answer a `Step` — `Done(answer)` or `Ask(callback, args,
+k)` — and the loop between them runs each callback as an okay program in
+the caller's row F. So a callback can ask a `Reader`, update `State`,
+sleep on `Async`, write a journal, or call Python AGAIN: the shim, while
+it waits for a resume, serves any request that arrives (the nesting is
+strict, so one wire suffices).
+
+It is the Foreign walker of interop-shared, across a pipe: the
+continuation is Python's blocked stack frame, so it is ONE-SHOT — a
+handler that resumes twice is refused by name, not answered wrongly.
+
+### Behavior
+
+- [x] Python: `import okay; okay.call("name", *args)` inside a function
+      called with callbacks; the shim injects the `okay` module. A
+      callback that fails in okay raises `okay.OkayError` in Python, with
+      the condition's kind and message; Python may catch it.
+- [x] R: `okay_call("name", ...)`, a function the shim defines; a failure
+      is an R condition of class `okay_error` (tryCatch-able).
+- [x] Scala: `Py.fn[Out](addr).calling(cbs)(args...)` answers
+      `Either[Condition, Out] ! (F + PyEval)` where `cbs: Py.Callbacks[F]`
+      is built from `Py.callback[In, Out](name)(f: In => Out ! F)`; `R`
+      the same. Arguments and answers through `Schema` (stage 2).
+- [x] A callback's program runs under the CALLER's handlers: a Python
+      optimiser minimising an objective whose value comes from okay's
+      `Reader`, and a callback counting its calls in `State`.
+- [x] Re-entrancy: a callback that itself calls Python on the same
+      worker is answered (nested exchange).
+- [x] An unknown callback name, and a callback that was not offered to
+      THIS call, are refused by name in the foreign language.
+- [x] `Durable` journals the dialogue (`Start`/`Resume` are ordinary
+      operations): a replay answers every step from the journal and
+      starts no Python; the callbacks' own effects are theirs to journal.
+- [x] The wire change is additive (a new op, a new message); the shim
+      version still bumps (Python 3, R 4) so a host never talks to a shim
+      that cannot answer it.
+
+## Stage 3 — foreign-object-handles
+
+### Behavior
+
+- [ ] `PyEval.Hold(fn, args)` calls the function and KEEPS its result in
+      the worker, answering a `PyRef(id, pyType)`; `REval.Hold` the same
+      in R (`RRef(id, rClass)`). A ref is a value on the wire
+      (`{"t": "ref", "id": n}`), so it may be passed as an argument to ANY
+      call — `stats::predict(model, newdata)`, `m:score(model, X)`.
+- [ ] Python: `PyEval.Method(ref, name, args, hold)` calls a method of the
+      held object (answering its value, or holding the result when
+      `hold`), and `PyEval.Attr(ref, name)` reads an attribute.
+- [ ] `Release(ref)` drops the object on the far side; a ref used after
+      its release, or on a process that never held it (after a restart),
+      is refused BY NAME, as a condition.
+- [ ] Typed: `Py.hold(fn)(args)`, `ref.call[Out](method)(args)`,
+      `ref.attr[Out](name)`, `ref.release`; arguments through `ToPy`
+      (`Schema` values and refs alike), answers through `Schema`. R the
+      same with `ToR`, and `R.fn(...)(ref, ...)` for R's
+      function-on-object style.
+- [ ] `PyWorkers`: a hold PINS its worker (out of the pool until every
+      ref it holds is released); calls that name refs go to the owner;
+      refs on two different workers in one call are refused by name.
+- [ ] `Durable`: a whole program with handles replays from its journal
+      (every step answered, no interpreter). RECOVERY past a handle —
+      replay up to the crash, then continue live on a fresh process —
+      meets a ref the new process never held, and that is refused by name
+      rather than answered wrongly. A durable program that must survive a
+      crash keeps VALUES, not handles.
+- [ ] Live: scikit-learn is not assumed; the Python test holds a stdlib
+      object (`collections:Counter`, `random:Random` seeded) and an R test
+      holds an `lm` fit and calls `predict` on it.
+
+## Stage 4 — foreign-inline-modules
+
 ### Behavior
 
 - [ ] `Py.module("scoring", """def score(xs): ...""")` and
@@ -357,3 +445,16 @@ handler that resumes twice is refused by name, not answered wrongly.
     stay pooled, and each exchange locks the worker. A worker that dies
     while reached through a ref is taken out of the queue before its
     replacement goes in.
+
+- Stage 4 (foreign-inline-modules, 2026-09-23).
+  - Python: 2 live tests (a function, a held class, a callback from the
+    module, a pool of two), and 2 compile-time rule tests in the default
+    gate. The literal-only check is `scala.compiletime.requireConst`, and
+    its error "expected a constant value" is what the rule test reads.
+  - R: 3 live tests (a function, a callback, a held `lm`; no leak into
+    globalenv; a module that does not parse refuses at start by name),
+    and 1 rule test.
+  - Decision: a triple-quoted literal with `.stripMargin` is a CALL, not
+    a constant, so it is refused. Instead the module removes the common
+    indentation itself, and the literal can follow the Scala's
+    indentation.

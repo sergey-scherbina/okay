@@ -153,6 +153,35 @@ val rng = Py.hold("random:Random")(42L).runWith.toOption.get
   process never held, and is refused by name, not answered wrongly. A
   program that must survive a crash keeps values, not handles.
 
+## Modules beside the Scala
+
+A few lines of Python can live in the Scala file that calls them. They
+are then reviewed, versioned and shipped with the jar, and there is no
+separate package to install:
+
+```scala
+val scoring = Py.module("scoring", """
+  def mean(xs):
+      return sum(xs) / len(xs)
+```
+
+```scala
+private lazy val w = PySubprocess.start(TestPy.python.get, modules = Seq(scoring))
+assertEquals(scoring.fn[Double]("mean")(Vector(1.0, 2.0, 6.0)).runWith, Right(3.0))
+val model = scoring.hold("Model")(10L).runWith.toOption.get
+```
+
+- **Constant source only.** The source must be a COMPILE-TIME CONSTANT.
+  `Py.module` refuses a computed or interpolated string at compile time,
+  and `PyModule` has no public constructor.
+- **No eval.** The worker gets the module as a file on its path when it
+  starts. No operation on the wire evaluates source, so untrusted input
+  still reaches Python only as data.
+- **Indentation.** The common indentation is removed, so the literal may
+  be indented along with the Scala around it.
+- **Pools.** `PyWorkers.start(..., modules = ...)` ships the module to
+  every worker.
+
 ## Journalled by Durable
 
 A Python call is an operation, and `PyEval` carries its own
