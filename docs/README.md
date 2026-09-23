@@ -221,6 +221,7 @@ API reference, gotchas.
 | [`okay-r2dbc`](modules/okay-r2dbc.md) | the R2DBC hatch behind the same Sql seam: driver availability on the JVM, honestly framed as not a speed unlock |
 | [`okay-delta`](modules/okay-delta.md) | Delta Lake without Spark: Delta Kernel create/append/snapshot/rows over SqlValue rows; DuckDB reads the same table through the JDBC seam |
 | [`okay-js`](modules/okay-js.md) | JavaScript as a value: a typed tree, a printer, a compile-time constant, and `js { }` |
+| [`okay-ts`](modules/okay-ts.md) | TypeScript programs walked inside okay on Scala.js (multi-shot), and okay handed to TypeScript as a Promise |
 | [`okay-lex`](modules/okay-lex.md) | total streaming tokenization: chunked, snapshottable, incremental |
 | [`okay-chain`](modules/okay-chain.md) | blockchains and ledgers read uniformly: CAIP ids, a sans-I/O follower (depth or declared finality, rollbacks said), a ledger projection beside the native transaction |
 | [`okay-scalus`](modules/okay-scalus.md) | the Cardano chain as okay-chain events, from a relay over Ouroboros node-to-node, with scalus's ledger model for the blocks |
@@ -262,8 +263,8 @@ API reference, gotchas.
 | [`okay-mail`](modules/okay-mail.md) | sending mail: SMTP over a socket with STARTTLS, send only, and failure as data |
 | [`okay-blob`](modules/okay-blob.md) | the object-store seam: fs and S3 engines, OWN SigV4 pinned by the AWS vectors, persist backups |
 | [`okay-obs`](modules/okay-obs.md) | tracing without a framework: spans as values on a topic, W3C traceparent, capability routes, OTLP export as a consumer |
-| [`okay-py`](modules/okay-py.md) | Python as a handler: operations not eval, a clean-env shim with a version handshake, N workers past the GIL |
-| [`okay-r`](modules/okay-r.md) | R as a handler, the same model with R's own three-way absence: NULL, a TYPED NA inside a vector, and NaN — kept apart at the type level so a statistical function is not quietly handed the wrong one |
+| [`okay-py`](modules/okay-py.md) | Python (and TypeScript, and Haskell) as a handler: typed calls, callbacks into okay's effects, held objects, streams, programs as data (multi-shot), declared environments; a clean-env shim with a version handshake, N workers past the GIL |
+| [`okay-r`](modules/okay-r.md) | R as a handler (typed calls, callbacks, held objects, streams, programs as data), the same model with R's own three-way absence: NULL, a TYPED NA inside a vector, and NaN — kept apart at the type level so a statistical function is not quietly handed the wrong one |
 | [`okay-script`](modules/okay-script.md) | markdown files as Scala source: fenced blocks through the real Scala 3 compiler in-process, errors pointing at the original `.md` line |
 | [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
 | [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Handler[Embed]` |
