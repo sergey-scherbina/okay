@@ -61,6 +61,19 @@ Spark, `outputs` joined to `inputs`. ADA is `slip44:1815`; a native
 token is `token:<policy>.<name>` in hex, okay's convention, because
 CAIP-19 registers no Cardano asset namespace.
 
+**The model as a `Schema`.** `import okay.scalus.CardanoSchemas.given`
+gives every scalus ledger type an okay `Schema`, so a `Transaction` or a
+`Block` folds into JSON, CBOR, a validator and engine-free `Columns` —
+the same tables with Spark or without it. What scalus made opaque is
+mapped by hand: hashes and `ByteString` to bytes, `KeepRaw`/`Sized` to
+their value, the tagged sets and maps to vectors (a tagged map carries
+its VALUES: scalus derives each key from its value, so nothing can
+disagree), `Coin` to a `Long`, an address to its bech32 text, and a
+`MultiAsset` to flat `(policy, name, quantity)` rows. `Data`, `Timelock`
+and `Metadatum` are recursive; `Columns` finds that itself and reads
+them as `cbor` + json. Every real preprod transaction in the fixture
+round-trips through JSON and through CBOR to the same bytes.
+
 **Tested against the real thing.** A preprod session recorded by an
 independent Python probe (cbor2 + hashlib, in the test resources) is
 replayed byte for byte: the client sends exactly the probe's requests,
@@ -88,6 +101,7 @@ RFC 8949 (CBOR), tag 24 "encoded CBOR data item".
 | `Header` | `era, blockNo, slot, hash, prev` | read from the header bytes |
 | `CardanoBlock` | `header`, `bytes`, `time`, `block`, `transactions` | `BlockOf` instance |
 | `CardanoLedger` | `Ledger[scalus.cardano.ledger.Transaction]` | |
+| `CardanoSchemas` | `import CardanoSchemas.given` | a `Schema` for every scalus ledger type |
 | `N2N` | segments, `Demux`, the four protocols' messages | pure |
 
 ## Gotchas

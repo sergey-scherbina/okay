@@ -401,9 +401,10 @@ until Spark stage 2 has run on mainnet.
         continuity and rollback cases are tested THERE; here the
         chain-sync source feeds it and the recorded session confirms
         through it
-  - [ ] `Schema` instances for the ledger model — MOVED to
-        okay-scalus-spark: its only consumer is the Spark encoder, and
-        writing them before it would guess its needs
+  - [x] `Schema` instances for the ledger model (landed in
+        okay-scalus as scalus-schemas, 2026-09-23 — not in the Spark
+        module: `Columns` and okay-watch use them without Spark); every
+        fixture transaction round-trips JSON and CBOR
 - **Stage 2 — okay-scalus-spark: batch + confirmed streaming**
   - [x] generic `SparkSchema`: `Schema.fold` algebra → `(DataType,
         external Row value)`, §4.1–4.6, recursion by reachability
