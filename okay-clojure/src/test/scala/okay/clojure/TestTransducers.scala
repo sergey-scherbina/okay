@@ -192,6 +192,15 @@ class TestTransducers extends munit.FunSuite {
 
   // ---------------------------------------------------------------- Clj
 
+  test("Clj.eval defines in `user` (or the namespace named), never inside clojure.core") {
+    Clj.eval("(def okay-eval-probe 41)").fold(e => fail(e), _ => ())
+    assertEquals(Clj.fn("clojure.core", "okay-eval-probe"), Left("no bound var clojure.core/okay-eval-probe"),
+      "a def evaluated from okay must not land in clojure.core")
+    assertEquals(Clj.value("user", "okay-eval-probe"), Right(Long.box(41L)))
+    Clj.eval("(def here 1)", ns = "okay.test.scratch").fold(e => fail(e), _ => ())
+    assertEquals(Clj.value("okay.test.scratch", "here"), Right(Long.box(1L)))
+  }
+
   test("Clj refuses by name: an unbound var, a namespace that does not load, bad source") {
     assert(Clj.fn("clojure.core", "no-such-fn").left.exists(_.contains("clojure.core/no-such-fn")))
     assert(Clj.fn("no.such.namespace", "f").left.exists(_.contains("no.such.namespace")))

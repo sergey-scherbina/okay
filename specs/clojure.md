@@ -113,6 +113,29 @@ involved.
       PURE by type (only `Chunks` becomes a seq)
 - [x] docs: module page (effects, seqs), every snippet in a gated test
 
+## Stage 3: core.async channels as okay Channels (clojure-core-async, 2026-09-23)
+
+`CoreAsyncChannel[A]` is an okay `Channel` over a core.async channel:
+okay streams, merges and actors read and write it, Clojure code on the
+other end sees an ordinary core.async channel (`go` blocks, `alts!`, a
+transducer inside it). okay's `Channel` promises more than a queue —
+two-phase close, the end after the buffer, acceptance final — so the
+view is checked by the SAME `TestChannelLaws` battery every okay channel
+answers for, made reusable for it as `ChannelLawsSuite`.
+
+- [x] `CoreAsync.channel[A](capacity)` / `CoreAsync.of[A](chan)`
+- [x] the laws: `ChannelLawsSuite` over `CoreAsyncChannel`, DRAIN tier
+      included; `TestChannelLaws` unchanged over okay-stream's own
+- [x] one `take!` in flight, receivers queued here: a cancelled receive
+      loses nothing and nothing overtakes (a stash)
+- [x] sends queued here, one `put!` in flight: a queued send can be
+      withdrawn; the one in core.async cannot, and is delivered
+- [x] close is two-phase: a send queued before close is delivered, a
+      send after it refused at once; `finished` only once closed AND empty
+- [x] interop for real: a `go` block producing, `into` consuming, an okay
+      stage as the channel's own transducer (`(chan 10 xf)`)
+- [x] docs: module page section, guide section; examples pinned
+
 ## Decisions
 
 - **A transducer, not a Clojure seq, is the seam.** A lazy seq is a
@@ -162,3 +185,19 @@ counted test — the counted one is bounded, `(range 1000)`, so an eager
 bridge fails instead of hanging, the java-gatherers lesson). `Row` and
 `Ops` are copies of okay-frege's for now; the shared-driver lane decides
 where one copy lives.
+
+**Stage 3 (clojure-core-async).** Written code-first, against the
+spec-dev rule — this section was added after the code and says so. The
+law battery found the first defect before any reasoning did: a callback
+passed to `take!` must be a `clojure.lang.AFunction`, because core.async
+attaches metadata to it (an `IObj`); a bare `AFn` failed the first
+`take!` with a ClassCastException on a virtual thread nobody joined, and
+the law that owned it waited — the gate's watchdog named it STALLED
+(1 s of CPU in 8 minutes) and its dump showed the consumer gone. Then 13
+laws green, four times running. The go-block test found two defects in
+`Clj` itself: `Clj.fn` could not find a namespace made at run time
+(`require` looks for a file), and `Clj.eval` evaluated in whatever
+`*ns*` was — `clojure.core`, from Java — so a `defn` landed INSIDE
+clojure.core; `eval` now binds a namespace (`user` by default). Four
+mutants — no stash, a no-op `cancelSend`, a single-phase close, `eval`
+without its namespace — each failed exactly its own test.

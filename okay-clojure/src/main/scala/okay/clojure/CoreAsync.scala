@@ -1,7 +1,7 @@
 package okay.clojure
 
-import okay.Channel
-import clojure.lang.{AFn, IFn}
+import okay.{Accepted, Channel}
+import clojure.lang.{AFunction, IFn}
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
@@ -42,7 +42,7 @@ final class CoreAsyncChannel[A](val chan: AnyRef)(using ct: ClassTag[A]) extends
   private val stash = mutable.Queue.empty[A]
   private var taking = false
   private var drained = false
-  private val sends = mutable.Queue.empty[(A, Boolean => Unit)]
+  private val sends = mutable.Queue.empty[(A, Accepted)]
   private var putting = false
   private var closing = false
   private var closedCore = false
@@ -53,7 +53,12 @@ final class CoreAsyncChannel[A](val chan: AnyRef)(using ct: ClassTag[A]) extends
    * ascription checks nothing and cannot fail */
   private def boxed(a: A): AnyRef = a.asInstanceOf[AnyRef]
 
-  private def fn1(f: AnyRef => Unit): IFn = new AFn:
+  /** a callback core.async can hold: an `AFunction`, not a bare `AFn` —
+   * core.async attaches metadata to a handler, so it must be an `IObj`
+   * (measured: a bare AFn failed the first `take!` with a
+   * ClassCastException to clojure.lang.IObj, on a virtual thread nobody
+   * joined, and the law that owned it waited for ever) */
+  private def fn1(f: AnyRef => Unit): IFn = new AFunction:
     override def invoke(x: AnyRef): AnyRef = { f(x); null }
 
   /** an element from core.async, as the type the okay side declared */
@@ -66,7 +71,7 @@ final class CoreAsyncChannel[A](val chan: AnyRef)(using ct: ClassTag[A]) extends
 
   // ------------------------------------------------------------ sending
 
-  def sendAsync(a: A)(k: Boolean => Unit): Unit =
+  def sendAsync(a: A)(k: Accepted): Unit =
     val refused = lock.synchronized {
       if closing then true else { sends.enqueue((a, k)); false }
     }
@@ -90,7 +95,7 @@ final class CoreAsyncChannel[A](val chan: AnyRef)(using ct: ClassTag[A]) extends
     val free = lock.synchronized { !closing && !putting && sends.isEmpty }
     free && CoreAsync.offer.invoke(chan, boxed(a)) == java.lang.Boolean.TRUE
 
-  private[okay] def cancelSend(cb: Boolean => Unit): Unit =
+  private[okay] def cancelSend(cb: Accepted): Unit =
     lock.synchronized { sends.dequeueAll(_._2 eq cb) }: Unit
 
   // ----------------------------------------------------------- receiving

@@ -12,6 +12,7 @@
 | `Program.stage` / `stageWith` / `run` | a Clojure `okay.core` program as an okay `Stage` (that may also perform) or as `A ! F` — multi-shot, no threads |
 | `Program.chunks` / `Program.seq` | a Clojure seq as okay `Chunks` and okay `Chunks` as a Clojure lazy seq, both LAZY — infinite either way; `seq` takes only pure `Chunks` |
 | `Ops` | the core effects' operations for Clojure to perform (Reader, State, Throws, Choose, Async sleep) |
+| `CoreAsync.channel` / `CoreAsync.of` | a core.async channel as an okay `Channel` — the same law battery as every okay channel; Clojure sees an ordinary core.async channel |
 
 ## A stage is a transducer
 
@@ -116,6 +117,34 @@ a thousand), and an infinite okay source under `(take 10 …)` produces at
 most one chunk. `Program.seq` takes only pure `Chunks` — an effectful
 source realised from inside a lazy seq is lazy IO; it is a `perform` in
 an `okay.core` program instead.
+
+## core.async channels as okay Channels
+
+`CoreAsync.channel[A](capacity)` makes a core.async channel and hands it
+to okay as an okay `Channel` — `sendBlocking`, `receive`, `Source`s,
+`merge`, actors all work on it — while Clojure on the other end sees an
+ordinary core.async channel. `CoreAsync.of[A](chan)` takes one Clojure
+made, with its own buffer and its own transducer, which can be an okay
+stage:
+
+```scala
+val ch = fn("clojure.core.async", "chan").invoke(Long.box(10L), Transducers.of(runningSum))
+val c = CoreAsync.of[java.lang.Long](ch)
+(1L to 5L).foreach(i => assert(c.sendBlocking(Long.box(i))))
+c.close()
+```
+
+— and draining `c` gives 1, 3, 6, 10, 15, the running sum computed by
+the okay stage INSIDE the core.async channel.
+
+okay's `Channel` promises more than a queue: close is two-phase, the end
+comes only after the buffer, an accepted element is always delivered.
+The view keeps those promises over core.async's callbacks — one `take!`
+in flight with okay's receivers queued (a cancelled receive loses
+nothing: a stash), one `put!` in flight with sends queued (a queued send
+can be withdrawn), `close!` only after the queued sends finish — and it
+is checked by the SAME law battery every okay channel answers for
+(`TestCoreAsyncChannelLaws`, okay-stream's `ChannelLawsSuite`).
 
 No AOT, no `gen-class`: the transducer is a Scala `AFn`, and Clojure
 sees an ordinary `IFn` — the module has no Clojure build step.

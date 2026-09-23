@@ -58,7 +58,7 @@ other language's functions, so a handler may call them twice.
 | | a transformation | effects from the other side | lazy data |
 |---|---|---|---|
 | Java | `Gather`: Stage ⇄ `Gatherer`; `Collect`: Aggregator ⇄ `Collector` | — (Java code calls okay directly) | `Streams`: `Chunks` ⇄ `Stream` |
-| Clojure | `Transducers`: Stage ⇄ transducer | `okay.core` + `Program` | `Program`: seq ⇄ `Chunks` |
+| Clojure | `Transducers`: Stage ⇄ transducer; `CoreAsync`: core.async channel = okay `Channel` | `okay.core` + `Program` | `Program`: seq ⇄ `Chunks` |
 | Frege | a `Prog` stage | `okay.frege.Prog` + `Frege` | `Frege`: list ⇄ `Chunks` |
 
 ## 2. Java: `java.util.stream`
@@ -146,6 +146,16 @@ both ways, as lazily as they are:
 ```scala
 val c = Program.chunks[java.lang.Long](range)            // a Clojure (range), infinite, as okay Chunks
 val s = Program.seq(Chunks.map(Chunks.range(0, 5))(Long.box))   // okay Chunks as a Clojure lazy seq
+```
+
+**core.async channels** are okay `Channel`s through `CoreAsync`, checked
+by the same law battery as okay's own — so a Clojure `go` block and an
+okay stream share one channel, and an okay stage can be the channel's
+own transducer:
+
+```scala
+val ch = fn("clojure.core.async", "chan").invoke(Long.box(10L), Transducers.of(runningSum))
+val c = CoreAsync.of[java.lang.Long](ch)
 ```
 
 docs/modules/okay-clojure.md.
