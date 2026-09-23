@@ -1,6 +1,7 @@
 package okay
 
 import okay.!.*
+import okay.RowLift.{plus, bindIn, thenIn}
 
 /**
  * specs/writer-covariance.md, bind-in: a bind across rows, the other
