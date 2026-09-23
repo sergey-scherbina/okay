@@ -1,6 +1,0 @@
-feature/mcp-error-data 2026-09-23T13:03:25Z
-agent: claude-code
-heartbeat: 2026-09-23T13:03:25Z
-status: in-progress
-done-so-far: picked (x402 stage 3 needs JSON-RPC error.data)
-next: Rpc.Failed data field, encode/decode, pattern sweep, Session.requestRpc
