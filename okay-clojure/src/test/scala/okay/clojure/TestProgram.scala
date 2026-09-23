@@ -89,7 +89,7 @@ class TestProgram extends munit.FunSuite {
   test("a Clojure seq is realised only as far as okay pulls (counted; bounded, so an eager bridge FAILS)") {
     // (range 1000) mapped through a counter; Clojure's chunked seqs realise
     // 32 at a time, so reading 5 in chunks of 8 realises at most one block
-    val realised = Clj.eval("(def okay-test-realised (atom 0))").fold(e => fail(e), identity)
+    Clj.eval("(def okay-test-realised (atom 0))").fold(e => fail(e), _ => ())
     val coll = Clj.eval("(map (fn [x] (swap! okay-test-realised inc) x) (range 1000))").fold(e => fail(e), identity)
     val firstFive = Chunks.foldLeft(Chunks.take(Program.chunks[java.lang.Long](coll, size = 8))(5))(Vector.empty[Long])(_ :+ _.longValue)
     assertEquals(firstFive, Vector(0L, 1L, 2L, 3L, 4L))
