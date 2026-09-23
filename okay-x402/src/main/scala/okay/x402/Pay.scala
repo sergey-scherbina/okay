@@ -64,6 +64,40 @@ object Settled:
     def release(key: String): Unit = keys.remove(key): Unit
 
 /**
+ * The part of a 402 gate that is not a transport (specs/x402.md stage
+ * 3): HTTP carries the payment in a header and MCP in `_meta`, and
+ * both then do exactly this — so the replay record and the order
+ * (claim BEFORE verify, release on every road that does not settle)
+ * are written once, not once per transport.
+ */
+object Charge:
+  /** a payment admitted for `requirements`, claimed under `key` */
+  final case class Held(payment: PaymentPayload, requirements: PaymentRequirements, key: String)
+
+  /** match → claim → verify; `Left` is the reason for a 402 */
+  def admit(required: PaymentRequired, p: PaymentPayload,
+            facilitator: Facilitator, settled: Settled): Either[String, Held] ! Async =
+    required.accepts.find(Gate.matches(_, p.accepted)) match
+      case None => pure(Left("the payment matches none of the accepted requirements"))
+      case Some(reqs) =>
+        val key = Json.print(p.payload)
+        if !settled.claim(key) then pure(Left("this payment was already used"))
+        else facilitator.verify(p, reqs).map { v =>
+          if v.isValid then Right(Held(p, reqs, key))
+          else { settled.release(key); Left(s"payment invalid: ${v.invalidReason.getOrElse("unspecified")}") }
+        }
+
+  /** the resource was not delivered: the payment may be used again */
+  def release(h: Held, settled: Settled): Unit = settled.release(h.key)
+
+  /** the resource was delivered: settle, and release on a failure */
+  def settle(h: Held, facilitator: Facilitator, settled: Settled): SettlementResponse ! Async =
+    facilitator.settle(h.payment, h.requirements).map { s =>
+      if !s.success then release(h, settled)
+      s
+    }
+
+/**
  * The 402 GATE for an okay-http route (specs/x402.md §2). A priced
  * request without `PAYMENT-SIGNATURE` gets `402` and `PAYMENT-REQUIRED`;
  * with one, the payment must match an accepted requirement, must not
@@ -99,24 +133,17 @@ object Gate:
           case None => pure(paymentRequired(required.copy(error = Some(s"${X402.Signature} header is required"))))
           case Some(h) => X402.unheader(h).flatMap(X402.paymentPayload) match
             case Left(e) => refuse(s"invalid ${X402.Signature}: $e")
-            case Right(p) => required.accepts.find(matches(_, p.accepted)) match
-              case None => refuse("the payment matches none of the accepted requirements")
-              case Some(reqs) =>
-                val key = Json.print(p.payload)
-                if !settled.claim(key) then refuse("this payment was already used")
-                else facilitator.verify(p, reqs).flatMap { v =>
-                  if !v.isValid then { settled.release(key); refuse(s"payment invalid: ${v.invalidReason.getOrElse("unspecified")}") }
-                  else route(req).flatMap { resp =>
-                    if !resp.ok then { settled.release(key); pure(resp) }
-                    else facilitator.settle(p, reqs).flatMap { s =>
-                      if s.success then pure(resp.copy(headers = resp.headers :+ (X402.Response -> X402.header(X402.toJson(s)))))
-                      else
-                        settled.release(key)
-                        resp.release.map(_ => paymentRequired(
-                          required.copy(error = Some(s"settlement failed: ${s.errorReason.getOrElse("unspecified")}")), Some(s)))
-                    }
-                  }
+            case Right(p) => Charge.admit(required, p, facilitator, settled).flatMap {
+              case Left(why) => refuse(why)
+              case Right(held) => route(req).flatMap { resp =>
+                if !resp.ok then { Charge.release(held, settled); pure(resp) }
+                else Charge.settle(held, facilitator, settled).flatMap { s =>
+                  if s.success then pure(resp.copy(headers = resp.headers :+ (X402.Response -> X402.header(X402.toJson(s)))))
+                  else resp.release.map(_ => paymentRequired(
+                    required.copy(error = Some(s"settlement failed: ${s.errorReason.getOrElse("unspecified")}")), Some(s)))
                 }
+              }
+            }
 
 /** which of the accepted requirements a client will pay — never "pay
  * whatever is asked" */

@@ -100,6 +100,31 @@ object Server {
   type Row[G[+_]] = Take % Rpc + (Writer % Rpc + G)
 
   /**
+   * What stands AROUND every request (specs/x402.md stage 3): it sees a
+   * request before the protocol does and either answers it itself —
+   * `Left`, which is final — or passes it on with a `leave` that sees
+   * the protocol's reply and says what actually goes out.
+   *
+   * A hook at the REQUEST, not at the tool, because what needs one
+   * lives in the parts `ToolCall` drops: x402 reads its payment from
+   * `params._meta` and writes its receipt into `result._meta`, and
+   * its transport spec prices any request at all, `initialize` and
+   * `resources/read` included. And one hook, not two: whatever
+   * `before` learned (a verified payment) is what `after` must act
+   * on (settle it), so `leave` is a closure over it rather than a
+   * second callback that would need a table keyed by request id.
+   */
+  trait Around[G[+_]]:
+    def apply(r: Rpc.Request): Either[Rpc, Around.Pass[G]] ! G
+
+  object Around:
+    /** go on with `request`; `leave` turns the reply into what is sent */
+    final case class Pass[G[+_]](request: Rpc.Request, leave: Rpc => Rpc ! G)
+
+    /** nothing around: every request passes, every reply goes out as is */
+    def none[G[+_]]: Around[G] = r => pure(Right(Pass[G](r, out => pure(out))))
+
+  /**
    * THE PROTOCOL, GENERIC IN THE TOOLS' EFFECT (specs/optics-outside.md
    * stage 8): one implementation of the stage, in a row that carries
    * `G` beside `Take` and `Writer`, with `runTool` the only place `G`
@@ -108,13 +133,13 @@ object Server {
    * answered. Written once so a tool that does I/O does not fork the
    * protocol into two copies that drift.
    */
-  def serveIn[G[+_]](s: Serving)(runTool: ToolCall => Json ! G): Unit ! Row[G] =
+  def serveIn[G[+_]](s: Serving, around: Around[G] = Around.none[G])
+                     (runTool: ToolCall => Json ! G): Unit ! Row[G] =
     val info = s.info
     def tell(m: Rpc): Unit ! Row[G] = !.widen[Unit, Take % Rpc + Writer % Rpc, G](Stage.tell[Rpc, Rpc](m))
-    def answer(id: Json, result: Json): Unit ! Row[G] = tell(Rpc.Answer(id, result))
-    def fail(id: Json, code: Int, message: String): Unit ! Row[G] = tell(Rpc.Failed(id, code, message))
     def await: Option[Rpc] ! Row[G] = !.widen[Option[Rpc], Take % Rpc + Writer % Rpc, G](Stage.await[Rpc, Rpc])
-    def tool(c: ToolCall): Json ! Row[G] = !.widen[Json, G, Take % Rpc + Writer % Rpc](runTool(c))
+    def lift[X](p: X ! G): X ! Row[G] = !.widen[X, G, Take % Rpc + Writer % Rpc](p)
+    def tool(c: ToolCall): Json ! Row[G] = lift(runTool(c))
     // What a server DECLARES is exactly what it answers: a method of
     // a capability it does not have is `MethodNotFound`, not a polite
     // empty list. A client that read the handshake never asks; one
@@ -123,7 +148,12 @@ object Server {
     val hasResources = s.resources.nonEmpty || s.templates.nonEmpty
     val hasPrompts = s.prompts.nonEmpty
     val hasCompletions = s.complete.isDefined
-    def step(ready: Boolean, msg: Rpc): Boolean ! Row[G] = msg match {
+    // every reply to a request goes out through `reply`, which is
+    // where the request's `leave` gets to see it
+    def step(ready: Boolean, msg: Rpc, reply: Rpc => Unit ! Row[G]): Boolean ! Row[G] =
+      def answer(id: Json, result: Json): Unit ! Row[G] = reply(Rpc.Answer(id, result))
+      def fail(id: Json, code: Int, message: String): Unit ! Row[G] = reply(Rpc.Failed(id, code, message))
+      msg match {
         case Rpc.Request(id, Mcp.Initialize, _) =>
           answer(id, Mcp.initializeResult(info,
             tools = hasTools,
@@ -243,7 +273,11 @@ object Server {
       }
 
     def go(ready: Boolean): Unit ! Row[G] = await.flatMap {
-      case Some(msg) => step(ready, msg).flatMap(go)
+      case Some(r: Rpc.Request) => lift(around(r)).flatMap {
+        case Left(now) => tell(now).map(_ => ready)
+        case Right(p) => step(ready, p.request, out => lift(p.leave(out)).flatMap(tell))
+      }.flatMap(go)
+      case Some(msg) => step(ready, msg, tell).flatMap(go)
       case None => pure(())
     }
 
@@ -320,6 +354,10 @@ object Server {
    * effectful tools (`callF`), which run in the wire's own Async */
   def run(link: Link, serving: Serving): Unit ! Async =
     overIn(link)(serveIn[Async](serving)(answering(serving)))
+
+  /** `run`, with something around every request — a payment gate */
+  def run(link: Link, serving: Serving, around: Around[Async]): Unit ! Async =
+    overIn(link)(serveIn[Async](serving, around)(answering(serving)))
 
   /** how `run` answers a call: a pure tool as before (`isError` on a
    * throw), an effectful one as its program — whose own failure is

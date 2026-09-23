@@ -77,6 +77,7 @@ field is OMITTED, as the protocol does.
 | `Facilitator`, `HttpFacilitator(http, base)` | verify, settle, supported |
 | `Settled` | used payments; `Settled.inMemory()` |
 | `Paying(http, policy, payer)`, `Policy`, `Payer` | the paying client |
+| `Charge.admit`, `settle`, `release` | the payment rules without a transport — `Gate` and okay-x402-mcp both run them |
 
 ## Verification
 
@@ -92,7 +93,7 @@ is run by `TestDocExamplesX402`. All of it on JVM and JS.
 
 - `Settled.inMemory()` forgets on restart: a multi-instance or
   restartable server should back `Settled` with a shared store.
-- The MCP and A2A transports of x402 are not here yet (spec stage 3).
+- The MCP transport is [okay-x402-mcp](okay-x402-mcp.md); A2A is not here yet.
 
 References: x402 Protocol Specification v2 and its HTTP transport
 (coinbase/x402); EIP-3009 *Transfer With Authorization*; EIP-712

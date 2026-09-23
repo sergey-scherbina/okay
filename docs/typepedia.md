@@ -719,6 +719,16 @@ same material with the measurements attached.
   verified offline (the signature recovered to its payer, the window,
   the recipient, the amount) before a remote facilitator is asked for
   what needs the chain; the reference implementation's refusal codes.
+- **`X402Mcp.gate`** (okay-x402-mcp) — x402 over MCP as a
+  `Server.Around`: a priced request is refused with JSON-RPC 402 and
+  the `PaymentRequired` in `error.data`, the payment is read from
+  `params._meta`, and a DELIVERED answer (no `isError`) is settled with
+  the receipt in `result._meta` — `Charge`'s rules, shared with `Gate`.
+  `X402Mcp.Paying` is the client half, a `Session` that pays once.
+- **`Server.Around`** (okay-mcp) — a hook around every request of
+  `serveIn`: answer now, or pass on with a `leave` that sees the reply.
+  One closure, not a before/after pair, because what the first half
+  learns is what the second half needs.
 - **`Gate`** (okay-x402) — an okay-http route behind x402: 402 with
   what it accepts, then match, claim (no replay), verify, run, and settle
   only a 2xx answer. `Paying(http, policy, payer)` is the client half;

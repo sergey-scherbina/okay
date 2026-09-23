@@ -2471,6 +2471,27 @@ lazy val okayX402 = crossProject(JVMPlatform, JSPlatform)
   )
 
 /**
+ * okay-x402-mcp (specs/x402.md stage 3): x402 over MCP — the 402 gate
+ * as an `Around` for okay-mcp's server, and a paying `Session`. A
+ * satellite so okay-x402 does not pull the agent runtime okay-mcp
+ * brings, and okay-mcp knows nothing of payments.
+ */
+lazy val okayX402Mcp = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-x402-mcp"))
+  .dependsOn(okayX402, okayMcp)
+  .settings(
+    name := "okay-x402-mcp",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    // client and server over a real (in-memory) wire, as okay-mcp's own
+    // session tests: a blocking `runWith` the JS runtime has not got
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
+/**
  * okay-x402-evm (specs/x402.md stage 2a): verifying x402's `exact` scheme
  * on EVM locally — keccak-256, secp256k1 recovery, EIP-712 — so a server
  * need not take a facilitator's word for a signature. A JVM satellite
@@ -2759,7 +2780,7 @@ lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
-    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm,
+    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
