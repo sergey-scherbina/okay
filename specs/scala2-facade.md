@@ -237,6 +237,61 @@ wrapped, and every operation that can wait is an `Eff[Async, _]`.
       is full rather than failing
 - [x] `source` drains a channel into a `Source` that ends on `close`
 
+## Stages 6–10 — the rest of the library (operator, 2026-09-23)
+"Остальная библиотека (HTTP, SQL, кодеки, агенты, UI) для 2.13 не
+обёрнута - оберни." One stage per area, in dependency order, because
+HTTP, SQL and the agent layer all speak `Schema`:
+
+6. codecs (okay-scala2-codec) — below.
+7. HTTP (okay-scala2-http): routes, the client, a server.
+8. SQL (okay-scala2-sql): queries and transactions as `Eff`.
+9. agents (okay-scala2-agent): a model, tools, the agent loop.
+10. UI (okay-scala2-ui): the view tree, update, a host.
+
+EACH AREA IS PROBED BEFORE IT IS WRAPPED. A facade is written only for
+what scalac 2.13 cannot use directly, because a wrapper where none is
+needed is a second API to keep in step. The probe for codecs is why
+this rule exists: most of okay-codec turned out to be usable as it is.
+
+Each area is its own module, in the one package `okay.scala2`, so a
+2.13 build pulls only the areas it uses (split packages work:
+core-modules).
+
+## Stage 6 — codecs
+Probed from scalac 2.13.18 against the published jars (2026-09-23):
+
+- USABLE DIRECTLY: `okay.codec.Schema` (the enum, its cases, and
+  `wrap`/`refine`/`enumeration`), `Cbor.write/read`, `Yaml`,
+  `Validate`. Scala 2's implicit search FINDS okay-codec's Scala 3
+  givens: `implicitly[Schema[Option[Vector[Long]]]]` resolves.
+- NOT READABLE: `okay.codec.Json`. The 2.13 reader crashes on
+  `Json.tasty` ("class file ... is broken (class scala.MatchError/49)"),
+  and that takes down every signature that mentions `Json`, including
+  `JsonSchema.of`.
+- NOT AVAILABLE: `derives Schema` / `Schema.derived`, which is a
+  Mirror macro.
+- INVISIBLE: a Scala 3 TOP-LEVEL definition (a `type` alias in a
+  package) cannot be seen from 2.13 at all. So the facade cannot give
+  `Schema` a shorter name, and users write `okay.codec.Schema`.
+
+So the facade is small:
+- `Schemas.product1` … `product16`, in the style of circe's
+  `forProductN`: field names, the companion's `apply`, and a
+  projection back to a tuple. Field schemas are implicit and BY-NAME,
+  so recursive types work (`implicit lazy val`).
+- `Schemas.sum` / `Schemas.variant`, for a sealed hierarchy: a
+  `ClassTag` per case chooses the case when encoding.
+- `Json.write` / `read` / `readStrict` and `JsonSchema.of`, all over
+  `String`. The `Json` value type stays out of every signature.
+
+## Behavior (stage 6), all from Scala 2.13
+- [ ] a case class round-trips through Json and Cbor under a
+      `productN` schema; a missing optional field reads as None
+- [ ] a sealed hierarchy round-trips under `sum`/`variant`
+- [ ] a recursive type (a tree) round-trips
+- [ ] `JsonSchema.of` renders the declaration as a string
+- [ ] a decode error is a `Left` naming the problem
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages

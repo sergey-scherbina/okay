@@ -1,0 +1,1 @@
+- [~] scala2-codec — codecs for Scala 2.13 (specs/scala2-facade.md stage 6): Schemas.productN/sum/variant in place of derives Schema; Json and JsonSchema over String (Json.tasty is unreadable from 2.13); Schema/Cbor/Yaml/Validate used directly.

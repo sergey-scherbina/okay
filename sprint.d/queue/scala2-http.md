@@ -1,0 +1,1 @@
+- [ ] **scala2-http** — HTTP for Scala 2.13 (specs/scala2-facade.md stage 7): routes, the client, a server — probe okay-http from 2.13 first, wrap only what it cannot use. Operator, 2026-09-23: "Остальная библиотека (HTTP, SQL, кодеки, агенты, UI) для 2.13 не обёрнута - оберни."

@@ -1,0 +1,1 @@
+- [ ] **scala2-agent** — agents for Scala 2.13 (stage 9): a model, tools, the agent loop — probe okay-agent/okay-llm first. Operator, 2026-09-23: "Остальная библиотека (HTTP, SQL, кодеки, агенты, UI) для 2.13 не обёрнута - оберни."
