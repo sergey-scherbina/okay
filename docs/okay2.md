@@ -52,7 +52,8 @@ Contents:
 23. [Eager programs](#23-eager-programs)
 24. [A map whose type lists its entries](#24-a-map-whose-type-lists-its-entries)
 25. [Aggregations, windows and folds](#25-aggregations-windows-and-folds)
-26. [Literature](#26-literature)
+26. [Programs whose type says where they end](#26-programs-whose-type-says-where-they-end)
+27. [Literature](#27-literature)
 
 ## 1. The build
 
@@ -1404,7 +1405,45 @@ And any collection runs a `Fold` or a `FoldUntil` directly:
     assertEquals(Iterator.from(1).foldUntilTo(sumL), 55L)
 ```
 
-## 26. Literature
+## 26. Programs whose type says where they end
+
+`Prog[R, A, S, T]` is an ordinary program with two phantom indexes:
+what holds before it runs (`S`) and after (`T`). `flatMap` joins a
+program ending at `T` only to one starting at `T`, so a protocol written
+as smart constructors cannot be called out of order, doubled, or left
+half done — typestate, checked by the compiler, at zero cost: the
+facade IS the tree, and `free` hands it back byte for byte.
+
+```scala
+    def begin: Prog[Writer[String], Unit, Idle, Open] = Prog.transition[Idle, Open, Writer[String], Unit](Writer.tell("begin"))
+    def write(s: String): Prog[Writer[String], Unit, Open, Open] = Prog.diag[Open, Writer[String], Unit](Writer.tell(s))
+    def commit: Prog[Writer[String], Unit, Open, Idle] = Prog.transition[Open, Idle, Writer[String], Unit](Writer.tell("commit"))
+```
+
+A transaction then reads as one, and only in that order:
+
+```scala
+    val p: Prog[Writer[String], Unit, Idle, Idle] =
+        _ <- Tx.begin
+        _ <- Tx.write("x")
+        _ <- Tx.commit
+    assertEquals(!.run(Writer.collect[String, Unit, Pure](p.free)), (Vector("begin", "x", "y", "commit"), ()))
+```
+
+`begin` twice, a `write` before `begin`, and a `begin` never committed
+are compile errors — the last because only a program that ends where
+it began has `free`. The three doors: `diag` (any program, moving
+nothing), `transition` (THE claim that a step moves the index — kept in
+the module's own constructors, since nothing checks it), `free` (the
+unlift, diagonal only). The caveat is Scala 3's: the index says what a
+program does if it runs to the end, so an abort inside a block that
+promises a transition drops the transition.
+
+Atkey, "Parameterised notions of computation" (§16) is the shape. Not
+ported: Scala 3's `Delim.Stacked` over `Prog` — its body needs a
+dependent function type (stage 7).
+
+## 27. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and

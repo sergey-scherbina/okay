@@ -1383,6 +1383,35 @@ of Stream/Fold"), which closes `okay2-stage2`:
   wins on a collection, exactly as in the core; on a producer, or
   across carriers, they are these.
 
+## Stage 22 — Prog, and Handler.scala (2026-09-24)
+Operator: "Переименуй тогда Row.scala в Handler.scala, Prog тоже
+перенеси если он чем-то удобен". Asked what Prog is good for: it is NOT
+the facade's convenience of the same name (the earlier answer confused
+the two) — it is the Scala 3 core's INDEXED PROGRAM (specs/freer-base.md
+stage 2): typestate over `Free` at zero cost.
+
+- `Row.scala` is `git mv`'d to `Handler.scala`, which holds what the
+  Scala 3 core's Handler.scala holds (TypeableK, Effect, Split, Handler,
+  Interpr/Interpret/Relay); `trait Row` alone stays in `Row.scala`, as
+  the core keeps its row machinery there. No reference changed: every
+  "(Row.scala)" in the tree points at the `#Op` caveat, which stayed
+  with `trait Row`.
+- `Prog[R, A, S, T]`: a module with an abstract `Rep`, as `Cont` and
+  `Eager` are; `diag`/`pure`/`transition`/`free`, with `flatMap`/`map`
+  as syntax that composes the indexes end to end, and `free` only on the
+  diagonal (a syntax class over `Rep[R, A, S, S]`, which does not unify
+  with an open move). Row first, as in `Free[R, A]`.
+
+- [x] a protocol as smart constructors runs in the right order
+- [x] out of order, doubled, and left open are compile errors
+- [x] the caveat: an abort drops a promised transition (the Scala 3 test)
+- [x] zero cost: diag/free are identity, flatMap is the same Bind
+- [x] an open move has no `free`; a step from A is not joined to one
+      ending at B (TestProg, 5 tests)
+
+Not ported: `Delim.Stacked` over `Prog` (stage 7's decision stands:
+Scala 2 has no dependent function type for the body).
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
