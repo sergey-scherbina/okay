@@ -122,6 +122,49 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
       assertEquals(received.toSet, accepted.asScala.toSet, s"$n round $round: accepted but not delivered")
   }
 
+  /**
+   * LAW 1b — the same law where its window is: close racing a crowd of
+   * NON-PARKING offers (channel-law-racing-offers, 2026-09-24).
+   *
+   * Law 1's one parking producer meets close mostly through the channel's
+   * own open check before the claim, so a buffer that decided "open"
+   * BEFORE winning its position — `Ring.pushDeciding` reading the flag
+   * ahead of the tail CAS, the exact window claim-then-decide exists to
+   * close — passed it. Found in okay2 (spec stage 29), where the port of
+   * this suite let that mutant through; measured again HERE on the same
+   * mutant before this law was added. Four producers offering in a tight
+   * loop against a close at a random instant put sends on both sides of
+   * the end mark every round, and an element accepted after it is never
+   * delivered.
+   */
+  drainers("law: an accepted element is delivered when close races many offers") { (n, mk) =>
+    val rnd = scala.util.Random(1)
+    for round <- 1 to 300 do
+      val c = mk(64)
+      val accepted = java.util.concurrent.ConcurrentHashMap.newKeySet[Int]()
+      val go = java.util.concurrent.atomic.AtomicBoolean(true)
+      val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
+        var i = 0
+        while go.get do
+          val v = w * 10000000 + i
+          if c.offer(v) then accepted.add(v): Unit
+          i += 1
+          if c.isClosed then go.set(false)
+      })
+      val received = java.util.concurrent.ConcurrentLinkedQueue[Int]()
+      val q = Thread.ofVirtual().start { () =>
+        var more = true
+        while more do c.receiveBlocking() match
+          case Some(v) => received.add(v): Unit
+          case None => more = false
+      }
+      Thread.sleep(0, rnd.nextInt(200000))
+      c.close()
+      ps.foreach(_.join()); q.join()
+      val lost = accepted.asScala.toSet -- received.asScala.toSet
+      assert(lost.isEmpty, s"$n round $round: ${lost.size} accepted but not delivered, e.g. ${lost.take(3)}")
+  }
+
   // ── LAW 2: the end comes after the buffer, never instead ─────────
 
   // a PROPERTY, not a test: `each` wraps `test`, which discards the
