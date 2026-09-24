@@ -15,7 +15,9 @@ import okay.codec.Json
  * decides — the parallel-resilience fault model); a failing call is
  * a Condition and the worker survives.
  */
-final class ForeignWorker private (link: WireLink, val pythonVersion: String):
+final class ForeignWorker private (link: WireLink, val pythonVersion: String,
+                                   /** the configured format and compression; None: JSON lines */
+                                   codec: Option[(WireFormat, WireCompression)]):
 
   private var nextId = 0
 
@@ -30,10 +32,13 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String):
   /** one message out, the next one in — `exchange` without an id, which
    * is how a `resume` goes: it answers an ask, it opens nothing */
   private def send(body: Json): Json =
-    link.roundTrip(Json.print(body)) match
-      case Some(line) => ForeignWorker.whole(line)
-      case None =>
-        throw IllegalStateException("the worker is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
+    val answer = codec match
+      case None => link.roundTrip(Json.print(body)).map(ForeignWorker.whole)
+      case Some((format, compression)) =>
+        link.exchange(compression.compress(format.encode(body)))
+          .map(bytes => format.decode(compression.decompress(bytes)))
+    answer.getOrElse(
+      throw IllegalStateException("the worker is DEAD (eof on the wire) — a supervisor retry gets a fresh one"))
 
   private def answer[A](j: Json)(ok: Json => Either[Condition, A]): Either[Condition, A] =
     j match
@@ -141,11 +146,11 @@ object ForeignWorker:
   def start(python: String = "python3",
             env: Map[String, String] = Map.empty,
             /** inline modules to ship on the worker's path (foreign-inline-modules) */
-            modules: Seq[PyModule] = Nil): ForeignWorker =
+            modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression): ForeignWorker =
     startIn(python, PyModule.env(modules, env))
 
   /** `start` once the modules are already in the environment */
-  private[py] def startIn(python: String, env: Map[String, String]): ForeignWorker =
+  private[py] def startIn(python: String, env: Map[String, String])(using WireFormat, WireCompression): ForeignWorker =
     val shim = java.nio.file.Files.createTempFile("okay-py-shim", ".py")
     val res = getClass.getResourceAsStream("/okay/py/shim.py")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
@@ -156,7 +161,7 @@ object ForeignWorker:
 
   /** the seam the handshake test uses: any shim file */
   private[py] def startWith(python: String, shim: java.nio.file.Path,
-                            env: Map[String, String]): ForeignWorker =
+                            env: Map[String, String])(using WireFormat, WireCompression): ForeignWorker =
     startCommand(Vector(resolve(python), shim.toString), python, env)
 
   /**
@@ -166,7 +171,8 @@ object ForeignWorker:
    * this jar ships (`/okay/hs/Okay.hs`) is one: its programs-as-data run
    * through `Py.program` exactly as Python's do, multi-shot included.
    */
-  def speaking(command: Seq[String], env: Map[String, String] = Map.empty): ForeignWorker =
+  def speaking(command: Seq[String], env: Map[String, String] = Map.empty)
+              (using WireFormat, WireCompression): ForeignWorker =
     startCommand(command.toVector, command.headOption.getOrElse("?"), env)
 
   /**
@@ -175,7 +181,8 @@ object ForeignWorker:
    * a socket, an in-process call — the same `Py.program`, the same
    * callbacks and multi-shot, the same `Durable`.
    */
-  def over(link: WireLink, name: String = "the worker"): ForeignWorker =
+  def over(link: WireLink, name: String = "the worker")
+          (using format: WireFormat, compression: WireCompression): ForeignWorker =
     val hello = link.hello().getOrElse {
       link.close()
       throw IllegalStateException(s"$name answered nothing (stderr may know)")
@@ -190,7 +197,44 @@ object ForeignWorker:
       link.close()
       throw IllegalStateException(
         s"shim/host version drift: $name says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
-    new ForeignWorker(link, pyV)
+    new ForeignWorker(link, pyV, configure(link, name, whole(hello)))
+
+  /**
+   * Stage 5a: the givens in scope decide the format and the compression. The
+   * defaults change nothing (JSON lines, as every worker has always spoken).
+   * Anything else must be ANNOUNCED in the far side's hello, then confirmed
+   * by a `configure` exchange; a choice the far side did not announce is
+   * refused by name, never quietly downgraded.
+   */
+  private def configure(link: WireLink, name: String, hello: Json)
+                       (using format: WireFormat, compression: WireCompression): Option[(WireFormat, WireCompression)] =
+    if format.name == "json" && compression.name == "none" then None
+    else
+      def announced(key: String): Vector[String] = hello match
+        case Json.JObj(fs) => fs.toMap.get("speaks") match
+          case Some(Json.JObj(sp)) => sp.toMap.get(key) match
+            case Some(Json.JArr(xs)) => xs.collect { case Json.JStr(x) => x }
+            case _ => Vector.empty
+          case _ => Vector.empty
+        case _ => Vector.empty
+      val formats = "json" +: announced("format")
+      val compressions = "none" +: announced("compress")
+      if !formats.contains(format.name) then
+        link.close()
+        throw IllegalStateException(s"$name speaks the formats ${formats.distinct.mkString(", ")}; this host's given WireFormat is ${format.name}")
+      if !compressions.contains(compression.name) then
+        link.close()
+        throw IllegalStateException(s"$name speaks the compressions ${compressions.distinct.mkString(", ")}; this host's given WireCompression is ${compression.name}")
+      val ask = Json.JObj(Vector("op" -> Json.JStr("configure"), "format" -> Json.JStr(format.name),
+        "compress" -> Json.JStr(compression.name)))
+      link.roundTrip(Json.print(ask)).map(whole) match
+        case Some(Json.JObj(fs)) if fs.toMap.contains("ok") => Some((format, compression))
+        case Some(other) =>
+          link.close()
+          throw IllegalStateException(s"$name refused the configuration ${format.name}/${compression.name}: ${Json.print(other)}")
+        case None =>
+          link.close()
+          throw IllegalStateException(s"$name closed the wire when asked to configure ${format.name}/${compression.name}")
 
   /**
    * A wire line, read STRICTLY. `Json.parse` is total: it repairs damaged
@@ -244,10 +288,11 @@ object ForeignWorker:
 
   /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
    * another process, or another machine — plain TCP, see `WireLink.tcp` */
-  def connect(host: String, port: Int): ForeignWorker =
+  def connect(host: String, port: Int)(using WireFormat, WireCompression): ForeignWorker =
     over(WireLink.tcp(host, port), s"the worker at $host:$port")
 
-  private def startCommand(cmd: Vector[String], python: String, env: Map[String, String]): ForeignWorker =
+  private def startCommand(cmd: Vector[String], python: String, env: Map[String, String])
+                          (using WireFormat, WireCompression): ForeignWorker =
     val pb = ProcessBuilder(cmd*)
     pb.environment().clear()             // the clean-env rule: nothing leaks
     env.foreach((k, v) => pb.environment().put(k, v))

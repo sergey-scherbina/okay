@@ -14,7 +14,11 @@ package okay
 
 import (
 	"bufio"
+	"bytes"
+	"compress/flate"
+	"encoding/binary"
 	"encoding/json"
+	"io"
 	"fmt"
 	"math"
 	"math/big"
@@ -235,7 +239,7 @@ func enc(v any) any {
 
 func dec(j any) any {
 	switch x := j.(type) {
-	case nil, bool, string:
+	case nil, bool, string, int64, float64:
 		return x
 	case json.Number:
 		s := string(x)
@@ -259,9 +263,15 @@ func dec(j any) any {
 		case "nan":
 			return math.NaN()
 		case "f":
-			if n, ok := x["v"].(json.Number); ok {
+			// a JSON text gives a json.Number; CBOR gives the number itself
+			switch n := x["v"].(type) {
+			case json.Number:
 				f, _ := strconv.ParseFloat(string(n), 64)
 				return f
+			case int64:
+				return float64(n)
+			case float64:
+				return n
 			}
 		case "int":
 			if s, ok := x["v"].(string); ok {
@@ -382,6 +392,8 @@ func keys(m map[string]bool) []string {
 // process's pipes), ServeTCP (a socket) and an in-process export all use
 // one, so a program behaves the same over every transport.
 type Worker struct {
+	format    string // "json" or "cbor" (stage 5a); json until a configure
+	compress  string // "none" or "deflate"
 	programs  Programs
 	functions Functions
 	konts     map[key]func(any) Prog
@@ -398,7 +410,7 @@ func NewWorker(programs Programs, functions ...Functions) *Worker {
 			fs[k] = v
 		}
 	}
-	return &Worker{programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[int64]*Ctx{}}
+	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[int64]*Ctx{}}
 }
 
 // await is the next thing a direct-style call does: ask the host, or finish.
@@ -415,11 +427,17 @@ func (w *Worker) await(c *Ctx) map[string]any {
 	return map[string]any{"id": c.id, "ok": enc(e.done)}
 }
 
-// Hello is the handshake line a worker speaks first.
+// Hello is the handshake line a worker speaks first. It announces the
+// formats and compressions this worker can be configured to (stage 5a).
 func Hello() string {
-	b, _ := json.Marshal(map[string]any{"shim": ShimVersion, "python": "go"})
+	b, _ := json.Marshal(map[string]any{"shim": ShimVersion, "python": "go",
+		"speaks": map[string]any{"format": []any{"json", "cbor"}, "compress": []any{"deflate"}}})
 	return string(b)
 }
+
+// Framed: after a configure other than the defaults, the wire carries
+// frames (a 4-byte big-endian length, then the bytes), not lines.
+func (w *Worker) Framed() bool { return w.format != "json" || w.compress != "none" }
 
 func (w *Worker) node(run int64, p Prog) map[string]any {
 	if p.done {
@@ -516,6 +534,16 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 			c.answers <- answerMsg{value: req["ok"]}
 		}
 		return w.await(c)
+	case "configure":
+		f, _ := req["format"].(string)
+		c, _ := req["compress"].(string)
+		if f != "json" && f != "cbor" {
+			return condition(id, "ValueError", fmt.Sprintf("this Go worker speaks the formats json, cbor; not %q", f))
+		}
+		if c != "none" && c != "deflate" {
+			return condition(id, "ValueError", fmt.Sprintf("this Go worker speaks the compressions none, deflate; not %q", c))
+		}
+		return map[string]any{"id": id, "ok": map[string]any{"format": f, "compress": c}}
 	case "forget":
 		for kk := range w.konts {
 			if kk.run == run {
@@ -527,14 +555,14 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 	return condition(id, "ValueError", fmt.Sprintf("this Go worker serves programs only, not '%v'", req["op"]))
 }
 
-// Handle answers one request line with one answer line.
-func (w *Worker) Handle(line string) string {
-	d := json.NewDecoder(strings.NewReader(line))
-	d.UseNumber()
-	var raw map[string]any
+// HandleMessage answers one message, in the worker's current encoding, with
+// one message in the same encoding. A configure takes effect AFTER its own
+// answer, which goes out in the encoding it was asked in.
+func (w *Worker) HandleMessage(msg []byte) []byte {
 	var reply map[string]any
-	if e := d.Decode(&raw); e != nil {
-		reply = condition(nil, "ValueError", "not a JSON request")
+	raw, err := w.decode(msg)
+	if err != nil {
+		reply = condition(nil, "ValueError", err.Error())
 	} else {
 		req := map[string]any{}
 		for k, v := range raw {
@@ -542,19 +570,281 @@ func (w *Worker) Handle(line string) string {
 		}
 		reply = w.answer(raw["id"], req)
 	}
-	b, err := json.Marshal(reply)
-	if err != nil {
-		b, _ = json.Marshal(condition(reply["id"], "GoError", err.Error()))
+	out := w.encode(reply)
+	if ok, isMap := reply["ok"].(map[string]any); isMap && reply["condition"] == nil {
+		if f, has := ok["format"].(string); has {
+			if c, has := ok["compress"].(string); has && raw["op"] == "configure" {
+				w.format, w.compress = f, c
+			}
+		}
 	}
-	return string(b)
+	return out
 }
 
-// serveLines speaks the wire over one line-oriented stream pair.
+// Handle answers one request line with one answer line (the JSON-lines wire).
+func (w *Worker) Handle(line string) string { return string(w.HandleMessage([]byte(line))) }
+
+func (w *Worker) decode(msg []byte) (map[string]any, error) {
+	if w.compress == "deflate" {
+		r := flate.NewReader(bytes.NewReader(msg))
+		b, err := io.ReadAll(r)
+		if err != nil {
+			return nil, fmt.Errorf("a DEFLATE message did not inflate: %v", err)
+		}
+		msg = b
+	}
+	if w.format == "cbor" {
+		v, rest, err := cborDecode(msg)
+		if err != nil {
+			return nil, err
+		}
+		if len(rest) != 0 {
+			return nil, fmt.Errorf("CBOR: %d bytes after the message", len(rest))
+		}
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("CBOR: a request is a map")
+		}
+		return m, nil
+	}
+	d := json.NewDecoder(bytes.NewReader(msg))
+	d.UseNumber()
+	var raw map[string]any
+	if err := d.Decode(&raw); err != nil {
+		return nil, fmt.Errorf("not a JSON request")
+	}
+	return raw, nil
+}
+
+func (w *Worker) encode(reply map[string]any) []byte {
+	var out []byte
+	if w.format == "cbor" {
+		out = cborEncode(nil, reply)
+	} else {
+		b, err := json.Marshal(reply)
+		if err != nil {
+			b, _ = json.Marshal(condition(reply["id"], "GoError", err.Error()))
+		}
+		out = b
+	}
+	if w.compress == "deflate" {
+		var buf bytes.Buffer
+		zw, _ := flate.NewWriter(&buf, flate.DefaultCompression)
+		zw.Write(out)
+		zw.Close()
+		out = buf.Bytes()
+	}
+	return out
+}
+
+// ------------------------------------------------------------- CBOR (RFC 8949)
+
+func cborHead(out []byte, major byte, n uint64) []byte {
+	m := major << 5
+	switch {
+	case n < 24:
+		return append(out, m|byte(n))
+	case n < 1<<8:
+		return append(out, m|24, byte(n))
+	case n < 1<<16:
+		return append(out, m|25, byte(n>>8), byte(n))
+	case n < 1<<32:
+		return append(out, m|26, byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+	}
+	return append(out, m|27, byte(n>>56), byte(n>>48), byte(n>>40), byte(n>>32), byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+}
+
+func cborEncode(out []byte, v any) []byte {
+	switch x := v.(type) {
+	case nil:
+		return append(out, 0xf6)
+	case bool:
+		if x {
+			return append(out, 0xf5)
+		}
+		return append(out, 0xf4)
+	case int:
+		return cborEncode(out, int64(x))
+	case int64:
+		if x >= 0 {
+			return cborHead(out, 0, uint64(x))
+		}
+		return cborHead(out, 1, uint64(-1-x))
+	case float64:
+		out = append(out, 0xfb)
+		return binary.BigEndian.AppendUint64(out, math.Float64bits(x))
+	case json.Number:
+		if i, err := x.Int64(); err == nil {
+			return cborEncode(out, i)
+		}
+		f, _ := x.Float64()
+		return cborEncode(out, f)
+	case string:
+		out = cborHead(out, 3, uint64(len(x)))
+		return append(out, x...)
+	case []any:
+		out = cborHead(out, 4, uint64(len(x)))
+		for _, e := range x {
+			out = cborEncode(out, e)
+		}
+		return out
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		out = cborHead(out, 5, uint64(len(keys)))
+		for _, k := range keys {
+			out = cborEncode(out, k)
+			out = cborEncode(out, x[k])
+		}
+		return out
+	}
+	panic(fmt.Sprintf("a %T does not encode as CBOR", v))
+}
+
+func cborArg(info byte, b []byte) (uint64, []byte, error) {
+	need := map[byte]int{24: 1, 25: 2, 26: 4, 27: 8}
+	if info < 24 {
+		return uint64(info), b, nil
+	}
+	n, ok := need[info]
+	if !ok {
+		return 0, nil, fmt.Errorf("CBOR: an indefinite or reserved length (%d) is not in the wire's subset", info)
+	}
+	if len(b) < n {
+		return 0, nil, fmt.Errorf("a CBOR message ended early (cut short?)")
+	}
+	var v uint64
+	for _, c := range b[:n] {
+		v = v<<8 | uint64(c)
+	}
+	return v, b[n:], nil
+}
+
+func cborDecode(b []byte) (any, []byte, error) {
+	if len(b) == 0 {
+		return nil, nil, fmt.Errorf("a CBOR message ended early (cut short?)")
+	}
+	major, info, b := b[0]>>5, b[0]&0x1f, b[1:]
+	if major == 7 {
+		switch info {
+		case 20:
+			return false, b, nil
+		case 21:
+			return true, b, nil
+		case 22, 23:
+			return nil, b, nil
+		case 25, 26, 27:
+			bits, rest, err := cborArg(info, b)
+			if err != nil {
+				return nil, nil, err
+			}
+			switch info {
+			case 25:
+				return halfFloat(uint16(bits)), rest, nil
+			case 26:
+				return float64(math.Float32frombits(uint32(bits))), rest, nil
+			}
+			return math.Float64frombits(bits), rest, nil
+		}
+		return nil, nil, fmt.Errorf("CBOR: simple value %d is not in the wire's subset", info)
+	}
+	n, b, err := cborArg(info, b)
+	if err != nil {
+		return nil, nil, err
+	}
+	switch major {
+	case 0:
+		return int64(n), b, nil
+	case 1:
+		return -1 - int64(n), b, nil
+	case 3:
+		if uint64(len(b)) < n {
+			return nil, nil, fmt.Errorf("a CBOR string ended early (cut short?)")
+		}
+		return string(b[:n]), b[n:], nil
+	case 4:
+		xs := make([]any, 0, n)
+		for i := uint64(0); i < n; i++ {
+			var x any
+			x, b, err = cborDecode(b)
+			if err != nil {
+				return nil, nil, err
+			}
+			xs = append(xs, x)
+		}
+		return xs, b, nil
+	case 5:
+		m := map[string]any{}
+		for i := uint64(0); i < n; i++ {
+			var k, v any
+			k, b, err = cborDecode(b)
+			if err != nil {
+				return nil, nil, err
+			}
+			ks, ok := k.(string)
+			if !ok {
+				return nil, nil, fmt.Errorf("CBOR: a map key that is not text")
+			}
+			v, b, err = cborDecode(b)
+			if err != nil {
+				return nil, nil, err
+			}
+			m[ks] = v
+		}
+		return m, b, nil
+	}
+	return nil, nil, fmt.Errorf("CBOR: major type %d (byte strings, tags) is not in the wire's subset", major)
+}
+
+func halfFloat(h uint16) float64 {
+	exp := int(h>>10) & 0x1f
+	mant := float64(h & 0x3ff)
+	var v float64
+	switch exp {
+	case 0:
+		v = mant * math.Pow(2, -24)
+	case 31:
+		if mant == 0 {
+			v = math.Inf(1)
+		} else {
+			v = math.NaN()
+		}
+	default:
+		v = (mant + 1024) * math.Pow(2, float64(exp-25))
+	}
+	if h&0x8000 != 0 {
+		return -v
+	}
+	return v
+}
+
+// serveLines speaks the wire over one stream pair: JSON lines until a
+// configure asks for more, frames after it (stage 5a).
 func serveLines(w *Worker, in *bufio.Reader, out *bufio.Writer) {
 	out.WriteString(Hello())
 	out.WriteByte('\n')
 	out.Flush()
 	for {
+		if w.Framed() {
+			var n [4]byte
+			if _, err := io.ReadFull(in, n[:]); err != nil {
+				return
+			}
+			msg := make([]byte, binary.BigEndian.Uint32(n[:]))
+			if _, err := io.ReadFull(in, msg); err != nil {
+				return
+			}
+			reply := w.HandleMessage(msg)
+			var m [4]byte
+			binary.BigEndian.PutUint32(m[:], uint32(len(reply)))
+			out.Write(m[:])
+			out.Write(reply)
+			out.Flush()
+			continue
+		}
 		line, err := in.ReadString('\n')
 		if len(strings.TrimSpace(line)) > 0 {
 			out.WriteString(w.Handle(line))
@@ -621,12 +911,12 @@ func Export(programs Programs, functions ...Functions) {
 }
 
 // Exchange is one in-process exchange: an empty request answers the handshake.
-func Exchange(line string) string {
-	if strings.TrimSpace(line) == "" {
-		return Hello()
+func Exchange(msg []byte) []byte {
+	if len(bytes.TrimSpace(msg)) == 0 {
+		return []byte(Hello())
 	}
 	if exported == nil {
-		return `{"id":null,"condition":{"kind":"LookupError","message":"okay.Export was never called: nothing is served"}}`
+		return []byte(`{"id":null,"condition":{"kind":"LookupError","message":"okay.Export was never called: nothing is served"}}`)
 	}
-	return exported.Handle(line)
+	return exported.HandleMessage(msg)
 }

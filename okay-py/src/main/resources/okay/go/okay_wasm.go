@@ -35,11 +35,11 @@ func okayFree(p int32, _ int32) {
 
 //go:wasmexport okay_exchange
 func okayExchange(req int32, n int32, outLen int32) int32 {
-	line := ""
+	var msg []byte
 	if n > 0 {
-		line = string(unsafe.Slice((*byte)(unsafe.Pointer(uintptr(req))), n))
+		msg = append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(uintptr(req))), n)...)
 	}
-	out := []byte(Exchange(line))
+	out := Exchange(msg)
 	*(*uint32)(unsafe.Pointer(uintptr(outLen))) = uint32(len(out))
 	return keep(out)
 }

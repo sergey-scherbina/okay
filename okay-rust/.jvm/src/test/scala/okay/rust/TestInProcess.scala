@@ -59,3 +59,11 @@ object GoInProcess:
       okay.py.Go.ops("shop", Foreign.callbacks(okay.py.TestGoProgram.priceOf, okay.py.TestGoProgram.discount))): Unit
     Files.writeString(dir.resolve("main.go"), okay.py.TestGoProgram.main): Unit
     okay.py.GoWorker.buildWasm(dir)
+
+/** (Go, WebAssembly), CBOR and DEFLATE chosen by givens */
+class TestGoWasmCbor extends WireConformance:
+  import okay.py.WireFormat.Cbor.given
+  import okay.py.WireCompression.Deflate.given
+  override def munitIgnore: Boolean = !okay.py.GoWorkerBinary.available
+  lazy val engine: ForeignWorker =
+    ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(GoInProcess.wasm))))

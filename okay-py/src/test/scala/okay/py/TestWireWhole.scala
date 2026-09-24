@@ -17,6 +17,7 @@ class TestWireWhole extends munit.FunSuite:
     val link = new WireLink:
       def hello(): Option[String] = Some("""{"shim":6,"python":"go"""")
       def roundTrip(line: String): Option[String] = None
+      def exchange(message: Array[Byte]): Option[Array[Byte]] = None
       def close(): Unit = ()
     val e = intercept[IllegalStateException](ForeignWorker.over(link))
     assert(e.getMessage.contains("not whole"), e.getMessage)
