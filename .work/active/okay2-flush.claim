@@ -1,3 +1,0 @@
-slug: okay2-flush
-agent: claude (session 69c582ad)
-what: okay2-stream: the Flush effect (Flush.now, Flushing[W], mapFlushing, mergeFlushing/eitherFlushing, Channel.mergeFlushing/feedFlushing) and ParallelChunks, from okay-stream
