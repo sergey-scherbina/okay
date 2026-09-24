@@ -42,7 +42,9 @@ Contents:
 13. [Resources, once, delimited control, capabilities](#13-resources-once-delimited-control-capabilities)
 14. [Generators](#14-generators)
 15. [Cells made at run time, and probability](#15-cells-made-at-run-time-and-probability)
-16. [Literature](#16-literature)
+16. [The monad classes](#16-the-monad-classes)
+17. [Several instances of one signature](#17-several-instances-of-one-signature)
+18. [Literature](#18-literature)
 
 ## 1. The build
 
@@ -454,10 +456,16 @@ Each of these was measured before it was decided (specs/okay2.md):
 - **Handlers are traits**, since Scala 2 has no polymorphic function
   types: `Interpr[F, S]` (the Cont-valued `F !> S`), `Interpret[F, G]`
   (translate's), `Relay[F]` (relay's).
-- **`Distinct` is not checked**: two `State[_]` of different
-  parameters in one row are two types to the witness and one class to
-  the split, and misroute loudly at the first wrong answer, as the
-  Scala 3 core did before its macro.
+- **`Distinct` is a blackbox macro** (stage 10), as `Replayable` is:
+  an inductive implicit over an intersection diverges. It reads the
+  same identities as the Scala 3 one — class, `Tag` key, `Instances`,
+  `ByValue` (§17).
+- **`A ! R` is invisible to partial unification** (stage 11): scalac 2
+  unifies `F[A]` with the alias AS WRITTEN, and `!` has its parameters
+  the other way round, so the generic `sequence`/`*>`/`ifS` of §16 do
+  not reach a program typed `Int ! State[Int]`. The program-shaped
+  twins do: `!.traverse`/`!.sequence`/`!.replicateA`, and `*>`, `<*`,
+  `>>=`, `ifS`, `whenS` as methods of every program.
 
 ## 9. Interop: cats, fs2, zio
 
@@ -1082,8 +1090,128 @@ sampling:
     assertEqualsDouble(post(true), 15.0 / 29.0, 1e-12)
 ```
 
-## 16. Literature
+## 16. The monad classes
 
+The Scala 3 core's Monad.scala, class for class (spec stage 11):
+`Functor`, `Applicative`, `Selective`, `Monad`, `Alternative`,
+`MonadPlus`, `Comonad` (and `Id`), `ParaMonad` — which `Control` extends —
+and the combinators written once over them: `traverse`, `sequence`,
+`replicateA`, `guard`, `ensure`, `*>`, `<*`, `>>=`, `>=>`, `<*>`,
+`whenS`/`unlessS`.
+
+Nothing needs importing beyond `okay2._`. The instance for programs is
+in `Free`'s companion, `Option`'s in `Functor`'s (a query for any class
+of the hierarchy looks in the companions of its base classes), the
+`Choose` MonadPlus in `Choose`'s. The syntax is present only where an
+instance is, as Scala 3's extension methods are:
+
+```scala
+    assertEquals((k >=> k)(1), Some(3))
+    assertEquals(Option((a: Int) => a * 2) <*> Option(21), Some(42))
+    assertEquals(runCounter(traverse(Seq(10, 20, 30))(step)), (3, Seq(11, 22, 33)))
+```
+
+ONE SCALA 2 TRAP, and it is the alias: partial unification reads
+`Int ! State[Int]` as written, parameters reversed, and solves
+`F = [R] Int ! R`. The generic combinators reach a program typed
+`Free[R, A]`; for one typed with `!`, use the program-shaped twins:
+
+```scala
+    def named(n: Int): Int ! State[Int] = tick.map(_ + n)
+    assertEquals(runCounter(!.traverse(Seq(10, 20))(named)), (2, Seq(11, 22)))
+    assertEquals(runCounter(tick *> tick), (2, 2))
+```
+
+`Selective` runs ONE branch — the other is not even built, because the
+branches are by name (Mokhov et al.; the Scala 3 core measured a
+by-value branch still running):
+
+```scala
+    val p = cond.ifS(branch("then", 1))(branch("else", 2))
+```
+
+`withFilter` — what an `if` and a refutable pattern in a `for` desugar
+to — asks `CanFail[R]`: `Choose` in the row prunes the branch, `Abort`
+stops the program, a row with neither does not compile and says so.
+Membership is subtyping here (`State[Int] + Choose <: Choose`), so the
+instances are bounded type parameters and resolve at any concrete row:
+
+```scala
+    def name(id: Int): String ! Abort = for { Some(n) <- find(id) } yield n
+    assertEquals(!.run(Throws.runOption[String, Pure](name(2))), None)
+```
+
+An `if` filters the generator right before it, so that generator's row
+is the one that must carry `Choose` — `.plus[Choose]` puts it there.
+
+## 17. Several instances of one signature
+
+A split tests one signature and takes the rest by exclusion, and a
+parameterised signature's test is its CLASS: `State[Int] +
+State[String]` is two types to the row and one to the split, and
+`Distinct` refuses it (§8). Give each instance an identity the split
+can see — the same three ways the Scala 3 core has
+(docs/many-instances.md), plus Delim's prompts:
+
+| | named at compile time | made at run time |
+|---|---|---|
+| any effect | `Tag[K, F]` | `Instances[F]` |
+| Writer only | `Writer.byValue` | |
+
+`Tag` puts a literal key on every operation of a program — anyone's,
+already written against the plain signature — and `untag` hands the
+signature back to its OWN handler:
+
+```scala
+        a <- Tag.tag["small", State[Int], Int, Pure](bump(1))
+        b <- Tag.tag["big", State[Int], Int, Pure](bump(10))
+      State.handle[Int, (Int, Int), Big](1)(Tag.untag["small", State[Int], (Int, Int), Big](p))
+```
+
+The test is the key AND the signature, so one key over two signatures
+is a good row; the same signature class under one key is what nothing
+can tell apart, and `Distinct` refuses it.
+
+`Instances` keys by a `Handle` made at run time — one per tenant, out
+of a config nobody read at compile time — and the row has ONE member
+however many instances there are. `handler(pick)` serves them all in
+one pass; `only(h)` strips one back to the plain signature for the
+effect's own runner, and `exhausted` discharges the residual member,
+naming any handle that was never stripped:
+
+```scala
+        a <- Instances.at(alice)(Store.get)
+        b <- Instances.at(bob)(Store.get)
+    val h = Instances.handler[Store](i => store(rows(i)))
+```
+
+`Writer.byValue` tests the told value's class as well (`ClassTag[W]`,
+where Scala 3 asks `Typeable[W]`), and declares itself
+`TypeableK.ByValue` so `Distinct` lets two Writers share a row. Every
+Writer handler takes its test from the CALL SITE, so the import is
+all it takes:
+
+```scala
+    import Writer.byValue._
+    val inner: (Vector[String], Unit) ! Writer[Int] = Writer.collect[String, Unit, Writer[Int]](p)
+```
+
+Like `Typeable`, a `ClassTag` sees the erasure: `Writer[List[Int]] +
+Writer[List[String]]` is still one class. A signature of your own
+whose test reads the operation's value says so the same way:
+`TypeableK.ByValue[YourSig]`.
+
+`Distinct.unchecked` is NOT a way out of a refusal: a refused row IS the
+misrouting one, and the escape hatch exists only for a row the macro
+cannot see as it is.
+
+## 18. Literature
+
+- Philip Wadler, "Monads for functional programming" (1995); Conor
+  McBride and Ross Paterson, "Applicative programming with effects"
+  (JFP 2008); Andrey Mokhov, Georgy Lukyanov, Simon Marlow and Jeremie
+  Dimino, "Selective applicative functors" (ICFP 2019); Robert Atkey,
+  "Parameterised notions of computation" (JFP 2009) — §16's classes.
 - Oleg Kiselyov and Hiromi Ishii, "Freer Monads, More Extensible
   Effects" (Haskell Symposium 2015) — the tree, the relay handler,
   and why no Functor is needed.

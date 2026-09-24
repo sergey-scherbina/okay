@@ -14,6 +14,21 @@ import Split.split
  */
 object Effects {
 
+  /**
+   * `traverse`/`sequence`/`replicateA` AT PROGRAMS, where the generic
+   * ones (Monad.scala) cannot see a program typed `A ! R` — partial
+   * unification reads the alias with its parameters reversed (see
+   * `ProgOps`). Effects in order, results collected.
+   */
+  def traverse[A, B, R <: Row](xs: Seq[A])(f: A => Free[R, B]): Seq[B] ! R =
+    okay2.traverse[({ type L[X] = Free[R, X] })#L, A, B](xs)(f)
+
+  def sequence[A, R <: Row](ps: Seq[Free[R, A]]): Seq[A] ! R =
+    traverse[Free[R, A], A, R](ps)(identity)
+
+  def replicateA[A, R <: Row](n: Int)(p: Free[R, A]): Seq[A] ! R =
+    sequence[A, R](Seq.fill(n)(p))
+
   /** run a closed computation */
   def run[A](p: Free[Pure, A]): A = runFree(p)
 

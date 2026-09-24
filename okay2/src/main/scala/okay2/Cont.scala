@@ -8,11 +8,8 @@ import scala.annotation.tailrec
  * with answer-type modification. M[A, S, R] means (A => S) => R, which
  * `run` eliminates.
  */
-trait Control[M[_, _, _]] {
-  def pure[A, R](a: A): M[A, R, R]
+trait Control[M[_, _, _]] extends ParaMonad[M] {
   def shift[A, S, R](f: (A => S) => R): M[A, S, R]
-  def flatMap[A, B, S, S2, R](m: M[A, S, R])(f: A => M[B, S2, S]): M[B, S2, R]
-  def map[A, B, S, R](m: M[A, S, R])(f: A => B): M[B, S, R] = flatMap(m)((a: A) => pure[B, S](f(a)))
   def run[A, S, R](m: M[A, S, R])(k: A => S): R
   def reset[A, R](m: M[A, A, R]): R = run(m)(identity)
 }

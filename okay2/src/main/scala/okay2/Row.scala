@@ -33,6 +33,17 @@ trait TypeableK[F <: Row] { def test(x: Any): Boolean }
 object TypeableK {
   /** the empty signature is trivially splittable: nothing inhabits it */
   implicit val pure: TypeableK[Pure] = new TypeableK[Pure] { def test(x: Any): Boolean = false }
+
+  /**
+   * A test that reads the operation's VALUE, finer than the class — the
+   * declaration `Distinct` reads to let two signatures of one class share
+   * a row (the Scala 3 core's `TypeableK.ByValue`). No macro can read
+   * what a hand-written test does, so the instance says it; unmarked
+   * means by class, the safe direction: an unmarked fine test is refused
+   * and fixed by one word, the reverse would pass a row that misroutes.
+   * `Writer.byValue.writerK` is the one instance here that carries it.
+   */
+  trait ByValue[F <: Row] extends TypeableK[F]
 }
 
 /**
@@ -44,7 +55,9 @@ object TypeableK {
  * `of` reads the class off `F#Op[Any]`'s ClassTag. For a signature
  * whose only parameter is the answer type the test is COMPLETE; for a
  * parameterised one (`State[S]`, `Throws[E]`) it is by class only, so
- * a row may hold ONE of it — two `State[_]` misroute, loudly.
+ * a row may hold ONE of it, and `Distinct` refuses two. Two instances
+ * of one signature go under a key (`Tag`), a run-time handle
+ * (`Instances`), or — for Writer — the finer test `Writer.byValue`.
  *
  * NEVER GIVE IT A ROW: an intersection's `#Op` is its last parent's, so
  * `Effect.of[State[Int] + Writer[String]]` would test for Writer's

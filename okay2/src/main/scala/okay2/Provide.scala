@@ -17,8 +17,9 @@ import scala.annotation.implicitNotFound
  * missing capability is a compile error in both.
  *
  * Not here: `plan`/`exports`/`shadowed`, which read the chain off the
- * type with a macro (backlog `okay2-module-plan`), and the `Monad`
- * over context functions (okay2 has no `Monad`).
+ * type with a macro (backlog `okay2-module-plan`), and the Scala 3
+ * core's `ctxMonad`: okay2 has the classes since stage 11, but Scala 2
+ * has no context functions for one to range over.
  */
 trait Provides {
   def provide[A1, B](a1: A1)(body: A1 => B): B = body(a1)

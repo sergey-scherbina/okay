@@ -15,9 +15,12 @@ import Split.split
  *
  * Not here: the Scala 3 core's `runSeq`, where a collection IS the
  * signature (`A ! List`) — a row here is a type of kind `*` with an
- * `Op` member, and `List` is not one; and `MonadPlus`/`guard` with the
- * `withFilter` that lets a `for` prune by an `if` — okay2 has no
- * `Monad`; `Choose.guard(p)` is the explicit spelling.
+ * `Op` member, and `List` is not one.
+ *
+ * A row containing Choose is a `MonadPlus` (`Choose.monadPlus`, found
+ * by `MonadPlus[...]` at such a row), and an `if` in a `for` over it
+ * prunes the branch: `withFilter` asks for `CanFail`, which Choose
+ * supplies (Monad.scala, stage 11). `Choose.guard(p)` is the step form.
  */
 sealed trait Choose extends Row { type Op[+A] = Choose.Op[A] }
 
@@ -32,6 +35,21 @@ object Choose {
 
   /** no alternatives: the branch dies */
   def fail[A]: A ! Choose = Free.inject[Choose, A](Op(Seq.empty))
+
+  /**
+   * Nondeterminism is the canonical MonadPlus: no alternatives is
+   * failure, append chooses between two whole computations — for the
+   * row `Choose + F`. Note the overlap: `Free.monad` covers these rows
+   * too, so ask for MonadPlus by name where empty/append are needed.
+   */
+  implicit def monadPlus[F <: Row]: MonadPlus[({ type L[A] = Free[Choose with F, A] })#L] =
+    new MonadPlus[({ type L[A] = Free[Choose with F, A] })#L] {
+      def pure[A](a: A): A ! (Choose + F) = Free.Return(a)
+      def empty[A]: A ! (Choose + F) = fail[A]
+      def flatMap[A, B](a: Free[Choose with F, A])(f: A => Free[Choose with F, B]): B ! (Choose + F) = a.flatMap[Choose with F, B](f)
+      def append[A](x: Free[Choose with F, A], y: => Free[Choose with F, A]): A ! (Choose + F) =
+        Free.inject[Choose, Free[Choose with F, A]](Op(Seq(x, y))).flatMap[Choose with F, A](identity)
+    }
 
   /** keep the branch exactly when `p` holds — `if` in a `for`, spelled
    * as a step */

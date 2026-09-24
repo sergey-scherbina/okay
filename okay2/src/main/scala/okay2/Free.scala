@@ -53,6 +53,15 @@ object Free {
   /** a value as a tree */
   def pure[R, A](a: A): Free[R, A] = Return(a)
 
+  /** `Free[R, *]` is a Monad for every row R, with no constraint on R —
+   * in Free's companion, so every query for a class of the hierarchy at
+   * a program finds it with no import (Monad.scala) */
+  implicit def monad[R <: Row]: Monad[({ type L[A] = Free[R, A] })#L] = new Monad[({ type L[A] = Free[R, A] })#L] {
+    def pure[A](a: A): Free[R, A] = Return(a)
+    def flatMap[A, B](a: Free[R, A])(f: A => Free[R, B]): Free[R, B] = a.flatMap[R, B](f)
+    override def fmap[A, B](a: Free[R, A], f: A => B): Free[R, B] = a.map(f)
+  }
+
   /** an operation as a tree */
   def inject[R <: Row, A](a: R#Op[A]): Free[R, A] = Inject[R, A](a)
 

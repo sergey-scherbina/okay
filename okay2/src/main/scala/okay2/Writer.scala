@@ -3,6 +3,7 @@ package okay2
 import scala.annotation.unused
 
 import scala.runtime.BoxedUnit
+import scala.reflect.ClassTag
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
@@ -43,7 +44,34 @@ object Writer {
   private[okay2] def loneAnswer[A]: A = (BoxedUnit.UNIT: Any).asInstanceOf[A]
   def said[W]: Said[W] = saidAny.asInstanceOf[Said[W]]
 
+  /** by the class of `Say`: total, and needs nothing of W. Every handler
+   * below names its `TypeableK` parameter `effect` too, which SHADOWS this
+   * member inside it — otherwise the two would be an ambiguous pair in
+   * the handler's body. A row may
+   * therefore hold ONE Writer — unless the finer test below is imported */
   implicit def effect[W]: Effect[Writer[W]] = Effect.of[Writer[W]]
+
+  /**
+   * The finer test, opt-in, as in the Scala 3 core: the told value's own
+   * class as well, which separates `Writer[String] + Writer[Int]` in one
+   * row. Declared `TypeableK.ByValue` so `Distinct` reads that it is
+   * finer than the class. `import okay2.Writer.byValue._` where such a
+   * row is handled: an imported implicit is found before the companion's,
+   * and every Writer handler takes its `TypeableK` from the call site.
+   *
+   * A `ClassTag[W]` where Scala 3 asks a `Typeable[W]`: its `unapply`
+   * boxes a primitive W for the test, and like Typeable it sees only the
+   * erasure — `Writer[List[Int]] + Writer[List[String]]` is still one
+   * class, and nothing can tell them apart.
+   */
+  object byValue {
+    implicit def writerK[W](implicit ct: ClassTag[W]): TypeableK.ByValue[Writer[W]] = new TypeableK.ByValue[Writer[W]] {
+      def test(x: Any): Boolean = x match {
+        case s: Say[_] => ct.unapply(s.w).isDefined
+        case _ => false
+      }
+    }
+  }
 
   /** tell w: emit it as an operation, which answers NOTHING */
   def tell[W](w: W): Unit ! Writer[W] = Free.inject[Writer[W], Unit](Say(w))
@@ -55,7 +83,7 @@ object Writer {
    * program that still forwards effects makes every forwarded node
    * left-nested under it).
    */
-  def loopWith[W, S, A, R, F <: Row](a: Free[Writer[W] with F, A])(z: S)(step: (S, W) => S)(finish: (S, A) => R): R ! F = {
+  def loopWith[W, S, A, R, F <: Row](a: Free[Writer[W] with F, A])(z: S)(step: (S, W) => S)(finish: (S, A) => R)(implicit effect: TypeableK[Writer[W]]): R ! F = {
     def _loop(s: S)(x: Free[Writer[W] with F, A]): R ! F = loop(s)(x)
 
     @tailrec def loop(s: S)(x: Free[Writer[W] with F, A]): R ! F = Free.resume(x) match {
@@ -75,16 +103,16 @@ object Writer {
   }
 
   /** fold everything told, forwarding the rest of the row */
-  def foldWith[W, S, A, R <: Row](a: Free[Writer[W] with R, A])(z: S)(step: (S, W) => S)(implicit @unused d: Distinct[Writer[W] with R]): (S, A) ! R =
+  def foldWith[W, S, A, R <: Row](a: Free[Writer[W] with R, A])(z: S)(step: (S, W) => S)(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with R]): (S, A) ! R =
     loopWith[W, S, A, (S, A), R](a)(z)(step)((s, a) => (s, a))
 
   /** collect everything told, in order, forwarding the rest of the row
    * — a List built by prepending and reversed ONCE at the end */
-  def run[W, A, R <: Row](a: Free[Writer[W] with R, A])(implicit @unused d: Distinct[Writer[W] with R]): (Seq[W], A) ! R =
+  def run[W, A, R <: Row](a: Free[Writer[W] with R, A])(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with R]): (Seq[W], A) ! R =
     loopWith[W, List[W], A, (Seq[W], A), R](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse, a))
 
   /** `run` answering a Vector */
-  def collect[W, A, R <: Row](a: Free[Writer[W] with R, A])(implicit @unused d: Distinct[Writer[W] with R]): (Vector[W], A) ! R =
+  def collect[W, A, R <: Row](a: Free[Writer[W] with R, A])(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with R]): (Vector[W], A) ! R =
     loopWith[W, List[W], A, (Vector[W], A), R](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse.toVector, a))
 
   /**
@@ -106,7 +134,7 @@ object Writer {
   /** the same observation for a writer program performing ARBITRARY
    * effects G: the next told value arrives inside G — the G-operations
    * met on the way are carried into the answer (deferred, not run) */
-  def unconsIn[W, A, G <: Row](a: Free[Writer[W] with G, A]): Either[A, (W, A ! (Writer[W] + G))] ! G = Free.resume(a) match {
+  def unconsIn[W, A, G <: Row](a: Free[Writer[W] with G, A])(implicit effect: TypeableK[Writer[W]]): Either[A, (W, A ! (Writer[W] + G))] ! G = Free.resume(a) match {
     case Return(x) => pure(Left(x))
     case Inject(e) =>
       split[Writer[W], G, A, Either[A, (W, A ! (Writer[W] + G))] ! G](e) {
@@ -121,10 +149,10 @@ object Writer {
 
   /** fold everything told into a Fold algebra, forwarding the rest of
    * the row; dispatched on the accumulator as `Stream.fold` is */
-  def fold[W, S, A, R <: Row](a: Free[Writer[W] with R, A])(fo: Fold[W, S])(implicit @unused d: Distinct[Writer[W] with R]): (S, A) ! R =
+  def fold[W, S, A, R <: Row](a: Free[Writer[W] with R, A])(fo: Fold[W, S])(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with R]): (S, A) ! R =
     foldAt[W, S, A, R](a)(fo)
 
-  def foldAt[W, S, A, F <: Row](a: Free[Writer[W] with F, A])(fo: Fold[W, S]): (S, A) ! F = fo match {
+  def foldAt[W, S, A, F <: Row](a: Free[Writer[W] with F, A])(fo: Fold[W, S])(implicit effect: TypeableK[Writer[W]]): (S, A) ! F = fo match {
     // the four primitive shapes keep the accumulator unboxed across
     // the loop; the result is the same `(S, A)` the fold's own type
     // says, which the type test cannot tell the compiler
@@ -142,10 +170,10 @@ object Writer {
    * the satisfying tell is built, and an F operation that would have
    * followed it is never performed.
    */
-  def foldUntil[W, S, A, R, Rw <: Row](a: Free[Writer[W] with Rw, A])(fo: FoldUntil[W, S, R])(implicit @unused d: Distinct[Writer[W] with Rw]): R ! Rw =
+  def foldUntil[W, S, A, R, Rw <: Row](a: Free[Writer[W] with Rw, A])(fo: FoldUntil[W, S, R])(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with Rw]): R ! Rw =
     foldUntilAt[W, S, A, R, Rw](a)(fo)
 
-  def foldUntilAt[W, S, A, R, F <: Row](a: Free[Writer[W] with F, A])(fo: FoldUntil[W, S, R]): R ! F = {
+  def foldUntilAt[W, S, A, R, F <: Row](a: Free[Writer[W] with F, A])(fo: FoldUntil[W, S, R])(implicit effect: TypeableK[Writer[W]]): R ! F = {
     def _loop(s: S)(x: Free[Writer[W] with F, A]): R ! F = loop(s)(x)
 
     @tailrec def loop(s: S)(x: Free[Writer[W] with F, A]): R ! F =
@@ -187,7 +215,7 @@ object Writer {
 
   /** map the told values, keeping the PROGRAM: the telling is
    * transformed in place and the G-operations forwarded untouched */
-  def map[W, V, A, R <: Row](a: Free[Writer[W] with R, A])(f: W => V)(implicit @unused d: Distinct[Writer[W] with R]): A ! (Writer[V] + R) =
+  def map[W, V, A, R <: Row](a: Free[Writer[W] with R, A])(f: W => V)(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with R]): A ! (Writer[V] + R) =
     mapAt[W, V, A, R](a)(f)
 
   /**
@@ -197,7 +225,7 @@ object Writer {
    * may return any number of values, including none — an empty result
    * drops the told value, which makes this a filter as well.
    */
-  def expand[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => IndexedSeq[V])(implicit @unused d: Distinct[Writer[W] with G]): A ! (Writer[V] + G) = {
+  def expand[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => IndexedSeq[V])(implicit effect: TypeableK[Writer[W]], @unused d: Distinct[Writer[W] with G]): A ! (Writer[V] + G) = {
     def tellAll(vs: IndexedSeq[V], i: Int): Unit ! (Writer[V] + G) =
       if (i >= vs.length) Return(())
       else tell(vs(i)).at[Writer[V] + G].flatMap(_ => tellAll(vs, i + 1))
@@ -216,7 +244,7 @@ object Writer {
   }
 
   /** `map` at the handler's own shape */
-  def mapAt[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => V): A ! (Writer[V] + G) =
+  def mapAt[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => V)(implicit effect: TypeableK[Writer[W]]): A ! (Writer[V] + G) =
     Free.resume(a) match {
       case Return(x) => Return(x)
       case Inject(e) => mapAt[W, V, A, G](Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))(f)

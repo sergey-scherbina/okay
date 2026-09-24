@@ -654,7 +654,8 @@ now depends on okay2-async (and on okay2-platform for its tests):
   stack as a tuple type; Scala 2 has no `*:`), the inline `shift[A]`/
   `exit`/`emit`/`pause`/`onReturn` (direct-block doors — the evidence
   forms above are their Scala 2 spelling), `SharedOnce` (okay-async;
-  backlog with `okay2-stage2`), `ctxMonad` (no `Monad` here).
+  backlog with `okay2-stage2`), `ctxMonad` (no `Monad` here; stage 11
+  brought the classes, and Scala 2 still has no context functions).
 - Scala 2 traps this stage: a `case class` inside a test suite trips
   -Xlint's outer-reference check on every type test (hoist to an
   object); `implicit val at` after a use of `at` in the same block is
@@ -720,7 +721,8 @@ wait for Choice/Logic" (operator).
   `p`, a type-level function), as in the Scala 3 core.
 - `Choose` has no `runSeq` (a collection cannot be a kind-`*` Row) and
   no `MonadPlus`/`withFilter` (no `Monad` here): `Choose.guard(p)` is
-  the step an `if` guard would desugar to.
+  the step an `if` guard would desugar to. (Stage 11 added both:
+  `Choose.monadPlus`, and `withFilter` by `CanFail`.)
 - `SharedOnce` is not `translate`: its handler is polymorphic in X and
   a `Force[a]` answers `Option[a]`, which scalac 2 cannot relate to X
   without a cast; the bespoke loop at `Any` needs none. A type
@@ -902,7 +904,8 @@ the three composers of a split — `Handler.union`, `Into.union`,
 `Handler.union`/`flat`. `Distinct.unchecked` is the escape hatch.
 okay2 has no by-value tests (`TypeableK.ByValue`) and no `Tag`/
 `Instances` wrappers yet, so the class is the whole identity; when they
-come, the macro learns them as the Scala 3 one did.
+come, the macro learns them as the Scala 3 one did. (They came in
+stage 11, and it did.)
 
 THE HANDLERS TOO (okay2-distinct-handlers, the same day; operator:
 "да хочу", and the Scala 3 core gets the same as backlog
@@ -1071,21 +1074,49 @@ THE MESSAGES: `Distinct`'s abort no longer recommends `unchecked`; it
 names Tag/Instances/byValue/Delim prompts and docs/okay2.md. The
 `implicitNotFound` texts of the new classes say what to import or add.
 
-- [ ] Monad laws hold for `Free[R, *]`, `Option`, a `Choose` row
-      (left/right identity, associativity, by running)
-- [ ] `traverse`/`sequence` over programs keep effect order; `guard`
-      prunes in a Choose row; `Selective.ifS` runs one branch only
-- [ ] `withFilter`: an `if` and a refutable pattern prune in a Choose
+- [x] Monad laws hold for `Free[R, *]` and `Option`, by running;
+      `MonadPlus` for a Choose row: empty prunes, append chooses (TestMonad)
+- [x] `traverse`/`sequence`/`replicateA` over programs keep effect order;
+      `guard` prunes in a Choose row; `ifS` builds and runs one branch
+- [x] `withFilter`: an `if` and a refutable pattern prune in a Choose
       row, stop in an Abort row, do not compile in a row with neither
-- [ ] `Tag`: one `count` run at two states in one program; same key
-      over different signatures is a good row; `untag` hands the
-      signature back to its own handler
-- [ ] `Instances`: two handles, one row member, `only` strips one,
-      `exhausted` names a handle never stripped
-- [ ] `Writer.byValue`: `Writer[String] + Writer[Int]` accepted and
+- [x] `Tag`: one `bump` run at two states in one program; same key over
+      different signatures is a good row; `untag` hands the signature
+      back to its own handler (TestInstances)
+- [x] `Instances`: two handles, one row member, instances made in a
+      loop, `route`, `only` strips one, `exhausted` names a handle never
+      stripped
+- [x] `Writer.byValue`: `Writer[String] + Writer[Int]` accepted and
       routed correctly with the import, refused without it
-- [ ] `Distinct`: two Tags of one key over colliding signatures
-      refused; different keys admitted; the message names the ways out
+- [x] `Distinct`: one key over two Readers refused, two Instances of
+      Readers refused; different keys, different signatures and a tag
+      beside its plain signature admitted; the message names the ways
+      out and no longer names `unchecked`
+
+### Found while building it (each measured)
+- PARTIAL UNIFICATION READS THE `!` ALIAS AS WRITTEN. `sequence(Seq(tick,
+  tick))` with `tick: Int ! State[Int]` solves `F = [R] Int ! R` and the
+  kind check refuses it ("inferred kinds … do not conform"); scalac does
+  not retry the dealiased `Free[State[Int], Int]`. The generic
+  combinators and syntax reach a program typed with `Free`; for `!` the
+  program-shaped twins exist (`!.traverse`/`sequence`/`replicateA`, and
+  `*>`/`<*`/`>>=`/`ifS`/`whenS`/`unlessS` on `ProgOps`/`ProgBoolOps`).
+  TestMonad pins the refusal so a future scalac that dealiases first is
+  noticed.
+- An implicit parameter on a syntax METHOD eats the next application:
+  `(k >=> k)(1)` passed `1` as the `Monad`. The instance goes on the
+  syntax class's constructor instead, which also makes the conversion
+  exist only where the instance does.
+- Writer's handlers now take `TypeableK[Writer[W]]` from the call site
+  (so `import Writer.byValue._` reaches them). Inside `object Writer`
+  the companion's `effect` is in LEXICAL scope and was an ambiguous pair
+  with the parameter; naming the parameter `effect` shadows it.
+- The Tag/Instances instance of a signature is found by the macro with
+  `c.inferImplicitValue` at the call site, so `ByValue` is read exactly
+  where the import is — the Scala 3 macro's `Implicits.search`.
+- Instances in `object Functor` answer a query for any class of the
+  hierarchy (implicit scope includes the companions of the queried
+  class's base classes); the program monad in `Free`'s companion.
 
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and

@@ -209,7 +209,7 @@ object Gen {
         def end(s: S): R = k.end(s)
       }
       // Stop takes no parameter and is not a Writer: the row is distinct
-      def walk(p: Unit ! Row[A]): Unit ! Row[B] = Writer.map[A, B, Unit, Stop](p)(f)(Distinct.unchecked)
+      def walk(p: Unit ! Row[A]): Unit ! Row[B] = Writer.map[A, B, Unit, Stop](p)(f)(implicitly, Distinct.unchecked)
     }
 
     final class Filter[A](p: A => Boolean) extends Stateless[A, A] {

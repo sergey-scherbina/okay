@@ -30,7 +30,7 @@
  *   answer type under a `Bind` and cannot at a bare `Inject`.
  * - No `inline`: the hot paths are ordinary methods for the JIT.
  */
-package object okay2 extends Provides {
+package object okay2 extends Provides with Monads {
 
   /** a computation of A performing the operations of the row R: A ! R.
    * Scala 2 gives every infix TYPE operator one precedence, left-
@@ -157,6 +157,33 @@ package object okay2 extends Provides {
 
     /** the same, the answer dropped: `p andThen q` runs p, then q */
     def andThen[B, G <: Row](q: => Free[G, B]): B ! (R + G) = p.flatMap[R + G, B](_ => q)
+
+    /*
+     * The class syntax AT A PROGRAM (stage 11). The generic syntax in
+     * Monad.scala reaches a program only when its static type is spelled
+     * `Free[R, A]`: partial unification takes the `!` alias AS WRITTEN,
+     * and `A ! R` has its parameters the other way round, so `F[A]`
+     * against `Int ! State[Int]` solves `F = [R] Int ! R` and the kind
+     * check refuses it (measured, TestMonad). These are the same
+     * operations with the program's own shape, which a conversion
+     * reaches through subtyping, where the alias does not matter — and
+     * they win over the generic ones where both apply, being more
+     * specific.
+     */
+
+    /** sequence, keep the right */
+    def *>[B](q: Free[R, B]): B ! R = p.flatMap[R, B](_ => q)
+    /** sequence, keep the left */
+    def <*[B](q: Free[R, B]): A ! R = p.flatMap[R, A](a => q.map(_ => a))
+    def >>=[B](f: A => Free[R, B]): B ! R = p.flatMap[R, B](f)
+  }
+
+  /** Selective's conditionals at a program of Boolean: ONE branch is
+   * built and run (by name), as `Selective.ifS` */
+  implicit final class ProgBoolOps[R <: Row](private val cond: Free[R, Boolean]) extends AnyVal {
+    def ifS[A](t: => Free[R, A])(e: => Free[R, A]): A ! R = cond.flatMap[R, A](b => if (b) t else e)
+    def whenS(body: => Free[R, Unit]): Unit ! R = ifS(body)(pure[R, Unit](()))
+    def unlessS(body: => Free[R, Unit]): Unit ! R = ifS(pure[R, Unit](()))(body)
   }
 
   /** the Throws recoveries, in the row rather than around it */

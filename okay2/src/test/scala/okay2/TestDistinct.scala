@@ -21,8 +21,8 @@ class TestDistinct extends munit.FunSuite {
 
   test("refused: a union of two signatures of one class does not compile") {
     val errors = compileErrors("okay2.Handler.union[okay2.TestDistinct.Ask[Int], okay2.TestDistinct.Ask[String]]")
-    assert(errors.contains("TWO SIGNATURES OF ONE CLASS"), errors)
-    assert(compileErrors("implicitly[okay2.Distinct[okay2.State[Int] + okay2.Writer[String] + okay2.State[String]]]").contains("TWO SIGNATURES OF ONE CLASS"))
+    assert(errors.contains("no runtime test can tell apart"), errors)
+    assert(compileErrors("implicitly[okay2.Distinct[okay2.State[Int] + okay2.Writer[String] + okay2.State[String]]]").contains("no runtime test can tell apart"))
   }
 
   test("admitted: distinct classes, a repeated member, the empty row, an abstract part") {
@@ -37,9 +37,9 @@ class TestDistinct extends munit.FunSuite {
   }
 
   test("the per-signature handlers refuse it too: State.handle, Reader.run, Writer.run over two of one class") {
-    assert(compileErrors("okay2.State.handle(1)(okay2.TestDistinct.twoStates)").contains("TWO SIGNATURES OF ONE CLASS"))
-    assert(compileErrors("okay2.Reader.run(1)(okay2.TestDistinct.twoReaders)").contains("TWO SIGNATURES OF ONE CLASS"))
-    assert(compileErrors("okay2.Writer.run[Int, Unit, okay2.Writer[String]](okay2.TestDistinct.twoWriters)").contains("TWO SIGNATURES OF ONE CLASS"))
+    assert(compileErrors("okay2.State.handle(1)(okay2.TestDistinct.twoStates)").contains("no runtime test can tell apart"))
+    assert(compileErrors("okay2.Reader.run(1)(okay2.TestDistinct.twoReaders)").contains("no runtime test can tell apart"))
+    assert(compileErrors("okay2.Writer.run[Int, Unit, okay2.Writer[String]](okay2.TestDistinct.twoWriters)").contains("no runtime test can tell apart"))
     // and a distinct row still runs through all three
     val ok: Int ! (State[Int] + Reader[Int] + Writer[String]) =
       State.get[Int].flatMap(n => Reader.ask[Int].flatMap(k => Writer.tell("x").map(_ => n + k)))

@@ -5,16 +5,17 @@
       Provide LANDED 2026-09-24 (stage 6; the `?=>` doors became
       evidence-first values). Choice/Logic, SharedOnce, Delim.Stacked
       and the Once handler-order tests LANDED 2026-09-24 (stage 7; no
-      `runSeq` — a collection is not a kind-`*` Row — and no `withFilter`
-      until a `Monad`/`MonadPlus` exists here). Gen LANDED 2026-09-24
-      (stage 9, chain fusion and zip ported whole). ON DEMAND FROM
+      `runSeq` — a collection is not a kind-`*` Row). Gen LANDED 2026-09-24
+      (stage 9, chain fusion and zip ported whole). The monad classes,
+      `withFilter`, Tag, Instances and Writer.byValue LANDED 2026-09-24
+      (stage 11, at the operator's ask). ON DEMAND FROM
       HERE (operator 2026-09-24: okay2 carries less than okay by
       default and grows when somebody needs something specific) —
       LIFTED for okay's MAIN effects later the same day ("carry on
       porting the main effects"): Refs and Prob LANDED (stage 12);
-      next Sim, TRef/TMap, then Validated/Static after
-      okay2-monad-many-instances brings Applicative. Remaining: Stream/Fold, Prob, Sim,
-      Validated/Static, Eager, Refs, HMap, Tag. Each stage mirrors the
+      next Sim, TRef/TMap, then Validated/Static (Applicative is here
+      since stage 13). Remaining: Stream/Fold, Sim, Validated/Static,
+      Eager, HMap. Each stage mirrors the
       Scala 3 suite for that file and lands with its docs section in
       docs/okay2.md. Rule from stage 1: a lone `Inject` is a Bind with a
       pure continuation, construct at the signature (widening is
