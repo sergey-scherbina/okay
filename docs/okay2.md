@@ -50,7 +50,8 @@ Contents:
 21. [Transactions](#21-transactions)
 22. [Producers and generators](#22-producers-and-generators)
 23. [Eager programs](#23-eager-programs)
-24. [Literature](#24-literature)
+24. [A map whose type lists its entries](#24-a-map-whose-type-lists-its-entries)
+25. [Literature](#25-literature)
 
 ## 1. The build
 
@@ -1342,7 +1343,28 @@ The price is kyo's too: building an eager program runs its pure part, so
 a self-referential one diverges before it is run, and a value that is
 itself a `Free` would be read as a program.
 
-## 24. Literature
+## 24. A map whose type lists its entries
+
+`HMap` is the static heterogeneous map: the map's TYPE lists its
+entries, `get` is resolved by the compiler, and a key the map does not
+hold does not compile — with no cast anywhere. Keys are vals' singleton
+types, so two keys of one type are two entries and the same key added
+again shadows the older one:
+
+```scala
+    val m = HMap.empty[Key].updated(a, 1).updated(b, 2).updated(a, 3)
+    assertEquals(m.get(a), 3)
+    assertEquals(m.get(b), 2)
+```
+
+An equal key made elsewhere is a different singleton type, so it is not
+in the map — a compile error, not a `None`. Scala 3 lists the entries as
+a tuple; okay2 as its own list (`HMap.Cons`/`HMap.Nil`), which is also
+what the map holds at run time. Where keys are run-time values, `TMap`
+(§19) is the tool: HMap answers "which entries does this map hold?" in
+the type, TMap "what did this run put under this key?" at run time.
+
+## 25. Literature
 
 - Flavio Brasil, kyo (2023-): the eager `A | (A < S)` encoding that
   `Eager` borrows. Jacques Carette, Oleg Kiselyov and Chung-chieh Shan,

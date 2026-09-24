@@ -1307,6 +1307,30 @@ claim) and `sim` (under `Sim`, a scheduling point before every step);
   and the module's abstract `Rep` are both instances without a
   bounded-kind mismatch.
 
+## Stage 20 — HMap, a map whose type lists its entries (2026-09-24)
+Operator: "переноси". Planned with Eager as `okay2-eager-hmap`; Eager
+landed first by a sibling (stage 19), so this stage is HMap alone.
+
+The static heterogeneous map of the Scala 3 core: the TYPE lists the
+entries, `get` is resolved by the compiler, a key the map does not hold
+does not compile, and nothing casts. Scala 3's tuple of `(key.type, V)`
+pairs becomes a type-level list here (`HMap.Cons[S, V, T]` /
+`HMap.Nil`), held at run time as that same list, and `Select` is
+derived by induction over it.
+
+- [x] get resolves at the key's type; a missing key does not compile,
+      with the Select message
+- [x] two keys of one type are two entries; the same key again shadows
+      the older value
+- [x] value keys of one number under two types are two entries; an
+      equal but fresh key is not in the type (TestHMap, 3 tests)
+
+### Found while building it
+- Scala 2 needs the `tail` case of `Select` at LOWER priority: a key
+  added twice matches both cases, and without the priority the
+  shadowing case is an ambiguity rather than the newer entry (Scala 3's
+  tuple match needs none).
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
