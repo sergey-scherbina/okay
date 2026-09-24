@@ -1,0 +1,6 @@
+feature/okay2-simple-effects 2026-09-24T12:23:54Z
+agent: claude-code
+heartbeat: 2026-09-24T12:23:54Z
+status: in-progress
+done-so-far: claimed
+next: okay2.simple (the facade form of a user effect: Op, Effect[F[_]], Handler[F, R, B]; the facade own-effect suite with only imports changed); okay2 handlers spelled as okay: `new Handler[F] { def handle }`, `!.handle[F, G](m)(ret)(h)`; docs section side by side
