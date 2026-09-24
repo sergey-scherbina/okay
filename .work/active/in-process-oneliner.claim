@@ -1,3 +1,0 @@
-slug: in-process-oneliner
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: ForeignWorker.inProcess(library) / inProcessWasm(module), one line for an in-process worker
