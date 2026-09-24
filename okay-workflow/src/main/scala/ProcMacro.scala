@@ -614,11 +614,59 @@ object ProcMacro:
       iterTerm(e, e, b)
 
     /** the statements of a block, compiled onto the environment */
-    def compileStats(stats: List[Statement], st0: St): (Option[Term], St) =
+    /**
+     * `tail`: what follows the statements (the block's answer), read for
+     * LIVENESS. `prune`: whether dead names may leave the environment — not
+     * in a loop body, whose environment must come round in the shape it
+     * went in.
+     */
+    def compileStats(stats: List[Statement], st0: St, tail: List[Tree] = Nil,
+                     prune: Boolean = true): (Option[Term], St) =
       var st = st0
       var acc: Option[Term] = None
       def add(step: Term, from: TypeRepr, to: TypeRepr): Unit =
         acc = Some(chain(st0.envT, from, to, acc, step))
+
+      /** the bound names these trees read or assign */
+      def usesOf(trees: List[Tree]): Set[Symbol] =
+        val out = Set.newBuilder[Symbol]
+        val probe = new TreeTraverser:
+          override def traverseTree(tree: Tree)(owner: Symbol): Unit =
+            tree match
+              case id: Ident => out += id.symbol
+              case _ => ()
+            super.traverseTree(tree)(owner)
+        trees.foreach(t => probe.traverseTree(t)(Symbol.spliceOwner))
+        out.result()
+
+      /**
+       * LIVENESS (proc-notation-liveness): the environment keeps only the
+       * slots a name still to be read lives in. A slot no bound name names —
+       * a mark's answer, consumed by its own statement — is dead at the next
+       * one. Without this every name rode to the end of the block as a
+       * left-nested tuple, every leaf rebuilt it and every projection walked
+       * it: 23 ns per statement at 4, 33 at 64 (ProcEnvBench, measured).
+       */
+      def pruneTo(live: Set[Symbol]): Unit =
+        if prune then
+          val keep = (0 to st.depth).filter(i => st.idx.exists((sym, j) => j == i && live(sym))).toVector
+          val kept = if keep.isEmpty then Vector(0) else keep
+          if kept.length < st.slots.length then
+            val from = st.envT
+            val d = st.depth
+            val sl = st.slots
+            val target = St(kept.map(sl), st.idx.collect { case (sym, j) if kept.contains(j) => sym -> kept.indexOf(j) })
+            val fn = lam(from, target.envT): (_, env) =>
+              kept.zipWithIndex.foldLeft(Option.empty[(TypeRepr, Term)]): (soFar, ik) =>
+                val (i, k) = ik
+                val piece = projectAt(env, d, i, sl)
+                Some(soFar match
+                  case None => (target.slots.head, piece)
+                  case Some((accT, accV)) =>
+                    (pairT(accT, target.slots(k)), pairTerm(accT, target.slots(k), accV, piece)))
+              .get._2
+            add(arrTerm(from, target.envT, fn), from, target.envT)
+            st = target
 
       /** the shared `hoist`, with its steps composed onto this block */
       def emitLeaves(t: Term): Int =
@@ -648,119 +696,122 @@ object ProcMacro:
           add(arrTerm(from, target.envT, fn), from, target.envT)
           st = target
 
-      stats.foreach:
-        case vd @ ValDef(_, _, Some(rhs0)) =>
-          val rhs = strip(rhs0)
-          val vT = vd.symbol.termRef.widen.dealias
-          (asTopIf(rhs), asTopMatch(rhs)) match
-            case (Some((c, th, el)), _) =>
-              val condBase = emitLeaves(c)
-              val before = st.envT
-              val sub = compileIf(c, condBase, th, el, st, vT)
-              st = st.push(vT)
-              add(alongsideTerm(before, vT, sub), before, st.envT)
-            case (None, Some((scrut, cases))) =>
-              val scrutBase = emitLeaves(scrut)
-              val before = st.envT
-              val sub = compileMatch(scrut, scrutBase, cases, st, vT)
-              st = st.push(vT)
-              add(alongsideTerm(before, vT, sub), before, st.envT)
-            case (None, None) =>
-              val base = emitLeaves(rhs)
-              val before = st.envT
-              val d = st.depth
-              val here = st.idx
-              val sl = st.slots
-              st = st.push(vT)
-              val fn = lam(before, st.envT): (_, env) =>
-                pairTerm(before, vT, env, rewrite(rhs, env, d, here, base + 1, sl))
-              add(arrTerm(before, st.envT, fn), before, st.envT)
-          st = st.bind(vd.symbol)
+      stats.zipWithIndex.foreach: (stat, n) =>
+        pruneTo(usesOf(stats.drop(n) ++ tail))
+        stat match
+          case vd @ ValDef(_, _, Some(rhs0)) =>
+            val rhs = strip(rhs0)
+            val vT = vd.symbol.termRef.widen.dealias
+            (asTopIf(rhs), asTopMatch(rhs)) match
+              case (Some((c, th, el)), _) =>
+                val condBase = emitLeaves(c)
+                val before = st.envT
+                val sub = compileIf(c, condBase, th, el, st, vT)
+                st = st.push(vT)
+                add(alongsideTerm(before, vT, sub), before, st.envT)
+              case (None, Some((scrut, cases))) =>
+                val scrutBase = emitLeaves(scrut)
+                val before = st.envT
+                val sub = compileMatch(scrut, scrutBase, cases, st, vT)
+                st = st.push(vT)
+                add(alongsideTerm(before, vT, sub), before, st.envT)
+              case (None, None) =>
+                val base = emitLeaves(rhs)
+                val before = st.envT
+                val d = st.depth
+                val here = st.idx
+                val sl = st.slots
+                st = st.push(vT)
+                val fn = lam(before, st.envT): (_, env) =>
+                  pairTerm(before, vT, env, rewrite(rhs, env, d, here, base + 1, sl))
+                add(arrTerm(before, st.envT, fn), before, st.envT)
+            st = st.bind(vd.symbol)
 
-        case Assign(lhs, rhs0) if asTopIf(strip(rhs0)).isDefined || asTopMatch(strip(rhs0)).isDefined =>
-          // `x = if … then … else …` / `x = s match …` with questions in the
-          // branches: the branch's VALUE becomes a slot, then the environment
-          // is rebuilt with x's slot replaced by it and that slot dropped —
-          // the way a branch updates a name, since it cannot assign one
-          val rhs = strip(rhs0)
-          val sym = lhs.symbol
-          val slot = st.idx.getOrElse(sym, report.errorAndAbort(
-            s"Proc.direct: `${sym.name}` is assigned but not bound in this block", lhs.pos))
-          val target = st
-          val vT = st.slots(slot)
-          val sub = (asTopIf(rhs), asTopMatch(rhs)) match
-            case (Some((c, th, el)), _) =>
-              val condBase = emitLeaves(c)
-              compileIf(c, condBase, th, el, st, vT)
-            case (_, Some((scrut, cases))) =>
-              val scrutBase = emitLeaves(scrut)
-              compileMatch(scrut, scrutBase, cases, st, vT)
-            case _ => report.errorAndAbort("Proc.direct: unreachable", rhs.pos)
-          val before = st.envT
-          st = st.push(vT)
-          add(alongsideTerm(before, vT, sub), before, st.envT)
-          val last = st.depth
-          val slotsNow = st.slots
-          // the condition's or scrutinee's hoisted answers go with it:
-          // `rebuild` returns to the shape the assignment started in
-          rebuild(target, Some((slot, (env: Term) => projectAt(env, last, last, slotsNow))))
-          st = target
+          case Assign(lhs, rhs0) if asTopIf(strip(rhs0)).isDefined || asTopMatch(strip(rhs0)).isDefined =>
+            // `x = if … then … else …` / `x = s match …` with questions in the
+            // branches: the branch's VALUE becomes a slot, then the environment
+            // is rebuilt with x's slot replaced by it and that slot dropped —
+            // the way a branch updates a name, since it cannot assign one
+            val rhs = strip(rhs0)
+            val sym = lhs.symbol
+            val slot = st.idx.getOrElse(sym, report.errorAndAbort(
+              s"Proc.direct: `${sym.name}` is assigned but not bound in this block", lhs.pos))
+            val target = st
+            val vT = st.slots(slot)
+            val sub = (asTopIf(rhs), asTopMatch(rhs)) match
+              case (Some((c, th, el)), _) =>
+                val condBase = emitLeaves(c)
+                compileIf(c, condBase, th, el, st, vT)
+              case (_, Some((scrut, cases))) =>
+                val scrutBase = emitLeaves(scrut)
+                compileMatch(scrut, scrutBase, cases, st, vT)
+              case _ => report.errorAndAbort("Proc.direct: unreachable", rhs.pos)
+            val before = st.envT
+            st = st.push(vT)
+            add(alongsideTerm(before, vT, sub), before, st.envT)
+            val last = st.depth
+            val slotsNow = st.slots
+            // the condition's or scrutinee's hoisted answers go with it:
+            // `rebuild` returns to the shape the assignment started in
+            rebuild(target, Some((slot, (env: Term) => projectAt(env, last, last, slotsNow))))
+            st = target
 
-        case Assign(lhs, rhs0) =>
-          val rhs = strip(rhs0)
-          val sym = lhs.symbol
-          val slot = st.idx.getOrElse(sym, report.errorAndAbort(
-            s"Proc.direct: `${sym.name}` is assigned but not bound in this block", lhs.pos))
-          val target = st
-          val base = emitLeaves(rhs)
-          val d = st.depth
-          val here = st.idx
-          val sl = st.slots
-          rebuild(target, Some((slot, (env: Term) => rewrite(rhs, env, d, here, base + 1, sl))))
+          case Assign(lhs, rhs0) =>
+            val rhs = strip(rhs0)
+            val sym = lhs.symbol
+            val slot = st.idx.getOrElse(sym, report.errorAndAbort(
+              s"Proc.direct: `${sym.name}` is assigned but not bound in this block", lhs.pos))
+            val target = st
+            val base = emitLeaves(rhs)
+            val d = st.depth
+            val here = st.idx
+            val sl = st.slots
+            rebuild(target, Some((slot, (env: Term) => rewrite(rhs, env, d, here, base + 1, sl))))
 
-        case w @ While(c, b) =>
-          guard(w)
-          val before = st.envT
-          add(compileWhile(c, strip(b), st), before, before)
+          case w @ While(c, b) =>
+            guard(w)
+            val before = st.envT
+            add(compileWhile(c, strip(b), st), before, before)
 
-        case t: Term if asTopIf(t).isEmpty && asTopMatch(t).isDefined =>
-          val (scrut, cases) = asTopMatch(t).get
-          val scrutBase = emitLeaves(scrut)
-          val before = st.envT
-          val sub = compileMatch(scrut, scrutBase, cases, st, TypeRepr.of[Unit])
-          val fn = lam(pairT(before, TypeRepr.of[Unit]), before): (_, env) =>
-            Select.unique(env, "_1")
-          add(thenTerm(before, pairT(before, TypeRepr.of[Unit]), before,
-            alongsideTerm(before, TypeRepr.of[Unit], sub),
-            arrTerm(pairT(before, TypeRepr.of[Unit]), before, fn)), before, before)
+          case t: Term if asTopIf(t).isEmpty && asTopMatch(t).isDefined =>
+            val (scrut, cases) = asTopMatch(t).get
+            val scrutBase = emitLeaves(scrut)
+            val before = st.envT
+            val sub = compileMatch(scrut, scrutBase, cases, st, TypeRepr.of[Unit])
+            val fn = lam(pairT(before, TypeRepr.of[Unit]), before): (_, env) =>
+              Select.unique(env, "_1")
+            add(thenTerm(before, pairT(before, TypeRepr.of[Unit]), before,
+              alongsideTerm(before, TypeRepr.of[Unit], sub),
+              arrTerm(pairT(before, TypeRepr.of[Unit]), before, fn)), before, before)
 
-        case t: Term =>
-          asTopIf(t) match
-            case Some((c, th, el)) =>
-              val condBase = emitLeaves(c)
-              val before = st.envT
-              val sub = compileIf(c, condBase, th, el, st, TypeRepr.of[Unit])
-              val d = st.depth
-              val fn = lam(pairT(before, TypeRepr.of[Unit]), before): (_, env) =>
-                Select.unique(env, "_1")
-              add(thenTerm(before, pairT(before, TypeRepr.of[Unit]), before,
-                alongsideTerm(before, TypeRepr.of[Unit], sub),
-                arrTerm(pairT(before, TypeRepr.of[Unit]), before, fn)), before, before)
-              val _ = d
-            case None =>
-              val base = emitLeaves(t)
-              val before = st.envT
-              val d = st.depth
-              val here = st.idx
-              val sl = st.slots
-              val fn = lam(before, before): (_, env) =>
-                Block(List(rewrite(t, env, d, here, base + 1, sl)), env)
-              add(arrTerm(before, before, fn), before, before)
+          case t: Term =>
+            asTopIf(t) match
+              case Some((c, th, el)) =>
+                val condBase = emitLeaves(c)
+                val before = st.envT
+                val sub = compileIf(c, condBase, th, el, st, TypeRepr.of[Unit])
+                val d = st.depth
+                val fn = lam(pairT(before, TypeRepr.of[Unit]), before): (_, env) =>
+                  Select.unique(env, "_1")
+                add(thenTerm(before, pairT(before, TypeRepr.of[Unit]), before,
+                  alongsideTerm(before, TypeRepr.of[Unit], sub),
+                  arrTerm(pairT(before, TypeRepr.of[Unit]), before, fn)), before, before)
+                val _ = d
+              case None =>
+                val base = emitLeaves(t)
+                val before = st.envT
+                val d = st.depth
+                val here = st.idx
+                val sl = st.slots
+                val fn = lam(before, before): (_, env) =>
+                  Block(List(rewrite(t, env, d, here, base + 1, sl)), env)
+                add(arrTerm(before, before, fn), before, before)
 
-        case other => report.errorAndAbort(
-          "Proc.direct: only `val`s, assignments, `while` loops and plain statements can " +
-            s"appear in a block — got ${other.show}", other.pos)
+          case other => report.errorAndAbort(
+            "Proc.direct: only `val`s, assignments, `while` loops and plain statements can " +
+              s"appear in a block — got ${other.show}", other.pos)
 
+      if tail.nonEmpty then pruneTo(usesOf(tail))
       (acc, st)
 
     /** an `if` that is the WHOLE of a statement — the only shape that
@@ -781,7 +832,7 @@ object ProcMacro:
       val (stats, lastE) = strip(t) match
         case Block(ss, e) => (ss, e)
         case e => (Nil, e)
-      val (body, stEnd) = compileStats(stats, st)
+      val (body, stEnd) = compileStats(stats, st, List(lastE))
       finish(body, stEnd, lastE, st.envT, outT)
 
     /** the statements are compiled; this adds the answer */
@@ -833,7 +884,7 @@ object ProcMacro:
       val stats = strip(t) match
         case Block(ss, e) => ss :+ e
         case e => List(e)
-      val (body, stEnd) = compileStats(stats.filterNot(isUnitLiteral), st0)
+      val (body, stEnd) = compileStats(stats.filterNot(isUnitLiteral), st0, prune = false)
       val e0 = st0.envT
       if stEnd.depth == st0.depth then body.getOrElse(arrTerm(e0, e0,
         lam(e0, e0)((_, env) => env)))
@@ -853,6 +904,6 @@ object ProcMacro:
       case _ => false
 
     val st0 = St(Vector(TypeRepr.of[X]), Map(param -> 0))
-    val (compiled, stEnd) = compileStats(stats, st0)
+    val (compiled, stEnd) = compileStats(stats, st0, List(last))
     finish(compiled, stEnd, last, TypeRepr.of[X], TypeRepr.of[Y])
       .asExprOf[Proc[F, X, Y]]
