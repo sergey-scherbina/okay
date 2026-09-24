@@ -51,8 +51,7 @@ gives a LAW to hold the binding to: the same inputs give the same bytes.
 
 ## Later stages
 
-- Stage 2 — Scala Native: the same crate's `staticlib` through
-  `@extern`, and the same law on Native.
+- Stage 2 — Scala Native: DONE (rust-native, below).
 - Stage 3 — Chicory: see below.
 
 ## Stage 3 — the same kernel as WebAssembly, under Chicory
@@ -121,3 +120,19 @@ and for Go (`GOOS=wasip1`) as well as Rust.
     either-handler test.
   - A trap: `export` is a Scala 3 keyword, so Chicory's
     `Instance.export` is called as ``instance.`export`(name)``.
+
+- Stage 2 (rust-native, 2026-09-24).
+  - okay-rust is `crossProject(JVMPlatform, NativePlatform)`. The effect,
+    `Kdf.using` and `argon2id` are shared, and `object Kdf extends
+    KdfPlatform`, whose trait is each platform's: FFM and Chicory on the
+    JVM, `@extern` on Native.
+  - The Native build links the staticlib given by `OKAY_RUST_ARGON2_LIB`,
+    as a full path, because on macOS `-l` picks the dylib. rustc's
+    `native-static-libs` are `-lSystem -lc -lm`, which clang links
+    anyway. okayRust.native is not in the root aggregate, since the
+    default gate has no cargo.
+  - `KdfGoldenSuite` pins four vectors. TestKdfGoldenJvm (default gate)
+    holds them to BouncyCastle, and TestKdfGoldenNative
+    (`scripts/rust-native-check.sh`) holds the linked kernel to them.
+    GREEN on the first run.
+  - Mutant: one extra iteration on Native turns the check RED.

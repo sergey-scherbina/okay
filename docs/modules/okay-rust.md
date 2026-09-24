@@ -11,6 +11,7 @@ operations are the kernel's calls.
 | `Kdf` / `Kdf.argon2id(...)` | the effect: Argon2id, answering `Either[String, Array[Byte]]` |
 | `Kdf.rust(lib)` | the handler over the Rust kernel |
 | `Kdf.using(f)` | the handler over any function (BouncyCastle, a test) |
+| `Kdf.native` (Scala Native) | the argon2 `staticlib` linked in, through `@extern`; checked by `scripts/rust-native-check.sh` against vectors BouncyCastle pins on the JVM |
 | `Digest` / `Digest.jdk` / `Digest.wasm(lib)` | SHA-256 as an effect: the JDK's, or a Go plugin (`kernels/sha256-go`) compiled to `wasip1` and run by Chicory |
 | `WasmLib.load(bytes)` / `Kdf.wasm(lib)` | the same kernel compiled to `wasm32-wasip1`, run by Chicory (pure Java) under a WASI that grants nothing; the third handler |
 

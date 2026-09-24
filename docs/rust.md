@@ -132,10 +132,33 @@ plugins.
 Go reaches the same road with `GOOS=wasip1 GOARCH=wasm`
 ([okay with Go](go.md)).
 
-## What comes next
+## The same kernel on Scala Native
 
-- **Scala Native.** The same crate's `staticlib`, linked through
-  `@extern`: an ordinary C call, with the same law.
+okay-rust is a cross project, and on Scala Native the crate's
+`staticlib` is linked into the binary. The call is an ordinary C call,
+with no runtime between:
+
+```scala
+@extern object Argon2Kernel:
+  def okay_argon2id(password: Ptr[Byte], passwordLen: CSize, salt: Ptr[Byte], saltLen: CSize,
+                    memoryKib: CUnsignedInt, iterations: CUnsignedInt, parallelism: CUnsignedInt,
+                    out: Ptr[Byte], outLen: CSize): CInt = extern
+```
+
+`Kdf.native` is that platform's handler. Every buffer is `malloc`'d
+before the call and freed after it. The effect and the programs written
+against it are shared code, and only the handlers are the platform's:
+`Kdf.rust` and `Kdf.wasm` on the JVM, `Kdf.native` on Native.
+
+BouncyCastle does not run on Native, so the law crosses platforms through
+PINNED vectors:
+- the JVM suite checks them against BouncyCastle, in the default gate;
+- the same suite on Native holds the linked kernel to those bytes.
+
+`scripts/rust-native-check.sh` does both steps: it builds the
+`staticlib` offline and links it by its full path (on macOS `-l` would
+pick the `.dylib` beside it), then runs the suite. A mutant that adds an
+iteration on Native is caught.
 
 ## Go
 
