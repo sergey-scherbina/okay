@@ -1589,6 +1589,57 @@ lapse of the spec-first rule, recorded rather than hidden.)
 - `Resource.run` over `Writer + Io` had no instance: `Failing` has no
   rule over `with` (it would diverge), so the combinator is explicit.
 
+## Stage 27 — okay2-workflow: Wf and Proc (2026-09-24)
+okay-workflow as `okay2-workflow`, on okay2's `Delim` dialogue (stage
+6/7):
+- `Wf`: the library's own questions (`Sys`/`SysA`), `Asks` carrying the
+  doors (`pause`/`perform`/`now`/`uuid`/`random`/`patch`/`cancelled`/
+  `sleep`/`awaitSignal`/`awaitChild`), `Runtime` (`live`, `scripted`,
+  `cancellable`), `resumable`/`drive`/`advance`/`replay`/`replaying`,
+  `Step`/`Wait`, `Next`.
+- `Proc`, the free arrow over a ROW (`Arr`/`Op`/`Then`/`First`/
+  `OnRight`/`Iter`/`Par`/`Undo`), with `foldMap`, `toProgram`,
+  `leaves`, `render`, `mermaid`, `Path`/`Step`, and its
+  `Arrow with Choice` instance.
+- `Wf.Proc`: the durable procedure over `Question` — the doors,
+  `program` (the bridge to the engine), `walk`, `compensating`,
+  `accepts`, `strands`, `Standing`, `Stranded`.
+
+### Behavior (stage 27)
+- [x] the runtime answers its own questions and they are journalled; a
+      replay reads them back, reads once; a patch takes the old path on
+      an old journal WITHOUT eating the next answer, the new one on a
+      fresh run, and can be finished live; `replaying` pairs answers
+      with questions; cancellation is a question (TestWf, 8 tests)
+- [x] a sleep, a signal and a child stop the drive and say on what; the
+      deadline is journalled; `advance` (TestWfSuspend, 7)
+- [x] the static and the monadic booking write ONE journal; a term's
+      leaves, picture and position; `walk` and `Wf.replay` agree on
+      every prefix — straight, looping, patched; a journal that does not
+      fit is data and `strands` names it (TestProc, 13)
+- [x] `Par` waits on both, records left then right, draws a fork and a
+      join (TestProcPar, 7); `Undo`'s compensations are found by the
+      walk, newest first, never for a branch not taken or a speculative
+      one (TestProcUndo, 5)
+
+### Decisions
+- `Proc` is over an okay2 ROW (a leaf builds `F#Op[Y]`), where the core
+  takes a type constructor. Its interpreters are METHODS of the nodes:
+  scalac 2 does not refine a method's type parameters from a
+  constructor pattern, so a match over `First`/`OnRight`/`Par`/`Iter`
+  would need a cast per arm. The journal walk is one generic
+  `walk` on the nodes with a `Walker` deciding the three things that
+  are the workflow's (a leaf's answer, an `Undo` completed, a `Par`
+  whose left branch stopped).
+- `Question`'s readings (`tag`, `read`, `door`) are methods of its
+  cases, for the same reason; `door` answers `Free[...]`, since the `!`
+  alias hides Free's covariance from the variance check.
+- NOT PORTED: `ProcMacro` (`Proc.direct`, a Scala 3 macro compiling a
+  straight-line block to an arrow) with the seven suites built on it;
+  the `laws` suite (okay's `laws` module); `TestBookWorkflows`, which
+  pins a chapter of the core's book. A body here is written as a
+  for-comprehension where the core writes a `direct` block.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

@@ -56,7 +56,8 @@ Contents:
 27. [Sketches, clocks and ids](#27-sketches-clocks-and-ids)
 28. [Optics](#28-optics)
 29. [Zippers](#29-zippers)
-30. [Literature](#30-literature)
+30. [Durable workflows](#30-durable-workflows)
+31. [Literature](#31-literature)
 
 ## 1. The build
 
@@ -1555,12 +1556,50 @@ type:
 `asAffine` gives the path back as an optic on the whole. `Poly` is the
 type-changing cursor: setting the focus is what makes the new whole.
 
-## 30. Literature
+## 30. Durable workflows
+
+`okay2-workflow` is okay's durable programs. A workflow is an ordinary
+program that pauses to ask questions, and its journal of answers is its
+whole state. `Wf` adds the questions the runtime answers: the clock, an
+id, a die, a timer, a signal, a child run. They are journalled beside
+the author's own, so a replay reads the same values back:
+
+```scala
+  def booking(w: Wf.Asks[String, String, String, P]): String ! Rw =
+    for { city <- w.pause("city?"); t <- w.now; id <- w.uuid } yield s"$city/$t/$id"
+    val start = !.run(Wf.resumable[String, String, String, P](booking))
+```
+
+`w.patch("promo")` makes a program changeable. A run that started
+before the branch existed answers `false` and does not eat the next
+entry of its journal.
+
+`Proc` writes the same workflow as a term, the free arrow over its
+questions. A term can name its leaves, draw itself in Mermaid, and say
+where a journal leaves it without running anything:
+
+```scala
+    assertEquals(Wf.Proc.walk(approvals)((), List(Right("yes"), Right("ok"))), Right(Wf.Proc.Standing.Done[String, String, (String, String)](("yes", "ok"))))
+```
+
+`Par` waits on two questions at once, and `Undo` attaches a
+compensation to a step. `Wf.Proc.compensating` finds the compensations
+of the steps a journal completed and returns them as one term.
+Scala 2 difference: okay has `Proc.direct`, a Scala 3 macro that
+compiles a straight-line block into a term. Here a term is built from
+the arrow's combinators.
+
+## 31. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
   Randall LeVeque, "Updating formulae and a pairwise algorithm for
   computing sample variances" (1979): `variance` and its merge.
+- John Hughes, "Generalising monads to arrows" (2000); Sam Lindley,
+  Philip Wadler and Jeremy Yallop, "Idioms are oblivious, arrows are
+  meticulous, monads are promiscuous" (2011); Christian Queinnec,
+  "Inverting back the inversion of control" (2004); the Temporal
+  workflow model (`getVersion`, `continueAsNew`).
 - Gérard Huet, "The Zipper" (JFP 1997); Conor McBride, "The Derivative
   of a Regular Type is its Type of One-Hole Contexts" (2001); Neil
   Mitchell and Colin Runciman, "Uniform Boilerplate and List Processing"

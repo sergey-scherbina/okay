@@ -29,7 +29,7 @@ lazy val common = Seq(
 )
 
 lazy val okay2: Project = (project in file("."))
-  .aggregate(okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Data, okay2Optics, okay2Cats, okay2Fs2, okay2Zio)
+  .aggregate(okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Data, okay2Optics, okay2Workflow, okay2Cats, okay2Fs2, okay2Zio)
   .settings(
     name := "okay2",
     common,
@@ -84,6 +84,14 @@ lazy val okay2Data: Project = (project in file("okay2-data"))
 lazy val okay2Optics: Project = (project in file("okay2-optics"))
   .dependsOn(LocalProject("okay2"))
   .settings(name := "okay2-optics", common)
+
+/** okay-workflow for the Scala 2 core: `Wf`, the durable program's
+ * own questions over `Delim`'s dialogue, and `Proc`, the free arrow
+ * over a row, with the static workflow over it (`Wf.Proc`) —
+ * specs/okay2.md stage 27 */
+lazy val okay2Workflow: Project = (project in file("okay2-workflow"))
+  .dependsOn(LocalProject("okay2"), okay2Optics)
+  .settings(name := "okay2-workflow", common)
 
 /** cats: `Monad`/`MonadError` for programs, a fold into any monad, the
  * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */
