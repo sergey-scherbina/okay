@@ -101,14 +101,14 @@ when, and the conformance suite covers both forms.
 
 ## Stage 3 — in-process (FFM and WebAssembly)
 
-- [ ] The C ABI of a worker in-process: `okay_exchange(req, req_len, out_len) -> resp`
+- [x] The C ABI of a worker in-process: `okay_exchange(req, req_len, out_len) -> resp`
       and `okay_free(resp, len)`. An empty request answers the handshake.
       A Rust cdylib gets it from one macro, `okay::export_worker!(programs)`.
       A Go wasm module gets it from `okay.Exchange` and three
       `//go:wasmexport` lines.
-- [ ] `FfmLink(lib)` (okay-rust, JVM) and `WasmLink(lib)` (Chicory):
+- [x] `FfmLink(lib)` (okay-rust, JVM) and `WasmLink(lib)` (Chicory):
       `roundTrip` is one call.
-- [ ] The conformance suite over (Rust, FFM), (Rust, wasm) and
+- [x] The conformance suite over (Rust, FFM), (Rust, wasm) and
       (Go, wasm).
 
 ## Stage 4 — docs
@@ -176,3 +176,35 @@ when, and the conformance suite covers both forms.
   - `WireConformance` passes over (Rust, pipes) and (Rust, TCP), including
     the direct case, so Go and Rust answer ONE Scala test body.
   - Mutant: continuations removed after one use fails multi-shot.
+
+- Stage 3 (in-process-worker, 2026-09-24).
+  - Rust: `okay::export_worker!(make)` exports `okay_exchange`,
+    `okay_alloc` and `okay_free`, with ONE Worker behind a Mutex. The
+    `unsafe impl Send` is argued in its comment: every `Rc` is touched
+    under the lock only.
+  - Go: `okay.Export` in `init()` (a reactor's main never runs), and
+    `okay_wasm.go` (`//go:build wasip1`) holds the exports.
+  - `InProcessLinks.ffm` and `.wasm` are WireLinks of one call each.
+    `RustWorker.buildLibrary` and `GoWorker.buildWasm` build them
+    offline.
+  - The conformance suite passes over:
+    - (Rust, FFM): the full suite;
+    - (Go, wasm): the full suite, direct style included, with a
+      goroutine parked between two exported calls;
+    - (Rust, wasm): multi-shot and callbacks. wasip1 has no threads, so
+      no direct style, and a panic traps. That trap is reported with the
+      panic's message, and the suite's `survivesPanics` names it.
+  - Findings:
+    - The foreign engine read wire lines with the TOTAL `Json.parse`,
+      which repairs damaged text. A reply cut one byte short (the FFM
+      mutant) passed every test. `ForeignWorker.whole` now checks bracket
+      balance and parses strictly, and a line cut at ANY byte is refused
+      (TestWireWhole). This covers every transport, not just FFM.
+    - `WasmLib` freed a zero-length buffer as 0 bytes after allocating
+      1, a size mismatch in the module's allocator. It now frees what it
+      allocated.
+    - A resource directory `okay/rust/okay` on the classpath read to
+      scalac as a package `okay.rust.okay`, and it shadowed `okay` inside
+      `package okay.rust`. The crate ships as `okay/rust-crate`.
+    - REFUTED: `okay_call` as an FFM upcall. A callback must run under
+      the caller's handlers, so in-process uses the same dialogue.

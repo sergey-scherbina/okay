@@ -1,1 +1,0 @@
-- [ ] in-process-worker — stage 3 of specs/polyglot-one-wire.md: okay_exchange over FFM (Rust cdylib) and WebAssembly (Rust, Go) with FfmLink/WasmLink; the conformance suite in-process.

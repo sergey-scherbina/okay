@@ -107,6 +107,26 @@ it calls a Python function:
 - **Direct style or programs.** A direct call is answered ONCE. Where a
   handler resumes twice (`Choice`), write a `Program`.
 
+## In this process, as WebAssembly
+
+The same Go program also runs INSIDE the JVM. Compiled with
+`GoWorker.buildWasm(dir)` (`GOOS=wasip1`, no TinyGo), its `init()` calls
+`okay.Export(programs, functions)`. A reactor module never runs `main`,
+which is why it is `init`. Chicory then runs the module:
+
+```go
+func init() {
+	okay.Export(programs, functions)
+}
+```
+
+`ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(bytes)))` drives it,
+and the whole conformance suite passes, direct style included. A
+goroutine parked in `c.Call` waits between two exported calls and is
+resumed by the next one. Go's `recover` works in WebAssembly, so a panic
+is a condition and the module lives on. Go is not loaded as native code:
+a second Go runtime does not belong in the JVM ([why](rust.md#go)).
+
 ## From Scala, over a pipe or a socket
 
 `GoWorker.build(dir)` writes the `okay` package into `dir` (and a `go.mod`

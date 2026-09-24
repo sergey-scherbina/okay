@@ -68,10 +68,36 @@ fn total(sku: String, qty: i64) -> Program<f64> {
   (`WireConformance`: multi-shot, callbacks under the caller's Reader,
   direct style, failures) passes over Rust pipes and Rust TCP.
 
-In-process, with no second process at all, is the next stage
-([specs/polyglot-one-wire.md](../specs/polyglot-one-wire.md)): the same
-crate behind `okay_exchange` over FFM and in WebAssembly, and `okay_call` as
-an FFM upcall.
+### The same worker, in this process
+
+The same crate also runs with no second process at all. Replace `fn main`
+with one line:
+
+```rust
+okay::export_worker!(make);
+```
+
+Build it as a library (`RustWorker.buildLibrary(dir)` for a `cdylib`, or
+`buildLibrary(dir, Some("wasm32-wasip1"))` for WebAssembly). It exports
+`okay_exchange(request) -> answer`: one wire line in, one out. The engine
+then runs over it as over a pipe:
+- **FFM:** `ForeignWorker.over(InProcessLinks.ffm(NativeLib.load(dylib)))`;
+- **WebAssembly:** `InProcessLinks.wasm(WasmLib.load(bytes))`, under
+  Chicory.
+
+`okay_call` in-process is the same `ask`/`resume` dialogue, one
+`okay_exchange` per step. It is not a C upcall into the JVM: a callback is
+an okay program that must run under ALL the caller's handlers, and an
+upcall in the middle of an FFM call would run it under the foreign
+engine's handler alone.
+
+The conformance suite passes in-process:
+- **FFM:** the full suite, including direct style and a panic the
+  worker survives.
+- **WebAssembly:** multi-shot and callbacks. `wasm32-wasip1` has no
+  threads, so direct style is unavailable there. A panic is `abort` and
+  traps the module, and the engine reports it with the panic's message
+  ("rust says no") rather than silently.
 
 ## The first kernel: Argon2id
 

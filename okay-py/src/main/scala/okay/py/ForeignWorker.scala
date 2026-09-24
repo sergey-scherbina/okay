@@ -31,7 +31,7 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String):
    * is how a `resume` goes: it answers an ask, it opens nothing */
   private def send(body: Json): Json =
     link.roundTrip(Json.print(body)) match
-      case Some(line) => Json.parse(line)
+      case Some(line) => ForeignWorker.whole(line)
       case None =>
         throw IllegalStateException("the worker is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
 
@@ -180,7 +180,7 @@ object ForeignWorker:
       link.close()
       throw IllegalStateException(s"$name answered nothing (stderr may know)")
     }
-    val (shimV, pyV) = Json.parse(hello) match
+    val (shimV, pyV) = whole(hello) match
       case Json.JObj(fs) =>
         val m = fs.toMap
         (m.get("shim").collect { case Json.JNum(n) => n.toInt }.getOrElse(-1),
@@ -191,6 +191,56 @@ object ForeignWorker:
       throw IllegalStateException(
         s"shim/host version drift: $name says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
     new ForeignWorker(link, pyV)
+
+  /**
+   * A wire line, read STRICTLY. `Json.parse` is total: it repairs damaged
+   * text and answers what it could read, which is right for a document a
+   * person wrote and wrong for a protocol line — a reply cut short (a
+   * truncated FFM read, a dropped TCP tail) must not be read as a smaller
+   * reply. Found by in-process-worker's mutant: an answer one byte short
+   * passed every test. The fast strict parser first; where it declines,
+   * the total one, refused if it had to repair anything.
+   */
+  private[py] def whole(line: String): Json =
+    if !balanced(line) then
+      throw IllegalStateException(s"the worker's line is not whole JSON (cut short?): ${line.take(200)}")
+    okay.codec.JsonValue.parse(line).getOrElse {
+      val j = Json.parse(line)
+      def damaged(x: Json): Boolean = x match
+        case Json.JErr(_) => true
+        case Json.JArr(vs) => vs.exists(damaged)
+        case Json.JObj(fs) => fs.exists((_, v) => damaged(v))
+        case _ => false
+      if damaged(j) || !line.trim.endsWith("}") then
+        throw IllegalStateException(s"the worker's line is not whole JSON (cut short?): ${line.take(200)}")
+      j
+    }
+
+  /** every bracket outside a string closed, exactly at the end: a line cut
+   * after its inner `}` still parses as a smaller object, and this is the
+   * one check such a cut cannot pass */
+  private def balanced(line: String): Boolean =
+    var depth = 0
+    var inString = false
+    var escaped = false
+    var closedAt = -1
+    var i = 0
+    val t = line.trim
+    while i < t.length do
+      val c = t.charAt(i)
+      if inString then
+        if escaped then escaped = false
+        else if c == '\\' then escaped = true
+        else if c == '"' then inString = false
+      else c match
+        case '"' => inString = true
+        case '{' | '[' => depth += 1
+        case '}' | ']' =>
+          depth -= 1
+          if depth == 0 then closedAt = i
+        case _ => ()
+      i += 1
+    !inString && depth == 0 && closedAt == t.length - 1
 
   /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
    * another process, or another machine — plain TCP, see `WireLink.tcp` */
