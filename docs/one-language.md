@@ -76,17 +76,23 @@ line, whatever started the server:
         val engine = ForeignWorker.connect("127.0.0.1", port)
 ```
 
-A Rust library loaded into THIS process through FFM:
+A Rust library loaded into THIS process through FFM, one line after
+`import okay.rust.*` (no port, no process, no `connect`):
 
 ```scala
-    ForeignWorker.over(InProcessLinks.ffm(NativeLib.load(RustInProcess.dylib)).fold(why => throw IllegalStateException(why), identity))
+    ForeignWorker.inProcess(RustInProcess.dylib)
 ```
 
 A Rust or Go module compiled to WebAssembly, run in this process:
 
 ```scala
-    ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(GoInProcess.wasm))))
+    ForeignWorker.inProcessWasm(GoInProcess.wasm)
 ```
+
+A file that is not an okay worker (no `okay_exchange`: a plain kernel,
+say) is refused by name and closed. Both are `ForeignWorker.over` on the
+links `InProcessLinks.ffm` and `InProcessLinks.wasm`, which remain there
+for a library already loaded some other way.
 
 The call is then the same everywhere:
 `Foreign.fn[Double]("quote").calling(Foreign.callbacks(priceOf, discount))("tea", 3L)`

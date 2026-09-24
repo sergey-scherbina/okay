@@ -24,17 +24,33 @@ okay::export_worker!(make);
     dir
 
   lazy val dylib: Path = RustWorker.buildLibrary(crate())
+
+  /** a cdylib that is NOT an okay worker: the Argon2 kernel, which exports
+   * okay_argon2id and no okay_exchange */
+  lazy val notAWorker: Path =
+    val target = Files.createTempDirectory("okay-rust-target")
+    val p = ProcessBuilder("cargo", "build", "--offline", "--release", "--target-dir", target.toString)
+      .directory(Kernels.dir("argon2").toFile).redirectErrorStream(true).start()
+    val said = String(p.getInputStream.readAllBytes())
+    if p.waitFor() != 0 then throw IllegalStateException(said)
+    target.resolve("release").resolve(NativeLib.fileName("okay_argon2"))
   lazy val wasm: Path = RustWorker.buildLibrary(crate(), Some("wasm32-wasip1"))
 
 /** (Rust, FFM): the worker IN THIS PROCESS, a cdylib called through FFM */
 class TestRustFfm extends WireConformance:
   override def munitIgnore: Boolean = !RustInProcess.available
   lazy val engine: ForeignWorker =
-    ForeignWorker.over(InProcessLinks.ffm(NativeLib.load(RustInProcess.dylib)).fold(why => throw IllegalStateException(why), identity))
+    ForeignWorker.inProcess(RustInProcess.dylib)
   override def afterAll(): Unit = if RustInProcess.available then engine.close()
 
   test("in-process, the default does not compress: a message here is a memory copy") {
     assertEquals(engine.wire, "json/none")
+  }
+
+  test("a library that is not an okay worker is refused by name") {
+    val e = intercept[IllegalStateException](ForeignWorker.inProcess(RustInProcess.notAWorker))
+    assert(e.getMessage.contains("is not an okay worker library (built with okay::export_worker!)"), e.getMessage)
+    assert(e.getMessage.contains("okay_exchange"), e.getMessage)
   }
 
 /** (Rust, WebAssembly): the same crate as wasm32-wasip1, under Chicory. No
@@ -47,13 +63,13 @@ class TestRustWasm extends WireConformance:
   // one instance for the suite: the panic test, which leaves it dead, is the
   // last of WireConformance's tests to run here (the one after it is skipped)
   lazy val engine: ForeignWorker =
-    ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(RustInProcess.wasm))))
+    ForeignWorker.inProcessWasm(RustInProcess.wasm)
 
 /** (Go, WebAssembly): the Go worker compiled to wasip1, in this process under Chicory */
 class TestGoWasm extends WireConformance:
   override def munitIgnore: Boolean = !okay.py.GoWorkerBinary.available
   lazy val engine: ForeignWorker =
-    ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(GoInProcess.wasm))))
+    ForeignWorker.inProcessWasm(GoInProcess.wasm)
 
 object GoInProcess:
   lazy val wasm: Path =
@@ -70,7 +86,7 @@ class TestGoWasmCbor extends WireConformance:
   import okay.py.WireCompression.Deflate.given
   override def munitIgnore: Boolean = !okay.py.GoWorkerBinary.available
   lazy val engine: ForeignWorker =
-    ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(GoInProcess.wasm))))
+    ForeignWorker.inProcessWasm(GoInProcess.wasm)
 
 /** (Rust, FFM), CBOR and DEFLATE */
 class TestRustFfmCbor extends WireConformance:
@@ -78,7 +94,7 @@ class TestRustFfmCbor extends WireConformance:
   import okay.py.WireCompression.Deflate.given
   override def munitIgnore: Boolean = !RustInProcess.available
   lazy val engine: ForeignWorker =
-    ForeignWorker.over(InProcessLinks.ffm(NativeLib.load(RustInProcess.dylib)).fold(why => throw IllegalStateException(why), identity))
+    ForeignWorker.inProcess(RustInProcess.dylib)
   override def afterAll(): Unit = if RustInProcess.available then engine.close()
 
 /** (Rust, WebAssembly), CBOR and DEFLATE */
@@ -89,4 +105,4 @@ class TestRustWasmCbor extends WireConformance:
   override def direct: Boolean = false
   override def survivesPanics: Boolean = false
   lazy val engine: ForeignWorker =
-    ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(RustInProcess.wasm))))
+    ForeignWorker.inProcessWasm(RustInProcess.wasm)

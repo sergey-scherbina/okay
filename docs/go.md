@@ -123,7 +123,7 @@ func init() {
 }
 ```
 
-`ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(bytes)))` drives it,
+`ForeignWorker.inProcessWasm(module)` (after `import okay.rust.*`) drives it,
 and the whole conformance suite passes, direct style included. A
 goroutine parked in `okay.Call` waits between two exported calls and is
 resumed by the next one. Go's `recover` works in WebAssembly, so a panic

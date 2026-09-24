@@ -81,9 +81,8 @@ Build it as a library (`RustWorker.buildLibrary(dir)` for a `cdylib`, or
 `buildLibrary(dir, Some("wasm32-wasip1"))` for WebAssembly). It exports
 `okay_exchange(request) -> answer`: one wire line in, one out. The engine
 then runs over it as over a pipe:
-- **FFM:** `ForeignWorker.over(InProcessLinks.ffm(NativeLib.load(dylib)))`;
-- **WebAssembly:** `InProcessLinks.wasm(WasmLib.load(bytes))`, under
-  Chicory.
+- **FFM:** `ForeignWorker.inProcess(dylib)` (after `import okay.rust.*`);
+- **WebAssembly:** `ForeignWorker.inProcessWasm(module)`, under Chicory.
 
 `okay_call` in-process is the same `ask`/`resume` dialogue, one
 `okay_exchange` per step. It is not a C upcall into the JVM: a callback is

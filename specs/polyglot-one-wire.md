@@ -64,11 +64,16 @@ A direct call is answered once, so a handler that resumes twice
 (`Choice`) needs the program-as-data form. The docs say which to use
 when, and the conformance suite covers both forms.
 
-- [ ] Rust and Go: `okay_call` in the library, over pipes and TCP
-      (`start`/`ask`/`resume`), then FFM (upcall) and wasm (host import).
-- [ ] The conformance suite gains a direct-style case: a far-side
+- [x] Rust and Go: `okay_call` in the library, over pipes and TCP
+      (`start`/`ask`/`resume`), then FFM and wasm. Done as the SAME
+      dialogue, one `okay_exchange` per step, not as an upcall or a host
+      import: see "Why a dialogue" in docs/one-language.md (go-direct,
+      rust-worker, in-process-worker; named `okay_call` by okay-call-name).
+      Rust on wasm32-wasip1 has no threads and so no direct style there.
+- [x] The conformance suite gains a direct-style case: a far-side
       function that calls `okay_call` twice and answers from both, under
-      the caller's Reader.
+      the caller's Reader (`WireConformance`'s DIRECT STYLE test, `quote`,
+      in every language that has direct style).
 
 ## Stage 1 — wire-links (Scala links; Go over TCP)
 
@@ -449,4 +454,10 @@ mechanism:
     the connection, but from the HOST's side, because the server's
     answer did not prove the secret. The test failed on the message,
     which is what showed the mutuality working.
+
+- One line in-process (in-process-oneliner, 2026-09-24):
+  `ForeignWorker.inProcess(library)` and `ForeignWorker.inProcessWasm(module)`,
+  extensions in `okay.rust`, since FFM and Chicory live there. A file
+  without `okay_exchange` is refused by name (tested against the Argon2
+  kernel).
 
