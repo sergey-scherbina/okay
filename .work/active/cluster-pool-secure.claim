@@ -1,0 +1,6 @@
+feature/cluster-pool-secure 2026-09-24T20:58:12Z
+agent: claude-code
+heartbeat: 2026-09-24T20:58:12Z
+status: in-progress
+done-so-far: claimed
+next: mTLS via okay-tls, okay-security capability at the submission door, NetworkPolicy, insecure-listen refusal
