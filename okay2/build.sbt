@@ -89,8 +89,10 @@ lazy val okay2Optics: Project = (project in file("okay2-optics"))
  * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */
 lazy val okay2Cats: Project = (project in file("okay2-cats"))
   // by NAME: the root aggregates this project and this project depends
-  // on the root, and two lazy vals naming each other overflow at load
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
+  // on the root, and two lazy vals naming each other overflow at load.
+  // okay2-async for `toIO`/`fromIO`/`scheduler` (okay2-interop-async);
+  // the platform only for the tests' CanBlock
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async, okay2Platform % "test->compile")
   .settings(
     name := "okay2-cats",
     common,
@@ -112,8 +114,10 @@ lazy val okay2Fs2: Project = (project in file("okay2-fs2"))
 /** zio: the `Zio` row, a fold into any ZIO, a Writer program as a ZStream */
 lazy val okay2Zio: Project = (project in file("okay2-zio"))
   // by NAME: the root aggregates this project and this project depends
-  // on the root, and two lazy vals naming each other overflow at load
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
+  // on the root, and two lazy vals naming each other overflow at load.
+  // okay2-async for `toZIO`/`fromZIO`/`scheduler` (okay2-interop-async);
+  // the platform only for the tests' CanBlock
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async, okay2Platform % "test->compile")
   .settings(
     name := "okay2-zio",
     common,

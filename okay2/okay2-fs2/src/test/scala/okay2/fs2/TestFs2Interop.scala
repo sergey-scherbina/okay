@@ -7,7 +7,7 @@ import okay2._
 import okay2.Produce.produce
 import okay2.cats.Io
 import okay2.cats.CatsInterop.Into
-import Fs2Interop.{toFs2, fromFs2}
+import Fs2Interop.toFs2
 
 class TestFs2Interop extends munit.FunSuite {
 
@@ -49,20 +49,5 @@ class TestFs2Interop extends munit.FunSuite {
     val p: Unit ! Writer[Int] = (1 to n).foldLeft(pure[Writer[Int], Unit](()))((m, i) => m.flatMap(_ => Writer.tell(i)))
     assertEquals(toFs2[_root_.fs2.Pure, Int, Unit, Pure](p).fold(0L)(_ + _).toList, List(n.toLong * (n + 1) / 2))
   }
-
-  test("an IO stream is a Writer program, pulled one element per Io operation") {
-    var pulled = 0
-    val s: Stream[IO, Int] = Stream.range(1, 6).evalMap(i => IO { pulled += 1; i })
-    val p: Unit ! (Writer[Int] + Io) = fromFs2(s)
-    assertEquals(pulled, 0)
-    val collected: IO[(Seq[Int], Unit)] = Io.run(Writer.run(p))
-    assertEquals(collected.unsafeRunSync()._1, Seq(1, 2, 3, 4, 5))
-    assertEquals(pulled, 5)
-  }
-
-  test("round trip: stream -> program -> stream") {
-    val s: Stream[IO, Int] = Stream.emits(List(3, 1, 2))
-    val back: Stream[IO, Int] = toFs2[IO, Int, Unit, Io](fromFs2(s))
-    assertEquals(back.compile.toList.unsafeRunSync(), List(3, 1, 2))
-  }
+  // fromFs2 is scoped now: TestFs2Scoped
 }

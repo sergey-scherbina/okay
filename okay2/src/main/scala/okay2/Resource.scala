@@ -37,6 +37,15 @@ object Failing {
   def never[F <: Row]: Failing[F] = new Failing[F] {
     def guard(e: Any, onFailure: () => Unit): Any = e
   }
+
+  /** a row of two parts guards each operation by its own part's rule,
+   * split by F's test — EXPLICIT, as `Handler.union` is and for its
+   * reason: an implicit rule over `F + G` matches every type and the
+   * search diverges (stage 8). `Failing.both[Writer[W], Io]` is the
+   * scope over a scoped source's whole row (okay2-interop-async). */
+  def both[F <: Row, G <: Row](implicit T: TypeableK[F], f: Failing[F], g: Failing[G]): Failing[F + G] = new Failing[F + G] {
+    def guard(e: Any, onFailure: () => Unit): Any = if (T.test(e)) f.guard(e, onFailure) else g.guard(e, onFailure)
+  }
 }
 
 /**

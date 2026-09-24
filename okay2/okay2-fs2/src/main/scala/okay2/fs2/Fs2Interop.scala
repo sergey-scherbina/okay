@@ -2,8 +2,13 @@ package okay2.fs2
 
 import scala.annotation.unused
 
-import _root_.fs2.{Stream, Pull}
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration.Duration
+
+import _root_.fs2.{Stream, Chunk}
 import _root_.cats.effect.IO
+import _root_.cats.effect.std.Queue
+import _root_.cats.effect.unsafe.IORuntime
 import okay2._
 import okay2.Free.{Return, Inject, Bind}
 import okay2.cats.{Io, CatsInterop}
@@ -16,11 +21,9 @@ import CatsInterop.Into
  * the program's other effects are what happens between the elements.
  * `toFs2` reads it as an `fs2.Stream[F, W]`, the residual row's
  * operations run in `F` by an `Into`; `fromFs2` reads an
- * `fs2.Stream[IO, W]` as a Writer program that pulls ONE element per
- * `Io` operation, so a consumer that stops early never runs the rest
- * of the stream. Where the Scala 3 core's `Fs2Interop` moves `Chunks`,
- * okay2 has no chunked source yet: elements, one at a time, is the
- * honest shape (backlog `okay2-stage2`, Stream/Fold).
+ * `fs2.Stream[IO, W]` as a Writer program that takes ONE CHUNK per
+ * `Io` operation under a `Resource` scope, so a consumer that stops
+ * early stops the stream and runs its finalizers.
  */
 object Fs2Interop {
 
@@ -50,23 +53,43 @@ object Fs2Interop {
   }
 
   /**
-   * An IO stream as a Writer program: one element pulled per `Io`
-   * operation, told, then the rest. The pull is `uncons1` compiled to
-   * its first step — the tail is the stream after that element, so
-   * nothing before it runs twice and nothing after it runs until asked.
+   * An IO stream as a Writer program, SCOPED (okay2-interop-async): the
+   * fs2 stream runs on its own runtime into a bounded queue, chunk for
+   * chunk — `offer` suspends THEIR fiber when the queue is full, which is
+   * the backpressure — and the program takes one chunk per `Io`
+   * operation and tells its elements. The running stream is a RESOURCE:
+   * when the scope ends, early or not, the release cancels the fs2 fiber
+   * and waits for it, so the stream's own finalizers (a `bracket`, an
+   * open file) run then — which the Scala 3 core's `fromFs2` leaves to
+   * the stream reaching its end.
+   *
+   * The first cut here pulled `uncons1` and `compile`d each step: every
+   * step closed the stream's scope, so a stream holding a resource would
+   * have had it released under the tail still being read.
    */
-  def fromFs2[W](s: Stream[IO, W]): Unit ! (Writer[W] + Io) = {
-    type Row = Writer[W] + Io
-    def step(s: Stream[IO, W]): IO[Option[(W, Stream[IO, W])]] =
-      s.pull.uncons1.flatMap {
-        case Some((w, tl)) => Pull.output1((w, tl))
-        case None => Pull.done
-      }.stream.compile.last
-    def go(s: Stream[IO, W]): Unit ! Row =
-      Io.lift(step(s)).at[Row].flatMap {
+  def fromFs2[W](s: Stream[IO, W], capacity: Int = 64)(implicit rt: IORuntime): Unit ! (Writer[W] + Io + Resource) = {
+    type Row = Writer[W] + Io + Resource
+    type Item = Option[Either[Throwable, Chunk[W]]]
+    Resource.acquire[(Queue[IO, Item], () => Future[Unit])] {
+      val q = Queue.bounded[IO, Item](capacity).unsafeRunSync()
+      val run = s.chunks.evalMap(ch => q.offer(Some(Right(ch)))).compile.drain
+        .flatMap(_ => q.offer(None))
+        .handleErrorWith(e => q.offer(Some(Left(e))))
+      (q, run.unsafeRunCancelable())
+    } { case (_, cancel) => Await.result(cancel(), Duration.Inf) }.at[Row].flatMap { case (q, _) =>
+      def go(): Unit ! Row = Io.lift(q.take).at[Row].flatMap {
         case None => pure[Row, Unit](())
-        case Some((w, tl)) => Writer.tell(w).at[Row].flatMap(_ => go(tl))
+        case Some(Left(e)) => Io.lift(IO.raiseError[Unit](e)).at[Row]
+        case Some(Right(ch)) => tellAll[W](ch).at[Row].flatMap(_ => go())
       }
-    go(s)
+      go()
+    }
   }
+
+  /** a chunk told in order */
+  def tellAll[W](ch: Chunk[W]): Unit ! Writer[W] =
+    Effects.loop[Int, Unit, Writer[W]](0) { i =>
+      if (i < ch.size) Writer.tell(ch(i)).map(_ => Left(i + 1))
+      else pure[Writer[W], Either[Int, Unit]](Right(()))
+    }
 }

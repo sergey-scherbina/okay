@@ -2,31 +2,36 @@ package okay2.zio
 
 import scala.annotation.unused
 
-import _root_.zio.{ZIO, Task, Chunk}
+import _root_.zio.{ZIO, Task, Chunk, Runtime, Scope, Unsafe, Exit}
 import _root_.zio.stream.ZStream
 import okay2._
 import okay2.Free.{Return, Inject, Bind}
+import okay2.async.{Async, CanBlock, Fiber, Scheduler}
 
 /**
  * The zio side of okay2 (specs/okay2.md, stage 2 — interop).
  *
  * - THE `Zio` ROW: an operation of it IS a `Task[A]`, so `Zio.lift`
  *   puts a ZIO in a program and `Zio.run` folds a program whose every
- *   operation has an `IntoZ` into one ZIO. Where the Scala 3 core's
- *   `toZIO` runs an `Async` program under `attemptBlocking`, okay2 has
- *   no `Async` yet: this is the freer-monad interop, the tree
- *   interpreted in ZIO, nothing blocked.
+ *   operation has an `IntoZ` into one ZIO — the freer-monad interop,
+ *   the tree interpreted in ZIO, nothing blocked.
+ * - THE `Async` BRIDGE, as the Scala 3 core's (okay2-interop-async):
+ *   `toZIO` runs an `Async` program under `attemptBlocking`; `fromZIO`
+ *   is a ZIO as an `Async` operation, answered by callback and
+ *   interrupted by the waiting side's canceller (the Scala 3 core parks
+ *   a virtual thread in `unsafe.run`); `scheduler` is okay2's Scheduler
+ *   on the ZIO runtime.
  * - A FOLD INTO ANY ZIO: `foldTo` with an environment and an error
  *   type, by an `IntoZ[R, Rz, E]`; the walk recurses inside ZIO's
  *   `flatMap`, which is stack-safe, so a million operations cost no
  *   stack.
  * - A WRITER PROGRAM AS A `ZStream`: `toZStream` unfolds the program
  *   one told value per step, the other effects run in ZIO between the
- *   elements. `fromZStream` is the other way, by `runCollect`: the
- *   Scala 3 core's `fromZStream` pulls through an iterator under a
- *   runtime, and a scoped pull that survives across a program's
- *   operations needs a resource effect okay2 does not have yet
- *   (backlog `okay2-stage2`).
+ *   elements. `fromZStream` is the other way: a SCOPED PULL under
+ *   `Resource` — the stream's scope opened once, one chunk per `Zio`
+ *   operation, and the scope closed when the program's scope ends,
+ *   early or not (the Scala 3 core closes it only when its iterator
+ *   runs out).
  */
 object ZioInterop {
 
@@ -89,14 +94,57 @@ object ZioInterop {
     ZStream.unfoldZIO(p)(step)
   }
 
-  /** a ZStream as a Writer program: collected in ONE `Zio` operation,
-   * then told one by one (see the object's note on why not a pull) */
-  def fromZStream[W](s: ZStream[Any, Throwable, W]): Unit ! (Writer[W] + Zio) = {
-    type Row = Writer[W] + Zio
-    Zio.lift(s.runCollect).at[Row].flatMap { ch =>
-      Effects.loop[Int, Unit, Row](0) { i =>
-        if (i < ch.length) Writer.tell(ch(i)).at[Row].map(_ => Left(i + 1))
-        else pure[Row, Either[Int, Unit]](Right(()))
+  /**
+   * A ZStream as a Writer program, SCOPED: the stream's scope and its
+   * pull are opened once, as a `Resource`, and every `Zio` operation
+   * pulls one chunk and tells its elements. The release closes the
+   * scope, so a consumer that stops early — or fails — runs the
+   * stream's finalizers then, not at some later end of the stream.
+   * (The first cut collected the whole stream in ONE operation.)
+   */
+  def fromZStream[W](s: ZStream[Any, Throwable, W], runtime: Runtime[Any] = Runtime.default): Unit ! (Writer[W] + Zio + Resource) = {
+    type Row = Writer[W] + Zio + Resource
+    def unsafe[A](z: ZIO[Any, Throwable, A]): A = Unsafe.unsafe { implicit u => runtime.unsafe.run(z).getOrThrowFiberFailure() }
+    Resource.acquire[(Scope.Closeable, ZIO[Any, Option[Throwable], Chunk[W]])] {
+      val scope = unsafe(Scope.make)
+      (scope, unsafe(scope.extend[Any](s.toPull)))
+    } { case (scope, _) => unsafe(scope.close(Exit.unit)) }.at[Row].flatMap { case (_, pull) =>
+      val next: Task[Option[Chunk[W]]] = pull.map(Option(_)).catchAll {
+        case None => ZIO.none
+        case Some(e) => ZIO.fail(e)
+      }
+      def go(): Unit ! Row = Zio.lift(next).at[Row].flatMap {
+        case None => pure[Row, Unit](())
+        case Some(ch) => tellAll[W](ch).at[Row].flatMap(_ => go())
+      }
+      go()
+    }
+  }
+
+  /** run an okay2 `Async` program as a ZIO: it may park, so it runs as
+   * a blocking ZIO, as the Scala 3 core's `toZIO` */
+  def toZIO[A](p: => Free[Async, A])(implicit cb: CanBlock): Task[A] =
+    ZIO.attemptBlocking(Effects.run(Async.run[A, Pure](p)))
+
+  /** a ZIO as an `Async` operation: started on the runtime, answered by
+   * its completion, interrupted when the waiting side gives up */
+  def fromZIO[A](z: Task[A], runtime: Runtime[Any] = Runtime.default): A ! Async =
+    Async.await[A] { k =>
+      val f = Unsafe.unsafe { implicit u => runtime.unsafe.runToFuture(z) }
+      f.onComplete(t => k(t.toEither))(scala.concurrent.ExecutionContext.parasitic)
+      () => { val _ = f.cancel(); () }
+    }
+
+  /** OUR Scheduler on THEIR runtime: `fork` runs the program as a
+   * blocking ZIO, the fiber's completion is its future's, `cancel`
+   * interrupts it */
+  def scheduler(runtime: Runtime[Any] = Runtime.default)(implicit cb: CanBlock): Scheduler = new Scheduler {
+    def fork[A](prog: () => A ! Async): Fiber[A] = {
+      val f = Unsafe.unsafe { implicit u => runtime.unsafe.runToFuture(toZIO(prog())) }
+      new Fiber[A] {
+        def onComplete(k: Either[Throwable, A] => Unit): Unit =
+          f.onComplete(t => k(t.toEither))(scala.concurrent.ExecutionContext.parasitic)
+        def cancel(): Unit = { val _ = f.cancel(); () }
       }
     }
   }
@@ -119,6 +167,14 @@ object Zio {
   import ZioInterop.{IntoZ, foldTo}
 
   implicit val effect: Effect[Zio] = Effect.of[Zio]
+
+  /** how a forwarded Task fails to a `Resource` scope: by an error, a
+   * defect or an interruption — every way the residual holding the
+   * scope's finalizers is abandoned — so each runs the hook first */
+  implicit val failing: Failing[Zio] = new Failing[Zio] {
+    def guard(e: Any, onFailure: () => Unit): Any =
+      Split.over[Zio, Any](e)(t => t.onExit(ex => if (ex.isSuccess) ZIO.unit else ZIO.succeed(onFailure())))
+  }
 
   /** a Task as an operation of the row */
   def lift[A](z: Task[A]): A ! Zio = Free.inject[Zio, A](z)

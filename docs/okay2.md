@@ -550,16 +550,16 @@ nothing past the first element:
     assertEquals(side, List("io"))
 ```
 
-And an IO stream as a Writer program, one element pulled per `Io`
-operation:
+And an IO stream as a Writer program — SCOPED: the fs2 stream runs on
+its runtime into a bounded queue, one chunk per `Io` operation, and the
+running stream is a `Resource`, so a consumer that stops early ends the
+stream and runs its finalizers then:
 
 ```scala
-    val s: Stream[IO, Int] = Stream.range(1, 6).evalMap(i => IO { pulled += 1; i })
-    val p: Unit ! (Writer[Int] + Io) = fromFs2(s)
-    assertEquals(pulled, 0)
-    val collected: IO[(Seq[Int], Unit)] = Io.run(Writer.run(p))
-    assertEquals(collected.unsafeRunSync()._1, Seq(1, 2, 3, 4, 5))
-    assertEquals(pulled, 5)
+    val first3: Vector[Int] ! (Io + Resource) =
+      Writer.foldUntil[Int, Vector[Int], Unit, Vector[Int], Io + Resource](fromFs2(s, capacity = 2))(FoldUntil.take(3))
+    val got = Io.run(Resource.run[Vector[Int], Io](first3)).unsafeRunSync()
+    assert(released, "the stream's finalizer did not run when the scope ended")
 ```
 
 **zio.** The same three: the `Zio` row (`Task` as an operation),
@@ -581,12 +581,35 @@ choosing, a Writer program as a `ZStream`:
     val s: ZStream[Any, Throwable, String] = toZStream[Any, Throwable, String, Unit, Zio](p)
 ```
 
-What the Scala 3 core's interop has and this does not yet: an `Async`
-program run under `IO.blocking`, and chunked streams — this interop
-was written before okay2 had `Async` and `Resource`, and does not use
-them yet (backlog `okay2-interop-async`). `fromZStream` collects the
-stream in one operation: a pull that survives across a program's
-operations is a scoped resource, which is the Resource effect's job.
+`fromZStream` is scoped the same way: the stream's scope and pull are
+opened once as a `Resource`, one chunk per `Zio` operation, the scope
+closed when the program's scope ends. To stream a scoped source back
+out, handle the scope over the WHOLE row first — `Failing.both` says
+how each part reports failure:
+
+```scala
+    val scoped: Unit ! (Writer[Int] + Zio) =
+      Resource.run[Unit, Writer[Int] + Zio](fromZStream(ZStream(3, 1, 2)))(Failing.both[Writer[Int], Zio])
+```
+
+**The `Async` bridge**, as the Scala 3 core's: `CatsInterop.toIOBlocking`
+and `ZioInterop.toZIO` run an okay2 `Async` program on the other side's
+blocking pool; `fromIO`/`fromZIO` put one of theirs in an `Async`
+program; `scheduler` is okay2's `Scheduler` on their runtime, so `par`,
+`race` and `supervised` run there. `fromIO`/`fromZIO` wait by CALLBACK
+and are cancelled when the waiting side gives up (a timeout, a lost
+race) — the Scala 3 core parks a virtual thread in `unsafeRunSync`
+instead:
+
+```scala
+    val p: Int ! Async = fromIO(IO.pure(20)).flatMap(a => Async(a + 22))
+    assertEquals(toIOBlocking(p).unsafeRunSync(), 42)
+    val p = Async.timeout(50)(fromIO(IO.never[Unit].onCancel(IO(cancelled.set(true)))))
+```
+
+The cats name is `toIOBlocking` because `toIO` there is already the
+fold of an `Io` row. Streams cross chunk for chunk inward; outward
+(`toFs2`/`toZStream`) they are still element by element.
 
 ## 10. Streams: chunks, stages, pipelines, windows
 

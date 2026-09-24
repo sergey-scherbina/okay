@@ -51,6 +51,11 @@ object Writer {
    * therefore hold ONE Writer — unless the finer test below is imported */
   implicit def effect[W]: Effect[Writer[W]] = Effect.of[Writer[W]]
 
+  /** a tell cannot fail on the outer handler — it is handed a value and
+   * answers nothing — so a Resource scope forwarding one has nothing to
+   * hook (said here, where it is known, as `Failing.never` asks) */
+  implicit def failing[W]: Failing[Writer[W]] = Failing.never[Writer[W]]
+
   /**
    * The finer test, opt-in, as in the Scala 3 core: the told value's own
    * class as well, which separates `Writer[String] + Writer[Int]` in one

@@ -2,6 +2,8 @@ package okay2.cats
 
 import _root_.cats.{Monad, MonadError, StackSafeMonad, ~>}
 import _root_.cats.effect.IO
+import _root_.cats.effect.unsafe.IORuntime
+import okay2.async.{Async, CanBlock, Fiber, Scheduler}
 import _root_.cats.free.{Free => CFree}
 import okay2._
 import okay2.Free.{Return, Inject, Bind}
@@ -23,10 +25,15 @@ import okay2.Free.{Return, Inject, Bind}
  * - THE `Io` ROW: a signature whose operations ARE `IO` values
  *   (`type Op[+A] = IO[A]`), so `Io.lift(io)` is an operation of the
  *   row and `Io.run` folds a program whose every operation has an
- *   `Into[_, IO]` into one `IO`. Where the Scala 3 core's `toIO` runs an
- *   `Async` program under `IO.blocking`, okay2 has no `Async` yet: this
- *   is the freer-monad interop instead — the tree interpreted in the
- *   target, nothing blocked.
+ *   `Into[_, IO]` into one `IO` — the freer-monad interop, the tree
+ *   interpreted in the target, nothing blocked.
+ * - THE `Async` BRIDGE, as the Scala 3 core's (okay2-interop-async):
+ *   `toIOBlocking` runs an `Async` program under `IO.blocking` (it may park —
+ *   that is what their blocking pool is for); `fromIO` is an IO as an
+ *   `Async` operation; `scheduler` is okay2's Scheduler on their
+ *   runtime. `fromIO` waits by CALLBACK, with the IO's own canceller as
+ *   the operation's — where the Scala 3 core parks a virtual thread in
+ *   `unsafeRunSync`, which cannot be cancelled from our side.
  * - `cats.free.Free` BOTH WAYS: `toCats` is the tree re-expressed over
  *   cats' own `Free`, `fromCats` folds cats' back into ours by the
  *   `StackSafeMonad` above.
@@ -82,6 +89,40 @@ object CatsInterop extends CatsInteropLow {
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
     }
+
+  /** run an okay2 `Async` program as an IO: it may park, so it runs on
+   * cats-effect's blocking pool — the Scala 3 core's `toIO`, named for
+   * what it does because `toIO` here is already the fold of an `Io` row
+   * (an overload would be ambiguous at every `Async` program) */
+  def toIOBlocking[A](p: => Free[Async, A])(implicit cb: CanBlock): IO[A] =
+    IO.blocking(Effects.run(Async.run[A, Pure](p)))
+
+  /** an IO as an `Async` operation: started on their runtime, answered
+   * by its callback, cancelled by its own canceller when the waiting
+   * side gives up */
+  def fromIO[A](io: IO[A])(implicit rt: IORuntime): A ! Async =
+    Async.await[A] { k =>
+      val (fut, cancel) = io.unsafeToFutureCancelable()
+      fut.onComplete(t => k(t.toEither))(scala.concurrent.ExecutionContext.parasitic)
+      () => { val _ = cancel(); () }
+    }
+
+  /**
+   * OUR Scheduler on THEIR runtime: `fork` runs the program as an IO on
+   * cats-effect's blocking pool (a program may park), the fiber's
+   * completion is the IO's, `cancel` is the IO's canceller. Bring it in
+   * scope to run okay2's par/race/supervised on the cats-effect runtime.
+   */
+  def scheduler(implicit rt: IORuntime, cb: CanBlock): Scheduler = new Scheduler {
+    def fork[A](prog: () => A ! Async): Fiber[A] = {
+      val (fut, cancelIO) = toIOBlocking(prog()).unsafeToFutureCancelable()
+      new Fiber[A] {
+        def onComplete(k: Either[Throwable, A] => Unit): Unit =
+          fut.onComplete(t => k(t.toEither))(scala.concurrent.ExecutionContext.parasitic)
+        def cancel(): Unit = { val _ = cancelIO(); () }
+      }
+    }
+  }
 
   /** the same, into IO, for the row whose parts all have an `Into[_, IO]` */
   def toIO[A, R <: Row](p: Free[R, A])(implicit h: Into[R, IO]): IO[A] = foldTo[IO, A, R](p)(h)
@@ -149,6 +190,14 @@ object Io {
   import CatsInterop.{Into, foldTo}
 
   implicit val effect: Effect[Io] = Effect.of[Io]
+
+  /** how a forwarded IO fails to a `Resource` scope: by an error OR by
+   * cancellation, either of which abandons the residual the scope's
+   * finalizers live in — so both run the hook first */
+  implicit val failing: Failing[Io] = new Failing[Io] {
+    def guard(e: Any, onFailure: () => Unit): Any =
+      Split.over[Io, Any](e)(io => io.onError(_ => IO(onFailure())).onCancel(IO(onFailure())))
+  }
 
   /** an IO as an operation of the row */
   def lift[A](io: IO[A]): A ! Io = Free.inject[Io, A](io)

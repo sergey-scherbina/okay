@@ -4,7 +4,7 @@ import _root_.zio.{ZIO, Task, Runtime, Unsafe, ZLayer}
 import _root_.zio.stream.ZStream
 import okay2._
 import okay2.Produce.produce
-import ZioInterop.{IntoZ, foldTo, toZStream, fromZStream}
+import ZioInterop.{IntoZ, foldTo, toZStream}
 
 /** a service for the environment test: at the top level, where `Tag` derives cleanly */
 trait Log { def log(a: Any): Unit }
@@ -82,13 +82,5 @@ class TestZioInterop extends munit.FunSuite {
     val s = toZStream[Any, Nothing, Int, Unit, Pure](p)
     assertEquals(run(s.runFold(0L)(_ + _)), n.toLong * (n + 1) / 2)
   }
-
-  test("a ZStream as a Writer program, and the round trip") {
-    val s: ZStream[Any, Throwable, Int] = ZStream(3, 1, 2)
-    val p: Unit ! (Writer[Int] + Zio) = fromZStream(s)
-    val collected: Task[(Seq[Int], Unit)] = Zio.run(Writer.run(p))
-    assertEquals(run(collected)._1, Seq(3, 1, 2))
-    val back = toZStream[Any, Throwable, Int, Unit, Zio](fromZStream(s))
-    assertEquals(run(back.runCollect).toList, List(3, 1, 2))
-  }
+  // fromZStream is scoped now: TestZioAsync
 }
