@@ -26,3 +26,6 @@ compare/jmh-result.text
 
 # a golden facade test leaves its regeneration beside the golden (foreign-module-trait)
 *.scala.new
+
+# scala-cli
+.scala-build/
