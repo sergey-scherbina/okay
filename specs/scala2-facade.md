@@ -698,6 +698,42 @@ in an intersection. The same holds inside the helper, where
 - [x] pinned both ways in `TestRowAliasFromScala2`
 - [x] docs/scala2.md section 3 gives the rule and the spelling
 
+## Stage 20 — okay's names, beside the facade's (scala2-roads, 2026-09-24)
+The operator: `okay2` is okay on pure Scala 2, `okay-scala2` is a door
+from Scala 2 into the Scala 3 world, and the two should differ as
+little as reasonable, "not at the cost of logic or speed". okay2 already
+spells every handler as okay does; the facade renamed several. So the
+facade gains okay's names as FORWARDERS to its own, and keeps its own:
+
+| okay / okay2 | the facade's own |
+|---|---|
+| `State.handle(s)(p)` | `State.run(s)(p)` |
+| `State.set(s)` (answers the new state) | `State.put(s)` (answers `()`) |
+| `Writer.collect(p)` | `Writer.run(p)` |
+| `Throws.runEither(p)` | `Throws.run(p)` |
+| `Choose.choose(as: _*)` / `Choose.runChoice(p)` | `Choose.from` / `Choose.all` |
+| `Async(a)` | `Async.delay(a)` |
+
+The type-argument order of each new name is okay2's, so a call that
+spells them compiles on both. `TestOkayVocabularyFromScala2` and okay2's
+`TestFacadeVocabulary` hold the SAME program lines; only the runner
+differs (`Eff.run` against `!.run`).
+
+What stays different, on purpose: the runner (`Eff.run`/`runAsync`
+here, `!.run`/`runWith` in okay2 — `!` is a Scala 3 top-level value a
+2.13 compiler cannot see); `State.run` (the facade's means "handle",
+okay's and okay2's mean "run to a value" — renaming either breaks its
+users); the empty row (`Any` here, `Pure` in okay2); a user's own effect
+(`object Console extends Effect[Console]` with one `Handler[F, R, B]`
+here, a `Row` with an `Op` member and okay's handler shapes in okay2);
+the aliases (declared by the user here, shipped by okay2).
+
+- [x] the six names, forwarders, no new logic
+- [x] `TestOkayVocabularyFromScala2`: okay's names give the facade's
+      answers, and the facade's own names give the same ones
+- [x] okay2's `TestFacadeVocabulary`: the same lines, green on okay2
+      with nothing added to okay2
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages

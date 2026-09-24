@@ -9,6 +9,17 @@ Scala 3 on the classpath. One standard library, no arrangement, no
 design and not of the language: the runtime never depended on the
 union type, only the spelling of the row did (specs/okay2.md).
 
+TWO ROADS, TWO JOBS (operator, 2026-09-24). `okay2` is okay on pure
+Scala 2: for whoever needs exactly that, with no dependency on Scala 3
+at all. `okay-scala2` is something else: a door from Scala 2 code into
+the Scala 3 world, okay first — the code stays Scala 2 and uses the
+Scala 3 libraries. okay (Scala 3) is the more powerful of the two, and
+okay2 carries LESS by default: it grows when somebody needs something
+specific, not to mirror every file. The vocabulary the three share is
+okay's — `State.handle`/`set`, `Writer.collect`, `Throws.runEither`,
+`Choose.choose`/`runChoice` — so a program written in it compiles on
+okay2 and through the facade alike (docs/scala2.md, section 3a).
+
 Every snippet below is a line of `okay2/src/test/scala/okay2/*.scala`,
 compiled by scalac 2.13.18 under `-Xlint -Werror`. `okay2/` is its own
 sbt build (it shares nothing with the Scala 3 build but the

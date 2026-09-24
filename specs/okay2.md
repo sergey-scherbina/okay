@@ -1,6 +1,17 @@
 # okay2 — the core, written a second time in Scala 2.13
 
 ## Overview
+TWO ROADS, TWO JOBS (operator, 2026-09-24). `okay2` is okay on pure
+Scala 2: for whoever needs exactly that, with no dependency on Scala 3
+at all. `okay-scala2` is something else: a door from Scala 2 code into
+the Scala 3 world, okay first — the code stays Scala 2 and uses the
+Scala 3 libraries. okay (Scala 3) is the more powerful of the two, and
+okay2 carries LESS by default: it grows when somebody needs something
+specific, not to mirror every file. The vocabulary the three share is
+okay's — `State.handle`/`set`, `Writer.collect`, `Throws.runEither`,
+`Choose.choose`/`runChoice` — so a program written in it compiles on
+okay2 and through the facade alike (docs/scala2.md, section 3a).
+
 The operator asked (2026-09-24): not a facade from Scala 3 into
 Scala 2 (that is `okay-scala2`, specs/scala2-facade.md), but a
 SEPARATE, fully compatible implementation of the same core — the
@@ -920,6 +931,25 @@ is of an unparameterised signature (Choose's, Gen's Writer-against-Stop).
       `Distinct[State[Int] + Writer[String] + State[String]]`
 - [x] admitted: distinct classes, a repeated member, `Pure`, an abstract
       part; a real union still builds
+
+## Decision — okay2 is minimal by default (operator, 2026-09-24)
+Asked whether a new Scala 2 user goes down okay2 or the facade, and
+whether the facade's modules are re-based on okay2 (backlog
+`okay2-one-scala2-story`), the operator answered with the two jobs in
+the Overview. What follows from it, and was done the same day
+(scala2-roads):
+- `okay2-one-scala2-story` is CLOSED: both roads stay, for different
+  users; the facade is not re-based on okay2.
+- okay2 does NOT gain the facade's conveniences (`Prog`, `Search`,
+  `Choose.from`/`all`, `Eff.run`): that would grow okay2 to mirror the
+  facade. The difference is reduced from the facade's side instead —
+  it gained okay's names (specs/scala2-facade.md stage 20), and
+  `TestFacadeVocabulary` pins the same program lines compiling here.
+- The rest of `okay2-stage2` (Stream/Fold, Prob, Sim, Validated/
+  Static, Eager, Refs, HMap, Tag) is ON DEMAND, not a queue: each is
+  ported when somebody needs it. Gen (stage 9) was the last port made
+  by default. The operator's order after this: okay2-ci, then
+  okay2-bench.
 
 ## Results
 - Stage 0: see above. The probe is kept beside the repository

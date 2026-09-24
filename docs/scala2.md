@@ -21,6 +21,7 @@ Contents:
 1. [Setting up the build](#1-setting-up-the-build)
 2. [A first program: `Prog`](#2-a-first-program-prog)
 3. [Several effects in one program: `Eff`](#3-several-effects-in-one-program-eff)
+3a. [okay's own names, and okay2](#3a-okays-own-names-and-okay2)
 4. [Failure](#4-failure)
 5. [Your own effect](#5-your-own-effect)
 6. [Continuations: `Cont`](#6-continuations-cont)
@@ -311,6 +312,33 @@ the answer becomes `Either[String, (Int, Int)]`, and the state is lost
 on failure (`TestScala2Guide`, "the handler order decides what a
 failure keeps"). That is the standard reading of handler order in effect
 systems, and okay's Scala 3 API behaves the same way.
+
+## 3a. okay's own names, and okay2
+
+This module is a door from Scala 2 into the Scala 3 world. Its sibling
+`okay2` (docs/okay2.md) is okay itself on pure Scala 2, smaller by
+default, for code that must not depend on Scala 3 at all. Both answer
+to okay's names, so a program written with them compiles through this
+facade and against okay2 alike:
+
+```scala
+  def step(limit: Int): Int ! (Reader[Int] + State[Int] + Throws[String]) = for {
+    max <- Reader.ask[Int]
+    n0 <- State.get[Int]
+    n <- State.set(n0 + 1)
+    r <- if (n > max) Throws.raise[String, Int]("over " + max) else State.get[Int]
+  } yield r + limit
+```
+
+```scala
+    assertEquals(Eff.run(State.handle(0)(Throws.runEither(Reader.run(5)(twice)))), (2, Right(102)))
+```
+
+Only the runner changes on okay2: `!.run` in place of `Eff.run`. The
+facade's own names stay beside okay's — `State.run` is `State.handle`,
+`State.put` is `State.set` answering `()`, `Writer.run` is
+`Writer.collect`, `Throws.run` is `Throws.runEither`, `Choose.from`/`all`
+are `Choose.choose`/`runChoice`, `Async.delay` is `Async(a)`.
 
 ## 4. Failure
 

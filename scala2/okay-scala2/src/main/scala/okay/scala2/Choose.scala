@@ -40,6 +40,12 @@ object Choose {
   /** no answer at all */
   def fail[A]: Eff[Choose, A] = from[A]()
 
+  /** okay's `choose`: `from` under okay's name */
+  def choose[A](as: A*): Eff[Choose, A] = from(as*)
+
+  /** okay's `runChoice`: `all` under okay's name, okay2's order */
+  def runChoice[A, R](e: Eff[Choose & R, A]): Eff[R, Seq[A]] = all[R, A](e)
+
   /** continue only if `ok` */
   def guard(ok: Boolean): Eff[Choose, Unit] = if (ok) Eff.pure(()) else fail[Unit]
 

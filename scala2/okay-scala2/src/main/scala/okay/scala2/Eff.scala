@@ -87,6 +87,16 @@ object State {
   /** handle it from `s`: the final state beside the answer */
   def run[S, R, A](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)] =
     Eff.of(coerce(okay.State.handle(s)[A, Top](coerce(e.program))))
+
+  // ---- okay's own names (scala2-roads, 2026-09-24): the vocabulary
+  // okay and okay2 share, beside the facade's, so a program written in
+  // it compiles here and against okay2 alike. Forwarders, no new logic.
+
+  /** okay's `set`: replace the state, answering the new one */
+  def set[S](s: S): Eff[State[S], S] = Eff.of(coerce(okay.State.set(s)))
+
+  /** okay's `handle`: `run` under okay's name, okay2's type-argument order */
+  def handle[S, A, R](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)] = run[S, R, A](s)(e)
 }
 
 /** the capability: an environment of type `E` */
@@ -108,6 +118,9 @@ object Writer {
   /** everything told, in order, beside the answer */
   def run[W, R, A](e: Eff[Writer[W] & R, A]): Eff[R, (Vector[W], A)] =
     Eff.of(coerce(okay.Writer.collect[W, A, Top](coerce(e.program))))
+
+  /** okay's `collect`: `run` under okay's name, okay2's order */
+  def collect[W, A, R](e: Eff[Writer[W] & R, A]): Eff[R, (Vector[W], A)] = run[W, R, A](e)
 }
 
 /** the capability: failure with an `E`, which stops the program */
@@ -119,6 +132,9 @@ object Throws {
   /** a failure as a `Left` */
   def run[E, R, A](e: Eff[Throws[E] & R, A]): Eff[R, Either[E, A]] =
     Eff.of(coerce(okay.runEither[A, Top, E](coerce(e.program))))
+
+  /** okay's `runEither`: `run` under okay's name, okay2's order */
+  def runEither[A, E, R](e: Eff[Throws[E] & R, A]): Eff[R, Either[E, A]] = run[E, R, A](e)
 }
 
 /** the capability: suspended (possibly blocking) computation */
@@ -127,6 +143,9 @@ sealed trait Async
 object Async {
   /** suspend `a`; it runs when the program does */
   def delay[A](a: => A): Eff[Async, A] = Eff.of(coerce(okay.async(a)))
+
+  /** okay2's spelling of a suspended computation, `Async(a)` */
+  def apply[A](a: => A): Eff[Async, A] = delay(a)
 
   /** suspend `a`, and a throw inside it is a `Throws[Throwable]` failure */
   def attempt[A](a: => A): Eff[Async & Throws[Throwable], A] =

@@ -7,8 +7,10 @@
       and the Once handler-order tests LANDED 2026-09-24 (stage 7; no
       `runSeq` — a collection is not a kind-`*` Row — and no `withFilter`
       until a `Monad`/`MonadPlus` exists here). Gen LANDED 2026-09-24
-      (stage 9, chain fusion and zip ported whole). Then the rest, in
-      order of use: Stream/Fold, Prob, Sim,
+      (stage 9, chain fusion and zip ported whole). ON DEMAND FROM
+      HERE (operator 2026-09-24: okay2 carries less than okay by
+      default and grows when somebody needs something specific): the
+      rest is ported only when asked for — Stream/Fold, Prob, Sim,
       Validated/Static, Eager, Refs, HMap, Tag. Each stage mirrors the
       Scala 3 suite for that file and lands with its docs section in
       docs/okay2.md. Rule from stage 1: a lone `Inject` is a Bind with a
