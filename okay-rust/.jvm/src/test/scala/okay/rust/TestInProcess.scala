@@ -15,7 +15,11 @@ object RustInProcess:
     Files.writeString(dir.resolve("src").resolve("ops.rs"),
       Rs.ops(Foreign.callbacks(RustWorkerBinary.priceOf, RustWorkerBinary.discount))): Unit
     // the binary's source, with its `fn main` replaced by the export
-    val lib = RustWorkerBinary.main.replace("fn main() {\n    okay::main(make)\n}\n", "okay::export_worker!(make);\n")
+    // (no margin: the docs quote the export line)
+    val exported = """
+okay::export_worker!(make);
+"""
+    val lib = RustWorkerBinary.main.replace("fn main() {\n    okay::main(make)\n}\n", exported)
     Files.writeString(dir.resolve("src").resolve("lib.rs"), lib): Unit
     dir
 
