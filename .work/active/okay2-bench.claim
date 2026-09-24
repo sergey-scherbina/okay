@@ -1,3 +1,0 @@
-slug: okay2-bench
-agent: claude (session 6f505c09)
-what: okay2: JMH in the okay2 build, one lane mirroring a Scala 3 HandlerBenchmark lane exactly, measured per-lane gated, recorded in src/jmh/history.tsv with the Scala 3 number beside it
