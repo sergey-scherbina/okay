@@ -275,6 +275,15 @@ it is okay's `Interpr` with the `shift` done for you. The suite is the
 facade's own `TestOwnEffectFromScala2`, copied with only its package and
 imports changed.
 
+Some operations need no handler at all. If an operation already holds
+its answer in a context, declare a `Comonad` for it and `extract` runs
+it. Without a handler written, the program runs:
+
+```scala
+    val prog = for { a <- Boxed.box("a", 20); b <- Boxed.box("b", 22) } yield a + b
+    assertEquals(Effects.runFree(prog), 42)
+```
+
 ## 4. Handlers, in any order
 
 `State.handle(s)(p)` runs the State part of `p` and leaves a program
@@ -480,6 +489,18 @@ Each of these was measured before it was decided (specs/okay2.md):
   not reach a program typed `Int ! State[Int]`. The program-shaped
   twins do: `!.traverse`/`!.sequence`/`!.replicateA`, and `*>`, `<*`,
   `>>=`, `ifS`, `whenS` as methods of every program.
+- **What stays Scala 3 only** (stages 21–30 ported everything else from
+  the core and its modules):
+  - the direct-style macros: `okay-direct`, `Staged`/`Stager`,
+    `ProcMacro`'s `Proc.direct`, and `Fuse`, which fuses optics at
+    compile time;
+  - the context-function types, `Blocking` (`CanBlock ?=> A`, which is
+    an implicit `CanBlock` here) and `CanTry` (`try` in a direct
+    block);
+  - `Member`: row membership by union, which is subtyping here;
+  - `Operations`/`Foreign`, the operation values the Clojure and Frege
+    ports hand back to okay, which have no Scala 2 consumer;
+  - the platform files for Scala.js and Native (backlog `okay2-cross`).
 
 ## 9. Interop: cats, fs2, zio
 

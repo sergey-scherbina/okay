@@ -57,6 +57,13 @@ package object okay2 extends Provides with Monads {
    * only it */
   type Pure = Row
 
+  /** no error: a `Throws[Safe]` program always holds a value (the Scala
+   * 3 core's top-level alias) */
+  type Safe = Nothing
+
+  /** any JVM error */
+  type Unsafe = Throwable
+
   /** a value as a computation */
   def pure[R <: Row, A](a: A): A ! R = Free.Return[R, A](a)
 

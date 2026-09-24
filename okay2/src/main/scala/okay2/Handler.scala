@@ -144,6 +144,20 @@ object Handler {
     override def handleOp[A](op: Any): A = throw new IllegalStateException("an operation in a Pure program: " + op)
   }
 
+  /** a row's operations as a one-hole type */
+  type OpOf[F <: Row] = { type L[A] = F#Op[A] }
+
+  /** a row whose operations form a COMONAD is handled by `extract` —
+   * the Scala 3 core's `ComonadHandler` and the given built from it.
+   * Found implicitly: it fires only where somebody has declared the
+   * comonad, which is the declaration that the operation IS its answer
+   * in a context */
+  final class ComonadHandler[F <: Row](val C: Comonad[OpOf[F]#L]) extends Handler[F] {
+    def handle[A](a: F#Op[A]): A = C.extract(a)
+  }
+
+  implicit def comonad[F <: Row](implicit C: Comonad[OpOf[F]#L]): Handler[F] = new ComonadHandler[F](C)
+
   /**
    * Handlers compose along the union: split the operation by the F
    * test and delegate — one handler per effect, one row. An explicit

@@ -1729,6 +1729,37 @@ channel mechanisms.
 - Mutant: `finished` as `closing` alone fails law 3b on every
   SentinelChannel variant.
 
+## Stage 30 — the last small core types, and what stays Scala 3 (2026-09-24)
+- `Safe`/`Unsafe`, the core's two top-level aliases of `Throws`
+  (`Nothing`, `Throwable`), in the package object.
+- `Handler.ComonadHandler` and the implicit `Handler.comonad`: a row
+  whose operations form a `Comonad` is run by `extract`, as the core's
+  `given [F[_]: Comonad]: Handler[F]`. The instance is asked at the
+  row's operations as a one-hole type (`Handler.OpOf[F]#L`), and found
+  in the row's companion.
+
+### Behavior (stage 30)
+- [x] a comonadic row runs with no handler written, and the handler
+      found is the comonad's; `Safe =:= Nothing`, `Unsafe =:= Throwable`
+      (TestComonadHandler, 2 tests)
+
+### The port is complete, and this is what stays Scala 3
+The comparison of 2026-09-24 (every top-level type of the core, and of
+okay-stream/-async/-platform/-data/-optics/-workflow/-stm) against
+okay2, after stages 21–30 and the sibling lanes (Prog, HMap,
+interop-async, the fast channels of stage 29; `Flush` is filed as
+`okay2-flush`):
+- **macros of the direct style**: `okay-direct`, `Staged`/`Stager`/
+  `Handled`, `ProcMacro` (`Proc.direct`), `Fuse`;
+- **context-function types**: `Blocking` (`CanBlock ?=> A`; okay2 takes
+  `CanBlock` as an implicit), `CanTry`, `DirectCtx`/`DirectEffect`;
+- **`Member`**, row membership by union, which is subtyping here
+  (stage 8);
+- **`Operations`/`Foreign`**, the operation values okay-clojure and
+  okay-frege hand back to okay: no Scala 2 consumer exists;
+- the **Scala.js/Native platform files** (`FiberCell`, `TaskQueue`,
+  `NodeConn`, `Web`): okay2 is JVM-only (backlog `okay2-cross`).
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
