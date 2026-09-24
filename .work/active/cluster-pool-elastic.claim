@@ -1,6 +1,0 @@
-feature/cluster-pool-elastic 2026-09-24T23:35:00Z
-agent: claude-code
-heartbeat: 2026-09-24T23:35:00Z
-status: in-progress
-done-so-far: claimed
-next: peers re-resolved at every epoch boundary (Job.rescalable), okay_pool_queued metric via okay-ops, a Lease over Kubernetes coordination.k8s.io/Lease and Consul sessions behind a flag
