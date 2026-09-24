@@ -2432,6 +2432,17 @@ lazy val okayPy = (project in file("okay-py"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+// okay-foreign-workflow: foreign workers inside okay's durable layers
+// (specs/foreign-workflow.md) — a foreign call is a workflow ACTIVITY, the
+// worker its oracle. Its own module so okay-py stays free of the workflow
+// machinery and okay-persist stays free of the foreign engines.
+lazy val okayForeignWorkflow = (project in file("okay-foreign-workflow"))
+  .dependsOn(okayPy % "compile->compile;test->test", okayWorkflow.jvm, okayPersist.jvm)
+  .settings(
+    name := "okay-foreign-workflow",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 // okay-r: R as a handler (specs/r.md) — the same shape okay-py built
 // first, with R's own two absences. okay-agent is deliberately NOT a
 // dependency: Durable journals R steps because they are operations,
@@ -3038,7 +3049,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayR,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayForeignWorkflow, okayR,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,

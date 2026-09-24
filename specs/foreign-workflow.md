@@ -61,21 +61,26 @@ object ForeignProc:
 
 ### Stage 1: activities in a durable workflow (do-notation)
 
-- [ ] A workflow written in `direct:` do-notation calls a Python function
+- [x] A workflow written in `direct:` do-notation calls a Python function
       and a Go function as activities. `Dialogue.workflow(...).runWorkflow`
       drives it with `ForeignActivity.oracle` under a worker's handler,
       and the answers land in the topic.
-- [ ] CRASH-RESUME: the host stops after the first activity was answered
+- [x] CRASH-RESUME: the host stops after the first activity was answered
       (a fresh `Dialogue.workflow` on the same topic, as a restarted
       process would open it). The resumed run does NOT call the first
       function again (the far side counts its calls), and it finishes
       with the same answer.
-- [ ] A far-side failure (an exception, a timeout) is a JOURNALLED
-      `Left(Condition)`. The workflow branches on it, and a replay
-      reaches the same branch without calling the far side.
-- [ ] The typed call decodes through `Schema`: a far answer of the wrong
+- [x] The FUNCTION's failure (its own exception) is a JOURNALLED
+      `Left(Condition)`. The workflow branches on it, and a replay reaches
+      the same branch without calling the far side.
+- [x] A WIRE failure (the worker died, a deadline, no connection) is
+      NOT an answer. It is retried, `attempts` times, on a fresh worker
+      when the handler is a supervisor, and then the oracle throws
+      `Unreachable`, leaving the step unanswered, so the next run of the
+      workflow does it. (Amended while building: see Decisions.)
+- [x] The typed call decodes through `Schema`: a far answer of the wrong
       shape is a `Left`, not a crash in the workflow.
-- [ ] Works with the stage 5/6 givens: the oracle's worker may be
+- [x] Works with the stage 5/6 givens: the oracle's worker may be
       supervised, compressed, authenticated or encrypted. The workflow
       neither knows nor cares, which is the point.
 
@@ -117,8 +122,40 @@ journal but never shows them to the supervisor.
   comment already says an activity IS a question. A second mechanism
   would need its own journal format, versioning and replay, and it would
   drift from the first.
-- **A failure is journalled.** Recording only successes would make a
-  replay call the far side again for every failed step, which is a
-  side effect the journal exists to prevent.
+- **The function's failure is journalled; the wire's is not.** The first
+  draft journalled every `Left`, including `WorkerDied`. The Go test
+  showed what that means: a server killed between two activities made
+  "no total: WorkerDied" the workflow's permanent answer, because a
+  network blip was recorded as history. Workflow engines split the two
+  the same way, with an application error recorded and an activity retry
+  for infrastructure. So an exception the far function raised is an
+  answer and is journalled, while a transport condition (`WorkerDied`,
+  `timeout`, `WorkerUnavailable`, `WireError`) is retried and then
+  thrown as `Unreachable`, unjournalled. That is at-least-once, the
+  promise the durable layers already make for an activity (C in
+  durable-workflow.md).
+- **The oracle uses `start`, not `call`.** Go and Rust serve their
+  functions direct-style, so `start` reaches every language. An
+  activity offers no callbacks, so a far-side `okay_call` is answered
+  with a `NoCallback` refusal: a frame left waiting would hang the
+  worker.
+- **The journalled answer is the wire's own written form**
+  (`Wire.written`), the text `Durable` already journals a foreign call
+  in. A workflow's answer type is `String`, which needs no new Schema,
+  and `None`, `NaN` and a condition stay distinct.
 
 ## Results
+
+- Stage 1 (foreign-in-durable-workflow, 2026-09-24).
+  - Module `okay-foreign-workflow`: `ForeignCall`, `ForeignActivity.oracle`
+    (`attempts`, `Unreachable`, `transport`), `ForeignActivity.call[Out]`
+    (typed, through Schema), and `ForeignActivity.answer`.
+  - Live tests. Python: a do-notation workflow; a host crash between
+    two activities, with the resumed run leaving the first one's
+    far-side count unchanged; a journalled `KeyError` replayed without a
+    call; a wrong-shaped answer as a `Left`. Go, over a SUPERVISED,
+    CBOR, HMAC-authenticated TCP connection: the server killed and
+    restarted between two activities, with the new server doing only
+    the second; a server down through every attempt, then the next run
+    finishing.
+
