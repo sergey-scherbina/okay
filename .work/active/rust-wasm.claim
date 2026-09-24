@@ -1,3 +1,0 @@
-slug: rust-wasm
-who: claude-opus-5.5 (interop session)
-what: polyglot-rust stage 3: the argon2 kernel compiled to wasm32-wasip1, run by Chicory (pure JVM, sandboxed WASI) as Kdf.wasm; byte-equal to BouncyCastle
