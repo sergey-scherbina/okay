@@ -101,10 +101,9 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   returns). The body answers `R0`. For the under-prompt captures
   (`shift`, `control`) to a `$` delimiter, `f`'s body runs inside the
   delimiter, so it would have to answer `R0`, while `k` answers `R`.
-  OPEN: allow only the 0-captures to a `$` prompt (a separate prompt
-  type), or require `R0 = R` for under-prompt captures. Stage 0
-  answers this with the literature's semantics for `S` under `$`
-  (APLAS 2012 builds shift from shift0 and `$`), not by guessing.
+  ANSWERED by stage 0 (see Decisions): an under-prompt capture's body
+  runs under a PLAIN delimiter (identity return), not under `v`, so it
+  answers `R` like `k` does, and `R0` never reaches it.
 - Stacked: `Below[S <: Tuple, P]` drops THROUGH `P` (our prompts are
   named, ICFP 2011's contexts are positional), and
   `shift0`/`control0` type `f` under `Under[F, R, Below[st.S, p.type]]`.
@@ -139,14 +138,18 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
 
 ## Behavior
 
-- [ ] Stage 0: the ICFP 2011 "A cat has Alice." example runs on
-      today's `shift0`.
-- [ ] Stage 0: `push(p)(e).flatMap(v)` differs from λ$'s `v $ e` for a
-      0-capture that drops `k` and for one that calls it twice
-      (watched failing, then kept as the spec of stage 1).
+- [x] Stage 0: the ICFP 2011 "A cat has Alice." example runs on
+      today's `shift0` (TestDollarProbe).
+- [x] Stage 0: `push(p)(e).flatMap(v)` differs from λ$'s `v $ e` for a
+      0-capture that drops `k` and for one that calls it twice, and
+      APLAS 2012's macro-expression on today's operators does not
+      (watched failing, see Results).
 - [ ] Stage 1: `($v)`, `($/S0)` with `v` captured, `reset0 = pure $`.
-- [ ] Stage 1: `$` via `reset0`/`shift0` (APLAS 2012) is
-      `Bisim`-equivalent to the primitive.
+- [ ] Stage 1: `$` via `reset0`/`shift0` (APLAS 2012, `dollarMacro` in
+      TestDollarProbe) agrees with the primitive. NOTE from stage 0:
+      `Bisim.check` compares operations with `==`, and a `Delim`
+      operation carries a function, so compare AFTER `Delim.run`, on
+      the residual row.
 - [ ] Stage 2: stacked `shift0`/`control0`/`dollar`, a consumed prompt
       refused at compile time.
 - [ ] Stage 3: a deep State handler as `$` + `shift0` is
@@ -161,4 +164,35 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
 
 ## Decisions
 
+- **Under-prompt captures to a `$` delimiter (stage 0, 2026-09-24).**
+  APLAS 2012 builds `S k.e` as `S0 k.⟨e⟩`: the body runs under a FRESH
+  reset0, which is `(λx.x) $ …`, not under the captured `v`, while `k`
+  (= `λx. v $ E[x]`) carries `v`. So the body answers the outer `R`,
+  as `k` does, and `R0` stays the body type of `dollar` alone. Our
+  machine's `underPrompt` already re-installs a PLAIN `Mark(p)` for
+  `f`'s body, which is this rule, so no prompt kind is needed and
+  `Prompt[R]` stays as it is. Pinned: "shift under $" in
+  TestDollarProbe, on both `shift` and its `S0 k.⟨e⟩` spelling.
+
 ## Results
+
+STAGE 0, 2026-09-24 (TestDollarProbe, 5 tests, okayJVM):
+
+- Every outcome was predicted by hand from the reduction rules before
+  the first run, and the first run matched all five.
+- The ICFP 2011 example gives "A cat has Alice." on today's `shift0`,
+  with ONE prompt pushed twice. Named prompts pushed twice reproduce
+  the paper's positional contexts.
+- `dollarMacro` (APLAS's `e1 $ e2 = (λk. ⟨(λx. S0 z. k x) e2⟩) e1`,
+  written as `push(p)(e.flatMap(x => shift0(p)(_ => v(x))))`) obeys
+  `($v)` and `($/S0)`: dropped k gives "dropped" (v never applied), and
+  k called twice gives "<a!><b!>" (v per call).
+- `push(p)(e).flatMap(v)` gives "<dropped>" and "<a!b!>": `v` sits
+  outside what the 0-capture takes.
+- WATCHED FAILING: with `dollarMacro`'s body replaced by the flatMap
+  encoding, exactly the three λ$ tests went red (dropped, twice, shift
+  under $) and `($v)` stayed green.
+- What this means for stage 1: `$` is already EXPRESSIBLE today, at
+  the price of an extra delimiter and an extra capture per `$`. The
+  primitive earns its place only if it is cheaper or simpler to type,
+  and stage 1 measures the macro against it before adopting it.
