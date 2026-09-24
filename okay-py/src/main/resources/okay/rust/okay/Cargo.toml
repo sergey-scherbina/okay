@@ -1,0 +1,10 @@
+[package]
+name = "okay"
+version = "0.1.0"
+edition = "2021"
+description = "okay's programs-as-data and direct style for Rust: a worker on okay's wire (polyglot-one-wire)"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+serde_json = "1"
