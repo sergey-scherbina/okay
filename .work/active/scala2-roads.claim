@@ -1,0 +1,6 @@
+feature/scala2-roads 2026-09-24T11:32:09Z
+agent: claude-code
+heartbeat: 2026-09-24T11:32:09Z
+status: in-progress
+done-so-far: claimed
+next: record the operator decision on the two Scala 2 roads (okay2 = okay in pure Scala 2, minimal by default; okay-scala2 = doors into Scala 3); okay-scala2 gains okay names (State.handle/set, Writer.collect, Throws.runEither, Choose.choose/runChoice, Async.apply) beside its own; probe suite; okay2 stage-2 ports become on-demand
