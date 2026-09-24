@@ -79,6 +79,7 @@ object Ledger {
     type A = Sale
     def name: String = "demo.ledger.daily"
     def params: Schema[Books] = summon[Schema[Books]]
+    def answer: Schema[Report] = summon[Schema[Report]]
     def flow(b: Books, parts: Int): Flow[Sale] =
       Flow.of(Vector.tabulate(parts)(p => () =>
         // the store is the caller's: found by name from the

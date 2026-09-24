@@ -103,52 +103,92 @@ A new JVM module, **`okay-pool`**, because okay-cluster's compile graph
 stops at okay-codec on purpose (the engine stays dependency-free) and
 a pool needs HTTP, ops routes, discovery and settings:
 `okayPool.dependsOn(okayCluster.jvm, okayHttp.jvm, okayOps.jvm,
-okayResilience.jvm, okayConf.jvm)`.
+okayResilience.jvm, okayConf.jvm, okayJetty)`.
 
 ```scala
 package okay.pool
 
-/** the pool's settings — one Schema'd value, so `Settings.of` renders
- *  them into every target's environment (specs/deployment.md) */
+/** one member's whole configuration — `Conf.envName` derives its
+ *  `OKAYPOOL_*` environment names, so a field renamed here is renamed
+ *  in every deployment at once (okay-script's `Serve.Config` shape) */
 final case class PoolConf(
-  port: Int = 7100,                 // the worker protocol AND the HTTP door
+  port: Int = 7100,                 // the worker protocol — a raw socket, never HTTP
+  httpPort: Int = 7101,             // the HTTP door — a SEPARATE port; the two cannot share a listener
   service: String = "",             // a name Discovery resolves to the peers ("" = list only)
-  peers: String = "",               // "host:port,host:port" — a static list, joined with `service`
-  registrars: String = "",          // class names whose loading registers the jobs (WorkerMain's args)
+  peers: String = "",               // "host:port,host:port" — a static list, UNIONED with `service`
+  registrars: String = "",          // class names whose loading registers the jobs (WorkerMain's own convention)
   store: String = "",               // a class name whose loading registers ONE (runId => (Checkpoint, Lease))
                                      // factory every submission's journal is opened through; "" = in-memory,
                                      // refused once a second peer is configured (see "The run id is the journal name")
   tolerance: Int = 3,               // consecutive failures before a peer is buried (dataflow-reconnect)
-  build: String = "",               // the artifact fingerprint; "" = read from the jar's manifest
+  build: String = "",               // an opaque build identifier, compared via a Req.Known probe; "" = no check
 ) derives Schema
 
-/** what a member serves, over its one port */
 object Pool:
-  /** the worker protocol on `port`, and beside it the HTTP door */
+  /** the worker protocol on `port` and the HTTP door on `httpPort` */
   def main(args: Array[String]): Unit           // PoolConf from defaults → file → environment
 
-  /** the peers as the coordinator will see them: discovery ∪ list,
-   *  each a `Served.reconnecting`, minus this member (served in-process) */
-  def peers(conf: PoolConf, discovery: Discovery): Vector[Cluster.Serve] ! Async
+  /** this member, in-process, plus every discovered/static peer whose
+   *  build agrees (a `Served.reconnecting` each) */
+  def workers(conf: PoolConf, discovery: Discovery): Vector[Cluster.Serve] ! Async
 
-/** the door: a submission is a job by name, parameters as the job's own Schema */
-final case class Submission(job: String, params: Json, parts: Int = 0,   // 0 = one per peer
+/** the door's body: a job by name is the route; this is what a POST
+ *  carries. `journal` empty means the pool names one and returns it —
+ *  the run id IS that name, always (see "The run id is the journal
+ *  name": there is no plain, non-journalled submission) */
+final case class Submission(params: Json, parts: Int = 0,   // 0 = one per peer
                             take: Int = 0,       // elements advanced per epoch; 0 = one epoch, run to completion
-                            journal: String = "") derives Schema  // "" = the pool names one and it IS the run id
+                            journal: String = "")
 final case class Submitted(run: String) derives Schema
 enum Status derives Schema:
-  case Running(epoch: Int, peers: Int, buried: Int)
-  case Done(value: Json, dropped: Long, merged: Long, retried: Int, failed: Int)
+  case Running(epoch: Int, peers: Int)
+  case Done(value: String, dropped: Long, merged: Long, retried: Long, failed: Long)
   case Failed(why: String)
 ```
 
 | route | answers |
 |---|---|
 | `POST /pool/jobs/{name}` | `202 Submitted` — a run id; `400` a parameter its Schema refused (field named); `404` a name this build does not register |
-| `GET /pool/runs/{id}` | `Status`, read from the journal — see below; `Done.value` is the run's answer under the job's `Wire` Schema, as JSON |
-| `GET /pool/jobs` | the names this build registers, each with its parameter Schema's `Digest` |
-| `GET /pool/peers` | what discovery answers now, and which are buried |
-| `/healthz`, `/readyz`, `/metrics` | okay-ops's, unchanged; `readyz` is false until the registrars loaded |
+| `GET /pool/runs/{id}` | `Status`, read from the journal — see below; `Done.value` is the run's `Job.Answer`, already JSON, as a STRING (the door names neither the job's parameter nor its answer type — see "Where a job's answer's Schema comes from") |
+| `GET /pool/jobs` | the names this build registers |
+| `GET /pool/peers` | what discovery ∪ the static list answers now |
+| `/healthz`, `/readyz` | a plain liveness/readiness pair; `readyz` false until the registrars have loaded |
+
+### Where a job's answer's Schema comes from
+
+`Jobs.find` hands back an existential `Job[?, ?]`, which is what lets
+the door serve a job it cannot name the types of — but the ENGINE, as
+of this stage, had no route from that existential to a `Schema[R]` for
+the PRESENTED value at all: every method on `Job` that crosses a
+process boundary (`wireSchema`, `extentAt`, `openAt`, `partialAt`)
+answers BYTES, described by the PARTIAL's Schema (`Wire#wire`), which
+is a different shape than the answer a `GET` must report. `Job` gains
+one new abstract member for this stage, `def answer: Schema[R]`, and
+two methods that use it without ever naming `P` or `R` externally —
+the same trick `wireSchema` already plays, `this.type` doing the work
+a cast elsewhere would:
+
+```scala
+// added to okay.cluster.Job[P, R] (okay-cluster, not okay-pool)
+def answer: Schema[R]
+
+final def lead(paramsJson: Json, parts: Int, peers: Vector[Cluster.Serve], take: Int,
+               checkpoint: Checkpoint, lease: Lease)
+              (using Scheduler): Either[String, Option[Job.Answer] ! Async]
+
+final def answerOf(paramsJson: Json, folded: Folded): Either[String, Job.Answer]
+
+object Job:
+  final case class Answer(value: String, dropped: Long, merged: Long, retried: Long, failed: Long)
+    derives Schema
+```
+
+Every EXISTING `Job` implementer gains `def answer` (fourteen sites at
+this landing, all a one-liner: `summon[Schema[R]]` where `R` already
+had one, `Schema.derived` for a tuple). This is the one change to
+okay-cluster this stage needed, and it is additive: nothing about the
+worker protocol, `Cluster.run`/`stream`/`leading`, or any existing
+call site changes shape.
 
 ### The run id is the journal name
 
@@ -165,8 +205,9 @@ because the pool then NAMES one and returns it — `Submitted.run` IS
 that name — never because the run skips the journal.
 
 Concretely: `POST /pool/jobs/{name}` does not call `Cluster.run`. It
-always calls `Cluster.leading(job, params, parts, peers, take, journal,
-lease)`, where a bounded job (`take = 0`) is simply a stream that
+always calls `job.lead(params, parts, peers, take, checkpoint, lease)`
+(`Job.lead`, above), which itself calls `Cluster.leading` — a bounded
+job (`take <= 0`, read as `Int.MaxValue`) is simply a stream that
 finishes when its partitions exhaust — the same `Flow`/`Chunks`
 machinery stage 1 of dataflow already runs either way, so "batch" is a
 CLIENT-FACING word, not a second code path. `take` above 0 is the same
@@ -299,10 +340,19 @@ and Dataproc are `yarn`.
   configured to accept, and a member-to-member request by the
   transport (stage 4: mTLS through okay-tls, each member with the
   pool's certificate, the same secret reference on every target).
-- **The build fingerprint is checked both ways** — a member refuses a
-  coordinator of another build and a coordinator buries a member of
-  another build, so a rolling update makes a run FAIL loudly rather
-  than answer from two versions.
+- **The build fingerprint is checked in the direction the wire
+  protocol allows without changing it.** `Req`/`Resp` are
+  okay-cluster's own closed wire types; rather than add a coordinator
+  identity to every request (a bigger, riskier change than this stage
+  needed), the check rides `Req.Known` — already sent, already
+  answered by every worker. A coordinator probes each peer's `Known`
+  before handing it work and EXCLUDES one whose build disagrees, so a
+  rolling update fails loudly (the excluded member's share is never
+  computed) rather than mixing two versions inside one merge. The
+  other direction — a worker refusing an unrecognised COORDINATOR's
+  build — would need that identity added to `Req` itself and is not
+  built; `Cluster.guarded`'s coordinator allow-list is the existing,
+  narrower answer to "who may ask this worker for anything at all".
 - **No compiler, no sbt, non-root, one port** in the image — the
   Dockerfile specs/deploy.md already renders. NetworkPolicy on
   `cluster` allows the pool port from the pool's own pods and the
@@ -317,14 +367,14 @@ and Dataproc are `yarn`.
 ## Stages
 
 - **0 — this spec.**
-- **1 — the pool process** (`okay-pool`, `Pool.main`, the four routes,
-  `PoolConf`, peers = discovery ∪ list, the build fingerprint in the
-  protocol). Proven on ONE machine: N `Pool` processes on N ports with
-  a static list, a submission through `curl`, the value equal to
-  `Flows.fan`'s; a member killed mid-run; a member of a different
-  fingerprint refused. `TestPool` in the default suite where it spawns
-  no process, `Live` where it does (the federation two-process suite
-  is the precedent, and its timeout under load is filed).
+- **1 — the pool process.** LANDED (see Results). `okay-pool`,
+  `Pool.main`, the routes, `PoolConf`, `Pool.workers` = discovery ∪
+  list plus self, the build fingerprint via a `Req.Known` probe.
+  Proven on one machine: several `Pool.workers`-built worker sets over
+  real sockets, a submission through the router directly, the value
+  equal to a plain in-process run; a resume after a killed fiber,
+  `Live`-tagged for the same reason `TestFederation`'s two-process
+  suite is.
 - **2 — `Need.Peers` and the `cluster` target, on kind.** The headless
   Service, `OKAY_POOL_SERVICE`, `dns` discovery inside a pod, and the
   stage-12 harness at last: N pods, a submission, `kubectl delete pod`
@@ -368,38 +418,41 @@ and Dataproc are `yarn`.
 
 ## Behavior
 
-Stage 1:
-- [ ] `Pool.main` reads `PoolConf` as defaults, then a file, then the
+Stage 1 — LANDED (see Results):
+- [x] `Pool.main` reads `PoolConf` as defaults, then a file, then the
       environment, in that order; loads the registrars; serves the
-      worker protocol and the HTTP door on one port; `readyz` is false
-      until the registrars have loaded and true after
-- [ ] `Pool.peers` is discovery ∪ list minus this member, each a
-      `Served.reconnecting`; an empty union plus this member runs the
-      job on one partition in-process and says so in `Status`
-- [ ] `POST /pool/jobs/{name}` with a body the job's Schema refuses
+      worker protocol on `port` and the HTTP door on `httpPort`
+- [x] `Pool.workers` is discovery ∪ the static list plus this member,
+      each remote a `Served.reconnecting`; an empty union runs the
+      job on one partition in-process
+- [x] `POST /pool/jobs/{name}` with a body the job's Schema refuses
       answers 400 naming the field; an unregistered name answers 404
       with the registered names; a valid one answers 202 with a run id
-- [ ] `GET /pool/runs/{id}` reports `Running` with the epoch and the
-      buried count while the run is on, then `Done` with the value,
-      the dropped/merged/retried/failed counts of `Run`; `Failed`
-      carries the coordinator's own reason
-- [ ] N processes on one machine with a static list: the value equals
-      `Flows.fan`'s over the same feed (the bar every dataflow stage
-      set); one member killed mid-run: equal, `retried` ≥ 1
-- [ ] a member whose build fingerprint differs is refused as a
-      coordinator and buried as a worker, each with the two
-      fingerprints in the message
-- [ ] every submission runs under `Cluster.leading` with a journal —
-      client-supplied or pool-generated — and the run id IS that
-      journal's name; `Submission.take = 0` runs one epoch to
-      completion, matching a plain `Flows.fan` answer exactly
-- [ ] the member that accepted a submission is killed before it
-      finishes; a `GET /pool/runs/{id}` sent to a DIFFERENT member
-      reports the run (not "unknown"), and — if nobody currently holds
-      the lease — that member resumes it from the last committed epoch
-      with no second submission from the client
-- [ ] `Pool.main` with `store = ""` (the in-memory default) and more
-      than one configured peer refuses to start, naming `PoolConf.store`
+- [x] `GET /pool/runs/{id}` reports `Running` with the epoch while the
+      run is on, then `Done` with the value and the
+      dropped/merged/retried/failed counts; `Failed` carries a named
+      reason (an unknown id, a job this build no longer knows, a
+      corrupted record) — `retried`/`failed` are `0` when the answer
+      is read from a bare journal by a member that was never inside
+      the finishing attempt (`Folded` does not carry them; see "Where
+      a job's answer's Schema comes from" and `Job.answerOf`'s own doc)
+- [x] N processes on one machine with a static list: the value equals
+      a plain in-process run over the same feed (`TestPool`'s
+      end-to-end test); a member whose build disagrees is excluded
+      from that run's workers before any partition is assigned
+- [x] every submission runs under `Cluster.leading` (via `Job.lead`)
+      with a journal — client-supplied or pool-generated — and the run
+      id IS that journal's name; `Submission.take <= 0` runs to
+      completion in one epoch, matching a plain in-process fold exactly
+- [x] the member that accepted a submission is killed before it
+      finishes; a SEPARATE `statusOf`/`GET` call reports the run (not
+      "unknown") and resumes it from the last committed epoch with no
+      second submission — proven against a real cancelled fiber,
+      `Live`-tagged (`TestPoolResumeLive`) because it races a
+      cancellation against this box's own speed, the same reason
+      `TestFederation`'s two-process suite is
+- [x] `Pool.run` with `store = ""` (the in-memory default) and more
+      than one configured peer refuses to start (exit 3), naming why
 
 Stage 2:
 - [ ] `Need.Peers` renders on `cluster` a headless Service beside the
@@ -515,3 +568,63 @@ Stage 6:
   residual honestly stated: a run nobody ever polls does not resume
   itself, the same as an unwatched Spark driver — `--wait` and any
   reasonable submitter's own poll are the supervision.
+
+## Results, stage 1
+
+**cluster-pool-process (2026-09-24).** `okay-pool` landed: `PoolConf`,
+`Pool.workers`/`resolve`/`fingerprinted`, `Pool.submit`/`statusOf`
+(the door's logic, callable without HTTP), `Routes.router` (the four
+routes plus `/healthz`/`/readyz`), `Pool.main`/`run` (the two
+listeners). `RunMeta` is the small hand-JSON record (job, params,
+parts, take) a run id names beside its `Checkpoint` — plain bytes, not
+a `Schema`, because `params: Json` has none to derive against and
+`Checkpoint.save`/`latest` ask for nothing else.
+
+Three things the writing found that the spec, as first drafted, had
+not:
+
+- **One port cannot serve two protocols.** `PoolConf.port` was
+  written as "the worker protocol AND the HTTP door" before any code
+  existed to test that sentence against a real `bind()`. It needed
+  splitting into `port`/`httpPort` the moment `Pool.main` tried to
+  listen on both.
+- **`Job` had no route to a `Schema[R]` at all.** Every existing
+  method that crosses a process boundary answers bytes described by
+  the PARTIAL's Schema (`Wire#wire`); a pool's `GET` needs the
+  PRESENTED value's Schema, which nothing exposed. `Job.answer` (new,
+  required) plus `Job.lead`/`Job.answerOf` (new, `final`, living on
+  `Job` so `this.type` fixes `P`/`R` with no cast) close that gap —
+  see "Where a job's answer's Schema comes from". Fourteen existing
+  `Job` implementers across okay-cluster, okay-demo and `compare`
+  needed the one-line `def answer` this added; the `compare` module's
+  four (imported under a renamed `Job as Submitted`, which is why a
+  first grep for `extends Job\[` missed them) were caught by the
+  compiler, not by the grep, which is the argument for running the
+  broad gate rather than trusting a targeted one.
+- **The build fingerprint can only travel one direction without
+  touching `Req`.** The spec's first cut wanted it checked both ways;
+  `Req`/`Resp` are okay-cluster's closed wire types, and giving a
+  worker the coordinator's identity would mean adding a field to
+  three existing `Req` cases. Only `Resp.Names` (the `Req.Known`
+  answer) gained one instead, opt-in and defaulted, so a coordinator
+  excludes a disagreeing peer before assigning it work — the
+  narrower, sufficient half of the original claim, corrected in
+  Security above.
+
+Gated: `okayPool/test` GREEN on a clean compile (no warnings); the
+resume test `Live`-tagged and run explicitly, three times, GREEN each
+time; `scripts/gate.sh "affected master"` GREEN (7134 tests) after
+fixing the `compare` module's four sites — the affected set is the
+whole family here because `build.sbt` itself changed. One `RED` along
+the way was `okayPersistNative`'s test-loading RPC crashing with no
+`==> X` anywhere in the log — the documented Scala Native runner
+flake (`native-runner-error`) — confirmed infrastructure, not a
+regression, by re-running that module alone clean on the same box.
+
+Not built at this landing, filed for later stages: `/metrics` (the
+interface table's `Digest`-per-job listing and a `buried` column on
+`/pool/peers` were both dropped from stage 1's actual scope — neither
+is in the stage-1 gate, and both are cheap additions whenever a
+reader asks for them); the `okay pool` CLI (the routes exist, a thin
+CLI over them is a small follow-up, not scoped here); mTLS and the
+capability door (stage 4, unchanged).

@@ -274,6 +274,7 @@ API reference, gotchas.
 | [`okay-intent`](modules/okay-intent.md) | a message to a class and a filled frame, with a model or without one: one Schema is the taxonomy, the frame and the parser — and 73.3% of traffic answered at 88.6% with no network at all |
 | [`okay-rag`](modules/okay-rag.md) | retrieval: split the tree not the string, code in eight languages indexed by parsing it, symbols without embeddings |
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
+| [`okay-pool`](modules/okay-pool.md) | the engine on a cluster manager: a pool of identical processes, any of which takes a submission over HTTP and coordinates it, journal-backed so a member's death is a resume by any other one [specs/cluster-pool.md](../specs/cluster-pool.md) |
 | [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]`, and a socket IS an MCP `Link` |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
 | [`okay-staging`](modules/okay-staging.md) | the staged codec for a schema that exists only at run time — JVM only, optional by construction, switchable off at launch |

@@ -102,6 +102,7 @@ object PartyJob extends Job[Feed, Feeds.Sum] {
   type A = Ev
   def name: String = "test.party"
   def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[Sum] = summon[Schema[Sum]]
   def flow(f: Feed, parts: Int): Flow[Ev] =
     // SEEKABLE: a party's log is a topic and an offset is a number,
     // so a resumed run opens at its position instead of reading up to

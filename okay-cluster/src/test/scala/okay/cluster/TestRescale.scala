@@ -164,6 +164,7 @@ object StripeKeyedJob extends Job[Feed, Feeds.Sum] {
   type A = Ev
   def name: String = "test.stripe.keyed"
   def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[Sum] = summon[Schema[Sum]]
   override def rescalable: Boolean = true
   def flow(f: Feed, parts: Int): Flow[Ev] = Flow.striped(events(f), parts)
   def sink(f: Feed): Wire[Ev, Sum] =
@@ -181,6 +182,7 @@ object StripeWindowJob extends Job[Feed, Feeds.Sum] {
   type A = Ev
   def name: String = "test.stripe.window"
   def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[Sum] = summon[Schema[Sum]]
   override def rescalable: Boolean = true
   def flow(f: Feed, parts: Int): Flow[Ev] = Flow.striped(events(f), parts)
   def sink(f: Feed): Wire[Ev, Sum] =

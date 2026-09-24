@@ -29,6 +29,7 @@ object GhostJob extends Job[Feed, Long] {
   type A = Ev
   def name: String = "test.write.ghost"
   def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[Long] = summon[Schema[Long]]
   def flow(f: Feed, parts: Int): Flow[Ev] = Flow.slices(events(f), parts)
   def sink(f: Feed): Wire[Ev, Long] =
     Wire.tumblingTo(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(GhostStore.write)

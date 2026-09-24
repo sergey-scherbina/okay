@@ -2869,6 +2869,21 @@ lazy val okayDeploy = (project in file("okay-deploy"))
     _root_.okay.deploy.sbt.OkayDeploy.deployable("okay.deploy.Cli"),
   )
 
+/**
+ * The engine on a cluster manager (specs/cluster-pool.md, stage 1): a
+ * POOL of identical processes, discovered by a manager's own DNS or a
+ * list, any of which serves partitions AND takes a submission over
+ * HTTP. okay-cluster's own compile graph stays at okay-codec on
+ * purpose (specs/dataflow.md); this is the module that pays for HTTP,
+ * discovery and the ops probes so the engine itself does not.
+ */
+lazy val okayPool = (project in file("okay-pool"))
+  .dependsOn(okayCluster.jvm, okayHttp.jvm, okayOps.jvm, okayResilience.jvm, okayConf.jvm, okayJetty)
+  .settings(
+    name := "okay-pool",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayDemo = (project in file("okay-demo"))
   // okayResilience: the guards around the one live outbound call
   // (demo-guarded-llm) — the arc's worked instance
@@ -3060,7 +3075,7 @@ lazy val root = (project in file("."))
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
     okayOutbox.jvm, okayOutbox.js, okayOutbox.native,
-    okayCluster.jvm, okayCluster.js,
+    okayCluster.jvm, okayCluster.js, okayPool,
     // okay-js and okay-acme are COMPILE dependencies of published
     // modules (okay-ui on every platform, okay-script), and they were
     // missing from this list, so `publishLocal` never published them

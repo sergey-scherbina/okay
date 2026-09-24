@@ -244,6 +244,7 @@ object WroclawJob extends Submitted[Days, Distributed.Answer] {
 
   def name: String = "wroclaw.whole"
   def params: Schema[Days] = summon[Schema[Days]]
+  def answer: Schema[Distributed.Answer] = Schema.derived
 
   def flow(d: Days, parts: Int): Flow[Ride] =
     val (f, tram) = Distributed.feed(d.days)
@@ -274,6 +275,7 @@ object WroclawRouteJob extends Submitted[Days, Distributed.RouteAcc] {
   type A = Ride
   def name: String = "wroclaw.route"
   def params: Schema[Days] = summon[Schema[Days]]
+  def answer: Schema[Distributed.RouteAcc] = summon[Schema[Distributed.RouteAcc]]
   def flow(d: Days, parts: Int): Flow[Ride] = WroclawJob.flow(d, parts)
   def sink(d: Days): Wire[Ride, Distributed.RouteAcc] =
     Wire.tumbling(Job.WindowMs, Job.Lateness, (r: Ride) => r.route, (r: Ride) => r.ts,
@@ -285,6 +287,7 @@ object WroclawStopJob extends Submitted[Days, Distributed.StopAcc] {
   type A = Ride
   def name: String = "wroclaw.stop"
   def params: Schema[Days] = summon[Schema[Days]]
+  def answer: Schema[Distributed.StopAcc] = summon[Schema[Distributed.StopAcc]]
   def flow(d: Days, parts: Int): Flow[Ride] = WroclawJob.flow(d, parts)
   def sink(d: Days): Wire[Ride, Distributed.StopAcc] =
     Wire.sliding(Job.SlideWindowMs, Job.SlideMs, Job.Lateness,
@@ -295,6 +298,7 @@ object WroclawBunchJob extends Submitted[Days, (Long, Long)] {
   type A = Ride
   def name: String = "wroclaw.bunch"
   def params: Schema[Days] = summon[Schema[Days]]
+  def answer: Schema[(Long, Long)] = Schema.derived
   def flow(d: Days, parts: Int): Flow[Ride] = WroclawJob.flow(d, parts)
   def sink(d: Days): Wire[Ride, (Long, Long)] =
     Wire.keyed(Bunching.key, Bunching.algebra)(Bunching.totals)

@@ -56,6 +56,7 @@ object WindowJob extends Job[Feed, Feeds.Sum] {
   type A = Ev
   def name: String = "test.window"
   def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[Sum] = summon[Schema[Sum]]
   def flow(f: Feed, parts: Int): Flow[Ev] = Flow.slices(events(f), parts)
   def sink(f: Feed): Wire[Ev, Sum] =
     Wire.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)
@@ -68,6 +69,7 @@ object FanJob extends Job[Feed, ((Feeds.Sum, Feeds.Sum), Feeds.Sum)] {
   type A = Ev
   def name: String = "test.fan"
   def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[((Sum, Sum), Sum)] = Schema.derived
   def flow(f: Feed, parts: Int): Flow[Ev] = Flow.slices(events(f), parts)
   def sink(f: Feed): Wire[Ev, ((Sum, Sum), Sum)] =
     Wire.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(paneSum)

@@ -1,7 +1,7 @@
 package okay.cluster
 
-import okay.Chunks
-import okay.codec.{Codecs, Schema}
+import okay.*
+import okay.codec.{Codecs, Json, Schema}
 
 /**
  * WHAT A WORKER CAN BE ASKED TO RUN, FOUND BY NAME
@@ -35,6 +35,23 @@ abstract class Job[P, R]:
 
   /** how its parameters travel */
   def params: Schema[P]
+
+  /**
+   * THE ANSWER'S OWN SCHEMA (okay-pool, specs/cluster-pool.md stage 1).
+   *
+   * Everything else on this class can be driven from the OUTSIDE
+   * without ever naming `R`: `wireSchema`/`extentAt`/`openAt`/
+   * `partialAt` all take and answer bytes, which is what lets
+   * `Jobs.find` hand back a `Job[?, ?]` a worker can still serve. A
+   * pool's `GET /pool/runs/{id}` needs the one thing those methods do
+   * not give — the PRESENTED value, `Run[R].value`, turned into JSON
+   * for a caller who does not compile against this job's types — and
+   * that needs a `Schema[R]` from somewhere. There is no route to one
+   * without asking for it: `R` is a free type parameter this class
+   * uses only through `sink(p)`'s `emit`, and a `Wire`'s own Schema
+   * describes the PARTIAL (`W`/`Acc`), not the answer.
+   */
+  def answer: Schema[R]
 
   /** the plan, for these parameters, cut into `parts` partitions */
   def flow(p: P, parts: Int): Flow[A]
@@ -182,6 +199,64 @@ abstract class Job[P, R]:
       Chunks.foldLeft(Flows.partition(flow(p, of), part))(())((_, a) => s.step(st, a))
       Codecs.cbor(s.wire).encode(s.finish(st))
     }
+
+  /**
+   * COORDINATE THIS JOB FROM OUTSIDE, NAMING NEITHER `P` NOR `R`
+   * (okay-pool, specs/cluster-pool.md stage 1 — "the run id is the
+   * journal name").
+   *
+   * A pool holds `Job[?, ?]` values, the same existential `Jobs.find`
+   * already answers, and must still call `Cluster.leading` on one and
+   * report its answer as JSON. That needs `P` and `R` bound to the
+   * SAME job, which only a method living here — where `this.type`
+   * fixes both — can do without a cast: `wireSchema`/`extentAt`/
+   * `partialAt` are the existing proof that the pattern works.
+   *
+   * Decoding `paramsJson` happens BEFORE anything is scheduled, so a
+   * bad submission is a `Left` an HTTP door answers 400 with, never a
+   * failed `Async` program. `answer` (above) is what turns the run's
+   * `R` into `Json` on the way out, so the `Either`'s `Right` needs no
+   * `R` in its own type either — `Job.Answer` names none.
+   */
+  final def lead(paramsJson: Json, parts: Int, peers: Vector[Cluster.Serve], take: Int,
+                 checkpoint: Checkpoint, lease: Lease)
+                (using okay.Scheduler): Either[String, Option[Job.Answer] ! Async] =
+    Codecs.json(params).decode(paramsJson).map { p =>
+      Cluster.leading(this, p, parts, peers, take, checkpoint, lease).map(_.map { run =>
+        Job.Answer(Codecs.writeJson(run.value)(using answer), run.dropped, run.merged, run.retried, run.failed)
+      })
+    }
+
+  /**
+   * THE ANSWER OF A FINISHED RUN, FROM ITS JOURNAL ALONE — no worker
+   * asked, no lease taken (okay-pool, specs/cluster-pool.md stage 1,
+   * "the run id is the journal name"). A `Folded` with `done = true`
+   * already carries everything the answer needs: `state` is the
+   * coordinator's own fold, describable by `sink(p).state` for the
+   * SAME reason `wireSchema` can describe a partial without a live
+   * value in hand.
+   *
+   * `retried`/`failed` come back zero here, and that is a stated
+   * limit rather than an oversight: `Folded` does not carry them —
+   * they are `Living`'s own counters, scoped to one `Cluster.leading`
+   * ATTEMPT, not persisted across a resume, exactly as a resumed
+   * `Cluster.stream` already starts a fresh `Living` of its own. A
+   * caller reading a bare journal was never inside any attempt, so it
+   * has nothing else to report.
+   */
+  final def answerOf(paramsJson: Json, folded: Folded): Either[String, Job.Answer] =
+    Codecs.json(params).decode(paramsJson).flatMap { p =>
+      val s = sink(p)
+      Codecs.cbor(s.state).decode(folded.state).map { st =>
+        Job.Answer(Codecs.writeJson(s.emit(st))(using answer), folded.drops, folded.merged, 0L, 0L)
+      }
+    }
+
+object Job:
+  /** a finished run, with its answer already JSON — the shape `lead`
+   * hands back so a caller never has to name this job's `R` */
+  final case class Answer(value: String, dropped: Long, merged: Long, retried: Long, failed: Long)
+    derives Schema
 
 /**
  * One partition's streaming state, living on the worker between

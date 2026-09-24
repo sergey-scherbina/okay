@@ -38,6 +38,7 @@ class TestPanesOnce extends munit.FunSuite {
     type A = Ev
     def name = "diag.window"
     def params = summon[okay.codec.Schema[Feed]]
+    def answer = summon[okay.codec.Schema[Vector[Row]]]
     def flow(f: Feed, parts: Int) = Flow.slices(events(f), parts)
     def sink(f: Feed) = Wire.tumbling(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)(collect)
   }

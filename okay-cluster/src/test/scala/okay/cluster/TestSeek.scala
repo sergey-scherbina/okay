@@ -82,6 +82,7 @@ object KeyedLogJob extends Job[Feed, Feeds.Sum] {
   type A = Ev
   def name: String = "test.log.keyed"
   def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[Sum] = summon[Schema[Sum]]
   def flow(f: Feed, parts: Int): Flow[Ev] =
     Flow.seekable(Vector.tabulate(parts)(p => (start: Long) => SeekStore.partition(p, start)))
   def sink(f: Feed): Wire[Ev, Sum] = Wire.keyed((e: Ev) => e.key, value)(SeekStore.keySum)
@@ -93,6 +94,7 @@ object WindowLogJob extends Job[Feed, Feeds.Sum] {
   type A = Ev
   def name: String = "test.log.window"
   def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[Sum] = summon[Schema[Sum]]
   def flow(f: Feed, parts: Int): Flow[Ev] =
     Flow.seekable(Vector.tabulate(parts)(p => (start: Long) => SeekStore.partition(p, start)))
   def sink(f: Feed): Wire[Ev, Sum] =

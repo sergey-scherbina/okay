@@ -66,7 +66,14 @@ enum Resp:
    * decodes it with the same Schema, and nothing in between looks
    * inside */
   case Partial(bytes: Array[Byte])
-  case Names(names: Vector[String])
+  /** `build` is an opaque string a SERVING side may stamp onto its
+   * answer to `Req.Known` — empty by default, so nothing that does
+   * not opt in changes. okay-pool (specs/cluster-pool.md stage 1)
+   * uses it to detect a rolling update mixing two artifacts inside
+   * one run: a coordinator probes each peer's `Known` before handing
+   * it work, and a peer whose build differs is excluded rather than
+   * asked to compute alongside a different version of the same job. */
+  case Names(names: Vector[String], build: String = "")
   /** one epoch's partial, and the partition's own extent so far — the
    * coordinator needs the second to compute the watermark, which in a
    * stream is the MINIMUM over the partitions rather than the maximum

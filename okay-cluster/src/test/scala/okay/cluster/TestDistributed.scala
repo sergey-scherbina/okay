@@ -58,6 +58,7 @@ class TestDistributed extends munit.FunSuite {
       type A = Ev
       def name: String = "test.not-registered"
       def params: okay.codec.Schema[Feed] = summon[okay.codec.Schema[Feed]]
+      def answer: okay.codec.Schema[Sum] = summon[okay.codec.Schema[Sum]]
       def flow(f: Feed, parts: Int): Flow[Ev] = Flow.slices(events(f), parts)
       def sink(f: Feed): Wire[Ev, Sum] = WindowJob.sink(f)
     }
