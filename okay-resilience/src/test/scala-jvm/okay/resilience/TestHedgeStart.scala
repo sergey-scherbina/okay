@@ -30,6 +30,18 @@ class TestHedgeStart extends munit.FunSuite {
       ks.size
     def pending: Int = armed.get.size
 
+  /**
+   * Which attempt the running fiber IS, decided when it was FORKED
+   * (hedge-start-hang-under-load). The program used to ask the shared
+   * fork counter when it RAN: under load the first attempt's fiber
+   * started after the timer had fired and the second fork had counted
+   * itself, so the first attempt read 2, took the branch that never
+   * answers, and the test waited for ever for an answer nobody was going
+   * to give — measured at load 61 in 1 run of 40, and made certain by
+   * starting the first attempt 200ms late.
+   */
+  private val attempt = ThreadLocal[Int]()
+
   /** counts forks and records WHICH fork was cancelled */
   final class Watched(inner: Scheduler, beforeFork: Int => Unit) extends Scheduler:
     val forks = AtomicInteger(0)
@@ -37,7 +49,7 @@ class TestHedgeStart extends munit.FunSuite {
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val n = forks.incrementAndGet()
       beforeFork(n)
-      val f = inner.fork(prog)
+      val f = inner.fork(() => { attempt.set(n); prog() })
       new Fiber[A]:
         def onComplete(k: Either[Throwable, A] => Unit): Unit = f.onComplete(k)
         def cancel(): Unit =
@@ -86,7 +98,7 @@ class TestHedgeStart extends munit.FunSuite {
         until("the first attempt to answer")(answered.get))
 
     val prog: String ! Async =
-      okay.async(sched.forks.get).flatMap { n =>
+      okay.async(attempt.get).flatMap { n =>
         if n == 1 then Async.await[String] { k =>
           Thread.ofVirtual().start { () =>
             while !release.get do Thread.`yield`()
