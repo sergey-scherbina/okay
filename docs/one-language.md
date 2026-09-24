@@ -390,6 +390,26 @@ What survives a restart depends on what was running:
   that is gone"). Refs carry their generation, so a stale ref is never
   pointed at whatever the fresh process happens to number the same.
 
+**When the HOST dies too.** The supervisor keeps its paths in the host's
+memory, so a crash of the host itself loses them, and the far side's
+continuations die with the host's children. `Durable` still has every
+answer in its journal. Give its witness to the supervisor:
+
+```scala
+        Durable.over[ForeignEval](sup.handler, journal)(replayed = sup.witness))
+```
+
+A fresh host, with a fresh worker, is given the same journal. `Durable`
+answers the steps that already happened from it, and tells the
+supervisor each one (`replayed`). The supervisor rebuilds its table
+from those answers, every continuation marked as standing on no live
+worker. The first live step then re-derives them on the new far side by
+the same replay as before. The test kills a host in the middle of a
+multi-shot Python program: the next host finishes every branch. Without
+the witness, the next host is refused by name ("continuation ... is not
+held"), never answered wrongly. The run's id is part of what `Durable`
+checks, so a durable program keeps its run with the rest of its state.
+
 This is log-based rollback recovery under the piecewise-deterministic
 assumption (E. N. Elnozahy, L. Alvisi, Y.-M. Wang and D. B. Johnson, "A
 Survey of Rollback-Recovery Protocols in Message-Passing Systems", ACM

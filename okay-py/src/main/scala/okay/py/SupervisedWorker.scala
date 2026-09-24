@@ -162,6 +162,43 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
             case other => other
         attempt(recovering = false)
 
+  // ---- a host that did not see its own past -------------------------------
+
+  /**
+   * What `Durable.over(..., replayed = supervised.witness)` tells this
+   * supervisor on a resumed HOST (foreign-workflow stage 3): each operation
+   * the journal answered, with that answer. The program nodes rebuild the
+   * continuation table the crashed host had. Every rebuilt continuation
+   * belongs to NO live worker (generation -1), so the first live `Continue`
+   * re-derives it on the fresh far side by replaying its path: Durable's
+   * answers from the journal, then this supervisor's replay on the far
+   * side. The ids are the journal's, so the caller's `k` still names the
+   * same continuation.
+   */
+  val witness: [X] => (ForeignEval[X], X) => Unit = [X] => (op: ForeignEval[X], answer: X) => seen(op, answer)
+
+  /** the operation tells which record this is; the ANSWER is read by its
+   * shape, because `ForeignEval` is covariant and a match on the operation
+   * bounds `X` only from below — a pattern on the value, not a cast */
+  private def seen[X](op: ForeignEval[X], answer: X): Unit = op match
+    case ForeignEval.Program(run, fn, args) =>
+      runs(run) = (fn, args)
+      rebuilt(run, Vector.empty, answer)
+    case ForeignEval.Continue(run, k, a) =>
+      konts.get(k).foreach(c => rebuilt(run, c.path :+ a, answer))
+    case ForeignEval.Forget(run) =>
+      runs.remove(run): Unit
+      konts.filterInPlace((_, c) => c.run != run)
+    case _ => ()
+
+  /** a replayed node: a Perform's continuation, kept under the journal's
+   * own id, standing on no live worker */
+  private def rebuilt[X](run: Long, path: Vector[PyValue], node: X): Unit = node match
+    case Right(PyNode.Perform(op, args, k)) =>
+      konts(k) = Kont(run, path, op, args, local = -1L, gen = -1L)
+      nextK = math.max(nextK, k)
+    case _ => ()
+
   // ---- the handler -------------------------------------------------------
 
 

@@ -208,7 +208,14 @@ object Durable {
                     [X] => (_: Op[X], _: String) => None,
                   escalate: [X] => (Op[X], String) => Option[String] =
                     [X] => (_: Op[X], _: String) => None,
-                  trace: Option[OpTrace] = None)
+                  trace: Option[OpTrace] = None,
+                  /** told of each operation answered FROM THE JOURNAL, and
+                   * its answer: a handler that keeps state across its
+                   * operations (a supervised foreign worker's continuation
+                   * table) rebuilds it from what it did not see happen
+                   * (foreign-workflow stage 3). Nothing by default. */
+                  replayed: [X] => (Op[X], X) => Unit =
+                    [X] => (_: Op[X], _: X) => ())
                  (using J: Journalled[Op])
   : Handler[Op] = new Handler[Op]:
 
@@ -237,7 +244,12 @@ object Durable {
             if entry.fingerprint != fp then throw Drift(entry.fingerprint, fp)
             entry.answer match
               // it already happened: hand the answer back, touch nothing
-              case Some(a) => J.decode(op, a)
+              // (the witness is told, so state kept beside the effect
+              // can catch up)
+              case Some(a) =>
+                val answer = J.decode(op, a)
+                replayed(op, answer)
+                answer
 
               // the crash window: the outcome is unknown — except
               // for an operation whose answer was never this
