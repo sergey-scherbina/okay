@@ -100,10 +100,22 @@ in the host's memory. A HOST crash loses those paths, and the far
 side's continuations with them. `Durable` has the answers in its
 journal but never shows them to the supervisor.
 
-- [ ] `Durable.over(supervised.handler, journal)`, resumed by a fresh
-      host on the journal of a half-walked multi-shot program, finishes
-      every branch. The replayed `Program`/`Continue` records rebuild the
-      supervisor's paths (design in the Decisions, after a probe).
+- [ ] `Durable.over(supervised.handler, journal)(replayed = supervised.witness)`,
+      resumed by a fresh host on the journal of a half-walked multi-shot
+      program, finishes every branch. `Durable.over` gains one optional
+      parameter, `replayed`, called with each operation it answers FROM
+      THE JOURNAL and that answer (a no-op by default, so nothing else
+      changes). `SupervisedWorker.witness` rebuilds its continuation
+      table from the replayed `Program`/`Continue` records: each
+      continuation is marked as belonging to no live worker, so the
+      first live `Continue` re-derives it on the fresh far side by the
+      stage-6 replay. The two replays compose: Durable's answers from
+      the journal, then the supervisor's re-derivation on the far side.
+- [ ] Without the witness the resumed host is refused by name
+      ("continuation k is not held"), never answered wrongly.
+- [ ] A run's id must be the same in the resumed host (it is in the
+      fingerprint Durable checks). A durable program keeps its `PyRun`
+      id with the rest of its state, and the docs say so.
 
 ## Out of scope
 
