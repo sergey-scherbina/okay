@@ -10,7 +10,11 @@ package okay2
  * and only under `CanBlock` evidence, which the platform module
  * provides (`import okay2.platform._`).
  */
-package object async {
+package object async extends AsyncFailingLow {
+
+  /** the typed road, for the row every second `Resource.run` passes:
+   * one effect is a shape the compiler pins, no cast needed */
+  implicit val asyncFailing: Failing[Async] = AsyncFailing.async
 
   /** suspend on a callback registration — the simple form: success
    * only, nothing to unregister. The suspended COMPUTATION is

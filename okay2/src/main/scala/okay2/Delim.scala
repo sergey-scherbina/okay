@@ -1,0 +1,678 @@
+package okay2
+
+import scala.annotation.{implicitNotFound, tailrec}
+import Free.{Return, Inject, Bind}
+import Split.split
+
+/**
+ * Delimited control as an EFFECT — multi-prompt, in the shape of
+ * Dybvig, Peyton Jones and Sabry's "A monadic framework for delimited
+ * continuations" (2007): a prompt is a first-class tag carrying the
+ * delimiter's answer type, `push` installs one, and `shift` captures
+ * up to a NAMED prompt rather than to the nearest one.
+ *
+ * `push` (reset) is an operation, not a handler application, because
+ * capturing across an intervening delimiter is the whole point of
+ * multi-prompt and nested handlers cannot do it: one machine has to
+ * own the whole prompt stack. Tags are what let several answer types
+ * coexist in ONE effect row: with the answer type riding inside the
+ * prompt, there is a single `Delim` signature and the tags keep them
+ * apart. The price: the operations' payloads are programs in the same
+ * row, which a single-parameter signature cannot express, so they are
+ * erased here and re-typed inside the machine at exactly two lines.
+ *
+ * WHAT IS DIFFERENT FROM THE SCALA 3 CORE. Its `Prompted ?=>` doors —
+ * `shift[A]`, `exit`, `emit`, `pause`, `onReturn` — read their row
+ * and answer type off the `direct` block's context. Scala 2 has no
+ * context functions and okay2 has no `direct`, so the evidence is a
+ * VALUE passed first: `Delim.shift[Int, Int](in)(k => k(5))`,
+ * `Delim.emit(e)(a)`, `Delim.pause(s)(q)`. The evidence carries the
+ * row it was made at as a type member (`in.Rest`, the row beside
+ * `Delim`), so no door needs the cast the inline Scala 3 doors make,
+ * and a body is an ordinary function of its evidence.
+ */
+
+/**
+ * A delimiter's identity AND its answer type; identity is the tag.
+ * `label` is what it is CALLED — "collect @ Walk.scala:12" — built on
+ * demand (the Scala 3 core measured 21% on a prompt-per-operation
+ * lane when it was interpolated at construction).
+ */
+final class Prompt[R](val what: String, val where: String) {
+  def label: String = what + " @ " + where
+  override def toString: String = label
+}
+
+/**
+ * A capture naming a prompt that is not on THIS machine's stack. The
+ * message names the prompt that was wanted, the prompts that are
+ * actually installed (innermost first), and the rule that explains
+ * the difference.
+ */
+final class NoPrompt(val from: String, val wanted: String, val installed: List[String])
+  extends RuntimeException(NoPrompt.say(from, wanted, installed))
+
+object NoPrompt {
+  def say(from: String, wanted: String, installed: List[String]): String = {
+    val stack =
+      if (installed.isEmpty) "  (none: this machine has no delimiter installed)"
+      else installed.map("  " + _).mkString("\n")
+    s"""|the capture at $from named the prompt '$wanted',
+        |which is not on the stack of the machine running it.
+        |Installed here, innermost first:
+        |$stack
+        |
+        |ONE `Delim.run` PER PROGRAM. A machine owns one prompt stack,
+        |so a delimiter installed by an INNER run cannot be reached
+        |from the outer one, or the other way about. The combinators
+        |that run a machine are `delimited`, `collect`, `resumable`;
+        |the ones that install a delimiter on the machine already
+        |running are `scope`, `collecting`, `pausing`.""".stripMargin
+  }
+}
+
+/**
+ * WHERE THIS WAS WRITTEN. The Scala 3 core reads the caller's
+ * `file:line` with an inline macro; a Scala 2 def macro cannot be
+ * expanded in the compilation run that defines it, and okay2 is one
+ * run, so the default is `<unknown>` and a caller that wants its line
+ * in the diagnostics installs one lexically:
+ * `implicit val at: At = At("Booking.scala:31")`. Lexical scope wins
+ * over the companion's default.
+ */
+final case class At(where: String) extends AnyVal {
+  override def toString: String = where
+}
+
+object At {
+  /** for a call that has no position to offer */
+  val unknown: At = At("<unknown>")
+  implicit val here: At = unknown
+}
+
+sealed trait Delim extends Row { type Op[+A] = Delim.Op[A] }
+
+object Delim {
+  sealed trait Op[+A]
+  /** install a delimiter and run the body under it (reset) */
+  final case class Push[R](prompt: Prompt[R], body: Any) extends Op[R]
+  /**
+   * Capture the continuation up to THIS prompt. The classic family is
+   * two independent bits, so it is one operation with two flags:
+   *
+   *   underPrompt — does f's body run with the delimiter still
+   *                 installed? (shift, control: yes; the 0-variants
+   *                 consume it)
+   *   delimitK    — does invoking the captured continuation re-install
+   *                 the delimiter? (shift, shift0: yes; the
+   *                 control-variants hand back a bare segment)
+   */
+  final case class Capture[R, A](prompt: Prompt[R], f: Any, underPrompt: Boolean, delimitK: Boolean, at: String) extends Op[A]
+
+  implicit val effect: Effect[Delim] = Effect.of[Delim]
+
+  /** a prompt is its own typed token: the same prompt has the same
+   * answer type — the witness the machine uses to cut its stack */
+  implicit val samePrompt: Same[Prompt] = Same.byIdentity[Prompt]
+
+  /**
+   * THE ROW HAS NO MACHINE YET. A machine owns one prompt stack, so
+   * starting a SECOND one inside a row that already has `Delim` is the
+   * mistake that reads like ordinary code and fails at run time:
+   * `resumable` around `collect`. Every combinator that RUNS a machine
+   * asks for this; the ones that only install a delimiter (`push`,
+   * `scope`, `collecting`, `pausing`) do not. An ABSTRACT `F` reads as
+   * absent, as in the Scala 3 core: a guard against the shape people
+   * write, not a proof.
+   */
+  @implicitNotFound("this row already contains Delim, so this would start a SECOND machine, and a capture cannot cross from one machine's prompt stack to another's.\nUse the nested form, which installs a delimiter on the machine already running:\n  delimited -> scope,   collect -> collecting,   resumable -> pausing")
+  final class OneMachine[F <: Row] private[Delim] ()
+
+  object OneMachine {
+    implicit def fresh[F <: Row](implicit ev: NoDelim[F]): OneMachine[F] = { val _ = ev; new OneMachine[F]() }
+  }
+
+  /** `Delim` is not a member of F — the usual Scala 2 absence witness:
+   * one instance always, two more when the member IS there, so the
+   * search is ambiguous exactly when Delim is in the row */
+  sealed trait NoDelim[F <: Row]
+  object NoDelim {
+    private val inst: NoDelim[Pure] = new NoDelim[Pure] {}
+    implicit def yes[F <: Row]: NoDelim[F] = inst.asInstanceOf[NoDelim[F]]
+    implicit def no1[F <: Row](implicit m: Member[Delim, F]): NoDelim[F] = { val _ = m; inst.asInstanceOf[NoDelim[F]] }
+    implicit def no2[F <: Row](implicit m: Member[Delim, F]): NoDelim[F] = { val _ = m; inst.asInstanceOf[NoDelim[F]] }
+  }
+
+  /** a fresh delimiter tag, labelled with the line that asked for it */
+  def prompt[R](implicit at: At): Prompt[R] = named[R]("prompt")(at)
+
+  private def named[R](what: String)(at: At): Prompt[R] = new Prompt[R](what, at.where)
+
+  /** run the body under the delimiter — reset, as an operation */
+  def push[R, F <: Row](p: Prompt[R])(body: R ! (Delim + F)): R ! (Delim + F) =
+    Free.inject[Delim, R](Push(p, body)).plus[F]
+
+  /**
+   * Capture the continuation up to `p` and hand it to `f`. The
+   * continuation is a PROGRAM-valued function, so `f` may perform
+   * effects around it, invoke it many times, or drop it entirely
+   * (an early exit). `shift`: the body runs under the delimiter and
+   * the continuation re-installs it.
+   */
+  def shift[R, A, F <: Row](p: Prompt[R])(f: (A => R ! (Delim + F)) => R ! (Delim + F))(implicit at: At): A ! (Delim + F) =
+    Free.inject[Delim, A](Capture[R, A](p, f, underPrompt = true, delimitK = true, at = at.where)).plus[F]
+
+  /** the body CONSUMES the delimiter (a further shift to `p` escapes
+   * outward), the continuation still re-installs it */
+  def shift0[R, A, F <: Row](p: Prompt[R])(f: (A => R ! (Delim + F)) => R ! (Delim + F))(implicit at: At): A ! (Delim + F) =
+    Free.inject[Delim, A](Capture[R, A](p, f, underPrompt = false, delimitK = true, at = at.where)).plus[F]
+
+  /** the body runs under the delimiter, the continuation does NOT
+   * re-install it — a bare segment, spliced where it is invoked */
+  def control[R, A, F <: Row](p: Prompt[R])(f: (A => R ! (Delim + F)) => R ! (Delim + F))(implicit at: At): A ! (Delim + F) =
+    Free.inject[Delim, A](Capture[R, A](p, f, underPrompt = true, delimitK = false, at = at.where)).plus[F]
+
+  /** neither: the delimiter is consumed and the continuation is bare */
+  def control0[R, A, F <: Row](p: Prompt[R])(f: (A => R ! (Delim + F)) => R ! (Delim + F))(implicit at: At): A ! (Delim + F) =
+    Free.inject[Delim, A](Capture[R, A](p, f, underPrompt = false, delimitK = false, at = at.where)).plus[F]
+
+  /** abort to a prompt with a value: a shift that drops the
+   * continuation (the 0-variant, so the delimiter goes with it) */
+  def abort[R, A, F <: Row](p: Prompt[R])(value: R)(implicit at: At): A ! (Delim + F) =
+    shift0[R, A, F](p)(_ => pure[Delim + F, R](value))(at)
+
+  /** the common shape: a fresh prompt, a block under it, run */
+  def reset[R, F <: Row](body: Prompt[R] => R ! (Delim + F))(implicit om: OneMachine[F], at: At): R ! F = {
+    val p = named[R]("reset")(at)
+    run[R, F](push[R, F](p)(body(p)))(om)
+  }
+
+  // ==================================================================
+  // THE EVIDENCE DOORS
+  // ==================================================================
+
+  /**
+   * THE DELIMITER IS INSTALLED — the evidence, and the typed door.
+   * `NoPrompt` is thrown when a capture names a prompt that is not on
+   * the stack; a capture made through THIS cannot, because the only
+   * way to hold a `Prompted` is to be inside the `scope`/`delimited`
+   * that installed one. The constructor is private to the object, so
+   * the evidence cannot be forged.
+   *
+   * `Rest` is the row beside `Delim` the delimiter was installed on,
+   * so a door taking the evidence answers at `Delim + in.Rest` with no
+   * type argument for the row and no cast; `Aux[R, F]` spells it for
+   * a body's parameter. What it does not catch: the evidence escaping
+   * its own scope and being used afterwards — that stays the runtime
+   * `NoPrompt`.
+   */
+  sealed abstract class Prompted[R] private[Delim] (val prompt: Prompt[R]) {
+    /** the delimiter's answer type, as a member */
+    type Res = R
+    /** the row beside Delim the delimiter was installed on */
+    type Rest <: okay2.Row
+    /** the whole row the body runs in */
+    type Row = Delim + Rest
+  }
+
+  object Prompted {
+    type Aux[R, F <: okay2.Row] = Prompted[R] { type Rest = F }
+  }
+
+  private def prompted[R, F <: Row](p: Prompt[R]): Prompted.Aux[R, F] = new Prompted[R](p) { type Rest = F }
+
+  /**
+   * INSTALL A DELIMITER, AND NOTHING ELSE: a fresh prompt, the body
+   * under it with the evidence in hand, and the machine left to
+   * whoever is running it. The half of `delimited` that NESTS: the
+   * OUTERMOST combinator runs the machine (`delimited`, `collect`,
+   * `resumable`), everything under it installs only (`scope`,
+   * `collecting`, `pausing`).
+   */
+  def scope[R, F <: Row](body: Prompted.Aux[R, F] => R ! (Delim + F))(implicit at: At): R ! (Delim + F) =
+    scopeAs[R, F]("scope")(body)(at)
+
+  /** the one place a delimiter is installed: `what` is the door's own
+   * name and `at` the caller's position, joined ONCE */
+  private def scopeAs[R, F <: Row](what: String)(body: Prompted.Aux[R, F] => R ! (Delim + F))(at: At): R ! (Delim + F) = {
+    val p = named[R](what)(at)
+    push[R, F](p)(body(prompted[R, F](p)))
+  }
+
+  /** install a fresh delimiter, run the body under it with the
+   * evidence in hand, and handle the machine — the OUTERMOST form;
+   * `scope` is the one that nests */
+  def delimited[R, F <: Row](body: Prompted.Aux[R, F] => R ! (Delim + F))(implicit om: OneMachine[F], at: At): R ! F =
+    run[R, F](scopeAs[R, F]("delimited")(body)(at))(om)
+
+  /** capture up to the delimiter the evidence names — the same word as
+   * the prompt-taking primitive; the row is the evidence's, so the
+   * call site writes two type arguments, not three */
+  def shift[R, A](in: Prompted[R])(f: (A => R ! (Delim + in.Rest)) => R ! (Delim + in.Rest))(implicit at: At): A ! (Delim + in.Rest) =
+    shift[R, A, in.Rest](in.prompt)(f)(at)
+
+  /** the 0-variant: the body consumes the delimiter */
+  def shift0[R, A](in: Prompted[R])(f: (A => R ! (Delim + in.Rest)) => R ! (Delim + in.Rest))(implicit at: At): A ! (Delim + in.Rest) =
+    shift0[R, A, in.Rest](in.prompt)(f)(at)
+
+  /** the continuation does not re-install the delimiter */
+  def control[R, A](in: Prompted[R])(f: (A => R ! (Delim + in.Rest)) => R ! (Delim + in.Rest))(implicit at: At): A ! (Delim + in.Rest) =
+    control[R, A, in.Rest](in.prompt)(f)(at)
+
+  /** neither */
+  def control0[R, A](in: Prompted[R])(f: (A => R ! (Delim + in.Rest)) => R ! (Delim + in.Rest))(implicit at: At): A ! (Delim + in.Rest) =
+    control0[R, A, in.Rest](in.prompt)(f)(at)
+
+  /** abort to the delimiter the evidence names, with a value */
+  def abort[R, A](in: Prompted[R])(value: R)(implicit at: At): A ! (Delim + in.Rest) =
+    abort[R, A, in.Rest](in.prompt)(value)(at)
+
+  // ==================================================================
+  // THE PATTERNS — the four shapes that earn a capture in ordinary
+  // code, each under a name that says what it DOES. Every one is two
+  // or three lines over `shift`; the value is the name and the
+  // evidence.
+  // ==================================================================
+
+  /**
+   * 1 · LEAVE EARLY WITH AN ANSWER. `Delim.exit(in)(value)` stops there
+   * and makes `value` the answer of the scope `in` names; the rest of
+   * the program does not run — a capture that DROPS its continuation
+   * is what an early return is. It replaces an exception thrown for
+   * control flow, a sentinel threaded through every caller, or two
+   * loops rewritten as a fold with a flag.
+   */
+  def exit[R](in: Prompted[R])(value: R)(implicit at: At): Unit ! (Delim + in.Rest) =
+    shift[R, Unit](in)(_ => pure[Delim + in.Rest, R](value))(at)
+
+  /**
+   * 2 · A PUSH API, READ AS A PULL. The evidence for a block that is
+   * collecting values: it carries the element type, the prompt's
+   * answer (`Res`: a list for `collect`, a state-passing function for
+   * `collectUntil`) and the row, so `emit` needs no type argument and
+   * a producer written against `Emitting[A]` runs under either.
+   */
+  sealed abstract class Emitting[A] {
+    type Elem = A
+    type Res
+    type Rest <: okay2.Row
+    type Row = Delim + Rest
+    val in: Prompted.Aux[Res, Rest]
+    /** what one emit does with the rest of the producer `k` */
+    def onEmit(a: A)(k: Unit => Res ! Row): Res ! Row
+  }
+
+  object Emitting {
+    type Aux[A, F <: okay2.Row] = Emitting[A] { type Rest = F }
+  }
+
+  /** `collect`'s evidence: the list is built on the way BACK, by the
+   * continuation — `emit` conses after the rest of the producer has
+   * answered, which is why the producer never has to know */
+  private final class Listing[A, F <: Row](val in: Prompted.Aux[List[A], F]) extends Emitting[A] {
+    type Res = List[A]
+    type Rest = F
+    def onEmit(a: A)(k: Unit => List[A] ! (Delim + F)): List[A] ! (Delim + F) = k(()).map(a :: _)
+  }
+
+  /**
+   * `collectUntil`'s evidence: the state is passed on the way DOWN
+   * through the prompt's answer, which is a FUNCTION of it — `PState`'s
+   * trick over `Cont`, here over the prompt. An emit answers `s => …`
+   * at once; applying it adds the element, and either ends with
+   * `fo.end` — the continuation never called, the rest of the producer
+   * never run — or resumes `k`, whose own answer is the next such
+   * function. Nothing is mutated, so a multi-shot capture inside the
+   * producer sees its own state. No cast: the evidence's row IS the
+   * row the door captures at, by the type member.
+   */
+  private final class Stopping[A, S, R, F <: Row](val in: Prompted.Aux[S => R ! (Delim + F), F], fo: FoldUntil[A, S, R])
+    extends Emitting[A] {
+    type Res = S => R ! (Delim + F)
+    type Rest = F
+    def onEmit(a: A)(k: Unit => Res ! (Delim + F)): Res ! (Delim + F) =
+      pure[Delim + F, Res]((s: S) => {
+        val s2 = fo.add(s, a)
+        if (fo.done(s2)) pure[Delim + F, R](fo.end(s2))
+        else k(()).flatMap(f => f(s2))
+      })
+  }
+
+  /** run `body`, which emits, and answer with everything it emitted, in
+   * order — the producer stays an ordinary walk, the consumer gets a
+   * list */
+  def collect[A, F <: Row](body: Emitting.Aux[A, F] => Unit ! (Delim + F))(implicit om: OneMachine[F], at: At): List[A] ! F =
+    run[List[A], F](collectAs[A, F]("collect")(body)(at))(om)
+
+  /** the same collection, NESTED: it installs its delimiter and leaves
+   * the machine to the `delimited`/`resumable` around it, so a capture
+   * from inside — a `pause`, an `exit` to an outer scope — crosses it */
+  def collecting[A, F <: Row](body: Emitting.Aux[A, F] => Unit ! (Delim + F))(implicit at: At): List[A] ! (Delim + F) =
+    collectAs[A, F]("collecting")(body)(at)
+
+  private def collectAs[A, F <: Row](what: String)(body: Emitting.Aux[A, F] => Unit ! (Delim + F))(at: At): List[A] ! (Delim + F) =
+    scopeAs[List[A], F](what)(in => body(new Listing[A, F](in)).map(_ => List.empty[A]))(at)
+
+  /**
+   * A COLLECT THAT STOPS: run the SAME producer `collect` runs, fold
+   * what it emits with `fo`, and stop the producer where `done` first
+   * holds — `take(3)` over a tree walk runs the walk to its third leaf
+   * and no further. The answer is `fo.end` of the state the emits
+   * built. `done(init)` runs no body at all.
+   */
+  def collectUntil[A, S, R, F <: Row](fo: FoldUntil[A, S, R])(body: Emitting.Aux[A, F] => Unit ! (Delim + F))
+                                     (implicit om: OneMachine[F], at: At): R ! F =
+    if (fo.done(fo.init)) pure[F, R](fo.end(fo.init))
+    else run[R, F](collectUntilAs[A, S, R, F]("collectUntil")(fo)(body)(at))(om)
+
+  /** the nested half of `collectUntil`, as `collecting` is of `collect` */
+  def collectingUntil[A, S, R, F <: Row](fo: FoldUntil[A, S, R])(body: Emitting.Aux[A, F] => Unit ! (Delim + F))
+                                        (implicit at: At): R ! (Delim + F) =
+    if (fo.done(fo.init)) pure[Delim + F, R](fo.end(fo.init))
+    else collectUntilAs[A, S, R, F]("collectingUntil")(fo)(body)(at)
+
+  private def collectUntilAs[A, S, R, F <: Row](what: String)(fo: FoldUntil[A, S, R])
+                                                (body: Emitting.Aux[A, F] => Unit ! (Delim + F))(at: At): R ! (Delim + F) =
+    scopeAs[S => R ! (Delim + F), F](what)(in =>
+      body(new Stopping[A, S, R, F](in, fo))
+        // the producer ended on its own: the state's own answer
+        .map(_ => (s: S) => pure[Delim + F, R](fo.end(s))))(at)
+      // the first emit's function, applied to the start; each
+      // application resumes the producer up to the next emit
+      .flatMap(f => f(fo.init))
+
+  /** emit one value into the `collect` (or `collectUntil`) in force */
+  def emit[A](e: Emitting[A])(a: A)(implicit at: At): Unit ! (Delim + e.Rest) =
+    shift[e.Res, Unit](e.in)(k => e.onEmit(a)(k))(at)
+
+  /**
+   * 3 · STOP IN THE MIDDLE, CARRY ON LATER. What a paused program is:
+   * either it is asking, and the REST OF IT is right there as
+   * `resume`, or it is finished — Queinnec's web dialogue as a type,
+   * and the shape of an approval gate, a wizard, a REPL. `G` is the row
+   * the paused program still runs in, `Delim` and all; `Dialogue`
+   * spells it for a caller who only knows their own row.
+   */
+  sealed trait Paused[Q, A, R, G <: Row] {
+    /** the answer, if it has one */
+    def finished: Option[R]
+    /** the question it is waiting on, if it is waiting */
+    def asking: Option[Q]
+    /** WHERE it is waiting — the `pause`'s own position */
+    def where: Option[String]
+  }
+
+  object Paused {
+    final case class Ask[Q, A, R, G <: Row](question: Q, resume: A => Paused[Q, A, R, G] ! G, at: String) extends Paused[Q, A, R, G] {
+      def finished: Option[R] = None
+      def asking: Option[Q] = Some(question)
+      def where: Option[String] = Some(at)
+    }
+    final case class Done[Q, A, R, G <: Row](value: R) extends Paused[Q, A, R, G] {
+      def finished: Option[R] = Some(value)
+      def asking: Option[Q] = None
+      def where: Option[String] = None
+    }
+  }
+
+  /** a paused program whose caller's row is `F` */
+  type Dialogue[Q, A, R, F <: Row] = Paused[Q, A, R, Delim + F]
+
+  /** the evidence for a block that may pause, carrying the question,
+   * answer and final types and the row as members */
+  sealed abstract class Asking[Q, A, R] {
+    type Qst = Q
+    type Ans = A
+    type Fin = R
+    type Rest <: okay2.Row
+    type Row = Delim + Rest
+    val in: Prompted.Aux[Paused[Q, A, R, Delim + Rest], Rest]
+  }
+
+  object Asking {
+    type Aux[Q, A, R, F <: okay2.Row] = Asking[Q, A, R] { type Rest = F }
+  }
+
+  private final class AskingAt[Q, A, R, F <: Row](val in: Prompted.Aux[Paused[Q, A, R, Delim + F], F]) extends Asking[Q, A, R] {
+    type Rest = F
+  }
+
+  /** run `body` until it pauses or finishes, and answer with WHICH — a
+   * state machine with a `step` column, replaced by straight-line code
+   * whose record is the continuation */
+  def resumable[Q, A, R, F <: Row](body: Asking.Aux[Q, A, R, F] => R ! (Delim + F))
+                                  (implicit om: OneMachine[F], at: At): Dialogue[Q, A, R, F] ! F =
+    run[Dialogue[Q, A, R, F], F](pausingAs[Q, A, R, F]("resumable")(body)(at))(om)
+
+  /** the same, NESTED: the dialogue's delimiter goes on the machine
+   * already running */
+  def pausing[Q, A, R, F <: Row](body: Asking.Aux[Q, A, R, F] => R ! (Delim + F))(implicit at: At): Dialogue[Q, A, R, F] ! (Delim + F) =
+    pausingAs[Q, A, R, F]("pausing")(body)(at)
+
+  private def pausingAs[Q, A, R, F <: Row](what: String)(body: Asking.Aux[Q, A, R, F] => R ! (Delim + F))(at: At): Dialogue[Q, A, R, F] ! (Delim + F) =
+    scopeAs[Dialogue[Q, A, R, F], F](what)(in =>
+      body(new AskingAt[Q, A, R, F](in)).map(r => Paused.Done[Q, A, R, Delim + F](r)))(at)
+
+  /** ask, and hand the rest of the program back to the caller */
+  def pause[Q, A, R](s: Asking[Q, A, R])(q: Q)(implicit at: At): A ! (Delim + s.Rest) =
+    shift[Paused[Q, A, R, Delim + s.Rest], A](s.in)(k => pure(Paused.Ask(q, k, at.where)))(at)
+
+  /** answer every question until the dialogue is done — the driver for
+   * the common case where the answers are available now */
+  def drive[Q, A, R, F <: Row](p: Dialogue[Q, A, R, F])(answer: Q => A ! F)(implicit om: OneMachine[F]): R ! F =
+    p match {
+      case Paused.Done(r) => pure[F, R](r)
+      case Paused.Ask(q, resume, _) =>
+        answer(q).flatMap(a => run[Dialogue[Q, A, R, F], F](resume(a))(om).flatMap(drive[Q, A, R, F](_)(answer)(om)))
+    }
+
+  /**
+   * ...AND OUTLIVE THE PROCESS. A continuation is a closure and cannot
+   * be written to disk; the JOURNAL — the answers the dialogue has
+   * been given, in order — can, and where it stands is RE-DERIVED by
+   * running the program again over them (`replay`). Exact under the
+   * discipline `Replayable` states.
+   */
+  type Journal[A] = List[A]
+
+  /** answer the question a dialogue is asking, and keep the answer:
+   * the pair is what you persist after every step */
+  def answer[Q, A, R, F <: Row](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)(implicit om: OneMachine[F]): (Dialogue[Q, A, R, F], Journal[A]) ! F =
+    p match {
+      case Paused.Ask(_, resume, _) => run[Dialogue[Q, A, R, F], F](resume(a))(om).map(next => (next, j :+ a))
+      case done => pure[F, (Dialogue[Q, A, R, F], Journal[A])]((done, j))
+    }
+
+  /** where the dialogue stands, from its program and its journal —
+   * what replaces persisting a continuation */
+  def replay[Q, A, R, F <: Row](body: Asking.Aux[Q, A, R, F] => R ! (Delim + F))(j: Journal[A])
+                               (implicit om: OneMachine[F], rp: Replayable[Delim + F], at: At): Dialogue[Q, A, R, F] ! F = {
+    val _ = rp
+    j.foldLeft(resumable[Q, A, R, F](body)(om, at)) { (acc, a) =>
+      acc.flatMap {
+        case Paused.Ask(_, resume, _) => run[Dialogue[Q, A, R, F], F](resume(a))(om)
+        case done => pure[F, Dialogue[Q, A, R, F]](done)   // more answers than questions
+      }
+    }
+  }
+
+  /**
+   * 4 · DO SOMETHING ON THE WAY BACK. `Delim.onReturn(in)(f)` runs the
+   * rest of the scope and then puts its answer through `f`: the rest
+   * of the program is a value here, so it can be measured, logged,
+   * undone, or have a compensation folded into its answer — from a
+   * place in the middle, without the code around it restructured.
+   */
+  def onReturn[R](in: Prompted[R])(f: R => R)(implicit at: At): Unit ! (Delim + in.Rest) =
+    shift[R, Unit](in)(k => k(()).map(f))(at)
+
+  // ==================================================================
+  // THE MACHINE
+  // ==================================================================
+
+  /**
+   * The machine's continuation, TYPED: a chain from the current answer
+   * A to the run's answer Z. `K` is one Bind's continuation (types
+   * chain through it), `Mark` a delimiter carrying its prompt — and so
+   * the answer type of the program under it. `Done` carries the
+   * equality it means: scalac 2 refines a pattern's OWN type
+   * parameters from the scrutinee but not the method's from a pattern
+   * (`Refl() extends Eq[A, A]` does not make `A = B` in a match), so
+   * the witness travels as a value and `reify`/`loop` apply it.
+   */
+  private sealed trait Segs[F <: Row, A, Z]
+  private object Segs {
+    final case class Done[F <: Row, A, Z](ev: A =:= Z) extends Segs[F, A, Z]
+    final case class K[F <: Row, X, Y, Z](f: X => Y ! (Delim + F), rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
+    final case class Mark[F <: Row, X, Z](p: Prompt[X], rest: Segs[F, X, Z]) extends Segs[F, X, Z]
+  }
+
+  /** the stack cut at a prompt: what was captured (a chain ending
+   * where the prompt's mark was) and what lies outside it */
+  private final case class Cut[F <: Row, A, P, Z](captured: Segs[F, A, P], outer: Segs[F, P, Z])
+
+  /** the machine's state between steps: a program and the stack it
+   * continues into, the head type an abstract member so a
+   * monomorphic `@tailrec` loop can carry it (a polymorphic local loop
+   * cannot be tail-recursive at changing type arguments in scalac 2) */
+  private sealed abstract class Next[F <: Row, Z] {
+    type A
+    val prog: A ! (Delim + F)
+    val kont: Segs[F, A, Z]
+  }
+
+  private def next[F <: Row, X, Z](p: X ! (Delim + F), k: Segs[F, X, Z]): Next[F, Z] = new Next[F, Z] {
+    type A = X
+    val prog: X ! (Delim + F) = p
+    val kont: Segs[F, X, Z] = k
+  }
+
+  /**
+   * The machine. The freer tree's Bind nodes already reify
+   * continuations as plain functions, so the tree IS the control stack
+   * — the machine only keeps the segment chain and the prompt markers
+   * in it. A captured segment is turned back INTO A PROGRAM (`reify`),
+   * which is why the continuation is an ordinary value: multi-shot
+   * comes for free, and nothing is a closure over interpreter state.
+   *
+   * Two claims and no other cast: a Push's body and a Capture's f are
+   * programs in this machine's row, erased at the operation because
+   * the row's other half F is not the operation's to name — re-typed
+   * here, at their two lines, where F is known.
+   */
+  def run[R, F <: Row](prog: R ! (Delim + F))(implicit om: OneMachine[F]): R ! F = {
+    val _ = om
+    machine[R, F](prog, None)
+  }
+
+  /**
+   * THE MACHINE THAT FORWARDS INSTEAD OF THROWING — for a row that
+   * still has a `Delim` in it, i.e. one running inside another
+   * machine. A capture naming a prompt this machine does not hold is
+   * re-emitted into the residual program, and this machine resumes
+   * with the same stack when the answer arrives — the foreign-
+   * operation path, verbatim; the outer machine, which does hold the
+   * prompt, then captures across this machine's frames. The evidence
+   * is what makes it well-typed and cast-free: `Delim` is a member of
+   * F, so the operation lands in the residual row by `at`.
+   */
+  def runNested[R, F <: Row](prog: R ! (Delim + F))(implicit in: Member[Delim, F]): R ! F =
+    machine[R, F](prog, Some(in))
+
+  private def machine[R, F <: Row](prog: R ! (Delim + F), forward: Option[Member[Delim, F]]): R ! F = {
+    type Rw = Delim + F
+    type Prog[X] = X ! Rw
+
+    /** frames back into a program: binds become flatMaps, markers
+     * become pushes — the continuation re-installs its delimiter */
+    def reify[A, P](segs: Segs[F, A, P], start: Prog[A]): Prog[P] = segs match {
+      case Segs.Done(ev) => ev.substituteCo[Prog](start)
+      case Segs.K(f, rest) => reify(rest, start.flatMap(f))
+      case Segs.Mark(p, rest) => reify(rest, Free.inject[Delim, A](Push(p, start)).plus[F])
+    }
+
+    /** the delimiters this machine has installed, innermost first —
+     * what `NoPrompt` prints; only ever runs on the failing path */
+    def installed(kont: Segs[F, _, R]): List[String] = {
+      @tailrec def go(k: Segs[F, _, R], acc: List[String]): List[String] = k match {
+        case Segs.Done(_) => acc.reverse
+        case Segs.Mark(q, rest) => go(rest, q.label :: acc)
+        case Segs.K(_, rest) => go(rest, acc)
+      }
+      go(kont, Nil)
+    }
+
+    /** cut the chain at the mark of p: the mark's prompt IS p by
+     * identity, and Same's witness makes the mark's type P's */
+    def cut[A, P, Z](kont: Segs[F, A, Z], p: Prompt[P]): Option[Cut[F, A, P, Z]] = kont match {
+      case Segs.Done(_) => None
+      case Segs.Mark(q, rest) => samePrompt.same(q, p) match {
+        case Some(ev) =>
+          Some(Cut(Segs.Done[F, A, P](ev), ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](rest)))
+        case None => cut(rest, p).map(c => Cut(Segs.Mark(q, c.captured), c.outer))
+      }
+      case Segs.K(f, rest) => cut(rest, p).map(c => Cut(Segs.K(f, c.captured), c.outer))
+    }
+
+    def _loop(state: Next[F, R]): R ! F = loop(state)
+
+    // ONE tail-recursive loop: only a FOREIGN operation (or a forwarded
+    // capture) suspends, under a flatMap closure, and the Delim ops
+    // themselves are flat
+    @tailrec def loop(state: Next[F, R]): R ! F = Free.resume(state.prog) match {
+      case Return(x) => state.kont match {
+        case Segs.Done(ev) => pure[F, R](ev(x))
+        case Segs.K(f, rest) => loop(next(f(x), rest))
+        // the delimited block finished normally: drop its marker
+        case Segs.Mark(_, rest) => loop(next(pure[Rw, state.A](x), rest))
+      }
+      case Inject(e) => loop(next(Bind(Inject[Rw, state.A](e), (y: state.A) => Return[Rw, state.A](y)), state.kont))
+      case Bind(Inject(e), k) => step(e, Segs.K(k, state.kont)) match {
+        case Left(answer) => answer
+        case Right(n) => loop(n)
+      }
+      case other => throw new IllegalStateException("resume left a non-head form: " + other)
+    }
+
+    /** one operation: either the machine is done (Left) or it continues
+     * with a new program and stack (Right) */
+    def step(e: Rw#Op[Any], kont: Segs[F, Any, R]): Either[R ! F, Next[F, R]] =
+      split[Delim, F, Any, Either[R ! F, Next[F, R]]](e) {
+        case pu: Push[r] =>
+          // claim 1: the pushed body answers the prompt's r in this
+          // row; r is an answer of the op, which K carries up
+          val body = pu.body.asInstanceOf[Prog[r]]
+          Right(next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => pure[Rw, Any](a), kont))))
+
+        case cap: Capture[p, a] =>
+          cut(kont, cap.prompt) match {
+            case Some(c) =>
+              val k = (v: a) => {
+                val seg = reify(c.captured, pure[Rw, Any](v))
+                if (cap.delimitK) Free.inject[Delim, p](Push(cap.prompt, seg)).plus[F] else seg
+              }
+              // claim 2: f takes a continuation into the prompt's
+              // answer and gives back a program at it, in this row
+              val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
+              // shift/control put the body back under the delimiter;
+              // the 0-variants have consumed it
+              if (cap.underPrompt) Right(next(Free.inject[Delim, p](Push(cap.prompt, body)).plus[F], c.outer))
+              else Right(next(body, c.outer))
+            case None => forward match {
+              case Some(in) =>
+                // re-emit, and resume this machine with the same
+                // stack; `kont` is immutable, so a multi-shot outer
+                // capture may re-enter it as often as it likes
+                Left(Free.inject[Delim, Any](cap).at[F](Sub.one(in)).flatMap(x => _loop(next(pure[Rw, Any](x), kont))))
+              case None => throw new NoPrompt(cap.at, cap.prompt.label, installed(kont))
+            }
+          }
+      } { g =>
+        // a foreign operation suspends the machine: the residual
+        // program performs it and resumes with the same stack
+        Left(Inject[F, Any](g).flatMap(x => _loop(next(pure[Rw, Any](x), kont))))
+      }
+
+    loop(next(prog, Segs.Done[F, R, R](implicitly[R =:= R])))
+  }
+}

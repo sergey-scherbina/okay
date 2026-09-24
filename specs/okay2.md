@@ -517,6 +517,139 @@ now depends on okay2-async (and on okay2-platform for its tests):
   reference cannot be checked" on the type test `Cell.modify`'s tuple
   makes: the state is `StmChannel.State[A]` in the companion.
 
+## Stage 6 — Resource, Once, Delim, Provide (DONE 2026-09-24)
+"Port Resource, Once, Delim, Provide" (operator). Into the core:
+
+- `Resource`: `Acquire`, `acquire`, `open` (the scope kept open, an
+  idempotent closer), `scoped`, `run` (the row anywhere via `Remove`,
+  the residual's `Failing`), `runAt` (the region loop: `guarded` on
+  every call the walk did not write, finalizers carried into the
+  residual); `Failing[F]` with `pure` in the core and `never[F]`
+  EXPLICIT for an effect that cannot fail; `bracket` in the package
+  object. okay2-async: `AsyncFailing.async` (Run/Await rebuilt with
+  the hook) and `anyRowFailing` (the typed one lifted over the row by
+  `Split.over`), both from `import okay2.async._`.
+- `Once`: `Force`/`Store`, `Handle`, `once`/`!.once`, `at`, `run`/
+  `runAt` (the cells threaded like `State.handleAt`; the knot is a
+  loud `IllegalStateException`).
+- `Delim`: `Prompt`, `NoPrompt` (names the installed delimiters),
+  `At` (a default `<unknown>`, a lexical override), `Push`/`Capture`,
+  `prompt`/`push`/`shift`/`shift0`/`control`/`control0`/`abort`/
+  `reset`, `OneMachine` (a second machine in a row is a compile
+  error; `NoDelim` is the absence witness), `Prompted.Aux[R, F]` and
+  `scope`/`delimited` with the evidence doors `shift`/`shift0`/
+  `control`/`control0`/`abort`/`exit`/`onReturn`, `Emitting.Aux` with
+  `collect`/`collecting`/`collectUntil`/`collectingUntil`/`emit`,
+  `Paused`/`Dialogue`/`Asking.Aux` with `resumable`/`pausing`/`pause`/
+  `drive`/`answer`/`replay`/`Journal`, `run`, `runNested` (forwards a
+  capture it cannot place, by `Member[Delim, F]` — no cast), the
+  machine (`Segs`/`Cut`/`Next`, `reify`, `cut`, one `@tailrec` loop);
+  `Replayable` INDUCTIVE over the row; `Same` in the core.
+- `Provide`: `provide` at arities 1–8 (curried bodies), `Providing`
+  with `and`, `providing`, `wire`, `Fact`/`Facts`, `Module` (`and` in
+  both forms, `installing`, `apply`, `use`, `declare`, `declaring`,
+  `ready`/`value`/`nothing`/`contributing`), `module`/`moduleAs`,
+  `New`/`fresh`/`prototype`.
+
+### Behavior (stage 6)
+- [x] Resource: reverse release order; an abort handled inside still
+      releases; a JVM throw during a step releases; finalizers travel
+      with the residual and a throw AFTER a forwarded effect releases;
+      `Remove` finds the effect anywhere; `open` idempotent closer and
+      a throw during acquisition; `bracket` over Later and Produce;
+      a row with no `Failing` is REFUSED; a forwarded `Async.Run` that
+      throws, an `Await` answering Left, and a nested row with Async
+      on the right all release
+- [x] Once: three demands one run; never demanded never run; a bare
+      p beside it runs every time; two calls two handles; the knot;
+      the same program twice replays; forwarding; the row anywhere
+- [x] Delim: the shift/reset laws, abort, multi-shot; multi-prompt
+      past an intervening delimiter; two answer types in one row;
+      re-installed prompt; other effects pass through; abandoned
+      effects do not run; shift vs shift0, shift0 vs control0,
+      control; yield in user code; NoPrompt names the installed
+      stack; At default and override; 1000 nested captures and 100k
+      pushes; Prompted apart from the delimiter, not forgeable, nested
+      scopes, which delimiter a capture names; the second machine is
+      a compile error naming `collecting`; forwarding's three claims;
+      exit out of two loops, collect/emit, collectUntil stops the
+      walk at the third leaf, pause/resumable as a value, Done
+      already, onReturn twice; a pause crosses a collecting; replay
+      through a producer; exit crosses a nested producer; pausing
+      inside delimited; the journal round trip, empty and full;
+      the discipline is a TYPE (Writer refused), the limit measured
+      under `unchecked`, pause performed once; Replayable inductive
+- [x] Provide: provide, nearest by NAME, missing dependency does not
+      compile, three at once; providing and-composition, reuse, the
+      right operand inner, 9 layers; wire; Module acquire/release
+      order with the right built in the left's context, plain `and`,
+      `use`, a ready test double, facts as a multibinder with the
+      preview, `declaring` reads its own installer, prototype/fresh
+
+### Decisions
+- The evidence doors take the evidence FIRST, as a value:
+  `Delim.shift[Int, Int](in)(k => k(5))`, `Delim.emit(e)(a)`,
+  `Delim.pause(s)(q)`, `Delim.exit(in)(v)`. The Scala 3 doors read
+  the row and answer type off a `direct` block's context function;
+  Scala 2 has neither, and the alternative — an implicit evidence in
+  the LAST list — cannot type `f`, whose parameter mentions the
+  evidence's row. The evidence carries that row as a type member
+  (`Rest`, with `Row = Delim + Rest`), so `Prompted.Aux[R, F]`,
+  `Emitting.Aux[A, F]` and `Asking.Aux[Q, A, R, F]` are a body's
+  parameter types and no door needs the cast the inline Scala 3 doors
+  make (`Stopping.atRow`, `pause`'s `k` cast): a `Stopping`'s row IS
+  the row `emit` captures at, by the member.
+- The machine runs at the answer type `Any`, as every handler here
+  does (State's `k(s)`): scalac 2 instantiates a `Bind`'s unconstrained
+  answer to `Any`, and the two claims stay the Scala 3 core's two
+  (`Push.body`, `Capture.f`). The typed `Segs` chain KEEPS its types
+  with one change: `Done` carries `A =:= Z` as a value, because scalac
+  2 refines a pattern's own type parameters from the scrutinee but not
+  the method's from a pattern (`Refl() extends Eq[A, A]` proves
+  nothing in a Scala 2 match), and `reify`/`loop` apply the witness.
+  `Next` holds its head type as an abstract member, since a local
+  `@tailrec` loop cannot change type arguments across calls.
+- `runNested` forwards through `Member[Delim, F]` and `at` — the
+  Scala 3 core casts there; the witness makes it typed.
+- `Replayable` is the inductive instance the Scala 3 core could not
+  write: a row is nominal here, so `union(f, g)` resolves, and a
+  `Writer` in the row is refused with the message.
+- `OneMachine` is the Scala 2 absence witness (`NoDelim`: one
+  instance always, two more when `Member[Delim, F]` holds — ambiguous
+  exactly when Delim is in the row). An abstract F reads as absent,
+  as in the Scala 3 core.
+- `At` defaults to `<unknown>`: a Scala 2 def macro cannot expand in
+  the run that defines it and okay2 is one build; a caller installs a
+  lexical `implicit val at: At = At("File.scala:12")`. A macro module
+  is backlog `okay2-at-macro`.
+- `Failing.never[F]` is a METHOD, not an implicit: the Scala 3 core's
+  finding that an identity default silently unguards a row stands;
+  the core's only implicit is `pure`, and a row with nothing is a
+  compile error (tested).
+- `provide` bodies are CURRIED (`implicit db => implicit log => app`):
+  an `implicit` lambda parameter is one identifier in Scala 2, and the
+  curried chain is what `Providing.and` composes anyway, so the flat
+  and composable forms agree on what a body is. Nearest-wins is by
+  NAME: Scala 2 shadows implicits by name and reports two of one type
+  in nested scopes as ambiguous, so an override takes the same name.
+  Arities 1–8 rather than 22: the curried chain has no cap.
+- `Module.and` is overloaded: a plain `Module[G]` and the dependent
+  `F[Module[G]]` (a function of what the left installs); the identity
+  module is the one shape where they coincide, and `contributing` is
+  its door. `prototype(acquire, release)` is one list (two by-name
+  overloads with different list counts do not resolve).
+- Not ported: `plan`/`exports`/`shadowed` (macros over the chain's
+  type; backlog `okay2-module-plan`), `Delim.Stacked` (the prompt
+  stack as a tuple type; Scala 2 has no `*:`), the inline `shift[A]`/
+  `exit`/`emit`/`pause`/`onReturn` (direct-block doors — the evidence
+  forms above are their Scala 2 spelling), `SharedOnce` (okay-async;
+  backlog with `okay2-stage2`), `ctxMonad` (no `Monad` here).
+- Scala 2 traps this stage: a `case class` inside a test suite trips
+  -Xlint's outer-reference check on every type test (hoist to an
+  object); `implicit val at` after a use of `at` in the same block is
+  a forward reference (wrap in a def); a shadowed implicit lambda
+  parameter is "never used" (the outer layers are `_ =>`).
+
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -534,3 +667,5 @@ now depends on okay2-async (and on okay2-platform for its tests):
   2026-09-24, same gate, on JDK 25.
 - Stage 5: 186 test results (+20 channels/sources), 25 suites, GREEN
   2026-09-24, same gate.
+- Stage 6: 274 test results (+88 Resource/Once/Delim/Provide/Failing),
+  37 suites, GREEN 2026-09-24, same gate.

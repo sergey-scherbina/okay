@@ -62,8 +62,9 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   in the target monad; the pure stream layer (chunks, stages,
   pipelines, windows); the Async effect and the JVM platform under it
   (Loom, the schedulers, supervised scopes); channels and sources
-  (merge by readiness, buffer); what is different from Scala 3 and
-  why, each measured.
+  (merge by readiness, buffer); Resource, Once, multi-prompt Delim
+  with the evidence doors and replayable dialogues, provide/Module;
+  what is different from Scala 3 and why, each measured.
 - **[okay from Scala 2.13](scala2.md)** — for a codebase still on
   Scala 2: the build (two standard libraries, and in which order),
   `Prog` and `Eff` (several effects in one program, the row as an

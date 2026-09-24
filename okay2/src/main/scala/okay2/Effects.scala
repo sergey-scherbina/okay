@@ -55,6 +55,11 @@ object Effects {
   /** the same program in a wider row: effect subsumption as a COERCION */
   def widen[A, F <: Row, G <: Row](p: A ! F): A ! (F + G) = Member.coerce(p)
 
+  /** p, run at most once (call-by-need for programs): the first demand
+   * runs it, every later demand of THIS value answers from the cell
+   * `Once.run` keeps — see `Once` */
+  def once[A, F <: Row](p: => A ! (Once + F)): A ! (Once + F) = Once.once[A, F](p)
+
   /**
    * handle_relay (Kiselyov): tail-resumptive handling. `g` is
    * answer-polymorphic, so by parametricity it must resume the

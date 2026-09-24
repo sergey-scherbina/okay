@@ -1,11 +1,12 @@
 - [ ] okay2-stage2 — the rest of the core, one stage per file. okay2-async
       and okay2-platform LANDED 2026-09-24 (stage 4); Channel/StmChannel/
       Drain/Source/merge/buffer LANDED the same day (stage 5). The fast
-      channels are `okay2-fast-channels`. Then the rest, in order of use: Choice/Logic (`runSeq`, the CanFail witness for `if`
-      guards in a `for`), Resource, Once, Delim (multi-prompt — the
-      `Prompted ?=>` scopes become an explicit scope parameter, since
-      Scala 2 has no context functions; specs/okay2.md names the 79
-      `?=>` sites of the Scala 3 core), Gen, Stream/Fold, Prob, Sim,
+      channels are `okay2-fast-channels`. Resource, Once, Delim and
+      Provide LANDED 2026-09-24 (stage 6; the `?=>` doors became
+      evidence-first values). Then the rest, in order of use:
+      Choice/Logic (`runSeq`, the CanFail witness for `if` guards in a
+      `for`; the Once handler-order tests wait for it), SharedOnce
+      (okay-async), Gen, Stream/Fold, Prob, Sim,
       Validated/Static, Eager, Refs, HMap, Tag. Each stage mirrors the
       Scala 3 suite for that file and lands with its docs section in
       docs/okay2.md. Rule from stage 1: a lone `Inject` is a Bind with a

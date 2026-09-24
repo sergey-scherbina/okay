@@ -30,7 +30,7 @@
  *   answer type under a `Bind` and cannot at a bare `Inject`.
  * - No `inline`: the hot paths are ordinary methods for the JIT.
  */
-package object okay2 {
+package object okay2 extends Provides {
 
   /** a computation of A performing the operations of the row R: A ! R.
    * Scala 2 gives every infix TYPE operator one precedence, left-
@@ -88,6 +88,21 @@ package object okay2 {
 
   /** stop: nothing to answer with */
   def abort[A]: A ! Abort = Throws.raise[Unit, A](())
+
+  /**
+   * Bracket over any Handler-able row F: acquire, use, release — the
+   * use-program runs to completion inside one suspension, so no outer
+   * handler can skip or repeat the release; a fiber's cancellation is
+   * an interrupt exception, and the finally sees it. For a release
+   * scoped to a whole program of arbitrary effects, use the `Resource`
+   * effect instead.
+   */
+  def bracket[R, A, F <: Row](acquire: => R)(release: R => Unit)(use: R => A ! F)(implicit H: Handler[F]): A ! F =
+    pure[F, Unit](()).flatMap { _ =>
+      val r = acquire
+      try pure[F, A](use(r).runWith)
+      finally release(r)
+    }
 
   implicit final class ProgOps[R <: Row, A](private val p: A ! R) extends AnyVal {
     /** land in the row R2, which must CONTAIN every signature of this

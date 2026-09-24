@@ -28,7 +28,8 @@ Contents:
 10. [Streams: chunks, stages, pipelines, windows](#10-streams-chunks-stages-pipelines-windows)
 11. [Async and the JVM platform](#11-async-and-the-jvm-platform)
 12. [Channels and sources](#12-channels-and-sources)
-13. [Literature](#13-literature)
+13. [Resources, once, delimited control, capabilities](#13-resources-once-delimited-control-capabilities)
+14. [Literature](#14-literature)
 
 ## 1. The build
 
@@ -618,11 +619,169 @@ travelling as a mark (`SentinelChannel` over `Growing`/`Ring`/
 `Segments`); those mechanisms are a later stage here, and
 `Channel.apply` is the reference `StmChannel`.
 
-## 13. Literature
+## 13. Resources, once, delimited control, capabilities
+
+**Resource** ties release to the SCOPE: acquire inside it, and the
+scope releases at its end in reverse order, whatever else the program
+does — at its value, at a throw, or when a residual that forwarded
+other effects completes:
+
+```scala
+    def res(n: String) = Resource.acquire { log ::= s"open $n"; n } (r => log ::= s"close $r")
+    val prog = res("a").flatMap(a => res("b").map(b => a + b))
+    assertEquals(Resource.scoped(prog), "ab")
+    assertEquals(log.reverse, List("open a", "open b", "close b", "close a"))
+```
+
+```scala
+    type F = Resource + Later
+    val prog: Int ! F =
+      Resource.acquire(())(_ => released = true).at[F].flatMap(_ => later(41).at[F].map(_ + 1))
+    val residual: Int ! Later = Resource.run[Int, F, Later](prog)
+    assertEquals(released, false)
+    assertEquals(residual.runWith, 42)
+    assertEquals(released, true)
+```
+
+`run` asks the residual row how a forwarded operation reports failure
+(`Failing`): the core answers for `Pure`, `import okay2.async._`
+answers for any row with `Async` in it, and a row with no answer is a
+compile error rather than a scope that silently leaks. An `Async.Run`
+that throws on the outer handler still releases:
+
+```scala
+    type F = Resource + Async
+    val prog = Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close").at[F]
+      .flatMap(_ => Async[Int] { log ::= "run"; throw new RuntimeException("boom") }.at[F])
+    val out = outcome(Async.runAsync(Resource.run[Int, F, Async](prog)))
+    assert(out.exists(_.isFailure), s"expected the failure, got $out")
+    assertEquals(log.reverse, List("open", "run", "close"))
+```
+
+**Once** is call-by-need for programs, as an effect: the first demand
+runs the program, every later demand of the same value answers from a
+cell the handler keeps, and the tree holds no cell, so the same program
+run twice replays:
+
+```scala
+    val q: Int ! R = !.once[Int, W](Free.delay(() => { hits += 1; pure[R, Int](hits * 10) }))
+    val prog: Int ! R = q.flatMap(a => q.flatMap(b => q.map(c => a + b + c)))
+    assertEquals(logged(prog), (Seq(), 30))
+    assertEquals(hits, 1)
+```
+
+**Delim** is multi-prompt delimited control as an effect: a prompt is
+a typed tag, `push` installs it, `shift` captures up to the NAMED
+prompt and hands the rest of the program over as a value — to invoke
+twice, to drop, to keep:
+
+```scala
+    val r = !.run(Delim.reset[Int, P] { p =>
+      Delim.shift[Int, Int, P](p) { k =>
+        k(1).flatMap(a => k(2).map(b => a + b))
+      }.map(_ * 10)
+    })
+    assertEquals(r, 30)
+```
+
+```scala
+    val prog: Int ! Row =
+      push[Int, P](outer) {
+        push[Int, P](inner) {
+          Delim.shift[Int, Int, P](outer)(_ => pure[Row, Int](99))
+        }.map { x => innerFinished = true; x + 1 }
+      }.map(_ + 1000)
+```
+
+The typed door is EVIDENCE rather than a prompt: a `Prompted.Aux[R, F]`
+can only be held inside the `scope`/`delimited` that installed the
+delimiter, it carries the row, and a function that captures is written
+apart from any prompt and runs only where a delimiter is in force.
+Scala 2 has no context functions, so the evidence is passed first:
+
+```scala
+    def banner(in: Delim.Prompted.Aux[Int, W]): Int ! (Delim + W) =
+      Writer.tell("hello").at[Delim + W].flatMap(_ => Delim.shift[Int, Int](in)(k => k(5)).map(_ + 1))
+    assertEquals(!.run(Writer.run[String, Int, W](Delim.delimited[Int, W](banner))), (Seq("hello"), 6))
+```
+
+The four patterns are names over that door. `collect`/`emit` reads a
+push producer as a pull — the walk stays a walk:
+
+```scala
+  def walk(t: Tree)(e: Delim.Emitting.Aux[Int, P]): Unit ! R = t match {
+    case Leaf(a) => Delim.emit(e)(a)
+    case Node(l, r) => walk(l)(e).flatMap(_ => walk(r)(e))
+  }
+```
+
+```scala
+    assertEquals(!.run(Delim.collect[Int, P](walk(t))), List(1, 2, 3))
+```
+
+`pause`/`resumable` stops in the middle and hands the rest back as a
+value; `replay` re-derives where a dialogue stands from its journal,
+exactly when the row is `Replayable` (a `Writer` in it is refused at
+compile time):
+
+```scala
+  def booking(s: Delim.Asking.Aux[String, String, String, P]): String ! R = for {
+    city <- Delim.pause(s)("Which city?")
+    nights <- Delim.pause(s)(s"How many nights in $city?")
+    pay <- Delim.pause(s)(s"Pay ${nights.toInt * 90} for $city?")
+  } yield if (pay == "yes") s"Booked $city for $nights nights" else "Cancelled"
+```
+
+```scala
+    val start = !.run(Delim.resumable[String, String, String, P](booking))
+    assertEquals(start.asking, Some("Which city?"))
+```
+
+```scala
+    val back = !.run(Delim.replay[String, String, String, P](booking)(j2))
+    assertEquals(back.asking, Some("Pay 270 for Kyiv?"))
+```
+
+**Provide** is the capability pair: `provide` installs values for a
+block, `wire[A]` reads one by type, and a missing capability is a
+compile error. A body that takes several is curried, which is the
+chain `Providing.and` composes:
+
+```scala
+    assertEquals(provide(prod, logged)(implicit db => implicit log => app), "info:prod-row")
+```
+
+```scala
+    assertEquals((withDb and withLog and withClock)(implicit d => implicit l => implicit c => app), "t@7:row")
+```
+
+A `Module` is an installer that builds in the `Resource` effect, so
+acquiring and releasing in reverse order is the region's obligation;
+the right operand of `and` may be built INSIDE the left's context,
+which is how the dependency graph is checked by the compiler:
+
+```scala
+    val db = module[Db]({ log ::= "open db"; new Db { val name = "db" } })(_ => log ::= "close db")
+    val pool = db and { implicit d: Db =>
+      module[Pool]({ log ::= s"open pool over ${wire[Db].name}"; new Pool { def borrow() = 7 } })(_ => log ::= "close pool")
+    }
+    val app: Int ! Resource = pool { _ => implicit p => wire[Pool].borrow() }
+    assertEquals(Resource.scoped(app), 7)
+    assertEquals(log.reverse, List("open db", "open pool over db", "close pool", "close db"))
+```
+
+## 14. Literature
 
 - Oleg Kiselyov and Hiromi Ishii, "Freer Monads, More Extensible
   Effects" (Haskell Symposium 2015) — the tree, the relay handler,
   and why no Functor is needed.
+- R. Kent Dybvig, Simon Peyton Jones and Amr Sabry, "A monadic
+  framework for delimited continuations" (JFP 2007) — the
+  multi-prompt design `Delim` follows: prompts as first-class tags,
+  `push` and `shift` as operations of one machine.
+- Christian Queinnec, "Inverting back the inversion of control, or
+  Continuations versus page-centric programming" (2003) — the web
+  dialogue `Paused`/`resumable` is the type of.
 - Olivier Danvy and Andrzej Filinski, "Abstracting Control" (LFP 1990)
   — `shift`/`reset` and answer-type modification, which `Cont` and
   `PState` carry in their signatures.
