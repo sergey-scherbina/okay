@@ -139,6 +139,21 @@ object Fold {
     def addLong(s: Long, a: Long): Long = math.min(s, a)
   }
 
+  val maxDouble: OfDouble[Double] = new OfDouble[Double] {
+    def initDouble: Double = Double.NegativeInfinity
+    def addDouble(s: Double, a: Double): Double = if (a > s) a else s
+  }
+
+  val minDouble: OfDouble[Double] = new OfDouble[Double] {
+    def initDouble: Double = Double.PositiveInfinity
+    def addDouble(s: Double, a: Double): Double = if (a < s) a else s
+  }
+
+  /** every Monoid folds on its own diagonal — implicit, as in the core:
+   * okay2 passes a Fold explicitly everywhere its output type is not
+   * already fixed, so this cannot compete with `collect` */
+  implicit def fromMonoid[W](implicit M: Monoid[W]): Fold[W, W] = Fold(M.empty)(M.combine)
+
   /** the sum in any Numeric: the generic fold — the three unboxed
    * sums above are the ones to name where the type is known (the
    * Scala 3 core picks them at compile time with `summonFrom`; here
@@ -303,49 +318,53 @@ object FoldUntil {
 }
 
 /**
- * An aggregation a platform can run in parts (the Scala 3 core's
- * Aggregate.scala, its first four members): a start, the sequential
- * step, the combine of two partial results (associative), and the
- * final projection. Here for `Windows`; the rest of that file — the
- * algebra of aggregators, `Group`, sliding windows by count — is a
- * later stage.
+ * The push side of consumption: a Foldable runs a Fold over all its
+ * elements and yields only the output. The pull side is Stream
+ * (codata, uncons).
  */
-trait Aggregator[-In, Acc, +Out] extends Serializable {
-  def init: Acc
-  def add(acc: Acc, in: In): Acc
-  def merge(a: Acc, b: Acc): Acc
-  def present(acc: Acc): Out
+trait Foldable[F[_]] {
+  def fold[A, S](fa: F[A])(f: Fold[A, S]): S
 
-  /** the push-consumer view */
-  def fold[In2 <: In]: Fold[In2, Acc] = Fold(init)((s, a) => add(s, a))
-
-  /** run over a whole collection */
-  def run(xs: IterableOnce[In]): Out = present(xs.iterator.foldLeft(init)(add))
-
-  /** the same aggregation over another input */
-  def contramap[In2](f: In2 => In): Aggregator[In2, Acc, Out] = {
-    val self = this
-    new Aggregator[In2, Acc, Out] {
-      def init: Acc = self.init
-      def add(acc: Acc, in: In2): Acc = self.add(acc, f(in))
-      def merge(a: Acc, b: Acc): Acc = self.merge(a, b)
-      def present(acc: Acc): Out = self.present(acc)
-    }
-  }
+  /** the fold that stops: elements are read only while `done` is
+   * false, and none after */
+  def foldUntil[A, S, R](fa: F[A])(fo: FoldUntil[A, S, R]): R
 }
 
-object Aggregator {
-  def apply[In, Acc, Out](z: Acc)(step: (Acc, In) => Acc)(combine: (Acc, Acc) => Acc)(finish: Acc => Out): Aggregator[In, Acc, Out] =
-    new Aggregator[In, Acc, Out] {
-      def init: Acc = z
-      def add(acc: Acc, in: In): Acc = step(acc, in)
-      def merge(a: Acc, b: Acc): Acc = combine(a, b)
-      def present(acc: Acc): Out = finish(acc)
+object Foldable {
+  def apply[F[_]](implicit F: Foldable[F]): Foldable[F] = F
+
+  /** every IterableOnce container runs a Fold by foldLeft, and a
+   * FoldUntil by its iterator — which is left positioned after the
+   * satisfying element, so an `Iterator` can be folded on in pieces */
+  implicit def iterableOnce[F[X] <: IterableOnce[X]]: Foldable[F] = new Foldable[F] {
+    def fold[A, S](fa: F[A])(f: Fold[A, S]): S = fa.iterator.foldLeft(f.init)(f.add)
+
+    def foldUntil[A, S, R](fa: F[A])(fo: FoldUntil[A, S, R]): R = {
+      val it = fa.iterator
+      // the element type is erased, so these tests see only the shape —
+      // the same unavoidable `@unchecked` `Stream.foldUntil` carries
+      fo match {
+        case l: FoldUntil.OfLong[A @unchecked, R @unchecked] =>
+          var s = l.initLong
+          while (!l.doneLong(s) && it.hasNext) s = l.addLong(s, it.next())
+          l.endLong(s)
+        case i: FoldUntil.OfInt[A @unchecked, R @unchecked] =>
+          var s = i.initInt
+          while (!i.doneInt(s) && it.hasNext) s = i.addInt(s, it.next())
+          i.endInt(s)
+        case d: FoldUntil.OfDouble[A @unchecked, R @unchecked] =>
+          var s = d.initDouble
+          while (!d.doneDouble(s) && it.hasNext) s = d.addDouble(s, it.next())
+          d.endDouble(s)
+        case b: FoldUntil.OfBoolean[A @unchecked, R @unchecked] =>
+          var s = b.initBoolean
+          while (!b.doneBoolean(s) && it.hasNext) s = b.addBoolean(s, it.next())
+          b.endBoolean(s)
+        case _ =>
+          var s = fo.init
+          while (!fo.done(s) && it.hasNext) s = fo.add(s, it.next())
+          fo.end(s)
+      }
     }
-
-  def sum[N](implicit N: Numeric[N]): Aggregator[N, N, N] =
-    apply[N, N, N](N.zero)(N.plus)(N.plus)(identity)
-
-  def count[A]: Aggregator[A, Long, Long] =
-    apply[A, Long, Long](0L)((n, _) => n + 1L)(_ + _)(identity)
+  }
 }

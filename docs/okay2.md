@@ -51,7 +51,8 @@ Contents:
 22. [Producers and generators](#22-producers-and-generators)
 23. [Eager programs](#23-eager-programs)
 24. [A map whose type lists its entries](#24-a-map-whose-type-lists-its-entries)
-25. [Literature](#25-literature)
+25. [Aggregations, windows and folds](#25-aggregations-windows-and-folds)
+26. [Literature](#26-literature)
 
 ## 1. The build
 
@@ -577,11 +578,11 @@ choosing, a Writer program as a `ZStream`:
 ```
 
 What the Scala 3 core's interop has and this does not yet: an `Async`
-program run under `IO.blocking`, and chunked streams — okay2 has
-neither effect yet (backlog `okay2-stage2`). `fromZStream` collects
-the stream in one operation: a pull that survives across a program's
-operations is a scoped resource, and that is the Resource effect's
-job when it comes.
+program run under `IO.blocking`, and chunked streams — this interop
+was written before okay2 had `Async` and `Resource`, and does not use
+them yet (backlog `okay2-interop-async`). `fromZStream` collects the
+stream in one operation: a pull that survives across a program's
+operations is a scoped resource, which is the Resource effect's job.
 
 ## 10. Streams: chunks, stages, pipelines, windows
 
@@ -1364,8 +1365,51 @@ what the map holds at run time. Where keys are run-time values, `TMap`
 (§19) is the tool: HMap answers "which entries does this map hold?" in
 the type, TMap "what did this run put under this key?" at run time.
 
-## 25. Literature
+## 25. Aggregations, windows and folds
 
+An `Aggregator` is a fold that can also MERGE two partial results — the
+(zero, seqOp, combOp) triple Spark and Flink accept — so it runs in
+chunks, in parallel, or across machines. `zip` computes two in one pass,
+`groupBy` one per key:
+
+```scala
+import okay2.{Aggregator => A}
+  val xs = List(3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0)
+    val agg = A.groupBy((x: Double) => x < 4)(A.sum[Double].zip(A.count[Double]))
+    assertEquals(agg.run(xs), Map(true -> ((7.0, 4L)), false -> ((24.0, 4L))))
+```
+
+The statistics are `mean`, `variance`, `stddev`, `min`, `max`, `first`,
+`last`, `topK`, `distinct` and `summary` (count, sum, min and max in one
+flat accumulator). Where the accumulator is a primitive it stays one:
+`sum[Long]` is an `Aggregator.OfLong`, and two of those zip without a
+tuple:
+
+```scala
+    val flat = A.count[Long].zipLong(A.sum[Long])
+```
+
+`sliding(s)(n)` is a window over any stream whose element is a `Group`:
+the element that ages out is subtracted, not recomputed, and an element
+with no inverse (a `String`) does not compile:
+
+```scala
+    val windows = sliding(nats[Int, Producer])(5).take(20).toList
+```
+
+And any collection runs a `Fold` or a `FoldUntil` directly:
+
+```scala
+    assertEquals(List(1, 2, 3).foldTo[Seq[Int]], Seq(1, 2, 3))
+    assertEquals(Iterator.from(1).foldUntilTo(sumL), 55L)
+```
+
+## 26. Literature
+
+- B. P. Welford, "Note on a method for calculating corrected sums of
+  squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
+  Randall LeVeque, "Updating formulae and a pairwise algorithm for
+  computing sample variances" (1979): `variance` and its merge.
 - Flavio Brasil, kyo (2023-): the eager `A | (A < S)` encoding that
   `Eager` borrows. Jacques Carette, Oleg Kiselyov and Chung-chieh Shan,
   "Finally tagless, partially evaluated" (JFP 2009): the tagless

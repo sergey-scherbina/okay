@@ -1331,6 +1331,58 @@ derived by induction over it.
   shadowing case is an ambiguity rather than the newer entry (Scala 3's
   tuple match needs none).
 
+## Stage 21 — the rest of Stream/Fold: Aggregator, sliding, Foldable (2026-09-24)
+The last of the operator's list ("Pull, Eager, HMap, Generate and parts
+of Stream/Fold"), which closes `okay2-stage2`:
+- `Aggregator` leaves Fold.scala for Aggregate.scala, as in the core,
+  and gains the whole family: `zip`/`map`/`contramap`, the unboxed
+  `OfLong`/`OfInt`/`OfDouble` (each IS its own `Fold.OfX`, so
+  `Stream.fold`'s dispatch keeps the accumulator primitive), `zipLong`
+  over `Longs2`, `Sequential`, `fromMonoid`, `sumLong`/`sumInt`/
+  `sumDouble`, `mean` (`Mean`), `variance`/`stddev` (`Variance`,
+  Welford merged by Chan/Golub/LeVeque), `summary` (`Summary`),
+  `min`/`max`/`first`/`last`, `topK`, `distinct`, `groupBy`.
+- `sliding(s)(n)` over any stream on a `Group`: subtract on age.
+- `Foldable` (an instance for every `IterableOnce`, the `FoldUntil`
+  walk dispatched on the four primitive shapes), `foldTo`/`foldUntilTo`;
+  `Fold.fromMonoid` (implicit), `Fold.maxDouble`/`minDouble`.
+- Streams: `zip` and `++` across carriers, `Stream.map`/`Stream.flatMap`
+  by name, and `MonadPlus[LazyList]`.
+
+### Behavior (stage 21)
+- [x] zip computes two statistics in one pass over a producer; an
+      unboxed aggregator is its own fold (TestAggregate, 16 tests —
+      every test of the core's suite but `|-|`, which okay2 has no
+      operator for)
+- [x] mean/variance/stddev against the references; zipLong and summary
+      answer what the zips answer and merge the same at every cut; the
+      merge contract for sum/count/min/max/topK/distinct/variance
+- [x] topK: ties keep the first seen, agrees with sorting at every k,
+      holds at most k; groupBy merges
+- [x] sliding equals recompute; a Monoid-only element does not compile
+- [x] foldTo/foldUntilTo on the four shapes, an infinite iterator stops,
+      an iterator folds on in pieces; zip/++/map/flatMap across
+      carriers; LazyList's MonadPlus (TestFoldable, 5 tests)
+
+### Decisions
+- `sum[N]` keeps the core's point, that the specialization is VISIBLE
+  in its type (`sum[Long].zipLong` compiles): the core's match type
+  `SumOf[N]` is an implicit here, `SumOf.Aux[N, Out]`, with Long/Int/
+  Double above a low-priority `Numeric` fallback, and `sum` answers the
+  dependent `S.Out`. No cast — the core needs one on its wildcard
+  branch because an abstract `N` cannot reduce a match type; an
+  implicit is simply the instance that was found.
+- `Fold.fromMonoid` is implicit as in the core. It cannot compete with
+  `Fold.collect`: okay2 passes a `Fold` explicitly wherever its output
+  type is open, and with the output fixed only one of the two fits.
+- `foldTo`/`foldUntilTo` take the `Foldable` at the conversion and the
+  fold as the method's only implicit, so `xs.foldUntilTo(fo)` is the
+  core's `xs.foldUntilTo(using fo)`; the core had to split its
+  extension in two to get that.
+- `zip`/`++` are StreamOps members, so a collection's OWN `zip`/`++`
+  wins on a collection, exactly as in the core; on a producer, or
+  across carriers, they are these.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

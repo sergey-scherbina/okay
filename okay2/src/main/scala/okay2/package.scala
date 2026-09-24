@@ -91,6 +91,33 @@ package object okay2 extends Provides with Monads {
    * fast, fused, NOT stack-safe */
   type Func[A, S, R] = (A => S) => R
 
+  /** run a Fold (or a FoldUntil) over any Foldable container: the
+   * evidence is taken at the conversion, so the fold is the method's
+   * only implicit and `xs.foldUntilTo(fo)` passes it as written */
+  implicit final class FoldableOps[F[_], A](private val fa: F[A])(implicit F: Foldable[F]) {
+    def foldTo[S](implicit fo: Fold[A, S]): S = F.fold(fa)(fo)
+    def foldUntilTo[S, R](implicit fo: FoldUntil[A, S, R]): R = F.foldUntil(fa)(fo)
+  }
+
+  /**
+   * The sliding window, on a Group: each emitted value is the combine of
+   * the last (up to) n elements — aging data is SUBTRACTED by the
+   * inverse, never recomputed. A Monoid-only element type is refused at
+   * compile time: there is no un-seeing without an inverse.
+   */
+  def sliding[S[_], F <: Row, A](s: S[A])(n: Int)(implicit G: Group[A], St: Stream[S, F], H: Handler[F]): LazyList[A] = {
+    def go(q: Vector[A], acc: A, rest: LazyList[A]): LazyList[A] = rest match {
+      case a #:: t =>
+        val grown = G.combine(acc, a)
+        if (q.length >= n) {
+          val aged = G.combine(grown, G.inverse(q.head))
+          aged #:: go(q.tail :+ a, aged, t)
+        } else grown #:: go(q :+ a, grown, t)
+      case _ => LazyList.empty
+    }
+    go(Vector.empty, G.empty, LazyList.unfold(s)(x => Effects.runFree(St.uncons(x))))
+  }
+
   /** the eager encoding (see `EagerModule`): `Eager[F, A]` is abstract
    * here, `import Eager._` brings its `Effects` instance */
   val Eager: EagerModule = EagerImpl

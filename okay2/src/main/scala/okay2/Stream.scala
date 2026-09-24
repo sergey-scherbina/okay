@@ -131,6 +131,16 @@ object Stream {
       }
     }
 
+  /** transform each element (on a program carrier the postfix .map
+   * belongs to the monad, so the element-wise one keeps this name) */
+  def map[S[_], F <: Row, A, B](s: S[A])(f: A => B)(implicit St: Stream[S, F], H: Handler[F]): LazyList[B] =
+    LazyList.unfold(s)(x => Effects.runFree(St.uncons(x))).map(f)
+
+  /** a stream for each element, concatenated (any carriers) */
+  def flatMap[S[_], T[_], F <: Row, G <: Row, A, B](s: S[A])(f: A => T[B])
+      (implicit St: Stream[S, F], H: Handler[F], Tt: Stream[T, G], HG: Handler[G]): LazyList[B] =
+    LazyList.unfold(s)(x => Effects.runFree(St.uncons(x))).flatMap(a => LazyList.unfold(f(a))(y => Effects.runFree(Tt.uncons(y))))
+
   /**
    * Consume with a Fold algebra over the LINEAR view, dispatched on
    * the accumulator as the Scala 3 core does: the four primitive
@@ -204,6 +214,12 @@ object Stream {
     def takeWhile(p: A => Boolean): LazyList[A] = toLazyList.takeWhile(p)
     def dropWhile(p: A => Boolean): LazyList[A] = toLazyList.dropWhile(p)
     def zipWithIndex: LazyList[(A, Int)] = toLazyList.zipWithIndex
+    /** pair up with another stream (any carrier), until either ends */
+    def zip[T[_], G <: Row, B](that: T[B])(implicit Tt: Stream[T, G], HG: Handler[G]): LazyList[(A, B)] =
+      toLazyList.zip(LazyList.unfold(that)(y => Effects.runFree(Tt.uncons(y))))
+    /** this stream, then that one (any carrier) */
+    def ++[T[_], G <: Row](that: T[A])(implicit Tt: Stream[T, G], HG: Handler[G]): LazyList[A] =
+      toLazyList #::: LazyList.unfold(that)(y => Effects.runFree(Tt.uncons(y)))
     def foldLeft[B](z: B)(op: (B, A) => B): B = St.iterator(s).foldLeft(z)(op)
     def foreach(f: A => Unit): Unit = St.iterator(s).foreach(f)
     def headOption: Option[A] = uncons.map(_._1)

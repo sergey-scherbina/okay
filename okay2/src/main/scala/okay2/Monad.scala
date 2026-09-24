@@ -54,6 +54,16 @@ object Functor {
     override def fmap[A, B](a: Option[A], f: A => B): Option[B] = a.map(f)
     def flatMap[A, B](a: Option[A])(f: A => Option[B]): Option[B] = a.flatMap(f)
   }
+
+  /** the stream carrier is the canonical MonadPlus: the empty stream is
+   * failure, appending is concatenation. Here for the same reason
+   * `option` is: every class of the hierarchy has Functor as a base */
+  implicit val lazyList: MonadPlus[LazyList] = new MonadPlus[LazyList] {
+    def pure[A](a: A): LazyList[A] = LazyList(a)
+    def empty[A]: LazyList[A] = LazyList.empty
+    def flatMap[A, B](a: LazyList[A])(f: A => LazyList[B]): LazyList[B] = a.flatMap(f)
+    def append[A](x: LazyList[A], y: => LazyList[A]): LazyList[A] = x #::: y
+  }
 }
 
 /** lift values and apply lifted functions; fmap derives from pure and app */
