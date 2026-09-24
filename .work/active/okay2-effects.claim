@@ -1,6 +1,0 @@
-feature/okay2-effects 2026-09-24T06:58:07Z
-agent: claude-code
-heartbeat: 2026-09-24T06:58:07Z
-status: in-progress
-done-so-far: claimed
-next: port Resource, Once, Delim, Provide into okay2 (core), Failing[Async] into okay2-async; tests; spec stage 6; docs section 13
