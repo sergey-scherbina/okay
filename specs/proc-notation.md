@@ -201,22 +201,22 @@ failed at expansion with "a reference to value p was used outside the
 scope where it was defined". Paterson's notation has `case` for exactly
 this: the pattern's binders join the environment of their branch.
 
-- [ ] A `match` whose cases ask questions compiles in all three positions
+- [x] A `match` whose cases ask questions compiles in all three positions
       an `if` does: the right-hand side of a `val`, a statement of its
       own, and the block's answer.
-- [ ] Translation: the scrutinee's questions are asked first (hoisted,
+- [x] Translation: the scrutinee's questions are asked first (hoisted,
       as a condition's are). ONE pure step runs the original `match`, its
       patterns and guards untouched, and each case answers an injection
       of the environment extended by that case's binders into a nested
       `Either`. Each case body is compiled at its own extended
       environment, and the bodies are joined by `|||`. No pattern is
       duplicated and no binder renamed.
-- [ ] Every case's questions are in `leaves`, and only the taken case
+- [x] Every case's questions are in `leaves`, and only the taken case
       asks. `walk` agrees with replay on every prefix.
-- [ ] Guards may read the binders and the block's names. A guard that
+- [x] Guards may read the binders and the block's names. A guard that
       asks a question is refused by name (a guard runs for cases not
       taken).
-- [ ] A match with no questions in its cases is ordinary code, as
+- [x] A match with no questions in its cases is ordinary code, as
       before.
 
 ## Out of scope
@@ -544,3 +544,34 @@ for, and it says stage 2 is NOT earned**: one IR serving three
 translations would have to model the environment for one road and the
 continuation for the other two, which is two IRs with a shared name.
 The line stands until a fourth road wants the same normalisation.
+
+### Stage 4 — landed 2026-09-24 (`proc-notation-case-binders`)
+
+- `ProcMacro.compileMatch`. The selector is one `Proc.arr` running a
+  `Match` built from the ORIGINAL `CaseDef`s' patterns and guards; the
+  guards are rewritten against the environment. Each case's right-hand
+  side becomes an injection into `Either[E0, Either[E1, …]]`, and `Ei` is
+  the environment extended by the case's `Bind` symbols, in pattern
+  order. Branches come from `compileValue` at `st` pushed and bound with
+  those symbols, and a `fanin` built like compileIf's
+  (`onRight`/`swap`/`onRight`/merge) joins them.
+- Found beside it, and fixed. (1) The statement position of an `if` with
+  questions handed a raw lambda to `thenTerm`; it had never been
+  exercised, and compiling the `match` twin of it crashed the macro
+  ("Expected type: okay.Proc…, Actual type: Function1"). Both are now
+  wrapped in `arr`. (2) An assignment to an outer `var` INSIDE a branch
+  compiled to "Reassignment to val _2", or to a lost write. It is
+  refused by name (`noOuterAssign`), for `if` and `match`. (3) The
+  refusal's own advice, `x = if …`, did not compile: an assignment's
+  right-hand side went through hoisting. `x = if …` and `x = … match …`
+  now compile, the branch's value as a slot and the environment rebuilt
+  with `x` replaced.
+- Tests: TestProcMatch (a three-case match with a guard; binders read
+  after a question; walk against replay on every prefix; a val's
+  right-hand side with two binders from one pattern; statements; the
+  assignment forms; three refusals). The foreign workflow block in
+  okay-foreign-workflow now branches with `match`.
+- Mutants: injecting the cases in reverse was refused by the COMPILER,
+  since the environments differ when binders do. Dropping the guards
+  compiled, and failed the taken-case test.
+

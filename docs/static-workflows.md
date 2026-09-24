@@ -191,6 +191,44 @@ or the block's answer. An `if` nested inside a larger expression is
 refused, and the message says why — it would have to hoist, and a
 hoisted mark RUNS whether or not its branch is taken.
 
+### `match`
+
+A `match` whose cases ask questions is a branch with more than two
+sides, and the pattern's names are the branch's own (Paterson's `case`
+in proc notation):
+
+```scala
+    Proc.direct[Sig, Unit, String]: _ =>
+      val limit = 100
+      val price = !ask("price?")
+      price.toIntOption match
+        case Some(p) if p > limit =>
+          val ok = !ask(s"approve $p?")
+          s"big $p $ok"
+        case Some(p) =>
+          val n = !ask(s"how many at $p?")
+          s"total ${p * n.toInt}"
+        case None => s"no price: $price"
+```
+
+It compiles to ONE pure step that runs the `match` as written, with its
+patterns and guards, and hands the chosen case its environment plus the
+names its pattern bound. Then comes that case's branch; the branches are
+joined by `|||`. Every case's questions are in `leaves`, only the taken
+case asks, and `walk` agrees with replay on every prefix. A guard may
+read the pattern's names and the block's, but may not ask a question: a
+guard runs for cases that are not taken.
+
+The positions are an `if`'s: a val's right-hand side, a statement, the
+block's answer, and the value of an assignment. A branch updates a name
+by being its value, not by assigning it:
+
+```scala
+        log = (!ask("mode?")) match
+          case "loud" => log + "/" + (!ask("how loud?"))
+          case other => log + "/" + other
+```
+
 ## Loops, and the one node the literature lacks
 
 The classic objection to a static workflow is that its shape cannot
@@ -406,8 +444,13 @@ because which variant arrives is decided at run time.
   refusal says exactly that.
 - **A question in a `while` condition.** The test would have to ask
   once per round inside the loop — expressible, not wired.
-- **An `if` nested inside a larger expression**, for the hoisting
-  reason above. Bind it to a val first.
+- **An `if` or a `match` nested inside a larger expression**, for the
+  hoisting reason above. Bind it to a val first.
+- **An assignment to an earlier name INSIDE a branch.** The branch runs
+  at a copy of the environment and answers only its value, so the write
+  would be lost when the branches join. The refusal says so, and names
+  the form that works: `x = if … then … else …`, `x = s match …`.
+- **A question in a case guard**: it would run for the cases not taken.
 - **A mark is still required.** `direct` has auto-colouring behind a
   capability; this road has none, so an operation used where a value
   is wanted is the ordinary type error it should be.
