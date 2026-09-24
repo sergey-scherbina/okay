@@ -973,6 +973,46 @@ convenient — and can the handlers of okay2 and okay be made alike?"
   (`Handler[Choose, Pure, …]`): `Pure` is `Any` there and `Row` here, and
   the two sources agree only when they name it.
 
+## Stage 12 — Refs and Prob (2026-09-24)
+Operator: "carry on porting the main effects and features of the
+original into okay2" — the on-demand rule of the minimal-by-default
+decision is lifted for okay's MAIN effects. Order: Refs and Prob, then
+Sim, then TRef/TMap, then Validated/Static once `Applicative` lands
+(okay2-monad-many-instances), then the smaller ones.
+
+- `Refs`: `New`/`Read`/`Write`, `Ref[S]` (a value class over the slot
+  number, made only by `ref`), `ref`/`read`/`write`, `handle` (the heap
+  threaded like `State.handle`'s state; the rest of the row forwarded),
+  `run`.
+- `Dist` and `Prob`: `dist`/`uniform`/`observe`, `runExact` (multi-shot,
+  through `!.handle[Dist, R]`), `.posterior`, `sampleOnce`,
+  `runRejection`.
+
+### Behavior (stage 12)
+- [x] Refs: two cells in one row member, cells made in a loop, one value
+      type in two cells kept apart, a Writer forwarded through the heap,
+      100 000 cells on the default stack
+- [x] Prob: P(Rain | WetGrass) = 15/29 exactly, the pruned joint sums to
+      0.58, rejection sampling within 2%; a two-day HMM against a hand
+      enumerator; observe(false) prunes; uniform; a Writer forwarded with
+      both branches' tells; 4096 branches of 12 flips, P(6) = 924/4096
+
+### Decisions
+- NO CAST in `Refs.handle`, where the Scala 3 core has exactly one (and
+  a long comment defending it). okay2's handlers run at the answer type
+  `Any` — a `Bind`'s continuation takes `Any` since stage 8 — so a value
+  read out of a slot goes straight into the continuation the `Read[S]`
+  operation's answer type describes. The claim the core's cast makes is
+  one the tree already made when `read[S]` was built.
+- `Ref[S]` is a value class over its slot number, the Scala 2 spelling
+  of the core's `opaque type Ref[S] = Int`: private constructor, so only
+  the handler's `New` makes one.
+- The handlers need no type arguments at a call site
+  (`!.run(Writer.run(Refs.handle(p)))`, `runExact(p)`): the rest of the
+  row is inferred from `Free[Dist with R, A]`, stage 8's rule.
+- Not ported: the core's timing comparison against a hand enumerator
+  (a println, not an assertion); okay2's bench is its own item.
+
 ## CI (okay2-ci, 2026-09-24)
 okay2 is its own sbt build, so the root CI jobs could not see it
 (`affected` maps a diff onto the root build's projects; `family` runs
@@ -1004,7 +1044,9 @@ the Overview. What follows from it, and was done the same day
   `TestFacadeVocabulary` pins the same program lines compiling here.
 - The rest of `okay2-stage2` (Stream/Fold, Prob, Sim, Validated/
   Static, Eager, Refs, HMap, Tag) is ON DEMAND, not a queue: each is
-  ported when somebody needs it. Gen (stage 9) was the last port made
+  ported when somebody needs it. LIFTED for okay's MAIN effects the
+  same day (operator: "carry on porting the main effects"): stage 12
+  onward. Gen (stage 9) was the last port made
   by default. The operator's order after this: okay2-ci, then
   okay2-bench.
 

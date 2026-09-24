@@ -41,7 +41,8 @@ Contents:
 12. [Channels and sources](#12-channels-and-sources)
 13. [Resources, once, delimited control, capabilities](#13-resources-once-delimited-control-capabilities)
 14. [Generators](#14-generators)
-15. [Literature](#15-literature)
+15. [Cells made at run time, and probability](#15-cells-made-at-run-time-and-probability)
+16. [Literature](#16-literature)
 
 ## 1. The build
 
@@ -1042,7 +1043,46 @@ completeness":
     assertEquals(zipped, List(1 -> 'a', 2 -> 'b', 2 -> 'c', 3 -> 'd', 3 -> 'e', 3 -> 'f'))
 ```
 
-## 15. Literature
+## 15. Cells made at run time, and probability
+
+`State[S]` puts a state in the row. When the cells come from somewhere
+— one per request, one per node of a walk — no type can list them, and
+`Refs` says only "this program uses refs": `ref(init)` makes a cell at
+run time, and identity is the cell itself.
+
+```scala
+    val p: (Int, String) ! Refs =
+      for {
+        a <- Refs.ref(1)
+        b <- Refs.ref("ada")
+        _ <- Refs.write(a, 2)
+        x <- Refs.read(a)
+        y <- Refs.read(b)
+      } yield (x, y)
+    assertEquals(Refs.run(p), (2, "ada"))
+```
+
+`Dist` is probabilistic programming as an effect (Hansei): `dist` is a
+weighted choice, `observe` conditions on evidence, and inference is a
+handler. `runExact` explores every branch by resuming the rest of the
+program once per alternative; `runRejection` reads the same program by
+sampling:
+
+```scala
+  def wetGrass: Boolean ! Dist =
+    for {
+      rain <- dist(true -> 0.3, false -> 0.7)
+      sprinkler <- dist(true -> 0.4, false -> 0.6)
+      _ <- observe(rain || sprinkler)
+    } yield rain
+```
+
+```scala
+    val post = !.run(runExact(wetGrass)).posterior
+    assertEqualsDouble(post(true), 15.0 / 29.0, 1e-12)
+```
+
+## 16. Literature
 
 - Oleg Kiselyov and Hiromi Ishii, "Freer Monads, More Extensible
   Effects" (Haskell Symposium 2015) — the tree, the relay handler,
@@ -1064,6 +1104,9 @@ completeness":
 - Oleg Kiselyov, Aggelos Biboudis, Nick Palladinos and Yannis
   Smaragdakis, "Stream fusion, to completeness" (POPL 2017) — the zip
   through a fused flatMap.
+- Oleg Kiselyov and Chung-chieh Shan, "Embedded probabilistic
+  programming" (DSL 2009) — Hansei: a weighted choice as an effect and
+  inference as a handler, which `Dist` and `runExact` are.
 - Olivier Danvy and Andrzej Filinski, "Abstracting Control" (LFP 1990)
   — `shift`/`reset` and answer-type modification, which `Cont` and
   `PState` carry in their signatures.

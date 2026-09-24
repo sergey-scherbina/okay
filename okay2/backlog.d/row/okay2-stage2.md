@@ -9,8 +9,11 @@
       until a `Monad`/`MonadPlus` exists here). Gen LANDED 2026-09-24
       (stage 9, chain fusion and zip ported whole). ON DEMAND FROM
       HERE (operator 2026-09-24: okay2 carries less than okay by
-      default and grows when somebody needs something specific): the
-      rest is ported only when asked for — Stream/Fold, Prob, Sim,
+      default and grows when somebody needs something specific) —
+      LIFTED for okay's MAIN effects later the same day ("carry on
+      porting the main effects"): Refs and Prob LANDED (stage 12);
+      next Sim, TRef/TMap, then Validated/Static after
+      okay2-monad-many-instances brings Applicative. Remaining: Stream/Fold, Prob, Sim,
       Validated/Static, Eager, Refs, HMap, Tag. Each stage mirrors the
       Scala 3 suite for that file and lands with its docs section in
       docs/okay2.md. Rule from stage 1: a lone `Inject` is a Bind with a
