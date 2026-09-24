@@ -1,3 +1,0 @@
-slug: rust-worker
-who: claude-opus-5.5 (interop session)
-what: polyglot-one-wire stage 2: the Rust okay crate (programs as data, direct style ctx.call, typed Op<A>, Worker, stdio + TCP), RustWorker.build, Rs.ops; conformance over (Rust, pipes/TCP)
