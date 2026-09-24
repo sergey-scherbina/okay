@@ -1957,6 +1957,30 @@ okay2-fast-channels left for later.
       recomputes a failed chunk; an effectful source does not typecheck
       as retryable (TestParallelChunks, 3)
 
+## Stage 37 — the scheduler laws and soaks (2026-09-25)
+Backlog `okay2-scheduler-laws`: the Scala 3 core's TestSchedulerLaws and
+TestAdaptiveScheduler, ported onto the same `SchedulerFamily` shape
+(loom, drive, own, own.forShortTasks, own.forLongTasks, adaptive).
+okay2-platform's JVM schedulers are the core's, class for class, so the
+laws ported with no source change.
+
+### Behavior (stage 37)
+- [x] every member: each answer joined exactly once (10 000 fibers), a
+      failure as `Left`, `onComplete` once before or after the answer,
+      cancel winning its race (a value after cancel is never the
+      answer, a parked fiber's late answer is not its own, a cancelled
+      fiber still ANSWERS), `par`
+- [x] the soaks of the defects they were written for: the Chase-Lev
+      deque conserves every task while it grows under six thieves
+      (60 rounds × 4000); no lost wake after a worker parked; a fiber
+      blocked for good in a raw call does not hide a later fork, nor a
+      child on its own deque (own-lost-wakeup); the stuck-check wakes a
+      parked overflow worker before growing; a submitter is answered
+      during a 2000-fiber burst; `close` gives the workers back
+- [x] the adaptive default: `hasVirtualThreads` against the API, `auto`
+      and the implicit default on this JVM's branch
+      (TestSchedulerLaws + TestAdaptiveScheduler, 52 results)
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
