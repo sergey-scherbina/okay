@@ -17,7 +17,7 @@
 
 use serde_json::{json, Map, Number, Value as J};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::marker::PhantomData;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::rc::Rc;
@@ -300,6 +300,8 @@ struct Parked {
 /// the okay wire's protocol with no I/O: the programs and functions it serves,
 /// the continuations and parked calls it holds
 pub struct Worker {
+    format: &'static str,   // "json" or "cbor" (stage 5a); json until a configure
+    compress: &'static str, // "none" or "deflate"
     programs: Programs,
     functions: Functions,
     konts: HashMap<(i64, i64), Rc<dyn Fn(Value) -> Prog>>,
@@ -324,11 +326,17 @@ fn condition(id: &J, kind: &str, message: &str) -> J {
 
 impl Worker {
     pub fn new(programs: Programs, functions: Functions) -> Worker {
-        Worker { programs, functions, konts: HashMap::new(), next: 0, waiting: HashMap::new(), asks: 0 }
+        Worker { format: "json", compress: "none", programs, functions, konts: HashMap::new(), next: 0, waiting: HashMap::new(), asks: 0 }
     }
 
     /// the handshake line a worker speaks first
-    pub fn hello() -> String { json!({"shim": SHIM_VERSION, "python": "rust"}).to_string() }
+    pub fn hello() -> String {
+        json!({"shim": SHIM_VERSION, "python": "rust",
+               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"]}}).to_string()
+    }
+
+    /// after a configure other than the defaults the wire carries frames
+    pub fn framed(&self) -> bool { self.format != "json" || self.compress != "none" }
 
     fn node(&mut self, run: i64, p: Prog) -> J {
         match p {
@@ -425,33 +433,257 @@ impl Worker {
                 let _ = parked.reply.send(answer);
                 self.await_call(parked.id, parked.events)
             }
+            Some("configure") => {
+                let f = req.get("format").and_then(|x| x.as_str()).unwrap_or("");
+                let c = req.get("compress").and_then(|x| x.as_str()).unwrap_or("");
+                if f != "json" && f != "cbor" {
+                    return condition(&id, "ValueError", &format!("this Rust worker speaks the formats json, cbor; not {:?}", f));
+                }
+                if c != "none" && c != "deflate" {
+                    return condition(&id, "ValueError", &format!("this Rust worker speaks the compressions none, deflate; not {:?}", c));
+                }
+                json!({"id": id, "ok": {"format": f, "compress": c}})
+            }
             other => condition(&id, "ValueError", &format!("this Rust worker serves programs and functions, not {:?}", other)),
         }
     }
 
-    /// one request line in, one answer line out
-    pub fn handle(&mut self, line: &str) -> String {
-        match serde_json::from_str::<J>(line) {
+    /// one message in the worker's current encoding in, one out in the same
+    /// encoding; a configure takes effect AFTER its own answer
+    pub fn handle_message(&mut self, msg: &[u8]) -> Vec<u8> {
+        let (reply, configured) = match self.decode(msg) {
             Ok(J::Object(req)) => {
                 let id = req.get("id").cloned().unwrap_or(J::Null);
-                self.answer(id, &req).to_string()
+                let reply = self.answer(id, &req);
+                let configured = if req.get("op").and_then(|o| o.as_str()) == Some("configure") && reply.get("ok").is_some() {
+                    Some((req.get("format").and_then(|x| x.as_str()) == Some("cbor"),
+                          req.get("compress").and_then(|x| x.as_str()) == Some("deflate")))
+                } else { None };
+                (reply, configured)
             }
-            _ => condition(&J::Null, "ValueError", "not a JSON request").to_string(),
+            Ok(_) => (condition(&J::Null, "ValueError", "a request is a map"), None),
+            Err(why) => (condition(&J::Null, "ValueError", &why), None),
+        };
+        let out = self.encode(&reply);
+        if let Some((cbor, deflate)) = configured {
+            self.format = if cbor { "cbor" } else { "json" };
+            self.compress = if deflate { "deflate" } else { "none" };
         }
+        out
+    }
+
+    /// one request line in, one answer line out (the JSON-lines wire)
+    pub fn handle(&mut self, line: &str) -> String {
+        String::from_utf8_lossy(&self.handle_message(line.as_bytes())).into_owned()
+    }
+
+    fn decode(&self, msg: &[u8]) -> Result<J, String> {
+        let raw;
+        let bytes = if self.compress == "deflate" {
+            let mut out = Vec::new();
+            flate2::read::DeflateDecoder::new(msg).read_to_end(&mut out)
+                .map_err(|e| format!("a DEFLATE message did not inflate: {}", e))?;
+            raw = out;
+            &raw[..]
+        } else {
+            msg
+        };
+        if self.format == "cbor" {
+            let (v, rest) = cbor_decode(bytes)?;
+            if !rest.is_empty() {
+                return Err(format!("CBOR: {} bytes after the message", rest.len()));
+            }
+            Ok(v)
+        } else {
+            serde_json::from_slice(bytes).map_err(|_| "not a JSON request".to_string())
+        }
+    }
+
+    fn encode(&self, reply: &J) -> Vec<u8> {
+        let out = if self.format == "cbor" {
+            let mut b = Vec::new();
+            cbor_encode(&mut b, reply);
+            b
+        } else {
+            reply.to_string().into_bytes()
+        };
+        if self.compress == "deflate" {
+            let mut z = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+            let _ = z.write_all(&out);
+            z.finish().unwrap_or_default()
+        } else {
+            out
+        }
+    }
+}
+
+// ------------------------------------------------------------- CBOR (RFC 8949)
+
+fn cbor_head(out: &mut Vec<u8>, major: u8, n: u64) {
+    let m = major << 5;
+    if n < 24 {
+        out.push(m | n as u8);
+    } else if n < 1 << 8 {
+        out.push(m | 24);
+        out.push(n as u8);
+    } else if n < 1 << 16 {
+        out.push(m | 25);
+        out.extend_from_slice(&(n as u16).to_be_bytes());
+    } else if n < 1 << 32 {
+        out.push(m | 26);
+        out.extend_from_slice(&(n as u32).to_be_bytes());
+    } else {
+        out.push(m | 27);
+        out.extend_from_slice(&n.to_be_bytes());
+    }
+}
+
+fn cbor_encode(out: &mut Vec<u8>, v: &J) {
+    match v {
+        J::Null => out.push(0xf6),
+        J::Bool(b) => out.push(if *b { 0xf5 } else { 0xf4 }),
+        J::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                if i >= 0 { cbor_head(out, 0, i as u64) } else { cbor_head(out, 1, (-1 - i) as u64) }
+            } else if let Some(u) = n.as_u64() {
+                cbor_head(out, 0, u)
+            } else {
+                out.push(0xfb);
+                out.extend_from_slice(&n.as_f64().unwrap_or(f64::NAN).to_bits().to_be_bytes());
+            }
+        }
+        J::String(s) => {
+            cbor_head(out, 3, s.len() as u64);
+            out.extend_from_slice(s.as_bytes());
+        }
+        J::Array(xs) => {
+            cbor_head(out, 4, xs.len() as u64);
+            for x in xs {
+                cbor_encode(out, x);
+            }
+        }
+        J::Object(m) => {
+            cbor_head(out, 5, m.len() as u64);
+            for (k, x) in m {
+                cbor_head(out, 3, k.len() as u64);
+                out.extend_from_slice(k.as_bytes());
+                cbor_encode(out, x);
+            }
+        }
+    }
+}
+
+fn cbor_arg(info: u8, b: &[u8]) -> Result<(u64, &[u8]), String> {
+    let n = match info {
+        i if i < 24 => return Ok((i as u64, b)),
+        24 => 1,
+        25 => 2,
+        26 => 4,
+        27 => 8,
+        other => return Err(format!("CBOR: an indefinite or reserved length ({}) is not in the wire's subset", other)),
+    };
+    if b.len() < n {
+        return Err("a CBOR message ended early (cut short?)".into());
+    }
+    Ok((b[..n].iter().fold(0u64, |acc, c| (acc << 8) | *c as u64), &b[n..]))
+}
+
+fn half(h: u16) -> f64 {
+    let exp = ((h >> 10) & 0x1f) as i32;
+    let mant = (h & 0x3ff) as f64;
+    let v = match exp {
+        0 => mant * 2f64.powi(-24),
+        31 => if mant == 0.0 { f64::INFINITY } else { f64::NAN },
+        e => (mant + 1024.0) * 2f64.powi(e - 25),
+    };
+    if h & 0x8000 != 0 { -v } else { v }
+}
+
+fn num(f: f64) -> J { Number::from_f64(f).map(J::Number).unwrap_or(J::Null) }
+
+fn cbor_decode(b: &[u8]) -> Result<(J, &[u8]), String> {
+    let (&ib, b) = b.split_first().ok_or("a CBOR message ended early (cut short?)")?;
+    let (major, info) = (ib >> 5, ib & 0x1f);
+    if major == 7 {
+        return match info {
+            20 => Ok((J::Bool(false), b)),
+            21 => Ok((J::Bool(true), b)),
+            22 | 23 => Ok((J::Null, b)),
+            25 => { let (x, r) = cbor_arg(info, b)?; Ok((num(half(x as u16)), r)) }
+            26 => { let (x, r) = cbor_arg(info, b)?; Ok((num(f32::from_bits(x as u32) as f64), r)) }
+            27 => { let (x, r) = cbor_arg(info, b)?; Ok((num(f64::from_bits(x)), r)) }
+            other => Err(format!("CBOR: simple value {} is not in the wire's subset", other)),
+        };
+    }
+    let (n, mut b) = cbor_arg(info, b)?;
+    match major {
+        0 => Ok((J::Number(n.into()), b)),
+        1 => Ok((J::Number((-1 - n as i64).into()), b)),
+        3 => {
+            let n = n as usize;
+            if b.len() < n {
+                return Err("a CBOR string ended early (cut short?)".into());
+            }
+            let s = std::str::from_utf8(&b[..n]).map_err(|_| "CBOR: a text string that is not UTF-8")?;
+            Ok((J::String(s.to_string()), &b[n..]))
+        }
+        4 => {
+            let mut xs = Vec::new();
+            for _ in 0..n {
+                let (x, r) = cbor_decode(b)?;
+                xs.push(x);
+                b = r;
+            }
+            Ok((J::Array(xs), b))
+        }
+        5 => {
+            let mut m = Map::new();
+            for _ in 0..n {
+                let (k, r) = cbor_decode(b)?;
+                let (v, r) = cbor_decode(r)?;
+                match k {
+                    J::String(k) => { m.insert(k, v); }
+                    _ => return Err("CBOR: a map key that is not text".into()),
+                }
+                b = r;
+            }
+            Ok((J::Object(m), b))
+        }
+        other => Err(format!("CBOR: major type {} (byte strings, tags) is not in the wire's subset", other)),
     }
 }
 
 // ------------------------------------------------------------------ transports
 
-fn serve_lines(mut w: Worker, input: impl BufRead, mut output: impl Write) {
+fn serve_lines(mut w: Worker, mut input: impl BufRead, mut output: impl Write) {
     let _ = writeln!(output, "{}", Worker::hello());
     let _ = output.flush();
-    for line in input.lines() {
-        let line = match line { Ok(l) => l, Err(_) => return };
+    loop {
+        if w.framed() {
+            // frames: a 4-byte big-endian length, then the message (stage 5a)
+            let mut n = [0u8; 4];
+            if input.read_exact(&mut n).is_err() {
+                return;
+            }
+            let mut msg = vec![0u8; u32::from_be_bytes(n) as usize];
+            if input.read_exact(&mut msg).is_err() {
+                return;
+            }
+            let reply = w.handle_message(&msg);
+            let _ = output.write_all(&(reply.len() as u32).to_be_bytes());
+            let _ = output.write_all(&reply);
+            let _ = output.flush();
+            continue;
+        }
+        let mut line = String::new();
+        match input.read_line(&mut line) {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {}
+        }
         if line.trim().is_empty() {
             continue;
         }
-        let _ = writeln!(output, "{}", w.handle(&line));
+        let _ = writeln!(output, "{}", w.handle(line.trim_end()));
         let _ = output.flush();
     }
 }
@@ -511,13 +743,12 @@ unsafe impl Send for InProcess {}
 /// one exchange in-process: an empty request answers the handshake
 #[doc(hidden)]
 pub fn exchange_in(global: &std::sync::Mutex<Option<InProcess>>, make: fn() -> Worker, req: &[u8]) -> Vec<u8> {
-    let line = String::from_utf8_lossy(req);
-    if line.trim().is_empty() {
+    if req.iter().all(|b| b.is_ascii_whitespace()) {
         return Worker::hello().into_bytes();
     }
     let mut guard = global.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let w = guard.get_or_insert_with(|| InProcess(make()));
-    w.0.handle(&line).into_bytes()
+    w.0.handle_message(req)
 }
 
 /// Export a worker IN-PROCESS: `okay_exchange(req, len, out_len) -> resp`

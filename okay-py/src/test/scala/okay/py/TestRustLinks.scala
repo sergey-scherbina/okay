@@ -59,6 +59,8 @@ fn main() {
     Files.writeString(dir.resolve("src").resolve("main.rs"), main): Unit
     RustWorker.build(dir)
 
+  @volatile var lastPort: Int = 0
+
   def serveTcp(): (ForeignWorker, Process) =
     val pb = ProcessBuilder(binary.toString)
     pb.environment().put("OKAY_LISTEN", "127.0.0.1:0")
@@ -68,7 +70,7 @@ fn main() {
       case okay.codec.Json.JObj(fs) => fs.toMap.get("listening").collect { case okay.codec.Json.JStr(a) => a.split(":").last.toInt }
       case _ => None
     port match
-      case Some(n) => (ForeignWorker.connect("127.0.0.1", n), p)
+      case Some(n) => lastPort = n; (ForeignWorker.connect("127.0.0.1", n), p)
       case None => p.destroy(); throw IllegalStateException(s"the Rust worker did not say where it listens: $first")
 
 /** (Rust, pipes) */
@@ -81,6 +83,26 @@ class TestRustPipes extends WireConformance:
 class TestRustTcp extends WireConformance:
   override def munitIgnore: Boolean = !RustWorkerBinary.available
   private lazy val served = RustWorkerBinary.serveTcp()
+  lazy val engine: ForeignWorker = served._1
+  override def afterAll(): Unit = if RustWorkerBinary.available then { served._1.close(); served._2.destroy() }
+
+/** (Rust, pipes), CBOR and DEFLATE chosen by givens (stage 5a) */
+class TestRustPipesCbor extends WireConformance:
+  import WireFormat.Cbor.given
+  import WireCompression.Deflate.given
+  override def munitIgnore: Boolean = !RustWorkerBinary.available
+  lazy val engine: ForeignWorker = ForeignWorker.speaking(Seq(RustWorkerBinary.binary.toString))
+  override def afterAll(): Unit = if RustWorkerBinary.available then engine.close()
+
+/** (Rust, TCP), CBOR and DEFLATE */
+class TestRustTcpCbor extends WireConformance:
+  import WireFormat.Cbor.given
+  import WireCompression.Deflate.given
+  override def munitIgnore: Boolean = !RustWorkerBinary.available
+  private lazy val served =
+    val (plain, p) = RustWorkerBinary.serveTcp()
+    plain.close()
+    (ForeignWorker.connect("127.0.0.1", RustWorkerBinary.lastPort), p)
   lazy val engine: ForeignWorker = served._1
   override def afterAll(): Unit = if RustWorkerBinary.available then { served._1.close(); served._2.destroy() }
 

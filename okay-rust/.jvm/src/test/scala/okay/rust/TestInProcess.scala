@@ -67,3 +67,22 @@ class TestGoWasmCbor extends WireConformance:
   override def munitIgnore: Boolean = !okay.py.GoWorkerBinary.available
   lazy val engine: ForeignWorker =
     ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(GoInProcess.wasm))))
+
+/** (Rust, FFM), CBOR and DEFLATE */
+class TestRustFfmCbor extends WireConformance:
+  import okay.py.WireFormat.Cbor.given
+  import okay.py.WireCompression.Deflate.given
+  override def munitIgnore: Boolean = !RustInProcess.available
+  lazy val engine: ForeignWorker =
+    ForeignWorker.over(InProcessLinks.ffm(NativeLib.load(RustInProcess.dylib)).fold(why => throw IllegalStateException(why), identity))
+  override def afterAll(): Unit = if RustInProcess.available then engine.close()
+
+/** (Rust, WebAssembly), CBOR and DEFLATE */
+class TestRustWasmCbor extends WireConformance:
+  import okay.py.WireFormat.Cbor.given
+  import okay.py.WireCompression.Deflate.given
+  override def munitIgnore: Boolean = !RustInProcess.available
+  override def direct: Boolean = false
+  override def survivesPanics: Boolean = false
+  lazy val engine: ForeignWorker =
+    ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(RustInProcess.wasm))))
