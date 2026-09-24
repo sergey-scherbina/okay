@@ -182,6 +182,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   counters in one row: why a bare row holds one of each signature, and
   the three routes that lift it (a key with `Tag`, a cell with `Refs`,
   a fresh `Delim` prompt), with what each costs.
+- **[Are these two programs the same program?](equivalence.md)** —
+  `Bisim.check` walks two programs in lockstep over sampled answers and
+  either proves a difference (with its path) or reports how many paths
+  agreed; laws and models for checking a rewrite, and why you need both.
 - **[Arrows](arrows.md)** — a computation you can see before you run
   it: the glyphs (`>>>`, `&&&`, `+++`, and why Kleisli's is `>=>`),
   two scanners over one input in a single pass, where optics and

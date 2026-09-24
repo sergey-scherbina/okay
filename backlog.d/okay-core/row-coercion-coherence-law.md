@@ -15,3 +15,7 @@
       it. DONE WHEN: the law is in the gate and a mutant `into` that
       reorders the row is caught. Source: biernacki-literature,
       2026-09-24.
+      TOOL (handler-equivalence-oracle, 2026-09-24): `Bisim.check`
+      (docs/equivalence.md) compares the two sides as trees over
+      sampled answers, and gives a path when they differ. Write the law
+      with it rather than comparing run results.

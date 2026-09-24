@@ -14,3 +14,7 @@
       (see effect-instances-tunnelling). DONE WHEN: the law is in the
       gate and a handler mutant that swallows or reorders a foreign
       operation fails it. Source: biernacki-literature, 2026-09-24.
+      TOOL (handler-equivalence-oracle, 2026-09-24): `Bisim.check`
+      (docs/equivalence.md) compares the two sides as trees over
+      sampled answers, and gives a path when they differ. Write the law
+      with it rather than comparing run results.
