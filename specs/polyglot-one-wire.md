@@ -149,10 +149,10 @@ mechanism:
    `true`, `false`, `null`, `undefined` (read as null). A decoder refuses
    anything else by name.
 
-- [ ] An encoding: JSON (today) or CBOR (okay-codec's), as a
+- [x] An encoding: JSON (today) or CBOR (okay-codec's), as a
       `given WireFormat`. Framing moves from lines to length-prefixed
       frames, so a binary format fits. JSON stays line-compatible.
-- [ ] Compression (`given WireCompression`: none, deflate/gzip from the
+- [x] Compression (`given WireCompression`: none, deflate/gzip from the
       JDK, or zstd where a library is present).
 - [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
       JVM, rustls or native-tls in Rust, crypto/tls in Go), with keys
@@ -164,7 +164,7 @@ mechanism:
       2026-09-24): Python's shim, R, the TypeScript worker, Haskell, Go
       and Rust. Each far side's library implements the same layers with
       its own platform's mechanisms, and none is special-cased.
-- [ ] The far side cannot import a Scala given. It is configured by its
+- [x] The far side cannot import a Scala given. It is configured by its
       build and environment, it ANNOUNCES what it speaks in the
       handshake, and a mismatch with the Scala side's givens is refused by
       name, never silently downgraded.
@@ -268,3 +268,27 @@ mechanism:
   table, the same `quote` in Rust and Go, the same Scala over the four
   links, the conformance suite's claims, and why in-process uses the
   dialogue. It is pinned by the snippet check.
+
+- Stage 5a (wire-format-givens, 2026-09-24).
+  - `WireFormat` (json, `WireFormat.Cbor.given`) and `WireCompression`
+    (none, `WireCompression.Deflate.given`) are `using` parameters of
+    every engine constructor. The defaults live in the companions, so a
+    program without the imports keeps its JSON lines byte for byte.
+  - Five far sides speak CBOR, each with its own subset codec and no new
+    package: Python (struct, zlib), TypeScript (Buffer, node:zlib), Go
+    (compress/flate), Rust (flate2 with the pure-Rust backend) and
+    Haskell (bytestring, text). Haskell has no DEFLATE, because GHC ships
+    no zlib binding. Its hello says so, and a Deflate host is refused by
+    name (`TestHsPipesCbor`).
+  - `WireConformance` runs unchanged under CBOR on every link built so
+    far: Go (pipes, TCP, wasm), Rust (pipes, TCP, FFM, wasm), Python,
+    TypeScript and Haskell (pipes).
+  - R is NOT done. okay-r has its own engine (`RSubprocess`, a character
+    reader with its own deadline), not `ForeignWorker`, so its framing is
+    a lane of its own: backlog `wire-givens-r`. It is testable here
+    through the local `r-base` image.
+  - Mutant: a Haskell worker that confirms `configure` and does not
+    switch was caught, but only by the gate's STALL watchdog after 480 s.
+    The engine has no read deadline, so a far side that goes silent
+    leaves it waiting. The fault is in the far side, but the host
+    should say so: backlog `wire-read-deadline`.

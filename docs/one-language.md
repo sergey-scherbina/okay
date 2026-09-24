@@ -99,6 +99,74 @@ caught at first, and that found a real defect: the engine read wire
 lines with a repairing JSON parser, so a reply cut one byte short passed.
 Wire lines are now read strictly, on every transport.
 
+## The wire's encoding, chosen by a given
+
+The link carries JSON lines unless the Scala side says otherwise, and
+it says so with an import. The imports are givens that the engine's
+`start`, `speaking`, `connect` and `over` take as `using` parameters:
+
+```scala
+  import WireFormat.Cbor.given
+  import WireCompression.Deflate.given
+```
+
+With those two lines in scope, the same engine call speaks CBOR
+(RFC 8949), each message compressed with raw DEFLATE (RFC 1951):
+
+```scala
+  lazy val engine: ForeignWorker = ForeignWorker.start(TestPy.python.get, modules = Seq(PyConformance.conf))
+```
+
+Nothing else in the program changes. Without an import, the defaults are
+JSON with no compression. They come from the companions' implicit scope,
+so an old program keeps its old wire byte for byte.
+
+The far side cannot import a Scala given, so it ANNOUNCES what it speaks
+in its hello: `"speaks":{"format":["json","cbor"],"compress":["deflate"]}`.
+The engine then sends one `configure` request as a JSON line. The far
+side answers it in the old mode and switches after the answer. From then
+on every message is a frame: a 4-byte big-endian length, then the bytes.
+A choice the far side did not announce is refused by name before any
+request is sent, and never quietly downgraded:
+
+```scala
+    val e = intercept[IllegalStateException](ForeignWorker.speaking(Seq(HsConformance.binary)))
+    assert(e.getMessage.contains("given WireCompression is deflate"), e.getMessage)
+```
+
+Each far side uses its own platform's mechanism. None needs a package
+the language does not already ship:
+
+| Far side   | CBOR                               | DEFLATE                     | Links tested                    |
+|------------|------------------------------------|-----------------------------|---------------------------------|
+| Python     | its own subset (struct)            | zlib, `wbits=-15`           | pipes                           |
+| TypeScript | its own subset (Buffer)            | `node:zlib` raw             | pipes                           |
+| Go         | its own subset                     | `compress/flate`            | pipes, TCP, WebAssembly         |
+| Rust       | its own subset over serde_json     | flate2 (pure Rust backend)  | pipes, TCP, FFM, WebAssembly    |
+| Haskell    | its own subset (bytestring, text)  | none: GHC ships no zlib     | pipes                           |
+| R          | not yet (okay-r's own engine)      | not yet                     | —                               |
+
+The "subset" in each row is the same: integers, floats (half, single,
+double), text, definite arrays and maps with text keys, and
+true/false/null. The tree is the one JSON carries, escapes included.
+So `{"t":"int"}` for an integer past 2^53 means the same thing in both
+formats, and the conformance suite (`WireConformance`) runs unchanged
+under each: `TestGoPipesCbor`, `TestRustFfmCbor`, `TestPyPipesCbor`,
+`TestTsPipesCbor`, `TestHsPipesCbor` and the rest.
+
+Why a given rather than a flag: the choice is fixed where the program is
+compiled, and the compiler carries it to every engine the program
+builds. A missing or ambiguous choice is a compile error, not a run-time
+surprise. This is the implicit calculus's point: the context is resolved
+by type, in scope, and passed without being written at each call
+(Oliveira et al., "The implicit calculus", PLDI 2012,
+doi:10.1145/2254064.2254070; Odersky et al., "Simplicitly: foundations
+and applications of implicit function types", POPL 2018,
+doi:10.1145/3158130). The formats themselves: C. Bormann and P. Hoffman,
+RFC 8949, "Concise Binary Object Representation (CBOR)", 2020,
+doi:10.17487/RFC8949; P. Deutsch, RFC 1951, "DEFLATE Compressed Data
+Format Specification", 1996, doi:10.17487/RFC1951.
+
 ## Why a dialogue, even in-process
 
 `okay_call` in this process could have been a C upcall into the JVM. It
@@ -112,9 +180,12 @@ step is one function call.
 ## Limits
 
 - **Remote TCP is plain TCP, unauthenticated.** Use it inside a trusted
-  network or behind TLS or SSH. Encodings, compression, encryption and
-  authorization chosen by `given`s are the next stage
+  network or behind TLS or SSH. Encryption and authorization chosen by
+  `given`s are the next stage
   ([specs/polyglot-one-wire.md](../specs/polyglot-one-wire.md)).
+- **No read deadline.** A far side that stops answering (or confirms a
+  `configure` and does not switch) leaves the engine waiting. The
+  gate's stall watchdog is what caught that mutant.
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.
 - **Go in-process.** Only as WebAssembly.
 
