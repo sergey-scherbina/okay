@@ -63,10 +63,11 @@ no peer addressing is refused by name, not made to limp).
   and YARN adds an ApplicationMaster; Flink has JobManager/TaskManager/
   ResourceManager/Dispatcher. A pool has MEMBERS. Every member serves
   partitions through `Cluster.local` and every member can coordinate:
-  a batch submission is coordinated by whichever member received it;
-  a streaming submission with a journal runs under `Cluster.leading`
-  with a `Lease`, so a member's death is a resume at the next epoch,
-  which stages 8 and 10 already do.
+  whichever member receives a submission runs it under
+  `Cluster.leading` with a `Lease` and a `Checkpoint`, so THAT member
+  dying is a resume at the next epoch by any other member — see "The
+  run id is the journal name" below for why this holds for every
+  submission, not only ones an operator marked as streaming.
 - **The manager keeps the pool alive; the engine never asks it for
   anything.** No pod creation, no container allocation, no AM. Scale
   is the MANAGER's knob (`kubectl scale`, an HPA on a metric we
@@ -114,6 +115,9 @@ final case class PoolConf(
   service: String = "",             // a name Discovery resolves to the peers ("" = list only)
   peers: String = "",               // "host:port,host:port" — a static list, joined with `service`
   registrars: String = "",          // class names whose loading registers the jobs (WorkerMain's args)
+  store: String = "",               // a class name whose loading registers ONE (runId => (Checkpoint, Lease))
+                                     // factory every submission's journal is opened through; "" = in-memory,
+                                     // refused once a second peer is configured (see "The run id is the journal name")
   tolerance: Int = 3,               // consecutive failures before a peer is buried (dataflow-reconnect)
   build: String = "",               // the artifact fingerprint; "" = read from the jar's manifest
 ) derives Schema
@@ -129,8 +133,8 @@ object Pool:
 
 /** the door: a submission is a job by name, parameters as the job's own Schema */
 final case class Submission(job: String, params: Json, parts: Int = 0,   // 0 = one per peer
-                            stream: Option[Streaming] = None) derives Schema
-final case class Streaming(take: Int, journal: String = "") derives Schema   // journal: a Checkpoint name the build binds
+                            take: Int = 0,       // elements advanced per epoch; 0 = one epoch, run to completion
+                            journal: String = "") derives Schema  // "" = the pool names one and it IS the run id
 final case class Submitted(run: String) derives Schema
 enum Status derives Schema:
   case Running(epoch: Int, peers: Int, buried: Int)
@@ -141,13 +145,67 @@ enum Status derives Schema:
 | route | answers |
 |---|---|
 | `POST /pool/jobs/{name}` | `202 Submitted` — a run id; `400` a parameter its Schema refused (field named); `404` a name this build does not register |
-| `GET /pool/runs/{id}` | `Status`; `Done.value` is the run's answer under the job's `Wire` Schema, as JSON |
+| `GET /pool/runs/{id}` | `Status`, read from the journal — see below; `Done.value` is the run's answer under the job's `Wire` Schema, as JSON |
 | `GET /pool/jobs` | the names this build registers, each with its parameter Schema's `Digest` |
 | `GET /pool/peers` | what discovery answers now, and which are buried |
 | `/healthz`, `/readyz`, `/metrics` | okay-ops's, unchanged; `readyz` is false until the registrars loaded |
 
+### The run id is the journal name
+
+The first draft of this spec made the journal optional — `stream:
+Option[Streaming]` — so a plain submission ran as an in-memory
+`Cluster.run` on whichever member accepted it, with `Status` held in
+that member's own memory. That is a gap this spec should not carry
+silently: Claim 4 promises "a killed coordinator is a resume", and an
+in-memory run breaks the promise for exactly the request that most
+needs it — the one that just arrived and has no other member watching
+it yet. **So the journal is not an option; it is the mechanism, for
+every submission.** `Submission.journal` may still be empty, but only
+because the pool then NAMES one and returns it — `Submitted.run` IS
+that name — never because the run skips the journal.
+
+Concretely: `POST /pool/jobs/{name}` does not call `Cluster.run`. It
+always calls `Cluster.leading(job, params, parts, peers, take, journal,
+lease)`, where a bounded job (`take = 0`) is simply a stream that
+finishes when its partitions exhaust — the same `Flow`/`Chunks`
+machinery stage 1 of dataflow already runs either way, so "batch" is a
+CLIENT-FACING word, not a second code path. `take` above 0 is the same
+knob dataflow's own `Cluster.stream` already exposes, kept for a job
+whose source is genuinely unbounded.
+
+**A GET resumes the run; nothing sweeps for it.** `GET /pool/runs/{id}`
+reads `Checkpoint(id).latest` for the answer — `Running`/`Done`/`Failed`
+is DERIVED from what is in the store, not from a live process's memory,
+so any member can answer it, including one that never saw the original
+POST. If the checkpoint is unfinished and `Lease(id).take()` says
+nobody currently holds the seat, the member handling the GET attempts
+`Cluster.leading` itself, right there — the exact "`None` means
+somebody else holds it" shape `Cluster.leading` already has, just
+invoked by a reader instead of a fixed supervisor loop. This is
+deliberately NOT a background sweep over pending runs (see "Out of
+scope" — a scheduler of our own): a run makes forward progress when
+something asks about it, and the CLI's own `--wait` is exactly that
+something. A submitter who fires a POST and never asks again gets the
+same outcome an unwatched Spark driver gives an operator who never
+checks — nobody promised progress with nobody watching, only that
+watching is enough to get it, from any member.
+
+**This needs a shared store, and says so.** `PoolConf.store` names ONE
+class whose loading registers a single `(runId: String) => (Checkpoint,
+Lease)` factory — every submission's journal is that factory applied to
+the run id, so the pool holds no store-naming logic of its own and a
+build wires exactly one storage technology, the same shape
+`registrars` already has for jobs. It MUST be reachable from every
+member: okay-persist's compacted log and `Election` are the bound
+`TestPersisted` already proves in a dozen lines each. The in-memory
+default (`store = ""`, `Checkpoint.Memory`/`Lease.solitary`) is fine
+for the single-machine proof in stage 1 and wrong for a real pool —
+"any member can answer" is exactly the property it does not have — so
+`Pool.main` refuses to start on the in-memory default once more than
+one peer is configured, naming the store it needs.
+
 ```
-okay pool submit <url> <job> [--params '{…}'] [--parts N] [--stream take] [--wait]
+okay pool submit <url> <job> [--params '{…}'] [--parts N] [--journal id] [--take N] [--wait]
 okay pool runs   <url> [id]
 okay pool jobs   <url>
 okay pool peers  <url>
@@ -216,11 +274,15 @@ and Dataproc are `yarn`.
    argument; the number is recorded beside Spark's own on the same
    box, with the fixed/marginal split docs/benchmarks.md §20 uses.
 4. **A killed pod is a replayed partition, a killed coordinator is a
-   resume.** `kubectl delete pod` of a member mid-stream leaves the
-   answer equal to the batch answer; of the coordinating member, a
-   successor picks the run up from the journal at the next epoch — on
-   real pods, which is what dataflow stage 12 asked for and could not
-   have. *Falsified by*: a run on kind that loses or duplicates a pane.
+   resume — for EVERY submission, not only ones an operator marked as
+   streaming.** `kubectl delete pod` of a member mid-run leaves the
+   answer equal to the single-member answer; of the coordinating
+   member, the next `GET /pool/runs/{id}` — from any member — picks the
+   run up from the journal at the next epoch, because every submission
+   is journal-backed (see "The run id is the journal name"). On real
+   pods, which is what dataflow stage 12 asked for and could not have.
+   *Falsified by*: a run on kind that loses or duplicates a pane, or
+   that answers "not found" to a member that never saw the POST.
 5. **A submission cannot execute code.** The pool runs only names its
    build registered; a submission carries no class, no jar, no
    expression, and the parameter is decoded under the job's Schema
@@ -327,9 +389,17 @@ Stage 1:
 - [ ] a member whose build fingerprint differs is refused as a
       coordinator and buried as a worker, each with the two
       fingerprints in the message
-- [ ] a streaming submission with `journal` names a `Checkpoint` the
-      build bound; a second submission of the same job and journal
-      after the coordinating member died resumes at the next epoch
+- [ ] every submission runs under `Cluster.leading` with a journal —
+      client-supplied or pool-generated — and the run id IS that
+      journal's name; `Submission.take = 0` runs one epoch to
+      completion, matching a plain `Flows.fan` answer exactly
+- [ ] the member that accepted a submission is killed before it
+      finishes; a `GET /pool/runs/{id}` sent to a DIFFERENT member
+      reports the run (not "unknown"), and — if nobody currently holds
+      the lease — that member resumes it from the last committed epoch
+      with no second submission from the client
+- [ ] `Pool.main` with `store = ""` (the in-memory default) and more
+      than one configured peer refuses to start, naming `PoolConf.store`
 
 Stage 2:
 - [ ] `Need.Peers` renders on `cluster` a headless Service beside the
@@ -341,9 +411,10 @@ Stage 2:
 - [ ] `gcp`, `azure`, `render`, `railway` refuse `Need.Peers` by name,
       each naming the nearest target that works
 - [ ] on kind (Live): N pods answer a submission with the batch value;
-      `kubectl delete pod` of a member mid-stream leaves the answer
-      equal; of the coordinator, a re-submission resumes from the
-      journal at the next epoch and re-offers only the in-flight epoch
+      `kubectl delete pod` of a member mid-run leaves the answer equal;
+      of the coordinator, a `GET /pool/runs/{id}` against a survivor —
+      no second submission — resumes from the journal at the next epoch
+      and re-offers only the in-flight epoch
 - [ ] `kubectl scale` between epochs is followed by a `rescalable`
       job and refused by name for a windowed one (stage 13's rule,
       now on real pods)
@@ -427,3 +498,20 @@ Stage 6:
   Rejected: adding okay-http and okay-ops to the engine's compile
   graph; specs/dataflow.md keeps it at okay-codec on purpose and this
   spec has no reason to spend that.
+- **Every submission is journal-backed; none are a bare in-memory
+  `Cluster.run`.** This is a correction to the spec's own first draft,
+  not a design weighed and left the other way: an optional journal
+  left a plain submission's `Status` live only in the accepting
+  member's memory, so THAT member dying stranded the client with no
+  path to an answer — contradicting Claim 4 for the exact request that
+  needed it most. One extra store write per submission buys the
+  property the whole spec promises.
+- **Resume is triggered by a `GET`, not a background sweep.** Rejected:
+  a periodic scan by every member over all pending runs — a scheduler
+  of our own, out of scope by this spec's own rule. A reader that asks
+  "is anyone leading this?" and leads it itself if not is the same
+  shape `Cluster.leading`'s retry loop already has, invoked by whoever
+  needs the answer rather than by a timer nobody asked for. The
+  residual honestly stated: a run nobody ever polls does not resume
+  itself, the same as an unwatched Spark driver — `--wait` and any
+  reasonable submitter's own poll are the supervision.
