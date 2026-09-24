@@ -109,7 +109,11 @@ cannot reach the JVM's heap, which makes this the road for UNTRUSTED
 plugins.
 
 - **What the module is granted.** `WasmLib.load(bytes)` gives it a WASI
-  that grants nothing: no files, no environment, no arguments.
+  that grants nothing: no files, no environment, no arguments. Its stderr
+  goes to a buffer of its own. When a call TRAPS, the `Left` carries
+  what the module wrote there (a Rust or Go panic's reason), not just
+  "unreachable". A reactor module's `_initialize` is called once, at
+  load.
 - **Buffers.** A host cannot hand a module its own pointers, so the crate
   also exports `okay_alloc`/`okay_free`. Buffers live in the module's
   memory, and `withBuffers` frees every one after the call.

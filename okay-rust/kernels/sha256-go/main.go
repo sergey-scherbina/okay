@@ -37,4 +37,11 @@ func okaySha256(in int32, n int32, out int32) int32 {
 	return 0
 }
 
+// okay_panic panics: what a host sees when a plugin fails
+//
+//go:wasmexport okay_panic
+func okayPanic() int32 {
+	panic("the go plugin says no")
+}
+
 func main() {}

@@ -82,10 +82,40 @@ okay-py does works unchanged:
 A Go `panic` in a program arrives as a condition, `GoError`, with its
 message, and the worker keeps running.
 
-## What comes next
+## A Go plugin as WebAssembly, inside the JVM
 
-`GOOS=wasip1 GOARCH=wasm go build` compiles Go to WebAssembly without
-TinyGo. Run by Chicory inside the JVM, that is the road for untrusted Go
-plugins, shared with Rust ([okay with Rust](rust.md)).
+The worker above is a process. For UNTRUSTED Go code there is a second
+road with no Go runtime beside the JVM's:
+- `GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared` compiles Go to a
+  WebAssembly module (no TinyGo needed);
+- Chicory runs the module inside the JVM, as for Rust
+  ([okay with Rust](rust.md)).
+
+The plugin exports functions over the same C-shaped ABI as the Rust
+kernel. Here it is SHA-256 from Go's standard library:
+
+```go
+//go:wasmexport okay_sha256
+func okaySha256(in int32, n int32, out int32) int32 {
+	data := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(in))), n)
+	sum := sha256.Sum256(data)
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(uintptr(out))), 32), sum[:])
+	return 0
+}
+```
+
+`Digest` is the effect, with two handlers: `Digest.jdk` over
+`MessageDigest`, and `Digest.wasm(lib)` over the plugin.
+
+- **The law.** The plugin's digest is the JDK's for every input length
+  from 0 to 130 bytes (both sides of each 64-byte block) and for 1 KB,
+  4 KB and 64 KB.
+- **A panic.** A Go panic in the plugin is a `Left` that carries the
+  plugin's own message ("the go plugin says no"), because the module's
+  stderr is captured. A bare trap would say only "unreachable".
+- **Initialisation.** A Go reactor module must have `_initialize` called
+  before anything else, and `WasmLib.load` does this. Without it, the
+  first call traps, and the module's stderr says why: "wasmexport function
+  called before runtime initialization".
 
 The design and its results: [specs/polyglot-go.md](../specs/polyglot-go.md).

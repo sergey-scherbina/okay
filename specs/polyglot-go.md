@@ -55,14 +55,14 @@ stage 3), a Go plugin runs sandboxed inside the JVM, with no Go runtime
 beside the JVM's: it runs inside the module. This is the road for
 untrusted Go code.
 
-- [ ] `okay-rust/kernels/sha256-go`: SHA-256 from Go's standard
+- [x] `okay-rust/kernels/sha256-go`: SHA-256 from Go's standard
       library, over the Rust kernel's ABI shape: `okay_alloc`,
       `okay_free`, and `okay_sha256(in, n, out)`.
-- [ ] `enum Digest[+A] derives okay.Effect` has one operation, `Sha256(bytes)`.
+- [x] `enum Digest[+A] derives okay.Effect` has one operation, `Sha256(bytes)`.
       - `Digest.jdk` is the handler over `MessageDigest`.
       - `Digest.wasm(lib)` is the handler over the Go plugin under
         Chicory.
-- [ ] (Live, go) THE LAW: for inputs of many sizes (0 bytes to 64 KiB,
+- [x] (Live, go) THE LAW: for inputs of many sizes (0 bytes to 64 KiB,
       including every length around the 64-byte block), the Go plugin's
       digest is the JDK's.
 
@@ -90,3 +90,22 @@ untrusted Go code.
   - Number encoding follows `Okay.hs`: integers below 2^53 as JSON
     numbers, larger ones as `{"t":"int"}`, and integral doubles as
     `{"t":"f"}`, so an int and a double stay apart across the wire.
+
+- Stage 2 (go-wasm, 2026-09-24).
+  - The plugin builds offline as a 2.4 MB reactor module (Go 1.27.1,
+    `-buildmode=c-shared`). It imports 15 WASI functions, which Chicory's
+    empty WASI answers.
+  - TestDigestGoWasm (Live, go) covers:
+    - THE LAW over 134 input sizes;
+    - one program under `Digest.jdk` and `Digest.wasm`;
+    - a Go panic as a `Left` carrying "the go plugin says no".
+  - Two findings, both fixed in `WasmLib`:
+    - A reactor's `_initialize` was never called. Chicory's
+      `withInitialize` is about the module's segments, and the first
+      export trapped. `load` calls `_initialize` once.
+    - A trap said only "unreachable". The module's stderr now goes to a
+      buffer of its own, and a trap's `Left` carries it. That is how the
+      first finding was diagnosed: Go's runtime had written "wasmexport
+      function called before runtime initialization".
+  - The effective mutant was the first run itself: without
+    `_initialize`, the law failed.

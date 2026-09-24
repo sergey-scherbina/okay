@@ -21,15 +21,27 @@ import com.dylibso.chicory.wasm.Parser
  * `okay_free(p, n)` gives it back. `withBuffers` frees every buffer it made,
  * whatever the call did.
  */
-final class WasmLib private (instance: Instance):
+final class WasmLib private (instance: Instance, said: java.io.ByteArrayOutputStream):
 
-  /** call the exported function `name`; a missing export is a Left, by name */
+  /** what the module wrote to its stderr (a panic's message), and forget it */
+  def stderr(): String = said.synchronized { val s = said.toString("UTF-8"); said.reset(); s }
+
+  /**
+   * Call the exported function `name`. A missing export is a Left, by name,
+   * and so is a TRAP: the module's own fault, with what it wrote to its
+   * stderr just before — a Go or Rust panic prints its reason there, and
+   * the trap alone says only "unreachable".
+   */
   def call(name: String, args: Long*): Either[String, Long] =
     scala.util.Try(instance.`export`(name)).toOption.filter(_ != null) match
       case None => Left(s"the module exports no function `$name`")
       case Some(f) =>
-        val out = f.apply(args*)
-        if out == null || out.isEmpty then Right(0L) else Right(out(0))
+        try
+          val out = f.apply(args*)
+          if out == null || out.isEmpty then Right(0L) else Right(out(0))
+        catch case e: com.dylibso.chicory.wasm.ChicoryException =>
+          val why = stderr().trim
+          Left(s"`$name` trapped: ${e.getMessage}${if why.isEmpty then "" else s" — the module said: $why"}")
 
   /** run `body` with a place to put buffers; every one is freed after it */
   def withBuffers[A](body: WasmLib.Buffers => A): A =
@@ -62,8 +74,20 @@ object WasmLib:
     /** what the module wrote at `p` */
     def read(p: Long, n: Int): Array[Byte]
 
-  /** instantiate a `.wasm` module under a WASI that grants nothing */
+  /** instantiate a `.wasm` module under a WASI that grants nothing: its
+   * stderr goes to a buffer of its own, never to this process's */
   def load(bytes: Array[Byte]): WasmLib =
-    val wasi = WasiPreview1.builder().withOptions(WasiOptions.builder().build()).build()
+    val said = java.io.ByteArrayOutputStream()
+    val wasi = WasiPreview1.builder().withOptions(WasiOptions.builder().withStderr(said).build()).build()
     val imports = ImportValues.builder().addFunction(wasi.toHostFunctions()*).build()
-    new WasmLib(Instance.builder(Parser.parse(bytes)).withImportValues(imports).build())
+    val lib = new WasmLib(Instance.builder(Parser.parse(bytes)).withImportValues(imports).build(), said)
+    // A REACTOR module (a Go `-buildmode=c-shared` build, a Rust cdylib)
+    // exports `_initialize`, which the WASI reactor convention says to call
+    // once before any other export. Chicory's `withInitialize` is about the
+    // module's own segments and does not call it — found by Go's runtime,
+    // whose first export trapped with "wasmexport function called before
+    // runtime initialization" (go-wasm, 2026-09-24).
+    lib.call("_initialize") match
+      case Left(why) if !why.startsWith("the module exports no function") => throw IllegalStateException(why)
+      case _ => ()
+    lib
