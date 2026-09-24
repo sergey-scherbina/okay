@@ -1,0 +1,6 @@
+feature/okay2-gen 2026-09-24T11:09:03Z
+agent: claude-code
+heartbeat: 2026-09-24T11:09:03Z
+status: in-progress
+done-so-far: claimed
+next: Gen/Stop/chain fusion/zip for okay2 (stage 9), tests TestGen/TestGenZip, spec, docs
