@@ -118,7 +118,11 @@ lazy val okay2 = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(reflect(None), jvmOnlyTests)
   .jsSettings(reflect(Some(Provided)), jsTests)
   .nativeSettings(reflect(Some(Provided)))
-  .jvmConfigure(_.withId("okay2"))
+  // okay2-bench: the core's benchmarks, in src/jmh as in the root build,
+  // on the JVM project only. `test` does not compile them — `Jmh/compile`
+  // does (`../scripts/gate.sh "okay2/Jmh/compile"`)
+  .jvmConfigure(_.withId("okay2").enablePlugins(JmhPlugin))
+  .jvmSettings(Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh")
 
 /** the Async effect: Run/Await, the Drive, Fiber/Scheduler/Timer/CanBlock
  * as traits, par/race/timeout/supervised/attempt/sleep, Retry, Par */
