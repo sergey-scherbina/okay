@@ -123,6 +123,32 @@ The operator asked for the link's FORMAT and PROTECTION to be picked at
 compile time, by importing a given, each backed by its own external
 mechanism:
 
+### The protocol of stage 5a (format and compression)
+
+1. **The handshake.** The worker's first line stays a JSON line, and it
+   may ANNOUNCE what it speaks:
+   `{"shim":6, "python":"go", "speaks":{"format":["json","cbor"],"compress":["deflate"]}}`.
+   A hello with no `speaks` speaks JSON lines only.
+2. **Configuration.** If the host's givens are the defaults (JSON, no
+   compression), nothing changes, and the wire is lines as before, so old
+   workers keep working. Otherwise the host first checks that the worker
+   announced both choices, and REFUSES by name if it did not. It then sends
+   one JSON line, `{"op":"configure","format":"cbor","compress":"deflate"}`.
+   The worker answers with a JSON line (`{"ok":{...}}`, or a condition),
+   and from the next message both sides use the configuration.
+3. **Frames.** A configured stream (pipes, TCP) carries FRAMES: a 4-byte
+   big-endian length, then that many bytes. An in-process link is already
+   one call per message, so it carries the bytes alone.
+4. **A message's bytes** are the same protocol tree as before, encoded by
+   the format (JSON text, or CBOR), then compressed (deflate: zlib's raw
+   DEFLATE, RFC 1951). The tree is unchanged, including the value
+   escapes (`{"t":"int"}` and so on), so every language's value rules
+   stay as they are.
+5. **CBOR subset** (RFC 8949): unsigned and negative integers, float16,
+   float32 and float64, text strings, arrays and maps of definite length,
+   `true`, `false`, `null`, `undefined` (read as null). A decoder refuses
+   anything else by name.
+
 - [ ] An encoding: JSON (today) or CBOR (okay-codec's), as a
       `given WireFormat`. Framing moves from lines to length-prefixed
       frames, so a binary format fits. JSON stays line-compatible.
