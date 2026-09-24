@@ -52,12 +52,15 @@ fn main() {
 
   private def has = scala.util.Try(ProcessBuilder("cargo", "--version").start().waitFor() == 0).getOrElse(false)
   lazy val available: Boolean = has
-  lazy val binary: Path =
+  private def built(features: Seq[String]): Path =
     val dir = Files.createTempDirectory("okay-rust-worker")
     Files.createDirectories(dir.resolve("src")): Unit
     Files.writeString(dir.resolve("src").resolve("ops.rs"), Rs.ops(Foreign.callbacks(priceOf, discount))): Unit
     Files.writeString(dir.resolve("src").resolve("main.rs"), main): Unit
-    RustWorker.build(dir, features = Seq("tls"))
+    RustWorker.build(dir, features = features)
+  lazy val binary: Path = built(Seq("tls"))
+  /** the same worker without the tls feature: what a default build is */
+  lazy val plainBinary: Path = built(Nil)
 
   @volatile var lastPort: Int = 0
 
@@ -177,3 +180,22 @@ class TestRustTcpAuth extends WireConformance:
 class TestRustTcpTls extends TlsConformance:
   def listen(env: Map[String, String]): (Int, Process) = RustWorkerBinary.listen(env)
   def serverAvailable: Boolean = RustWorkerBinary.available
+
+/** a Rust worker built WITHOUT the tls feature, asked for TLS, refuses to
+ * start and says how to build it */
+class TestRustTlsFeature extends munit.FunSuite:
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+  override def munitIgnore: Boolean = !RustWorkerBinary.available || !TestTlsCerts.available
+
+  test("no tls feature, TLS asked for: the worker refuses at start, naming the build switch") {
+    val pb = ProcessBuilder(RustWorkerBinary.plainBinary.toString).redirectErrorStream(true)
+    pb.environment().put("OKAY_LISTEN", "127.0.0.1:0")
+    pb.environment().put("OKAY_TLS_CERT", TestTlsCerts.server.get.cert.toString)
+    pb.environment().put("OKAY_TLS_KEY", TestTlsCerts.server.get.key.toString)
+    val p = pb.start()
+    val said = String(p.getInputStream.readAllBytes(), "UTF-8")
+    assertEquals(p.waitFor(), 1)
+    assert(said.contains("built without the okay crate's tls feature"), said)
+    assert(said.contains("""RustWorker.build(dir, features = Seq("tls"))"""), said)
+  }
+

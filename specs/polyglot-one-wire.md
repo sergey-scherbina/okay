@@ -193,7 +193,7 @@ mechanism:
 - [x] The R suites' answers are the same under every combination R
       speaks: calls, frames with NA, callbacks (`okay_call`), programs
       (multi-shot), a timeout's respawn (which re-negotiates).
-- [ ] Encryption (`given WireSecurity`, wire-tls): TLS on a TCP link.
+- [x] Encryption (`given WireSecurity`, wire-tls): TLS on a TCP link.
       `WireSecurity.tls(trust)`, where the trust names its own source:
       `Trust.pem(path)` (a CA's or a self-signed server's certificate),
       `Trust.pemFromEnv(name)` (the path in a variable), `Trust.system`
@@ -556,4 +556,25 @@ replays a program.
     tests, with the far side's own "continuation ... is not held here".
   - Not done: R's engine respawns after a timeout but does not replay its
     programs; backlog `r-supervised-replay`.
+
+- Encryption (wire-tls, 2026-09-24).
+  - `okay.codec.WireSecurity`: `Plain`, the default, or `tls(trust)`, with
+    `Trust.pem`, `Trust.pemFromEnv` and `Trust.system`. `WireLink.tcp`
+    wraps the socket in an `SSLSocket` and turns on HTTPS endpoint
+    identification, so the NAME is verified. The hello read is limited by
+    the deadline, or 10 s. `connect` takes it as `using`.
+  - Go: `tls.NewListener` over the TCP listener when `OKAY_TLS_CERT` and
+    `OKAY_TLS_KEY` are set (TLS 1.2 or later), and the listening line
+    says `"tls"`. Rust: the `tls` feature (rustls 0.23 on ring, and
+    rustls-pki-types' PEM reading, all offline). `serve_lines` now takes
+    one duplex stream (`Duplex`, `Stdio`), because a TLS stream cannot be
+    split. `RustWorker.build/buildLibrary(features = ...)` passes
+    `--features okay/...`.
+  - Tests (`TlsConformance`, on Go and Rust; certificates made by
+    openssl per run): the conformance suite over TLS; `localhost` by
+    name; a stranger's trust, a certificate for another name, plain-to-TLS
+    and TLS-to-plain, each refused by name; TLS with `WireAuth`; and a Rust
+    worker without the feature refusing at start.
+  - Mutant: without endpoint identification, the other-name certificate
+    was accepted, and exactly that test failed.
 

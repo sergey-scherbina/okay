@@ -143,11 +143,12 @@ The binary serves the wire either way. Serve it with `okay.Main`:
   another.
 
 Each TCP connection gets its own worker and its own continuations. The
-connection is plain TCP. With `OKAY_WIRE_SECRET` set, only a host holding
-the same secret (`given WireAuth`) may speak on it: see
-[who may speak](one-language.md#who-may-speak-wireauth). It is not
-encrypted, so use it inside a trusted network, or put TLS or SSH in front
-of it. The same test body
+connection is plain TCP unless the server is started with `OKAY_TLS_CERT`
+and `OKAY_TLS_KEY`, which makes it TLS (`given WireSecurity` on the host:
+see [encryption](one-language.md#encryption-wiresecurity)). With
+`OKAY_WIRE_SECRET` set, only a host holding the same secret
+(`given WireAuth`) may speak on it: see
+[who may speak](one-language.md#who-may-speak-wireauth). The same test body
 (`WireConformance`: multi-shot, callbacks under the caller's Reader, a
 failure as a condition) passes over both links. The
 build is offline: standard library only, with `GOTOOLCHAIN=local`.

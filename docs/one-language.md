@@ -276,8 +276,8 @@ server's answer did not prove the secret.
 
 What it does NOT give: secrecy. The messages after the handshake are
 still plain TCP, and a relay in the middle could pass the handshake
-through. Encryption (TLS, `given WireSecurity`) is the next stage, and
-the two compose. Pipe workers and in-process links take no auth: the
+through. Encryption (TLS, `given WireSecurity`, below) is the layer for
+that, and the two compose. Pipe workers and in-process links take no auth: the
 host started the process itself, or shares its address space, so there
 is no one else on the line.
 
@@ -288,6 +288,54 @@ against RFC 4231's vectors, doi:10.17487/RFC4231). The two-nonce
 exchange with role labels is the classic defence against reflection in
 two-party authentication (R. Bird et al., "Systematic Design of Two-Party
 Authentication Protocols", CRYPTO 1991, doi:10.1007/3-540-46766-1_3).
+
+## Encryption: `WireSecurity`
+
+TLS on a TCP link is a given as well, and its trust names its own
+source:
+
+```scala
+  given WireSecurity = WireSecurity.tls(WireSecurity.Trust.pem(TestTlsCerts.server.get.cert))
+```
+
+`Trust.pem(path)` is a private CA's certificate, or the server's own
+self-signed one. `Trust.pemFromEnv(name)` is a path held in an
+environment variable. `Trust.system` is the JDK's store, for a server
+with a certificate from a public CA. The call is `connect` as before:
+
+```scala
+  lazy val engine: ForeignWorker = ForeignWorker.connect("127.0.0.1", served._1)
+```
+
+The server serves TLS when it is started with `OKAY_TLS_CERT` and
+`OKAY_TLS_KEY` (PEM files). Go uses `crypto/tls`. Rust uses rustls,
+behind the okay crate's `tls` feature, so a worker that does not use TLS
+does not compile it: `RustWorker.build(dir, features = Seq("tls"))`. A
+Rust worker built without the feature and asked for TLS refuses to start,
+and names that switch.
+
+The host checks the server's NAME, not only its chain (the rules HTTPS
+uses: the name dialled must be in the certificate). A trusted
+certificate issued for another name is refused. Each mismatch is refused
+by name:
+- a TLS host meeting a plain server: "did not complete a TLS handshake";
+- a trust that does not cover the server's certificate: the same,
+  naming the trust's source;
+- a PLAIN host meeting a TLS server. A TLS server waits for the client to
+  speak first, so no hello ever comes. The TCP link's hello read has a
+  limit (the `WireDeadline` if one is given, else 10 s), and the refusal
+  says: "does it serve TLS? (this host's given WireSecurity is plain)".
+
+TLS and `WireAuth` compose. TLS proves the SERVER and hides the traffic.
+The HMAC challenge proves the CLIENT. Together they give a wire both
+sides have proved and nobody can read, so a client certificate (mTLS)
+adds nothing here that the secret does not. The tests run the whole
+conformance suite over TLS, and over TLS with a secret, on Go and on
+Rust.
+
+The protocol is TLS 1.3 (E. Rescorla, RFC 8446, 2018,
+doi:10.17487/RFC8446), with 1.2 still accepted. The name check is RFC
+6125's (P. Saint-Andre and J. Hodges, 2011, doi:10.17487/RFC6125).
 
 ## When the far side fails: deadlines and recovery
 
@@ -410,10 +458,9 @@ step is one function call.
 
 ## Limits
 
-- **Remote TCP is not yet encrypted.** `WireAuth` decides who may
-  speak, but the messages are plain TCP: use it inside a trusted network
-  or behind TLS or SSH. Encryption by a `given` is the next stage
-  ([specs/polyglot-one-wire.md](../specs/polyglot-one-wire.md)).
+- **Only Go and Rust serve TCP.** TLS and `WireAuth` apply where there is
+  a network. Python, TypeScript, Haskell and R workers run as child
+  processes on pipes.
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.
 - **Go in-process.** Only as WebAssembly.
 

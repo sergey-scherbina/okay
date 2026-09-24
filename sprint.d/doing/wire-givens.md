@@ -1,1 +1,0 @@
-- [ ] wire-givens — stage 5 of specs/polyglot-one-wire.md: the link's encoding (JSON or CBOR), compression, encryption (TLS) and authorization (token/HMAC), each a `given` on the Scala side, for EVERY language on the wire (Python, R, TypeScript, Haskell, Go, Rust), announced by the far side at the handshake, a mismatch refused by name.
