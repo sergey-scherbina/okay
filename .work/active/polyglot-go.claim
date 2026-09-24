@@ -1,3 +1,0 @@
-slug: polyglot-go
-who: claude-opus-5.5 (interop session)
-what: a Go worker on the okay wire (programs as data, multi-shot, typed Op[A] generated from Scala callbacks by Go.ops), built by GoWorker
