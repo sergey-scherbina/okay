@@ -46,4 +46,27 @@ object OpticMacros {
     val f = TermName(n).encodedName.toTermName
     q"_root_.okay2.Optic.Lens.apply[$S, $S, $A, $A]((s: $S) => s.$f, (s: $S, a: $A) => s.copy($f = a))"
   }
+
+  /** `TypedZipper.field("name")`: the prefix is the `FieldOps` view,
+   * whose type arguments say S, A and Z */
+  def zipperField(c: whitebox.Context)(name: c.Expr[String]): c.Tree = {
+    import c.universe._
+    val (s, a, z) = c.prefix.actualType.typeArgs match {
+      case List(s0, a0, z0) => (s0, a0, z0)
+      case other => c.abort(c.enclosingPosition, s"field: expected the view's three type arguments, got $other")
+    }
+    val n = name.tree match {
+      case Literal(Constant(v: String)) => v
+      case other => c.abort(other.pos, "field wants the field's name as a literal")
+    }
+    val accessor = a.decls.collectFirst { case m: MethodSymbol if m.isCaseAccessor && m.name.decodedName.toString == n => m }
+      .getOrElse(c.abort(c.enclosingPosition, s"$n is not a case field of $a"))
+    val e = accessor.typeSignatureIn(a).finalResultType
+    val f = TermName(n).encodedName.toTermName
+    val zz = TermName(c.freshName("z"))
+    q"""{
+      val $zz = ${c.prefix.tree}.z
+      _root_.okay2.TypedZipper.Below[$s, $a, $e, $z]($zz, (p: $a) => _root_.scala.util.Right[$a, $e](p.$f), (p: $a, v: $e) => p.copy($f = v), $zz.focus.$f, false, _root_.scala.Some($n))
+    }"""
+  }
 }

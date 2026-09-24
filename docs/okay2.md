@@ -55,7 +55,8 @@ Contents:
 26. [Programs whose type says where they end](#26-programs-whose-type-says-where-they-end)
 27. [Sketches, clocks and ids](#27-sketches-clocks-and-ids)
 28. [Optics](#28-optics)
-29. [Literature](#29-literature)
+29. [Zippers](#29-zippers)
+30. [Literature](#30-literature)
 
 ## 1. The build
 
@@ -1512,12 +1513,35 @@ itself does for an optic held in a `val`, and the JIT inlines it. There
 is one Scala 2 difference to know: `traverseOf` takes the whole as a
 second argument list, `o.traverseOf(f)(s)`.
 
-## 29. Literature
+## 29. Zippers
+
+`okay2-optics` also has okay's two cursors. `Zipper[T]` is Huet's zipper
+over any tree with a `Plate`. It moves down, up, left and right, and a
+walk without edits hands back the input tree itself. `TypedZipper`
+walks a case class by field, a sum by case and a `Vector` by index. The
+focus has the field's declared type, and `up` returns the parent's
+type:
+
+```scala
+    val top: TypedZipper.Top[Order] = c.down(address).up.up     // the type is the claim; the compiler checks it
+    val c = TypedZipper(order).field("customer").field("address")
+    assertEquals(c.pathKey, Some("customer.address"))
+```
+
+`field("name")` is a macro, and a misspelt name does not compile.
+`asAffine` gives the path back as an optic on the whole. `Poly` is the
+type-changing cursor: setting the focus is what makes the new whole.
+
+## 30. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
   Randall LeVeque, "Updating formulae and a pairwise algorithm for
   computing sample variances" (1979): `variance` and its merge.
+- Gérard Huet, "The Zipper" (JFP 1997); Conor McBride, "The Derivative
+  of a Regular Type is its Type of One-Hole Contexts" (2001); Neil
+  Mitchell and Colin Runciman, "Uniform Boilerplate and List Processing"
+  (Uniplate, 2007).
 - Matthew Pickering, Jeremy Gibbons and Nicolas Wu, "Profunctor Optics:
   Modular Data Accessors" (2017); Guillaume Boisseau and Jeremy Gibbons,
   "What you needa know about Yoneda" (ICFP 2018); Bryce Clarke et al.,

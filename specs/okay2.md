@@ -1512,6 +1512,35 @@ no lens — the core's own reason) with `PState.Zooming`.
   is not a dependency here), and `TestOpticsGuide`, which pins a docs
   page of the core. Zipper and TypedZipper are the next lane.
 
+## Stage 25 — Plate, Zipper, TypedZipper (2026-09-24)
+The rest of okay-optics, into `okay2-optics`: Huet's zipper over a
+`Plate` (and `Plate.of` a self-traversal, `Zipper.focus`, `Zipper.at`),
+and the typed zipper — `Top`/`Below`/`Elem` frames that are optics,
+`up` at the parent's type, `downCase`, `asAffine`, `pathKey`, the
+type-changing `Poly`, `TypedZipper.focus`.
+
+### Behavior (stage 25)
+- [x] the cursor's laws over a rose tree: down/up and left/right are
+      identities, a walk without edits rebuilds nothing, an edit
+      survives a sideways move and `up`, `at` is repeated `down`,
+      `Zipper.focus` is a lawful lens, `Zipper.at` an affine, a State
+      program zooms to the focus, `Plate.of` agrees with the hand plate
+      (TestZipper, 10 tests)
+- [x] the typed zipper: `up.up` is a `Top[Order]`, sharing, `field` by
+      name typed and refused when misspelt, `at(i)`, `downCase`, the
+      focus lens and a zoomed program, `asAffine` on another tree,
+      `Poly` changing the whole's type, typed siblings, `pathKey`
+      (TestTypedZipper, 14 tests)
+
+### Decisions
+- `field("name")` is a whitebox macro on an implicit view: the core
+  reads the Mirror in an inline extension. The view's parameter is
+  `Z with TypedZipper[S, A, Z]`, which is how scalac infers `S` and `A`
+  from a cursor's own type; `at(i)` uses the same view shape.
+- A frame's `asAffine` names `andThen`'s constraint: scalac infers it
+  from the expected `Affine` and picks `Strong` alone, then refuses its
+  own choice.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
