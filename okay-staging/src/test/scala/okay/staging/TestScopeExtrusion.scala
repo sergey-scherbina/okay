@@ -8,9 +8,9 @@ import scala.util.Try
 /**
  * staging-scope-extrusion (2026-09-24): a generator with an EFFECT — a
  * cell — stores the code of a bound variable while inside its binder
- * and splices it after the binder closed. Kameyama, Kiselyov & Sunada,
+ * and splices it after the binder closed. Kameyama, Kiselyov & Shan,
  * "Combinators for impure yet hygienic code generation" (PEPM 2014;
- * JFP 2016) name this scope extrusion; MetaOCaml finds it at run time.
+ * SCP 2015) name this scope extrusion; MetaOCaml finds it at run time.
  *
  * WHAT HAPPENS TODAY, measured: Scala 3's staging refuses it BY NAME
  * when the code is built, before anything is compiled or run — "a
