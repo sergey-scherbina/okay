@@ -1,0 +1,3 @@
+slug: okay2-leftovers
+agent: claude (session 69c582ad)
+what: okay2: the last small core types — Safe/Unsafe (Throws aliases), ComonadHandler (a row whose operations form a comonad is handled by extract); then the list of what stays Scala-3-only, recorded in the spec
