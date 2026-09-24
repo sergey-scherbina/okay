@@ -1412,6 +1412,42 @@ stage 2): typestate over `Free` at zero cost.
 Not ported: `Delim.Stacked` over `Prog` (stage 7's decision stands:
 Scala 2 has no dependent function type for the body).
 
+## Stage 23 — okay2-data: Sketch, Hlc, Uid (2026-09-24)
+Operator, asked which of the core's types okay2 still lacks: "портируй".
+The first of those lanes is okay-data (core-modules stage 3 there),
+whole, as its own subproject `okay2-data` beside okay2-stm:
+- `Sketch`: `hyperLogLog`, `countMin`, `tDigest` — approximate
+  aggregators that are `Aggregator`s, so they merge and zip with the
+  exact ones (stage 21).
+- `Hlc`: the hybrid logical clock (`Stamp`, `Clock`, `next`, `observe`,
+  `at` over a millisecond source).
+- `Uid`: the sortable 128-bit id, a UUIDv7 spelled also as a ULID, over
+  a 12-bit `Hlc`.
+
+### Behavior (stage 23)
+- [x] HyperLogLog within 5% and blind to duplicates; Count-Min never
+      under-estimates; t-digest's median and p99 within 1%; all three
+      merge like the whole; a sketch zips with `Aggregator.mean`
+      (TestSketch, 7 tests)
+- [x] Hlc: the packing, never decreasing under a clock stepping back,
+      the counter, `observe` above a remote stamp and not adopting a
+      stale one, the borrowed millisecond, the refusals, no duplicate
+      under 8 threads (TestHlc, 8 tests)
+- [x] Uid: the six laws, Crockford's confusions, the millisecond round
+      trip, the borrow, no duplicate under 8 threads (TestUid, 9 tests)
+
+### Decisions
+- `Hlc.Stamp` is the core's opaque `Long` as a VALUE CLASS: arithmetic
+  on it is impossible from outside, as with the opaque type, and it is
+  unboxed at its own type; an `Ordering[Stamp]` boxes exactly where the
+  core's `Ordering[Long]` does, in the generic `compare`.
+- The core's JVM-only concurrency test (`TestUidConcurrent`) is split
+  into the two suites it tests: okay2 is JVM-only (backlog
+  `okay2-cross`), so there is no shared/JVM split to respect.
+- Not ported: `TestUidReplayable`. It asks that a `Delim + Uid` row is
+  not `Replayable`, and `Uid` is not an effect in okay2 (nor, as a
+  class, in the core — that test is a kind error there too).
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

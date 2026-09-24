@@ -53,7 +53,8 @@ Contents:
 24. [A map whose type lists its entries](#24-a-map-whose-type-lists-its-entries)
 25. [Aggregations, windows and folds](#25-aggregations-windows-and-folds)
 26. [Programs whose type says where they end](#26-programs-whose-type-says-where-they-end)
-27. [Literature](#27-literature)
+27. [Sketches, clocks and ids](#27-sketches-clocks-and-ids)
+28. [Literature](#28-literature)
 
 ## 1. The build
 
@@ -1443,12 +1444,44 @@ Atkey, "Parameterised notions of computation" (§16) is the shape. Not
 ported: Scala 3's `Delim.Stacked` over `Prog` — its body needs a
 dependent function type (stage 7).
 
-## 27. Literature
+## 27. Sketches, clocks and ids
+
+`okay2-data` is three things a log-first system keeps needing, each a
+module of its own in okay too.
+
+Approximate aggregators: a distinct count, frequencies and quantiles
+are not exact in bounded space, but their SKETCHES merge, so they are
+`Aggregator`s like the exact ones and run beside them in one pass:
+
+```scala
+    val est = Sketch.hyperLogLog[Long](12).run(xs)   // 2^12: ~1.6% expected error
+    val agg = Aggregator.mean[Double].zip(Sketch.tDigest())
+    val (mean, td) = agg.run(xs)
+```
+
+A hybrid logical clock: a timestamp that keeps increasing when the wall
+clock does not, and that orders a reply after the message it answers
+even when the two machines disagree. And `Uid`, a sortable id over it —
+a UUIDv7 that is also a 26-character ULID, ordered by time as a value
+and as text:
+
+```scala
+    val reply = behind.observe(fromAhead)
+    assertEquals(Uid.parseUlid(u.ulid), Some(u), s"ulid round trip for ${u.ulid}")
+```
+
+## 28. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
   Randall LeVeque, "Updating formulae and a pairwise algorithm for
   computing sample variances" (1979): `variance` and its merge.
+- Philippe Flajolet, Éric Fusy, Olivier Gandouet and Frédéric Meunier,
+  "HyperLogLog" (2007); Graham Cormode and S. Muthukrishnan, "An improved
+  data stream summary: the count-min sketch" (2005); Ted Dunning, "The
+  t-digest" (2019); Sandeep Kulkarni et al., "Logical physical clocks"
+  (2014), the hybrid logical clock; RFC 9562 (UUIDv7) and the ULID
+  specification.
 - Flavio Brasil, kyo (2023-): the eager `A | (A < S)` encoding that
   `Eager` borrows. Jacques Carette, Oleg Kiselyov and Chung-chieh Shan,
   "Finally tagless, partially evaluated" (JFP 2009): the tagless

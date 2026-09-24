@@ -29,7 +29,7 @@ lazy val common = Seq(
 )
 
 lazy val okay2: Project = (project in file("."))
-  .aggregate(okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
+  .aggregate(okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Data, okay2Cats, okay2Fs2, okay2Zio)
   .settings(
     name := "okay2",
     common,
@@ -69,6 +69,13 @@ lazy val okay2Stream: Project = (project in file("okay2-stream"))
     common,
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
   )
+
+/** okay-data for the Scala 2 core: the approximate aggregators
+ * (`Sketch`: HyperLogLog, Count-Min, t-digest), the hybrid logical clock
+ * `Hlc` and the sortable id `Uid` over it — specs/okay2.md stage 22 */
+lazy val okay2Data: Project = (project in file("okay2-data"))
+  .dependsOn(LocalProject("okay2"))
+  .settings(name := "okay2-data", common)
 
 /** cats: `Monad`/`MonadError` for programs, a fold into any monad, the
  * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */
