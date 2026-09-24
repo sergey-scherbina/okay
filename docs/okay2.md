@@ -25,7 +25,8 @@ Contents:
 7. [Interpreting one effect into others](#7-interpreting-one-effect-into-others)
 8. [What is different from Scala 3, and why](#8-what-is-different-from-scala-3-and-why)
 9. [Interop: cats, fs2, zio](#9-interop-cats-fs2-zio)
-10. [Literature](#10-literature)
+10. [Streams: chunks, stages, pipelines, windows](#10-streams-chunks-stages-pipelines-windows)
+11. [Literature](#11-literature)
 
 ## 1. The build
 
@@ -394,7 +395,104 @@ the stream in one operation: a pull that survives across a program's
 operations is a scoped resource, and that is the Resource effect's
 job when it comes.
 
-## 10. Literature
+## 10. Streams: chunks, stages, pipelines, windows
+
+`okay2-stream` is okay-stream's pure layer (the asynchronous one —
+channels, merge — follows `okay2-async`). Every snippet is a line of
+its tests. A writer program IS a stream, and the core's `Stream`
+typeclass observes any carrier by `uncons`:
+
+```scala
+    val p = told(1, 2, 3)
+    assertEquals(p.uncons.map(_._1), Some(1))
+    assertEquals(p.toLazyList.toList, List(1, 2, 3))
+    assertEquals(p.iterator.toList, List(1, 2, 3))
+```
+
+**Chunks.** A chunked stream is an ordinary writer stream of whole
+batches: the tree steps once per chunk, an element costs an array
+index, and a `range` is a `long[]`. Everything is lazy — an infinite
+generator builds only the chunks that are pulled:
+
+```scala
+    var built = 0
+    val s = Chunks.generate(0)(x => { built += 1; x })(_ + 1)(8)
+    assertEquals(built, 0)
+    assertEquals(s.elements.take(20).toList, (0 until 20).toList)
+    assertEquals(built, 24) // ceil(20/8) = 3 chunks of 8
+```
+
+```scala
+    val ref = LazyList.from(0).map(_ * 2).filter(_ % 3 == 0).take(100).toList
+    val c = Chunks.take(Chunks.filter(Chunks.map(Chunks.nats[Int](7))(_ * 2))(_ % 3 == 0))(100)
+    assertEquals(c.elements.toList, ref)
+```
+
+**Stages.** A consumer is a program with the `Take` effect (the dual
+of a writer), and `pipe` pairs the two as coroutines: the consumer
+drives, so a finite consumer ends an infinite producer:
+
+```scala
+  def count(n: Int): Nothing ! Writer[Int] = Writer.tell(n).flatMap(_ => count(n + 1))
+```
+
+```scala
+    assertEquals(pipe(count(0))(sums(5, 0)), 0 + 1 + 2 + 3 + 4)
+```
+
+A stage awaits I and tells O; `transduce` is the skeleton every stage
+is made of — a state, a step that may tell nothing, one or many, and
+a flush — and `into`/`through` compose stages demand-driven:
+
+```scala
+    val evens: Stage[Int, Int, Int] = Stage.transduce[Int, Int, Int](0)((sum, i) => {
+      val s2 = sum + i
+      if (i % 2 == 0) Stage.tell[Int, Int](s2).map(_ => s2) else pure(s2)
+    }, s => Stage.tell[Int, Int](-s).map(_ => s))
+
+    val (out, answer) = Effects.run(Writer.run[Int, Int, Writer[Int]](into(told(1, 2, 3, 4, 5, 6))(evens)))
+    assertEquals(out, Seq(3, 10, 21, -21)) // 1+2, +3+4, +5+6, then the flush
+    assertEquals(answer, 21)
+```
+
+Where Scala 3 overloads `through` four ways, Scala 2 gives each
+pairing a word: `pipe`/`pipeIn`, `through`/`throughIn`, `into`/`intoIn`
+— the `In` forms for stages and producers that perform another effect
+between their elements, forwarded in order and lazily.
+
+**Pipelines as values.** An operator tree you can rewrite (map fusion,
+filter fusion, take pushed into a range) and then compile onto the
+chunked transformers; a property test says every rewrite preserves
+semantics:
+
+```scala
+    val p = Pipeline.range(0, 100).map(_ + 1).map(_ * 2).filter(_ > 4).filter(_ % 2 == 0)
+    assertEquals(Pipeline.depth(p), 5)
+    assertEquals(Pipeline.depth(Pipeline.optimize(p)), 3) // range, one map, one filter
+```
+
+**Event-time windows.** Keyed panes over an `Aggregator`, closed by a
+watermark, reading no clock; as a class and as a stage:
+
+```scala
+    val w = Windows.tumbling(10L, 0L)((e: Ev) => e.key)((e: Ev) => e.ts)(sum)
+    val out = Vector.newBuilder[Pane[String, Long]]
+    w.add(Ev(3, "a", 1))(p => { out += p; () })
+    assertEquals(out.result(), Vector.empty)
+    w.add(Ev(11, "a", 2))(p => { out += p; () })
+    assertEquals(out.result(), Vector(Pane(0L, 10L, "a", 1L)))
+```
+
+**A fold that stops.** `FoldUntil` on every carrier pulls exactly as
+much as it needs — no chunk after the satisfying one, no effect after
+the stop:
+
+```scala
+    assertEquals(Chunks.foldUntil(chunked)(FoldUntil.take[Int](3)), Vector(0, 1, 2))
+    assertEquals(pulls, 1)
+```
+
+## 11. Literature
 
 - Oleg Kiselyov and Hiromi Ishii, "Freer Monads, More Extensible
   Effects" (Haskell Symposium 2015) — the tree, the relay handler,

@@ -258,6 +258,107 @@ row alias needs the instance in lexical scope (`import
 okay2.cats.instances._`), since this module cannot reach the core's
 `Free` companion.
 
+## Stage 3 — okay2-stream: the pure stream layer (DONE 2026-09-24)
+The operator's order the same day: "port okay-stream too", then
+okay-async and okay-platform. okay-stream is two layers, and this is
+the first: everything that reads no clock and parks no thread.
+
+INTO THE CORE (`okay2/src`), mirroring where the Scala 3 core keeps
+them: `Stream[S[_], F <: Row]` (uncons, a specializable `iterator`),
+instances for List/LazyList/Vector, `feedStream[A]` (a writer program
+as a stream, the specialized walk: no Option, no Either, no program
+per step) and `writerStreamIn[A, G]` (the G-effectful twin, a
+forwarded operation answered by the Handler); `Stream.fold`/
+`foldUntil` dispatched on the accumulator; `StreamOps`, `FeedOps`,
+`FeedInOps`; `Fold` and `FoldUntil` with the four primitive shapes
+(`OfLong`/`OfInt`/`OfDouble`/`OfBoolean`), `count`/`exists`/`forall`/
+`sum*`/`max`/`min`/`first`/`last`, `find`/`take`/`until`/`headOption`;
+`Aggregator` (init/add/merge/present, `sum`, `count`, `contramap`);
+`Pull` (of/told/toldIn/withFilter/loop); `Writer.uncons`, `unconsIn`,
+`fold`/`foldAt`, `foldUntil`/`foldUntilAt`, `of`, `widen`.
+
+THE MODULE (`okay2/okay2-stream`, package `okay2.stream`): `Chunk`
+(= ArraySeq), `Feed`, `Chunks` (generate/range/ofChars/fromIterator/
+nats/fibs; map/mapTagged/filter/take/drop/takeWhile/dropWhile; fold/
+foldUntil/foldLeft/count; zip; rechunk; pipe; `elements`/`toLazyList`),
+`ChunkBuf`, `Take` (await, `each` as a Pull, `foldUntil` as an
+iteratee), `Pipe` (`pipe`/`pipeIn`, `through`/`throughIn`,
+`into`/`intoIn`, the 256-deep pull budget), `Stage` (await/tell/id/
+transduce/transduceUntil/mapAccumulate/phased/chunked/unchunk),
+`Lines`, `Pipeline` (the operator tree, `optimize`, `chunks`, `fold`,
+`depth`), `Pane`/`Windows` (tumbling/sliding/stage).
+
+### Behavior (stage 3)
+- [x] Stream: List/LazyList carriers, a writer program as a stream
+      (specialized iterator agrees with uncons on an infinite teller),
+      a writer program in G (the Handler runs the forwarded ops),
+      `Stream.fold`/`foldUntil` on every accumulator shape, the
+      stopping fold pulls exactly enough, `Writer.of`, `Pull`
+- [x] Chunks: laziness (only pulled chunks built), a short tail chunk,
+      `range` is a `long[]`, transformers agree with the LazyList
+      reference at boundaries, an infinite chain stays lazy, zip
+      realigns boundaries, rechunk, the chunked pipe, foldLeft/fold/
+      the primitive shapes, `mapTagged` unboxed vs `map` boxed, ofChars
+- [x] Pipe: the consumer drives, None after the end, stages
+      demand-driven and associative, transduce with a flush,
+      mapAccumulate, chunked/unchunk, a 4096-chunk stage past the pull
+      budget, an effectful producer into a consumer (the effect
+      happens at RUN), effectful stages composing lazily, a built
+      program starts its stage once per run (all five doors), Lines
+      with a multi-byte character split across chunks, Take.each
+- [x] Pipeline: optimize preserves semantics on random pipelines
+      (scalacheck), fusion shrinks the tree, take pushes into a range,
+      rechunk collapses into the source, the compiled pipeline agrees
+      with the hand-written one and a mapped chunk is an `int[]`
+- [x] Windows: tumbling and sliding equal a brute-force recompute,
+      closing by watermark, late elements dropped and counted, the
+      lateness bound, the stage form and its re-runnability, one built
+      program run twice loses no pane, composition under `through`
+- [x] FoldUntil on the carriers: Chunks/Writer/FeedInOps agree with
+      the pure road on nine instances, unboxed arms stop at the chunk,
+      no chunk pulled after the satisfying one, the effectful writer
+      performs the op before the stop and not after, transduceUntil
+      stops the upstream, the coroutine road pulls as many as the walk,
+      100k tells tail-recursive, phased CSV with both honest ends
+
+### Decisions
+- FOUR NAMES WHERE SCALA 3 HAS TWO: the Scala 3 core overloads
+  `through` and `pipe` four ways by `targetName`; Scala 2 cannot
+  overload methods whose parameters all erase to `Free`, so the
+  pairings are `pipe`/`pipeIn`, `through`/`throughIn`, `into`/`intoIn`.
+- NO CASTS ON THE WRITER SIDE: the Scala 3 core's `Erased.resumeWith`/
+  `reinject` exist because its `Writer` was an identity signature with
+  no constructor to match; here `Say` is a case class, so the
+  continuation's argument is refined by the pattern, and a forwarded
+  operation is re-injected at its own row and the PROGRAM widened by
+  `at`. The remaining `asInstanceOf` are the lone-`Inject` answers
+  (`pure(om.asInstanceOf[B])`, the answer type the tree cannot say —
+  the Scala 3 core's `@unchecked` at the same places) and the
+  accumulator dispatch in `fold` (the type test cannot tell the
+  compiler `S`).
+- `ChunkBuf` is a plain class over `Array[AnyRef]`: no `summonFrom`, so
+  an unboxed chunk comes only from the places that know their type —
+  `range` (a `long[]`), `ofChars`, `mapTagged`/`Pipeline.Mapped` (a
+  `ClassTag`). `Chunks.map` boxes; `mapTagged` does not; TestChunks
+  asserts both classes.
+- `Fold.long(z)(f)` and friends store the step as a `Function2`: the
+  accumulator stays a `long` across the loop, the step's result boxes
+  on its way out. A fold written as a direct `new OfLong { }` pays
+  nothing; the builders are the convenient road. Backlog `okay2-bench`
+  is where this gets a number.
+- `Stage.chunked` is not inline: the buffer is boxed whatever T is.
+- A DEFERRED TEST EFFECT: `Later.Run(f: () => A)` in the core's test
+  sources, the shape of the Scala 3 core's `Async.Run`, because
+  `Produce.Emit(a)` takes a VALUE and a test asserting WHEN a side
+  effect happens read the construction, not the run (three tests
+  failed that way, the library was right).
+- NOT PORTED, waiting for okay2-async: Channel, Source (+ merge,
+  chunked, flushAfter, Flush), Fifo, Ring, Buffer, Queues,
+  AdaptiveFifo, SentinelChannel, AbruptChannel, Growing, Segments,
+  Interop, ParallelChunks, Bulk/Tables, `Chunks.foldWriter`, the
+  `Staged` inline pipeline. The order after this: okay2-async,
+  okay2-platform, then that layer.
+
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -269,3 +370,5 @@ okay2.cats.instances._`), since this module cannot reach the core's
 - Stage 2: 78 test results (59 + 19 interop), 12 suites, GREEN
   2026-09-24, same gate; every interop suite passed on its first full
   run after the two traps above were paid at compile time.
+- Stage 3: 132 test results (+8 core Stream, +46 stream), 19 suites,
+  GREEN 2026-09-24 (`cd okay2 && ../scripts/gate.sh test`).

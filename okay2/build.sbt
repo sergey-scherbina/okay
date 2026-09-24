@@ -29,8 +29,18 @@ lazy val common = Seq(
 )
 
 lazy val okay2: Project = (project in file("."))
-  .aggregate(okay2Cats, okay2Fs2, okay2Zio)
+  .aggregate(okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
   .settings(name := "okay2", common)
+
+/** okay-stream's pure layer: chunks, Take/pipe, stages and through,
+ * the pipeline as a value, lines, event-time windows */
+lazy val okay2Stream: Project = (project in file("okay2-stream"))
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
+  .settings(
+    name := "okay2-stream",
+    common,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
+  )
 
 /** cats: `Monad`/`MonadError` for programs, a fold into any monad, the
  * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */
