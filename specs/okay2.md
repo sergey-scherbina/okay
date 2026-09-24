@@ -1123,6 +1123,35 @@ names Tag/Instances/byValue/Delim prompts and docs/okay2.md. The
   hierarchy (implicit scope includes the companions of the queried
   class's base classes); the program monad in `Free`'s companion.
 
+## Stage 14 — Sim, deterministic concurrency simulation (2026-09-24)
+The next main effect after stage 12. `Sim`: the row `Sim.Op` with its
+operations in the companion (`Fork`, `Sleep`, `Now`, `Chan`, `Send`,
+`Receive`, `Close`, `Yield`), `fork`/`sleep`/`now`/`channel`/`send`/
+`receive`/`close`/`yieldNow`, `SimChannel`, `Outcome` (`Done`,
+`Deadlock`), `Trace`, `Plan` (a send delayed by its ordinal), and `run`:
+a seeded single-threaded scheduler over the fibers' continuations with
+a virtual clock that moves only when nothing is runnable.
+
+### Behavior (stage 14)
+- [x] the same seed is the same run, byte for byte; fifty seeds, more
+      than one interleaving; the virtual clock orders by wake time at no
+      wall cost; a lease-expiry shape on simulated time; a deadlock is an
+      outcome; the channel contract (capacity parks a sender, close drains
+      then ends); a fault plan changes the run and replays exactly
+- [x] the runCmd close race: the old close rule loses the answer under
+      some seed and replays that loss exactly; the fixed rule survives a
+      200-seed sweep
+- [x] 100 000 yields in one fiber and 1 000 fibers on the default stack
+
+### Decisions
+- The row keeps the core's name, `Sim.Op`, with the operations in its
+  companion (`Sim.Op.Fork`), so a program is `Unit ! Sim.Op` in both.
+- No cast in the scheduler: it holds each continuation at
+  `Any => Unit ! Op` (stage 8), and a channel's typed queue of
+  `Option[A] => Unit ! Op` takes that function by contravariance. The
+  operation is read at one signature through `Split.only`, the kernel's
+  own claim.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

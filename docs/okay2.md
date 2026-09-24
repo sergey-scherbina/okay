@@ -44,7 +44,8 @@ Contents:
 15. [Cells made at run time, and probability](#15-cells-made-at-run-time-and-probability)
 16. [The monad classes](#16-the-monad-classes)
 17. [Several instances of one signature](#17-several-instances-of-one-signature)
-18. [Literature](#18-literature)
+18. [Deterministic simulation](#18-deterministic-simulation)
+19. [Literature](#19-literature)
 
 ## 1. The build
 
@@ -1206,7 +1207,34 @@ whose test reads the operation's value says so the same way:
 misrouting one, and the escape hatch exists only for a row the macro
 cannot see as it is.
 
-## 18. Literature
+## 18. Deterministic simulation
+
+`Sim` runs many fibers on one single-threaded scheduler whose every
+choice comes from a seed, so an interleaving is a value: a race found
+once is a seed, and a fix is checked by replaying it. Sleeps move a
+virtual clock, and a program where every fiber waits is reported as a
+`Deadlock`, not a hung test:
+
+```scala
+    val t = Sim.run(1) {
+      for {
+        a <- channel[Int]()
+        b <- channel[Int]()
+        _ <- fork(receive(a).flatMap(_ => send(b, 1)))
+        _ <- receive(b).flatMap(_ => send(a, 1))
+      } yield ()
+    }
+    assertEquals(t.outcome, Outcome.Deadlock(2))
+```
+
+```scala
+    val o1, o2 = mutable.Buffer.empty[String]
+    val t1 = Sim.run(42)(racing(o1))
+    val t2 = Sim.run(42)(racing(o2))
+    assertEquals(t1.steps, t2.steps)
+```
+
+## 19. Literature
 
 - Philip Wadler, "Monads for functional programming" (1995); Conor
   McBride and Ross Paterson, "Applicative programming with effects"
