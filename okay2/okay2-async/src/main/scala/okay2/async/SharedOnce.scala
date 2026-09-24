@@ -91,7 +91,7 @@ final class SharedOnce {
    * of the row forwarded */
   def runIn[A, F <: Row](a: A ! (Once + (Async + F))): A ! (Async + F) = {
     type Rw = Once + (Async + F)
-    def loop(x: A ! Rw): A ! (Async + F) = Free.resume(x) match {
+    def loop(x: Free[Rw, A]): A ! (Async + F) = Free.resume(x) match {
       case Return(v) => Return(v)
       case Inject(e) => loop(Bind(Inject[Rw, A](e), (v: A) => Return[Rw, A](v)))
       case Bind(Inject(e), k) =>
@@ -104,7 +104,7 @@ final class SharedOnce {
   }
 
   /** the common case: a program whose only other effect is `Async` */
-  def run[A](a: A ! (Once + Async)): A ! Async =
+  def run[A](a: Free[Once with Async, A]): A ! Async =
     runIn[A, Pure](a.at[Once + (Async + Pure)]).at[Async]
 }
 

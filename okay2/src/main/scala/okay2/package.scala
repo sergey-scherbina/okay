@@ -112,7 +112,7 @@ package object okay2 extends Provides {
   def choose[A](as: A*): A ! Choose = Choose.choose(as: _*)
 
   /** all the results of all the branches, the rest of the row forwarded */
-  def runChoice[A, R <: Row](a: A ! R)(implicit rm: Remove[Choose, R]): Seq[A] ! rm.Out = Choose.runChoice(a)
+  def runChoice[A, R <: Row](a: Free[Choose with R, A]): Seq[A] ! R = Choose.runChoice[A, R](a)
 
   /**
    * Bracket over any Handler-able row F: acquire, use, release — the

@@ -33,7 +33,7 @@ class TestDelimStacked extends munit.FunSuite {
 
   test("3. an ordinary effect in head position, beside the stack") {
     type F = Reader[Int]
-    val r = !.run(Reader.run[Int, Int, F](41)(Stacked.delimited[Int, F] { s =>
+    val r = !.run(Reader.run(41)(Stacked.delimited[Int, F] { s =>
       for {
         a <- Reader.ask[Int].at[Delim + F]
         b <- s.stack.shift[Int, Int, F](s.p)(k => k(a + 1))

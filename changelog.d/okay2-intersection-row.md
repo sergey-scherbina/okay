@@ -22,7 +22,7 @@
 - `Handler`/`Into`/`IntoZ` stay invariant: covariant, the documented
   `implicit val h: Handler[F + G] = Handler.union[F, G]` resolved to
   itself.
-- 276 okay2 tests green, cold. `TestRow` rewritten to pin the new
+- 303 okay2 tests green, cold — including stage 7 (Choice, Delim.Stacked, SharedOnce), which landed on the old row while this lane was open and was moved onto the new one here. `TestRow` rewritten to pin the new
   discipline (six orders, subtyping both ways, the `#Op` trap, no
   `TypeableK` for a row); docs/okay2.md sections 2-4 and 8 rewritten,
   every example still pinned by `TestDocSnippets`.

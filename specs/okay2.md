@@ -784,7 +784,7 @@ def handle[S, R <: Row, A](s: S)(a: Free[State[S] with R, A]): Free[R, (S, A)]
 
 ### Behavior (stage 8)
 - [x] every okay2 test green on the new row, the interop modules included
-      (276, cold)
+      (303, cold, stage 7's Choice/Stacked/SharedOnce included)
 - [x] handlers in all six orders over a three-effect program, no
       annotation (TestRow)
 - [x] widening by subtyping: a one-effect program IS a program in a
@@ -844,5 +844,5 @@ def handle[S, R <: Row, A](s: S)(a: Free[State[S] with R, A]): Free[R, (S, A)]
 - STAGE 8 LANDED (2026-09-24, okay2-intersection-row). The row is a
   contravariant intersection: `Member`, `Sub`, `NotPure`, `Remove`
   deleted; `+` is `with`, `Pure` is `Row`; every okay2 module and its
-  tests moved; 276 tests green cold under `-Xlint -Werror`.
+  tests moved; 303 tests green cold under `-Xlint -Werror` (stage 7's 301 ported onto the new row in the same lane).
 

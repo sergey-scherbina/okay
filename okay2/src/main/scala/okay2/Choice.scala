@@ -38,12 +38,12 @@ object Choose {
 
   /** all the results of all the branches, for a program whose row
    * mentions `Choose` anywhere */
-  def runChoice[A, R <: Row](a: A ! R)(implicit rm: Remove[Choose, R]): Seq[A] ! rm.Out =
-    runChoiceAt[A, rm.Out](rm.split(a))
+  def runChoice[A, R <: Row](a: Free[Choose with R, A]): Seq[A] ! R =
+    runChoiceAt[A, R](a)
 
   /** `runChoice` at the handler's own shape: a Cont-valued handler that
    * resumes the continuation once per alternative and appends */
-  def runChoiceAt[A, F <: Row](a: A ! (Choose + F)): Seq[A] ! F =
+  def runChoiceAt[A, F <: Row](a: Free[Choose with F, A]): Seq[A] ! F =
     Effects.handle[A, Seq[A], Choose, F](a)(x => pure[F, Seq[A]](Seq(x)))(
       new Interpr[Choose, Seq[A] ! F] {
         def apply[X](c: Op[X]): Cont[X, Seq[A] ! F, Seq[A] ! F] =
@@ -74,7 +74,7 @@ object Logic {
 
   /** construction must do NO work: recursive search combinators hide
    * behind a unit bind */
-  private def defer[A, F <: Row](p: => A ! (Choose + F)): A ! (Choose + F) =
+  private def defer[A, F <: Row](p: => Free[Choose with F, A]): A ! (Choose + F) =
     pure[Choose + F, Unit](()).flatMap(_ => p)
 
   private def none[A, F <: Row]: A ! (Choose + F) = Free.inject[Choose, A](Choose.Op(Seq.empty)).plus[F]
@@ -85,7 +85,7 @@ object Logic {
    * right; F-operations on the way forward and run once, when crossed.
    * The worklist is a LazyList: infinite choice points stay unforced.
    */
-  def msplit[A, F <: Row](m: A ! (Choose + F)): Option[(A, A ! (Choose + F))] ! F = {
+  def msplit[A, F <: Row](m: Free[Choose with F, A]): Option[(A, A ! (Choose + F))] ! F = {
     type P = A ! (Choose + F)
     def go(stack: LazyList[P]): Option[(A, P)] ! F = stack match {
       case p #:: rest => Free.resume(p) match {
@@ -104,7 +104,7 @@ object Logic {
 
   /** at most one answer: the cut — commits to the first success and
    * throws the rest of the search away */
-  def cut[A, F <: Row](m: A ! (Choose + F)): A ! (Choose + F) =
+  def cut[A, F <: Row](m: Free[Choose with F, A]): A ! (Choose + F) =
     msplit[A, F](m).plus[Choose].at[Choose + F].flatMap {
       case Some((a, _)) => pure[Choose + F, A](a)
       case None => none[A, F]
@@ -112,34 +112,34 @@ object Logic {
 
   /** the soft cut: if cond has ANY answer, then th over ALL its
    * answers; el ONLY when cond has none */
-  def ifte[A, B, F <: Row](cond: A ! (Choose + F))(th: A => B ! (Choose + F))(el: => B ! (Choose + F)): B ! (Choose + F) =
+  def ifte[A, B, F <: Row](cond: Free[Choose with F, A])(th: A => B ! (Choose + F))(el: => Free[Choose with F, B]): B ! (Choose + F) =
     msplit[A, F](cond).plus[Choose].at[Choose + F].flatMap {
-      case Some((a, rest)) => alts[B, F](Seq(defer(th(a)), defer(rest.flatMap(th))))
+      case Some((a, rest)) => alts[B, F](Seq(defer[B, F](th(a)), defer[B, F](rest.flatMap(th))))
       case None => el
     }
 
   /** negation as failure: succeeds (with unit) exactly when the search fails */
-  def gnot[A, F <: Row](m: A ! (Choose + F)): Unit ! (Choose + F) =
+  def gnot[A, F <: Row](m: Free[Choose with F, A]): Unit ! (Choose + F) =
     ifte[A, Unit, F](m)(_ => none[Unit, F])(pure[Choose + F, Unit](()))
 
   /** the FAIR or: answers of a and b take turns — an infinite a cannot
    * starve b */
-  def interleave[A, F <: Row](a: A ! (Choose + F), b: => A ! (Choose + F)): A ! (Choose + F) =
+  def interleave[A, F <: Row](a: Free[Choose with F, A], b: => Free[Choose with F, A]): A ! (Choose + F) =
     msplit[A, F](a).plus[Choose].at[Choose + F].flatMap {
-      case Some((x, rest)) => alts[A, F](Seq(pure[Choose + F, A](x), defer(interleave(b, rest))))
+      case Some((x, rest)) => alts[A, F](Seq(pure[Choose + F, A](x), defer[A, F](interleave[A, F](b, rest))))
       case None => b
     }
 
   /** the FAIR bind: each answer of m gets a turn before any single
    * f-branch monopolizes the search */
-  def fairBind[A, B, F <: Row](m: A ! (Choose + F))(f: A => B ! (Choose + F)): B ! (Choose + F) =
+  def fairBind[A, B, F <: Row](m: Free[Choose with F, A])(f: A => B ! (Choose + F)): B ! (Choose + F) =
     msplit[A, F](m).plus[Choose].at[Choose + F].flatMap {
-      case Some((a, rest)) => interleave(f(a), fairBind(rest)(f))
+      case Some((a, rest)) => interleave[B, F](f(a), fairBind[A, B, F](rest)(f))
       case None => none[B, F]
     }
 
   /** the first n answers (a possibly infinite search stays lazy) */
-  def observe[A, F <: Row](n: Int)(m: A ! (Choose + F)): Seq[A] ! F =
+  def observe[A, F <: Row](n: Int)(m: Free[Choose with F, A]): Seq[A] ! F =
     if (n <= 0) pure[F, Seq[A]](Seq.empty)
     else msplit[A, F](m).flatMap {
       case Some((a, rest)) => observe[A, F](n - 1)(rest).map(a +: _)

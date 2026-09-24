@@ -6,18 +6,18 @@ class TestChoice extends munit.FunSuite {
   test("Choice: multi-shot handler explores every branch (cartesian)") {
     val prog: Int ! Choose =
       choose(1, 2, 3).flatMap(x => choose(10, 20).map(x * _))
-    assertEquals(!.run(runChoice[Int, Choose](prog)), Seq(10, 20, 20, 40, 30, 60))
+    assertEquals(!.run(runChoice(prog)), Seq(10, 20, 20, 40, 30, 60))
   }
 
   test("Choice: empty choice prunes the branch; guard is the same thing spelled as a step") {
     val prog: Int ! Choose =
       choose(1, 2).flatMap(x => if (x == 1) choose[Int]() else choose(x))
-    assertEquals(!.run(runChoice[Int, Choose](prog)), Seq(2))
+    assertEquals(!.run(runChoice(prog)), Seq(2))
     val guarded: Int ! Choose = for {
       x <- choose(1, 2, 3)
       _ <- Choose.guard(x % 2 == 1)
     } yield x * 10
-    assertEquals(!.run(runChoice[Int, Choose](guarded)), Seq(10, 30))
+    assertEquals(!.run(runChoice(guarded)), Seq(10, 30))
   }
 
   test("pythagorean triples: guard prunes, searched by Choose") {
@@ -27,7 +27,7 @@ class TestChoice extends munit.FunSuite {
           .flatMap(b => choose((b to 20): _*)
             .flatMap(c => Choose.guard(a * a + b * b == c * c)
               .map(_ => (a, b, c)))))
-    assertEquals(!.run(runChoice[(Int, Int, Int), Choose](triples)).take(3),
+    assertEquals(!.run(runChoice(triples)).take(3),
       Seq((3, 4, 5), (5, 12, 13), (6, 8, 10)))
   }
 
@@ -36,12 +36,12 @@ class TestChoice extends munit.FunSuite {
     val prog: Int ! (Choose + F) =
       choose(1, 2).at[Choose + F].flatMap(x =>
         Writer.tell(s"seen $x").at[Choose + F].map(_ => x * 10))
-    val (told, found) = !.run(Writer.run[String, Seq[Int], F](runChoice[Int, Choose + F](prog)))
+    val (told, found) = !.run(Writer.run(runChoice(prog)))
     assertEquals(found, Seq(10, 20))
     assertEquals(told, Seq("seen 1", "seen 2"))
     // Choose on the right: Remove finds it
     val flipped: Int ! (F + Choose) = prog.at[F + Choose]
-    assertEquals(!.run(Writer.run[String, Seq[Int], F](runChoice[Int, F + Choose](flipped)))._2, Seq(10, 20))
+    assertEquals(!.run(Writer.run(runChoice(flipped)))._2, Seq(10, 20))
   }
 }
 
@@ -59,25 +59,25 @@ class TestLogic extends munit.FunSuite {
   test("msplit: the first answer and the rest as a program") {
     val Some((a, rest)) = !.run(msplit[Int, Pure](amb(1, 2, 3))): @unchecked
     assertEquals(a, 1)
-    assertEquals(!.run(runChoice[Int, Row](rest)), Seq(2, 3))
+    assertEquals(!.run(runChoice(rest)), Seq(2, 3))
     assertEquals(!.run(msplit[Int, Pure](fail[Int])), None)
   }
 
   test("cut commits: one answer, the rest of the search discarded") {
-    assertEquals(!.run(runChoice[Int, Row](cut[Int, Pure](amb(1, 2, 3)))), Seq(1))
-    assertEquals(!.run(runChoice[Int, Row](cut[Int, Pure](fail[Int]))), Seq.empty)
+    assertEquals(!.run(runChoice(cut[Int, Pure](amb(1, 2, 3)))), Seq(1))
+    assertEquals(!.run(runChoice(cut[Int, Pure](fail[Int]))), Seq.empty)
   }
 
   test("ifte is the soft cut: else runs ONLY when the condition has no answer") {
     val hit = ifte[Int, Int, Pure](amb(1, 2))(x => pure(x * 10))(pure(-1))
-    assertEquals(!.run(runChoice[Int, Row](hit)), Seq(10, 20))
+    assertEquals(!.run(runChoice(hit)), Seq(10, 20))
     val miss = ifte[Int, Int, Pure](fail[Int])(x => pure(x))(pure(-1))
-    assertEquals(!.run(runChoice[Int, Row](miss)), Seq(-1))
+    assertEquals(!.run(runChoice(miss)), Seq(-1))
   }
 
   test("gnot: negation as failure") {
-    assertEquals(!.run(runChoice[Unit, Row](gnot[Int, Pure](fail[Int]))), Seq(()))
-    assertEquals(!.run(runChoice[Unit, Row](gnot[Int, Pure](amb(1)))), Seq.empty)
+    assertEquals(!.run(runChoice(gnot[Int, Pure](fail[Int]))), Seq(()))
+    assertEquals(!.run(runChoice(gnot[Int, Pure](amb(1)))), Seq.empty)
   }
 
   test("interleave is fair: an infinite branch cannot starve the other") {

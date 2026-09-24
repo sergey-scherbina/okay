@@ -29,7 +29,7 @@ class TestSharedOnce extends munit.FunSuite {
   test("the threaded reading, for contrast: Once.run per fibre runs the same value twice") {
     val runs = new AtomicInteger(0)
     val p = slow(runs)
-    val (a, b) = Async.par(Once.run[Int, Once + Async](p), Once.run[Int, Once + Async](p)).runWith
+    val (a, b) = Async.par(Once.run(p), Once.run(p)).runWith
     assertEquals((a, b), (42, 42))
     assertEquals(runs.get, 2, "each fibre's Once.run has its own cells")
   }
@@ -52,7 +52,7 @@ class TestSharedOnce extends munit.FunSuite {
         Async { runs.incrementAndGet(); () }.at[Rw]
           .flatMap(_ => Writer.tell("ran").at[Rw]).map(_ => 7))
     val twice = p.flatMap(x => p.map(y => x + y))
-    val (log, n) = Writer.run[String, Int, Async + Writer[String]](store.runIn[Int, Writer[String]](twice)).runWith
+    val (log, n) = Writer.run(store.runIn[Int, Writer[String]](twice)).runWith
     assertEquals(n, 14)
     assertEquals(log, Seq("ran"), "the program's own tell happened once, with its one run")
     assertEquals(runs.get, 1)

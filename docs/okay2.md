@@ -796,7 +796,7 @@ that lets two infinite branches take turns:
 ```scala
     val prog: Int ! Choose =
       choose(1, 2, 3).flatMap(x => choose(10, 20).map(x * _))
-    assertEquals(!.run(runChoice[Int, Choose](prog)), Seq(10, 20, 20, 40, 30, 60))
+    assertEquals(!.run(runChoice(prog)), Seq(10, 20, 20, 40, 30, 60))
 ```
 
 ```scala
@@ -811,8 +811,8 @@ inside the search backtracks its cells with the branches, outside it
 shares one store, and the counts say which:
 
 ```scala
-    val handled: Seq[Int] ! W = Once.run[Seq[Int], Once + W](runChoice[Int, Rw](prog))
-    val (log, out) = !.run(Writer.run[String, Seq[Int], W](handled))
+    val handled: Seq[Int] ! W = Once.run(runChoice(prog))
+    val (log, out) = !.run(Writer.run(handled))
     assertEquals(out, Seq(11, 12))
     assertEquals(hits, 1)
     assertEquals(log, Seq("x"))
