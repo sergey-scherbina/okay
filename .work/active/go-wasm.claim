@@ -1,3 +1,0 @@
-slug: go-wasm
-who: claude-opus-5.5 (interop session)
-what: polyglot-go stage 2: a Go plugin (sha256) compiled to wasm32 wasip1 (no TinyGo), run by Chicory as the Digest effect; byte-equal to the JDK MessageDigest
