@@ -289,6 +289,69 @@ exchange with role labels is the classic defence against reflection in
 two-party authentication (R. Bird et al., "Systematic Design of Two-Party
 Authentication Protocols", CRYPTO 1991, doi:10.1007/3-540-46766-1_3).
 
+## When the far side fails: deadlines and recovery
+
+Two things go wrong with a far side: it goes SILENT (a hung call, a
+network that stopped delivering), or it DIES (a crash, a killed process, a
+dropped connection). okay's answer is the one it gives everywhere else:
+the failure is data, and what to do about it is the caller's choice.
+
+**A deadline** is a given:
+
+```scala
+    given WireDeadline = WireDeadline.after(500.millis)
+```
+
+A call that does not answer in time answers `Left(Condition("timeout",
+...))`, and the engine is dead after it: the only way to abandon a
+blocked read on a pipe or a socket is to close the wire. Without the
+given there is no deadline, as before. In-process there is no deadline at
+all: a call into a library runs on the caller's thread and cannot be
+abandoned, so a deadline there is refused by name rather than promised.
+
+**A supervised worker** comes back after a death or a timeout. `open` is
+whatever made the worker (a child process, a connection), and it is
+called again with the same givens:
+
+```scala
+    val w = ForeignWorker.supervised(ForeignWorker.connect("127.0.0.1", port))
+```
+
+What survives a restart depends on what was running:
+
+- **Programs as data survive, even mid-run.** A far-side program is a pure
+  function of the answers it was given. A continuation is therefore fully
+  described by its program (`fn`, `args`) and the PATH of answers that
+  reached it. The supervisor records those paths. On a fresh worker it
+  re-runs the program and replays the path, which re-derives the
+  continuation, and then continues. The tests kill a Python worker's
+  process, and a Go server (brought back on the same port), in the middle
+  of a multi-shot program: every branch of a `Choice` still comes back. A
+  replay that meets a different operation than the one recorded means the
+  far side is not deterministic, and it answers
+  `Condition("ReplayDrift", ...)`, never a wrong value.
+- **A plain call caught in the failure answers
+  `Condition("WorkerDied" | "timeout", ...)`.** That covers `Call`,
+  `Frame`, and a direct-style call waiting in `okay_call`, whose far-side
+  frame died with the process. Whether to call again is the caller's
+  decision, because the far side may have done the work before it went
+  silent. okay-platform's `retry(policy)(...)` is the tool when doing it
+  twice is harmless.
+- **A held object does not survive.** It names state inside one process.
+  A ref from before a restart is refused by name ("belongs to a worker
+  that is gone"). Refs carry their generation, so a stale ref is never
+  pointed at whatever the fresh process happens to number the same.
+
+This is log-based rollback recovery under the piecewise-deterministic
+assumption (E. N. Elnozahy, L. Alvisi, Y.-M. Wang and D. B. Johnson, "A
+Survey of Rollback-Recovery Protocols in Message-Passing Systems", ACM
+Computing Surveys 34(3), 2002, doi:10.1145/568522.568525). The recorded
+answers are the log, and the far side's purity makes each replayed step
+arrive where it did before. It is the same journal-of-answers idea as
+okay's `Durable`. Restarting what died and letting the caller decide is
+Erlang's supervision (J. Armstrong, "Making reliable distributed systems
+in the presence of software errors", PhD thesis, KTH, 2003).
+
 ## One `okay_call`, step by step
 
 In-process, the Scala side can do exactly one thing with the loaded Rust
@@ -351,9 +414,6 @@ step is one function call.
   speak, but the messages are plain TCP: use it inside a trusted network
   or behind TLS or SSH. Encryption by a `given` is the next stage
   ([specs/polyglot-one-wire.md](../specs/polyglot-one-wire.md)).
-- **No read deadline.** A far side that stops answering (or confirms a
-  `configure` and does not switch) leaves the engine waiting. The
-  gate's stall watchdog is what caught that mutant.
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.
 - **Go in-process.** Only as WebAssembly.
 

@@ -250,7 +250,7 @@ replaces the process, as `PyWorkers` does), R's timeout with respawn,
 okay-platform's `retry`, and `Durable`'s insight that a journal of ANSWERS
 replays a program.
 
-- [ ] `given WireDeadline` (default: none, as before):
+- [x] `given WireDeadline` (default: none, as before):
       `WireDeadline.after(duration)`. On a stream link (pipes, TCP), an
       answer that does not arrive in time CLOSES the link. The only way to
       abandon a blocked read is to take the wire with it. The call answers
@@ -258,7 +258,7 @@ replays a program.
       afterwards. On an in-process link a call cannot be abandoned (FFM
       and Chicory run on the caller's thread), so a deadline there is
       refused by name at construction rather than promised.
-- [ ] `ForeignWorker.supervised(open)`: the same handler shape over a
+- [x] `ForeignWorker.supervised(open)`: the same handler shape over a
       worker that is REOPENED by `open` after a death or a timeout: a
       fresh process (`start`, `speaking`), a new connection (`connect`),
       with the same givens. A plain call (`Call`, `Frame`, a direct-style
@@ -267,7 +267,7 @@ replays a program.
       Whether to retry is the caller's: the far side may have done the
       work before it went silent, and only the caller knows whether
       doing it twice is harmless (okay-platform's `retry`).
-- [ ] Programs as data SURVIVE a restart. A far-side program is a pure
+- [x] Programs as data SURVIVE a restart. A far-side program is a pure
       function of the answers it was given (`perform`/`then`), so a
       continuation is fully described by its run's `(fn, args)` and the
       PATH of answers that reached it. The supervisor records the paths.
@@ -278,9 +278,9 @@ replays a program.
       replay that meets a different operation than the path recorded is
       a far side that is not deterministic, answered as
       `Condition("ReplayDrift", ...)` rather than a wrong answer.
-- [ ] Held objects (`Hold`) die with their worker: a later use is refused
+- [x] Held objects (`Hold`) die with their worker: a later use is refused
       by name, as in `PyWorkers`.
-- [ ] Tests: a silent Python call past its deadline; a worker killed
+- [x] Tests: a silent Python call past its deadline; a worker killed
       between two continuations of a multi-shot program (all four
       branches); a Go TCP connection dropped and reconnected (the same,
       over the network); a direct-style dialogue killed mid-ask; a drift;
@@ -506,4 +506,33 @@ replays a program.
   extensions in `okay.rust`, since FFM and Chicory live there. A file
   without `okay_exchange` is refused by name (tested against the Argon2
   kernel).
+
+- Reliability (wire-read-deadline, 2026-09-24).
+  - `okay.codec.WireDeadline` (a given, default none). `ForeignWorker` does
+    its exchanges on one daemon reader when a deadline is set. At expiry
+    it marks itself dead, closes the link, and the call answers
+    `Left(Condition("timeout"))` (`PyStep.Done(Left)` for a dialogue).
+    `ForeignWorker.alive` says so. In-process the deadline is refused at
+    `over`.
+  - `ForeignWorker.supervised(open)` gives `SupervisedWorker`, the same
+    handler. It reopens on the next use after a death or a timeout, and
+    `restarts` counts the reopenings. Continuations are renamed to the
+    supervisor's own ids, each remembering (run, path of answers, op,
+    args, local k, generation). A continue on a generation that is gone
+    re-runs the program and replays the path first, checking at the end
+    that the operation and arguments are the recorded ones
+    (`ReplayDrift` otherwise). A step that failed mid-flight is retried
+    once on a fresh worker. Refs and dialogue keys are `generation << 40
+    | local`, so a stale one is refused by name, never re-pointed.
+  - Tests. Live (Python): a timeout as data with the worker dead after
+    it; supervised recovery after a timeout; a process CRASH
+    (`os._exit`) between two choices of a multi-shot program (all four
+    branches); a pid-named operation caught as drift; a crash mid-ask
+    (WorkerDied); a stale ref. Live (Go): the server killed and restarted
+    on its port mid-program, reconnected and replayed. Default gate: the
+    in-process refusal.
+  - Mutant: a supervisor that never replays failed the three recovery
+    tests, with the far side's own "continuation ... is not held here".
+  - Not done: R's engine respawns after a timeout but does not replay its
+    programs; backlog `r-supervised-replay`.
 
