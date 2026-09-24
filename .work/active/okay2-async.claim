@@ -1,0 +1,4 @@
+slug: okay2-async
+who: claude (session 01XyJb5e)
+what: okay2/okay2-async — okay-async ported to the Scala 2 core (Async effect, fibers, Handoff, SharedOnce, Par, Retry), JVM; then okay2-platform
+since: 2026-09-24T06:18:14Z
