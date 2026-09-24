@@ -1,3 +1,0 @@
-slug: okay2-aggregate
-agent: claude (session 69c582ad)
-what: okay2: the rest of Stream/Fold from the Scala 3 core — Aggregator family (OfLong/Int/Double, zip/zipLong, mean, variance, stddev, summary, min/max/first/last, topK, distinct, groupBy, Sequential), sliding, Foldable/foldTo/foldUntilTo, Stream zip/flatMap/append/MonadPlus; spec stage 21, docs §25 (after HMap 20/§24)
