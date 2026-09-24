@@ -118,6 +118,26 @@ package object okay2 extends Provides with Monads {
     go(Vector.empty, G.empty, LazyList.unfold(s)(x => Effects.runFree(St.uncons(x))))
   }
 
+  /** the indexed program (Prog.scala): a `Free` whose type also says
+   * what holds before (`S`) and after (`T`) it runs. Abstract outside
+   * `ProgImpl`, as `Cont`'s type is */
+  val Prog: ProgModule = ProgImpl
+  type Prog[R, A, S, T] = Prog.Rep[R, A, S, T]
+
+  implicit final class IndexedOps[R, A, S, T](private val m: Prog.Rep[R, A, S, T]) extends AnyVal {
+    /** sequencing composes the indexes end to end: `S -> T` then `T -> U`
+     * is `S -> U`, and a continuation starting anywhere but `T` does not
+     * typecheck */
+    def flatMap[B, U](f: A => Prog.Rep[R, B, T, U]): Prog[R, B, S, U] = Prog.flatMap(m)(f)
+    def map[B](f: A => B): Prog[R, B, S, T] = Prog.map(m)(f)
+  }
+
+  implicit final class IndexedDiagOps[R, A, S](private val m: Prog.Rep[R, A, S, S]) extends AnyVal {
+    /** the tree back, unchanged — for a program that ends where it began;
+     * a move left open has no way out */
+    def free: A ! R = Prog.free(m)
+  }
+
   /** the eager encoding (see `EagerModule`): `Eager[F, A]` is abstract
    * here, `import Eager._` brings its `Effects` instance */
   val Eager: EagerModule = EagerImpl
