@@ -66,13 +66,21 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
    * is how a `resume` goes: it answers an ask, it opens nothing */
   private def send(body: Json): Json =
     if !live then throw IllegalStateException("the worker is DEAD (its wire was closed) — a supervisor retry gets a fresh one")
-    val answer = io {
-      codec match
-        case None => link.roundTrip(Json.print(body)).map(ForeignWorker.whole)
-        case Some((format, compression)) =>
-          link.exchange(compression.compress(format.encode(body)))
-            .map(bytes => format.decode(compression.decompress(bytes)))
-    }
+    val answer =
+      try io {
+        codec match
+          case None => link.roundTrip(Json.print(body)).map(ForeignWorker.whole)
+          case Some((format, compression)) =>
+            link.exchange(compression.compress(format.encode(body)))
+              .map(bytes => format.decode(compression.decompress(bytes)))
+      }
+      catch case e: java.io.IOException =>
+        // a far side killed from outside (an OOM kill, a crash) does not
+        // always end the stream cleanly: the JDK closes a dead child's
+        // pipes, a peer resets its socket, and the WRITE throws "Stream
+        // closed" or "Broken pipe" (supervised-crash-every-language)
+        live = false
+        throw IllegalStateException(s"the worker is DEAD (its wire broke: ${e.getMessage}) — a supervisor retry gets a fresh one")
     answer.getOrElse {
       live = false
       throw IllegalStateException("the worker is DEAD (eof on the wire) — a supervisor retry gets a fresh one")

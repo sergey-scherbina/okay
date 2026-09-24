@@ -74,10 +74,17 @@ final class RSubprocess private (private var proc: Process,
   /** one message out, the next in — a `resume` opens nothing, so it
    * carries no id (foreign-callbacks) */
   private def send(body: Json): Either[Condition, Json] =
-    codec match
-      case None => WireFrames.writeLine(out, Json.print(body))
-      case Some((f, c)) => WireFrames.writeFrame(out, c.compress(f.encode(body)))
-    readMessage() match
+    val got =
+      try
+        codec match
+          case None => WireFrames.writeLine(out, Json.print(body))
+          case Some((f, c)) => WireFrames.writeFrame(out, c.compress(f.encode(body)))
+        readMessage()
+      catch case e: java.io.IOException =>
+        // R killed from outside: the JDK closes a dead child's pipes, and
+        // the write throws rather than the read ending (supervised-crash-every-language)
+        throw IllegalStateException(s"the R process is DEAD (its wire broke: ${e.getMessage}) — a supervisor retry gets a fresh one")
+    got match
       case Left(c) => Left(c)
       case Right(None) =>
         throw IllegalStateException(

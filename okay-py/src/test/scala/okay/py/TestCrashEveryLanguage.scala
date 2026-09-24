@@ -95,6 +95,7 @@ class TestCrashPython extends CrashConformance:
 
 class TestCrashTypeScript extends CrashConformance:
   override def munitIgnore: Boolean = !TsConformance.node
+  override def address(name: String): String = s"conf:$name"
   private lazy val dir =
     val d = java.nio.file.Files.createTempDirectory("okay-ts-crash")
     java.nio.file.Files.writeString(d.resolve("conf.ts"), TsConformance.conf): Unit
