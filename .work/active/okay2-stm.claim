@@ -1,6 +1,0 @@
-feature/okay2-stm 2026-09-24T12:57:31Z
-agent: claude-code
-heartbeat: 2026-09-24T12:57:31Z
-status: in-progress
-done-so-far: claimed
-next: okay2-stm subproject (Tx, Stm: tl2/direct/sim, orElse, retry parking) on TRef; TMap.foreachUnordered; the Scala 3 STM suites; spec stage 17, docs, changelog; build.sbt gains okay2Stm
