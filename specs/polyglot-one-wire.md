@@ -240,6 +240,52 @@ mechanism:
       supports, and a table in the docs says which languages support
       which layer.
 
+## Stage 6 — reliability (wire-read-deadline)
+
+The operator: "рилайибилити - если чтото отвалилось там и таймаут - что
+тогда происходит? должно както все востанавливаться (по желанию конечно
+со стороны обработчика) - у нас мне кажется для этого есть все". The
+pieces already exist: the fault model (a death throws, and a supervisor
+replaces the process, as `PyWorkers` does), R's timeout with respawn,
+okay-platform's `retry`, and `Durable`'s insight that a journal of ANSWERS
+replays a program.
+
+- [ ] `given WireDeadline` (default: none, as before):
+      `WireDeadline.after(duration)`. On a stream link (pipes, TCP), an
+      answer that does not arrive in time CLOSES the link. The only way to
+      abandon a blocked read is to take the wire with it. The call answers
+      `Left(Condition("timeout", ...))` as data, and the engine is dead
+      afterwards. On an in-process link a call cannot be abandoned (FFM
+      and Chicory run on the caller's thread), so a deadline there is
+      refused by name at construction rather than promised.
+- [ ] `ForeignWorker.supervised(open)`: the same handler shape over a
+      worker that is REOPENED by `open` after a death or a timeout: a
+      fresh process (`start`, `speaking`), a new connection (`connect`),
+      with the same givens. A plain call (`Call`, `Frame`, a direct-style
+      dialogue) caught in the failure answers `Left(Condition(...))`
+      naming what happened, and the next call runs on the fresh worker.
+      Whether to retry is the caller's: the far side may have done the
+      work before it went silent, and only the caller knows whether
+      doing it twice is harmless (okay-platform's `retry`).
+- [ ] Programs as data SURVIVE a restart. A far-side program is a pure
+      function of the answers it was given (`perform`/`then`), so a
+      continuation is fully described by its run's `(fn, args)` and the
+      PATH of answers that reached it. The supervisor records the paths.
+      On a fresh worker it re-runs the program and replays the path,
+      which re-derives the continuation, and then continues it. A step
+      that failed mid-flight is redone the same way, so a `Choice` over
+      a far-side program returns every branch across a killed worker. A
+      replay that meets a different operation than the path recorded is
+      a far side that is not deterministic, answered as
+      `Condition("ReplayDrift", ...)` rather than a wrong answer.
+- [ ] Held objects (`Hold`) die with their worker: a later use is refused
+      by name, as in `PyWorkers`.
+- [ ] Tests: a silent Python call past its deadline; a worker killed
+      between two continuations of a multi-shot program (all four
+      branches); a Go TCP connection dropped and reconnected (the same,
+      over the network); a direct-style dialogue killed mid-ask; a drift;
+      and the deadline refused in-process.
+
 ## Decisions
 
 - **One protocol, many links**, rather than a binding per transport. The
