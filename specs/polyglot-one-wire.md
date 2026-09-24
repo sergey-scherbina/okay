@@ -154,7 +154,7 @@ mechanism:
       frames, so a binary format fits. JSON stays line-compatible.
 - [x] Compression (`given WireCompression`: none, deflate/gzip from the
       JDK, or zstd where a library is present).
-- [ ] DEFLATE is the DEFAULT, as a preference (operator, 2026-09-24:
+- [x] DEFLATE is the DEFAULT, as a preference (operator, 2026-09-24:
       "не обязательным но желательным (по умолчанию) - его при желании
       можно только отключить"). With no import, a stream link (pipes,
       TCP) whose far side announces deflate compresses every message; a
@@ -163,7 +163,7 @@ mechanism:
       off. `import WireCompression.Deflate.given` stays the STRICT choice:
       a far side without it is refused by name. `ForeignWorker.wire` says
       what was negotiated.
-- [ ] In-process links (FFM, wasm) do not take the preference: a message
+- [x] In-process links (FFM, wasm) do not take the preference: a message
       there is a memory copy, and compressing it is pure cost. The strict
       `Deflate` given still applies to them.
 - [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
@@ -311,3 +311,18 @@ mechanism:
     The engine has no read deadline, so a far side that goes silent
     leaves it waiting. The fault is in the far side, but the host
     should say so: backlog `wire-read-deadline`.
+
+- DEFLATE by default (wire-deflate-default, 2026-09-24).
+  - `given WireCompression.preferred` is the default: raw DEFLATE with a
+    `fallback` to `Off.off`, taken on an in-process link
+    (`WireLink.inProcess`) and where the hello does not announce
+    deflate. `Off.given` disables it; `Deflate.given` is strict.
+    `ForeignWorker.wire` answers "format/compression".
+  - Every default live suite now runs compressed where the far side
+    speaks it: Python, TypeScript, Go and Rust over pipes and TCP. It
+    stays plain over Haskell pipes and in-process (pinned in
+    `TestPyPipes`, `TestPyPipesOff`, `TestHsPipes` and `TestRustFfm`),
+    and the fake-link cases are in the default gate (`TestWireGivens`,
+    6 new).
+  - Mutant: dropping the in-process branch of the fallback failed
+    exactly the in-process case.

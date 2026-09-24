@@ -101,33 +101,57 @@ Wire lines are now read strictly, on every transport.
 
 ## The wire's encoding, chosen by a given
 
-The link carries JSON lines unless the Scala side says otherwise, and
-it says so with an import. The imports are givens that the engine's
-`start`, `speaking`, `connect` and `over` take as `using` parameters:
+The wire's format and compression are chosen with an import. The
+imports are givens that the engine's `start`, `speaking`, `connect` and
+`over` take as `using` parameters.
+
+**With no import, the wire is JSON compressed with raw DEFLATE**
+(RFC 1951), wherever that is possible:
+
+```scala
+  lazy val engine: ForeignWorker = ForeignWorker.start(TestPy.python.get, modules = Seq(PyConformance.conf))
+```
+
+```scala
+    assertEquals(engine.wire, "json/deflate")
+```
+
+The default is a PREFERENCE, not a requirement. A far side without
+DEFLATE (Haskell, R, a worker older than this) keeps the plain JSON
+lines, and nothing is refused:
+
+```scala
+    assertEquals(engine.wire, "json/none")
+```
+
+An in-process link (Rust over FFM, Rust or Go on WebAssembly) does not
+compress by default either: a message there is a copy in memory, and
+compressing it would cost CPU and save nothing. `ForeignWorker.wire`
+always says what the handshake settled on.
+
+To turn compression off, import `Off`:
+
+```scala
+  import WireCompression.Off.given
+```
+
+For CBOR (RFC 8949) instead of JSON, or for DEFLATE as a REQUIREMENT
+rather than a preference, the imports are:
 
 ```scala
   import WireFormat.Cbor.given
   import WireCompression.Deflate.given
 ```
 
-With those two lines in scope, the same engine call speaks CBOR
-(RFC 8949), each message compressed with raw DEFLATE (RFC 1951):
-
-```scala
-  lazy val engine: ForeignWorker = ForeignWorker.start(TestPy.python.get, modules = Seq(PyConformance.conf))
-```
-
-Nothing else in the program changes. Without an import, the defaults are
-JSON with no compression. They come from the companions' implicit scope,
-so an old program keeps its old wire byte for byte.
+Nothing else in the program changes.
 
 The far side cannot import a Scala given, so it ANNOUNCES what it speaks
 in its hello: `"speaks":{"format":["json","cbor"],"compress":["deflate"]}`.
 The engine then sends one `configure` request as a JSON line. The far
 side answers it in the old mode and switches after the answer. From then
 on every message is a frame: a 4-byte big-endian length, then the bytes.
-A choice the far side did not announce is refused by name before any
-request is sent, and never quietly downgraded:
+An EXPLICIT choice that the far side did not announce is refused by name
+before any request is sent, and never quietly downgraded:
 
 ```scala
     val e = intercept[IllegalStateException](ForeignWorker.speaking(Seq(HsConformance.binary)))
