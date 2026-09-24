@@ -192,12 +192,18 @@ def _decode(data):
     return json.loads(data)
 
 def reply(obj):
-    if _framed():
-        data = _encode(obj)
-        _OUT.write(len(data).to_bytes(4, "big") + data)
-    else:
-        _OUT.write(json.dumps(obj).encode("utf-8") + b"\n")
-    _OUT.flush()
+    try:
+        if _framed():
+            data = _encode(obj)
+            _OUT.write(len(data).to_bytes(4, "big") + data)
+        else:
+            _OUT.write(json.dumps(obj).encode("utf-8") + b"\n")
+        _OUT.flush()
+    except BrokenPipeError:
+        # the host is gone (a gateway's client left): nothing is waiting for
+        # this answer, and a worker without a host ends quietly
+        import os
+        os._exit(0)
 
 def read_msg():
     """the next request, or None when the host is gone"""
@@ -209,7 +215,14 @@ def read_msg():
             return _decode(data)
         line = _IN.readline()
         if not line: return None
-        if line.strip(): return json.loads(line)
+        if line.strip():
+            # a line that is not JSON (a TLS handshake sent to a plain
+            # gateway, a stray write) is ANSWERED, as the Go, Rust and
+            # Haskell workers answer it, rather than ending the worker
+            try:
+                return json.loads(line)
+            except ValueError:
+                return {"id": None, "op": "(not a JSON request)"}
 
 # ---- callbacks into okay (v3) ------------------------------------------
 #

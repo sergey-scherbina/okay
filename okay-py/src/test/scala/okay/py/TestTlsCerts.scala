@@ -97,7 +97,7 @@ abstract class TlsConformance extends WireConformance:
         given okay.Handler[ForeignEval] = both.handler
         val priceOf = Foreign.callback[String, Double]("price_of")(_ => okay.Free.pure(4.0))
         val discount = Foreign.callback[Double, Double]("discount")(a => okay.Free.pure(a / 2))
-        assertEquals(Foreign.fn[Double]("quote").calling(Foreign.callbacks(priceOf, discount))("tea", 3L).runWith, Right(6.0))
+        assertEquals(Foreign.fn[Double](address("quote")).calling(Foreign.callbacks(priceOf, discount))("tea", 3L).runWith, Right(6.0))
       finally both.close()
     finally p.destroy()
   }

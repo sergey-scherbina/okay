@@ -42,6 +42,13 @@ object TsWorker:
    */
   def start(dir: Path, modules: Seq[String], node: String = "node",
             env: Map[String, String] = Map.empty)(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
+    val c = command(dir, modules, node, env)
+    ForeignWorker.speaking(c.command, c.env)
+
+  /** the worker as a COMMAND, for a process okay does not start itself:
+   * `ForeignGateway` runs one per connection (stage 7) */
+  def command(dir: Path, modules: Seq[String], node: String = "node",
+              env: Map[String, String] = Map.empty): WorkerCommand =
     Files.writeString(dir.resolve("okay.ts"), library): Unit
     Files.writeString(dir.resolve("worker.ts"), worker): Unit
     modules.foreach { m =>
@@ -49,7 +56,7 @@ object TsWorker:
         throw IllegalArgumentException(s"okay.py: no module $m.ts in $dir")
     }
     val list = modules.map(m => s"$m=${dir.resolve(s"$m.ts")}").mkString(";")
-    ForeignWorker.speaking(Seq(onPath(node), dir.resolve("worker.ts").toString), env.updated("OKAY_TS_MODULES", list))
+    WorkerCommand(Vector(onPath(node), dir.resolve("worker.ts").toString), env.updated("OKAY_TS_MODULES", list))
 
   /** the child's environment is empty, so the executable is found HERE */
   private def onPath(exe: String): String =

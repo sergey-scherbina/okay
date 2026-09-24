@@ -205,13 +205,23 @@ object ForeignWorker:
 
   /** `start` once the modules are already in the environment */
   private[py] def startIn(python: String, env: Map[String, String])(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
+    startWith(python, shimFile(), env)
+
+  /** the shim from this jar, as a file a process can run */
+  private def shimFile(): java.nio.file.Path =
     val shim = java.nio.file.Files.createTempFile("okay-py-shim", ".py")
     val res = getClass.getResourceAsStream("/okay/py/shim.py")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
     try java.nio.file.Files.copy(res, shim, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     finally res.close()
     shim.toFile.deleteOnExit()
-    startWith(python, shim, env)
+    shim
+
+  /** the Python worker as a COMMAND, for a process okay does not start
+   * itself: `ForeignGateway` runs one per connection (stage 7) */
+  def pythonCommand(python: String = "python3", modules: Seq[PyModule] = Nil,
+                    env: Map[String, String] = Map.empty): WorkerCommand =
+    WorkerCommand(Vector(resolve(python), shimFile().toString), PyModule.env(modules, env))
 
   /** the seam the handshake test uses: any shim file */
   private[py] def startWith(python: String, shim: java.nio.file.Path,
