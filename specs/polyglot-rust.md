@@ -53,9 +53,30 @@ gives a LAW to hold the binding to: the same inputs give the same bytes.
 
 - Stage 2 — Scala Native: the same crate's `staticlib` through
   `@extern`, and the same law on Native.
-- Stage 3 — Chicory: the kernel compiled to `wasm32-unknown-unknown`, run
-  by a pure-JVM Wasm runtime. This is the untrusted-plugin road, and
-  Go's through TinyGo.
+- Stage 3 — Chicory: see below.
+
+## Stage 3 — the same kernel as WebAssembly, under Chicory
+
+No native code in the process at all: the crate compiled to
+`wasm32-wasip1` and run by Chicory, a WebAssembly runtime written in
+Java. The kernel's memory is its own linear memory, so a bug in it
+cannot touch the JVM's heap. This is the road for UNTRUSTED plugins,
+and for Go (`GOOS=wasip1`) as well as Rust.
+
+- [ ] The crate exports `okay_alloc(n)` and `okay_free(p, n)`. A host
+      cannot hand a module its own pointers, so buffers are the module's
+      memory, filled and read by the host. The native road ignores both.
+- [ ] `okay.rust.WasmLib.load(bytes)` instantiates a module under Chicory
+      with a WASI that grants NOTHING: no files, no environment, no
+      arguments. It gives:
+      - `call(name, args*)` on an export;
+      - `bytesIn(a)` and `bytesOut(p, n)` over the module's memory, both
+        freed in a `finally`.
+- [ ] `Kdf.wasm(lib)` is the third handler of the same effect. The
+      program is unchanged.
+- [ ] (Live: cargo + the wasm32-wasip1 target) THE LAW again: the wasm
+      kernel's bytes are BouncyCastle's, over the same 48 cases. A
+      refused parameter set is the same `Left` as the native road's.
 
 ## Decisions
 
