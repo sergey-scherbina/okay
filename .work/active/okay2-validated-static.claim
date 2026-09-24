@@ -1,6 +1,0 @@
-feature/okay2-validated-static 2026-09-24T12:52:33Z
-agent: claude-code
-heartbeat: 2026-09-24T12:52:33Z
-status: in-progress
-done-so-far: claimed
-next: okay2 Semigroup/Monoid/Group; Validated (Selective, no Monad, andThen); Static (the free selective: leaves, toFree, foldMap stack-safe); the Scala 3 suites; spec stage 16, docs, changelog
