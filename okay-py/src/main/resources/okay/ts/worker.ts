@@ -8,6 +8,7 @@
 // synchronously, and an import is not.
 
 import * as fs from "node:fs";
+import * as zlib from "node:zlib";
 import { pathToFileURL } from "node:url";
 import { hooks, OkayError, type Prog } from "./okay.ts";
 
@@ -18,6 +19,32 @@ const EXACT = 2 ** 53;
 
 let pending: Buffer = Buffer.alloc(0);
 
+/** read more of stdin into `pending`; false at its end */
+function fill(): boolean {
+  const chunk = Buffer.alloc(65536);
+  for (;;) {
+    let n: number;
+    try {
+      n = fs.readSync(0, chunk, 0, chunk.length, null);
+    } catch (e: any) {
+      if (e && e.code === "EAGAIN") continue;
+      if (e && e.code === "EOF") return false;
+      throw e;
+    }
+    if (n === 0) return false;
+    pending = Buffer.concat([pending, chunk.subarray(0, n)]);
+    return true;
+  }
+}
+
+/** exactly n bytes of stdin; null if it ends first */
+function readBytes(n: number): Buffer | null {
+  while (pending.length < n) if (!fill()) return null;
+  const out = pending.subarray(0, n);
+  pending = pending.subarray(n);
+  return out;
+}
+
 /** the next line of stdin, synchronously; null at its end */
 function readLine(): string | null {
   for (;;) {
@@ -27,27 +54,155 @@ function readLine(): string | null {
       pending = pending.subarray(nl + 1);
       return line;
     }
-    const chunk = Buffer.alloc(65536);
-    let n: number;
-    try {
-      n = fs.readSync(0, chunk, 0, chunk.length, null);
-    } catch (e: any) {
-      if (e && e.code === "EAGAIN") continue;
-      if (e && e.code === "EOF") return null;
-      throw e;
-    }
-    if (n === 0) {
+    if (!fill()) {
       if (pending.length === 0) return null;
       const rest = pending.toString("utf8");
       pending = Buffer.alloc(0);
       return rest;
     }
-    pending = Buffer.concat([pending, chunk.subarray(0, n)]);
   }
 }
 
+// ---- the wire's encoding (polyglot-one-wire stage 5a) --------------------
+// JSON lines until the host configures otherwise; then FRAMES (a 4-byte
+// big-endian length, then the message), each the same tree as JSON or CBOR,
+// optionally raw-DEFLATEd. CBOR here is the wire's subset, with no package.
+
+const mode = { format: "json", compress: "none" };
+let switchTo: { format: string; compress: string } | null = null;
+const framed = () => mode.format !== "json" || mode.compress !== "none";
+
+function cborHead(out: number[], major: number, n: number): void {
+  const m = major << 5;
+  if (n < 24) out.push(m | n);
+  else if (n < 0x100) out.push(m | 24, n);
+  else if (n < 0x10000) out.push(m | 25, n >> 8, n & 0xff);
+  else if (n < 0x100000000) out.push(m | 26, (n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff);
+  else {
+    const b = Buffer.alloc(8);
+    b.writeBigUInt64BE(BigInt(n));
+    out.push(m | 27, ...b);
+  }
+}
+
+function cborEnc(out: number[], v: any): void {
+  if (v === null || v === undefined) out.push(0xf6);
+  else if (v === true) out.push(0xf5);
+  else if (v === false) out.push(0xf4);
+  else if (typeof v === "number") {
+    if (Number.isInteger(v) && Math.abs(v) < 2 ** 53) {
+      if (v >= 0) cborHead(out, 0, v); else cborHead(out, 1, -1 - v);
+    } else {
+      const b = Buffer.alloc(8);
+      b.writeDoubleBE(v);
+      out.push(0xfb, ...b);
+    }
+  } else if (typeof v === "string") {
+    const b = Buffer.from(v, "utf8");
+    cborHead(out, 3, b.length);
+    out.push(...b);
+  } else if (Array.isArray(v)) {
+    cborHead(out, 4, v.length);
+    for (const x of v) cborEnc(out, x);
+  } else if (typeof v === "object") {
+    const ks = Object.keys(v);
+    cborHead(out, 5, ks.length);
+    for (const k of ks) { cborEnc(out, k); cborEnc(out, v[k]); }
+  } else throw new Error(`a ${typeof v} does not encode as CBOR`);
+}
+
+function cborDec(b: Buffer, at: { i: number }): any {
+  if (at.i >= b.length) throw new Error("a CBOR message ended early (cut short?)");
+  const ib = b[at.i++];
+  const major = ib >> 5, info = ib & 0x1f;
+  const take = (n: number): Buffer => {
+    if (at.i + n > b.length) throw new Error("a CBOR message ended early (cut short?)");
+    const s = b.subarray(at.i, at.i + n);
+    at.i += n;
+    return s;
+  };
+  if (major === 7) {
+    if (info === 20) return false;
+    if (info === 21) return true;
+    if (info === 22 || info === 23) return null;
+    if (info === 25) {
+      const h = take(2).readUInt16BE(0);
+      const exp = (h >> 10) & 0x1f, mant = h & 0x3ff;
+      const v = exp === 0 ? mant * 2 ** -24 : exp === 31 ? (mant ? NaN : Infinity) : (mant + 1024) * 2 ** (exp - 25);
+      return h & 0x8000 ? -v : v;
+    }
+    if (info === 26) return take(4).readFloatBE(0);
+    if (info === 27) return take(8).readDoubleBE(0);
+    throw new Error(`CBOR: simple value ${info} is not in the wire's subset`);
+  }
+  let n: number;
+  if (info < 24) n = info;
+  else if (info === 24) n = take(1)[0];
+  else if (info === 25) n = take(2).readUInt16BE(0);
+  else if (info === 26) n = take(4).readUInt32BE(0);
+  else if (info === 27) n = Number(take(8).readBigUInt64BE(0));
+  else throw new Error(`CBOR: an indefinite or reserved length (${info}) is not in the wire's subset`);
+  switch (major) {
+    case 0: return n;
+    case 1: return -1 - n;
+    case 3: return take(n).toString("utf8");
+    case 4: { const xs = []; for (let j = 0; j < n; j++) xs.push(cborDec(b, at)); return xs; }
+    case 5: {
+      const m: any = {};
+      for (let j = 0; j < n; j++) {
+        const k = cborDec(b, at);
+        if (typeof k !== "string") throw new Error("CBOR: a map key that is not text");
+        m[k] = cborDec(b, at);
+      }
+      return m;
+    }
+  }
+  throw new Error(`CBOR: major type ${major} (byte strings, tags) is not in the wire's subset`);
+}
+
+function encode(obj: unknown): Buffer {
+  let data: Buffer;
+  if (mode.format === "cbor") { const out: number[] = []; cborEnc(out, obj); data = Buffer.from(out); }
+  else data = Buffer.from(JSON.stringify(obj), "utf8");
+  return mode.compress === "deflate" ? zlib.deflateRawSync(data) : data;
+}
+
+function decode(data: Buffer): any {
+  if (mode.compress === "deflate") data = zlib.inflateRawSync(data);
+  if (mode.format === "cbor") {
+    const at = { i: 0 };
+    const v = cborDec(data, at);
+    if (at.i !== data.length) throw new Error(`CBOR: ${data.length - at.i} bytes after the message`);
+    return v;
+  }
+  return JSON.parse(data.toString("utf8"));
+}
+
 function reply(obj: unknown): void {
-  fs.writeSync(1, JSON.stringify(obj) + "\n");
+  if (framed()) {
+    const data = encode(obj);
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    fs.writeSync(1, Buffer.concat([len, data]));
+  } else fs.writeSync(1, JSON.stringify(obj) + "\n");
+  // a configure takes effect AFTER its own answer
+  if (switchTo) { mode.format = switchTo.format; mode.compress = switchTo.compress; switchTo = null; }
+}
+
+/** the next request, or null when the host is gone */
+function readMsg(): any | null {
+  for (;;) {
+    if (framed()) {
+      const len = readBytes(4);
+      if (len === null) return null;
+      const data = readBytes(len.readUInt32BE(0));
+      if (data === null) return null;
+      return decode(data);
+    }
+    const line = readLine();
+    if (line === null) return null;
+    if (line.trim() !== "") return JSON.parse(line);
+  }
 }
 
 // ---- values -------------------------------------------------------------
@@ -129,10 +284,8 @@ hooks.call = (name: string, args: unknown[]): unknown => {
   const k = nextAsk;
   reply({ ask: { cb: name, args: args.map(enc), k } });
   for (;;) {
-    const line = readLine();
-    if (line === null) process.exit(0);
-    if (line.trim() === "") continue;
-    const req = JSON.parse(line);
+    const req = readMsg();
+    if (req === null) process.exit(0);
     if (req.op === "resume" && req.k === k) {
       if (req.condition) throw new OkayError(req.condition.kind, req.condition.message);
       return dec(req.ok);
@@ -209,6 +362,14 @@ function serve(req: any): unknown {
       case "release":
         held.delete(req.ref);
         return { id, ok: null };
+      case "configure": {
+        if (req.format !== "json" && req.format !== "cbor")
+          throw new Error(`this TypeScript worker speaks the formats json, cbor; not ${JSON.stringify(req.format)}`);
+        if (req.compress !== "none" && req.compress !== "deflate")
+          throw new Error(`this TypeScript worker speaks the compressions none, deflate; not ${JSON.stringify(req.compress)}`);
+        switchTo = { format: req.format, compress: req.compress };
+        return { id, ok: { format: req.format, compress: req.compress } };
+      }
       case "resume":
         throw new Error(`resume ${req.k}: no call is waiting for it (resumed twice?)`);
       default:
@@ -224,12 +385,11 @@ async function main(): Promise<void> {
     const at = entry.indexOf("=");
     modules[entry.slice(0, at)] = await import(pathToFileURL(entry.slice(at + 1)).href);
   }
-  reply({ shim: SHIM, python: `node ${process.version}` });
+  reply({ shim: SHIM, python: `node ${process.version}`, speaks: { format: ["json", "cbor"], compress: ["deflate"] } });
   for (;;) {
-    const line = readLine();
-    if (line === null) break;
-    if (line.trim() === "") continue;
-    const out = serve(JSON.parse(line));
+    const req = readMsg();
+    if (req === null) break;
+    const out = serve(req);
     reply(out instanceof Promise ? await out : out);
   }
 }
