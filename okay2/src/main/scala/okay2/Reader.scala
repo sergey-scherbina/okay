@@ -4,7 +4,6 @@ import scala.annotation.unused
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /** the Reader effect: one operation, asking for the environment R.
  * The test is by CLASS only: a row may hold ONE Reader. `Reader % R`
@@ -26,18 +25,15 @@ object Reader {
 
   /** `run` at the handler's own shape */
   def runAt[R, A, F <: Row](r: R)(a: Free[Reader[R] with F, A]): A ! F = {
+    // the split as a pattern (okay2-handler-allocs)
+    val Mine = Split.at[Reader[R]]
     def _loop(x: Free[Reader[R] with F, A]): A ! F = loop(x)
 
     @tailrec def loop(x: Free[Reader[R] with F, A]): A ! F = Free.resume(x) match {
       case Return(a) => Return(a)
       case Inject(e) => loop(Bind(Inject[Reader[R] + F, A](e), (x: A) => Return[Reader[R] + F, A](x)))
-      case Bind(Inject(e), k) =>
-        split[Reader[R], F, Any, Either[A ! (Reader[R] + F), A ! F]](e) {
-          case Ask() => Left(k(r))
-        } { e => Right(Inject[F, Any](e).flatMap(x => _loop(k(x)))) } match {
-          case Left(next) => loop(next)
-          case Right(done) => done
-        }
+      case Bind(Inject(Mine(_)), k) => loop(k(r))   // Ask is Reader's one operation
+      case Bind(Inject(e), k) => Inject[F, Any](e).flatMap(x => _loop(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
 

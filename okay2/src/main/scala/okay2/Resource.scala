@@ -3,7 +3,6 @@ package okay2
 
 import scala.annotation.{implicitNotFound, tailrec}
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * How a forwarded operation reports its failure to the scope that
@@ -139,6 +138,7 @@ object Resource {
       try body
       catch { case t: Throwable => releaseAll(fin); throw t }
 
+    val Mine = Split.at[Resource]   // the split as a pattern (okay2-handler-allocs)
     def _loop(fin: List[() => Unit])(x: Free[Resource with F, A]): A ! F = loop(fin)(x)
 
     @tailrec def loop(fin: List[() => Unit])(x: Free[Resource with F, A]): A ! F =
@@ -147,21 +147,15 @@ object Resource {
           releaseAll(fin)
           Return(v)
         case Inject(e) => loop(fin)(Bind(Inject[Resource + F, A](e), (v: A) => Return[Resource + F, A](v)))
-        case Bind(Inject(e), k) =>
-          split[Resource, F, Any, Either[(List[() => Unit], A ! (Resource + F)), A ! F]](e) {
-            case acq: Acquire[r] =>
-              val res = guarded(fin)(acq.make())
-              val f2 = (() => acq.release(res)) :: fin
-              Left((f2, guarded(f2)(k(res))))
-          } { g =>
-            // k(y) runs USER code (the composed continuation) at the
-            // outer handler's call site — a throw there must not skip
-            // the finalizers, so it is guarded like every other call
-            Right(Inject[F, Any](failing.guard(g, () => releaseAll(fin))).flatMap(y => _loop(fin)(guarded(fin)(k(y)))))
-          } match {
-            case Left((f2, next)) => loop(f2)(next)
-            case Right(done) => done
-          }
+        case Bind(Inject(Mine(acq: Acquire[r])), k) =>
+          val res = guarded(fin)(acq.make())
+          val f2 = (() => acq.release(res)) :: fin
+          loop(f2)(guarded(f2)(k(res)))
+        case Bind(Inject(g), k) =>
+          // k(y) runs USER code (the composed continuation) at the outer
+          // handler's call site — a throw there must not skip the
+          // finalizers, so it is guarded like every other call
+          Inject[F, Any](failing.guard(g, () => releaseAll(fin))).flatMap(y => _loop(fin)(guarded(fin)(k(y))))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 

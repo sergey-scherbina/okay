@@ -93,6 +93,32 @@ object Split {
    * the others as they are — a prism's modify, over the row */
   def over[F <: Row, A](e: Any)(f: F#Op[A] => F#Op[A])(implicit T: TypeableK[F]): Any =
     if (T.test(e)) f(e.asInstanceOf[F#Op[A]]) else e
+
+  /**
+   * `split` as a PATTERN, for a handler loop (okay2-handler-allocs): made
+   * once per run, `val Mine = Split.at[State[S]]`, then
+   * `case Bind(Inject(Mine(op)), k) =>` in the loop's own match. It is
+   * name-based (`isEmpty`/`get` on a value class), so a match allocates
+   * nothing, and the arm is the loop's own tail call — where `split`
+   * handed the step back through two closures, a `Tuple2` and an
+   * `Either` per operation (+176 B per State get/set pair, okay2-bench).
+   * The cast is `split`'s, here, after the same class test.
+   */
+  def at[F <: Row](implicit T: TypeableK[F]): At[F] = new At[F](T)
+
+  final class At[F <: Row] private[Split] (T: TypeableK[F]) {
+    def unapply(e: Any): AtMatch[F] = new AtMatch[F](if (T.test(e)) e else AtMatch.None)
+  }
+
+  final class AtMatch[F <: Row](private val e: Any) extends AnyVal {
+    def isEmpty: Boolean = e.asInstanceOf[AnyRef] eq AtMatch.None
+    def get: F#Op[Any] = e.asInstanceOf[F#Op[Any]]
+  }
+
+  object AtMatch {
+    /** the miss: a private sentinel no operation can be */
+    private[Split] val None: AnyRef = new Object
+  }
 }
 
 /**

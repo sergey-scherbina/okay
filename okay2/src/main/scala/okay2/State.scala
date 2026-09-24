@@ -62,20 +62,21 @@ object State {
    * residual re-runnable.
    */
   def handleAt[S, A, F <: Row](s: S)(a: Free[State[S] with F, A]): (S, A) ! F = {
+    // the split as a pattern: a State operation is the loop's own tail
+    // call, with nothing allocated for the step (okay2-handler-allocs)
+    val Mine = Split.at[State[S]]
+
     def _loop(s: S)(x: Free[State[S] with F, A]): (S, A) ! F = loop(s)(x)
 
     @tailrec def loop(s: S)(x: Free[State[S] with F, A]): (S, A) ! F = Free.resume(x) match {
       case Return(a) => Return((s, a))
       // a lone operation is a Bind with a pure continuation (package.scala)
       case Inject(e) => loop(s)(Bind(Inject[State[S] + F, A](e), (x: A) => Return[State[S] + F, A](x)))
-      case Bind(Inject(e), k) =>
-        split[State[S], F, Any, Either[(S, A ! (State[S] + F)), (S, A) ! F]](e) {
-          case Get() => Left((s, k(s)))
-          case Set(s2) => Left((s2, k(s2)))
-        } { e => Right(Inject[F, Any](e).flatMap(x => _loop(s)(k(x)))) } match {
-          case Left((s2, next)) => loop(s2)(next)
-          case Right(done) => done
-        }
+      case Bind(Inject(Mine(op)), k) => op match {
+        case Get() => loop(s)(k(s))
+        case Set(s2) => loop(s2)(k(s2))
+      }
+      case Bind(Inject(e), k) => Inject[F, Any](e).flatMap(x => _loop(s)(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
 

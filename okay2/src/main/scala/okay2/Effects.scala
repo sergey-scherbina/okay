@@ -136,17 +136,13 @@ object Effects {
    * abort or perform G, use `handle`.
    */
   def relay[A, B, F <: Row, G <: Row](a: Free[F with G, A])(f: A => B ! G)(g: Relay[F])(implicit T: TypeableK[F], @unused d: Distinct[F with G]): B ! G = {
+    // the split as a pattern: the handled arm is the loop's own tail
+    // call, nothing allocated for the step (okay2-handler-allocs)
+    val Mine = Split.at[F](T)
     @tailrec def loop(x: Free[F with G, A]): B ! G = Free.resume(x) match {
-      case Bind(Inject(e), k) =>
-        // `g(e) / k`: the Cont's application; the handler answers, k continues
-        split[F, G, Any, Either[A ! (F + G), B ! G]](e) { e =>
-          Left(g[Any, A ! (F + G)](e) / k)
-        } { e =>
-          Right(Inject[G, Any](e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
-        } match {
-          case Left(next) => loop(next)
-          case Right(done) => done
-        }
+      // `g(e) / k`: the Cont's application; the handler answers, k continues
+      case Bind(Inject(Mine(op)), k) => loop(g[Any, A ! (F + G)](op) / k)
+      case Bind(Inject(e), k) => Inject[G, Any](e).flatMap(x => relay[A, B, F, G](k(x))(f)(g))
       // a lone operation is a Bind with a pure continuation (see package.scala)
       case Inject(e) => loop(Bind(Inject[F + G, A](e), (x: A) => Return[F + G, A](x)))
       case Return(v) => f(v)
@@ -206,6 +202,9 @@ object Effects {
 
   /** the handler loop itself, every type named */
   def handleWith[A, B, F <: Row, G <: Row](m: Free[F with G, A])(ret: A => B ! G)(h: F !> (B ! G))(implicit T: TypeableK[F], @unused d: Distinct[F with G]): B ! G = {
+    // the split as a pattern (okay2-handler-allocs)
+    val Mine = Split.at[F](T)
+
     def capture(c: Cont[Any, B ! G, B ! G], k: Any => A ! (F + G)): B ! G =
       c / (x => Free.delay(() => _loop(k(x))))
 
@@ -219,18 +218,12 @@ object Effects {
     @tailrec def loop(x: Free[F with G, A]): B ! G = Free.resume(x) match {
       case Return(a) => ret(a)
       case Inject(e) => loop(Bind(Inject[F + G, A](e), (x: A) => Return[F + G, A](x)))
-      case Bind(Inject(e), k) =>
+      case Bind(Inject(Mine(op)), k) =>
         // `h` is asked ONCE: the answered test and the fallback both
         // read the same program, and a handler is not assumed pure
-        split[F, G, Any, Either[A ! (F + G), B ! G]](e) { e =>
-          val c = h[Any](e)
-          if (Cont.isAnswer(c)) Left(k(Cont.answerOf(c))) else Right(capture(c, k))
-        } { e =>
-          Right(Inject[G, Any](e).flatMap(x => _loop(k(x))))
-        } match {
-          case Left(next) => loop(next)
-          case Right(done) => done
-        }
+        val c = h[Any](op)
+        if (Cont.isAnswer(c)) loop(k(Cont.answerOf(c))) else capture(c, k)
+      case Bind(Inject(e), k) => Inject[G, Any](e).flatMap(x => _loop(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
 

@@ -89,18 +89,15 @@ object Writer {
    * left-nested under it).
    */
   def loopWith[W, S, A, R, F <: Row](a: Free[Writer[W] with F, A])(z: S)(step: (S, W) => S)(finish: (S, A) => R)(implicit effect: TypeableK[Writer[W]]): R ! F = {
+    // the split as a pattern (okay2-handler-allocs), at the caller's test
+    val Mine = Split.at[Writer[W]](effect)
     def _loop(s: S)(x: Free[Writer[W] with F, A]): R ! F = loop(s)(x)
 
     @tailrec def loop(s: S)(x: Free[Writer[W] with F, A]): R ! F = Free.resume(x) match {
       case Return(a) => Return(finish(s, a))
       case Inject(e) => loop(s)(Bind(Inject[Writer[W] + F, A](e), (x: A) => Return[Writer[W] + F, A](x)))
-      case Bind(Inject(e), k) =>
-        split[Writer[W], F, Any, Either[(S, A ! (Writer[W] + F)), R ! F]](e) {
-          case Say(v) => Left((step(s, v), k(())))
-        } { e => Right(Inject[F, Any](e).flatMap(x => _loop(s)(k(x)))) } match {
-          case Left((s2, next)) => loop(s2)(next)
-          case Right(done) => done
-        }
+      case Bind(Inject(Mine(Say(v))), k) => loop(step(s, v))(k(()))
+      case Bind(Inject(e), k) => Inject[F, Any](e).flatMap(x => _loop(s)(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
 
@@ -179,6 +176,7 @@ object Writer {
     foldUntilAt[W, S, A, R, Rw](a)(fo)
 
   def foldUntilAt[W, S, A, R, F <: Row](a: Free[Writer[W] with F, A])(fo: FoldUntil[W, S, R])(implicit effect: TypeableK[Writer[W]]): R ! F = {
+    val Mine = Split.at[Writer[W]](effect)
     def _loop(s: S)(x: Free[Writer[W] with F, A]): R ! F = loop(s)(x)
 
     @tailrec def loop(s: S)(x: Free[Writer[W] with F, A]): R ! F =
@@ -186,13 +184,8 @@ object Writer {
       else Free.resume(x) match {
         case Return(_) => Return(fo.end(s))
         case Inject(e) => loop(s)(Bind(Inject[Writer[W] + F, A](e), (x: A) => Return[Writer[W] + F, A](x)))
-        case Bind(Inject(e), k) =>
-          split[Writer[W], F, Any, Either[(S, A ! (Writer[W] + F)), R ! F]](e) {
-            case Say(v) => Left((fo.add(s, v), k(())))
-          } { e => Right(Inject[F, Any](e).flatMap(x => _loop(s)(k(x)))) } match {
-            case Left((s2, next)) => loop(s2)(next)
-            case Right(done) => done
-          }
+        case Bind(Inject(Mine(Say(v))), k) => loop(fo.add(s, v))(k(()))
+        case Bind(Inject(e), k) => Inject[F, Any](e).flatMap(x => _loop(s)(k(x)))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 

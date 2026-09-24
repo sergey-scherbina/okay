@@ -490,11 +490,13 @@ Each of these was measured before it was decided (specs/okay2.md):
 - **No `inline`.** The hot paths are ordinary methods for the JIT.
   MEASURED against the Scala 3 core's own lanes (okay2-bench,
   2026-09-24, `okay2/src/jmh` beside `src/jmh`, per-lane min of three
-  alternating rounds on JDK 26): a State loop is **1.83x** slower and
-  allocates 1.64x the bytes, `relay` over a forwarding-heavy tree
-  1.31x (1.18x bytes), `handle` 1.07x (1.18x bytes). The State gap is
-  the handler loop's allocation per operation (backlog
-  `okay2-handler-allocs`), not dispatch.
+  alternating rounds on JDK 26): a State loop was **1.83x** slower and
+  allocated 1.64x the bytes, `relay` over a forwarding-heavy tree
+  1.31x, `handle` 1.07x. The gap was the handler loops' allocation per
+  operation, not dispatch: since okay2-handler-allocs the loops split by
+  a name-based pattern (`Split.at`) and continue by their own tail call,
+  and they read **1.24x** (State, bytes within 88 B of the Scala 3
+  core), **0.98x** (relay) and **1.03x** (handle).
 - **Handlers are traits**, since Scala 2 has no polymorphic function
   types: `Interpr[F, S]` (the Cont-valued `F !> S`), `Interpret[F, G]`
   (translate's), `Relay[F]` (relay's).

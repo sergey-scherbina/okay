@@ -2,7 +2,6 @@ package okay2
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * STATE CELLS MADE AT RUN TIME. `State[S]` puts a state in the ROW, so
@@ -57,21 +56,19 @@ object Refs {
   /** the handler, the rest of the row forwarded */
   def handle[A, R <: Row](p: Free[Refs with R, A]): A ! R = {
     type Heap = Map[Int, Any]
+    val Mine = Split.at[Refs]   // the split as a pattern (okay2-handler-allocs)
     def _loop(n: Int, h: Heap)(x: Free[Refs with R, A]): A ! R = loop(n, h)(x)
 
     @tailrec def loop(n: Int, h: Heap)(x: Free[Refs with R, A]): A ! R = Free.resume(x) match {
       case Return(a) => Return(a)
       // a lone operation is a Bind with a pure continuation (package.scala)
       case Inject(e) => loop(n, h)(Bind(Inject[Refs with R, A](e), (v: A) => Return[Refs with R, A](v)))
-      case Bind(Inject(e), k) =>
-        split[Refs, R, Any, Either[(Int, Heap, Free[Refs with R, A]), A ! R]](e) {
-          case New(init) => Left((n + 1, h.updated(n, init), k(new Ref[Any](n))))
-          case Read(c) => Left((n, h, k(h(c.slot))))
-          case Write(c, s) => Left((n, h.updated(c.slot, s), k(s)))
-        } { g => Right(Inject[R, Any](g).flatMap(v => _loop(n, h)(k(v)))) } match {
-          case Left((n2, h2, next)) => loop(n2, h2)(next)
-          case Right(done) => done
-        }
+      case Bind(Inject(Mine(op)), k) => op match {
+        case New(init) => loop(n + 1, h.updated(n, init))(k(new Ref[Any](n)))
+        case Read(c) => loop(n, h)(k(h(c.slot)))
+        case Write(c, s) => loop(n, h.updated(c.slot, s))(k(s))
+      }
+      case Bind(Inject(g), k) => Inject[R, Any](g).flatMap(v => _loop(n, h)(k(v)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
 

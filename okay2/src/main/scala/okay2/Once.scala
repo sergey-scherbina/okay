@@ -3,7 +3,6 @@ package okay2
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * Call-by-need for programs, as an EFFECT. `Delay` is by-name: the loop
@@ -104,19 +103,16 @@ object Once {
    * cells, like `State.handleAt`; a forwarded F-effect suspends with
    * the cells captured immutably, so the residual is re-runnable */
   def runAt[A, F <: Row](a: Free[Once with F, A]): A ! F = {
+    val Mine = Split.at[Once]   // the split as a pattern (okay2-handler-allocs)
     def _loop(c: Cells)(x: Free[Once with F, A]): A ! F = loop(c)(x)
 
     @tailrec def loop(c: Cells)(x: Free[Once with F, A]): A ! F = Free.resume(x) match {
       case Return(v) => Return(v)
       case Inject(e) => loop(c)(Bind(Inject[Once + F, A](e), (x: A) => Return[Once + F, A](x)))
-      case Bind(Inject(e), k) =>
-        split[Once, F, Any, Either[(Cells, A ! (Once + F)), A ! F]](e) { o =>
-          val (c2, v) = step(c, o)
-          Left((c2, k(v)))
-        } { g => Right(Inject[F, Any](g).flatMap(x => _loop(c)(k(x)))) } match {
-          case Left((c2, next)) => loop(c2)(next)
-          case Right(done) => done
-        }
+      case Bind(Inject(Mine(o)), k) =>
+        val (c2, v) = step(c, o)
+        loop(c2)(k(v))
+      case Bind(Inject(g), k) => Inject[F, Any](g).flatMap(x => _loop(c)(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
 
