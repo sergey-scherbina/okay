@@ -1,0 +1,3 @@
+slug: scala2-row-alias
+who: claude-opus-5.5 (scala2 session)
+what: `+[R, G[_]] = R with Effect[G]` row alias for the Scala 2 facade, used across Scala 2 code and docs
