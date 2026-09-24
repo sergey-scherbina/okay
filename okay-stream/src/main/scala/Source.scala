@@ -198,20 +198,23 @@ object Source {
       // Say is Writer's ONLY constructor, so a value that reaches the
       // second arm IS one — `Writer.widen`'s own argument, and its
       // @unchecked: the erased W cannot be verified, only its shape
-      case Inject(e) => split[G, Writer % A](e)
-        // a terminal operation's answer is the program's own, Unit here
-        (g => (Inject(g): Unit ! R).map(_ => end))
-        // and the producer still ENDS in `end`: a bare terminal Inject
+      // Writer tested first (distinct-on-handlers): with the rest
+      // inferred as the Writer itself, a rest-first split forwarded
+      // every Say untouched
+      case Inject(e) => split[Writer % A, G](e)
+        // the producer still ENDS in `end`: a bare terminal Inject
         // would answer its own element instead
         (w => (w: @unchecked) match
           case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => okay.pure(end)))
-      case Bind(Inject(e), k) => split[G, Writer % A](e)
+        // a terminal operation's answer is the program's own, Unit here
+        (g => (Inject(g): Unit ! R).map(_ => end))
+      case Bind(Inject(e), k) => split[Writer % A, G](e)
+        (w => (w: @unchecked) match
+          case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => toProducer[A, G](k(()))(end)))
         // the operation's answer type is the tree's own existential and
         // cannot be named: no ascription, the expected type of the
         // branch types the re-injection — `Writer.widen`'s own shape
         (g => Inject(g).flatMap(x => toProducer[A, G](k(x))(end)))
-        (w => (w: @unchecked) match
-          case Writer.Say(v) => okay.effect[R, A](v).flatMap(_ => toProducer[A, G](k(()))(end)))
 
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart

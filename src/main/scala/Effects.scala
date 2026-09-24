@@ -472,7 +472,7 @@ object Effects {
    * (Not `interpr`, which builds a handler out of one. This rewrites
    * a program.)
    */
-  def interpret[A, F[+_] : TypeableK, G[+_], H[+_]](prog: A ! F + H)
+  def interpret[A, F[+_] : TypeableK, G[+_], H[+_]](prog: A ! F + H)(using Distinct[F + G + H])
                                                    (h: F ==> ([X] =>> X ! G + H))
   : A ! G + H =
     translate[A, F, G + H](prog.plus[G])(h)
@@ -504,7 +504,7 @@ object Effects {
       [X] => (e: F[X]) =>
         Writer.tell(show(e)).at[R].flatMap(_ => effect[R, X](e))
 
-  def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! F + G)
+  def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! F + G)(using Distinct[F + G])
                                             (h: F ==> ([X] =>> X ! G)): A ! G =
     // every step suspends under a flatMap (the answer is a PROGRAM,
     // not a value), so the recursion lives in closures rather than on
@@ -537,7 +537,7 @@ object Effects {
    * i.e. stack-safe on any number of handled operations. For handlers
    * that abort or perform G, use Effects.handle instead.
    */
-  def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(f: A => B ! G)
+  def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(using Distinct[F + G])(f: A => B ! G)
                                            (g: [X, Y] => F[X] => X /> Y): B ! G = {
     /**
      * The TERMINAL case — a bare operation with no continuation, which

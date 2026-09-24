@@ -80,7 +80,13 @@ object Distinct:
    * a comment which it is. You are promising what the macro otherwise
    * proves.
    */
-  def unchecked[R[+_]](): Distinct[R] = new Distinct[R]()
+  def unchecked[R[+_]](): Distinct[R] = shared.asInstanceOf[Distinct[R]]
+
+  /** THE ONE CAST, and why it is right: the witness carries no data, so
+   * every `Distinct[R]` is the same object whatever R is. Shared rather
+   * than allocated because since distinct-on-handlers (2026-09-24) the
+   * handlers ask for one on every call, and they run in measured loops. */
+  private val shared: Distinct[Pure] = new Distinct[Pure]()
 
   /** public because an inline given's splice reaches it from outside
    * (E192, "unstable inline accessor"), exactly as `TypeableK.derived`

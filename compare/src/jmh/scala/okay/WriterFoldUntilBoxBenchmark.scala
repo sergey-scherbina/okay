@@ -62,14 +62,14 @@ class WriterFoldUntilBoxBenchmark {
   }
 
   @Benchmark
-  def writerFoldUntilBoxed: Long = !.run(Writer.foldUntil[Long, Long, Unit, Long, Nothing](prog)(using summon, boxedUntil))
+  def writerFoldUntilBoxed: Long = !.run(Writer.foldUntil[Long, Long, Unit, Long, Nothing](prog)(using summon)(using summon, boxedUntil))
 
   @Benchmark
-  def writerFoldUntilOfLong: Long = !.run(Writer.foldUntil[Long, Long, Unit, Long, Nothing](prog)(using summon, untilOfLong))
+  def writerFoldUntilOfLong: Long = !.run(Writer.foldUntil[Long, Long, Unit, Long, Nothing](prog)(using summon)(using summon, untilOfLong))
 
   @Benchmark
   def writerFoldUntilProto: Long = !.run(protoWalk[Long, Unit, Long, Nothing](prog)(untilOfLong))
 
   @Benchmark
-  def writerFoldSumLong: Long = !.run(Writer.fold[Long, Long, Unit, Nothing](prog)(using summon, Fold.sumLong))._1
+  def writerFoldSumLong: Long = !.run(Writer.fold[Long, Long, Unit, Nothing](prog)(using summon)(using summon, Fold.sumLong))._1
 }

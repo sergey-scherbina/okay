@@ -539,7 +539,7 @@ def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = 
  * runs only when the pull actually crosses it.
  */
 @scala.annotation.targetName("throughG")
-def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + G)))
+def through[I, M, O, G[+_], A, B](up: A ! (Take % I + (Writer % M + G)))
                                              (down: B ! (Take % M + (Writer % O + G)))
                                              : B ! (Take % I + (Writer % O + G)) = {
   type Up = Take % I + (Writer % M + G)
@@ -552,17 +552,17 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
       case Return(_) => cont(None, u)
       case Inject(e) => split[Take % I, Writer % M + G](e)
         { case Take.Await() => cont(None, u) }
-        (rest => split[G, Writer % M](rest)
+        (rest => split[Writer % M, G](rest)
+          { case Writer.Say(w) => cont(Some(w), Free.Return(())) }
           (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-            .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A]))))
-          { case Writer.Say(w) => cont(Some(w), Free.Return(())) })
+            .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A])))))
       case Bind(Inject(e), k) => split[Take % I, Writer % M + G](e)
         { case Take.Await() => effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont)) }
-        (rest => split[G, Writer % M](rest)
-          (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-            .flatMap(x => pull(k(Erased.resumeWith(x)))(cont)))
+        (rest => split[Writer % M, G](rest)
           { w0 => (w0: @unchecked) match
-              case Writer.Say(w) => cont(Some(w), k(())) })
+              case Writer.Say(w) => cont(Some(w), k(())) }
+          (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
+            .flatMap(x => pull(k(Erased.resumeWith(x)))(cont))))
 
   def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G)), depth: Int = 0): B ! Res =
     (d.resume: @unchecked) match
@@ -588,7 +588,7 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
  * client walks by hand (SSE lines ! Async through the event stage).
  */
 @scala.annotation.targetName("throughProducerG")
-def through[W, M, G[+_] : TypeableK, A, B](p: A ! Writer % W + G)
+def through[W, M, G[+_], A, B](p: A ! Writer % W + G)
                                           (s: B ! (Take % W + (Writer % M + G)))
                                           : B ! Writer % M + G = {
   type Src = Writer % W + G
@@ -597,15 +597,16 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! Writer % W + G)
   def pull(rest: A ! Src)(cont: (Option[W], A ! Src) => B ! Res): B ! Res =
     (rest.resume: @unchecked) match
       case Return(_) => cont(None, rest)
-      case Inject(e) => split[G, Writer % W](e)
+      // Writer tested first, for Writer.map's reason (distinct-on-handlers)
+      case Inject(e) => split[Writer % W, G](e)
+        { case Writer.Say(w) => cont(Some(w), Free.Return(())) }
         (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
           .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A]))))
-        { case Writer.Say(w) => cont(Some(w), Free.Return(())) }
-      case Bind(Inject(e), k) => split[G, Writer % W](e)
-        (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
-          .flatMap(x => pull(k(Erased.resumeWith(x)))(cont)))
+      case Bind(Inject(e), k) => split[Writer % W, G](e)
         { w0 => (w0: @unchecked) match
             case Writer.Say(w) => cont(Some(w), k(())) }
+        (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
+          .flatMap(x => pull(k(Erased.resumeWith(x)))(cont)))
 
   def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G)), depth: Int = 0): B ! Res =
     (d.resume: @unchecked) match

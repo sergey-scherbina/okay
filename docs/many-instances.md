@@ -264,6 +264,26 @@ summon[Distinct[Tag.Of["a", Reader % Int] + Tag.Of["b", Reader % Int]]]  // fine
 summon[Distinct[Reader % Int + Reader % String]]        // refused
 ```
 
+**Where it is asked.** `Handler.union` and `Handler.flat` compose a
+split, so they require it; and since distinct-on-handlers (2026-09-24)
+so does every handler that splits a PARAMETERISED signature out of an
+open row — `State.handle`/`zoomWith`, `Reader.run`/`unlift`/`local`,
+`Writer.run`/`collect`/`fold`/`foldWith`/`foldUntil`/`map`/`expand`,
+`runEither`/`runThrows`/`runUnsafe`/`orElse`, and the kernels
+`!.relay`/`translate`/`interpret` (`interpret` checks its target row as
+well). So `Reader.run(7)(prog)` over `Reader % Int + Reader % String`
+no longer compiles, where it used to fail at run time. A caller that
+passes a handler's using clauses positionally now passes this one
+first: `Writer.fold[W, S, A, F](p)(using summon)(using summon, fold)`.
+
+One shape `Distinct` cannot see, and the handlers now get right
+instead: a handler whose rest is INFERRED as the row itself.
+`Writer.collect(Writer.map(p)(f))` solves map's rest as `Writer % W`
+(`F | F` is `F`, so there is no pair to refuse), and `map` used to test
+the rest first — every `Say` was forwarded unmapped, a silently wrong
+answer. `map`, `expand`, `uncons`, the stream iterator, `Source`'s
+producer and `Pipe`'s pulls all test the Writer first now.
+
 What it compares is **the test, not the type**, and that distinction is
 the whole design. `Writer % String + Writer % Int` is a good row — the
 two writers collect the right elements — but only under

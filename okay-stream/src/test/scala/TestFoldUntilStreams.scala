@@ -33,7 +33,7 @@ class TestFoldUntilStreams extends munit.FunSuite:
     def check[S, X](fo: FoldUntil[Int, S, X], name: String): Unit =
       val expected = Stream.foldUntil(xs)(using fo)
       assertEquals(Chunks.foldUntil(chunked(xs, 4))(using fo), expected, s"Chunks $name")
-      assertEquals(Writer.foldUntil[Int, S, Unit, X, Async](counted(20, () => ()))(using summon, fo).runWith, expected, s"Writer $name")
+      assertEquals(Writer.foldUntil[Int, S, Unit, X, Async](counted(20, () => ()))(using summon)(using summon, fo).runWith, expected, s"Writer $name")
       assertEquals(Source.of(xs).runFoldUntil(using fo).runWith, expected, s"Source $name")
     check(FoldUntil.take(3), "take(3)")
     check(FoldUntil.take(0), "take(0)")

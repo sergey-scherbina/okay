@@ -109,7 +109,7 @@ object State {
    * program. `State.handle[Int](0)(p)` rather than the three
    * arguments every call site used to spell out.
    */
-  def handle[S](s: S)[A, F[+_]](a: A ! State % S + F): (S, A) ! F = {
+  def handle[S](s: S)[A, F[+_]](a: A ! State % S + F)(using Distinct[State % S + F]): (S, A) ! F = {
     def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
 
     // `split`, not `<|>` (split-without-either): the two branches
@@ -151,7 +151,7 @@ object State {
    * still compiles character for character wherever that module is on
    * the classpath.
    */
-  def zoomWith[S, A, X, F[+_]](look: S => A, put: A => S => S)(p: X ! State % A + F): X ! State % S + F = {
+  def zoomWith[S, A, X, F[+_]](look: S => A, put: A => S => S)(p: X ! State % A + F)(using Distinct[State % A + F]): X ! State % S + F = {
     // the part, read and written through the two functions, as a
     // program over the whole — what this interpretation is made of
     def readPart: A ! State % S + F = !.widen[A, State % S, F](get[S].map(a => look(a)))

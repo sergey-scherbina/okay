@@ -274,7 +274,7 @@ extension [W, A](a: A ! Writer % W)
    * the row's evidence found here, so the caller passes only the fold
    * — `countdown(n).foldUntil(using FoldUntil.find(p))` */
   def foldUntil[S, R](using fo: FoldUntil[W, S, R]): R =
-    !.run(Writer.foldUntil[W, S, A, R, Nothing](a)(using summon, fo))
+    !.run(Writer.foldUntil[W, S, A, R, Nothing](a)(using summon)(using summon, fo))
 
 /**
  * A writer program with ARBITRARY effects G is a stream too: the told
@@ -304,4 +304,4 @@ extension [W, A, G[+_]](a: A ! Writer % W + G)
    * forwarded G run by the Handler in scope — the effectful twin of
    * the pure program's `foldUntil` above, one `using` for the caller */
   def foldUntil[S, R](using fo: FoldUntil[W, S, R])(using Handler[G]): R =
-    Writer.foldUntil[W, S, A, R, G](a)(using summon, fo).runWith
+    Writer.foldUntil[W, S, A, R, G](a)(using summon)(using summon, fo).runWith

@@ -99,8 +99,60 @@ class TestDistinct extends munit.FunSuite {
     assertEquals(residual[Writer % String], 1)
   }
 
+  /**
+   * A HANDLER'S REST SOLVED AS THE ROW ITSELF, found by this lane in a
+   * benchmark (`ProducerWriterCarrierBenchmark.chunksMapWriter`). With
+   * the rest left to inference inside an enclosing handler,
+   * `Writer.collect(Writer.map(p)(f))` solves map's rest G as
+   * `Writer % Long` itself (`F | F` is `F`, so Distinct cannot see it),
+   * and `map` tested G FIRST: every Say was forwarded unmapped, a
+   * silently wrong answer. `map` and `expand` test Writer first now.
+   */
+  test("Writer.map and expand map, whatever their rest is inferred as") {
+    val p: Unit ! Writer % Long = Writer.tell(1L).flatMap(_ => Writer.tell(5L))
+    assertEquals(!.run(Writer.collect(Writer.map(p)(_ * 2))), (Vector(2L, 10L), ()))
+    assertEquals(!.run(Writer.collect(Writer.map[Long, Long, Unit, Pure](p)(_ * 2))), (Vector(2L, 10L), ()))
+    assertEquals(!.run(Writer.collect(Writer.expand(p)(x => Vector(x, x)))), (Vector(1L, 1L, 5L, 5L), ()))
+  }
+
+  test("Writer.uncons and the stream iterator yield the told values when the rest IS the Writer") {
+    val p: Unit ! Writer % Long = Writer.tell(1L).flatMap(_ => Writer.tell(5L))
+    // the rest forced to the row itself, as inference does inside an enclosing handler
+    // the residual row is the Writer too, so collect drains what uncons did not yield
+    val (escaped, first) = !.run(Writer.collect(Writer.uncons[Long, Unit, Writer % Long](p)))
+    assertEquals(first.map(_._1), Right(1L))
+    assertEquals(escaped, Vector.empty[Long])
+  }
+
   test("Pure is a member that collides with nothing") {
     summon[Distinct[Ping + Pure]]
     summon[Distinct[Pure + Pure]]
   }
+
+  /** the handlers ask too (distinct-on-handlers, 2026-09-24): a
+   * per-signature handler splits its signature out of the row by the
+   * same class test, so it is where two of one class misroute */
+  test("the handlers refuse a row holding two of one class: Reader.run, State.handle, Throws.runEither") {
+    val r = compileErrors("Reader.run[Int, String, Reader % String](7)(twoReaders)")
+    assert(r.contains("cannot be told apart in one row"), r)
+    val s = compileErrors("State.handle(1)(twoStates)")
+    assert(s.contains("cannot be told apart in one row"), s)
+    val t = compileErrors("runEither[Int, Throws % String, Int](twoThrows)")
+    assert(t.contains("cannot be told apart in one row"), t)
+  }
+
+  test("and a distinct row still runs through them all") {
+    import okay.Row.at
+    type R3 = State % Int + Reader % Int + Throws % String
+    val ok: Int ! R3 = State.get[Int].at[R3].flatMap(n => Reader.ask[Int].at[R3].map(_ + n))
+    assertEquals(!.run(runEither(Reader.run(2)(State.handle(1)(ok)))), Right((1, 3)))
+  }
 }
+
+val twoReaders: String ! Reader % Int + Reader % String =
+  okay.effect[Reader % Int + Reader % String, Int](Reader.Ask())
+    .flatMap(n => okay.effect[Reader % Int + Reader % String, String](Reader.Ask()).map(s => s"$n/$s"))
+val twoStates: Int ! State % Int + State % String =
+  okay.effect[State % Int + State % String, Int](State.Get()).map(_ + 1)
+val twoThrows: Int ! Throws % Int + Throws % String =
+  okay.effect[Throws % Int + Throws % String, Int](Throws(1))

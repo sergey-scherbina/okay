@@ -60,7 +60,7 @@ trait Blob:
   : Either[String, Array[Byte]] ! Async =
     async(java.io.ByteArrayOutputStream()).flatMap { out =>
       val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
-      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](get(key, range))(using summon, sink)
+      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](get(key, range))(using summon)(using summon, sink)
         .map((_, outcome) => outcome.map(_ => out.toByteArray))
     }
 

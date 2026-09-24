@@ -32,14 +32,14 @@ case class Throws[E, +A](e: E) derives Effect
 inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
 
 /** handle Throws by aborting into Either, forwarding the effects F */
-inline def runEither[A, F[+_], E](a: A ! Throws % E + F): Either[E, A] ! F =
+inline def runEither[A, F[+_], E](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): Either[E, A] ! F =
   // `B` pinned: with `Free[F, +A]` the first lambda alone would infer
   // it as `Right[E, A]` (free-answer-variance, 2026-09-23)
   Effects[Free].handle[Throws % E, F](a)(a => pure[F, Either[E, A]](Right(a))):
     [X] => e => shift(_ => pure[F, Either[E, A]](Left(e.e)))
 
 /** handle Throws into the throws union (an Either already is one) */
-inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): (A throws E) ! F =
+inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): (A throws E) ! F =
   runEither(a).map(e => e)
 
 /**
@@ -65,7 +65,7 @@ inline def runOption[A, F[+_]](a: A ! Abort + F): Option[A] ! F =
   runEither[A, F, Unit](a).map(_.toOption)
 
 /** handle Throws by actually throwing: the JVM is the handler */
-inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): A ! F =
+inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): A ! F =
   Effects[Free].handle[Throws % E, F](a)(a => pure(a)):
     [X] => e => shift(_ => throw e.e)
 
@@ -100,7 +100,7 @@ extension [A, E, F[+_]](p: A ! Throws % E + F)
     runEither[A, F, E](p).at[Throws % E + F].flatMap(_.fold(h, pure))
 
   /** answer the failure, ignoring the error */
-  inline def orElse(q: => A ! Throws % E + F): A ! Throws % E + F =
+  inline def orElse(q: => A ! Throws % E + F)(using Distinct[Throws % E + F]): A ! Throws % E + F =
     recover(_ => q)
 
 /** reflect a direct-style computation into the effect */

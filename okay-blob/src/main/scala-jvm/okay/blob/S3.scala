@@ -173,7 +173,7 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
     // is a value that can run twice
     okay.async(java.io.ByteArrayOutputStream()).flatMap { out =>
       val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
-      Writer.fold[Chunk[Byte], Unit, Unit, Async](p)(using summon, sink).map(_ => out.toByteArray)
+      Writer.fold[Chunk[Byte], Unit, Unit, Async](p)(using summon)(using summon, sink).map(_ => out.toByteArray)
     }
 }
 

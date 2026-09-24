@@ -52,7 +52,7 @@ class TestStd extends munit.FunSuite {
     assertEquals(!.run(Writer.run[Int, Int, okay.Pure](kept)), (Seq(5), 5))
 
     // and through a custom Fold, so the specialized dispatch sees it too
-    val (n, a2) = !.run(Writer.fold[Int, Long, Unit, Nothing](w)(using summon, Fold.count))
+    val (n, a2) = !.run(Writer.fold[Int, Long, Unit, Nothing](w)(using summon)(using summon, Fold.count))
     assertEquals(n, 1L)
     assertEquals(a2, ())
   }

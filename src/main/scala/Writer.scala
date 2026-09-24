@@ -58,7 +58,7 @@ object Writer {
    * accumulator has to be threaded through the loop itself, which an
    * answer-polymorphic relay handler cannot hold.
    */
-  def fold[W, S, A, F[+_]](a: A ! Writer % W + F)
+  def fold[W, S, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
                           (using TypeableK[Writer % W], Fold[W, S]): (S, A) ! F =
     val K = summon[Fold[W, S]]
     // GADT refinement needs a stable path, not an expression: bound to
@@ -84,7 +84,7 @@ object Writer {
    * cost 27.5us against 7.8 when it was first written without inline
    * in `Fold.long`, so it is worth spelling out.
    */
-  inline def foldWith[W, S, A, F[+_]](a: A ! Writer % W + F)(z: S)
+  inline def foldWith[W, S, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])(z: S)
                                      (inline step: (S, W) => S)
                                      (using TypeableK[Writer % W]): (S, A) ! F =
     loopWith[W, S, A, (S, A), F](a)(z)(step)((s, a) => (s, a))
@@ -139,7 +139,7 @@ object Writer {
    * saw the program's answer, and a signature promising it would
    * have to invent one.
    */
-  def foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)
+  def foldUntil[W, S, A, R, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
                                   (using TypeableK[Writer % W], FoldUntil[W, S, R]): R ! F = {
     val K = summon[FoldUntil[W, S, R]]
     def _loop(s: S)(x: A ! Writer % W + F): R ! F = loop(s)(x)
@@ -160,7 +160,7 @@ object Writer {
   }
 
   /** collect everything told, in order, forwarding the effects F */
-  def run[W, A, F[+_]](a: A ! Writer % W + F)
+  def run[W, A, F[+_]](a: A ! Writer % W + F)(using Distinct[Writer % W + F])
                       (using TypeableK[Writer % W]): (Seq[W], A) ! F =
     // a List built by prepending and reversed ONCE at the end, not a
     // Vector appended per tell: either-scalarised (2026-09-09) measured
@@ -181,7 +181,7 @@ object Writer {
    * cons per tell and one reverse, not a `Vector :+` per tell
    * (writer-collect-loops).
    */
-  def collect[W, A, G[+_]](a: A ! Writer % W + G): (Vector[W], A) ! G =
+  def collect[W, A, G[+_]](a: A ! Writer % W + G)(using Distinct[Writer % W + G]): (Vector[W], A) ! G =
     loopWith[W, List[W], A, (Vector[W], A), G](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse.toVector, a))
 
   /**
@@ -202,18 +202,25 @@ object Writer {
    * no transform, where only the Free nodes need rebuilding and the
    * told OPERATION can be reused as is.
    */
-  def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
+  def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using Distinct[Writer % W + G])(f: W => V)
   : A ! Writer % V + G = (a.resume: @unchecked) match
     case Free.Return(x) => Free.Return(x)
-    case Inject(e) => split[G, Writer % W](e)
-      (g => Inject(g): A ! Writer % V + G)
+    // THE HANDLED SIGNATURE IS TESTED FIRST (distinct-on-handlers,
+    // 2026-09-24). It was `split[G, Writer % W]`, the rest first; and
+    // when the rest is inferred as the row itself — `Writer.collect(
+    // Writer.map(p)(f))` solves G = Writer % W, `F | F` being `F` — every
+    // Say passed G's test and was forwarded UNMAPPED: a silently wrong
+    // answer (TestDistinct). Distinct cannot see that row, because the
+    // union collapses; testing Writer first makes it right.
+    case Inject(e) => split[Writer % W, G](e)
       // the constructor refines the answer type to Unit on both
       // sides, so the re-told operation types with nothing asserted
-      { case Say(w) => Inject(Writer(f(w))) }
-    case Bind(Inject(e), k) => split[G, Writer % W](e)
-      (g => Inject(g).flatMap(x => map[W, V, A, G](k(x))(f)))
+      { case Say(w) => Inject(Writer(f(w))): A ! Writer % V + G }
+      (g => Inject(g): A ! Writer % V + G)
+    case Bind(Inject(e), k) => split[Writer % W, G](e)
       { w0 => (w0: @unchecked) match
-          case Say(w) => Inject(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f)) }
+          case Say(w) => Inject(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f)): A ! Writer % V + G }
+      (g => Inject(g).flatMap(x => map[W, V, A, G](k(x))(f)))
 
   /**
    * ONE TOLD VALUE BECOMES MANY (merge-chunk-size-curve-inverted,
@@ -239,7 +246,7 @@ object Writer {
    * result drops the told value, which makes this a filter as well as
    * an expansion.
    */
-  def expand[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => IndexedSeq[V])
+  def expand[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using Distinct[Writer % W + G])(f: W => IndexedSeq[V])
   : A ! Writer % V + G =
     def tellAll(vs: IndexedSeq[V], i: Int): Unit ! Writer % V + G =
       if i >= vs.length then Free.Return(())
@@ -247,13 +254,14 @@ object Writer {
 
     (a.resume: @unchecked) match
       case Free.Return(x) => Free.Return(x)
-      case Inject(e) => split[G, Writer % W](e)
-        (g => Inject(g): A ! Writer % V + G)
+      // Writer tested first, for `map`'s reason (above)
+      case Inject(e) => split[Writer % W, G](e)
         { case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! Writer % V + G] }
-      case Bind(Inject(e), k) => split[G, Writer % W](e)
-        (g => Inject(g).flatMap(x => expand[W, V, A, G](k(x))(f)))
+        (g => Inject(g): A ! Writer % V + G)
+      case Bind(Inject(e), k) => split[Writer % W, G](e)
         { w0 => (w0: @unchecked) match
-            case Say(w) => tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f)) }
+            case Say(w) => tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f)): A ! Writer % V + G }
+        (g => Inject(g).flatMap(x => expand[W, V, A, G](k(x))(f)))
 
   /**
    * Re-tell at a WIDER element type with NO transform — `map`'s
@@ -345,13 +353,16 @@ object Writer {
   def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
   : Either[A, (W, A ! Writer % W + G)] ! G = (a.resume: @unchecked) match
     case Free.Return(a) => okay.pure(Left(a))
-    case Inject(e) => split[G, Writer % W](e)
+    // Writer tested first, for `map`'s reason: with the rest inferred
+    // as the Writer itself, a rest-first split sent every Say to G and
+    // answered Left — no elements, the told values escaped (TestDistinct)
+    case Inject(e) => split[Writer % W, G](e)
+      { case Say(w) => okay.pure(Right((w, Free.Return(())))): Either[A, (W, A ! Writer % W + G)] ! G }
       (g => Inject(g).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
-      { case Say(w) => okay.pure(Right((w, Free.Return(())))) }
-    case Bind(Inject(e), k) => split[G, Writer % W](e)
-      (g => Inject(g).flatMap(x => uncons[W, A, G](k(x))))
+    case Bind(Inject(e), k) => split[Writer % W, G](e)
       { w0 => (w0: @unchecked) match
-          case Say(w) => okay.pure(Right((w, k(())))) }
+          case Say(w) => okay.pure(Right((w, k(())))): Either[A, (W, A ! Writer % W + G)] ! G }
+      (g => Inject(g).flatMap(x => uncons[W, A, G](k(x))))
 
   /**
    * Writer's split is COMPLETE, and by the CLASS of `Say` alone.
@@ -541,19 +552,20 @@ given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G
 
       @tailrec private def advance(): Unit = cur match
         case Free.Return(_) => ended = true
+        // Writer tested first, for `map`'s reason
         case Inject(e) =>
-          split[G, Writer % W](e)(
-            g => { val _ = H.handle(g); ended = true }
-          )(
+          split[Writer % W, G](e)(
             w0 => (w0: @unchecked) match
               case Writer.Say(w) => { elem = w; ready = true; ended = true }
+          )(
+            g => { val _ = H.handle(g); ended = true }
           )
         case Bind(Inject(e), k) =>
-          split[G, Writer % W](e)(
-            g => { cur = k(H.handle(g)); advance() }
-          )(
+          split[Writer % W, G](e)(
             w0 => (w0: @unchecked) match
               case Writer.Say(w) => { elem = w; ready = true; cur = k(()) }
+          )(
+            g => { cur = k(H.handle(g)); advance() }
           )
         case _ =>
           cur = cur.resume

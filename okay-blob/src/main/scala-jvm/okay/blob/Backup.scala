@@ -95,7 +95,7 @@ object Backup {
   private def fetch(blob: Blob, key: String, target: Path): Unit ! Async =
     async(Files.newOutputStream(target)).flatMap { out =>
       val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
-      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](blob.get(key))(using summon, sink)
+      Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](blob.get(key))(using summon)(using summon, sink)
         .map { (_, outcome) =>
           out.close()
           outcome match

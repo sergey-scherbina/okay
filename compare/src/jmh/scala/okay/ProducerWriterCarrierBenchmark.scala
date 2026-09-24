@@ -281,7 +281,7 @@ class ProducerWriterCarrierBenchmark {
 
   @Benchmark
   def chunksMapWriter(): Long =
-    Writer.fold[Chunk[Long], Long, Unit, Nothing](Writer.map(writerChunks)(doubleChunk)).runWith._1
+    Writer.fold[Chunk[Long], Long, Unit, Nothing](Writer.map[Chunk[Long], Chunk[Long], Unit, Pure](writerChunks)(doubleChunk)).runWith._1
 
   // ---------------------------------------------------------- 3
   // Source.ofProducer / Source.toProducer: the bridge cost, on the
@@ -329,12 +329,12 @@ class ProducerWriterCarrierBenchmark {
   def bridgeProducerThroughSource(): Long =
     given CanBlock = cb
     val asSource: Unit ! Writer % Long + Async = Source.ofProducer[Long, Async](producerLongs)
-    Writer.fold[Long, Long, Unit, Async](asSource)(using summon, Fold.sumLong).runWith._1
+    Writer.fold[Long, Long, Unit, Async](asSource)(using summon)(using summon, Fold.sumLong).runWith._1
 
   @Benchmark
   def bridgeWriterDirect(): Long =
     given CanBlock = cb
-    Writer.fold[Long, Long, Unit, Async](writerLongs)(using summon, Fold.sumLong).runWith._1
+    Writer.fold[Long, Long, Unit, Async](writerLongs)(using summon)(using summon, Fold.sumLong).runWith._1
 
   @Benchmark
   def bridgeWriterThroughProducer(): Long =
@@ -378,7 +378,7 @@ class ProducerWriterCarrierBenchmark {
     given CanBlock = cb
     val out = new java.io.ByteArrayOutputStream(byteChunks.length * 1024)
     val sink: Fold[Chunk[Byte], Unit] = Fold(())((_, c) => out.write(c.toArray))
-    val _ = Writer.fold[Chunk[Byte], Unit, Unit, Async](byteSource)(using summon, sink).runWith
+    val _ = Writer.fold[Chunk[Byte], Unit, Unit, Async](byteSource)(using summon)(using summon, sink).runWith
     out.toByteArray
 
   // ---------------------------------------------------------- 5

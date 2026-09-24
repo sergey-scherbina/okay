@@ -160,10 +160,10 @@ object Reader {
   def lift[E, A](cf: E ?=> A): A ! Reader % E = ask[E].map(e => cf(using e))
 
   /** a Reader program as a context function: run under the ambient E */
-  def unlift[E, A, F[+_]](p: A ! Reader % E + F): E ?=> A ! F = run[E, A, F](summon[E])(p)
+  def unlift[E, A, F[+_]](p: A ! Reader % E + F)(using Distinct[Reader % E + F]): E ?=> A ! F = run[E, A, F](summon[E])(p)
 
   /** answer every Ask with r, forwarding the effects F */
-  def run[R, A, F[+_]](r: R)(a: A ! Reader % R + F): A ! F =
+  def run[R, A, F[+_]](r: R)(a: A ! Reader % R + F)(using Distinct[Reader % R + F]): A ! F =
     relay[A, A, Reader % R, F](a)(pure(_)):
       [X, Y] => e => e match
         case Ask() => Cont.Pure(r)
@@ -195,7 +195,7 @@ object Reader {
    * answered), but code AFTER `local(f)(p)` still may, and still sees
    * the ambient `r` — `local` scopes `p`, not what follows it.
    */
-  def local[R, A, F[+_]](f: R => R)(p: A ! Reader % R + F): A ! Reader % R + F =
+  def local[R, A, F[+_]](f: R => R)(p: A ! Reader % R + F)(using Distinct[Reader % R + F]): A ! Reader % R + F =
     // the GADT refinement `Ask(): Reader[R, R]` fixing X=R holds in a
     // method's match, not inside the `[X] => ...` lambda handle wants
     // (gadt-on-a-covariant-enum: the same trap SharedOnce.answer met)

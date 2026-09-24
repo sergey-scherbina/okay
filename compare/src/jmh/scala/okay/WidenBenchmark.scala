@@ -39,13 +39,13 @@ class WidenBenchmark {
 
   @Benchmark
   def throughAtRow: Long =
-    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(doubleAt))(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
+    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(doubleAt))(using summon)(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
 
   @Benchmark
   def throughWidened: Long =
-    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(!.widen[Unit, Take % Long + Writer % Long, Async](double)))(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
+    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(!.widen[Unit, Take % Long + Writer % Long, Async](double)))(using summon)(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
 
   @Benchmark
   def throughNormalized: Long =
-    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(!.normalize[Unit, Take % Long + Writer % Long, Async](double)))(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
+    Writer.foldUntil[Long, Long, Unit, Long, Async](through(src)(!.normalize[Unit, Take % Long + Writer % Long, Async](double)))(using summon)(using summon, FoldUntil.long[Long, Long](0L)(_ + _)(_ => false)(identity)).runWith
 }

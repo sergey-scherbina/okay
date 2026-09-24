@@ -97,7 +97,7 @@ object Logs {
               (e: Eff[Writer[Log.Line] & R, A]): Eff[R, A] = {
     val sink: okay.Fold[Log.Line, Unit] = okay.Fold(())((_, l) =>
       if (l.level.atLeast(min)) write(if (l.at == 0L) l.copy(at = clock()) else l))
-    Eff.of(Rows.coerce(okay.Writer.fold[Log.Line, Unit, A, Rows.Top](Rows.coerce(e.program))(using summon, sink).map(_._2)))
+    Eff.of(Rows.coerce(okay.Writer.fold[Log.Line, Unit, A, Rows.Top](Rows.coerce(e.program))(using summon)(using summon, sink).map(_._2)))
   }
 
   private def at(level: Log.Level, message: String, fields: Seq[(String, String)]): Eff[Writer[Log.Line], Unit] =

@@ -67,7 +67,7 @@ class GenBenchmark {
 
   @Benchmark
   def writerUnfoldFoldUntil: List[Long] =
-    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Nothing](prog)(using summon, collecting))
+    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Nothing](prog)(using summon)(using summon, collecting))
 
   /** gen-read-stop-residual: the SAME `prog`, widened ONLY by Stop
    * (`.plus[Stop]`, what `Gen.of` does) and read through `Gen.foldUntil`
@@ -91,7 +91,7 @@ class GenBenchmark {
 
   @Benchmark
   def writerUnfoldShapedFoldUntil: List[Long] =
-    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Nothing](progUnfoldShaped)(using summon, collecting))
+    !.run(Writer.foldUntil[Long, List[Long], Unit, List[Long], Nothing](progUnfoldShaped)(using summon)(using summon, collecting))
 
   // ---- the pipeline
 
@@ -103,7 +103,7 @@ class GenBenchmark {
   @Benchmark
   def writerPipelineCollect: List[Long] =
     val mapped = Writer.map[Long, Long, Unit, Nothing](prog)(_ * 2)
-    !.run(Writer.fold[Long, List[Long], Unit, Nothing](mapped)(using summon, filtering))._1.reverse
+    !.run(Writer.fold[Long, List[Long], Unit, Nothing](mapped)(using summon)(using summon, filtering))._1.reverse
 
   // ---- the barriers, fused (gen-flatmap-fusion): flatMap, ++, zipWithIndex
 

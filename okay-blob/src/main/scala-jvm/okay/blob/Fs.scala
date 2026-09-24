@@ -46,7 +46,7 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
           Files.newOutputStream(tmp)
         }.flatMap { out =>
           val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
-          Writer.fold[Chunk[Byte], Unit, Unit, Async](bytes)(using summon, sink).flatMap { _ =>
+          Writer.fold[Chunk[Byte], Unit, Unit, Async](bytes)(using summon)(using summon, sink).flatMap { _ =>
             async {
               out.close()
               Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING,

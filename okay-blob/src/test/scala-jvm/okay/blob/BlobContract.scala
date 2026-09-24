@@ -34,7 +34,7 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
     val out = java.io.ByteArrayOutputStream()
     var biggest = 0
     val sink: Fold[Chunk[Byte], Unit] = Fold(())((_, c) => { out.write(c.toArray); biggest = math.max(biggest, c.length) })
-    val (_, outcome) = run(Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](p)(using summon, sink))
+    val (_, outcome) = run(Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](p)(using summon)(using summon, sink))
     (out.toByteArray, outcome, biggest)
 
   def drainList(p: Source[Chunk[Meta]]): Vector[Meta] =

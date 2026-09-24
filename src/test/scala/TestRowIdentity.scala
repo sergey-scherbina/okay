@@ -68,8 +68,11 @@ class TestRowIdentity extends munit.FunSuite {
     // Loud, at the first wrong answer, not a plausible wrong result
     // returned to the caller. That is worth knowing precisely, so it
     // is asserted rather than described.
+    // Since distinct-on-handlers (2026-09-24) `Reader.run` REFUSES this
+    // row at compile time (TestDistinct); the escape hatch lets the
+    // demonstration of WHY still run
     val thrown = intercept[ClassCastException] {
-      val half = Reader.run[Int, String, Reader % String](7)(prog)
+      val half = Reader.run[Int, String, Reader % String](7)(prog)(using Distinct.unchecked())
       Reader.run[String, String, Pure]("s")(half).runWith
     }
     assert(thrown.getMessage.contains("Integer"), thrown.getMessage)
