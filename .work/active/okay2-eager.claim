@@ -1,6 +1,0 @@
-feature/okay2-eager 2026-09-24T14:21:00Z
-agent: claude-code
-heartbeat: 2026-09-24T14:21:00Z
-status: in-progress
-done-so-far: claimed
-next: the tagless Effects[M] typeclass (object Effects becomes its companion; Free instance, foldCont) and Eager (kyo trick: a pure value IS the program) with TestEager; spec stage 19
