@@ -346,6 +346,15 @@ replays a program.
       `Condition("ReplayDrift", ...)` rather than a wrong answer.
 - [x] Held objects (`Hold`) die with their worker: a later use is refused
       by name, as in `PyWorkers`.
+- [ ] Every stdio worker survives a KILL from outside
+      (supervised-crash-every-language): one suite, `CrashConformance`,
+      starts the worker's process itself and SIGKILLs it by that pid —
+      the way an OOM kill or a crash arrives, not an exit the program
+      chose — on Python, TypeScript, Go, Rust and Haskell: between two
+      choices of a multi-shot program (every branch comes back), while
+      idle (the next program runs on a fresh process), and mid-ask in
+      direct style (`WorkerDied` as data, then the next call runs; not
+      Haskell, which serves programs only).
 - [x] Tests: a silent Python call past its deadline; a worker killed
       between two continuations of a multi-shot program (all four
       branches); a Go TCP connection dropped and reconnected (the same,
