@@ -40,6 +40,21 @@ final case class PoolConf(
    * update mixing two artifacts fails loudly rather than mixing
    * answers inside one run. "" (the default) turns the check off. */
   build: String = "",
+  /** the pool's ONE shared certificate — mTLS between members
+   * (specs/cluster-pool.md, stage 4): every member is handed the
+   * SAME cert and key, so a connection is authenticated by "does the
+   * peer hold what I hold", not by a CA. "" turns TLS off on the
+   * worker protocol; `tlsKey` must be set together with it. */
+  tlsCert: String = "",
+  tlsKey: okay.conf.Secret = okay.conf.Secret(""),
+  /** the root key an `Authorization: Bearer` capability on
+   * `POST /pool/jobs/{name}` is checked against (okay-security's
+   * `Capability`). "" turns the check off. */
+  capabilityKey: okay.conf.Secret = okay.conf.Secret(""),
+  /** the explicit override: without mTLS or a capability configured,
+   * `Pool.run` refuses to start — an open-by-default pool is the
+   * Spark REST server's own CVE. Set this to mean it. */
+  insecure: Boolean = false,
 ) derives Schema
 
 object PoolConf:

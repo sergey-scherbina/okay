@@ -1,7 +1,7 @@
 package okay.tls
 
 import okay.conf.{Secret, Secrets}
-import java.net.Socket
+import java.net.{ServerSocket, Socket}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.security.KeyStore
 import java.security.cert.{CertificateFactory, X509Certificate}
@@ -89,6 +89,90 @@ object Tls {
       ctx.getServerSocketFactory.createServerSocket(port) match
         case ss: SSLServerSocket => ss
         case other => throw IllegalStateException(s"the SSL factory answered a plain server socket: $other")
+
+  /**
+   * ONE CERTIFICATE, BOTH DIRECTIONS (specs/cluster-pool.md, stage 4):
+   * a pool has no CA to run — every member is handed the SAME
+   * certificate and key (one secret reference, on every target), so
+   * the only question either side of a connection asks is "does the
+   * peer hold what I hold", never "who signed this and for which
+   * name". `VerifyCa` is the honest mode for that: the chain must
+   * check out against `certFile` itself as its own trust anchor, and
+   * the HOSTNAME is deliberately not checked — a pool member dials
+   * another by a Kubernetes DNS name or a bare IP that was never
+   * going to be in any single certificate's SAN list.
+   */
+  def mutualContext(certFile: String, key: Secret, secrets: Secrets): Either[String, SSLContext] =
+    for
+      _ <- noInlineKey(Some(key))
+      pem <- secrets.get(key)
+      trust <- trustOf(SslMode.VerifyCa, Some(certFile))
+      ctx <- contextOf(trust, Some((certFile, pem)))
+    yield ctx
+
+  /**
+   * The serving side of the same identity, REQUIRING the connecting
+   * peer to present it too (`setNeedClientAuth`) — `serverSocket`
+   * does not ask a client for anything, which is right for an
+   * ordinary TLS server and wrong for two members of one pool, where
+   * either side accepting an unauthenticated peer defeats the point.
+   *
+   * `setNeedClientAuth(true)` ALONE DOES NOT REFUSE A BARE PEER
+   * (measured against a real openssl-generated certificate,
+   * TestPoolSecureLive): under TLS 1.3, RFC 8446 §4.4.2 leaves a
+   * server that gets an empty client Certificate message free to
+   * either abort or continue, and this JDK's SunJSSE continues —
+   * `startHandshake()` returns normally, with a real cipher suite
+   * negotiated, for a client that sent no certificate at all. The
+   * accept this returns therefore forces the handshake and checks
+   * `getPeerCertificates` itself before handing the socket back,
+   * closing and retrying on the next connection rather than trusting
+   * the handshake's own success.
+   */
+  def mutualServerSocket(port: Int, certFile: String, key: Secret,
+                        secrets: Secrets): Either[String, ServerSocket] =
+    for ctx <- mutualContext(certFile, key, secrets)
+    yield
+      val ss = ctx.getServerSocketFactory.createServerSocket(port) match
+        case s: SSLServerSocket => s
+        case other => throw IllegalStateException(s"the SSL factory answered a plain server socket: $other")
+      ss.setNeedClientAuth(true)
+      verifyingClientAuth(ss)
+
+  /** wraps `ss.accept()` so a connection is only ever handed to a
+   * caller once the peer has proved it holds a certificate — a bad
+   * peer is closed and the accept loop tries the next connection, so
+   * one stranger dialing in cannot take the whole listener down with
+   * an exception the caller (`Served.serve`) does not expect */
+  private def verifyingClientAuth(ss: SSLServerSocket): ServerSocket = new ServerSocket:
+    override def accept(): Socket =
+      var out: Socket = null
+      while out == null do
+        val s = ss.accept()
+        s match
+          case ssl: SSLSocket =>
+            try
+              ssl.startHandshake()
+              ssl.getSession.getPeerCertificates: Unit
+              out = ssl
+            catch case _: Exception => try ssl.close() catch case _: Exception => ()
+          case other => try other.close() catch case _: Exception => ()
+      out
+    override def close(): Unit = ss.close()
+    override def isClosed: Boolean = ss.isClosed
+    override def isBound: Boolean = ss.isBound
+    override def getLocalPort: Int = ss.getLocalPort
+    override def getLocalSocketAddress: java.net.SocketAddress = ss.getLocalSocketAddress
+
+  /** the dialing side: wrap an already-connected plain socket so it
+   * presents AND verifies the pool's one shared identity, before any
+   * protocol byte crosses (mirrors `client`, fixed to `VerifyCa` and
+   * to `certFile` as both identity and trust anchor; `host` names the
+   * SNI value only — `VerifyCa` never checks it against the cert) */
+  def mutualClient(sock: Socket, host: String, certFile: String, key: Secret, secrets: Secrets)
+  : Either[String, Socket] =
+    client(sock, host, TlsConfig(mode = SslMode.VerifyCa, caFile = Some(certFile),
+      clientCert = Some(certFile), clientKey = Some(key)), secrets)
 
   /**
    * The OTHER half of a STARTTLS upgrade: wrap an already-accepted

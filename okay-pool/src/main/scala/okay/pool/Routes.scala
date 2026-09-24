@@ -3,9 +3,11 @@ package okay.pool
 import okay.*
 import okay.cluster.{Checkpoint, Jobs, Lease}
 import okay.codec.{Codecs, Json}
+import okay.conf.Schemes
 import okay.http.{Http, Method, Request, Response, Route, Router}
 import okay.http.syntax.*
 import okay.resilience.Discovery
+import okay.security.{Capability, given}
 import java.nio.charset.StandardCharsets.UTF_8
 
 /** the HTTP door (specs/cluster-pool.md, stage 1): the four routes
@@ -29,6 +31,24 @@ object Routes:
   private def err(status: Int, why: String): Response = json(status, Codecs.writeJson(ErrorBody(why)))
 
   /**
+   * THE CAPABILITY, CHECKED BEFORE THE SCHEMA (specs/cluster-pool.md,
+   * stage 4) — the same order `Cluster.guarded` already keeps: a
+   * stranger learns nothing about which jobs this build runs, only
+   * that it was not let in. `"" ` (the default `capabilityKey`) turns
+   * the check off, opt-in like every door this engine already has.
+   */
+  private def authorized(conf: PoolConf, req: Request): Boolean =
+    if conf.capabilityKey.ref.isEmpty then true
+    else
+      val checked = for
+        rootKey <- Schemes.all().get(conf.capabilityKey).toOption
+        token <- req.headers.collectFirst {
+          case (k, v) if k.equalsIgnoreCase("authorization") && v.startsWith("Bearer ") => v.drop(7) }
+        cap <- Capability.decode(token)
+      yield cap.verify(rootKey.getBytes(UTF_8), _ => true)
+      checked.getOrElse(false)
+
+  /**
    * `ready` is a callback rather than a fixed value so a test can flip
    * it — `Pool.run` sets it once, after the registrars have loaded and
    * BEFORE the port ever accepts a connection, which is why the FALSE
@@ -50,7 +70,11 @@ object Routes:
         Pool.resolve(conf, discovery).map(es => json(200, Codecs.writeJson(es)))
       }
       .at(Method.Post, submitPath) { (name, req) =>
-        Json.parse(new String(req.body.bytes, UTF_8)) match
+        // the capability is checked BEFORE the job name is even
+        // looked up, let alone the Schema — a stranger with no
+        // capability learns nothing about what this build runs
+        if !authorized(conf, req) then pure(Response(401, Seq("www-authenticate" -> "Bearer"), Http.one(Array.emptyByteArray)))
+        else Json.parse(new String(req.body.bytes, UTF_8)) match
           case o: Json.JObj =>
             val fs = o.fs.toMap
             val params = fs.getOrElse("params", Json.JObj(Vector.empty))

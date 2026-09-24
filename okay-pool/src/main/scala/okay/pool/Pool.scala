@@ -4,9 +4,10 @@ import okay.*
 import okay.given
 import okay.cluster.{Checkpoint, Cluster, Folded, Job, Jobs, Lease, Req, Resp, Served}
 import okay.codec.{Codecs, Json}
+import okay.conf.Schemes
 import okay.resilience.{Discovery, DiscoveryJvm, Endpoint}
 import okay.jetty.Jetty
-import java.net.ServerSocket
+import java.net.{ServerSocket, Socket}
 
 /**
  * A POOL MEMBER (specs/cluster-pool.md, stage 1): every member serves
@@ -41,11 +42,23 @@ object Pool:
   def workers(conf: PoolConf, discovery: Discovery): Vector[Cluster.Serve] ! Async =
     resolve(conf, discovery).map { es =>
       val remote = es.flatMap { e =>
-        val s = Served.reconnecting(e.host, e.port)
+        val s = Served.reconnecting(e.host, e.port, connect = connectOf(conf))
         if agrees(conf.build, s, e) then Some(s) else None
       }
       Cluster.local +: remote
     }
+
+  /** the plain dial, or the pool's own mTLS wrapped around it
+   * (specs/cluster-pool.md, stage 4) — `Served.reconnecting` knows
+   * nothing about TLS and does not need to; this is the ONE place a
+   * dial becomes an authenticated one */
+  private def connectOf(conf: PoolConf): (String, Int) => Socket =
+    if conf.tlsCert.isEmpty then Served.plainSocket
+    else (host, port) =>
+      val plain = Served.plainSocket(host, port)
+      okay.tls.Tls.mutualClient(plain, host, conf.tlsCert, conf.tlsKey, Schemes.all()) match
+        case Right(s) => s
+        case Left(why) => throw java.io.IOException(s"mTLS to $host:$port failed: $why")
 
   /** `Req.Known` doubles as the build handshake: `Resp.Names.build` is
    * "" from plain `Cluster.local` and stamped by `fingerprinted`
@@ -200,16 +213,36 @@ object Pool:
       System.err.println("okay-pool: PoolConf.store is unset but peers are configured — refusing to start; " +
         "a real pool needs a shared Checkpoint/Lease store, not this process's own memory")
       System.exit(3)
+    else if !secured(conf) then
+      System.err.println("okay-pool: neither tlsCert/tlsKey nor capabilityKey is configured — refusing to " +
+        "listen; an open-by-default pool is the Spark REST server's own CVE. Set OKAY_POOL_INSECURE=true " +
+        "to run this way on purpose (a loopback-only dev pool, say).")
+      System.exit(3)
     else
       val discovery = Discovery.chain(DiscoveryJvm.env(), DiscoveryJvm.dns(conf.port))
       var ready = false
       val router = Routes.router(conf, discovery, store, () => ready)
-      val socket = ServerSocket(conf.port)
+      val socket = serverSocketOf(conf)
       okay.Threads.spawn("okay-pool-worker")(() => Served.serve(socket, fingerprinted(conf.build)))
       ready = true
       val serving = Jetty.serve(conf.httpPort)(router.routes)()
       Resource.run[Unit, Pure](serving.map { s =>
-        println(s"okay-pool: worker protocol on ${socket.getLocalPort}, http on ${Jetty.port(s)}, " +
-          s"jobs [${Jobs.names.mkString(", ")}]")
+        println(s"okay-pool: worker protocol on ${socket.getLocalPort}${if conf.tlsCert.nonEmpty then " (mTLS)" else ""}, " +
+          s"http on ${Jetty.port(s)}, jobs [${Jobs.names.mkString(", ")}]")
         Thread.sleep(Long.MaxValue)
       }).runWith
+
+  /** mTLS on the worker protocol, or a capability at the submission
+   * door, or the explicit override — never silence (specs/cluster-pool.md,
+   * stage 4) */
+  private[pool] def secured(conf: PoolConf): Boolean =
+    conf.tlsCert.nonEmpty || conf.capabilityKey.ref.nonEmpty || conf.insecure
+
+  private def serverSocketOf(conf: PoolConf): ServerSocket =
+    if conf.tlsCert.isEmpty then ServerSocket(conf.port)
+    else okay.tls.Tls.mutualServerSocket(conf.port, conf.tlsCert, conf.tlsKey, Schemes.all()) match
+      case Right(ss) => ss
+      case Left(why) =>
+        System.err.println(s"okay-pool: the worker protocol's mTLS did not build: $why")
+        System.exit(3)
+        throw IllegalStateException("unreachable")

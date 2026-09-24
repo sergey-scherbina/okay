@@ -502,13 +502,17 @@ Stage 3 — LANDED (see Results):
       contains "consul"; the first run of this exact test found that)
 
 Stage 4:
-- [ ] a pool told to listen on a non-loopback address without TLS or a
+- [x] a pool told to listen on a non-loopback address without TLS or a
       capability refuses to start, naming the flag that overrides it
-- [ ] a submission without the configured capability is 401 before the
+- [x] a submission without the configured capability is 401 before the
       Schema is consulted (the same order `guarded` keeps: a stranger
       learns nothing)
-- [ ] two members with the pool certificate speak; one without is
+- [x] two members with the pool certificate speak; one without is
       refused at the handshake, not at the request
+- [x] `cluster` renders a NetworkPolicy admitting the worker port from
+      the pool's own pods and any sibling service naming it a
+      `Need.Neighbour` only; a `Need.Peers` service with no private
+      port renders none, and `helm lint`/`helm template` gate it
 
 Stage 5:
 - [ ] a `Lease` over a Kubernetes Lease object: two members, one seat,
@@ -761,3 +765,61 @@ ever needs closing that gap.
       test holds — 183 tests in okay-deploy's default suite, clean
       compile, four real-tool checks under `Live`
       (`TestManagersLive`).
+
+## Results, stage 4
+
+**cluster-pool-secure (2026-09-24).** mTLS through `okay.tls.Tls`
+(`mutualContext`/`mutualServerSocket`/`mutualClient`, ONE certificate
+as both identity and trust anchor, `SslMode.VerifyCa` — no hostname
+check, because a pool member dials another by a Kubernetes DNS name or
+a bare IP no single certificate was ever going to name); a capability
+at `POST /pool/jobs/{name}` (`Routes.authorized`, `okay.security.Capability`,
+checked before the job name is even looked up); `PoolConf.secured`
+refusing to start with neither TLS nor a capability configured unless
+`insecure = true` (`OKAY_POOL_INSECURE`); a NetworkPolicy on `cluster`.
+
+**A real handshake found a real gap `setNeedClientAuth` does not close.**
+`TestPoolSecureLive` dials a peer holding NO certificate at all against
+a server built with `mutualServerSocket`, expecting the handshake
+itself to fail — and on this JDK it did not: `startHandshake()`
+returned normally, with a real TLS 1.3 cipher suite negotiated, for a
+client that presented an empty certificate list. RFC 8446 §4.4.2 says
+why: a server that required client auth and gets an empty Certificate
+message "MAY" abort, and is equally free to continue. `setNeedClientAuth(true)`
+alone is therefore not the refusal `mutualServerSocket`'s own doc
+comment first claimed. The fix is `Tls.verifyingClientAuth`: every
+`accept()` forces the handshake and reads `getSession.getPeerCertificates`
+itself, closing and looping to the next connection on
+`SSLPeerUnverifiedException` rather than handing an unauthenticated
+socket to `Served.serve` — one bad peer can no longer take the whole
+listener down with an exception `serve`'s own accept loop does not
+catch, either. The property this actually proves is "the SERVER never
+processes a request from an unauthenticated peer", not "the client's
+own connect call fails" — TLS 1.3 makes the latter unobservable by
+design, and `TestPoolSecureLive`'s third test was rewritten to assert
+through a real worker-protocol round-trip instead, the same way its
+wrong-certificate sibling already did.
+
+**The NetworkPolicy needed a real "who is the submitter" that the
+model already had**, rather than a new field: `Need.Neighbour` already
+says one `Service` in a `Deployment` reaches another, so `cluster`'s
+policy admits the pool's own pods (peer-to-peer, over the mTLS above)
+and any sibling service naming the pool a neighbour — a plain
+`podSelector` with no `namespaceSelector`, which is already
+"this namespace only" in Kubernetes, matching a Helm release's own
+shape (pool and submitter in one release, one namespace). Only the
+NON-public ports are restricted: the HTTP door is a `public` port on
+purpose (an ingress, an operator elsewhere) and already carries the
+capability above, so narrowing it at the network layer too would
+contradict its own declaration; a `Need.Peers` service with no private
+port (every port public) renders no policy at all. Proven the same way
+stage 2's headless Service was: `helm lint` and `helm template`, real,
+against a fixture shaped like `okay-pool` itself (a private worker
+port, a public HTTP door, and a neighbour).
+
+218 tests across `okay-pool`/`okay-tls`/`okay-deploy`'s default suites
+(fresh, `clean` first), clean compile, three real socket-level `Live`
+tests (`TestPoolSecureLive`, real openssl-generated certificates: same
+certificate round-trips, a different one is refused mid-protocol, no
+identity at all is refused mid-protocol) and three real `helm`
+`Live` tests for the NetworkPolicy.

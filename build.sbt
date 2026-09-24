@@ -2880,7 +2880,10 @@ lazy val okayDeploy = (project in file("okay-deploy"))
  * discovery and the ops probes so the engine itself does not.
  */
 lazy val okayPool = (project in file("okay-pool"))
-  .dependsOn(okayCluster.jvm, okayHttp.jvm, okayOps.jvm, okayResilience.jvm, okayConf.jvm, okayJetty)
+  // okayTls: mTLS between members (specs/cluster-pool.md stage 4);
+  // okaySecurity: the capability at the submission door
+  .dependsOn(okayCluster.jvm, okayHttp.jvm, okayOps.jvm, okayResilience.jvm, okayConf.jvm, okayJetty,
+    okayTls, okaySecurity.jvm)
   .settings(
     name := "okay-pool",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

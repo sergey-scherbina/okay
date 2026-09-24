@@ -99,7 +99,20 @@ object Served {
    * policy hidden in the transport would fight it. This makes the
    * connection able to heal; `Living` still decides when to give up.
    */
-  def reconnecting(host: String, port: Int): Cluster.Serve =
+  /**
+   * The plain dial `reconnecting` used before a `connect` parameter
+   * existed: a `Socket`, `TCP_NODELAY` set. Kept as the default so
+   * every existing caller is unchanged; a caller that wraps the
+   * connection in TLS (okay-pool, specs/cluster-pool.md stage 4)
+   * passes its OWN factory instead — `reconnecting` does not know
+   * what TLS is, and does not need to.
+   */
+  def plainSocket(host: String, port: Int): Socket =
+    val s = Socket(host, port)
+    s.setTcpNoDelay(true)
+    s
+
+  def reconnecting(host: String, port: Int, connect: (String, Int) => Socket = plainSocket): Cluster.Serve =
     // a lock of its OWN. `connect` synchronizes on its socket, which
     // this cannot do because the socket is replaced; and a bare
     // `synchronized` inside the lambda would take the monitor of
@@ -111,8 +124,7 @@ object Served {
     var out: DataOutputStream | Null = null
 
     def dial(): Unit =
-      val s = Socket(host, port)
-      s.setTcpNoDelay(true)
+      val s = connect(host, port)
       sock = s
       in = DataInputStream(s.getInputStream)
       out = DataOutputStream(s.getOutputStream)

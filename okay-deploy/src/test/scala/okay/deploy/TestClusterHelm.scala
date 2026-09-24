@@ -116,3 +116,53 @@ class TestClusterHelm extends munit.FunSuite:
       assert(out.ok, out.text)
     }
   }
+
+  // ---- the NetworkPolicy (specs/cluster-pool.md, stage 4) --------------
+
+  private val pool = Service(
+    name = "pool",
+    run = Run.Module("okayPool", "okay-pool", "okay.pool.Pool"),
+    needs = Vector(Need.Port(7100, public = false), Need.Port(7101), Need.Peers))
+
+  private val submitter = Service(
+    name = "submitter",
+    run = Run.Module("okayScript", "okay-script", "okay.script.Serve"),
+    needs = Vector(Need.Neighbour("pool")))
+
+  private val poolShop = Deployment("batch", Vector(pool, submitter))
+
+  test("a Peers service with a private port gets a NetworkPolicy, and helm lints it") {
+    chart(poolShop) { dir =>
+      assert(Files.exists(dir.resolve("templates/pool-networkpolicy.yaml")), "no networkpolicy.yaml rendered")
+      val out = Shell.run(Vector("helm", "lint", dir.toString))
+      assert(out.ok, out.text)
+      assert(out.text.contains("0 chart(s) failed"), out.text)
+    }
+  }
+
+  test("the NetworkPolicy admits the pool itself, the submitter, and only the private port") {
+    chart(poolShop) { dir =>
+      val out = Shell.run(Vector("helm", "template", "batch", dir.toString))
+      assert(out.ok, out.text)
+      val y = out.text
+      assert(y.contains("kind: NetworkPolicy"), y)
+      assert(y.contains("name: batch-pool-pool"), y)
+      // the pool's own pods (peer-to-peer) and the submitter, by name
+      assert(y.contains("app.kubernetes.io/name: pool"), y)
+      assert(y.contains("app.kubernetes.io/name: submitter"), y)
+      // no namespaceSelector at all -- an unqualified podSelector
+      // already means "this namespace only"
+      assert(!y.contains("namespaceSelector"), y)
+      // the worker port is restricted, the HTTP door is not mentioned here
+      assert(y.contains("- port: 7100"), y)
+      assert(!y.contains("- port: 7101"), y)
+    }
+  }
+
+  test("a Peers service with only public ports gets no NetworkPolicy") {
+    // `web` above has one port and it defaults to public -- nothing
+    // internal-only to guard, so no policy renders for it
+    chart(shop) { dir =>
+      assert(!Files.exists(dir.resolve("templates/web-networkpolicy.yaml")))
+    }
+  }
