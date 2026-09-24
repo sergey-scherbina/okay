@@ -48,12 +48,22 @@ func quote(c *okay.Ctx, args []any) any {
 	return total
 }
 
+var programs = okay.Programs{
+	"pairs": pairs,
+	"total": func(args []any) okay.Prog { return total(args[0].(string), args[1].(int64)).Untyped() },
+	"boom":  boom,
+}
+
+var functions = okay.Functions{"quote": quote}
+
+// in-process (a WebAssembly build): what okay_exchange serves
+func init() {
+	okay.Export(programs, functions)
+}
+
+// as a process: stdin/stdout, or TCP with OKAY_LISTEN
 func main() {
-	okay.Main(map[string]func([]any) okay.Prog{
-		"pairs": pairs,
-		"total": func(args []any) okay.Prog { return total(args[0].(string), args[1].(int64)).Untyped() },
-		"boom":  boom,
-	}, okay.Functions{"quote": quote})
+	okay.Main(programs, functions)
 }
 """
 

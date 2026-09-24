@@ -48,20 +48,25 @@ final class WasmLib private (instance: Instance, said: java.io.ByteArrayOutputSt
     val made = scala.collection.mutable.ArrayBuffer.empty[(Long, Long)]
     val buffers = new WasmLib.Buffers:
       def in(bytes: Array[Byte]): Long =
-        val p = alloc(bytes.length.toLong)
-        made += ((p, bytes.length.toLong))
+        // freed with the size ALLOCATED (at least 1), not the length: a
+        // zero-length buffer freed as 0 bytes was a size mismatch in the
+        // module's allocator (found by in-process-worker, 2026-09-24)
+        val size = math.max(1L, bytes.length.toLong)
+        val p = alloc(size)
+        made += ((p, size))
         if bytes.nonEmpty then instance.memory().write(p.toInt, bytes)
         p
       def out(n: Int): Long =
-        val p = alloc(n.toLong)
-        made += ((p, n.toLong))
+        val size = math.max(1L, n.toLong)
+        val p = alloc(size)
+        made += ((p, size))
         p
       def read(p: Long, n: Int): Array[Byte] = instance.memory().readBytes(p.toInt, n)
     try body(buffers)
     finally made.foreach((p, n) => call("okay_free", p, n): Unit)
 
   private def alloc(n: Long): Long =
-    call("okay_alloc", math.max(1L, n)).fold(why => throw IllegalStateException(why), identity)
+    call("okay_alloc", n).fold(why => throw IllegalStateException(why), identity)
 
 object WasmLib:
 

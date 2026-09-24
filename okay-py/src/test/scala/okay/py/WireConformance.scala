@@ -48,7 +48,19 @@ abstract class WireConformance extends munit.FunSuite:
     assertEquals(Reader.run(Map("tea" -> 4.0, "rate" -> 0.5))(quote).runWith, Right(6.0))
   }
 
+  /** whether a far-side failure leaves the far side alive: false for Rust
+   * compiled to WebAssembly, where a panic is `abort` and traps the module */
+  def survivesPanics: Boolean = true
+
+  test("a far side that cannot survive a panic still reports it, with its message") {
+    assume(!survivesPanics, "this far side survives its panics (the next test)")
+    val boom = Foreign.program[Long]("boom").calling(Foreign.callbacks(choose))()
+    val e = intercept[IllegalStateException](runChoice(boom.program).runWith)
+    assert(e.getMessage.contains("says no"), e.getMessage)
+  }
+
   test("a failure is a condition by name, and the far side lives on") {
+    assume(survivesPanics, "a panic ends this far side (the test above)")
     val boom = Foreign.program[Long]("boom").calling(Foreign.callbacks(choose))()
     val got = runChoice(boom.program).runWith
     assert(got.headOption.exists(_.left.exists(c => c.kind.nonEmpty && c.message.contains("says no"))), s"$got")

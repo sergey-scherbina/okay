@@ -21,9 +21,14 @@ import okay.codec.Schema
 object GoWorker:
 
   /** the `okay` package's source, as this jar ships it */
-  def library: String =
-    val res = getClass.getResourceAsStream("/okay/go/okay.go")
-    if res == null then throw IllegalStateException("okay.py: /okay/go/okay.go is missing from the jar")
+  def library: String = resource("okay.go")
+
+  /** the in-process exports a WebAssembly build adds (`//go:build wasip1`) */
+  def wasmExports: String = resource("okay_wasm.go")
+
+  private def resource(name: String): String =
+    val res = getClass.getResourceAsStream(s"/okay/go/$name")
+    if res == null then throw IllegalStateException(s"okay.py: /okay/go/$name is missing from the jar")
     try String(res.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8) finally res.close()
 
   /**
@@ -37,8 +42,9 @@ object GoWorker:
   def build(dir: Path, go: String = "go"): Path =
     Files.createDirectories(dir.resolve("okay")): Unit
     Files.writeString(dir.resolve("okay").resolve("okay.go"), library): Unit
+    Files.writeString(dir.resolve("okay").resolve("okay_wasm.go"), wasmExports): Unit
     if !Files.exists(dir.resolve("go.mod")) then
-      Files.writeString(dir.resolve("go.mod"), "module worker\n\ngo 1.22\n"): Unit
+      Files.writeString(dir.resolve("go.mod"), "module worker\n\ngo 1.24\n"): Unit
     val bin = dir.resolve(".okay-build").resolve("worker")
     val pb = ProcessBuilder(go, "build", "-o", bin.toString, ".").directory(dir.toFile).redirectErrorStream(true)
     pb.environment().put("GOTOOLCHAIN", "local")
@@ -50,6 +56,26 @@ object GoWorker:
     if p.waitFor() != 0 then
       throw IllegalStateException(s"okay.py: the Go worker did not compile:\n${log.linesIterator.toVector.takeRight(20).mkString("\n")}")
     bin
+
+  /**
+   * The same module compiled to WebAssembly for use IN-PROCESS
+   * (`GOOS=wasip1 GOARCH=wasm -buildmode=c-shared`, no TinyGo): its `init()`
+   * calls `okay.Export(programs, functions)`, and Chicory runs it through
+   * `okay_exchange`. Answers the `.wasm`.
+   */
+  def buildWasm(dir: Path, go: String = "go"): Path =
+    val _ = build(dir, go) // writes the package and go.mod, and proves the native build too
+    val out = dir.resolve(".okay-build").resolve("worker.wasm")
+    val pb = ProcessBuilder(go, "build", "-buildmode=c-shared", "-o", out.toString, ".")
+      .directory(dir.toFile).redirectErrorStream(true)
+    pb.environment().put("GOTOOLCHAIN", "local")
+    pb.environment().put("GOOS", "wasip1")
+    pb.environment().put("GOARCH", "wasm")
+    val p = pb.start()
+    val log = String(p.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    if p.waitFor() != 0 then
+      throw IllegalStateException(s"okay.py: the Go module did not compile to wasm:\n${log.linesIterator.toVector.takeRight(20).mkString("\n")}")
+    out
 
 /**
  * Go's side of typed operations (polyglot-go): the operations a Go program

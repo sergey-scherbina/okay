@@ -6,7 +6,10 @@ import okay.codec.Schema
 /**
  * A Rust worker for okay (polyglot-one-wire, specs/polyglot-one-wire.md): a
  * Cargo crate depending on the `okay` crate this jar ships
- * (`/okay/rust/okay`), serving programs as data and direct-style functions
+ * (`/okay/rust-crate` — a directory name no package can have: a resource
+ * directory `okay/rust/okay` on the classpath read to scalac as a PACKAGE
+ * `okay.rust.okay`, and inside `package okay.rust` the name `okay` found it
+ * instead of the root), serving programs as data and direct-style functions
  * with `okay::main(make)` — on stdin/stdout, or on TCP when `OKAY_LISTEN` is
  * set. `build` compiles it OFFLINE; `ForeignWorker.speaking` or `.connect`
  * reaches it, and `Foreign.program` / `Foreign.fn` drive it unchanged.
@@ -14,8 +17,8 @@ import okay.codec.Schema
 object RustWorker:
 
   private def resource(path: String): String =
-    val res = getClass.getResourceAsStream(s"/okay/rust/okay/$path")
-    if res == null then throw IllegalStateException(s"okay.py: /okay/rust/okay/$path is missing from the jar")
+    val res = getClass.getResourceAsStream(s"/okay/rust-crate/$path")
+    if res == null then throw IllegalStateException(s"okay.py: /okay/rust-crate/$path is missing from the jar")
     try String(res.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8) finally res.close()
 
   /**
@@ -45,6 +48,36 @@ object RustWorker:
     if p.waitFor() != 0 then
       throw IllegalStateException(s"okay.py: the Rust worker did not compile:\n${log.linesIterator.toVector.takeRight(25).mkString("\n")}")
     target.resolve("release").resolve("worker")
+
+  /**
+   * Compile the crate in `dir` as a LIBRARY for use IN-PROCESS
+   * (polyglot-one-wire stage 3): its `src/lib.rs` calls
+   * `okay::export_worker!(make)`, and the answer is the `cdylib` for FFM
+   * (`target` None) or the module for WebAssembly (`Some("wasm32-wasip1")`).
+   * A `Cargo.toml` naming the package `worker` with `crate-type = ["cdylib"]`
+   * is written if `dir` has none.
+   */
+  def buildLibrary(dir: Path, target: Option[String] = None, cargo: String = "cargo"): Path =
+    val lib = dir.resolve("okay")
+    Files.createDirectories(lib.resolve("src")): Unit
+    Files.writeString(lib.resolve("Cargo.toml"), resource("Cargo.toml")): Unit
+    Files.writeString(lib.resolve("src").resolve("lib.rs"), resource("src/lib.rs")): Unit
+    if !Files.exists(dir.resolve("Cargo.toml")) then
+      Files.writeString(dir.resolve("Cargo.toml"),
+        "[package]\nname = \"worker\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\nokay = { path = \"okay\" }\n"): Unit
+    val out = dir.resolve(".okay-build")
+    val cmd = Vector(cargo, "build", "--offline", "--release", "--target-dir", out.toString) ++
+      target.toVector.flatMap(t => Vector("--target", t))
+    val p = ProcessBuilder(cmd*).directory(dir.toFile).redirectErrorStream(true).start()
+    val log = String(p.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    if p.waitFor() != 0 then
+      throw IllegalStateException(s"okay.py: the Rust library did not compile:\n${log.linesIterator.toVector.takeRight(25).mkString("\n")}")
+    target match
+      case Some(t) => out.resolve(t).resolve("release").resolve("worker.wasm")
+      case None =>
+        val os = System.getProperty("os.name").toLowerCase
+        val file = if os.contains("mac") then "libworker.dylib" else if os.contains("win") then "worker.dll" else "libworker.so"
+        out.resolve("release").resolve(file)
 
 /**
  * Rust's side of typed operations: the operations a Rust program may

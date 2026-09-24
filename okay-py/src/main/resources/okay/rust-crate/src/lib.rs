@@ -493,3 +493,71 @@ pub fn main(make: fn() -> Worker) {
         _ => serve_stdio(make),
     }
 }
+
+// ------------------------------------------------------------------ in-process
+
+/// the one Worker of a library loaded INTO the host's process (FFM, or a
+/// WebAssembly module): what `export_worker!`'s `okay_exchange` serves.
+///
+/// SAFETY of `Send`: a Worker holds `Rc` continuations, which are not `Send`.
+/// This wrapper is only ever reached through the `Mutex` in `export_worker!`,
+/// so every touch of an `Rc` — clone, call, drop — happens under that lock,
+/// one thread at a time; no `Rc` escapes the Worker (direct-style functions
+/// run on threads of their own with `Send` channels only).
+#[doc(hidden)]
+pub struct InProcess(pub Worker);
+unsafe impl Send for InProcess {}
+
+/// one exchange in-process: an empty request answers the handshake
+#[doc(hidden)]
+pub fn exchange_in(global: &std::sync::Mutex<Option<InProcess>>, make: fn() -> Worker, req: &[u8]) -> Vec<u8> {
+    let line = String::from_utf8_lossy(req);
+    if line.trim().is_empty() {
+        return Worker::hello().into_bytes();
+    }
+    let mut guard = global.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let w = guard.get_or_insert_with(|| InProcess(make()));
+    w.0.handle(&line).into_bytes()
+}
+
+/// Export a worker IN-PROCESS: `okay_exchange(req, len, out_len) -> resp`
+/// (one request line in, one answer line out; an empty request answers the
+/// handshake), `okay_free(p, n)` for an answer, and `okay_alloc(n)` for a
+/// host that must place a request in this module's memory (WebAssembly).
+/// Loaded through FFM (a cdylib) or run by Chicory (wasm32-wasip1), the
+/// Scala side drives it exactly as it drives a worker over a pipe.
+#[macro_export]
+macro_rules! export_worker {
+    ($make:path) => {
+        static OKAY_WORKER: std::sync::Mutex<Option<$crate::InProcess>> = std::sync::Mutex::new(None);
+
+        #[no_mangle]
+        pub extern "C" fn okay_exchange(req: *const u8, len: usize, out_len: *mut usize) -> *mut u8 {
+            // SAFETY: the host hands `len` readable bytes at `req`, and a writable `usize` at `out_len`
+            let bytes = if req.is_null() || len == 0 { &[][..] } else { unsafe { std::slice::from_raw_parts(req, len) } };
+            let mut out = $crate::exchange_in(&OKAY_WORKER, $make, bytes).into_boxed_slice();
+            unsafe { *out_len = out.len() };
+            let p = out.as_mut_ptr();
+            std::mem::forget(out);
+            p
+        }
+
+        /// give back an answer (or an `okay_alloc`ed buffer) of `n` bytes
+        #[no_mangle]
+        pub extern "C" fn okay_free(p: *mut u8, n: usize) {
+            if !p.is_null() {
+                // SAFETY: `p` and `n` are exactly what okay_exchange or okay_alloc handed out
+                unsafe { drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(p, n))) }
+            }
+        }
+
+        /// `n` bytes of this module's memory, for a host to fill (n >= 1)
+        #[no_mangle]
+        pub extern "C" fn okay_alloc(n: usize) -> *mut u8 {
+            let mut b = vec![0u8; n].into_boxed_slice();
+            let p = b.as_mut_ptr();
+            std::mem::forget(b);
+            p
+        }
+    };
+}

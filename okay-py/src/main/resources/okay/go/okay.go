@@ -608,3 +608,25 @@ func Main(programs Programs, functions ...Functions) {
 	}
 	Serve(programs, functions...)
 }
+
+// ---------------------------------------------------------------- in-process
+
+var exported *Worker
+
+// Export makes programs and functions the worker a WebAssembly build serves
+// IN-PROCESS (okay_exchange, in okay_wasm.go). Call it from init(): a
+// reactor module's main never runs.
+func Export(programs Programs, functions ...Functions) {
+	exported = NewWorker(programs, functions...)
+}
+
+// Exchange is one in-process exchange: an empty request answers the handshake.
+func Exchange(line string) string {
+	if strings.TrimSpace(line) == "" {
+		return Hello()
+	}
+	if exported == nil {
+		return `{"id":null,"condition":{"kind":"LookupError","message":"okay.Export was never called: nothing is served"}}`
+	}
+	return exported.Handle(line)
+}

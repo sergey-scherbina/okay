@@ -2355,7 +2355,9 @@ lazy val okayRust = crossProject(JVMPlatform, NativePlatform)
     name := "okay-rust",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
-  .jvmConfigure(_.dependsOn(okaySecurityArgon2 % Test))
+  // okay-py: the foreign engine, which InProcessLinks gives an FFM and a
+  // WebAssembly link (specs/polyglot-one-wire.md stage 3)
+  .jvmConfigure(_.dependsOn(okayPy % "compile->compile;test->test", okaySecurityArgon2 % Test))
   .jvmSettings(
     jdkFloor(22),
     // Chicory: a WebAssembly runtime in pure Java, and its WASI — the road
