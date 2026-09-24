@@ -189,22 +189,30 @@ your own effects next to it, use `Eff`.
 
 ## 3. Several effects in one program: `Eff`
 
-`Eff[R, A]` is a program that answers `A` and needs the effects `R`.
-`R` is an intersection of **capabilities**, written with `+` the way
-okay writes a row: `State[Int] + Writer[String]` for okay's
-`State % Int + Writer % String`. `+` is one line of your own code,
-declared once in a package object of your project (a Scala 3
-top-level alias is invisible to scalac 2.13, so the library cannot
-carry it for you):
+`A ! R` is a program that answers `A` and needs the effects `R` —
+the library's class is `Eff[R, A]`, and `R` is an intersection of
+**capabilities**, written with `+` the way okay writes a row:
+`Int ! (State[Int] + Writer[String])` for okay's
+`Int ! (State % Int + Writer % String)`. Both `!` and `+` are two lines
+of your own code, declared once in a package object of your project (a
+Scala 3 top-level alias is invisible to scalac 2.13, so the library
+cannot carry them for you):
 
 ```scala
 type +[R, S] = R with S
+type ![A, R] = Eff[R, A]
 ```
 
-It is an alias and nothing more: `R + S` IS `R with S`, the same type,
-so a chain `Reader[Config] + State[Int] + Throws[String]` is the plain
-intersection of the three, and `with` still works wherever you meet
-it. The capabilities:
+They are aliases and nothing more: `R + S` IS `R with S` and `A ! R`
+IS `Eff[R, A]`, the same types, so a chain
+`Reader[Config] + State[Int] + Throws[String]` is the plain
+intersection of the three, and `Eff[...]` and `with` still work
+wherever you meet them. Keep the parentheses after `!`: in Scala 2
+every infix type operator has the same precedence and associates to
+the left, so `Int ! State[Int] + Writer[String]` is
+`(Int ! State[Int]) + Writer[String]`, a program intersected with a
+capability, and the compiler will tell you so at the first `flatMap`.
+The capabilities:
 
 | capability | operations | handler |
 |---|---|---|
@@ -220,12 +228,12 @@ without conversion. Here `count` needs only `State` and is used inside
 a program that also needs `Writer`:
 
 ```scala
-def count(word: String): Eff[State[Map[String, Int]], Unit] =
+def count(word: String): Unit ! State[Map[String, Int]] =
   State.modify[Map[String, Int]](m => m.updated(word, m.getOrElse(word, 0) + 1))
 
-def countAll(text: String): Eff[State[Map[String, Int]] + Writer[String], Int] = {
+def countAll(text: String): Int ! (State[Map[String, Int]] + Writer[String]) = {
   val words = text.split("\\s+").toList.filter(_.nonEmpty)
-  words.foldLeft(Eff.pure(0): Eff[State[Map[String, Int]] + Writer[String], Int]) { (acc, w) =>
+  words.foldLeft(Eff.pure(0): Int ! (State[Map[String, Int]] + Writer[String])) { (acc, w) =>
     for {
       n <- acc
       _ <- count(w)
@@ -243,9 +251,9 @@ assertEquals(log, Vector("saw a", "saw b", "saw a"))
 How to read the last line from the inside out:
 
 - `State.run(Map.empty)(...)` handles `State`. It leaves an
-  `Eff[Writer[String], (Map[String, Int], Int)]`.
+  `(Map[String, Int], Int) ! Writer[String]`.
 - `Writer.run` handles `Writer`. It leaves
-  `Eff[Any, (Vector[String], (Map[String, Int], Int))]`.
+  `(Vector[String], (Map[String, Int], Int)) ! Any`.
 - `Eff.run` accepts only `Eff[Any, _]`, meaning nothing left to handle.
 
 scalac 2.13 infers what each handler leaves; no type arguments are
@@ -255,7 +263,7 @@ idea with an error in the middle:
 ```scala
 final case class Config(limit: Int)
 
-def withdraw(amount: Int): Eff[Reader[Config] + State[Int] + Throws[String], Int] = for {
+def withdraw(amount: Int): Int ! (Reader[Config] + State[Int] + Throws[String]) = for {
   cfg <- Reader.ask[Config]
   balance <- State.get[Int]
   _ <- if (amount > cfg.limit) Throws.raise[String, Unit]("over the limit")
@@ -316,13 +324,13 @@ operation together with `k`, the rest of the program after it:
 ```scala
 def inMemory[R, B](store: scala.collection.mutable.Map[String, String]): Handler[KV, R, B] =
   new Handler[KV, R, B] {
-    def apply[X](op: KV[X], k: X => Eff[R, B]): Eff[R, B] = op match {
+    def apply[X](op: KV[X], k: X => B ! R): B ! R = op match {
       case Get(key) => k(store.get(key))
       case Put(key, value) => store(key) = value; k(())
     }
   }
 
-val program: Eff[Effect[KV], Option[String]] = for {
+val program: Option[String] ! Effect[KV] = for {
   _ <- KV.send(Put("lang", "scala"))
   v <- KV.send(Get("lang"))
 } yield v.map(_.toUpperCase)
@@ -343,7 +351,7 @@ dry run:
 ```scala
 val log = ListBuffer.empty[String]
 def dryRun[R, B]: Handler[KV, R, B] = new Handler[KV, R, B] {
-  def apply[X](op: KV[X], k: X => Eff[R, B]): Eff[R, B] = op match {
+  def apply[X](op: KV[X], k: X => B ! R): B ! R = op match {
     case Get(key) => log += ("get " + key); k(None)
     case Put(key, value) => log += ("put " + key + "=" + value); k(())
   }
@@ -394,10 +402,10 @@ way, are tested from 2.13.
 
 ```scala
 val words: Source[String] = Source("the", "quick", "brown", "fox", "jumps")
-val lengths: Eff[Async, Vector[Int]] = words.filter(_.length > 3).map(_.length).runCollect
+val lengths: Vector[Int] ! Async = words.filter(_.length > 3).map(_.length).runCollect
 assertEquals(Eff.runAsync(lengths), Vector(5, 5, 5))
 
-val total: Eff[Async, Int] = words.zipWithIndex.take(3).runFold(0) { case (acc, (w, _)) => acc + w.length }
+val total: Int ! Async = words.zipWithIndex.take(3).runFold(0) { case (acc, (w, _)) => acc + w.length }
 assertEquals(Eff.runAsync(total), 13)
 ```
 
@@ -409,7 +417,7 @@ assertEquals(Eff.runAsync(total), 13)
 - Consumers: `runCollect`, `runForeach`, `runFold`. Each returns an
   `Eff[Async, _]`, so nothing runs until `Eff.runAsync`.
 - A source can also be written as a program:
-  `Source.fromEff(e: Eff[Writer[A] + Async, Unit])`, where each
+  `Source.fromEff(e: Unit ! (Writer[A] + Async))`, where each
   `Writer.tell` emits an element. `toEff` converts back.
 - `take` stops pulling once it has enough, so it works on an
   infinite `unfold`.
@@ -425,17 +433,17 @@ never blocks a thread you did not give it. A worker pool, then:
 val jobs = Channel[Int](8)
 val results = Channel[Int](8)
 
-def worker: Eff[Async, Unit] = jobs.receive.flatMap {
+def worker: Unit ! Async = jobs.receive.flatMap {
   case Some(n) => results.send(n * n).flatMap(_ => worker)
   case None => Eff.pure(())
 }
 
-def feed(ns: List[Int]): Eff[Async, Unit] = ns match {
+def feed(ns: List[Int]): Unit ! Async = ns match {
   case n :: rest => jobs.send(n).flatMap(_ => feed(rest))
   case Nil => Async.delay(jobs.close())
 }
 
-val program: Eff[Async, Int] = for {
+val program: Int ! Async = for {
   w1 <- Async.fork(worker)
   w2 <- Async.fork(worker)
   _ <- Async.fork(feed((1 to 10).toList))
@@ -556,7 +564,7 @@ object User {
 
 val users = scala.collection.concurrent.TrieMap(1 -> User(1, "ada"))
 
-val routes: Request => Eff[Async, Response] = Routes {
+val routes: Request => Response ! Async = Routes {
   case GET(Path("users", id)) =>
     Async.delay(users.get(id.toInt) match {
       case Some(u) => Response.json(u)
@@ -572,7 +580,7 @@ val routes: Request => Eff[Async, Response] = Routes {
 }
 ```
 
-A handler is an ordinary function `Request => Eff[Async, Response]`, so
+A handler is an ordinary function `Request => Response ! Async`, so
 it can be tested without a socket: `Eff.runAsync(routes(Request.get("/users/1")))`.
 A request no case matches gets a 404.
 
@@ -595,7 +603,7 @@ assertEquals(got, (200, """{"id":1,"name":"ada"}"""))
   `server.close()` stops it and waits until it has stopped. If the
   port cannot be bound, `start` throws.
 - `Client()` has `send`, `get`, `post`, `postJson`, each an
-  `Eff[Async, Response]` with the body read in full, and `lines`,
+  `Response ! Async` with the body read in full, and `lines`,
   which is a `Source[String]` streamed line by line.
 - The socket tests are tagged `Live`, like every suite in this
   repository that binds a port, so the default gate runs only the
@@ -643,7 +651,7 @@ assertEquals(Eff.runAsync(Throws.run(prog)), Right((2L, Vector(Person(1, "Ada Lo
 - **A row that does not decode is data, not a throw.** In `rows` (a
   stream) it is a `Left(Bad)`. In `all` the first one fails the
   program as a typed `Throws[Bad]`, so `all` answers
-  `Eff[Async + Throws[Bad], Vector[A]]`, and `Throws.run` turns
+  `Vector[A] ! (Async + Throws[Bad])`, and `Throws.run` turns
   that into an `Either`.
 - **`db.transaction()(tx => ...)`** commits when the body completes and
   rolls back when it fails. Underneath is okay-sql's `Typed.transact`
@@ -896,7 +904,7 @@ assertEquals(Eff.run(Choose.all(triples)), Seq((3, 4, 5), (5, 12, 13), (6, 8, 10
 
 ```scala
 // the naturals from n, as an infinite search
-def nats(n: Int): Eff[Choose, Int] = Choose.from(true, false).flatMap(stop => if (stop) Eff.pure(n) else nats(n + 1))
+def nats(n: Int): Int ! Choose = Choose.from(true, false).flatMap(stop => if (stop) Eff.pure(n) else nats(n + 1))
 ```
 
 ```scala
@@ -931,7 +939,7 @@ copied from `scala2/okay-scala2/probe/src/test/scala/TestDialogNavFromScala2.sca
 
 ```scala
 // a scenario as one program: two questions, then an answer
-val greet: Eff[Dialog, String] = for {
+val greet: String ! Dialog = for {
   first <- Dialog.show(Ui.Column(Vector(Ui.Text("hello?"), Ui.Button("yes", "yes"), Ui.Button("no", "no"))))
   answer <- first match {
     case Event.Pressed("yes") => Dialog.show(Ui.Input("", "name", "your name")).map {
@@ -1056,11 +1064,11 @@ assertEquals(Eff.runAsync(prog), Vector("0", "1", "2"))
 Module `okay-scala2-stm`. The cell is okay's own `TRef`: `Stm.ref(init)`
 (the same as `TRef(init)`), `ref.get`, `ref.modify(f)`. `Tx` is the
 transaction language as a capability of `Eff`, and `Stm.atomically`
-runs a transaction as one atomic step of an `Eff[Async, A]`. The code
+runs a transaction as one atomic step of an `A ! Async`. The code
 below is copied from `scala2/okay-scala2/probe/src/test/scala/TestStmFromScala2.scala`:
 
 ```scala
-def transfer(from: TRef[Int], to: TRef[Int], amount: Int): Eff[Tx, Unit] = for {
+def transfer(from: TRef[Int], to: TRef[Int], amount: Int): Unit ! Tx = for {
   balance <- Tx.read(from)
   _ <- Tx.check(balance >= amount)
   _ <- Tx.write(from, balance - amount)
@@ -1357,7 +1365,7 @@ where the old one stood, asking nobody anything twice.
 [Chapter 23 of the continuations book](continuations/23-durable-workflows.md)
 explains the engine; this section is how Scala 2 uses it.
 
-A workflow is an ordinary program, `Eff[Workflow[Q, A], R]`. `Q` is the
+A workflow is an ordinary program, `R ! Workflow[Q, A]`. `Q` is the
 type of the questions it asks the outside world, and `A` the type of the
 answers. `Workflow[Q, A]` holds the operations. Every operation's answer
 is journalled, the clock and ids included, so a replay reads them back.
@@ -1370,7 +1378,7 @@ val runtime = Wf.Runtime.scripted(1700000000000L, "bk-1", 0.25)
 ```
 
 ```scala
-val booking: Eff[Workflow[String, String], String] = for {
+val booking: String ! Workflow[String, String] = for {
   city <- wf.ask("which city?")
   when <- wf.now
   ref <- wf.uuid
@@ -1462,7 +1470,7 @@ it. `ask` sends a message carrying a `Reply` box and waits a bounded time
 for the answer:
 
 ```scala
-val counter: (Int, Msg) => Eff[Async, Int] = {
+val counter: (Int, Msg) => Int ! Async = {
   case (n, Add(k)) => Eff.pure(n + k)
   case (n, Get(reply)) => Async.delay { reply(n); n }
   case (_, Boom) => Async.delay(throw new IllegalStateException("boom"))
@@ -1513,7 +1521,7 @@ so logging is a capability like any other, and `Logs.to` sends each line
 to a sink as it is said:
 
 ```scala
-val work: Eff[Writer[Log.Line], Int] = for {
+val work: Int ! Writer[Log.Line] = for {
   _ <- Logs.debug("noise")
   _ <- Logs.info("started", "job" -> "42")
   _ <- Logs.failure("failed", new IllegalStateException("disk"))
@@ -1554,7 +1562,7 @@ Postgres' own, with numbered placeholders (`$1, $2`) where JDBC writes
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
 |---|---|
-| `A ! (State % Int + Writer % String)` | `Eff[State[Int] + Writer[String], A]` |
+| `A ! (State % Int + Writer % String)` | `A ! (State[Int] + Writer[String])` |
 | `State.get[Int]`, `Writer.tell(w)` | the same names, on the companions in `okay.scala2` |
 | `State.run(s)(p)` / `State.handle(s)(p)` | `State.run(s)(p)`, which leaves the rest of the row |
 | `enum KV[+A] derives Effect` | `sealed trait KV[A] extends Op[A]` + `object KV extends Effect[KV]` |

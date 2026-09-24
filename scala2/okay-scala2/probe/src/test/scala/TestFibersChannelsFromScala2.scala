@@ -33,10 +33,10 @@ class TestFibersChannelsFromScala2 extends munit.FunSuite {
 
   test("producer and consumer over a bounded channel: every element once, in order") {
     val ch = Channel[Int](4)
-    def produce(i: Int): Eff[Async, Unit] =
+    def produce(i: Int): Unit ! Async =
       if (i > 1000) Async.delay(ch.close())
       else ch.send(i).flatMap(_ => produce(i + 1))
-    def consume(acc: Vector[Int]): Eff[Async, Vector[Int]] =
+    def consume(acc: Vector[Int]): Vector[Int] ! Async =
       ch.receive.flatMap {
         case Some(n) => consume(acc :+ n)
         case None => Eff.pure(acc)

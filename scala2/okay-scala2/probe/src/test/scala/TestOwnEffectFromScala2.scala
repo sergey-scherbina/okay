@@ -18,14 +18,14 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
 
   def console[R, B](out: ListBuffer[String], input: String): Handler[Console, R, B] =
     new Handler[Console, R, B] {
-      def apply[X](op: Console[X], k: X => Eff[R, B]): Eff[R, B] = op match {
+      def apply[X](op: Console[X], k: X => B ! R): B ! R = op match {
         case PrintLn(s) => out += s; k(())
         case ReadLn => k(input)
       }
     }
 
   test("a resumptive effect beside State, in one program") {
-    val prog: Eff[Effect[Console] + State[Int], String] = for {
+    val prog: String ! (Effect[Console] + State[Int]) = for {
       name <- Console.send(ReadLn)
       _ <- State.put(name.length)
       _ <- Console.send(PrintLn("hi " + name))
@@ -37,12 +37,12 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
   }
 
   test("a multi-shot handler: every answer of two flips") {
-    val flips: Eff[Effect[Choose], (Boolean, Boolean)] = for {
+    val flips: (Boolean, Boolean) ! Effect[Choose] = for {
       a <- Choose.send(Flip)
       b <- Choose.send(Flip)
     } yield (a, b)
     val all = new Handler[Choose, Any, List[(Boolean, Boolean)]] {
-      def apply[X](op: Choose[X], k: X => Eff[Any, List[(Boolean, Boolean)]]): Eff[Any, List[(Boolean, Boolean)]] =
+      def apply[X](op: Choose[X], k: X => List[(Boolean, Boolean)] ! Any): List[(Boolean, Boolean)] ! Any =
         op match {
           case Flip => for { t <- k(true); f <- k(false) } yield t ++ f
         }
@@ -53,23 +53,23 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
 
   test("an aborting handler drops the continuation: the rest never runs") {
     var rest = false
-    val prog: Eff[Effect[Console], Int] =
+    val prog: Int ! Effect[Console] =
       Console.send(ReadLn).flatMap(_ => Console.send(PrintLn("x"))).map { _ => rest = true; 1 }
     val abort = new Handler[Console, Any, Option[Int]] {
-      def apply[X](op: Console[X], k: X => Eff[Any, Option[Int]]): Eff[Any, Option[Int]] = Eff.pure(None)
+      def apply[X](op: Console[X], k: X => Option[Int] ! Any): Option[Int] ! Any = Eff.pure(None)
     }
     assertEquals(Console.run(prog)(a => Eff.pure(Option(a)))(abort), None)
     assert(!rest)
   }
 
   test("two user effects in one row, each handled by its own object") {
-    val prog: Eff[Effect[Console] + Effect[Choose], String] = for {
+    val prog: String ! (Effect[Console] + Effect[Choose]) = for {
       b <- Choose.send(Flip)
       _ <- Console.send(PrintLn("flipped " + b))
     } yield if (b) "heads" else "tails"
     val out = ListBuffer.empty[String]
     val first = new Handler[Choose, Effect[Console], String] {
-      def apply[X](op: Choose[X], k: X => Eff[Effect[Console], String]): Eff[Effect[Console], String] =
+      def apply[X](op: Choose[X], k: X => String ! Effect[Console]): String ! Effect[Console] =
         op match { case Flip => k(true) }
     }
     val onlyConsole = Choose.handle(prog)(a => Eff.pure(a))(first)

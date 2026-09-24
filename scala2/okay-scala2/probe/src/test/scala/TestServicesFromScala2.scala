@@ -15,7 +15,7 @@ object ServicesModel {
   final case class Get(reply: Reply[Int]) extends Msg
   case object Boom extends Msg
 
-  val counter: (Int, Msg) => Eff[Async, Int] = {
+  val counter: (Int, Msg) => Int ! Async = {
     case (n, Add(k)) => Eff.pure(n + k)
     case (n, Get(reply)) => Async.delay { reply(n); n }
     case (_, Boom) => Async.delay(throw new IllegalStateException("boom"))
@@ -77,7 +77,7 @@ class TestServicesFromScala2 extends munit.FunSuite {
 
   test("log lines go to a sink as they are said, below the minimum dropped, stamped") {
     val lines = ArrayBuffer.empty[Log.Line]
-    val work: Eff[Writer[Log.Line], Int] = for {
+    val work: Int ! Writer[Log.Line] = for {
       _ <- Logs.debug("noise")
       _ <- Logs.info("started", "job" -> "42")
       _ <- Logs.failure("failed", new IllegalStateException("disk"))

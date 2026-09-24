@@ -6,7 +6,7 @@ import okay.scala2._
 /** okay-stm from Scala 2.13 (specs/scala2-facade.md, stage 15.3) */
 class TestStmFromScala2 extends munit.FunSuite {
 
-  def transfer(from: TRef[Int], to: TRef[Int], amount: Int): Eff[Tx, Unit] = for {
+  def transfer(from: TRef[Int], to: TRef[Int], amount: Int): Unit ! Tx = for {
     balance <- Tx.read(from)
     _ <- Tx.check(balance >= amount)
     _ <- Tx.write(from, balance - amount)
@@ -23,9 +23,9 @@ class TestStmFromScala2 extends munit.FunSuite {
   test("a thousand increments from eight fibers lose nothing") {
     val counter = Stm.ref(0)
     val one = Stm.atomically(Tx.update(counter)(_ + 1))
-    def many(n: Int): Eff[Async, Unit] = if (n == 0) Eff.pure(()) else one.flatMap(_ => many(n - 1))
-    def all[A](es: List[Eff[Async, A]]): Eff[Async, List[A]] =
-      es.foldRight(Eff.pure(List.empty[A]): Eff[Async, List[A]])((e, rest) => e.flatMap(a => rest.map(a :: _)))
+    def many(n: Int): Unit ! Async = if (n == 0) Eff.pure(()) else one.flatMap(_ => many(n - 1))
+    def all[A](es: List[A ! Async]): List[A] ! Async =
+      es.foldRight(Eff.pure(List.empty[A]): List[A] ! Async)((e, rest) => e.flatMap(a => rest.map(a :: _)))
     val prog = for {
       fibers <- all(List.fill(8)(Async.fork(many(125))))
       _ <- all(fibers.map(_.join))

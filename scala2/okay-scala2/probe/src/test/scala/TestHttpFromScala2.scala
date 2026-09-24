@@ -12,7 +12,7 @@ object HttpModel {
 
   val users = scala.collection.concurrent.TrieMap(1 -> User(1, "ada"))
 
-  val routes: Request => Eff[Async, Response] = Routes {
+  val routes: Request => Response ! Async = Routes {
     case GET(Path("users", id)) =>
       Async.delay(users.get(id.toInt) match {
         case Some(u) => Response.json(u)

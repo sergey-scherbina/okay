@@ -9,7 +9,7 @@ which Scala 2 cannot compose, so this module provides them:
 |---|---|
 | `Db.jdbc(connection)` / `Db(sql)` | a database over JDBC, or over any okay-sql driver |
 | `rows` / `rowsOf` | every row as a `Source[Either[Bad, A]]`, decoded by column label |
-| `all` / `allOf` | every row as `Eff[Async + Throws[Bad], Vector[A]]` |
+| `all` / `allOf` | every row as `Vector[A] ! (Async + Throws[Bad])` |
 | `update` / `updateOf` | a statement, with `SqlValue` parameters or a case class's fields |
 | `verify` | the `Drift` between a query's columns and `A` |
 | `transaction` | commit on completion, roll back on failure |

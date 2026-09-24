@@ -621,6 +621,40 @@ Two other shapes were tried first (scalac 2.13.18, 2026-09-24):
       (a compiler message quoted verbatim, `State[Int] with Any`, is
       scalac's spelling and stays)
 
+## Stage 17 — `A ! R`, the program type spelled as okay spells it (2026-09-24)
+Operator: "А такой алиас A ! F[_] = Eff[F,A] на скала 2 можешь
+определить и использовать везде где нужно?" Beside stage 16's `+`:
+
+```
+type ![A, R] = Eff[R, A]
+```
+
+so a Scala 2 program is `Int ! (State[Int] + Writer[String])` for
+okay's `Int ! (State % Int + Writer % String)` — parentheses and all.
+The alias keeps `Eff`'s contravariance in `R` (a variance belongs to
+the class, not the spelling). Same home as `+`: the user's package
+object, next to it.
+
+REFUTED on the way, and worth the line because it was believed for an
+hour: "Scala 2 ranks `!` below `+`, so the parentheses can go". That is
+Scala 3's rule (an infix TYPE operator's precedence follows its first
+character, like a term's). Scala 2 gives every infix type operator ONE
+precedence, left-associative (SLS 2.13 §3.2.8), so
+`Int ! Choose + Writer[String]` is `(Int ! Choose) + Writer[String]`,
+which scalac printed as `Eff[Choose, Int] with Writer[String]` at the
+first `flatMap`. `with` is a keyword, not an operator, so
+`A ! R with S` IS `A ! (R with S)` — but the row is written with `+`.
+`TestRowAliasFromScala2` pins the left association, so the guide's
+sentence about it is checked.
+
+- [x] the alias in `package object scala2probe`, `=:=` both ways with
+      `Eff[R, A]`, for one capability and a parenthesised chain
+- [x] `A ! R + S =:= (A ! R) + S`: the precedence rule, pinned
+- [x] a one-capability `Int ! State[Int]` fits a wider `!` row
+- [x] every `Eff[R, A]` type in the probe and the Scala 2 docs is
+      written `A ! R` (a quoted library signature, a quoted compiler
+      message, and the `Eff[-R, A]` declaration itself stay)
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -937,3 +971,9 @@ Two other shapes were tried first (scalac 2.13.18, 2026-09-24):
   guide's `withdraw`, unchanged but for the spelling). The first draft
   of this stage, `+[R, G[_]]`, was replaced before it was used: it
   could not spell a row of two built-ins (see the stage).
+- STAGE 17 LANDED (2026-09-24, scala2-bang-alias). `type ![A, R] =
+  Eff[R, A]` beside `+`; every `Eff[R, A]` type in the probe and the
+  Scala 2 docs is `A ! R`; probe green under `-Xlint -Werror`, 138
+  tests. The precedence claim was refuted by the first compile and is
+  pinned the other way (see the stage): the parentheses okay writes in
+  Scala 3 are the ones Scala 2 needs.

@@ -9,7 +9,7 @@ class TestWorkflowFromScala2 extends munit.FunSuite {
   val wf = Workflow[String, String]
   val runtime = Wf.Runtime.scripted(1700000000000L, "bk-1", 0.25)
 
-  val booking: Eff[Workflow[String, String], String] = for {
+  val booking: String ! Workflow[String, String] = for {
     city <- wf.ask("which city?")
     when <- wf.now
     ref <- wf.uuid
@@ -43,7 +43,7 @@ class TestWorkflowFromScala2 extends munit.FunSuite {
   }
 
   test("a durable sleep and a signal stop the run, and an appended entry wakes it") {
-    val approval: Eff[Workflow[String, String], String] = for {
+    val approval: String ! Workflow[String, String] = for {
       _ <- wf.sleep(86400000L)
       verdict <- wf.awaitSignal("approve")
     } yield "approved: " + verdict
@@ -57,8 +57,8 @@ class TestWorkflowFromScala2 extends munit.FunSuite {
   }
 
   test("patch: a branch added later is on for new runs and off for a journal that predates it") {
-    val before: Eff[Workflow[String, String], String] = wf.ask("name?").map(n => "hello " + n)
-    val after: Eff[Workflow[String, String], String] = for {
+    val before: String ! Workflow[String, String] = wf.ask("name?").map(n => "hello " + n)
+    val after: String ! Workflow[String, String] = for {
       promo <- wf.patch("greeting-v2")
       n <- wf.ask("name?")
     } yield (if (promo) "welcome, " else "hello ") + n

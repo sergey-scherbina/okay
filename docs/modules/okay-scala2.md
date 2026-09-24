@@ -7,7 +7,7 @@ lambdas, pattern matches) and the real library runs underneath.
 
 | | |
 |---|---|
-| `Eff[-R, A]` | a program over an OPEN row of effects, spelled as an intersection of capabilities joined by `+` — an alias for `with` that the user declares once, `type +[R, S] = R with S` ([scala2.md](../scala2.md), section 3): `Eff[State[Int] + Writer[String], A]`. The operations and handlers live on the capabilities' companions: `State`, `Reader`, `Writer`, `Throws`, `Async` |
+| `Eff[-R, A]` | a program over an OPEN row of effects, written `A ! R` with `R` an intersection of capabilities joined by `+` — two aliases the user declares once, `type +[R, S] = R with S` and `type ![A, R] = Eff[R, A]` ([scala2.md](../scala2.md), section 3): `A ! (State[Int] + Writer[String])`, parentheses included. The operations and handlers live on the capabilities' companions: `State`, `Reader`, `Writer`, `Throws`, `Async` |
 | `Cont[A, S, R]` | delimited continuations: `Cont.shift`, `Cont.reset`, `Cont.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
 | `Op`, `Effect[F]`, `Handler[F, R, B]` | YOUR OWN effect, declared in plain Scala 2: operations extend `Op`, `object Console extends Effect[Console]` is the whole declaration, and a handler gets each operation together with its continuation |
 | `Source[A]` | streams: `Source(...)`, `range`, `unfold`, `fromEff`; `map`, `filter`, `take`, `takeWhile`, `drop`, `zipWithIndex`, `++`, `merge`; `runCollect`, `runForeach`, `runFold` |
@@ -107,14 +107,15 @@ Everything a 2.13 program needs is in one package: `import okay.scala2._`.
 The types there have the same names as the Scala 3 types they wrap.
 Scala 2 cannot spell a union type, so the effect row is written as an
 intersection of capabilities. This is the same shape as the
-environment `R` in ZIO 1. `+` is `with`, an alias declared once in the
-user's own package object (`type +[R, S] = R with S`; section 3 of
-[scala2.md](../scala2.md)), so the row reads as okay's own. The code
+environment `R` in ZIO 1. `+` is `with` and `A ! R` is `Eff[R, A]`,
+two aliases declared once in the user's own package object
+(`type +[R, S] = R with S`, `type ![A, R] = Eff[R, A]`; section 3 of
+[scala2.md](../scala2.md)), so the type reads as okay's own. The code
 below is copied from
 `scala2/okay-scala2/probe/src/test/scala/TestEffFromScala2.scala`:
 
 ```scala
-val prog: Eff[State[Int] + Writer[String], Int] = for {
+val prog: Int ! (State[Int] + Writer[String]) = for {
   n <- State.get[Int]
   _ <- Writer.tell("saw " + n)
   _ <- State.put(n + 1)
@@ -127,18 +128,18 @@ assertEquals(Eff.run(State.run(1)(Writer.run(prog))), (2, (Vector("saw 1", "now 
 ```
 
 - Each handler removes one capability from the row: `State.run(1)`
-  turns `Eff[State[Int] with R, A]` into `Eff[R, (Int, A)]`. scalac
+  turns `A ! (State[Int] with R)` into `(Int, A) ! R`. scalac
   2.13 infers `R` by itself.
 - The handler order decides the shape of the answer, exactly as in
   okay's Scala 3 API.
-- `Eff.run` accepts only `Eff[Any, A]`, so a program with an unhandled
+- `Eff.run` accepts only `A ! Any`, so a program with an unhandled
   effect does not compile. The probe checks this with `compileErrors`.
   The message says `type mismatch` and does not name the missing
   handler.
 - `Eff.runAsync` runs a program whose only remaining effect is `Async`.
   `Async.attempt` turns a throw into a `Throws[Throwable]` failure.
 - `Eff.fromProg` and `Eff.toProg` convert between `Prog` and
-  `Eff[Async + Throws[Throwable], A]`; they are the same program.
+  `A ! (Async + Throws[Throwable])`; they are the same program.
 
 Underneath are okay's own `Free` and okay's own handlers. On the Scala 2
 side the row is only a phantom type, so the facade needs ONE cast: it
@@ -190,13 +191,13 @@ object Console extends Effect[Console]
 ```scala
 def console[R, B](out: ListBuffer[String], input: String): Handler[Console, R, B] =
   new Handler[Console, R, B] {
-    def apply[X](op: Console[X], k: X => Eff[R, B]): Eff[R, B] = op match {
+    def apply[X](op: Console[X], k: X => B ! R): B ! R = op match {
       case PrintLn(s) => out += s; k(())
       case ReadLn => k(input)
     }
   }
 
-val prog: Eff[Effect[Console] + State[Int], String] = for {
+val prog: String ! (Effect[Console] + State[Int]) = for {
   name <- Console.send(ReadLn)
   _ <- State.put(name.length)
   _ <- Console.send(PrintLn("hi " + name))
@@ -226,7 +227,7 @@ assertEquals(Eff.run(State.run(0)(handled)), (3, "ada"))
 
 okay's core `Source[A]` is a program that tells its elements and may
 perform `Async` between them. In Scala 2 terms that is
-`Eff[Writer[A] + Async, Unit]`. So there are two ways to get a
+`Unit ! (Writer[A] + Async)`. So there are two ways to get a
 `Source`: build it from the constructors, or write it as an ordinary
 for-comprehension and wrap it with `Source.fromEff`. The code below is
 copied from `scala2/okay-scala2/probe/src/test/scala/TestSourceFromScala2.scala`:
@@ -237,7 +238,7 @@ assertEquals(collect(nats.map(_ * 2).take(4)), Vector(0, 2, 4, 6))
 ```
 
 ```scala
-val lines: Eff[Writer[String] + Async, Unit] = for {
+val lines: Unit ! (Writer[String] + Async) = for {
   a <- read()
   _ <- Writer.tell("line " + a)
   b <- read()
@@ -265,10 +266,10 @@ composes like the rest. The code below is copied from
 
 ```scala
 val ch = Channel[Int](4)
-def produce(i: Int): Eff[Async, Unit] =
+def produce(i: Int): Unit ! Async =
   if (i > 1000) Async.delay(ch.close())
   else ch.send(i).flatMap(_ => produce(i + 1))
-def consume(acc: Vector[Int]): Eff[Async, Vector[Int]] =
+def consume(acc: Vector[Int]): Vector[Int] ! Async =
   ch.receive.flatMap {
     case Some(n) => consume(acc :+ n)
     case None => Eff.pure(acc)
@@ -299,27 +300,27 @@ assertEquals(Eff.runAsync(prog), (1 to 1000).toVector)
 The signatures are written as Scala 2 sees them, with `with` for an
 intersection; the Scala 3 source writes `&`.
 
-**`Eff[-R, A]`** — `map[B](f: A => B): Eff[R, B]`,
-`flatMap[R1 <: R, B](f: A => Eff[R1, B]): Eff[R1, B]`.
-`object Eff`: `pure[A](a: A): Eff[Any, A]`, `run[A](e: Eff[Any, A]): A`,
-`runAsync[A](e: Eff[Async, A]): A`,
-`fromProg[A](p: Prog[A]): Eff[Async + Throws[Throwable], A]`,
-`toProg[A](e: Eff[Async + Throws[Throwable], A]): Prog[A]`.
+**`Eff[-R, A]`** (written `A ! R` below) — `map[B](f: A => B): B ! R`,
+`flatMap[R1 <: R, B](f: A => B ! R1): B ! R1`.
+`object Eff`: `pure[A](a: A): A ! Any`, `run[A](e: A ! Any): A`,
+`runAsync[A](e: A ! Async): A`,
+`fromProg[A](p: Prog[A]): A ! (Async + Throws[Throwable])`,
+`toProg[A](e: A ! (Async + Throws[Throwable])): Prog[A]`.
 
 | capability | operations | handler |
 |---|---|---|
-| `State[S]` | `get[S]: Eff[State[S], S]`, `put[S](s: S): Eff[State[S], Unit]`, `modify[S](f: S => S): Eff[State[S], Unit]` | `run[S, R, A](s: S)(e: Eff[State[S] with R, A]): Eff[R, (S, A)]` |
-| `Reader[E]` | `ask[E]: Eff[Reader[E], E]` | `run[E, R, A](env: E)(e: Eff[Reader[E] with R, A]): Eff[R, A]` |
-| `Writer[W]` | `tell[W](w: W): Eff[Writer[W], Unit]` | `run[W, R, A](e: Eff[Writer[W] with R, A]): Eff[R, (Vector[W], A)]` |
-| `Throws[E]` | `raise[E, A](e: E): Eff[Throws[E], A]` | `run[E, R, A](e: Eff[Throws[E] with R, A]): Eff[R, Either[E, A]]` |
-| `Async` | `delay[A](a: => A): Eff[Async, A]`, `attempt[A](a: => A): Eff[Async + Throws[Throwable], A]`, `fork[A](e: Eff[Async, A]): Eff[Async, Fiber[A]]`, `par[A, B](a, b): Eff[Async, (A, B)]`, `race[A](a, b): Eff[Async, A]`, `sleep(millis: Long): Eff[Async, Unit]`, `timeout[A](millis: Long)(e): Eff[Async, Option[A]]` | `Eff.runAsync` |
+| `State[S]` | `get[S]: S ! State[S]`, `put[S](s: S): Unit ! State[S]`, `modify[S](f: S => S): Unit ! State[S]` | `run[S, R, A](s: S)(e: A ! (State[S] with R)): (S, A) ! R` |
+| `Reader[E]` | `ask[E]: E ! Reader[E]` | `run[E, R, A](env: E)(e: A ! (Reader[E] with R)): A ! R` |
+| `Writer[W]` | `tell[W](w: W): Unit ! Writer[W]` | `run[W, R, A](e: A ! (Writer[W] with R)): (Vector[W], A) ! R` |
+| `Throws[E]` | `raise[E, A](e: E): A ! Throws[E]` | `run[E, R, A](e: A ! (Throws[E] with R)): Either[E, A] ! R` |
+| `Async` | `delay[A](a: => A): A ! Async`, `attempt[A](a: => A): A ! (Async + Throws[Throwable])`, `fork[A](e: A ! Async): Fiber[A] ! Async`, `par[A, B](a, b): (A, B) ! Async`, `race[A](a, b): A ! Async`, `sleep(millis: Long): Unit ! Async`, `timeout[A](millis: Long)(e): Option[A] ! Async` | `Eff.runAsync` |
 
 **Your own effect** — `trait Op[+A]`;
 `abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]])` with
-`send[A](op: F[A] with Op[A]): Eff[Effect[F], A]`,
-`handle[R, A, B](e: Eff[Effect[F] with R, A])(ret: A => Eff[R, B])(h: Handler[F, R, B]): Eff[R, B]`,
-`run[A, B](e: Eff[Effect[F], A])(ret: A => Eff[Any, B])(h: Handler[F, Any, B]): B`;
-`trait Handler[F[_], R, B] { def apply[X](op: F[X], k: X => Eff[R, B]): Eff[R, B] }`.
+`send[A](op: F[A] with Op[A]): A ! Effect[F]`,
+`handle[R, A, B](e: A ! (Effect[F] with R))(ret: A => B ! R)(h: Handler[F, R, B]): B ! R`,
+`run[A, B](e: A ! Effect[F])(ret: A => B ! Any)(h: Handler[F, Any, B]): B`;
+`trait Handler[F[_], R, B] { def apply[X](op: F[X], k: X => B ! R): B ! R }`.
 
 **`Cont[A, S, R]`** — `map[B](f: A => B): Cont[B, S, R]`,
 `flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R]`,
@@ -330,22 +331,22 @@ intersection; the Scala 3 source writes `&`.
 **`Source[A]`** — `map`, `filter`, `mapConcat[B](f: A => Iterable[B])`,
 `take(n: Int)`, `takeWhile`, `drop(n: Int)`,
 `zipWithIndex: Source[(A, Long)]`, `++(that: => Source[A])`,
-`merge(that: Source[A])`; `runCollect: Eff[Async, Vector[A]]`,
-`runForeach(f: A => Eff[Async, Unit]): Eff[Async, Unit]`,
-`runFold[S](z: S)(f: (S, A) => S): Eff[Async, S]`,
-`toEff: Eff[Writer[A] + Async, Unit]`. `object Source`:
+`merge(that: Source[A])`; `runCollect: Vector[A] ! Async`,
+`runForeach(f: A => Unit ! Async): Unit ! Async`,
+`runFold[S](z: S)(f: (S, A) => S): S ! Async`,
+`toEff: Unit ! (Writer[A] + Async)`. `object Source`:
 `apply[A](as: A*)`, `fromIterable[A](as: Iterable[A])`, `empty[A]`,
 `range(from: Long, until: Long): Source[Long]`,
 `unfold[S, A](s: S)(f: S => Option[(A, S)])`,
-`fromEff[A](e: Eff[Writer[A] + Async, Unit])`.
+`fromEff[A](e: Unit ! (Writer[A] + Async))`.
 
-**`Fiber[A]`** — `join: Eff[Async, A]`,
-`joinEither: Eff[Async, Either[Throwable, A]]`,
-`cancel: Eff[Async, Unit]`.
+**`Fiber[A]`** — `join: A ! Async`,
+`joinEither: Either[Throwable, A] ! Async`,
+`cancel: Unit ! Async`.
 
 **`Channel[A]`** — `Channel[A](capacity: Int)`;
-`send(a: A): Eff[Async, Boolean]` (false once closed),
-`receive: Eff[Async, Option[A]]` (None once closed and drained),
+`send(a: A): Boolean ! Async` (false once closed),
+`receive: Option[A] ! Async` (None once closed and drained),
 `offer(a: A): Boolean`, `close(): Unit`, `isClosed: Boolean`,
 `source: Source[A]`.
 
@@ -359,68 +360,68 @@ intersection; the Scala 3 source writes `&`.
 `JsonSchema.of[A](s: Schema[A]): String`.
 
 **HTTP** (module `okay-scala2-http`) — `Response.text(body, status = 200)`, `.html`, `.bytes(body, contentType, status)`, `.json[A](a, status)(implicit Schema[A])`, `.status(code)`, `.notFound`, `.lines(src: Source[String], contentType, status)`; on a response `status`, `headers`, `header(name)`, `text`, `bytes`, `ok`, `withHeader`.
-`Routes(pf: PartialFunction[Request, Eff[Async, Response]]): Request => Eff[Async, Response]` (404 when no case matches);
+`Routes(pf: PartialFunction[Request, Response ! Async]): Request => Response ! Async` (404 when no case matches);
 extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option[Request]`) and `Path` (`unapplySeq(r: Request): Option[Seq[String]]`);
 `Requests.path(r)`, `.query(r, name)`, `.queryAll(r, name)`, `.text(r)`, `.json[A](r)`.
-`Server.use[A](port: Int)(handler)(body: Int => Eff[Async, A]): Eff[Async, A]`, `Server.start(port)(handler): RunningServer` (`port`, `close()`).
-`Client()`: `send(r: Request)`, `get(url)`, `post(url, body, contentType)`, `postJson[A](url, a)`, each an `Eff[Async, Response]`; `lines(r: Request): Source[String]`.
+`Server.use[A](port: Int)(handler)(body: Int => A ! Async): A ! Async`, `Server.start(port)(handler): RunningServer` (`port`, `close()`).
+`Client()`: `send(r: Request)`, `get(url)`, `post(url, body, contentType)`, `postJson[A](url, a)`, each an `Response ! Async`; `lines(r: Request): Source[String]`.
 
 **SQL** (module `okay-scala2-sql`) — `Db.jdbc(connection: java.sql.Connection, fetchSize: Int = 64): Db`, `Db(sql: okay.sql.Sql): Db`;
 `rows[A](query: String, params: SqlValue*)(implicit Schema[A]): Source[Either[Bad, A]]`, `rowsOf[A, P](query, p: P)`;
-`all[A](query, params: SqlValue*): Eff[Async + Throws[Bad], Vector[A]]`, `allOf[A, P](query, p)`;
-`update(query, params: SqlValue*): Eff[Async, Long]`, `updateOf[P](query, p)`;
-`verify[A](query): Eff[Async, Vector[Drift]]`;
-`transaction[A](isolation: Isolation = ReadCommitted, readOnly: Boolean = false)(body: Db => Eff[Async, A]): Eff[Async, A]`.
+`all[A](query, params: SqlValue*): Vector[A] ! (Async + Throws[Bad])`, `allOf[A, P](query, p)`;
+`update(query, params: SqlValue*): Long ! Async`, `updateOf[P](query, p)`;
+`verify[A](query): Vector[Drift] ! Async`;
+`transaction[A](isolation: Isolation = ReadCommitted, readOnly: Boolean = false)(body: Db => A ! Async): A ! Async`.
 
 **Agents** (module `okay-scala2-agent`) — `Model.scripted(replies: String*)`, `Model.scriptedCalls(replies: (String, Seq[(String, String)])*)` (tool calls as `(name, JSON arguments)`), `Model.anthropic(apiKey, model, maxTokens = 1024)`, `Model.openAi(apiKey, model, url)`;
 `Tools.empty.on[A](name, description)(run: A => String)(implicit Schema[A]): Tools`, `tools.declarations: Seq[(String, String, String)]` (name, description, JSON Schema text);
 `Policy.all`, `Policy.window(budget: Int)`;
-`Chat(model, tools = Tools.empty, policy = Policy.window(4000), maxSteps = 8, approve: Call => Boolean = _ => true)`, `chat.say(message): Eff[Async, String]`, `chat.transcript: Seq[okay.agent.Turn]`;
+`Chat(model, tools = Tools.empty, policy = Policy.window(4000), maxSteps = 8, approve: Call => Boolean = _ => true)`, `chat.say(message): String ! Async`, `chat.transcript: Seq[okay.agent.Turn]`;
 `Call(id: String, name: String, argsJson: String)`.
 
-**UI** (module `okay-scala2-ui`) — `UiApp.run[S](init: S)(view: S => Ui)(update: (S, Event) => S)(host: UiHost): Eff[Async, S]`, `UiApp.runWith[S](...)(host, external: Source[Event])`, `UiApp.window[S](title)(init)(view)(update)`;
+**UI** (module `okay-scala2-ui`) — `UiApp.run[S](init: S)(view: S => Ui)(update: (S, Event) => S)(host: UiHost): S ! Async`, `UiApp.runWith[S](...)(host, external: Source[Event])`, `UiApp.window[S](title)(init)(view)(update)`;
 `UiHost.terminal()`, `UiHost.swing(root: java.awt.Container)`;
 `ScriptedHost(events: Event*)` / `ScriptedHost.open(events: Event*)` (without the closing `Closed`), `.host: UiHost`, `.frames: Vector[Ui]`.
-`Dialog.show(ui: Ui): Eff[Dialog, Event]`, `Dialog.ask[A](message)(implicit Schema[A]): Eff[Dialog, Option[A]]`, `Dialog.run[A](host: UiHost)(prog: Eff[Dialog, A]): Eff[Async, Option[A]]`, `Dialog.replay[A](prog, events: Seq[Event]): (Vector[Ui], Option[A])`; `Screens.of[S](init: S)(view: S => Ui)(update: (S, Event) => Either[Nav, S]): Screen`.
+`Dialog.show(ui: Ui): Event ! Dialog`, `Dialog.ask[A](message)(implicit Schema[A]): Option[A] ! Dialog`, `Dialog.run[A](host: UiHost)(prog: A ! Dialog): Option[A] ! Async`, `Dialog.replay[A](prog, events: Seq[Event]): (Vector[Ui], Option[A])`; `Screens.of[S](init: S)(view: S => Ui)(update: (S, Event) => Either[Nav, S]): Screen`.
 `FormState.blank[A](implicit Schema[A])`, `FormState.of[A](a: A)`; `form.view: Ui`, `form.edit(e: Event): FormState[A]`, `form.errors: Vector[(String, String)]`, `form.decoded: Either[String, A]`, `form.json: String`, `form.withLabels(labels: Map[String, String])`.
 
-**WebSockets** (module `okay-scala2-ws`) — `WebSocket.connect(url): Eff[Async, WsClient]`, `WebSocket.binary(bytes: Array[Byte]): Frame`, `WebSocket.bytes(f: Frame): Option[Array[Byte]]`;
-`WsClient`: `send(f: Frame)`, `sendText(text)`, `close()` (each `Eff[Async, Unit]`), `frames: Source[Frame]`, `texts: Source[String]`;
+**WebSockets** (module `okay-scala2-ws`) — `WebSocket.connect(url): WsClient ! Async`, `WebSocket.binary(bytes: Array[Byte]): Frame`, `WebSocket.bytes(f: Frame): Option[Array[Byte]]`;
+`WsClient`: `send(f: Frame)`, `sendText(text)`, `close()` (each `Unit ! Async`), `frames: Source[Frame]`, `texts: Source[String]`;
 `WsSession.fold[S](init: S)(step: (S, Frame) => (S, Seq[Frame])): WsSession`, `WsSession.echo`, `WsSession.replay(s, incoming: Seq[Frame]): Vector[Frame]`;
-`WsServer.use[A](port)(routes: Request => Eff[Async, Response])(sessions: PartialFunction[Request, WsSession])(body: Int => Eff[Async, A]): Eff[Async, A]`.
+`WsServer.use[A](port)(routes: Request => Response ! Async)(sessions: PartialFunction[Request, WsSession])(body: Int => A ! Async): A ! Async`.
 
-**Nondeterminism** — `Choose.from[A](as: A*): Eff[Choose, A]`, `Choose.fail[A]`, `Choose.guard(ok: Boolean)`;
-`Choose.all[R, A](e: Eff[Choose with R, A]): Eff[R, Seq[A]]`, `Choose.first[R, A](n)(e): Eff[R, Seq[A]]`;
-`Choose.cut[R <: Choose, A](e: Eff[R, A]): Eff[R, A]`, `Choose.ifte[R <: Choose, A, B](cond)(th: A => Eff[R, B])(el: => Eff[R, B])`, `Choose.interleave[R <: Choose, A](a, b)`, `Choose.fairBind[R <: Choose, A, B](m)(f)`;
-`Search.bestOf[R, A](n)(gen: Eff[R, A])(ok: A => Boolean): Eff[R, Option[A]]`, `Search.all[R, A](n)(gen)(ok): Eff[R, Seq[A]]`, `Search.majority[A](answers: Seq[A]): Option[A]`.
+**Nondeterminism** — `Choose.from[A](as: A*): A ! Choose`, `Choose.fail[A]`, `Choose.guard(ok: Boolean)`;
+`Choose.all[R, A](e: A ! (Choose with R)): Seq[A] ! R`, `Choose.first[R, A](n)(e): Seq[A] ! R`;
+`Choose.cut[R <: Choose, A](e: A ! R): A ! R`, `Choose.ifte[R <: Choose, A, B](cond)(th: A => B ! R)(el: => B ! R)`, `Choose.interleave[R <: Choose, A](a, b)`, `Choose.fairBind[R <: Choose, A, B](m)(f)`;
+`Search.bestOf[R, A](n)(gen: A ! R)(ok: A => Boolean): Option[A] ! R`, `Search.all[R, A](n)(gen)(ok): Seq[A] ! R`, `Search.majority[A](answers: Seq[A]): Option[A]`.
 
-**Resilience** (module `okay-scala2-resilience`) — `Guards.breaker[A](b: Breaker)(prog: Eff[Async, A], failing: Either[Throwable, A] => Boolean = _.isLeft)`, `Guards.bulkhead[A](b: Bulkhead)(prog)`, `Guards.limiter[A](l: Limiter, key: String = "")(prog)`, `Guards.hedge[A](afterMillis: Long, max: Int = 2)(prog)`, `Guards.deadline[A](d: Deadline)(prog)`, `Guards.retry[A](policy: LazyList[Long])(prog)`, each an `Eff[Async, A]`.
+**Resilience** (module `okay-scala2-resilience`) — `Guards.breaker[A](b: Breaker)(prog: A ! Async, failing: Either[Throwable, A] => Boolean = _.isLeft)`, `Guards.bulkhead[A](b: Bulkhead)(prog)`, `Guards.limiter[A](l: Limiter, key: String = "")(prog)`, `Guards.hedge[A](afterMillis: Long, max: Int = 2)(prog)`, `Guards.deadline[A](d: Deadline)(prog)`, `Guards.retry[A](policy: LazyList[Long])(prog)`, each an `A ! Async`.
 
 **Persist** (module `okay-scala2-persist`) — `Persist.topic(store: Store, name, partitions: Int = 1): Topic`, `Persist.typed[A](topic, version: Int = 1)(implicit Schema[A]): Typed[A]`, `Persist.stream(topic, partition, from: Long, chunk: Int = 256): Source[Record]`, `Persist.tail(topic, partition, from, chunk = 256, pollMillis = 25L): Source[Record]`.
 
-**Transactions** (module `okay-scala2-stm`) — `Stm.ref[A](init: A): TRef[A]`, `Stm.atomically[A](tx: Eff[Tx, A]): Eff[Async, A]`; `Tx.read[A](r: TRef[A]): Eff[Tx, A]`, `Tx.write(r, a): Eff[Tx, Unit]`, `Tx.modify[A, B](r)(f: A => (A, B)): Eff[Tx, B]`, `Tx.update(r)(f: A => A): Eff[Tx, Unit]`, `Tx.retry[A]`, `Tx.check(cond: Boolean): Eff[Tx, Unit]`, `Tx.orElse[A](a, b): Eff[Tx, A]`.
+**Transactions** (module `okay-scala2-stm`) — `Stm.ref[A](init: A): TRef[A]`, `Stm.atomically[A](tx: A ! Tx): A ! Async`; `Tx.read[A](r: TRef[A]): A ! Tx`, `Tx.write(r, a): Unit ! Tx`, `Tx.modify[A, B](r)(f: A => (A, B)): B ! Tx`, `Tx.update(r)(f: A => A): Unit ! Tx`, `Tx.retry[A]`, `Tx.check(cond: Boolean): Unit ! Tx`, `Tx.orElse[A](a, b): A ! Tx`.
 
-**Stores** (module `okay-scala2-stores`) — `Caches.get(c: Cache[K, V], k): Eff[Async, Option[V]]`, `Caches.put(c, k, v)`, `Caches.invalidate(c, k)`, `Caches.getOrLoad(c, k)(load: K => Eff[Async, V]): Eff[Async, V]`, `Caches.writeThrough(c, k)(commit: Eff[Async, A]): Eff[Async, A]`, `Caches.drain(topic, c, keyOf: String => K, from: Long, max: Int = 512): Eff[Async, Long]`, `Caches.latest(v: View[K, V], k)`, `Caches.refresh(v)`;
-`Blobs.put(b: Blob, key, bytes: Source[ArraySeq[Byte]]): Eff[Async, Etag]`, `Blobs.putBytes(b, key, bytes: Array[Byte])`, `Blobs.putFile(b, key, path: Path, chunk: Int = 65536)`, `Blobs.getBytes(b, key, range: Option[(Long, Long)] = None): Eff[Async, Either[String, Array[Byte]]]`, `Blobs.stream(b, key, range = None): Source[ArraySeq[Byte]]`, `Blobs.head(b, key): Eff[Async, Option[Meta]]`, `Blobs.list(b, prefix): Source[Meta]`, `Blobs.delete(b, key)`, `Blobs.backup(root: Path, b, prefix = "persist", active = true): Eff[Async, Vector[String]]`, `Blobs.restore(b, root, prefix = "persist")`;
-`Documents.onTopic[A](topic, indexes: Map[String, A => String] = Map.empty)(implicit Schema[A]): Docs[A]`, `Documents.get(d: Docs[A], id): Eff[Async, Option[Docs.Versioned[A]]]`, `Documents.put(d, id, a, cond: Cond = Cond.Always): Eff[Async, PutResult]`, `Documents.delete(d, id, cond = Cond.Always)`, `Documents.query(d, field, equals, max: Int = 256): Source[(String, A)]`.
+**Stores** (module `okay-scala2-stores`) — `Caches.get(c: Cache[K, V], k): Option[V] ! Async`, `Caches.put(c, k, v)`, `Caches.invalidate(c, k)`, `Caches.getOrLoad(c, k)(load: K => V ! Async): V ! Async`, `Caches.writeThrough(c, k)(commit: A ! Async): A ! Async`, `Caches.drain(topic, c, keyOf: String => K, from: Long, max: Int = 512): Long ! Async`, `Caches.latest(v: View[K, V], k)`, `Caches.refresh(v)`;
+`Blobs.put(b: Blob, key, bytes: Source[ArraySeq[Byte]]): Etag ! Async`, `Blobs.putBytes(b, key, bytes: Array[Byte])`, `Blobs.putFile(b, key, path: Path, chunk: Int = 65536)`, `Blobs.getBytes(b, key, range: Option[(Long, Long)] = None): Either[String, Array[Byte]] ! Async`, `Blobs.stream(b, key, range = None): Source[ArraySeq[Byte]]`, `Blobs.head(b, key): Option[Meta] ! Async`, `Blobs.list(b, prefix): Source[Meta]`, `Blobs.delete(b, key)`, `Blobs.backup(root: Path, b, prefix = "persist", active = true): Vector[String] ! Async`, `Blobs.restore(b, root, prefix = "persist")`;
+`Documents.onTopic[A](topic, indexes: Map[String, A => String] = Map.empty)(implicit Schema[A]): Docs[A]`, `Documents.get(d: Docs[A], id): Option[Docs.Versioned[A]] ! Async`, `Documents.put(d, id, a, cond: Cond = Cond.Always): PutResult ! Async`, `Documents.delete(d, id, cond = Cond.Always)`, `Documents.query(d, field, equals, max: Int = 256): Source[(String, A)]`.
 
-**Models** (module `okay-scala2-llm`) — `Llm.http: Transport`, `Llm.transport(post: (String, Map[String, String], String) => Source[String]): Transport`, `Llm.anthropic(transport, apiKey, model, messages: Seq[(String, String)], maxTokens: Int = 1024, url = ...): Source[String]`, `Llm.openAi(transport, apiKey, model, messages, maxTokens: Option[Int] = None, url = OpenAi.chatUrl): Source[String]`, `Llm.first[A](tokens: Source[String])(implicit Schema[A]): Eff[Async, Option[A]]`, `Llm.cut[A](tokens)(implicit Schema[A]): Eff[Async, Structured.Cut[A]]`.
+**Models** (module `okay-scala2-llm`) — `Llm.http: Transport`, `Llm.transport(post: (String, Map[String, String], String) => Source[String]): Transport`, `Llm.anthropic(transport, apiKey, model, messages: Seq[(String, String)], maxTokens: Int = 1024, url = ...): Source[String]`, `Llm.openAi(transport, apiKey, model, messages, maxTokens: Option[Int] = None, url = OpenAi.chatUrl): Source[String]`, `Llm.first[A](tokens: Source[String])(implicit Schema[A]): Option[A] ! Async`, `Llm.cut[A](tokens)(implicit Schema[A]): Structured.Cut[A] ! Async`.
 
 **Retrieval** (module `okay-scala2-rag`) — `Rag.memory(embed: Seq[String] => Seq[Array[Float]]): VectorIndex`, `Rag.hashing(dim: Int = 64)`; `VectorIndex`: `add(sources: Seq[okay.rag.Source], budget: Int = 400, batch: Int = 32): Ingest.Progress`, `search(query, k): Seq[Scored]`, `hybrid(keywords: Postings, query, k): Seq[Scored]`, `size: Int`.
-`Rag.pgvector(db: Db, table: String, dim: Int, embed, metric: PgVector.Metric = Cosine): Eff[Async, PgIndex]`; `PgIndex`: `add(sources, budget = 400, batch = 32): Eff[Async, Ingest.Progress]`, `search(query, k): Eff[Async, Seq[Scored]]`, `hybrid(keywords, query, k): Eff[Async, Seq[Scored]]`, `size: Eff[Async, Int]`.
+`Rag.pgvector(db: Db, table: String, dim: Int, embed, metric: PgVector.Metric = Cosine): PgIndex ! Async`; `PgIndex`: `add(sources, budget = 400, batch = 32): Ingest.Progress ! Async`, `search(query, k): Seq[Scored] ! Async`, `hybrid(keywords, query, k): Seq[Scored] ! Async`, `size: Int ! Async`.
 
-**MCP** (module `okay-scala2-mcp`) — `McpClient.connect(link, name, version): Eff[Async, McpClient]`, `McpClient.spawn(command: Seq[String], name, version)`; `McpClient`: `server: Option[(String, String)]`, `tools: Eff[Async, Seq[McpTool]]`, `call(name, argsJson: String): Eff[Async, String]`, `resources`, `read(uri): Eff[Async, Option[String]]`, `prompts`, `prompt(name, args: Map[String, String] = Map.empty): Eff[Async, Seq[Turn]]`; `McpTool(name, description, schema: String)`; `McpServer.run(link, name, version, tools: Tools, resources: Map[String, String] = Map.empty): Eff[Async, Unit]`; `McpLink.pair(): (Link, Link)`, `McpLink.of(in, out): Link`.
+**MCP** (module `okay-scala2-mcp`) — `McpClient.connect(link, name, version): McpClient ! Async`, `McpClient.spawn(command: Seq[String], name, version)`; `McpClient`: `server: Option[(String, String)]`, `tools: Seq[McpTool] ! Async`, `call(name, argsJson: String): String ! Async`, `resources`, `read(uri): Option[String] ! Async`, `prompts`, `prompt(name, args: Map[String, String] = Map.empty): Seq[Turn] ! Async`; `McpTool(name, description, schema: String)`; `McpServer.run(link, name, version, tools: Tools, resources: Map[String, String] = Map.empty): Unit ! Async`; `McpLink.pair(): (Link, Link)`, `McpLink.of(in, out): Link`.
 
 **Optics** (module `okay-scala2-optics`) — `Lens[S, A](get: S => A, set: (S, A) => S)`: `get`, `set(a): S => S`, `modify(f): S => S`; `Prism[S, A](preview: S => Option[A], review: A => S)`, `Prism.subtype[S, A <: S](implicit ClassTag[A])`, `Prism.some[A]`: `preview`, `review`, `set`, `modify`; `Affine[S, A](preview, set: (S, A) => S)`: `preview`, `set`, `modify`; `Traversal[S, A](parts: S => Vector[A], rebuild: (S, Vector[A]) => S)`, `Traversal.each[A]`, `Traversal.eachList[A]`: `toVector`, `set`, `modify`; `Iso[S, A](to: S => A, from: A => S)`: `get`, `reverseGet`, `modify`. Every kind has `andThen` with every kind, answering the kind the lattice gives.
 
-**Workflows** (module `okay-scala2-workflow`) — `Workflow[Q, A]` (`Workflow.apply[Q, A]`): `ask(q: Q): Eff[Workflow[Q, A], A]`, `now: Eff[.., Long]`, `uuid`, `random`, `patch(id): Eff[.., Boolean]`, `sleep(millis): Eff[.., Unit]`, `awaitSignal(name): Eff[.., String]`, `awaitChild(id)`, `cancelled: Eff[.., Option[String]]`; `Workflows.drive[Q, A, R](wf, journal: List[Either[Wf.SysA, A]], runtime: Wf.Runtime = Wf.Runtime.live)(oracle: Q => A): (Wf.Step[Q, R], List[Either[Wf.SysA, A]])`, `Workflows.advance(wf, journal, runtime = live)` (same answer, no oracle), `Workflows.replay(wf, journal): Option[R]`, `Workflows.elapsed`, `Workflows.got(payload: String)`.
+**Workflows** (module `okay-scala2-workflow`) — `Workflow[Q, A]` (`Workflow.apply[Q, A]`): `ask(q: Q): A ! Workflow[Q, A]`, `now: Long ! ..`, `uuid`, `random`, `patch(id): Boolean ! ..`, `sleep(millis): Unit ! ..`, `awaitSignal(name): String ! ..`, `awaitChild(id)`, `cancelled: Option[String] ! ..`; `Workflows.drive[Q, A, R](wf, journal: List[Either[Wf.SysA, A]], runtime: Wf.Runtime = Wf.Runtime.live)(oracle: Q => A): (Wf.Step[Q, R], List[Either[Wf.SysA, A]])`, `Workflows.advance(wf, journal, runtime = live)` (same answer, no oracle), `Workflows.replay(wf, journal): Option[R]`, `Workflows.elapsed`, `Workflows.got(payload: String)`.
 **Durable agent** — `Chat(model, tools, policy, maxSteps, approve, journal: Option[okay.agent.Durable.Journal] = None, onRepeat: String => Durable.OnRepeat = _ => Durable.OnRepeat.Fail)`.
 
-**Services** (module `okay-scala2-services`) — `Actors.spawn[S, M](init)(behavior: (S, M) => Eff[Async, S]): Eff[Async, ActorRef[M]]`, `Actors.spawn(init, supervise: Supervise[S], capacity: Int)(behavior)`, `Actors.child(parent, init, supervise = Supervise.Stop)(behavior)`, `Actors.tell(actor, m): Eff[Async, Boolean]`, `Actors.ask[M, R](actor, within: Long)(message: Reply[R] => M): Eff[Async, Option[R]]`, `Actors.stop(actor)`;
-`Outboxes.enqueue(outbox, db: Db, topic, value: Array[Byte], key = Array.empty, part = 0): Eff[Async, String]`, `Outboxes.relayOnce(outbox, db, store, batch = 256): Eff[Async, Int]`, `Outboxes.pending(outbox, db): Eff[Async, Long]`, `Outboxes.first(inbox, db, id): Eff[Async, Boolean]`, `Outboxes.once[A](inbox, db, id)(body: Eff[Async, A]): Eff[Async, Option[A]]`;
+**Services** (module `okay-scala2-services`) — `Actors.spawn[S, M](init)(behavior: (S, M) => S ! Async): ActorRef[M] ! Async`, `Actors.spawn(init, supervise: Supervise[S], capacity: Int)(behavior)`, `Actors.child(parent, init, supervise = Supervise.Stop)(behavior)`, `Actors.tell(actor, m): Boolean ! Async`, `Actors.ask[M, R](actor, within: Long)(message: Reply[R] => M): Option[R] ! Async`, `Actors.stop(actor)`;
+`Outboxes.enqueue(outbox, db: Db, topic, value: Array[Byte], key = Array.empty, part = 0): String ! Async`, `Outboxes.relayOnce(outbox, db, store, batch = 256): Int ! Async`, `Outboxes.pending(outbox, db): Long ! Async`, `Outboxes.first(inbox, db, id): Boolean ! Async`, `Outboxes.once[A](inbox, db, id)(body: A ! Async): Option[A] ! Async`;
 `Logs.debug/info/warn/error(message, fields: (String, String)*): Eff[Writer[Log.Line], Unit]`, `Logs.failure(message, e, fields*)`, `Logs.to[R, A](write: Log.Line => Unit, min = Log.Level.Info, clock = ...)(e: Eff[Writer[Log.Line] & R, A]): Eff[R, A]`; `Tracing.span[A](tracer, name, attrs: (String, String)*)(e: Eff[Async, A]): Eff[Async, A]`;
-`Operations.routes(store, lifecycle: Option[Lifecycle] = None, red: Seq[Red] = Nil): PartialFunction[Request, Eff[Async, Response]]`, `Operations.measured(red, label: Request => String)(routes)`, `Operations.admitted(lifecycle)(routes)`, `Operations.drain(lifecycle, graceMillis): Eff[Async, Boolean]`;
-`Kafkas.source[K, V](consumer, pollMillis = 1000): Source[ConsumerRecord[K, V]]`, `Kafkas.commit(consumer): Eff[Async, Unit]`, `Kafkas.send(producer, records: Seq[ProducerRecord[K, V]]): Eff[Async, Unit]`; `Postgres.connect(host, port, user, password, database): Eff[Async, Db]`.
+`Operations.routes(store, lifecycle: Option[Lifecycle] = None, red: Seq[Red] = Nil): PartialFunction[Request, Response ! Async]`, `Operations.measured(red, label: Request => String)(routes)`, `Operations.admitted(lifecycle)(routes)`, `Operations.drain(lifecycle, graceMillis): Boolean ! Async`;
+`Kafkas.source[K, V](consumer, pollMillis = 1000): Source[ConsumerRecord[K, V]]`, `Kafkas.commit(consumer): Unit ! Async`, `Kafkas.send(producer, records: Seq[ProducerRecord[K, V]]): Unit ! Async`; `Postgres.connect(host, port, user, password, database): Db ! Async`.
 
 **`Prog[A]`** — `map`, `flatMap`, `attempt: Prog[Either[Throwable, A]]`,
 `recover(h: Throwable => Prog[A])`, `run(): A`,

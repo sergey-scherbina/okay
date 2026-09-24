@@ -398,7 +398,7 @@ object KV extends Effect[KV]
   once.
 - **Rows.** A row is written as an intersection joined by `+` (an
   alias for `with`, declared once in the user's code),
-  `Eff[Effect[KV] + State[Int], A]`, where section 3 wrote a union.
+  `A ! (Effect[KV] + State[Int])`, where section 3 wrote a union.
   Theory ch. 13 explains why it is the same row.
 - **Recording and interpreting.** The recording decorator (section 6)
   and interpreting into other effects (section 7) carry over as

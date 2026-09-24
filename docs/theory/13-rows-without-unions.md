@@ -65,7 +65,7 @@ final class Eff[-R, A] private (private val body: EffBody[A])      // okay-scala
 
 `R` is a requirement, so `Eff` is CONTRAVARIANT in it. Requiring less
 is a subtype of requiring more:
-`Eff[State[Int], A] <: Eff[State[Int] + Writer[String], A]`. So a
+`A ! State[Int] <: A ! (State[Int] + Writer[String])`. So a
 single-effect operation fits into any wider program without an
 injection, a widening call, or a search. That is exactly what
 `RowLift.In` gives the Scala 3 API, and here subtyping gives it for
@@ -85,7 +85,7 @@ def run[A](e: Eff[Any, A]): A                                        // Eff.scal
 ```
 
 `Any` is the empty intersection. A program with a capability still in
-its row is not an `Eff[Any, A]`, by contravariance, so forgetting a
+its row is not an `A ! Any`, by contravariance, so forgetting a
 handler is a type error. That is the discharge discipline of chapter
 5's handlers (Plotkin & Pretnar \[[2009](#ref-plotkin-2009)\]), stated
 with nothing but variance.
@@ -110,7 +110,7 @@ two reasons, each checked in its own place:
   the operation's class and never at the row type. So storing the
   program at `Top` changes nothing the handlers look at.
 - **Statically, `R` lists every capability.** `Eff.run` accepts only
-  `Eff[Any, A]`, so by the time the tree is walked, every operation in
+  `A ! Any`, so by the time the tree is walked, every operation in
   it has had a handler applied.
 
 A Scala 2 user's own effect follows the same pattern one level down.
@@ -126,7 +126,7 @@ A Scala 2 `Handler[F, R, B]` receives an operation and its continuation
 `k`, as in chapter 5:
 
 ```scala
-def apply[X](op: F[X], k: X => Eff[R, B]): Eff[R, B]
+def apply[X](op: F[X], k: X => B ! R): B ! R
 ```
 
 Underneath, it is a `shift` into the continuation of chapter 2

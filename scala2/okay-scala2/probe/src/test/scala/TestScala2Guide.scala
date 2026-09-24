@@ -31,12 +31,12 @@ class TestScala2Guide extends munit.FunSuite {
   // ---- §3 Several effects in one program
 
   test("§3 a row of effects") {
-    def count(word: String): Eff[State[Map[String, Int]], Unit] =
+    def count(word: String): Unit ! State[Map[String, Int]] =
       State.modify[Map[String, Int]](m => m.updated(word, m.getOrElse(word, 0) + 1))
 
-    def countAll(text: String): Eff[State[Map[String, Int]] + Writer[String], Int] = {
+    def countAll(text: String): Int ! (State[Map[String, Int]] + Writer[String]) = {
       val words = text.split("\\s+").toList.filter(_.nonEmpty)
-      words.foldLeft(Eff.pure(0): Eff[State[Map[String, Int]] + Writer[String], Int]) { (acc, w) =>
+      words.foldLeft(Eff.pure(0): Int ! (State[Map[String, Int]] + Writer[String])) { (acc, w) =>
         for {
           n <- acc
           _ <- count(w)
@@ -54,7 +54,7 @@ class TestScala2Guide extends munit.FunSuite {
   test("§3 reader and throws") {
     final case class Config(limit: Int)
 
-    def withdraw(amount: Int): Eff[Reader[Config] + State[Int] + Throws[String], Int] = for {
+    def withdraw(amount: Int): Int ! (Reader[Config] + State[Int] + Throws[String]) = for {
       cfg <- Reader.ask[Config]
       balance <- State.get[Int]
       _ <- if (amount > cfg.limit) Throws.raise[String, Unit]("over the limit")
@@ -71,7 +71,7 @@ class TestScala2Guide extends munit.FunSuite {
   }
 
   test("§3 the handler order decides what a failure keeps") {
-    val p: Eff[State[Int] + Throws[String], Int] =
+    val p: Int ! (State[Int] + Throws[String]) =
       State.put(7).flatMap(_ => Throws.raise[String, Int]("no"))
     assertEquals(Eff.run(State.run(0)(Throws.run(p))), (7, Left("no")))
     assertEquals(Eff.run(Throws.run(State.run(0)(p))), Left("no"))
@@ -89,7 +89,7 @@ class TestScala2Guide extends munit.FunSuite {
 
   // ---- §10 the unhandled-effect message, as the guide quotes it
 
-  val stillWriting: Eff[State[Int] + Writer[String], Int] = State.get[Int]
+  val stillWriting: Int ! (State[Int] + Writer[String]) = State.get[Int]
 
   test("§10 the message for an unhandled effect") {
     val errors = compileErrors("Eff.run(State.run(1)(stillWriting))")
@@ -106,13 +106,13 @@ class TestScala2Guide extends munit.FunSuite {
 
     def inMemory[R, B](store: scala.collection.mutable.Map[String, String]): Handler[KV, R, B] =
       new Handler[KV, R, B] {
-        def apply[X](op: KV[X], k: X => Eff[R, B]): Eff[R, B] = op match {
+        def apply[X](op: KV[X], k: X => B ! R): B ! R = op match {
           case Get(key) => k(store.get(key))
           case Put(key, value) => store(key) = value; k(())
         }
       }
 
-    val program: Eff[Effect[KV], Option[String]] = for {
+    val program: Option[String] ! Effect[KV] = for {
       _ <- KV.send(Put("lang", "scala"))
       v <- KV.send(Get("lang"))
     } yield v.map(_.toUpperCase)
@@ -128,14 +128,14 @@ class TestScala2Guide extends munit.FunSuite {
     final case class Put(key: String, value: String) extends KV[Unit]
     object KV extends Effect[KV]
 
-    val program: Eff[Effect[KV], Option[String]] = for {
+    val program: Option[String] ! Effect[KV] = for {
       _ <- KV.send(Put("lang", "scala"))
       v <- KV.send(Get("lang"))
     } yield v
 
     val log = ListBuffer.empty[String]
     def dryRun[R, B]: Handler[KV, R, B] = new Handler[KV, R, B] {
-      def apply[X](op: KV[X], k: X => Eff[R, B]): Eff[R, B] = op match {
+      def apply[X](op: KV[X], k: X => B ! R): B ! R = op match {
         case Get(key) => log += ("get " + key); k(None)
         case Put(key, value) => log += ("put " + key + "=" + value); k(())
       }
@@ -158,10 +158,10 @@ class TestScala2Guide extends munit.FunSuite {
 
   test("§7 a stream") {
     val words: Source[String] = Source("the", "quick", "brown", "fox", "jumps")
-    val lengths: Eff[Async, Vector[Int]] = words.filter(_.length > 3).map(_.length).runCollect
+    val lengths: Vector[Int] ! Async = words.filter(_.length > 3).map(_.length).runCollect
     assertEquals(Eff.runAsync(lengths), Vector(5, 5, 5))
 
-    val total: Eff[Async, Int] = words.zipWithIndex.take(3).runFold(0) { case (acc, (w, _)) => acc + w.length }
+    val total: Int ! Async = words.zipWithIndex.take(3).runFold(0) { case (acc, (w, _)) => acc + w.length }
     assertEquals(Eff.runAsync(total), 13)
   }
 
@@ -171,17 +171,17 @@ class TestScala2Guide extends munit.FunSuite {
     val jobs = Channel[Int](8)
     val results = Channel[Int](8)
 
-    def worker: Eff[Async, Unit] = jobs.receive.flatMap {
+    def worker: Unit ! Async = jobs.receive.flatMap {
       case Some(n) => results.send(n * n).flatMap(_ => worker)
       case None => Eff.pure(())
     }
 
-    def feed(ns: List[Int]): Eff[Async, Unit] = ns match {
+    def feed(ns: List[Int]): Unit ! Async = ns match {
       case n :: rest => jobs.send(n).flatMap(_ => feed(rest))
       case Nil => Async.delay(jobs.close())
     }
 
-    val program: Eff[Async, Int] = for {
+    val program: Int ! Async = for {
       w1 <- Async.fork(worker)
       w2 <- Async.fork(worker)
       _ <- Async.fork(feed((1 to 10).toList))

@@ -26,8 +26,8 @@ class TestSourceFromScala2 extends munit.FunSuite {
 
   test("a source written as an Eff that tells: nothing runs until it is run") {
     var reads = 0
-    def read(): Eff[Async, Int] = Async.delay { reads += 1; reads }
-    val lines: Eff[Writer[String] + Async, Unit] = for {
+    def read(): Int ! Async = Async.delay { reads += 1; reads }
+    val lines: Unit ! (Writer[String] + Async) = for {
       a <- read()
       _ <- Writer.tell("line " + a)
       b <- read()

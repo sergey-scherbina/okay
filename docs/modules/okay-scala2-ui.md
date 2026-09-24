@@ -6,7 +6,7 @@ The loop and the hosts answer programs, and this module provides them:
 
 | | |
 |---|---|
-| `UiApp.run` / `runWith` / `window` | okay-ui's Elm loop as an `Eff[Async, S]`: in a host, with an external event source, or in a Swing window |
+| `UiApp.run` / `runWith` / `window` | okay-ui's Elm loop as an `S ! Async`: in a host, with an external event source, or in a Swing window |
 | `UiHost.terminal()` / `UiHost.swing(container)` | okay-ui's terminal and Swing hosts |
 | `ScriptedHost(events*)` / `ScriptedHost.open(events*)` | a host for tests: scripted events, every frame kept |
 | `Dialog` (`show`, `ask`, `run`, `replay`), `Screens.of` | okay-ui's scenarios as a capability of `Eff`, runnable on a host or replayed without one; `Nav`'s screen stack runs in `UiApp.run` as it is, and `Screens.of` replaces the unreadable `Nav.screen` |

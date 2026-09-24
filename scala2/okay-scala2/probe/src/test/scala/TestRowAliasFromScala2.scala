@@ -19,8 +19,21 @@ class TestRowAliasFromScala2 extends munit.FunSuite {
     same[Effect[Console] + State[Int], Effect[Console] with State[Int]]
   }
 
+  test("A ! R is Eff[R, A], both ways; every infix type operator has one precedence, so A ! (R + S) needs its parentheses") {
+    same[Int ! State[Int], Eff[State[Int], Int]]
+    same[Eff[State[Int], Int], Int ! State[Int]]
+    same[Int ! (State[Int] + Writer[String]), Eff[State[Int] with Writer[String], Int]]
+    same[String ! (Effect[Console] + State[Int] + Writer[String]), Eff[Effect[Console] with State[Int] with Writer[String], String]]
+    // SLS 2.13 §3.2.8, unlike Scala 3: without them `!` and `+` associate to the left
+    same[Int ! State[Int] + Writer[String], (Int ! State[Int]) + Writer[String]]
+    // and it keeps Eff's contravariance in R
+    val one: Int ! State[Int] = State.get[Int]
+    val wider: Int ! (Reader[String] + State[Int]) = one
+    assertEquals(Eff.run(State.run(4)(Reader.run("env")(wider))), (4, 4))
+  }
+
   test("a program at a + row of a user effect and two built-ins, handled effect by effect") {
-    val prog: Eff[Effect[Console] + State[Int] + Writer[String], String] = for {
+    val prog: String ! (Effect[Console] + State[Int] + Writer[String]) = for {
       name <- Console.send(ReadLn)
       _ <- State.put(name.length)
       _ <- Writer.tell("got " + name)
@@ -28,7 +41,7 @@ class TestRowAliasFromScala2 extends munit.FunSuite {
     } yield name
     val out = ListBuffer.empty[String]
     val console = new Handler[Console, State[Int] + Writer[String], String] {
-      def apply[X](op: Console[X], k: X => Eff[State[Int] + Writer[String], String]) = op match {
+      def apply[X](op: Console[X], k: X => String ! (State[Int] + Writer[String])) = op match {
         case PrintLn(s) => out += s; k(())
         case ReadLn => k("ada")
       }
@@ -40,8 +53,8 @@ class TestRowAliasFromScala2 extends munit.FunSuite {
   }
 
   test("a program needing one capability is a program in any + row that has it") {
-    val one: Eff[State[Int], Int] = State.get[Int]
-    val wider: Eff[Reader[String] + State[Int] + Throws[String], Int] = one
+    val one: Int ! State[Int] = State.get[Int]
+    val wider: Int ! (Reader[String] + State[Int] + Throws[String]) = one
     assertEquals(Eff.run(Throws.run(State.run(4)(Reader.run("env")(wider)))), Right((4, 4)))
   }
 }

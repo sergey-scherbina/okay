@@ -6,7 +6,7 @@ import okay.ui.{Event, Nav, Screen, Ui}
 
 object DialogModel {
   // a scenario as one program: two questions, then an answer
-  val greet: Eff[Dialog, String] = for {
+  val greet: String ! Dialog = for {
     first <- Dialog.show(Ui.Column(Vector(Ui.Text("hello?"), Ui.Button("yes", "yes"), Ui.Button("no", "no"))))
     answer <- first match {
       case Event.Pressed("yes") => Dialog.show(Ui.Input("", "name", "your name")).map {

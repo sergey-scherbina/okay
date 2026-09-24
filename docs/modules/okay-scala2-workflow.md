@@ -11,7 +11,7 @@ it to where the old one stood, asking nobody anything twice.
 | `Workflows.advance(wf, journal, runtime)` | a worker's step: stop at the author's next question |
 | `Workflows.replay(wf, journal)` | the answer, from the journal alone |
 
-A Scala 2 workflow is an ordinary `Eff[Workflow[Q, A], R]`; the engine
+A Scala 2 workflow is an ordinary `R ! Workflow[Q, A]`; the engine
 running it is okay-workflow's own. Durable agents are okay-scala2-agent's
 `Chat` with a `journal`.
 

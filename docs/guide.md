@@ -1148,7 +1148,7 @@ for-comprehension works over it. A throw inside `Prog.delay` is a
 failure that `attempt`, `recover` and `runEither()` see, and `run()`
 executes the program on the calling thread. For several effects in one program there is `Eff[-R, A]`. Its row is
 an intersection that Scala 2 can write (`+` is a one-line alias for
-`with`), `Eff[State[Int] + Writer[String], A]`, and it is taken apart one
+`with`), `A ! (State[Int] + Writer[String])`, and it is taken apart one
 handler at a time (`State.run`, `Writer.run`, ...). Continuations are
 `okay.scala2.Cont`, with `shift`, `reset` and answer-type modification.
 A 2.13 user's own effect is plain Scala 2: its operations extend

@@ -1030,12 +1030,12 @@ and nothing else in the library casts for that reason:
   split is `msplit`'s, on the `Choose` side).
 - **`Rows.coerce` and `Effect.narrow`** (okay-scala2, Scala 2.13
   facade). On the Scala 2 side a row is a PHANTOM intersection of
-  capabilities (`Eff[State[Int] + Writer[String], A]`) that no
+  capabilities (`A ! (State[Int] + Writer[String])`) that no
   Scala 3 type follows, so every program is stored at one row,
   `Top[+X] = Any`, and `coerce` re-types it at the concrete union
   each handler handles. This is sound because handlers split by the
   operation's class and never by the row type, and because `Eff.run`
-  accepts only `Eff[Any, A]`. `narrow` types a Scala 2 user's
+  accepts only `A ! Any`. `narrow` types a Scala 2 user's
   operation as its effect's `F` right after the `ClassTag` test that
   proves it. The argument is theory ch. 13.
 
@@ -1053,8 +1053,8 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
 - **`Eff[-R, A]`** — a program over an open row. `R` is an
   intersection of capabilities, and `Eff` is CONTRAVARIANT in it, so a
   program needing less fits wherever more is allowed. `flatMap[R1 <: R,
-  B]` finds the shared row. `Eff.run` takes `Eff[Any, A]`, meaning
-  nothing is left to handle. `Eff.runAsync` takes `Eff[Async, A]`.
+  B]` finds the shared row. `Eff.run` takes `A ! Any`, meaning
+  nothing is left to handle. `Eff.runAsync` takes `A ! Async`.
 - **`State[S]`, `Reader[E]`, `Writer[W]`, `Throws[E]`, `Async`** — each
   is a phantom capability trait, and its companion holds the operations
   and the handler. `X.run(...)` removes `X` from the row and leaves the
@@ -1069,7 +1069,7 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   `pure`, `map`, `flatMap`, `run(k)`.
 - **`Source[A]`** — the core's `Source` (`Unit ! (Writer % A +
   Async)`) as a class. `fromEff`/`toEff` convert to and from
-  `Eff[Writer[A] + Async, Unit]`.
+  `Unit ! (Writer[A] + Async)`.
 - **`Fiber[A]`, `Channel[A]`** — `Async.fork` returns a `Fiber`; a
   channel's `send`/`receive` are `Eff[Async, _]`.
 - **`Schemas`, `Json`, `JsonSchema`** (okay-scala2-codec) — `derives
@@ -1114,7 +1114,7 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   implemented directly in Scala 2, and a `Nav` stack runs in `UiApp.run`
   unchanged. Only `Nav.screen`, whose type is a union, needed a
   replacement.
-- **`Prog[A]`** — `Eff[Async + Throws[Throwable], A]` under a
+- **`Prog[A]`** — `A ! (Async + Throws[Throwable])` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.
 

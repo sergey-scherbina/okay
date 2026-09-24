@@ -4,7 +4,7 @@ okay-resilience for **Scala 2.13**. The pieces (`Breaker`, `Bulkhead`,
 `Limiter`, `Deadline`), the refusal (`Refused.*`) and the retry policies
 (`okay.Retry.*`) are okay's own and are used directly from Scala 2. What
 Scala 2 cannot use is what each piece DOES, which is to transform a
-program. `Guards` provides those transformations over `Eff[Async, A]`:
+program. `Guards` provides those transformations over `A ! Async`:
 
 | | |
 |---|---|

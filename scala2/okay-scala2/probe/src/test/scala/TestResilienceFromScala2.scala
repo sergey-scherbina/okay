@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /** okay-resilience from Scala 2.13 (specs/scala2-facade.md, stage 15.1) */
 class TestResilienceFromScala2 extends munit.FunSuite {
 
-  def outcome[A](e: Eff[Async, A]): Either[Throwable, A] = scala.util.Try(Eff.runAsync(e)).toEither
+  def outcome[A](e: A ! Async): Either[Throwable, A] = scala.util.Try(Eff.runAsync(e)).toEither
 
   test("a breaker opens after its failures and then refuses without running") {
     val b = new Breaker("pay", 2, 60000L)

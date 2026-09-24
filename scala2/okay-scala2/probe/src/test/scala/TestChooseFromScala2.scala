@@ -6,7 +6,7 @@ import okay.scala2._
 class TestChooseFromScala2 extends munit.FunSuite {
 
   // the naturals from n, as an infinite search
-  def nats(n: Int): Eff[Choose, Int] = Choose.from(true, false).flatMap(stop => if (stop) Eff.pure(n) else nats(n + 1))
+  def nats(n: Int): Int ! Choose = Choose.from(true, false).flatMap(stop => if (stop) Eff.pure(n) else nats(n + 1))
 
   test("every answer: the Pythagorean triples up to 13") {
     val triples = for {
@@ -39,7 +39,7 @@ class TestChooseFromScala2 extends munit.FunSuite {
   }
 
   test("another effect in the rest of the row passes through the fair search, in order") {
-    val counted: Eff[Choose + Writer[String], Int] =
+    val counted: Int ! (Choose + Writer[String]) =
       Choose.interleave(Writer.tell("a").flatMap(_ => Choose.from(1, 2)), Writer.tell("b").map(_ => 3))
     val (log, answers) = Eff.run(Writer.run(Choose.all(counted)))
     assertEquals(answers.toSet, Set(1, 2, 3))
@@ -47,7 +47,7 @@ class TestChooseFromScala2 extends munit.FunSuite {
   }
 
   test("State inside the search: each branch its own state; outside: one shared") {
-    val prog: Eff[Choose + State[Int], Int] = for {
+    val prog: Int ! (Choose + State[Int]) = for {
       x <- Choose.from(1, 2)
       _ <- State.modify[Int](_ + x)
       s <- State.get[Int]
@@ -58,7 +58,7 @@ class TestChooseFromScala2 extends munit.FunSuite {
 
   test("Search.bestOf stops at the first good sample; all and majority") {
     var calls = 0
-    val gen: Eff[Async, Int] = Async.delay { calls += 1; calls }
+    val gen: Int ! Async = Async.delay { calls += 1; calls }
     assertEquals(Eff.runAsync(Search.bestOf(5)(gen)(_ == 2)), Some(2))
     assertEquals(calls, 2)
     assertEquals(Eff.runAsync(Search.bestOf(3)(Async.delay(0))(_ > 0)), None)
