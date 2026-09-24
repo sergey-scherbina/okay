@@ -1,3 +1,0 @@
-slug: okay2-fast-channels
-agent: claude (session 6f505c09)
-what: okay2-stream: the ring-buffered channels (SentinelChannel, Buffer/Ring/Segments/Growing/AdaptiveFifo, AbruptChannel, Queues, Flush, Channel.apply by capacity) with TestChannelLaws in two tiers over every implementation
