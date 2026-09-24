@@ -1,3 +1,0 @@
-slug: wire-givens-r
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: R on the wire givens: codecs move to okay-codec, zlib compression (R-native), RSubprocess framed; plus the connect doc line
