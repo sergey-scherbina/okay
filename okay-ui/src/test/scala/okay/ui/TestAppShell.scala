@@ -44,7 +44,7 @@ class TestAppShell extends munit.FunSuite {
   test("the script is typed — no escape hatch — and hooked to the frame's names") {
     assertEquals(okay.js.Js.raws(Enhance.program), 0)
     val js = Enhance.script
-    for hook <- Vector("main.okay-main", "data-hard", "okay-refresh", "okay-busy", "okay-live-", "okay-plain", "okay-pick") do
+    for hook <- Vector("main.okay-main", "data-hard", "okay-refresh", "okay-busy", "okay-live-", "okay-plain", "okay-pick", "okayLive") do
       assert(js.contains(hook), hook)
   }
 

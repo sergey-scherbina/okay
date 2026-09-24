@@ -11,8 +11,8 @@ import okay.js.Js.*
  * - every `select` opens OUR list, under its field, at its width, in
  *   the page's font — the `select` itself is left in place, because a
  *   live page patches its tree by path;
- * - a form in `main.okay-main` (not `data-hard`, not the live road's
- *   own) is sent by `fetch`, with a spinner beside its button, and only
+ * - a form in `main.okay-main` (not `data-hard`, not a mount the live
+ *   client drives — a plain mount is sent like any form) is sent by `fetch`, with a spinner beside its button, and only
  *   the frame's content is replaced — the scroll stays;
  * - `<meta name="okay-refresh" content="N">` keeps a page fresh by
  *   fetching it, not by a reload that repaints and jumps;
@@ -135,7 +135,9 @@ object Enhance:
       listen(doc, "submit", false)("e")(
         when(e.dot("defaultPrevented"))(done),
         let("f", e.dot("target")),
-        when(f.dot("closest").of(Str(Main)).not || f.dot("classList").dot("contains").of(Str(Html.PlainClass)) ||
+        Stmt.Comment("a mount the live client drives is its own; a PLAIN mount (no client on the page) is ours"),
+        when(f.dot("closest").of(Str(Main)).not ||
+          (f.dot("classList").dot("contains").of(Str(Html.PlainClass)) && win.dot("okayLive")) ||
           f.dot("hasAttribute").of(Str("data-hard")))(done),
         does(e.dot("preventDefault").of()),
         let("b", e.dot("submitter")),

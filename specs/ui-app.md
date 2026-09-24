@@ -35,7 +35,9 @@ HTML host, nothing else touched:
     `input` and `change` as the engine's would; Esc or a click outside
     closes it;
   - a form inside `main.okay-main` that is not `[data-hard]` and not
-    on the live road is sent by `fetch`; its button gets `okay-busy`
+    a mount the live client drives (`form.okay-plain` while `okayLive`
+    is on the page — a PLAIN mount, `Html.form` alone, is sent like any
+    form: ui-app-plain-press) is sent by `fetch`; its button gets `okay-busy`
     and a spinner (at least 450 ms, so it is seen); the answer's
     `main.okay-main` replaces this one's (and its sidebar, which may
     say something new); the scroll is kept when the page is the same
