@@ -1,0 +1,4 @@
+slug: bang-row-no-parens
+who: claude (session 01Ujs4BY)
+what: strip redundant parentheses in `A ! (R + S)` across Scala 3 sources/docs; pin the precedence; comparison tables consistent
+since: 2026-09-24T05:23:26Z
