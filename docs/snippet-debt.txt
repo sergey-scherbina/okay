@@ -1062,7 +1062,6 @@ docs/queues.md	c.close()           // ends the stream -- what is buffered still 
 docs/queues.md	c.receive           // an effect: suspends while empty and open
 docs/queues.md	c.send(42)          // an effect: suspends if the buffer is full
 docs/queues.md	val baton = Queues.rendezvous[Unit].build
-docs/queues.md	val c = Channel[Int](1024)
 docs/queues.md	val either = Tx.orElse(left.receiveTx, right.receiveTx)
 docs/queues.md	val log = Queues.strong[String].unbounded.build
 docs/queues.md	val metrics = Queues.strong[Metric].relaxed.parts(16).each(128).build
