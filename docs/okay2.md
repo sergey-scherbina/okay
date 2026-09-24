@@ -127,9 +127,12 @@ Brachthäuser, Schuster and Ostermann read effects (*effects as
 capabilities*, 2020): a program that may perform the operations of F
 or G is one that requires a handler for F AND one for G. The Scala 3
 core spells the same row as a union of operations, `F + G = [A] =>>
-F[A] | G[A]`, and has no `Row` type at all: its row parameter is a type
-constructor, `F[+_]`. `Row` is okay2's own name, needed because a Scala
-2 row has to be a type of kind `*` (section 8).
+F[A] | G[A]`, and its row parameter is a type constructor, `F[+_]`,
+with no supertype to bound it. There `okay.Row` is the object of row
+MEMBERSHIP — `Row.at`, `Row.In`, `Row.Sub`, `Row.Has` (renamed from
+`RowLift` on 2026-09-24 so that both cores say `Row`); here `Row` is
+the row's own type, needed because a Scala 2 row has to be a type of
+kind `*` (section 8).
 
 ## 3. Your own effect
 
