@@ -1,3 +1,0 @@
-slug: okay2-optics
-agent: claude (session 69c582ad)
-what: okay2: okay-optics ported as okay2/okay2-optics — Optic lattice, interpretations, constructors, compiled pairs, arrows, Lens[S](_.f) as a Scala 2 macro, State.zoomWith (core) + zoom/PState zoom/zoomCase; Fuse declined (Scala 3 macro planner). Zipper/TypedZipper follow as okay2-zipper
