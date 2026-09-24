@@ -400,6 +400,58 @@ okay's `Durable`. Restarting what died and letting the caller decide is
 Erlang's supervision (J. Armstrong, "Making reliable distributed systems
 in the presence of software errors", PhD thesis, KTH, 2003).
 
+## A foreign call as a workflow activity
+
+okay's durable workflows (`Wf`, journalled in a topic by
+`okay.persist.Dialogue`) ask questions and remember the answers. An
+ACTIVITY in a workflow engine is exactly that: a command performed
+outside and a result remembered. So a foreign call needs no mechanism of
+its own. It is a question, `ForeignCall`, and the worker is the oracle
+(module okay-foreign-workflow). The workflow is written in do-notation:
+
+```scala
+  def order(sku: String)(using w: Wf.Asks[ForeignCall, String, String, Pure]): String ! Delim + Pure = direct:
+    val price = !ForeignActivity.call[Double]("shop:price")(sku)
+    price match
+      case Left(c) => s"no price: ${c.kind}"
+      case Right(p) =>
+        val total = !ForeignActivity.call[Double]("shop:total")(p, 3L)
+        total.fold(c => s"no total: ${c.kind}", t => s"total $t")
+```
+
+It is run by the ordinary workflow driver, with the oracle under
+whichever worker is installed (Python here; Go, Rust and the others in
+the same way, supervised or not, over any link and any givens):
+
+```scala
+    val run = Dialogue.workflow[ForeignCall, String, String, Pure](topic, "order-1", "order/1")(order("tea"))
+      .runWorkflowIn(q => ForeignActivity.oracle(q))
+```
+
+What the durable layers now give a foreign call:
+- **Crash-resume.** Every answer is in the topic. A host that dies after
+  the first activity resumes from the journal, and the far function is
+  not called again. The test counts its calls on the far side.
+- **Failures that mean something are remembered.** An exception the far
+  function raised (`KeyError` for an unknown product) is a journalled
+  answer. The workflow branches on it, and a replay reaches the same
+  branch without calling the far side.
+- **Failures of the wire are not.** A dead worker, a deadline, or no
+  connection is not the function's answer, and recording it would make a
+  network blip the workflow's permanent history. The oracle retries it
+  (three attempts, on a fresh worker when the handler is
+  `ForeignWorker.supervised`), and then throws
+  `ForeignActivity.Unreachable`, leaving the step unanswered for the next
+  run. The Go test kills the server between two activities: the new
+  server does the second one, and only that one.
+- **Everything else the workflow layer has**: versioning, `patch`,
+  timers, signals, children, and races settled by the journal.
+
+The promise is at-least-once, as it is for any activity: a function
+that did its work and then lost its connection will be asked again.
+Make an activity that reaches the outside world idempotent, or give it
+a key.
+
 ## One `okay_call`, step by step
 
 In-process, the Scala side can do exactly one thing with the loaded Rust

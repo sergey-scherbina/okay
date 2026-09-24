@@ -35,26 +35,24 @@ of the workflow machinery.
 
 ```scala
 /** a foreign call as a workflow question: its address, its arguments */
-final case class ForeignCall(address: String, args: Vector[PyValue]) derives Schema
-
-/** what a foreign activity answers, journalled: the value, or the
- * condition (a far-side failure, a timeout, a death) — a failure is a
- * RECORDED answer too, so a replay does not re-run a call that failed */
-type ForeignAnswer = Either[Condition, PyValue]
+final case class ForeignCall(address: String, args: Vector[PyValue])
 
 object ForeignActivity:
-  /** the oracle: each question a call on whatever ForeignEval handler is
-   * installed (a worker, a supervised worker, a pool) */
-  def oracle: ForeignCall => ForeignAnswer ! ForeignEval
+  /** the oracle: each question a `start` on whatever ForeignEval handler
+   * is installed (a worker, a supervised worker, a pool), answered in the
+   * wire's written form of Either[Condition, PyValue]; a transport failure
+   * is retried `attempts` times, then thrown as `Unreachable` */
+  def oracle: ForeignCall => String ! ForeignEval
+  def oracle(attempts: Int): ForeignCall => String ! ForeignEval
+  /** a journalled answer, back as a value or a condition */
+  def answer(written: String): Either[Condition, PyValue]
+  /** a TYPED activity inside a workflow, decoded by Out's Schema:
+   * `!ForeignActivity.call[Double]("shop:price")(sku)` */
+  def call[Out: Schema](address: String): Call[Out]   // apply(args...)(using Wf.Asks[ForeignCall, String, R, F], At)
 
-  /** a TYPED activity inside a workflow: the call is journalled, its
-   * answer decoded by Out's Schema */
-  def call[Out: Schema](address: String)(args: PyValue*)
-                       (using Wf.Asks[ForeignCall, ForeignAnswer, R, F]): Either[Condition, Out] ! Delim + F
-
-/** the same activity as a static Proc leaf, named by its address */
+/** the same activity as a static Proc leaf, named by its address (stage 2) */
 object ForeignProc:
-  def call[X: ToPy, Out: Schema](address: String): Wf.Proc[ForeignCall, ForeignAnswer, X, Either[Condition, Out]]
+  def call[X: ToPy, Out: Schema](address: String): Wf.Proc[ForeignCall, String, X, Either[Condition, Out]]
 ```
 
 ## Behavior
