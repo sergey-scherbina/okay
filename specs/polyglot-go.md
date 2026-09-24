@@ -48,9 +48,23 @@ WORKER PROCESS on okay's line protocol (specs/remote-foreign.md).
 
 ## Stage 2 — Go compiled to WebAssembly
 
-`GOOS=wasip1 GOARCH=wasm go build` makes a WASI module with no TinyGo.
-With the Chicory road of specs/polyglot-rust.md stage 3, a Go plugin
-runs sandboxed inside the JVM. That is the road for untrusted Go code.
+`GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared` makes a WASI
+reactor module with no TinyGo. Its functions are exported with
+`//go:wasmexport`. Under `WasmLib` (Chicory, specs/polyglot-rust.md
+stage 3), a Go plugin runs sandboxed inside the JVM, with no Go runtime
+beside the JVM's: it runs inside the module. This is the road for
+untrusted Go code.
+
+- [ ] `okay-rust/kernels/sha256-go`: SHA-256 from Go's standard
+      library, over the Rust kernel's ABI shape: `okay_alloc`,
+      `okay_free`, and `okay_sha256(in, n, out)`.
+- [ ] `enum Digest[+A] derives okay.Effect` has one operation, `Sha256(bytes)`.
+      - `Digest.jdk` is the handler over `MessageDigest`.
+      - `Digest.wasm(lib)` is the handler over the Go plugin under
+        Chicory.
+- [ ] (Live, go) THE LAW: for inputs of many sizes (0 bytes to 64 KiB,
+      including every length around the 64-byte block), the Go plugin's
+      digest is the JDK's.
 
 ## Decisions
 
