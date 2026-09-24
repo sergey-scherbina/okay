@@ -157,9 +157,12 @@ measured in Behavior rather than assumed cheap.
       green
 - [x] a pure `val` between two leaves emits NO leaf, and two `Arr`s in
       a row fold into one at construction (`Proc.andThen`)
-- [ ] liveness — **not built**, every bound name rides to the end of
-      the block as a left-nested tuple; filed as
-      `proc-notation-liveness` with its trigger
+- [x] liveness — BUILT, MEASURED AND REFUTED (proc-notation-liveness,
+      2026-09-24): every bound name still rides to the end of the block,
+      because dropping the dead ones made blocks SLOWER at every length
+      measured. See the Results. (The "filed with its trigger" of the
+      first cut never reached a board: it lived in the queue entry that
+      was deleted when the lane landed.)
 
 ### Stage 2 — one front end, four back ends (`direct-targets`)
 
@@ -574,4 +577,36 @@ The line stands until a fourth road wants the same normalisation.
 - Mutants: injecting the cases in reverse was refused by the COMPILER,
   since the environments differ when binders do. Dropping the guards
   compiled, and failed the taken-case test.
+
+### Liveness — measured and refuted, 2026-09-24 (`proc-notation-liveness`)
+
+The operator asked for it. The performance rule asked for a number
+first, so `ProcEnvBench` (okay-workflow's first JMH) was written: a block
+of N statements where each name is read only by the next, run by
+`foldMap` into the identity monad with every question answered at once,
+so that only the environment's plumbing is timed. The baseline grows
+faster than linearly, 23 ns per statement at 4 and 33 at 64: every
+projection walks a tuple as deep as the block so far.
+
+The experiment (commit 5aa9206c, reverted by the next one) pruned before
+each statement to the slots a later statement or the answer still reads,
+and not in a loop body, whose environment must come round in its shape.
+All 137 okay-workflow tests passed with it. Two rounds, alternated:
+
+| N | A: every name rides | B: dead names dropped | B / A |
+|---|---|---|---|
+| 4 | 91.4 ns | 108.4 ns | 1.19 |
+| 16 | 426.1 ns | 467.7 ns | 1.10 |
+| 64 | 2066.3 ns | 2579.9 ns | 1.25 |
+
+Bytes per op were EQUAL (640, 2640, 12096). Rebuilding the environment
+from its live slots allocates the pairs that appending did, and the
+prune is one more `Arr` per statement, a node the interpreter walks, and
+that costs more than the `_1` reads it saves. It is not a matter of
+tuning: an extra node per statement is the price of pruning, and a
+projection down a tuple is field loads. The one argument left, holding a
+large dead value until the block ends, has no measurement behind it, and
+a workflow's answers are small. The benchmark stays, as the instrument
+for anyone who brings the question back, with the numbers in
+src/jmh/history.tsv.
 
