@@ -586,9 +586,6 @@ lazy val okayWorkflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "okay-workflow",
   )
-  // JMH for the notation's environment plumbing (proc-notation-liveness)
-  .jvmConfigure(_.enablePlugins(JmhPlugin))
-  .jvmSettings(Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh")
   .jvmSettings(
     Test / fork := true,
     Test / javaOptions += "-Xmx1g",
