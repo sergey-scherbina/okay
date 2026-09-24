@@ -1,3 +1,0 @@
-slug: wire-compression-measured
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: measure the DEFLATE default (JSON/CBOR x none/deflate, small/medium/large messages); a threshold if small messages lose
