@@ -1,0 +1,6 @@
+feature/okay2-stacked-choice 2026-09-24T07:48:11Z
+agent: claude-code
+heartbeat: 2026-09-24T07:48:11Z
+status: in-progress
+done-so-far: claimed
+next: Delim.Stacked (HList prompt stack, Has), Choice/Logic, SharedOnce, Once handler-order tests; spec stage 7, docs
