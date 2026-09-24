@@ -129,13 +129,73 @@ the runner before it was measured, then confirmed; the practical
 rule is simply: deep chains go through `A ! F`, and Option/Either
 stay in the short code where they belong.
 
-**What one block cannot do**: mix two *different* monads. The answer
-type fixes one `F` per `reify` — that is not a weakness of the
-construction but the honest statement that monads do not compose;
-composing effects is what the effect rows (`F + G`) are for, and
-reflection does not replace them. Blocks nest, though — layering in
-Filinski's sense — and one block reflects any *single* monad,
-including `A ! Row` for an arbitrary row.
+**What one `Monadic` block cannot do**: mix two *different* monads.
+`Cont` has one prompt, so the answer type fixes one `F` per `reify`.
+Composing effects is what the effect rows (`F + G`) are for, and one
+block reflects any *single* monad, including `A ! Row` for an
+arbitrary row. For several monads in one block, see the next section.
+
+## Layer 1½ — several monads in one block: layered reflection
+
+Filinski's follow-up paper, *Representing Layered Monads* (POPL 1999),
+gives each of several monads its own `reflect`/`reify`. Brachthäuser,
+Boruch-Gruszecki and Odersky (*Representing Monads with
+Capabilities*, 2020) point out that multi-prompt delimited control is
+all this needs: each `reify` installs its own delimiter and hands the
+body a capability, and `reflect` through that capability captures up
+to the right delimiter, past any inner ones. `Delim` is multi-prompt,
+so `Layered` is short (specs/layered-reflection.md):
+
+```scala
+val prog = reify[List, Option[Int], Pure]:
+  reify[Option, Int, Pure]:
+    for
+      x <- List(1, 2, 3).reflect[Option[Int], Pure]
+      y <- (if x == 2 then None else Some(x * 10)).reflect[Int, Pure]
+    yield x + y
+assertEquals(run(prog), List(Some(11), None, Some(33)))
+```
+
+`List(…).reflect` reaches the OUTER `reify[List]`, past the inner
+`Option` delimiter, and the list continues the rest of the block once
+per element. Each continuation re-installs the inner layer.
+`Option.reflect` reaches the inner one.
+
+**The order of the blocks is the order of the layers**, the way the
+order of handlers is. With `Option` outside `List`, the same body
+answers `Option[List[Int]]`, and one `None` empties everything:
+
+```scala
+val prog = reify[Option, List[Int], Pure]:
+  reify[List, Int, Pure]:
+```
+
+That returns `None`, where the version above returns a `None` per
+failing branch. These are the two answers `OptionT[List]` and
+`ListT[Option]` would give, obtained here without transformers.
+
+**Why a `Layer[M]` and not a `Monad[M]`.** The continuation a layer
+captures is a program: it still contains the inner layers, and it may
+reflect into outer ones. So a layer's bind has to sequence programs:
+
+```scala
+trait Layer[M[_]]:
+  def pure[A](a: A): M[A]
+  def bind[A, B, G[+_]](m: M[A])(k: A => M[B] ! G): M[B] ! G
+```
+
+That is a monad transformer over whatever runs outside the layer.
+`Option`, `Either[E, _]` and `List` have one (a traversal in order).
+A monad that cannot run a program inside its `flatMap`, such as a
+`Future`, does not. The fibre road of the capabilities paper avoids
+this because its continuation is an impure function, but that road is
+one-shot and JVM-only.
+
+**Two practical notes.** `M` is read off the receiver, so write
+`Option(2).reflect`, not `Some(2).reflect` (the same trap as `.some`
+in cats). A capability kept past its `reify` fails with `NoPrompt`
+when used. The stacked prompts of `Delim.Stacked` will make that a
+compile error (sprint: stacked-shift0).
 
 ## Layer 2 — the `direct` block: syntax, by a macro that adds nothing else
 
@@ -1120,6 +1180,11 @@ Theory: ch. 7, the iteratee's consumer side.
   recognising four combinators.
 - Andrzej Filinski, *Representing Monads*, POPL 1994 — reflection
   and reification; layered monads in the follow-up work.
+- Andrzej Filinski, *Representing Layered Monads*, POPL 1999 —
+  several monads, each with its own reflect/reify (Layer 1½).
+- Jonathan Immanuel Brachthäuser, Aleksander Boruch-Gruszecki, Martin
+  Odersky, *Representing Monads with Capabilities*, 2020 — layered
+  reflection from multi-prompt control and capabilities.
 - Ningning Xie, Jonathan Brachthäuser, Daniel Hillerström, Philipp
   Schuster, Daan Leijen, *Effect Handlers, Evidently*, ICFP 2020, and
   Xie & Leijen, *Generalized Evidence Passing*, ICFP 2021 — the

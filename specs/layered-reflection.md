@@ -80,12 +80,14 @@ object Layered:
 
 ## Behavior
 
-- [ ] Two layers in one block, each `reflect` reaching its own `reify`.
-- [ ] Layer order changes the answer, as transformer order does
+- [x] Two layers in one block, each `reflect` reaching its own `reify`
+      (and three: Either over List over Option).
+- [x] Layer order changes the answer, as transformer order does
       (Option over List against List over Option), pinned.
-- [ ] Multi-shot through an inner layer (List outside Option).
-- [ ] A capability used outside its `reify` fails loudly (stage 0) and
-      does not compile (stage 2).
+- [x] Multi-shot through an inner layer (List outside Option).
+- [x] Stage 0: a capability used outside its `reify` fails loudly
+      (`NoPrompt`).
+- [ ] Stage 2: the same does not compile.
 
 ## Out of scope
 
@@ -96,4 +98,36 @@ object Layered:
 
 ## Decisions
 
+- **`Layer[M]`, not `Monad[M]` (stage 0, 2026-09-24).** The design
+  sketch above said `Monad`. It cannot work on `Delim`: the captured
+  continuation is a PROGRAM (`X => M[R] ! G`), because it holds the
+  inner layers and may reflect into outer ones, which only the running
+  machine answers. `m.flatMap(k)` would need `k` to be pure. The layer
+  therefore supplies `bind(m)(k: A => M[B] ! G): M[B] ! G`, a monad
+  transformer over what runs outside it. Instances: Option, Either,
+  List (a traversal in order). The capabilities paper can use plain
+  `flatMap` only because its fibre continuation is an impure function,
+  which is also why that road is one-shot.
+- **`reflect` is `shift0`** on today's `Delim`, the λ$ reading. `shift`
+  gives the same answers here (the body is one bind that never captures
+  again), so stage 1 decides between them on price, not semantics.
+- **`M` is read off the receiver**: `Some(2).reflect` finds no
+  `Reflect[Some, R]`. Documented rather than worked around. A
+  contravariant `Reflect[-M, R]` would fight `Layer[M]`'s invariance.
+
 ## Results
+
+STAGE 0, 2026-09-24 (TestLayered, 7, okayJVM): `Layered.reify` /
+`reflect` / `Layer`, on today's multi-prompt `Delim`.
+
+- Every expected value was written from the semantics before the run:
+  List over Option gives `List(Some(11), None, Some(33))`, Option over
+  List gives `None`, and Either over List over Option gives `Left("four")`
+  or `Right(List(Some(1), None, Some(3)))`. The first compiling run
+  matched all of them. The only red before that was the `Some`
+  receiver (see Decisions).
+- WATCHED FAILING: `Layer.list` with its concatenation reversed turned
+  five of the seven tests red (every test with a List layer).
+- docs/direct-style.md said "what one block cannot do: mix two
+  different monads". That is no longer true of `Layered`, so the page
+  now says it of `Monadic` only and has a Layer 1½ section.

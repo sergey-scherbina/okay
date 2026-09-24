@@ -24,3 +24,8 @@
       multi-prompt is enough, per Brachthäuser, Boruch-Gruszecki &
       Odersky 2020), so it does NOT wait for stacked-shift0. Stages 1-2
       do. The trigger no longer applies.
+      STAGE 0 LANDED 2026-09-24 (monadic-reflection-stacked):
+      `okay.Layered` on today's Delim, TestLayered 7. Back in the queue
+      for stages 1-2, which wait for delim-dollar (reify as `dollar`,
+      priced) and stacked-shift0 (the capability's escape refused at
+      compile time).
