@@ -742,6 +742,63 @@ compile time):
     assertEquals(back.asking, Some("Pay 270 for Kyiv?"))
 ```
 
+The prompt stack can also be a TYPE. `Delim.Stacked` hands the body a
+stack value whose doors ask for evidence that the prompt is on it, so
+a shift with no reset, a shift to a foreign prompt of the same answer
+type, and a shift to a prompt whose reset has returned are compile
+errors rather than a run-time `NoPrompt`:
+
+```scala
+    val r = !.run(Stacked.delimited[Int, P] { outer =>
+      outer.stack.reset[Int, P] { inner =>
+        // the outer prompt is second on the inner stack: `there` finds it below `here`
+        inner.stack.shift[Int, Int, P](outer.p)(k => k(1).map(_ + 100))
+      }.map(_ + 1)
+    })
+    // k is the rest up to OUTER: (_ + 1) is inside k, (+ 100) is outside
+    assertEquals(r, 102)
+```
+
+**Choose** is nondeterminism: the handler is multi-shot, resuming the
+rest of the program once per alternative, and `Logic` is LogicT on
+top of it — `msplit`, the cut, the soft cut, the fair `interleave`
+that lets two infinite branches take turns:
+
+```scala
+    val prog: Int ! Choose =
+      choose(1, 2, 3).flatMap(x => choose(10, 20).map(x * _))
+    assertEquals(!.run(runChoice[Int, Choose](prog)), Seq(10, 20, 20, 40, 30, 60))
+```
+
+```scala
+    val evens = nats.map(_ * 2)
+    val odds = nats.map(_ * 2 + 1)
+    val six = !.run(observe[Long, Pure](6)(interleave(evens, odds)))
+    assertEquals(six, Seq(0L, 1L, 2L, 3L, 4L, 5L))
+```
+
+Which reading `Once` gets under a search is handler ORDER: `Once.run`
+inside the search backtracks its cells with the branches, outside it
+shares one store, and the counts say which:
+
+```scala
+    val handled: Seq[Int] ! W = Once.run[Seq[Int], Once + W](runChoice[Int, Rw](prog))
+    val (log, out) = !.run(Writer.run[String, Seq[Int], W](handled))
+    assertEquals(out, Seq(11, 12))
+    assertEquals(hits, 1)
+    assertEquals(log, Seq("x"))
+```
+
+Across FIBRES the threaded reading runs a shared handle once per
+fibre; `SharedOnce` (okay2-async) is one store for all of them, and a
+demand met while the program is in flight waits for its answer:
+
+```scala
+    val (a, b) = Async.par(store.run(p), store.run(p)).runWith
+    assertEquals((a, b), (42, 42))
+    assertEquals(runs.get, 1, "the shared store ran the program more than once")
+```
+
 **Provide** is the capability pair: `provide` installs values for a
 block, `wire[A]` reads one by type, and a missing capability is a
 compile error. A body that takes several is curried, which is the
@@ -779,6 +836,9 @@ which is how the dependency graph is checked by the compiler:
   framework for delimited continuations" (JFP 2007) — the
   multi-prompt design `Delim` follows: prompts as first-class tags,
   `push` and `shift` as operations of one machine.
+- Oleg Kiselyov, Chung-chieh Shan, Daniel Friedman and Amr Sabry,
+  "Backtracking, Interleaving, and Terminating Monad Transformers"
+  (ICFP 2005) — LogicT, whose `msplit` is `Logic`'s one primitive.
 - Christian Queinnec, "Inverting back the inversion of control, or
   Continuations versus page-centric programming" (2003) — the web
   dialogue `Paused`/`resumable` is the type of.

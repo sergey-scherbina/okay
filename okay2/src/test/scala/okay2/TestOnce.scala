@@ -69,6 +69,32 @@ class TestOnce extends munit.FunSuite {
     assertEquals(hits, 1)
   }
 
+  // ---- multi-shot is handler order
+
+  test("Once.run INSIDE the search: the cells backtrack, each branch runs its own once") {
+    var hits = 0
+    type Rw = Once + (Choose + W)
+    val x: Int ! Rw = !.once[Int, Choose + W](Writer.tell("x").at[Rw].map(_ => { hits += 1; 10 }))
+    val prog: Int ! Rw = choose(1, 2).at[Rw].flatMap(b => x.map(b + _))
+    val handled: Seq[Int] ! W = runChoice[Int, Choose + W](Once.run[Int, Rw](prog))
+    val (log, out) = !.run(Writer.run[String, Seq[Int], W](handled))
+    assertEquals(out, Seq(11, 12))
+    assertEquals(hits, 2)
+    assertEquals(log, Seq("x", "x"))
+  }
+
+  test("Once.run OUTSIDE the search: one store, the second branch sees the first's value") {
+    var hits = 0
+    type Rw = Choose + (Once + W)
+    val x: Int ! Rw = !.once[Int, W](Writer.tell("x").at[Once + W].map(_ => { hits += 1; 10 })).at[Rw]
+    val prog: Int ! Rw = choose(1, 2).at[Rw].flatMap(b => x.map(b + _))
+    val handled: Seq[Int] ! W = Once.run[Seq[Int], Once + W](runChoice[Int, Rw](prog))
+    val (log, out) = !.run(Writer.run[String, Seq[Int], W](handled))
+    assertEquals(out, Seq(11, 12))
+    assertEquals(hits, 1)
+    assertEquals(log, Seq("x"))
+  }
+
   test("Once.run finds the effect anywhere in the row") {
     type R3 = Later + Once
     val q: Int ! R3 = Once.once[Int, Later](later(2).at[Once + Later]).at[R3]

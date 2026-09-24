@@ -89,6 +89,12 @@ package object okay2 extends Provides {
   /** stop: nothing to answer with */
   def abort[A]: A ! Abort = Throws.raise[Unit, A](())
 
+  /** one of the given alternatives (nondeterminism, see `Choose`) */
+  def choose[A](as: A*): A ! Choose = Choose.choose(as: _*)
+
+  /** all the results of all the branches, the rest of the row forwarded */
+  def runChoice[A, R <: Row](a: A ! R)(implicit rm: Remove[Choose, R]): Seq[A] ! rm.Out = Choose.runChoice(a)
+
   /**
    * Bracket over any Handler-able row F: acquire, use, release — the
    * use-program runs to completion inside one suspension, so no outer

@@ -650,6 +650,76 @@ now depends on okay2-async (and on okay2-platform for its tests):
   a forward reference (wrap in a def); a shadowed implicit lambda
   parameter is "never used" (the outer layers are `_ =>`).
 
+## Stage 7 — Delim.Stacked, Choice/Logic, SharedOnce (DONE 2026-09-24)
+"Do Delim.Stacked, SharedOnce and the Once handler-order tests, which
+wait for Choice/Logic" (operator).
+
+- `Delim.Stacked`: the prompt stack as a TYPE — an HList `Cons[P, S]`/
+  `Empty` of prompt singleton types (`p.type`), `Has[S, P]` with
+  `here`/`there`, `Stack[S]` a value whose METHODS are the doors
+  (`shift`/`control`/`abort` asking `Has[S, p.type]`, `reset` pushing
+  one prompt for its body), `In[R, S]` (the prompt and the stack under
+  it), `delimited` (the root on `Empty`).
+- `Choose`/`Logic` in the core: `Op(as)`, `choose`/`fail`/`guard`,
+  `runChoice` (the row anywhere) / `runChoiceAt` (a Cont-valued handler
+  resuming once per alternative), `Logic.msplit`/`cut`/`ifte`/`gnot`/
+  `interleave`/`fairBind`/`observe`; `choose`/`runChoice` in the
+  package object.
+- `SharedOnce` in okay2-async: one store for many fibres, a demand
+  met in flight WAITS (an `Async.await` resumed by the store),
+  `run`/`runIn`; the walk is a bespoke suspending loop at `Any`.
+- The two Once handler-order tests: `Once.run` inside the search
+  backtracks the cells (two runs), outside it shares one store.
+
+### Behavior (stage 7)
+- [x] Stacked: the five positive shapes and abort/multi-shot/control
+      through the real machine; the three negative shapes are compile
+      errors naming the stack (no reset: no stack to call; a foreign
+      prompt of the same answer type; an escaped prompt after its
+      reset returned); a `Stack` cannot be constructed outside; the
+      residual hole is PINNED (a program built under an inner stack
+      and run after its reset is a run-time NoPrompt)
+- [x] Choose: cartesian, pruning, guard, pythagorean triples, effects
+      forward with the row anywhere; Logic: msplit, cut, ifte, gnot,
+      fair interleave over infinite branches, fair bind, observe
+- [x] SharedOnce: one handle two fibres one run (the second waits);
+      Once.run per fibre runs twice; a demand after the store answers
+      from it; runIn forwards the rest of the row
+- [x] Once handler order: inside the search two runs and two tells,
+      outside one run and one tell
+
+### Decisions
+- The stack is a VALUE the body receives and the doors are its
+  METHODS. The Scala 3 core carries the stack as a lexical given and
+  a body is a DEPENDENT function `(s: In[R, S]) => Under[F, R,
+  s.p.type *: S]` over the indexed `Prog` facade; Scala 2 has no
+  dependent function types and no `*:`, and a door as a free function
+  would need the stack's `S` as an explicit type argument (all-or-
+  nothing type args, `Has[S, p.type]` cannot be in the same implicit
+  section as the `Stack[S]` it depends on). With `S` fixed by the
+  receiver, `Has[S, p.type]` resolves as a dependent implicit on the
+  earlier parameter `p`. Programs stay ordinary `A ! (Delim + F)`.
+- The hole that leaves, tested rather than hidden: a program BUILT
+  under an inner stack, leaked and run after its reset returned is
+  still a run-time `NoPrompt`. The `Prog` index closes it in Scala 3
+  and needs the dependent body type; a rank-2 body (`trait Body { def
+  apply[P](in: In[R, P, S]): … }`) would close it here at the cost of
+  an anonymous class per reset — not taken.
+- `shift0`/`control0` stay unstacked (their body's stack is `S` below
+  `p`, a type-level function), as in the Scala 3 core.
+- `Choose` has no `runSeq` (a collection cannot be a kind-`*` Row) and
+  no `MonadPlus`/`withFilter` (no `Monad` here): `Choose.guard(p)` is
+  the step an `if` guard would desugar to.
+- `SharedOnce` is not `translate`: its handler is polymorphic in X and
+  a `Force[a]` answers `Option[a]`, which scalac 2 cannot relate to X
+  without a cast; the bespoke loop at `Any` needs none. A type
+  VARIABLE in the pattern (`case s: Store[a]`), not a wildcard: against
+  a covariant `Op[Any]` scrutinee `Store[_]` is instantiated to
+  `Store[Any]` and its two fields no longer agree.
+- The Once handler-order tests build `lazy val x` by hand as `!.once`
+  of a telling program (no `direct`): the same two readings, the same
+  counts.
+
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -669,3 +739,5 @@ now depends on okay2-async (and on okay2-platform for its tests):
   2026-09-24, same gate.
 - Stage 6: 274 test results (+88 Resource/Once/Delim/Provide/Failing),
   37 suites, GREEN 2026-09-24, same gate.
+- Stage 7: 301 test results (+27 Stacked/Choice/Logic/SharedOnce/
+  handler order), 41 suites, GREEN 2026-09-24, same gate.

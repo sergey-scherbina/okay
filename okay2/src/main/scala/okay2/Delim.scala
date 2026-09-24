@@ -675,4 +675,119 @@ object Delim {
 
     loop(next(prog, Segs.Done[F, R, R](implicitly[R =:= R])))
   }
+
+  // ==================================================================
+  // THE PROMPT STACK IN THE TYPE
+  //
+  // `NoPrompt` — a capture naming a prompt that is not installed — is
+  // a run-time exception on every door above. Here it is a compile
+  // error: the stack of installed prompts is carried as a TYPE, an
+  // HList of prompt identities (the Scala 3 core spells it as a tuple
+  // `p.type *: S`; Scala 2 has no `*:`, so `Cons[P, S]`/`Empty`), and a
+  // capture asks for evidence (`Has`) that its prompt's singleton type
+  // is on the stack in force. The three shapes that throw on the doors
+  // above are refused by the compiler: a shift with no reset (there is
+  // no stack to call `shift` on), a shift to a foreign prompt of the
+  // same answer type (`Has` fails on its identity), and a prompt that
+  // ESCAPED its reset and is shifted to afterwards (after the reset
+  // returns the stack in force is the OUTER one, which has no
+  // `inner.p.type` in it).
+  //
+  // WHAT IS DIFFERENT FROM THE SCALA 3 CORE, and why. There the stack
+  // is a lexical given and the doors are functions; a body is a
+  // DEPENDENT function `(s: In[R, S]) => Under[F, R, s.p.type *: S]`,
+  // and the indexed `Prog` facade types every program by the stack it
+  // was built under. Scala 2 has no dependent function types, so the
+  // stack is a VALUE the body receives (`in.stack`), the doors are its
+  // METHODS (which is also what lets `Has` resolve with the stack's `S`
+  // fixed by the receiver rather than inferred), and a program is an
+  // ordinary `A ! (Delim + F)`. The one hole that leaves, said here: a
+  // program BUILT under an inner stack, leaked out of its reset and
+  // run afterwards, is still a run-time `NoPrompt` — the `Prog` index
+  // that closes it needs the dependent body type.
+  //
+  //     Delim.Stacked.delimited[Int, Pure] { s =>
+  //       s.stack.shift[Int, Int, Pure](s.p)(k => k(5).map(_ * 2))   // 10
+  //     }
+  //
+  // ADDITIVE: every door above keeps its spelling.
+  // ==================================================================
+  object Stacked {
+
+    /** the stack of installed prompts, as a type: an HList of prompt
+     * identities, innermost first */
+    sealed trait Stk
+    sealed trait Empty extends Stk
+    sealed trait Cons[P, S <: Stk] extends Stk
+
+    /** "P is on the stack S" — the evidence that replaces the throw */
+    @implicitNotFound("prompt ${P} is not on the prompt stack ${S}: a shift names the prompt of a reset it is INSIDE (in.stack.shift(in.p)(…) under Delim.Stacked.delimited/reset) — not one that has returned, and not one another reset made")
+    sealed trait Has[S <: Stk, P]
+    object Has {
+      private val inst: Has[Empty, Nothing] = new Has[Empty, Nothing] {}
+      implicit def here[P, S <: Stk]: Has[Cons[P, S], P] = inst.asInstanceOf[Has[Cons[P, S], P]]
+      implicit def there[P, Q, S <: Stk](implicit h: Has[S, P]): Has[Cons[Q, S], P] = { val _ = h; inst.asInstanceOf[Has[Cons[Q, S], P]] }
+    }
+
+    /**
+     * The stack in force, as a value whose type is the stack: the doors
+     * are its methods, so a capture is `in.stack.shift(in.p)(f)` and the
+     * evidence `Has[S, p.type]` is resolved with S fixed by the receiver.
+     * A `Stack` comes only from `delimited` (empty) and `reset` (one
+     * more prompt), which is what makes "a shift with no reset" a
+     * compile error: there is nothing to call it on.
+     */
+    final class Stack[S <: Stk] private[Stacked] () {
+
+      /** capture up to `p` — REQUIRES `p` on the stack in force. The
+       * evidence is the whole point and is otherwise unused. */
+      def shift[R, A, F <: Row](p: Prompt[R])(f: (A => R ! (Delim + F)) => R ! (Delim + F))(implicit ev: Has[S, p.type], at: At): A ! (Delim + F) = {
+        val _ = ev
+        Delim.shift[R, A, F](p)(f)(at)
+      }
+
+      /** `Delim.control`, stacked: the continuation is a bare segment */
+      def control[R, A, F <: Row](p: Prompt[R])(f: (A => R ! (Delim + F)) => R ! (Delim + F))(implicit ev: Has[S, p.type], at: At): A ! (Delim + F) = {
+        val _ = ev
+        Delim.control[R, A, F](p)(f)(at)
+      }
+
+      /** drop the continuation and answer `value` at `p` */
+      def abort[R, A, F <: Row](p: Prompt[R])(value: R)(implicit ev: Has[S, p.type], at: At): A ! (Delim + F) = {
+        val _ = ev
+        Delim.abort[R, A, F](p)(value)(at)
+      }
+
+      /**
+       * A fresh prompt pushed on this stack, for the body only: the
+       * nested delimiter. The body receives the new `In`, whose `stack`
+       * has one more prompt; after it returns the stack in force is
+       * this one — which is what refuses a shift to its prompt from
+       * outside.
+       */
+      def reset[R, F <: Row](body: In[R, S] => R ! (Delim + F))(implicit at: At): R ! (Delim + F) = {
+        val in = new In[R, S](named[R]("reset")(at))
+        push[R, F](in.p)(body(in))
+      }
+
+      // `shift0`/`control0` are NOT here: their body runs with the
+      // delimiter CONSUMED, so its stack is the part of `S` below `p` —
+      // a type-level function this stage does not price. The unstacked
+      // doors remain.
+    }
+
+    /** what `reset`/`delimited` hand their body: the prompt, and the
+     * stack that installing it made */
+    final class In[R, S <: Stk] private[Stacked] (val p: Prompt[R]) {
+      val stack: Stack[Cons[p.type, S]] = new Stack[Cons[p.type, S]]()
+    }
+
+    /** the root: a fresh prompt on an EMPTY stack, the body under it,
+     * the machine run — `Delim.delimited`'s job, with the stack in the
+     * type. Every stacked program starts here. */
+    def delimited[R, F <: Row](body: In[R, Empty] => R ! (Delim + F))(implicit om: OneMachine[F], at: At): R ! F = {
+      val in = new In[R, Empty](named[R]("delimited")(at))
+      run[R, F](push[R, F](in.p)(body(in)))(om)
+    }
+  }
 }

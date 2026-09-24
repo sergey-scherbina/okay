@@ -3,10 +3,11 @@
       Drain/Source/merge/buffer LANDED the same day (stage 5). The fast
       channels are `okay2-fast-channels`. Resource, Once, Delim and
       Provide LANDED 2026-09-24 (stage 6; the `?=>` doors became
-      evidence-first values). Then the rest, in order of use:
-      Choice/Logic (`runSeq`, the CanFail witness for `if` guards in a
-      `for`; the Once handler-order tests wait for it), SharedOnce
-      (okay-async), Gen, Stream/Fold, Prob, Sim,
+      evidence-first values). Choice/Logic, SharedOnce, Delim.Stacked
+      and the Once handler-order tests LANDED 2026-09-24 (stage 7; no
+      `runSeq` — a collection is not a kind-`*` Row — and no `withFilter`
+      until a `Monad`/`MonadPlus` exists here). Then the rest, in order
+      of use: Gen, Stream/Fold, Prob, Sim,
       Validated/Static, Eager, Refs, HMap, Tag. Each stage mirrors the
       Scala 3 suite for that file and lands with its docs section in
       docs/okay2.md. Rule from stage 1: a lone `Inject` is a Bind with a
