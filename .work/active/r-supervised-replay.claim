@@ -1,3 +1,0 @@
-slug: r-supervised-replay
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: RSubprocess replays an R program-as-data run after its own respawn (the path of answers), as SupervisedWorker does for ForeignWorker
