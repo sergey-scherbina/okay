@@ -193,9 +193,30 @@ mechanism:
 - [x] The R suites' answers are the same under every combination R
       speaks: calls, frames with NA, callbacks (`okay_call`), programs
       (multi-shot), a timeout's respawn (which re-negotiates).
-- [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
-      JVM, rustls or native-tls in Rust, crypto/tls in Go), with keys
-      from their own stores.
+- [ ] Encryption (`given WireSecurity`, wire-tls): TLS on a TCP link.
+      `WireSecurity.tls(trust)`, where the trust names its own source:
+      `Trust.pem(path)` (a CA's or a self-signed server's certificate),
+      `Trust.pemFromEnv(name)` (the path in a variable), `Trust.system`
+      (the JDK's store). The server's name is VERIFIED against its
+      certificate (HTTPS rules: a DNS name or an IP in its SAN). The
+      default is plain, as before.
+      - Go: `ServeTCP` with `OKAY_TLS_CERT` and `OKAY_TLS_KEY` (PEM files)
+        serves `crypto/tls`, and its listening line says `"tls": true`.
+      - Rust: the crate's `tls` feature (rustls on ring, offline); the
+        same two variables. A worker built without the feature and asked
+        for TLS refuses to start, by name.
+        `RustWorker.build(dir, features = Seq("tls"))`.
+      - Mismatches are refused by name. A TLS host meeting a plain server
+        gets "did not complete a TLS handshake". A plain host meeting a
+        TLS server hears no hello (a TLS server waits for the client to
+        speak first), so the TCP link's hello read has a limit (the
+        `WireDeadline` if one is given, else 10 s) and the refusal says
+        the server may speak TLS.
+      - It composes with `WireAuth`: TLS proves the server and hides the
+        traffic, and the HMAC proves the client. A client certificate
+        (mTLS) is therefore not in this lane.
+      - Pipes and in-process links take no TLS, for the reason they take
+        no auth.
 - [x] Authorization (`given WireAuth`): a MUTUAL HMAC-SHA256 challenge at
       the handshake (wire-auth). The secret comes from the source the
       given names: `WireAuth.fromEnv(name)`, `WireAuth.fromFile(path)`,
