@@ -95,7 +95,8 @@ def platformTests(dirs: String*) =
  * so their files stay where the lanes editing them expect */
 lazy val jvmSuitesOnly = Test / unmanagedSources / excludeFilter := HiddenFileFilter ||
   "TestChannelLaws.scala" || "TestChannel.scala" || "TestGrowing.scala" || "TestGrowingSeal.scala" ||
-  "TestRing.scala" || "TestBulk.scala" || "TestPlan.scala" || "TablesFixtures.scala"
+  "TestRing.scala" || "TestBulk.scala" || "TestPlan.scala" || "TablesFixtures.scala" ||
+  "TestFlush.scala" || "TestParallelChunks.scala"
 
 /** the aggregate, and nothing else: its own `src` is the core's shared
  * sources, which the crossProject compiles */
@@ -192,8 +193,10 @@ lazy val okay2Stream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / fork := true,
     Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"),
   )
+  // `ParallelChunks` joins a fiber by parking: where a thread can park
+  .jvmSettings(platformSources("scala-jvm-native"))
   .jsSettings(jsTests, jvmSuitesOnly)
-  .nativeSettings(jvmSuitesOnly)
+  .nativeSettings(jvmSuitesOnly, platformSources("scala-jvm-native"))
   .jvmConfigure(_.withId("okay2Stream"))
 
 /** okay-data for the Scala 2 core: the approximate aggregators

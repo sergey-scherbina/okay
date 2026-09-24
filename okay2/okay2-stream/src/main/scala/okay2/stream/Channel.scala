@@ -5,6 +5,8 @@ import scala.annotation.tailrec
 import scala.collection.immutable.Queue
 import okay2._
 import okay2.async._
+import okay2.Free.{Bind, Inject, Return}
+import okay2.Split.split
 
 /**
  * ONE immutable value behind ONE compare-and-set: the cell every
@@ -501,6 +503,45 @@ object Channel {
     type L[W] = Unit ! (Writer[W] + Async)
     merge[A, L, Async, L, Async](s, t, capacity)(Stream.writerStreamIn[Unit, Async], Async.handler(cb), Stream.writerStreamIn[Unit, Async], Async.handler(cb), sch)
   }
+
+  /**
+   * The chunking feed for a source that marks its OWN boundaries: it
+   * walks the program instead of pulling, because `Flush` has to be
+   * interpreted where it occurs — at the exact point in the told
+   * sequence the producer put it — and a `Flush.Now` becomes a channel
+   * SEND, an Async program, which a value-answering handler cannot be.
+   * A second walk beside `feedChunked` on purpose: routing the plain
+   * chunked merge through here cost 11% in the Scala 3 core.
+   */
+  private def feedFlushing[A](c: Channel[Chunk[A]], p: Flushing[A], size: Int, buf: Cell[Vector[A]]): Unit ! Async = {
+    def sendIf(o: Option[Chunk[A]])(rest: => Unit ! Async): Unit ! Async = o match {
+      case Some(ch) => c.send(ch).flatMap(ok => if (ok) rest else pure(()))
+      case None => rest
+    }
+    def step(e: Any, k: Any => Flushing[A]): Unit ! Async =
+      split[Flush, Writer[A] + Async, Any, Unit ! Async](e) {
+        // the producer's own boundary: emit what is held, however short
+        case Flush.Now => sendIf(takeChunk(buf, size, full = true))(go(k(())))
+      } { rest =>
+        split[Writer[A], Async, Any, Unit ! Async](rest) {
+          case Writer.Say(w) =>
+            buf.modify(b => (b :+ w, () => ()))
+            sendIf(takeChunk(buf, size, full = false))(go(k(())))
+        } { a => Inject[Async, Any](a).flatMap(x => go(k(x))) }
+      }
+    def go(p: Flushing[A]): Unit ! Async = Free.resume(p) match {
+      case Return(_) => sendIf(takeChunk(buf, size, full = true))(pure(()))
+      case Inject(e) => step(e, (_: Any) => pure[Flush + (Writer[A] + Async), Unit](()))
+      case Bind(Inject(e), k) => step(e, k)
+      case other => throw new IllegalStateException("resume left a non-head form: " + other)
+    }
+    go(p)
+  }
+
+  /** the chunked merge, for sources that mark their own boundaries */
+  def mergeFlushing[A](s: Flushing[A], t: Flushing[A], capacity: Int, size: Int, within: Option[Long])
+                      (implicit sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
+    chunkedMerge(capacity, size, within)((c, buf) => feedFlushing(c, s, size, buf), (c, buf) => feedFlushing(c, t, size, buf))
 
   def mergeSourcesChunked[A](s: Source[A], t: Source[A], capacity: Int, size: Int, within: Option[Long])
                             (implicit sch: Scheduler, cb: CanBlock, timer: Timer): Channel[Chunk[A]] = {

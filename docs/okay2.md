@@ -909,6 +909,20 @@ true)` (an actor's mailbox), `Queues.weak[A]` (an `AbruptChannel`:
 close discards the buffer, for a feed whose remainder is stale), and
 `Queues.composable`/`rendezvous` for `StmChannel`.
 
+A producer that knows where its natural chunk boundaries are says so
+with `Flush.now`. A flushing merge emits what it holds at exactly that
+point, rather than wherever the chunk size or the timer happened to
+fall:
+
+```scala
+    tell(base + 1).flatMap(_ => tell(base + 2)).flatMap(_ => tell(base + 3)).flatMap(_ => flush)
+    val got = within(marked(0).mergeFlushing(marked(0)).toLazyList.take(6).toList)
+```
+
+`ParallelChunks.parMap` maps a chunked stream with one fiber per chunk.
+`retryChunks` recomputes a failed chunk from the stream's own program,
+Spark's lineage, which works because a pure stream is a value.
+
 ## 13. Resources, once, delimited control, capabilities
 
 **Resource** ties release to the SCOPE: acquire inside it, and the

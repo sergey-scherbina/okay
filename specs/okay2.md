@@ -1930,6 +1930,33 @@ TestChannelLaws, TestChannel, TestGrowing, TestGrowingSeal and TestRing
       (3b40bd4e) fixed AdaptiveFifo's freeze race, the channel suites
       went from a hang in 1 run of 3 to 5 green of 5
 
+## Stage 36 — `Flush` and `ParallelChunks` (2026-09-24)
+Backlog `okay2-flush`: the Source-level half of okay-stream that
+okay2-fast-channels left for later.
+- `Flush`, a row of one operation (`Flush.now`), and `Flushing[W] =
+  Unit ! (Flush + (Writer[W] + Async))`. An ordinary `Source` IS a
+  `Flushing` source by the row's contravariance — no rebuild; it is
+  ascribed to reach the operations, since its own type does not mention
+  `Flush`.
+- `Flush.map` (the core's private `mapFlushing`, public here: the row
+  split spelled out, marks left where they were), `mergeFlushing` and
+  `eitherFlushing`, and `Channel.mergeFlushing` over `feedFlushing` — a
+  program walk beside `feedChunked`, since a `Flush.Now` is a channel
+  send, which a value-answering handler cannot be.
+- `ParallelChunks.parMap` (a fiber per chunk) and `retryChunks` (a
+  failed pull recomputed from the value's own lineage), in
+  `scala-jvm-native` where a fiber can be joined by parking.
+
+### Behavior (stage 36)
+- [x] the boundary emits a partial chunk with no timer; full chunks
+      form around it; `eitherFlushing` tags sides; the edges (nothing
+      buffered, twice in a row, before the end, both empty); a plain
+      Source merges as a flushing one; `Flush.map` keeps the marks
+      (TestFlush, 6 tests)
+- [x] `parMap` answers the same and runs in parallel; `retryChunks`
+      recomputes a failed chunk; an effectful source does not typecheck
+      as retryable (TestParallelChunks, 3)
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

@@ -34,4 +34,9 @@ package object stream {
    * goes, performing Async between them — the shape every streaming
    * seam has, and by Writer's instance an ordinary stream in Async */
   type Source[W] = Unit ! (Writer[W] + okay2.async.Async)
+
+  /** a source that also marks its own chunk boundaries (`Flush.now`). An
+   * ordinary `Source` IS one — the row is contravariant, so a program
+   * that never flushes needs no rebuilding to be read as this */
+  type Flushing[W] = Unit ! (Flush + (Writer[W] + okay2.async.Async))
 }
