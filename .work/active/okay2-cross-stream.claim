@@ -1,3 +1,0 @@
-slug: okay2-cross-stream
-agent: claude (session 69c582ad)
-what: okay2-cross stage C, second half: okay2-stream on Scala.js and Scala Native — build.sbt ONLY (the thread and file suites excluded on JS/Native by name, so no file adaptive-seal-race edits is moved or touched)
