@@ -71,6 +71,17 @@ In this repository it is the separate build under `okay2/`:
 `cd okay2 && sbt publishLocal` is what a consumer does until it is
 published.
 
+The core and its pure modules (`okay2-data`, `okay2-optics`,
+`okay2-workflow`) are also published for Scala.js and Scala Native, so
+a cross-built project depends on them the cross way:
+
+```sbt
+libraryDependencies += "dev.okay" %%% "okay2" % "<version>"
+```
+
+Every one of their suites runs on all three platforms. Only the tests
+that start real threads are JVM-only.
+
 CI runs it on its own: the `okay2` job of `.github/workflows/ci.yml`
 builds and tests every okay2 module on any push or pull request that
 touches `okay2/`, and every night, on JDK 21. A lane runs the same thing

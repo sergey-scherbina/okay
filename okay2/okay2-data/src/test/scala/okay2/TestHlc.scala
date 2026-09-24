@@ -92,15 +92,4 @@ class TestHlc extends munit.FunSuite {
     intercept[IllegalArgumentException](Hlc(Epoch, Hlc.MaxCounter + 1)): Unit
     intercept[IllegalArgumentException](Hlc(Hlc.MaxMillis + 1, 0)): Unit
   }
-
-  test("no duplicate stamps when several threads share one clock (a FROZEN clock: the counter alone separates them)") {
-    val c = Hlc.at(() => Epoch)
-    val seen = new java.util.concurrent.ConcurrentHashMap[Long, Boolean]()
-    val threads = (0 until 8).map { _ =>
-      val t = new Thread(() => { var i = 0; while (i < 2000) { seen.put(c.next().toLong, true); i += 1 } })
-      t.start(); t
-    }
-    threads.foreach(_.join())
-    assertEquals(seen.size, 8 * 2000, "stamps collided, so the CAS is wrong")
-  }
 }

@@ -16,7 +16,9 @@ class TestDistinct extends munit.FunSuite {
       Handler.union[Ask[Int], Ask[String]](Ask.effect[Int], intAsk, stringAsk, Distinct.unchecked)
     val p: String ! (Ask[Int] + Ask[String]) = Ask.ask[String]
     val e = intercept[ClassCastException](p.runWith(both).length)
-    assert(e.getMessage.contains("Integer"), e.getMessage)
+    // the Int answer, named as each platform names it: `java.lang.Integer`
+    // on the JVM and Native, `number(1)` on Scala.js (okay2-cross)
+    assert(e.getMessage.contains("Integer") || e.getMessage.contains("number(1)"), e.getMessage)
   }
 
   test("refused: a union of two signatures of one class does not compile") {

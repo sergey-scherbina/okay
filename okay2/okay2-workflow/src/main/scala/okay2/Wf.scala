@@ -184,7 +184,7 @@ object Wf {
     implicit val live: Runtime = new Runtime {
       def answer(q: Sys): Either[Wait, SysA] = q match {
         case Sys.Now => Right(SysA.Millis(System.currentTimeMillis()))
-        case Sys.Uuid => Right(SysA.Text(java.util.UUID.randomUUID().toString))
+        case Sys.Uuid => Right(SysA.Text(freshUuid()))
         case Sys.Random => Right(SysA.Dice(scala.util.Random.nextDouble()))
         case Sys.Patch(_) => Right(SysA.Flag(true))
         case Sys.Timer(t) => Left(Wait.Until(t))
@@ -192,6 +192,17 @@ object Wf {
         case Sys.Child(id) => Left(Wait.Child(id))
         case Sys.Cancelled => Right(SysA.Flag(false))
       }
+    }
+
+    /** a version-4 UUID from `scala.util.Random`, with the version and
+     * variant bits set as RFC 9562 has them: `UUID.randomUUID` needs
+     * `java.security.SecureRandom`, which neither Scala.js nor Scala
+     * Native provides (okay2-cross). A run id has to be FRESH, not
+     * unguessable — `Uid.system` draws the same way */
+    def freshUuid(): String = {
+      val hi = (scala.util.Random.nextLong() & ~0xF000L) | 0x4000L
+      val lo = (scala.util.Random.nextLong() & 0x3FFFFFFFFFFFFFFFL) | Long.MinValue
+      new java.util.UUID(hi, lo).toString
     }
 
     /** a fixed one, for a test that wants to read its own output */

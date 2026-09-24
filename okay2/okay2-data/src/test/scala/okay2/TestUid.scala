@@ -102,15 +102,4 @@ class TestUid extends munit.FunSuite {
     assertEquals(ids(4096).millis, Epoch + 1, "the 4097th borrows the next millisecond")
     assertEquals(ids(4096).counter, 0)
   }
-
-  test("no duplicate ids when several threads share one generator (a FROZEN clock)") {
-    val gen = Uid.at(() => Epoch)
-    val out = new java.util.concurrent.ConcurrentHashMap[Uid, Boolean]()
-    val threads = (0 until 8).map { _ =>
-      val t = new Thread(() => { var i = 0; while (i < 2000) { out.put(gen.next(), true); i += 1 } })
-      t.start(); t
-    }
-    threads.foreach(_.join())
-    assertEquals(out.size, 8 * 2000, "ids collided under concurrency, so the counter is not atomic")
-  }
 }

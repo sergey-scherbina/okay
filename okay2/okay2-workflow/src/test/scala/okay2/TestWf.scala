@@ -89,6 +89,16 @@ class TestWf extends munit.FunSuite {
     assertEquals(seen, List((Right("city?"), Right("Kyiv")), (Left(Wf.Sys.Patch("promo")), Left(Wf.SysA.Flag(false))), (Right("nights?"), Right("3"))))
   }
 
+  test("the live runtime's id is a version-4 UUID, on every platform") {
+    val ids = (1 to 100).map(_ => Wf.Runtime.freshUuid())
+    assertEquals(ids.distinct.size, 100)
+    ids.foreach { id =>
+      val u = java.util.UUID.fromString(id)
+      assertEquals(u.version, 4, id)
+      assertEquals(u.variant, 2, id)
+    }
+  }
+
   test("cancellation is a question: the runtime answers it when asked, and the answer is journalled") {
     var why: Option[String] = None
     val rt2 = Wf.Runtime.cancellable(rt)(why)

@@ -1,0 +1,9 @@
+# The JVM sbt itself runs in, for okay2's own build (okay2-cross). Until
+# okay2 crossed to Scala.js and Native it ran on the launcher's default
+# heap; with the JS linker and the Native tooling of twelve more projects
+# in the same process, the core's 100 000-cell test died of
+# "OutOfMemoryError: Java heap space" inside sbt — the root build's
+# .jvmopts says why a shared heap fails that way, and this is its answer.
+-Xmx6g
+-Xss8m
+-XX:MaxMetaspaceSize=1g

@@ -1760,6 +1760,53 @@ interop-async, the fast channels of stage 29; `Flush` is filed as
 - the **Scala.js/Native platform files** (`FiberCell`, `TaskQueue`,
   `NodeConn`, `Web`): okay2 is JVM-only (backlog `okay2-cross`).
 
+## Stage 31 — Scala.js and Scala Native, stage A: the pure modules (2026-09-24)
+Backlog `okay2-cross`, operator ("Файлы платформ Scala.js и Native").
+The core, okay2-data, okay2-optics and okay2-workflow are crossProjects
+(`CrossType.Pure`: one `src/`, three targets) in okay2's own build, with
+Scala.js 1.22.0 and Scala Native 0.5.12 (the root build's versions, both
+published for 2.13.18). Each JVM project KEEPS ITS ID (`okay2`,
+`okay2Data`, `okay2Optics`, `okay2Workflow`), so `okay2/testOnly X`, CI
+and the JVM-only modules read as before; the others are `okay2JS`,
+`okay2Native`, `okay2DataJS`, and so on. The root is an aggregate with
+no sources of its own.
+
+### Behavior (stage 31)
+- [x] every suite of the four modules runs on JVM, JS and Native — the
+      full okay2 gate from clean: 1639 test results, 38 module compiles,
+      no warnings
+- [x] the tests that start REAL threads run on the JVM only, from
+      `src/test/scala-jvm` (TestTRefThreads, TestDataThreads — as the
+      core keeps `TestUidConcurrent`)
+- [x] `Wf.Runtime.live`'s id is a version-4 UUID on every platform
+      (TestWf)
+
+### Found while building it
+- A failed cast is UNDEFINED BEHAVIOUR in Scala.js's development
+  linker (a fatal `UndefinedBehaviorError`, not a `ClassCastException`),
+  so `TestDistinct`'s measurement of the defect it prevents failed on JS.
+  Test linking is compliant (`jsTests`); and the message names the Int
+  as each platform does — `java.lang.Integer`, or `number(1)` on JS.
+- `UUID.randomUUID` needs `java.security.SecureRandom`, which neither
+  Scala.js nor Scala Native provides: the live runtime draws its v4 id
+  from `scala.util.Random` with the version and variant bits set (a run
+  id must be fresh, not unguessable; `Uid.system` draws the same way).
+  A polyfill (`scalajs-java-securerandom`) would have fixed JS only.
+- A macro module needs its OWN `scala-reflect` on JS and Native
+  (`Provided`, which is not passed on): optics has macros besides the
+  core's.
+- The FIRST full run: `OutOfMemoryError` in sbt's heap (okay2 had no
+  `.jvmopts`; the JS linker and Native tooling of twelve more projects
+  now share it) — `.jvmopts` at 6g, and the JVM suites forked. The
+  SECOND stalled after 1437 results with a dozen `node` and three Native
+  test binaries at 0.0% CPU: the root build's `gate-bound-test-fanout`,
+  met again, and fixed by its line, `Test / parallelExecution := false`.
+
+### Stage B (next)
+okay2-async, okay2-platform, okay2-stream and okay2-stm on JS and
+Native: the platform files (`FiberCell`/`TaskQueue` for Native, the event
+loop, `NodeConn` and `Web` for JS) behind the same `Async`.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

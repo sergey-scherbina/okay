@@ -1,7 +1,7 @@
-- [ ] okay2-cross — Scala.js and Scala Native for okay2: nothing in
-      stage 1 is JVM-specific (no reflection but `ClassTag.runtimeClass`
-      and `Class.isInstance`, both available on both). The lane: make
-      `okay2` a `crossProject(JVMPlatform, JSPlatform, NativePlatform)`
-      with `CrossType.Pure` in ITS OWN build (okay2/build.sbt is a
-      separate sbt build, not a root project), and run the same nine
-      suites on each from `cd okay2`. (2026-09-24)
+- [ ] okay2-cross — Scala.js and Scala Native for okay2. STAGE A LANDED
+      (specs/okay2.md stage 31, 2026-09-24): the core, okay2-data,
+      okay2-optics and okay2-workflow are crossProjects and every suite
+      runs on all three. Remaining, stage B: okay2-async, okay2-platform,
+      okay2-stream and okay2-stm — the platform files (Native's
+      `FiberCell`/`TaskQueue`, JS's event loop, `NodeConn`, `Web`) behind
+      the same `Async`, as okay-platform has them. (2026-09-24)

@@ -23,20 +23,80 @@
 ThisBuild / organization := "dev.okay"
 ThisBuild / scalaVersion := "2.13.18"
 
+/**
+ * ONE TEST PROCESS PER MODULE AT A TIME — the root build's
+ * `gate-bound-test-fanout`, met again here the day okay2 crossed
+ * (okay2-cross): on JS and Native a test CLASS is an OS process, and a
+ * module's task started all of its classes at once. The first full
+ * cross run stalled after 1437 results with a dozen `node` and three
+ * Native test binaries all at 0.0% CPU, sbt waiting on them. The root
+ * build measured the JVM side of the same line and found serial faster
+ * (8%), so it is one line for all three platforms.
+ */
+ThisBuild / Test / parallelExecution := false
+
 lazy val common = Seq(
   scalacOptions := Seq("-deprecation", "-feature", "-Xlint", "-Werror", "-language:higherKinds"),
-  libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
 )
 
-lazy val okay2: Project = (project in file("."))
-  .aggregate(okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Data, okay2Optics, okay2Workflow, okay2Cats, okay2Fs2, okay2Zio)
+/**
+ * SCALA.JS AND SCALA NATIVE (okay2-cross, specs/okay2.md stage 31). The
+ * pure modules are crossProjects with `CrossType.Pure`: one `src/`,
+ * three targets. Each JVM project KEEPS ITS ID (`okay2`, `okay2Data`,
+ * ...), so `okay2/testOnly X`, CI and the JVM-only modules' dependencies
+ * read as before; the others are `okay2JS`, `okay2Native` and so on.
+ * A suite that starts real threads lives in `src/test/scala-jvm` and
+ * runs on the JVM only (`jvmOnlyTests`).
+ */
+/** Scala.js's development linker makes a failed cast UNDEFINED
+ * BEHAVIOUR (a fatal `UndefinedBehaviorError`); the suites that measure
+ * a `ClassCastException` — the defects `Distinct` and the row rules
+ * exist to stop — need the JVM's answer, so test linking is compliant */
+lazy val jsTests = Test / scalaJSLinkerConfig ~= (_.withSemantics(_.withAsInstanceOfs(org.scalajs.linker.interface.CheckedBehavior.Compliant)))
+
+lazy val jvmOnlyTests = Seq(
+  Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  // the JVM suites in a JVM of their own, as the root build forks its
+  // core suite: a deep test's heap is then not sbt's (okay2-cross)
+  Test / fork := true,
+  Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"),
+)
+
+/** a macro module's scala-reflect: on the JVM classpath as before,
+ * compile-only on JS and Native, where no macro implementation is
+ * reachable at run time */
+def reflect(scope: Option[Configuration]) =
+  libraryDependencies += scope.fold("org.scala-lang" % "scala-reflect" % scalaVersion.value)(c => "org.scala-lang" % "scala-reflect" % scalaVersion.value % c)
+
+/** the aggregate, and nothing else: its own `src` is the core's shared
+ * sources, which the crossProject compiles */
+lazy val root: Project = (project in file("."))
+  .aggregate(
+    okay2.jvm, okay2.js, okay2.native,
+    okay2Data.jvm, okay2Data.js, okay2Data.native,
+    okay2Optics.jvm, okay2Optics.js, okay2Optics.native,
+    okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
+    okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
   .settings(
-    name := "okay2",
-    common,
-    // one blackbox macro: `Replayable` over an intersection row, which
-    // implicit search cannot take apart (Replayable.scala, stage 7)
-    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+    name := "okay2-root",
+    publish / skip := true,
+    Compile / unmanagedSourceDirectories := Nil,
+    Test / unmanagedSourceDirectories := Nil,
+    Compile / unmanagedResourceDirectories := Nil,
+    Test / unmanagedResourceDirectories := Nil,
   )
+
+lazy val okay2 = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("."))
+  .settings(name := "okay2", common)
+  // one blackbox macro family (`Replayable`, `Distinct`) over an
+  // intersection row, which implicit search cannot take apart (stage 7)
+  .jvmSettings(reflect(None), jvmOnlyTests)
+  .jsSettings(reflect(Some(Provided)), jsTests)
+  .nativeSettings(reflect(Some(Provided)))
+  .jvmConfigure(_.withId("okay2"))
 
 /** the Async effect: Run/Await, the Drive, Fiber/Scheduler/Timer/CanBlock
  * as traits, par/race/timeout/supervised/attempt/sleep, Retry, Par */
@@ -73,25 +133,42 @@ lazy val okay2Stream: Project = (project in file("okay2-stream"))
 /** okay-data for the Scala 2 core: the approximate aggregators
  * (`Sketch`: HyperLogLog, Count-Min, t-digest), the hybrid logical clock
  * `Hlc` and the sortable id `Uid` over it — specs/okay2.md stage 22 */
-lazy val okay2Data: Project = (project in file("okay2-data"))
-  .dependsOn(LocalProject("okay2"))
+lazy val okay2Data = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-data"))
+  .dependsOn(okay2)
   .settings(name := "okay2-data", common)
+  .jvmSettings(jvmOnlyTests)
+  .jsSettings(jsTests)
+  .jvmConfigure(_.withId("okay2Data"))
 
 /** okay-optics for the Scala 2 core: the profunctor lattice, its
  * interpretations and constructors, `Lens[S](_.f)` and `Lens.field` as
  * Scala 2 macros, zooming State and PState by a lens — specs/okay2.md
  * stage 24 */
-lazy val okay2Optics: Project = (project in file("okay2-optics"))
-  .dependsOn(LocalProject("okay2"))
+lazy val okay2Optics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-optics"))
+  .dependsOn(okay2)
   .settings(name := "okay2-optics", common)
+  .jvmSettings(jvmOnlyTests)
+  // its own macros (`Lens[S](_.f)`, `field`): `Provided` is not passed on
+  .jsSettings(jsTests, reflect(Some(Provided)))
+  .nativeSettings(reflect(Some(Provided)))
+  .jvmConfigure(_.withId("okay2Optics"))
 
 /** okay-workflow for the Scala 2 core: `Wf`, the durable program's
  * own questions over `Delim`'s dialogue, and `Proc`, the free arrow
  * over a row, with the static workflow over it (`Wf.Proc`) —
  * specs/okay2.md stage 27 */
-lazy val okay2Workflow: Project = (project in file("okay2-workflow"))
-  .dependsOn(LocalProject("okay2"), okay2Optics)
+lazy val okay2Workflow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-workflow"))
+  .dependsOn(okay2, okay2Optics)
   .settings(name := "okay2-workflow", common)
+  .jvmSettings(jvmOnlyTests)
+  .jsSettings(jsTests)
+  .jvmConfigure(_.withId("okay2Workflow"))
 
 /** cats: `Monad`/`MonadError` for programs, a fold into any monad, the
  * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */
