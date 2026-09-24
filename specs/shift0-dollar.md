@@ -144,9 +144,13 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
       0-capture that drops `k` and for one that calls it twice, and
       APLAS 2012's macro-expression on today's operators does not
       (watched failing, see Results).
-- [ ] Stage 1: `($v)`, `($/S0)` with `v` captured, `reset0 = pure $`.
-- [ ] Stage 1: `$` via `reset0`/`shift0` (APLAS 2012, `dollarMacro` in
-      TestDollarProbe) agrees with the primitive. NOTE from stage 0:
+- [x] Stage 1: `($v)`, `($/S0)` with `v` captured, `reset0 = pure $`
+      (TestDollar), and `k` re-installs the dollar (a second shift0
+      inside the continuation is caught by it).
+- [x] Stage 1: `$` via `reset0`/`shift0` (APLAS 2012, `dollarMacro` in
+      TestDollarProbe) agrees with the primitive on six bodies (returns,
+      drops k, k twice, k once, shift under, abort). They are compared
+      as values after `Delim.run`. NOTE from stage 0:
       `Bisim.check` compares operations with `==`, and a `Delim`
       operation carries a function, so compare AFTER `Delim.run`, on
       the residual row.
@@ -163,6 +167,30 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   spells its type arguments.
 
 ## Decisions
+
+- **`$` is the primitive, as in λ$ (stage 1, 2026-09-24).** The
+  operator pointed out that APLAS 2012 has no reset0 at all: `⟨e⟩`
+  is sugar for `(λx.x) $ e`, and the machine, the CPS translation and
+  the hierarchy's translation are all built on `$`. So `Delim.Dollar`
+  is an operation of the machine, and its frame is `Segs.Ret(p, ret,
+  rest)` (from the body's `R0` to the prompt's `R`). `push` KEEPS its
+  own plain `Mark`: it is `dollar(p)(pure)`, pinned by the law
+  "reset0 = pure $" on six bodies, and the plain frame saves a call
+  to an identity function per delimiter on the hot lane. That is a
+  representation choice, not a second semantics.
+- **The cut carries the delimiter.** `split` now returns the captured
+  chain, the delimiter itself (`close`: the `Mark` or the `Ret` with
+  its function) and whether it was plain (`P0 =:= P`). A shift/shift0
+  continuation is `captured` then `close`, so a `Ret` brings `ret`
+  along, which is the `$/S0` rule. For a plain mark this is exactly
+  the old `Push(p, seg)`. The existential `P0` is a type MEMBER of
+  `Cut`, so `captured` and `close` stay linked through one stable
+  value, and no cast was added.
+- **Control-captures to a `dollar` are refused at run time.** Their
+  bare continuation answers the body's `R0`, and `Capture` types `k`
+  at the prompt's `R`. Typed shallow handlers (FSCD 2019: shallow
+  handlers correspond to control0) need `k: A => R0`, which is stage
+  3's question. Until then the refusal names the prompt and the spec.
 
 - **Under-prompt captures to a `$` delimiter (stage 0, 2026-09-24).**
   APLAS 2012 builds `S k.e` as `S0 k.⟨e⟩`: the body runs under a FRESH
@@ -196,3 +224,35 @@ STAGE 0, 2026-09-24 (TestDollarProbe, 5 tests, okayJVM):
   the price of an extra delimiter and an extra capture per `$`. The
   primitive earns its place only if it is cheaper or simpler to type,
   and stage 1 measures the macro against it before adopting it.
+
+STAGE 1, 2026-09-24/25 (TestDollar 11; DelimBenchmark, history.tsv):
+
+- Every expected value in TestDollar was worked by hand from the λ$
+  rules before the first run, including `"A cat{ has [Alice.]}"` for
+  ICFP 2011's example with a return function on each dollar and
+  `"n=10|n=20"` for `R0 = Int`, `R = String`. The first run matched
+  all of them.
+- A GAP IN THE FIRST TEST LIST, found by a mutant: no test required
+  `k` to RE-INSTALL the dollar. A mutant that reified a `Ret` as a plain
+  `flatMap(ret)` passed all ten tests. The test "k RE-INSTALLS the
+  dollar" was added (a second shift0 inside the continuation), and the
+  mutant then failed it with `NoPrompt`.
+- Primitive against the stage-0 macro, gated at load < 4, 3 forks:
+  nothing captured 24.08 against 38.81 µs (1.61x) and 372 against 548
+  B per dollar; one shift0 per dollar 48.46 against 68.59 µs (1.42x)
+  and 724 against 956 B. The macro pays a capture per `$` even when
+  the body captures nothing. The primitive earns its place.
+- `dollar` against `push`: 24.08 against 23.38 µs (1.03), +14 B per
+  delimiter (the return function). `push` keeps its plain `Mark`.
+- THE CAPTURE PATH, and what the first cut cost. One `Cut` shape for
+  both kinds of delimiter (the delimiter as a frame, plainness as
+  evidence) cost delimGenerator, which never meets a dollar, +104 B
+  per capture (910 329 to 1 014 330 B/op) and 7-9%. Two shapes
+  (`Plain` = the old cut, `AtRet` = a dollar's) brought the bytes to
+  +32. Returning `NotFound` instead of an `Option` per frame brought
+  them to exactly the baseline (910 330). The time was still 1.023 to
+  1.028 over three gated rounds. Moving the `Dollar` case after
+  `Capture` in the step, and matching `Plain | AtRet | NotFound`
+  directly, gave 1.002, 1.012 and 1.044 (±2.5 on the last). That is
+  within the noise in two of three rounds, and is recorded as ≤ 2%,
+  not as zero.

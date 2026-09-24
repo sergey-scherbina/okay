@@ -140,6 +140,49 @@ tell you.
    ever does it will show up as a `NoPrompt` in production rather than
    as a wrong answer — which is the better failure, but still.
 
+## A fifth word: `dollar`, the delimiter with a way out
+
+The four captures differ in what they take. `dollar` differs in what
+the DELIMITER does when its body finishes. Materzok and Biernacki's λ$
+\[[APLAS 2012](#ref-dollar-2012)\] has one delimiter, `v $ e`: run `e`,
+and when it returns `x`, leave the delimiter and continue with `v x`.
+In that calculus a plain reset is only `(λx.x) $ e`. okay has it as an
+operation of the machine:
+
+```scala
+def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Delim + F): R ! Delim + F =
+```
+
+This is not `push(p)(body).flatMap(ret)`. A `shift0` captures the
+delimiter TOGETHER WITH `ret`, so `ret` runs once per resumption:
+
+```scala
+val p = Delim.prompt[String]
+val body = shift0(p)(k => k("a").flatMap(x => k("b").map(y => x + y))).map(_ + "!")
+assertEquals(run(dollar(p)(angle)(body)), "<a!><b!>")
+```
+
+With `flatMap` the answer would be `<a!b!>`, one `ret` around both
+resumptions. A capture that drops `k` never runs `ret` at all. If this
+reminds you of a handler, it should: `ret` is a deep handler's RETURN
+CLAUSE, and shift0 is performing an operation. Piróg, Polesiuk and
+Sieczkowski show the two are inter-definable with types
+\[[FSCD 2019](#ref-pps-2019)\].
+
+The body and the delimiter may answer different types, which is what a
+return clause is for:
+
+```scala
+Delim.shift0[String, Int, Pure](p)(k => k(1).flatMap(a => k(2).map(b => s"$a|$b"))).map(_ * 10)
+assertEquals(run(Delim.dollar[Int, String, Pure](p)(i => okay.pure(s"n=$i"))(body)), "n=10|n=20")
+```
+
+Two rules to know. `shift` and `control` run their body under a PLAIN
+delimiter, not under `ret` (λ$ defines `S k.e` as `S0 k.⟨e⟩`).
+`control` and `control0` are refused at a `dollar`, because their bare
+continuation answers the body's type rather than the prompt's. The
+measurements and the rest are in specs/shift0-dollar.md.
+
 ## Why the library offers all four
 
 Two reasons, and neither is completeness for its own sake.
@@ -153,6 +196,14 @@ omission.
 or Felleisen alongside this library should find the words they expect.
 A library that renames the standard vocabulary makes its users
 translate.
+
+## References
+
+- <a id="ref-dollar-2012"></a>Marek Materzok, Dariusz Biernacki. *A
+  dynamic interpretation of the CPS hierarchy.* APLAS 2012, LNCS 7705.
+- <a id="ref-pps-2019"></a>Maciej Piróg, Piotr Polesiuk, Filip
+  Sieczkowski. *Typed equivalence of effect handlers and delimited
+  control.* FSCD 2019 (LIPIcs, article 30).
 
 ---
 

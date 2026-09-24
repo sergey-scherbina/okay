@@ -60,6 +60,59 @@ class DelimBenchmark {
       go(0)
     })
 
+  // ---- `$` (delim-dollar, specs/shift0-dollar.md stage 1): the
+  // primitive against APLAS 2012's macro-expression over push/shift0,
+  // which stage 0 showed means the same. "Only" is N delimiters with a
+  // return function and nothing captured (read against delimPushOnly);
+  // "Resume" adds one shift0 per delimiter that resumes once, so ret
+  // runs inside the continuation. The macro pays a capture per `$` even
+  // when the body captures nothing, which is the price being asked.
+
+  def dollarMacro[R](p: Prompt[R])(v: R => R ! Row)(e: R ! Row): R ! Row =
+    push[R, Pure](p)(e.flatMap(x => Delim.shift0[R, R, Pure](p)(_ => v(x))))
+
+  @Benchmark
+  def delimDollarOnly(): Int =
+    !.run(Delim.run[Int, Pure] {
+      def go(i: Int): Int ! Row =
+        if i >= N then pure(i)
+        else Delim.dollar[Int, Int, Pure](Delim.prompt[Int])(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
+      go(0)
+    })
+
+  @Benchmark
+  def delimMacroOnly(): Int =
+    !.run(Delim.run[Int, Pure] {
+      def go(i: Int): Int ! Row =
+        if i >= N then pure(i)
+        else dollarMacro[Int](Delim.prompt[Int])(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
+      go(0)
+    })
+
+  @Benchmark
+  def delimDollarResume(): Int =
+    !.run(Delim.run[Int, Pure] {
+      def go(i: Int): Int ! Row =
+        if i >= N then pure(i)
+        else
+          val p = Delim.prompt[Int]
+          Delim.dollar[Int, Int, Pure](p)(x => pure(x + 1))(
+            Delim.shift0[Int, Int, Pure](p)(k => k(i))).flatMap(_ => go(i + 1))
+      go(0)
+    })
+
+  @Benchmark
+  def delimMacroResume(): Int =
+    !.run(Delim.run[Int, Pure] {
+      def go(i: Int): Int ! Row =
+        if i >= N then pure(i)
+        else
+          val p = Delim.prompt[Int]
+          dollarMacro[Int](p)(x => pure(x + 1))(
+            Delim.shift0[Int, Int, Pure](p)(k => k(i))).flatMap(_ => go(i + 1))
+      go(0)
+    })
+
   // ---- ONE push, then ordinary work INSIDE the machine
   //
   // This is the shape a GUARD has (okay-llm's `Cut`, okay-ui's
