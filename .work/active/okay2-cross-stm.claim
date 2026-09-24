@@ -1,3 +1,0 @@
-slug: okay2-cross-stm
-agent: claude (session 69c582ad)
-what: okay2-cross stage C, first half: okay2-stm on Scala.js and Scala Native (okay2-stream waits for adaptive-seal-race, which edits its channel suites)
