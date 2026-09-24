@@ -1,3 +1,0 @@
-slug: adaptive-seal-race
-agent: claude (session 6f505c09)
-what: AdaptiveFifo freeze/open and Growing swap/seal races lose the END under close (consumer parks for good on a closed drained channel) — okay-stream and okay2-stream; law 1c (close racing offers, six channels at once) as the reproducer
