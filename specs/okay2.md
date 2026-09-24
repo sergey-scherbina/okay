@@ -719,6 +719,77 @@ wait for Choice/Logic" (operator).
 - The Once handler-order tests build `lazy val x` by hand as `!.once`
   of a telling program (no `direct`): the same two readings, the same
   counts.
+## Stage 8 — the row as an intersection: `+` is `with` (2026-09-24)
+Operator: "начнем с исправления в окей2 алиаса +" (backlog
+`okay2-intersection-row`, measured the same day). Until now `+` was
+`sealed trait +[F, G] extends Row`: it neither commutes nor associates,
+so the row layer carried `Member` (six rules), `Sub`, `NotPure`,
+`Remove` + `Aux`, the `.at`/`.plus`/`.bind` coercions, and an `…At` twin
+of every handler. This stage makes the row a CONTRAVARIANT INTERSECTION,
+the encoding the facade `okay-scala2` already uses:
+
+```
+sealed abstract class Free[-R <: Row, +A]
+type +[F <: Row, G <: Row] = F with G
+type Pure = Row                       // the empty requirement: the TOP row
+```
+
+`Free[State[Int], A] <: Free[State[Int] + Writer[String], A]` by
+variance, so widening is subtyping; `A with B` and `B with A` are mutual
+subtypes, so the order a row is written in stops mattering; and a
+handler names the rest of the row as a type parameter scalac infers:
+
+```
+def handle[S, R <: Row, A](s: S)(a: Free[State[S] with R, A]): Free[R, (S, A)]
+```
+
+### Measured before (2026-09-24, scalac 2.13.18 -Xlint -Werror, a 150-line model)
+- all SIX handler orders over a three-effect program infer the residual
+  with no annotation; a helper polymorphic in the rest
+  (`Int ! State[Int] with R`) works; 1M left-nested binds run.
+- THE PARAMETER TRAP: a handler's parameter spelled through the alias,
+  `a: A ! (State[S] + R)`, solves `R` as the WHOLE row in 4 of 6 orders
+  (the facade's stage 19 measured the same on its side). Every
+  row-generic PARAMETER in okay2 is spelled `Free[F with R, A]`;
+  results and concrete rows keep `!` and `+`.
+- AN INTERSECTION'S `#Op` IS A LIE: `(Writer with State)#Op` resolves to
+  the LAST parent's `Op` (`=:= State.Op`), and reading an operation at
+  that type inserts a `checkcast` — `ClassCastException: Writer$Tell
+  cannot be cast to State$Op`, measured. So `Inject` holds its
+  operation as `Any`, and a typed `F#Op` exists only at a SINGLE
+  signature F, handed out by the class-test kernel (`Split`) — the one
+  cast it always made.
+
+### What changes
+- `Free[-R <: Row, +A]`; `Inject(op: Any)`; `Step`/`fold` hand the
+  operation over as `Any`.
+- `Member`, `Sub`, `NotPure`, `Remove` are DELETED. "F is in R" is
+  `R <:< F`; a negative (`NoDelim`) is the same ambiguity trick over
+  `<:<`.
+- `.at[R2 <: R]` and `.plus[G]` stay as NO-OP widenings (the type is
+  already a subtype), so call sites keep compiling; `widen` likewise.
+- Every handler takes `Free[F with R, A]` and answers `… ! R`; the
+  `…At` twins become the same method (kept as aliases where a caller
+  names them).
+- `Handler[+F]` handles an operation given as `Any` (`handleOp`); a
+  single signature's handler is written `new Handler.Of[F] { def
+  handle[A](a: F#Op[A]): A }` — typed, and sound because the row
+  admits only F's operations to it. `Handler.union` splits by F's test.
+- `Split.split[F, G, A, X](e: Any)(onF: F#Op[A] => X)(onG: Any => X)`:
+  the G side is `Any`, never `G#Op`.
+- `Effect.of[F]` must not be given a ROW: an intersection has a ClassTag
+  for its last parent's `Op`. No implicit ever asks for one
+  (`TypeableK` is invariant, and a companion's `effect` answers its own
+  signature only); the doc says so.
+
+### Behavior (stage 8)
+- [ ] every okay2 test green on the new row, the interop modules included
+- [ ] handlers in all six orders over a three-effect program, no annotation
+- [ ] widening by subtyping: a one-effect program IS a program in a
+      wider row, in either order; `.at` compiles as a no-op
+- [ ] a program with an effect left unhandled is refused by `run`
+- [ ] the `#Op` trap pinned: an operation read at a row's `#Op` would
+      be the wrong class, so the kernel never does it
 
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
