@@ -54,6 +54,11 @@ In this repository it is the separate build under `okay2/`:
 `cd okay2 && sbt publishLocal` is what a consumer does until it is
 published.
 
+CI runs it on its own: the `okay2` job of `.github/workflows/ci.yml`
+builds and tests every okay2 module on any push or pull request that
+touches `okay2/`, and every night, on JDK 21. A lane runs the same thing
+by hand as `cd okay2 && ../scripts/gate.sh test`.
+
 ## 2. A program and its row
 
 A program is `A ! R`: it computes `A` performing the operations of the

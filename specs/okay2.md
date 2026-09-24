@@ -973,6 +973,20 @@ convenient — and can the handlers of okay2 and okay be made alike?"
   (`Handler[Choose, Pure, …]`): `Pure` is `Any` there and `Row` here, and
   the two sources agree only when they name it.
 
+## CI (okay2-ci, 2026-09-24)
+okay2 is its own sbt build, so the root CI jobs could not see it
+(`affected` maps a diff onto the root build's projects; `family` runs
+only those). The `okay2` job in `.github/workflows/ci.yml` runs
+`cd okay2 && ../scripts/gate.sh test` on every push or pull request
+whose diff touches `okay2/` or the gate script, and on the nightly and
+manual runs always; it passes only on the `gate: GREEN` verdict line,
+not on the exit status alone. JDK 21 (setup-java): the gate's
+`.sdkmanrc` pin is a no-op on a runner without sdkman. MEASURED before
+landing: the whole build cold on JDK 21 in a fresh worktree, GREEN
+(336 results, sbt on Java 21.0.12) — the local gate had only ever run on 25. The path
+check was dry-run on two real commits: d5491910 (okay2) runs, bbca4de2
+(docs only) does not.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
