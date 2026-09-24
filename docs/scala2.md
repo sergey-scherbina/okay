@@ -220,6 +220,24 @@ type operator the same precedence, left-associative, so
 `Int ! State[Int] + Writer[String]` is
 `(Int ! State[Int]) + Writer[String]`, a program intersected with a
 capability, and the compiler will tell you so at the first `flatMap`.
+
+One place the aliases do NOT go: a PARAMETER whose row has a type
+variable to infer. scalac 2 does not look through an alias to solve
+`R`: given `def countFrom[R, A](p: A ! (State[Int] + R))`, a call
+solves `R` as the WHOLE row, `State[Int]` included, so the handler
+leaves `State` in place and the program never reaches `Eff.run`. Spell
+that parameter with the class and `with` — the result may keep the
+aliases:
+
+```scala
+def countFrom[R, A](p: Eff[State[Int] with R, A]): (Int, A) ! R = State.run[Int, R, A](0)(p)
+```
+
+It then takes a program whose row has `State[Int]` first, in the
+middle or last (`TestRowAliasFromScala2`). The explicit
+`State.run[Int, R, A]` inside is needed for the same reason: an
+abstract `R` is not inferred through the handler either.
+
 The capabilities:
 
 | capability | operations | handler |

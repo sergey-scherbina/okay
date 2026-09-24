@@ -68,4 +68,22 @@ class TestRowAliasFromScala2 extends munit.FunSuite {
     val wider: Int ! (Reader[String] + State[Int] + Throws[String]) = one
     assertEquals(Eff.run(Throws.run(State.run(4)(Reader.run("env")(wider)))), Right((4, 4)))
   }
+
+  // a user's helper that eliminates State from WHATEVER row it is given:
+  // the parameter is spelled with Eff and `with`, the result may use the aliases
+  def countFrom[R, A](p: Eff[State[Int] with R, A]): (Int, A) ! R = State.run[Int, R, A](0)(p)
+  def viaAliases[R, A](p: A ! (State[Int] + R)): (Int, A) ! R = State.run[Int, R, A](0)(p)
+  val stateFirst: Int ! (State[Int] + Writer[String] + Reader[Int]) = State.get[Int]
+  val stateMiddle: Int ! (Writer[String] + State[Int] + Reader[Int]) = State.get[Int]
+  val stateLast: Int ! (Writer[String] + Reader[Int] + State[Int]) = State.get[Int]
+
+  test("a helper polymorphic in the rest of the row: Eff[F with R, A] infers R anywhere; the aliases in a PARAMETER do not") {
+    assertEquals(Eff.run(Writer.run(Reader.run(1)(countFrom(stateFirst)))), (Vector.empty[String], (0, 0)))
+    assertEquals(Eff.run(Writer.run(Reader.run(1)(countFrom(stateMiddle)))), (Vector.empty[String], (0, 0)))
+    assertEquals(Eff.run(Writer.run(Reader.run(1)(countFrom(stateLast)))), (Vector.empty[String], (0, 0)))
+    // through the aliases scalac 2 solves R as the WHOLE row, State included:
+    // the call compiles, and the handlers after it cannot finish the program
+    assert(compileErrors("Eff.run(Writer.run(Reader.run(1)(viaAliases(stateFirst))))").contains("type mismatch"))
+    assert(compileErrors("Eff.run(Writer.run(Reader.run(1)(viaAliases(stateLast))))").contains("type mismatch"))
+  }
 }

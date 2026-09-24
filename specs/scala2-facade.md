@@ -681,6 +681,23 @@ docs keep the bracket form and the guide says why.
       the parenthesised row equals the bracket row
 - [x] docs/scala2.md section 3 names it and says why rows stay `State[Int]`
 
+## Stage 19 — where the aliases may not go (2026-09-24)
+Found while reviewing okay2, and measured on the facade the same
+hour: the aliases of stages 16-18 are fine in a concrete row and in a
+result type, and BREAK inference in a parameter whose row has an
+abstract variable. `def f[R, A](p: A ! (State[Int] + R))` — or with
+only one alias, `Eff[State[Int] + R, A]` or `A ! (State[Int] with R)` —
+compiles, and a call solves `R` as the WHOLE row, State included (an
+expected type fixes it; nothing else does), so the handlers after it
+cannot finish the program: 0 of 3 positions of State in a
+three-capability row. `p: Eff[State[Int] with R, A]` infers the rest in
+all three. scalac 2 does not dealias before solving a type variable nested
+in an intersection. The same holds inside the helper, where
+`State.run(0)(p)` at an abstract `R` needs `State.run[Int, R, A]`.
+
+- [x] pinned both ways in `TestRowAliasFromScala2`
+- [x] docs/scala2.md section 3 gives the rule and the spelling
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages

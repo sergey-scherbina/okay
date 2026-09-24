@@ -13,3 +13,10 @@
       what the JIT gives back, over it names the first thing to fix
       (the Either per op is the first suspect — a sentinel instead of
       Left/Right removes the allocation). (2026-09-24)
+      ADDED 2026-09-24 (review): the Either is not the only per-operation
+      allocation. `State.handleAt` allocates, per handled operation, the
+      two closures passed to `split` (they capture `s` and `k`), a
+      `Tuple2`, and the `Left` — four objects where the Scala 3 core's
+      inline split has none of them. A non-allocating form keeps the
+      casts in `Split`: `Split.isF[F](e)` plus `Split.asF`/`asG`, and the
+      loop branches with `if` — measure both before choosing.
