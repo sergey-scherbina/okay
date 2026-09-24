@@ -2347,11 +2347,16 @@ lazy val jettyVersion = "12.0.13"
  * fork with native access enabled, which JDK 24+ otherwise warns about
  * at the first restricted call.
  */
-lazy val okayRust = project
+lazy val okayRust = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
   .in(file("okay-rust"))
-  .dependsOn(okay.jvm, okaySecurityArgon2 % Test)
+  .dependsOn(okay)
   .settings(
     name := "okay-rust",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmConfigure(_.dependsOn(okaySecurityArgon2 % Test))
+  .jvmSettings(
     jdkFloor(22),
     // Chicory: a WebAssembly runtime in pure Java, and its WASI — the road
     // with no native code in the process (specs/polyglot-rust.md stage 3)
@@ -2361,7 +2366,16 @@ lazy val okayRust = project
     ),
     Test / fork := true,
     Test / javaOptions += "--enable-native-access=ALL-UNNAMED",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+  // stage 2: the crate's STATICLIB linked into a Native binary. The path is
+  // an environment variable because the library is built by cargo, not by
+  // sbt — scripts/rust-native-check.sh builds it and names it here. A full
+  // path, not `-l`: on macOS `-l` would pick the .dylib beside it. Not in
+  // the root aggregate for the same reason: the default gate has no cargo.
+  .nativeSettings(
+    nativeConfig ~= { c =>
+      c.withLinkingOptions(c.linkingOptions ++ sys.env.get("OKAY_RUST_ARGON2_LIB").toSeq)
+    },
   )
 
 lazy val okaySecurityArgon2 = project
@@ -3000,7 +3014,7 @@ lazy val root = (project in file("."))
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayR,
-    okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust,
+    okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
