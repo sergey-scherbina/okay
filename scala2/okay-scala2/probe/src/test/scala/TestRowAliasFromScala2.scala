@@ -32,6 +32,17 @@ class TestRowAliasFromScala2 extends munit.FunSuite {
     assertEquals(Eff.run(State.run(4)(Reader.run("env")(wider))), (4, 4))
   }
 
+  test("F % A is F[A]; in a row each % needs its own parentheses, because a chain is a kind error") {
+    same[State % Int, State[Int]]
+    same[State[Int], State % Int]
+    same[Int ! ((State % Int) + (Writer % String)), Int ! (State[Int] + Writer[String])]
+    val prog: Int ! (State % Int) = State.get[Int]
+    assertEquals(Eff.run(State.run(3)(prog)), (3, 3))
+    // `State % Int + Writer % String` is `((State % Int) + Writer) % String`: the outer % is handed a plain type
+    val chain = compileErrors("same[Int ! (State % Int + Writer % String), Int ! (State[Int] + Writer[String])]")
+    assert(chain.contains("State % Int + okay.scala2.Writer takes no type parameters, expected: 1"), chain)
+  }
+
   test("a program at a + row of a user effect and two built-ins, handled effect by effect") {
     val prog: String ! (Effect[Console] + State[Int] + Writer[String]) = for {
       name <- Console.send(ReadLn)

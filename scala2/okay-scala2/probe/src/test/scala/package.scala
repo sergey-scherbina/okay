@@ -14,4 +14,12 @@ import okay.scala2.Eff
 package object scala2probe {
   type +[R, S] = R with S
   type ![A, R] = Eff[R, A]
+
+  /** `State % Int` is `State[Int]`, as in okay (stage 18). An alias may
+   * TAKE a type constructor and answer a plain type; what Scala 2
+   * refuses is an alias that ANSWERS one (stage 16). In a row it needs
+   * its own parentheses — `(State % Int) + (Writer % String)` — for
+   * the one-precedence reason above, so the rows here stay
+   * `State[Int] + Writer[String]`. */
+  type %[F[_], A] = F[A]
 }

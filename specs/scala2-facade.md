@@ -655,6 +655,32 @@ sentence about it is checked.
       written `A ! R` (a quoted library signature, a quoted compiler
       message, and the `Eff[-R, A]` declaration itself stay)
 
+## Stage 18 — `F % A`, the application alias (2026-09-24)
+Operator: "можешь определить комбинатор применения тип %?". Beside
+`+` and `!`:
+
+```
+type %[F[_], A] = F[A]
+```
+
+An alias may TAKE a type constructor and answer a plain type; what
+stage 16 measured Scala 2 refusing is an alias that ANSWERS one. So
+`State % Int` is `State[Int]`, `=:=` both ways, and a program typed
+`Int ! (State % Int)` runs. In a ROW the one-precedence rule of stage
+17 bites again: `State % Int + Writer % String` is
+`((State % Int) + Writer) % String`, and scalac refuses the outer
+`%`: "`State % Int + okay.scala2.Writer` takes no type parameters,
+expected: 1" (pinned by `compileErrors`) — so each `%`
+needs its own parentheses, `(State % Int) + (Writer % String)`. That
+is longer than `State[Int] + Writer[String]`, so the probe and the
+docs keep the bracket form and the guide says why.
+
+- [x] the alias in `package object scala2probe`; `=:=` both ways; a
+      program typed with it runs
+- [x] the chain `State % Int + Writer % String` is refused (kind), and
+      the parenthesised row equals the bracket row
+- [x] docs/scala2.md section 3 names it and says why rows stay `State[Int]`
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
@@ -977,3 +1003,9 @@ sentence about it is checked.
   tests. The precedence claim was refuted by the first compile and is
   pinned the other way (see the stage): the parentheses okay writes in
   Scala 3 are the ones Scala 2 needs.
+
+- STAGE 18 LANDED (2026-09-24, scala2-percent-alias). `type %[F[_], A]
+  = F[A]` beside `+` and `!`; `State % Int =:= State[Int]` both ways,
+  `Int ! (State % Int)` runs, and the unparenthesised chain is refused
+  with the message quoted in the stage. Rows stay `State[Int] +
+  Writer[String]`.

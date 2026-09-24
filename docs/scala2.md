@@ -203,6 +203,11 @@ type +[R, S] = R with S
 type ![A, R] = Eff[R, A]
 ```
 
+A third one, `type %[F[_], A] = F[A]`, gives okay's `State % Int` for
+`State[Int]`; it works on its own, but in a row every `%` needs its
+own parentheses, `(State % Int) + (Writer % String)`, for the
+precedence reason below — so this guide writes `State[Int]`.
+
 They are aliases and nothing more: `R + S` IS `R with S` and `A ! R`
 IS `Eff[R, A]`, the same types, so a chain
 `Reader[Config] + State[Int] + Throws[String]` is the plain
