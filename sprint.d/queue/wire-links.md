@@ -1,0 +1,1 @@
+- [ ] wire-links — stage 1 of specs/polyglot-one-wire.md: WireLink behind the foreign engine (pipes, TCP), Go Worker.Handle + ServeTCP, a conformance suite over (Go, pipes) and (Go, TCP).
