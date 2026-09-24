@@ -1,6 +1,7 @@
-package scala2probe
+package simpletest
 
-import okay.scala2._
+import okay2._
+import okay2.simple.{Effect, Handler, Op}
 
 import scala.collection.mutable.ListBuffer
 

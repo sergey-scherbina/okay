@@ -319,7 +319,7 @@ intersection; the Scala 3 source writes `&`.
 `abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]])` with
 `send[A](op: F[A] with Op[A]): A ! Effect[F]`,
 `handle[R, A, B](e: A ! (Effect[F] with R))(ret: A => B ! R)(h: Handler[F, R, B]): B ! R`,
-`run[A, B](e: A ! Effect[F])(ret: A => B ! Pure)(h: Handler[F, Any, B]): B`;
+`run[A, B](e: A ! Effect[F])(ret: A => B ! Pure)(h: Handler[F, Pure, B]): B`;
 `trait Handler[F[_], R, B] { def apply[X](op: F[X], k: X => B ! R): B ! R }`.
 
 **`Cont[A, S, R]`** — `map[B](f: A => B): Cont[B, S, R]`,

@@ -50,7 +50,7 @@ class TestEffects extends munit.FunSuite {
       }
 
     def run(b: Boolean): Int =
-      !.handle[Int, Int, Throws[String], Produce](calc(b))(a => pure(a))(new Interpr[Throws[String], Int ! Produce] {
+      !.handle[Throws[String], Produce](calc(b))(a => pure(a))(new Interpr[Throws[String], Int ! Produce] {
         def apply[X](e: Throws.Op[String, X]): Cont[X, Int ! Produce, Int ! Produce] =
           shift[X, Int ! Produce, Int ! Produce](_ => pure(-1))
       }).runWith
@@ -66,7 +66,7 @@ class TestEffects extends munit.FunSuite {
     type F = Op + Produce
     val p: Int ! F = Op.op(1).at[F].flatMap(x => produce(x * 10).at[F].map(_ + 1))
     val both: List[Int] ! Produce =
-      !.handle[Int, List[Int], Op, Produce](p)(a => pure(List(a)))(new Interpr[Op, List[Int] ! Produce] {
+      !.handle[Op, Produce](p)(a => pure(List(a)))(new Interpr[Op, List[Int] ! Produce] {
         def apply[X](e: Op.Val[X]): Cont[X, List[Int] ! Produce, List[Int] ! Produce] =
           shift[X, List[Int] ! Produce, List[Int] ! Produce](k => k(e.a).flatMap(a => k(e.a).map(b => a ++ b)))
       })
@@ -92,7 +92,7 @@ class TestEffects extends munit.FunSuite {
       m.flatMap(x => Op.op(x + 1).at[FG])
     }
     val handled: Int ! Produce =
-      !.handle[Int, Int, Op, Produce](prog)(a => pure(a))(new Interpr[Op, Int ! Produce] {
+      !.handle[Op, Produce](prog)(a => pure(a))(new Interpr[Op, Int ! Produce] {
         def apply[X](o: Op.Val[X]): Cont[X, Int ! Produce, Int ! Produce] = Cont.Pure(o.a)
       })
     assertEquals(handled.runWith, n)
@@ -141,7 +141,7 @@ class TestEffects extends munit.FunSuite {
 
   test("Handler.union: a row run by one handler per effect") {
     type Row = Op + Produce
-    implicit val opH: Handler[Op] = new Handler.Of[Op] { def handle[A](a: Op.Val[A]): A = a.a }
+    implicit val opH: Handler[Op] = new Handler[Op] { def handle[A](a: Op.Val[A]): A = a.a }
     implicit val rowH: Handler[Row] = Handler.union[Op, Produce]
     val p: Int ! Row = Op.op(1).at[Row].flatMap(x => produce(x + 1).at[Row])
     assertEquals(p.runWith, 2)

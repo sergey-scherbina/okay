@@ -123,7 +123,23 @@ object Effects {
    * handler that really captures needs the rest of the program
    * reified, under a `Delay` so that deep programs trampoline.
    */
-  def handle[A, B, F <: Row, G <: Row](m: Free[F with G, A])(ret: A => B ! G)(h: F !> (B ! G))(implicit T: TypeableK[F], @unused d: Distinct[F with G]): B ! G = {
+  def handle[F <: Row, G <: Row]: Handling[F, G] = new Handling[F, G](true)
+
+  /**
+   * `handle`'s second half: okay's `Effects[Free].handle[F, G][A, B](m)
+   * (ret)(h)` names the effect and the rest FIRST and lets the program
+   * and the answer be inferred. Scala 2 has no second type-parameter
+   * clause, so `handle[F, G]` answers this, and its `apply` takes the
+   * rest: `!.handle[Throws[String], Produce](prog)(ret)(h)`. A value
+   * class, so nothing is allocated for the split.
+   */
+  final class Handling[F <: Row, G <: Row](private val u: Boolean) extends AnyVal {
+    def apply[A, B](m: Free[F with G, A])(ret: A => B ! G)(h: F !> (B ! G))(implicit T: TypeableK[F], d: Distinct[F with G]): B ! G =
+      handleWith[A, B, F, G](m)(ret)(h)(T, d)
+  }
+
+  /** the handler loop itself, every type named */
+  def handleWith[A, B, F <: Row, G <: Row](m: Free[F with G, A])(ret: A => B ! G)(h: F !> (B ! G))(implicit T: TypeableK[F], @unused d: Distinct[F with G]): B ! G = {
     def capture(c: Cont[Any, B ! G, B ! G], k: Any => A ! (F + G)): B ! G =
       c / (x => Free.delay(() => _loop(k(x))))
 

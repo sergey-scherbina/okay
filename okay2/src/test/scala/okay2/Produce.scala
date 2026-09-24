@@ -10,7 +10,7 @@ object Produce {
   implicit val effect: Effect[Produce] = Effect.of[Produce]
 
   /** each operation answers with its own value */
-  implicit val handler: Handler[Produce] = new Handler.Of[Produce] {
+  implicit val handler: Handler[Produce] = new Handler[Produce] {
     def handle[A](a: Emit[A]): A = a.a
   }
 
@@ -28,7 +28,7 @@ object Later {
 
   implicit val effect: Effect[Later] = Effect.of[Later]
 
-  implicit val handler: Handler[Later] = new Handler.Of[Later] {
+  implicit val handler: Handler[Later] = new Handler[Later] {
     def handle[A](a: Run[A]): A = a.f()
   }
 

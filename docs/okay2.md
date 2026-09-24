@@ -161,7 +161,7 @@ object Produce {
   implicit val effect: Effect[Produce] = Effect.of[Produce]
 
   /** each operation answers with its own value */
-  implicit val handler: Handler[Produce] = new Handler.Of[Produce] {
+  implicit val handler: Handler[Produce] = new Handler[Produce] {
     def handle[A](a: Emit[A]): A = a.a
   }
 
@@ -185,7 +185,7 @@ one for free, because the operations are already data:
 
 ```scala
     type Row = Op + Produce
-    implicit val opH: Handler[Op] = new Handler.Of[Op] { def handle[A](a: Op.Val[A]): A = a.a }
+    implicit val opH: Handler[Op] = new Handler[Op] { def handle[A](a: Op.Val[A]): A = a.a }
     implicit val rowH: Handler[Row] = Handler.union[Op, Produce]
     val p: Int ! Row = Op.op(1).at[Row].flatMap(x => produce(x + 1).at[Row])
     assertEquals(p.runWith, 2)
@@ -215,6 +215,43 @@ all pass:
 ```
 
 Where a test is finer than its class, `Distinct.unchecked` says so.
+
+### The simple form, as okay-scala2 writes it
+
+Optional, beside the form above: `okay2.simple` has the facade's three
+names, so a file written for `okay-scala2` compiles here with its
+imports changed — `import okay2._` and
+`import okay2.simple.{Effect, Handler, Op}` (selective, because okay2
+has its own `Effect` and `Handler`, and an explicit import outranks the
+wildcard). The operations extend `Op`, the object IS the effect, and
+one handler shape does everything — each operation with the rest of the
+program as a function:
+
+```scala
+  def console[R, B](out: ListBuffer[String], input: String): Handler[Console, R, B] =
+    new Handler[Console, R, B] {
+      def apply[X](op: Console[X], k: X => B ! R): B ! R = op match {
+        case PrintLn(s) => out += s; k(())
+        case ReadLn => k(input)
+      }
+    }
+```
+
+```scala
+    val prog: String ! (Effect[Console] + State[Int]) = for {
+      name <- Console.send(ReadLn)
+      _ <- State.set(name.length)
+      _ <- Console.send(PrintLn("hi " + name))
+    } yield name
+    val out = ListBuffer.empty[String]
+    val handled = Console.handle(prog)(a => pure(a))(console(out, "ada"))
+    assertEquals(!.run(State.handle(0)(handled)), (3, "ada"))
+```
+
+That handler resumes once here; it may resume many times or never, so
+it is okay's `Interpr` with the `shift` done for you. The suite is the
+facade's own `TestOwnEffectFromScala2`, copied with only its package and
+imports changed.
 
 ## 4. Handlers, in any order
 
@@ -344,6 +381,38 @@ program more than once:
 ```scala
     assertEquals(both.runWith, List(11, 11))
 ```
+
+### The four handler shapes, spelled as okay spells them
+
+okay2 has okay's four ways to give an effect its meaning, under okay's
+names and in okay's argument order. The one thing Scala 2 cannot write
+is a polymorphic function literal (`[X] => (e: F[X]) => …`), so where
+okay passes one, okay2 passes an anonymous class with the same method:
+
+| okay (Scala 3) | okay2 (Scala 2) | what it may do |
+|---|---|---|
+| `new Handler[F] { def handle[A](a: F[A]): A }` | `new Handler[F] { def handle[A](a: F.Op[A]): A }` | answer with a value |
+| `!.relay(p)(ret)([X, Y] => e => …)` | `!.relay(p)(ret)(new Relay[F] { def apply[X, Y](e) = … })` | resume exactly once |
+| `Effects[Free].handle[F, G](p)(ret)([X] => e => shift(…))` | `!.handle[F, G](p)(ret)(new Interpr[F, S] { def apply[X](e) = shift(…) })` | abort, resume many times |
+| `!.translate(p)([X] => e => …)` | `!.translate(p)(new Interpret[F, G] { def apply[X](e) = … })` | answer with more program |
+
+```scala
+      !.handle[Throws[String], Produce](calc(b))(a => pure(a))(new Interpr[Throws[String], Int ! Produce] {
+        def apply[X](e: Throws.Op[String, X]): Cont[X, Int ! Produce, Int ! Produce] =
+          shift[X, Int ! Produce, Int ! Produce](_ => pure(-1))
+      }).runWith
+```
+
+```scala
+    val handled: Int ! Produce = !.relay[Int, Int, Op, Produce](prog)(a => pure(a))(new Relay[Op] {
+      def apply[X, Y](o: Op.Val[X]): X /> Y = Cont.Pure(o.a)
+    })
+```
+
+`!.handle[F, G]` names the effect and the rest first and infers the
+program and the answer, as okay's two type-parameter clauses do: its
+first half answers a value class whose `apply` takes the rest, so
+nothing is allocated for the split.
 
 ## 8. What is different from Scala 3, and why
 

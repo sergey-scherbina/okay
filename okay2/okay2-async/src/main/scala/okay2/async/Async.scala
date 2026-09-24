@@ -165,7 +165,7 @@ object Async {
 
   /** execute each operation on the current (ideally virtual) thread;
    * an Await parks it until the callback fires */
-  implicit def handler(implicit cb: CanBlock): Handler[Async] = new Handler.Of[Async] {
+  implicit def handler(implicit cb: CanBlock): Handler[Async] = new Handler[Async] {
     def handle[A](e: Op[A]): A = e match {
       case Run(f) => f()
       case Await(reg) => cb.block[Either[Throwable, A]](reg).fold(e => throw e, identity)

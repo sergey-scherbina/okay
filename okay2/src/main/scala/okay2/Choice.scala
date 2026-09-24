@@ -47,7 +47,7 @@ object Choose {
   def runChoiceAt[A, F <: Row](a: Free[Choose with F, A]): Seq[A] ! F =
     // `Choose` takes no type parameter, so the row cannot hold a second
     // signature of its class: this split needs no Distinct check
-    Effects.handle[A, Seq[A], Choose, F](a)(x => pure[F, Seq[A]](Seq(x)))(
+    Effects.handle[Choose, F](a)(x => pure[F, Seq[A]](Seq(x)))(
       new Interpr[Choose, Seq[A] ! F] {
         def apply[X](c: Op[X]): Cont[X, Seq[A] ! F, Seq[A] ! F] =
           shift[X, Seq[A] ! F, Seq[A] ! F] { k =>

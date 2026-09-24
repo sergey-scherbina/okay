@@ -55,10 +55,10 @@ object TestDistinct {
     implicit def effect[T]: Effect[Ask[T]] = Effect.of[Ask[T]]
     def ask[T]: T ! Ask[T] = Free.inject[Ask[T], T](Get[T]())
   }
-  implicit val intAsk: Handler[Ask[Int]] = new Handler.Of[Ask[Int]] {
+  implicit val intAsk: Handler[Ask[Int]] = new Handler[Ask[Int]] {
     def handle[A](a: Ask.Get[Int]): A = (1: Any).asInstanceOf[A]
   }
-  implicit val stringAsk: Handler[Ask[String]] = new Handler.Of[Ask[String]] {
+  implicit val stringAsk: Handler[Ask[String]] = new Handler[Ask[String]] {
     def handle[A](a: Ask.Get[String]): A = ("s": Any).asInstanceOf[A]
   }
   val twoStates: Int ! (State[Int] + State[String]) = State.get[Int].flatMap(n => State.get[String].map(_.length + n))

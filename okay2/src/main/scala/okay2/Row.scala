@@ -99,16 +99,36 @@ object Split {
 /**
  * A comonadic handler interprets each operation by its own value. It
  * takes the operation as `Any` because a row's `#Op` is not a type to
- * read at (see Row); a single signature's handler is written typed, by
- * `Handler.Of`.
+ * read at (see Row); a single signature's handler is written typed:
+ * `new Handler[F] { def handle[A](a: F#Op[A]): A }`, as okay writes
+ * it. `Handler.Of` is the same class under its stage-8 name.
  *
  * INVARIANT, on purpose: covariant, `Handler[F + G] <: Handler[G]`, and
  * the documented `implicit val h: Handler[F + G] = Handler.union[F, G]`
  * resolved its own `Handler[G]` argument to `h` itself (measured,
  * TestEffects, stage 8).
  */
-@implicitNotFound("no Handler[${F}].\nA Handler answers each operation with a plain value:\n  new Handler.Of[YourOp] { def handle[A](a: YourOp#Op[A]): A = ... }\nFor a ROW, build the union from the parts: implicit val h: Handler[F + G] = Handler.union[F, G]\n(each part needs its own Handler in scope first).")
-trait Handler[F <: Row] { def handleOp[A](op: Any): A }
+@implicitNotFound("no Handler[${F}].\nA Handler answers each operation with a plain value:\n  new Handler[YourOp] { def handle[A](a: YourOp#Op[A]): A = ... }\nFor a ROW, build the union from the parts: implicit val h: Handler[F + G] = Handler.union[F, G]\n(each part needs its own Handler in scope first).")
+trait Handler[F <: Row] {
+  /** one operation of the signature F, typed — what a user writes, as
+   * okay's `new Handler[F] { def handle[A](a: F[A]): A }` */
+  def handle[A](a: In[A]): A
+
+  /** `F#Op`, named once here: `handle` is declared at this name so a
+   * union's handler can implement it — `(F + G)#Op` is not a type Scala
+   * 2 lets a subclass write (a selection from a volatile type). For a
+   * signature it IS `F#Op`, so `def handle[A](a: Console.Op[A])`
+   * implements it as written */
+  type In[A] = F#Op[A]
+
+  /**
+   * the same operation as the runner holds it, `Any` (a row's `#Op` is
+   * not a type to read at). The default narrows to `F#Op` — sound
+   * because a Handler[F] is only ever run on a program whose row is F,
+   * or given F's operations by a union's split; a union overrides it.
+   */
+  def handleOp[A](op: Any): A = handle(op.asInstanceOf[In[A]])
+}
 
 object Handler {
   /**
@@ -117,14 +137,12 @@ object Handler {
    * (or a union whose split sent it F's operations): the row admits no
    * other operation to it.
    */
-  abstract class Of[F <: Row] extends Handler[F] {
-    def handle[A](a: F#Op[A]): A
-    final def handleOp[A](op: Any): A = handle(op.asInstanceOf[F#Op[A]])
-  }
+  abstract class Of[F <: Row] extends Handler[F]
 
   /** Pure has no operations left to handle */
   implicit val pure: Handler[Pure] = new Handler[Pure] {
-    def handleOp[A](op: Any): A = throw new IllegalStateException("an operation in a Pure program: " + op)
+    def handle[A](a: In[A]): A = handleOp[A](a)
+    override def handleOp[A](op: Any): A = throw new IllegalStateException("an operation in a Pure program: " + op)
   }
 
   /**
@@ -139,7 +157,10 @@ object Handler {
   def union[F <: Row, G <: Row](implicit T: TypeableK[F], hf: Handler[F], hg: Handler[G], d: Distinct[F + G]): Handler[F + G] = {
     val _ = d
     new Handler[F + G] {
-      def handleOp[A](op: Any): A = if (T.test(op)) hf.handleOp[A](op) else hg.handleOp[A](op)
+      // a row's `#Op` is its last parent's, so the typed door forwards
+      // to the untyped one, which splits by class
+      def handle[A](a: In[A]): A = handleOp[A](a)
+      override def handleOp[A](op: Any): A = if (T.test(op)) hf.handleOp[A](op) else hg.handleOp[A](op)
     }
   }
 }

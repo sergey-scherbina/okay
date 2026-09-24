@@ -26,7 +26,7 @@ object Throws {
 
   /** `runEither` at the handler's own shape */
   def runEitherAt[A, E, F <: Row](a: Free[Throws[E] with F, A])(implicit d: Distinct[Throws[E] with F]): Either[E, A] ! F =
-    Effects.handle[A, Either[E, A], Throws[E], F](a)(a => pure[F, Either[E, A]](Right(a)))(
+    Effects.handle[Throws[E], F](a)(a => pure[F, Either[E, A]](Right(a)))(
       new Interpr[Throws[E], Either[E, A] ! F] {
         def apply[X](e: Op[E, X]): Cont[X, Either[E, A] ! F, Either[E, A] ! F] = e match {
           case Raise(err) => shift[X, Either[E, A] ! F, Either[E, A] ! F](_ => pure[F, Either[E, A]](Left(err)))
@@ -43,7 +43,7 @@ object Throws {
 
   /** `runUnsafe` at the handler's own shape */
   def runUnsafeAt[A, E <: Throwable, F <: Row](a: Free[Throws[E] with F, A])(implicit d: Distinct[Throws[E] with F]): A ! F =
-    Effects.handle[A, A, Throws[E], F](a)(a => pure[F, A](a))(
+    Effects.handle[Throws[E], F](a)(a => pure[F, A](a))(
       new Interpr[Throws[E], A ! F] {
         def apply[X](e: Op[E, X]): Cont[X, A ! F, A ! F] = e match {
           case Raise(err) => shift[X, A ! F, A ! F](_ => throw err)

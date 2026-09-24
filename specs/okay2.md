@@ -932,6 +932,47 @@ is of an unparameterised signature (Choose's, Gen's Writer-against-Stop).
 - [x] admitted: distinct classes, a repeated member, `Pure`, an abstract
       part; a real union still builds
 
+## Stage 11 — the simple form of an effect, and handlers spelled as okay's (2026-09-24)
+Operator: "add to okay2, optionally, what the facade has — it is
+convenient — and can the handlers of okay2 and okay be made alike?"
+
+- `okay2.simple`: the facade's `Op`, `Effect[F[_]]` (the object IS the
+  effect and the row, `send`, `handle`, `run`) and `Handler[F[_], R, B]`
+  (each operation with the rest of the program as a function). The loop
+  is `Effects.handleWith`'s shape with no `Cont`: the continuation handed
+  over is the rest under a `Delay`. One cast, the operation narrowed to
+  `F[X]` after its class test. The facade's `TestOwnEffectFromScala2`
+  runs here copied with only its package and imports changed.
+- Handlers as okay writes them: `new Handler[F] { def handle[A](a:
+  F.Op[A]): A }` implements `Handler` directly (`Handler.Of` stays as
+  the stage-8 name); `!.handle[F, G](m)(ret)(h)` in okay's order, the
+  program and answer inferred.
+- `Free[-R, +A]` no longer bounds its row by `Row` (nor does `!`): a
+  handler written for "any rest of the row", `def console[R, B]`, needs
+  no bound, as on the facade. `Free.inject` and every handler keep
+  `<: Row`; the bound was never read by the tree.
+
+### Behavior (stage 11)
+- [x] the facade's own-effect suite on okay2: a resumptive effect beside
+      State, a multi-shot handler, an aborting one, two user effects in
+      one row each handled by its own object, an unhandled effect refused
+- [x] every okay2 handler written `new Handler[F]`; `!.handle[F, G]` at
+      its six call sites
+- [x] 336 tests green, `-Xlint -Werror`
+
+### Decisions
+- `Handler.handle` is declared at `type In[A] = F#Op[A]`, not at
+  `F#Op[A]`: a union's handler must implement it too, and `(F + G)#Op`
+  is refused by scalac 2 ("illegal type selection from volatile type");
+  for a signature `In[A]` IS `F#Op[A]`, so a user's `def handle[A](a:
+  Console.Op[A])` implements it as written.
+- `okay2.simple` is a separate package imported SELECTIVELY: okay2's own
+  `Effect` and `Handler` are okay's (the class test, the value-answering
+  handler), and renaming them would move okay2 away from okay.
+- The empty row is written `Pure` in the facade's handlers too
+  (`Handler[Choose, Pure, …]`): `Pure` is `Any` there and `Row` here, and
+  the two sources agree only when they name it.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

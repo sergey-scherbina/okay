@@ -8,7 +8,7 @@ import scala.annotation.tailrec
  * function. The same four nodes as the Scala 3 core's `enum Free`,
  * and the same rotation; also the tree under `Cont`.
  */
-sealed abstract class Free[-R <: Row, +A] {
+sealed abstract class Free[-R, +A] {
   /** sequencing is a data node: nothing runs until an interpreter walks the tree.
    * The continuation may need MORE than this program: the result needs both
    * (R1 <: R), and scalac finds that row itself */
@@ -33,25 +33,25 @@ sealed abstract class Free[-R <: Row, +A] {
 
 object Free {
   /** a finished computation */
-  final case class Return[R <: Row, +A](a: A) extends Free[R, A]
+  final case class Return[R, +A](a: A) extends Free[R, A]
 
   /** a single operation of the row R, held as `Any`: a row's `#Op` is
    * not a type to read at (Row.scala), so the typed view comes from
    * `Split`, at one signature, after its class test */
-  final case class Inject[R <: Row, +A](a: Any) extends Free[R, A]
+  final case class Inject[R, +A](a: Any) extends Free[R, A]
 
   /** sequencing: run a, then feed its value to the plain-function continuation f */
-  final case class Bind[R <: Row, X, +A](a: Free[R, X], f: X => Free[R, A]) extends Free[R, A]
+  final case class Bind[R, X, +A](a: Free[R, X], f: X => Free[R, A]) extends Free[R, A]
 
   /** a deferred subprogram: forced by the interpreter's loop and
    * continued AS IS — see `delay`; `defer` is this under a `Bind` */
-  final case class Delay[R <: Row, +A](thunk: () => Free[R, A]) extends Free[R, A]
+  final case class Delay[R, +A](thunk: () => Free[R, A]) extends Free[R, A]
 
   /** what `fold` hands its handler: an operation with its continuation */
-  trait Step[R <: Row, A, B] { def apply[X](e: Any, k: X => Free[R, A]): B }
+  trait Step[R, A, B] { def apply[X](e: Any, k: X => Free[R, A]): B }
 
   /** a value as a tree */
-  def pure[R <: Row, A](a: A): Free[R, A] = Return(a)
+  def pure[R, A](a: A): Free[R, A] = Return(a)
 
   /** an operation as a tree */
   def inject[R <: Row, A](a: R#Op[A]): Free[R, A] = Inject[R, A](a)
@@ -60,13 +60,13 @@ object Free {
    * construction, only when an interpreter's loop reaches this node —
    * what lets two mutually-recursive functions returning `A ! R` call
    * each other in tail position without a JVM frame per call */
-  def defer[R <: Row, A, B](thunk: () => Free[R, A])(f: A => Free[R, B]): Free[R, B] =
+  def defer[R, A, B](thunk: () => Free[R, A])(f: A => Free[R, B]): Free[R, B] =
     Bind(Delay(thunk), f)
 
   /** a deferred call with NOTHING to do afterwards — `!.tailcall`'s
    * node. Not `defer(thunk)(pure)`: that would push a `.flatMap(pure)`
    * tail down every bind of the deferred subprogram (delay-node) */
-  def delay[R <: Row, A](thunk: () => Free[R, A]): Free[R, A] = Delay(thunk)
+  def delay[R, A](thunk: () => Free[R, A]): Free[R, A] = Delay(thunk)
 
   /**
    * THE rotation: normalize to a head form — `Return(a)`, `Inject(e)`
@@ -77,7 +77,7 @@ object Free {
    * a GADT match ("it changes type of 'this' on a polymorphic
    * recursive call").
    */
-  @tailrec def resume[R <: Row, A](p: Free[R, A]): Free[R, A] = p match {
+  @tailrec def resume[R, A](p: Free[R, A]): Free[R, A] = p match {
     case Bind(Bind(a, f), g) => resume(Bind(a, (x: Any) => f(x).flatMap(g)))
     case Bind(Return(a), f) => resume(f(a))
     // the deferred subprogram is forced HERE, in the loop, and its own

@@ -36,7 +36,7 @@ package object okay2 extends Provides {
    * Scala 2 gives every infix TYPE operator one precedence, left-
    * associative (measured: `S ! State % S` is `(S ! State) % S`), so a
    * row is parenthesised: `Int ! (State % Int + Console)`. */
-  type ![A, R <: Row] = Free[R, A]
+  type ![A, R] = Free[R, A]
 
   /** the union of two rows — their INTERSECTION as requirements: a
    * program in `F + G` may perform the operations of both, and needs a
@@ -180,7 +180,8 @@ package object okay2 extends Provides {
     /** every handler can be a recording one: the operations are
      * already data, so recording is a decorator */
     def tracing(log: Any => Unit): Handler[F] = new Handler[F] {
-      def handleOp[A](op: Any): A = { log(op); h.handleOp[A](op) }
+      def handle[A](a: In[A]): A = handleOp[A](a)
+      override def handleOp[A](op: Any): A = { log(op); h.handleOp[A](op) }
     }
   }
 }
