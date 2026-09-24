@@ -1,4 +1,0 @@
-slug: okay2-interop
-who: claude (session 01XyJb5e)
-what: okay2-cats, okay2-fs2, okay2-zio — interop subprojects inside the separate okay2/ build (fold a program into IO/ZIO/fs2, an effect that suspends one), with tests and docs
-since: 2026-09-24T05:43:08Z
