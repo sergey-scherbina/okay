@@ -1,0 +1,6 @@
+feature/okay2-refs-prob 2026-09-24T12:37:19Z
+agent: claude-code
+heartbeat: 2026-09-24T12:37:19Z
+status: in-progress
+done-so-far: claimed
+next: okay2 Refs (cells made at run time) and Prob (Dist, dist/uniform/observe, runExact multi-shot, sampleOnce/runRejection) with the Scala 3 suites; spec stage 12, docs, changelog; backlog okay2-stage2 re-opened by the operator
