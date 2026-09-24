@@ -1,0 +1,6 @@
+feature/okay2-producer-generate 2026-09-24T14:15:55Z
+agent: claude-code
+heartbeat: 2026-09-24T14:15:55Z
+status: in-progress
+done-so-far: claimed
+next: Produce promoted from a test helper to okay2 main; Producer (fold/foldUntil/concat/each/log, Stream instances); Generate (Loop/take/loop/Put/generate/generateLazy/nats/fibs); tests; spec stage 18
