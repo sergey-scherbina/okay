@@ -27,7 +27,8 @@ Contents:
 9. [Interop: cats, fs2, zio](#9-interop-cats-fs2-zio)
 10. [Streams: chunks, stages, pipelines, windows](#10-streams-chunks-stages-pipelines-windows)
 11. [Async and the JVM platform](#11-async-and-the-jvm-platform)
-12. [Literature](#12-literature)
+12. [Channels and sources](#12-channels-and-sources)
+13. [Literature](#13-literature)
 
 ## 1. The build
 
@@ -561,7 +562,63 @@ deques, the helper rule, the stuck-check), `threads`. `Interruptible`
 lifts blocking code as an operation whose cancel interrupts it,
 whatever the scheduler.
 
-## 12. Literature
+## 12. Channels and sources
+
+A channel is a queue between fibers, the primitive of CONCURRENT
+streams; nobody waits in a thread — a receiver that finds it empty
+leaves a callback, a sender that finds it full leaves the element and
+a callback, and `send`/`receive` are Async programs. `StmChannel`
+keeps its whole state in one immutable value behind one CAS, which is
+what makes the close contract hold by construction: acceptance is
+final, and the end comes after the buffer.
+
+```scala
+    val c = Channel[Int]()
+    assert(c.offer(1)); assert(c.offer(2)); c.close()
+    assertEquals(c.toLazyList.toList, List(1, 2))
+    assertEquals(c.receiveBlocking(), None)
+```
+
+```scala
+    val c = Channel[Int](capacity = 1)
+    assertEquals(wait1(Async.runAsync(c.send(1))), true)
+    val second = Async.runAsync(c.send(2))
+    Thread.sleep(20)
+    assert(!second.isCompleted, "a send into a full channel completed without room")
+    assertEquals(c.receiveBlocking(), Some(1))
+    assertEquals(wait1(second), true)
+```
+
+A `Source[W]` is a program that tells its elements, performing Async
+between them. `merge` joins two by READINESS — a fiber per source
+feeds one channel, each side keeps its own order, the fibers start at
+the first pull, and the merge is bounded by default. Scala 2 has no
+union type, so the merged element type is the common supertype
+(`merge[Any]`), or `either` keeps the side as data:
+
+```scala
+    val merged: Source[Any] = ticks(List(1, 3, 5)).merge[Any](ticks(List("a", "b")))
+    val got = merged.toLazyList.toList
+    assertEquals(got.collect { case i: Int => i }, List(1, 3, 5))
+    assertEquals(got.collect { case s: String => s }, List("a", "b"))
+```
+
+`chunked = true` trades readiness for throughput (one channel
+transaction per 16 elements) and `flushAfter` bounds how long a
+partial chunk may wait; `Channel.buffer` runs a producer ahead of
+its consumer; and the terminals are programs, not parked values:
+
+```scala
+    val s = Source.range(0L, 100L)
+    assertEquals(s.runCollect.runWith, (0L until 100L).toVector)
+```
+
+The Scala 3 core's default channel is a ring buffer with termination
+travelling as a mark (`SentinelChannel` over `Growing`/`Ring`/
+`Segments`); those mechanisms are a later stage here, and
+`Channel.apply` is the reference `StmChannel`.
+
+## 13. Literature
 
 - Oleg Kiselyov and Hiromi Ishii, "Freer Monads, More Extensible
   Effects" (Haskell Symposium 2015) — the tree, the relay handler,

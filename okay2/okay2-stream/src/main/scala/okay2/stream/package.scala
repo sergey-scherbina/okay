@@ -29,4 +29,9 @@ package object stream {
   /** a pipeline stage: a transducer as a program — it awaits I and
    * tells O, state is just its recursion parameters */
   type Stage[I, O, A] = A ! (Take[I] + Writer[O])
+
+  /** an asynchronous SOURCE: a program that tells its elements as it
+   * goes, performing Async between them — the shape every streaming
+   * seam has, and by Writer's instance an ordinary stream in Async */
+  type Source[W] = Unit ! (Writer[W] + okay2.async.Async)
 }

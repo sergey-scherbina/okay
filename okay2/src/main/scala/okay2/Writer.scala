@@ -161,6 +161,31 @@ object Writer {
   def map[W, V, A, R <: Row](a: A ! R)(f: W => V)(implicit rm: Remove[Writer[W], R]): A ! (Writer[V] + rm.Out) =
     mapAt[W, V, A, rm.Out](rm.split(a))(f)
 
+  /**
+   * ONE TOLD VALUE BECOMES MANY — `map`'s one-to-many sibling, and the
+   * road `unchunked` takes: the program is walked ONCE and each element
+   * re-told directly, so no element crosses a coroutine boundary. `f`
+   * may return any number of values, including none — an empty result
+   * drops the told value, which makes this a filter as well.
+   */
+  def expand[W, V, A, G <: Row](a: A ! (Writer[W] + G))(f: W => IndexedSeq[V]): A ! (Writer[V] + G) = {
+    def tellAll(vs: IndexedSeq[V], i: Int): Unit ! (Writer[V] + G) =
+      if (i >= vs.length) Return(())
+      else tell(vs(i)).at[Writer[V] + G].flatMap(_ => tellAll(vs, i + 1))
+
+    Free.resume(a) match {
+      case Return(x) => Return(x)
+      case Inject(e) => expand[W, V, A, G](Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))(f)
+      case Bind(Inject(e), k) =>
+        split[Writer[W], G, Any, A ! (Writer[V] + G)](e) {
+          case Say(w) => tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f))
+        } { g =>
+          Free.inject[G, Any](g).at[Writer[V] + G].flatMap(x => expand[W, V, A, G](k(x))(f))
+        }
+      case other => throw new IllegalStateException("resume left a non-head form: " + other)
+    }
+  }
+
   /** `map` at the handler's own shape */
   def mapAt[W, V, A, G <: Row](a: A ! (Writer[W] + G))(f: W => V): A ! (Writer[V] + G) =
     Free.resume(a) match {

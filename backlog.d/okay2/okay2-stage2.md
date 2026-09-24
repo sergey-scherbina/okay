@@ -1,8 +1,7 @@
 - [ ] okay2-stage2 — the rest of the core, one stage per file. okay2-async
-      and okay2-platform LANDED 2026-09-24 (stage 4). NEXT: okay-stream's
-      asynchronous layer (Channel, Source.merge, Fifo/Ring/Buffer/Queues,
-      the adaptive and sentinel channels, ParallelChunks, Bulk/Tables) on
-      top of them. Then the rest, in order of use: Choice/Logic (`runSeq`, the CanFail witness for `if`
+      and okay2-platform LANDED 2026-09-24 (stage 4); Channel/StmChannel/
+      Drain/Source/merge/buffer LANDED the same day (stage 5). The fast
+      channels are `okay2-fast-channels`. Then the rest, in order of use: Choice/Logic (`runSeq`, the CanFail witness for `if`
       guards in a `for`), Resource, Once, Delim (multi-prompt — the
       `Prompted ?=>` scopes become an explicit scope parameter, since
       Scala 2 has no context functions; specs/okay2.md names the 79

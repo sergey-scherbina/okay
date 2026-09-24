@@ -50,7 +50,7 @@ lazy val okay2Platform: Project = (project in file("okay2-platform"))
 /** okay-stream's pure layer: chunks, Take/pipe, stages and through,
  * the pipeline as a value, lines, event-time windows */
 lazy val okay2Stream: Project = (project in file("okay2-stream"))
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async, okay2Platform % "test->test")
   .settings(
     name := "okay2-stream",
     common,

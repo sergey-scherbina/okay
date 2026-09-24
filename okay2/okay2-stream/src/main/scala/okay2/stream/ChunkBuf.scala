@@ -28,6 +28,14 @@ final class ChunkBuf[A] private (private val arr: Array[AnyRef]) {
 object ChunkBuf {
   def apply[A](size: Int): ChunkBuf[A] = new ChunkBuf[A](new Array[AnyRef](size))
 
+  /** a chunk of these elements */
+  def of[A](xs: IterableOnce[A]): Chunk[A] = {
+    val it = xs.iterator
+    val buf = scala.collection.mutable.ArrayBuffer.empty[AnyRef]
+    while (it.hasNext) buf += it.next().asInstanceOf[AnyRef]
+    ArraySeq.unsafeWrapArray(buf.toArray).asInstanceOf[Chunk[A]]
+  }
+
   /** a fresh buffer per call */
   def factory[A](size: Int): () => ChunkBuf[A] = () => apply[A](size)
 

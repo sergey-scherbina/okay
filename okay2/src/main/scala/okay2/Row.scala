@@ -44,17 +44,22 @@ sealed trait Pure extends Row { type Op[+A] = Nothing }
 sealed trait Member[F <: Row, R <: Row]
 
 object Member extends MemberLow {
+  /** a program with no operations rides into any row at all — at the
+   * TOP, so that `Pure` is answered by this rule alone: with it below
+   * `deeper`/`deeperRight`, a `Member[Pure, A + B]` had three
+   * derivations and was "ambiguous" (measured on `Source.of`) */
+  implicit def pure[R <: Row]: Member[Pure, R] = inst.asInstanceOf[Member[Pure, R]]
   /** F on the left of a union */
   implicit def left[F <: Row, G <: Row]: Member[F, F + G] = inst.asInstanceOf[Member[F, F + G]]
   /** F on the right of a union — its own rule, since `+` does not commute */
   implicit def right[F <: Row, G <: Row]: Member[G, F + G] = inst.asInstanceOf[Member[G, F + G]]
   /** F somewhere inside the left side */
-  implicit def deeper[F <: Row, G <: Row, H <: Row](implicit ev: Member[F, G]): Member[F, G + H] = {
-    val _ = ev; inst.asInstanceOf[Member[F, G + H]]
+  implicit def deeper[F <: Row, G <: Row, H <: Row](implicit ev: Member[F, G], np: NotPure[F]): Member[F, G + H] = {
+    val _ = (ev, np); inst.asInstanceOf[Member[F, G + H]]
   }
   /** F somewhere inside the right side */
-  implicit def deeperRight[F <: Row, G <: Row, H <: Row](implicit ev: Member[F, H]): Member[F, G + H] = {
-    val _ = ev; inst.asInstanceOf[Member[F, G + H]]
+  implicit def deeperRight[F <: Row, G <: Row, H <: Row](implicit ev: Member[F, H], np: NotPure[F]): Member[F, G + H] = {
+    val _ = (ev, np); inst.asInstanceOf[Member[F, G + H]]
   }
 
   /**
@@ -70,11 +75,27 @@ trait MemberLow extends MemberLowest {
   implicit def self[F <: Row]: Member[F, F] = inst.asInstanceOf[Member[F, F]]
 }
 
+/**
+ * F is not `Pure` — the side condition `deeper`/`deeperRight` need so
+ * that `Pure` has ONE derivation. Without it `Member[Pure, A + B]` had
+ * three (`pure`, `deeper` through `pure`, `deeperRight` through
+ * `pure`), two of them at one priority, and was "ambiguous"; the
+ * first cut passed its test only because `deeper`'s own inner search
+ * happened to be ambiguous and dropped it. The refusal is the usual
+ * Scala 2 shape: two instances for `Pure`, so the search for it is
+ * ambiguous and fails, one for everything else.
+ */
+sealed trait NotPure[F <: Row]
+object NotPure {
+  private val inst: NotPure[Pure] = new NotPure[Pure] {}
+  implicit def yes[F <: Row]: NotPure[F] = inst.asInstanceOf[NotPure[F]]
+  implicit def no1: NotPure[Pure] = inst
+  implicit def no2: NotPure[Pure] = inst
+}
+
 trait MemberLowest {
   /** the one instance; the witness carries no information */
   protected val inst: Member[Pure, Pure] = new Member[Pure, Pure] {}
-  /** a program with no operations rides into any row at all */
-  implicit def pure[R <: Row]: Member[Pure, R] = inst.asInstanceOf[Member[Pure, R]]
 }
 
 /**

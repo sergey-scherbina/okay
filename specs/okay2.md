@@ -444,6 +444,79 @@ the helper rule and the stuck-check, `threads`, `auto`, `platform`),
   family test covers each scheduler's basic laws, the soaks are
   backlog `okay2-scheduler-laws`.
 
+## Stage 5 — okay-stream's asynchronous layer (DONE 2026-09-24)
+"Port the async stream next" (operator). Into `okay2-stream`, which
+now depends on okay2-async (and on okay2-platform for its tests):
+
+- `Cell[S]`: one immutable value behind one CAS — `modify(f: S => (S,
+  () => R))` installs the state and runs the action after the CAS won.
+  The Scala 3 core's `TRef.modify` at one operation; the STM over
+  several cells is a later stage.
+- `Channel[A]`: the interface (sendAsync/receiveAsync/offer/close/
+  fail/failed/isClosed, the derived `send`/`receive` programs,
+  `sendBlocking` offer-first, `receiveBlocking` through a `Handoff`,
+  the batched `receiveMany`), with the close contract stated;
+  `StmChannel` (the whole state in a `Cell`, `Fifo` list/array, the
+  batched receive in ONE transaction with the chunk filled in the
+  action); `Drain` and its `Stream` in Async; `Stream[Channel, Async]`;
+  `drained`/`drainedChunks`; `Channel.apply` (= StmChannel), `merge`,
+  `mergeChunked` (a flusher fiber per source that never touches the
+  pull), `mergeSources`/`mergeSourcesChunked` (the writer instance in
+  Async under CanBlock), `buffer`, `bufferChunked`; the feeds offer
+  first and park on the one refused element, inside a program step.
+- `Source[W] = Unit ! (Writer[W] + Async)`: `of`, `apply`, `unfold`,
+  `range`, `concat`; `runCollect`, `runForeach`, `runFoldUntil` (one
+  walk each); `merge` (readiness; bounded 64 by default; `chunked`
+  and `flushAfter`), `either`, `chunked`, `unchunked`, `widen`,
+  `toLazyList`; `Chunks.merge`/`either` (a channel of chunks).
+- Into the core: `Writer.expand` (one told value becomes many — the
+  road `unchunked` takes); `Member.pure` moved to the top with a
+  `NotPure` side condition on `deeper`/`deeperRight`.
+
+### Behavior (stage 5)
+- [x] a channel is a linear async stream; send after close refused,
+      not thrown; a thousand parked receives hold no thread; a
+      bounded send suspends as a program and resumes on a take; close
+      wakes a parked receiver and drains a parked sender's element;
+      8 producers x 4 consumers through 16 slots, every element once;
+      the send/close race exact over 100 rounds (accepted = received,
+      in order); close does not discard the buffer and the batched
+      read agrees with the single one at the batch's every edge; a
+      failing producer's elements arrive before the failure
+- [x] merge by readiness with each side's order kept and `either`
+      keeping the side; fibers start at the first pull; eight sources
+      overlap; a silent source holds up nobody; bounded by default;
+      buffer/bufferChunked; a failed producer fails the consumer's
+      program by callbacks alone; every merge path ends under a
+      deadline (elementwise, chunked at 16/256/1024, timed flush,
+      Channel.merge); chunked/unchunked leave no trace; a partial
+      final chunk is flushed; the chunked-stream merge; runCollect/
+      runForeach/runFoldUntil/concat/unfold; the callback bridge
+
+### Decisions
+- `Source[A | B]` is `Source[B >: A]`: no union types in Scala 2, so
+  `merge[B >: A](t: Source[B])` tells the common supertype (the
+  caller says `merge[Any]` for Int and String) and `either` keeps the
+  side as data — the typed alternative. `Source.widen[B >: A]` is the
+  cast a `Source[String]` needs to meet a `Source[Any]`.
+- `Channel.apply` is `StmChannel`. The Scala 3 default is the
+  ring-buffered `SentinelChannel` over a `Growing` buffer, chosen by
+  capacity, with `Ring`, `Segments`, `AdaptiveFifo`, `Queues` (~2 600
+  lines, every one a measured lane); the reference implementation is
+  what the contract is defined by, and the fast mechanisms are backlog
+  `okay2-fast-channels`. `Flush`/`Flushing`/`mergeFlushing` go with
+  them.
+- The `Member.pure` ambiguity (measured on `Source.of`): with `pure`
+  at the lowest priority, `Member[Pure, A + B]` had two derivations at
+  one level (`deeper` and `deeperRight` through `pure`) and the first
+  cut's test passed only because `deeper`'s inner search happened to
+  be ambiguous and dropped it. Now `pure` is the top rule and
+  `NotPure[F]` (two instances for `Pure`, one for everything else)
+  keeps the deeper rules off it.
+- A `case class State` INSIDE a generic class trips `-Xlint`'s "outer
+  reference cannot be checked" on the type test `Cell.modify`'s tuple
+  makes: the state is `StmChannel.State[A]` in the companion.
+
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -459,3 +532,5 @@ the helper rule and the stuck-check, `threads`, `auto`, `platform`),
   GREEN 2026-09-24 (`cd okay2 && ../scripts/gate.sh test`).
 - Stage 4: 166 test results (+34 async/platform), 24 suites, GREEN
   2026-09-24, same gate, on JDK 25.
+- Stage 5: 186 test results (+20 channels/sources), 25 suites, GREEN
+  2026-09-24, same gate.
