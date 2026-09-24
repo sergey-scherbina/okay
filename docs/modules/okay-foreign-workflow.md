@@ -12,6 +12,8 @@ okay-workflow and okay-persist apply as they are.
 | `ForeignCall` | a foreign call as a workflow question: the function's address and its arguments |
 | `ForeignActivity.call[Out](address)(args)` | a typed activity in do-notation, its answer decoded by `Out`'s Schema; a wrong shape is a `Left` |
 | `ForeignActivity.oracle` | the worker as the oracle: a `start` on whatever `ForeignEval` handler is installed (a worker, `ForeignWorker.supervised`, a pool) |
+| `ForeignProc.call` / `call2` | the same activity as a leaf of a static `Proc`, named by its address, so `leaves` and `mermaid` show the far functions before a run |
+| `ForeignProc.ask` / `decode` | the question and its reading for proc-notation (`Proc.direct`), where a helper's name names the leaf |
 | `ForeignActivity.Unreachable` | thrown when the wire failed through every attempt: the step stays UNANSWERED, so the next run does it |
 
 ## Using it

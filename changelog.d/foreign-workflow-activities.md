@@ -16,6 +16,11 @@ foreign workers into "дюрабле и воркфлоу ... статическ�
   call, a journalled KeyError, a wrong-shaped answer) and Go over a
   supervised, CBOR, authenticated TCP connection (the server killed
   between two activities; unreachable, then finished by the next run).
-- Docs: one-language.md, "A foreign call as a workflow activity". Stages
-  2 (static Proc, proc-notation) and 3 (a durable foreign program across
-  a host crash) remain on the card.
+- Stage 2: `ForeignProc` (`call`/`call2` as leaves named by address;
+  `ask`/`decode` for proc-notation). Do-notation, the term and the block
+  write one journal record for record, and `walk` reads it. Found: a
+  proc-notation `case` binder is out of the macro's environment (backlog
+  `proc-notation-case-binders`).
+- Docs: one-language.md, "A foreign call as a workflow activity" (all
+  three spellings), and docs/modules/okay-foreign-workflow.md. Stage 3 (a
+  durable foreign program across a host crash) remains on the card.

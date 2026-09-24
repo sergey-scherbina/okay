@@ -452,6 +452,37 @@ that did its work and then lost its connection will be asked again.
 Make an activity that reaches the outside world idempotent, or give it
 a key.
 
+The same workflow can be a STATIC procedure (`Proc`, an arrow term whose
+steps are known before it runs), with each foreign function a leaf
+named by its address:
+
+```scala
+  val order: Wf.Proc[ForeignCall, String, String, String] =
+    ForeignProc.call[String, Double]("shop:price") >>>
+      A.arr((e: Either[Condition, Double]) => e.fold(c => Right(s"no price: ${c.kind}"), p => Left((p, 3L)))) >>>
+      A.left(ForeignProc.call2[Double, Long, Double]("shop:total") >>>
+        A.arr((t: Either[Condition, Double]) => t.fold(c => s"no total: ${c.kind}", v => s"total $v"))) >>>
+      A.arr((e: Either[String, String]) => e.merge)
+```
+
+Or it can be written in proc-notation, where each far function is a
+helper and the helper's name labels the leaf:
+
+```scala
+    Proc.direct[ForeignProc.Sig, String, String]: sku =>
+      val first = ForeignProc.decode[Double](!price(sku))
+      if first.isRight then
+        val second = ForeignProc.decode[Double](!total(first.getOrElse(0.0)))
+        second.fold(c => s"no total: ${c.kind}", t => s"total $t")
+      else first.fold(c => s"no price: ${c.kind}", _ => "")
+```
+
+`order.leaves` lists the far functions the procedure may call, before
+it runs (`shop:price`, `shop:total`). `order.mermaid()` draws them. The
+three spellings (do-notation, the term, and the block) write the SAME
+journal, record for record, so a run begun in one can be finished by
+another, and `Wf.Proc.walk` reads any of them without calling anything.
+
 ## One `okay_call`, step by step
 
 In-process, the Scala side can do exactly one thing with the loaded Rust
