@@ -13,10 +13,9 @@ import scala.quoted.*
 private[okay] trait DirectMarks[F[_]] extends DirectPhase[F]:
   import q.reflect.*
 
-  lazy val directSym = TypeRepr.of[Direct.type].typeSymbol
-  lazy val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
-    ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
-  lazy val colorSyms = (directSym.methodMember("selfColor") ++
+  /** the colouring conversions of `direct` blocks; the spellings and the
+   * tree questions over them are MarkSyntax's, shared with the arrow road */
+  lazy val colorSyms: Set[Symbol] = (directSym.methodMember("selfColor") ++
     directSym.methodMember("opColor") ++
     Symbol.requiredModule("okay.Free").methodMember("directColor")).toSet
 
@@ -24,32 +23,6 @@ private[okay] trait DirectMarks[F[_]] extends DirectPhase[F]:
    * on a generator value (specs/generators.md) shares the name */
   lazy val reflectMark: Symbol =
     directSym.methodMember("reflect").find(_.paramSymss.headOption.exists(_.sizeIs == 2)).get
-
-  def calleeRoot(t: Term): Symbol = t match
-    case Apply(f, _) => calleeRoot(f)
-    case TypeApply(f, _) => calleeRoot(f)
-    case Inlined(_, Nil, inner) => calleeRoot(inner)
-    case _ => t.symbol
-
-  /** the marked value: an explicit mark call OR an inserted
-   * auto-coloring conversion call — one dispatch serves both,
-   * because markTerm decides value-vs-operation by TYPE */
-  def asMark(t: Term): Option[Term] = t match
-    case Apply(TypeApply(fun, _), List(m)) if markSyms(fun.symbol) => Some(m)
-    case Apply(Select(conv, "apply"), List(x))
-      if colorSyms(calleeRoot(conv)) => Some(x)
-    case _ => None
-
-
-  def hasMark(t: Tree): Boolean =
-    var found = false
-    val probe = new TreeTraverser:
-      override def traverseTree(tree: Tree)(owner: Symbol): Unit =
-        tree match
-          case term: Term if asMark(term).isDefined => found = true
-          case _ => if !found then super.traverseTree(tree)(owner)
-    probe.traverseTree(t)(Symbol.spliceOwner)
-    found
 
   /** does this tree mention any of these symbols? */
   def mentionsAny(t: Tree, syms: Set[Symbol]): Boolean =

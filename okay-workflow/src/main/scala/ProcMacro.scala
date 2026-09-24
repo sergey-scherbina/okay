@@ -58,46 +58,18 @@ object ProcMacro:
                                           (using q: Quotes): Expr[Proc[F, X, Y]] =
     import q.reflect.*
 
-    // ── the marks, recognised exactly as Direct.scala recognises them
-    val directSym = TypeRepr.of[Direct.type].typeSymbol
-    val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
-      ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
-
-    def strip(t: Term): Term = t match
-      case Inlined(_, Nil, inner) => strip(inner)
-      case Typed(inner, _) => strip(inner)
-      case _ => t
-
-    /**
-     * The colouring conversion, recognised the way Direct.scala
-     * recognises its own: the typer inserts `procColor(...).apply(q)`
-     * where a question stands in an answer's place, and the macro
-     * rewrites that call exactly as it rewrites a mark. One dispatch
-     * serves both, because both name the same thing — an operation
-     * whose answer the block wants.
-     */
-    val colorSym = TypeRepr.of[Proc.type].typeSymbol.methodMember("procColor").toSet
-
-    def calleeRoot(t: Term): Symbol = t match
-      case Apply(f, _) => calleeRoot(f)
-      case TypeApply(f, _) => calleeRoot(f)
-      case Inlined(_, Nil, inner) => calleeRoot(inner)
-      case _ => t.symbol
-
-    def asMark(t: Term): Option[Term] = t match
-      case Apply(TypeApply(fun, _), List(m)) if markSyms(fun.symbol) => Some(m)
-      case Apply(Select(conv, "apply"), List(x)) if colorSym(calleeRoot(conv)) => Some(x)
-      case _ => None
-
-    def hasMark(t: Tree): Boolean =
-      var found = false
-      val probe = new TreeTraverser:
-        override def traverseTree(tree: Tree)(owner: Symbol): Unit =
-          if !found then tree match
-            case term: Term if asMark(term).isDefined => found = true
-            case _ => super.traverseTree(tree)(owner)
-      probe.traverseTree(t)(Symbol.spliceOwner)
-      found
+    // ── the marks: THE SAME syntax `Direct`'s compiler reads
+    // (macros.MarkSyntax), so a spelling added there is a mark here. The
+    // one difference is the colouring conversion: the typer inserts
+    // `procColor(...).apply(q)` where a question stands in an answer's
+    // place, and the macro rewrites that call exactly as it rewrites a mark.
+    val outer: q.type = q
+    val procColors: Set[Symbol] = TypeRepr.of[Proc.type].typeSymbol.methodMember("procColor").toSet
+    val syntax = new macros.MarkSyntax:
+      val q: outer.type = outer
+      def colorSyms = procColors
+    import syntax.{asMark, hasMark}
+    def strip(t: Term): Term = syntax.stripped(t)
 
     val procSym = TypeRepr.of[Proc[[A] =>> Any, Any, Any]].typeSymbol
 

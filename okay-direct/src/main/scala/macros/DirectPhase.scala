@@ -23,10 +23,8 @@ import scala.quoted.*
  * entry, the try body's sub-pipeline, a test probe — crosses as an
  * `Expr`, which no path owns.
  */
-private[okay] trait DirectPhase[F[_]]:
-  val q: Quotes
+private[okay] trait DirectPhase[F[_]] extends MarkSyntax:
   val fT: Type[F]
-  protected given q.type = q
   protected given Type[F] = fT
   import q.reflect.*
 
@@ -50,9 +48,6 @@ private[okay] trait DirectPhase[F[_]]:
    * emit a bind or a pure without extending emission */
   def bind(fa: Term, vTpe: TypeRepr, resTpe: TypeRepr)(body: Term => Term): Term
   def pureF(t: Term): Term
-
-  /** a term with its inlining and ascription wrappers taken off */
-  def stripped(t: Term): Term = Direct.stripped(t)
 
   def refuse(t: Tree, where: String): Nothing =
     report.errorAndAbort(
