@@ -2001,6 +2001,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-23	dc614d2f	3-4	scan-into-code-bytes	446695	660353	0.677	B/op, lower better; same lane, -prof gc; 1.48x fewer bytes
 2026-09-23	25d85bfd	3-4	merge-chunked-unchunk-fix-time	197.5	198.4	0.995	us/op, lower better; compare/ChunkFlushBenchmark.okayChunked (Source.merge(chunked=true), Source.ChunkSize=16 fixed): merge wired onto Writer.expand (same fix as Source.unchunked) vs the old through(Stage.unchunk); per-arm MIN of 3 quiet pairs (one before round hit a load spike of 1712us and was discarded); PARITY — merge's chunked flag cannot exceed ChunkSize=16, where the original note's own numbers said unchunk overhead was ~0
 2026-09-23	25d85bfd	3-4	merge-chunked-unchunk-fix-bytes	4160026	4172129	0.997	B/op, lower better; same lane, -prof gc; parity, noise-level
-2026-09-24	5aa9206c	4.2	ProcEnvBench.chain_4	108.4	91.4	1.19	proc-notation-liveness: prune dead names before each statement (B) vs every name riding to the end (A); B/op equal 640; REFUTED, round 2 of 2 alternated, -prof gc, jmh -wi5 -i5 -f1
-2026-09-24	5aa9206c	4.2	ProcEnvBench.chain_16	467.7	426.1	1.10	same; B/op equal 2640
-2026-09-24	5aa9206c	4.2	ProcEnvBench.chain_64	2579.9	2066.3	1.25	same; B/op equal 12096; round 1 read 1.40/1.18/1.17: the extra Arr per statement costs more than the shallower projections save
+2026-09-24	319f1576	4.2	ProcEnvBench.chain_4	108.4	91.4	1.19	proc-notation-liveness: prune dead names before each statement (B) vs every name riding to the end (A); B/op equal 640; REFUTED, round 2 of 2 alternated, -prof gc, jmh -wi5 -i5 -f1
+2026-09-24	319f1576	4.2	ProcEnvBench.chain_16	467.7	426.1	1.10	same; B/op equal 2640
+2026-09-24	319f1576	4.2	ProcEnvBench.chain_64	2579.9	2066.3	1.25	same; B/op equal 12096; round 1 read 1.40/1.18/1.17: the extra Arr per statement costs more than the shallower projections save

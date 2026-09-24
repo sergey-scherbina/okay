@@ -588,7 +588,7 @@ so that only the environment's plumbing is timed. The baseline grows
 faster than linearly, 23 ns per statement at 4 and 33 at 64: every
 projection walks a tuple as deep as the block so far.
 
-The experiment (commit 5aa9206c, reverted by the next one) pruned before
+The experiment (commit 319f1576, reverted by the next one) pruned before
 each statement to the slots a later statement or the answer still reads,
 and not in a loop body, whose environment must come round in its shape.
 All 137 okay-workflow tests passed with it. Two rounds, alternated:
