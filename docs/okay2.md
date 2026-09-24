@@ -46,7 +46,8 @@ Contents:
 17. [Several instances of one signature](#17-several-instances-of-one-signature)
 18. [Deterministic simulation](#18-deterministic-simulation)
 19. [Transactional cells and typed-key maps](#19-transactional-cells-and-typed-key-maps)
-20. [Literature](#20-literature)
+20. [Every error, and programs known before they run](#20-every-error-and-programs-known-before-they-run)
+21. [Literature](#21-literature)
 
 ## 1. The build
 
@@ -1256,7 +1257,32 @@ by the witness `Same` hands over rather than by a cast:
     val got: Option[Int] = m.get(n)
 ```
 
-## 20. Literature
+## 20. Every error, and programs known before they run
+
+`Validated` is the rung below the monad: an applicative cannot feed one
+check's answer into the next, so it cannot stop early, so it collects.
+The same `traverse` reports every problem at `Validated` and the first
+at `Either`:
+
+```scala
+    val xs = Seq(1, 2, 3, 4, 5)
+    val collected = traverse(xs)(checkV)
+    assertEquals(collected, Invalid(Vector("1 is odd", "3 is odd", "5 is odd")))
+```
+
+`Static` is a program as data — the free selective — so what it may do
+is known before it runs: `leaves` lists every operation, both branches
+of every `select` included, and `foldMap` reads it into any Selective,
+here a batch that fetches fifty keys in one round trip:
+
+```scala
+    val keys = (1 to 50).map(i => s"k$i")
+    val spine = traverse(keys)(get)
+    val plan = spine.foldMap(toBatch)
+    assertEquals(plan.keys.length, 50)
+```
+
+## 21. Literature
 
 - Philip Wadler, "Monads for functional programming" (1995); Conor
   McBride and Ross Paterson, "Applicative programming with effects"
@@ -1286,6 +1312,10 @@ by the witness `Same` hands over rather than by a cast:
 - Oleg Kiselyov and Chung-chieh Shan, "Embedded probabilistic
   programming" (DSL 2009) — Hansei: a weighted choice as an effect and
   inference as a handler, which `Dist` and `runExact` are.
+- Paolo Capriotti and Ambrus Kaposi, "Free Applicative Functors"
+  (MSFP 2014), and Andrey Mokhov, Georgy Lukyanov, Simon Marlow and
+  Jeremie Dimino, "Selective Applicative Functors" (ICFP 2019) — the
+  free selective `Static` is, and the `select` `Validated` implements.
 - Olivier Danvy and Andrzej Filinski, "Abstracting Control" (LFP 1990)
   — `shift`/`reset` and answer-type modification, which `Cont` and
   `PState` carry in their signatures.

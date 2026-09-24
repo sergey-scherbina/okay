@@ -1181,6 +1181,39 @@ in the package object.
   `Key[A]`'s implicit scope does not include `Same`'s companion, and
   okay's are top-level extensions reached by `import okay._`.
 
+## Stage 16 — Validated and Static, on the stage-13 classes (2026-09-24)
+- `Semigroup`, `Monoid` (`of`, vector, list, string), `Group` (every
+  Numeric) — the Scala 3 core's, which `Validated` needs.
+- `Validated` (`Valid`/`Invalid`, `toEither`, `isValid`, `getOrElse`,
+  `andThen`, `fromEither`) with a `Selective` instance whose `app`
+  COMBINES errors and whose `select` skips the handler on a `Right`; no
+  Monad, on purpose.
+- `Static`, the free selective: `Pure`/`Op`/`Ap`/`Select`, `leaves`,
+  `toFree` (deferring each side), `foldMap` into any Selective through
+  `Static.To`, and its `Selective` instance.
+
+### Behavior (stage 16)
+- [x] the pair: one `traverse`, all errors at Validated and the first at
+      Either; valid answers in order; the applicative laws on a
+      non-commutative accumulation; `andThen` short-circuits and no Monad
+      resolves; a count as the accumulation; the doors
+- [x] Static: leaves name both branches, `toFree` runs at most one;
+      `toFree` matches the hand-written program in answer and order; the
+      Selective laws on answers and leaves; 50 keys batched into ONE
+      round trip; a right-nested spine of 10 000; `foldMap` over 50 000
+      leaves; `leaves`/`toFree` over a `traverse` of 10 000
+
+### Decisions
+- `Static.Op` holds its operation as `Any`, as `Free.Inject` does, and
+  `foldMap` types it at one signature through `Split.only`.
+- `foldMap` walks at `Any` with ONE isolated claim (`claim`/`erased`):
+  the spine's types chain through existentials a loop cannot carry, and
+  each was checked when the tree was built. The Scala 3 core's walk keeps
+  a typed argument chain and pays four `@unchecked` patterns instead.
+- A test handler asserts its answer once (`StaticFixtures.answer`):
+  scalac 2 does not refine a method's type parameter by a constructor
+  pattern.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
