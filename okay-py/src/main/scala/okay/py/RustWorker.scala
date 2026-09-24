@@ -27,9 +27,10 @@ object RustWorker:
    * `Cargo.toml` naming the package `worker` and depending on it is written
    * if `dir` has none. `--offline`: the crate's one dependency, serde_json,
    * must already be in cargo's cache. A compile error refuses with rustc's
-   * own words.
+   * own words. `features` are the okay crate's own: `Seq("tls")` builds a
+   * server that can speak TLS (wire-tls).
    */
-  def build(dir: Path, cargo: String = "cargo"): Path =
+  def build(dir: Path, cargo: String = "cargo", features: Seq[String] = Nil): Path =
     val lib = dir.resolve("okay")
     Files.createDirectories(lib.resolve("src")): Unit
     Files.writeString(lib.resolve("Cargo.toml"), resource("Cargo.toml")): Unit
@@ -38,7 +39,8 @@ object RustWorker:
       Files.writeString(dir.resolve("Cargo.toml"),
         "[package]\nname = \"worker\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nokay = { path = \"okay\" }\n"): Unit
     val target = dir.resolve(".okay-build")
-    val pb = ProcessBuilder(cargo, "build", "--offline", "--release", "--target-dir", target.toString)
+    val pb = ProcessBuilder((Vector(cargo, "build", "--offline", "--release", "--target-dir", target.toString) ++
+        okayFeatures(features))*)
       .directory(dir.toFile).redirectErrorStream(true)
     val p =
       try pb.start()
@@ -49,6 +51,10 @@ object RustWorker:
       throw IllegalStateException(s"okay.py: the Rust worker did not compile:\n${log.linesIterator.toVector.takeRight(25).mkString("\n")}")
     target.resolve("release").resolve("worker")
 
+  /** the okay crate's features, as cargo names a dependency's */
+  private def okayFeatures(features: Seq[String]): Vector[String] =
+    if features.isEmpty then Vector.empty else Vector("--features", features.map(f => s"okay/$f").mkString(","))
+
   /**
    * Compile the crate in `dir` as a LIBRARY for use IN-PROCESS
    * (polyglot-one-wire stage 3): its `src/lib.rs` calls
@@ -57,7 +63,7 @@ object RustWorker:
    * A `Cargo.toml` naming the package `worker` with `crate-type = ["cdylib"]`
    * is written if `dir` has none.
    */
-  def buildLibrary(dir: Path, target: Option[String] = None, cargo: String = "cargo"): Path =
+  def buildLibrary(dir: Path, target: Option[String] = None, cargo: String = "cargo", features: Seq[String] = Nil): Path =
     val lib = dir.resolve("okay")
     Files.createDirectories(lib.resolve("src")): Unit
     Files.writeString(lib.resolve("Cargo.toml"), resource("Cargo.toml")): Unit
@@ -67,7 +73,7 @@ object RustWorker:
         "[package]\nname = \"worker\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\nokay = { path = \"okay\" }\n"): Unit
     val out = dir.resolve(".okay-build")
     val cmd = Vector(cargo, "build", "--offline", "--release", "--target-dir", out.toString) ++
-      target.toVector.flatMap(t => Vector("--target", t))
+      target.toVector.flatMap(t => Vector("--target", t)) ++ okayFeatures(features)
     val p = ProcessBuilder(cmd*).directory(dir.toFile).redirectErrorStream(true).start()
     val log = String(p.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
     if p.waitFor() != 0 then

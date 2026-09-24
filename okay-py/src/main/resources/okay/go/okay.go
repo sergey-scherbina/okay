@@ -19,6 +19,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -945,8 +946,9 @@ func Serve(programs Programs, functions ...Functions) {
 // are never another's. Once bound it prints {"listening": "host:port"} on
 // stdout, so a caller that asked for port 0 learns the port. With
 // OKAY_WIRE_SECRET (or OKAY_WIRE_SECRET_FILE) set, every connection must
-// pass a mutual HMAC-SHA256 challenge before anything else (stage 5b);
-// without TLS the traffic after it is still plain TCP.
+// pass a mutual HMAC-SHA256 challenge before anything else (stage 5b), and
+// with OKAY_TLS_CERT and OKAY_TLS_KEY (PEM files) the connection is TLS
+// (wire-tls); its listening line then says "tls": true.
 func ServeTCP(addr string, programs Programs, functions ...Functions) error {
 	secret, err := SecretFromEnv()
 	if err != nil {
@@ -956,7 +958,19 @@ func ServeTCP(addr string, programs Programs, functions ...Functions) error {
 	if err != nil {
 		return err
 	}
-	b, _ := json.Marshal(map[string]any{"listening": l.Addr().String()})
+	cert, key := os.Getenv("OKAY_TLS_CERT"), os.Getenv("OKAY_TLS_KEY")
+	secure := cert != "" || key != ""
+	if secure {
+		if cert == "" || key == "" {
+			return fmt.Errorf("TLS needs both OKAY_TLS_CERT and OKAY_TLS_KEY; only one is set")
+		}
+		pair, err := tls.LoadX509KeyPair(cert, key)
+		if err != nil {
+			return fmt.Errorf("the TLS certificate %s and key %s: %w", cert, key, err)
+		}
+		l = tls.NewListener(l, &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12})
+	}
+	b, _ := json.Marshal(map[string]any{"listening": l.Addr().String(), "tls": secure})
 	fmt.Println(string(b))
 	for {
 		c, err := l.Accept()

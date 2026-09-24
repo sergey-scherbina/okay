@@ -288,8 +288,10 @@ object ForeignWorker:
 
   /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
    * another process, or another machine — plain TCP, see `WireLink.tcp` */
-  def connect(host: String, port: Int)(using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline): ForeignWorker =
-    over(WireLink.tcp(host, port), s"the worker at $host:$port")
+  def connect(host: String, port: Int)
+             (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline, okay.codec.WireSecurity): ForeignWorker =
+    over(WireLink.tcp(host, port, security = summon[okay.codec.WireSecurity],
+      helloMillis = summon[WireDeadline].millis.fold(10000)(_.toInt)), s"the worker at $host:$port")
 
   private def startCommand(cmd: Vector[String], python: String, env: Map[String, String])
                           (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline): ForeignWorker =

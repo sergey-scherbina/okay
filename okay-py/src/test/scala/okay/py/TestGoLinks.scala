@@ -152,3 +152,8 @@ class TestGoTcpSupervised extends munit.FunSuite:
       w.close()
       server.destroy()
   }
+
+/** (Go, TLS): the conformance suite over crypto/tls, and TLS's refusals */
+class TestGoTcpTls extends TlsConformance:
+  def listen(env: Map[String, String]): (Int, Process) = GoWorkerBinary.listen(env)
+  def serverAvailable: Boolean = GoWorkerBinary.available

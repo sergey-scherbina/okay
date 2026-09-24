@@ -57,7 +57,7 @@ fn main() {
     Files.createDirectories(dir.resolve("src")): Unit
     Files.writeString(dir.resolve("src").resolve("ops.rs"), Rs.ops(Foreign.callbacks(priceOf, discount))): Unit
     Files.writeString(dir.resolve("src").resolve("main.rs"), main): Unit
-    RustWorker.build(dir)
+    RustWorker.build(dir, features = Seq("tls"))
 
   @volatile var lastPort: Int = 0
 
@@ -171,3 +171,9 @@ class TestRustTcpAuth extends WireConformance:
     finally p.destroy()
   }
 
+
+/** (Rust, TLS): the conformance suite over rustls (the crate's tls feature),
+ * and TLS's refusals */
+class TestRustTcpTls extends TlsConformance:
+  def listen(env: Map[String, String]): (Int, Process) = RustWorkerBinary.listen(env)
+  def serverAvailable: Boolean = RustWorkerBinary.available

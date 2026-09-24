@@ -167,6 +167,76 @@ object WireAuth:
     java.security.MessageDigest.isEqual(a.getBytes(UTF_8), b.getBytes(UTF_8))
 
 /**
+ * Whether a TCP link is encrypted (polyglot-one-wire stage 5b, wire-tls):
+ *
+ * {{{
+ * given WireSecurity = WireSecurity.tls(WireSecurity.Trust.pem(Path.of("ca.pem")))
+ * }}}
+ *
+ * TLS, with the server's certificate checked against the trust the given
+ * names and its name checked against the host dialled (HTTPS rules). Each
+ * trust is its own source: a PEM file, a path in an environment variable,
+ * or the JDK's own store. The default is plain TCP, as before; pipes and
+ * in-process links take no TLS (nothing is between the two ends).
+ */
+sealed trait WireSecurity
+
+object WireSecurity:
+  given plain: WireSecurity = Plain
+
+  case object Plain extends WireSecurity
+
+  final class Tls private[WireSecurity] (val trust: Trust) extends WireSecurity:
+    /** the client context, built when a link is opened (a trust whose file
+     * is missing fails THEN, by name) */
+    def context(): javax.net.ssl.SSLContext =
+      val tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm)
+      tmf.init(trust.keyStore())
+      val ctx = javax.net.ssl.SSLContext.getInstance("TLS")
+      ctx.init(null, tmf.getTrustManagers, null)
+      ctx
+
+  def tls(trust: Trust): WireSecurity = Tls(trust)
+
+  /** what a TLS client believes: each its own source */
+  sealed trait Trust:
+    def source: String
+    /** None: the JDK's default store */
+    private[WireSecurity] def keyStore(): java.security.KeyStore | Null
+
+  object Trust:
+    /** the JDK's own store: servers with certificates from a public CA */
+    val system: Trust = new Trust:
+      def source = "the JDK's trust store"
+      private[WireSecurity] def keyStore(): java.security.KeyStore | Null = null
+
+    /** the certificates in a PEM file: a private CA, or the server's own
+     * self-signed certificate */
+    def pem(path: java.nio.file.Path): Trust = new Trust:
+      def source = s"the PEM file $path"
+      private[WireSecurity] def keyStore(): java.security.KeyStore | Null =
+        if !java.nio.file.Files.isReadable(path) then
+          throw IllegalStateException(s"the TLS trust file $path is not readable")
+        val in = java.nio.file.Files.newInputStream(path)
+        val certs =
+          try java.security.cert.CertificateFactory.getInstance("X.509").generateCertificates(in)
+          finally in.close()
+        if certs.isEmpty then throw IllegalStateException(s"the TLS trust file $path holds no certificate")
+        val ks = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType)
+        ks.load(null, null)
+        var i = 0
+        certs.forEach { c => ks.setCertificateEntry(s"okay-trust-$i", c); i += 1 }
+        ks
+
+    /** a PEM file whose path is in an environment variable */
+    def pemFromEnv(name: String): Trust = new Trust:
+      def source = s"the PEM file named by the environment variable $name"
+      private[WireSecurity] def keyStore(): java.security.KeyStore | Null =
+        val path = sys.env.getOrElse(name,
+          throw IllegalStateException(s"the TLS trust's environment variable $name is not set"))
+        pem(java.nio.file.Path.of(path)).keyStore()
+
+/**
  * How long an engine waits for an answer (polyglot-one-wire stage 6):
  *
  * {{{

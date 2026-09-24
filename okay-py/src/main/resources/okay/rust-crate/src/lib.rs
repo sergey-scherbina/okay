@@ -768,39 +768,71 @@ fn cbor_decode(b: &[u8]) -> Result<(J, &[u8]), String> {
 
 // ------------------------------------------------------------------ transports
 
-fn serve_lines(mut w: Worker, mut input: impl BufRead, mut output: impl Write) {
-    let _ = writeln!(output, "{}", w.hello_line());
-    let _ = output.flush();
+/// one connection's two directions as ONE object: a TLS stream cannot be
+/// split into a reader and a writer, so the loop reads through a buffer and
+/// writes through the same stream underneath it
+struct Duplex<S>(BufReader<S>);
+
+impl<S: Read> Read for Duplex<S> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> { self.0.read(buf) }
+}
+impl<S: Read> BufRead for Duplex<S> {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> { self.0.fill_buf() }
+    fn consume(&mut self, n: usize) { self.0.consume(n) }
+}
+impl<S: Read + Write> Write for Duplex<S> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> { self.0.get_mut().write(buf) }
+    fn flush(&mut self) -> std::io::Result<()> { self.0.get_mut().flush() }
+}
+
+/// stdin and stdout as one duplex
+struct Stdio<'a>(std::io::StdinLock<'a>, std::io::Stdout);
+
+impl Read for Stdio<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> { self.0.read(buf) }
+}
+impl BufRead for Stdio<'_> {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> { self.0.fill_buf() }
+    fn consume(&mut self, n: usize) { self.0.consume(n) }
+}
+impl Write for Stdio<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> { self.1.write(buf) }
+    fn flush(&mut self) -> std::io::Result<()> { self.1.flush() }
+}
+
+fn serve_lines(mut w: Worker, mut io: impl BufRead + Write) {
+    let _ = writeln!(io, "{}", w.hello_line());
+    let _ = io.flush();
     loop {
         if w.framed() {
             // frames: a 4-byte big-endian length, then the message (stage 5a)
             let mut n = [0u8; 4];
-            if input.read_exact(&mut n).is_err() {
+            if io.read_exact(&mut n).is_err() {
                 return;
             }
             let mut msg = vec![0u8; u32::from_be_bytes(n) as usize];
-            if input.read_exact(&mut msg).is_err() {
+            if io.read_exact(&mut msg).is_err() {
                 return;
             }
             let reply = w.handle_message(&msg);
-            let _ = output.write_all(&(reply.len() as u32).to_be_bytes());
-            let _ = output.write_all(&reply);
-            let _ = output.flush();
+            let _ = io.write_all(&(reply.len() as u32).to_be_bytes());
+            let _ = io.write_all(&reply);
+            let _ = io.flush();
             if w.closing {
                 return;
             }
             continue;
         }
         let mut line = String::new();
-        match input.read_line(&mut line) {
+        match io.read_line(&mut line) {
             Ok(0) | Err(_) => return,
             Ok(_) => {}
         }
         if line.trim().is_empty() {
             continue;
         }
-        let _ = writeln!(output, "{}", w.handle(line.trim_end()));
-        let _ = output.flush();
+        let _ = writeln!(io, "{}", w.handle(line.trim_end()));
+        let _ = io.flush();
         if w.closing {
             return;
         }
@@ -810,7 +842,7 @@ fn serve_lines(mut w: Worker, mut input: impl BufRead, mut output: impl Write) {
 /// serve on stdin/stdout: a child process
 pub fn serve_stdio(make: fn() -> Worker) {
     let stdin = std::io::stdin();
-    serve_lines(make(), stdin.lock(), std::io::stdout());
+    serve_lines(make(), Stdio(stdin.lock(), std::io::stdout()));
 }
 
 /// serve on a socket: another process, another machine. Each connection gets
@@ -820,21 +852,82 @@ pub fn serve_stdio(make: fn() -> Worker) {
 /// pass a mutual HMAC-SHA256 challenge before anything else (stage 5b);
 /// without TLS the traffic after it is still plain TCP.
 pub fn serve_tcp(addr: &str, make: fn() -> Worker) -> std::io::Result<()> {
-    let secret = secret_from_env().map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    let invalid = |e: String| std::io::Error::new(std::io::ErrorKind::InvalidInput, e);
+    let secret = secret_from_env().map_err(invalid)?;
+    let tls = tls_from_env().map_err(invalid)?;
     let listener = std::net::TcpListener::bind(addr)?;
-    println!("{}", json!({"listening": listener.local_addr()?.to_string()}));
+    println!("{}", json!({"listening": listener.local_addr()?.to_string(), "tls": tls.is_some()}));
     std::io::stdout().flush()?;
     for stream in listener.incoming() {
         let stream = stream?;
         let secret = secret.clone();
+        let tls = tls.clone();
         std::thread::spawn(move || {
             let _ = stream.set_nodelay(true);
-            let reader = BufReader::new(match stream.try_clone() { Ok(s) => s, Err(_) => return });
-            serve_lines(make().with_secret(secret), reader, stream);
+            let w = make().with_secret(secret);
+            match tls {
+                None => serve_lines(w, Duplex(BufReader::new(stream))),
+                Some(config) => serve_tls(w, config, stream),
+            }
         });
     }
     Ok(())
 }
+
+/// the server's TLS configuration from OKAY_TLS_CERT and OKAY_TLS_KEY (PEM
+/// files); None when neither is set (wire-tls)
+#[cfg(feature = "tls")]
+type TlsConfig = Arc<rustls::ServerConfig>;
+#[cfg(not(feature = "tls"))]
+type TlsConfig = ();
+
+fn tls_paths() -> Result<Option<(String, String)>, String> {
+    let cert = std::env::var("OKAY_TLS_CERT").unwrap_or_default();
+    let key = std::env::var("OKAY_TLS_KEY").unwrap_or_default();
+    match (cert.is_empty(), key.is_empty()) {
+        (true, true) => Ok(None),
+        (false, false) => Ok(Some((cert, key))),
+        _ => Err("TLS needs both OKAY_TLS_CERT and OKAY_TLS_KEY; only one is set".into()),
+    }
+}
+
+#[cfg(feature = "tls")]
+fn tls_from_env() -> Result<Option<TlsConfig>, String> {
+    use rustls_pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
+    let Some((cert, key)) = tls_paths()? else { return Ok(None) };
+    let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_file_iter(&cert)
+        .map_err(|e| format!("the TLS certificate {}: {}", cert, e))?
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("the TLS certificate {}: {}", cert, e))?;
+    let key = PrivateKeyDer::from_pem_file(&key).map_err(|e| format!("the TLS key {}: {}", key, e))?;
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| e.to_string())?
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .map_err(|e| format!("the TLS certificate {} and its key: {}", cert, e))?;
+    Ok(Some(Arc::new(config)))
+}
+
+#[cfg(not(feature = "tls"))]
+fn tls_from_env() -> Result<Option<TlsConfig>, String> {
+    match tls_paths()? {
+        None => Ok(None),
+        Some(_) => Err("OKAY_TLS_CERT is set, but this worker was built without the okay crate's tls feature: \
+                        build it with RustWorker.build(dir, features = Seq(\"tls\"))".into()),
+    }
+}
+
+#[cfg(feature = "tls")]
+fn serve_tls(w: Worker, config: TlsConfig, stream: std::net::TcpStream) {
+    match rustls::ServerConnection::new(config) {
+        Ok(conn) => serve_lines(w, Duplex(BufReader::new(rustls::StreamOwned::new(conn, stream)))),
+        Err(e) => eprintln!("okay: TLS: {}", e),
+    }
+}
+
+#[cfg(not(feature = "tls"))]
+fn serve_tls(_: Worker, _: TlsConfig, _: std::net::TcpStream) {}
 
 /// serve on TCP when OKAY_LISTEN names an address, on stdin/stdout otherwise
 pub fn main(make: fn() -> Worker) {
