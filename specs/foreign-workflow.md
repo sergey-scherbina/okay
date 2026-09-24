@@ -84,13 +84,13 @@ object ForeignProc:
 
 ### Stage 2: the static `Proc`
 
-- [ ] `ForeignProc.call(address)` is a Proc leaf. `leaves` names it by
+- [x] `ForeignProc.call(address)` is a Proc leaf. `leaves` names it by
       its address, `mermaid` draws it, and `toProgram` runs it through
       the same oracle (one mechanism: the Proc bridge).
-- [ ] `walk` over a journal written by the do-notation form of the same
+- [x] `walk` over a journal written by the do-notation form of the same
       workflow agrees with it: the static and the monadic form read one
       journal.
-- [ ] proc-notation: the same workflow as an arrow block
+- [x] proc-notation: the same workflow as an arrow block
       (specs/proc-notation.md), compiled to the Proc.
 
 ### Stage 3: a durable foreign PROGRAM surviving a host crash
@@ -156,4 +156,17 @@ journal but never shows them to the supervisor.
     restarted between two activities, with the new server doing only
     the second; a server down through every attempt, then the next run
     finishing.
+
+- Stage 2 (2026-09-24).
+  - `ForeignProc.call`/`call2`, leaves named by address, going through
+    `Wf.Proc.asking`, so there is one mechanism with the monadic form.
+    `ForeignProc.ask` and `decode` serve proc-notation, where the helper's
+    name names the leaf.
+  - ONE TOPIC, THREE FRONT ENDS: do-notation (`Shop.order`), the term and
+    the `Proc.direct` block write the same journal, record for record,
+    against a live Python worker. `walk` over the do-notation run's
+    journal stands at `Done("total 12.0")` without calling anything.
+  - Found: a `case` binder is not in proc-notation's environment (backlog
+    `proc-notation-case-binders`); the block branches with an `if` over a
+    `val`.
 
