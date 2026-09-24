@@ -346,7 +346,7 @@ replays a program.
       `Condition("ReplayDrift", ...)` rather than a wrong answer.
 - [x] Held objects (`Hold`) die with their worker: a later use is refused
       by name, as in `PyWorkers`.
-- [ ] Every stdio worker survives a KILL from outside
+- [x] Every stdio worker survives a KILL from outside
       (supervised-crash-every-language): one suite, `CrashConformance`,
       starts the worker's process itself and SIGKILLs it by that pid —
       the way an OOM kill or a crash arrives, not an exit the program
@@ -691,3 +691,19 @@ replays a program.
     inflater too (its last step yields nothing and finishes together).
   - Mutants: the network condition removed (five fake-link tests red),
     and the Deflater kept without a reset (the pool test red).
+
+- supervised-crash-every-language (2026-09-24).
+  - `CrashConformance` (okay-py tests): the suite starts the worker's
+    command itself (`WorkerCommand`) and SIGKILLs that process; five
+    subclasses (Python, TypeScript, Go, Rust, Haskell), 15 results, the
+    direct-style case skipped on Haskell.
+  - FOUND on its first run, on every language: a far side killed from
+    OUTSIDE broke the wire rather than ending it. The JDK closes a dead
+    child's pipes, so the next write threw `IOException: Stream closed`,
+    which escaped `SupervisedWorker` (it restarts only a worker named
+    DEAD) and failed the program. `TestSupervised`'s `os._exit` from
+    inside a program had always ended the stream cleanly, so it never
+    showed. `ForeignWorker.send` and `RSubprocess.send` now name an
+    `IOException` on the wire a dead worker; the same holds for a
+    socket a peer reset.
+  - Red before the fix (12 of 14 run), green after.

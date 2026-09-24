@@ -628,10 +628,10 @@ conformance suite (`WireConformance`) is the same test body in every one.
 | | Links | `okay_call` | Programs as data | CBOR | Compression | TCP | `WireAuth` | TLS | Recovery |
 |---|---|---|---|---|---|---|---|---|---|
 | **Python** | pipes; TCP by gateway | `okay_call` | yes | yes | DEFLATE | gateway | gateway | gateway | supervised, replay |
-| **TypeScript** | pipes; TCP by gateway | `okay_call` | yes | yes | DEFLATE | gateway | gateway | gateway | supervised |
+| **TypeScript** | pipes; TCP by gateway | `okay_call` | yes | yes | DEFLATE | gateway | gateway | gateway | supervised, replay |
 | **Go** | pipes, TCP, WebAssembly | `okay.Call(c, …)` | yes | yes | DEFLATE | itself | itself | itself | supervised, reconnect, replay |
-| **Rust** | pipes, TCP, FFM, WebAssembly | `okay_call` (not on wasm) | yes | yes | DEFLATE | itself | itself | itself (`tls` feature) | supervised |
-| **Haskell** | pipes; TCP by gateway | no (programs only) | yes | yes | none (GHC ships no zlib) | gateway | gateway | gateway | supervised |
+| **Rust** | pipes, TCP, FFM, WebAssembly | `okay_call` (not on wasm) | yes | yes | DEFLATE | itself | itself | itself (`tls` feature) | supervised, replay |
+| **Haskell** | pipes; TCP by gateway | no (programs only) | yes | yes | none (GHC ships no zlib) | gateway | gateway | gateway | supervised, replay |
 | **R** | pipes (its own engine) | `okay_call` | yes | yes | zlib | no | no | no | timeout respawn, replay |
 
 The Compression column is what the far side SPEAKS. The default uses it
@@ -643,6 +643,9 @@ The suites behind the rows:
   `TestGatewayPyTls` (the whole TLS suite, and TLS with a secret),
   `TestSupervised` (deadline, crash between choices, drift, stale ref).
 - **TypeScript**: `TestTsPipes`, `TestTsPipesCbor`, `TestGatewayTsAuth`.
+- **Every stdio worker**: `TestCrashPython`, `TestCrashTypeScript`,
+  `TestCrashGo`, `TestCrashRust`, `TestCrashHaskell` — one crash suite
+  (`CrashConformance`), described below.
 - **Go**: `TestGoPipes`, `TestGoTcp`, `TestGoWasm` and their `Cbor` twins,
   `TestGoTcpAuth`, `TestGoTcpTls`, `TestGoTcpSupervised` (the server
   killed and restarted mid-program), and `TestForeignActivityGo`.
@@ -654,10 +657,38 @@ The suites behind the rows:
 - **R**: `TestRWireDefault`, `TestRWireZlib`, `TestRWireCbor`,
   `TestRWireCborPlain`, `TestRReplay`.
 
-Two cells are generic rather than tested per language, and the table says
-which. `ForeignWorker.supervised`, with its replay of programs as data, is
-one class over every ForeignWorker link; its crash suites run on Python
-and Go. The gateway's TLS is one gateway for every stdio worker; the TLS
+`ForeignWorker.supervised`, with its replay of programs as data, is one
+class over every ForeignWorker link, and ONE crash suite holds it on each
+language. The suite starts the worker's process itself and kills it
+with SIGKILL by that pid, from outside, the way an OOM kill or a crash
+arrives. It kills the worker at three points:
+- between the two choices of a multi-shot program: every branch comes back;
+- while idle: the next program runs on a fresh process;
+- in the middle of a direct-style `okay_call`: `WorkerDied` as data, and
+  the next call runs.
+
+A subclass names a command and nothing else:
+
+```scala
+class TestCrashRust extends CrashConformance:
+  def worker: WorkerCommand = WorkerCommand(Vector(RustWorkerBinary.binary.toString), Map.empty)
+```
+
+The kill found a defect that a program's own `os._exit` had hidden. A
+worker killed from outside does not always end its stream cleanly. The
+JDK closes a dead child's pipes, and a peer resets its socket, so the
+next WRITE throws `IOException` ("Stream closed", "Broken pipe"). That
+exception escaped the supervisor, which restarts only a worker named
+dead, and the program failed instead of replaying. The engine (and R's)
+now names a broken wire as a dead worker. Restart and replay are the
+classic rollback-recovery pair: a process recovers by re-executing from
+its logged inputs (E. N. Elnozahy, L. Alvisi, Y.-M. Wang and
+D. B. Johnson, "A Survey of Rollback-Recovery Protocols in
+Message-Passing Systems", ACM Computing Surveys 34(3), 2002,
+doi:10.1145/568522.568525). Here the logged inputs are the answers a
+program-as-data was given.
+
+One cell is generic rather than tested per language: the gateway's TLS is one gateway for every stdio worker; the TLS
 suite runs through it on Python, and a secret on TypeScript. In-process
 links (FFM, WebAssembly) take no deadline, auth or TLS: there is nobody
 else on the line, and a call there cannot be abandoned.
