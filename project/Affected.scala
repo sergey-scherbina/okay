@@ -52,6 +52,35 @@ object Affected extends AutoPlugin {
   private def under(f: File, d: File): Boolean =
     f.getAbsoluteFile.toPath.normalize.startsWith(d.getAbsoluteFile.toPath.normalize)
 
+  /** the directories the META-BUILD compiles from source: the .sbt files in project/ name them by
+   * `RootProject(file("..."))` (okay-deploy's and okay-frege's sbt plugins) */
+  private def metaBuildSources(root: File): Seq[File] = {
+    val pd = root / "project"
+    val sbts = Option(pd.listFiles).toSeq.flatten.filter(_.getName.endsWith(".sbt"))
+    sbts.flatMap { f =>
+      """RootProject\(file\("([^"]+)"\)\)""".r.findAllMatchIn(IO.read(f)).map(m => (pd / m.group(1)).getCanonicalFile)
+    }
+  }
+
+  /**
+   * DID THIS BUILD CHANGE (affected-separate-builds). Its build is the root
+   * `*.sbt`, the root `project/`, and what the meta-build compiles from
+   * source. An `.sbt` anywhere else is ANOTHER build's: `okay2/` and
+   * `okay-ts-browser/` are separate builds with their own `project/`, and
+   * reading their `build.sbt` as this one's sent every lane that touched
+   * them through the whole family (7108 tests for a docs-and-example lane,
+   * measured 2026-09-24). And a plugin's `.scala` IS a change to this build,
+   * which the name test missed the other way.
+   */
+  private def buildChanged(changed: Seq[File], root: File): Boolean = {
+    val meta = metaBuildSources(root)
+    val rootDir = root.getCanonicalFile
+    changed.exists { f =>
+      (f.getName.endsWith(".sbt") && f.getAbsoluteFile.getParentFile.getCanonicalFile == rootDir) ||
+        under(f, root / "project") || meta.exists(d => under(f, d))
+    }
+  }
+
   /**
    * `<ref>`: committed AND uncommitted changes since the merge base
    * with <ref>, plus untracked files — the gate runs on the working
@@ -154,8 +183,7 @@ object Affected extends AutoPlugin {
       case Left(why) =>
         state.log.error(why); state.fail
       case Right(changed) =>
-        val buildChanged = changed.exists(f =>
-          f.getName.endsWith(".sbt") || under(f, g.root / "project"))
+        val buildChanged = Affected.buildChanged(changed, g.root)
         val direct: Set[ProjectRef] =
           if (buildChanged) g.gate
           else g.refs.filter { r => val ds = g.dirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
