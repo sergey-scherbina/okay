@@ -1,6 +1,0 @@
-feature/cluster-pool-process 2026-09-24T18:42:47Z
-agent: claude-code
-heartbeat: 2026-09-24T18:42:47Z
-status: in-progress
-done-so-far: claimed
-next: backlog entry for rolling-update drain gap, then okay-pool module
