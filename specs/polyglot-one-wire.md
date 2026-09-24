@@ -166,6 +166,28 @@ mechanism:
 - [x] In-process links (FFM, wasm) do not take the preference: a message
       there is a memory copy, and compressing it is pure cost. The strict
       `Deflate` given still applies to them.
+- [ ] R on the same givens (wire-givens-r). The codecs move to okay-codec
+      (`okay.codec.WireFormat`, `WireCompression`, `WireCbor`, and the
+      framing and negotiation both engines share), so okay-r's
+      `RSubprocess` takes the same `using` parameters as `ForeignWorker`;
+      `okay.py` keeps its names by `export`.
+- [ ] A third compression, `zlib` (RFC 1950: DEFLATE with a 2-byte header
+      and an adler32 check), because R can do it natively and CHECKED
+      (`memCompress`/`memDecompress`, libdeflate) and cannot do raw
+      DEFLATE safely: `gzcon` over a hand-made gzip header inflates it but
+      prints a CRC error per message and accepts a cut stream, and
+      `memDecompress` on a hand-wrapped member was killed by the OOM
+      killer (exit 137, measured in r-base 4.4.1). The default preference
+      becomes an ORDER: deflate, then zlib, then none. `Zlib.given` is the
+      strict choice, like `Deflate.given`.
+- [ ] R's shim announces `format: [json, cbor]`, `compress: [zlib]`, and
+      after a configure speaks frames on a binary stdin (`readBin` after
+      `readLines` on one `file("stdin", "rb")`) and `/dev/stdout`. Its
+      CBOR encodes the tree jsonlite would print (the same unboxing,
+      the same NA rules), so JSON and CBOR carry the same values.
+- [ ] The R suites' answers are the same under every combination R
+      speaks: calls, frames with NA, callbacks (`okay_call`), programs
+      (multi-shot), a timeout's respawn (which re-negotiates).
 - [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
       JVM, rustls or native-tls in Rust, crypto/tls in Go), with keys
       from their own stores.
