@@ -17,10 +17,10 @@ import okay.Handler
                     out: Ptr[Byte], outLen: CSize): CInt = extern
 
 /** Scala Native's road to the kernel */
-trait KdfPlatform:
+trait PasswordHashPlatform:
 
   /** the staticlib, linked in: every buffer malloc'd here and freed after the call */
-  def native: Handler[Kdf] = Kdf.using { op =>
+  def native: Handler[PasswordHash] = PasswordHash.using { op =>
     def copy(a: Array[Byte]): Ptr[Byte] =
       val p = stdlib.malloc(math.max(1, a.length).toCSize)
       var i = 0
@@ -33,7 +33,7 @@ trait KdfPlatform:
       val code = Argon2Kernel.okay_argon2id(pw, op.password.length.toCSize, salt, op.salt.length.toCSize,
         op.memoryKb.toUInt, op.iterations.toUInt, op.parallelism.toUInt, out, op.length.toCSize)
       if code == 0 then Right(Array.tabulate(op.length)(i => out(i)))
-      else Left(s"okay_argon2id answered $code: ${Kdf.meaning(code)}")
+      else Left(s"okay_argon2id answered $code: ${PasswordHash.meaning(code)}")
     finally
       stdlib.free(pw)
       stdlib.free(salt)

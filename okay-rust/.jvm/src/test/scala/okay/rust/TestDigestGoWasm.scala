@@ -1,19 +1,17 @@
 package okay.rust
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path}
 import okay.{!, Handler, given}
 
 /** polyglot-go stage 2 against a LIVE Go toolchain: a Go plugin as WebAssembly, under Chicory */
 class TestDigestGoWasm extends munit.FunSuite {
-  import TestKdf.hex
+  import TestPasswordHash.hex
 
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   private lazy val go = scala.util.Try(ProcessBuilder("go", "version").start().waitFor() == 0).getOrElse(false)
   override def munitIgnore: Boolean = !go
 
-  private def plugin: Path =
-    val here = Paths.get("kernels/sha256-go")
-    if Files.exists(here.resolve("go.mod")) then here else Paths.get("okay-rust/kernels/sha256-go")
+  private def plugin: Path = Kernels.dir("sha256-go")
 
   /** built OFFLINE: GOOS=wasip1 GOARCH=wasm, a reactor module, no TinyGo */
   private lazy val module: Array[Byte] =

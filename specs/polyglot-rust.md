@@ -36,17 +36,17 @@ gives a LAW to hold the binding to: the same inputs give the same bytes.
       and works offline.
 - [x] `okay.rust.NativeLib.load(path)` binds a library through FFM. A
       symbol it does not export is refused by name, not a crash.
-- [x] `enum Kdf[+A] derives okay.Effect` has one operation,
+- [x] `enum PasswordHash[+A] derives okay.Effect` has one operation,
       `Argon2id(password, salt, memoryKb, iterations, parallelism, length)`,
       answering `Either[String, Array[Byte]]`.
-      - `Kdf.rust(lib)` is the handler over the kernel.
-      - `Kdf.using(f)` is the handler over any function (a test's, or a
+      - `PasswordHash.rust(lib)` is the handler over the kernel.
+      - `PasswordHash.using(f)` is the handler over any function (a test's, or a
         JVM implementation).
 - [x] THE LAW (Live: needs cargo): for the same inputs, the Rust kernel's
       bytes are BouncyCastle's bytes, over several parameter sets and
       salts. Parameters Argon2 refuses are a `Left` naming the kernel's
       code, not an exception.
-- [x] A program written against `Kdf` runs under either handler
+- [x] A program written against `PasswordHash` runs under either handler
       unchanged.
 
 ## Later stages
@@ -71,7 +71,7 @@ and for Go (`GOOS=wasip1`) as well as Rust.
       - `call(name, args*)` on an export;
       - `bytesIn(a)` and `bytesOut(p, n)` over the module's memory, both
         freed in a `finally`.
-- [x] `Kdf.wasm(lib)` is the third handler of the same effect. The
+- [x] `PasswordHash.wasm(lib)` is the third handler of the same effect. The
       program is unchanged.
 - [x] (Live: cargo + the wasm32-wasip1 target) THE LAW again: the wasm
       kernel's bytes are BouncyCastle's, over the same 48 cases. A
@@ -92,11 +92,11 @@ and for Go (`GOOS=wasip1`) as well as Rust.
 - Stage 1 (polyglot-rust, 2026-09-23).
   - okay-rust: the crate builds offline in about 1.3 s (argon2 0.5.3 and
     14 locked packages, all in the local cargo cache).
-  - `NativeLib` and `Kdf` compile on JDK 25 with a floor of 22. The tests
+  - `NativeLib` and `PasswordHash` compile on JDK 25 with a floor of 22. The tests
     run on 26 with native access enabled, and no restricted-method
     warning appears.
-  - TestKdf (default gate) runs a program under a stand-in handler and
-    under BouncyCastle. TestKdfRust (Live, cargo) covers:
+  - TestPasswordHash (default gate) runs a program under a stand-in handler and
+    under BouncyCastle. TestPasswordHashRust (Live, cargo) covers:
     - THE LAW, byte-equal to BouncyCastle over 48 cases;
     - one program with either handler giving the same answer;
     - a refused parameter set coming back as a `Left` naming code -2;
@@ -104,15 +104,15 @@ and for Go (`GOOS=wasip1`) as well as Rust.
   - Mutant: the kernel on Argon2 version 0x10 fails the law and the
     either-handler test.
   - A trap on the way: a Scala 3 enum case's `apply` answers the ENUM
-    type (`Kdf[...]`), so a vector of `Kdf.Argon2id(...)` could not read
-    `.password`. `new Kdf.Argon2id(...)` keeps the case's own type.
+    type (`PasswordHash[...]`), so a vector of `PasswordHash.Argon2id(...)` could not read
+    `.password`. `new PasswordHash.Argon2id(...)` keeps the case's own type.
 
 - Stage 3 (rust-wasm, 2026-09-24).
   - The crate builds offline for `wasm32-wasip1` (a 70 KB module). It
     imports four WASI functions (`fd_write`, `environ_sizes_get`,
     `environ_get`, `proc_exit`), which Chicory 1.7.5's WASI answers with
     an empty world.
-  - TestKdfWasm (Live): THE LAW over the 48 cases (4.5 s, against 1.25 s
+  - TestPasswordHashWasm (Live): THE LAW over the 48 cases (4.5 s, against 1.25 s
     for the native road with its build), one program under the third
     handler, the same `Left` for refused parameters, and a missing
     export refused by name.
@@ -123,16 +123,26 @@ and for Go (`GOOS=wasip1`) as well as Rust.
 
 - Stage 2 (rust-native, 2026-09-24).
   - okay-rust is `crossProject(JVMPlatform, NativePlatform)`. The effect,
-    `Kdf.using` and `argon2id` are shared, and `object Kdf extends
-    KdfPlatform`, whose trait is each platform's: FFM and Chicory on the
+    `PasswordHash.using` and `argon2id` are shared, and `object PasswordHash extends
+    PasswordHashPlatform`, whose trait is each platform's: FFM and Chicory on the
     JVM, `@extern` on Native.
   - The Native build links the staticlib given by `OKAY_RUST_ARGON2_LIB`,
     as a full path, because on macOS `-l` picks the dylib. rustc's
     `native-static-libs` are `-lSystem -lc -lm`, which clang links
     anyway. okayRust.native is not in the root aggregate, since the
     default gate has no cargo.
-  - `KdfGoldenSuite` pins four vectors. TestKdfGoldenJvm (default gate)
-    holds them to BouncyCastle, and TestKdfGoldenNative
+  - `PasswordHashGoldenSuite` pins four vectors. TestPasswordHashGoldenJvm (default gate)
+    holds them to BouncyCastle, and TestPasswordHashGoldenNative
     (`scripts/rust-native-check.sh`) holds the linked kernel to them.
     GREEN on the first run.
   - Mutant: one extra iteration on Native turns the check RED.
+
+- Renamed (kdf-to-password-hash, operator, 2026-09-24): the effect `Kdf`
+  is `PasswordHash`. It is named for what a program asks, not for how it
+  is computed, and "KDF" read as opaque to someone who does not know the
+  term. `PasswordHash.rust`, `.wasm`, `.native` and `.using` are the
+  handlers, as before.
+  The same lane found that rust-native had broken the JVM Live tests' path
+  to the crates: a forked test starts in `okay-rust/.jvm` now. The gate it
+  ran did not include them. `Kernels.dir` finds `kernels/` from either
+  place.

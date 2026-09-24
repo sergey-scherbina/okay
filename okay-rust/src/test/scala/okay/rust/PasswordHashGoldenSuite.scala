@@ -11,10 +11,10 @@ final case class Golden(password: String, salt: String, m: Int, t: Int, p: Int, 
  * suite runs under BouncyCastle, which keeps the pins honest, and on Native
  * under the Rust staticlib, which is then held to the same bytes.
  */
-abstract class KdfGoldenSuite extends munit.FunSuite:
+abstract class PasswordHashGoldenSuite extends munit.FunSuite:
 
   /** what computes Argon2id on this platform */
-  def handler: Handler[Kdf]
+  def handler: Handler[PasswordHash]
 
   val golden: Vector[Golden] = Vector(
     Golden("", "saltsalt", 8, 1, 1, 16, "b7ffc76d23b515687c3164bb8386cbe9"),
@@ -27,13 +27,13 @@ abstract class KdfGoldenSuite extends munit.FunSuite:
 
   test("the pinned vectors, under this platform's handler") {
     val got = golden.map { g =>
-      Kdf.argon2id(g.password.getBytes("UTF-8"), g.salt.getBytes("UTF-8"), g.m, g.t, g.p, g.n)
+      PasswordHash.argon2id(g.password.getBytes("UTF-8"), g.salt.getBytes("UTF-8"), g.m, g.t, g.p, g.n)
         .runWith(using handler).map(hex)
     }
     assertEquals(got, golden.map(g => Right(g.hex)))
   }
 
   test("a refused parameter set is a Left naming the kernel's answer") {
-    val r = Kdf.argon2id("pw".getBytes("UTF-8"), "saltsalt".getBytes("UTF-8"), 1, 1, 1).runWith(using handler)
+    val r = PasswordHash.argon2id("pw".getBytes("UTF-8"), "saltsalt".getBytes("UTF-8"), 1, 1, 1).runWith(using handler)
     assert(r.isLeft, s"$r")
   }

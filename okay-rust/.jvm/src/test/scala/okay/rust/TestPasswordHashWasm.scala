@@ -1,11 +1,11 @@
 package okay.rust
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path}
 import okay.{Handler, given}
 
 /** polyglot-rust stage 3 against a LIVE cargo with the wasm32-wasip1 target: the kernel under Chicory */
-class TestKdfWasm extends munit.FunSuite {
-  import TestKdf.*
+class TestPasswordHashWasm extends munit.FunSuite {
+  import TestPasswordHash.*
 
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   private def run(cmd: String*): (Boolean, String) =
@@ -17,9 +17,7 @@ class TestKdfWasm extends munit.FunSuite {
   override def munitIgnore: Boolean =
     !run("cargo", "--version")._1 || !run("rustup", "target", "list", "--installed")._2.contains("wasm32-wasip1")
 
-  private def crate: Path =
-    val here = Paths.get("kernels/argon2")
-    if Files.exists(here.resolve("Cargo.toml")) then here else Paths.get("okay-rust/kernels/argon2")
+  private def crate: Path = Kernels.dir("argon2")
 
   /** the same crate, built OFFLINE for wasm32-wasip1 */
   private lazy val lib: WasmLib =
@@ -30,7 +28,7 @@ class TestKdfWasm extends munit.FunSuite {
     assert(p.waitFor() == 0, said)
     WasmLib.load(Files.readAllBytes(target.resolve("wasm32-wasip1/release/okay_argon2.wasm")))
 
-  private def wasm: Handler[Kdf] = Kdf.wasm(lib)
+  private def wasm: Handler[PasswordHash] = PasswordHash.wasm(lib)
 
   test("THE LAW, as WebAssembly: the kernel's bytes under Chicory are BouncyCastle's") {
     val cases = for
@@ -38,20 +36,20 @@ class TestKdfWasm extends munit.FunSuite {
       salt <- Vector("saltsalt", "a longer salt, sixteen+")
       password <- Vector("", "correct horse battery staple")
       length <- Vector(16, 32, 64)
-    yield new Kdf.Argon2id(password.getBytes("UTF-8"), salt.getBytes("UTF-8"), m, t, p, length)
+    yield new PasswordHash.Argon2id(password.getBytes("UTF-8"), salt.getBytes("UTF-8"), m, t, p, length)
     val differ = cases.filter { op =>
-      Kdf.argon2id(op.password, op.salt, op.memoryKb, op.iterations, op.parallelism, op.length)
+      PasswordHash.argon2id(op.password, op.salt, op.memoryKb, op.iterations, op.parallelism, op.length)
         .runWith(using wasm).map(hex) != bouncy(op).map(hex)
     }
     assertEquals(differ.map(op => (op.memoryKb, op.iterations, op.parallelism, op.length)), Vector.empty)
   }
 
   test("one program, the third handler: the same answer as the JVM's") {
-    assertEquals(stored("pw", "saltsalt").runWith(using wasm), stored("pw", "saltsalt").runWith(using Kdf.using(bouncy)))
+    assertEquals(stored("pw", "saltsalt").runWith(using wasm), stored("pw", "saltsalt").runWith(using PasswordHash.using(bouncy)))
   }
 
   test("a refused parameter set is the same Left as the native road's") {
-    val refused = Kdf.argon2id("pw".getBytes, "saltsalt".getBytes, memoryKb = 1, iterations = 1, parallelism = 1)
+    val refused = PasswordHash.argon2id("pw".getBytes, "saltsalt".getBytes, memoryKb = 1, iterations = 1, parallelism = 1)
       .runWith(using wasm)
     assertEquals(refused, Left("okay_argon2id answered -2: parameters Argon2 refuses"))
   }

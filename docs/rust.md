@@ -15,9 +15,9 @@ platform, mocked, and measured.
 <!-- not-a-test: a diagram -->
 ```mermaid
 flowchart LR
-  P["an okay program<br/>Either[String, Array[Byte]] ! Kdf"]
-  H1["Kdf.rust(lib)<br/>FFM downcall"]
-  H2["Kdf.using(f)<br/>any function: BouncyCastle, a test"]
+  P["an okay program<br/>Either[String, Array[Byte]] ! PasswordHash"]
+  H1["PasswordHash.rust(lib)<br/>FFM downcall"]
+  H2["PasswordHash.using(f)<br/>any function: BouncyCastle, a test"]
   R["libokay_argon2<br/>extern &quot;C&quot; fn okay_argon2id"]
   P --> H1 --> R
   P --> H2
@@ -52,32 +52,32 @@ The C ABI is kept small on purpose:
 
 `NativeLib.load(path)` binds the library through FFM, the JDK's foreign
 function API (JEP 454, final in JDK 22). There is no JNI glue and no
-generated code. `Kdf` is the effect:
+generated code. `PasswordHash` is the effect:
 
 ```scala
-enum Kdf[+A] derives okay.Effect:
+enum PasswordHash[+A] derives okay.Effect:
   case Argon2id(password: Array[Byte], salt: Array[Byte], memoryKb: Int, iterations: Int,
-                parallelism: Int, length: Int) extends Kdf[Either[String, Array[Byte]]]
+                parallelism: Int, length: Int) extends PasswordHash[Either[String, Array[Byte]]]
 ```
 
 A program is written against the effect and knows nothing of Rust:
 
 ```scala
-  def stored(password: String, salt: String): Either[String, String] ! Kdf =
-    Kdf.argon2id(password.getBytes("UTF-8"), salt.getBytes("UTF-8"), memoryKb = 64, iterations = 2, parallelism = 1)
+  def stored(password: String, salt: String): Either[String, String] ! PasswordHash =
+    PasswordHash.argon2id(password.getBytes("UTF-8"), salt.getBytes("UTF-8"), memoryKb = 64, iterations = 2, parallelism = 1)
       .map(_.map(hex))
 ```
 
 There are two handlers:
-- `Kdf.rust(lib)` calls the kernel. Each call allocates its buffers in a
+- `PasswordHash.rust(lib)` calls the kernel. Each call allocates its buffers in a
   confined arena, which is freed when the call returns.
-- `Kdf.using(f)` answers with any function, for example okay-security's
+- `PasswordHash.using(f)` answers with any function, for example okay-security's
   BouncyCastle Argon2 or a test's stand-in.
 
 One program, either handler, the same answer:
 
 ```scala
-    assertEquals(stored("pw", "saltsalt").runWith(using rust), stored("pw", "saltsalt").runWith(using Kdf.using(bouncy)))
+    assertEquals(stored("pw", "saltsalt").runWith(using rust), stored("pw", "saltsalt").runWith(using PasswordHash.using(bouncy)))
 ```
 
 ## How it is held honest
@@ -117,10 +117,10 @@ plugins.
 - **Buffers.** A host cannot hand a module its own pointers, so the crate
   also exports `okay_alloc`/`okay_free`. Buffers live in the module's
   memory, and `withBuffers` frees every one after the call.
-- **The handler.** `Kdf.wasm(lib)` is the effect's third handler:
+- **The handler.** `PasswordHash.wasm(lib)` is the effect's third handler:
 
 ```scala
-  private def wasm: Handler[Kdf] = Kdf.wasm(lib)
+  private def wasm: Handler[PasswordHash] = PasswordHash.wasm(lib)
 ```
 
 - **The law holds here too.** Under Chicory the kernel gives
@@ -145,10 +145,10 @@ with no runtime between:
                     out: Ptr[Byte], outLen: CSize): CInt = extern
 ```
 
-`Kdf.native` is that platform's handler. Every buffer is `malloc`'d
+`PasswordHash.native` is that platform's handler. Every buffer is `malloc`'d
 before the call and freed after it. The effect and the programs written
 against it are shared code, and only the handlers are the platform's:
-`Kdf.rust` and `Kdf.wasm` on the JVM, `Kdf.native` on Native.
+`PasswordHash.rust` and `PasswordHash.wasm` on the JVM, `PasswordHash.native` on Native.
 
 BouncyCastle does not run on Native, so the law crosses platforms through
 PINNED vectors:
