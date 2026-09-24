@@ -5,7 +5,7 @@ import okay.given // Group[N] for every Numeric, and the local Bulk[Chunks]
 import okay.Tables.{Table, read, of}
 import okay.Chunks.elements
 import okay.Sort.sortBy
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.Direct.{direct, unary_!}
 import org.apache.spark.sql.SparkSession
 import java.io.File

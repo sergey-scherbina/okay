@@ -3,13 +3,13 @@ package okay
 /**
  * PROBE (rowlift): the one-cast design, exercised.
  *
- * `RowLift` (src/main) carries the witness and the single cast; this
+ * `Row` (src/main) carries the witness and the single cast; this
  * checks the four shapes that have to work: a narrow program left
  * alone, an explicit target, an inferred target, and a polymorphic
  * helper written against a context bound.
  */
 object ProbeOneCast:
-  import RowLift.{Has, at}
+  import Row.{Has, at}
 
   type Mix  = State % Int + Writer % String
   type Mix3 = State % Int + Writer % String + Reader % Boolean

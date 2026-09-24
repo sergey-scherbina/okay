@@ -1,7 +1,7 @@
 package okay.scala2
 
 import okay.%
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.given
 import okay.http.{Frame, Request}
 

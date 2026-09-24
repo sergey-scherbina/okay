@@ -1,7 +1,7 @@
 package okay
 
 import !.*
-import RowLift.plus
+import Row.plus
 
 import scala.util.chaining.*
 

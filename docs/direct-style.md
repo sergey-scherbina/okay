@@ -682,7 +682,7 @@ keeps the body free of a hand-written `.plus[...]` per operation. The
 macro decides membership by SUBTYPING — `R2 <:< R`, which is what
 membership means for a union — because by the time it holds a row the
 row has been beta-reduced and no longer matches the `F + G` shape the
-`In` givens are written against; `RowLift.into` is that door, with the
+`In` givens are written against; `Row.into` is that door, with the
 side condition named there.
 
 The one mark left in the harness is on a GADT branch whose value IS

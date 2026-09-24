@@ -460,7 +460,7 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       it was asked for and more.
       WHERE: `Handler.union`, in a SECOND using clause (`(using
       TypeableK, Handler, Handler)(using Distinct[F + G])`), not
-      `RowLift.at`/`plus`. That is where `split` claims the excluded
+      `Row.at`/`plus`. That is where `split` claims the excluded
       middle, it is 15 call sites against 147, and a second clause
       leaves the sites that pass the first one explicitly alone.
       MEASURED, both disqualifiers: zero breakage (whole tree
@@ -964,7 +964,7 @@ skill's next step is that module's own `<module>/BACKLOG.md`.
       re-run that hides a real compile failure is worse than a red
       gate. Not done: seen once, and once is not a signature.
 - [ ] dotty-e198-renamed-import-false-positive — RECURRENCE LEDGER.
-      `import okay.RowLift.{at as liftAt, plus}` warned "unused
+      `import okay.Row.{at as liftAt, plus}` warned "unused
       import" while `liftAt` was used as an extension method;
       deleting it failed with E008, which is the proof it was used.
       Dropping the RENAME compiles clean. Recorded rather than
@@ -2014,7 +2014,7 @@ one that type-checked, which is a shape worth removing.
       together they would have made the defect unwritable without
       touching the trait.
 - [x] produce-at-a-wider-row — DONE 2026-09-16 (blob-source-road): the
-      answer was already in RowLift — `produce(a).plus[Async]` is a
+      answer was already in Row — `produce(a).plus[Async]` is a
       zero-cost coerce, not the walk `!.widen` makes — so `produce`'s
       doc says so and names the trap beside it. Was: `produce(a)` is the named injector and
       is typed `A ! Produce` precisely, so a program in

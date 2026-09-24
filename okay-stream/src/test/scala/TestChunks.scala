@@ -2,8 +2,8 @@ package okay
 
 import !.*
 import Chunks.*
-import RowLift.plus
-import RowLift.at
+import Row.plus
+import Row.at
 
 /** Chunked streams: batch amortization over the ordinary stream layer. */
 class TestChunks extends munit.FunSuite {

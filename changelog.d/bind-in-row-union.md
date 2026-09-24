@@ -5,7 +5,7 @@ with two `!.widen`s and six type arguments. `Free` stays invariant in
 its row — a measured decision — so `flatMap` refuses a continuation
 in another row; `at`/`plus` moved programs, not binds.
 
-- `RowLift`: `p.bindIn(f: A => B ! G): B ! (F + G)` and `p.thenIn(q)`
+- `Row`: `p.bindIn(f: A => B ! G): B ! (F + G)` and `p.thenIn(q)`
   — two `plus` coercions and one `flatMap`, no walk, no witness: the
   gain is INFERENCE, `G` read off the continuation and `F` off the
   receiver.

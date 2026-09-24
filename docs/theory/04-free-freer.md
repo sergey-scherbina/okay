@@ -190,7 +190,7 @@ covariantly in the three cases, `enum Free[+F[+_], A]` passes the
 variance check, and the row subtyping then holds pointwise at
 concrete rows — the two `Writer.widen` calls in a merge would become
 coercions and the pass would disappear. (Since widen-split,
-2026-09-23, `!.widen` itself IS a coercion — `RowLift`'s one cast,
+2026-09-23, `!.widen` itself IS a coercion — `Row`'s one cast,
 sound by erasure, nothing forced — and the walk keeps the name
 `!.normalize`; what the paragraph below is about is `Writer.widen`,
 the element-type re-tell a merge still walks.)

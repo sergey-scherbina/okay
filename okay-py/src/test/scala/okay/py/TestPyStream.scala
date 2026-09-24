@@ -1,7 +1,7 @@
 package okay.py
 
 import okay.{!, %, +, Writer, given}
-import okay.RowLift.plus
+import okay.Row.plus
 
 object TestPyStream:
   val m = Py.module("streamy", """

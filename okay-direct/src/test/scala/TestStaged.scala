@@ -85,7 +85,7 @@ class TestStaged extends munit.FunSuite:
 
   // ---- v2: compound programs are walked into binds
 
-  import okay.RowLift.at
+  import okay.Row.at
 
   def freeCompound(xs: List[Int], k: Int): Int ! Row = direct[[A] =>> A ! Row] {
     val s1 = State.modify[Int](_ + k).!?                                  // an inline combinator

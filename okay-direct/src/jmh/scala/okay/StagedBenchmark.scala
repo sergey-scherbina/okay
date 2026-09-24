@@ -3,7 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.RowLift.at
+import okay.Row.at
 
 /**
  * specs/direct-staged.md, the number: the SAME block text three ways

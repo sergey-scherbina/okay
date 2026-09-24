@@ -4,7 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import scala.annotation.tailrec
 import okay.!.{Inject, Bind}
-import okay.RowLift.at
+import okay.Row.at
 
 /**
  * either-scalarised (runner-floor item 3): which wrapper does WHICH

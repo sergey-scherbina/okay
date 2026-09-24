@@ -5,7 +5,7 @@ operation and refused `State.modify(f)`. After inlining, a compound
 program is a tree the macro can read — `Free.Inject(op)`,
 `Free.Pure(a)`, `Free.Bind(m, x => body)` with the continuation a
 lambda literal; the combinators are `inline def`s, `Free.flatMap` is
-`Bind(this, f)`, `map` is `flatMap(a => Pure(f(a)))`, RowLift's
+`Bind(this, f)`, `map` is `flatMap(a => Pure(f(a)))`, Row's
 `.at`/`.plus` are casts. `DirectRow.stageProgram` walks that tree into
 the binds a block of marks would emit: `State.modify(f)`, a hand-written
 `get.flatMap(s => set(…))`, a for-comprehension over the row with a

@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.{at, plus}
+import okay.Row.{at, plus}
 
 /** Several instances of ONE signature in one row. */
 class TestTag extends munit.FunSuite {

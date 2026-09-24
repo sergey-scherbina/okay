@@ -1,7 +1,7 @@
 package okay
 
 import okay.given
-import okay.RowLift.plus
+import okay.Row.plus
 import scala.collection.immutable.ArraySeq
 
 /**

@@ -18,7 +18,7 @@ class TestRowSpelling extends munit.FunSuite:
     summon[(Unit ! Writer % Int + Once) =:= (Unit ! (Writer % Int + Once))]
 
   test("a program written at the bare row runs"):
-    import okay.RowLift.at
+    import okay.Row.at
     val prog: Int ! State % String + Writer % String =
       for
         s <- State.get[String].at

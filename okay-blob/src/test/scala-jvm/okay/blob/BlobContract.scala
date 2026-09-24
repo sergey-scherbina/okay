@@ -1,7 +1,7 @@
 package okay.blob
 
 import okay.{!, +, %, Async, Chunk, Fold, Source, Writer}
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.given
 import scala.collection.immutable.ArraySeq
 

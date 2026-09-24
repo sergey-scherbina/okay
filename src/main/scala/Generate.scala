@@ -105,7 +105,7 @@ type Chunk[+A] = scala.collection.immutable.ArraySeq[A]
  *
  * Typed at `Produce` alone. In a wider row — `Blob.put` asks for
  * `Produce + Async` — say `produce(a).plus[Async]` or
- * `produce(a).at[Produce + Async]`: RowLift's zero-cost coerce, not
+ * `produce(a).at[Produce + Async]`: Row's zero-cost coerce, not
  * the tree walk `!.widen` makes.
  *
  * What NOT to write there is `pure(a)`. It type-checks at every row

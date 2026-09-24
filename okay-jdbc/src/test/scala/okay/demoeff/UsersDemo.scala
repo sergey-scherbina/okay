@@ -25,7 +25,7 @@ package okay.demoeff
 import okay.*
 import okay.given
 import java.sql.{Connection, DriverManager}
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions
 

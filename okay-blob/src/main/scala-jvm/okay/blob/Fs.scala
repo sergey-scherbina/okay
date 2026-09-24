@@ -1,7 +1,7 @@
 package okay.blob
 
 import okay.{!, +, %, Async, Chunk, Source, Writer, async, effect, pure}
-import okay.RowLift.plus
+import okay.Row.plus
 import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.collection.immutable.ArraySeq
 

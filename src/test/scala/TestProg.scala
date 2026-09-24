@@ -2,7 +2,7 @@ package okay
 
 import okay.Delim.Stacked
 import okay.Delim.Stacked.{abort, delimited, reset, shift, under}
-import okay.RowLift.at
+import okay.Row.at
 // NOT for the old `Comonad[Id]` capture (gone, comonad-id-map-capture):
 // found through `Prog`'s companion, the extension's `flatMap` leaves the
 // lambda's argument an uninferred `A` in the stacked shapes below

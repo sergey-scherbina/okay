@@ -68,7 +68,7 @@ is a subtype of requiring more:
 `A ! State[Int] <: A ! (State[Int] + Writer[String])`. So a
 single-effect operation fits into any wider program without an
 injection, a widening call, or a search. That is exactly what
-`RowLift.In` gives the Scala 3 API, and here subtyping gives it for
+`Row.In` gives the Scala 3 API, and here subtyping gives it for
 free. `flatMap[R1 <: R, B]` (Eff.scala:32) lets scalac find the smallest
 row that satisfies both sides of a bind.
 

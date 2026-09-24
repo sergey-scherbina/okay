@@ -28,7 +28,7 @@ second run by name.
   widened value held the start. Both now rebuild `Delay(t)` and
   `Bind(Delay(t), f)` as deferred (`Effects.scala`, `Writer.scala`;
   `TestWidenDelay` in core, failing first: 1 start after widen, now 0
-  and one per run). `RowLift.plus`/`at` never walked and never had it.
+  and one per run). `Row.plus`/`at` never walked and never had it.
 - `TestGather` and `TestTransducers` flipped: the second run of a built
   program now gives the same windows/batches; what is still refused by
   name is a continuation from INSIDE a run resumed after that run

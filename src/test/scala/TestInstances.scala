@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.{at, plus}
+import okay.Row.{at, plus}
 
 /**
  * Instances of an ARBITRARY effect, made at run time — the corner

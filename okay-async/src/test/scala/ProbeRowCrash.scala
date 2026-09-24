@@ -7,7 +7,7 @@ import scala.util.NotGiven
  * 2026-09-17). Kept compiling so that the next Scala upgrade says, by
  * turning red or green, whether it is still there.
  *
- * `RowLift.In` is membership as a witness, and its inductive given
+ * `Row.In` is membership as a witness, and its inductive given
  * (`deeper[F, G, H](using In[F, G]): In[F, G + H]`) asks the compiler
  * to solve `?G + ?H =:= X` for the target. When X is a CONCRETE row
  * that is easy. When X is an ABSTRACT type constructor, dotty 3.9
@@ -55,10 +55,10 @@ object ProbeRowCrash:
 
   /** CONCRETE targets are fine — this is the everyday case and it
    * resolves */
-  val concrete: RowLift.In[State % Int, State % Int + Async] = summon
+  val concrete: Row.In[State % Int, State % Int + Async] = summon
 
   /** and so is the identity */
-  val self: RowLift.In[Async, Async] = summon
+  val self: Row.In[Async, Async] = summon
 
   /**
    * THE CRASH, one line, commented out because it does not fail — it
@@ -66,7 +66,7 @@ object ProbeRowCrash:
    * cannot be compiled. Uncomment to check whether a new Scala still
    * dies here:
    *
-   *     def crashes[F[+_], G[+_]](using RowLift.In[F, G]): Int = 0
+   *     def crashes[F[+_], G[+_]](using Row.In[F, G]): Int = 0
    *     val boom = crashes[Async, Async]
    *
    * (the definition alone is fine; it is the SEARCH at the call site

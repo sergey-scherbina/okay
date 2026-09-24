@@ -4,7 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
 import !.*
-import okay.RowLift.at
+import okay.Row.at
 // AsyncFailing.anyRow no longer lives in Failing's own companion after
 // the async split, so it needs an explicit import (was automatic at HEAD).
 import okay.AsyncFailing.anyRow

@@ -29,7 +29,7 @@ someone writing the wrong one?**
 The combinators that RUN a machine take a witness that the row does
 not already have one. The witness is `Delim.OneMachine[F]`, and the
 membership test inside it is `NotGiven[Delim[Any] <:< F[Any]]` —
-membership by APPLICATION rather than `RowLift.In`, for a reason that
+membership by APPLICATION rather than `Row.In`, for a reason that
 was measured and is recorded in the Results: the `In` formulation
 crashes the compiler.
 
@@ -97,7 +97,7 @@ arrives, resume THIS machine with the same stack. A capture belonging
 to an outer machine wants exactly that, so the change is letting the
 `None` branch of `split(kont, cap.prompt)` fall into that path instead
 of throwing. `Delim.runNested` is the door, and it asks for
-`RowLift.In[Delim, F]`: forwarding puts a `Delim` operation into `F`,
+`Row.In[Delim, F]`: forwarding puts a `Delim` operation into `F`,
 so `F` must have one — which is the case it exists for, and asking
 keeps `run`'s meaning untouched.
 
@@ -213,7 +213,7 @@ two pinned tests that had to change from runtime-intercept to
 compile-error because the shape they demonstrated is now refused).
 
 **The obvious formulation is refuted, and the refutation is a
-compiler crash.** `NotGiven[RowLift.In[Delim, F]]` — membership as the
+compiler crash.** `NotGiven[Row.In[Delim, F]]` — membership as the
 library already spells it — asks implicit search to prove membership
 in an ABSTRACT row; `In.deeper` unfolds it into `G + H`, and dotty
 3.9 dies with `java.lang.AssertionError: Failure to join alternatives

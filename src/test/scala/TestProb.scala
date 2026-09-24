@@ -1,7 +1,7 @@
 package okay
 
 import Prob.*
-import okay.RowLift.at
+import okay.Row.at
 
 /**
  * specs/prob-effect-hansei.md: exact inference by multi-shot capture

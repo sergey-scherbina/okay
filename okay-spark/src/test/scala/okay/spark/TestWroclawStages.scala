@@ -3,7 +3,7 @@ package okay.spark
 import okay.*
 import okay.given
 import okay.Tables.read
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.Direct.{direct, unary_!}
 import org.apache.spark.sql.SparkSession
 import java.io.File

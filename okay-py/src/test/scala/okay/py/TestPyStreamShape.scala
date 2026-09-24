@@ -1,7 +1,7 @@
 package okay.py
 
 import okay.{!, %, +, Writer, given}
-import okay.RowLift.plus
+import okay.Row.plus
 import PyValue.*
 
 /** the stage's shape without python3 (foreign-streaming): default gate */

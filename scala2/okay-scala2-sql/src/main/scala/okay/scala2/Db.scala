@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.codec.Schema
 import okay.sql.{Bad, Drift, Isolation, SqlValue, Typed}
 

@@ -1587,7 +1587,7 @@ pinned the zero forks with a test, which is how the limit came to be
 closed rather than forgotten.
 
 The reason was WHERE the leaf is read. `compile` hands one back
-already lifted by `RowLift.into`, so in a `Reader % Int + Async` block
+already lifted by `Row.into`, so in a `Reader % Int + Async` block
 its type is `X ! (Reader % Int + Async)` and `Async.spawn` will not
 take it. But the program the AUTHOR wrote is still `X ! Async`, and
 the obstacle was never the narrowing: it was that inline expansion
@@ -2489,7 +2489,7 @@ attempts, an empty journal, then a second worker completing the run.
 
 ## row-membership-crash - the compiler bug that decided three designs, pinned
 
-`RowLift.In`'s inductive given asks the compiler to solve `?G + ?H`
+`Row.In`'s inductive given asks the compiler to solve `?G + ?H`
 for its target. When the target is an ABSTRACT type constructor, dotty
 3.9 does not fail - it CRASHES, `AssertionError: Failure to join
 alternatives F and G`, in `TypeOps.orDominator`.
@@ -2509,7 +2509,7 @@ workarounds, no record - until now.
   obligation over a row is CARRIED as a parameter, never searched for
   at an abstract row; and where a witness must be summoned, use
   subtyping.
-- `RowLift.Sub[F, G]` (`F[Any] <:< G[Any]`) and `p.up[R]` are the
+- `Row.Sub[F, G]` (`F[Any] <:< G[Any]`) and `p.up[R]` are the
   shape that does not crash, beside the existing `In`/`at` for
   concrete rows.
 
@@ -2546,7 +2546,7 @@ is `Async` does not compile.
 
 ADDITION, NOT MEMBERSHIP, and that was measured rather than chosen.
 The natural spelling is one driver row `G` that CONTAINS `F` -
-`RowLift.at` is exactly that door, one licensed cast - but `In[F, G]`
+`Row.at` is exactly that door, one licensed cast - but `In[F, G]`
 over two ABSTRACT rows crashes dotty 3.9 in `orDominator` with
 "Failure to join alternatives F and G". That is the second time in one
 day the same crash has decided a design (delim-safety was the first),
@@ -3055,7 +3055,7 @@ subtyping with the concrete row on the LEFT - the same trick as
 `A | B <: C | D` decomposes the left side, which the compiler does
 happily; an abstract row PROPAGATES the obligation to its caller
 rather than being searched for, which is also what keeps it out of
-the `orDominator` crash that killed the `RowLift.In` formulation.
+the `orDominator` crash that killed the `Row.In` formulation.
 
 In: State, Reader, Throws, Delim. Out, each for a measured reason:
 Async and anything reaching outside (replay performs it again),
@@ -3160,7 +3160,7 @@ stage 0). The trap continuations-audit found - `collect` inside
 `resumable`, two `Delim` in one row - is refused by
 `Delim.OneMachine[F]`, with a message that names `collecting`. The
 obvious formulation is REFUTED and the refutation is a compiler crash:
-`NotGiven[RowLift.In[Delim, F]]` makes dotty 3.9 die with "Failure to
+`NotGiven[Row.In[Delim, F]]` makes dotty 3.9 die with "Failure to
 join alternatives F and G" in `orDominator`, at Delim's own internal
 call sites. Membership by APPLICATION works instead
 (`NotGiven[Delim[Any] <:< F[Any]]`): a union on the RIGHT of a `<:<`
@@ -3579,7 +3579,7 @@ resolution leaves the row's halves free and fails where
 `summon[In[R2, R]]` succeeds (measured) — and the macro decides
 instead, by SUBTYPING, which is what membership means for a union and
 which the compiler settles on the reduced row the macro actually
-holds. `RowLift.into` is the door, with that side condition stated
+holds. `Row.into` is the door, with that side condition stated
 beside the library's one cast.
 
 The by-need example now reads its test data by type:
@@ -3624,7 +3624,7 @@ moves through State — and it is itself a `direct` block:
 **direct-narrow-row**, which is what made that harness readable: a
 mark on a program of a NARROWER row — `!Reader.ask[Db]` in a block at
 `Writer % String + Reader % Db + State % Long` — is now coerced into
-the block's row through `RowLift`'s `In` witness, summoned at
+the block's row through `Row`'s `In` witness, summoned at
 expansion. Without it every combinator needed a hand-written
 `.plus[...]` naming the other members. A program of an unrelated row
 is refused as before.
@@ -5765,7 +5765,7 @@ That makes it not a Tag check at all. It catches the UNTAGGED
 
 **Where it is required**: `Handler.union`, in a second using clause.
 That is the one place `split`'s excluded middle is claimed, it is 15
-call sites rather than `RowLift.at`/`plus`'s 147, and a second clause
+call sites rather than `Row.at`/`plus`'s 147, and a second clause
 leaves the sites that pass the first one explicitly alone. Both
 disqualifiers in the backlog entry were measured before the
 requirement was kept: zero breakage (the whole tree compiles, the gate
@@ -5783,8 +5783,8 @@ what sees it and a structural match never does. And `F | F` is `F`: a
 row cannot repeat a member at all, so the check only ever fires on two
 DIFFERENT types with one runtime identity.
 
-The witness is a class, not an opaque `Unit`. `RowLift.In` can be the
-latter because it is summoned from outside `RowLift`, where the
+The witness is a class, not an opaque `Unit`. `Row.In` can be the
+latter because it is summoned from outside `Row`, where the
 opacity holds; a witness summoned from inside `package okay` cannot —
 the alias is transparent in its own scope, the given's type then
 constrains R to nothing, and every row is satisfied by the macro run
@@ -5959,7 +5959,7 @@ The script says which case it is in. A lane's gate runs in a fresh
 worktree, so the run that decides a landing is the run that sees them.
 
 **And the first thing the new check found was a compiler false
-positive.** E198 "unused import" fired on `import okay.RowLift.{at as
+positive.** E198 "unused import" fired on `import okay.Row.{at as
 liftAt, plus}` where `liftAt` IS used — deleting it fails with E008,
 which is the proof. A RENAMED import reached only in
 extension-selection position is not counted as used. The fix is to
@@ -6366,7 +6366,7 @@ Three follow-ups filed rather than guessed at:
   tag-distinct-keys — a `Distinct[R]` given, derived by a macro over
     the row type, refusing duplicates at compile time. The design
     question is WHERE to require it: `Tag.one`/`tag` cannot see the
-    whole row, so the seam is `RowLift.at`/`plus` — very hot, very
+    whole row, so the seam is `Row.at`/`plus` — very hot, very
     general. Disqualified if it costs compile time on ordinary rows.
   tag-test-the-signature-too — test the key AND the inner operation,
     so members sharing a key but differing in signature route
@@ -11155,7 +11155,7 @@ every platform it ships to. Commit: 15ff0b59.
 The operator's question, on `Failing.anyRow`'s two `.asInstanceOf[F[X]]`:
 avoid the cast, or at least move it somewhere less explicit — an
 implicit, a typeclass. The implicit road was probed BEFORE anything was
-built: a `RowLift.In[Async, F]` witness selecting a guarding instance,
+built: a `Row.In[Async, F]` witness selecting a guarding instance,
 `NotGiven` selecting an identity. `summonFrom` on every TestFailing
 shape: `In[Async, F]` resolves for five of the seven Async-holding
 shapes and NOT for `(S + P) + Async` or the right-nested row (`In`
@@ -13073,7 +13073,7 @@ Two things found in the Jmh configuration on the way, both from
 2026-09-08 landings that did not run `okayJVM/Jmh/compile`: `Ask` in
 HandlerBenchmark had no `derives Effect` after f9417643 removed the
 erasure fallback (a compile error — master's Jmh was red), and
-RowLift's `given deeper` had an unused evidence parameter (the
+Row's `given deeper` had an unused evidence parameter (the
 zero-warning policy covers Jmh). Both fixed here, one line each.
 
 ## grant-unenforced — master was red, and the green tests were the problem

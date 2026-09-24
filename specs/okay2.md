@@ -18,7 +18,7 @@ do NOT cover it; a lane touching `okay2/` runs that gate itself.
 The question it answers is whether okay's design is a property of
 Scala 3 or of the design. Stage 0 said: of the design. The RUNTIME
 of okay never depended on the union — dispatch is by class
-(`TypeableK`), widening is one cast (`RowLift`), the row exists only
+(`TypeableK`), widening is one cast (`Row`), the row exists only
 in types — so what Scala 2 needs is a new spelling of the row, not a
 new machine.
 

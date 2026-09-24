@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.{at, plus}
+import okay.Row.{at, plus}
 
 /** A collection as a signature: nondeterminism with no wrapper. */
 class TestSeqEffect extends munit.FunSuite {

@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.{at, plus}
+import okay.Row.{at, plus}
 
 /**
  * A step the program may decline: `case Some(x) <-` and `if` in a

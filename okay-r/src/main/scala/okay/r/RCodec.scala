@@ -1,7 +1,7 @@
 package okay.r
 
 import okay.{!, +, effect, pure}
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.codec.Schema
 import RValue.*
 

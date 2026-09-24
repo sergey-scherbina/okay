@@ -145,7 +145,7 @@ object Delim {
   final class OneMachine[F[+_]] private[Delim] ()
   object OneMachine:
     /**
-     * Membership by APPLICATION, not by `RowLift.In` — measured, and
+     * Membership by APPLICATION, not by `Row.In` — measured, and
      * the reason is a compiler crash rather than taste. `NotGiven[
      * In[Delim, F]]` asks implicit search to prove membership in an
      * abstract row, `In.deeper` unfolds it into `G + H`, and dotty
@@ -759,7 +759,7 @@ object Delim {
    * case this exists for, and asking for it keeps `run`'s meaning
    * unchanged — a caller who wants forwarding says so.
    */
-  def runNested[R, F[+_]](prog: R ! Delim + F)(using RowLift.In[Delim, F]): R ! F =
+  def runNested[R, F[+_]](prog: R ! Delim + F)(using Row.In[Delim, F]): R ! F =
     machine(prog, forward = true)
 
   private def machine[R, F[+_]](prog: R ! Delim + F, forward: Boolean): R ! F = {

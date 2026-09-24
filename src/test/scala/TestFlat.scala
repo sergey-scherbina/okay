@@ -1,7 +1,7 @@
 package okay
 
 import !.*
-import okay.RowLift.at
+import okay.Row.at
 
 case class Fa[+A](a: A) derives Effect
 case class Fb[+A](a: A) derives Effect

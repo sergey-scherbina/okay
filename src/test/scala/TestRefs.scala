@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.plus
+import okay.Row.plus
 
 /** refs made at run time: one row member, however many there are. */
 class TestRefs extends munit.FunSuite {

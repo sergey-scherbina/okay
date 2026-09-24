@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.{at, plus}
+import okay.Row.{at, plus}
 import scala.annotation.tailrec
 
 /**
@@ -394,8 +394,8 @@ object Effects {
    * row by a measured choice (free-row-variance, 2026-09-03: the
    * covariant `enum Free[+F[+_], A]` passes the variance check, and
    * was not taken), so the type system cannot see that a program at
-   * `F` is one at `F + G`; `RowLift.into` says it once, by the erasure
-   * argument RowLift.scala states — an `Inject(e)` with `e: F[X]` IS a
+   * `F` is one at `F + G`; `Row.into` says it once, by the erasure
+   * argument Row.scala states — an `Inject(e)` with `e: F[X]` IS a
    * value of `(F + G)[X]`, since the row is a union. Nothing is
    * forced and nothing is walked: a program whose state is made under
    * `Free.delay` stays deferred until it runs, which is what
@@ -403,7 +403,7 @@ object Effects {
    * be. The walk is `normalize`, below, under the name of what it
    * does.
    */
-  def widen[A, F[+_], G[+_]](p: A ! F): A ! F + G = RowLift.into[A, F, F + G](p)
+  def widen[A, F[+_], G[+_]](p: A ! F): A ! F + G = Row.into[A, F, F + G](p)
 
   /**
    * The WALK `widen` used to be: resume the head and rebuild the tree

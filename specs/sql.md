@@ -392,7 +392,7 @@ single-effect row most call sites pass, and the total default.
 **The cast leaves Failing.scala (failing-over, 2026-09-09, the
 operator's question: avoid the cast, or at least move it somewhere
 less explicit — "через имплисит или тайпкласс").** Two roads were
-weighed. The implicit one — a `RowLift.In[Async, F]` witness selecting
+weighed. The implicit one — a `Row.In[Async, F]` witness selecting
 a guarding instance and `NotGiven` selecting an identity — was PROBED
 before anything was built, with `summonFrom` on every TestFailing
 shape: `In[Async, F]` resolves for `Async`, `Async + S`, `S + Async`,

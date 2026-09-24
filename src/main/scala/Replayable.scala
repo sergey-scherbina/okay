@@ -39,7 +39,7 @@ import scala.annotation.implicitNotFound
  * `Delim.OneMachine`: state the property as SUBTYPING with the
  * concrete row on the LEFT. `A | B <: C | D` decomposes the left
  * side, which the compiler does happily — and it keeps the whole
- * question out of `orDominator`, where `RowLift.In` over an abstract
+ * question out of `orDominator`, where `Row.In` over an abstract
  * row crashes dotty 3.9 outright.
  *
  * The consequence worth knowing: an ABSTRACT row is not proved and

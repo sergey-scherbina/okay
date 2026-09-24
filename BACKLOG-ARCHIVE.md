@@ -6188,7 +6188,7 @@ the declined, which is why this file exists instead of a delete.
       it was asked for and more.
       WHERE: `Handler.union`, in a SECOND using clause (`(using
       TypeableK, Handler, Handler)(using Distinct[F + G])`), not
-      `RowLift.at`/`plus`. That is where `split` claims the excluded
+      `Row.at`/`plus`. That is where `split` claims the excluded
       middle, it is 15 call sites against 147, and a second clause
       leaves the sites that pass the first one explicitly alone.
       MEASURED, both disqualifiers: zero breakage (whole tree
@@ -6636,7 +6636,7 @@ the declined, which is why this file exists instead of a delete.
       with producer-drains.
 
 - [x] produce-at-a-wider-row — DONE 2026-09-16 (blob-source-road): the
-      answer was already in RowLift — `produce(a).plus[Async]` is a
+      answer was already in Row — `produce(a).plus[Async]` is a
       zero-cost coerce, not the walk `!.widen` makes — so `produce`'s
       doc says so and names the trap beside it. Was: `produce(a)` is the named injector and
       is typed `A ! Produce` precisely, so a program in

@@ -737,7 +737,7 @@ in `F` and widened at the seam; the journal, the replay and the race
 check never see `E`.
 
 **Addition, not membership, and that was measured.** The natural
-spelling is a single driver row `G` containing `F` — `RowLift.at`
+spelling is a single driver row `G` containing `F` — `Row.at`
 exists for exactly that, one licensed cast — but `In[F, G]` over TWO
 ABSTRACT rows crashes dotty 3.9 in `orDominator` ("Failure to join
 alternatives F and G"), the same crash delim-safety recorded. Second

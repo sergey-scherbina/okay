@@ -1,7 +1,7 @@
 package okay.persist
 
-import okay.{!, +, At, Delim, Replayable, RowLift, Wf, pure}
-import okay.RowLift.up
+import okay.{!, +, At, Delim, Replayable, Row, Wf, pure}
+import okay.Row.up
 import okay.codec.Schema
 
 /**
@@ -145,7 +145,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! Delim + F)
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime,
-                                   RowLift.Sub[F, G]):
+                                   Row.Sub[F, G]):
 
   /** the dialogue this worker drives, for an id */
   def dialogue(id: String): Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F] =
@@ -313,7 +313,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
     // re-fold the journal every time
     val d = from.dialogue
     d.runWorkflowFromIn[G](from.paused, from.at)(oracle)(
-        using runtime(id), summon[RowLift.Sub[F, G]]).flatMap:
+        using runtime(id), summon[Row.Sub[F, G]]).flatMap:
       case (Right(r), _, _) => seedOf(r) match
         case None =>
           timers.disarm(id)

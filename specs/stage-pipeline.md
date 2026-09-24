@@ -160,7 +160,7 @@ phased/phased3 are the extra door.
   TestWidenDelay, written failing first). SINCE widen-split
   (2026-09-23) `!.widen` is that coercion and cannot force a head at
   all; the walk is `!.normalize` and keeps the deferred rebuild, and
-  `Writer.widen` keeps it too. `RowLift.plus`/`at` never
+  `Writer.widen` keeps it too. `Row.plus`/`at` never
   had the problem — one coercion, no walk — and are the road for a
   pure stage that only needs a wider row; the walk is for the
   normalisation `Source.merge` measured (specs/writer-covariance.md).

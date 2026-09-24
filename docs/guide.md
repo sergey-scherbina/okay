@@ -188,7 +188,7 @@ known only by MEMBERSHIP, as a row-polymorphic helper's is. A BIND
 whose continuation answers in another row is `p.bind(x => q)`: the
 result lands in the union of the two rows, the other row read off
 `q` with nothing written (`Reader.ask[Int].bind(e => Writer.tell(
-s"$e"))`, `import okay.RowLift.bind` as with `plus`/`at`); `andThen`
+s"$e"))`, `import okay.Row.bind` as with `plus`/`at`); `andThen`
 is the same with the answer dropped. Inside a
 `direct` block none of this is spelled — marks widen
 (`[R[+_] : Has[State % Int]]`).
@@ -356,7 +356,7 @@ the identity signature — an operation IS its element — so a
 producer's element type sits in the ANSWER position, and `pure(a)`
 type-checks wherever `produce(a)` does. It emits nothing: a
 producer's `Pure` is its END, read as `None`. `produce(a)` is the
-emit; in a wider row, `produce(a).plus[Async]` (RowLift's zero-cost
+emit; in a wider row, `produce(a).plus[Async]` (Row's zero-cost
 coerce). And a producer's answer is phantom, so `uncons` drops it at
 its `None` — `Producer.each(p)(f)` runs every element through `f` and
 KEEPS the answer, which is what `Blob.get`'s outcome needs. The two

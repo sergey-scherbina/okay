@@ -4,7 +4,7 @@ package okay
  * specs/direct-staged.md: a program over a row with its handler
  * known at the call site.
  *
- * A `Handled[Row, R, A]` is `Func` — the program as a function of its
+ * A `Handled[F, R, A]` is `Func` — the program as a function of its
  * continuation, at answer type R — with the row and the answer carried
  * in the type so that the `direct` macro can read them off a block's
  * F. Its operations are not dispatched: a `Stager` object's `stage` is
@@ -23,34 +23,34 @@ package okay
  * block under `Cont`.
  */
 object Handled:
-  opaque type Handled[Row[+_], R, A] = (A => R) => R
+  opaque type Handled[F[+_], R, A] = (A => R) => R
 
   /** an operation's meaning: what it does with its continuation */
-  inline def shift[Row[+_], R, A](inline f: (A => R) => R): Handled[Row, R, A] = f
+  inline def shift[F[+_], R, A](inline f: (A => R) => R): Handled[F, R, A] = f
 
-  inline def pure[Row[+_], R, A](a: A): Handled[Row, R, A] = k => k(a)
+  inline def pure[F[+_], R, A](a: A): Handled[F, R, A] = k => k(a)
 
   /** apply the program to its final continuation */
-  inline def run[Row[+_], R, A](p: Handled[Row, R, A])(k: A => R): R = p(k)
+  inline def run[F[+_], R, A](p: Handled[F, R, A])(k: A => R): R = p(k)
 
   /** closure composition, as `Control[Func]`: `flatMap` is one lambda
    * per bind, and the JIT inlines the monomorphic call — measured at
    * the ceiling without compile-time inlining of the bind */
-  given [Row[+_], R]: Monad[Handled[Row, R, *]] with
-    override inline def pure[A](a: A): Handled[Row, R, A] = k => k(a)
-    override inline def fmap[A, B](m: Handled[Row, R, A], f: A => B): Handled[Row, R, B] =
+  given [F[+_], R]: Monad[Handled[F, R, *]] with
+    override inline def pure[A](a: A): Handled[F, R, A] = k => k(a)
+    override inline def fmap[A, B](m: Handled[F, R, A], f: A => B): Handled[F, R, B] =
       k => m(x => k(f(x)))
-    extension [A](m: Handled[Row, R, A])
-      override inline def flatMap[B](f: A => Handled[Row, R, B]): Handled[Row, R, B] =
+    extension [A](m: Handled[F, R, A])
+      override inline def flatMap[B](f: A => Handled[F, R, B]): Handled[F, R, B] =
         k => m(f(_)(k))
 
-type Handled[Row[+_], R, A] = Handled.Handled[Row, R, A]
+type Handled[F[+_], R, A] = Handled.Handled[F, R, A]
 
 /**
  * A row's staged interpreter: ONE object (or class instance) per row
  * and answer layout, whose `stage` is
  *
- *   inline def stage[X](inline op: Row[X]): Handled[Row, R, X] =
+ *   inline def stage[X](inline op: F[X]): Handled[F, R, X] =
  *     inline op match
  *       case State.Get()   => Handled.shift(k => st => k(st._1)(st))
  *       …
@@ -59,9 +59,9 @@ type Handled[Row[+_], R, A] = Handled.Handled[Row, R, A]
  * abstract inline member is not a thing, and `stage` must resolve on
  * the object's OWN type for the inliner to see it — which is why the
  * `direct` macro takes the object as an `inline` parameter rather
- * than summoning a `Stager[Row, R]` that would widen to this trait.
+ * than summoning a `Stager[F, R]` that would widen to this trait.
  */
-trait Stager[Row[+_], R]
+trait Stager[F[+_], R]
 
 object Stager:
   type Acc[S, W] = (S, Vector[W])

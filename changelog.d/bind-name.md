@@ -2,7 +2,7 @@
 
 The operator's word, minutes after it landed ("А можно bindIn назвать
 просто bind?", then "Да замени на andThen"). `p.bind(f: A => B ! G):
-B ! (F + G)` and `p.andThen(q: => B ! G): B ! (F + G)` in RowLift.
+B ! (F + G)` and `p.andThen(q: => B ! G): B ! (F + G)` in Row.
 `bind` was free (`Cont.bind(c)(f)` is a companion method, called
 qualified, no extension in its way); `then` is a keyword in Scala 3,
 so the answer-dropping form takes the name every Scala function

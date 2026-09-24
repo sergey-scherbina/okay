@@ -3,6 +3,11 @@ package okay
 /**
  * Row membership as a witness, and the one cast it licenses.
  *
+ * Named `Row` since rowlift-to-row (2026-09-24), the name okay2 gives
+ * its row type: `Row.at`, `Row.In`, `Row.Sub`, `Row.Has` read as what
+ * they are about. It was `RowLift`; that name stays, below, as an
+ * alias, so code written against it (okay-watch) compiles unchanged.
+ *
  * A constructor builds at its OWN row — `State.get[Int] : Int !
  * (State % Int)` — and a program usually has a wider one. The only
  * spelling the library had was `!.widen`, which asks for the
@@ -21,7 +26,7 @@ package okay
  * `In` is an opaque `Unit`: a witness that is only ever SUMMONED need
  * not exist at run time, and opacity is what stops a caller conjuring
  * a proof. Beware that opacity holds OUTSIDE this scope only —
- * anything written inside `RowLift` sees `In[F, R]` as literally
+ * anything written inside `Row` sees `In[F, R]` as literally
  * `Unit`, and the givens below become invisible to implicit search.
  * That is the one trap here.
  *
@@ -30,7 +35,7 @@ package okay
  * — a macro, `<:<`, a covariant `Free` — are in
  * specs/writer-covariance.md, rowlift.
  */
-object RowLift:
+object Row:
 
   /** F is a member of the row R. */
   opaque type In[F[+_], R[+_]] = Unit
@@ -183,3 +188,8 @@ object RowLift:
     /** the same, the answer dropped: `p andThen q` runs p, then q */
     inline def andThen[B, G[+_]](q: => B ! G): B ! F + G =
       coerce[A, F, F + G](p).flatMap(_ => coerce[B, G, F + G](q))
+
+/** the old name of `Row`, kept so code written against it compiles
+ * unchanged (rowlift-to-row, 2026-09-24): `import okay.RowLift.plus`
+ * imports `Row.plus` */
+val RowLift: Row.type = Row

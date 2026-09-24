@@ -1,7 +1,7 @@
 package okay.r
 
 import okay.{!, %, +, Writer, given}
-import okay.RowLift.plus
+import okay.Row.plus
 
 object TestRStream:
   val m = R.module("streamr", """

@@ -10,7 +10,7 @@ import scala.quoted.*
  * drop, how an operation or a narrower program is lifted into the
  * row, whether the row holds a `Once` cell. Reads types; the only
  * terms it builds are the lifts themselves (`Free.Inject`,
- * `RowLift.into`).
+ * `Row.into`).
  */
 private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   import q.reflect.*
@@ -150,7 +150,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     m.transformTerm(t)(Symbol.spliceOwner)
 
   /** a term with its wrappers off — inlining, ascription, the block
-   * the inliner leaves its remaining proxies in, and RowLift's
+   * the inliner leaves its remaining proxies in, and Row's
    * coercions, which are casts (`p.asInstanceOf[A ! R]`): the program
    * inside a `.at[Row]` is the program. A lambda is left whole. The
    * bindings come out in front. */
@@ -253,8 +253,8 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       // `Reader.ask`, `Writer.tell` — all answer at their OWN row, so
       // without this every one of them needs a hand-written `.plus[...]`
       // naming the other members, which is what made the test harness
-      // in docs/direct-style.md unreadable. The coercion is RowLift's,
-      // and its side condition is RowLift's too: an `In[F2, row]`
+      // in docs/direct-style.md unreadable. The coercion is Row's,
+      // and its side condition is Row's too: an `In[F2, row]`
       // summoned HERE, so the compiler proves the membership and the
       // macro emits no cast of its own.
       case Some(row) => narrowRow(m, elem, row, at)
@@ -279,9 +279,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       // membership by SUBTYPING, which is what it means for a union:
       // `Reader % E <:< (Writer % W + Reader % E + State % S)` holds
       // pointwise, while an `In` search on the reduced row does not
-      // (see RowLift.into)
+      // (see Row.into)
       case Some(r) if r <:< row =>
-        val intoSym = TypeRepr.of[RowLift.type].typeSymbol.methodMember("into").head
+        val intoSym = TypeRepr.of[Row.type].typeSymbol.methodMember("into").head
         Apply(TypeApply(Ref(intoSym),
           List(Inferred(elem.widen), Inferred(r), Inferred(row))), List(m))
       case _ => refuse

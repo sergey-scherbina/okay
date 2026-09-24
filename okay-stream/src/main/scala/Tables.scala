@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.{In, at, plus}
+import okay.Row.{In, at, plus}
 import Chunks.elements
 
 /**

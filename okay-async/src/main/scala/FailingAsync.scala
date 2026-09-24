@@ -38,7 +38,7 @@ package okay
  * survives of that road is `Failing[Async]` below: a single effect IS
  * a shape the compiler pins, it is what most `Resource.run` call sites
  * pass, and it needs no cast at all. And refuted last (failing-over):
- * a `RowLift.In[Async, F]` witness with a `NotGiven` identity — `In`
+ * a `Row.In[Async, F]` witness with a `NotGiven` identity — `In`
  * walks the left spine only, so `(S + P) + Async` and a right-nested
  * row resolve nothing and would take the identity, and on an abstract
  * `F` `NotGiven` reads "unknown" as "absent". The probe's table is in

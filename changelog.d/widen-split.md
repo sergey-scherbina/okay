@@ -8,7 +8,7 @@ that credited the walk with `Source.merge`'s 5–7%; the history says
 that number belongs to `Writer.widen`, the element-type re-tell, a
 different function. The walk had already bitten once (the eager head
 that started a stateful stage at widen time, windows-stage-rerun-
-loses-pane). Now `!.widen` is `RowLift.into` — the one cast, sound by
+loses-pane). Now `!.widen` is `Row.into` — the one cast, sound by
 erasure, nothing forced — and the walk keeps the name `!.normalize`
 with its reason beside it; the signature is unchanged, so the 71 call
 sites over 30 files compile as written. Measured
@@ -22,6 +22,6 @@ against the 2026-09-20 record 224.6 (~9%, with merge-lane-variance's
 caveat); `okaySourceMerge` never used it. `TestWidenSplit` (core, 2:
 the two names agree on six shapes; a deferred head is entered 0/1/2
 times at widen/first run/second run); the deferred-head suites
-unchanged. RowLift's `coerce` comment, theory ch. 4's "the upcast that
+unchanged. Row's `coerce` comment, theory ch. 4's "the upcast that
 is not free", stage-pipeline's sixth door and the typepedia now say
 which name walks. Landed as cb3a7af0.

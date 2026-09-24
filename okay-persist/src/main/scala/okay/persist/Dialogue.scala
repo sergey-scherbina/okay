@@ -1,7 +1,7 @@
 package okay.persist
 
-import okay.{!, +, At, Delim, Replayable, RowLift, Wf, pure}
-import okay.RowLift.up
+import okay.{!, +, At, Delim, Replayable, Row, Wf, pure}
+import okay.Row.up
 import okay.codec.Schema
 
 /**
@@ -445,7 +445,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    * still built in `F` and widened at the seam; the journal, the
    * replay and the race check never see `E`.
    *
-   * ONE ROW FOR THE DRIVER, licensed by `RowLift.Sub` — and getting
+   * ONE ROW FOR THE DRIVER, licensed by `Row.Sub` — and getting
    * there took two attempts, both recorded because the second is only
    * defensible against the first. The natural `In[F, G]` CRASHES
    * dotty 3.9 when both rows are abstract (`orDominator`, "Failure to
@@ -458,7 +458,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    * into any row, so `G = F` and `F = Pure` both work.
    */
   def runUntilIn[S, G[+_]](oracle: (Q, Dialogue.Attempt) => Either[S, A] ! G)
-                          (using RowLift.Sub[F, G]): Either[S, R] ! G =
+                          (using Row.Sub[F, G]): Either[S, R] ! G =
     val r = recovered
     r.stopped match
       case Some(s) => throw Dialogue.Halted(s)
@@ -483,7 +483,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
    */
   def runFromIn[S, G[+_]](from: Delim.Dialogue[Q, A, R, F], at: Int)
                          (oracle: (Q, Dialogue.Attempt) => Either[S, A] ! G)
-                         (using RowLift.Sub[F, G])
+                         (using Row.Sub[F, G])
                          : (Either[S, R], Delim.Dialogue[Q, A, R, F], Int) ! G =
     def go(p: Delim.Dialogue[Q, A, R, F], index: Int)
           : (Either[S, R], Delim.Dialogue[Q, A, R, F], Int) ! G = p match
@@ -581,7 +581,7 @@ object Dialogue:
     /** the same, with the activities in their own row: the program
      * stays replayable, the oracle may reach outside */
     def runWorkflowIn[G[+_]](oracle: Q => Dialogue.Attempt ?=> A ! G)
-                            (using Wf.Runtime, RowLift.Sub[F, G]): Either[Wf.Wait, R] ! G =
+                            (using Wf.Runtime, Row.Sub[F, G]): Either[Wf.Wait, R] ! G =
       d.runUntilIn[Wf.Wait, G](askingIn(oracle))
 
     /**
@@ -595,7 +595,7 @@ object Dialogue:
      */
     def runWorkflowFromIn[G[+_]](from: Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], at: Int)
                                 (oracle: Q => Dialogue.Attempt ?=> A ! G)
-                                (using Wf.Runtime, RowLift.Sub[F, G])
+                                (using Wf.Runtime, Row.Sub[F, G])
         : (Either[Wf.Wait, R], Delim.Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F], Int) ! G =
       d.runFromIn[Wf.Wait, G](from, at)(askingIn(oracle))
 

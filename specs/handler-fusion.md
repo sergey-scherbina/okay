@@ -161,7 +161,7 @@ of the reordered arc (see "After stage 0").
       claim about what was built, not about the gated stages.
 - [x] MEASURED before any of the above is built (stage 0, the gate):
       a hand-written fused loop for `State + Writer` on the
-      RowLift-style program (N = 1000) is ≥ 1.3x faster than
+      Row-style program (N = 1000) is ≥ 1.3x faster than
       `State.handle(Writer.run(p))` in µs/op, and the B/op difference
       names the saved Bind+closure per forwarded operation. If the
       hand-written ceiling does not clear 1.3x, this spec's Results

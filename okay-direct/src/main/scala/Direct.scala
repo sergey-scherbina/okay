@@ -227,7 +227,7 @@ object Direct:
    * Async, read BEFORE the mark narrows it into this block's row — so
    * a block over `Async + Throws` parallelises its Async leaves too,
    * and anything else simply ends the run. (v1 could not: it decided
-   * on the COMPILED leaf, by which time `RowLift.into` had lifted it,
+   * on the COMPILED leaf, by which time `Row.into` had lifted it,
    * and the import quietly did nothing in a wider row.
    * direct-parallel-wider-rows fixed that.)
    *
@@ -324,7 +324,7 @@ object Direct:
 
   /**
    * The block with its handler known at the call site
-   * (specs/direct-staged.md): over `Handled[Row, R, *]`, every marked
+   * (specs/direct-staged.md): over `Handled[Sig, R, *]`, every marked
    * operation of the row — and every marked LEAF program, which is
    * what `State.get`, `Writer.tell`, `Reader.ask` inline to — is
    * emitted as `st.stage(op)`, whose inline match the compiler
@@ -336,21 +336,21 @@ object Direct:
    * (`Func` has no `delay`): a staged block is not stack-safe on a
    * left-nested chain, and says so in its spec.
    */
-  inline def staged[Row[+_], R](inline st: Stager[Row, R])[A]
-                               (inline block: DirectCtx[Handled[Row, R, *]] ?=> A)
-                               (using inline b: Binds): Handled[Row, R, A] =
-    ${ stagedImpl[Row, R, A]('st, 'block, 'b) }
+  inline def staged[Sig[+_], R](inline st: Stager[Sig, R])[A]
+                               (inline block: DirectCtx[Handled[Sig, R, *]] ?=> A)
+                               (using inline b: Binds): Handled[Sig, R, A] =
+    ${ stagedImpl[Sig, R, A]('st, 'block, 'b) }
 
   @scala.annotation.publicInBinary
-  private[okay] def stagedImpl[Row[+_] : Type, R: Type, A: Type](st: Expr[Stager[Row, R]],
-                                                                 block: Expr[DirectCtx[Handled[Row, R, *]] ?=> A],
+  private[okay] def stagedImpl[Sig[+_] : Type, R: Type, A: Type](st: Expr[Stager[Sig, R]],
+                                                                 block: Expr[DirectCtx[Handled[Sig, R, *]] ?=> A],
                                                                  b: Expr[Binds])
-                                                                (using Quotes): Expr[Handled[Row, R, A]] =
+                                                                (using Quotes): Expr[Handled[Sig, R, A]] =
     import quotes.reflect.*
-    type F[X] = Handled[Row, R, X]
+    type F[X] = Handled[Sig, R, X]
     val topBody: Term = blockBody[F, A](block).asTerm
     val m = Expr.summon[Monad[F]].getOrElse(
-      report.errorAndAbort("direct.staged: no Monad[Handled[Row, R, *]] (macro bug)"))
+      report.errorAndAbort("direct.staged: no Monad[Handled[Sig, R, *]] (macro bug)"))
     macros.DirectCompiler.pipeline[F, A](topBody, m,
       eager = true,
       parallel = b.asTerm.tpe <:< TypeRepr.of[Binds.Parallel.type],

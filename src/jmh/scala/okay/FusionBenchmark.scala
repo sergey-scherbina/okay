@@ -2,7 +2,7 @@ package okay
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import okay.RowLift.at
+import okay.Row.at
 
 /**
  * specs/handler-fusion.md, stage 0 — the gate.

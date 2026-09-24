@@ -131,7 +131,7 @@ A ! (State % Int + Throws % String + Async)
 `+` is genuine union, not a coproduct functor — which is why `Pure`,
 the empty row, can be `Nothing` (`Effects.scala:43`): the union with
 nothing added is the row itself, and a pure program `A ! Pure`
-widens into any row by `!.widen` or `RowLift.at` — `Free` is invariant in
+widens into any row by `!.widen` or `Row.at` — `Free` is invariant in
 its signature by a measured choice (`Effects.scala:711`, the walk is
 also a normalization).
 

@@ -144,7 +144,7 @@ same material with the measurements attached.
   encoding cannot leak into inference).
 - **`!.relay`** — tail-resumptive handling; **`Effects.handle`** —
   abortive/multi-shot/forwarding; **`!.widen`** — effect-row
-  subsumption as a COERCION in the ROW (`RowLift.into`, the one cast;
+  subsumption as a COERCION in the ROW (`Row.into`, the one cast;
   nothing forced, so a deferred head stays deferred — widen-split),
   where `!` is covariant in its ANSWER by type (`Int ! F` is an
   `Any ! F` for free — free-answer-variance); **`!.normalize`** — the
@@ -1167,8 +1167,8 @@ filing time — "`X + Pure` needs help" — turned out not to be true
 once tested, and this list exists to not repeat that.
 
 - **`.at`/`.plus` need an explicit import, even inside package
-  `okay` itself.** `RowLift`'s extensions are NOT in scope by
-  default — `import okay.RowLift.at` (or `{at, plus}`) is needed in
+  `okay` itself.** `Row`'s extensions are NOT in scope by
+  default — `import okay.Row.at` (or `{at, plus}`) is needed in
   every file that widens a row this way, main sources included. The
   single most common trap of the day (hit five separate times) —
   the error it produces names an unrelated macro
@@ -1287,7 +1287,7 @@ reasons are measured rather than argued:
 - **The total default's cast is the kernel's, not the typeclass's
   (failing-over).** Asked to avoid the cast, or at least to move it
   under an implicit, the implicit road was probed first: a
-  `RowLift.In[Async, F]` witness plus a `NotGiven` identity. `In`
+  `Row.In[Async, F]` witness plus a `NotGiven` identity. `In`
   walks the left spine only, so `(S + P) + Async` and a right-nested
   row resolve no witness and would take the identity; and on an
   ABSTRACT `F` — a polymorphic `Resource.run` caller — `NotGiven`

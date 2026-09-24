@@ -1,7 +1,7 @@
 package okay.scala2
 
 import okay.{!, %, +, Take}
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.given
 import Rows.coerce
 

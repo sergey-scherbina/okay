@@ -1,7 +1,7 @@
 package okay
 
 import okay.!.*
-import okay.RowLift.at
+import okay.Row.at
 
 /**
  * specs/scoped-effects-laws.md: `recover`×`State`'s order (global by

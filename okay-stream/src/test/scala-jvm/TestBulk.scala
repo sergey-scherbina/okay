@@ -57,7 +57,7 @@ class TestBulk extends munit.FunSuite {
 class TestTables extends munit.FunSuite {
   import okay.Tables.of
   import okay.Sort.sortBy
-  import okay.RowLift.plus
+  import okay.Row.plus
 
   final case class Sale(shop: Int, amount: Long)
 

@@ -319,7 +319,7 @@ force, all already practiced, none previously written down:
   "X is probably the reason", run the one command that would show
   X, and only then believe it (operator directive, 2026-09-02).
 - **AN OBLIGATION OVER A ROW IS CARRIED, NEVER SEARCHED FOR AT AN
-  ABSTRACT ROW** (row-membership-crash, 2026-09-17). `RowLift.In`'s
+  ABSTRACT ROW** (row-membership-crash, 2026-09-17). `Row.In`'s
   inductive given asks the compiler to solve `?G + ?H` for its target,
   and when the target is an abstract type constructor dotty 3.9 does
   not fail — it CRASHES: `java.lang.AssertionError: Failure to join
@@ -330,7 +330,7 @@ force, all already practiced, none previously written down:
     `Delim.answer`/`replay`/`drive` take their `OneMachine`. A
     parameter is never searched for.
   - where a witness must be summoned, use SUBTYPING rather than
-    membership: `RowLift.Sub[F, G]` (`F[Any] <:< G[Any]`), or
+    membership: `Row.Sub[F, G]` (`F[Any] <:< G[Any]`), or
     `NotGiven[X[Any] <:< F[Any]]` for the negative. A union on the
     right of a `<:<` needs no join, so it resolves on a concrete row
     and fails cleanly on an abstract one.

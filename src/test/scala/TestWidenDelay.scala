@@ -10,7 +10,7 @@ package okay
  * deferred head deferred — `Delay(t)` widens to `Delay(() =>
  * widen(t()))`, `Bind(Delay(t), f)` to `Free.defer` of the two
  * widened halves — so a widened program starts when it RUNS, once per
- * run, like any other value. `RowLift.plus`/`at` never had the
+ * run, like any other value. `Row.plus`/`at` never had the
  * problem: they are one coercion and no walk.
  */
 class TestWidenDelay extends munit.FunSuite:

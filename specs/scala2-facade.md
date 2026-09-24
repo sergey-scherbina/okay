@@ -21,7 +21,7 @@ library usable from Java, this one from Scala 2.
   so the core's central type has no 2.13 spelling; a cross-build
   means a new row encoding (a coproduct with membership type
   classes), which is a rewrite of the core and would undo measured
-  decisions (RowLift's zero-cost widening, row-membership-crash).
+  decisions (Row's zero-cost widening, row-membership-crash).
 - `inline` IS THE HOT PATH. 182 `inline def`s in `src/main` alone,
   including `Free.flatMap`, `State.get`, `raise`, `async`. The
   performance arcs of the last month (direct-staged, fold-until,

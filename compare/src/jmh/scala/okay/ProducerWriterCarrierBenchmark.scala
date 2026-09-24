@@ -3,7 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable.ArraySeq
-import RowLift.plus
+import Row.plus
 
 /**
  * producer-to-writer-carrier, STAGE 0 (specs/producer-to-writer-carrier.md):

@@ -307,7 +307,7 @@ deferred head deferred.**
 ## free-answer-variance (2026-09-23): the other axis, `Free[F, +A]`
 
 **The question.** `Free[F, A]` is invariant in its ANSWER as it is in
-its row, and the answer side has no `RowLift.coerce`. Three doors pay
+its row, and the answer side has no `Row.coerce`. Three doors pay
 for that today with an identity `map` — a `Bind` node per program
 built only to move `A` up: `SharedOnce.answer` (twice; a `translate`
 handler over the covariant `enum Once[+A]`, where the GADT match gives
@@ -338,7 +338,7 @@ sentence; where a door was deleted, the lane it is on (SharedOnce's
 par test is not a benchmark; none exists) is not claimed faster.
 (4) If (1) refuses in the interpreter with more than a helper or two,
 the road is `!.up[A, B >: A](p: A ! F): B ! F`, one commented cast
-beside `RowLift.coerce`, sound by the same argument, and the three
+beside `Row.coerce`, sound by the same argument, and the three
 doors call it.
 
 ### Behavior — free-answer-variance
@@ -385,6 +385,11 @@ program fewer where the doors were.
 
 ## rowlift (2026-09-08): moving an operation into a wider row, for free
 
+RENAMED 2026-09-24 (rowlift-to-row): the object is `okay.Row` now —
+`Row.at`, `Row.plus`, `Row.In`, `Row.Sub`, `Row.Has`, `Row.into` — to
+match okay2's `Row`; `RowLift` is kept as an alias. The text below
+keeps the name it was written under.
+
 free-row-variance answered "can the walk be deleted?" with a measured
 no. This section answers the question that survived it: the walk is
 right for `Source.merge`, but is it right for a SINGLE operation?
@@ -415,7 +420,7 @@ intermediate Inject that `widen` and the walking `.at` build does not
 get scalarised away — it is constructed and destructured inside one
 inlined region, the textbook case, and it still costs bytes.
 
-**Decision: `RowLift.at`, one cast, under a witness.** `+` is a union
+**Decision: `Row.at`, one cast, under a witness.** `+` is a union
 (`[A] =>> F[A] | G[A]`) and unions erase, so a `Free[F, A]` already IS
 a `Free[R, A]` whenever F is a member of R. `In[F, R]` is the proof of
 that side condition — `self` / `left` / `deeper`, the minimal

@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.plus
+import okay.Row.plus
 import scala.collection.mutable
 
 /**

@@ -1,7 +1,7 @@
 package okay.scala2
 
 import okay.{!, %, +, Async, Throws, async, raise}
-import okay.RowLift.at
+import okay.Row.at
 import okay.given
 import scala.util.control.NonFatal
 

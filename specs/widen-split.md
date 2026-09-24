@@ -4,8 +4,8 @@
 
 `!.widen[A, F, G](p: A ! F): A ! (F + G)` carries two jobs under one
 name. Its TYPE says "the same program in a wider row" — which
-`RowLift.plus`/`.at`/`.up` already do for free: one commented
-coercion (`RowLift.coerce`), nothing forced, nothing walked. Its BODY
+`Row.plus`/`.at`/`.up` already do for free: one commented
+coercion (`Row.coerce`), nothing forced, nothing walked. Its BODY
 is a walk: it resumes the head and rebuilds the tree node by node —
 a normalisation whose measured beneficiary is `Source.merge`, and
 there through **`Writer.widen`** (the element-type re-tell `A → A|B`,
@@ -29,8 +29,8 @@ row of the block. Operator, 2026-09-23: "widen несёт двойственну
 ## Interface
 
 - `!.widen[A, F, G](p: A ! F): A ! (F + G)` — the coercion, by
-  `RowLift.into` (the one cast, sound by the erasure argument
-  RowLift.scala states). Signature unchanged: every call site
+  `Row.into` (the one cast, sound by the erasure argument
+  Row.scala states). Signature unchanged: every call site
   compiles as it is.
 - `!.normalize[A, F, G](p: A ! F): A ! (F + G)` — the walk `widen`
   used to be, under the name of what it does: resume the head,
@@ -79,8 +79,8 @@ row of the block. Operator, 2026-09-23: "widen несёт двойственну
 ## Design
 
 The split is one rename and one redirection in `object !`:
-`normalize` is the old body verbatim; `widen` is `RowLift.into(p)`.
-`RowLift.coerce`'s comment ("NOT a replacement for `!.widen`: on a
+`normalize` is the old body verbatim; `widen` is `Row.into(p)`.
+`Row.coerce`'s comment ("NOT a replacement for `!.widen`: on a
 streaming path the walk is also a normalisation") is corrected to
 name `Writer.widen` as the walk that pays and `!.normalize` as the
 one that remains.

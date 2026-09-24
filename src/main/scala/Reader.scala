@@ -1,7 +1,7 @@
 package okay
 
 import okay.!.*
-import okay.RowLift.at
+import okay.Row.at
 
 /**
  * The Reader effect: ask for an environment of type R. The handler
@@ -100,7 +100,7 @@ object Reader {
 
   /**
    * THE ENVIRONMENT OF THE READER INSIDE A ROW. Structural, like
-   * `RowLift.In` — and it works here because the search runs at TYPER
+   * `Row.In` — and it works here because the search runs at TYPER
    * time, while the row is still the alias the user wrote; by the time
    * the macro holds a row it has been beta-reduced into a union and
    * matches no `F + G` shape (measured, direct-narrow-colour).

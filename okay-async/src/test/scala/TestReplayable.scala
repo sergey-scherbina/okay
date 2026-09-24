@@ -44,7 +44,7 @@ class TestReplayable extends munit.FunSuite {
   }
 
   test("an abstract row PROPAGATES the obligation instead of crashing the compiler") {
-    // the shape that kills dotty when written as `RowLift.In` over an
+    // the shape that kills dotty when written as `Row.In` over an
     // abstract row: a property of a row, searched for at an abstract F
     val e = compileErrors("""
       def helper[F[+_]](j: List[Int])(body: okay.Delim.Asking[Int, Int, Int, okay.Delim + F] ?=>

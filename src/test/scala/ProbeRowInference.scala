@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.at
+import okay.Row.at
 
 /**
  * row-inference-ergonomics: verified probes for the real friction

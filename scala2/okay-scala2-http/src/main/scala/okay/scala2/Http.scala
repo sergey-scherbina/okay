@@ -1,7 +1,7 @@
 package okay.scala2
 
 import okay.{!, %, +, Chunk}
-import okay.RowLift.plus
+import okay.Row.plus
 import okay.codec.Schema
 import okay.given
 import okay.http.{Method, Request, Urls}

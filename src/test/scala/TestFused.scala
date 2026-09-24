@@ -2,7 +2,7 @@ package okay
 
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import okay.RowLift.at
+import okay.Row.at
 
 /**
  * specs/handler-fusion.md, stage 0: the hand-written fused loops agree

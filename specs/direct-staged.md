@@ -118,7 +118,7 @@ refused `State.modify(f)`. After inlining, a compound program IS a
 tree the macro can read: `Free.Inject(op)`, `Free.Return(a)`,
 `Free.Bind(m, x => body)` with the continuation a lambda literal — the
 combinators are `inline def`s, `Free.flatMap` is `Bind(this, f)`,
-`map` is `flatMap(a => Pure(f(a)))`, and RowLift's `.at`/`.plus` are
+`map` is `flatMap(a => Pure(f(a)))`, and Row's `.at`/`.plus` are
 casts. `DirectRow.stageProgram` walks that tree into the binds a block
 of marks would emit, so nothing runs inside a staged block that the
 compiler did not see.

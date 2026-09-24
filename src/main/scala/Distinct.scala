@@ -62,8 +62,8 @@ object Distinct:
    * THE ESCAPE HATCH, and the reason this is a class and not an
    * opaque `Unit`.
    *
-   * `RowLift.In` is an opaque Unit and can be, because it is summoned
-   * from OUTSIDE `RowLift` — where the opacity holds. A witness meant
+   * `Row.In` is an opaque Unit and can be, because it is summoned
+   * from OUTSIDE `Row` — where the opacity holds. A witness meant
    * to be summoned from inside `package okay`, as half this library's
    * rows are, cannot: the alias is transparent in its own scope, so
    * `Distinct[R]` reads as `Unit`, the given's type constrains R to

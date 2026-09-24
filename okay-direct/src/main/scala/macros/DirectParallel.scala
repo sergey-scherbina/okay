@@ -33,7 +33,7 @@ private[okay] trait DirectParallel[F[_]] extends DirectMarks[F] with DirectRow[F
    *
    * THE LIMIT THAT PUT ON v1 IS GONE (direct-parallel-wider-rows):
    * for a block over a WIDER row the compiled leaf has already been
-   * lifted by `RowLift.into`, so its type is `X ! (Async + …)` and
+   * lifted by `Row.into`, so its type is `X ! (Async + …)` and
    * it is not spawnable — the import used to do nothing there,
    * quietly. `markedProgram` below reads the mark's own argument
    * first, which is the program the author wrote, and only falls
@@ -59,7 +59,7 @@ private[okay] trait DirectParallel[F[_]] extends DirectMarks[F] with DirectRow[F
    * THE MARK'S OWN ARGUMENT, before `markTerm` narrows it into this
    * block's row (direct-parallel-wider-rows).
    *
-   * `compile` hands back a leaf already lifted by `RowLift.into`,
+   * `compile` hands back a leaf already lifted by `Row.into`,
    * so in a block over `Async + Throws` its type is
    * `X ! Async + Throws` and `Async.spawn` will not take it — the
    * import did nothing there, quietly, and v1 said so. The program

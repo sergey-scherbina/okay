@@ -1,6 +1,6 @@
 package okay
 
-import okay.RowLift.plus
+import okay.Row.plus
 
 /**
  * INSTANCES OF ANY EFFECT, MADE AT RUN TIME — the fourth corner of a

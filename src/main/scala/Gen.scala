@@ -2,7 +2,7 @@ package okay
 
 import scala.annotation.tailrec
 import okay.!.*
-import okay.RowLift.plus
+import okay.Row.plus
 
 /**
  * The early end of a generation (specs/generators.md): `Gen.stop`
