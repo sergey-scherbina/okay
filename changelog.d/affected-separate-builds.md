@@ -18,3 +18,8 @@ IS a change to this build, and was not counted.
   - a root build.sbt commit still selects all 174;
   - a commit to okay-deploy's sbt-plugin sources now selects all 174,
     where before it selected only okayDeploy.
+- The full gate that landed it had ONE red, unrelated to build code:
+  okay-stream's TestChannelLaws close-race law hung at load 26, green
+  alone (104/104). It is the core twin of okay2's
+  okay2-channel-close-wakeup, filed as `channel-close-wakeup-core` and
+  reported to the agent on the okay2 one.
