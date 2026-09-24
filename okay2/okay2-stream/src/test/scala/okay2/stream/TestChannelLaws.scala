@@ -107,9 +107,11 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
       val go = new java.util.concurrent.atomic.AtomicBoolean(true)
       val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
         var i = 0
-        // at most 50 000 offers: past the longest pause before close on a
-        // quiet box, bounded on a loaded one (an unbounded channel timed out)
-        while (go.get && i < 50000) {
+        // at most 8192 offers each: past the longest pause before close on
+        // a quiet box, and a bound on what an UNBOUNDED channel piles up on
+        // a loaded one — at 50 000 the law's own cost reached munit's 30 s
+        // (the Scala 3 suite, channel-close-wakeup-core, measured)
+        while (go.get && i < 8192) {
           val v = w * 10000000 + i
           if (c.offer(v)) { val _ = accepted.add(v) }
           i += 1
@@ -157,7 +159,7 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
         val go = new java.util.concurrent.atomic.AtomicBoolean(true)
         val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
           var i = 0
-          while (go.get && i < 50000) { val _ = c.offer(w * 10000000 + i); i += 1; if (c.isClosed) go.set(false) }
+          while (go.get && i < 8192) { val _ = c.offer(w * 10000000 + i); i += 1; if (c.isClosed) go.set(false) }
         })
         val q = Thread.ofVirtual().start { () =>
           var more = true

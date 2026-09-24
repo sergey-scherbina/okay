@@ -145,11 +145,16 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
       val go = java.util.concurrent.atomic.AtomicBoolean(true)
       val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
         var i = 0
-        // at most 50 000 offers: about a millisecond on a quiet box, past the
-        // longest pause before close, so the race stays; on a loaded one it
-        // bounds what an UNBOUNDED channel accumulates (a first cut timed
-        // out at 30 s on SentinelChannel/unbounded under the full gate)
-        while go.get && i < 50000 do
+        // at most 8192 offers each (channel-close-wakeup-core): past the
+        // longest pause before close on a quiet box — a round there
+        // accepts at most ~3 700 in all, so the race is untouched — and
+        // on a loaded one the bound on what an UNBOUNDED channel piles
+        // up. At 50 000 each it was 200 000 elements a round, and law 1b
+        // on SentinelChannel/unbounded took 27.9 s for 300 rounds under
+        // 24 burners against munit's 30 s: the "timed out (30 s)" two
+        // full gates met — the law's cost, never a lost wakeup (no
+        // receiver was ever found parked). At 8192: 5.1 s, the ring 0.2 s
+        while go.get && i < 8192 do
           val v = w * 10000000 + i
           if c.offer(v) then accepted.add(v): Unit
           i += 1
@@ -194,7 +199,9 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
         val go = java.util.concurrent.atomic.AtomicBoolean(true)
         val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
           var i = 0
-          while go.get && i < 50000 do
+          // the same bound as law 1b, for the same measured reason: a
+          // round's work, not the race, is what 50 000 made load-dependent
+          while go.get && i < 8192 do
             val _ = c.offer(w * 10000000 + i)
             i += 1
             if c.isClosed then go.set(false)
