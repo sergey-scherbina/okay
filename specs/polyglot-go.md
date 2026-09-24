@@ -25,21 +25,21 @@ WORKER PROCESS on okay's line protocol (specs/remote-foreign.md).
 
 ## Stage 1 — the worker
 
-- [ ] `okay.go` (standard library only) holds:
+- [x] `okay.go` (standard library only) holds:
       - the wire's values, encoded exactly as okay-py's shim and
         `Okay.hs` do;
       - `Prog`, `Done`, `Perform`, `Then`;
       - `Serve(programs)`, where each request's panic is a condition by
         name and the worker lives on.
-- [ ] `GoWorker.build(dir)` writes `okay/okay.go` and a `go.mod` if there
+- [x] `GoWorker.build(dir)` writes `okay/okay.go` and a `go.mod` if there
       is none, and runs `go build` offline (`GOTOOLCHAIN=local`). A
       compile error refuses with Go's words.
-- [ ] Typed operations:
+- [x] Typed operations:
       - `Program[A]`, `Pure`, `Bind`, `Op[A]`, `Send`, and the decoders
         `Int`, `Float`, `String`, `Bool`, `ListOf`;
       - `Go.ops(pkg, callbacks)` writes one constructor function per
         operation: `func PriceOf(a0 string) okay.Op[float64]`.
-- [ ] (Live, go) The tests cover:
+- [x] (Live, go) The tests cover:
       - multi-shot: every branch of two choices;
       - an operation as a Scala callback under the caller's Reader;
       - a panic as a condition, with the worker running on;
@@ -59,3 +59,20 @@ runs sandboxed inside the JVM. That is the road for untrusted Go code.
   Haskell make on this wire.
 
 ## Results
+
+- Stage 1 (polyglot-go, 2026-09-24).
+  - Go 1.27.1 from Homebrew. `okay.go` uses the standard library only,
+    and `go vet` is clean. The first manual run on the wire answered
+    `{"done":22}` after two continues.
+  - TestGoProgram (Live, go), four tests, green on the first run:
+    - multi-shot across the process (11, 21, 12, 22);
+    - the typed `total` through the generated `shop` package under the
+      Scala Reader (6.0);
+    - a panic as `GoError`, with the worker running on;
+    - `go build` refusing `shop.PriceOf(qty)` ("cannot use qty").
+  - Mutant: a worker that drops a continuation after its first use fails
+    the multi-shot test, and the panic test too, because the second run
+    needs the same continuations.
+  - Number encoding follows `Okay.hs`: integers below 2^53 as JSON
+    numbers, larger ones as `{"t":"int"}`, and integral doubles as
+    `{"t":"f"}`, so an int and a double stay apart across the wire.

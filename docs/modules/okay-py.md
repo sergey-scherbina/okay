@@ -276,6 +276,12 @@ val env = PyEnv(python = "3.12", packages = Map("six" -> "1.16.0"), cache = Some
 - **Version specs.** A spec is written as pip reads it (`>=2,<3`), and a
   bare version means exactly that version.
 
+## Go
+
+`GoWorker.build(dir)` compiles a Go worker against the shipped `okay`
+package (`/okay/go/okay.go`), and `Go.ops(pkg, callbacks)` writes typed
+operation constructors from the Scala callbacks. See [okay with Go](../go.md).
+
 ## Programs as data, multi-shot, and Haskell
 
 `OkayEff` (shipped beside `Okay.hs`) types a Haskell program by its

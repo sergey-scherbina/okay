@@ -119,13 +119,12 @@ JVM also wants, and a cgo call from a foreign thread costs a thread
 switch. Most Go code is SERVICES, and a service's seam is the network,
 which okay-http already speaks. So okay's roads to Go are:
 
-1. a subprocess on okay's wire, the way the TypeScript and Haskell
-   workers run, when Go code needs to perform okay's effects;
-2. a Go plugin compiled to WebAssembly with TinyGo, on the Chicory road
-   above.
+1. a worker process on okay's wire, the way the TypeScript and Haskell
+   workers run. This one is built: [okay with Go](go.md);
+2. a Go plugin compiled to WebAssembly (`GOOS=wasip1`, no TinyGo needed),
+   on the Chicory road above.
 
-In-process `c-shared` is refused for the reasons above. Neither road is
-built yet, and this machine has no Go toolchain.
+In-process `c-shared` is refused for the reasons above.
 
 ## Literature
 
