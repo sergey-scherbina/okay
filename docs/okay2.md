@@ -71,9 +71,11 @@ In this repository it is the separate build under `okay2/`:
 `cd okay2 && sbt publishLocal` is what a consumer does until it is
 published.
 
-The core and its pure modules (`okay2-data`, `okay2-optics`,
-`okay2-workflow`) are also published for Scala.js and Scala Native, so
-a cross-built project depends on them the cross way:
+Every okay2 module except the interop ones (cats, fs2, zio) is also
+published for Scala.js and Scala Native: the core, `okay2-data`,
+`okay2-optics`, `okay2-workflow`, `okay2-async`, `okay2-platform`,
+`okay2-stream` and `okay2-stm`. A cross-built project depends on them
+the cross way:
 
 ```sbt
 libraryDependencies += "dev.okay" %%% "okay2" % "<version>"
@@ -517,7 +519,8 @@ Each of these was measured before it was decided (specs/okay2.md):
   - `Member`: row membership by union, which is subtyping here;
   - `Operations`/`Foreign`, the operation values the Clojure and Frege
     ports hand back to okay, which have no Scala 2 consumer;
-  - the platform files for Scala.js and Native (backlog `okay2-cross`).
+  - (the platform files for Scala.js and Native were ported afterwards:
+    okay2 runs on all three, §1).
 
 ## 9. Interop: cats, fs2, zio
 

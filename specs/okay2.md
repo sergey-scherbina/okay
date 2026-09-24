@@ -1757,8 +1757,8 @@ interop-async, the fast channels of stage 29; `Flush` is filed as
   (stage 8);
 - **`Operations`/`Foreign`**, the operation values okay-clojure and
   okay-frege hand back to okay: no Scala 2 consumer exists;
-- the **Scala.js/Native platform files** (`FiberCell`, `TaskQueue`,
-  `NodeConn`, `Web`): okay2 is JVM-only (backlog `okay2-cross`).
+- ~~the Scala.js/Native platform files~~ — ported by okay2-cross
+  (stages 31–35): okay2 runs on JVM, JS and Native.
 
 ## Stage 31 — Scala.js and Scala Native, stage A: the pure modules (2026-09-24)
 Backlog `okay2-cross`, operator ("Файлы платформ Scala.js и Native").
@@ -1908,6 +1908,27 @@ over atomics every javalib has. The suites split by what they need:
 okay2-stream, the second half of stage C, waits for `adaptive-seal-race`
 (a sibling lane editing its channel suites, which have to move to
 `scala-jvm` for the cross build).
+
+## Stage 35 — Scala.js and Scala Native, stage C second half: okay2-stream (2026-09-24)
+okay2-stream is a crossProject — the last pure module, and with it
+`okay2-cross` is CLOSED: every okay2 module but the interop ones
+(cats/fs2/zio, JVM libraries) builds and tests on JVM, JS and Native.
+No source changed: the fast channels' atomics (`AtomicLongArray`,
+`AtomicReferenceArray`, `ThreadLocal`, `updateAndGet`) are the javalibs'
+own. What JS and Native cannot run is kept on the JVM by NAME
+(`jvmSuitesOnly` in the build) rather than by moving files, because
+`adaptive-seal-race` was editing the channel suites at the time:
+TestChannelLaws, TestChannel, TestGrowing, TestGrowingSeal and TestRing
+(real and virtual threads), TestBulk, TestPlan and TablesFixtures
+(`java.nio.file`).
+
+### Behavior (stage 35)
+- [x] okay2-stream's shared suites (chunks, pipes, pipelines, windows,
+      fold-until over streams) on JS and Native, 46 results each; the
+      full okay2 gate from clean on all three platforms: 1813 results,
+      54 module compiles, no warnings — after `adaptive-seal-race`
+      (3b40bd4e) fixed AdaptiveFifo's freeze race, the channel suites
+      went from a hang in 1 run of 3 to 5 green of 5
 
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and

@@ -88,6 +88,15 @@ def platformSources(dirs: String*) =
 def platformTests(dirs: String*) =
   Test / unmanagedSourceDirectories ++= dirs.map(d => baseDirectory.value.getParentFile / "src" / "test" / d)
 
+/** okay2-stream's suites that need what JS and Native lack — REAL
+ * threads (the channel laws, the rings under producers, the growth
+ * race; `Thread.ofVirtual` is JVM 21) or files (`java.nio.file`, the
+ * table layer's CSV) — kept on the JVM by NAME (okay2-cross stage C),
+ * so their files stay where the lanes editing them expect */
+lazy val jvmSuitesOnly = Test / unmanagedSources / excludeFilter := HiddenFileFilter ||
+  "TestChannelLaws.scala" || "TestChannel.scala" || "TestGrowing.scala" || "TestGrowingSeal.scala" ||
+  "TestRing.scala" || "TestBulk.scala" || "TestPlan.scala" || "TablesFixtures.scala"
+
 /** the aggregate, and nothing else: its own `src` is the core's shared
  * sources, which the crossProject compiles */
 lazy val root: Project = (project in file("."))
@@ -99,7 +108,8 @@ lazy val root: Project = (project in file("."))
     okay2Async.jvm, okay2Async.js, okay2Async.native,
     okay2Platform.jvm, okay2Platform.js, okay2Platform.native,
     okay2Stm.jvm, okay2Stm.js, okay2Stm.native,
-    okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
+    okay2Stream.jvm, okay2Stream.js, okay2Stream.native,
+    okay2Cats, okay2Fs2, okay2Zio)
   .settings(
     name := "okay2-root",
     publish / skip := true,
@@ -166,18 +176,25 @@ lazy val okay2Stm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 /** okay-stream's pure layer: chunks, Take/pipe, stages and through,
  * the pipeline as a value, lines, event-time windows */
-lazy val okay2Stream: Project = (project in file("okay2-stream"))
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async.jvm, okay2Platform.jvm % "test->test")
+lazy val okay2Stream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-stream"))
+  .dependsOn(okay2 % "compile->compile;test->test", okay2Async, okay2Platform % "test->test")
   .settings(
     name := "okay2-stream",
     common,
+    libraryDependencies += "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jvmSettings(
     // its own JVM, as every JVM suite here: a deep test's heap is not
     // sbt's. (Law 1b's hang, first met unforked, was a real defect —
     // `Growing` grew after its seal — fixed by okay2-channel-close-wakeup.)
     Test / fork := true,
     Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"),
-    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
   )
+  .jsSettings(jsTests, jvmSuitesOnly)
+  .nativeSettings(jvmSuitesOnly)
+  .jvmConfigure(_.withId("okay2Stream"))
 
 /** okay-data for the Scala 2 core: the approximate aggregators
  * (`Sketch`: HyperLogLog, Count-Min, t-digest), the hybrid logical clock
