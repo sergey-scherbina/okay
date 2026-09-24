@@ -568,6 +568,48 @@ Scala 2 build has that library at `_2.13`. Both on one classpath is a
 conflict, not an interop. okay-direct and okay-staging are Scala 3
 metaprogramming.
 
+## Stage 16 — the row alias `+`, in Scala 2 code (2026-09-24)
+Operator: "Алиас напиши в самом коде на скале 2". okay writes a row
+`State % Int + Console`; the facade wrote `State[Int] with
+Effect[Console]`. The alias is
+
+```
+type +[R, G[_]] = R with Effect[G]
+```
+
+a ROW on the left (kind `*`), an effect's operation language on the
+right (kind `* -> *`), so `State[Int] + Console + Choose` chains left
+to right. It is declared in Scala 2 source — the probe's
+`package object scala2probe` — and the guide tells a user to declare
+it once in their own package object. It is not in the facade.
+
+Why not the core's shape `+[F[_], G[_]]` (measured 2026-09-24, scalac
+2.13.18 on a model of the facade's signatures, before this stage):
+- a Scala 2 alias cannot ANSWER a higher kind:
+  `type +[F[_], G[_]] = ({ type L[A] = F[A] with G[A] })#L` is refused
+  with "type L takes type parameters". The projection `#L` has to be
+  written at every use: `Can[((Console + Log)#L + Db)#L]`.
+- even written that way, with a covariant phantom `Can[+F[_]]`,
+  WIDENING works and HANDLING does not: `handle` wants
+  `Can[Console] with Can[Log] with Can[Db]` and is given
+  `Can[[X]Console[X] with Log[X] with Db[X]]`. Scala 3 simplifies
+  `C[A] & C[B]` to `C[A & B]` for a covariant `C`; 2.13 does not.
+  So the intersection has to stand OUTSIDE `Effect[...]`, which is
+  what `+[R, G[_]]` does.
+
+What it does not cover: the built-in capabilities (`State[Int]`,
+`Writer[String]`, `Throws[E]`, `Async`, `Choose`) are already kind
+`*`, so a row made only of them stays `with`, and a built-in can only
+stand LEFT of a `+`. A row of one user effect stays `Effect[KV]`.
+
+- [ ] the alias in `package object scala2probe`, compiled under
+      `-Xlint -Werror`
+- [ ] it IS the intersection: `=:=` both ways, for one `+` and a chain
+- [ ] a program typed at a `+` row is handled effect by effect, the
+      residual row inferred with no annotation
+- [ ] every Scala 2 row in the probe and the docs that names a user
+      effect beside another capability is written with `+`
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages
