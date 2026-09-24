@@ -110,6 +110,7 @@ final class RSubprocess private (private var proc: Process,
             case Some(fresh) =>
               val parts = fresh()
               proc = parts.proc; out = parts.out; in = parts.in; codec = parts.codec
+              generation += 1
             case None => ()
           Left(Condition("timeout",
             s"the R call did not answer within ${ms}ms — the process was killed" +
@@ -134,6 +135,72 @@ final class RSubprocess private (private var proc: Process,
             case None => Left(Condition("WireError", s"no ok and no condition in $j"))
       case other => Left(Condition("WireError", s"not an answer: $other"))
     }
+
+  // ---- programs as data survive a respawn (r-supervised-replay) --------
+
+  /** how many times this engine's R was replaced (a timeout's respawn) */
+  private var generation = 0L
+
+  /** a continuation the CALLER holds: its run, the path of answers from the
+   * program's start, the operation it stands at, and where it lives now */
+  private final case class Kont(run: Long, path: Vector[RValue], op: String, args: Vector[RValue],
+                                var local: Long, var gen: Long)
+  private val runs = scala.collection.mutable.Map.empty[Long, (String, Vector[RValue])]
+  private val konts = scala.collection.mutable.Map.empty[Long, Kont]
+  private var nextK = 0L
+
+  private def rawProgram(run: Long, fn: String, args: Vector[RValue]): Either[Condition, RNode] =
+    answer(exchange(Json.JObj(Vector(
+      "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
+      "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decNode)
+
+  private def rawContinue(run: Long, k: Long, a: RValue): Either[Condition, RNode] =
+    answer(exchange(Json.JObj(Vector(
+      "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
+      "answer" -> Wire.enc(a)))))(Wire.decNode)
+
+  /** a node from R, its `k` renamed to one the caller keeps across a respawn */
+  private def node(run: Long, path: Vector[RValue], n: RNode): RNode = n match
+    case RNode.Perform(op, args, k) =>
+      nextK += 1
+      konts(nextK) = Kont(run, path, op, args, k, generation)
+      RNode.Perform(op, args, nextK)
+    case done => done
+
+  /**
+   * On the CURRENT R: the program re-run and `path` replayed, to the
+   * continuation standing at `op(args)`. An R program-as-data is a pure
+   * function of its answers, so this re-derives what the killed process
+   * held; a replay that meets another operation is `ReplayDrift`, never a
+   * wrong answer. The same road `SupervisedWorker` takes for ForeignWorker.
+   */
+  private def replay(c: Kont): Either[Condition, Long] =
+    val (fn, fnArgs) = runs(c.run)
+    def step(n: Either[Condition, RNode], rest: Vector[RValue]): Either[Condition, Long] =
+      n.flatMap {
+        case RNode.Perform(o, as, k) if rest.isEmpty =>
+          if o == c.op && as == c.args then Right(k)
+          else Left(Condition("ReplayDrift",
+            s"replaying run ${c.run} met $o$as where the path recorded ${c.op}${c.args}: the R program is not a pure function of its answers"))
+        case RNode.Perform(_, _, k) => step(rawContinue(c.run, k, rest.head), rest.tail)
+        case RNode.Done(v) => Left(Condition("ReplayDrift", s"replaying run ${c.run} finished ($v) before the recorded path did"))
+      }
+    step(rawProgram(c.run, fn, fnArgs), c.path)
+
+  private def continueRun(k: Long, a: RValue): Either[Condition, RNode] =
+    konts.get(k) match
+      case None => Left(Condition("LookupError", s"continuation $k is not held (forgotten?)"))
+      case Some(c) =>
+        def attempt(again: Boolean): Either[Condition, RNode] =
+          val local =
+            if c.gen == generation then Right(c.local)
+            else replay(c).map { l => c.local = l; c.gen = generation; l }
+          val before = generation
+          local.flatMap(l => rawContinue(c.run, l, a)) match
+            // the step itself outlived the deadline and R was replaced: redo it once, by replay
+            case Left(cond) if again && generation != before && cond.kind == "timeout" => attempt(again = false)
+            case other => other.map(n => node(c.run, c.path :+ a, n))
+        attempt(again = true)
 
   /** the comonadic handler — one operation, one exchange */
   def handler: Handler[REval] = new:
@@ -164,14 +231,13 @@ final class RSubprocess private (private var proc: Process,
           "op" -> Json.JStr("hold"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Wire.asRef(Wire.dec(v)))
       case REval.Program(run, fn, args) =>
-        answer(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
-          "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decNode)
-      case REval.Continue(run, k, a) =>
-        answer(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
-          "answer" -> Wire.enc(a)))))(Wire.decNode)
+        runs(run) = (fn, args)
+        rawProgram(run, fn, args).map(n => node(run, Vector.empty, n))
+      case REval.Continue(_, k, a) =>
+        continueRun(k, a)
       case REval.Forget(run) =>
+        runs.remove(run): Unit
+        konts.filterInPlace((_, c) => c.run != run)
         val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("forget"), "run" -> Json.JNum(run.toDouble))))
       case REval.Release(r) =>
         // idempotent: a release of a ref the process does not hold is not

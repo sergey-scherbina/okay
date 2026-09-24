@@ -37,3 +37,43 @@ class TestRProgram extends munit.FunSuite {
     assertEquals(Reader.run(Map("tea" -> 4.0))(run.program).runWith, Right(12.0))
   }
 }
+
+object TestRReplay:
+  val progs = R.module("rep", """
+    pairs <- function() {
+      okay_then(okay_perform("choose", c(1, 2)), function(x)
+        okay_then(okay_perform("choose", c(10, 20)), function(y)
+          okay_done(x + y)))
+    }
+    slow <- function() { Sys.sleep(30); 1 }
+  """)
+
+/** r-supervised-replay: a timeout's respawn in the middle of a multi-shot R
+ * program; the continuations the killed R held are re-derived by replay */
+class TestRReplay extends munit.FunSuite {
+  import TestRReplay.*
+
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+  override def munitIgnore: Boolean = TestR.rscript.isEmpty
+  override val munitTimeout = scala.concurrent.duration.Duration(3, "min")
+
+  test("R is replaced between two choices, and every branch still comes back") {
+    val r = RSubprocess.start(rscript = TestR.rscript.get, timeoutMillis = Some(3000L), modules = Seq(progs))
+    given okay.Handler[REval] = r.handler
+    var replaced = false
+    val choose = R.callback[Vector[Double], Double]("choose") { xs =>
+      if !replaced && xs == Vector(10.0, 20.0) then
+        replaced = true
+        // a call past the deadline: R is killed and a fresh one takes its place
+        val late = r.handler.handle(REval.Call("rep::slow", Vector.empty))
+        assert(late.left.exists(_.kind == "timeout"), late.toString)
+      effect[Choose, Double](Choose(xs))
+    }
+    try
+      val pairs = R.program[Double]("rep::pairs").calling(R.callbacks(choose))()
+      assertEquals(runChoice(pairs.program).runWith.toList, List(Right(11.0), Right(21.0), Right(12.0), Right(22.0)))
+      assert(replaced)
+      pairs.forget.runWith
+    finally r.close()
+  }
+}
