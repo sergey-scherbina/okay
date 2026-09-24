@@ -1,0 +1,7 @@
+# okay2 is its own sbt build, and scripts/gate.sh pins the JDK it
+# launches sbt with from the .sdkmanrc in the CURRENT directory — so
+# this file says the same as the root's: compile on 25 (okay2-platform
+# names virtual threads, JDK 21+ at compile time; the ambient PATH JDK
+# on this box is 17). Runs on 17+: the Loom road is taken only where
+# `Schedulers.hasVirtualThreads`.
+java=25.0.4.1-tem

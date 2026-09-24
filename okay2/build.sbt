@@ -29,8 +29,23 @@ lazy val common = Seq(
 )
 
 lazy val okay2: Project = (project in file("."))
-  .aggregate(okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
+  .aggregate(okay2Async, okay2Platform, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
   .settings(name := "okay2", common)
+
+/** the Async effect: Run/Await, the Drive, Fiber/Scheduler/Timer/CanBlock
+ * as traits, par/race/timeout/supervised/attempt/sleep, Retry, Par */
+lazy val okay2Async: Project = (project in file("okay2-async"))
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
+  .settings(name := "okay2-async", common)
+
+/** the JVM under okay2-async: CanBlock, the timer, the schedulers
+ * (Loom, fork-join, drive, own/adaptive, threads), Threads, Interruptible,
+ * Scoped, Net, parAll/parTraverse/retry/supervised. Compiles on JDK 21+
+ * (virtual threads are named); runs on 17+ (the Loom road is taken only
+ * where `Schedulers.hasVirtualThreads`). */
+lazy val okay2Platform: Project = (project in file("okay2-platform"))
+  .dependsOn(okay2Async % "compile->compile;test->test")
+  .settings(name := "okay2-platform", common)
 
 /** okay-stream's pure layer: chunks, Take/pipe, stages and through,
  * the pipeline as a value, lines, event-time windows */

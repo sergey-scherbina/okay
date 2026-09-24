@@ -359,6 +359,91 @@ transduce/transduceUntil/mapAccumulate/phased/chunked/unchunk),
   `Staged` inline pipeline. The order after this: okay2-async,
   okay2-platform, then that layer.
 
+## Stage 4 — okay2-async and okay2-platform (DONE 2026-09-24)
+The operator's order: "port okay-async too", "and okay-platform". Two
+subprojects, one lane, because the effect's three capabilities
+(`CanBlock`, `Timer`, `Scheduler`) are traits in okay-async whose only
+instances are the platform's.
+
+`okay2-async` (package `okay2.async`): the `Async` row with `Run` and
+`Await` (an error channel in, a canceller out); `Accepted`; `CanBlock`,
+`Timer`, `Handoff`, `Fiber` (onComplete/cancel/joinAsync/join/
+joinEither), `Scheduler`; `Async(a)` — THE SUSPEND CONSTRUCTOR — and
+`await` (the simple form); `Async.await` (the full form), `run` (by
+`Remove`, over `relay`), `runAt`, `runAsync` (a Future, by the
+callback `Drive`), `spawn`, `Nursery`/`supervised` (the body takes
+the nursery as a PARAMETER where Scala 3 gives a context function),
+`par` (either side's failure fails the pair and cancels the sibling,
+watched on both sides up front), `attempt`, `sleep`, `timeout` (the
+program's own failure settles it at once), `race`; `Retry` (policies
+as streams of delays, `Retry.async`); `Par` (`map2`, `traverse`,
+`sequence` — the `Applicative` instance waits for the typeclass).
+
+`okay2-platform` (package `okay2.platform`, JVM): `Platform.canBlock`
+(park a virtual thread; the interrupt read FIRST in the fast path and
+at the top of the loop, the Scala 3 core's park-interrupt-order),
+`Platform.timer` (one scheduled thread holds every pending delay, the
+callback on a fresh virtual thread when it fires), `Schedulers`
+(`loom`, `forkJoin`, `drive` with `DriveTask` — fiber, pool task and
+promise in one object —, `own`/`adaptive` with the Chase-Lev `Deque`,
+the helper rule and the stuck-check, `threads`, `auto`, `platform`),
+`Threads`, `Interruptible`, `Scoped`, `Net`/`NetConn`/`SocketConn`,
+`parAll`/`parTraverse`/`retry`/`supervised`.
+
+### Behavior (stage 4)
+- [x] run is a relay; spawn on a virtual thread parks; par runs both
+      sides at once (a handshake, no clock) and sees EITHER side fail
+      without waiting out the healthy one; race answers the faster and
+      cancels the loser; an async stream consumed lazily; every member
+      of the scheduler family (loom, forkJoin, drive, threads, own,
+      adaptive) runs par, spawn/join, a failure as a value and a fork
+      from inside a fiber; timeout; joinEither; 1M mutual tail calls
+      through the Drive; Async beside Writer; Interruptible's cancel
+      interrupts the lifted action under `drive`; supervised: a child's
+      failure cancels nine siblings, no failure waits for every child,
+      the body's failure cancels the children, joinAsync
+- [x] the callback surface under `runAsync`, no CanBlock: a 10 000-op
+      chain in constant stack, a callback firing during registration,
+      sleep, runAsync returns before the program can finish, race
+      without waiting for a never-firing loser, cancel before the next
+      operation, onComplete, par by callbacks and a child failure,
+      joinAsync, a failure under timeout at once, Retry.async (policy,
+      last error, delays honoured, zero delays sleep nothing), a race
+      of two failures, an Await's Left, attempt
+- [x] parTraverse in order, retry per policy and exhausted, policies as
+      streams, supervised restarts, Par.sequence (eight leaves meet by
+      a latch, order, empty, a failing leaf fails the spine at once in
+      either order), Scoped
+
+### Decisions
+- `Async(a)`, NOT `async(a)`: a function named `async` in the package
+  object of `okay2.async` is ambiguous with the PACKAGE `async` under
+  `import okay2._` + `import okay2.async._` — every call site refused
+  ("reference to async is ambiguous"). The signature's companion is
+  the constructor, as `Writer(w)` is in the Scala 3 core.
+- DEFAULTS THROUGH IMPLICIT SCOPE: `PlatformDefaults` (canBlock,
+  timer, scheduler) is ONE trait in okay2-async; the companions of
+  `CanBlock`/`Timer`/`Scheduler` derive their implicit from it, and the
+  platform's package object provides the one `implicit val jvm`. Three
+  plain implicit vals there were tried first: a test's local
+  `implicit val S: Scheduler` was "ambiguous" against them — Scala 2
+  treats a local implicit of another NAME as a second candidate, not a
+  shadow. Through implicit scope the lexical one wins outright, which
+  is what a Scala 3 nested `given` does for free.
+- The JDK: okay2-platform names `Thread.startVirtualThread`/`ofVirtual`,
+  so it COMPILES on 21+, and `okay2/.sdkmanrc` pins the gate's sbt to
+  the root's 25 (`scripts/gate.sh` reads the .sdkmanrc of the directory
+  it runs in — the box's PATH JDK is 17, and the first compile of this
+  lane failed on exactly that). It RUNS on 17+: the Loom road is taken
+  only where `Schedulers.hasVirtualThreads`.
+- NOT PORTED: `Blocking[A] = CanBlock ?=> A` (a context function);
+  `Failing`/`AsyncFailing` (needs `Resource`, stage 5); `SharedOnce`
+  (needs `Once`); `Operations` (the Clojure/Frege interop values); the
+  JS and Native platforms; `TestSchedulerLaws`'s soak tests
+  (conservation under thieves, the lost wakeup, the stuck-check) — the
+  family test covers each scheduler's basic laws, the soaks are
+  backlog `okay2-scheduler-laws`.
+
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -372,3 +457,5 @@ transduce/transduceUntil/mapAccumulate/phased/chunked/unchunk),
   run after the two traps above were paid at compile time.
 - Stage 3: 132 test results (+8 core Stream, +46 stream), 19 suites,
   GREEN 2026-09-24 (`cd okay2 && ../scripts/gate.sh test`).
+- Stage 4: 166 test results (+34 async/platform), 24 suites, GREEN
+  2026-09-24, same gate, on JDK 25.

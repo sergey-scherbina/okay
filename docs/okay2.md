@@ -26,7 +26,8 @@ Contents:
 8. [What is different from Scala 3, and why](#8-what-is-different-from-scala-3-and-why)
 9. [Interop: cats, fs2, zio](#9-interop-cats-fs2-zio)
 10. [Streams: chunks, stages, pipelines, windows](#10-streams-chunks-stages-pipelines-windows)
-11. [Literature](#11-literature)
+11. [Async and the JVM platform](#11-async-and-the-jvm-platform)
+12. [Literature](#12-literature)
 
 ## 1. The build
 
@@ -492,7 +493,75 @@ the stop:
     assertEquals(pulls, 1)
 ```
 
-## 11. Literature
+## 11. Async and the JVM platform
+
+`okay2-async` is the effect; `okay2-platform` is the JVM under it.
+`import okay2.platform._` installs the three capabilities every
+blocking or forking door asks for — `CanBlock`, `Timer`, the default
+`Scheduler` (Loom where the JVM has it) — as one implicit, so a local
+`implicit val S: Scheduler = Schedulers.forkJoin()` overrides it with
+no ambiguity. `Async(a)` suspends a computation (the Scala 3 core's
+`async(a)`; a function of that name would collide with the package),
+and a program stays a program until it is run:
+
+```scala
+    val prog: Int ! Async = Async(20).flatMap(x => Async(x + 22))
+    assertEquals(Effects.run(Async.run(prog)), 42)
+    assertEquals(prog.runWith, 42)
+```
+
+`par` runs both sides on their own fibers and sees EITHER side fail
+without waiting out the healthy one; `race` cancels the loser;
+`timeout` is settled by the program's first outcome of either kind:
+
+```scala
+    val a = new CompletableFuture[Unit]()
+    val b = new CompletableFuture[Unit]()
+    val prog = Async.par(
+      Async { a.complete(()); b.get(10, TimeUnit.SECONDS); 1 },
+      Async { b.complete(()); a.get(10, TimeUnit.SECONDS); 2 })
+    assertEquals(prog.runWith, (1, 2))
+```
+
+```scala
+    assertEquals(Async.timeout(2000)(Async(2)).runWith, Some(2))
+```
+
+A supervised scope owns its children: the first failure, a child's
+or the body's, cancels every other child and leaves the scope with
+that error. The body takes the nursery as a parameter:
+
+```scala
+    assertEquals(Effects.run(Async.run(Async.supervised[Int] { n =>
+      val a = n.fork(Async(40)); val b = n.fork(Async(2))
+      a.joinAsync.flatMap(x => b.joinAsync.map(y => x + y))
+    })), 42)
+```
+
+The same effect drives through callbacks with nothing parked —
+`runAsync` answers a `Future`, and a 10 000-operation chain drives in
+constant stack:
+
+```scala
+    def go(n: Int): Int ! Async = if (n == 0) pure(0) else Async(1).flatMap(x => go(n - x).map(_ + x))
+    Async.runAsync(go(10000)).map(v => assertEquals(v, 10000))
+```
+
+Retry policies are streams of delays, and `Retry.async` is retry as
+a program on the platform timer:
+
+```scala
+    assertEquals(Retry.exponential(10).take(4).toList, List(10L, 20L, 40L, 80L))
+```
+
+The schedulers are the Scala 3 core's: `loom` (a virtual thread per
+fiber), `forkJoin`, `drive` (the tree walked on pool threads, no
+thread per fiber), `own`/`adaptive` (owned workers over Chase-Lev
+deques, the helper rule, the stuck-check), `threads`. `Interruptible`
+lifts blocking code as an operation whose cancel interrupts it,
+whatever the scheduler.
+
+## 12. Literature
 
 - Oleg Kiselyov and Hiromi Ishii, "Freer Monads, More Extensible
   Effects" (Haskell Symposium 2015) — the tree, the relay handler,
