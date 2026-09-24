@@ -1,0 +1,4 @@
+slug: delim-dollar
+agent: claude (session 01VZwf6d)
+since: 2026-09-24
+what: specs/shift0-dollar.md stage 1 — $ as the machine primitive (Mark carries a return function; push = dollar(pure)); laws; DelimBenchmark before/after
