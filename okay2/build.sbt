@@ -34,7 +34,7 @@ lazy val okay2: Project = (project in file("."))
 
 /** cats: `Monad`/`MonadError` for programs, a fold into any monad, the
  * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */
-lazy val okay2Cats: Project = (project in file("okay2-cats"))
+lazy val okay2Cats: Project = (project in file("okay-cats"))
   // by NAME: the root aggregates this project and this project depends
   // on the root, and two lazy vals naming each other overflow at load
   .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
@@ -48,7 +48,7 @@ lazy val okay2Cats: Project = (project in file("okay2-cats"))
   )
 
 /** fs2: a Writer program IS a stream, and a stream is a Writer program */
-lazy val okay2Fs2: Project = (project in file("okay2-fs2"))
+lazy val okay2Fs2: Project = (project in file("okay-fs2"))
   .dependsOn(okay2Cats % "compile->compile;test->test")
   .settings(
     name := "okay2-fs2",
@@ -57,7 +57,7 @@ lazy val okay2Fs2: Project = (project in file("okay2-fs2"))
   )
 
 /** zio: the `Zio` row, a fold into any ZIO, a Writer program as a ZStream */
-lazy val okay2Zio: Project = (project in file("okay2-zio"))
+lazy val okay2Zio: Project = (project in file("okay-zio"))
   // by NAME: the root aggregates this project and this project depends
   // on the root, and two lazy vals naming each other overflow at load
   .dependsOn(LocalProject("okay2") % "compile->compile;test->test")

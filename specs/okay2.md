@@ -197,8 +197,10 @@ package object carries `!`, `pure`, `effect`, `Cont`, `/>`, `^`,
 ## Stage 2 — interop: cats, fs2, zio (DONE 2026-09-24)
 The operator's order (2026-09-24): the interop modules before the rest
 of the core, and kyo too — but kyo publishes for Scala 3 only, so
-there is no `okay2-kyo`. Three subprojects INSIDE the okay2 build
-(`okay2/build.sbt`; the interop projects name the root by
+there is no `okay2-kyo`. Three subprojects INSIDE the okay2 build,
+in `okay2/okay-cats`, `okay2/okay-fs2`, `okay2/okay-zio` beside
+`okay2/src` (operator's layout, okay2-dirs 2026-09-24; the artifact
+names stay `okay2-cats`/`okay2-fs2`/`okay2-zio`) (`okay2/build.sbt`; the interop projects name the root by
 `LocalProject("okay2")`, because a root that aggregates a project that
 depends on the root is a lazy-val cycle scalac overflows on at load):
 
