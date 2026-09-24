@@ -1,0 +1,6 @@
+feature/cluster-pool-numbers 2026-09-25T01:00:00Z
+agent: claude-code
+heartbeat: 2026-09-25T01:00:00Z
+status: in-progress
+done-so-far: claimed
+next: okay-pool Dockerfile/PoolDeploy, image loaded into kind, helm install, pod-kill/coordinator-kill/scale proof (cluster-pool-kind-harness), then submission-latency + fixed/marginal cost numbers in docs/benchmarks.md sec 20; Spark-on-k8s comparison split off as its own backlog item (no existing precedent in this repo, sizable infra on its own)
