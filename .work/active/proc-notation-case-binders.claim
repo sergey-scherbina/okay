@@ -1,3 +1,0 @@
-slug: proc-notation-case-binders
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: Proc.direct compiles a match whose cases ask questions: a pure selector with the original patterns, each case s binders into its branch s environment, the branches joined by |||
