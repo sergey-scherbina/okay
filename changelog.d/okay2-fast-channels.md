@@ -1,6 +1,6 @@
 ## okay2-fast-channels - the ring-buffered channels in okay2-stream, and the default they make
 
-okay-stream's channel mechanisms in okay2 (spec stage 28, docs §12):
+okay-stream's channel mechanisms in okay2 (spec stage 29, docs §12):
 `Buffer` and `Ring` (Vyukov's bounded MPMC, optional single consumer),
 `Segments` (unbounded, no reclamation), `AdaptiveFifo` (parts per
 producer, eager or lazy, adopting a ring as part 0 and reading it

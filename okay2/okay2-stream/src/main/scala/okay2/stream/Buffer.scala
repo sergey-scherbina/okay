@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * The element store a channel keeps its buffer in: a claim, a take, and
  * the batched forms of each — okay-stream's Buffer.scala (okay2 spec
- * stage 28). Everything the channel relies on is here and nothing else
+ * stage 29). Everything the channel relies on is here and nothing else
  * is: a position is won by ONE atomic, a value is published after the
  * position is won, and a batched take claims a run of published
  * positions with ONE atomic. A `popMany` that loops over `pop` is

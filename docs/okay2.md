@@ -829,7 +829,7 @@ its consumer; and the terminals are programs, not parked values:
     assertEquals(s.runCollect.runWith, (0L until 100L).toVector)
 ```
 
-**The fast channels** (stage 28) are the Scala 3 core's, mechanism for
+**The fast channels** (stage 29) are the Scala 3 core's, mechanism for
 mechanism. `Channel.apply` chooses by capacity and every choice keeps
 the SAME contract — `TestChannelLaws`, both tiers, runs over all of
 them: a bounded channel is a `SentinelChannel` (a lock-free ring with

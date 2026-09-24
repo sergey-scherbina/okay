@@ -4,7 +4,7 @@ import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 
 /**
- * okay-stream's TestRing (okay2 spec stage 28): the boundaries first and
+ * okay-stream's TestRing (okay2 spec stage 29): the boundaries first and
  * the concurrency second, because a ring that is wrong at capacity+1
  * sequentially is wrong everywhere. `Ring[Any]` where Scala 3 writes
  * `Ring[Int]`: a buffer's element type admits null here (`A >: Null`).

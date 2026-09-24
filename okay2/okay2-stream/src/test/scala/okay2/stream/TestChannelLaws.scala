@@ -9,7 +9,7 @@ import okay2.platform._
 
 /**
  * The `Channel` contract as laws every implementation must satisfy —
- * okay-stream's TestChannelLaws (okay2 spec stage 28), law for law, over
+ * okay-stream's TestChannelLaws (okay2 spec stage 29), law for law, over
  * the same table of implementations and the same claims.
  *
  * TWO TIERS, because the contract has two: the CORE tier is what
@@ -94,7 +94,7 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
    * NON-PARKING offers. Law 1's one parking producer meets close mostly
    * through `sendAsync`'s own open check, so a buffer that decided
    * "open" BEFORE winning its position (Ring.pushDeciding reading the
-   * flag ahead of the CAS) survived it — measured, okay2 stage 28: the
+   * flag ahead of the CAS) survived it — measured, okay2 stage 29: the
    * mutant passed law 1. Four producers offering in a tight loop against
    * a close at a random instant put sends on both sides of the end mark
    * every round, and an element accepted after it is never delivered.

@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import okay2.async.CanBlock
 import okay2.platform._
 
-/** okay-stream's TestGrowing (okay2 spec stage 28): the laws a channel
+/** okay-stream's TestGrowing (okay2 spec stage 29): the laws a channel
  * that CHANGES ITS BUFFER under load owes — nothing lost or doubled, the
  * end seen, a producer waiting when it happened not left waiting, and
  * each producer's own order surviving the swap (at most one displacement). */

@@ -315,7 +315,7 @@ object Channel {
 
   /**
    * The default channel, chosen by the capacity asked for, as the Scala 3
-   * core's (okay2 stage 28). Every choice keeps the SAME contract — every
+   * core's (okay2 stage 29). Every choice keeps the SAME contract — every
    * law in `TestChannelLaws`, both tiers — so this is a performance
    * decision nobody can observe except in the timing:
    *  - a bounded capacity: `SentinelChannel` over `Growing` — a plain ring
