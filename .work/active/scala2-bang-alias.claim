@@ -1,0 +1,4 @@
+slug: scala2-bang-alias
+who: claude (session 01Ujs4BY)
+what: `type ![A, R] = Eff[R, A]` for the Scala 2 facade, used in every Scala 2 program type in the probe and docs
+since: 2026-09-24T05:01:35Z
