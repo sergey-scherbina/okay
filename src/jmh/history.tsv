@@ -2010,6 +2010,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-24	c728dc9e	4-15	okay2-relayPrebuilt-bytes	2072417	1753945	1.18	B/op, lower better; same lane
 2026-09-24	c728dc9e	4-15	okay2-handlePrebuilt	145.67	136.75	1.07	us/op, lower better; Effects.handleWith over the same prebuilt tree; okay2 round 1 read 185.1 +-22.0 on a box quiet at both ends, rounds 2-3 agree (145.7, 148.4) and the min stands
 2026-09-24	c728dc9e	4-15	okay2-handlePrebuilt-bytes	2070801	1753929	1.18	B/op, lower better; same lane
-2026-09-24	8293f309	40	WireCodecBench.roundTrip json small deflate(pooled) vs deflate-fresh	3106.4	4134.3	0.75	ns/op; B/op 2384 vs 18912; plain none 804.5 ns, so DEFLATE still +2.3 us on a 51-byte message that it makes 53
-2026-09-24	8293f309	40	WireCodecBench.roundTrip json medium deflate(pooled) vs deflate-fresh	22785.0	23807.6	0.96	ns/op; B/op 57864 vs 70616; plain 14089 ns; bytes 1620 -> 355
-2026-09-24	8293f309	40	WireCodecBench.roundTrip json large deflate(pooled) vs none	1545391	637709	2.42	ns/op; fresh 3749093 +-5356069 (noise); bytes 144811 -> 17134; the default now compresses on network links only
+2026-09-24	c75e7ad5	40	WireCodecBench.roundTrip json small deflate(pooled) vs deflate-fresh	3106.4	4134.3	0.75	ns/op; B/op 2384 vs 18912; plain none 804.5 ns, so DEFLATE still +2.3 us on a 51-byte message that it makes 53
+2026-09-24	c75e7ad5	40	WireCodecBench.roundTrip json medium deflate(pooled) vs deflate-fresh	22785.0	23807.6	0.96	ns/op; B/op 57864 vs 70616; plain 14089 ns; bytes 1620 -> 355
+2026-09-24	c75e7ad5	40	WireCodecBench.roundTrip json large deflate(pooled) vs none	1545391	637709	2.42	ns/op; fresh 3749093 +-5356069 (noise); bytes 144811 -> 17134; the default now compresses on network links only
