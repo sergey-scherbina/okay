@@ -166,8 +166,25 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   /** read ONCE per operation into a local: two reads in one operation
    * could straddle the swap and compare a ring against a part of
    * itself */
-  @volatile private var inner: Buffer[A] = initial
-  private val grown = AtomicBoolean(false)
+  /**
+   * THE STATE, one reference: the open ring, the grown `AdaptiveFifo`, or
+   * the ring SEALED — and sealing and growing are ONE decision, a CAS away
+   * from the open state (adaptive-seal-race, 2026-09-24; okay2's
+   * okay2-channel-close-wakeup found and fixed the same race there the
+   * same evening, and this is its design). They were two: `seal` put the
+   * end mark into whatever `inner` was, and a producer already past its
+   * open check could grow the ring AFTER that — the adopted ring kept its
+   * one end mark, a fresh part got none, and the channel, counting `parts`
+   * end marks, parked its receiver for good: the DEFAULT channel, 4 of 6
+   * runners in law 1c. A seal that wins over the open ring rules growth
+   * out; a growth that won first means the seal goes to the
+   * `AdaptiveFifo`, which freezes and seals every part it opened.
+   */
+  private val open: Growing.St[A] = Growing.St[A](initial, grown = false)
+  private val state = java.util.concurrent.atomic.AtomicReference[Growing.St[A]](open)
+  /** read ONCE per operation into a local: two reads could straddle the swap */
+  private def inner: Buffer[A] = state.get.buf
+  private def grownYet: Boolean = state.get.grown
   /** the last producer sampled, and the sampling counter. The counter
    * is plain: a lost increment costs a later sample, nothing else */
   @volatile private var sampled: Thread | Null = null
@@ -198,14 +215,14 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   private val counter = Counter()
 
   /** one swap, ever; losers use the winner's buffer */
+  /** one swap, ever — and never after a seal; losers use the winner's buffer */
   private def grow(): Buffer[A] =
     counter.doneGrowing = true
-    if grown.compareAndSet(false, true) then
+    if state.get ne open then inner
+    else
       // part 0 is the ring, and its owner is the producer that filled it
-      val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = inner)
-      inner = partitioned
-      partitioned
-    else inner
+      val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = initial)
+      if state.compareAndSet(open, Growing.St[A](partitioned, grown = true)) then partitioned else inner
 
   /** every 64th push: a producer that is not the one we sampled last
    * means more than one is pushing, which is what parts are for */
@@ -221,7 +238,7 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
     if !counter.doneGrowing then
       val n = counter.seen + 1
       counter.seen = n
-      if (n & 63) == 0 && !grown.get then
+      if (n & 63) == 0 && (state.get eq open) then
         val me = Thread.currentThread()
         val last = sampled
         if last == null then sampled = me
@@ -231,7 +248,7 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
    * genuinely blocked behind a full part — backpressure AND
    * contention, which is the one case where fullness means parts */
   private def refused(): Buffer[A] | Null =
-    if grown.get then inner
+    if grownYet then inner
     else
       val me = Thread.currentThread()
       val last = sampled
@@ -251,7 +268,11 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   override def lastRoute: Int = inner.lastRoute
   override def pop(): A | Null = inner.pop()
   override def popMany(max: Int)(sink: A => Unit): Int = inner.popMany(max)(sink)
-  override def seal(mark: A): Int = inner.seal(mark)
+  /** win the seal over the open ring (and so rule growth out), or seal
+   * what the growth installed */
+  override def seal(mark: A): Int =
+    if state.compareAndSet(open, Growing.St[A](initial, grown = true)) then initial.seal(mark)
+    else inner.seal(mark)
 
   override def push(a: A): Boolean =
     sample()
@@ -280,7 +301,7 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
    * producer's thread before parking instead.
    */
   private def ours(b: Buffer[A], route: Int): Int =
-    if grown.get then b.route() else route
+    if grownYet then b.route() else route
 
   override def pushAt(route: Int, a: A): Boolean =
     val b = inner
@@ -333,3 +354,8 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
       val grownTo = refused()
       if grownTo == null then 0 else grownTo.nn.pushMany(n)(src)
 }
+
+object Growing:
+  /** the buffer in force, and whether the ring's one chance to grow is
+   * spent (grown, or sealed as it was) */
+  private[okay] final class St[A](val buf: Buffer[A], val grown: Boolean)

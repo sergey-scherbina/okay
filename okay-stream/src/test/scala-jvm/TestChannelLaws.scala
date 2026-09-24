@@ -145,7 +145,11 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
       val go = java.util.concurrent.atomic.AtomicBoolean(true)
       val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
         var i = 0
-        while go.get do
+        // at most 50 000 offers: about a millisecond on a quiet box, past the
+        // longest pause before close, so the race stays; on a loaded one it
+        // bounds what an UNBOUNDED channel accumulates (a first cut timed
+        // out at 30 s on SentinelChannel/unbounded under the full gate)
+        while go.get && i < 50000 do
           val v = w * 10000000 + i
           if c.offer(v) then accepted.add(v): Unit
           i += 1
@@ -163,6 +167,50 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
       ps.foreach(_.join()); q.join()
       val lost = accepted.asScala.toSet -- received.asScala.toSet
       assert(lost.isEmpty, s"$n round $round: ${lost.size} accepted but not delivered, e.g. ${lost.take(3)}")
+  }
+
+  /**
+   * LAW 1c — the END is delivered when close races offers on SIX channels
+   * at once (adaptive-seal-race, 2026-09-24). Law 1b alone can pass for
+   * thousands of rounds and still hang a loaded gate: a lazily partitioned
+   * buffer let a part OPEN between `seal`'s freeze and its count (the
+   * freeze was a flag read before the counter was bumped), and `Growing`
+   * let a swap install a new, unsealed part after the ring took its end
+   * mark. Either way the consumer meets fewer end marks than parts and
+   * parks for good on a closed, drained channel. Six runners at once keep
+   * the carriers busy enough to open that window; a consumer that does not
+   * finish within five seconds FAILS the law instead of hanging the gate.
+   * Measured before the fix: adaptive and growing lost the end in 4 of 6
+   * runners within 800 rounds (okay2's port, the same code).
+   */
+  drainers("law: the end is delivered when close races offers on six channels at once") { (n, mk) =>
+    val hung = java.util.concurrent.ConcurrentLinkedQueue[String]()
+    def runner(k: Int): Unit =
+      val rnd = scala.util.Random(7 + k)
+      var round = 0
+      while round < 400 && hung.isEmpty do
+        round += 1
+        val c = mk(64)
+        val go = java.util.concurrent.atomic.AtomicBoolean(true)
+        val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
+          var i = 0
+          while go.get && i < 50000 do
+            val _ = c.offer(w * 10000000 + i)
+            i += 1
+            if c.isClosed then go.set(false)
+        })
+        val q = Thread.ofVirtual().start { () =>
+          var more = true
+          while more do if c.receiveBlocking().isEmpty then more = false
+        }
+        Thread.sleep(0, rnd.nextInt(200000))
+        c.close()
+        ps.foreach(_.join())
+        if !q.join(java.time.Duration.ofSeconds(5)) then
+          hung.add(s"runner $k round $round (finished=${c.finished})"): Unit
+    val runners = (0 until 6).map(k => Thread.ofPlatform().start(() => runner(k)))
+    runners.foreach(_.join())
+    assert(hung.isEmpty, s"$n: a consumer never saw the end of a closed channel: ${hung.asScala.toList}")
   }
 
   // ── LAW 2: the end comes after the buffer, never instead ─────────

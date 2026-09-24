@@ -30,8 +30,14 @@ private final class Cells(n: Int) {
  *   ones (in its own part). The rule holds PER CALL and the call is not
  *   atomic: one displacement per producer across the swap is what the
  *   laws allow (`growing-order-drain-guarantee`, Scala 3 BACKLOG).
- * - parts stop opening once closing is seen (`frozen`), or a part opened
- *   after close would never be sealed and the stream never end.
+ * - parts stop opening once closing is seen, or a part opened after close
+ *   would never be sealed and the stream never end. The freeze and the
+ *   opening of a part are ONE atomic word (`open`'s `Frozen` bit), not a
+ *   flag checked before a counter is bumped: that check-then-act let a
+ *   part open between `seal`'s freeze and its count, unsealed, and the
+ *   consumer then parked for good on a closed, drained channel
+ *   (adaptive-seal-race, 2026-09-24 — law 1b under load, 4 of 6
+ *   concurrent runners in 800 rounds; the Scala 3 core has the same code).
  * - the index a producer opens IS the count `open` had before it, so
  *   the scanned range is dense (the claim-index/count mismatch lost late
  *   producers' elements at 16x16 in the Scala 3 core).
@@ -48,13 +54,13 @@ final class AdaptiveFifo[A >: Null](limit: Int, make: () => Buffer[A], eager: Bo
   if (eager) { var i = 0; while (i < cap) { slots.set(i, make()); i += 1 } }
   else slots.set(0, if (first != null) first else make())
 
-  /** how many are open; grown only by the thread that opened one */
+  /** how many are open, and — in the `Frozen` bit — whether any more may
+   * open. One word, so opening a part and freezing are ordered by one CAS */
   private val open = new AtomicInteger(if (eager) cap else 1)
+  private final val Frozen = 1 << 30
 
   private val adopted: Boolean = first != null
 
-  /** set once the channel is closing: no part may be opened after that */
-  private val frozen = new AtomicBoolean(false)
 
   /** the next part to hand out; an adopted part 0 is never handed out */
   private val nextPart = new AtomicInteger(if (first != null) 1 else 0)
@@ -98,11 +104,18 @@ final class AdaptiveFifo[A >: Null](limit: Int, make: () => Buffer[A], eager: Bo
   private def claimPart(): Int = {
     val want = nextPart.getAndIncrement()
     if (want == 0) 0
-    else if (frozen.get) share(want, opened)
     else {
-      val idx = open.getAndIncrement()
-      if (idx < cap) { slots.set(idx, make()); idx }
-      else { open.decrementAndGet(); share(want, cap) }
+      var out = -1
+      while (out < 0) {
+        val v = open.get
+        val n = v & ~Frozen
+        if ((v & Frozen) != 0) out = share(want, if (n < 1) 1 else n)
+        else if (n >= cap) out = share(want, cap)
+        // the index a producer opens IS the count before its CAS, and the
+        // CAS fails if the freeze landed first
+        else if (open.compareAndSet(v, v + 1)) { slots.set(n, make()); out = n }
+      }
+      out
     }
   }
 
@@ -113,7 +126,7 @@ final class AdaptiveFifo[A >: Null](limit: Int, make: () => Buffer[A], eager: Bo
     else 1 + Math.floorMod(want, n - 1)
 
   private def opened: Int = {
-    val n = open.get
+    val n = open.get & ~Frozen
     if (n > cap) cap else if (n < 1) 1 else n
   }
 
@@ -157,15 +170,18 @@ final class AdaptiveFifo[A >: Null](limit: Int, make: () => Buffer[A], eager: Bo
 
   private val sealedAt = new Cells(cap)
 
-  /** freeze first, THEN seal; one mark per part under concurrent callers */
+  /** freeze, THEN seal exactly the parts the freeze saw; one mark per
+   * part under concurrent callers */
   override def seal(mark: A): Int = {
-    frozen.set(true)
+    var v = open.get
+    while ((v & Frozen) == 0 && !open.compareAndSet(v, v | Frozen)) v = open.get
+    val n = { val c = open.get & ~Frozen; if (c > cap) cap else if (c < 1) 1 else c }
     var placed = 0
     var i = 0
-    val n = opened
     while (i < n) {
-      val b = slots.get(i)
-      if (b != null) {
+      // a part the count covers is set by its opener's next statement
+      val b = slotAt(i)
+      locally {
         var done = false
         while (!done) {
           val st = sealedAt.get(i)

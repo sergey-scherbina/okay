@@ -83,9 +83,11 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
   // already in it stays where it is and is read from where it is
   else slots.set(0, if first != null then first.nn else make())
 
-  /** how many are open; grown only by the thread that opened one, so
-   * a reader never has to walk the array to count */
+  /** how many are open, and — in the `Frozen` bit — whether any more may
+   * open: ONE word, so opening a part and freezing are ordered by one CAS
+   * (adaptive-seal-race, 2026-09-24; see `seal`) */
   private val open = AtomicInteger(if eager then cap else 1)
+  private final val Frozen = 1 << 30
 
   /**
    * READ THE ADOPTED PART FIRST, whenever it has anything in it.
@@ -141,9 +143,6 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    */
   private val adopted: Boolean = first != null
 
-  /** set once the channel is closing: no part may be opened after
-   * that, or its end mark would never be placed */
-  private val frozen = AtomicBoolean(false)
 
   /** the next part to hand out, and the route each thread keeps */
   // an ADOPTED part 0 is never handed out: it is read to the end
@@ -268,16 +267,19 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
   private def claimPart(): Integer =
     val want = nextPart.getAndIncrement()
     if want == 0 then Integer.valueOf(0)
-    else if frozen.get then share(want, opened)
     else
-      val idx = open.getAndIncrement()
-      if idx < cap then
-        slots.set(idx, make())
-        Integer.valueOf(idx)
-      else
-        // the cap is reached: give the count back and share
-        open.decrementAndGet(): Unit
-        share(want, cap)
+      // ONE CAS opens the part or finds the buffer frozen (adaptive-seal-
+      // race): the index opened is the count before it, as before
+      var out: Integer | Null = null
+      while out == null do
+        val v = open.get
+        val n = v & ~Frozen
+        if (v & Frozen) != 0 then out = share(want, if n < 1 then 1 else n)
+        else if n >= cap then out = share(want, cap)
+        else if open.compareAndSet(v, v + 1) then
+          slots.set(n, make())
+          out = Integer.valueOf(n)
+      out.nn
 
   /**
    * More producers than parts: they SHARE, and on an adopted buffer
@@ -301,7 +303,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
   /** the open count, never past the cap: a claimer may have taken the
    * count one past it for the instant before it gives it back */
   private def opened: Int =
-    val n = open.get
+    val n = open.get & ~Frozen
     if n > cap then cap else if n < 1 then 1 else n
 
   private def part(i: Int): Buffer[A] =
@@ -365,13 +367,25 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * claim is now a CAS BEFORE the push; a push a full part refuses
    * gives the claim back so a later call retries it.
    */
+  /**
+   * THE FREEZE IS THE SAME WORD AS THE COUNT (adaptive-seal-race,
+   * 2026-09-24). It was a flag `claimPart` read BEFORE bumping `open`, so
+   * a producer could pass the check, `seal` freeze and read the count, and
+   * the producer then open part n — unsealed. The consumer met n end marks
+   * against n + 1 parts and parked for good on a closed, drained channel;
+   * law 1c (six channels at once) found it. Now the freeze is a CAS on
+   * `open` itself: a part either opened before it (and is counted here) or
+   * cannot open at all.
+   */
   override def seal(mark: A): Int =
-    frozen.set(true)
+    var v = open.get
+    while (v & Frozen) == 0 && !open.compareAndSet(v, v | Frozen) do v = open.get
     var placed = 0
     var i = 0
     val n = opened
     while i < n do
-      val b = slots.get(i)
+      // a part the count covers is set by its opener's very next statement
+      val b = slotAt(i)
       if b != null then
         // Three states, not two: 0 unsealed, 1 a caller is mid-push, 2
         // the mark is IN. The two-state version (claim, push, give the
