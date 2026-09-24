@@ -166,12 +166,12 @@ mechanism:
 - [x] In-process links (FFM, wasm) do not take the preference: a message
       there is a memory copy, and compressing it is pure cost. The strict
       `Deflate` given still applies to them.
-- [ ] R on the same givens (wire-givens-r). The codecs move to okay-codec
+- [x] R on the same givens (wire-givens-r). The codecs move to okay-codec
       (`okay.codec.WireFormat`, `WireCompression`, `WireCbor`, and the
       framing and negotiation both engines share), so okay-r's
       `RSubprocess` takes the same `using` parameters as `ForeignWorker`;
       `okay.py` keeps its names by `export`.
-- [ ] A third compression, `zlib` (RFC 1950: DEFLATE with a 2-byte header
+- [x] A third compression, `zlib` (RFC 1950: DEFLATE with a 2-byte header
       and an adler32 check), because R can do it natively and CHECKED
       (`memCompress`/`memDecompress`, libdeflate) and cannot do raw
       DEFLATE safely: `gzcon` over a hand-made gzip header inflates it but
@@ -180,12 +180,12 @@ mechanism:
       killer (exit 137, measured in r-base 4.4.1). The default preference
       becomes an ORDER: deflate, then zlib, then none. `Zlib.given` is the
       strict choice, like `Deflate.given`.
-- [ ] R's shim announces `format: [json, cbor]`, `compress: [zlib]`, and
+- [x] R's shim announces `format: [json, cbor]`, `compress: [zlib]`, and
       after a configure speaks frames on a binary stdin (`readBin` after
       `readLines` on one `file("stdin", "rb")`) and `/dev/stdout`. Its
       CBOR encodes the tree jsonlite would print (the same unboxing,
       the same NA rules), so JSON and CBOR carry the same values.
-- [ ] The R suites' answers are the same under every combination R
+- [x] The R suites' answers are the same under every combination R
       speaks: calls, frames with NA, callbacks (`okay_call`), programs
       (multi-shot), a timeout's respawn (which re-negotiates).
 - [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
@@ -194,7 +194,7 @@ mechanism:
 - [ ] Authorization (`given WireAuth`): a bearer token or an HMAC
       challenge at the handshake, from a secret the given names (an
       environment variable, a file, okay-security).
-- [ ] EVERY language on the wire, not only Rust and Go (operator,
+- [x] EVERY language on the wire, not only Rust and Go (operator,
       2026-09-24): Python's shim, R, the TypeScript worker, Haskell, Go
       and Rust. Each far side's library implements the same layers with
       its own platform's mechanisms, and none is special-cased.
@@ -365,4 +365,36 @@ mechanism:
   - Python `okay.okay_call` and TypeScript `okay_call` are the name, and
     `okay.call`/`call` stay as aliases. R already had `okay_call`.
     Haskell serves programs only (no direct style).
+
+- R on the wire givens (wire-givens-r, 2026-09-24).
+  - `okay.codec` (okay-codec's JVM sources) now holds the wire:
+    `WireFormat`, `WireCompression`, `WireCbor`, `WireJson.whole` (the
+    strict line read), `WireFrames` (lines, then frames) and
+    `WireNegotiation` (choose, configure, confirmed). `ForeignWorker` and
+    `RSubprocess` are two engines over one handshake, and `okay.py`
+    re-exports the names, so `okay.py.WireFormat.Cbor.given` still means
+    what it meant.
+  - `WireCompression.preferred` is now an ORDER: deflate, zlib, none.
+    `Zlib.given` is strict. `announced` accepts a bare string, because
+    jsonlite unboxes a one-element list.
+  - `RSubprocess` reads bytes (`BufferedInputStream`), not characters. A
+    timeout's read of a whole message runs off-thread as before, and the
+    respawn negotiates the same wire again (pinned by a test on all four
+    wires).
+  - shim.R: `say` and `read_msg` handle both modes; `configure` switches
+    after its own answer. CBOR is encoded from jsonlite's own parse of
+    the JSON it would have printed, so both formats carry the same
+    values, and an array of numbers goes out in one `writeBin`. The
+    output goes to `/dev/stdout`, opened raw.
+  - FOUND and fixed: doubles always left R with 15 significant digits
+    (`digits = NA` is jsonlite's "max precision", which is 15). It is
+    now `digits = I(17)`. The same-answers suite failed on `sqrt(2)`
+    over the OLD JSON wire first.
+  - Tests: `RWireConformance`, 6 cases over (json, zlib), (json, none),
+    (cbor, zlib) and (cbor, none), plus a refusal of an explicit
+    Deflate; all 75 of okay-r's live tests pass on the new default.
+    Default gate: zlib's round trip and refusals, the order, and a
+    strict Zlib.
+  - Mutant: little-endian doubles on the one-writeBin road failed every
+    CBOR case and none of the JSON ones.
 

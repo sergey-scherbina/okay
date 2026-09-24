@@ -58,19 +58,31 @@ the callback's answer. The effects are declared ONCE, in Scala:
 
 ## The same Scala, over every link
 
-The engine is `ForeignWorker`, and only its link changes:
+The engine is `ForeignWorker`, and only its link changes. Pick ONE of
+these, by where the worker runs.
+
+A child process that okay starts itself, speaking on its stdin and
+stdout (no port, no network):
 
 ```scala
   lazy val engine: ForeignWorker = ForeignWorker.speaking(Seq(GoWorkerBinary.binary.toString))
 ```
 
+A worker already serving TCP, on this machine or another one (a Go or
+Rust binary started with `OKAY_LISTEN=host:port`). The engine is one
+line, whatever started the server:
+
 ```scala
-    (ForeignWorker.connect("127.0.0.1", port), p)
+        val engine = ForeignWorker.connect("127.0.0.1", port)
 ```
+
+A Rust library loaded into THIS process through FFM:
 
 ```scala
     ForeignWorker.over(InProcessLinks.ffm(NativeLib.load(RustInProcess.dylib)).fold(why => throw IllegalStateException(why), identity))
 ```
+
+A Rust or Go module compiled to WebAssembly, run in this process:
 
 ```scala
     ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(GoInProcess.wasm))))
@@ -116,9 +128,17 @@ imports are givens that the engine's `start`, `speaking`, `connect` and
     assertEquals(engine.wire, "json/deflate")
 ```
 
-The default is a PREFERENCE, not a requirement. A far side without
-DEFLATE (Haskell, R, a worker older than this) keeps the plain JSON
-lines, and nothing is refused:
+The default is a PREFERENCE, and an ordered one: raw DEFLATE where the
+far side speaks it, else zlib (RFC 1950: the same DEFLATE with a header
+and a checksum, which is what R can check natively), else nothing. R
+settles on zlib:
+
+```scala
+  def expected = "json/zlib"
+```
+
+A far side with neither (Haskell, a worker older than this) keeps the
+plain JSON lines, and nothing is refused:
 
 ```scala
     assertEquals(engine.wire, "json/none")
@@ -168,7 +188,7 @@ the language does not already ship:
 | Go         | its own subset                     | `compress/flate`            | pipes, TCP, WebAssembly         |
 | Rust       | its own subset over serde_json     | flate2 (pure Rust backend)  | pipes, TCP, FFM, WebAssembly    |
 | Haskell    | its own subset (bytestring, text)  | none: GHC ships no zlib     | pipes                           |
-| R          | not yet (okay-r's own engine)      | not yet                     | —                               |
+| R          | its own subset (readBin, writeBin) | zlib (`memCompress`), not raw | pipes                         |
 
 The "subset" in each row is the same: integers, floats (half, single,
 double), text, definite arrays and maps with text keys, and
@@ -189,7 +209,25 @@ and applications of implicit function types", POPL 2018,
 doi:10.1145/3158130). The formats themselves: C. Bormann and P. Hoffman,
 RFC 8949, "Concise Binary Object Representation (CBOR)", 2020,
 doi:10.17487/RFC8949; P. Deutsch, RFC 1951, "DEFLATE Compressed Data
-Format Specification", 1996, doi:10.17487/RFC1951.
+Format Specification", 1996, doi:10.17487/RFC1951; P. Deutsch and
+J.-L. Gailly, RFC 1950, "ZLIB Compressed Data Format Specification",
+1996, doi:10.17487/RFC1950.
+
+**R** has its own engine (`okay.r.RSubprocess`), and it takes the same
+givens; the codecs live in okay-codec (`okay.codec.WireFormat`,
+`okay.codec.WireCompression`), and `okay.py` keeps the names. Two things
+about R are worth knowing:
+- Base R cannot inflate raw DEFLATE safely. `gzcon` over a hand-made gzip
+  header prints a CRC error per message and accepts a cut stream, and
+  `memDecompress` on a hand-wrapped member was killed for memory. zlib,
+  which `memDecompress` checks, is why the preference has a second step.
+- R's CBOR encodes the tree jsonlite would print, so both formats carry
+  the same values. One suite runs over all four wires R speaks
+  (`TestRWireDefault`, `TestRWireOff`, `TestRWireCbor`,
+  `TestRWireCborPlain`). It found that doubles had always left R rounded
+  to 15 significant digits (jsonlite's `digits = NA`), so `sqrt(2)`
+  arrived as 1.4142135623731. They now leave with 17, which is what a
+  double needs to come back as itself.
 
 ## One `okay_call`, step by step
 

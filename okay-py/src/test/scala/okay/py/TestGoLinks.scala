@@ -27,7 +27,10 @@ object GoWorkerBinary:
       case okay.codec.Json.JObj(fs) => fs.toMap.get("listening").collect { case okay.codec.Json.JStr(a) => a.split(":").last.toInt }
       case _ => None
     port match
-      case Some(n) => lastPort = n; (ForeignWorker.connect("127.0.0.1", n), p)
+      case Some(port) =>
+        lastPort = port
+        val engine = ForeignWorker.connect("127.0.0.1", port)
+        (engine, p)
       case None => p.destroy(); throw IllegalStateException(s"the Go worker did not say where it listens: $first")
 
 /** (Go, pipes) */
