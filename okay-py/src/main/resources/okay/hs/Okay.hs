@@ -12,7 +12,11 @@
 -- continue it more than once: a @Choice@ handler on the Scala side makes
 -- every branch, exactly - multi-shot across a process boundary.
 --
--- Depends on base and containers only (both ship with GHC).
+-- Depends on base, containers, bytestring and text only (all ship with
+-- GHC). The wire is JSON lines until the host configures CBOR
+-- (polyglot-one-wire stage 5a); this worker has no DEFLATE - GHC ships no
+-- zlib binding - and says so in its hello, so a host whose given
+-- compression is Deflate is refused by name before a request is sent.
 module Okay
   ( Prog (..)
   , Value (..)
@@ -23,8 +27,16 @@ module Okay
   ) where
 
 import Control.Exception (SomeException, displayException, evaluate, try)
+import Data.Bits (shiftL, shiftR, (.&.), (.|.))
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Builder as BB
+import qualified Data.ByteString.Lazy as BL
 import Data.Char (chr, isDigit, isHexDigit, isSpace, ord)
 import Data.IORef
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import Data.Word (Word16, Word32, Word64, Word8)
+import GHC.Float (castWord32ToFloat, castWord64ToDouble)
 import qualified Data.Map.Strict as M
 import Numeric (readHex, showHex)
 import System.IO
@@ -139,6 +151,102 @@ commas [] = ""
 commas [x] = x
 commas (x : xs) = x ++ "," ++ commas xs
 
+-- ------------------------------------------------------------------ CBOR
+-- The wire's subset (RFC 8949): integers, floats (half, single, double),
+-- text, definite arrays and maps with text keys, true/false/null/undefined.
+-- The tree is the same one JSON carries, escapes included.
+
+cborEncode :: Json -> BB.Builder
+cborEncode j = case j of
+  JNull -> BB.word8 0xf6
+  JBool b -> BB.word8 (if b then 0xf5 else 0xf4)
+  JNum n
+    | not (null n), all (\c -> isDigit c || c == '-') n ->
+        let i = read n :: Integer in if i >= 0 then hd 0 i else hd 1 (-1 - i)
+    | otherwise -> BB.word8 0xfb <> BB.doubleBE (readDouble n)
+  JStr s -> let b = TE.encodeUtf8 (T.pack s) in hd 3 (toInteger (B.length b)) <> BB.byteString b
+  JArr xs -> hd 4 (toInteger (length xs)) <> mconcat (map cborEncode xs)
+  JObj fs -> hd 5 (toInteger (length fs)) <> mconcat [cborEncode (JStr k) <> cborEncode v | (k, v) <- fs]
+  where
+    hd :: Word8 -> Integer -> BB.Builder
+    hd major n
+      | n < 24 = BB.word8 (m .|. fromInteger n)
+      | n < 0x100 = BB.word8 (m .|. 24) <> BB.word8 (fromInteger n)
+      | n < 0x10000 = BB.word8 (m .|. 25) <> BB.word16BE (fromInteger n)
+      | n < 0x100000000 = BB.word8 (m .|. 26) <> BB.word32BE (fromInteger n)
+      | otherwise = BB.word8 (m .|. 27) <> BB.word64BE (fromInteger n)
+      where m = major `shiftL` 5
+
+cborDecode :: B.ByteString -> Either String Json
+cborDecode bs = case item bs of
+  Right (j, rest) | B.null rest -> Right j
+                  | otherwise -> Left (show (B.length rest) ++ " bytes after a CBOR message")
+  Left e -> Left e
+  where
+    short = Left "a CBOR message ended early (cut short?)"
+    take' n b = if B.length b < n then short else Right (B.splitAt n b)
+    be :: B.ByteString -> Word64
+    be = B.foldl' (\a w -> a `shiftL` 8 .|. fromIntegral w) 0
+    item b = case B.uncons b of
+      Nothing -> short
+      Just (ib, r) -> do
+        let major = ib `shiftR` 5
+            info = ib .&. 0x1f
+        if major == 7 then simple info r else do
+          (n, r1) <- case info of
+            _ | info < 24 -> Right (fromIntegral info :: Word64, r)
+            24 -> fmap (\(h, t) -> (be h, t)) (take' 1 r)
+            25 -> fmap (\(h, t) -> (be h, t)) (take' 2 r)
+            26 -> fmap (\(h, t) -> (be h, t)) (take' 4 r)
+            27 -> fmap (\(h, t) -> (be h, t)) (take' 8 r)
+            _ -> Left ("an indefinite or reserved CBOR length (" ++ show info ++ ") is not in the wire's subset")
+          case major of
+            0 -> Right (JNum (show n), r1)
+            1 -> Right (JNum (show (-1 - toInteger n)), r1)
+            3 -> do
+              (t, r2) <- take' (fromIntegral n) r1
+              case TE.decodeUtf8' t of
+                Right txt -> Right (JStr (T.unpack txt), r2)
+                Left _ -> Left "CBOR text that is not UTF-8"
+            4 -> many n r1 [] >>= \(xs, r2) -> Right (JArr xs, r2)
+            5 -> pairs n r1 []
+            _ -> Left ("CBOR major type " ++ show major ++ " (byte strings, tags) is not in the wire's subset")
+    many :: Word64 -> B.ByteString -> [Json] -> Either String ([Json], B.ByteString)
+    many 0 r acc = Right (reverse acc, r)
+    many n r acc = item r >>= \(j, r') -> many (n - 1) r' (j : acc)
+    pairs :: Word64 -> B.ByteString -> [(String, Json)] -> Either String (Json, B.ByteString)
+    pairs 0 r acc = Right (JObj (reverse acc), r)
+    pairs n r acc = do
+      (k, r1) <- item r
+      (v, r2) <- item r1
+      case k of
+        JStr ks -> pairs (n - 1) r2 ((ks, v) : acc)
+        _ -> Left "a CBOR map key that is not text"
+    simple :: Word8 -> B.ByteString -> Either String (Json, B.ByteString)
+    simple info r = case info of
+      20 -> Right (JBool False, r)
+      21 -> Right (JBool True, r)
+      22 -> Right (JNull, r)
+      23 -> Right (JNull, r)
+      25 -> take' 2 r >>= \(h, t) -> Right (float (half (fromIntegral (be h))), t)
+      26 -> take' 4 r >>= \(h, t) -> Right (float (realToFrac (castWord32ToFloat (fromIntegral (be h)))), t)
+      27 -> take' 8 r >>= \(h, t) -> Right (float (castWord64ToDouble (be h)), t)
+      _ -> Left ("CBOR simple value " ++ show info ++ " is not in the wire's subset")
+    -- a float read from CBOR becomes the JSON tree's number; the wire's
+    -- escapes ("nan", "f") are what carry the cases JSON cannot say
+    float :: Double -> Json
+    float d
+      | isNaN d = JObj [("t", JStr "nan")]
+      | otherwise = JNum (show d)
+    half :: Word16 -> Double
+    half h =
+      let e = fromIntegral ((h `shiftR` 10) .&. 0x1f) :: Int
+          m = fromIntegral (h .&. 0x3ff) :: Double
+          v | e == 0 = m * 2 ** (-24)
+            | e == 31 = if m == 0 then 1 / 0 else 0 / 0
+            | otherwise = (m + 1024) * 2 ^^ (e - 25)
+      in if h .&. 0x8000 /= 0 then negate v else v
+
 -- --------------------------------------------------- the okay wire's values
 
 exact :: Integer
@@ -192,7 +300,10 @@ serve progs = do
   hSetBuffering stdout LineBuffering
   konts <- newIORef (M.empty :: M.Map (Integer, Integer) (Value -> Prog Value))
   next <- newIORef (0 :: Integer)
-  putStrLn (render (JObj [("shim", JNum (show shimVersion)), ("python", JStr "haskell")]))
+  -- the format this worker is speaking: "json" (lines) until a configure
+  cbor <- newIORef False
+  putStrLn (render (JObj [("shim", JNum (show shimVersion)), ("python", JStr "haskell"),
+                          ("speaks", JObj [("format", JArr [JStr "json", JStr "cbor"]), ("compress", JArr [])])]))
   let node run p = case p of
         Done v -> return (JObj [("done", enc v)])
         Perform n as k -> do
@@ -220,6 +331,13 @@ serve progs = do
                 Nothing -> return (Left ("LookupError", "continuation " ++ show k ++ " of run "
                                     ++ show run ++ " is not held here (forgotten, or another process)"))
             Nothing -> return (Left ("ValueError", "a continue names its k"))
+          (Just (JStr "configure"), _) -> case (lookup "format" fs, lookup "compress" fs) of
+            (Just (JStr f), Just (JStr "none")) | f == "json" || f == "cbor" ->
+              return (Right (JObj [("format", JStr f), ("compress", JStr "none")]))
+            (Just (JStr f), Just (JStr c)) ->
+              return (Left ("ValueError", "this Haskell worker speaks the formats json, cbor and no compression; not "
+                                           ++ f ++ " with " ++ c))
+            _ -> return (Left ("ValueError", "a configure names its format and compression"))
           (Just (JStr "forget"), Just run) -> do
             modifyIORef' konts (M.filterWithKey (\(r, _) _ -> r /= run))
             return (Right JNull)
@@ -228,20 +346,52 @@ serve progs = do
         return (case ok of
           Right j -> JObj [("id", rid), ("ok", j)]
           Left (kind, msg) -> condition rid kind msg)
-      loop = do
+      -- one request: a JSON line, or (after a configure) a CBOR frame
+      request = do
+        framed <- readIORef cbor
         eof <- isEOF
-        if eof then return () else do
-          line <- getLine
-          case parseJson line of
-            Just (JObj fs) -> do
-              let rid = maybe JNull id (lookup "id" fs)
-              -- a Haskell error (an 'error' call, a failed pattern) in the
-              -- program is a CONDITION, and the worker lives on: the reply
-              -- is rendered in full before a byte of it is written
-              r <- try (answer rid fs >>= \j -> evaluate (let s = render j in length s `seq` s))
-              putStrLn (case r of
-                Right s -> s
-                Left e -> render (condition rid "HaskellError" (displayException (e :: SomeException))))
-            _ -> putStrLn (render (condition JNull "ValueError" "not a JSON request"))
-          loop
+        if eof then return Nothing else if not framed then Just . maybe (Left "not a JSON request") Right . parseJson <$> getLine else do
+          len <- B.hGet stdin 4
+          if B.length len < 4 then return Nothing else do
+            let n = B.foldl' (\a w -> a `shiftL` 8 .|. fromIntegral w) (0 :: Word32) len
+            body <- B.hGet stdin (fromIntegral n)
+            if B.length body < fromIntegral n then return Nothing else return (Just (cborDecode body))
+      -- a reply is built in full before a byte of it is written
+      write j = do
+        framed <- readIORef cbor
+        if not framed then evaluate (let s = render j in length s `seq` s) >>= putStrLn else do
+          body <- evaluate (BL.toStrict (BB.toLazyByteString (cborEncode j)))
+          BB.hPutBuilder stdout (BB.word32BE (fromIntegral (B.length body)) <> BB.byteString body)
+          hFlush stdout
+      loop = do
+        req <- request
+        case req of
+          Nothing -> return ()
+          Just (Right (JObj fs)) -> do
+            let rid = maybe JNull id (lookup "id" fs)
+            -- a Haskell error (an 'error' call, a failed pattern) in the
+            -- program is a CONDITION, and the worker lives on
+            r <- try (answer rid fs >>= \j -> evaluate (forceJson j))
+            case r of
+              Right j -> do
+                write j
+                -- a configure takes effect AFTER its own answer
+                case (lookup "op" fs, j) of
+                  (Just (JStr "configure"), JObj rs) | Just (JObj ok) <- lookup "ok" rs, Just (JStr "cbor") <- lookup "format" ok -> do
+                    hSetBinaryMode stdin True
+                    hSetBinaryMode stdout True
+                    hSetBuffering stdout (BlockBuffering Nothing)
+                    writeIORef cbor True
+                  _ -> return ()
+              Left e -> write (condition rid "HaskellError" (displayException (e :: SomeException)))
+          Just (Right _) -> write (condition JNull "ValueError" "not a request")
+          Just (Left msg) -> write (condition JNull "ValueError" msg)
+        case req of
+          Nothing -> return ()
+          _ -> loop
   loop
+
+-- | the whole tree, evaluated: an 'error' inside a reply surfaces here,
+-- before any of it is written
+forceJson :: Json -> Json
+forceJson j = length (render j) `seq` j
