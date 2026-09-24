@@ -9,13 +9,13 @@ import okay.codec.Schema
  * package this jar ships, `/okay/go/okay.go`), writes its programs in
  * `okay.Prog` or the typed `okay.Program[A]`, and `okay.Serve`s them by
  * name. `build` compiles it with `go build`, and
- * `PySubprocess.speaking(Seq(binary.toString))` runs it — the same wire as
- * Python and Haskell, so `Py.program` drives it unchanged, multi-shot
+ * `ForeignWorker.speaking(Seq(binary.toString))` runs it — the same wire as
+ * Python and Haskell, so `Foreign.program` drives it unchanged, multi-shot
  * included.
  *
  * {{{
  * val bin = GoWorker.build(dirWithMainGo)
- * val w = PySubprocess.speaking(Seq(bin.toString))
+ * val w = ForeignWorker.speaking(Seq(bin.toString))
  * }}}
  */
 object GoWorker:
@@ -88,7 +88,7 @@ object Go:
   def constructor(op: String): String = Hs.constructor(op)
 
   /** the Go source of package `pkg`: one typed constructor per callback */
-  def ops[F[+_]](pkg: String, cbs: Py.Callbacks[F]): String =
+  def ops[F[+_]](pkg: String, cbs: Foreign.Callbacks[F]): String =
     val funcs = cbs.all.map { c =>
       val (arg, res) = c.types match
         case Some((a, r)) => (goType(a), goType(r))

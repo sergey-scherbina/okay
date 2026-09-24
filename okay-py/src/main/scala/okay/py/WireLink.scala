@@ -6,7 +6,7 @@ import java.net.{InetSocketAddress, Socket}
 /**
  * Where the okay wire runs (polyglot-one-wire, specs/polyglot-one-wire.md):
  * the far side's handshake line, then one request line out and one answer
- * line in. The foreign engine (`PySubprocess`: typed calls, callbacks,
+ * line in. The foreign engine (`ForeignWorker`: typed calls, callbacks,
  * programs as data, multi-shot, `Durable`) runs over ANY link unchanged —
  * a child process's pipes, a socket to another machine, a function call
  * into native code or a WebAssembly module in this process.

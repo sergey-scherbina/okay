@@ -14,8 +14,8 @@ WORKER PROCESS on okay's line protocol (specs/remote-foreign.md).
 - **Multi-shot.** A continuation is a Go closure, which the worker keeps
   under an id. okay may continue it more than once, as a `Choice`
   handler does.
-- **The same engine.** `PySubprocess.speaking` drives the worker, so
-  `Py.program`, the callbacks and `Durable` are unchanged.
+- **The same engine.** `ForeignWorker.speaking` drives the worker, so
+  `Foreign.program`, the callbacks and `Durable` are unchanged.
 - **Typed operations.** Go has generics but no type-level lists, so a
   program's SET of effects cannot live in its type, as it cannot in
   Frege. Each OPERATION can be typed: `okay.Op[A]` names an operation,

@@ -11,7 +11,7 @@ caller's handlers.
 ```mermaid
 flowchart LR
   subgraph JVM["the JVM: your Scala program"]
-    P["Py.program(&quot;total&quot;)<br/>Either[Condition, Double] ! Reader + PyEval"]
+    P["Foreign.program(&quot;total&quot;)<br/>Either[Condition, Double] ! Reader + ForeignEval"]
     C["callbacks: price_of · discount<br/>okay programs under your handlers"]
   end
   W["./worker (go build)<br/>okay.Serve"]
@@ -47,10 +47,10 @@ sequence them. You do not write the operations: `Go.ops` writes them from
 the Scala callbacks that answer them:
 
 ```scala
-  val priceOf = Py.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+  val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
 ```
 
-`Go.ops("shop", Py.callbacks(priceOf, discount))` is a package `shop` with
+`Go.ops("shop", Foreign.callbacks(priceOf, discount))` is a package `shop` with
 `func PriceOf(a0 string) okay.Op[float64]`, and the Go program uses it:
 
 ```go
@@ -75,9 +75,9 @@ naming the module `worker` if there is none) and runs `go build`.
 
 The binary serves the wire either way. Serve it with `okay.Main`:
 - run as a child process, it speaks on stdin/stdout, and
-  `PySubprocess.speaking(Seq(binary))` reaches it;
+  `ForeignWorker.speaking(Seq(binary))` reaches it;
 - started with `OKAY_LISTEN=host:port`, it serves TCP, and
-  `PySubprocess.connect(host, port)` reaches it from this machine or
+  `ForeignWorker.connect(host, port)` reaches it from this machine or
   another.
 
 Each TCP connection gets its own worker and its own continuations. The
@@ -86,9 +86,9 @@ network, or put TLS or SSH in front of it. The same test body
 (`WireConformance`: multi-shot, callbacks under the caller's Reader, a
 failure as a condition) passes over both links. The
 build is offline: standard library only, with `GOTOOLCHAIN=local`.
-`PySubprocess.speaking(Seq(binary))` runs the worker, and everything
+`ForeignWorker.speaking(Seq(binary))` runs the worker, and everything
 okay-py does works unchanged:
-- `Py.program` and callbacks;
+- `Foreign.program` and callbacks;
 - multi-shot handlers;
 - `Durable` journals.
 

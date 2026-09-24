@@ -5,8 +5,8 @@ import okay.{Reader, given}
 
 object TestHaskellTypedEffects:
   /** the effect a Haskell program may perform, written ONCE, here, with its types */
-  val priceOf = Py.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
-  val discount = Py.callback[Double, Double]("discount")(amount => Reader.ask[Map[String, Double]].map(m => amount * m("rate")))
+  val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+  val discount = Foreign.callback[Double, Double]("discount")(amount => Reader.ask[Map[String, Double]].map(m => amount * m("rate")))
 
   // no margin: the docs quote these lines
   val main: String = """{-# LANGUAGE DataKinds #-}
@@ -35,22 +35,22 @@ class TestHaskellTypedEffects extends munit.FunSuite {
 
   private def project(source: String): Path =
     val dir = Files.createTempDirectory("okay-hs-typed")
-    Files.writeString(dir.resolve("Shop.hs"), Hs.ops("Shop", Py.callbacks(priceOf, discount))): Unit
+    Files.writeString(dir.resolve("Shop.hs"), Hs.ops("Shop", Foreign.callbacks(priceOf, discount))): Unit
     Files.writeString(dir.resolve("Main.hs"), source): Unit
     dir
 
-  private lazy val w = PySubprocess.speaking(Seq(HaskellWorker.build(project(main)).toString))
-  private given okay.Handler[PyEval] = w.handler
+  private lazy val w = ForeignWorker.speaking(Seq(HaskellWorker.build(project(main)).toString))
+  private given okay.Handler[ForeignEval] = w.handler
   override def afterAll(): Unit = if ghc then w.close()
 
   test("the effect's Haskell module is written from the Scala callbacks") {
-    val src = Hs.ops("Shop", Py.callbacks(priceOf, discount))
+    val src = Hs.ops("Shop", Foreign.callbacks(priceOf, discount))
     assert(src.contains("data Shop a where\n  PriceOf :: String -> Shop Double\n  Discount :: Double -> Shop Double"), src)
     assert(src.contains("""  request (PriceOf a0) = ("price_of", [toValue a0])"""), src)
   }
 
   test("a program typed by its effects runs in the worker, each operation a Scala callback") {
-    val run = Py.program[Double]("total").calling(Py.callbacks(priceOf, discount))("tea", 3L)
+    val run = Foreign.program[Double]("total").calling(Foreign.callbacks(priceOf, discount))("tea", 3L)
     assertEquals(Reader.run(Map("tea" -> 4.0, "rate" -> 0.5))(run.program).runWith, Right(6.0))
   }
 

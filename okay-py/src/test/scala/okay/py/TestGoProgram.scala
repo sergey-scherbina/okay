@@ -4,8 +4,8 @@ import java.nio.file.{Files, Path}
 import okay.{Choose, Reader, effect, runChoice, given}
 
 object TestGoProgram:
-  val priceOf = Py.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
-  val discount = Py.callback[Double, Double]("discount")(amount => Reader.ask[Map[String, Double]].map(m => amount * m("rate")))
+  val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+  val discount = Foreign.callback[Double, Double]("discount")(amount => Reader.ask[Map[String, Double]].map(m => amount * m("rate")))
 
   // no margin: the docs quote these lines
   val main: String = """package main
@@ -55,35 +55,35 @@ class TestGoProgram extends munit.FunSuite {
   private def project(source: String): Path =
     val dir = Files.createTempDirectory("okay-go")
     Files.createDirectories(dir.resolve("shop")): Unit
-    Files.writeString(dir.resolve("shop").resolve("ops.go"), Go.ops("shop", Py.callbacks(priceOf, discount))): Unit
+    Files.writeString(dir.resolve("shop").resolve("ops.go"), Go.ops("shop", Foreign.callbacks(priceOf, discount))): Unit
     Files.writeString(dir.resolve("main.go"), source): Unit
     dir
 
-  private lazy val w = PySubprocess.speaking(Seq(GoWorker.build(project(main)).toString))
-  private given okay.Handler[PyEval] = w.handler
+  private lazy val w = ForeignWorker.speaking(Seq(GoWorker.build(project(main)).toString))
+  private given okay.Handler[ForeignEval] = w.handler
   override def afterAll(): Unit = if go then w.close()
 
-  private val choose = Py.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))
+  private val choose = Foreign.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))
 
   test("MULTI-SHOT across a process, from Go: every branch of two choices") {
     assertEquals(w.pythonVersion, "go")
-    val pairs = Py.program[Long]("pairs").calling(Py.callbacks(choose))()
+    val pairs = Foreign.program[Long]("pairs").calling(Foreign.callbacks(choose))()
     assertEquals(runChoice(pairs.program).runWith.toList, List(Right(11L), Right(21L), Right(12L), Right(22L)))
     pairs.forget.runWith
   }
 
   test("typed operations, generated from the Scala callbacks, each a callback under the caller's Reader") {
-    val ops = Go.ops("shop", Py.callbacks(priceOf, discount))
+    val ops = Go.ops("shop", Foreign.callbacks(priceOf, discount))
     assert(ops.contains("func PriceOf(a0 string) okay.Op[float64] {"), ops)
-    val run = Py.program[Double]("total").calling(Py.callbacks(priceOf, discount))("tea", 3L)
+    val run = Foreign.program[Double]("total").calling(Foreign.callbacks(priceOf, discount))("tea", 3L)
     assertEquals(Reader.run(Map("tea" -> 4.0, "rate" -> 0.5))(run.program).runWith, Right(6.0))
   }
 
   test("a Go panic is a condition by name, and the worker lives on") {
-    val boom = Py.program[Long]("boom").calling(Py.callbacks(choose))()
+    val boom = Foreign.program[Long]("boom").calling(Foreign.callbacks(choose))()
     val got = runChoice(boom.program).runWith
     assert(got.headOption.exists(_.left.exists(c => c.kind == "GoError" && c.message.contains("go says no"))), s"$got")
-    assertEquals(runChoice(Py.program[Long]("pairs").calling(Py.callbacks(choose))().program).runWith.size, 4)
+    assertEquals(runChoice(Foreign.program[Long]("pairs").calling(Foreign.callbacks(choose))().program).runWith.size, 4)
   }
 
   test("go build refuses an operation called with the wrong argument type") {

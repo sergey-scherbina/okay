@@ -146,6 +146,14 @@ goes over the same pipe. Because each step is an ordinary okay operation,
 `Durable` journals the whole dialogue, and a replay answers every step
 from the journal without starting Python.
 
+**One engine, many languages.** `Py` is the Python name of okay's
+foreign engine. The same engine is `Foreign`: `Foreign.fn`,
+`Foreign.program`, `Foreign.callback`, the effect `ForeignEval`, and the
+engine `ForeignWorker` (`speaking`, `connect`, `over`). It carries Haskell,
+Go and Rust too, over pipes, TCP and calls into this process
+([okay with Go](go.md), [okay with Rust](rust.md)). The Python examples
+keep `Py`, which is an alias.
+
 ## Programs as data: many answers, and Haskell
 
 A callback's continuation is a Python frame waiting in `okay.call`, so it
@@ -202,10 +210,10 @@ write the GADT. `Hs.ops` writes it from the Scala callbacks that answer
 the operations:
 
 ```scala
-  val priceOf = Py.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+  val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
 ```
 
-`Hs.ops("Shop", Py.callbacks(priceOf, discount))` is a module `Shop` with
+`Hs.ops("Shop", Foreign.callbacks(priceOf, discount))` is a module `Shop` with
 `data Shop a where PriceOf :: String -> Shop Double; Discount :: Double -> Shop Double`
 and its wire instance. The Haskell program declares `Shop` in its type:
 

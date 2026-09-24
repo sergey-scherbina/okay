@@ -18,7 +18,7 @@ walk.
 What is missing is that the protocol is tied to ONE transport, a child
 process's pipes. This spec cuts it loose, in both directions:
 
-- **The Scala side.** The engine (`PySubprocess`: `Py.program`,
+- **The Scala side.** The engine (`ForeignWorker`: `Foreign.program`,
   callbacks, multi-shot, `Durable`) runs over a `WireLink`: a handshake
   line, then one request line and one answer line. The engine does not
   change; the link does.
@@ -71,10 +71,10 @@ when, and the conformance suite covers both forms.
 ## Stage 1 — wire-links (Scala links; Go over TCP)
 
 - [x] `WireLink`: `hello(): String`, `roundTrip(line): String`, `close()`.
-      `PySubprocess.over(link)` is the engine over any link, and
+      `ForeignWorker.over(link)` is the engine over any link, and
       `speaking(command)` becomes `over(PipeLink(process))`, unchanged for
       callers.
-- [x] `TcpLink(host, port)` and `PySubprocess.connect(host, port)`: the
+- [x] `TcpLink(host, port)` and `ForeignWorker.connect(host, port)`: the
       same protocol over a socket. The server speaks first, as the pipe
       worker does.
 - [x] Go: `okay.Worker.Handle(line)` is the protocol without I/O, and
@@ -132,7 +132,7 @@ when, and the conformance suite covers both forms.
 ## Results
 
 - Stage 1 (wire-links, 2026-09-24).
-  - `WireLink` has two links, pipes and TCP. `PySubprocess.over(link)`
+  - `WireLink` has two links, pipes and TCP. `ForeignWorker.over(link)`
     is the engine, `speaking` is `over(pipes)`, and
     `connect(host, port)` is `over(tcp)`. The Python, Go and Haskell
     suites pass unchanged over the refactored engine.

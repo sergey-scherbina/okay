@@ -155,13 +155,13 @@ object PyCodec {
  *
  * {{{
  * val median = Py.fn[Double]("statistics:median")
- * median(Vector(3.0, 1.0, 2.0))   // Either[Condition, Double] ! PyEval
+ * median(Vector(3.0, 1.0, 2.0))   // Either[Condition, Double] ! ForeignEval
  * }}}
  *
  * The arguments are encoded through their `Schema`, the answer decoded
  * through `Out`'s; a Python exception and an answer of the wrong shape
  * are both a `Left(Condition)`, so a caller matches one channel. The
- * result is an okay program over `PyEval`, run by whichever handler is
+ * result is an okay program over `ForeignEval`, run by whichever handler is
  * installed — a subprocess, a worker pool, a canned mock, or `Durable`
  * over any of them.
  */
@@ -192,7 +192,7 @@ object Py {
   /** one run of a program-as-data: the okay program that walks it, and
    * the release of the continuations the far side keeps for it */
   final class PyRun[F[+_], Out: Schema](val id: Long, address: String, args: Vector[PyValue], cbs: Callbacks[F])(using shape: Shape):
-    type R = F + PyEval
+    type R = F + ForeignEval
 
     /** walk the far program node by node; each named operation is a
      * callback of `cbs`, run under the caller's handlers */
@@ -203,24 +203,24 @@ object Py {
         case Right(PyNode.Perform(name, as, k)) => cbs.get(name) match
           case None => pure[R, Either[Condition, Out]](Left(Condition("NoCallback",
             s"'$name' is not among this program's callbacks (${cbs.names.mkString(", ")})")))
-          case Some(cb) => cb.run(as).plus[PyEval].flatMap {
+          case Some(cb) => cb.run(as).plus[ForeignEval].flatMap {
             case Left(c) => pure[R, Either[Condition, Out]](Left(c))
-            case Right(a) => effect[R, Either[Condition, PyNode]](PyEval.Continue(id, k, a)).flatMap(step)
+            case Right(a) => effect[R, Either[Condition, PyNode]](ForeignEval.Continue(id, k, a)).flatMap(step)
           }
-      effect[R, Either[Condition, PyNode]](PyEval.Program(id, address, args)).flatMap(step)
+      effect[R, Either[Condition, PyNode]](ForeignEval.Program(id, address, args)).flatMap(step)
 
     /** drop every continuation the far side keeps for this run */
-    def forget: Unit ! PyEval = effect[PyEval, Unit](PyEval.Forget(id))
+    def forget: Unit ! ForeignEval = effect[ForeignEval, Unit](ForeignEval.Forget(id))
 
   /** a Python function over a LIST as an okay stage over chunks
    * (foreign-streaming): see `PyStream` */
   def stage[I: ToPy, O: Schema](address: String, chunk: Int = 64): Unit ! PyStream.Row[I, O] =
-    PyStream.chunked[I, O](chunk, buf => PyEval.Call(address, Vector(PyValue.Arr(buf))), None)
+    PyStream.chunked[I, O](chunk, buf => ForeignEval.Call(address, Vector(PyValue.Arr(buf))), None)
 
   /**
    * Python source beside the Scala that calls it (foreign-inline-modules):
    * the source must be a compile-time constant, and the engine ships it
-   * when a worker starts — `PySubprocess.start(..., modules = Seq(m))`.
+   * when a worker starts — `ForeignWorker.start(..., modules = Seq(m))`.
    */
   inline def module(inline name: String, inline source: String): PyModule =
     scala.compiletime.requireConst(name)
@@ -235,13 +235,13 @@ object Py {
   def hold(address: String): Hold = Hold(address)
 
   final class Hold(address: String)(using shape: Shape):
-    def apply(): Either[Condition, PyRef] ! PyEval = go(Vector.empty)
-    def apply[A: ToPy](a: A): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a)))
-    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
-    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! PyEval =
+    def apply(): Either[Condition, PyRef] ! ForeignEval = go(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, PyRef] ! ForeignEval = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! ForeignEval = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
-    private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! PyEval =
-      effect[PyEval, Either[Condition, PyRef]](PyEval.Hold(address, args)).map(_.map(_.copy(shape = shape)))
+    private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! ForeignEval =
+      effect[ForeignEval, Either[Condition, PyRef]](ForeignEval.Hold(address, args)).map(_.map(_.copy(shape = shape)))
 
   /**
    * A callback Python may call by name while okay runs one of its
@@ -281,30 +281,30 @@ object Py {
     def get(name: String): Option[Callback[F]] = all.find(_.name == name)
 
   final class Fn[Out](val address: String)(using out: Schema[Out], shape: Shape):
-    def apply(): Either[Condition, Out] ! PyEval = call(Vector.empty)
-    def apply[A: ToPy](a: A): Either[Condition, Out] ! PyEval =
+    def apply(): Either[Condition, Out] ! ForeignEval = call(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, Out] ! ForeignEval =
       call(Vector(ToPy(a)))
-    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! PyEval =
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! ForeignEval =
       call(Vector(ToPy(a), ToPy(b)))
-    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! PyEval =
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! ForeignEval =
       call(Vector(ToPy(a), ToPy(b), ToPy(c)))
-    def apply[A: ToPy, B: ToPy, C: ToPy, D: ToPy](a: A, b: B, c: C, d: D): Either[Condition, Out] ! PyEval =
+    def apply[A: ToPy, B: ToPy, C: ToPy, D: ToPy](a: A, b: B, c: C, d: D): Either[Condition, Out] ! ForeignEval =
       call(Vector(ToPy(a), ToPy(b), ToPy(c), ToPy(d)))
 
-    private def call(args: Vector[PyValue]): Either[Condition, Out] ! PyEval =
-      effect[PyEval, Either[Condition, PyValue]](PyEval.Call(address, args))
+    private def call(args: Vector[PyValue]): Either[Condition, Out] ! ForeignEval =
+      effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(address, args))
         .map(_.flatMap(shape.decode[Out](_)))
 
     /** this function, offered `cbs` to call back into (foreign-callbacks) */
     def calling[F[+_]](cbs: Callbacks[F]): Calling[F] = Calling(cbs)
 
     final class Calling[F[+_]](cbs: Callbacks[F]):
-      def apply(): Either[Condition, Out] ! F + PyEval = dialogue(Vector.empty)
-      def apply[A: ToPy](a: A): Either[Condition, Out] ! F + PyEval =
+      def apply(): Either[Condition, Out] ! F + ForeignEval = dialogue(Vector.empty)
+      def apply[A: ToPy](a: A): Either[Condition, Out] ! F + ForeignEval =
         dialogue(Vector(ToPy(a)))
-      def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! F + PyEval =
+      def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! F + ForeignEval =
         dialogue(Vector(ToPy(a), ToPy(b)))
-      def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! F + PyEval =
+      def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! F + ForeignEval =
         dialogue(Vector(ToPy(a), ToPy(b), ToPy(c)))
 
       /**
@@ -313,15 +313,15 @@ object Py {
        * okay node, so a function that calls back a million times is a loop,
        * not a million frames.
        */
-      private def dialogue(args: Vector[PyValue]): Either[Condition, Out] ! F + PyEval =
-        type R = F + PyEval
+      private def dialogue(args: Vector[PyValue]): Either[Condition, Out] ! F + ForeignEval =
+        type R = F + ForeignEval
         def go(step: PyStep): Either[Condition, Out] ! R = step match
           case PyStep.Done(a) => pure[R, Either[Condition, Out]](a.flatMap(shape.decode[Out](_)))
           case PyStep.Ask(name, as, k) =>
             val answered: Either[Condition, PyValue] ! R = cbs.get(name) match
-              case Some(cb) => cb.run(as).plus[PyEval]
+              case Some(cb) => cb.run(as).plus[ForeignEval]
               case None => pure[R, Either[Condition, PyValue]](Left(Condition("NoCallback",
                 s"'$name' is not among this call's callbacks (${cbs.names.mkString(", ")})")))
-            answered.flatMap(a => effect[R, PyStep](PyEval.Resume(k, a))).flatMap(go)
-        effect[R, PyStep](PyEval.Start(address, args, cbs.names)).flatMap(go)
+            answered.flatMap(a => effect[R, PyStep](ForeignEval.Resume(k, a))).flatMap(go)
+        effect[R, PyStep](ForeignEval.Start(address, args, cbs.names)).flatMap(go)
 }

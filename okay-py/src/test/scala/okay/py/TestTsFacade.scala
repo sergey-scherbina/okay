@@ -21,7 +21,7 @@ class TestTsFacade extends munit.FunSuite {
     Files.writeString(d.resolve("model.ts"), TestTsOneShape.declarations): Unit
     d
   private lazy val w = TsWorker.start(dir, modules = Seq("facadets"))
-  private given okay.Handler[PyEval] = w.handler
+  private given okay.Handler[ForeignEval] = w.handler
   override def afterAll(): Unit = if ready then w.close()
 
   private def golden: String =
@@ -71,16 +71,16 @@ export {};
 
   test("a fully typed module imports neither ToPy nor more than it uses") {
     val src = TsFacade.render("M", "p", "m", dts, Seq("q.Order")).toOption.get
-    assert(src.contains("  def lines(order: Order): Either[Condition, Vector[Line]] ! PyEval =\n    Ts.fn[Vector[Line]](\"m:lines\")(order)\n"), src)
+    assert(src.contains("  def lines(order: Order): Either[Condition, Vector[Line]] ! ForeignEval =\n    Ts.fn[Vector[Line]](\"m:lines\")(order)\n"), src)
     assert(src.contains("final case class Line(sku: String, qty: Int) derives Schema"), src)
     assert(src.contains("Left out, being optional: max."), src)
-    assert(src.contains("import okay.py.{Condition, PyEval, Ts}\nimport q.Order\n"), src)
+    assert(src.contains("import okay.py.{Condition, ForeignEval, Ts}\nimport q.Order\n"), src)
     assert(!src.contains("type Int"), src)
   }
 
   test("a type nobody declared or imported refuses that function, not the module") {
     val src = TsFacade.render("M", "p", "m", "export declare function f(x: Mystery): string;\nexport declare function g(): string;\n").toOption.get
     assert(src.contains("  // f: not generated — f(x): 'Mystery' is not declared here"), src)
-    assert(src.contains("def g(): Either[Condition, String] ! PyEval"), src)
+    assert(src.contains("def g(): Either[Condition, String] ! ForeignEval"), src)
   }
 }

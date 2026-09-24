@@ -7,12 +7,12 @@ import java.nio.file.{Files, Path}
  * specs/remote-foreign.md). A `Main.hs` imports the `Okay` module this jar
  * ships (`/okay/hs/Okay.hs`), writes its programs in `Prog`, and `serve`s
  * them by name; `build` compiles it with GHC, and
- * `PySubprocess.speaking(Seq(binary.toString))` runs it — the same wire as
+ * `ForeignWorker.speaking(Seq(binary.toString))` runs it — the same wire as
  * Python, so `Py.program` drives it unchanged:
  *
  * {{{
  * val bin = HaskellWorker.build(dirWithMainHs)
- * val w = PySubprocess.speaking(Seq(bin.toString))
+ * val w = ForeignWorker.speaking(Seq(bin.toString))
  * runChoice(Py.program[Long]("pairs").calling(Py.callbacks(choose))().program).runWith(using w.handler)
  * }}}
  *

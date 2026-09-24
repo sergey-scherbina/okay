@@ -6,7 +6,7 @@ import okay.codec.Json
 
 /**
  * Python as a handler (specs/py.md; the model is specs/r.md's):
- * calls are OPERATIONS — journalled by Durable (`PyEval`'s given), mockable by
+ * calls are OPERATIONS — journalled by Durable (`ForeignEval`'s given), mockable by
  * handler swap, supervised by dead-process-throws. Named functions
  * only: there is deliberately NO operation that evals a string, so
  * untrusted input reaches Python only as data.
@@ -51,40 +51,40 @@ final case class PyRef(id: Long, pyType: String,
   /** a method of the held object whose result is HELD in turn */
   def hold(method: String): PyRef.HoldMethod = PyRef.HoldMethod(this, method)
   /** an attribute of the held object */
-  def attr[Out: okay.codec.Schema](name: String): Either[Condition, Out] ! PyEval =
-    okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Attr(this, name))
+  def attr[Out: okay.codec.Schema](name: String): Either[Condition, Out] ! ForeignEval =
+    okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Attr(this, name))
       .map(_.flatMap(shape.decode[Out](_)))
   /** drop the object in the worker; idempotent */
-  def release: Unit ! PyEval = okay.effect[PyEval, Unit](PyEval.Release(this))
+  def release: Unit ! ForeignEval = okay.effect[ForeignEval, Unit](ForeignEval.Release(this))
   /** this object as a STATEFUL stage over chunks (foreign-streaming):
    * `method` per chunk, `finish` once at the end */
   def stage[I: ToPy, O: okay.codec.Schema](method: String, chunk: Int = 64,
                                           finish: Option[String] = None): Unit ! PyStream.Row[I, O] =
     PyStream.chunked[I, O](chunk,
-      buf => PyEval.Method(this, method, Vector(PyValue.Arr(buf)), hold = false),
-      finish.map(f => PyEval.Method(this, f, Vector.empty, hold = false)))
+      buf => ForeignEval.Method(this, method, Vector(PyValue.Arr(buf)), hold = false),
+      finish.map(f => ForeignEval.Method(this, f, Vector.empty, hold = false)))
 
 object PyRef:
   final class Method[Out: okay.codec.Schema](ref: PyRef, name: String):
     private given Shape = ref.shape
-    def apply(): Either[Condition, Out] ! PyEval = go(Vector.empty)
-    def apply[A: ToPy](a: A): Either[Condition, Out] ! PyEval = go(Vector(ToPy(a)))
-    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
-    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! PyEval =
+    def apply(): Either[Condition, Out] ! ForeignEval = go(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, Out] ! ForeignEval = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! ForeignEval = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
-    private def go(args: Vector[PyValue]): Either[Condition, Out] ! PyEval =
-      okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Method(ref, name, args, hold = false))
+    private def go(args: Vector[PyValue]): Either[Condition, Out] ! ForeignEval =
+      okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Method(ref, name, args, hold = false))
         .map(_.flatMap(ref.shape.decode[Out](_)))
 
   final class HoldMethod(ref: PyRef, name: String):
     private given Shape = ref.shape
-    def apply(): Either[Condition, PyRef] ! PyEval = go(Vector.empty)
-    def apply[A: ToPy](a: A): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a)))
-    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! PyEval = go(Vector(ToPy(a), ToPy(b)))
-    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! PyEval =
+    def apply(): Either[Condition, PyRef] ! ForeignEval = go(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, PyRef] ! ForeignEval = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! ForeignEval = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
-    private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! PyEval =
-      okay.effect[PyEval, Either[Condition, PyValue]](PyEval.Method(ref, name, args, hold = true))
+    private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! ForeignEval =
+      okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Method(ref, name, args, hold = true))
         .map(_.flatMap(Wire.asRef).map(_.copy(shape = ref.shape)))
 
 /** how an argument becomes a `PyValue`: through its `Schema`, or as the
@@ -134,38 +134,38 @@ object PyFrame:
  * — data, and the worker survives to take the next call */
 final case class Condition(kind: String, message: String)
 
-enum PyEval[+A] derives okay.Effect:
+enum ForeignEval[+A] derives okay.Effect:
   case Call(fn: String, args: Vector[PyValue])
-    extends PyEval[Either[Condition, PyValue]]
+    extends ForeignEval[Either[Condition, PyValue]]
   case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
-    extends PyEval[Either[Condition, PyFrame]]
+    extends ForeignEval[Either[Condition, PyFrame]]
   /** a call that may CALL BACK (foreign-callbacks): Python may use
    * `okay.call(name, ...)` for the names offered here, and each use comes
    * back as a `PyStep.Ask` rather than as the call's answer */
   case Start(fn: String, args: Vector[PyValue], callbacks: Vector[String])
-    extends PyEval[PyStep]
+    extends ForeignEval[PyStep]
   /** the answer to an `Ask`, which resumes the Python frame waiting in
    * `okay.call`; the next step is another ask or the call's answer */
   case Resume(k: Long, answer: Either[Condition, PyValue])
-    extends PyEval[PyStep]
+    extends ForeignEval[PyStep]
   /** call `fn` and KEEP its result in the worker (foreign-object-handles) */
-  case Hold(fn: String, args: Vector[PyValue]) extends PyEval[Either[Condition, PyRef]]
+  case Hold(fn: String, args: Vector[PyValue]) extends ForeignEval[Either[Condition, PyRef]]
   /** a method of a held object: its value, or held in turn when `hold` */
   case Method(ref: PyRef, name: String, args: Vector[PyValue], hold: Boolean)
-    extends PyEval[Either[Condition, PyValue]]
+    extends ForeignEval[Either[Condition, PyValue]]
   /** an attribute of a held object */
-  case Attr(ref: PyRef, name: String) extends PyEval[Either[Condition, PyValue]]
+  case Attr(ref: PyRef, name: String) extends ForeignEval[Either[Condition, PyValue]]
   /** drop a held object; idempotent */
-  case Release(ref: PyRef) extends PyEval[Unit]
+  case Release(ref: PyRef) extends ForeignEval[Unit]
   /** start a program-as-data (remote-foreign): the function returns a
    * Python `okay.done`/`okay.perform(...).then(...)` tree, handed over one
    * node at a time under the run id the HOST chose */
-  case Program(run: Long, fn: String, args: Vector[PyValue]) extends PyEval[Either[Condition, PyNode]]
+  case Program(run: Long, fn: String, args: Vector[PyValue]) extends ForeignEval[Either[Condition, PyNode]]
   /** continue run `run` at continuation `k` with `answer`; the far side
    * keeps `k`, so the same one may be continued again (multi-shot) */
-  case Continue(run: Long, k: Long, answer: PyValue) extends PyEval[Either[Condition, PyNode]]
+  case Continue(run: Long, k: Long, answer: PyValue) extends ForeignEval[Either[Condition, PyNode]]
   /** drop every continuation of a run; idempotent */
-  case Forget(run: Long) extends PyEval[Unit]
+  case Forget(run: Long) extends ForeignEval[Unit]
 
 /** one node of a program-as-data (remote-foreign) */
 enum PyNode:
@@ -179,11 +179,11 @@ enum PyStep:
   /** the function called `okay.call(callback, *args)`; `k` resumes it */
   case Ask(callback: String, args: Vector[PyValue], k: Long)
 
-object PyEval:
+object ForeignEval:
   /**
    * `Durable` journals a Python call (foreign-journalled,
    * specs/foreign-highlevel.md stage 1). Found without an import: this
-   * companion is in the implicit scope of `Journalled[PyEval]`.
+   * companion is in the implicit scope of `Journalled[ForeignEval]`.
    *
    * The journal's `op` is the function's address. The fingerprint is
    * the address plus a SHA-256 of the encoded arguments (and frame):
@@ -197,8 +197,8 @@ object PyEval:
    * to carry an idempotency key, so a Python call must not be declared
    * `OnRepeat.WithKey`.
    */
-  given okay.codec.Journalled[PyEval] with
-    def name[A](op: PyEval[A]): String = op match
+  given okay.codec.Journalled[ForeignEval] with
+    def name[A](op: ForeignEval[A]): String = op match
       case Call(fn, _) => fn
       case Frame(fn, _, _) => fn
       case Start(fn, _, _) => fn
@@ -210,7 +210,7 @@ object PyEval:
       case Program(_, fn, _) => s"program:$fn"
       case Continue(_, _, _) => "continue"
       case Forget(_) => "forget"
-    def fingerprint[A](op: PyEval[A]): String = op match
+    def fingerprint[A](op: ForeignEval[A]): String = op match
       case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Frame(fn, in, args) =>
         s"$fn#${Wire.digest(Json.JArr(Vector(Wire.encFrame(in), Json.JArr(args.map(Wire.enc)))))}"
@@ -224,8 +224,8 @@ object PyEval:
       case Program(run, fn, args) => s"program:$run:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Continue(run, k, a) => s"continue:$run/$k#${Wire.digest(Wire.enc(a))}"
       case Forget(run) => s"forget:$run"
-    def withKey[A](op: PyEval[A], key: String): PyEval[A] = op
-    def perform[A](op: PyEval[A], inner: okay.Handler[PyEval]): (A, String) = op match
+    def withKey[A](op: ForeignEval[A], key: String): ForeignEval[A] = op
+    def perform[A](op: ForeignEval[A], inner: okay.Handler[ForeignEval]): (A, String) = op match
       case Call(fn, args) =>
         val answer = inner.handle(Call(fn, args))
         (answer, Wire.written(answer.map(Wire.enc)))
@@ -259,7 +259,7 @@ object PyEval:
       case Forget(run) =>
         inner.handle(Forget(run))
         ((), "forgotten")
-    def decode[A](op: PyEval[A], written: String): A = op match
+    def decode[A](op: ForeignEval[A], written: String): A = op match
       case Call(_, _) => Wire.read(written).map(Wire.dec)
       case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
       case Start(_, _, _) => Wire.readStep(written)

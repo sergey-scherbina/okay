@@ -7,7 +7,7 @@ import okay.codec.Schema
  * the effect a Haskell program may perform, written from the Scala callbacks
  * that answer it, as `Ts.ops` writes TypeScript's.
  *
- * `Hs.ops("Shop", Py.callbacks(priceOf, discount))` is a Haskell module
+ * `Hs.ops("Shop", Foreign.callbacks(priceOf, discount))` is a Haskell module
  * `Shop` holding a GADT, one constructor per operation typed by its
  * argument and answer, and its `Wire` instance for `OkayEff.send`:
  *
@@ -44,7 +44,7 @@ object Hs:
     if name.isEmpty || !name.head.isLetter then s"Op$name" else name
 
   /** the Haskell module declaring these callbacks as the effect `name` */
-  def ops[F[+_]](name: String, cbs: Py.Callbacks[F]): String =
+  def ops[F[+_]](name: String, cbs: Foreign.Callbacks[F]): String =
     val rows = cbs.all.map { c =>
       val (arg, res) = c.types match
         case Some((a, r)) => (haskellType(a), haskellType(r))

@@ -8,7 +8,7 @@ import okay.codec.Schema
  * chunks (foreign-streaming, specs/foreign-highlevel.md stage 6):
  *
  * {{{
- * through(source.plus[PyEval])(Py.stage[Double, Double]("model:predict", chunk = 256))
+ * through(source.plus[ForeignEval])(Py.stage[Double, Double]("model:predict", chunk = 256))
  * }}}
  *
  * The stage pulls up to `chunk` elements, calls the function ONCE with
@@ -30,7 +30,7 @@ import okay.codec.Schema
 object PyStream:
 
   /** the row of a Python stage: okay's stage row, plus the calls */
-  type Row[I, O] = Take % I + (Writer % O + PyEval)
+  type Row[I, O] = Take % I + (Writer % O + ForeignEval)
 
   /** a call answered a condition: the stage cannot tell a `Left`, so it
    * ends, naming what Python said */
@@ -39,8 +39,8 @@ object PyStream:
 
   private[py] def chunked[I: ToPy, O: Schema](
       chunk: Int,
-      call: Vector[PyValue] => PyEval[Either[Condition, PyValue]],
-      finish: Option[PyEval[Either[Condition, PyValue]]]): Unit ! Row[I, O] =
+      call: Vector[PyValue] => ForeignEval[Either[Condition, PyValue]],
+      finish: Option[ForeignEval[Either[Condition, PyValue]]]): Unit ! Row[I, O] =
     require(chunk >= 1, "okay.py stage: a chunk holds at least one element")
     type R = Row[I, O]
 

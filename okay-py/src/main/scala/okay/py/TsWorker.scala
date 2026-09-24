@@ -41,7 +41,7 @@ object TsWorker:
    * environment is clean, plus `env` and the module list.
    */
   def start(dir: Path, modules: Seq[String], node: String = "node",
-            env: Map[String, String] = Map.empty): PySubprocess =
+            env: Map[String, String] = Map.empty): ForeignWorker =
     Files.writeString(dir.resolve("okay.ts"), library): Unit
     Files.writeString(dir.resolve("worker.ts"), worker): Unit
     modules.foreach { m =>
@@ -49,7 +49,7 @@ object TsWorker:
         throw IllegalArgumentException(s"okay.py: no module $m.ts in $dir")
     }
     val list = modules.map(m => s"$m=${dir.resolve(s"$m.ts")}").mkString(";")
-    PySubprocess.speaking(Seq(onPath(node), dir.resolve("worker.ts").toString), env.updated("OKAY_TS_MODULES", list))
+    ForeignWorker.speaking(Seq(onPath(node), dir.resolve("worker.ts").toString), env.updated("OKAY_TS_MODULES", list))
 
   /** the child's environment is empty, so the executable is found HERE */
   private def onPath(exe: String): String =

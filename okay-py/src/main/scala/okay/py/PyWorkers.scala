@@ -18,11 +18,11 @@ import okay.Handler
  */
 final class PyWorkers private (n: Int, python: String, env: Map[String, String]):
 
-  private val pool = java.util.concurrent.ArrayBlockingQueue[PySubprocess](n)
+  private val pool = java.util.concurrent.ArrayBlockingQueue[ForeignWorker](n)
 
   private[py] def prime(): Unit =
     var i = 0
-    while i < n do { pool.put(PySubprocess.start(python, env)); i += 1 }
+    while i < n do { pool.put(ForeignWorker.start(python, env)); i += 1 }
 
   /**
    * A call with callbacks is a DIALOGUE (foreign-callbacks): `Start`,
@@ -31,7 +31,7 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
    * it until the `Done`; each ask's `k` is renamed to a pool-wide one so a
    * resume finds its worker.
    */
-  private val parked = java.util.concurrent.ConcurrentHashMap[Long, (PySubprocess, Long, Boolean)]()
+  private val parked = java.util.concurrent.ConcurrentHashMap[Long, (ForeignWorker, Long, Boolean)]()
   private val nextK = java.util.concurrent.atomic.AtomicLong()
 
   /**
@@ -42,27 +42,27 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
    * worker takes that worker's lock, and the pool only chooses which
    * worker an unpinned call gets. Ref ids are renamed pool-wide.
    */
-  private val refs = java.util.concurrent.ConcurrentHashMap[Long, (PySubprocess, Long)]()
+  private val refs = java.util.concurrent.ConcurrentHashMap[Long, (ForeignWorker, Long)]()
   /** a program-as-data run's continuations live in one worker (remote-foreign) */
-  private val runs = java.util.concurrent.ConcurrentHashMap[Long, PySubprocess]()
+  private val runs = java.util.concurrent.ConcurrentHashMap[Long, ForeignWorker]()
   private val nextRef = java.util.concurrent.atomic.AtomicLong()
 
   /** the same shape as one worker's handler — programs cannot tell */
-  def handler: Handler[PyEval] = new:
-    def handle[A](e: PyEval[A]): A = e match
-      case PyEval.Resume(k, a) =>
+  def handler: Handler[ForeignEval] = new:
+    def handle[A](e: ForeignEval[A]): A = e match
+      case ForeignEval.Resume(k, a) =>
         val (w, local, fromPool) = Option(parked.remove(k)).getOrElse(
           throw IllegalStateException(s"okay.py: resume $k matches no waiting call (resumed twice?)"))
-        dialogue(w, fromPool)(_.handle(PyEval.Resume(local, a)))
-      case PyEval.Continue(run, k, a) =>
+        dialogue(w, fromPool)(_.handle(ForeignEval.Resume(local, a)))
+      case ForeignEval.Continue(run, k, a) =>
         val w = Option(runs.get(run)).getOrElse(
           throw IllegalArgumentException(s"okay.py: run $run is not known to this pool (forgotten?)"))
-        w.synchronized(w.handler.handle(PyEval.Continue(run, k, local(a))))
-      case PyEval.Forget(run) =>
-        Option(runs.remove(run)).foreach(w => w.synchronized(w.handler.handle(PyEval.Forget(run))))
-      case PyEval.Release(r) =>
+        w.synchronized(w.handler.handle(ForeignEval.Continue(run, k, local(a))))
+      case ForeignEval.Forget(run) =>
+        Option(runs.remove(run)).foreach(w => w.synchronized(w.handler.handle(ForeignEval.Forget(run))))
+      case ForeignEval.Release(r) =>
         Option(refs.remove(r.id)).foreach { (w, local) =>
-          w.synchronized(w.handler.handle(PyEval.Release(PyRef(local, r.pyType))))
+          w.synchronized(w.handler.handle(ForeignEval.Release(PyRef(local, r.pyType))))
         }
       case other =>
         owner(named(other)) match
@@ -70,7 +70,7 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
           case None =>
             val w = pool.take()
             val dialogueKeepsIt = other match
-              case PyEval.Start(_, _, _) => true
+              case ForeignEval.Start(_, _, _) => true
               case _ => false
             var back = !dialogueKeepsIt
             try on(w, other, fromPool = true)
@@ -83,34 +83,34 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
 
   /** run one operation on `w` under its lock, its refs renamed to the
    * worker's own and any ref it answers registered pool-wide */
-  private def on[A](w: PySubprocess, e: PyEval[A], fromPool: Boolean): A = e match
-    case PyEval.Start(fn, args, cbs) => dialogue(w, fromPool)(_.handle(PyEval.Start(fn, args.map(local), cbs)))
-    case PyEval.Call(fn, args) => w.synchronized(w.handler.handle(PyEval.Call(fn, args.map(local))))
-    case PyEval.Frame(fn, f, args) => w.synchronized(w.handler.handle(PyEval.Frame(fn, f, args.map(local))))
-    case PyEval.Hold(fn, args) =>
-      w.synchronized(w.handler.handle(PyEval.Hold(fn, args.map(local)))).map(register(w, _))
-    case PyEval.Method(r, name, args, h) =>
-      w.synchronized(w.handler.handle(PyEval.Method(localRef(r), name, args.map(local), h))).map {
+  private def on[A](w: ForeignWorker, e: ForeignEval[A], fromPool: Boolean): A = e match
+    case ForeignEval.Start(fn, args, cbs) => dialogue(w, fromPool)(_.handle(ForeignEval.Start(fn, args.map(local), cbs)))
+    case ForeignEval.Call(fn, args) => w.synchronized(w.handler.handle(ForeignEval.Call(fn, args.map(local))))
+    case ForeignEval.Frame(fn, f, args) => w.synchronized(w.handler.handle(ForeignEval.Frame(fn, f, args.map(local))))
+    case ForeignEval.Hold(fn, args) =>
+      w.synchronized(w.handler.handle(ForeignEval.Hold(fn, args.map(local)))).map(register(w, _))
+    case ForeignEval.Method(r, name, args, h) =>
+      w.synchronized(w.handler.handle(ForeignEval.Method(localRef(r), name, args.map(local), h))).map {
         case PyValue.Ref(held) if h => PyValue.Ref(register(w, held))
         case v => v
       }
-    case PyEval.Attr(r, name) => w.synchronized(w.handler.handle(PyEval.Attr(localRef(r), name)))
-    case PyEval.Program(run, fn, args) =>
+    case ForeignEval.Attr(r, name) => w.synchronized(w.handler.handle(ForeignEval.Attr(localRef(r), name)))
+    case ForeignEval.Program(run, fn, args) =>
       runs.put(run, w): Unit
-      w.synchronized(w.handler.handle(PyEval.Program(run, fn, args.map(local))))
-    case PyEval.Resume(_, _) | PyEval.Release(_) | PyEval.Continue(_, _, _) | PyEval.Forget(_) =>
+      w.synchronized(w.handler.handle(ForeignEval.Program(run, fn, args.map(local))))
+    case ForeignEval.Resume(_, _) | ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) =>
       throw IllegalStateException("unreachable: resume and release are routed by the handler")
 
   /** the refs an operation names */
-  private def named[A](e: PyEval[A]): Vector[Long] = e match
-    case PyEval.Call(_, args) => args.flatMap(refsIn)
-    case PyEval.Frame(_, _, args) => args.flatMap(refsIn)
-    case PyEval.Start(_, args, _) => args.flatMap(refsIn)
-    case PyEval.Hold(_, args) => args.flatMap(refsIn)
-    case PyEval.Method(r, _, args, _) => r.id +: args.flatMap(refsIn)
-    case PyEval.Attr(r, _) => Vector(r.id)
-    case PyEval.Program(_, _, args) => args.flatMap(refsIn)
-    case PyEval.Resume(_, _) | PyEval.Release(_) | PyEval.Continue(_, _, _) | PyEval.Forget(_) => Vector.empty
+  private def named[A](e: ForeignEval[A]): Vector[Long] = e match
+    case ForeignEval.Call(_, args) => args.flatMap(refsIn)
+    case ForeignEval.Frame(_, _, args) => args.flatMap(refsIn)
+    case ForeignEval.Start(_, args, _) => args.flatMap(refsIn)
+    case ForeignEval.Hold(_, args) => args.flatMap(refsIn)
+    case ForeignEval.Method(r, _, args, _) => r.id +: args.flatMap(refsIn)
+    case ForeignEval.Attr(r, _) => Vector(r.id)
+    case ForeignEval.Program(_, _, args) => args.flatMap(refsIn)
+    case ForeignEval.Resume(_, _) | ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) => Vector.empty
 
   private def refsIn(v: PyValue): Vector[Long] = v match
     case PyValue.Ref(r) => Vector(r.id)
@@ -119,7 +119,7 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
     case _ => Vector.empty
 
   /** the one worker holding every ref named, or none named at all */
-  private def owner(ids: Vector[Long]): Option[PySubprocess] =
+  private def owner(ids: Vector[Long]): Option[ForeignWorker] =
     val ws = ids.distinct.map(i => Option(refs.get(i)).map(_._1).getOrElse(
       throw IllegalArgumentException(s"okay.py: ref $i is not held by this pool (released?)")))
     ws.distinct match
@@ -136,14 +136,14 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
     case PyValue.Dict(kv) => PyValue.Dict(kv.map((k, x) => (k, local(x))))
     case other => other
 
-  private def register(w: PySubprocess, r: PyRef): PyRef =
+  private def register(w: ForeignWorker, r: PyRef): PyRef =
     val g = nextRef.incrementAndGet()
     refs.put(g, (w, r.id)): Unit
     PyRef(g, r.pyType)
 
   /** one step of a dialogue on `w`: park it again on an ask; on the
    * answer, give it back to the pool if that is where it came from */
-  private def dialogue(w: PySubprocess, fromPool: Boolean)(step: Handler[PyEval] => PyStep): PyStep =
+  private def dialogue(w: ForeignWorker, fromPool: Boolean)(step: Handler[ForeignEval] => PyStep): PyStep =
     try w.synchronized(step(w.handler)) match
       case PyStep.Ask(cb, args, local) =>
         val k = nextK.incrementAndGet()
@@ -159,14 +159,14 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
 
   /** a dead worker: its refs die with it (a later use is refused by
    * name), and a fresh worker takes its place in the pool */
-  private def retire(w: PySubprocess): Unit =
+  private def retire(w: ForeignWorker): Unit =
     refs.entrySet.removeIf(_.getValue._1 eq w): Unit
     runs.entrySet.removeIf(_.getValue eq w): Unit
     // a worker reached through a ref may still be IN the pool: take it
     // out, or the pool would hold a corpse beside its replacement
     pool.remove(w): Unit
     w.close()
-    pool.put(PySubprocess.start(python, env))   // the supervisor's move
+    pool.put(ForeignWorker.start(python, env))   // the supervisor's move
 
   /** verify on ONE worker — they are started identically, and the
    * environment either is or is not the one the program was written

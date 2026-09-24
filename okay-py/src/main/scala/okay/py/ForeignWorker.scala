@@ -15,7 +15,7 @@ import okay.codec.Json
  * decides — the parallel-resilience fault model); a failing call is
  * a Condition and the worker survives.
  */
-final class PySubprocess private (link: WireLink, val pythonVersion: String):
+final class ForeignWorker private (link: WireLink, val pythonVersion: String):
 
   private var nextId = 0
 
@@ -50,52 +50,52 @@ final class PySubprocess private (link: WireLink, val pythonVersion: String):
       case other => Left(Condition("WireError", s"not an answer: $other"))
 
   /** the comonadic handler — one operation, one exchange */
-  def handler: Handler[PyEval] = new:
-    def handle[A](e: PyEval[A]): A = e match
-      case PyEval.Call(fn, args) =>
+  def handler: Handler[ForeignEval] = new:
+    def handle[A](e: ForeignEval[A]): A = e match
+      case ForeignEval.Call(fn, args) =>
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Right(Wire.dec(v)))
-      case PyEval.Frame(fn, frame, args) =>
+      case ForeignEval.Frame(fn, frame, args) =>
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn),
           "in" -> Wire.encFrame(frame),
           "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decFrame)
-      case PyEval.Start(fn, args, cbs) =>
+      case ForeignEval.Start(fn, args, cbs) =>
         stepOf(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("start"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc)),
           "callbacks" -> Json.JArr(cbs.map(Json.JStr(_)))))))
-      case PyEval.Resume(k, a) =>
+      case ForeignEval.Resume(k, a) =>
         val answered = a match
           case Right(v) => "ok" -> Wire.enc(v)
           case Left(c) => "condition" -> Json.JObj(Vector(
             "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message)))
         stepOf(send(Json.JObj(Vector(
           "op" -> Json.JStr("resume"), "k" -> Json.JNum(k.toDouble), answered))))
-      case PyEval.Hold(fn, args) =>
+      case ForeignEval.Hold(fn, args) =>
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("hold"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Wire.asRef(Wire.dec(v)))
-      case PyEval.Method(r, name, args, h) =>
+      case ForeignEval.Method(r, name, args, h) =>
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("method"), "ref" -> Json.JNum(r.id.toDouble), "name" -> Json.JStr(name),
           "args" -> Json.JArr(args.map(Wire.enc)), "hold" -> Json.JBool(h)))))(v => Right(Wire.dec(v)))
-      case PyEval.Attr(r, name) =>
+      case ForeignEval.Attr(r, name) =>
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("attr"), "ref" -> Json.JNum(r.id.toDouble),
           "name" -> Json.JStr(name)))))(v => Right(Wire.dec(v)))
-      case PyEval.Program(run, fn, args) =>
+      case ForeignEval.Program(run, fn, args) =>
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decNode)
-      case PyEval.Continue(run, k, a) =>
+      case ForeignEval.Continue(run, k, a) =>
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
           "answer" -> Wire.enc(a)))))(Wire.decNode)
-      case PyEval.Forget(run) =>
+      case ForeignEval.Forget(run) =>
         val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("forget"), "run" -> Json.JNum(run.toDouble))))
-      case PyEval.Release(r) =>
+      case ForeignEval.Release(r) =>
         // idempotent on both sides: releasing twice, or a ref the
         // process never held, is not an error worth a program's attention
         val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("release"), "ref" -> Json.JNum(r.id.toDouble))))
@@ -128,7 +128,7 @@ final class PySubprocess private (link: WireLink, val pythonVersion: String):
 
   def close(): Unit = link.close()
 
-object PySubprocess:
+object ForeignWorker:
 
   val ShimVersion = 6
 
@@ -141,11 +141,11 @@ object PySubprocess:
   def start(python: String = "python3",
             env: Map[String, String] = Map.empty,
             /** inline modules to ship on the worker's path (foreign-inline-modules) */
-            modules: Seq[PyModule] = Nil): PySubprocess =
+            modules: Seq[PyModule] = Nil): ForeignWorker =
     startIn(python, PyModule.env(modules, env))
 
   /** `start` once the modules are already in the environment */
-  private[py] def startIn(python: String, env: Map[String, String]): PySubprocess =
+  private[py] def startIn(python: String, env: Map[String, String]): ForeignWorker =
     val shim = java.nio.file.Files.createTempFile("okay-py-shim", ".py")
     val res = getClass.getResourceAsStream("/okay/py/shim.py")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
@@ -156,7 +156,7 @@ object PySubprocess:
 
   /** the seam the handshake test uses: any shim file */
   private[py] def startWith(python: String, shim: java.nio.file.Path,
-                            env: Map[String, String]): PySubprocess =
+                            env: Map[String, String]): ForeignWorker =
     startCommand(Vector(resolve(python), shim.toString), python, env)
 
   /**
@@ -166,7 +166,7 @@ object PySubprocess:
    * this jar ships (`/okay/hs/Okay.hs`) is one: its programs-as-data run
    * through `Py.program` exactly as Python's do, multi-shot included.
    */
-  def speaking(command: Seq[String], env: Map[String, String] = Map.empty): PySubprocess =
+  def speaking(command: Seq[String], env: Map[String, String] = Map.empty): ForeignWorker =
     startCommand(command.toVector, command.headOption.getOrElse("?"), env)
 
   /**
@@ -175,7 +175,7 @@ object PySubprocess:
    * a socket, an in-process call — the same `Py.program`, the same
    * callbacks and multi-shot, the same `Durable`.
    */
-  def over(link: WireLink, name: String = "the worker"): PySubprocess =
+  def over(link: WireLink, name: String = "the worker"): ForeignWorker =
     val hello = link.hello().getOrElse {
       link.close()
       throw IllegalStateException(s"$name answered nothing (stderr may know)")
@@ -190,14 +190,14 @@ object PySubprocess:
       link.close()
       throw IllegalStateException(
         s"shim/host version drift: $name says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
-    new PySubprocess(link, pyV)
+    new ForeignWorker(link, pyV)
 
   /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
    * another process, or another machine — plain TCP, see `WireLink.tcp` */
-  def connect(host: String, port: Int): PySubprocess =
+  def connect(host: String, port: Int): ForeignWorker =
     over(WireLink.tcp(host, port), s"the worker at $host:$port")
 
-  private def startCommand(cmd: Vector[String], python: String, env: Map[String, String]): PySubprocess =
+  private def startCommand(cmd: Vector[String], python: String, env: Map[String, String]): ForeignWorker =
     val pb = ProcessBuilder(cmd*)
     pb.environment().clear()             // the clean-env rule: nothing leaks
     env.foreach((k, v) => pb.environment().put(k, v))

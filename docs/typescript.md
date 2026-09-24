@@ -520,7 +520,7 @@ stripping their types, so there is no build step.
 ```mermaid
 flowchart LR
   subgraph JVM["the JVM: your Scala program"]
-    P["an okay program<br/>Either[Condition, Out] ! F + PyEval"]
+    P["an okay program<br/>Either[Condition, Out] ! F + ForeignEval"]
     F["handlers for F<br/>Reader · State · Choice · ..."]
     P --> F
   end
@@ -567,7 +567,7 @@ val total = Py.fn[Totals]("shop:total").calling(Py.callbacks(priceOf))(Order("te
 assertEquals(Reader.run(Map("tea" -> 4.0))(total).runWith, Right(Totals("tea", 12.0, None)))
 ```
 
-The API is okay-py's, because the wire is. `Py.fn` makes a typed call,
+The API is okay-py's foreign engine (`Py`, also named `Foreign`), because the wire is. `Py.fn` makes a typed call,
 `Py.callback` offers a callback, `Py.hold` keeps an object in the worker,
 `Py.program` runs a program as data, and `Durable` journals any of them.
 What the name in `call("price_of", ...)` is, and why a callback is a
@@ -637,7 +637,7 @@ export async function receipt(items: string[], each: number) {
   through `Ts.fn`:
 
 ```scala
-  def receipt(items: Vector[String], each: Double): Either[Condition, Receipt] ! PyEval =
+  def receipt(items: Vector[String], each: Double): Either[Condition, Receipt] ! ForeignEval =
     Ts.fn[Receipt]("facadets:receipt")(items, each)
 ```
 
@@ -645,7 +645,7 @@ export async function receipt(items: string[], each: number) {
 - **Open types.** `unknown`, `any` and `void` become type parameters:
 
 ```scala
-  def echo[Out: Schema, A1: ToPy](x: A1): Either[Condition, Out] ! PyEval =
+  def echo[Out: Schema, A1: ToPy](x: A1): Either[Condition, Out] ! ForeignEval =
 ```
 
 - **Optional parameters.** An optional parameter is left out, and the
