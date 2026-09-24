@@ -113,9 +113,38 @@ when, and the conformance suite covers both forms.
 
 ## Stage 4 — docs
 
-- [ ] One page, "Rust and Go as okay", with the table above, one program
+- [x] One page, "Rust and Go as okay", with the table above, one program
       written in each language, and the same Scala calling it over every
       link.
+
+## Stage 5 — the wire's encoding and protection, chosen by givens (operator, 2026-09-24)
+
+The operator asked for the link's FORMAT and PROTECTION to be picked at
+compile time, by importing a given, each backed by its own external
+mechanism:
+
+- [ ] An encoding: JSON (today) or CBOR (okay-codec's), as a
+      `given WireFormat`. Framing moves from lines to length-prefixed
+      frames, so a binary format fits. JSON stays line-compatible.
+- [ ] Compression (`given WireCompression`: none, deflate/gzip from the
+      JDK, or zstd where a library is present).
+- [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
+      JVM, rustls or native-tls in Rust, crypto/tls in Go), with keys
+      from their own stores.
+- [ ] Authorization (`given WireAuth`): a bearer token or an HMAC
+      challenge at the handshake, from a secret the given names (an
+      environment variable, a file, okay-security).
+- [ ] EVERY language on the wire, not only Rust and Go (operator,
+      2026-09-24): Python's shim, R, the TypeScript worker, Haskell, Go
+      and Rust. Each far side's library implements the same layers with
+      its own platform's mechanisms, and none is special-cased.
+- [ ] The far side cannot import a Scala given. It is configured by its
+      build and environment, it ANNOUNCES what it speaks in the
+      handshake, and a mismatch with the Scala side's givens is refused by
+      name, never silently downgraded.
+- [ ] The conformance suite runs under each combination each far side
+      supports, and a table in the docs says which languages support
+      which layer.
 
 ## Decisions
 
@@ -208,3 +237,8 @@ when, and the conformance suite covers both forms.
       `package okay.rust`. The crate ships as `okay/rust-crate`.
     - REFUTED: `okay_call` as an FFM upcall. A callback must run under
       the caller's handlers, so in-process uses the same dialogue.
+
+- Stage 4 (one-wire-docs, 2026-09-24): docs/one-language.md holds the
+  table, the same `quote` in Rust and Go, the same Scala over the four
+  links, the conformance suite's claims, and why in-process uses the
+  dialogue. It is pinned by the snippet check.

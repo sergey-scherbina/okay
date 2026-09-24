@@ -1,1 +1,0 @@
-- [ ] one-wire-docs — stage 4 of specs/polyglot-one-wire.md: "Rust and Go as okay", one program per language, the same Scala over every link.
