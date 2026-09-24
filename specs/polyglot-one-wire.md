@@ -154,6 +154,18 @@ mechanism:
       frames, so a binary format fits. JSON stays line-compatible.
 - [x] Compression (`given WireCompression`: none, deflate/gzip from the
       JDK, or zstd where a library is present).
+- [ ] DEFLATE is the DEFAULT, as a preference (operator, 2026-09-24:
+      "не обязательным но желательным (по умолчанию) - его при желании
+      можно только отключить"). With no import, a stream link (pipes,
+      TCP) whose far side announces deflate compresses every message; a
+      far side that does not (Haskell, R, an old worker) keeps the plain
+      wire with no refusal. `import WireCompression.Off.given` turns it
+      off. `import WireCompression.Deflate.given` stays the STRICT choice:
+      a far side without it is refused by name. `ForeignWorker.wire` says
+      what was negotiated.
+- [ ] In-process links (FFM, wasm) do not take the preference: a message
+      there is a memory copy, and compressing it is pure cost. The strict
+      `Deflate` given still applies to them.
 - [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
       JVM, rustls or native-tls in Rust, crypto/tls in Go), with keys
       from their own stores.
@@ -185,6 +197,13 @@ mechanism:
   trusted network or behind TLS or SSH. An authenticated transport
   (WebSocket over okay-http, with a token) is a later stage and is not
   claimed here.
+
+- **A preference is not a downgrade.** Stage 5a's rule "never quietly
+  downgraded" is about a choice somebody made: an explicit given is still
+  refused by name when the far side lacks it. The default states a
+  PREFERENCE, "deflate where both sides have it", and a fallback is what
+  a preference means. `ForeignWorker.wire` makes the outcome visible
+  rather than silent.
 
 ## Results
 
