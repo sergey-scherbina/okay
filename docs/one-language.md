@@ -229,6 +229,60 @@ about R are worth knowing:
   arrived as 1.4142135623731. They now leave with 17, which is what a
   double needs to come back as itself.
 
+## Who may speak: `WireAuth`
+
+A worker serving TCP can be reached by anyone who can reach its port. To
+let only holders of a secret speak to it, start it with the secret in its
+environment, `OKAY_WIRE_SECRET` (or `OKAY_WIRE_SECRET_FILE`, a path), and
+give the Scala side the same secret as a given:
+
+```scala
+  given WireAuth = WireAuth.secret("tea for two".getBytes)
+```
+
+```scala
+  private lazy val served = GoWorkerBinary.listen(Map("OKAY_WIRE_SECRET" -> "tea for two"))
+  lazy val engine: ForeignWorker = ForeignWorker.connect("127.0.0.1", served._1)
+```
+
+In a real program the secret comes from where secrets live, and each
+source is its own given: `WireAuth.fromEnv("OKAY_WIRE_SECRET")` or
+`WireAuth.fromFile(Path.of("/run/secrets/okay"))`. A source that has no
+secret (an unset variable, an empty file) fails when the worker is
+opened, by name, instead of authenticating with an empty key.
+
+The handshake is a MUTUAL challenge. The server's hello carries a random
+nonce `Ns`. The host answers with its own nonce `Nc` and
+`HMAC-SHA256(secret, "okay-wire client|Ns|Nc")`. The server checks it in
+constant time and answers `HMAC-SHA256(secret, "okay-wire server|Ns|Nc")`,
+which the host checks in turn. The secret itself never crosses. The two
+labels differ so that neither answer can be replayed as the other (a
+reflection). Until the host has passed, the server answers every other
+request with a refusal, and a wrong mac closes the connection.
+
+Mismatches are refused by name before any request is sent. A server that
+demands a secret meets a host with no given: "requires hmac-sha256
+authentication; this host has no given WireAuth". A host whose given
+demands one meets a server that announced none: "it announced none".
+Both sides check. With the server's own check disabled (the mutant this
+lane ran), the connection was still refused, by the host, because the
+server's answer did not prove the secret.
+
+What it does NOT give: secrecy. The messages after the handshake are
+still plain TCP, and a relay in the middle could pass the handshake
+through. Encryption (TLS, `given WireSecurity`) is the next stage, and
+the two compose. Pipe workers and in-process links take no auth: the
+host started the process itself, or shares its address space, so there
+is no one else on the line.
+
+The construction is HMAC (M. Bellare, R. Canetti and H. Krawczyk,
+"Keying Hash Functions for Message Authentication", CRYPTO 1996,
+doi:10.1007/3-540-68697-5_1; RFC 2104, doi:10.17487/RFC2104; checked
+against RFC 4231's vectors, doi:10.17487/RFC4231). The two-nonce
+exchange with role labels is the classic defence against reflection in
+two-party authentication (R. Bird et al., "Systematic Design of Two-Party
+Authentication Protocols", CRYPTO 1991, doi:10.1007/3-540-46766-1_3).
+
 ## One `okay_call`, step by step
 
 In-process, the Scala side can do exactly one thing with the loaded Rust
@@ -287,9 +341,9 @@ step is one function call.
 
 ## Limits
 
-- **Remote TCP is plain TCP, unauthenticated.** Use it inside a trusted
-  network or behind TLS or SSH. Encryption and authorization chosen by
-  `given`s are the next stage
+- **Remote TCP is not yet encrypted.** `WireAuth` decides who may
+  speak, but the messages are plain TCP: use it inside a trusted network
+  or behind TLS or SSH. Encryption by a `given` is the next stage
   ([specs/polyglot-one-wire.md](../specs/polyglot-one-wire.md)).
 - **No read deadline.** A far side that stops answering (or confirms a
   `configure` and does not switch) leaves the engine waiting. The

@@ -191,7 +191,7 @@ mechanism:
 - [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
       JVM, rustls or native-tls in Rust, crypto/tls in Go), with keys
       from their own stores.
-- [ ] Authorization (`given WireAuth`): a MUTUAL HMAC-SHA256 challenge at
+- [x] Authorization (`given WireAuth`): a MUTUAL HMAC-SHA256 challenge at
       the handshake (wire-auth). The secret comes from the source the
       given names: `WireAuth.fromEnv(name)`, `WireAuth.fromFile(path)`,
       `WireAuth.secret(bytes)`; a Go or Rust server reads
@@ -216,7 +216,7 @@ mechanism:
       connection. A relay in the middle can pass the handshake through
       and read everything after it. That is what TLS
       (`given WireSecurity`) is for, and the two compose.
-- [ ] Where it applies: the TCP servers (Go `ServeTCP`, Rust `serve_tcp`).
+- [x] Where it applies: the TCP servers (Go `ServeTCP`, Rust `serve_tcp`).
       Pipe workers (Python, TypeScript, Haskell, R, and Go or Rust run as
       a child process) are processes the host itself started, with
       nothing between them. In-process links share the address space.
@@ -426,4 +426,27 @@ mechanism:
     strict Zlib.
   - Mutant: little-endian doubles on the one-writeBin road failed every
     CBOR case and none of the JSON ones.
+
+- Authorization (wire-auth, 2026-09-24).
+  - `okay.codec.WireAuth`: `Off`, the default; `secret(bytes)`,
+    `fromEnv(name)` and `fromFile(path)`, each read when a worker is
+    opened, an unset or empty source refused by name.
+    `WireNegotiation.authenticate` runs before `configure`.
+    `ForeignWorker.over`, `speaking` and `connect` take it as `using`.
+  - Go (`crypto/hmac`, `crypto/rand`) and Rust (HMAC over `sha2`, ten
+    lines; the nonce from `/dev/urandom`, no new dependency beyond the
+    digest) announce the challenge when `OKAY_WIRE_SECRET` or
+    `OKAY_WIRE_SECRET_FILE` is set on a TCP server. They answer every
+    other request with a PermissionError until the auth passes, and
+    close the connection on a wrong mac.
+  - Tests. Default gate: the RFC 4231 vector, a mutual pass that sends
+    one line and never the secret, a server whose proof is wrong, every
+    refusal by name, and `fromFile`'s newline. Live: the whole
+    conformance suite behind a secret on Go and Rust, plus a wrong
+    secret, no given, a request before the auth (refused, not served),
+    and a given meeting a server without one.
+  - Mutant: a Go server that skips its check. The suite still refused
+    the connection, but from the HOST's side, because the server's
+    answer did not prove the secret. The test failed on the message,
+    which is what showed the mutuality working.
 
