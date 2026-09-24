@@ -177,8 +177,18 @@ CONTINUATION there and APPENDS TO AN ENVIRONMENT here. One IR would be
 two IRs with one name. The boxes are kept, unticked, as the shape a
 fourth road would have to want:
 
+- [x] WHAT IS SHARED IS SHARED (direct-macros-shared-syntax,
+      2026-09-24): the mark syntax lives ONCE, in `macros.MarkSyntax`.
+      That is the spellings of a mark, the colouring dispatch,
+      `stripped`, `asMark` and `hasMark`. `Direct`'s compiler has it
+      through `DirectPhase`, and `ProcMacro` makes an instance whose one
+      difference is `procColor`. The arrow road's own copy is gone, so a
+      spelling added to one road can no longer be silently missing from
+      the other.
 - [ ] the block normaliser is ONE function producing a small IR; each
-      target is a translation of it
+      target is a translation of it — STILL REFUSED, re-examined when the
+      syntax was unified: after it, what the two roads share is exactly
+      that trait, and the rest is translation
 - [ ] the target is chosen by evidence summoned at expansion
 - [ ] adding a fifth target is one file that pattern-matches the IR
 
