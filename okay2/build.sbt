@@ -29,7 +29,7 @@ lazy val common = Seq(
 )
 
 lazy val okay2: Project = (project in file("."))
-  .aggregate(okay2Async, okay2Platform, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
+  .aggregate(okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
   .settings(
     name := "okay2",
     common,
@@ -52,6 +52,13 @@ lazy val okay2Async: Project = (project in file("okay2-async"))
 lazy val okay2Platform: Project = (project in file("okay2-platform"))
   .dependsOn(okay2Async % "compile->compile;test->test")
   .settings(name := "okay2-platform", common)
+
+/** okay-stm for the Scala 2 core: the transaction language `Tx` over
+ * `TRef` and the `Stm` runtimes (TL2 over Async, direct, and the one on
+ * the simulator) — specs/okay2.md stage 17 */
+lazy val okay2Stm: Project = (project in file("okay2-stm"))
+  .dependsOn(okay2Async, okay2Platform % "test->test")
+  .settings(name := "okay2-stm", common)
 
 /** okay-stream's pure layer: chunks, Take/pipe, stages and through,
  * the pipeline as a value, lines, event-time windows */

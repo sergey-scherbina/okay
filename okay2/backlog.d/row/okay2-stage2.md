@@ -14,7 +14,8 @@
       LIFTED for okay's MAIN effects later the same day ("carry on
       porting the main effects"): Refs and Prob LANDED (stage 12),
       Sim LANDED (stage 14), TRef/TMap/TDict/TList LANDED (stage 15),
-      Validated/Static LANDED (stage 16). Remaining: the rest of
+      Validated/Static LANDED (stage 16), okay2-stm LANDED (stage 17).
+      Remaining: the rest of
       Stream/Fold, Eager, HMap, Pull, Generate. Each stage mirrors the
       Scala 3 suite for that file and lands with its docs section in
       docs/okay2.md. Rule from stage 1: a lone `Inject` is a Bind with a

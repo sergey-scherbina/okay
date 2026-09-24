@@ -47,7 +47,8 @@ Contents:
 18. [Deterministic simulation](#18-deterministic-simulation)
 19. [Transactional cells and typed-key maps](#19-transactional-cells-and-typed-key-maps)
 20. [Every error, and programs known before they run](#20-every-error-and-programs-known-before-they-run)
-21. [Literature](#21-literature)
+21. [Transactions](#21-transactions)
+22. [Literature](#22-literature)
 
 ## 1. The build
 
@@ -1282,7 +1283,33 @@ here a batch that fetches fifty keys in one round trip:
     assertEquals(plan.keys.length, 50)
 ```
 
-## 21. Literature
+## 21. Transactions
+
+`okay2-stm` is software transactional memory over `TRef`. A transaction
+is a `Tx` program — reads, writes, `retry` until something read
+changes, `orElse` for the first branch that does not retry — and
+`Stm.atomically` runs it all at once or not at all:
+
+```scala
+    val a = TRef(10)
+    val b = TRef(0)
+    val tx: Int ! Tx = Tx.read(a).flatMap(x => Tx.write(a, x - 3).flatMap(_ => Tx.modify(b)(y => (y + 3, y + 3))))
+```
+
+A `retry` parks the transaction on every cell it read, holding no
+thread, and only a commit that changes one of them wakes it:
+
+```scala
+    val r = TRef(0)
+    val take: Int ! Tx =
+      Tx.read(r).flatMap(x => Tx.check(x > 0).flatMap(_ => Tx.write(r, x - 1).map(_ => x)))
+    val waiting = Async.runAsync(Stm[Async].atomically(take))
+```
+
+The same transaction code runs under `Sim` through `Stm.sim`, so an
+invariant can be checked on every interleaving a seed picks.
+
+## 22. Literature
 
 - Philip Wadler, "Monads for functional programming" (1995); Conor
   McBride and Ross Paterson, "Applicative programming with effects"
@@ -1316,6 +1343,10 @@ here a batch that fetches fifty keys in one round trip:
   (MSFP 2014), and Andrey Mokhov, Georgy Lukyanov, Simon Marlow and
   Jeremie Dimino, "Selective Applicative Functors" (ICFP 2019) — the
   free selective `Static` is, and the `select` `Validated` implements.
+- Tim Harris, Simon Marlow, Simon Peyton Jones and Maurice Herlihy,
+  "Composable memory transactions" (PPoPP 2005) — `retry` and `orElse`;
+  Dave Dice, Ori Shalev and Nir Shavit, "Transactional Locking II"
+  (DISC 2006) — the commit `Stm.tl2` makes.
 - Olivier Danvy and Andrzej Filinski, "Abstracting Control" (LFP 1990)
   — `shift`/`reset` and answer-type modification, which `Cont` and
   `PState` carry in their signatures.

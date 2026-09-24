@@ -146,6 +146,14 @@ final class TMap[K[_]] private (private val stack: List[TMap.Entry[K, _]]) {
     stack.reverseIterator.foreach(e => one(e))
   }
 
+  /** each value at its key's type, in NO particular order — a commit
+   * installing its writes does not care, and skips the reverse */
+  def foreachUnordered(f: TMap.Each[K]): Unit = {
+    def one[A](e: Entry[K, A]): Unit = f(e.key, e.value)
+    var s = stack
+    while (s.nonEmpty) { one(s.head); s = s.tail }
+  }
+
   override def toString: String = {
     def show[A](e: Entry[K, A]): String = s"${e.key} -> ${e.value}"
     stack.reverseIterator.map(e => show(e)).mkString("TMap(", ", ", ")")

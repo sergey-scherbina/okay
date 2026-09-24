@@ -1214,6 +1214,39 @@ in the package object.
   scalac 2 does not refine a method's type parameter by a constructor
   pattern.
 
+## Stage 17 — okay2-stm, software transactional memory (2026-09-24)
+okay-stm, as its own subproject `okay2-stm` on okay2-async (and
+okay2-platform for its tests): the row `Tx` (`Read`/`Write`/`Modify`/
+`Retry`/`OrElse`; `read`/`write`/`modify`/`update`/`retry`/`check`/
+`orElse`), `Stm[F]` with `atomically`, and three runtimes — `tl2`
+(Transactional Locking II over Async: a read log with versions, claim
+by `Owned`, re-validate, install, wake; a conflict re-runs, a `retry`
+parks as an `Async.await` on every cell read), `direct` (one thread, no
+claim) and `sim` (under `Sim`, a scheduling point before every step);
+`Stm.default` is `tl2`. The core gains `TMap.foreachUnordered`.
+
+### Behavior (stage 17)
+- [x] 8 virtual threads x 2 000 transfers keep the sum, and a reader of
+      5 000 snapshots never sees a torn pair; retry parks and only the
+      commit that changes what it read wakes it; a one-op transaction is
+      the cell's own CAS; a retry with nothing read is refused by name;
+      a thousand parked transactions freed by one commit
+- [x] tl2 AND direct: composition and atomic commit, retry waiting for
+      its cell, a retried write leaving nothing behind
+- [x] orElse: the first branch's writes, a retried branch's writes never
+      landing, both retrying parks on either's reads, nesting in order, a
+      write before orElse visible inside it
+- [x] under Sim: the sum holds on 60 seeds and the scheduler did
+      interleave; retry sleeps virtually until the writer commits; orElse
+      racing two writers resolves on every seed
+
+### Decisions
+- Every operation is performed at the answer type `Any` (stage 8), so the
+  log needs no cast; the fast path (a lone read or modify) makes ONE
+  claim, `answer`, that a one-operation program answers its operation.
+- The read log's reference array is copied by hand: `Arrays.copyOf` on
+  an array of an existential element type does not typecheck in Scala 2.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
