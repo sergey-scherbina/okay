@@ -18,7 +18,7 @@ import okay.Handler
  */
 final class PyWorkers private (n: Int, python: String, env: Map[String, String])
                                /** the wire's format and compression every worker of the pool is opened with */
-                               (using WireFormat, WireCompression):
+                               (using WireFormat, WireCompression, WireDeadline):
 
   private val pool = java.util.concurrent.ArrayBlockingQueue[ForeignWorker](n)
 
@@ -188,7 +188,7 @@ object PyWorkers:
   def start(n: Int, python: String = "python3",
             env: Map[String, String] = Map.empty,
             /** inline modules every worker gets (foreign-inline-modules) */
-            modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression): PyWorkers =
+            modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression, WireDeadline): PyWorkers =
     require(n >= 1, "a pool needs a worker")
     val p = new PyWorkers(n, python, PyModule.env(modules, env))
     p.prime()

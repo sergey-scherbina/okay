@@ -1,7 +1,7 @@
 package okay.rust
 
 import java.nio.file.{Files, Path}
-import okay.codec.{WireAuth, WireCompression, WireFormat}
+import okay.codec.{WireAuth, WireCompression, WireDeadline, WireFormat}
 import okay.py.ForeignWorker
 
 /**
@@ -20,7 +20,7 @@ import okay.py.ForeignWorker
 extension (worker: ForeignWorker.type)
 
   /** a Rust `cdylib` built with `okay::export_worker!`, loaded through FFM */
-  def inProcess(library: Path)(using WireFormat, WireCompression, WireAuth): ForeignWorker =
+  def inProcess(library: Path)(using WireFormat, WireCompression, WireAuth, WireDeadline): ForeignWorker =
     val lib = NativeLib.load(library)
     InProcessLinks.ffm(lib) match
       case Right(link) => worker.over(link, s"the library $library")
@@ -30,5 +30,5 @@ extension (worker: ForeignWorker.type)
 
   /** a Rust or Go module compiled to WebAssembly (`okay::export_worker!`,
    * `okay.Export`), run under Chicory */
-  def inProcessWasm(module: Path)(using WireFormat, WireCompression, WireAuth): ForeignWorker =
+  def inProcessWasm(module: Path)(using WireFormat, WireCompression, WireAuth, WireDeadline): ForeignWorker =
     worker.over(InProcessLinks.wasm(WasmLib.load(Files.readAllBytes(module))), s"the module $module")

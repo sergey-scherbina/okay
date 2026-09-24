@@ -76,7 +76,7 @@ final case class PyEnv(python: String = "3.12",
    * Provision, start a worker on it, and `verify` the declared packages:
    * a drift refuses by name, with the worker never handed out.
    */
-  def start(env: Map[String, String] = Map.empty, modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression): ForeignWorker =
+  def start(env: Map[String, String] = Map.empty, modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
     val w = ForeignWorker.start(provision().toString, env, modules)
     val drift = w.verify(packages.map((n, _) => n -> ""))
     if drift.isEmpty then w

@@ -41,7 +41,7 @@ object TsWorker:
    * environment is clean, plus `env` and the module list.
    */
   def start(dir: Path, modules: Seq[String], node: String = "node",
-            env: Map[String, String] = Map.empty)(using WireFormat, WireCompression): ForeignWorker =
+            env: Map[String, String] = Map.empty)(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
     Files.writeString(dir.resolve("okay.ts"), library): Unit
     Files.writeString(dir.resolve("worker.ts"), worker): Unit
     modules.foreach { m =>

@@ -166,6 +166,26 @@ object WireAuth:
   def same(a: String, b: String): Boolean =
     java.security.MessageDigest.isEqual(a.getBytes(UTF_8), b.getBytes(UTF_8))
 
+/**
+ * How long an engine waits for an answer (polyglot-one-wire stage 6):
+ *
+ * {{{
+ * given WireDeadline = WireDeadline.after(5.seconds)
+ * }}}
+ *
+ * On a stream link (pipes, TCP) an answer that does not come in time CLOSES
+ * the link, which is the only way to abandon a blocked read. The call answers
+ * `Left(Condition("timeout", ...))`, and the engine is dead afterwards: a
+ * supervisor (`ForeignWorker.supervised`) opens a fresh one. An in-process
+ * link cannot be abandoned mid-call, so a deadline there is refused.
+ * The default is no deadline, as before.
+ */
+final case class WireDeadline(millis: Option[Long])
+
+object WireDeadline:
+  given none: WireDeadline = WireDeadline(Option.empty)
+  def after(d: scala.concurrent.duration.FiniteDuration): WireDeadline = WireDeadline(Some(d.toMillis))
+
 /** a wire line, read STRICTLY (see `whole`) */
 object WireJson:
   /**

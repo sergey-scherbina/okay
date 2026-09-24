@@ -121,3 +121,34 @@ class TestGoTcpAuth extends WireConformance:
     finally p.destroy()
   }
 
+
+/** (Go, TCP), SUPERVISED (stage 6): the server process is killed in the
+ * middle of a multi-shot program and started again on the same port; the
+ * supervisor reconnects and replays, and every branch comes back */
+class TestGoTcpSupervised extends munit.FunSuite:
+  import okay.{Choose, effect, runChoice, given}
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+  override def munitIgnore: Boolean = !GoWorkerBinary.available
+
+  test("the server dies and comes back on its port: the program's branches all come back") {
+    val (port, first) = GoWorkerBinary.listen()
+    var server = first
+    val w = ForeignWorker.supervised(ForeignWorker.connect("127.0.0.1", port))
+    given okay.Handler[ForeignEval] = w.handler
+    var restarted = false
+    val choose = Foreign.callback[Vector[Long], Long]("choose") { xs =>
+      if !restarted && xs == Vector(10L, 20L) then
+        restarted = true
+        server.destroyForcibly().waitFor(): Unit
+        server = GoWorkerBinary.listen(Map("OKAY_LISTEN" -> s"127.0.0.1:$port"))._2
+      effect[Choose, Long](Choose(xs))
+    }
+    try
+      val pairs = Foreign.program[Long]("pairs").calling(Foreign.callbacks(choose))()
+      assertEquals(runChoice(pairs.program).runWith.toList, List(Right(11L), Right(21L), Right(12L), Right(22L)))
+      assert(restarted)
+      assertEquals(w.restarts, 1)
+    finally
+      w.close()
+      server.destroy()
+  }

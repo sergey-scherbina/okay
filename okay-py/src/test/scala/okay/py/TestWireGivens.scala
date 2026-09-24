@@ -183,3 +183,10 @@ class TestWireGivens extends munit.FunSuite:
     given WireAuth = WireAuth.fromFile(f)
     assertEquals(ForeignWorker.over(Guarded("tea for two")).wire, "json/none")
   }
+
+  test("a deadline on an in-process link is refused by name: a call there cannot be abandoned") {
+    given WireDeadline = WireDeadline.after(scala.concurrent.duration.Duration(1, "second"))
+    val e = intercept[IllegalStateException](ForeignWorker.over(Fake("", inProcess = true), "the library"))
+    assert(e.getMessage.contains("the library is in this process"), e.getMessage)
+    assert(e.getMessage.contains("cannot be abandoned"), e.getMessage)
+  }

@@ -17,9 +17,38 @@ import okay.codec.Json
  */
 final class ForeignWorker private (link: WireLink, val pythonVersion: String,
                                    /** the configured format and compression; None: JSON lines */
-                                   codec: Option[(WireFormat, WireCompression)]):
+                                   codec: Option[(WireFormat, WireCompression)],
+                                   /** how long an answer may take (stage 6); None: for ever */
+                                   deadline: Option[Long]):
 
   private var nextId = 0
+
+  /** false once the wire is gone: an end of stream, or a deadline that
+   * closed it. A supervisor reads this to know it must reopen. */
+  @volatile private var live = true
+  def alive: Boolean = live
+
+  /** the reads a deadline can give up on happen off the caller's thread,
+   * one daemon per engine, made only when a deadline asks for it */
+  private lazy val reader: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor { r =>
+      val t = Thread(r, "okay-wire-reader"); t.setDaemon(true); t
+    }
+
+  /** one exchange on the link, within the deadline if there is one */
+  private def io[T](f: => T): T = deadline match
+    case None => f
+    case Some(ms) =>
+      val task = reader.submit(() => f)
+      try task.get(ms, java.util.concurrent.TimeUnit.MILLISECONDS)
+      catch
+        case _: java.util.concurrent.TimeoutException =>
+          task.cancel(true): Unit
+          // the only way to abandon a blocked read: take the wire with it
+          live = false
+          link.close()
+          throw ForeignWorker.TimedOut(ms)
+        case e: java.util.concurrent.ExecutionException => throw e.getCause
 
   /** what the handshake settled on: "json/none" (the plain JSON lines),
    * "json/deflate", "cbor/none", "cbor/deflate" */
@@ -36,13 +65,26 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
   /** one message out, the next one in — `exchange` without an id, which
    * is how a `resume` goes: it answers an ask, it opens nothing */
   private def send(body: Json): Json =
-    val answer = codec match
-      case None => link.roundTrip(Json.print(body)).map(ForeignWorker.whole)
-      case Some((format, compression)) =>
-        link.exchange(compression.compress(format.encode(body)))
-          .map(bytes => format.decode(compression.decompress(bytes)))
-    answer.getOrElse(
-      throw IllegalStateException("the worker is DEAD (eof on the wire) — a supervisor retry gets a fresh one"))
+    if !live then throw IllegalStateException("the worker is DEAD (its wire was closed) — a supervisor retry gets a fresh one")
+    val answer = io {
+      codec match
+        case None => link.roundTrip(Json.print(body)).map(ForeignWorker.whole)
+        case Some((format, compression)) =>
+          link.exchange(compression.compress(format.encode(body)))
+            .map(bytes => format.decode(compression.decompress(bytes)))
+    }
+    answer.getOrElse {
+      live = false
+      throw IllegalStateException("the worker is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
+    }
+
+  /** a timeout is DATA for an operation that answers an Either: the call
+   * failed, the program can see it and decide (stage 6) */
+  private def timed[A](f: => Either[Condition, A]): Either[Condition, A] =
+    try f catch case t: ForeignWorker.TimedOut => Left(Condition("timeout", t.getMessage))
+
+  private def timedStep(f: => PyStep): PyStep =
+    try f catch case t: ForeignWorker.TimedOut => PyStep.Done(Left(Condition("timeout", t.getMessage)))
 
   private def answer[A](j: Json)(ok: Json => Either[Condition, A]): Either[Condition, A] =
     j match
@@ -61,16 +103,16 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
   /** the comonadic handler — one operation, one exchange */
   def handler: Handler[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
-      case ForeignEval.Call(fn, args) =>
+      case ForeignEval.Call(fn, args) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Right(Wire.dec(v)))
-      case ForeignEval.Frame(fn, frame, args) =>
+      case ForeignEval.Frame(fn, frame, args) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn),
           "in" -> Wire.encFrame(frame),
           "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decFrame)
-      case ForeignEval.Start(fn, args, cbs) =>
+      case ForeignEval.Start(fn, args, cbs) => timedStep:
         stepOf(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("start"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc)),
@@ -80,25 +122,25 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
           case Right(v) => "ok" -> Wire.enc(v)
           case Left(c) => "condition" -> Json.JObj(Vector(
             "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message)))
-        stepOf(send(Json.JObj(Vector(
-          "op" -> Json.JStr("resume"), "k" -> Json.JNum(k.toDouble), answered))))
-      case ForeignEval.Hold(fn, args) =>
+        timedStep(stepOf(send(Json.JObj(Vector(
+          "op" -> Json.JStr("resume"), "k" -> Json.JNum(k.toDouble), answered)))))
+      case ForeignEval.Hold(fn, args) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("hold"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Wire.asRef(Wire.dec(v)))
-      case ForeignEval.Method(r, name, args, h) =>
+      case ForeignEval.Method(r, name, args, h) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("method"), "ref" -> Json.JNum(r.id.toDouble), "name" -> Json.JStr(name),
           "args" -> Json.JArr(args.map(Wire.enc)), "hold" -> Json.JBool(h)))))(v => Right(Wire.dec(v)))
-      case ForeignEval.Attr(r, name) =>
+      case ForeignEval.Attr(r, name) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("attr"), "ref" -> Json.JNum(r.id.toDouble),
           "name" -> Json.JStr(name)))))(v => Right(Wire.dec(v)))
-      case ForeignEval.Program(run, fn, args) =>
+      case ForeignEval.Program(run, fn, args) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decNode)
-      case ForeignEval.Continue(run, k, a) =>
+      case ForeignEval.Continue(run, k, a) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
           "answer" -> Wire.enc(a)))))(Wire.decNode)
@@ -135,9 +177,17 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
         }
       case Right(other) => Vector(s"verify answered strangely: $other")
 
-  def close(): Unit = link.close()
+  def close(): Unit =
+    live = false
+    link.close()
+    if deadline.isDefined then reader.shutdownNow(): Unit
 
 object ForeignWorker:
+
+  /** an answer that did not come within the deadline; the message says DEAD
+   * so a supervisor that retires dead workers (`PyWorkers`) retires it */
+  final class TimedOut(val millis: Long) extends IllegalStateException(
+    s"the worker is DEAD: no answer within ${millis}ms, so its wire was closed — a supervisor gets a fresh one")
 
   val ShimVersion = 6
 
@@ -150,11 +200,11 @@ object ForeignWorker:
   def start(python: String = "python3",
             env: Map[String, String] = Map.empty,
             /** inline modules to ship on the worker's path (foreign-inline-modules) */
-            modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression): ForeignWorker =
+            modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
     startIn(python, PyModule.env(modules, env))
 
   /** `start` once the modules are already in the environment */
-  private[py] def startIn(python: String, env: Map[String, String])(using WireFormat, WireCompression): ForeignWorker =
+  private[py] def startIn(python: String, env: Map[String, String])(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
     val shim = java.nio.file.Files.createTempFile("okay-py-shim", ".py")
     val res = getClass.getResourceAsStream("/okay/py/shim.py")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
@@ -165,7 +215,7 @@ object ForeignWorker:
 
   /** the seam the handshake test uses: any shim file */
   private[py] def startWith(python: String, shim: java.nio.file.Path,
-                            env: Map[String, String])(using WireFormat, WireCompression): ForeignWorker =
+                            env: Map[String, String])(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
     startCommand(Vector(resolve(python), shim.toString), python, env)
 
   /**
@@ -176,7 +226,7 @@ object ForeignWorker:
    * through `Py.program` exactly as Python's do, multi-shot included.
    */
   def speaking(command: Seq[String], env: Map[String, String] = Map.empty)
-              (using WireFormat, WireCompression, okay.codec.WireAuth): ForeignWorker =
+              (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline): ForeignWorker =
     startCommand(command.toVector, command.headOption.getOrElse("?"), env)
 
   /**
@@ -186,7 +236,13 @@ object ForeignWorker:
    * callbacks and multi-shot, the same `Durable`.
    */
   def over(link: WireLink, name: String = "the worker")
-          (using format: WireFormat, compression: WireCompression, auth: okay.codec.WireAuth): ForeignWorker =
+          (using format: WireFormat, compression: WireCompression, auth: okay.codec.WireAuth,
+           deadline: WireDeadline): ForeignWorker =
+    if link.inProcess && deadline.millis.isDefined then
+      link.close()
+      throw IllegalStateException(
+        s"$name is in this process: a call into it runs on the caller's thread and cannot be abandoned, " +
+          "so a given WireDeadline cannot be kept here — refused rather than promised")
     val hello = link.hello().getOrElse {
       link.close()
       throw IllegalStateException(s"$name answered nothing (stderr may know)")
@@ -207,7 +263,7 @@ object ForeignWorker:
         link.close()
         throw IllegalStateException(why)
       }
-    new ForeignWorker(link, pyV, configure(link, name, whole(hello)))
+    new ForeignWorker(link, pyV, configure(link, name, whole(hello)), deadline.millis)
 
   /** stage 5's handshake (`okay.codec.WireNegotiation`): what the givens
    * ask for, checked against what the far side announced, and confirmed */
@@ -226,13 +282,17 @@ object ForeignWorker:
   /** a wire line, read strictly (`okay.codec.WireJson.whole`) */
   private[py] def whole(line: String): Json = okay.codec.WireJson.whole(line)
 
+  /** a worker that is REOPENED by `open` after a death or a deadline, with
+   * programs as data recovered by replay (stage 6, `SupervisedWorker`) */
+  def supervised(open: => ForeignWorker): SupervisedWorker = SupervisedWorker(() => open)
+
   /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
    * another process, or another machine — plain TCP, see `WireLink.tcp` */
-  def connect(host: String, port: Int)(using WireFormat, WireCompression, okay.codec.WireAuth): ForeignWorker =
+  def connect(host: String, port: Int)(using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline): ForeignWorker =
     over(WireLink.tcp(host, port), s"the worker at $host:$port")
 
   private def startCommand(cmd: Vector[String], python: String, env: Map[String, String])
-                          (using WireFormat, WireCompression, okay.codec.WireAuth): ForeignWorker =
+                          (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline): ForeignWorker =
     val pb = ProcessBuilder(cmd*)
     pb.environment().clear()             // the clean-env rule: nothing leaks
     env.foreach((k, v) => pb.environment().put(k, v))
