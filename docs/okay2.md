@@ -48,7 +48,8 @@ Contents:
 19. [Transactional cells and typed-key maps](#19-transactional-cells-and-typed-key-maps)
 20. [Every error, and programs known before they run](#20-every-error-and-programs-known-before-they-run)
 21. [Transactions](#21-transactions)
-22. [Literature](#22-literature)
+22. [Producers and generators](#22-producers-and-generators)
+23. [Literature](#23-literature)
 
 ## 1. The build
 
@@ -1309,7 +1310,20 @@ thread, and only a commit that changes one of them wakes it:
 The same transaction code runs under `Sim` through `Stm.sim`, so an
 invariant can be checked on every interleaving a seed picks.
 
-## 22. Literature
+## 22. Producers and generators
+
+`produce(a)` is an operation that is its own answer, so a program of
+productions is a stream: folded, stepped, or run by a handler. A
+generator written once with `take` and `put` over `Cont` reads as either
+kind of stream — a `LazyList`, where laziness keeps the continuation, or
+a `Producer`, where each value is an operation:
+
+```scala
+    assertEquals(fibs[Long, LazyList].take(10).toList, List(0L, 1L, 1L, 2L, 3L, 5L, 8L, 13L, 21L, 34L))
+    assertEquals(Produce.stream.iterator(fibs[Long, Producer]).take(10).toList, fibs[Long, LazyList].take(10).toList)
+```
+
+## 23. Literature
 
 - Philip Wadler, "Monads for functional programming" (1995); Conor
   McBride and Ross Paterson, "Applicative programming with effects"

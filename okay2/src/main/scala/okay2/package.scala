@@ -91,6 +91,16 @@ package object okay2 extends Provides with Monads {
    * fast, fused, NOT stack-safe */
   type Func[A, S, R] = (A => S) => R
 
+  /** a Loop: the body of an open-recursive function A => R whose
+   * continuation is the recursive call (see `Generate`) */
+  type Loop[A, R] = Cont[A, R, A => R]
+
+  /** a program of productions (see `Produce`) */
+  type Producer[A] = A ! Produce
+
+  /** produce one value: an operation that IS its answer */
+  def produce[A](a: A): A ! Produce = Produce.produce(a)
+
   // ------------------------------------------------------ handlers
 
   /** a handler of F with the answers S: an interpretation of F in the

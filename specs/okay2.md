@@ -1247,6 +1247,34 @@ claim) and `sim` (under `Sim`, a scheduling point before every step);
 - The read log's reference array is copied by hand: `Arrays.copyOf` on
   an array of an existential element type does not typecheck in Scala 2.
 
+## Stage 18 — Produce, Producer, and generators from delimited control (2026-09-24)
+- `Produce` is okay2's REAL effect now, not a test helper: an operation
+  that IS its answer (okay's `Produce = Id`), the value riding in `Emit`
+  because a row needs a class to split on. `produce`, its `Handler`, a
+  `Stream[Producer, Pure]` and `streamIn[G]` for a producer beside G;
+  `type Producer[A] = A ! Produce`.
+- `Producer.fold`/`foldUntil`/`concat`/`each`/`log`.
+- `Generate`: `Loop[A, R] = Cont[A, R, A => R]`, `take`, `loop`, `Put`
+  (instances for `LazyList` — laziness captures the continuation — and
+  `Producer` — each put an operation), `put`, `generate`,
+  `generateLazy`, `nats`, `fibs`.
+
+### Behavior (stage 18)
+- [x] one generator, two semantics: fibs as a LazyList and as a Producer
+      agree; a LazyList generator builds nothing past the read
+- [x] a producer steps by `uncons`; `Producer.foldUntil` agrees with
+      `Stream.foldUntil` on eight instances, performs the G operation
+      before the stop and not the one after, and is flat over 100 000;
+      `fold`, `each`, `concat`, the in-row stream
+
+### Decisions
+- The test-only `Produce` of stage 1 had the real one's shape already, so
+  it is promoted as it was and every existing test keeps its spelling.
+- The stream instances make ONE claim, `Produce.produced`, that a
+  produced value is the `A` its `produce[A]` said.
+- Not ported: the core's `a(f: A Loop R)` extension (Scala 3 sugar) and
+  `s.take(n)` on any stream (`toLazyList.take(n)` spells it).
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
