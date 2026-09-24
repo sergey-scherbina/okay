@@ -307,10 +307,44 @@ object Channel {
     def uncons[A](c: Channel[A]): Option[(A, Channel[A])] ! Async = c.receive.map(_.map(a => (a, c)))
   }
 
-  /** the default channel: `StmChannel`. The Scala 3 core's default is
-   * the ring-buffered `SentinelChannel` over a `Growing` buffer, chosen
-   * by capacity; those mechanisms are a later stage here */
-  def apply[A](capacity: Int = Int.MaxValue): Channel[A] = new StmChannel[A](capacity)
+  /** the largest ring worth allocating up front: 2^20 slots */
+  private final val MaxRing = 1 << 20
+
+  /** how many parts the default may grow into; parts open lazily */
+  private final val Parts = 8
+
+  /**
+   * The default channel, chosen by the capacity asked for, as the Scala 3
+   * core's (okay2 stage 28). Every choice keeps the SAME contract — every
+   * law in `TestChannelLaws`, both tiers — so this is a performance
+   * decision nobody can observe except in the timing:
+   *  - a bounded capacity: `SentinelChannel` over `Growing` — a plain ring
+   *    while one producer pushes, partitioned once a second appears (the
+   *    Scala 3 core measured 1.10x worse at one producer, 4-23x better at
+   *    two to sixteen). Its price is EXACT FIFO ACROSS PRODUCERS, and one
+   *    displacement per producer across the swap;
+   *    `Queues.strong[A].fifo(n)` is the total order by name;
+   *  - past `MaxRing`: `SentinelChannel` over `Segments`, unbounded;
+   *  - below two: `StmChannel`, a rendezvous the ring's stamps cannot
+   *    express.
+   */
+  def apply[A](capacity: Int = Int.MaxValue): Channel[A] =
+    if (capacity >= 2 && capacity <= MaxRing) new SentinelChannel[A](Queues.Mechanism.growing(capacity, Parts)())
+    else if (capacity > MaxRing) new SentinelChannel[A](new Segments[Any]())
+    else new StmChannel[A](capacity)
+
+  /**
+   * THE CHANNEL A SEAM BUILDS WHEN IT KNOWS ITS PRODUCERS (the Scala 3
+   * core's channel-known-producers): `merge` has exactly two, `buffer`
+   * exactly one, so neither needs `growing`'s guess or its swap — two
+   * fixed parts for the merge (each producer's order exact by
+   * construction), a plain ring for the buffer. `capacity` is per part.
+   */
+  private[stream] def forProducers[A](n: Int, capacity: Int): Channel[A] =
+    if (capacity < 2) Channel[A](capacity)
+    else if (n <= 1) { if (capacity <= MaxRing) new SentinelChannel[A](capacity) else Channel[A](capacity) }
+    else if (capacity <= MaxRing) Queues.strong[A].relaxed.parts(n).each(capacity).build
+    else Queues.strong[A].relaxed.parts(n).unbounded.build
 
   implicit final class ChannelOps[A](private val c: Channel[A]) extends AnyVal {
     /** the channel as a source that reads it in BATCHES */
@@ -450,7 +484,7 @@ object Channel {
   def merge[A, S[_], F <: Row, T[_], G <: Row](s: S[A], t: T[A], capacity: Int = Int.MaxValue)
                                              (implicit SS: Stream[S, F], HF: Handler[F], ST: Stream[T, G], HG: Handler[G],
                                               sch: Scheduler): Channel[A] = {
-    val c = Channel[A](capacity)
+    val c = forProducers[A](2, capacity)
     val alive = new AtomicInteger(2)
     def watch(f: Fiber[Unit]): Unit = f.onComplete { r =>
       r.left.foreach(c.fail)
@@ -488,7 +522,7 @@ object Channel {
   /** run the producer ahead of the consumer, at most capacity elements
    * ahead: a fiber unfolds the stream into a bounded channel */
   def buffer[A, S[_], F <: Row](capacity: Int)(s: S[A])(implicit SS: Stream[S, F], HF: Handler[F], sch: Scheduler): Channel[A] = {
-    val c = Channel[A](capacity)
+    val c = forProducers[A](1, capacity)
     sch.fork(() => feed(c, s)).onComplete { r =>
       r.left.foreach(c.fail)
       c.close()

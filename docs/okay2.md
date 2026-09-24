@@ -829,10 +829,30 @@ its consumer; and the terminals are programs, not parked values:
     assertEquals(s.runCollect.runWith, (0L until 100L).toVector)
 ```
 
-The Scala 3 core's default channel is a ring buffer with termination
-travelling as a mark (`SentinelChannel` over `Growing`/`Ring`/
-`Segments`); those mechanisms are a later stage here, and
-`Channel.apply` is the reference `StmChannel`.
+**The fast channels** (stage 28) are the Scala 3 core's, mechanism for
+mechanism. `Channel.apply` chooses by capacity and every choice keeps
+the SAME contract — `TestChannelLaws`, both tiers, runs over all of
+them: a bounded channel is a `SentinelChannel` (a lock-free ring with
+termination travelling IN it as a mark, decided after the sender wins
+its position) over a `Growing` buffer — a plain ring while one producer
+pushes, partitioned the moment a second appears — an unbounded one is
+the same channel over `Segments`, and below two it is `StmChannel`, the
+single-CAS reference, as a rendezvous. `merge` and `buffer` know their
+producers and skip the guess (two fixed parts, one ring):
+
+```scala
+    val ch = Channel[Int](4)
+    val ch = Queues.strong[Int].growing(16, parts = 8).build
+```
+
+What the default gives up is EXACT FIFO BETWEEN producers, and a
+producer's own order in at most one place across the one swap; ask by
+name when that matters — `Queues.strong[A].fifo(n)` (one ring, the
+total order), `.adaptive.each(n)` (parts per producer, each exact),
+`.relaxed.parts(k).each(n)`, `.unbounded`, `bounded(n, singleConsumer =
+true)` (an actor's mailbox), `Queues.weak[A]` (an `AbruptChannel`:
+close discards the buffer, for a feed whose remainder is stale), and
+`Queues.composable`/`rendezvous` for `StmChannel`.
 
 ## 13. Resources, once, delimited control, capabilities
 

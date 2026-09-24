@@ -516,7 +516,8 @@ now depends on okay2-async (and on okay2-platform for its tests):
   lines, every one a measured lane); the reference implementation is
   what the contract is defined by, and the fast mechanisms are backlog
   `okay2-fast-channels`. `Flush`/`Flushing`/`mergeFlushing` go with
-  them.
+  them. (Stage 29 landed the mechanisms and changed the default;
+  `Flush` is `okay2-flush`.)
 - The `Member.pure` ambiguity (measured on `Source.of`): with `pure`
   at the lowest priority, `Member[Pure, A + B]` had two derivations at
   one level (`deeper` and `deeperRight` through `pure`) and the first
@@ -1678,6 +1679,55 @@ okay-stream's table layer, into `okay2-stream` as new files:
   asks row membership.
 - Not ported: the core's `!.tracing` over the plan (the handler's `log`
   is the same view of it here).
+
+## Stage 29 — the fast channels (2026-09-24)
+Backlog `okay2-fast-channels`, operator: "Потом okay2-fast-channels".
+okay-stream's ring-buffered channels, in okay2-stream: `Buffer` and its
+implementations `Ring` (Vyukov's bounded MPMC, optional single
+consumer), `Segments` (unbounded, fixed arrays linked, no reclamation),
+`AdaptiveFifo` (parts per producer, eager or lazy, adopting a ring as
+part 0), `Growing` (a ring that becomes an `AdaptiveFifo` when two
+producers are seen); `SentinelChannel` (termination as a mark in the
+buffer, decided after the claim), `AbruptChannel` (drain-on-close
+traded away), `Queues` (strong/weak/composable/rendezvous and the
+mechanisms), and `Channel.apply` choosing by capacity as the Scala 3
+core does, with `forProducers` for the seams that know their producer
+count (`merge`: two parts, `buffer`: one ring).
+
+Scala 2 spelling: `A | Null` becomes the bound `A >: Null`, so an empty
+slot is `null` at the slot's own type with no cast; the channels keep
+`Buffer[Any]` (a `Mark` is private to the package and has no public
+constructor, so no caller can forge an end), and the element comes back
+through ONE commented cast, as in the Scala 3 core. The polymorphic
+buffer factory (`[T] => Int => Buffer[T]`) is not needed for that
+reason: the factory makes a `Buffer[Any]`.
+
+NOT in this stage, filed: `Flush`/`Flushing`/`mergeFlushing` and
+`ParallelChunks` — they are Source-level (the `Flush` effect), not
+channel mechanisms.
+
+- [x] TestChannelLaws, both tiers, over StmChannel, SentinelChannel
+      (bounded, unbounded, adaptive, relaxed, growing, single-consumer)
+      and AbruptChannel, with the Scala 3 table of claims (drain tier,
+      single consumer, the growing swap's one displacement): 105 results, the unclaimed ones recorded as ignored
+- [x] Ring's boundaries (capacity rounding, full/empty, batched push and
+      pop, MPMC, SPSC), Growing's ten laws (never grows on one producer,
+      even through a parking channel; grows on two; a parked sender is
+      not stranded; each producer's order across the swap; the stale
+      route; the adopted part read first and nobody's home)
+- [x] Channel.apply by capacity; merge and buffer on forProducers; the
+      existing okay2-stream suites green on the new default (170)
+
+### Found while building it
+- LAW 1b, added here: the Scala 3 core's law 1 (one parking producer,
+  close at a varied instant) did NOT catch a `Ring.pushDeciding` that
+  reads the closing flag BEFORE winning its position — the exact window
+  the claim-then-decide design exists to close. Measured by mutant: law
+  1 green, 60 rounds. Four non-parking producers offering against a
+  close at a random instant catch it (an accepted element lost at round
+  5), and the correct code passes it. Worth carrying back to okay-stream.
+- Mutant: `finished` as `closing` alone fails law 3b on every
+  SentinelChannel variant.
 
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
