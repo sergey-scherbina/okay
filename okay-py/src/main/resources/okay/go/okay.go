@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net"
 	"os"
 	"sort"
 	"strconv"
@@ -301,91 +302,158 @@ func dec(j any) any {
 
 type key struct{ run, k int64 }
 
-// Serve is the worker's main loop: named programs, served on stdin/stdout.
-func Serve(programs map[string]func(args []any) Prog) {
-	in := bufio.NewReader(os.Stdin)
-	out := bufio.NewWriter(os.Stdout)
-	konts := map[key]func(any) Prog{}
-	var next int64
-	say := func(v map[string]any) {
-		b, err := json.Marshal(v)
-		if err != nil {
-			b, _ = json.Marshal(map[string]any{"id": v["id"], "condition": map[string]any{"kind": "GoError", "message": err.Error()}})
-		}
-		out.Write(b)
-		out.WriteByte('\n')
-		out.Flush()
+// Worker is the okay wire's protocol with no I/O (polyglot-one-wire): the
+// programs it serves and the continuations it holds. Serve (a child
+// process's pipes), ServeTCP (a socket) and an in-process export all use
+// one, so a program behaves the same over every transport.
+type Worker struct {
+	programs map[string]func(args []any) Prog
+	konts    map[key]func(any) Prog
+	next     int64
+}
+
+// NewWorker serves programs; it holds no continuation yet.
+func NewWorker(programs map[string]func(args []any) Prog) *Worker {
+	return &Worker{programs: programs, konts: map[key]func(any) Prog{}}
+}
+
+// Hello is the handshake line a worker speaks first.
+func Hello() string {
+	b, _ := json.Marshal(map[string]any{"shim": ShimVersion, "python": "go"})
+	return string(b)
+}
+
+func (w *Worker) node(run int64, p Prog) map[string]any {
+	if p.done {
+		return map[string]any{"done": enc(p.value)}
 	}
-	say(map[string]any{"shim": ShimVersion, "python": "go"})
-	node := func(run int64, p Prog) map[string]any {
-		if p.done {
-			return map[string]any{"done": enc(p.value)}
-		}
-		next++
-		konts[key{run, next}] = p.k
-		args := make([]any, len(p.args))
-		for i, a := range p.args {
-			args[i] = enc(a)
-		}
-		return map[string]any{"perform": p.name, "args": args, "k": next}
+	w.next++
+	w.konts[key{run, w.next}] = p.k
+	args := make([]any, len(p.args))
+	for i, a := range p.args {
+		args[i] = enc(a)
 	}
-	condition := func(id any, kind, msg string) map[string]any {
-		return map[string]any{"id": id, "condition": map[string]any{"kind": kind, "message": msg}}
-	}
-	answer := func(id any, req map[string]any) (reply map[string]any) {
-		// a panic in the program (a failed type assertion, an index out of
-		// range, an undecodable answer) is a CONDITION, and the worker lives on
-		defer func() {
-			if r := recover(); r != nil {
-				reply = condition(id, "GoError", fmt.Sprint(r))
-			}
-		}()
-		run, _ := req["run"].(int64)
-		switch req["op"] {
-		case "program":
-			fn, _ := req["fn"].(string)
-			f, ok := programs[fn]
-			if !ok {
-				return condition(id, "LookupError", fmt.Sprintf("no program named '%s' in this worker", fn))
-			}
-			args, _ := req["args"].([]any)
-			return map[string]any{"id": id, "ok": node(run, f(args))}
-		case "continue":
-			k, _ := req["k"].(int64)
-			f, ok := konts[key{run, k}]
-			if !ok {
-				return condition(id, "LookupError", fmt.Sprintf("continuation %d of run %d is not held here (forgotten, or another process)", k, run))
-			}
-			return map[string]any{"id": id, "ok": node(run, f(req["answer"]))}
-		case "forget":
-			for kk := range konts {
-				if kk.run == run {
-					delete(konts, kk)
-				}
-			}
-			return map[string]any{"id": id, "ok": nil}
+	return map[string]any{"perform": p.name, "args": args, "k": w.next}
+}
+
+func condition(id any, kind, msg string) map[string]any {
+	return map[string]any{"id": id, "condition": map[string]any{"kind": kind, "message": msg}}
+}
+
+func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
+	// a panic in the program (a failed type assertion, an index out of
+	// range, an undecodable answer) is a CONDITION, and the worker lives on
+	defer func() {
+		if r := recover(); r != nil {
+			reply = condition(id, "GoError", fmt.Sprint(r))
 		}
-		return condition(id, "ValueError", fmt.Sprintf("this Go worker serves programs only, not '%v'", req["op"]))
+	}()
+	run, _ := req["run"].(int64)
+	switch req["op"] {
+	case "program":
+		fn, _ := req["fn"].(string)
+		f, ok := w.programs[fn]
+		if !ok {
+			return condition(id, "LookupError", fmt.Sprintf("no program named '%s' in this worker", fn))
+		}
+		args, _ := req["args"].([]any)
+		return map[string]any{"id": id, "ok": w.node(run, f(args))}
+	case "continue":
+		k, _ := req["k"].(int64)
+		f, ok := w.konts[key{run, k}]
+		if !ok {
+			return condition(id, "LookupError", fmt.Sprintf("continuation %d of run %d is not held here (forgotten, or another process)", k, run))
+		}
+		return map[string]any{"id": id, "ok": w.node(run, f(req["answer"]))}
+	case "forget":
+		for kk := range w.konts {
+			if kk.run == run {
+				delete(w.konts, kk)
+			}
+		}
+		return map[string]any{"id": id, "ok": nil}
 	}
+	return condition(id, "ValueError", fmt.Sprintf("this Go worker serves programs only, not '%v'", req["op"]))
+}
+
+// Handle answers one request line with one answer line.
+func (w *Worker) Handle(line string) string {
+	d := json.NewDecoder(strings.NewReader(line))
+	d.UseNumber()
+	var raw map[string]any
+	var reply map[string]any
+	if e := d.Decode(&raw); e != nil {
+		reply = condition(nil, "ValueError", "not a JSON request")
+	} else {
+		req := map[string]any{}
+		for k, v := range raw {
+			req[k] = dec(v)
+		}
+		reply = w.answer(raw["id"], req)
+	}
+	b, err := json.Marshal(reply)
+	if err != nil {
+		b, _ = json.Marshal(condition(reply["id"], "GoError", err.Error()))
+	}
+	return string(b)
+}
+
+// serveLines speaks the wire over one line-oriented stream pair.
+func serveLines(w *Worker, in *bufio.Reader, out *bufio.Writer) {
+	out.WriteString(Hello())
+	out.WriteByte('\n')
+	out.Flush()
 	for {
 		line, err := in.ReadString('\n')
 		if len(strings.TrimSpace(line)) > 0 {
-			d := json.NewDecoder(strings.NewReader(line))
-			d.UseNumber()
-			var raw map[string]any
-			if e := d.Decode(&raw); e != nil {
-				say(condition(nil, "ValueError", "not a JSON request"))
-			} else {
-				req := map[string]any{}
-				for k, v := range raw {
-					req[k] = dec(v)
-				}
-				// the wire's ids and run numbers are plain JSON integers
-				say(answer(raw["id"], req))
-			}
+			out.WriteString(w.Handle(line))
+			out.WriteByte('\n')
+			out.Flush()
 		}
 		if err != nil {
 			return
 		}
 	}
+}
+
+// Serve is the worker's main loop on stdin/stdout: a child process.
+func Serve(programs map[string]func(args []any) Prog) {
+	serveLines(NewWorker(programs), bufio.NewReader(os.Stdin), bufio.NewWriter(os.Stdout))
+}
+
+// ServeTCP serves the wire on a socket: another process, another machine.
+// Each connection gets a Worker of its own, so one caller's continuations
+// are never another's. Once bound it prints {"listening": "host:port"} on
+// stdout, so a caller that asked for port 0 learns the port. PLAIN TCP,
+// unauthenticated: a trusted network, or TLS or SSH in front of it.
+func ServeTCP(addr string, programs map[string]func(args []any) Prog) error {
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	b, _ := json.Marshal(map[string]any{"listening": l.Addr().String()})
+	fmt.Println(string(b))
+	for {
+		c, err := l.Accept()
+		if err != nil {
+			return err
+		}
+		go func(c net.Conn) {
+			defer c.Close()
+			serveLines(NewWorker(programs), bufio.NewReader(c), bufio.NewWriter(c))
+		}(c)
+	}
+}
+
+// Main serves on TCP when OKAY_LISTEN names an address, on stdin/stdout
+// otherwise: one binary, either transport.
+func Main(programs map[string]func(args []any) Prog) {
+	if addr := os.Getenv("OKAY_LISTEN"); addr != "" {
+		if err := ServeTCP(addr, programs); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	Serve(programs)
 }

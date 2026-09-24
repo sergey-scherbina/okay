@@ -36,7 +36,7 @@ func boom(_ []any) okay.Prog {
 }
 
 func main() {
-	okay.Serve(map[string]func([]any) okay.Prog{
+	okay.Main(map[string]func([]any) okay.Prog{
 		"pairs": pairs,
 		"total": func(args []any) okay.Prog { return total(args[0].(string), args[1].(int64)).Untyped() },
 		"boom":  boom,

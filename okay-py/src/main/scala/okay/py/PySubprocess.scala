@@ -15,10 +15,7 @@ import okay.codec.Json
  * decides — the parallel-resilience fault model); a failing call is
  * a Condition and the worker survives.
  */
-final class PySubprocess private (proc: Process,
-                                  out: java.io.BufferedWriter,
-                                  in: java.io.BufferedReader,
-                                  val pythonVersion: String):
+final class PySubprocess private (link: WireLink, val pythonVersion: String):
 
   private var nextId = 0
 
@@ -33,11 +30,10 @@ final class PySubprocess private (proc: Process,
   /** one message out, the next one in — `exchange` without an id, which
    * is how a `resume` goes: it answers an ask, it opens nothing */
   private def send(body: Json): Json =
-    out.write(Json.print(body)); out.write("\n"); out.flush()
-    val line = in.readLine()
-    if line == null then
-      throw IllegalStateException("the python worker is DEAD (eof on the wire) — a supervisor retry gets a fresh process")
-    Json.parse(line)
+    link.roundTrip(Json.print(body)) match
+      case Some(line) => Json.parse(line)
+      case None =>
+        throw IllegalStateException("the worker is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
 
   private def answer[A](j: Json)(ok: Json => Either[Condition, A]): Either[Condition, A] =
     j match
@@ -130,9 +126,7 @@ final class PySubprocess private (proc: Process,
         }
       case Right(other) => Vector(s"verify answered strangely: $other")
 
-  def close(): Unit =
-    try { out.close(); in.close() } catch case _: Exception => ()
-    proc.destroy()
+  def close(): Unit = link.close()
 
 object PySubprocess:
 
@@ -175,6 +169,34 @@ object PySubprocess:
   def speaking(command: Seq[String], env: Map[String, String] = Map.empty): PySubprocess =
     startCommand(command.toVector, command.headOption.getOrElse("?"), env)
 
+  /**
+   * The engine over ANY link (polyglot-one-wire): the far side speaks the
+   * handshake first, then one request and one answer per line. Pipes,
+   * a socket, an in-process call — the same `Py.program`, the same
+   * callbacks and multi-shot, the same `Durable`.
+   */
+  def over(link: WireLink, name: String = "the worker"): PySubprocess =
+    val hello = link.hello().getOrElse {
+      link.close()
+      throw IllegalStateException(s"$name answered nothing (stderr may know)")
+    }
+    val (shimV, pyV) = Json.parse(hello) match
+      case Json.JObj(fs) =>
+        val m = fs.toMap
+        (m.get("shim").collect { case Json.JNum(n) => n.toInt }.getOrElse(-1),
+          m.get("python").collect { case Json.JStr(s) => s }.getOrElse("?"))
+      case _ => (-1, "?")
+    if shimV != ShimVersion then
+      link.close()
+      throw IllegalStateException(
+        s"shim/host version drift: $name says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
+    new PySubprocess(link, pyV)
+
+  /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
+   * another process, or another machine — plain TCP, see `WireLink.tcp` */
+  def connect(host: String, port: Int): PySubprocess =
+    over(WireLink.tcp(host, port), s"the worker at $host:$port")
+
   private def startCommand(cmd: Vector[String], python: String, env: Map[String, String]): PySubprocess =
     val pb = ProcessBuilder(cmd*)
     pb.environment().clear()             // the clean-env rule: nothing leaks
@@ -184,24 +206,8 @@ object PySubprocess:
       try pb.start()
       catch case e: java.io.IOException =>
         throw IllegalStateException(s"the interpreter '$python' did not start: ${e.getMessage} — the wrong-venv refusal, at its loudest")
-    val out = java.io.BufferedWriter(java.io.OutputStreamWriter(proc.getOutputStream, "UTF-8"))
-    val in = java.io.BufferedReader(java.io.InputStreamReader(proc.getInputStream, "UTF-8"))
-
     // the handshake: the shim speaks first, and drift refuses loudly
-    val hello = in.readLine()
-    if hello == null then
-      throw IllegalStateException(s"'$python' started but the shim answered nothing (stderr may know)")
-    val (shimV, pyV) = Json.parse(hello) match
-      case Json.JObj(fs) =>
-        val m = fs.toMap
-        (m.get("shim").collect { case Json.JNum(n) => n.toInt }.getOrElse(-1),
-          m.get("python").collect { case Json.JStr(s) => s }.getOrElse("?"))
-      case _ => (-1, "?")
-    if shimV != ShimVersion then
-      proc.destroy()
-      throw IllegalStateException(
-        s"shim/host version drift: the shim says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
-    new PySubprocess(proc, out, in, pyV)
+    over(WireLink.pipes(proc), s"'$python'")
 
   private def resolve(python: String): String =
     if python.contains("/") then python
