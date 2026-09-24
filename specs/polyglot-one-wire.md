@@ -191,9 +191,38 @@ mechanism:
 - [ ] Encryption (`given WireSecurity`): TLS for TCP (JSSE on the
       JVM, rustls or native-tls in Rust, crypto/tls in Go), with keys
       from their own stores.
-- [ ] Authorization (`given WireAuth`): a bearer token or an HMAC
-      challenge at the handshake, from a secret the given names (an
-      environment variable, a file, okay-security).
+- [ ] Authorization (`given WireAuth`): a MUTUAL HMAC-SHA256 challenge at
+      the handshake (wire-auth). The secret comes from the source the
+      given names: `WireAuth.fromEnv(name)`, `WireAuth.fromFile(path)`,
+      `WireAuth.secret(bytes)`; a Go or Rust server reads
+      `OKAY_WIRE_SECRET` or `OKAY_WIRE_SECRET_FILE`. No given: no
+      authentication, as before.
+      1. A server with a secret announces it in its hello:
+         `"auth":{"scheme":"hmac-sha256","nonce":Ns}` (16 random bytes, hex).
+      2. The host answers with a JSON line `{"op":"auth","nonce":Nc,
+         "mac":HMAC(secret, "okay-wire client|"+Ns+"|"+Nc)}`.
+      3. The server checks it in constant time. It answers
+         `{"ok":{"mac":HMAC(secret, "okay-wire server|"+Ns+"|"+Nc)}}` and
+         the host checks that in turn, so each side has proved it holds
+         the secret without sending it. A wrong mac is refused, and the
+         server closes the connection.
+      4. Until it has passed, a server with a secret answers every other
+         request with a refusal. The `configure` of stage 5a follows the
+         auth.
+      Mismatches are refused by name on the host: a server that demands
+      authentication meets a host without a given, or a host whose given
+      demands it meets a server that announced none.
+      What this does NOT give: confidentiality, or binding to the
+      connection. A relay in the middle can pass the handshake through
+      and read everything after it. That is what TLS
+      (`given WireSecurity`) is for, and the two compose.
+- [ ] Where it applies: the TCP servers (Go `ServeTCP`, Rust `serve_tcp`).
+      Pipe workers (Python, TypeScript, Haskell, R, and Go or Rust run as
+      a child process) are processes the host itself started, with
+      nothing between them. In-process links share the address space.
+      Neither has anyone to authenticate, and saying so is the honest
+      table.
+
 - [x] EVERY language on the wire, not only Rust and Go (operator,
       2026-09-24): Python's shim, R, the TypeScript worker, Haskell, Go
       and Rust. Each far side's library implements the same layers with
