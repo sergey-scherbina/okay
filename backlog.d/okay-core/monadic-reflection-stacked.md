@@ -1,13 +1,21 @@
 - [ ] monadic-reflection-stacked — PRIORITY: LOW (design; trigger).
       specs/monadic-reflection.md is Filinski's construction for ONE
-      monad: `reflect` over `shift`, `reify` over `/`. Biernacki, Pyzik
-      & Sieczkowski, "A reflection on continuation-composing style"
-      (FSCD 2020) does reflection over `shift0`, whose stack of
-      delimiters is what lets it reflect into the n-th of several
-      monads: a monad STACK in direct style with no transformers.
-      Here that becomes `reflect` onto a named layer of
-      `Delim.Stacked`. Depends on `stacked-shift0`. Read the paper
-      first to confirm its construction is the one described here;
-      this summary comes from the abstract, not the body. TRIGGER: a
+      monad ("Representing monads", POPL 1994): `reflect` over `shift`,
+      `reify` over `/`. Its extension to SEVERAL monads layered on each
+      other is Filinski, "Representing layered monads" (POPL 1999):
+      each layer has its own reflect/reify, and a layer can reflect a
+      computation of the layer below. Danvy & Filinski's CPS hierarchy
+      (shift_i/reset_i) was built for the same layering, and Materzok &
+      Biernacki (APLAS 2012) show that shift0/reset0 express that
+      hierarchy. So the road here is: layer i is a prompt on the
+      `Delim.Stacked` stack, and `reflect` into it is a `shift0` to that
+      prompt. The result is a monad STACK in direct style with no
+      transformers. Depends on `stacked-shift0`. CORRECTED 2026-09-24
+      (biernacki-literature-fix): this entry first cited Biernacki,
+      Pyzik & Sieczkowski, "A reflection on continuation-composing
+      style" (FSCD 2020) as its source, from the title alone. Its
+      reflection is a Galois reflection between the lambda calculus with
+      shift/reset and its CPS image (a direct-style transform inverse to
+      CPS), not monadic reflection. It does not apply here. TRIGGER: a
       consumer that wants two foreign monads in one direct block.
       Source: biernacki-literature, 2026-09-24.

@@ -15,7 +15,8 @@ work lives.
   bisimilarity as an executable check for fusion lanes),
   `row-coercion-coherence-law` (widen vs normalize, TLCA 2015),
   `row-parametricity-forwarding-law` (Handle with care, POPL 2018),
-  `monadic-reflection-stacked` (FSCD 2020) and, in dataflow,
+  `monadic-reflection-stacked` (first cited FSCD 2020 in error;
+  corrected to Filinski 1999 by biernacki-literature-fix) and, in dataflow,
   `clock-calculus-fusion` (LCTES 2008).
 - The rest of the list is recorded as answered in
   `biernacki-literature-rest`.
