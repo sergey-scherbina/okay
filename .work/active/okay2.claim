@@ -1,4 +1,0 @@
-slug: okay2
-who: claude (session 01XyJb5e)
-what: okay2 — a second implementation of the core in Scala 2.13 (Free, row, handlers, State/Writer/Throws, Cont) as module okay2/ with its own suites
-since: 2026-09-24T05:09:23Z
