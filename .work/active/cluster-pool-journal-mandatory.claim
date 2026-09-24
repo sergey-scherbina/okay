@@ -1,6 +1,0 @@
-feature/cluster-pool-journal-mandatory 2026-09-24T18:34:04Z
-agent: claude-code
-heartbeat: 2026-09-24T18:34:04Z
-status: in-progress
-done-so-far: gap identified in review
-next: make journal mandatory in specs/cluster-pool.md, resume-on-read
