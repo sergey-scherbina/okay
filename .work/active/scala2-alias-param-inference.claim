@@ -1,4 +1,0 @@
-slug: scala2-alias-param-inference
-who: claude (session 01Ujs4BY)
-what: pin and document that the Scala 2 row aliases break inference in a parameter with an abstract row
-since: 2026-09-24T07:03:25Z
