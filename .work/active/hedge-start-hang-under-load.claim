@@ -1,3 +1,0 @@
-slug: hedge-start-hang-under-load
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: TestHedgeStart hang: the test decided an attempt identity at run time; fixed at fork time
