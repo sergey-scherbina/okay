@@ -85,17 +85,17 @@ when, and the conformance suite covers both forms.
 
 ## Stage 2 — rust-worker (the Rust library)
 
-- [ ] A Cargo crate `okay` (`okay-rust/lib/okay`, `serde_json` only,
+- [x] A Cargo crate `okay` (`okay-rust/lib/okay`, `serde_json` only,
       offline) holding:
       - `Value` and the wire's encoding (as `Okay.hs` and `okay.go`);
       - `Prog` (`done`, `perform`, `and_then`), whose continuations are
         `Rc<dyn Fn>`, callable again, so multi-shot works;
       - typed `Op<A>`, `Program<A>` and `send`;
       - `Worker::handle(line)`, `serve_stdio`, `serve_tcp`.
-- [ ] `Rs.ops(module, callbacks)` writes typed operation constructors
+- [x] `Rs.ops(module, callbacks)` writes typed operation constructors
       from the Scala callbacks' Schemas, as `Go.ops`/`Hs.ops`/`Ts.ops`
       do.
-- [ ] The conformance suite over (Rust, pipes) and (Rust, TCP).
+- [x] The conformance suite over (Rust, pipes) and (Rust, TCP).
 
 ## Stage 3 — in-process (FFM and WebAssembly)
 
@@ -159,3 +159,18 @@ when, and the conformance suite covers both forms.
   - Mutant: a parked call filed under the wrong k fails the direct case.
     A first mutant that did not compile ("k declared and not used") was
     no evidence and is not counted.
+
+- Stage 2 (rust-worker, 2026-09-24).
+  - The Rust crate `okay` (`/okay/rust/okay` in okay-py's jar, depending on
+    serde_json only) holds `Value`/`Wire`, `Prog` with `Rc<dyn Fn>`
+    continuations, typed `Op`/`Program`/`send`, and the direct style:
+    `Functions`, `Ctx::call`/`call_op`, run on a thread and parked by
+    channels. It also has `Worker::handle`, `serve_stdio`, `serve_tcp`
+    and `main`.
+  - `RustWorker.build` compiles offline, and `Rs.ops` writes the typed
+    constructors. The crate lives in `okay-py/src/main/resources/okay/rust`,
+    not in the spec's `okay-rust/lib`: it ships in the same jar as the Go
+    and Haskell libraries, next to the engine that drives them.
+  - `WireConformance` passes over (Rust, pipes) and (Rust, TCP), including
+    the direct case, so Go and Rust answer ONE Scala test body.
+  - Mutant: continuations removed after one use fails multi-shot.

@@ -1,1 +1,0 @@
-- [ ] rust-worker — stage 2 of specs/polyglot-one-wire.md: the Rust `okay` crate (programs as data, typed Op<A>, Worker, stdio + TCP), Rs.ops, the conformance suite over (Rust, pipes/TCP).

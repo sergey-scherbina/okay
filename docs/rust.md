@@ -23,6 +23,56 @@ flowchart LR
   P --> H2
 ```
 
+## Rust code that performs okay's effects
+
+A kernel is one call: data in, an answer out. Rust code that needs okay's
+effects IN THE MIDDLE of its work (read the caller's configuration, ask a
+Scala callback, be resumed by a `Choice` handler) is a WORKER instead, like
+the Go and Haskell workers. The jar ships a Rust crate, `okay` (its only
+dependency is serde_json), and `RustWorker.build(dir)` compiles a crate
+against it offline. There are two styles.
+
+**Direct style**, the everyday one: ordinary Rust calls an effect and gets
+the answer, `okay_call(request) -> answer`:
+
+```rust
+    functions.insert("quote".into(), function(|ctx, args| {
+        let sku = String::from_value(&args[0])?;
+        let qty = i64::from_value(&args[1])?;
+        let price = ctx.call_op(ops::price_of(sku)).map_err(|e| e.to_string())?;
+        let total = ctx.call_op(ops::discount(price * qty as f64)).map_err(|e| e.to_string())?;
+        Ok(total.to_value())
+    }));
+```
+
+**Programs as data**, for multi-shot. A continuation is an `Rc<dyn Fn>`,
+so okay can resume it twice, and `Choice` makes every branch:
+
+```rust
+fn total(sku: String, qty: i64) -> Program<f64> {
+    send(ops::price_of(sku)).and_then(move |price| send(ops::discount(price * qty as f64)))
+}
+```
+
+- **Typed operations.** `ops::price_of` and `ops::discount` are generated
+  from the Scala callbacks by `Rs.ops(Foreign.callbacks(priceOf, discount))`,
+  so `price` is an `f64` because the callback answers a `Double`, and a
+  wrong argument type does not compile.
+- **Serving.** `okay::main(make)` serves on stdin/stdout, or on TCP when
+  `OKAY_LISTEN` is set: one binary, either transport. Scala reaches it with
+  `ForeignWorker.speaking` or `ForeignWorker.connect(host, port)`, and calls
+  it with `Foreign.fn` (direct style) or `Foreign.program`.
+- **Panics.** A panic is a `RustError` condition carrying its message, and
+  the worker lives on.
+- **Checked.** The same Scala test body that checks the Go worker
+  (`WireConformance`: multi-shot, callbacks under the caller's Reader,
+  direct style, failures) passes over Rust pipes and Rust TCP.
+
+In-process, with no second process at all, is the next stage
+([specs/polyglot-one-wire.md](../specs/polyglot-one-wire.md)): the same
+crate behind `okay_exchange` over FFM and in WebAssembly, and `okay_call` as
+an FFM upcall.
+
 ## The first kernel: Argon2id
 
 `okay-rust/kernels/argon2` is a Cargo crate built as a `cdylib` and a

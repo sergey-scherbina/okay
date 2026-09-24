@@ -31,7 +31,7 @@ class TestDocSnippets extends munit.FunSuite:
     "docs/modules/okay-clojure.md" -> Vector("okay-clojure/src/test"),
     "docs/modules/okay-frege.md" -> Vector("okay-frege/src/test"),
     "docs/python-and-r.md" -> Vector("okay-py/src/test", "okay-r/src/test"),
-    "docs/rust.md" -> Vector("okay-rust"),
+    "docs/rust.md" -> Vector("okay-rust", "okay-py/src/test"),
     "docs/go.md" -> Vector("okay-py/src/test", "okay-rust/kernels"),
     "docs/typescript.md" -> Vector("okay-py/src/test", "okay-ts/src/test", "okay-codec/src/test", "okay-http/src/test",
       "okay-js/src/test", "scripts", "okay-live/src/test"),
