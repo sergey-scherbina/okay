@@ -1,6 +1,0 @@
-feature/scala2-facade-okay-names 2026-09-24T11:57:41Z
-agent: claude-code
-heartbeat: 2026-09-24T11:57:41Z
-status: in-progress
-done-so-far: claimed
-next: probe a 2.13-compiled package object for okay.scala2 (aliases, pure, !, Pure); then the facade takes okay names only (State.run = run to value, handle, set, modify answers S; Writer.run okay order; Throws.runEither; Choose.choose/runChoice + Logic; Async(a)); migrate probe tests + docs/scala2.md
