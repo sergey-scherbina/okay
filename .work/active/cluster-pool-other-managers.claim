@@ -1,6 +1,0 @@
-feature/cluster-pool-other-managers 2026-09-24T20:27:55Z
-agent: claude-code
-heartbeat: 2026-09-24T20:27:55Z
-status: in-progress
-done-so-far: claimed
-next: nomad/yarn/slurm/swarm/batch renderers + refusal grep test
