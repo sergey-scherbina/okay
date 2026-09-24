@@ -337,6 +337,47 @@ The protocol is TLS 1.3 (E. Rescorla, RFC 8446, 2018,
 doi:10.17487/RFC8446), with 1.2 still accepted. The name check is RFC
 6125's (P. Saint-Andre and J. Hodges, 2011, doi:10.17487/RFC6125).
 
+## Every language on the network: the gateway
+
+Go and Rust serve TCP themselves. Python, TypeScript, Haskell (any worker
+that speaks the wire on stdin and stdout) get there through ONE gateway,
+shipped in okay-py's jar as `okay/py/gateway.py` (standard-library
+Python). On every connection it starts the worker, so each connection
+has a worker of its own, as Go and Rust give it. It relays the wire, and
+it is where the network's layers live: TLS (`OKAY_TLS_CERT`,
+`OKAY_TLS_KEY`) and the secret (`OKAY_WIRE_SECRET`,
+`OKAY_WIRE_SECRET_FILE`). The workers do not change at all.
+
+From Scala, a worker's command comes from its own `start` code, and the
+gateway runs it:
+
+```scala
+    ForeignGateway.start(TsWorker.command(d, Seq("conf")), env = env, python = TestPy.python.get)
+```
+
+The host connects to it exactly as to a Go or Rust server, with the same
+givens:
+
+```scala
+  lazy val engine: ForeignWorker = ForeignWorker.connect("127.0.0.1", served._1)
+```
+
+On a machine without okay, it is one command line:
+
+<!-- not-a-test: a shell command -->
+```sh
+OKAY_WIRE_SECRET=... OKAY_TLS_CERT=cert.pem OKAY_TLS_KEY=key.pem \
+  python3 gateway.py --listen 0.0.0.0:7000 -- python3 shim.py
+```
+
+After the handshake the gateway relays bytes untouched. A `configure`
+for CBOR, and the frames after it, reach the worker as they would over
+a pipe. The tests run the conformance suite through it:
+- Python, over TLS with every refusal Go's suite has, and with a secret
+  as well;
+- TypeScript, behind a secret, with a worker per connection;
+- Haskell, speaking CBOR.
+
 ## When the far side fails: deadlines and recovery
 
 Two things go wrong with a far side: it goes SILENT (a hung call, a
@@ -561,9 +602,9 @@ step is one function call.
 
 ## Limits
 
-- **Only Go and Rust serve TCP.** TLS and `WireAuth` apply where there is
-  a network. Python, TypeScript, Haskell and R workers run as child
-  processes on pipes.
+- **R is not behind the gateway.** okay-r has its own engine
+  (`RSubprocess`), which starts R itself; the gateway serves the
+  `ForeignWorker` family.
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.
 - **Go in-process.** Only as WebAssembly.
 

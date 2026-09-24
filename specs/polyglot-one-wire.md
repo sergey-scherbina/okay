@@ -269,13 +269,13 @@ stdio worker) run as child processes of the host, so `connect`,
 TCP server would mean four more servers, four more TLS stacks and four
 more HMAC checks. One GATEWAY serves them all:
 
-- [ ] `okay/py/gateway.py` (shipped in okay-py's jar, standard library
+- [x] `okay/py/gateway.py` (shipped in okay-py's jar, standard library
       only): `gateway.py --listen HOST:PORT -- WORKER COMMAND...`. On
       every connection it STARTS the worker command, so each connection
       gets a fresh worker, as with Go and Rust. It relays the worker's
       stdio to the socket, and prints `{"listening": ..., "tls": ...}`
       once bound.
-- [ ] The gateway is where the network's layers live, so the workers do
+- [x] The gateway is where the network's layers live, so the workers do
       not change:
       - TLS with `OKAY_TLS_CERT` and `OKAY_TLS_KEY`;
       - the stage-5b auth with `OKAY_WIRE_SECRET` or
@@ -286,12 +286,12 @@ more HMAC checks. One GATEWAY serves them all:
       After that it relays bytes untouched, so the stage-5a `configure`
       and the frames that follow reach the worker as they would over a
       pipe.
-- [ ] `ForeignGateway.command(worker, listen)` builds the command line
+- [x] `ForeignGateway.command(worker, listen)` builds the command line
       from Scala. The Python worker's command is `ForeignWorker`'s own.
-- [ ] The conformance suite passes through the gateway for Python and
+- [x] The conformance suite passes through the gateway for Python and
       TypeScript, with a secret and with TLS; Haskell's programs pass
       through it too.
-- [ ] Refusals are the same as Go's: no secret, the wrong secret, a
+- [x] Refusals are the same as Go's: no secret, the wrong secret, a
       request before the auth, TLS mismatches.
 
 ## Stage 6 — reliability (wire-read-deadline)
@@ -610,4 +610,25 @@ replays a program.
     worker without the feature refusing at start.
   - Mutant: without endpoint identification, the other-name certificate
     was accepted, and exactly that test failed.
+
+- Every language on the network (wire-gateway, 2026-09-24).
+  - `okay/py/gateway.py`: `socket.create_server`, a thread per connection,
+    `subprocess.Popen` of the worker, `ssl.SSLContext` server-side, `hmac`
+    with `compare_digest`. The hello is rewritten only to add the
+    challenge; after the auth, two pumps copy bytes. The worker's
+    environment drops the gateway's own keys.
+  - Scala: `WorkerCommand`, `ForeignWorker.pythonCommand`,
+    `TsWorker.command` (TsWorker.start now uses it),
+    `ForeignGateway.start/command/script`.
+  - Tests: `TestGatewayPyTls` is the TLS suite Go and Rust pass
+    (`TlsConformance`; its compose test now uses `address("quote")`).
+    `TestGatewayTsAuth` covers a secret, a wrong secret and a worker per
+    connection. `TestGatewayHs` checks that CBOR passes through untouched.
+  - Found: the Python shim died with a traceback on a line that was not
+    JSON (a TLS handshake reaching a plain gateway), then again on its
+    answer to a host that had left. It now answers the line, as the other
+    workers do, and exits quietly on a broken pipe.
+  - Mutant: a gateway accepting any mac. The wrong-secret test failed,
+    and the host still refused, because the gateway could not prove the
+    secret back.
 
