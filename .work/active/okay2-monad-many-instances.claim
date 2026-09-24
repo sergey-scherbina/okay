@@ -1,3 +1,0 @@
-slug: okay2-monad-many-instances
-agent: claude (session 6f505c09)
-what: okay2: Functor/Applicative/Selective/Monad/Alternative/MonadPlus/Comonad/ParaMonad + traverse/guard/withFilter; Tag/Instances/Writer.byValue + TypeableK.ByValue read by Distinct; error messages
