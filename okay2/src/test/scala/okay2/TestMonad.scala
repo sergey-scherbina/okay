@@ -1,7 +1,7 @@
 package okay2
 
 /**
- * The monad classes (spec stage 12): laws by running, the generic
+ * The monad classes (spec stage 13): laws by running, the generic
  * combinators over programs, `withFilter` by CanFail, and the
  * instances found without an import.
  */

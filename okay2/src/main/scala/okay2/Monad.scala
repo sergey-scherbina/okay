@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 /**
  * THE MONAD CLASSES of the Scala 3 core's Monad.scala, in Scala 2.13
- * (specs/okay2.md, stage 12): the same hierarchy, the same derived
+ * (specs/okay2.md, stage 13): the same hierarchy, the same derived
  * operations, the same generic combinators, and the same instances.
  *
  * What Scala 2 spells differently:

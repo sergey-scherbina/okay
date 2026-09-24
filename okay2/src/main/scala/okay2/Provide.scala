@@ -18,7 +18,7 @@ import scala.annotation.implicitNotFound
  *
  * Not here: `plan`/`exports`/`shadowed`, which read the chain off the
  * type with a macro (backlog `okay2-module-plan`), and the Scala 3
- * core's `ctxMonad`: okay2 has the classes since stage 12, but Scala 2
+ * core's `ctxMonad`: okay2 has the classes since stage 13, but Scala 2
  * has no context functions for one to range over.
  */
 trait Provides {

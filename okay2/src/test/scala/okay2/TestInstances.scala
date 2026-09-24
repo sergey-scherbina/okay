@@ -1,7 +1,7 @@
 package okay2
 
 /**
- * Several instances of ONE signature in one row (spec stage 12): the
+ * Several instances of ONE signature in one row (spec stage 13): the
  * Scala 3 core's TestTag and TestInstances, and Writer.byValue, and the
  * `Distinct` that reads all three.
  */

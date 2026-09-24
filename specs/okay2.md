@@ -654,7 +654,7 @@ now depends on okay2-async (and on okay2-platform for its tests):
   stack as a tuple type; Scala 2 has no `*:`), the inline `shift[A]`/
   `exit`/`emit`/`pause`/`onReturn` (direct-block doors — the evidence
   forms above are their Scala 2 spelling), `SharedOnce` (okay-async;
-  backlog with `okay2-stage2`), `ctxMonad` (no `Monad` here; stage 12
+  backlog with `okay2-stage2`), `ctxMonad` (no `Monad` here; stage 13
   brought the classes, and Scala 2 still has no context functions).
 - Scala 2 traps this stage: a `case class` inside a test suite trips
   -Xlint's outer-reference check on every type test (hoist to an
@@ -721,7 +721,7 @@ wait for Choice/Logic" (operator).
   `p`, a type-level function), as in the Scala 3 core.
 - `Choose` has no `runSeq` (a collection cannot be a kind-`*` Row) and
   no `MonadPlus`/`withFilter` (no `Monad` here): `Choose.guard(p)` is
-  the step an `if` guard would desugar to. (Stage 12 added both:
+  the step an `if` guard would desugar to. (Stage 13 added both:
   `Choose.monadPlus`, and `withFilter` by `CanFail`.)
 - `SharedOnce` is not `translate`: its handler is polymorphic in X and
   a `Force[a]` answers `Option[a]`, which scalac 2 cannot relate to X
@@ -905,7 +905,7 @@ the three composers of a split — `Handler.union`, `Into.union`,
 okay2 has no by-value tests (`TypeableK.ByValue`) and no `Tag`/
 `Instances` wrappers yet, so the class is the whole identity; when they
 come, the macro learns them as the Scala 3 one did. (They came in
-stage 12, and it did.)
+stage 13, and it did.)
 
 THE HANDLERS TOO (okay2-distinct-handlers, the same day; operator:
 "да хочу", and the Scala 3 core gets the same as backlog
@@ -1030,7 +1030,7 @@ landing: the whole build cold on JDK 21 in a fresh worktree, GREEN
 check was dry-run on two real commits: d5491910 (okay2) runs, bbca4de2
 (docs only) does not.
 
-## Stage 12 — the monad classes, and the ways to tell instances apart (2026-09-24)
+## Stage 13 — the monad classes, and the ways to tell instances apart (2026-09-24)
 Operator: "добавь (перенеси) монадные тайпклассы в окей 2 и нормальные
 механизмы различения эффектов как в оригинале. исправь сообщения об
 ошибках." Two gaps found reviewing okay2 against the Scala 3 core the

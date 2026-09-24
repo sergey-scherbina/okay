@@ -1,6 +1,6 @@
 ## okay2-monad-many-instances - the monad classes and the ways to tell instances apart, for the Scala 2 core
 
-At the operator's ask (spec stage 12). okay2 gains the Scala 3 core's
+At the operator's ask (spec stage 13). okay2 gains the Scala 3 core's
 Monad.scala: `Functor`, `Applicative`, `Selective`, `Monad`,
 `Alternative`, `MonadPlus`, `Comonad`/`Id`, `ParaMonad` (which
 `Control` now extends) and `DiagonalMonad`; `traverse`, `sequence`,

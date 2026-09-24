@@ -1092,7 +1092,7 @@ sampling:
 
 ## 16. The monad classes
 
-The Scala 3 core's Monad.scala, class for class (spec stage 12):
+The Scala 3 core's Monad.scala, class for class (spec stage 13):
 `Functor`, `Applicative`, `Selective`, `Monad`, `Alternative`,
 `MonadPlus`, `Comonad` (and `Id`), `ParaMonad` — which `Control` extends —
 and the combinators written once over them: `traverse`, `sequence`,
