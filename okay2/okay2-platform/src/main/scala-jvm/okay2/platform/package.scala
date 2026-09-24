@@ -1,6 +1,6 @@
 package okay2
 
-import okay2.async.{Async, CanBlock, Fiber, PlatformDefaults, Scheduler, Timer}
+import okay2.async.{BlockingDefaults, CanBlock, Scheduler, Timer}
 
 /**
  * okay2-platform — the JVM under okay2-async (specs/okay2.md,
@@ -14,7 +14,7 @@ import okay2.async.{Async, CanBlock, Fiber, PlatformDefaults, Scheduler, Timer}
  * package `okay`, Scala 2's live here in the package object, so one
  * import brings them all.
  */
-package object platform {
+package object platform extends platform.BlockingOps {
 
   /** the JVM's three capabilities as ONE implicit: `CanBlock` (park a
    * virtual thread), `Timer` (one scheduled thread for every delay),
@@ -22,7 +22,7 @@ package object platform {
    * where it does not; `-Dokay.scheduler=own|adaptive|drive|threads|loom`
    * selects another). The companions derive each from this, so a local
    * `implicit val S: Scheduler = ...` overrides without ambiguity. */
-  implicit val jvm: PlatformDefaults = new PlatformDefaults {
+  implicit val jvm: BlockingDefaults = new BlockingDefaults {
     def canBlock: CanBlock = Platform.canBlock
     def timer: Timer = Platform.timer
     def scheduler: Scheduler = Platform.scheduler
@@ -35,34 +35,4 @@ package object platform {
 
   /** the blocking socket behind Async.Run */
   implicit val net: Net = Platform.net
-
-  /** a fiber per program, all joined, order preserved */
-  def parAll[A](progs: Seq[A ! Async])(implicit S: Scheduler): Seq[A] ! Async =
-    Async(progs.map(p => Async.spawn(p)(S)).map(_.join()))
-
-  /** a fiber per element */
-  def parTraverse[A, B](xs: Seq[A])(f: A => B ! Async)(implicit S: Scheduler): Seq[B] ! Async =
-    parAll(xs.map(f))(S)
-
-  /** run, retrying per the policy on any exception; delays park the
-   * current (virtual) thread; a policy exhausted rethrows. The program
-   * reruns FROM ITS BEGINNING */
-  def retry[A](policy: LazyList[Long])(prog: => Free[Async, A]): A ! Async =
-    Async {
-      def go(delays: LazyList[Long]): A =
-        try Effects.runFree(prog)
-        catch {
-          case e: Throwable => delays match {
-            case d #:: rest =>
-              if (d > 0) Thread.sleep(d)
-              go(rest)
-            case _ => throw e
-          }
-        }
-      go(policy)
-    }
-
-  /** a fiber that restarts its program per the policy on failure */
-  def supervised[A](policy: LazyList[Long])(prog: => Free[Async, A])(implicit S: Scheduler): Fiber[A] =
-    Async.spawn(retry(policy)(prog))(S)
 }

@@ -1802,10 +1802,65 @@ no sources of its own.
   test binaries at 0.0% CPU: the root build's `gate-bound-test-fanout`,
   met again, and fixed by its line, `Test / parallelExecution := false`.
 
-### Stage B (next)
-okay2-async, okay2-platform, okay2-stream and okay2-stm on JS and
-Native: the platform files (`FiberCell`/`TaskQueue` for Native, the event
-loop, `NodeConn` and `Web` for JS) behind the same `Async`.
+### Stage B
+Landed as stage 32.
+
+## Stage 32 — Scala.js and Scala Native, stage B: the platform files (2026-09-24)
+okay2-async and okay2-platform are crossProjects too, and okay2-platform
+has the Scala 3 core's per-platform layout: `src/main/scala` shared
+(`Scoped`, the `Net` seam), `scala-jvm-native` where a thread can park
+(the socket, the blocking combinators `parAll`/`parTraverse`/`retry`/
+`supervised`), `scala-jvm` (Loom and the owned schedulers, as before),
+and the two new platforms:
+- **Native** (`scala-native`): `CanBlock` by wait/notify with a monitor
+  handoff, a thread per timer, `Schedulers.threads` (the default: one
+  OS thread per fiber) and `Schedulers.pool(n)`, `Task`/`TaskQueue`/
+  `FiberCell` hand-rolled over the javalib, `Net` over `java.net.Socket`.
+- **Scala.js** (`scala-js`): the timer is `setTimeout`, the scheduler is
+  the event loop (a fiber is a tree driven through callbacks), `Net` is
+  Node's `net` (`NodeConn`), and `Web` types `fetch` and `WebSocket`.
+  There is NO `CanBlock`.
+
+### Behavior (stage 32)
+- [x] the callback surface (TestAsyncCross, TestScoped) runs on JVM, JS
+      and Native; the blocking half (TestParallel: `parTraverse`,
+      `retry`, `supervised`, `Par`) on JVM and Native, where a thread can
+      park; the JVM suites (TestAsync, TestSharedOnce) on the JVM
+- [x] on Scala.js a blocking join and a blocking run do NOT compile, with
+      `CanBlock`'s message, and `joinAsync`/`runAsync` do
+      (TestNoBlockingOnJs — a refusal is the only proof of an absence)
+- [x] the full okay2 gate from clean on all three: 1685 test results,
+      46 module compiles, no warnings
+
+### Decisions
+- `PlatformDefaults` is SPLIT: timer and scheduler, and
+  `BlockingDefaults` adding `canBlock`. The JVM and Native install the
+  second, Scala.js only the first, so `CanBlock.fromPlatform` finds
+  nothing on JS and the blocking doors close at compile time — the
+  core's "a blocking join is a compile error, not a frozen loop".
+- The blocking combinators take `CanBlock` as an implicit parameter:
+  mixed into two package objects from one trait, they cannot see either
+  object's platform implicit.
+
+### Found while building it
+- The first two full runs STALLED at the same place, 1483 results in:
+  okay2-stream's TestChannelLaws law 1b, a receiver parked in
+  `SentinelChannel.receiveBlocking` after close and never woken, while
+  the suite ran UNFORKED inside sbt's process beside the cross build.
+  Alone it is green. okay2-stream and okay2-stm now fork their JVM
+  tests (the next run did not stall), and the hang is filed as
+  `okay2-channel-close-wakeup`: a lost wakeup under load is a defect
+  whatever process it runs in.
+- The next two runs lost a Native runner each (okay2OpticsNative, then
+  okay2PlatformNative) at `loadedTestFrameworks`, SIGKILLed: Scala
+  Native's adapter gives a binary 40 s to connect (`Accept timed out`,
+  137 — memory native-test-137-accept-timeout), and 22 test projects
+  starting together pushed startup past it. `Global /
+  concurrentRestrictions += Tags.limit(Tags.Test, 6)`; the next run from
+  clean was green.
+
+### Stage C (next)
+okay2-stream and okay2-stm on JS and Native.
 
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and

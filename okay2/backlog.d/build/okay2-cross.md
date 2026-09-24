@@ -1,7 +1,7 @@
 - [ ] okay2-cross — Scala.js and Scala Native for okay2. STAGE A LANDED
-      (specs/okay2.md stage 31, 2026-09-24): the core, okay2-data,
-      okay2-optics and okay2-workflow are crossProjects and every suite
-      runs on all three. Remaining, stage B: okay2-async, okay2-platform,
-      okay2-stream and okay2-stm — the platform files (Native's
-      `FiberCell`/`TaskQueue`, JS's event loop, `NodeConn`, `Web`) behind
-      the same `Async`, as okay-platform has them. (2026-09-24)
+      (specs/okay2.md stage 31: the core, data, optics, workflow) and
+      STAGE B LANDED (stage 32: okay2-async and okay2-platform with the
+      JS and Native platform files), 2026-09-24. Remaining, stage C:
+      okay2-stream and okay2-stm — the fast channels' atomics on the
+      javalibs, the channel laws' virtual threads (JVM-only in the test
+      as written), and `okay2-channel-close-wakeup` first. (2026-09-24)

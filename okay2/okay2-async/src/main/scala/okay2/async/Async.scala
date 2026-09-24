@@ -31,7 +31,7 @@ trait Accepted { def apply(accepted: Boolean): Unit }
  * callback fires. The JVM has it (`okay2.platform`); a platform without
  * it closes every blocking door at compile time.
  */
-@implicitNotFound("no CanBlock capability in scope.\nBlocking parks a thread, so it must be GRANTED, not assumed: `import okay2.platform._` installs the JVM's,\nor take one as a parameter (`implicit cb: CanBlock`).")
+@implicitNotFound("no CanBlock capability in scope.\nBlocking parks a thread, so it must be GRANTED, not assumed: `import okay2.platform._` installs the JVM's and Native's,\nor take one as a parameter (`implicit cb: CanBlock`). Scala.js has none: restructure with Async (joinAsync, runAsync).")
 trait CanBlock {
   /** park the current thread until the registered callback fires; if
    * the park itself fails (interruption), the registration is
@@ -65,13 +65,23 @@ trait Timer { def after(millis: Long)(k: () => Unit): () => Unit }
  * values".
  */
 trait PlatformDefaults {
-  def canBlock: CanBlock
   def timer: Timer
   def scheduler: Scheduler
 }
 
+/**
+ * ...AND WHERE THE PLATFORM CAN PARK, the third capability (okay2-cross):
+ * the JVM and Native install this, Scala.js installs only
+ * `PlatformDefaults` — so on JS no `CanBlock` is ever found, and a
+ * blocking join is the compile error `CanBlock`'s message names rather
+ * than a frozen event loop.
+ */
+trait BlockingDefaults extends PlatformDefaults {
+  def canBlock: CanBlock
+}
+
 object CanBlock {
-  implicit def fromPlatform(implicit p: PlatformDefaults): CanBlock = p.canBlock
+  implicit def fromPlatform(implicit p: BlockingDefaults): CanBlock = p.canBlock
 }
 
 object Timer {

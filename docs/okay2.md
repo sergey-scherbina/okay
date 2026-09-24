@@ -810,6 +810,20 @@ deques, the helper rule, the stuck-check), `threads`. `Interruptible`
 lifts blocking code as an operation whose cancel interrupts it,
 whatever the scheduler.
 
+On Scala Native the same import installs the same three capabilities:
+a thread parks by wait/notify, and a fiber is one OS thread. On Scala.js
+the event loop is the scheduler and the timer is `setTimeout`, and there
+is no `CanBlock`. A blocking join does not compile there; a program runs
+through callbacks and answers a `Future`:
+
+```scala
+    val prog = await[Int](k => k(21)).map(_ * 2)
+    Async.runAsync(prog).map(v => assertEquals(v, 42))
+```
+
+`okay2-platform` on Scala.js also has Node's `net` behind the same
+`Net` seam, and typed `fetch` and `WebSocket` facades (`Web`).
+
 ## 12. Channels and sources
 
 A channel is a queue between fibers, the primitive of CONCURRENT

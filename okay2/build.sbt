@@ -35,6 +35,17 @@ ThisBuild / scalaVersion := "2.13.18"
  */
 ThisBuild / Test / parallelExecution := false
 
+/**
+ * AT MOST SIX TEST TASKS AT ONCE (okay2-cross stage B). With async and
+ * platform crossed, 22 test projects started together: `node`s, Native
+ * binaries and forked JVMs on a 14-core box. Scala Native's test adapter
+ * gives a binary a hard-coded 40 s to connect (ComRunner, 0.5.12) and
+ * then SIGKILLs it; two full runs in a row lost a different module's
+ * runner that way at `loadedTestFrameworks`, before any test ran — the
+ * same module green alone. The bound keeps startup inside the window.
+ */
+Global / concurrentRestrictions += Tags.limit(Tags.Test, 6)
+
 lazy val common = Seq(
   scalacOptions := Seq("-deprecation", "-feature", "-Xlint", "-Werror", "-language:higherKinds"),
   libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -69,6 +80,14 @@ lazy val jvmOnlyTests = Seq(
 def reflect(scope: Option[Configuration]) =
   libraryDependencies += scope.fold("org.scala-lang" % "scala-reflect" % scalaVersion.value)(c => "org.scala-lang" % "scala-reflect" % scalaVersion.value % c)
 
+/** a module's per-platform source directories beside its shared `src/main/scala` */
+def platformSources(dirs: String*) =
+  Compile / unmanagedSourceDirectories ++= dirs.map(d => baseDirectory.value.getParentFile / "src" / "main" / d)
+
+/** the same for tests: `scala-jvm-native` holds the suites that park a thread */
+def platformTests(dirs: String*) =
+  Test / unmanagedSourceDirectories ++= dirs.map(d => baseDirectory.value.getParentFile / "src" / "test" / d)
+
 /** the aggregate, and nothing else: its own `src` is the core's shared
  * sources, which the crossProject compiles */
 lazy val root: Project = (project in file("."))
@@ -77,7 +96,9 @@ lazy val root: Project = (project in file("."))
     okay2Data.jvm, okay2Data.js, okay2Data.native,
     okay2Optics.jvm, okay2Optics.js, okay2Optics.native,
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
-    okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
+    okay2Async.jvm, okay2Async.js, okay2Async.native,
+    okay2Platform.jvm, okay2Platform.js, okay2Platform.native,
+    okay2Stm, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
   .settings(
     name := "okay2-root",
     publish / skip := true,
@@ -100,33 +121,51 @@ lazy val okay2 = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 /** the Async effect: Run/Await, the Drive, Fiber/Scheduler/Timer/CanBlock
  * as traits, par/race/timeout/supervised/attempt/sleep, Retry, Par */
-lazy val okay2Async: Project = (project in file("okay2-async"))
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
+lazy val okay2Async = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-async"))
+  .dependsOn(okay2 % "compile->compile;test->test")
   .settings(name := "okay2-async", common)
+  .jvmSettings(jvmOnlyTests)
+  .jsSettings(jsTests)
+  .jvmConfigure(_.withId("okay2Async"))
 
 /** the JVM under okay2-async: CanBlock, the timer, the schedulers
  * (Loom, fork-join, drive, own/adaptive, threads), Threads, Interruptible,
  * Scoped, Net, parAll/parTraverse/retry/supervised. Compiles on JDK 21+
  * (virtual threads are named); runs on 17+ (the Loom road is taken only
  * where `Schedulers.hasVirtualThreads`). */
-lazy val okay2Platform: Project = (project in file("okay2-platform"))
+lazy val okay2Platform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-platform"))
   .dependsOn(okay2Async % "compile->compile;test->test")
   .settings(name := "okay2-platform", common)
+  // THE PLATFORM FILES (okay2-cross stage B), in the Scala 3 core's
+  // layout: `scala` shared, `scala-jvm-native` where a thread can park
+  .jvmSettings(jvmOnlyTests, platformSources("scala-jvm", "scala-jvm-native"), platformTests("scala-jvm-native"))
+  .nativeSettings(platformSources("scala-native", "scala-jvm-native"), platformTests("scala-jvm-native"))
+  .jsSettings(jsTests, platformSources("scala-js"), platformTests("scala-js"))
+  .jvmConfigure(_.withId("okay2Platform"))
 
 /** okay-stm for the Scala 2 core: the transaction language `Tx` over
  * `TRef` and the `Stm` runtimes (TL2 over Async, direct, and the one on
  * the simulator) — specs/okay2.md stage 17 */
 lazy val okay2Stm: Project = (project in file("okay2-stm"))
-  .dependsOn(okay2Async, okay2Platform % "test->test")
-  .settings(name := "okay2-stm", common)
+  .dependsOn(okay2Async.jvm, okay2Platform.jvm % "test->test")
+  .settings(name := "okay2-stm", common, Test / fork := true, Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"))
 
 /** okay-stream's pure layer: chunks, Take/pipe, stages and through,
  * the pipeline as a value, lines, event-time windows */
 lazy val okay2Stream: Project = (project in file("okay2-stream"))
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async, okay2Platform % "test->test")
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async.jvm, okay2Platform.jvm % "test->test")
   .settings(
     name := "okay2-stream",
     common,
+    // its own JVM: unforked, law 1b of TestChannelLaws hung twice at
+    // the same place inside sbt's process once the cross build shared
+    // it (okay2-cross stage B; backlog okay2-channel-close-wakeup)
+    Test / fork := true,
+    Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"),
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
   )
 
@@ -177,7 +216,7 @@ lazy val okay2Cats: Project = (project in file("okay2-cats"))
   // on the root, and two lazy vals naming each other overflow at load.
   // okay2-async for `toIO`/`fromIO`/`scheduler` (okay2-interop-async);
   // the platform only for the tests' CanBlock
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async, okay2Platform % "test->compile")
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async.jvm, okay2Platform.jvm % "test->compile")
   .settings(
     name := "okay2-cats",
     common,
@@ -202,7 +241,7 @@ lazy val okay2Zio: Project = (project in file("okay2-zio"))
   // on the root, and two lazy vals naming each other overflow at load.
   // okay2-async for `toZIO`/`fromZIO`/`scheduler` (okay2-interop-async);
   // the platform only for the tests' CanBlock
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async, okay2Platform % "test->compile")
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Async.jvm, okay2Platform.jvm % "test->compile")
   .settings(
     name := "okay2-zio",
     common,
