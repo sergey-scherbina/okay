@@ -101,7 +101,7 @@ call sees its own set. A name that was not offered, typos included, is
 refused inside Python, and the refusal lists what was offered:
 
 ```scala
-assertEquals(refused, Left(Condition("LookupError", "okay.call('prices_of'): this call was offered ['price_of']")))
+assertEquals(refused, Left(Condition("LookupError", "okay_call('prices_of'): this call was offered ['price_of']")))
 ```
 
 **Arguments and answers are typed at the boundary.** Everything after the

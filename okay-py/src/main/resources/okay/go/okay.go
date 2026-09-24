@@ -316,8 +316,10 @@ type key struct{ run, k int64 }
 type Programs map[string]func(args []any) Prog
 
 // Functions are DIRECT-STYLE functions, served by name: ordinary Go code
-// that calls okay's effects with c.Call(name, args...) and gets the answer
-// (polyglot-one-wire, the operator's okay_call(request) -> answer). Each
+// that calls okay's effects with okay.Call(c, request) and gets the answer
+// (polyglot-one-wire: okay_call(request) -> answer, the one name in every
+// language; Go spells it okay.Call, because an exported Go name begins with
+// a capital and a goroutine has no local storage to hide c in). Each
 // is answered once, so a handler that resumes twice (Choice) needs a
 // Program instead.
 type Functions map[string]func(c *Ctx, args []any) any
@@ -327,7 +329,7 @@ type OkayError struct{ Kind, Message string }
 
 func (e *OkayError) Error() string { return e.Kind + ": " + e.Message }
 
-// Ctx is a direct-style call in progress: what c.Call reaches okay through.
+// Ctx is a direct-style call in progress: what okay.Call reaches okay through.
 type Ctx struct {
 	id      any
 	offered map[string]bool
@@ -347,35 +349,34 @@ type answerMsg struct {
 	err   *OkayError
 }
 
-// Call performs the okay callback name with args: the host runs it under the
-// caller's handlers, and this returns its answer. An error when the callback
-// failed in okay, or was not offered to this call.
-func (c *Ctx) Call(name string, args ...any) (any, error) {
-	if !c.offered[name] {
-		return nil, &OkayError{"LookupError", fmt.Sprintf("okay.Call(%q): this call was offered %v", name, keys(c.offered))}
+// Call is okay_call(request) -> answer: it performs an okay operation from
+// ordinary Go. The host runs its callback under the CALLER's handlers, and
+// this returns the answer, typed by the generated operation
+// (shop.PriceOf(sku)), or okay.Named(name, args...) untyped. An error when
+// the callback failed in okay, or was not offered to this call.
+func Call[A any](c *Ctx, request Op[A]) (A, error) {
+	var zero A
+	if !c.offered[request.Name] {
+		return zero, &OkayError{"LookupError", fmt.Sprintf("okay.Call(%q): this call was offered %v", request.Name, keys(c.offered))}
 	}
 	*c.next++
 	k := *c.next
-	wire := make([]any, len(args))
-	for i, a := range args {
+	wire := make([]any, len(request.Args))
+	for i, a := range request.Args {
 		wire[i] = enc(a)
 	}
-	c.events <- event{ask: map[string]any{"ask": map[string]any{"cb": name, "args": wire, "k": k}}}
+	c.events <- event{ask: map[string]any{"ask": map[string]any{"cb": request.Name, "args": wire, "k": k}}}
 	a := <-c.answers
 	if a.err != nil {
-		return nil, a.err
+		return zero, a.err
 	}
-	return a.value, nil
+	return request.Decode(a.value)
 }
 
-// CallOp is Call, typed by a generated operation (Go.ops in Scala).
-func CallOp[A any](c *Ctx, op Op[A]) (A, error) {
-	var zero A
-	v, err := c.Call(op.Name, op.Args...)
-	if err != nil {
-		return zero, err
-	}
-	return op.Decode(v)
+// Named is an untyped request: the operation name, its arguments, and the
+// answer as the wire decoded it.
+func Named(name string, args ...any) Op[any] {
+	return Op[any]{Name: name, Args: args, Decode: func(v any) (any, error) { return v, nil }}
 }
 
 func keys(m map[string]bool) []string {

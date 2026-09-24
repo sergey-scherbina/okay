@@ -37,11 +37,11 @@ func boom(_ []any) okay.Prog {
 
 // DIRECT STYLE: ordinary Go calling okay's effects, okay_call(request) -> answer
 func quote(c *okay.Ctx, args []any) any {
-	price, err := okay.CallOp(c, shop.PriceOf(args[0].(string)))
+	price, err := okay.Call(c, shop.PriceOf(args[0].(string)))
 	if err != nil {
 		panic(err)
 	}
-	total, err := okay.CallOp(c, shop.Discount(price*float64(args[1].(int64))))
+	total, err := okay.Call(c, shop.Discount(price*float64(args[1].(int64))))
 	if err != nil {
 		panic(err)
 	}

@@ -52,7 +52,7 @@ export class OkayError extends Error {
   }
 }
 
-/** the channel the worker installs; `call` goes through it */
+/** the channel the worker installs; `okay_call` goes through it */
 export const hooks: { call?: (name: string, args: unknown[]) => unknown } = {};
 
 /**
@@ -61,10 +61,13 @@ export const hooks: { call?: (name: string, args: unknown[]) => unknown } = {};
  * caller's handlers, and its answer is the value here. Synchronous: the
  * function simply returns it.
  */
-export function call<R = unknown>(name: string, ...args: unknown[]): R {
-  if (!hooks.call) throw new Error(`call("${name}") outside a call okay started with callbacks`);
+export function okay_call<R = unknown>(name: string, ...args: unknown[]): R {
+  if (!hooks.call) throw new Error(`okay_call("${name}") outside a call okay started with callbacks`);
   return hooks.call(name, args) as R;
 }
+
+/** `okay_call`'s old name, kept */
+export const call = okay_call;
 
 /** a program's operations, typed by `O`: a name `O` does not have, or
  * arguments or an answer of the wrong type, do not compile. The combinator

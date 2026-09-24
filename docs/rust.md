@@ -36,11 +36,11 @@ against it offline. There are two styles.
 the answer, `okay_call(request) -> answer`:
 
 ```rust
-    functions.insert("quote".into(), function(|ctx, args| {
+    functions.insert("quote".into(), function(|args| {
         let sku = String::from_value(&args[0])?;
         let qty = i64::from_value(&args[1])?;
-        let price = ctx.call_op(ops::price_of(sku)).map_err(|e| e.to_string())?;
-        let total = ctx.call_op(ops::discount(price * qty as f64)).map_err(|e| e.to_string())?;
+        let price = okay_call(ops::price_of(sku))?;
+        let total = okay_call(ops::discount(price * qty as f64))?;
         Ok(total.to_value())
     }));
 ```

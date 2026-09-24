@@ -326,3 +326,21 @@ mechanism:
     6 new).
   - Mutant: dropping the in-process branch of the fallback failed
     exactly the in-process case.
+
+- One name, `okay_call` (okay-call-name, 2026-09-24). The operator asked
+  for `okay_call(request) -> answer`, and the direct style had five
+  spellings (`ctx.call`/`ctx.call_op`, `c.Call`/`okay.CallOp`,
+  `okay.call`, `call`, `okay_call`).
+  - Rust: `okay::okay_call(request) -> Result<A, OkayError>`, a free
+    function. The call in progress is a thread-local of the thread the
+    worker starts the function on, so the function takes only its
+    arguments (`function(|args| ...)`), and `impl From<OkayError> for
+    String` lets it write `okay_call(op)?`. `Ctx` is private now.
+  - Go: `okay.Call(c, request)`, typed; `okay.Named(name, args...)` is
+    the untyped request. Go cannot say `okay_call`: an exported name
+    begins with a capital, and a goroutine has no local storage in which
+    to hide `c`. `c.Call` and `okay.CallOp` are gone.
+  - Python `okay.okay_call` and TypeScript `okay_call` are the name, and
+    `okay.call`/`call` stay as aliases. R already had `okay_call`.
+    Haskell serves programs only (no direct style).
+

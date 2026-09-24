@@ -83,7 +83,7 @@ object RustWorker:
  * Rust's side of typed operations: the operations a Rust program may
  * perform, written from the Scala callbacks that answer them, as `Go.ops`,
  * `Hs.ops` and `Ts.ops` write theirs. One function per operation, typed by
- * its argument and answer, for `okay::send` (programs) and `ctx.call_op`
+ * its argument and answer, for `okay::send` (programs) and `okay_call`
  * (direct style):
  *
  * {{{

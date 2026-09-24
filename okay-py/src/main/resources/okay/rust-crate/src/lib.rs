@@ -8,8 +8,8 @@
 //!   continuation is an `Rc<dyn Fn>`, callable again, so okay may resume it
 //!   more than once (multi-shot: a `Choice` handler makes every branch).
 //! - **Direct style** ([`Functions`]): ordinary Rust that calls an effect in
-//!   the middle of a computation, `ctx.call("price_of", args) -> answer`,
-//!   the operator's `okay_call(request) -> answer`. Answered once.
+//!   the middle of a computation: [`okay_call`]`(request) -> answer`, the
+//!   same name in every language okay speaks (the operator's). Answered once.
 //!
 //! [`Worker::handle`] is the protocol with no I/O (one request line in, one
 //! answer line out); [`serve_stdio`], [`serve_tcp`] and [`main`] carry it
@@ -22,6 +22,7 @@ use std::marker::PhantomData;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::cell::RefCell;
 use std::sync::Arc;
 
 /// the wire version this worker speaks; the host refuses any other
@@ -244,37 +245,53 @@ enum Event {
     Fault(OkayError),
 }
 
-/// a direct-style call in progress: what `ctx.call` reaches okay through
-pub struct Ctx {
+/// a direct-style call in progress: what [`okay_call`] reaches okay through,
+/// held by the thread the call runs on
+struct Ctx {
     offered: Vec<String>,
     events: Sender<Event>,
 }
 
-impl Ctx {
-    /// perform the okay callback `name`: the host runs it under the caller's
-    /// handlers, and this returns its answer — `okay_call(request) -> answer`
-    pub fn call(&self, name: &str, args: Vec<Value>) -> Result<Value, OkayError> {
-        if !self.offered.iter().any(|n| n == name) {
+thread_local! {
+    static CURRENT: RefCell<Option<Ctx>> = const { RefCell::new(None) };
+}
+
+fn gone() -> OkayError { OkayError { kind: "WireError".into(), message: "the worker is gone".into() } }
+
+/// `okay_call(request) -> answer`: perform an okay operation from ordinary
+/// Rust. The host runs its callback under the CALLER's handlers (a
+/// `Reader`, a `State`, ...), and this returns the answer, typed by the
+/// generated operation (`ops::price_of(sku)`), or `Op::<Value>::new(name,
+/// args)` untyped. Only inside a direct-style function okay started.
+pub fn okay_call<A: Wire>(request: Op<A>) -> Result<A, OkayError> {
+    let rx = CURRENT.with(|cur| -> Result<Receiver<Result<Value, OkayError>>, OkayError> {
+        let cur = cur.borrow();
+        let ctx = cur.as_ref().ok_or_else(|| OkayError {
+            kind: "RuntimeError".into(),
+            message: format!("okay_call({:?}) outside a call okay started with callbacks", request.name),
+        })?;
+        if !ctx.offered.iter().any(|n| *n == request.name) {
             return Err(OkayError {
                 kind: "LookupError".into(),
-                message: format!("ctx.call({:?}): this call was offered {:?}", name, self.offered),
+                message: format!("okay_call({:?}): this call was offered {:?}", request.name, ctx.offered),
             });
         }
         let (tx, rx) = channel();
-        self.events
-            .send(Event::Ask { cb: name.to_string(), args, reply: tx })
-            .map_err(|_| OkayError { kind: "WireError".into(), message: "the worker is gone".into() })?;
-        rx.recv().unwrap_or_else(|_| Err(OkayError { kind: "WireError".into(), message: "the worker is gone".into() }))
-    }
-
-    /// `call`, typed by a generated operation
-    pub fn call_op<A: Wire>(&self, op: Op<A>) -> Result<A, OkayError> {
-        let v = self.call(&op.name, op.args)?;
-        A::from_value(&v).map_err(|why| OkayError { kind: "DecodeError".into(), message: why })
-    }
+        ctx.events
+            .send(Event::Ask { cb: request.name.clone(), args: request.args.clone(), reply: tx })
+            .map_err(|_| gone())?;
+        Ok(rx)
+    })?;
+    let v = rx.recv().unwrap_or_else(|_| Err(gone()))?;
+    A::from_value(&v).map_err(|why| OkayError { kind: "DecodeError".into(), message: why })
 }
 
-type DirectFn = Arc<dyn Fn(&Ctx, Vec<Value>) -> Result<Value, String> + Send + Sync>;
+/// so a direct-style function writes `okay_call(op)?`
+impl From<OkayError> for String {
+    fn from(e: OkayError) -> String { e.to_string() }
+}
+
+type DirectFn = Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>;
 
 /// programs as data, served by name
 pub type Programs = HashMap<String, Box<dyn Fn(Vec<Value>) -> Prog>>;
@@ -284,7 +301,7 @@ pub type Functions = HashMap<String, DirectFn>;
 /// a direct-style function for a `Functions` map
 pub fn function<F>(f: F) -> DirectFn
 where
-    F: Fn(&Ctx, Vec<Value>) -> Result<Value, String> + Send + Sync + 'static,
+    F: Fn(Vec<Value>) -> Result<Value, String> + Send + Sync + 'static,
 {
     Arc::new(f)
 }
@@ -407,8 +424,8 @@ impl Worker {
                     .map(|c| c.iter().filter_map(|n| n.as_str().map(String::from)).collect()).unwrap_or_default();
                 let (tx, rx) = channel();
                 std::thread::spawn(move || {
-                    let ctx = Ctx { offered, events: tx.clone() };
-                    let out = catch_unwind(AssertUnwindSafe(|| f(&ctx, args)));
+                    CURRENT.with(|cur| *cur.borrow_mut() = Some(Ctx { offered, events: tx.clone() }));
+                    let out = catch_unwind(AssertUnwindSafe(|| f(args)));
                     let _ = tx.send(match out {
                         Ok(Ok(v)) => Event::Done(v),
                         Ok(Err(why)) => Event::Fault(OkayError { kind: "RustError".into(), message: why }),

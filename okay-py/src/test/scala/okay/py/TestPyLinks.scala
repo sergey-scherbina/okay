@@ -18,9 +18,11 @@ object PyConformance:
         raise RuntimeError("python says no")
 
     # DIRECT STYLE: ordinary Python calling okay's effects
+    from okay import okay_call
+
     def quote(sku, qty):
-        price = okay.call("price_of", sku)
-        return okay.call("discount", price * qty)
+        price = okay_call("price_of", sku)
+        return okay_call("discount", price * qty)
   """)
 
 /** (Python, pipes), JSON, and DEFLATE by default */

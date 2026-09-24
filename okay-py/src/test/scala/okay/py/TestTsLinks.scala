@@ -3,7 +3,7 @@ package okay.py
 /** the conformance programs in TypeScript: the same four as every other far side */
 object TsConformance:
   val conf: String = """
-import { call, done, perform, then, type Prog } from "./okay.ts";
+import { done, okay_call, perform, then, type Prog } from "./okay.ts";
 
 export function pairs(): Prog<number> {
   return then(perform<number>("choose", [1, 2]), (x) =>
@@ -20,8 +20,8 @@ export function boom(): Prog<number> {
 
 // DIRECT STYLE: ordinary TypeScript calling okay's effects
 export function quote(sku: string, qty: number): number {
-  const price = call<number>("price_of", sku);
-  return call<number>("discount", price * qty);
+  const price = okay_call<number>("price_of", sku);
+  return okay_call<number>("discount", price * qty);
 }
 """
 

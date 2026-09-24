@@ -213,7 +213,8 @@ def read_msg():
 
 # ---- callbacks into okay (v3) ------------------------------------------
 #
-# `import okay; okay.call("name", *args)` inside a function okay started
+# `from okay import okay_call; okay_call("name", *args)` (the one name in
+# every language okay speaks; `okay.call` is its old alias) inside a function okay started
 # with callbacks: the ask goes to the host, and THIS frame waits for the
 # resume. While it waits, any request that arrives is served (a callback
 # may call Python again on this very worker: the nesting is strict, so
@@ -231,9 +232,9 @@ _next_k = [0]
 
 def _call(name, *args):
     if not _offered:
-        raise RuntimeError("okay.call(%r) outside a call okay started with callbacks" % name)
+        raise RuntimeError("okay_call(%r) outside a call okay started with callbacks" % name)
     if name not in _offered[-1]:
-        raise LookupError("okay.call(%r): this call was offered %s" % (name, sorted(_offered[-1])))
+        raise LookupError("okay_call(%r): this call was offered %s" % (name, sorted(_offered[-1])))
     _next_k[0] += 1
     k = _next_k[0]
     reply({"ask": {"cb": name, "args": [enc(a) for a in args], "k": k}})
@@ -321,7 +322,8 @@ okay_module.perform = _perform
 okay_module.Done = Done
 okay_module.Step = Step
 okay_module.describe = _describe
-okay_module.call = _call
+okay_module.okay_call = _call
+okay_module.call = _call          # the old name, kept
 okay_module.OkayError = OkayError
 sys.modules["okay"] = okay_module
 

@@ -10,7 +10,7 @@ object RustWorkerBinary:
   // no margin: the docs quote these lines
   val main: String = """mod ops;
 
-use okay::{done, perform, send, function, Functions, Program, Programs, Value, Wire, Worker};
+use okay::{done, perform, send, function, okay_call, Functions, Program, Programs, Value, Wire, Worker};
 
 /// two choices; okay's Choice handler continues each continuation twice
 fn pairs(_: Vec<Value>) -> okay::Prog {
@@ -35,11 +35,11 @@ fn make() -> Worker {
     programs.insert("boom".into(), Box::new(|_: Vec<Value>| -> okay::Prog { panic!("rust says no") }));
     let mut functions = Functions::new();
     // DIRECT STYLE: ordinary Rust calling okay's effects, okay_call(request) -> answer
-    functions.insert("quote".into(), function(|ctx, args| {
+    functions.insert("quote".into(), function(|args| {
         let sku = String::from_value(&args[0])?;
         let qty = i64::from_value(&args[1])?;
-        let price = ctx.call_op(ops::price_of(sku)).map_err(|e| e.to_string())?;
-        let total = ctx.call_op(ops::discount(price * qty as f64)).map_err(|e| e.to_string())?;
+        let price = okay_call(ops::price_of(sku))?;
+        let total = okay_call(ops::discount(price * qty as f64))?;
         Ok(total.to_value())
     }));
     Worker::new(programs, functions)

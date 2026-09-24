@@ -22,11 +22,11 @@ direct style, `okay_call(request) -> answer`.
 In Rust:
 
 ```rust
-    functions.insert("quote".into(), function(|ctx, args| {
+    functions.insert("quote".into(), function(|args| {
         let sku = String::from_value(&args[0])?;
         let qty = i64::from_value(&args[1])?;
-        let price = ctx.call_op(ops::price_of(sku)).map_err(|e| e.to_string())?;
-        let total = ctx.call_op(ops::discount(price * qty as f64)).map_err(|e| e.to_string())?;
+        let price = okay_call(ops::price_of(sku))?;
+        let total = okay_call(ops::discount(price * qty as f64))?;
         Ok(total.to_value())
     }));
 ```
@@ -35,11 +35,11 @@ In Go:
 
 ```go
 func quote(c *okay.Ctx, args []any) any {
-	price, err := okay.CallOp(c, shop.PriceOf(args[0].(string)))
+	price, err := okay.Call(c, shop.PriceOf(args[0].(string)))
 	if err != nil {
 		panic(err)
 	}
-	total, err := okay.CallOp(c, shop.Discount(price*float64(args[1].(int64))))
+	total, err := okay.Call(c, shop.Discount(price*float64(args[1].(int64))))
 	if err != nil {
 		panic(err)
 	}
@@ -190,6 +190,52 @@ doi:10.1145/3158130). The formats themselves: C. Bormann and P. Hoffman,
 RFC 8949, "Concise Binary Object Representation (CBOR)", 2020,
 doi:10.17487/RFC8949; P. Deutsch, RFC 1951, "DEFLATE Compressed Data
 Format Specification", 1996, doi:10.17487/RFC1951.
+
+## One `okay_call`, step by step
+
+In-process, the Scala side can do exactly one thing with the loaded Rust
+library: call `okay_exchange(message) -> answer`. It is an ordinary C
+function. It takes bytes, returns bytes, and is finished. Rust cannot
+call Scala; it can only answer. Yet `quote` needs a price, which only
+Scala's `Reader` knows, in the MIDDLE of its work. The way through is to
+spread one `quote` over several `okay_exchange` calls:
+
+<!-- not-a-test: a diagram of the messages -->
+```mermaid
+sequenceDiagram
+  participant S as Scala (engine + handlers)
+  participant X as okay_exchange
+  participant T as quote, on its own thread
+  S->>X: start quote("tea", 3)
+  X->>T: run quote
+  T-->>X: okay_call(price_of "tea"): waits
+  X-->>S: ask price_of("tea"), k=1
+  Note over S: runs the callback under its Reader: 4.0
+  S->>X: resume k=1 with 4.0
+  X->>T: 4.0
+  T-->>X: okay_call(discount 12.0): waits
+  X-->>S: ask discount(12.0), k=2
+  Note over S: runs the callback: 6.0
+  S->>X: resume k=2 with 6.0
+  X->>T: 6.0
+  T-->>X: returns 6.0
+  X-->>S: ok 6.0
+```
+
+1. `start`: the worker runs `quote` on a thread of its own. At its first
+   `okay_call`, that thread stops and waits on a channel. `okay_exchange`
+   RETURNS to Scala with an `ask` naming the operation and its arguments.
+2. Scala runs the callback as an ordinary okay program, under its own
+   handlers (`Reader`, `State`, ...), and gets the answer.
+3. `resume`: the next `okay_exchange` hands the answer over. The waiting
+   thread wakes up, `okay_call` returns the answer, and `quote` goes on,
+   until its next `okay_call` (another `ask`) or its end (`ok`).
+
+The thread is what holds `quote`'s place. Rust cannot pause a function
+halfway and come back to it later, but a waiting thread keeps its whole
+stack alive: `sku`, `qty`, and the line it stopped on. Over pipes or TCP
+the dialogue is the same messages, each a line or a frame instead of a
+call.
 
 ## Why a dialogue, even in-process
 

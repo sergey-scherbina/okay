@@ -68,22 +68,25 @@ func total(sku string, qty int64) okay.Program[float64] {
   SET of operations cannot be in its type. Haskell's and TypeScript's
   can ([where each language names okay's effects](jvm-languages.md#where-each-language-names-okays-effects)).
 
-## Direct style: `c.Call(name, args) -> answer`
+## Direct style: `okay.Call(c, request) -> answer`
 
 Programs as data are what MULTI-SHOT needs. Most code wants less: to call
 an effect in the middle of an ordinary Go function and get the answer.
 That is the direct style, okay's `okay_call(request) -> answer`. A
-`Functions` entry receives a `*okay.Ctx`, and `c.Call` (or `okay.CallOp`,
-typed by a generated operation) runs the Scala callback under the
-caller's handlers and returns its answer:
+`Functions` entry receives a `*okay.Ctx`, and `okay.Call(c, request)` runs
+the Scala callback under the caller's handlers and returns its answer,
+typed by a generated operation (`shop.PriceOf(sku)`), or untyped with
+`okay.Named(name, args...)`. It is Go's spelling of `okay_call`: an
+exported Go name must begin with a capital letter, and a goroutine has no
+local storage in which to hide `c`, so it is passed explicitly:
 
 ```go
 func quote(c *okay.Ctx, args []any) any {
-	price, err := okay.CallOp(c, shop.PriceOf(args[0].(string)))
+	price, err := okay.Call(c, shop.PriceOf(args[0].(string)))
 	if err != nil {
 		panic(err)
 	}
-	total, err := okay.CallOp(c, shop.Discount(price*float64(args[1].(int64))))
+	total, err := okay.Call(c, shop.Discount(price*float64(args[1].(int64))))
 	if err != nil {
 		panic(err)
 	}
@@ -98,7 +101,7 @@ it calls a Python function:
 
 - **How it crosses the wire.** It is the wire's callback dialogue, the
   one Python's `okay.call` speaks: the host `start`s the function, the
-  worker `ask`s for each `c.Call`, and the host `resume`s it with the
+  worker `ask`s for each `okay.Call`, and the host `resume`s it with the
   answer. The function runs on a goroutine, and `Worker.Handle` stays one
   line in, one line out, so this works over pipes and TCP alike.
 - **Errors.** A callback that fails in okay comes back as an `error`
@@ -122,7 +125,7 @@ func init() {
 
 `ForeignWorker.over(InProcessLinks.wasm(WasmLib.load(bytes)))` drives it,
 and the whole conformance suite passes, direct style included. A
-goroutine parked in `c.Call` waits between two exported calls and is
+goroutine parked in `okay.Call` waits between two exported calls and is
 resumed by the next one. Go's `recover` works in WebAssembly, so a panic
 is a condition and the module lives on. Go is not loaded as native code:
 a second Go runtime does not belong in the JVM ([why](rust.md#go)).

@@ -47,6 +47,6 @@ class TestPyShop extends munit.FunSuite {
     val priceOf = Py.callback[String, Double]("price_of")(sku => Reader.ask[Catalog].map(_.prices(sku)))
     val typo = shop.fn[Double]("typo").calling(Py.callbacks(priceOf))
     val refused = Reader.run(catalog)(typo(Order("tea", 2L, "UA"))).runWith
-    assertEquals(refused, Left(Condition("LookupError", "okay.call('prices_of'): this call was offered ['price_of']")))
+    assertEquals(refused, Left(Condition("LookupError", "okay_call('prices_of'): this call was offered ['price_of']")))
   }
 }
