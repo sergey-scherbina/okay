@@ -1,0 +1,6 @@
+feature/cluster-pool-targets 2026-09-24T20:02:23Z
+agent: claude-code
+heartbeat: 2026-09-24T20:02:23Z
+status: in-progress
+done-so-far: claimed
+next: split stage2/3, then Need.Peers + cluster/laptop/host renderers + refusals
