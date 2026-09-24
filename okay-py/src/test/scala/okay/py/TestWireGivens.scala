@@ -97,3 +97,27 @@ class TestWireGivens extends munit.FunSuite:
     assertEquals(ForeignWorker.over(plain).wire, "cbor/none")
     assertEquals(plain.asked, Vector("""{"op":"configure","format":"cbor","compress":"none"}"""))
   }
+
+  test("zlib round-trips, a cut one and a damaged checksum are refused") {
+    val z = WireCompression.Zlib.zlib
+    val bytes = WireCbor.encode(tree)
+    assertEquals(z.decompress(z.compress(bytes)).toVector, bytes.toVector)
+    assert(scala.util.Try(z.decompress(z.compress(bytes).dropRight(2))).isFailure)
+    val bad = z.compress(bytes)
+    bad(bad.length - 1) = (bad(bad.length - 1) ^ 1).toByte
+    assert(scala.util.Try(z.decompress(bad)).isFailure)
+  }
+
+  test("the default is an ORDER: deflate where spoken, else zlib (R), else nothing") {
+    assertEquals(ForeignWorker.over(Fake(""","speaks":{"compress":["zlib","deflate"]}""")).wire, "json/deflate")
+    val r = Fake(""","speaks":{"format":["json","cbor"],"compress":"zlib"}""")
+    assertEquals(ForeignWorker.over(r).wire, "json/zlib")
+    assertEquals(r.asked, Vector("""{"op":"configure","format":"json","compress":"zlib"}"""))
+    assertEquals(ForeignWorker.over(Fake(""","speaks":{"compress":["zlib"]}""", inProcess = true)).wire, "json/none")
+  }
+
+  test("an explicit Zlib is strict, like Deflate") {
+    import WireCompression.Zlib.given
+    val e = intercept[IllegalStateException](ForeignWorker.over(Fake(speaksDeflate), "the Go worker"))
+    assert(e.getMessage.contains("the Go worker speaks the compressions none, deflate; this host's given WireCompression is zlib"), e.getMessage)
+  }
