@@ -51,12 +51,14 @@ and have the answer, the way Python and R already do with
   `start`s a function offering callbacks, the far side `ask`s, and the
   host `resume`s it with the answer (the one Python's shim and the TS
   worker speak).
-- **FFM.** An UPCALL: the JVM hands the Rust library a function pointer
-  (an FFM upcall stub), and `okay_call` is a C call back into the Scala
-  handler, on the same thread, inside the Rust call. No second process
-  and no line.
-- **WebAssembly.** A host function the module imports (`okay.okay_call`),
-  answered by Chicory in the same way.
+- **FFM and WebAssembly.** The SAME dialogue: each `ask` and `resume` is
+  one `okay_exchange` call. An upcall (a C function pointer into the
+  JVM, or a Wasm host import) was the first plan and is REFUTED. A
+  callback is an okay PROGRAM that must run under the caller's handlers
+  (Reader, State, Async, ...). An upcall arriving in the middle of an FFM
+  call would run it inside the `ForeignEval` handler alone, with every
+  other handler missing: silently different semantics. As a dialogue step
+  it runs where the program runs, exactly as over a wire.
 
 A direct call is answered once, so a handler that resumes twice
 (`Choice`) needs the program-as-data form. The docs say which to use
