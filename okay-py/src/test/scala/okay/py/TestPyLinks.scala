@@ -25,27 +25,27 @@ object PyConformance:
         return okay_call("discount", price * qty)
   """)
 
-/** (Python, pipes), JSON, and DEFLATE by default */
+/** (Python, pipes), JSON, uncompressed by default: a pipe is not a network */
 class TestPyPipes extends WireConformance:
   override def munitIgnore: Boolean = TestPy.python.isEmpty
   override def address(name: String): String = s"conf:$name"
   lazy val engine: ForeignWorker = ForeignWorker.start(TestPy.python.get, modules = Seq(PyConformance.conf))
   override def afterAll(): Unit = if TestPy.python.nonEmpty then engine.close()
 
-  test("with no import, the wire is JSON with DEFLATE") {
-    assertEquals(engine.wire, "json/deflate")
+  test("with no import, a pipe's wire is plain JSON (the default compresses on a network only)") {
+    assertEquals(engine.wire, "json/none")
   }
 
-/** (Python, pipes), compression turned off by an import */
-class TestPyPipesOff extends WireConformance:
-  import WireCompression.Off.given
+/** (Python, pipes), DEFLATE asked for by an import */
+class TestPyPipesDeflate extends WireConformance:
+  import WireCompression.Deflate.given
   override def munitIgnore: Boolean = TestPy.python.isEmpty
   override def address(name: String): String = s"conf:$name"
   lazy val engine: ForeignWorker = ForeignWorker.start(TestPy.python.get, modules = Seq(PyConformance.conf))
   override def afterAll(): Unit = if TestPy.python.nonEmpty then engine.close()
 
-  test("Off keeps the plain JSON lines") {
-    assertEquals(engine.wire, "json/none")
+  test("an explicit Deflate compresses on a pipe too") {
+    assertEquals(engine.wire, "json/deflate")
   }
 
 /** (Python, pipes), CBOR and DEFLATE chosen by givens */

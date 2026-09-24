@@ -26,9 +26,12 @@ trait WireLink:
    * alone in-process, where a call already delimits a message */
   def exchange(message: Array[Byte]): Option[Array[Byte]]
   def close(): Unit
-  /** whether a message stays in this process (FFM, wasm): the default
-   * compression does not compress there, where it would only cost */
+  /** whether a message stays in this process (FFM, wasm) */
   def inProcess: Boolean = false
+  /** whether a message crosses a network (TCP): the only link where the
+   * default compression compresses — on a pipe and in-process it would
+   * only cost (wire-compression-measured) */
+  def network: Boolean = false
 
 object WireLink:
 
@@ -94,6 +97,7 @@ object WireLink:
             raw.close()
             throw IllegalStateException(s"the TLS socket factory made a ${other.getClass.getName}, not an SSLSocket")
     new Streams(s.getOutputStream, s.getInputStream):
+      override def network: Boolean = true
       override def hello(): Option[String] =
         s.setSoTimeout(helloMillis)
         try super.hello()

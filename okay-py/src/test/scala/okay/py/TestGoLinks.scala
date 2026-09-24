@@ -53,6 +53,10 @@ class TestGoTcp extends WireConformance:
   lazy val engine: ForeignWorker = served._1
   override def afterAll(): Unit = if GoWorkerBinary.available then { served._1.close(); served._2.destroy() }
 
+  test("with no import, a network wire is JSON with DEFLATE") {
+    assertEquals(engine.wire, "json/deflate")
+  }
+
 /** (Go, pipes), CBOR and DEFLATE chosen by givens (stage 5a) */
 class TestGoPipesCbor extends WireConformance:
   import WireFormat.Cbor.given

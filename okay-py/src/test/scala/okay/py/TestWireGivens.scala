@@ -42,7 +42,9 @@ class TestWireGivens extends munit.FunSuite:
 
   /** a far side that announces `speaks` (or nothing) and records the
    * configure it was sent */
-  private final class Fake(speaks: String, override val inProcess: Boolean = false) extends WireLink:
+  private final class Fake(speaks: String, override val inProcess: Boolean = false, pipe: Boolean = false)
+      extends WireLink:
+    override def network: Boolean = !inProcess && !pipe
     var asked = Vector.empty[String]
     def hello(): Option[String] = Some(s"""{"shim":6,"python":"fake"$speaks}""")
     def roundTrip(line: String): Option[String] =
@@ -53,7 +55,7 @@ class TestWireGivens extends munit.FunSuite:
 
   private val speaksDeflate = ""","speaks":{"format":["json","cbor"],"compress":["deflate"]}"""
 
-  test("DEFLATE is the default: with no import, a far side that speaks it is asked for it") {
+  test("DEFLATE is the default over a network: with no import, a far side that speaks it is asked for it") {
     val link = Fake(speaksDeflate)
     val w = ForeignWorker.over(link)
     assertEquals(w.wire, "json/deflate")
@@ -73,6 +75,28 @@ class TestWireGivens extends munit.FunSuite:
     val link = Fake(speaksDeflate, inProcess = true)
     assertEquals(ForeignWorker.over(link).wire, "json/none")
     assertEquals(link.asked, Vector.empty)
+  }
+
+  test("the default does not compress on a pipe either, where bandwidth is a memory copy's (wire-compression-measured)") {
+    val link = Fake(speaksDeflate, pipe = true)
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked, Vector.empty)
+    import WireCompression.Deflate.given
+    assertEquals(ForeignWorker.over(Fake(speaksDeflate, pipe = true)).wire, "json/deflate")
+  }
+
+  test("a kept Deflater and Inflater carry nothing between messages, and a refusal does not poison the next") {
+    for c <- Seq(WireCompression.Deflate.deflate, WireCompression.Zlib.zlib) do
+      val a = WireCbor.encode(tree)
+      val b = "x".repeat(40000).getBytes
+      for m <- Seq(a, b, a, Array.emptyByteArray, b) do
+        assertEquals(c.decompress(c.compress(m)).toVector, m.toVector)
+      assert(scala.util.Try(c.decompress(c.compress(b).dropRight(3))).isFailure)
+      assertEquals(c.decompress(c.compress(a)).toVector, a.toVector)
+      val many = (1 to 64).map(n => java.util.concurrent.CompletableFuture.supplyAsync(() =>
+        val m = s"message $n ".repeat(n * 10).getBytes
+        c.decompress(c.compress(m)).toVector == m.toVector))
+      assert(many.forall(_.join()))
   }
 
   test("Off turns it off: a far side that speaks DEFLATE is not asked") {

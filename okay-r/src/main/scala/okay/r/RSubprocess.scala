@@ -390,7 +390,7 @@ object RSubprocess:
     def refuse(why: String): Nothing =
       proc.destroy()
       throw IllegalStateException(why)
-    val codec = WireNegotiation.choose(helloJson, inProcess = false, "the R shim") match
+    val codec = WireNegotiation.choose(helloJson, network = false, "the R shim") match
       case Left(why) => refuse(why)
       case Right(None) => None
       case Right(Some((f, c))) =>

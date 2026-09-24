@@ -282,7 +282,7 @@ object ForeignWorker:
     def refuse(why: String): Nothing =
       link.close()
       throw IllegalStateException(why)
-    okay.codec.WireNegotiation.choose(hello, link.inProcess, name) match
+    okay.codec.WireNegotiation.choose(hello, link.network, name) match
       case Left(why) => refuse(why)
       case Right(None) => None
       case Right(Some((f, c))) =>

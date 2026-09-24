@@ -44,14 +44,20 @@ trait WireCompression:
   def compress(bytes: Array[Byte]): Array[Byte]
   def decompress(bytes: Array[Byte]): Array[Byte]
   /** what to try instead where this one is not to be had — a far side that
-   * did not announce it, or an in-process link where it would only cost.
+   * did not announce it, or a link that is not a network one, where it
+   * would only cost (wire-compression-measured).
    * None (every explicit choice): refuse by name instead. */
   def fallback: Option[WireCompression] = None
 
 object WireCompression:
   /** THE DEFAULT (operator, 2026-09-24): an ORDER of preference — raw
-   * deflate, then zlib (what R can check natively), then the plain wire;
-   * and the plain wire in-process */
+   * deflate, then zlib (what R can check natively), then the plain wire —
+   * on a NETWORK link only. On a pipe and in-process the plain wire:
+   * measured (WireCodecBench, wire-compression-measured), DEFLATE made a
+   * short message LONGER (51 -> 53 bytes) and every message slower
+   * (0.56 -> 4.9 us small, 13 -> 32 us medium), which a pipe's bandwidth
+   * never pays back; over a network the medium message's 1620 -> 355
+   * bytes does. An explicit `Deflate`/`Zlib` still compresses anywhere. */
   given preferred: WireCompression = new Zipped(nowrap = true):
     override def fallback: Option[WireCompression] = Some(new Zipped(nowrap = false):
       override def fallback: Option[WireCompression] = Some(Off.off))
@@ -79,29 +85,56 @@ object WireCompression:
    * inflateRaw, Rust's flate2), or zlib-wrapped, which R's memCompress is */
   private class Zipped(nowrap: Boolean) extends WireCompression:
     def name = if nowrap then "deflate" else "zlib"
+    // a Deflater holds ~256 KB of native zlib state, and making one per
+    // message was most of a short message's cost (wire-compression-measured):
+    // a few are kept, and reset between messages. A pool rather than a
+    // ThreadLocal, because a virtual thread per call would pin one each.
+    private val deflaters = java.util.concurrent.ConcurrentLinkedQueue[java.util.zip.Deflater]()
+    private val inflaters = java.util.concurrent.ConcurrentLinkedQueue[java.util.zip.Inflater]()
+
     def compress(bytes: Array[Byte]): Array[Byte] =
-      val d = java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, nowrap)
+      val d = Option(deflaters.poll()).getOrElse(
+        java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, nowrap))
+      var whole = false
       try
         d.setInput(bytes)
         d.finish()
-        val out = java.io.ByteArrayOutputStream()
-        val buf = new Array[Byte](8192)
-        while !d.finished() do out.write(buf, 0, d.deflate(buf))
-        out.toByteArray
-      finally d.end()
+        // DEFLATE's worst case is the input plus 5 bytes per 16 KB stored block
+        var out = new Array[Byte](bytes.length + bytes.length / 16000 * 5 + 64)
+        var n = 0
+        while !d.finished() do
+          if n == out.length then out = java.util.Arrays.copyOf(out, out.length * 2)
+          n += d.deflate(out, n, out.length - n)
+        whole = true
+        java.util.Arrays.copyOf(out, n)
+      finally
+        if whole && deflaters.size < Zipped.Kept then { d.reset(); val _ = deflaters.offer(d) }
+        else d.end()
+
     def decompress(bytes: Array[Byte]): Array[Byte] =
-      val i = java.util.zip.Inflater(nowrap)
+      val i = Option(inflaters.poll()).getOrElse(java.util.zip.Inflater(nowrap))
+      var whole = false
       try
         i.setInput(bytes)
-        val out = java.io.ByteArrayOutputStream()
-        val buf = new Array[Byte](8192)
+        var out = new Array[Byte](math.max(64, bytes.length * 4))
+        var n = 0
         while !i.finished() do
-          val n = i.inflate(buf)
-          if n == 0 && (i.needsInput() || i.needsDictionary()) then
+          if n == out.length then out = java.util.Arrays.copyOf(out, out.length * 2)
+          val got = i.inflate(out, n, out.length - n)
+          // an empty message finishes on a step that yields nothing
+          if got == 0 && !i.finished() && (i.needsInput() || i.needsDictionary()) then
             throw IllegalStateException("a DEFLATE message ended before its data did (cut short?)")
-          out.write(buf, 0, n)
-        out.toByteArray
-      finally i.end()
+          n += got
+        whole = true
+        java.util.Arrays.copyOf(out, n)
+      finally
+        // one that refused a message is not trusted with the next
+        if whole && inflaters.size < Zipped.Kept then { i.reset(); val _ = inflaters.offer(i) }
+        else i.end()
+
+  private object Zipped:
+    /** per direction, per compression given: a far side is one exchange at a time */
+    val Kept = 4
 
 /**
  * Who may speak on the wire (polyglot-one-wire stage 5b, wire-auth): a
@@ -347,12 +380,13 @@ object WireFrames:
  * side's hello (`"speaks":{"format":[..],"compress":[..]}`), then confirmed
  * by a `configure` exchange. An explicit choice the far side did not
  * announce is refused by name; a preference (a compression with a
- * `fallback`) walks its order instead, and is skipped in-process.
+ * `fallback`) walks its order instead, and is skipped on a link that is
+ * not a network one (a pipe, in-process), where it would only cost.
  */
 object WireNegotiation:
   /** Right(None): stay on JSON lines; Right(Some(..)): send `configure`;
    * Left: the refusal, naming what the far side speaks */
-  def choose(hello: Json, inProcess: Boolean, name: String)
+  def choose(hello: Json, network: Boolean, name: String)
             (using format: WireFormat, compression: WireCompression): Either[String, Option[(WireFormat, WireCompression)]] =
     def announced(key: String): Vector[String] = hello match
       case Json.JObj(fs) => fs.toMap.get("speaks") match
@@ -367,7 +401,7 @@ object WireNegotiation:
     val compressions = "none" +: announced("compress")
     @annotation.tailrec
     def pick(c: WireCompression): WireCompression = c.fallback match
-      case Some(next) if inProcess || !compressions.contains(c.name) => pick(next)
+      case Some(next) if !network || !compressions.contains(c.name) => pick(next)
       case _ => c
     val chosen = pick(compression)
     if !formats.contains(format.name) then

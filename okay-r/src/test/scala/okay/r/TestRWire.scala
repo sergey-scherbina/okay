@@ -85,22 +85,23 @@ abstract class RWireConformance extends munit.FunSuite:
     finally s.close()
   }
 
-/** no import: JSON, with zlib because R announces it */
+/** no import: plain JSON — R is a child's pipes, not a network */
 class TestRWireDefault extends RWireConformance:
-  def expected = "json/zlib"
-  def open(timeoutMillis: Option[Long]) =
-    RSubprocess.start(rscript = TestR.rscript.get, timeoutMillis = timeoutMillis, modules = Seq(RWire.conf))
-
-/** compression turned off: the JSON lines R always spoke */
-class TestRWireOff extends RWireConformance:
-  import WireCompression.Off.given
   def expected = "json/none"
   def open(timeoutMillis: Option[Long]) =
     RSubprocess.start(rscript = TestR.rscript.get, timeoutMillis = timeoutMillis, modules = Seq(RWire.conf))
 
-/** CBOR, with the default compression */
+/** zlib asked for: what R checks natively */
+class TestRWireZlib extends RWireConformance:
+  import WireCompression.Zlib.given
+  def expected = "json/zlib"
+  def open(timeoutMillis: Option[Long]) =
+    RSubprocess.start(rscript = TestR.rscript.get, timeoutMillis = timeoutMillis, modules = Seq(RWire.conf))
+
+/** CBOR and zlib */
 class TestRWireCbor extends RWireConformance:
   import WireFormat.Cbor.given
+  import WireCompression.Zlib.given
   def expected = "cbor/zlib"
   def open(timeoutMillis: Option[Long]) =
     RSubprocess.start(rscript = TestR.rscript.get, timeoutMillis = timeoutMillis, modules = Seq(RWire.conf))
