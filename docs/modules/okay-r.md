@@ -63,7 +63,13 @@ to do about it.
   one, and the call answers `Condition("timeout", …)`. The respawn is
   invisible to the program, and that follows from the no-source rule:
   the API cannot assign anything in an R session, so a fresh process
-  has nothing to have lost. The one edge: if the respawn itself fails
+  has nothing to have lost. A PROGRAM AS DATA survives it too: R's
+  continuations die with the killed process, so the engine remembers the
+  path of answers that reached each one and, on the fresh R, re-runs the
+  program and replays the path (r-supervised-replay). A multi-shot run
+  whose R is replaced between two choices still answers every branch. A
+  program that is not a pure function of its answers is caught on the
+  replay as `ReplayDrift`, never answered wrongly. The one edge: if the respawn itself fails
   (R gone between two calls), that throws — an engine whose
   interpreter no longer exists is not something a program can handle
   as a value.

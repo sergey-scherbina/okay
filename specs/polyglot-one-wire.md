@@ -587,8 +587,10 @@ replays a program.
     in-process refusal.
   - Mutant: a supervisor that never replays failed the three recovery
     tests, with the far side's own "continuation ... is not held here".
-  - Not done: R's engine respawns after a timeout but does not replay its
-    programs; backlog `r-supervised-replay`.
+  - R's engine respawns after a timeout and, since r-supervised-replay
+    (2026-09-24), replays its programs on the fresh R the same way:
+    `RSubprocess` renames an R run's continuations and keeps each one's
+    path of answers.
 
 - Encryption (wire-tls, 2026-09-24).
   - `okay.codec.WireSecurity`: `Plain`, the default, or `tls(trust)`, with
