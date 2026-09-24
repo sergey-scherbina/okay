@@ -1,4 +1,0 @@
-slug: rowlift-to-row
-who: claude (session 01Ujs4BY)
-what: rename okay.RowLift to okay.Row across the Scala 3 core, alias kept
-since: 2026-09-24T10:52:02Z
