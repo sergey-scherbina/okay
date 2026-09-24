@@ -1,6 +1,0 @@
-feature/okay2-facade-names 2026-09-24T11:31:39Z
-agent: claude-code
-heartbeat: 2026-09-24T11:31:39Z
-status: in-progress
-done-so-far: claimed
-next: okay2 gains the facade names that do not collide with okay (Eff, Cont.pure/reset/run, Choose.from/all/first/cut.., Search, State.put, Throws.run, Async.delay/fork, Prog, Eff.runAsync); facade core probe suites compiled against okay2 as the measure; okay2-one-scala2-story closed with the operator decision
