@@ -123,37 +123,55 @@ The wire's format and compression are chosen with an import. The
 imports are givens that the engine's `start`, `speaking`, `connect` and
 `over` take as `using` parameters.
 
-**With no import, the wire is JSON compressed with raw DEFLATE**
-(RFC 1951), wherever that is possible:
+**With no import, a NETWORK wire is JSON compressed with raw DEFLATE**
+(RFC 1951), wherever the far side speaks it. A worker reached over TCP:
 
 ```scala
-  lazy val engine: ForeignWorker = ForeignWorker.start(TestPy.python.get, modules = Seq(PyConformance.conf))
+    val engine = ForeignWorker.connect("127.0.0.1", port)
 ```
 
 ```scala
     assertEquals(engine.wire, "json/deflate")
 ```
 
-The default is a PREFERENCE, and an ordered one: raw DEFLATE where the
-far side speaks it, else zlib (RFC 1950: the same DEFLATE with a header
-and a checksum, which is what R can check natively), else nothing. R
-settles on zlib:
-
-```scala
-  def expected = "json/zlib"
-```
-
-A far side with neither (Haskell, a worker older than this) keeps the
-plain JSON lines, and nothing is refused:
+A pipe to a child process and an in-process link (Rust over FFM, Rust or
+Go on WebAssembly) stay plain by default:
 
 ```scala
     assertEquals(engine.wire, "json/none")
 ```
 
-An in-process link (Rust over FFM, Rust or Go on WebAssembly) does not
-compress by default either: a message there is a copy in memory, and
-compressing it would cost CPU and save nothing. `ForeignWorker.wire`
-always says what the handshake settled on.
+That split is measured, not guessed (`WireCodecBench`, okay-py's JMH; one
+message encoded, compressed, decompressed and decoded):
+
+| JSON message | bytes, plain | bytes, DEFLATE | round trip, plain | round trip, DEFLATE |
+|---|---|---|---|---|
+| small (a `continue` step) | 51 | 53 | ~0.6 µs | ~3 µs |
+| medium (40 arguments) | 1 620 | 355 | ~14 µs | ~23 µs |
+| large (2 000 rows) | 144 811 | 17 134 | ~0.64 ms | ~1.5 ms |
+
+DEFLATE makes a short message LONGER and every message slower. Over a
+network the medium message's 4.5x fewer bytes buys that back: at
+100 Mbit/s its 1 265 saved bytes are ~100 µs on the wire. On a pipe the
+bytes are a memory copy, and the CPU is all that is left. Most of a
+program-as-data's traffic is short `continue` steps.
+
+The default is a PREFERENCE, and an ordered one: raw DEFLATE where the
+far side speaks it, else zlib (RFC 1950: the same DEFLATE with a header
+and a checksum, which is what R can check natively), else nothing. A far
+side with neither (Haskell, a worker older than this) keeps the plain
+JSON lines, and nothing is refused. `ForeignWorker.wire` always says
+what the handshake settled on.
+
+To compress on a pipe too, ask for it by name. R checks zlib natively:
+
+```scala
+  import WireCompression.Zlib.given
+```
+
+```scala
+  def expected = "json/zlib"
+```
 
 To turn compression off, import `Off`:
 
@@ -162,7 +180,8 @@ To turn compression off, import `Off`:
 ```
 
 For CBOR (RFC 8949) instead of JSON, or for DEFLATE as a REQUIREMENT
-rather than a preference, the imports are:
+rather than a preference (on any link, a pipe or in-process included),
+the imports are:
 
 ```scala
   import WireFormat.Cbor.given
@@ -229,7 +248,7 @@ about R are worth knowing:
   which `memDecompress` checks, is why the preference has a second step.
 - R's CBOR encodes the tree jsonlite would print, so both formats carry
   the same values. One suite runs over all four wires R speaks
-  (`TestRWireDefault`, `TestRWireOff`, `TestRWireCbor`,
+  (`TestRWireDefault`, `TestRWireZlib`, `TestRWireCbor`,
   `TestRWireCborPlain`). It found that doubles had always left R rounded
   to 15 significant digits (jsonlite's `digits = NA`), so `sqrt(2)`
   arrived as 1.4142135623731. They now leave with 17, which is what a
@@ -615,8 +634,12 @@ conformance suite (`WireConformance`) is the same test body in every one.
 | **Haskell** | pipes; TCP by gateway | no (programs only) | yes | yes | none (GHC ships no zlib) | gateway | gateway | gateway | supervised |
 | **R** | pipes (its own engine) | `okay_call` | yes | yes | zlib | no | no | no | timeout respawn, replay |
 
+The Compression column is what the far side SPEAKS. The default uses it
+over TCP only; on pipes and in-process it is used when a given asks for it
+(see [the wire's encoding](#the-wires-encoding-chosen-by-a-given)).
+
 The suites behind the rows:
-- **Python**: `TestPyPipes`, `TestPyPipesCbor`, `TestPyPipesOff`,
+- **Python**: `TestPyPipes`, `TestPyPipesCbor`, `TestPyPipesDeflate`,
   `TestGatewayPyTls` (the whole TLS suite, and TLS with a secret),
   `TestSupervised` (deadline, crash between choices, drift, stale ref).
 - **TypeScript**: `TestTsPipes`, `TestTsPipesCbor`, `TestGatewayTsAuth`.
@@ -628,7 +651,7 @@ The suites behind the rows:
   `TestRustTlsFeature`.
 - **Haskell**: `TestHsPipes`, `TestHsPipesCbor` (DEFLATE refused by name),
   `TestGatewayHs` (CBOR through the gateway).
-- **R**: `TestRWireDefault`, `TestRWireOff`, `TestRWireCbor`,
+- **R**: `TestRWireDefault`, `TestRWireZlib`, `TestRWireCbor`,
   `TestRWireCborPlain`, `TestRReplay`.
 
 Two cells are generic rather than tested per language, and the table says

@@ -171,6 +171,15 @@ mechanism:
 - [x] In-process links (FFM, wasm) do not take the preference: a message
       there is a memory copy, and compressing it is pure cost. The strict
       `Deflate` given still applies to them.
+- [x] Neither do PIPES (wire-compression-measured): the preference is
+      taken on a NETWORK link only (`WireLink.network`, true for TCP).
+      Measured, a pipe's bandwidth never pays back DEFLATE's CPU, and a
+      short message grows. An explicit `Deflate`/`Zlib` given still
+      compresses a pipe. This narrows the operator's default above on
+      the numbers in Results.
+- [x] The JDK codec keeps its Deflaters and Inflaters (a pool of four per
+      given, reset between messages); one that refused a message is
+      ended, not kept. An empty message inflates.
 - [x] R on the same givens (wire-givens-r). The codecs move to okay-codec
       (`okay.codec.WireFormat`, `WireCompression`, `WireCbor`, and the
       framing and negotiation both engines share), so okay-r's
@@ -363,6 +372,15 @@ replays a program.
   PREFERENCE, "deflate where both sides have it", and a fallback is what
   a preference means. `ForeignWorker.wire` makes the outcome visible
   rather than silent.
+- **The default compresses where bytes are the cost, not where CPU is**
+  (wire-compression-measured). Refused alternatives: (1) a SIZE
+  threshold on every link (compress only past ~512 bytes): it needs a
+  per-message flag byte in five workers, and on a pipe even the large
+  message loses (0.64 -> 1.5 ms for bytes that cost nothing to move); on
+  a network the one message class that loses, the short one, loses two
+  bytes and ~2.5 us, below a network's round trip. (2) Keeping DEFLATE on
+  pipes and only pooling the codec: the pool took a short message from
+  4.1 to 3.1 us, still 5x the plain 0.6 us — the rest is zlib itself.
 
 ## Results
 
@@ -637,3 +655,30 @@ replays a program.
     and the host still refused, because the gateway could not prove the
     secret back.
 
+- wire-compression-measured (2026-09-24).
+  - `WireCodecBench` (okay-py's first JMH): JSON and CBOR x none,
+    DEFLATE and the pre-pool DEFLATE (`deflate-fresh`, kept as the
+    lane's control), on a small (`continue` step), a medium (40
+    arguments) and a large (2000 rows) message. JSON, load ~40:
+
+    | message | bytes plain/deflate | plain | deflate (pooled) | deflate-fresh | B/op pooled vs fresh |
+    |---|---|---|---|---|---|
+    | small | 51 / 53 | 0.80 us | 3.1 us | 4.1 us | 2 384 vs 18 912 |
+    | medium | 1 620 / 355 | 14 us | 22.8 us | 23.8 us | 57 864 vs 70 616 |
+    | large | 144 811 / 17 134 | 0.64 ms | 1.5 ms | 3.7 ms (+-5.4) | 3.65 MB vs 3.61 MB |
+
+    CBOR's bytes, from the first run: 34/36, 1 286/395, 110 581/18 332.
+  - The default preference is taken on network links only
+    (`WireLink.network`); `WireNegotiation.choose` takes `network` in
+    place of `inProcess`. Pipes, R's included, settle on `json/none`.
+  - Tests: `TestWireGivens` (a pipe fake stays plain, an explicit
+    Deflate still compresses it; the pool round-trips mixed sizes, an
+    empty message, a refusal followed by a whole message, and 64
+    concurrent messages); live: `TestGoTcp` asserts `json/deflate` with
+    no import, `TestPyPipes` `json/none`, `TestPyPipesDeflate` (was
+    `...Off`), `TestRWireZlib` (was `TestRWireOff`), `TestRWireCbor` now
+    asks for zlib by name.
+  - Found: an EMPTY message was refused as "cut short" by the old
+    inflater too (its last step yields nothing and finishes together).
+  - Mutants: the network condition removed (five fake-link tests red),
+    and the Deflater kept without a reset (the pool test red).

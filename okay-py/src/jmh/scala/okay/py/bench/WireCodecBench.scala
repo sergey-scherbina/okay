@@ -28,7 +28,7 @@ class WireCodecBench:
   @Param(Array("json", "cbor"))
   var format: String = "json"
 
-  @Param(Array("none", "deflate"))
+  @Param(Array("none", "deflate", "deflate-fresh"))
   var compress: String = "none"
 
   private var msg: Json = Json.JNull
@@ -44,9 +44,41 @@ class WireCodecBench:
       case _ => Json.JObj(Vector("id" -> Json.JNum(43), "ok" -> Json.JArr(Vector.tabulate(2000)(i =>
         Json.JObj(Vector("row" -> Json.JNum(i), "name" -> Json.JStr(s"customer number $i"), "balance" -> Json.JNum(i * 3.5), "active" -> Json.JBool(i % 3 == 0)))))))
     fmt = if format == "cbor" then WireFormat.Cbor.cbor else WireFormat.json
-    cmp = if compress == "deflate" then WireCompression.Deflate.deflate else WireCompression.Off.off
+    cmp = compress match
+      case "deflate" => WireCompression.Deflate.deflate
+      case "deflate-fresh" => WireCodecBench.Fresh
+      case _ => WireCompression.Off.off
     val wire = cmp.compress(fmt.encode(msg))
     println(s"\nWIRE-BYTES size=$size format=$format compress=$compress bytes=${wire.length}")
 
   /** one message out and back in: what each side of the wire does to it */
   @Benchmark def roundTrip(): Json = fmt.decode(cmp.decompress(cmp.compress(fmt.encode(msg))))
+
+object WireCodecBench:
+  /** the codec as it was before wire-compression-measured, kept as the lane's
+   * control: a new Deflater and Inflater, with 8 KB buffers, per message */
+  object Fresh extends WireCompression:
+    def name = "deflate"
+    def compress(bytes: Array[Byte]): Array[Byte] =
+      val d = java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, true)
+      try
+        d.setInput(bytes)
+        d.finish()
+        val out = java.io.ByteArrayOutputStream()
+        val buf = new Array[Byte](8192)
+        while !d.finished() do out.write(buf, 0, d.deflate(buf))
+        out.toByteArray
+      finally d.end()
+    def decompress(bytes: Array[Byte]): Array[Byte] =
+      val i = java.util.zip.Inflater(true)
+      try
+        i.setInput(bytes)
+        val out = java.io.ByteArrayOutputStream()
+        val buf = new Array[Byte](8192)
+        while !i.finished() do
+          val n = i.inflate(buf)
+          if n == 0 && (i.needsInput() || i.needsDictionary()) then
+            throw IllegalStateException("a DEFLATE message ended before its data did (cut short?)")
+          out.write(buf, 0, n)
+        out.toByteArray
+      finally i.end()

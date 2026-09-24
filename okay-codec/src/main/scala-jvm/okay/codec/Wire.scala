@@ -54,10 +54,11 @@ object WireCompression:
    * deflate, then zlib (what R can check natively), then the plain wire —
    * on a NETWORK link only. On a pipe and in-process the plain wire:
    * measured (WireCodecBench, wire-compression-measured), DEFLATE made a
-   * short message LONGER (51 -> 53 bytes) and every message slower
-   * (0.56 -> 4.9 us small, 13 -> 32 us medium), which a pipe's bandwidth
-   * never pays back; over a network the medium message's 1620 -> 355
-   * bytes does. An explicit `Deflate`/`Zlib` still compresses anywhere. */
+   * short message LONGER (51 -> 53 bytes) and every round trip slower
+   * (+2.3 us small, +9 us medium, +0.9 ms large, pooled), which a pipe's
+   * bandwidth never pays back; over a network the medium message's
+   * 1620 -> 355 bytes does. An explicit `Deflate`/`Zlib` still compresses
+   * anywhere. */
   given preferred: WireCompression = new Zipped(nowrap = true):
     override def fallback: Option[WireCompression] = Some(new Zipped(nowrap = false):
       override def fallback: Option[WireCompression] = Some(Off.off))
@@ -85,9 +86,10 @@ object WireCompression:
    * inflateRaw, Rust's flate2), or zlib-wrapped, which R's memCompress is */
   private class Zipped(nowrap: Boolean) extends WireCompression:
     def name = if nowrap then "deflate" else "zlib"
-    // a Deflater holds ~256 KB of native zlib state, and making one per
-    // message was most of a short message's cost (wire-compression-measured):
-    // a few are kept, and reset between messages. A pool rather than a
+    // a Deflater holds ~256 KB of native zlib state, and a new one per
+    // message with 8 KB buffers cost a short message 18.9 KB of garbage per
+    // round trip; kept and reset, 2.4 KB, and 4.1 -> 3.1 us
+    // (WireCodecBench, wire-compression-measured). A pool rather than a
     // ThreadLocal, because a virtual thread per call would pin one each.
     private val deflaters = java.util.concurrent.ConcurrentLinkedQueue[java.util.zip.Deflater]()
     private val inflaters = java.util.concurrent.ConcurrentLinkedQueue[java.util.zip.Inflater]()

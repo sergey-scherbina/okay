@@ -334,10 +334,11 @@ now it crosses as an int.
   program replays from its journal, but a recovery that continues live
   on a fresh process meets a handle that process never held, and is
   refused by name.
-- **Every crossing is serialised.** By default, values cross as JSON,
-  compressed where the far side can decompress it (Python: raw DEFLATE;
-  R: zlib). An import picks CBOR or turns compression off, for Python
-  and R alike: see
+- **Every crossing is serialised.** By default, values cross as plain
+  JSON on a child's pipes, and are compressed only over a network, where
+  the far side can decompress it (raw DEFLATE, or zlib for R): on a pipe
+  compression costs CPU and saves nothing. An import picks CBOR, or asks
+  for compression on a pipe too, for Python and R alike: see
   [the wire's encoding](one-language.md#the-wires-encoding-chosen-by-a-given).
   For big frames, [okay-r](modules/okay-r.md) records what that costs.
 
