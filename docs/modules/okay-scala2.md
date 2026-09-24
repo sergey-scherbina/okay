@@ -7,7 +7,7 @@ lambdas, pattern matches) and the real library runs underneath.
 
 | | |
 |---|---|
-| `Eff[-R, A]` | a program over an OPEN row of effects, spelled as an intersection: `Eff[State[Int] with Writer[String], A]`. The operations and handlers live on the capabilities' companions: `State`, `Reader`, `Writer`, `Throws`, `Async` |
+| `Eff[-R, A]` | a program over an OPEN row of effects, spelled as an intersection of capabilities joined by `+` — an alias for `with` that the user declares once, `type +[R, S] = R with S` ([scala2.md](../scala2.md), section 3): `Eff[State[Int] + Writer[String], A]`. The operations and handlers live on the capabilities' companions: `State`, `Reader`, `Writer`, `Throws`, `Async` |
 | `Cont[A, S, R]` | delimited continuations: `Cont.shift`, `Cont.reset`, `Cont.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
 | `Op`, `Effect[F]`, `Handler[F, R, B]` | YOUR OWN effect, declared in plain Scala 2: operations extend `Op`, `object Console extends Effect[Console]` is the whole declaration, and a handler gets each operation together with its continuation |
 | `Source[A]` | streams: `Source(...)`, `range`, `unfold`, `fromEff`; `map`, `filter`, `take`, `takeWhile`, `drop`, `zipWithIndex`, `++`, `merge`; `runCollect`, `runForeach`, `runFold` |
@@ -107,11 +107,14 @@ Everything a 2.13 program needs is in one package: `import okay.scala2._`.
 The types there have the same names as the Scala 3 types they wrap.
 Scala 2 cannot spell a union type, so the effect row is written as an
 intersection of capabilities. This is the same shape as the
-environment `R` in ZIO 1. The code below is copied from
+environment `R` in ZIO 1. `+` is `with`, an alias declared once in the
+user's own package object (`type +[R, S] = R with S`; section 3 of
+[scala2.md](../scala2.md)), so the row reads as okay's own. The code
+below is copied from
 `scala2/okay-scala2/probe/src/test/scala/TestEffFromScala2.scala`:
 
 ```scala
-val prog: Eff[State[Int] with Writer[String], Int] = for {
+val prog: Eff[State[Int] + Writer[String], Int] = for {
   n <- State.get[Int]
   _ <- Writer.tell("saw " + n)
   _ <- State.put(n + 1)
@@ -135,7 +138,7 @@ assertEquals(Eff.run(State.run(1)(Writer.run(prog))), (2, (Vector("saw 1", "now 
 - `Eff.runAsync` runs a program whose only remaining effect is `Async`.
   `Async.attempt` turns a throw into a `Throws[Throwable]` failure.
 - `Eff.fromProg` and `Eff.toProg` convert between `Prog` and
-  `Eff[Async with Throws[Throwable], A]`; they are the same program.
+  `Eff[Async + Throws[Throwable], A]`; they are the same program.
 
 Underneath are okay's own `Free` and okay's own handlers. On the Scala 2
 side the row is only a phantom type, so the facade needs ONE cast: it
@@ -193,7 +196,7 @@ def console[R, B](out: ListBuffer[String], input: String): Handler[Console, R, B
     }
   }
 
-val prog: Eff[Effect[Console] with State[Int], String] = for {
+val prog: Eff[Effect[Console] + State[Int], String] = for {
   name <- Console.send(ReadLn)
   _ <- State.put(name.length)
   _ <- Console.send(PrintLn("hi " + name))
@@ -223,7 +226,7 @@ assertEquals(Eff.run(State.run(0)(handled)), (3, "ada"))
 
 okay's core `Source[A]` is a program that tells its elements and may
 perform `Async` between them. In Scala 2 terms that is
-`Eff[Writer[A] with Async, Unit]`. So there are two ways to get a
+`Eff[Writer[A] + Async, Unit]`. So there are two ways to get a
 `Source`: build it from the constructors, or write it as an ordinary
 for-comprehension and wrap it with `Source.fromEff`. The code below is
 copied from `scala2/okay-scala2/probe/src/test/scala/TestSourceFromScala2.scala`:
@@ -234,7 +237,7 @@ assertEquals(collect(nats.map(_ * 2).take(4)), Vector(0, 2, 4, 6))
 ```
 
 ```scala
-val lines: Eff[Writer[String] with Async, Unit] = for {
+val lines: Eff[Writer[String] + Async, Unit] = for {
   a <- read()
   _ <- Writer.tell("line " + a)
   b <- read()
@@ -300,8 +303,8 @@ intersection; the Scala 3 source writes `&`.
 `flatMap[R1 <: R, B](f: A => Eff[R1, B]): Eff[R1, B]`.
 `object Eff`: `pure[A](a: A): Eff[Any, A]`, `run[A](e: Eff[Any, A]): A`,
 `runAsync[A](e: Eff[Async, A]): A`,
-`fromProg[A](p: Prog[A]): Eff[Async with Throws[Throwable], A]`,
-`toProg[A](e: Eff[Async with Throws[Throwable], A]): Prog[A]`.
+`fromProg[A](p: Prog[A]): Eff[Async + Throws[Throwable], A]`,
+`toProg[A](e: Eff[Async + Throws[Throwable], A]): Prog[A]`.
 
 | capability | operations | handler |
 |---|---|---|
@@ -309,7 +312,7 @@ intersection; the Scala 3 source writes `&`.
 | `Reader[E]` | `ask[E]: Eff[Reader[E], E]` | `run[E, R, A](env: E)(e: Eff[Reader[E] with R, A]): Eff[R, A]` |
 | `Writer[W]` | `tell[W](w: W): Eff[Writer[W], Unit]` | `run[W, R, A](e: Eff[Writer[W] with R, A]): Eff[R, (Vector[W], A)]` |
 | `Throws[E]` | `raise[E, A](e: E): Eff[Throws[E], A]` | `run[E, R, A](e: Eff[Throws[E] with R, A]): Eff[R, Either[E, A]]` |
-| `Async` | `delay[A](a: => A): Eff[Async, A]`, `attempt[A](a: => A): Eff[Async with Throws[Throwable], A]`, `fork[A](e: Eff[Async, A]): Eff[Async, Fiber[A]]`, `par[A, B](a, b): Eff[Async, (A, B)]`, `race[A](a, b): Eff[Async, A]`, `sleep(millis: Long): Eff[Async, Unit]`, `timeout[A](millis: Long)(e): Eff[Async, Option[A]]` | `Eff.runAsync` |
+| `Async` | `delay[A](a: => A): Eff[Async, A]`, `attempt[A](a: => A): Eff[Async + Throws[Throwable], A]`, `fork[A](e: Eff[Async, A]): Eff[Async, Fiber[A]]`, `par[A, B](a, b): Eff[Async, (A, B)]`, `race[A](a, b): Eff[Async, A]`, `sleep(millis: Long): Eff[Async, Unit]`, `timeout[A](millis: Long)(e): Eff[Async, Option[A]]` | `Eff.runAsync` |
 
 **Your own effect** — `trait Op[+A]`;
 `abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]])` with
@@ -330,11 +333,11 @@ intersection; the Scala 3 source writes `&`.
 `merge(that: Source[A])`; `runCollect: Eff[Async, Vector[A]]`,
 `runForeach(f: A => Eff[Async, Unit]): Eff[Async, Unit]`,
 `runFold[S](z: S)(f: (S, A) => S): Eff[Async, S]`,
-`toEff: Eff[Writer[A] with Async, Unit]`. `object Source`:
+`toEff: Eff[Writer[A] + Async, Unit]`. `object Source`:
 `apply[A](as: A*)`, `fromIterable[A](as: Iterable[A])`, `empty[A]`,
 `range(from: Long, until: Long): Source[Long]`,
 `unfold[S, A](s: S)(f: S => Option[(A, S)])`,
-`fromEff[A](e: Eff[Writer[A] with Async, Unit])`.
+`fromEff[A](e: Eff[Writer[A] + Async, Unit])`.
 
 **`Fiber[A]`** — `join: Eff[Async, A]`,
 `joinEither: Eff[Async, Either[Throwable, A]]`,
@@ -364,7 +367,7 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 
 **SQL** (module `okay-scala2-sql`) — `Db.jdbc(connection: java.sql.Connection, fetchSize: Int = 64): Db`, `Db(sql: okay.sql.Sql): Db`;
 `rows[A](query: String, params: SqlValue*)(implicit Schema[A]): Source[Either[Bad, A]]`, `rowsOf[A, P](query, p: P)`;
-`all[A](query, params: SqlValue*): Eff[Async with Throws[Bad], Vector[A]]`, `allOf[A, P](query, p)`;
+`all[A](query, params: SqlValue*): Eff[Async + Throws[Bad], Vector[A]]`, `allOf[A, P](query, p)`;
 `update(query, params: SqlValue*): Eff[Async, Long]`, `updateOf[P](query, p)`;
 `verify[A](query): Eff[Async, Vector[Drift]]`;
 `transaction[A](isolation: Isolation = ReadCommitted, readOnly: Boolean = false)(body: Db => Eff[Async, A]): Eff[Async, A]`.

@@ -396,8 +396,9 @@ object KV extends Effect[KV]
   operation together with its continuation, and it has the full
   power of section 5's handlers: resume, abort, or resume more than
   once.
-- **Rows.** A row is written as an intersection,
-  `Eff[Effect[KV] with State[Int], A]`, where section 3 wrote a union.
+- **Rows.** A row is written as an intersection joined by `+` (an
+  alias for `with`, declared once in the user's code),
+  `Eff[Effect[KV] + State[Int], A]`, where section 3 wrote a union.
   Theory ch. 13 explains why it is the same row.
 - **Recording and interpreting.** The recording decorator (section 6)
   and interpreting into other effects (section 7) carry over as

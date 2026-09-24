@@ -569,46 +569,57 @@ conflict, not an interop. okay-direct and okay-staging are Scala 3
 metaprogramming.
 
 ## Stage 16 — the row alias `+`, in Scala 2 code (2026-09-24)
-Operator: "Алиас напиши в самом коде на скале 2". okay writes a row
-`State % Int + Console`; the facade wrote `State[Int] with
-Effect[Console]`. The alias is
+Operator: "Алиас напиши в самом коде на скале 2", then "аналог моего
+`+[F[_],G[_]]` так чтобы он в скала 2 для окей работал везде вместо
+with". okay writes a row `State % Int + Writer % String`; the facade
+wrote `State[Int] with Writer[String]`. The alias is
 
 ```
-type +[R, G[_]] = R with Effect[G]
+type +[R, S] = R with S
 ```
 
-a ROW on the left (kind `*`), an effect's operation language on the
-right (kind `* -> *`), so `State[Int] + Console + Choose` chains left
-to right. It is declared in Scala 2 source — the probe's
-`package object scala2probe` — and the guide tells a user to declare
-it once in their own package object. It is not in the facade.
+kind `*` on both sides, so it stands wherever `with` stood: two
+built-ins (`State[Int] + Writer[String]`), a user effect beside a
+built-in (`Effect[Console] + State[Int]`), two user effects, and a
+chain (`Reader[Int] + State[Int] + Throws[String]`, left-associative,
+the same flat intersection to scalac). It is declared in Scala 2
+source — the probe's `package object scala2probe` — and the guide
+tells a user to declare it once in their own package object. It is
+not in the facade: a Scala 3 top-level alias is invisible to scalac
+2.13 (`okay.Chunk`, stage 12), and the operator asked for it in
+Scala 2 code.
 
-Why not the core's shape `+[F[_], G[_]]` (measured 2026-09-24, scalac
-2.13.18 on a model of the facade's signatures, before this stage):
-- a Scala 2 alias cannot ANSWER a higher kind:
+Two other shapes were tried first (scalac 2.13.18, 2026-09-24):
+- the core's `+[F[_], G[_]]`, on a model of the facade's signatures:
+  a Scala 2 alias cannot ANSWER a higher kind —
   `type +[F[_], G[_]] = ({ type L[A] = F[A] with G[A] })#L` is refused
-  with "type L takes type parameters". The projection `#L` has to be
-  written at every use: `Can[((Console + Log)#L + Db)#L]`.
-- even written that way, with a covariant phantom `Can[+F[_]]`,
+  with "type L takes type parameters", so the projection `#L` has to
+  be written at every use, `Can[((Console + Log)#L + Db)#L]`. And
+  even written that way, with a covariant phantom `Can[+F[_]]`,
   WIDENING works and HANDLING does not: `handle` wants
   `Can[Console] with Can[Log] with Can[Db]` and is given
   `Can[[X]Console[X] with Log[X] with Db[X]]`. Scala 3 simplifies
-  `C[A] & C[B]` to `C[A & B]` for a covariant `C`; 2.13 does not.
-  So the intersection has to stand OUTSIDE `Effect[...]`, which is
-  what `+[R, G[_]]` does.
+  `C[A] & C[B]` to `C[A & B]` for a covariant `C`; 2.13 does not. So
+  the intersection has to stand OUTSIDE `Effect[...]`.
+- `+[R, G[_]] = R with Effect[G]`, this stage's first draft: it spares
+  the `Effect[...]` around a user effect, but its right side is kind
+  `* -> *` and the built-ins (`State[S]`, `Writer[W]`, `Throws[E]`,
+  `Async`, `Choose`) are kind `*`, so `State[Int] with Writer[String]`
+  — nine of the twelve rows in the probe — stayed `with`. Scala 2 has
+  no overloading of type aliases, one name cannot take both kinds,
+  and the operator wants `+` everywhere. The alias over kind `*` is
+  the one that covers every row, at the price of writing
+  `Effect[Console]` rather than `Console` — which is what the row
+  said already.
 
-What it does not cover: the built-in capabilities (`State[Int]`,
-`Writer[String]`, `Throws[E]`, `Async`, `Choose`) are already kind
-`*`, so a row made only of them stays `with`, and a built-in can only
-stand LEFT of a `+`. A row of one user effect stays `Effect[KV]`.
-
-- [ ] the alias in `package object scala2probe`, compiled under
+- [x] the alias in `package object scala2probe`, compiled under
       `-Xlint -Werror`
-- [ ] it IS the intersection: `=:=` both ways, for one `+` and a chain
-- [ ] a program typed at a `+` row is handled effect by effect, the
+- [x] it IS the intersection: `=:=` both ways, for one `+` and a chain
+- [x] a program typed at a `+` row is handled effect by effect, the
       residual row inferred with no annotation
-- [ ] every Scala 2 row in the probe and the docs that names a user
-      effect beside another capability is written with `+`
+- [x] every Scala 2 row in the probe and the docs is written with `+`
+      (a compiler message quoted verbatim, `State[Int] with Any`, is
+      scalac's spelling and stays)
 
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
@@ -915,3 +926,14 @@ stand LEFT of a `+`. A row of one user effect stays `Effect[KV]`.
   "every module the build declares has a page". It now knows `scala2/`
   as a grouping directory, and a control run (one facade page removed)
   failed naming that module.
+- STAGE 16 LANDED (2026-09-24, scala2-row-alias). `type +[R, S] = R with
+  S` in the probe's package object; every Scala 2 row in the probe and
+  the docs written with it; `TestRowAliasFromScala2` green under
+  `-Xlint -Werror`. Measured on the way: a left-associative chain
+  `Reader[Config] + State[Int] + Throws[String]` is `(A with B) with C`
+  to the parser and a flat `A with B with C` to scalac — `=:=` holds
+  both ways and the residual row is still inferred through it with
+  no annotation (TestEffFromScala2 "Reader, State and Throws", the
+  guide's `withdraw`, unchanged but for the spelling). The first draft
+  of this stage, `+[R, G[_]]`, was replaced before it was used: it
+  could not spell a row of two built-ins (see the stage).

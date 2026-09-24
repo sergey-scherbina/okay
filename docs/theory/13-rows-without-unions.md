@@ -45,7 +45,11 @@ an INTERSECTION of requirements. That is the familiar law for function
 types, `(F ∨ G) → X ≅ (F → X) ∧ (G → X)`, which is sound for
 intersection and union types in subtyping systems
 \[[Dunfield & Pfenning 2003](#ref-dunfield-2003)\]. Scala 2 has
-intersections (`with`). Brachthäuser, Schuster and Ostermann build a
+intersections (`with`), and a one-line alias in the user's own code,
+`type +[R, S] = R with S`, lets the row be WRITTEN as chapter 5 writes
+it, `State[Int] + Writer[String]` — the `+` of Scala 3 joins two
+operation languages, this one two requirements, and the rest of this
+chapter is why they are the same row. Brachthäuser, Schuster and Ostermann build a
 whole effect language on this reading, *effects as capabilities*
 \[[2020](#ref-brachthauser-2020)\], and ZIO 1's environment `R` is the
 same shape in Scala 2 practice.
@@ -61,7 +65,7 @@ final class Eff[-R, A] private (private val body: EffBody[A])      // okay-scala
 
 `R` is a requirement, so `Eff` is CONTRAVARIANT in it. Requiring less
 is a subtype of requiring more:
-`Eff[State[Int], A] <: Eff[State[Int] with Writer[String], A]`. So a
+`Eff[State[Int], A] <: Eff[State[Int] + Writer[String], A]`. So a
 single-effect operation fits into any wider program without an
 injection, a widening call, or a search. That is exactly what
 `RowLift.In` gives the Scala 3 API, and here subtyping gives it for

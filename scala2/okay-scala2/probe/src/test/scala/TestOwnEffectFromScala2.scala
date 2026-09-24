@@ -25,7 +25,7 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
     }
 
   test("a resumptive effect beside State, in one program") {
-    val prog: Eff[Effect[Console] with State[Int], String] = for {
+    val prog: Eff[Effect[Console] + State[Int], String] = for {
       name <- Console.send(ReadLn)
       _ <- State.put(name.length)
       _ <- Console.send(PrintLn("hi " + name))
@@ -63,7 +63,7 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
   }
 
   test("two user effects in one row, each handled by its own object") {
-    val prog: Eff[Effect[Console] with Effect[Choose], String] = for {
+    val prog: Eff[Effect[Console] + Effect[Choose], String] = for {
       b <- Choose.send(Flip)
       _ <- Console.send(PrintLn("flipped " + b))
     } yield if (b) "heads" else "tails"

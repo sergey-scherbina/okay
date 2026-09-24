@@ -6,7 +6,7 @@ import okay.scala2._
  * the row an intersection (specs/scala2-facade.md, stage 2) */
 class TestEffFromScala2 extends munit.FunSuite {
 
-  val prog: Eff[State[Int] with Writer[String], Int] = for {
+  val prog: Eff[State[Int] + Writer[String], Int] = for {
     n <- State.get[Int]
     _ <- Writer.tell("saw " + n)
     _ <- State.put(n + 1)
@@ -20,7 +20,7 @@ class TestEffFromScala2 extends munit.FunSuite {
   }
 
   test("Reader, State and Throws: a raise stops the program, the state outside it still answers") {
-    def step(limit: Int): Eff[Reader[Int] with State[Int] with Throws[String], Int] = for {
+    def step(limit: Int): Eff[Reader[Int] + State[Int] + Throws[String], Int] = for {
       max <- Reader.ask[Int]
       _ <- State.modify[Int](_ + 1)
       n <- State.get[Int]

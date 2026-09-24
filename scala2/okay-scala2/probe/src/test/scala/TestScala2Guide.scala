@@ -34,9 +34,9 @@ class TestScala2Guide extends munit.FunSuite {
     def count(word: String): Eff[State[Map[String, Int]], Unit] =
       State.modify[Map[String, Int]](m => m.updated(word, m.getOrElse(word, 0) + 1))
 
-    def countAll(text: String): Eff[State[Map[String, Int]] with Writer[String], Int] = {
+    def countAll(text: String): Eff[State[Map[String, Int]] + Writer[String], Int] = {
       val words = text.split("\\s+").toList.filter(_.nonEmpty)
-      words.foldLeft(Eff.pure(0): Eff[State[Map[String, Int]] with Writer[String], Int]) { (acc, w) =>
+      words.foldLeft(Eff.pure(0): Eff[State[Map[String, Int]] + Writer[String], Int]) { (acc, w) =>
         for {
           n <- acc
           _ <- count(w)
@@ -54,7 +54,7 @@ class TestScala2Guide extends munit.FunSuite {
   test("§3 reader and throws") {
     final case class Config(limit: Int)
 
-    def withdraw(amount: Int): Eff[Reader[Config] with State[Int] with Throws[String], Int] = for {
+    def withdraw(amount: Int): Eff[Reader[Config] + State[Int] + Throws[String], Int] = for {
       cfg <- Reader.ask[Config]
       balance <- State.get[Int]
       _ <- if (amount > cfg.limit) Throws.raise[String, Unit]("over the limit")
@@ -71,7 +71,7 @@ class TestScala2Guide extends munit.FunSuite {
   }
 
   test("§3 the handler order decides what a failure keeps") {
-    val p: Eff[State[Int] with Throws[String], Int] =
+    val p: Eff[State[Int] + Throws[String], Int] =
       State.put(7).flatMap(_ => Throws.raise[String, Int]("no"))
     assertEquals(Eff.run(State.run(0)(Throws.run(p))), (7, Left("no")))
     assertEquals(Eff.run(Throws.run(State.run(0)(p))), Left("no"))
@@ -89,7 +89,7 @@ class TestScala2Guide extends munit.FunSuite {
 
   // ---- §10 the unhandled-effect message, as the guide quotes it
 
-  val stillWriting: Eff[State[Int] with Writer[String], Int] = State.get[Int]
+  val stillWriting: Eff[State[Int] + Writer[String], Int] = State.get[Int]
 
   test("§10 the message for an unhandled effect") {
     val errors = compileErrors("Eff.run(State.run(1)(stillWriting))")

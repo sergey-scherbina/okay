@@ -190,7 +190,21 @@ your own effects next to it, use `Eff`.
 ## 3. Several effects in one program: `Eff`
 
 `Eff[R, A]` is a program that answers `A` and needs the effects `R`.
-`R` is written as an intersection of **capabilities**:
+`R` is an intersection of **capabilities**, written with `+` the way
+okay writes a row: `State[Int] + Writer[String]` for okay's
+`State % Int + Writer % String`. `+` is one line of your own code,
+declared once in a package object of your project (a Scala 3
+top-level alias is invisible to scalac 2.13, so the library cannot
+carry it for you):
+
+```scala
+type +[R, S] = R with S
+```
+
+It is an alias and nothing more: `R + S` IS `R with S`, the same type,
+so a chain `Reader[Config] + State[Int] + Throws[String]` is the plain
+intersection of the three, and `with` still works wherever you meet
+it. The capabilities:
 
 | capability | operations | handler |
 |---|---|---|
@@ -209,9 +223,9 @@ a program that also needs `Writer`:
 def count(word: String): Eff[State[Map[String, Int]], Unit] =
   State.modify[Map[String, Int]](m => m.updated(word, m.getOrElse(word, 0) + 1))
 
-def countAll(text: String): Eff[State[Map[String, Int]] with Writer[String], Int] = {
+def countAll(text: String): Eff[State[Map[String, Int]] + Writer[String], Int] = {
   val words = text.split("\\s+").toList.filter(_.nonEmpty)
-  words.foldLeft(Eff.pure(0): Eff[State[Map[String, Int]] with Writer[String], Int]) { (acc, w) =>
+  words.foldLeft(Eff.pure(0): Eff[State[Map[String, Int]] + Writer[String], Int]) { (acc, w) =>
     for {
       n <- acc
       _ <- count(w)
@@ -241,7 +255,7 @@ idea with an error in the middle:
 ```scala
 final case class Config(limit: Int)
 
-def withdraw(amount: Int): Eff[Reader[Config] with State[Int] with Throws[String], Int] = for {
+def withdraw(amount: Int): Eff[Reader[Config] + State[Int] + Throws[String], Int] = for {
   cfg <- Reader.ask[Config]
   balance <- State.get[Int]
   _ <- if (amount > cfg.limit) Throws.raise[String, Unit]("over the limit")
@@ -395,7 +409,7 @@ assertEquals(Eff.runAsync(total), 13)
 - Consumers: `runCollect`, `runForeach`, `runFold`. Each returns an
   `Eff[Async, _]`, so nothing runs until `Eff.runAsync`.
 - A source can also be written as a program:
-  `Source.fromEff(e: Eff[Writer[A] with Async, Unit])`, where each
+  `Source.fromEff(e: Eff[Writer[A] + Async, Unit])`, where each
   `Writer.tell` emits an element. `toEff` converts back.
 - `take` stops pulling once it has enough, so it works on an
   infinite `unfold`.
@@ -629,7 +643,7 @@ assertEquals(Eff.runAsync(Throws.run(prog)), Right((2L, Vector(Person(1, "Ada Lo
 - **A row that does not decode is data, not a throw.** In `rows` (a
   stream) it is a `Left(Bad)`. In `all` the first one fails the
   program as a typed `Throws[Bad]`, so `all` answers
-  `Eff[Async with Throws[Bad], Vector[A]]`, and `Throws.run` turns
+  `Eff[Async + Throws[Bad], Vector[A]]`, and `Throws.run` turns
   that into an `Either`.
 - **`db.transaction()(tx => ...)`** commits when the body completes and
   rolls back when it fails. Underneath is okay-sql's `Typed.transact`
@@ -1540,7 +1554,7 @@ Postgres' own, with numbered placeholders (`$1, $2`) where JDBC writes
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
 |---|---|
-| `A ! (State % Int + Writer % String)` | `Eff[State[Int] with Writer[String], A]` |
+| `A ! (State % Int + Writer % String)` | `Eff[State[Int] + Writer[String], A]` |
 | `State.get[Int]`, `Writer.tell(w)` | the same names, on the companions in `okay.scala2` |
 | `State.run(s)(p)` / `State.handle(s)(p)` | `State.run(s)(p)`, which leaves the rest of the row |
 | `enum KV[+A] derives Effect` | `sealed trait KV[A] extends Op[A]` + `object KV extends Effect[KV]` |
@@ -1571,7 +1585,7 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 | `could not find package scala.annotation.internal` | the 3.9 stdlib is missing at compile time | append it (section 1) |
 | `NoClassDefFoundError: scala/reflect/Enum` | the 3.9 stdlib is missing at run time. On `sbt run` with everything else right, it means the `dependencyClasspathAsJars` line is missing | the whole block of section 1, both lines |
 | ``Expected `<project> / scalaVersion` to be 3.9.0 or later, but found 2.13.18`` | sbt found `scala-library:3.9.0` among the dependencies (SIP-51) | exclude it on the dependency (section 1); do NOT reach for `allowUnsafeScalaLibUpgrade`, which makes 3.9 the compile stdlib and gives the second error of this table |
-| `type mismatch` ... `required: okay.scala2.Eff[okay.scala2.State[Int] with Any,?]` (for a program over `State[Int] with Writer[String]` passed straight to `Eff.run(State.run(1)(...))`) | an effect is left unhandled (here `Writer`); scalac reports it at the handler, not at the missing one | handle it before `Eff.run` |
+| `type mismatch` ... `required: okay.scala2.Eff[okay.scala2.State[Int] with Any,?]` (for a program over `State[Int] + Writer[String]` passed straight to `Eff.run(State.run(1)(...))`) | an effect is left unhandled (here `Writer`); scalac reports it at the handler, not at the missing one | handle it before `Eff.run` |
 | `a type was inferred to be Any` at `X.handle(...)` | `handle` used for the last effect | use `X.run(...)` (section 5) |
 | `Unsupported Scala 3 union in bounds of type +; found in object okay.Effects$package` (at your `package` line) | code names a Scala 3 class whose CONSTRUCTOR mentions an effect row, such as `okay.http.Response`; or code writes `new` for a class whose METHODS do, such as `new okay.docs.TopicDocs[A](topic)`, because `new` makes the reader complete the whole class | use the `okay.scala2` type (`okay.scala2.Response`), or its factory (`Documents.onTopic`) — a factory that answers the class is fine: `Fs(root)` works where `new TopicDocs` does not |
 | `Unsupported Scala 3 generic tuple type scala.Tuple` | code names okay-http's `Route` | route by pattern matching (section 8b) |

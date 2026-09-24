@@ -1030,7 +1030,7 @@ and nothing else in the library casts for that reason:
   split is `msplit`'s, on the `Choose` side).
 - **`Rows.coerce` and `Effect.narrow`** (okay-scala2, Scala 2.13
   facade). On the Scala 2 side a row is a PHANTOM intersection of
-  capabilities (`Eff[State[Int] with Writer[String], A]`) that no
+  capabilities (`Eff[State[Int] + Writer[String], A]`) that no
   Scala 3 type follows, so every program is stored at one row,
   `Top[+X] = Any`, and `coerce` re-types it at the concrete union
   each handler handles. This is sound because handlers split by the
@@ -1069,7 +1069,7 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   `pure`, `map`, `flatMap`, `run(k)`.
 - **`Source[A]`** — the core's `Source` (`Unit ! (Writer % A +
   Async)`) as a class. `fromEff`/`toEff` convert to and from
-  `Eff[Writer[A] with Async, Unit]`.
+  `Eff[Writer[A] + Async, Unit]`.
 - **`Fiber[A]`, `Channel[A]`** — `Async.fork` returns a `Fiber`; a
   channel's `send`/`receive` are `Eff[Async, _]`.
 - **`Schemas`, `Json`, `JsonSchema`** (okay-scala2-codec) — `derives
@@ -1114,7 +1114,7 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   implemented directly in Scala 2, and a `Nav` stack runs in `UiApp.run`
   unchanged. Only `Nav.screen`, whose type is a union, needed a
   replacement.
-- **`Prog[A]`** — `Eff[Async with Throws[Throwable], A]` under a
+- **`Prog[A]`** — `Eff[Async + Throws[Throwable], A]` under a
   one-parameter name, with `run()`/`runEither()`. `Eff.fromProg` and
   `Eff.toProg` convert between the two.
 

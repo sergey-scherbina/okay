@@ -39,7 +39,7 @@ class TestChooseFromScala2 extends munit.FunSuite {
   }
 
   test("another effect in the rest of the row passes through the fair search, in order") {
-    val counted: Eff[Choose with Writer[String], Int] =
+    val counted: Eff[Choose + Writer[String], Int] =
       Choose.interleave(Writer.tell("a").flatMap(_ => Choose.from(1, 2)), Writer.tell("b").map(_ => 3))
     val (log, answers) = Eff.run(Writer.run(Choose.all(counted)))
     assertEquals(answers.toSet, Set(1, 2, 3))
@@ -47,7 +47,7 @@ class TestChooseFromScala2 extends munit.FunSuite {
   }
 
   test("State inside the search: each branch its own state; outside: one shared") {
-    val prog: Eff[Choose with State[Int], Int] = for {
+    val prog: Eff[Choose + State[Int], Int] = for {
       x <- Choose.from(1, 2)
       _ <- State.modify[Int](_ + x)
       s <- State.get[Int]
