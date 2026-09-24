@@ -599,6 +599,46 @@ handler alone, with its `Reader`, `State` or `Async` missing. So every
 transport carries the same `ask`/`resume` dialogue, and in-process each
 step is one function call.
 
+## Which language supports which layer
+
+One row per far side, one column per layer of the wire. "gateway" means
+the layer is the gateway's (`okay/py/gateway.py`), so the worker itself
+does nothing for it. Each cell names the suites that hold it; the
+conformance suite (`WireConformance`) is the same test body in every one.
+
+| | Links | `okay_call` | Programs as data | CBOR | Compression | TCP | `WireAuth` | TLS | Recovery |
+|---|---|---|---|---|---|---|---|---|---|
+| **Python** | pipes; TCP by gateway | `okay_call` | yes | yes | DEFLATE | gateway | gateway | gateway | supervised, replay |
+| **TypeScript** | pipes; TCP by gateway | `okay_call` | yes | yes | DEFLATE | gateway | gateway | gateway | supervised |
+| **Go** | pipes, TCP, WebAssembly | `okay.Call(c, …)` | yes | yes | DEFLATE | itself | itself | itself | supervised, reconnect, replay |
+| **Rust** | pipes, TCP, FFM, WebAssembly | `okay_call` (not on wasm) | yes | yes | DEFLATE | itself | itself | itself (`tls` feature) | supervised |
+| **Haskell** | pipes; TCP by gateway | no (programs only) | yes | yes | none (GHC ships no zlib) | gateway | gateway | gateway | supervised |
+| **R** | pipes (its own engine) | `okay_call` | yes | yes | zlib | no | no | no | timeout respawn, replay |
+
+The suites behind the rows:
+- **Python**: `TestPyPipes`, `TestPyPipesCbor`, `TestPyPipesOff`,
+  `TestGatewayPyTls` (the whole TLS suite, and TLS with a secret),
+  `TestSupervised` (deadline, crash between choices, drift, stale ref).
+- **TypeScript**: `TestTsPipes`, `TestTsPipesCbor`, `TestGatewayTsAuth`.
+- **Go**: `TestGoPipes`, `TestGoTcp`, `TestGoWasm` and their `Cbor` twins,
+  `TestGoTcpAuth`, `TestGoTcpTls`, `TestGoTcpSupervised` (the server
+  killed and restarted mid-program), and `TestForeignActivityGo`.
+- **Rust**: `TestRustPipes`, `TestRustTcp`, `TestRustFfm`, `TestRustWasm`
+  and their `Cbor` twins, `TestRustTcpAuth`, `TestRustTcpTls`,
+  `TestRustTlsFeature`.
+- **Haskell**: `TestHsPipes`, `TestHsPipesCbor` (DEFLATE refused by name),
+  `TestGatewayHs` (CBOR through the gateway).
+- **R**: `TestRWireDefault`, `TestRWireOff`, `TestRWireCbor`,
+  `TestRWireCborPlain`, `TestRReplay`.
+
+Two cells are generic rather than tested per language, and the table says
+which. `ForeignWorker.supervised`, with its replay of programs as data, is
+one class over every ForeignWorker link; its crash suites run on Python
+and Go. The gateway's TLS is one gateway for every stdio worker; the TLS
+suite runs through it on Python, and a secret on TypeScript. In-process
+links (FFM, WebAssembly) take no deadline, auth or TLS: there is nobody
+else on the line, and a call there cannot be abandoned.
+
 ## Limits
 
 - **R is not behind the gateway.** okay-r has its own engine

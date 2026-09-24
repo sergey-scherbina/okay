@@ -257,9 +257,12 @@ mechanism:
       build and environment, it ANNOUNCES what it speaks in the
       handshake, and a mismatch with the Scala side's givens is refused by
       name, never silently downgraded.
-- [ ] The conformance suite runs under each combination each far side
+- [x] The conformance suite runs under each combination each far side
       supports, and a table in the docs says which languages support
       which layer.
+      (wire-support-table, 2026-09-24: docs/one-language.md, "Which
+      language supports which layer", with the suites behind every row
+      and the two generic cells named as generic)
 
 ## Stage 7 — every language on the network (wire-gateway)
 
