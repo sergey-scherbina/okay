@@ -73,6 +73,23 @@ on Node with no process in between.
 - [x] Stage 3, okay called FROM TypeScript: `Ts.promise(program)` runs an
       `A ! Async` and hands TypeScript a `Promise` of its JSON value.
 
+## Stage 5 — TypeScript libraries used from okay in the browser (ts-browser-facades)
+
+The backlog's `polyglot-typescript` item 5, taken up at the operator's
+request (2026-09-24). The docs pointed to ScalablyTyped, and nothing was
+built or tested.
+
+- [x] A separate sbt build, `okay-ts-browser/`, depends on okay's JS
+      artifacts as a user's build would, and generates a facade from a
+      TypeScript library's `.d.ts` (`ScalablyTypedConverterGenSourcePlugin`).
+      The converter never loads in okay's own build.
+- [x] The library is used from okay programs: a function (its exception
+      as a value), a class given a Scala callback under the caller's
+      `Reader`, a `Promise` awaited in `Async` (rejection as failure).
+- [x] The facade is typed: a wrong argument does not compile
+      (`compileErrors`), and changing the library's `.d.ts` breaks the
+      Scala code that misuses it (the mutant, after `clean`).
+
 ## Decisions
 
 - **Node's own TypeScript, no build step.** Node runs `.ts` by stripping
@@ -111,3 +128,21 @@ on Node with no process in between.
   - Found on the way: `JSON.stringify` is typed `String` but answers
     `undefined` for `undefined`, so the match has to be over `Any`.
     Matching over `String` warned that the other case was unreachable.
+
+- Stage 5 (ts-browser-facades, 2026-09-24): `okay-ts-browser/`, with
+  sbt-converter 1.0.0-beta45 on sbt-scalajs 1.22 and Scala 3.9. Found
+  while building it:
+  - The plain and ExternalNpm plugins compile the facades THEMSELVES,
+    with a compiler that predates Scala 3.9's standard library
+    (`NoSuchMethodError: scala.Option.orNull`, on the `std` facade). The
+    GenSource plugin gives the sources to the project's own compiler,
+    which is the road that works.
+  - `stStdlib := List("es2015")`: the `std` facade is 2229 files with the
+    DOM and a handful without it, for a library that needs `Promise`
+    only.
+  - The conversion is cached against `npmDependencies`. A `file:`
+    dependency's `.d.ts` can change without the line changing, so the
+    first mutant stayed GREEN until `clean`, even with the package
+    version bumped. Documented, not worked around: a published library's
+    version is in the line.
+

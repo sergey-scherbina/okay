@@ -497,11 +497,65 @@ subset's short list is refused by name. The subset and its limits are in
 
 ### TypeScript libraries, used from okay
 
-To call an existing TypeScript library from okay on Scala.js, generate
-Scala.js facades from its `.d.ts` with ScalablyTyped (a separate sbt
-plugin, not part of okay). Then use the library from an okay program
-like any Scala.js API. This path is not built or tested here, so it is a
-pointer, not a promise.
+An existing TypeScript library is called from okay on Scala.js through a
+facade that ScalablyTyped GENERATES from the library's own `.d.ts`: a
+Scala type for every TypeScript one, so a wrong argument, a missing field
+or a misspelt function is a Scala compile error. The build
+`okay-ts-browser/` is the worked example, with its tests. It is a SEPARATE
+sbt build, as a user's own would be, so the converter plugin never loads
+in okay's.
+
+The library is an npm dependency, and the facade's package is yours:
+
+<!-- not-a-test: an sbt build's settings -->
+```scala
+  .enablePlugins(ScalaJSPlugin, ScalablyTypedConverterGenSourcePlugin)
+    Compile / npmDependencies += "okay-pricing" -> s"file:${baseDirectory.value}/ts-lib/okay-pricing",
+    stOutputPackage := "okay.tsbrowser.facades",
+```
+
+Then the library is ordinary code inside okay programs. A function whose
+exception becomes a value:
+
+```scala
+    try Right(pricing.priceOf(sku))
+    catch case e: js.JavaScriptException => Left(e.getMessage)
+```
+
+A class, given a Scala callback, inside a program that reads the
+caller's `Reader`:
+
+```scala
+    Reader.ask[Double].map { discount =>
+      val cart = lines.foldLeft(new pricing.Cart())((c, l) => c.add(pricing.Item(l._2.toDouble, l._1)))
+      cart.total(sku => pricing.priceOf(sku)) * (1 - discount)
+    }
+```
+
+And a TypeScript `Promise`, awaited in an okay `Async` program, with a
+rejection as the program's failure:
+
+```scala
+    Async.await[Double] { k =>
+      pricing.fetchRate(currency).toFuture.onComplete(t => k(t.toEither))
+      () => ()
+    }
+```
+
+Three settings are the difference between this working and not, found
+by building it:
+- **`ScalablyTypedConverterGenSourcePlugin`, not the plain one.** The
+  plain plugin compiles the facades itself, with a compiler that predates
+  Scala 3.9's standard library (`NoSuchMethodError:
+  scala.Option.orNull`). The GenSource plugin hands the facade's sources
+  to your project's own compiler.
+- **`stStdlib := List("es2015")`** when the library needs no DOM. The
+  standard library's facade is 2229 files with the DOM, and a handful
+  without it.
+- **A local library is converted again after `clean`.** The conversion
+  is cached against `npmDependencies`, and a `file:` dependency's line
+  does not change when its `.d.ts` does. A published library's version
+  does change, so it regenerates on its own.
 
 ## 4. Both on the backend
 
