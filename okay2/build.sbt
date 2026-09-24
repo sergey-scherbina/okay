@@ -29,7 +29,7 @@ lazy val common = Seq(
 )
 
 lazy val okay2: Project = (project in file("."))
-  .aggregate(okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Data, okay2Cats, okay2Fs2, okay2Zio)
+  .aggregate(okay2Async, okay2Platform, okay2Stm, okay2Stream, okay2Data, okay2Optics, okay2Cats, okay2Fs2, okay2Zio)
   .settings(
     name := "okay2",
     common,
@@ -76,6 +76,14 @@ lazy val okay2Stream: Project = (project in file("okay2-stream"))
 lazy val okay2Data: Project = (project in file("okay2-data"))
   .dependsOn(LocalProject("okay2"))
   .settings(name := "okay2-data", common)
+
+/** okay-optics for the Scala 2 core: the profunctor lattice, its
+ * interpretations and constructors, `Lens[S](_.f)` and `Lens.field` as
+ * Scala 2 macros, zooming State and PState by a lens — specs/okay2.md
+ * stage 24 */
+lazy val okay2Optics: Project = (project in file("okay2-optics"))
+  .dependsOn(LocalProject("okay2"))
+  .settings(name := "okay2-optics", common)
 
 /** cats: `Monad`/`MonadError` for programs, a fold into any monad, the
  * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */

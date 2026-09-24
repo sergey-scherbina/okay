@@ -1448,6 +1448,70 @@ whole, as its own subproject `okay2-data` beside okay2-stm:
   not `Replayable`, and `Uid` is not an effect in okay2 (nor, as a
   class, in the core — that test is a kind error there too).
 
+## Stage 24 — okay2-optics (2026-09-24)
+The second lane of "портируй": okay-optics as `okay2-optics`, and the
+one edge of it that lives in the core, `State.zoomWith` (two functions,
+no lens — the core's own reason) with `PState.Zooming`.
+- `Optic[-C[_[_, _]], S, T, A, B]` and the lattice: `Profunctor`,
+  `Strong`, `Choice`, `Traversing` (with `Walk`), `Reflecting`,
+  `Classifying`, `Category`/`Arrow`; composition by `andThen` takes the
+  meet (`Meet[C, C2]#L`).
+- The families `Iso`/`Lens`/`Prism`/`Affine`/`Traversal`/
+  `Kaleidoscope`/`AlgebraicLens`, their constructors (`Iso.non`,
+  `Prism.some`/`of`, `Traversal.each`/`eachList`, `Kaleidoscope.each`),
+  `Lens[S](_.f)` and `Lens.field[S]("f")` as Scala 2 macros.
+- The interpretations — `Function1` (and its arrow), `Forget`, `Star`,
+  `Aggregating`, `Shop`, `Market`, the zooming `Cont` — and the
+  operations `modify`/`set`/`get`/`preview`/`foldMap`/`toVector`/
+  `traverseOf`/`aggregate`/`aggregateWith`/`compiled`/`compiledLens`;
+  `kleisliArrow`, `zipLazy`; the arrow glyphs behind `Optic.arrows._`.
+- `State.zoom(lens)`, `PState.zoom`/`zoomCase`/`strong`.
+
+### Behavior (stage 24)
+- [x] the lens laws for the three constructors; the prism and traversal
+      laws; lens ∘ prism ∘ lens IS an `Affine`; every pair of families
+      composes; the effectful traversal threads State in order; every
+      direct road agrees with its derivation; `compiled` agrees on every
+      family and is refused for a traversal; the selector and field
+      macros refuse what is not a case field (TestOptics, 10 tests)
+- [x] zoom by a lens and by a composed lens, a Writer beside the State
+      untouched, the identity on a pure program; PState.zoom changes the
+      state's type and misusing it does not compile (TestZoom, 6)
+- [x] the Cont carrier: the lens override against the derivation,
+      `first`, an iso, a composed lens; zoomCase runs on Some and not on
+      None; no `Choice`, a `Strong` (TestContProfunctor, 6)
+- [x] the glyphs against the methods they spell, `>=>` beside `>>>`,
+      the Kleisli arrow (TestArrowGlyphs, 8); the kaleidoscope and the
+      algebraic lens, composed, refused for a plain lens
+      (TestAggregationOptics, 5); `traverseOf` at `Validated` (every bad
+      focus) and at `Static` (the leaves before running, one batch)
+      (TestOpticCarriers, 4)
+
+### Decisions
+- CONTRAVARIANT in the constraint. Scala 3 sees `[P] =>> (Strong[P] &
+  Choice[P]) & Strong[P]` and `Strong & Choice` as one type; Scala 2
+  compares the two type lambdas and does not. An optic asking for less
+  standing where more is offered is simply true, and it types
+  `address andThen Prism.some andThen zip` as `Affine`.
+- ONE IMPORT, `okay2.Optic._`: the families are type aliases, which
+  Scala 2 can hold only in an object, and a second module cannot add to
+  okay2's package object. The interpretations sit in `Profunctor`'s
+  companion — in the implicit scope of every class of the lattice.
+- An operation that answers a FUNCTION takes its evidence at the view:
+  `l.set(b)(s)` would otherwise pass `s` as the implicit. So
+  `set`/`modify` live on a view needing `C[Function1]`, `aggregate` on
+  one needing `C[Aggregating]`, the arrow glyphs on one needing
+  `Arrow[P]`; `traverseOf` takes the whole as a second list,
+  `o.traverseOf(f)(s)`, where the core curries it into a function.
+- NOT PORTED: `Fuse`, the core's compile-time planner that emits the
+  hand-written update for `set`/`modify`/`get` (a Scala 3 quote
+  macro); the operations here are the interpretation, which the core
+  itself falls back to for an optic in a `val`. With it `TestFuse` and
+  `TestFuseTwice`. Also `TestArrowLaws` (okay's `laws` module),
+  `TestDirectOpticsArrows` (okay-direct), the `Par` carrier (okay2-async
+  is not a dependency here), and `TestOpticsGuide`, which pins a docs
+  page of the core. Zipper and TypedZipper are the next lane.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

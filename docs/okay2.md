@@ -54,7 +54,8 @@ Contents:
 25. [Aggregations, windows and folds](#25-aggregations-windows-and-folds)
 26. [Programs whose type says where they end](#26-programs-whose-type-says-where-they-end)
 27. [Sketches, clocks and ids](#27-sketches-clocks-and-ids)
-28. [Literature](#28-literature)
+28. [Optics](#28-optics)
+29. [Literature](#29-literature)
 
 ## 1. The build
 
@@ -1470,12 +1471,58 @@ and as text:
     assertEquals(Uid.parseUlid(u.ulid), Some(u), s"ulid round trip for ${u.ulid}")
 ```
 
-## 28. Literature
+## 28. Optics
+
+`okay2-optics` is okay's profunctor optics. An optic is a function over
+any profunctor that meets its constraint: a lens asks for `Strong`, a
+prism for `Choice`, a traversal for `Traversing`. Composing two takes
+both constraints, so a lens, a prism and a lens in a row are an affine
+traversal without anyone writing that down. One import brings the
+families, the constructors and the operations:
+
+```scala
+import okay2.Optic._
+  val age: Lens[Person, Person, Int, Int] = Lens[Person](_.age)
+    val personZip: Affine[Person, Person, Int, Int] = address.andThen(Prism.some[Address, Address]).andThen(zip)
+    assertEquals(personZip.set(7)(p), p.copy(address = Some(Address("Warszawa", 7))))
+```
+
+`Lens[S](_.field)` is a macro that reads the selector and writes the
+`copy`; anything but `_.field` is refused at compile time. The same
+optic runs under any effect, because `traverseOf` asks for an
+Applicative and nothing more. At `Validated` it reports every bad focus
+instead of the first:
+
+```scala
+    assertEquals(eachLine.traverseOf[V](check)(order),
+      Validated.Invalid(Seq("ink: qty must be > 0, got 0", "pad: qty must be > 0, got -3")): V[Order])
+```
+
+A lens also zooms a program. A State program written against one part
+runs against the whole, and nothing else in the whole is touched:
+
+```scala
+    val (after, out) = State.run(app)(State.zoom[App, Int, Int, Pure](appN)(tick(41)))
+```
+
+What okay does and this does not: okay fuses `set`/`modify`/`get` into
+the hand-written update at compile time, with a Scala 3 macro called
+`Fuse`. Here every operation runs the interpretation. That is what okay
+itself does for an optic held in a `val`, and the JIT inlines it. There
+is one Scala 2 difference to know: `traverseOf` takes the whole as a
+second argument list, `o.traverseOf(f)(s)`.
+
+## 29. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
   Randall LeVeque, "Updating formulae and a pairwise algorithm for
   computing sample variances" (1979): `variance` and its merge.
+- Matthew Pickering, Jeremy Gibbons and Nicolas Wu, "Profunctor Optics:
+  Modular Data Accessors" (2017); Guillaume Boisseau and Jeremy Gibbons,
+  "What you needa know about Yoneda" (ICFP 2018); Bryce Clarke et al.,
+  "Profunctor Optics, a Categorical Update" (Compositionality 2024);
+  John Hughes, "Generalising monads to arrows" (2000).
 - Philippe Flajolet, Éric Fusy, Olivier Gandouet and Frédéric Meunier,
   "HyperLogLog" (2007); Graham Cormode and S. Muthukrishnan, "An improved
   data stream summary: the count-min sketch" (2005); Ted Dunning, "The

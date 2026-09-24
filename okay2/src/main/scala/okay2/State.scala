@@ -82,6 +82,37 @@ object State {
     loop(s)(a)
   }
 
+  /**
+   * A program over a PART of the state, run over the whole: every `Get`
+   * becomes a read of the whole through `look`, every `Set` a read, a
+   * `put` and a write; the rest of the row passes through untouched.
+   * Two functions rather than a lens, as in the Scala 3 core, where this
+   * is what keeps the core free of optics: okay2-optics gives back the
+   * lens spelling (`State.zoom(lens)(prog)`).
+   */
+  def zoomWith[S, A, X, R <: Row](look: S => A, put: A => S => S)(p: Free[State[A] with R, X])(implicit @unused d: Distinct[State[A] with R]): Free[State[S] with R, X] =
+    zoomAt[S, A, X, R](look, put)(p)
+
+  /** `zoomWith` at its own shape, the rest of the row named */
+  def zoomAt[S, A, X, F <: Row](look: S => A, put: A => S => S)(p: Free[State[A] with F, X]): Free[State[S] with F, X] = {
+    def readPart: Free[State[S] with F, A] = get[S].map(look)
+    def writePart(a: A): Free[State[S] with F, A] = get[S].flatMap(s => set(put(a)(s))).map(_ => a)
+
+    def loop(x: Free[State[A] with F, X]): Free[State[S] with F, X] = Free.resume(x) match {
+      case Return(v) => Return(v)
+      // a lone operation is a Bind with a pure continuation (package.scala)
+      case Inject(e) => loop(Bind(Inject[State[A] + F, X](e), (v: X) => Return[State[A] + F, X](v)))
+      case Bind(Inject(e), k) =>
+        split[State[A], F, Any, Free[State[S] with F, X]](e) {
+          case Get() => readPart.flatMap(a => loop(k(a)))
+          case Set(a) => writePart(a).flatMap(v => loop(k(v)))
+        } { e => Inject[F, Any](e).flatMap(v => loop(k(v))) }
+      case other => throw new IllegalStateException("resume left a non-head form: " + other)
+    }
+
+    loop(p)
+  }
+
   /** number the elements of a sequence, as a State program */
   def index[A](seq: Seq[A], from: Long = 0): (Long, Seq[(Long, A)]) = run(from) {
     seq.foldLeft(pure[State[Long], Seq[(Long, A)]](Seq.empty)) { (c, a) =>
@@ -104,6 +135,12 @@ object PState {
 
   /** write a state of a possibly different type; the old state is the value */
   def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = shift[S, S2 => R, S => R](k => s => k(s)(s2))
+
+  /** a typestate transition read as a two-parameter carrier in its
+   * state, `L[A, B] = Cont[X, B => R, A => R]` — what okay2-optics
+   * gives a `Strong` instance, so a lens zooms it (the Scala 3 core's
+   * `PState.Zooming`, a type lambda there) */
+  type Zooming[X, R] = { type L[A, B] = Cont[X, B => R, A => R] }
 
   /** run from an initial state to (final state, value) */
   def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
