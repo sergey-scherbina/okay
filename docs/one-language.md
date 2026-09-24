@@ -65,7 +65,7 @@ The engine is `ForeignWorker`, and only its link changes:
 ```
 
 ```scala
-      case Some(n) => (ForeignWorker.connect("127.0.0.1", n), p)
+    (ForeignWorker.connect("127.0.0.1", port), p)
 ```
 
 ```scala
