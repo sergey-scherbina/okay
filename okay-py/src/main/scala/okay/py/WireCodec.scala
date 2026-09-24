@@ -9,14 +9,15 @@ import okay.codec.Json
  *
  * {{{
  * import okay.py.WireFormat.Cbor.given        // CBOR instead of JSON
- * import okay.py.WireCompression.Deflate.given // raw DEFLATE on every message
+ * import okay.py.WireCompression.Off.given     // no compression at all
  * val w = ForeignWorker.speaking(Seq(binary))  // negotiated at the handshake
  * }}}
  *
- * With neither import the defaults (JSON lines, no compression) apply, and
- * the wire is what it always was. The far side announces what it speaks in
- * its handshake; a choice it did not announce is refused by name, never
- * quietly downgraded.
+ * With no import the format is JSON and DEFLATE is PREFERRED: used on a
+ * stream link whose far side announces it, and otherwise not, without a
+ * refusal (`ForeignWorker.wire` says which). An EXPLICIT choice
+ * (`WireFormat.Cbor.given`, `WireCompression.Deflate.given`) that the far
+ * side did not announce is refused by name, never quietly downgraded.
  */
 trait WireFormat:
   def name: String
@@ -41,43 +42,57 @@ trait WireCompression:
   def name: String
   def compress(bytes: Array[Byte]): Array[Byte]
   def decompress(bytes: Array[Byte]): Array[Byte]
+  /** what to use instead where this one is not to be had — a far side that
+   * did not announce it, or an in-process link where it would only cost.
+   * None (every explicit choice): refuse by name instead. */
+  def fallback: Option[WireCompression] = None
 
 object WireCompression:
-  /** no compression, the default */
-  given none: WireCompression = new WireCompression:
-    def name = "none"
-    def compress(bytes: Array[Byte]): Array[Byte] = bytes
-    def decompress(bytes: Array[Byte]): Array[Byte] = bytes
+  /** THE DEFAULT (operator, 2026-09-24): DEFLATE where it pays, the plain
+   * wire where the far side lacks it or the link is in-process */
+  given preferred: WireCompression = new Raw:
+    override def fallback: Option[WireCompression] = Some(Off.off)
 
-  /** `import okay.py.WireCompression.Deflate.given`: raw DEFLATE (RFC 1951),
-   * which every far side's standard library has (zlib's `wbits=-15`, Go's
-   * compress/flate, Node's inflateRaw, Rust's flate2) */
+  /** `import okay.py.WireCompression.Off.given`: never compress */
+  object Off:
+    given off: WireCompression = new WireCompression:
+      def name = "none"
+      def compress(bytes: Array[Byte]): Array[Byte] = bytes
+      def decompress(bytes: Array[Byte]): Array[Byte] = bytes
+
+  /** `import okay.py.WireCompression.Deflate.given`: DEFLATE REQUIRED — a far
+   * side without it is refused by name, and in-process links compress too */
   object Deflate:
-    given deflate: WireCompression = new WireCompression:
-      def name = "deflate"
-      def compress(bytes: Array[Byte]): Array[Byte] =
-        val d = java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, true)
-        try
-          d.setInput(bytes)
-          d.finish()
-          val out = java.io.ByteArrayOutputStream()
-          val buf = new Array[Byte](8192)
-          while !d.finished() do out.write(buf, 0, d.deflate(buf))
-          out.toByteArray
-        finally d.end()
-      def decompress(bytes: Array[Byte]): Array[Byte] =
-        val i = java.util.zip.Inflater(true)
-        try
-          i.setInput(bytes)
-          val out = java.io.ByteArrayOutputStream()
-          val buf = new Array[Byte](8192)
-          while !i.finished() do
-            val n = i.inflate(buf)
-            if n == 0 && (i.needsInput() || i.needsDictionary()) then
-              throw IllegalStateException("a DEFLATE message ended before its data did (cut short?)")
-            out.write(buf, 0, n)
-          out.toByteArray
-        finally i.end()
+    given deflate: WireCompression = new Raw
+
+  /** raw DEFLATE (RFC 1951), which every far side's standard library has
+   * (zlib's `wbits=-15`, Go's compress/flate, Node's inflateRaw, Rust's
+   * flate2) */
+  private class Raw extends WireCompression:
+    def name = "deflate"
+    def compress(bytes: Array[Byte]): Array[Byte] =
+      val d = java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, true)
+      try
+        d.setInput(bytes)
+        d.finish()
+        val out = java.io.ByteArrayOutputStream()
+        val buf = new Array[Byte](8192)
+        while !d.finished() do out.write(buf, 0, d.deflate(buf))
+        out.toByteArray
+      finally d.end()
+    def decompress(bytes: Array[Byte]): Array[Byte] =
+      val i = java.util.zip.Inflater(true)
+      try
+        i.setInput(bytes)
+        val out = java.io.ByteArrayOutputStream()
+        val buf = new Array[Byte](8192)
+        while !i.finished() do
+          val n = i.inflate(buf)
+          if n == 0 && (i.needsInput() || i.needsDictionary()) then
+            throw IllegalStateException("a DEFLATE message ended before its data did (cut short?)")
+          out.write(buf, 0, n)
+        out.toByteArray
+      finally i.end()
 
 /**
  * The wire's protocol tree as CBOR (RFC 8949), the subset stage 5a names:

@@ -39,3 +39,61 @@ class TestWireGivens extends munit.FunSuite:
     val e = intercept[IllegalStateException](ForeignWorker.over(link, "the Haskell worker"))
     assert(e.getMessage.contains("speaks the formats json; this host's given WireFormat is cbor"), e.getMessage)
   }
+
+  /** a far side that announces `speaks` (or nothing) and records the
+   * configure it was sent */
+  private final class Fake(speaks: String, override val inProcess: Boolean = false) extends WireLink:
+    var asked = Vector.empty[String]
+    def hello(): Option[String] = Some(s"""{"shim":6,"python":"fake"$speaks}""")
+    def roundTrip(line: String): Option[String] =
+      asked :+= line
+      Some("""{"id":null,"ok":{}}""")
+    def exchange(message: Array[Byte]): Option[Array[Byte]] = None
+    def close(): Unit = ()
+
+  private val speaksDeflate = ""","speaks":{"format":["json","cbor"],"compress":["deflate"]}"""
+
+  test("DEFLATE is the default: with no import, a far side that speaks it is asked for it") {
+    val link = Fake(speaksDeflate)
+    val w = ForeignWorker.over(link)
+    assertEquals(w.wire, "json/deflate")
+    assertEquals(link.asked, Vector("""{"op":"configure","format":"json","compress":"deflate"}"""))
+  }
+
+  test("the default is a preference: a far side without DEFLATE keeps the plain wire, unrefused") {
+    val link = Fake(""","speaks":{"format":["json","cbor"],"compress":[]}""")
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked, Vector.empty)
+    val old = Fake("")
+    assertEquals(ForeignWorker.over(old).wire, "json/none")
+    assertEquals(old.asked, Vector.empty)
+  }
+
+  test("the default does not compress in-process, where a message is a memory copy") {
+    val link = Fake(speaksDeflate, inProcess = true)
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked, Vector.empty)
+  }
+
+  test("Off turns it off: a far side that speaks DEFLATE is not asked") {
+    import WireCompression.Off.given
+    val link = Fake(speaksDeflate)
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked, Vector.empty)
+  }
+
+  test("an EXPLICIT Deflate is strict: refused by name where it is not spoken, used in-process too") {
+    import WireCompression.Deflate.given
+    val e = intercept[IllegalStateException](ForeignWorker.over(Fake(""), "the old worker"))
+    assert(e.getMessage.contains("the old worker speaks the compressions none; this host's given WireCompression is deflate"), e.getMessage)
+    assertEquals(ForeignWorker.over(Fake(speaksDeflate, inProcess = true)).wire, "json/deflate")
+  }
+
+  test("CBOR with the default compression: both, where both are spoken") {
+    import WireFormat.Cbor.given
+    val link = Fake(speaksDeflate)
+    assertEquals(ForeignWorker.over(link).wire, "cbor/deflate")
+    val plain = Fake(""","speaks":{"format":["json","cbor"],"compress":[]}""")
+    assertEquals(ForeignWorker.over(plain).wire, "cbor/none")
+    assertEquals(plain.asked, Vector("""{"op":"configure","format":"cbor","compress":"none"}"""))
+  }

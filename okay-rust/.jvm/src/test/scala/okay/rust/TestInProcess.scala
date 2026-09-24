@@ -33,6 +33,10 @@ class TestRustFfm extends WireConformance:
     ForeignWorker.over(InProcessLinks.ffm(NativeLib.load(RustInProcess.dylib)).fold(why => throw IllegalStateException(why), identity))
   override def afterAll(): Unit = if RustInProcess.available then engine.close()
 
+  test("in-process, the default does not compress: a message here is a memory copy") {
+    assertEquals(engine.wire, "json/none")
+  }
+
 /** (Rust, WebAssembly): the same crate as wasm32-wasip1, under Chicory. No
  * threads in wasip1, so no direct style: programs as data only */
 class TestRustWasm extends WireConformance:

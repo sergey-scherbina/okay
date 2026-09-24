@@ -42,6 +42,7 @@ object InProcessLinks:
       def roundTrip(line: String): Option[String] = Some(call(line))
       def exchange(message: Array[Byte]): Option[Array[Byte]] = Some(callBytes(message))
       def close(): Unit = lib.close()
+      override def inProcess: Boolean = true
 
   /** a WebAssembly module exporting `okay_exchange` (Rust with
    * `okay::export_worker!`, or Go with `okay.Export`), under Chicory */
@@ -64,3 +65,4 @@ object InProcessLinks:
     def roundTrip(line: String): Option[String] = Some(call(line))
     def exchange(message: Array[Byte]): Option[Array[Byte]] = Some(callBytes(message))
     def close(): Unit = ()
+    override def inProcess: Boolean = true

@@ -21,6 +21,10 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
 
   private var nextId = 0
 
+  /** what the handshake settled on: "json/none" (the plain JSON lines),
+   * "json/deflate", "cbor/none", "cbor/deflate" */
+  def wire: String = codec.fold("json/none")((f, c) => s"${f.name}/${c.name}")
+
   private def exchange(req: Json): Json =
     nextId += 1
     val id = nextId
@@ -200,41 +204,45 @@ object ForeignWorker:
     new ForeignWorker(link, pyV, configure(link, name, whole(hello)))
 
   /**
-   * Stage 5a: the givens in scope decide the format and the compression. The
-   * defaults change nothing (JSON lines, as every worker has always spoken).
-   * Anything else must be ANNOUNCED in the far side's hello, then confirmed
-   * by a `configure` exchange; a choice the far side did not announce is
-   * refused by name, never quietly downgraded.
+   * Stage 5a: the givens in scope decide the format and the compression.
+   * Anything but JSON lines must be ANNOUNCED in the far side's hello, then
+   * confirmed by a `configure` exchange; an explicit choice the far side did
+   * not announce is refused by name, never quietly downgraded. The DEFAULT
+   * compression is a preference, not a choice: it has a `fallback`, taken on
+   * an in-process link and where the far side did not announce deflate.
    */
   private def configure(link: WireLink, name: String, hello: Json)
                        (using format: WireFormat, compression: WireCompression): Option[(WireFormat, WireCompression)] =
-    if format.name == "json" && compression.name == "none" then None
-    else
-      def announced(key: String): Vector[String] = hello match
-        case Json.JObj(fs) => fs.toMap.get("speaks") match
-          case Some(Json.JObj(sp)) => sp.toMap.get(key) match
-            case Some(Json.JArr(xs)) => xs.collect { case Json.JStr(x) => x }
-            case _ => Vector.empty
+    def announced(key: String): Vector[String] = hello match
+      case Json.JObj(fs) => fs.toMap.get("speaks") match
+        case Some(Json.JObj(sp)) => sp.toMap.get(key) match
+          case Some(Json.JArr(xs)) => xs.collect { case Json.JStr(x) => x }
           case _ => Vector.empty
         case _ => Vector.empty
-      val formats = "json" +: announced("format")
-      val compressions = "none" +: announced("compress")
-      if !formats.contains(format.name) then
-        link.close()
-        throw IllegalStateException(s"$name speaks the formats ${formats.distinct.mkString(", ")}; this host's given WireFormat is ${format.name}")
-      if !compressions.contains(compression.name) then
-        link.close()
-        throw IllegalStateException(s"$name speaks the compressions ${compressions.distinct.mkString(", ")}; this host's given WireCompression is ${compression.name}")
+      case _ => Vector.empty
+    val formats = "json" +: announced("format")
+    val compressions = "none" +: announced("compress")
+    if !formats.contains(format.name) then
+      link.close()
+      throw IllegalStateException(s"$name speaks the formats ${formats.distinct.mkString(", ")}; this host's given WireFormat is ${format.name}")
+    val chosen = compression.fallback match
+      case Some(instead) if link.inProcess || !compressions.contains(compression.name) => instead
+      case _ => compression
+    if !compressions.contains(chosen.name) then
+      link.close()
+      throw IllegalStateException(s"$name speaks the compressions ${compressions.distinct.mkString(", ")}; this host's given WireCompression is ${chosen.name}")
+    if format.name == "json" && chosen.name == "none" then None
+    else
       val ask = Json.JObj(Vector("op" -> Json.JStr("configure"), "format" -> Json.JStr(format.name),
-        "compress" -> Json.JStr(compression.name)))
+        "compress" -> Json.JStr(chosen.name)))
       link.roundTrip(Json.print(ask)).map(whole) match
-        case Some(Json.JObj(fs)) if fs.toMap.contains("ok") => Some((format, compression))
+        case Some(Json.JObj(fs)) if fs.toMap.contains("ok") => Some((format, chosen))
         case Some(other) =>
           link.close()
-          throw IllegalStateException(s"$name refused the configuration ${format.name}/${compression.name}: ${Json.print(other)}")
+          throw IllegalStateException(s"$name refused the configuration ${format.name}/${chosen.name}: ${Json.print(other)}")
         case None =>
           link.close()
-          throw IllegalStateException(s"$name closed the wire when asked to configure ${format.name}/${compression.name}")
+          throw IllegalStateException(s"$name closed the wire when asked to configure ${format.name}/${chosen.name}")
 
   /**
    * A wire line, read STRICTLY. `Json.parse` is total: it repairs damaged

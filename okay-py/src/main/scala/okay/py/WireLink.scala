@@ -26,6 +26,9 @@ trait WireLink:
    * alone in-process, where a call already delimits a message */
   def exchange(message: Array[Byte]): Option[Array[Byte]]
   def close(): Unit
+  /** whether a message stays in this process (FFM, wasm): the default
+   * compression does not compress there, where it would only cost */
+  def inProcess: Boolean = false
 
 object WireLink:
 

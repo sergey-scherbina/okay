@@ -45,6 +45,10 @@ class TestHsPipes extends WireConformance:
   lazy val engine: ForeignWorker = ForeignWorker.speaking(Seq(HsConformance.binary))
   override def afterAll(): Unit = if HsConformance.ghc then engine.close()
 
+  test("the default DEFLATE is a preference: Haskell lacks it and keeps the plain wire, unrefused") {
+    assertEquals(engine.wire, "json/none")
+  }
+
 /** (Haskell, pipes), CBOR chosen by a given */
 class TestHsPipesCbor extends WireConformance:
   import WireFormat.Cbor.given
