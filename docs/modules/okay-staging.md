@@ -100,3 +100,41 @@ See specs/codecs.md, "Run-time staging": the condition is a schema
 that is a value, lives long, and whose fold is a measured share of a
 hot path. A tool's arguments decoded a few times a second do not
 qualify; a catalog-described row shape decoded a million times does.
+
+## Hygiene: generated code cannot outlive its binder
+
+A generator with an effect can go wrong in one classic way. Say it
+keeps a bound variable's code in a cell (a `var`, an okay `State`)
+while it is inside that variable's `let` or lambda, and splices it
+after the binder has closed. The result is ill-scoped code. Kameyama,
+Kiselyov and Sunada call this *scope extrusion*, and it is the problem
+their combinators for impure code generation exist to rule out.
+MetaOCaml detects it when the code runs.
+
+On this road the check is Scala 3's own, and it comes earlier: staging
+refuses the extruded code by name while it is being built ("a
+reference to parameter x was used outside the scope where it was
+defined"), before anything is compiled or run. `TestScopeExtrusion`
+pins that refusal for a host `var` cell and for an okay `State` cell
+whose answer carries the code out. Beside them is the control: the
+same cell, spliced inside its binder, generates and runs.
+
+`RuntimeStaged`'s own generator gives it nothing to catch. It is a
+pure recursion over the schema, and its caches hold compiled codecs,
+never `Expr`s. If a generation ever did fail, the door would answer
+the interpreter and record why in `lastFailure`. It would not ship
+broken code. The other staging road, inline stagers (`Direct.staged`),
+cannot extrude at all. The inliner leaves no code value that a cell
+could hold. By the time a cell sees a binder, it is an ordinary run-time
+value.
+
+> Y. Kameyama, O. Kiselyov, C. Shan, *Shifting the stage: staging with
+> delimited control*, PEPM 2009 / JFP 21(6), 2011,
+> [doi:10.1017/S0956796811000256](https://doi.org/10.1017/S0956796811000256)
+> — let-insertion by delimited control, and why effects in a generator
+> threaten hygiene.
+>
+> Y. Kameyama, O. Kiselyov, C. Shan, *Combinators for impure yet
+> hygienic code generation*, PEPM 2014 / Science of Computer
+> Programming 112, 2015,
+> [doi:10.1016/j.scico.2015.08.007](https://doi.org/10.1016/j.scico.2015.08.007).
