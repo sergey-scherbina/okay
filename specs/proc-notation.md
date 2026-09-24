@@ -192,6 +192,33 @@ fourth road would have to want:
       the condition and `TestProc`'s v1 journal shows `walk` obeying
       the non-consuming rule through it
 
+### Stage 4 — `match` with questions in its cases (`proc-notation-case-binders`)
+
+Found by foreign-in-durable-workflow (2026-09-24). Branching on an
+activity's `Either` is what a workflow does after every call, and the
+natural spelling was refused: `x match { case Right(p) => !total(p) }`
+failed at expansion with "a reference to value p was used outside the
+scope where it was defined". Paterson's notation has `case` for exactly
+this: the pattern's binders join the environment of their branch.
+
+- [ ] A `match` whose cases ask questions compiles in all three positions
+      an `if` does: the right-hand side of a `val`, a statement of its
+      own, and the block's answer.
+- [ ] Translation: the scrutinee's questions are asked first (hoisted,
+      as a condition's are). ONE pure step runs the original `match`, its
+      patterns and guards untouched, and each case answers an injection
+      of the environment extended by that case's binders into a nested
+      `Either`. Each case body is compiled at its own extended
+      environment, and the bodies are joined by `|||`. No pattern is
+      duplicated and no binder renamed.
+- [ ] Every case's questions are in `leaves`, and only the taken case
+      asks. `walk` agrees with replay on every prefix.
+- [ ] Guards may read the binders and the block's names. A guard that
+      asks a question is refused by name (a guard runs for cases not
+      taken).
+- [ ] A match with no questions in its cases is ordinary code, as
+      before.
+
 ## Out of scope
 
 - `ArrowLoop`/`rec` — value recursion; no consumer, and static-
