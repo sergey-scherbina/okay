@@ -101,6 +101,36 @@ row (a plain `flatMap` does too), and `plus` adds a signature:
     assertEquals(State.handle(1)(p).runWith, (1, 2))
 ```
 
+### Why the type is called `Row`
+
+`Row` is the name of the one trait every signature extends, and of the
+bound on a program's row parameter (`R <: Row`). The word is the
+standard one. A ROW is a finite collection of labels with, optionally,
+a variable standing for "whatever else": Wand introduced row variables
+for records \[Wand 1987\], Rémy gave them the ML type system they still
+have \[Rémy 1989\], and Leijen carried them over to effects. In Koka a
+function's type lists the effects it may perform as an *effect row*,
+`<state<int>, console | e>`, where `e` is the rest \[Leijen 2014,
+2017\]. Links and Frank type effect handlers with rows too
+\[Hillerström & Lindley 2016; Lindley, McBride & McLaughlin 2017\].
+
+okay2 reads the same way. `State[Int] + Writer[String]` is a row of two
+labels, and a handler's `R` is the row variable, the "`| e`":
+`State.handle` takes a program in `State[S] with R`, handles the
+`State[S]` label, and hands back a program in `R`, the rest. `Pure` is
+the empty row, and it is `Row` itself.
+
+One difference from those languages is in the encoding, not the idea.
+Koka and Links build rows into the type system; Scala 2 has no rows, so
+okay2 spells one as an INTERSECTION of requirements, which is how
+Brachthäuser, Schuster and Ostermann read effects (*effects as
+capabilities*, 2020): a program that may perform the operations of F
+or G is one that requires a handler for F AND one for G. The Scala 3
+core spells the same row as a union of operations, `F + G = [A] =>>
+F[A] | G[A]`, and has no `Row` type at all: its row parameter is a type
+constructor, `F[+_]`. `Row` is okay2's own name, needed because a Scala
+2 row has to be a type of kind `*` (section 8).
+
 ## 3. Your own effect
 
 A signature is a `Row` whose `Op` names its operations; the operations
@@ -878,6 +908,23 @@ which is how the dependency graph is checked by the compiler:
   (Haskell Symposium 2014) — the left-nesting cost `resume`'s
   rotation amortises; the type-aligned queue it proposes was measured
   unnecessary for the Scala 3 core, and the same rotation is here.
+- Mitchell Wand, "Complete Type Inference for Simple Objects" (LICS
+  1987), and Didier Rémy, "Type Checking Records and Variants in a
+  Natural Extension of ML" (POPL 1989) — row variables, the origin of
+  the word `Row` (section 2).
+- Daan Leijen, "Koka: Programming with Row Polymorphic Effect Types"
+  (MSFP 2014) and "Type Directed Compilation of Row-Typed Algebraic
+  Effects" (POPL 2017) — the effect row, `<state<int>, console | e>`,
+  and its tail variable, which is a handler's `R` here.
+- Daniel Hillerström and Sam Lindley, "Liberating Effects with Rows and
+  Handlers" (TyDe 2016); Sam Lindley, Conor McBride and Craig
+  McLaughlin, "Do Be Do Be Do" (POPL 2017) — rows of effects in Links
+  and Frank.
+- Jonathan Immanuel Brachthäuser, Philipp Schuster and Klaus Ostermann,
+  "Effects as Capabilities: Effect Handlers and Lightweight Effect
+  Polymorphism" (OOPSLA 2020) — the reading of a row as the
+  capabilities a program REQUIRES, which is why okay2's row is an
+  intersection and `Free` contravariant in it.
 - Eric Torreborre, "eff" for Scala 2 (atnos-eff) — the prior art for
   a kind-`*` row of effects with membership as implicits in Scala 2;
   `okay2` differs in holding the operation raw (no tagged union at
