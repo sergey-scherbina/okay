@@ -20,7 +20,7 @@ import scala.reflect.macros.blackbox
  * composed: `Handler.union`, `Into.union`, `IntoZ.union` require it.
  *
  * WHAT IT COMPARES is each part's RUNTIME IDENTITY — what its test
- * looks at — after flattening the intersection (stage 11, the Scala 3
+ * looks at — after flattening the intersection (stage 12, the Scala 3
  * macro's model):
  * - a plain signature: its CLASS;
  * - `Tag[K, F]`: the literal key, then F's identity — two tags collide

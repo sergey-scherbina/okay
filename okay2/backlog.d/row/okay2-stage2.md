@@ -8,7 +8,7 @@
       `runSeq` — a collection is not a kind-`*` Row). Gen LANDED 2026-09-24
       (stage 9, chain fusion and zip ported whole). The monad classes,
       `withFilter`, Tag, Instances and Writer.byValue LANDED 2026-09-24
-      (stage 11, at the operator's ask). ON DEMAND FROM
+      (stage 12, at the operator's ask). ON DEMAND FROM
       HERE (operator 2026-09-24: okay2 carries less than okay by
       default and grows when somebody needs something specific) —
       LIFTED for okay's MAIN effects later the same day ("carry on

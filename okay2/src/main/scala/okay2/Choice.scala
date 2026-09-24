@@ -20,7 +20,7 @@ import Split.split
  * A row containing Choose is a `MonadPlus` (`Choose.monadPlus`, found
  * by `MonadPlus[...]` at such a row), and an `if` in a `for` over it
  * prunes the branch: `withFilter` asks for `CanFail`, which Choose
- * supplies (Monad.scala, stage 11). `Choose.guard(p)` is the step form.
+ * supplies (Monad.scala, stage 12). `Choose.guard(p)` is the step form.
  */
 sealed trait Choose extends Row { type Op[+A] = Choose.Op[A] }
 

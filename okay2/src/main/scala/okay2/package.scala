@@ -159,7 +159,7 @@ package object okay2 extends Provides with Monads {
     def andThen[B, G <: Row](q: => Free[G, B]): B ! (R + G) = p.flatMap[R + G, B](_ => q)
 
     /*
-     * The class syntax AT A PROGRAM (stage 11). The generic syntax in
+     * The class syntax AT A PROGRAM (stage 12). The generic syntax in
      * Monad.scala reaches a program only when its static type is spelled
      * `Free[R, A]`: partial unification takes the `!` alias AS WRITTEN,
      * and `A ! R` has its parameters the other way round, so `F[A]`

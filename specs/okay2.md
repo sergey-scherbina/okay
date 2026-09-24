@@ -654,7 +654,7 @@ now depends on okay2-async (and on okay2-platform for its tests):
   stack as a tuple type; Scala 2 has no `*:`), the inline `shift[A]`/
   `exit`/`emit`/`pause`/`onReturn` (direct-block doors — the evidence
   forms above are their Scala 2 spelling), `SharedOnce` (okay-async;
-  backlog with `okay2-stage2`), `ctxMonad` (no `Monad` here; stage 11
+  backlog with `okay2-stage2`), `ctxMonad` (no `Monad` here; stage 12
   brought the classes, and Scala 2 still has no context functions).
 - Scala 2 traps this stage: a `case class` inside a test suite trips
   -Xlint's outer-reference check on every type test (hoist to an
@@ -721,7 +721,7 @@ wait for Choice/Logic" (operator).
   `p`, a type-level function), as in the Scala 3 core.
 - `Choose` has no `runSeq` (a collection cannot be a kind-`*` Row) and
   no `MonadPlus`/`withFilter` (no `Monad` here): `Choose.guard(p)` is
-  the step an `if` guard would desugar to. (Stage 11 added both:
+  the step an `if` guard would desugar to. (Stage 12 added both:
   `Choose.monadPlus`, and `withFilter` by `CanFail`.)
 - `SharedOnce` is not `translate`: its handler is polymorphic in X and
   a `Force[a]` answers `Option[a]`, which scalac 2 cannot relate to X
@@ -905,7 +905,7 @@ the three composers of a split — `Handler.union`, `Into.union`,
 okay2 has no by-value tests (`TypeableK.ByValue`) and no `Tag`/
 `Instances` wrappers yet, so the class is the whole identity; when they
 come, the macro learns them as the Scala 3 one did. (They came in
-stage 11, and it did.)
+stage 12, and it did.)
 
 THE HANDLERS TOO (okay2-distinct-handlers, the same day; operator:
 "да хочу", and the Scala 3 core gets the same as backlog
@@ -1095,9 +1095,14 @@ names Tag/Instances/byValue/Delim prompts and docs/okay2.md. The
 
 ### Found while building it (each measured)
 - PARTIAL UNIFICATION READS THE `!` ALIAS AS WRITTEN. `sequence(Seq(tick,
-  tick))` with `tick: Int ! State[Int]` solves `F = [R] Int ! R` and the
-  kind check refuses it ("inferred kinds … do not conform"); scalac does
-  not retry the dealiased `Free[State[Int], Int]`. The generic
+  tick))` with `tick: Int ! State[Int]` solves `F = [R] Int ! R`, and
+  scalac does not retry the dealiased `Free[State[Int], Int]`. With `!`
+  bounded (`R <: Row`) the kind check refused it ("inferred kinds … do
+  not conform"); since okay2-simple-effects unbounded `!` (landed while
+  this lane was open) it is "no Applicative[[R]Int ! R]" — so the
+  classes' `implicitNotFound` texts name the trap and the way out, which
+  the first text did not: it said the program instance "is always
+  found", above the very query that had not found it. The generic
   combinators and syntax reach a program typed with `Free`; for `!` the
   program-shaped twins exist (`!.traverse`/`sequence`/`replicateA`, and
   `*>`/`<*`/`>>=`/`ifS`/`whenS`/`unlessS` on `ProgOps`/`ProgBoolOps`).

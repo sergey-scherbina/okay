@@ -4,7 +4,7 @@ import scala.annotation.implicitNotFound
 
 /**
  * THE MONAD CLASSES of the Scala 3 core's Monad.scala, in Scala 2.13
- * (specs/okay2.md, stage 11): the same hierarchy, the same derived
+ * (specs/okay2.md, stage 12): the same hierarchy, the same derived
  * operations, the same generic combinators, and the same instances.
  *
  * What Scala 2 spells differently:
@@ -37,7 +37,7 @@ import scala.annotation.implicitNotFound
  */
 
 /** map a function over the structure */
-@implicitNotFound("no Functor[${F}].\nAn instance for a program `A ! R` lives in Free's companion and is always found; for your own type, give one in ITS companion (or any class below Monad of the hierarchy).")
+@implicitNotFound("no Functor[${F}].\nThe instance for programs lives in Free's companion; for your own type, give one in ITS companion.\nIf ${F} reads `[R]X ! R`, the value is typed with the `!` alias, which partial unification takes AS WRITTEN — parameters reversed.\nType the value `Free[R, A]`, or use the program-shaped twins: !.traverse / !.sequence / !.replicateA, and *>, <*, >>=, ifS on the program itself.")
 trait Functor[F[_]] {
   def fmap[A, B](a: F[A], f: A => B): F[B]
 }
@@ -57,7 +57,7 @@ object Functor {
 }
 
 /** lift values and apply lifted functions; fmap derives from pure and app */
-@implicitNotFound("no Applicative[${F}].\nAn instance for a program `A ! R` lives in Free's companion and is always found; Option's in Functor's. For your own type, give a Monad in its companion.")
+@implicitNotFound("no Applicative[${F}].\nThe instance for programs lives in Free's companion, Option's in Functor's; for your own type, give a Monad in its companion.\nIf ${F} reads `[R]X ! R`, the value is typed with the `!` alias, which partial unification takes AS WRITTEN — parameters reversed.\nType the value `Free[R, A]`, or use the program-shaped twins: !.traverse / !.sequence / !.replicateA, and *>, <*, >>=, ifS on the program itself.")
 trait Applicative[F[_]] extends Functor[F] {
   def pure[A](a: A): F[A]
   def app[A, B](f: F[A => B], a: F[A]): F[B]
@@ -90,7 +90,7 @@ trait Selective[F[_]] extends Applicative[F] {
 }
 
 /** sequence computations; fmap, app and select all derive from flatMap by the laws */
-@implicitNotFound("no Monad[${F}].\nFor a program `A ! R` the instance lives in Free's companion and is always found; Option's in Functor's.\nIf ${F} is a row containing Choose and you need empty/append, ask for MonadPlus — Choose's companion has it.")
+@implicitNotFound("no Monad[${F}].\nThe instance for programs lives in Free's companion, Option's in Functor's.\nIf ${F} is a row containing Choose and you need empty/append, ask for MonadPlus — Choose's companion has it.\nIf ${F} reads `[R]X ! R`, the value is typed with the `!` alias, which partial unification takes AS WRITTEN — parameters reversed.\nType the value `Free[R, A]`, or use the program-shaped twins: !.traverse / !.sequence / !.replicateA, and *>, <*, >>=, ifS on the program itself.")
 trait Monad[F[_]] extends Selective[F] {
   def flatMap[A, B](a: F[A])(f: A => F[B]): F[B]
 

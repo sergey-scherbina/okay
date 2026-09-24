@@ -1,7 +1,7 @@
 package okay2
 
 /**
- * The monad classes (spec stage 11): laws by running, the generic
+ * The monad classes (spec stage 12): laws by running, the generic
  * combinators over programs, `withFilter` by CanFail, and the
  * instances found without an import.
  */
@@ -51,10 +51,13 @@ class TestMonad extends munit.FunSuite {
 
   test("THE SCALA 2 TRAP: partial unification reads `A ! R` with its parameters reversed") {
     // `tick: Int ! State[Int]` unifies with F[A] as F = [R] Int ! R, and
-    // the kind check refuses it — which is why `!.sequence` exists. If a
-    // future scalac dealiases first, this fails and the note can go.
+    // no Applicative exists for that — which is why `!.sequence` exists.
+    // If a future scalac dealiases first, this fails and the note can go.
+    // The message names the trap and both ways out.
     val errors = compileErrors("okay2.sequence(Seq(tick, tick))")
-    assert(errors.contains("inferred kinds"), errors)
+    assert(errors.contains("no Applicative[[R]Int ! R]"), errors)
+    assert(errors.contains("parameters reversed"), errors)
+    assert(errors.contains("!.sequence"), errors)
   }
 
   test("the syntax is there only where the instance is: *>, <*, >>=, >=>, <*>") {

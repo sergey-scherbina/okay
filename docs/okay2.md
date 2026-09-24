@@ -460,7 +460,7 @@ Each of these was measured before it was decided (specs/okay2.md):
   an inductive implicit over an intersection diverges. It reads the
   same identities as the Scala 3 one — class, `Tag` key, `Instances`,
   `ByValue` (§17).
-- **`A ! R` is invisible to partial unification** (stage 11): scalac 2
+- **`A ! R` is invisible to partial unification** (stage 13): scalac 2
   unifies `F[A]` with the alias AS WRITTEN, and `!` has its parameters
   the other way round, so the generic `sequence`/`*>`/`ifS` of §16 do
   not reach a program typed `Int ! State[Int]`. The program-shaped
@@ -1092,7 +1092,7 @@ sampling:
 
 ## 16. The monad classes
 
-The Scala 3 core's Monad.scala, class for class (spec stage 11):
+The Scala 3 core's Monad.scala, class for class (spec stage 12):
 `Functor`, `Applicative`, `Selective`, `Monad`, `Alternative`,
 `MonadPlus`, `Comonad` (and `Id`), `ParaMonad` — which `Control` extends —
 and the combinators written once over them: `traverse`, `sequence`,
@@ -1113,8 +1113,9 @@ instance is, as Scala 3's extension methods are:
 
 ONE SCALA 2 TRAP, and it is the alias: partial unification reads
 `Int ! State[Int]` as written, parameters reversed, and solves
-`F = [R] Int ! R`. The generic combinators reach a program typed
-`Free[R, A]`; for one typed with `!`, use the program-shaped twins:
+`F = [R] Int ! R`, and there is no instance for that — the message
+says so and names the way out. The generic combinators reach a program
+typed `Free[R, A]`; for one typed with `!`, use the program-shaped twins:
 
 ```scala
     def named(n: Int): Int ! State[Int] = tick.map(_ + n)

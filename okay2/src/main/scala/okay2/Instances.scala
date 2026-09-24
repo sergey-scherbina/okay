@@ -2,7 +2,7 @@ package okay2
 
 /**
  * SEVERAL INSTANCES OF ONE SIGNATURE IN ONE ROW — the Scala 3 core's
- * Instances.scala, in Scala 2.13 (specs/okay2.md, stage 11).
+ * Instances.scala, in Scala 2.13 (specs/okay2.md, stage 12).
  *
  * A row is split by a runtime test, so two members of one signature are
  * told apart exactly when the operation carries something to compare.
