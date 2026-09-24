@@ -100,14 +100,38 @@ The module's floor is JDK 22, because FFM is final there (`jdkFloor(22)`,
 `cargo`, so it is tagged `Live`, and the effect's own tests run in the
 default gate.
 
+## The same kernel as WebAssembly, under Chicory
+
+The same crate compiles to `wasm32-wasip1`: a 70 KB module run by Chicory,
+a WebAssembly runtime written in Java. There is no native code in the
+process. The kernel's memory is its own linear memory, so a bug in it
+cannot reach the JVM's heap, which makes this the road for UNTRUSTED
+plugins.
+
+- **What the module is granted.** `WasmLib.load(bytes)` gives it a WASI
+  that grants nothing: no files, no environment, no arguments.
+- **Buffers.** A host cannot hand a module its own pointers, so the crate
+  also exports `okay_alloc`/`okay_free`. Buffers live in the module's
+  memory, and `withBuffers` frees every one after the call.
+- **The handler.** `Kdf.wasm(lib)` is the effect's third handler:
+
+```scala
+  private def wasm: Handler[Kdf] = Kdf.wasm(lib)
+```
+
+- **The law holds here too.** Under Chicory the kernel gives
+  BouncyCastle's bytes over the same 48 cases. They take about 4.5 s,
+  because Chicory interprets, against about 1.3 s native. Refused
+  parameters give the same `Left`, and a mutant that reads the output one
+  byte off fails the law.
+
+Go reaches the same road with `GOOS=wasip1 GOARCH=wasm`
+([okay with Go](go.md)).
+
 ## What comes next
 
 - **Scala Native.** The same crate's `staticlib`, linked through
   `@extern`: an ordinary C call, with the same law.
-- **WebAssembly under Chicory.** The kernel compiled to
-  `wasm32-unknown-unknown` and run by a pure-JVM Wasm runtime. There is no
-  native code in the process and memory is sandboxed, so this is the road
-  for UNTRUSTED plugins.
 
 ## Go
 

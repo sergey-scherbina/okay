@@ -63,18 +63,18 @@ Java. The kernel's memory is its own linear memory, so a bug in it
 cannot touch the JVM's heap. This is the road for UNTRUSTED plugins,
 and for Go (`GOOS=wasip1`) as well as Rust.
 
-- [ ] The crate exports `okay_alloc(n)` and `okay_free(p, n)`. A host
+- [x] The crate exports `okay_alloc(n)` and `okay_free(p, n)`. A host
       cannot hand a module its own pointers, so buffers are the module's
       memory, filled and read by the host. The native road ignores both.
-- [ ] `okay.rust.WasmLib.load(bytes)` instantiates a module under Chicory
+- [x] `okay.rust.WasmLib.load(bytes)` instantiates a module under Chicory
       with a WASI that grants NOTHING: no files, no environment, no
       arguments. It gives:
       - `call(name, args*)` on an export;
       - `bytesIn(a)` and `bytesOut(p, n)` over the module's memory, both
         freed in a `finally`.
-- [ ] `Kdf.wasm(lib)` is the third handler of the same effect. The
+- [x] `Kdf.wasm(lib)` is the third handler of the same effect. The
       program is unchanged.
-- [ ] (Live: cargo + the wasm32-wasip1 target) THE LAW again: the wasm
+- [x] (Live: cargo + the wasm32-wasip1 target) THE LAW again: the wasm
       kernel's bytes are BouncyCastle's, over the same 48 cases. A
       refused parameter set is the same `Left` as the native road's.
 
@@ -107,3 +107,17 @@ and for Go (`GOOS=wasip1`) as well as Rust.
   - A trap on the way: a Scala 3 enum case's `apply` answers the ENUM
     type (`Kdf[...]`), so a vector of `Kdf.Argon2id(...)` could not read
     `.password`. `new Kdf.Argon2id(...)` keeps the case's own type.
+
+- Stage 3 (rust-wasm, 2026-09-24).
+  - The crate builds offline for `wasm32-wasip1` (a 70 KB module). It
+    imports four WASI functions (`fd_write`, `environ_sizes_get`,
+    `environ_get`, `proc_exit`), which Chicory 1.7.5's WASI answers with
+    an empty world.
+  - TestKdfWasm (Live): THE LAW over the 48 cases (4.5 s, against 1.25 s
+    for the native road with its build), one program under the third
+    handler, the same `Left` for refused parameters, and a missing
+    export refused by name.
+  - Mutant: reading the output one byte off fails the law and the
+    either-handler test.
+  - A trap: `export` is a Scala 3 keyword, so Chicory's
+    `Instance.export` is called as ``instance.`export`(name)``.
