@@ -176,7 +176,7 @@ package object carries `!`, `pure`, `effect`, `Cont`, `/>`, `^`,
 - A `Return((s, a))` with no expected type infers its row as
   `Nothing`: pin it, `Return[F, (S, A)]`.
 
-### Not in stage 1 (backlog, section okay2)
+### Not in stage 1 (backlog: okay2/backlog.d, okay2's own board since 2026-09-24)
 - `Distinct`: two `State[_]` of different parameters in one row are
   two TYPES to `Remove`, one CLASS to the split. The Scala 3 core
   refuses this with a macro; here it misroutes at the first wrong

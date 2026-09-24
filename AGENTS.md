@@ -2,6 +2,7 @@
 
 SPRINT: sprint.d/ (one file per item; `scripts/board.sh sprint` reads it)
 BACKLOG: backlog.d/ (one file per item, by section; `scripts/board.sh backlog`)
+  okay2 keeps its own: okay2/backlog.d/ (`scripts/board.sh backlog okay2`)
 CHANGELOG: changelog.d/ (one file per landed lane; CHANGELOG.md is the archive)
 
 ## Skills

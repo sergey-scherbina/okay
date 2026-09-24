@@ -11,7 +11,14 @@
 #
 #   scripts/board.sh sprint       the sprint, assembled
 #   scripts/board.sh backlog      the backlog, by section
+#   scripts/board.sh backlog okay2   a module's OWN backlog, <dir>/backlog.d
 #   scripts/board.sh --check      naming and shape, run by a test
+#
+# A MODULE'S OWN BOARD (okay2-backlog, 2026-09-24): a directory with a
+# `backlog.d/` of the same layout is a board too — okay2, a separate
+# sbt build, keeps its backlog inside itself. --check covers it with the
+# root boards, and "one slug, one place" runs across ALL of them, so a
+# promotion from it is still a `git mv` into sprint.d/queue.
 #
 # THE LAYOUT
 #   <board>.d/_preamble.md        everything above the first heading
@@ -45,9 +52,16 @@ emit() {
   done < "$dir/_order"
 }
 
+# every board: the two at the root, then any <dir>/backlog.d
+boards() {
+  echo sprint.d
+  echo backlog.d
+  for b in */backlog.d; do [ -d "$b" ] && echo "$b"; done
+}
+
 check() {
   bad=0
-  for dir in sprint.d backlog.d; do
+  for dir in $(boards); do
     [ -d "$dir" ] || continue
     for f in "$dir"/_preamble.md "$dir"/_order; do
       [ -f "$f" ] || { echo "board: $dir is missing $(basename "$f")" >&2; bad=1; }
@@ -76,7 +90,7 @@ check() {
         # and twelve more read as open whose work had landed. A
         # closed entry moves to BACKLOG-ARCHIVE.md, verbatim, the day
         # it closes — a check the same lane runs, so it cannot drift.
-        [ "$dir" = backlog.d ] && head -1 "$f" | grep -q '^- \[x\]' &&
+        case "$dir" in *backlog.d) head -1 "$f" | grep -q '^- \[x\]' ;; *) false ;; esac &&
           { echo "board: $dir/$sec/$base is closed — move it to BACKLOG-ARCHIVE.md, verbatim" >&2; bad=1; }
       done
     done
@@ -85,21 +99,21 @@ check() {
   # instead of `git mv`-ing it left the backlog copy behind (80a1ccec),
   # and this check said "well formed" while TestBoardEntries failed
   # every lane's gate. The claim runs this script, not the test.
-  dupes=$(for f in sprint.d/*/*.md backlog.d/*/*.md; do
-            [ -e "$f" ] && basename "$f"
+  dupes=$(for dir in $(boards); do
+            for f in "$dir"/*/*.md; do [ -e "$f" ] && basename "$f"; done
           done | grep -vx '_section.md' | sort | uniq -d)
   for d in $dupes; do
     echo "board: $d is filed twice — promote with git mv, not a copy:" >&2
-    ls sprint.d/*/"$d" backlog.d/*/"$d" 2>/dev/null | sed 's/^/  /' >&2
+    for dir in $(boards); do ls "$dir"/*/"$d" 2>/dev/null || true; done | sed 's/^/  /' >&2
     bad=1
   done
-  [ "$bad" = 0 ] && echo "board: sprint.d and backlog.d are well formed"
+  [ "$bad" = 0 ] && echo "board: $(boards | tr '\n' ' ' | sed 's/ $//') are well formed"
   exit "$bad"
 }
 
 case "${1:-}" in
   --check) check ;;
   sprint) emit sprint.d ;;
-  backlog) emit backlog.d ;;
-  *) echo "usage: scripts/board.sh sprint|backlog|--check" >&2; exit 2 ;;
+  backlog) emit "${2:+$2/}backlog.d" ;;
+  *) echo "usage: scripts/board.sh sprint|backlog [dir]|--check" >&2; exit 2 ;;
 esac

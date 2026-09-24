@@ -23,3 +23,20 @@
       TOUCH: every module of okay2 (the row is in every signature) —
       a rewrite of the row layer, not a patch. Decide before okay2
       grows further: each stage built on `+`/`Remove` raises the price.
+      THE MODEL, so nobody re-derives it: `sealed abstract class
+      Free[-R, A]` with `Return[R, A]`, `Inject[R, A](op: Any)`, `Bind`,
+      `flatMap[R1 <: R, B]`; `type ![A, R] = Free[R, A]`; handlers
+      `def run[S, R, A](s: S)(p: Free[State[S] with R, A]): Free[R, (S, A)]`
+      matching operations by class. Checked: the six orders
+      `Writer(Reader(State(p)))` … `Writer(State(Reader(p)))` over
+      `Int ! State[Int] with Writer[String] with Reader[Int]`; `wide:
+      Int ! Reader[Int] with State[Int] = State.get[Int]`; `def bump[R]:
+      Int ! State[Int] with R`; `<:<` both ways between the two orders
+      of an intersection; 1M left-nested binds. `with` binds tighter
+      than any infix type operator, so `Int ! State[Int] with
+      Writer[String]` needs no parentheses — unlike `+` in either
+      encoding.
+      ALSO CHECK before deciding: interop instances (`Monad` for every
+      row) over a contravariant row, and whether `Handler.union` /
+      `Interpret` / `Relay` keep their kernel shape at `F with G`.
+

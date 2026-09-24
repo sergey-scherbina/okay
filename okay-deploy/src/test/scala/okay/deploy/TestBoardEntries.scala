@@ -16,8 +16,16 @@ class TestBoardEntries extends munit.FunSuite:
   private val root: Path = Deploy.repoRoot()
   private val name = "^[a-z0-9][a-z0-9.-]*\\.md$".r
 
-  private def boards: List[Path] =
+  private def rootBoards: List[Path] =
     List("sprint.d", "backlog.d").map(root.resolve).filter(Files.isDirectory(_))
+
+  /** a module's OWN backlog, `<dir>/backlog.d` (okay2-backlog, 2026-09-24):
+   * the same layout, checked with the root boards */
+  private def moduleBacklogs: List[Path] =
+    Files.list(root).iterator.asScala
+      .map(_.resolve("backlog.d")).filter(Files.isDirectory(_)).toList.sortBy(_.toString)
+
+  private def boards: List[Path] = rootBoards ++ moduleBacklogs
 
   private def sections(board: Path): List[Path] =
     Files.list(board).iterator.asScala.filter(Files.isDirectory(_)).toList
@@ -30,7 +38,8 @@ class TestBoardEntries extends munit.FunSuite:
       .toList.sortBy(_.getFileName.toString)
 
   test("both boards exist as directories, with a preamble and an order"):
-    assertEquals(boards.map(_.getFileName.toString).sorted, List("backlog.d", "sprint.d"))
+    assertEquals(rootBoards.map(_.getFileName.toString).sorted, List("backlog.d", "sprint.d"))
+    assert(moduleBacklogs.map(root.relativize(_).toString).contains("okay2/backlog.d"), moduleBacklogs.toString)
     boards.foreach: b =>
       assert(Files.isRegularFile(b.resolve("_preamble.md")), s"$b has no _preamble.md")
       assert(Files.isRegularFile(b.resolve("_order")), s"$b has no _order")
@@ -61,7 +70,7 @@ class TestBoardEntries extends munit.FunSuite:
     // that says "open work only", so the counts a reader takes from
     // it are wrong and a section can read as all-open with nothing
     // in it to do. Sprint entries are arcs and are not checked here.
-    val closed = sections(root.resolve("backlog.d")).flatMap(items).filter: p =>
+    val closed = (root.resolve("backlog.d") :: moduleBacklogs).flatMap(sections).flatMap(items).filter: p =>
       Files.readAllLines(p).asScala.headOption.exists(_.startsWith("- [x]"))
     assertEquals(closed.map(_.getFileName.toString), Nil,
       "closed entries on the open board — move them to BACKLOG-ARCHIVE.md, verbatim")

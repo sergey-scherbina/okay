@@ -9,13 +9,16 @@
 # somebody noticed. `scripts/board.sh --check` catches it, but only when
 # somebody runs it; a claim is a commit, so the commit is where to stop it.
 #
+# A module's own board (`okay2/backlog.d`, 2026-09-24) is a board too:
+# the same slug there and in sprint.d is the same double filing.
+#
 # It reads the INDEX (what is being committed), not the working tree: in
 # the main checkout the working tree may hold a sibling's uncommitted files.
-dupes=$(git ls-files -- 'sprint.d/*.md' 'backlog.d/*.md' | sed 's|.*/||' \
+dupes=$(git ls-files -- 'sprint.d/*.md' 'backlog.d/*.md' '*/backlog.d/*.md' | sed 's|.*/||' \
   | grep -v -x -e '_section.md' -e '_preamble.md' | sort | uniq -d)
 [ -z "$dupes" ] && exit 0
 echo "pre-commit: refused — a board item is filed twice (promote with git mv, not a copy):" >&2
 for d in $dupes; do
-  git ls-files -- 'sprint.d/*.md' 'backlog.d/*.md' | grep "/$d\$" | sed 's/^/  /' >&2
+  git ls-files -- 'sprint.d/*.md' 'backlog.d/*.md' '*/backlog.d/*.md' | grep "/$d\$" | sed 's/^/  /' >&2
 done
 exit 1
