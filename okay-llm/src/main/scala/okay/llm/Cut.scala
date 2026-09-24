@@ -56,7 +56,7 @@ object Cut {
   /** install the boundary; the body streams tokens and may abort to
    * the prompt with a named violation */
   def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Delim + Async)))
-  : Either[Violation, A] ! (Writer % String + Async) =
+  : Either[Violation, A] ! Writer % String + Async =
     val p = Delim.prompt[Either[Violation, A]]
     Delim.run(Delim.push(p)(gen(p).map(Right(_))))
 
@@ -72,12 +72,12 @@ object Cut {
    * a scripted stream can observe).
    */
   def checked[A](p: Prompt[Either[Violation, A]],
-                 tokens: Unit ! (Writer % String + Async))
+                 tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
   : Unit ! (Writer % String + (Delim + Async)) =
-    def go(src: Unit ! (Writer % String + Async), i: Int)
+    def go(src: Unit ! Writer % String + Async, i: Int)
     : Unit ! (Writer % String + (Delim + Async)) =
-      !.widen[Either[Unit, (String, Unit ! (Writer % String + Async))],
+      !.widen[Either[Unit, (String, Unit ! Writer % String + Async)],
               Async, Writer % String + Delim](
         Writer.uncons[String, Unit, Async](src)).flatMap {
         case Left(_) => pure(())
@@ -104,7 +104,7 @@ object Cut {
    * (`guarded`, `cut`, `checked(p, …)`) are unaffected.
    */
   def guard[A](gen: Delim.Prompted[Either[Violation, A]] ?=> A ! (Writer % String + (Delim + Async)))
-  : Either[Violation, A] ! (Writer % String + Async) =
+  : Either[Violation, A] ! Writer % String + Async =
     // `Delim.scope` is the only door that hands out the evidence —
     // its constructor is private to `Delim`, which is exactly what
     // makes the evidence worth asking for
@@ -112,7 +112,7 @@ object Cut {
 
   /** `checked` against the NEAREST guard — the prompt is ambient
    * (the ctx-prompts door; the explicit form stays) */
-  def checked[A](tokens: Unit ! (Writer % String + Async))
+  def checked[A](tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
                 (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! (Writer % String + (Delim + Async)) =
@@ -124,7 +124,7 @@ object Cut {
     cut[A, X](p.prompt)(v)
 
   /** `checked`, prompt ambient */
-  def watched[A](tokens: Unit ! (Writer % String + Async))
+  def watched[A](tokens: Unit ! Writer % String + Async)
                 (check: (Int, String) => Option[Violation])
                 (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! (Writer % String + (Delim + Async)) =
@@ -147,15 +147,15 @@ object Cut {
    * to the nearest guard. The menu at the signal is
    * `["drop", "cut"]` — mechanism in the stream, policy at the edge.
    */
-  def screened[A](tokens: Unit ! (Writer % String + Async))
+  def screened[A](tokens: Unit ! Writer % String + Async)
                  (check: (Int, String) => Option[Violation])
                  (using p: Delim.Prompted[Either[Violation, A]])
   : Unit ! Screened =
     type R = Writer % String + (Delim + Async)
     def emit(t: String): Unit ! Screened =
       effect[Screened, Unit](Writer(t))
-    def go(src: Unit ! (Writer % String + Async), i: Int): Unit ! Screened =
-      !.widen[Either[Unit, (String, Unit ! (Writer % String + Async))],
+    def go(src: Unit ! Writer % String + Async, i: Int): Unit ! Screened =
+      !.widen[Either[Unit, (String, Unit ! Writer % String + Async)],
               Async, Condition.Op + (Writer % String + Delim)](
         Writer.uncons[String, Unit, Async](src)).flatMap {
         case Left(_) => pure(())

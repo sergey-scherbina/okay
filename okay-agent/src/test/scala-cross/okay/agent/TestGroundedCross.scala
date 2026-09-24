@@ -40,7 +40,7 @@ class TestGroundedCross extends munit.FunSuite {
   val postings: Postings =
     Keyword.index(files.flatMap(f => Ingest.segment(f, 400)(_.length)))
 
-  val ask: Seq[Turn] ! (Context + Async) =
+  val ask: Seq[Turn] ! Context + Async =
     okay.effect[Context + Async, Unit](
       Context.Remember(Turn.User("how do I greet someone by name?")))
       .flatMap(_ => okay.effect[Context + Async, Seq[Turn]](Context.Recall()))

@@ -121,7 +121,7 @@ class TestToolbox extends munit.FunSuite {
   }
 
   test("relayToolsF: the agent's Tool calls run the programs, the row one effect shorter") {
-    val prog: String ! (Tool + W) =
+    val prog: String ! Tool + W =
       okay.effect[Tool + W, String](Tool.Call(call("log", "text" -> JStr("a"), "owner" -> JStr("o")))).flatMap(r1 =>
         okay.effect[Tool + W, String](Tool.Call(call("nosuch"))).map(r2 => s"$r1|$r2"))
     val (log, out) = !.run(Writer.run[String, String, okay.Pure](Handlers.relayToolsF[String, W](effectful.table)(prog)))

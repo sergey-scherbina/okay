@@ -37,7 +37,7 @@ class TestParallelChunks extends munit.FunSuite {
     // recomputable from the value alone. An effectful row (a live
     // consumer, a socket) is not that type, and the compiler says so.
     val errors = compileErrors(
-      "val live: Chunk[Int] ! (Produce + Async) = ???\nretryChunks(live)")
+      "val live: Chunk[Int] ! Produce + Async = ???\nretryChunks(live)")
     assert(errors.nonEmpty, "an effectful source must not typecheck as retryable")
   }
 }

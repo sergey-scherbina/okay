@@ -111,7 +111,7 @@ control doing the work: each `await` transfers control to the producer
 for exactly one element, no queue and no buffer in between, the
 consumer drives, and a finite consumer therefore ends an infinite
 producer with only the asked elements ever computed. The enumeratee is
-`Stage[I, O, A] = A ! (Take % I + Writer % O)` (`Pipe.scala:58`), a
+`Stage[I, O, A] = A ! Take % I + Writer % O` (`Pipe.scala:58`), a
 program that awaits on one side and tells on the other; `through`
 composes stages demand-driven, and `Stage.transduce(z)(step, end)` is
 the state-step-flush skeleton that every stage in the library — the
@@ -202,7 +202,7 @@ longer spelled `!.loop`; `Pull.loop(f)` is that program by name for
 the places a block is not.
 
 The generator now has its name. `Gen[W]` (Gen.scala; specs/generators.md)
-is a value class over `Unit ! (Writer % W + Stop)` — the program that
+is a value class over `Unit ! Writer % W + Stop` — the program that
 tells, with `Stop` as one more member of the row for the early end —
 and a `generator[W] { … }` block (okay-direct) is a direct block over
 that row in which `for … yield` emits. Two papers fix what the words

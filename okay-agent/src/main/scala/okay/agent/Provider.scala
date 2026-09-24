@@ -147,14 +147,14 @@ object Provider {
   // request to completion inside itself — which needs a thread that
   // can park, and JS has none. The portable shape therefore is not a
   // handler but a RELAY: the Model operations are translated into
-  // Async ones and the program comes back as `A ! (Async + F)`, which
+  // Async ones and the program comes back as `A ! Async + F`, which
   // the JVM runs by parking (runWith) and JS runs by driving the
   // event loop (Async.runAsync). Same program, both platforms; the
   // comonadic handler above stays as the JVM convenience.
 
   def relay[A, F[+_]](complete: (Seq[Turn], Seq[ToolSpec]) => Reply ! okay.Async,
                                        count: String => Int = _.length / 4)
-                                      (prog: A ! (Model + F)): A ! (okay.Async + F) =
+                                      (prog: A ! Model + F): A ! okay.Async + F =
     // the handler as a NATURAL TRANSFORMATION into another row: a
     // Model operation answers with a PROGRAM in Async, which is what
     // Handler[Model] = Model ==> Id could not express — Id has
@@ -174,7 +174,7 @@ object Provider {
   def openAiRelay[A, F[+_]](
       transport: Transport, apiKey: String, model: String,
       url: String = OpenAi.chatUrl, maxTokens: Option[Int] = Some(1024),
-      count: String => Int = _.length / 4)(prog: A ! (Model + F)): A ! (okay.Async + F) =
+      count: String => Int = _.length / 4)(prog: A ! Model + F): A ! okay.Async + F =
     relay[A, F]((ctx, tools) =>
       OpenAi.complete(transport, apiKey,
         OpenAi.request(model, ctx.map(message), tools.map(declaration),

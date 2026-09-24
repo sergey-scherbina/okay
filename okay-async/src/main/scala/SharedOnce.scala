@@ -90,11 +90,11 @@ final class SharedOnce:
 
   /** the `Once` operations of `a` answered from THIS store, the rest
    * of the row forwarded */
-  def runIn[A, F[+_]](a: A ! (Once + (Async + F))): A ! (Async + F) =
+  def runIn[A, F[+_]](a: A ! (Once + (Async + F))): A ! Async + F =
     !.translate[A, Once, Async + F](a)([X] => (o: Once[X]) => answer(o).plus[F])
 
   /** the common case: a program whose only other effect is `Async` */
-  def run[A](a: A ! (Once + Async)): A ! Async =
+  def run[A](a: A ! Once + Async): A ! Async =
     !.translate[A, Once, Async](a)([X] => (o: Once[X]) => answer(o))
 
 object SharedOnce:

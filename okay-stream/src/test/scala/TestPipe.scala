@@ -180,7 +180,7 @@ class TestPipe extends munit.FunSuite {
     val idG: Unit ! Row = !.widen[Unit, Take % Int + Writer % Int, Async](Stage.id[Int])
     val s3 = through[Int, Int, Int, Async, Unit, Unit](countingG)(idG)
     assertEquals(starts, 0, "the effectful through(stage)(stage) builds, runs nothing")
-    val toldG: Int ! (Writer % Int + Async) = !.widen[Int, Writer % Int, Async](told)
+    val toldG: Int ! Writer % Int + Async = !.widen[Int, Writer % Int, Async](told)
     val p4 = through[Int, Int, Async, Int, Unit](toldG)(s3)
     assertEquals(starts, 0, "the effectful through(producer)(stage) builds, runs nothing")
     assertEquals(Writer.run(p4).runWith._1, Seq(1, 2, 3))

@@ -35,11 +35,11 @@ class TestSignals extends FunSuite {
    * and is why these tests run through `Async.run` rather than
    * `!.run`.
    */
-  def drive[A](p: A ! (Pure + Async))(using CanBlock): A =
+  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
     !.run(Async.run[A, Pure](p))
 
 
-  def approval(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+  def approval(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
     direct:
       val what = !w.pause("what?")
       val by = !w.awaitSignal("approved")

@@ -20,27 +20,27 @@ class TestGuarded extends munit.FunSuite:
   /** the shape of every streaming seam here: tells its lines */
   type Lines = Writer % String
 
-  def run[A](prog: A ! (Lines + Async)): (Vector[String], A) =
+  def run[A](prog: A ! Lines + Async): (Vector[String], A) =
     val collected = Writer.run[String, A, Async](prog)
     Async.runAsync(collected).value match
       case Some(t) => val (ls, a) = t.get; (ls.toVector, a)
       case None => fail("the test program did not complete synchronously")
 
-  def refusal[A](prog: A ! (Lines + Async)): Refused =
+  def refusal[A](prog: A ! Lines + Async): Refused =
     Async.runAsync(Writer.run[String, A, Async](prog)).value match
       case Some(scala.util.Failure(r: Refused)) => r
       case Some(other) => fail(s"expected a Refused, got $other")
       case None => fail("the test program did not complete synchronously")
 
   /** lift each half into the row once, so the seams below read plainly */
-  def act(f: => Unit): Unit ! (Lines + Async) = !.widen[Unit, Async, Lines](okay.async(f))
-  def say(line: String): Unit ! (Lines + Async) = !.widen[Unit, Lines, Async](Writer.tell(line))
-  def park(register: (Either[Throwable, Unit] => Unit) => Unit): Unit ! (Lines + Async) =
+  def act(f: => Unit): Unit ! Lines + Async = !.widen[Unit, Async, Lines](okay.async(f))
+  def say(line: String): Unit ! Lines + Async = !.widen[Unit, Lines, Async](Writer.tell(line))
+  def park(register: (Either[Throwable, Unit] => Unit) => Unit): Unit ! Lines + Async =
     !.widen[Unit, Async, Lines](Async.await[Unit] { k => register(k); () => () })
 
   /** a seam that tells three lines, optionally failing part-way */
-  def stream(failAfter: Int = -1): Unit ! (Lines + Async) =
-    def line(i: Int): Unit ! (Lines + Async) =
+  def stream(failAfter: Int = -1): Unit ! Lines + Async =
+    def line(i: Int): Unit ! Lines + Async =
       act(if failAfter == i then throw java.io.IOException(s"wire died at $i") else ()).flatMap(_ => say(s"line $i"))
     line(1).flatMap(_ => line(2)).flatMap(_ => line(3))
 
@@ -70,7 +70,7 @@ class TestGuarded extends munit.FunSuite:
     val bulkhead = Bulkhead("llm", permits = 1)
     var release: Either[Throwable, Unit] => Unit = null
     // a seam that tells one line, then parks mid-stream
-    val parking: Unit ! (Lines + Async) =
+    val parking: Unit ! Lines + Async =
       say("first").flatMap(_ => park(k => release = k)).flatMap(_ => say("last"))
 
     val inFlight = Async.runAsync(Writer.run[String, Unit, Async](
@@ -89,7 +89,7 @@ class TestGuarded extends munit.FunSuite:
   test("the limiter refuses before the seam is touched at all") {
     val limiter = Limiter("llm", ratePerSecond = 1, burst = 1, clock = clock)
     var started = 0
-    def counted: Unit ! (Lines + Async) = act(started += 1).flatMap(_ => stream())
+    def counted: Unit ! Lines + Async = act(started += 1).flatMap(_ => stream())
     val _ = run(Resilient.guarded(counted, limiter = Some(limiter)))
     assertEquals(started, 1)
     val r = refusal(Resilient.guarded(counted, limiter = Some(limiter)))

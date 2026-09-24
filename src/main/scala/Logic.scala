@@ -23,12 +23,12 @@ object Logic {
 
   /** all of it at once, on a lazy stream: alternatives explored
    * depth-first, left to right */
-  private def alts[A, F[+_]](ps: Seq[A ! (Choose + F)]): A ! (Choose + F) =
-    effect[Choose + F, A ! (Choose + F)](Choose(ps)).flatMap(identity)
+  private def alts[A, F[+_]](ps: Seq[A ! Choose + F]): A ! Choose + F =
+    effect[Choose + F, A ! Choose + F](Choose(ps)).flatMap(identity)
 
   /** construction must do NO work (the laziness contract): recursive
    * search combinators hide behind a unit bind */
-  private def defer[A, F[+_]](p: => A ! (Choose + F)): A ! (Choose + F) =
+  private def defer[A, F[+_]](p: => A ! Choose + F): A ! Choose + F =
     pure(()).flatMap(_ => p)
 
   /**
@@ -38,15 +38,15 @@ object Logic {
    * crossed. The worklist is a LazyList: infinite choice points
    * (Choose over a LazyList of alternatives) stay unforced.
    */
-  def msplit[A, F[+_]](m: A ! (Choose + F))
-  : Option[(A, A ! (Choose + F))] ! F =
-    def go(stack: LazyList[A ! (Choose + F)]): Option[(A, A ! (Choose + F))] ! F =
+  def msplit[A, F[+_]](m: A ! Choose + F)
+  : Option[(A, A ! Choose + F)] ! F =
+    def go(stack: LazyList[A ! Choose + F]): Option[(A, A ! Choose + F)] ! F =
       stack match
         case LazyList() => pure(None)
         case p #:: rest => (p.resume: @unchecked) match
           case Return(a) => pure(Some((a, alts(rest))))
           case Inject(e) => split[Choose, F](e)
-            (c => go(c.as.to(LazyList).map(a => Return(a): A ! (Choose + F)) #::: rest))
+            (c => go(c.as.to(LazyList).map(a => Return(a): A ! Choose + F) #::: rest))
             (g => Inject(g).flatMap(a => go(Return(a) #:: rest)))
           case Bind(Inject(e), k) => split[Choose, F](e)
             (c => go(c.as.to(LazyList).map(x => k(x)) #::: rest))
@@ -58,49 +58,49 @@ object Logic {
    * throws the rest of the search away. `once` until logic-cut
    * (2026-09-16): that word is `!.once` now, the by-need effect, and
    * a file importing both `!.*` and `Logic.*` had the two collide. */
-  def cut[A, F[+_]](m: A ! (Choose + F)): A ! (Choose + F) =
-    !.widen[Option[(A, A ! (Choose + F))], F, Choose](msplit(m)).flatMap:
+  def cut[A, F[+_]](m: A ! Choose + F): A ! Choose + F =
+    !.widen[Option[(A, A ! Choose + F)], F, Choose](msplit(m)).flatMap:
       case Some((a, _)) => pure(a)
       case None => effect(Choose(Seq.empty))
 
   /** the soft cut: if cond has ANY answer, then th over ALL its
    * answers; el ONLY when cond has none. (A plain flatMap cannot say
    * "no answer"; an ordinary cut would lose cond's other answers.) */
-  def ifte[A, B, F[+_]](cond: A ! (Choose + F))
-                                   (th: A => B ! (Choose + F))
-                                   (el: => B ! (Choose + F)): B ! (Choose + F) =
-    !.widen[Option[(A, A ! (Choose + F))], F, Choose](msplit(cond)).flatMap:
+  def ifte[A, B, F[+_]](cond: A ! Choose + F)
+                                   (th: A => B ! Choose + F)
+                                   (el: => B ! Choose + F): B ! Choose + F =
+    !.widen[Option[(A, A ! Choose + F)], F, Choose](msplit(cond)).flatMap:
       case Some((a, rest)) => alts(Seq(defer(th(a)), defer(rest.flatMap(th))))
       case None => el
 
   /** negation as failure: succeeds (with unit) exactly when the
    * search fails */
-  def gnot[A, F[+_]](m: A ! (Choose + F)): Unit ! (Choose + F) =
+  def gnot[A, F[+_]](m: A ! Choose + F): Unit ! Choose + F =
     ifte(m)(_ => effect(Choose(Seq.empty)))(pure(()))
 
   /** the FAIR or: answers of a and b take turns — an infinite a
    * cannot starve b */
-  def interleave[A, F[+_] : TypeableK](a: A ! (Choose + F), b: => A ! (Choose + F))
-  : A ! (Choose + F) =
-    !.widen[Option[(A, A ! (Choose + F))], F, Choose](msplit(a)).flatMap:
+  def interleave[A, F[+_] : TypeableK](a: A ! Choose + F, b: => A ! Choose + F)
+  : A ! Choose + F =
+    !.widen[Option[(A, A ! Choose + F)], F, Choose](msplit(a)).flatMap:
       case Some((x, rest)) => alts(Seq(pure(x), defer(interleave(b, rest))))
       case None => b
 
   /** the FAIR bind: each answer of m gets a turn before any single
    * f-branch monopolizes the search */
-  def fairBind[A, B, F[+_] : TypeableK](m: A ! (Choose + F))
-                                       (f: A => B ! (Choose + F)): B ! (Choose + F) =
-    !.widen[Option[(A, A ! (Choose + F))], F, Choose](msplit(m)).flatMap:
+  def fairBind[A, B, F[+_] : TypeableK](m: A ! Choose + F)
+                                       (f: A => B ! Choose + F): B ! Choose + F =
+    !.widen[Option[(A, A ! Choose + F)], F, Choose](msplit(m)).flatMap:
       case Some((a, rest)) => interleave(f(a), fairBind(rest)(f))
       case None => effect(Choose(Seq.empty))
 
-  extension [A, F[+_]](m: A ! (Choose + F))
+  extension [A, F[+_]](m: A ! Choose + F)
     /** fairBind as an operator, LogicT's spelling */
-    inline def >>-[B](f: A => B ! (Choose + F))(using TypeableK[F]): B ! (Choose + F) =
+    inline def >>-[B](f: A => B ! Choose + F)(using TypeableK[F]): B ! Choose + F =
       fairBind(m)(f)
 
   /** the first n answers (a possibly infinite search stays lazy) */
-  def observe[A, F[+_] : TypeableK](n: Int)(m: A ! (Choose + F)): Seq[A] ! F =
+  def observe[A, F[+_] : TypeableK](n: Int)(m: A ! Choose + F): Seq[A] ! F =
     if n <= 0 then pure(Seq.empty)
     else msplit(m).flatMap:
       case Some((a, rest)) => observe(n - 1)(rest).map(a +: _)

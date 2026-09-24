@@ -43,9 +43,9 @@ class TestWidenDelay extends munit.FunSuite:
 
   test("Writer.widen keeps a deferred head deferred") {
     var starts = 0
-    val delayed: Int ! (Writer % String + Reader % Int) = Free.delay { () =>
+    val delayed: Int ! Writer % String + Reader % Int = Free.delay { () =>
       starts += 1; !.widen[Int, Writer % String, Reader % Int](Writer.tell("x").map(_ => 1)) }
-    val wide: Int ! (Writer % CharSequence + Reader % Int) =
+    val wide: Int ! Writer % CharSequence + Reader % Int =
       Writer.widen[String, CharSequence, Int, Reader % Int](delayed)
     assertEquals(starts, 0, "widening runs nothing")
     def run = !.run(Reader.run[Int, (Seq[CharSequence], Int), okay.Pure](0)(

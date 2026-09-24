@@ -7,7 +7,7 @@ import okay.{!, +, %, Async, Chunk, ChunkBuf, Chunks, Source, Timer, Writer, eff
  * `Source[Chunk[Record]]` — each chunk is one told value, each read
  * one `Async` operation, constant memory for any log size (the
  * writer carrier since producer-to-writer-carrier, 2026-09-19; it was
- * `Chunk[Record] ! (Produce + Async)`, the `JdbcInterop` shape, whose
+ * `Chunk[Record] ! Produce + Async`, the `JdbcInterop` shape, whose
  * element sat in the answer position). `stream` ends when it catches
  * up; `tail` never ends — at `end` it parks on the platform timer
  * and polls, which is the contract the poll-on-end behavior test

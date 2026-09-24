@@ -19,7 +19,7 @@ object Transports:
 
   def fetch: Transport = new Transport:
     def post(url: String, headers: Map[String, String], body: String)
-    : Unit ! (Writer % String + Async) =
+    : Unit ! Writer % String + Async =
       type F = Writer % String + Async
       // Async.await, not the success-only `await`: a rejected fetch
       // (an unreachable host, a DNS failure, a CORS refusal) used to

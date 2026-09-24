@@ -14,7 +14,7 @@ object ProbeOneCast:
   type Mix  = State % Int + Writer % String
   type Mix3 = State % Int + Writer % String + Reader % Boolean
 
-  val narrow: Int ! (State % Int) = State.get[Int]
+  val narrow: Int ! State % Int = State.get[Int]
 
   /** the target is named; the complement never is */
   val mixed: Int ! Mix =

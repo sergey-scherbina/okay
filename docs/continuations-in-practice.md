@@ -355,7 +355,7 @@ production run replays on a laptop.
 ### A durable program, as it actually reads
 
 ```scala
-def booking(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
   val city = !w.pause("city?")          // the world answers
   val when = !w.now                     // the RUNTIME answers, once, and it is journalled
   val n    = !w.pause("nights?")

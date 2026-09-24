@@ -254,7 +254,7 @@ class TestDirect extends munit.FunSuite {
 
   test("a mark on a program of an UNRELATED row is still refused, with both readings named") {
     val e = compileErrors("""
-      val p: Int ! (Writer % String) = okay.Direct.direct[[A] =>> A ! (Writer % String)] {
+      val p: Int ! Writer % String = okay.Direct.direct[[A] =>> A ! Writer % String] {
         !Reader.ask[Int]
       }
     """)

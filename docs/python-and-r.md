@@ -17,7 +17,7 @@ place, and everything below is built on it.
 ```mermaid
 flowchart LR
   subgraph JVM["the JVM: your Scala program"]
-    P["an okay program<br/>Either[Condition, Out] ! (F + PyEval)"]
+    P["an okay program<br/>Either[Condition, Out] ! F + PyEval"]
     H["the PyEval handler<br/>PySubprocess · PyWorkers · Durable"]
     F["handlers for F<br/>Reader · State · Async · ..."]
     P --> H

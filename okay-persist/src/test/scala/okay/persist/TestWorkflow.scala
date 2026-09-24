@@ -25,20 +25,20 @@ class TestWorkflow extends FunSuite {
    * workflow reads as ordinary straight-line code: the types are
    * named once in the signature and no call site repeats them.
    */
-  def v1(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+  def v1(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
     val city = !w.pause("city?")
     val n = !w.pause("nights?")
     s"$city/$n"
 
   /** v2: the same, with a branch added BETWEEN the two questions */
-  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
     val city = !w.pause("city?")
     val on = !w.patch("promo")
     val n = !w.pause("nights?")
     if on then s"$city/$n/promo" else s"$city/$n"
 
   /** a program that stamps itself with the time */
-  def stamped(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+  def stamped(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
     val who = !w.pause("who?")
     s"$who@${!w.now}"
 
@@ -50,7 +50,7 @@ class TestWorkflow extends FunSuite {
     case Left(w) => fail(s"expected the workflow to finish, it is waiting on $w")
 
   def wf(t: Topic, id: String, program: String)
-        (body: Wf.Asks[String, String, String, Pure] ?=> String ! (Delim + Pure)) =
+        (body: Wf.Asks[String, String, String, Pure] ?=> String ! Delim + Pure) =
     Dialogue.workflow[String, String, String, Pure](t, id, program)(body)
 
   test("the clock is read ONCE and the reading outlives the process") {
@@ -122,7 +122,7 @@ class TestWorkflow extends FunSuite {
   // ==== the engine's keystone, through the log =====================
 
   /** answer, then sleep a day, then finish */
-  def overnight(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+  def overnight(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
     val who = !w.pause("who?")
     !w.sleep(86_400_000L)
     s"$who slept"

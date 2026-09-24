@@ -20,7 +20,7 @@ class TestPyStreamShape extends munit.FunSuite {
     // `Free.delay` per element. (A left-nested `p.flatMap(_ => { produced
     // += 1; tell(x) })` reads one ahead — reassociating the bind runs the
     // next lambda — which is a side effect in a lambda, not a pull.)
-    val src: Unit ! (Writer % Long + PyEval) =
+    val src: Unit ! Writer % Long + PyEval =
       (1L to 10L).foldRight(okay.pure[Writer % Long, Unit](()))((x, rest) =>
         okay.Free.delay(() => { produced += 1; Writer.tell(x).flatMap(_ => rest) })).plus[PyEval]
     val out = Writer.run(okay.through(src)(Py.stage[Long, Long]("m:id", chunk = 4))).runWith(using mock)._1

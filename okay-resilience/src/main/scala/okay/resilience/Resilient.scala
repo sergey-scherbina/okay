@@ -115,15 +115,15 @@ object Resilient:
    * nothing about llm or mcp, and a caller wires this at the edge in
    * three lines.
    */
-  def guarded[A, F[+_]](prog: => A ! (F + Async),
+  def guarded[A, F[+_]](prog: => A ! F + Async,
                         breaker: Option[Breaker] = None,
                         bulkhead: Option[Bulkhead] = None,
                         limiter: Option[Limiter] = None,
                         key: String = "",
                         failing: Either[Throwable, A] => Boolean = (r: Either[Throwable, A]) => r.isLeft)
-                       (using TypeableK[Async], Timer): A ! (F + Async) =
-    def call: A ! (F + Async) = limiter.fold(prog)(_.admitIn[A, F](key)(prog))
-    def broken: A ! (F + Async) = breaker.fold(call)(_.protectIn[A, F](call)(failing))
+                       (using TypeableK[Async], Timer): A ! F + Async =
+    def call: A ! F + Async = limiter.fold(prog)(_.admitIn[A, F](key)(prog))
+    def broken: A ! F + Async = breaker.fold(call)(_.protectIn[A, F](call)(failing))
     bulkhead.fold(broken)(_.limitIn[A, F](broken))
 
   /** the status a refusal maps to, as a value */

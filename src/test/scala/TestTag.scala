@@ -11,7 +11,7 @@ class TestTag extends munit.FunSuite {
 
   /** an ordinary function, written against a plain State and knowing
    * nothing about keys */
-  def bump(by: Int): Int ! (State % Int) =
+  def bump(by: Int): Int ! State % Int =
     for
       n <- State.get[Int]
       _ <- State.set(n + by)
@@ -41,7 +41,7 @@ class TestTag extends munit.FunSuite {
   test("a key tells apart two instances of a signature that carries nothing") {
     type A = Tag.Of["a", Reader % Int]
     type B = Tag.Of["b", Reader % Int]
-    val p: (Int, Int) ! (A + B) =
+    val p: (Int, Int) ! A + B =
       for
         x <- Tag.one["a", Reader % Int](Reader.Ask()).plus[B]
         y <- Tag.one["b", Reader % Int](Reader.Ask()).at[A + B]
@@ -80,7 +80,7 @@ class TestTag extends munit.FunSuite {
   test("two members under ONE key are not told apart — keys must be distinct") {
     type A = Tag.Of["same", Reader % Int]
     type B = Tag.Of["same", Reader % String]
-    val p: (Int, String) ! (A + B) =
+    val p: (Int, String) ! A + B =
       for
         x <- Tag.one["same", Reader % Int](Reader.Ask()).plus[B]
         y <- Tag.one["same", Reader % String](Reader.Ask()).at[A + B]
@@ -115,7 +115,7 @@ class TestTag extends munit.FunSuite {
     type A = Tag.Of["same", Beep]
     type B = Tag.Of["same", Buzz]
 
-    val p: (Int, String) ! (A + B) =
+    val p: (Int, String) ! A + B =
       for
         x <- Tag.one["same", Beep](Beep.Boop()).plus[B]
         y <- Tag.one["same", Buzz](Buzz.Bzz()).at[A + B]

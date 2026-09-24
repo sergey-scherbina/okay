@@ -193,7 +193,7 @@ your own effects next to it, use `Eff`.
 the library's class is `Eff[R, A]`, and `R` is an intersection of
 **capabilities**, written with `+` the way okay writes a row:
 `Int ! (State[Int] + Writer[String])` for okay's
-`Int ! (State % Int + Writer % String)`. Both `!` and `+` are two lines
+`Int ! State % Int + Writer % String`. Both `!` and `+` are two lines
 of your own code, declared once in a package object of your project (a
 Scala 3 top-level alias is invisible to scalac 2.13, so the library
 cannot carry them for you):
@@ -212,9 +212,12 @@ They are aliases and nothing more: `R + S` IS `R with S` and `A ! R`
 IS `Eff[R, A]`, the same types, so a chain
 `Reader[Config] + State[Int] + Throws[String]` is the plain
 intersection of the three, and `Eff[...]` and `with` still work
-wherever you meet them. Keep the parentheses after `!`: in Scala 2
-every infix type operator has the same precedence and associates to
-the left, so `Int ! State[Int] + Writer[String]` is
+wherever you meet them. Keep the parentheses after `!` — the one
+place the two languages differ: Scala 3 ranks an infix type operator
+by its first character, `!` below `+`, so okay writes
+`Int ! State % Int + Writer % String` bare; Scala 2 gives every infix
+type operator the same precedence, left-associative, so
+`Int ! State[Int] + Writer[String]` is
 `(Int ! State[Int]) + Writer[String]`, a program intersected with a
 capability, and the compiler will tell you so at the first `flatMap`.
 The capabilities:
@@ -1567,7 +1570,7 @@ Postgres' own, with numbered placeholders (`$1, $2`) where JDBC writes
 
 | Scala 3 (`okay`) | Scala 2.13 (`okay.scala2`) |
 |---|---|
-| `A ! (State % Int + Writer % String)` | `A ! (State[Int] + Writer[String])` |
+| `A ! State % Int + Writer % String` (no parentheses: `!` binds loosest) | `A ! (State[Int] + Writer[String])` (parentheses required: one precedence for every infix type) |
 | `State.get[Int]`, `Writer.tell(w)` | the same names, on the companions in `okay.scala2` |
 | `State.run(s)(p)` / `State.handle(s)(p)` | `State.run(s)(p)`, which leaves the rest of the row |
 | `enum KV[+A] derives Effect` | `sealed trait KV[A] extends Op[A]` + `object KV extends Effect[KV]` |

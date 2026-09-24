@@ -82,7 +82,7 @@ object Handlers {
    * for the WHOLE row, Async included, and on JS there is none.
    */
   def relayTools[A, F[+_]](table: Map[String, ToolCall => String])
-                                           (prog: A ! (Tool + F)): A ! F =
+                                           (prog: A ! Tool + F): A ! F =
     def answer(c: ToolCall): String = table.get(c.name) match
       case Some(f) =>
         try f(c) catch case ex: Throwable => s"error: ${ex.getMessage}"
@@ -99,7 +99,7 @@ object Handlers {
    * business — a program cannot be `try`-caught from outside, and
    * the tool that must answer its failure does so in its own row */
   def relayToolsF[A, F[+_]](table: Map[String, ToolCall => String ! F])
-                           (prog: A ! (Tool + F)): A ! F =
+                           (prog: A ! Tool + F): A ! F =
     okay.!.translate[A, Tool, F](prog) {
       [X] => (e: Tool[X]) => e match
         case Tool.Call(c) => table.get(c.name) match

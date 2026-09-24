@@ -140,12 +140,12 @@ object Sessions {
 
     val (recovered, _) = recover(sess)(init)(view)(update)
     val journaled: Source[String] = through[String, String, Async, Unit, Unit](lines)(tee)
-    val served: S ! (Writer % String + Async) =
+    val served: S ! Writer % String + Async =
       through[String, String, Async, Unit, S](journaled)(
         !.widen[S, Take % String + Writer % String, Async](
           Wire.serve(recovered)(view)(update)))
 
-    def drain(p: S ! (Writer % String + Async)): S ! Async =
+    def drain(p: S ! Writer % String + Async): S ! Async =
       Writer.uncons[String, S, Async](p).flatMap {
         case Left(s) => pure(s)
         case Right((out, rest)) => send(out).flatMap(_ => drain(rest))

@@ -30,7 +30,7 @@ object ProbeVariance:
     op[State % S, R, S](State.Get())
 
   // 1. narrow row
-  val narrow: Unit ! (Writer % String) = tell("a")
+  val narrow: Unit ! Writer % String = tell("a")
   // 2. mixed row, no annotation on the operations
   type Mix = State % Int + Writer % String
   val mixed: Int ! Mix =

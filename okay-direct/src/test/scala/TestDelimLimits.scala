@@ -161,7 +161,7 @@ class TestDelimLimits extends munit.FunSuite {
     // abstract F, where it succeeds — that is the hole. A helper that
     // DOES take `using Delim.OneMachine[F]` propagates the obligation
     // and its call site is refused, which is the fix available today.
-    def generic[F[+_]](p: Int ! (Delim + F)): Int ! F = Delim.run(p)
+    def generic[F[+_]](p: Int ! Delim + F): Int ! F = Delim.run(p)
     val outer = Delim.prompt[Int]
     def prog: Int ! P = Delim.delimited[Int, P]:
       direct:
@@ -172,14 +172,14 @@ class TestDelimLimits extends munit.FunSuite {
   // ==== DEPTH ======================================================
 
   test("depth: ten thousand emits, three thousand pauses, and a replay of them") {
-    def many(n: Int)(using Delim.Emitting[Int]): Unit ! (Delim + P) = direct:
+    def many(n: Int)(using Delim.Emitting[Int]): Unit ! Delim + P = direct:
       var i = 0
       while i < n do
         !Delim.emit(i)
         i += 1
     assertEquals(!.run(Delim.collect[Int, P](many(10000))).size, 10000)
 
-    def asks(n: Int)(using Delim.Asking[Int, Int, Int, Delim + P]): Int ! (Delim + P) = direct:
+    def asks(n: Int)(using Delim.Asking[Int, Int, Int, Delim + P]): Int ! Delim + P = direct:
       var acc = 0
       var i = 0
       while i < n do

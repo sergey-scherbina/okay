@@ -45,7 +45,7 @@ enum Stop[+A] derives Effect:
 /**
  * The generator, a VALUE CLASS over the program that tells — so that
  * `map`/`flatMap`/`withFilter` are MEMBERS: an extension on the alias
- * `Unit ! (Writer % W + Stop)` cannot infer `W` from a type-lambda row,
+ * `Unit ! Writer % W + Stop` cannot infer `W` from a type-lambda row,
  * and an extension on an opaque type lost to the package's generic
  * `map` over `Id` in lexical scope (`y` in a for-comprehension typed as
  * the whole generator). A member beats both, and `AnyVal` costs no

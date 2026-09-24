@@ -167,7 +167,7 @@ object Delim {
     new Prompt[R](what, at.where)
 
   /** run the body under the delimiter — reset, as an operation */
-  def push[R, F[+_]](p: Prompt[R])(body: R ! (Delim + F)): R ! (Delim + F) =
+  def push[R, F[+_]](p: Prompt[R])(body: R ! Delim + F): R ! Delim + F =
     effect(Push(p, body))
 
   /**
@@ -181,28 +181,28 @@ object Delim {
    * lets a captured continuation shift again.
    */
   def shift[R, A, F[+_]](p: Prompt[R])
-                        (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using at: At): A ! (Delim + F) =
+                        (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
     effect(Capture(p, f, underPrompt = true, delimitK = true, at = at.where))
 
   /** the body CONSUMES the delimiter (a further shift to `p` escapes
    * outward), the continuation still re-installs it */
   def shift0[R, A, F[+_]](p: Prompt[R])
-                         (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using at: At): A ! (Delim + F) =
+                         (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
     effect(Capture(p, f, underPrompt = false, delimitK = true, at = at.where))
 
   /** the body runs under the delimiter, the continuation does NOT
    * re-install it — a bare segment, spliced where it is invoked */
   def control[R, A, F[+_]](p: Prompt[R])
-                          (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using at: At): A ! (Delim + F) =
+                          (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
     effect(Capture(p, f, underPrompt = true, delimitK = false, at = at.where))
 
   /** neither: the delimiter is consumed and the continuation is bare */
   def control0[R, A, F[+_]](p: Prompt[R])
-                           (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using at: At): A ! (Delim + F) =
+                           (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
     effect(Capture(p, f, underPrompt = false, delimitK = false, at = at.where))
 
   /** the common shape: a fresh prompt, a block under it, run */
-  def reset[R, F[+_]](body: Prompt[R] => R ! (Delim + F))
+  def reset[R, F[+_]](body: Prompt[R] => R ! Delim + F)
                      (using om: OneMachine[F], at: At): R ! F =
     val p = named[R]("reset")(using at)
     run(push(p)(body(p)))
@@ -218,15 +218,15 @@ object Delim {
    * It is the given, not the prompt, that has to be asked for: a
    * `Prompt[R]` is one line to make and proves nothing.
    *
-   *     def banner: Prompted[Int] ?=> Int ! (Delim + W) = direct:
+   *     def banner: Prompted[Int] ?=> Int ! Delim + W = direct:
    *       "hello".tell
    *       1 + !Delim.shift[Int, Int, W](k => k(5))
    *
    * That function compiles, is a value, travels — and can only be
    * CALLED where a `delimited` put the evidence in scope.
    *
-   * WHY NOT A ROW MEMBER. An obligation in the row (`A ! (Delim +
-   * Prompted[p.type] + F)`, discharged by `push`) was written first
+   * WHY NOT A ROW MEMBER. An obligation in the row (`A ! Delim +
+   * Prompted[p.type] + F`, discharged by `push`) was written first
    * and does not compose: rows here are unions and `Free` is invariant
    * in them, so a body that does NOT capture to the prompt being
    * installed — `push(inner) { shift(outer)(…) }`, or any body with no
@@ -266,22 +266,22 @@ object Delim {
    * (`delimited`, `collect`, `resumable`), everything under it
    * installs only (`scope`, `collecting`, `pausing`).
    */
-  def scope[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F))(using At): R ! (Delim + F) =
+  def scope[R, F[+_]](body: Prompted[R] ?=> R ! Delim + F)(using At): R ! Delim + F =
     scopeAs("scope")(body)
 
   /** the one place a delimiter is installed: `what` is the door's own
    * name and `at` the caller's line, and the two are joined ONCE.
    * (An earlier cut passed the name inside the `At` and produced
    * "scope @ delimited @ File:41" — caught by the label test.) */
-  private def scopeAs[R, F[+_]](what: String)(body: Prompted[R] ?=> R ! (Delim + F))
-                               (using At): R ! (Delim + F) =
+  private def scopeAs[R, F[+_]](what: String)(body: Prompted[R] ?=> R ! Delim + F)
+                               (using At): R ! Delim + F =
     val p = named[R](what)
     push(p)(body(using new Prompted[R](p)))
 
   /** install a fresh delimiter, run the body under it with the
    * evidence in scope, and handle the machine — the OUTERMOST form;
    * `scope` is the one that nests */
-  def delimited[R, F[+_]](body: Prompted[R] ?=> R ! (Delim + F))
+  def delimited[R, F[+_]](body: Prompted[R] ?=> R ! Delim + F)
                          (using om: OneMachine[F], at: At): R ! F =
     run(scopeAs("delimited")(body))(using om)
 
@@ -290,7 +290,7 @@ object Delim {
    * write: a prompt in the first clause is the primitive, a handler
    * there is this one (delim-one-name) */
   def shift[R, A, F[+_]](using in: Prompted[R])
-                          (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using At): A ! (Delim + F) =
+                          (f: (A => R ! Delim + F) => R ! Delim + F)(using At): A ! Delim + F =
     shift[R, A, F](in.prompt)(f)
 
   /**
@@ -318,21 +318,21 @@ object Delim {
 
   /** the 0-variant: the body consumes the delimiter */
   def shift0[R, A, F[+_]](using in: Prompted[R])
-                           (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using At): A ! (Delim + F) =
+                           (f: (A => R ! Delim + F) => R ! Delim + F)(using At): A ! Delim + F =
     shift0[R, A, F](in.prompt)(f)
 
   /** the continuation does not re-install the delimiter */
   def control[R, A, F[+_]](using in: Prompted[R])
-                            (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using At): A ! (Delim + F) =
+                            (f: (A => R ! Delim + F) => R ! Delim + F)(using At): A ! Delim + F =
     control[R, A, F](in.prompt)(f)
 
   /** neither */
   def control0[R, A, F[+_]](using in: Prompted[R])
-                             (f: (A => R ! (Delim + F)) => R ! (Delim + F))(using At): A ! (Delim + F) =
+                             (f: (A => R ! Delim + F) => R ! Delim + F)(using At): A ! Delim + F =
     control0[R, A, F](in.prompt)(f)
 
   /** abort to the delimiter in force with a value */
-  def abort[R, A, F[+_]](using in: Prompted[R])(value: R)(using At): A ! (Delim + F) =
+  def abort[R, A, F[+_]](using in: Prompted[R])(value: R)(using At): A ! Delim + F =
     abort[R, A, F](in.prompt)(value)
 
   // ==================================================================
@@ -452,7 +452,7 @@ object Delim {
    * consumer gets a list. `emit` builds the list out of the rest of
    * the producer, which is why the producer never has to know.
    */
-  def collect[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F))
+  def collect[A, F[+_]](body: Emitting[A] ?=> Unit ! Delim + F)
                        (using om: OneMachine[F], at: At): List[A] ! F =
     run(collectAs("collect")(body))(using om)
 
@@ -460,12 +460,12 @@ object Delim {
    * leaves the machine to the `delimited`/`resumable` around it, so a
    * capture from inside — a `pause`, an `exit` to an outer scope —
    * crosses it instead of dying on a prompt another machine holds */
-  def collecting[A, F[+_]](body: Emitting[A] ?=> Unit ! (Delim + F))
-                          (using At): List[A] ! (Delim + F) =
+  def collecting[A, F[+_]](body: Emitting[A] ?=> Unit ! Delim + F)
+                          (using At): List[A] ! Delim + F =
     collectAs("collecting")(body)
 
-  private def collectAs[A, F[+_]](what: String)(body: Emitting[A] ?=> Unit ! (Delim + F))
-                                 (using At): List[A] ! (Delim + F) =
+  private def collectAs[A, F[+_]](what: String)(body: Emitting[A] ?=> Unit ! Delim + F)
+                                 (using At): List[A] ! Delim + F =
     scopeAs[List[A], F](what)(
       body(using new Listing[A](summon[Prompted[List[A]]]))
         .map(_ => List.empty[A]))
@@ -481,21 +481,21 @@ object Delim {
    * answer with it. `done(init)` runs no body at all.
    */
   def collectUntil[A, S, R, F[+_]](using fo: FoldUntil[A, S, R])
-                                   (body: Emitting[A] ?=> Unit ! (Delim + F))
+                                   (body: Emitting[A] ?=> Unit ! Delim + F)
                                    (using om: OneMachine[F], at: At): R ! F =
     if fo.done(fo.init) then okay.pure(fo.end(fo.init))
     else run(collectUntilAs("collectUntil")(fo)(body))(using om)
 
   /** the nested half of `collectUntil`, as `collecting` is of `collect` */
   def collectingUntil[A, S, R, F[+_]](using fo: FoldUntil[A, S, R])
-                                      (body: Emitting[A] ?=> Unit ! (Delim + F))
-                                      (using At): R ! (Delim + F) =
+                                      (body: Emitting[A] ?=> Unit ! Delim + F)
+                                      (using At): R ! Delim + F =
     if fo.done(fo.init) then okay.pure(fo.end(fo.init))
     else collectUntilAs("collectingUntil")(fo)(body)
 
   private def collectUntilAs[A, S, R, F[+_]](what: String)(fo: FoldUntil[A, S, R])
-                                            (body: Emitting[A] ?=> Unit ! (Delim + F))
-                                            (using At): R ! (Delim + F) =
+                                            (body: Emitting[A] ?=> Unit ! Delim + F)
+                                            (using At): R ! Delim + F =
     type G[+X] = (Delim + F)[X]
     scopeAs[S => R ! G, F](what)(
       body(using new Stopping[A, S, R, G](summon[Prompted[S => R ! G]], fo))
@@ -574,20 +574,20 @@ object Delim {
    * fork of the dialogue. To outlive a RESTART, keep the journal and
    * re-derive it — `replay`, below.
    */
-  def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+  def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! Delim + F)
                                (using om: OneMachine[F], at: At): Dialogue[Q, A, R, F] ! F =
     run(pausingAs("resumable")(body))(using om)
 
   /** the same, NESTED: the dialogue's delimiter goes on the machine
    * already running, so a `resumable` may sit inside a `delimited`
    * and a capture may cross it */
-  def pausing[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
-                             (using At): Dialogue[Q, A, R, F] ! (Delim + F) =
+  def pausing[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! Delim + F)
+                             (using At): Dialogue[Q, A, R, F] ! Delim + F =
     pausingAs("pausing")(body)
 
   private def pausingAs[Q, A, R, F[+_]](what: String)
-                                       (body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
-                                       (using At): Dialogue[Q, A, R, F] ! (Delim + F) =
+                                       (body: Asking[Q, A, R, Delim + F] ?=> R ! Delim + F)
+                                       (using At): Dialogue[Q, A, R, F] ! Delim + F =
     scopeAs[Dialogue[Q, A, R, F], F](what)(
       body(using new Asking[Q, A, R, Delim + F](summon[Prompted[Dialogue[Q, A, R, F]]]))
         .map(Paused.Done[Q, A, R, Delim + F](_)))
@@ -621,7 +621,7 @@ object Delim {
    * expected type.
    */
   def ask[Q, A, R, F[+_]](q: Q)(using s: Asking[Q, A, R, Delim + F], at: At)
-                         : A ! (Delim + F) =
+                         : A ! Delim + F =
     shift[Paused[Q, A, R, Delim + F], A, F](using s.in)(k =>
       okay.pure(Paused.Ask(q, k, at.where)))
 
@@ -676,7 +676,7 @@ object Delim {
    * what replaces persisting a continuation. A fresh process, a
    * different machine, a redeploy: same answers in, same place out.
    */
-  def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+  def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, Delim + F] ?=> R ! Delim + F)
                             (using OneMachine[F], Replayable[Delim + F], At)
                             (j: Journal[A]): Dialogue[Q, A, R, F] ! F =
     j.foldLeft(resumable[Q, A, R, F](body)): (acc, a) =>
@@ -713,7 +713,7 @@ object Delim {
    */
   private enum Segs[F[+_], A, Z]:
     case Done[F[+_], Z]() extends Segs[F, Z, Z]
-    case K[F[+_], X, Y, Z](f: X => Y ! (Delim + F), rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
+    case K[F[+_], X, Y, Z](f: X => Y ! Delim + F, rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
     case Mark[F[+_], X, Z](p: Prompt[X], rest: Segs[F, X, Z]) extends Segs[F, X, Z]
 
   /** the stack cut at a prompt: what was captured (a chain ending
@@ -722,7 +722,7 @@ object Delim {
 
   /** the machine's state between steps: a program and the stack it
    * continues into */
-  private final case class Next[F[+_], A, Z](prog: A ! (Delim + F), kont: Segs[F, A, Z])
+  private final case class Next[F[+_], A, Z](prog: A ! Delim + F, kont: Segs[F, A, Z])
 
   /**
    * The machine. Our Bind nodes already reify continuations as plain
@@ -738,7 +738,7 @@ object Delim {
    * operation's to name — re-typed here, at their two lines, where F
    * is known. Everything else the chain's types carry.
    */
-  def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F =
+  def run[R, F[+_]](prog: R ! Delim + F)(using OneMachine[F]): R ! F =
     machine(prog, forward = false)
 
   /**
@@ -759,10 +759,10 @@ object Delim {
    * case this exists for, and asking for it keeps `run`'s meaning
    * unchanged — a caller who wants forwarding says so.
    */
-  def runNested[R, F[+_]](prog: R ! (Delim + F))(using RowLift.In[Delim, F]): R ! F =
+  def runNested[R, F[+_]](prog: R ! Delim + F)(using RowLift.In[Delim, F]): R ! F =
     machine(prog, forward = true)
 
-  private def machine[R, F[+_]](prog: R ! (Delim + F), forward: Boolean): R ! F = {
+  private def machine[R, F[+_]](prog: R ! Delim + F, forward: Boolean): R ! F = {
     type Row = Delim + F
     type Prog[A] = A ! Row
 
@@ -866,7 +866,7 @@ object Delim {
 
   /** abort to a prompt with a value: a shift that drops the
    * continuation (the 0-variant, so the delimiter goes with it) */
-  def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! (Delim + F) =
+  def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! Delim + F =
     shift0[R, A, F](p)(_ => okay.pure(value))
 
   // ==================================================================
@@ -927,7 +927,7 @@ object Delim {
     /** any ordinary program, under the stack in force: the diagonal,
      * with the index read from the given rather than from an expected
      * type (which a for-comprehension head does not have) */
-    inline def under[F[+_], A](p: A ! (Delim + F))(using st: Stack[?]): Under[F, A, st.S] =
+    inline def under[F[+_], A](p: A ! Delim + F)(using st: Stack[?]): Under[F, A, st.S] =
       Prog.diag[st.S, Delim + F, A](p)
 
     /**

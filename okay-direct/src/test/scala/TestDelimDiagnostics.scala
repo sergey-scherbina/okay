@@ -53,7 +53,7 @@ class TestDelimDiagnostics extends munit.FunSuite {
   test("NoPrompt names the capture, the prompt it wanted, what IS installed, and the rule") {
     // the hole delim-safety stage 0 cannot close: an abstract row, so
     // a second machine is started inside one that already has a Delim
-    def generic[F[+_]](p: Int ! (Delim + F)): Int ! F = Delim.run(p)
+    def generic[F[+_]](p: Int ! Delim + F): Int ! F = Delim.run(p)
     val outer = Delim.prompt[Int]
     def prog: Int ! P = Delim.delimited[Int, P]:
       direct:
@@ -101,7 +101,7 @@ class TestDelimDiagnostics extends munit.FunSuite {
   // ---- where a dialogue is waiting
 
   test("Paused.where is the line of the pause that made it") {
-    def booking(using Delim.Asking[String, String, String, Delim + P]): String ! (Delim + P) =
+    def booking(using Delim.Asking[String, String, String, Delim + P]): String ! Delim + P =
       direct:
         val city = !Delim.pause("city?")
         val nights = !Delim.pause(s"nights in $city?")

@@ -142,7 +142,7 @@ object Combine {
    * throughout: the fold at the end is what pulls.
    */
   def joined(repo: StateRepo, battery: Source[Battery], charging: Source[Charging])
-            (using Scheduler, CanBlock): StateRepo ! (Writer % Output + Async) =
+            (using Scheduler, CanBlock): StateRepo ! Writer % Output + Async =
     through[Event, Output, Async, Unit, StateRepo](battery merge charging)(
       widen[StateRepo, Take % Event + Writer % Output, Async](combine(repo)))
 

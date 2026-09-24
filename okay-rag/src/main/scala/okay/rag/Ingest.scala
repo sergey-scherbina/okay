@@ -39,7 +39,7 @@ object Ingest {
    */
   def run[F[+_]](store: VectorStore[F], sources: Seq[Source],
                  budget: Int = 400, batch: Int = 32)
-                (size: String => Int = _.length): Progress ! (Embed + F) =
+                (size: String => Int = _.length): Progress ! Embed + F =
     val segs = sources.flatMap(s => segment(s, budget)(size))
     segs.grouped(batch).foldLeft(
       pure[Embed + F, Progress](Progress(sources.length, segs.length, 0, 0))) {
@@ -47,7 +47,7 @@ object Ingest {
         acc.flatMap { p =>
           okay.!.widen[Seq[Embedding], Embed, F](embed(group.map(_.text))).flatMap { vs =>
             // a row is a union: F + Embed IS Embed + F (an ascription)
-            (okay.!.widen[Unit, F, Embed](store.upsert(group.zip(vs))): Unit ! (Embed + F))
+            (okay.!.widen[Unit, F, Embed](store.upsert(group.zip(vs))): Unit ! Embed + F)
               .map(_ => p.copy(embedded = p.embedded + group.length))
           }
         }
@@ -67,7 +67,7 @@ object Ingest {
                      editStart: Int, editEndOld: Int, editEndNew: Int,
                      budget: Int = 400)
                     (size: String => Int = _.length)
-  : (Parse.Parsed[Code.K, Code.S, Code.D], Progress) ! (Embed + F) =
+  : (Parse.Parsed[Code.K, Code.S, Code.D], Progress) ! Embed + F =
     val fresh = Code.reparse(old, oldSrc.text, newText,
       editStart, editEndOld, editEndNew)
     val newSrc = Source(oldSrc.id, newText)
@@ -83,12 +83,12 @@ object Ingest {
     val staleSpans = before.filterNot(s => after.exists(_.span == s.span)).map(_.span)
 
     val p = Progress(1, after.length, changed.length, reused.length)
-    (okay.!.widen[Unit, F, Embed](store.delete(oldSrc.id, staleSpans)): Unit ! (Embed + F))
+    (okay.!.widen[Unit, F, Embed](store.delete(oldSrc.id, staleSpans)): Unit ! Embed + F)
       .flatMap { _ =>
         if changed.isEmpty then pure[Embed + F, (Parse.Parsed[Code.K, Code.S, Code.D], Progress)]((fresh, p))
         else
           okay.!.widen[Seq[Embedding], Embed, F](embed(changed.map(_.text))).flatMap { vs =>
-            (okay.!.widen[Unit, F, Embed](store.upsert(changed.zip(vs))): Unit ! (Embed + F))
+            (okay.!.widen[Unit, F, Embed](store.upsert(changed.zip(vs))): Unit ! Embed + F)
               .map(_ => (fresh, p))
           }
       }

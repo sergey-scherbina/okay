@@ -88,7 +88,7 @@ object ChatDemo {
    * claims a caller needs, written out to keep that claim honest */
   def guarded(inner: okay.llm.Transport)(using Timer): okay.llm.Transport = new okay.llm.Transport:
     def post(url: String, headers: Map[String, String], body: String)
-    : Unit ! (Writer % String + Async) =
+    : Unit ! Writer % String + Async =
       okay.resilience.Resilient.guarded(inner.post(url, headers, body),
         breaker = Some(llmBreaker), limiter = Some(llmLimiter), key = "anthropic")
 
@@ -477,7 +477,7 @@ object ChatDemo {
         // message text claims
         val who = Secure.bearerToken(r).flatMap(Login.verify(_))
         val answer = offlineTurn(board, last.stripPrefix("/board").trim, who)
-        def stream(ts: List[String]): Unit ! (Writer % String + Async) = ts match
+        def stream(ts: List[String]): Unit ! Writer % String + Async = ts match
           case Nil => pure(())
           case t :: rest => effect[Writer % String + Async, Unit](
             Writer(t + " ")).flatMap(_ => stream(rest))

@@ -13,7 +13,7 @@ object Transports:
   def http(client: java.net.http.HttpClient = java.net.http.HttpClient.newHttpClient())
   : Transport = new Transport:
     def post(url: String, headers: Map[String, String], body: String)
-    : Unit ! (Writer % String + Async) =
+    : Unit ! Writer % String + Async =
       type F = Writer % String + Async
       effect[F, java.util.Iterator[String]](Async.Run { () =>
         val b = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))

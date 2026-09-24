@@ -131,7 +131,7 @@ class TestTelegram extends munit.FunSuite {
     val up = Channel[String](); val down = Channel[String]()
     var served: Option[S] = None
     val server = Async.spawn {
-      def drain(p: S ! (Writer % String + Async)): Unit ! Async =
+      def drain(p: S ! Writer % String + Async): Unit ! Async =
         Writer.uncons[String, S, Async](p).flatMap {
           case Left(s) => async { served = Some(s); down.close() }
           case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))

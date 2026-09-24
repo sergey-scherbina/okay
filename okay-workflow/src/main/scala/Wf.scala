@@ -160,24 +160,24 @@ object Wf:
       private[okay] val in: Delim.Asking[Ask[Q], Ans[A], R, Delim + F]):
 
     /** ask the outside world, through the author's own question type */
-    def pause(q: Q)(using At): A ! (Delim + F) =
+    def pause(q: Q)(using At): A ! Delim + F =
       Wf.pause[Q, A, R, F](q)(using in, summon[At])
 
     /** the same under the name the literature uses: an "activity" is
      * a command performed outside and a result remembered */
-    def perform(cmd: Q)(using At): A ! (Delim + F) = pause(cmd)
+    def perform(cmd: Q)(using At): A ! Delim + F = pause(cmd)
 
     /** the wall clock, once, remembered */
-    def now(using At): Long ! (Delim + F) = Wf.now[Q, A, R, F](using in, summon[At])
+    def now(using At): Long ! Delim + F = Wf.now[Q, A, R, F](using in, summon[At])
 
     /** a fresh id, once, remembered */
-    def uuid(using At): String ! (Delim + F) = Wf.uuid[Q, A, R, F](using in, summon[At])
+    def uuid(using At): String ! Delim + F = Wf.uuid[Q, A, R, F](using in, summon[At])
 
     /** a die, once, remembered */
-    def random(using At): Double ! (Delim + F) = Wf.random[Q, A, R, F](using in, summon[At])
+    def random(using At): Double ! Delim + F = Wf.random[Q, A, R, F](using in, summon[At])
 
     /** is this branch on for THIS run? */
-    def patch(id: String)(using At): Boolean ! (Delim + F) =
+    def patch(id: String)(using At): Boolean ! Delim + F =
       Wf.patch[Q, A, R, F](id)(using in, summon[At])
 
     /**
@@ -193,7 +193,7 @@ object Wf:
      * is stated in the guide: a run asleep for a year learns it was
      * cancelled when it wakes, not before.
      */
-    def cancelled(using At): Option[String] ! (Delim + F) =
+    def cancelled(using At): Option[String] ! Delim + F =
       Wf.cancelled[Q, A, R, F](using in, summon[At])
 
     /**
@@ -207,15 +207,15 @@ object Wf:
      * replay wakes at the same instant the first run chose, not at
      * one relative to the replay.
      */
-    def sleep(millis: Long)(using At): Unit ! (Delim + F) =
+    def sleep(millis: Long)(using At): Unit ! Delim + F =
       now.flatMap(t => Wf.timer[Q, A, R, F](t + millis)(using in, summon[At]))
 
     /** wait for a named signal from outside; the payload is its value */
-    def awaitSignal(name: String)(using At): String ! (Delim + F) =
+    def awaitSignal(name: String)(using At): String ! Delim + F =
       Wf.signal[Q, A, R, F](name)(using in, summon[At])
 
     /** wait for a child dialogue to finish, and take its answer */
-    def awaitChild(id: String)(using At): String ! (Delim + F) =
+    def awaitChild(id: String)(using At): String ! Delim + F =
       Wf.child[Q, A, R, F](id)(using in, summon[At])
 
   // ── the author's doors ───────────────────────────────────────────
@@ -224,7 +224,7 @@ object Wf:
    * Ask the outside world, through the author's own question type —
    * `Delim.pause` with the tag put on and taken off.
    */
-  def pause[Q, A, R, F[+_]](q: Q)(using s: Asking[Q, A, R, F], at: At): A ! (Delim + F) =
+  def pause[Q, A, R, F[+_]](q: Q)(using s: Asking[Q, A, R, F], at: At): A ! Delim + F =
     Delim.ask[Ask[Q], Ans[A], R, F](Right(q)).map:
       case Right(a) => a
       case other => throw Mismatched(q, other)
@@ -237,21 +237,21 @@ object Wf:
    * listed `perform` as work, and the work turned out to be already
    * done.
    */
-  def perform[Q, A, R, F[+_]](cmd: Q)(using Asking[Q, A, R, F], At): A ! (Delim + F) =
+  def perform[Q, A, R, F[+_]](cmd: Q)(using Asking[Q, A, R, F], At): A ! Delim + F =
     pause(cmd)
 
   /** the wall clock, once, remembered */
-  def now[Q, A, R, F[+_]](using s: Asking[Q, A, R, F], at: At): Long ! (Delim + F) =
+  def now[Q, A, R, F[+_]](using s: Asking[Q, A, R, F], at: At): Long ! Delim + F =
     sys[Q, A, R, F, Long](Sys.Now):
       case SysA.Millis(v) => v
 
   /** a fresh id, once, remembered */
-  def uuid[Q, A, R, F[+_]](using s: Asking[Q, A, R, F], at: At): String ! (Delim + F) =
+  def uuid[Q, A, R, F[+_]](using s: Asking[Q, A, R, F], at: At): String ! Delim + F =
     sys[Q, A, R, F, String](Sys.Uuid):
       case SysA.Text(v) => v
 
   /** a die, once, remembered */
-  def random[Q, A, R, F[+_]](using s: Asking[Q, A, R, F], at: At): Double ! (Delim + F) =
+  def random[Q, A, R, F[+_]](using s: Asking[Q, A, R, F], at: At): Double ! Delim + F =
     sys[Q, A, R, F, Double](Sys.Random):
       case SysA.Dice(v) => v
 
@@ -262,7 +262,7 @@ object Wf:
    * the journal, so every process agrees.
    */
   def patch[Q, A, R, F[+_]](id: String)
-                           (using s: Asking[Q, A, R, F], at: At): Boolean ! (Delim + F) =
+                           (using s: Asking[Q, A, R, F], at: At): Boolean ! Delim + F =
     sys[Q, A, R, F, Boolean](Sys.Patch(id)):
       case SysA.Flag(v) => v
 
@@ -272,28 +272,28 @@ object Wf:
   /** the three that suspend; each is an ordinary `Sys` question that
    * the runtime declines to answer in place */
   def timer[Q, A, R, F[+_]](untilMillis: Long)
-                           (using s: Asking[Q, A, R, F], at: At): Unit ! (Delim + F) =
+                           (using s: Asking[Q, A, R, F], at: At): Unit ! Delim + F =
     sys[Q, A, R, F, Unit](Sys.Timer(untilMillis)):
       case SysA.Elapsed => ()
 
   def signal[Q, A, R, F[+_]](name: String)
-                            (using s: Asking[Q, A, R, F], at: At): String ! (Delim + F) =
+                            (using s: Asking[Q, A, R, F], at: At): String ! Delim + F =
     sys[Q, A, R, F, String](Sys.Signal(name)):
       case SysA.Got(v) => v
 
   def child[Q, A, R, F[+_]](id: String)
-                           (using s: Asking[Q, A, R, F], at: At): String ! (Delim + F) =
+                           (using s: Asking[Q, A, R, F], at: At): String ! Delim + F =
     sys[Q, A, R, F, String](Sys.Child(id)):
       case SysA.Got(v) => v
 
   def cancelled[Q, A, R, F[+_]](using s: Asking[Q, A, R, F], at: At)
-                               : Option[String] ! (Delim + F) =
+                               : Option[String] ! Delim + F =
     sys[Q, A, R, F, Option[String]](Sys.Cancelled):
       case SysA.Text(why) => Some(why)
       case SysA.Flag(false) => None
 
   private def sys[Q, A, R, F[+_], X](q: Sys)(f: PartialFunction[SysA, X])
-                                    (using s: Asking[Q, A, R, F], at: At): X ! (Delim + F) =
+                                    (using s: Asking[Q, A, R, F], at: At): X ! Delim + F =
     Delim.ask[Ask[Q], Ans[A], R, F](Left(q)).map:
       case Left(a) if f.isDefinedAt(a) => f(a)
       case other => throw Mismatched(q, other)
@@ -397,7 +397,7 @@ object Wf:
         case other => rt.answer(other)
 
   /** start a program that may ask the runtime as well as the world */
-  def resumable[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! (Delim + F))
+  def resumable[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! Delim + F)
                                (using Delim.OneMachine[F], At): Paused[Q, A, R, F] ! F =
     Delim.resumable[Ask[Q], Ans[A], R, F](body(using Asks(summon)))
 
@@ -456,7 +456,7 @@ object Wf:
    * NOT eat the entry, which still answers the question it was
    * written for.
    */
-  def replay[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! (Delim + F))
+  def replay[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! Delim + F)
                             (j: Journal[A])
                             (using Delim.OneMachine[F], Replayable[Delim + F], At)
                             : Paused[Q, A, R, F] ! F =
@@ -477,7 +477,7 @@ object Wf:
    * a copy of it would drift, and this way `replay` is one line over
    * it and the two can never disagree.
    */
-  def replaying[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! (Delim + F))
+  def replaying[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! Delim + F)
                                (j: Journal[A])
                                (using Delim.OneMachine[F], Replayable[Delim + F], At)
                                : (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F =
@@ -614,8 +614,8 @@ object Wf:
      * ARE its leaves.
      */
     def program[Q, A, R, X, Y](p: Wf.Proc[Q, A, X, Y])(x: X)
-                              (using w: Asks[Q, A, R, Pure], at: At): Y ! (Delim + Pure) =
-      p.foldMap[[Z] =>> Z ! (Delim + Pure)](
+                              (using w: Asks[Q, A, R, Pure], at: At): Y ! Delim + Pure =
+      p.foldMap[[Z] =>> Z ! Delim + Pure](
         [Z] => (q: Question[Q, A, Z]) => answerOf[Q, A, R, Z](q))(x)
 
     /**
@@ -632,7 +632,7 @@ object Wf:
      * paid an `up` = `map(v => v)` for exactly this widening.
      */
     private def answerOf[Q, A, R, Z](q: Question[Q, A, Z])
-                                    (using w: Asks[Q, A, R, Pure], at: At): Z ! (Delim + Pure) =
+                                    (using w: Asks[Q, A, R, Pure], at: At): Z ! Delim + Pure =
       q match
         case Question.Ask(a) => w.pause(a)
         case Question.Now() => w.now

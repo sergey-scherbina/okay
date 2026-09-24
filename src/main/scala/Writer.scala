@@ -203,10 +203,10 @@ object Writer {
    * told OPERATION can be reused as is.
    */
   def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
-  : A ! (Writer % V + G) = (a.resume: @unchecked) match
+  : A ! Writer % V + G = (a.resume: @unchecked) match
     case Free.Return(x) => Free.Return(x)
     case Inject(e) => split[G, Writer % W](e)
-      (g => Inject(g): A ! (Writer % V + G))
+      (g => Inject(g): A ! Writer % V + G)
       // the constructor refines the answer type to Unit on both
       // sides, so the re-told operation types with nothing asserted
       { case Say(w) => Inject(Writer(f(w))) }
@@ -240,16 +240,16 @@ object Writer {
    * an expansion.
    */
   def expand[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => IndexedSeq[V])
-  : A ! (Writer % V + G) =
-    def tellAll(vs: IndexedSeq[V], i: Int): Unit ! (Writer % V + G) =
+  : A ! Writer % V + G =
+    def tellAll(vs: IndexedSeq[V], i: Int): Unit ! Writer % V + G =
       if i >= vs.length then Free.Return(())
       else Inject(Writer(vs(i))).flatMap(_ => tellAll(vs, i + 1))
 
     (a.resume: @unchecked) match
       case Free.Return(x) => Free.Return(x)
       case Inject(e) => split[G, Writer % W](e)
-        (g => Inject(g): A ! (Writer % V + G))
-        { case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! (Writer % V + G)] }
+        (g => Inject(g): A ! Writer % V + G)
+        { case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! Writer % V + G] }
       case Bind(Inject(e), k) => split[G, Writer % W](e)
         (g => Inject(g).flatMap(x => expand[W, V, A, G](k(x))(f)))
         { w0 => (w0: @unchecked) match
@@ -266,7 +266,7 @@ object Writer {
    * element `Writer(f(w))` allocation is gone, `f` never runs.
    */
   def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
-  : A ! (Writer % V + G) = a match
+  : A ! Writer % V + G = a match
     // a deferred head stays deferred, as in `!.widen`: the walk
     // begins when the program runs, not when it is widened
     case Free.Delay(t) => Free.Delay(() => widen[W, V, A, G](t()))
@@ -274,7 +274,7 @@ object Writer {
     case _ => (a.resume: @unchecked) match
       case Free.Return(x) => Free.Return(x)
       case Inject(e) => split[G, Writer % W](e)
-        (g => Inject(g): A ! (Writer % V + G))
+        (g => Inject(g): A ! Writer % V + G)
         // Say is Writer's ONLY constructor, so a value that reaches
         // here IS one — sound by the enum's shape, same as map's
         // Say(w) destructure; @unchecked because BINDING the whole
@@ -308,11 +308,11 @@ object Writer {
    * specs/writer-covariance.md — 38% of okaySourceMerge's CPU
    * samples were exactly these two rotation lines).
    */
-  def of[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! (Writer % A + F) =
+  def of[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! Writer % A + F =
     okay.pure[Writer % A + F, Unit](()).flatMap: _ =>
       ofLoop[S, F, A](s)
 
-  private def ofLoop[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! (Writer % A + F) =
+  private def ofLoop[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! Writer % A + F =
     !.widen[Option[(A, S[A])], F, Writer % A](St.uncons(s)).flatMap:
       case Some((a, rest)) =>
         okay.effect[Writer % A + F, Unit](Writer(a)).flatMap(_ => ofLoop[S, F, A](rest))

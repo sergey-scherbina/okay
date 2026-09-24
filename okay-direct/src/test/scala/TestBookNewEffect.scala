@@ -35,14 +35,14 @@ class TestBookNewEffect extends munit.FunSuite {
     /** run `body` with `limit` to spend. Overspend and the block ends
      * with `orElse`, the rest of the body discarded. */
     def within[R, F[+_]](limit: Int)(orElse: => R)
-                        (body: Budget[R] ?=> R ! (Delim + F))
+                        (body: Budget[R] ?=> R ! Delim + F)
                         (using Delim.OneMachine[F], At): R ! F =
       val p = Delim.prompt[R]
       Delim.run(Delim.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
 
     /** the ONLY thing a caller writes. No cast: `b.Res` is the
      * member, so the prompt and the fallback already agree. */
-    def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! (Delim + F) =
+    def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Delim + F =
       if b.left.addAndGet(-n) >= 0 then okay.pure(())
       else Delim.abort[b.Res, Unit, F](b.prompt)(b.orElse())
 

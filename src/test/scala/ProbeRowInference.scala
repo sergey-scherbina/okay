@@ -17,7 +17,7 @@ class ProbeRowInference extends munit.FunSuite:
   test("a bare-X ascription DOES satisfy an X + Pure slot directly — no .at needed") {
     val e = compileErrors("""
       val p: Int ! okay.Writer % String = okay.Writer.tell("x").map(_ => 1)
-      val q: Int ! (okay.Writer % String + okay.Pure) = p
+      val q: Int ! okay.Writer % String + okay.Pure = p
       q
     """)
     assert(e.isEmpty, s"a bare row did not satisfy its own row + Pure: $e")
@@ -25,7 +25,7 @@ class ProbeRowInference extends munit.FunSuite:
 
   test("and the ambient row's OWN operations still resolve through it — the ascription is not a coercion, it typechecks as the SAME value") {
     val p: Int ! Writer % String = Writer.tell("x").map(_ => 1)
-    val q: Int ! (Writer % String + okay.Pure) = p
+    val q: Int ! Writer % String + okay.Pure = p
     assert(q eq p, "the ascription built a new value where none was needed")
   }
 
@@ -48,20 +48,20 @@ class ProbeRowInference extends munit.FunSuite:
 
   // ---------------------------------------------------------- shape 3: a union-typed argument does not recover F + G
 
-  test("a method taking `R ! (Delim + F)` does not recover F from an argument ALREADY typed as the expanded union, without explicit type args") {
+  test("a method taking `R ! Delim + F` does not recover F from an argument ALREADY typed as the expanded union, without explicit type args") {
     // Delim.Stacked.delimited's own construction (Delim.scala) needed
     // `push[R, F](...)`/`run[R, F](...)` spelled explicitly for exactly
     // this reason; reproduced minimally here rather than asserted from
     // memory
     val e = compileErrors("""
-      def wants[R, F[+_]](p: R ! (okay.Delim + F)): Unit = ()
+      def wants[R, F[+_]](p: R ! okay.Delim + F): Unit = ()
       def has[R, F[+_]](p: R ! ([A] =>> okay.Delim[A] | F[A])): Unit = wants(p)
     """)
     assert(e.nonEmpty, "an argument typed as the expanded union satisfied Delim + F with no explicit type args")
   }
 
   test("...spelling the type arguments at the call site fixes it") {
-    def wants[R, F[+_]](p: R ! (Delim + F)): Unit = ()
+    def wants[R, F[+_]](p: R ! Delim + F): Unit = ()
     def has[R, F[+_]](p: R ! ([A] =>> Delim[A] | F[A])): Unit = wants[R, F](p)
     has[Int, okay.Pure](Delim.push(Delim.prompt[Int])(pure(1)))
   }
@@ -83,8 +83,8 @@ class ProbeRowInference extends munit.FunSuite:
     // wrong: this is a stronger positive fact than "union ACI lets
     // the ascription" (TestPipe's comment) states on its own
     val e = compileErrors("""
-      val p: Unit ! (okay.Writer % Int + okay.State % Int) = okay.pure(())
-      val q: Unit ! (okay.State % Int + okay.Writer % Int) = p
+      val p: Unit ! okay.Writer % Int + okay.State % Int = okay.pure(())
+      val q: Unit ! okay.State % Int + okay.Writer % Int = p
       q
     """)
     assert(e.isEmpty, s"swapping the order of two different union members needed help after all: $e")
@@ -92,7 +92,7 @@ class ProbeRowInference extends munit.FunSuite:
 
   test("and the REVERSE: X + Pure satisfies a bare X slot too — the spike's answer, no new given needed") {
     val e = compileErrors("""
-      val p: Int ! (okay.Writer % String + okay.Pure) = okay.Writer.tell("x").map(_ => 1)
+      val p: Int ! okay.Writer % String + okay.Pure = okay.Writer.tell("x").map(_ => 1)
       val q: Int ! okay.Writer % String = p
       q
     """)

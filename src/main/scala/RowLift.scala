@@ -123,7 +123,7 @@ object RowLift:
    * mentions an abstract residual row and is still nameable).
    *
    * Row ORDER is not a reason to reach for either: `+` is a union and
-   * `|` commutes, so `A ! (Users + Abort)` and `A ! (Abort + Users)`
+   * `|` commutes, so `A ! Users + Abort` and `A ! Abort + Users`
    * are the same type, assignable in both directions with no coercion
    * at all. An `.at[...]` written to reorder is noise (checked — an
    * earlier version of this comment said otherwise).
@@ -139,19 +139,19 @@ object RowLift:
 
     /**
      * add R to whatever row this program already has: `A ! F` becomes
-     * `A ! (F + R)`.
+     * `A ! F + R`.
      *
      * The postfix counterpart of `!.widen`, and the one to reach for
      * inside a helper: the row you are IN is already in the type, so
      * naming it again is noise — say only what you are adding.
      *
-     *     Users.find(id).plus[Abort]   :  Option[String] ! (Users + Abort)
+     *     Users.find(id).plus[Abort]   :  Option[String] ! Users + Abort
      *
      * Needs no witness at all, where `at` needs one: membership here
      * is by CONSTRUCTION — `F + R` is built out of F — so there is
      * nothing left for a proof to establish.
      */
-    inline def plus[R[+_]]: A ! (F + R) = coerce(p)
+    inline def plus[R[+_]]: A ! F + R = coerce(p)
 
     /**
      * A BIND ACROSS ROWS (bind-in-row-union, 2026-09-23): the
@@ -177,9 +177,9 @@ object RowLift:
      * name, so mixed rows in a `for` stay `.at[R]` on each generator —
      * or a `direct` block, where marks widen with nothing written.
      */
-    inline def bind[B, G[+_]](f: A => B ! G): B ! (F + G) =
+    inline def bind[B, G[+_]](f: A => B ! G): B ! F + G =
       coerce[A, F, F + G](p).flatMap(a => coerce[B, G, F + G](f(a)))
 
     /** the same, the answer dropped: `p andThen q` runs p, then q */
-    inline def andThen[B, G[+_]](q: => B ! G): B ! (F + G) =
+    inline def andThen[B, G[+_]](q: => B ! G): B ! F + G =
       coerce[A, F, F + G](p).flatMap(_ => coerce[B, G, F + G](q))

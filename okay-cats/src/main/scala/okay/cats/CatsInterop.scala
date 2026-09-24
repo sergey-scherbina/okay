@@ -28,13 +28,13 @@ given [F[+_]]: _root_.cats.StackSafeMonad[[A] =>> A ! F] with
 // on a given can be doing work that is not in the body.
 @annotation.nowarn("id=E198")  // the message filter stopped matching; the id does
 given [E, F[+_]](using okay.TypeableK[Throws % E])
-: _root_.cats.MonadError[[A] =>> A ! (Throws % E + F), E] =
-  new _root_.cats.StackSafeMonad[[A] =>> A ! (Throws % E + F)]
-    with _root_.cats.MonadError[[A] =>> A ! (Throws % E + F), E]:
-    def pure[A](a: A): A ! (Throws % E + F) = okay.pure(a)
-    def flatMap[A, B](fa: A ! (Throws % E + F))(f: A => B ! (Throws % E + F)) = fa.flatMap(f)
-    def raiseError[A](e: E): A ! (Throws % E + F) = effect(Throws(e))
-    def handleErrorWith[A](fa: A ! (Throws % E + F))(f: E => A ! (Throws % E + F)) =
+: _root_.cats.MonadError[[A] =>> A ! Throws % E + F, E] =
+  new _root_.cats.StackSafeMonad[[A] =>> A ! Throws % E + F]
+    with _root_.cats.MonadError[[A] =>> A ! Throws % E + F, E]:
+    def pure[A](a: A): A ! Throws % E + F = okay.pure(a)
+    def flatMap[A, B](fa: A ! Throws % E + F)(f: A => B ! Throws % E + F) = fa.flatMap(f)
+    def raiseError[A](e: E): A ! Throws % E + F = effect(Throws(e))
+    def handleErrorWith[A](fa: A ! Throws % E + F)(f: E => A ! Throws % E + F) =
       !.widen[Either[E, A], F, Throws % E](runEither[A, F, E](fa))
         .flatMap {
           case Right(a) => okay.pure(a)

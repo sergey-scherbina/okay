@@ -78,16 +78,16 @@ def pipe[W, A, B](p: A ! Writer % W)(c: B ! Take % W): B = {
  * demand-driven coroutine pairing, so every stage is incremental,
  * resumable and lazy by construction.
  */
-type Stage[I, O, A] = A ! (Take % I + Writer % O)
+type Stage[I, O, A] = A ! Take % I + Writer % O
 
 object Stage {
 
   /** the next input, or None — upstream ended */
-  inline def await[I, O]: Option[I] ! (Take % I + Writer % O) =
+  inline def await[I, O]: Option[I] ! Take % I + Writer % O =
     effect(Take.Await())
 
   /** emit one output — it answers nothing, like every tell */
-  inline def tell[I, O](o: O): Unit ! (Take % I + Writer % O) =
+  inline def tell[I, O](o: O): Unit ! Take % I + Writer % O =
     effect(Writer(o))
 
   /** the identity stage: every input becomes an output */
@@ -588,9 +588,9 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
  * client walks by hand (SSE lines ! Async through the event stage).
  */
 @scala.annotation.targetName("throughProducerG")
-def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
+def through[W, M, G[+_] : TypeableK, A, B](p: A ! Writer % W + G)
                                           (s: B ! (Take % W + (Writer % M + G)))
-                                          : B ! (Writer % M + G) = {
+                                          : B ! Writer % M + G = {
   type Src = Writer % W + G
   type Res = Writer % M + G
 

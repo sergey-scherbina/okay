@@ -26,7 +26,7 @@ A computation of `A` performing operations of the signature `F` is
 `Any ! F`, no node added) and invariant in `F` (widening a row is
 `.at[R]`/`.plus[G]` or the `!.widen` walk — a measured choice,
 specs/writer-covariance.md). Signatures combine as unions:
-`A ! (State % Int + Throws % String)`. The empty signature is `Pure`
+`A ! State % Int + Throws % String`. The empty signature is `Pure`
 (`A ! Pure` is a pure computation; `F + Pure = F`).
 
 A handler interprets operations into continuations — `F !> S` is
@@ -194,7 +194,7 @@ is the same with the answer dropped. Inside a
 (`[R[+_] : Has[State % Int]]`).
 Both are one cast under a witness, measured at the same B/op as
 constructing the operation at R. Row ORDER is not a thing: `+` is a
-union, so `A ! (Users + Abort)` and `A ! (Abort + Users)` are the same
+union, so `A ! Users + Abort` and `A ! Abort + Users` are the same
 type.
 
 **Stopping.** `Abort` (= `Throws % Unit`) is failure carrying no
@@ -267,7 +267,7 @@ widening done for you, for when the target row is BIGGER than the
 source's:
 
 ```scala
-def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
+def tracked[A, F[+_]](p: A ! Users + F): A ! State % Store + Writer % String + F =
   type R = State % Store + Writer % String + F
   !.interpret(p):
     [X] => (e: Users[X]) => e match
@@ -289,7 +289,7 @@ beyond `show` — so the storage half can be written without a Writer
 anywhere in it:
 
 ```scala
-def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
+def tracked[A, F[+_]](p: A ! Users + F): A ! State % Store + Writer % String + F =
   stored[A, Writer % String + F](!.tracing(p)([X] => (e: Users[X]) => e.toString))
 ```
 
@@ -310,7 +310,7 @@ type Big   = Tag.Of["big",   State % Int]
 
 // an ordinary function, written against a plain State, run twice
 // at two different states in one program:
-val twice: (Int, Int) ! (Small + Big) =
+val twice: (Int, Int) ! Small + Big =
   for
     a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
     b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]
@@ -372,7 +372,7 @@ effects forwarded into the row rather than run behind the caller.
 `Writer.map` transforms the told values in place, where `Stream.map`
 lands in LazyList and forgets that the elements are still to be
 performed. An asynchronous stream has a name of its own —
-`Source[W] = Unit ! (Writer % W + Async)`, built by `Source(a, b, c)`
+`Source[W] = Unit ! Writer % W + Async`, built by `Source(a, b, c)`
 or `Source.of(stream)` — and is an ordinary `Stream` in `Async`.
 `Source.unfold(s)(f)` generates one directly from a step function
 (`ZStream.unfold`'s shape — 3x ahead of it, measured, since `unfold`

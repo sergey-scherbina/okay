@@ -311,7 +311,7 @@ object McpHttp {
         case Topic.Read.TooEarly(begin) => go(begin)   // compacted: resume at begin
         case Topic.Read.Records(rs) if rs.nonEmpty =>
           val mine = rs.filter(r => java.util.Arrays.equals(r.key, key))
-          def tell(rest: Vector[okay.persist.Record]): Unit ! (Writer % Chunk[Byte] + Async) =
+          def tell(rest: Vector[okay.persist.Record]): Unit ! Writer % Chunk[Byte] + Async =
             rest match
               case r +: more => effect[Writer % Chunk[Byte] + Async, Unit](
                 Writer(frame(r.offset, r.value))).flatMap(_ => tell(more))

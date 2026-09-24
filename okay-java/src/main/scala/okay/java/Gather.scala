@@ -14,7 +14,7 @@ import scala.collection.mutable.ArrayBuffer
  * `(state, element, downstream) => boolean` that may push any number of
  * elements downstream and answer `false` to end the stream early, and a
  * finisher that may push what is left. okay's `Stage[I, O, A]` —
- * `A ! (Take % I + Writer % O)` — is exactly that, written as a
+ * `A ! Take % I + Writer % O` — is exactly that, written as a
  * program: every `await` is where the integrator returns, every `tell`
  * is a `push`, and a stage that ANSWERS is a gatherer that
  * short-circuits.

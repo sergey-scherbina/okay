@@ -13,7 +13,7 @@ import scala.reflect.ClassTag
  * `(acc x)` step, `(acc)` completion. A step may answer `(reduced acc)`
  * to stop the process; a stateful transducer keeps a `volatile!` made
  * when it is applied to `rf` and flushes it in the completion arity.
- * okay's `Stage[I, O, A]` — `A ! (Take % I + Writer % O)` — is that
+ * okay's `Stage[I, O, A]` — `A ! Take % I + Writer % O` — is that
  * written as a program: a `tell` is a call of `rf`, a stage that
  * ANSWERS is a step answering reduced, and the flush is what the stage
  * tells after its last `await` answered `None`. This is okay-java's

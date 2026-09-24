@@ -17,7 +17,7 @@ class TestTakeLoopInBlock extends munit.FunSuite:
     xs.foldLeft(pure(()): Unit ! Writer % Int)((p, x) => p.flatMap(_ => Writer.tell(x)))
 
   test("a Stage written as a loop: for i <- Take.each[Int] do tell(i * 2)") {
-    val doubling: Stage[Int, Int, Unit] = direct[[A] =>> A ! (Take % Int + Writer % Int)] {
+    val doubling: Stage[Int, Int, Unit] = direct[[A] =>> A ! Take % Int + Writer % Int] {
       for i <- Take.each[Int] do Writer.tell(i * 2).!?
     }
     val (out, _) = !.run(Writer.run[Int, Unit, okay.Pure](through(told(1, 2, 3))(doubling)))

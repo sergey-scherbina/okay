@@ -35,7 +35,7 @@ object Structured {
    * that took, and whether the walk stopped EARLY (the interesting
    * bit: false means the stream ended first).
    */
-  def cut[A](tokens: Unit ! (Writer % String + Async))
+  def cut[A](tokens: Unit ! Writer % String + Async)
             (using s: Schema[A], h: okay.Handler[Async]): Cut[A] =
     import okay.!.*
     type F = Writer % String + Async
@@ -73,7 +73,7 @@ object Structured {
     walk(tokens)
 
   /** the value alone, for callers who do not care what it cost */
-  def first[A](tokens: Unit ! (Writer % String + Async))
+  def first[A](tokens: Unit ! Writer % String + Async)
               (using Schema[A], okay.Handler[Async]): Option[A] =
     cut[A](tokens).value
 }

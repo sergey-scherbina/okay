@@ -18,7 +18,7 @@ class TestProvider extends munit.FunSuite {
     new Transport:
       private var rest = bodies.toList
       def post(url: String, headers: Map[String, String], body: String)
-      : Unit ! (Writer % String + Async) =
+      : Unit ! Writer % String + Async =
         type F = Writer % String + Async
         sent += body
         val reply = rest match
@@ -117,7 +117,7 @@ class TestProvider extends munit.FunSuite {
       "data: [DONE]", "")
     val transport = new Transport:
       def post(url: String, headers: Map[String, String], body: String)
-      : Unit ! (Writer % String + Async) =
+      : Unit ! Writer % String + Async =
         type F = Writer % String + Async
         events.foldLeft(pure[F, Unit](()))((acc, l) =>
           acc.flatMap(_ => effect[F, Unit](Writer(l)).map(_ => ())))
@@ -148,9 +148,9 @@ class TestProvider extends munit.FunSuite {
   }
 
   /** drain a token stream (no real waiting in these tests) */
-  def collect(s: Unit ! (Writer % String + Async)): List[String] =
+  def collect(s: Unit ! Writer % String + Async): List[String] =
     import okay.!.*
-    def go(rest: Unit ! (Writer % String + Async), acc: List[String]): List[String] =
+    def go(rest: Unit ! Writer % String + Async, acc: List[String]): List[String] =
       (rest.resume: @unchecked) match
         case Return(_) => acc.reverse
         case Inject(e) => okay.<|>[Async, Writer % String](e) match

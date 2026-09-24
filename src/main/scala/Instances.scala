@@ -97,7 +97,7 @@ object Instances:
   /** send every F operation of an already-written program to one
    * instance, leaving the rest of the row alone */
   def route[F[+_]](h: Handle)(using TypeableK[F])[A, G[+_]]
-                  (p: A ! (F + G)): A ! (Of[F] + G) =
+                  (p: A ! F + G): A ! Of[F] + G =
     !.interpret[A, F, Of[F], G](p)([X] => (e: F[X]) => at[F](h)(e).plus[G])
 
   /**
@@ -121,7 +121,7 @@ object Instances:
    * `Of[F]` for the ones still wrapped.
    */
   def only[F[+_]](h: Handle)(using TypeableK[Of[F]])[A, G[+_]]
-                 (p: A ! (Of[F] + G)): A ! (F + (Of[F] + G)) =
+                 (p: A ! Of[F] + G): A ! (F + (Of[F] + G)) =
     !.interpret[A, Of[F], F, Of[F] + G](p)([X] => (e: Instances[F, X]) =>
       if e.at eq h then effect[F + (Of[F] + G), X](e.op)
       else effect[F + (Of[F] + G), X](e))
@@ -135,7 +135,7 @@ object Instances:
    * was never stripped rather than failing somewhere later.
    */
   def exhausted[F[+_], A, G[+_]](using TypeableK[Of[F]])
-                                (p: A ! (Of[F] + G)): A ! G =
+                                (p: A ! Of[F] + G): A ! G =
     !.interpret[A, Of[F], okay.Pure, G](p)([X] => (e: Instances[F, X]) =>
       throw new IllegalStateException(
         s"an operation of ${e.at} survived: that instance was never stripped by `only`"))
@@ -160,7 +160,7 @@ object Instances:
  * function, already compiled — can be run twice in one program at two
  * different states, without being written for it.
  *
- *     val twice: (Int, Int) ! (Small + Big) =
+ *     val twice: (Int, Int) ! Small + Big =
  *       for
  *         a <- Tag.tag["small", State % Int](count).plus[Big]
  *         b <- Tag.tag["big",   State % Int][Int, Pure](count).at[Small + Big]
@@ -227,13 +227,13 @@ object Tag:
   /** put every F operation of a program under the key, leaving the
    * rest of the row alone */
   def tag[K, F[+_]](using TypeableK[F], ValueOf[K])[A, G[+_]]
-                   (p: A ! (F + G)): A ! (Of[K, F] + G) =
+                   (p: A ! F + G): A ! Of[K, F] + G =
     !.interpret[A, F, Of[K, F], G](p)([X] => (e: F[X]) => one[K, F](e).plus[G])
 
   /** strip one key, handing back the plain signature for its own
    * handler to take */
   def untag[K, F[+_]](using TypeableK[Of[K, F]])[A, G[+_]]
-                     (p: A ! (Of[K, F] + G)): A ! (F + G) =
+                     (p: A ! Of[K, F] + G): A ! F + G =
     !.interpret[A, Of[K, F], F, G](p)([X] => (e: Tag[K, F, X]) => effect[F + G, X](e.op))
 
   /** a comonadic handler for one key, out of the effect's own */

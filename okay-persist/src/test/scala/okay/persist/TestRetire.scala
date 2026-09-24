@@ -85,7 +85,7 @@ class TestRetire extends FunSuite {
   given Schema[Wf.SysA] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1L, id = "id", dice = 0.5)
 
-  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+  def v2(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
     direct:
       val city = !w.pause("city?")
       val promo = !w.patch("promo")

@@ -119,7 +119,7 @@ revenue(using okay.localBulk)     // one JVM, the same answer
 | `SparkSchema.structOf` / `rows` / `dataFrame` | `[A](using Schema[A])` | an okay `Schema` as a Spark struct and external rows |
 | `SparkSchema.column` | `(Schema[A]) => Col[A]` | one column: type, nullability, value writer |
 | `SparkSchema.recursiveNames` | `(Schema[?]) => Set[String]` | the named nodes reachable from themselves |
-| `SparkBulk.sort` | `A ! (Sort + F) => A ! (State % Tables.Heap[Rows] + F)` | the `Sort` effect answered natively, over the heap `Tables.via` threads |
+| `SparkBulk.sort` | `A ! Sort + F => A ! State % Tables.Heap[Rows] + F` | the `Sort` effect answered natively, over the heap `Tables.via` threads |
 
 ## Gotchas
 

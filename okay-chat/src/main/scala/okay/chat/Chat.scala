@@ -18,7 +18,7 @@ object Chat {
 
   /** the model seam: history in, token stream out — scripted and
    * live both fit it, which is the whole doctrine */
-  type Model = Seq[Anthropic.Message] => Unit ! (Writer % String + Async)
+  type Model = Seq[Anthropic.Message] => Unit ! Writer % String + Async
 
   /** an override for a special-cased turn (e.g. a consumer's own
    * command prefix): the FULL request (a consumer may need its
@@ -33,7 +33,7 @@ object Chat {
     val last = messages.lastOption.map(_.content).getOrElse("")
     val reply = s"You said: $last — and this reply is streamed token by token " +
       "by the scripted model (set ANTHROPIC_API_KEY for the real one)."
-    def go(ts: List[String]): Unit ! (Writer % String + Async) = ts match
+    def go(ts: List[String]): Unit ! Writer % String + Async = ts match
       case Nil => pure(())
       case t :: rest =>
         effect[Writer % String + Async, Unit](Writer(t + " ")).flatMap(_ => go(rest))
@@ -99,7 +99,7 @@ object Chat {
   def reply(m: Model, budget: Int, policy: (Int, String) => Option[Cut.Violation] = (_, _) => None)
            (messages: Seq[Anthropic.Message])
   : Source[Chunk[Byte]] =
-    val guarded: Either[Cut.Violation, Unit] ! (Writer % String + Async) =
+    val guarded: Either[Cut.Violation, Unit] ! Writer % String + Async =
       Cut.guard {
         Cut.checked(m(messages))((i, t) =>
           if i >= budget then Some(Cut.Violation("token-budget", i, s"> $budget tokens"))

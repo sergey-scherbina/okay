@@ -103,7 +103,7 @@ class TestEffectProvide extends munit.FunSuite {
     // intended — `derives Effect` is the signature author's own
     // declaration that its values ARE operations.
     def rask: Reader[Int, Int] = Reader.Ask()
-    val p: Int ! (Reader % Int) = direct {
+    val p: Int ! Reader % Int = direct {
       val env: Int = rask
       env + 1
     }

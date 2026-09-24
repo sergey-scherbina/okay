@@ -27,7 +27,7 @@ A completion is pulled, not awaited:
 ```scala
 import okay.llm.*
 
-val tokens: Unit ! (Writer % String + Async) =
+val tokens: Unit ! Writer % String + Async =
   Anthropic.stream(transport, apiKey, request)
 ```
 

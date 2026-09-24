@@ -5064,8 +5064,8 @@ clusters and shut them down.
 
 ## 21. Generators — what `Gen` costs over the program it wraps
 
-`Gen[W]` (specs/generators.md) is a value class over `Unit ! (Writer %
-W + Stop)`, the program that tells; since gen-chain-fusion its one
+`Gen[W]` (specs/generators.md) is a value class over `Unit ! Writer %
+W + Stop`, the program that tells; since gen-chain-fusion its one
 field is a `Chain`: the source program and the stages
 (`map`/`filter`/`take`/`takeWhile`/`drop`/`flatMap`/`zipWithIndex`,
 `++` as a node) as DATA, applied per element inside a stopping

@@ -97,7 +97,7 @@ class TestCollectUntil extends munit.FunSuite {
       case Leaf(a: A)
       case Node(l: Tree[A], r: Tree[A])
 
-    def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! (Delim + Pure) = direct:
+    def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! Delim + Pure = direct:
       t match
         case Tree.Leaf(a)    => !Delim.emit(a)
         case Tree.Node(l, r) => !walk(l); !walk(r)
@@ -109,7 +109,7 @@ class TestCollectUntil extends munit.FunSuite {
     assertEquals(!.run(Delim.collectUntil[Int, Boolean, Boolean, Pure](using FoldUntil.exists[Int](_ > 2))(walk(tree))), true)
     // the claims in the comments, counted through a twin of the walk
     var visited = 0
-    def counted(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! (Delim + Pure) = direct:
+    def counted(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! Delim + Pure = direct:
       t match
         case Tree.Leaf(a)    => visited += 1; !Delim.emit(a)
         case Tree.Node(l, r) => !counted(l); !counted(r)

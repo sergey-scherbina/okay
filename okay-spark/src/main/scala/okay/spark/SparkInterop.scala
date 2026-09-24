@@ -147,7 +147,7 @@ object SparkBulk:
      * native operation is a materialised boundary in the plan. Keys
      * travel as `Any` like elements do, and come back through `elem`.
      */
-    def sort[A, F[+_]](p: A ! (okay.Sort + F)): A ! (okay.State % okay.Tables.Heap[Rows] + F) =
+    def sort[A, F[+_]](p: A ! okay.Sort + F): A ! okay.State % okay.Tables.Heap[Rows] + F =
       import okay.RowLift.plus
       def sorted[X, K](h: okay.Tables.Heap[Rows], t: okay.Tables.Table[X], key: X => K, ord: Ordering[K])
       : (okay.Tables.Table[X], okay.Tables.Heap[Rows]) =

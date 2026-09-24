@@ -57,7 +57,7 @@ object Sim {
      * nothing hides here from a handler relaying the row underneath —
      * and `!.relay` would not see it, since it walks the spine and
      * passes a foreign node through without descending. Widening this
-     * to `Unit ! (Op + G)` is unspeakable at the kind `F[+_]` and
+     * to `Unit ! Op + G` is unspeakable at the kind `F[+_]` and
      * needs higher-order signatures; read the price there first. */
     case Fork(prog: Unit ! Op) extends Op[Fiber]
     case Sleep(millis: Long) extends Op[Unit]

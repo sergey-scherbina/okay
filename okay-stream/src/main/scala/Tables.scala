@@ -17,7 +17,7 @@ import Chunks.elements
  * once — or natively by a platform that has something better (Spark's
  * `sortBy`, in okay-spark). Nothing in `Bulk` changes, no platform's
  * build breaks, and a program that needs the new operation SAYS so in
- * its type: `Table[Dep] ! (Tables + Sort)`. And the program is a value:
+ * its type: `Table[Dep] ! Tables + Sort`. And the program is a value:
  * `!.tracing` prints the plan, and a rewrite before the run — project
  * before the join — is a walk over data rather than a new API.
  *
@@ -197,8 +197,8 @@ object Tables:
    * translating into the same state, with no hook in this handler and
    * no knowledge of it here. `log` sees every plan as it is forced.
    */
-  def via[A, D[_], F[+_]](B: Bulk[D], log: Plan[?] => Unit = _ => (), rewrite: Boolean = true)(p: A ! (Tables + F))
-  : A ! (State % Heap[D] + F) =
+  def via[A, D[_], F[+_]](B: Bulk[D], log: Plan[?] => Unit = _ => (), rewrite: Boolean = true)(p: A ! Tables + F)
+  : A ! State % Heap[D] + F =
     def forced[X](h: Heap[D], t: Table[X]): D[X] =
       val plan = if rewrite then Plan.optimize(h.plan(t), B.size) else h.plan(t)
       log(plan)
@@ -239,7 +239,7 @@ object Sort:
     def sortBy[K](key: A => K)(using ord: Ordering[K]): Table[A] ! F = p.flatMap(t => t.sortBy(key).at[F])
 
   /** the default: through the primitives, so it runs on any platform */
-  def viaTables[A, G[+_]](p: A ! (Sort + G)): A ! (Tables + G) =
+  def viaTables[A, G[+_]](p: A ! Sort + G): A ! Tables + G =
     !.interpret(p):
       [X] => (e: Sort[X]) => e match
         case By(t, key, ord) =>

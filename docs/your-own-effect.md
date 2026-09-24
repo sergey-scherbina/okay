@@ -28,7 +28,7 @@ GADT, and it is what lets a handler be written once and typecheck per
 operation.
 
 `derives Effect` writes the one instance a row needs. A row is an
-untagged union — `A ! (Users + Writer % String)` is `Free[[X] =>>
+untagged union — `A ! Users + Writer % String` is `Free[[X] =>>
 Users[X] | Writer[String, X], A]` — and unions erase, so when a
 handler for `Users` meets an operation it decides by a runtime class
 test. `Effect` IS that test (it extends `TypeableK`), built from a
@@ -81,7 +81,7 @@ A constructor builds at its OWN row. To use it beside another effect,
 move it:
 
 ```scala
-Users.find(id).plus[Abort]        // Option[String] ! (Users + Abort)
+Users.find(id).plus[Abort]        // Option[String] ! Users + Abort
 State.get[S].at[R]                // into a row known only by membership
 ```
 
@@ -97,7 +97,7 @@ whole programs — its walk is also a normalisation, and deleting it
 costs 5-7% on `Source.merge`.
 
 Row ORDER does not exist. `+` is a union and `|` commutes, so
-`A ! (Users + Abort)` and `A ! (Abort + Users)` are the same type and
+`A ! Users + Abort` and `A ! Abort + Users` are the same type and
 assign both ways with no coercion. An `.at[...]` written to reorder a
 row is noise.
 
@@ -223,7 +223,7 @@ An interpreter can: it turns each operation into a PROGRAM in another
 row, where `State` and `Writer` are ordinary members.
 
 ```scala
-def stored[A, S : Store as S, F[+_]](prog: A ! (Users + F)): A ! (State % S + F) =
+def stored[A, S : Store as S, F[+_]](prog: A ! Users + F): A ! State % S + F =
   !.interpret(prog):
     [X] => (e: Users[X]) => e match
       case Users.Find(id) =>
@@ -245,7 +245,7 @@ both.
 Two layers, one job each, composed:
 
 ```scala
-def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (State % S + Writer % String + F) =
+def tracked[A, S : Store, F[+_]](prog: A ! Users + F): A ! State % S + Writer % String + F =
   stored[A, S, Writer % String + F](
     !.tracing(prog)([X] => (e: Users[X]) => e.toString))
 ```
@@ -289,7 +289,7 @@ type Big   = Tag.Of["big",   State % Int]
 
 // an ordinary function, written against a plain State % Int,
 // run twice at two different states in one program:
-val twice: (Int, Int) ! (Small + Big) =
+val twice: (Int, Int) ! Small + Big =
   for
     a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
     b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]

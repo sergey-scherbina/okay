@@ -68,7 +68,7 @@ object Prob:
    * each invocation a FRESH continuation — the defining property
    * `Choose`'s own comment names, priced the same way here.
    */
-  def runExact[A, F[+_]](p: A ! (Dist + F)): Map[A, Double] ! F =
+  def runExact[A, F[+_]](p: A ! Dist + F): Map[A, Double] ! F =
     Effects[Free].handle[Dist, F](p)(a => pure[F, Map[A, Double]](Map(a -> 1.0))):
       [X] => (c: Dist[X]) => shift: k =>
         c.choices.foldLeft(pure[F, Map[A, Double]](Map.empty)): (acc, choice) =>

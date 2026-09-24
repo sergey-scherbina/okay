@@ -54,9 +54,9 @@ final class Breaker(val name: String, failures: Int, openMillis: Long,
    * (`okay.llm.Transport` and friends), so the circuit sees the whole
    * call and not merely its first operation (resilient-transport).
    */
-  def protectIn[A, F[+_]](prog: => A ! (F + Async))
+  def protectIn[A, F[+_]](prog: => A ! F + Async)
                          (failing: Either[Throwable, A] => Boolean = (r: Either[Throwable, A]) => r.isLeft)
-                         (using okay.TypeableK[Async]): A ! (F + Async) =
+                         (using okay.TypeableK[Async]): A ! F + Async =
     okay.effect[F + Async, Option[Option[Long]]](Async.Run(() => admit())).flatMap {
       case Some(wait) => throw Refused.BreakerOpen(name, wait)
       case None =>

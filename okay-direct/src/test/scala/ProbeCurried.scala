@@ -58,7 +58,7 @@ object ProbeCurried:
   type Mix = State % Int + Writer % String
 
   // 1. today's constructors, untouched, in their own narrow row
-  val narrow: Int ! (State % Int) = State.get[Int]
+  val narrow: Int ! State % Int = State.get[Int]
 
   // 2. the same constructors moved into a mixed row — the target is
   //    named, the complement never is

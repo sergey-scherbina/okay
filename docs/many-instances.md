@@ -71,7 +71,7 @@ is already erased, so the key is the only thing worth testing.
 What makes this worth having is not the wrapper but `tag`:
 
 ```scala
-val twice: (Int, Int) ! (Small + Big) =
+val twice: (Int, Int) ! Small + Big =
   for
     a <- Tag.tag["small", State % Int](count).plus[Big]
     b <- Tag.tag["big",   State % Int][Int, Pure](count).at[Small + Big]

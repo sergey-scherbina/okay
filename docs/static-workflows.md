@@ -90,7 +90,7 @@ asked one question.
 Beside its monadic twin, which asks the same three questions:
 
 ```scala
-def bookingMonadic(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+def bookingMonadic(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
   direct:
     val city = !w.pause("city?")
     val t    = !w.now

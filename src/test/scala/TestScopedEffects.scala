@@ -18,7 +18,7 @@ class TestScopedEffects extends munit.FunSuite:
   /** `recover` leaves `Throws` in the row unresolved even when it
    * guarantees success (its own type signature says so); discharge it
    * with `runEither` before `State.run`, which wants `State % S` alone */
-  def runBoth[A](s: Int)(p: A ! (State % Int + Throws % String)): (Int, Either[String, A]) =
+  def runBoth[A](s: Int)(p: A ! State % Int + Throws % String): (Int, Either[String, A]) =
     State.run(s)(runEither[A, State % Int, String](p))
 
   test("a State mutation before a caught raise survives: recover does not roll it back") {
@@ -148,7 +148,7 @@ class TestScopedEffects extends munit.FunSuite:
     // a Bind-based generic handler cannot see through.
     val prompt = Delim.prompt[Int]
     type F = Reader % Int + okay.Pure
-    val body: Int ! (Delim + F) =
+    val body: Int ! Delim + F =
       Delim.shift[Int, Int, F](prompt)(k => k(1).flatMap(a => k(2).map(b => a + b)))
         .flatMap(n => Reader.ask[Int].at[Delim + F].map(_ + n))
     val localized = Reader.local[Int, Int, Delim + okay.Pure](_ * 10)(

@@ -74,7 +74,7 @@ class TestFail extends munit.FunSuite {
       case Find(id: Long) extends Users[Option[String]]
     def find(id: Long): Option[String] ! Users = effect(Users.Find(id))
 
-    def rename(id: Long): String ! (Users + Abort) =
+    def rename(id: Long): String ! Users + Abort =
       for case Some(old) <- find(id).plus[Abort] yield old
 
     val handler: Handler[Users] = new:
@@ -137,9 +137,9 @@ class TestFail extends munit.FunSuite {
     // `.at[Abort + F]` written to REORDER a row is noise: the two
     // spellings are the same type, and the value passes with no
     // coercion at all — not even a cast
-    val a: String ! (Abort + State % Int) = pure("x")
-    val b: String ! (State % Int + Abort) = a
-    val c: String ! (Abort + State % Int) = b
+    val a: String ! Abort + State % Int = pure("x")
+    val b: String ! State % Int + Abort = a
+    val c: String ! Abort + State % Int = b
     assert(a eq c)
     assertEquals(State.run[Int, Option[String]](0)(runOption[String, State % Int](b)),
       (0, Some("x")))

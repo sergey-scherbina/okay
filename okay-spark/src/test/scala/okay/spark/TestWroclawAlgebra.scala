@@ -183,7 +183,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
    * (`Sort.viaTables`); the program is the same value both times.
    */
   def analysis(file: String => String)
-  : (Long, Map[Int, ((Long, Long), Double)], Map[Int, Long], Vector[(Int, Long)]) ! (Tables + Sort) = direct {
+  : (Long, Map[Int, ((Long, Long), Double)], Map[Int, Long], Vector[(Int, Long)]) ! Tables + Sort = direct {
     // a mark takes the block's own row: a `! Tables` program says `.plus[Sort]`
     val deps = !Gtfs.departures(file).cache.plus[Sort]
     val n = !deps.aggregate(departures).plus[Sort]

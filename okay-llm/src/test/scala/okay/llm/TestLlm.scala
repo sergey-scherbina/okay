@@ -9,7 +9,7 @@ class TestLlm extends munit.FunSuite {
 
   def sse(events: List[String]): Transport = new Transport:
     def post(url: String, headers: Map[String, String], body: String)
-    : Unit ! (Writer % String + Async) =
+    : Unit ! Writer % String + Async =
       type F = Writer % String + Async
       def go(ls: List[String]): Unit ! F = ls match
         case Nil => pure(())
@@ -44,7 +44,7 @@ class TestLlm extends munit.FunSuite {
     var attempts = 0
     val flaky: Transport = new Transport:
       def post(url: String, headers: Map[String, String], body: String)
-      : Unit ! (Writer % String + Async) =
+      : Unit ! Writer % String + Async =
         type F = Writer % String + Async
         effect[F, Unit](Async.Run { () =>
           attempts += 1
@@ -67,9 +67,9 @@ class TestLlm extends munit.FunSuite {
   }
 
   /** drain the token stream (Writer % String + Async, no real waits here) */
-  def collect(s: Unit ! (Writer % String + Async)): List[String] =
+  def collect(s: Unit ! Writer % String + Async): List[String] =
     import okay.!.*
-    def go(rest: Unit ! (Writer % String + Async), acc: List[String]): List[String] =
+    def go(rest: Unit ! Writer % String + Async, acc: List[String]): List[String] =
       (rest.resume: @unchecked) match
         case Return(_) => acc.reverse
         case Inject(e) => okay.<|>[Async, Writer % String](e) match

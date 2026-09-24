@@ -118,7 +118,7 @@ client.send(Request.get("http://orders/v1/orders/42"))
 **Seams that stream.** `Resilient.http` fits `Request => Response !
 Async`. The repo's other seams — `okay.llm.Transport`, `okay.mcp
 .Link`, `okay.cluster.Remote` — post and then TELL their answer, so
-their programs are `A ! (F + Async)`. `Resilient.guarded` is the same
+their programs are `A ! F + Async`. `Resilient.guarded` is the same
 order for those, and the pieces have row variants of their own
 (`protectIn`, `limitIn`, `admitIn`):
 

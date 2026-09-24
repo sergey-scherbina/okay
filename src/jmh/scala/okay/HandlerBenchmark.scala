@@ -31,7 +31,7 @@ class HandlerBenchmark {
   final val N = 10000
 
   /** 10k ops, every 100th handled (Ask), the rest forwarded (Produce) */
-  def prog: Int ! (Ask + Produce) =
+  def prog: Int ! Ask + Produce =
     (1 to N).foldLeft(effect[Ask + Produce, Int](Ask(0))): (m, i) =>
       m.flatMap(x => effect[Ask + Produce, Int](if i % 100 == 0 then Ask(x + 1) else x + 1))
 
@@ -54,7 +54,7 @@ class HandlerBenchmark {
   @Benchmark
   def buildOnly(): Any = prog
 
-  private var built: Int ! (Ask + Produce) = scala.compiletime.uninitialized
+  private var built: Int ! Ask + Produce = scala.compiletime.uninitialized
 
   @Setup(Level.Trial)
   def buildOnce(): Unit = built = prog

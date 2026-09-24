@@ -22,17 +22,17 @@ class TestChildren extends FunSuite {
   given Schema[Wf.Ans[String]] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
 
-  def drive[A](p: A ! (Pure + Async))(using CanBlock): A =
+  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
     !.run(Async.run[A, Pure](p))
 
-  def kid(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+  def kid(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
     direct:
       val v = !w.pause("child?")
       s"child:$v"
 
   /** the parent's first question is the SPAWN: an ordinary activity
    * that starts the child and answers with its id */
-  def parent(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+  def parent(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
     direct:
       val id = !w.pause("start a child")
       val got = !w.awaitChild(id)

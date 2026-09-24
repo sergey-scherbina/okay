@@ -38,7 +38,7 @@ class TestRowIdentity extends munit.FunSuite {
     // per row, no Typeable[W], no E092); `Writer.byValue.writerK`,
     // imported above, reads the told value's class as well, which is
     // what routes two Writers in one row
-    val prog: Unit ! (Writer % String + Writer % Int) =
+    val prog: Unit ! Writer % String + Writer % Int =
       okay.effect[Writer % String + Writer % Int, Unit](Writer("hello"))
         .flatMap(_ => okay.effect[Writer % String + Writer % Int, Unit](Writer(42)))
         .map(_ => ())
@@ -56,7 +56,7 @@ class TestRowIdentity extends munit.FunSuite {
     // and this test exists to say exactly that rather than to pretend
     // otherwise. If it ever starts failing, the row grew real identity
     // and this limitation can be deleted from the docs.
-    val prog: String ! (Reader % Int + Reader % String) =
+    val prog: String ! Reader % Int + Reader % String =
       okay.effect[Reader % Int + Reader % String, Int](Reader.Ask())
         .flatMap(n =>
           okay.effect[Reader % Int + Reader % String, String](Reader.Ask())
@@ -84,7 +84,7 @@ class TestRowIdentity extends munit.FunSuite {
   // is what makes the choice a choice.
   test("the rule, stated positively: one instance per signature in a BARE row") {
     // a row with ONE reader is exact, whatever the environment type
-    val prog: Int ! (Reader % Int + Pure) =
+    val prog: Int ! Reader % Int + Pure =
       okay.effect[Reader % Int + Pure, Int](Reader.Ask()).map(_ * 2)
     assertEquals(Reader.run[Int, Int, Pure](21)(prog).runWith, 42)
   }

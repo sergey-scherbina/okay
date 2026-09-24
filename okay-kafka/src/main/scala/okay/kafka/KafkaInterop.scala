@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters.*
  * consumer's poll returns a batch, which is exactly a Chunk — one
  * poll, one chunk, nothing re-buffered. The source is an effectful
  * chunked stream (`Source[Chunk[Record]]` — each poll's batch told;
- * `Chunk[Record] ! (Produce + Async)` until producer-to-writer-carrier,
+ * `Chunk[Record] ! Produce + Async` until producer-to-writer-carrier,
  * 2026-09-19): between
  * emissions the virtual thread parks in poll. Delivery is
  * at-least-once: commit after processing a chunk, and a supervised

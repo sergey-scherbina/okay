@@ -23,7 +23,7 @@ class TestDelimForward extends munit.FunSuite {
 
   // an inner machine over a row that still has a Delim in it: the
   // shape `Delim.run` refuses and `runNested` is for
-  def inner[A](p: A ! (Delim + (Delim + P))): A ! (Delim + P) =
+  def inner[A](p: A ! (Delim + (Delim + P))): A ! Delim + P =
     Delim.runNested(p)
 
   test("1 · the inner machine's frames are INSIDE the outer capture") {

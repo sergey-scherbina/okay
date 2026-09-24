@@ -114,7 +114,7 @@ object Terminal {
               keyState = st
               // one byte can complete no key (mid-sequence) or two (a
               // lone ESC and the byte after it), so this folds
-              val emit = keys.foldLeft(pure(()): Unit ! (Writer % Event + Async)) { (acc, key) =>
+              val emit = keys.foldLeft(pure(()): Unit ! Writer % Event + Async) { (acc, key) =>
                 acc.flatMap { _ =>
                   // the view keys are the HOST's: they move no focus
                   // and say nothing to the application

@@ -153,7 +153,7 @@ runtime `NoPrompt` and is now refused by the row guard.
 The hole, stated by its own test and named `THE LIMIT`:
 
 ```scala
-def generic[F[+_]](p: Int ! (Delim + F)): Int ! F = Delim.run(p)
+def generic[F[+_]](p: Int ! Delim + F): Int ! F = Delim.run(p)
 ```
 
 A row-polymorphic helper with **no witness in its signature** compiles,

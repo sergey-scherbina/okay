@@ -121,8 +121,8 @@ object Condition {
    * the frame is one frame either way.)
    */
   def frame[A, V, F[+_]](name: String)
-                        (body: Restart[V] ?=> A ! (Op + F))
-                        (recover: V => A)(using tag: scala.reflect.ClassTag[V]): A ! (Op + F) =
+                        (body: Restart[V] ?=> A ! Op + F)
+                        (recover: V => A)(using tag: scala.reflect.ClassTag[V]): A ! Op + F =
     val handle = Restart[V](name)
     effect[Op + F, A](Op.Within[A, V](name, handle, body(using handle), recover, checked(name, tag)))
 
@@ -131,7 +131,7 @@ object Condition {
    * body's remaining work is abandoned, everything outside
    * continues; a body that completes normally makes the frame
    * invisible */
-  def within[A, F[+_]](name: String)(body: A ! (Op + F))(recover: Any => A): A ! (Op + F) =
+  def within[A, F[+_]](name: String)(body: A ! Op + F)(recover: Any => A): A ! Op + F =
     effect[Op + F, A](Op.Within[A, Any](name, new Object, body, recover, identity))
 
   /** an established frame: its menu name and its identity */
@@ -150,20 +150,20 @@ object Condition {
    * the INNERMOST frame of that name.
    */
   def run[A, F[+_]](policy: (Any, Vector[String]) => Decision)
-                   (prog: A ! (Op + F)): A ! F = {
+                   (prog: A ! Op + F): A ! F = {
     // the Resume path is a WHILE loop, not a recursion (the
     // Resource.run shape): a decode loop signalling once per record
     // resumes a hundred thousand times in a row, and every one of
     // them would otherwise be a JVM frame. Frames (Within) nest by
     // lexical depth, which is bounded; forwarded effects suspend
     // under flatMap, so their recursion lives in closures.
-    def loop[X](p0: X ! (Op + F), menu: List[Frame]): Out[X] ! F =
+    def loop[X](p0: X ! Op + F, menu: List[Frame]): Out[X] ! F =
       val names = menu.map(_.name).toVector
 
       /** one operation with its continuation, typed by the tree:
        * Left = the program continues here (the Resume path), Right =
        * this loop's answer */
-      def step[Y](op: Op[Y], k: Y => X ! (Op + F)): Either[X ! (Op + F), Out[X] ! F] = op match
+      def step[Y](op: Op[Y], k: Y => X ! Op + F): Either[X ! Op + F, Out[X] ! F] = op match
         case Op.Leave(handle, v) =>
           // a handle that leaked out of its frame: the frame is gone
           if !menu.exists(_.id eq handle) then throw NoSuchRestart(handle.name, names)
@@ -179,7 +179,7 @@ object Condition {
           // THE claim of this file: the payload is a program in this
           // machine's row — erased at the operation because F is not
           // the operation's to name, re-typed here where F is known
-          val body = w.body.asInstanceOf[a ! (Op + F)]
+          val body = w.body.asInstanceOf[a ! Op + F]
           Right(loop(body, Frame(w.name, w.id) :: menu).flatMap {
             case Out.Done(b) => loop(k(b), menu)
             case Out.Escape(t, x) if t == w.name || (t eq w.id) => loop(k(w.recover(w.accept(x))), menu)
@@ -188,7 +188,7 @@ object Condition {
 
       var p = p0
       while true do
-        val next: Either[X ! (Op + F), Out[X] ! F] = (p.resume: @unchecked) match
+        val next: Either[X ! Op + F, Out[X] ! F] = (p.resume: @unchecked) match
           case Return(x) => Right(pure(Out.Done(x)))
           case Inject(e) => split[Op, F](e)
             (op => step(op, (a: X) => Free.Return(a)))
@@ -216,9 +216,9 @@ object Condition {
    * docs/capabilities.md. The explicit `within` stays the floor.
    */
   inline def frame[A, F[+_]](name: String)
-    (inline body: DirectCtx[[X] =>> X ! (Op + F)] ?=> A)
-    (recover: Any => A): A ! (Op + F) =
-    within[A, F](name)(Direct.direct[[X] =>> X ! (Op + F)](body))(recover)
+    (inline body: DirectCtx[[X] =>> X ! Op + F] ?=> A)
+    (recover: Any => A): A ! Op + F =
+    within[A, F](name)(Direct.direct[[X] =>> X ! Op + F](body))(recover)
 
   /**
    * Typed signals, the NOMINAL spelling (specs/condition.md, Typed

@@ -13,7 +13,7 @@ import scala.language.implicitConversions
 class TestDirectPhases extends munit.FunSuite {
 
   type Prog[A] = A ! okay.Pure
-  type W[A] = A ! (Writer % String)
+  type W[A] = A ! Writer % String
   type Asy[A] = A ! Async
 
   given Monad[Option] with
@@ -64,14 +64,14 @@ class TestDirectPhases extends munit.FunSuite {
   // ---- row: what F is
 
   test("row: what a bare statement can RUN at") {
-    assert(DirectProbe.runnable[W, Unit ! (Writer % String)].exists(_.endsWith("Unit")))
+    assert(DirectProbe.runnable[W, Unit ! Writer % String].exists(_.endsWith("Unit")))
     assert(DirectProbe.runnable[W, Writer[String, Unit]].exists(_.endsWith("Unit")))
     assertEquals(DirectProbe.runnable[W, Option[Int]], None)
     assert(DirectProbe.runnable[Option, Option[Int]].exists(_.endsWith("Int")))
   }
 
   test("row: what a statement would silently drop — the error's own predicate") {
-    assert(DirectProbe.dropped[W, Int ! (Writer % String)])   // a program
+    assert(DirectProbe.dropped[W, Int ! Writer % String])   // a program
     assert(DirectProbe.dropped[Option, Option[Int]])           // the block's own F
     assert(!DirectProbe.dropped[W, Option[Int]])               // an unregistered carrier
     assert(!DirectProbe.dropped[W, Int])                       // a plain value

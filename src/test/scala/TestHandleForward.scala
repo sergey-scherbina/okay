@@ -36,7 +36,7 @@ class TestHandleForward extends munit.FunSuite {
     (a, log.result())
 
   /** produce(1) ; claim(10) ; produce(3) — one of each, interleaved */
-  def mixed: Int ! (Claim + Produce) =
+  def mixed: Int ! Claim + Produce =
     effect[Claim + Produce, Int](1).flatMap: x =>
       effect[Claim + Produce, Int](Claim(10)).flatMap: y =>
         effect[Claim + Produce, Int](3).map(z => x + y + z)

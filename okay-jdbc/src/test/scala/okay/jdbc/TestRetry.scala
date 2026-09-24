@@ -55,7 +55,7 @@ class TestRetry extends munit.FunSuite {
       case SqlValue.I64(n) => n
       case other => fail(s"count: $other")
 
-  def insert(db: Sql): Granted => Long ! (Resource + Async) =
+  def insert(db: Sql): Granted => Long ! Resource + Async =
     _ => !.widen[Long, Async, Resource](db.update("insert into hits values (1)", Vector.empty))
 
   test("N losses then success: Retry(N+1) answers the value with attempts = N+1, each loss rolled back") {

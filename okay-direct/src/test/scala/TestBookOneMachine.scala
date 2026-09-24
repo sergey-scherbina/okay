@@ -49,7 +49,7 @@ class TestBookOneMachine extends munit.FunSuite {
    * at a concrete Delim row cannot satisfy it. That is the guard
    * working, and it is why the hole needs this exact shape.)
    */
-  def runAnything[A, F[+_]](p: A ! (Delim + F)): A ! F =
+  def runAnything[A, F[+_]](p: A ! Delim + F): A ! F =
     Delim.run(p)
 
   test("an ABSTRACT row compiles and still fails at run time") {
@@ -57,7 +57,7 @@ class TestBookOneMachine extends munit.FunSuite {
     // mistake the guard exists to refuse -- and it got through
     val inner: Int ! (Delim + (Delim + Pure)) =
       Delim.push(Delim.prompt[Int])(okay.pure(1))
-    val outer: Int ! (Delim + Pure) = runAnything[Int, Delim + Pure](inner)
+    val outer: Int ! Delim + Pure = runAnything[Int, Delim + Pure](inner)
     // it does not throw here, because this program never captures --
     // the guard's hole is that nothing STOPS it, not that it always
     // breaks
@@ -68,7 +68,7 @@ class TestBookOneMachine extends munit.FunSuite {
     val p = Delim.prompt[Int]
     val inner: Int ! (Delim + (Delim + Pure)) =
       Delim.push(p)(Delim.abort[Int, Int, Delim + Pure](p)(7))
-    val outer: Int ! (Delim + Pure) = runAnything[Int, Delim + Pure](inner)
+    val outer: Int ! Delim + Pure = runAnything[Int, Delim + Pure](inner)
     // the inner machine claimed the outer machine's operation
     val got = try !.run(Delim.run[Int, Pure](outer)) catch case _: NoPrompt => -1
     assert(got == 7 || got == -1, s"unexpected $got")

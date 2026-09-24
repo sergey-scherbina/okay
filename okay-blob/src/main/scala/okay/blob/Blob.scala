@@ -28,7 +28,7 @@ trait Blob:
    * checked and emitted nothing — specs/blob.md's old "Source road"
    * paragraph, now the only road) */
   def get(key: String, range: Option[(Long, Long)] = None)
-  : Either[String, Unit] ! (Writer % Chunk[Byte] + Async)
+  : Either[String, Unit] ! Writer % Chunk[Byte] + Async
 
   /** size, etag, modified — no body */
   def head(key: String): Option[Meta] ! Async
@@ -88,7 +88,7 @@ object Blob:
       }
 
     def put(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async = counting(puts)(inner.put(key, bytes))
-    def get(key: String, range: Option[(Long, Long)] = None): Either[String, Unit] ! (Writer % Chunk[Byte] + Async) =
+    def get(key: String, range: Option[(Long, Long)] = None): Either[String, Unit] ! Writer % Chunk[Byte] + Async =
       gets.incrementAndGet()
       inner.get(key, range).map { r => if r.isLeft then misses.incrementAndGet(): Unit; r }
     def head(key: String): Option[Meta] ! Async = counting(heads)(inner.head(key))

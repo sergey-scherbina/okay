@@ -38,7 +38,7 @@ class TestGroundedTranslating extends munit.FunSuite {
   val postings: Postings = Keyword.index(segments)
 
   /** ask, then recall — written in the row it needs and no more */
-  val ask: Seq[Turn] ! (Context + Async) =
+  val ask: Seq[Turn] ! Context + Async =
     okay.effect[Context + Async, Unit](
       Context.Remember(Turn.User("how do I greet someone by name?")))
       .flatMap(_ => okay.effect[Context + Async, Seq[Turn]](Context.Recall()))

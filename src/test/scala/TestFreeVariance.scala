@@ -34,7 +34,7 @@ class TestFreeVariance extends munit.FunSuite:
 
   test("the row is still invariant, on purpose") {
     assert(compileErrors("""
-      val p: Int ! (okay.Writer % String) = okay.pure(1)
-      val q: Int ! (okay.Writer % String + okay.Reader % Int) = p
+      val p: Int ! okay.Writer % String = okay.pure(1)
+      val q: Int ! okay.Writer % String + okay.Reader % Int = p
       q""").nonEmpty, "a row widened by subtyping — free-row-variance's decision was undone")
   }

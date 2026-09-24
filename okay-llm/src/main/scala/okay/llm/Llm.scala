@@ -14,7 +14,7 @@ import okay.codec.{Json, Schema}
  * a real HTTP client or a test mock plugs in here */
 trait Transport:
   def post(url: String, headers: Map[String, String], body: String)
-  : Unit ! (Writer % String + Async)
+  : Unit ! Writer % String + Async
 
 object Sse {
   /** SSE framing as a Stage: lines await in, event payloads (the
@@ -67,7 +67,7 @@ object Anthropic {
    */
   def stream(transport: Transport, apiKey: String, request: Request,
              url: String = "https://api.anthropic.com/v1/messages")
-  : Unit ! (Writer % String + Async) =
+  : Unit ! Writer % String + Async =
     val body = okay.codec.Codecs.writeJson(request.copy(stream = true))
     val lines = transport.post(url, Map(
       "x-api-key" -> apiKey,
@@ -182,10 +182,10 @@ object Anthropic {
       .map((lines, _) => answer(lines.mkString("\n")))
 
   /** the reusable tail: SSE lines to text tokens */
-  def tokensOf(lines: Unit ! (Writer % String + Async))
-  : Unit ! (Writer % String + Async) =
-    def go(rest: Unit ! (Writer % String + Async), buf: List[String])
-    : Unit ! (Writer % String + Async) =
+  def tokensOf(lines: Unit ! Writer % String + Async)
+  : Unit ! Writer % String + Async =
+    def go(rest: Unit ! Writer % String + Async, buf: List[String])
+    : Unit ! Writer % String + Async =
       import okay.!.*
       (rest.resume: @unchecked) match
         case Return(_) => flushEvent(buf)
@@ -199,21 +199,21 @@ object Anthropic {
             // continuation's domain to Unit — no cast on either half
             emitFrom(line, buf)(b => go(k(()), b))
 
-    def flushEvent(buf: List[String]): Unit ! (Writer % String + Async) =
+    def flushEvent(buf: List[String]): Unit ! Writer % String + Async =
       if buf.isEmpty then pure(())
       else tokenOf(buf.reverse.mkString("\n"))(pure(()))
 
     def emitFrom(line: String, buf: List[String])
-                (next: List[String] => Unit ! (Writer % String + Async))
-    : Unit ! (Writer % String + Async) =
+                (next: List[String] => Unit ! Writer % String + Async)
+    : Unit ! Writer % String + Async =
       if line.isEmpty then
         if buf.isEmpty then next(Nil)
         else tokenOf(buf.reverse.mkString("\n"))(next(Nil))
       else if line.startsWith("data:") then next(line.drop(5).trim :: buf)
       else next(buf)
 
-    def tokenOf(payload: String)(next: => Unit ! (Writer % String + Async))
-    : Unit ! (Writer % String + Async) =
+    def tokenOf(payload: String)(next: => Unit ! Writer % String + Async)
+    : Unit ! Writer % String + Async =
       token(payload) match
         case Some(t) => effect[Writer % String + Async, Unit](Writer(t)).flatMap(_ => next)
         case None => next

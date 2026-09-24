@@ -32,7 +32,7 @@ class TestAgentCross extends munit.FunSuite {
     new Transport:
       private var rest = bodies.toList
       def post(url: String, headers: Map[String, String], body: String)
-      : Unit ! (Writer % String + Async) =
+      : Unit ! Writer % String + Async =
         type F = Writer % String + Async
         sent += body
         val reply = rest match
@@ -56,7 +56,7 @@ class TestAgentCross extends munit.FunSuite {
   : scala.concurrent.Future[A] =
     val noTools: A ! (Context + (Model + Async)) =
       Handlers.relayTools[A, Context + (Model + Async)](tools)(prog)
-    val noContext: A ! (Model + Async) =
+    val noContext: A ! Model + Async =
       Memory.run[Vector[Turn], A, Model + Async](Compact.all)(noTools)
     val onlyAsync: A ! Async =
       Provider.openAiRelay[A, Async](transport, "k", "m")(noContext)

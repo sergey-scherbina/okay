@@ -583,7 +583,7 @@ same material with the measurements attached.
   and a `split` per element dwarf it.
 - **`Gen[W]`** (Gen.scala; specs/generators.md, gen-chain-fusion.md) —
   a Python-style generator. A VALUE CLASS whose one field is a
-  `Gen.Chain[W]`: a source program `Unit ! (Writer % W + Stop)` — the
+  `Gen.Chain[W]`: a source program `Unit ! Writer % W + Stop` — the
   program that tells, `Stop` the early end — and the stages to read it
   through. `map`/`filter`/`withFilter`/`take`/`takeWhile`/`drop`/
   `flatMap`/`zipWithIndex` append a stage and `++` a `Cat` node,
@@ -1067,8 +1067,8 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
   one.
 - **`Cont[A, S, R]`** — okay's `Cont` as a class: `shift`, `reset`,
   `pure`, `map`, `flatMap`, `run(k)`.
-- **`Source[A]`** — the core's `Source` (`Unit ! (Writer % A +
-  Async)`) as a class. `fromEff`/`toEff` convert to and from
+- **`Source[A]`** — the core's `Source` (`Unit ! Writer % A +
+  Async`) as a class. `fromEff`/`toEff` convert to and from
   `Unit ! (Writer[A] + Async)`.
 - **`Fiber[A]`, `Channel[A]`** — `Async.fork` returns a `Fiber`; a
   channel's `send`/`receive` are `Eff[Async, _]`.
@@ -1175,8 +1175,8 @@ once tested, and this list exists to not repeat that.
   (`Free.directColor`'s missing `DirectCtx`) rather than "import
   missing", which is why it reads as confusing rather than obvious.
 - **`X` DOES satisfy an `X + Pure` slot directly — verified, not
-  assumed.** `val p: Int ! Writer % String = ...; val q: Int ! (Writer
-  % String + okay.Pure) = p` compiles with no `.at`, and `q eq p` (no
+  assumed.** `val p: Int ! Writer % String = ...; val q: Int ! Writer
+  % String + okay.Pure = p` compiles with no `.at`, and `q eq p` (no
   new node either). If you find yourself reaching for `.at` just to
   add a trailing `+ Pure`, try the bare ascription first.
 - **`flatMap` between two DIFFERENT effects needs BOTH sides widened
@@ -1186,7 +1186,7 @@ once tested, and this list exists to not repeat that.
   so both operands must already agree on it before the call, not
   after. This is the day's most common ACTUAL trap (the `X + Pure`
   one above is not).
-- **A method expecting `R ! (F + G)` does not recover that shape from
+- **A method expecting `R ! F + G` does not recover that shape from
   an argument already typed as the EXPANDED union
   `[A] =>> F[A] | G[A]`.** `Delim.Stacked`'s own `reset`/`delimited`
   needed `push[R, F](...)`/`run[R, F](...)` with explicit type
@@ -1205,8 +1205,8 @@ once tested, and this list exists to not repeat that.
   comment alone.** `A ! ((F + G) + H)` satisfies `A ! (F + (G + H))`
   with a plain ascription (re-parenthesization), and — the stronger
   fact, since dotty's `|` normalizes a union's members into a
-  canonical order for type equality — `A ! (F + G)` ALSO satisfies
-  `A ! (G + F)` the same way, two DIFFERENT members simply swapped.
+  canonical order for type equality — `A ! F + G` ALSO satisfies
+  `A ! G + F` the same way, two DIFFERENT members simply swapped.
   Reaching for `.at`/`.plus` to reorder or reassociate a union you
   already hold is unnecessary ceremony; `.at` earns its keep only
   where the SHAPE of members actually differs (a real widening, or

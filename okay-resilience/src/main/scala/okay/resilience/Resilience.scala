@@ -79,14 +79,14 @@ object Attempt:
    * pass every other one through untouched, and answer when the whole
    * program ends. A streaming seam needs this — `okay.llm.Transport`
    * posts and tells its response lines, so its program is
-   * `Unit ! (Writer % String + Async)` and the plain `apply` above
+   * `Unit ! Writer % String + Async` and the plain `apply` above
    * cannot see it (resilient-transport).
    *
    * `Async` is tested rather than `F` because its erasure is a
    * concrete enum; `F` is taken by exclusion, which is what `<|>`
    * documents as the sound direction.
    */
-  def in[A, F[+_]](p: A ! (F + Async))(using TypeableK[Async]): Either[Throwable, A] ! (F + Async) =
+  def in[A, F[+_]](p: A ! F + Async)(using TypeableK[Async]): Either[Throwable, A] ! F + Async =
     val head = try Right(p.resume) catch case t: Throwable => Left(t)
     head match
       case Left(t) => Return(Left(t))
@@ -96,22 +96,22 @@ object Attempt:
         case Bind(Inject(e), k) => split(e, k)
 
   /** one operation of the row: ours to guard, or someone else's to relay */
-  private def split[X, A, F[+_]](e: Async[X] | F[X], k: X => A ! (F + Async))
-                                (using TypeableK[Async]): Either[Throwable, A] ! (F + Async) =
+  private def split[X, A, F[+_]](e: Async[X] | F[X], k: X => A ! F + Async)
+                                (using TypeableK[Async]): Either[Throwable, A] ! F + Async =
     okay.<|>[Async, F][X](e) match
       case Left(a) => stepIn(a, k)
       case Right(f) =>
         okay.effect[F + Async, X](f).flatMap(x => continueIn(k, x))
 
-  private def continueIn[X, A, F[+_]](k: X => A ! (F + Async), x: X)
-                                     (using TypeableK[Async]): Either[Throwable, A] ! (F + Async) =
+  private def continueIn[X, A, F[+_]](k: X => A ! F + Async, x: X)
+                                     (using TypeableK[Async]): Either[Throwable, A] ! F + Async =
     val next = try Right(k(x)) catch case t: Throwable => Left(t)
     next match
       case Right(p) => in(p)
       case Left(t) => Return(Left(t))
 
-  private def stepIn[X, A, F[+_]](e: Async[X], k: X => A ! (F + Async))
-                                 (using TypeableK[Async]): Either[Throwable, A] ! (F + Async) = e match
+  private def stepIn[X, A, F[+_]](e: Async[X], k: X => A ! F + Async)
+                                 (using TypeableK[Async]): Either[Throwable, A] ! F + Async = e match
     case Async.Run(f) =>
       okay.effect[F + Async, Either[Throwable, X]](
         Async.Run(() => try Right(f()) catch case t: Throwable => Left(t))).flatMap {

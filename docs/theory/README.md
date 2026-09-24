@@ -54,7 +54,7 @@ type Pure = Nothing
 infix type !>[F[_], S] = Interpr[F, Cont, S]
 ```
 
-So `A ! (State % Int + Throws % String)` reads: *a program computing
+So `A ! State % Int + Throws % String` reads: *a program computing
 `A`, which may use integer state and may throw strings*. `Pure` being
 `Nothing` is not a trick spelling — chapter 5 explains why the empty
 row is the empty type, and what that buys.

@@ -234,7 +234,7 @@ object UsersDemo:
    * `.plus[F]` puts each step in that row: the constructors build at
    * `State % S`, and the branch has to answer in `State % S + F`.
    */
-  def stored[A, S : Store as S, F[+_]](prog: A ! (Users + F)): A ! (State % S + F) =
+  def stored[A, S : Store as S, F[+_]](prog: A ! Users + F): A ! State % S + F =
     !.interpret(prog):
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
@@ -247,7 +247,7 @@ object UsersDemo:
           // makes that answer true.
           State.update[S, X](S.replace(id, name)).plus[F]
 
-  def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
+  def tracked[A, S : Store, F[+_]](prog: A ! Users + F): A ! Tracked[S] + F =
     stored[A, S, Writer % String + F](
       !.tracing(prog)([X] => (e: Users[X]) => e.toString))
 

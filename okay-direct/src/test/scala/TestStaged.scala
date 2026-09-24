@@ -127,7 +127,7 @@ class TestStaged extends munit.FunSuite:
   test("v2: a program built at run time under a mark is refused, naming the shape") {
     val e = compileErrors("""
       val sw = Stager.StateWriter[Int, String, Int]()
-      def opaque: Int ! (State % Int + Writer % String) = State.get[Int].at[State % Int + Writer % String]
+      def opaque: Int ! State % Int + Writer % String = State.get[Int].at[State % Int + Writer % String]
       Direct.staged(sw) { opaque.!? }
     """)
     assert(e.contains("run time"), e)

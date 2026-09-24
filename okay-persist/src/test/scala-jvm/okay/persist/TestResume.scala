@@ -27,13 +27,13 @@ class TestResume extends FunSuite {
   given Schema[Wf.Ans[String]] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
 
-  def drive[A](p: A ! (Pure + Async))(using CanBlock): A =
+  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
     !.run(Async.run[A, Pure](p))
 
   /** counts its own builds: one per replay */
   class Counted:
     var builds = 0
-    def body(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+    def body(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
       direct:
         builds += 1
         val who = !w.pause("who?")

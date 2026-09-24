@@ -31,12 +31,12 @@ class TestGuardedLlm extends munit.FunSuite:
     val get: () => Long = () => now
     def set(t: Long): Unit = now = t
 
-  def run[A](prog: A ! (Writer % String + Async)): (Vector[String], A) =
+  def run[A](prog: A ! Writer % String + Async): (Vector[String], A) =
     Async.runAsync(Writer.run[String, A, Async](prog)).value match
       case Some(t) => val (ls, a) = t.get; (ls.toVector, a)
       case None => fail("the test program did not complete synchronously")
 
-  def refusal[A](prog: A ! (Writer % String + Async)): Refused =
+  def refusal[A](prog: A ! Writer % String + Async): Refused =
     Async.runAsync(Writer.run[String, A, Async](prog)).value match
       case Some(scala.util.Failure(r: Refused)) => r
       case Some(other) => fail(s"expected a Refused, got $other")
@@ -46,7 +46,7 @@ class TestGuardedLlm extends munit.FunSuite:
   final class Fake(var dies: Boolean = false) extends okay.llm.Transport:
     var calls = 0
     def post(url: String, headers: Map[String, String], body: String)
-    : Unit ! (Writer % String + Async) =
+    : Unit ! Writer % String + Async =
       !.widen[Unit, Async, Writer % String](okay.async {
         calls += 1
         if dies then throw java.io.IOException("model unreachable")
@@ -57,7 +57,7 @@ class TestGuardedLlm extends munit.FunSuite:
   def guardedBy(inner: okay.llm.Transport, breaker: Breaker, limiter: Limiter): okay.llm.Transport =
     new okay.llm.Transport:
       def post(url: String, headers: Map[String, String], body: String)
-      : Unit ! (Writer % String + Async) =
+      : Unit ! Writer % String + Async =
         okay.resilience.Resilient.guarded(inner.post(url, headers, body),
           breaker = Some(breaker), limiter = Some(limiter), key = "anthropic")
 

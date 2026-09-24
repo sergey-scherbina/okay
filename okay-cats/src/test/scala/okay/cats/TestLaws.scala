@@ -35,7 +35,7 @@ class TestLaws extends munit.ScalaCheckSuite {
 
   // ---- MonadError over a row with Throws
 
-  type PE[A] = A ! (Throws % String + Pure)
+  type PE[A] = A ! Throws % String + Pure
 
   given [A](using Eq[A]): Eq[PE[A]] =
     Eq.by(p => !.run(runEither[A, Pure, String](p)))
@@ -47,6 +47,6 @@ class TestLaws extends munit.ScalaCheckSuite {
     yield (pure(y): PE[A]).flatMap(_ => pure(x)),
   ))
 
-  checkAll("MonadError[A ! (Throws % String + Pure)]",
+  checkAll("MonadError[A ! Throws % String + Pure]",
     MonadErrorTests[PE, String].monadError[Int, Int, String])
 }

@@ -16,7 +16,7 @@ import okay.persist.{Ack, Topic}
  * **No new signature is minted.** A program that logs is a program
  * that TELLS, and the core already has the effect for that: `Writer
  * % Line`. `Log.info("...")` is `tell(Line(...))`; a row that logs
- * reads `A ! (Writer % Log.Line + Async)`, and everything the Writer
+ * reads `A ! Writer % Log.Line + Async`, and everything the Writer
  * algebra can do — collect it, fold it, ignore it — works here for
  * free. What is new is only the VALUE and the handlers.
  *

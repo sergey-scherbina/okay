@@ -35,7 +35,7 @@ class TestDeriveEffect extends munit.FunSuite {
         _ <- Writer.tell("asking").at[Row]
         r <- Db.Get("a").perform.plus[Writer % String]
       yield r
-    val handled: Option[Int] ! (Writer % String) =
+    val handled: Option[Int] ! Writer % String =
       !.relay[Option[Int], Option[Int], Db, Writer % String](p)(pure):
         [X, Y] => e => Cont.Pure(handler.handle(e))
     assertEquals(!.run(Writer.run[String, Option[Int], Pure](handled)),
@@ -99,7 +99,7 @@ class TestDeriveEffect extends munit.FunSuite {
     type Store = Map[String, Int]
     type Tracked = State % Store + Writer % String
 
-    def tracked[A, F[+_]](p: A ! (Db + F)): A ! (Tracked + F) =
+    def tracked[A, F[+_]](p: A ! Db + F): A ! Tracked + F =
       type R = Tracked + F
       !.interpret(p):
         [X] => (e: Db[X]) => e match
@@ -132,7 +132,7 @@ class TestDeriveEffect extends munit.FunSuite {
     type Store = Map[String, Int]
     type R = Db + Writer % String
 
-    def stored[A, F[+_]](p: A ! (Db + F)): A ! (State % Store + F) =
+    def stored[A, F[+_]](p: A ! Db + F): A ! State % Store + F =
       type S = State % Store + F
       !.interpret(p):
         [X] => (e: Db[X]) => e match
@@ -152,7 +152,7 @@ class TestDeriveEffect extends munit.FunSuite {
     // the recorder knows nothing about Db beyond toString, and the
     // interpreter knows nothing about the Writer: two layers, one job
     // each, composed
-    val both: Option[Int] ! (State % Store + Writer % String) =
+    val both: Option[Int] ! State % Store + Writer % String =
       stored[Option[Int], Writer % String](
         !.tracing(prog)([X] => (e: Db[X]) => e.toString))
     val (store, (told, answer)) =

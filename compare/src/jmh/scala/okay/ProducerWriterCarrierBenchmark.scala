@@ -10,8 +10,8 @@ import RowLift.plus
  * is there a real cost to moving the pure pull stream off `Producer[A]
  * = A ! Produce` (the identity signature — an operation IS its
  * element, so the element type IS the answer type) onto the writer
- * carrier `Unit ! Writer % W` / `Source[W] = Unit ! (Writer % W +
- * Async)` (the element named in the type, the answer free)?
+ * carrier `Unit ! Writer % W` / `Source[W] = Unit ! Writer % W +
+ * Async` (the element named in the type, the answer free)?
  *
  * Four shapes, each a pair on the SAME data and the SAME accumulator,
  * so the difference is the carrier and nothing else:
@@ -287,13 +287,13 @@ class ProducerWriterCarrierBenchmark {
   // Source.ofProducer / Source.toProducer: the bridge cost, on the
   // Async-shaped elementwise stream Blob actually builds
 
-  private def producerLongs: Long ! (Produce + Async) =
-    def go(i: Long): Long ! (Produce + Async) =
+  private def producerLongs: Long ! Produce + Async =
+    def go(i: Long): Long ! Produce + Async =
       if i >= n then okay.pure(0L) else produce(i).plus[Async].flatMap(_ => go(i + 1))
     go(0L)
 
-  private def writerLongs: Unit ! (Writer % Long + Async) =
-    def go(i: Long): Unit ! (Writer % Long + Async) =
+  private def writerLongs: Unit ! Writer % Long + Async =
+    def go(i: Long): Unit ! Writer % Long + Async =
       if i >= n then okay.pure(()) else Writer.tell(i).plus[Async].flatMap(_ => go(i + 1))
     go(0L)
 
@@ -307,7 +307,7 @@ class ProducerWriterCarrierBenchmark {
   // against the DEFAULT walk it replaced, written out here verbatim
   // (`Iterator.unfold(s)(uncons(_).runWith)`) so the pair alternates
   // in one run. Elementwise, N=10000 Async-widened produces.
-  private val producerStreamAsync = summon[Stream[[A] =>> A ! (Produce + Async), Async]]
+  private val producerStreamAsync = summon[Stream[[A] =>> A ! Produce + Async, Async]]
 
   @Benchmark
   def producerIteratorSpecialized(): Long =
@@ -328,7 +328,7 @@ class ProducerWriterCarrierBenchmark {
   @Benchmark
   def bridgeProducerThroughSource(): Long =
     given CanBlock = cb
-    val asSource: Unit ! (Writer % Long + Async) = Source.ofProducer[Long, Async](producerLongs)
+    val asSource: Unit ! Writer % Long + Async = Source.ofProducer[Long, Async](producerLongs)
     Writer.fold[Long, Long, Unit, Async](asSource)(using summon, Fold.sumLong).runWith._1
 
   @Benchmark
@@ -339,7 +339,7 @@ class ProducerWriterCarrierBenchmark {
   @Benchmark
   def bridgeWriterThroughProducer(): Long =
     given CanBlock = cb
-    val asProducer: Long ! (Produce + Async) = Source.toProducer[Long, Async](writerLongs)(0L)
+    val asProducer: Long ! Produce + Async = Source.toProducer[Long, Async](writerLongs)(0L)
     Stream.fold(asProducer)(using Fold.sumLong)
 
   // ---------------------------------------------------------- 4
@@ -354,14 +354,14 @@ class ProducerWriterCarrierBenchmark {
   private val byteChunks: Array[Chunk[Byte]] =
     Array.tabulate(64)(i => ArraySeq.fill(1024)((i % 256).toByte))
 
-  private def byteProducer: Chunk[Byte] ! (Produce + Async) =
-    def go(i: Int): Chunk[Byte] ! (Produce + Async) =
+  private def byteProducer: Chunk[Byte] ! Produce + Async =
+    def go(i: Int): Chunk[Byte] ! Produce + Async =
       if i >= byteChunks.length then okay.pure(Chunks.emptyChunk[Byte])
       else produce(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1))
     go(0)
 
-  private def byteSource: Unit ! (Writer % Chunk[Byte] + Async) =
-    def go(i: Int): Unit ! (Writer % Chunk[Byte] + Async) =
+  private def byteSource: Unit ! Writer % Chunk[Byte] + Async =
+    def go(i: Int): Unit ! Writer % Chunk[Byte] + Async =
       if i >= byteChunks.length then okay.pure(())
       else Writer.tell(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1))
     go(0)
@@ -395,8 +395,8 @@ class ProducerWriterCarrierBenchmark {
   // (okay-jdbc's drains) actually has and the one where the mapped
   // residual costs a rotation per forwarded operation.
 
-  private def byteSourceAsync: Unit ! (Writer % Chunk[Byte] + Async) =
-    def go(i: Int): Unit ! (Writer % Chunk[Byte] + Async) =
+  private def byteSourceAsync: Unit ! Writer % Chunk[Byte] + Async =
+    def go(i: Int): Unit ! Writer % Chunk[Byte] + Async =
       if i >= byteChunks.length then okay.pure(())
       else async(()).plus[Writer % Chunk[Byte]].flatMap(_ =>
         Writer.tell(byteChunks(i)).plus[Async].flatMap(_ => go(i + 1)))

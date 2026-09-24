@@ -70,7 +70,7 @@ class TestGenerator extends munit.FunSuite:
   }
 
   test("a yielded value may itself be an effect of the row: the mark inside the yield") {
-    def twice(i: Int): Int ! (Writer % Int + Stop) = Gen.emit(i).program.flatMap(_ => pure(i * 2))
+    def twice(i: Int): Int ! Writer % Int + Stop = Gen.emit(i).program.flatMap(_ => pure(i * 2))
     val g: Gen[Int] = generator[Int] {
       for x <- List(1, 2) yield twice(x).!?     // emits x, then yields 2x
     }

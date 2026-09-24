@@ -63,7 +63,7 @@ honest restatement of the fact that monads do not compose \[[Moggi
 1991](#ref-moggi-1991)\]. Blocks *nest* — Filinski's own treatment of
 layering \[[Filinski 1999](#ref-filinski-1999)\] — and composition
 proper is what the effect rows of chapter 5 are for: one block over
-`A ! (F + G)` reflects a row, not a monad stack.
+`A ! F + G` reflects a row, not a monad stack.
 
 ## Elaboration: the macro as a normalization proof
 

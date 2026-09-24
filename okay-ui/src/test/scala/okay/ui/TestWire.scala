@@ -93,7 +93,7 @@ class TestWire extends munit.FunSuite {
     // the server: the pure stage over the channels
     Async.spawn {
       val src: Source[String] = Writer.of(up)
-      def drain(p: Int ! (Writer % String + Async)): Unit ! Async =
+      def drain(p: Int ! Writer % String + Async): Unit ! Async =
         Writer.uncons[String, Int, Async](p).flatMap {
           case Left(_) => async(down.close())
           case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))
@@ -129,7 +129,7 @@ class TestWire extends munit.FunSuite {
 
     Async.spawn {
       val src: Source[String] = Writer.of(up)
-      def drain(p: Int ! (Writer % String + Async)): Unit ! Async =
+      def drain(p: Int ! Writer % String + Async): Unit ! Async =
         Writer.uncons[String, Int, Async](p).flatMap {
           case Left(_) => async(down.close())
           case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))

@@ -63,11 +63,11 @@ object Ws {
    * here, so this module contributes a transport and not a paradigm.
    */
   def over[A](s: Socket)(session: Stage[Frame, Frame, A]): A ! Async =
-    val answered: A ! (Writer % Frame + Async) =
+    val answered: A ! Writer % Frame + Async =
       through[Frame, Frame, Async, Unit, A](s.frames)(
         !.widen[A, Take % Frame + Writer % Frame, Async](session))
 
-    def drain(p: A ! (Writer % Frame + Async)): A ! Async =
+    def drain(p: A ! Writer % Frame + Async): A ! Async =
       Writer.uncons[Frame, A, Async](p).flatMap {
         case Left(a) => pure(a)
         case Right((f, rest)) => s.send(f).flatMap(_ => drain(rest))

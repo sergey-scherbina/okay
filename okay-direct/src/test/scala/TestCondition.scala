@@ -12,7 +12,7 @@ class TestCondition extends munit.FunSuite {
     import Condition.*
     // the body holds its restart as a capability and leaves through
     // it directly — no signal, no policy round-trip
-    val prog: String ! (Op + Pure) =
+    val prog: String ! Op + Pure =
       frame[String, Int, Pure]("skip") { restart ?=>
         okay.pure[Op + Pure, Int](1).flatMap { _ =>
           restart.invoke[String](42)   // abandon the rest of the frame
@@ -23,7 +23,7 @@ class TestCondition extends munit.FunSuite {
       "skipped with 42")
     // nesting: the inner handle leaves the inner frame; the outer
     // continues past it
-    val nested: String ! (Op + Pure) =
+    val nested: String ! Op + Pure =
       frame[String, String, Pure]("outer") { outer ?=>
         frame[String, Int, Pure]("inner") { inner ?=>
           inner.invoke[String](7)
@@ -33,7 +33,7 @@ class TestCondition extends munit.FunSuite {
       Decision.Fail)(nested)), "inner=7, outer went on")
     // and the capability route crosses frames too: the OUTER handle
     // invoked from inside the inner frame skips both
-    val crossing: String ! (Op + Pure) =
+    val crossing: String ! Op + Pure =
       frame[String, String, Pure]("outer") { outer ?=>
         frame[String, Int, Pure]("inner") { inner ?=>
           outer.invoke[String]("all the way out")
@@ -52,7 +52,7 @@ class TestCondition extends munit.FunSuite {
     // String; the OUTER handle invoked inside the inner frame must
     // reach the outer recover — by name it would land in the inner
     // one and cast the Int to a String
-    val aliased: String ! (Op + Pure) =
+    val aliased: String ! Op + Pure =
       frame[String, Int, Pure]("retry") { outer ?=>
         frame[String, String, Pure]("retry") { inner ?=>
           outer.invoke[String](3)
@@ -61,7 +61,7 @@ class TestCondition extends munit.FunSuite {
     assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
       Decision.Fail)(aliased)), "outer got 3")
     // the policy's Invoke stays BY NAME: innermost wins, as the menu promises
-    val byName: String ! (Op + Pure) =
+    val byName: String ! Op + Pure =
       frame[String, Int, Pure]("retry") { _ ?=>
         frame[String, String, Pure]("retry") { _ ?=>
           signal[String]("which?")
@@ -170,7 +170,7 @@ class TestCondition extends munit.FunSuite {
   }
 
   test("other effects forward: signal-and-resume inside an Async row") {
-    val prog: Int ! (Op + Async) =
+    val prog: Int ! Op + Async =
       for
         a <- !.widen[Int, Async, Op](async(20))
         b <- !.widen[Int, Op, Async](signal[Int]("double it"))

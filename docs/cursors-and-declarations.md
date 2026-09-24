@@ -35,7 +35,7 @@ val (log, _) = run(direct { for x <- Pull.of(List(1, 2, 3)) do say(s"x$x").!? })
 assertEquals(log, Seq("x1", "x2", "x3"))
 
 // okay-llm TestTakeLoopInBlock — an iteratee written as a loop: a Stage
-val doubling: Stage[Int, Int, Unit] = direct[[A] =>> A ! (Take % Int + Writer % Int)] {
+val doubling: Stage[Int, Int, Unit] = direct[[A] =>> A ! Take % Int + Writer % Int] {
   for i <- Take.each[Int] do Writer.tell(i * 2).!?
 }
 ```

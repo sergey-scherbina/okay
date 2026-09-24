@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
  * What a `Gen` pipeline costs against the hand-written road it is
  * made of (sprint generators-jmh; specs/generators.md, Results).
  *
- * `Gen[W]` is a value class over `Unit ! (Writer % W + Stop)`: `map`
+ * `Gen[W]` is a value class over `Unit ! Writer % W + Stop`: `map`
  * IS `Writer.map`, the readers ARE `FoldUntil` walks, the chain is
  * fused into the reader (gen-chain-fusion, gen-flatmap-fusion). So
  * parity with a Writer program read by `Writer.foldUntil` is the

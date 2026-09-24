@@ -48,9 +48,9 @@ object Fused {
    * `split` (stage A, split-without-either): no Either and no Option
    * per operation — the `<|>` form it replaced is in history.tsv as
    * `fusedSWr` at 149 312 B/op against this one's 122 641. */
-  def stateWriter[S, W, A](s: S)(p: A ! (State % S + Writer % W))
+  def stateWriter[S, W, A](s: S)(p: A ! State % S + Writer % W)
                                (using TypeableK[State % S]): ((S, Vector[W]), A) = {
-    @tailrec def loop(s: S, w: Vector[W])(x: A ! (State % S + Writer % W)): ((S, Vector[W]), A) =
+    @tailrec def loop(s: S, w: Vector[W])(x: A ! State % S + Writer % W): ((S, Vector[W]), A) =
       (x.resume: @unchecked) match
         case Return(a) => ((s, w), a)
         // a RETURNING arm ascribes the outer answer inside the branch:
@@ -83,7 +83,7 @@ object Fused {
    * it needs no shift; it is the one non-resumptive shape a tail loop
    * can still hold.
    */
-  def throwsStateWriter[E, S, W, A](s: S)(p: A ! (Throws % E + State % S + Writer % W))
+  def throwsStateWriter[E, S, W, A](s: S)(p: A ! Throws % E + State % S + Writer % W)
                                    (using TypeableK[Throws % E], TypeableK[State % S])
   : Either[E, ((S, Vector[W]), A)] = {
     type Row = Throws % E + State % S + Writer % W

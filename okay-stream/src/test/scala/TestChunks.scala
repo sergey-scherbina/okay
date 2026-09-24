@@ -194,7 +194,7 @@ class TestChunks extends munit.FunSuite {
   test("the specialized writer iterator agrees with Writer.run when real G-ops are interleaved") {
     def run[A](p: A ! Async): A = !.run(Async.run[A, Nothing](p))
 
-    def prog: Unit ! (Writer % Int + Async) =
+    def prog: Unit ! Writer % Int + Async =
       for
         _ <- Writer.tell(1).at[Writer % Int + Async]
         x <- async(2 + 3).at[Writer % Int + Async]
@@ -209,12 +209,12 @@ class TestChunks extends munit.FunSuite {
     assertEquals(told, expected.toVector)
 
     // and the empty/no-G-op cases still agree too
-    def onlyTells: Unit ! (Writer % Int + Async) =
+    def onlyTells: Unit ! Writer % Int + Async =
       Writer.tell(1).plus[Async].flatMap(_ => Writer.tell(2).plus[Async])
     val (expectedTells, _) = run(Writer.run[Int, Unit, Async](onlyTells))
     assertEquals(run(async(writerStreamIn[Unit, Async].iterator(onlyTells).toVector)), expectedTells.toVector)
 
-    def empty: Unit ! (Writer % Int + Async) = pure(())
+    def empty: Unit ! Writer % Int + Async = pure(())
     assertEquals(run(async(writerStreamIn[Unit, Async].iterator(empty).toVector)), Vector.empty)
   }
 }

@@ -57,7 +57,7 @@ inline def loop[A, R](f: A Loop R): A => R =
  * decoupled from the element `W`. The obvious signature —
  * `put[A](a: A): A /> F[A]` — forces the carrier to answer with the
  * value it was just told, which is why no real seam ever took one: a
- * real source is `Source[W] = Unit ! (Writer % W + Async)`, answer
+ * real source is `Source[W] = Unit ! Writer % W + Async`, answer
  * `Unit`, element `W`. Every instance survives the change (the
  * continuation is now resumed with `()` instead of the element), and
  * `Source` gains one it structurally could not have had before — its

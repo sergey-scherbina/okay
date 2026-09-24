@@ -14,8 +14,8 @@ import java.nio.charset.StandardCharsets.UTF_8
  * wire, never for the wire itself.
  *
  * The one decision worth reading twice is `Response.body`. It is a
- * `Source[Chunk[Byte]]` — that is, `Unit ! (Writer % Chunk[Byte] +
- * Async)` — so nothing has been read when the head arrives, and the
+ * `Source[Chunk[Byte]]` — that is, `Unit ! Writer % Chunk[Byte] +
+ * Async` — so nothing has been read when the head arrives, and the
  * body goes `through` a decoding `Stage` exactly as SSE lines already
  * do. `Pipe.scala` names that case in its own doc comment as "the
  * generalization the LLM client walks by hand"; this module is the

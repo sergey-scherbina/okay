@@ -87,7 +87,7 @@ class TestTables extends munit.FunSuite {
   }
 
   test("Sort is an operation Bulk does not have, answered through the primitives") {
-    val prog: Vector[(Int, Long)] ! (Tables + Sort) =
+    val prog: Vector[(Int, Long)] ! Tables + Sort =
       of(sales).select(s => s.shop -> s.amount).plus[Sort]
         .aggregate(Aggregator.groupBy((kv: (Int, Long)) => kv._1)(Aggregator.sum[Long].contramap(_._2)))
         .flatMap(byShop => of(byShop.toVector).plus[Sort].sortBy(-_._2).collect.map(_.elements.toVector))

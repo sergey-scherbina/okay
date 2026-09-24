@@ -8,7 +8,7 @@ Okay is built the other way round. An effect is just a set of operations. A hand
 
 Here is a real line from the core:
 
-    type Source[W] = Unit ! (Writer % W + Async)
+    type Source[W] = Unit ! Writer % W + Async
 
 Read the type out loud: a program that tells W and awaits. That's an asynchronous stream — and it is not a built-in type. It's two ordinary effects, Writer and Async, added together with +, behind a type alias. Every streaming seam in the library speaks it: HTTP response bodies, WebSocket frames, LLM tokens, a chunked source spread across a cluster.
 

@@ -26,10 +26,10 @@ class TestRStream extends munit.FunSuite {
   private given okay.Handler[REval] = r.handler
   override def afterAll(): Unit = if TestR.rscript.nonEmpty then r.close()
 
-  private def numbers(n: Int): Unit ! (Writer % Double + REval) =
+  private def numbers(n: Int): Unit ! Writer % Double + REval =
     (1 to n).foldLeft(okay.pure[Writer % Double, Unit](()))((p, x) => p.flatMap(_ => Writer.tell(x.toDouble))).plus[REval]
 
-  private def run[O](p: Unit ! (Writer % O + REval)): List[O] = Writer.run(p).runWith._1.toList
+  private def run[O](p: Unit ! Writer % O + REval): List[O] = Writer.run(p).runWith._1.toList
 
   test("an R function over a vector as a stage, in chunks, a partial chunk at the end") {
     assertEquals(run(okay.through(numbers(7))(R.stage[Double, Double]("streamr::doubled", chunk = 3))),

@@ -248,7 +248,7 @@ deletion:
 
 ```scala
 // the row spelling: environment as an effect, handled at run
-def viaReader: Int ! (Reader % Int + W) = direct {
+def viaReader: Int ! Reader % Int + W = direct {
   val env = effect[Reader % Int + W, Int](Reader.Ask()).!?
   effect[Reader % Int + W, Unit](Writer(s"env=$env")).!?
   env + 1
@@ -267,9 +267,9 @@ macro), and the two one-line bridges for migration — functions at
 the call site, never Conversions (E10):
 
 ```scala
-def lift[E, A](cf: E ?=> A): A ! (Reader % E) =
+def lift[E, A](cf: E ?=> A): A ! Reader % E =
   effect[Reader % E, E](Reader.Ask()).map(e => cf(using e))
-def unlift[E, A, F[+_]](p: A ! (Reader % E + F)): E ?=> A ! F =
+def unlift[E, A, F[+_]](p: A ! Reader % E + F): E ?=> A ! F =
   Reader.run[E, A, F](wire[E])(p)
 ```
 
@@ -329,7 +329,7 @@ wants both: the door answers *what is available*, the block answers
 *how it reads*.
 
 ```scala
-def told: Env ?=> Int ! (Writer % String) = direct {
+def told: Env ?=> Int ! Writer % String = direct {
   Writer(s"hello ${wire[Env].user}")   // bare statement: do-notation
   Writer("bye")
   wire[Env].uid                        // the door, inside the block

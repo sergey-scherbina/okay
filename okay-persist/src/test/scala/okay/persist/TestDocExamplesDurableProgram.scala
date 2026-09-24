@@ -19,7 +19,7 @@ class TestDocExamplesDurableProgram extends FunSuite {
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_700_000_000_000L,
                                          id = "id-1", dice = 0.25)
 
-  def booking(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+  def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
     val city = !w.pause("city?")          // the world answers
     val when = !w.now                     // the RUNTIME answers, once, and it is journalled
     val n    = !w.pause("nights?")

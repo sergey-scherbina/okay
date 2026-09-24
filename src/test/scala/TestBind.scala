@@ -21,7 +21,7 @@ class TestBind extends munit.FunSuite:
   }
 
   test("three rows, two binds: the union of all three, effects in order") {
-    val p: Int ! (Reader % Int + Writer % String + State % Int) =
+    val p: Int ! Reader % Int + Writer % String + State % Int =
       Reader.ask[Int]
         .bind(e => Writer.tell(s"saw $e"))
         .bind(_ => State.modify[Int](_ + 1))

@@ -14,7 +14,7 @@ class TestSharedOnce extends munit.FunSuite:
 
   /** counts its runs, and takes long enough for the second demand to
    * arrive while the first is in flight */
-  def slow(runs: AtomicInteger): Int ! (Once + Async) =
+  def slow(runs: AtomicInteger): Int ! Once + Async =
     !.once[Int, Async](effect[Once + Async, Unit](Async.Run(() => { runs.incrementAndGet(); Thread.sleep(30) })).map(_ => 42))
 
   test("one handle, two fibres, one store: the program runs once and the second fibre waits for its answer") {

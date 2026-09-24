@@ -102,7 +102,7 @@ class TestDirectParallel extends munit.FunSuite {
     assert(summon[Scheduler] eq counting)
 
     import Direct.parallelBinds.given
-    val prog: Int ! (Reader % Int + Async) = direct:
+    val prog: Int ! Reader % Int + Async = direct:
       val a = async(1).reflect
       val b = async(2).reflect
       val e = Reader.ask[Int].reflect

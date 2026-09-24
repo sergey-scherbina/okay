@@ -30,10 +30,10 @@ class TestAttemptKey extends FunSuite {
   given Schema[Wf.Ans[String]] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
 
-  def drive[A](p: A ! (Pure + Async))(using CanBlock): A =
+  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
     !.run(Async.run[A, Pure](p))
 
-  def two(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+  def two(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
     direct:
       val a = !w.pause("1?")
       val b = !w.pause("2?")

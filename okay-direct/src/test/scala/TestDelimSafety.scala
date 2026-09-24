@@ -37,7 +37,7 @@ class TestDelimSafety extends munit.FunSuite {
 
   test("the nested forms still compile in a Delim row — that is what they are for") {
     // exactly the shape the guard refuses above, spelled the right way
-    def half(using Delim.Asking[String, Int, List[Int], Delim + P]): List[Int] ! (Delim + P) =
+    def half(using Delim.Asking[String, Int, List[Int], Delim + P]): List[Int] ! Delim + P =
       Delim.collecting[Int, P]:
         direct:
           !Delim.emit(1)

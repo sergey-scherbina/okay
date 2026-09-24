@@ -315,17 +315,17 @@ object R {
     def calling[F[+_]](cbs: Callbacks[F]): Calling[F] = Calling(cbs)
 
     final class Calling[F[+_]](cbs: Callbacks[F]):
-      def apply(): Either[Condition, Out] ! (F + REval) = dialogue(Vector.empty)
-      def apply[A: ToR](a: A): Either[Condition, Out] ! (F + REval) =
+      def apply(): Either[Condition, Out] ! F + REval = dialogue(Vector.empty)
+      def apply[A: ToR](a: A): Either[Condition, Out] ! F + REval =
         dialogue(Vector(ToR(a)))
-      def apply[A: ToR, B: ToR](a: A, b: B): Either[Condition, Out] ! (F + REval) =
+      def apply[A: ToR, B: ToR](a: A, b: B): Either[Condition, Out] ! F + REval =
         dialogue(Vector(ToR(a), ToR(b)))
-      def apply[A: ToR, B: ToR, C: ToR](a: A, b: B, c: C): Either[Condition, Out] ! (F + REval) =
+      def apply[A: ToR, B: ToR, C: ToR](a: A, b: B, c: C): Either[Condition, Out] ! F + REval =
         dialogue(Vector(ToR(a), ToR(b), ToR(c)))
 
       /** start, then per ask run the callback's program and resume, until
        * the function answers — each step one okay node */
-      private def dialogue(args: Vector[RValue]): Either[Condition, Out] ! (F + REval) =
+      private def dialogue(args: Vector[RValue]): Either[Condition, Out] ! F + REval =
         type Row = F + REval
         def go(step: RStep): Either[Condition, Out] ! Row = step match
           case RStep.Done(a) => pure[Row, Either[Condition, Out]](a.flatMap(RCodec.decode[Out](_)))

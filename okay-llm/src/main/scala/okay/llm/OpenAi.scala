@@ -143,13 +143,13 @@ object OpenAi {
 
   /** the completion as a stream of text tokens (SSE) */
   def stream(transport: Transport, apiKey: String, body: String,
-             url: String = chatUrl): Unit ! (Writer % String + Async) =
+             url: String = chatUrl): Unit ! Writer % String + Async =
     tokensOf(transport.post(url, headers(apiKey), body))
 
   /** SSE lines to text tokens — the same walk the Anthropic client
    * uses, with this protocol's `token` */
-  def tokensOf(lines: Unit ! (Writer % String + Async))
-  : Unit ! (Writer % String + Async) =
+  def tokensOf(lines: Unit ! Writer % String + Async)
+  : Unit ! Writer % String + Async =
     import okay.!.*
     type F = Writer % String + Async
 

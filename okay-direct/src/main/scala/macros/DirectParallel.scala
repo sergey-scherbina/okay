@@ -61,7 +61,7 @@ private[okay] trait DirectParallel[F[_]] extends DirectMarks[F] with DirectRow[F
    *
    * `compile` hands back a leaf already lifted by `RowLift.into`,
    * so in a block over `Async + Throws` its type is
-   * `X ! (Async + Throws)` and `Async.spawn` will not take it — the
+   * `X ! Async + Throws` and `Async.spawn` will not take it — the
    * import did nothing there, quietly, and v1 said so. The program
    * the author WROTE is still `X ! Async`, and it is reachable: the
    * obstacle was never the narrowing, it was that inline expansion

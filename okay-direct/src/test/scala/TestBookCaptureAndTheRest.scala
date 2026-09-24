@@ -50,7 +50,7 @@ class TestBookCaptureAndTheRest extends munit.FunSuite {
   test("a loop counter survives a pause, because the continuation holds it") {
     // The reassuring case. A `var` inside the captured region is part
     // of the continuation's closure, so pausing and resuming keeps it.
-    def counting(using Delim.Asking[Int, Int, Int, Delim + P]): Int ! (Delim + P) = direct:
+    def counting(using Delim.Asking[Int, Int, Int, Delim + P]): Int ! Delim + P = direct:
       var acc = 0
       var i = 0
       while i < 3 do

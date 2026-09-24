@@ -428,7 +428,7 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 `runEither(): Either[Throwable, A]`. `object Prog`: `pure`, `delay`,
 `fail(e: Throwable)`, `fromEither`, `sequence(ps: List[Prog[A]])`.
 `object Bridge` (Scala 3 only): `lift[A](p: A ! Async): Prog[A]`,
-`program[A](p: Prog[A]): A ! (Async + Throws % Throwable)`.
+`program[A](p: Prog[A]): A ! Async + Throws % Throwable`.
 
 ## Why a facade and not a cross-build
 

@@ -129,7 +129,7 @@ object Retire:
    * a tool over data instead of a second way to build a dialogue.
    */
   def patches[Q, A, R, F[+_]](journals: List[(String, Delim.Journal[Wf.Ans[A]])])
-                             (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
+                             (body: Wf.Asks[Q, A, R, F] ?=> R ! Delim + F)
                              (using Delim.OneMachine[F], Replayable[Delim + F], At)
                              : Map[String, Branch] ! F =
     def go(left: List[(String, Delim.Journal[Wf.Ans[A]])],

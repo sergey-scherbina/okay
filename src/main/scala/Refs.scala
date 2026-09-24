@@ -92,12 +92,12 @@ object Refs:
    * as the one now reading it (see the class comment). Isolated here
    * so there is one place to check that claim.
    */
-  def handle[A, F[+_]](p: A ! (Refs + F)): A ! F =
+  def handle[A, F[+_]](p: A ! Refs + F): A ! F =
     def slot[S](h: Map[Int, Any], c: Ref[S]): S = h(c).asInstanceOf[S]
 
-    def _loop(n: Int, h: Map[Int, Any])(x: A ! (Refs + F)): A ! F = loop(n, h)(x)
+    def _loop(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F = loop(n, h)(x)
 
-    @tailrec def loop(n: Int, h: Map[Int, Any])(x: A ! (Refs + F)): A ! F =
+    @tailrec def loop(n: Int, h: Map[Int, Any])(x: A ! Refs + F): A ! F =
       (x.resume: @unchecked) match
         case Return(a) => Return(a)
         case Inject(e) => split[Refs, F](e) {

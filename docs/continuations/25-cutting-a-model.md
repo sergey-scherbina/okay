@@ -28,7 +28,7 @@ to a **named prompt** installed over the generation:
 
 ```scala
 def guarded[A](gen: Prompt[Either[Violation, A]] => A ! (Writer % String + (Delim + Async)))
-    : Either[Violation, A] ! (Writer % String + Async) =
+    : Either[Violation, A] ! Writer % String + Async =
   val p = Delim.prompt[Either[Violation, A]]
   Delim.run(Delim.push(p)(gen(p).map(Right(_))))
 

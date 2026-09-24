@@ -8,7 +8,7 @@ all name it as an ingredient, and no ROADMAP phase owned it. This is
 that module, and it is small because the vocabulary decided most of it:
 
 - **a response body is a stream** — `Source[Chunk[Byte]]`, which is
-  `Unit ! (Writer % Chunk[Byte] + Async)`. Nothing is read when the
+  `Unit ! Writer % Chunk[Byte] + Async`. Nothing is read when the
   head arrives; the body goes `through` a decoding `Stage` exactly as
   SSE lines already did. `Pipe.scala` names that case in its own doc
   comment as "the generalization the LLM client walks by hand" — this

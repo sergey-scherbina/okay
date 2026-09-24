@@ -1001,8 +1001,11 @@ docs keep the bracket form and the guide says why.
   Eff[R, A]` beside `+`; every `Eff[R, A]` type in the probe and the
   Scala 2 docs is `A ! R`; probe green under `-Xlint -Werror`, 138
   tests. The precedence claim was refuted by the first compile and is
-  pinned the other way (see the stage): the parentheses okay writes in
-  Scala 3 are the ones Scala 2 needs.
+  pinned the other way (see the stage). The parentheses are Scala 2's
+  alone: in Scala 3 `!` binds loosest, and bang-row-no-parens
+  (2026-09-24) stripped them from every okay source and page, so the
+  two spellings now differ in exactly that one place — the guide's
+  section 3 and its section 9 table say so.
 
 - STAGE 18 LANDED (2026-09-24, scala2-percent-alias). `type %[F[_], A]
   = F[A]` beside `+` and `!`; `State % Int =:= State[Int]` both ways,

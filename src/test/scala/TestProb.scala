@@ -131,7 +131,7 @@ class TestProb extends munit.FunSuite:
   // ---------------------------------------------------------- forwarding, and the price
 
   test("runExact forwards other effects: both branches' tells happen — multi-shot") {
-    val p: Boolean ! (Dist + Writer % String) =
+    val p: Boolean ! Dist + Writer % String =
       dist(true -> 0.5, false -> 0.5).at[Dist + Writer % String].flatMap { b =>
         Writer.tell(if b then "heads" else "tails").at[Dist + Writer % String].map(_ => b)
       }

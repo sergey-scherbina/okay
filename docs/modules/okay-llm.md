@@ -10,7 +10,7 @@ Depends on: `okay-codec` (and through it the whole total text stack).
 
 **Everything is already a stream.** Nothing in the thin client
 assumes one request/one response. The transport answers response
-LINES as `Unit ! (Writer % String + Async)` — telling is streaming,
+LINES as `Unit ! Writer % String + Async` — telling is streaming,
 the Async ops are where the wire blocks (a virtual thread parks in
 them). SSE framing joins `data:` fields into event payloads; each
 payload decodes through okay-codec — an unknown or damaged event is
@@ -41,7 +41,7 @@ test — no network needed to develop against it):
 ```scala
 import okay.llm.{Anthropic, Transport}
 
-val tokens: Unit ! (Writer % String + Async) =
+val tokens: Unit ! Writer % String + Async =
   Anthropic.stream(Transports.http(), apiKey,
     Anthropic.Request("claude-sonnet-5", 1024,
       List(Anthropic.Message("user", "hi")), stream = true))
@@ -87,13 +87,13 @@ pipeline, so a body cut mid-string still yields the text it carried.
 
 | member | signature | meaning |
 |---|---|---|
-| `Transport` | `post(url, headers, body): Unit ! (Writer % String + Async)` | the seam: lines stream back |
+| `Transport` | `post(url, headers, body): Unit ! Writer % String + Async` | the seam: lines stream back |
 | `Transport.http` | `(client = default) => Transport` | java.net.http, streaming lines |
 | `Sse.events` | `Stage[String, String, Unit]` | SSE framing: lines in, event payloads out, trailing event flushed |
 | `Anthropic.Request/Message` | case classes with derived Schemas | the request body |
 | `Anthropic.Event/Delta` | derived Schemas | the streaming events that matter |
 | `Anthropic.token` | `String => Option[String]` | payload to text token; total |
-| `Anthropic.stream` | `(transport, apiKey, request, url?) => Unit ! (Writer % String + Async)` | the completion as a token stream |
+| `Anthropic.stream` | `(transport, apiKey, request, url?) => Unit ! Writer % String + Async` | the completion as a token stream |
 | `Anthropic.tokensOf` | reusable tail: SSE lines to tokens | build other providers on it |
 | `OpenAi.request/message/tool` | build the wire body as Json | derived tool schemas pass through untouched; `responseFormat = Some(OpenAi.jsonSchema(name, JsonSchema.of(schema)))` asks the gateway for the answer's shape by contract (intent-structured-output: it holds the shape, not a refinement's vocabulary) |
 | `OpenAi.complete` | `(transport, key, body, url) => Response ! Async` | one completion, whole (what an agent loop needs) |

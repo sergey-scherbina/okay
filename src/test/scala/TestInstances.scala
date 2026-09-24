@@ -83,11 +83,11 @@ class TestInstances extends munit.FunSuite:
 
     // strip "small" and run it at 1 — `State.handle` keeps the rest of
     // the row, which is exactly the shape `only` hands it
-    val afterSmall: (Int, (Int, Int)) ! (Instances.Of[State % Int] + okay.Pure) =
+    val afterSmall: (Int, (Int, Int)) ! Instances.Of[State % Int] + okay.Pure =
       State.handle(1)(Instances.only[State % Int](small)(p.plus[okay.Pure]))
 
     // now strip "big" and run it at 10
-    val done: (Int, (Int, (Int, Int))) ! (Instances.Of[State % Int] + okay.Pure) =
+    val done: (Int, (Int, (Int, Int))) ! Instances.Of[State % Int] + okay.Pure =
       State.handle(10)(Instances.only[State % Int](big)(afterSmall))
 
     // nothing is left wrapped: the residual member has no operations
@@ -103,7 +103,7 @@ class TestInstances extends munit.FunSuite:
     val s = Instances.handle("s")
     val w = Instances.handle("w")
 
-    val p: (String, Int) ! (Instances.Of[Store] + Instances.Of[Reader % Int]) =
+    val p: (String, Int) ! Instances.Of[Store] + Instances.Of[Reader % Int] =
       for
         a <- Instances.at[Store](s)(Store.Get()).plus[Instances.Of[Reader % Int]]
         b <- Instances.at[Reader % Int](w)(Reader.Ask())

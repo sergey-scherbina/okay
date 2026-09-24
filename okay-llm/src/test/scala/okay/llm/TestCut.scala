@@ -12,8 +12,8 @@ class TestCut extends munit.FunSuite {
    * "the cut stops the pull" */
   final class Counted(tokens: List[String]):
     var pulled = 0
-    def source: Unit ! (Writer % String + Async) =
-      def go(ts: List[String]): Unit ! (Writer % String + Async) = ts match
+    def source: Unit ! Writer % String + Async =
+      def go(ts: List[String]): Unit ! Writer % String + Async = ts match
         case Nil => pure(())
         case t :: rest =>
           // the count is an Async op — DATA until run — so it ticks
@@ -22,7 +22,7 @@ class TestCut extends munit.FunSuite {
             effect[Writer % String + Async, Unit](Writer(t))).flatMap(_ => go(rest))
       go(tokens)
 
-  def collect[A](p: Either[Violation, A] ! (Writer % String + Async))
+  def collect[A](p: Either[Violation, A] ! Writer % String + Async)
   : (Vector[String], Either[Violation, A]) =
     val (ts, a) = Async.run[(Seq[String], Either[Violation, A]), Pure](
       Writer.run[String, Either[Violation, A], Async](p)).runWith

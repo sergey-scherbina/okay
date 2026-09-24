@@ -386,7 +386,7 @@ object Effects {
 
   /** run p at most once under `Once.run`: the by-need word, an effect —
    * `Once.once`, here because `!.tailcall` (by-name) is its sibling */
-  inline def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F) = Once.once(p)
+  inline def once[A, F[+_]](p: => A ! Once + F): A ! Once + F = Once.once(p)
 
   /**
    * The same program in a wider row: effect subsumption, as a
@@ -403,7 +403,7 @@ object Effects {
    * be. The walk is `normalize`, below, under the name of what it
    * does.
    */
-  def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = RowLift.into[A, F, F + G](p)
+  def widen[A, F[+_], G[+_]](p: A ! F): A ! F + G = RowLift.into[A, F, F + G](p)
 
   /**
    * The WALK `widen` used to be: resume the head and rebuild the tree
@@ -423,7 +423,7 @@ object Effects {
    * shapes are rebuilt as deferred and the walk begins only when the
    * program runs.
    */
-  def normalize[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = p match
+  def normalize[A, F[+_], G[+_]](p: A ! F): A ! F + G = p match
     case Free.Delay(t) => Free.Delay(() => normalize[A, F, G](t()))
     case Bind(Free.Delay(t), f) => Free.defer(() => normalize(t()))(x => normalize[A, F, G](f(x)))
     case _ => (p.resume: @unchecked) match
@@ -458,13 +458,13 @@ object Effects {
    *
    * `translate` interprets F into a row the program is already in.
    * Interpreting one effect into OTHERS means arriving somewhere new:
-   * `A ! (Users + F)` becomes `A ! (State % Store + Writer % String +
-   * F)`, where F is whatever the caller was already doing and is
+   * `A ! Users + F` becomes `A ! State % Store + Writer % String +
+   * F`, where F is whatever the caller was already doing and is
    * carried through untouched. Written by hand that is a widen and a
    * translate and three type arguments; here the expected type solves
    * every row:
    *
-   * def tracked[A, F[+_]](p: A ! (Users + F)): A ! (Tracked + F) =
+   * def tracked[A, F[+_]](p: A ! Users + F): A ! Tracked + F =
    * !.interpret(p):
    * [X] => (e: Users[X]) => e match
    * case Users.Find(id) => ...   // a PROGRAM in Tracked + F
@@ -472,9 +472,9 @@ object Effects {
    * (Not `interpr`, which builds a handler out of one. This rewrites
    * a program.)
    */
-  def interpret[A, F[+_] : TypeableK, G[+_], H[+_]](prog: A ! (F + H))
-                                                   (h: F ==> ([X] =>> X ! (G + H)))
-  : A ! (G + H) =
+  def interpret[A, F[+_] : TypeableK, G[+_], H[+_]](prog: A ! F + H)
+                                                   (h: F ==> ([X] =>> X ! G + H))
+  : A ! G + H =
     translate[A, F, G + H](prog.plus[G])(h)
 
   /**
@@ -483,7 +483,7 @@ object Effects {
    * as before, so the row keeps F and gains `Writer % W`.
    *
    * !.tracing(prog)([X] => (e: Users[X]) => e.toString)
-   * : A ! (Users + Writer % String + G)
+   * : A ! Users + Writer % String + G
    *
    * The program-level counterpart of `h.tracing`, and the same idea:
    * the operations are already data, so recording is a layer, not a
@@ -496,15 +496,15 @@ object Effects {
    * loop: `translate` walks the SOURCE program and never re-walks
    * what a branch answers with.
    */
-  def tracing[A, F[+_] : TypeableK, W, G[+_]](prog: A ! (F + G))
+  def tracing[A, F[+_] : TypeableK, W, G[+_]](prog: A ! F + G)
                                              (show: [X] => F[X] => W)
-  : A ! (F + Writer % W + G) =
+  : A ! F + Writer % W + G =
     type R = F + Writer % W + G
     interpret[A, F, Writer % W, F + G](prog):
       [X] => (e: F[X]) =>
         Writer.tell(show(e)).at[R].flatMap(_ => effect[R, X](e))
 
-  def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! (F + G))
+  def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! F + G)
                                             (h: F ==> ([X] =>> X ! G)): A ! G =
     // every step suspends under a flatMap (the answer is a PROGRAM,
     // not a value), so the recursion lives in closures rather than on

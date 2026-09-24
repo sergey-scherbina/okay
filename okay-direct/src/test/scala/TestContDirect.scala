@@ -48,7 +48,7 @@ class TestContDirect extends munit.FunSuite {
 
   test("an import in a direct block over a program row") {
     // the same macro rule, where blocks actually live: a row of effects
-    val p: Int ! (State % Int + okay.Pure) = direct:
+    val p: Int ! State % Int + okay.Pure = direct:
       import okay.State.modify
       val a = !modify[Int](_ + 1)
       val b = !modify[Int](_ * 2)

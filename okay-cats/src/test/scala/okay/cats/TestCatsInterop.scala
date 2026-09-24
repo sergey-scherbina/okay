@@ -23,7 +23,7 @@ class TestCatsInterop extends munit.FunSuite {
   }
 
   test("MonadError over Throws: raise and recover") {
-    type P[A] = A ! (Throws % String + Produce)
+    type P[A] = A ! Throws % String + Produce
     val ME = summon[_root_.cats.MonadError[P, String]]
     val bad: P[Int] = ME.raiseError("boom")
     assertEquals(okay.runEither[Int, Produce, String](

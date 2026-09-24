@@ -37,12 +37,12 @@ class TestWorker extends FunSuite {
    * and is why these tests run through `Async.run` rather than
    * `!.run`.
    */
-  def drive[A](p: A ! (Pure + Async))(using CanBlock): A =
+  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
     !.run(Async.run[A, Pure](p))
 
 
   /** answer, sleep a minute, finish */
-  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+  def nap(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
     val who = !w.pause("who?")
     !w.sleep(60_000L)
     s"$who woke"
@@ -126,7 +126,7 @@ class TestWorker extends FunSuite {
   test("a run waiting on a SIGNAL is disarmed: the clock is not what wakes it") {
     val store = MemoryStore()
     val t = store.topic("signals")
-    def approve(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+    def approve(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
       direct:
         val what = !w.pause("what?")
         val by = !w.awaitSignal("approval")

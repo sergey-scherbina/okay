@@ -33,11 +33,11 @@ class TestIncompatible extends FunSuite {
   given Schema[Wf.Ans[String]] = Schema.derived
   given Wf.Runtime = Wf.Runtime.scripted(millis = 1_000L, id = "id", dice = 0.5)
 
-  def drive[A](p: A ! (Pure + Async))(using CanBlock): A =
+  def drive[A](p: A ! Pure + Async)(using CanBlock): A =
     !.run(Async.run[A, Pure](p))
 
   /** v1, which wrote the journal */
-  def v1(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+  def v1(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
     direct:
       val a = !w.pause("1?")
       !w.sleep(60_000L)          // so the run STOPS with history behind it
@@ -47,7 +47,7 @@ class TestIncompatible extends FunSuite {
   /** the same program NAME, new code — and it cannot read what v1
    * wrote. The fold accepts the record (the name matches); the body
    * is what refuses it. */
-  def v1prime(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+  def v1prime(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
     direct:
       val a = !w.pause("1?")
       if a == "old" then throw new IllegalStateException("cannot read v1 data")
@@ -104,7 +104,7 @@ class TestIncompatible extends FunSuite {
 
   /** it bounds its own history — and cannot read the seed it wrote */
   def cycle(using w: Wf.Asks[String, String, Wf.Next[String, String], Pure])
-      : Wf.Next[String, String] ! (Delim + Pure) =
+      : Wf.Next[String, String] ! Delim + Pure =
     direct:
       val input = !w.pause("input")
       if input == "seed!" then

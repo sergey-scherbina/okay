@@ -26,7 +26,7 @@ import scala.annotation.tailrec
  *
  * The handle carries no program — that is what keeps the effect's
  * type free of the row it lives in, so it is written like every other
- * effect: `Int ! (Once + Writer % String)`. The program stays with the
+ * effect: `Int ! Once + Writer % String`. The program stays with the
  * handle's creator (`once`, below): a handle is an identity, and "once"
  * is counted per handle, which is per `!.once(p)` evaluated — the way
  * a `lazy val` is per declaration, not per right-hand side.
@@ -70,7 +70,7 @@ object Once:
    * Two calls make two handles: `once(p).flatMap(_ => once(p))` runs p
    * twice. Share the VALUE to share the cell.
    */
-  def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F) =
+  def once[A, F[+_]](p: => A ! Once + F): A ! Once + F =
     at[A, Once + F](new Handle[A])(h => effect(Force(h)))((h, a) => effect(Store(h, a)))(() => p)
 
   /**
@@ -129,10 +129,10 @@ object Once:
    * them, and a mutable map would make the residual tree unreplayable.
    * A forwarded F-effect suspends with the cells captured immutably.
    */
-  def run[A, F[+_]](a: A ! (Once + F)): A ! F =
+  def run[A, F[+_]](a: A ! Once + F): A ! F =
     import !.*
-    def again(c: Cells)(x: A ! (Once + F)): A ! F = loop(c)(x)
-    @tailrec def loop(c: Cells)(x: A ! (Once + F)): A ! F = (x.resume: @unchecked) match
+    def again(c: Cells)(x: A ! Once + F): A ! F = loop(c)(x)
+    @tailrec def loop(c: Cells)(x: A ! Once + F): A ! F = (x.resume: @unchecked) match
       case Return(v) => Return(v)
       case Inject(e) => split[Once, F](e)
         (o => Return(step(c, o)._2): A ! F)

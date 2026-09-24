@@ -13,7 +13,7 @@ class TestCtxReaderElim extends munit.FunSuite {
   type W = Writer % String
 
   /** the row spelling: the environment is an effect */
-  def viaReader: Int ! (Reader % Int + W) = direct {
+  def viaReader: Int ! Reader % Int + W = direct {
     val env = effect[Reader % Int + W, Int](Reader.Ask()).reflect
     effect[Reader % Int + W, Unit](Writer(s"env=$env")).reflect
     env + 1
@@ -45,7 +45,7 @@ class TestCtxReaderElim extends munit.FunSuite {
 
   test("the one-line bridges — from the library now (ctx-reader-bridge, 2026-09-23), the same two lines") {
     // ctx -> Reader program: a FUNCTION, never a Conversion (E10)
-    val fromCtx: Int ! (Reader % Int) = Reader.lift((e: Int) ?=> e * 2)
+    val fromCtx: Int ! Reader % Int = Reader.lift((e: Int) ?=> e * 2)
     assertEquals(!.run(Reader.run[Int, Int, okay.Pure](21)(fromCtx)), 42)
 
     val back: Int ?=> Int ! W = Reader.unlift[Int, Int, W](viaReader)

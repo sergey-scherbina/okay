@@ -11,7 +11,7 @@ caller's handlers.
 ```mermaid
 flowchart LR
   subgraph JVM["the JVM: your Scala program"]
-    P["Py.program(&quot;total&quot;)<br/>Either[Condition, Double] ! (Reader + PyEval)"]
+    P["Py.program(&quot;total&quot;)<br/>Either[Condition, Double] ! Reader + PyEval"]
     C["callbacks: price_of · discount<br/>okay programs under your handlers"]
   end
   W["./worker (go build)<br/>okay.Serve"]

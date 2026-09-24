@@ -271,7 +271,7 @@ class TestDelim extends munit.FunSuite {
     type W = Writer % String
 
     // written on its own, with no prompt in sight
-    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+    def banner: Delim.Prompted[Int] ?=> Int ! Delim + W = direct:
       "hello".tell
       1 + !Delim.shift[Int, Int, W](k => k(5))
 
@@ -290,7 +290,7 @@ class TestDelim extends munit.FunSuite {
     import okay.Direct.*
     import scala.language.implicitConversions
     type W = Writer % String
-    def banner: Delim.Prompted[Int] ?=> Int ! (Delim + W) = direct:
+    def banner: Delim.Prompted[Int] ?=> Int ! Delim + W = direct:
       "hello".tell
       1 + !Delim.shift[Int](k => k(5))     // A alone: R and the row are known
     assertEquals(!.run(Writer.run[String, Int, okay.Pure](Delim.delimited[Int, W](banner))),

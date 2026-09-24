@@ -96,7 +96,7 @@ trait Sql:
   /** row frames, chunked — each chunk told, one Async operation per
    * chunk, constant memory for any result size (the writer carrier
    * since producer-to-writer-carrier, 2026-09-19; it was
-   * `Chunk[Vector[SqlValue]] ! (Produce + Async)`, the chunk in the
+   * `Chunk[Vector[SqlValue]] ! Produce + Async`, the chunk in the
    * answer position) */
   def query(sql: String, params: Vector[SqlValue] = Vector.empty)
   : Source[Chunk[Vector[SqlValue]]]

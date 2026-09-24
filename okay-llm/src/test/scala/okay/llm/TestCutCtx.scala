@@ -7,11 +7,11 @@ import okay.given
  * prompt ambient — behavior identical to the explicit forms */
 class TestCutCtx extends munit.FunSuite {
 
-  def tokens(ts: String*): Unit ! (Writer % String + Async) =
+  def tokens(ts: String*): Unit ! Writer % String + Async =
     ts.foldLeft(pure[Writer % String + Async, Unit](())):
       (m, t) => m.flatMap(_ => effect[Writer % String + Async, Unit](Writer(t)))
 
-  def collect[A](p: Either[Cut.Violation, A] ! (Writer % String + Async))
+  def collect[A](p: Either[Cut.Violation, A] ! Writer % String + Async)
   : (Seq[String], Either[Cut.Violation, A]) =
     val (out, a) = !.run(Writer.run(okay.Async.run[Either[Cut.Violation, A], Writer % String](p)))
     (out, a)

@@ -277,7 +277,7 @@ val triples =                            // pythagorean, in order
 runChoice(triples)                       // (3,4,5), (5,12,13), (6,8,10), ...
 
 // an INFINITE choice point is a LazyList of alternatives:
-def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong)))
+def nats: Long ! Choose + Pure = effect(Choose(LazyList.from(0).map(_.toLong)))
 
 Logic.observe(6)(Logic.interleave(evens, odds))   // 0,1,2,3,4,5 — fair turns
 Logic.fairBind(nats)(x => if x*x == 16 then pure(x) else fail)
@@ -290,7 +290,7 @@ first demand and answers from a cell after, under `Once.run`. In a
 `direct` block it is `lazy val`:
 
 ```scala
-val prog: Int ! (Once + Writer % String) = direct:
+val prog: Int ! Once + Writer % String = direct:
   lazy val x = !told("abc")              // runs at the first use, once
   val y = !told("de")                    // runs here
   x + x + y + !told("f")                 // log: de, abc, f
@@ -389,7 +389,7 @@ whole new effect — is user code, not a library change:
 
 ```scala
 // a generator: a prompt whose answer type is the list being built
-def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
+def emit[A](p: Prompt[List[A]])(a: A): Unit ! Delim + Pure =
   Delim.shift(p)(k => k(()).map(a :: _))
 
 Delim.reset[List[Int], Pure] { p =>
@@ -417,7 +417,7 @@ enum Tree[+A]:
   case Leaf(a: A)
   case Node(l: Tree[A], r: Tree[A])
 
-def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! (Delim + Pure) = direct:
+def walk(t: Tree[Int])(using Delim.Emitting[Int]): Unit ! Delim + Pure = direct:
   t match
     case Tree.Leaf(a)    => !Delim.emit(a)
     case Tree.Node(l, r) => !walk(l); !walk(r)
@@ -597,7 +597,7 @@ above runs as `TestShowcase` in okay-obs.
 ## 20. Monads as plain code: the direct block
 
 ```scala
-def told: Env ?=> Int ! (Writer % String) = direct {
+def told: Env ?=> Int ! Writer % String = direct {
   Writer(s"hello ${wire[Env].user}")   // a bare statement runs — do-notation
   Writer("bye")
   wire[Env].uid                        // the capability, inside the block
@@ -636,9 +636,9 @@ sits inside. Each is the same loop underneath (an immutable
 `LazyList`, a recursive `def`, the body compiled per element):
 
 ```scala
-def look(i: Int): Int ! (Writer % String) = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
+def look(i: Int): Int ! Writer % String = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
 
-val prog: List[Int] ! (Writer % String) = direct {
+val prog: List[Int] ! Writer % String = direct {
   for
     x <- List(1, 2)
     y <- List(10, 20) if y > 10        // a guard between generators

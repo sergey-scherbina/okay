@@ -54,7 +54,7 @@ version instead.
 
 ```scala
 def within[R, F[+_]](limit: Int)(orElse: => R)
-                    (body: Budget[R] ?=> R ! (Delim + F))
+                    (body: Budget[R] ?=> R ! Delim + F)
                     (using Delim.OneMachine[F], At): R ! F =
   val p = Delim.prompt[R]
   Delim.run(Delim.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
@@ -67,7 +67,7 @@ machine passes the obligation on to its caller.*
 **The operation** — the only thing users write:
 
 ```scala
-def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! (Delim + F) =
+def spend[F[+_]](n: Int)(using b: Budget[?], at: At): Unit ! Delim + F =
   if b.left.addAndGet(-n) >= 0 then okay.pure(())
   else Delim.abort[b.Res, Unit, F](b.prompt)(b.orElse())
 ```
@@ -168,11 +168,11 @@ final class Cap[R] private (state, fallback, prompt: Prompt[R]):
   type Res = R
 
 // 2. the boundary: the ONLY place that runs a machine, passing OneMachine on
-def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Delim + F))
+def within[R, F[+_]](...)(body: Cap[R] ?=> R ! Delim + F)
                     (using Delim.OneMachine[F], At): R ! F
 
 // 3. the operations: named in the user's vocabulary, hiding the capture
-def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Delim + F)
+def op[F[+_]](...)(using c: Cap[?], at: At): A ! Delim + F
 ```
 
 Chapter 15 applies exactly this recipe to the oldest problem in the

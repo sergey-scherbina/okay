@@ -102,7 +102,7 @@ node unchanged without descending into its payload.
 It cannot happen here, and the reason is the **kind** of a signature.
 `Free[F[+_], A]` takes a first-order `F`, so a signature has no way to
 name the ambient row inside its own nodes: writing
-`Fork(prog: Unit ! (Op + G))` would need a `G` that the declaration of
+`Fork(prog: Unit ! Op + G)` would need a `G` that the declaration of
 `Op` cannot mention. A payload can therefore only be closed over its
 own signature — exactly what the two nodes above show — and a closed
 payload cannot smuggle a foreign operation past a handler. The scoped
@@ -110,7 +110,7 @@ hazard is ruled out by the kind, not by a convention anyone must
 remember.
 
 The same kind is what limits them: you cannot fork a program that also
-logs, because `Unit ! (Op + Writer % String)` is unspeakable there.
+logs, because `Unit ! Op + Writer % String` is unspeakable there.
 Lifting that restriction means going to **higher-order signatures** —
 `F[M[+_], +A]` instead of `F[+A]`, with an operation that rewrites the
 nested computations when a handler relays the row beneath them, which
@@ -125,7 +125,7 @@ it by accident.
 Okay's effect row is a *type-level union of signatures*:
 
 ```scala
-A ! (State % Int + Throws % String + Async)
+A ! State % Int + Throws % String + Async
 ```
 
 `+` is genuine union, not a coproduct functor — which is why `Pure`,

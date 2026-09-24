@@ -10,10 +10,10 @@ object ProbeWhatInGives:
   type Mix3 = State % Int + Writer % String + Reader % Boolean
 
   // design A — a plain free row parameter; the effects are a PREFIX
-  inline def tellA[W, F[+_]](w: W): Unit ! (Writer % W + F) = effect(Writer(w))
-  inline def getA[S, F[+_]]: S ! (State % S + F) = effect(State.Get())
+  inline def tellA[W, F[+_]](w: W): Unit ! Writer % W + F = effect(Writer(w))
+  inline def getA[S, F[+_]]: S ! State % S + F = effect(State.Get())
 
-  def bumpA[F[+_]](by: Int): Int ! (State % Int + Writer % String + F) =
+  def bumpA[F[+_]](by: Int): Int ! State % Int + Writer % String + F =
     for
       n <- getA[Int, Writer % String + F]
       _ <- tellA[String, State % Int + F](s"bump $n")

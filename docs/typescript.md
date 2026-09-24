@@ -520,7 +520,7 @@ stripping their types, so there is no build step.
 ```mermaid
 flowchart LR
   subgraph JVM["the JVM: your Scala program"]
-    P["an okay program<br/>Either[Condition, Out] ! (F + PyEval)"]
+    P["an okay program<br/>Either[Condition, Out] ! F + PyEval"]
     F["handlers for F<br/>Reader · State · Choice · ..."]
     P --> F
   end

@@ -39,13 +39,13 @@ given MonadPlus[[A] =>> A ! Choose] with
  * `guard` prune inside an effectful search (the model is asked, the
  * answer is judged, the branch dies or lives).
  */
-given [F[+_]]: MonadPlus[[A] =>> A ! (Choose + F)] with
-  override def pure[A](a: A): A ! (Choose + F) = okay.pure(a)
-  override def empty[A]: A ! (Choose + F) = effect(Choose(Seq.empty))
-  extension [A](x: A ! (Choose + F))
-    override def flatMap[B](f: A => B ! (Choose + F)): B ! (Choose + F) = x.flatMap(f)
-    override def append(y: A ! (Choose + F)): A ! (Choose + F) =
-      effect[Choose + F, A ! (Choose + F)](Choose(Seq(x, y))).flatMap(identity)
+given [F[+_]]: MonadPlus[[A] =>> A ! Choose + F] with
+  override def pure[A](a: A): A ! Choose + F = okay.pure(a)
+  override def empty[A]: A ! Choose + F = effect(Choose(Seq.empty))
+  extension [A](x: A ! Choose + F)
+    override def flatMap[B](f: A => B ! Choose + F): B ! Choose + F = x.flatMap(f)
+    override def append(y: A ! Choose + F): A ! Choose + F =
+      effect[Choose + F, A ! Choose + F](Choose(Seq(x, y))).flatMap(identity)
 
 /** all the results of all the branches, forwarding the effects F */
 def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
@@ -77,7 +77,7 @@ def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
  * means whatever the reader guesses — but seeing that the two are the
  * same handler is the point.
  */
-def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! (S + F))(using TypeableK[S]): Seq[A] ! F =
+def runSeq[S[+X] <: Seq[X], A, F[+_]](p: A ! S + F)(using TypeableK[S]): Seq[A] ! F =
   Effects[Free].handle[S, F](p)(x => pure(Seq(x))):
     [X] => (s: S[X]) => shift: k =>
       s.foldLeft(pure[F, Seq[A]](Seq.empty)): (acc, x) =>

@@ -17,7 +17,7 @@ bytes.
 |---|---|
 | `Chunks` | chunked collections — the unit both the local fold and the distributed one move |
 | `Channel` | the queue between two threads of control, with the backpressure |
-| `Source` / `Writer` | a stream as a program that TELLS: `Unit ! (Writer % A + Async)` |
+| `Source` / `Writer` | a stream as a program that TELLS: `Unit ! Writer % A + Async` |
 | `Stage` | await and tell — a transducer, which is what every framing, parser and protocol in this library turns out to be |
 
 ## Further

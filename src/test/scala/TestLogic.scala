@@ -72,7 +72,7 @@ class TestLogic extends munit.FunSuite {
 
   test("effects forward through the search: a Writer on the crossed path") {
     type F = Writer % String
-    val prog: Int ! (Choose + F) =
+    val prog: Int ! Choose + F =
       effect[Choose + F, Int](Choose(Seq(1, 2))).flatMap(x =>
         effect[Choose + F, Unit](Writer(s"seen $x")).map(_ => x * 10))
     val (told, found) = !.run(Writer.run[String, Seq[Int], okay.Pure](

@@ -60,7 +60,7 @@ Async.par(async(1), async(2)).runWith          // fibers on cats-effect
 | member | signature | meaning |
 |---|---|---|
 | `given StackSafeMonad[[A] =>> A ! F]` | for every `F` | cats Monad on programs |
-| `given MonadError[[A] =>> A ! (Throws % E + F), E]` | needs `TypeableK[Throws % E]` | typed errors, cats-style |
+| `given MonadError[[A] =>> A ! Throws % E + F, E]` | needs `TypeableK[Throws % E]` | typed errors, cats-style |
 | `CatsInterop.toIO` | `(=> A ! Async) => IO[A]` | run as blocking IO |
 | `CatsInterop.fromIO` | `(IO[A])(using IORuntime) => A ! Async` | an IO as one async op |
 | `CatsInterop.toCats` | `A ! F => cats.free.Free[F, A]` | operation for operation |

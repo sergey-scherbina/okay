@@ -39,7 +39,7 @@ final class Pool[C <: Sql] private (open: () => C ! Async, dispose: C => Unit,
 
   /** a program on one connection, returned to the pool after it —
    * value or failure — through the brake */
-  def borrow[A](use: C => A ! (Resource + Async)): A ! Async =
+  def borrow[A](use: C => A ! Resource + Async): A ! Async =
     acquire.flatMap { c =>
       Async.attempt(Resource.run[A, Async](use(c))).flatMap { r =>
         release(c)
@@ -49,7 +49,7 @@ final class Pool[C <: Sql] private (open: () => C ! Async, dispose: C => Unit,
 
   /** a connection pinned for the enclosing Resource scope; the
    * scope's end returns it */
-  def pinned: C ! (Resource + Async) =
+  def pinned: C ! Resource + Async =
     !.widen[C, Async, Resource](acquire).flatMap(c =>
       !.widen[C, Resource, Async](Resource.acquire(c)(release)))
 

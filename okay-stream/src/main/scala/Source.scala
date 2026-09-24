@@ -32,14 +32,14 @@ enum Flush[+A] derives Effect:
 object Flush:
 
   /** emit whatever the chunker holds, full or not */
-  def now[F[+_]]: Unit ! (Flush + F) = effect(Flush.Now)
+  def now[F[+_]]: Unit ! Flush + F = effect(Flush.Now)
 
 /** a source that can also mark its own chunk boundaries. An ordinary
  * `Source` widens into it (it simply never uses the operation), so
  * the chunking path has one implementation rather than two */
 type Flushing[W] = Unit ! (Flush + (Writer % W + Async))
 
-type Source[W] = Unit ! (Writer % W + Async)
+type Source[W] = Unit ! Writer % W + Async
 
 /**
  * `generate`/`nats`/`fibs` (Generate.scala) produce a live source for
@@ -118,7 +118,7 @@ object Source {
    *
    * `W` is the element type and `B` the producer's ANSWER, named
    * separately because the identity signature cannot: `Blob.get` is
-   * `Either[String, Unit] ! (Produce + Async)`, which reads as a
+   * `Either[String, Unit] ! Produce + Async`, which reads as a
    * producer of Eithers and produces chunks. The answer is kept —
    * for `get` it is the outcome, and an absent key lives there —
    * and each element is told through `produced`, the one cast the
@@ -129,7 +129,7 @@ object Source {
    * unconsed. `Writer.of(p)` arrives at the same type through uncons
    * and pays both.
    */
-  def fromProducer[W, B, G[+_] : TypeableK](p: B ! (Produce + G)): B ! (Writer % W + G) =
+  def fromProducer[W, B, G[+_] : TypeableK](p: B ! Produce + G): B ! Writer % W + G =
     import !.*
     type R = Writer % W + G
     (p.resume: @unchecked) match
@@ -144,7 +144,7 @@ object Source {
   /** a producer whose elements ARE its answer type — `Producer[A]` in
    * a row — as a `Source`: the answer, phantom by construction, is
    * dropped for the Unit a source answers */
-  def ofProducer[A, G[+_] : TypeableK](p: A ! (Produce + G)): Unit ! (Writer % A + G) =
+  def ofProducer[A, G[+_] : TypeableK](p: A ! Produce + G): Unit ! Writer % A + G =
     fromProducer[A, A, G](p).map(_ => ())
 
   /**
@@ -190,7 +190,7 @@ object Source {
       rs = rs.tail
     b.result()
 
-  def toProducer[A, G[+_] : TypeableK](s: Unit ! (Writer % A + G))(end: A): A ! (Produce + G) =
+  def toProducer[A, G[+_] : TypeableK](s: Unit ! Writer % A + G)(end: A): A ! Produce + G =
     import !.*
     type R = Produce + G
     (s.resume: @unchecked) match
@@ -411,7 +411,7 @@ extension [A](s: Source[A])
   infix def merge[B](t: Source[B], capacity: Int = 64, chunked: Boolean = false,
                      flushAfter: Option[Long] = None)
                     (using Scheduler, CanBlock, Timer): Source[A | B] =
-    type S[W] = Unit ! (Writer % W + Async)
+    type S[W] = Unit ! Writer % W + Async
     val sw = Writer.widen[A, A | B, Unit, Async](s)
     val tw = Writer.widen[B, A | B, Unit, Async](t)
     if !chunked then

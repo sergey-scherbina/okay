@@ -299,12 +299,12 @@ object Py {
     def calling[F[+_]](cbs: Callbacks[F]): Calling[F] = Calling(cbs)
 
     final class Calling[F[+_]](cbs: Callbacks[F]):
-      def apply(): Either[Condition, Out] ! (F + PyEval) = dialogue(Vector.empty)
-      def apply[A: ToPy](a: A): Either[Condition, Out] ! (F + PyEval) =
+      def apply(): Either[Condition, Out] ! F + PyEval = dialogue(Vector.empty)
+      def apply[A: ToPy](a: A): Either[Condition, Out] ! F + PyEval =
         dialogue(Vector(ToPy(a)))
-      def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! (F + PyEval) =
+      def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! F + PyEval =
         dialogue(Vector(ToPy(a), ToPy(b)))
-      def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! (F + PyEval) =
+      def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! F + PyEval =
         dialogue(Vector(ToPy(a), ToPy(b), ToPy(c)))
 
       /**
@@ -313,7 +313,7 @@ object Py {
        * okay node, so a function that calls back a million times is a loop,
        * not a million frames.
        */
-      private def dialogue(args: Vector[PyValue]): Either[Condition, Out] ! (F + PyEval) =
+      private def dialogue(args: Vector[PyValue]): Either[Condition, Out] ! F + PyEval =
         type R = F + PyEval
         def go(step: PyStep): Either[Condition, Out] ! R = step match
           case PyStep.Done(a) => pure[R, Either[Condition, Out]](a.flatMap(shape.decode[Out](_)))

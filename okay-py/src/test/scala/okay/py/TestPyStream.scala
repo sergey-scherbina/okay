@@ -42,10 +42,10 @@ class TestPyStream extends munit.FunSuite {
   private given okay.Handler[PyEval] = w.handler
   override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
 
-  private def numbers(n: Int): Unit ! (Writer % Long + PyEval) =
+  private def numbers(n: Int): Unit ! Writer % Long + PyEval =
     (1L to n.toLong).foldLeft(okay.pure[Writer % Long, Unit](()))((p, x) => p.flatMap(_ => Writer.tell(x))).plus[PyEval]
 
-  private def run[O](p: Unit ! (Writer % O + PyEval)): List[O] = Writer.run(p).runWith._1.toList
+  private def run[O](p: Unit ! Writer % O + PyEval): List[O] = Writer.run(p).runWith._1.toList
 
   test("a function over a list as a stage: one call per chunk, a partial chunk flushed at the end") {
     val out = run(okay.through(numbers(10))(Py.stage[Long, Long]("streamy:double", chunk = 4)))

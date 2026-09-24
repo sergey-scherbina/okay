@@ -30,7 +30,7 @@ class TestRetrieve extends munit.FunSuite {
   given Handler[Embed] = Vectors.hashingHandler()
 
   /** run a program in the embedding row */
-  def run[A](p: A ! (Embed + okay.Pure)): A = p.runWith
+  def run[A](p: A ! Embed + okay.Pure): A = p.runWith
 
   test("ingestion: every segment embedded and stored, once") {
     val store = MemoryStore()

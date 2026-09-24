@@ -37,7 +37,7 @@ get subtly wrong **is the straight-line program you already wrote**.
 ## What it looks like
 
 ```scala
-def booking(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) = direct:
+def booking(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure = direct:
   val city  = !w.pause("which city?")          // the WORLD answers
   val start = !w.now                           // the RUNTIME answers, once
   !w.sleep(24 * 3600 * 1000L)                  // the run ENDS here and resumes tomorrow

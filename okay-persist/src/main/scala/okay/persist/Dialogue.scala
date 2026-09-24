@@ -511,7 +511,7 @@ object Dialogue:
                             snapshotEvery: Int = 0,
                             version: Int = 1,
                             upcasts: Map[Int, Typed.Upcast] = Map.empty)
-                           (body: Delim.Asking[Q, A, R, Delim + F] ?=> R ! (Delim + F))
+                           (body: Delim.Asking[Q, A, R, Delim + F] ?=> R ! Delim + F)
                            (using Schema[A], Replayable[Delim + F],
                             Delim.OneMachine[F], At): Dialogue[Q, A, R, F] =
     new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
@@ -532,7 +532,7 @@ object Dialogue:
                                snapshotEvery: Int = 0,
                                version: Int = 1,
                                upcasts: Map[Int, Typed.Upcast] = Map.empty)
-                              (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
+                              (body: Wf.Asks[Q, A, R, F] ?=> R ! Delim + F)
                               (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                Delim.OneMachine[F], At)
                               : Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F] =

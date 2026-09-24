@@ -20,9 +20,9 @@ object Retrieve {
   /** the vector side: embed the query, search the store */
   def vector[F[+_]](store: VectorStore[F]): Retriever[Embed + F] =
     new Retriever[Embed + F]:
-      def retrieve(query: String, k: Int): Seq[Scored] ! (Embed + F) =
+      def retrieve(query: String, k: Int): Seq[Scored] ! Embed + F =
         okay.!.widen[Seq[Embedding], Embed, F](embed(Seq(query))).flatMap { vs =>
-          okay.!.widen[Seq[Scored], F, Embed](store.search(vs.head, k)): Seq[Scored] ! (Embed + F)
+          okay.!.widen[Seq[Scored], F, Embed](store.search(vs.head, k)): Seq[Scored] ! Embed + F
         }
 
   /**
@@ -93,7 +93,7 @@ object Retrieve {
   : Retriever[F] = new:
     def retrieve(query: String, k: Int): Seq[Scored] ! F =
       val qs = (query +: rewrites(query)).distinct
-      val search: Seq[Scored] ! (Choose + F) =
+      val search: Seq[Scored] ! Choose + F =
         effect[Choose + F, String](Choose(qs)).flatMap(q =>
           okay.!.widen[Seq[Scored], F, Choose](r.retrieve(q, k)))
       runChoice[Seq[Scored], F](search).map(ls => Fusion.rrf(ls).take(k))
@@ -109,7 +109,7 @@ object Retrieve {
     // the alternatives never perform an F: built in Choose + Pure and
     // observed there, no re-typing needed (F stays the signature's
     // promise to callers)
-    def alts(xs: Seq[Scored]): Scored ! (Choose + okay.Pure) = effect(Choose(xs))
+    def alts(xs: Seq[Scored]): Scored ! Choose + okay.Pure = effect(Choose(xs))
     val mixed = Logic.interleave[Scored, okay.Pure](alts(a), alts(b))
     // observe is the lazy take: only k answers are ever computed
     okay.!.run(Logic.observe[Scored, okay.Pure](k)(mixed))

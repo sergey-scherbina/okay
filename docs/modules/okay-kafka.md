@@ -10,7 +10,7 @@ Depends on: `okay` (JVM), kafka-clients (the pure Java client).
 **The batch is the chunk.** Kafka already hands you batches — a poll
 returns many records. `source(consumer)` emits each poll's batch as
 one `Chunk[ConsumerRecord]` in a `Source[Chunk[ConsumerRecord]]` stream
-(each batch told; `Chunk ! (Produce + Async)` until 2026-09-19):
+(each batch told; `Chunk ! Produce + Async` until 2026-09-19):
 between chunks the virtual thread parks inside `poll` (Loom-style
 waiting — no callback plumbing), and empty polls are simply not
 emitted.
@@ -56,7 +56,7 @@ and `MockProducer(...).history` on the way out.
 
 | member | signature | meaning |
 |---|---|---|
-| `KafkaChunks[K, V]` | `Source[Chunk[ConsumerRecord[K, V]]]` | the source type (`= Unit ! (Writer % Chunk[..] + Async)`) |
+| `KafkaChunks[K, V]` | `Source[Chunk[ConsumerRecord[K, V]]]` | the source type (`= Unit ! Writer % Chunk[..] + Async`) |
 | `source` | `(consumer, timeout?) => KafkaChunks[K, V]` | one poll, one chunk; parks between |
 | `commit` | `(consumer) => Unit ! Async` | commitSync after a processed chunk |
 | `sink` | `(producer)(records) => Unit ! Async` | one batch, flushed |
@@ -64,7 +64,7 @@ and `MockProducer(...).history` on the way out.
 
 ## Gotchas
 
-- Union order is free (`! (Writer % W + Async)` ≡ `! (Async + Writer % W)`
+- Union order is free (`! Writer % W + Async` ≡ `! Async + Writer % W`
   — ACI), but explicit type arguments may be needed when handlers
   take the row apart.
 - The mock-based tests import `okay.+` explicitly — satellite scopes

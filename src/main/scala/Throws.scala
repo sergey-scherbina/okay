@@ -89,18 +89,18 @@ inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): A ! F =
  * This is the Alternative structure of a failing row (`empty` is
  * `abort`, `append` is this), spelled as methods rather than as an
  * instance. An instance would not be FOUND: matching
- * `Alternative[[A] =>> A ! (Throws % E + F)]` against a concrete row
+ * `Alternative[[A] =>> A ! Throws % E + F]` against a concrete row
  * is the higher-order unification the compiler declines (see
  * CanFail below). A method's receiver is unified, not searched for, and
  * that does work — including with the row written in the other order.
  */
-extension [A, E, F[+_]](p: A ! (Throws % E + F))
+extension [A, E, F[+_]](p: A ! Throws % E + F)
   /** answer the failure, seeing the error */
-  def recover(h: E => A ! (Throws % E + F)): A ! (Throws % E + F) =
+  def recover(h: E => A ! Throws % E + F): A ! Throws % E + F =
     runEither[A, F, E](p).at[Throws % E + F].flatMap(_.fold(h, pure))
 
   /** answer the failure, ignoring the error */
-  inline def orElse(q: => A ! (Throws % E + F)): A ! (Throws % E + F) =
+  inline def orElse(q: => A ! Throws % E + F): A ! Throws % E + F =
     recover(_ => q)
 
 /** reflect a direct-style computation into the effect */

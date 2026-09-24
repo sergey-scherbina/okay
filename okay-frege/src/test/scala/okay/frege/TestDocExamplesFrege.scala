@@ -35,7 +35,7 @@ class TestDocExamplesFrege extends munit.FunSuite:
     assertEquals(all.map(_.longValue).sorted, Seq(11L, 12L, 21L, 22L))
   }
 
-  def emitIn[I, G[+_]](xs: Seq[I]): Unit ! (Writer % I + G) =
+  def emitIn[I, G[+_]](xs: Seq[I]): Unit ! Writer % I + G =
     xs.foldRight(pure[Writer % I + G, Unit](()))((x, p) => effect[Writer % I + G, Unit](Writer(x)).flatMap(_ => p))
 
   def countedNats(produced: AtomicInteger, size: Int): Chunks[java.lang.Long] =

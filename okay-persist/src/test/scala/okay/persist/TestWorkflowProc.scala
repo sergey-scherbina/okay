@@ -48,7 +48,7 @@ class TestWorkflowProc extends FunSuite {
         if p._1._2 then s"${p._1._1}/${p._2}/promo" else s"${p._1._1}/${p._2}"
 
   /** the MONADIC v1, asking the same two questions */
-  def v1Monadic(using w: Wf.Asks[String, String, String, Pure]): String ! (Delim + Pure) =
+  def v1Monadic(using w: Wf.Asks[String, String, String, Pure]): String ! Delim + Pure =
     direct:
       val city = !w.pause("city?")
       val n = !w.pause("nights?")
@@ -59,11 +59,11 @@ class TestWorkflowProc extends FunSuite {
     case Left(w) => fail(s"expected the workflow to finish, it is waiting on $w")
 
   def wf(t: Topic, id: String, program: String)
-        (body: Wf.Asks[String, String, String, Pure] ?=> String ! (Delim + Pure)) =
+        (body: Wf.Asks[String, String, String, Pure] ?=> String ! Delim + Pure) =
     Dialogue.workflow[String, String, String, Pure](t, id, program)(body)
 
   def term(p: Wf.Proc[String, String, Unit, String]):
-      Wf.Asks[String, String, String, Pure] ?=> String ! (Delim + Pure) =
+      Wf.Asks[String, String, String, Pure] ?=> String ! Delim + Pure =
     Wf.Proc.program(p)(())
 
   val oracle: String => String = q => if q == "city?" then "Kyiv" else "3"
@@ -76,7 +76,7 @@ class TestWorkflowProc extends FunSuite {
   }
 
   test("ONE TOPIC, TWO FRONT ENDS: the journals are equal record for record") {
-    def journalOf(body: Wf.Asks[String, String, String, Pure] ?=> String ! (Delim + Pure)) =
+    def journalOf(body: Wf.Asks[String, String, String, Pure] ?=> String ! Delim + Pure) =
       val t = MemoryStore().topic("j")
       val _ = done(!.run(wf(t, "b", "booking/1")(body).runWorkflow(q => okay.pure(oracle(q)))))
       wf(t, "b", "booking/1")(body).recovered.answers

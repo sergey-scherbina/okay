@@ -16,7 +16,7 @@ class TestStructured extends munit.FunSuite {
 
   /** a token stream that counts what was actually demanded */
   def stream(tokens: Seq[String], pulled: java.util.concurrent.atomic.AtomicInteger)
-  : Unit ! (Writer % String + Async) =
+  : Unit ! Writer % String + Async =
     type F = Writer % String + Async
     def go(ts: List[String]): Unit ! F = ts match
       case Nil => pure(())

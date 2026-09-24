@@ -22,12 +22,12 @@ class TestSearch extends munit.FunSuite {
 
   /** the searching row: Choose outermost, so Logic's shape fits */
   type Rest = Model + Context
-  type Row[A] = A ! (Choose + Rest)
+  type Row[A] = A ! Choose + Rest
 
   def complete: Row[String] =
     effect[Choose + Rest, Reply](Model.Complete(Nil, Nil)).map(_.text)
 
-  def ok(p: Boolean): Row[Unit] = guard[[X] =>> X ! (Choose + Rest)](p)
+  def ok(p: Boolean): Row[Unit] = guard[[X] =>> X ! Choose + Rest](p)
 
   /**
    * Memory INSIDE the search: the context handler runs first, so it
@@ -37,7 +37,7 @@ class TestSearch extends munit.FunSuite {
    */
   def perBranch[A](prog: Row[A])(model: Handler[Model]): Seq[A] =
     given Handler[Model] = model
-    val threaded: A ! (Choose + Model) =
+    val threaded: A ! Choose + Model =
       Memory.run[Vector[Turn], A, Choose + Model](Compact.all)(prog)
     runChoice[A, Model](threaded).runWith
 
@@ -84,20 +84,20 @@ class TestSearch extends munit.FunSuite {
         effect[Choose + Rest, Unit](Context.Remember(Turn.Assistant(s))).flatMap(_ =>
           effect[Choose + Rest, Seq[Turn]](Context.Recall()).map(_.length))
       }
-    val shared: Seq[Int] ! (Model + Context) = runChoice[Int, Model + Context](prog)
+    val shared: Seq[Int] ! Model + Context = runChoice[Int, Model + Context](prog)
     val (state, lengths) =
       Memory.runWithState[Vector[Turn], Seq[Int], Model](Compact.all)(
-        shared.asInstanceOf[Seq[Int] ! (Context + Model)]).runWith
+        shared.asInstanceOf[Seq[Int] ! Context + Model]).runWith
     assertEquals(lengths, Seq(1, 2))     // the second branch sees the first
     assertEquals(state.length, 2)        // one transcript, both attempts
   }
 
   test("majority vote over samples is a plain fold over the answers") {
     given Handler[Model] = cycling(Seq("7", "7", "8"))
-    val answers: Seq[String] ! (Model + Context) =
+    val answers: Seq[String] ! Model + Context =
       Search.all[String, Rest](3)(complete)(_ => true)
     val got = Memory.run[Vector[Turn], Seq[String], Model](Compact.all)(
-      answers.asInstanceOf[Seq[String] ! (Context + Model)]).runWith
+      answers.asInstanceOf[Seq[String] ! Context + Model]).runWith
     assertEquals(got.length, 3)
     assertEquals(Search.majority(got), Some("7"))
   }

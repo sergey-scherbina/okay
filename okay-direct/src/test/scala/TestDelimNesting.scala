@@ -21,7 +21,7 @@ class TestDelimNesting extends munit.FunSuite {
 
   // ---- a producer that PAUSES in the middle of producing
 
-  def half(using Delim.Asking[String, Int, List[Int], Delim + P]): List[Int] ! (Delim + P) =
+  def half(using Delim.Asking[String, Int, List[Int], Delim + P]): List[Int] ! Delim + P =
     Delim.collecting[Int, P]:
       direct:
         !Delim.emit(1)
@@ -60,7 +60,7 @@ class TestDelimNesting extends munit.FunSuite {
   test("scope: WHICH delimiter a capture names decides how much it skips") {
     // one shape, three answers, and the only difference is the
     // evidence the capture names and whether it invokes k
-    def prog(f: Delim.Prompted[Int] ?=> Delim.Prompted[Int] ?=> Int ! (Delim + P)): Int =
+    def prog(f: Delim.Prompted[Int] ?=> Delim.Prompted[Int] ?=> Int ! Delim + P): Int =
       !.run(Delim.delimited[Int, P]: (outer: Delim.Prompted[Int]) ?=>
         direct:
           val inner = !Delim.scope[Int, P]: (in: Delim.Prompted[Int]) ?=>

@@ -40,7 +40,7 @@ class TestOutboxInbox extends munit.FunSuite:
   def orders(db: Sql): Vector[Order] =
     run(Rows.all[Order](db, "select id, total from orders order by id"))
 
-  def placeOrder(db: Sql, outbox: Outbox, o: Order, abort: Boolean = false): Unit ! (Resource + Async) =
+  def placeOrder(db: Sql, outbox: Outbox, o: Order, abort: Boolean = false): Unit ! Resource + Async =
     Typed.transact[Unit, Async](db) { _ =>
       for
         _ <- !.widen[Long, Async, Resource](Typed.update[Order](db, "insert into orders (id, total) values (?, ?)")(o))

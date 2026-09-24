@@ -34,7 +34,7 @@ class TestBookDisciplines extends munit.FunSuite {
   }
 
   test("the SAME mechanism in OneMachine: declared, so the call site answers") {
-    def oneMachineHelper[F[+_]](p: Int ! (Delim + F))(using Delim.OneMachine[F]): Int ! F =
+    def oneMachineHelper[F[+_]](p: Int ! Delim + F)(using Delim.OneMachine[F]): Int ! F =
       Delim.run(p)
     // at a clean row it resolves
     assertEquals(!.run(oneMachineHelper[P](okay.pure(1))), 1)

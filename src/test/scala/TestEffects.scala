@@ -117,7 +117,7 @@ class TestEffects extends munit.FunSuite {
         effect[Row, Int](Reader.Ask()).map(_ + x))
 
     // the Reader is answered by a program that TELLS on the way
-    val told: Int ! (Writer % String + okay.Pure) =
+    val told: Int ! Writer % String + okay.Pure =
       !.translate[Int, Reader % Int, Writer % String + okay.Pure](prog) {
         [X] => (e: (Reader % Int)[X]) => e match
           case Reader.Ask() =>

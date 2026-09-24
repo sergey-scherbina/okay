@@ -26,8 +26,8 @@ object Memory {
    * final state beside the value, like State.handle does.
    */
   def handle[S, A, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]])
-                                     (init: S)(prog: A ! (Context + F)): (S, A) ! F = {
-    def _loop(s: S)(x: A ! (Context + F)): (S, A) ! F = loop(s)(x)
+                                     (init: S)(prog: A ! Context + F): (S, A) ! F = {
+    def _loop(s: S)(x: A ! Context + F): (S, A) ! F = loop(s)(x)
 
     def answer[X](s: S, e: Context[X]): (S, X) = e match
       case Context.Remember(t) => (policy.add(s, t), ())
@@ -35,7 +35,7 @@ object Memory {
       case Context.Mark() => (s, Snapshot(s))
       case Context.Restore(m) => (m.stateAs[S], ())
 
-    @tailrec def loop(s: S)(x: A ! (Context + F)): (S, A) ! F = (x.resume: @unchecked) match
+    @tailrec def loop(s: S)(x: A ! Context + F): (S, A) ! F = (x.resume: @unchecked) match
       case Return(a) => Return((s, a))
       case Inject(e) => okay.<|>[Context, F](e) match
         case Left(c) => Return(answer(s, c))
@@ -51,11 +51,11 @@ object Memory {
 
   /** the common case: start empty, keep the answer only */
   def run[S, A, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]])
-                                  (prog: A ! (Context + F)): A ! F =
+                                  (prog: A ! Context + F): A ! F =
     handle(policy)(policy.init)(prog).map(_._2)
 
   /** …and the transcript beside it, for inspection or a next turn */
   def runWithState[S, A, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]])
-                                           (prog: A ! (Context + F)): (S, A) ! F =
+                                           (prog: A ! Context + F): (S, A) ! F =
     handle(policy)(policy.init)(prog)
 }

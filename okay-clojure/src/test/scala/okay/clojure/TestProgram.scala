@@ -19,7 +19,7 @@ class TestProgram extends munit.FunSuite {
 
   def emit[I](xs: Seq[I]): Unit ! Writer % I =
     xs.foldRight(pure[Writer % I, Unit](()))((x, p) => Writer.tell(x).flatMap(_ => p))
-  def emitIn[I, G[+_]](xs: Seq[I]): Unit ! (Writer % I + G) =
+  def emitIn[I, G[+_]](xs: Seq[I]): Unit ! Writer % I + G =
     xs.foldRight(pure[Writer % I + G, Unit](()))((x, p) => effect[Writer % I + G, Unit](Writer(x)).flatMap(_ => p))
   def own[I, O, A](src: Unit ! Writer % I, s: Stage[I, O, A]): List[O] =
     !.run(Writer.run(through(src)(s)))._1.toList

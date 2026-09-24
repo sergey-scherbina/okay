@@ -22,7 +22,7 @@ class TestAnthropic extends munit.FunSuite {
     new Transport:
       private var rest = bodies.toList
       def post(url: String, headers: Map[String, String], body: String)
-      : Unit ! (Writer % String + Async) =
+      : Unit ! Writer % String + Async =
         type F = Writer % String + Async
         sent += body
         val reply = rest match

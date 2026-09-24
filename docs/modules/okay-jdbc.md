@@ -50,7 +50,7 @@ val program = Resource.run:
 | member | signature | meaning |
 |---|---|---|
 | `connection` | `(url, user?, pass?) => Connection ! Resource...` | a connection in the region |
-| `query` | `(conn, sql, fetchSize?)(row: ResultSet => A) => Source[Chunk[A]]` | fetch-size rows per chunk, each chunk told (was `Chunk[A] ! (Produce + Async)` until producer-to-writer-carrier, 2026-09-19) |
+| `query` | `(conn, sql, fetchSize?)(row: ResultSet => A) => Source[Chunk[A]]` | fetch-size rows per chunk, each chunk told (was `Chunk[A] ! Produce + Async` until producer-to-writer-carrier, 2026-09-19) |
 | `batch` | `(conn, sql)(bind)(chunk) => Unit ! Async` | one chunk, one executeBatch |
 | `execute` | `(conn, sql) => Unit ! Async` | DDL and one-offs |
 

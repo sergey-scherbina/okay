@@ -142,7 +142,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                     * behaves exactly as before.
                                     */
                                    isolate: Option[Worker.Isolate[G]] = None)
-                                  (body: Wf.Asks[Q, A, R, F] ?=> R ! (Delim + F))
+                                  (body: Wf.Asks[Q, A, R, F] ?=> R ! Delim + F)
                                   (using Schema[Wf.Ans[A]], Replayable[Delim + F],
                                    Delim.OneMachine[F], At, Wf.Runtime,
                                    RowLift.Sub[F, G]):

@@ -30,7 +30,7 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
    * chunk seen — the constant-memory witness */
   // Writer % Chunk[Byte]'s split test is unchecked under erasure —
   // sound by construction, the TypeableK caveat Writer.scala documents
-  def drainGet(p: Either[String, Unit] ! (Writer % Chunk[Byte] + Async)): (Array[Byte], Either[String, Unit], Int) =
+  def drainGet(p: Either[String, Unit] ! Writer % Chunk[Byte] + Async): (Array[Byte], Either[String, Unit], Int) =
     val out = java.io.ByteArrayOutputStream()
     var biggest = 0
     val sink: Fold[Chunk[Byte], Unit] = Fold(())((_, c) => { out.write(c.toArray); biggest = math.max(biggest, c.length) })

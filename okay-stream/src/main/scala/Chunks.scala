@@ -126,7 +126,7 @@ object Chunks {
   private[okay] inline def defer[X](inline x: => Feed[X]): Feed[X] =
     pure[Writer % X, Unit](()).flatMap(_ => x)
 
-  /** the empty chunk — what a G-effectful `Chunk[X] ! (Produce + G)`
+  /** the empty chunk — what a G-effectful `Chunk[X] ! Produce + G`
    * ends in (its final `Pure`, which its stream instance never reads),
    * and the `end` a `Source.toProducer` over chunks is given. A
    * `Chunks[A]` itself ends in `()` now. Public since
@@ -359,7 +359,7 @@ object Chunks {
 
   /**
    * `foldLeft` for a G-EFFECTFUL chunked writer stream — a
-   * `Source[Chunk[A]]`, or any `Unit ! (Writer % Chunk[A] + G)` — with
+   * `Source[Chunk[A]]`, or any `Unit ! Writer % Chunk[A] + G` — with
    * the step inlined into a per-chunk `while`, on `Writer.foldWith`.
    * A `Chunks[A]` is pure and folds with `foldLeft` above; this is for
    * the row that also performs G. The per-element loop sits in the
@@ -369,7 +369,7 @@ object Chunks {
    * at a literal step; the investigation that built it, with every
    * number, is specs/producer-to-writer-carrier.md (Results).
    */
-  inline def foldLeftWriter[A, S, G[+_]](p: Unit ! (Writer % Chunk[A] + G))(z: S)
+  inline def foldLeftWriter[A, S, G[+_]](p: Unit ! Writer % Chunk[A] + G)(z: S)
                                         (inline f: (S, A) => S)
                                         (using okay.TypeableK[Writer % Chunk[A]]): (S, Unit) ! G =
     Writer.foldWith[Chunk[A], S, Unit, G](p)(z): (s, c) =>
@@ -397,7 +397,7 @@ object Chunks {
    * the two fixes that did nothing and the one that did — is
    * specs/producer-to-writer-carrier.md (Results).
    */
-  def foldWriter[A, S](p: Unit ! (Writer % Chunk[A] + Async))(using fo: Fold[A, S])
+  def foldWriter[A, S](p: Unit ! Writer % Chunk[A] + Async)(using fo: Fold[A, S])
                        (using CanBlock): (S, Unit) ! Async =
     async:
       val it = writerStreamIn[Unit, Async].iterator(p)
