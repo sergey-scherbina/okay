@@ -126,7 +126,7 @@ A Scala 2 `Handler[F, R, B]` receives an operation and its continuation
 `k`, as in chapter 5:
 
 ```scala
-def apply[X](op: F[X], k: X => B ! R): B ! R
+def apply[X](op: F[X], k: X => Eff[R, B]): Eff[R, B]
 ```
 
 Underneath, it is a `shift` into the continuation of chapter 2
