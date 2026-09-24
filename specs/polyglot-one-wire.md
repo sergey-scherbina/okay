@@ -261,6 +261,39 @@ mechanism:
       supports, and a table in the docs says which languages support
       which layer.
 
+## Stage 7 — every language on the network (wire-gateway)
+
+Only Go and Rust serve TCP. Python, TypeScript, Haskell (and any other
+stdio worker) run as child processes of the host, so `connect`,
+`WireAuth` and `WireSecurity` do not reach them. Giving each its own
+TCP server would mean four more servers, four more TLS stacks and four
+more HMAC checks. One GATEWAY serves them all:
+
+- [ ] `okay/py/gateway.py` (shipped in okay-py's jar, standard library
+      only): `gateway.py --listen HOST:PORT -- WORKER COMMAND...`. On
+      every connection it STARTS the worker command, so each connection
+      gets a fresh worker, as with Go and Rust. It relays the worker's
+      stdio to the socket, and prints `{"listening": ..., "tls": ...}`
+      once bound.
+- [ ] The gateway is where the network's layers live, so the workers do
+      not change:
+      - TLS with `OKAY_TLS_CERT` and `OKAY_TLS_KEY`;
+      - the stage-5b auth with `OKAY_WIRE_SECRET` or
+        `OKAY_WIRE_SECRET_FILE`. The gateway adds the challenge to the
+        worker's hello, answers the host's `auth` itself, and refuses
+        everything else until it passes, closing on a wrong mac, exactly
+        as Go and Rust do.
+      After that it relays bytes untouched, so the stage-5a `configure`
+      and the frames that follow reach the worker as they would over a
+      pipe.
+- [ ] `ForeignGateway.command(worker, listen)` builds the command line
+      from Scala. The Python worker's command is `ForeignWorker`'s own.
+- [ ] The conformance suite passes through the gateway for Python and
+      TypeScript, with a secret and with TLS; Haskell's programs pass
+      through it too.
+- [ ] Refusals are the same as Go's: no secret, the wrong secret, a
+      request before the auth, TLS mismatches.
+
 ## Stage 6 — reliability (wire-read-deadline)
 
 The operator: "рилайибилити - если чтото отвалилось там и таймаут - что
