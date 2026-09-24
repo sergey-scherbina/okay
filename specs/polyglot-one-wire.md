@@ -38,19 +38,49 @@ every row and column. It covers multi-shot across the link, a typed
 operation answered by a Scala callback under the caller's Reader, a
 failure as a condition by name, and the worker living on.
 
+## Direct style: `okay_call(request) -> answer` (operator, 2026-09-24)
+
+Programs as data (`perform`, `then`) are what MULTI-SHOT needs: a
+continuation that okay may resume twice has to be a value. Most code
+wants less. It wants to call an effect in the middle of a computation
+and have the answer, the way Python and R already do with
+`okay.call("price_of", x)`. So Rust and Go get the same direct style,
+`okay_call(name, args) -> answer`, on every transport:
+
+- **Pipes and TCP.** The wire's existing callback dialogue: the host
+  `start`s a function offering callbacks, the far side `ask`s, and the
+  host `resume`s it with the answer (the one Python's shim and the TS
+  worker speak).
+- **FFM.** An UPCALL: the JVM hands the Rust library a function pointer
+  (an FFM upcall stub), and `okay_call` is a C call back into the Scala
+  handler, on the same thread, inside the Rust call. No second process
+  and no line.
+- **WebAssembly.** A host function the module imports (`okay.okay_call`),
+  answered by Chicory in the same way.
+
+A direct call is answered once, so a handler that resumes twice
+(`Choice`) needs the program-as-data form. The docs say which to use
+when, and the conformance suite covers both forms.
+
+- [ ] Rust and Go: `okay_call` in the library, over pipes and TCP
+      (`start`/`ask`/`resume`), then FFM (upcall) and wasm (host import).
+- [ ] The conformance suite gains a direct-style case: a far-side
+      function that calls `okay_call` twice and answers from both, under
+      the caller's Reader.
+
 ## Stage 1 — wire-links (Scala links; Go over TCP)
 
-- [ ] `WireLink`: `hello(): String`, `roundTrip(line): String`, `close()`.
+- [x] `WireLink`: `hello(): String`, `roundTrip(line): String`, `close()`.
       `PySubprocess.over(link)` is the engine over any link, and
       `speaking(command)` becomes `over(PipeLink(process))`, unchanged for
       callers.
-- [ ] `TcpLink(host, port)` and `PySubprocess.connect(host, port)`: the
+- [x] `TcpLink(host, port)` and `PySubprocess.connect(host, port)`: the
       same protocol over a socket. The server speaks first, as the pipe
       worker does.
-- [ ] Go: `okay.Worker.Handle(line)` is the protocol without I/O, and
+- [x] Go: `okay.Worker.Handle(line)` is the protocol without I/O, and
       `Serve` (stdio) and `ServeTCP(addr)` both use it. Each TCP
       connection has its own continuations.
-- [ ] A conformance suite (Live), one body over (Go, pipes) and
+- [x] A conformance suite (Live), one body over (Go, pipes) and
       (Go, TCP).
 
 ## Stage 2 — rust-worker (the Rust library)
@@ -100,3 +130,19 @@ failure as a condition by name, and the worker living on.
   claimed here.
 
 ## Results
+
+- Stage 1 (wire-links, 2026-09-24).
+  - `WireLink` has two links, pipes and TCP. `PySubprocess.over(link)`
+    is the engine, `speaking` is `over(pipes)`, and
+    `connect(host, port)` is `over(tcp)`. The Python, Go and Haskell
+    suites pass unchanged over the refactored engine.
+  - Go: `Worker.Handle(line)` is the protocol with no I/O. `Serve`
+    (stdio) and `ServeTCP` use it, and `ServeTCP` gives each connection
+    its own Worker and prints `{"listening": "host:port"}` once bound.
+    `okay.Main` picks TCP when `OKAY_LISTEN` is set, so one binary does
+    both.
+  - `WireConformance` is ONE test body (multi-shot, callbacks under the
+    caller's Reader, a failure as a condition with the worker running
+    on), and it passes over (Go, pipes) and (Go, TCP).
+  - Mutant: a worker dropping continuations after one use fails
+    multi-shot on BOTH links.

@@ -68,10 +68,23 @@ func total(sku string, qty int64) okay.Program[float64] {
   SET of operations cannot be in its type. Haskell's and TypeScript's
   can ([where each language names okay's effects](jvm-languages.md#where-each-language-names-okays-effects)).
 
-## From Scala
+## From Scala, over a pipe or a socket
 
 `GoWorker.build(dir)` writes the `okay` package into `dir` (and a `go.mod`
-naming the module `worker` if there is none) and runs `go build`. The
+naming the module `worker` if there is none) and runs `go build`.
+
+The binary serves the wire either way. Serve it with `okay.Main`:
+- run as a child process, it speaks on stdin/stdout, and
+  `PySubprocess.speaking(Seq(binary))` reaches it;
+- started with `OKAY_LISTEN=host:port`, it serves TCP, and
+  `PySubprocess.connect(host, port)` reaches it from this machine or
+  another.
+
+Each TCP connection gets its own worker and its own continuations. The
+connection is plain TCP and unauthenticated, so use it inside a trusted
+network, or put TLS or SSH in front of it. The same test body
+(`WireConformance`: multi-shot, callbacks under the caller's Reader, a
+failure as a condition) passes over both links. The
 build is offline: standard library only, with `GOTOOLCHAIN=local`.
 `PySubprocess.speaking(Seq(binary))` runs the worker, and everything
 okay-py does works unchanged:
