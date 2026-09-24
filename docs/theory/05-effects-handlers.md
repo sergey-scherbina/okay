@@ -125,7 +125,7 @@ it by accident.
 Okay's effect row is a *type-level union of signatures*:
 
 ```scala
-A ! State % Int + Throws % String + Async
+A ! (State % Int + Throws % String + Async)
 ```
 
 `+` is genuine union, not a coproduct functor — which is why `Pure`,

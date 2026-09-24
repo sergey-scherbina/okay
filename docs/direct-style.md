@@ -578,8 +578,8 @@ enum Once[+A] derives Effect:
   case Force[A](h: Once.Handle[A]) extends Once[Option[A]]   // what the cell holds
   case Store[A](h: Once.Handle[A], a: A) extends Once[A]     // fill it; answers what it holds after
 
-def once[A, F[+_]](p: => A ! Once + F): A ! Once + F     // !.once
-def run[A, F[+_]](a: A ! Once + F): A ! F                  // Once.run
+def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F)     // !.once
+def run[A, F[+_]](a: A ! (Once + F)): A ! F                  // Once.run
 ```
 
 `!.once(p)` is a program value: its first demand runs `p` and stores
@@ -615,7 +615,7 @@ and ZIO's `Promise` are the same cell with a different name).
 In a block the word is Scala's own:
 
 ```scala
-val prog: Int ! Once + Writer % String = direct:
+val prog: Int ! (Once + Writer % String) = direct:
   lazy val x = !told("abc")      // runs at the FIRST use, in that position, once
   val y = !told("de")            // runs here
   x + x + y + !told("f")         // log: de, abc, f
@@ -705,7 +705,7 @@ requests, and never twice.
 written on them (direct-colourless-val, 2026-09-16):
 
 ```scala
-def demo(use: Boolean): Int ! Once + Fetch = direct:
+def demo(use: Boolean): Int ! (Once + Fetch) = direct:
   val      x = fetch("val")        // by value
   lazy val y = fetch("lazy val")   // by need
   def      z = fetch("def")        // by name
@@ -912,7 +912,7 @@ name for that program with one more member in its row, `Stop`, so the
 body can end itself from inside a loop:
 
 ```scala
-final class Gen[W](val program: Unit ! Writer % W + Stop) extends AnyVal
+final class Gen[W](val program: Unit ! (Writer % W + Stop)) extends AnyVal
 // a value class over the program (no allocation): `.program` is the
 // program back, `Gen.fromProgram` the name onto one, `Gen.of` a plain
 // Writer program widened

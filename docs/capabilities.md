@@ -267,9 +267,9 @@ macro), and the two one-line bridges for migration — functions at
 the call site, never Conversions (E10):
 
 ```scala
-def lift[E, A](cf: E ?=> A): A ! Reader % E =
+def lift[E, A](cf: E ?=> A): A ! (Reader % E) =
   effect[Reader % E, E](Reader.Ask()).map(e => cf(using e))
-def unlift[E, A, F[+_]](p: A ! Reader % E + F): E ?=> A ! F =
+def unlift[E, A, F[+_]](p: A ! (Reader % E + F)): E ?=> A ! F =
   Reader.run[E, A, F](wire[E])(p)
 ```
 

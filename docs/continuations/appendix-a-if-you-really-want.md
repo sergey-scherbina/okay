@@ -214,7 +214,7 @@ implementation a captured continuation is **already a data structure**:
 ```scala
 private enum Segs[F[+_], A, Z]:
   case Done[F[+_], Z]()
-  case K[F[+_], X, Y, Z](f: X => Y ! Delim + F, rest: Segs[F, Y, Z])
+  case K[F[+_], X, Y, Z](f: X => Y ! (Delim + F), rest: Segs[F, Y, Z])
   case Mark[F[+_], X, Z](p: Prompt[X], rest: Segs[F, X, Z])
 ```
 

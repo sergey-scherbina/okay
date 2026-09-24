@@ -52,7 +52,7 @@ raises `NoPrompt`.
 The three machine-starting combinators ask for a witness:
 
 ```scala
-def run[R, F[+_]](prog: R ! Delim + F)(using OneMachine[F]): R ! F
+def run[R, F[+_]](prog: R ! (Delim + F))(using OneMachine[F]): R ! F
 ```
 
 and `OneMachine[F]` exists only when `F` does not already contain

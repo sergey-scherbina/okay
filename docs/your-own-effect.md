@@ -81,7 +81,7 @@ A constructor builds at its OWN row. To use it beside another effect,
 move it:
 
 ```scala
-Users.find(id).plus[Abort]        // Option[String] ! Users + Abort
+Users.find(id).plus[Abort]        // Option[String] ! (Users + Abort)
 State.get[S].at[R]                // into a row known only by membership
 ```
 
@@ -245,7 +245,7 @@ both.
 Two layers, one job each, composed:
 
 ```scala
-def tracked[A, S : Store, F[+_]](prog: A ! Users + F): A ! State % S + Writer % String + F =
+def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (State % S + Writer % String + F) =
   stored[A, S, Writer % String + F](
     !.tracing(prog)([X] => (e: Users[X]) => e.toString))
 ```
@@ -289,7 +289,7 @@ type Big   = Tag.Of["big",   State % Int]
 
 // an ordinary function, written against a plain State % Int,
 // run twice at two different states in one program:
-val twice: (Int, Int) ! Small + Big =
+val twice: (Int, Int) ! (Small + Big) =
   for
     a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
     b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]

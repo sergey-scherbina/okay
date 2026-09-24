@@ -41,7 +41,7 @@ test — no network needed to develop against it):
 ```scala
 import okay.llm.{Anthropic, Transport}
 
-val tokens: Unit ! Writer % String + Async =
+val tokens: Unit ! (Writer % String + Async) =
   Anthropic.stream(Transports.http(), apiKey,
     Anthropic.Request("claude-sonnet-5", 1024,
       List(Anthropic.Message("user", "hi")), stream = true))

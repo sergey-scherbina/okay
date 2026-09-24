@@ -133,7 +133,7 @@ first mistake.
 
 ```scala
 // the producer: declare what it emits, and emit
-def produce(...)(using Delim.Emitting[A]): Unit ! Delim + F =
+def produce(...)(using Delim.Emitting[A]): Unit ! (Delim + F) =
   direct:
     ...
     !Delim.emit(item)

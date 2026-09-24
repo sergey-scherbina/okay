@@ -27,7 +27,7 @@ minted: `Log.info(...)` is `Writer.tell(Line(...))`, and a row that
 logs reads `A ! Writer % Log.Line + Async`.
 
 ```scala
-def place(o: Order): Receipt ! Log.Says + Async =
+def place(o: Order): Receipt ! (Log.Says + Async) =
   for
     _ <- Log.info("order placed", "id" -> o.id)         // no ids, no clock, no logger
     r <- charge(o)

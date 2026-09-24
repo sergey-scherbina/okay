@@ -168,11 +168,11 @@ final class Cap[R] private (state, fallback, prompt: Prompt[R]):
   type Res = R
 
 // 2. the boundary: the ONLY place that runs a machine, passing OneMachine on
-def within[R, F[+_]](...)(body: Cap[R] ?=> R ! Delim + F)
+def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Delim + F))
                     (using Delim.OneMachine[F], At): R ! F
 
 // 3. the operations: named in the user's vocabulary, hiding the capture
-def op[F[+_]](...)(using c: Cap[?], at: At): A ! Delim + F
+def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Delim + F)
 ```
 
 Chapter 15 applies exactly this recipe to the oldest problem in the

@@ -267,7 +267,7 @@ widening done for you, for when the target row is BIGGER than the
 source's:
 
 ```scala
-def tracked[A, F[+_]](p: A ! Users + F): A ! State % Store + Writer % String + F =
+def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
   type R = State % Store + Writer % String + F
   !.interpret(p):
     [X] => (e: Users[X]) => e match
@@ -289,7 +289,7 @@ beyond `show` — so the storage half can be written without a Writer
 anywhere in it:
 
 ```scala
-def tracked[A, F[+_]](p: A ! Users + F): A ! State % Store + Writer % String + F =
+def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
   stored[A, Writer % String + F](!.tracing(p)([X] => (e: Users[X]) => e.toString))
 ```
 
@@ -310,7 +310,7 @@ type Big   = Tag.Of["big",   State % Int]
 
 // an ordinary function, written against a plain State, run twice
 // at two different states in one program:
-val twice: (Int, Int) ! Small + Big =
+val twice: (Int, Int) ! (Small + Big) =
   for
     a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
     b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]

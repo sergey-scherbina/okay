@@ -16,3 +16,8 @@
   section 3 and its comparison table (section 9) say so side by side;
   the Scala 2 rows in typepedia, guide, theory ch. 13, jvm-languages
   and your-own-effect were skipped by the script and checked by hand.
+- 28 example lines that `docs/snippet-debt.txt` holds verbatim (the
+  pseudo-signatures no test can pin, `def op[F[+_]](...)`) keep their
+  parentheses: the ratchet lets the debt only shrink, so an edited
+  debt line would be a new unpinned line. They lose the parentheses
+  the day each is pinned.
