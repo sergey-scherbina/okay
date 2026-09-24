@@ -65,6 +65,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   (merge by readiness, buffer); Resource, Once, multi-prompt Delim
   with the evidence doors, replayable dialogues and the prompt stack
   as a type, Choose/Logic, SharedOnce, provide/Module;
+  generators with fused chains;
   what is different from Scala 3 and why, each measured.
 - **[okay from Scala 2.13](scala2.md)** — for a codebase still on
   Scala 2: the build (two standard libraries, and in which order),

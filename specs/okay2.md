@@ -820,6 +820,59 @@ def handle[S, R <: Row, A](s: S)(a: Free[State[S] with R, A]): Free[R, (S, A)]
   row argument used to be the WHOLE row and is now the REST. 42 test
   call sites named it; all now let scalac infer it, which is what the
   stage is for.
+## Stage 9 — Gen, generators as programs that tell (DONE 2026-09-24)
+The first item of `okay2-stage2` after the row change (operator: port
+stage 2 in order, then okay2-ci, then okay2-bench).
+
+- `Stop` (one operation, `Now`) and `Gen[W]`, a value class over a
+  `Chain[W]`: element-wise `map`/`filter`/`withFilter`/`take`/
+  `takeWhile`/`drop`/`flatMap`/`++`/`zipWithIndex`/`zip`/`zipWith` as
+  MEMBERS (so a plain for-comprehension is a generator); readers
+  `foldUntil`/`toList`/`toVector`/`first`/`find`/`exists`/`forall`/
+  `foreach`/`iterator`/`toLazyList`; constructors `emit`/`stop`/
+  `empty`/`apply`/`from`/`unfold`/`of`/`fromProgram`.
+- The Scala 3 core's chain fusion, ported whole: `Chain` (`Plain`/
+  `Staged`/`Cat`), `Xf` stages with a state type member `St[S]`
+  (`Id`/`Map`/`Filter`/`FlatMap`/`Indexed`/`Take`/`TakeWhile`/`Drop`/
+  `Compose`), each with its FUSED reading (a `FoldUntil` transformer)
+  and its MATERIALISED one (the walk); `Halt`; `zipping`/`pull`.
+
+### Behavior (stage 9)
+- [x] laziness to the step: `next()`, `take`, `first`, `find`,
+      `exists`, a fused `take(n)` after map/filter, `take(0)` runs nothing
+- [x] three terminations: the body ends, `Gen.stop` ends it (through
+      map, `++`, an inner flatMap), a reader that stops runs no further
+- [x] fused = materialised = stepper on 200 generated chains of
+      map/filter/take/takeWhile/drop, and 200 with flatMap/`++`/
+      zipWithIndex
+- [x] `++` counts a take through, runs the right side only if needed;
+      flatMap lazy to the inner counter; a for-comprehension with a
+      guard; reading twice runs twice, `toLazyList` memoises
+- [x] flat on the stack: 100 000 elements through toList, drop and
+      the iterator, and 100 000 rejections in a row on the fused AND the
+      materialised filter
+- [x] zip: pairs, shorter side, empty side, zipWith, after `++`, the
+      strymonas hard case (a flatMap-fused side), lazy to the outer
+      counter, an infinite outer source, the fused side on the right
+
+### Decisions
+- The walks match `Writer.said[W]` (the name-based extractor that
+  holds Writer's one cast) instead of splitting with a closure: the row
+  is `Writer[W] + Stop` and nothing else, so an operation that is not a
+  `Say` IS the `Stop`. That makes `readState` a real `@tailrec` loop
+  (the Scala 3 core's is one because `split` is inline there) and
+  leaves no `@unchecked` pattern in the file.
+- No widening anywhere: a `Writer[W]` program and a `Stop` program are
+  both `Row[W]` programs by contravariance (stage 8), so `say`/`ended`
+  are the plain constructors and `Gen.of` takes a `Writer[W]` program
+  as it is.
+- `foldUntil` takes its `FoldUntil` as an ordinary parameter (the Scala
+  3 core's `using`): no implicit instances of `FoldUntil` exist here to
+  resolve it from.
+- Test runs go through the gate, not scala-cli: since stage 7
+  `Replayable` is a blackbox macro, and one scala-cli compilation of
+  main and test together cannot expand a macro defined in it.
+
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -845,4 +898,6 @@ def handle[S, R <: Row, A](s: S)(a: Free[State[S] with R, A]): Free[R, (S, A)]
   contravariant intersection: `Member`, `Sub`, `NotPure`, `Remove`
   deleted; `+` is `with`, `Pure` is `Row`; every okay2 module and its
   tests moved; 303 tests green cold under `-Xlint -Werror` (stage 7's 301 ported onto the new row in the same lane).
+- Stage 9: 325 test results (+22 Gen/GenZip), GREEN 2026-09-24,
+  same gate.
 

@@ -29,7 +29,8 @@ Contents:
 11. [Async and the JVM platform](#11-async-and-the-jvm-platform)
 12. [Channels and sources](#12-channels-and-sources)
 13. [Resources, once, delimited control, capabilities](#13-resources-once-delimited-control-capabilities)
-14. [Literature](#14-literature)
+14. [Generators](#14-generators)
+15. [Literature](#15-literature)
 
 ## 1. The build
 
@@ -889,7 +890,53 @@ which is how the dependency graph is checked by the compiler:
     assertEquals(log.reverse, List("open db", "open pool over db", "close pool", "close db"))
 ```
 
-## 14. Literature
+## 14. Generators
+
+A generator is a program that tells: `Gen[W]` is a `Writer[W]`
+program with `Stop` beside it, so a body can end itself from the
+middle of a loop. Its combinators are members, so a plain
+for-comprehension builds one, and it runs only as far as it is read:
+
+```scala
+    val pairs: Gen[(Int, Int)] =
+      for {
+        x <- Gen(1, 2, 3)
+        y <- inner.gen.take(2) if (x + y) % 2 == 0
+      } yield (x, y)
+    assertEquals(pairs.take(2).toList, List((1, 1), (2, 2)))
+```
+
+`iterator` is Python's `next()`: the code between two yields runs when
+the second is asked for, not when the first is delivered:
+
+```scala
+    val it = c.gen.iterator
+    assertEquals(c.steps, 0, "nothing runs at construction")
+    assertEquals(it.next(), 1)
+    assertEquals(c.steps, 1, "one step: the first yield")
+```
+
+A chain of stages is FUSED: the reader applies it per element and
+stops the body at exactly the element it needed. The same chain read
+as the walks it stands for gives the same answer, and the tests hold
+the two equal on generated chains:
+
+```scala
+    assertEquals(c.gen.map(_ * 3).filter(_ % 2 == 0).take(2).toList, List(6, 12))
+    assertEquals(c.steps, 4, "kept 6 (step 2) and 12 (step 4): four steps, not one more")
+```
+
+`zip` pulls one step from each side, which reaches through a fused
+`flatMap` with no special case — the hard case of "Stream fusion, to
+completeness":
+
+```scala
+    val left: Gen[Int] = Gen(1, 2, 3, 4).flatMap(i => Gen.from(Vector.fill(i)(i)))
+    val zipped = left.zip(Gen('a', 'b', 'c', 'd', 'e', 'f')).toList
+    assertEquals(zipped, List(1 -> 'a', 2 -> 'b', 2 -> 'c', 3 -> 'd', 3 -> 'e', 3 -> 'f'))
+```
+
+## 15. Literature
 
 - Oleg Kiselyov and Hiromi Ishii, "Freer Monads, More Extensible
   Effects" (Haskell Symposium 2015) — the tree, the relay handler,
@@ -904,6 +951,13 @@ which is how the dependency graph is checked by the compiler:
 - Christian Queinnec, "Inverting back the inversion of control, or
   Continuations versus page-centric programming" (2003) — the web
   dialogue `Paused`/`resumable` is the type of.
+- Oleg Kiselyov, Simon Peyton Jones and Amr Sabry, "Lazy v. Yield:
+  Incremental, Linear Pretty-printing" (APLAS 2012), and Roshan James
+  and Amr Sabry, "Yield: Mainstream Delimited Continuations" (TPDC
+  2011) — yield as the tell a `Gen` is made of.
+- Oleg Kiselyov, Aggelos Biboudis, Nick Palladinos and Yannis
+  Smaragdakis, "Stream fusion, to completeness" (POPL 2017) — the zip
+  through a fused flatMap.
 - Olivier Danvy and Andrzej Filinski, "Abstracting Control" (LFP 1990)
   — `shift`/`reset` and answer-type modification, which `Cont` and
   `PState` carry in their signatures.
