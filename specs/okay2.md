@@ -873,6 +873,37 @@ stage 2 in order, then okay2-ci, then okay2-bench).
   `Replayable` is a blackbox macro, and one scala-cli compilation of
   main and test together cannot expand a macro defined in it.
 
+## Stage 10 — `Distinct`: a row whose members can be told apart (2026-09-24)
+Backlog `okay2-distinct`, picked by the operator. A split tests one
+signature by its class, so two signatures of one class with different
+parameters (`Ask[Int] + Ask[String]`, `State[Int] + State[String]`)
+are two types to the row and one to the split. Measured first on the
+unguarded code: `Handler.union[Ask[Int], Ask[String]]` compiled, and
+the String ask came back from the Int handler as a ClassCastException
+naming `Integer`.
+
+`Distinct[R]` is a blackbox macro, as `Replayable` is and for its
+reason (an inductive implicit over an intersection diverges): it
+flattens R's parents, drops `Row` and every abstract part, and aborts
+when two parts share a class without being the same type. Required by
+the three composers of a split — `Handler.union`, `Into.union`,
+`IntoZ.union` — as the Scala 3 core requires its `Distinct` of
+`Handler.union`/`flat`. `Distinct.unchecked` is the escape hatch.
+okay2 has no by-value tests (`TypeableK.ByValue`) and no `Tag`/
+`Instances` wrappers yet, so the class is the whole identity; when they
+come, the macro learns them as the Scala 3 one did.
+
+NOT GUARDED, like the Scala 3 core: the per-signature handlers
+(`State.handle(s)(p)` over `State[Int] + State[String]` still
+misroutes). Guarding them means an implicit on every handler.
+
+- [x] the defect, measured before the fix (a throwaway test; kept in
+      TestDistinct with `Distinct.unchecked`)
+- [x] refused: a union over two of one class, and a direct
+      `Distinct[State[Int] + Writer[String] + State[String]]`
+- [x] admitted: distinct classes, a repeated member, `Pure`, an abstract
+      part; a real union still builds
+
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -900,4 +931,6 @@ stage 2 in order, then okay2-ci, then okay2-bench).
   tests moved; 303 tests green cold under `-Xlint -Werror` (stage 7's 301 ported onto the new row in the same lane).
 - Stage 9: 325 test results (+22 Gen/GenZip), GREEN 2026-09-24,
   same gate.
+- STAGE 10 LANDED (2026-09-24, okay2-distinct): `Distinct[R]` required by
+  the three union composers; 328 tests green cold.
 

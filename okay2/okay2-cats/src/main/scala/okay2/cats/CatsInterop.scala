@@ -54,10 +54,12 @@ object CatsInterop extends CatsInteropLow {
      * `implicit val h: Into[Produce + Io, IO] = Into.union[Produce, Io, IO]`.
      * An implicit rule over `F + G` cannot take an intersection apart
      * (stage 8: it matches every type and the search diverges) */
-    def union[F <: Row, G <: Row, M[_]](implicit T: TypeableK[F], f: Into[F, M], g: Into[G, M]): Into[F + G, M] =
+    def union[F <: Row, G <: Row, M[_]](implicit T: TypeableK[F], f: Into[F, M], g: Into[G, M], d: Distinct[F + G]): Into[F + G, M] = {
+      val _ = d
       new Into[F + G, M] {
         def applyOp[X](op: Any): M[X] = if (T.test(op)) f.applyOp[X](op) else g.applyOp[X](op)
       }
+    }
 
     /** Pure has no operations: never applied */
     implicit def pure[M[_]]: Into[okay2.Pure, M] = new Into[okay2.Pure, M] {

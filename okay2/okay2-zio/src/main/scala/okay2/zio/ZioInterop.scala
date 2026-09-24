@@ -40,10 +40,12 @@ object ZioInterop {
     }
 
     /** explicit, as `CatsInterop.Into.union` and for its reason */
-    def union[F <: Row, G <: Row, Rz, E](implicit T: TypeableK[F], f: IntoZ[F, Rz, E], g: IntoZ[G, Rz, E]): IntoZ[F + G, Rz, E] =
+    def union[F <: Row, G <: Row, Rz, E](implicit T: TypeableK[F], f: IntoZ[F, Rz, E], g: IntoZ[G, Rz, E], d: Distinct[F + G]): IntoZ[F + G, Rz, E] = {
+      val _ = d
       new IntoZ[F + G, Rz, E] {
         def applyOp[X](op: Any): ZIO[Rz, E, X] = if (T.test(op)) f.applyOp[X](op) else g.applyOp[X](op)
       }
+    }
 
     /** Pure has no operations: never applied */
     implicit def pure[Rz, E]: IntoZ[okay2.Pure, Rz, E] = new IntoZ[okay2.Pure, Rz, E] {

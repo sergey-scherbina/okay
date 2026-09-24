@@ -37,7 +37,7 @@ class TestZioInterop extends munit.FunSuite {
     }
     val p: Int ! Row = produce(20).at[Row].flatMap(x => Zio.lift(ZIO.attempt(x + 22)).at[Row])
     val z: ZIO[Log, Throwable, Int] =
-      foldTo[Log, Throwable, Int, Row](p)(IntoZ.union[Produce, Zio, Log, Throwable](Produce.effect, produceZ, env))
+      foldTo[Log, Throwable, Int, Row](p)(IntoZ.union[Produce, Zio, Log, Throwable](Produce.effect, produceZ, env, implicitly[Distinct[Produce + Zio]]))
     val log: Log = new Log { def log(a: Any): Unit = seen += a }
     assertEquals(run(z.provideLayer(ZLayer.succeed(log))), 42)
     assertEquals(seen.result(), List(20))

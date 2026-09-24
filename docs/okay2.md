@@ -184,6 +184,21 @@ one for free, because the operations are already data:
     assertEquals(log.result(), List(Op.Val(1), Produce.Emit(2)))
 ```
 
+A row may not hold two signatures of ONE class. A split tells
+signatures apart by their class, so in `Ask[Int] + Ask[String]` the
+String ask would reach the Int handler and die of a ClassCastException
+at the first wrong answer. `Handler.union` (and `Into.union`,
+`IntoZ.union`) require `Distinct[F + G]`, which refuses such a row at
+compile time; the same part written twice, distinct classes and an
+abstract part in generic code all pass:
+
+```scala
+    val _ = implicitly[Distinct[State[Int] + Writer[String] + Reader[Int]]]
+    val _ = implicitly[Distinct[State[Int] + State[Int]]]
+```
+
+Where a test is finer than its class, `Distinct.unchecked` says so.
+
 ## 4. Handlers, in any order
 
 `State.handle(s)(p)` runs the State part of `p` and leaves a program

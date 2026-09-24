@@ -132,15 +132,16 @@ object Handler {
    * test and delegate — one handler per effect, one row. An explicit
    * combinator, not an implicit, as in the Scala 3 core.
    *
-   * NOT CHECKED HERE, and the Scala 3 core checks it with a macro
-   * (`Distinct[R]`): that no signature tested by class appears twice in
-   * the row. Two `State[_]` in one row misroute at the first wrong
-   * answer (a ClassCastException, loud), not silently.
+   * `Distinct[F + G]` refuses a row that holds two signatures of one
+   * class (`Ask[Int] + Ask[String]`), which the split below could not
+   * tell apart — checked at compile time, as the Scala 3 core does.
    */
-  def union[F <: Row, G <: Row](implicit T: TypeableK[F], hf: Handler[F], hg: Handler[G]): Handler[F + G] =
+  def union[F <: Row, G <: Row](implicit T: TypeableK[F], hf: Handler[F], hg: Handler[G], d: Distinct[F + G]): Handler[F + G] = {
+    val _ = d
     new Handler[F + G] {
       def handleOp[A](op: Any): A = if (T.test(op)) hf.handleOp[A](op) else hg.handleOp[A](op)
     }
+  }
 }
 
 /**
