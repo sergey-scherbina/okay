@@ -49,7 +49,8 @@ Contents:
 20. [Every error, and programs known before they run](#20-every-error-and-programs-known-before-they-run)
 21. [Transactions](#21-transactions)
 22. [Producers and generators](#22-producers-and-generators)
-23. [Literature](#23-literature)
+23. [Eager programs](#23-eager-programs)
+24. [Literature](#24-literature)
 
 ## 1. The build
 
@@ -1323,8 +1324,30 @@ a `Producer`, where each value is an operation:
     assertEquals(Produce.stream.iterator(fibs[Long, Producer]).take(10).toList, fibs[Long, LazyList].take(10).toList)
 ```
 
-## 23. Literature
+## 23. Eager programs
 
+A program can be written once over the tagless `Effects[M]` and run under
+either encoding: `Free`, the tree, or `Eager`, where a pure computation IS
+its value and a bind on it applies at construction (the trick kyo is built
+on). Opt in with `import Eager._`; `Eager.toFree` turns one into the other.
+
+```scala
+  def prog[M[_, _]](implicit E: Effects[M]): M[Produce, Int] =
+    E.flatMap(E.perform[Produce, Int](Emit(1)))(x => E.map(E.perform[Produce, Int](Emit(x + 1)))(y => x + y))
+    assertEquals(Effects[Eager.Rep].runWith(prog[Eager.Rep]), 3)
+    assertEquals(prog[Free].runWith, 3)
+```
+
+The price is kyo's too: building an eager program runs its pure part, so
+a self-referential one diverges before it is run, and a value that is
+itself a `Free` would be read as a program.
+
+## 24. Literature
+
+- Flavio Brasil, kyo (2023-): the eager `A | (A < S)` encoding that
+  `Eager` borrows. Jacques Carette, Oleg Kiselyov and Chung-chieh Shan,
+  "Finally tagless, partially evaluated" (JFP 2009): the tagless
+  interface `Effects[M]`.
 - Philip Wadler, "Monads for functional programming" (1995); Conor
   McBride and Ross Paterson, "Applicative programming with effects"
   (JFP 2008); Andrey Mokhov, Georgy Lukyanov, Simon Marlow and Jeremie

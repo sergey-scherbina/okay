@@ -7,12 +7,63 @@ import Free.{Return, Inject, Bind, Delay}
 import Split.split
 
 /**
+ * THE TAGLESS INTERFACE: what a carrier of effectful programs offers —
+ * `pure`, `perform`, `flatMap`, a deferred bind, and `foldCont`, the
+ * reflection of a program into `Cont` that gives every operation its
+ * meaning. Code written over `M: Effects` runs on any encoding: `Free`
+ * (the initial one, a tree to step and inspect) or `Eager` (a pure
+ * computation IS its value). The Scala 3 core's `trait Effects`, whose
+ * companion is the toolkit object below, as there.
+ */
+trait Effects[M[_, _]] {
+  def pure[F <: Row, A](a: A): M[F, A]
+  def perform[F <: Row, A](e: F#Op[A]): M[F, A]
+  /** a bind whose left side is deferred: forced only where the
+   * encoding's own interpreter reaches it, so mutually-recursive
+   * functions can call each other in tail position */
+  def defer[F <: Row, A, B](thunk: () => M[F, A])(f: A => M[F, B]): M[F, B]
+  /** mark a call as a tail call — the tagless `!.tailcall` */
+  def tailcall[F <: Row, A](thunk: => M[F, A]): M[F, A] = defer[F, A, A](() => thunk)(a => pure[F, A](a))
+  def flatMap[F <: Row, A, B](m: M[F, A])(f: A => M[F, B]): M[F, B]
+  def map[F <: Row, A, B](m: M[F, A])(f: A => B): M[F, B] = flatMap(m)((a: A) => pure[F, B](f(a)))
+  /** interpret the operations: reflect the computation into Cont */
+  def foldCont[F <: Row, A, S](m: M[F, A])(h: F !> S): A /> S
+  /** run every effect by a comonadic Handler; encodings may override
+   * with an equivalent fast path */
+  def runWith[F <: Row, A](m: M[F, A])(implicit H: Handler[F]): A = foldCont[F, A, A](m)(Interpr.of[F, A]) / identity
+}
+
+/**
  * The toolkit over Free: running, stepping, and the three
  * interpreters — the tail-resumptive `relay`, the row-rewriting
  * `translate`, and the Cont-valued `handle` (abort, multi-shot).
- * Aliased as `!` in the package object, as in the Scala 3 core.
+ * Aliased as `!` in the package object, as in the Scala 3 core. Also
+ * the companion of `trait Effects`, holding its `Free` instance.
  */
 object Effects {
+
+  def apply[M[_, _]](implicit E: Effects[M]): Effects[M] = E
+
+  /** the freer monad is the initial encoding: `Inject` a suspended
+   * shift, given its meaning by `foldCont` */
+  implicit val free: Effects[Free] = new Effects[Free] {
+    def pure[F <: Row, A](a: A): Free[F, A] = Return(a)
+    def perform[F <: Row, A](e: F#Op[A]): Free[F, A] = Inject[F, A](e)
+    def defer[F <: Row, A, B](thunk: () => Free[F, A])(f: A => Free[F, B]): Free[F, B] = Free.defer(thunk)(f)
+    def flatMap[F <: Row, A, B](m: Free[F, A])(f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
+    override def map[F <: Row, A, B](m: Free[F, A])(f: A => B): Free[F, B] = m.map(f)
+    def foldCont[F <: Row, A, S](m: Free[F, A])(h: F !> S): A /> S = foldContFree(m)(h)
+    override def runWith[F <: Row, A](m: Free[F, A])(implicit H: Handler[F]): A = runFree(m)
+  }
+
+  /** a program reflected into Cont: each operation by `h`, the rest of
+   * the program deferred into Cont's own trampoline */
+  def foldContFree[F <: Row, A, S](m: Free[F, A])(h: F !> S): A /> S = Free.resume(m) match {
+    case Return(a) => Cont.Pure[A, S](a)
+    case Inject(e) => h[A](Split.only[F, A](e))
+    case Bind(Inject(e), k) => Cont.bind(h[Any](Split.only[F, Any](e)))((x: Any) => Cont.delay(() => foldContFree(k(x))(h)))
+    case other => throw new IllegalStateException("resume left a non-head form: " + other)
+  }
 
   /**
    * `traverse`/`sequence`/`replicateA` AT PROGRAMS, where the generic

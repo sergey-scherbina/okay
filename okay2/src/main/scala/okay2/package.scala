@@ -91,6 +91,19 @@ package object okay2 extends Provides with Monads {
    * fast, fused, NOT stack-safe */
   type Func[A, S, R] = (A => S) => R
 
+  /** the eager encoding (see `EagerModule`): `Eager[F, A]` is abstract
+   * here, `import Eager._` brings its `Effects` instance */
+  val Eager: EagerModule = EagerImpl
+  type Eager[F, A] = Eager.Rep[F, A]
+
+  /** the tagless operations as methods, for a program at any encoding M
+   * (a member of the same name wins, so `Free`'s own are untouched) */
+  implicit final class EffectsSyntax[M[_, _], F <: Row, A](private val m: M[F, A]) extends AnyVal {
+    def flatMap[B](f: A => M[F, B])(implicit E: Effects[M]): M[F, B] = E.flatMap(m)(f)
+    def map[B](f: A => B)(implicit E: Effects[M]): M[F, B] = E.map(m)(f)
+    def runWith(implicit E: Effects[M], H: Handler[F]): A = E.runWith(m)
+  }
+
   /** a Loop: the body of an open-recursive function A => R whose
    * continuation is the recursive call (see `Generate`) */
   type Loop[A, R] = Cont[A, R, A => R]

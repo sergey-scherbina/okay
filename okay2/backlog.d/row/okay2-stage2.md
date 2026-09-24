@@ -15,8 +15,9 @@
       porting the main effects"): Refs and Prob LANDED (stage 12),
       Sim LANDED (stage 14), TRef/TMap/TDict/TList LANDED (stage 15),
       Validated/Static LANDED (stage 16), okay2-stm LANDED (stage 17), Produce/Producer/Generate LANDED (stage
-      18; Pull was already in since stage 1). Remaining: the rest of
-      Stream/Fold, Eager, HMap, Pull, Generate. Each stage mirrors the
+      18; Pull was already in since stage 1), Eager and the tagless
+      Effects[M] LANDED (stage 19). Remaining: the rest of
+      Stream/Fold, HMap. Each stage mirrors the
       Scala 3 suite for that file and lands with its docs section in
       docs/okay2.md. Rule from stage 1: a lone `Inject` is a Bind with a
       pure continuation, construct at the signature (widening is

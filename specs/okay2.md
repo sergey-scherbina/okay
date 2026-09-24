@@ -1275,6 +1275,38 @@ claim) and `sim` (under `Sim`, a scheduling point before every step);
 - Not ported: the core's `a(f: A Loop R)` extension (Scala 3 sugar) and
   `s.take(n)` on any stream (`toLazyList.take(n)` spells it).
 
+## Stage 19 — the tagless `Effects[M]`, and `Eager` (2026-09-24)
+- `trait Effects[M[_, _]]`: `pure`, `perform`, `defer`, `tailcall`,
+  `flatMap`, `map`, `foldCont` (a program reflected into `Cont`, each
+  operation by an interpreter), `runWith` — okay's tagless interface,
+  with `object Effects` (the toolkit) as its companion, as there.
+  `Effects.free` is the initial instance; `EffectsSyntax` gives any
+  `M[F, A]` with an instance `flatMap`/`map`/`runWith` as methods.
+- `Eager`: the kyo trick as the second instance. `Eager[F, A]` is
+  abstract outside `EagerModule` (Scala 2's opaque type, as `Cont` is)
+  and is `A | (A ! F)` inside: a pure bind applies at construction, an
+  operation is still an `Inject`. `import Eager._` opts in; `toFree`
+  normalizes.
+
+### Behavior (stage 19)
+- [x] one tagless program runs the same under `Eager` and `Free`, and
+      `foldCont` gives it the same meaning under both
+- [x] a pure chain of 1000 binds evaluates at construction under
+      `Eager` (the result IS the boxed value) and not until run under
+      `Free`
+- [x] `tailcall`: isEven/isOdd at 1 000 000 under `Eager`
+- [x] operations still suspend; `toFree` normalizes
+
+### Decisions
+- The union is told apart by the runtime class `Free` in ONE private
+  `fold`, the only cast in the module; a value that is itself a `Free`
+  would be misread — kyo's `Flat` rule, documented, not checked, as in
+  the core.
+- `Effects[M]` binds `F <: Row` on its methods rather than on `M`: the
+  trait's parameter is `M[_, _]`, so `Free` (unbounded R since stage 8)
+  and the module's abstract `Rep` are both instances without a
+  bounded-kind mismatch.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
