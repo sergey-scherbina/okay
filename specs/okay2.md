@@ -1640,6 +1640,45 @@ okay-workflow as `okay2-workflow`, on okay2's `Delim` dialogue (stage
   pins a chapter of the core's book. A body here is written as a
   for-comprehension where the core writes a `direct` block.
 
+## Stage 28 — the table layer: Bulk, Csv, Tables, Sort (2026-09-24)
+okay-stream's table layer, into `okay2-stream` as new files:
+- `Bulk[D]`, what a data platform can do with a collection too large to
+  be in one place, and `Bulk.local` over `Chunks` (deferred sources, a
+  hash join, `cache`, aggregation by an `Aggregator`'s fold).
+- `Csv`: `fields`, `line` (its inverse), `rows` with pruning at the
+  parser.
+- `Tables`, the effect whose operations build a first-order `Plan` on a
+  `Heap` threaded as State; `Plan.optimize` pushes a projection into
+  its `Read` and puts the smaller side of a join on the right;
+  `Tables.via`/`run` on any `Bulk`.
+- `Sort`, a signature `Bulk` does not have, answered through the
+  primitives by `Sort.viaTables`.
+
+### Behavior (stage 28)
+- [x] CSV fields, the inverse line, the header and the BOM; a local
+      source re-read per run and held by `cache`; the equi-join; the
+      same plan on the local platform equals the direct computation;
+      the handler sees each plan it forces; `Sort` through the
+      primitives (TestBulk, 8 tests)
+- [x] a projection meets its read, a function stays opaque, the small
+      side goes right and the answer is turned back, the turned join
+      answers what the written one does, columns prune what a read
+      builds (TestPlan, 5)
+
+### Decisions
+- Every operation and every plan node carries its translation as a
+  METHOD (`run`, `compile`, `optimize`) — the stage-27 rule: scalac 2
+  does not refine a method's type parameters from a constructor
+  pattern. The one cast left is the core's own, the heap keyed by slot
+  (`Heap.plan`/`heldAt`).
+- `Table` is the core's opaque `Int` as a value class, so its operations
+  are plain implicit classes (a value class cannot wrap another). The
+  program-level operations ask `R <: Tables`, which makes a program of
+  `Tables` alone a program of `R` by contravariance, where the core
+  asks row membership.
+- Not ported: the core's `!.tracing` over the plan (the handler's `log`
+  is the same view of it here).
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

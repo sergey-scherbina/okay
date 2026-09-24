@@ -57,7 +57,8 @@ Contents:
 28. [Optics](#28-optics)
 29. [Zippers](#29-zippers)
 30. [Durable workflows](#30-durable-workflows)
-31. [Literature](#31-literature)
+31. [Tables on any platform](#31-tables-on-any-platform)
+32. [Literature](#32-literature)
 
 ## 1. The build
 
@@ -1589,7 +1590,26 @@ Scala 2 difference: okay has `Proc.direct`, a Scala 3 macro that
 compiles a straight-line block into a term. Here a term is built from
 the arrow's combinators.
 
-## 31. Literature
+## 31. Tables on any platform
+
+`Bulk[D]` says what a data platform can do with a collection: read,
+project, join, expand, aggregate. A program written against it names no
+platform. `Tables` makes such a program a value. Its operations build a
+plan, and nothing runs until an action forces a table:
+
+```scala
+  def revenue(sales: Iterable[Sale], cities: Iterable[(Int, String)]): Map[String, Long] ! Tables =
+    Tables.of(sales).select(s => s.shop -> s.amount)
+      .join(Tables.of(cities))
+    assertEquals(Tables.run(localBulk)(revenue(sales, cities)), sales.groupMapReduce(s => city(s.shop))(_.amount)(_ + _))
+```
+
+When a table is forced, its whole lineage is one tree. The planner
+pushes a column projection into the file read and puts the smaller side
+of a join on the right. `Sort` is an operation `Bulk` does not have,
+added as a new signature. `Sort.viaTables` answers it on any platform.
+
+## 32. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
