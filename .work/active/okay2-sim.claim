@@ -1,6 +1,0 @@
-feature/okay2-sim 2026-09-24T12:42:37Z
-agent: claude-code
-heartbeat: 2026-09-24T12:42:37Z
-status: in-progress
-done-so-far: claimed
-next: okay2 Sim (deterministic concurrency simulation: fibers, virtual clock, SimChannel, deadlock outcome, fault plan) with the Scala 3 TestSim; spec stage 13, docs, changelog
