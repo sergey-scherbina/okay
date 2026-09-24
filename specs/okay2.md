@@ -1541,6 +1541,54 @@ type-changing `Poly`, `TypedZipper.focus`.
   from the expected `Affine` and picks `Strong` alone, then refuses its
   own choice.
 
+## Stage 26 — the interop on Async and Resource (2026-09-24)
+Backlog `okay2-interop-async`, operator: "Сделай пока okay2-interop-async".
+okay2-cats/-fs2/-zio predate okay2's `Async` (stage 4) and `Resource`
+(stage 6). (The spec entry is written with the code, not before it — a
+lapse of the spec-first rule, recorded rather than hidden.)
+
+- the Async bridge: `CatsInterop.toIOBlocking` (not `toIO`, which is
+  already the fold of an `Io` row — an overload is ambiguous at every
+  Async program) and `ZioInterop.toZIO` run a program under
+  `IO.blocking` / `attemptBlocking`; `fromIO`/`fromZIO` are an
+  `Async.await` on the other side's callback with ITS canceller, so a
+  timeout or a lost race cancels the IO/ZIO (the Scala 3 core parks a
+  virtual thread in `unsafeRunSync`, which cannot be cancelled from our
+  side); `scheduler` is okay2's `Scheduler` on their runtime.
+- scoped sources: `fromFs2(s, capacity)` runs the fs2 stream into a
+  bounded cats-effect `Queue` (their backpressure) under a `Resource`
+  whose release cancels the stream's fiber and waits for it;
+  `fromZStream` opens the stream's scope and `toPull` once under a
+  `Resource` whose release closes the scope. One chunk per operation.
+  The rows gain `Resource`: `Unit ! (Writer[W] + Io + Resource)`.
+- `Failing[Io]` (error or cancellation) and `Failing[Zio]` (any non-
+  success exit) in the rows' companions; in the core `Failing.both`
+  (explicit, split by F's test) and `Writer.failing` (a tell cannot
+  fail), so a scope over `Writer + Io` — what streaming a scoped source
+  back out needs — resolves.
+
+- [x] toIOBlocking/toZIO run an Async program; fromIO/fromZIO answer in
+      one (TestCatsAsync, TestZioAsync)
+- [x] fromIO/fromZIO are cancelled when the waiting side times out
+- [x] a failing IO fails the Async program with its error
+- [x] scheduler: `Async.par` on the cats-effect and ZIO runtimes
+- [x] fromFs2/fromZStream: lazy, collected; stopping early runs the
+      stream's finalizer when the scope ends, and the fs2 queue bounds
+      how far the stream ran ahead; a failing fs2 stream fails the
+      program and releases (TestFs2Scoped, TestZioAsync)
+- [x] round trip through `Resource.run(...)(Failing.both[Writer, Io/Zio])`
+- [x] MUTANTS: a no-op release in each source turns its early-stop test
+      red ("the stream's finalizer did not run", "the stream's scope
+      stayed open")
+
+### Found while building it
+- The first `fromFs2` pulled `uncons1` and `compile`d each step: every
+  step closed the stream's scope, so a stream holding a resource would
+  have had it released under the tail still being read. Measured only
+  by reading; the scoped version's test is the guard now.
+- `Resource.run` over `Writer + Io` had no instance: `Failing` has no
+  rule over `with` (it would diverge), so the combinator is explicit.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
