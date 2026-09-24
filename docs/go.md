@@ -68,6 +68,45 @@ func total(sku string, qty int64) okay.Program[float64] {
   SET of operations cannot be in its type. Haskell's and TypeScript's
   can ([where each language names okay's effects](jvm-languages.md#where-each-language-names-okays-effects)).
 
+## Direct style: `c.Call(name, args) -> answer`
+
+Programs as data are what MULTI-SHOT needs. Most code wants less: to call
+an effect in the middle of an ordinary Go function and get the answer.
+That is the direct style, okay's `okay_call(request) -> answer`. A
+`Functions` entry receives a `*okay.Ctx`, and `c.Call` (or `okay.CallOp`,
+typed by a generated operation) runs the Scala callback under the
+caller's handlers and returns its answer:
+
+```go
+func quote(c *okay.Ctx, args []any) any {
+	price, err := okay.CallOp(c, shop.PriceOf(args[0].(string)))
+	if err != nil {
+		panic(err)
+	}
+	total, err := okay.CallOp(c, shop.Discount(price*float64(args[1].(int64))))
+	if err != nil {
+		panic(err)
+	}
+	return total
+}
+```
+
+It is served next to the programs with
+`okay.Main(programs, okay.Functions{"quote": quote})`, and Scala calls it as
+it calls a Python function:
+`Foreign.fn[Double]("quote").calling(Foreign.callbacks(priceOf, discount))("tea", 3L)`.
+
+- **How it crosses the wire.** It is the wire's callback dialogue, the
+  one Python's `okay.call` speaks: the host `start`s the function, the
+  worker `ask`s for each `c.Call`, and the host `resume`s it with the
+  answer. The function runs on a goroutine, and `Worker.Handle` stays one
+  line in, one line out, so this works over pipes and TCP alike.
+- **Errors.** A callback that fails in okay comes back as an `error`
+  (`*okay.OkayError`, with its condition's kind and message). A callback
+  the call was not offered is an error too.
+- **Direct style or programs.** A direct call is answered ONCE. Where a
+  handler resumes twice (`Choice`), write a `Program`.
+
 ## From Scala, over a pipe or a socket
 
 `GoWorker.build(dir)` writes the `okay` package into `dir` (and a `go.mod`

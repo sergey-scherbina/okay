@@ -146,3 +146,16 @@ when, and the conformance suite covers both forms.
     on), and it passes over (Go, pipes) and (Go, TCP).
   - Mutant: a worker dropping continuations after one use fails
     multi-shot on BOTH links.
+
+- Direct style for Go (go-direct, 2026-09-24).
+  - `okay.Functions` holds direct-style functions `func(c *Ctx, args []any) any`.
+    `c.Call(name, args...) (any, error)` and `okay.CallOp(c, op)` are
+    `okay_call`.
+  - The worker runs a started function on a goroutine and turns each
+    Call into an `ask`, which a `resume` answers. `Handle` stays one line
+    in, one line out, so pipes and TCP both carry it.
+  - The conformance suite's direct case (`quote`: two `okay_call`s under
+    the caller's Reader) passes over (Go, pipes) and (Go, TCP).
+  - Mutant: a parked call filed under the wrong k fails the direct case.
+    A first mutant that did not compile ("k declared and not used") was
+    no evidence and is not counted.
