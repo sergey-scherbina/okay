@@ -25,6 +25,7 @@ object Gcp extends Target:
   def render(d: Deployment): Either[String, Vector[(String, String)]] =
     val noRegion = d.services.filter(_.region.isEmpty).map(_.name)
     val volumes = d.services.filter(_.volumes.nonEmpty).map(_.name)
+    val peers = d.services.filter(_.peers).map(_.name)
     if noRegion.nonEmpty then
       Left(s"gcp needs a region for ${noRegion.mkString(", ")} and no target can invent one — " +
         "add Need.Region(\"europe-west1\") (or wherever your users are)")
@@ -33,6 +34,10 @@ object Gcp extends Target:
         "the bucket it can mount is object storage through gcsfuse, with no atomic rename and no " +
         "locking, and okay-persist's log needs both. Use the `cluster` target on GKE, which has real " +
         "persistent disks, or point the service at a database instead of a directory")
+    else if peers.nonEmpty then
+      Left(s"${peers.mkString(", ")} needs to reach its own replicas one by one and Cloud Run gives a " +
+        "service one address behind its own load balancer, scaling to zero besides — use the `cluster` " +
+        "target on GKE, which has real per-pod addressing")
     else d.ordered.map { services =>
       Vector(
         "main.tf" -> Aws.align(main(d, services)),

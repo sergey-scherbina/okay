@@ -149,6 +149,35 @@ class TestClouds extends munit.FunSuite:
     assertEquals(Azure.kvName("_leading/and.trailing_"), "leading-and-trailing")
   }
 
+  // ---- Need.Peers: aws renders, gcp and azure refuse -----------------
+
+  private def withPeers: Deployment =
+    shop.copy(services = Vector(web.copy(needs = web.needs :+ Need.Peers)))
+
+  test("Need.Peers: aws renders a Cloud Map service, gcp and azure REFUSE") {
+    // aws: a Cloud Map namespace + service, MULTIVALUE A records --
+    // every task's own IP, not a load balancer's one address
+    val main = files(Aws, withPeers)("main.tf")
+    assert(main.contains("aws_service_discovery_private_dns_namespace"), main)
+    val w = files(Aws, withPeers)("web.tf")
+    assert(w.contains("aws_service_discovery_service"), w)
+    assert(w.contains("routing_policy = \"MULTIVALUE\""), w)
+    assert(w.contains("service_registries"), w)
+    assert(w.contains("OKAY_POOL_SERVICE"), w)
+    // gcp: refused -- Cloud Run is one address behind its own balancer
+    Gcp.render(withPeers) match
+      case Right(_) => fail("Cloud Run has no per-instance address to render")
+      case Left(why) =>
+        assert(why.contains("web"), why)
+        assert(why.contains("cluster"), why)
+    // azure: refused, for the identical reason
+    Azure.render(withPeers) match
+      case Right(_) => fail("a Container Apps revision has no per-replica address to render")
+      case Left(why) =>
+        assert(why.contains("web"), why)
+        assert(why.contains("cluster"), why)
+  }
+
   // ---- the shape -----------------------------------------------------
 
   test("all three clouds name their tools, apply through terraform, and are in Targets.all") {

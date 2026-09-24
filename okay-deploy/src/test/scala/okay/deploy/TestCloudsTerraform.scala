@@ -95,6 +95,15 @@ class TestCloudsTerraform extends munit.FunSuite:
     }
   }
 
+  test("Need.Peers: the Cloud Map rendering validates against AWS's own schema") {
+    val pooled = shop.copy(services = Vector(web.copy(needs = web.needs :+ Need.Peers), worker))
+    initialised(pooled) { dir =>
+      val out = terraform(dir, "validate")
+      assert(out.ok, s"terraform validate rejected the Cloud Map rendering:\n${out.text}")
+      assert(terraform(dir, "fmt", "-check", "-diff").ok, "terraform fmt would reformat it")
+    }
+  }
+
   test("terraform fmt agrees with what we wrote — a generated file people read should not look generated") {
     initialised(shop) { dir =>
       val out = terraform(dir, "fmt", "-check", "-diff")

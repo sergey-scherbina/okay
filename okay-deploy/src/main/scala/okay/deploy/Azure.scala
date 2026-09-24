@@ -22,9 +22,14 @@ object Azure extends Target:
 
   def render(d: Deployment): Either[String, Vector[(String, String)]] =
     val noRegion = d.services.filter(_.region.isEmpty).map(_.name)
+    val peers = d.services.filter(_.peers).map(_.name)
     if noRegion.nonEmpty then
       Left(s"azure needs a location for ${noRegion.mkString(", ")} and no target can invent one — " +
         "add Need.Region(\"westeurope\") (or wherever your users are)")
+    else if peers.nonEmpty then
+      Left(s"${peers.mkString(", ")} needs to reach its own replicas one by one and a Container Apps " +
+        "revision is one address behind its own ingress, with no per-replica one — use the `cluster` " +
+        "target, which has real per-pod addressing")
     else d.ordered.map { services =>
       Vector(
         "main.tf" -> Aws.align(main(d, services)),

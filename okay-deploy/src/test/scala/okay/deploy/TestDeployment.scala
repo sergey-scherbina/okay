@@ -103,6 +103,38 @@ class TestDeployment extends munit.FunSuite:
     assert(files("uninstall.sh").contains("were kept"), files("uninstall.sh"))
   }
 
+  test("Need.Peers on laptop: compose's own DNS, a bare container port so replicas don't collide") {
+    val pooled = Service("pool", Run.Image("okay/pool", "1"),
+      needs = Vector(Need.Port(7100), Need.Peers), scale = Scale(3))
+    val files = Deployment.files(Deployment("p", Vector(pooled)), Targets.Laptop).fold(m => fail(m), identity).toMap
+    val compose = files("compose.yaml")
+    assert(compose.contains("    deploy:\n      replicas: 3\n"), compose)
+    // a fixed host:container mapping cannot be bound by 3 replicas at once
+    assert(compose.contains("      - \"7100\"\n"), compose)
+    assert(!compose.contains("\"7100:7100\""), compose)
+    assert(compose.contains("OKAY_POOL_SERVICE: \"pool\""), compose)
+  }
+
+  test("no Need.Peers, no replicas: laptop still publishes a fixed host port") {
+    val plain = Service("web2", Run.Image("nginx", "alpine"), needs = Vector(Need.Port(80)))
+    val files = Deployment.files(Deployment("p", Vector(plain)), Targets.Laptop).fold(m => fail(m), identity).toMap
+    assert(files("compose.yaml").contains(""""80:80""""), files("compose.yaml"))
+  }
+
+  test("Need.Peers on host: N units, N env files, OKAY_POOL_INSTANCE, a template for the peer list") {
+    val pooled = Service("pool", Run.Module("okayPool", "okay-pool", "okay.pool.Pool"),
+      needs = Vector(Need.Peers), scale = Scale(3))
+    val files = Deployment.files(Deployment("p", Vector(pooled)), Targets.Host).fold(m => fail(m), identity).toMap
+    for i <- 1 to 3 do
+      assert(files.contains(s"pool-$i.service"), files.keys.toString)
+      assert(files(s"pool-$i.service").contains(s"WorkingDirectory=/opt/p/pool-$i"), files(s"pool-$i.service"))
+      val env = files(s"pool-$i.env")
+      assert(env.contains(s"OKAY_POOL_INSTANCE=$i"), env)
+      assert(env.contains("OKAY_POOL_PEERS="), env)
+    assert(files("install.sh").contains("systemctl enable --now pool-1.service"), files("install.sh"))
+    assert(files("install.sh").contains("systemctl enable --now pool-3.service"), files("install.sh"))
+  }
+
   test("host REFUSES a database by name -- installing someone's Postgres is not a renderer's business") {
     val out = Deployment.files(one, Targets.Host)
     assert(out.left.exists(m => m.contains("Postgres") && m.contains("does not install one")), out.toString)

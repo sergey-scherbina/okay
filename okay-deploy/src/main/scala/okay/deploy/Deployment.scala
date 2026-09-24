@@ -75,6 +75,10 @@ final case class Service(
   def dns: Vector[String] = needs.collect { case Need.Dns(h) => h }
   def region: Option[String] = needs.collectFirst { case Need.Region(r) => r }
   def tls: Option[TlsMode] = needs.collectFirst { case Need.Tls(m) => m }
+  /** this service must reach its OWN replicas one by one — a pool
+   * (specs/cluster-pool.md). A target answers with per-replica
+   * addressing or refuses by name. */
+  def peers: Boolean = needs.contains(Need.Peers)
   /** the one port a target exposes when it must pick one */
   def mainPort: Option[Int] = ports.find(_.public).map(_.number).orElse(ports.headOption.map(_.number))
 
@@ -106,6 +110,11 @@ enum Need:
    * invent an answer (specs/deployment.md, stage 2) */
   case Region(name: String)
   case Port(number: Int, public: Boolean = true)
+  /** this service must reach its OWN replicas one by one — a pool
+   * (specs/cluster-pool.md, stage 2). A target with no per-replica
+   * addressing REFUSES this by name rather than rendering something
+   * that answers only one member. */
+  case Peers
 
 enum Engine:
   case Postgres, Redis, Mongo, Kafka

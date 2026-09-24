@@ -375,13 +375,18 @@ and Dataproc are `yarn`.
   equal to a plain in-process run; a resume after a killed fiber,
   `Live`-tagged for the same reason `TestFederation`'s two-process
   suite is.
-- **2 — `Need.Peers` and the `cluster` target, on kind.** The headless
-  Service, `OKAY_POOL_SERVICE`, `dns` discovery inside a pod, and the
-  stage-12 harness at last: N pods, a submission, `kubectl delete pod`
-  of a member and of the coordinator, `kubectl scale` between epochs.
-  `Live` and docker-dependent (kind). `laptop` and `host` in the same
-  stage because they are a line each and the compose one is the
-  fastest harness of all.
+- **2 — `Need.Peers`, the model rendering.** LANDED (see Results): the
+  headless Service on `cluster` (`helm lint`/`helm template`, real,
+  `TestClusterHelm`), `deploy.replicas` + compose's own DNS on
+  `laptop`, N systemd units on `host`, a Cloud Map service on `aws`
+  (`terraform validate`, real, `TestCloudsTerraform`), `<app>.internal`
+  on `fly`, and named refusals on `gcp`/`azure`/`render`/`railway`.
+  What did NOT land here, filed separately as `cluster-pool-kind-harness`:
+  the stage-12 pod-level proof itself — N real pods, a submission,
+  `kubectl delete pod` of a member and of the coordinator, `kubectl
+  scale` between epochs — because it needs an actual `okay-pool`
+  container image and a full deploy, a distinct piece of work from
+  rendering the manifests that would carry it.
 - **3 — the other managers, as renderings.** `nomad`, `yarn`,
   `slurm`, `swarm`, `batch`: each a pure renderer, each gated by a
   real parser or validator for its format (`nomad job validate` where
@@ -454,14 +459,24 @@ Stage 1 — LANDED (see Results):
 - [x] `Pool.run` with `store = ""` (the in-memory default) and more
       than one configured peer refuses to start (exit 3), naming why
 
-Stage 2:
-- [ ] `Need.Peers` renders on `cluster` a headless Service beside the
+Stage 2 — model rendering LANDED (see Results); the kind harness below
+is `cluster-pool-kind-harness`, filed separately:
+- [x] `Need.Peers` renders on `cluster` a headless Service beside the
       Deployment, `publishNotReadyAddresses` absent (ready pods only),
       `OKAY_POOL_SERVICE` set to its name; `helm lint` accepts it
-- [ ] on `laptop`, `deploy.replicas` and the service name as
-      `OKAY_POOL_SERVICE`; on `host`, N units and the list rendered
-      into the `EnvironmentFile`
-- [ ] `gcp`, `azure`, `render`, `railway` refuse `Need.Peers` by name,
+      (`TestClusterHelm`, real helm, `Live`)
+- [x] on `laptop`, `deploy.replicas` and a bare container port (a fixed
+      host port cannot be bound by more than one replica) with
+      `OKAY_POOL_SERVICE` set to the service's own name; on `host`, N
+      units (`<service>-1.service`..`<service>-N.service`) each its own
+      env file with `OKAY_POOL_INSTANCE` and a peer-list TEMPLATE (this
+      model has no per-instance port field, so a guessed address is
+      refused in favour of one the operator fills in)
+- [x] on `aws`, a Cloud Map private DNS namespace and a
+      `MULTIVALUE`-routed service (`terraform validate`, real,
+      `TestCloudsTerraform`, `Live`); on `fly`, `OKAY_POOL_SERVICE` set
+      to `<app>.internal`, its own private networking
+- [x] `gcp`, `azure`, `render`, `railway` refuse `Need.Peers` by name,
       each naming the nearest target that works
 - [ ] on kind (Live): N pods answer a submission with the batch value;
       `kubectl delete pod` of a member mid-run leaves the answer equal;
@@ -628,3 +643,58 @@ is in the stage-1 gate, and both are cheap additions whenever a
 reader asks for them); the `okay pool` CLI (the routes exist, a thin
 CLI over them is a small follow-up, not scoped here); mTLS and the
 capability door (stage 4, unchanged).
+
+## Results, stage 2
+
+**cluster-pool-targets (2026-09-24), the model half.** `Need.Peers` in
+specs/deployment.md's closed enum, `Service.peers`, and a rendering on
+every existing target: the headless Service on `cluster`, replicas +
+a bare container port on `laptop`, N units on `host`, a Cloud Map
+service on `aws`, `<app>.internal` on `fly`, named refusals on
+`gcp`/`azure`/`render`/`railway`.
+
+Two things the writing found that the table, as first drafted, glossed
+over:
+
+- **A fixed host port cannot be bound by more than one replica.**
+  `laptop`'s existing renderer always published `"port:port"`; scaling
+  a peers service to N replicas would have every one of them fail to
+  bind the same host port. The fix is the SAME thing docker compose
+  itself recommends for scaling: publish the bare container port
+  (`"port"`) and let each replica take a random free host one — a
+  detail the table's one-line description ("compose's DNS answers
+  every replica") did not mention because it is about DISCOVERY, not
+  about the PUBLISH step that has to change to make N replicas
+  possible on one machine at all.
+- **`host` has no per-instance port field, and inventing one would be
+  a guess.** `Need.Port` names a firewall/publish concern the same way
+  on every target; on a real host running N units of the SAME
+  application, each needs its OWN port, and nothing in this model
+  says which. Rather than synthesize one (which would be exactly the
+  "quietly wrong" this model refuses everywhere else — `host` already
+  REFUSES a database for the identical reason), the rendered env file
+  carries `OKAY_POOL_INSTANCE` and a `OKAY_POOL_PEERS=` TEMPLATE the
+  operator fills in with the ports they actually chose. A guessed
+  address that happens to be wrong is worse than an empty line that is
+  visibly not filled in yet.
+
+Gated with REAL tools, not golden files, matching this arc's own
+established bar: `helm lint`/`helm template` accept the headless
+Service (`TestClusterHelm`, extended rather than duplicated — the
+shared `web` fixture already had `scale = Scale(3)`, so adding
+`Need.Peers` to it exercises the real thing with no new fixture to
+keep in sync); `terraform validate` against the AWS provider's own
+schema accepts the Cloud Map rendering (`TestCloudsTerraform`, a
+`kind`-suite `web` clone rather than the shared one, because the
+shared `web` also feeds `gcp`/`azure`'s tests and those two now REFUSE
+`Need.Peers`).
+
+**Not built at this landing, filed separately as
+`cluster-pool-kind-harness`:** the actual stage-12 pod-level proof —
+real pods on `kind`, a submission, `kubectl delete pod` of a member
+and of the coordinator, `kubectl scale` between epochs. This needs a
+real `okay-pool` container image and a full `helm install` onto a live
+cluster, which is a materially different piece of work from rendering
+the manifests that would carry it — the same distinction
+specs/deploy.md's own history draws between "the jar the Dockerfile's
+build stage produces" and "the Docker image itself, proven live."

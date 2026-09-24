@@ -1020,6 +1020,24 @@ persuasive and the differences matter:
   managers argument-pinned only, because no machine here has an
   account.
 
+### `Need.Peers` (2026-09-24, for specs/cluster-pool.md)
+
+The enum's growth after this spec's own stages closed, and the SAME
+brake applied: a `Need` like the others, and every target answers with
+either a rendering or a named refusal, never silence. A service marks
+itself with it when it must reach its OWN replicas one by one — a
+pool, not a cluster of unrelated services — and a target answers with
+whatever per-replica addressing it actually has: a headless Service on
+`cluster`, `<app>.internal` on `fly`, a Cloud Map service on `aws`, N
+systemd units on `host` (no per-instance PORT field exists on this
+model, so the rendered peer list is a template the operator fills in
+rather than a guess), `deploy.replicas` and a bare container port on
+`laptop` (a fixed host port cannot be bound by more than one replica).
+`gcp`, `azure`, `render` and `railway` refuse it by name: each gives a
+service one address behind its own load balancer, with nothing behind
+it a per-replica lookup could resolve. Full account in
+specs/cluster-pool.md, stage 2.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of

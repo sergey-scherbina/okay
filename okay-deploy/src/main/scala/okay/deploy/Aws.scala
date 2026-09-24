@@ -143,6 +143,15 @@ object Aws extends Target:
                 |  subnet_ids = data.aws_subnets.default.ids
                 |}
                 |""".stripMargin
+    // one Cloud Map namespace for the whole deployment; every peers
+    // service gets its own service inside it (specs/cluster-pool.md)
+    if services.exists(_.peers) then
+      sb ++= s"""
+                |resource "aws_service_discovery_private_dns_namespace" "this" {
+                |  name = ${str(s"${d.name}.local")}
+                |  vpc  = data.aws_vpc.default.id
+                |}
+                |""".stripMargin
     sb.result()
 
   private def serviceTf(d: Deployment, s: Service): String =
@@ -329,7 +338,8 @@ object Aws extends Target:
       sb ++= "    portMappings = [\n"
       for p <- s.ports do sb ++= s"      { containerPort = ${p.number}, protocol = \"tcp\" },\n"
       sb ++= "    ]\n"
-    val env = s.settings.env ++ databaseEnv(s, r)
+    val env = s.settings.env ++ databaseEnv(s, r) ++
+      (if s.peers then Vector("OKAY_POOL_SERVICE" -> s"$n.${d.name}.local") else Vector.empty)
     if env.nonEmpty then
       sb ++= "    environment = [\n"
       for (k, v) <- env do sb ++= s"      { name = ${str(k)}, value = ${str(v)} },\n"
@@ -369,6 +379,12 @@ object Aws extends Target:
               |    assign_public_ip = true
               |  }
               |""".stripMargin
+    if s.peers then
+      sb ++= s"""
+                |  service_registries {
+                |    registry_arn = aws_service_discovery_service.$r.arn
+                |  }
+                |""".stripMargin
     val public = s.ports.find(_.public)
     public.foreach { p =>
       sb ++= s"""
@@ -382,6 +398,27 @@ object Aws extends Target:
                 |""".stripMargin
     }
     sb ++= "}\n"
+
+    if s.peers then
+      sb ++= s"""
+                |# a Cloud Map service inside the deployment's one namespace --
+                |# `$n.${d.name}.local` answers every task's IP directly, MULTIVALUE
+                |# (not a load balancer), which is what OKAY_POOL_SERVICE needs
+                |resource "aws_service_discovery_service" ${str(r)} {
+                |  name = ${str(n)}
+                |
+                |  dns_config {
+                |    namespace_id = aws_service_discovery_private_dns_namespace.this.id
+                |
+                |    dns_records {
+                |      type = "A"
+                |      ttl  = 10
+                |    }
+                |
+                |    routing_policy = "MULTIVALUE"
+                |  }
+                |}
+                |""".stripMargin
 
     // ---- the load balancer, when anything is public
     public.foreach { p =>

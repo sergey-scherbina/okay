@@ -202,3 +202,24 @@ class TestCluster extends munit.FunSuite:
     assert(sh.contains("reads no secrets"), sh)
     assert(!sh.contains("kubectl create secret"), sh)
   }
+
+  test("Need.Peers: a headless Service, ready pods only, and OKAY_POOL_SERVICE") {
+    val pooled = Deployment("pool", Vector(Service("pool", Run.Image("okay/pool", "1"),
+      needs = Vector(Need.Port(7100), Need.Peers), scale = Scale(3))))
+    val f = files(pooled)
+    val svc = f("templates/pool-headless.yaml")
+    assert(svc.contains("kind: Service"), svc)
+    assert(svc.contains("clusterIP: None"), svc)
+    // ready pods only: the field that would publish a not-yet-ready
+    // pod's address is simply absent, never set to false-by-accident
+    assert(!svc.contains("publishNotReadyAddresses"), svc)
+    assert(svc.contains("name: {{ .Release.Name }}-pool-headless"), svc)
+    val dep = f("templates/pool-deployment.yaml")
+    assert(dep.contains("name: OKAY_POOL_SERVICE"), dep)
+    assert(dep.contains("""value: "{{ .Release.Name }}-pool-headless""""), dep)
+  }
+
+  test("a service with no Need.Peers gets no headless Service and no OKAY_POOL_SERVICE") {
+    assert(!files().contains("templates/web-headless.yaml"))
+    assert(!files()("templates/web-deployment.yaml").contains("OKAY_POOL_SERVICE"))
+  }

@@ -31,7 +31,7 @@ class TestClusterHelm extends munit.FunSuite:
       Need.Port(8080), Need.Volume("/app/data"),
       Need.Database(Engine.Postgres, "16", "shop"),
       Need.Cache(Engine.Redis, "7"),
-      Need.Dns("shop.example.com"), Need.Tls(TlsMode.Acme)),
+      Need.Dns("shop.example.com"), Need.Tls(TlsMode.Acme), Need.Peers),
     scale = Scale(3))
 
   private val worker = Service(
@@ -79,6 +79,10 @@ class TestClusterHelm extends munit.FunSuite:
       assert(y.contains("cert-manager.io/cluster-issuer: letsencrypt-prod"), y)
       // and nothing rendered a Secret
       assert(!y.contains("kind: Secret"), y)
+      // the headless Service a pool's peers resolve, and its env
+      assert(y.contains("name: shop-web-headless"), y)
+      assert(y.contains("clusterIP: None"), y)
+      assert(y.contains("value: \"shop-web-headless\""), y)
     }
   }
 

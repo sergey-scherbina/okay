@@ -101,6 +101,12 @@ class TestPaas extends munit.FunSuite:
     assertEquals(sh.linesIterator.count(_.startsWith("flyctl deploy")), 2, sh)
   }
 
+  test("Need.Peers: fly's own private networking answers, per app") {
+    val d = shop.copy(services = Vector(web.copy(needs = web.needs :+ Need.Peers), worker))
+    val f = files(Paas.Fly, d)("web/fly.toml")
+    assert(f.contains("""OKAY_POOL_SERVICE = "shop-web.internal""""), f)
+  }
+
   // ---- render -------------------------------------------------------
 
   test("render takes the whole system in one Blueprint, databases included") {
@@ -140,6 +146,15 @@ class TestPaas extends munit.FunSuite:
     assertEquals(Paas.Render.requires(shop), Vector.empty)
   }
 
+  test("render REFUSES Need.Peers: one web service is one address behind Render's own balancer") {
+    val d = shop.copy(services = Vector(web.copy(needs = web.needs :+ Need.Peers)))
+    Paas.Render.render(d) match
+      case Right(_) => fail("Render has no per-instance address to render")
+      case Left(why) =>
+        assert(why.contains("web"), why)
+        assert(why.contains("cluster"), why)
+  }
+
   // ---- railway ------------------------------------------------------
 
   test("railway.json is JSON this build can read back, with the schema named") {
@@ -170,6 +185,15 @@ class TestPaas extends munit.FunSuite:
     assert(setup.contains("--set 'OKAY_PAGES=/app/pages'"), setup)
     assert(setup.contains("ADMIN_TOKEN=${ADMIN_TOKEN:?"), setup)
     assert(setup.contains("Volumes"), setup)
+  }
+
+  test("railway REFUSES Need.Peers: one service is one address behind its own balancer") {
+    val d = shop.copy(services = Vector(web.copy(needs = web.needs :+ Need.Peers)))
+    Paas.Railway.render(d) match
+      case Right(_) => fail("Railway has no per-instance address to render")
+      case Left(why) =>
+        assert(why.contains("web"), why)
+        assert(why.contains("cluster"), why)
   }
 
   // ---- all three ----------------------------------------------------
