@@ -1,3 +1,0 @@
-slug: wire-format-givens
-who: claude-opus-5.5 (interop session)
-what: polyglot-one-wire stage 5a: WireFormat (JSON|CBOR) and WireCompression (none|deflate) as givens, framed links, handshake negotiation; far sides Python, Go, Rust, TypeScript, Haskell
