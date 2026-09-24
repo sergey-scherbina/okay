@@ -58,7 +58,9 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   but the core itself written a second time: the freer tree, rows as
   kind-`*` types, handlers in any order by a type-level witness,
   `Cont`, State/Writer/Throws/Reader, with nothing of Scala 3 on the
-  classpath; what is different from Scala 3 and why, each measured.
+  classpath; interop with cats, fs2 and zio by interpreting the tree
+  in the target monad; what is different from Scala 3 and why, each
+  measured.
 - **[okay from Scala 2.13](scala2.md)** — for a codebase still on
   Scala 2: the build (two standard libraries, and in which order),
   `Prog` and `Eff` (several effects in one program, the row as an

@@ -24,7 +24,8 @@ Contents:
 6. [Continuations](#6-continuations)
 7. [Interpreting one effect into others](#7-interpreting-one-effect-into-others)
 8. [What is different from Scala 3, and why](#8-what-is-different-from-scala-3-and-why)
-9. [Literature](#9-literature)
+9. [Interop: cats, fs2, zio](#9-interop-cats-fs2-zio)
+10. [Literature](#10-literature)
 
 ## 1. The build
 
@@ -284,7 +285,116 @@ Each of these was measured before it was decided (specs/okay2.md):
   the split, and misroute loudly at the first wrong answer, as the
   Scala 3 core did before its macro.
 
-## 9. Literature
+## 9. Interop: cats, fs2, zio
+
+Three modules beside the core in the `okay2/` build: `okay2-cats`,
+`okay2-fs2`, `okay2-zio` (kyo publishes for Scala 3 only, so there is
+no `okay2-kyo`). The shape is the freer-monad one: a program is a
+tree, and interop is interpreting that tree in the target monad — an
+`Into[R, M]` says what each operation of the row means in `M`, a
+union's is composed from its parts, and `foldTo` walks the tree
+stack-safely. Every snippet is a line of the modules' tests.
+
+**cats.** A program row is a `Monad`, and a row with `Throws[E]` at
+its head a `MonadError` — `import okay2.cats.instances._`:
+
+```scala
+    type Prog[A] = A ! Produce
+    val M = Monad[Prog]
+    val p: Prog[Int] = M.flatMap(M.pure(1))(x => produce(x + 1))
+    assertEquals(p.runWith, 2)
+```
+
+```scala
+    type Row = Throws[String] + Produce
+    type Prog[A] = A ! Row
+    val E = MonadError[Prog, String]
+    val failed: Prog[Int] = E.raiseError[Int]("no")
+    val mended: Prog[Int] = E.handleErrorWith(failed)(e => produce(e.length).at[Row])
+```
+
+The `Io` row's operations ARE `IO` values: `Io.lift` puts one in a
+program, `Io.run` folds a program into one `IO` once every other
+effect has been handled:
+
+```scala
+    type Row = State[Int] + Io
+    val p: Int ! Row = for {
+      n <- State.get[Int].at[Row]
+      m <- Io.lift(IO(n * 2)).at[Row]
+      _ <- State.set(m).at[Row]
+      k <- Io.lift(IO.pure(1)).at[Row]
+    } yield m + k
+    val io: IO[(Int, Int)] = Io.run(State.handle(21)(p))
+    assertEquals(io.unsafeRunSync(), (42, 43))
+```
+
+Any monad, by an `Into` of your own — here Option:
+
+```scala
+    val intoOption: Into[Produce, Option] = new Into[Produce, Option] {
+      def apply[X](e: Produce.Emit[X]): Option[X] = Some(e.a)
+    }
+    assertEquals(foldTo[Option, Int, Produce](p)(intoOption), Some(3))
+```
+
+**fs2.** A Writer program IS a stream. `toFs2` reads it as one, the
+other effects run between the elements, lazily — `take(1)` runs
+nothing past the first element:
+
+```scala
+    type Row = Writer[String] + Io
+    var side = List.empty[String]
+    val p: Unit ! Row = for {
+      _ <- Writer.tell("a").at[Row]
+      _ <- Io.lift(IO { side ::= "io" }).at[Row]
+      _ <- Writer.tell("b").at[Row]
+    } yield ()
+    val s: Stream[IO, String] = toFs2[IO, String, Unit, Row, Io](p)
+    assertEquals(side, Nil) // building the stream ran nothing
+    assertEquals(s.compile.toList.unsafeRunSync(), List("a", "b"))
+    assertEquals(side, List("io"))
+```
+
+And an IO stream as a Writer program, one element pulled per `Io`
+operation:
+
+```scala
+    val s: Stream[IO, Int] = Stream.range(1, 6).evalMap(i => IO { pulled += 1; i })
+    val p: Unit ! (Writer[Int] + Io) = fromFs2(s)
+    assertEquals(pulled, 0)
+    val collected: IO[(Seq[Int], Unit)] = Io.run(Writer.run[Int, Unit, Writer[Int] + Io](p))
+    assertEquals(collected.unsafeRunSync()._1, Seq(1, 2, 3, 4, 5))
+    assertEquals(pulled, 5)
+```
+
+**zio.** The same three: the `Zio` row (`Task` as an operation),
+`foldTo` into a ZIO with an environment and an error type of your
+choosing, a Writer program as a `ZStream`:
+
+```scala
+    type Row = State[Int] + Zio
+    val p: Int ! Row = for {
+      n <- State.get[Int].at[Row]
+      m <- Zio.lift(ZIO.attempt(n * 2)).at[Row]
+      _ <- State.set(m).at[Row]
+    } yield m + 1
+    val z: Task[(Int, Int)] = Zio.run(State.handle(21)(p))
+    assertEquals(run(z), (42, 43))
+```
+
+```scala
+    val s: ZStream[Any, Throwable, String] = toZStream[Any, Throwable, String, Unit, Row, Zio](p)
+```
+
+What the Scala 3 core's interop has and this does not yet: an `Async`
+program run under `IO.blocking`, and chunked streams — okay2 has
+neither effect yet (backlog `okay2-stage2`). `fromZStream` collects
+the stream in one operation: a pull that survives across a program's
+operations is a scoped resource, and that is the Resource effect's
+job when it comes.
+
+## 10. Literature
 
 - Oleg Kiselyov and Hiromi Ishii, "Freer Monads, More Extensible
   Effects" (Haskell Symposium 2015) — the tree, the relay handler,

@@ -15,13 +15,57 @@
  *
  * `-Werror` because the gate's warning check reads Scala 3's
  * `[warn] -- [Exxx]` format and would not see a Scala 2 warning.
+ *
+ * The interop modules (okay2-interop, 2026-09-24) live beside the core
+ * in this build: cats-effect, fs2 and zio all publish for 2.13. kyo
+ * does not (Scala 3 only), so there is no okay2-kyo.
  */
 ThisBuild / organization := "dev.okay"
 ThisBuild / scalaVersion := "2.13.18"
 
-lazy val okay2 = (project in file("."))
+lazy val common = Seq(
+  scalacOptions := Seq("-deprecation", "-feature", "-Xlint", "-Werror", "-language:higherKinds"),
+  libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+)
+
+lazy val okay2: Project = (project in file("."))
+  .aggregate(okay2Cats, okay2Fs2, okay2Zio)
+  .settings(name := "okay2", common)
+
+/** cats: `Monad`/`MonadError` for programs, a fold into any monad, the
+ * `Io` row (an operation IS an `IO`), `cats.free.Free` both ways */
+lazy val okay2Cats: Project = (project in file("okay2-cats"))
+  // by NAME: the root aggregates this project and this project depends
+  // on the root, and two lazy vals naming each other overflow at load
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
   .settings(
-    name := "okay2",
-    scalacOptions := Seq("-deprecation", "-feature", "-Xlint", "-Werror", "-language:higherKinds"),
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    name := "okay2-cats",
+    common,
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-effect" % "3.5.7",
+      "org.typelevel" %% "cats-free" % "2.12.0",
+    ),
+  )
+
+/** fs2: a Writer program IS a stream, and a stream is a Writer program */
+lazy val okay2Fs2: Project = (project in file("okay2-fs2"))
+  .dependsOn(okay2Cats % "compile->compile;test->test")
+  .settings(
+    name := "okay2-fs2",
+    common,
+    libraryDependencies += "co.fs2" %% "fs2-core" % "3.10.2",
+  )
+
+/** zio: the `Zio` row, a fold into any ZIO, a Writer program as a ZStream */
+lazy val okay2Zio: Project = (project in file("okay2-zio"))
+  // by NAME: the root aggregates this project and this project depends
+  // on the root, and two lazy vals naming each other overflow at load
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test")
+  .settings(
+    name := "okay2-zio",
+    common,
+    libraryDependencies ++= Seq(
+      "dev.zio" %% "zio" % "2.1.14",
+      "dev.zio" %% "zio-streams" % "2.1.14",
+    ),
   )

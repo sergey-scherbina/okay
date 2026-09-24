@@ -194,6 +194,70 @@ package object carries `!`, `pure`, `effect`, `Cont`, `/>`, `^`,
   (`okay2-bench`).
 - Scala.js / Scala Native cross-build: nothing here is JVM-specific.
 
+## Stage 2 — interop: cats, fs2, zio (DONE 2026-09-24)
+The operator's order (2026-09-24): the interop modules before the rest
+of the core, and kyo too — but kyo publishes for Scala 3 only, so
+there is no `okay2-kyo`. Three subprojects INSIDE the okay2 build
+(`okay2/build.sbt`; the interop projects name the root by
+`LocalProject("okay2")`, because a root that aggregates a project that
+depends on the root is a lazy-val cycle scalac overflows on at load):
+
+- `okay2-cats` (`okay2.cats`): `Into[R, M]`, the natural
+  transformation from a row's operations into M, composed along `+`
+  by the F test as `Handler.union` is; `CatsInterop.foldTo` interprets
+  a program into any cats `Monad` through `tailRecM` (stack-safe
+  wherever M's `tailRecM` is); the `Io` row, whose operations ARE
+  `IO` values (`type Op[+A] = IO[A]`, tested by the class `IO`), with
+  `Io.lift` and `Io.run`; `toCats`/`fromCats` over `cats.free.Free`;
+  and `okay2.cats.instances._`: every program row a `StackSafeMonad`,
+  a row with `Throws[E]` at its head a `MonadError` (more specific,
+  so a `Monad` query for such a row finds it — measured: cats'
+  `handleError` syntax reaches it).
+- `okay2-fs2` (`okay2.fs2`): a Writer program as an `fs2.Stream[F, W]`
+  (`toFs2`, the residual row run in F by an `Into`; lazy `++` and
+  `flatMap`, so a million tells cost no stack and `take(1)` runs
+  nothing past the first element — asserted), and an
+  `fs2.Stream[IO, W]` as a Writer program that pulls ONE element per
+  `Io` operation (`fromFs2`, by `uncons1` compiled to its first step).
+- `okay2-zio` (`okay2.zio`): `IntoZ[R, Rz, E]` with an environment and
+  an error type; `foldTo` into any ZIO (the walk inside `flatMap`);
+  the `Zio` row (`Op[+A] = Task[A]`); a Writer program as a `ZStream`
+  by `unfoldZIO`, one told value per step; `fromZStream` by
+  `runCollect` — a pull that survives across a program's operations
+  is a scoped resource, which needs the Resource effect (stage 3).
+
+Where the Scala 3 core's interop runs an `Async` program under
+`IO.blocking`/`attemptBlocking` and moves `Chunks`, okay2 has neither
+yet: the shape here is the freer-monad one — the tree interpreted in
+the target monad, nothing blocked, elements one at a time.
+
+### Behavior (stage 2)
+- [x] a program row is a cats `Monad`; `tailRecM` through it, 1M
+- [x] `Throws[E] + F` is a `MonadError`: raiseError, handleErrorWith,
+      cats' `handleError` syntax
+- [x] `foldTo` into Option, Either and IO; 1M operations into Option
+- [x] the `Io` row beside State (State handled first, the rest one
+      IO); beside Produce by a union `Into`; an IO's effect happens
+      when the IO runs, not when the tree is built
+- [x] `cats.free.Free` both ways, 100k round trip
+- [x] a Writer program as a pure fs2 stream and as an IO stream with
+      the IO between the elements; `take(1)` runs nothing past it;
+      another effect run by its own Into; 1M tells
+- [x] an IO stream as a Writer program, one pull per element (counted);
+      round trip
+- [x] the `Zio` row beside State; `foldTo` with an environment
+      (a service in the environment answers an effect); 1M operations;
+      a Writer program as a ZStream (side effects between elements,
+      `take(1)`); 100k tells; a ZStream as a program, round trip
+
+Two scalac-2 traps more: a dependent implicit (`h: Into[rm.Out, F]`)
+cannot sit in the same implicit section as `rm` — Scala 2 has one
+implicit section — so `toFs2`/`toZStream` take the residual as a type
+parameter through `Remove.Aux`; and a `MonadError` instance for a
+row alias needs the instance in lexical scope (`import
+okay2.cats.instances._`), since this module cannot reach the core's
+`Free` companion.
+
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -202,3 +266,6 @@ package object carries `!`, `pure`, `effect`, `Cont`, `/>`, `^`,
   2026-09-24 as `cd okay2 && ../scripts/gate.sh test` (its own build;
   the first cut was a root project `okay2/test`, and the operator moved
   it out the same day).
+- Stage 2: 78 test results (59 + 19 interop), 12 suites, GREEN
+  2026-09-24, same gate; every interop suite passed on its first full
+  run after the two traps above were paid at compile time.
