@@ -34,3 +34,7 @@
       shift_i/reset_i hierarchy (the "layered effects" tool), with
       proofs in Twelf, and introduces `e1 $ e2` (push a function as a
       context), close to our `push`.
+      PROMOTED 2026-09-24 (operator: "shift0 and $ must be researched
+      here and done properly"): stage 2 of specs/shift0-dollar.md.
+      AFTER shift0-dollar-probe and delim-dollar, so `dollar` is stacked
+      in the same lane. The trigger no longer applies.

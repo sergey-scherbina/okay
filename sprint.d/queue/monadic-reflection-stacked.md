@@ -19,3 +19,8 @@
       CPS), not monadic reflection. It does not apply here. TRIGGER: a
       consumer that wants two foreign monads in one direct block.
       Source: biernacki-literature, 2026-09-24.
+      PROMOTED 2026-09-24 (operator): specs/layered-reflection.md is
+      the plan. Its stage 0 runs on TODAY's unstacked `Delim` (native
+      multi-prompt is enough, per Brachthäuser, Boruch-Gruszecki &
+      Odersky 2020), so it does NOT wait for stacked-shift0. Stages 1-2
+      do. The trigger no longer applies.
