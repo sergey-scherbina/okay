@@ -103,6 +103,69 @@ object WireCompression:
         out.toByteArray
       finally i.end()
 
+/**
+ * Who may speak on the wire (polyglot-one-wire stage 5b, wire-auth): a
+ * MUTUAL HMAC-SHA256 challenge at the handshake. Each side proves it holds
+ * the secret without sending it. The secret comes from the source the given
+ * names, read when a worker is opened:
+ *
+ * {{{
+ * given WireAuth = WireAuth.fromEnv("OKAY_WIRE_SECRET")
+ * given WireAuth = WireAuth.fromFile(Path.of("/run/secrets/okay"))
+ * }}}
+ *
+ * No given means no authentication, as before. It does not encrypt, and a
+ * relay in the middle can pass the handshake through: TLS is the layer for
+ * that, and the two compose.
+ */
+sealed trait WireAuth:
+  /** where the secret comes from, for a refusal to name */
+  def source: String
+
+object WireAuth:
+  /** the default: no authentication */
+  given none: WireAuth = Off
+
+  case object Off extends WireAuth:
+    def source = "no given WireAuth"
+
+  /** a secret, read when a worker is opened; a source that has none fails
+   * THEN, by name, rather than authenticating with an empty key */
+  final class Hmac private[WireAuth] (val source: String, read: () => Array[Byte]) extends WireAuth:
+    def key(): Array[Byte] =
+      val k = read()
+      if k.isEmpty then throw IllegalStateException(s"the wire secret from $source is empty")
+      k
+
+  def secret(bytes: Array[Byte]): WireAuth = Hmac("a secret in the program", () => bytes.clone())
+
+  def fromEnv(name: String): WireAuth = Hmac(s"the environment variable $name", () =>
+    sys.env.get(name).map(_.getBytes(UTF_8))
+      .getOrElse(throw IllegalStateException(s"the wire secret's environment variable $name is not set")))
+
+  /** the file's bytes, a trailing newline dropped (what `echo` and editors add) */
+  def fromFile(path: java.nio.file.Path): WireAuth = Hmac(s"the file $path", () =>
+    val b = java.nio.file.Files.readAllBytes(path)
+    val end = b.lastIndexWhere(c => c != '\n' && c != '\r') + 1
+    b.take(end))
+
+  /** HMAC-SHA256 of `message` under `key`, as lower-case hex */
+  def mac(key: Array[Byte], message: String): String =
+    val m = javax.crypto.Mac.getInstance("HmacSHA256")
+    m.init(javax.crypto.spec.SecretKeySpec(key, "HmacSHA256"))
+    m.doFinal(message.getBytes(UTF_8)).map(b => f"${b & 0xff}%02x").mkString
+
+  /** 16 random bytes, hex */
+  def nonce(): String =
+    val b = new Array[Byte](16)
+    java.security.SecureRandom().nextBytes(b)
+    b.map(x => f"${x & 0xff}%02x").mkString
+
+  /** equal in constant time: a mac compared byte by byte leaks, through
+   * timing, how much of a guess was right */
+  def same(a: String, b: String): Boolean =
+    java.security.MessageDigest.isEqual(a.getBytes(UTF_8), b.getBytes(UTF_8))
+
 /** a wire line, read STRICTLY (see `whole`) */
 object WireJson:
   /**
@@ -223,6 +286,50 @@ object WireNegotiation:
       Left(s"$name speaks the compressions ${compressions.distinct.mkString(", ")}; this host's given WireCompression is ${chosen.name}")
     else if format.name == "json" && chosen.name == "none" then Right(None)
     else Right(Some((format, chosen)))
+
+  /**
+   * The auth step (wire-auth), before any configure: what the hello
+   * announced against the given in scope. `roundTrip` sends one JSON line and
+   * reads the answer. Right(()) when both sides are content; Left names the
+   * refusal.
+   */
+  def authenticate(hello: Json, name: String, roundTrip: String => Option[Json])
+                  (using auth: WireAuth): Either[String, Unit] =
+    enum Announced:
+      case Nothing
+      case Hmac(serverNonce: String)
+      case Other(scheme: String)
+    val announced = hello match
+      case Json.JObj(fs) => fs.toMap.get("auth") match
+        case Some(Json.JObj(a)) =>
+          val m = a.toMap
+          (m.get("scheme"), m.get("nonce")) match
+            case (Some(Json.JStr("hmac-sha256")), Some(Json.JStr(ns))) => Announced.Hmac(ns)
+            case (Some(Json.JStr(other)), _) => Announced.Other(other)
+            case _ => Announced.Other("an unreadable auth announcement")
+        case _ => Announced.Nothing
+      case _ => Announced.Nothing
+    (announced, auth) match
+      case (Announced.Nothing, WireAuth.Off) => Right(())
+      case (Announced.Other(scheme), _) =>
+        Left(s"$name asks for authentication by $scheme; this host speaks hmac-sha256")
+      case (Announced.Hmac(_), WireAuth.Off) =>
+        Left(s"$name requires hmac-sha256 authentication; this host has no given WireAuth")
+      case (Announced.Nothing, h: WireAuth.Hmac) =>
+        Left(s"this host's given WireAuth (from ${h.source}) requires $name to authenticate; it announced none")
+      case (Announced.Hmac(ns), h: WireAuth.Hmac) =>
+        val key = h.key()
+        val nc = WireAuth.nonce()
+        val ask = Json.print(Json.JObj(Vector("op" -> Json.JStr("auth"), "nonce" -> Json.JStr(nc),
+          "mac" -> Json.JStr(WireAuth.mac(key, s"okay-wire client|$ns|$nc")))))
+        roundTrip(ask) match
+          case None => Left(s"$name closed the wire during authentication")
+          case Some(Json.JObj(fs)) => fs.toMap.get("ok") match
+            case Some(Json.JObj(ok)) => ok.toMap.get("mac") match
+              case Some(Json.JStr(m)) if WireAuth.same(m, WireAuth.mac(key, s"okay-wire server|$ns|$nc")) => Right(())
+              case _ => Left(s"$name answered with a mac that does not prove the secret from ${h.source}: refused")
+            case _ => Left(s"$name refused this host's authentication (the secret from ${h.source}): ${Json.print(Json.JObj(fs))}")
+          case Some(other) => Left(s"$name answered the authentication with ${Json.print(other)}")
 
   /** the one JSON line that asks the far side to switch */
   def configure(format: WireFormat, compression: WireCompression): String =

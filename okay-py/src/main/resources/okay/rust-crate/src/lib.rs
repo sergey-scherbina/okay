@@ -325,6 +325,60 @@ pub struct Worker {
     next: i64,
     waiting: HashMap<i64, Parked>,
     asks: i64,
+    // stage 5b (wire-auth): a worker with a secret answers nothing but an
+    // auth until the host has proved it holds the same secret
+    secret: Option<Vec<u8>>,
+    nonce: String,
+    authed: bool,
+    closing: bool, // a refused auth: the connection ends after its answer
+}
+
+/// HMAC-SHA256 (RFC 2104) of `message` under `key`, as lower-case hex
+fn mac_hex(key: &[u8], message: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut k = [0u8; 64];
+    if key.len() > 64 {
+        k[..32].copy_from_slice(&Sha256::digest(key));
+    } else {
+        k[..key.len()].copy_from_slice(key);
+    }
+    let (mut ipad, mut opad) = ([0x36u8; 64], [0x5cu8; 64]);
+    for i in 0..64 {
+        ipad[i] ^= k[i];
+        opad[i] ^= k[i];
+    }
+    let inner = Sha256::new().chain_update(ipad).chain_update(message.as_bytes()).finalize();
+    let outer = Sha256::new().chain_update(opad).chain_update(inner).finalize();
+    outer.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// equal in constant time: a byte-by-byte compare leaks how much of a guess was right
+fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// the wire secret a TCP server authenticates with: OKAY_WIRE_SECRET, or the
+/// contents of the file OKAY_WIRE_SECRET_FILE names (a trailing newline
+/// dropped); None when neither is set
+pub fn secret_from_env() -> Result<Option<Vec<u8>>, String> {
+    if let Ok(s) = std::env::var("OKAY_WIRE_SECRET") {
+        if !s.is_empty() {
+            return Ok(Some(s.into_bytes()));
+        }
+    }
+    if let Ok(f) = std::env::var("OKAY_WIRE_SECRET_FILE") {
+        if !f.is_empty() {
+            let mut b = std::fs::read(&f).map_err(|e| format!("the wire secret's file {}: {}", f, e))?;
+            while matches!(b.last(), Some(b'\n') | Some(b'\r')) {
+                b.pop();
+            }
+            if b.is_empty() {
+                return Err(format!("the wire secret's file {} is empty", f));
+            }
+            return Ok(Some(b));
+        }
+    }
+    Ok(None)
 }
 
 fn panic_message(p: Box<dyn std::any::Any + Send>) -> String {
@@ -343,7 +397,46 @@ fn condition(id: &J, kind: &str, message: &str) -> J {
 
 impl Worker {
     pub fn new(programs: Programs, functions: Functions) -> Worker {
-        Worker { format: "json", compress: "none", programs, functions, konts: HashMap::new(), next: 0, waiting: HashMap::new(), asks: 0 }
+        Worker { format: "json", compress: "none", programs, functions, konts: HashMap::new(), next: 0, waiting: HashMap::new(), asks: 0,
+                 secret: None, nonce: String::new(), authed: false, closing: false }
+    }
+
+    /// a worker that answers only after a mutual HMAC-SHA256 challenge
+    pub fn with_secret(mut self, secret: Option<Vec<u8>>) -> Worker {
+        self.secret = secret;
+        self
+    }
+
+    /// this worker's handshake line: `hello`'s, plus, for a worker with a
+    /// secret, the challenge its host must answer (stage 5b)
+    pub fn hello_line(&mut self) -> String {
+        if self.secret.is_none() {
+            return Worker::hello();
+        }
+        let mut b = [0u8; 16];
+        std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b))
+            .expect("okay: no randomness for the auth nonce (/dev/urandom)");
+        self.nonce = b.iter().map(|x| format!("{:02x}", x)).collect();
+        json!({"shim": SHIM_VERSION, "python": "rust",
+               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"]},
+               "auth": {"scheme": "hmac-sha256", "nonce": self.nonce}}).to_string()
+    }
+
+    /// a request while the host has not yet proved the secret: an auth,
+    /// checked in constant time, or a refusal
+    fn authenticate(&mut self, id: &J, req: &Map<String, J>) -> J {
+        let secret = self.secret.clone().unwrap_or_default();
+        if req.get("op").and_then(|o| o.as_str()) != Some("auth") {
+            return condition(id, "PermissionError", "this worker requires hmac-sha256 authentication first");
+        }
+        let nc = req.get("nonce").and_then(|x| x.as_str()).unwrap_or("");
+        let mac = req.get("mac").and_then(|x| x.as_str()).unwrap_or("");
+        if nc.is_empty() || !same(mac, &mac_hex(&secret, &format!("okay-wire client|{}|{}", self.nonce, nc))) {
+            self.closing = true;
+            return condition(id, "PermissionError", "authentication refused: the mac does not prove this worker's secret");
+        }
+        self.authed = true;
+        json!({"id": id, "ok": {"mac": mac_hex(&secret, &format!("okay-wire server|{}|{}", self.nonce, nc))}})
     }
 
     /// the handshake line a worker speaks first
@@ -383,6 +476,9 @@ impl Worker {
     }
 
     fn answer(&mut self, id: J, req: &Map<String, J>) -> J {
+        if self.secret.is_some() && !self.authed {
+            return self.authenticate(&id, req);
+        }
         let run = req.get("run").and_then(|r| r.as_i64()).unwrap_or(0);
         let args: Vec<Value> = req.get("args").and_then(|a| a.as_array()).map(|a| a.iter().map(dec).collect()).unwrap_or_default();
         match req.get("op").and_then(|o| o.as_str()) {
@@ -673,7 +769,7 @@ fn cbor_decode(b: &[u8]) -> Result<(J, &[u8]), String> {
 // ------------------------------------------------------------------ transports
 
 fn serve_lines(mut w: Worker, mut input: impl BufRead, mut output: impl Write) {
-    let _ = writeln!(output, "{}", Worker::hello());
+    let _ = writeln!(output, "{}", w.hello_line());
     let _ = output.flush();
     loop {
         if w.framed() {
@@ -690,6 +786,9 @@ fn serve_lines(mut w: Worker, mut input: impl BufRead, mut output: impl Write) {
             let _ = output.write_all(&(reply.len() as u32).to_be_bytes());
             let _ = output.write_all(&reply);
             let _ = output.flush();
+            if w.closing {
+                return;
+            }
             continue;
         }
         let mut line = String::new();
@@ -702,6 +801,9 @@ fn serve_lines(mut w: Worker, mut input: impl BufRead, mut output: impl Write) {
         }
         let _ = writeln!(output, "{}", w.handle(line.trim_end()));
         let _ = output.flush();
+        if w.closing {
+            return;
+        }
     }
 }
 
@@ -713,18 +815,22 @@ pub fn serve_stdio(make: fn() -> Worker) {
 
 /// serve on a socket: another process, another machine. Each connection gets
 /// a Worker of its own (made by `make`, on the connection's thread), and once
-/// bound this prints {"listening": "host:port"} on stdout. PLAIN TCP,
-/// unauthenticated: a trusted network, or TLS or SSH in front of it.
+/// bound this prints {"listening": "host:port"} on stdout. With
+/// OKAY_WIRE_SECRET (or OKAY_WIRE_SECRET_FILE) set, every connection must
+/// pass a mutual HMAC-SHA256 challenge before anything else (stage 5b);
+/// without TLS the traffic after it is still plain TCP.
 pub fn serve_tcp(addr: &str, make: fn() -> Worker) -> std::io::Result<()> {
+    let secret = secret_from_env().map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     let listener = std::net::TcpListener::bind(addr)?;
     println!("{}", json!({"listening": listener.local_addr()?.to_string()}));
     std::io::stdout().flush()?;
     for stream in listener.incoming() {
         let stream = stream?;
+        let secret = secret.clone();
         std::thread::spawn(move || {
             let _ = stream.set_nodelay(true);
             let reader = BufReader::new(match stream.try_clone() { Ok(s) => s, Err(_) => return });
-            serve_lines(make(), reader, stream);
+            serve_lines(make().with_secret(secret), reader, stream);
         });
     }
     Ok(())

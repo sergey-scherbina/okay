@@ -18,9 +18,12 @@ object GoWorkerBinary:
    * and the process (to stop) */
   @volatile var lastPort: Int = 0
 
-  def serveTcp(): (ForeignWorker, Process) =
+  /** the binary serving TCP on a port it chooses, with `env` added (a
+   * secret): answers the port and the process (to stop) */
+  def listen(env: Map[String, String] = Map.empty): (Int, Process) =
     val pb = ProcessBuilder(binary.toString)
     pb.environment().put("OKAY_LISTEN", "127.0.0.1:0")
+    env.foreach((k, v) => pb.environment().put(k, v))
     val p = pb.start()
     val first = java.io.BufferedReader(java.io.InputStreamReader(p.getInputStream, "UTF-8")).readLine()
     val port = okay.codec.Json.parse(first) match
@@ -29,9 +32,13 @@ object GoWorkerBinary:
     port match
       case Some(port) =>
         lastPort = port
-        val engine = ForeignWorker.connect("127.0.0.1", port)
-        (engine, p)
+        (port, p)
       case None => p.destroy(); throw IllegalStateException(s"the Go worker did not say where it listens: $first")
+
+  def serveTcp(): (ForeignWorker, Process) =
+    val (port, p) = listen()
+    val engine = ForeignWorker.connect("127.0.0.1", port)
+    (engine, p)
 
 /** (Go, pipes) */
 class TestGoPipes extends WireConformance:
@@ -67,3 +74,50 @@ class TestGoTcpCbor extends WireConformance:
     (ForeignWorker.connect("127.0.0.1", port), p)
   lazy val engine: ForeignWorker = served._1
   override def afterAll(): Unit = if GoWorkerBinary.available then { served._1.close(); served._2.destroy() }
+
+/** (Go, TCP) behind a SECRET (wire-auth): the whole suite after a mutual
+ * HMAC-SHA256 challenge, and each way the challenge refuses */
+class TestGoTcpAuth extends WireConformance:
+  import okay.codec.WireAuth
+  given WireAuth = WireAuth.secret("tea for two".getBytes)
+  override def munitIgnore: Boolean = !GoWorkerBinary.available
+  private lazy val served = GoWorkerBinary.listen(Map("OKAY_WIRE_SECRET" -> "tea for two"))
+  lazy val engine: ForeignWorker = ForeignWorker.connect("127.0.0.1", served._1)
+  override def afterAll(): Unit = if GoWorkerBinary.available then { engine.close(); served._2.destroy() }
+
+  private def refusal(auth: WireAuth, port: Int = served._1): String =
+    intercept[IllegalStateException](ForeignWorker.connect("127.0.0.1", port)(using summon[WireFormat], summon[WireCompression], auth)).getMessage
+
+  test("a wrong secret is refused by the server, which closes the connection") {
+    val e = refusal(WireAuth.secret("tea for one".getBytes))
+    assert(e.contains("refused this host's authentication"), e)
+    assert(e.contains("authentication refused"), e)
+  }
+
+  test("a host with no given WireAuth is refused by name before it sends anything") {
+    val e = refusal(WireAuth.Off)
+    assert(e.contains("requires hmac-sha256 authentication; this host has no given WireAuth"), e)
+  }
+
+  test("a request before the auth is answered with a refusal, not served") {
+    val s = java.net.Socket("127.0.0.1", served._1)
+    try
+      val in = java.io.BufferedReader(java.io.InputStreamReader(s.getInputStream, "UTF-8"))
+      val out = s.getOutputStream
+      assert(in.readLine().contains("hmac-sha256"))
+      out.write("{\"id\":1,\"op\":\"program\",\"run\":1,\"fn\":\"pairs\",\"args\":[]}\n".getBytes("UTF-8"))
+      out.flush()
+      val answer = in.readLine()
+      assert(answer.contains("PermissionError") && !answer.contains("perform"), answer)
+    finally s.close()
+  }
+
+  test("a host whose given demands a secret refuses a server that announced none") {
+    val (port, p) = GoWorkerBinary.listen()
+    try
+      val e = refusal(WireAuth.secret("tea for two".getBytes), port)
+      assert(e.contains("requires the worker at 127.0.0.1:"), e)
+      assert(e.contains("it announced none"), e)
+    finally p.destroy()
+  }
+

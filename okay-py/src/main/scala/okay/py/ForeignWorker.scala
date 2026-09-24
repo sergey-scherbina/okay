@@ -176,7 +176,7 @@ object ForeignWorker:
    * through `Py.program` exactly as Python's do, multi-shot included.
    */
   def speaking(command: Seq[String], env: Map[String, String] = Map.empty)
-              (using WireFormat, WireCompression): ForeignWorker =
+              (using WireFormat, WireCompression, okay.codec.WireAuth): ForeignWorker =
     startCommand(command.toVector, command.headOption.getOrElse("?"), env)
 
   /**
@@ -186,7 +186,7 @@ object ForeignWorker:
    * callbacks and multi-shot, the same `Durable`.
    */
   def over(link: WireLink, name: String = "the worker")
-          (using format: WireFormat, compression: WireCompression): ForeignWorker =
+          (using format: WireFormat, compression: WireCompression, auth: okay.codec.WireAuth): ForeignWorker =
     val hello = link.hello().getOrElse {
       link.close()
       throw IllegalStateException(s"$name answered nothing (stderr may know)")
@@ -201,6 +201,12 @@ object ForeignWorker:
       link.close()
       throw IllegalStateException(
         s"shim/host version drift: $name says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
+    // stage 5b: who may speak, before what the wire looks like
+    okay.codec.WireNegotiation.authenticate(whole(hello), name, line => link.roundTrip(line).map(whole))
+      .left.foreach { why =>
+        link.close()
+        throw IllegalStateException(why)
+      }
     new ForeignWorker(link, pyV, configure(link, name, whole(hello)))
 
   /** stage 5's handshake (`okay.codec.WireNegotiation`): what the givens
@@ -222,11 +228,11 @@ object ForeignWorker:
 
   /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
    * another process, or another machine — plain TCP, see `WireLink.tcp` */
-  def connect(host: String, port: Int)(using WireFormat, WireCompression): ForeignWorker =
+  def connect(host: String, port: Int)(using WireFormat, WireCompression, okay.codec.WireAuth): ForeignWorker =
     over(WireLink.tcp(host, port), s"the worker at $host:$port")
 
   private def startCommand(cmd: Vector[String], python: String, env: Map[String, String])
-                          (using WireFormat, WireCompression): ForeignWorker =
+                          (using WireFormat, WireCompression, okay.codec.WireAuth): ForeignWorker =
     val pb = ProcessBuilder(cmd*)
     pb.environment().clear()             // the clean-env rule: nothing leaks
     env.foreach((k, v) => pb.environment().put(k, v))

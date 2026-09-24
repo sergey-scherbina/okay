@@ -16,10 +16,14 @@ import (
 	"bufio"
 	"bytes"
 	"compress/flate"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
-	"io"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"net"
@@ -401,6 +405,12 @@ type Worker struct {
 	next      int64
 	waiting   map[int64]*Ctx // direct-style calls parked in an ask, by k
 	asks      int64
+	// stage 5b (wire-auth): a worker with a secret answers nothing but an
+	// auth until the host has proved it holds the same secret
+	secret  []byte
+	nonce   string
+	authed  bool
+	closing bool // a refused auth: the connection ends after its answer
 }
 
 // NewWorker serves programs and, optionally, direct-style functions.
@@ -430,10 +440,68 @@ func (w *Worker) await(c *Ctx) map[string]any {
 
 // Hello is the handshake line a worker speaks first. It announces the
 // formats and compressions this worker can be configured to (stage 5a).
-func Hello() string {
-	b, _ := json.Marshal(map[string]any{"shim": ShimVersion, "python": "go",
-		"speaks": map[string]any{"format": []any{"json", "cbor"}, "compress": []any{"deflate"}}})
+func Hello() string { return NewWorker(nil).Hello() }
+
+// Hello is this worker's handshake line: Hello's, plus, for a worker with a
+// secret, the challenge its host must answer (stage 5b).
+func (w *Worker) Hello() string {
+	h := map[string]any{"shim": ShimVersion, "python": "go",
+		"speaks": map[string]any{"format": []any{"json", "cbor"}, "compress": []any{"deflate"}}}
+	if w.secret != nil {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			panic("okay: no randomness for the auth nonce: " + err.Error())
+		}
+		w.nonce = hex.EncodeToString(b[:])
+		h["auth"] = map[string]any{"scheme": "hmac-sha256", "nonce": w.nonce}
+	}
+	b, _ := json.Marshal(h)
 	return string(b)
+}
+
+// macHex is HMAC-SHA256 of message under key, as lower-case hex.
+func macHex(key []byte, message string) string {
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte(message))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+// SecretFromEnv is the wire secret a TCP server authenticates with:
+// OKAY_WIRE_SECRET, or the contents of the file OKAY_WIRE_SECRET_FILE names
+// (a trailing newline dropped). nil when neither is set: no authentication.
+func SecretFromEnv() ([]byte, error) {
+	if s := os.Getenv("OKAY_WIRE_SECRET"); s != "" {
+		return []byte(s), nil
+	}
+	if f := os.Getenv("OKAY_WIRE_SECRET_FILE"); f != "" {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return nil, fmt.Errorf("the wire secret's file %s: %w", f, err)
+		}
+		b = bytes.TrimRight(b, "\r\n")
+		if len(b) == 0 {
+			return nil, fmt.Errorf("the wire secret's file %s is empty", f)
+		}
+		return b, nil
+	}
+	return nil, nil
+}
+
+// authenticate answers a request while the host has not yet proved the
+// secret: an auth, checked in constant time, or a refusal.
+func (w *Worker) authenticate(id any, req map[string]any) map[string]any {
+	if req["op"] != "auth" {
+		return condition(id, "PermissionError", "this worker requires hmac-sha256 authentication first")
+	}
+	nc, _ := req["nonce"].(string)
+	mac, _ := req["mac"].(string)
+	want := macHex(w.secret, "okay-wire client|"+w.nonce+"|"+nc)
+	if nc == "" || !hmac.Equal([]byte(mac), []byte(want)) {
+		w.closing = true
+		return condition(id, "PermissionError", "authentication refused: the mac does not prove this worker's secret")
+	}
+	w.authed = true
+	return map[string]any{"id": id, "ok": map[string]any{"mac": macHex(w.secret, "okay-wire server|"+w.nonce+"|"+nc)}}
 }
 
 // Framed: after a configure other than the defaults, the wire carries
@@ -465,6 +533,9 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 			reply = condition(id, "GoError", fmt.Sprint(r))
 		}
 	}()
+	if w.secret != nil && !w.authed {
+		return w.authenticate(id, req)
+	}
 	run, _ := req["run"].(int64)
 	switch req["op"] {
 	case "program":
@@ -825,7 +896,7 @@ func halfFloat(h uint16) float64 {
 // serveLines speaks the wire over one stream pair: JSON lines until a
 // configure asks for more, frames after it (stage 5a).
 func serveLines(w *Worker, in *bufio.Reader, out *bufio.Writer) {
-	out.WriteString(Hello())
+	out.WriteString(w.Hello())
 	out.WriteByte('\n')
 	out.Flush()
 	for {
@@ -844,6 +915,9 @@ func serveLines(w *Worker, in *bufio.Reader, out *bufio.Writer) {
 			out.Write(m[:])
 			out.Write(reply)
 			out.Flush()
+			if w.closing {
+				return
+			}
 			continue
 		}
 		line, err := in.ReadString('\n')
@@ -851,6 +925,9 @@ func serveLines(w *Worker, in *bufio.Reader, out *bufio.Writer) {
 			out.WriteString(w.Handle(line))
 			out.WriteByte('\n')
 			out.Flush()
+			if w.closing {
+				return
+			}
 		}
 		if err != nil {
 			return
@@ -866,9 +943,15 @@ func Serve(programs Programs, functions ...Functions) {
 // ServeTCP serves the wire on a socket: another process, another machine.
 // Each connection gets a Worker of its own, so one caller's continuations
 // are never another's. Once bound it prints {"listening": "host:port"} on
-// stdout, so a caller that asked for port 0 learns the port. PLAIN TCP,
-// unauthenticated: a trusted network, or TLS or SSH in front of it.
+// stdout, so a caller that asked for port 0 learns the port. With
+// OKAY_WIRE_SECRET (or OKAY_WIRE_SECRET_FILE) set, every connection must
+// pass a mutual HMAC-SHA256 challenge before anything else (stage 5b);
+// without TLS the traffic after it is still plain TCP.
 func ServeTCP(addr string, programs Programs, functions ...Functions) error {
+	secret, err := SecretFromEnv()
+	if err != nil {
+		return err
+	}
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -882,7 +965,9 @@ func ServeTCP(addr string, programs Programs, functions ...Functions) error {
 		}
 		go func(c net.Conn) {
 			defer c.Close()
-			serveLines(NewWorker(programs, functions...), bufio.NewReader(c), bufio.NewWriter(c))
+			w := NewWorker(programs, functions...)
+			w.secret = secret
+			serveLines(w, bufio.NewReader(c), bufio.NewWriter(c))
 		}(c)
 	}
 }
