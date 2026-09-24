@@ -1,0 +1,3 @@
+slug: rust-native
+who: claude-opus-5.5 (interop session)
+what: polyglot-rust stage 2: okay-rust cross JVM+Native; the argon2 staticlib through @extern on Scala Native as Kdf.native; golden vectors pinned by BouncyCastle
