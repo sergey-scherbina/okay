@@ -302,19 +302,117 @@ func dec(j any) any {
 
 type key struct{ run, k int64 }
 
+// Programs are programs as data, served by name: what multi-shot needs.
+type Programs map[string]func(args []any) Prog
+
+// Functions are DIRECT-STYLE functions, served by name: ordinary Go code
+// that calls okay's effects with c.Call(name, args...) and gets the answer
+// (polyglot-one-wire, the operator's okay_call(request) -> answer). Each
+// is answered once, so a handler that resumes twice (Choice) needs a
+// Program instead.
+type Functions map[string]func(c *Ctx, args []any) any
+
+// OkayError is a callback that failed in okay: its condition's kind and message.
+type OkayError struct{ Kind, Message string }
+
+func (e *OkayError) Error() string { return e.Kind + ": " + e.Message }
+
+// Ctx is a direct-style call in progress: what c.Call reaches okay through.
+type Ctx struct {
+	id      any
+	offered map[string]bool
+	events  chan event
+	answers chan answerMsg
+	next    *int64
+}
+
+type event struct {
+	ask   map[string]any // an ask for the host, or
+	done  any            // the function's answer, or
+	fault *OkayError     // its failure
+}
+
+type answerMsg struct {
+	value any
+	err   *OkayError
+}
+
+// Call performs the okay callback name with args: the host runs it under the
+// caller's handlers, and this returns its answer. An error when the callback
+// failed in okay, or was not offered to this call.
+func (c *Ctx) Call(name string, args ...any) (any, error) {
+	if !c.offered[name] {
+		return nil, &OkayError{"LookupError", fmt.Sprintf("okay.Call(%q): this call was offered %v", name, keys(c.offered))}
+	}
+	*c.next++
+	k := *c.next
+	wire := make([]any, len(args))
+	for i, a := range args {
+		wire[i] = enc(a)
+	}
+	c.events <- event{ask: map[string]any{"ask": map[string]any{"cb": name, "args": wire, "k": k}}}
+	a := <-c.answers
+	if a.err != nil {
+		return nil, a.err
+	}
+	return a.value, nil
+}
+
+// CallOp is Call, typed by a generated operation (Go.ops in Scala).
+func CallOp[A any](c *Ctx, op Op[A]) (A, error) {
+	var zero A
+	v, err := c.Call(op.Name, op.Args...)
+	if err != nil {
+		return zero, err
+	}
+	return op.Decode(v)
+}
+
+func keys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Worker is the okay wire's protocol with no I/O (polyglot-one-wire): the
 // programs it serves and the continuations it holds. Serve (a child
 // process's pipes), ServeTCP (a socket) and an in-process export all use
 // one, so a program behaves the same over every transport.
 type Worker struct {
-	programs map[string]func(args []any) Prog
-	konts    map[key]func(any) Prog
-	next     int64
+	programs  Programs
+	functions Functions
+	konts     map[key]func(any) Prog
+	next      int64
+	waiting   map[int64]*Ctx // direct-style calls parked in an ask, by k
+	asks      int64
 }
 
-// NewWorker serves programs; it holds no continuation yet.
-func NewWorker(programs map[string]func(args []any) Prog) *Worker {
-	return &Worker{programs: programs, konts: map[key]func(any) Prog{}}
+// NewWorker serves programs and, optionally, direct-style functions.
+func NewWorker(programs Programs, functions ...Functions) *Worker {
+	fs := Functions{}
+	for _, f := range functions {
+		for k, v := range f {
+			fs[k] = v
+		}
+	}
+	return &Worker{programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[int64]*Ctx{}}
+}
+
+// await is the next thing a direct-style call does: ask the host, or finish.
+func (w *Worker) await(c *Ctx) map[string]any {
+	e := <-c.events
+	switch {
+	case e.ask != nil:
+		k := e.ask["ask"].(map[string]any)["k"].(int64)
+		w.waiting[k] = c
+		return e.ask
+	case e.fault != nil:
+		return condition(c.id, e.fault.Kind, e.fault.Message)
+	}
+	return map[string]any{"id": c.id, "ok": enc(e.done)}
 }
 
 // Hello is the handshake line a worker speaks first.
@@ -365,6 +463,59 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 			return condition(id, "LookupError", fmt.Sprintf("continuation %d of run %d is not held here (forgotten, or another process)", k, run))
 		}
 		return map[string]any{"id": id, "ok": w.node(run, f(req["answer"]))}
+	case "start":
+		fn, _ := req["fn"].(string)
+		f, ok := w.functions[fn]
+		if !ok {
+			return condition(id, "LookupError", fmt.Sprintf("no function named '%s' in this worker", fn))
+		}
+		args, _ := req["args"].([]any)
+		offered := map[string]bool{}
+		if cbs, ok := req["callbacks"].([]any); ok {
+			for _, n := range cbs {
+				if s, ok := n.(string); ok {
+					offered[s] = true
+				}
+			}
+		}
+		c := &Ctx{id: id, offered: offered, events: make(chan event), answers: make(chan answerMsg), next: &w.asks}
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					if e, ok := r.(*OkayError); ok {
+						c.events <- event{fault: e}
+					} else {
+						c.events <- event{fault: &OkayError{"GoError", fmt.Sprint(r)}}
+					}
+				}
+			}()
+			out := f(c, args)
+			c.events <- event{done: out}
+		}()
+		return w.await(c)
+	case "resume":
+		k, _ := req["k"].(int64)
+		c, ok := w.waiting[k]
+		if !ok {
+			return condition(id, "ValueError", fmt.Sprintf("resume %d: no call is waiting for it (resumed twice?)", k))
+		}
+		delete(w.waiting, k)
+		if cond, ok := req["condition"].(Dict); ok {
+			e := &OkayError{}
+			for _, kv := range cond {
+				if s, ok := kv.Val.(string); ok {
+					if kv.Key == "kind" {
+						e.Kind = s
+					} else if kv.Key == "message" {
+						e.Message = s
+					}
+				}
+			}
+			c.answers <- answerMsg{err: e}
+		} else {
+			c.answers <- answerMsg{value: req["ok"]}
+		}
+		return w.await(c)
 	case "forget":
 		for kk := range w.konts {
 			if kk.run == run {
@@ -417,8 +568,8 @@ func serveLines(w *Worker, in *bufio.Reader, out *bufio.Writer) {
 }
 
 // Serve is the worker's main loop on stdin/stdout: a child process.
-func Serve(programs map[string]func(args []any) Prog) {
-	serveLines(NewWorker(programs), bufio.NewReader(os.Stdin), bufio.NewWriter(os.Stdout))
+func Serve(programs Programs, functions ...Functions) {
+	serveLines(NewWorker(programs, functions...), bufio.NewReader(os.Stdin), bufio.NewWriter(os.Stdout))
 }
 
 // ServeTCP serves the wire on a socket: another process, another machine.
@@ -426,7 +577,7 @@ func Serve(programs map[string]func(args []any) Prog) {
 // are never another's. Once bound it prints {"listening": "host:port"} on
 // stdout, so a caller that asked for port 0 learns the port. PLAIN TCP,
 // unauthenticated: a trusted network, or TLS or SSH in front of it.
-func ServeTCP(addr string, programs map[string]func(args []any) Prog) error {
+func ServeTCP(addr string, programs Programs, functions ...Functions) error {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -440,20 +591,20 @@ func ServeTCP(addr string, programs map[string]func(args []any) Prog) error {
 		}
 		go func(c net.Conn) {
 			defer c.Close()
-			serveLines(NewWorker(programs), bufio.NewReader(c), bufio.NewWriter(c))
+			serveLines(NewWorker(programs, functions...), bufio.NewReader(c), bufio.NewWriter(c))
 		}(c)
 	}
 }
 
 // Main serves on TCP when OKAY_LISTEN names an address, on stdin/stdout
 // otherwise: one binary, either transport.
-func Main(programs map[string]func(args []any) Prog) {
+func Main(programs Programs, functions ...Functions) {
 	if addr := os.Getenv("OKAY_LISTEN"); addr != "" {
-		if err := ServeTCP(addr, programs); err != nil {
+		if err := ServeTCP(addr, programs, functions...); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		return
 	}
-	Serve(programs)
+	Serve(programs, functions...)
 }

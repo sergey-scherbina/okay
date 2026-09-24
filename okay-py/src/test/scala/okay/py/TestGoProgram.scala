@@ -35,12 +35,25 @@ func boom(_ []any) okay.Prog {
 	panic("go says no")
 }
 
+// DIRECT STYLE: ordinary Go calling okay's effects, okay_call(request) -> answer
+func quote(c *okay.Ctx, args []any) any {
+	price, err := okay.CallOp(c, shop.PriceOf(args[0].(string)))
+	if err != nil {
+		panic(err)
+	}
+	total, err := okay.CallOp(c, shop.Discount(price*float64(args[1].(int64))))
+	if err != nil {
+		panic(err)
+	}
+	return total
+}
+
 func main() {
 	okay.Main(map[string]func([]any) okay.Prog{
 		"pairs": pairs,
 		"total": func(args []any) okay.Prog { return total(args[0].(string), args[1].(int64)).Untyped() },
 		"boom":  boom,
-	})
+	}, okay.Functions{"quote": quote})
 }
 """
 

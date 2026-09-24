@@ -11,7 +11,10 @@ import okay.{Choose, Reader, effect, runChoice, given}
  * The far side's programs:
  *  - `pairs()`: two `choose` operations, answering their sum;
  *  - `total(sku, qty)`: `price_of(sku)`, then `discount(price * qty)`;
- *  - `boom()`: fails with a message containing "says no".
+ *  - `boom()`: fails with a message containing "says no";
+ *  - `quote(sku, qty)`: the same as `total`, in DIRECT STYLE — ordinary code
+ *    calling `okay_call` twice (a far side without direct style overrides
+ *    `direct` to false).
  */
 abstract class WireConformance extends munit.FunSuite:
 
@@ -34,6 +37,15 @@ abstract class WireConformance extends munit.FunSuite:
   test("each operation is a Scala callback, run under the caller's Reader") {
     val run = Foreign.program[Double]("total").calling(Foreign.callbacks(priceOf, discount))("tea", 3L)
     assertEquals(Reader.run(Map("tea" -> 4.0, "rate" -> 0.5))(run.program).runWith, Right(6.0))
+  }
+
+  /** whether the far side serves direct-style functions */
+  def direct: Boolean = true
+
+  test("DIRECT STYLE: far-side code calls okay_call(request) -> answer, under the caller's Reader") {
+    assume(direct, "this far side serves programs only")
+    val quote = Foreign.fn[Double]("quote").calling(Foreign.callbacks(priceOf, discount))("tea", 3L)
+    assertEquals(Reader.run(Map("tea" -> 4.0, "rate" -> 0.5))(quote).runWith, Right(6.0))
   }
 
   test("a failure is a condition by name, and the far side lives on") {
