@@ -98,7 +98,8 @@ lazy val root: Project = (project in file("."))
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
     okay2Async.jvm, okay2Async.js, okay2Async.native,
     okay2Platform.jvm, okay2Platform.js, okay2Platform.native,
-    okay2Stm, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
+    okay2Stm.jvm, okay2Stm.js, okay2Stm.native,
+    okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
   .settings(
     name := "okay2-root",
     publish / skip := true,
@@ -150,9 +151,14 @@ lazy val okay2Platform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 /** okay-stm for the Scala 2 core: the transaction language `Tx` over
  * `TRef` and the `Stm` runtimes (TL2 over Async, direct, and the one on
  * the simulator) — specs/okay2.md stage 17 */
-lazy val okay2Stm: Project = (project in file("okay2-stm"))
-  .dependsOn(okay2Async.jvm, okay2Platform.jvm % "test->test")
-  .settings(name := "okay2-stm", common, Test / fork := true, Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"))
+lazy val okay2Stm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-stm"))
+  .dependsOn(okay2Async, okay2Platform % "test->test")
+  .settings(name := "okay2-stm", common)
+  .jvmSettings(jvmOnlyTests)
+  .jsSettings(jsTests)
+  .jvmConfigure(_.withId("okay2Stm"))
 
 /** okay-stream's pure layer: chunks, Take/pipe, stages and through,
  * the pipeline as a value, lines, event-time windows */

@@ -1891,6 +1891,24 @@ opened.
       after it), and every channel law still holds (TestChannelLaws,
       TestGrowing)
 
+## Stage 34 — Scala.js and Scala Native, stage C first half: okay2-stm (2026-09-24)
+okay2-stm is a crossProject. Its source needed nothing: the transaction
+language, TL2 over `Async` and the simulator's runtime are plain Scala
+over atomics every javalib has. The suites split by what they need:
+- `TestStmCross` (tl2 and direct), `TestStmOrElse` and `TestStmSim` —
+  driven by `Async.runAsync` or the deterministic simulator — run on
+  JVM, JS and Native;
+- `TestStmThreads` (virtual threads, a blocking run) runs on the JVM
+  only, from `src/test/scala-jvm`.
+
+### Behavior (stage 34)
+- [x] okay2-stm's shared suites on all three platforms (47 results
+      across them), the full okay2 gate 1714 results, no warnings
+
+okay2-stream, the second half of stage C, waits for `adaptive-seal-race`
+(a sibling lane editing its channel suites, which have to move to
+`scala-jvm` for the cross build).
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
