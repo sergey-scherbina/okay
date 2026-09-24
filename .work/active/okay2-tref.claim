@@ -1,6 +1,0 @@
-feature/okay2-tref 2026-09-24T12:47:25Z
-agent: claude-code
-heartbeat: 2026-09-24T12:47:25Z
-status: in-progress
-done-so-far: claimed
-next: okay2 TRef (versioned CAS cell, bare, waiters), TMap (typed-key heterogeneous map), TDict, TList, Same.byValue and ===/=!=/sameAs; TestTMap, TestSame, TRef tests; spec stage 15, docs, changelog
