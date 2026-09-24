@@ -15,7 +15,7 @@
 SHIM <- 7
 
 say <- function(x) {
-  cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA), "\n", sep = "")
+  cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = I(17)), "\n", sep = "")
   flush(stdout())
 }
 
@@ -200,10 +200,8 @@ okay_call <- function(name, ...) {
   assign(".okay_next_k", k, envir = globalenv())
   say(list(ask = list(cb = name, args = unname(lapply(list(...), enc)), k = k)))
   repeat {
-    line <- readLines(con, n = 1L, warn = FALSE)
-    if (length(line) == 0L) quit(status = 0)
-    if (!nzchar(trimws(line))) next
-    req <- jsonlite::fromJSON(line, simplifyVector = FALSE)
+    req <- read_msg()
+    if (is.null(req)) quit(status = 0)
     if (identical(req$op, "resume") && identical(as.integer(req$k), k)) {
       if (!is.null(req$condition))
         stop(structure(class = c("okay_error", "error", "condition"),
@@ -346,6 +344,15 @@ serve <- function(req) {
       }
       list(id = rid, ok = list(r = paste(R.version$major, R.version$minor, sep = "."),
                                packages = pkgs))
+    } else if (op == "configure") {
+      f <- req$format; z <- req$compress
+      if (!(identical(f, "json") || identical(f, "cbor")))
+        stop(sprintf("this R shim speaks the formats json, cbor; not '%s'", format(f)))
+      if (!(identical(z, "none") || identical(z, "zlib")))
+        stop(sprintf("this R shim speaks the compressions none, zlib; not '%s'", format(z)))
+      # takes effect AFTER this answer is written (see say)
+      .okay_wire$switch_to <- list(format = f, compress = z)
+      list(id = rid, ok = list(format = f, compress = z))
     } else if (op == "resume") {
       stop(sprintf("resume %s: no call is waiting for it (resumed twice?)", format(req$k)))
     } else stop(sprintf("unknown op '%s'", op))
@@ -376,12 +383,208 @@ local({
   }
 })
 
-say(list(shim = SHIM, r = paste(R.version$major, R.version$minor, sep = ".")))
+# ---- the wire's encoding (polyglot-one-wire, wire-givens-r) --------------
+# JSON lines until the host configures otherwise; then FRAMES (a 4-byte
+# big-endian length, then the message), the same tree as JSON or as CBOR,
+# optionally zlib-compressed (RFC 1950: memCompress's "gzip" IS zlib, and
+# memDecompress checks its adler32 - raw DEFLATE has no safe road in base
+# R). Binary both ways: one "rb" stdin, read by lines and then by frames,
+# and /dev/stdout opened raw.
+
+.okay_wire <- new.env()
+.okay_wire$format <- "json"
+.okay_wire$compress <- "none"
+.okay_wire$switch_to <- NULL
+
+okay_framed <- function() .okay_wire$format != "json" || .okay_wire$compress != "none"
+
+cbor_head <- function(major, n) {
+  m <- major * 32
+  if (n < 24) as.raw(m + n)
+  else if (n < 256) as.raw(c(m + 24, n))
+  else if (n < 65536) as.raw(c(m + 25, n %/% 256, n %% 256))
+  else if (n < 4294967296) as.raw(c(m + 26, (n %/% 16777216) %% 256, (n %/% 65536) %% 256, (n %/% 256) %% 256, n %% 256))
+  else as.raw(c(m + 27, (n %/% 256^(7:0)) %% 256))
+}
+
+# CBOR of the tree jsonlite parses back (scalars, lists, named lists, NULL):
+# encoding THAT tree, rather than R's own objects, keeps every rule of the
+# JSON road (auto_unbox, NA as "NA", a frame's columns) - the two formats
+# carry the same values by construction
+cbor_enc <- function(x) {
+  if (is.null(x)) return(as.raw(0xf6))
+  if (is.list(x)) {
+    n <- length(x)
+    nm <- names(x)
+    if (!is.null(nm)) {
+      parts <- vector("list", 2L * n)
+      for (i in seq_len(n)) {
+        parts[[2L * i - 1L]] <- cbor_enc(nm[[i]])
+        parts[[2L * i]] <- cbor_enc(x[[i]])
+      }
+      return(c(cbor_head(5, n), unlist(parts, use.names = FALSE)))
+    }
+    # an array of numbers - a frame's column - in one writeBin
+    if (n > 0L && all(vapply(x, function(v) is.numeric(v) && length(v) == 1L, logical(1)))) {
+      bits <- matrix(writeBin(as.double(unlist(x, use.names = FALSE)), raw(), size = 8, endian = "big"), nrow = 8L)
+      return(c(cbor_head(4, n), as.vector(rbind(as.raw(0xfb), bits))))
+    }
+    return(c(cbor_head(4, n), unlist(lapply(x, cbor_enc), use.names = FALSE)))
+  }
+  if (is.logical(x)) return(as.raw(if (isTRUE(x)) 0xf5 else 0xf4))
+  if (is.character(x)) {
+    b <- charToRaw(enc2utf8(x))
+    return(c(cbor_head(3, length(b)), b))
+  }
+  if (is.integer(x)) return(if (x >= 0L) cbor_head(0, as.double(x)) else cbor_head(1, -1 - as.double(x)))
+  if (is.double(x)) return(c(as.raw(0xfb), writeBin(x, raw(), size = 8, endian = "big")))
+  stop(sprintf("a %s does not encode as CBOR", class(x)[1]))
+}
+
+# CBOR -> the tree jsonlite::fromJSON(simplifyVector = FALSE) would give
+cbor_dec <- function(b) {
+  pos <- 1L
+  take <- function(n) {
+    if (pos + n - 1L > length(b)) stop("a CBOR message ended early (cut short?)")
+    out <- b[seq.int(pos, length.out = n)]
+    pos <<- pos + n
+    out
+  }
+  uint <- function(bytes) sum(as.numeric(bytes) * 256^((length(bytes) - 1L):0))
+  arg <- function(info) {
+    if (info < 24L) info
+    else if (info == 24L) uint(take(1L))
+    else if (info == 25L) uint(take(2L))
+    else if (info == 26L) uint(take(4L))
+    else if (info == 27L) uint(take(8L))
+    else stop(sprintf("CBOR: an indefinite or reserved length (%d) is not in the wire's subset", info))
+  }
+  num <- function(v) if (abs(v) <= .Machine$integer.max) as.integer(v) else v
+  item <- function() {
+    ib <- as.integer(take(1L))
+    major <- ib %/% 32L
+    info <- ib %% 32L
+    if (major == 0L) return(num(arg(info)))
+    if (major == 1L) return(num(-1 - arg(info)))
+    if (major == 3L) {
+      n <- arg(info)
+      if (n == 0) return("")
+      s <- rawToChar(take(n))
+      Encoding(s) <- "UTF-8"
+      return(s)
+    }
+    if (major == 4L) {
+      n <- arg(info)
+      out <- vector("list", n)
+      for (i in seq_len(n)) { v <- item(); if (!is.null(v)) out[[i]] <- v }
+      return(out)
+    }
+    if (major == 5L) {
+      n <- arg(info)
+      out <- vector("list", n)
+      keys <- character(n)
+      for (i in seq_len(n)) {
+        k <- item()
+        if (!is.character(k)) stop("CBOR: a map key that is not text")
+        keys[[i]] <- k
+        v <- item()
+        if (!is.null(v)) out[[i]] <- v
+      }
+      names(out) <- keys
+      return(out)
+    }
+    if (major == 7L) {
+      if (info == 20L) return(FALSE)
+      if (info == 21L) return(TRUE)
+      if (info == 22L || info == 23L) return(NULL)
+      if (info == 25L) {
+        h <- uint(take(2L))
+        e <- (h %/% 1024) %% 32
+        m <- h %% 1024
+        v <- if (e == 0) m * 2^-24 else if (e == 31) (if (m == 0) Inf else NaN) else (m + 1024) * 2^(e - 25)
+        return(if (h >= 32768) -v else v)
+      }
+      if (info == 26L) return(readBin(take(4L), "numeric", size = 4, endian = "big"))
+      if (info == 27L) return(readBin(take(8L), "numeric", size = 8, endian = "big"))
+      stop(sprintf("CBOR: simple value %d is not in the wire's subset", info))
+    }
+    stop(sprintf("CBOR: major type %d (byte strings, tags) is not in the wire's subset", major))
+  }
+  v <- item()
+  if (pos <= length(b)) stop(sprintf("CBOR: %d bytes after the message", length(b) - pos + 1L))
+  v
+}
+
+# digits = I(17), not NA: jsonlite's "max precision" is 15 significant
+# digits, which rounded every double on its way to okay (sqrt(2) arrived as
+# 1.4142135623731); 17 is what a double needs to come back as itself
+# (wire-givens-r, found by the same-answers-on-every-wire suite)
+okay_encode <- function(x) {
+  txt <- jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = I(17))
+  body <- if (.okay_wire$format == "cbor") cbor_enc(jsonlite::fromJSON(txt, simplifyVector = FALSE))
+          else charToRaw(enc2utf8(as.character(txt)))
+  if (.okay_wire$compress == "zlib") memCompress(body, "gzip") else body
+}
+
+okay_decode <- function(body) {
+  if (.okay_wire$compress == "zlib") body <- memDecompress(body, "gzip")
+  if (.okay_wire$format == "cbor") cbor_dec(body)
+  else { s <- rawToChar(body); Encoding(s) <- "UTF-8"; jsonlite::fromJSON(s, simplifyVector = FALSE) }
+}
+
+.okay_out <- file("/dev/stdout", open = "wb", raw = TRUE)
+
+say <- function(x) {
+  if (okay_framed()) {
+    body <- okay_encode(x)
+    n <- length(body)
+    writeBin(c(as.raw((n %/% 256^(3:0)) %% 256), body), .okay_out)
+  } else {
+    txt <- jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = I(17))
+    writeBin(charToRaw(paste0(enc2utf8(as.character(txt)), "\n")), .okay_out)
+  }
+  flush(.okay_out)
+  # a configure takes effect AFTER its own answer
+  sw <- .okay_wire$switch_to
+  if (!is.null(sw)) {
+    .okay_wire$format <- sw$format
+    .okay_wire$compress <- sw$compress
+    .okay_wire$switch_to <- NULL
+  }
+}
+
+read_n <- function(n) {
+  b <- raw(0)
+  while (length(b) < n) {
+    r <- readBin(con, "raw", n - length(b))
+    if (length(r) == 0L) return(NULL)
+    b <- c(b, r)
+  }
+  b
+}
+
+# the next request, or NULL when the host is gone
+read_msg <- function() {
+  repeat {
+    if (okay_framed()) {
+      len <- read_n(4L)
+      if (is.null(len)) return(NULL)
+      n <- sum(as.numeric(len) * 256^(3:0))
+      body <- if (n == 0) raw(0) else read_n(n)
+      if (is.null(body)) return(NULL)
+      return(okay_decode(body))
+    }
+    line <- readLines(con, n = 1L, warn = FALSE)
+    if (length(line) == 0L) return(NULL)
+    if (nzchar(trimws(line))) return(jsonlite::fromJSON(line, simplifyVector = FALSE))
+  }
+}
+
+con <- file("stdin", open = "rb")
+
+say(list(shim = SHIM, r = paste(R.version$major, R.version$minor, sep = "."),
+         speaks = list(format = list("json", "cbor"), compress = list("zlib"))))
 
 # ---- the loop ---------------------------------------------------------
 
-con <- file("stdin", open = "r")
-while (length(line <- readLines(con, n = 1L, warn = FALSE)) > 0) {
-  if (!nzchar(trimws(line))) next
-  say(serve(jsonlite::fromJSON(line, simplifyVector = FALSE)))
-}
+while (!is.null(req <- read_msg())) say(serve(req))

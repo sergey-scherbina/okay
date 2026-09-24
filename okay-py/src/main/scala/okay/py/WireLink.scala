@@ -1,8 +1,8 @@
 package okay.py
 
-import java.io.{BufferedInputStream, BufferedOutputStream, ByteArrayOutputStream, InputStream, OutputStream}
+import java.io.{BufferedInputStream, BufferedOutputStream, InputStream, OutputStream}
+import okay.codec.WireFrames
 import java.net.{InetSocketAddress, Socket}
-import java.nio.charset.StandardCharsets.UTF_8
 
 /**
  * Where the okay wire runs (polyglot-one-wire, specs/polyglot-one-wire.md):
@@ -33,40 +33,22 @@ trait WireLink:
 object WireLink:
 
   /**
-   * A byte stream pair: what pipes and sockets both are. Lines are read
-   * byte by byte off the raw stream rather than through a character
-   * reader, so a switch from lines to frames loses nothing a reader had
-   * buffered ahead.
+   * A byte stream pair: what pipes and sockets both are, framed by
+   * `okay.codec.WireFrames`.
    */
   private abstract class Streams(out: OutputStream, in: InputStream) extends WireLink:
     private val input = BufferedInputStream(in)
     private val output = BufferedOutputStream(out)
 
-    private def readLine(): Option[String] =
-      val b = ByteArrayOutputStream()
-      var c = input.read()
-      while c != -1 && c != '\n' do
-        b.write(c)
-        c = input.read()
-      if c == -1 && b.size == 0 then None else Some(String(b.toByteArray, UTF_8).stripSuffix("\r"))
-
-    def hello(): Option[String] = readLine()
+    def hello(): Option[String] = WireFrames.readLine(input)
 
     def roundTrip(line: String): Option[String] =
-      output.write(line.getBytes(UTF_8)); output.write('\n'); output.flush()
-      readLine()
+      WireFrames.writeLine(output, line)
+      WireFrames.readLine(input)
 
     def exchange(message: Array[Byte]): Option[Array[Byte]] =
-      val n = message.length
-      output.write(Array((n >>> 24).toByte, (n >>> 16).toByte, (n >>> 8).toByte, n.toByte))
-      output.write(message)
-      output.flush()
-      val len = input.readNBytes(4)
-      if len.length < 4 then None
-      else
-        val m = ((len(0) & 0xff) << 24) | ((len(1) & 0xff) << 16) | ((len(2) & 0xff) << 8) | (len(3) & 0xff)
-        val body = input.readNBytes(m)
-        if body.length < m then None else Some(body)
+      WireFrames.writeFrame(output, message)
+      WireFrames.readFrame(input)
 
   /** a child process's stdin and stdout */
   def pipes(proc: Process): WireLink =

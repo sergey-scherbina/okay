@@ -203,96 +203,22 @@ object ForeignWorker:
         s"shim/host version drift: $name says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
     new ForeignWorker(link, pyV, configure(link, name, whole(hello)))
 
-  /**
-   * Stage 5a: the givens in scope decide the format and the compression.
-   * Anything but JSON lines must be ANNOUNCED in the far side's hello, then
-   * confirmed by a `configure` exchange; an explicit choice the far side did
-   * not announce is refused by name, never quietly downgraded. The DEFAULT
-   * compression is a preference, not a choice: it has a `fallback`, taken on
-   * an in-process link and where the far side did not announce deflate.
-   */
+  /** stage 5's handshake (`okay.codec.WireNegotiation`): what the givens
+   * ask for, checked against what the far side announced, and confirmed */
   private def configure(link: WireLink, name: String, hello: Json)
-                       (using format: WireFormat, compression: WireCompression): Option[(WireFormat, WireCompression)] =
-    def announced(key: String): Vector[String] = hello match
-      case Json.JObj(fs) => fs.toMap.get("speaks") match
-        case Some(Json.JObj(sp)) => sp.toMap.get(key) match
-          case Some(Json.JArr(xs)) => xs.collect { case Json.JStr(x) => x }
-          case _ => Vector.empty
-        case _ => Vector.empty
-      case _ => Vector.empty
-    val formats = "json" +: announced("format")
-    val compressions = "none" +: announced("compress")
-    if !formats.contains(format.name) then
+                       (using WireFormat, WireCompression): Option[(WireFormat, WireCompression)] =
+    def refuse(why: String): Nothing =
       link.close()
-      throw IllegalStateException(s"$name speaks the formats ${formats.distinct.mkString(", ")}; this host's given WireFormat is ${format.name}")
-    val chosen = compression.fallback match
-      case Some(instead) if link.inProcess || !compressions.contains(compression.name) => instead
-      case _ => compression
-    if !compressions.contains(chosen.name) then
-      link.close()
-      throw IllegalStateException(s"$name speaks the compressions ${compressions.distinct.mkString(", ")}; this host's given WireCompression is ${chosen.name}")
-    if format.name == "json" && chosen.name == "none" then None
-    else
-      val ask = Json.JObj(Vector("op" -> Json.JStr("configure"), "format" -> Json.JStr(format.name),
-        "compress" -> Json.JStr(chosen.name)))
-      link.roundTrip(Json.print(ask)).map(whole) match
-        case Some(Json.JObj(fs)) if fs.toMap.contains("ok") => Some((format, chosen))
-        case Some(other) =>
-          link.close()
-          throw IllegalStateException(s"$name refused the configuration ${format.name}/${chosen.name}: ${Json.print(other)}")
-        case None =>
-          link.close()
-          throw IllegalStateException(s"$name closed the wire when asked to configure ${format.name}/${chosen.name}")
+      throw IllegalStateException(why)
+    okay.codec.WireNegotiation.choose(hello, link.inProcess, name) match
+      case Left(why) => refuse(why)
+      case Right(None) => None
+      case Right(Some((f, c))) =>
+        okay.codec.WireNegotiation.confirmed(name, f, c, link.roundTrip(okay.codec.WireNegotiation.configure(f, c)).map(whole))
+          .fold(refuse, _ => Some((f, c)))
 
-  /**
-   * A wire line, read STRICTLY. `Json.parse` is total: it repairs damaged
-   * text and answers what it could read, which is right for a document a
-   * person wrote and wrong for a protocol line — a reply cut short (a
-   * truncated FFM read, a dropped TCP tail) must not be read as a smaller
-   * reply. Found by in-process-worker's mutant: an answer one byte short
-   * passed every test. The fast strict parser first; where it declines,
-   * the total one, refused if it had to repair anything.
-   */
-  private[py] def whole(line: String): Json =
-    if !balanced(line) then
-      throw IllegalStateException(s"the worker's line is not whole JSON (cut short?): ${line.take(200)}")
-    okay.codec.JsonValue.parse(line).getOrElse {
-      val j = Json.parse(line)
-      def damaged(x: Json): Boolean = x match
-        case Json.JErr(_) => true
-        case Json.JArr(vs) => vs.exists(damaged)
-        case Json.JObj(fs) => fs.exists((_, v) => damaged(v))
-        case _ => false
-      if damaged(j) || !line.trim.endsWith("}") then
-        throw IllegalStateException(s"the worker's line is not whole JSON (cut short?): ${line.take(200)}")
-      j
-    }
-
-  /** every bracket outside a string closed, exactly at the end: a line cut
-   * after its inner `}` still parses as a smaller object, and this is the
-   * one check such a cut cannot pass */
-  private def balanced(line: String): Boolean =
-    var depth = 0
-    var inString = false
-    var escaped = false
-    var closedAt = -1
-    var i = 0
-    val t = line.trim
-    while i < t.length do
-      val c = t.charAt(i)
-      if inString then
-        if escaped then escaped = false
-        else if c == '\\' then escaped = true
-        else if c == '"' then inString = false
-      else c match
-        case '"' => inString = true
-        case '{' | '[' => depth += 1
-        case '}' | ']' =>
-          depth -= 1
-          if depth == 0 then closedAt = i
-        case _ => ()
-      i += 1
-    !inString && depth == 0 && closedAt == t.length - 1
+  /** a wire line, read strictly (`okay.codec.WireJson.whole`) */
+  private[py] def whole(line: String): Json = okay.codec.WireJson.whole(line)
 
   /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
    * another process, or another machine — plain TCP, see `WireLink.tcp` */

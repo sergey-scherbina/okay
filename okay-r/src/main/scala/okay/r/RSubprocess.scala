@@ -1,7 +1,8 @@
 package okay.r
 
+import java.io.{BufferedInputStream, BufferedOutputStream}
 import okay.Handler
-import okay.codec.Json
+import okay.codec.{Json, WireCompression, WireFormat, WireFrames, WireNegotiation}
 
 /**
  * The subprocess engine (stage 0, specs/r.md): one `Rscript` per
@@ -37,14 +38,21 @@ import okay.codec.Json
  * dead-process THROW stays what it is, an engine nobody can revive.
  */
 final class RSubprocess private (private var proc: Process,
-                                 private var out: java.io.BufferedWriter,
-                                 private var in: java.io.BufferedReader,
+                                 private var out: BufferedOutputStream,
+                                 private var in: BufferedInputStream,
+                                 /** the configured format and compression
+                                  * (wire-givens-r); None: JSON lines */
+                                 private var codec: Option[(WireFormat, WireCompression)],
                                  val rVersion: String,
                                  /** how the engine gets a FRESH process after a
                                   * timeout kills this one; `None` for a handle
                                   * that cannot respawn (the handshake test's) */
-                                 private val respawn: Option[() => (Process, java.io.BufferedWriter, java.io.BufferedReader)],
+                                 private val respawn: Option[() => RSubprocess.Parts],
                                  val timeoutMillis: Option[Long]):
+
+  /** what the handshake settled on: "json/none" (JSON lines),
+   * "json/zlib", "cbor/zlib", "cbor/none" */
+  def wire: String = codec.fold("json/none")((f, c) => s"${f.name}/${c.name}")
 
   private var nextId = 0
   /** one daemon thread per engine, and only where a timeout asks for
@@ -66,20 +74,30 @@ final class RSubprocess private (private var proc: Process,
   /** one message out, the next in — a `resume` opens nothing, so it
    * carries no id (foreign-callbacks) */
   private def send(body: Json): Either[Condition, Json] =
-    out.write(Json.print(body)); out.write("\n"); out.flush()
-    readLine() match
+    codec match
+      case None => WireFrames.writeLine(out, Json.print(body))
+      case Some((f, c)) => WireFrames.writeFrame(out, c.compress(f.encode(body)))
+    readMessage() match
       case Left(c) => Left(c)
-      case Right(null) =>
+      case Right(None) =>
         throw IllegalStateException(
           "the R process is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
-      case Right(line) => Right(Json.parse(line))
+      case Right(Some(answer)) => Right(answer)
 
-  /** the answer line, or the timeout as data. Without a deadline this
-   * is `in.readLine()` and nothing else happens. */
-  private def readLine(): Either[Condition, String | Null] = timeoutMillis match
-    case None => Right(in.readLine())
+  /** the next message off the wire, as this engine's codec reads it; None
+   * at the stream's end */
+  private def read(): Option[Json] =
+    val (i, c) = (in, codec)
+    c match
+      case None => WireFrames.readLine(i).map(Json.parse)
+      case Some((f, z)) => WireFrames.readFrame(i).map(bytes => f.decode(z.decompress(bytes)))
+
+  /** the answer, or the timeout as data. Without a deadline this is
+   * `read()` and nothing else happens. */
+  private def readMessage(): Either[Condition, Option[Json]] = timeoutMillis match
+    case None => Right(read())
     case Some(ms) =>
-      val task = reader.submit(() => in.readLine())
+      val task = reader.submit(() => read())
       try Right(task.get(ms, java.util.concurrent.TimeUnit.MILLISECONDS))
       catch
         case _: java.util.concurrent.TimeoutException =>
@@ -90,8 +108,8 @@ final class RSubprocess private (private var proc: Process,
           proc.destroyForcibly().waitFor(): Unit
           respawn match
             case Some(fresh) =>
-              val (p, o, i) = fresh()
-              proc = p; out = o; in = i
+              val parts = fresh()
+              proc = parts.proc; out = parts.out; in = parts.in; codec = parts.codec
             case None => ()
           Left(Condition("timeout",
             s"the R call did not answer within ${ms}ms — the process was killed" +
@@ -196,8 +214,8 @@ final class RSubprocess private (private var proc: Process,
   /** the fresh process's three parts, for a handle that is replacing
    * its own (r-finish): the new handle is abandoned after this, so
    * nothing is closed twice */
-  private[r] def take(): (Process, java.io.BufferedWriter, java.io.BufferedReader) =
-    (proc, out, in)
+  private[r] def take(): RSubprocess.Parts =
+    RSubprocess.Parts(proc, out, in, codec)
 
   def close(): Unit =
     try { out.close(); in.close() } catch case _: Exception => ()
@@ -207,6 +225,10 @@ final class RSubprocess private (private var proc: Process,
 object RSubprocess:
 
   val ShimVersion = 7
+
+  /** a live process and its wire: what a timeout's respawn swaps in */
+  private[r] final case class Parts(proc: Process, out: BufferedOutputStream, in: BufferedInputStream,
+                                    codec: Option[(WireFormat, WireCompression)])
 
   /**
    * Start a session: the configured `Rscript` (resolved against PATH
@@ -228,7 +250,10 @@ object RSubprocess:
              * alternative to a loud refusal is a wrong number later */
             require: Map[String, String] = Map.empty,
             /** inline modules to load at start (foreign-inline-modules) */
-            modules: Seq[RModule] = Nil): RSubprocess =
+            modules: Seq[RModule] = Nil)
+           /** the wire's format and compression (wire-givens-r): JSON, with
+            * zlib where R has it, unless an import says otherwise */
+           (using WireFormat, WireCompression): RSubprocess =
     val shim = java.nio.file.Files.createTempFile("okay-r-shim", ".R")
     val res = getClass.getResourceAsStream("/okay/r/shim.R")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
@@ -249,7 +274,8 @@ object RSubprocess:
   /** the seam the handshake test uses: any shim file */
   private[r] def startWith(rscript: String, shim: java.nio.file.Path,
                            env: Map[String, String],
-                           timeoutMillis: Option[Long] = None): RSubprocess =
+                           timeoutMillis: Option[Long] = None)
+                          (using WireFormat, WireCompression): RSubprocess =
     val exe = resolve(rscript)
     // --vanilla: no site file, no profile, no saved workspace — the
     // clean-environment rule extended to R's OWN startup, which reads
@@ -264,14 +290,15 @@ object RSubprocess:
       catch case e: java.io.IOException =>
         throw IllegalStateException(
           s"'$rscript' did not start: ${e.getMessage} — the wrong-environment refusal, at its loudest")
-    val out = java.io.BufferedWriter(java.io.OutputStreamWriter(proc.getOutputStream, "UTF-8"))
-    val in = java.io.BufferedReader(java.io.InputStreamReader(proc.getInputStream, "UTF-8"))
+    val out = BufferedOutputStream(proc.getOutputStream)
+    val in = BufferedInputStream(proc.getInputStream)
 
     // the handshake: the shim speaks first, and drift refuses loudly
-    val hello = in.readLine()
-    if hello == null then
+    val hello = WireFrames.readLine(in).getOrElse {
       throw IllegalStateException(s"'$rscript' started but the shim answered nothing (stderr may know)")
-    val fields = Json.parse(hello) match
+    }
+    val helloJson = Json.parse(hello)
+    val fields = helloJson match
       case Json.JObj(fs) => fs.toMap
       case _ => Map.empty[String, Json]
     def one(k: String): Option[String] = fields.get(k).collect {
@@ -292,9 +319,22 @@ object RSubprocess:
       proc.destroy()
       throw IllegalStateException(
         s"shim/host version drift: the shim says v$shimV, this host speaks v$ShimVersion — refuse rather than guess")
+    // stage 5: the givens against what the shim announced, confirmed by a
+    // configure line; a choice R does not speak is refused by name
+    def refuse(why: String): Nothing =
+      proc.destroy()
+      throw IllegalStateException(why)
+    val codec = WireNegotiation.choose(helloJson, inProcess = false, "the R shim") match
+      case Left(why) => refuse(why)
+      case Right(None) => None
+      case Right(Some((f, c))) =>
+        WireFrames.writeLine(out, WireNegotiation.configure(f, c))
+        WireNegotiation.confirmed("the R shim", f, c, WireFrames.readLine(in).map(Json.parse))
+          .fold(refuse, _ => Some((f, c)))
     // the respawn a timeout needs is this very function, minus the
-    // handshake's refusals — a fresh process of the same shape
-    new RSubprocess(proc, out, in, one("r").getOrElse("?"),
+    // handshake's refusals — a fresh process of the same shape, which
+    // negotiates the same wire again
+    new RSubprocess(proc, out, in, codec, one("r").getOrElse("?"),
       Some(() => {
         val again = startWith(rscript, shim, env, None)
         (again.take())

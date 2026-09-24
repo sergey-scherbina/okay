@@ -1,0 +1,331 @@
+package okay.codec
+
+import java.io.{BufferedInputStream, ByteArrayOutputStream, OutputStream}
+import java.nio.charset.StandardCharsets.UTF_8
+
+/**
+ * How a wire message's tree becomes bytes (polyglot-one-wire stage 5), chosen
+ * at COMPILE TIME by the given in scope where an engine is opened — the
+ * foreign workers' (`okay.py.ForeignWorker`) and R's (`okay.r.RSubprocess`)
+ * alike:
+ *
+ * {{{
+ * import okay.codec.WireFormat.Cbor.given        // CBOR instead of JSON
+ * import okay.codec.WireCompression.Off.given    // no compression at all
+ * }}}
+ *
+ * With no import the format is JSON and compression is PREFERRED: deflate,
+ * else zlib, else none, whichever the far side announces first, and none on
+ * an in-process link. An EXPLICIT choice (`WireFormat.Cbor.given`,
+ * `WireCompression.Deflate.given`, `WireCompression.Zlib.given`) that the far
+ * side did not announce is refused by name, never quietly downgraded.
+ */
+trait WireFormat:
+  def name: String
+  def encode(tree: Json): Array[Byte]
+  def decode(bytes: Array[Byte]): Json
+
+object WireFormat:
+  /** JSON, the default */
+  given json: WireFormat = new WireFormat:
+    def name = "json"
+    def encode(tree: Json): Array[Byte] = Json.print(tree).getBytes(UTF_8)
+    def decode(bytes: Array[Byte]): Json = WireJson.whole(String(bytes, UTF_8))
+
+  /** `import okay.codec.WireFormat.Cbor.given` */
+  object Cbor:
+    given cbor: WireFormat = new WireFormat:
+      def name = "cbor"
+      def encode(tree: Json): Array[Byte] = WireCbor.encode(tree)
+      def decode(bytes: Array[Byte]): Json = WireCbor.decode(bytes).fold(why => throw IllegalStateException(why), identity)
+
+trait WireCompression:
+  def name: String
+  def compress(bytes: Array[Byte]): Array[Byte]
+  def decompress(bytes: Array[Byte]): Array[Byte]
+  /** what to try instead where this one is not to be had — a far side that
+   * did not announce it, or an in-process link where it would only cost.
+   * None (every explicit choice): refuse by name instead. */
+  def fallback: Option[WireCompression] = None
+
+object WireCompression:
+  /** THE DEFAULT (operator, 2026-09-24): an ORDER of preference — raw
+   * deflate, then zlib (what R can check natively), then the plain wire;
+   * and the plain wire in-process */
+  given preferred: WireCompression = new Zipped(nowrap = true):
+    override def fallback: Option[WireCompression] = Some(new Zipped(nowrap = false):
+      override def fallback: Option[WireCompression] = Some(Off.off))
+
+  /** `import okay.codec.WireCompression.Off.given`: never compress */
+  object Off:
+    given off: WireCompression = new WireCompression:
+      def name = "none"
+      def compress(bytes: Array[Byte]): Array[Byte] = bytes
+      def decompress(bytes: Array[Byte]): Array[Byte] = bytes
+
+  /** `import okay.codec.WireCompression.Deflate.given`: raw DEFLATE (RFC 1951)
+   * REQUIRED — a far side without it is refused by name, and in-process
+   * links compress too */
+  object Deflate:
+    given deflate: WireCompression = new Zipped(nowrap = true)
+
+  /** `import okay.codec.WireCompression.Zlib.given`: zlib (RFC 1950: DEFLATE
+   * with a header and an adler32 check) REQUIRED */
+  object Zlib:
+    given zlib: WireCompression = new Zipped(nowrap = false)
+
+  /** DEFLATE from java.util.zip: raw (`nowrap`), which every far side's
+   * standard library has (zlib's `wbits=-15`, Go's compress/flate, Node's
+   * inflateRaw, Rust's flate2), or zlib-wrapped, which R's memCompress is */
+  private class Zipped(nowrap: Boolean) extends WireCompression:
+    def name = if nowrap then "deflate" else "zlib"
+    def compress(bytes: Array[Byte]): Array[Byte] =
+      val d = java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, nowrap)
+      try
+        d.setInput(bytes)
+        d.finish()
+        val out = java.io.ByteArrayOutputStream()
+        val buf = new Array[Byte](8192)
+        while !d.finished() do out.write(buf, 0, d.deflate(buf))
+        out.toByteArray
+      finally d.end()
+    def decompress(bytes: Array[Byte]): Array[Byte] =
+      val i = java.util.zip.Inflater(nowrap)
+      try
+        i.setInput(bytes)
+        val out = java.io.ByteArrayOutputStream()
+        val buf = new Array[Byte](8192)
+        while !i.finished() do
+          val n = i.inflate(buf)
+          if n == 0 && (i.needsInput() || i.needsDictionary()) then
+            throw IllegalStateException("a DEFLATE message ended before its data did (cut short?)")
+          out.write(buf, 0, n)
+        out.toByteArray
+      finally i.end()
+
+/** a wire line, read STRICTLY (see `whole`) */
+object WireJson:
+  /**
+   * `Json.parse` is total: it repairs damaged text and answers what it could
+   * read, which is right for a document a person wrote and wrong for a
+   * protocol line — a reply cut short (a truncated FFM read, a dropped TCP
+   * tail) must not be read as a smaller reply. Found by in-process-worker's
+   * mutant: an answer one byte short passed every test. The fast strict
+   * parser first; where it declines, the total one, refused if it repaired.
+   */
+  def whole(line: String): Json =
+    if !balanced(line) then
+      throw IllegalStateException(s"the worker's line is not whole JSON (cut short?): ${line.take(200)}")
+    JsonValue.parse(line).getOrElse {
+      val j = Json.parse(line)
+      def damaged(x: Json): Boolean = x match
+        case Json.JErr(_) => true
+        case Json.JArr(vs) => vs.exists(damaged)
+        case Json.JObj(fs) => fs.exists((_, v) => damaged(v))
+        case _ => false
+      if damaged(j) || !line.trim.endsWith("}") then
+        throw IllegalStateException(s"the worker's line is not whole JSON (cut short?): ${line.take(200)}")
+      j
+    }
+
+  /** every bracket outside a string closed, exactly at the end: a line cut
+   * after its inner `}` still parses as a smaller object, and this is the
+   * one check such a cut cannot pass */
+  private def balanced(line: String): Boolean =
+    var depth = 0
+    var inString = false
+    var escaped = false
+    var closedAt = -1
+    var i = 0
+    val t = line.trim
+    while i < t.length do
+      val c = t.charAt(i)
+      if inString then
+        if escaped then escaped = false
+        else if c == '\\' then escaped = true
+        else if c == '"' then inString = false
+      else c match
+        case '"' => inString = true
+        case '{' | '[' => depth += 1
+        case '}' | ']' =>
+          depth -= 1
+          if depth == 0 then closedAt = i
+        case _ => ()
+      i += 1
+    !inString && depth == 0 && closedAt == t.length - 1
+
+/**
+ * The wire on a byte stream: JSON lines until a configure, then frames (a
+ * 4-byte big-endian length, then the message). Lines are read byte by byte
+ * off the raw stream rather than through a character reader, so a switch
+ * from lines to frames loses nothing a reader had buffered ahead.
+ */
+object WireFrames:
+  /** the next line, without its newline; None at the stream's end */
+  def readLine(in: BufferedInputStream): Option[String] =
+    val b = ByteArrayOutputStream()
+    var c = in.read()
+    while c != -1 && c != '\n' do
+      b.write(c)
+      c = in.read()
+    if c == -1 && b.size == 0 then None else Some(String(b.toByteArray, UTF_8).stripSuffix("\r"))
+
+  def writeLine(out: OutputStream, line: String): Unit =
+    out.write(line.getBytes(UTF_8)); out.write('\n'); out.flush()
+
+  def writeFrame(out: OutputStream, message: Array[Byte]): Unit =
+    val n = message.length
+    out.write(Array((n >>> 24).toByte, (n >>> 16).toByte, (n >>> 8).toByte, n.toByte))
+    out.write(message)
+    out.flush()
+
+  /** the next frame; None when the stream ends first */
+  def readFrame(in: BufferedInputStream): Option[Array[Byte]] =
+    val len = in.readNBytes(4)
+    if len.length < 4 then None
+    else
+      val m = ((len(0) & 0xff) << 24) | ((len(1) & 0xff) << 16) | ((len(2) & 0xff) << 8) | (len(3) & 0xff)
+      val body = in.readNBytes(m)
+      if body.length < m then None else Some(body)
+
+/**
+ * Stage 5's handshake, for any engine: the givens in scope decide the format
+ * and the compression. Anything but JSON lines must be ANNOUNCED in the far
+ * side's hello (`"speaks":{"format":[..],"compress":[..]}`), then confirmed
+ * by a `configure` exchange. An explicit choice the far side did not
+ * announce is refused by name; a preference (a compression with a
+ * `fallback`) walks its order instead, and is skipped in-process.
+ */
+object WireNegotiation:
+  /** Right(None): stay on JSON lines; Right(Some(..)): send `configure`;
+   * Left: the refusal, naming what the far side speaks */
+  def choose(hello: Json, inProcess: Boolean, name: String)
+            (using format: WireFormat, compression: WireCompression): Either[String, Option[(WireFormat, WireCompression)]] =
+    def announced(key: String): Vector[String] = hello match
+      case Json.JObj(fs) => fs.toMap.get("speaks") match
+        case Some(Json.JObj(sp)) => sp.toMap.get(key) match
+          case Some(Json.JArr(xs)) => xs.collect { case Json.JStr(x) => x }
+          // a language that unboxes a one-element list (R's jsonlite)
+          case Some(Json.JStr(x)) => Vector(x)
+          case _ => Vector.empty
+        case _ => Vector.empty
+      case _ => Vector.empty
+    val formats = "json" +: announced("format")
+    val compressions = "none" +: announced("compress")
+    @annotation.tailrec
+    def pick(c: WireCompression): WireCompression = c.fallback match
+      case Some(next) if inProcess || !compressions.contains(c.name) => pick(next)
+      case _ => c
+    val chosen = pick(compression)
+    if !formats.contains(format.name) then
+      Left(s"$name speaks the formats ${formats.distinct.mkString(", ")}; this host's given WireFormat is ${format.name}")
+    else if !compressions.contains(chosen.name) then
+      Left(s"$name speaks the compressions ${compressions.distinct.mkString(", ")}; this host's given WireCompression is ${chosen.name}")
+    else if format.name == "json" && chosen.name == "none" then Right(None)
+    else Right(Some((format, chosen)))
+
+  /** the one JSON line that asks the far side to switch */
+  def configure(format: WireFormat, compression: WireCompression): String =
+    Json.print(Json.JObj(Vector("op" -> Json.JStr("configure"), "format" -> Json.JStr(format.name),
+      "compress" -> Json.JStr(compression.name))))
+
+  /** the far side's answer to `configure`: Left names what went wrong */
+  def confirmed(name: String, format: WireFormat, compression: WireCompression, answer: Option[Json]): Either[String, Unit] =
+    answer match
+      case Some(Json.JObj(fs)) if fs.toMap.contains("ok") => Right(())
+      case Some(other) => Left(s"$name refused the configuration ${format.name}/${compression.name}: ${Json.print(other)}")
+      case None => Left(s"$name closed the wire when asked to configure ${format.name}/${compression.name}")
+
+/**
+ * The wire's protocol tree as CBOR (RFC 8949), the subset stage 5a names:
+ * integers, float16/32/64, text, definite arrays and maps, true, false,
+ * null, undefined (read as null). Anything else is refused by name.
+ */
+object WireCbor:
+
+  def encode(tree: Json): Array[Byte] =
+    val out = java.io.ByteArrayOutputStream()
+    def head(major: Int, n: Long): Unit =
+      val m = major << 5
+      if n < 24 then out.write(m | n.toInt)
+      else if n < 0x100 then { out.write(m | 24); out.write(n.toInt) }
+      else if n < 0x10000 then { out.write(m | 25); out.write((n >> 8).toInt); out.write(n.toInt & 0xff) }
+      else if n < 0x100000000L then { out.write(m | 26); (3 to 0 by -1).foreach(i => out.write(((n >> (8 * i)) & 0xff).toInt)) }
+      else { out.write(m | 27); (7 to 0 by -1).foreach(i => out.write(((n >> (8 * i)) & 0xff).toInt)) }
+    def go(j: Json): Unit = j match
+      case Json.JNull | Json.JErr(_) => out.write(0xf6)
+      case Json.JBool(b) => out.write(if b then 0xf5 else 0xf4)
+      case Json.JNum(v) if v.isWhole && math.abs(v) < 9.0e18 =>
+        val n = v.toLong
+        if n >= 0 then head(0, n) else head(1, -1 - n)
+      case Json.JNum(v) =>
+        out.write(0xfb)
+        val bits = java.lang.Double.doubleToLongBits(v)
+        (7 to 0 by -1).foreach(i => out.write(((bits >> (8 * i)) & 0xff).toInt))
+      case Json.JStr(s) =>
+        val b = s.getBytes(UTF_8)
+        head(3, b.length.toLong)
+        out.write(b)
+      case Json.JArr(vs) =>
+        head(4, vs.length.toLong)
+        vs.foreach(go)
+      case Json.JObj(fs) =>
+        head(5, fs.length.toLong)
+        fs.foreach { (k, v) => go(Json.JStr(k)); go(v) }
+    go(tree)
+    out.toByteArray
+
+  def decode(bytes: Array[Byte]): Either[String, Json] =
+    var at = 0
+    def byte(): Int =
+      if at >= bytes.length then throw IllegalStateException("a CBOR message ended early (cut short?)")
+      val b = bytes(at) & 0xff
+      at += 1
+      b
+    def uint(n: Int): Long = (0 until n).foldLeft(0L)((acc, _) => (acc << 8) | byte())
+    def arg(info: Int): Long = info match
+      case i if i < 24 => i.toLong
+      case 24 => uint(1)
+      case 25 => uint(2)
+      case 26 => uint(4)
+      case 27 => uint(8)
+      case other => throw IllegalStateException(s"CBOR: an indefinite or reserved length ($other) is not in the wire's subset")
+    def half(h: Int): Double =
+      val exp = (h >> 10) & 0x1f
+      val mant = h & 0x3ff
+      val v = if exp == 0 then mant * math.pow(2, -24)
+        else if exp != 31 then (mant + 1024) * math.pow(2, exp - 25)
+        else if mant == 0 then Double.PositiveInfinity else Double.NaN
+      if (h & 0x8000) != 0 then -v else v
+    def item(): Json =
+      val ib = byte()
+      val major = ib >> 5
+      val info = ib & 0x1f
+      major match
+        case 0 => Json.JNum(arg(info).toDouble)
+        case 1 => Json.JNum((-1 - arg(info)).toDouble)
+        case 3 =>
+          val n = arg(info).toInt
+          if at + n > bytes.length then throw IllegalStateException("a CBOR string ended early (cut short?)")
+          val s = String(bytes, at, n, UTF_8)
+          at += n
+          Json.JStr(s)
+        case 4 => Json.JArr(Vector.fill(arg(info).toInt)(item()))
+        case 5 => Json.JObj(Vector.fill(arg(info).toInt) {
+          item() match
+            case Json.JStr(k) => (k, item())
+            case other => throw IllegalStateException(s"CBOR: a map key that is not text: $other")
+        })
+        case 7 => info match
+          case 20 => Json.JBool(false)
+          case 21 => Json.JBool(true)
+          case 22 | 23 => Json.JNull
+          case 25 => Json.JNum(half(uint(2).toInt))
+          case 26 => Json.JNum(java.lang.Float.intBitsToFloat(uint(4).toInt).toDouble)
+          case 27 => Json.JNum(java.lang.Double.longBitsToDouble(uint(8)))
+          case other => throw IllegalStateException(s"CBOR: simple value $other is not in the wire's subset")
+        case other => throw IllegalStateException(s"CBOR: major type $other (byte strings, tags) is not in the wire's subset")
+    try
+      val j = item()
+      if at != bytes.length then Left(s"CBOR: ${bytes.length - at} bytes after the message") else Right(j)
+    catch case e: IllegalStateException => Left(e.getMessage)
