@@ -8,7 +8,7 @@
 # as module:qualified.name and imported, never eval'd from source.
 # A failing call answers a condition and the worker survives; only a
 # broken wire ends the process.
-import sys, json, base64, importlib, importlib.metadata, math, dataclasses, types, inspect
+import sys, json, base64, importlib, importlib.metadata, math, dataclasses, types, inspect, struct, zlib
 
 SHIM = 6
 
@@ -93,9 +93,123 @@ def resolve(fn):
         obj = getattr(obj, part)
     return obj
 
+# ---- the wire's encoding (polyglot-one-wire stage 5a) --------------------
+#
+# JSON lines until the host configures otherwise; then FRAMES (a 4-byte
+# big-endian length, then the message), each message the same tree encoded
+# as JSON or CBOR and optionally raw-DEFLATEd. CBOR here is the wire's
+# subset, in the standard library: no package is required for it.
+
+_IN = sys.stdin.buffer
+_OUT = sys.stdout.buffer
+_mode = {"format": "json", "compress": "none"}
+
+def _framed():
+    return _mode["format"] != "json" or _mode["compress"] != "none"
+
+def _cbor_head(out, major, n):
+    m = major << 5
+    if n < 24: out.append(m | n)
+    elif n < 1 << 8: out += bytes([m | 24, n])
+    elif n < 1 << 16: out += bytes([m | 25]) + n.to_bytes(2, "big")
+    elif n < 1 << 32: out += bytes([m | 26]) + n.to_bytes(4, "big")
+    else: out += bytes([m | 27]) + n.to_bytes(8, "big")
+
+def _cbor_enc(out, v):
+    if v is None: out.append(0xf6)
+    elif v is True: out.append(0xf5)
+    elif v is False: out.append(0xf4)
+    elif isinstance(v, int):
+        if v >= 0: _cbor_head(out, 0, v)
+        else: _cbor_head(out, 1, -1 - v)
+    elif isinstance(v, float): out += b"\xfb" + struct.pack(">d", v)
+    elif isinstance(v, str):
+        b = v.encode("utf-8"); _cbor_head(out, 3, len(b)); out += b
+    elif isinstance(v, (list, tuple)):
+        _cbor_head(out, 4, len(v))
+        for x in v: _cbor_enc(out, x)
+    elif isinstance(v, dict):
+        _cbor_head(out, 5, len(v))
+        for k, x in v.items(): _cbor_enc(out, k); _cbor_enc(out, x)
+    else: raise TypeError("a %s does not encode as CBOR" % type(v).__name__)
+
+def _cbor_dec(b, i):
+    if i >= len(b): raise ValueError("a CBOR message ended early (cut short?)")
+    ib = b[i]; i += 1
+    major, info = ib >> 5, ib & 0x1f
+    def arg(i):
+        if info < 24: return info, i
+        n = {24: 1, 25: 2, 26: 4, 27: 8}.get(info)
+        if n is None: raise ValueError("CBOR: an indefinite or reserved length (%d) is not in the wire's subset" % info)
+        if i + n > len(b): raise ValueError("a CBOR message ended early (cut short?)")
+        return int.from_bytes(b[i:i + n], "big"), i + n
+    if major == 7:
+        if info == 20: return False, i
+        if info == 21: return True, i
+        if info in (22, 23): return None, i
+        if info in (25, 26, 27):
+            n = {25: 2, 26: 4, 27: 8}[info]
+            if i + n > len(b): raise ValueError("a CBOR message ended early (cut short?)")
+            return struct.unpack({25: ">e", 26: ">f", 27: ">d"}[info], b[i:i + n])[0], i + n
+        raise ValueError("CBOR: simple value %d is not in the wire's subset" % info)
+    n, i = arg(i)
+    if major == 0: return n, i
+    if major == 1: return -1 - n, i
+    if major == 3:
+        if i + n > len(b): raise ValueError("a CBOR string ended early (cut short?)")
+        return b[i:i + n].decode("utf-8"), i + n
+    if major == 4:
+        xs = []
+        for _ in range(n):
+            x, i = _cbor_dec(b, i); xs.append(x)
+        return xs, i
+    if major == 5:
+        m = {}
+        for _ in range(n):
+            k, i = _cbor_dec(b, i); x, i = _cbor_dec(b, i)
+            if not isinstance(k, str): raise ValueError("CBOR: a map key that is not text")
+            m[k] = x
+        return m, i
+    raise ValueError("CBOR: major type %d (byte strings, tags) is not in the wire's subset" % major)
+
+def _encode(obj):
+    if _mode["format"] == "cbor":
+        out = bytearray(); _cbor_enc(out, obj); data = bytes(out)
+    else:
+        data = json.dumps(obj).encode("utf-8")
+    if _mode["compress"] == "deflate":
+        z = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -15)
+        data = z.compress(data) + z.flush()
+    return data
+
+def _decode(data):
+    if _mode["compress"] == "deflate":
+        data = zlib.decompress(data, -15)
+    if _mode["format"] == "cbor":
+        v, i = _cbor_dec(data, 0)
+        if i != len(data): raise ValueError("CBOR: %d bytes after the message" % (len(data) - i))
+        return v
+    return json.loads(data)
+
 def reply(obj):
-    sys.stdout.write(json.dumps(obj) + "\n")
-    sys.stdout.flush()
+    if _framed():
+        data = _encode(obj)
+        _OUT.write(len(data).to_bytes(4, "big") + data)
+    else:
+        _OUT.write(json.dumps(obj).encode("utf-8") + b"\n")
+    _OUT.flush()
+
+def read_msg():
+    """the next request, or None when the host is gone"""
+    while True:
+        if _framed():
+            n = _IN.read(4)
+            if len(n) < 4: return None
+            data = _IN.read(int.from_bytes(n, "big"))
+            return _decode(data)
+        line = _IN.readline()
+        if not line: return None
+        if line.strip(): return json.loads(line)
 
 # ---- callbacks into okay (v3) ------------------------------------------
 #
@@ -124,12 +238,9 @@ def _call(name, *args):
     k = _next_k[0]
     reply({"ask": {"cb": name, "args": [enc(a) for a in args], "k": k}})
     while True:
-        line = sys.stdin.readline()
-        if not line:
+        req = read_msg()
+        if req is None:
             raise SystemExit(0)          # the host is gone
-        if not line.strip():
-            continue
-        req = json.loads(line)
         if req.get("op") == "resume" and req.get("k") == k:
             if "condition" in req:
                 c = req["condition"]
@@ -268,6 +379,14 @@ def serve(req):
                     pkgs[name] = None
             reply({"id": rid, "ok": {"python": "%d.%d.%d" % sys.version_info[:3],
                                      "packages": pkgs}})
+        elif op == "configure":
+            f, c = req.get("format"), req.get("compress")
+            if f not in ("json", "cbor"):
+                raise ValueError("this Python worker speaks the formats json, cbor; not %r" % f)
+            if c not in ("none", "deflate"):
+                raise ValueError("this Python worker speaks the compressions none, deflate; not %r" % c)
+            reply({"id": rid, "ok": {"format": f, "compress": c}})
+            _mode["format"], _mode["compress"] = f, c    # AFTER its own answer
         elif op == "resume":
             raise ValueError("resume %r: no call is waiting for it (resumed twice?)" % req.get("k"))
         else:
@@ -277,14 +396,13 @@ def serve(req):
     except Exception as e:
         reply({"id": rid, "condition": {"kind": type(e).__name__, "message": str(e)}})
 
-reply({"shim": SHIM, "python": "%d.%d.%d" % sys.version_info[:3]})
+reply({"shim": SHIM, "python": "%d.%d.%d" % sys.version_info[:3],
+       "speaks": {"format": ["json", "cbor"], "compress": ["deflate"]}})
 
-# readline, not `for line in sys.stdin`: okay.call reads the same stream
-# from inside a request, and one reader must own the buffer
+# one reader, read_msg, owns the input: okay.call reads the same stream from
+# inside a request
 while True:
-    line = sys.stdin.readline()
-    if not line:
+    req = read_msg()
+    if req is None:
         break
-    if not line.strip():
-        continue
-    serve(json.loads(line))
+    serve(req)
