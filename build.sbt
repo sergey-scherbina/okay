@@ -2430,6 +2430,8 @@ lazy val okayPy = (project in file("okay-py"))
   // okay-agent for TESTS only: its Durable journals these operations
   // through their own `Journalled` instances (foreign-journalled)
   .dependsOn(okay.jvm, okayCodec.jvm, okayStream.jvm, okayAgent.jvm % Test)
+  // JMH for the wire's codecs (wire-compression-measured)
+  .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-py",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
