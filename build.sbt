@@ -2353,6 +2353,12 @@ lazy val okayRust = project
   .settings(
     name := "okay-rust",
     jdkFloor(22),
+    // Chicory: a WebAssembly runtime in pure Java, and its WASI — the road
+    // with no native code in the process (specs/polyglot-rust.md stage 3)
+    libraryDependencies ++= Seq(
+      "com.dylibso.chicory" % "runtime" % "1.7.5",
+      "com.dylibso.chicory" % "wasi" % "1.7.5",
+    ),
     Test / fork := true,
     Test / javaOptions += "--enable-native-access=ALL-UNNAMED",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

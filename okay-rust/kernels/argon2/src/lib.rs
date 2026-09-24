@@ -32,3 +32,22 @@ pub extern "C" fn okay_argon2id(
         Err(_) => -3,
     }
 }
+
+/// `n` bytes of this module's memory, for the host to fill before a call
+/// (the WebAssembly road: a host cannot pass its own pointers in). 0 when
+/// `n` is 0; a trap when memory cannot grow.
+#[no_mangle]
+pub extern "C" fn okay_alloc(n: usize) -> *mut u8 {
+    let mut v = Vec::<u8>::with_capacity(n);
+    let p = v.as_mut_ptr();
+    std::mem::forget(v);
+    p
+}
+
+/// give back what `okay_alloc(n)` answered
+#[no_mangle]
+pub extern "C" fn okay_free(p: *mut u8, n: usize) {
+    if !p.is_null() {
+        unsafe { drop(Vec::from_raw_parts(p, 0, n)) }
+    }
+}

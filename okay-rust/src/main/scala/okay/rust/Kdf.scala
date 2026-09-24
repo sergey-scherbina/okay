@@ -37,6 +37,20 @@ object Kdf:
   def rust(lib: NativeLib): Either[String, Handler[Kdf]] =
     lib.function("okay_argon2id", signature).map(mh => using(call(mh, _)))
 
+  /** the SAME kernel as WebAssembly, under Chicory: no native code in the
+   * process (stage 3). The answers are the native road's, word for word */
+  def wasm(lib: WasmLib): Handler[Kdf] =
+    using(op => lib.withBuffers { b =>
+      val out = b.out(op.length)
+      lib.call("okay_argon2id",
+        b.in(op.password), op.password.length.toLong, b.in(op.salt), op.salt.length.toLong,
+        op.memoryKb.toLong, op.iterations.toLong, op.parallelism.toLong, out, op.length.toLong)
+        .flatMap { code =>
+          if code == 0 then Right(b.read(out, op.length))
+          else Left(s"okay_argon2id answered ${code.toInt}: ${meaning(code.toInt)}")
+        }
+    })
+
   private def meaning(code: Int): String = code match
     case -1 => "a null pointer where bytes are owed"
     case -2 => "parameters Argon2 refuses"
