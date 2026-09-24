@@ -55,6 +55,34 @@ final case class PoolConf(
    * `Pool.run` refuses to start — an open-by-default pool is the
    * Spark REST server's own CVE. Set this to mean it. */
   insecure: Boolean = false,
+  /** which manager's own primitive backs the coordinator lease
+   * (specs/cluster-pool.md, stage 5) — "" (the default) is
+   * `Lease.solitary`, correct for a manager with no election of its
+   * own (Slurm, YARN) and for a pool with only one member ever
+   * leading. "kube" is a `coordination.k8s.io/v1 Lease`; "consul" is
+   * a session over Consul's KV store. THE ONLY PLACE this engine ever
+   * speaks to a manager's API. */
+  leaseKind: String = "",
+  /** the Lease object's name (kube) or the KV key (consul) — every
+   * member of one pool names the SAME one, so they contend for it */
+  leaseName: String = "okay-pool",
+  /** kube only: the namespace the Lease object lives in. "" reads
+   * this pod's own namespace from its ServiceAccount files. */
+  leaseNamespace: String = "",
+  /** the API server's base URL (kube) or the agent's base URL
+   * (consul). "" means the in-cluster default for "kube"
+   * (`$KUBERNETES_SERVICE_HOST`) and the local agent for "consul"
+   * (`http://127.0.0.1:8500`) — set for a `kubectl proxy` or a remote
+   * agent, which is also how a test points either one at a real
+   * instance with no token and no TLS. */
+  leaseUrl: String = "",
+  /** kube only: this pod's bearer token, as a Secret reference. ""
+   * reads the in-cluster ServiceAccount token file, which is what
+   * every pod already carries without this being set at all. */
+  leaseToken: okay.conf.Secret = okay.conf.Secret(""),
+  /** how long this member's hold is good for before another may take
+   * it over, once renewal stops arriving */
+  leaseSeconds: Int = 15,
 ) derives Schema
 
 object PoolConf:

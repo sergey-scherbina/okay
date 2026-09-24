@@ -219,10 +219,15 @@ abstract class Job[P, R]:
    * `R` in its own type either — `Job.Answer` names none.
    */
   final def lead(paramsJson: Json, parts: Int, peers: Vector[Cluster.Serve], take: Int,
-                 checkpoint: Checkpoint, lease: Lease)
+                 checkpoint: Checkpoint, lease: Lease,
+                 /** peers re-resolved at every epoch boundary
+                  * (specs/cluster-pool.md, stage 5) — see `Cluster.stream`.
+                  * `None` is the fixed `peers` above, every round. */
+                 resolve: Option[() => Vector[Cluster.Serve] ! Async] = None,
+                 onRefusedRescale: (Int, Int) => Unit = (_, _) => ())
                 (using okay.Scheduler): Either[String, Option[Job.Answer] ! Async] =
     Codecs.json(params).decode(paramsJson).map { p =>
-      Cluster.leading(this, p, parts, peers, take, checkpoint, lease).map(_.map { run =>
+      Cluster.leading(this, p, parts, peers, take, checkpoint, lease, resolve, onRefusedRescale).map(_.map { run =>
         Job.Answer(Codecs.writeJson(run.value)(using answer), run.dropped, run.merged, run.retried, run.failed)
       })
     }

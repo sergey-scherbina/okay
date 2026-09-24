@@ -68,6 +68,29 @@ class TestPool extends munit.FunSuite {
     finally disagreeing.close()
   }
 
+  // ---- leaseFor (specs/cluster-pool.md, stage 5) -----------------------
+
+  test("leaseFor: \"\" is Lease.solitary -- take() always succeeds, no manager asked") {
+    val l = Pool.leaseFor(confOf(), "run-a")
+    assertEquals(l.take(), Some(1L))
+    assertEquals(l.take(), Some(1L))
+  }
+
+  test("leaseFor: an unknown kind falls back to Lease.solitary rather than crash") {
+    val l = Pool.leaseFor(confOf().copy(leaseKind = "nonsense"), "run-a")
+    assertEquals(l.take(), Some(1L))
+  }
+
+  test("leaseFor: \"kube\" with an explicit leaseUrl builds a KubeLease, never touching the in-cluster env") {
+    val l = Pool.leaseFor(confOf().copy(leaseKind = "kube", leaseUrl = "http://127.0.0.1:1"), "run-a")
+    assert(l.isInstanceOf[KubeLease], l.getClass.getName)
+  }
+
+  test("leaseFor: \"consul\" builds a ConsulLease") {
+    val l = Pool.leaseFor(confOf().copy(leaseKind = "consul", leaseUrl = "http://127.0.0.1:1"), "run-a")
+    assert(l.isInstanceOf[ConsulLease], l.getClass.getName)
+  }
+
   // ---- submit ---------------------------------------------------------
 
   test("submit: an unknown job is a named 404") {

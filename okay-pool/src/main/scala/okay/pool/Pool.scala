@@ -96,18 +96,53 @@ object Pool:
     private val active = scala.collection.mutable.Set.empty[String]
     def start(id: String): Boolean = synchronized { if active(id) then false else { val _ = active.add(id); true } }
     def stop(id: String): Unit = synchronized { active.remove(id): Unit }
+    def count: Int = synchronized(active.size)
 
-  /** fire this run's leading program in the background; the caller
+  /** `okay_pool_queued` (specs/cluster-pool.md, stage 5): how many
+   * runs THIS member is coordinating right now, not yet finished --
+   * see `okay.ops.Prom.queued`'s own doc comment for exactly what
+   * this does and does not claim */
+  def queued: Int = Attempts.count
+
+  /**
+   * FIRE THIS RUN'S LEADING PROGRAM IN THE BACKGROUND; the caller
    * never awaits it — the NEXT read of the checkpoint (a `GET`, from
-   * anyone) is how its progress becomes visible */
+   * anyone) is how its progress becomes visible.
+   *
+   * PEERS RE-RESOLVED AT EVERY EPOCH BOUNDARY (specs/cluster-pool.md,
+   * stage 5): `resolve` re-runs `Pool.workers` against the SAME
+   * `conf`/`discovery` this attempt started with, so a member that
+   * restarted with a new address is picked up mid-run even at an
+   * unchanged width. A count that DOES change ends the attempt with
+   * `Cluster.Rescale` for a rescalable job — caught below, which
+   * rewrites this run's stored `parts` and re-nudges immediately
+   * rather than waiting for the next external poll, so an elastic
+   * pool's run actually FOLLOWS the resize. A job that is not
+   * rescalable never throws it; `onRefusedRescale` just names the
+   * refusal once per epoch it would have applied.
+   */
   def nudge(id: String, job: Job[?, ?], m: RunMeta, peers: Vector[Cluster.Serve],
-           checkpoint: Checkpoint, lease: Lease)(using Scheduler): Unit =
+           checkpoint: Checkpoint, lease: Lease,
+           conf: PoolConf, discovery: Discovery, store: String => (Checkpoint, Lease))
+           (using Scheduler): Unit =
     if Attempts.start(id) then
-      job.lead(m.params, m.parts, peers, effectiveTake(m.take), checkpoint, lease) match
+      job.lead(m.params, m.parts, peers, effectiveTake(m.take), checkpoint, lease,
+        resolve = Some(() => workers(conf, discovery)),
+        onRefusedRescale = (have, want) =>
+          System.err.println(s"okay-pool: run '$id' has $have peers but '${m.job}' is not " +
+            s"rescalable at $want partitions; continuing unchanged")
+      ) match
         case Left(_) => Attempts.stop(id)   // params were validated at submission; unreachable here
         case Right(prog) =>
-          val f = Async.spawn(prog)
-          f.onComplete(_ => Attempts.stop(id))
+          Async.spawn(prog).onComplete {
+            case Left(r: Cluster.Rescale) =>
+              Attempts.stop(id)
+              val (metaCk, _) = store(s"$id.meta")
+              val resized = m.copy(parts = r.peers.length)
+              metaCk.save(0, RunMeta.encode(resized))
+              nudge(id, job, resized, r.peers, checkpoint, lease, conf, discovery, store)
+            case _ => Attempts.stop(id)
+          }
 
   /** `take <= 0` means "one epoch, run to completion" — the client-
    * facing word for a batch job over the SAME epoch loop a genuinely
@@ -147,7 +182,7 @@ object Pool:
                       case Left(why) => Status.Failed(s"the journal for '$id' no longer matches job '${m.job}': $why")))
                   case None =>
                     workers(conf, discovery).map { peers =>
-                      nudge(id, job, m, peers, checkpoint, lease)
+                      nudge(id, job, m, peers, checkpoint, lease, conf, discovery, store)
                       Some(Status.Running(folded.map(_.epoch).getOrElse(0), peers.length))
                     }
 
@@ -175,7 +210,10 @@ object Pool:
               case Some((_, existing)) =>
                 RunMeta.decode(existing) match
                   case Right(m) if m.job == name =>
-                    workers(conf, discovery).map { peers => nudge(id, job, m, peers, checkpoint, lease); Right(Submitted(id)) }
+                    workers(conf, discovery).map { peers =>
+                      nudge(id, job, m, peers, checkpoint, lease, conf, discovery, store)
+                      Right(Submitted(id))
+                    }
                   case Right(m) =>
                     pure(Left((409, s"'$id' already names a run of '${m.job}', not '$name'")))
                   case Left(why) =>
@@ -185,7 +223,7 @@ object Pool:
                   val resolvedParts = if parts > 0 then parts else peers.length
                   val m = RunMeta(name, params, resolvedParts, take)
                   metaCk.save(0, RunMeta.encode(m))
-                  nudge(id, job, m, peers, checkpoint, lease)
+                  nudge(id, job, m, peers, checkpoint, lease, conf, discovery, store)
                   Right(Submitted(id))
                 }
 
@@ -202,14 +240,21 @@ object Pool:
   def run(conf: PoolConf)(using okay.CanBlock, Scheduler): Unit =
     for name <- list(conf.registrars) do Class.forName(name): Unit
     if conf.store.nonEmpty then Class.forName(conf.store): Unit
-    val store = Stores.get.getOrElse {
+    val baseStore = Stores.get.getOrElse {
       System.err.println("okay-pool: PoolConf.store is unset — running on the in-memory default, which only works alone")
       Stores.memory
     }
+    // `leaseKind` REPLACES the registered store's own Lease with a
+    // manager-backed one, per run id -- the Checkpoint half is
+    // unchanged, since a manager's lease and a durable journal are
+    // orthogonal choices (specs/cluster-pool.md, stage 5)
+    val store: String => (Checkpoint, Lease) =
+      if conf.leaseKind.isEmpty then baseStore
+      else id => (baseStore(id)._1, leaseFor(conf, id))
     // "any member can answer a GET" is exactly what the in-memory
     // default cannot promise once there is more than one member
     // (specs/cluster-pool.md, "This needs a shared store, and says so")
-    if store == Stores.memory && (conf.service.nonEmpty || conf.peers.nonEmpty) then
+    if baseStore == Stores.memory && (conf.service.nonEmpty || conf.peers.nonEmpty) then
       System.err.println("okay-pool: PoolConf.store is unset but peers are configured — refusing to start; " +
         "a real pool needs a shared Checkpoint/Lease store, not this process's own memory")
       System.exit(3)
@@ -237,6 +282,45 @@ object Pool:
    * stage 4) */
   private[pool] def secured(conf: PoolConf): Boolean =
     conf.tlsCert.nonEmpty || conf.capabilityKey.ref.nonEmpty || conf.insecure
+
+  /** stable for this process's whole lifetime — a `KubeLease`/
+   * `ConsulLease`'s holder identity is for a human reading `kubectl
+   * describe lease`/`consul kv get`, not a correctness mechanism (the
+   * fencing token is), so it costs nothing to keep it fixed rather
+   * than mint one per attempt */
+  private lazy val processHolder: String =
+    s"${try java.net.InetAddress.getLocalHost.getHostName catch case _: Exception => "okay-pool"}-${java.util.UUID.randomUUID()}"
+
+  /** a Kubernetes name is a DNS-1123 subdomain: lowercase, digits,
+   * `-`/`.`, at most 253 characters */
+  private def kubeSafe(s: String): String =
+    s.toLowerCase.replaceAll("[^a-z0-9.-]", "-").take(253)
+
+  /** `PoolConf.leaseKind`'s three roads (specs/cluster-pool.md, stage
+   * 5) — the ONLY place this engine ever speaks to a manager's API. A
+   * lease is per RUN ID, never one global seat for the whole pool:
+   * several runs are coordinated by different members at once, and a
+   * single pool-wide lease would refuse every run but the first. */
+  private[pool] def leaseFor(conf: PoolConf, id: String): Lease =
+    val name = kubeSafe(s"${conf.leaseName}-$id")
+    conf.leaseKind match
+      case "" => Lease.solitary
+      case "kube" =>
+        if conf.leaseUrl.nonEmpty then
+          val tok = if conf.leaseToken.ref.nonEmpty then Schemes.all().get(conf.leaseToken).toOption else None
+          KubeLease(conf.leaseUrl, if conf.leaseNamespace.nonEmpty then conf.leaseNamespace else "default",
+            name, processHolder, tok, "", conf.leaseSeconds)
+        else KubeLease.inCluster(name, processHolder, conf.leaseNamespace, conf.leaseSeconds) match
+          case Right(l) => l
+          case Left(why) =>
+            System.err.println(s"okay-pool: leaseKind=kube but $why -- falling back to Lease.solitary")
+            Lease.solitary
+      case "consul" =>
+        ConsulLease(if conf.leaseUrl.nonEmpty then conf.leaseUrl else "http://127.0.0.1:8500",
+          name, processHolder, conf.leaseSeconds)
+      case other =>
+        System.err.println(s"okay-pool: unknown leaseKind '$other' -- falling back to Lease.solitary")
+        Lease.solitary
 
   private def serverSocketOf(conf: PoolConf): ServerSocket =
     if conf.tlsCert.isEmpty then ServerSocket(conf.port)

@@ -120,6 +120,27 @@ object Cluster {
   final class Refused(why: String) extends RuntimeException(why)
 
   /**
+   * A REQUEST TO RESTART AT A NEW WIDTH (specs/cluster-pool.md, stage
+   * 5): thrown out of `stream`'s epoch loop the same way
+   * `Checkpoint.Deposed` ends an attempt whose lease is gone — not a
+   * failure, a fact this attempt cannot act on itself, and it "leaves
+   * through `Cluster.stream` like any other" for the identical reason.
+   *
+   * Thrown only for a `Job.rescalable` job whose `resolve` callback
+   * (see `stream`) answers a DIFFERENT peer count than `parts` at an
+   * epoch boundary. `peers` is the FRESH vector `resolve` just
+   * answered, carried rather than re-resolved: a caller that restarts
+   * `stream`/`leading` at the new width uses it directly, so the
+   * membership this exception reports is exactly the membership the
+   * new attempt dispatches to, with no second resolve and no race in
+   * between. The new attempt's own `stream` call finds a journal whose
+   * last fold was cut at the OLD width and re-cuts it — stage 13's
+   * rescale, already built for a manually-restarted run, unchanged.
+   */
+  final case class Rescale(peers: Vector[Serve]) extends RuntimeException(
+    s"the peer count changed to ${peers.length}; this job is rescalable and should restart at that width")
+
+  /**
    * A WORKER THAT ANSWERS TO ITS OWNER (specs/federation.md, stage 2).
    *
    * Stage 1 showed two parties computing one answer without either
@@ -470,7 +491,33 @@ object Cluster {
    */
   def stream[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
                    journal: Checkpoint = Checkpoint.none, term: Long = 0L,
-                   tolerance: Int = Living.Tolerance)
+                   tolerance: Int = Living.Tolerance,
+                   /**
+                    * PEERS RE-RESOLVED AT EVERY EPOCH BOUNDARY
+                    * (specs/cluster-pool.md, stage 5). `None` answers
+                    * the fixed `workers` this run started with, every
+                    * round — so every caller before this stage is
+                    * unchanged, byte for byte. (Scala 3 refuses a
+                    * default value that reads an earlier value
+                    * parameter here, which is why the `workers`
+                    * fallback is spelled out in the body rather than
+                    * in this signature.) A real caller (okay-pool)
+                    * passes its own `Discovery`-backed resolve, and its
+                    * answer is used for THIS round's dispatch whenever
+                    * its length still matches `workers.length` — NOT
+                    * `parts`, which is an independent number by design
+                    * (a partition already runs on worker `i % workers
+                    * .length`) — which is what lets a member restarting
+                    * with a new address (same replica count) be picked
+                    * up mid-run with no rescale at all.
+                    */
+                   resolve: Option[() => Vector[Serve] ! Async] = None,
+                   /** called instead of restarting when the peer count
+                    * changed but this job is NOT rescalable (its windowed
+                    * positions do not survive a re-cut) — the run keeps
+                    * driving the ORIGINAL `workers`, unaffected, and this
+                    * is how the refusal is named rather than silent */
+                   onRefusedRescale: (Int, Int) => Unit = (_, _) => ())
                   (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
@@ -628,8 +675,20 @@ object Cluster {
         // dropped, which is how that mistake announced itself.) The
         // upper bound at MinValue is what finishes nothing locally.
         val bs = Vector.fill(parts)(sink.times.map(_ => Bounds(Long.MinValue, Long.MinValue)))
+        resolve.fold(pure(workers))(_()).flatMap { current =>
+        // COMPARED AGAINST `workers.length`, NEVER `parts` — the two
+        // are independent by design (a partition is assigned to
+        // worker `i % workers.length`, so a job can always have more
+        // or fewer workers than partitions) and TestRescale's own
+        // suite already relies on that independence. The rescale
+        // signal is "has the live peer count moved from what THIS
+        // attempt started with", not "workers != partitions".
+        val dispatch =
+          if current.length == workers.length then current
+          else if job.rescalable then throw Cluster.Rescale(current)
+          else { onRefusedRescale(current.length, workers.length); workers }
         Flows.spread(parts) { i =>
-          advancing(workers, living, i, opening(i, positions, round - 1, seen, marks),
+          advancing(dispatch, living, i, opening(i, positions, round - 1, seen, marks),
             Req.Advance(sessions(i), take, bs(i), round)) match
             case e: Resp.Epoch => e
             case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
@@ -717,6 +776,7 @@ object Cluster {
               Run(sink.emit(end), dd, parts, 1, mm, living.retries, living.lost)
             }
           else epoch(next, grown, d, m, stood, left, below, round + 1)
+        }
         }
 
       /**
@@ -874,7 +934,9 @@ object Cluster {
    * folded since the last commit was never recorded.
    */
   def leading[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
-                    journal: Checkpoint, lease: Lease)
+                    journal: Checkpoint, lease: Lease,
+                    resolve: Option[() => Vector[Serve] ! Async] = None,
+                    onRefusedRescale: (Int, Int) => Unit = (_, _) => ())
                    (using Scheduler): Option[Run[R]] ! Async =
     lease.take() match
       case None => pure[Async, Option[Run[R]]](None)
@@ -883,7 +945,8 @@ object Cluster {
         // commit once the lease is gone, and into every RECORD, so a
         // stale commit that got past the fence is shadowed rather
         // than read back (dataflow-durable)
-        stream(job, p, parts, workers, take, Checkpoint.fenced(term, lease, journal), term)
+        stream(job, p, parts, workers, take, Checkpoint.fenced(term, lease, journal), term,
+          resolve = resolve, onRefusedRescale = onRefusedRescale)
           .map { run => lease.release(term); Some(run) }
 
   /**

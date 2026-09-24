@@ -51,6 +51,24 @@ object Prom:
         sb += '\n'
     sb.result()
 
+  /**
+   * SUBMISSIONS ONE POOL MEMBER IS COORDINATING, NOT YET FINISHED
+   * (specs/cluster-pool.md, stage 5) — a manager's autoscaler signal:
+   * more of these than there are members is a pool falling behind.
+   * Unlabeled, because one process runs one member.
+   *
+   * ADJACENT BY NAME ONLY to `pools` below: `okay_pool_*` here is
+   * `okay-pool`, the cluster engine this whole module is named after;
+   * `okay_pool_size`/`_idle`/`_busy`/`_waiting`/`_created_total` are
+   * `okay.sql.Pool`, a database connection pool, sharing the English
+   * word by coincidence. Read the metric NAME, not the shared prefix,
+   * before trusting a dashboard that scrapes both from one process.
+   */
+  def queued(n: Int): String =
+    "# HELP okay_pool_queued submissions this member is coordinating, not yet finished\n" +
+      "# TYPE okay_pool_queued gauge\n" +
+      s"okay_pool_queued $n\n"
+
   /** the lifecycle as two gauges and a counter */
   def lifecycle(l: Lifecycle): String =
     val s = l.stats
@@ -156,7 +174,8 @@ object Prom:
     sb.result()
 
   /** a connection pool's standing, one row per gauge, named by the
-   * pool (persistence-e2e): `okay.sql.Pool.stats`, read once */
+   * pool (persistence-e2e): `okay.sql.Pool.stats`, read once — a
+   * DIFFERENT `Pool` from `queued` above; see its own doc comment */
   def pools(pieces: Vector[(String, () => okay.sql.Pool.Stats)]): String =
     val sb = new StringBuilder
     val read = pieces.map((n, f) => (n, f()))

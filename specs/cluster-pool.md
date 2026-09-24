@@ -402,16 +402,17 @@ and Dataproc are `yarn`.
   REFUSING to listen on a non-loopback address unless told
   `OKAY_POOL_INSECURE=true` — a pool that is open by default is the
   Spark REST server's CVE.
-- **5 — a pool that changes size.** Peers re-resolved at every epoch
-  boundary (stage 13's `Job.rescalable` decides whether the run may
-  follow); a metric for the manager's autoscaler (`okay_pool_queued`,
-  submissions waiting for a coordinator); a `Lease` over the
-  manager's own primitive where one exists — Kubernetes
-  `coordination.k8s.io/Lease` and Consul sessions are each a few
-  dozen lines behind the three-method seam, live in okay-pool behind
-  a flag, and are the ONLY place the pool ever speaks to a manager's
-  API. Slurm and YARN have none: rank 0 leads with `Lease.solitary`,
-  and the spec says so rather than inventing an election.
+- **5 — a pool that changes size.** LANDED (see Results). Peers
+  re-resolved at every epoch boundary (stage 13's `Job.rescalable`
+  decides whether the run may follow); a metric for the manager's
+  autoscaler (`okay_pool_queued`, submissions waiting for a
+  coordinator); a `Lease` over the manager's own primitive where one
+  exists — Kubernetes `coordination.k8s.io/Lease` and Consul sessions
+  are each a few dozen lines behind the three-method seam, live in
+  okay-pool behind a flag, and are the ONLY place the pool ever
+  speaks to a manager's API. Slurm and YARN have none: rank 0 leads
+  with `Lease.solitary`, and the spec says so rather than inventing
+  an election.
 - **6 — the numbers.** Claim 3 measured: submission latency and the
   fixed/marginal split on kind, beside Spark cluster mode on the same
   kind (okay-spark already carries the dependency), recorded in
@@ -515,9 +516,14 @@ Stage 4:
       port renders none, and `helm lint`/`helm template` gate it
 
 Stage 5:
-- [ ] a `Lease` over a Kubernetes Lease object: two members, one seat,
+- [x] a `Lease` over a Kubernetes Lease object: two members, one seat,
       the deposed one's next commit throws `Checkpoint.Deposed`
-- [ ] the autoscaler metric is exported through okay-ops's `/metrics`
+- [x] the autoscaler metric is exported through okay-ops's `/metrics`
+- [x] peers re-resolved at every epoch boundary; a rescalable job
+      follows a peer-count change (`Cluster.Rescale`, caught by
+      `Pool.nudge`), a non-rescalable one refuses BY NAME and keeps
+      running at its original width
+- [x] a `Lease` over a Consul session, the same three-method seam
 
 Stage 6:
 - [ ] the submission latency table, ours beside Spark's, on the same
@@ -823,3 +829,92 @@ tests (`TestPoolSecureLive`, real openssl-generated certificates: same
 certificate round-trips, a different one is refused mid-protocol, no
 identity at all is refused mid-protocol) and three real `helm`
 `Live` tests for the NetworkPolicy.
+
+## Results, stage 5
+
+**cluster-pool-elastic (2026-09-25).** `Cluster.stream`/`leading` gain
+`resolve: Option[() => Vector[Serve] ! Async]` (`None` answers the
+fixed `workers` every round, byte for byte, so every caller before
+this stage is unchanged) and `onRefusedRescale: (Int, Int) => Unit`.
+At every epoch boundary the resolved vector is compared against
+`workers.length` — never `parts`, which is an independent number by
+design (a partition already runs on worker `i % workers.length`, and
+`TestRescale`'s own suite already relies on that independence; the
+first cut of this compared against `parts` and broke six of its
+tests). A count that differs is `Cluster.Rescale(peers)` for a
+`Job.rescalable` job — an attempt-ending exception exactly like
+`Checkpoint.Deposed`, carrying the FRESH peer vector rather than
+making the caller re-resolve and risk a race — or, for a job that is
+not, a named refusal via `onRefusedRescale` while the run keeps
+driving the ORIGINAL `workers`. A same-COUNT, different-IDENTITY
+resolve answer (a member restarted with a new address) is picked up
+transparently, no rescale needed at all.
+
+`Pool.nudge` is where this closes the loop end to end: its own
+`resolve` re-runs `Pool.workers` against the pool's live `Discovery`,
+and its `Async.spawn(...).onComplete` catches `Cluster.Rescale`
+specifically — rewriting the run's stored `RunMeta.parts` to the new
+peer count and calling `nudge` again immediately, rather than waiting
+for the next external poll. `TestPoolElastic` proves the whole chain
+for real: a striped, fold-sink job submitted at width 1, a second real
+worker appearing between epoch 1 and 2 through a `Discovery` stub, the
+run finishing with the right answer AND its stored `parts` having
+moved to 2 — with no test-only hook anywhere in `Pool` itself.
+
+**`okay_pool_queued`** is `okay.ops.Prom.queued(n: Int)`, a bare
+unlabeled gauge (one process runs one pool member) backing a new
+`GET /metrics` route in `Routes.router`. NAMED, on purpose, beside
+`Prom.pools`'s existing `okay_pool_*` family (`okay.sql.Pool`, a
+database connection pool sharing the English word by coincidence):
+both doc comments cross-reference each other so a future reader checks
+the metric NAME before trusting a dashboard scraping both from one
+process.
+
+**`KubeLease` and `ConsulLease`** are the two `okay.cluster.Lease`
+implementations behind `PoolConf.leaseKind` ("" stays `Lease.solitary`,
+correct for Slurm/YARN's own no-election managers and for a
+single-leader pool). Both are PLAIN, SYNCHRONOUS
+`java.net.http.HttpClient`, never `okay.http`'s `Async`-typed client:
+`Lease`'s own trait has no effect type at all, and `held` is already
+documented as "called once per epoch" — a blocking round trip IS the
+intended cost. `KubeLease`'s fencing token is the Lease object's own
+`resourceVersion` (etcd's, monotonic by construction); `ConsulLease`'s
+is the KV entry's `LockIndex` (bumped by Consul itself on every
+acquisition, never on a mere write). Gated against REAL infrastructure
+— a `kind` cluster through `kubectl proxy` (`TestKubeLease`, 6 tests)
+and a real `consul agent -dev` container (`TestConsulLease`, 6 tests)
+— because a hand-rolled mock of either API would have hidden both
+defects the first run actually found:
+
+- **`Instant.now().toString` is not `metav1.MicroTime`.** Kubernetes's
+  Go layout demands exactly six fractional digits
+  (`"2006-01-02T15:04:05.000000Z07:00"`); `Instant`'s own `toString`
+  OMITS the fraction entirely when nanos happen to be zero and carries
+  up to nine otherwise, and a real API server answers either shape
+  with a 400 naming the layout it wanted. `KubeLease.microTime` is a
+  `DateTimeFormatter` built to match it exactly.
+- **The JDK's default HTTP/2-with-upgrade fails against an HTTP/1.1
+  agent on any request whose answer is a 2xx.** Both `kubectl proxy`
+  and Consul's own HTTP API are HTTP/1.1 only, and the client's
+  upgrade-response parser reads a 201/200 arriving where it expected
+  an upgrade handshake as `IOException: invalid upgrade response`.
+  Both leases force `.version(HttpClient.Version.HTTP_1_1)` on their
+  builder.
+
+The exact Behavior-box claim — "two members, one seat, the deposed
+one's next commit throws `Checkpoint.Deposed`" — is proven directly
+against the real cluster: one `KubeLease` takes the seat, an outside
+HTTP PUT (a raw, second write — not routed through `KubeLease` at all,
+so the test does not just check the class against its own bookkeeping)
+overwrites the SAME object's `resourceVersion`, and the original
+holder's next `Checkpoint.fenced(...).save(...)` throws `Deposed`
+exactly as a real successor taking over would cause.
+
+203 tests across `okay-cluster`/`okay-ops`/`okay-pool`'s default
+suites (fresh, `clean` first, JVM and JS), clean compile, and thirteen
+real `Live` tests against actual infrastructure: seven against a real
+`kind` cluster through `kubectl proxy` (`TestKubeLease`) and six
+against a real `consul agent -dev` container (`TestConsulLease`) — the
+one other Kubernetes test (`TestKubeLeaseInCluster`, the
+`KUBERNETES_SERVICE_HOST`-unset refusal) needs no network at all and
+is already counted in the 203.

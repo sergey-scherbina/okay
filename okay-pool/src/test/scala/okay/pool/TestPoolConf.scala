@@ -10,6 +10,19 @@ class TestPoolConf extends munit.FunSuite {
     assertEquals(conf.httpPort, 7101)
     assertEquals(conf.store, "")
     assertEquals(conf.tolerance, 3)
+    // specs/cluster-pool.md, stage 5: no lease kind by default
+    assertEquals(conf.leaseKind, "")
+    assertEquals(conf.leaseSeconds, 15)
+  }
+
+  test("leaseKind and its friends are set from the environment, by the derived name") {
+    val env = Map("OKAYPOOL_LEASE_KIND" -> "kube", "OKAYPOOL_LEASE_NAMESPACE" -> "prod",
+      "OKAYPOOL_LEASE_URL" -> "http://127.0.0.1:8001", "OKAYPOOL_LEASE_SECONDS" -> "30")
+    val conf = PoolConf.load(env = env.get).toOption.get
+    assertEquals(conf.leaseKind, "kube")
+    assertEquals(conf.leaseNamespace, "prod")
+    assertEquals(conf.leaseUrl, "http://127.0.0.1:8001")
+    assertEquals(conf.leaseSeconds, 30)
   }
 
   test("the environment overrides a default, by the derived name") {

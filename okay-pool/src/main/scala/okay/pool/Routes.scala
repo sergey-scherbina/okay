@@ -23,6 +23,7 @@ object Routes:
   val submitPath: Route[String *: EmptyTuple] = Route / "pool" / "jobs" / "name".as[String]
   val runsPath: Route[String *: EmptyTuple] = Route / "pool" / "runs" / "id".as[String]
   val peersPath: Route[EmptyTuple] = Route / "pool" / "peers"
+  val metricsPath: Route[EmptyTuple] = Route / "metrics"
 
   private def text(status: Int, body: String): Response =
     Response(status, Seq("content-type" -> "text/plain; charset=utf-8"), Http.one(body.getBytes(UTF_8)))
@@ -68,6 +69,10 @@ object Routes:
       }
       .on(Method.Get, peersPath) { _ =>
         Pool.resolve(conf, discovery).map(es => json(200, Codecs.writeJson(es)))
+      }
+      .on(Method.Get, metricsPath) { _ =>
+        pure(Response(200, Seq("content-type" -> "text/plain; version=0.0.4; charset=utf-8"),
+          Http.one(okay.ops.Prom.queued(Pool.queued).getBytes(UTF_8))))
       }
       .at(Method.Post, submitPath) { (name, req) =>
         // the capability is checked BEFORE the job name is even
