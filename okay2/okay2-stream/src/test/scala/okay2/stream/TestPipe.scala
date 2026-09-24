@@ -52,14 +52,14 @@ class TestPipe extends munit.FunSuite {
       if (i % 2 == 0) Stage.tell[Int, Int](s2).map(_ => s2) else pure(s2)
     }, s => Stage.tell[Int, Int](-s).map(_ => s))
 
-    val (out, answer) = Effects.run(Writer.run[Int, Int, Writer[Int]](into(told(1, 2, 3, 4, 5, 6))(evens)))
+    val (out, answer) = Effects.run(Writer.run(into(told(1, 2, 3, 4, 5, 6))(evens)))
     assertEquals(out, Seq(3, 10, 21, -21)) // 1+2, +3+4, +5+6, then the flush
     assertEquals(answer, 21)
   }
 
   test("mapAccumulate: fs2's 1:1 special case") {
     val runningTotal: Stage[Int, Int, Int] = Stage.mapAccumulate[Int, Int, Int](0)((sum, i) => (sum + i, sum + i))
-    assertEquals(Effects.run(Writer.run[Int, Int, Writer[Int]](into(told(1, 2, 3, 4))(runningTotal)))._1, Seq(1, 3, 6, 10))
+    assertEquals(Effects.run(Writer.run(into(told(1, 2, 3, 4))(runningTotal)))._1, Seq(1, 3, 6, 10))
   }
 
   test("chunked/unchunk stages: batching with a flush, then flattening back") {
@@ -129,8 +129,8 @@ class TestPipe extends munit.FunSuite {
     assertEquals(starts, 0, "through(stage)(stage) builds, runs nothing")
     val p2 = into(told(1, 2, 3))(s1)
     assertEquals(starts, 0, "into(producer)(stage) builds, runs nothing")
-    assertEquals(Effects.run(Writer.run[Int, Unit, Writer[Int]](p2))._1, Seq(1, 2, 3))
-    assertEquals(Effects.run(Writer.run[Int, Unit, Writer[Int]](p2))._1, Seq(1, 2, 3))
+    assertEquals(Effects.run(Writer.run(p2))._1, Seq(1, 2, 3))
+    assertEquals(Effects.run(Writer.run(p2))._1, Seq(1, 2, 3))
     assertEquals(starts, 2, "one start per run")
 
     starts = 0
@@ -142,8 +142,8 @@ class TestPipe extends munit.FunSuite {
     val toldG: Int ! (Writer[Int] + Later) = told(1, 2, 3).plus[Later]
     val p4 = intoIn[Int, Int, Later, Int, Unit](toldG)(s3)
     assertEquals(starts, 0)
-    assertEquals(Writer.run[Int, Unit, Writer[Int] + Later](p4).runWith._1, Seq(1, 2, 3))
-    assertEquals(Writer.run[Int, Unit, Writer[Int] + Later](p4).runWith._1, Seq(1, 2, 3))
+    assertEquals(Writer.run(p4).runWith._1, Seq(1, 2, 3))
+    assertEquals(Writer.run(p4).runWith._1, Seq(1, 2, 3))
     assertEquals(starts, 2)
 
     starts = 0

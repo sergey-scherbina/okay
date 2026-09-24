@@ -27,25 +27,25 @@ class TestCatsInterop extends munit.FunSuite {
     val E = MonadError[Prog, String]
     val failed: Prog[Int] = E.raiseError[Int]("no")
     val mended: Prog[Int] = E.handleErrorWith(failed)(e => produce(e.length).at[Row])
-    assertEquals(Throws.runEither[Int, String, Row](failed).runWith, Left("no"))
-    assertEquals(Throws.runEither[Int, String, Row](mended).runWith, Right(2))
+    assertEquals(Throws.runEither(failed).runWith, Left("no"))
+    assertEquals(Throws.runEither(mended).runWith, Right(2))
     // cats' own syntax reaches the instance
     val viaSyntax: Prog[Int] = failed.handleError(_ => 7)
-    assertEquals(Throws.runEither[Int, String, Row](viaSyntax).runWith, Right(7))
+    assertEquals(Throws.runEither(viaSyntax).runWith, Right(7))
   }
 
   test("foldTo: a program interpreted into Option, Either and IO by an Into") {
     val p: Int ! Produce = produce(1).flatMap(x => produce(x + 1).map(_ + x))
-    val intoOption: Into[Produce, Option] = new Into[Produce, Option] {
+    val intoOption: Into[Produce, Option] = new Into.Of[Produce, Option] {
       def apply[X](e: Produce.Emit[X]): Option[X] = Some(e.a)
     }
     assertEquals(foldTo[Option, Int, Produce](p)(intoOption), Some(3))
     type Err[A] = Either[String, A]
-    val intoEither: Into[Produce, Err] = new Into[Produce, Err] {
+    val intoEither: Into[Produce, Err] = new Into.Of[Produce, Err] {
       def apply[X](e: Produce.Emit[X]): Either[String, X] = Right(e.a)
     }
     assertEquals(foldTo[Err, Int, Produce](p)(intoEither), Right(3))
-    val intoIO: Into[Produce, IO] = new Into[Produce, IO] {
+    val intoIO: Into[Produce, IO] = new Into.Of[Produce, IO] {
       def apply[X](e: Produce.Emit[X]): IO[X] = IO.pure(e.a)
     }
     assertEquals(foldTo[IO, Int, Produce](p)(intoIO).unsafeRunSync(), 3)
@@ -54,7 +54,7 @@ class TestCatsInterop extends munit.FunSuite {
   test("foldTo is stack-safe: 1M operations into Option") {
     val n = 1000000
     val p = (1 to n).foldLeft(pure[Produce, Int](0))((m, _) => m.flatMap(x => produce(x + 1)))
-    val intoOption: Into[Produce, Option] = new Into[Produce, Option] {
+    val intoOption: Into[Produce, Option] = new Into.Of[Produce, Option] {
       def apply[X](e: Produce.Emit[X]): Option[X] = Some(e.a)
     }
     assertEquals(foldTo[Option, Int, Produce](p)(intoOption), Some(n))
@@ -74,9 +74,10 @@ class TestCatsInterop extends munit.FunSuite {
 
   test("the Io row beside another effect, both interpreted into IO by a union Into") {
     type Row = Produce + Io
-    implicit val produceIntoIO: Into[Produce, IO] = new Into[Produce, IO] {
+    implicit val produceIntoIO: Into[Produce, IO] = new Into.Of[Produce, IO] {
       def apply[X](e: Produce.Emit[X]): IO[X] = IO.pure(e.a)
     }
+    implicit val rowIntoIO: Into[Row, IO] = Into.union[Produce, Io, IO]
     val p: Int ! Row = produce(20).at[Row].flatMap(x => Io.lift(IO(x + 22)).at[Row])
     assertEquals(toIO(p).unsafeRunSync(), 42)
     // an IO's effects happen when the IO runs, not when the tree is built

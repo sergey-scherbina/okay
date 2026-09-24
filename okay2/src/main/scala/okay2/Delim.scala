@@ -132,15 +132,16 @@ object Delim {
     implicit def fresh[F <: Row](implicit ev: NoDelim[F]): OneMachine[F] = { val _ = ev; new OneMachine[F]() }
   }
 
-  /** `Delim` is not a member of F — the usual Scala 2 absence witness:
+  /** `Delim` is not a member of F (`F <:< Delim` fails: the row does
+   * not require it) — the usual Scala 2 absence witness:
    * one instance always, two more when the member IS there, so the
    * search is ambiguous exactly when Delim is in the row */
   sealed trait NoDelim[F <: Row]
   object NoDelim {
     private val inst: NoDelim[Pure] = new NoDelim[Pure] {}
     implicit def yes[F <: Row]: NoDelim[F] = inst.asInstanceOf[NoDelim[F]]
-    implicit def no1[F <: Row](implicit m: Member[Delim, F]): NoDelim[F] = { val _ = m; inst.asInstanceOf[NoDelim[F]] }
-    implicit def no2[F <: Row](implicit m: Member[Delim, F]): NoDelim[F] = { val _ = m; inst.asInstanceOf[NoDelim[F]] }
+    implicit def no1[F <: Row](implicit m: F <:< Delim): NoDelim[F] = { val _ = m; inst.asInstanceOf[NoDelim[F]] }
+    implicit def no2[F <: Row](implicit m: F <:< Delim): NoDelim[F] = { val _ = m; inst.asInstanceOf[NoDelim[F]] }
   }
 
   /** a fresh delimiter tag, labelled with the line that asked for it */
@@ -149,7 +150,7 @@ object Delim {
   private def named[R](what: String)(at: At): Prompt[R] = new Prompt[R](what, at.where)
 
   /** run the body under the delimiter — reset, as an operation */
-  def push[R, F <: Row](p: Prompt[R])(body: R ! (Delim + F)): R ! (Delim + F) =
+  def push[R, F <: Row](p: Prompt[R])(body: Free[Delim with F, R]): R ! (Delim + F) =
     Free.inject[Delim, R](Push(p, body)).plus[F]
 
   /**
@@ -541,7 +542,7 @@ object Delim {
     val kont: Segs[F, A, Z]
   }
 
-  private def next[F <: Row, X, Z](p: X ! (Delim + F), k: Segs[F, X, Z]): Next[F, Z] = new Next[F, Z] {
+  private def next[F <: Row, X, Z](p: Free[Delim with F, X], k: Segs[F, X, Z]): Next[F, Z] = new Next[F, Z] {
     type A = X
     val prog: X ! (Delim + F) = p
     val kont: Segs[F, X, Z] = k
@@ -560,7 +561,7 @@ object Delim {
    * the row's other half F is not the operation's to name — re-typed
    * here, at their two lines, where F is known.
    */
-  def run[R, F <: Row](prog: R ! (Delim + F))(implicit om: OneMachine[F]): R ! F = {
+  def run[R, F <: Row](prog: Free[Delim with F, R])(implicit om: OneMachine[F]): R ! F = {
     val _ = om
     machine[R, F](prog, None)
   }
@@ -573,13 +574,14 @@ object Delim {
    * with the same stack when the answer arrives — the foreign-
    * operation path, verbatim; the outer machine, which does hold the
    * prompt, then captures across this machine's frames. The evidence
-   * is what makes it well-typed and cast-free: `Delim` is a member of
-   * F, so the operation lands in the residual row by `at`.
+   * is what makes it well-typed and cast-free: `F <:< Delim` (the
+   * residual row still requires Delim), so the operation lands in it
+   * by the evidence's own substitution.
    */
-  def runNested[R, F <: Row](prog: R ! (Delim + F))(implicit in: Member[Delim, F]): R ! F =
+  def runNested[R, F <: Row](prog: Free[Delim with F, R])(implicit in: F <:< Delim): R ! F =
     machine[R, F](prog, Some(in))
 
-  private def machine[R, F <: Row](prog: R ! (Delim + F), forward: Option[Member[Delim, F]]): R ! F = {
+  private def machine[R, F <: Row](prog: Free[Delim with F, R], forward: Option[F <:< Delim]): R ! F = {
     type Rw = Delim + F
     type Prog[X] = X ! Rw
 
@@ -636,7 +638,7 @@ object Delim {
 
     /** one operation: either the machine is done (Left) or it continues
      * with a new program and stack (Right) */
-    def step(e: Rw#Op[Any], kont: Segs[F, Any, R]): Either[R ! F, Next[F, R]] =
+    def step(e: Any, kont: Segs[F, Any, R]): Either[R ! F, Next[F, R]] =
       split[Delim, F, Any, Either[R ! F, Next[F, R]]](e) {
         case pu: Push[r] =>
           // claim 1: the pushed body answers the prompt's r in this
@@ -663,7 +665,8 @@ object Delim {
                 // re-emit, and resume this machine with the same
                 // stack; `kont` is immutable, so a multi-shot outer
                 // capture may re-enter it as often as it likes
-                Left(Free.inject[Delim, Any](cap).at[F](Sub.one(in)).flatMap(x => _loop(next(pure[Rw, Any](x), kont))))
+                Left(in.substituteContra[({ type L[-x] = Free[x with Row, Any] })#L](Free.inject[Delim, Any](cap))
+                  .flatMap(x => _loop(next(pure[Rw, Any](x), kont))))
               case None => throw new NoPrompt(cap.at, cap.prompt.label, installed(kont))
             }
           }

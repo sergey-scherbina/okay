@@ -13,7 +13,7 @@ class TestFs2Interop extends munit.FunSuite {
 
   test("a Writer program is a pure fs2 stream") {
     val p: Unit ! Writer[Int] = (1 to 5).foldLeft(pure[Writer[Int], Unit](()))((m, i) => m.flatMap(_ => Writer.tell(i)))
-    val s: Stream[_root_.fs2.Pure, Int] = toFs2[_root_.fs2.Pure, Int, Unit, Writer[Int], Pure](p)
+    val s: Stream[_root_.fs2.Pure, Int] = toFs2[_root_.fs2.Pure, Int, Unit, Pure](p)
     assertEquals(s.toList, List(1, 2, 3, 4, 5))
   }
 
@@ -25,7 +25,7 @@ class TestFs2Interop extends munit.FunSuite {
       _ <- Io.lift(IO { side ::= "io" }).at[Row]
       _ <- Writer.tell("b").at[Row]
     } yield ()
-    val s: Stream[IO, String] = toFs2[IO, String, Unit, Row, Io](p)
+    val s: Stream[IO, String] = toFs2[IO, String, Unit, Io](p)
     assertEquals(side, Nil) // building the stream ran nothing
     assertEquals(s.compile.toList.unsafeRunSync(), List("a", "b"))
     assertEquals(side, List("io"))
@@ -37,17 +37,17 @@ class TestFs2Interop extends munit.FunSuite {
 
   test("another effect beside the Writer is run by its own Into") {
     type Row = Writer[Int] + Produce
-    implicit val produceIO: Into[Produce, IO] = new Into[Produce, IO] {
+    implicit val produceIO: Into[Produce, IO] = new Into.Of[Produce, IO] {
       def apply[X](e: Produce.Emit[X]): IO[X] = IO.pure(e.a)
     }
     val p: Unit ! Row = produce(2).at[Row].flatMap(n => Writer.tell(n).at[Row]).flatMap(_ => Writer.tell(3).at[Row])
-    assertEquals(toFs2[IO, Int, Unit, Row, Produce](p).compile.toList.unsafeRunSync(), List(2, 3))
+    assertEquals(toFs2[IO, Int, Unit, Produce](p).compile.toList.unsafeRunSync(), List(2, 3))
   }
 
   test("stack safety: a million tells as a stream") {
     val n = 1000000
     val p: Unit ! Writer[Int] = (1 to n).foldLeft(pure[Writer[Int], Unit](()))((m, i) => m.flatMap(_ => Writer.tell(i)))
-    assertEquals(toFs2[_root_.fs2.Pure, Int, Unit, Writer[Int], Pure](p).fold(0L)(_ + _).toList, List(n.toLong * (n + 1) / 2))
+    assertEquals(toFs2[_root_.fs2.Pure, Int, Unit, Pure](p).fold(0L)(_ + _).toList, List(n.toLong * (n + 1) / 2))
   }
 
   test("an IO stream is a Writer program, pulled one element per Io operation") {
@@ -55,14 +55,14 @@ class TestFs2Interop extends munit.FunSuite {
     val s: Stream[IO, Int] = Stream.range(1, 6).evalMap(i => IO { pulled += 1; i })
     val p: Unit ! (Writer[Int] + Io) = fromFs2(s)
     assertEquals(pulled, 0)
-    val collected: IO[(Seq[Int], Unit)] = Io.run(Writer.run[Int, Unit, Writer[Int] + Io](p))
+    val collected: IO[(Seq[Int], Unit)] = Io.run(Writer.run(p))
     assertEquals(collected.unsafeRunSync()._1, Seq(1, 2, 3, 4, 5))
     assertEquals(pulled, 5)
   }
 
   test("round trip: stream -> program -> stream") {
     val s: Stream[IO, Int] = Stream.emits(List(3, 1, 2))
-    val back: Stream[IO, Int] = toFs2[IO, Int, Unit, Writer[Int] + Io, Io](fromFs2(s))
+    val back: Stream[IO, Int] = toFs2[IO, Int, Unit, Io](fromFs2(s))
     assertEquals(back.compile.toList.unsafeRunSync(), List(3, 1, 2))
   }
 }

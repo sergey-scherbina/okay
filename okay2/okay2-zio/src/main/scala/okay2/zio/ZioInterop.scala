@@ -30,26 +30,33 @@ object ZioInterop {
 
   /** the natural transformation from a row's operations into a ZIO
    * with environment Rz and error E; a union's is made of its parts */
-  trait IntoZ[R <: Row, -Rz, +E] { def apply[X](e: R#Op[X]): ZIO[Rz, E, X] }
+  trait IntoZ[R <: Row, -Rz, +E] { def applyOp[X](op: Any): ZIO[Rz, E, X] }
 
   object IntoZ {
-    implicit def union[F <: Row, G <: Row, Rz, E](implicit T: TypeableK[F], f: IntoZ[F, Rz, E], g: IntoZ[G, Rz, E]): IntoZ[F + G, Rz, E] =
+    /** one signature's, typed (as `CatsInterop.Into.Of`) */
+    abstract class Of[F <: Row, -Rz, +E] extends IntoZ[F, Rz, E] {
+      def apply[X](e: F#Op[X]): ZIO[Rz, E, X]
+      final def applyOp[X](op: Any): ZIO[Rz, E, X] = apply(Split.only[F, X](op))
+    }
+
+    /** explicit, as `CatsInterop.Into.union` and for its reason */
+    def union[F <: Row, G <: Row, Rz, E](implicit T: TypeableK[F], f: IntoZ[F, Rz, E], g: IntoZ[G, Rz, E]): IntoZ[F + G, Rz, E] =
       new IntoZ[F + G, Rz, E] {
-        def apply[X](e: (F + G)#Op[X]): ZIO[Rz, E, X] = Split.split[F, G, X, ZIO[Rz, E, X]](e)(f(_))(g(_))
+        def applyOp[X](op: Any): ZIO[Rz, E, X] = if (T.test(op)) f.applyOp[X](op) else g.applyOp[X](op)
       }
 
     /** Pure has no operations: never applied */
     implicit def pure[Rz, E]: IntoZ[okay2.Pure, Rz, E] = new IntoZ[okay2.Pure, Rz, E] {
-      def apply[X](e: Nothing): ZIO[Rz, E, X] = e
+      def applyOp[X](op: Any): ZIO[Rz, E, X] = throw new IllegalStateException("an operation in a Pure program: " + op)
     }
   }
 
   /** interpret a program into ZIO: values by `succeed`, operations by
    * `h`, the walk inside `flatMap` */
-  def foldTo[Rz, E, A, R <: Row](p: A ! R)(h: IntoZ[R, Rz, E]): ZIO[Rz, E, A] = Free.resume(p) match {
+  def foldTo[Rz, E, A, R <: Row](p: Free[R, A])(h: IntoZ[R, Rz, E]): ZIO[Rz, E, A] = Free.resume(p) match {
     case Return(a) => ZIO.succeed(a)
-    case Inject(e) => h(e)
-    case Bind(Inject(e), k) => h(e).flatMap(x => foldTo[Rz, E, A, R](k(x))(h))
+    case Inject(e) => h.applyOp[A](e)
+    case Bind(Inject(e), k) => h.applyOp[Any](e).flatMap(x => foldTo[Rz, E, A, R](k(x))(h))
     case other => throw new IllegalStateException("resume left a non-head form: " + other)
   }
 
@@ -58,11 +65,11 @@ object ZioInterop {
    * `unfoldZIO` step per told value, the residual operations between
    * two tells folded into the step's ZIO.
    */
-  def toZStream[Rz, E, W, A, R <: Row, G <: Row](p: A ! R)(implicit rm: Remove.Aux[Writer[W], R, G], h: IntoZ[G, Rz, E]): ZStream[Rz, E, W] =
-    toZStreamAt[Rz, E, W, A, G](rm.split(p))(h)
+  def toZStream[Rz, E, W, A, G <: Row](p: Free[Writer[W] with G, A])(implicit h: IntoZ[G, Rz, E]): ZStream[Rz, E, W] =
+    toZStreamAt[Rz, E, W, A, G](p)(h)
 
   /** `toZStream` at the handler's own shape */
-  def toZStreamAt[Rz, E, W, A, G <: Row](p: A ! (Writer[W] + G))(h: IntoZ[G, Rz, E]): ZStream[Rz, E, W] = {
+  def toZStreamAt[Rz, E, W, A, G <: Row](p: Free[Writer[W] with G, A])(h: IntoZ[G, Rz, E]): ZStream[Rz, E, W] = {
     type P = A ! (Writer[W] + G)
     def step(x: P): ZIO[Rz, E, Option[(W, P)]] = Free.resume(x) match {
       case Return(_) => ZIO.none
@@ -71,7 +78,7 @@ object ZioInterop {
         Split.split[Writer[W], G, Any, ZIO[Rz, E, Option[(W, P)]]](e) {
           case Writer.Say(w) => ZIO.some((w, k(())))
         } { g =>
-          h(g).flatMap(x => step(k(x)))
+          h.applyOp[Any](g).flatMap(x => step(k(x)))
         }
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
@@ -113,11 +120,11 @@ object Zio {
   def lift[A](z: Task[A]): A ! Zio = Free.inject[Zio, A](z)
 
   /** the row's operations are already ZIO */
-  implicit val into: IntoZ[Zio, Any, Throwable] = new IntoZ[Zio, Any, Throwable] {
+  implicit val into: IntoZ[Zio, Any, Throwable] = new IntoZ.Of[Zio, Any, Throwable] {
     def apply[X](e: Task[X]): Task[X] = e
   }
 
   /** fold a program into one Task: every part of the row needs an
    * `IntoZ[_, Any, Throwable]` */
-  def run[A, R <: Row](p: A ! R)(implicit h: IntoZ[R, Any, Throwable]): Task[A] = foldTo[Any, Throwable, A, R](p)(h)
+  def run[A, R <: Row](p: Free[R, A])(implicit h: IntoZ[R, Any, Throwable]): Task[A] = foldTo[Any, Throwable, A, R](p)(h)
 }

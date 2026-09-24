@@ -16,7 +16,7 @@ class TestFailing extends munit.FunSuite {
     type F = Resource + Async
     val prog = Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close").at[F]
       .flatMap(_ => Async[Int] { log ::= "run"; throw new RuntimeException("boom") }.at[F])
-    val out = outcome(Async.runAsync(Resource.run[Int, F, Async](prog)))
+    val out = outcome(Async.runAsync(Resource.run(prog)))
     assert(out.exists(_.isFailure), s"expected the failure, got $out")
     assertEquals(log.reverse, List("open", "run", "close"))
   }
@@ -26,7 +26,7 @@ class TestFailing extends munit.FunSuite {
     type F = Resource + Async
     val prog = Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close").at[F]
       .flatMap(_ => Async.await[Int](k => { k(Left(new RuntimeException("no"))); () => () }).at[F])
-    val out = outcome(Async.runAsync(Resource.run[Int, F, Async](prog)))
+    val out = outcome(Async.runAsync(Resource.run(prog)))
     assert(out.exists(_.isFailure), s"expected the failure, got $out")
     assertEquals(log.reverse, List("open", "close"))
   }
@@ -37,7 +37,7 @@ class TestFailing extends munit.FunSuite {
     type F = Resource + (Async + G)
     val prog = Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close").at[F]
       .flatMap(_ => Async[Int] { log ::= "run"; throw new RuntimeException("boom") }.at[F])
-    val out = outcome(Async.runAsync(Throws.runEither[Int, String, Async + G](Resource.run[Int, F, Async + G](prog))))
+    val out = outcome(Async.runAsync(Throws.runEither(Resource.run(prog))))
     assert(out.exists(_.isFailure), s"expected the failure, got $out")
     assertEquals(log.reverse, List("open", "run", "close"))
   }
@@ -48,8 +48,7 @@ class TestFailing extends munit.FunSuite {
     type F = Resource + G
     val prog = Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close").at[F]
       .flatMap(_ => Async[Int] { log ::= "run"; throw new RuntimeException("boom") }.at[F])
-    val handled = State.handle[Int, Either[String, Int], State[Int] + Async](0)(
-      Throws.runEither[Int, String, G](Resource.run[Int, F, G](prog)))
+    val handled = State.handle(0)(Throws.runEither(Resource.run(prog)))
     val out = outcome(Async.runAsync(handled))
     assert(out.exists(_.isFailure), s"expected the failure, got $out")
     assertEquals(log.reverse, List("open", "run", "close"))
@@ -60,7 +59,7 @@ class TestFailing extends munit.FunSuite {
     type F = Resource + Async
     val prog = Resource.acquire { log ::= "open"; 1 } (_ => log ::= "close").at[F]
       .flatMap(a => Async[Int] { log ::= "run"; a + 41 }.at[F])
-    val out = outcome(Async.runAsync(Resource.run[Int, F, Async](prog)))
+    val out = outcome(Async.runAsync(Resource.run(prog)))
     assertEquals(out.flatMap(_.toOption), Some(42))
     assertEquals(log.reverse, List("open", "run", "close"))
   }

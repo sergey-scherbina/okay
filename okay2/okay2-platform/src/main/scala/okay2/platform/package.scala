@@ -47,7 +47,7 @@ package object platform {
   /** run, retrying per the policy on any exception; delays park the
    * current (virtual) thread; a policy exhausted rethrows. The program
    * reruns FROM ITS BEGINNING */
-  def retry[A](policy: LazyList[Long])(prog: => A ! Async): A ! Async =
+  def retry[A](policy: LazyList[Long])(prog: => Free[Async, A]): A ! Async =
     Async {
       def go(delays: LazyList[Long]): A =
         try Effects.runFree(prog)
@@ -63,6 +63,6 @@ package object platform {
     }
 
   /** a fiber that restarts its program per the policy on failure */
-  def supervised[A](policy: LazyList[Long])(prog: => A ! Async)(implicit S: Scheduler): Fiber[A] =
+  def supervised[A](policy: LazyList[Long])(prog: => Free[Async, A])(implicit S: Scheduler): Fiber[A] =
     Async.spawn(retry(policy)(prog))(S)
 }

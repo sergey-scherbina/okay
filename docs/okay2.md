@@ -48,7 +48,11 @@ A program is `A ! R`: it computes `A` performing the operations of the
 row `R`. In Scala 2 every infix type operator has the same precedence,
 so the row after `!` is parenthesised. `State[Int]` is the signature
 fixed at one state type (`State % Int` is the same type); a row of
-several is written with `+`.
+several is written with `+`, and `+` is `with`: a row is the
+INTERSECTION of what the program requires, and `Free` is contravariant
+in it. So the order a row is written in does not matter, a program
+needing less is already a program in a row that needs more, and a
+handler finds its effect anywhere in the row by itself.
 
 ```scala
     val p: Int ! (State[Int]) =
@@ -60,9 +64,9 @@ several is written with `+`.
     assertEquals(State.run[Int, Int](4)(p), (50, 50))
 ```
 
-A program is built at its own signature's row and LANDS in a wider one
-by `at`; the witness is compile-time only, and the cast behind it is
-free because the row erases:
+A program is built at its own signature's row and is ALREADY a program
+in any wider one — widening is subtyping. `at` names the row the call
+site wants and is the identity:
 
 ```scala
     type Row = State[Int] + Produce
@@ -76,16 +80,21 @@ free because the row erases:
     assertEquals((s, a), (8, 12))
 ```
 
-A row that does not mention the effect refuses the program — at
-compile time, by name:
+The order of a row is not part of its type, and a program with an
+effect left unhandled is refused by `run`:
 
 ```scala
-    val errors = compileErrors("Writer.tell(\"x\").at[State[Int] + Produce]")
-    assert(errors.contains("does not fit in the row"), errors)
+    implicitly[(Int ! (State[Int] + Writer[String])) <:< (Int ! (Writer[String] + State[Int]))]
+    implicitly[(Int ! (Writer[String] + State[Int])) <:< (Int ! (State[Int] + Writer[String]))]
+```
+
+```scala
+    val errors = compileErrors("!.run(State.handle(1)(prog))")
+    assert(errors.contains("type mismatch"), errors)
 ```
 
 `bind` infers the union when the continuation answers in another
-row, and `plus` adds a signature with no witness at all:
+row (a plain `flatMap` does too), and `plus` adds a signature:
 
 ```scala
     val p: Int ! (State[Int] + Produce) = State.get[Int].bind(n => produce(n + 1))
@@ -107,7 +116,7 @@ object Produce {
   implicit val effect: Effect[Produce] = Effect.of[Produce]
 
   /** each operation answers with its own value */
-  implicit val handler: Handler[Produce] = new Handler[Produce] {
+  implicit val handler: Handler[Produce] = new Handler.Of[Produce] {
     def handle[A](a: Emit[A]): A = a.a
   }
 
@@ -116,10 +125,13 @@ object Produce {
 ```
 
 `Effect.of` reads the class off the ClassTag of the operations, and
-that is what a row split tests at run time. A ROW has no such class —
-its `Op` is abstract — so `Effect.of[State[Int] + Produce]` is refused,
-which is right: the erasure of a union would be a class every
-operation matches.
+that is what a row split tests at run time. Give it a SIGNATURE, never
+a row: scalac 2 resolves an intersection's `#Op` to its last parent's
+(`(Writer[String] + State[Int])#Op` is `State.Op`), so a row's ClassTag
+would test for one class only. Nothing asks for one — a row has no
+`TypeableK` — and for the same reason okay2 never reads an operation at
+a row's `#Op`: `Inject` holds it as `Any`, and the typed view comes
+from `Split`, at one signature, after its class test.
 
 A comonadic `Handler` answers each operation with a value, and
 `runWith` runs the program by it; a row is run by one handler per
@@ -128,7 +140,7 @@ one for free, because the operations are already data:
 
 ```scala
     type Row = Op + Produce
-    implicit val opH: Handler[Op] = new Handler[Op] { def handle[A](a: Op.Val[A]): A = a.a }
+    implicit val opH: Handler[Op] = new Handler.Of[Op] { def handle[A](a: Op.Val[A]): A = a.a }
     implicit val rowH: Handler[Row] = Handler.union[Op, Produce]
     val p: Int ! Row = Op.op(1).at[Row].flatMap(x => produce(x + 1).at[Row])
     assertEquals(p.runWith, 2)
@@ -141,22 +153,30 @@ one for free, because the operations are already data:
 ## 4. Handlers, in any order
 
 `State.handle(s)(p)` runs the State part of `p` and leaves a program
-over the rest of the row. In Scala 3 a union commutes, so the handler
-finds its signature wherever it is; in Scala 2 `A + B + C` is
-`(A + B) + C`, so `okay2` finds it with a witness (`Remove[F, R]`, "R
-without F") — the effect may be anywhere, and handlers may be applied
-in either order:
+over the rest of the row: its parameter is `Free[State[S] with R, A]`,
+and scalac infers `R` from the intersection, wherever State stands in
+it. Over three effects, all six orders:
 
 ```scala
-  type Row = State[Int] + Writer[String] + Produce
+  type Row3 = State[Int] + Writer[String] + Reader[Int]
 ```
 
 ```scala
-    // handlers in EITHER order: `Remove` finds the signature anywhere in the row
-    val (ws, (s, x)) = Writer.run[String, (Int, Int), Writer[String] + Produce](State.handle(41)(p)).runWith
-    assertEquals((s, ws, x), (41, Seq("x"), 42))
-    val (s2, (ws2, x2)) = State.handle(41)(Writer.run[String, Int, Row](p)).runWith
-    assertEquals((s2, ws2, x2), (41, Seq("x"), 42))
+      !.run(Writer.run(Reader.run(5)(State.handle(1)(prog)))),
+      !.run(Reader.run(5)(Writer.run(State.handle(1)(prog)))),
+      !.run(State.handle(1)(Reader.run(5)(Writer.run(prog)))),
+      !.run(Reader.run(5)(State.handle(1)(Writer.run(prog)))),
+      !.run(State.handle(1)(Writer.run(Reader.run(5)(prog)))),
+      !.run(Writer.run(State.handle(1)(Reader.run(5)(prog)))))
+```
+
+A helper of your own that is polymorphic in the rest of the row spells
+its PARAMETER with `Free` and `with`: scalac 2 does not look through an
+alias (`!`, `+`) to solve a row variable, and through them `R` would
+come out as the whole row. Inside it, name the rest for the handler:
+
+```scala
+    def countFrom[R <: okay2.Row, A](p: Free[State[Int] with R, A]): (Int, A) ! R = State.handle[Int, A, R](0)(p)
 ```
 
 A stack-safe 1M-element State program, indexed as the Scala 3 core's
@@ -176,9 +196,9 @@ INSIDE the row, so what follows neither knows nor cares:
 ```scala
     type Row = Throws[String] + Produce
     val p: Int ! Row = Throws.raise[String, Int]("x").at[Row].recover(e => produce(e.length).at[Row])
-    assertEquals(Throws.runEither[Int, String, Row](p).runWith, Right(1))
+    assertEquals(Throws.runEither(p).runWith, Right(1))
     val q: Int ! Row = Throws.raise[String, Int]("x").at[Row].orElse(pure(9))
-    assertEquals(Throws.runEither[Int, String, Row](q).runWith, Right(9))
+    assertEquals(Throws.runEither(q).runWith, Right(9))
 ```
 
 An abort does not run what follows it, and a `Writer` beside it sees
@@ -187,7 +207,7 @@ exactly what happened before:
 ```scala
     type Row = Throws[String] + Writer[String]
     val p: Int ! Row = Writer.tell("before").at[Row].flatMap(_ => Throws.raise[String, Int]("stop").at[Row]).flatMap(x => Writer.tell("after").at[Row].map(_ => x))
-    val (ws, r) = !.run(Writer.run[String, Either[String, Int], Writer[String] + Pure](Throws.runEither[Int, String, Row](p).plus[Pure]))
+    val (ws, r) = !.run(Writer.run(Throws.runEither(p).plus[Pure]))
     assertEquals(r, Left("stop"))
     assertEquals(ws, Seq("before"))
 ```
@@ -247,7 +267,7 @@ tells on the way, and the Writer beside it is forwarded untouched:
 ```
 
 ```scala
-    val (ws, a) = !.run(Writer.run[String, Int, Writer[String] + Pure](told))
+    val (ws, a) = !.run(Writer.run(told))
     assertEquals(a, 42)
     assertEquals(ws, Seq("asked", "asked"))
 ```
@@ -264,18 +284,27 @@ program more than once:
 Each of these was measured before it was decided (specs/okay2.md):
 
 - **A row is a type of kind `*`** with a member `type Op[+A]`, and
-  `F + G` leaves `Op` abstract. Scala 2 cannot give a type alias the
-  kind `* -> *` by partial application, so the Scala 3 union
-  `[A] =>> F[A] | G[A]` has no spelling; an abstract member erases to
-  Object exactly as the union does, and an operation of a union row
+  `F + G` is `F with G`. Scala 2 cannot give a type alias the kind
+  `* -> *` by partial application, so the Scala 3 union
+  `[A] =>> F[A] | G[A]` has no spelling. Its dual has one: the union of
+  a program's OPERATIONS is the intersection of its REQUIREMENTS, and
+  `Free` is contravariant in the row. An operation of a row of several
   is held raw in the tree (TestRow checks the class).
-- **A union does not commute.** `A + B` and `B + A` are different
-  types. `at` reorders a program's row by a witness, and every handler
-  finds its signature by `Remove`, so neither costs you anything but
-  the spelling.
-- **Construct at the signature, widen with `at`.** `effect[F + G, A]
-  (op)` does not type — no operation IS a value of an abstract `Op`.
-  Every signature's named constructors are its API.
+- **Rows commute and widen by subtyping** (stage 8). Until then `+` was
+  a sealed trait that did not commute, and the row layer carried six
+  membership rules, a `Remove` witness per handler and an `…At` twin of
+  each; all gone. `at` is kept as the identity so a call site can name
+  its row.
+- **Never read an operation at a row's `#Op`**: an intersection's is its
+  last parent's, and reading at it is a `ClassCastException` (measured).
+  `Inject` holds the operation as `Any`; `Handler.Of[F]` and
+  `Into.Of[F, M]` are the typed forms, for ONE signature.
+- **Row-generic parameters are spelled with `Free`**, not `!`/`+`:
+  scalac 2 does not look through an alias to solve a row variable.
+- **Union handlers and `Into`s are explicit** (`Handler.union`,
+  `Into.union`): an implicit rule over `F + G` matches every type and
+  diverges. For the same reason `Replayable` — the one inductive check
+  over a row — is derived by a small macro that reads the row's parts.
 - **Parenthesise the row after `!`**, and write parameterised
   signatures applied (`State[Int]`), because `A + B % C` is
   `(A + B) % C` in Scala 2.
@@ -336,7 +365,7 @@ effect has been handled:
 Any monad, by an `Into` of your own — here Option:
 
 ```scala
-    val intoOption: Into[Produce, Option] = new Into[Produce, Option] {
+    val intoOption: Into[Produce, Option] = new Into.Of[Produce, Option] {
       def apply[X](e: Produce.Emit[X]): Option[X] = Some(e.a)
     }
     assertEquals(foldTo[Option, Int, Produce](p)(intoOption), Some(3))
@@ -354,7 +383,7 @@ nothing past the first element:
       _ <- Io.lift(IO { side ::= "io" }).at[Row]
       _ <- Writer.tell("b").at[Row]
     } yield ()
-    val s: Stream[IO, String] = toFs2[IO, String, Unit, Row, Io](p)
+    val s: Stream[IO, String] = toFs2[IO, String, Unit, Io](p)
     assertEquals(side, Nil) // building the stream ran nothing
     assertEquals(s.compile.toList.unsafeRunSync(), List("a", "b"))
     assertEquals(side, List("io"))
@@ -367,7 +396,7 @@ operation:
     val s: Stream[IO, Int] = Stream.range(1, 6).evalMap(i => IO { pulled += 1; i })
     val p: Unit ! (Writer[Int] + Io) = fromFs2(s)
     assertEquals(pulled, 0)
-    val collected: IO[(Seq[Int], Unit)] = Io.run(Writer.run[Int, Unit, Writer[Int] + Io](p))
+    val collected: IO[(Seq[Int], Unit)] = Io.run(Writer.run(p))
     assertEquals(collected.unsafeRunSync()._1, Seq(1, 2, 3, 4, 5))
     assertEquals(pulled, 5)
 ```
@@ -388,7 +417,7 @@ choosing, a Writer program as a `ZStream`:
 ```
 
 ```scala
-    val s: ZStream[Any, Throwable, String] = toZStream[Any, Throwable, String, Unit, Row, Zio](p)
+    val s: ZStream[Any, Throwable, String] = toZStream[Any, Throwable, String, Unit, Zio](p)
 ```
 
 What the Scala 3 core's interop has and this does not yet: an `Async`
@@ -453,7 +482,7 @@ a flush — and `into`/`through` compose stages demand-driven:
       if (i % 2 == 0) Stage.tell[Int, Int](s2).map(_ => s2) else pure(s2)
     }, s => Stage.tell[Int, Int](-s).map(_ => s))
 
-    val (out, answer) = Effects.run(Writer.run[Int, Int, Writer[Int]](into(told(1, 2, 3, 4, 5, 6))(evens)))
+    val (out, answer) = Effects.run(Writer.run(into(told(1, 2, 3, 4, 5, 6))(evens)))
     assertEquals(out, Seq(3, 10, 21, -21)) // 1+2, +3+4, +5+6, then the flush
     assertEquals(answer, 21)
 ```
@@ -637,7 +666,7 @@ other effects completes:
     type F = Resource + Later
     val prog: Int ! F =
       Resource.acquire(())(_ => released = true).at[F].flatMap(_ => later(41).at[F].map(_ + 1))
-    val residual: Int ! Later = Resource.run[Int, F, Later](prog)
+    val residual: Int ! Later = Resource.run(prog)
     assertEquals(released, false)
     assertEquals(residual.runWith, 42)
     assertEquals(released, true)
@@ -653,7 +682,7 @@ that throws on the outer handler still releases:
     type F = Resource + Async
     val prog = Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close").at[F]
       .flatMap(_ => Async[Int] { log ::= "run"; throw new RuntimeException("boom") }.at[F])
-    val out = outcome(Async.runAsync(Resource.run[Int, F, Async](prog)))
+    val out = outcome(Async.runAsync(Resource.run(prog)))
     assert(out.exists(_.isFailure), s"expected the failure, got $out")
     assertEquals(log.reverse, List("open", "run", "close"))
 ```
@@ -702,7 +731,7 @@ Scala 2 has no context functions, so the evidence is passed first:
 ```scala
     def banner(in: Delim.Prompted.Aux[Int, W]): Int ! (Delim + W) =
       Writer.tell("hello").at[Delim + W].flatMap(_ => Delim.shift[Int, Int](in)(k => k(5)).map(_ + 1))
-    assertEquals(!.run(Writer.run[String, Int, W](Delim.delimited[Int, W](banner))), (Seq("hello"), 6))
+    assertEquals(!.run(Writer.run(Delim.delimited[Int, W](banner))), (Seq("hello"), 6))
 ```
 
 The four patterns are names over that door. `collect`/`emit` reads a

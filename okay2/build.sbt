@@ -30,7 +30,13 @@ lazy val common = Seq(
 
 lazy val okay2: Project = (project in file("."))
   .aggregate(okay2Async, okay2Platform, okay2Stream, okay2Cats, okay2Fs2, okay2Zio)
-  .settings(name := "okay2", common)
+  .settings(
+    name := "okay2",
+    common,
+    // one blackbox macro: `Replayable` over an intersection row, which
+    // implicit search cannot take apart (Replayable.scala, stage 7)
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+  )
 
 /** the Async effect: Run/Await, the Drive, Fiber/Scheduler/Timer/CanBlock
  * as traits, par/race/timeout/supervised/attempt/sleep, Retry, Par */

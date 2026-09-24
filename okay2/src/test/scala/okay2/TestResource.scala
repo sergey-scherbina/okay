@@ -25,7 +25,7 @@ class TestResource extends munit.FunSuite {
     type F = Throws[String] + Resource
     val prog: Int ! F =
       Resource.acquire(())(_ => released = true).at[F].flatMap(_ => Throws.raise[String, Int]("boom").at[F])
-    val either = Resource.scoped(Throws.runEither[Int, String, F](prog))
+    val either = Resource.scoped(Throws.runEither(prog))
     assertEquals(either, Left("boom"))
     assertEquals(released, true)
   }
@@ -43,7 +43,7 @@ class TestResource extends munit.FunSuite {
     type F = Resource + Later
     val prog: Int ! F =
       Resource.acquire(())(_ => released = true).at[F].flatMap(_ => later(41).at[F].map(_ + 1))
-    val residual: Int ! Later = Resource.run[Int, F, Later](prog)
+    val residual: Int ! Later = Resource.run(prog)
     assertEquals(released, false)
     assertEquals(residual.runWith, 42)
     assertEquals(released, true)
@@ -54,7 +54,7 @@ class TestResource extends munit.FunSuite {
     type F = Resource + Later
     val prog: Int ! F =
       Resource.acquire(())(_ => released = true).at[F].flatMap(_ => later(41).at[F].map(_ => throw new RuntimeException("boom")))
-    val residual: Int ! Later = Resource.run[Int, F, Later](prog)
+    val residual: Int ! Later = Resource.run(prog)
     assertEquals(released, false)
     val _ = intercept[RuntimeException](residual.runWith)
     assertEquals(released, true)
@@ -67,7 +67,7 @@ class TestResource extends munit.FunSuite {
       later { log ::= "before"; 1 }.at[F].flatMap(x =>
         Resource.acquire { log ::= "open"; x + 1 } (_ => log ::= "close").at[F]).flatMap(y =>
         later { log ::= "after"; y * 10 }.at[F])
-    assertEquals(Resource.run[Int, F, Later](prog).runWith, 20)
+    assertEquals(Resource.run(prog).runWith, 20)
     assertEquals(log.reverse, List("before", "open", "after", "close"))
   }
 
@@ -101,7 +101,7 @@ class TestResource extends munit.FunSuite {
   }
 
   test("a row with no Failing instance is refused, not silently unguarded") {
-    val errors = compileErrors("Resource.run[Int, Resource + Produce, Produce](Resource.acquire(1)(_ => ()).at[Resource + Produce])")
+    val errors = compileErrors("Resource.run(Resource.acquire(1)(_ => ()).at[Resource + Produce])")
     assert(errors.contains("Failing"), errors)
   }
 }

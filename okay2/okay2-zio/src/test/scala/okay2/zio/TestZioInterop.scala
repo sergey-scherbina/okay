@@ -29,10 +29,10 @@ class TestZioInterop extends munit.FunSuite {
     type Row = Produce + Zio
     val seen = List.newBuilder[Any]
     // the caller's IntoZ answers Produce THROUGH a service in the environment
-    val produceZ: IntoZ[Produce, Log, Throwable] = new IntoZ[Produce, Log, Throwable] {
+    val produceZ: IntoZ[Produce, Log, Throwable] = new IntoZ.Of[Produce, Log, Throwable] {
       def apply[X](e: Produce.Emit[X]): ZIO[Log, Throwable, X] = ZIO.serviceWith[Log](_.log(e.a)).as(e.a)
     }
-    val env: IntoZ[Zio, Log, Throwable] = new IntoZ[Zio, Log, Throwable] {
+    val env: IntoZ[Zio, Log, Throwable] = new IntoZ.Of[Zio, Log, Throwable] {
       def apply[X](e: Task[X]): ZIO[Log, Throwable, X] = e
     }
     val p: Int ! Row = produce(20).at[Row].flatMap(x => Zio.lift(ZIO.attempt(x + 22)).at[Row])
@@ -53,7 +53,7 @@ class TestZioInterop extends munit.FunSuite {
   test("stack safety: 1M operations folded into ZIO") {
     val n = 1000000
     val p = (1 to n).foldLeft(pure[Produce, Int](0))((m, _) => m.flatMap(x => produce(x + 1)))
-    val into: IntoZ[Produce, Any, Nothing] = new IntoZ[Produce, Any, Nothing] {
+    val into: IntoZ[Produce, Any, Nothing] = new IntoZ.Of[Produce, Any, Nothing] {
       def apply[X](e: Produce.Emit[X]): ZIO[Any, Nothing, X] = ZIO.succeed(e.a)
     }
     assertEquals(run(foldTo[Any, Nothing, Int, Produce](p)(into)), n)
@@ -67,7 +67,7 @@ class TestZioInterop extends munit.FunSuite {
       _ <- Zio.lift(ZIO.attempt { side ::= "zio" }).at[Row]
       _ <- Writer.tell("b").at[Row]
     } yield ()
-    val s: ZStream[Any, Throwable, String] = toZStream[Any, Throwable, String, Unit, Row, Zio](p)
+    val s: ZStream[Any, Throwable, String] = toZStream[Any, Throwable, String, Unit, Zio](p)
     assertEquals(side, Nil)
     assertEquals(run(s.runCollect).toList, List("a", "b"))
     assertEquals(side, List("zio"))
@@ -79,16 +79,16 @@ class TestZioInterop extends munit.FunSuite {
   test("stack safety: a million tells as a ZStream") {
     val n = 100000
     val p: Unit ! Writer[Int] = (1 to n).foldLeft(pure[Writer[Int], Unit](()))((m, i) => m.flatMap(_ => Writer.tell(i)))
-    val s = toZStream[Any, Nothing, Int, Unit, Writer[Int], Pure](p)
+    val s = toZStream[Any, Nothing, Int, Unit, Pure](p)
     assertEquals(run(s.runFold(0L)(_ + _)), n.toLong * (n + 1) / 2)
   }
 
   test("a ZStream as a Writer program, and the round trip") {
     val s: ZStream[Any, Throwable, Int] = ZStream(3, 1, 2)
     val p: Unit ! (Writer[Int] + Zio) = fromZStream(s)
-    val collected: Task[(Seq[Int], Unit)] = Zio.run(Writer.run[Int, Unit, Writer[Int] + Zio](p))
+    val collected: Task[(Seq[Int], Unit)] = Zio.run(Writer.run(p))
     assertEquals(run(collected)._1, Seq(3, 1, 2))
-    val back = toZStream[Any, Throwable, Int, Unit, Writer[Int] + Zio, Zio](fromZStream(s))
+    val back = toZStream[Any, Throwable, Int, Unit, Zio](fromZStream(s))
     assertEquals(run(back.runCollect).toList, List(3, 1, 2))
   }
 }

@@ -20,18 +20,20 @@ import okay2.Split.over
  * `Failing[Async]` by specificity.
  */
 object AsyncFailing {
+  /** the typed guard, at Async's own operations */
+  def guardOp[X](e: Async.Op[X], onFailure: () => Unit): Async.Op[X] = e match {
+    case Async.Run(f) => Async.Run(() => try f() catch { case t: Throwable => onFailure(); throw t })
+    case Async.Await(reg) => Async.Await(k => reg { r => if (r.isLeft) onFailure(); k(r) })
+  }
+
   val async: Failing[Async] = new Failing[Async] {
-    def guard[X](e: Async.Op[X], onFailure: () => Unit): Async.Op[X] = e match {
-      case Async.Run(f) => Async.Run(() => try f() catch { case t: Throwable => onFailure(); throw t })
-      case Async.Await(reg) => Async.Await(k => reg { r => if (r.isLeft) onFailure(); k(r) })
-    }
+    def guard(e: Any, onFailure: () => Unit): Any = over[Async, Any](e)(guardOp(_, onFailure))
   }
 }
 
 trait AsyncFailingLow {
   /** ANY row, by the operation's own class — total over every nesting */
   implicit def anyRowFailing[F <: Row]: Failing[F] = new Failing[F] {
-    def guard[X](e: F#Op[X], onFailure: () => Unit): F#Op[X] =
-      over[Async, F, X](e)(AsyncFailing.async.guard(_, onFailure))
+    def guard(e: Any, onFailure: () => Unit): Any = AsyncFailing.async.guard(e, onFailure)
   }
 }

@@ -55,9 +55,9 @@ object Stream {
    * element through a type lambda.
    */
   def feedStream[A]: Stream[({ type L[W] = A ! Writer[W] })#L, Pure] = new Stream[({ type L[W] = A ! Writer[W] })#L, Pure] {
-    def uncons[W](s: A ! Writer[W]): Option[(W, A ! Writer[W])] ! Pure = pure(Writer.uncons(s).toOption)
+    def uncons[W](s: Free[Writer[W], A]): Option[(W, A ! Writer[W])] ! Pure = pure(Writer.uncons(s).toOption)
 
-    override def iterator[W](s: A ! Writer[W])(implicit H: Handler[Pure]): Iterator[W] = new Iterator[W] {
+    override def iterator[W](s: Free[Writer[W], A])(implicit H: Handler[Pure]): Iterator[W] = new Iterator[W] {
       private var cur: A ! Writer[W] = s
       private var ready = false
       private var ended = false
@@ -65,10 +65,12 @@ object Stream {
 
       // `Say` is Writer's only constructor, so the two Inject shapes
       // are exhaustive over what a pure writer program resumes to
+      private val Said = Writer.said[W]
+
       @tailrec private def advance(): Unit = cur match {
         case Return(_) => ended = true
-        case Inject(Writer.Say(w)) => elem = w; ready = true; ended = true
-        case Bind(Inject(Writer.Say(w)), k) => elem = w; ready = true; cur = k(())
+        case Inject(Said(w)) => elem = w; ready = true; ended = true
+        case Bind(Inject(Said(w)), k) => elem = w; ready = true; cur = k(())
         case _ => cur = Free.resume(cur); advance()
       }
 
@@ -93,10 +95,10 @@ object Stream {
    */
   def writerStreamIn[A, G <: Row]: Stream[({ type L[W] = A ! (Writer[W] + G) })#L, G] =
     new Stream[({ type L[W] = A ! (Writer[W] + G) })#L, G] {
-      def uncons[W](s: A ! (Writer[W] + G)): Option[(W, A ! (Writer[W] + G))] ! G =
+      def uncons[W](s: Free[Writer[W] with G, A]): Option[(W, A ! (Writer[W] + G))] ! G =
         Writer.unconsIn[W, A, G](s).map(_.toOption)
 
-      override def iterator[W](s: A ! (Writer[W] + G))(implicit H: Handler[G]): Iterator[W] = new Iterator[W] {
+      override def iterator[W](s: Free[Writer[W] with G, A])(implicit H: Handler[G]): Iterator[W] = new Iterator[W] {
         private var cur: A ! (Writer[W] + G) = s
         private var ready = false
         private var ended = false
@@ -107,11 +109,11 @@ object Stream {
           case Inject(e) =>
             split[Writer[W], G, Any, Unit](e) {
               case Writer.Say(w) => elem = w; ready = true; ended = true
-            } { g => val _ = H.handle(g); ended = true }
+            } { g => val _ = H.handleOp[Any](g); ended = true }
           case Bind(Inject(e), k) =>
             split[Writer[W], G, Any, Unit](e) {
               case Writer.Say(w) => elem = w; ready = true; cur = k(())
-            } { g => cur = k(H.handle(g)) }
+            } { g => cur = k(H.handleOp[Any](g)) }
             if (!ready) advance()
           case _ => cur = Free.resume(cur); advance()
         }
@@ -220,7 +222,7 @@ object Stream {
    * inference cannot reach the writer carrier's instance through its
    * type lambda, so the shape gets them by name.
    */
-  implicit final class FeedOps[W, A](private val a: A ! Writer[W]) extends AnyVal {
+  implicit final class FeedOps[W, A](private val a: Free[Writer[W], A]) extends AnyVal {
     /** the next told value and the rest, or None (the answer forgotten) */
     def uncons: Option[(W, A ! Writer[W])] = Writer.uncons(a).toOption
     /** unfold the told values into the final coalgebra, on demand */
@@ -232,7 +234,7 @@ object Stream {
   }
 
   /** the effectful writer program's observations: each pull runs its G by the Handler */
-  implicit final class FeedInOps[W, A, G <: Row](private val a: A ! (Writer[W] + G)) extends AnyVal {
+  implicit final class FeedInOps[W, A, G <: Row](private val a: Free[Writer[W] with G, A]) extends AnyVal {
     def uncons(implicit H: Handler[G]): Option[(W, A ! (Writer[W] + G))] = Effects.runFree(Writer.unconsIn[W, A, G](a)).toOption
     def toLazyList(implicit H: Handler[G]): LazyList[W] = LazyList.unfold(a)(x => Effects.runFree(Writer.unconsIn[W, A, G](x)).toOption)
     def iterator(implicit H: Handler[G]): Iterator[W] = writerStreamIn[A, G].iterator(a)
@@ -282,9 +284,9 @@ object Pull {
   }
 
   /** the told values of a writer program */
-  def told[W, A](a: A ! Writer[W]): Pull[W, Pure] = of[({ type L[X] = A ! Writer[X] })#L, W, Pure](a)(Stream.feedStream[A])
+  def told[W, A](a: Free[Writer[W], A]): Pull[W, Pure] = of[({ type L[X] = A ! Writer[X] })#L, W, Pure](a)(Stream.feedStream[A])
 
   /** the same, the producer performing G between tells */
-  def toldIn[W, G <: Row, A](a: A ! (Writer[W] + G)): Pull[W, G] =
+  def toldIn[W, G <: Row, A](a: Free[Writer[W] with G, A]): Pull[W, G] =
     of[({ type L[X] = A ! (Writer[X] + G) })#L, W, G](a)(Stream.writerStreamIn[A, G])
 }

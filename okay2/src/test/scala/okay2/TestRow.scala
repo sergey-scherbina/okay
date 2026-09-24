@@ -3,48 +3,74 @@ package okay2
 import Produce.produce
 
 /**
- * The row discipline: what `Member` admits, what it refuses, and that
- * the erasure argument holds at run time — an operation of a union row
- * is held RAW in the tree, with no wrapper and no checkcast.
+ * The row discipline since stage 7 (specs/okay2.md): a row is an
+ * INTERSECTION of requirements (`+` is `with`) and `Free` is
+ * contravariant in it — so widening is subtyping, the order a row is
+ * written in does not matter, and a handler infers the rest of the row.
+ * And the erasure argument at run time: an operation of a row of
+ * several is held RAW in the tree.
  */
 class TestRow extends munit.FunSuite {
 
-  type Row = State[Int] + Writer[String] + Produce
+  type Row3 = State[Int] + Writer[String] + Reader[Int]
 
-  test("at: a program lands in any row that contains its own, left, right or deeper") {
-    val a: Int ! Row = State.get[Int].at[Row]
-    val b: Unit ! Row = Writer.tell("x").at[Row]
-    val c: Int ! Row = produce(1).at[Row]
-    val p = for { n <- a; _ <- b; m <- c } yield n + m
-    // handlers in EITHER order: `Remove` finds the signature anywhere in the row
-    val (ws, (s, x)) = Writer.run[String, (Int, Int), Writer[String] + Produce](State.handle(41)(p)).runWith
-    assertEquals((s, ws, x), (41, Seq("x"), 42))
-    val (s2, (ws2, x2)) = State.handle(41)(Writer.run[String, Int, Row](p)).runWith
-    assertEquals((s2, ws2, x2), (41, Seq("x"), 42))
+  val prog: Int ! Row3 = for {
+    n <- State.get[Int]
+    _ <- Writer.tell("saw " + n)
+    k <- Reader.ask[Int]
+    _ <- State.set(n + k)
+  } yield n * 10
+
+  test("handlers in all SIX orders over three effects, the rest inferred with no annotation") {
+    val results = List(
+      !.run(Writer.run(Reader.run(5)(State.handle(1)(prog)))),
+      !.run(Reader.run(5)(Writer.run(State.handle(1)(prog)))),
+      !.run(State.handle(1)(Reader.run(5)(Writer.run(prog)))),
+      !.run(Reader.run(5)(State.handle(1)(Writer.run(prog)))),
+      !.run(State.handle(1)(Writer.run(Reader.run(5)(prog)))),
+      !.run(Writer.run(State.handle(1)(Reader.run(5)(prog)))))
+    assertEquals(results(0), (Seq("saw 1"), (6, 10)))
+    assertEquals(results(2), (6, (Seq("saw 1"), 10)))
+    assertEquals(results.size, 6)
   }
 
-  test("a union does not commute in Scala 2: reordering is an `at`") {
-    val p: Int ! (State[Int] + Produce) = State.get[Int].plus[Produce]
-    val q: Int ! (Produce + State[Int]) = p.at[Produce + State[Int]]
-    assertEquals(State.handle(3)(q).runWith, (3, 3))
+  test("widening is subtyping: a one-effect program IS a program in a wider row, in either order") {
+    val one: Int ! State[Int] = State.get[Int]
+    val wide: Int ! (Reader[Int] + State[Int]) = one
+    val other: Int ! (State[Int] + Reader[Int]) = wide
+    assertEquals(!.run(State.handle(7)(Reader.run(0)(wide))), (7, 7))
+    assertEquals(!.run(Reader.run(0)(State.handle(7)(other))), (7, 7))
+    // the order a row is written in does not matter
+    implicitly[(Int ! (State[Int] + Writer[String])) <:< (Int ! (Writer[String] + State[Int]))]
+    implicitly[(Int ! (Writer[String] + State[Int])) <:< (Int ! (State[Int] + Writer[String]))]
+    // `.at` is the identity, kept so a call site can name the row
+    val named: Int ! Row3 = one.at[Row3]
+    assert(named eq one)
+  }
+
+  test("a helper polymorphic in the rest of the row, spelled with Free") {
+    def bump[R <: okay2.Row](by: Int): Int ! (State[Int] + R) = State.get[Int].flatMap(n => State.set(n + by))
+    def countFrom[R <: okay2.Row, A](p: Free[State[Int] with R, A]): (Int, A) ! R = State.handle[Int, A, R](0)(p)
+    assertEquals(!.run(State.handle(0)(bump[Pure](3))), (3, 3))
+    val (ws, (s, a)) = !.run(Writer.run(Reader.run(5)(countFrom(prog))))
+    assertEquals((ws, s, a), (Seq("saw 0"), 5, 0))
   }
 
   test("Pure rides into any row") {
     val p: Int ! Pure = pure(1)
-    val q: Int ! Row = p.at[Row]
-    val (_, (_, x)) = Writer.run[String, (Int, Int), Writer[String] + Produce](State.handle(0)(q)).runWith
-    assertEquals(x, 1)
+    val q: Int ! Row3 = p
+    assertEquals(!.run(Writer.run(Reader.run(0)(State.handle(0)(q)))), (Seq(), (0, 1)))
   }
 
-  test("membership refused: a program cannot land in a row without its effect") {
-    val errors = compileErrors("Writer.tell(\"x\").at[State[Int] + Produce]")
-    assert(errors.contains("does not fit in the row"), errors)
+  test("an effect left unhandled: run refuses the program") {
+    val errors = compileErrors("!.run(State.handle(1)(prog))")
+    assert(errors.contains("type mismatch"), errors)
   }
 
-  test("the row erases: an operation of a union row is held raw") {
-    val p: Int ! Row = State.get[Int].at[Row].flatMap(n => produce(n).at[Row])
+  test("the row erases: an operation of a row of several is held raw") {
+    val p: Int ! (State[Int] + Produce) = State.get[Int].flatMap(n => produce(n))
     val Free.Bind(Free.Inject(op), _) = (p.resume: @unchecked)
-    assertEquals((op: Any).getClass.getName, classOf[State.Get[_]].getName)
+    assertEquals(op.getClass.getName, classOf[State.Get[_]].getName)
   }
 
   test("bind and andThen: a bind across rows infers the union") {
@@ -54,18 +80,24 @@ class TestRow extends munit.FunSuite {
     assertEquals(State.handle(1)(q).runWith, (5, 7))
   }
 
-  test("split: the F side by its test, G by exclusion, and <|> is the same at Left/Right") {
-    // an operation of a union row comes out of a program: the union's
-    // Op is abstract, so nothing builds one directly
-    def opOf(p: Int ! (State[Int] + Produce)): (State[Int] + Produce)#Op[Int] = (p: @unchecked) match { case Free.Inject(e) => e }
-    val e1 = opOf(State.get[Int].at[State[Int] + Produce])
-    val e2 = opOf(produce(3).at[State[Int] + Produce])
-    assertEquals(Split.<|>[State[Int], Produce, Int](e1), Left(State.Get[Int]()))
-    assertEquals(Split.<|>[State[Int], Produce, Int](e2), Right(Produce.Emit(3)))
+  test("split: the F side typed by its test, the rest untyped, and <|> is the same at Left/Right") {
+    def opOf(p: Int ! (State[Int] + Produce)): Any = (p: @unchecked) match { case Free.Inject(e) => e }
+    val e1 = opOf(State.get[Int])
+    val e2 = opOf(produce(3))
+    assertEquals(Split.<|>[State[Int], Int](e1), Left(State.Get[Int]()))
+    assertEquals(Split.<|>[State[Int], Int](e2), Right(Produce.Emit(3)))
   }
 
-  test("Effect.of refuses a row: a union has no ClassTag for its abstract Op") {
-    val errors = compileErrors("Effect.of[State[Int] + Produce]")
-    assert(errors.contains("No ClassTag"), errors)
+  test("THE TRAP the kernel avoids: an intersection's #Op is its LAST parent's") {
+    // which is why `Inject` holds an operation as Any, and a typed view
+    // exists only at one signature: read at this type, a Writer
+    // operation would be checkcast to State.Op and fail
+    implicitly[(Writer[String] + State[Int])#Op[Int] =:= State.Op[Int, Int]]
+    implicitly[(State[Int] + Writer[String])#Op[Unit] =:= Writer.Op[String, Unit]]
+  }
+
+  test("a row has no TypeableK: the split tests one signature, never a union") {
+    val errors = compileErrors("implicitly[TypeableK[State[Int] + Produce]]")
+    assert(errors.contains("no TypeableK"), errors)
   }
 }

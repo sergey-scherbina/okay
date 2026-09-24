@@ -33,7 +33,7 @@ class TestFoldUntilStreams extends munit.FunSuite {
     def check[S, X](fo: FoldUntil[Int, S, X], name: String): Unit = {
       val expected = Stream.foldUntil(xs)(fo)
       assertEquals(Chunks.foldUntil(chunked(xs, 4))(fo), expected, s"Chunks $name")
-      assertEquals(Writer.foldUntil[Int, S, Unit, X, R](counted(20, () => ()))(fo).runWith, expected, s"Writer $name")
+      assertEquals(Writer.foldUntil(counted(20, () => ()))(fo).runWith, expected, s"Writer $name")
       assertEquals(counted(20, () => ()).foldUntil(fo), expected, s"FeedInOps $name")
     }
     check(FoldUntil.take(3), "take(3)")
@@ -102,18 +102,18 @@ class TestFoldUntilStreams extends munit.FunSuite {
   test("transduceUntil stops the upstream: pulled up to the blank line, not one tell more") {
     var told = 0
     val doc = List("host: a", "port: 1", "", "body 1", "body 2", "body 3")
-    val (out, answer) = Effects.run(Writer.run[(String, String), Either[Int, Int], Writer[(String, String)]](into(lines(doc, () => told += 1))(header)))
+    val (out, answer) = Effects.run(Writer.run(into(lines(doc, () => told += 1))(header)))
     assertEquals(out, Seq(("host", "a"), ("port", "1")))
     assertEquals(answer, Right(2))
     assertEquals(told, 3, "host, port and the blank line were pulled; body 1 never was")
     told = 0
-    val all = Effects.run(Writer.run[String, Unit, Writer[String]](into(lines(doc, () => told += 1))(Stage.id[String])))
+    val all = Effects.run(Writer.run(into(lines(doc, () => told += 1))(Stage.id[String])))
     assertEquals(all._1.size, 6)
     assertEquals(told, 6)
   }
 
   test("transduceUntil ends honestly when the input ends first") {
-    val (out, answer) = Effects.run(Writer.run[(String, String), Either[Int, Int], Writer[(String, String)]](into(lines(List("host: a"), () => ()))(header)))
+    val (out, answer) = Effects.run(Writer.run(into(lines(List("host: a"), () => ()))(header)))
     assertEquals(out, Seq(("host", "a")))
     assertEquals(answer, Left(1))
   }
@@ -153,11 +153,11 @@ class TestFoldUntilStreams extends munit.FunSuite {
         endHead = _ => Vector.empty,
         endBody = _ => Vector.empty)
     val told: String ! Writer[String] = Seq("name,age", "ann,25", "bo,31").foldLeft(pure[Writer[String], String](""))((m, l) => m.flatMap(_ => Writer.tell(l).map(_ => l)))
-    val (rows, answer) = Effects.run(Writer.run[Vector[(String, String)], Either[Unit, Vector[String]], Writer[Vector[(String, String)]]](into(told)(csv)))
+    val (rows, answer) = Effects.run(Writer.run(into(told)(csv)))
     assertEquals(rows, Seq(Vector("name" -> "ann", "age" -> "25"), Vector("name" -> "bo", "age" -> "31")))
     assertEquals(answer, Right(Vector("name", "age")))
     // input ending DURING the head answers Left
     val empty: String ! Writer[String] = pure("")
-    assertEquals(Effects.run(Writer.run[Vector[(String, String)], Either[Unit, Vector[String]], Writer[Vector[(String, String)]]](into(empty)(csv)))._2, Left(()))
+    assertEquals(Effects.run(Writer.run(into(empty)(csv)))._2, Left(()))
   }
 }

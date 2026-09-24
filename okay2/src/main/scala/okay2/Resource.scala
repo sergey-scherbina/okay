@@ -19,20 +19,22 @@ import Split.split
  */
 @implicitNotFound("no Failing[${F}]: the row a Resource scope forwards to must say how a forwarded operation reports failure.\nA Pure row needs nothing; a row with Async in it gets its instance from `import okay2.async._`;\na test effect that cannot fail says so with its own `implicit val`.")
 trait Failing[F <: Row] {
-  def guard[X](e: F#Op[X], onFailure: () => Unit): F#Op[X]
+  /** the operation is a forwarded one of the ROW F, so it is `Any`: a
+   * row's `#Op` is not a type to read at (stage 8, Row.scala) */
+  def guard(e: Any, onFailure: () => Unit): Any
 }
 
 object Failing {
   /** Pure has no failure channel to decorate */
   implicit val pure: Failing[Pure] = new Failing[Pure] {
-    def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e
+    def guard(e: Any, onFailure: () => Unit): Any = e
   }
 
   /** an effect whose operations cannot fail on the outer handler —
    * said EXPLICITLY by whoever knows (a test effect, a pure interpreter),
    * never inferred: `implicit val f: Failing[Produce] = Failing.never` */
   def never[F <: Row]: Failing[F] = new Failing[F] {
-    def guard[X](e: F#Op[X], onFailure: () => Unit): F#Op[X] = e
+    def guard(e: Any, onFailure: () => Unit): Any = e
   }
 }
 
@@ -66,7 +68,7 @@ object Resource {
    * and rethrows; the closer is idempotent. Resource only: a row to
    * forward has no home to forward to here.
    */
-  def open[A](a: A ! Resource): (A, () => Unit) = {
+  def open[A](a: Free[Resource, A]): (A, () => Unit) = {
     var fin = List.empty[() => Unit]
     def close(): Unit = { val f = fin; fin = Nil; f.foreach(_()) }
     var x = a
@@ -92,18 +94,15 @@ object Resource {
   /** the region as an expression: open, run, release, answer — for the
    * scope that is the whole story, which is what a per-call region
    * usually is */
-  def scoped[A](a: A ! Resource): A = Effects.run(runAt[A, Pure](a.plus[Pure]))
+  def scoped[A](a: Free[Resource, A]): A = Effects.run(runAt[A, Pure](a.plus[Pure]))
 
   /**
    * The scope, for a program whose row mentions `Resource` anywhere:
-   * `Remove` finds it and names the residual row G, whose `Failing`
-   * says how a forwarded operation reports failure. Two type-level
-   * facts in one implicit section, so G is a type parameter rather
-   * than `rm.Out` (Scala 2 refuses a dependent implicit beside the one
-   * it depends on).
+   * scalac infers the rest G from the intersection (stage 8), and G's
+   * `Failing` says how a forwarded operation reports failure.
    */
-  def run[A, R <: Row, G <: Row](a: A ! R)(implicit rm: Remove.Aux[Resource, R, G], failing: Failing[G]): A ! G =
-    runAt[A, G](rm.split(a))
+  def run[A, G <: Row](a: Free[Resource with G, A])(implicit failing: Failing[G]): A ! G =
+    runAt[A, G](a)
 
   /**
    * The scope at its own shape: run the region, forwarding the effects
@@ -117,7 +116,7 @@ object Resource {
    * carried into the residual — they run when the residual completes,
    * and `failing.guard` runs them when it fails out there.
    */
-  def runAt[A, F <: Row](a: A ! (Resource + F))(implicit failing: Failing[F]): A ! F = {
+  def runAt[A, F <: Row](a: Free[Resource with F, A])(implicit failing: Failing[F]): A ! F = {
     def releaseAll(fin: List[() => Unit]): Unit = fin.foreach(_())
 
     /** user code under the CURRENT finalizer list: a throw releases
@@ -130,9 +129,9 @@ object Resource {
       try body
       catch { case t: Throwable => releaseAll(fin); throw t }
 
-    def _loop(fin: List[() => Unit])(x: A ! (Resource + F)): A ! F = loop(fin)(x)
+    def _loop(fin: List[() => Unit])(x: Free[Resource with F, A]): A ! F = loop(fin)(x)
 
-    @tailrec def loop(fin: List[() => Unit])(x: A ! (Resource + F)): A ! F =
+    @tailrec def loop(fin: List[() => Unit])(x: Free[Resource with F, A]): A ! F =
       guarded(fin)(Free.resume(x)) match {
         case Return(v) =>
           releaseAll(fin)

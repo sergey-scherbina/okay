@@ -103,7 +103,7 @@ class TestAsync extends munit.FunSuite {
     type F = Async + Writer[String]
     val prog: Int ! F =
       Writer.tell("start").at[F].flatMap(_ => Async(21).at[F].flatMap(x => Writer.tell("end").at[F].map(_ => x * 2)))
-    val (ws, a) = Effects.run(Writer.run[String, Int, Writer[String]](Async.run(prog)))
+    val (ws, a) = Effects.run(Writer.run(Async.run(prog)))
     assertEquals(ws, Seq("start", "end"))
     assertEquals(a, 42)
   }

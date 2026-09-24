@@ -20,11 +20,11 @@ object Throws {
   def raise[E, A](e: E): A ! Throws[E] = Free.inject[Throws[E], A](Raise(e))
 
   /** handle Throws by aborting into Either, forwarding the rest of the row */
-  def runEither[A, E, R <: Row](a: A ! R)(implicit rm: Remove[Throws[E], R]): Either[E, A] ! rm.Out =
-    runEitherAt[A, E, rm.Out](rm.split(a))
+  def runEither[A, E, R <: Row](a: Free[Throws[E] with R, A]): Either[E, A] ! R =
+    runEitherAt[A, E, R](a)
 
   /** `runEither` at the handler's own shape */
-  def runEitherAt[A, E, F <: Row](a: A ! (Throws[E] + F)): Either[E, A] ! F =
+  def runEitherAt[A, E, F <: Row](a: Free[Throws[E] with F, A]): Either[E, A] ! F =
     Effects.handle[A, Either[E, A], Throws[E], F](a)(a => pure[F, Either[E, A]](Right(a)))(
       new Interpr[Throws[E], Either[E, A] ! F] {
         def apply[X](e: Op[E, X]): Cont[X, Either[E, A] ! F, Either[E, A] ! F] = e match {
@@ -33,15 +33,15 @@ object Throws {
       })
 
   /** handle Abort into Option, forwarding the rest of the row */
-  def runOption[A, R <: Row](a: A ! R)(implicit rm: Remove[Abort, R]): Option[A] ! rm.Out =
-    runEitherAt[A, Unit, rm.Out](rm.split(a)).map(_.toOption)
+  def runOption[A, R <: Row](a: Free[Abort with R, A]): Option[A] ! R =
+    runEitherAt[A, Unit, R](a).map(_.toOption)
 
   /** handle Throws by actually throwing: the JVM is the handler */
-  def runUnsafe[A, E <: Throwable, R <: Row](a: A ! R)(implicit rm: Remove[Throws[E], R]): A ! rm.Out =
-    runUnsafeAt[A, E, rm.Out](rm.split(a))
+  def runUnsafe[A, E <: Throwable, R <: Row](a: Free[Throws[E] with R, A]): A ! R =
+    runUnsafeAt[A, E, R](a)
 
   /** `runUnsafe` at the handler's own shape */
-  def runUnsafeAt[A, E <: Throwable, F <: Row](a: A ! (Throws[E] + F)): A ! F =
+  def runUnsafeAt[A, E <: Throwable, F <: Row](a: Free[Throws[E] with F, A]): A ! F =
     Effects.handle[A, A, Throws[E], F](a)(a => pure[F, A](a))(
       new Interpr[Throws[E], A ! F] {
         def apply[X](e: Op[E, X]): Cont[X, A ! F, A ! F] = e match {

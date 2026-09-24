@@ -8,9 +8,11 @@ import scala.annotation.tailrec
  * function. The same four nodes as the Scala 3 core's `enum Free`,
  * and the same rotation; also the tree under `Cont`.
  */
-sealed abstract class Free[R <: Row, +A] {
-  /** sequencing is a data node: nothing runs until an interpreter walks the tree */
-  def flatMap[B](f: A => Free[R, B]): Free[R, B] = Free.Bind(this, f)
+sealed abstract class Free[-R <: Row, +A] {
+  /** sequencing is a data node: nothing runs until an interpreter walks the tree.
+   * The continuation may need MORE than this program: the result needs both
+   * (R1 <: R), and scalac finds that row itself */
+  def flatMap[R1 <: R, B](f: A => Free[R1, B]): Free[R1, B] = Free.Bind[R1, A, B](this, f)
 
   def map[B](f: A => B): Free[R, B] = flatMap(a => Free.Return(f(a)))
 
@@ -21,7 +23,7 @@ sealed abstract class Free[R <: Row, +A] {
    * existential answer type, which is what a Scala 2 handler can use
    * without a cast (a lone `Inject` is given the pure continuation).
    */
-  final def fold[A1 >: A, B](p: A1 => B)(h: Free.Step[R, A1, B]): B = Free.resume[R, A1](this) match {
+  final def fold[R1 <: R, A1 >: A, B](p: A1 => B)(h: Free.Step[R1, A1, B]): B = Free.resume[R1, A1](this) match {
     case Free.Return(a) => p(a)
     case Free.Inject(e) => h(e, (x: A1) => Free.Return(x))
     case Free.Bind(Free.Inject(e), k) => h(e, k)
@@ -33,8 +35,10 @@ object Free {
   /** a finished computation */
   final case class Return[R <: Row, +A](a: A) extends Free[R, A]
 
-  /** a single operation of the row R */
-  final case class Inject[R <: Row, +A](a: R#Op[A]) extends Free[R, A]
+  /** a single operation of the row R, held as `Any`: a row's `#Op` is
+   * not a type to read at (Row.scala), so the typed view comes from
+   * `Split`, at one signature, after its class test */
+  final case class Inject[R <: Row, +A](a: Any) extends Free[R, A]
 
   /** sequencing: run a, then feed its value to the plain-function continuation f */
   final case class Bind[R <: Row, X, +A](a: Free[R, X], f: X => Free[R, A]) extends Free[R, A]
@@ -44,13 +48,13 @@ object Free {
   final case class Delay[R <: Row, +A](thunk: () => Free[R, A]) extends Free[R, A]
 
   /** what `fold` hands its handler: an operation with its continuation */
-  trait Step[R <: Row, A, B] { def apply[X](e: R#Op[X], k: X => Free[R, A]): B }
+  trait Step[R <: Row, A, B] { def apply[X](e: Any, k: X => Free[R, A]): B }
 
   /** a value as a tree */
   def pure[R <: Row, A](a: A): Free[R, A] = Return(a)
 
   /** an operation as a tree */
-  def inject[R <: Row, A](a: R#Op[A]): Free[R, A] = Inject(a)
+  def inject[R <: Row, A](a: R#Op[A]): Free[R, A] = Inject[R, A](a)
 
   /** a bind whose LEFT side is deferred: the thunk is not forced at
    * construction, only when an interpreter's loop reaches this node —

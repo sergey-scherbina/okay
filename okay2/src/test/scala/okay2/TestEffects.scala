@@ -58,8 +58,8 @@ class TestEffects extends munit.FunSuite {
     assertEquals(run(false), 5)
     assertEquals(run(true), -1)
 
-    assertEquals(Throws.runEither[Int, String, F](calc(false)).runWith, Right(5))
-    assertEquals(Throws.runEither[Int, String, F](calc(true)).runWith, Left("boom"))
+    assertEquals(Throws.runEither(calc(false)).runWith, Right(5))
+    assertEquals(Throws.runEither(calc(true)).runWith, Left("boom"))
   }
 
   test("Effects.handle: a multi-shot handler resumes the rest of the program twice") {
@@ -117,7 +117,7 @@ class TestEffects extends munit.FunSuite {
         }
       })
 
-    val (ws, a) = !.run(Writer.run[String, Int, Writer[String] + Pure](told))
+    val (ws, a) = !.run(Writer.run(told))
     assertEquals(a, 42)
     assertEquals(ws, Seq("asked", "asked"))
   }
@@ -134,14 +134,14 @@ class TestEffects extends munit.FunSuite {
         case _: Reader.Ask[_] => pure(5.asInstanceOf[X])
       }
     })
-    val (ws, a) = !.run(Writer.run[String, Int, Writer[String] + Pure](told))
+    val (ws, a) = !.run(Writer.run(told))
     assertEquals(a, 5)
     assertEquals(ws, Seq("before", "after"))
   }
 
   test("Handler.union: a row run by one handler per effect") {
     type Row = Op + Produce
-    implicit val opH: Handler[Op] = new Handler[Op] { def handle[A](a: Op.Val[A]): A = a.a }
+    implicit val opH: Handler[Op] = new Handler.Of[Op] { def handle[A](a: Op.Val[A]): A = a.a }
     implicit val rowH: Handler[Row] = Handler.union[Op, Produce]
     val p: Int ! Row = Op.op(1).at[Row].flatMap(x => produce(x + 1).at[Row])
     assertEquals(p.runWith, 2)

@@ -100,7 +100,7 @@ class TestDelim extends munit.FunSuite {
         Writer.tell("before").at[Delim + F].flatMap(_ => pure[Delim + F, Int](1))
       }.flatMap(x => Writer.tell("after").at[Delim + F].map(_ => x + 1))
     }
-    val (ws, a) = !.run(Writer.run[String, Int, F](told))
+    val (ws, a) = !.run(Writer.run(told))
     assertEquals(a, 2)
     assertEquals(ws, Seq("before", "after"))
   }
@@ -114,7 +114,7 @@ class TestDelim extends munit.FunSuite {
           Writer.tell("never").at[Delim + F].map(_ => x))
       }
     }
-    val (ws, a) = !.run(Writer.run[String, Int, F](prog))
+    val (ws, a) = !.run(Writer.run(prog))
     assertEquals(a, 5)
     assertEquals(ws, Seq.empty, "the dropped continuation told anyway")
   }
@@ -212,7 +212,7 @@ class TestDelim extends munit.FunSuite {
     type W = Writer[String]
     def banner(in: Delim.Prompted.Aux[Int, W]): Int ! (Delim + W) =
       Writer.tell("hello").at[Delim + W].flatMap(_ => Delim.shift[Int, Int](in)(k => k(5)).map(_ + 1))
-    assertEquals(!.run(Writer.run[String, Int, W](Delim.delimited[Int, W](banner))), (Seq("hello"), 6))
+    assertEquals(!.run(Writer.run(Delim.delimited[Int, W](banner))), (Seq("hello"), 6))
   }
 
   test("Prompted: the evidence cannot be forged") {
@@ -577,7 +577,7 @@ class TestDelimPersist extends munit.FunSuite {
   test("the limit: replay re-runs what did not come through pause") {
     implicit val breach: Replayable[Logged] = Replayable.unchecked
 
-    def go(j: List[String]) = Writer.run[String, Where, Log](
+    def go(j: List[String]) = Writer.run(
       Delim.replay[String, String, String, Log](chatty)(j))
 
     val (log1, p1) = !.run(go(List("Kyiv")))
@@ -618,9 +618,13 @@ class TestDelimPersist extends munit.FunSuite {
     val _ = p1
   }
 
-  test("Replayable is inductive over the row: State, Reader and Throws beside Delim pass") {
+  test("Replayable over the row: State, Reader and Throws beside Delim pass, in any nesting; Once and a user effect are refused") {
     type Ok = Delim + (State[Int] + (Reader[String] + Throws[String]))
     val _ = implicitly[Replayable[Ok]]
-    assert(compileErrors("implicitly[okay2.Replayable[okay2.Delim + (okay2.State[Int] + okay2.Once)]]").nonEmpty)
+    val _ = implicitly[Replayable[Throws[String] + Delim + State[Int]]]
+    val once = compileErrors("implicitly[okay2.Replayable[okay2.Delim + (okay2.State[Int] + okay2.Once)]]")
+    assert(once.contains("REPLAY WOULD PERFORM AGAIN") && once.contains("Once"), once)
+    val own = compileErrors("implicitly[okay2.Replayable[okay2.Delim + okay2.Produce]]")
+    assert(own.contains("REPLAY WOULD PERFORM AGAIN") && own.contains("Produce"), own)
   }
 }

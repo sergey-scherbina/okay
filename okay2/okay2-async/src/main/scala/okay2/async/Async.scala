@@ -164,7 +164,7 @@ object Async {
 
   /** execute each operation on the current (ideally virtual) thread;
    * an Await parks it until the callback fires */
-  implicit def handler(implicit cb: CanBlock): Handler[Async] = new Handler[Async] {
+  implicit def handler(implicit cb: CanBlock): Handler[Async] = new Handler.Of[Async] {
     def handle[A](e: Op[A]): A = e match {
       case Run(f) => f()
       case Await(reg) => cb.block[Either[Throwable, A]](reg).fold(e => throw e, identity)
@@ -177,11 +177,11 @@ object Async {
 
   /** handle by executing each operation in place, forwarding the rest
    * of the row; an Await parks (hence the evidence) */
-  def run[A, R <: Row](prog: A ! R)(implicit rm: Remove[Async, R], cb: CanBlock): A ! rm.Out =
-    runAt[A, rm.Out](rm.split(prog))
+  def run[A, R <: Row](prog: Free[Async with R, A])(implicit cb: CanBlock): A ! R =
+    runAt[A, R](prog)
 
   /** `run` at the handler's own shape */
-  def runAt[A, F <: Row](prog: A ! (Async + F))(implicit cb: CanBlock): A ! F =
+  def runAt[A, F <: Row](prog: Free[Async with F, A])(implicit cb: CanBlock): A ! F =
     Effects.relay[A, A, Async, F](prog)(a => pure(a))(new Relay[Async] {
       def apply[X, Y](e: Op[X]): X /> Y = e match {
         case Run(f) => Cont.Pure(f())
@@ -192,7 +192,7 @@ object Async {
   /** the universal terminal: drive the tree through callbacks — Run
    * operations execute in place, an Await parks nothing, the
    * registered callback re-enters the drive */
-  def runAsync[A](prog: A ! Async): Future[A] = {
+  def runAsync[A](prog: Free[Async, A]): Future[A] = {
     val p = Promise[A]()
     new PromiseDrive(p).apply(prog)
     p.future
@@ -221,7 +221,7 @@ object Async {
     }
 
     /** a direct loop over the tree's cases, one turn per OPERATION */
-    def apply(prog: A ! Async): Unit = {
+    def apply(prog: Free[Async, A]): Unit = {
       var cur: A ! Async = prog
       var looping = !stopped
       try {
@@ -230,10 +230,10 @@ object Async {
           Free.resume(cur) match {
             case Return(a) => succeed(a)
             case Bind(Inject(e), f) =>
-              val next = op(e, f)
+              val next = op(Split.only[Async, Any](e), f)
               if (next != null) { cur = next; looping = !stopped }
             case Inject(e) =>
-              val next = op(e, (x: A) => Return[Async, A](x))
+              val next = op(Split.only[Async, A](e), (x: A) => Return[Async, A](x))
               if (next != null) { cur = next; looping = !stopped }
             case other => throw new IllegalStateException("resume left a non-head form: " + other)
           }
@@ -276,7 +276,7 @@ object Async {
   }
 
   /** run the program on its own fiber */
-  def spawn[A](prog: => A ! Async)(implicit S: Scheduler): Fiber[A] = S.fork(() => prog)
+  def spawn[A](prog: => Free[Async, A])(implicit S: Scheduler): Fiber[A] = S.fork(() => prog)
 
   /**
    * AN OPEN SUPERVISED SCOPE: fork as many children as you like, and
@@ -292,7 +292,7 @@ object Async {
     private[async] var onFirstFailure: Throwable => Unit = _ => ()
 
     /** fork a child into this scope */
-    def fork[B](p: => B ! Async): Fiber[B] = {
+    def fork[B](p: => Free[Async, B]): Fiber[B] = {
       val _ = live.incrementAndGet()
       val f = Async.spawn(p)(S)
       val _ = kids.updateAndGet(f :: _)
@@ -348,7 +348,7 @@ object Async {
   /** both, each on its own fiber, by completion callbacks; EITHER
    * side's failure fails the pair at once and cancels the sibling —
    * the failure watch is registered on both sides up front */
-  def par[A, B](a: => A ! Async, b: => B ! Async)(implicit S: Scheduler): (A, B) ! Async =
+  def par[A, B](a: => Free[Async, A], b: => Free[Async, B])(implicit S: Scheduler): (A, B) ! Async =
     await[(A, B)] { k =>
       val fa = spawn(a)
       val fb = spawn(b)
@@ -371,7 +371,7 @@ object Async {
 
   /** the program's failure as DATA: it runs on its own fiber, and
    * whatever it threw arrives as a Left */
-  def attempt[A](prog: => A ! Async)(implicit S: Scheduler): Either[Throwable, A] ! Async =
+  def attempt[A](prog: => Free[Async, A])(implicit S: Scheduler): Either[Throwable, A] ! Async =
     await[Either[Throwable, A]] { k =>
       val f = spawn(prog)
       f.onComplete(r => k(Right(r)))
@@ -385,7 +385,7 @@ object Async {
   /** the answer within the duration, or None; the loser is cancelled.
    * The FIRST outcome of the program, of either kind, settles the
    * timeout, and only the timer answers None */
-  def timeout[A](millis: Long)(prog: => A ! Async)(implicit S: Scheduler, T: Timer): Option[A] ! Async =
+  def timeout[A](millis: Long)(prog: => Free[Async, A])(implicit S: Scheduler, T: Timer): Option[A] ! Async =
     await[Option[A]] { k =>
       val f = spawn(prog)
       val done = new AtomicBoolean(false)
@@ -400,7 +400,7 @@ object Async {
 
   /** the first of the two to SUCCEED; both losers are cancelled. If
    * both fail, the race fails with the later error */
-  def race[A](a: => A ! Async, b: => A ! Async)(implicit S: Scheduler): A ! Async =
+  def race[A](a: => Free[Async, A], b: => Free[Async, A])(implicit S: Scheduler): A ! Async =
     await[A] { k =>
       val fa = spawn(a)
       val fb = spawn(b)
@@ -442,7 +442,7 @@ object Retry {
    * data, the delay is an `Async.sleep` — nothing parks a thread. The
    * program reruns FROM ITS BEGINNING on any exception; a policy
    * exhausted fails with the LAST error */
-  def async[A](policy: LazyList[Long])(prog: => A ! Async)(implicit S: Scheduler, T: Timer): A ! Async = {
+  def async[A](policy: LazyList[Long])(prog: => Free[Async, A])(implicit S: Scheduler, T: Timer): A ! Async = {
     def go(delays: LazyList[Long]): A ! Async =
       Async.attempt(prog).flatMap {
         case Right(a) => pure(a)
@@ -466,7 +466,7 @@ object Retry {
  */
 object Par {
   /** two leaves at once, joined by a plain function */
-  def map2[A, B, C](a: A ! Async, b: B ! Async)(f: (A, B) => C)(implicit S: Scheduler): C ! Async =
+  def map2[A, B, C](a: Free[Async, A], b: Free[Async, B])(f: (A, B) => C)(implicit S: Scheduler): C ! Async =
     Async.par(a, b).map { case (x, y) => f(x, y) }
 
   /** every element at once, results in the argument's order */

@@ -49,7 +49,7 @@ object Once {
    * first demand — construction does no work. Two calls make two
    * handles: share the VALUE to share the cell.
    */
-  def once[A, F <: Row](p: => A ! (Once + F)): A ! (Once + F) =
+  def once[A, F <: Row](p: => Free[Once with F, A]): A ! (Once + F) =
     at[A, Once + F](new Handle[A])(
       h => Free.inject[Once, Option[A]](Force(h)).plus[F])(
       (h, a) => Free.inject[Once, A](Store(h, a)).plus[F])(
@@ -96,16 +96,16 @@ object Once {
   }
 
   /** the handler, for a program whose row mentions `Once` anywhere */
-  def run[A, R <: Row](a: A ! R)(implicit rm: Remove[Once, R]): A ! rm.Out =
-    runAt[A, rm.Out](rm.split(a))
+  def run[A, R <: Row](a: Free[Once with R, A]): A ! R =
+    runAt[A, R](a)
 
   /** the handler at its own shape: a tail-recursive loop threading the
    * cells, like `State.handleAt`; a forwarded F-effect suspends with
    * the cells captured immutably, so the residual is re-runnable */
-  def runAt[A, F <: Row](a: A ! (Once + F)): A ! F = {
-    def _loop(c: Cells)(x: A ! (Once + F)): A ! F = loop(c)(x)
+  def runAt[A, F <: Row](a: Free[Once with F, A]): A ! F = {
+    def _loop(c: Cells)(x: Free[Once with F, A]): A ! F = loop(c)(x)
 
-    @tailrec def loop(c: Cells)(x: A ! (Once + F)): A ! F = Free.resume(x) match {
+    @tailrec def loop(c: Cells)(x: Free[Once with F, A]): A ! F = Free.resume(x) match {
       case Return(v) => Return(v)
       case Inject(e) => loop(c)(Bind(Inject[Once + F, A](e), (x: A) => Return[Once + F, A](x)))
       case Bind(Inject(e), k) =>

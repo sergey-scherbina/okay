@@ -14,7 +14,7 @@ class TestOnce extends munit.FunSuite {
   type R = Once + W
 
   def logged[A](p: A ! R): (Seq[String], A) =
-    !.run(Writer.run[String, A, W](Once.run[A, R](p)))
+    !.run(Writer.run(Once.run(p)))
 
   test("!.once: three demands, one run, one value") {
     var hits = 0
@@ -65,7 +65,7 @@ class TestOnce extends munit.FunSuite {
     type R2 = Once + Later
     val q: Int ! R2 = !.once[Int, Later](later { hits += 1; 5 }.at[R2])
     val prog: Int ! R2 = q.flatMap(a => later(1).at[R2].flatMap(x => q.map(b => a + b + x)))
-    assertEquals(Once.run[Int, R2](prog).runWith, 11)
+    assertEquals(Once.run(prog).runWith, 11)
     assertEquals(hits, 1)
   }
 
@@ -98,6 +98,6 @@ class TestOnce extends munit.FunSuite {
   test("Once.run finds the effect anywhere in the row") {
     type R3 = Later + Once
     val q: Int ! R3 = Once.once[Int, Later](later(2).at[Once + Later]).at[R3]
-    assertEquals(Once.run[Int, R3](q.flatMap(a => q.map(_ + a))).runWith, 4)
+    assertEquals(Once.run(q.flatMap(a => q.map(_ + a))).runWith, 4)
   }
 }

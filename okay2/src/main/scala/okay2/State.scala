@@ -44,12 +44,14 @@ object State {
     update[S, (S, S)](s => { val next = f(s); ((s, next), next) })
 
   /** run from an initial state to (final state, value) */
-  def run[S, A](s: S)(a: A ! State[S]): (S, A) = Effects.run(handleAt[S, A, Pure](s)(a.plus[Pure]))
+  def run[S, A](s: S)(a: Free[State[S], A]): (S, A) = Effects.run(handleAt[S, A, Pure](s)(a.plus[Pure]))
 
   /** the handler, for a program whose row mentions `State[S]` ANYWHERE:
-   * `Remove` finds it and names the residual row */
-  def handle[S, A, R <: Row](s: S)(a: A ! R)(implicit rm: Remove[State[S], R]): (S, A) ! rm.Out =
-    handleAt[S, A, rm.Out](s)(rm.split(a))
+   * the row is an intersection, so scalac infers the rest `R` itself
+   * (stage 8) — the parameter spelled with `Free`, not `!`/`+`, which
+   * scalac would not look through to solve `R` */
+  def handle[S, A, R <: Row](s: S)(a: Free[State[S] with R, A]): (S, A) ! R =
+    handleAt[S, A, R](s)(a)
 
   /**
    * the handler at its own shape: a bespoke tail-recursive loop that
@@ -57,10 +59,10 @@ object State {
    * with the current state captured immutably, which keeps the
    * residual re-runnable.
    */
-  def handleAt[S, A, F <: Row](s: S)(a: A ! (State[S] + F)): (S, A) ! F = {
-    def _loop(s: S)(x: A ! (State[S] + F)): (S, A) ! F = loop(s)(x)
+  def handleAt[S, A, F <: Row](s: S)(a: Free[State[S] with F, A]): (S, A) ! F = {
+    def _loop(s: S)(x: Free[State[S] with F, A]): (S, A) ! F = loop(s)(x)
 
-    @tailrec def loop(s: S)(x: A ! (State[S] + F)): (S, A) ! F = Free.resume(x) match {
+    @tailrec def loop(s: S)(x: Free[State[S] with F, A]): (S, A) ! F = Free.resume(x) match {
       case Return(a) => Return((s, a))
       // a lone operation is a Bind with a pure continuation (package.scala)
       case Inject(e) => loop(s)(Bind(Inject[State[S] + F, A](e), (x: A) => Return[State[S] + F, A](x)))

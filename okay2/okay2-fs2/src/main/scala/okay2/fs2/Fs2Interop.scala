@@ -28,19 +28,19 @@ object Fs2Interop {
    * program is walked as the stream is pulled and a million tells cost
    * no stack.
    */
-  def toFs2[F[_], W, A, R <: Row, G <: Row](p: A ! R)(implicit rm: Remove.Aux[Writer[W], R, G], h: Into[G, F]): Stream[F, W] =
-    toFs2At[F, W, A, G](rm.split(p))(h)
+  def toFs2[F[_], W, A, G <: Row](p: Free[Writer[W] with G, A])(implicit h: Into[G, F]): Stream[F, W] =
+    toFs2At[F, W, A, G](p)(h)
 
   /** `toFs2` at the handler's own shape */
-  def toFs2At[F[_], W, A, G <: Row](p: A ! (Writer[W] + G))(h: Into[G, F]): Stream[F, W] = {
-    def go(x: A ! (Writer[W] + G)): Stream[F, W] = Free.resume(x) match {
+  def toFs2At[F[_], W, A, G <: Row](p: Free[Writer[W] with G, A])(h: Into[G, F]): Stream[F, W] = {
+    def go(x: Free[Writer[W] with G, A]): Stream[F, W] = Free.resume(x) match {
       case Return(_) => Stream.empty
       case Inject(e) => go(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
       case Bind(Inject(e), k) =>
         Split.split[Writer[W], G, Any, Stream[F, W]](e) {
           case Writer.Say(w) => Stream.emit(w) ++ go(k(()))
         } { g =>
-          Stream.eval(h(g)).flatMap(x => go(k(x)))
+          Stream.eval(h.applyOp[Any](g)).flatMap(x => go(k(x)))
         }
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }

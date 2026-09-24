@@ -72,14 +72,14 @@ class TestStream extends munit.FunSuite {
     } yield ()
     assertEquals(prog.toLazyList.toList, List(1, 5, 99))
     assertEquals(prog.iterator.toVector, Vector(1, 5, 99))
-    val (ws, _) = Writer.run[Int, Unit, Row](prog).runWith
+    val (ws, _) = Writer.run(prog).runWith
     assertEquals(ws, Seq(1, 5, 99))
     assertEquals(prog.foldUntil(FoldUntil.take[Int](1)), Vector(1))
   }
 
   test("Writer.of: any stream as a writer program, and Pull reads one step at a time") {
     val p: Unit ! (Writer[Int] + Pure) = Writer.of[List, Pure, Int](List(1, 2, 3))
-    assertEquals(Effects.run(Writer.run[Int, Unit, Writer[Int] + Pure](p))._1, Seq(1, 2, 3))
+    assertEquals(Effects.run(Writer.run(p))._1, Seq(1, 2, 3))
     val seen = List.newBuilder[Int]
     Effects.run(Pull.told(told(4, 5, 6)).loop(seen += _))
     assertEquals(seen.result(), List(4, 5, 6))
@@ -89,8 +89,8 @@ class TestStream extends munit.FunSuite {
 
   test("Writer.fold folds the told values by any Fold, forwarding the rest") {
     val p: Unit ! (Writer[Int] + Pure) = told(1, 2, 3).plus[Pure]
-    assertEquals(Effects.run(Writer.fold[Int, Long, Unit, Writer[Int] + Pure](p)(Fold.count)), (3L, ()))
-    assertEquals(Effects.run(Writer.fold[Int, Int, Unit, Writer[Int] + Pure](p)(Fold.sumInt)), (6, ()))
-    assertEquals(Effects.run(Writer.fold[Int, Seq[Int], Unit, Writer[Int] + Pure](p)(Fold.collect[Int])), (Seq(1, 2, 3), ()))
+    assertEquals(Effects.run(Writer.fold(p)(Fold.count)), (3L, ()))
+    assertEquals(Effects.run(Writer.fold(p)(Fold.sumInt)), (6, ()))
+    assertEquals(Effects.run(Writer.fold(p)(Fold.collect[Int])), (Seq(1, 2, 3), ()))
   }
 }

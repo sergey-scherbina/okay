@@ -1,6 +1,8 @@
 package okay2
 
 import scala.annotation.implicitNotFound
+import scala.language.experimental.macros
+import scala.reflect.macros.blackbox
 
 /**
  * THE DISCIPLINE, AS A TYPE. A paused dialogue outlives its process
@@ -20,27 +22,24 @@ import scala.annotation.implicitNotFound
  * measured, TestDelimPersist), `Resource` (replay acquires again),
  * `Once` (a fresh store per run).
  *
- * The Scala 3 core states this as subtyping into a union, because its
- * rows are unions the compiler cannot take apart. Here a row is a
- * nominal `F + G`, so the instance is the INDUCTIVE one the Scala 3
- * core could not write: both sides replayable, the union replayable.
+ * The Scala 3 core states this as subtyping into a union. Here a row
+ * is an INTERSECTION (stage 8), and scalac 2 cannot take one apart by
+ * implicit search: a rule `Replayable[F + G]` matches every type
+ * (`S =:= S with S`), and the search diverges even at low priority —
+ * measured on two parts, three and four. So the instance is DERIVED by
+ * a blackbox macro that reads the row's parents and admits it when
+ * every one is on the list below: a whitelist, as before, so a user's
+ * own effect that reaches outside is refused too.
  */
 @implicitNotFound("this row holds an effect that REPLAY WOULD PERFORM AGAIN, so the program is not a pure function of its journal and a restart would not land where the first run stood.\nEverything a durable program is told by the outside world must enter through `pause`, whose answers the journal remembers.\nReplayable: Pure, State, Reader, Throws, Delim.  NOT replayable: Async, Writer, Resource, Once, anything that reaches outside.\nIf you mean to replay a program that breaks this on purpose (a test of the limit, a migration), say so: `Replayable.unchecked`.")
 sealed trait Replayable[F <: Row]
 
 object Replayable {
   private val ev: Replayable[Pure] = new Replayable[Pure] {}
-  private def of[F <: Row]: Replayable[F] = ev.asInstanceOf[Replayable[F]]
+  private[okay2] def of[F <: Row]: Replayable[F] = ev.asInstanceOf[Replayable[F]]
 
-  implicit val pure: Replayable[Pure] = of
-  implicit def state[S]: Replayable[State[S]] = of
-  implicit def reader[R]: Replayable[Reader[R]] = of
-  implicit def throws[E]: Replayable[Throws[E]] = of
-  implicit val delim: Replayable[Delim] = of
-  /** a union is replayable when both sides are */
-  implicit def union[F <: Row, G <: Row](implicit f: Replayable[F], g: Replayable[G]): Replayable[F + G] = {
-    val _ = (f, g); of
-  }
+  /** every signature of F is one replay cannot observe running twice */
+  implicit def derive[F <: Row]: Replayable[F] = macro ReplayableMacro.derive[F]
 
   /** DELIBERATELY replaying a program that breaks the discipline: a
    * test that measures what a breach costs, a migration that knowingly
@@ -48,3 +47,29 @@ object Replayable {
    * by accident, and its name is what a reviewer sees. */
   def unchecked[F <: Row]: Replayable[F] = of
 }
+
+/** the derivation: flatten the row's intersection, test each parent's
+ * class against the whitelist, abort with the discipline's message */
+object ReplayableMacro {
+  /** the signatures replay may run again unobserved — and `Row`, which
+   * is `Pure`, the empty requirement */
+  private val allowed = Set("okay2.State", "okay2.Reader", "okay2.Throws", "okay2.Delim", "okay2.Row")
+
+  def derive[F: c.WeakTypeTag](c: blackbox.Context): c.Tree = {
+    import c.universe._
+    def parts(t: Type): List[Type] = t.dealias match {
+      case RefinedType(ps, _) => ps.flatMap(parts)
+      case other => List(other)
+    }
+    val row = weakTypeOf[F]
+    val bad = parts(row).filterNot(p => allowed.contains(p.typeSymbol.fullName))
+    if (bad.nonEmpty)
+      c.abort(c.enclosingPosition,
+        "this row holds an effect that REPLAY WOULD PERFORM AGAIN: " + bad.mkString(", ") +
+          ".\nEverything a durable program is told by the outside world must enter through `pause`, whose answers the journal remembers." +
+          "\nReplayable: Pure, State, Reader, Throws, Delim.  NOT replayable: Async, Writer, Resource, Once, anything that reaches outside." +
+          "\nIf you mean to replay a program that breaks this on purpose (a test of the limit, a migration), say so: `Replayable.unchecked`.")
+    q"_root_.okay2.Replayable.of[$row]"
+  }
+}
+

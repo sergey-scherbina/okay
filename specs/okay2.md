@@ -783,14 +783,43 @@ def handle[S, R <: Row, A](s: S)(a: Free[State[S] with R, A]): Free[R, (S, A)]
   signature only); the doc says so.
 
 ### Behavior (stage 8)
-- [ ] every okay2 test green on the new row, the interop modules included
-- [ ] handlers in all six orders over a three-effect program, no annotation
-- [ ] widening by subtyping: a one-effect program IS a program in a
-      wider row, in either order; `.at` compiles as a no-op
-- [ ] a program with an effect left unhandled is refused by `run`
-- [ ] the `#Op` trap pinned: an operation read at a row's `#Op` would
-      be the wrong class, so the kernel never does it
+- [x] every okay2 test green on the new row, the interop modules included
+      (276, cold)
+- [x] handlers in all six orders over a three-effect program, no
+      annotation (TestRow)
+- [x] widening by subtyping: a one-effect program IS a program in a
+      wider row, in either order; `.at` compiles as the identity
+- [x] a program with an effect left unhandled is refused by `run`
+- [x] the `#Op` trap pinned: `(Writer[String] + State[Int])#Op =:=
+      State.Op` (TestRow), so the kernel never reads at it
 
+### Found while building it (each measured)
+- AN INDUCTIVE IMPLICIT OVER AN INTERSECTION IS NOT AVAILABLE in scalac
+  2: a rule `Rep[A with B]` matches every type (`S =:= S with S`) and
+  the search diverges — on two parts, three and four, at normal and at
+  LOW priority. Three places relied on one: `Replayable` (now DERIVED by
+  a blackbox macro that flattens the row's parents against the
+  whitelist State/Reader/Throws/Delim/Pure — so a user's own
+  outside-reaching effect is still refused; scala-reflect is the
+  core's one dependency), and `Into.union`/`IntoZ.union` (now explicit
+  combinators, as `Handler.union` always was).
+- A COVARIANT HANDLER RESOLVES ITSELF: with `Handler[+F]`, the
+  documented `implicit val h: Handler[F + G] = Handler.union[F, G]`
+  took `h` for its own `Handler[G]` ("Implicit resolves to enclosing
+  value"). `Handler`, `Into`, `IntoZ` stay invariant.
+- A LONE `Say`'s answer and a Writer-only loop's told value lost the
+  type the constructor used to give (`Inject` holds `Any`): one cast
+  each, in `Writer.loneAnswer` and the name-based extractor
+  `Writer.said[W]` (allocation-free), instead of one per loop.
+- Handlers whose rest is itself ONE signature keep typed patterns on
+  both sides through `Split.splitBoth` (Take's two-signature rows); a
+  single-signature tree reads its operation through `Split.only`
+  (Cont's `Shift`, cats' `toCats`). Every cast of the row discipline is
+  in `Split`, `Writer.said`/`loneAnswer` and `Cont.shiftOp`.
+- A handler called with EXPLICIT type arguments changes meaning: the
+  row argument used to be the WHOLE row and is now the REST. 42 test
+  call sites named it; all now let scalac infer it, which is what the
+  stage is for.
 ## Results
 - Stage 0: see above. The probe is kept beside the repository
   (`../okay2-probe-Probe2.scala` on the operator's box), not in it;
@@ -812,3 +841,8 @@ def handle[S, R <: Row, A](s: S)(a: Free[State[S] with R, A]): Free[R, (S, A)]
   37 suites, GREEN 2026-09-24, same gate.
 - Stage 7: 301 test results (+27 Stacked/Choice/Logic/SharedOnce/
   handler order), 41 suites, GREEN 2026-09-24, same gate.
+- STAGE 8 LANDED (2026-09-24, okay2-intersection-row). The row is a
+  contravariant intersection: `Member`, `Sub`, `NotPure`, `Remove`
+  deleted; `+` is `with`, `Pure` is `Row`; every okay2 module and its
+  tests moved; 276 tests green cold under `-Xlint -Werror`.
+

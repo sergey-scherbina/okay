@@ -105,10 +105,11 @@ object Chunks {
     mapWith(p)(ChunkBuf.taggedMapper[A, B](f))
 
   def mapWith[A, B](p: Chunks[A])(g: Chunk[A] => Chunk[B]): Chunks[B] = defer {
+    val Said = Writer.said[Chunk[A]]
     Free.resume(p) match {
       case Return(_) => end[B]
-      case Inject(Writer.Say(c)) => Writer.tell(g(c))
-      case Bind(Inject(Writer.Say(c)), k) => Writer.tell(g(c)).flatMap(_ => mapWith(k(()))(g))
+      case Inject(Said(c)) => Writer.tell(g(c))
+      case Bind(Inject(Said(c)), k) => Writer.tell(g(c)).flatMap(_ => mapWith(k(()))(g))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
   }
@@ -117,10 +118,11 @@ object Chunks {
   def filter[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = filterWith(p)(ChunkBuf.filterer[A](pred))
 
   def filterWith[A](p: Chunks[A])(g: Chunk[A] => Chunk[A]): Chunks[A] = defer {
+    val Said = Writer.said[Chunk[A]]
     Free.resume(p) match {
       case Return(_) => end[A]
-      case Inject(Writer.Say(c)) => Writer.tell(g(c))
-      case Bind(Inject(Writer.Say(c)), k) =>
+      case Inject(Said(c)) => Writer.tell(g(c))
+      case Bind(Inject(Said(c)), k) =>
         val fc = g(c)
         if (fc.isEmpty) filterWith(k(()))(g)
         else Writer.tell(fc).flatMap(_ => filterWith(k(()))(g))
@@ -130,11 +132,12 @@ object Chunks {
 
   /** the first n elements (the last chunk truncated) */
   def take[A](p: Chunks[A])(n: Int): Chunks[A] = defer {
+    val Said = Writer.said[Chunk[A]]
     if (n <= 0) end[A]
     else Free.resume(p) match {
       case Return(_) => end[A]
-      case Inject(Writer.Say(c)) => Writer.tell(c.take(n))
-      case Bind(Inject(Writer.Say(c)), k) =>
+      case Inject(Said(c)) => Writer.tell(c.take(n))
+      case Bind(Inject(Said(c)), k) =>
         if (c.length >= n) Writer.tell(c.take(n))
         else Writer.tell(c).flatMap(_ => take(k(()))(n - c.length))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
@@ -143,11 +146,12 @@ object Chunks {
 
   /** all but the first n elements */
   def drop[A](p: Chunks[A])(n: Int): Chunks[A] = defer {
+    val Said = Writer.said[Chunk[A]]
     if (n <= 0) p
     else Free.resume(p) match {
       case Return(_) => end[A]
-      case Inject(Writer.Say(c)) => Writer.tell(c.drop(n))
-      case Bind(Inject(Writer.Say(c)), k) =>
+      case Inject(Said(c)) => Writer.tell(c.drop(n))
+      case Bind(Inject(Said(c)), k) =>
         if (c.length <= n) drop(k(()))(n - c.length)
         else Writer.tell(c.drop(n)).flatMap(_ => k(()))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
@@ -156,10 +160,11 @@ object Chunks {
 
   /** the longest prefix satisfying pred */
   def takeWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer {
+    val Said = Writer.said[Chunk[A]]
     Free.resume(p) match {
       case Return(_) => end[A]
-      case Inject(Writer.Say(c)) => Writer.tell(c.takeWhile(pred))
-      case Bind(Inject(Writer.Say(c)), k) =>
+      case Inject(Said(c)) => Writer.tell(c.takeWhile(pred))
+      case Bind(Inject(Said(c)), k) =>
         val i = c.indexWhere(a => !pred(a))
         if (i < 0) Writer.tell(c).flatMap(_ => takeWhile(k(()))(pred))
         else Writer.tell(c.take(i))
@@ -169,10 +174,11 @@ object Chunks {
 
   /** the rest, after the longest prefix satisfying pred */
   def dropWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer {
+    val Said = Writer.said[Chunk[A]]
     Free.resume(p) match {
       case Return(_) => end[A]
-      case Inject(Writer.Say(c)) => Writer.tell(c.dropWhile(pred))
-      case Bind(Inject(Writer.Say(c)), k) =>
+      case Inject(Said(c)) => Writer.tell(c.dropWhile(pred))
+      case Bind(Inject(Said(c)), k) =>
         val i = c.indexWhere(a => !pred(a))
         if (i < 0) dropWhile(k(()))(pred)
         else if (i == 0) k(())
@@ -299,7 +305,7 @@ object Chunks {
 
   /** pipe a chunked producer into an ELEMENTWISE consumer: an await is
    * served by an array index, the tree steps once per chunk */
-  def pipe[W, B](p: Chunks[W])(c: B ! Take[W]): B = {
+  def pipe[W, B](p: Chunks[W])(c: Free[Take[W], B]): B = {
     @tailrec def fetch(ch: Chunk[W], i: Int, rest: Chunks[W]): (Option[W], Chunk[W], Int, Chunks[W]) =
       if (i < ch.length) (Some(ch(i)), ch, i + 1, rest)
       else pull(rest) match {
@@ -307,7 +313,7 @@ object Chunks {
         case None => (None, ch, i, end[W])
       }
 
-    @tailrec def loop(ch: Chunk[W], i: Int, rest: Chunks[W], c: B ! Take[W]): B = Free.resume(c) match {
+    @tailrec def loop(ch: Chunk[W], i: Int, rest: Chunks[W], c: Free[Take[W], B]): B = Free.resume(c) match {
       case Return(b) => b
       case Inject(Take.Await()) => fetch(ch, i, rest)._1.asInstanceOf[B]
       case Bind(Inject(Take.Await()), k) =>

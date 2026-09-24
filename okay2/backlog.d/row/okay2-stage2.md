@@ -11,8 +11,10 @@
       Validated/Static, Eager, Refs, HMap, Tag. Each stage mirrors the
       Scala 3 suite for that file and lands with its docs section in
       docs/okay2.md. Rule from stage 1: a lone `Inject` is a Bind with a
-      pure continuation, construct at the signature and widen with
-      `at`, handlers take the row anywhere via `Remove`. Resource first
+      pure continuation, construct at the signature (widening is
+      subtyping since stage 8), a handler takes `Free[F with R, A]` and
+      infers the rest — spelled with `Free`, never `!`/`+`, in a
+      parameter. Resource first
       among the effects: okay2-zio's `fromZStream` collects the whole
       stream because a pull that survives across a program's operations
       is a scoped resource, and okay2-fs2/-cats want an `Async` to run a

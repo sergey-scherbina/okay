@@ -19,14 +19,14 @@ object Reader {
   def ask[R]: R ! Reader[R] = Free.inject[Reader[R], R](Ask())
 
   /** answer every ask with r, forwarding the rest of the row */
-  def run[R, A, Rw <: Row](r: R)(a: A ! Rw)(implicit rm: Remove[Reader[R], Rw]): A ! rm.Out =
-    runAt[R, A, rm.Out](r)(rm.split(a))
+  def run[R, A, Rw <: Row](r: R)(a: Free[Reader[R] with Rw, A]): A ! Rw =
+    runAt[R, A, Rw](r)(a)
 
   /** `run` at the handler's own shape */
-  def runAt[R, A, F <: Row](r: R)(a: A ! (Reader[R] + F)): A ! F = {
-    def _loop(x: A ! (Reader[R] + F)): A ! F = loop(x)
+  def runAt[R, A, F <: Row](r: R)(a: Free[Reader[R] with F, A]): A ! F = {
+    def _loop(x: Free[Reader[R] with F, A]): A ! F = loop(x)
 
-    @tailrec def loop(x: A ! (Reader[R] + F)): A ! F = Free.resume(x) match {
+    @tailrec def loop(x: Free[Reader[R] with F, A]): A ! F = Free.resume(x) match {
       case Return(a) => Return(a)
       case Inject(e) => loop(Bind(Inject[Reader[R] + F, A](e), (x: A) => Return[Reader[R] + F, A](x)))
       case Bind(Inject(e), k) =>
@@ -44,10 +44,10 @@ object Reader {
 
   /** run a sub-program under a modified environment: every ask inside
    * `p` sees `f(r)`, and the row comes out unchanged */
-  def local[R, A, Rw <: Row](f: R => R)(p: A ! Rw)(implicit rm: Remove[Reader[R], Rw]): A ! Rw =
-    rm.join(localAt[R, A, rm.Out](f)(rm.split(p)))
+  def local[R, A, Rw <: Row](f: R => R)(p: Free[Reader[R] with Rw, A]): A ! (Reader[R] + Rw) =
+    localAt[R, A, Rw](f)(p)
 
   /** `local` at the handler's own shape */
-  def localAt[R, A, F <: Row](f: R => R)(p: A ! (Reader[R] + F)): A ! (Reader[R] + F) =
+  def localAt[R, A, F <: Row](f: R => R)(p: Free[Reader[R] with F, A]): A ! (Reader[R] + F) =
     ask[R].at[Reader[R] + F].flatMap(r => runAt[R, A, F](f(r))(p).at[Reader[R] + F])
 }

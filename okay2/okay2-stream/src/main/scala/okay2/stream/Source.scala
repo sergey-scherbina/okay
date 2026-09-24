@@ -79,7 +79,7 @@ object Source {
         case Bind(Inject(e), k) =>
           split[Writer[A], Async, Any, Unit ! Async](e) {
             case Writer.Say(a) => f(a).flatMap(_ => loop(k(())))
-          } { g => Free.inject[Async, Any](g).flatMap(v => loop(k(v))) }
+          } { g => Free.Inject[Async, Any](g).flatMap(v => loop(k(v))) }
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
       loop(s)

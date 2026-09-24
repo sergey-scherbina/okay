@@ -17,11 +17,11 @@
  * What had to change, and why (each measured, specs/okay2.md):
  * - A ROW is a type of kind `*` with a member `Op[+A]` (`Row.scala`).
  *   Scala 2 cannot give a type ALIAS the kind `* -> *` by partial
- *   application, so `F + G` cannot be `[A] =>> F[A] | G[A]`; it is a
- *   Row whose `Op` is left abstract, which erases to Object exactly as
- *   the union does.
- * - A union does not commute here: `Member` has a `right` rule, and a
- *   program written at `A + B` lands in `B + A` by `.at[B + A]`.
+ *   application, so `F + G` cannot be `[A] =>> F[A] | G[A]`.
+ * - `F + G` is `F with G` and `Free` is contravariant in the row
+ *   (stage 8): the union of OPERATIONS is the intersection of
+ *   REQUIREMENTS, so it commutes, widening is subtyping, and a handler
+ *   names the rest of the row as a type parameter scalac infers.
  * - A signature is a Row with its operations in the companion —
  *   `sealed trait Console extends Row { type Op[+A] = Console.Op[A] }`
  *   — where Scala 3 writes `enum Console[+A] derives Effect`.
@@ -38,11 +38,30 @@ package object okay2 extends Provides {
    * row is parenthesised: `Int ! (State % Int + Console)`. */
   type ![A, R <: Row] = Free[R, A]
 
+  /** the union of two rows — their INTERSECTION as requirements: a
+   * program in `F + G` may perform the operations of both, and needs a
+   * handler for each. `with` commutes and associates up to subtyping,
+   * so the order a row is written in does not matter, and `Free` is
+   * contravariant in it, so widening is subtyping (stage 8).
+   *
+   * THE PARAMETER TRAP: scalac 2 does not look through this alias (or
+   * `!`) to solve a row VARIABLE — a parameter `a: A ! (State[S] + R)`
+   * solves `R` as the whole row. Every row-generic parameter in okay2
+   * is spelled `Free[State[S] with R, A]`; results and concrete rows
+   * use `!` and `+` freely. */
+  type +[F <: Row, G <: Row] = F with G
+
+  /** the empty requirement: no operations, so a computation over it is
+   * PURE. It is `Row` itself, the TOP of the row order — every row is
+   * below it, so `A ! Pure` is a program in any row, and `run` accepts
+   * only it */
+  type Pure = Row
+
   /** a value as a computation */
-  def pure[R <: Row, A](a: A): A ! R = Free.Return(a)
+  def pure[R <: Row, A](a: A): A ! R = Free.Return[R, A](a)
 
   /** an operation as a computation */
-  def effect[R <: Row, A](e: R#Op[A]): A ! R = Free.Inject(e)
+  def effect[R <: Row, A](e: R#Op[A]): A ! R = Free.Inject[R, A](e)
 
   /** the term-level name every `!.run` / `!.relay` call site spells
    * in the Scala 3 core; the object's own name is `Effects` */
@@ -110,15 +129,14 @@ package object okay2 extends Provides {
       finally release(r)
     }
 
-  implicit final class ProgOps[R <: Row, A](private val p: A ! R) extends AnyVal {
+  implicit final class ProgOps[R <: Row, A](private val p: Free[R, A]) extends AnyVal {
     /** land in the row R2, which must CONTAIN every signature of this
-     * program's row — one cast, licensed by the witness (RowLift in the
-     * Scala 3 core) */
-    def at[R2 <: Row](implicit ev: Sub[R, R2]): A ! R2 = { val _ = ev; Member.coerce(p) }
+     * program's row. Since stage 8 that is subtyping (`R2 <: R`), so this
+     * is the identity: kept so a call site can NAME the row it wants */
+    def at[R2 <: R]: A ! R2 = p
 
-    /** add G to whatever row this program already has: membership by
-     * construction, no witness */
-    def plus[G <: Row]: A ! (R + G) = Member.coerce(p)
+    /** add G to whatever row this program already has — the identity */
+    def plus[G <: Row]: A ! (R + G) = p
 
     /** run every operation by a comonadic Handler */
     def runWith(implicit H: Handler[R]): A = Effects.runFree(p)
@@ -135,22 +153,20 @@ package object okay2 extends Provides {
 
     /** a bind across rows: the continuation may answer in ANOTHER row,
      * and the result is the union of the two */
-    def bind[B, G <: Row](f: A => B ! G): B ! (R + G) =
-      Member.coerce[A, R, R + G](p).flatMap(a => Member.coerce[B, G, R + G](f(a)))
+    def bind[B, G <: Row](f: A => B ! G): B ! (R + G) = p.flatMap[R + G, B](f)
 
     /** the same, the answer dropped: `p andThen q` runs p, then q */
-    def andThen[B, G <: Row](q: => B ! G): B ! (R + G) =
-      Member.coerce[A, R, R + G](p).flatMap(_ => Member.coerce[B, G, R + G](q))
+    def andThen[B, G <: Row](q: => Free[G, B]): B ! (R + G) = p.flatMap[R + G, B](_ => q)
   }
 
   /** the Throws recoveries, in the row rather than around it */
-  implicit final class ThrowsOps[A, E, F <: Row](private val p: A ! (Throws[E] + F)) extends AnyVal {
+  implicit final class ThrowsOps[A, E, F <: Row](private val p: Free[Throws[E] with F, A]) extends AnyVal {
     /** answer the failure, seeing the error */
     def recover(h: E => A ! (Throws[E] + F)): A ! (Throws[E] + F) =
-      Throws.runEitherAt[A, E, F](p).at[Throws[E] + F].flatMap(_.fold(h, (a: A) => pure[Throws[E] + F, A](a)))
+      Throws.runEither[A, E, F](p).flatMap[Throws[E] + F, A](_.fold(h, (a: A) => pure[Throws[E] + F, A](a)))
 
     /** answer the failure, ignoring the error */
-    def orElse(q: => A ! (Throws[E] + F)): A ! (Throws[E] + F) = recover(_ => q)
+    def orElse(q: => Free[Throws[E] with F, A]): A ! (Throws[E] + F) = recover(_ => q)
   }
 
   implicit final class ContOps[A, S, R](private val c: Cont[A, S, R]) extends AnyVal {
@@ -164,7 +180,7 @@ package object okay2 extends Provides {
     /** every handler can be a recording one: the operations are
      * already data, so recording is a decorator */
     def tracing(log: Any => Unit): Handler[F] = new Handler[F] {
-      def handle[A](a: F#Op[A]): A = { log(a); h.handle(a) }
+      def handleOp[A](op: Any): A = { log(op); h.handleOp[A](op) }
     }
   }
 }

@@ -113,7 +113,7 @@ class TestWindows extends munit.FunSuite {
     evs.foldLeft(pure[Writer[Ev], Ev](evs.head))((m, e) => m.flatMap(_ => Writer.tell(e).map(_ => e)))
 
   def runStage[O, R](evs: Seq[Ev])(st: Stage[Ev, O, R]): (Seq[O], R) =
-    Effects.run(Writer.run[O, R, Writer[O]](into(producer(evs))(st)))
+    Effects.run(Writer.run(into(producer(evs))(st)))
 
   test("the stage form gives the class's panes, and the same value drives twice") {
     val evs = events(500, 4000L, 4, 20L)
@@ -130,8 +130,8 @@ class TestWindows extends munit.FunSuite {
     val evs = Vector(Ev(1, "a", 1), Ev(2, "a", 2), Ev(15, "a", 15), Ev(16, "a", 16), Ev(30, "a", 30))
     val built = into(producer(evs))(Windows.stage(10L, 10L, 0L)((e: Ev) => e.key)((e: Ev) => e.ts)(sum))
     val expected = Vector(Pane(0L, 10L, "a", 3L), Pane(10L, 20L, "a", 31L), Pane(30L, 40L, "a", 30L))
-    assertEquals(Effects.run(Writer.run[Pane[String, Long], Unit, Writer[Pane[String, Long]]](built))._1.toVector, expected)
-    assertEquals(Effects.run(Writer.run[Pane[String, Long], Unit, Writer[Pane[String, Long]]](built))._1.toVector, expected)
+    assertEquals(Effects.run(Writer.run(built))._1.toVector, expected)
+    assertEquals(Effects.run(Writer.run(built))._1.toVector, expected)
   }
 
   test("a window is a stage like any other: it composes under `through`") {

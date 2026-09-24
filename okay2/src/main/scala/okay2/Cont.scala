@@ -142,7 +142,7 @@ private[okay2] object ContImpl extends ContModule {
     case Inject(s) => s match {
       // already absorbed one — see `Leaf` for why never twice
       case _: Leaf[_, _, _] => Bind(c, f)
-      case _ => Inject[Shift, B](Absorbed[A, B, S2, S, R](s, f).asInstanceOf[Shift#Op[B]])
+      case _ => Inject[Shift, B](Absorbed[A, B, S2, S, R](shiftOp[A](s), f))
     }
     // Pure receivers build a node too: fusing `pure(a).flatMap(f)` at
     // CONSTRUCTION would run `def forever = pure(()).flatMap(_ =>
@@ -153,7 +153,7 @@ private[okay2] object ContImpl extends ContModule {
   def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] = c match {
     case Inject(s) => s match {
       case _: Leaf[_, _, _] => Bind(c, (a: A) => Return[Shift, B](f(a)))
-      case _ => Inject[Shift, B](Mapped[A, B, S, R](s, f).asInstanceOf[Shift#Op[B]])
+      case _ => Inject[Shift, B](Mapped[A, B, S, R](shiftOp[A](s), f))
     }
     case _ => Bind(c, (a: A) => Return[Shift, B](f(a)))
   }
@@ -176,6 +176,12 @@ private[okay2] object ContImpl extends ContModule {
    * say it. `Shift.at`'s claim at the other node. */
   private def pinned[S, R](s: S): R = s.asInstanceOf[R]
 
+  /** the operation of a Cont tree, at its type: `Inject` holds it as
+   * `Any` since stage 8 (a row's `#Op` is not a type to read at), and
+   * a Cont tree's row is the single signature `Shift`, so every
+   * operation in it IS a `Shift#Op` — nothing else is ever injected */
+  private def shiftOp[A](s: Any): Shift#Op[A] = s.asInstanceOf[Shift#Op[A]]
+
   /**
    * The loop: rotation and elimination interleaved. The single
    * non-tail case re-enters through `run`, because a shift's body may
@@ -186,8 +192,8 @@ private[okay2] object ContImpl extends ContModule {
    */
   @tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match {
     case Return(a) => pinned[S, R](k(a))
-    case Inject(s) => at[A, S, R](s)(k)
-    case Bind(Inject(s), f) => at[Any, R, R](s)(x => run[A, S, Any](f(x))(k).asInstanceOf[R])
+    case Inject(s) => at[A, S, R](shiftOp[A](s))(k)
+    case Bind(Inject(s), f) => at[Any, R, R](shiftOp[Any](s))(x => run[A, S, Any](f(x))(k).asInstanceOf[R])
     case Bind(Bind(a, f), g) => step(Bind(a, (x: Any) => bind(f(x))(g)))(k)
     case Bind(Return(a), f) => step(f(a))(k)
     case Delay(t) => step(t())(k)
