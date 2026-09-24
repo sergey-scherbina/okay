@@ -1,4 +1,0 @@
-slug: shift0-dollar-probe
-agent: claude (session 01VZwf6d)
-since: 2026-09-24
-what: stage 0 of specs/shift0-dollar.md — tests only: ICFP 2011 example, $ vs push.flatMap for 0-captures, the open typing question

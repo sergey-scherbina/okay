@@ -1,4 +1,0 @@
-slug: monadic-reflection-stacked
-agent: claude (session 01VZwf6d)
-since: 2026-09-24
-what: specs/layered-reflection.md stage 0 — Layered.reify/reflect over Delim prompts; Option/List order tests; multi-shot through an inner layer

@@ -1,4 +1,0 @@
-slug: handler-equivalence-oracle
-agent: claude (session 01VZwf6d)
-since: 2026-09-24
-what: okay.Bisim — walk two programs in lockstep over sampled answers, compare operation traces; applied to Gen stage laws; a mutant caught
