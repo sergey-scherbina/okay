@@ -1,0 +1,3 @@
+slug: okay2-cross
+agent: claude (session 69c582ad)
+what: okay2 on Scala.js and Scala Native, stage A: the core, okay2-data, okay2-optics, okay2-workflow as crossProjects (JVM/JS/Native) in okay2/build.sbt, the same suites on each (thread tests to scala-jvm); then stage B, okay2-async/-platform with the JS/Native platform files
