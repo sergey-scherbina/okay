@@ -1,0 +1,6 @@
+feature/okay2-ci 2026-09-24T12:33:06Z
+agent: claude-code
+heartbeat: 2026-09-24T12:33:06Z
+status: in-progress
+done-so-far: claimed
+next: an okay2 job in .github/workflows/ci.yml — on a push/PR that touches okay2/ (or gate.sh), and nightly; cd okay2 && gate.sh test, verdict line checked; records
