@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
 import Split.split
@@ -50,7 +52,7 @@ object State {
    * the row is an intersection, so scalac infers the rest `R` itself
    * (stage 8) — the parameter spelled with `Free`, not `!`/`+`, which
    * scalac would not look through to solve `R` */
-  def handle[S, A, R <: Row](s: S)(a: Free[State[S] with R, A]): (S, A) ! R =
+  def handle[S, A, R <: Row](s: S)(a: Free[State[S] with R, A])(implicit @unused d: Distinct[State[S] with R]): (S, A) ! R =
     handleAt[S, A, R](s)(a)
 
   /**

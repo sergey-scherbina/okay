@@ -1,5 +1,6 @@
 package okay2.async
 
+
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 import scala.annotation.implicitNotFound
 import scala.concurrent.{Future, Promise}

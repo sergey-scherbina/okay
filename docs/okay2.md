@@ -187,10 +187,16 @@ one for free, because the operations are already data:
 A row may not hold two signatures of ONE class. A split tells
 signatures apart by their class, so in `Ask[Int] + Ask[String]` the
 String ask would reach the Int handler and die of a ClassCastException
-at the first wrong answer. `Handler.union` (and `Into.union`,
-`IntoZ.union`) require `Distinct[F + G]`, which refuses such a row at
-compile time; the same part written twice, distinct classes and an
-abstract part in generic code all pass:
+at the first wrong answer. `Distinct[F + G]` refuses such a row at
+compile time, and everything that splits a parameterised signature out
+of a row asks for it: `Handler.union`, `Into.union`, `IntoZ.union`, the
+handlers of `State`, `Reader`, `Writer` and `Throws` (with
+`recover`/`orElse`), the kernels `relay`, `translate`, `interpret` and
+`handle`, and `toFs2`/`toZStream`. A signature with no type parameter —
+`Delim`, `Once`, `Resource`, `Choose`, `Async` — cannot occur twice
+with different types, so its handlers need no check. The same part
+written twice, distinct classes and an abstract part in generic code
+all pass:
 
 ```scala
     val _ = implicitly[Distinct[State[Int] + Writer[String] + Reader[Int]]]

@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
 import Split.split
@@ -19,7 +21,7 @@ object Reader {
   def ask[R]: R ! Reader[R] = Free.inject[Reader[R], R](Ask())
 
   /** answer every ask with r, forwarding the rest of the row */
-  def run[R, A, Rw <: Row](r: R)(a: Free[Reader[R] with Rw, A]): A ! Rw =
+  def run[R, A, Rw <: Row](r: R)(a: Free[Reader[R] with Rw, A])(implicit @unused d: Distinct[Reader[R] with Rw]): A ! Rw =
     runAt[R, A, Rw](r)(a)
 
   /** `run` at the handler's own shape */
@@ -44,7 +46,7 @@ object Reader {
 
   /** run a sub-program under a modified environment: every ask inside
    * `p` sees `f(r)`, and the row comes out unchanged */
-  def local[R, A, Rw <: Row](f: R => R)(p: Free[Reader[R] with Rw, A]): A ! (Reader[R] + Rw) =
+  def local[R, A, Rw <: Row](f: R => R)(p: Free[Reader[R] with Rw, A])(implicit @unused d: Distinct[Reader[R] with Rw]): A ! (Reader[R] + Rw) =
     localAt[R, A, Rw](f)(p)
 
   /** `local` at the handler's own shape */

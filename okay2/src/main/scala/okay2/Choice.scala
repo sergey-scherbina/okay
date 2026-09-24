@@ -1,5 +1,6 @@
 package okay2
 
+
 import Free.{Return, Inject, Bind}
 import Split.split
 
@@ -44,13 +45,15 @@ object Choose {
   /** `runChoice` at the handler's own shape: a Cont-valued handler that
    * resumes the continuation once per alternative and appends */
   def runChoiceAt[A, F <: Row](a: Free[Choose with F, A]): Seq[A] ! F =
+    // `Choose` takes no type parameter, so the row cannot hold a second
+    // signature of its class: this split needs no Distinct check
     Effects.handle[A, Seq[A], Choose, F](a)(x => pure[F, Seq[A]](Seq(x)))(
       new Interpr[Choose, Seq[A] ! F] {
         def apply[X](c: Op[X]): Cont[X, Seq[A] ! F, Seq[A] ! F] =
           shift[X, Seq[A] ! F, Seq[A] ! F] { k =>
             c.as.foldLeft(pure[F, Seq[A]](Seq.empty))((acc, x) => acc.flatMap(s => k(x).map(s ++ _)))
           }
-      })
+      })(implicitly, Distinct.unchecked)
 }
 
 /**

@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind, Delay}
 import Split.split
@@ -67,7 +69,7 @@ object Effects {
    * stack-safe on any number of handled operations. For handlers that
    * abort or perform G, use `handle`.
    */
-  def relay[A, B, F <: Row, G <: Row](a: Free[F with G, A])(f: A => B ! G)(g: Relay[F])(implicit T: TypeableK[F]): B ! G = {
+  def relay[A, B, F <: Row, G <: Row](a: Free[F with G, A])(f: A => B ! G)(g: Relay[F])(implicit T: TypeableK[F], @unused d: Distinct[F with G]): B ! G = {
     @tailrec def loop(x: Free[F with G, A]): B ! G = Free.resume(x) match {
       case Bind(Inject(e), k) =>
         // `g(e) / k`: the Cont's application; the handler answers, k continues
@@ -93,7 +95,7 @@ object Effects {
    * computation. Every step suspends under a flatMap, so the recursion
    * lives in closures rather than on the stack.
    */
-  def translate[A, F <: Row, G <: Row](prog: Free[F with G, A])(h: Interpret[F, G])(implicit T: TypeableK[F]): A ! G =
+  def translate[A, F <: Row, G <: Row](prog: Free[F with G, A])(h: Interpret[F, G])(implicit T: TypeableK[F], @unused d: Distinct[F with G]): A ! G =
     Free.resume(prog) match {
       case Return(a) => Return(a)
       case Inject(e) => translate[A, F, G](Bind(Inject[F + G, A](e), (x: A) => Return[F + G, A](x)))(h)
@@ -108,8 +110,8 @@ object Effects {
 
   /** `translate` with the widening done for you: interpret F into
    * G + H, carrying H through untouched */
-  def interpret[A, F <: Row, G <: Row, H <: Row](prog: Free[F with H, A])(h: Interpret[F, G + H])(implicit T: TypeableK[F]): A ! (G + H) =
-    translate[A, F, G + H](prog)(h)
+  def interpret[A, F <: Row, G <: Row, H <: Row](prog: Free[F with H, A])(h: Interpret[F, G + H])(implicit T: TypeableK[F], d: Distinct[F with (G + H)]): A ! (G + H) =
+    translate[A, F, G + H](prog)(h)(T, d)
 
   /**
    * Handle F by a Cont-valued handler `h` (abort, multi-shot, answer
@@ -121,7 +123,7 @@ object Effects {
    * handler that really captures needs the rest of the program
    * reified, under a `Delay` so that deep programs trampoline.
    */
-  def handle[A, B, F <: Row, G <: Row](m: Free[F with G, A])(ret: A => B ! G)(h: F !> (B ! G))(implicit T: TypeableK[F]): B ! G = {
+  def handle[A, B, F <: Row, G <: Row](m: Free[F with G, A])(ret: A => B ! G)(h: F !> (B ! G))(implicit T: TypeableK[F], @unused d: Distinct[F with G]): B ! G = {
     def capture(c: Cont[Any, B ! G, B ! G], k: Any => A ! (F + G)): B ! G =
       c / (x => Free.delay(() => _loop(k(x))))
 

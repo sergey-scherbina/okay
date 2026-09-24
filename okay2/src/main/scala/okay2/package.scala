@@ -162,11 +162,11 @@ package object okay2 extends Provides {
   /** the Throws recoveries, in the row rather than around it */
   implicit final class ThrowsOps[A, E, F <: Row](private val p: Free[Throws[E] with F, A]) extends AnyVal {
     /** answer the failure, seeing the error */
-    def recover(h: E => A ! (Throws[E] + F)): A ! (Throws[E] + F) =
+    def recover(h: E => A ! (Throws[E] + F))(implicit d: Distinct[Throws[E] with F]): A ! (Throws[E] + F) =
       Throws.runEither[A, E, F](p).flatMap[Throws[E] + F, A](_.fold(h, (a: A) => pure[Throws[E] + F, A](a)))
 
     /** answer the failure, ignoring the error */
-    def orElse(q: => Free[Throws[E] with F, A]): A ! (Throws[E] + F) = recover(_ => q)
+    def orElse(q: => Free[Throws[E] with F, A])(implicit d: Distinct[Throws[E] with F]): A ! (Throws[E] + F) = recover(_ => q)
   }
 
   implicit final class ContOps[A, S, R](private val c: Cont[A, S, R]) extends AnyVal {

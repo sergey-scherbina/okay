@@ -35,6 +35,16 @@ class TestDistinct extends munit.FunSuite {
     val h: Handler[Ask[Int] + Produce] = Handler.union[Ask[Int], Produce]
     assertEquals((Ask.ask[Int]: Int ! (Ask[Int] + Produce)).runWith(h), 1)
   }
+
+  test("the per-signature handlers refuse it too: State.handle, Reader.run, Writer.run over two of one class") {
+    assert(compileErrors("okay2.State.handle(1)(okay2.TestDistinct.twoStates)").contains("TWO SIGNATURES OF ONE CLASS"))
+    assert(compileErrors("okay2.Reader.run(1)(okay2.TestDistinct.twoReaders)").contains("TWO SIGNATURES OF ONE CLASS"))
+    assert(compileErrors("okay2.Writer.run[Int, Unit, okay2.Writer[String]](okay2.TestDistinct.twoWriters)").contains("TWO SIGNATURES OF ONE CLASS"))
+    // and a distinct row still runs through all three
+    val ok: Int ! (State[Int] + Reader[Int] + Writer[String]) =
+      State.get[Int].flatMap(n => Reader.ask[Int].flatMap(k => Writer.tell("x").map(_ => n + k)))
+    assertEquals(!.run(Writer.run(Reader.run(2)(State.handle(1)(ok)))), (Seq("x"), (1, 3)))
+  }
 }
 
 object TestDistinct {
@@ -51,4 +61,7 @@ object TestDistinct {
   implicit val stringAsk: Handler[Ask[String]] = new Handler.Of[Ask[String]] {
     def handle[A](a: Ask.Get[String]): A = ("s": Any).asInstanceOf[A]
   }
+  val twoStates: Int ! (State[Int] + State[String]) = State.get[Int].flatMap(n => State.get[String].map(_.length + n))
+  val twoReaders: Int ! (Reader[Int] + Reader[String]) = Reader.ask[Int].flatMap(n => Reader.ask[String].map(_.length + n))
+  val twoWriters: Unit ! (Writer[Int] + Writer[String]) = Writer.tell[Int](1).flatMap(_ => Writer.tell[String]("s"))
 }

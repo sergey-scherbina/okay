@@ -893,9 +893,26 @@ okay2 has no by-value tests (`TypeableK.ByValue`) and no `Tag`/
 `Instances` wrappers yet, so the class is the whole identity; when they
 come, the macro learns them as the Scala 3 one did.
 
-NOT GUARDED, like the Scala 3 core: the per-signature handlers
-(`State.handle(s)(p)` over `State[Int] + State[String]` still
-misroutes). Guarding them means an implicit on every handler.
+THE HANDLERS TOO (okay2-distinct-handlers, the same day; operator:
+"да хочу", and the Scala 3 core gets the same as backlog
+`distinct-on-handlers`). Every public eliminator that splits a
+PARAMETERISED signature out of an open row requires `Distinct[Sig with
+R]`: `State.handle`, `Reader.run`/`local`, `Writer.run`/`collect`/
+`foldWith`/`fold`/`foldUntil`/`map`/`expand`, `Throws.runEither`/
+`runOption`/`runUnsafe` (and their `…At` twins, which forward it),
+`recover`/`orElse`, the kernels `relay`/`translate`/`interpret`/
+`handle`, `toFs2`/`toZStream`. `interpret` checks its TARGET too
+(`F with (G + H)`): it splits F from G + H, so an F-class signature in
+G would be taken for F. Signatures with no type parameter (`Delim`,
+`Once`, `Resource`, `Choose`, `Async`) cannot occur twice with
+different types, so their handlers carry no check, and where their
+code calls a guarded kernel it passes `Distinct.unchecked` with that
+reason beside it. A macro cannot expand in the run that defines it, so
+okay2's own main code never summons `Distinct` at a concrete row: it
+forwards the caller's evidence, or passes `unchecked` where the split
+is of an unparameterised signature (Choose's, Gen's Writer-against-Stop).
+- [x] State.handle, Reader.run, Writer.run over two of one class refused
+      (TestDistinct), a distinct row still runs through all three
 
 - [x] the defect, measured before the fix (a throwaway test; kept in
       TestDistinct with `Distinct.unchecked`)
@@ -932,5 +949,7 @@ misroutes). Guarding them means an implicit on every handler.
 - Stage 9: 325 test results (+22 Gen/GenZip), GREEN 2026-09-24,
   same gate.
 - STAGE 10 LANDED (2026-09-24, okay2-distinct): `Distinct[R]` required by
-  the three union composers; 328 tests green cold.
+  the three union composers; 328 tests green cold. The handlers the same
+  day (okay2-distinct-handlers): 329 green cold, no existing test
+  touched — at a concrete row the macro simply answers.
 

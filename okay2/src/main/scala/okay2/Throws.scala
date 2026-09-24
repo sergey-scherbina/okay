@@ -1,5 +1,6 @@
 package okay2
 
+
 /**
  * The Throws effect fails with any E, and a handler decides what
  * failing means: runEither reifies it into Either, runUnsafe into a
@@ -20,11 +21,11 @@ object Throws {
   def raise[E, A](e: E): A ! Throws[E] = Free.inject[Throws[E], A](Raise(e))
 
   /** handle Throws by aborting into Either, forwarding the rest of the row */
-  def runEither[A, E, R <: Row](a: Free[Throws[E] with R, A]): Either[E, A] ! R =
+  def runEither[A, E, R <: Row](a: Free[Throws[E] with R, A])(implicit d: Distinct[Throws[E] with R]): Either[E, A] ! R =
     runEitherAt[A, E, R](a)
 
   /** `runEither` at the handler's own shape */
-  def runEitherAt[A, E, F <: Row](a: Free[Throws[E] with F, A]): Either[E, A] ! F =
+  def runEitherAt[A, E, F <: Row](a: Free[Throws[E] with F, A])(implicit d: Distinct[Throws[E] with F]): Either[E, A] ! F =
     Effects.handle[A, Either[E, A], Throws[E], F](a)(a => pure[F, Either[E, A]](Right(a)))(
       new Interpr[Throws[E], Either[E, A] ! F] {
         def apply[X](e: Op[E, X]): Cont[X, Either[E, A] ! F, Either[E, A] ! F] = e match {
@@ -33,15 +34,15 @@ object Throws {
       })
 
   /** handle Abort into Option, forwarding the rest of the row */
-  def runOption[A, R <: Row](a: Free[Abort with R, A]): Option[A] ! R =
+  def runOption[A, R <: Row](a: Free[Abort with R, A])(implicit d: Distinct[Abort with R]): Option[A] ! R =
     runEitherAt[A, Unit, R](a).map(_.toOption)
 
   /** handle Throws by actually throwing: the JVM is the handler */
-  def runUnsafe[A, E <: Throwable, R <: Row](a: Free[Throws[E] with R, A]): A ! R =
+  def runUnsafe[A, E <: Throwable, R <: Row](a: Free[Throws[E] with R, A])(implicit d: Distinct[Throws[E] with R]): A ! R =
     runUnsafeAt[A, E, R](a)
 
   /** `runUnsafe` at the handler's own shape */
-  def runUnsafeAt[A, E <: Throwable, F <: Row](a: Free[Throws[E] with F, A]): A ! F =
+  def runUnsafeAt[A, E <: Throwable, F <: Row](a: Free[Throws[E] with F, A])(implicit d: Distinct[Throws[E] with F]): A ! F =
     Effects.handle[A, A, Throws[E], F](a)(a => pure[F, A](a))(
       new Interpr[Throws[E], A ! F] {
         def apply[X](e: Op[E, X]): Cont[X, A ! F, A ! F] = e match {

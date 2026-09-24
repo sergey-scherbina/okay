@@ -1,5 +1,7 @@
 package okay2.zio
 
+import scala.annotation.unused
+
 import _root_.zio.{ZIO, Task, Chunk}
 import _root_.zio.stream.ZStream
 import okay2._
@@ -67,7 +69,7 @@ object ZioInterop {
    * `unfoldZIO` step per told value, the residual operations between
    * two tells folded into the step's ZIO.
    */
-  def toZStream[Rz, E, W, A, G <: Row](p: Free[Writer[W] with G, A])(implicit h: IntoZ[G, Rz, E]): ZStream[Rz, E, W] =
+  def toZStream[Rz, E, W, A, G <: Row](p: Free[Writer[W] with G, A])(implicit h: IntoZ[G, Rz, E], @unused d: Distinct[Writer[W] with G]): ZStream[Rz, E, W] =
     toZStreamAt[Rz, E, W, A, G](p)(h)
 
   /** `toZStream` at the handler's own shape */

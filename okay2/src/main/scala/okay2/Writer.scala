@@ -1,5 +1,7 @@
 package okay2
 
+import scala.annotation.unused
+
 import scala.runtime.BoxedUnit
 
 import scala.annotation.tailrec
@@ -73,16 +75,16 @@ object Writer {
   }
 
   /** fold everything told, forwarding the rest of the row */
-  def foldWith[W, S, A, R <: Row](a: Free[Writer[W] with R, A])(z: S)(step: (S, W) => S): (S, A) ! R =
+  def foldWith[W, S, A, R <: Row](a: Free[Writer[W] with R, A])(z: S)(step: (S, W) => S)(implicit @unused d: Distinct[Writer[W] with R]): (S, A) ! R =
     loopWith[W, S, A, (S, A), R](a)(z)(step)((s, a) => (s, a))
 
   /** collect everything told, in order, forwarding the rest of the row
    * — a List built by prepending and reversed ONCE at the end */
-  def run[W, A, R <: Row](a: Free[Writer[W] with R, A]): (Seq[W], A) ! R =
+  def run[W, A, R <: Row](a: Free[Writer[W] with R, A])(implicit @unused d: Distinct[Writer[W] with R]): (Seq[W], A) ! R =
     loopWith[W, List[W], A, (Seq[W], A), R](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse, a))
 
   /** `run` answering a Vector */
-  def collect[W, A, R <: Row](a: Free[Writer[W] with R, A]): (Vector[W], A) ! R =
+  def collect[W, A, R <: Row](a: Free[Writer[W] with R, A])(implicit @unused d: Distinct[Writer[W] with R]): (Vector[W], A) ! R =
     loopWith[W, List[W], A, (Vector[W], A), R](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse.toVector, a))
 
   /**
@@ -119,7 +121,7 @@ object Writer {
 
   /** fold everything told into a Fold algebra, forwarding the rest of
    * the row; dispatched on the accumulator as `Stream.fold` is */
-  def fold[W, S, A, R <: Row](a: Free[Writer[W] with R, A])(fo: Fold[W, S]): (S, A) ! R =
+  def fold[W, S, A, R <: Row](a: Free[Writer[W] with R, A])(fo: Fold[W, S])(implicit @unused d: Distinct[Writer[W] with R]): (S, A) ! R =
     foldAt[W, S, A, R](a)(fo)
 
   def foldAt[W, S, A, F <: Row](a: Free[Writer[W] with F, A])(fo: Fold[W, S]): (S, A) ! F = fo match {
@@ -140,7 +142,7 @@ object Writer {
    * the satisfying tell is built, and an F operation that would have
    * followed it is never performed.
    */
-  def foldUntil[W, S, A, R, Rw <: Row](a: Free[Writer[W] with Rw, A])(fo: FoldUntil[W, S, R]): R ! Rw =
+  def foldUntil[W, S, A, R, Rw <: Row](a: Free[Writer[W] with Rw, A])(fo: FoldUntil[W, S, R])(implicit @unused d: Distinct[Writer[W] with Rw]): R ! Rw =
     foldUntilAt[W, S, A, R, Rw](a)(fo)
 
   def foldUntilAt[W, S, A, R, F <: Row](a: Free[Writer[W] with F, A])(fo: FoldUntil[W, S, R]): R ! F = {
@@ -185,7 +187,7 @@ object Writer {
 
   /** map the told values, keeping the PROGRAM: the telling is
    * transformed in place and the G-operations forwarded untouched */
-  def map[W, V, A, R <: Row](a: Free[Writer[W] with R, A])(f: W => V): A ! (Writer[V] + R) =
+  def map[W, V, A, R <: Row](a: Free[Writer[W] with R, A])(f: W => V)(implicit @unused d: Distinct[Writer[W] with R]): A ! (Writer[V] + R) =
     mapAt[W, V, A, R](a)(f)
 
   /**
@@ -195,7 +197,7 @@ object Writer {
    * may return any number of values, including none — an empty result
    * drops the told value, which makes this a filter as well.
    */
-  def expand[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => IndexedSeq[V]): A ! (Writer[V] + G) = {
+  def expand[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => IndexedSeq[V])(implicit @unused d: Distinct[Writer[W] with G]): A ! (Writer[V] + G) = {
     def tellAll(vs: IndexedSeq[V], i: Int): Unit ! (Writer[V] + G) =
       if (i >= vs.length) Return(())
       else tell(vs(i)).at[Writer[V] + G].flatMap(_ => tellAll(vs, i + 1))

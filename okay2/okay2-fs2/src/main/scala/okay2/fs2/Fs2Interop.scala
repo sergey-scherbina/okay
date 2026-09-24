@@ -1,5 +1,7 @@
 package okay2.fs2
 
+import scala.annotation.unused
+
 import _root_.fs2.{Stream, Pull}
 import _root_.cats.effect.IO
 import okay2._
@@ -28,7 +30,7 @@ object Fs2Interop {
    * program is walked as the stream is pulled and a million tells cost
    * no stack.
    */
-  def toFs2[F[_], W, A, G <: Row](p: Free[Writer[W] with G, A])(implicit h: Into[G, F]): Stream[F, W] =
+  def toFs2[F[_], W, A, G <: Row](p: Free[Writer[W] with G, A])(implicit h: Into[G, F], @unused d: Distinct[Writer[W] with G]): Stream[F, W] =
     toFs2At[F, W, A, G](p)(h)
 
   /** `toFs2` at the handler's own shape */
