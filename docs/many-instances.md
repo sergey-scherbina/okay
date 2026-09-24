@@ -118,10 +118,11 @@ asks the key and the signature both (tag-test-the-signature-too), so
 test can fix is the case above: same signature, same key, with the type
 parameter erased before anything could compare it.
 
-Nothing checks distinctness today; a compile-time check is filed as
-`tag-distinct-keys`. Until it exists, the rule is yours to keep — and
-it is cheap to keep, because keys are literals you can read side by
-side in the type alias block.
+The compiler checks it: `Distinct[R]` (below) refuses a row with two
+members that cannot be told apart, and the runners that split such a
+row (`Reader.run`, `Handler.union`, …) require it (tag-distinct-keys,
+2026-09-11). Keys are literals, so the collision is also easy to see
+by eye in the type alias block.
 
 **The one syntactic wart**, worth knowing before you meet it: in the
 second line above, `G` is inferred from the program, and a program of

@@ -14,3 +14,9 @@
       would also close the "evidence escapes its delimited" case the
       header already names. Trigger: someone actually hitting it
       twice; the nested form is now the documented road.
+      LITERATURE (biernacki-literature, 2026-09-24): besides `runST`,
+      Biernacki, Piróg, Polesiuk & Sieczkowski, "Binders by day, labels
+      by night" (POPL 2020) is the typed account of exactly this:
+      a lexically bound instance whose runtime label cannot be used
+      outside its handler. See `effect-instances-tunnelling`, which
+      would close this with the same mechanism.

@@ -191,8 +191,8 @@ object Instances:
  * ClassCastException a key exists to prevent, because `Int` and
  * `String` were erased before the test could see them and the key is
  * the same. `TestTag` pins both halves, docs/many-instances.md states
- * the rule, and `tag-distinct-keys` in BACKLOG.md is the compile-time
- * check that would make stating it unnecessary.
+ * the rule, and `Distinct[R]` (tag-distinct-keys, 2026-09-11) is the
+ * compile-time check that refuses such a row.
  *
  * AND THE OTHER TWO ROUTES. A key is a STATIC identity: the row lists
  * the instances, so the compiler knows how many there are and nothing
