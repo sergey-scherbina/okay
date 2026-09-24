@@ -110,11 +110,8 @@ docs/building-a-chat-app.md	val okay = "0.2.0-SNAPSHOT"
 docs/building-a-chat-app.md	val port = sys.env.get("PORT").flatMap(_.toIntOption).getOrElse(8080)
 docs/building-a-chat-app.md	val r = post(port, "/chat", """{"messages":[{"role":"user","content":"hi"}]}""")
 docs/capabilities.md	(base and providing[Http](stubHttp)) { app }    // override just Http
-docs/capabilities.md	(base and providing[Principal](bob)) { api }
 docs/capabilities.md	Reader.run[E, A, F](wire[E])(p)
-docs/capabilities.md	Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
 docs/capabilities.md	Secure.granted(verify, policy)(route: Principal ?=> PartialFunction[Request, Response ! Async])
-docs/capabilities.md	Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
 docs/capabilities.md	Traced.route(tracer)(route: Tracer ?=> Traced.Route)
 docs/capabilities.md	Writer("bye")
 docs/capabilities.md	Writer(s"env=${wire[Int]}")
@@ -132,11 +129,7 @@ docs/capabilities.md	given ctxMonad[E]: Monad[[X] =>> E ?=> X]   // Provide.scal
 docs/capabilities.md	import okay.given   // instances need the given import — `import okay.*` is not enough
 docs/capabilities.md	provide(41)(viaCtx)   // same answers as Reader.run(41)(viaReader)
 docs/capabilities.md	provide(Env("ada", 7)) { !.run(Writer.run(told)) }
-docs/capabilities.md	provide(ada, tracer)(api)
-docs/capabilities.md	provide(prodHttp, Secrets.env) { app }     // the edge
-docs/capabilities.md	provide(stubHttp, testSecrets) { app }     // the test — same program
 docs/capabilities.md	val all: Env ?=> Seq[Int] = sequence(xs)     // F is INFERRED
-docs/capabilities.md	val base = providing[Http](prodHttp) and providing[Secrets](Secrets.env)
 docs/capabilities.md	val env = effect[Reader % Int + W, Int](Reader.Ask()).!?
 docs/capabilities.md	val getQ: Db ?=> String = wire[Db].q
 docs/capabilities.md	val xs: Seq[Env ?=> Int] = Seq(wire[Env].uid, wire[Env].uid + 1)
@@ -573,42 +566,6 @@ docs/existentials.md	type Type[+F[_]] <: (Any { type T })
 docs/existentials.md	type Writer[W, +A] = A match
 docs/frontend-guide.md	Ui.Row(Vector(Ui.Button("-", "dec"), Ui.Button("+", "inc", Role.Primary)))))
 docs/frontend-guide.md	Wire.serve(init)(view)(update): Stage[String, String, S]
-docs/guide.md	!.run(steps)   // 111 — the Collatz steps from 27, the count carried in the state
-docs/guide.md	(base and providing[Http](stubHttp)) { app }        // override just Http
-docs/guide.md	(base and providing[Principal](bob)) { api }
-docs/guide.md	Chunks.foldUntil(Chunks.nats[Int]())(using
-docs/guide.md	Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
-docs/guide.md	Source.range(0, 1000000).runFoldUntil(using FoldUntil.take[Long](3))   // Vector(0, 1, 2) ! Async
-docs/guide.md	Staged.filter(Staged.map(Staged.range(0, 1000000), _ * 2), _ % 3 == 0),
-docs/guide.md	State.zoom(Zipper.focus)(prog)        // a State % T program run AT the focus
-docs/guide.md	Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
-docs/guide.md	Writer.run(through(lines("host: a"))(header))                          // (Seq((host,a)), Left(1))
-docs/guide.md	Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))   // (Seq((host,a), (port,1)), Right(2))
-docs/guide.md	Zipper(doc).first.flatMap(_.right).map(_.set(JStr("grace")).root)   // into, next, edit, fold in
-docs/guide.md	Zipper.at[Ui](path)                   // the path back as an affine — Ui.path
-docs/guide.md	_     <- Writer.tell(s"find($id)").at[R]
-docs/guide.md	b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]
-docs/guide.md	base { app }                                        // the edge
-docs/guide.md	case Find(id) =>
-docs/guide.md	case Save(id: Long, name: String) extends Users[Unit]
-docs/guide.md	city.modify(_.capitalize)(p)     // the write, same path, absent is a no-op
-docs/guide.md	city.preview(p)                  // the read
-docs/guide.md	countdown.iterator.next()                     // 3 — the body has run to its first yield and no further
-docs/guide.md	def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
-docs/guide.md	inline def save(id: Long, name: String): Unit ! Users = effect(Save(id, name))
-docs/guide.md	object Users:                       // optional: `Users.Find(id).perform`
-docs/guide.md	provide(ada, tracer)(api)
-docs/guide.md	provide(prodHttp, Secrets.env) { app }     // the edge
-docs/guide.md	provide(stubHttp, testSecrets) { app }     // the test — same program
-docs/guide.md	squares.take(3).toList                        // List(1, 4, 9) — the body ran three steps, then stopped
-docs/guide.md	store <- State.get[Store].at[R]
-docs/guide.md	stored[A, Writer % String + F](!.tracing(p)([X] => (e: Users[X]) => e.toString))
-docs/guide.md	type Big   = Tag.Of["big",   State % Int]
-docs/guide.md	type R = State % Store + Writer % String + F
-docs/guide.md	val base = providing[Http](prodHttp) and providing[Secrets](Secrets.env)
-docs/guide.md	val p = Reader.local[Int, Int, okay.Pure](_ * 10)(Reader.ask[Int])
-docs/guide.md	val twice: (Int, Int) ! (Small + Big) =
-docs/guide.md	yield store.get(id)
 docs/many-instances.md	Instances.exhausted[State % Int, ...](done)   // asserts none survived
 docs/many-instances.md	State.run(0)(Tag.untag["small", State % Int](twice))
 docs/many-instances.md	a <- Tag.tag["small", State % Int](count).plus[Big]
@@ -619,11 +576,9 @@ docs/many-instances.md	summon[Distinct[Reader % Int + Reader % String]]        /
 docs/many-instances.md	summon[Distinct[Reader % Int + Writer % String]]        // fine
 docs/many-instances.md	summon[Distinct[Tag.Of["a", Reader % Int] + Tag.Of["b", Reader % Int]]]  // fine
 docs/many-instances.md	type B = Tag.Of["same", Reader % String]   // same key: back to square one
-docs/many-instances.md	type Big   = Tag.Of["big",   State % Int]
 docs/many-instances.md	val afterSmall = State.handle(1)(Instances.only[State % Int](small)(p))
 docs/many-instances.md	val done       = State.handle(10)(Instances.only[State % Int](big)(afterSmall))
 docs/many-instances.md	val tenants = List("alpha", "beta", "gamma")      // data, not literals
-docs/many-instances.md	val twice: (Int, Int) ! (Small + Big) =
 docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].adaptive.each(256).build, Supervise.Stop)(behaviour)
 docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].bounded(1024, singleConsumer = true).build, Supervise.Stop)(behaviour)
 docs/modules/okay-actor.md	Actor.spawn(0, Queues.strong[Msg].unbounded.build, Supervise.Stop)(behaviour)
@@ -1252,17 +1207,14 @@ docs/tutorial.md	Par.map2(Par(user(id)), Par(orders(id)))(Profile.apply).seq
 docs/tutorial.md	Par.traverse(keys)(fetch)    // the same program, leaves at once
 docs/tutorial.md	Pipeline.generate(0)(identity)(_ + 1)
 docs/tutorial.md	Profile(u, o)
-docs/tutorial.md	Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
 docs/tutorial.md	Retrieve.keyword(repo.keyword)))                      // BM25
 docs/tutorial.md	Retrieve.symbols(repo.index, repo.corpus.sources),    // exact, no vectors
 docs/tutorial.md	Scan.all(bpe)("hello hell her").tokens.map(_.lexeme)
 docs/tutorial.md	Some("/**"), Set('"'), triple = true,
 docs/tutorial.md	SparkInterop.aggregate(rdd)(stats)
-docs/tutorial.md	Staged.filter(Staged.map(Staged.range(0, 1000000), _ * 2), _ % 3 == 0),
 docs/tutorial.md	State.modify[Int](_ + i).!?          // compound programs are walked too
 docs/tutorial.md	State.run(0)(prog)   // (40, 42) — the final state and the answer
 docs/tutorial.md	Symbols.project(files)          // language per file, from the path
-docs/tutorial.md	Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
 docs/tutorial.md	Ui.key(k).modify(field => Ui.Column(Vector(field, Ui.Text(msg))))(t)
 docs/tutorial.md	Writer("bye")
 docs/tutorial.md	Writer(s"hello ${wire[Env].user}")   // a bare statement runs — do-notation
@@ -1408,6 +1360,4 @@ docs/your-own-effect.md	enum Cache[K, +A] derives Effect:     // Cache % K is th
 docs/your-own-effect.md	pureRun(Map(7L -> "ada"))
 docs/your-own-effect.md	pureRun(Vector(7L -> "ada"))
 docs/your-own-effect.md	rename(7, "grace").runWith(using mem.tracing(log += _))
-docs/your-own-effect.md	type Big   = Tag.Of["big",   State % Int]
 docs/your-own-effect.md	upsert(c, id, name)
-docs/your-own-effect.md	val twice: (Int, Int) ! (Small + Big) =

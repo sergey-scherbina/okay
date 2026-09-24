@@ -21,8 +21,7 @@ class TestShowcase extends munit.FunSuite {
     case r if r.url.contains("/quote") =>
       okay.async {
         wire[Tracer].span("db.lookup") { () }
-        Response(200, Nil,
-          Http.one(s"for:${wire[Principal].name}".getBytes("UTF-8")))
+        Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
       }
   }
 
@@ -41,9 +40,9 @@ class TestShowcase extends munit.FunSuite {
 
   test("production: the same value behind JWT and tracing") {
     val topic = MemoryStore().topic("__trace", 1, TopicPolicy())
+    val tracer: () => Tracer = () => Tracer(topic)
     val edge: Traced.Route =
-      Traced.route(() => Tracer(topic))(
-        Secure.granted(verify, Policy.scoped("read"))(api))
+      Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
     val ok = run(edge(Request(Method.Get, "http://x/quote",
       Seq("authorization" -> s"Bearer $token"))))
     assertEquals(run(Http.text(ok)), "for:Ada")
@@ -56,7 +55,8 @@ class TestShowcase extends munit.FunSuite {
   test("unit: the same value under provide — no tokens anywhere") {
     val ada = Principal("u1", "Ada", Claims(subject = Some("u1")))
     val tracer = Tracer(MemoryStore().topic("__t", 1, TopicPolicy()))
-    val route = provide(ada, tracer)(api)
+    val route =
+      provide(ada, tracer)(api)
     val ok = run(route(Request(Method.Get, "http://x/quote", Nil)))
     assertEquals(run(Http.text(ok)), "for:Ada")
   }
@@ -66,9 +66,10 @@ class TestShowcase extends munit.FunSuite {
     val topic = MemoryStore().topic("__t2", 1, TopicPolicy())
     val base = providing[Principal](Principal("u1", "Ada", Claims())) and
       providing[Tracer](Tracer(topic))
-    val asBob = base and
-      providing[Principal](Principal("u2", "Bob", Claims()))
-    val ok = run((asBob { api })(Request(Method.Get, "http://x/quote", Nil)))
+    val bob = Principal("u2", "Bob", Claims())
+    val route =
+      (base and providing[Principal](bob)) { api }
+    val ok = run(route(Request(Method.Get, "http://x/quote", Nil)))
     assertEquals(run(Http.text(ok)), "for:Bob")
   }
 }

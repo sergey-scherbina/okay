@@ -7,13 +7,17 @@ class TestDocExamplesGen extends munit.FunSuite:
 
   test("guide §3: squares by for-comprehension, countdown as a block") {
     val squares: Gen[Long] = for n <- Gen.unfold(1L)(i => Some((i, i + 1))) yield n * n
-    assertEquals(squares.take(3).toList, List(1L, 4L, 9L))
+    val firstThree =
+      squares.take(3).toList                        // List(1, 4, 9) — the body ran three steps, then stopped
+    assertEquals(firstThree, List(1L, 4L, 9L))
 
     val countdown: Gen[Int] = generator[Int] {    // a block: while/if/recursion, emit, stop
       var i = 3
       while i > 0 do { Gen.emit(i).!?; i -= 1 }
     }
-    assertEquals(countdown.iterator.next(), 3)
+    val first =
+      countdown.iterator.next()                     // 3 — the body has run to its first yield and no further
+    assertEquals(first, 3)
     assertEquals(countdown.toList, List(3, 2, 1))
   }
 

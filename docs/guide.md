@@ -313,9 +313,13 @@ type Big   = Tag.Of["big",   State % Int]
 val twice: (Int, Int) ! (Small + Big) =
   for
     a <- Tag.tag["small", State % Int](bump(1)).plus[Big]
-    b <- Tag.tag["big",   State % Int](bump(10)).at[Small + Big]
+    b <- Tag.tag["big",   State % Int][Int, okay.Pure](bump(10)).at[Small + Big]
   yield (a, b)
 ```
+
+The second clause spells its types, `[Int, okay.Pure]`: a program of
+`State` alone infers `State` back as its rest-of-row instead of `Pure`, and
+`.at` needs the `Pure` row. (The first clause gets that from `.plus`.)
 
 `tag` walks a finished program and puts every operation of F under the
 key — which is the point: the function did not have to be written for
@@ -1078,7 +1082,8 @@ pairs, the numbers and the case where a `copy` still wins are in
 When the program is a WALK rather than an edit — into a node, next,
 edit, back out — the path an optic recomputes each time is a cursor's
 state, and that cursor is `Zipper[T]` over a `Plate[T]` (how the tree
-exposes its children; `Json` and `Ui` have one):
+exposes its children; `Ui` has one in scope, and `Json`'s is
+`import okay.codec.JsonOptic.plate`):
 
 ```scala
 Zipper(doc).first.flatMap(_.right).map(_.set(JStr("grace")).root)   // into, next, edit, fold in

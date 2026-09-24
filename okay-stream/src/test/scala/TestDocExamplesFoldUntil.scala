@@ -29,13 +29,18 @@ class TestDocExamplesFoldUntil extends munit.FunSuite:
     val steps: Int ! Nothing = !.loop[(Int, Int), Int, Nothing]((27, 0)) { (n, k) =>
       pure(if n == 1 then Right(k) else Left((if n % 2 == 0 then n / 2 else 3 * n + 1, k + 1)))
     }
-    assertEquals(!.run(steps), 111)
+    val answer =
+      !.run(steps)   // 111 — the Collatz steps from 27, the count carried in the state
+    assertEquals(answer, 111)
   }
 
   test("guide §3: the first three of a million, and a running sum that stops itself") {
-    assertEquals(Source.range(0, 1000000).runFoldUntil(using FoldUntil.take[Long](3)).runWith, Vector(0L, 1L, 2L))
-    val sum = Chunks.foldUntil(Chunks.nats[Int]())(using
-      FoldUntil.until[Int, Int, Int](0)((s, a) => if s + a > 100 then Right(s) else Left(s + a))(identity))
+    val firstThree =
+      Source.range(0, 1000000).runFoldUntil(using FoldUntil.take[Long](3))   // Vector(0, 1, 2) ! Async
+    assertEquals(firstThree.runWith, Vector(0L, 1L, 2L))
+    val sum =
+      Chunks.foldUntil(Chunks.nats[Int]())(using
+        FoldUntil.until[Int, Int, Int](0)((s, a) => if s + a > 100 then Right(s) else Left(s + a))(identity))
     assertEquals(sum, 91)
   }
 
@@ -56,8 +61,19 @@ class TestDocExamplesFoldUntil extends munit.FunSuite:
     def lines(xs: String*): Unit ! Writer % String =
       xs.foldRight(pure[Writer % String, Unit](()))((l, rest) => Writer.tell(l).flatMap(_ => rest))
 
-    assertEquals(!.run(Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))),
-      (Seq(("host", "a"), ("port", "1")), Right(2)))
-    assertEquals(!.run(Writer.run(through(lines("host: a"))(header))),
-      (Seq(("host", "a")), Left(1)))
+    assertEquals(!.run(
+      Writer.run(through(lines("host: a", "port: 1", "", "body"))(header))   // (Seq((host,a), (port,1)), Right(2))
+    ), (Seq(("host", "a"), ("port", "1")), Right(2)))
+    assertEquals(!.run(
+      Writer.run(through(lines("host: a"))(header))                          // (Seq((host,a)), Left(1))
+    ), (Seq(("host", "a")), Left(1)))
+  }
+
+  test("guide §4: Staged — the whole pipeline one while-loop") {
+    val total =
+      Staged.fold(
+        Staged.take(
+          Staged.filter(Staged.map(Staged.range(0, 1000000), _ * 2), _ % 3 == 0),
+          1000))(0L)(_ + _)
+    assertEquals(total, 2997000L)   // 6 * (0 + 1 + … + 999)
   }
