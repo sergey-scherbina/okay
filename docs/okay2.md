@@ -45,7 +45,8 @@ Contents:
 16. [The monad classes](#16-the-monad-classes)
 17. [Several instances of one signature](#17-several-instances-of-one-signature)
 18. [Deterministic simulation](#18-deterministic-simulation)
-19. [Literature](#19-literature)
+19. [Transactional cells and typed-key maps](#19-transactional-cells-and-typed-key-maps)
+20. [Literature](#20-literature)
 
 ## 1. The build
 
@@ -1234,7 +1235,28 @@ virtual clock, and a program where every fiber waits is reported as a
     assertEquals(t1.steps, t2.steps)
 ```
 
-## 19. Literature
+## 19. Transactional cells and typed-key maps
+
+`TRef` is one value behind one compare-and-set, with a version that
+moves on every change and waiters woken when it does; `modify` reads,
+computes and installs, retrying a lost race:
+
+```scala
+    val r = TRef(0)
+    assertEquals(r.version, 0L)
+    assertEquals(r.modify(n => (n + 1, "one")), "one")
+```
+
+`TMap` holds values under typed keys: a `Key[A]` holds an `A`, keys
+compare by identity (or by value and a type tag), and a lookup is typed
+by the witness `Same` hands over rather than by a cast:
+
+```scala
+    val m = TMap.empty[Key].updated(n, 41).updated(s, "x")
+    val got: Option[Int] = m.get(n)
+```
+
+## 20. Literature
 
 - Philip Wadler, "Monads for functional programming" (1995); Conor
   McBride and Ross Paterson, "Applicative programming with effects"

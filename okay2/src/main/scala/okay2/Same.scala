@@ -23,4 +23,22 @@ object Same {
     def same[A, B](a: K[A], b: K[B]): Option[A =:= B] =
       if (a eq b) Some(implicitly[A =:= A].asInstanceOf[A =:= B]) else None
   }
+
+  /** the two polymorphic functions `byValue` takes — traits, since
+   * Scala 2 has no polymorphic function values */
+  trait Equal[K[_]] { def apply[A, B](a: K[A], b: K[B]): Boolean }
+  trait TagOf[K[_]] { def apply[A](a: K[A]): scala.reflect.ClassTag[A] }
+
+  /**
+   * The axiom for VALUE keys — a typed id over a primitive, say
+   * `Id[A](n: Long)`. Equal values alone cannot witness A =:= B:
+   * `Id[User](5)` and `Id[Order](5)` are equal numbers and different
+   * keys. So a value key carries a runtime TAG of its type, and "the
+   * same key" is "equal value AND equal tag". The tag is a ClassTag:
+   * exact for a non-generic A, erased for a generic one.
+   */
+  def byValue[K[_]](equal: Equal[K], tag: TagOf[K]): Same[K] = new Same[K] {
+    def same[A, B](a: K[A], b: K[B]): Option[A =:= B] =
+      if (equal(a, b) && tag(a) == tag(b)) Some(implicitly[A =:= A].asInstanceOf[A =:= B]) else None
+  }
 }

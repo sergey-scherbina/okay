@@ -1152,6 +1152,35 @@ a virtual clock that moves only when nothing is runnable.
   operation is read at one signature through `Split.only`, the kernel's
   own claim.
 
+## Stage 15 — TRef, TMap, TDict, TList (2026-09-24)
+The next main piece: the transactional cell okay's STM is built on, and
+the typed-key map. `TRef` (one value behind one CAS, a version per
+change, waiters woken on change; `TRef(init)` wraps, `TRef.bare(init)`
+takes a value that is its own stamp and treats the same object back as
+no change; `Owned` for a commit's claim), `TMap[K[_]]` (typed keys by
+`Same`, typed iteration through `TMap.Each`), `TDict`, `TList`;
+`Same.byValue` with its `Equal`/`TagOf` traits, and `===`/`=!=`/`sameAs`
+in the package object.
+
+### Behavior (stage 15)
+- [x] modify answers and moves the version once per change; 8 threads x
+      10 000 increments land exactly once; a bare cell given the same
+      object back changes neither version nor waiters; waiters fire once,
+      in order; TDict/TList from 4 threads
+- [x] TMap: a key's own type, a wrong type refused at compile time, keys
+      as identities, typed iteration in insertion order
+- [x] Same: the witness by identity and by value-and-tag, `===` carrying
+      `A =:= B` into the branch
+
+### Decisions
+- Polymorphic functions (`Same.byValue`'s two, `TMap.foreach`'s) are
+  traits with one polymorphic method, Scala 2's only spelling.
+- The strictEquality test is not ported: Scala 2 has no strict equality
+  for `Same` to derive `CanEqual` for.
+- The operators live in the package object, not in `object Same`: a
+  `Key[A]`'s implicit scope does not include `Same`'s companion, and
+  okay's are top-level extensions reached by `import okay._`.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

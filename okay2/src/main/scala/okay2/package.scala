@@ -129,6 +129,15 @@ package object okay2 extends Provides with Monads {
       finally release(r)
     }
 
+  /** typed tokens compared (see `Same`): `a === b` hands over the
+   * witness `A =:= B`, `a =!= b` is the boolean, `a sameAs b` is `===`
+   * by name — okay's top-level extensions */
+  implicit final class SameOps[K[_], A](private val a: K[A]) extends AnyVal {
+    def sameAs[B](b: K[B])(implicit s: Same[K]): Option[A =:= B] = s.same(a, b)
+    def ===[B](b: K[B])(implicit s: Same[K]): Option[A =:= B] = s.same(a, b)
+    def =!=[B](b: K[B])(implicit s: Same[K]): Boolean = s.same(a, b).isEmpty
+  }
+
   implicit final class ProgOps[R <: Row, A](private val p: Free[R, A]) extends AnyVal {
     /** land in the row R2, which must CONTAIN every signature of this
      * program's row. Since stage 8 that is subtyping (`R2 <: R`), so this
