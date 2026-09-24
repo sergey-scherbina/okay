@@ -1027,6 +1027,66 @@ landing: the whole build cold on JDK 21 in a fresh worktree, GREEN
 check was dry-run on two real commits: d5491910 (okay2) runs, bbca4de2
 (docs only) does not.
 
+## Stage 12 — the monad classes, and the ways to tell instances apart (2026-09-24)
+Operator: "добавь (перенеси) монадные тайпклассы в окей 2 и нормальные
+механизмы различения эффектов как в оригинале. исправь сообщения об
+ошибках." Two gaps found reviewing okay2 against the Scala 3 core the
+same day: `Distinct` refused `Writer[String] + Writer[Int]` with no way
+out but `Distinct.unchecked` — which its OWN message recommended, and
+which on a class-tested signature is the ClassCastException the check
+exists to prevent; and there was no `Monad`, so no `traverse`, no
+`guard`, no `withFilter` in a `for` over programs.
+
+THE CLASSES (Monad.scala of the Scala 3 core): `Functor`,
+`Applicative`, `Selective`, `Monad`, `Alternative`, `MonadPlus`,
+`Comonad` (with `Id` and `Comonad.id`), `ParaMonad` and its diagonal;
+`traverse`/`sequence`/`replicateA`/`guard`, `*>`/`<*`,
+`whenS`/`unlessS`, `>=>`; `Monad[Option]`; `Monad` for every program
+`Free[R, *]`, `MonadPlus` for a row containing `Choose`, `ParaMonad`
+for `Cont`. Scala 2 spelling: a type lambda where Scala 3 writes
+`[A] =>> …`, operations as syntax classes where Scala 3 has extension
+methods on the class. Partial unification (default in 2.13) is what
+lets `traverse(xs)(f)` infer `F = Free[R, *]`.
+`withFilter` and `ensure` as the Scala 3 core has them: `CanFail[R]`,
+by `Choose` (prune) over `Abort` (stop), refused with the core's
+message where the row has neither. Membership is SUBTYPING here
+(`R <: Choose`), which is what the core's `In` could not be.
+
+THE IDENTITIES (Instances.scala and Writer.byValue of the Scala 3 core):
+- `Tag[K, F]` (`Tag.Of`): a literal key over any signature; `one`,
+  `tag` (a finished program under a key), `untag`, `handler`. The test
+  is the key AND the signature.
+- `Instances[F]` (`Instances.Of`): a run-time `Handle`; `at`, `route`,
+  `handler(pick)`, `only`, `exhausted`. One row member per signature.
+- `TypeableK.ByValue` and `Writer.byValue.writerK` (a `ClassTag[W]`
+  where Scala 3 uses `Typeable`): the opt-in finer test. Writer's
+  handlers take their `TypeableK` from the call site so the import
+  reaches them.
+- `Distinct` learns all three, as the Scala 3 one did: `Tag` is keyed
+  (the key, then F's identity), `Instances` is F's identity under a
+  handle, a part whose `TypeableK` at the call site is `ByValue` is
+  alone.
+
+THE MESSAGES: `Distinct`'s abort no longer recommends `unchecked`; it
+names Tag/Instances/byValue/Delim prompts and docs/okay2.md. The
+`implicitNotFound` texts of the new classes say what to import or add.
+
+- [ ] Monad laws hold for `Free[R, *]`, `Option`, a `Choose` row
+      (left/right identity, associativity, by running)
+- [ ] `traverse`/`sequence` over programs keep effect order; `guard`
+      prunes in a Choose row; `Selective.ifS` runs one branch only
+- [ ] `withFilter`: an `if` and a refutable pattern prune in a Choose
+      row, stop in an Abort row, do not compile in a row with neither
+- [ ] `Tag`: one `count` run at two states in one program; same key
+      over different signatures is a good row; `untag` hands the
+      signature back to its own handler
+- [ ] `Instances`: two handles, one row member, `only` strips one,
+      `exhausted` names a handle never stripped
+- [ ] `Writer.byValue`: `Writer[String] + Writer[Int]` accepted and
+      routed correctly with the import, refused without it
+- [ ] `Distinct`: two Tags of one key over colliding signatures
+      refused; different keys admitted; the message names the ways out
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
