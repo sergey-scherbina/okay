@@ -13,7 +13,9 @@ class TestRowSpelling extends munit.FunSuite:
   test("A ! F % S + G % W is A ! ((F % S) + (G % W)): + and % bind before !"):
     summon[(Int ! State % String + Writer % String) =:= (Int ! (State % String + Writer % String))]
     summon[(Int ! State % String + Writer % String) =:= Free[State % String + Writer % String, Int]]
-    summon[(Unit ! Writer % Int + Async) =:= (Unit ! (Writer % Int + Async))]
+    // a core signature: `Async` lives in okay-async, which the core's
+    // own tests cannot see (it failed the first full gate after landing)
+    summon[(Unit ! Writer % Int + Once) =:= (Unit ! (Writer % Int + Once))]
 
   test("a program written at the bare row runs"):
     import okay.RowLift.at
