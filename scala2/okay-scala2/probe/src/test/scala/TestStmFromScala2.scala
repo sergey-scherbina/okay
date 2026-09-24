@@ -16,21 +16,21 @@ class TestStmFromScala2 extends munit.FunSuite {
   test("a transfer commits both writes together") {
     val a = Stm.ref(100)
     val b = Stm.ref(0)
-    Eff.runAsync(Stm.atomically(transfer(a, b, 30)))
+    Stm.atomically(transfer(a, b, 30)).runWith
     assertEquals((a.get, b.get), (70, 30))
   }
 
   test("a thousand increments from eight fibers lose nothing") {
     val counter = Stm.ref(0)
     val one = Stm.atomically(Tx.update(counter)(_ + 1))
-    def many(n: Int): Unit ! Async = if (n == 0) Eff.pure(()) else one.flatMap(_ => many(n - 1))
+    def many(n: Int): Unit ! Async = if (n == 0) pure(()) else one.flatMap(_ => many(n - 1))
     def all[A](es: List[A ! Async]): List[A] ! Async =
-      es.foldRight(Eff.pure(List.empty[A]): List[A] ! Async)((e, rest) => e.flatMap(a => rest.map(a :: _)))
+      es.foldRight(pure(List.empty[A]): List[A] ! Async)((e, rest) => e.flatMap(a => rest.map(a :: _)))
     val prog = for {
       fibers <- all(List.fill(8)(Async.fork(many(125))))
       _ <- all(fibers.map(_.join))
     } yield counter.get
-    assertEquals(Eff.runAsync(prog), 1000)
+    assertEquals(prog.runWith, 1000)
   }
 
   test("retry waits until another fiber makes the condition true") {
@@ -42,7 +42,7 @@ class TestStmFromScala2 extends munit.FunSuite {
       _ <- Stm.atomically(Tx.write(account, 80))
       _ <- waiting.join
     } yield (account.get, out.get)
-    assertEquals(Eff.runAsync(prog), (30, 50))
+    assertEquals(prog.runWith, (30, 50))
   }
 
   test("orElse takes the second branch when the first retries, and drops the first's writes") {
@@ -55,11 +55,11 @@ class TestStmFromScala2 extends munit.FunSuite {
       _ <- Tx.check(n > 0)
       _ <- Tx.write(r, n - 1)
     } yield n
-    val which = Eff.runAsync(Stm.atomically(Tx.orElse(take(empty), Tx.read(full).map(_ * 100))))
+    val which = Stm.atomically(Tx.orElse(take(empty), Tx.read(full).map(_ * 100))).runWith
     assertEquals((which, touched.get, full.get), (1000, "untouched", 10))
   }
 
   test("I/O inside a transaction does not compile") {
-    assert(compileErrors("Stm.atomically(Async.delay(println(1)))").contains("type mismatch"))
+    assert(compileErrors("Stm.atomically(Async(println(1)))").contains("type mismatch"))
   }
 }

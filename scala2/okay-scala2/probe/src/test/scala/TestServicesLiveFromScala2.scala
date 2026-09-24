@@ -38,10 +38,10 @@ class TestServicesLiveFromScala2 extends munit.FunSuite {
       db <- Postgres.connect(pgHost, pgPort, "okay", "okay", "okay")
       _ <- db.update(s"create table $table (id bigint primary key, name text not null)")
       _ <- db.updateOf(s"insert into $table (id, name) values ($$1, $$2)", Pet(1, "Rex"))
-      pets <- Throws.run(db.all[Pet](s"select id, name from $table"))
+      pets <- Throws.runEither(db.all[Pet](s"select id, name from $table"))
       _ <- db.update(s"drop table $table")
     } yield pets
-    assertEquals(Eff.runAsync(prog), Right(Vector(Pet(1, "Rex"))))
+    assertEquals(prog.runWith, Right(Vector(Pet(1, "Rex"))))
   }
 
   test("Kafka as an okay-persist store, and a producer and a consumer through Kafkas") {
@@ -63,7 +63,7 @@ class TestServicesLiveFromScala2 extends munit.FunSuite {
     props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
     props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
     val producer = new KafkaProducer[String, String](props)
-    Eff.runAsync(Kafkas.send(producer, Seq(new ProducerRecord[String, String](name + "-raw", "k", "hello"))))
+    Kafkas.send(producer, Seq(new ProducerRecord[String, String](name + "-raw", "k", "hello"))).runWith
     producer.close()
 
     val cprops = new java.util.Properties()
@@ -76,9 +76,9 @@ class TestServicesLiveFromScala2 extends munit.FunSuite {
     val consumer = new KafkaConsumer[String, String](cprops)
     consumer.subscribe(java.util.List.of(name + "-raw"))
     try {
-      val got = Eff.runAsync(Kafkas.source(consumer, 200).take(1).map(_.value).runCollect)
+      val got = Kafkas.source(consumer, 200).take(1).map(_.value).runCollect.runWith
       assertEquals(got, Vector("hello"))
-      Eff.runAsync(Kafkas.commit(consumer))
+      Kafkas.commit(consumer).runWith
     } finally consumer.close()
   }
 }

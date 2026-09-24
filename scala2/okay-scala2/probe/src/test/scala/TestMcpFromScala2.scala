@@ -25,7 +25,7 @@ class TestMcpFromScala2 extends munit.FunSuite {
       sum <- client.call("add", "{\"a\": 2, \"b\": 40}")
       _ <- server.cancel
     } yield (client.server, listed.map(_.name), listed.head.schema.contains("\"b\""), sum)
-    assertEquals(Eff.runAsync(prog), (Some(("calc", "1.0")), Seq("add"), true, "42"))
+    assertEquals(prog.runWith, (Some(("calc", "1.0")), Seq("add"), true, "42"))
   }
 
   test("resources: listed by uri, read by uri, an absent one is None") {
@@ -38,6 +38,6 @@ class TestMcpFromScala2 extends munit.FunSuite {
       missing <- client.read("doc://nothing")
       _ <- server.cancel
     } yield (listed.map(_.uri), text, missing)
-    assertEquals(Eff.runAsync(prog), (Seq("doc://readme"), Some("hello"), None))
+    assertEquals(prog.runWith, (Seq("doc://readme"), Some("hello"), None))
   }
 }

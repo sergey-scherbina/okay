@@ -27,12 +27,12 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
   test("a resumptive effect beside State, in one program") {
     val prog: String ! (Effect[Console] + State[Int]) = for {
       name <- Console.send(ReadLn)
-      _ <- State.put(name.length)
+      _ <- State.set(name.length)
       _ <- Console.send(PrintLn("hi " + name))
     } yield name
     val out = ListBuffer.empty[String]
-    val handled = Console.handle(prog)(a => Eff.pure(a))(console(out, "ada"))
-    assertEquals(Eff.run(State.run(0)(handled)), (3, "ada"))
+    val handled = Console.handle(prog)(a => pure(a))(console(out, "ada"))
+    assertEquals(!.run(State.handle(0)(handled)), (3, "ada"))
     assertEquals(out.toList, List("hi ada"))
   }
 
@@ -42,12 +42,12 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
       b <- Choose.send(Flip)
     } yield (a, b)
     val all = new Handler[Choose, Any, List[(Boolean, Boolean)]] {
-      def apply[X](op: Choose[X], k: X => List[(Boolean, Boolean)] ! Any): List[(Boolean, Boolean)] ! Any =
+      def apply[X](op: Choose[X], k: X => List[(Boolean, Boolean)] ! Pure): List[(Boolean, Boolean)] ! Pure =
         op match {
           case Flip => for { t <- k(true); f <- k(false) } yield t ++ f
         }
     }
-    assertEquals(Choose.run(flips)(p => Eff.pure(List(p)))(all),
+    assertEquals(Choose.run(flips)(p => pure(List(p)))(all),
       List((true, true), (true, false), (false, true), (false, false)))
   }
 
@@ -56,9 +56,9 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
     val prog: Int ! Effect[Console] =
       Console.send(ReadLn).flatMap(_ => Console.send(PrintLn("x"))).map { _ => rest = true; 1 }
     val abort = new Handler[Console, Any, Option[Int]] {
-      def apply[X](op: Console[X], k: X => Option[Int] ! Any): Option[Int] ! Any = Eff.pure(None)
+      def apply[X](op: Console[X], k: X => Option[Int] ! Pure): Option[Int] ! Pure = pure(None)
     }
-    assertEquals(Console.run(prog)(a => Eff.pure(Option(a)))(abort), None)
+    assertEquals(Console.run(prog)(a => pure(Option(a)))(abort), None)
     assert(!rest)
   }
 
@@ -72,15 +72,15 @@ class TestOwnEffectFromScala2 extends munit.FunSuite {
       def apply[X](op: Choose[X], k: X => String ! Effect[Console]): String ! Effect[Console] =
         op match { case Flip => k(true) }
     }
-    val onlyConsole = Choose.handle(prog)(a => Eff.pure(a))(first)
-    assertEquals(Console.run(onlyConsole)(a => Eff.pure(a))(console(out, "")), "heads")
+    val onlyConsole = Choose.handle(prog)(a => pure(a))(first)
+    assertEquals(Console.run(onlyConsole)(a => pure(a))(console(out, "")), "heads")
     assertEquals(out.toList, List("flipped true"))
   }
 
   test("an effect left unhandled does not compile") {
-    val errors = compileErrors("Eff.run(Console.send(ReadLn))")
+    val errors = compileErrors("!.run(Console.send(ReadLn))")
     assert(errors.contains("type mismatch"), errors)
-    val notLast = compileErrors("Choose.run(Console.send(ReadLn).flatMap(_ => Choose.send(Flip)))(b => Eff.pure(b))(null)")
+    val notLast = compileErrors("Choose.run(Console.send(ReadLn).flatMap(_ => Choose.send(Flip)))(b => pure(b))(null)")
     assert(notLast.contains("type mismatch"), notLast)
   }
 }

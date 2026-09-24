@@ -55,7 +55,7 @@ object McpClient {
 
   /** start `command` as a process and open a session over its stdio */
   def spawn(command: Seq[String], name: String, version: String): Eff[Async, McpClient] =
-    Async.delay(Stdio.of(Stdio.spawn(command))).flatMap(link => connect(link, name, version))
+    Async(Stdio.of(Stdio.spawn(command))).flatMap(link => connect(link, name, version))
 }
 
 object McpServer {

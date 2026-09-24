@@ -33,7 +33,7 @@ class TestStoresFromScala2 extends munit.FunSuite {
       y <- b.join
       cached <- Caches.get(cache, "hello")
     } yield (x, y, cached)
-    assertEquals(Eff.runAsync(prog), (5, 5, Some(5)))
+    assertEquals(prog.runWith, (5, 5, Some(5)))
     assertEquals(loads.get, 1)
   }
 
@@ -41,16 +41,16 @@ class TestStoresFromScala2 extends munit.FunSuite {
     val cache = Cache.memory[String, String](Regime.Invalidated, 100)
     val prog = for {
       _ <- Caches.put(cache, "user:1", "old")
-      _ <- Caches.writeThrough(cache, "user:1")(Async.delay("written"))
+      _ <- Caches.writeThrough(cache, "user:1")(Async("written"))
       afterWrite <- Caches.get(cache, "user:1")
     } yield afterWrite
-    assertEquals(Eff.runAsync(prog), None)
+    assertEquals(prog.runWith, None)
 
     val topic = Persist.topic(new MemoryStore, "invalidations")
-    Eff.runAsync(Caches.put(cache, "user:2", "stale"))
+    Caches.put(cache, "user:2", "stale").runWith
     Invalidations.append(topic, "user:2")
-    val next = Eff.runAsync(Caches.drain(topic, cache, (k: String) => k, 0L))
-    assertEquals((next, Eff.runAsync(Caches.get(cache, "user:2"))), (1L, None))
+    val next = Caches.drain(topic, cache, (k: String) => k, 0L).runWith
+    assertEquals((next, Caches.get(cache, "user:2").runWith), (1L, None))
   }
 
   test("a blob store: bytes in and out, an absent key named, a listing by prefix") {
@@ -64,7 +64,7 @@ class TestStoresFromScala2 extends munit.FunSuite {
       missing <- Blobs.getBytes(blob, "reports/none.txt")
       keys <- Blobs.list(blob, "reports/").map(_.key).runCollect
     } yield (a.map(new String(_)), b.map(new String(_)), missing.isLeft, keys)
-    assertEquals(Eff.runAsync(prog), (Right("alpha"), Right("beta"), true, Vector("reports/a.txt", "reports/b.txt")))
+    assertEquals(prog.runWith, (Right("alpha"), Right("beta"), true, Vector("reports/a.txt", "reports/b.txt")))
   }
 
   test("a blob streams out in chunks, head sees its size, delete is idempotent") {
@@ -77,7 +77,7 @@ class TestStoresFromScala2 extends munit.FunSuite {
       _ <- Blobs.delete(blob, "k")
       gone <- Blobs.head(blob, "k")
     } yield (total, meta.map(_.size), gone)
-    assertEquals(Eff.runAsync(prog), (10, Some(10L), None))
+    assertEquals(prog.runWith, (10, Some(10L), None))
   }
 
   test("a file goes in streamed; a log's segments are backed up to a blob and restored") {
@@ -95,9 +95,9 @@ class TestStoresFromScala2 extends munit.FunSuite {
       copied <- Blobs.backup(dir, blob)
       restored <- Blobs.restore(blob, restoredDir)
     } yield (back.map(new String(_)), copied.nonEmpty, restored.size == copied.size)
-    assertEquals(Eff.runAsync(prog), (Right("from a file"), true, true))
+    assertEquals(prog.runWith, (Right("from a file"), true, true))
     val again = FileStore.open(restoredDir)
-    try assertEquals(Eff.runAsync(Persist.stream(Persist.topic(again, "events"), 0, 0L).map(r => new String(r.value)).runCollect), Vector("kept"))
+    try assertEquals(Persist.stream(Persist.topic(again, "events"), 0, 0L).map(r => new String(r.value)).runCollect.runWith, Vector("kept"))
     finally again.close()
   }
 
@@ -110,7 +110,7 @@ class TestStoresFromScala2 extends munit.FunSuite {
       found <- Documents.get(people, "ada")
       londoners <- Documents.query(people, "city", "London").map(_._1).runCollect
     } yield (first, again, found.map(_.value), londoners.sorted)
-    val (first, again, found, londoners) = Eff.runAsync(prog)
+    val (first, again, found, londoners) = prog.runWith
     assert(first.isInstanceOf[PutResult.Applied], first)
     assert(again.isInstanceOf[PutResult.Stale], again)
     assertEquals((found, londoners), (Some(Person("Ada", "London")), Vector("ada", "alan")))

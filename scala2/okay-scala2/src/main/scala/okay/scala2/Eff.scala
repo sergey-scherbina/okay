@@ -23,7 +23,7 @@ import scala.util.control.NonFatal
  * Underneath is okay's `Free` and okay's own handlers; each operation
  * and each handler below is a one-line call into the Scala 3 library.
  */
-final class Eff[-R, A] private (private val body: EffBody[A]) {
+final class Eff[-R, +A] private (private val body: EffBody[A]) {
 
   private[scala2] def program: Free[Rows.Top, A] = body.p
 
@@ -34,7 +34,7 @@ final class Eff[-R, A] private (private val body: EffBody[A]) {
 }
 
 /** held out of `Eff`'s constructor, as `ProgBody` is out of `Prog`'s */
-private[scala2] final class EffBody[A](val p: Free[Rows.Top, A]) extends AnyVal
+private[scala2] final class EffBody[+A](val p: Free[Rows.Top, A]) extends AnyVal
 
 private[scala2] object Rows {
 
@@ -80,23 +80,27 @@ object Eff {
 sealed trait State[S]
 
 object State {
+  // okay's names and okay2's type-argument orders throughout
+  // (scala2-facade-okay-names, 2026-09-24): a program written here
+  // compiles against okay2 with the same lines.
+
+  /** read the current state */
   def get[S]: Eff[State[S], S] = Eff.of(coerce(okay.State.get[S]))
-  def put[S](s: S): Eff[State[S], Unit] = Eff.of(coerce(okay.State.set(s).map(_ => ())))
-  def modify[S](f: S => S): Eff[State[S], Unit] = Eff.of(coerce(okay.State.modify(f).map(_ => ())))
 
-  /** handle it from `s`: the final state beside the answer */
-  def run[S, R, A](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)] =
-    Eff.of(coerce(okay.State.handle(s)[A, Top](coerce(e.program))))
-
-  // ---- okay's own names (scala2-roads, 2026-09-24): the vocabulary
-  // okay and okay2 share, beside the facade's, so a program written in
-  // it compiles here and against okay2 alike. Forwarders, no new logic.
-
-  /** okay's `set`: replace the state, answering the new one */
+  /** replace the state, answering the new one */
   def set[S](s: S): Eff[State[S], S] = Eff.of(coerce(okay.State.set(s)))
 
-  /** okay's `handle`: `run` under okay's name, okay2's type-argument order */
-  def handle[S, A, R](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)] = run[S, R, A](s)(e)
+  /** apply `f` to the state, answering the new one */
+  def modify[S](f: S => S): Eff[State[S], S] = Eff.of(coerce(okay.State.modify(f)))
+
+  /** handle it from `s`, the rest of the row forwarded: the final state
+   * beside the answer */
+  def handle[S, A, R](s: S)(e: Eff[State[S] & R, A]): Eff[R, (S, A)] =
+    Eff.of(coerce(okay.State.handle(s)[A, Top](coerce(e.program))))
+
+  /** run a program whose only capability is `State[S]` to its final
+   * state and answer */
+  def run[S, A](s: S)(e: Eff[State[S], A]): (S, A) = Eff.run(handle[S, A, Any](s)(e))
 }
 
 /** the capability: an environment of type `E` */
@@ -105,7 +109,8 @@ sealed trait Reader[E]
 object Reader {
   def ask[E]: Eff[Reader[E], E] = Eff.of(coerce(okay.Reader.ask[E]))
 
-  def run[E, R, A](env: E)(e: Eff[Reader[E] & R, A]): Eff[R, A] =
+  /** answer every `ask` with `env`, the rest of the row forwarded */
+  def run[E, A, R](env: E)(e: Eff[Reader[E] & R, A]): Eff[R, A] =
     Eff.of(coerce(okay.Reader.run[E, A, Top](env)(coerce(e.program))))
 }
 
@@ -115,12 +120,13 @@ sealed trait Writer[W]
 object Writer {
   def tell[W](w: W): Eff[Writer[W], Unit] = Eff.of(coerce(okay.Writer.tell(w)))
 
-  /** everything told, in order, beside the answer */
-  def run[W, R, A](e: Eff[Writer[W] & R, A]): Eff[R, (Vector[W], A)] =
+  /** everything told, in order, beside the answer, as a Vector */
+  def collect[W, A, R](e: Eff[Writer[W] & R, A]): Eff[R, (Vector[W], A)] =
     Eff.of(coerce(okay.Writer.collect[W, A, Top](coerce(e.program))))
 
-  /** okay's `collect`: `run` under okay's name, okay2's order */
-  def collect[W, A, R](e: Eff[Writer[W] & R, A]): Eff[R, (Vector[W], A)] = run[W, R, A](e)
+  /** everything told, in order, beside the answer (a `Seq`, as okay's
+   * `run` answers — here the Vector `collect` builds, by covariance) */
+  def run[W, A, R](e: Eff[Writer[W] & R, A]): Eff[R, (Seq[W], A)] = collect[W, A, R](e)
 }
 
 /** the capability: failure with an `E`, which stops the program */
@@ -129,27 +135,29 @@ sealed trait Throws[E]
 object Throws {
   def raise[E, A](e: E): Eff[Throws[E], A] = Eff.of(coerce(okay.raise[E, A](e)))
 
-  /** a failure as a `Left` */
-  def run[E, R, A](e: Eff[Throws[E] & R, A]): Eff[R, Either[E, A]] =
+  /** a failure as a `Left`, the rest of the row forwarded */
+  def runEither[A, E, R](e: Eff[Throws[E] & R, A]): Eff[R, Either[E, A]] =
     Eff.of(coerce(okay.runEither[A, Top, E](coerce(e.program))))
-
-  /** okay's `runEither`: `run` under okay's name, okay2's order */
-  def runEither[A, E, R](e: Eff[Throws[E] & R, A]): Eff[R, Either[E, A]] = run[E, R, A](e)
 }
 
 /** the capability: suspended (possibly blocking) computation */
 sealed trait Async
 
 object Async {
-  /** suspend `a`; it runs when the program does */
-  def delay[A](a: => A): Eff[Async, A] = Eff.of(coerce(okay.async(a)))
+  /** suspend `a`; it runs when the program does — `Async(a)`, as okay2
+   * spells it (okay's top-level `async(a)`) */
+  def apply[A](a: => A): Eff[Async, A] = Eff.of(coerce(okay.async(a)))
 
-  /** okay2's spelling of a suspended computation, `Async(a)` */
-  def apply[A](a: => A): Eff[Async, A] = delay(a)
+  /** the program's failure as DATA: it runs on its own fiber, and
+   * whatever it threw arrives as a `Left` — okay's and okay2's
+   * `Async.attempt` */
+  def attempt[A](prog: => Eff[Async, A]): Eff[Async, Either[Throwable, A]] =
+    lift(okay.Async.attempt(core(prog)))
 
-  /** suspend `a`, and a throw inside it is a `Throws[Throwable]` failure */
-  def attempt[A](a: => A): Eff[Async & Throws[Throwable], A] =
-    delay(try Right(a) catch { case NonFatal(e) => Left(e) })
+  /** suspend `a`, and a throw inside it is a `Throws[Throwable]` failure
+   * (the facade's own: okay spells it `attempt` then `fromEither`) */
+  def catching[A](a: => A): Eff[Async & Throws[Throwable], A] =
+    Async(try Right(a) catch { case NonFatal(e) => Left(e) })
       .flatMap((r: Either[Throwable, A]) => r.fold(Throws.raise[Throwable, A], Eff.pure))
 
   // ---- concurrency (stage 5), over the platform's own Scheduler and
@@ -160,7 +168,7 @@ object Async {
 
   /** start `e` on its own fiber; the answer is the running fiber */
   def fork[A](e: Eff[Async, A]): Eff[Async, Fiber[A]] =
-    delay(new Fiber(okay.Async.spawn(core(e))))
+    Async(new Fiber(okay.Async.spawn(core(e))))
 
   /** both at once, both answers */
   def par[A, B](a: Eff[Async, A], b: Eff[Async, B]): Eff[Async, (A, B)] =

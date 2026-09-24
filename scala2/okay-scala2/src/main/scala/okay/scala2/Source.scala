@@ -12,7 +12,7 @@ import Rows.coerce
  * program that TELLS its elements and may perform Async between them.
  * That is exactly `Eff[Writer[A] with Async, Unit]`, so a source can be
  * written as an ordinary for-comprehension of `Writer.tell` and
- * `Async.delay` and turned into a `Source` by `fromEff`. This class
+ * `Async(a)` and turned into a `Source` by `fromEff`. This class
  * gives it the stream vocabulary, each word one call into the core:
  * `map` is `Writer.map`, `filter` is `Writer.expand`, `take`/`drop`
  * are stages driven by `through`. A stage that has finished stops

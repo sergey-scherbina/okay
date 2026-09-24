@@ -734,6 +734,68 @@ the aliases (declared by the user here, shipped by okay2).
 - [x] okay2's `TestFacadeVocabulary`: the same lines, green on okay2
       with nothing added to okay2
 
+## Stage 21 — the facade speaks okay's names only (2026-09-24)
+Operator, after stage 20: "can the facade remove these differences too
+and do it the way the originals do?" — within reason, not at the cost
+of logic or speed. Stage 20 had put okay's names BESIDE the facade's;
+this stage makes them the facade's only names, and takes away the two
+differences stage 20 called impossible.
+
+THE TRICK THAT MADE THE REST POSSIBLE: a Scala 2 package object. The
+TASTy reader does not see a Scala 3 top-level definition, which is why
+the runner (`!.run`), `pure` and the aliases could not come from the
+facade. A new module `okay-scala2-prelude` is compiled BY scalac 2.13
+and holds `package object scala2` in package `okay`; the Scala 3 facade
+defines no top-level members (checked), so the two meet in one package
+with nothing colliding. One `import okay.scala2._` now brings `+`, `!`,
+`%`, `Pure = Any`, `pure`, `choose`, `runChoice`, the runner object
+`!` with `run`, and `runWith` for an `Async` program — okay2's top level,
+spelled the same. The probe's own `package object scala2probe` (the
+user-declared aliases of stages 16-18) is deleted: it is no longer
+needed.
+
+THE RENAMES, each to okay's name and okay2's type-argument order:
+- `State.run` now RUNS TO A VALUE (`(S, A)`), as okay's and okay2's;
+  the handler is `State.handle`. `State.put` is gone (`State.set`
+  answers the new state); `State.modify` answers the new state.
+- `Writer.run[W, A, R]` answers `(Seq[W], A)`; `Writer.collect` the
+  Vector. `Reader.run[E, A, R]`.
+- `Throws.run` is gone: `Throws.runEither[A, E, R]`.
+- `Choose.from`/`all` are gone: `Choose.choose`/`runChoice`; the search
+  combinators moved to `Logic` under okay's names (`observe` for
+  `first`, `cut`, `ifte`, `interleave`, `fairBind`, plus `msplit` and
+  `gnot`). `Search` stays (the facade's own, a name okay2 lacks rather
+  than a different spelling).
+- `Async.delay` is gone: `Async(a)`. `Async.attempt` now has okay's
+  meaning (a program on its own fiber, its failure as a `Left`); the
+  facade's old one (a by-name value whose throw becomes a
+  `Throws[Throwable]`) is `Async.catching`.
+- `Eff[-R, +A]`: the answer is covariant, as okay2's `Free[-R, +A]`,
+  which is what lets `Writer.run` answer `Seq` without a node.
+- `Eff.pure`/`run`/`runAsync` stay PUBLIC as the layer the prelude calls
+  (`!.run` is `Eff.run`); the docs and the probe use okay's spelling.
+
+What remains different, and why it stays: the BUILD (the TASTy reader
+and the two standard libraries — the reason this road exists) and a
+user's OWN effect (`object Console extends Effect[Console]` with one
+`Handler[F, R, B]` here; a `Row` with an `Op` member and okay's handler
+shapes on okay2 — the facade's form is the simpler one for a Scala 2
+user and okay2 mirrors okay; converging would move one of them away
+from what it is for). `Fiber`/`Channel`/`Source` keep the facade's
+shapes (a `Source` is a class here and a program alias on okay2, and
+`map` means different things on the two).
+
+- [x] `okay-scala2-prelude`: the package object, compiled by 2.13 under
+      `-Xlint -Werror`; the probe depends on it and its own alias file is
+      deleted
+- [x] the renames in the facade core and every facade module that
+      called them (`Async.delay` in agent/http/llm/mcp/rag/services)
+- [x] every probe suite migrated (212 call sites): green
+- [x] the twin test and okay2's `TestFacadeVocabulary` identical line for
+      line, runner included
+- [x] docs/scala2.md, the module pages, typepedia, guide, theory ch. 13,
+      jvm-languages: okay's spellings; a page for the prelude
+
 ## Later stages
 - Nothing is queued. The operator's list (effects, continuations, a
   user's own effects, streams, fibers, channels) is covered by stages

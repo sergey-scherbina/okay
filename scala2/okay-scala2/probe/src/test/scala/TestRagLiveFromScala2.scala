@@ -34,7 +34,7 @@ class TestRagLiveFromScala2 extends munit.FunSuite {
       fused <- index.hybrid(Keyword.index(docs.flatMap(d => Ingest.segment(d, 400)(_.length))), "fetch url", 2)
       _ <- db.update(s"drop table $table")
     } yield (progress.embedded, stored, hits.head.segment.source, fused.head.segment.source)
-    val (embedded, stored, nearest, fusedFirst) = Eff.runAsync(prog)
+    val (embedded, stored, nearest, fusedFirst) = prog.runWith
     assertEquals(stored, embedded)
     assertEquals((nearest, fusedFirst), ("Math.scala", "Http.scala"))
     val memory = Rag.memory(Rag.hashing())

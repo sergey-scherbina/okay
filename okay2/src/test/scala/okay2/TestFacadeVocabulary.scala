@@ -2,11 +2,10 @@ package okay2
 
 /**
  * The program lines below are IDENTICAL to the facade probe's
- * `TestOkayVocabularyFromScala2`: okay's vocabulary, compiled here
- * against okay2 and there against okay-scala2 (scala2-roads,
- * 2026-09-24). Only the runner differs — `!.run` here, `Eff.run`
- * there. Nothing was added to okay2 for this: the facade gained okay's
- * names.
+ * `TestOkayVocabularyFromScala2`, runner included: okay's vocabulary,
+ * compiled here against okay2 and there against okay-scala2 with its
+ * 2.13 prelude (scala2-roads, scala2-facade-okay-names, 2026-09-24).
+ * Nothing was added to okay2 for this: the facade took okay's names.
  */
 class TestFacadeVocabulary extends munit.FunSuite {
 

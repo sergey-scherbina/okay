@@ -108,7 +108,7 @@ object Logs {
 object Tracing {
   /** run `e` inside a span named `name`, a child of the current one */
   def span[A](tracer: Tracer, name: String, attrs: (String, String)*)(e: Eff[Async, A]): Eff[Async, A] =
-    Async.delay(tracer.span(name, attrs.map { case (k, v) => Attr(k, v) }*)(Eff.runAsync(e)))
+    Async(tracer.span(name, attrs.map { case (k, v) => Attr(k, v) }*)(Eff.runAsync(e)))
 }
 
 /** okay-ops' endpoints and meters, in okay-scala2-http's terms */

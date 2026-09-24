@@ -3,12 +3,10 @@ package scala2probe
 import okay.scala2._
 
 /**
- * okay's vocabulary through the facade (scala2-roads, 2026-09-24): the
- * program lines below are IDENTICAL to okay2's `TestFacadeVocabulary`,
- * compiled there against okay2 and here against okay-scala2. Only the
- * runner differs — `Eff.run` here, `!.run` there. The facade's own
- * names (`State.run`, `Writer.run`, `Throws.run`, `Choose.from`/`all`)
- * stay beside these.
+ * okay's vocabulary through the facade: the program lines AND the
+ * runner below are IDENTICAL to okay2's `TestFacadeVocabulary`, compiled
+ * there against okay2 and here against okay-scala2 + the prelude
+ * (scala2-roads, then scala2-facade-okay-names, 2026-09-24).
  */
 class TestOkayVocabularyFromScala2 extends munit.FunSuite {
 
@@ -27,23 +25,18 @@ class TestOkayVocabularyFromScala2 extends munit.FunSuite {
   } yield x * 10
 
   test("State.set/handle, Throws.runEither, Reader.run: okay's names, the facade's runner") {
-    assertEquals(Eff.run(State.handle(0)(Throws.runEither(Reader.run(5)(twice)))), (2, Right(102)))
-    assertEquals(Eff.run(State.handle(0)(Throws.runEither(Reader.run(1)(twice)))), (2, Left("over 1")))
+    assertEquals(!.run(State.handle(0)(Throws.runEither(Reader.run(5)(twice)))), (2, Right(102)))
+    assertEquals(!.run(State.handle(0)(Throws.runEither(Reader.run(1)(twice)))), (2, Left("over 1")))
   }
 
   test("Choose.choose/runChoice and Writer.collect") {
-    assertEquals(Eff.run(Writer.collect(Choose.runChoice(searched))), (Vector("saw 1", "saw 2", "saw 3"), Seq(10, 20, 30)))
-  }
-
-  test("okay's names ARE the facade's: the same answers through State.run, Throws.run, Writer.run, Choose.all") {
-    assertEquals(Eff.run(State.run(0)(Throws.run(Reader.run(5)(twice)))), (2, Right(102)))
-    assertEquals(Eff.run(Writer.run(Choose.all(searched))), (Vector("saw 1", "saw 2", "saw 3"), Seq(10, 20, 30)))
+    assertEquals(!.run(Writer.collect(Choose.runChoice(searched))), (Vector("saw 1", "saw 2", "saw 3"), Seq(10, 20, 30)))
   }
 
   test("Async(a) is okay2's spelling of a suspended computation") {
     var ran = 0
     val p = Async { ran += 1; ran }.map(_ * 2)
     assertEquals(ran, 0)
-    assertEquals(Eff.runAsync(p), 2)
+    assertEquals(p.runWith, 2)
   }
 }

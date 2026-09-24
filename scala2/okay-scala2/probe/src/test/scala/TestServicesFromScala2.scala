@@ -16,9 +16,9 @@ object ServicesModel {
   case object Boom extends Msg
 
   val counter: (Int, Msg) => Int ! Async = {
-    case (n, Add(k)) => Eff.pure(n + k)
-    case (n, Get(reply)) => Async.delay { reply(n); n }
-    case (_, Boom) => Async.delay(throw new IllegalStateException("boom"))
+    case (n, Add(k)) => pure(n + k)
+    case (n, Get(reply)) => Async { reply(n); n }
+    case (_, Boom) => Async(throw new IllegalStateException("boom"))
   }
 }
 
@@ -35,7 +35,7 @@ class TestServicesFromScala2 extends munit.FunSuite {
       _ <- Actors.stop(actor)
       after <- Actors.tell(actor, Add(1))
     } yield (total, after)
-    assertEquals(Eff.runAsync(prog), (Some(5), false))
+    assertEquals(prog.runWith, (Some(5), false))
   }
 
   test("a supervised actor restarts from a fresh state when a message throws") {
@@ -47,7 +47,7 @@ class TestServicesFromScala2 extends munit.FunSuite {
       total <- Actors.ask[Msg, Int](actor, 1000)(Get(_))
       _ <- Actors.stop(actor)
     } yield total
-    assertEquals(Eff.runAsync(prog), Some(101))
+    assertEquals(prog.runWith, Some(101))
   }
 
   test("an outbox: the message is written with the change, then relayed once; an inbox runs a message once") {
@@ -64,10 +64,10 @@ class TestServicesFromScala2 extends munit.FunSuite {
       relayed <- Outboxes.relayOnce(outbox, db, store)
       again <- Outboxes.relayOnce(outbox, db, store)
       left <- Outboxes.pending(outbox, db)
-      first <- Outboxes.once(inbox, db, "msg-1")(Async.delay { handled += 1; "done" })
-      second <- Outboxes.once(inbox, db, "msg-1")(Async.delay { handled += 1; "done" })
+      first <- Outboxes.once(inbox, db, "msg-1")(Async { handled += 1; "done" })
+      second <- Outboxes.once(inbox, db, "msg-1")(Async { handled += 1; "done" })
     } yield (waiting, relayed, again, left, first, second)
-    assertEquals(Eff.runAsync(prog), (1L, 1, 0, 0L, Some("done"), None))
+    assertEquals(prog.runWith, (1L, 1, 0, 0L, Some("done"), None))
     assertEquals(handled, 1)
     Persist.topic(store, "orders").read(0, 0L, 10) match {
       case Topic.Read.Records(rs) => assertEquals(rs.map(r => new String(r.value)), Vector("order-1"))
@@ -82,7 +82,7 @@ class TestServicesFromScala2 extends munit.FunSuite {
       _ <- Logs.info("started", "job" -> "42")
       _ <- Logs.failure("failed", new IllegalStateException("disk"))
     } yield 7
-    val answer = Eff.run(Logs.to[Any, Int](l => lines += l, Log.Level.Info, () => 1000L)(work))
+    val answer = !.run(Logs.to[Any, Int](l => lines += l, Log.Level.Info, () => 1000L)(work))
     assertEquals(answer, 7)
     assertEquals(lines.map(l => (l.level, l.message, l.at)).toList, List((Log.Level.Info, "started", 1000L), (Log.Level.Error, "failed", 1000L)))
     assert(lines(1).fields.exists(a => a.key == "error.message" && a.value == "disk"), lines(1).fields)
@@ -92,7 +92,7 @@ class TestServicesFromScala2 extends munit.FunSuite {
     val store = new MemoryStore
     val spans = Persist.topic(store, "spans")
     val tracer = new Tracer(spans)
-    assertEquals(Eff.runAsync(Tracing.span(tracer, "work", "k" -> "v")(Async.delay(21 * 2))), 42)
+    assertEquals(Tracing.span(tracer, "work", "k" -> "v")(Async(21 * 2)).runWith, 42)
     spans.read(0, 0L, 10) match {
       case Topic.Read.Records(rs) => assertEquals(rs.size, 1)
       case other => fail(other.toString)
@@ -101,11 +101,11 @@ class TestServicesFromScala2 extends munit.FunSuite {
 
   test("ops routes answer health in the http facade's terms; a RED meter counts what it wraps") {
     val store = new MemoryStore
-    val health = Eff.runAsync(Operations.routes(store)(Request.get("/healthz")))
+    val health = Operations.routes(store)(Request.get("/healthz")).runWith
     assertEquals((health.status, health.text), (200, "live=true"))
     val red = new Red("api")
-    val app = Operations.measured(red, _ => "hello") { case _ => Eff.pure(Response.text("hi")) }
-    assertEquals(Eff.runAsync(app(Request.get("/hello"))).status, 200)
+    val app = Operations.measured(red, _ => "hello") { case _ => pure(Response.text("hi")) }
+    assertEquals(app(Request.get("/hello")).runWith.status, 200)
     assertEquals(red.stats.series.map(_.route), Vector("hello"))
   }
 }

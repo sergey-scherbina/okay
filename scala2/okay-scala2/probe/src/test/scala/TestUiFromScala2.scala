@@ -22,7 +22,7 @@ class TestUiFromScala2 extends munit.FunSuite {
 
   test("the loop folds the events, draws each changed view, and answers the final state") {
     val host = ScriptedHost(Event.Pressed("inc"), Event.Pressed("inc"), Event.Pressed("dec"), Event.Pressed("nope"))
-    assertEquals(Eff.runAsync(UiApp.run(0)(view)(update)(host.host)), 1)
+    assertEquals(UiApp.run(0)(view)(update)(host.host).runWith, 1)
     assertEquals(host.frames, Vector(view(0), view(1), view(2), view(1)))
   }
 
@@ -38,7 +38,7 @@ class TestUiFromScala2 extends munit.FunSuite {
     // case's constructor is typed as the CASE (Event.Pressed), not
     // widened to the enum as Scala 3 does, and Source is invariant
     val ticks = Source[Event](Event.Pressed("inc"), Event.Pressed("inc"), Event.Pressed("inc"), Event.Closed)
-    assertEquals(Eff.runAsync(UiApp.runWith(0)(view)(update)(host.host, ticks)), 3)
+    assertEquals(UiApp.runWith(0)(view)(update)(host.host, ticks).runWith, 3)
     assertEquals(host.frames.head, view(0))
   }
 }

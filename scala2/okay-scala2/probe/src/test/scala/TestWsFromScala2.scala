@@ -41,8 +41,8 @@ class TestWsLiveFromScala2 extends munit.FunSuite {
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
 
   test("a client talks to a fold session over a real socket") {
-    val routes = Routes { case GET(Path("health")) => Eff.pure(Response.text("ok")) }
-    val got = Eff.runAsync(WsServer.use(0)(routes)({ case _ => counting }) { port =>
+    val routes = Routes { case GET(Path("health")) => pure(Response.text("ok")) }
+    val got = (WsServer.use(0)(routes)({ case _ => counting }) { port =>
       for {
         ws <- WebSocket.connect("ws://127.0.0.1:" + port + "/count")
         _ <- ws.sendText("x")
@@ -51,7 +51,7 @@ class TestWsLiveFromScala2 extends munit.FunSuite {
         _ <- ws.close()
         health <- Client().get("http://127.0.0.1:" + port + "/health")
       } yield (replies, health.text)
-    })
+    }).runWith
     assertEquals(got, (Vector("1: x", "2: y"), "ok"))
   }
 }

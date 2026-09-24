@@ -1157,7 +1157,7 @@ handler receives each operation and the continuation, and can resume
 it once, never, or several times. Streams are `okay.scala2.Source`: the core's own `Source`, with the
 usual vocabulary (`map`, `filter`, `take`, `merge`, `runCollect`). A
 source can also be written as a for-comprehension of `Writer.tell` and
-`Async.delay` and wrapped with `Source.fromEff`. Concurrency is `Async.fork`, `par`, `race` and `timeout`, together with
+`Async(a)` and wrapped with `Source.fromEff`. Concurrency is `Async.fork`, `par`, `race` and `timeout`, together with
 a bounded `Channel` whose `send` and `receive` are programs that wait.
 Above that, sixteen `okay-scala2-*` modules cover the rest of the
 library the same way, from codecs, HTTP and SQL to durable workflows,

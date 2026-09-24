@@ -25,21 +25,21 @@ class TestDurableAgentFromScala2 extends munit.FunSuite {
     val journal = new Durable.MemoryJournal
 
     val first = Chat(script, tools, Policy.all, journal = Some(journal))
-    assertEquals(Eff.runAsync(first.say("pay ada")), "paid")
+    assertEquals(first.say("pay ada").runWith, "paid")
     assertEquals(payments, 1)
     assertEquals(journal.all.map(e => (e.op, e.answer)), Vector(("pay", Some("sent 500 to ada"))))
 
     // the process died; a new one runs the same conversation over the journal
     val second = Chat(script, tools, Policy.all, journal = Some(journal))
-    assertEquals(Eff.runAsync(second.say("pay ada")), "paid")
+    assertEquals(second.say("pay ada").runWith, "paid")
     assertEquals(payments, 1)
   }
 
   test("without a journal the same restart pays again") {
     var payments = 0
     val tools = Tools.empty.on[Pay]("pay", "send money")(p => { payments += 1; s"sent ${p.cents} to ${p.to}" })
-    Eff.runAsync(Chat(script, tools, Policy.all).say("pay ada"))
-    Eff.runAsync(Chat(script, tools, Policy.all).say("pay ada"))
+    Chat(script, tools, Policy.all).say("pay ada").runWith
+    Chat(script, tools, Policy.all).say("pay ada").runWith
     assertEquals(payments, 2)
   }
 }

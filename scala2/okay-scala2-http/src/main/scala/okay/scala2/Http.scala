@@ -102,7 +102,7 @@ object Requests {
  *
  * {{{
  * val routes = Routes {
- *   case GET(Path("users", id)) => Async.delay(Response.text("user " + id))
+ *   case GET(Path("users", id)) => Async(Response.text("user " + id))
  *   case r @ POST(Path("users")) => ...
  * }
  * }}}
@@ -160,7 +160,7 @@ object Server {
       closing.thenRun(() => k(Right(())))
       () => ()
     })
-    val serving = use(port)(handler)(p => Async.delay { bound.complete(p); () }.flatMap(_ => awaitClose))
+    val serving = use(port)(handler)(p => Async { bound.complete(p); () }.flatMap(_ => awaitClose))
     val runner = new Thread(() => {
       try Eff.runAsync(serving)
       catch { case e: Throwable => bound.completeExceptionally(e); () }

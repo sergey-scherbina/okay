@@ -1069,8 +1069,31 @@ lazy val Scala3Stdlib = config("scala3Stdlib").hide
  * `-Werror` because the gate's warning check reads Scala 3's
  * `[warn] -- [Exxx]` format and would not see a Scala 2 warning.
  */
+/**
+ * okay's TOP-LEVEL names for a Scala 2.13 program (specs/scala2-facade.md,
+ * stage 21): a package object for `okay.scala2`, compiled BY scalac
+ * 2.13, because the TASTy reader does not see a Scala 3 top-level
+ * definition. The aliases `+`/`!`/`%`/`Pure`, `pure`, `choose`,
+ * `runChoice`, the runner `!.run` and `runWith`. Published: a 2.13 user
+ * depends on this, and it brings `okay-scala2` along. The classpath
+ * arrangement is the probe's, below, for the same reason.
+ */
+lazy val okayScala2Prelude = (project in file("scala2/okay-scala2-prelude"))
+  .dependsOn(okayScala2)
+  .settings(
+    name := "okay-scala2-prelude",
+    scalaVersion := "2.13.18",
+    projectDependencies ~= (_.map(_.exclude("org.scala-lang", "scala-library"))),
+    scalacOptions := Seq("-Ytasty-reader", "-deprecation", "-feature", "-Xlint", "-Werror"),
+    ivyConfigurations += Scala3Stdlib,
+    libraryDependencies += "org.scala-lang" % "scala-library" % "3.9.0" % Scala3Stdlib,
+    Seq(Compile, Runtime, Test).flatMap(c => Seq(
+      c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value),
+      c / dependencyClasspathAsJars ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value))),
+  )
+
 lazy val okayScala2Probe = (project in file("scala2/okay-scala2/probe"))
-  .dependsOn(okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services)
+  .dependsOn(okayScala2Prelude, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services)
   .settings(
     name := "okay-scala2-probe",
     publish / skip := true,
@@ -3004,7 +3027,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
   .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
-    okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
+    okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,

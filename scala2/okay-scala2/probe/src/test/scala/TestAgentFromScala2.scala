@@ -27,8 +27,8 @@ class TestAgentFromScala2 extends munit.FunSuite {
 
   test("a chat answers, and the conversation carries over to the next message") {
     val chat = Chat(Model.scripted("hello, ada", "you said your name was ada"), policy = Policy.all)
-    assertEquals(Eff.runAsync(chat.say("hi, I am ada")), "hello, ada")
-    assertEquals(Eff.runAsync(chat.say("what is my name?")), "you said your name was ada")
+    assertEquals(chat.say("hi, I am ada").runWith, "hello, ada")
+    assertEquals(chat.say("what is my name?").runWith, "you said your name was ada")
     assertEquals(chat.transcript.collect { case Turn.User(t) => t }, Seq("hi, I am ada", "what is my name?"))
   }
 
@@ -38,7 +38,7 @@ class TestAgentFromScala2 extends munit.FunSuite {
       ("let me look", Seq("search" -> """{"query":"okay","limit":3}""")),
       ("found 3 hits", Seq.empty))
     val chat = Chat(model, tools, Policy.all)
-    assertEquals(Eff.runAsync(chat.say("find okay")), "found 3 hits")
+    assertEquals(chat.say("find okay").runWith, "found 3 hits")
     assertEquals(searched.toList, List(SearchArgs("okay", Some(3))))
     assertEquals(results(chat), Seq("3 hits for 'okay'"))
   }
@@ -48,7 +48,7 @@ class TestAgentFromScala2 extends munit.FunSuite {
     val model = Model.scriptedCalls(("", Seq("search" -> """{"query":"secrets"}""")), ("ok", Seq.empty))
     var asked: List[Call] = Nil
     val chat = Chat(model, tools, Policy.all, approve = c => { asked = c :: asked; false })
-    assertEquals(Eff.runAsync(chat.say("look up the secrets")), "ok")
+    assertEquals(chat.say("look up the secrets").runWith, "ok")
     assertEquals(asked.map(c => (c.name, c.argsJson)), List(("search", """{"query":"secrets"}""")))
     assertEquals(results(chat), Seq("denied"))
     assert(searched.isEmpty)
@@ -64,7 +64,7 @@ class TestAgentFromScala2 extends munit.FunSuite {
   test("a window policy keeps the conversation within budget and reports what it dropped") {
     val long = "x" * 200
     val chat = Chat(Model.scripted(Seq.fill(6)(long): _*), policy = Policy.window(120))
-    (1 to 6).foreach(i => Eff.runAsync(chat.say("turn " + i + " " + long)))
+    (1 to 6).foreach(i => chat.say("turn " + i + " " + long).runWith)
     val t = chat.transcript
     assert(t.exists { case Turn.Summary(s, n) => n > 0 && s.contains("elided"); case _ => false }, t.toString)
     assert(t.size < 12, t.toString)
@@ -79,7 +79,7 @@ class TestAgentLiveFromScala2 extends munit.FunSuite {
     val key = sys.env.get("ANTHROPIC_API_KEY")
     assume(key.isDefined, "no ANTHROPIC_API_KEY")
     val chat = Chat(Model.anthropic(key.get, "claude-haiku-4-5-20251001", maxTokens = 64))
-    val answer = Eff.runAsync(chat.say("Reply with exactly the word: pong"))
+    val answer = chat.say("Reply with exactly the word: pong").runWith
     assert(answer.toLowerCase.contains("pong"), answer)
   }
 }

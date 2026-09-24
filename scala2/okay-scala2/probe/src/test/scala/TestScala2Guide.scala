@@ -31,12 +31,12 @@ class TestScala2Guide extends munit.FunSuite {
   // ---- §3 Several effects in one program
 
   test("§3 a row of effects") {
-    def count(word: String): Unit ! State[Map[String, Int]] =
+    def count(word: String): Map[String, Int] ! State[Map[String, Int]] =
       State.modify[Map[String, Int]](m => m.updated(word, m.getOrElse(word, 0) + 1))
 
     def countAll(text: String): Int ! (State[Map[String, Int]] + Writer[String]) = {
       val words = text.split("\\s+").toList.filter(_.nonEmpty)
-      words.foldLeft(Eff.pure(0): Int ! (State[Map[String, Int]] + Writer[String])) { (acc, w) =>
+      words.foldLeft(pure(0): Int ! (State[Map[String, Int]] + Writer[String])) { (acc, w) =>
         for {
           n <- acc
           _ <- count(w)
@@ -45,7 +45,7 @@ class TestScala2Guide extends munit.FunSuite {
       }
     }
 
-    val (log, (counts, total)) = Eff.run(Writer.run(State.run(Map.empty[String, Int])(countAll("a b a"))))
+    val (log, (counts, total)) = !.run(Writer.run(State.handle(Map.empty[String, Int])(countAll("a b a"))))
     assertEquals(total, 3)
     assertEquals(counts, Map("a" -> 2, "b" -> 1))
     assertEquals(log, Vector("saw a", "saw b", "saw a"))
@@ -59,12 +59,12 @@ class TestScala2Guide extends munit.FunSuite {
       balance <- State.get[Int]
       _ <- if (amount > cfg.limit) Throws.raise[String, Unit]("over the limit")
            else if (amount > balance) Throws.raise[String, Unit]("insufficient funds")
-           else State.put(balance - amount)
+           else State.set(balance - amount)
       left <- State.get[Int]
     } yield left
 
     def attempt(amount: Int): (Int, Either[String, Int]) =
-      Eff.run(State.run(100)(Throws.run(Reader.run(Config(limit = 50))(withdraw(amount)))))
+      !.run(State.handle(100)(Throws.runEither(Reader.run(Config(limit = 50))(withdraw(amount)))))
 
     assertEquals(attempt(30), (70, Right(70)))
     assertEquals(attempt(80), (100, Left("over the limit")))
@@ -72,17 +72,17 @@ class TestScala2Guide extends munit.FunSuite {
 
   test("§3 the handler order decides what a failure keeps") {
     val p: Int ! (State[Int] + Throws[String]) =
-      State.put(7).flatMap(_ => Throws.raise[String, Int]("no"))
-    assertEquals(Eff.run(State.run(0)(Throws.run(p))), (7, Left("no")))
-    assertEquals(Eff.run(Throws.run(State.run(0)(p))), Left("no"))
+      State.set(7).flatMap(_ => Throws.raise[String, Int]("no"))
+    assertEquals(!.run(State.handle(0)(Throws.runEither(p))), (7, Left("no")))
+    assertEquals(!.run(Throws.runEither(State.handle(0)(p))), Left("no"))
   }
 
   // ---- §4 Failure: the claims the prose makes, checked
 
-  test("§4 Async.delay lets an exception escape; Async.attempt and Prog.delay make it a value") {
+  test("§4 Async lets an exception escape; Async.attempt and Prog.delay make it a value") {
     val boom = new IllegalStateException("boom")
-    assert(intercept[IllegalStateException](Eff.runAsync(Async.delay[Int](throw boom))) eq boom)
-    assertEquals(Eff.runAsync(Throws.run(Async.attempt[Int](throw boom))), Left(boom))
+    assert(intercept[IllegalStateException]((Async[Int](throw boom)).runWith) eq boom)
+    assertEquals(Throws.runEither(Async.catching[Int](throw boom)).runWith, Left(boom))
     assertEquals(Prog.delay[Int](throw boom).runEither(), Left(boom))
     assert(intercept[IllegalStateException](Prog.pure(1).map[Int](_ => throw boom).run()) eq boom)
   }
@@ -92,7 +92,7 @@ class TestScala2Guide extends munit.FunSuite {
   val stillWriting: Int ! (State[Int] + Writer[String]) = State.get[Int]
 
   test("§10 the message for an unhandled effect") {
-    val errors = compileErrors("Eff.run(State.run(1)(stillWriting))")
+    val errors = compileErrors("!.run(State.handle(1)(stillWriting))")
     assert(errors.contains("required: okay.scala2.Eff[okay.scala2.State[Int] with Any,?]"), errors)
   }
 
@@ -118,7 +118,7 @@ class TestScala2Guide extends munit.FunSuite {
     } yield v.map(_.toUpperCase)
 
     val store = scala.collection.mutable.Map.empty[String, String]
-    assertEquals(KV.run(program)(a => Eff.pure(a))(inMemory(store)), Some("SCALA"))
+    assertEquals(KV.run(program)(a => pure(a))(inMemory(store)), Some("SCALA"))
     assertEquals(store.toMap, Map("lang" -> "scala"))
   }
 
@@ -140,7 +140,7 @@ class TestScala2Guide extends munit.FunSuite {
         case Put(key, value) => log += ("put " + key + "=" + value); k(())
       }
     }
-    assertEquals(KV.run(program)(a => Eff.pure(a))(dryRun), None)
+    assertEquals(KV.run(program)(a => pure(a))(dryRun), None)
     assertEquals(log.toList, List("put lang=scala", "get lang"))
   }
 
@@ -159,10 +159,10 @@ class TestScala2Guide extends munit.FunSuite {
   test("§7 a stream") {
     val words: Source[String] = Source("the", "quick", "brown", "fox", "jumps")
     val lengths: Vector[Int] ! Async = words.filter(_.length > 3).map(_.length).runCollect
-    assertEquals(Eff.runAsync(lengths), Vector(5, 5, 5))
+    assertEquals(lengths.runWith, Vector(5, 5, 5))
 
     val total: Int ! Async = words.zipWithIndex.take(3).runFold(0) { case (acc, (w, _)) => acc + w.length }
-    assertEquals(Eff.runAsync(total), 13)
+    assertEquals(total.runWith, 13)
   }
 
   // ---- §8 Fibers and channels
@@ -173,22 +173,22 @@ class TestScala2Guide extends munit.FunSuite {
 
     def worker: Unit ! Async = jobs.receive.flatMap {
       case Some(n) => results.send(n * n).flatMap(_ => worker)
-      case None => Eff.pure(())
+      case None => pure(())
     }
 
     def feed(ns: List[Int]): Unit ! Async = ns match {
       case n :: rest => jobs.send(n).flatMap(_ => feed(rest))
-      case Nil => Async.delay(jobs.close())
+      case Nil => Async(jobs.close())
     }
 
     val program: Int ! Async = for {
       w1 <- Async.fork(worker)
       w2 <- Async.fork(worker)
       _ <- Async.fork(feed((1 to 10).toList))
-      _ <- Async.fork(w1.join.flatMap(_ => w2.join).flatMap(_ => Async.delay(results.close())))
+      _ <- Async.fork(w1.join.flatMap(_ => w2.join).flatMap(_ => Async(results.close())))
       sum <- results.source.runFold(0)(_ + _)
     } yield sum
 
-    assertEquals(Eff.runAsync(program), 385)
+    assertEquals(program.runWith, 385)
   }
 }

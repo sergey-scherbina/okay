@@ -51,7 +51,7 @@ final class PgIndex private[scala2] (body: PgBody) {
   /** split, embed in batches of `batch`, store (an upsert: re-adding a
    * source replaces its segments) */
   def add(sources: Seq[okay.rag.Source], budget: Int = 400, batch: Int = 32): Eff[Async, Ingest.Progress] =
-    Async.delay {
+    Async {
       given Handler[Embed] = body.embedding.handler
       given Handler[Embed + okay.Async] = Handler.union[okay.Async, Embed] // Async is the side tested: Embed has no TypeableK
       Ingest.run[okay.Async](body.store, sources, budget, batch)(_.length).runWith
@@ -59,7 +59,7 @@ final class PgIndex private[scala2] (body: PgBody) {
 
   /** the `k` segments nearest to `query`, scored on okay-rag's scale */
   def search(query: String, k: Int): Eff[Async, Seq[Scored]] =
-    Async.delay {
+    Async {
       given Handler[Embed] = body.embedding.handler
       given Handler[Embed + okay.Async] = Handler.union[okay.Async, Embed]
       Retrieve.vector[okay.Async](body.store).retrieve(query, k).runWith

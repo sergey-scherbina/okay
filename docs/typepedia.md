@@ -1034,7 +1034,7 @@ and nothing else in the library casts for that reason:
   Scala 3 type follows, so every program is stored at one row,
   `Top[+X] = Any`, and `coerce` re-types it at the concrete union
   each handler handles. This is sound because handlers split by the
-  operation's class and never by the row type, and because `Eff.run`
+  operation's class and never by the row type, and because `!.run`
   accepts only `A ! Any`. `narrow` types a Scala 2 user's
   operation as its effect's `F` right after the `ClassTag` test that
   proves it. The argument is theory ch. 13.
@@ -1053,8 +1053,8 @@ is [modules/okay-scala2.md](modules/okay-scala2.md).
 - **`Eff[-R, A]`** — a program over an open row. `R` is an
   intersection of capabilities, and `Eff` is CONTRAVARIANT in it, so a
   program needing less fits wherever more is allowed. `flatMap[R1 <: R,
-  B]` finds the shared row. `Eff.run` takes `A ! Any`, meaning
-  nothing is left to handle. `Eff.runAsync` takes `A ! Async`.
+  B]` finds the shared row. `!.run` takes `A ! Pure`, meaning
+  nothing is left to handle; `runWith` runs an `A ! Async`.
 - **`State[S]`, `Reader[E]`, `Writer[W]`, `Throws[E]`, `Async`** — each
   is a phantom capability trait, and its companion holds the operations
   and the handler. `X.run(...)` removes `X` from the row and leaves the

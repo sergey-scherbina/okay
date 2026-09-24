@@ -40,7 +40,7 @@ class TestFormFromScala2 extends munit.FunSuite {
 
   test("the form is the state of a UiApp loop") {
     val host = ScriptedHost(Event.Edited("name", "Cy"), Event.Edited("age", "5"))
-    val done = Eff.runAsync(UiApp.run(FormState.blank[Signup])(_.view)(_.edit(_))(host.host))
+    val done = UiApp.run(FormState.blank[Signup])(_.view)(_.edit(_))(host.host).runWith
     assertEquals(done.decoded, Right(Signup("Cy", 5, newsletter = false)))
     assert(host.frames.size >= 2, host.frames.size.toString)
   }

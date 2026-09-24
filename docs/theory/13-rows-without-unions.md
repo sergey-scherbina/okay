@@ -109,8 +109,8 @@ two reasons, each checked in its own place:
   operations with `TypeableK.test` (Handler.scala:41), which looks at
   the operation's class and never at the row type. So storing the
   program at `Top` changes nothing the handlers look at.
-- **Statically, `R` lists every capability.** `Eff.run` accepts only
-  `A ! Any`, so by the time the tree is walked, every operation in
+- **Statically, `R` lists every capability.** `!.run` accepts only
+  `A ! Pure`, so by the time the tree is walked, every operation in
   it has had a handler applied.
 
 A Scala 2 user's own effect follows the same pattern one level down.

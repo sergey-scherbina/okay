@@ -21,7 +21,7 @@ Contents:
 1. [Setting up the build](#1-setting-up-the-build)
 2. [A first program: `Prog`](#2-a-first-program-prog)
 3. [Several effects in one program: `Eff`](#3-several-effects-in-one-program-eff)
-3a. [okay's own names, and okay2](#3a-okays-own-names-and-okay2)
+3a. [okay's names, and okay2](#3a-okays-names-and-okay2)
 4. [Failure](#4-failure)
 5. [Your own effect](#5-your-own-effect)
 6. [Continuations: `Cont`](#6-continuations-cont)
@@ -71,6 +71,14 @@ Seq(Compile, Runtime, Test).flatMap(c => Seq(
   c / dependencyClasspathAsJars ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value)))
 ```
 
+And the prelude — okay's top-level names (`+`, `!`, `%`, `Pure`,
+`pure`, `choose`, `runChoice`, the runner `!.run`, `runWith`), a Scala
+2.13 artifact, so it is an ordinary `%%` line:
+
+```sbt
+libraryDependencies += "dev.okay" %% "okay-scala2-prelude" % "0.2.0-SNAPSHOT"
+```
+
 **okay is not on Maven Central yet.** Until it is, publish it to your
 own machine from a checkout of okay, as
 [Building a chat application](building-a-chat-app.md#1-get-the-library--it-is-not-published-yet)
@@ -78,7 +86,7 @@ describes. For this module, publishing it and what it depends on is
 enough:
 
 ```
-scripts/gate.sh "okayJVM/publishLocal; okayAsyncJVM/publishLocal; okayPlatformJVM/publishLocal; okayStreamJVM/publishLocal; okayScala2/publishLocal"
+scripts/gate.sh "okayJVM/publishLocal; okayAsyncJVM/publishLocal; okayPlatformJVM/publishLocal; okayStreamJVM/publishLocal; okayScala2/publishLocal; okayScala2Prelude/publishLocal"
 ```
 
 **The other modules** are added the same way, one line each with the
@@ -194,10 +202,11 @@ your own effects next to it, use `Eff`.
 the library's class is `Eff[R, A]`, and `R` is an intersection of
 **capabilities**, written with `+` the way okay writes a row:
 `Int ! (State[Int] + Writer[String])` for okay's
-`Int ! State % Int + Writer % String`. Both `!` and `+` are two lines
-of your own code, declared once in a package object of your project (a
-Scala 3 top-level alias is invisible to scalac 2.13, so the library
-cannot carry them for you):
+`Int ! State % Int + Writer % String`. Both come with
+`import okay.scala2._`, from the module `okay-scala2-prelude` (section
+1): a package object compiled by scalac 2.13 itself, because a Scala 3
+top-level alias is invisible to the TASTy reader. It declares exactly
+these, with `type Pure = Any` for the row that needs nothing:
 
 ```scala
 type +[R, S] = R with S
@@ -226,12 +235,12 @@ One place the aliases do NOT go: a PARAMETER whose row has a type
 variable to infer. scalac 2 does not look through an alias to solve
 `R`: given `def countFrom[R, A](p: A ! (State[Int] + R))`, a call
 solves `R` as the WHOLE row, `State[Int]` included, so the handler
-leaves `State` in place and the program never reaches `Eff.run`. Spell
+leaves `State` in place and the program never reaches `!.run`. Spell
 that parameter with the class and `with` — the result may keep the
 aliases:
 
 ```scala
-def countFrom[R, A](p: Eff[State[Int] with R, A]): (Int, A) ! R = State.run[Int, R, A](0)(p)
+def countFrom[R, A](p: Eff[State[Int] with R, A]): (Int, A) ! R = State.handle[Int, A, R](0)(p)
 ```
 
 It then takes a program whose row has `State[Int]` first, in the
@@ -243,11 +252,11 @@ The capabilities:
 
 | capability | operations | handler |
 |---|---|---|
-| `State[S]` | `State.get`, `State.put`, `State.modify` | `State.run(initial)(prog)` gives `(finalState, answer)` |
+| `State[S]` | `State.get`, `State.set`, `State.modify` | `State.handle(initial)(prog)` gives `(finalState, answer)` |
 | `Reader[E]` | `Reader.ask` | `Reader.run(env)(prog)` |
-| `Writer[W]` | `Writer.tell` | `Writer.run(prog)` gives `(Vector[W], answer)` |
-| `Throws[E]` | `Throws.raise` | `Throws.run(prog)` gives `Either[E, answer]` |
-| `Async` | `Async.delay`, `Async.attempt`, `fork`, `sleep`, ... | `Eff.runAsync(prog)` |
+| `Writer[W]` | `Writer.tell` | `Writer.run(prog)` gives `(Seq[W], answer)`; `Writer.collect` a `Vector` |
+| `Throws[E]` | `Throws.raise` | `Throws.runEither(prog)` gives `Either[E, answer]` |
+| `Async` | `Async(a)`, `Async.attempt`, `Async.catching`, `fork`, `sleep`, ... | `prog.runWith` |
 
 A function that needs one capability is declared with just that one.
 `Eff` is contravariant in `R`, so such a program fits any wider row
@@ -255,12 +264,12 @@ without conversion. Here `count` needs only `State` and is used inside
 a program that also needs `Writer`:
 
 ```scala
-def count(word: String): Unit ! State[Map[String, Int]] =
+def count(word: String): Map[String, Int] ! State[Map[String, Int]] =
   State.modify[Map[String, Int]](m => m.updated(word, m.getOrElse(word, 0) + 1))
 
 def countAll(text: String): Int ! (State[Map[String, Int]] + Writer[String]) = {
   val words = text.split("\\s+").toList.filter(_.nonEmpty)
-  words.foldLeft(Eff.pure(0): Int ! (State[Map[String, Int]] + Writer[String])) { (acc, w) =>
+  words.foldLeft(pure(0): Int ! (State[Map[String, Int]] + Writer[String])) { (acc, w) =>
     for {
       n <- acc
       _ <- count(w)
@@ -269,7 +278,7 @@ def countAll(text: String): Int ! (State[Map[String, Int]] + Writer[String]) = {
   }
 }
 
-val (log, (counts, total)) = Eff.run(Writer.run(State.run(Map.empty[String, Int])(countAll("a b a"))))
+val (log, (counts, total)) = !.run(Writer.run(State.handle(Map.empty[String, Int])(countAll("a b a"))))
 assertEquals(total, 3)
 assertEquals(counts, Map("a" -> 2, "b" -> 1))
 assertEquals(log, Vector("saw a", "saw b", "saw a"))
@@ -277,11 +286,11 @@ assertEquals(log, Vector("saw a", "saw b", "saw a"))
 
 How to read the last line from the inside out:
 
-- `State.run(Map.empty)(...)` handles `State`. It leaves an
+- `State.handle(Map.empty)(...)` handles `State`. It leaves an
   `(Map[String, Int], Int) ! Writer[String]`.
 - `Writer.run` handles `Writer`. It leaves
-  `(Vector[String], (Map[String, Int], Int)) ! Any`.
-- `Eff.run` accepts only `Eff[Any, _]`, meaning nothing left to handle.
+  `(Seq[String], (Map[String, Int], Int)) ! Pure`.
+- `!.run` accepts only `A ! Pure`, meaning nothing left to handle.
 
 scalac 2.13 infers what each handler leaves; no type arguments are
 needed. **The order of the handlers is meaningful.** Here is the same
@@ -295,31 +304,33 @@ def withdraw(amount: Int): Int ! (Reader[Config] + State[Int] + Throws[String]) 
   balance <- State.get[Int]
   _ <- if (amount > cfg.limit) Throws.raise[String, Unit]("over the limit")
        else if (amount > balance) Throws.raise[String, Unit]("insufficient funds")
-       else State.put(balance - amount)
+       else State.set(balance - amount)
   left <- State.get[Int]
 } yield left
 
 def attempt(amount: Int): (Int, Either[String, Int]) =
-  Eff.run(State.run(100)(Throws.run(Reader.run(Config(limit = 50))(withdraw(amount)))))
+  !.run(State.handle(100)(Throws.runEither(Reader.run(Config(limit = 50))(withdraw(amount)))))
 
 assertEquals(attempt(30), (70, Right(70)))
 assertEquals(attempt(80), (100, Left("over the limit")))
 ```
 
 `Throws` is handled INSIDE `State`, so a failed withdrawal still
-reports the balance. If you swap them, `Throws.run(State.run(100)(...))`,
+reports the balance. If you swap them, `Throws.runEither(State.handle(100)(...))`,
 the answer becomes `Either[String, (Int, Int)]`, and the state is lost
 on failure (`TestScala2Guide`, "the handler order decides what a
 failure keeps"). That is the standard reading of handler order in effect
 systems, and okay's Scala 3 API behaves the same way.
 
-## 3a. okay's own names, and okay2
+## 3a. okay's names, and okay2
 
 This module is a door from Scala 2 into the Scala 3 world. Its sibling
 `okay2` (docs/okay2.md) is okay itself on pure Scala 2, smaller by
-default, for code that must not depend on Scala 3 at all. Both answer
-to okay's names, so a program written with them compiles through this
-facade and against okay2 alike:
+default, for code that must not depend on Scala 3 at all. Both speak
+okay's names — `State.handle`/`set`/`modify`, `Writer.run`/`collect`,
+`Throws.runEither`, `Reader.run`, `Choose.choose`/`runChoice`, `Logic`,
+`Async(a)`, `pure`, `!.run` — so a program written here compiles
+against okay2 with the same lines:
 
 ```scala
   def step(limit: Int): Int ! (Reader[Int] + State[Int] + Throws[String]) = for {
@@ -331,14 +342,14 @@ facade and against okay2 alike:
 ```
 
 ```scala
-    assertEquals(Eff.run(State.handle(0)(Throws.runEither(Reader.run(5)(twice)))), (2, Right(102)))
+    assertEquals(!.run(State.handle(0)(Throws.runEither(Reader.run(5)(twice)))), (2, Right(102)))
 ```
 
-Only the runner changes on okay2: `!.run` in place of `Eff.run`. The
-facade's own names stay beside okay's — `State.run` is `State.handle`,
-`State.put` is `State.set` answering `()`, `Writer.run` is
-`Writer.collect`, `Throws.run` is `Throws.runEither`, `Choose.from`/`all`
-are `Choose.choose`/`runChoice`, `Async.delay` is `Async(a)`.
+The runner is the same too: `!.run`, and `p.runWith` for an `Async`
+program. What stays different is the build (this module reads Scala 3
+through the TASTy reader; okay2 has no Scala 3 at all) and a user's own
+effect (section 5: `object Console extends Effect[Console]` here, a
+`Row` with an `Op` member on okay2).
 
 ## 4. Failure
 
@@ -347,13 +358,14 @@ There are two kinds of failure, and they differ in one way:
 - **`Throws[E]` is a typed failure.** It shows in the row, and code
   cannot forget to handle it: a program with `Throws` left in its row
   does not compile when you run it (see section 10).
-- **Exceptions.** `Prog.delay` and `Async.attempt` turn a thrown
-  exception into a failure value (`Throws[Throwable]`). `Async.delay`
-  does not: an exception thrown inside it propagates out of
-  `Eff.runAsync`. The same goes for an exception thrown from a function
-  you pass to `map` or `flatMap`. Wrap code that may throw in
-  `attempt`/`delay` at the point where you want the failure to become a
-  value. All four behaviours are pinned in `TestScala2Guide` ("§4").
+- **Exceptions.** `Prog.delay` and `Async.catching` turn a thrown
+  exception into a failure value (`Throws[Throwable]`), and
+  `Async.attempt(prog)` runs a program on its own fiber and answers
+  what it threw as a `Left`. `Async(a)` does not: an exception thrown
+  inside it propagates out of `runWith`. The same goes for an
+  exception thrown from a function you pass to `map` or `flatMap`.
+  Wrap code that may throw in `catching`/`delay` at the point where
+  you want the failure to become a value. All four behaviours are pinned in `TestScala2Guide` ("§4").
 
 ## 5. Your own effect
 
@@ -390,7 +402,7 @@ val program: Option[String] ! Effect[KV] = for {
 } yield v.map(_.toUpperCase)
 
 val store = scala.collection.mutable.Map.empty[String, String]
-assertEquals(KV.run(program)(a => Eff.pure(a))(inMemory(store)), Some("SCALA"))
+assertEquals(KV.run(program)(a => pure(a))(inMemory(store)), Some("SCALA"))
 assertEquals(store.toMap, Map("lang" -> "scala"))
 ```
 
@@ -410,7 +422,7 @@ def dryRun[R, B]: Handler[KV, R, B] = new Handler[KV, R, B] {
     case Put(key, value) => log += ("put " + key + "=" + value); k(())
   }
 }
-assertEquals(KV.run(program)(a => Eff.pure(a))(dryRun), None)
+assertEquals(KV.run(program)(a => pure(a))(dryRun), None)
 assertEquals(log.toList, List("put lang=scala", "get lang"))
 ```
 
@@ -457,10 +469,10 @@ way, are tested from 2.13.
 ```scala
 val words: Source[String] = Source("the", "quick", "brown", "fox", "jumps")
 val lengths: Vector[Int] ! Async = words.filter(_.length > 3).map(_.length).runCollect
-assertEquals(Eff.runAsync(lengths), Vector(5, 5, 5))
+assertEquals(lengths.runWith, Vector(5, 5, 5))
 
 val total: Int ! Async = words.zipWithIndex.take(3).runFold(0) { case (acc, (w, _)) => acc + w.length }
-assertEquals(Eff.runAsync(total), 13)
+assertEquals(total.runWith, 13)
 ```
 
 - Constructors: `Source(...)`, `fromIterable`, `range`, `unfold`,
@@ -469,7 +481,7 @@ assertEquals(Eff.runAsync(total), 13)
   `drop`, `zipWithIndex`, `++`, and `merge`, which reads two sources
   at once.
 - Consumers: `runCollect`, `runForeach`, `runFold`. Each returns an
-  `Eff[Async, _]`, so nothing runs until `Eff.runAsync`.
+  `Eff[Async, _]`, so nothing runs until `runWith`.
 - A source can also be written as a program:
   `Source.fromEff(e: Unit ! (Writer[A] + Async))`, where each
   `Writer.tell` emits an element. `toEff` converts back.
@@ -489,23 +501,23 @@ val results = Channel[Int](8)
 
 def worker: Unit ! Async = jobs.receive.flatMap {
   case Some(n) => results.send(n * n).flatMap(_ => worker)
-  case None => Eff.pure(())
+  case None => pure(())
 }
 
 def feed(ns: List[Int]): Unit ! Async = ns match {
   case n :: rest => jobs.send(n).flatMap(_ => feed(rest))
-  case Nil => Async.delay(jobs.close())
+  case Nil => Async(jobs.close())
 }
 
 val program: Int ! Async = for {
   w1 <- Async.fork(worker)
   w2 <- Async.fork(worker)
   _ <- Async.fork(feed((1 to 10).toList))
-  _ <- Async.fork(w1.join.flatMap(_ => w2.join).flatMap(_ => Async.delay(results.close())))
+  _ <- Async.fork(w1.join.flatMap(_ => w2.join).flatMap(_ => Async(results.close())))
   sum <- results.source.runFold(0)(_ + _)
 } yield sum
 
-assertEquals(Eff.runAsync(program), 385)
+assertEquals(program.runWith, 385)
 ```
 
 `results.source` reads the channel as a `Source` that ends when the
@@ -620,31 +632,31 @@ val users = scala.collection.concurrent.TrieMap(1 -> User(1, "ada"))
 
 val routes: Request => Response ! Async = Routes {
   case GET(Path("users", id)) =>
-    Async.delay(users.get(id.toInt) match {
+    Async(users.get(id.toInt) match {
       case Some(u) => Response.json(u)
       case None => Response.text("no user " + id, 404)
     })
   case r @ POST(Path("users")) =>
     Requests.json[User](r) match {
-      case Right(u) => Async.delay { users.put(u.id, u); Response.json(u, 201) }
-      case Left(e) => Eff.pure(Response.text(e, 400))
+      case Right(u) => Async { users.put(u.id, u); Response.json(u, 201) }
+      case Left(e) => pure(Response.text(e, 400))
     }
   case r @ GET(Path("search")) =>
-    Eff.pure(Response.text("q=" + Requests.query(r, "q").getOrElse("") + " tags=" + Requests.queryAll(r, "tag").mkString(",")))
+    pure(Response.text("q=" + Requests.query(r, "q").getOrElse("") + " tags=" + Requests.queryAll(r, "tag").mkString(",")))
 }
 ```
 
 A handler is an ordinary function `Request => Response ! Async`, so
-it can be tested without a socket: `Eff.runAsync(routes(Request.get("/users/1")))`.
+it can be tested without a socket: `routes(Request.get("/users/1")).runWith`.
 A request no case matches gets a 404.
 
 Serving, and calling it back, from the same file's live suite:
 
 ```scala
 val client = Client()
-val got = Eff.runAsync(Server.use(0)(routes) { port =>
+val got = (Server.use(0)(routes) { port =>
   client.get("http://127.0.0.1:" + port + "/users/1").map(r => (r.status, r.text))
-})
+}).runWith
 assertEquals(got, (200, """{"id":1,"name":"ada"}"""))
 ```
 
@@ -691,7 +703,7 @@ val prog = for {
   b <- db.updateOf("INSERT INTO person (id, full_name, age) VALUES (?, ?, ?)", Person(2, "Charles Babbage", 79))
   people <- db.all[Person]("SELECT * FROM person ORDER BY id")
 } yield (a + b, people)
-assertEquals(Eff.runAsync(Throws.run(prog)), Right((2L, Vector(Person(1, "Ada Lovelace", 36), Person(2, "Charles Babbage", 79)))))
+assertEquals(Throws.runEither(prog).runWith, Right((2L, Vector(Person(1, "Ada Lovelace", 36), Person(2, "Charles Babbage", 79)))))
 ```
 
 - `Db.jdbc(connection)` goes over a JDBC connection, which the caller
@@ -705,7 +717,7 @@ assertEquals(Eff.runAsync(Throws.run(prog)), Right((2L, Vector(Person(1, "Ada Lo
 - **A row that does not decode is data, not a throw.** In `rows` (a
   stream) it is a `Left(Bad)`. In `all` the first one fails the
   program as a typed `Throws[Bad]`, so `all` answers
-  `Vector[A] ! (Async + Throws[Bad])`, and `Throws.run` turns
+  `Vector[A] ! (Async + Throws[Bad])`, and `Throws.runEither` turns
   that into an `Either`.
 - **`db.transaction()(tx => ...)`** commits when the body completes and
   rolls back when it fails. Underneath is okay-sql's `Typed.transact`
@@ -765,7 +777,7 @@ val model = Model.scriptedCalls(
   ("let me look", Seq("search" -> """{"query":"okay","limit":3}""")),
   ("found 3 hits", Seq.empty))
 val chat = Chat(model, tools, Policy.all)
-assertEquals(Eff.runAsync(chat.say("find okay")), "found 3 hits")
+assertEquals(chat.say("find okay").runWith, "found 3 hits")
 assertEquals(searched.toList, List(SearchArgs("okay", Some(3))))
 assertEquals(results(chat), Seq("3 hits for 'okay'"))
 ```
@@ -816,7 +828,7 @@ def update(n: Int, e: Event): Int = e match {
 
 ```scala
 val host = ScriptedHost(Event.Pressed("inc"), Event.Pressed("inc"), Event.Pressed("dec"), Event.Pressed("nope"))
-assertEquals(Eff.runAsync(UiApp.run(0)(view)(update)(host.host)), 1)
+assertEquals(UiApp.run(0)(view)(update)(host.host).runWith, 1)
 assertEquals(host.frames, Vector(view(0), view(1), view(2), view(1)))
 ```
 
@@ -870,7 +882,7 @@ and as the state of a `UiApp` loop, from the same file:
 
 ```scala
 val host = ScriptedHost(Event.Edited("name", "Cy"), Event.Edited("age", "5"))
-val done = Eff.runAsync(UiApp.run(FormState.blank[Signup])(_.view)(_.edit(_))(host.host))
+val done = UiApp.run(FormState.blank[Signup])(_.view)(_.edit(_))(host.host).runWith
 assertEquals(done.decoded, Right(Signup("Cy", 5, newsletter = false)))
 ```
 
@@ -904,8 +916,8 @@ val counting: WsSession = WsSession.fold(0) {
 and served, then talked to, from the same file's live suite:
 
 ```scala
-val routes = Routes { case GET(Path("health")) => Eff.pure(Response.text("ok")) }
-val got = Eff.runAsync(WsServer.use(0)(routes)({ case _ => counting }) { port =>
+val routes = Routes { case GET(Path("health")) => pure(Response.text("ok")) }
+val got = (WsServer.use(0)(routes)({ case _ => counting }) { port =>
   for {
     ws <- WebSocket.connect("ws://127.0.0.1:" + port + "/count")
     _ <- ws.sendText("x")
@@ -914,7 +926,7 @@ val got = Eff.runAsync(WsServer.use(0)(routes)({ case _ => counting }) { port =>
     _ <- ws.close()
     health <- Client().get("http://127.0.0.1:" + port + "/health")
   } yield (replies, health.text)
-})
+}).runWith
 assertEquals(got, (Vector("1: x", "2: y"), "ok"))
 ```
 
@@ -942,43 +954,43 @@ assertEquals(got, (Vector("1: x", "2: y"), "ok"))
 ## 8h. Nondeterminism and search
 
 `Choose` is one more capability of `Eff`: a program that performs
-`Choose.from(...)` has several answers, and a handler decides what they
+`Choose.choose(...)` has several answers, and a handler decides what they
 mean. It is okay's own `Choose` and `Logic` underneath. The code below is
 copied from `scala2/okay-scala2/probe/src/test/scala/TestChooseFromScala2.scala`:
 
 ```scala
 val triples = for {
-  a <- Choose.from(1 to 13: _*)
-  b <- Choose.from(a to 13: _*)
-  c <- Choose.from(b to 13: _*)
+  a <- Choose.choose(1 to 13: _*)
+  b <- Choose.choose(a to 13: _*)
+  c <- Choose.choose(b to 13: _*)
   _ <- Choose.guard(a * a + b * b == c * c)
 } yield (a, b, c)
-assertEquals(Eff.run(Choose.all(triples)), Seq((3, 4, 5), (5, 12, 13), (6, 8, 10)))
+assertEquals(!.run(Choose.runChoice(triples)), Seq((3, 4, 5), (5, 12, 13), (6, 8, 10)))
 ```
 
 ```scala
 // the naturals from n, as an infinite search
-def nats(n: Int): Int ! Choose = Choose.from(true, false).flatMap(stop => if (stop) Eff.pure(n) else nats(n + 1))
+def nats(n: Int): Int ! Choose = Choose.choose(true, false).flatMap(stop => if (stop) pure(n) else nats(n + 1))
 ```
 
 ```scala
-val fair = Choose.interleave(nats(0), Choose.from(100, 200))
-val got = Eff.run(Choose.first(6)(fair))
+val fair = Logic.interleave(nats(0), Choose.choose(100, 200))
+val got = !.run(Logic.observe(6)(fair))
 assert(got.contains(100) && got.contains(200), got.toString)
 ```
 
-- **Handlers:** `Choose.all` (every answer), `Choose.first(n)` (lazily,
-  so the search may be infinite), `Choose.cut` (commit to the first
-  answer), `Choose.ifte` (the soft cut: the else branch runs only when
+- **Handlers:** `Choose.runChoice` (every answer), `Logic.observe(n)` (lazily,
+  so the search may be infinite), `Logic.cut` (commit to the first
+  answer), `Logic.ifte` (the soft cut: the else branch runs only when
   the condition has no answer).
-- **Fair search:** `Choose.interleave` and `Choose.fairBind`. A plain
+- **Fair search:** `Logic.interleave` and `Logic.fairBind`. A plain
   `flatMap` over an infinite branch never reaches the second branch;
   these take turns.
 - **The handler order is the design, as everywhere in okay.** With
   `State` handled INSIDE the search, each branch has its own state. With
   it handled OUTSIDE, all branches share one:
-  `Choose.all(State.run(0)(prog))` is `Seq((1, 1), (2, 2))`, while
-  `State.run(0)(Choose.all(prog))` is `(3, Seq(1, 3))`.
+  `Choose.runChoice(State.handle(0)(prog))` is `Seq((1, 1), (2, 2))`, while
+  `State.handle(0)(Choose.runChoice(prog))` is `(3, Seq(1, 3))`.
 - **Search over samples:** `Search.bestOf(n)(gen)(ok)` runs `gen` up to
   `n` times and stops at the first result that passes, which is how "ask
   the model until the JSON parses" is written: `gen` can be `chat.say(...)`.
@@ -1000,7 +1012,7 @@ val greet: String ! Dialog = for {
       case Event.Edited(_, name) => "hi " + name
       case _ => "hi"
     }
-    case _ => Eff.pure("bye")
+    case _ => pure("bye")
   }
 } yield answer
 ```
@@ -1037,7 +1049,7 @@ copied from `scala2/okay-scala2/probe/src/test/scala/TestResilienceFromScala2.sc
 ```scala
 val b = new Breaker("pay", 2, 60000L)
 val runs = new AtomicInteger
-val failing = Async.delay[Int] { runs.incrementAndGet(); throw new IllegalStateException("down") }
+val failing = Async[Int] { runs.incrementAndGet(); throw new IllegalStateException("down") }
 assert(outcome(Guards.breaker(b)(failing)).isLeft)
 assert(outcome(Guards.breaker(b)(failing)).isLeft)
 outcome(Guards.breaker(b)(failing)) match {
@@ -1049,11 +1061,11 @@ assertEquals(runs.get, 2)
 
 ```scala
 val calls = new AtomicInteger
-val flaky = Async.delay { if (calls.incrementAndGet() < 3) throw new IllegalStateException("not yet") else "ok" }
-assertEquals(Eff.runAsync(Guards.retry(okay.Retry.immediate(5))(flaky)), "ok")
+val flaky = Async { if (calls.incrementAndGet() < 3) throw new IllegalStateException("not yet") else "ok" }
+assertEquals(Guards.retry(okay.Retry.immediate(5))(flaky).runWith, "ok")
 ```
 
-(`outcome(e)` there is `scala.util.Try(Eff.runAsync(e)).toEither`.)
+(`outcome(e)` there is `scala.util.Try(e.runWith).toEither`.)
 
 - The pieces compose by nesting, like the programs they wrap:
   `Guards.breaker(b)(Guards.bulkhead(h)(Guards.limiter(l, key)(call)))`.
@@ -1093,11 +1105,11 @@ typed.append("acct-1".getBytes, Deposit("acct-1", 100), Ack.Durable)
 
 ```scala
 val prog = for {
-  writer <- Async.fork(Async.sleep(30).flatMap(_ => Async.delay { t.append("k".getBytes, "1".getBytes, Ack.Durable); t.append("k".getBytes, "2".getBytes, Ack.Durable); () }))
+  writer <- Async.fork(Async.sleep(30).flatMap(_ => Async { t.append("k".getBytes, "1".getBytes, Ack.Durable); t.append("k".getBytes, "2".getBytes, Ack.Durable); () }))
   seen <- Persist.tail(t, 0, 0L, pollMillis = 5).map(r => new String(r.value)).take(3).runCollect
   _ <- writer.join
 } yield seen
-assertEquals(Eff.runAsync(prog), Vector("0", "1", "2"))
+assertEquals(prog.runWith, Vector("0", "1", "2"))
 ```
 
 - `Persist.topic(store, name, partitions = 1)`: `Store.topic` is a
@@ -1133,7 +1145,7 @@ def transfer(from: TRef[Int], to: TRef[Int], amount: Int): Unit ! Tx = for {
 ```scala
 val a = Stm.ref(100)
 val b = Stm.ref(0)
-Eff.runAsync(Stm.atomically(transfer(a, b, 30)))
+Stm.atomically(transfer(a, b, 30)).runWith
 assertEquals((a.get, b.get), (70, 30))
 ```
 
@@ -1148,14 +1160,14 @@ val prog = for {
   _ <- Stm.atomically(Tx.write(account, 80))
   _ <- waiting.join
 } yield (account.get, out.get)
-assertEquals(Eff.runAsync(prog), (30, 50))
+assertEquals(prog.runWith, (30, 50))
 ```
 
 - `Tx.orElse(a, b)` runs `a`, and if `a` retries, runs `b` instead.
   `a`'s writes are discarded as if it never ran. If `b` retries too,
   the whole transaction waits on what either branch read.
 - A transaction's row is `Tx` alone, so an `Async` inside it is a type
-  error: `Stm.atomically(Async.delay(println(1)))` does not compile. A
+  error: `Stm.atomically(Async(println(1)))` does not compile. A
   conflict re-runs the transaction, and I/O must not run twice.
 - On the JVM `atomically` is okay-stm's TL2 strategy: a version per
   cell, validation on every read, a commit that never blocks.
@@ -1191,7 +1203,7 @@ val prog = for {
   y <- b.join
   cached <- Caches.get(cache, "hello")
 } yield (x, y, cached)
-assertEquals(Eff.runAsync(prog), (5, 5, Some(5)))
+assertEquals(prog.runWith, (5, 5, Some(5)))
 assertEquals(loads.get, 1)
 ```
 
@@ -1266,7 +1278,7 @@ has:
 ```scala
 val server = Llm.transport((_, _, _) => Source(openAiLine("4"), "", openAiLine("2"), "", "data: [DONE]", ""))
 val answer = Llm.openAi(server, "key", "gpt-test", Seq("user" -> "6 * 7?")).runFold("")(_ + _)
-assertEquals(Eff.runAsync(answer), "42")
+assertEquals(answer.runWith, "42")
 ```
 
 `Llm.anthropic(transport, apiKey, model, messages)` is the same for
@@ -1277,7 +1289,7 @@ provider that bills by generated tokens is told to stop:
 
 ```scala
 val point = Llm.first[Point](Llm.openAi(server, "key", "gpt-test", Seq("user" -> "a point")))
-assertEquals(Eff.runAsync(point), Some(Point(1, 2)))
+assertEquals(point.runWith, Some(Point(1, 2)))
 assert(pulled.get < 10, s"pulled ${pulled.get} tokens from an endless stream")
 ```
 
@@ -1340,7 +1352,7 @@ val prog = for {
   sum <- client.call("add", "{\"a\": 2, \"b\": 40}")
   _ <- server.cancel
 } yield (client.server, listed.map(_.name), listed.head.schema.contains("\"b\""), sum)
-assertEquals(Eff.runAsync(prog), (Some(("calc", "1.0")), Seq("add"), true, "42"))
+assertEquals(prog.runWith, (Some(("calc", "1.0")), Seq("add"), true, "42"))
 ```
 
 - `McpServer.run(link, name, version, tools, resources)` serves until the
@@ -1491,13 +1503,13 @@ not made twice. From `TestDurableAgentFromScala2.scala`:
 
 ```scala
 val first = Chat(script, tools, Policy.all, journal = Some(journal))
-assertEquals(Eff.runAsync(first.say("pay ada")), "paid")
+assertEquals(first.say("pay ada").runWith, "paid")
 assertEquals(payments, 1)
 ```
 
 ```scala
 val second = Chat(script, tools, Policy.all, journal = Some(journal))
-assertEquals(Eff.runAsync(second.say("pay ada")), "paid")
+assertEquals(second.say("pay ada").runWith, "paid")
 assertEquals(payments, 1)
 ```
 
@@ -1525,9 +1537,9 @@ for the answer:
 
 ```scala
 val counter: (Int, Msg) => Int ! Async = {
-  case (n, Add(k)) => Eff.pure(n + k)
-  case (n, Get(reply)) => Async.delay { reply(n); n }
-  case (_, Boom) => Async.delay(throw new IllegalStateException("boom"))
+  case (n, Add(k)) => pure(n + k)
+  case (n, Get(reply)) => Async { reply(n); n }
+  case (_, Boom) => Async(throw new IllegalStateException("boom"))
 }
 ```
 
@@ -1540,7 +1552,7 @@ val prog = for {
   _ <- Actors.stop(actor)
   after <- Actors.tell(actor, Add(1))
 } yield (total, after)
-assertEquals(Eff.runAsync(prog), (Some(5), false))
+assertEquals(prog.runWith, (Some(5), false))
 ```
 
 A behaviour that throws stops the actor, unless it was spawned with a
@@ -1561,8 +1573,8 @@ relayed <- Outboxes.relayOnce(outbox, db, store)
 ```
 
 ```scala
-first <- Outboxes.once(inbox, db, "msg-1")(Async.delay { handled += 1; "done" })
-second <- Outboxes.once(inbox, db, "msg-1")(Async.delay { handled += 1; "done" })
+first <- Outboxes.once(inbox, db, "msg-1")(Async { handled += 1; "done" })
+second <- Outboxes.once(inbox, db, "msg-1")(Async { handled += 1; "done" })
 ```
 
 `db` is okay-scala2-sql's `Db` (section 8c). Call `enqueue` inside its
@@ -1580,7 +1592,7 @@ val work: Int ! Writer[Log.Line] = for {
   _ <- Logs.info("started", "job" -> "42")
   _ <- Logs.failure("failed", new IllegalStateException("disk"))
 } yield 7
-val answer = Eff.run(Logs.to[Any, Int](l => lines += l, Log.Level.Info, () => 1000L)(work))
+val answer = !.run(Logs.to[Any, Int](l => lines += l, Log.Level.Info, () => 1000L)(work))
 ```
 
 `Tracing.span(tracer, name, attrs*)(program)` runs a program inside a
@@ -1592,10 +1604,10 @@ in the HTTP facade's terms (section 8b), and a RED meter (rate, errors,
 duration) around any routes:
 
 ```scala
-val health = Eff.runAsync(Operations.routes(store)(Request.get("/healthz")))
+val health = Operations.routes(store)(Request.get("/healthz")).runWith
 assertEquals((health.status, health.text), (200, "live=true"))
 val red = new Red("api")
-val app = Operations.measured(red, _ => "hello") { case _ => Eff.pure(Response.text("hi")) }
+val app = Operations.measured(red, _ => "hello") { case _ => pure(Response.text("hi")) }
 ```
 
 `Operations.admitted(lifecycle)(routes)` refuses new requests once
@@ -1618,7 +1630,7 @@ Postgres' own, with numbered placeholders (`$1, $2`) where JDBC writes
 |---|---|
 | `A ! State % Int + Writer % String` (no parentheses: `!` binds loosest) | `A ! (State[Int] + Writer[String])` (parentheses required: one precedence for every infix type) |
 | `State.get[Int]`, `Writer.tell(w)` | the same names, on the companions in `okay.scala2` |
-| `State.run(s)(p)` / `State.handle(s)(p)` | `State.run(s)(p)`, which leaves the rest of the row |
+| `State.handle(s)(p)` / `State.handle(s)(p)` | `State.handle(s)(p)`, which leaves the rest of the row |
 | `enum KV[+A] derives Effect` | `sealed trait KV[A] extends Op[A]` + `object KV extends Effect[KV]` |
 | a handler as `F !> S`, `Effects[Free].handle` | `Handler[F, R, B]`, `KV.handle` / `KV.run` |
 | `shift` / `reset` / `Cont[A, S, R]` | `Cont.shift` / `Cont.reset` / `Cont[A, S, R]` |
@@ -1647,7 +1659,7 @@ unhandled-effect row is also pinned in `TestScala2Guide` with
 | `could not find package scala.annotation.internal` | the 3.9 stdlib is missing at compile time | append it (section 1) |
 | `NoClassDefFoundError: scala/reflect/Enum` | the 3.9 stdlib is missing at run time. On `sbt run` with everything else right, it means the `dependencyClasspathAsJars` line is missing | the whole block of section 1, both lines |
 | ``Expected `<project> / scalaVersion` to be 3.9.0 or later, but found 2.13.18`` | sbt found `scala-library:3.9.0` among the dependencies (SIP-51) | exclude it on the dependency (section 1); do NOT reach for `allowUnsafeScalaLibUpgrade`, which makes 3.9 the compile stdlib and gives the second error of this table |
-| `type mismatch` ... `required: okay.scala2.Eff[okay.scala2.State[Int] with Any,?]` (for a program over `State[Int] + Writer[String]` passed straight to `Eff.run(State.run(1)(...))`) | an effect is left unhandled (here `Writer`); scalac reports it at the handler, not at the missing one | handle it before `Eff.run` |
+| `type mismatch` ... `required: okay.scala2.Eff[okay.scala2.State[Int] with Any,?]` (for a program over `State[Int] + Writer[String]` passed straight to `!.run(State.handle(1)(...))`) | an effect is left unhandled (here `Writer`); scalac reports it at the handler, not at the missing one | handle it before `Eff.run` |
 | `a type was inferred to be Any` at `X.handle(...)` | `handle` used for the last effect | use `X.run(...)` (section 5) |
 | `Unsupported Scala 3 union in bounds of type +; found in object okay.Effects$package` (at your `package` line) | code names a Scala 3 class whose CONSTRUCTOR mentions an effect row, such as `okay.http.Response`; or code writes `new` for a class whose METHODS do, such as `new okay.docs.TopicDocs[A](topic)`, because `new` makes the reader complete the whole class | use the `okay.scala2` type (`okay.scala2.Response`), or its factory (`Documents.onTopic`) — a factory that answers the class is fine: `Fs(root)` works where `new TopicDocs` does not |
 | `Unsupported Scala 3 generic tuple type scala.Tuple` | code names okay-http's `Route` | route by pattern matching (section 8b) |

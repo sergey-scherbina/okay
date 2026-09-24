@@ -13,7 +13,7 @@ object DialogModel {
         case Event.Edited(_, name) => "hi " + name
         case _ => "hi"
       }
-      case _ => Eff.pure("bye")
+      case _ => pure("bye")
     }
   } yield answer
 
@@ -58,13 +58,13 @@ class TestDialogNavFromScala2 extends munit.FunSuite {
 
   test("a scenario runs on a host") {
     val host = ScriptedHost(Event.Pressed("yes"), Event.Edited("name", "bo"))
-    assertEquals(Eff.runAsync(Dialog.run(host.host)(greet)), Some("hi bo"))
+    assertEquals(Dialog.run(host.host)(greet).runWith, Some("hi bo"))
     assertEquals(host.frames.size, 2)
   }
 
   test("screens as a stack, run by the ordinary UiApp loop") {
     val host = ScriptedHost(Event.Pressed("open"), Event.Pressed("inc"), Event.Pressed("inc"))
-    val stack = Eff.runAsync(UiApp.run(Nav.state(list))(Nav.view)(Nav.update)(host.host))
+    val stack = UiApp.run(Nav.state(list))(Nav.view)(Nav.update)(host.host).runWith
     assertEquals(stack.size, 2)
     assertEquals(Nav.view(stack), counter.step(Event.Pressed("inc")) match {
       case Nav.Stay(s) => s.step(Event.Pressed("inc")) match { case Nav.Stay(s2) => s2.view; case other => fail(other.toString) }

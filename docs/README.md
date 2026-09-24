@@ -310,6 +310,7 @@ API reference, gotchas.
 | [`okay-clojure`](modules/okay-clojure.md) | Clojure from okay, and a Stage IS a Clojure transducer, both ways |
 | [`okay-frege`](modules/okay-frege.md) | Frege (a Haskell for the JVM) programs as okay programs — a thin Frege monad over okay's effects; multi-shot, no threads |
 | [`okay-scala2`](modules/okay-scala2.md) | okay from Scala 2.13: `Prog`, a fixed-row program type the 2.13 TASTy reader can read, and the two-stdlib classpath it needs |
+| [`okay-scala2-prelude`](modules/okay-scala2-prelude.md) | okay's top-level names for Scala 2.13 — `+`, `!`, `%`, `Pure`, `pure`, `choose`, `runChoice`, `!.run`, `runWith` — a package object compiled by scalac 2.13 |
 | [`okay-scala2-codec`](modules/okay-scala2-codec.md) | okay-codec from Scala 2.13: `Schemas.productN`/`sum` in place of `derives Schema`, JSON as text |
 | [`okay-scala2-http`](modules/okay-scala2-http.md) | okay-http from Scala 2.13: routes as pattern matching, `Server.use`/`start`, a client |
 | [`okay-scala2-sql`](modules/okay-scala2-sql.md) | okay-sql from Scala 2.13: `Db` — rows, statements, verify and transactions as `Eff` |

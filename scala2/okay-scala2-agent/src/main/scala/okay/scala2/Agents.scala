@@ -106,7 +106,7 @@ final class Chat private (model: Model, tools: Tools, policy: Policy, maxSteps: 
   }
 
   /** one user message; the agent's final answer */
-  def say(message: String): Eff[Async, String] = Async.delay(synchronized {
+  def say(message: String): Eff[Async, String] = Async(synchronized {
     // one handler per effect, assembled along the row, as okay-agent's
     // own tests do (TestAgent.run)
     given modelH: Handler[ModelEffect] = model.handler

@@ -14,17 +14,17 @@ object HttpModel {
 
   val routes: Request => Response ! Async = Routes {
     case GET(Path("users", id)) =>
-      Async.delay(users.get(id.toInt) match {
+      Async(users.get(id.toInt) match {
         case Some(u) => Response.json(u)
         case None => Response.text("no user " + id, 404)
       })
     case r @ POST(Path("users")) =>
       Requests.json[User](r) match {
-        case Right(u) => Async.delay { users.put(u.id, u); Response.json(u, 201) }
-        case Left(e) => Eff.pure(Response.text(e, 400))
+        case Right(u) => Async { users.put(u.id, u); Response.json(u, 201) }
+        case Left(e) => pure(Response.text(e, 400))
       }
     case r @ GET(Path("search")) =>
-      Eff.pure(Response.text("q=" + Requests.query(r, "q").getOrElse("") + " tags=" + Requests.queryAll(r, "tag").mkString(",")))
+      pure(Response.text("q=" + Requests.query(r, "q").getOrElse("") + " tags=" + Requests.queryAll(r, "tag").mkString(",")))
   }
 }
 
@@ -32,7 +32,7 @@ object HttpModel {
 class TestHttpFromScala2 extends munit.FunSuite {
   import HttpModel._
 
-  def call(r: Request): Response = Eff.runAsync(routes(r))
+  def call(r: Request): Response = routes(r).runWith
 
   test("a route matches method and path, and answers JSON") {
     val r = call(Request.get("/users/1"))
@@ -68,27 +68,27 @@ class TestHttpLiveFromScala2 extends munit.FunSuite {
 
   test("Server.use serves while the body runs; the Client reads JSON back") {
     val client = Client()
-    val got = Eff.runAsync(Server.use(0)(routes) { port =>
+    val got = (Server.use(0)(routes) { port =>
       client.get("http://127.0.0.1:" + port + "/users/1").map(r => (r.status, r.text))
-    })
+    }).runWith
     assertEquals(got, (200, """{"id":1,"name":"ada"}"""))
   }
 
   test("Server.start returns a running server; close stops it") {
     val server = Server.start(0)(routes)
     try {
-      val r = Eff.runAsync(Client().postJson("http://127.0.0.1:" + server.port + "/users", User(3, "cy")))
+      val r = Client().postJson("http://127.0.0.1:" + server.port + "/users", User(3, "cy")).runWith
       assertEquals(r.status, 201)
     } finally server.close()
-    val refused = scala.util.Try(Eff.runAsync(Client().get("http://127.0.0.1:" + server.port + "/users/1")))
+    val refused = scala.util.Try(Client().get("http://127.0.0.1:" + server.port + "/users/1").runWith)
     assert(refused.isFailure, refused.toString)
   }
 
   test("a streamed response is read line by line") {
-    val lines = Routes { case GET(Path("count")) => Eff.pure(Response.lines(Source.range(1, 4).map(_.toString))) }
-    val got = Eff.runAsync(Server.use(0)(lines) { port =>
+    val lines = Routes { case GET(Path("count")) => pure(Response.lines(Source.range(1, 4).map(_.toString))) }
+    val got = (Server.use(0)(lines) { port =>
       Client().lines(Request.get("http://127.0.0.1:" + port + "/count")).runCollect
-    })
+    }).runWith
     assertEquals(got, Vector("1", "2", "3"))
   }
 }

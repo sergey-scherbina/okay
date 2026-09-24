@@ -5,7 +5,7 @@ import okay.scala2._
 /** okay.scala2.Source from Scala 2.13 (specs/scala2-facade.md, stage 4) */
 class TestSourceFromScala2 extends munit.FunSuite {
 
-  def collect[A](s: Source[A]): Vector[A] = Eff.runAsync(s.runCollect)
+  def collect[A](s: Source[A]): Vector[A] = s.runCollect.runWith
 
   test("constructors and transformations") {
     assertEquals(collect(Source(1, 2, 3).map(_ * 10)), Vector(10, 20, 30))
@@ -26,7 +26,7 @@ class TestSourceFromScala2 extends munit.FunSuite {
 
   test("a source written as an Eff that tells: nothing runs until it is run") {
     var reads = 0
-    def read(): Int ! Async = Async.delay { reads += 1; reads }
+    def read(): Int ! Async = Async { reads += 1; reads }
     val lines: Unit ! (Writer[String] + Async) = for {
       a <- read()
       _ <- Writer.tell("line " + a)
@@ -36,14 +36,14 @@ class TestSourceFromScala2 extends munit.FunSuite {
     val src = Source.fromEff(lines).map(_.toUpperCase)
     assertEquals(reads, 0)
     assertEquals(collect(src), Vector("LINE 1", "LINE 2"))
-    assertEquals(Eff.runAsync(Writer.run(src.toEff)), (Vector("LINE 3", "LINE 4"), ()))
+    assertEquals(Writer.run(src.toEff).runWith, (Vector("LINE 3", "LINE 4"), ()))
   }
 
   test("runForeach and runFold see every element in order") {
     val seen = scala.collection.mutable.ListBuffer.empty[Int]
-    Eff.runAsync(Source(3, 1, 2).runForeach(n => Async.delay { seen += n; () }))
+    Source(3, 1, 2).runForeach(n => Async { seen += n; () }).runWith
     assertEquals(seen.toList, List(3, 1, 2))
-    assertEquals(Eff.runAsync(Source(3, 1, 2).runFold("")(_ + _)), "312")
+    assertEquals(Source(3, 1, 2).runFold("")(_ + _).runWith, "312")
   }
 
   test("merge delivers both sources, whatever the interleaving") {
@@ -52,7 +52,7 @@ class TestSourceFromScala2 extends munit.FunSuite {
   }
 
   test("100 000 elements through map, filter and runFold") {
-    val n = Eff.runAsync(Source.range(0, 100000).map(_ + 1).filter(_ % 2 == 0).runFold(0L)((c, _) => c + 1))
+    val n = Source.range(0, 100000).map(_ + 1).filter(_ % 2 == 0).runFold(0L)((c, _) => c + 1).runWith
     assertEquals(n, 50000L)
   }
 }

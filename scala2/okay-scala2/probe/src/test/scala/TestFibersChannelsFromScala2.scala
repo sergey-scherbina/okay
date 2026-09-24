@@ -9,44 +9,44 @@ class TestFibersChannelsFromScala2 extends munit.FunSuite {
   test("a forked fiber runs concurrently; join answers, joinEither reports a failure") {
     val latch = new java.util.concurrent.CountDownLatch(1)
     val prog = for {
-      f <- Async.fork(Async.delay { latch.await(); 42 })
-      _ <- Async.delay(latch.countDown())
+      f <- Async.fork(Async { latch.await(); 42 })
+      _ <- Async(latch.countDown())
       n <- f.join
     } yield n
-    assertEquals(Eff.runAsync(prog), 42)
+    assertEquals(prog.runWith, 42)
 
     val boom = new IllegalStateException("boom")
     val failed = for {
-      f <- Async.fork(Async.delay[Int](throw boom))
+      f <- Async.fork(Async[Int](throw boom))
       r <- f.joinEither
     } yield r
-    assertEquals(Eff.runAsync(failed), Left(boom))
+    assertEquals(failed.runWith, Left(boom))
   }
 
   test("par answers both, race the faster, timeout None past its deadline") {
-    assertEquals(Eff.runAsync(Async.par(Async.delay(1), Async.delay("a"))), (1, "a"))
+    assertEquals(Async.par(Async(1), Async("a")).runWith, (1, "a"))
     val slow = Async.sleep(5000).map(_ => "slow")
-    assertEquals(Eff.runAsync(Async.race(slow, Async.delay("fast"))), "fast")
-    assertEquals(Eff.runAsync(Async.timeout(20)(slow)), None)
-    assertEquals(Eff.runAsync(Async.timeout(5000)(Async.delay(7))), Some(7))
+    assertEquals(Async.race(slow, Async("fast")).runWith, "fast")
+    assertEquals(Async.timeout(20)(slow).runWith, None)
+    assertEquals(Async.timeout(5000)(Async(7)).runWith, Some(7))
   }
 
   test("producer and consumer over a bounded channel: every element once, in order") {
     val ch = Channel[Int](4)
     def produce(i: Int): Unit ! Async =
-      if (i > 1000) Async.delay(ch.close())
+      if (i > 1000) Async(ch.close())
       else ch.send(i).flatMap(_ => produce(i + 1))
     def consume(acc: Vector[Int]): Vector[Int] ! Async =
       ch.receive.flatMap {
         case Some(n) => consume(acc :+ n)
-        case None => Eff.pure(acc)
+        case None => pure(acc)
       }
     val prog = for {
       p <- Async.fork(produce(1))
       got <- consume(Vector.empty)
       _ <- p.join
     } yield got
-    assertEquals(Eff.runAsync(prog), (1 to 1000).toVector)
+    assertEquals(prog.runWith, (1 to 1000).toVector)
   }
 
   test("offer does not wait: false once the channel is full") {
@@ -63,7 +63,7 @@ class TestFibersChannelsFromScala2 extends munit.FunSuite {
     assert(ch.offer("a"))
     assert(ch.offer("b"))
     ch.close()
-    assertEquals(Eff.runAsync(ch.source.map(_.toUpperCase).runCollect), Vector("A", "B"))
+    assertEquals(ch.source.map(_.toUpperCase).runCollect.runWith, Vector("A", "B"))
   }
 
   test("cancel stops a fiber that is waiting") {
@@ -72,6 +72,6 @@ class TestFibersChannelsFromScala2 extends munit.FunSuite {
       _ <- f.cancel
       r <- f.joinEither
     } yield r
-    assert(Eff.runAsync(prog).isLeft)
+    assert(prog.runWith.isLeft)
   }
 }

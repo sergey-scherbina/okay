@@ -31,7 +31,7 @@ class TestLlmFromScala2 extends munit.FunSuite {
         "")
     }
     val tokens = Llm.anthropic(server, "key-1", "claude-test", Seq("user" -> "Say hello"))
-    assertEquals(Eff.runAsync(tokens.runCollect), Vector("Hel", "lo"))
+    assertEquals(tokens.runCollect.runWith, Vector("Hel", "lo"))
     assert(asked.startsWith("https://api.anthropic.com/v1/messages key-1 "), asked)
     assert(asked.contains("\"model\":\"claude-test\"") && asked.contains("Say hello"), asked)
   }
@@ -39,7 +39,7 @@ class TestLlmFromScala2 extends munit.FunSuite {
   test("an OpenAI-style completion streams the same way") {
     val server = Llm.transport((_, _, _) => Source(openAiLine("4"), "", openAiLine("2"), "", "data: [DONE]", ""))
     val answer = Llm.openAi(server, "key", "gpt-test", Seq("user" -> "6 * 7?")).runFold("")(_ + _)
-    assertEquals(Eff.runAsync(answer), "42")
+    assertEquals(answer.runWith, "42")
   }
 
   test("a typed value is cut from the stream, and the rest is never read") {
@@ -56,7 +56,7 @@ class TestLlmFromScala2 extends munit.FunSuite {
     }
     val server = Llm.transport((_, _, _) => endless.take(50).mapConcat(line => List(line, "")))
     val point = Llm.first[Point](Llm.openAi(server, "key", "gpt-test", Seq("user" -> "a point")))
-    assertEquals(Eff.runAsync(point), Some(Point(1, 2)))
+    assertEquals(point.runWith, Some(Point(1, 2)))
     assert(pulled.get < 10, s"pulled ${pulled.get} tokens from an endless stream")
   }
 }

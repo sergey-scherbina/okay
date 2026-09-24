@@ -18,7 +18,7 @@ final class Fiber[A] private[scala2] (private val fiber: okay.Fiber[A]) {
     })
 
   /** ask it to stop (best effort: it notices between operations) */
-  def cancel: Eff[Async, Unit] = Async.delay(fiber.cancel())
+  def cancel: Eff[Async, Unit] = Async(fiber.cancel())
 }
 
 /**

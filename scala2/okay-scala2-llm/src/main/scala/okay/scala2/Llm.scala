@@ -51,10 +51,10 @@ object Llm {
    * there: the rest of the completion is never read (and never paid
    * for). None if the stream ended first. */
   def first[A](tokens: Source[String])(implicit schema: Schema[A]): Eff[Async, Option[A]] =
-    Async.delay(Structured.first[A](tokens.core))
+    Async(Structured.first[A](tokens.core))
 
   /** the same walk, with what it cost: the value, the text consumed,
    * the tokens read, and whether it stopped before the stream ended */
   def cut[A](tokens: Source[String])(implicit schema: Schema[A]): Eff[Async, Structured.Cut[A]] =
-    Async.delay(Structured.cut[A](tokens.core))
+    Async(Structured.cut[A](tokens.core))
 }

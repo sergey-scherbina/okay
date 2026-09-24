@@ -943,7 +943,9 @@ the Overview. What follows from it, and was done the same day
 - okay2 does NOT gain the facade's conveniences (`Prog`, `Search`,
   `Choose.from`/`all`, `Eff.run`): that would grow okay2 to mirror the
   facade. The difference is reduced from the facade's side instead —
-  it gained okay's names (specs/scala2-facade.md stage 20), and
+  it gained okay's names (specs/scala2-facade.md stage 20), then
+  took them as its ONLY names with a 2.13 prelude for the top level
+  (stage 21), and
   `TestFacadeVocabulary` pins the same program lines compiling here.
 - The rest of `okay2-stage2` (Stream/Fold, Prob, Sim, Validated/
   Static, Eager, Refs, HMap, Tag) is ON DEMAND, not a queue: each is

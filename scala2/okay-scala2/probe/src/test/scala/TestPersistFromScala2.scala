@@ -48,7 +48,7 @@ class TestPersistFromScala2 extends munit.FunSuite {
     Persist.topic(first, "log").append("k".getBytes, "kept".getBytes, Ack.Durable)
     first.close()
     val again = FileStore.open(dir)
-    try assertEquals(Eff.runAsync(Persist.stream(Persist.topic(again, "log"), 0, 0L).map(r => new String(r.value)).runCollect), Vector("kept"))
+    try assertEquals(Persist.stream(Persist.topic(again, "log"), 0, 0L).map(r => new String(r.value)).runCollect.runWith, Vector("kept"))
     finally again.close()
   }
 
@@ -56,10 +56,10 @@ class TestPersistFromScala2 extends munit.FunSuite {
     val t = Persist.topic(new MemoryStore, "live")
     t.append("k".getBytes, "0".getBytes, Ack.Durable)
     val prog = for {
-      writer <- Async.fork(Async.sleep(30).flatMap(_ => Async.delay { t.append("k".getBytes, "1".getBytes, Ack.Durable); t.append("k".getBytes, "2".getBytes, Ack.Durable); () }))
+      writer <- Async.fork(Async.sleep(30).flatMap(_ => Async { t.append("k".getBytes, "1".getBytes, Ack.Durable); t.append("k".getBytes, "2".getBytes, Ack.Durable); () }))
       seen <- Persist.tail(t, 0, 0L, pollMillis = 5).map(r => new String(r.value)).take(3).runCollect
       _ <- writer.join
     } yield seen
-    assertEquals(Eff.runAsync(prog), Vector("0", "1", "2"))
+    assertEquals(prog.runWith, Vector("0", "1", "2"))
   }
 }

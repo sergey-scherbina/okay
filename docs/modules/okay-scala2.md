@@ -7,7 +7,7 @@ lambdas, pattern matches) and the real library runs underneath.
 
 | | |
 |---|---|
-| `Eff[-R, A]` | a program over an OPEN row of effects, written `A ! R` with `R` an intersection of capabilities joined by `+` — two aliases the user declares once, `type +[R, S] = R with S` and `type ![A, R] = Eff[R, A]` ([scala2.md](../scala2.md), section 3): `A ! (State[Int] + Writer[String])`, parentheses included. The operations and handlers live on the capabilities' companions: `State`, `Reader`, `Writer`, `Throws`, `Async` |
+| `Eff[-R, +A]` | a program over an OPEN row of effects, written `A ! R` with `R` an intersection of capabilities joined by `+` — the aliases come from [`okay-scala2-prelude`](okay-scala2-prelude.md) with `import okay.scala2._` ([scala2.md](../scala2.md), section 3): `A ! (State[Int] + Writer[String])`, parentheses included. The operations and handlers live on the capabilities' companions under okay's names: `State.get`/`set`/`modify`/`handle`/`run`, `Reader.ask`/`run`, `Writer.tell`/`run`/`collect`, `Throws.raise`/`runEither`, `Async(a)`/`attempt`/`catching` |
 | `Cont[A, S, R]` | delimited continuations: `Cont.shift`, `Cont.reset`, `Cont.pure`, `map`, `flatMap`, `run(k)`, with answer-type modification |
 | `Op`, `Effect[F]`, `Handler[F, R, B]` | YOUR OWN effect, declared in plain Scala 2: operations extend `Op`, `object Console extends Effect[Console]` is the whole declaration, and a handler gets each operation together with its continuation |
 | `Source[A]` | streams: `Source(...)`, `range`, `unfold`, `fromEff`; `map`, `filter`, `take`, `takeWhile`, `drop`, `zipWithIndex`, `++`, `merge`; `runCollect`, `runForeach`, `runFold` |
@@ -18,7 +18,7 @@ lambdas, pattern matches) and the real library runs underneath.
 | `Chat`, `Model`, `Tools`, `Policy`, `Call` (module `okay-scala2-agent`) | okay-agent from 2.13: the agent loop with a persistent conversation, a scripted or real model, tools decoded by `Schema`, the context policy; `okay.agent.Turn` and `Reply` are used directly |
 | `UiApp`, `UiHost`, `ScriptedHost` (module `okay-scala2-ui`) | okay-ui from 2.13: the loop as an `Eff`, terminal and Swing hosts, a scripted host for tests; `okay.ui.Ui`, `Event` and `Frame` are used directly |
 | `WebSocket`, `WsClient`, `WsSession`, `WsServer` (module `okay-scala2-ws`) | WebSockets from 2.13: a client as `Eff`/`Source`, a server session as a fold, replayable without a socket; `okay.http.Frame` is used directly |
-| `Choose`, `Search` | nondeterminism as a capability of `Eff`: `from`/`fail`/`guard`, `all`/`first`/`cut`/`ifte`, fair `interleave`/`fairBind`; `Search.bestOf`/`all`/`majority` over samples |
+| `Choose`, `Logic`, `Search` | nondeterminism as a capability of `Eff`, under okay's names: `Choose.choose`/`fail`/`guard`/`runChoice`; `Logic.observe`/`msplit`/`cut`/`ifte`/`gnot`, fair `interleave`/`fairBind`; `Search.bestOf`/`all`/`majority` over samples |
 | `Guards` (module `okay-scala2-resilience`) | okay-resilience's breaker, bulkhead, limiter, hedge, deadline and retry around an `Eff`; the pieces themselves are used directly |
 | `Prog[A]` | a program over `Async + Throws % Throwable`: suspended, failing, recoverable, runnable. `map`, `flatMap`, `attempt`, `recover`, `run()`, `runEither()`; `Prog.pure`, `delay`, `fail`, `fromEither`, `sequence` |
 | `Bridge` | the Scala 3 side of `Prog`: `Bridge.lift(p: A ! Async)` and `Bridge.program(prog)`. 2.13 code never names it |
@@ -118,21 +118,21 @@ below is copied from
 val prog: Int ! (State[Int] + Writer[String]) = for {
   n <- State.get[Int]
   _ <- Writer.tell("saw " + n)
-  _ <- State.put(n + 1)
+  _ <- State.set(n + 1)
   m <- State.get[Int]
   _ <- Writer.tell("now " + m)
 } yield m * 10
 
-assertEquals(Eff.run(Writer.run(State.run(1)(prog))), (Vector("saw 1", "now 2"), (2, 20)))
-assertEquals(Eff.run(State.run(1)(Writer.run(prog))), (2, (Vector("saw 1", "now 2"), 20)))
+assertEquals(!.run(Writer.run(State.handle(1)(prog))), (Vector("saw 1", "now 2"), (2, 20)))
+assertEquals(!.run(State.handle(1)(Writer.run(prog))), (2, (Vector("saw 1", "now 2"), 20)))
 ```
 
-- Each handler removes one capability from the row: `State.run(1)`
+- Each handler removes one capability from the row: `State.handle(1)`
   turns `A ! (State[Int] with R)` into `(Int, A) ! R`. scalac
   2.13 infers `R` by itself.
 - The handler order decides the shape of the answer, exactly as in
   okay's Scala 3 API.
-- `Eff.run` accepts only `A ! Any`, so a program with an unhandled
+- `Eff.run` accepts only `A ! Pure`, so a program with an unhandled
   effect does not compile. The probe checks this with `compileErrors`.
   The message says `type mismatch` and does not name the missing
   handler.
@@ -199,12 +199,12 @@ def console[R, B](out: ListBuffer[String], input: String): Handler[Console, R, B
 
 val prog: String ! (Effect[Console] + State[Int]) = for {
   name <- Console.send(ReadLn)
-  _ <- State.put(name.length)
+  _ <- State.set(name.length)
   _ <- Console.send(PrintLn("hi " + name))
 } yield name
 val out = ListBuffer.empty[String]
-val handled = Console.handle(prog)(a => Eff.pure(a))(console(out, "ada"))
-assertEquals(Eff.run(State.run(0)(handled)), (3, "ada"))
+val handled = Console.handle(prog)(a => pure(a))(console(out, "ada"))
+assertEquals(!.run(State.handle(0)(handled)), (3, "ada"))
 ```
 
 - The capability in the row is `Effect[Console]`.
@@ -247,7 +247,7 @@ val lines: Unit ! (Writer[String] + Async) = for {
 val src = Source.fromEff(lines).map(_.toUpperCase)
 ```
 
-Here `collect(s)` is `Eff.runAsync(s.runCollect)`. Each terminal
+Here `collect(s)` is `s.runCollect.runWith`. Each terminal
 operation (`runCollect`, `runForeach`, `runFold`) is an
 `Eff[Async, _]`, so it composes with other programs until you run it.
 
@@ -267,19 +267,19 @@ composes like the rest. The code below is copied from
 ```scala
 val ch = Channel[Int](4)
 def produce(i: Int): Unit ! Async =
-  if (i > 1000) Async.delay(ch.close())
+  if (i > 1000) Async(ch.close())
   else ch.send(i).flatMap(_ => produce(i + 1))
 def consume(acc: Vector[Int]): Vector[Int] ! Async =
   ch.receive.flatMap {
     case Some(n) => consume(acc :+ n)
-    case None => Eff.pure(acc)
+    case None => pure(acc)
   }
 val prog = for {
   p <- Async.fork(produce(1))
   got <- consume(Vector.empty)
   _ <- p.join
 } yield got
-assertEquals(Eff.runAsync(prog), (1 to 1000).toVector)
+assertEquals(prog.runWith, (1 to 1000).toVector)
 ```
 
 - `join` fails the same way the fiber failed. `joinEither` returns
@@ -302,7 +302,7 @@ intersection; the Scala 3 source writes `&`.
 
 **`Eff[-R, A]`** (written `A ! R` below) — `map[B](f: A => B): B ! R`,
 `flatMap[R1 <: R, B](f: A => B ! R1): B ! R1`.
-`object Eff`: `pure[A](a: A): A ! Any`, `run[A](e: A ! Any): A`,
+`object Eff`: `pure[A](a: A): A ! Pure`, `run[A](e: A ! Pure): A`,
 `runAsync[A](e: A ! Async): A`,
 `fromProg[A](p: Prog[A]): A ! (Async + Throws[Throwable])`,
 `toProg[A](e: A ! (Async + Throws[Throwable])): Prog[A]`.
@@ -319,7 +319,7 @@ intersection; the Scala 3 source writes `&`.
 `abstract class Effect[F[_]](implicit tag: ClassTag[F[Any]])` with
 `send[A](op: F[A] with Op[A]): A ! Effect[F]`,
 `handle[R, A, B](e: A ! (Effect[F] with R))(ret: A => B ! R)(h: Handler[F, R, B]): B ! R`,
-`run[A, B](e: A ! Effect[F])(ret: A => B ! Any)(h: Handler[F, Any, B]): B`;
+`run[A, B](e: A ! Effect[F])(ret: A => B ! Pure)(h: Handler[F, Any, B]): B`;
 `trait Handler[F[_], R, B] { def apply[X](op: F[X], k: X => B ! R): B ! R }`.
 
 **`Cont[A, S, R]`** — `map[B](f: A => B): Cont[B, S, R]`,
@@ -390,9 +390,9 @@ extractors `GET`, `POST`, `PUT`, `PATCH`, `DELETE` (`unapply(r: Request): Option
 `WsSession.fold[S](init: S)(step: (S, Frame) => (S, Seq[Frame])): WsSession`, `WsSession.echo`, `WsSession.replay(s, incoming: Seq[Frame]): Vector[Frame]`;
 `WsServer.use[A](port)(routes: Request => Response ! Async)(sessions: PartialFunction[Request, WsSession])(body: Int => A ! Async): A ! Async`.
 
-**Nondeterminism** — `Choose.from[A](as: A*): A ! Choose`, `Choose.fail[A]`, `Choose.guard(ok: Boolean)`;
+**Nondeterminism** — `Choose.choose[A](as: A*): A ! Choose`, `Choose.fail[A]`, `Choose.guard(ok: Boolean)`;
 `Choose.all[R, A](e: A ! (Choose with R)): Seq[A] ! R`, `Choose.first[R, A](n)(e): Seq[A] ! R`;
-`Choose.cut[R <: Choose, A](e: A ! R): A ! R`, `Choose.ifte[R <: Choose, A, B](cond)(th: A => B ! R)(el: => B ! R)`, `Choose.interleave[R <: Choose, A](a, b)`, `Choose.fairBind[R <: Choose, A, B](m)(f)`;
+`Logic.cut[R <: Choose, A](e: A ! R): A ! R`, `Logic.ifte[R <: Choose, A, B](cond)(th: A => B ! R)(el: => B ! R)`, `Logic.interleave[R <: Choose, A](a, b)`, `Logic.fairBind[R <: Choose, A, B](m)(f)`;
 `Search.bestOf[R, A](n)(gen: A ! R)(ok: A => Boolean): Option[A] ! R`, `Search.all[R, A](n)(gen)(ok): Seq[A] ! R`, `Search.majority[A](answers: Seq[A]): Option[A]`.
 
 **Resilience** (module `okay-scala2-resilience`) — `Guards.breaker[A](b: Breaker)(prog: A ! Async, failing: Either[Throwable, A] => Boolean = _.isLeft)`, `Guards.bulkhead[A](b: Bulkhead)(prog)`, `Guards.limiter[A](l: Limiter, key: String = "")(prog)`, `Guards.hedge[A](afterMillis: Long, max: Int = 2)(prog)`, `Guards.deadline[A](d: Deadline)(prog)`, `Guards.retry[A](policy: LazyList[Long])(prog)`, each an `A ! Async`.
