@@ -47,13 +47,13 @@ HTML host, nothing else touched:
     mount's next patch (or 10 s).
 
 ## Behavior
-- [ ] the frame marks the current place, groups with and without a
+- [x] the frame marks the current place, groups with and without a
       title, escapes every label, and carries the body verbatim
-- [ ] `"/"` is current only at `"/"`; a prefix is current at `/x/…`
-- [ ] every class the frame and the script write has a rule in their
+- [x] `"/"` is current only at `"/"`; a prefix is current at `/x/…`
+- [x] every class the frame and the script write has a rule in their
       css (the guard TestHtmlCss keeps for the tree)
-- [ ] the script is a program a JavaScript engine parses
-- [ ] the script's hooks are the ones the frame writes
+- [x] the script is a program a JavaScript engine parses
+- [x] the script's hooks are the ones the frame writes
       (`main.okay-main`, `data-hard`, `okay-refresh`, `okay-busy`)
 
 ## Decisions

@@ -77,6 +77,11 @@ object Html:
       |.okay-table td { border-bottom: 1px solid color-mix(in srgb, var(--okay-line) 50%, transparent); padding: 8px 8px 8px 0; vertical-align: baseline; overflow-wrap: anywhere; }
       |""".stripMargin
 
+  /** the class a mounted form carries, and the prefix of its id: what
+   * the live client and `Enhance` know it by */
+  val PlainClass = "okay-plain"
+  val LivePrefix = "okay-live-"
+
   /** the hidden field a mounted form carries, naming the mount */
   val MountField = "__okay_plain"
 
@@ -101,7 +106,7 @@ object Html:
    * plus the hidden field naming this mount. This IS the client. */
   def form(id: String, ui: Ui, action: String): String =
     val safe = escape(id)
-    s"""<form method="post" action="${escape(action)}" id="okay-live-$safe" class="okay-plain">""" +
+    s"""<form method="post" action="${escape(action)}" id="$LivePrefix$safe" class="$PlainClass">""" +
       s"""<input type="hidden" name="$MountField" value="$safe">""" +
       render(ui, named = true) + "</form>"
 
