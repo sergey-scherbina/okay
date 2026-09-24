@@ -161,9 +161,9 @@ lazy val okay2Stream: Project = (project in file("okay2-stream"))
   .settings(
     name := "okay2-stream",
     common,
-    // its own JVM: unforked, law 1b of TestChannelLaws hung twice at
-    // the same place inside sbt's process once the cross build shared
-    // it (okay2-cross stage B; backlog okay2-channel-close-wakeup)
+    // its own JVM, as every JVM suite here: a deep test's heap is not
+    // sbt's. (Law 1b's hang, first met unforked, was a real defect —
+    // `Growing` grew after its seal — fixed by okay2-channel-close-wakeup.)
     Test / fork := true,
     Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"),
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,

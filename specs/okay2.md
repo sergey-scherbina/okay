@@ -1862,6 +1862,35 @@ and the two new platforms:
 ### Stage C (next)
 okay2-stream and okay2-stm on JS and Native.
 
+## Stage 33 — the close-wakeup hang: `Growing` grew after its seal (2026-09-24)
+Backlog `okay2-channel-close-wakeup`, found by okay2-cross stage B's full
+gate: TestChannelLaws law 1b hung twice at the same place, a receiver
+parked in `SentinelChannel.receiveBlocking` after close, never woken.
+
+THE DEFECT, in `Growing` (the default buffer): `seal` put the end mark
+into whatever buffer was in force, and growth was a separate decision.
+Close sealed the ring — one part, one end mark, and `SentinelChannel`
+counted the order sealed. A producer that had passed its open check
+before the close then grew the ring: the `AdaptiveFifo` adopted it as
+part 0 with its end mark, opened a fresh part for the producer's void,
+and was never sealed. The channel waits for `parts` end marks; it met
+one of two and parked its receiver for good. The platform's handoff and
+the channel's register-then-recheck were sound — the lost "wakeup" was
+an end mark nobody would ever place.
+
+THE FIX: sealing and growing are ONE decision, a CAS on `Growing`'s one
+state reference (open ring / grown / sealed as ring). A seal that wins
+over the open ring rules growth out; a growth that won first means the
+seal goes to the `AdaptiveFifo`, which freezes and seals every part it
+opened.
+
+### Behavior (stage 33)
+- [x] a close that sealed the ring, then two in-flight producers that
+      would grow it: the receiver reaches the end (TestGrowingSeal —
+      FAILED before the fix, a 5 s timeout, deterministically; passes
+      after it), and every channel law still holds (TestChannelLaws,
+      TestGrowing)
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
