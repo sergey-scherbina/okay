@@ -1,0 +1,4 @@
+slug: biernacki-literature-fix
+agent: claude (session 01VZwf6d)
+since: 2026-09-24
+what: correct monadic-reflection-stacked (FSCD 2020 is a Galois reflection between direct style and CCS, not monadic reflection; the source is Filinski 1999) and sharpen stacked-shift0 against the ICFP 2011 text
