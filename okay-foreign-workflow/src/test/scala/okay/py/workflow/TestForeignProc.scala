@@ -27,11 +27,10 @@ object ShopProc:
 
   val block: Wf.Proc[ForeignCall, String, String, String] =
     Proc.direct[ForeignProc.Sig, String, String]: sku =>
-      val first = ForeignProc.decode[Double](!price(sku))
-      if first.isRight then
-        val second = ForeignProc.decode[Double](!total(first.getOrElse(0.0)))
-        second.fold(c => s"no total: ${c.kind}", t => s"total $t")
-      else first.fold(c => s"no price: ${c.kind}", _ => "")
+      ForeignProc.decode[Double](!price(sku)) match
+        case Left(c) => s"no price: ${c.kind}"
+        case Right(p) =>
+          ForeignProc.decode[Double](!total(p)).fold(c => s"no total: ${c.kind}", t => s"total $t")
 
 /** foreign-workflow stage 2: foreign calls as leaves of a static Proc, in
  * both spellings, on the same journal as the do-notation workflow */

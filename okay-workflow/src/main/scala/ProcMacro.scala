@@ -161,6 +161,14 @@ object ProcMacro:
                 "nested inside a larger expression would have to hoist, and a hoisted mark " +
                 "RUNS whether or not its branch is taken. Bind the `if` to a val first.",
               tree2.pos)
+          case m @ Match(_, cs) if cs.exists(c => hasMark(c.rhs)) =>
+            report.errorAndAbort(
+              "Proc.direct: a mark inside a `match` CASE, and this `match` is not the whole of " +
+                "a statement. Only a top-level `match` — the whole right-hand side of a val, a " +
+                "statement of its own, or the block's answer — compiles to its cases' branches; " +
+                "one nested inside a larger expression would have to hoist, and a hoisted mark " +
+                "RUNS whichever case is taken. Bind the `match` to a val first.",
+              m.pos)
           case w @ While(c, _) if hasMark(c) =>
             report.errorAndAbort(
               "Proc.direct: a mark in a `while` CONDITION. The test would have to ask its " +
@@ -479,6 +487,8 @@ object ProcMacro:
      * whole shape is built on. */
     def compileIf(cond: Term, condBase: Int, th: Term, el: Term,
                   st: St, outT: TypeRepr): Term =
+      noOuterAssign(th, st)
+      noOuterAssign(el, st)
       val e = st.envT
       val eE = eitherT(e, e)
       val sel = arrTerm(e, eE, lam(e, eE): (_, env) =>
@@ -499,6 +509,95 @@ object ProcMacro:
       val b = thenTerm(e, eV, vE, a, s2)
       val c = thenTerm(e, vE, vV, b, s3)
       thenTerm(e, vV, outT, c, s4)
+
+    /**
+     * A `match` whose cases ask questions (proc-notation stage 4): Paterson's
+     * `case`. ONE pure step runs the original `match` — its patterns and
+     * guards untouched — and each case answers an injection, into a nested
+     * `Either`, of the environment extended by that case's BINDERS. Each
+     * case body is compiled at its own extended environment, where a binder
+     * is a slot like any `val`, and the bodies are joined by `|||`. No
+     * pattern is duplicated and no binder renamed: the symbols the pattern
+     * defines are the ones the branch's slots are bound to.
+     */
+    def compileMatch(scrut: Term, scrutBase: Int, cases: List[CaseDef], st: St, outT: TypeRepr): Term =
+      cases.foreach(c => c.guard.foreach(g =>
+        if hasMark(g) then report.errorAndAbort(
+          "Proc.direct: a mark in a case GUARD. A guard is tested for cases that are not " +
+            "taken, so its question would be asked whichever case runs. Ask it before the " +
+            "`match` and test the bound value.", g.pos)))
+      cases.foreach(c => noOuterAssign(c.rhs, st))
+      val e = st.envT
+      val binders: List[List[Symbol]] = cases.map(c => bindersOf(c.pattern))
+      val sts: List[St] = binders.map(_.foldLeft(st)((s, b) => s.push(b.termRef.widen.dealias).bind(b)))
+      val envs: Vector[TypeRepr] = sts.map(_.envT).toVector
+      val n = envs.length
+      /** the nested Either of the cases from k on */
+      def restT(k: Int): TypeRepr = if k == n - 1 then envs(k) else eitherT(envs(k), restT(k + 1))
+      /** case i's value, injected into the Either of the cases from k on */
+      def inject(k: Int, i: Int, v: Term): Term =
+        if k == n - 1 then v
+        else if i == k then leftTerm(envs(k), restT(k + 1), v)
+        else rightTerm(envs(k), restT(k + 1), inject(k + 1, i, v))
+      val selT = restT(0)
+      val sel = arrTerm(e, selT, lam(e, selT): (_, env) =>
+        val scrutinee = rewrite(scrut, env, st.depth, st.idx, scrutBase + 1, st.slots)
+        Match(scrutinee, cases.zipWithIndex.map: (c, i) =>
+          val extended = binders(i).foldLeft((e, env: Term)): (acc, b) =>
+            val bT = b.termRef.widen.dealias
+            (pairT(acc._1, bT), pairTerm(acc._1, bT, acc._2, Ref(b)))
+          CaseDef(c.pattern, c.guard.map(g => rewrite(g, env, st.depth, st.idx, st.depth + 1, st.slots)),
+            inject(0, i, extended._2))))
+      val branches = cases.zipWithIndex.map((c, i) => compileValue(c.rhs, sts(i), outT))
+      /** `pa ||| pb` over Either[A, B], as compileIf joins its two */
+      def fanin(aT: TypeRepr, bT: TypeRepr, pa: Term, pb: Term): Term =
+        val aB = eitherT(aT, bT)
+        val aV = eitherT(aT, outT)
+        val vA = eitherT(outT, aT)
+        val vV = eitherT(outT, outT)
+        val s1 = onRightTerm(bT, outT, aT, pb)
+        val s2 = arrTerm(aV, vA, lam(aV, vA)((_, x) => Select.unique(x, "swap")))
+        val s3 = onRightTerm(aT, outT, outT, pa)
+        val s4 = arrTerm(vV, outT, lam(vV, outT): (_, x) =>
+          outT.asType match
+            case '[v] => '{ ${ x.asExprOf[Either[v, v]] }.fold(identity, identity) }.asTerm)
+        thenTerm(aB, vV, outT, thenTerm(aB, vA, vV, thenTerm(aB, aV, vA, s1, s2), s3), s4)
+      def dispatch(k: Int): Term =
+        if k == n - 1 then branches(k)
+        else fanin(envs(k), restT(k + 1), branches(k), dispatch(k + 1))
+      thenTerm(e, selT, outT, sel, dispatch(0))
+
+    /**
+     * A BRANCH CANNOT ASSIGN A NAME BOUND BEFORE IT. The branch is compiled
+     * at a copy of the environment and answers only its value, so a write
+     * to an outer `var` inside it would be lost when the branches join —
+     * and the compiler's own words for it were "Reassignment to val _2".
+     * Found by proc-notation-case-binders beside the `match` it added: the
+     * same held for an `if` since branches were compiled.
+     */
+    def noOuterAssign(branch: Term, st: St): Unit =
+      val probe = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
+          case a @ Assign(lhs, _) if st.idx.contains(lhs.symbol) =>
+            report.errorAndAbort(
+              s"Proc.direct: `${lhs.symbol.name}` is assigned inside a branch, but it was bound " +
+                "before the branch. A branch answers only its value, so the write would be lost " +
+                s"when the branches join. Make the branch's VALUE the new one: " +
+                s"`${lhs.symbol.name} = if … then … else …` (or `= x match …`).", a.pos)
+          case _ => super.traverseTree(tree)(owner)
+      probe.traverseTree(branch)(Symbol.spliceOwner)
+
+    /** the names a pattern binds, in the order they appear */
+    def bindersOf(pat: Tree): List[Symbol] =
+      val out = List.newBuilder[Symbol]
+      val tr = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
+          case b @ Bind(_, inner) =>
+            out += b.symbol
+            traverseTree(inner)(owner)
+          case _ => super.traverseTree(tree)(owner)
+      tr.traverseTree(pat)(Symbol.spliceOwner)
+      out.result()
 
     /** a `while`: `Iter` with the test in front of the body, and the
      * loop-carried state is the environment itself */
@@ -553,14 +652,20 @@ object ProcMacro:
         case vd @ ValDef(_, _, Some(rhs0)) =>
           val rhs = strip(rhs0)
           val vT = vd.symbol.termRef.widen.dealias
-          asTopIf(rhs) match
-            case Some((c, th, el)) =>
+          (asTopIf(rhs), asTopMatch(rhs)) match
+            case (Some((c, th, el)), _) =>
               val condBase = emitLeaves(c)
               val before = st.envT
               val sub = compileIf(c, condBase, th, el, st, vT)
               st = st.push(vT)
               add(alongsideTerm(before, vT, sub), before, st.envT)
-            case None =>
+            case (None, Some((scrut, cases))) =>
+              val scrutBase = emitLeaves(scrut)
+              val before = st.envT
+              val sub = compileMatch(scrut, scrutBase, cases, st, vT)
+              st = st.push(vT)
+              add(alongsideTerm(before, vT, sub), before, st.envT)
+            case (None, None) =>
               val base = emitLeaves(rhs)
               val before = st.envT
               val d = st.depth
@@ -571,6 +676,35 @@ object ProcMacro:
                 pairTerm(before, vT, env, rewrite(rhs, env, d, here, base + 1, sl))
               add(arrTerm(before, st.envT, fn), before, st.envT)
           st = st.bind(vd.symbol)
+
+        case Assign(lhs, rhs0) if asTopIf(strip(rhs0)).isDefined || asTopMatch(strip(rhs0)).isDefined =>
+          // `x = if … then … else …` / `x = s match …` with questions in the
+          // branches: the branch's VALUE becomes a slot, then the environment
+          // is rebuilt with x's slot replaced by it and that slot dropped —
+          // the way a branch updates a name, since it cannot assign one
+          val rhs = strip(rhs0)
+          val sym = lhs.symbol
+          val slot = st.idx.getOrElse(sym, report.errorAndAbort(
+            s"Proc.direct: `${sym.name}` is assigned but not bound in this block", lhs.pos))
+          val target = st
+          val vT = st.slots(slot)
+          val sub = (asTopIf(rhs), asTopMatch(rhs)) match
+            case (Some((c, th, el)), _) =>
+              val condBase = emitLeaves(c)
+              compileIf(c, condBase, th, el, st, vT)
+            case (_, Some((scrut, cases))) =>
+              val scrutBase = emitLeaves(scrut)
+              compileMatch(scrut, scrutBase, cases, st, vT)
+            case _ => report.errorAndAbort("Proc.direct: unreachable", rhs.pos)
+          val before = st.envT
+          st = st.push(vT)
+          add(alongsideTerm(before, vT, sub), before, st.envT)
+          val last = st.depth
+          val slotsNow = st.slots
+          // the condition's or scrutinee's hoisted answers go with it:
+          // `rebuild` returns to the shape the assignment started in
+          rebuild(target, Some((slot, (env: Term) => projectAt(env, last, last, slotsNow))))
+          st = target
 
         case Assign(lhs, rhs0) =>
           val rhs = strip(rhs0)
@@ -589,6 +723,17 @@ object ProcMacro:
           val before = st.envT
           add(compileWhile(c, strip(b), st), before, before)
 
+        case t: Term if asTopIf(t).isEmpty && asTopMatch(t).isDefined =>
+          val (scrut, cases) = asTopMatch(t).get
+          val scrutBase = emitLeaves(scrut)
+          val before = st.envT
+          val sub = compileMatch(scrut, scrutBase, cases, st, TypeRepr.of[Unit])
+          val fn = lam(pairT(before, TypeRepr.of[Unit]), before): (_, env) =>
+            Select.unique(env, "_1")
+          add(thenTerm(before, pairT(before, TypeRepr.of[Unit]), before,
+            alongsideTerm(before, TypeRepr.of[Unit], sub),
+            arrTerm(pairT(before, TypeRepr.of[Unit]), before, fn)), before, before)
+
         case t: Term =>
           asTopIf(t) match
             case Some((c, th, el)) =>
@@ -599,7 +744,8 @@ object ProcMacro:
               val fn = lam(pairT(before, TypeRepr.of[Unit]), before): (_, env) =>
                 Select.unique(env, "_1")
               add(thenTerm(before, pairT(before, TypeRepr.of[Unit]), before,
-                alongsideTerm(before, TypeRepr.of[Unit], sub), fn), before, before)
+                alongsideTerm(before, TypeRepr.of[Unit], sub),
+                arrTerm(pairT(before, TypeRepr.of[Unit]), before, fn)), before, before)
               val _ = d
             case None =>
               val base = emitLeaves(t)
@@ -622,6 +768,11 @@ object ProcMacro:
      * would have to hoist and a hoisted mark runs either way */
     def asTopIf(t: Term): Option[(Term, Term, Term)] = strip(t) match
       case If(c, th, el) if hasMark(th) || hasMark(el) => Some((c, th, el))
+      case _ => None
+
+    /** the same position rule for a `match` whose cases ask questions */
+    def asTopMatch(t: Term): Option[(Term, List[CaseDef])] = strip(t) match
+      case Match(s, cases) if cases.exists(c => hasMark(c.rhs)) => Some((s, cases))
       case _ => None
 
     /** a block compiled to a VALUE of the given type — a branch of an
@@ -652,6 +803,15 @@ object ProcMacro:
           steps.foreach(add(_, from, stAfter.envT))
           st = stAfter
           add(compileIf(c, condBase, th, el, st, outT), st.envT, outT)
+          return acc.get
+        case None => ()
+      asTopMatch(lastE) match
+        case Some((scrut, cases)) =>
+          val from = st.envT
+          val (scrutBase, stAfter, steps) = hoist(scrut, st)
+          steps.foreach(add(_, from, stAfter.envT))
+          st = stAfter
+          add(compileMatch(scrut, scrutBase, cases, st, outT), st.envT, outT)
           return acc.get
         case None => ()
       val from0 = st.envT
