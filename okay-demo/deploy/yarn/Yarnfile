@@ -1,0 +1,1 @@
+{"name":"demo-chat","version":"1.0.0","components":[{"name":"chat","number_of_containers":1,"launch_command":"java -cp app.jar okay.demo.ChatDemo","resource":{"cpus":1,"memory":"512"},"configuration":{"env":{"OKAY_CHAT_PORT":"8090","OKAY_CHAT_DB":"/app/data/okay-board.log","OKAY_CHAT_APP":"/app/app.js"}}}]}

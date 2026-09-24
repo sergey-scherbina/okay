@@ -158,7 +158,8 @@ class TestDeployment extends munit.FunSuite:
     // three suites used to assert `Targets.all.length` and all three
     // needed editing whenever a target landed. The list lives here.
     assertEquals(Targets.all.map(_.name),
-      Vector("laptop", "host", "cluster", "fly", "render", "railway", "aws", "gcp", "azure"))
+      Vector("laptop", "host", "cluster", "fly", "render", "railway", "aws", "gcp", "azure",
+        "nomad", "yarn", "slurm", "swarm", "batch"))
     assertEquals(Targets.all.map(_.name).distinct.length, Targets.all.length)
     for t <- Targets.all do assertEquals(Targets.byName(t.name).map(_.name), Some(t.name))
     assertEquals(Targets.byName("nowhere"), None)

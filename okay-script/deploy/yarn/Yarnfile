@@ -1,0 +1,1 @@
+{"name":"okay-script","version":"1.0.0","components":[{"name":"web","number_of_containers":1,"launch_command":"java -cp app.jar okay.script.Serve","resource":{"cpus":1,"memory":"512"},"configuration":{"env":{"OKAY_PAGES":"/app/pages","OKAY_PORT":"8080","OKAY_OPS":"1"}}}]}

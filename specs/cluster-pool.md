@@ -387,13 +387,15 @@ and Dataproc are `yarn`.
   scale` between epochs — because it needs an actual `okay-pool`
   container image and a full deploy, a distinct piece of work from
   rendering the manifests that would carry it.
-- **3 — the other managers, as renderings.** `nomad`, `yarn`,
-  `slurm`, `swarm`, `batch`: each a pure renderer, each gated by a
-  real parser or validator for its format (`nomad job validate` where
-  it runs offline, the Yarnfile through okay-codec's `Json`, `sh -n`
-  on every script — stage 2 and 3 of specs/deployment.md set the
-  bar), and each refusal (`azure`, `gcp`, `render`, `railway`) a named
-  one with a test. No account is needed for any of it.
+- **3 — the other managers, as renderings.** LANDED (see Results).
+  `nomad`, `yarn`, `slurm`, `swarm`, `batch`: each a pure renderer,
+  each gated by a real parser or validator for its format (Nomad's and
+  YARN's own JSON through okay-codec's `Json` — no `nomad`/`yarn`
+  binary needed, since neither Services API asks for HCL — `sh -n` on
+  the Slurm script, `docker compose config` for Swarm, `terraform
+  validate` for Batch), and a shared refusal (`Need.Database`/
+  `Need.Cache`, and secrets — this landing's own stated limit) with a
+  test. No account is needed for any of it.
 - **4 — the door and the wire, secured.** mTLS between members
   (okay-tls), a capability at the submission route (okay-security),
   the NetworkPolicy on `cluster`, and the unauthenticated pool
@@ -487,12 +489,17 @@ is `cluster-pool-kind-harness`, filed separately:
       job and refused by name for a windowed one (stage 13's rule,
       now on real pods)
 
-Stage 3:
-- [ ] every new target's rendering passes its format's real parser;
-      every rendered script passes `sh -n` through the existing walk
-      over `Targets.all`
-- [ ] the grep test: no manager's name or client in okay-cluster's or
-      okay-pool's main sources
+Stage 3 — LANDED (see Results):
+- [x] `nomad`/`yarn` render real JSON (a Nomad Services API job, a
+      Yarnfile), round-tripped through `okay.codec.Json` — no HCL
+      parser needed or assumed on the machine; `slurm`'s script passes
+      `sh -n`; `swarm`'s compose passes `docker compose config`;
+      `batch`'s Terraform passes `terraform validate` and `fmt -check`
+      against the real AWS provider schema
+- [x] the grep test: no manager's name or client in okay-cluster's or
+      okay-pool's main sources — WORD-BOUNDARY matched, because a
+      plain substring check is also true of English words ("consult"
+      contains "consul"; the first run of this exact test found that)
 
 Stage 4:
 - [ ] a pool told to listen on a non-loopback address without TLS or a
@@ -698,3 +705,59 @@ cluster, which is a materially different piece of work from rendering
 the manifests that would carry it — the same distinction
 specs/deploy.md's own history draws between "the jar the Dockerfile's
 build stage produces" and "the Docker image itself, proven live."
+
+## Results, stage 3
+
+**cluster-pool-other-managers (2026-09-24).** `okay.deploy.Managers`
+holds all five: `Nomad` and `Yarn` render each platform's own Services
+API JSON directly with `okay.codec.Json` — no `nomad`/`yarn` binary
+needed anywhere, since neither format is HCL and a real parser for it
+was already in this build; `Slurm` renders one `sbatch` script for the
+ONE peers service a pool actually is (a deployment asking for more
+than one is refused, by name, rather than guessing which job a second
+one belongs to); `Swarm` reuses `laptop`'s own compose shape in
+`deploy.mode: replicated`; `Batch` renders a multi-node parallel
+`aws_batch_job_definition`, one node per replica.
+
+SCOPED, on purpose, narrower than `cluster`: `Need.Database`/
+`Need.Cache` are refused the same way `host` already refuses them, and
+a service with any `secrets` is ALSO refused — each of these five
+platforms has its own secret story (Vault, `docker secret`, Secrets
+Manager, nothing native for two of them) and wiring five more secret
+paths is a lane of its own, named rather than silently skipped.
+
+Two real defects the gate caught, neither hypothetical:
+
+- **AWS Batch's `node_properties` is a JSON STRING on the real API,
+  and the provider mirrors that exactly** — not a nested Terraform
+  BLOCK (`terraform validate`'s first answer: "did you mean to use
+  =?") and not a bare HCL object either ("string required, but have
+  object"). It needed the SAME `jsonencode(...)` road
+  `container_definitions` already takes one field over, in the very
+  same file — the fix was recognising a pattern already proven here,
+  not inventing one.
+- **A plain substring grep for a manager's name is also true of
+  English.** The very first run of Claim 1's own test failed —
+  `okay.cluster.Flows.scala` names no manager, but its comment says a
+  caller "should not CONSULT a number" and `"consul"` is a substring
+  of `"consult"`. Fixed with word-boundary matching, and worth writing
+  down because the SAME class of check (a name search over source)
+  is exactly what specs/dataflow.md's own `Sequential`/`Aggregator`
+  greps and this repository's `native-runner-error` survey both
+  already needed the identical correction for.
+
+`OKAY_POOL_SERVICE`/`OKAY_POOL_PEERS` land where the platform genuinely
+gives one (`nomad`: `<service>.service.nomad`, Nomad's own discovery,
+no Consul required; `swarm`: `tasks.<service>`) and are a stated
+TEMPLATE, never a guess, where it does not: `yarn`'s registry DNS
+needs a zone this model cannot name, and AWS Batch's own multi-node
+API hands every node the MAIN node's address and the node count, never
+a full peer list — `OKAY_POOL_PEERS` is not rendered for `batch` at
+all, filed as `cluster-pool-batch-full-mesh` if a real pool on Batch
+ever needs closing that gap.
+
+- [x] every new target's rendering passes its format's real parser or
+      validator, `sh -n` walks every rendered script, and the grep
+      test holds — 183 tests in okay-deploy's default suite, clean
+      compile, four real-tool checks under `Live`
+      (`TestManagersLive`).
