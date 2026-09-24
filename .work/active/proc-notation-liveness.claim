@@ -1,3 +1,0 @@
-slug: proc-notation-liveness
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: Proc.direct drops dead names from the environment tuple; measured first (JMH on okay-workflow)
