@@ -1,0 +1,12 @@
+feature/book-stacks-partial-overlap 2026-09-25T22:52:58Z
+agent: claude-opus-5-5
+heartbeat: 2026-09-25T22:52:58Z
+status: in-progress
+done-so-far: claimed (operator: show stacks with partially overlapping monads, not only order)
+next: worktree; Choices/Journal stacks + conversions into the union stack + compileErrors; effects helpers of two rows in the union row; chapter 16b; LinkedIn text
+book-stacks-partial-overlap
+agent: 
+heartbeat: 
+status: in-progress
+done-so-far: claimed (operator: show stacks with partially overlapping monads, not only order)
+next: worktree; Choices/Journal stacks + conversions into the union stack + compileErrors; effects helpers of two rows in the union row; chapter 16b; LinkedIn text
