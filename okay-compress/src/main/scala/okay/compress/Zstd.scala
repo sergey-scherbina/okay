@@ -303,11 +303,23 @@ private[compress] final class BackBits(src: Array[Byte], from: Int, end: Int):
         shift += 8; got += 8; bytePos += 1
       (v >>> drop) & ((1L << n) - 1)
 
+  // a 64-bit window of the stream held in a register, bits
+  // [winLo, winLo + 64): most reads are a shift of it rather than a load
+  // of their own (zstd-speed; the reference decoder's BIT_DStream)
+  private var win: Long = 0L
+  private var winLo: Int = Int.MaxValue
+
   def readLong(n: Int): Long =
     if n == 0 then 0L
     else
       pos -= n
-      if pos >= 0 then bitsAt(pos, n)
+      if pos >= winLo then (win >>> (pos - winLo)) & ((1L << n) - 1)
+      else if pos >= 0 then
+        val lo = (pos + n - 64 + 7).max(0) & ~7          // n <= 57: lo <= pos, and lo + 64 >= pos + n
+        if from + (lo >> 3) + 8 <= end then
+          win = Mem.i64(src, from + (lo >> 3)); winLo = lo
+          (win >>> (pos - lo)) & ((1L << n) - 1)
+        else bitsAt(pos, n)
       else if pos + n > 0 then bitsAt(0, pos + n) << (-pos)   // the high bits exist, the low ones are past the start
       else 0L
   def read(n: Int): Int = readLong(n).toInt
