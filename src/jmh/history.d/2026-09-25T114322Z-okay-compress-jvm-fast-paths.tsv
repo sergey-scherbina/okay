@@ -1,0 +1,4 @@
+2026-09-25	b6a44284	8-48	CompressBench.lz4_decompress lines 4 MiB: okay-compress (Mem fast paths) vs aircompressor	1.946	0.943	2.06	ms/op; before the fast paths 2.686 vs 1.296 in its own run (2.07x); text 2.450 vs 0.622
+2026-09-25	b6a44284	8-48	CompressBench.zstd_compress lines 4 MiB: okay-compress (Mem fast paths) vs aircompressor	21.847	6.325	3.45	ms/op; before 30.067 vs 6.645 (4.52x); text 9.121 vs 2.155
+2026-09-25	b6a44284	8-48	CompressBench.lz4_compress lines 4 MiB: okay-compress (Mem fast paths) vs aircompressor	3.303	3.408	0.97	ms/op; before 4.904 vs 5.721; text 3.793 vs 2.459
+2026-09-25	b6a44284	16-47	CompressBench.zstd_decompress lines 4 MiB, each lane ALONE (-i 8): okay-compress vs aircompressor	11.106	2.980	3.73	ms/op; text 2.569 vs 1.049; the stage-5 first run's parity (9.746 vs 10.108) was noise, its errors wider than the gap

@@ -116,3 +116,20 @@ native bindings (lz4-java, zstd-jni) and a pure-Java port
   behind (a closure-captured position boxed into an `IntRef` in the hot
   loop) and ZSTD compress 20x behind (24-deep chain with lazy matching
   everywhere); both are recorded in history.d.
+
+- okay-compress-jvm-fast-paths (2026-09-25): `Mem` per platform
+  (`src/main/scala-{jvm,js,native}`). The JVM's is a `VarHandle` byte-array
+  view; Scala.js and Native keep bytes. The shared codecs call it in
+  LZ4's match extension, copies and short literals (two 8-byte copies
+  inside checked limits), and in ZSTD's `matchLength`, match copies and
+  one 8-byte load in `BackBits`. Same tests on all three platforms, and
+  pyarrow both ways.
+  - CompressBench, 4 MiB of lines, ours vs aircompressor:
+    - LZ4 compress 3.30 vs 3.41 ms (was 4.90 vs 5.72);
+    - LZ4 decompress 1.95 vs 0.94 (was 2.69 vs 1.30);
+    - ZSTD compress 21.8 vs 6.3 (was 30.1 vs 6.6);
+    - ZSTD decompress, each lane ALONE, 11.1 vs 3.0.
+  - The stage-5 first run's ZSTD decompression "parity" (9.7 vs 10.1) was
+    noise, its errors wider than the gap. The rest of the gap is
+    `okay-compress-zstd-speed`.
+

@@ -77,10 +77,23 @@ loaded (35–112), so the times are wide; the pairs ran side by side:
 
 The output is at least as small as the reference's, and ZSTD's is
 smaller: the hash chain searches more than aircompressor's level 3 does.
-Speed is behind by 2–7x. aircompressor reads and copies eight bytes at a
-time through `Unsafe`, and this code is one source for three platforms,
-byte by byte. A JVM-only fast path is filed in the backlog as
-`okay-compress-jvm-fast-paths`.
+Speed was behind by 2–7x. aircompressor reads and copies eight bytes at a
+time through `Unsafe`, and the first cut of this code worked byte by
+byte.
+
+Since okay-compress-jvm-fast-paths, a `Mem` object per platform does the
+8-byte loads, compares and copies: a `VarHandle` view on the JVM, bytes
+on Scala.js and Native. The codecs stay one source. On the same bench:
+
+| 4 MiB of lines | before | with `Mem` | aircompressor |
+|---|---|---|---|
+| LZ4 compress | 4.9 ms | 3.3 ms | 3.4 ms |
+| LZ4 decompress | 2.7 ms | 1.9 ms | 0.9 ms |
+| ZSTD compress | 30 ms | 22 ms | 6.3 ms |
+| ZSTD decompress (each lane alone) | | 11.1 ms | 3.0 ms |
+
+LZ4 compression is level with aircompressor. What is left of the gap is
+per-symbol work in ZSTD, filed with its leads as `okay-compress-zstd-speed`.
 
 ## Literature
 
