@@ -19,6 +19,7 @@ new_fixture() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/scripts" "$tmp/.work"
   cp "$here/jmh-lane.sh" "$tmp/scripts/jmh-lane.sh"
+  cp "$here/jdk-pin.sh" "$tmp/scripts/jdk-pin.sh"   # sourced by jmh-lane.sh; no .sdkmanrc in the fixture, so it pins nothing
   chmod +x "$tmp/scripts/jmh-lane.sh"
   cat > "$tmp/scripts/fake-sbt.sh" <<'EOF'
 #!/bin/sh

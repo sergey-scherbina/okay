@@ -39,6 +39,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 cd "$root"
 . "$here/quiet.sh"
+# sbt on .sdkmanrc's JDK, as gate.sh runs it (jdk-pin.sh; jmh-lane-jdk-pin)
+JDK_PIN_ROOT="$here/.." . "$here/jdk-pin.sh"
 
 LOCKDIR="$root/.work/jmh/lock"
 mkdir -p "$root/.work/jmh"
