@@ -108,12 +108,13 @@ lazy val root: Project = (project in file("."))
     okay2Lex.jvm, okay2Lex.js, okay2Lex.native,
     okay2Parse.jvm, okay2Parse.js, okay2Parse.native,
     okay2Codec.jvm, okay2Codec.js, okay2Codec.native,
+    okay2Sql.jvm, okay2Sql.js, okay2Sql.native,
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
     okay2Async.jvm, okay2Async.js, okay2Async.native,
     okay2Platform.jvm, okay2Platform.js, okay2Platform.native,
     okay2Stm.jvm, okay2Stm.js, okay2Stm.native,
     okay2Stream.jvm, okay2Stream.js, okay2Stream.native,
-    okay2Cats, okay2Fs2, okay2Zio, okay2Spark)
+    okay2Cats, okay2Fs2, okay2Zio, okay2Spark, okay2Jdbc)
   .settings(
     name := "okay2-root",
     publish / skip := true,
@@ -273,6 +274,35 @@ lazy val okay2Codec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(jsTests, reflect(Some(Provided)))
   .nativeSettings(reflect(Some(Provided)))
   .jvmConfigure(_.withId("okay2Codec"))
+
+/** okay-sql for the Scala 2 core: the relational seam over okay2-codec's
+ * Schema — values, the typed layer, transactions, Query, Pool. No
+ * java.sql, so it cross-builds; java.time instances on the JVM only */
+lazy val okay2Sql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-sql"))
+  .dependsOn(okay2Codec, okay2Stream)
+  .settings(name := "okay2-sql", common)
+  .jvmSettings(jvmOnlyTests, platformSources("scala-jvm"))
+  .jsSettings(jsTests, platformSources("scala-js-native"))
+  .nativeSettings(platformSources("scala-js-native"))
+  .jvmConfigure(_.withId("okay2Sql"))
+
+/** okay-jdbc's driver for the Scala 2 core: `JdbcSql`, tested against
+ * embedded SQLite and H2 */
+lazy val okay2Jdbc: Project = (project in file("okay2-jdbc"))
+  .dependsOn(okay2Sql.jvm, okay2Platform.jvm % "test->compile")
+  .settings(
+    name := "okay2-jdbc",
+    common,
+    libraryDependencies ++= Seq(
+      "com.h2database" % "h2" % "2.3.232" % Test,
+      "org.xerial" % "sqlite-jdbc" % "3.47.1.0" % Test,
+    ),
+    // DriverManager registers drivers per classloader: a JVM of its own
+    // (okay-jdbc forks for the same reason)
+    Test / fork := true,
+  )
 
 /** okay-workflow for the Scala 2 core: `Wf`, the durable program's
  * own questions over `Delim`'s dialogue, and `Proc`, the free arrow

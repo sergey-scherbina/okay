@@ -18,8 +18,9 @@ import scala.reflect.macros.blackbox
  *  - a SEALED trait or abstract class is an `SSum`: its known direct
  *    subclasses in declaration order, `caseOf` by a type test.
  *
- * Types under `scala.` and `java.` are not derived: `Option` is the
- * option instance, never the sum `Some | None`.
+ * Types under `scala.` and `java.` are not derived — `Option` is the
+ * option instance, never the sum `Some | None` — except the tuples,
+ * which are products (`_1`, `_2`, …), as Scala 3's Mirror has them.
  */
 object SchemaMacro {
 
@@ -32,7 +33,10 @@ object SchemaMacro {
     if (!sym.isClass) refuse("not a class")
     val cls = sym.asClass
     val full = cls.fullName
-    if (full.startsWith("scala.") || full.startsWith("java."))
+    // a tuple is a case class like any other (Scala 3 derives it by
+    // Mirror); the rest of scala./java. has its own instance or none
+    val tuple = full.startsWith("scala.Tuple") && cls.isCaseClass
+    if (!tuple && (full.startsWith("scala.") || full.startsWith("java.")))
       refuse("a standard type has its own instance or none")
 
     val S = q"_root_.okay2.codec.Schema"

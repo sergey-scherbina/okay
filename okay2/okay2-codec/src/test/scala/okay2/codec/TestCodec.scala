@@ -85,6 +85,12 @@ class TestCodec extends munit.FunSuite {
     assertEquals(Json.read[Blob](json).map(_.data.toList), Right(packed.toList))
   }
 
+  test("a tuple is a product with fields _1, _2, …, as Scala 3's Mirror has it") {
+    assertEquals(Json.write((1, "a")), """{"_1":1,"_2":"a"}""")
+    assertEquals(Json.read[(Int, String)]("""{"_1":1,"_2":"a"}"""), Right((1, "a")))
+    assertEquals(Json.write(Tuple1(true)), """{"_1":true}""")
+  }
+
   test("Option, List and Vector are the containers, never derived sums") {
     assert(implicitly[Schema[Option[Int]]].isInstanceOf[Schema.SOption[_]])
     assert(implicitly[Schema[List[Int]]].isInstanceOf[Schema.SList[_]])

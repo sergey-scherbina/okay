@@ -2146,35 +2146,58 @@ so it runs against real engines in tests (SQLite and H2, embedded). The
 pg wire driver, and okay-jdbc's BulkLoad, Migrate, Poll, SqlStore, Writes
 and JdbcInterop, are on demand (backlog `okay2-jdbc-tails`).
 
-- [ ] the seam: `SqlValue`, `SqlType`, `Col`, `Isolation`, `Granted`
+- [x] the seam: `SqlValue`, `SqlType`, `Col`, `Isolation`, `Granted`
       (downgrade named), `Drift`, `Bad`, `Sql` (describe, a chunked
       `Source` query, update, batch, begin/commit/rollback, cancel,
       sqlState), `Sql.retryable`
-- [ ] `Placeholders.numbered` (quotes left alone); `Temporal` (civil
+- [x] `Placeholders.numbered` (quotes left alone); `Temporal` (civil
       dates over centuries, pg/H2/ISO timestamps with offsets, times)
-- [ ] `Typed`: row shapes (primitives, bytes, BigInt, BigDecimal, UUID,
+- [x] `Typed`: row shapes (primitives, bytes, BigInt, BigDecimal, UUID,
       java.time on the JVM, Option, Vector/List as Arr, nested products
       as Row, isos); decode by column LABEL (camel -> snake), NULL in a
       non-Option field an error value naming column and row; `verify`
       names dropped, retyped and nullability drifts; params bind
       positionally from a product; `rows`/`rowsOf` stream chunked
-- [ ] `transact` (commit on success, rollback on failure and on a
+- [x] `transact` (commit on success, rollback on failure and on a
       failing statement, autocommit restored), `transactRetry` (40001 and
       40P01 retried, others not, backoff by run number), the typed region
       `Db[Tx.No]`/`Db[Tx.Yes]` where a nested begin does not compile
-- [ ] `Tx` as a `Prog` typestate: begin Idle->Open, commit/rollback
+- [x] `Tx` as a `Prog` typestate: begin Idle->Open, commit/rollback
       Open->Idle, `Tx.run` only on Idle->Idle
-- [ ] `Column`/`Row` over `HMap`: columns encode in insertion order
-- [ ] `Query`: fields refused by name and by type at construction; the
+- [x] `Column`/`Row` over `HMap`: columns encode in insertion order
+- [x] `Query`: fields refused by name and by type at construction; the
       clause and its parameters; the same predicate in memory
       (three-valued NULL, LIKE, numbers, negation); UPDATE and the same
       edit in memory. THE LAW against SQLite: the engine's rows for every
       predicate are the in-memory test's rows
-- [ ] `Pool`: bounded connections, the brake rolls back a returned
+- [x] `Pool`: bounded connections, the brake rolls back a returned
       borrower's transaction, `Exhausted` after the timeout, `pinned`
       over a Resource scope
-- [ ] `JdbcSql` on SQLite and H2; the okay2-sql suites on JVM, Scala.js
-      and Scala Native
+- [x] `JdbcSql` on SQLite and H2; the okay2-sql suites on JVM, Scala.js
+      and Scala Native (okay2-sql: 27 results on each platform; okay2-jdbc:
+      35 on the JVM, TestTyped on H2 as a user with no DDL rights,
+      TestSqlite, TestQuerySqlite, TestPool, TestRetry)
+
+### Found while building it
+- `Params.bind(Tuple1(x))` was refused: okay2-codec's derivation skipped
+  everything under `scala.`, and a tuple is a case class there. Scala
+  3's Mirror derives it. The macro now derives `scala.TupleN` (fields
+  `_1`, `_2`, …), with a test in okay2-codec's TestCodec.
+- A package object cannot extend a trait of its own package in Scala 2
+  (a cyclic reference), so the JVM-only java.time instances are an
+  object, `okay2.sql.javatime`, where Scala 3 has top-level givens.
+- `Typed`'s `Shape` dispatches by method (each case its own
+  `decode`/`encode`), not by a GADT match. `Row`'s encoding is an
+  instance built by induction over `HMap`'s `Cons`/`Nil`, where Scala 3
+  walks a tuple with a cast per entry. The one cast left is the
+  heterogeneous `Known` table, keyed by schema identity.
+- `BigDecimal` stays an iso over text, as in Scala 3: an exact column
+  is read through `Num`'s text and binds as its digits. A first draft
+  gave it a `Num` shape of its own, which would have changed what
+  `verify` expects and what the driver binds. It was taken out before
+  any test ran.
+- `Params.bind(p)(1)` does not index the result in Scala 2: the implicit
+  `Schema` list takes the `(1)`. The tests write `.apply(1)`.
 
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and

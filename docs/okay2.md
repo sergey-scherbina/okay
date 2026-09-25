@@ -60,7 +60,8 @@ Contents:
 31. [Tables on any platform](#31-tables-on-any-platform)
 32. [Lexing and parsing, lossless and total](#32-lexing-and-parsing-lossless-and-total)
 33. [JSON over a Schema](#33-json-over-a-schema)
-34. [Literature](#34-literature)
+34. [SQL: the relational seam](#34-sql-the-relational-seam)
+35. [Literature](#35-literature)
 
 ## 1. The build
 
@@ -1834,7 +1835,54 @@ view:
     assertEquals(take("ada"), JStr("ada"))
 ```
 
-## 34. Literature
+## 34. SQL: the relational seam
+
+`okay2-sql` is okay-sql, and `okay2-jdbc` is its JDBC driver (stage
+42). A driver moves statements, values and row frames, and nothing
+more. Everything smart is written once, above the driver, in `Typed`:
+- a case class IS a row, decoded by column LABEL (`userName` reads
+  `user_name`) and written positionally;
+- a cell that does not decode is a `Left(Bad)` naming the column and
+  the row;
+- `verify` checks a row against the engine's own description of the
+  statement:
+
+```scala
+      val rs = Run.rows[Customer](db, "select * from customer order by id")
+      val nullab = Run(Typed.verify[Strict](db, "select id, age from customer"))
+```
+
+A `Query` has two readings of one declaration: the SQL clause with its
+parameters, and the same predicate evaluated in memory. The suite
+checks that SQLite's rows for every predicate are the in-memory ones:
+
+```scala
+    val w = (name like "a%") and (age >= 18) and !(active === false)
+        val (sql, params) = select.where(w)
+```
+
+`Typed.transact` is a region: begin, the brake (`cancel`) registered
+as the scope's finalizer, the body, then commit. A failure anywhere
+rolls it back. `transactRetry` runs the region again on a serialization
+failure or a deadlock (SQLSTATE 40001, 40P01) and on nothing else. `Tx`
+is the same protocol as a typestate: `Tx.run` accepts only an
+Idle -> Idle program, so a begin left open does not compile:
+
+```scala
+    val p = for {
+      _ <- tx.begin()
+      a <- tx.update[Tx.Open]("insert 1")
+      b <- tx.update[Tx.Open]("insert 2")
+      _ <- tx.commit()
+    } yield a + b
+```
+
+`Pool` bounds the connections, and a returned connection gets the brake
+first, so one borrower's open transaction never reaches the next.
+`okay2-sql` has no `java.sql` and cross-builds. The java.time fields are
+`import okay2.sql.javatime._`, on the JVM only.
+
+## 35. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
@@ -1861,6 +1909,12 @@ view:
   "Stackless Scala With Free Monads" (2012): the trampoline past the
   threshold. RFC 8259 (JSON), RFC 7396 (JSON Merge Patch), RFC 4648
   (base64).
+- E. F. Codd, "A Relational Model of Data for Large Shared Data Banks"
+  (CACM 1970); Hal Berenson et al., "A Critique of ANSI SQL Isolation
+  Levels" (SIGMOD 1995): the levels `begin` asks for and why a
+  serializable run may be refused and retried; Jim Gray and Andreas
+  Reuter, "Transaction Processing: Concepts and Techniques" (1992);
+  Robert Strom and Shaula Yemini, "Typestate" (IEEE TSE 1986): `Tx`.
 - Philippe Flajolet, Éric Fusy, Olivier Gandouet and Frédéric Meunier,
   "HyperLogLog" (2007); Graham Cormode and S. Muthukrishnan, "An improved
   data stream summary: the count-min sketch" (2005); Ted Dunning, "The
