@@ -1,6 +1,0 @@
-feature/ops-docs-edge 2026-09-25T04:47:42Z
-agent: claude-code (okay-watch session)
-heartbeat: 2026-09-25T04:47:42Z
-status: in-progress
-done-so-far: worktree created
-next: okay-docs renders its own okay_docs_* lines (Docs.prom); Ops takes Prometheus text pieces; okay-ops drops okayDocs
