@@ -33,6 +33,11 @@ object ArrowCodec:
   def isStream(bytes: Array[Byte]): Boolean =
     bytes.length >= 4 && bytes(0) == -1 && bytes(1) == -1 && bytes(2) == -1 && bytes(3) == -1
 
+  /** typed rows through either implementation (`Rows`, stage 5) */
+  extension (codec: ArrowCodec)
+    def encode[A](rows: Seq[A])(using okay.codec.Schema[A]): Array[Byte] = codec.write(Rows.table(rows))
+    def decode[A](bytes: Array[Byte])(using okay.codec.Schema[A]): Either[String, Vector[A]] = Rows.rows[A](codec.read(bytes))
+
 /** the unit of a timestamp or a duration */
 enum TimeUnit:
   case Second, Milli, Micro, Nano
@@ -132,6 +137,9 @@ object Column:
       if kinds.length > 1 then
         throw IllegalArgumentException(s"a column changed kind between batches: ${kinds.mkString(", ")}")
       parts.reduceLeft(append)
+
+  /** the column's type, as a person reads it: `int32`, `list<utf8>`, `struct<a: int64>` */
+  def describe(c: Column): String = kind(c)
 
   private def kind(c: Column): String = c match
     case Column.Ints(b, s, _, _) => s"${if s then "int" else "uint"}$b"

@@ -2499,6 +2499,8 @@ lazy val okayPy = (project in file("okay-py"))
 lazy val okayArrow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-arrow"))
+  // okay-codec for the typed layer (Rows: Schema[A] through Columns)
+  .dependsOn(okayCodec)
   .settings(
     name := "okay-arrow",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

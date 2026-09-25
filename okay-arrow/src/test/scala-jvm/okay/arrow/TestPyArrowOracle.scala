@@ -85,3 +85,18 @@ with ipc.new_stream(sys.argv[1], t.schema) as w: w.write_table(t)
     val e = intercept[IllegalStateException](OkayArrow.read(java.nio.file.Files.readAllBytes(f)))
     assert(e.getMessage.contains("column 'm' has Arrow type Map; the model does not hold it"), e.getMessage)
   }
+
+  test("typed rows (Rows, through okay-codec's Schema) are ordinary Arrow to pyarrow: structs, lists, names") {
+    import RowsModel.*
+    val f = file(OkayArrow.encode(orders.take(1)))
+    val out = run("""
+import sys, json, pyarrow.ipc as ipc
+t = ipc.open_stream(open(sys.argv[1], "rb").read()).read_all()
+t.validate(full=True)
+r = t.to_pylist()[0]
+print(json.dumps({k: r[k] for k in ["sku", "qty", "tags", "lines", "colour", "shape", "total"]}, default=str, ensure_ascii=False))
+""", f)
+    assertEquals(out, """{"sku": "tea", "qty": 3, "tags": ["hot", "green"], "lines": [{"product": "cup", "n": 2}], """ +
+      """"colour": "Red", "shape": {"kind": "Circle", "Circle": {"r": 1.5}, "Square": null}, "total": "123456789012345678901234567890"}""")
+  }
+
