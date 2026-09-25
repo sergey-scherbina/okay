@@ -12,6 +12,7 @@ a private copy of the same four functions.
 |---|---|
 | `Crypto` | the whole trait: `hmacSha256`, `sha256`, `pbkdf2`, `randomBytes` — a keyed MAC, a hash, a KDF, randomness |
 | `given Crypto` | one per platform, from `src/main/scala-jvm` and `src/main/scala-js`; a caller summons it and never names an implementation |
+| `Keccak256.hash` | Ethereum's Keccak-256 — NOT SHA3-256 (one padding byte apart): pure Scala, JVM and JS, the one implementation okay-x402-evm and okay-watch use (keccak-pure) |
 
 Deliberately the SMALL surface. The fuller crypto — RSA/ECDSA
 signing, JWT key handles, JWKS — stays in

@@ -2935,7 +2935,8 @@ lazy val okayX402Cdp = (project in file("okay-x402-cdp"))
  * own; okay-x402 stays dependency-free and cross-built.
  */
 lazy val okayX402Evm = (project in file("okay-x402-evm"))
-  .dependsOn(okayX402.jvm)
+  // okayCrypto: the one Keccak-256 (keccak-pure); BouncyCastle stays for secp256k1
+  .dependsOn(okayX402.jvm, okayCrypto.jvm)
   .settings(
     name := "okay-x402-evm",
     libraryDependencies += "org.bouncycastle" % "bcprov-jdk18on" % "1.78.1",

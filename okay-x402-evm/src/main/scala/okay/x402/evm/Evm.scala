@@ -1,7 +1,6 @@
 package okay.x402.evm
 
 import java.math.BigInteger
-import org.bouncycastle.crypto.digests.KeccakDigest
 import org.bouncycastle.crypto.ec.CustomNamedCurves
 import org.bouncycastle.math.ec.ECAlgorithms
 
@@ -18,13 +17,8 @@ object Evm:
     h.grouped(2).map(Integer.parseInt(_, 16).toByte).toArray
 
   /** keccak-256 — Ethereum's hash, NOT the standardised SHA3-256 (the
-   * padding differs) */
-  def keccak(b: Array[Byte]): Array[Byte] =
-    val d = KeccakDigest(256)
-    d.update(b, 0, b.length)
-    val out = new Array[Byte](32)
-    d.doFinal(out, 0): Unit
-    out
+   * padding differs): okay-crypto's, the one implementation (keccak-pure) */
+  def keccak(b: Array[Byte]): Array[Byte] = okay.crypto.Keccak256.hash(b)
 
   private val curve = CustomNamedCurves.getByName("secp256k1")
   private val n = curve.getN
