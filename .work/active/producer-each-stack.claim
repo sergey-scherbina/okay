@@ -1,0 +1,6 @@
+feature/producer-each-stack 2026-09-25T05:13:22Z
+agent: claude-code
+heartbeat: 2026-09-25T05:13:22Z
+status: in-progress
+done-so-far: claim
+next: failing test (200k productions through Producer.each), then a tail-recursive loop
