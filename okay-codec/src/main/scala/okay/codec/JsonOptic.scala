@@ -133,6 +133,12 @@ object JsonOptic {
    * writes, which is the same refusal `Form.edit` makes by returning
    * the value unchanged.
    */
+  /** how many segments a key may have: the descent below is one native
+   * frame per segment, and on a recursive schema a key can name a level
+   * for every segment it has, so a caller's string is bounded rather than
+   * walked (stack-safety-codec-rest, TestJsonOpticDepth) */
+  val MaxSegments: Int = 64
+
   def path(s: Schema[?], key: String): Option[Affine[Json, Json, Json, Json]] =
     val identity: Affine[Json, Json, Json, Json] = Affine(Right(_), (_, v) => v)
     def segments(k: String): List[String] = if k.isEmpty then Nil else k.split('.').toList
@@ -170,7 +176,8 @@ object JsonOptic {
                         case Some(item) => go(item, rest, stepped.andThen(index(i)))
               case _ => None
 
-    go(s, segments(key), identity)
+    val segs = segments(key)
+    if segs.length > MaxSegments then None else go(s, segs, identity)
 
   /** the element schema of a list-shaped node, past the wrappers */
   private def elementOf(s: Schema[?]): Option[Schema[?]] = s match

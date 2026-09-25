@@ -85,7 +85,12 @@ object Policy:
    */
   def hide[A](keys: String*)(using s: Schema[A]): Either[String, Policy[A]] =
     val ks = keys.toVector.distinct
-    val resolved = ks.map(k => k -> to(s, k.split('.').toList, here))
+    // a key past JsonOptic.MaxSegments names nothing: the descent below
+    // is one frame per segment (stack-safety-codec-rest)
+    val resolved = ks.map { k =>
+      val segs = k.split('.').toList
+      k -> (if segs.length > JsonOptic.MaxSegments then None else to(s, segs, here))
+    }
     resolved.collectFirst { case (k, None) => k } match
       case Some(bad) => Left(s"policy: `$bad` names no field the schema of ${nameOf(s)} writes")
       case None => Right(new Policy[A](ks, resolved.collect { case (k, Some((to, last))) => (k, to, last) }, s))

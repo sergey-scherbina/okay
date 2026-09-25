@@ -31,11 +31,11 @@ okay-codec/src/main/scala/okay/codec/Cbor.scala	321	manyNative	mutual	Either.fla
 okay-codec/src/main/scala/okay/codec/Cbor.scala	371	get	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
 okay-codec/src/main/scala/okay/codec/Cbor.scala	375	getNative	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
 okay-codec/src/main/scala/okay/codec/Cbor.scala	454	field	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
-okay-codec/src/main/scala/okay/codec/Compat.scala	125	shape	direct	
-okay-codec/src/main/scala/okay/codec/Compat.scala	151	walk	mutual	Vector.flatMap
-okay-codec/src/main/scala/okay/codec/Compat.scala	201	compareField	mutual	Vector.flatMap
-okay-codec/src/main/scala/okay/codec/Digest.scala	56	of	direct	Vector.map
-okay-codec/src/main/scala/okay/codec/Digest.scala	95	toSchema	lambda	Predef$ArrowAssoc$.$minus$greater$extension,Schema$SList$.apply,Schema$SOption$.
+okay-codec/src/main/scala/okay/codec/Compat.scala	125	shape	direct		BOUNDED: per Option/List/Vector/Iso level of a Schema, which stops at a product's NAME, so a recursive type cannot loop it
+okay-codec/src/main/scala/okay/codec/Compat.scala	151	walk	mutual	Vector.flatMap	BOUNDED: per level of two Schemas the program declares, and a pair of names seen once is not walked twice (`seen`, the recursion guard in the code)
+okay-codec/src/main/scala/okay/codec/Compat.scala	201	compareField	mutual	Vector.flatMap	BOUNDED: per level of two Schemas the program declares, and a pair of names seen once is not walked twice (`seen`, the recursion guard in the code)
+okay-codec/src/main/scala/okay/codec/Digest.scala	56	of	direct	Vector.map	BOUNDED: per level of a Schema the program declares, a name seen once on the path cut to a stub (`seen`)
+okay-codec/src/main/scala/okay/codec/Digest.scala	95	toSchema	lambda	Predef$ArrowAssoc$.$minus$greater$extension,Schema$SList$.apply,Schema$SOption$.	BOUNDED: per level of a Digest document, which `Digest.of` wrote with every recursive name cut to a stub, so it nests as deep as the type it digested
 okay-codec/src/main/scala/okay/codec/Edn.scala	394	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one level of the parsed tree, and past Codecs.NativeThreshold (24) decodeC continues on the Cont trampoline; TestEdn 20 000 deep, TestCborEdnDepth on a 256 KB stack
 okay-codec/src/main/scala/okay/codec/Edn.scala	447	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one level of the parsed tree, and past Codecs.NativeThreshold (24) decodeC continues on the Cont trampoline; TestEdn 20 000 deep, TestCborEdnDepth on a 256 KB stack
 okay-codec/src/main/scala/okay/codec/Edn.scala	477	decodeField	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one level of the parsed tree, and past Codecs.NativeThreshold (24) decodeC continues on the Cont trampoline; TestEdn 20 000 deep, TestCborEdnDepth on a 256 KB stack
@@ -50,8 +50,8 @@ okay-codec/src/main/scala/okay/codec/Json.scala	397	pairsNative	mutual	Vector.fo
 okay-codec/src/main/scala/okay/codec/Json.scala	574	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay-codec/src/main/scala/okay/codec/Json.scala	580	field	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay-codec/src/main/scala/okay/codec/Json.scala	604	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay-codec/src/main/scala/okay/codec/JsonOptic.scala	69	creating	direct	
-okay-codec/src/main/scala/okay/codec/JsonOptic.scala	140	go	lambda	Iterator.map
+okay-codec/src/main/scala/okay/codec/JsonOptic.scala	69	creating	direct		BOUNDED: per element of the `steps` list the caller built — its own path, one lens per step
+okay-codec/src/main/scala/okay/codec/JsonOptic.scala	140	go	lambda	Iterator.map	BOUNDED: per segment of the key, at most JsonOptic.MaxSegments (64) — a longer key names nothing (TestJsonOpticDepth on a 256 KB stack)
 okay-codec/src/main/scala/okay/codec/JsonStrict.scala	105	get	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
 okay-codec/src/main/scala/okay/codec/JsonStrict.scala	109	getNative	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
 okay-codec/src/main/scala/okay/codec/JsonStrict.scala	139	array	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
@@ -65,37 +65,37 @@ okay-codec/src/main/scala/okay/codec/JsonValue.scala	72	value	mutual		BOUNDED: e
 okay-codec/src/main/scala/okay/codec/JsonValue.scala	76	valueNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay-codec/src/main/scala/okay/codec/JsonValue.scala	91	objNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay-codec/src/main/scala/okay/codec/JsonValue.scala	125	arrNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay-codec/src/main/scala/okay/codec/Policy.scala	101	to	lambda	Iterator.flatMap,Option.flatMap
-okay-codec/src/main/scala/okay/codec/Schema.scala	170	edge	mutual	?
-okay-codec/src/main/scala/okay/codec/Staged.scala	391	tupleTypes	direct	
-okay-codec/src/main/scala/okay/codec/Staged.scala	420	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	458	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	469	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	480	read	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	522	fieldOf	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	546	go	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	561	chain	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	582	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	616	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	626	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	633	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	689	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	715	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Staged.scala	768	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-codec/src/main/scala/okay/codec/Stubs.scala	47	pyType	direct	Stubs$Writer.declare,Vector.map
-okay-codec/src/main/scala/okay/codec/Stubs.scala	60	pyProduct	direct	Stubs$Writer.declare,Vector.map
-okay-codec/src/main/scala/okay/codec/Stubs.scala	72	pySum	direct	Stubs$Writer.declare,Vector.map
-okay-codec/src/main/scala/okay/codec/Stubs.scala	128	go	lambda	Option.foreach,Vector.foreach
-okay-codec/src/main/scala/okay/codec/Stubs.scala	201	tsType	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map
-okay-codec/src/main/scala/okay/codec/Stubs.scala	221	tsProduct	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map
-okay-codec/src/main/scala/okay/codec/Stubs.scala	232	tsSum	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map
-okay-codec/src/main/scala/okay/codec/Stubs.scala	260	wireType	direct	Stubs$Writer.declare,Vector.map
-okay-codec/src/main/scala/okay/codec/Stubs.scala	284	wireProduct	direct	Stubs$Writer.declare,Vector.map
-okay-codec/src/main/scala/okay/codec/TsTypes.scala	233	obj	mutual	
-okay-codec/src/main/scala/okay/codec/TsTypes.scala	251	union	mutual	
-okay-codec/src/main/scala/okay/codec/TsTypes.scala	264	postfix	mutual	
-okay-codec/src/main/scala/okay/codec/TsTypes.scala	272	primary	mutual	
-okay-codec/src/main/scala/okay/codec/TsTypes.scala	356	typeOf	direct	
+okay-codec/src/main/scala/okay/codec/Policy.scala	101	to	lambda	Iterator.flatMap,Option.flatMap	BOUNDED: per segment of a policy key, checked against JsonOptic.MaxSegments (64) at construction — a longer key is refused by name (TestJsonOpticDepth)
+okay-codec/src/main/scala/okay/codec/Schema.scala	170	edge	mutual	?	LAZY: the edge is a `lazy val` forced when the algebra asks for the child, and `done`/`inProgress` answer a schema met again by identity, so a recursive type folds once
+okay-codec/src/main/scala/okay/codec/Staged.scala	391	tupleTypes	direct		BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	420	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	458	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	469	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	480	read	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	522	fieldOf	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	546	go	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	561	chain	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	582	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	616	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	626	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	633	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	689	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	715	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Staged.scala	768	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: compile time — per level of the Scala type the macro reads in the user's source, a type seen before on the path cut by `seen` (Staged.seenBefore)
+okay-codec/src/main/scala/okay/codec/Stubs.scala	47	pyType	direct	Stubs$Writer.declare,Vector.map	BOUNDED: per level of a Schema the program declares; a product is declared once by name (Writer.declare's `started`), so a recursive type stops at its second occurrence
+okay-codec/src/main/scala/okay/codec/Stubs.scala	60	pyProduct	direct	Stubs$Writer.declare,Vector.map	BOUNDED: per level of a Schema the program declares; a product is declared once by name (Writer.declare's `started`), so a recursive type stops at its second occurrence
+okay-codec/src/main/scala/okay/codec/Stubs.scala	72	pySum	direct	Stubs$Writer.declare,Vector.map	BOUNDED: per level of a Schema the program declares; a product is declared once by name (Writer.declare's `started`), so a recursive type stops at its second occurrence
+okay-codec/src/main/scala/okay/codec/Stubs.scala	128	go	lambda	Option.foreach,Vector.foreach	BOUNDED: `left` counts the product levels the key table descends and stops at zero — a written limit passed by the caller
+okay-codec/src/main/scala/okay/codec/Stubs.scala	201	tsType	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map	BOUNDED: per level of a Schema the program declares; a product is declared once by name (Writer.declare's `started`), so a recursive type stops at its second occurrence
+okay-codec/src/main/scala/okay/codec/Stubs.scala	221	tsProduct	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map	BOUNDED: per level of a Schema the program declares; a product is declared once by name (Writer.declare's `started`), so a recursive type stops at its second occurrence
+okay-codec/src/main/scala/okay/codec/Stubs.scala	232	tsSum	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map	BOUNDED: per level of a Schema the program declares; a product is declared once by name (Writer.declare's `started`), so a recursive type stops at its second occurrence
+okay-codec/src/main/scala/okay/codec/Stubs.scala	260	wireType	direct	Stubs$Writer.declare,Vector.map	BOUNDED: per level of a Schema the program declares; a product is declared once by name (Writer.declare's `started`), so a recursive type stops at its second occurrence
+okay-codec/src/main/scala/okay/codec/Stubs.scala	284	wireProduct	direct	Stubs$Writer.declare,Vector.map	BOUNDED: per level of a Schema the program declares; a product is declared once by name (Writer.declare's `started`), so a recursive type stops at its second occurrence
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	233	obj	mutual		BOUNDED: recursive descent over a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	251	union	mutual		BOUNDED: recursive descent over a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	264	postfix	mutual		BOUNDED: recursive descent over a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	272	primary	mutual		BOUNDED: recursive descent over a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	356	typeOf	direct		BOUNDED: per level of a TsType parsed from that same declaration file
 okay-demo/src/main/scala/okay/demo/RepoAgent.scala	47	walk	lambda	IterableOps.flatMap
 okay-deploy/src/main/scala/okay/deploy/Paas.scala	349	pretty	lambda	Vector.map
 okay-direct/src/main/scala/Condition.scala	160	loop	mutual	

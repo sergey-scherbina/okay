@@ -151,7 +151,7 @@ deleted.
       (compile-time trampolining of what the macro can see, a room
       carried as a value, a fresh stack for opaque bodies; measured and
       not yet landed).
-- [ ] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
+- [x] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
       already `Cont`-trampolined; the other formats, Schema walks,
       Compat, Stubs and Policy are not.
       - [x] 2a — the JSON family, both cores (stack-safety-json,
@@ -187,6 +187,23 @@ deleted.
         BOUNDED, and TestCborEdnDepth runs encode and decode of both at
         20 000 levels on the same small stack as the control. okay2 has
         neither format.
+      - [x] 2d — the rest of okay-codec (stack-safety-codec-rest,
+        2026-09-25): 38 rows, one hole. `JsonOptic.path` and
+        `Policy.hide` descend the schema once per SEGMENT of a key a
+        caller hands over, and through a sum at every level that descent
+        is a search over the cases, not a loop — so on a recursive enum a
+        100 000-segment key was a StackOverflowError (TestJsonOpticDepth,
+        red first on a 256 KB stack; the product/Option chain alone had
+        already been compiled to a loop). A key is bounded rather than
+        walked: `JsonOptic.MaxSegments` = 64, past which `path` names
+        nothing and `hide` refuses the key by name. Everything else is a
+        written bound: Staged's fifteen walks run at COMPILE time over
+        the user's type, a type met again cut by `seen`; Stubs' printers
+        declare a product once (`Writer.declare`) and its key table has a
+        `left` budget; TsTypes' recursive descent reads a declaration
+        file a person wrote; Compat and Digest carry their own `seen`
+        guards and stop at a product's name; `Schema.fold`'s `edge` is a
+        lazy val answered by identity. Stage 2 is closed.
       - [x] okay-arrow (stack-safety-arrow, 2026-09-25): the stream reader's
         `parseField` recursed per level of the schema it read, and a
         100 000-deep schema overflowed on a 256 KB stack (TestArrowDepth).
