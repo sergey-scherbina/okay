@@ -152,3 +152,45 @@ native bindings (lz4-java, zstd-jni) and a pure-Java port
   - Arrow+ZSTD at 1 000 rows: bytes and time in specs/okay-arrow.md
     (stage 7a); history.d okay-compress-zstd-ratio.
 
+
+- okay-compress-zstd-speed (2026-09-25): ZSTD on 4 MiB of lines against
+  aircompressor, each lane through `scripts/jmh-lane.sh`:
+  - decompress 11.1 -> 4.28 ms (air 2.29; the gap 3.7x -> 1.9x);
+  - compress 21.8 -> 16.5 ms (air 6.45; 3.5x -> 2.6x).
+  - What landed, in the order measured:
+    - short-offset match copies by whole periods of 8+ bytes (a period
+      under 8 repeats, so a copy from `p` bytes back is the same
+      pattern): 11.1 -> 5.6 ms. Every period 1–9 at every length is
+      tested; mutant `p = offset` went red;
+    - the encoder's literal/match length codes by table and high bit,
+      where it searched the base table linearly;
+    - XXH64/XXH32 lanes through `Mem`: the checksum read eight bytes
+      with `Le`, one byte at a time, and was 13% of decompression;
+    - the sequence loop keeps the output buffer, its position and the
+      FSE symbol tables in locals. Room is taken once per block, and a
+      damaged length is refused against the block's 128 KiB. New test:
+      a damaged frame fails as `Corrupt`, never as an index error.
+      Mutant without the check: 84 of ~1 500 damaged frames ran off
+      the buffer;
+    - with the two above: 5.40 -> 4.28 ms;
+    - the encoder's per-block tables without boxing. `Array.tabulate`
+      takes a `ClassTag` and boxes every Int: 9% of compression.
+  - REFUTED:
+    - wild copies (whole 8-byte words into reserved room, as
+      aircompressor's copyMatchTail) were level with the period fix
+      (5.54 vs 5.58 ms) and were reverted;
+    - the `BackBits` register window gave ~2%, inside the noise. It was
+      kept as the shape the reference decoder has.
+  - THE INSTRUMENT WAS WRONG FIRST. JMH's `-prof stack` samples at
+    safepoints, which sit on loop back-edges. It put 39–42% of
+    decompression in `Mem.copyMatch`. async-profiler, with no safepoint
+    bias, put it at 16%, and the flat profile after the fixes reads:
+    - the sequence loop 31%;
+    - `copyMatch` 20%;
+    - FSE `next` plus `BackBits` 31%;
+    - `xxh64` 5%.
+  - Compression after the lane: `Matcher.best` 22%, `insertUpTo` 13%,
+    `BitWriter.write` 10%. That is the hash-chain search itself;
+    aircompressor's level 3 is "double fast" with no chains. Filed as
+    `okay-compress-zstd-speed-2` with the FSE and Native leads;
+    history.d okay-compress-zstd-speed.

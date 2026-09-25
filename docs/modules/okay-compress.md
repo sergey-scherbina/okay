@@ -95,8 +95,24 @@ on Scala.js and Native. The codecs stay one source. On the same bench:
 | ZSTD compress | 30 ms | 22 ms | 6.3 ms |
 | ZSTD decompress (each lane alone) | | 11.1 ms | 3.0 ms |
 
-LZ4 compression is level with aircompressor. What is left of the gap is
-per-symbol work in ZSTD, filed with its leads as `okay-compress-zstd-speed`.
+LZ4 compression is level with aircompressor.
+
+okay-compress-zstd-speed then profiled ZSTD with async-profiler. JMH's
+own stack profiler samples only at safepoints and had blamed the match
+copy for twice its real share. Four changes paid:
+- match copies at offsets under 8 go a whole period at a time;
+- the checksum reads eight bytes per load;
+- the sequence loop keeps its output in locals;
+- the encoder builds its tables without boxing every Int.
+
+| 4 MiB of lines | with `Mem` | now | aircompressor |
+|---|---|---|---|
+| ZSTD compress | 21.8 ms | 16.5 ms | 6.45 ms |
+| ZSTD decompress | 11.1 ms | 4.28 ms | 2.29 ms |
+
+The rest of compression's gap is the search strategy: a hash chain here,
+aircompressor's "double fast" with no chains at level 3. It is filed as
+`okay-compress-zstd-speed-2`.
 
 ## Literature
 
