@@ -334,6 +334,19 @@ object Delim {
                          (using om: OneMachine[F], at: At): R ! F =
     run(scopeAs("delimited")(body))(using om)
 
+  /**
+   * `scope` with a way out: `ret $ body` at a fresh delimiter, the
+   * evidence in scope for the body (dollar-doors). The same word as
+   * the prompt-taking primitive, told apart by the first clause: a
+   * prompt there is the primitive, a return function here is this one
+   * (the `shift` rule, delim-one-name). Installs only, like `scope`;
+   * the machine is whoever runs the row.
+   */
+  def dollar[R0, R, F[+_]](ret: R0 => R ! Delim + F)(body: Prompted[R] ?=> R0 ! Delim + F)
+                          (using at: At): R ! Delim + F =
+    val p = named[R]("dollar")
+    dollar[R0, R, F](p)(ret)(body(using new Prompted[R](p)))
+
   /** capture up to the delimiter in force — the same word as the
    * prompt-taking primitive, and the compiler picks by what you
    * write: a prompt in the first clause is the primitive, a handler
@@ -369,6 +382,15 @@ object Delim {
   def shift0[R, A, F[+_]](using in: Prompted[R])
                            (f: (A => R ! Delim + F) => R ! Delim + F)(using At): A ! Delim + F =
     shift0[R, A, F](in.prompt)(f)
+
+  /** the 0-variant inside a `direct` block, ONE type argument: the
+   * mirror of the inline `shift` above, with the same reasons for
+   * `inline` and for its cast (dollar-doors) */
+  inline def shift0[A](using in: Prompted[?])[F[_]]
+                          (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
+                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
+    okay.effect[rw.R, A](Capture(in.prompt, f, underPrompt = false, delimitK = true,
+      at = at.where).asInstanceOf[rw.R[A]])
 
   /** the continuation does not re-install the delimiter */
   def control[R, A, F[+_]](using in: Prompted[R])
@@ -1068,6 +1090,20 @@ object Delim {
     class In[R, S <: Tuple](val p: Prompt[R]):
       given stack: Stack[p.type *: S] = new Stack[p.type *: S]
 
+    /** "p is a PLAIN delimiter" — what `control` asks for, since a
+     * control-capture's bare segment answers the body's type, which at
+     * a `dollar` is not the prompt's (specs/shift0-dollar.md). Only a
+     * `Reset` puts it in scope: a `dollar`, a layer or a Lexical
+     * instance hands a bare `In`, and a `control` to it is refused
+     * here instead of by the machine (dollar-doors). */
+    @implicitNotFound("prompt ${P} is a `dollar` (or a layer, or a handler instance), not a plain reset: a control-capture's bare continuation answers the body's type, not the prompt's — use shift/shift0/abort, or a Delim.Stacked.reset (specs/shift0-dollar.md)")
+    final class Plain[P]
+
+    /** what `reset` and `delimited` hand their body: a plain delimiter,
+     * which every capture may name */
+    final class Reset[R, S <: Tuple](p0: Prompt[R]) extends In[R, S](p0):
+      given plain: Plain[p.type] = new Plain[p.type]
+
     /** "p is on the stack" — the using clause that replaces the throw */
     @implicitNotFound("prompt ${P} is not on the prompt stack ${S}: a shift names the prompt of a reset it is INSIDE (Delim.Stacked.reset { s => import s.given; … shift(s.p) … }) — not one that has returned, and not one another reset made")
     sealed trait Has[S <: Tuple, P]:
@@ -1099,9 +1135,9 @@ object Delim {
      * type. Every stacked program starts here; `reset` below installs
      * only, and needs a stack to install on.
      */
-    def delimited[R, F[+_]](body: (s: In[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
+    def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
                            (using om: OneMachine[F], at: At): R ! F =
-      val s = new In[R, EmptyTuple](named[R]("delimited")(using at))
+      val s = new Reset[R, EmptyTuple](named[R]("delimited")(using at))
       run[R, F](push[R, F](s.p)(body(s).free))(using om)
 
     /**
@@ -1111,9 +1147,9 @@ object Delim {
      * prompt from outside.
      */
     def reset[R, F[+_]](using st: Stack[?])
-                       (body: (s: In[R, st.S]) => Under[F, R, s.p.type *: st.S])
+                       (body: (s: Reset[R, st.S]) => Under[F, R, s.p.type *: st.S])
                        (using at: At): Under[F, R, st.S] =
-      val s = new In[R, st.S](named[R]("reset")(using at))
+      val s = new Reset[R, st.S](named[R]("reset")(using at))
       Prog.diag[st.S, Delim + F, R](push[R, F](s.p)(body(s).free))
 
     /**
@@ -1134,8 +1170,10 @@ object Delim {
 
     /** `Delim.control`, stacked: the continuation is a bare segment,
      * spliced where `f` invokes it — inside `f`, under `p` and what is
-     * below it, the same stack as `shift`'s body */
-    def control[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
+     * below it, the same stack as `shift`'s body. Only to a PLAIN
+     * reset (`Plain`): at a `dollar` the bare segment answers the
+     * body's type, which the machine used to refuse at run time. */
+    def control[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B], @unused pl: Plain[p.type])
                             (f: Stack[p.type *: B] ?=> (A => Under[F, R, p.type *: B]) => Under[F, R, p.type *: B])
                             (using at: At): Under[F, A, st.S] =
       given Stack[p.type *: B] = new Stack[p.type *: B]
@@ -1178,7 +1216,8 @@ object Delim {
     // segment run where `p` is gone, but the code inside that segment was
     // typed with `p` on its stack, so a capture to `p` in it would pass
     // the index and throw. The index cannot say "this k needs p"; the
-    // unstacked door remains (specs/shift0-dollar.md, Decisions).
+    // unstacked door remains (specs/shift0-dollar.md, Decisions). Were it
+    // added, it would ask for `Plain[p.type]` as `control` does.
 }
 
 /** The class IS the whole identity: Delim has no parameter but its

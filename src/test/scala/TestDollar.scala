@@ -108,6 +108,22 @@ class TestDollar extends munit.FunSuite:
 
   // ------------------------------------------------ what is refused, and depth
 
+  test("abort to a dollar SKIPS ret: k is dropped, so v is never applied ($/S0 with f ignoring its argument)") {
+    // dollar-doors: pinned as a value, not only as agreement with the macro
+    val p = Delim.prompt[String]
+    val body = Delim.abort[String, String, Pure](p)("gone").map(_ + "!")
+    assertEquals(run(dollar(p)(angle)(body)), "gone")
+    assertEquals(run(Delim.push(p)(body).flatMap(angle)), "<gone>")   // the flatMap encoding wraps it
+  }
+
+  test("the evidence door: dollar(ret) { body } with Prompted in scope, R0 = Int, R = String") {
+    // dollar-doors: the same word as the primitive, told apart by the first clause
+    val r = Delim.dollar[Int, String, Pure](i => okay.pure(s"n=$i")) {
+      Delim.shift0[String, Int, Pure](k => k(1).flatMap(a => k(2).map(b => s"$a|$b"))).map(_ * 10)
+    }
+    assertEquals(run(r), "n=10|n=20")
+  }
+
   test("a control-capture to a dollar is refused: its bare continuation answers the body's type") {
     for ctl <- List("control", "control0") do
       val p = Delim.prompt[String]

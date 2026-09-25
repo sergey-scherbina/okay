@@ -160,6 +160,11 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
 - [x] Stage 3: a deep State handler as `$` + `shift0` is
       `Bisim`-equivalent to `State.handle`, and so is a shallow one as
       `control0` (TestHandlersAsDollar).
+- [x] dollar-doors: the evidence door `Delim.dollar(ret) { body }`
+      (TestDollar), a stacked `control` to a `dollar` refused at compile
+      time and allowed to a `Reset` (TestStackedShift0),
+      `!Delim.shift0[A]` in a direct block (TestDirectShift0), and
+      `abort` to a dollar skipping `ret` pinned as a value (TestDollar).
 
 ## Out of scope
 
@@ -246,6 +251,22 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   `Mark` and the plain cut are untouched (delimGenerator byte-identical,
   Results). The λ$ operator is unchanged: this is instrumentation of
   the delimiter frame, not a new reduction rule.
+- **Compile time where the arc promised it (dollar-doors, 2026-09-25).**
+  Three doors the arc left at the raw-prompt level or at run time:
+  (1) `Delim.dollar(ret) { body }` with `Prompted[R]` in scope, the
+  same word as the primitive told apart by the first clause (the
+  `shift` rule), so the recommended `scope`/`delimited` spelling can
+  write a `$` without a prompt in hand; (2) `Delim.Stacked.control` asks
+  for `Plain[p.type]`, which only a `Reset` (what `reset`/`delimited`
+  hand their body) provides — a `dollar`, a `Layered` layer and a
+  `Lexical` instance hand a bare `In`, so a control-capture to any of
+  them is now refused by the compiler with the reason in the message,
+  where the machine used to throw; `Prompt` is final, so the kind
+  lives on the evidence the stack hands out, not on the prompt; (3)
+  `!Delim.shift0[A]` in a direct block, the inline mirror of `shift`.
+  Also pinned as a value: `abort` to a dollar answers the aborted
+  value with no `ret` (it is `$/S0` with `f` ignoring its argument),
+  where the `flatMap` encoding would wrap it.
 
 STAGE 0, 2026-09-24 (TestDollarProbe, 5 tests, okayJVM):
 

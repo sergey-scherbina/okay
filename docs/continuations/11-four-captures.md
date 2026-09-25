@@ -185,11 +185,22 @@ They are also 4x slower and allocate 7x more, which is why the
 library's handlers keep their own loop. The encoding is a reference to
 check a handler against, not a replacement for it.
 
-Two rules to know. `shift` and `control` run their body under a PLAIN
+Three rules to know. `shift` and `control` run their body under a PLAIN
 delimiter, not under `ret` (λ$ defines `S k.e` as `S0 k.⟨e⟩`).
 `control` and `control0` are refused at a `dollar`, because their bare
-continuation answers the body's type rather than the prompt's. The
-measurements and the rest are in specs/shift0-dollar.md.
+continuation answers the body's type rather than the prompt's; in
+`Delim.Stacked` that refusal is a compile error (`control` asks for a
+plain `Reset`), everywhere else it is the machine's. And `abort` to a
+`dollar` SKIPS `ret`: an abort drops its continuation, and `ret` rides
+inside the continuation, so `abort(p)("gone")` under `ret $ …` answers
+`"gone"`, not `ret("gone")`. The measurements and the rest are in
+specs/shift0-dollar.md.
+
+The same door exists with the evidence in scope instead of a prompt in
+hand, as `scope` does for `push`: `Delim.dollar(ret) { body }` makes a
+fresh delimiter, runs `body` with `Prompted[R]` in scope, and leaves
+through `ret`. Inside a `direct` block, `!Delim.shift0[A](k => …)` is
+the one-type-argument spelling of the 0-capture, beside `!Delim.shift[A]`.
 
 One more thing `ret` cannot tell you: how many times it was RESUMED.
 A resumption that leaves the body by `abort` drops its continuation,

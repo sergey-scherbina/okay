@@ -104,6 +104,29 @@ class TestStackedShift0 extends munit.FunSuite:
     assertEquals(r, "n=10|n=20")
   }
 
+  test("control to a stacked RESET is allowed: the bare segment, spliced where f invokes it") {
+    // dollar-doors: the positive half of the Plain requirement
+    val r = !.run(delimited[Int, P] { s =>
+      import s.given
+      okay.Delim.Stacked.control[Int, Int, P](s.p)(k => k(1).map(_ + 100)).map(_ * 2)
+    })
+    // control: k(1) = 1 * 2 = 2 (no delimiter re-installed), then + 100
+    assertEquals(r, 102)
+  }
+
+  test("control to a stacked DOLLAR does not compile: its bare continuation answers the body's type") {
+    // dollar-doors: the machine used to refuse this at run time (TestDollar)
+    val e = compileErrors("""
+      okay.Delim.Stacked.delimited[String, okay.Pure] { s =>
+        import s.given
+        okay.Delim.Stacked.dollar[Int, String, okay.Pure](i => okay.Prog.pure(s"n=$i")) { d =>
+          import d.given
+          okay.Delim.Stacked.control[String, Int, okay.Pure](d.p)(k => k(1))
+        }
+      }""")
+    assert(e.contains("not a plain reset"), s"compiled, or not our message: $e")
+  }
+
   test("dollar, stacked: the dollar's prompt is gone after it returns") {
     val e = compileErrors("""
       okay.Delim.Stacked.delimited[Int, okay.Pure] { s =>
