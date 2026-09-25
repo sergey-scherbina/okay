@@ -332,36 +332,28 @@ reify[List, Out, Pure]:
         f    <- fee.reflect[Int, Pure]
 ```
 
-With algebraic effects each helper declares only the effects it uses —
-and "a value that may be absent" is an effect of the user's own, `Opt`:
-one operation, and a handler that turns it into `None`:
+With algebraic effects each helper declares only the effects it uses.
+Team B's "no delivery" is not an effect at all — it is a plain `Option`
+value; only the unknown shop is an effect, an error:
 
 ```scala
-enum Opt[+A] derives okay.Effect:
-  case Absent extends Opt[Nothing]
+def deliveryFee(shop: String): Option[Int] ! Throws % String =
+  fees.get(shop) match
+    case Some(fee) => pure[Throws % String, Option[Int]](fee)
+    case None      => raise[String, Option[Int]](s"unknown shop $shop")
+```
+
+The union is just the row of the program that uses both helpers, each
+widened into it, and the program looks at the `Option` itself:
+
+```scala
+type Order = Choose + Throws % String
 ```
 
 ```scala
-def absent[A]: A ! Opt = effect(Opt.Absent)
-
-def runOpt[A, F[+_]](a: A ! Opt + F): Option[A] ! F =
-  Effects[Free].handle[Opt, F](a)(x => pure[F, Option[A]](Some(x))):
-    [X] => _ => shift(_ => pure[F, Option[A]](None))
-```
-
-```scala
-def deliveryFee(shop: String): Int ! Opt + Throws % String =
-```
-
-and the union is just the row of the program that uses both helpers,
-each widened into it:
-
-```scala
-type Order = Choose + Opt + Throws % String
-```
-
-```scala
-fee  <- deliveryFee(shop).at[Order]
+fee   <- deliveryFee(shop).at[Order]
+total <- fee match
+  case None    => pure[Order, Option[Int]](None)
 ```
 
 All three give the same `List(Right(Some(850)), Right(None))`

@@ -293,43 +293,33 @@ object LayeredDelivery:
                       acc.flatMap(xs => priceOf(shop, item).reflect[Option[Int], Pure].map(xs :+ _)))
           yield ps.sum + f
 
-/** "a value that may be absent" as an effect of the user's own: one operation */
-enum Opt[+A] derives okay.Effect:
-  case Absent extends Opt[Nothing]
-
 object EffectsDelivery:
-  import okay.{Choose, Effects, Free, Throws, choose, effect, raise, runChoice, runEither, shift}
+  import okay.{Choose, Throws, choose, raise, runChoice, runEither}
   import okay.Row.at
   import okay.given
   import Delivery.fees
   import EffectsBasket.priceOf
 
-  /** the operation, and its handler: absent becomes None */
-  def absent[A]: A ! Opt = effect(Opt.Absent)
-
-  def runOpt[A, F[+_]](a: A ! Opt + F): Option[A] ! F =
-    Effects[Free].handle[Opt, F](a)(x => pure[F, Option[A]](Some(x))):
-      [X] => _ => shift(_ => pure[F, Option[A]](None))
-
-  /** team B's helper: only the effects IT uses */
-  def deliveryFee(shop: String): Int ! Opt + Throws % String =
+  /** team B's helper: absence is a plain Option VALUE, the error an effect */
+  def deliveryFee(shop: String): Option[Int] ! Throws % String =
     fees.get(shop) match
-      case None           => raise[String, Int](s"unknown shop $shop").at[Opt + Throws % String]
-      case Some(None)     => absent[Int].at[Opt + Throws % String]
-      case Some(Some(fee)) => pure[Opt + Throws % String, Int](fee)
+      case Some(fee) => pure[Throws % String, Option[Int]](fee)
+      case None      => raise[String, Option[Int]](s"unknown shop $shop")
 
-  type Order = Choose + Opt + Throws % String
+  type Order = Choose + Throws % String
 
-  def order(items: List[String]): Int ! Order =
+  def order(items: List[String]): Option[Int] ! Order =
     for
-      shop <- choose("north", "south").at[Order]
-      fee  <- deliveryFee(shop).at[Order]
-      ps   <- items.foldLeft(pure[Order, List[Int]](Nil))((acc, item) => acc.flatMap(xs => priceOf(shop, item).at[Order].map(xs :+ _)))
-    yield ps.sum + fee
+      shop  <- choose("north", "south").at[Order]
+      fee   <- deliveryFee(shop).at[Order]
+      total <- fee match
+        case None    => pure[Order, Option[Int]](None)
+        case Some(f) => items.foldLeft(pure[Order, List[Int]](Nil))((acc, item) =>
+                          acc.flatMap(xs => priceOf(shop, item).at[Order].map(xs :+ _))).map(ps => Some(ps.sum + f))
+    yield total
 
   def run(items: List[String]): List[Either[String, Option[Int]]] =
-    val maybe   = runOpt[Int, Choose + Throws % String](order(items))
-    val checked = runEither[Option[Int], Choose, String](maybe)
+    val checked = runEither[Option[Int], Choose, String](order(items))
     !.run(runChoice[Either[String, Option[Int]], Pure](checked)).toList
 
 class TestBookTwoMonadsCats extends munit.FunSuite:
