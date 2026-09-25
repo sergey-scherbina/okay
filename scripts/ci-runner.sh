@@ -109,6 +109,12 @@ bisect_and_revert() {
   else
     bwt="$root/../okay-ci-bisect"
     [ -d "$bwt" ] && git worktree remove --force "$bwt" 2>/dev/null
+    # a bisect that was killed leaves its directory behind (build outputs
+    # under a path git no longer registers), and `worktree add` refuses an
+    # existing path — so every later bisect failed here, and master sat
+    # unpushed behind a red it could have named (2026-09-25, 167 commits)
+    git worktree remove --force "$bwt" >/dev/null 2>&1 || true
+    rm -rf "$bwt"
     git worktree add --detach "$bwt" "$to" >>"$log" 2>&1 || { echo "ci-runner: could not create the bisect worktree" | tee -a "$log"; return 1; }
     (
       cd "$bwt"
