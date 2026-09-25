@@ -211,7 +211,9 @@ also took 20% off the delimiter lane (33.8 to 25.4).
   region system);
 - `control`/`shift0`/`prompt0` variants — the machine can express
   them (do not re-install the marker in the captured segment) if a
-  use appears.
+  use appears. SUPERSEDED: all four captures landed long ago
+  ("The family" above), and λ$'s `dollar` joined them on 2026-09-25
+  (specs/shift0-dollar.md).
 
 ## Cast-free (2026-09-02, cast-free-delim)
 The machine's continuation is a TYPED chain, `Segs[F, A, Z]`: from

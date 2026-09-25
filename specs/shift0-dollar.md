@@ -154,8 +154,9 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
       `Bisim.check` compares operations with `==`, and a `Delim`
       operation carries a function, so compare AFTER `Delim.run`, on
       the residual row.
-- [ ] Stage 2: stacked `shift0`/`control0`/`dollar`, a consumed prompt
-      refused at compile time.
+- [x] Stage 2: stacked `shift0` and `dollar` (not `control0`, see
+      Decisions), a consumed prompt refused at compile time
+      (TestStackedShift0).
 - [ ] Stage 3: a deep State handler as `$` + `shift0` is
       `Bisim`-equivalent to `State.handle`.
 
@@ -201,6 +202,21 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   `f`'s body, which is this rule, so no prompt kind is needed and
   `Prompt[R]` stays as it is. Pinned: "shift under $" in
   TestDollarProbe, on both `shift` and its `S0 k.⟨e⟩` spelling.
+
+- **Stage 2's typing (2026-09-25).** `Below` is a type MEMBER of the
+  `Has` evidence (`Has.Aux[S, P, B]`), found by the same induction that
+  finds the prompt. A match type `Below[S, P]` cannot reduce: two
+  prompts' singleton types are not provably disjoint. `shift` and
+  `control` bodies run under `p *: B`, and a `shift0` body under `B`,
+  each with that stack as a GIVEN of its own (a context-function
+  parameter of `f`). The existing `shift`/`control` typed the body under
+  the whole stack, which was unsound (Results). `control0` is left
+  unstacked: its bare continuation runs where `p` is gone, but its
+  code was typed with `p` present, and a per-continuation requirement
+  is not something this index can carry. The index is conservative
+  where ICFP 2011 is not. A continuation captured under `p` is typed as
+  needing `p` even when its code never captures to `p`, so the paper's
+  own example is refused (pinned in the tests).
 
 ## Results
 
@@ -256,3 +272,21 @@ STAGE 1, 2026-09-24/25 (TestDollar 11; DelimBenchmark, history.tsv):
   directly, gave 1.002, 1.012 and 1.044 (±2.5 on the last). That is
   within the noise in two of three rounds, and is recorded as ≤ 2%,
   not as zero.
+
+STAGE 2, 2026-09-25 (TestStackedShift0 8, TestProg 12 unchanged):
+
+- FOUND FIRST: the stacked `shift` typed its body under the WHOLE
+  stack. ProbeStackedHole shifted to an outer prompt and, from the
+  body, to the inner prompt the capture had just taken. It COMPILED and
+  threw `NoPrompt` while the program was being built, which is the
+  exact failure `Delim.Stacked` exists to make impossible. It is now a
+  compile error ("CLOSED" test).
+- Values worked by hand, all matched on the first run: 22 (shift body
+  to a prompt below), 202 (shift0 body to the outer prompt), 30 (shift0
+  at the root, k twice), "n=10|n=20" (stacked dollar, R0 ≠ R).
+- WATCHED FAILING: a mutant `Has.here` whose `Below` keeps the prompt
+  turned "a shift to the CONSUMED prompt" green-to-red. The ICFP refusal
+  was read and is the expected one (`Found: (k1 : String => Under[…,
+  (p1.p)])`), not an unrelated error. The test asserts on that.
+- TestProg's twelve tests needed no change: a `k => …` lambda adapts to
+  the new context-function body.

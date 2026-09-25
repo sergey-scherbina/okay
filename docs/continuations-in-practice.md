@@ -138,9 +138,31 @@ to after it returned — once the reset has returned, the stack in force
 is the outer one, and the leaked prompt is not on it. The machinery
 underneath is the ordinary machine (`push`, `run`, the same prompts);
 the stack is a claim about the program and erases entirely (`okay.Prog`,
-specs/freer-base.md stage 2). Not stacked: `shift0`/`control0`, whose
-body runs with the delimiter CONSUMED — their index is the stack below
-the prompt, which this stage leaves unpriced.
+specs/freer-base.md stage 2).
+
+**What a capture's body may reach.** A capture takes its prompt AND
+every delimiter installed inside it, so its body runs on a smaller
+stack. The body of `shift` and `control` runs under the prompt and what
+is below it. The body of `shift0` runs below the prompt: the prompt is
+consumed, which is Materzok and Biernacki's typing rule for shift0
+\[ICFP 2011\]. Each body gets that stack as its own given, so a shift
+from the body to a prompt below still resolves:
+
+```scala
+shift0[Int, Int, P](inner.p)(k => shift[Int, Int, P](outer.p)(k2 => k2(100)).flatMap(k)).map(_ + 1)
+```
+
+A shift from the body to the consumed prompt, or to a prompt the
+capture took, is a compile error. The first version of this door typed
+bodies under the whole stack, and that second case compiled and threw
+`NoPrompt` (stacked-shift0). `dollar` is stacked too: it pushes a
+prompt for its body and runs its return function under the stack it
+was called from. `control0` is not stacked. Its continuation runs
+where its prompt is gone, while the code inside it was typed with the
+prompt present, and the index cannot express that. The index is also
+conservative: ICFP 2011's own example calls a continuation where its
+prompt has been consumed, the paper accepts it because that
+continuation never captures to the prompt, and the index refuses it.
 
 > Gunter, Rémy & Riecke, *A generalization of exceptions and control in
 > ML-like languages*, FPCA 1995,
@@ -152,6 +174,9 @@ the prompt, which this stage leaves unpriced.
 > Kiselyov & Shan, *Lightweight static capabilities*, ENTCS 174(7),
 > 2007, [doi:10.1016/j.entcs.2006.10.039](https://doi.org/10.1016/j.entcs.2006.10.039)
 > — evidence as a value the types carry, the shape `Has` follows.
+> Materzok & Biernacki, *Subtyping delimited continuations*, ICFP 2011,
+> [doi:10.1145/2034773.2034786](https://doi.org/10.1145/2034773.2034786)
+> — shift0's body typed under the context stack with the top removed.
 
 ## 1 · Leave early with an answer
 

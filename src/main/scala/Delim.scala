@@ -1015,10 +1015,18 @@ object Delim {
 
     /** "p is on the stack" — the using clause that replaces the throw */
     @implicitNotFound("prompt ${P} is not on the prompt stack ${S}: a shift names the prompt of a reset it is INSIDE (Delim.Stacked.reset { s => import s.given; … shift(s.p) … }) — not one that has returned, and not one another reset made")
-    sealed trait Has[S <: Tuple, P]
+    sealed trait Has[S <: Tuple, P]:
+      /** the stack BELOW p: what a capture to p leaves in force, since
+       * it takes p and every delimiter installed inside it. Found by
+       * the same induction that finds p, because a match type cannot
+       * compute it: two prompts' singleton types are not provably
+       * disjoint, so `Below[q.type *: S, p.type]` would never reduce. */
+      type Below <: Tuple
     object Has:
-      given here[P, S <: Tuple]: Has[P *: S, P] = new Has[P *: S, P] {}
-      given there[P, Q, S <: Tuple](using Has[S, P]): Has[Q *: S, P] = new Has[Q *: S, P] {}
+      type Aux[S <: Tuple, P, B <: Tuple] = Has[S, P] { type Below = B }
+      given here[P, S <: Tuple]: Aux[P *: S, P, S] = new Has[P *: S, P] { type Below = S }
+      given there[P, Q, S <: Tuple, B <: Tuple](using Aux[S, P, B]): Aux[Q *: S, P, B] =
+        new Has[Q *: S, P] { type Below = B }
 
     /** a program under the stack `S`, leaving it as it found it —
      * every capture here is balanced */
@@ -1053,30 +1061,69 @@ object Delim {
       val s = new In[R, st.S](named[R]("reset")(using at))
       Prog.diag[st.S, Delim + F, R](push[R, F](s.p)(body(s).free))
 
-    /** capture up to `p` — REQUIRES `p` on the stack in force. The
-     * evidence is the whole point and is otherwise unused. */
-    def shift[R, A, F[+_]](p: Prompt[R])(using st: Stack[?], @unused ev: Has[st.S, p.type])
-                          (f: (A => Under[F, R, st.S]) => Under[F, R, st.S])(using at: At): Under[F, A, st.S] =
+    /**
+     * Capture up to `p` — REQUIRES `p` on the stack in force. The body
+     * runs under `p` and NOTHING installed inside it: the capture took
+     * those along with the continuation. So the body gets its own stack,
+     * `p *: B` with `B` the stack below `p`, as a given, and so does
+     * `k`. The first cut of this door typed the body under the whole
+     * stack, which let a shift from the body to a CAPTURED inner prompt
+     * compile and throw `NoPrompt` (stacked-shift0, ProbeStackedHole).
+     */
+    def shift[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
+                          (f: Stack[p.type *: B] ?=> (A => Under[F, R, p.type *: B]) => Under[F, R, p.type *: B])
+                          (using at: At): Under[F, A, st.S] =
+      given Stack[p.type *: B] = new Stack[p.type *: B]
       Prog.diag[st.S, Delim + F, A](
-        Delim.shift[R, A, F](p)(k => f(a => Prog.diag[st.S, Delim + F, R](k(a))).free)(using at))
+        Delim.shift[R, A, F](p)(k => f(a => Prog.diag[p.type *: B, Delim + F, R](k(a))).free)(using at))
 
     /** `Delim.control`, stacked: the continuation is a bare segment,
-     * spliced where `f` invokes it — inside `f`, under the same stack */
-    def control[R, A, F[+_]](p: Prompt[R])(using st: Stack[?], @unused ev: Has[st.S, p.type])
-                            (f: (A => Under[F, R, st.S]) => Under[F, R, st.S])(using at: At): Under[F, A, st.S] =
+     * spliced where `f` invokes it — inside `f`, under `p` and what is
+     * below it, the same stack as `shift`'s body */
+    def control[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
+                            (f: Stack[p.type *: B] ?=> (A => Under[F, R, p.type *: B]) => Under[F, R, p.type *: B])
+                            (using at: At): Under[F, A, st.S] =
+      given Stack[p.type *: B] = new Stack[p.type *: B]
       Prog.diag[st.S, Delim + F, A](
-        Delim.control[R, A, F](p)(k => f(a => Prog.diag[st.S, Delim + F, R](k(a))).free)(using at))
+        Delim.control[R, A, F](p)(k => f(a => Prog.diag[p.type *: B, Delim + F, R](k(a))).free)(using at))
+
+    /**
+     * `Delim.shift0`, stacked: the body runs with `p` CONSUMED, under the
+     * stack below it. That is ICFP 2011's rule for S0 (Materzok &
+     * Biernacki: the body typed under the context stack with the top
+     * removed), with "the top" meaning everything down to and including
+     * the named prompt. A shift to `p` from the body is refused, and a
+     * shift to a prompt below `p` resolves. `k` re-installs `p` and the
+     * captured delimiters, so it runs under the same `B`.
+     */
+    def shift0[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
+                           (f: Stack[B] ?=> (A => Under[F, R, B]) => Under[F, R, B])
+                           (using at: At): Under[F, A, st.S] =
+      given Stack[B] = new Stack[B]
+      Prog.diag[st.S, Delim + F, A](
+        Delim.shift0[R, A, F](p)(k => f(a => Prog.diag[B, Delim + F, R](k(a))).free)(using at))
 
     /** drop the continuation and answer `value` at `p` */
     def abort[R, A, F[+_]](p: Prompt[R])(using st: Stack[?], @unused ev: Has[st.S, p.type])
                           (value: R)(using at: At): Under[F, A, st.S] =
       Prog.diag[st.S, Delim + F, A](Delim.abort[R, A, F](p)(value)(using at))
 
-    // `shift0`/`control0` are NOT here: their body runs with the
-    // delimiter CONSUMED, so its stack is the part of `st.S` below
-    // `p` — a match type (`Below[S, P]`) the probe never exercised
-    // and this stage does not price (specs/freer-base.md, "What is
-    // still unpriced"). The unstacked doors above remain.
+    /**
+     * `Delim.dollar`, stacked: a fresh prompt on the stack in force for
+     * the body, and `ret` run OUTSIDE it, under the stack the dollar was
+     * called under. A `shift0` to its prompt takes `ret` along.
+     */
+    def dollar[R0, R, F[+_]](using st: Stack[?])(ret: R0 => Under[F, R, st.S])
+                            (body: (s: In[R, st.S]) => Under[F, R0, s.p.type *: st.S])
+                            (using at: At): Under[F, R, st.S] =
+      val s = new In[R, st.S](named[R]("dollar")(using at))
+      Prog.diag[st.S, Delim + F, R](Delim.dollar[R0, R, F](s.p)(r0 => ret(r0).free)(body(s).free))
+
+    // `control0` is NOT here, deliberately: its continuation is a bare
+    // segment run where `p` is gone, but the code inside that segment was
+    // typed with `p` on its stack, so a capture to `p` in it would pass
+    // the index and throw. The index cannot say "this k needs p"; the
+    // unstacked door remains (specs/shift0-dollar.md, Decisions).
 }
 
 /** The class IS the whole identity: Delim has no parameter but its

@@ -793,7 +793,13 @@ that the probe could not, each a round that failed:
   benchmark, since no node changed.
 - **`shift0`/`control0` are not stacked** (their body's stack is the
   part BELOW the prompt, a match type the probe never exercised); the
-  unstacked doors remain. `control` and `abort` are.
+  unstacked doors remain. `control` and `abort` are. UPDATED
+  2026-09-25 (stacked-shift0, specs/shift0-dollar.md stage 2): `shift0`
+  and `dollar` are stacked now. `Below` is a type member of `Has`
+  rather than a match type, because prompt singletons are not provably
+  disjoint. That lane also found that `shift`/`control` typed their
+  body under the WHOLE stack, which was unsound. `control0` stays
+  unstacked, for the reason given there.
 - **specs/delim-safety.md's stage-2 road was not taken.** The region
   tag needs `S` in the program's type; the given stack closes the
   escape case with one `import s.given` instead, and leaves the four
