@@ -1,5 +1,0 @@
-slug: snippet-debt-paid
-who: claude (session 6f505c09)
-what: master whole build RED: TestDocSnippets RATCHET — a debt entry that is pinned now must go; delete it (OKAY_SNIPPET_DEBT=write) so the runner can push (167 commits unpushed)
-files: docs/snippet-debt.txt
-since: 2026-09-25
