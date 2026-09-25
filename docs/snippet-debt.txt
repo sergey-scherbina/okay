@@ -152,7 +152,6 @@ docs/continuations/01-four-programs.md	if closed(alloc.centre) then exit(Rejecte
 docs/continuations/01-four-programs.md	if ok then ship(order) else refund(order)
 docs/continuations/01-four-programs.md	invoice.lines.foldLeft(None: Option[Rejected]):
 docs/continuations/01-four-programs.md	record(now() - started, res.status)     // ← does not run if route throws
-docs/continuations/01-four-programs.md	res
 docs/continuations/01-four-programs.md	try route(req)
 docs/continuations/01-four-programs.md	val ok    = approval(order)        // ← a human, some time this week
 docs/continuations/01-four-programs.md	val order = place(request)
