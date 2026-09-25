@@ -2335,6 +2335,57 @@ went through `Split.split`, which cost two closures, a `Tuple2` and an
   allocation mechanism measured in stage 36. The numbers are backlog
   `okay2-split-at-rest-measure`.
 
+## Stage 46 — okay2-lexical: handler instances as prompts (2026-09-25)
+Backlog `okay2-lexical` (filed by okay2-dollar). The Scala 3 core's
+`Lexical` (specs/lexical-instances.md) for the Scala 2 core: an
+installation is a fresh prompt, the body reaches it through the
+instance value, two instances of one effect are two names, no accidental
+handling. Strategies by name: `deep` (shift0 under a `dollar` whose
+return function is the return clause), `shallow` (control0 under a
+`push`), `tail` (a cell, guarded by `dollarResumed`), `tailPure` (a row
+without `Delim`: the close is a walk), `handle` picking by clause kind,
+and `Lexical.State` with every strategy and typed `get`/`set`/`put`.
+`Delim.dollarResumed` and `Shots` ported first, as the item said: the
+`Dollar` op and the `Ret` frame carry the count, `retake` copies a
+`Ret` with a fresh one per capture, and the `Dollar` step bumps it.
+
+### Behavior (stage 46)
+- [x] TestLexical (15): two State[Int] instances deep and shallow
+      `(10, (10, 10))`; no accidental handling `(0, 10)`; deep, shallow
+      and tail answer as `State.handleAt` does on the Writer row (by
+      value: okay2 has no `Bisim`); a user clause with `k` twice gives
+      the coin's four answers; multi-shot inside `(6, List(0, 1, 3))`
+      for deep and tail; across, deep `List((1, 0), (2, 0), (3, 0))` and
+      tail `MultiShotAcrossTail`; the abort variant (deep 11, tail
+      refused); run twice is not a multi-shot; 10 000 deep and 100 000
+      tail operations in constant stack; `tailPure` on a Writer row and
+      on the pure row with `!.run` alone.
+
+### Decisions (stage 46)
+- **Rows are written in full.** The Scala 3 `deep` takes a body over
+  `G` with a `Delim[Any] <:< G[Any]` witness collapsing `Delim + G` to
+  `G`; Scala 2 has no such witness over intersections worth the trouble,
+  so a strategy that needs the machine takes a body over `Delim + G`
+  and answers there. Same programs, one more `+ Delim` in a signature.
+- **Two tail names, not one `Closing` given.** The Scala 3 core picks
+  the guarded or the walking close by `NotGiven[Delim ⊆ G]`; Scala 2 has
+  no `NotGiven`, so `tail` (guarded, `Delim + G`) and `tailPure` (the
+  walk, any `G`) are two names. The walk is `State.handleAt`'s loop
+  shape with nothing to handle (`walkClose`, `@tailrec` with an `again`
+  wrapper).
+- **State's instance has TYPED doors, and the GADT gap is one cast.**
+  Scala 2 does not refine `X` from `Get[S] <: Op[S, S]` in a match, so
+  a `TailClauses`/`Clauses` for State cannot be written without a cast
+  per clause. `Lexical.State.Inst[S, G]` declares `get`/`set`/`put`,
+  each strategy builds them directly, and `perform` (the generic road)
+  is the ONE cast, true by the declarations. A USER clause over a
+  user effect meets the same gap: the twin's Flip test carries one
+  cast per answer and says so. This is the Scala 2 limit, recorded, not
+  a design choice.
+- NOT PORTED, filed as `okay2-lexical-walk-stacked`: `walk` (the
+  strategy over `Instances`) and `Lexical.Stacked` (instances as
+  `Delim.Stacked.In` subclasses with `Has.Below`).
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
@@ -2389,4 +2440,8 @@ the Overview. What follows from it, and was done the same day
   the three union composers; 328 tests green cold. The handlers the same
   day (okay2-distinct-handlers): 329 green cold, no existing test
   touched — at a concrete row the macro simply answers.
-
+- Stage 46: TestLexical 15 with TestDollar and TestStackedShift0 (99
+  results) GREEN first on 2026-09-25 after the typed-doors restructure
+  (the first cut's `TailClauses` for State was refused by scalac at
+  `case Get() => (s, s)`: X unrefined); the whole okay2 gate GREEN
+  before landing.

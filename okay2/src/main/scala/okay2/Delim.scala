@@ -132,7 +132,17 @@ object Delim {
    * and `ret` are programs in the machine's row, erased here as
    * `Push`'s body is and re-typed at the machine's claim lines.
    */
-  final case class Dollar[R0, R](prompt: Prompt[R], ret: Any, body: Any) extends Op[R]
+  final case class Dollar[R0, R](prompt: Prompt[R], ret: Any, body: Any, shots: Shots) extends Op[R]
+
+  /**
+   * How many times the machine has entered a watched `dollar` through
+   * ONE capture (the Scala 3 core's `Delim.Shots`, lexical-tail-guard-
+   * abort): a capture that takes the delimiter gets a fresh count, so
+   * `n > 1` means "this same captured context has been RUN a second
+   * time". `null` on a plain dollar. Counted when the reified program is
+   * stepped, not when `k` builds it.
+   */
+  final class Shots(val resumed: Int => Unit) { var n: Int = 0 }
 
   implicit val effect: Effect[Delim] = Effect.of[Delim]
 
@@ -189,7 +199,15 @@ object Delim {
    * core's twin (specs/shift0-dollar.md, okay2-dollar).
    */
   def dollar[R0, R, F <: Row](p: Prompt[R])(ret: R0 => R ! (Delim + F))(body: Free[Delim with F, R0]): R ! (Delim + F) =
-    Free.inject[Delim, R](Dollar[R0, R](p, ret, body)).plus[F]
+    Free.inject[Delim, R](Dollar[R0, R](p, ret, body, null)).plus[F]
+
+  /** `dollar`, told each time the machine enters it: `resumed(1)` at the
+   * call itself and at the first run of each capture that took the
+   * delimiter, `resumed(2)` at that capture's second run, and so on —
+   * what a `ret` cannot see, since a resumption that leaves by `abort`
+   * never returns through it (okay2-lexical, the Scala 3 core's twin) */
+  def dollarResumed[R0, R, F <: Row](p: Prompt[R])(ret: R0 => R ! (Delim + F), resumed: Int => Unit)(body: Free[Delim with F, R0]): R ! (Delim + F) =
+    Free.inject[Delim, R](Dollar[R0, R](p, ret, body, new Shots(resumed))).plus[F]
 
   /**
    * Capture the continuation up to `p` and hand it to `f`. The
@@ -566,8 +584,13 @@ object Delim {
     final case class Mark[F <: Row, X, Z](p: Prompt[X], rest: Segs[F, X, Z]) extends Segs[F, X, Z]
     /** a `dollar` delimiter: the body's X0 leaves through `ret` into
      * the prompt's X */
-    final case class Ret[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Delim + F), rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
+    final case class Ret[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Delim + F), shots: Shots, rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
   }
+
+  /** the copy of a `Ret` a capture takes with it: a watched dollar gets a
+   * FRESH count, one per capture (`Shots`) */
+  private def retake[F <: Row, X0, X, Q](r: Segs.Ret[F, X0, X, _], c: Segs[F, X, Q]): Segs.Ret[F, X0, X, Q] =
+    Segs.Ret(r.p, r.ret, if (r.shots == null) null else new Shots(r.shots.resumed), c)
 
   /** the stack cut at a prompt. TWO SHAPES, as in the Scala 3 core: a
    * `dollar` changes the answer type and a plain mark does not */
@@ -686,7 +709,7 @@ object Delim {
       case Segs.Done(ev) => ev.substituteCo[Prog](start)
       case Segs.K(f, rest) => reify(rest, start.flatMap(f))
       case Segs.Mark(p, rest) => reify(rest, Free.inject[Delim, A](Push(p, start)).plus[F])
-      case r: Segs.Ret[F, A, x, P] => reify(r.rest, Free.inject[Delim, x](Dollar[A, x](r.p, r.ret, start)).plus[F])
+      case r: Segs.Ret[F, A, x, P] => reify(r.rest, Free.inject[Delim, x](Dollar[A, x](r.p, r.ret, start, r.shots)).plus[F])
     }
 
     /** the delimiters this machine has installed, innermost first —
@@ -695,7 +718,7 @@ object Delim {
       @tailrec def go(k: Segs[F, _, R], acc: List[String]): List[String] = k match {
         case Segs.Done(_) => acc.reverse
         case Segs.Mark(q, rest) => go(rest, q.label :: acc)
-        case Segs.Ret(q, _, rest) => go(rest, q.label :: acc)
+        case Segs.Ret(q, _, _, rest) => go(rest, q.label :: acc)
         case Segs.K(_, rest) => go(rest, acc)
       }
       go(kont, Nil)
@@ -726,11 +749,11 @@ object Delim {
           case Some(ev) =>
             // the body's chain ends at x; the Ret leads from x to the prompt's P
             Some(atRet[F, A, x, P, Z](unwind(here.w.step(Segs.Done[F, x, x](implicitly[x =:= x]))),
-              Segs.Ret[F, x, x1, P](r.p, r.ret, Segs.Done[F, x1, P](ev)),
+              retake[F, x, x1, P](r, Segs.Done[F, x1, P](ev)),
               ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](r.rest)))
           case None =>
             walk[A, P, Z](Walk(r.rest, On(here.w, new Frame[F, x, x1] {
-              def apply[Q](c: Segs[F, x1, Q]): Segs[F, x, Q] = Segs.Ret(r.p, r.ret, c)
+              def apply[Q](c: Segs[F, x1, Q]): Segs[F, x, Q] = retake(r, c)
             })), p)
         }
         case k: Segs.K[F, x, y, Z] =>
@@ -757,7 +780,7 @@ object Delim {
         // the delimited block finished normally: drop its marker
         case Segs.Mark(_, rest) => loop(next(pure[Rw, state.A](x), rest))
         // a `dollar` finished normally: leave it, through its return
-        case Segs.Ret(_, ret, rest) => loop(next(ret(x), rest))
+        case Segs.Ret(_, ret, _, rest) => loop(next(ret(x), rest))
       }
       case Inject(e) => loop(next(Bind(Inject[Rw, state.A](e), (y: state.A) => Return[Rw, state.A](y)), state.kont))
       case Bind(Inject(Mine(op)), k) =>
@@ -812,7 +835,11 @@ object Delim {
             // and ret leads from r0 to the prompt's r, in this row
             val body = d.body.asInstanceOf[Prog[r0]]
             val ret = d.ret.asInstanceOf[r0 => Prog[r]]
-            loop(next(body, Segs.Ret[F, r0, r, R](d.prompt, ret, Segs.K((a: r) => pure[Rw, Any](a), kont))))
+            // a watched dollar is told it is being entered — here, when the
+            // program is RUN, so a continuation built and dropped does not count
+            val shots = d.shots
+            if (shots != null) { shots.n += 1; shots.resumed(shots.n) }
+            loop(next(body, Segs.Ret[F, r0, r, R](d.prompt, ret, shots, Segs.K((a: r) => pure[Rw, Any](a), kont))))
         }
       // a foreign operation suspends the machine: the residual program
       // performs it and resumes with the same stack

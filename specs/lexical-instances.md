@@ -265,3 +265,11 @@ INSTANCES-UNIFY, 2026-09-25: walk on `Instances.Of[F]` is 286 272 B per
 1000 get/set, against 286 192 with `Local`, so the same. Time at load 7:
 22.0 against 15.2 µs for the row, 1.44x. TestLexicalWalk's eight tests
 are unchanged in meaning, with `Instances.Survived` for `LocalEscaped`.
+
+OKAY2 TWIN, 2026-09-25 (okay2-lexical, specs/okay2.md stage 46): `deep`,
+`shallow`, `tail`, `tailPure`, `handle` and `Lexical.State` in the Scala
+2 core, every value of TestLexical and TestLexicalTail reproduced with a
+raw outer `Delim.shift` where this suite uses `Layered`. Scala 2 cannot
+refine the answer type of a State operation in a clause, so the twin's
+State instance has typed `get`/`set` doors and one cast in `perform`;
+`walk` and the stacked instances are not ported (okay2 backlog).
