@@ -187,6 +187,19 @@ deleted.
         BOUNDED, and TestCborEdnDepth runs encode and decode of both at
         20 000 levels on the same small stack as the control. okay2 has
         neither format.
+      - [x] okay-arrow (stack-safety-arrow, 2026-09-25): the stream reader's
+        `parseField` recursed per level of the schema it read, and a
+        100 000-deep schema overflowed on a 256 KB stack (TestArrowDepth).
+        Fixed by a BOUND rather than a stack, because Arrow's reference
+        implementation has one: C++ `IpcReadOptions::max_recursion_depth`,
+        `kMaxNestingDepth` = 64. `Column.MaxNesting` = 64 is checked at
+        every door a type comes in by: the schema in `parseField`, `Table`'s
+        constructor, and Arrow Java's schema in `ApacheArrow.fromRoot`
+        (on an explicit stack). The fourteen walks behind those doors
+        are BOUNDED rows. Found beside it: `fromRoot` threw
+        IndexOutOfBoundsException on any EMPTY root with a list column,
+        because Arrow Java allocates a list's offsets with its first value.
+        Fixed and tested.
 - [ ] Stage 3 — streams and STM: okay-stream, okay-stm, okay2-stream,
       okay2-stm.
 - [ ] Stage 4 — data codecs over values: okay-py, okay-r, okay-sql,

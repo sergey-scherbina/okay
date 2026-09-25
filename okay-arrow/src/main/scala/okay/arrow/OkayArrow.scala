@@ -354,13 +354,18 @@ object OkayArrow extends ArrowCodec:
   private final case class Field(name: String, typeId: Int, tpe: Fb.At, children: Vector[Field],
                                  dictionary: Option[(Long, Int, Boolean)])
 
-  private def parseField(f: Fb.At): Field =
+  /** `depth` is the field's nesting below the schema: the schema is the
+   * one type here that comes from outside, so it is where the limit is
+   * checked, before anything walks it (stack-safety-arrow) */
+  private def parseField(f: Fb.At, depth: Int): Field =
+    if depth > Column.MaxNesting then
+      refuse(s"a schema nested deeper than ${Column.MaxNesting} levels (Arrow's own limit)")
     val name = f.str(0).getOrElse("")
     val dict = f.table(4).map { d =>
       val idx = d.table(1)
       (d.i64(0, 0L), idx.fold(32)(_.i32(0, 32)), idx.fold(true)(_.bool(1, true)))
     }
-    Field(name, f.u8(2, 0), f.table(3).getOrElse(Fb.At.empty), f.tables(5).map(parseField), dict)
+    Field(name, f.u8(2, 0), f.table(3).getOrElse(Fb.At.empty), f.tables(5).map(parseField(_, depth + 1)), dict)
 
   private def readStream(bytes: Array[Byte]): Table =
     val in = In(bytes)
@@ -393,7 +398,7 @@ object OkayArrow extends ArrowCodec:
         msg.u8(1, 0) match
           case HeaderSchema =>
             val s = msg.table(2).getOrElse(refuse("a schema message without its schema"))
-            fields = s.tables(1).map(parseField)
+            fields = s.tables(1).map(parseField(_, 0))
             metadata = s.tables(2).map(kv => (kv.str(0).getOrElse(""), kv.str(1).getOrElse("")))
             seenSchema = true
           case HeaderRecordBatch =>

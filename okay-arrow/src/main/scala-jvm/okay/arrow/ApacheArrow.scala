@@ -276,6 +276,14 @@ object ApacheArrow extends ArrowCodec:
   /** Arrow Java's columns as the model; a column outside it is refused by name */
   def fromRoot(root: VectorSchemaRoot): Table =
     ready
+    // the limit checked on Arrow Java's schema, before `column` walks the
+    // vectors once per level of it (stack-safety-arrow)
+    val todo = scala.collection.mutable.Stack.from(root.getSchema.getFields.asScala.map(f => (f, 0)))
+    while todo.nonEmpty do
+      val (f, d) = todo.pop()
+      if d > Column.MaxNesting then
+        throw IllegalStateException(s"Arrow Java's field '${f.getName}' nests deeper than ${Column.MaxNesting} levels (Arrow's own limit)")
+      f.getChildren.asScala.foreach(c => todo.push((c, d + 1)))
     Table(root.getFieldVectors.asScala.toVector.map(v => v.getName -> column(v)), metadata(root.getSchema))
 
   private def column(v: ValueVector): Column =
@@ -321,11 +329,15 @@ object ApacheArrow extends ArrowCodec:
         x.getField.getType match
           case t: ArrowType.Duration => Column.Duration(unitOf(t.getUnit), longs(8, true, x.getDataBuffer), ok)
           case other => refuse(v, s"a duration vector typed $other")
+      // an EMPTY list vector has no offsets buffer at all in Arrow Java (it
+      // is allocated with the first value), so its one offset, 0, is not
+      // read from it: reading it threw IndexOutOfBoundsException for any
+      // empty root with a list column (found by stack-safety-arrow)
       case x: ListVector =>
-        val offs = Array.tabulate(n + 1)(i => x.getOffsetBuffer.getInt(4L * i))
+        val offs = if n == 0 then Array(0) else Array.tabulate(n + 1)(i => x.getOffsetBuffer.getInt(4L * i))
         normalised(offs, column(x.getDataVector), ok)
       case x: LargeListVector =>
-        val offs = Array.tabulate(n + 1)(i => x.getOffsetBuffer.getLong(8L * i).toInt)
+        val offs = if n == 0 then Array(0) else Array.tabulate(n + 1)(i => x.getOffsetBuffer.getLong(8L * i).toInt)
         normalised(offs, column(x.getDataVector), ok)
       case x: StructVector =>
         Column.Struct(x.getChildrenFromFields.asScala.toVector.map(c => c.getName -> column(c)), ok)

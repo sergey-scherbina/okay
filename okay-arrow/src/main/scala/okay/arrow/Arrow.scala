@@ -135,6 +135,28 @@ enum Column:
       case Struct(fs, o) => Struct(fs.map((n, c) => n -> c.take(at, keep)), ok(o))
 
 object Column:
+  /** how deep a column's TYPE may nest (lists and structs, a leaf is 0) —
+   * Arrow's own reference limit: C++ `IpcReadOptions::max_recursion_depth`,
+   * `kMaxNestingDepth` = 64. Every walk over a type here recurses once
+   * per level, so this is the bound that makes them safe
+   * (stack-safety-arrow) */
+  val MaxNesting: Int = 64
+
+  /** how many list/struct levels the column's type has (a leaf is 0),
+   * counted on an explicit stack: this is the check, so it cannot be one
+   * of the walks it guards */
+  def nesting(c: Column): Int =
+    val todo = scala.collection.mutable.Stack[(Column, Int)]((c, 0))
+    var deepest = 0
+    while todo.nonEmpty do
+      val (x, d) = todo.pop()
+      if d > deepest then deepest = d
+      x match
+        case ListOf(_, child, _) => todo.push((child, d + 1))
+        case Struct(fs, _) => fs.foreach((_, f) => todo.push((f, d + 1)))
+        case _ => ()
+    deepest
+
   /** one column out of batches' parts of ONE kind, in order (at least one
    * part); parts of different kinds are refused by name */
   def concat(parts: Vector[Column]): Column =
@@ -186,4 +208,10 @@ object Column:
 
 /** a table: named columns of one length, and the schema's metadata */
 final case class Table(cols: Vector[(String, Column)], metadata: Vector[(String, String)]):
+  // every column that is written, or handed out by a reader, passes here
+  cols.foreach { (name, c) =>
+    val n = Column.nesting(c)
+    if n > Column.MaxNesting then
+      throw IllegalArgumentException(s"column '$name' nests $n levels; Arrow's limit is ${Column.MaxNesting}")
+  }
   def rows: Int = cols.headOption.fold(0)(_._2.length)
