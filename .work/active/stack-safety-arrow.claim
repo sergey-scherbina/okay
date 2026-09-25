@@ -1,0 +1,5 @@
+slug: stack-safety-arrow
+who: claude (session 6f505c09)
+what: okay-arrow stack recursions (15 UNAUDITED rows): red-first on input depth, explicit stacks or written bounds
+files: okay-arrow/src/main/scala*/okay/arrow/*.scala, specs/stack-safety*
+since: 2026-09-25
