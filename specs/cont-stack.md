@@ -175,8 +175,8 @@ Where the bytes come from, per platform, best knowledge first:
   enough that the count could go, but the count stays so the runner
   is one code on every platform; Native only answers the exhaustion
   question exactly.
-- **JVM with native access: exact.** FFM (JDK 22+), in okay-platform
-  (Decision 12), found by the core by name. Bounds:
+- **JVM with native access: exact.** FFM (JDK 22+), the core's own
+  `jdk22/` Multi-Release variant of `StackRoom` (Decision 12). Bounds:
   `pthread_get_stackaddr_np`/`pthread_get_stacksize_np` (macOS),
   `pthread_getattr_np` + `pthread_attr_getstack` (glibc). The pointer:
   `getcontext`, reading `sp` out of the `ucontext_t` at the offset of
@@ -232,7 +232,7 @@ the room can be read exactly.
 |---|---|---|---|---|
 | JVM 17 | platform thread, 1 GB | `ThreadStackSize` / 1.2 KB / 2 | never (no FFM): the count and its bound | `sbt verifyJdk17` (build.sbt: every forking suite on `jdk17Home`) |
 | JVM 21 | the same | the same | never: FFM is still preview on 21 and this library enables no previews | a run on `jdk21Home` (build.sbt:1551 already names it) |
-| JVM 22–24 | the same | the same | `okay-platform`'s FFM reader, when `Module.isNativeAccessEnabled` (22+); 24 is where the WARNING starts for callers that did not enable it | the default `Test / javaHome` when it is one of these |
+| JVM 22–24 | the same | the same | the core's `jdk22/` FFM reader (JEP 238 picks it), when `Module.isNativeAccessEnabled` (22+); 24 is where the WARNING starts for callers that did not enable it | the default `Test / javaHome` when it is one of these |
 | JVM 25+ | the same | the same | the same reader; a later release will REFUSE the call instead of warning (JEP 472), and the gate is the same boolean either way | JDK 26, the default `Test / javaHome` |
 | JVM, caller on a VIRTUAL thread (any JDK 21+; okay's own default scheduler) | the same: the virtual thread parks on the `join` and unmounts, no carrier pinned | the same: a mounted virtual thread grows on its CARRIER's stack, which is `ThreadStackSize` | the reader sees the carrier's bounds (measured), which is the stack in use; `worst` is updated only when the bounds match the previous read's, since the thread may have moved carriers between two exhaustions | TestContStack on a virtual thread |
 | Scala.js | none: no thread to switch to, no way to grow a stack synchronously | unbounded count (`Int.MaxValue`: nothing happens at zero, so nothing is counted) | nothing to read | the cross suite: a shallow program unchanged; **the bound**, in docs: nested opaque bodies are limited by the engine's stack (~10 800 frames on V8's default 984 KB; `node --stack-size` raises it) |
@@ -249,33 +249,33 @@ transparent body counts nothing and only an opaque one decrements.
   answers −1.
 - **`okay`, `src/main/scala-jvm/StackSwitch.scala`:** the platform
   thread, the `ThreadStackSize` read (one `HotSpotDiagnosticMXBean`
-  call at class init, `-Dokay.cont.room` overriding), and ONE
-  `Class.forName("okay.StackRoomFfm")` at class init: present, it is
-  the reader; absent, the count. A name, not a `ServiceLoader`: a
-  service load scans every jar's `META-INF/services` on the class
-  path, needs a registration file per provider, and there is exactly
-  one provider to find. The core does not depend on okay-platform and
-  will not (core-modules); the soft link runs the other way, as the
-  Multi-Release `Scoped` already does.
-- **`okay-platform`, `src/main/scala-jvm/StackRoomFfm.scala`:** the
-  FFM reader, written PLAINLY against `java.lang.foreign` — this
-  module compiles with `jdkFloor(0)`, so dotc sees the ambient JDK's
-  class library and emits bytecode 61, and the class loads on 17
-  because call sites link lazily (the `Schedulers.hasVirtualThreads`
-  pattern, proved on 17 by jdk-adaptive-scheduler). Two rules keep
-  that true: no `java.lang.foreign` type in any field or signature of
-  a class that loads on 17 — the reader is its own object, and the
-  core only ever holds it as `StackRoom` — and nothing in it runs
-  unless `Runtime.version().feature() >= 22 &&
-  isNativeAccessEnabled`. The layout table (`(os, arch) → sp offset`)
-  is here, and an `(os, arch)` that is not in it answers −1.
+  call at class init, `-Dokay.cont.room` overriding), and the call
+  `StackRoom.left()` at exhaustion. The root `StackRoom` (JDK 17
+  bytecode, no `java.lang.foreign` anywhere) answers −1.
+- **`okay`, `jdk22/StackRoom.scala` — the Multi-Release variant of
+  that object for JDK 22+** (build.sbt `versioned("okayJdk22",
+  "jdk22", 22, "okayJVM")` + `multiRelease` on `okay`'s jvmSettings,
+  the mechanism mrjar-jdk25-ci-gap built for `Scoped`, 2026-09-25):
+  the FFM reader written PLAINLY against `java.lang.foreign`,
+  compiled with `-java-output-version 22` (the API check proves it
+  uses nothing past 22), packaged under `META-INF/versions/22/` in
+  EVERY core jar, and picked by the JVM itself per JEP 238 — a JVM
+  below 22 never sees the class, so no lazy-linking rule, no version
+  test, no `Class.forName`, no okay-platform. What it still gates on
+  at run time is `Module.isNativeAccessEnabled()` (a 22+ method,
+  callable because this class only exists on 22+): false, and it
+  answers −1 like the root. The layout table (`(os, arch) → sp
+  offset`) is here, and an `(os, arch)` that is not in it answers −1.
+  Tested through the core's packaged jar (`multiRelease` puts it first
+  on the forked test classpath), on 26 by default and under
+  `verifyJdk17`, the way `TestScopedBackend` is.
 - **`okay`, `src/main/scala-native/StackSwitch.scala`:** the platform
   thread AND the exact reader, in one file: `@extern def
   scalanative_currentThreadInfo(): Ptr[ThreadInfo]` with the struct
   spelled out as SN 0.5.12 lays it out (two `size_t`, three `Ptr`, a
   `CBool`; pinned to the version in build.sbt, and a test that the
   bounds contain a `stackalloc` address guards the layout). It needs
-  nothing above the core, so it does not go to okay-platform.
+  nothing above the core.
 - **`okay`, `src/main/scala-js/StackSwitch.scala`:** as today.
 
 ## Decisions (and what was refuted, with why)
@@ -364,19 +364,23 @@ transparent body counts nothing and only an opaque one decrements.
     of opaque bodies it is the difference between master's number and
     2x, and the docs say so where they say how to enable native
     access.
-12. **The FFM reader lives in okay-platform, the Native reader in the
-    core** (the operator's suggestion, 2026-09-25, "the corresponding
-    abstractions in okay-platform"). Not both in the core: the core
-    compiles with `-java-output-version 17`, which REFUSES a reference
-    to `java.lang.foreign` at compile time, so a reader there would be
-    ~80 lines of `MethodHandle` lookups for twelve JDK 22 methods —
-    written once as a probe, read by nobody. Not both in
-    okay-platform: the Native reader needs only the runtime's own
-    `ThreadInfo`, and a core that is exact by itself on Native should
-    not lose that to symmetry. Not a Multi-Release `jdk22/` directory
-    like `Scoped`'s: that variant exists only on a checkout that ran
-    the script, and a guarantee that exists only sometimes is a
-    bound.
+12. **Both readers live in the core: the FFM one as a Multi-Release
+    `jdk22/` variant, the Native one in `scala-native`** (2026-09-25).
+    The first draft put the FFM reader in okay-platform, found by
+    `Class.forName`, because the core compiles with
+    `-java-output-version 17` — which REFUSES a reference to
+    `java.lang.foreign` — and because the only Multi-Release variant
+    in the build (`Scoped`'s) was compiled by a script run by hand and
+    packaged only when its output happened to exist: a reader that a
+    published jar carries "sometimes" is a bound, not a guarantee. The
+    operator's answer was to fix THAT (mrjar-jdk25-ci-gap, the same
+    day): the variant is an sbt project now, in every jar, tested
+    through the jar. With that, the MRJar road is strictly better than
+    okay-platform's: no soft link between modules, no lazy-linking
+    discipline, the JVM's own version pick instead of a runtime test,
+    and the reader in the core artifact itself. okay-platform is not
+    involved. The Native reader needs only the runtime's own
+    `ThreadInfo`, so it never left the core.
 
 ## Behavior
 
@@ -425,12 +429,12 @@ Stack knowledge (Layer 3):
 - [ ] JVM, native access absent: no WARNING line on stderr, ever; the
       first room is `ThreadStackSize`-derived (test: the counter on a
       default thread sees no switch below ~800 levels here)
-- [ ] JVM without okay-platform on the class path: `Class.forName`
-      misses, the count runs, nothing is logged (the core's own suite
-      is that case)
-- [ ] JVM 17 and 21: `verifyJdk17` green on the core and okay-platform
-      (the reader's class loads on 17 and is never entered); the same
-      on `jdk21Home`
+- [ ] JVM 22+ from a classes directory (a consumer's own test run,
+      not a jar): the root `StackRoom` answers −1, the count runs,
+      nothing is logged
+- [ ] JVM 17 and 21: `verifyJdk17` green on the core through its
+      packaged jar (the `versions/22` entry is never read there); the
+      same on `jdk21Home`
 - [ ] JS: the cross suite green; the bound in docs/
 - [ ] the grant follows `worst`: a run whose later bodies have fatter
       frames than its first ones still does not overflow (a test body
@@ -528,7 +532,7 @@ Stack knowledge (Layer 3):
 3. Layer 2 on the platform thread (Decision 8) and Layer 3 on every
    platform (the matrix above): `StackRoom` in the core, the JVM
    `StackSwitch` with the `ThreadStackSize` first room and the
-   by-name lookup, `okay-platform`'s `StackRoomFfm` (macOS arm64
+   `jdk22/StackRoom.scala` via `versioned`/`multiRelease` (macOS arm64
    first, the other layouts as Open question 1 measures them), the
    Native `StackSwitch` reading `ThreadInfo`, `worst` carried beside
    the room. Then shrink the fast path (the `Mapped` closure,
