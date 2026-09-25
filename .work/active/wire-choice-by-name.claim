@@ -1,6 +1,0 @@
-feature/wire-choice-by-name 2026-09-25T13:08:25Z
-agent: claude-sonnet-5
-heartbeat: 2026-09-25T13:08:25Z
-status: in-progress
-done-so-far: WireFormat/WireCompression/FrameFormat.byName + WireChoice in okay-codec; ForeignWorker.startWithWire (py); RSubprocess.startWithWire (r); tests written, moving into worktree now
-next: gate okayCodec/okayPy/okayR affected tests, then land
