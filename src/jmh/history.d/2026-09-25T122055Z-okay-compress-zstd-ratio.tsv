@@ -1,4 +1,4 @@
-2026-09-25	3f6298e7	-	zstd, an Arrow int32 offsets buffer (12004 bytes): ours vs pyarrow's zstd, bytes	7452	7447	1.00	bytes; before FSE-coded Huffman weights ours was RAW (4018 for a 4004-byte offsets buffer, pyarrow 2304)
-2026-09-25	126a9e95	13-52	ArrowVsCborBench trades 1000 rows, ZSTD: Arrow+zstd (ours) vs CBOR+zstd, bytes	5848	7922	0.74	bytes; before 9168; pyarrow's Arrow+zstd 5808
-2026-09-25	126a9e95	13-52	ArrowVsCborBench events 1000 rows, ZSTD: Arrow+zstd vs CBOR+zstd, bytes	14648	5991	2.44	bytes; before 23584; pyarrow's Arrow+zstd 14344: the rest is the format
-2026-09-25	126a9e95	13-52	ArrowVsCborBench trades 1000 rows, ZSTD round trip: Arrow+zstd vs CBOR+zstd	0.760	1.677	0.45	ms/op; before 7.751 (the 512 KiB head table per buffer); B/op 2763919 vs 6420777; events 1.631 vs 2.906, orders 3.016 vs 5.531
+2026-09-25	1db0bc77	-	zstd, an Arrow int32 offsets buffer (12004 bytes): ours vs pyarrow's zstd, bytes	7452	7447	1.00	bytes; before FSE-coded Huffman weights ours was RAW (4018 for a 4004-byte offsets buffer, pyarrow 2304)
+2026-09-25	b2fc9719	13-52	ArrowVsCborBench trades 1000 rows, ZSTD: Arrow+zstd (ours) vs CBOR+zstd, bytes	5848	7922	0.74	bytes; before 9168; pyarrow's Arrow+zstd 5808
+2026-09-25	b2fc9719	13-52	ArrowVsCborBench events 1000 rows, ZSTD: Arrow+zstd vs CBOR+zstd, bytes	14648	5991	2.44	bytes; before 23584; pyarrow's Arrow+zstd 14344: the rest is the format
+2026-09-25	b2fc9719	13-52	ArrowVsCborBench trades 1000 rows, ZSTD round trip: Arrow+zstd vs CBOR+zstd	0.760	1.677	0.45	ms/op; before 7.751 (the 512 KiB head table per buffer); B/op 2763919 vs 6420777; events 1.631 vs 2.906, orders 3.016 vs 5.531
