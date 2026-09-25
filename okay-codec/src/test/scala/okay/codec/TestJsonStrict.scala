@@ -101,3 +101,19 @@ class TestJsonStrict extends munit.FunSuite:
     assertEquals(Json.readStrict[Double]("-0.0"), Right(-0.0))
     assertEquals(Json.readStrict[Int]("1.9"), Json.read[Int]("1.9"))
   }
+
+  // stack-safety-json: past NativeThreshold the strict reader walks on
+  // Cont, but an UNKNOWN field was skipped by a direct call back into the
+  // field loop — one frame per skipped field, so an object deep enough to
+  // be on the trampoline, carrying many fields the schema does not name,
+  // overflowed the stack there
+  final case class Chain(next: Option[Chain])
+  given Schema[Chain] = Schema.derived
+
+  test("an object past the threshold skips any number of unknown fields without the stack") {
+    val depth = 40
+    val unknown = (0 until 200000).map(i => s""""x$i":$i""").mkString(",")
+    val doc = ("""{"next":""" * depth) + "{" + unknown + "}" + ("}" * depth)
+    def depthOf(c: Chain): Int = { var d = 1; var at = c; while at.next.isDefined do { d += 1; at = at.next.get }; d }
+    assertEquals(Json.readStrict[Chain](doc).map(depthOf), Right(depth + 1))
+  }

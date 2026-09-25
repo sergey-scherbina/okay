@@ -27,34 +27,32 @@ okay-codec/src/main/scala/okay/codec/Digest.scala	95	toSchema	lambda	Predef$Arro
 okay-codec/src/main/scala/okay/codec/Edn.scala	394	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft
 okay-codec/src/main/scala/okay/codec/Edn.scala	447	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft
 okay-codec/src/main/scala/okay/codec/Edn.scala	477	decodeField	mutual	Either.flatMap,IterableOnceOps.foldLeft
-okay-codec/src/main/scala/okay/codec/Json.scala	133	printInto	mutual	Vector.foreach
-okay-codec/src/main/scala/okay/codec/Json.scala	137	printIntoNative	mutual	Vector.foreach
-okay-codec/src/main/scala/okay/codec/Json.scala	243	mergePatchAt	mutual	Vector.foldLeft
-okay-codec/src/main/scala/okay/codec/Json.scala	247	mergePatchNative	mutual	Vector.foldLeft
-okay-codec/src/main/scala/okay/codec/Json.scala	359	into	mutual	Vector.foreach
-okay-codec/src/main/scala/okay/codec/Json.scala	363	intoNative	mutual	Vector.foreach
-okay-codec/src/main/scala/okay/codec/Json.scala	393	pairs	mutual	Vector.foreach
-okay-codec/src/main/scala/okay/codec/Json.scala	397	pairsNative	mutual	Vector.foreach
-okay-codec/src/main/scala/okay/codec/Json.scala	574	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft
-okay-codec/src/main/scala/okay/codec/Json.scala	580	field	mutual	Either.flatMap,IterableOnceOps.foldLeft
-okay-codec/src/main/scala/okay/codec/Json.scala	604	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft
+okay-codec/src/main/scala/okay/codec/Json.scala	133	printInto	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/Json.scala	137	printIntoNative	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/Json.scala	243	mergePatchAt	mutual	Vector.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/Json.scala	247	mergePatchNative	mutual	Vector.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/Json.scala	359	into	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline; the one generic Node is the CST root, one frame
+okay-codec/src/main/scala/okay/codec/Json.scala	363	intoNative	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline; the one generic Node is the CST root, one frame
+okay-codec/src/main/scala/okay/codec/Json.scala	393	pairs	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/Json.scala	397	pairsNative	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/Json.scala	574	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/Json.scala	580	field	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/Json.scala	604	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay-codec/src/main/scala/okay/codec/JsonOptic.scala	69	creating	direct	
 okay-codec/src/main/scala/okay/codec/JsonOptic.scala	140	go	lambda	Iterator.map
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	101	get	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	105	getNative	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	135	array	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	141	arrayHere	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	171	product	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	177	productHere	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	225	field	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	228	sum	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	234	sumHere	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	408	afterField	mutual	
-okay-codec/src/main/scala/okay/codec/JsonStrict.scala	414	loop	mutual	
-okay-codec/src/main/scala/okay/codec/JsonValue.scala	72	value	mutual	
-okay-codec/src/main/scala/okay/codec/JsonValue.scala	76	valueNative	mutual	
-okay-codec/src/main/scala/okay/codec/JsonValue.scala	91	objNative	mutual	
-okay-codec/src/main/scala/okay/codec/JsonValue.scala	125	arrNative	mutual	
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	105	get	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	109	getNative	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	139	array	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	145	arrayHere	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	175	product	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	181	productHere	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	229	field	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	232	sum	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	238	sumHere	mutual	Either.flatMap	BOUNDED: a container descent counts one `open` and past Codecs.NativeThreshold (24) the reader continues on the Cont trampoline; an Option or iso step between two containers is bounded by the schema, which must cross a product or sum to recurse
+okay-codec/src/main/scala/okay/codec/JsonValue.scala	72	value	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/JsonValue.scala	76	valueNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/JsonValue.scala	91	objNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay-codec/src/main/scala/okay/codec/JsonValue.scala	125	arrNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay-codec/src/main/scala/okay/codec/Policy.scala	101	to	lambda	Iterator.flatMap,Option.flatMap
 okay-codec/src/main/scala/okay/codec/Schema.scala	170	edge	mutual	?
 okay-codec/src/main/scala/okay/codec/Staged.scala	391	tupleTypes	direct	

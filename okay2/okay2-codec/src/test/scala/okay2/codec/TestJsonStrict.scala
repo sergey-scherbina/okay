@@ -6,6 +6,11 @@ object Kind {
   final case class Many(items: List[Int]) extends Kind
 }
 
+final case class Linked(next: Option[Linked])
+object Linked {
+  implicit lazy val schema: Schema[Linked] = Schema.derived
+}
+
 final case class Inner(name: String, ratio: Double, flags: Vector[Boolean], note: Option[String])
 final case class Outer(id: Long, count: Int, ok: Boolean, ch: Char, inner: Inner,
                        kinds: List[Kind], maybe: Option[Inner], raw: Array[Byte],
@@ -93,5 +98,16 @@ class TestJsonStrict extends munit.FunSuite {
     assertEquals(Json.readStrict[Double]("6.02e23"), Right(6.02e23))
     assertEquals(Json.readStrict[Double]("-0.0"), Right(-0.0))
     assertEquals(Json.readStrict[Int]("1.9"), Json.read[Int]("1.9"))
+  }
+
+  // stack-safety-json: past NativeThreshold the strict reader walks on
+  // Cont, but an UNKNOWN field was skipped by a direct call back into the
+  // field loop, one frame per skipped field
+  test("an object past the threshold skips any number of unknown fields without the stack") {
+    val depth = 40
+    val unknown = (0 until 200000).map(i => s""""x$i":$i""").mkString(",")
+    val doc = ("{\"next\":" * depth) + "{" + unknown + "}" + ("}" * depth)
+    def depthOf(c: Linked): Int = { var d = 1; var at = c; while (at.next.isDefined) { d += 1; at = at.next.get }; d }
+    assertEquals(Json.readStrict[Linked](doc).map(depthOf), Right(depth + 1))
   }
 }

@@ -98,6 +98,10 @@ object JsonStrict {
      * threshold crossing is measured at the SAME place `Codecs.NativeThreshold`
      * itself is checked, not a second counter.
      */
+    /** BOUNDED (specs/stack-safety.md): a container descent counts one
+     * `open`, and past Codecs.NativeThreshold the reader continues on
+     * Cont; an Option or iso step between two containers is bounded by
+     * the schema, which must cross a product or sum to recurse */
     def get[A](sc: Schema[A]): Either[String, A] =
       if open >= Codecs.NativeThreshold then reset(getC[A, Either[String, A]](sc))
       else getNative(sc)
@@ -411,25 +415,40 @@ object JsonStrict {
                 case ',' => at += 1; loop(found)
                 case '}' => at += 1; assembleC[A, R](p, found)
                 case _ => Cont.Pure(fail[A]("expected ',' or '}'"))
+            // Fields up to the next KNOWN one, by ITERATION. A known field
+            // descends through Cont.defer, so its continuation runs in the
+            // trampoline's loop; an unknown one is skipped in place, and
+            // its separator is read here rather than by a call back into
+            // `loop` — which cost a frame per skipped field and overflowed
+            // on an object with many of them (stack-safety-json,
+            // TestJsonStrict, 2026-09-25).
             def loop(found: Map[String, Any]): Either[String, A] /> R =
-              skipWs()
-              string() match
-                case Left(e) => Cont.Pure(Left(e))
-                case Right(k) =>
-                  skipWs()
-                  expect(':') match
-                    case Left(e) => Cont.Pure(Left(e))
-                    case Right(_) =>
-                      skipWs()
-                      p.fields.find(_._1 == k) match
-                        case Some((_, sc)) =>
-                          Cont.defer(() => fieldC(sc())) {
-                            case Left(e) => Cont.Pure(Left(e))
-                            case Right(v) => afterField(found + (k -> v))
-                          }
-                        case None => skipValue() match
-                          case Left(e) => Cont.Pure(Left(e))
-                          case Right(_) => afterField(found)
+              var out: (Either[String, A] /> R) | Null = null
+              while out == null do
+                skipWs()
+                string() match
+                  case Left(e) => out = Cont.Pure(Left(e))
+                  case Right(k) =>
+                    skipWs()
+                    expect(':') match
+                      case Left(e) => out = Cont.Pure(Left(e))
+                      case Right(_) =>
+                        skipWs()
+                        p.fields.find(_._1 == k) match
+                          case Some((_, sc)) =>
+                            out = Cont.defer(() => fieldC(sc())) {
+                              case Left(e) => Cont.Pure(Left(e))
+                              case Right(v) => afterField(found + (k -> v))
+                            }
+                          case None => skipValue() match
+                            case Left(e) => out = Cont.Pure(Left(e))
+                            case Right(_) =>
+                              skipWs()
+                              peek match
+                                case ',' => at += 1
+                                case '}' => at += 1; out = assembleC[A, R](p, found)
+                                case _ => out = Cont.Pure(fail[A]("expected ',' or '}'"))
+              out.nn
             loop(Map.empty)
 
     private def assembleC[A, R](p: Schema.SProduct[A], found: Map[String, Any]): Either[String, A] /> R =
