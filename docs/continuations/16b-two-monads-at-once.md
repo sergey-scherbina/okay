@@ -242,6 +242,106 @@ What it cost:
 - **Three type aliases** and a run expression that is the stack spelled
   backwards, before a line of business logic.
 
+### Stacks do not compose with each other
+
+That was ONE stack. The sharper problem shows up the day two pieces of
+code written against DIFFERENT stacks meet. Three teams, the same three
+effects:
+
+- **team A** wrote the basket above: `App` = error inside log inside
+  choice;
+- **team B** wrote an audit helper with the same effects in the other
+  order, the error OUTSIDE the log:
+
+```scala
+type Checked[A] = EitherT[List, String, A]
+type Audited[A] = WriterT[Checked, Vector[String], A]
+
+def audit(msg: String): Audited[Unit] =
+  WriterT.tell[Checked, Vector[String]](Vector(msg))
+```
+
+- **team C** needs a configuration too, so it put a `ReaderT` on top of
+  team A's stack:
+
+```scala
+type Configured[A] = ReaderT[App, Config, A]
+```
+
+Team A tries to call team B's `audit` inside its basket:
+
+```text
+for
+  _ <- CatsStacks.audit("checked")
+  t <- CatsBasket.price("north", "tea")
+yield t
+```
+
+and the compiler refuses — two monads that mean "a list of logged,
+possibly failed values" are two unrelated types:
+
+```text
+Found:    cats.data.WriterT[bookcats.CatsStacks.Checked, Vector[String], U]
+Required: bookcats.CatsBasket.App[Int]
+```
+
+Team C tries to call team A's `price` and is refused the same way,
+because one more layer is one more type. The fix there is mechanical —
+one more lift, in every helper it reuses:
+
+```scala
+def priced(shop: String, item: String): Configured[Int] =
+  ReaderT.liftF(CatsBasket.price(shop, item))
+```
+
+Team A's fix for team B's helper is not mechanical at all. Changing the
+ORDER of two layers means writing the swap from the start of the
+chapter by hand, for this one pair:
+
+```scala
+def reorder[A](fa: Audited[A]): App[A] =
+  EitherT(WriterT(fa.run.value.map {
+    case Right((log, a)) => (log, Right(a))
+    case Left(e)         => (Vector.empty, Left(e))
+  }))
+```
+
+And it cannot be written without losing something. In team B's order an
+error DISCARDS the log, so `audit("checked")` followed by a failure
+runs to `List(Left("no stock"))` — the line is gone before `reorder`
+ever sees it, and the converted value is `(Vector(), Left("no stock"))`
+where team A's own order would have kept `Vector("checked")`. The two
+stacks are not two spellings of one thing; they are different
+programs, and there is no lossless function from one to the other.
+
+So a transformer stack is not only frozen for one program. It is a
+dialect: a helper speaks the stack it was written in, reuse across
+stacks needs lifts (a different layer count) or a hand-written, possibly
+lossy conversion (a different order), and a library of helpers has to
+pick one stack for all its users. The two roads below have no such
+thing to pick. A layered helper is a plain value — `Logged(Vector(msg),
+())` works under any nesting of `reify` blocks. An effect helper is
+written against its one effect:
+
+```scala
+def audit(msg: String): Unit ! Writer % String =
+  Writer.tell(msg)
+```
+
+and is used, unchanged, in the basket's row, in a bigger row with a
+configuration, and under either handler order:
+
+```scala
+type Taxed = okay.Reader % Int + Basket
+
+def taxed(items: List[String]): Int ! Taxed =
+  for
+    vat   <- okay.Reader.ask[Int].at[Taxed]
+    total <- basket(items).at[Taxed]
+    _     <- audit(s"vat $vat%").at[Taxed]
+  yield total * (100 + vat) / 100
+```
+
 ## Filinski 1994: direct style, one monad per block
 
 Chapter 16 showed Filinski's result: with `shift` and `reset`, any
@@ -496,7 +596,7 @@ the `$` encoding, and keeps `Layered` for the monads it does not own.
 | | the composite is | an operation is written | the order is chosen | same program, other order |
 |---|---|---|---|---|
 | by hand | nested `match` | inline, every time | by the nesting you wrote | rewrite it |
-| transformers (cats) | a type (`App`) | for its position, with lifts | in the type | a new `App`, every helper rewritten |
+| transformers (cats) | a type (`App`) | for its position, with lifts | in the type | a new `App`, every helper rewritten; helpers of another stack need lifts or a lossy hand conversion |
 | Filinski 1994 | one monad (the transformer stack) | `reflect` into the stack | in the stack's type | as for transformers |
 | Filinski 1999 | numbered levels | `shift_n` by position | by level number | renumber |
 | layered (Biernacki) | nested `reify` blocks | `reflect` of a plain value | by which block is outside | swap the blocks |

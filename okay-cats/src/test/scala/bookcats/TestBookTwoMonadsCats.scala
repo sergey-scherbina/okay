@@ -47,6 +47,37 @@ object CatsBasket:
   def run(items: List[String]): List[(Vector[String], Either[String, Int])] =
     basket(items).value.run
 
+/** I½. stacks do not compose with each other: three teams, the same effects, three stacks */
+object CatsStacks:
+  import cats.data.{EitherT, ReaderT, WriterT}
+  import CatsBasket.App
+
+  /** team B: the same three effects, the other order — the error OUTSIDE the log */
+  type Checked[A] = EitherT[List, String, A]
+  type Audited[A] = WriterT[Checked, Vector[String], A]
+
+  def audit(msg: String): Audited[Unit] =
+    WriterT.tell[Checked, Vector[String]](Vector(msg))
+
+  def reject[A](why: String): Audited[A] =
+    WriterT.liftF(EitherT.leftT[List, A](why))
+
+  /** team C: team A's stack with a configuration on top */
+  final case class Config(vat: Int)
+  type Configured[A] = ReaderT[App, Config, A]
+
+  /** team A's price, reused by team C: one more lift, in every helper */
+  def priced(shop: String, item: String): Configured[Int] =
+    ReaderT.liftF(CatsBasket.price(shop, item))
+
+  /** team B's helpers, reused by team A: a conversion by hand — and it
+   * cannot keep a log the other order never had */
+  def reorder[A](fa: Audited[A]): App[A] =
+    EitherT(WriterT(fa.run.value.map {
+      case Right((log, a)) => (log, Right(a))
+      case Left(e)         => (Vector.empty, Left(e))
+    }))
+
 /** II. layered monadic reflection: a delimiter ($) per monad, reflect as shift0, no transformer */
 object LayeredBasket:
   import okay.Layered.{Layer, reify, reflect}
@@ -124,6 +155,20 @@ object EffectsBasket:
     val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
     !.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList
 
+  /** written ONCE against its own effect, used in any row that has it, in any order */
+  def audit(msg: String): Unit ! Writer % String =
+    Writer.tell(msg)
+
+  /** the same helper in a program with MORE effects (a configuration) */
+  type Taxed = okay.Reader % Int + Basket
+
+  def taxed(items: List[String]): Int ! Taxed =
+    for
+      vat   <- okay.Reader.ask[Int].at[Taxed]
+      total <- basket(items).at[Taxed]
+      _     <- audit(s"vat $vat%").at[Taxed]
+    yield total * (100 + vat) / 100
+
   /** the SAME program, errors handled last: one missing price fails the whole basket */
   def failFirst(items: List[String]): Either[String, Seq[(Vector[String], Int)]] =
     val logged  = Writer.collect[String, Int, Choose + Throws % String](basket(items))
@@ -146,6 +191,49 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
 
   test("algebraic effects: the same answer, from handlers chosen where it runs") {
     assertEquals(EffectsBasket.run(List("tea", "cake")), expected)
+  }
+
+  test("STACKS DO NOT COMPOSE: team B's helper (other order) does not type in team A's stack") {
+    val e = compileErrors("""
+      val p: bookcats.CatsBasket.App[Int] =
+        for
+          _ <- bookcats.CatsStacks.audit("checked")
+          t <- bookcats.CatsBasket.price("north", "tea")
+        yield t
+    """)
+    assert(e.contains("Found:    cats.data.WriterT[bookcats.CatsStacks.Checked") && e.contains("Required: bookcats.CatsBasket.App[Int]"), e)
+  }
+
+  test("STACKS DO NOT COMPOSE: team A's helper does not type in team C's stack (one more layer) without another lift") {
+    val e = compileErrors("""
+      val p: bookcats.CatsStacks.Configured[Int] =
+        for
+          t <- bookcats.CatsBasket.price("north", "tea")
+        yield t
+    """)
+    assert(e.contains("Found:"), e)
+    assertEquals(CatsStacks.priced("north", "tea").run(CatsStacks.Config(20)).value.run, List((Vector.empty[String], Right(300))))
+  }
+
+  test("reordering by hand loses information: team B's log before an error cannot survive the conversion") {
+    import cats.syntax.all.*
+    val teamB: CatsStacks.Audited[Int] = CatsStacks.audit("checked") *> CatsStacks.reject[Int]("no stock")
+    assertEquals(teamB.run.value, List(Left("no stock")))
+    assertEquals(CatsStacks.reorder(teamB).value.run, List((Vector.empty[String], Left("no stock"))))
+    // in team A's own order the same two steps keep the line
+    val teamA: CatsBasket.App[Int] = CatsBasket.log("checked") *> cats.data.EitherT.leftT[CatsBasket.Branches, Int]("no stock")
+    assertEquals(teamA.value.run, List((Vector("checked"), Left("no stock"))))
+  }
+
+  test("effects: the helper written once works in a bigger row and under either handler order") {
+    import okay.{Choose, Throws, Writer, runChoice, runEither}
+    import okay.given
+    val withVat = okay.Reader.run[Int, Int, EffectsBasket.Basket](20)(EffectsBasket.taxed(List("tea")))
+    val checked = runEither[Int, Choose + Writer % String, String](withVat)
+    val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
+    assertEquals(!.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList, List(
+      (Vector("shop north", "total 300", "vat 20%"), Right(360)),
+      (Vector("shop south", "total 250", "vat 20%"), Right(300))))
   }
 
   test("the other order: layered by swapping blocks, effects by swapping handlers — one missing price fails it all") {
