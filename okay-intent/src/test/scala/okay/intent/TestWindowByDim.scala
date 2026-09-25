@@ -18,6 +18,14 @@ package okay.intent
  */
 class TestWindowByDim extends munit.FunSuite {
 
+  // measured 1.7s at moderate load (load averages ~25-56, this box,
+  // 2026-09-25) — the 30.47s that reded okay-arrow's full gate (load
+  // 80-150) was contention, not this suite's own cost, and a CPU-bound
+  // suite gets no timeout headroom of its own by default (the same
+  // reasoning as TestGenerate's own override). backlog:
+  // intent-window-by-dim-timeout.
+  override val munitTimeout = scala.concurrent.duration.Duration(120, "s")
+
   private val (train, held) = IntentFixture.labelled.zipWithIndex
     .partition(_._2 % 2 == 1) match
       case (a, b) => (a.map(_._1), b.map(_._1))
