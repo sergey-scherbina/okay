@@ -419,7 +419,12 @@ Runtime layer (lane cont-stack-switch, TestContStack; each red on a
 - [x] multi-shot across switches: `k(x + 1) + k(x + 1)` at every level
 - [x] an exception thrown deep crosses every switch unchanged
 - [ ] the fast path within noise of master on fib100/fib1000/statePara
-      (NOT met: see Results)
+      — NOT PROVED at landing (operator, 2026-09-25: "мерж в мастер",
+      with the A/B disqualified by the box: see Results). The number
+      that is known: statePara's 1000 levels no longer switch at all
+      (TestContStack, zero switches on the exact road), so its 9.99x
+      cause is gone; what fib100 pays for `Reentry` + `Gauged` is the
+      open measurement, backlog cont-stack-ab.
 - [ ] the platform-thread switch exercised by a test run on JDK 17 as
       well as 26 (no `MethodHandle` lookup left to differ, but the floor
       is where it is proved)
@@ -566,20 +571,34 @@ Stack knowledge (Layer 3):
   switches; they are state-passing, `k(s)(s2)` — see Layer 1 A — and it
   is the exact room of stage 3 that removes them.)
 
+- A/B of stage 3 (2026-09-25 afternoon, `jmh-lane.sh`, JDK 26):
+  DISQUALIFIED. The box carried siblings' whole-build gates all
+  afternoon (load 19–121); the one lane that completed, fib100 on the
+  lane's tree, read 5 412 ± 1 336 ns/op against the morning's 2 433 on
+  the same code — ±25% within one lane and 2.2x against the morning is
+  the host, not the runner. The reference arm then waited 20 minutes
+  for quiet without starting. The operator chose to land on the tests'
+  evidence; the measurement is filed as backlog cont-stack-ab, to be
+  taken when the box is quiet (the morning protocol: min of 3
+  alternating rounds, one lane per `jmh-lane.sh`). Found on the way:
+  `jmh-lane.sh` runs a bare `sbt` on the PATH's JDK 17, which cannot
+  compile a `versioned` variant (backlog jmh-lane-jdk-pin).
+
 ## Stages
 
-1. Layer 2 (implemented, lane cont-stack-switch, not landed).
+1. Layer 2 — landed with stage 3 (cont-stack-switch, 2026-09-25).
 2. Layer 1 A: the macro and the `Jump` node. Target: statePara back to
    master's number, with zero switches.
 3. Layer 2 on the platform thread (Decision 8) and Layer 3 on every
-   platform (the matrix above): `StackRoom` in the core, the JVM
-   `StackSwitch` with the `ThreadStackSize` first room and the
-   `jdk22/StackRoom.scala` via `versioned`/`multiRelease` (macOS arm64
-   first, the other layouts as Open question 1 measures them), the
-   Native `StackSwitch` reading `ThreadInfo`, `worst` carried beside
-   the room. Then shrink the fast path (the `Mapped` closure,
-   `Reentry`'s shape) and A/B again. Land 1–3 together, only within
-   noise, with `verifyJdk17` green.
+   platform (the matrix above) — LANDED 2026-09-25 (cont-stack-switch):
+   `StackRoom` in the core, the JVM `StackSwitch` with the
+   `ThreadStackSize` first room and `jdk22/StackRoom.scala` via
+   `versioned`/`multiRelease` (macOS arm64; the other layouts are
+   Open question 1), the Native `StackSwitch` reading `ThreadInfo`,
+   `worst` in the run's `Gauge`. Landed BEFORE stage 2 and before the
+   A/B, by the operator's call; "within noise" is backlog cont-stack-ab,
+   and shrinking the fast path (`Mapped`, `Reentry`, `Gauged`) goes
+   with it.
 4. Layer 1 B, then the known higher-order functions, then visible user
    functions and `direct`.
 5. The remaining `ucontext` layouts on the JVM (Open question 1), each
