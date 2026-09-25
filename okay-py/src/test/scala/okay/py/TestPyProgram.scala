@@ -45,7 +45,7 @@ class TestPyProgram extends munit.FunSuite {
     run.forget.runWith
   }
 
-  test("a forgotten run's continuations are refused by name; a function that is not a program too") {
+  test("a forgotten run's continuations are refused by name; a plain return is a finished program") {
     val pairs = Py.program[Long]("progs:pairs").calling(Py.callbacks(choose))()
     val first = w.handler.handle(PyEval.Program(pairs.id, "progs:pairs", Vector.empty))
     val k = first match
@@ -54,8 +54,11 @@ class TestPyProgram extends munit.FunSuite {
     pairs.forget.runWith
     val after = w.handler.handle(PyEval.Continue(pairs.id, k, Right(PyValue.I64(1))))
     assert(after.left.exists(_.message.contains("is not held here")), s"$after")
-    val bad = Py.program[Long]("progs:not_a_program").calling(Py.callbacks(choose))()
-    assertEquals(runChoice(bad.program).runWith.map(_.left.map(_.kind)), Seq(Left("TypeError")))
+    // one program protocol (foreign-one-program): a function that returns a
+    // plain value is a program already done — it was refused before, when a
+    // program and a direct call were two protocols
+    val plain = Py.program[Long]("progs:not_a_program").calling(Py.callbacks(choose))()
+    assertEquals(runChoice(plain.program).runWith, Seq(Right(42L)))
   }
 
   test("Durable journals the walk; a replay answers every node without Python") {

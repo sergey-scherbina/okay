@@ -54,7 +54,10 @@ may be continued any number of times.
 - [x] `Durable` journals `Program`/`Continue`/`Forget`; a replay needs no
       Python.
 - [x] A continuation of a forgotten run, and a function that does not
-      return a program, are refused by name.
+      return a program, are refused by name. SUPERSEDED in part by
+      specs/foreign-one.md (foreign-one-program, 2026-09-26): under the one
+      program protocol a function returning a plain value is a program
+      already `done`, not a refusal; the forgotten run is still refused.
 - [x] `PyWorkers`: a run's continuations live in ONE worker; its
       continues go there.
 - [x] R: `okay_done`, `okay_perform`, `okay_then`, and `R.program` —

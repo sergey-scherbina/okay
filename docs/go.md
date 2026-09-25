@@ -99,10 +99,11 @@ It is served next to the programs with
 it calls a Python function:
 `Foreign.fn[Double]("quote").calling(Foreign.callbacks(priceOf, discount))("tea", 3L)`.
 
-- **How it crosses the wire.** It is the wire's callback dialogue, the
-  one Python's `okay.call` speaks: the host `start`s the function, the
-  worker `ask`s for each `okay.Call`, and the host `resume`s it with the
-  answer. The function runs on a goroutine, and `Worker.Handle` stays one
+- **How it crosses the wire.** It is the wire's one program protocol
+  (foreign-one-program), the one Python's `okay.call` speaks: the host
+  starts the function as a `program`, the worker answers a `perform` node
+  marked `once` for each `okay.Call`, and the host `continue`s it with the
+  answer. A function with no callbacks is also served as a plain `call`. The function runs on a goroutine, and `Worker.Handle` stays one
   line in, one line out, so this works over pipes and TCP alike.
 - **Errors.** A callback that fails in okay comes back as an `error`
   (`*okay.OkayError`, with its condition's kind and message). A callback

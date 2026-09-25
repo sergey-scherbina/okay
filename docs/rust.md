@@ -84,7 +84,7 @@ then runs over it as over a pipe:
 - **FFM:** `ForeignWorker.inProcess(dylib)` (after `import okay.rust.*`);
 - **WebAssembly:** `ForeignWorker.inProcessWasm(module)`, under Chicory.
 
-`okay_call` in-process is the same `ask`/`resume` dialogue, one
+`okay_call` in-process is the same `program`/`perform`/`continue` dialogue, one
 `okay_exchange` per step. It is not a C upcall into the JVM: a callback is
 an okay program that must run under ALL the caller's handlers, and an
 upcall in the middle of an FFM call would run it under the foreign

@@ -595,30 +595,35 @@ sequenceDiagram
   participant S as Scala (engine + handlers)
   participant X as okay_exchange
   participant T as quote, on its own thread
-  S->>X: start quote("tea", 3)
+  S->>X: program run=1: quote("tea", 3)
   X->>T: run quote
   T-->>X: okay_call(price_of "tea"): waits
-  X-->>S: ask price_of("tea"), k=1
+  X-->>S: perform price_of("tea"), k=1, once
   Note over S: runs the callback under its Reader: 4.0
-  S->>X: resume k=1 with 4.0
+  S->>X: continue run=1, k=1 with 4.0
   X->>T: 4.0
   T-->>X: okay_call(discount 12.0): waits
-  X-->>S: ask discount(12.0), k=2
+  X-->>S: perform discount(12.0), k=2, once
   Note over S: runs the callback: 6.0
-  S->>X: resume k=2 with 6.0
+  S->>X: continue run=1, k=2 with 6.0
   X->>T: 6.0
   T-->>X: returns 6.0
-  X-->>S: ok 6.0
+  X-->>S: done 6.0
 ```
 
-1. `start`: the worker runs `quote` on a thread of its own. At its first
+1. `program`: the worker runs `quote` on a thread of its own. At its first
    `okay_call`, that thread stops and waits on a channel. `okay_exchange`
-   RETURNS to Scala with an `ask` naming the operation and its arguments.
+   RETURNS to Scala with a `perform` node naming the operation and its
+   arguments — the same node a program as data answers, marked `once`
+   because what continues it is a waiting thread, not a value
+   (foreign-one-program: one program protocol for both).
 2. Scala runs the callback as an ordinary okay program, under its own
    handlers (`Reader`, `State`, ...), and gets the answer.
-3. `resume`: the next `okay_exchange` hands the answer over. The waiting
+3. `continue`: the next `okay_exchange` hands the answer over. The waiting
    thread wakes up, `okay_call` returns the answer, and `quote` goes on,
-   until its next `okay_call` (another `ask`) or its end (`ok`).
+   until its next `okay_call` (another `perform`) or its end (`done`). A
+   second `continue` of the same `k` is refused by name: a thread cannot
+   be resumed twice.
 
 The thread is what holds `quote`'s place. Rust cannot pause a function
 halfway and come back to it later, but a waiting thread keeps its whole
@@ -633,7 +638,7 @@ is not, and the reason is okay's, not FFM's. A callback is an okay
 PROGRAM that must run under ALL the caller's handlers. An upcall arriving
 in the middle of a foreign call would run it under the foreign engine's
 handler alone, with its `Reader`, `State` or `Async` missing. So every
-transport carries the same `ask`/`resume` dialogue, and in-process each
+transport carries the same `program`/`perform`/`continue` dialogue, and in-process each
 step is one function call.
 
 ## Which language supports which layer

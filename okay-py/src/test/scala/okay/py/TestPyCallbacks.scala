@@ -100,7 +100,8 @@ class TestPyCallbacks extends munit.FunSuite {
     val prog = Py.fn[Long]("okaycb:twice").calling(Py.callbacks(inc))(5L)
     val live = State.handle(0)(prog).runWith(using Durable.over[PyEval](w.handler, j)())
     assertEquals(live, (2, Right(12L)))
-    assertEquals(j.all.map(_.op), Vector("okaycb:twice", "resume", "resume"))
+    // the dialogue is a program (foreign-one-program): started, then continued per callback
+    assertEquals(j.all.map(_.op), Vector("program:okaycb:twice", "continue", "continue"))
     // the callbacks run again (their State is okay's); Python does not
     val replayed = State.handle(0)(prog).runWith(using Durable.replayingOver[PyEval](j))
     assertEquals(replayed, (2, Right(12L)))

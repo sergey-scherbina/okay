@@ -126,16 +126,16 @@ sequenceDiagram
   participant S as okay program (Scala)
   participant W as shim (Python / R)
   participant U as your function
-  S->>W: start quote(order), offering price_of, tax_rate
+  S->>W: program quote(order), offering price_of, tax_rate
   W->>U: quote(order)
   U->>W: okay.call("price_of", "tea")
-  W-->>S: ask price_of("tea"), k = 1
+  W-->>S: perform price_of("tea"), k = 1, once
   Note over S: runs the callback's program<br/>under the caller's handlers (Reader)
-  S->>W: resume k = 1 with 4.0
+  S->>W: continue k = 1 with 4.0
   W-->>U: 4.0
   U->>W: okay.call("tax_rate", "UA")
-  W-->>S: ask tax_rate("UA"), k = 2
-  S->>W: resume k = 2 with 0.2
+  W-->>S: perform tax_rate("UA"), k = 2, once
+  S->>W: continue k = 2 with 0.2
   U-->>W: return 9.6
   W-->>S: done: 9.6
 ```
