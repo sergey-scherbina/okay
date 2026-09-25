@@ -1,8 +1,0 @@
-feature/flaky-timing-fixes 2026-09-25
-agent: claude-code
-status: in-progress
-scope: fix two filed, unfixed flaky-test findings —
-  backlog.d/polyglot/clojure-cancel-wall-clock.md (TestClojureCancel:
-  judge the cancel on the MARK, not a wall-clock ms bound) and
-  backlog.d/okay-cluster-dataflow/federation-two-process-timeout.md
-  (TestFederation: two-process test times out under load).
