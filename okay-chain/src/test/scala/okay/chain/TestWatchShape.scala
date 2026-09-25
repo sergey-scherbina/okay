@@ -122,3 +122,21 @@ class TestWatchShape extends munit.FunSuite:
     c.reorg(at = 2, n = 10, fork = "b")
     assert(f.step().isLeft)
   }
+
+  // follow-keeps-progress: a source that fails in the middle of a step
+  test("a failure after progress keeps what was confirmed; the height is asked again next step") {
+    val c = Fake(); c.grow(10)
+    var failAt = Option(6L)
+    val flaky = new PollSource[WBlock]:
+      def head: Tip = c.head
+      def block(h: Long): Polled[WBlock] =
+        if failAt.contains(h) then throw RuntimeException(s"429 at $h") else c.block(h)
+    val f = Follow(flaky, Finality.Depth(0), from = 0)
+    val first = f.step().toOption.get.collect { case Event.Confirmed(b) => b.number }
+    assertEquals(first, (0L to 5L).toVector, "0..5 were confirmed before 6 failed, and are said")
+    assertEquals(f.next, 6L)
+    val again = intercept[RuntimeException](f.step())   // nothing gained: the failure is said
+    assert(again.getMessage.contains("429 at 6"))
+    failAt = None
+    assertEquals(f.step().toOption.get.collect { case Event.Confirmed(b) => b.number }, (6L to 9L).toVector)
+  }

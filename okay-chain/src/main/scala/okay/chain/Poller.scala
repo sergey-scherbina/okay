@@ -101,9 +101,10 @@ final class Follow[B](source: PollSource[B], finality: Finality, from: Long,
 
   def step(): Either[Broken, Vector[Event[B]]] =
     val out = Vector.newBuilder[Event[B]]
+    var gained = 0
     def feed(os: Vector[Observed[B]]): Either[Broken, Unit] =
       os.foldLeft[Either[Broken, Unit]](Right(())) { (acc, o) =>
-        acc.flatMap(_ => tracker.feed(o).map { (t, es) => tracker = t; out ++= es })
+        acc.flatMap(_ => tracker.feed(o).map { (t, es) => tracker = t; out ++= es; gained += es.size })
       }
     val (p0, os0) = poller.onHead(source.head)
     poller = p0
@@ -112,6 +113,17 @@ final class Follow[B](source: PollSource[B], finality: Finality, from: Long,
     while go && result.isRight do
       poller.want match
         case Request.Block(h) =>
-          result = poller.onBlock(h, source.block(h)).flatMap { (p, os) => poller = p; feed(os) }
+          // A SOURCE THAT FAILS AFTER PROGRESS keeps the progress
+          // (follow-keeps-progress): the events already produced are
+          // blocks the tracker has CONFIRMED — its frontier moved — and
+          // throwing here would drop them where no caller sees them. The
+          // step ends with what it has; the poller asks this height again
+          // next step, where a failure that gains nothing is thrown.
+          val polled =
+            try Some(source.block(h))
+            catch case scala.util.control.NonFatal(_) if gained > 0 => None
+          polled match
+            case Some(p) => result = poller.onBlock(h, p).flatMap { (q, os) => poller = q; feed(os) }
+            case None => go = false
         case Request.Head | Request.Done => go = false
     result.map(_ => out.result())

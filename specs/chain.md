@@ -241,3 +241,11 @@ specs/x402.md. It depends on this module for `Network`, `Account`,
   okay-watch `TestFollower` cases through `Follow`, plus the ring
   bound), `TestLedger` (a toy UTXO and a toy account ledger),
   `TestDocExamplesChain` (the docs' snippets verbatim).
+- follow-keeps-progress (2026-09-25, found from okay-watch): a
+  `PollSource` that throws in the middle of `Follow.step` — a 429 after
+  the retries, a timeout — used to take the step's events with it:
+  blocks the Tracker had already CONFIRMED (its frontier moved), which
+  no caller then received. A step now ends with what it confirmed when
+  the source fails after progress; the poller asks the same height again
+  next step, and a failure that gains nothing is thrown. `TestWatchShape`
+  "a failure after progress keeps what was confirmed".
