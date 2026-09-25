@@ -58,7 +58,8 @@ Contents:
 29. [Zippers](#29-zippers)
 30. [Durable workflows](#30-durable-workflows)
 31. [Tables on any platform](#31-tables-on-any-platform)
-32. [Literature](#32-literature)
+32. [Lexing and parsing, lossless and total](#32-lexing-and-parsing-lossless-and-total)
+33. [Literature](#33-literature)
 
 ## 1. The build
 
@@ -1744,7 +1745,38 @@ pushes a column projection into the file read and puts the smaller side
 of a join on the right. `Sort` is an operation `Bulk` does not have,
 added as a new signature. `Sort.viaTables` answers it on any platform.
 
-## 32. Literature
+## 32. Lexing and parsing, lossless and total
+
+`okay2-lex` and `okay2-parse` are okay-lex and okay-parse (stage 40):
+a lexer is a pure step function whose state is a VALUE (`Scan`), so it
+crosses chunk boundaries, snapshots for incremental relexing and is
+total — the unrecognizable lands on the Error channel, never in an
+exception — and the concatenated lexemes of every channel are the input
+byte for byte:
+
+```scala
+    assertEquals(Scan.all(Json.scan)(sample).tokens.map(_.lexeme).mkString, sample)
+```
+
+A parser is the same shape one layer up: tokens in, instructions out,
+and ONE total builder folds any instruction stream into a lossless CST —
+a truncated document is a tree with holes, a stray close an error leaf:
+
+```scala
+    val t = parse("{\"a\": [1, 2")
+    assertEquals(Cst.errors(t).map(_._2), Vector("unclosed", "unclosed"))
+```
+
+After an edit, `Parse.reparse` relexes from the nearest snapshot,
+reconverges, and splices the old tree back — by reference when the edit
+kept offsets, so an untouched subtree is the same object. A `Scan` is
+also a `Mealy` machine, an arrow (`Optic.Arrow` and `Optic.Choice`), so
+scanners compose and run side by side. `Cst.lexemes`/`errors` walk on an
+explicit stack here: the Scala 3 core's recursive walks overflow on a
+20 000-deep document the parse itself builds (backlog
+`cst-walk-stack-safe`).
+
+## 33. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and

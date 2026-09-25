@@ -2046,6 +2046,35 @@ does. Where there is no position, it gives `<unknown>`.
   assert the file and that two lines differ, not a line number that
   every edit above them would move.
 
+## Stage 40 — okay2-lex and okay2-parse (2026-09-25)
+Operator: "Http, json, xml, sql точно нужно портировать тоже" — the
+modules section of okay2's backlog, in dependency order; this is its
+first item. okay-lex (Lex, Mealy, the Json lexer; Bpe on demand) and
+okay-parse (Parse, JsonParse) as cross projects over okay2-stream and
+okay2-optics: the lossless readers JSON's CST path and XML stand on.
+
+- [x] the lexer: lossless, total (Error channel), exact spans, flush,
+      a Stage, chunked with boundary tokens once, fold/aggregate, the
+      sink road equals the pair road, incremental relex (TestLex)
+- [x] Mealy: the arrow laws observed over sequences (identity,
+      associativity, arr of a composition, first, right) on a stateful
+      arrow; the door `ofScan`; composition, fold, fanout (TestMealy)
+- [x] the parser: lossless, total (holes, stray closes, sibling
+      recovery), both surfaces the same tree, prefix-consistent,
+      incremental reparse by reference and by rebase (TestParse); the
+      ScalaCheck laws — reparse equals full, lossless after reparse,
+      relex equals lex, the builder total (TestLaws)
+- [x] JVM, Scala.js and Scala Native (58 results off the JVM)
+
+### Found while building it
+- `Cst.errors` overflowed the stack at 20 000 levels where `Parse.full`
+  did not: the Scala 3 core's recursive walks. okay2 walks on an explicit
+  stack; the Scala 3 half is filed as `cst-walk-stack-safe` (backlog
+  okay-lex). The Scala 3 depth test is timing-only and Live-tagged; the
+  okay2 one asserts the walks at depth instead.
+- The shared `ArrowLawsSuite` is not in okay2: the laws a Mealy machine
+  can break are stated in TestMealy directly.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

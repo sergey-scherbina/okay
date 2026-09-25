@@ -105,6 +105,8 @@ lazy val root: Project = (project in file("."))
     okay2.jvm, okay2.js, okay2.native,
     okay2Data.jvm, okay2Data.js, okay2Data.native,
     okay2Optics.jvm, okay2Optics.js, okay2Optics.native,
+    okay2Lex.jvm, okay2Lex.js, okay2Lex.native,
+    okay2Parse.jvm, okay2Parse.js, okay2Parse.native,
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
     okay2Async.jvm, okay2Async.js, okay2Async.native,
     okay2Platform.jvm, okay2Platform.js, okay2Platform.native,
@@ -225,6 +227,33 @@ lazy val okay2Optics = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(jsTests, reflect(Some(Provided)))
   .nativeSettings(reflect(Some(Provided)))
   .jvmConfigure(_.withId("okay2Optics"))
+
+/** okay-lex for the Scala 2 core (okay2-lex-parse): the total, lossless
+ * scanner as a pure step function (`Scan`, `ScanInto`), its drivers
+ * (Stage, Chunks, fold, relex), `Mealy` as an arrow, and the JSON dialect */
+lazy val okay2Lex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-lex"))
+  .dependsOn(okay2Stream, okay2Optics)
+  .settings(name := "okay2-lex", common)
+  .jvmSettings(jvmOnlyTests)
+  .jsSettings(jsTests)
+  .jvmConfigure(_.withId("okay2Lex"))
+
+/** okay-parse for the Scala 2 core: the instruction language, the total
+ * builder into a lossless CST, incremental reparse, and the JSON driver */
+lazy val okay2Parse = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-parse"))
+  .dependsOn(okay2Lex)
+  .settings(
+    name := "okay2-parse",
+    common,
+    libraryDependencies += "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jvmSettings(jvmOnlyTests)
+  .jsSettings(jsTests)
+  .jvmConfigure(_.withId("okay2Parse"))
 
 /** okay-workflow for the Scala 2 core: `Wf`, the durable program's
  * own questions over `Delim`'s dialogue, and `Proc`, the free arrow
