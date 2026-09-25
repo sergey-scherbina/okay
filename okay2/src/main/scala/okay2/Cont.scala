@@ -123,16 +123,26 @@ private[okay2] object ContImpl extends ContModule {
    * depth COSTS — each further step nests one more closure call per
    * run.
    */
-  private sealed abstract class Leaf[A, S, R] extends ((A => S) => R)
+  private sealed abstract class Leaf[A, S, R] extends ((A => S) => R) {
+    /** a leaf called by the user's own function: the runner's room when
+     * `k` is one of its continuations, the first room otherwise */
+    def apply(k: A => S): R = k match {
+      case r: Reentry[_, _, _, _] => applyAt(k, r.room)
+      case _ => applyAt(k, StackSwitch.firstRoom)
+    }
+    /** the leaf re-enters the runner with the room the runner has left
+     * (specs/cont-stack.md Layer 2) */
+    def applyAt(k: A => S, room: Int): R
+  }
   /** flatMap's absorption: the continuation enters the leaf */
   private final case class Absorbed[A, B, S, T, R](s: Shift#Op[A], g: A => Rep[B, S, T]) extends Leaf[B, S, R] {
-    def apply(k: B => S): R = at[A, T, R](s)(a => run(g(a))(k))
+    def applyAt(k: B => S, room: Int): R = at[A, T, R](s)(new Reentry[A, B, S, T](g, k, room - 1))
   }
   /** the same for `map`, its own case rather than `Absorbed` over
    * `a => Return(f(a))`: that spelling allocates a `Return` per element
    * at RUN time */
   private final case class Mapped[A, B, S, R](s: Shift#Op[A], g: A => B) extends Leaf[B, S, R] {
-    def apply(k: B => S): R = at[A, S, R](s)(a => k(g(a)))
+    def applyAt(k: B => S, room: Int): R = at[A, S, R](s)(a => callK(k, g(a), room - 1))
   }
 
   def bind[A, B, S, S2, R](c: Rep[A, S, R])(f: A => Rep[B, S2, S]): Rep[B, S2, R] = c match {
@@ -155,7 +165,75 @@ private[okay2] object ContImpl extends ContModule {
     case _ => Bind(c, (a: A) => Return[Shift, B](f(a)))
   }
 
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)
+
+  /**
+   * What a run's stack looked like at its last GRANT (specs/cont-stack.md
+   * Layer 3): the stack it was on, the pointer then, the levels granted,
+   * the most bytes one level has taken in this run. Attached at the
+   * root of the continuation chain on the run's first exhaustion, never
+   * allocated before — the Scala 3 core's `Gauge`, in Scala 2.
+   */
+  private[okay2] final class Gauge {
+    var top: Long = 0L
+    var mark: Long = 0L
+    var granted: Int = 0
+    var worst: Long = StackSwitch.coldBytesPerLevel
+  }
+
+  /** the chain's root once it has a gauge: the user's `k` and the gauge */
+  private final class Gauged[B, S](val k: B => S, val gauge: Gauge) extends (B => S) {
+    def apply(b: B): S = k(b)
+  }
+
+  /** the gauge behind a continuation: the root's, attached now if it
+   * has none; a fresh unattached one for a chain with no `Reentry` at
+   * all (conservative, never wrong) */
+  @tailrec private def gaugeOf(k: Any): Gauge = k match {
+    case r: Reentry[_, _, _, _] => r.k match {
+      case inner: Reentry[_, _, _, _] => gaugeOf(inner)
+      case _ => r.gauge
+    }
+    case g: Gauged[_, _] => g.gauge
+    case _ => new Gauge
+  }
+
+  /**
+   * THE CONTINUATION A SHIFT'S BODY RECEIVES, when calling it re-enters
+   * this runner — and the room left on this stack, as a FIELD (no
+   * ThreadLocal). At zero the stack is asked how much it really has
+   * (`StackSwitch.more`), and only a stack with nothing left switches.
+   * The rare road is `exhausted`, out of `enter` so `enter` inlines.
+   */
+  private final class Reentry[X, B, S, T](f: X => Rep[B, S, T], var k: B => S, val room: Int) extends (X => T) {
+    def apply(x: X): T = enter(x, room)
+
+    def enter(x: X, here: Int): T = {
+      val r = if (here < room) here else room
+      if (r > 0) step(f(x))(k)(r) else exhausted(x)
+    }
+
+    private def exhausted(x: X): T = {
+      val more = StackSwitch.more(gaugeOf(k))
+      if (more > 0) step(f(x))(k)(more)
+      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh))
+    }
+
+    /** this chain root's gauge, attached on the first ask */
+    def gauge: Gauge = k match {
+      case g: Gauged[_, _] => g.gauge
+      case _ =>
+        val g = new Gauge
+        k = new Gauged(k, g)
+        g
+    }
+  }
+
+  /** call a continuation from inside the runner, with the room HERE */
+  private def callK[A, S](k: A => S, a: A, room: Int): S = k match {
+    case r: Reentry[_, _, _, _] => r.asInstanceOf[Reentry[A, Any, Any, S]].enter(a, room) // a Reentry[X, ..., T] IS an X => T: the class test says so, the erased indexes do not
+    case _ => k(a)
+  }
 
   def isAnswer[A, S](c: Rep[A, S, S]): Boolean = c match {
     case Return(_) => true
@@ -187,13 +265,21 @@ private[okay2] object ContImpl extends ContModule {
    * inference scalac 2 makes it `Nothing` and puts a `checkcast
    * Nothing$` on the call, which throws (measured, specs/okay2.md).
    */
-  @tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match {
-    case Return(a) => pinned[S, R](k(a))
-    case Inject(s) => at[A, S, R](shiftOp[A](s))(k)
-    case Bind(Inject(s), f) => at[Any, R, R](shiftOp[Any](s))(x => run[A, S, Any](f(x))(k).asInstanceOf[R])
-    case Bind(Bind(a, f), g) => step(Bind(a, (x: Any) => bind(f(x))(g)))(k)
-    case Bind(Return(a), f) => step(f(a))(k)
-    case Delay(t) => step(t())(k)
-    case Bind(Delay(t), g) => step(Bind(t(), g))(k)
+  /** `at`, with the runner's room handed to a leaf: a leaf re-enters
+   * the runner through ITS continuation, so the room must reach it
+   * here (the Scala 3 core's `leafAt`) */
+  private def leafAt[X, S, R](s: Shift#Op[X], k: X => S, room: Int): R = s match {
+    case l: Leaf[_, _, _] => l.asInstanceOf[Leaf[X, S, R]].applyAt(k, room)
+    case _ => at[X, S, R](s)(k)
+  }
+
+  @tailrec private def step[A, S, R](c: Rep[A, S, R])(k: A => S)(room: Int): R = c match {
+    case Return(a) => pinned[S, R](callK(k, a, room))
+    case Inject(s) => leafAt[A, S, R](shiftOp[A](s), k, room)
+    case Bind(Inject(s), f) => at[Any, R, R](shiftOp[Any](s))(new Reentry[Any, A, S, R](f, k, room - 1))
+    case Bind(Bind(a, f), g) => step(Bind(a, (x: Any) => bind(f(x))(g)))(k)(room)
+    case Bind(Return(a), f) => step(f(a))(k)(room)
+    case Delay(t) => step(t())(k)(room)
+    case Bind(Delay(t), g) => step(Bind(t(), g))(k)(room)
   }
 }

@@ -154,10 +154,15 @@ deleted.
         under the method's one existing claim.
       `Gen`'s loop (a `new Free.Bind`) and `package.go` (a `LazyList`)
       are deferred, not recursion.
-- [ ] Stage 1c — `Cont` in both cores: its own spec, specs/cont-stack.md
-      (compile-time trampolining of what the macro can see, a room
-      carried as a value, a fresh stack for opaque bodies; measured and
-      not yet landed).
+- [x] Stage 1c — `Cont` in both cores: its own spec, specs/cont-stack.md.
+      Scala 3: Layers 2+3 (cont-stack-switch), the tail-body macro
+      (cont-stack-macro), the pooled switch (cont-stack-parked), all
+      2026-09-25; Scala 2: Layers 2+3 (cont-stack-okay2, the same day —
+      the macro is that item's open half). The inventories lost their
+      `Cont` rows in both cores: a body that uses its answer still
+      nests, and past the room the rest runs on a fresh stack, so no
+      depth overflows; answer-using bodies without any frame at all are
+      backlog cont-stack-layer1-b.
 - [x] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
       already `Cont`-trampolined; the other formats, Schema walks,
       Compat, Stubs and Policy are not.

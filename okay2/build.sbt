@@ -83,6 +83,10 @@ lazy val jvmOnlyTests = Seq(
   // core suite: a deep test's heap is then not sbt's (okay2-cross)
   Test / fork := true,
   Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"),
+  // a small first room for Cont's stack switch, so the suite reaches
+  // exhaustion on small threads (cont-stack-okay2, as the root build's
+  // core suite runs); the derived default is what users get
+  Test / javaOptions += "-Dokay.cont.room=64",
 )
 
 /** a macro module's scala-reflect: on the JVM classpath as before,
@@ -142,9 +146,12 @@ lazy val okay2 = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(name := "okay2", common)
   // one blackbox macro family (`Replayable`, `Distinct`) over an
   // intersection row, which implicit search cannot take apart (stage 7)
-  .jvmSettings(reflect(None), jvmOnlyTests)
-  .jsSettings(reflect(Some(Provided)), jsTests)
-  .nativeSettings(reflect(Some(Provided)))
+  // Cont past the stack (cont-stack-okay2): the switch and the room per
+  // platform — the JVM's count, the pool it shares with Native, Native's
+  // exact reading, JS's bound — beside the shared core
+  .jvmSettings(reflect(None), jvmOnlyTests, platformSources("scala-jvm", "scala-jvm-native"))
+  .jsSettings(reflect(Some(Provided)), jsTests, platformSources("scala-js"))
+  .nativeSettings(reflect(Some(Provided)), platformSources("scala-native", "scala-jvm-native"), platformTests("scala-native"))
   // okay2-bench: the core's benchmarks, in src/jmh as in the root build,
   // on the JVM project only. `test` does not compile them — `Jmh/compile`
   // does (`../scripts/gate.sh "okay2/Jmh/compile"`)
@@ -208,6 +215,10 @@ lazy val okay2Stream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // `Growing` grew after its seal — fixed by okay2-channel-close-wakeup.)
     Test / fork := true,
     Test / javaOptions ++= Seq("-Xmx2g", "-Xss8m"),
+  // a small first room for Cont's stack switch, so the suite reaches
+  // exhaustion on small threads (cont-stack-okay2, as the root build's
+  // core suite runs); the derived default is what users get
+  Test / javaOptions += "-Dokay.cont.room=64",
   )
   // `ParallelChunks` joins a fiber by parking: where a thread can park
   .jvmSettings(platformSources("scala-jvm-native"))
