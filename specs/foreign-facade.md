@@ -118,8 +118,8 @@ nothing for is a tier every language can grow into.
 - [ ] one job text — a call, a frame, a stream — compiles against
       `Calls[M]`/`Frames[M]`/`Streams[M]` and runs on `PyModule`,
       `RModule` and `JvmModule` with only the module changed
-- [ ] a capability a language lacks is a COMPILE error at the call
-      (`compileErrors`), not a runtime refusal
+- [x] a capability a language lacks is a COMPILE error at the call
+      (`compileErrors`), not a runtime refusal (TestFacade)
 - [ ] `Speaks(module)` answers the hello's claims, and the conformance
       suite fails when a claim and a test disagree in either direction
 - [ ] tier 2 crosses as Arrow IPC to a worker whose hello says
@@ -167,12 +167,18 @@ with its date, load and sha (the `performance` skill).
 
 ## Stages
 
-- [ ] Stage 0 — this spec, on the sprint (foreign-facade).
-- [ ] Stage 1 — `Calls[M]` and `Speaks[M]` for `PyModule`, `RModule`,
-      `JvmModule` over the existing workers; `TestFacadeConformance`
-      with one body per capability, run per instance (Live where a
-      runtime is needed, as `TestPyEngine`/`TestREngine` are); the
-      compile-error check for a missing capability.
+- [x] Stage 0 — this spec, on the sprint (foreign-facade, f051b870d).
+- [x] Stage 1 — `Calls[M]` and `Speaks[M]` for `PyModule`, `RModule`,
+      `JvmModule` over the existing workers (foreign-facade-1,
+      2026-09-25): `FacadeConformance` is one body per capability
+      (`calls`: echo round-trips a record at its type, a raising
+      function is a refusal by kind, a missing one is refused too;
+      `speaks`: the report's words are the spec's), run by `TestFacade`
+      over the JVM and a test's own `EchoModule` (default gate), by
+      `TestPyFacade` over python3 and `TestRFacade` over Rscript (Live).
+      A module type without an instance (`Mute`) fails `summon` under
+      `compileErrors`. `JvmModule.fn[A, B](name)(f)` registers a function
+      for the zero-cost tier.
 - [ ] Stage 2 — `Frames[M]` with the tier rule and `Frame.Threshold`
       measured; Arrow where spoken, columnar JSON otherwise; the
       by-reference `JvmModule` instance; then `frame` in the Ts, Hs, Go
@@ -216,4 +222,23 @@ with its date, load and sha (the `performance` skill).
 
 ## Results
 
-(none yet)
+- **Stage 1 (2026-09-25).** `Calls` answers `Either[Batcher.Failed, B]`
+  synchronously, the shape `Engine`'s `Batcher` already has — the pool
+  borrows a worker for the call, and an `Async` wrapper belongs at the
+  call site, not in every instance; the Interface above says `! Async`
+  and stage 3 (streams) is where that is decided for real. One
+  `Batcher.Failed` is the refusal on every road: okay-py's and okay-r's
+  `Condition` are two types, and a facade with two refusals is two
+  facades. A missing function on the JVM is a refusal by kind
+  (`NoSuchFunction`) at call time, as Python's `AttributeError` is —
+  unlike `Engine`'s `batcher`, which throws at build, because a map is
+  built once and a call is made per value. `Speaks` in stage 1 reads the
+  wire the worker NEGOTIATED (`+arrow` in `ForeignWorker.wire`) plus
+  what specs/remote-foreign.md established about the language
+  (Python's and R's continuations are values: multi-shot); the hello
+  keys the Interface promises come with stage 2, when there is a
+  frame road to announce.
+- Python here: python3 3.14 on the box, echo/boom/missing green over
+  pipes, frames `columnar-json` (no pyarrow in the box's interpreter —
+  the venv of MeasurePyArrow has it). R: not installed on this box;
+  `TestRFacade` skips, the body is the same text.

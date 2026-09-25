@@ -116,6 +116,27 @@ final class JvmModule private (val name: String, private val fns: Map[String, An
   // the name the job gives, so the one cast the registry needs is here:
   // the types are the ones `map`/`reduce` registered under that name, and
   // a name never registered is refused, not guessed
+  /** a function under `fn` for `Calls[JvmModule]`: one value to one value
+   * (specs/foreign-facade.md, tier 1); a throw is a refusal by its class */
+  def fn[A, B](fn: String)(f: A => B): JvmModule =
+    val self = this
+    new JvmModule(name, fns.updated(fn, new JvmModule.Caller[A, B]:
+      val name = s"jvm:${self.name}:$fn"
+      def apply(a: A): Either[Batcher.Failed, B] =
+        try Right(f(a))
+        catch case e: Exception => Left(Batcher.Failed(e.getClass.getSimpleName, Option(e.getMessage).getOrElse("")))))
+
+  /** a missing name is a REFUSAL here, not a throw as `batcher`'s is:
+   * `Calls` answers at call time on every road, and Python's
+   * AttributeError comes back the same way */
+  private[foreign] def caller[A, B](fn: String): Either[Batcher.Failed, JvmModule.Caller[A, B]] =
+    fns.get(fn) match
+      // the one cast, as `batcher`'s below: a map keyed by name holds
+      // functions at their own types, and the name is what the caller
+      // wrote beside the types it asks for
+      case Some(c: JvmModule.Caller[?, ?]) => Right(c.asInstanceOf[JvmModule.Caller[A, B]])
+      case _ => Left(Batcher.Failed("NoSuchFunction", s"the JVM module '$name' has no function '$fn' (it has ${fns.keys.toVector.sorted.mkString(", ")})"))
+
   private[foreign] def batcher[A, B](fn: String): Batcher[A, B] =
     fns.get(fn) match
       case Some(b: Batcher[?, ?]) => b.asInstanceOf[Batcher[A, B]]
@@ -128,3 +149,8 @@ final class JvmModule private (val name: String, private val fns: Map[String, An
 
 object JvmModule:
   def apply(name: String): JvmModule = new JvmModule(name, Map.empty)
+
+  /** one value to one value, what `Calls[JvmModule]` runs */
+  trait Caller[A, B]:
+    def name: String
+    def apply(a: A): Either[Batcher.Failed, B]
