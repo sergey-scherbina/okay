@@ -266,6 +266,64 @@ val fit = R.hold("stats::lm")(formula, Data(Vector(1, 2, 3, 4), Vector(3, 5, 7, 
 val predicted = R.fn[Vector[Double]]("stats::predict")(fit, NewData(Vector(10.0, 0.0))).runWith
 ```
 
+## Frames as Arrow
+
+A frame is a table: named columns of one length. By default it crosses
+to Python as the wire's JSON, one cell at a time. When the worker's
+Python has `pyarrow` installed, the worker says so in its hello. The
+frame then crosses as ONE Apache Arrow IPC stream: the columns as
+buffers, with the request itself in the stream's metadata. Nothing is
+imported, and nothing in the program changes:
+
+```scala
+    assertEquals(engine.wire, "json/none+arrow")
+```
+
+The Python function is unchanged too. It still receives a dict of lists
+and may answer a dict, a pandas frame or a `pyarrow.Table`. A function
+that wants the table itself says so, and gets a `pyarrow.Table` with no
+conversion at all:
+
+```python
+import okay
+
+@okay.arrow
+def same(t):
+    return t
+```
+
+What it buys, measured (`MeasurePyArrow`: three columns, float64, int64
+and text, through a real worker):
+
+| rows | JSON | Arrow, a dict in Python | Arrow, `@okay.arrow` | bytes, JSON / Arrow |
+|---|---|---|---|---|
+| 100 000 | 167 ms | 43 ms | 27 ms | 2.5 / 2.8 MB |
+| 500 000 | 806 ms | 147 ms | 89 ms | 13.7 / 14.4 MB |
+
+The bytes are about the same; the time was Python walking the cells one
+at a time, and on the JVM side a JSON tree built and walked (65 + 104 ms
+for 500 000 rows, against 41 + 23 ms to write and read Arrow).
+
+Two things decide where Arrow applies:
+- **Five kinds of column cross as Arrow**: int64, float64, text, bool,
+  and a column of None alone. Every one of them may hold None. A frame
+  with another column (ints mixed with floats, a big int, bytes, lists,
+  dicts, handles) takes the JSON road, as it always did. The answer
+  works the same way. Python's other Arrow types are converted to the
+  five on the way back (int32 to int64, float32 to float64, dictionary
+  columns decoded). Anything else answers as a JSON frame.
+- **The choice is a given, like the wire's format.** With no import,
+  Arrow is used where the worker speaks it, and nothing is refused
+  where it does not. `import FrameFormat.Json.given` never uses Arrow.
+  `import FrameFormat.Arrow.given` requires it: a worker without
+  pyarrow is refused when it is opened, and a frame Arrow cannot carry
+  answers `NotArrow`, naming the column.
+
+The JVM side writes and reads Arrow itself (`okay.codec.ArrowIpc`), for
+exactly those five columns. It does not depend on Arrow Java, which
+brings its own off-heap memory and `--add-opens`. pyarrow checks every
+stream it writes (`TestArrowPy`, `validate(full=True)`).
+
 ## Types on the other side
 
 okay checks every value against its `Schema` at the boundary, but the
@@ -340,7 +398,9 @@ now it crosses as an int.
   compression costs CPU and saves nothing. An import picks CBOR, or asks
   for compression on a pipe too, for Python and R alike: see
   [the wire's encoding](one-language.md#the-wires-encoding-chosen-by-a-given).
-  For big frames, [okay-r](modules/okay-r.md) records what that costs.
+  A frame crosses as Arrow where the worker has pyarrow
+  ([frames as Arrow](#frames-as-arrow)). For big frames in R,
+  [okay-r](modules/okay-r.md) records what the JSON road costs.
 
 TypeScript speaks the same wire, through the same API: see
 [okay with TypeScript](typescript.md).
@@ -357,6 +417,9 @@ backlog as additional engines behind the same interface.
 - Ana Lúcia de Moura, Roberto Ierusalimschy. *[Revisiting coroutines.](https://doi.org/10.1145/1462166.1462167)* TOPLAS 2009. The waiting Python frame is an asymmetric coroutine, resumed once.
 - Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible effects.](https://doi.org/10.1145/2804302.2804319)* Haskell 2015. The program-as-data shape the dialogue walks.
 - Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an alternative to monad transformers.](https://doi.org/10.1145/2503778.2503791)* Haskell 2013. A program indexed by the effects it may perform, and `Member`: `OkayEff`'s shape.
+- Mark Raasveldt, Hannes Mühleisen. *[Don't hold my data hostage: a case for client protocol redesign.](https://doi.org/10.14778/3115404.3115408)* PVLDB 10(10), 2017. Moving a result set cell by cell costs more than computing it; a columnar transfer format is the cure, and frames as Arrow are that cure here.
+- Daniel J. Abadi, Samuel R. Madden, Nabil Hachem. *[Column-stores vs. row-stores: how different are they really?](https://doi.org/10.1145/1376616.1376712)* SIGMOD 2008. Why a column is one buffer and not a list of cells.
+- Apache Arrow. *[Arrow columnar format](https://arrow.apache.org/docs/format/Columnar.html)* and its IPC streaming format: what `okay.codec.ArrowIpc` writes and reads.
 - Martin Fowler. *[Event sourcing.](https://martinfowler.com/eaaDev/EventSourcing.html)* 2005. Why a journal of answers is enough to replay a program.
 
 The whole design, stage by stage, with what was found and refuted on the

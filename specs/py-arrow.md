@@ -1,6 +1,6 @@
 # py-arrow — frames cross to Python as Arrow
 
-Status: stages 1–4 open. Backlog item `py-arrow` (okay-py), promoted
+Status: all four stages landed (2026-09-25). Backlog item `py-arrow` (okay-py), promoted
 2026-09-25 by the operator ("Хорошо делай py-arrow") after its own
 condition was met: measure again before building.
 
@@ -66,21 +66,21 @@ lists it must convert itself.
 
 ## Behaviour
 
-- [ ] Stage 1: `okay.codec.ArrowIpc` writes a stream pyarrow reads
+- [x] Stage 1: `okay.codec.ArrowIpc` writes a stream pyarrow reads
       (every column type, nulls, NaN distinct from null, empty frame,
       zero-column frame, non-ASCII text) and reads the streams pyarrow
       writes (the same, plus several record batches and absent
       validity buffers). A stream cut short, at any byte, is refused.
       The metadata header round-trips.
-- [ ] Stage 2: the shim announces `frames: ["arrow"]` when pyarrow is
+- [x] Stage 2: the shim announces `frames: ["arrow"]` when pyarrow is
       present, and serves an Arrow frame request with an Arrow answer:
       `to_pydict` by default, the `pyarrow.Table` under `@okay.arrow`,
       normalised on the way out, JSON when it cannot be.
-- [ ] Stage 3: `ForeignWorker` sends a frame as Arrow when negotiated
+- [x] Stage 3: `ForeignWorker` sends a frame as Arrow when negotiated
       and expressible, and reads either answer. The `FrameFormat`
       givens: the default preference, `Json`, and the strict `Arrow`.
       `ForeignWorker.wire` names it (`json/none+arrow`).
-- [ ] Stage 4: the end-to-end number. A frame of 100k and 500k rows
+- [x] Stage 4: the end-to-end number. A frame of 100k and 500k rows
       through a real worker, JSON against Arrow, with our JVM side split
       out. Docs, with the table.
 
@@ -95,4 +95,34 @@ lists it must convert itself.
 
 ## Results
 
-(none yet)
+- Stage 1: `okay.codec.ArrowIpc`, FlatBuffers written front to back
+  (every uoffset forward, vtables before their tables, struct vectors
+  8-aligned). `TestArrowIpc` (5, no Python: round trip, empty, no
+  columns, a cut at EVERY byte refused, JSON/CBOR never mistaken for a
+  stream) and `TestArrowPy` (5, pyarrow 25.0.1: `validate(full=True)`
+  on what this writes; pyarrow's streams read, three batches included,
+  an all-valid column with no validity buffer; int32 refused with "cast
+  it to int64").
+- Stages 2–3: the shim announces `frames: ["arrow"]` by
+  `importlib.util.find_spec` and imports pyarrow on the first Arrow
+  frame. `TestArrowFrames` (10): the default is `json/none+arrow`; a
+  round trip of every column kind with None in each; the function still
+  gets Python's own types; `@okay.arrow` gets a `Table`; int32/float32
+  answers normalised; a list answer and a mixed-kind request take the
+  JSON road (the `arrowFrames` counters prove which road); the strict
+  given refuses the mixed column by name and a worker without pyarrow at
+  open; `FrameFormat.Json` stays plain; CBOR + DEFLATE compose.
+  - Mutant: the shim never answering Arrow. Three tests red — the round
+    trip, the normalisation and the CBOR case — through the counters;
+    the values alone could not see it.
+- Stage 4 (`MeasurePyArrow`, load ~200 by the OS's count, yet the JSON
+  road read 806 ms against 940 ms measured quiet before, so the box was
+  not starving this run):
+
+  | rows | JSON rt | Arrow rt | `@okay.arrow` rt | JSON enc / dec (JVM) | Arrow enc / dec (JVM) |
+  |---|---|---|---|---|---|
+  | 100 000 | 167 ms | 43 ms | 27 ms | 14 / 21 ms | 9 / 5 ms |
+  | 500 000 | 806 ms | 147 ms | 89 ms | 65 / 104 ms | 41 / 23 ms |
+
+  5.5x by default, 9x when the function takes the table. The bytes are
+  the same (13.7 MB JSON, 14.4 MB Arrow): the cost was never the size.
