@@ -1,0 +1,4 @@
+slug: monadic-reflection-stacked
+agent: claude (session 01VZwf6d)
+since: 2026-09-25
+what: specs/layered-reflection.md stages 1-2 — reify as dollar (eta $ e), priced; Layered.Stacked with the capability escape refused at compile time
