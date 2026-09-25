@@ -1,6 +1,0 @@
-feature/kube-lease-proxy-leak 2026-09-25T18:34:03Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-25T18:34:03Z
-status: in-progress
-done-so-far: promoted from backlog (operator: do it), claimed
-next: worktree ../okay-wt-kube-lease-proxy-leak; TestKubeLease: munitIgnore by a cheap probe, proxy started lazily in a test and stopped in afterAll; survey other Live suites; prove no kubectl proxy is left by a default run
