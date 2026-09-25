@@ -333,25 +333,31 @@ reify[List, Out, Pure]:
 ```
 
 With algebraic effects each helper declares only the effects it uses —
-and "absent" is an effect of the user's, an operation and a handler:
+and "a value that may be absent" is an effect of the user's own, `Opt`:
+one operation, and a handler that turns it into `None`:
 
 ```scala
-def absent[A]: A ! Stop = effect(Stop.Now)
+enum Opt[+A] derives okay.Effect:
+  case Absent extends Opt[Nothing]
+```
 
-def runOption[A, F[+_]](a: A ! Stop + F): Option[A] ! F =
-  Effects[Free].handle[Stop, F](a)(x => pure[F, Option[A]](Some(x))):
+```scala
+def absent[A]: A ! Opt = effect(Opt.Absent)
+
+def runOpt[A, F[+_]](a: A ! Opt + F): Option[A] ! F =
+  Effects[Free].handle[Opt, F](a)(x => pure[F, Option[A]](Some(x))):
     [X] => _ => shift(_ => pure[F, Option[A]](None))
 ```
 
 ```scala
-def deliveryFee(shop: String): Int ! Stop + Throws % String =
+def deliveryFee(shop: String): Int ! Opt + Throws % String =
 ```
 
 and the union is just the row of the program that uses both helpers,
 each widened into it:
 
 ```scala
-type Order = Choose + Stop + Throws % String
+type Order = Choose + Opt + Throws % String
 ```
 
 ```scala

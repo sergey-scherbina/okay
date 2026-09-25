@@ -293,28 +293,32 @@ object LayeredDelivery:
                       acc.flatMap(xs => priceOf(shop, item).reflect[Option[Int], Pure].map(xs :+ _)))
           yield ps.sum + f
 
+/** "a value that may be absent" as an effect of the user's own: one operation */
+enum Opt[+A] derives okay.Effect:
+  case Absent extends Opt[Nothing]
+
 object EffectsDelivery:
-  import okay.{Choose, Effects, Free, Stop, Throws, choose, effect, raise, runChoice, runEither, shift}
+  import okay.{Choose, Effects, Free, Throws, choose, effect, raise, runChoice, runEither, shift}
   import okay.Row.at
   import okay.given
   import Delivery.fees
   import EffectsBasket.priceOf
 
-  /** an Option-like effect of the user's is three lines: the operation and its handler */
-  def absent[A]: A ! Stop = effect(Stop.Now)
+  /** the operation, and its handler: absent becomes None */
+  def absent[A]: A ! Opt = effect(Opt.Absent)
 
-  def runOption[A, F[+_]](a: A ! Stop + F): Option[A] ! F =
-    Effects[Free].handle[Stop, F](a)(x => pure[F, Option[A]](Some(x))):
+  def runOpt[A, F[+_]](a: A ! Opt + F): Option[A] ! F =
+    Effects[Free].handle[Opt, F](a)(x => pure[F, Option[A]](Some(x))):
       [X] => _ => shift(_ => pure[F, Option[A]](None))
 
   /** team B's helper: only the effects IT uses */
-  def deliveryFee(shop: String): Int ! Stop + Throws % String =
+  def deliveryFee(shop: String): Int ! Opt + Throws % String =
     fees.get(shop) match
-      case None           => raise[String, Int](s"unknown shop $shop").at[Stop + Throws % String]
-      case Some(None)     => absent[Int].at[Stop + Throws % String]
-      case Some(Some(fee)) => pure[Stop + Throws % String, Int](fee)
+      case None           => raise[String, Int](s"unknown shop $shop").at[Opt + Throws % String]
+      case Some(None)     => absent[Int].at[Opt + Throws % String]
+      case Some(Some(fee)) => pure[Opt + Throws % String, Int](fee)
 
-  type Order = Choose + Stop + Throws % String
+  type Order = Choose + Opt + Throws % String
 
   def order(items: List[String]): Int ! Order =
     for
@@ -324,7 +328,7 @@ object EffectsDelivery:
     yield ps.sum + fee
 
   def run(items: List[String]): List[Either[String, Option[Int]]] =
-    val maybe   = runOption[Int, Choose + Throws % String](order(items))
+    val maybe   = runOpt[Int, Choose + Throws % String](order(items))
     val checked = runEither[Option[Int], Choose, String](maybe)
     !.run(runChoice[Either[String, Option[Int]], Pure](checked)).toList
 
