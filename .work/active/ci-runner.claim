@@ -1,0 +1,10 @@
+feature/ci-runner 2026-09-25
+agent: claude-code
+status: in-progress
+scope: backlog.d/build/ci-runner.md, stage B/C of specs/ci-staged.md —
+  scripts/ci-runner.sh once|loop|kick|status|--read: a mkdir lock under
+  .work/ci/, origin/master..master as the range, board-only ranges
+  pushed at once, gate.sh "family all" (+ okay2) otherwise, push on
+  green, bisect+revert on red. land.sh step 8 -> ci-runner.sh kick.
+  AGENTS.md PUSH rule rewritten. NOT PUSHED YET per operator (holding
+  master local while this lands, together with ci-staged).
