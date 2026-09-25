@@ -102,6 +102,77 @@ object FacadeConformance:
     assertEquals(Me.attr[Long](module, c, attr), Right(3L), s"${H.name}: attr")
     H.release(module)(c)
 
+  /**
+   * ONE JOB TEXT (specs/foreign-facade.md, Behavior 1): a call, a frame and
+   * a stream, written once against the three capabilities and nothing
+   * else — the module is the only thing a caller changes to move it from
+   * Python to R to the JVM. What it answers is the same data whichever
+   * language computed it, so a test compares the answers ACROSS modules.
+   */
+  def job[M: Calls: Frames: Streams](module: M, echo: String, fecho: String): (Rec, Vector[Rec], Vector[Rec]) =
+    val one = Rec(7, 2.5, "ann")
+    val rows = Vector.tabulate(300)(i => Rec(i, i * 0.25, s"r$i"))
+    val value = Road.value[M, Rec, Rec](module, echo)(one).fold(f => fail(s"job: call: $f"), identity)
+    val frame = Road.rows[M, Rec, Rec](module, fecho)(rows).fold(f => fail(s"job: frame: $f"), identity)
+    val stream = Flows.collect(Road.flow[M, Rec, Rec](module, fecho, 64)(Flow.slices(rows, 1))).runWith.toVector
+    (value, frame, stream)
+
+  /** an instance that may or may not be there, found at the call's own
+   * types — how `agree` asks whether a module type HAS `Programs` without
+   * the caller having to say */
+  final case class Maybe[A](get: Option[A])
+  object Maybe:
+    given some[A](using a: A): Maybe[A] = Maybe(Some(a))
+    given none[A](using scala.util.NotGiven[A]): Maybe[A] = Maybe(None)
+
+  /**
+   * how a frame ACTUALLY crossed, observed rather than asked: the JVM hands
+   * back the very Table it was given; the Arrow road carries a column's
+   * kind even with no rows in it; the columnar JSON road cannot — a column
+   * with no value in it comes back `Nulls(0)`, or not at all
+   * (foreign-facade-2's finding, used here as the instrument)
+   */
+  def observedFrames[M](module: M, fecho: String)(using f: Frames[M]): String =
+    val t = Rows.table(Vector(Rec(1, 1.5, "a")))
+    f.frame(module, fecho)(t) match
+      case Left(x) => fail(s"${f.name}: $fecho refused a frame: $x")
+      case Right(back) if back eq t => "by-reference"
+      case Right(_) => f.frame(module, fecho)(Rows.table(Vector.empty[Rec])) match
+        case Left(x) => fail(s"${f.name}: $fecho refused the empty frame: $x")
+        case Right(e) =>
+          val typed = e.cols.nonEmpty && e.cols.forall((_, c) => c match
+            case okay.arrow.Column.Nulls(_) => false
+            case _ => true)
+          if typed then "arrow" else "columnar-json"
+
+  /** how programs ACTUALLY run: no instance is "in-jvm" on the JVM (its
+   * programs are okay's own, Decision 7) and "none" anywhere else; with
+   * one, `pairs` answered on every path is multi-shot, on its first only
+   * one-shot */
+  def observedPrograms[M](module: M, link: String, pairs: String)(using p: Maybe[Programs[M]]): String = p.get match
+    case None => if link == "in-jvm" then "in-jvm" else "none"
+    case Some(pr) =>
+      val choose = Cb[Choose, Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))
+      pr.run(module)(runChoice(pr.program[Int, Long, Choose](module, pairs, Vector(choose))(0))).toList match
+        case List(Right(11L), Right(21L), Right(12L), Right(22L)) => "multi-shot"
+        case List(Right(11L)) => "one-shot"
+        case other => fail(s"${pr.name}: $pairs answered $other")
+
+  /**
+   * `Speaks` HELD TO WHAT THE WORKER DOES (Behavior 2): every claim of the
+   * report is compared with its observation, and a disagreement in EITHER
+   * direction fails — a claim no observation backs, and an ability the
+   * report does not claim. `stream` has no observation yet (a far side
+   * driving tier 3 needs the multiplexed wire, foreign-one-mux), so a
+   * report claiming it fails until that test exists.
+   */
+  def agree[M](module: M, fecho: String, pairs: String)(using s: Speaks[M], f: Frames[M], p: Maybe[Programs[M]]): Speaks.Report =
+    val r = s.speaks(module)
+    assertEquals(observedFrames(module, fecho), r.frames, s"${f.name}: frames cross otherwise than $r says")
+    assertEquals(observedPrograms(module, r.link, pairs), r.programs, s"${f.name}: programs run otherwise than $r says")
+    assert(!r.stream, s"${f.name}: $r claims a far-side stream, and nothing observes one yet (foreign-one-mux)")
+    r
+
   /** `Speaks`: a report names the language and the link, and what it
    * says of frames is one of the three words the spec has */
   def speaks[M](module: M, language: String)(using s: Speaks[M]): Speaks.Report =

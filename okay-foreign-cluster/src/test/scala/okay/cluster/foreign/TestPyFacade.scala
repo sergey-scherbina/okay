@@ -80,3 +80,17 @@ class TestPyFacade extends munit.FunSuite:
     val r = FacadeConformance.speaks(PyFacadeMod.mod, "python")
     assertEquals((r.link, r.programs), ("pipes", "multi-shot"))
   }
+
+  test("ONE JOB TEXT over python3: the answers the JVM gives, the module the only change") {
+    val jvm = JvmModule("facade").fn[FacadeConformance.Rec, FacadeConformance.Rec]("echo")(identity).frame("fecho")(identity)
+    assertEquals(FacadeConformance.job(PyFacadeMod.mod, "echo", "fecho"), FacadeConformance.job(jvm, "echo", "fecho"))
+  }
+
+  test("Speaks over python3 agrees with what the worker does: frames as observed, programs multi-shot, and a lie refused") {
+    val honest = summon[Speaks[okay.py.PyModule]]
+    assertEquals(FacadeConformance.agree(PyFacadeMod.mod, "fecho", "pairs").programs, "multi-shot")
+    // an ability the report does not claim fails too: programs said to be none
+    val none = new Speaks[okay.py.PyModule]:
+      def speaks(m: okay.py.PyModule) = honest.speaks(m).copy(programs = "none")
+    intercept[AssertionError](FacadeConformance.agree(PyFacadeMod.mod, "fecho", "pairs")(using none, summon, summon))
+  }

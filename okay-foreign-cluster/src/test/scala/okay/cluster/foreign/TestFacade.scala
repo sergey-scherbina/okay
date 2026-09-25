@@ -28,6 +28,26 @@ object CountingModule:
       sizes += in.rows
       Right(in)
 
+/** a module type whose frames cross by a REAL road of the model without
+ * a far side: "arrow" is an Arrow IPC stream written and read back (what
+ * a worker speaking Arrow does to a table), "columnar-json" the columnar
+ * JSON frame Python's shim is sent and answers (ArrowFrames, both ways).
+ * `Speaks` says the road honestly; a test that wants a lie builds one. */
+final case class RoadModule(road: String)
+object RoadModule:
+  given Calls[RoadModule] = new:
+    def name = "road"
+    def call[A: Schema, B: Schema](module: RoadModule, fn: String)(a: A): Either[Batcher.Failed, B] =
+      summon[Calls[EchoModule]].call[A, B](EchoModule(module.road), fn)(a)
+  given Frames[RoadModule] = new:
+    def name = "road"
+    def frame(module: RoadModule, fn: String)(in: okay.arrow.Table): Either[Batcher.Failed, okay.arrow.Table] =
+      module.road match
+        case "arrow" => Right(okay.arrow.OkayArrow.read(okay.arrow.OkayArrow.write(in)))
+        case _ => okay.py.ArrowFrames.table(okay.py.ArrowFrames.frame(in)).left.map(m => Batcher.Failed("Frame", m))
+  given Speaks[RoadModule] = new:
+    def speaks(module: RoadModule) = Speaks.Report("road", "fake", module.road, stream = false, "none")
+
 /** a module type that gives NO instance */
 final case class Mute(tag: String)
 
@@ -98,6 +118,44 @@ class TestFacade extends munit.FunSuite:
     // is the far side's business (FacadeConformance.programs, Live)
     assertEquals(price.arg, summon[Schema[String]])
     assertEquals(price.res, summon[Schema[Double]])
+  }
+
+  test("ONE JOB TEXT: a call, a frame and a stream, the module the only change — JVM, Arrow road, JSON road answer alike") {
+    val there = FacadeConformance.job(jvm, "echo", "fecho")
+    assertEquals(FacadeConformance.job(RoadModule("arrow"), "echo", "any"), there)
+    assertEquals(FacadeConformance.job(RoadModule("columnar-json"), "echo", "any"), there)
+    assertEquals(there._2, there._3, "the frame and the stream carry the same rows")
+    // and the job does not compile against a module without every capability it names
+    assert(compileErrors("""FacadeConformance.job(EchoModule("t"), "echo", "fecho")""").contains("Frames"))
+  }
+
+  test("Speaks agrees with what the worker DOES: the JVM, the Arrow road, the JSON road") {
+    val r = FacadeConformance.agree(jvm, "fecho", "pairs")
+    assertEquals(r.frames, "by-reference")
+    assertEquals(FacadeConformance.agree(RoadModule("arrow"), "any", "pairs").frames, "arrow")
+    assertEquals(FacadeConformance.agree(RoadModule("columnar-json"), "any", "pairs").frames, "columnar-json")
+  }
+
+  /** a report that says `change` of what it honestly would */
+  def lying[M](honest: Speaks[M])(change: Speaks.Report => Speaks.Report): Speaks[M] = new:
+    def speaks(module: M) = change(honest.speaks(module))
+
+  test("Speaks disagreeing fails in BOTH directions: a claim nothing backs, an ability nothing claims") {
+    def refused[M](module: M, lie: Speaks[M])(using f: Frames[M], p: FacadeConformance.Maybe[Programs[M]]): String =
+      intercept[AssertionError](FacadeConformance.agree(module, "fecho", "pairs")(using lie, f, p)).getMessage
+    val jvmS = summon[Speaks[JvmModule]]
+    val roadS = summon[Speaks[RoadModule]]
+    // frames claimed faster than they cross: the JSON road called Arrow
+    assert(refused(RoadModule("columnar-json"), lying(roadS)(_.copy(frames = "arrow"))).contains("frames"))
+    // frames crossing better than claimed: the Arrow road called JSON
+    assert(refused(RoadModule("arrow"), lying(roadS)(_.copy(frames = "columnar-json"))).contains("frames"))
+    // by reference, said to be Arrow
+    assert(refused(jvm, lying(jvmS)(_.copy(frames = "arrow"))).contains("frames"))
+    // programs claimed with no instance to run them
+    assert(refused(jvm, lying(jvmS)(_.copy(programs = "multi-shot"))).contains("programs"))
+    assert(refused(RoadModule("arrow"), lying(roadS)(_.copy(programs = "one-shot"))).contains("programs"))
+    // a far-side stream claimed, which nothing observes yet
+    assert(refused(jvm, lying(jvmS)(_.copy(stream = true))).contains("stream"))
   }
 
   test("Speaks: the JVM is in-jvm, by-reference") {

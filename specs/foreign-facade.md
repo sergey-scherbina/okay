@@ -136,13 +136,20 @@ nothing for is a tier every language can grow into.
 
 ## Behavior
 
-- [ ] one job text — a call, a frame, a stream — compiles against
+- [x] one job text — a call, a frame, a stream — compiles against
       `Calls[M]`/`Frames[M]`/`Streams[M]` and runs on `PyModule`,
       `RModule` and `JvmModule` with only the module changed
+      (`FacadeConformance.job`; TestFacade over the JVM and both frame
+      roads, TestPyFacade/TestRFacade compare their answers with the
+      JVM's; a module without `Frames` does not compile)
 - [x] a capability a language lacks is a COMPILE error at the call
       (`compileErrors`), not a runtime refusal (TestFacade)
-- [ ] `Speaks(module)` answers the hello's claims, and the conformance
+- [x] `Speaks(module)` answers the hello's claims, and the conformance
       suite fails when a claim and a test disagree in either direction
+      (`FacadeConformance.agree`: frames and programs OBSERVED, a lie
+      each way refused — TestFacade offline, TestPyFacade/TestRFacade
+      live; a far-side `stream` claim fails until foreign-one-mux gives
+      it an observation)
 - [x] tier 2 crosses as Arrow IPC to a worker whose hello says
       `frames: ["arrow"]`, as columnar JSON otherwise, and the caller's
       Table comes back a Table either way, equal column for column
@@ -413,5 +420,26 @@ with its date, load and sha (the `performance` skill).
   and the backlog item keeps it.
 - Python here: python3 3.14 on the box, echo/boom/missing green over
   pipes, frames `columnar-json` (no pyarrow in the box's interpreter —
-  the venv of MeasurePyArrow has it). R: not installed on this box;
-  `TestRFacade` skips, the body is the same text.
+  the venv of MeasurePyArrow has it). R: no `Rscript` on the PATH,
+  and `TestR.rscript` runs the `okay-r-test` container's through a shim
+  — so `TestRFacade` DOES run here (foreign-facade-close found it; the
+  line above said it skipped).
+- **foreign-facade-close (2026-09-26).** The last two boxes. ONE JOB
+  TEXT is `FacadeConformance.job[M: Calls: Frames: Streams]` — a call, a
+  300-row frame, the same rows as a stream in frames of 64 — and its
+  answer over Python and R equals its answer over the JVM. `Speaks` is
+  held to what the worker DOES by OBSERVATION, not by asking the wire a
+  second time: a frame the JVM hands back is the same object
+  (by-reference); an EMPTY table keeps its columns' kinds on the Arrow
+  road and loses them on the columnar JSON road (foreign-facade-2's
+  `Nulls(0)` finding, used as the instrument); programs are observed by
+  running `pairs` — four answers is multi-shot, the first only
+  one-shot, no instance "none" (or "in-jvm" on the JVM). The check fails
+  in both directions, and each is a test: the JSON road called Arrow
+  and the Arrow road called JSON (offline, `RoadModule` crossing by a
+  real IPC write/read and a real `ArrowFrames` round trip), programs
+  claimed with no instance, programs a live Python/R HAS reported as
+  none. A mutant that skipped the frames comparison turned the offline
+  suite red. `stream` has no observation: every report says false, and
+  a report saying true fails until foreign-one-mux can show a far side
+  driving a stream.

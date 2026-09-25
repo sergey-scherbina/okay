@@ -51,3 +51,17 @@ class TestRFacade extends munit.FunSuite:
     val r = FacadeConformance.speaks(RFacadeMod.mod, "r")
     assertEquals((r.link, r.programs), ("pipes", "multi-shot"))
   }
+
+  test("ONE JOB TEXT over Rscript: the answers the JVM gives, the module the only change") {
+    val jvm = JvmModule("facade").fn[FacadeConformance.Rec, FacadeConformance.Rec]("echo")(identity).frame("fecho")(identity)
+    assertEquals(FacadeConformance.job(RFacadeMod.mod, "echo", "fecho"), FacadeConformance.job(jvm, "echo", "fecho"))
+  }
+
+  test("Speaks over Rscript agrees with what the worker does: frames as observed, programs multi-shot, and a lie refused") {
+    val honest = summon[Speaks[okay.r.RModule]]
+    assertEquals(FacadeConformance.agree(RFacadeMod.mod, "fecho", "pairs").programs, "multi-shot")
+    // an ability the report does not claim fails too: programs said to be none
+    val none = new Speaks[okay.r.RModule]:
+      def speaks(m: okay.r.RModule) = honest.speaks(m).copy(programs = "none")
+    intercept[AssertionError](FacadeConformance.agree(RFacadeMod.mod, "fecho", "pairs")(using none, summon, summon))
+  }
