@@ -144,3 +144,13 @@ class TestFoldUntil extends munit.FunSuite:
     val (_, got) = runP(Producer.foldUntil[Int, Boolean, Boolean, Int, Writer % String](counted(100_000))(using summon, FoldUntil.exists[Int](_ < 0)))
     assertEquals(got, false)
   }
+
+  test("Producer.each is tail-recursive across productions: 200 000 back to back, no G op between") {
+    // no forwarded operation resets the stack here, so a production
+    // handled by a call INSIDE the split's closure is one frame each
+    val n = 200_000
+    def go(i: Int): Unit ! P = if i > n then pure(()) else effect[P, Int](i).flatMap(_ => go(i + 1))
+    var sum = 0L
+    val _ = runP(Producer.each[Int, Unit, Writer % String](go(1))(sum += _))
+    assertEquals(sum, n.toLong * (n + 1) / 2)
+  }

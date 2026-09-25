@@ -212,6 +212,14 @@ object Producer {
   def concat[X, G[+_] : TypeableK](p: Chunk[X] ! Produce + G): Vector[X] ! G =
     fold[Chunk[X], Vector[X], Chunk[X], G](p)(Vector.empty)((acc, c) => acc ++ c).map(_._1)
 
+  /**
+   * Run `f` on every production, G performed as before. Stack-safe
+   * without `@tailrec` because `split` is INLINE: the produced arm's
+   * `each(k(w))(f)` lands in tail position and scalac compiles it to a
+   * loop (`goto 0` in the bytecode). okay2, whose `split` is an ordinary
+   * method taking closures, had the same text and overflowed at 200 000
+   * productions (okay2-split-at-rest); TestFoldUntil pins it here.
+   */
   def each[W, A, G[+_] : TypeableK](p: A ! Produce + G)(f: W => Unit): A ! G =
     import !.*
     (p.resume: @unchecked) match
