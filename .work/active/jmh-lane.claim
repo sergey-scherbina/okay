@@ -1,9 +1,0 @@
-feature/jmh-lane 2026-09-25
-agent: claude-code
-status: in-progress
-scope: ci-staged A-7 (resource economy for benchmarks): factor
-  quiet()/kill_tree out of gate-retry.sh into scripts/quiet.sh (shared
-  vocabulary, policy P-6); scripts/jmh-lane.sh (one JMH lane at a time,
-  gated on quiet at both ends, discard+retry on mid-run contamination,
-  separate lock from ci-runner.sh's); selftests for both; AGENTS.md's
-  Benchmarks bullet wired to the new script.
