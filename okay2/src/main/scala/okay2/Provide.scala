@@ -1,6 +1,7 @@
 package okay2
 
 import scala.annotation.implicitNotFound
+import scala.language.experimental.macros
 
 /**
  * The capability pair, in Scala 2 (the Scala 3 core's Provide.scala):
@@ -16,8 +17,8 @@ import scala.annotation.implicitNotFound
  * the flat form and the composable form agree on what a body is. A
  * missing capability is a compile error in both.
  *
- * Not here: `plan`/`exports`/`shadowed`, which read the chain off the
- * type with a macro (backlog `okay2-module-plan`), and the Scala 3
+ * `plan`/`exports`/`shadowed` read the chain off the type with a
+ * Scala 2 def macro (ModuleMacro.scala). Not here: the Scala 3
  * core's `ctxMonad`: okay2 has the classes since stage 13, but Scala 2
  * has no context functions for one to range over.
  */
@@ -210,6 +211,22 @@ final class Module[F[_]](val built: (Providing[F], Facts) ! Resource,
   def declaring[V](k: Fact[V])(v: F[V]): Module[F] =
     new Module(built.map { case (p, f) => (p, f.add(k, p(v))) },
                ready, ready.fold(facts)(p => facts.add(k, p(v))))
+
+  /** THE PLAN IS THE TYPE: what this module will install, outer to
+   * inner, read off `F` at compile time — nothing is built to find out,
+   * and a dependent module (`Db => Module[…]`) has one too */
+  def plan: Vector[String] = macro ModuleMacro.plan
+
+  /** the plan's twin that BUILDS: each capability the scope installed,
+   * by name, erased class and value — for a container wanting values
+   * by class; generated from the same chain, so no cast touches them */
+  def exports: Vector[Installed] ! Resource = macro ModuleMacro.exports
+
+  /** capabilities this chain installs MORE THAN ONCE, read off the
+   * plan: the second install wins and the first is acquired for
+   * nothing, which a test double does ON PURPOSE — a report, not an
+   * error */
+  def shadowed: Vector[String] = macro ModuleMacro.shadowed
 }
 
 object Module {
@@ -230,6 +247,9 @@ object Module {
 
   /** the contributor's one-liner: install nothing, declare one fact */
   def contributing[V](k: Fact[V])(v: V): Module[({ type L[X] = X })#L] = nothing.declare(k)(v)
+
+  /** the end of the chain `plan` walks to; never inhabited */
+  sealed trait Marker
 }
 
 /**

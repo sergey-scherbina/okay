@@ -1133,6 +1133,40 @@ which is how the dependency graph is checked by the compiler:
     assertEquals(log.reverse, List("open db", "open pool over db", "close pool", "close db"))
 ```
 
+The PLAN IS THE TYPE. What a module installs, and in what order, is its
+curried chain `Db => Pool => String => X`. A macro reads the chain at
+compile time, so `plan` builds nothing, and a module built inside
+another's context has a plan too:
+
+```scala
+    assertEquals((pool and log).plan, Vector("Db", "Pool", "String"))
+    assertEquals(opened, 0)
+```
+
+`exports` is the twin of `plan` that BUILDS. It gives each capability's
+name, erased class and value, for a container that wants values by
+class. A role spelled as a type alias (`type Primary = RDb`) keeps its
+name and exports under its class:
+
+```scala
+    val xs = Resource.scoped((pool and Module.value[Primary](RDb("p"))).exports)
+    assertEquals(xs.map(_.name), Vector("Db", "Pool", "Primary"))
+    assertEquals(xs.map(_.cls), Vector[Class[_]](classOf[Db], classOf[Pool], classOf[RDb]))
+```
+
+`shadowed` names a capability installed twice. That is what a test
+double does on purpose, since the later install wins:
+
+```scala
+    val withDouble = db and log and Module.value[Db](new Db { val name = "fake" })
+    assertEquals(withDouble.shadowed, Vector("Db"))
+```
+
+The Scala 3 core does the same with a quoted macro over context
+functions; in Scala 2 the chain is plain `Function1`s, read by a
+blackbox def macro (Burmako, "Scala Macros: Let Our Powers Combine!",
+Scala Workshop 2013).
+
 ## 14. Generators
 
 A generator is a program that tells: `Gen[W]` is a `Writer[W]`

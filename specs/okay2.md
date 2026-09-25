@@ -651,7 +651,7 @@ now depends on okay2-async (and on okay2-platform for its tests):
   its door. `prototype(acquire, release)` is one list (two by-name
   overloads with different list counts do not resolve).
 - Not ported: `plan`/`exports`/`shadowed` (macros over the chain's
-  type; backlog `okay2-module-plan`), `Delim.Stacked` (the prompt
+  type; landed later as stage 38), `Delim.Stacked` (the prompt
   stack as a tuple type; Scala 2 has no `*:`), the inline `shift[A]`/
   `exit`/`emit`/`pause`/`onReturn` (direct-block doors — the evidence
   forms above are their Scala 2 spelling), `SharedOnce` (okay-async;
@@ -1980,6 +1980,44 @@ laws ported with no source change.
 - [x] the adaptive default: `hasVirtualThreads` against the API, `auto`
       and the implicit default on this JVM's branch
       (TestSchedulerLaws + TestAdaptiveScheduler, 52 results)
+
+## Stage 38 — `Module.plan`/`exports`/`shadowed` (2026-09-25)
+Backlog `okay2-module-plan`: the Scala 3 core reads a module's plan off
+its type with a quoted macro; okay2 does it with a Scala 2 blackbox def
+macro, `ModuleMacro`. `F` is read from the macro prefix's type
+(`baseType(Module)`) and applied to `Module.Marker` with `appliedType`.
+The result is then walked as nested `Function1`s, dealiasing each level
+by itself, because a composed `F[G[X]]` is a projection inside a
+projection. `exports` generates
+`build.map(_.run[Vector[Installed]]((x1: A) => … Vector(Installed(…))))`
+with every parameter typed from the chain.
+
+### Behavior (stage 38)
+- [x] `plan` lists what the chain installs, outer to inner, and builds
+      nothing. A dependent module (`Db => Module[…]`) has a plan too.
+      `Module.nothing`'s plan is empty.
+- [x] an applied capability keeps its argument (`New[Int]`); an alias
+      role (`type Primary = RDb`) is named as written, from the
+      TypeRef's own symbol. Scala 2 has no opaque type, so this alias is
+      its version of the core's opaque qualifier.
+- [x] `exports`: name, erased class and value of each capability the
+      scope built. An alias role keeps its name and exports under its
+      underlying class. `Resource.open` acquires in order and releases
+      in reverse, once.
+- [x] `shadowed` names a capability installed twice; the second install
+      wins (TestModule, 5 new tests)
+
+### Decisions (stage 38)
+- The backlog item assumed a separate `okay2-macros` subproject.
+  REFUTED: a def macro cannot EXPAND in the run that defines it, but
+  `m.plan` expands at the USE site, in the test run or in a user's
+  build. That is also how `Replayable`/`Distinct` live in the core.
+  `At.here` is different, because the core itself would summon it:
+  backlog `okay2-at-here`.
+- Mutants, one at a time. A plan in reverse order does not compile:
+  the typer rejects the generated `exports` body against
+  `F[Vector[Installed]]`, which is the check doing its job. Names read
+  from the dealiased symbol fail two tests (`RDb` for `Primary`).
 
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and

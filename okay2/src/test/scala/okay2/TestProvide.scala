@@ -2,6 +2,8 @@ package okay2
 
 import java.util.concurrent.atomic.AtomicInteger
 
+import ModuleRoles._
+
 /**
  * The installer half of the capability pair: expression-scoped, and
  * with the doors it is the DI story — a missing dependency is a COMPILE
@@ -188,4 +190,56 @@ class TestModule extends munit.FunSuite {
     val e = compileErrors("okay2.fresh[String]")
     assert(e.contains("nothing installed the ability to MAKE"), e)
   }
+
+  // the plan is the type: read at compile time, nothing built
+  test("plan reads the chain off the type, outer to inner, before anything is built; a dependent module has one too") {
+    var opened = 0
+    val db = module[Db]({ opened += 1; new Db { val name = "db" } })(_ => ())
+    val pool = db and { implicit d: Db => module[Pool]({ opened += 1; new Pool { def borrow() = wire[Db].name.length } })(_ => ()) }
+    val log = Module.value[String]("log")
+    assertEquals((pool and log).plan, Vector("Db", "Pool", "String"))
+    assertEquals(opened, 0)
+    assertEquals(Module.nothing.plan, Vector.empty)
+    assertEquals((Module.value[Primary](RDb("p")) and log).plan, Vector("Primary", "String"))
+  }
+
+  test("an applied capability keeps its argument in the plan") {
+    val conns = prototype[Int](1)
+    assertEquals((Module.value[String]("log") and conns).plan, Vector("String", "New[Int]"))
+  }
+
+  test("exports names, classes and values of what the scope built; an alias role keeps its name under its class") {
+    val db = module[Db](new Db { val name = "row" })(_ => ())
+    val pool = db and { implicit d: Db => module[Pool](new Pool { def borrow() = wire[Db].name.length })(_ => ()) }
+    val xs = Resource.scoped((pool and Module.value[Primary](RDb("p"))).exports)
+    assertEquals(xs.map(_.name), Vector("Db", "Pool", "Primary"))
+    assertEquals(xs.map(_.cls), Vector[Class[_]](classOf[Db], classOf[Pool], classOf[RDb]))
+    assert(xs(1).value.isInstanceOf[Pool])
+    assertEquals(xs(2).value, RDb("p"))
+  }
+
+  test("exports acquires in order and Resource.open releases in reverse, once") {
+    var log = List.empty[String]
+    def open(n: String) = module[String]({ log ::= s"open $n"; n })(r => log ::= s"close $r")
+    val (xs, close) = Resource.open((open("a") and open("b")).exports)
+    assertEquals(xs.map(_.value), Vector[Any]("a", "b"))
+    assertEquals(log.reverse, List("open a", "open b"))
+    close(); close()
+    assertEquals(log.reverse, List("open a", "open b", "close b", "close a"))
+  }
+
+  test("shadowed names a capability installed twice, which a test double does on purpose") {
+    val db = module[Db](new Db { val name = "real" })(_ => ())
+    val log = Module.value[String]("t")
+    assertEquals((db and log).shadowed, Vector.empty)
+    val withDouble = db and log and Module.value[Db](new Db { val name = "fake" })
+    assertEquals(withDouble.shadowed, Vector("Db"))
+    assertEquals(Resource.scoped(withDouble { _ => _ => implicit d => wire[Db].name }), "fake")
+  }
+}
+
+/** the qualifier pattern in Scala 2: a type alias per ROLE over one domain type */
+object ModuleRoles {
+  final case class RDb(url: String)
+  type Primary = RDb
 }
