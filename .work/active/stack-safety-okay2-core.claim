@@ -1,0 +1,6 @@
+feature/stack-safety-okay2-core 2026-09-25T07:37:13Z
+agent: claude-code
+heartbeat: 2026-09-25T07:37:13Z
+status: in-progress
+done-so-far: claim
+next: specs/stack-safety.md stages 0b+1b: @tailrec on okay2 loops, okay2 src recursions to loops, deep tests first
