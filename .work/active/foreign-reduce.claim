@@ -1,6 +1,0 @@
-feature/foreign-reduce 2026-09-25T16:34:21Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-25T16:34:21Z
-status: in-progress
-done-so-far: design: a Wire[A, Option[Acc]] over step(frame, acc)/merge(a, b) in the interpreter, acc a flat case class
-next: spec (stage 2 of specs/foreign-map-reduce.md), PyReducer/RReducer + ForeignWire in okay-foreign-cluster, tests fake/py/r, docs
