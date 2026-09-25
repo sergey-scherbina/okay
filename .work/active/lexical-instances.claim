@@ -1,0 +1,4 @@
+slug: lexical-instances
+agent: claude (session 01VZwf6d)
+since: 2026-09-25
+what: specs/lexical-instances.md — handler instances as prompts (POPL 2020 lexically scoped handlers); every strategy an explicit primitive (deep/shallow/tail/row), a default combinator later; stage 0 = spec + deep/shallow instances
