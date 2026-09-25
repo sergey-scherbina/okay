@@ -18,4 +18,7 @@
       existing live suite green with only constructors renamed; a call
       with a table AND a ref AND a value crossing as one head + one part.
       R's values, effect and handler are foreign-one-value's (split off
-      2026-09-26); this item is the ops, parts and transcript.
+      2026-09-26); the program protocol is foreign-one-program's and the
+      held calls foreign-one-held's (split off the same day); this item is
+      the PARTS (`frame` into `call` with tables as parts) and the golden
+      transcript, last of the three.

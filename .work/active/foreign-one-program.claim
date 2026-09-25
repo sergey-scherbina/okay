@@ -1,0 +1,6 @@
+feature/foreign-one-program 2026-09-25T23:25:47Z
+agent: claude-opus-5-5
+heartbeat: 2026-09-25T23:25:47Z
+status: in-progress
+done-so-far: split stage 2b into program/held/parts
+next: host ForeignEval Program/Continue with callbacks+once; Py dialogue on Program; SupervisedWorker/PyWorkers/journal; six shims
