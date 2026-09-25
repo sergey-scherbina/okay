@@ -103,6 +103,8 @@ for d in class_dirs(root):
                             or cons[1] in ('delay', 'defer', 'suspend', 'lazy', 'shared', 'tailcall')
                             # an inlined flatMap builds the node itself
                             or re.search(r'Free\$(Bind|Delay|Suspend)\$$', cons[0]) and cons[1] == 'apply'
+                            # Scala 2 builds the node with `new`
+                            or re.search(r'Free\$(Bind|Delay|Suspend)$', cons[0]) and cons[1] == '<init>'
                             or re.search(r'Safepoint\$$', cons[0]) and 'defer' in cons[1]
                             # a callback registered now, run later from another frame
                             or cons[1] == '<init>' and re.search(r'Waiter$', cons[0])

@@ -104,9 +104,18 @@ deleted.
       `@tailrec` on the 68 okay methods scalac already looped (10 with
       an `again` wrapper for the call from inside `flatMap` or a thunk),
       and this inventory.
-- [ ] Stage 0b — the same `@tailrec` pass over okay2, after
-      okay2-split-at-rest lands (it rewrites the same loops); tailscan
-      listed 21.
+- [x] Stage 0b — okay2 (stack-safety-okay2-core, 2026-09-25):
+      tailscan listed 25 methods; 18 now carry `@tailrec`, and 11 of
+      those needed an `again` wrapper:
+      - the loops that resume from inside a `flatMap`: Choice,
+        Effects.translate, Produce.streamIn, State.zoomAt,
+        Writer.expand, Source, Take.into, the Stm simulation, zio;
+      - fs2, whose `++` takes its right side by name;
+      - Json's merge-patch.
+      The other 7 are not loops: 3 `while` loops the scanner misread,
+      and 4 tree walks only partly in tail position (sql
+      `collect`/`eval`/`fits`, `Tables.estimate`), left for stages 3
+      and 4.
 - [x] Stage 1a — okay core (stack-safety-core, 2026-09-25). Each test
       below ran RED on master first (StackOverflowError on a 128 KB
       stack, `SmallStack` in src/test/scala):
@@ -124,7 +133,29 @@ deleted.
         20 000 operations into `Eager` passed on master.
       - `sliding` is lazy.
       - `Distinct`, `Handler` and `Provide` are quoted macros (Stage 7).
-- [ ] Stage 1b — okay2 core (14), after okay2-split-at-rest.
+- [x] Stage 1b — okay2 core (stack-safety-okay2-core, 2026-09-25):
+      the same three as okay, in Scala 2, each RED first on a 128 KB
+      stack (`src/test/scala-jvm/okay2/TestStackSafetyCore`):
+      - `topK`'s insertion is a loop;
+      - `Delim.cut` is a loop over a type-aligned `Wrap`. Scala 2 refines
+        no method type parameter by a match, and `@tailrec` refuses a
+        call with changed type arguments, so each step is a METHOD on
+        the node (`Top`/`On` → `Unwound`) and the walk's changing type
+        sits in the existential of `Walk`. No cast.
+      - `Static.foldMap` is one loop over `Down`/`Up` with
+        `AppTo`/`SelectE`/`SelectF` frames. It is still at `Any`,
+        under the method's one existing claim.
+      `Gen`'s loop (a `new Free.Bind`) and `package.go` (a `LazyList`)
+      are deferred, not recursion.
+- [ ] Stage 1c — `Cont` in BOTH cores (operator, 2026-09-25: "a
+      trampoline inside, measured first"). 20 000 shifts in a row, each
+      body calling its `k`, overflow a 128 KB stack in okay AND okay2.
+      A direct-style body gets `k`'s VALUE, so `k` runs the rest of the
+      program on the stack. The plan: when the body only returns
+      `k(v)`, run that through a trampoline. When the body USES the
+      answer (`k(1) + k(10)`), the depth is the nesting of such shifts,
+      and that is written down as the bound. Measured against the
+      current `Cont` lanes before it lands.
 - [ ] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
       already `Cont`-trampolined; the other formats, Schema walks,
       Compat, Stubs and Policy are not.

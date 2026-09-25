@@ -1,6 +1,6 @@
 ## stack-safety-okay2-core - okay2's loops checked, and its core's stack recursions become loops (specs/stack-safety.md stages 0b, 1b)
 
-- Stage 0b: 17 okay2 methods scalac already compiled to a loop carry
+- Stage 0b: 18 okay2 methods scalac already compiled to a loop carry
   `@tailrec` now. For 11 of them the call from inside a `flatMap`, a
   `Cont.defer`, or fs2's by-name `++` goes through a one-line `again`
   wrapper.
