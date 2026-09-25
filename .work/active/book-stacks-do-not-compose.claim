@@ -1,0 +1,6 @@
+feature/book-stacks-do-not-compose 2026-09-25T22:38:52Z
+agent: claude-opus-5-5
+heartbeat: 2026-09-25T22:38:52Z
+status: in-progress
+done-so-far: claimed (operator: show that different transformer stacks do not compose — order, composition)
+next: worktree ../okay-wt-book-stacks-do-not-compose; CatsStacks in TestBookTwoMonadsCats (compileErrors + a lossy reorder), the effects/layers contrast, a subsection in chapter 16b
