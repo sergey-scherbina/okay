@@ -1,4 +1,0 @@
-feature/jmh-lane-foreign-jmh-lock 2026-09-25T20:05:36Z
-agent: claude-opus-5-5 (session 8908eaf7)
-status: in-progress
-what: jmh-lane.sh reads "Unable to acquire the JMH lock" as contention (wait, retry), not a real failure; selftest case
