@@ -1,6 +1,5 @@
 feature/ci-runner-shape-flakes 2026-09-20T00:43:52Z
-agent: claude-code
-heartbeat: 2026-09-20T00:43:52Z
+agent: claude-code (taken over 2026-09-25 by session 013hkJA4B7z8s2CRHjfv668p, operator's request; prior heartbeat 5 days stale)
+heartbeat: 2026-09-25T10:30:00Z
 status: in-progress
-done-so-far: CI run on 8016e3b6 red: TestSupervised (commonPool parallelism 3 on a 4-vCPU runner, reproduced locally with -Djava.util.concurrent.ForkJoinPool.common.parallelism=3) and TestMonadic 1_000 strict binds (StackOverflow; overflows -Xss512k locally)
-next: TestSupervised on an explicit 16-thread pool; TestMonadic modest chain sized to its budget; gate, land, push
+done-so-far: WIP committed and rebased on master (TestSupervised moved to okay-platform); TestMonadic 1_000 binds still SO on CI run 36111410119; gating the two suites
