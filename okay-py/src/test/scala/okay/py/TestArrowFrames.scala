@@ -18,6 +18,10 @@ object ArrowConf:
         import pyarrow as pa
         return pa.table({"x": pa.array([1, 2], pa.int32()), "y": pa.array([0.5, None], pa.float32())})
 
+    @okay.arrow
+    def same(t):
+        return t
+
     def lists(frame):
         return {"xs": [[1], [2, 3]]}
 
