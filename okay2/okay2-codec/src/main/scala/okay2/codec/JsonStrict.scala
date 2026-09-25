@@ -42,10 +42,6 @@ object JsonStrict {
     def fail[X](what: String): Either[String, X] =
       Left(s"$what at $at" + (if (at < n) s" ('${s.charAt(at)}')" else " (end of input)"))
 
-    /** BOUNDED (specs/stack-safety.md): a container descent counts one
-     * `open`, and past Codecs.NativeThreshold the reader continues on
-     * Cont; an Option or iso step between two containers is bounded by
-     * the schema, which must cross a product or sum to recurse */
     def get[A](sc: Schema[A]): Either[String, A] =
       if (open >= Codecs.NativeThreshold) reset(getC[A, Either[String, A]](sc))
       else getNative(sc)
@@ -326,46 +322,29 @@ object JsonStrict {
                 case _ => Cont.Pure(fail[A]("expected ',' or '}'"))
               }
             }
-            // Fields up to the next KNOWN one, by ITERATION. A known field
-            // descends through Cont.defer, so its continuation runs in the
-            // trampoline's loop; an unknown one is skipped in place, and its
-            // separator is read here rather than by a call back into `loop`,
-            // which cost a frame per skipped field and overflowed on an
-            // object with many of them (stack-safety-json, 2026-09-25)
             def loop(found: Map[String, Any]): Either[String, A] /> R = {
-              // an abstract Cont.Rep cannot hold null: the answer, once found
-              var out: Option[Either[String, A] /> R] = None
-              while (out.isEmpty) {
-                skipWs()
-                string() match {
-                  case Left(e) => out = Some(Cont.Pure(Left(e)))
-                  case Right(k) =>
-                    skipWs()
-                    expect(':') match {
-                      case Left(e) => out = Some(Cont.Pure(Left(e)))
-                      case Right(_) =>
-                        skipWs()
-                        p.fields.find(_._1 == k) match {
-                          case Some((_, sc)) =>
-                            out = Some(Cont.defer(() => fieldC(sc())) {
-                              case Left(e) => Cont.Pure[Either[String, A], R](Left(e))
-                              case Right(v) => afterField(found + (k -> v))
-                            })
-                          case None => skipValue() match {
-                            case Left(e) => out = Some(Cont.Pure(Left(e)))
-                            case Right(_) =>
-                              skipWs()
-                              peek match {
-                                case ',' => at += 1
-                                case '}' => at += 1; out = Some(Cont.Pure(assemble(p, found)))
-                                case _ => out = Some(Cont.Pure(fail[A]("expected ',' or '}'")))
-                              }
+              skipWs()
+              string() match {
+                case Left(e) => Cont.Pure(Left(e))
+                case Right(k) =>
+                  skipWs()
+                  expect(':') match {
+                    case Left(e) => Cont.Pure(Left(e))
+                    case Right(_) =>
+                      skipWs()
+                      p.fields.find(_._1 == k) match {
+                        case Some((_, sc)) =>
+                          Cont.defer(() => fieldC(sc())) {
+                            case Left(e) => Cont.Pure[Either[String, A], R](Left(e))
+                            case Right(v) => afterField(found + (k -> v))
                           }
+                        case None => skipValue() match {
+                          case Left(e) => Cont.Pure(Left(e))
+                          case Right(_) => afterField(found)
                         }
-                    }
-                }
+                      }
+                  }
               }
-              out.get
             }
             loop(Map.empty)
           }

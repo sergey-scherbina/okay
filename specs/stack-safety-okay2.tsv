@@ -2,19 +2,21 @@
 okay2-async/src/main/scala/okay2/async/Async.scala	235	apply	mutual	Function1.apply
 okay2-async/src/main/scala/okay2/async/Async.scala	258	op	mutual	Function1.apply
 okay2-cats/src/main/scala/okay2/cats/CatsInterop.scala	134	toCats	lambda	Free.flatMap
-okay2-codec/src/main/scala/okay2/codec/Json.scala	68	printInto	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-codec/src/main/scala/okay2/codec/Json.scala	72	printIntoNative	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-codec/src/main/scala/okay2/codec/Json.scala	142	mergePatchAt	mutual	Vector.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-codec/src/main/scala/okay2/codec/Json.scala	146	mergePatchNative	mutual	Vector.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-codec/src/main/scala/okay2/codec/Json.scala	240	into	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline; the one generic Node is the CST root, one frame
-okay2-codec/src/main/scala/okay2/codec/Json.scala	259	intoNative	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline; the one generic Node is the CST root, one frame
-okay2-codec/src/main/scala/okay2/codec/Json.scala	287	pairs	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-codec/src/main/scala/okay2/codec/Json.scala	540	loop	mutual		BOUNDED: the product decode's direct step is per ABSENT field, so the product's field count bounds it; a present field descends through Cont.defer
-okay2-codec/src/main/scala/okay2/codec/Json.scala	544	fallback	mutual		BOUNDED: the product decode's direct step is per ABSENT field, so the product's field count bounds it; a present field descends through Cont.defer
-okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	53	value	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	66	valueNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	85	objNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	119	arrNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
+okay2-codec/src/main/scala/okay2/codec/Json.scala	67	printInto	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	71	printIntoNative	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	141	mergePatchAt	mutual	Vector.foldLeft
+okay2-codec/src/main/scala/okay2/codec/Json.scala	145	mergePatchNative	mutual	Vector.foldLeft
+okay2-codec/src/main/scala/okay2/codec/Json.scala	236	into	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	255	intoNative	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	283	pairs	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	536	loop	mutual	
+okay2-codec/src/main/scala/okay2/codec/Json.scala	540	fallback	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonStrict.scala	317	afterField	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonStrict.scala	325	loop	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	53	value	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	66	valueNative	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	85	objNative	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	119	arrNative	mutual	
 okay2-fs2/src/main/scala/okay2/fs2/Fs2Interop.scala	41	go	lambda	NotGiven$.default,Stream.$plus$plus,Writer$.effect
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	20	dimap	lambda	Mealy.<init>
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	23	first	lambda	Mealy.<init>
