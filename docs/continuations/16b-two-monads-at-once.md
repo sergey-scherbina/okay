@@ -250,20 +250,24 @@ hurts most is not the order of the layers but what the stacks are MADE
 of. Two teams, one shared effect (errors), and one monad each that the
 other does not have:
 
-- **team A** chooses a shop and prices it — a list and an error:
+- **team A** knows the catalog: a shop sells several varieties of an
+  item, so a price comes with the variety it is for — a list, and an
+  error for an item the shop does not sell:
 
 ```scala
 type Choices[A] = EitherT[List, String, A]
 
-def priceOf(shop: String, item: String): Choices[Int] =
-  EitherT.fromOption[List](prices(shop).get(item), s"$shop has no $item")
+def priceOf(shop: String, item: String): Choices[(String, Int)] =
+  EitherT(catalog(shop).get(item) match
+    case Some(varieties) => varieties.map(Right(_))
+    case None            => List(Left(s"$shop has no $item")))
 ```
 
 - **team B** knows delivery, which a shop may simply not offer — an
   `Option` (absent is not an error) and an error (an unknown shop is):
 
 ```scala
-type Checked[A]  = Either[String, A]
+type Checked[A]   = Either[String, A]
 type Delivered[A] = OptionT[Checked, A]
 
 def deliveryFee(shop: String): Delivered[Int] =
@@ -273,17 +277,17 @@ def deliveryFee(shop: String): Delivered[Int] =
 There is no ordering to agree on. Call both in one expression:
 
 ```text
-val p: Choices[Int] =
+val p: Choices[(String, Int)] =
   for
-    fee   <- CatsDelivery.deliveryFee("north")
-    price <- CatsTeams.priceOf("north", "tea")
-  yield fee + price
+    fee          <- CatsDelivery.deliveryFee("north")
+    (tea, price) <- CatsDelivery.priceOf("north", "tea")
+  yield (tea, price + fee)
 ```
 
 and it does not compile:
 
 ```text
-Found:    cats.data.EitherT[List, String, Int]
+Found:    cats.data.EitherT[List, String, (String, Int)]
 Required: cats.data.OptionT[bookcats.CatsDelivery.Checked, B]
 ```
 
@@ -302,39 +306,50 @@ def fromB[A](fb: Delivered[A]): Order[A] = OptionT(EitherT(List(fb.value)))
 and every call site says which team it came from:
 
 ```scala
-fee  <- fromB(deliveryFee(shop))
-ps   <- items.traverse(item => fromA(priceOf(shop, item)))
+fee          <- fromB(deliveryFee(shop))
+(tea, price) <- fromA(priceOf(shop, item))
 ```
 
-For `List("tea", "cake")` the order is `List(Right(Some(850)),
-Right(None))`: north delivers, south does not. Now multiply: every new
-team with a slightly different set of monads is one more stack, one
-more union for everybody who combines it, and one more conversion into
-each union — each knowing the structure of both stacks, and changing
-when either does.
+For `"tea"` over both shops the order is
+`List(Right(Some(("green tea", 350))), Right(Some(("black tea", 330))),
+Right(None))`: north delivers and has two teas, south does not deliver.
+Now multiply: every new team with a slightly different set of monads is
+one more stack, one more union for everybody who combines it, and one
+more conversion into each union — each knowing the structure of both
+stacks, and changing when either does.
 
 The two roads below have none of this. With layered reflection each
-team's helper returns a plain value of a plain monad, and the order is
+team's helper returns a plain value of plain monads, and the order is
 three `reify` blocks:
 
 ```scala
-def deliveryFee(shop: String): Either[String, Option[Int]] =
-  fees.get(shop).toRight(s"unknown shop $shop")
+def priceOf(shop: String, item: String): Either[String, List[(String, Int)]] =
+  catalog(shop).get(item).toRight(s"$shop has no $item")
 ```
 
 ```scala
 reify[List, Out, Pure]:
-  reify[Checked, Option[Int], Pure]:
-    reify[Option, Int, Pure]:
+  reify[Checked, Option[(String, Int)], Pure]:
+    reify[Option, (String, Int), Pure]:
       for
-        shop <- List("north", "south").reflect[Out, Pure]
-        fee  <- deliveryFee(shop).reflect[Option[Int], Pure]
-        f    <- fee.reflect[Int, Pure]
+        shop         <- List("north", "south").reflect[Out, Pure]
+        fee          <- deliveryFee(shop).reflect[Option[(String, Int)], Pure]
+        f            <- fee.reflect[(String, Int), Pure]
+        varieties    <- priceOf(shop, item).reflect[Option[(String, Int)], Pure]
+        (tea, price) <- varieties.reflect[Out, Pure]
+      yield (tea, price + f)
 ```
 
 With algebraic effects each helper declares only the effects it uses.
-Team B's "no delivery" is not an effect at all — it is a plain `Option`
-value; only the unknown shop is an effect, an error:
+Team A's varieties are a `choose`; team B's "no delivery" is not an
+effect at all — it is a plain `Option` value, and only the unknown shop
+is an error:
+
+```scala
+def priceOf(shop: String, item: String): (String, Int) ! Choose + Throws % String =
+  catalog(shop).get(item) match
+    case Some(varieties) => choose(varieties*).at[Choose + Throws % String]
+```
 
 ```scala
 def deliveryFee(shop: String): Option[Int] ! Throws % String =
@@ -351,13 +366,13 @@ type Order = Choose + Throws % String
 ```
 
 ```scala
-fee   <- deliveryFee(shop).at[Order]
-total <- fee match
-  case None    => pure[Order, Option[Int]](None)
+fee  <- deliveryFee(shop).at[Order]
+out  <- fee match
+  case None    => pure[Order, Option[(String, Int)]](None)
+  case Some(f) => priceOf(shop, item).map((tea, price) => Some((tea, price + f)))
 ```
 
-All three give the same `List(Right(Some(850)), Right(None))`
-(`TestBookTwoMonadsCats`).
+All three give the same answer (`TestBookTwoMonadsCats`).
 
 **The same effects in another order are no better.** Agreeing on the
 set of monads is not enough; the order is part of the stack too.
