@@ -72,12 +72,21 @@ object Row:
       // invariant, which a generic walk over a plain Tuple cannot see
       // (the same trusted-kernel shape as Effects.scala's own
       // `(x.resume: @unchecked) match`)
-      def walk(t: Tuple): Either[String, Vector[(String, SqlValue)]] = (t: @unchecked) match
-        case EmptyTuple => Right(Vector.empty)
-        case (col: Column[a], v) *: rest =>
-          Typed.encodeOne(col.schema, v.asInstanceOf[a]) match
-            case Left(e) => Left(s"column ${col.name}: $e")
-            case Right(sv) => walk(rest).map((col.name, sv) +: _)
+      // a loop over the tuple's spine, not a recursion per column
+      // (stack-safety-sql-family); the tuple is walked newest first and
+      // reversed once below
+      def walk(t0: Tuple): Either[String, Vector[(String, SqlValue)]] =
+        val out = Vector.newBuilder[(String, SqlValue)]
+        var t = t0
+        var err: String = null
+        while err == null && t != EmptyTuple do
+          (t: @unchecked) match
+            case (col: Column[a], v) *: rest =>
+              Typed.encodeOne(col.schema, v.asInstanceOf[a]) match
+                case Left(e) => err = s"column ${col.name}: $e"
+                case Right(sv) => out += ((col.name, sv))
+              t = rest
+        if err == null then Right(out.result()) else Left(err)
       // HMap's own tuple is NEWEST first (each `.updated` prepends);
       // `.reverse` here is what makes `toParams` answer in the order a
       // caller actually chained `.updated`, which is what you want in

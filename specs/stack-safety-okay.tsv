@@ -177,13 +177,13 @@ okay-optics/src/main/scala/Fuse.scala	189	emitModify	direct
 okay-optics/src/main/scala/Fuse.scala	233	emitPreview	direct	
 okay-optics/src/main/scala/Fuse.scala	245	readable	direct	
 okay-optics/src/main/scala/Fuse.scala	251	flatten	direct	
-okay-pg/src/main/scala/okay/pg/PgSql.scala	53	colType	direct	Vector.map
-okay-pg/src/main/scala/okay/pg/PgSql.scala	367	decodeCell	lambda	PgSql$.parseArray,PgSql$.parseCompositeTyped
-okay-pg/src/main/scala/okay/pg/PgSql.scala	585	valueOf	lambda	PgSql$.parseArray
-okay-pg/src/main/scala/okay/pg/PgSql.scala	664	parseArray	lambda	Vector.map
-okay-pg/src/main/scala/okay/pg/PgSql.scala	711	textOf	mutual	Vector.map
-okay-pg/src/main/scala/okay/pg/PgSql.scala	731	arrayLiteral	mutual	Vector.map
-okay-pg/src/main/scala/okay/pg/PgSql.scala	738	compositeLiteral	mutual	Vector.map
+okay-pg/src/main/scala/okay/pg/PgSql.scala	53	colType	direct	Vector.map	BOUNDED: per level of a type declared in the catalogue; Postgres refuses a composite type that contains itself (42P16) and caps array dimensions at MAXDIM = 6, and the caches are read from that catalogue
+okay-pg/src/main/scala/okay/pg/PgSql.scala	367	decodeCell	lambda	PgSql$.parseArray,PgSql$.parseCompositeTyped	BOUNDED: per level of a value the server sent, whose type the catalogue bounds (a composite cannot contain itself, an array has at most MAXDIM = 6 dimensions), and parseArray refuses a literal past that bound before walking it (TestPgArrayDepth)
+okay-pg/src/main/scala/okay/pg/PgSql.scala	585	valueOf	lambda	PgSql$.parseArray	BOUNDED: per level of a value the server sent, whose type the catalogue bounds (a composite cannot contain itself, an array has at most MAXDIM = 6 dimensions), and parseArray refuses a literal past that bound before walking it (TestPgArrayDepth)
+okay-pg/src/main/scala/okay/pg/PgSql.scala	664	parseArray	lambda	Vector.map	BOUNDED: per dimension of an array literal, refused past MaxDim = 6 (Postgres's MAXDIM, src/include/utils/array.h) before the recursion — a deeper literal is damage on the socket, not an array (TestPgArrayDepth on a 256 KB stack)
+okay-pg/src/main/scala/okay/pg/PgSql.scala	711	textOf	mutual	Vector.map	BOUNDED: per level of a SqlValue the calling program built (its own value, not input), or one this module decoded under the catalogue's bound above
+okay-pg/src/main/scala/okay/pg/PgSql.scala	731	arrayLiteral	mutual	Vector.map	BOUNDED: per level of a SqlValue the calling program built (its own value, not input), or one this module decoded under the catalogue's bound above
+okay-pg/src/main/scala/okay/pg/PgSql.scala	738	compositeLiteral	mutual	Vector.map	BOUNDED: per level of a SqlValue the calling program built (its own value, not input), or one this module decoded under the catalogue's bound above
 okay-pool/src/main/scala/okay/pool/Pool.scala	124	nudge	lambda	Fiber.onComplete
 okay-py/src/main/scala/okay/py/ArrowFrames.scala	80	cells	direct	Vector.map	BOUNDED: per level of a column's TYPE; `frame` takes a Table's columns, and Table refuses past Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth) since stack-safety-arrow
 okay-py/src/main/scala/okay/py/GoWorker.scala	101	goType	mutual	
@@ -210,8 +210,8 @@ okay-r/src/main/scala/okay/r/RCodec.scala	94	dec	direct	RCodec$.each
 okay-r/src/main/scala/okay/r/RCodec.scala	175	product	direct	RCodec$.each
 okay-r/src/main/scala/okay/r/RSubprocess.scala	187	step	lambda	Either.flatMap
 okay-r/src/main/scala/okay/r/RSubprocess.scala	349	startWith	lambda	Some$.apply
-okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	215	valueOf	lambda	Vector$.tabulate
-okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	270	javaOf	lambda	Vector.map
+okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	215	valueOf	lambda	Vector$.tabulate	BOUNDED: per dimension of a database array the driver hands back; a column's array type is declared in the DDL, not chosen per row, and Postgres caps dimensions at MAXDIM = 6
+okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	270	javaOf	lambda	Vector.map	BOUNDED: per level of a SqlValue.Arr the calling program built as a parameter — its own value, not input; a composite parameter is refused
 okay-resilience/src/main/scala/okay/resilience/Bulkhead.scala	84	release	lambda	Option.foreach
 okay-resilience/src/main/scala/okay/resilience/Hedge.scala	57	start	lambda	Timer.after
 okay-scalus/src/main/scala/okay/scalus/Cv.scala	51	item	direct	Vector$.fill,Vector$.unfold
@@ -226,15 +226,14 @@ okay-spark/src/main/scala/okay/spark/SparkSchema.scala	20	dataType	direct	Vector
 okay-spark/src/main/scala/okay/spark/SparkSchema.scala	32	struct	direct	Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one Json/CBOR column (Columns.recursiveNames), so the depth is the type's own finite nesting; value/rowOf follow that type
 okay-spark/src/main/scala/okay/spark/SparkSchema.scala	36	value	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one Json/CBOR column (Columns.recursiveNames), so the depth is the type's own finite nesting; value/rowOf follow that type
 okay-spark/src/main/scala/okay/spark/SparkSchema.scala	46	rowOf	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one Json/CBOR column (Columns.recursiveNames), so the depth is the type's own finite nesting; value/rowOf follow that type
-okay-sql/src/main/scala/okay/sql/Row.scala	75	walk	direct	
-okay-sql/src/main/scala/okay/sql/Typed.scala	47	tpe	direct	
-okay-sql/src/main/scala/okay/sql/Typed.scala	54	optional	direct	
-okay-sql/src/main/scala/okay/sql/Typed.scala	107	shapeOf	direct	WithFilter.foreach
-okay-sql/src/main/scala/okay/sql/Typed.scala	125	shapesOf	direct	WithFilter.foreach
+okay-sql/src/main/scala/okay/sql/Typed.scala	47	tpe	direct		BOUNDED: per level of the finite Shape that shapeOf builds from the row's Scala type, refusing a recursive product (TestTypedRecursive), so the depth is the type's own nesting
+okay-sql/src/main/scala/okay/sql/Typed.scala	54	optional	direct		BOUNDED: per level of the finite Shape that shapeOf builds from the row's Scala type, refusing a recursive product (TestTypedRecursive), so the depth is the type's own nesting
+okay-sql/src/main/scala/okay/sql/Typed.scala	107	shapeOf	direct	WithFilter.foreach	BOUNDED: per level of the row's Schema, and a product met again on its own path is REFUSED by name (a derived schema of a recursive type is a cycle; TestTypedRecursive), so the depth is the type's own finite nesting
+okay-sql/src/main/scala/okay/sql/Typed.scala	125	shapesOf	direct	WithFilter.foreach	BOUNDED: per level of the row's Schema, and a product met again on its own path is REFUSED by name (a derived schema of a recursive type is a cycle; TestTypedRecursive), so the depth is the type's own finite nesting
 okay-sql/src/main/scala/okay/sql/Typed.scala	165	fits	lambda	IterableOnceOps.forall	BOUNDED: per level of a SqlType, which Typed.shapeOf derives from the row's Scala type at construction and REFUSES when recursive (a product met again on its own path: TestTypedRecursive), so the depth is the type's own finite nesting
-okay-sql/src/main/scala/okay/sql/Typed.scala	214	decode	direct	
-okay-sql/src/main/scala/okay/sql/Typed.scala	251	decodeAny	direct	
-okay-sql/src/main/scala/okay/sql/Typed.scala	258	encode	lambda	Schema$.eachField,StrictOptimizedIterableOps.map
+okay-sql/src/main/scala/okay/sql/Typed.scala	214	decode	direct		BOUNDED: per level of the finite Shape that shapeOf builds from the row's Scala type, refusing a recursive product (TestTypedRecursive), so the depth is the type's own nesting
+okay-sql/src/main/scala/okay/sql/Typed.scala	251	decodeAny	direct		BOUNDED: per level of the finite Shape that shapeOf builds from the row's Scala type, refusing a recursive product (TestTypedRecursive), so the depth is the type's own nesting
+okay-sql/src/main/scala/okay/sql/Typed.scala	258	encode	lambda	Schema$.eachField,StrictOptimizedIterableOps.map	BOUNDED: per level of the finite Shape that shapeOf builds from the row's Scala type, refusing a recursive product (TestTypedRecursive), so the depth is the type's own nesting
 okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	210	visit	lambda	Vector.foreach
 okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	289	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
 okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	318	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2

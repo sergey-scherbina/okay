@@ -237,6 +237,23 @@ deleted.
         lazy bind, and recscan now knows those (and an implicit evidence
         fetched between a thunk and its call, `NotGiven.default`, is no
         longer read as the thunk's consumer).
+      - [x] 4a — the SQL family (stack-safety-sql-family, 2026-09-25):
+        okay-sql's Typed and Row, okay-pg, okay-r2dbc. One real hole:
+        okay-pg's `parseArray` recursed per `{` of a literal read OFF THE
+        SOCKET, and a 100 000-deep one was a StackOverflowError in the
+        connection reader (TestPgArrayDepth, red first on a 256 KB stack).
+        Fixed by the bound Postgres itself has — MAXDIM = 6
+        (src/include/utils/array.h): a server never sends a deeper
+        literal, so one past `PgSql.MaxDim` is refused by name as damage
+        on the socket. `Row.toParams`' walk over the HMap tuple is a loop
+        (its row is paid). Every other row is a written bound: Typed's
+        walks are over the finite Shape (a recursive product refused,
+        4-catch-up above); pg's `colType`/`decodeCell`/`valueOf` per level
+        of a catalogue type, which Postgres keeps finite (a composite
+        cannot contain itself, 42P16); pg's literal writers and r2dbc's
+        `javaOf` per level of a value the program built; r2dbc's `valueOf`
+        per dimension of a driver array. Left in stage 4: okay-py and
+        okay-r (4b).
 - [ ] Stage 5 — workflow: `Proc.go`/`nodes`, `Wf.go`, recursing per
       `Then` of a composed arrow.
 - [ ] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js.

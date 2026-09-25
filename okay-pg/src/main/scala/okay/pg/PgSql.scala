@@ -661,12 +661,22 @@ object PgSql:
    * valueOf); nested arrays recurse with the SAME decoder (multidim
    * shares one element OID); the literal NULL element is Null; `{}` is
    * the empty Arr */
-  private[pg] def parseArray(s: String, decodeElem: String => SqlValue): SqlValue =
+  private[pg] def parseArray(s: String, decodeElem: String => SqlValue): SqlValue = parseArray(s, decodeElem, 1)
+
+  /** Postgres caps an array at MAXDIM = 6 dimensions (src/include/utils/
+   * array.h) and refuses a deeper literal before it is stored, so a
+   * server never sends one: `dim` is the BOUND of this recursion, and a
+   * literal past it is damage from whatever is on the socket, refused
+   * by name rather than walked (stack-safety-sql-family) */
+  private[pg] val MaxDim = 6
+  private def parseArray(s: String, decodeElem: String => SqlValue, dim: Int): SqlValue =
+    if dim > MaxDim then
+      throw IllegalStateException(s"an array literal nested deeper than $MaxDim dimensions, which Postgres itself refuses (MAXDIM)")
     val inner = s.stripPrefix("{").stripSuffix("}")
     if inner.isEmpty then SqlValue.Arr(Vector.empty)
     else SqlValue.Arr(splitMembers(inner, braces = true).map { (raw, quoted) =>
       if !quoted && raw.equalsIgnoreCase("NULL") then SqlValue.Null
-      else if !quoted && raw.startsWith("{") then parseArray(raw, decodeElem)
+      else if !quoted && raw.startsWith("{") then parseArray(raw, decodeElem, dim + 1)
       else decodeElem(raw)
     })
 
