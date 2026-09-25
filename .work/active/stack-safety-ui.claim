@@ -1,5 +1,0 @@
-slug: stack-safety-ui
-who: claude (session 6f505c09)
-what: stack-safety stage 6 — okay-ui, okay-js, okay-ui-gtk tree walks: red first where a value from the browser or a document reaches the depth, written bound where the program builds the tree
-files: okay-ui, okay-js, okay-ui-gtk, specs/stack-safety*
-since: 2026-09-25
