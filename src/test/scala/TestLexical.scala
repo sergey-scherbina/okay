@@ -308,3 +308,87 @@ class TestLexicalPayAsYouGo extends munit.FunSuite:
       if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => spin(s, n - 1))
     assertEquals(!.run(Lexical.State[Int, Int, Pure](0)(s => spin(s, 100_000))), (100_000, 100_000))
   }
+
+/** lexical-tagged-walk: the optional `walk` strategy */
+class TestLexicalWalk extends munit.FunSuite:
+  import Lexical.State.{get, set}
+  import Layered.{reify, reflect}
+  import okay.Row.{at, up}
+
+  type W = Writer % String
+  given Answers[W] = Answers.writer[String]
+
+  test("walk is Bisim-equal to State.handle on the Writer row, after runLocal") {
+    val t = new TestLexical
+    val walked: (Int, Int) ! W = Lexical.runLocal(Lexical.State.walk[Int, Int, W](1) { s =>
+      for
+        a <- s.get
+        _ <- Writer.tell(s"a=$a").at[Local + W]
+        _ <- s.set(a + 10)
+        b <- s.get
+        _ <- Writer.tell(s"b=$b").at[Local + W]
+      yield a + b
+    })
+    assertEquals(Bisim.check(walked, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
+  }
+
+  test("walk on the pure row: runLocal and !.run, no Delim anywhere") {
+    assertEquals(!.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
+  }
+
+  test("two walk instances of one effect: the outer's get passes the inner walk and reaches its own") {
+    val r = !.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](0) { outer =>
+      Lexical.State.walk[Int, Int, Local + Pure](10) { inner =>
+        outer.get.flatMap(o => inner.get.map(i => o * 100 + i))
+      }.map(_._2)
+    }))
+    assertEquals(r, (0, 10))
+  }
+
+  test("an instance used after its walk returned escapes to runLocal, which throws LocalEscaped") {
+    var leaked: Lexical.Inst[State % Int, Local + Pure] | Null = null
+    val p = Lexical.State.walk[Int, Int, Pure](0)(s => { leaked = s; s.get })
+      .flatMap(_ => leaked.nn.get.map(v => (v, v)))
+    intercept[Lexical.LocalEscaped](!.run(Lexical.runLocal(p)))
+  }
+
+  test("multi-shot ACROSS the walk (List outside): each branch resumes the walk at its captured state — deep's answer") {
+    def pick(s: Lexical.Inst[State % Int, Local + Delim + Pure])(using Layered.Reflect[List, (Int, Int)]): Int ! Local + Delim + Pure =
+      for
+        x <- List(1, 2, 3).reflect[(Int, Int), Local + Pure]
+        v <- s.get
+        _ <- s.set(v + x)
+      yield v
+    val r = !.run(Lexical.runLocal(Delim.run[List[(Int, Int)], Local + Pure](
+      reify[List, (Int, Int), Local + Pure](Lexical.State.walk[Int, Int, Delim + Pure](0)(s => pick(s))))))
+    assertEquals(r, List((1, 0), (2, 0), (3, 0)))
+  }
+
+  test("multi-shot INSIDE the walk with the machine OUTSIDE it: the operation inside the delimiter escapes, loudly") {
+    def pick(s: Lexical.Inst[State % Int, Local + Delim + Pure])(using Layered.Reflect[List, Int]): Int ! Local + Delim + Pure =
+      for
+        x <- List(1, 2, 3).reflect[Int, Local + Pure]
+        v <- s.get
+        _ <- s.set(v + x)
+      yield v
+    intercept[Lexical.LocalEscaped](!.run(Lexical.runLocal(Delim.run[(Int, List[Int]), Local + Pure](
+      Lexical.State.walk[Int, List[Int], Delim + Pure](0)(s => reify[List, Int, Local + Pure](pick(s)))))))
+  }
+
+  test("multi-shot INSIDE the walk with the machine INSIDE it: the walk threads the state through the branches — deep's answer") {
+    def pick(s: Lexical.Inst[State % Int, Local + Pure])(using Layered.Reflect[List, Int]): Int ! Delim + Local + Pure =
+      for
+        x <- List(1, 2, 3).reflect[Int, Local + Pure]
+        v <- s.get.up[Delim + Local + Pure]
+        _ <- s.set(v + x).up[Delim + Local + Pure]
+      yield v
+    val r = !.run(Lexical.runLocal(Lexical.State.walk[Int, List[Int], Pure](0)(s =>
+      Delim.run[List[Int], Local + Pure](reify[List, Int, Local + Pure](pick(s))))))
+    assertEquals(r, (6, List(0, 1, 3)))
+  }
+
+  test("depth: 100 000 operations through one walk, in constant stack") {
+    def spin(s: Lexical.Inst[State % Int, Local + Pure], n: Int): Int ! Local + Pure =
+      if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => spin(s, n - 1))
+    assertEquals(!.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](0)(s => spin(s, 100_000)))), (100_000, 100_000))
+  }

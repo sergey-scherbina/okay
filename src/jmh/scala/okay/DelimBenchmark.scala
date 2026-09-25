@@ -209,6 +209,12 @@ class DelimBenchmark {
     import okay.Row.up
     !.run(Delim.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Pure](0)(s => lexSpin(s, N)).up[Row]))._2
 
+  /** the optional `walk` strategy (lexical-tagged-walk): inert tagged
+   * operations, the installation walks its body like a row handler */
+  @Benchmark
+  def stateLexWalk(): Int =
+    !.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](0)(s => lexSpin(s, N))))._2
+
   @Benchmark
   def stateLexDeep(): Int =
     !.run(Delim.run[(Int, Int), Pure](Lexical.State.deep[Int, Int, Row](0)(s => lexSpin(s, N))))._2

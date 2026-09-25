@@ -1,0 +1,1 @@
+2026-09-25	d1418795	35-47	lexical-walk: stateLexWalk vs stateHandle (BYTES)	286192	222040	1.29	B/op, 1000 get/set through one optional walk instance; tail (stateLexTailPure) 366225 = 1.65x in the same run; time 102+-43 vs 47+-23 us not usable at this load

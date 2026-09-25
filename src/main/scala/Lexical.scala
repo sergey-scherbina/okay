@@ -31,6 +31,17 @@ import okay.Row.up
  * is 3.8x/4.7x (handlers-as-dollar): they are for what `row` cannot
  * do, not for what it does.
  */
+/**
+ * THE ONE SIGNATURE of `Lexical.walk` instances: an operation tagged with
+ * the installation that owns it. One class for every instance of every
+ * effect, split by the OWNER's identity, not by class, exactly as
+ * `Delim`'s prompts are. A row holds one `Local` however many instances
+ * run in it. Used only by the optional `walk` strategy
+ * (specs/lexical-instances.md, lexical-tagged-walk).
+ */
+enum Local[+X] derives Effect:
+  case Op[X](owner: AnyRef, op: Any) extends Local[X]
+
 object Lexical:
 
   /** an installed handler of `F` in a program whose row is `G` (the
@@ -174,6 +185,76 @@ object Lexical:
       closing.close(body(i), a => (cell, a), at.where)
     }
 
+  /** an instance operation reached a `runLocal` with no `walk` of its
+   * owner around it: the instance was used outside its installation, or
+   * inside an operation's payload (a `reset`/`dollar` body) that its walk
+   * cannot see */
+  final class LocalEscaped(owner: AnyRef)
+    extends IllegalStateException(
+      s"an operation of the `walk` instance $owner reached `runLocal` unhandled: it was performed outside its installation, or inside the body of a `Delim` delimiter, which a walk does not enter. Use `tail` or `deep` there (specs/lexical-instances.md)")
+
+  /**
+   * WALK, an OPTIONAL strategy (lexical-tagged-walk; never the default).
+   * The installation walks its body the way a row handler does, with
+   * the state threaded purely through the walk. No cell, no guard, no
+   * capture, no `Delay` per operation: an operation is an inert
+   * `Inject(Local.Op(owner, e))`, and the walk answers its own and
+   * forwards the rest. The row carries ONE `Local` for all walk
+   * instances, and `runLocal` at the top turns an escaped one into a
+   * loud `LocalEscaped`.
+   *
+   * WHAT IT SEES, and why that is a rule to know: the walk sees the
+   * program's SPINE. An instance operation inside a `Delim` delimiter's
+   * body (the payload of a `reset`, a `dollar`, a `Layered.reify`)
+   * reaches the machine, not the walk, and escapes to `runLocal`, which
+   * throws. Put the machine (`Delim.run`) INSIDE the walk and the
+   * machine's suspended operations come back along the spine, where the
+   * walk answers them in order.
+   */
+  def walk[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])(body: Inst[F, Local + G] => A ! Local + G)
+                              (using TypeableK[Local]): (S, A) ! Local + G =
+    Free.delay { () =>
+      val owner = new AnyRef
+      val i = new Inst[F, Local + G]:
+        def perform[X](e: F[X]): X ! Local + G = Free.Inject(Local.Op[X](owner, e))
+      /** THE ONE CAST, and why the type is right: an `Op` whose owner is
+       * THIS walk's token was made by `i.perform` above from an `F[X]`,
+       * and nothing else can make one, since the token never leaves
+       * this installation. It is the identity-keyed case the operator's
+       * cast rule names (AGENTS.md, "NO CAST WITHOUT A REAL NECESSITY"). */
+      def mine[X](l: Local[X]): F[X] | Null = l match
+        case Local.Op(o, op) if o eq owner => op.asInstanceOf[F[X]]
+        case _ => null
+      // a resumption from a forwarded operation re-enters here: a call
+      // inside a closure is not a tail call (State.handle's `_loop`)
+      def again(s: S)(x: A ! Local + G): (S, A) ! Local + G = loop(s)(x)
+      @scala.annotation.tailrec
+      def loop(s: S)(x: A ! Local + G): (S, A) ! Local + G = (x.resume: @unchecked) match
+        case Free.Return(a) => okay.pure((s, a))
+        case Free.Inject(e) => split[Local, G](e) { l => mine(l) match
+            case null => Free.Inject(l).map(a => (s, a))
+            case op => val (s1, a) = c.op(op.nn, s); okay.pure[Local + G, (S, A)]((s1, a))
+          } { g => Free.Inject(g).map(a => (s, a)) }
+        case Free.Bind(Free.Inject(e), k) => split[Local, G](e) { l => mine(l) match
+            case null => Free.Inject(l).flatMap(y => again(s)(k(y)))
+            case op => val (s1, y) = c.op(op.nn, s); loop(s1)(k(y))
+          } { g => Free.Inject(g).flatMap(y => again(s)(k(y))) }
+      loop(s0)(body(i))
+    }
+
+  /** the top of a program that used `walk` instances: every `Local`
+   * operation should have been answered by its walk, and one that was
+   * not is a `LocalEscaped` */
+  def runLocal[A, G[+_]](p: A ! Local + G)(using TypeableK[Local]): A ! G =
+    (p.resume: @unchecked) match
+      case Free.Return(a) => okay.pure(a)
+      case Free.Inject(e) => split[Local, G](e)(l => throw LocalEscaped(owner(l)))(g => Free.Inject(g))
+      case Free.Bind(Free.Inject(e), k) =>
+        split[Local, G](e)(l => throw LocalEscaped(owner(l)))(g => Free.Inject(g).flatMap(y => runLocal(k(y))))
+
+  private def owner[X](l: Local[X]): AnyRef = l match
+    case Local.Op(o, _) => o
+
   /**
    * THE DEFAULT: pick the strategy from what the clauses ARE. Every
    * strategy stays callable by name. TailClauses → `tail` (guarded
@@ -220,6 +301,14 @@ object Lexical:
     /** TAIL, for State: the state in the installation's cell */
     def tail[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)(using Closing[G], At): (S, A) ! G =
       Lexical.tail[okay.State % S, S, A, G](s0)(new TailClauses[okay.State % S, S]:
+        def op[X](e: okay.State[S, X], s: S): (S, X) = e match
+          case okay.State.Get() => (s, s)
+          case okay.State.Set(s1) => (s1, s1)
+      )(body)
+
+    /** WALK, for State (optional, never the default) */
+    def walk[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, Local + G] => A ! Local + G): (S, A) ! Local + G =
+      Lexical.walk[okay.State % S, S, A, G](s0)(new TailClauses[okay.State % S, S]:
         def op[X](e: okay.State[S, X], s: S): (S, X) = e match
           case okay.State.Get() => (s, s)
           case okay.State.Set(s1) => (s1, s1)

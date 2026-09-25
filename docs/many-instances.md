@@ -275,6 +275,26 @@ val p: (Int, Int) ! Pure = Lexical.State[Int, Int, Pure](5)(s => s.get.flatMap(v
 
 The guard and the `Delim` machine appear only when the row has `Delim`.
 
+**One more strategy, by name only: `walk`.** The installation walks its
+body the way a row handler does. Its operations are inert
+`Inject(Local.Op(owner, e))` nodes of one shared signature, `Local`, and
+the state is threaded through the walk, with no cell and no `Delay` per
+operation. It costs 1.29x a row handler's bytes, where `tail` costs
+1.65x. The row gets one `Local` however many walk instances there are,
+and `Lexical.runLocal` goes at the top:
+
+```scala
+assertEquals(!.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
+```
+
+A walk sees the program's spine. An instance operation performed inside
+a `Delim` delimiter's body, such as a `reset`, a `dollar` or a
+`Layered.reify`, reaches the machine and not the walk. `runLocal` then
+throws `LocalEscaped`: it does not answer wrongly. Put `Delim.run` inside
+the walk and the walk sees those operations in order. It is not the
+default because of that rule and because `Local` has to appear in the
+row.
+
 `Lexical.handle` picks by what the clauses are: `TailClauses` run tail,
 `Clauses` run deep, `ShallowClauses` run shallow. `Lexical.State(s0)`
 is tail. `Lexical.Stacked` has deep and tail instances whose use

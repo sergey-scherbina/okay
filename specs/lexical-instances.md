@@ -225,3 +225,15 @@ PAY AS YOU GO, 2026-09-25 (bytes per 1000 get/set; time too noisy to quote):
   by class. The row stays the zero-overhead default for one handler of a
   kind. Backlog `lexical-tagged-walk` has the one design that could
   close most of it, and the semantic reason it is not the default.
+
+WALK, 2026-09-25 (TestLexicalWalk 8; bytes per 1000 get/set, time too noisy at load 35-47):
+
+- Row 222 040, walk 286 192 (1.29x), tail 366 225 (1.65x). The remaining
+  +32 B per operation is the `Local.Op(owner, e)` wrapper.
+- All eight predictions matched on the first run: Bisim with State.handle,
+  the pure row, two nested walks (0, 10), a leaked instance throwing,
+  across = `List((1, 0), (2, 0), (3, 0))`, inside with the machine
+  outside = `LocalEscaped`, inside with the machine inside = `(6, List(0,
+  1, 3))`, and 100 000 operations in constant stack.
+- WATCHED FAILING: `mine` mutated to recognise nothing turned six red. The
+  two that expect `LocalEscaped` stay green, as they should.
