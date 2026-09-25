@@ -110,9 +110,14 @@ Rows (us/op, adaptive / growing), src/jmh/history.d/*-channel-default-adaptive.t
   partitions from the first element. 16% and 26% in the two
   alternating rounds, both past the ~15% contended-lane band.
 - `growing`'s `default_chunk` at p=2 never measured under 10% error in
-  ten attempts, and read 795 +- 346 in the one early run — a bimodal
-  cost, filed as backlog okay-core/growing-two-producer-variance rather
-  than argued from here.
+  ten attempts, and read 795 +- 346 in the one early run. Followed up
+  the next night (growing-two-producer-variance): the cost IS bimodal,
+  but per JVM FORK, not per run, and NOT `growing`'s — a fork is either
+  fast (~150-230 us/op) for all its iterations or 4-6x slower for all of
+  them, and it happens to BOTH buffers at p=2: growing 1/4 then 0/12
+  forks, adaptive 0/4 then 4/12. The accepted p=2 rows above were tight
+  (5-8% error), so no slow fork sits in them and the verdict stands; a
+  2-producer lane with few forks should be read with this in mind.
 - Round 2 of the p=4/16 and actor rows was not taken: the p=2 row
   decided the question, and the box was needed by siblings.
 
