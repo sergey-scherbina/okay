@@ -1,3 +1,0 @@
-slug: localhost-connects-to-a-stranger
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: TestCluster and TestTls connect to the loopback address a server is bound to, never "localhost" (a stranger on ::1)
