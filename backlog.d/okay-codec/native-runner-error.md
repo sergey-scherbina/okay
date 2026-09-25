@@ -150,3 +150,7 @@
       failed) — a lane that added okay-x402-signers and touched
       okay-x402-evm/okay-x402-cdp, no okay-cache source. Recorded per the
       ledger; nothing changes the settled cause.
+      2026-09-25, okaySqlNative, GREEN on the rerun alone (24 tests): lost
+      its test process in the affected-set gate of stack-safety-core (7150
+      tests, 0 failed), a core-only lane with no okay-sql source. Recorded
+      per the ledger.
