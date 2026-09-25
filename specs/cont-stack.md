@@ -707,6 +707,12 @@ F. **The rest, in any order:** cont-stack-ucontext-layouts (macOS
    (the user page with the per-platform bounds and how to enable native
    access), okay2's cont-stack-okay2 (stages B and E as far as a
    Scala 2 blackbox macro reaches; Layers 2/3 port straight).
+   Also, after C and D land: RE-PRICE `DelimBenchmark.stateLexDeep`
+   and `stateShallow` against `stateHandle` (handlers-as-dollar read
+   3.8x/4.7x time, 7.4x/7.8x bytes on 2026-09-25 morning) and update
+   the "Choosing" table in docs/many-instances.md — deep's cost IS the
+   capture path these stages are about, and the table quotes today's
+   number (shift0-dollar-close, 2026-09-25).
 
 What is NOT on the plan, and why: the count road (JDK 17/21 without
 native access) — one switch past ~850 levels and full speed after, no

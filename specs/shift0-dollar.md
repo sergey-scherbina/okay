@@ -134,7 +134,10 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
    whether anything in Handler.scala should use it, and the price is
    measured before anything is adopted.
 4. **The CPS hierarchy** via APLAS 2012's translation, as examples in
-   the docs, if stage 3 shows a use.
+   the docs, if stage 3 shows a use. DECLINED 2026-09-25
+   (shift0-dollar-close): stage 3 showed no use in Handler.scala, and
+   the two consumers that took `$` (Layered, Lexical) need one level,
+   never `shift_i`. See Decisions.
 
 ## Behavior
 
@@ -267,6 +270,33 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   Also pinned as a value: `abort` to a dollar answers the aborted
   value with no `ret` (it is `$/S0` with `f` ignoring its argument),
   where the `flatMap` encoding would wrap it.
+- **The arc's three open questions, closed in writing
+  (shift0-dollar-close, 2026-09-25).**
+  (1) STAGE 4, the CPS hierarchy (`shift_i`/`reset_i` by APLAS 2012's
+  translation into `shift0`/`$`): DECLINED until a consumer asks for
+  `shift_i`. Stage 3 adopted nothing in Handler.scala; the two library
+  consumers that took `$` — `Layered.reify` (η $ e) and `Lexical.deep`
+  (ret $ body) — each need ONE level, and named prompts already give a
+  program as many delimiters as it wants without the positional
+  hierarchy. The translation is in the paper and in the Literature
+  section for the day it is wanted; no code, no docs example.
+  (2) A TYPED `control0` TO A `$` (`k: A => R0 ! …`, the prompt carrying
+  `R0` beside `R`): DECLINED. Stage 3 answered the one use that asked
+  for it — a shallow handler's return clause rides inside a plain
+  `push` as a `map`, so its bare segment already answers the handler's
+  type — and dollar-doors made the refusal a compile error in
+  `Delim.Stacked`. A second prompt kind would touch every door and
+  `Prompted[R]` for a shape nothing needs.
+  (3) STACKED `control0`, and the CONSERVATIVE refusal of ICFP 2011's
+  own example (a `k` captured under `p` called where `p` is consumed):
+  recorded as the index's known incompleteness. The paper types the
+  example because `k1`'s segment never captures to `p1`; the index
+  types a continuation by the stack its code was written under, not by
+  what it does. Closing that means a per-continuation requirement —
+  `k: A => Under[F, R, Needs]` with `Needs` inferred from the captures
+  in the segment — which is a different index. Filed as backlog
+  `stacked-k-requirements` (LOW); the unstacked `control0` remains the
+  road, at run time.
 
 STAGE 0, 2026-09-24 (TestDollarProbe, 5 tests, okayJVM):
 

@@ -89,6 +89,12 @@ object Layered:
       (`NoPrompt`).
 - [x] Stage 2: the same does not compile (`Layered.Stacked`,
       TestLayeredStacked).
+- [x] Stage 3: the docs page — docs/direct-style.md "Layer 1½", with
+      both papers, the capabilities paper's `reify[Option](reify[…](…))`
+      example translated with `List` in place of their `Future` (a
+      `Future` has no `Layer`, said on the page), pinned in TestLayered
+      (shift0-dollar-close closed the box; the section had landed with
+      layered-reflection stage 0 and direct-layers-instances).
 
 ## Out of scope
 
