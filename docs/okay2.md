@@ -61,7 +61,8 @@ Contents:
 32. [Lexing and parsing, lossless and total](#32-lexing-and-parsing-lossless-and-total)
 33. [JSON over a Schema](#33-json-over-a-schema)
 34. [SQL: the relational seam](#34-sql-the-relational-seam)
-35. [Literature](#35-literature)
+35. [HTTP: two plain types](#35-http-two-plain-types)
+36. [Literature](#36-literature)
 
 ## 1. The build
 
@@ -1896,7 +1897,36 @@ first, so one borrower's open transaction never reaches the next.
 `okay2-sql` has no `java.sql` and cross-builds. The java.time fields are
 `import okay2.sql.javatime._`, on the JVM only.
 
-## 35. Literature
+## 35. HTTP: two plain types
+
+`okay2-http` is okay-http's transport half (stage 44, part A). HTTP is
+two plain types: a `Request`, and a `Response` whose body is a chunked
+`Source`. The body streams, and a status is data, never an exception.
+`Request => Response ! Async` is both what a route is and what a client
+sends, so a handler is written once and can be called over a real socket
+with no mock in between:
+
+```scala
+    serving(_ => Server.json(200, ann)) { port =>
+      assertEquals(get(port, "/p")(r => Http.json[Person](r)), Right(ann))
+```
+
+Line framing, server-sent events and a WebSocket session are all
+`Stage`s. A session says frames with `Stage.tell` and waits for them with
+`Stage.await`, so it is tested with no socket, and `Ws.over` runs the
+same session over a real one:
+
+```scala
+      case f :: t => Stage.tell[Frame, Frame](f).flatMap(_ => say(t))
+```
+
+On the JVM, `Server` is the JDK server as a Resource, `Nio` gives raw
+channels, and `Transports` provides the JDK client and WebSocket. The
+suites that bind a port are tagged `Live`: `test` leaves them out, and
+`integrationTest` (or `liveOnly; okay2Http/test`) runs them. Typed
+routes are part B.
+
+## 36. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
@@ -1923,6 +1953,9 @@ first, so one borrower's open transaction never reaches the next.
   "Stackless Scala With Free Monads" (2012): the trampoline past the
   threshold. RFC 8259 (JSON), RFC 7396 (JSON Merge Patch), RFC 4648
   (base64).
+- RFC 9110 (HTTP semantics), RFC 6455 (the WebSocket protocol), the
+  WHATWG HTML standard's server-sent events: the three wire contracts
+  `okay2-http` speaks.
 - E. F. Codd, "A Relational Model of Data for Large Shared Data Banks"
   (CACM 1970); Hal Berenson et al., "A Critique of ANSI SQL Isolation
   Levels" (SIGMOD 1995): the levels `begin` asks for and why a

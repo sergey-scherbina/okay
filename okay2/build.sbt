@@ -46,6 +46,17 @@ ThisBuild / Test / parallelExecution := false
  */
 Global / concurrentRestrictions += Tags.limit(Tags.Test, 6)
 
+/** integration-test-gate, as the root build has it: a suite reaching
+ * outside the process (a bound port, a live service) is tagged `Live`
+ * and left out of `test`; `integrationTest` runs exactly those */
+ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "--exclude-tags=Live")
+addCommandAlias("integrationTest",
+  "; set every Test / testOptions := Seq(Tests.Argument(TestFrameworks.MUnit, \"--include-tags=Live\")); test")
+// the same switch alone, for one project's Live suites through
+// scripts/gate.sh, which cannot pass a quoted `set`: `liveOnly; okay2Http/test`
+addCommandAlias("liveOnly",
+  "set every Test / testOptions := Seq(Tests.Argument(TestFrameworks.MUnit, \"--include-tags=Live\"))")
+
 lazy val common = Seq(
   scalacOptions := Seq("-deprecation", "-feature", "-Xlint", "-Werror", "-language:higherKinds"),
   libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -109,6 +120,7 @@ lazy val root: Project = (project in file("."))
     okay2Parse.jvm, okay2Parse.js, okay2Parse.native,
     okay2Codec.jvm, okay2Codec.js, okay2Codec.native,
     okay2Sql.jvm, okay2Sql.js, okay2Sql.native,
+    okay2Http.jvm, okay2Http.js, okay2Http.native,
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
     okay2Async.jvm, okay2Async.js, okay2Async.native,
     okay2Platform.jvm, okay2Platform.js, okay2Platform.native,
@@ -287,6 +299,18 @@ lazy val okay2Sql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(jsTests, platformSources("scala-js-native"))
   .nativeSettings(platformSources("scala-js-native"))
   .jvmConfigure(_.withId("okay2Sql"))
+
+/** okay-http's transport half for the Scala 2 core: Request/Response/
+ * Http, WebSocket sessions as Stages (shared), and on the JVM the JDK
+ * server, raw NIO and the JDK client/WebSocket transports */
+lazy val okay2Http = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-http"))
+  .dependsOn(okay2Codec, okay2Stream)
+  .settings(name := "okay2-http", common)
+  .jvmSettings(jvmOnlyTests, platformSources("scala-jvm"))
+  .jsSettings(jsTests)
+  .jvmConfigure(_.withId("okay2Http").dependsOn(okay2Platform.jvm))
 
 /** okay-jdbc's driver for the Scala 2 core: `JdbcSql`, tested against
  * embedded SQLite and H2 */

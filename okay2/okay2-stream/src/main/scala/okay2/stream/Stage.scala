@@ -180,3 +180,23 @@ object Lines {
     framed.map(_ => ())
   }
 }
+
+/** server-sent events out of lines (okay-stream's Sse): a `data:` line
+ * joins its event, an empty line ends it, comments and the other fields
+ * are framing not yet needed */
+object Sse {
+  def events: Stage[String, String, Unit] = {
+    def flush(buf: List[String]): Stage[String, String, List[String]] =
+      if (buf.isEmpty) pure(Nil)
+      else Stage.tell[String, String](buf.reverse.mkString("\n")).map(_ => Nil)
+
+    val framed: Stage[String, String, List[String]] =
+      Stage.transduce[String, String, List[String]](List.empty[String])((buf, line) =>
+        if (line.isEmpty) flush(buf)
+        else if (line.startsWith("data:")) pure(line.drop(5).trim :: buf)
+        else pure(buf),
+        flush)
+
+    framed.map(_ => ())
+  }
+}

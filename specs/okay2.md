@@ -2226,19 +2226,33 @@ McpHttp and TsClient (okay-http reaches okay-mcp for those, and the MCP
 stack is not ported). Two parts, landed separately.
 
 ### Part A — the transport half
-- [ ] `Method`, `Body`, `Request`, `Response` (status is data, headers
+- [x] `Method`, `Body`, `Request`, `Response` (status is data, headers
       case-insensitive), `Http` (send), `Http.one`/`bytes`/`text`/
       `discard`/`lines`/`sse`/`json`, the line framer and SSE events as
       Stages (TestFraming, pure: every platform)
-- [ ] `Frame`, `Socket`, `Sockets`, `Ws.over` (a session is a Stage),
+- [x] `Frame`, `Socket`, `Sockets`, `Ws.over` (a session is a Stage),
       `Ws.texts`
-- [ ] on the JVM: `Server` (the JDK server, a Resource), `Nio` (raw
+- [x] on the JVM: `Server` (the JDK server, a Resource), `Nio` (raw
       channels), `Transports.http`/`sockets` (the JDK client and
       WebSocket); TestHttp, TestNio, TestWs against real sockets,
       `Live`-tagged as every port-binding suite is, and okay2 gains the
       root build's default `--exclude-tags=Live` and `integrationTest`
+      (TestFraming 12 on each platform; TestHttp 11, TestNio 5, TestWs 8
+      under `liveOnly; okay2Http/test`)
 
-### Part B — typed routes
+Found while building it:
+- okay2 had no `Live` exclusion at all: nothing in it had bound a port
+  before (surveyed with the root build's grep: no hits). The root build's
+  default and `integrationTest` came over, plus `liveOnly`: the same
+  switch alone, because `scripts/gate.sh` cannot pass a quoted `set`.
+- `Sse.events` came over to okay2-stream beside `Lines`, as in the
+  Scala 3 core.
+- Not ported: TestHttp's retry case (it exercises okay's resilience
+  `retry`, not this module), and the Scala.js client transports (backlog
+  `okay2-http-routes`).
+
+
+### Part B — typed routes (backlog `okay2-http-routes`)
 - [ ] `Route`/`Query`/`Headed`/`Router` over Schema, their arity and
       split in Scala 2 terms (the Scala 3 core's tuples), `Urls`,
       `Acceptance`
