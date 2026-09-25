@@ -9,12 +9,12 @@ reaches R only as data.
 
 | | |
 |---|---|
-| `REval` | `Call(fn, args)` answering an `RValue`, `Frame(fn, in, args)` answering an `RFrame` — the two shapes a statistical function takes |
-| `RValue` | R's edge values, the `SqlValue` move told again: `RNull` (the absence of an OBJECT) and `NA(of)` (a missing value INSIDE a vector, typed) are DISTINCT, plus logical, int, double, string, raw bytes and vectors of those |
+| `REval` | `Call(fn, args)` answering an `RValue`, `Frame(fn, in, args)` answering an `RFrame` — the two shapes a statistical function takes. Since foreign-one-value it IS the one foreign effect (`okay.py.ForeignEval`), journalled by its one `Journalled` instance |
+| `RValue` | R's edge values, the `SqlValue` move told again: `RNull` (the absence of an OBJECT) and `NA(of)` (a missing value INSIDE a vector, typed) are DISTINCT, plus logical, int, double, string, raw bytes and vectors of those. Since foreign-one-value these are R's NAMES for the one value tree every language shares (`okay.py.PyValue`, which carries the typed NA), and `R.shape` is the rule set a Scala value becomes one by |
 | `RType` | `Logical`, `Integer`, `Double`, `Character` — what an `NA` is missing FROM |
 | `RFrame` | a data.frame as columns of primitives, with `rows[A: Schema]` and `RFrame.of[A: Schema]` mapping a flat case class to and from it — the same move `Typed.rows` makes over a SQL row |
 | `Condition` | R's own failure vocabulary as data (`kind`, `message`) — a failing call is a value and the process survives |
-| `RSubprocess` | stage 0: one `Rscript` per session running the shim SHIPPED WITH THIS MODULE (a versioned resource whose handshake refuses drift loudly), with a CLEAN environment — the parent leaks nothing into R unless the config names it. `start` takes an optional deadline and an optional set of REQUIRED packages |
+| `RSubprocess` | stage 0: one `Rscript` per session running the shim SHIPPED WITH THIS MODULE (a versioned resource whose handshake refuses drift loudly), with a CLEAN environment — the parent leaks nothing into R unless the config names it. `start` takes an optional deadline and an optional set of REQUIRED packages. Since foreign-one-value it is a `ForeignWorker` speaking R (`RSubprocess.worker`), supervised when it has a deadline: a timeout OR a death reopens R and replays a program as data |
 | `RSubprocess.connect` / `.over` / `.command` | R on the network (foreign-one-r): the engine is the one every wire language shares (`okay.py.WireSession`), so an R worker is served by `okay.py.ForeignGateway` from `RSubprocess.command(...)` and reached with `connect(host, port)` under the same `WireAuth`/`WireSecurity` givens as any other language; with `timeoutMillis` a timeout reconnects to a fresh R and replays its programs as data |
 
 ## Using it

@@ -448,20 +448,26 @@ more than it adds (the line count of what it removed goes in Results).
       reconnects and replays. Narrowed on the way (Decision 12): R's VALUE
       tree (`RValue`, the `na` escape, `RCodec`) moves to stage 2 and R's
       REPLAY (its `Kont` beside `SupervisedWorker`'s) to stage 3.
+- [x] Stage 2a — **foreign-one-value** (2026-09-26): R on the one value
+      tree, effect, API and handler. `PyValue` carries R's typed `NA`;
+      shim.R v9 speaks the shared tags; frames cross in the COLUMNAR shape
+      wherever the hello says so (Python, TypeScript and R do) and a frame
+      CARRIES the value rules it is read by; `Shape` owns a language's
+      frame rules; the one API takes the caller's `Shape`; `RValue`,
+      `REval`, `RStep`, `RNode`, `RFrame`, `ToR`, `okay.r.Condition` are R's
+      names over the shared types; `RSubprocess` is a `ForeignWorker`
+      (supervised with a deadline), so R's own replay is gone and R
+      recovers from a death — stage 3's R half, done here. R is a row of
+      `WireConformance` and `CrashConformance`.
 - [ ] Stage 2 — **foreign-one-protocol**: the five operations and
       parts (shim 7 in every shim; `held`, `Address`, `perform` as the one
       callback message, tables as parts); the transcript written and
       replayed; `Foreign[L, +A]`; `Refused`; `Value` — which ABSORBS
-      `RValue` (its one extra case, a typed `na`, becomes an escape of the
-      one tree; `I32` is `Int` at `Shape[R]`, `Named` is `Dict`), so
-      `RCodec`, R's `Wire` and `REval` fold into the one codec and effect,
-      and R passes `WireConformance` and `CrashConformance` as a row.
+      `RValue` — DONE by stage 2a (foreign-one-value).
 - [ ] Stage 3 — **foreign-one-pool**: one `Pool` (use, lease, route by
       ref, perWorker, supervise); `PyWorkers`, the cluster pools,
-      `Holds.pyWorkers`, `SupervisedWorker` AND `RSubprocess`'s own
-      respawn-and-replay (`Kont`, ~90 lines — the same algorithm keyed the
-      same way) folded; R gains recovery from a DEATH, not only from a
-      timeout; the lease-leak test.
+      `Holds.pyWorkers` and `SupervisedWorker` folded (R's own replay is
+      already gone, stage 2a); the lease-leak test.
 - [ ] Stage 4 — **foreign-one-runtime**: `Runtime[L]`, `Module[L]`,
       `Arg`/`Ret`, the markers, `Language[L]`; the facade's typeclasses
       and the cluster's per-language stages become the derived

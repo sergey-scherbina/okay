@@ -650,7 +650,7 @@ conformance suite (`WireConformance`) is the same test body in every one.
 | **Go** | pipes, TCP, WebAssembly | `okay.Call(c, …)` | yes | yes | DEFLATE | itself | itself | itself | supervised, reconnect, replay |
 | **Rust** | pipes, TCP, FFM, WebAssembly | `okay_call` (not on wasm) | yes | yes | DEFLATE | itself | itself | itself (`tls` feature) | supervised, replay |
 | **Haskell** | pipes; TCP by gateway | no (programs only) | yes | yes | none (GHC ships no zlib) | gateway | gateway | gateway | supervised, replay |
-| **R** | pipes; TCP by gateway | `okay_call` | yes | yes | zlib | gateway | gateway | gateway | timeout respawn or reconnect, replay |
+| **R** | pipes; TCP by gateway | `okay_call` | yes | yes | zlib | gateway | gateway | gateway | supervised, reconnect, replay |
 
 The Compression column is what the far side SPEAKS. The default uses it
 over TCP only; on pipes and in-process it is used when a given asks for it
@@ -674,7 +674,10 @@ The suites behind the rows:
   `TestGatewayHs` (CBOR through the gateway).
 - **R**: `TestRWireDefault`, `TestRWireZlib`, `TestRWireCbor`,
   `TestRWireCborPlain`, `TestRReplay`, `TestRNetwork` (the gateway, a
-  secret, a timeout reconnected and replayed).
+  secret, a timeout reconnected and replayed), and — since
+  foreign-one-value, when R became one more `ForeignWorker` — the SAME
+  bodies every language runs: `TestRConformance` (`WireConformance` at
+  R's value rules) and `TestRCrash` (`CrashConformance`).
 
 `ForeignWorker.supervised`, with its replay of programs as data, is one
 class over every ForeignWorker link, and ONE crash suite holds it on each
@@ -714,11 +717,6 @@ else on the line, and a call there cannot be abandoned.
 
 ## Limits
 
-- **R speaks its own values.** Since foreign-one-r R runs on the one
-  engine, but its handler still speaks `RValue` (R's typed NA has no case
-  in `PyValue`), so the conformance suites, written against the `Foreign`
-  API, do not run over R yet; that is stage 2 of specs/foreign-one.md.
-  R recovers from a timeout, not yet from a death (stage 3).
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.
 - **Go in-process.** Only as WebAssembly.
 

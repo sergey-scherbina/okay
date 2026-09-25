@@ -14,7 +14,6 @@
       (a step answering a non-transient Left threw out of the iterator
       with the lease held) as a test — a leased worker is released on
       every failure path and when a downstream stops pulling.
-      R JOINS HERE too (foreign-one-r, spec Decision 12): `RSubprocess`'s
-      own respawn-and-replay (`Kont`, the same algorithm `SupervisedWorker`
-      runs, keyed the same way) folds into the pool's supervision, and R
-      recovers from a DEATH, not only from a timeout.
+      R's own respawn-and-replay is already gone (foreign-one-value: R is a
+      `ForeignWorker` under `SupervisedWorker`), so the fold here is
+      the pools and the supervisor alone.

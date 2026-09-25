@@ -46,7 +46,7 @@ object Calls:
     def name = s"r:$rscript"
     def call[A: Schema, B: Schema](module: okay.r.RModule, fn: String)(a: A): Either[Batcher.Failed, B] =
       val pool = RPool.of(module, rscript, Stage.Workers)
-      RPool.call(pool, rscript, s"${module.name}:$fn", Vector(okay.r.RCodec.encode(a)))
+      RPool.call(pool, rscript, s"${module.name}::$fn", Vector(okay.r.RCodec.encode(a)))
         .flatMap(v => okay.r.RCodec.decode[B](v))
         .left.map(c => Batcher.Failed(c.kind, c.message))
 
@@ -110,7 +110,7 @@ object Frames:
       val pool = RPool.of(module, rscript, Stage.Workers)
       val sent = try Right(okay.r.RArrowFrames.frame(in))
         catch case e: IllegalStateException => Left(Batcher.Failed("Frame", Option(e.getMessage).getOrElse("")))
-      sent.flatMap(f => RPool.frame(pool, rscript, s"${module.name}:$fn", f, Vector.empty)
+      sent.flatMap(f => RPool.frame(pool, rscript, s"${module.name}::$fn", f, Vector.empty)
         .left.map(c => Batcher.Failed(c.kind, c.message)))
         .flatMap(f => okay.r.RArrowFrames.table(f).left.map(m => Batcher.Failed("Frame", m)))
 
@@ -214,7 +214,7 @@ object Programs:
     private def cb[F[+_]](c: Cb[F]): okay.r.R.Callback[F] =
       okay.r.R.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
     def program[Arg: Schema, Out: Schema, F[+_]](module: okay.r.RModule, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
-      okay.r.R.program[Out](s"${module.name}:$fn").calling(okay.r.R.callbacks[F](cbs.map(cb[F])*))(a).program
+      okay.r.R.program[Out](s"${module.name}::$fn").calling(okay.r.R.callbacks[F](cbs.map(cb[F])*))(a).program
         .map(_.left.map(c => Batcher.Failed(c.kind, c.message)))
     def run[A](module: okay.r.RModule)(prog: A ! Op): A =
       RPool.of(module, rscript, Stage.Workers).use(w => (prog.runWith(using w.handler), false))
@@ -281,9 +281,9 @@ object Holds:
     type Ref = okay.r.RRef
     def name = s"r:$rscript"
     def hold[Arg: Schema](module: okay.r.RModule, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
-      rHolder(module, rscript).use(w => (okay.r.R.hold(s"${module.name}:$fn")(a).runWith(using w.handler), false)).left.map(rfailed)
+      rHolder(module, rscript).use(w => (okay.r.R.hold(s"${module.name}::$fn")(a).runWith(using w.handler), false)).left.map(rfailed)
     def apply[Arg: Schema, Out: Schema](module: okay.r.RModule, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
-      rHolder(module, rscript).use(w => (okay.r.R.fn[Out](s"${module.name}:$fn")(ref, a).runWith(using w.handler), false)).left.map(rfailed)
+      rHolder(module, rscript).use(w => (okay.r.R.fn[Out](s"${module.name}::$fn")(ref, a).runWith(using w.handler), false)).left.map(rfailed)
     def release(module: okay.r.RModule)(ref: Ref): Unit =
       rHolder(module, rscript).use(w => (ref.release.runWith(using w.handler), false))
 
