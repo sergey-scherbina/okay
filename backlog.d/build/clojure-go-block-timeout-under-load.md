@@ -10,3 +10,9 @@
       box) or whether it can park forever. A `jcmd` dump taken while it
       is past 30 s tells the two apart. It is the first sighting.
       (2026-09-25)
+      SECOND sighting the same day: http-mcp-agent-edge's `affected
+      master` gate (34.5 s), okay-clojure again only transitive (a
+      build.sbt change); the suite alone right after, at load 131-182,
+      green (7 tests). Two red gates from one test on unrelated lanes
+      is the shape of a budget, not a bug — a longer timeout on this
+      one test is the cheap answer if the dump says it only grows.
