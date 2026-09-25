@@ -35,6 +35,10 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 cd "$root"
+# `quiet`/`kill_tree`, shared with gate-retry.sh and jmh-lane.sh — the
+# revert confirmation step (stage C) waits for a quiet box itself,
+# same as gate-retry.sh's own wait, before trusting a re-run's verdict
+. "$here/quiet.sh"
 LOCKDIR="$root/.work/ci/lock"
 KICK="$root/.work/ci/kick"
 LOGDIR="$root/.work/ci/log"
@@ -87,8 +91,8 @@ take_lock() {
 
 release_lock() { rm -rf "$LOCKDIR"; }
 
-# ---- stage C: bisect (a DETACHED worktree, never the main checkout) --
-# and revert the first bad LANDING commit
+# ---- stage C: bisect (a DETACHED worktree, never the main checkout),
+# CONFIRM the culprit on its own before trusting it, then revert
 bisect_and_revert() {
   from="$1"; to="$2"; log="$3"
   landings=$(git rev-list --reverse "$from..$to" | while read -r c; do
@@ -127,6 +131,30 @@ bisect_and_revert() {
     fi
     echo "ci-runner: bisect over $n landing(s) names $culprit" | tee -a "$log"
   fi
+
+  # CONFIRM BEFORE REVERTING (ci-runner-revert-needs-confirmation,
+  # 2026-09-25): two real reverts landed on a real red that never
+  # repeated — a load-induced test timeout and a Native runner killed
+  # by signal 9, neither a fault in the reverted change. `gate.sh`
+  # already re-runs its ONE known false-red shape (native-runner-error)
+  # before trusting it; the culprit a bisect names deserves the same
+  # scepticism, generically. Re-run ONLY the culprit's own SCOPED gate
+  # — not the whole build again, and not the whole bisect — waiting for
+  # quiet first, since a re-run on the same noisy box just repeats the
+  # same false red.
+  echo "ci-runner: confirming $culprit before reverting — re-running its own gate once more" | tee -a "$log"
+  w=0
+  while [ "$w" -lt 60 ]; do
+    quiet && break
+    [ $((w % 4)) -eq 0 ] && echo "ci-runner: waiting for a quiet box before the confirmation run, $((w / 2)) min: busy-sbt=$H load=$L freeGB=$F" | tee -a "$log"
+    sleep 30
+    w=$((w + 1))
+  done
+  if sh scripts/gate.sh "affected $from..$culprit" >>"$log" 2>&1; then
+    echo "ci-runner: $culprit is GREEN on its own gate, re-run alone — a flake, not a regression; NOT reverting, NOT pushing (the next whole-build turn re-tests $from..$to fresh)" | tee -a "$log"
+    return 1
+  fi
+  echo "ci-runner: $culprit confirmed RED on its own gate, re-run alone — reverting" | tee -a "$log"
   culprit_subject=$(git log -1 --format=%s "$culprit")
   slug=$(printf '%s\n' "$culprit_subject" | sed -n 's/^\([a-zA-Z0-9-]*\):.*/\1/p')
   [ -z "$slug" ] && slug="unnamed"
@@ -229,6 +257,25 @@ run_once() {
       return 1
       ;;
     *)
+      # A RED WITH NO `==> X` NAMES NO TEST (ci-runner-reverts-on-infra-red,
+      # 2026-09-25): stack-safety-json was reverted for a Native test
+      # binary killed by signal 9 and an `okayAsyncNative` accept
+      # timeout — gate.sh's own words for this shape are "a failure
+      # this script does not recognise", and okay-async does not even
+      # depend on the module the reverted lane touched. Treated exactly
+      # like KILLED/STALLED (a SIGNAL, not a verdict): no bisect, no
+      # revert, retried on the next kick. A red that DOES name a test
+      # still goes to confirmation below — a named test can still be a
+      # load-induced flake (TestSignals was), which is what that step
+      # is for.
+      # the exact same test gate.sh itself uses to detect a real failure
+      # (its own grep -q "==> X") — one vocabulary, not a stricter copy
+      # that could quietly stop matching what gate.sh actually prints
+      if ! grep -q "==> X" "$log"; then
+        echo "ci-runner: RED (exit $rc) with no test named in the log — infrastructure noise, not a verdict; not bisecting, will retry on the next kick" | tee -a "$log"
+        release_lock; trap - EXIT INT TERM
+        return 1
+      fi
       echo "ci-runner: RED (exit $rc) — bisecting $from..$to" | tee -a "$log"
       bisect_and_revert "$from" "$to" "$log"
       release_lock; trap - EXIT INT TERM

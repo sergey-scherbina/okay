@@ -158,9 +158,20 @@ worktree and never touches anything uncommitted there.
 
 ### Stage C — bisect and revert
 
-On RED over `from..to` with more than one LANDING commit in the range
-(a landing = a commit whose diff is not board-only — the same filter as
-step 3):
+**Zero — a RED with no `==> X` names no test at all**
+(ci-runner-reverts-on-infra-red, 2026-09-25): `stack-safety-json` was
+reverted for a Native test binary killed by signal 9 and an
+`okayAsyncNative` accept timeout — `gate.sh`'s own words for this shape
+are "a failure this script does not recognise", and the reverted module
+did not even depend on the one the lane touched. Checked with the exact
+test `gate.sh` itself uses (`grep -q "==> X"` on the run's own log)
+BEFORE anything below runs: no match means this is a SIGNAL, not a
+verdict — treated like `gate: KILLED`/`gate: STALLED`, no bisect, no
+revert, retried on the next kick.
+
+Otherwise, on RED over `from..to` with more than one LANDING commit in
+the range (a landing = a commit whose diff is not board-only — the same
+filter as step 3):
 
 1. `git bisect start $to $from` in a DETACHED WORKTREE of its own
    (`../okay-ci-bisect`), never in the main checkout — a bisect there is
@@ -168,21 +179,35 @@ step 3):
    sh scripts/gate.sh "affected $from..HEAD"` — the SCOPED gate here,
    because a bisect over five disjoint landings then costs five scoped
    gates and not five whole builds;
-2. the first bad commit `C` is reverted on master: `git revert --no-edit
+2. **CONFIRM before reverting** (ci-runner-revert-needs-confirmation,
+   2026-09-25 — two real reverts landed on a real red that never
+   repeated: `TestSignals` under load, a Native runner killed by signal
+   9). Wait for quiet (the SAME `quiet()` gate-retry.sh and
+   `jmh-lane.sh` use — a re-run on the same noisy box just repeats the
+   same false red), then run `sh scripts/gate.sh "affected $from..C"`
+   ONCE MORE, alone. GREEN here means a flake: log it, do NOT revert
+   and do NOT push — the next whole-build turn re-tests `from..to`
+   fresh, on (hopefully) a quieter box, and if the range really is fine
+   nothing was lost by not reverting. Only a SECOND red confirms `C`;
+3. the first bad commit `C` is reverted on master: `git revert --no-edit
    C`; the revert commit's message names `C`, its lane (from the
    `release-claim` that follows it, when one does) and the runner's log;
-3. `changelog.d/ci-revert-<slug>.md` is written with the same facts and
+4. `changelog.d/ci-revert-<slug>.md` is written with the same facts and
    committed with the revert; the room gets `ci: RED <from>..<to> —
    reverted <C> (<slug>); re-land with the fix`;
-4. the loop's next turn runs the whole build on `<revert>` and pushes it
+5. the loop's next turn runs the whole build on `<revert>` and pushes it
    green. The culprit and its revert reach origin TOGETHER, or not at all.
 
-One landing commit in the range needs no bisect: it is the culprit.
+One landing commit in the range needs no bisect: it is the culprit,
+straight into step 2 (confirm) above.
 
 A red that `gate.sh` already knows to be false (`native-runner-error`'s
 lost process) is re-run alone by `gate.sh` itself before the verdict;
-a red that survives is a red. The runner never widens an assertion and
-never retries a `gate: RED`, exactly as `gate-retry.sh` does not.
+step 2 above is the identical instinct applied to the CULPRIT a bisect
+names, generically, rather than to one known failure shape. A red that
+survives BOTH the original run and the confirmation is a red. The
+runner never widens an assertion and never retries a confirmed
+`gate: RED`, exactly as `gate-retry.sh` does not.
 
 ### The push rule
 
@@ -295,6 +320,10 @@ four landings — two plain, one that introduces a marker file, one
 after it — with the fake gate red exactly when the marker is present
 in the tree, so a REAL `git bisect run` has something to find):
 
+- [x] a red with no `==> X` anywhere in the log (infrastructure noise —
+      a killed Native process, an accept timeout) is never bisected or
+      reverted; the next turn re-tests the SAME range and, once
+      genuinely green, pushes the original commit unchanged
 - [x] a red range with one landing commit reverts it without a bisect
 - [x] a red range with several landing commits reverts exactly the
       first bad one and no other (4 landings, the marker-introducing
@@ -305,6 +334,14 @@ in the tree, so a REAL `git bisect run` has something to find):
       with the revert, culprit and revert together
 - [x] the bisect runs in its own detached worktree; the main checkout's
       HEAD never leaves master, and the bisect worktree is removed after
+- [x] the culprit (sole or bisected) is confirmed on its OWN scoped gate,
+      alone, before the revert — a fixture case (10b) where the
+      confirmation comes back GREEN reverts nothing, pushes nothing, and
+      the next (genuinely green) turn pushes the ORIGINAL, never-guilty
+      commit unchanged
+- [x] the confirmation waits for a quiet box first, the same `quiet()`
+      as `gate-retry.sh`/`jmh-lane.sh` — verified by the shared source,
+      not a second copy of the threshold
 
 Policy (AGENTS.md):
 

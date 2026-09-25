@@ -36,10 +36,33 @@ new_fixture() {
     git config user.email t@t.test; git config user.name selftest
     mkdir -p scripts changelog.d .work/active
     cp "$here/ci-runner.sh" scripts/ci-runner.sh
+    cat > scripts/quiet.sh <<'EOF'
+#!/bin/sh
+# fake quiet.sh: always quiet, immediately — this selftest is about
+# the confirm/revert decision, not the wait-loop timing (that is
+# jmh-lane-selftest.sh's own job, on scripts/jmh-lane.sh)
+quiet() { L=1; H=0; F=99; return 0; }
+kill_tree() { :; }
+EOF
     cat > scripts/gate.sh <<'EOF'
 #!/bin/sh
-# fake gate.sh: green unless CI_TEST_VERDICT=red, OR (for the bisect
-# case) a BAD_MARKER file is present in the tree
+# fake gate.sh: a QUEUE (one word per line, popped per call) takes
+# priority when non-empty, so a test can script "red, then green on
+# the confirmation re-run"; otherwise green unless CI_TEST_VERDICT=red,
+# OR (for the bisect case, a REAL git bisect over real commits) a
+# BAD_MARKER file is present in the checked-out tree
+Q="$(cd "$(dirname "$0")/.." && pwd)/.work/gate-queue"
+if [ -s "$Q" ]; then
+  line=$(head -1 "$Q")
+  tail -n +2 "$Q" > "$Q.tmp" 2>/dev/null && mv "$Q.tmp" "$Q"
+  case "$line" in
+    red) echo "gate: RED — tests failed:"; echo "==> X fake.Test.thing"; exit 1 ;;
+    # a red with NO ==> X: a Native process killed by signal, gate.sh's
+    # own "a failure this script does not recognise" shape
+    infra-red) echo "gate: RED — a failure this script does not recognise"; exit 1 ;;
+    *) echo "gate: GREEN"; exit 0 ;;
+  esac
+fi
 if [ -f BAD_MARKER ] || [ "${CI_TEST_VERDICT:-green}" = red ]; then
   echo "gate: RED — tests failed:"; echo "==> X fake.Test.thing"; exit 1
 fi
@@ -64,6 +87,10 @@ sha() { ( cd "$work" && git rev-parse "$1" ); }
 origin_sha() { git -C "$bare" rev-parse master 2>/dev/null || echo none; }
 commit_file() { # <name> <content>
   ( cd "$work" && echo "$2" > "$1" && git add "$1" && git commit -q -m "$1: fixture landing" )
+}
+queue() { # one word ("red"/"green") per line, popped per fake-gate.sh call
+  mkdir -p "$work/.work"
+  for w in "$@"; do printf '%s\n' "$w" >> "$work/.work/gate-queue"; done
 }
 
 say "1. nothing to do: origin/master == master"
@@ -152,19 +179,54 @@ while [ "$(origin_sha)" != "$target" ] && [ "$w" -lt 20 ]; do sleep 0.5; w=$((w 
 [ "$(origin_sha)" = "$target" ] && ok "the detached run pushed within 10s" || bad "origin at $(origin_sha) after waiting, wanted $target"
 rm -rf "$tmp"
 
-say "10. RED with ONE landing commit: reverted without a bisect, nothing pushed on the red turn"
+say "9b. a RED with no ==> X (infrastructure noise) is never bisected or reverted"
+new_fixture
+commit_file src.txt one
+target=$(sha master)
+before_origin=$(origin_sha)
+queue infra-red
+out=$(run once); rc=$?
+[ "$rc" -ne 0 ] && ok "nonzero exit" || bad "exit 0"
+[ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed" || bad "origin moved"
+printf '%s\n' "$out" | grep -q "no test named in the log — infrastructure noise" && ok "recognised infra noise, not a verdict" || bad "did not say so: $out"
+[ "$(cd "$work" && git rev-parse master)" = "$target" ] && ok "no bisect, no revert — master unchanged" || bad "master moved on infra noise"
+say "    (the next turn, genuinely green, pushes the ORIGINAL commit)"
+out2=$(CI_TEST_VERDICT=green run once); rc2=$?
+[ "$rc2" -eq 0 ] && ok "next turn exits 0" || bad "next turn exit $rc2: $out2"
+[ "$(origin_sha)" = "$target" ] && ok "the original commit reached origin" || bad "origin at $(origin_sha), wanted $target"
+rm -rf "$tmp"
+
+say "10. RED with ONE landing commit, confirmed RED again: reverted without a bisect"
 new_fixture
 commit_file src.txt one
 before_origin=$(origin_sha)
 out=$(CI_TEST_VERDICT=red run once); rc=$?
 [ "$rc" -ne 0 ] && ok "nonzero exit on the red turn" || bad "exit 0"
 [ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed on the red turn" || bad "origin moved on red"
+printf '%s\n' "$out" | grep -q "confirming .* before reverting" && ok "confirmed before reverting" || bad "did not confirm: $out"
 ( cd "$work" && git log --oneline -3 ) | grep -qi "revert" && ok "a revert commit exists" || bad "no revert commit"
 ls "$work"/changelog.d/ci-revert-*.md >/dev/null 2>&1 && ok "changelog.d/ci-revert-*.md exists" || bad "no revert changelog"
 say "    (the next turn, green, pushes the revert)"
 out2=$(CI_TEST_VERDICT=green run once); rc2=$?
 [ "$rc2" -eq 0 ] && ok "next turn exits 0" || bad "next turn exit $rc2: $out2"
 [ "$(origin_sha)" = "$(sha master)" ] && ok "the revert reached origin" || bad "revert not pushed"
+rm -rf "$tmp"
+
+say "10b. RED with ONE landing commit, GREEN on the confirmation re-run: a flake, NOT reverted, NOT pushed"
+new_fixture
+commit_file src.txt one
+target=$(sha master)
+before_origin=$(origin_sha)
+queue red green
+out=$(run once); rc=$?
+[ "$rc" -ne 0 ] && ok "nonzero exit (still not pushed this turn)" || bad "exit 0"
+[ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed" || bad "origin moved"
+printf '%s\n' "$out" | grep -q "a flake, not a regression; NOT reverting" && ok "said it was a flake, not reverting" || bad "did not say so: $out"
+[ "$(cd "$work" && git rev-parse master)" = "$target" ] && ok "no revert commit — master unchanged" || bad "master moved despite the flake verdict"
+say "    (the next turn, genuinely green, pushes the ORIGINAL commit — nothing was lost)"
+out2=$(CI_TEST_VERDICT=green run once); rc2=$?
+[ "$rc2" -eq 0 ] && ok "next turn exits 0" || bad "next turn exit $rc2: $out2"
+[ "$(origin_sha)" = "$target" ] && ok "the original (never-guilty) commit reached origin" || bad "origin at $(origin_sha), wanted $target"
 rm -rf "$tmp"
 
 say "11. RED with SEVERAL landing commits: bisect finds the one that introduced BAD_MARKER"
@@ -180,6 +242,7 @@ out=$(run once); rc=$?
 [ "$rc" -ne 0 ] && ok "nonzero exit" || bad "exit 0"
 [ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed on the red turn" || bad "origin moved"
 printf '%s\n' "$out" | grep -q "bisect over 4 landing(s) names" && ok "bisect ran over all 4 landings (a, b, culprit, c)" || bad "did not bisect: $out"
+printf '%s\n' "$out" | grep -q "confirmed RED on its own gate, re-run alone" && ok "confirmed the bisected culprit before reverting" || bad "did not confirm: $out"
 ( cd "$work" && git log --oneline -5 ) | grep -qi "revert \"culprit:" && ok "reverted the CULPRIT commit by name, not a or c" || bad "reverted the wrong commit"
 ( cd "$work" && [ -f BAD_MARKER ] ) && bad "BAD_MARKER still present after the revert" || ok "BAD_MARKER gone after the revert"
 ( cd "$work" && [ -f a.txt ] && [ -f c.txt ] ) && ok "the innocent landings (a.txt, c.txt) survive" || bad "an innocent landing was lost"
