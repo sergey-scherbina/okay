@@ -271,5 +271,17 @@ okay's columnar format, on every platform:
     the row-wise repetition. It wins only on flat numeric tables (trades:
     pyarrow 379 384 vs CBOR 434 398 bytes at 100k). Keep CBOR+ZSTD
     there, unless the batch is flat and numeric.
-  - Our ZSTD itself is 1.3–1.6x behind pyarrow's on columnar buffers:
-    `okay-compress-zstd-ratio`, with its likely cause.
+  - Our ZSTD itself was 1.3–1.6x behind pyarrow's on columnar buffers.
+    FIXED by okay-compress-zstd-ratio: Arrow's offset buffers went RAW,
+    because Huffman weights past 128 symbols were not written. At 1 000
+    rows, Arrow+ZSTD (ours) is now:
+    - trades 5 848 bytes (pyarrow 5 808, CBOR+ZSTD 7 922);
+    - events 14 648 (pyarrow 14 344, CBOR+ZSTD 5 991);
+    - orders 14 200 (pyarrow 16 680, CBOR+ZSTD 6 584).
+
+    The round trip is 0.76 / 1.6 / 3.0 ms against CBOR+ZSTD's 1.7 / 2.9 /
+    5.5, with less than half the allocation. So, compressed, Arrow is
+    faster and lighter on every shape, and smaller only on flat numeric
+    ones. CBOR+ZSTD stays 2.2–2.4x smaller where there is text or
+    nesting, which is the format's own cost. Over a network the choice
+    is bytes (CBOR) against CPU (Arrow).

@@ -133,3 +133,22 @@ native bindings (lz4-java, zstd-jni) and a pure-Java port
     noise, its errors wider than the gap. The rest of the gap is
     `okay-compress-zstd-speed`.
 
+- okay-compress-zstd-ratio (2026-09-25): the 1.3–1.6x gap to pyarrow on
+  Arrow tables was measured buffer by buffer. The int64 and string-data
+  buffers were level. The OFFSET buffers (increasing int32s) went RAW:
+  their low bytes span 0–255, and `HuffmanEncoder` wrote only the direct
+  weight form, which holds 128 weights. The first hypothesis, "the int64
+  column", was REFUTED: it compressed to exactly pyarrow's 20 354 bytes.
+  - FSE-coded Huffman weights (RFC 8878 4.2.1.2): two interleaved states
+    over one backward stream. The chain that emits the next-to-last weight
+    ends on a state whose update READS bits (the decoder stops on reading
+    past the start), and the encoder is derived from the decoder's table
+    as the sequence encoder is. Validated by pyarrow on a new
+    "int32 offsets" sample: 7 452 vs its 7 447 bytes.
+  - The head table is sized to the input; it was 2^17 entries (512 KiB)
+    per call, most of a small buffer's cost.
+  - Mutant: the two initial states written in swapped order. The round
+    trip went red ("Huffman weights that do not complete a tree").
+  - Arrow+ZSTD at 1 000 rows: bytes and time in specs/okay-arrow.md
+    (stage 7a); history.d okay-compress-zstd-ratio.
+

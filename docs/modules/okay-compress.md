@@ -77,6 +77,9 @@ loaded (35–112), so the times are wide; the pairs ran side by side:
 
 The output is at least as small as the reference's, and ZSTD's is
 smaller: the hash chain searches more than aircompressor's level 3 does.
+On Arrow's per-buffer compression, our ZSTD matches pyarrow's own
+buffer for buffer. That holds for offsets too, whose literals need
+FSE-coded Huffman weights (a byte alphabet past 128 symbols).
 Speed was behind by 2–7x. aircompressor reads and copies eight bytes at a
 time through `Unsafe`, and the first cut of this code worked byte by
 byte.
