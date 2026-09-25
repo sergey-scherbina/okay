@@ -18,3 +18,12 @@
       `arrow` package (native, heavy) on R's side and an Arrow reader
       on ours — a big dependency for a module whose only dependency
       today is jsonlite. Try the cheap shape change first.
+      HALF BUILT by py-arrow (2026-09-25): the JVM side exists —
+      `okay.codec.ArrowIpc` writes and reads Arrow IPC streams (int64,
+      float64, utf8, bool, null; nullable; pyarrow-validated), and the
+      wire carries a frame as ONE Arrow stream with the request header in
+      its metadata (`FrameFormat` givens, `frames: ["arrow"]` in the
+      hello). What R needs is only its half: the shim announcing arrow
+      when the `arrow` package is installed and `RSubprocess` taking
+      `FrameFormat`. R's `arrow::read_ipc_stream`/`write_ipc_stream` do
+      the rest. Python's measurement for scale: 500k rows 806 -> 147 ms.
