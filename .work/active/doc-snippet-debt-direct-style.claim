@@ -1,4 +1,0 @@
-task: doc-snippet-debt-direct-style
-started: 2026-09-24
-agent: claude (session_013hkJA4B7z8s2CRHjfv668p)
-scope: pin docs/direct-style.md example lines (TestDocExamplesDirectStyle), shrink docs/snippet-debt.txt
