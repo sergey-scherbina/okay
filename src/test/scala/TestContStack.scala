@@ -66,11 +66,20 @@ class TestContStack extends munit.FunSuite:
     assert(switches >= 1, "a 256 KB stack cannot hold 2000 levels, and it never switched")
   }
 
-  test("an explicit 8 MB thread is granted more than a 2 MB one (exact road)") {
+  test("the exact road sees an explicit 8 MB thread: a program that fits it switches zero times, one that cannot fit 2 MB switches") {
     assume(StackRoom.sp() >= 0, "the stack is not readable on this JVM")
-    val (_, on2) = switchesDuring(SmallStack.run(2048)(reset(tail(n))))
-    val (_, on8) = switchesDuring(SmallStack.run(8192)(reset(tail(n))))
-    assert(on8 < on2, s"8 MB switched $on8 times, 2 MB $on2")
+    // 4 000 opaque levels: 6 MB at the cold 1.5 KB a level, under 8 MB
+    // less the guard zone whatever the JIT's state; 20 000 levels are
+    // 5.8 MB even at the warm 288 B, over 2 MB whatever its state.
+    // NOT "8 MB switches fewer times than 2 MB": both switch exactly
+    // ONCE on 20 000 levels (the segment past a switch is 1 GB) — the
+    // first version asserted that and went red in the runner's whole
+    // build (cont-stack-test-8mb, 2026-09-25).
+    val (a8, on8) = switchesDuring(SmallStack.run(8192)(reset(tail(4000))))
+    assertEquals(a8, 4000)
+    assertEquals(on8, 0L, "4 000 levels on 8 MB switched: the reader did not see the 8 MB")
+    val (a2, on2) = switchesDuring(SmallStack.run(2048)(reset(tail(n))))
+    assertEquals(a2, n)
     assert(on2 >= 1, s"20 000 levels on 2 MB never switched ($on2)")
   }
 
