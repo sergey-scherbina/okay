@@ -535,6 +535,14 @@ private[okay] object Wire {
             case (Some(Json.JNum(i)), _) => PyValue.Ref(PyRef(i.toLong, "?"))
             case _ => PyValue.PyNone
           case Some(Json.JStr("na")) => PyValue.NA(unboxed(m.get("of")).collect { case Json.JStr(t) => t }.getOrElse("logical"))
+          // R's own tags before foreign-one-value (shim v8 and older journals),
+          // still READ so a host meeting its older frames is not stuck
+          case Some(Json.JStr("i")) => unboxed(m.get("v")) match
+            case Some(Json.JNum(n)) => PyValue.I64(n.toLong)
+            case _ => PyValue.PyNone
+          case Some(Json.JStr("raw")) => unboxed(m.get("b64")) match
+            case Some(Json.JStr(b)) => PyValue.Bytes(java.util.Base64.getDecoder.decode(b))
+            case _ => PyValue.PyNone
           case _ => PyValue.PyNone   // an untagged object has no PyValue shape
       case Json.JErr(_) => PyValue.PyNone
       case Json.JArr(_) => throw IllegalStateException("unreachable: JArr is handled by the work-list")
@@ -545,7 +553,7 @@ private[okay] object Wire {
       case CombineDict(keys: Vector[String])
 
     def dictPairs(fs: Vector[(String, Json)]): Option[Vector[(String, Json)]] =
-      if !fs.exists(_ == ("t" -> Json.JStr("dict"))) then None
+      if !fs.exists(p => p == ("t" -> Json.JStr("dict")) || p == ("t" -> Json.JStr("named"))) then None
       else fs.collectFirst { case ("kv", Json.JArr(ps)) => ps.collect {
         case Json.JArr(Vector(Json.JStr(k), v)) => (k, v)
       } }
