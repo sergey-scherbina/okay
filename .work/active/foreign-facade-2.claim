@@ -1,5 +1,0 @@
-slug: foreign-facade-2
-who: claude (session 6f505c09)
-what: foreign-facade stage 2 — Frames[M]: a Table in, a Table out, for PyModule/RModule (Arrow where spoken, columnar JSON otherwise) and JvmModule (by reference); the conformance body for frames; Frame.Threshold measured or filed
-files: okay-foreign-cluster (Facade.scala, Engine.scala JvmModule), its tests, specs/foreign-facade.md
-since: 2026-09-25
