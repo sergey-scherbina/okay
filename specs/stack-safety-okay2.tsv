@@ -30,10 +30,6 @@ okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	22	dataType	direct	Vect
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	50	rowOf	mutual	Iterator.map,Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	35	struct	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	39	value	mutual	Iterator.map,Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
-okay2-sql/src/main/scala/okay2/sql/Query.scala	135	both	direct		UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
-okay2-sql/src/main/scala/okay2/sql/Query.scala	142	collect	direct		UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
-okay2-sql/src/main/scala/okay2/sql/Query.scala	152	eval	direct		UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
-okay2-sql/src/main/scala/okay2/sql/Query.scala	126	render	direct		UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
 okay2-sql/src/main/scala/okay2/sql/Typed.scala	225	fits	lambda	IterableOnceOps.forall	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
 okay2-stm/src/main/scala/okay2/Stm.scala	88	pending	lambda	Option.flatMap,Option.orElse
 okay2-stm/src/main/scala/okay2/Stm.scala	124	perform	mutual	

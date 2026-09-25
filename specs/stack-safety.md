@@ -206,8 +206,17 @@ deleted.
       okay-pg, okay-jdbc, okay-r2dbc. Two known suspects:
       - `PyCodec.enc`/`dec` and `RCodec.enc`/`dec` recurse per level
         of a recursive VALUE;
-      - `Query.eval`/`collect` recurse per `And`/`Or` of a predicate
-        built by a fold.
+      - [x] `Query.eval`/`collect` recurse per `And`/`Or` of a predicate
+        built by a fold (stack-safety-query, 2026-09-25). CONFIRMED in both
+        cores: a predicate made by `reduce(_ and _)` of 200 000 conditions
+        overflowed in `render`, `collect` and `eval` (TestQueryDepth, red
+        first in okay-sql and okay2-sql). All three are explicit stacks now.
+        `render` writes left to right into one builder after a post-order
+        pass marks the subtrees that render as nothing, so the `True`
+        elimination is unchanged (pinned case by case). That also drops the
+        old render's quadratic copy of the string built below each level.
+        `eval` is a small continuation machine that keeps `&&`/`||`
+        short-circuiting.
 - [ ] Stage 5 — workflow: `Proc.go`/`nodes`, `Wf.go`, recursing per
       `Then` of a composed arrow.
 - [ ] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js.

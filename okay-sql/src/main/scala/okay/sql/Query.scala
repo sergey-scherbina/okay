@@ -140,35 +140,95 @@ object Query:
 
   // ---- the two interpreters, over the reified predicate
 
-  private def render(p: Pred): (String, Vector[SqlValue]) = p match
-    case Pred.True => ("", Vector.empty)
-    case Pred.Cmp(_, col, _, op, v) => (s"$col ${op.sql} ?", Vector(v))
-    case Pred.Null(_, col, _, isNull) => (s"$col IS ${if isNull then "" else "NOT "}NULL", Vector.empty)
-    case Pred.Not(q) => val (c, ps) = render(q); (s"NOT ($c)", ps)
-    case Pred.And(l, r) => both(l, r, "AND")
-    case Pred.Or(l, r) => both(l, r, "OR")
+  // Every walk below is an explicit stack (stack-safety-query): a
+  // predicate built by a fold — `conds.reduce(_ and _)` — is as deep as
+  // the list is long, and one frame per `and` overflowed at a few
+  // thousand. TestQueryDepth runs 200 000.
 
-  private def both(l: Pred, r: Pred, word: String): (String, Vector[SqlValue]) =
-    (render(l), render(r)) match
-      case (("", ps), (c, qs)) => (c, ps ++ qs)
-      case ((c, ps), ("", qs)) => (c, ps ++ qs)
-      case ((c, ps), (d, qs)) => (s"($c) $word ($d)", ps ++ qs)
+  /** the subtrees that render as nothing: `True`, and an and/or of two
+   * such — what `render` drops, decided before it writes a character */
+  private def blanks(p: Pred): java.util.IdentityHashMap[Pred, Unit] =
+    val blank = java.util.IdentityHashMap[Pred, Unit]()
+    // post-order: a node is judged once both children have been
+    val todo = scala.collection.mutable.Stack[(Pred, Boolean)]((p, false))
+    while todo.nonEmpty do
+      todo.pop() match
+        case (Pred.True, _) => blank.put(Pred.True, ())
+        case (n @ Pred.And(l, r), true) => if blank.containsKey(l) && blank.containsKey(r) then blank.put(n, ())
+        case (n @ Pred.Or(l, r), true) => if blank.containsKey(l) && blank.containsKey(r) then blank.put(n, ())
+        case (n @ Pred.And(l, r), false) => todo.push((n, true)); todo.push((r, false)); todo.push((l, false))
+        case (n @ Pred.Or(l, r), false) => todo.push((n, true)); todo.push((r, false)); todo.push((l, false))
+        case (Pred.Not(q), _) => todo.push((q, false))
+        case _ => ()
+    blank
 
-  private def collect(p: Pred): Set[String] = p match
-    case Pred.True => Set.empty
-    case Pred.Cmp(f, _, _, _, _) => Set(f)
-    case Pred.Null(f, _, _, _) => Set(f)
-    case Pred.Not(q) => collect(q)
-    case Pred.And(l, r) => collect(l) ++ collect(r)
-    case Pred.Or(l, r) => collect(l) ++ collect(r)
+  /** DESCRIBE, written left to right into one builder: a blank side of
+   * an and/or drops out, as does its parentheses; the parameters follow
+   * the `?`s in order */
+  private def render(p: Pred): (String, Vector[SqlValue]) =
+    val blank = blanks(p)
+    val sb = StringBuilder()
+    val ps = Vector.newBuilder[SqlValue]
+    // a task is a predicate to write or a literal to append
+    val todo = scala.collection.mutable.Stack[Pred | String](p)
+    def pair(l: Pred, r: Pred, word: String): Unit =
+      if blank.containsKey(l) then todo.push(r)
+      else if blank.containsKey(r) then todo.push(l)
+      else { todo.push(")"); todo.push(r); todo.push(s") $word ("); todo.push(l); todo.push("(") }
+    while todo.nonEmpty do
+      todo.pop() match
+        case s: String => sb ++= s
+        case Pred.True => ()
+        case Pred.Cmp(_, col, _, op, v) => sb ++= s"$col ${op.sql} ?"; ps += v
+        case Pred.Null(_, col, _, isNull) => sb ++= s"$col IS ${if isNull then "" else "NOT "}NULL"
+        case Pred.Not(q) => todo.push(")"); todo.push(q); todo.push("NOT (")
+        case Pred.And(l, r) => pair(l, r, "AND")
+        case Pred.Or(l, r) => pair(l, r, "OR")
+    (sb.result(), ps.result())
 
-  private def eval(p: Pred, row: Vector[SqlValue]): Boolean = p match
-    case Pred.True => true
-    case Pred.Null(_, _, i, isNull) => (row(i) == SqlValue.Null) == isNull
-    case Pred.Cmp(_, _, i, op, v) => compare(row(i), op, v)
-    case Pred.Not(q) => !eval(q, row)
-    case Pred.And(l, r) => eval(l, row) && eval(r, row)
-    case Pred.Or(l, r) => eval(l, row) || eval(r, row)
+  private def collect(p: Pred): Set[String] =
+    val out = Set.newBuilder[String]
+    val todo = scala.collection.mutable.Stack[Pred](p)
+    while todo.nonEmpty do
+      todo.pop() match
+        case Pred.True => ()
+        case Pred.Cmp(f, _, _, _, _) => out += f
+        case Pred.Null(f, _, _, _) => out += f
+        case Pred.Not(q) => todo.push(q)
+        case Pred.And(l, r) => todo.push(r); todo.push(l)
+        case Pred.Or(l, r) => todo.push(r); todo.push(l)
+    out.result()
+
+  /** what is left to do once a subtree has answered: negate it, or — for
+   * the left side of an and/or — either stop (the answer is decided) or
+   * go on to the right side, whose answer is then the whole one */
+  private enum Then:
+    case Negate
+    case AndThen(r: Pred)
+    case OrThen(r: Pred)
+
+  /** RUN, short-circuiting exactly as `&&`/`||`: the right side of an and
+   * is not evaluated when the left is false */
+  private def eval(p: Pred, row: Vector[SqlValue]): Boolean =
+    val k = scala.collection.mutable.Stack[Then]()
+    var cur = p
+    var answer = false
+    var answered = false
+    var result: Option[Boolean] = None
+    while result.isEmpty do
+      if !answered then cur match
+        case Pred.True => answer = true; answered = true
+        case Pred.Null(_, _, i, isNull) => answer = (row(i) == SqlValue.Null) == isNull; answered = true
+        case Pred.Cmp(_, _, i, op, v) => answer = compare(row(i), op, v); answered = true
+        case Pred.Not(q) => k.push(Then.Negate); cur = q
+        case Pred.And(l, r) => k.push(Then.AndThen(r)); cur = l
+        case Pred.Or(l, r) => k.push(Then.OrThen(r)); cur = l
+      else if k.isEmpty then result = Some(answer)
+      else k.pop() match
+        case Then.Negate => answer = !answer
+        case Then.AndThen(r) => if answer then { cur = r; answered = false }
+        case Then.OrThen(r) => if !answer then { cur = r; answered = false }
+    result.get
 
   /** SQL's comparison: NULL on either side is unknown, which is false */
   private def compare(x: SqlValue, op: Op, y: SqlValue): Boolean = (x, y) match

@@ -123,39 +123,99 @@ object Query {
 
   def update[A](table: String): Update[A] = new Update[A](table, Vector.empty)
 
-  private def render(p: Pred): (String, Vector[SqlValue]) = p match {
-    case Pred.True => ("", Vector.empty)
-    case Pred.Cmp(_, col, _, op, v) => (s"$col ${op.sql} ?", Vector(v))
-    case Pred.Null(_, col, _, isNull) => (s"$col IS ${if (isNull) "" else "NOT "}NULL", Vector.empty)
-    case Pred.Not(q) => val (c, ps) = render(q); (s"NOT ($c)", ps)
-    case Pred.And(l, r) => both(l, r, "AND")
-    case Pred.Or(l, r) => both(l, r, "OR")
-  }
+  // Every walk below is an explicit stack (stack-safety-query): a
+  // predicate built by a fold is as deep as the list is long, and one
+  // frame per `and` overflowed at a few thousand. TestQueryDepth runs
+  // 200 000 (okay-sql's Query, the same shapes).
 
-  private def both(l: Pred, r: Pred, word: String): (String, Vector[SqlValue]) =
-    (render(l), render(r)) match {
-      case (("", ps), (c, qs)) => (c, ps ++ qs)
-      case ((c, ps), ("", qs)) => (c, ps ++ qs)
-      case ((c, ps), (d, qs)) => (s"($c) $word ($d)", ps ++ qs)
+  /** the subtrees that render as nothing: `True`, and an and/or of two such */
+  private def blanks(p: Pred): java.util.IdentityHashMap[Pred, Unit] = {
+    val blank = new java.util.IdentityHashMap[Pred, Unit]()
+    val todo = scala.collection.mutable.Stack[(Pred, Boolean)]((p, false))
+    while (todo.nonEmpty) todo.pop() match {
+      case (Pred.True, _) => blank.put(Pred.True, ())
+      case (n @ Pred.And(l, r), true) => if (blank.containsKey(l) && blank.containsKey(r)) blank.put(n, ())
+      case (n @ Pred.Or(l, r), true) => if (blank.containsKey(l) && blank.containsKey(r)) blank.put(n, ())
+      case (n @ Pred.And(l, r), false) => todo.push((n, true)); todo.push((r, false)); todo.push((l, false))
+      case (n @ Pred.Or(l, r), false) => todo.push((n, true)); todo.push((r, false)); todo.push((l, false))
+      case (Pred.Not(q), _) => todo.push((q, false))
+      case _ => ()
     }
-
-  private def collect(p: Pred): Set[String] = p match {
-    case Pred.True => Set.empty
-    case Pred.Cmp(f, _, _, _, _) => Set(f)
-    case Pred.Null(f, _, _, _) => Set(f)
-    case Pred.Not(q) => collect(q)
-    case Pred.And(l, r) => collect(l) ++ collect(r)
-    case Pred.Or(l, r) => collect(l) ++ collect(r)
+    blank
   }
 
-  /** SQL's reading: a comparison with NULL is false either way */
-  private def eval(p: Pred, row: Vector[SqlValue]): Boolean = p match {
-    case Pred.True => true
-    case Pred.Null(_, _, i, isNull) => (row(i) == SqlValue.Null) == isNull
-    case Pred.Cmp(_, _, i, op, v) => compare(row(i), op, v)
-    case Pred.Not(q) => !eval(q, row)
-    case Pred.And(l, r) => eval(l, row) && eval(r, row)
-    case Pred.Or(l, r) => eval(l, row) || eval(r, row)
+  /** a render task: a predicate to write, or a literal to append */
+  private sealed trait Task
+  private final case class Write(p: Pred) extends Task
+  private final case class Lit(s: String) extends Task
+
+  private def render(p: Pred): (String, Vector[SqlValue]) = {
+    val blank = blanks(p)
+    val sb = new StringBuilder
+    val ps = Vector.newBuilder[SqlValue]
+    val todo = scala.collection.mutable.Stack[Task](Write(p))
+    def pair(l: Pred, r: Pred, word: String): Unit =
+      if (blank.containsKey(l)) todo.push(Write(r))
+      else if (blank.containsKey(r)) todo.push(Write(l))
+      else { todo.push(Lit(")")); todo.push(Write(r)); todo.push(Lit(s") $word (")); todo.push(Write(l)); todo.push(Lit("(")) }
+    while (todo.nonEmpty) todo.pop() match {
+      case Lit(s) => sb ++= s
+      case Write(Pred.True) => ()
+      case Write(Pred.Cmp(_, col, _, op, v)) => sb ++= s"$col ${op.sql} ?"; ps += v
+      case Write(Pred.Null(_, col, _, isNull)) => sb ++= s"$col IS ${if (isNull) "" else "NOT "}NULL"
+      case Write(Pred.Not(q)) => todo.push(Lit(")")); todo.push(Write(q)); todo.push(Lit("NOT ("))
+      case Write(Pred.And(l, r)) => pair(l, r, "AND")
+      case Write(Pred.Or(l, r)) => pair(l, r, "OR")
+    }
+    (sb.result(), ps.result())
+  }
+
+  private def collect(p: Pred): Set[String] = {
+    val out = Set.newBuilder[String]
+    val todo = scala.collection.mutable.Stack[Pred](p)
+    while (todo.nonEmpty) todo.pop() match {
+      case Pred.True => ()
+      case Pred.Cmp(f, _, _, _, _) => out += f
+      case Pred.Null(f, _, _, _) => out += f
+      case Pred.Not(q) => todo.push(q)
+      case Pred.And(l, r) => todo.push(r); todo.push(l)
+      case Pred.Or(l, r) => todo.push(r); todo.push(l)
+    }
+    out.result()
+  }
+
+  /** what is left once a subtree has answered: negate it, or — for the
+   * left side of an and/or — stop, or go on to the right side */
+  private sealed trait Then
+  private case object Negate extends Then
+  private final case class AndThen(r: Pred) extends Then
+  private final case class OrThen(r: Pred) extends Then
+
+  /** SQL's reading: a comparison with NULL is false either way; short-
+   * circuiting exactly as `&&`/`||` */
+  private def eval(p: Pred, row: Vector[SqlValue]): Boolean = {
+    val k = scala.collection.mutable.Stack[Then]()
+    var cur = p
+    var answer = false
+    var answered = false
+    var result: Option[Boolean] = None
+    while (result.isEmpty) {
+      if (!answered) cur match {
+        case Pred.True => answer = true; answered = true
+        case Pred.Null(_, _, i, isNull) => answer = (row(i) == SqlValue.Null) == isNull; answered = true
+        case Pred.Cmp(_, _, i, op, v) => answer = compare(row(i), op, v); answered = true
+        case Pred.Not(q) => k.push(Negate); cur = q
+        case Pred.And(l, r) => k.push(AndThen(r)); cur = l
+        case Pred.Or(l, r) => k.push(OrThen(r)); cur = l
+      }
+      else if (k.isEmpty) result = Some(answer)
+      else k.pop() match {
+        case Negate => answer = !answer
+        case AndThen(r) => if (answer) { cur = r; answered = false }
+        case OrThen(r) => if (!answer) { cur = r; answered = false }
+      }
+    }
+    result.get
   }
 
   private def compare(x: SqlValue, op: Op, y: SqlValue): Boolean = (x, y) match {
