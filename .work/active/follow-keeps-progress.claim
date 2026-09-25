@@ -1,7 +1,0 @@
-feature/follow-keeps-progress 2026-09-25T10:13:26Z
-agent: claude-code (okay-watch session)
-heartbeat: 2026-09-25T10:13:26Z
-status: in-progress
-done-so-far: worktree created
-next: Follow.step keeps progress on a source failure; test
-touches: okay-chain/src/main/scala/okay/chain/Poller.scala, okay-chain tests
