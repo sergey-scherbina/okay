@@ -325,6 +325,23 @@ exactly those five columns. It does not depend on Arrow Java, which
 brings its own off-heap memory and `--add-opens`. pyarrow checks every
 stream it writes (`TestArrowPy`, `validate(full=True)`).
 
+**R does the same thing** (`r-arrow`), over R's own four atomic types
+(logical, integer, double, character) rather than Python's five — R
+has one integer width, so there is no int32-to-int64 widening to do.
+The worker announces Arrow when the `arrow` package is installed, and
+nothing else changes: an R frame function still receives and answers a
+`data.frame`.
+
+```scala
+    assertEquals(engine.wire, "json/none+arrow")
+```
+
+The same two knobs apply: `FrameFormat.Json.given` never uses it,
+`FrameFormat.Arrow.given` requires it (a session without the `arrow`
+package is refused when it is opened). A column R cannot carry here —
+raw bytes, a nested list, a held object reference — takes the JSON or
+CBOR road instead, as it always did; the answer works the same way.
+
 ## Types on the other side
 
 okay checks every value against its `Schema` at the boundary, but the

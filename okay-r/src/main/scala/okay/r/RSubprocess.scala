@@ -49,11 +49,20 @@ final class RSubprocess private (private var proc: Process,
                                   * timeout kills this one; `None` for a handle
                                   * that cannot respawn (the handshake test's) */
                                  private val respawn: Option[() => RSubprocess.Parts],
-                                 val timeoutMillis: Option[Long]):
+                                 val timeoutMillis: Option[Long],
+                                 /** whether frames cross as Arrow (r-arrow), and how strictly */
+                                 private val arrow: Boolean, private val frames: okay.codec.FrameFormat):
 
   /** what the handshake settled on: "json/none" (JSON lines),
    * "json/zlib", "cbor/zlib", "cbor/none" */
-  def wire: String = codec.fold("json/none")((f, c) => s"${f.name}/${c.name}")
+  def wire: String = codec.fold("json/none")((f, c) => s"${f.name}/${c.name}") + (if arrow then "+arrow" else "")
+
+  /** frames that crossed as Arrow: (sent, answered) — the JSON/CBOR road
+   * gives the same values, so this is how a caller (or a test) sees which
+   * road a frame took */
+  @volatile private var arrowOut = 0L
+  @volatile private var arrowIn = 0L
+  def arrowFrames: (Long, Long) = (arrowOut, arrowIn)
 
   private var nextId = 0
   /** one daemon thread per engine, and only where a timeout asks for
@@ -92,6 +101,33 @@ final class RSubprocess private (private var proc: Process,
           "the R process is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
       case Right(Some(answer)) => Right(answer)
 
+  /** one frame as ONE Arrow stream, its header in the schema's metadata
+   * (r-arrow, okay-py's `sendArrow` twin); the answer is Arrow again, or
+   * an ordinary message (a condition, or a frame Arrow could not carry) */
+  private def sendArrow(body: Json, table: okay.arrow.Table): Either[Condition, (Json, Option[RFrame])] =
+    val (format, compression) = codec.getOrElse(throw IllegalStateException("an Arrow frame on an unframed wire"))
+    val header = table.copy(metadata = Vector("okay" -> Json.print(body)))
+    val got =
+      try
+        WireFrames.writeFrame(out, compression.compress(okay.arrow.OkayArrow.write(header)))
+        readRawMessage()
+      catch case e: java.io.IOException =>
+        throw IllegalStateException(s"the R process is DEAD (its wire broke: ${e.getMessage}) — a supervisor retry gets a fresh one")
+    got match
+      case Left(c) => Left(c)
+      case Right(None) =>
+        throw IllegalStateException(
+          "the R process is DEAD (eof on the wire) — a supervisor retry gets a fresh one")
+      case Right(Some(bytes)) =>
+        arrowOut += 1
+        if okay.arrow.ArrowCodec.isStream(bytes) then
+          arrowIn += 1
+          val t = okay.arrow.OkayArrow.read(bytes)
+          val head = t.metadata.collectFirst { case ("okay", h) => Json.parse(h) }
+            .getOrElse(throw IllegalStateException("an Arrow answer without its okay header"))
+          Right((head, Some(RArrowFrames.frame(t))))
+        else Right((format.decode(bytes), None))
+
   /** the next message off the wire, as this engine's codec reads it; None
    * at the stream's end */
   private def read(): Option[Json] =
@@ -100,12 +136,19 @@ final class RSubprocess private (private var proc: Process,
       case None => WireFrames.readLine(i).map(Json.parse)
       case Some((f, z)) => WireFrames.readFrame(i).map(bytes => f.decode(z.decompress(bytes)))
 
-  /** the answer, or the timeout as data. Without a deadline this is
-   * `read()` and nothing else happens. */
-  private def readMessage(): Either[Condition, Option[Json]] = timeoutMillis match
-    case None => Right(read())
+  /** the next frame's PLAIN bytes (wire-compression undone, nothing else
+   * decoded) — an Arrow answer reads its own header instead of a `Json`
+   * tree (r-arrow); only meaningful once the wire is framed */
+  private def readRaw(): Option[Array[Byte]] =
+    WireFrames.readFrame(in).map(bytes => codec.fold(bytes)((_, z) => z.decompress(bytes)))
+
+  /** the answer, or the timeout as data — shared by `readMessage` and
+   * `readRawMessage`: the ONLY way to stop R mid-call is to kill the
+   * process, whichever kind of message it was waiting to answer */
+  private def awaited[T](readOne: () => Option[T]): Either[Condition, Option[T]] = timeoutMillis match
+    case None => Right(readOne())
     case Some(ms) =>
-      val task = reader.submit(() => read())
+      val task = reader.submit(() => readOne())
       try Right(task.get(ms, java.util.concurrent.TimeUnit.MILLISECONDS))
       catch
         case _: java.util.concurrent.TimeoutException =>
@@ -123,6 +166,9 @@ final class RSubprocess private (private var proc: Process,
           Left(Condition("timeout",
             s"the R call did not answer within ${ms}ms — the process was killed" +
               (if respawn.isDefined then " and a fresh one took its place" else "")))
+
+  private def readMessage(): Either[Condition, Option[Json]] = awaited(() => read())
+  private def readRawMessage(): Either[Condition, Option[Array[Byte]]] = awaited(() => readRaw())
 
   private def answer[A](e: Either[Condition, Json])(ok: Json => Either[Condition, A]): Either[Condition, A] =
     e.flatMap { j => j match
@@ -218,10 +264,18 @@ final class RSubprocess private (private var proc: Process,
           "op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Right(Wire.dec(v)))
       case REval.Frame(fn, frame, args) =>
-        answer(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn),
-          "in" -> Wire.encFrame(frame),
-          "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decFrame)
+        val head = Vector("op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)))
+        val table = if arrow then RArrowFrames.table(frame) else Left("")
+        table match
+          case Right(t) =>
+            nextId += 1
+            sendArrow(Json.JObj(("id" -> Json.JNum(nextId.toDouble)) +: head), t) match
+              case Left(c) => Left(c)
+              case Right((j, got)) => answer(Right(j))(v => got.fold(Wire.decFrame(v))(Right(_)))
+          case Left(why) if arrow && frames.strict =>
+            Left(Condition("NotArrow", s"this host's given FrameFormat is arrow, and $why"))
+          case Left(_) =>
+            answer(exchange(Json.JObj(head :+ ("in" -> Wire.encFrame(frame)))))(Wire.decFrame)
       case REval.Start(fn, args, cbs) =>
         stepOf(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("start"), "fn" -> Json.JStr(fn),
@@ -298,7 +352,7 @@ final class RSubprocess private (private var proc: Process,
 
 object RSubprocess:
 
-  val ShimVersion = 7
+  val ShimVersion = 8
 
   /** a live process and its wire: what a timeout's respawn swaps in */
   private[r] final case class Parts(proc: Process, out: BufferedOutputStream, in: BufferedInputStream,
@@ -327,7 +381,11 @@ object RSubprocess:
             modules: Seq[RModule] = Nil)
            /** the wire's format and compression (wire-givens-r): JSON, with
             * zlib where R has it, unless an import says otherwise */
-           (using WireFormat, WireCompression): RSubprocess =
+           (using WireFormat, WireCompression)
+           /** whether frames cross as Arrow (r-arrow): where spoken, else
+            * JSON/CBOR, unless an import says otherwise — the R shim
+            * announces arrow when the `arrow` package is installed */
+           (using okay.codec.FrameFormat): RSubprocess =
     val shim = java.nio.file.Files.createTempFile("okay-r-shim", ".R")
     val res = getClass.getResourceAsStream("/okay/r/shim.R")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
@@ -346,20 +404,21 @@ object RSubprocess:
             drift.mkString("\n  "))
 
   /** `start`, with the wire picked by an explicit `okay.codec.WireChoice`
-   * instead of the given-based format/compression above — for a caller
-   * that decides the wire at RUNTIME, from a string (a flag, a config
-   * file): `WireChoice.named(format = cfg.format)`. R has no Arrow side
-   * yet (`r-arrow`), so `wire.frames` and `wire.deadline` go unused here. */
+   * instead of the given-based format/compression/frames above — for a
+   * caller that decides the wire at RUNTIME, from a string (a flag, a
+   * config file): `WireChoice.named(format = cfg.format, frames =
+   * cfg.frames)`. `wire.deadline` goes unused: a timeout here is
+   * `timeoutMillis`, its own parameter, not part of the wire's codec. */
   def startWithWire(wire: okay.codec.WireChoice, rscript: String = "Rscript",
                     env: Map[String, String] = Map.empty, timeoutMillis: Option[Long] = None,
                     require: Map[String, String] = Map.empty, modules: Seq[RModule] = Nil): RSubprocess =
-    start(rscript, env, timeoutMillis, require, modules)(using wire.format, wire.compression)
+    start(rscript, env, timeoutMillis, require, modules)(using wire.format, wire.compression)(using wire.frames)
 
   /** the seam the handshake test uses: any shim file */
   private[r] def startWith(rscript: String, shim: java.nio.file.Path,
                            env: Map[String, String],
                            timeoutMillis: Option[Long] = None)
-                          (using WireFormat, WireCompression): RSubprocess =
+                          (using WireFormat, WireCompression)(using frames: okay.codec.FrameFormat): RSubprocess =
     val exe = resolve(rscript)
     // --vanilla: no site file, no profile, no saved workspace — the
     // clean-environment rule extended to R's OWN startup, which reads
@@ -408,22 +467,28 @@ object RSubprocess:
     def refuse(why: String): Nothing =
       proc.destroy()
       throw IllegalStateException(why)
+    val arrow = WireNegotiation.chooseFrames(helloJson, "the R shim").fold(refuse, identity)
+    // Arrow needs a FRAMED wire, so it configures even json/none
     val codec = WireNegotiation.choose(helloJson, network = false, "the R shim") match
       case Left(why) => refuse(why)
-      case Right(None) => None
-      case Right(Some((f, c))) =>
-        WireFrames.writeLine(out, WireNegotiation.configure(f, c))
+      case Right(None) if !arrow => None
+      case Right(None) => Some((WireFormat.json, WireCompression.Off.off))
+      case Right(some) => some
+    val configured = codec match
+      case None => None
+      case Some((f, c)) =>
+        WireFrames.writeLine(out, WireNegotiation.configure(f, c, arrow))
         WireNegotiation.confirmed("the R shim", f, c, WireFrames.readLine(in).map(Json.parse))
           .fold(refuse, _ => Some((f, c)))
     // the respawn a timeout needs is this very function, minus the
     // handshake's refusals — a fresh process of the same shape, which
     // negotiates the same wire again
-    new RSubprocess(proc, out, in, codec, one("r").getOrElse("?"),
+    new RSubprocess(proc, out, in, configured, one("r").getOrElse("?"),
       Some(() => {
         val again = startWith(rscript, shim, env, None)
         (again.take())
       }),
-      timeoutMillis)
+      timeoutMillis, arrow, frames)
 
   private def resolve(rscript: String): String =
     if rscript.contains("/") then rscript

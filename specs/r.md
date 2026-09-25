@@ -450,7 +450,7 @@ The rule this lane is held to:
 
 ### Out of scope
 
-- Arrow, until this number exists (r-arrow, filed and waiting)
+- Arrow, until this number exists — done: see `## r-arrow` below
 - changing the scalar wire
 - a compatibility mode for the v1 frame shape — the shim ships with
   the host, so there is nothing to be compatible with
@@ -500,15 +500,71 @@ was R building the structure, and the structure was ours to choose.
 The balance has flipped, which is the useful part of the after-column:
 R held 99.6% before and holds under 75% now, so the next thing worth
 measuring — if anyone ever needs more — is our own encode. Nobody is
-hurting at 180 ms for a 100k-row frame, and `r-arrow` now has to beat
-that number with a native dependency on both sides rather than beat
-10.5 seconds. It stays filed and it stays waiting.
+hurting at 180 ms for a 100k-row frame, and `r-arrow` had to beat that
+number with a native dependency on both sides rather than beat 10.5
+seconds — see `## r-arrow` below for what shipped.
 
 One thing the implementation had to learn from R rather than from the
 design: jsonlite UNBOXES a length-1 vector, so a column of one row
 arrives as a scalar and a single absence as a bare number, not as
 arrays of one. The reader accepts both shapes; the round trip lost
 exactly one NA until it did.
+
+## r-arrow — frames cross as Arrow, okay-py's twin (2026-09-25)
+
+The JVM half already existed from py-arrow (`okay.arrow.OkayArrow`, a
+cross module since `okay-arrow`): what was missing was R's own side of
+the handshake and negotiation `okay-py`'s `ForeignWorker` already has.
+Ported directly rather than redesigned — `okay.codec.WireNegotiation`'s
+`chooseFrames`/`configure` are already generic over the far side, so
+they needed no change at all.
+
+- `RArrowFrames` (okay-r), `ArrowFrames`'s twin: an `RFrame` to
+  `okay.arrow.Table` and back, over R's four atomic types (logical,
+  integer, double, character) plus NA; a column mixing kinds, or one
+  the model cannot carry (raw, a nested list, a held object), is a
+  `Left` naming the column, exactly as `ArrowFrames` does for Python.
+  UNLIKE Python's widen-everything-to-int64/float64, R's own `I32`
+  stays 32-bit both ways — there is no Python-shaped narrowing problem
+  to solve, since R has only one integer width to begin with.
+- `RSubprocess` takes an `okay.codec.FrameFormat` given, negotiates it
+  in the same handshake `WireFormat`/`WireCompression` already use, and
+  `REval.Frame` sends the table as one Arrow IPC stream with the
+  request's header in the schema's metadata (`sendArrow`, `ArrowWorker`'s
+  twin) — the same design `okay-py`'s `ForeignWorker` already proved:
+  Arrow needs a FRAMED wire, so it configures even `json/none` when
+  nothing else would have. `wire` gains a `+arrow` suffix and
+  `arrowFrames` counts which road a frame took, both exactly as on the
+  Python side. `ShimVersion` moves to 8.
+- `WireChoice.named(frames = "arrow")` (`wire-choice-by-name`) reaches
+  `RSubprocess.startWithWire` too, now threading `wire.frames` through
+  instead of leaving it unused as that lane's own note said it would
+  for now.
+- Tests: `TestRArrowFrames` (7, default gate, no R needed) proves the
+  column mapping — every type round-trips with NA in place and text
+  beyond ASCII, an all-NA column keeps its type, a mixed or uncarryable
+  column is refused by name, ragged columns are refused naming the
+  short one. `TestRArrow` (Live, okay-py's `TestArrowFrames` twin)
+  proves the wire end to end: the `+arrow` wire with no import, a round
+  trip counted in `arrowFrames`, `FrameFormat.Json`/`Arrow` givens,
+  CBOR+zlib composing with Arrow, a strict host refusing a worker
+  without the package by name.
+- **UNVERIFIED: shim.R's own Arrow calls, for want of an R with the
+  `arrow` package to test against** (none was available while writing
+  this). Three calls are the ones a first live run should check, named
+  in a comment beside them in shim.R: `t$schema$metadata` reading the
+  request's header off a Table `read_ipc_stream` returned, `tab$metadata
+  <-` setting it before a write, and `BufferOutputStream$create()` /
+  `$finish()` / `as.raw()` round-tripping an in-memory IPC stream. All
+  three are believed to be the arrow R package's documented, ordinary
+  API — mirroring pyarrow's own `schema.metadata` and
+  `BufferOutputStream` closely enough that the design is not in
+  question — but "believed" is not "measured", and `TestRArrow` is
+  written to catch it the moment a real R + arrow environment runs it:
+  it is skipped, not passing, everywhere this was written. Everything
+  on the JVM side (`RArrowFrames`, the negotiation in `RSubprocess`,
+  `WireChoice`) IS tested without R and does not depend on any of the
+  three.
 
 ## Results (stage 0)
 

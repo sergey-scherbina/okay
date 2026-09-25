@@ -3,16 +3,20 @@
 # foreign-callbacks: `start`/`resume` and `okay_call`; v5 =
 # foreign-object-handles: `hold`/`release`, refs as values; v6 =
 # foreign-module-trait: `okay_describe`; v7 = remote-foreign: programs as
-# data, `program`/`continue`/`forget`, continuations kept by id). One JSON object per line each
-# way; functions are ADDRESSED as pkg::name (or a base name) and
+# data, `program`/`continue`/`forget`, continuations kept by id; v8 =
+# r-arrow: a frame request/answer may cross as ONE Arrow IPC stream when
+# the `arrow` package is installed, okay-py's twin). One JSON object per
+# line each way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
 #
 # jsonlite is a NAMED prerequisite, refused at the handshake: base R
 # has no JSON reader, and our own parser at the trust boundary is a
-# worse thing to own than one package every R installation has.
+# worse thing to own than one package every R installation has. `arrow`
+# is OPTIONAL: announced when installed, and frames work exactly as
+# before where it is not.
 
-SHIM <- 7
+SHIM <- 8
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = I(17)), "\n", sep = "")
@@ -332,10 +336,14 @@ serve <- function(req) {
       list(id = rid, ok = NULL)
     } else if (op == "frame") {
       f <- resolve(req$fn)
-      res <- do.call(f, c(list(dec(req$`in`)), lapply(req$args, dec)))
+      # an Arrow-carried request already IS a data.frame (r-arrow):
+      # `dec` is for the wire's tagged JSON/CBOR frame form only
+      input <- if (isTRUE(req$.okay_arrow_in)) req$`in` else dec(req$`in`)
+      res <- do.call(f, c(list(input), lapply(req$args, dec)))
       if (!is.data.frame(res) && !is.list(res))
         stop(sprintf("a frame function must answer a data.frame, got %s", class(res)[1]))
-      list(id = rid, ok = enc(as.data.frame(res, stringsAsFactors = FALSE)))
+      if (isTRUE(req$.okay_arrow_in)) okay_arrow_reply(rid, res) else
+        list(id = rid, ok = enc(as.data.frame(res, stringsAsFactors = FALSE)))
     } else if (op == "verify") {
       pkgs <- list()
       for (name in req$packages) {
@@ -346,12 +354,16 @@ serve <- function(req) {
                                packages = pkgs))
     } else if (op == "configure") {
       f <- req$format; z <- req$compress
+      fr <- if (is.null(req$frames)) "json" else req$frames
       if (!(identical(f, "json") || identical(f, "cbor")))
         stop(sprintf("this R shim speaks the formats json, cbor; not '%s'", format(f)))
       if (!(identical(z, "none") || identical(z, "zlib")))
         stop(sprintf("this R shim speaks the compressions none, zlib; not '%s'", format(z)))
+      if (!(identical(fr, "json") || (identical(fr, "arrow") && .okay_has_arrow)))
+        stop(sprintf("this R shim speaks the frames %s; not '%s'",
+                     paste(c("json", if (.okay_has_arrow) "arrow"), collapse = ", "), format(fr)))
       # takes effect AFTER this answer is written (see say)
-      .okay_wire$switch_to <- list(format = f, compress = z)
+      .okay_wire$switch_to <- list(format = f, compress = z, frames = fr)
       list(id = rid, ok = list(format = f, compress = z))
     } else if (op == "resume") {
       stop(sprintf("resume %s: no call is waiting for it (resumed twice?)", format(req$k)))
@@ -394,9 +406,14 @@ local({
 .okay_wire <- new.env()
 .okay_wire$format <- "json"
 .okay_wire$compress <- "none"
+.okay_wire$frames <- "json"
 .okay_wire$switch_to <- NULL
 
-okay_framed <- function() .okay_wire$format != "json" || .okay_wire$compress != "none"
+# arrow is OPTIONAL: checked once, announced when present, never imported
+# otherwise (r-arrow, okay-py's `_HAS_ARROW` twin)
+.okay_has_arrow <- requireNamespace("arrow", quietly = TRUE)
+
+okay_framed <- function() .okay_wire$format != "json" || .okay_wire$compress != "none" || .okay_wire$frames == "arrow"
 
 cbor_head <- function(major, n) {
   m <- major * 32
@@ -528,13 +545,67 @@ okay_encode <- function(x) {
 
 okay_decode <- function(body) {
   if (.okay_wire$compress == "zlib") body <- memDecompress(body, "gzip")
+  if (length(body) >= 4L && identical(body[1:4], as.raw(c(0xff, 0xff, 0xff, 0xff))))
+    return(okay_arrow_request(body))
   if (.okay_wire$format == "cbor") cbor_dec(body)
   else { s <- rawToChar(body); Encoding(s) <- "UTF-8"; jsonlite::fromJSON(s, simplifyVector = FALSE) }
+}
+
+# ---- frames as Arrow (r-arrow, okay-py's `_arrow_request`/`reply_frame`
+# twin) --------------------------------------------------------------------
+#
+# A frame request may arrive as ONE Arrow IPC stream: the frame is the
+# table, and the request's header (id, op, fn, args) is the schema's
+# metadata under "okay". Its answer goes back the same way where the
+# answer's columns fit. `arrow` is imported only when a frame needs it.
+#
+# UNVERIFIED against a live R + arrow package (none was available to test
+# this against): three calls are the ones to check first if a live run
+# disagrees — `t$schema$metadata` reading custom schema metadata off a
+# Table read by `read_ipc_stream`, `tab$metadata <-` setting it before a
+# write (both assumed to be the R package's settable/gettable convenience
+# mirroring pyarrow's `schema.metadata`), and `sink$finish()` on a
+# `BufferOutputStream` giving a `Buffer` that `as.raw()` converts. The JVM
+# side (`RArrowFrames`, the wire negotiation) is unit-tested without R and
+# does not depend on any of the three.
+
+okay_arrow_request <- function(body) {
+  t <- arrow::read_ipc_stream(body, as_data_frame = FALSE)
+  meta <- t$schema$metadata
+  if (is.null(meta) || is.null(meta[["okay"]]))
+    stop("an Arrow message without its okay header")
+  req <- jsonlite::fromJSON(meta[["okay"]], simplifyVector = FALSE)
+  req$`in` <- as.data.frame(t)
+  req$.okay_arrow_in <- TRUE
+  req
+}
+
+# the answer as Arrow, tagged `okay_arrow_bytes` for `say` to write
+# untouched by JSON/CBOR; falls back to the ordinary encoded frame answer
+# when the R side cannot make an Arrow table of it (rare: a data.frame's
+# columns are almost always one of Arrow's types, unlike a Python dict's)
+okay_arrow_reply <- function(rid, res) {
+  bytes <- tryCatch({
+    tab <- arrow::arrow_table(as.data.frame(res, stringsAsFactors = FALSE))
+    tab$metadata <- list(okay = jsonlite::toJSON(list(id = rid, ok = list(t = "arrow")), auto_unbox = TRUE))
+    sink <- arrow::BufferOutputStream$create()
+    arrow::write_ipc_stream(tab, sink)
+    as.raw(sink$finish())
+  }, error = function(e) NULL)
+  if (is.null(bytes)) list(id = rid, ok = enc(as.data.frame(res, stringsAsFactors = FALSE)))
+  else structure(list(bytes = bytes), class = "okay_arrow_bytes")
 }
 
 .okay_out <- file("/dev/stdout", open = "wb", raw = TRUE)
 
 say <- function(x) {
+  if (inherits(x, "okay_arrow_bytes")) {
+    body <- if (.okay_wire$compress == "zlib") memCompress(x$bytes, "gzip") else x$bytes
+    n <- length(body)
+    writeBin(c(as.raw((n %/% 256^(3:0)) %% 256), body), .okay_out)
+    flush(.okay_out)
+    return(invisible(NULL))
+  }
   if (okay_framed()) {
     body <- okay_encode(x)
     n <- length(body)
@@ -549,6 +620,7 @@ say <- function(x) {
   if (!is.null(sw)) {
     .okay_wire$format <- sw$format
     .okay_wire$compress <- sw$compress
+    .okay_wire$frames <- sw$frames
     .okay_wire$switch_to <- NULL
   }
 }
@@ -583,7 +655,8 @@ read_msg <- function() {
 con <- file("stdin", open = "rb")
 
 say(list(shim = SHIM, r = paste(R.version$major, R.version$minor, sep = "."),
-         speaks = list(format = list("json", "cbor"), compress = list("zlib"))))
+         speaks = c(list(format = list("json", "cbor"), compress = list("zlib")),
+                    if (.okay_has_arrow) list(frames = list("arrow")))))
 
 # ---- the loop ---------------------------------------------------------
 

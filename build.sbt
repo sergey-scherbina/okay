@@ -2627,8 +2627,9 @@ lazy val okayForeignWorkflow = (project in file("okay-foreign-workflow"))
 // not because the modules know each other.
 lazy val okayR = (project in file("okay-r"))
   // okay-agent for TESTS only: its Durable journals these operations
-  // through their own `Journalled` instances (foreign-journalled)
-  .dependsOn(okay.jvm, okayCodec.jvm, okayStream.jvm, okayAgent.jvm % Test)
+  // through their own `Journalled` instances (foreign-journalled);
+  // okay-arrow for frames as Arrow IPC streams (r-arrow), okay-py's twin
+  .dependsOn(okay.jvm, okayCodec.jvm, okayArrow.jvm, okayStream.jvm, okayAgent.jvm % Test)
   .settings(
     name := "okay-r",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
