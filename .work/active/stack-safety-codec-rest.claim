@@ -1,5 +1,0 @@
-slug: stack-safety-codec-rest
-who: claude (session 6f505c09)
-what: stack-safety stage 2 remainder — okay-codec Staged, Stubs, TsTypes, Compat, Digest, JsonOptic, Schema, Policy walks: red first where a value or wire input reaches the depth, written bound where a Schema does
-files: okay-codec, specs/stack-safety*
-since: 2026-09-25
