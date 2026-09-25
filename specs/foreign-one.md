@@ -568,5 +568,38 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
 
 ## Results
 
-(none yet — stage 0 is the spec; the first cut's gap list of 2026-09-25
-is subsumed by the model above)
+- Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
+  subsumed by the model above.
+- **Stage 1, foreign-one-r (2026-09-26).**
+  - `okay.py.WireSession` (265 lines, half of them the comments the two
+    copies each carried) is the one engine; `ForeignWorker` went
+    410 → 237 lines and `RSubprocess` 507 → 348, the rest of both being
+    the handler for their own values. Net −67 lines of main code; what
+    was removed is the SECOND COPY — R's framing reads, handshake,
+    negotiation, Arrow exchange, death detection and verify, ~330 lines.
+  - Generic on the way, because R needed them and nothing is lost for
+    the others: a hello's `fatal` refused by name, jsonlite's boxed
+    scalars read in the hello and in `verify`, a condition message sent
+    as several lines joined.
+  - R gains the network: `RSubprocess.connect(host, port)` under the
+    same `WireAuth`/`WireSecurity` givens as any language,
+    `RSubprocess.command(...)` for the gateway, `RSubprocess.over(link)`;
+    a timeout over TCP reconnects (the gateway starts a fresh R per
+    connection) and replays a program as data onto it.
+  - Tests. Live, R 4.4.1 in docker: okay-r 90 passed + 1 skipped (R on
+    PATH only), among them `TestRNetwork` (4, new: the gateway with
+    `json/zlib` and a multi-shot program; a secret with a Reader
+    callback; a wrong secret and none refused by name; a TCP timeout
+    reconnected and every branch of a `Choice` replayed). okay-py Live
+    226 passed (Python, TypeScript, Go, Rust, Haskell over pipes, TCP,
+    CBOR, auth, TLS, gateway, crash; 27 skips by design); okay-rust's
+    FFM and wasm link suites 24 passed. Nothing in either suite changed.
+  - Found by the first R run: a refusal named the far side by the
+    Rscript PATH instead of "the R shim", which `TestRWireCborPlain` pins;
+    the pipes session is named as R named itself.
+  - Mutant: the session's `fatal` check removed fails "a shim without
+    jsonlite refuses BY NAME" — the refusal degrades to a bare version
+    drift.
+  - Found beside it: an unused import in okay-foreign-cluster's
+    `Stateful.scala`, landed by foreign-streams-holds and visible only to
+    a cold compile — removed.
