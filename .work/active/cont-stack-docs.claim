@@ -1,0 +1,6 @@
+feature/cont-stack-docs 2026-09-25T18:20:00Z
+agent: claude-code
+heartbeat: 2026-09-25T18:20:00Z
+status: in-progress
+done-so-far: claim
+next: docs/cont-stack.md with pinned examples (TestDocExamplesContStack), literature, per-platform bounds; TestDocSnippets run by hand (docs-only diff)
