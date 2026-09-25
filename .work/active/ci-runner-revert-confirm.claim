@@ -1,0 +1,9 @@
+feature/ci-runner-revert-confirm 2026-09-25
+agent: claude-code
+status: in-progress
+scope: backlog.d/build/ci-runner-revert-needs-confirmation.md -- before
+  ci-runner.sh reverts a bisected/sole culprit commit, re-run ONLY that
+  commit's own scoped affected gate once more (with its own quiet-wait);
+  green on the re-run means a flake, log it, do NOT revert, do NOT
+  push (the next whole-build turn re-tests fresh). Selftest on a
+  fixture, extending ci-runner-selftest.sh's style.
