@@ -1,0 +1,4 @@
+slug: stacked-shift0
+agent: claude (session 01VZwf6d)
+since: 2026-09-25
+what: specs/shift0-dollar.md stage 2 — Below[S, P], shift0/control0/dollar in Delim.Stacked; a consumed prompt refused at compile time
