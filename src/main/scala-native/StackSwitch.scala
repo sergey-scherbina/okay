@@ -16,7 +16,14 @@ import scala.scalanative.unsafe.*
  * `stackalloc` is the stack pointer — no pthread call, no per-OS
  * layout. The struct is spelled out here as Scala Native 0.5.12 lays
  * it out (`stackSize`, `maxStackSize`, `stackTop`, `stackBottom`,
- * `stackGuardPage`, `isMainThread`, …); `TestContStackNative` checks
+ * `stackGuardPage`, `isMainThread`, …). NAMES ARE THE RUNTIME'S, AND
+ * THEY ARE UPSIDE DOWN against the header's own comment: the code
+ * asserts `stackBottom > stackTop` (`nativeThreadTLS.c`,
+ * `setupCurrentThreadInfo`) — `stackTop` is the LOWEST address, where
+ * the stack grows to, `stackBottom` the highest, and the guard page
+ * sits at the low end. Measured 2026-09-25 before this was read: the
+ * first cut took `stackTop` for the highest address and the layout
+ * test put the pointer 1 MB above it. `TestContStackNative` checks
  * that a `stackalloc` address lies inside the bounds, which is what
  * guards the layout against a runtime bump.
  *
@@ -42,18 +49,16 @@ private[okay] object StackSwitch:
   /** left above the guard page that no grant reaches */
   val margin: Long = 64L * 1024
 
-  /** the current thread's maximum stack, in bytes */
-  private def maxStackBytes(): Long =
-    val ti = rt.scalanative_currentThreadInfo()
-    if ti == null then 1L << 20 else ti._2.toLong
-
-  /** levels the caller's stack is asked to hold before the first look
-   * (the thread this object is initialised on, which is the program's
-   * own); `-Dokay.cont.room=N` overrides */
+  /** levels the caller's stack is asked to hold before the first look.
+   * SMALL here, unlike the JVM's: a read on Native is a TLS access and
+   * a `stackalloc`, a few ns, so the exact road can start at once —
+   * and a first room derived from the thread this object initialises
+   * on (the main thread's 8 MB) is wrong for every other thread. The
+   * JVM cannot afford that, its read is a syscall. `okay.cont.room`
+   * overrides. */
   val firstRoom: Int =
     val fromProperty = System.getProperty("okay.cont.room")
-    if fromProperty != null then fromProperty.toInt
-    else math.max(64L, maxStackBytes() / coldBytesPerLevel / 2).toInt
+    if fromProperty != null then fromProperty.toInt else 64
 
   private val bigStack = 1L << 30
   private val bigRoom = (bigStack / 2048).toInt
@@ -70,7 +75,7 @@ private[okay] object StackSwitch:
    * runtime's */
   def probe(): (Long, Long, Long) =
     val ti = rt.scalanative_currentThreadInfo()
-    if ti == null then (-1L, -1L, -1L) else (ti._3.toLong, ti._5.toLong, sp())
+    if ti == null then (-1L, -1L, -1L) else (ti._4.toLong, ti._5.toLong, sp())
 
   /** at exhaustion: how many more levels THIS stack takes, or 0 to
    * switch — the same arithmetic as the JVM's, over the runtime's own
@@ -79,8 +84,8 @@ private[okay] object StackSwitch:
     val ti = rt.scalanative_currentThreadInfo()
     if ti == null then 0
     else
-      val top = ti._3.toLong
-      val floor = ti._5.toLong // the guard page is the lowest address a frame may not reach
+      val top = ti._4.toLong // `stackBottom`: the highest address (see above)
+      val floor = ti._5.toLong // the guard page, at the low end: no frame reaches it
       val here = sp()
       if top <= 0 || floor <= 0 || here <= floor then 0
       else

@@ -436,11 +436,15 @@ Stack knowledge (Layer 3):
 - [x] the fresh stack is a platform thread on JDK 26 too
       (`StackSwitch.switches` counts; 20 000 levels on 2 MB switch a
       handful of times, one per ~500 000 past the first)
-- [ ] Native: at exhaustion the exact bytes left decide grant or switch;
+- [x] Native: at exhaustion the exact bytes left decide grant or switch;
       a `stackalloc` address lies inside `ThreadInfo`'s bounds (the
-      struct-layout guard); a 128 KB Native thread switches and
-      answers; the switch thread's own 1 GB is what `ThreadInfo` reports
-      (TestContStackNative, written; run pending)
+      struct-layout guard — which caught the runtime's `stackTop` being
+      the LOWEST address, see the Native `StackSwitch`); a 128 KB
+      Native thread switches and answers; 20 000 levels on 2 MB switch
+      under 100 times; multi-shot across the switch (TestContStackNative,
+      4 green 2026-09-25). Native's first room is 64, not derived: a
+      read there is a TLS access, and the main thread's 8 MB is the
+      wrong guess for every other thread.
 - [x] JVM, native access enabled (`--enable-native-access` in the
       test's fork options, first room 64 so the suite reaches
       exhaustion): 1000 levels on a 2 MB thread switch ZERO times; a
@@ -455,9 +459,10 @@ Stack knowledge (Layer 3):
 - [ ] JVM 22+ from a classes directory (a consumer's own test run,
       not a jar): the root `StackRoom` answers −1, the count runs,
       nothing is logged
-- [ ] JVM 17 and 21: `verifyJdk17` green on the core through its
-      packaged jar (the `versions/22` entry is never read there); the
-      same on `jdk21Home`
+- [x] JVM 17: TestContStack and TestStackRoom green forked on 17.0.19
+      through the packaged jar — the count road, `sp = −1`, the
+      exact-road test skipped by `assume` (2026-09-25)
+- [ ] JVM 21: the same on `jdk21Home`
 - [ ] JS: the cross suite green; the bound in docs/
 - [ ] the grant follows `worst`: a run whose later bodies have fatter
       frames than its first ones still does not overflow (a test body
