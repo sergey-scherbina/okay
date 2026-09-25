@@ -56,6 +56,30 @@ force, all already practiced, none previously written down:
   only fixes the repo-specific facts. The branch is `master` (not `main`).
   Claims and merges are LOCAL — no lane needs the network to land, and
   none should wait for it.
+- **RUN ONLY WHAT THIS CHANGE NEEDS — THE MACHINE IS SHARED, NOT
+  INFINITE** (operator, 2026-09-25). Every test run, benchmark and
+  build you start competes for the SAME box a sibling's real gate is
+  running on — CPU, RAM, and the RAM guard's trigger threshold (AGENTS.md,
+  "THE 143, SOLVED") are all one shared pool. Default to the SPECIFIC
+  test, module or benchmark that proves the change in front of you —
+  `scripts/gate.sh "okaySomeModule/testOnly Xyz"`, one JMH class's one
+  lane (`Jmh/run Xyz.lane$`) — never the whole suite or a full benchmark
+  sweep "while I'm at it" or "just to be sure." Both are measurably
+  expensive here: a full matrix is minutes of every core on the box; a
+  whole-class JMH round on a box where siblings gate back-to-back never
+  gets the quiet window it needs and comes back ±50–110% noise
+  (`genlanes.sh`, generators-jmh, 2026-09-23 — the fix was ONE lane per
+  `Jmh/run`, gated on instantaneous CPU, re-run if the box got busy
+  mid-lane; see the `performance` skill and memory `per-lane-gated-jmh`).
+  THE ONE PLACE "RUN EVERYTHING" HAPPENS is `master`, right before the
+  push, and it is SERIALIZED through the ONE lock `scripts/ci-runner.sh`
+  takes on exactly that operation (ci-staged stage B, below) — the
+  whole build is paid for once per batch of landings, not once per
+  lane's own caution. THIS DOES NOT SLOW DOWN YOUR OWN WORK: the scoped
+  pre-merge gate (`affected … staged`, below) takes no lock and runs on
+  your branch in parallel with every sibling's — the lock covers only
+  the whole-build step the runner does after your merge, not anything
+  you run on your own worktree before it.
 - **LAND, THEN KICK THE RUNNER — THE RUNNER PUSHES** (ci-staged stage B,
   2026-09-25; replaces the 2026-09-18 "push what you land" rule). The
   protocol and its rationale are the `ci-staged` skill
