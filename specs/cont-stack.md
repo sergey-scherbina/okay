@@ -53,11 +53,19 @@ box `(A => S) => R` cannot move that frame.
 the body's tree and classifies each use of `k`:
 
 - **A, tail use.** Every call of `k` is in tail position: `k => k(v)`,
-  including inside `if`/`match` branches and under state-passing
-  lambdas (`k => st => k(a)(st)`). The body is rewritten to RETURN a
-  description, "continue with `v`" (a `Jump` node), and the runner's
-  loop continues with no nested frame. Sound, because a body has
-  nothing left to do after a tail call.
+  including inside `if`/`match` branches, with `v` not mentioning `k`.
+  Such a body IS `pure(v)` evaluated at run time, so the rewrite needs
+  no new node: `delay(() => Pure(v))`, which the runner's loop already
+  walks with no nested frame. Sound, because a body has nothing left to
+  do after a tail call. WHAT A IS NOT (read off `PState`, stage 3): a
+  state-passing body `k => s => k(a)(s2)` — `PState.get` is
+  `k => s => k(s)(s)`, `set(s2)` is `k => s => k(s)(s2)`. There the
+  answer type is a function `S => R`, `k(a)` returns the REST as a
+  function of the state and the body applies it to a new state: the
+  answer is USED, so this is B's shape with a function answer, not A's.
+  The spec's earlier line that statePara's bodies are A-shaped was
+  wrong; what keeps statePara switch-free is Layer 3's exact room
+  (its 1000 levels fit the 2 MB thread, and the reader says so).
 - **B, the answer is used.** `k(1) + k(10)`, string interpolation,
   `a :: k(x)`. The body is CPS-transformed selectively, as okay-direct
   does for `Free`: each `k(e)` becomes a step `Call(e, x => rest of
@@ -553,8 +561,10 @@ Stack knowledge (Layer 3):
   statePara nests ~1000 shifts whose bodies call `k`, and it fit the
   benchmark thread's stack before. With a first room of 256 it switched
   to virtual threads ~12 times a run. The fixed first room is the
-  guess Layer 3 exists to remove, and statePara's bodies are A-shaped,
-  so Layer 1 removes its switches entirely.
+  guess Layer 3 exists to remove. (An earlier version of this line
+  said statePara's bodies are A-shaped and Layer 1 would remove its
+  switches; they are state-passing, `k(s)(s2)` — see Layer 1 A — and it
+  is the exact room of stage 3 that removes them.)
 
 ## Stages
 
