@@ -918,3 +918,21 @@ against a real `consul agent -dev` container (`TestConsulLease`) — the
 one other Kubernetes test (`TestKubeLeaseInCluster`, the
 `KUBERNETES_SERVICE_HOST`-unset refusal) needs no network at all and
 is already counted in the 203.
+
+KUBE-LEASE-PROXY-LEAK, 2026-09-25: the `TestKubeLease` availability
+probe used to BE the proxy (`munitIgnore = proxy.isEmpty` forced a
+lazy val that ran `kubectl proxy`), munit evaluates `munitIgnore` on
+every run including the default gate that excludes `Live`, and
+`afterAll` does not run for a suite whose tests were all filtered out.
+So every default gate on the box started a proxy and left it: 99
+orphans found, the oldest 19 hours. Now `munitIgnore` reads the file
+system only (`kubectl` on the PATH, a kubeconfig where kubectl looks),
+the proxy starts from the first test's `base` and `afterAll` stops it
+only if a test started it, and a proxy that does not come up is a
+skip (`assume`) rather than a failure. Proved both ways: a default
+`okayPool/testOnly okay.pool.TestKubeLease` (0 tests run) leaves the
+proxy count unchanged (98 → 98; on the unfixed tree the same run left
+one behind, killed by pid), and the `Live` run is 7/7 green against
+the real cluster with the count back at 98 after `afterAll`. The
+survey of the other 30 `munitIgnore` overrides found no second case:
+they probe with a socket connect or a short-lived `--version` process.

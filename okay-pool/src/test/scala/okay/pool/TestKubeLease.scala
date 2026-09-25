@@ -16,7 +16,33 @@ package okay.pool
  * see `KubeLease.microTime`'s doc comment.
  */
 object TestKubeLease:
+  /**
+   * THE PROBE `munitIgnore` RUNS STARTS NOTHING (kube-lease-proxy-leak,
+   * 2026-09-25). It used to be `proxy.isEmpty`, which FORCED the lazy
+   * val below: munit evaluates `munitIgnore` for every run, Live or
+   * not, and `afterAll` never runs for a suite whose tests were all
+   * filtered out — so every default gate on the box started one
+   * `kubectl proxy` and left it running (99 orphans found, the oldest
+   * 19 hours). This looks at the file system only: `kubectl` on the
+   * PATH and a kubeconfig where kubectl would look. Whether an API
+   * server actually answers is found out by the first test, which
+   * `assume`s the proxy came up (a skip, not a failure).
+   */
+  def configured: Boolean =
+    val sep = java.io.File.pathSeparator
+    val kubectl = sys.env.getOrElse("PATH", "").split(sep).exists(d =>
+      d.nonEmpty && java.nio.file.Files.isExecutable(java.nio.file.Path.of(d, "kubectl")))
+    val config = sys.env.get("KUBECONFIG") match
+      case Some(list) => list.split(sep).exists(p => p.nonEmpty && java.nio.file.Files.exists(java.nio.file.Path.of(p)))
+      case None => java.nio.file.Files.exists(java.nio.file.Path.of(sys.props("user.home"), ".kube", "config"))
+    kubectl && config
+
+  /** set by the initializer below, so `stop()` never forces it */
+  @volatile private var started = false
+
+  /** started ONLY from a test body (`base`), never from a probe */
   private lazy val proxy: Option[(Process, Int)] =
+    started = true
     try
       val port = freePort()
       val p = ProcessBuilder("kubectl", "proxy", s"--port=$port").redirectErrorStream(true).start()
@@ -27,6 +53,14 @@ object TestKubeLease:
       }
       if up then Some((p, port)) else { p.destroyForcibly(): Unit; None }
     catch case _: Exception => None
+
+  /** what `afterAll` calls: stops the proxy if, and only if, a test started it */
+  def stop(): Unit = if started then proxy.foreach((p, _) => p.destroyForcibly(): Unit)
+
+  /** the proxy's base URL for a test, or a SKIP when it did not come up */
+  def base(using munit.Location): String =
+    munit.Assertions.assume(proxy.isDefined, "kubectl proxy did not come up: no reachable API server")
+    s"http://127.0.0.1:${proxy.get._2}"
 
   private def freePort(): Int =
     val s = java.net.ServerSocket(0)
@@ -43,11 +77,11 @@ class TestKubeLeaseInCluster extends munit.FunSuite:
 
 class TestKubeLease extends munit.FunSuite:
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
-  override def munitIgnore: Boolean = TestKubeLease.proxy.isEmpty
+  override def munitIgnore: Boolean = !TestKubeLease.configured
 
-  override def afterAll(): Unit = TestKubeLease.proxy.foreach((p, _) => p.destroyForcibly(): Unit)
+  override def afterAll(): Unit = TestKubeLease.stop()
 
-  private def base: String = s"http://127.0.0.1:${TestKubeLease.proxy.get._2}"
+  private def base: String = TestKubeLease.base
   private def freshName(): String = s"okay-test-${java.util.UUID.randomUUID()}"
   private def cleanup(name: String): Unit =
     try KubeLease(base, "default", name, "cleanup", None, "").release(0) catch case _: Exception => ()
