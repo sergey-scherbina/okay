@@ -32,3 +32,21 @@ for i in range(${inputs.length}):
     val said = String(p.getInputStream.readAllBytes())
     if p.waitFor() != 0 then throw IllegalStateException(s"python: $said")
     inputs.indices.toVector.map(i => Files.readAllBytes(dir.resolve(s"out$i")))
+
+  /** pyarrow's ZSTD at a compression level */
+  def zstd(inputs: Vector[Array[Byte]], level: Int): Vector[Array[Byte]] =
+    val dir = Files.createTempDirectory("okay-zstd")
+    inputs.zipWithIndex.foreach((b, i) => Files.write(dir.resolve(s"in$i"), b): Unit)
+    val script = s"""
+import sys, os, pyarrow as pa
+d = sys.argv[1]
+c = pa.Codec("zstd", compression_level=$level)
+for i in range(${inputs.length}):
+    data = open(os.path.join(d, "in%d" % i), "rb").read()
+    open(os.path.join(d, "out%d" % i), "wb").write(c.compress(data, asbytes=True))
+"""
+    val p = ProcessBuilder(python.get, "-c", script, dir.toString).redirectErrorStream(true).start()
+    val said = String(p.getInputStream.readAllBytes())
+    if p.waitFor() != 0 then throw IllegalStateException(s"python: $said")
+    inputs.indices.toVector.map(i => Files.readAllBytes(dir.resolve(s"out$i")))
+
