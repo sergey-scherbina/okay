@@ -95,18 +95,31 @@ final class Pool[E](val name: String, size: Int, open: () => E, alive: E => Bool
   /** one chunk's worth of interpreter: blocks while all `size` are busy.
    * `f` answers the value and whether the interpreter is DEAD after it */
   def use[X](f: E => (X, Boolean)): X =
+    val l = lease()
+    var dead = true
+    try
+      val (x, d) = f(l.e)
+      dead = d
+      x
+    finally l.release(dead)
+
+  /** an interpreter kept for LONGER than a chunk — a streaming stage holds
+   * one for a partition's life (its state lives there); `release` gives it
+   * back, or closes it when it is dead */
+  final class Lease private[Pool] (val e: E):
+    private var open = true
+    def release(dead: Boolean): Unit =
+      if open then
+        open = false
+        give(e, dead)
+        slots.release()
+
+  def lease(): Lease =
     slots.acquire()
     val e =
       try borrow()
       catch case t: Throwable => { slots.release(); throw t }
-    var dead = true
-    try
-      val (x, d) = f(e)
-      dead = d
-      x
-    finally
-      give(e, dead)
-      slots.release()
+    Lease(e)
 
   private def borrow(): E = lock.synchronized {
     val e = idle.pollFirst()
@@ -159,6 +172,20 @@ extension [A](flow: Flow[A])
   def mapIn[B](module: Any, fn: String, batch: Int = Stage.Batch, workers: Int = Stage.Workers)
               (using e: Engine[module.type], sa: okay.codec.Schema[A], sb: okay.codec.Schema[B]): Flow[B] =
     Stage.through(flow, e.batcher[A, B](module, fn, workers), batch, 3)
+
+  /** a map whose far function also receives a MODEL — `fn(frame, model)`,
+   * the one `Model.in` made, materialised once per interpreter (stage 4) */
+  def mapModel[B](model: Model, fn: String, batch: Int = Stage.Batch)
+                 (using sa: okay.codec.Schema[A], sb: okay.codec.Schema[B]): Flow[B] =
+    Stage.through(flow, model.batcher[A, B](fn), batch, 3)
+
+  /** a STATEFUL stage in whatever language the module's type says:
+   * `open`/`step`/`finish` on the far side, the state kept for the
+   * partition (stage 4) */
+  def statefulIn[B](module: Any, open: String, step: String, finish: String,
+                    batch: Int = Stage.Batch, workers: Int = Stage.Workers)
+                   (using st: Stateful[module.type], sa: okay.codec.Schema[A], sb: okay.codec.Schema[B]): Flow[B] =
+    Stateful.through(flow, st.streamer[A, B](module, open, step, finish, workers), batch)
 
   /** the map in Python: `fn` in `module` takes the frame (a dict of
    * lists, or the `pyarrow.Table` under `@okay.arrow`) and answers one of

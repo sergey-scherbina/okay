@@ -112,6 +112,54 @@ final class JvmModule private (val name: String, private val fns: Map[String, An
         try Right(mergeF(a, b))
         catch case e: Exception => Left(Batcher.Failed(e.getClass.getSimpleName, Option(e.getMessage).getOrElse("")))))
 
+  /** an object made once from `params` under `fn`, and the maps that take
+   * it: `mapWith[A, H, B](fn)((rows, held) => …)` */
+  def model[P, H](fn: String)(f: P => H): JvmModule =
+    new JvmModule(name, fns.updated(s"model:$fn", f))
+
+  def mapWith[A, H, B](fn: String)(f: (Vector[A], H) => Vector[B]): JvmModule =
+    new JvmModule(name, fns.updated(s"with:$fn", f))
+
+  /** a stateful stage: `open` makes the partition's state, `step` folds a
+   * chunk through it answering rows, `finish` flushes at the end */
+  def stream[A, S0, B](openName: String, stepName: String, finishName: String)
+                      (openF: () => S0, stepF: (S0, Vector[A]) => Vector[B], finishF: S0 => Vector[B]): JvmModule =
+    val self = this
+    new JvmModule(name, fns.updated(s"$openName/$stepName/$finishName", new Streamer[A, B]:
+      val name = s"jvm:${self.name}:$openName/$stepName/$finishName"
+      type S = S0
+      private def guard[X](x: => X): Either[Batcher.Failed, X] =
+        try Right(x)
+        catch case e: Exception => Left(Batcher.Failed(e.getClass.getSimpleName, Option(e.getMessage).getOrElse("")))
+      def open(): Either[Batcher.Failed, S] = guard(openF())
+      def step(s: S, rows: Vector[A]): Either[Batcher.Failed, Vector[B]] = guard(stepF(s, rows))
+      def finish(s: S): Either[Batcher.Failed, Vector[B]] = guard(finishF(s))))
+
+  private[foreign] def model[P](fn: String, params: P): Model =
+    val self = this
+    fns.get(s"model:$fn") match
+      case Some(f: Function1[?, ?]) =>
+        // once, here: the JVM has no interpreters to copy it into
+        lazy val obj: Any = f.asInstanceOf[P => Any](params)
+        new Model:
+          val name = s"jvm:${self.name}:$fn"
+          def batcher[A: Schema, B: Schema](mapFn: String): Batcher[A, B] =
+            fns.get(s"with:$mapFn") match
+              case Some(g: Function2[?, ?, ?]) => new Batcher[A, B]:
+                val name = s"jvm:${self.name}:$mapFn($fn)"
+                def apply(rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
+                  try Right(g.asInstanceOf[(Vector[A], Any) => Vector[B]](rows, obj))
+                  catch case e: Exception => Left(Batcher.Failed(e.getClass.getSimpleName, Option(e.getMessage).getOrElse("")))
+              case _ => throw IllegalArgumentException(s"the JVM module '${self.name}' has no map-with function '$mapFn' (it has ${self.names})")
+      case _ => throw IllegalArgumentException(s"the JVM module '$name' has no model function '$fn' (it has $names)")
+
+  private[foreign] def streamer[A, B](open: String, step: String, finish: String): Streamer[A, B] =
+    fns.get(s"$open/$step/$finish") match
+      case Some(st: Streamer[?, ?]) => st.asInstanceOf[Streamer[A, B]]
+      case _ => throw IllegalArgumentException(s"the JVM module '$name' has no stream '$open'/'$step'/'$finish' (it has $names)")
+
+  private def names: String = fns.keys.toVector.sorted.mkString(", ")
+
   // the map is heterogeneous — one batcher type per name — and keyed by
   // the name the job gives, so the one cast the registry needs is here:
   // the types are the ones `map`/`reduce` registered under that name, and

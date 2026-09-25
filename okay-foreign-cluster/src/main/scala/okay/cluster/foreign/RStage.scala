@@ -48,10 +48,10 @@ object RPool:
         _ => true, _.close())
     }
 
-  private def dead(e: Throwable): Boolean = Option(e.getMessage).exists(_.contains("DEAD"))
+  private[foreign] def dead(e: Throwable): Boolean = Option(e.getMessage).exists(_.contains("DEAD"))
 
-  private def use[X](pool: Pool[RSubprocess], rscript: String)
-                    (f: RSubprocess => Either[okay.r.Condition, X]): Either[okay.r.Condition, X] =
+  private[foreign] def use[X](pool: Pool[RSubprocess], rscript: String)
+                             (f: RSubprocess => Either[okay.r.Condition, X]): Either[okay.r.Condition, X] =
     try
       pool.use { r =>
         val answer =

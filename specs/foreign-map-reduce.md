@@ -262,6 +262,73 @@ object Reduce:
       `Cluster.Refused` naming `jvm:stats:boom`); a name the module lacks
       is refused at build, naming what it has.
 
+## Stage 4 — a stateful stage, and a model per interpreter (foreign-streams-holds)
+
+The operator, after stage 3: "Продолжай стриминг и холдс". Two more
+extensions, each its own typeclass, each optional — and NAMED for what
+they are, because a sibling's arc (specs/foreign-facade.md) took
+`Streams` and `Holds` meanwhile for other things: its `Streams` is a flow
+through a STATELESS frame function one chunk at a time (what `mapIn`
+already does), its `Holds` a HANDLE — one object on one worker, named,
+called, released. Neither is this stage's two:
+
+```scala
+trait Stateful[-M]:
+  def streamer[A: Schema, B: Schema](module: M, open: String, step: String, finish: String, workers: Int): Streamer[A, B]
+
+trait Models[-M]:
+  def model[P: Schema](module: M, fn: String, params: P, workers: Int): Model
+
+extension [A](flow: Flow[A])
+  def statefulIn[B](module: Any, open: String, step: String, finish: String, …)(using Stateful[module.type], …): Flow[B]
+  def mapModel[B](model: Model, fn: String, …)(using Schema[A], Schema[B]): Flow[B]
+object Model:
+  def in[P: Schema](module: Any, fn: String, params: P, …)(using Models[module.type]): Model
+```
+
+- **`Stateful`: a stage with STATE per partition.** `open()` makes the
+  state on the far side (a dict, an environment), `step(frame, state)`
+  answers rows and mutates it, `finish(frame, state)` flushes at the
+  partition's end with an empty frame. The state is a held object in ONE
+  interpreter kept for the partition's whole life — `Pool.lease`, the
+  interpreter borrowed at the first chunk and returned at `finish` — so a
+  death loses it: a stateful stage retries NO chunk (`Attempts.run(_, 1)`),
+  the partition fails and the cluster recomputes it on a survivor, its
+  own fault model. `Streams.through` is a `Flow.Local` whose chunk
+  transformer is a pull iterator over the source: open at the first pull,
+  finish when the source ends, an empty partition still opens and
+  finishes. `workers` should cover the partitions a JVM runs at once;
+  past that a partition waits for an interpreter, it does not deadlock.
+- **`Models`: a model fit once, used by every chunk of a map.** Not a
+  handle: a stage runs over a POOL of interpreters and a model lives in
+  one process, so a `Model` is a RECIPE (module, function, parameters)
+  materialised once per interpreter the first time that interpreter takes
+  a chunk of the stage (`hold` on the far side, the ref cached per worker
+  in a `WeakHashMap`), and passed as the map's second argument,
+  `scale(frame, model)`. An interpreter that dies takes its copy; the
+  fresh one makes its own. On the JVM the model is made once, there
+  being no interpreters to copy it into.
+- **Python, R and the JVM have both** (`Stateful.py/r/jvm`,
+  `Models.py/r/jvm`; `JvmModule.stream(open, step, finish)(…)`,
+  `.model(fn)(f)`, `.mapWith(fn)(f)`); a test's own module type has
+  neither, and asking is a compile error naming the typeclass.
+
+- [x] A model: made once from its parameters, passed to every chunk's map
+      — the fan's answer and the JVM's, over three workers, on the JVM
+      (`TestStatefulModels`), in python3 (`TestPyStatefulModels`, Live,
+      run here) and in R (`TestRStatefulModels`, Live, run here in the
+      container).
+- [x] A stateful stage: the running sum is per PARTITION — opened once and
+      finished once on each of four, the finals summing to the total, the
+      per-row running sums exact — on all three, the same job text.
+- [x] An empty partition opens and finishes: the final row alone.
+- [x] A module type with the base alone has neither: `compileErrors` names
+      `Models` and `Stateful`. A JVM module lacking the named stream or
+      model is refused when the flow is built, naming what it has.
+- Found while writing: counting `open`/`finish` from four partition
+  threads with `@volatile var += 1` lost an update (read 3 of 4) — an
+  `AtomicInteger` in the test, and a reminder that partitions are threads.
+
 ## Results
 
 foreign-map-reduce (2026-09-25). New JVM module okay-foreign-cluster

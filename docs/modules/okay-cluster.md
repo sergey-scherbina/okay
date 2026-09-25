@@ -607,6 +607,42 @@ not compile while a map on it still does. The interpreter is a given too
 — `given Engine[PyModule] = Engine.py("/venv/bin/python3")` — so a job
 moves between languages and interpreters with an import, never an edit.
 
+Two more extensions, each its own typeclass, each optional. **A stateful
+stage** (`Stateful[M]`): `open` makes a partition's state on the far
+side, `step(frame, state)` folds each chunk through it, `finish` flushes
+at the end — the state lives in one interpreter kept for the partition,
+so a death loses it and the partition recomputes elsewhere:
+
+```scala
+    .stream[Rec, Array[Long], Run]("open", "step", "finish")(
+      () => { opened.incrementAndGet(): Unit; Array(0L) },
+      (s, rows) => rows.map { r => s(0) += r.v; Run(r.key, r.v, s(0)) },
+      s => { finished.incrementAndGet(): Unit; Vector(Run(-1, 0, s(0))) })
+```
+
+```scala
+    Flow.slices(Rows.of(p.n), parts).statefulIn[Run](mod, "open", "step", "finish")
+```
+
+**A model** (`Models[M]`): fit once from its parameters, then the second
+argument of every chunk's map, `scale(frame, model)` — materialised once
+per interpreter of the pool, since a model lives in one process:
+
+```scala
+    .model[Factor, Long]("fit")(f => f.by)
+    .mapWith[Rec, Long, Out]("scale")((rows, by) => rows.map(r => Out(r.key, r.v * by)))
+```
+
+```scala
+    Flow.slices(Rows.of(p.n), parts).mapModel[Out](Model.in(mod, "fit", Factor(3)), "scale")
+```
+
+In Python `open` returns a dict and `step` mutates it, `fit` returns the
+model and `scale(frame, model)` uses it; in R an environment and a list.
+These are not the facade's `Streams` (a flow through a stateless frame
+function) nor its `Holds` (one handle on one worker, named and called) —
+see [okay-foreign-cluster](okay-foreign-cluster.md).
+
 Measured (`MeasureForeignMapReduce`, 1M rows, 4 partitions, medians of
 three at box load 8–13; a run at load 21–27 read 2–3x slower on every
 lane and was discarded):
@@ -647,6 +683,8 @@ need none — they run inside the JVM, so their map is `flow.map(f)`.
 | `Engine[M]` / `Reduces[M]` | typeclasses by the module's type | the base (map) and the extension (reduce), each optional; `Engine.py(path)`, `Engine.r(path)`, `Engine.jvm` |
 | `Flow.mapIn` / `Reduce.in` | `[B](module, fn, …)(using Engine[module.type])` / `[A, Acc](module, step, merge, …)(using Reduces[module.type])` | ONE API: the language is the module's type |
 | `JvmModule` | `JvmModule(name).map[A, B](fn)(f).reduce[A, Acc](step, merge)(stepF, mergeF)` | Scala, Clojure, Frege functions by name, the shape a PyModule has |
+| `Stateful[M]` / `Flow.statefulIn` | `[B](module, open, step, finish, …)(using Stateful[module.type])` | a stage with state per partition, kept in one interpreter for its life |
+| `Models[M]` / `Model.in` / `Flow.mapModel` | `Model.in(module, fn, params)`; `[B](model, fn, …)` | a model fit once, materialised per interpreter, the map's second argument |
 | `Reduce.py` / `Reduce.r` | `(module, step, merge, …)(using Schema[A], Schema[Acc]) => Wire[A, Option[Acc]]` | the reduce in Python or R: `step(frame, acc)` per chunk, `merge(a, b)` on the coordinator |
 | `Reduce.through` | `(Reducer[A, Acc], batch, attempts) => Wire[A, Option[Acc]]` | any reducer |
 | `Flow.through` | `(Batcher[A, B], batch, attempts) => Flow[B]` | any batcher — `PyStage`, `RStage`, or one of your own |

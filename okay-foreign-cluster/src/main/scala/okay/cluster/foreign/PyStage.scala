@@ -49,13 +49,13 @@ object PyPool:
         _.alive, _.close())
     }
 
-  private def dead(e: Throwable): Boolean =
+  private[foreign] def dead(e: Throwable): Boolean =
     e.isInstanceOf[ForeignWorker.TimedOut] || Option(e.getMessage).exists(_.contains("DEAD"))
 
   /** one operation on a borrowed interpreter; a death, or an interpreter
    * that could not be opened, is a transient condition for `Attempts` */
-  private def use[X](pool: Pool[ForeignWorker], python: String)
-                    (f: ForeignWorker => Either[okay.py.Condition, X]): Either[okay.py.Condition, X] =
+  private[foreign] def use[X](pool: Pool[ForeignWorker], python: String)
+                             (f: ForeignWorker => Either[okay.py.Condition, X]): Either[okay.py.Condition, X] =
     try pool.use(w => (f(w), !w.alive))
     catch
       case e: IllegalStateException if dead(e) => Left(okay.py.Condition("WorkerDied", e.getMessage))
