@@ -1,0 +1,2 @@
+2026-09-25	8417d3dc	200	MeasurePyArrow round trip 500k rows: Arrow (dict in Python) vs JSON frame	147	806	0.18	ms; not JMH, median of 5, real python3.13 + pyarrow 25.0.1; @okay.arrow (Table in, Table out) 89 ms; JVM enc/dec Arrow 41/23 vs JSON 65/104
+2026-09-25	8417d3dc	200	MeasurePyArrow round trip 100k rows: Arrow (dict in Python) vs JSON frame	43	167	0.26	ms; @okay.arrow 27 ms; bytes 2.8 MB Arrow vs 2.5 MB JSON
