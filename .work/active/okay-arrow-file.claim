@@ -1,3 +1,0 @@
-slug: okay-arrow-file
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: okay-arrow stage 6: the Arrow IPC FILE format (magic, footer, batch by index) in OkayArrow and ApacheArrow; pyarrow both ways
