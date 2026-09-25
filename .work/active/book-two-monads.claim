@@ -1,6 +1,0 @@
-feature/book-two-monads 2026-09-25T22:14:18Z
-agent: claude-opus-5-5
-heartbeat: 2026-09-25T22:14:18Z
-status: in-progress
-done-so-far: claimed (operator: explain the problem, transformers, then Filinski and Biernacki in the docs)
-next: worktree ../okay-wt-book-two-monads; TestBookTwoMonads (okay-direct), chapter 16b in docs/continuations, links from index/16/17, direct-style.md, theory/08, okay2.md
