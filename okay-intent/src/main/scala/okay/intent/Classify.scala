@@ -180,29 +180,35 @@ object Classify {
    * want a valid example pass a real one through `prompt`'s
    * `examples` — which is also, measured, the far bigger win.
    */
-  def example[A](using s: Schema[A]): String = Json.print(skeleton(s))
+  def example[A](using s: Schema[A]): String = Json.print(skeleton(s, Set.empty))
 
-  private def skeleton(s: Schema[?]): Json = s match
+  /** `seen` holds the products above: a derived schema of a recursive
+   * type is a cycle, and the walk showed it for ever (stack-safety-rest,
+   * TestClassifyDepth) — a product met again is an empty object, the
+   * shape shown once above it */
+  private def skeleton(s: Schema[?], seen: Set[String]): Json = s match
     case Schema.SString | Schema.SChar => Json.JStr("...")
     case Schema.SBytes => Json.JStr("")
     case Schema.SBigInt => Json.JStr("0")    // what the codec reads: digits in a string
     case Schema.SInt | Schema.SLong | Schema.SDouble => Json.JNum(0)
     case Schema.SBool => Json.JBool(true)
-    case Schema.SOption(of) => skeleton(of())
-    case Schema.SList(of) => Json.JArr(Vector(skeleton(of())))
-    case Schema.SVector(of) => Json.JArr(Vector(skeleton(of())))
-    case Schema.SIso(under, _, _) => skeleton(under())
+    case Schema.SOption(of) => skeleton(of(), seen)
+    case Schema.SList(of) => Json.JArr(Vector(skeleton(of(), seen)))
+    case Schema.SVector(of) => Json.JArr(Vector(skeleton(of(), seen)))
+    case Schema.SIso(under, _, _) => skeleton(under(), seen)
+    case p: Schema.SProduct[?] if seen(p.name) => Json.JObj(Vector.empty)
     case p: Schema.SProduct[?] =>
       Json.JObj(p.fields.collect {
         // an optional field is left out: showing it invites a null
-        case (n, f) if !f().isInstanceOf[Schema.SOption[?]] => (n, skeleton(f()))
+        case (n, f) if !f().isInstanceOf[Schema.SOption[?]] => (n, skeleton(f(), seen + p.name))
       })
+    case su: Schema.SSum[?] if seen(su.name) => Json.JObj(Vector.empty)
     case su: Schema.SSum[?] =>
       // `.map` rather than a match on the Option: destructuring the
       // pair in a pattern loses exhaustivity against the existential
       // in `cases`, and a suppressed warning would be worse than this
       su.cases.headOption
-        .map(c => Json.JObj(Vector((c._1, skeleton(c._2())))))
+        .map(c => Json.JObj(Vector((c._1, skeleton(c._2(), seen + su.name)))))
         .getOrElse(Json.JObj(Vector.empty))
 
   /**

@@ -1,7 +1,7 @@
 # file:line	def	kind	lambda consumers on the cycle
-okay2-async/src/main/scala/okay2/async/Async.scala	235	apply	mutual	Function1.apply
-okay2-async/src/main/scala/okay2/async/Async.scala	258	op	mutual	Function1.apply
-okay2-cats/src/main/scala/okay2/cats/CatsInterop.scala	134	toCats	lambda	Free.flatMap
+okay2-async/src/main/scala/okay2/async/Async.scala	235	apply	mutual	Function1.apply	DEFERRED: `apply` is a loop; the re-entry from an Await's callback runs from the completer's own frame, and a callback that fires before the registration returns is handed back to the loop through the cell (Got), never nested
+okay2-async/src/main/scala/okay2/async/Async.scala	258	op	mutual	Function1.apply	DEFERRED: `apply` is a loop; the re-entry from an Await's callback runs from the completer's own frame, and a callback that fires before the registration returns is handed back to the loop through the cell (Got), never nested
+okay2-cats/src/main/scala/okay2/cats/CatsInterop.scala	134	toCats	lambda	Free.flatMap	DEFERRED: the recursion is inside cats-effect IO's own flatMap, whose continuation is a value the IO runtime runs
 okay2-codec/src/main/scala/okay2/codec/Json.scala	68	printInto	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay2-codec/src/main/scala/okay2/codec/Json.scala	72	printIntoNative	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay2-codec/src/main/scala/okay2/codec/Json.scala	142	mergePatchAt	mutual	Vector.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
@@ -15,12 +15,10 @@ okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	53	value	mutual		BOUNDED:
 okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	66	valueNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	85	objNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	119	arrNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-lex/src/main/scala/okay2/lex/Mealy.scala	20	dimap	lambda	Mealy.<init>
-okay2-lex/src/main/scala/okay2/lex/Mealy.scala	23	first	lambda	Mealy.<init>
-okay2-lex/src/main/scala/okay2/lex/Mealy.scala	26	right	lambda	Mealy.<init>
-okay2-lex/src/main/scala/okay2/lex/Mealy.scala	37	compose	lambda	Mealy.<init>
-okay2-parse/src/main/scala/okay2/parse/Parse.scala	82	rebase	lambda	Vector.map
-okay2-platform/src/main/scala-jvm-native/okay2/platform/BlockingOps.scala	23	go	direct	
+okay2-lex/src/main/scala/okay2/lex/Mealy.scala	20	dimap	lambda	Mealy.<init>	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
+okay2-lex/src/main/scala/okay2/lex/Mealy.scala	23	first	lambda	Mealy.<init>	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
+okay2-lex/src/main/scala/okay2/lex/Mealy.scala	26	right	lambda	Mealy.<init>	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
+okay2-lex/src/main/scala/okay2/lex/Mealy.scala	37	compose	lambda	Mealy.<init>	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	76	rowOf	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	63	structAt	direct	Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	50	typeOf	direct	Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
@@ -48,6 +46,6 @@ okay2-workflow/src/main/scala/okay2/Proc.scala	217	loop	lambda	Monad.flatMap	DEF
 okay2-workflow/src/main/scala/okay2/Proc.scala	369	nodes	lambda	List.foreach	BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)
 src/main/scala/okay2/Cont.scala	158	run	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)
 src/main/scala/okay2/Cont.scala	190	step	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)
-src/main/scala/okay2/Distinct.scala	84	parts	lambda	List.flatMap
-src/main/scala/okay2/Distinct.scala	96	identityOf	direct	
-src/main/scala/okay2/Replayable.scala	60	parts	lambda	List.flatMap
+src/main/scala/okay2/Distinct.scala	84	parts	lambda	List.flatMap	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/okay2/Distinct.scala	96	identityOf	direct		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/okay2/Replayable.scala	60	parts	lambda	List.flatMap	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value

@@ -22,6 +22,18 @@ class TestParallel extends munit.FunSuite {
     assertEquals(attempts, 3)
   }
 
+  test("retry: a policy of 200 000 immediate retries exhausts as its own exception, not a stack overflow") {
+    // stack-safety-rest: `go(rest)` inside the catch was a frame per retry.
+    // Native builds an exception's trace slowly enough that 200 000 of
+    // them pass munit's 30 s; 20 000 there still makes the point
+    val n = if (System.getProperty("java.vm.name", "").contains("Scala Native")) 20000 else 200000
+    var attempts = 0
+    def hopeless: Int ! Async = Async { attempts += 1; throw new RuntimeException("no") }
+    val e = intercept[RuntimeException](retry(Retry.immediate(n))(hopeless).runWith)
+    assertEquals(e.getMessage, "no")
+    assertEquals(attempts, n + 1)
+  }
+
   test("policies are streams: exponential sequences, jitter stays bounded") {
     assertEquals(Retry.exponential(10).take(4).toList, List(10L, 20L, 40L, 80L))
     assertEquals(Retry.exponential(10, cap = 35).take(4).toList, List(10L, 20L, 35L, 35L))

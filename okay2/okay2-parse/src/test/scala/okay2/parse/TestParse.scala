@@ -105,5 +105,18 @@ class TestParse extends munit.FunSuite {
     val tree = Parse.full(JsonLex.scan, JsonParse.instrs)(s).tree
     assertEquals(Cst.lexemes(tree), s)
     assertEquals(Cst.errors(tree), Vector.empty)
+    // stack-safety-rest: `rebase` walked the tree with a frame per level
+    // (the Scala 3 core's was an explicit stack since cst-walk-stack-safe)
+    val moved = Cst.rebase(tree, 3, 1)
+    assertEquals(Cst.lexemes(moved), s)
+    var was: Cst[K] = tree
+    var now: Cst[K] = moved
+    var go = true
+    while (go) (was, now) match {
+      case (Cst.Node(_, a), Cst.Node(_, b)) => was = a.head; now = b.head
+      case (Cst.Leaf(t), Cst.Leaf(u)) =>
+        assertEquals((u.span.offset, u.span.line), (t.span.offset + 3, t.span.line + 1)); go = false
+      case other => fail(s"shapes part: $other")
+    }
   }
 }

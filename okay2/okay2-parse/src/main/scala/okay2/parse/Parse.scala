@@ -84,10 +84,39 @@ object Cst {
     else {
       def tok(t: Token[K]): Token[K] =
         t.copy(span = t.span.copy(offset = t.span.offset + offsetDelta, line = t.span.line + lineDelta))
-      c match {
-        case Node(k, cs) => Node(k, cs.map(rebase(_, offsetDelta, lineDelta)))
+      def flat(x: Cst[K]): Cst[K] = x match {
         case Leaf(t) => Leaf(tok(t))
         case Err(t, m) => Err(t.map(tok), m)
+        case n => n
+      }
+      // post-order on an explicit stack, one frame per OPEN node (the
+      // Scala 3 core's cst-walk-stack-safe, ported by stack-safety-rest):
+      // a tree is as deep as the document the parser read
+      final class Open(val kind: String, val kids: Vector[Cst[K]]) {
+        var at = 0
+        val built = Vector.newBuilder[Cst[K]]
+      }
+      c match {
+        case Node(k0, cs0) =>
+          var stack: List[Open] = new Open(k0, cs0) :: Nil
+          var result: Cst[K] = c
+          while (stack.nonEmpty) {
+            val top = stack.head
+            if (top.at < top.kids.length) {
+              val kid = top.kids(top.at)
+              top.at += 1
+              kid match {
+                case Node(k, cs) => stack = new Open(k, cs) :: stack
+                case x => top.built += flat(x)
+              }
+            } else {
+              stack = stack.tail
+              val done = Node(top.kind, top.built.result())
+              if (stack.isEmpty) result = done else stack.head.built += done
+            }
+          }
+          result
+        case x => flat(x)
       }
     }
 }

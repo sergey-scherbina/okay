@@ -20,17 +20,23 @@ trait BlockingOps {
    * reruns FROM ITS BEGINNING */
   def retry[A](policy: LazyList[Long])(prog: => Free[Async, A]): A ! Async =
     Async {
-      def go(delays: LazyList[Long]): A =
-        try Effects.runFree(prog)
+      // a loop, not a call per retry inside the catch (stack-safety-rest):
+      // Scala 2 cannot make that call a jump, and a policy that keeps
+      // retrying — a service down for a day — overflowed at 200 000
+      var delays = policy
+      var result: Option[A] = None
+      while (result.isEmpty) {
+        try result = Some(Effects.runFree(prog))
         catch {
           case e: Throwable => delays match {
             case d #:: rest =>
               if (d > 0) Thread.sleep(d)
-              go(rest)
+              delays = rest
             case _ => throw e
           }
         }
-      go(policy)
+      }
+      result.get
     }
 
   /** a fiber that restarts its program per the policy on failure */

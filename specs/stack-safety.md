@@ -400,9 +400,32 @@ deleted.
       held reversed so a level costs one cons rather than a copy of the
       path so far, and the indentation capped at 64 levels (a line that
       begins with a screenful of spaces says nothing more).
-- [ ] Stage 7 — macros and staging: okay-direct, okay-staging,
-      okay-optics `Fuse`, `ProcMacro`, per Decision 2.
-- [ ] Stage 8 — the remaining single-digit modules.
+- [x] Stage 7 — macros and staging: okay-direct, okay-staging,
+      okay-optics `Fuse`, `ProcMacro`, per Decision 2 (stack-safety-rest,
+      2026-09-25). Every macro walk — okay-direct's compiler, `ProcMacro`,
+      `ContMacro`, okay-js's `Direct`, `Fuse`, `MarkSyntax` — runs at
+      COMPILE time over the user's own source, and that is the bound
+      written on 60 rows; `RuntimeStaged` walks a Schema at run time
+      with its own `seen` cut. No test, per Decision 2: a compiler's
+      depth is the source's, and a source that deep is the author's.
+- [x] Stage 8 — the remaining single-digit modules (stack-safety-rest,
+      2026-09-25), both cores: 50 rows, three holes, each red first.
+      okay2's `Cst.rebase` still walked a parsed tree with a frame per
+      level (the Scala 3 twin was an explicit stack since
+      cst-walk-stack-safe) — ported, 20 000 levels; okay2's `retry` called
+      itself inside the `catch` once per retry, which Scala 2 cannot make
+      a jump and the Scala 3 twin's `@tailrec` had — a loop now, 200 000
+      retries; and `Classify.example` unfolded a recursive intent type for
+      ever — a product or sum met again is an empty object (`seen`). The
+      rest carry their bounds: the actor tree, the row-type derivations
+      (`Handler`, `Provide`, `Distinct`, `Replayable`), the Mealy
+      combinators, a Flow, a route trie keyed by segment count (a request
+      path walks a route's own length), a source tree on disk (PATH_MAX),
+      a Cardano datum (maxTxSize, one byte per level), the developer's
+      script modules with their cycle refused; and the callbacks — the
+      Async runner's re-entry, core.async's dispatcher, cats-effect and
+      Kyo binds, the pool/bulkhead/hedge completions, the LLM stream's
+      program binds — are DEFERRED: run later from another frame.
 - [x] Stage 9 — the guard: a check that the inventory only SHRINKS
       (the `docs/snippet-debt.txt` discipline), run where the gate
       already compiles (stack-safety-guard, 2026-09-25).

@@ -1,6 +1,6 @@
 # file:line	def	kind	lambda consumers on the cycle
-okay-actor/src/main/scala/okay/actor/Actor.scala	155	stop	mutual	
-okay-actor/src/main/scala/okay/actor/Actor.scala	165	stopAll	mutual	
+okay-actor/src/main/scala/okay/actor/Actor.scala	155	stop	mutual		BOUNDED: per level of the actor hierarchy the program spawned (a child under its parent): the program's own tree
+okay-actor/src/main/scala/okay/actor/Actor.scala	165	stopAll	mutual		BOUNDED: per level of the actor hierarchy the program spawned (a child under its parent): the program's own tree
 okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	179	field	direct	Vector.map	BOUNDED: per level of a column's TYPE, at most Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth): the Arrow Java schema of a Table's column, which Table refuses past the limit
 okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	211	fill	direct	Vector.foreach	BOUNDED: per level of a column's TYPE, at most Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth): fills Arrow Java vectors from a Table's columns, which Table refuses past the limit
 okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	289	column	direct	Vector.map	BOUNDED: per level of a column's TYPE, at most Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth): fromRoot checks Arrow Java's schema against the limit on an explicit stack before this walks it
@@ -16,14 +16,14 @@ okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	452	column	direct	Vector.ma
 okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	658	empty	lambda	Option.fold,Vector.map	BOUNDED: per level of a column's TYPE, at most Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth): walks the Field tree parseField already capped
 okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	73	column	lambda	Vector.foreach	BOUNDED: per level of a column's TYPE, at most Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth): the reader's columns follow the capped Field tree, the writer's a Table's columns, which Table refuses past the limit
 okay-arrow/src/main/scala/okay/arrow/Rows.scala	56	column	direct	StrictOptimizedIterableOps.map	BOUNDED: per level of a ColType, which Columns derives from a Scala type at compile time; the resulting Table then refuses past Column.MaxNesting (64)
-okay-async/src/main/scala/Async.scala	205	apply	mutual	Function1.apply
-okay-async/src/main/scala/Async.scala	235	op	mutual	Function1.apply
-okay-cats/src/main/scala/okay/cats/CatsInterop.scala	70	toCats	lambda	Free.flatMap
-okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	80	startPut	lambda	CoreAsyncChannel.fn1,Option.foreach
-okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	113	startTake	mutual	CoreAsyncChannel.fn1
-okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	119	arrived	mutual	CoreAsyncChannel.fn1
-okay-cluster/src/main/scala/okay/cluster/Flows.scala	456	shape	direct	
-okay-cluster/src/main/scala/okay/cluster/Leak.scala	124	walk	lambda	Vector.flatMap
+okay-async/src/main/scala/Async.scala	205	apply	mutual	Function1.apply	DEFERRED: `apply` is a loop; the re-entry from an Await's callback runs from the completer's own frame, and a callback that fires before the registration returns is handed back to the loop through the cell (Got), never nested
+okay-async/src/main/scala/Async.scala	235	op	mutual	Function1.apply	DEFERRED: `apply` is a loop; the re-entry from an Await's callback runs from the completer's own frame, and a callback that fires before the registration returns is handed back to the loop through the cell (Got), never nested
+okay-cats/src/main/scala/okay/cats/CatsInterop.scala	70	toCats	lambda	Free.flatMap	DEFERRED: the recursion is inside cats-effect IO's own flatMap, whose continuation is a value the IO runtime runs
+okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	80	startPut	lambda	CoreAsyncChannel.fn1,Option.foreach	DEFERRED: a callback registered on a core.async channel (`take`/`put` with a fn), run by core.async's dispatcher from its own frame
+okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	113	startTake	mutual	CoreAsyncChannel.fn1	DEFERRED: a callback registered on a core.async channel (`take`/`put` with a fn), run by core.async's dispatcher from its own frame
+okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	119	arrived	mutual	CoreAsyncChannel.fn1	DEFERRED: a callback registered on a core.async channel (`take`/`put` with a fn), run by core.async's dispatcher from its own frame
+okay-cluster/src/main/scala/okay/cluster/Flows.scala	456	shape	direct		BOUNDED: per node of a Flow the program built (Local/Keyed/Windowed over a source): its own text
+okay-cluster/src/main/scala/okay/cluster/Leak.scala	124	walk	lambda	Vector.flatMap	BOUNDED: per level of a wire Schema, into a fixed set of envelope products (ENVELOPES) and one level of a case; any other product stops the walk
 okay-codec/src/main/scala/okay/codec/Cbor.scala	295	skipItem	mutual	Either.flatMap	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
 okay-codec/src/main/scala/okay/codec/Cbor.scala	299	skipItemNative	mutual	Either.flatMap	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
 okay-codec/src/main/scala/okay/codec/Cbor.scala	305	skipHereNative	mutual	Either.flatMap	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
@@ -96,52 +96,52 @@ okay-codec/src/main/scala/okay/codec/TsTypes.scala	251	union	mutual		BOUNDED: re
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	264	postfix	mutual		BOUNDED: recursive descent over a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	272	primary	mutual		BOUNDED: recursive descent over a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	356	typeOf	direct		BOUNDED: per level of a TsType parsed from that same declaration file
-okay-demo/src/main/scala/okay/demo/RepoAgent.scala	47	walk	lambda	IterableOps.flatMap
-okay-deploy/src/main/scala/okay/deploy/Paas.scala	349	pretty	lambda	Vector.map
-okay-direct/src/main/scala/Condition.scala	160	loop	mutual	
-okay-direct/src/main/scala/Condition.scala	166	step	mutual	
-okay-direct/src/main/scala/Direct.scala	466	go	direct	
-okay-direct/src/main/scala/Direct.scala	636	curry	lambda	Quotes$reflectModule$LambdaModule.apply
-okay-direct/src/main/scala/macros/DirectCompiler.scala	103	compile	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	159	programLambda	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	181	compileMarked	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	228	casesC	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	292	joinUnions	direct	
-okay-direct/src/main/scala/macros/DirectCompiler.scala	371	spineSlots	direct	
-okay-direct/src/main/scala/macros/DirectCompiler.scala	430	anf	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	432	loop	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	461	compileBlock	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	468	compileBlockSeq	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	578	wrapStat	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectCompiler.scala	583	wrapPure	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
-okay-direct/src/main/scala/macros/DirectDefer.scala	197	tails	direct	List.map
-okay-direct/src/main/scala/macros/DirectLoops.scala	61	yieldLoop	direct	
-okay-direct/src/main/scala/macros/DirectLoops.scala	111	compileTail	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
-okay-direct/src/main/scala/macros/DirectLoops.scala	125	stmtsTail	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
-okay-direct/src/main/scala/macros/DirectLoops.scala	224	peelGuards	direct	
-okay-direct/src/main/scala/macros/DirectLoops.scala	240	guarded	direct	
-okay-direct/src/main/scala/macros/DirectLoops.scala	320	pullLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
-okay-direct/src/main/scala/macros/DirectLoops.scala	349	foreachLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
-okay-direct/src/main/scala/macros/DirectLoops.scala	510	hofLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
-okay-direct/src/main/scala/macros/DirectLoops.scala	513	emit	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
-okay-direct/src/main/scala/macros/DirectParallel.scala	79	go	direct	
-okay-direct/src/main/scala/macros/DirectParallel.scala	137	joins	lambda	DirectParallel.bind
-okay-direct/src/main/scala/macros/DirectParallel.scala	145	spawns	lambda	DirectParallel.bind
-okay-direct/src/main/scala/macros/DirectRow.scala	48	members	direct	
-okay-direct/src/main/scala/macros/DirectRow.scala	141	transformTerm	direct	
-okay-direct/src/main/scala/macros/DirectRow.scala	157	unwrap	direct	
-okay-direct/src/main/scala/macros/DirectRow.scala	179	walk	direct	Option.flatMap
-okay-direct/src/main/scala/macros/MarkSyntax.scala	40	calleeRoot	direct	
-okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	18	typeInfo	direct	Vector.map
-okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	30	rowType	direct	Vector.map
-okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	34	value	mutual	Iterator.foreach,Iterator.map
-okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	46	rowOf	mutual	Iterator.foreach,Iterator.map
-okay-http/src/main/scala/okay/http/Route.scala	1924	walk	direct	
-okay-intent/src/main/scala/okay/intent/Classify.scala	132	path	mutual	Schema$.eachField,Schema$.theCase
-okay-intent/src/main/scala/okay/intent/Classify.scala	147	group	mutual	Schema$.eachField,Schema$.theCase
-okay-intent/src/main/scala/okay/intent/Classify.scala	185	skeleton	direct	Option.map
-okay-intent/src/main/scala/okay/intent/Dsl.scala	121	render	direct	
-okay-intent/src/main/scala/okay/intent/Dsl.scala	153	raws	direct	
+okay-demo/src/main/scala/okay/demo/RepoAgent.scala	47	walk	lambda	IterableOps.flatMap	BOUNDED: per directory level of a source tree on disk, which the OS caps by path length (PATH_MAX) — and `target`/`.git`/dot-dirs are skipped
+okay-deploy/src/main/scala/okay/deploy/Paas.scala	349	pretty	lambda	Vector.map	BOUNDED: per level of a manifest Json the program built for a deploy — its own document, printed for a person
+okay-direct/src/main/scala/Condition.scala	160	loop	mutual		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/Condition.scala	166	step	mutual		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/Direct.scala	466	go	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/Direct.scala	636	curry	lambda	Quotes$reflectModule$LambdaModule.apply	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	103	compile	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	159	programLambda	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	181	compileMarked	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	228	casesC	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	292	joinUnions	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	371	spineSlots	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	430	anf	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	432	loop	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	461	compileBlock	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	468	compileBlockSeq	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	578	wrapStat	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectCompiler.scala	583	wrapPure	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectDefer.scala	197	tails	direct	List.map	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	61	yieldLoop	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	111	compileTail	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	125	stmtsTail	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	224	peelGuards	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	240	guarded	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	320	pullLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	349	foreachLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	510	hofLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectLoops.scala	513	emit	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectParallel.scala	79	go	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectParallel.scala	137	joins	lambda	DirectParallel.bind	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectParallel.scala	145	spawns	lambda	DirectParallel.bind	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectRow.scala	48	members	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectRow.scala	141	transformTerm	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectRow.scala	157	unwrap	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/DirectRow.scala	179	walk	direct	Option.flatMap	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-direct/src/main/scala/macros/MarkSyntax.scala	40	calleeRoot	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	18	typeInfo	direct	Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one column (Columns.recursiveNames)
+okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	30	rowType	direct	Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one column (Columns.recursiveNames)
+okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	34	value	mutual	Iterator.foreach,Iterator.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one column (Columns.recursiveNames)
+okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	46	rowOf	mutual	Iterator.foreach,Iterator.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one column (Columns.recursiveNames)
+okay-http/src/main/scala/okay/http/Route.scala	1924	walk	direct		BOUNDED: per segment of a ROUTE the program declared: the trie is keyed by segment count, so a request path only ever walks a route's own length, never its own
+okay-intent/src/main/scala/okay/intent/Classify.scala	132	path	mutual	Schema$.eachField,Schema$.theCase	BOUNDED: per level of the taxonomy the program declared (a sum inside a one-field case), the intent type's own nesting
+okay-intent/src/main/scala/okay/intent/Classify.scala	147	group	mutual	Schema$.eachField,Schema$.theCase	BOUNDED: per level of the taxonomy the program declared (a sum inside a one-field case), the intent type's own nesting
+okay-intent/src/main/scala/okay/intent/Classify.scala	185	skeleton	direct	Option.map	BOUNDED: per level of a Schema the program declares, a product met again cut to an empty object (`seen`, stack-safety-rest; TestClassifyDepth)
+okay-intent/src/main/scala/okay/intent/Dsl.scala	121	render	direct		BOUNDED: per level of a rule the program wrote in the intent DSL — its own text
+okay-intent/src/main/scala/okay/intent/Dsl.scala	153	raws	direct		BOUNDED: per level of a rule the program wrote in the intent DSL — its own text
 okay-js/src/main/scala/okay/js/Direct.scala	109	tsType	direct	List.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
 okay-js/src/main/scala/okay/js/Direct.scala	134	tail	direct	Vector.flatMap,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
 okay-js/src/main/scala/okay/js/Direct.scala	142	stat	direct	Vector.flatMap,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
@@ -158,22 +158,22 @@ okay-js/src/main/scala/okay/js/Js.scala	132	inStmt	direct	Option.map,Vector.map	
 okay-js/src/main/scala/okay/js/Js.scala	263	expr	direct	Option.foreach,Vector.foreach	BOUNDED: per node of a JS AST the `direct` macro built from the user's source at compile time — text a person wrote, printed at run time
 okay-js/src/main/scala/okay/js/Js.scala	347	fun	direct	Option.foreach,Vector.foreach	BOUNDED: per node of a JS AST the `direct` macro built from the user's source at compile time — text a person wrote, printed at run time
 okay-js/src/main/scala/okay/js/Js.scala	377	stmt	direct	Option.foreach,Vector.foreach	BOUNDED: per node of a JS AST the `direct` macro built from the user's source at compile time — text a person wrote, printed at run time
-okay-kyo/src/main/scala/okay/kyo/KyoInterop.scala	50	toKyoEnv	mutual	
-okay-kyo/src/main/scala/okay/kyo/KyoInterop.scala	93	toKyoChoice	mutual	
-okay-langchain4j/src/main/scala/okay/langchain4j/Langchain4j.scala	46	element	lambda	Option.map,Vector.foreach,Vector.map
-okay-lex/src/main/scala/okay/lex/Mealy.scala	26	dimap	lambda	Mealy$.apply
-okay-lex/src/main/scala/okay/lex/Mealy.scala	29	first	lambda	Mealy$.apply
-okay-lex/src/main/scala/okay/lex/Mealy.scala	32	right	lambda	Mealy$.apply
-okay-lex/src/main/scala/okay/lex/Mealy.scala	42	compose	lambda	Mealy$.apply
-okay-lex/src/main/scala/okay/lex/Mealy.scala	51	at	lambda	Mealy$.apply
-okay-llm/src/main/scala/okay/llm/Llm.scala	172	go	lambda	Anthropic$.emitFrom$1
-okay-llm/src/main/scala/okay/llm/OpenAi.scala	156	go	lambda	OpenAi$.absorb$1
-okay-optics/src/main/scala/Fuse.scala	87	plan	direct	Option.flatMap
-okay-optics/src/main/scala/Fuse.scala	174	emitSet	direct	
-okay-optics/src/main/scala/Fuse.scala	189	emitModify	direct	
-okay-optics/src/main/scala/Fuse.scala	233	emitPreview	direct	
-okay-optics/src/main/scala/Fuse.scala	245	readable	direct	
-okay-optics/src/main/scala/Fuse.scala	251	flatten	direct	
+okay-kyo/src/main/scala/okay/kyo/KyoInterop.scala	50	toKyoEnv	mutual		DEFERRED: through Kyo's own map/flatMap, whose continuation is a value Kyo's runtime walks
+okay-kyo/src/main/scala/okay/kyo/KyoInterop.scala	93	toKyoChoice	mutual		DEFERRED: through Kyo's own map/flatMap, whose continuation is a value Kyo's runtime walks
+okay-langchain4j/src/main/scala/okay/langchain4j/Langchain4j.scala	46	element	lambda	Option.map,Vector.foreach,Vector.map	BOUNDED: per level of a JSON Schema document JsonSchema.of built from the program's own type, with a recursive type referenced rather than unfolded
+okay-lex/src/main/scala/okay/lex/Mealy.scala	26	dimap	lambda	Mealy$.apply	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
+okay-lex/src/main/scala/okay/lex/Mealy.scala	29	first	lambda	Mealy$.apply	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
+okay-lex/src/main/scala/okay/lex/Mealy.scala	32	right	lambda	Mealy$.apply	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
+okay-lex/src/main/scala/okay/lex/Mealy.scala	42	compose	lambda	Mealy$.apply	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
+okay-lex/src/main/scala/okay/lex/Mealy.scala	51	at	lambda	Mealy$.apply	BOUNDED: per combinator the program applied — each builds a machine whose step calls the inner's once — the composition's own written depth
+okay-llm/src/main/scala/okay/llm/Llm.scala	172	go	lambda	Anthropic$.emitFrom$1	DEFERRED: every recursive step is inside a program bind (Inject(a).flatMap, emitFrom's continuation) that Free holds as a value and the stream's own loop walks
+okay-llm/src/main/scala/okay/llm/OpenAi.scala	156	go	lambda	OpenAi$.absorb$1	DEFERRED: every recursive step is inside a program bind (Inject(a).flatMap, emitFrom's continuation) that Free holds as a value and the stream's own loop walks
+okay-optics/src/main/scala/Fuse.scala	87	plan	direct	Option.flatMap	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-optics/src/main/scala/Fuse.scala	174	emitSet	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-optics/src/main/scala/Fuse.scala	189	emitModify	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-optics/src/main/scala/Fuse.scala	233	emitPreview	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-optics/src/main/scala/Fuse.scala	245	readable	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-optics/src/main/scala/Fuse.scala	251	flatten	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
 okay-pg/src/main/scala/okay/pg/PgSql.scala	53	colType	direct	Vector.map	BOUNDED: per level of a type declared in the catalogue; Postgres refuses a composite type that contains itself (42P16) and caps array dimensions at MAXDIM = 6, and the caches are read from that catalogue
 okay-pg/src/main/scala/okay/pg/PgSql.scala	367	decodeCell	lambda	PgSql$.parseArray,PgSql$.parseCompositeTyped	BOUNDED: per level of a value the server sent, whose type the catalogue bounds (a composite cannot contain itself, an array has at most MAXDIM = 6 dimensions), and parseArray refuses a literal past that bound before walking it (TestPgArrayDepth)
 okay-pg/src/main/scala/okay/pg/PgSql.scala	585	valueOf	lambda	PgSql$.parseArray	BOUNDED: per level of a value the server sent, whose type the catalogue bounds (a composite cannot contain itself, an array has at most MAXDIM = 6 dimensions), and parseArray refuses a literal past that bound before walking it (TestPgArrayDepth)
@@ -181,7 +181,7 @@ okay-pg/src/main/scala/okay/pg/PgSql.scala	664	parseArray	lambda	Vector.map	BOUN
 okay-pg/src/main/scala/okay/pg/PgSql.scala	711	textOf	mutual	Vector.map	BOUNDED: per level of a SqlValue the calling program built (its own value, not input), or one this module decoded under the catalogue's bound above
 okay-pg/src/main/scala/okay/pg/PgSql.scala	731	arrayLiteral	mutual	Vector.map	BOUNDED: per level of a SqlValue the calling program built (its own value, not input), or one this module decoded under the catalogue's bound above
 okay-pg/src/main/scala/okay/pg/PgSql.scala	738	compositeLiteral	mutual	Vector.map	BOUNDED: per level of a SqlValue the calling program built (its own value, not input), or one this module decoded under the catalogue's bound above
-okay-pool/src/main/scala/okay/pool/Pool.scala	124	nudge	lambda	Fiber.onComplete
+okay-pool/src/main/scala/okay/pool/Pool.scala	124	nudge	lambda	Fiber.onComplete	DEFERRED: a callback the runtime calls later from its own frame (a lease/bulkhead/hedge completion), not a call from this one
 okay-py/src/main/scala/okay/py/ArrowFrames.scala	80	cells	direct	Vector.map	BOUNDED: per level of a column's TYPE; `frame` takes a Table's columns, and Table refuses past Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth) since stack-safety-arrow
 okay-py/src/main/scala/okay/py/GoWorker.scala	101	goType	mutual		BOUNDED: per level of a Scala type's List/Vector/Option/Iso nesting, written in the program; a product stops the walk (None), so a recursive schema cannot loop it
 okay-py/src/main/scala/okay/py/GoWorker.scala	111	list	mutual		BOUNDED: per level of a Scala type's List/Vector/Option/Iso nesting, written in the program; a product stops the walk (None), so a recursive schema cannot loop it
@@ -202,16 +202,16 @@ okay-r/src/main/scala/okay/r/RCodec.scala	82	encNative	mutual	Iterator.map,Schem
 okay-r/src/main/scala/okay/r/RSubprocess.scala	349	startWith	lambda	Some$.apply	DEFERRED: the respawn is a thunk stored in the new RSubprocess and run later, on a timeout, from the engine's own call — not from this frame
 okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	215	valueOf	lambda	Vector$.tabulate	BOUNDED: per dimension of a database array the driver hands back; a column's array type is declared in the DDL, not chosen per row, and Postgres caps dimensions at MAXDIM = 6
 okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	270	javaOf	lambda	Vector.map	BOUNDED: per level of a SqlValue.Arr the calling program built as a parameter — its own value, not input; a composite parameter is refused
-okay-resilience/src/main/scala/okay/resilience/Bulkhead.scala	84	release	lambda	Option.foreach
-okay-resilience/src/main/scala/okay/resilience/Hedge.scala	57	start	lambda	Timer.after
-okay-scalus/src/main/scala/okay/scalus/Cv.scala	51	item	direct	Vector$.fill,Vector$.unfold
-okay-script/src/main/scala/okay/script/Modules.scala	146	resolve	mutual	WithFilter.foreach
-okay-script/src/main/scala/okay/script/Modules.scala	180	build	mutual	WithFilter.foreach
-okay-script/src/main/scala/okay/script/ScalaScript.scala	299	metaValueLiteral	lambda	Vector.map
-okay-script/src/main/scala/okay/script/ScalaScript.scala	307	sectionLiteral	lambda	Vector.map
-okay-script/src/main/scala/okay/script/Site.scala	364	go	direct	Iterator.flatMap,Option.orElse
-okay-script/src/main/scala/okay/script/Site.scala	492	dispatch	mutual	Scoped.where
-okay-script/src/main/scala/okay/script/Site.scala	547	render	mutual	Scoped.where
+okay-resilience/src/main/scala/okay/resilience/Bulkhead.scala	84	release	lambda	Option.foreach	DEFERRED: a callback the runtime calls later from its own frame (a lease/bulkhead/hedge completion), not a call from this one
+okay-resilience/src/main/scala/okay/resilience/Hedge.scala	57	start	lambda	Timer.after	DEFERRED: a callback the runtime calls later from its own frame (a lease/bulkhead/hedge completion), not a call from this one
+okay-scalus/src/main/scala/okay/scalus/Cv.scala	51	item	direct	Vector$.fill,Vector$.unfold	BOUNDED: per nesting level of a CBOR datum read from the chain, at least one byte per level, and a Cardano transaction is at most maxTxSize (16 384 bytes) — the protocol's own bound
+okay-script/src/main/scala/okay/script/Modules.scala	146	resolve	mutual	WithFilter.foreach	BOUNDED: per import level of the developer's own script modules, a cycle refused by name (`ring`)
+okay-script/src/main/scala/okay/script/Modules.scala	180	build	mutual	WithFilter.foreach	BOUNDED: per import level of the developer's own script modules, a cycle refused by name (`ring`)
+okay-script/src/main/scala/okay/script/ScalaScript.scala	299	metaValueLiteral	lambda	Vector.map	BOUNDED: per level of the site's page tree and front matter the developer wrote — their own files
+okay-script/src/main/scala/okay/script/ScalaScript.scala	307	sectionLiteral	lambda	Vector.map	BOUNDED: per level of the site's page tree and front matter the developer wrote — their own files
+okay-script/src/main/scala/okay/script/Site.scala	364	go	direct	Iterator.flatMap,Option.orElse	BOUNDED: per level of the site's page tree and front matter the developer wrote — their own files
+okay-script/src/main/scala/okay/script/Site.scala	492	dispatch	mutual	Scoped.where	BOUNDED: per level of the site's page tree and front matter the developer wrote — their own files
+okay-script/src/main/scala/okay/script/Site.scala	547	render	mutual	Scoped.where	BOUNDED: per level of the site's page tree and front matter the developer wrote — their own files
 okay-spark/src/main/scala/okay/spark/SparkSchema.scala	71	rowOf	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
 okay-spark/src/main/scala/okay/spark/SparkSchema.scala	58	structAt	direct	Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
 okay-spark/src/main/scala/okay/spark/SparkSchema.scala	46	typeOf	direct	Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
@@ -223,21 +223,21 @@ okay-sql/src/main/scala/okay/sql/Typed.scala	125	shapesOf	direct	WithFilter.fore
 okay-sql/src/main/scala/okay/sql/Typed.scala	214	decode	direct		BOUNDED: per level of the finite Shape that shapeOf builds from the row's Scala type, refusing a recursive product (TestTypedRecursive), so the depth is the type's own nesting
 okay-sql/src/main/scala/okay/sql/Typed.scala	251	decodeAny	direct		BOUNDED: per level of the finite Shape that shapeOf builds from the row's Scala type, refusing a recursive product (TestTypedRecursive), so the depth is the type's own nesting
 okay-sql/src/main/scala/okay/sql/Typed.scala	258	encode	lambda	Schema$.eachField,StrictOptimizedIterableOps.map	BOUNDED: per level of the finite Shape that shapeOf builds from the row's Scala type, refusing a recursive product (TestTypedRecursive), so the depth is the type's own nesting
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	210	visit	lambda	Vector.foreach
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	289	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	318	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	331	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	342	read	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	379	fieldOf	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	392	go	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	403	chain	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	437	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	467	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	479	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	486	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	519	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	554	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	585	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	210	visit	lambda	Vector.foreach	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	289	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	318	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	331	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	342	read	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	379	fieldOf	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	392	go	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	403	chain	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	437	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	467	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	479	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	486	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	519	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	554	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	585	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2	BOUNDED: per level of a Schema the program declares, a schema met again on the path cut by `seen` (RuntimeStaged.emit)
 okay-stm/src/main/scala/Stm.scala	146	perform	direct		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
 okay-stm/src/main/scala/Stm.scala	183	runWithLog	direct		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
 okay-stm/src/main/scala/Stm.scala	184	loop	direct		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
@@ -291,25 +291,25 @@ okay-workflow/src/main/scala/Proc.scala	334	foldMap	direct		BOUNDED: per node of
 okay-workflow/src/main/scala/Proc.scala	352	loop	lambda	Monad.flatMap	DEFERRED: the round recurses through G's own flatMap, which holds its continuation as a value at every program row (Free.Bind); one frame per round only at a STRICT monad, which the code states
 okay-workflow/src/main/scala/Proc.scala	447	go	direct		BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)
 okay-workflow/src/main/scala/Proc.scala	537	nodes	direct		BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)
-okay-workflow/src/main/scala/ProcMacro.scala	461	compileIf	mutual	List.foreach,List.map
-okay-workflow/src/main/scala/ProcMacro.scala	496	compileMatch	mutual	List.foreach,List.map
-okay-workflow/src/main/scala/ProcMacro.scala	509	restT	direct	
-okay-workflow/src/main/scala/ProcMacro.scala	511	inject	direct	
-okay-workflow/src/main/scala/ProcMacro.scala	538	dispatch	direct	
-okay-workflow/src/main/scala/ProcMacro.scala	577	compileWhile	mutual	List.foreach,List.map
-okay-workflow/src/main/scala/ProcMacro.scala	590	compileStats	mutual	List.foreach,List.map
-okay-workflow/src/main/scala/ProcMacro.scala	753	compileValue	mutual	List.foreach,List.map
-okay-workflow/src/main/scala/ProcMacro.scala	761	finish	mutual	List.foreach,List.map
-okay-workflow/src/main/scala/ProcMacro.scala	805	compileEnvBody	mutual	List.foreach,List.map
+okay-workflow/src/main/scala/ProcMacro.scala	461	compileIf	mutual	List.foreach,List.map	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	496	compileMatch	mutual	List.foreach,List.map	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	509	restT	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	511	inject	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	538	dispatch	direct		BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	577	compileWhile	mutual	List.foreach,List.map	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	590	compileStats	mutual	List.foreach,List.map	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	753	compileValue	mutual	List.foreach,List.map	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	761	finish	mutual	List.foreach,List.map	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
+okay-workflow/src/main/scala/ProcMacro.scala	805	compileEnvBody	mutual	List.foreach,List.map	BOUNDED: compile time — per node of the user's source the macro reads (a direct/proc/cont/optic block), text a person wrote
 okay-workflow/src/main/scala/Wf.scala	838	go	direct		BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)
 okay-workflow/src/main/scala/Wf.scala	928	loop	direct		BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)
-okay-x402-cdp/src/main/scala/okay/x402/cdp/CdpAuth.scala	95	sorted	lambda	StrictOptimizedIterableOps.map,Vector.map
+okay-x402-cdp/src/main/scala/okay/x402/cdp/CdpAuth.scala	95	sorted	lambda	StrictOptimizedIterableOps.map,Vector.map	BOUNDED: per level of the request body this module built for the CDP API — its own document, canonicalised
 src/main/scala/ContMacro.scala	53	rewrite	direct	List.map,Option.flatMap	BOUNDED: by the compiler's own recursion over the same tree, MEASURED: scalac's parser, Typer or PostTyper (all before Inlining, where this runs) overflow first at every depth tried, 2 150 to 10 000 levels; 2 075 compiles and rewrites (scripts/probe-contmacro-depth.sh, specs/stack-safety.md Decision 2)
-src/main/scala/Distinct.scala	144	leaves	direct	
-src/main/scala/Distinct.scala	175	identityOf	mutual	
-src/main/scala/Distinct.scala	197	under	mutual	
+src/main/scala/Distinct.scala	144	leaves	direct		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/Distinct.scala	175	identityOf	mutual		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/Distinct.scala	197	under	mutual		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 src/main/scala/Effects.scala	295	reflect	lambda	?,Effects.flatMap,Free.fold	TRAMPOLINED: the call is inside the target M's flatMap; 20 000 ops into Eager on a 128 KB stack (TestStackSafetyCore)
-src/main/scala/Handler.scala	438	members	direct	
-src/main/scala/Handler.scala	473	chain	lambda	QuoteUnpickler.unpickleExprV2
-src/main/scala/Handler.scala	484	build	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2
-src/main/scala/Provide.scala	512	body	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2
+src/main/scala/Handler.scala	438	members	direct		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/Handler.scala	473	chain	lambda	QuoteUnpickler.unpickleExprV2	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/Handler.scala	484	build	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/Provide.scala	512	body	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
