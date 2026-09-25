@@ -56,8 +56,23 @@ final class Limiter(val name: String, ratePerSecond: Double, burst: Int,
       case Right(wait) => !.widen[Unit, Async, F](Async.sleep(wait)).flatMap(_ => prog)
     }
 
+  /**
+   * A BLOCKING caller's pace (limiter-blocking-pace): the token is taken
+   * now and the caller sleeps until it is its turn — never refused, however
+   * long, since a blocking caller that asked to be paced asked to wait.
+   * Counted in `stats` like any admission, so the pace shows in /metrics.
+   * Answers how long it waited. `sleep` is injected so a test spends no
+   * time; with `burst = 1` this is a fixed interval between calls.
+   */
+  def pace(key: String = "")(sleep: Long => Unit = Thread.sleep): Long =
+    take(key, Long.MaxValue) match
+      case Right(wait) =>
+        if wait > 0 then sleep(wait)
+        wait
+      case Left(_) => 0L // not reachable: nothing is refused past Long.MaxValue
+
   /** Right(wait to park): admitted; Left(wait): refused */
-  private def take(key: String): Either[Long, Long] =
+  private def take(key: String, maxWait: Long = maxWaitMillis): Either[Long, Long] =
     val now = clock()
     cell.modify { s =>
       val b = s.buckets.get(key) match
@@ -68,7 +83,7 @@ final class Limiter(val name: String, ratePerSecond: Double, burst: Int,
         if b.tokens >= 1 then (s.buckets.updated(key, b.copy(tokens = b.tokens - 1)), Right(0L))
         else
           val wait = math.ceil((1 - b.tokens) / ratePerSecond * 1000).toLong
-          if wait <= maxWaitMillis then (s.buckets.updated(key, b.copy(tokens = b.tokens - 1)), Right(wait))
+          if wait <= maxWait then (s.buckets.updated(key, b.copy(tokens = b.tokens - 1)), Right(wait))
           else (s.buckets.updated(key, b), Left(wait))
       val (buckets, outcome) = taken
       // full AS OF NOW: a bucket is only refilled when its key is
