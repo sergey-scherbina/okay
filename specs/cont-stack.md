@@ -170,12 +170,13 @@ measured 2026-09-25 (Results, probe `StackProbe`):
 Where the bytes come from, per platform, best knowledge first:
 
 - **Native: exact, always.** The address of a `stackalloc` is the stack
-  pointer; `pthread_attr_getstack` gives the bounds. Cheap enough that
-  the count could go, but the count stays so the runner is one code
-  on every platform; Native only answers the exhaustion question
-  exactly.
-- **JVM with native access: exact.** FFM (JDK 22+), reached through
-  `MethodHandle`s because the core compiles against 17. Bounds:
+  pointer; the runtime's own `ThreadInfo` (Platforms, below) gives the
+  bounds and the guard page for every thread, main included. Cheap
+  enough that the count could go, but the count stays so the runner
+  is one code on every platform; Native only answers the exhaustion
+  question exactly.
+- **JVM with native access: exact.** FFM (JDK 22+), in okay-platform
+  (Decision 12), found by the core by name. Bounds:
   `pthread_get_stackaddr_np`/`pthread_get_stacksize_np` (macOS),
   `pthread_getattr_np` + `pthread_attr_getstack` (glibc). The pointer:
   `getcontext`, reading `sp` out of the `ucontext_t` at the offset of
@@ -219,6 +220,63 @@ the idea is right is the MAXIMUM, kept in the unit that is sound: the
 most BYTES a level has taken, from the exact reads above. Where no read
 is available the calibrated count is 20x cheaper than one walk and no
 less right.
+
+## Platforms — every runtime this library ships to, one row each
+
+The operator's ask (2026-09-25): every platform provided for, not the
+one on this box. One runner, one count, one `StackSwitch` per
+platform; what differs is the fresh stack, the first room, and whether
+the room can be read exactly.
+
+| runtime | the fresh stack | first room | exact bytes at exhaustion | proved by |
+|---|---|---|---|---|
+| JVM 17 | platform thread, 1 GB | `ThreadStackSize` / 1.2 KB / 2 | never (no FFM): the count and its bound | `sbt verifyJdk17` (build.sbt: every forking suite on `jdk17Home`) |
+| JVM 21 | the same | the same | never: FFM is still preview on 21 and this library enables no previews | a run on `jdk21Home` (build.sbt:1551 already names it) |
+| JVM 22–24 | the same | the same | `okay-platform`'s FFM reader, when `Module.isNativeAccessEnabled` (22+); 24 is where the WARNING starts for callers that did not enable it | the default `Test / javaHome` when it is one of these |
+| JVM 25+ | the same | the same | the same reader; a later release will REFUSE the call instead of warning (JEP 472), and the gate is the same boolean either way | JDK 26, the default `Test / javaHome` |
+| JVM, caller on a VIRTUAL thread (any JDK 21+; okay's own default scheduler) | the same: the virtual thread parks on the `join` and unmounts, no carrier pinned | the same: a mounted virtual thread grows on its CARRIER's stack, which is `ThreadStackSize` | the reader sees the carrier's bounds (measured), which is the stack in use; `worst` is updated only when the bounds match the previous read's, since the thread may have moved carriers between two exhaustions | TestContStack on a virtual thread |
+| Scala.js | none: no thread to switch to, no way to grow a stack synchronously | unbounded count (`Int.MaxValue`: nothing happens at zero, so nothing is counted) | nothing to read | the cross suite: a shallow program unchanged; **the bound**, in docs: nested opaque bodies are limited by the engine's stack (~10 800 frames on V8's default 984 KB; `node --stack-size` raises it) |
+| Scala Native | platform thread, 1 GB (`Thread(group, r, name, stackSize)`: the javalib passes it to `NativeThread.create`, page-aligned plus its guard pages, `≤ Int.MaxValue` asserted) | ThreadInfo's own `maxStackSize` / 1.2 KB / 2 | ALWAYS, and in the core: the runtime keeps `ThreadInfo { stackTop, stackBottom, stackGuardPage, maxStackSize, isMainThread }` per thread (nativelib `nativeThreadTLS.h`, `scalanative_currentThreadInfo()`), the main thread's from the OS soft limit, and the address of a `stackalloc` is the pointer — no pthread call, no per-OS layout | a test in `src/test/scala-native` on a 128 KB thread |
+
+The first room is `firstRoom` only until Layer 1 lands; with it, a
+transparent body counts nothing and only an opaque one decrements.
+
+### Where the code lives
+
+- **`okay` (the core), cross:** `StackRoom`, one method —
+  `left(): Long`, bytes on this stack before the guard, or −1 when
+  unknown — and the runner's use of it at exhaustion. Its default
+  answers −1.
+- **`okay`, `src/main/scala-jvm/StackSwitch.scala`:** the platform
+  thread, the `ThreadStackSize` read (one `HotSpotDiagnosticMXBean`
+  call at class init, `-Dokay.cont.room` overriding), and ONE
+  `Class.forName("okay.StackRoomFfm")` at class init: present, it is
+  the reader; absent, the count. A name, not a `ServiceLoader`: a
+  service load scans every jar's `META-INF/services` on the class
+  path, needs a registration file per provider, and there is exactly
+  one provider to find. The core does not depend on okay-platform and
+  will not (core-modules); the soft link runs the other way, as the
+  Multi-Release `Scoped` already does.
+- **`okay-platform`, `src/main/scala-jvm/StackRoomFfm.scala`:** the
+  FFM reader, written PLAINLY against `java.lang.foreign` — this
+  module compiles with `jdkFloor(0)`, so dotc sees the ambient JDK's
+  class library and emits bytecode 61, and the class loads on 17
+  because call sites link lazily (the `Schedulers.hasVirtualThreads`
+  pattern, proved on 17 by jdk-adaptive-scheduler). Two rules keep
+  that true: no `java.lang.foreign` type in any field or signature of
+  a class that loads on 17 — the reader is its own object, and the
+  core only ever holds it as `StackRoom` — and nothing in it runs
+  unless `Runtime.version().feature() >= 22 &&
+  isNativeAccessEnabled`. The layout table (`(os, arch) → sp offset`)
+  is here, and an `(os, arch)` that is not in it answers −1.
+- **`okay`, `src/main/scala-native/StackSwitch.scala`:** the platform
+  thread AND the exact reader, in one file: `@extern def
+  scalanative_currentThreadInfo(): Ptr[ThreadInfo]` with the struct
+  spelled out as SN 0.5.12 lays it out (two `size_t`, three `Ptr`, a
+  `CBool`; pinned to the version in build.sbt, and a test that the
+  bounds contain a `stackalloc` address guards the layout). It needs
+  nothing above the core, so it does not go to okay-platform.
+- **`okay`, `src/main/scala-js/StackSwitch.scala`:** as today.
 
 ## Decisions (and what was refuted, with why)
 
@@ -295,6 +353,30 @@ less right.
     refuses, in a place where it is merely unnecessary rather than
     unsafe. The `ThreadStackSize` read gives the same first room
     without it.
+11. **A switch costs 33 µs on the JVM whatever the stack size, and
+    that is why exactness is not a nicety** (Results, `ThreadStart`):
+    a 1 MB and a 1 GB thread start and join in the same 33 µs, because
+    the reservation is free until touched; a virtual thread in 14 µs,
+    only 2.3x less, paid 7 800x more often on the 64-level road. One
+    switch a stack could have avoided costs more than a whole
+    statePara run (26 µs). So the exact reader is not "an
+    optimisation when native access happens to be on": for a program
+    of opaque bodies it is the difference between master's number and
+    2x, and the docs say so where they say how to enable native
+    access.
+12. **The FFM reader lives in okay-platform, the Native reader in the
+    core** (the operator's suggestion, 2026-09-25, "the corresponding
+    abstractions in okay-platform"). Not both in the core: the core
+    compiles with `-java-output-version 17`, which REFUSES a reference
+    to `java.lang.foreign` at compile time, so a reader there would be
+    ~80 lines of `MethodHandle` lookups for twelve JDK 22 methods —
+    written once as a probe, read by nobody. Not both in
+    okay-platform: the Native reader needs only the runtime's own
+    `ThreadInfo`, and a core that is exact by itself on Native should
+    not lose that to symmetry. Not a Multi-Release `jdk22/` directory
+    like `Scoped`'s: that variant exists only on a checkout that ran
+    the script, and a guarantee that exists only sometimes is a
+    bound.
 
 ## Behavior
 
@@ -330,15 +412,26 @@ Compile-time layer:
 Stack knowledge (Layer 3):
 - [ ] the fresh stack is a platform thread on JDK 26 too (the test's
       switch counter sees one switch per ~500 000 levels, not per 64)
-- [ ] Native: at exhaustion the exact bytes left decide grant or switch
+- [ ] Native: at exhaustion the exact bytes left decide grant or switch;
+      a `stackalloc` address lies inside `ThreadInfo`'s bounds (the
+      struct-layout guard); a 128 KB Native thread switches and
+      answers; the switch thread's own 1 GB is what `ThreadInfo` reports
 - [ ] JVM, native access enabled (`--enable-native-access` in the
       test's fork options): statePara-shaped 1000 levels on a 2 MB
       thread switch ZERO times; a 128 KB thread still switches; a
       `Thread.ofPlatform().stackSize(8 MB)` thread is granted more than
-      the default would allow
+      the default would allow; from a virtual thread the read answers
+      the carrier's bounds and the program is correct
 - [ ] JVM, native access absent: no WARNING line on stderr, ever; the
       first room is `ThreadStackSize`-derived (test: the counter on a
       default thread sees no switch below ~800 levels here)
+- [ ] JVM without okay-platform on the class path: `Class.forName`
+      misses, the count runs, nothing is logged (the core's own suite
+      is that case)
+- [ ] JVM 17 and 21: `verifyJdk17` green on the core and okay-platform
+      (the reader's class loads on 17 and is never entered); the same
+      on `jdk21Home`
+- [ ] JS: the cross suite green; the bound in docs/
 - [ ] the grant follows `worst`: a run whose later bodies have fatter
       frames than its first ones still does not overflow (a test body
       with a large local array past level 500)
@@ -388,6 +481,29 @@ Stack knowledge (Layer 3):
     road can), a virtual thread its carrier's 2060 KB.
   - `Module.isNativeAccessEnabled()` is false without the flag, and the
     first restricted call then prints four WARNING lines.
+- Probe `ThreadStart` (JDK 26), the price of one switch — start a
+  platform thread, run nothing, join; warm, 1000 rounds:
+
+  | stack | per start+join |
+  |---|---|
+  | 1 MB | 33.3 µs |
+  | 64 MB | 32.8 µs |
+  | 1 GB | 32.8 µs |
+  | 4 GB | 38.6 µs |
+  | virtual thread | 14.4 µs |
+
+  So 15 625 virtual hops at 14 µs is the 220 ms the virtual road
+  measured, and a 1 GB reservation costs nothing until it is touched.
+- Scala Native 0.5.12, read from the runtime's sources (javalib
+  `Thread.scala`, nativelib `NativeThread.scala`,
+  `nativeThreadTLS.h`, `stackOverflowGuards.c`): a `Thread` made with
+  a `stackSize` reaches `pthread_attr_setstacksize` through
+  `ThreadStackSize.resolve` (minimum 64 KB, plus the guard pages,
+  page-aligned); every thread including main has a `ThreadInfo` with
+  its bounds and guard page, kept for the runtime's own
+  `StackOverflowError` (a SIGSEGV/SIGBUS handler on an alternate
+  signal stack); `SCALANATIVE_THREAD_STACK_SIZE` overrides the
+  default. Not yet run: the test on a 128 KB Native thread.
 - A/B of the runtime layer against master (src/jmh/history.d,
   2026-09-25T091202Z-cont-stack-switch; min of 3 alternating rounds,
   quiet box, JDK 26):
@@ -409,16 +525,19 @@ Stack knowledge (Layer 3):
 1. Layer 2 (implemented, lane cont-stack-switch, not landed).
 2. Layer 1 A: the macro and the `Jump` node. Target: statePara back to
    master's number, with zero switches.
-3. Layer 2 on the platform thread (Decision 8) and Layer 3's JVM side:
-   `StackRoom.left(): Long` (−1 when unknown) behind `StackSwitch`, the
-   FFM read gated on `isNativeAccessEnabled`, the `ThreadStackSize`
-   first room, `worst` carried beside the room. Then shrink the fast
-   path (the `Mapped` closure, `Reentry`'s shape) and A/B again. Land
-   1–3 together, only within noise.
+3. Layer 2 on the platform thread (Decision 8) and Layer 3 on every
+   platform (the matrix above): `StackRoom` in the core, the JVM
+   `StackSwitch` with the `ThreadStackSize` first room and the
+   by-name lookup, `okay-platform`'s `StackRoomFfm` (macOS arm64
+   first, the other layouts as Open question 1 measures them), the
+   Native `StackSwitch` reading `ThreadInfo`, `worst` carried beside
+   the room. Then shrink the fast path (the `Mapped` closure,
+   `Reentry`'s shape) and A/B again. Land 1–3 together, only within
+   noise, with `verifyJdk17` green.
 4. Layer 1 B, then the known higher-order functions, then visible user
    functions and `direct`.
-5. Layer 3 on Native (exact), and the remaining `ucontext` layouts on
-   the JVM (Open question 1).
+5. The remaining `ucontext` layouts on the JVM (Open question 1), each
+   with its probe run on that OS.
 6. okay2: stages 1–4 in Scala 2, as far as its macros reach.
 7. Docs: user docs for Cont's stack behaviour per platform, with the JS
    bound, and the literature below.
