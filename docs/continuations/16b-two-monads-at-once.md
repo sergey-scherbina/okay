@@ -245,12 +245,71 @@ What it cost:
 ### Stacks do not compose with each other
 
 That was ONE stack. The sharper problem shows up the day two pieces of
-code written against DIFFERENT stacks meet. Three teams, the same three
-effects:
+code written against DIFFERENT stacks meet — and the difference that
+hurts most is not the order of the layers but what the stacks are MADE
+of. Two teams, one shared effect, and the rest their own:
 
-- **team A** wrote the basket above: `App` = error inside log inside
+- **team A** needs choices that may fail — a list and an error, no log:
+
+```scala
+type Choices[A] = EitherT[List, String, A]
+
+def priceOf(shop: String, item: String): Choices[Int] =
+  EitherT.fromOption[List](prices(shop).get(item), s"$shop has no $item")
+```
+
+- **team B** needs a log that may fail — a writer and an error, no
+  choices:
+
+```scala
+type Logs[A]    = Writer[Vector[String], A]
+type Journal[A] = EitherT[Logs, String, A]
+
+def note(msg: String): Journal[Unit] =
+  EitherT.liftF(Writer.tell(Vector(msg)))
+```
+
+Both stacks put the error in the same place; there is no ordering to
+agree on. And still neither team's helper types in the other's stack:
+
+```text
+Found:    cats.data.EitherT[List, String, Int]
+Required: cats.data.EitherT[bookcats.CatsTeams.Logs, String, Int]
+```
+
+The basket needs all three effects, so it needs a THIRD stack, the
+union, which neither team wrote (`App` above). Each team's helpers get
+into it through a conversion written by hand, one per team — per pair
+of stacks, in general:
+
+```scala
+def fromA[A](fa: Choices[A]): App[A] = EitherT(WriterT.liftF(fa.value))
+def fromB[A](fb: Journal[A]): App[A] = EitherT(WriterT(List(fb.value.run)))
+```
+
+and every call site says which team it came from:
+
+```scala
+_     <- fromB(note(s"shop $shop"))
+ps    <- items.traverse(item => fromA(priceOf(shop, item)))
+```
+
+Now multiply: every new team with a slightly different set of effects
+is one more stack, one more union for everybody who combines it, and
+one more conversion into each union. The conversions are not free
+either: each has to know the structure of both stacks, and change when
+either does.
+
+**The same effects in another order are no better.** Agreeing on the
+set of effects is not enough; the order is part of the stack too.
+
+Take team X with the basket's own stack and team Y with the same three
+effects in the other order, the error OUTSIDE the log, plus team Z with
+one more layer on top:
+
+- **team X** wrote the basket above: `App` = error inside log inside
   choice;
-- **team B** wrote an audit helper with the same effects in the other
+- **team Y** wrote an audit helper with the same effects in the other
   order, the error OUTSIDE the log:
 
 ```scala
@@ -261,14 +320,14 @@ def audit(msg: String): Audited[Unit] =
   WriterT.tell[Checked, Vector[String]](Vector(msg))
 ```
 
-- **team C** needs a configuration too, so it put a `ReaderT` on top of
-  team A's stack:
+- **team Z** needs a configuration too, so it put a `ReaderT` on top of
+  team X's stack:
 
 ```scala
 type Configured[A] = ReaderT[App, Config, A]
 ```
 
-Team A tries to call team B's `audit` inside its basket:
+Team X tries to call team Y's `audit` inside its basket:
 
 ```text
 for
@@ -285,7 +344,7 @@ Found:    cats.data.WriterT[bookcats.CatsStacks.Checked, Vector[String], U]
 Required: bookcats.CatsBasket.App[Int]
 ```
 
-Team C tries to call team A's `price` and is refused the same way,
+Team Z tries to call team X's `price` and is refused the same way,
 because one more layer is one more type. The fix there is mechanical —
 one more lift, in every helper it reuses:
 
@@ -294,7 +353,7 @@ def priced(shop: String, item: String): Configured[Int] =
   ReaderT.liftF(CatsBasket.price(shop, item))
 ```
 
-Team A's fix for team B's helper is not mechanical at all. Changing the
+Team X's fix for team Y's helper is not mechanical at all. Changing the
 ORDER of two layers means writing the swap from the start of the
 chapter by hand, for this one pair:
 
@@ -306,11 +365,11 @@ def reorder[A](fa: Audited[A]): App[A] =
   }))
 ```
 
-And it cannot be written without losing something. In team B's order an
+And it cannot be written without losing something. In team Y's order an
 error DISCARDS the log, so `audit("checked")` followed by a failure
 runs to `List(Left("no stock"))` — the line is gone before `reorder`
 ever sees it, and the converted value is `(Vector(), Left("no stock"))`
-where team A's own order would have kept `Vector("checked")`. The two
+where team X's own order would have kept `Vector("checked")`. The two
 stacks are not two spellings of one thing; they are different
 programs, and there is no lossless function from one to the other.
 
@@ -321,7 +380,27 @@ lossy conversion (a different order), and a library of helpers has to
 pick one stack for all its users. The two roads below have no such
 thing to pick. A layered helper is a plain value — `Logged(Vector(msg),
 ())` works under any nesting of `reify` blocks. An effect helper is
-written against its one effect:
+written against the effects IT uses, and the union is nothing but the
+row of the program that uses both teams — team A's helper and team B's
+helper widen into it with `.at`, no conversion, no stack to agree on:
+
+```scala
+def priceOf(shop: String, item: String): Int ! Throws % String =
+  prices(shop).get(item) match
+    case Some(p) => pure[Throws % String, Int](p)
+    case None    => raise[String, Int](s"$shop has no $item")
+
+def note(msg: String): Unit ! Writer % String =
+  Writer.tell(msg)
+```
+
+```scala
+_     <- note(s"shop $shop").at[Basket]
+ps    <- items.foldLeft(pure[Basket, List[Int]](Nil))((acc, item) => acc.flatMap(xs => priceOf(shop, item).at[Basket].map(xs :+ _)))
+```
+
+The same holds for a bigger row. A helper written against its one
+effect:
 
 ```scala
 def audit(msg: String): Unit ! Writer % String =

@@ -78,6 +78,39 @@ object CatsStacks:
       case Left(e)         => (Vector.empty, Left(e))
     }))
 
+/** I¾. stacks of DIFFERENT composition: two teams share one effect (errors) and not the others */
+object CatsTeams:
+  import cats.data.{EitherT, Writer, WriterT}
+  import CatsBasket.App
+  import Shops.prices
+
+  /** team A: choices that may fail — no log */
+  type Choices[A] = EitherT[List, String, A]
+
+  def priceOf(shop: String, item: String): Choices[Int] =
+    EitherT.fromOption[List](prices(shop).get(item), s"$shop has no $item")
+
+  /** team B: a log that may fail — no choices */
+  type Logs[A]    = Writer[Vector[String], A]
+  type Journal[A] = EitherT[Logs, String, A]
+
+  def note(msg: String): Journal[Unit] =
+    EitherT.liftF(Writer.tell(Vector(msg)))
+
+  /** the basket needs the UNION, a stack neither team wrote, and one conversion per team */
+  def fromA[A](fa: Choices[A]): App[A] = EitherT(WriterT.liftF(fa.value))
+  def fromB[A](fb: Journal[A]): App[A] = EitherT(WriterT(List(fb.value.run)))
+
+  def basket(items: List[String]): App[Int] =
+    import cats.syntax.all.*
+    for
+      shop  <- CatsBasket.choose(List("north", "south"))
+      _     <- fromB(note(s"shop $shop"))
+      ps    <- items.traverse(item => fromA(priceOf(shop, item)))
+      total  = ps.sum
+      _     <- fromB(note(s"total $total"))
+    yield total
+
 /** II. layered monadic reflection: a delimiter ($) per monad, reflect as shift0, no transformer */
 object LayeredBasket:
   import okay.Layered.{Layer, reify, reflect}
@@ -155,6 +188,26 @@ object EffectsBasket:
     val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
     !.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList
 
+  /** team A's helper: only the effects IT uses */
+  def priceOf(shop: String, item: String): Int ! Throws % String =
+    prices(shop).get(item) match
+      case Some(p) => pure[Throws % String, Int](p)
+      case None    => raise[String, Int](s"$shop has no $item")
+
+  /** team B's helper: only the effect IT uses */
+  def note(msg: String): Unit ! Writer % String =
+    Writer.tell(msg)
+
+  /** the union is just the row of the program that uses both; each helper widens into it */
+  def teams(items: List[String]): Int ! Basket =
+    for
+      shop  <- choose("north", "south").at[Basket]
+      _     <- note(s"shop $shop").at[Basket]
+      ps    <- items.foldLeft(pure[Basket, List[Int]](Nil))((acc, item) => acc.flatMap(xs => priceOf(shop, item).at[Basket].map(xs :+ _)))
+      total  = ps.sum
+      _     <- note(s"total $total").at[Basket]
+    yield total
+
   /** written ONCE against its own effect, used in any row that has it, in any order */
   def audit(msg: String): Unit ! Writer % String =
     Writer.tell(msg)
@@ -191,6 +244,33 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
 
   test("algebraic effects: the same answer, from handlers chosen where it runs") {
     assertEquals(EffectsBasket.run(List("tea", "cake")), expected)
+  }
+
+  test("DIFFERENT COMPOSITION: team A's helper (List + Either) does not type in team B's stack (Writer + Either), nor in the union") {
+    val inB = compileErrors("""
+      val p: bookcats.CatsTeams.Journal[Int] =
+        for
+          _ <- bookcats.CatsTeams.note("start")
+          t <- bookcats.CatsTeams.priceOf("north", "tea")
+        yield t
+    """)
+    assert(inB.contains("Found:    cats.data.EitherT[List, String, Int]"), inB)
+    val inUnion = compileErrors("""
+      val p: bookcats.CatsBasket.App[Int] = bookcats.CatsTeams.priceOf("north", "tea")
+    """)
+    assert(inUnion.contains("Required: bookcats.CatsBasket.App[Int]"), inUnion)
+  }
+
+  test("the union stack with one hand conversion per team gives the basket") {
+    assertEquals(CatsTeams.basket(List("tea", "cake")).value.run, expected)
+  }
+
+  test("effects: the two teams' helpers, each on its own row, widen into the union row with no conversion") {
+    import okay.{Choose, Writer, runChoice, runEither}
+    import okay.given
+    val checked = runEither[Int, Choose + Writer % String, String](EffectsBasket.teams(List("tea", "cake")))
+    val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
+    assertEquals(!.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList, expected)
   }
 
   test("STACKS DO NOT COMPOSE: team B's helper (other order) does not type in team A's stack") {
