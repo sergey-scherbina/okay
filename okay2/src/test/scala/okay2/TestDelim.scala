@@ -181,12 +181,26 @@ class TestDelim extends munit.FunSuite {
     val e = intercept[NoPrompt] {
       !.run(Delim.run[Int, P](push[Int, P](Delim.prompt[Int])(Delim.shift[Int, Int, P](stray)(k => k(1)))))
     }
-    assertEquals(e.installed, List("prompt @ <unknown>"))
+    assertEquals(e.installed.size, 1)
+    assert(e.installed.head.startsWith("prompt @ TestDelim.scala:"), e.installed.head)
     assert(e.getMessage.contains("ONE `Delim.run` PER PROGRAM"), e.getMessage)
   }
 
-  test("At: the default label is <unknown>; a lexical At names the line") {
-    assertEquals(Delim.prompt[Int].label, "prompt @ <unknown>")
+  test("At.here names this file and this line, and two lines differ") {
+    val a = At.here
+    val b = At.here
+    assert(a.where.startsWith("TestDelim.scala:"), a.where)
+    assertNotEquals(a.where, b.where, "two call sites got the same position")
+    assertEquals(a.where.split(':')(1).toInt + 1, b.where.split(':')(1).toInt)
+  }
+
+  test("At.here is the CALLER's position, not the library's") {
+    def door(implicit at: At): String = at.where
+    assert(door.startsWith("TestDelim.scala:"), door)
+    assert(Delim.prompt[Int].label.startsWith("prompt @ TestDelim.scala:"), Delim.prompt[Int].label)
+  }
+
+  test("At: a lexical At overrides the caller's position") {
     def here: String = {
       implicit val at: At = At("Booking.scala:31")
       Delim.prompt[Int].label
@@ -422,7 +436,7 @@ class TestDelimPatterns extends munit.FunSuite {
   test("pause/resumable: the rest of the dialogue is a value") {
     val start = !.run(Delim.resumable[String, String, String, P](booking))
     assertEquals(start.asking, Some("Which city?"))
-    assertEquals(start.where, Some("<unknown>"))
+    assert(start.where.exists(_.startsWith("TestDelim.scala:")), start.where.toString)
     assertEquals(!.run(Delim.drive(start)(answering(List("Kyiv", "3", "yes")))), "Booked Kyiv for 3 nights")
     // the SAME paused dialogue, answered again and differently
     assertEquals(!.run(Delim.drive(start)(answering(List("Lviv", "2", "no")))), "Cancelled")

@@ -545,7 +545,7 @@ now depends on okay2-async (and on okay2-platform for its tests):
   `runAt` (the cells threaded like `State.handleAt`; the knot is a
   loud `IllegalStateException`).
 - `Delim`: `Prompt`, `NoPrompt` (names the installed delimiters),
-  `At` (a default `<unknown>`, a lexical override), `Push`/`Capture`,
+  `At` (the caller's `file:line` since stage 39, a lexical override), `Push`/`Capture`,
   `prompt`/`push`/`shift`/`shift0`/`control`/`control0`/`abort`/
   `reset`, `OneMachine` (a second machine in a row is a compile
   error; `NoDelim` is the absence witness), `Prompted.Aux[R, F]` and
@@ -630,10 +630,9 @@ now depends on okay2-async (and on okay2-platform for its tests):
   instance always, two more when `Member[Delim, F]` holds — ambiguous
   exactly when Delim is in the row). An abstract F reads as absent,
   as in the Scala 3 core.
-- `At` defaults to `<unknown>`: a Scala 2 def macro cannot expand in
-  the run that defines it and okay2 is one build; a caller installs a
-  lexical `implicit val at: At = At("File.scala:12")`. A macro module
-  is backlog `okay2-at-macro`.
+- `At` defaulted to `<unknown>` here; since stage 39 `At.here` is a
+  def macro that reads the caller's `file:line`. A lexical
+  `implicit val at: At = At("File.scala:12")` still overrides it.
 - `Failing.never[F]` is a METHOD, not an implicit: the Scala 3 core's
   finding that an identity default silently unguards a row stands;
   the core's only implicit is `pure`, and a row with nothing is a
@@ -2012,12 +2011,40 @@ with every parameter typed from the chain.
   REFUTED: a def macro cannot EXPAND in the run that defines it, but
   `m.plan` expands at the USE site, in the test run or in a user's
   build. That is also how `Replayable`/`Distinct` live in the core.
-  `At.here` is different, because the core itself would summon it:
-  backlog `okay2-at-here`.
+  `At.here` was left as backlog `okay2-at-here`, on the fear that the
+  core itself summons it. It does not (stage 39).
 - Mutants, one at a time. A plan in reverse order does not compile:
   the typer rejects the generated `exports` body against
   `F[Vector[Installed]]`, which is the check doing its job. Names read
   from the dealiased symbol fail two tests (`RDb` for `Primary`).
+
+## Stage 39 — `At.here` names the caller (2026-09-25)
+Backlog `okay2-at-here`: `At.here` becomes an implicit def macro
+(`AtMacro.here` in Delim.scala). It reads `c.enclosingPosition` and
+gives `At("File.scala:line")`, as the Scala 3 core's inline given
+does. Where there is no position, it gives `<unknown>`.
+
+### Behavior (stage 39)
+- [x] `At.here` names the file and line it is written on; two lines
+      give two positions
+- [x] a door taking `(implicit at: At)` is labelled by its CALLER:
+      `Delim.prompt[Int].label` reads `prompt @ TestDelim.scala:…`, a
+      `NoPrompt` lists the installed prompt by the line that made it,
+      and a paused dialogue's `where` is the line of its `pause`
+- [x] a lexical `implicit val at: At` still overrides the default
+      (TestDelim, TestDelimPatterns)
+
+### Decisions (stage 39)
+- No `okay2-macros` subproject. A def macro cannot expand in the run
+  that defines it, and the core does not need that: every door in it
+  takes `At` as a parameter and passes it on. Measured, not argued:
+  with `here` a macro, `okay2/compile` is green. A summon inside the
+  core would fail with "macro implementation not found". The
+  workflow module's doors expand in their own run, like any user's.
+- The three tests that pinned `<unknown>` failed first, each with the
+  real caller line (`TestDelim.scala:182`, `:189`, `:412`). They now
+  assert the file and that two lines differ, not a line number that
+  every edit above them would move.
 
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and

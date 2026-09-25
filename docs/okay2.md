@@ -1048,6 +1048,16 @@ compile time):
     assertEquals(back.asking, Some("Pay 270 for Kyiv?"))
 ```
 
+Every door that makes a prompt or captures takes an `At`, the line it
+was written on, so a `NoPrompt` and a paused dialogue say where they
+come from. The default is the CALLER's `file:line`, read by a def
+macro at the call site. A lexical `At` overrides it:
+
+```scala
+    def door(implicit at: At): String = at.where
+    assert(door.startsWith("TestDelim.scala:"), door)
+```
+
 The prompt stack can also be a TYPE. `Delim.Stacked` hands the body a
 stack value whose doors ask for evidence that the prompt is on it, so
 a shift with no reset, a shift to a foreign prompt of the same answer

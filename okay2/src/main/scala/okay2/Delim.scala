@@ -2,6 +2,8 @@ package okay2
 
 
 import scala.annotation.{implicitNotFound, tailrec}
+import scala.language.experimental.macros
+import scala.reflect.macros.blackbox
 import Free.{Return, Inject, Bind}
 import Split.split
 
@@ -74,10 +76,12 @@ object NoPrompt {
 
 /**
  * WHERE THIS WAS WRITTEN. The Scala 3 core reads the caller's
- * `file:line` with an inline macro; a Scala 2 def macro cannot be
- * expanded in the compilation run that defines it, and okay2 is one
- * run, so the default is `<unknown>` and a caller that wants its line
- * in the diagnostics installs one lexically:
+ * `file:line` with an inline macro; here `At.here` is an implicit def
+ * macro that does the same. A Scala 2 def macro cannot expand in the
+ * run that defines it, but none has to: every door in this core TAKES
+ * its `At` as a parameter and passes it on, so the default is only
+ * ever materialised at a caller's site, in another run. A caller that
+ * wants a different label installs one lexically:
  * `implicit val at: At = At("Booking.scala:31")`. Lexical scope wins
  * over the companion's default.
  */
@@ -88,7 +92,20 @@ final case class At(where: String) extends AnyVal {
 object At {
   /** for a call that has no position to offer */
   val unknown: At = At("<unknown>")
-  implicit val here: At = unknown
+
+  /** the caller's `file:line`, read off the expansion's position */
+  implicit def here: At = macro AtMacro.here
+}
+
+object AtMacro {
+  def here(c: blackbox.Context): c.Tree = {
+    import c.universe._
+    val pos = c.enclosingPosition
+    val where =
+      if (pos == NoPosition) "<unknown>"
+      else s"${pos.source.file.name}:${pos.line}"
+    q"_root_.okay2.At($where)"
+  }
 }
 
 sealed trait Delim extends Row { type Op[+A] = Delim.Op[A] }
