@@ -1,86 +1,101 @@
-# ci-staged — gate your own change before the merge, gate everything once before the push
+# ci-staged — your modules first, then their dependents, before the merge; the whole build once, before the push
 
 ## Overview
 
 Every lane today lands through the same shape: rebase, `scripts/gate.sh
 "affected master"`, `--ff-only`, push. `affected` closes the lane's diff
-over its DEPENDENTS (project/Affected.scala), so a lane that touches the
-core — or `build.sbt` — runs the whole family, in a worktree of its
-own, at the same time as every other lane doing the same. With N agents
-landing that is N full gates on one 14-core box, each pushing the others
-toward the RAM guard's kill (AGENTS.md, THE 143), each kill a retry,
-each retry another full gate. `land.sh` then refuses to land any lane
-whose base master has moved by a SOURCE commit, so a sibling's disjoint
-one-line change sends everyone back to a fresh full gate. The box
-collapses under work that is almost entirely duplicated: the same
-dependents, tested N times, for N changes that do not touch each other.
+over its DEPENDENTS (project/Affected.scala) and runs the closure as ONE
+`all`, in whatever order sbt's scheduler takes — so a lane learns that
+its own module is red only after the dependents it dragged in have
+compiled and started. Every lane does this in a worktree of its own, at
+the same time as every other lane, and `land.sh` then refuses to land any
+lane whose base master has moved by a SOURCE commit, so a sibling's
+disjoint one-line change sends everyone back to a fresh full gate. With
+N agents landing that is N family-sized gates on one 14-core box, most
+of them re-checking each other, each pushing the others toward the RAM
+guard's kill (AGENTS.md, THE 143), each kill a retry, each retry another
+gate. The box collapses under duplicated work.
 
-The operator's ask (2026-09-25): **before the merge, test the modules
-the lane changed; run the whole build once, after the merges into
-master and BEFORE the push.** Three stages:
+The operator's shape (2026-09-25, stated twice, the second time after a
+draft of this spec had the dependents only compiled): **before the merge,
+run the tests of the modules that changed, THEN the tests of the modules
+that depend on them — one list, in that order. Run the whole build in
+master once, before master is pushed.** Three stages:
 
-- **A — pre-merge, per lane.** The lane's OWN projects run their tests;
-  their dependents are COMPILED (`Test/compile`), not tested. A broken
-  signature shows there, and a dependent's tests would mostly re-check
-  what its compile just proved. The build files changing is still the
-  whole family — nothing smaller is true.
+- **A — pre-merge, per lane, ordered.** The lane's changed projects run
+  their tests first; their dependents run theirs second, as a separate
+  sbt command — a red in what the lane wrote stops the run before one
+  dependent is paid for. The set is what `affected` runs today; the
+  order is new. And a sibling's landing in a module the lane never
+  touched no longer forces a re-gate: that interaction is stage B's.
 - **B — post-merge, pre-push, serial, once for everyone.** ONE runner,
-  one lock, gates `origin/master..master` with the full dependent
-  closure — the closure a lane pays today, paid once per batch of
-  landings — and PUSHES on green. Nobody else pushes. Origin only ever
-  receives a tree the whole gate has seen.
-- **C — red is a revert, not a hunt.** A red range is bisected with the
-  same scoped gate; the first bad landing commit is reverted on master
-  by the runner, named in the room and in `changelog.d/`, and the next
-  turn gates and pushes the range with the revert in it. The author
-  re-lands with the fix. Master's health is the runner's job, not each
-  author's — and origin never carries the fault at all.
+  one lock, runs the WHOLE build on master (`family all`, plus okay2's
+  suite when the range touched it) and PUSHES on green. Nobody else
+  pushes. Origin only ever receives a tree the whole gate has seen.
+- **C — red is a revert, not a hunt.** A red run is bisected over the
+  landings since the last push, with the scoped `affected` gate; the
+  first bad landing is reverted on master by the runner, named in the
+  room and in `changelog.d/`, and the next turn gates and pushes the
+  range with the revert in it. The author re-lands with the fix.
+  Master's health is the runner's job, not each author's — and origin
+  never carries the fault at all.
 
-What changes for a lane: its gate shrinks to its own modules, and it
-stops pushing. What does not change: the gate still runs before the
-merge, the merge is still its own command, and the push still happens
-within minutes of landing — by the runner, after the one full gate.
+What changes for a lane: its gate fails fast on its own modules, it
+re-gates only for neighbours in its own modules, and it stops pushing.
+What does not change: the gate still runs before the merge, the merge is
+still its own command, and the push still happens within minutes of
+landing — by the runner, after the one whole build.
 
 ## Interface
 
-### Stage A — `affected <ref> <task> <platform> self`
+### Stage A — `affected <ref> <task> <platform> staged`
 
 `project/Affected.scala`, the `affected` command, gains a fourth
-argument, the SCOPE:
+argument, the ORDER:
 
-    affected <git-ref> [task] [jvm|js|native|rest|all] [self|closed]
+    affected <git-ref> [task] [jvm|js|native|rest|all] [staged|closed]
 
-- `closed` (the default, and today's meaning): `<task>` on the changed
-  projects AND every project that depends on them.
-- `self`: `<task>` on the changed projects only; on the dependent
-  closure minus those, `Test/compile` — so a dependent that no longer
-  compiles against the lane's main sources fails the gate, and a
-  dependent that does is not tested here. A lane whose diff touched
-  only TEST sources compiles no dependents at all (ci-affected-tests-only
-  already established that a test cannot break a dependent).
+- `closed` (the default, and today's meaning): one `all` over the
+  changed projects and every project that depends on them.
+- `staged`: the same set as TWO sbt commands queued in sequence — `all`
+  over the changed projects, then `all` over the dependents minus them.
+  sbt stops at the first command that fails, so the second never runs
+  on a red first. A lane whose diff touched only TEST sources has no
+  second stage (ci-affected-tests-only: a test cannot break a dependent).
 - The BUILD changing (`buildChanged`: root `*.sbt`, `project/`, the
-  meta-build's sources) ignores the scope: it is the whole gate, `test`,
-  as today. `self` cannot make that smaller and does not pretend to.
+  meta-build's sources) collapses the two into one: every project
+  changed, nothing is "first".
 
-The log line names both halves: `affected: 3 file(s) changed since
-master: 1 project(s) directly (test), 12 dependents (Test/compile)`.
+The log line names both stages: `affected: 3 file(s) changed since
+master: 1 project(s) directly, then 12 dependents`, and each stage is
+announced as it runs: `running test on 3 changed project(s): …`, then
+`running test on 12 dependent project(s): …`.
 
-`scripts/gate.sh "affected master self"` is the pre-merge spelling. The
-two-phase JVM-first split (gate-jvm-first) applies to it exactly as to
-`affected <ref>`: `affected <ref> test jvm self` then `affected <ref>
-test rest self`.
+Two flags, for the selftest and for reading a plan without paying for
+it: `--plan` prints the stages and runs nothing; `--files=a,b,c` takes
+the changed files from the argument instead of git.
+
+`scripts/gate.sh "affected master staged"` is the pre-merge spelling. The
+two-phase JVM-first split (gate-jvm-first) applies to it as to `affected
+<ref>`: `affected <ref> test jvm staged` then `affected <ref> test rest
+staged` — so the order on the box is changed-JVM, dependents-JVM,
+changed-rest, dependents-rest.
 
 ### Stage A — `land.sh`'s re-gate check narrows, and it stops pushing
 
 `scripts/land.sh` step 2 today refuses to land when master gained ANY
-source commit since the lane's base. It refuses instead only when the
-gained source files INTERSECT the lane's own scope: a file under one of
-the lane's direct projects' source directories, or a build file. A
-sibling's source change in a disjoint module is rebased onto and
-landed; stage B is what checks that the two lanes agree.
+source commit since the lane's base. It refuses instead only when a
+gained source file lies in a MODULE the lane's own diff touched, or is a
+build file (on either side). A sibling's source change in a module the
+lane never touched is rebased onto and landed; stage B is what checks
+that the two lanes agree. "Module" is the first path component
+(`okay-lex/…`), the core being `src/`, and `project/` plus the root
+`*.sbt` being the build — one module per top-level directory is this
+repository's layout, the same seam `Affected.scala` reads through the
+build's own directories.
 
-Step 8 (`git push origin master`) becomes `scripts/ci-runner.sh kick`.
-The runner pushes.
+Step 8 (`git push origin master`) becomes `scripts/ci-runner.sh kick`
+once the runner exists (lane 2). Until then it pushes, as today.
 
 `land.sh` also (a) takes the landing sha from the BRANCH (`git rev-parse
 --short feature/<slug>`), never from master after the merge — a sibling
@@ -90,7 +105,7 @@ release-claim commit, which the operator's own instructions forbid.
 
 ### Stage B — `scripts/ci-runner.sh`
 
-    scripts/ci-runner.sh once          gate origin/master..master, push on green, exit
+    scripts/ci-runner.sh once          whole build on master, push on green, exit
     scripts/ci-runner.sh loop          `once`, then wait for a kick, repeat
     scripts/ci-runner.sh kick          wake a running loop, or start `once` detached
     scripts/ci-runner.sh status        the lock holder, what is unpushed, pending kicks
@@ -122,10 +137,12 @@ There is no `last-green` file: **what is pushed is what was green.**
 3. a range whose diff is board-only (`.work`, `sprint.d`, `backlog.d`,
    `changelog.d`, `docs`, `specs` — `land.sh`'s own list) is pushed at
    once: nothing to gate;
-4. otherwise `scripts/gate.sh "affected $from..$to"` — the RANGE form
-   `changedSince` already reads, closed over dependents, JVM first. If
-   the range touches `okay2/`, `cd okay2 && ../scripts/gate.sh test`
-   follows (the separate build has no `affected`; its suite is 80 s warm);
+4. otherwise the WHOLE build: `scripts/gate.sh "family all"` — the
+   nightly's set, all platforms, on `to` — and, if the range touches
+   `okay2/`, `cd okay2 && ../scripts/gate.sh test` after it (the separate
+   build; 80 s warm). The whole build and not `affected from..to`,
+   because the operator asked for the whole build and because this is
+   the one run that pays for everything once instead of N times;
 5. GREEN → `git push origin master`; room: `ci: pushed <from>..<to>
    (N landings)`. A REJECTED push means origin moved during the run:
    back to step 2, same turn.
@@ -148,15 +165,17 @@ step 3):
 1. `git bisect start $to $from` in a DETACHED WORKTREE of its own
    (`../okay-ci-bisect`), never in the main checkout — a bisect there is
    a `checkout` in the checkout everybody merges into; `git bisect run
-   sh scripts/gate.sh "affected $from..HEAD"`;
+   sh scripts/gate.sh "affected $from..HEAD"` — the SCOPED gate here,
+   because a bisect over five disjoint landings then costs five scoped
+   gates and not five whole builds;
 2. the first bad commit `C` is reverted on master: `git revert --no-edit
    C`; the revert commit's message names `C`, its lane (from the
    `release-claim` that follows it, when one does) and the runner's log;
 3. `changelog.d/ci-revert-<slug>.md` is written with the same facts and
    committed with the revert; the room gets `ci: RED <from>..<to> —
    reverted <C> (<slug>); re-land with the fix`;
-4. the loop's next turn gates `from..<revert>` and pushes it green. The
-   culprit and its revert reach origin TOGETHER, or not at all.
+4. the loop's next turn runs the whole build on `<revert>` and pushes it
+   green. The culprit and its revert reach origin TOGETHER, or not at all.
 
 One landing commit in the range needs no bisect: it is the culprit.
 
@@ -167,44 +186,46 @@ never retries a `gate: RED`, exactly as `gate-retry.sh` does not.
 
 ### The push rule
 
-AGENTS.md's "PUSH WHAT YOU LAND, IMMEDIATELY" becomes "LAND, THEN KICK
-THE RUNNER — the runner pushes". The reason the old rule was written
-(origin 60 commits behind, submodule consumers blocked) is served
-better, not worse: the runner pushes within one gate of every landing
-and pushes only what the whole gate has seen. A `claim:` commit is not
-pushed by hand either — the next turn's board-only range pushes it at
-once (step 3), and a claim is local coordination in the first place.
-The one push a human still makes by hand is none.
+AGENTS.md's "PUSH WHAT YOU LAND, IMMEDIATELY" becomes, when the runner
+lands, "LAND, THEN KICK THE RUNNER — the runner pushes". The reason the
+old rule was written (origin 60 commits behind, submodule consumers
+blocked) is served better, not worse: the runner pushes within one whole
+build of every landing and pushes only what that build has seen. A
+`claim:` commit is not pushed by hand either — the next turn's board-only
+range pushes it at once (step 3). The one push a human still makes by
+hand is none.
 
 ## Behavior
 
-Stage A — `self` scope (`project/Affected.scala`; `TestAffectedSelf` in
-okay-deploy beside `TestDocSnippets`, running `sbt "affected <ref> test
-all self"` against a fixture worktree and reading the log line, since
-the plugin is the meta-build's and cannot be loaded into a test JVM):
+Stage A — `staged` order (`project/Affected.scala`;
+`scripts/affected-selftest.sh` runs six `--plan --files=…` commands in
+one sbt start and reads the log, since the plugin is the meta-build's and
+cannot be loaded into a test JVM):
 
-- [ ] a diff touching only `okay-lex/src/main` runs `okayLexJVM/test`
-      (and JS/Native) and `Test/compile` on okay-parse, okay-codec and
-      the rest of okay-lex's dependent closure — no dependent's `test`
-- [ ] a diff touching only `okay-lex/src/test` runs okay-lex's own
-      tests and compiles NO dependent
-- [ ] a diff touching `build.sbt` runs `test` on the whole gate under
-      `self` exactly as under `closed`
-- [ ] a diff touching the core (`src/main/scala`) under `self` runs the
-      core's own tests and `Test/compile` on every module — the whole
-      family compiled, not tested
-- [ ] `closed` (and no fourth argument) behaves exactly as `affected`
+- [x] a diff touching only `okay-lex/src/main` runs stage 1 `test` on
+      the three okay-lex projects and stage 2 `test` on okay-lex's
+      dependent closure (125 projects, 2026-09-25)
+- [x] a diff touching only `okay-lex/src/test` runs the three and has no
+      second stage
+- [x] a diff touching `build.sbt` runs `test` on the whole gate as ONE
+      stage under `staged` exactly as under `closed`
+- [x] a diff touching the core (`src/main/scala`) under `staged` runs the
+      core's three first and every module (169) second
+- [x] `closed` (and no fourth argument) behaves exactly as `affected`
       does today — the nightly and CI's push job are unchanged
-- [ ] the log line names the direct count with its task and the
-      dependent count with `Test/compile`
-- [ ] `scripts/gate.sh "affected master self"` runs the JVM arm first
-      and the rest only on green, as `affected master` does
-- [ ] `land.sh` rebases and lands when master's gained source files lie
-      outside the lane's direct projects and the build; refuses, naming
-      the files, when one lies inside
+- [x] an order that is neither `staged` nor `closed` is refused, named
+- [x] `scripts/gate.sh "affected master staged"` runs the JVM arm first
+      and the rest only on green, as `affected master` does, the order
+      riding on both phases; a four-argument form is passed through
+      (`gate-selftest.sh` case 8)
+- [x] `land.sh` rebases and lands when master's gained source files lie
+      outside the lane's own modules and the build; refuses, naming the
+      modules, when one lies inside (dry-run on this lane against real
+      master, 2026-09-25: refused naming BUILD — master had gained
+      `build.sbt`, this lane touches `project/`; the classifier checked
+      on eight paths)
 - [ ] `land.sh`'s `landed as` names the branch tip; the release-claim
-      commit carries no attribution trailer; step 8 kicks and does not
-      push
+      commit carries no attribution trailer
 
 Stage B — the runner (`scripts/ci-runner-selftest.sh`, in the style of
 `gate-selftest.sh`: a fixture repo with a bare `origin`, a fake
@@ -240,19 +261,18 @@ landings with one the fake gate calls bad):
 - [ ] the bisect runs in its own detached worktree; the main checkout's
       HEAD never leaves master
 
-Policy (AGENTS.md, this lane edits it):
+Policy (AGENTS.md):
 
-- [ ] AGENTS.md "Before merging" names `scripts/gate.sh "affected master
-      self"` as the pre-merge gate, the runner as the pre-push one, the
-      revert as the runner's answer to red, and rewrites the PUSH rule
-      as "land, then kick" — saying why (this section's numbers)
+- [ ] "Before merging" names `scripts/gate.sh "affected master staged"`
+      and the narrowed re-gate rule (this lane); the PUSH rule is
+      rewritten as "land, then kick" when the runner lands (lane 2)
 
 ## Out of scope
 
 - GitHub Actions. The push job there already runs `affected before..sha`
-  closed over dependents on a runner of its own; it is a second full
-  gate for what the local runner already pushed. This spec is the LOCAL
-  box, where the collapse is.
+  closed over dependents on a runner of its own; it is a second gate for
+  what the local runner already pushed. This spec is the LOCAL box, where
+  the collapse is.
 - Making the runner a launchd agent. `loop` in a terminal the operator
   owns, or `kick`'s detached `once`, is enough to measure with; a
   launchd plist is a follow-up once the loop has run a day.
@@ -265,14 +285,20 @@ Policy (AGENTS.md, this lane edits it):
 
 ## Design
 
-**Why `Test/compile` and not nothing for the dependents.** The thing a
-lane can break downstream without touching downstream is a signature —
-a renamed method, a changed type, a removed given. That is a compile
-error in the dependent, and `Test/compile` catches it in the dependent's
-own tests too (a test calling the removed method). What `Test/compile`
-does not catch is a BEHAVIOUR change under an unchanged signature, and
-that is exactly what stage B exists for — once, for the batch, before
-anything is pushed.
+**Why the order buys something when the set is the same.** A lane's own
+module is where its red lives nine times in ten; under one unordered
+`all` that red arrives after sbt has compiled and started the dependents
+it scheduled alongside. Two commands make the first red the LAST thing
+the box pays for. And what the box was actually collapsing under was not
+one lane's closure but N lanes each re-gating the family for each
+other's disjoint landings — that is the `land.sh` narrowing, which needs
+no change to the set at all.
+
+**Why the runner runs the WHOLE build and not `affected from..to`.**
+The operator asked for the whole build before the push, and it is the
+one place that is right: the runner is serial, so the family is paid
+once per batch of landings however many there were, and "the family is
+green at this sha" is a fact the nightly can then skip re-proving.
 
 **Why one runner and a lock, not a queue service.** The claims are
 files in `.work/active/`; the lock is a directory in `.work/ci/`. Same
@@ -285,11 +311,6 @@ runner is the only pusher, so what origin holds is exactly what the
 runner gated green — one fact in one place, kept by git. A state file
 would be a second copy of it that could disagree.
 
-**Why bisect with the scoped gate.** `affected $from..HEAD` at each
-bisect step gates only what the range up to that step touched, so a
-bisect over five disjoint lanes costs five scoped gates, not five full
-ones — the same economy stage A buys, applied to the hunt.
-
 **Why the runner reverts and does not just report.** A red master that
 waits for its author is a red master every other lane rebases onto,
 and every one of them reads the same red as its own. A revert within
@@ -297,35 +318,36 @@ one runner turn keeps master something a lane can rebase onto without
 inheriting a fault it did not write — and, because the push waits for
 green, keeps the fault off origin entirely.
 
-**What a lane loses.** A cross-module interaction — lane X changes the
-core's behaviour under an unchanged signature, lane Y's module depends
-on the old behaviour — used to fail in X's own pre-merge gate (Y was in
-X's closure). Now it fails in the runner, after X has merged, and X is
-reverted before it is pushed. X's author learns the same fact one merge
-later; Y's author never waited for X's gate; origin never saw X.
+**What a lane loses.** A cross-module interaction — lane X changes a
+module's behaviour, lane Y lands beside it in a module X never touched,
+and the two disagree — used to be caught by whichever landed second
+being forced to re-gate over the first. Now it is caught by the runner,
+after both have merged, and the culprit is reverted before it is
+pushed. Both authors learn the same fact one merge later; neither
+waited for the other's gate; origin never saw it.
 
 ## Decisions
 
-- **`self` compiles dependents' TESTS (`Test/compile`), not only their
-  mains** — chosen because a dependent's test is where a removed given
-  or a renamed method it relied on is called most; `compile` alone would
-  pass a lane that broke every downstream test's compile. Rejected:
-  `compile` only (misses exactly that); `test` on direct dependents only
-  (an arbitrary depth; the boundary the operator drew is "mine vs not").
-- **A fourth argument, not a new command** — chosen so `gate.sh`'s
-  two-phase logic and CI's `affected before..sha` keep one code path.
-  Rejected: an `affected-self` command (two spellings of one graph walk).
-- **The full gate runs BEFORE the push, and the runner is the only
-  pusher** — the operator's refinement over a first draft that gated
-  after the push and kept a `last-green` file: a red never reaches
-  origin, and the base needs no state of its own. Rejected: gate after
-  push with revert (origin carries the fault for a turn; consumers
-  bumping the submodule in that window get it).
-- **The runner gates a RANGE (`origin/master..master`), not the tip** —
-  `changedSince` already has the `a..b` form and it is what "what did
-  these landings touch" means. Rejected: the working-tree form (the main
-  checkout carries siblings' uncommitted files, which the runner must
-  not read).
+- **Dependents are TESTED pre-merge, in a second stage — not compiled
+  only.** The first draft of this spec had `self`: the changed projects
+  tested, the dependents `Test/compile`d, on the reasoning that a
+  behaviour change under an unchanged signature is what stage B is for.
+  The operator overruled it, twice, with the shape above: the same set,
+  ordered. Recorded so the next agent does not re-propose it: the
+  operator's win is the fail-fast order plus the narrowed re-gate plus
+  one whole build per batch, not a smaller pre-merge set.
+- **A fourth argument, not a new command** — so `gate.sh`'s two-phase
+  logic and CI's `affected before..sha` keep one code path. Rejected: an
+  `affected-staged` command (two spellings of one graph walk).
+- **The whole build runs BEFORE the push, and the runner is the only
+  pusher** — the operator's refinement over a draft that gated after the
+  push and kept a `last-green` file: a red never reaches origin, and the
+  base needs no state of its own. Rejected: gate after push with revert
+  (origin carries the fault for a turn; consumers bumping the submodule
+  in that window get it).
+- **The runner runs `family all`, the bisect runs `affected from..HEAD`**
+  — the whole build where one run covers everybody, the scoped gate
+  where a run per candidate would otherwise be a whole build each.
 - **Revert on red** — per the trade-off above. Rejected: leave red and
   page the author (every other lane inherits the red until they wake);
   auto-re-run once (a machine for landing broken trees, `gate-retry.sh`'s
@@ -333,9 +355,11 @@ later; Y's author never waited for X's gate; origin never saw X.
 
 ## Results
 
-_Filled after each lane lands: the pre-merge gate's size before and
-after for a core lane and a leaf lane (projects tested, projects
-compiled, wall time at the same load); the runner's first week (turns,
-pushes, reds, reverts, the longest time from a landing to its push);
-and the collapse the operator described measured against it (load
-average during landings, gates killed by the RAM guard per day)._
+_Stage A, 2026-09-25, `--plan` on this box: an okay-lex main change is
+3 projects then 125; a test-only change 3 then none; the core 3 then
+169; `build.sbt` 182 as one stage; `closed` 128 as one — the same 128
+`affected master` ran before. Wall-time before/after for a real leaf
+lane and a real core lane, the runner's first week (turns, pushes, reds,
+reverts, longest landing-to-push), and the collapse measured against it
+(load average during landings, RAM-guard kills per day): filled as each
+lands._

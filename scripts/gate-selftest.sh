@@ -114,6 +114,22 @@ rc8=$?
 [ "$rc8" -eq 2 ] && ok "exit 2" || bad "exit was $rc8, expected 2"
 grep -q "Passed: Total" "$tmp/empty.log" 2>/dev/null && bad "sbt was started anyway" || ok "sbt was not started"
 
+say "8. \`affected <ref> staged\` is two phases with the order on both; four arguments pass through"
+# ci-staged: the pre-merge gate's order is sbt's FOURTH argument, so the
+# JVM-first split has to carry it on each phase — a first cut matched
+# `*" staged"` alone and would have rewritten `affected master test all
+# staged` into `affected master test all test jvm staged`.
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/staged.log" run_gate "affected master staged" > "$tmp/staged.out" 2>&1
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/staged.log" | tr '\n' '|')
+want='fake-sbt-arg: <affected master test jvm staged>|fake-sbt-arg: <affected master test rest staged>|'
+[ "$got" = "$want" ] && ok "two phases, JVM first, order on both" || bad "sbt was handed: $got"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/staged4.log" run_gate "affected master test all staged" > "$tmp/staged4.out" 2>&1
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/staged4.log" | tr '\n' '|')
+[ "$got" = 'fake-sbt-arg: <affected master test all staged>|' ] && ok "four arguments pass through untouched" || bad "sbt was handed: $got"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/closed.log" run_gate "affected master" > "$tmp/closed.out" 2>&1
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/closed.log" | tr '\n' '|')
+[ "$got" = 'fake-sbt-arg: <affected master test jvm>|fake-sbt-arg: <affected master test rest>|' ] && ok "the plain form is unchanged" || bad "sbt was handed: $got"
+
 say ""
 # and now the same suite under the OTHER shell, once
 if [ -z "$GATE_SELFTEST_SHELL" ] && [ "$fail" -eq 0 ]; then

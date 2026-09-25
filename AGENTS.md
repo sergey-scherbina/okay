@@ -172,17 +172,28 @@ force, all already practiced, none previously written down:
   during a lane are wrong the moment the branch moves again. The
   window is exactly the gap between gating and merging.
 - Before merging: rebase the branch on `master`, run the gate, then
-  `git merge --ff-only`. The gate is `scripts/gate.sh "affected master"`
-  since ci-affected (2026-09-16): the projects the lane's diff touches,
-  closed over their dependents (project/Affected.scala) — which is the
-  whole family when the build files or the core changed, and a
-  module and its dependents when a module did. `scripts/gate.sh`
-  alone is still the whole family, and the nightly runs it split by
-  platform, so a lane that could not have broken a module no longer
-  pays for it and a module nobody's lane touched is still tested
-  every night — and READ the merge output; git refuses a
-  fast-forward over a sibling's uncommitted files, and the refusal
-  scrolls past a `tail -1`.
+  `git merge --ff-only`. The gate is `scripts/gate.sh "affected master
+  staged"` since ci-staged (2026-09-25, specs/ci-staged.md, the
+  operator's shape): the projects the lane's diff touches FIRST, then
+  the projects that depend on them (project/Affected.scala), as two
+  sbt commands in that order — a red in what you wrote stops the run
+  before a single dependent is paid for. The set is the one
+  `affected master` (ci-affected, 2026-09-16) always ran: the whole
+  family when the build files or the core changed, a module and its
+  dependents when a module did. WHAT IS NOT YOUR GATE ANY MORE: a
+  sibling's landing in a module your lane never touched. `land.sh`
+  used to refuse to land over ANY source commit on master; it now
+  refuses only when one lies in a module YOUR diff touched, or in the
+  build — the rest is the post-merge runner's to check, once for
+  everybody, before the push (stage B of the spec; the runner is its
+  own lane, and until it lands the push rule above stands unchanged).
+  The reason is measured, not stylistic: N lanes each re-gating the
+  family for each other's disjoint one-liners is what collapsed the
+  box on 2026-09-25. `scripts/gate.sh` alone is still the whole
+  family, and the nightly runs it split by platform, so a module
+  nobody's lane touched is still tested every night — and READ the
+  merge output; git refuses a fast-forward over a sibling's
+  uncommitted files, and the refusal scrolls past a `tail -1`.
 - **A GATE THAT HANGS NOW SAYS SO (gate-watchdog, 2026-09-18).**
   `gate.sh` watches its own log: 8 minutes with no new output AND an
   idle process tree is a STALL, and it takes a `jcmd` thread dump plus

@@ -15,6 +15,10 @@ import scala.sys.process._
  *   affected <git-ref> [task]   the projects a diff since <git-ref>
  *                               touches, closed over DEPENDENTS, and
  *                               <task> (default test) on exactly those
+ *   affected <ref> test all staged   the same set as two commands in
+ *                               order: the changed projects' tests, then
+ *                               their dependents' — the pre-merge gate
+ *                               (ci-staged, specs/ci-staged.md)
  *   family <jvm|js|native|all>  one platform of the whole family — the
  *                               nightly, split three ways
  *
@@ -145,12 +149,21 @@ object Affected extends AutoPlugin {
       go(Set(rootRef)) - rootRef
     }
 
-    def run(state: State, projects: Set[ProjectRef], task: String): State = {
-      val ids = projects.map(_.project).toSeq.sorted
-      if (ids.isEmpty) { state.log.info(s"affected: nothing to run"); state }
+    /** one `all` per (projects, label) STAGE, the stages queued in
+     * order — sbt runs them in sequence and stops at the first that
+     * fails, so `staged` puts the changed projects' own tests before
+     * their dependents' and a red in the first never pays for the
+     * second. `closed` is one stage: today's single `all`. */
+    def run(state: State, task: String, stages: Seq[(String, Set[ProjectRef])], plan: Boolean): State = {
+      val live = stages.filter(_._2.nonEmpty)
+      val cmds = live.map { case (_, ps) => s"all ${ps.map(_.project).toSeq.sorted.map(id => s"$id/$task").mkString(" ")}" }
+      val summary = live.map { case (label, ps) =>
+        s"$task on ${ps.size} $label project(s): ${ps.map(_.project).toSeq.sorted.mkString(" ")}" }
+      if (cmds.isEmpty) { state.log.info(s"affected: nothing to run"); state }
+      else if (plan) { summary.foreach(s => state.log.info(s"affected: plan — $s")); state }
       else {
-        state.log.info(s"affected: running $task on ${ids.size} project(s): ${ids.mkString(" ")}")
-        s"all ${ids.map(id => s"$id/$task").mkString(" ")}" :: state
+        summary.foreach(s => state.log.info(s"affected: running $s"))
+        cmds.foldRight(state)(_ :: _)
       }
     }
   }
@@ -174,36 +187,67 @@ object Affected extends AutoPlugin {
     case _ => true
   }
 
-  lazy val affected: Command = Command.args("affected", "<git-ref> [task] [jvm|js|native|rest|all]") { (state, args) =>
-    val base = args.headOption.getOrElse("origin/master")
-    val task = args.drop(1).headOption.getOrElse("test")
-    val platform = args.drop(2).headOption.getOrElse("all").toLowerCase
+  /**
+   * THE ORDER (ci-staged, 2026-09-25, specs/ci-staged.md; the operator's
+   * shape). `closed` is what `affected` always meant: ONE `all` over the
+   * changed projects and everything that depends on them, in whatever
+   * order sbt's scheduler takes. `staged` is the same set as TWO sbt
+   * commands in sequence — the changed projects' own tests first, their
+   * dependents' second — so a red in what the lane wrote stops the run
+   * before a single dependent is paid for. The build changing collapses
+   * the two into one: every project changed, nothing is "first".
+   *
+   * `--plan` prints what would run and runs nothing; `--files a,b,c`
+   * takes the changed files from the argument instead of git. Both are
+   * for `scripts/affected-selftest.sh`, which checks the shapes the spec
+   * names in one sbt start instead of one worktree each.
+   */
+  lazy val affected: Command = Command.args("affected", "<git-ref> [task] [jvm|js|native|rest|all] [staged|closed] [--plan] [--files=a,b,c]") { (state, args) =>
+    val (flags, positional) = args.partition(_.startsWith("--"))
+    val base = positional.headOption.getOrElse("origin/master")
+    val task = positional.drop(1).headOption.getOrElse("test")
+    val platform = positional.drop(2).headOption.getOrElse("all").toLowerCase
+    val scope = positional.drop(3).headOption.getOrElse("closed").toLowerCase
+    val plan = flags.contains("--plan")
+    val files = flags.collectFirst { case f if f.startsWith("--files=") => f.stripPrefix("--files=") }
     val g = new Graph(state)
-    changedSince(base, g.root) match {
-      case Left(why) =>
-        state.log.error(why); state.fail
-      case Right(changed) =>
-        val buildChanged = Affected.buildChanged(changed, g.root)
-        val direct: Set[ProjectRef] =
-          if (buildChanged) g.gate
-          else g.refs.filter { r => val ds = g.dirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
-        // a project whose diff touched only its TESTS cannot have
-        // broken a dependent (ci-affected-tests-only): nothing under
-        // Compile moved for it, so the dependent closure is seeded by
-        // MAIN changes only. `direct` still runs its own tests either
-        // way — this only stops a leaf's test-only edit from paying
-        // for everything downstream of it.
-        val mainChanged: Set[ProjectRef] =
-          if (buildChanged) g.gate
-          else g.refs.filter { r => val ds = g.mainDirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
-        val all = ((direct ++ g.closeOverDependents(mainChanged)) intersect g.gate)
-          .filter(r => onPlatform(r.project, platform))
-        val outside = changed.filterNot(f => g.refs.exists(r => g.dirs(r).exists(d => under(f, d))))
-        state.log.info(s"affected: ${changed.size} file(s) changed since $base" +
-          (if (buildChanged) " — the BUILD changed, so every project is" else
-            s": ${direct.size} project(s) directly, ${all.size} with dependents") +
-          (if (outside.nonEmpty && !buildChanged) s"; ${outside.size} file(s) belong to no project" else ""))
-        g.run(state, all, task)
+    if (!Set("staged", "closed")(scope)) {
+      state.log.error(s"affected: '$scope' is not an order (staged, closed)"); state.fail
+    } else {
+      val changedE = files match {
+        case Some(list) => Right(list.split(",").map(_.trim).filter(_.nonEmpty).map(g.root / _).toVector)
+        case None => changedSince(base, g.root)
+      }
+      changedE match {
+        case Left(why) =>
+          state.log.error(why); state.fail
+        case Right(changed) =>
+          val buildChanged = Affected.buildChanged(changed, g.root)
+          val direct: Set[ProjectRef] =
+            if (buildChanged) g.gate
+            else g.refs.filter { r => val ds = g.dirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
+          // a project whose diff touched only its TESTS cannot have
+          // broken a dependent (ci-affected-tests-only): nothing under
+          // Compile moved for it, so the dependent closure is seeded by
+          // MAIN changes only. `direct` still runs its own tests either
+          // way — this only stops a leaf's test-only edit from paying
+          // for everything downstream of it.
+          val mainChanged: Set[ProjectRef] =
+            if (buildChanged) g.gate
+            else g.refs.filter { r => val ds = g.mainDirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
+          val chosen = (r: ProjectRef) => g.gate(r) && onPlatform(r.project, platform)
+          val own = direct.filter(chosen)
+          val downstream = (g.closeOverDependents(mainChanged) -- direct).filter(chosen)
+          val outside = changed.filterNot(f => g.refs.exists(r => g.dirs(r).exists(d => under(f, d))))
+          val shape =
+            if (buildChanged) " — the BUILD changed, so every project is"
+            else if (scope == "staged") s": ${own.size} project(s) directly, then ${downstream.size} dependents"
+            else s": ${direct.size} project(s) directly, ${(own ++ downstream).size} with dependents"
+          state.log.info(s"affected: ${changed.size} file(s) changed since $base" + shape +
+            (if (outside.nonEmpty && !buildChanged) s"; ${outside.size} file(s) belong to no project" else ""))
+          if (buildChanged || scope == "closed") g.run(state, task, Seq(("affected", own ++ downstream)), plan)
+          else g.run(state, task, Seq(("changed", own), ("dependent", downstream)), plan)
+      }
     }
   }
 
@@ -214,6 +258,6 @@ object Affected extends AutoPlugin {
     if (!Set("all", "jvm", "js", "native", "rest")(platform))
       state.log.error(s"family: '$platform' is not a platform (jvm, js, native, rest, all)")
     val chosen = g.gate.filter(r => onPlatform(r.project, platform))
-    g.run(state, chosen, task)
+    g.run(state, task, Seq(("family", chosen)), plan = false)
   }
 }

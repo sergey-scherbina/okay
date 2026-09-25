@@ -82,14 +82,42 @@ claim=".work/active/$slug.claim"
   if [ -n "$gap" ]; then
     source_files=$(git diff --name-only "HEAD...master" -- . \
       ':!.work' ':!sprint.d' ':!backlog.d' ':!changelog.d' ':!docs' ':!specs' 2>/dev/null || true)
-    if [ -n "$source_files" ]; then
-      echo "land.sh: master gained SOURCE commits since this lane's base — RE-GATE before landing:"
+    # RE-GATE ONLY WHAT INTERSECTS THIS LANE (ci-staged, 2026-09-25,
+    # specs/ci-staged.md). The pre-merge gate is the lane's OWN modules;
+    # a sibling's source change in a module this lane never touched is
+    # the post-merge runner's to check against it, once for everybody —
+    # not this lane's to re-gate, N times over. Two things still force a
+    # re-gate: a build file on either side (the build is every module),
+    # and a gained file in a module THIS lane touched. "Module" is the
+    # first path component (`okay-lex/…`, `okay2/…`), the core being
+    # `src/`, `project/` and the root `*.sbt` — one module per top-level
+    # directory is this repository's layout, and it is the same seam
+    # project/Affected.scala reads through the build's own directories.
+    module_of() { case "$1" in
+      */*) case "$1" in project/*|*.sbt) echo BUILD ;; *) echo "${1%%/*}" ;; esac ;;
+      *.sbt) echo BUILD ;; *) echo ROOT ;; esac; }
+    mine=$(git diff --name-only "master...HEAD" -- . \
+      ':!.work' ':!sprint.d' ':!backlog.d' ':!changelog.d' ':!docs' ':!specs' 2>/dev/null \
+      | while read -r f; do module_of "$f"; done | sort -u)
+    theirs=$(printf '%s\n' "$source_files" | while read -r f; do [ -n "$f" ] && module_of "$f"; done | sort -u)
+    clash=""
+    for m in $theirs; do
+      case " $mine " in *" $m "*) clash="$clash $m" ;; esac
+      [ "$m" = BUILD ] && clash="$clash BUILD"
+    done
+    case " $mine " in *" BUILD "*) [ -n "$theirs" ] && clash="$clash BUILD" ;; esac
+    if [ -n "$clash" ]; then
+      echo "land.sh: master gained SOURCE commits in this lane's own modules ($(printf '%s' "$clash" | tr -s ' ' | sed 's/^ //')) — RE-GATE before landing:"
       echo "$gap" | sed 's/^/  commit: /'
       echo "$source_files" | sed 's/^/  touches: /'
-      echo "land.sh: rebase onto master, run scripts/gate.sh \"affected master\" again, then re-run land.sh"
+      echo "land.sh: rebase onto master, run scripts/gate.sh \"affected master staged\" again, then re-run land.sh"
       exit 1
     fi
-    echo "land.sh: master gained board/doc/claim-only commits — rebasing (no re-gate needed):"
+    if [ -n "$source_files" ]; then
+      echo "land.sh: master gained source commits OUTSIDE this lane's modules — rebasing; the post-merge runner gates the two together:"
+    else
+      echo "land.sh: master gained board/doc/claim-only commits — rebasing (no re-gate needed):"
+    fi
     echo "$gap" | sed 's/^/  commit: /'
     if [ "$dry_run" = true ]; then
       echo "land.sh: --dry-run, not rebasing"
@@ -137,7 +165,10 @@ if [ "$merge_exit" -ne 0 ]; then
   echo "land.sh: merge failed — stopping. Nothing else ran: no worktree removal, no branch delete, no claim release, no push." >&2
   exit "$merge_exit"
 fi
-sha=$(git rev-parse --short HEAD)
+# the BRANCH tip, not master's HEAD: a sibling's claim commit has landed
+# between the merge and this line before, and the release-claim then
+# named it (memory: landing-sha-from-branch)
+sha=$(git rev-parse --short "$branch")
 echo "land.sh: landed as $sha"
 
 # --- 5. worktree remove ------------------------------------------------
@@ -161,10 +192,8 @@ fi
 # --- 7. claim release: only if the claim is actually TRACKED ---------
 if git ls-files --error-unmatch "$claim" >/dev/null 2>&1; then
   git rm -q "$claim"
-  git commit -q -m "release-claim: $slug, landed as $sha
-
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01CRCGPc8TkvhH9YJhy2iEgH"
+  # no attribution trailer: the operator's own instructions forbid one
+  git commit -q -m "release-claim: $slug, landed as $sha"
   echo "land.sh: release-claim committed ($(git rev-parse --short HEAD))"
 else
   echo "land.sh: WARNING — $claim is not a tracked file; no claim to release. Master is landed regardless." >&2

@@ -276,14 +276,31 @@ else
   # every lane to run. Anything else (`test`, an explicit task, a
   # `family` call) is passed through untouched: this is a faster road
   # to the same verdict, not a new meaning for the argument.
+  # `affected <ref> staged` is the PRE-MERGE gate (ci-staged, 2026-09-25,
+  # specs/ci-staged.md): the lane's changed projects' tests first, their
+  # dependents' second, as two sbt commands. Same two phases, same
+  # JVM-first order — the order is the fourth sbt argument, so it rides
+  # on the end of both: changed-JVM, dependents-JVM, changed-rest,
+  # dependents-rest.
   phase2=""
   case "$cmd" in
     "affected "*)
       ref="${cmd#affected }"
+      scope=""
       case "$ref" in
-        *" "*) : ;;                      # a task or platform was given: the caller means it
-        *) cmd="affected $ref test jvm"; phase2="affected $ref test rest" ;;
-      esac ;;
+        *" staged") case "${ref% staged}" in
+                      *" "*) : ;;        # `<ref> <task> <platform> staged`: the caller means it
+                      *) scope=staged; ref="${ref% staged}" ;;
+                    esac ;;
+      esac
+      if [ -n "$scope" ]; then
+        cmd="affected $ref test jvm staged"; phase2="affected $ref test rest staged"
+      else
+        case "$ref" in
+          *" "*) : ;;                      # a task or platform was given: the caller means it
+          *) cmd="affected $ref test jvm"; phase2="affected $ref test rest" ;;
+        esac
+      fi ;;
   esac
   # A ";"-CHAIN IS SEVERAL COMMANDS (gate-command-chain, 2026-09-23).
   # Handed to sbt as ONE argument, `"a; b"` ran `a` and dropped `b`
