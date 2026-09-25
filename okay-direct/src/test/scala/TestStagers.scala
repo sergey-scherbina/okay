@@ -205,6 +205,11 @@ class TestStagers extends munit.FunSuite:
       acc
     }
 
+    @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+    def docStagerDemo(): Unit =
+      rt.run(Cfg(2, 100), ())(total(List(1, 2, 3)))._2     // Right(12)
+      rt.run(Cfg(2, 5), ())(total(List(1, 2, 3)))._2       // Left("over 6")
+    docStagerDemo()
     assertEquals(rt.run(Cfg(2, 100), ())(total(List(1, 2, 3)))._2, Right(12))
     assertEquals(rt.run(Cfg(2, 5), ())(total(List(1, 2, 3)))._2, Left("over 6"))
   }

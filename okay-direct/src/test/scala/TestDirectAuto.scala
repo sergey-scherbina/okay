@@ -1,10 +1,20 @@
 package okay
 
 import okay.Direct.{*, given}
-import scala.language.implicitConversions
+import scala.language.implicitConversions   // the language demands consent
 
 /** Auto-coloring: specs/direct-auto-coloring.md */
 class TestDirectAuto extends munit.FunSuite {
+
+  @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+  private def docNotationDemo(): Unit = {
+    given Monad[List] with
+      override def pure[A](a: A): List[A] = List(a)
+      extension [A](m: List[A])
+        override def flatMap[B](f: A => List[B]): List[B] = m.flatMap(f)
+    direct[Option] { None: Unit; 2 }          // None — the rest never runs
+    direct[List]   { List(1,2,3): Unit; 7 }   // List(7,7,7) — do-notation multi-shot
+  }
 
   given Monad[Option] with
     override def pure[A](a: A): Option[A] = Some(a)
@@ -64,10 +74,55 @@ class TestDirectAuto extends munit.FunSuite {
     assertEquals(a, 42)
   }
 
+  test("docs/direct-style.md: Layer 3's two gates, verbatim") {
+    type F = Reader % Int + Writer % String
+
+    given Effect[[X] =>> Reader[Int, X]] with {}    // gate 2: the marker
+    def ask: Reader[Int, Int] = Reader.Ask()
+
+    val prog: Int ! F = direct {
+      val env: Int = ask        // no mark: conversion inserted, macro rewrites it
+      Writer(s"env=$env"): Unit  // no mark either — see Layer 4
+      env + 1
+    }
+    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
+      Reader.run[Int, Int, Writer % String](41)(prog)))
+    assertEquals(ws, Seq("env=41"))
+    assertEquals(a, 42)
+  }
+
   test("do-notation: a bare statement of the block's monad runs") {
     assertEquals(direct[Option] { Option(1): Unit; 2 }, Some(2))
     assertEquals(direct[Option] { (None: Option[Int]): Unit; 2 }, None)
     assertEquals(direct[Option] { None: Unit; 2 }, None)
+  }
+
+  test("docs/direct-style.md: do-notation, verbatim") {
+    given Monad[List] with
+      override def pure[A](a: A): List[A] = List(a)
+      extension [A](m: List[A])
+        override def flatMap[B](f: A => List[B]): List[B] = m.flatMap(f)
+    // pinned verbatim from the page as a bare, unused-result statement
+    // (its own REPL-echo style) — the discard warning is silenced on
+    // this helper rather than reshaping the pinned text (2026-09-25)
+    docNotationDemo()
+    assertEquals(direct[Option] { None: Unit; 2 }, None)
+    assertEquals(direct[List] { List(1,2,3): Unit; 7 }, List(7, 7, 7))
+  }
+
+  test("docs/direct-style.md: Layer 4, a bare row-typed statement RUNS via do-notation") {
+    type F = Reader % Int + Writer % String
+    given Effect[[X] =>> Reader[Int, X]] with {}
+    def ask: Reader[Int, Int] = Reader.Ask()
+    val prog: Int ! F = direct {
+      val env: Int = ask
+      Writer(s"env=$env"): Unit  // a bare statement of a row type: RUNS
+      env + 1
+    }
+    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
+      Reader.run[Int, Int, Writer % String](41)(prog)))
+    assertEquals(ws, Seq("env=41"))
+    assertEquals(a, 42)
   }
 
   test("do-notation: a bare List statement re-runs the rest per element") {

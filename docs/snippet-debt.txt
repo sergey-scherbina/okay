@@ -128,7 +128,6 @@ docs/capabilities.md	f.curried <*> wire[Db] <*> wire[Log] <*> wire[Clock]  :  Db
 docs/capabilities.md	given ctxMonad[E]: Monad[[X] =>> E ?=> X]   // Provide.scala
 docs/capabilities.md	import okay.given   // instances need the given import — `import okay.*` is not enough
 docs/capabilities.md	provide(41)(viaCtx)   // same answers as Reader.run(41)(viaReader)
-docs/capabilities.md	provide(Env("ada", 7)) { !.run(Writer.run(told)) }
 docs/capabilities.md	val all: Env ?=> Seq[Int] = sequence(xs)     // F is INFERRED
 docs/capabilities.md	val env = effect[Reader % Int + W, Int](Reader.Ask()).!?
 docs/capabilities.md	val getQ: Db ?=> String = wire[Db].q
@@ -393,115 +392,6 @@ docs/di.md	val board: Store ?=> Module[[X] =>> Board ?=> X] =
 docs/di.md	val conns = prototype[Conn](Conn.open(url))(_.close())   // or without a release
 docs/di.md	val db   = module[Db](Db.open(url))(_.close())
 docs/di.md	val db = module[Db](Db.open(url))(_.close())
-docs/direct-style.md	!.run(Writer.run(Reader.run(41)(prog)))  // (Seq("env=41"), 42)
-docs/direct-style.md	!.run(isEven(1_000_001))   // false, on the default stack
-docs/direct-style.md	!.run(sum(1_000_000))   // 1000000, on the default stack
-docs/direct-style.md	(Gen(1) ++ Gen(2, 3)).toList                                   // List(1, 2, 3); flatMap is `yield from`
-docs/direct-style.md	* (2026-09-17) while Throws answered it on every value in the
-docs/direct-style.md	* generalized. The glyph was retired from 2025 to unwrap-glyph
-docs/direct-style.md	* language, silently. */
-docs/direct-style.md	* spellings: m.reflect and reflect(m) */
-docs/direct-style.md	/** the symbolic μ: m.!? and m.? — Rust's postfix question,
-docs/direct-style.md	Condition.run((_, _) => Resume(41))(prog)   // 42; before, after(41)
-docs/direct-style.md	Fetch.show(e).tell                        // the call, into the log
-docs/direct-style.md	Gen(1, 2, 3).iterator.toList                   // the body ended: exhausted
-docs/direct-style.md	Gen.of(Writer.tell(1).flatMap(_ => Writer.tell(2))).toList   // List(1, 2)
-docs/direct-style.md	Writer(s"env=$env")       // no mark either — see Layer 4
-docs/direct-style.md	Writer(s"env=$env")     // a bare statement of a row type: RUNS
-docs/direct-style.md	Writer(s"env=$env").!?               // an operation
-docs/direct-style.md	Writer(s"hello ${wire[Env].user}")
-docs/direct-style.md	case Fetch.Feed(i) => db.feeds(i)
-docs/direct-style.md	case Fetch.Now() => clock
-docs/direct-style.md	case Fetch.User(t) => db.users(t)
-docs/direct-style.md	case Force[A](h: Once.Handle[A]) extends Once[Option[A]]   // what the cell holds
-docs/direct-style.md	case Store[A](h: Once.Handle[A], a: A) extends Once[A]     // fill it; answers what it holds after
-docs/direct-style.md	countdown(n - 1).!?                       // a recursive generator, flat on the stack
-docs/direct-style.md	def      now     = Fetch.now           // by name:  time moves, read it again
-docs/direct-style.md	def      z = fetch("def")        // by name
-docs/direct-style.md	def count(xs: List[Int], acc: Long): Long ! Pure = direct:
-docs/direct-style.md	def demo(use: Boolean): Int ! (Once + Fetch) = direct:
-docs/direct-style.md	def fib(n: Int): Long ! Pure = direct:
-docs/direct-style.md	def isEven(n: Int): Boolean ! Pure = direct:
-docs/direct-style.md	def isOdd(n: Int): Boolean ! Pure = direct:
-docs/direct-style.md	def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F)     // !.once
-docs/direct-style.md	def one[X](e: Fetch[X]): X ! Row = direct:
-docs/direct-style.md	def run[A, F[+_]](a: A ! (Once + F)): A ! F                  // Once.run
-docs/direct-style.md	def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
-docs/direct-style.md	def sum(n: Int): Long ! Pure = direct:                      // 1 + sum(n - 1): not tail
-docs/direct-style.md	def sumEven(n: Int): Long ! Pure = direct:
-docs/direct-style.md	def sumOdd(n: Int): Long ! Pure = direct:
-docs/direct-style.md	direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }   // 60
-docs/direct-style.md	direct[List]   { List(1,2,3); 7 }   // List(7,7,7) — do-notation multi-shot
-docs/direct-style.md	direct[Option] { None; 2 }          // None — the rest never runs
-docs/direct-style.md	direct[Option] { eff("a", 1).!? + eff("b", 2).!? }  // "a" before "b", always
-docs/direct-style.md	direct[Option] { eff(false).!? && eff(true).!? }   // right side never runs
-docs/direct-style.md	direct[Option] { if c.!? then branch(1).!? else branch(2).!? }
-docs/direct-style.md	direct[[A] =>> A ! State % Int + Writer % String] {
-docs/direct-style.md	env + 1                             // plain code
-docs/direct-style.md	evens.take(3).toList                          // List(4, 16, 36) — the body ran to its sixth yield
-docs/direct-style.md	fib.drop(10).first                            // Some(55)
-docs/direct-style.md	final class Gen[W](val program: Unit ! (Writer % W + Stop)) extends AnyVal
-docs/direct-style.md	for x <- Pull.toldIn(producer) do            // the producer performs State between tells
-docs/direct-style.md	for x <- xs if isEven(x).!? do say(s"body $x").!?
-docs/direct-style.md	generator[Int] {                               // Gen.stop from inside a loop:
-docs/direct-style.md	given Effect[[X] =>> Reader[Int, X]] with {}    // gate 2: the marker
-docs/direct-style.md	if i >= 100 then Handled.pure(acc)
-docs/direct-style.md	if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)     // coloured, deferred
-docs/direct-style.md	if n == 0 then 0L else 1L + sumEven(n - 1)
-docs/direct-style.md	if n == 0 then 0L else 1L + sumOdd(n - 1)     // NOT tail — deferred anyway
-docs/direct-style.md	if n == 0 then false else isEven(n - 1)
-docs/direct-style.md	if n == 0 then true else isOdd(n - 1)      // deferred: tail position
-docs/direct-style.md	import Direct.{*, given}                    // givens need naming in Scala 3 — for ops;
-docs/direct-style.md	import Monadic.*
-docs/direct-style.md	import okay.Direct.eagerCalls.given    // this scope builds calls where they stand
-docs/direct-style.md	import scala.language.implicitConversions   // the language demands consent
-docs/direct-style.md	infinite.take(5)                               // the reader stopped: the rest never runs
-docs/direct-style.md	inline def ?[B]: Cont[A, F[B], F[B]] =
-docs/direct-style.md	lazy val x = !told("abc")      // runs at the FIRST use, in that position, once
-docs/direct-style.md	lazy val y = fetch("lazy val")   // by need
-docs/direct-style.md	object Test:
-docs/direct-style.md	provide(Env("ada", 7)) { !.run(Writer.run(told)) }
-docs/direct-style.md	rt.run(Cfg(2, 100), ())(total(List(1, 2, 3)))._2     // Right(12)
-docs/direct-style.md	rt.run(Cfg(2, 5), ())(total(List(1, 2, 3)))._2       // Left("over 6")
-docs/direct-style.md	say(s"got $x after ${State.get[Int].!?} steps").!?
-docs/direct-style.md	step(i + 1, acc + a).!?
-docs/direct-style.md	steps :+= s"after($v)"               // ... and this line runs
-docs/direct-style.md	type Row = Writer % String + Reader % Db + State % Long
-docs/direct-style.md	v                                    // ...so this never runs
-docs/direct-style.md	val      started = Fetch.now           // by value: pin the start, once
-docs/direct-style.md	val      x = fetch("val")        // by value
-docs/direct-style.md	val ((state, log), answer) = sw.run(0)(step(0, 0))
-docs/direct-style.md	val (a, b) = Async.par(store.run(p), store.run(p)).runWith   // p ran once; a == b
-docs/direct-style.md	val (log, e) = run(direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) })
-docs/direct-style.md	val clock = !State.modify[Long](_ + 40)   // every call costs 40ms
-docs/direct-style.md	val db = !Reader.ask[Db]                  // your data, straight in
-docs/direct-style.md	val env = Reader.Ask[Int, Int]().!?  // an operation
-docs/direct-style.md	val env: Int = ask
-docs/direct-style.md	val env: Int = ask        // no mark: conversion inserted, macro rewrites it
-docs/direct-style.md	val prog: Int ! (Once + Writer % String) = direct:
-docs/direct-style.md	val prog: Int ! F = direct {          // F inferred from the expected type
-docs/direct-style.md	val r: List[Int] ! W = direct {
-docs/direct-style.md	val sw = Stager.StateWriter[Int, String, Int]()   // the row's staged interpreter
-docs/direct-style.md	val v = signal[Int]("how many?").!?   // raise; Resume(41) lands HERE
-docs/direct-style.md	val v = signal[String]("bad").!?      // policy says Invoke("skip", x)
-docs/direct-style.md	val x = mx.!?
-docs/direct-style.md	val y = !told("de")            // runs here
-docs/direct-style.md	val y = my.!?
-docs/direct-style.md	var i = 0                                    //   nothing after it runs
-docs/direct-style.md	wire[Env].uid
-docs/direct-style.md	x + x + y + !told("f")         // log: de, abc, f
-docs/direct-style.md	x <- List(1, 2, 3).!?
-docs/direct-style.md	x <- mx
-docs/direct-style.md	x <- mx.reflect   // x: Int — a plain value
-docs/direct-style.md	y <- List(10, 20) if y > 10
-docs/direct-style.md	y <- List(10, 20).!?
-docs/direct-style.md	y <- my
-docs/direct-style.md	y <- my.!?         // the same μ, spelled short
-docs/direct-style.md	yield x * y           // List(10,20,20,40,30,60) — k ran 6 times
-docs/direct-style.md	}                                    // List(210, 220); log: look 21, look 22
-docs/direct-style.md	}                                    // Some(Map("aa" -> 10, "bb" -> 20))
-docs/direct-style.md	}(v => s"skipped:$v").!?                // ...and the frame answers
-docs/direct-style.md	}.toList                                       // List(1, 2, 3)
 docs/durable-workflows.md	.apply("promo").oldHalfDead           // ...nobody is on the else any more
 docs/durable-workflows.md	Retire.patches(journals)(booking)       // a replay AND the body
 docs/durable-workflows.md	Retire.states(c.programs("booking/1").ids.toList)(worker.dialogue)
@@ -1231,12 +1121,10 @@ docs/tutorial.md	countdown(1000000).toLazyList.take(3).toList   // List(1000000,
 docs/tutorial.md	cut.stopped    // true: the tokens after the closing brace were never pulled
 docs/tutorial.md	cut.value      // Some(Answer(...)) — decoded mid-stream
 docs/tutorial.md	def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
-docs/tutorial.md	def fib(n: Int): Long ! Pure = direct:
 docs/tutorial.md	def look(i: Int): Int ! (Writer % String) = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
 docs/tutorial.md	def loop(raws: List[String]): Vector[Int] ! Op = ...
 docs/tutorial.md	def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong)))
 docs/tutorial.md	def risky(n: Int): Int ! F =
-docs/tutorial.md	def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
 docs/tutorial.md	def traverseOf[F[_]](f: A => F[B]): S => F[T]      // Applicative[F]
 docs/tutorial.md	def validate(in: Map[String, String]): Validated[Errors, Signup] = direct:
 docs/tutorial.md	def withErrors(tree: Ui, errs: Errors): Ui =
@@ -1257,7 +1145,6 @@ docs/tutorial.md	given Handler[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
 docs/tutorial.md	given Handler[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
 docs/tutorial.md	given Handler[Tool] = session.handler          // the only line that changes
 docs/tutorial.md	guard[[A] =>> A ! Choose](a*a + b*b == c*c).map(_ => (a, b, c)))))
-docs/tutorial.md	if i >= 100 then Handled.pure(acc)
 docs/tutorial.md	if n < 0 then effect(Throws("negative")) else effect(State.Set(n))
 docs/tutorial.md	if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)   // or !fib(n - 1) + !fib(n - 2)
 docs/tutorial.md	import okay.Direct.parallelBinds.given
@@ -1270,7 +1157,6 @@ docs/tutorial.md	plan.leaves                 // every operation it MAY perform, 
 docs/tutorial.md	plan.leaves        // Vector(Of("pen"), Of("ink"), Of("pad"))
 docs/tutorial.md	plan.toFree.runWith         // the ordinary program, run the ordinary way
 docs/tutorial.md	plan.toFree.runWith  // and the same value, run the ordinary way
-docs/tutorial.md	provide(Env("ada", 7)) { !.run(Writer.run(told)) }
 docs/tutorial.md	provide(ada, tracer)(api)                       // no token anywhere
 docs/tutorial.md	re.tree == Parse.full(JsonLex.scan, JsonParse.instrs)(edited).tree  // exact
 docs/tutorial.md	retry(Retry.exponential(100).take(5))(fetch)   // the policy is a stream
@@ -1278,7 +1164,6 @@ docs/tutorial.md	runChoice(triples)                       // (3,4,5), (5,12,13),
 docs/tutorial.md	runEither(State.handle(0)(risky(5)))   // handle State, then Throws
 docs/tutorial.md	session, doc, edited, at, at + 3, at + 3)
 docs/tutorial.md	squares.take(3).toList                        // List(1, 4, 9); the body ran three steps
-docs/tutorial.md	step(i + 1, acc + a).!?
 docs/tutorial.md	sw.run(0)(step(0, 0))                    // ((state, log), answer)
 docs/tutorial.md	through(through(chars(text))(Scan.stage(Json.scan)))(JsonParse.driver)
 docs/tutorial.md	traverse(fields)(checkEither)      // Left(first problem)
@@ -1315,7 +1200,6 @@ docs/tutorial.md	val p = Person("ann", 41, List("a"), None)
 docs/tutorial.md	val plan = eachLine.traverseOf(priceLine)(order)
 docs/tutorial.md	val plan = traverse(keys)(k => Static.op(Get(k)))   // the same traverse
 docs/tutorial.md	val profile: Profile ! Async = direct:
-docs/tutorial.md	val prog: Int ! (Once + Writer % String) = direct:
 docs/tutorial.md	val prog: Int ! State % Int =
 docs/tutorial.md	val prog: List[Int] ! (Writer % String) = direct {
 docs/tutorial.md	val repo = RepoAgent.index(RepoAgent.load(File(".")))   // parse, don't regex

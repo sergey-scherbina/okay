@@ -66,17 +66,16 @@ monad with answer-type modification — types the construction
 
 ```scala
 object Monadic:
+
   extension [F[_] : Monad, A](m: F[A])
     /** μ: the monadic value as a direct value — one definition, both
-     * spellings: m.reflect and reflect(m) */
+     * spellings: `m.reflect` and `reflect(m)` (an extension is a
+     * method; the prefix form is its desugared call) */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ: m.!? and m.? — Rust's postfix question,
-     * generalized. The glyph was retired from 2025 to unwrap-glyph
-     * (2026-09-17) while Throws answered it on every value in the
-     * language, silently. */
-    inline def ?[B]: Cont[A, F[B], F[B]] =
-      shift(k => m.flatMap(k))
+    /** the symbolic μ — the collision-free survivor (see
+     * specs/direct-macro.md Decisions for the three-strikes story) */
+    inline def !?[B]: Cont[A, F[B], F[B]] = reflect[B]
 
   /** the delimiter: a direct-style block back into its monad */
   inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
@@ -93,7 +92,7 @@ calls `k` once per element (multi-shot). `reify` settles the debt
 with `pure`.
 
 ```scala
-import Monadic.*
+import okay.Cont.Monadic.*
 
 def add(mx: Option[Int], my: Option[Int]): Option[Int] =
   reify:
@@ -434,8 +433,7 @@ both open. This is the part of the design where the danger lives
 gates are the whole story:
 
 ```scala
-import Direct.{*, given}                    // givens need naming in Scala 3 — for ops;
-                                            // the block's own PROGRAMS colour without it
+import okay.Direct.{*, given}
 import scala.language.implicitConversions   // the language demands consent
 
 given Effect[[X] =>> Reader[Int, X]] with {}    // gate 2: the marker
@@ -443,13 +441,15 @@ def ask: Reader[Int, Int] = Reader.Ask()
 
 val prog: Int ! F = direct {
   val env: Int = ask        // no mark: conversion inserted, macro rewrites it
-  Writer(s"env=$env")       // no mark either — see Layer 4
+  Writer(s"env=$env"): Unit  // no mark either — see Layer 4
   env + 1
 }
 ```
 
-This import cannot be removed by Scala 3.9's `into`, and it is worth
-saying why, because `throws` lost its own import that way
+The `given`s need naming in Scala 3 — for the ops; the block's own
+PROGRAMS colour without it. This import cannot be removed by Scala
+3.9's `into`, and it is worth saying why, because `throws` lost its
+own import that way
 (throws-into): `into` marks the conversion's TARGET type, and
 auto-coloring's conversions are `Conversion[F[A], A]` — the target is
 the bare type variable `A`, and there is no declaration to write
@@ -635,14 +635,17 @@ the row, not a mutable field in the tree. So it is one (direct-once,
 
 ```scala
 enum Once[+A] derives Effect:
-  case Force[A](h: Once.Handle[A]) extends Once[Option[A]]   // what the cell holds
-  case Store[A](h: Once.Handle[A], a: A) extends Once[A]     // fill it; answers what it holds after
+  /** what the cell holds, or None (which marks it running) */
+  case Force[A](h: Once.Handle[A]) extends Once[Option[A]]
+  /** fill the cell; answers what it holds after — the first store wins */
+  case Store[A](h: Once.Handle[A], a: A) extends Once[A]
 
-def once[A, F[+_]](p: => A ! (Once + F)): A ! (Once + F)     // !.once
-def run[A, F[+_]](a: A ! (Once + F)): A ! F                  // Once.run
+def once[A, F[+_]](p: => A ! Once + F): A ! Once + F =
+def run[A, F[+_]](a: A ! Once + F): A ! F =
 ```
 
-`!.once(p)` is a program value: its first demand runs `p` and stores
+`once` is the word behind `!.once`, `run` behind `Once.run`. `!.once(p)`
+is a program value: its first demand runs `p` and stores
 the answer under a fresh handle; every later demand of *that value*
 answers from the store. The handle carries no program, which is what
 keeps `Once`'s type free of the row it lives in and lets it be
@@ -675,6 +678,7 @@ and ZIO's `Promise` are the same cell with a different name).
 In a block the word is Scala's own:
 
 ```scala
+def told(s: String): Int ! (Once + Writer % String) = direct { Writer(s).reflect; s.length }
 val prog: Int ! (Once + Writer % String) = direct:
   lazy val x = !told("abc")      // runs at the FIRST use, in that position, once
   val y = !told("de")            // runs here
@@ -701,10 +705,10 @@ for CORRECTNESS, not for speed:
 
 ```scala
 def page(token: String): Response ! Fetch + Once = direct:
-  val      started = Fetch.now           // by value: pin the start, once
+  val      started = Fetch.time          // by value: pin the start, once
   val      user    = Fetch.user(token)   // by value: every branch needs it
   lazy val feed    = Fetch.feed(user.id) // by need:  costly, and ONE list for both reads
-  def      now     = Fetch.now           // by name:  time moves, read it again
+  def      now     = Fetch.time          // by name:  time moves, read it again
 
   if user.banned then Response.Banned(user)
   else Response.Page(s"${feed.size} picks for ${user.name}, top ${feed.head}", now - started)
@@ -722,17 +726,14 @@ moves because each call costs time (`State`). No mocks, no doubles,
 and the harness is itself a `direct` block:
 
 ```scala
-object Test:
-  type Row = Writer % String + Reader % Db + State % Long
+type Test = Writer % String + Reader % (Users, Feeds) + State % Long
 
-  def one[X](e: Fetch[X]): X ! Row = direct:
-    Fetch.show(e).tell                        // the call, into the log
-    val clock = !State.modify[Long](_ + 40)   // every call costs 40ms
-    val db = !Reader.ask[Db]                  // your data, straight in
-    e match
-      case Fetch.Now() => clock
-      case Fetch.User(t) => db.users(t)
-      case Fetch.Feed(i) => db.feeds(i)
+def test[X](e: Fetch[X]): X ! Test = direct:
+  e.show.tell
+  (e match
+    case Fetch.Time() => !State.modify[Long](_ + 10)
+    case Fetch.User(t) => read[Users].get(t)
+    case Fetch.Feed(i) => read[Feeds].get(i)): X
 ```
 
 `State.modify` and `Reader.read` answer at their OWN rows, narrower
@@ -755,17 +756,21 @@ What that test prints (`TestDirectOnce` asserts exactly this):
 | request | answer | calls |
 |---|---|---|
 | a banned user | `Banned(Ada)` | `CLOCK`, `GET /user?token=b` |
-| the full page | `Page("3 picks for Cleo, top scala", 120)` | `CLOCK`, `GET /user?token=o`, `GET /feed/3`, `CLOCK` |
+| the full page | `Page("3 picks for Cleo, top scala", 10)` | `CLOCK`, `GET /user?token=o`, `GET /feed/3`, `CLOCK` |
 
 `feed` is read twice in that one line and fetched once. The clock is
-read twice and answers twice, 120ms apart. The user is fetched on both
+read twice and answers twice, 10ms apart. The user is fetched on both
 requests, and never twice.
 
 **No marks, no ascriptions.** The three words hold with nothing
 written on them (direct-colourless-val, 2026-09-16):
 
 ```scala
-def demo(use: Boolean): Int ! (Once + Fetch) = direct:
+type W = Writer % String
+type R = Once + W
+
+def fetch(key: String): Int ! R = direct { key.tell; key.length }
+def demo(use: Boolean): Int ! R = direct:
   val      x = fetch("val")        // by value
   lazy val y = fetch("lazy val")   // by need
   def      z = fetch("def")        // by name
@@ -832,12 +837,12 @@ is in scope, the gate the colouring conversions stand behind.
 ```scala
 val prog: Int ! F = direct {
   val env: Int = ask
-  Writer(s"env=$env")     // a bare statement of a row type: RUNS
+  Writer(s"env=$env"): Unit  // a bare statement of a row type: RUNS
   env + 1
 }
 
-direct[Option] { None; 2 }          // None — the rest never runs
-direct[List]   { List(1,2,3); 7 }   // List(7,7,7) — do-notation multi-shot
+direct[Option] { None: Unit; 2 }          // None — the rest never runs
+direct[List]   { List(1,2,3): Unit; 7 }   // List(7,7,7) — do-notation multi-shot
 ```
 
 This is Haskell's do-notation reading (`_ <- op`, or `op >> rest`):
@@ -881,7 +886,7 @@ val prog: Int ! Op = direct {
   steps :+= s"after($v)"               // ... and this line runs
   v + 1
 }
-Condition.run((_, _) => Resume(41))(prog)   // 42; before, after(41)
+!.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog))   // 42; before, after(41)
 ```
 
 Restart frames take a direct body through the `frame` door (two
@@ -919,7 +924,7 @@ specs/context-functions.md, executable as `TestDirectDoors`):
 
 ```scala
 def told: Env ?=> Int ! Writer % String = direct {
-  Writer(s"hello ${wire[Env].user}")
+  Writer(s"hello ${wire[Env].user}"): Unit
   wire[Env].uid
 }
 provide(Env("ada", 7)) { !.run(Writer.run(told)) }
@@ -972,7 +977,8 @@ name for that program with one more member in its row, `Stop`, so the
 body can end itself from inside a loop:
 
 ```scala
-final class Gen[W](val program: Unit ! (Writer % W + Stop)) extends AnyVal
+final class Gen[W](val chain: Gen.Chain[W]) extends AnyVal:
+  def program: Unit ! Gen.Row[W] = chain.program
 // a value class over the program (no allocation): `.program` is the
 // program back, `Gen.fromProgram` the name onto one, `Gen.of` a plain
 // Writer program widened

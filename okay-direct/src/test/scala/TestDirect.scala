@@ -5,6 +5,21 @@ import okay.Direct.*
 /** The flat block over Monadic: specs/direct-macro.md */
 class TestDirect extends munit.FunSuite {
 
+  @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+  private def docOneMarkEverywhereDemo(prog: Int ! (Reader % Int + Writer % String)): Unit =
+    !.run(Writer.run(Reader.run(41)(prog)))  // (Seq("env=41"), 42)
+
+  test("docs/direct-style.md: the direct block removes the for-comprehension") {
+    def add(mx: Option[Int], my: Option[Int]): Option[Int] =
+      direct[Option] {
+        val x = mx.!?
+        val y = my.!?
+        x + y
+      }
+    assertEquals(add(Some(2), Some(3)), Some(5))
+    assertEquals(add(None, Some(3)), None)
+  }
+
   test("direct-try v2: a MARKED catch body runs its own effects") {
     type W = Writer % String
     val prog: Int ! W = direct {
@@ -149,6 +164,27 @@ class TestDirect extends munit.FunSuite {
     assertEquals(order.toList, List("a", "b"))
   }
 
+  test("docs/direct-style.md: subexpression marks hoist left-to-right, marked .!?") {
+    val order = collection.mutable.ListBuffer[String]()
+    def eff(tag: String, v: Int): Option[Int] = { order += tag; Some(v) }
+    docSubexprDemo(eff)
+    assertEquals(direct[Option] { eff("a", 1).!? + eff("b", 2).!? }, Some(3))
+    assertEquals(order.toList, List("a", "b", "a", "b"))
+  }
+
+  @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+  private def docSubexprDemo(eff: (String, Int) => Option[Int]): Unit =
+    direct[Option] { eff("a", 1).!? + eff("b", 2).!? }  // "a" before "b", always
+
+  test("docs/direct-style.md: if/match with effects, marked .!?") {
+    var b = 0
+    def branch(v: Int): Option[Int] = { b += 1; Some(v) }
+    def pick(c: Option[Boolean]): Option[Int] =
+      direct[Option] { if c.!? then branch(1).!? else branch(2).!? }
+    assertEquals(pick(Some(true)), Some(1))
+    assertEquals(b, 1)
+  }
+
   test("if: marks in condition and branches, only the taken branch runs") {
     var b = 0
     def branch(v: Int): Option[Int] = { b += 1; Some(v) }
@@ -291,6 +327,18 @@ class TestDirect extends munit.FunSuite {
     assertEquals(a, 42)
   }
 
+  test("docs/direct-style.md: one .? everywhere — an operation of the row, marked") {
+    type F = Reader % Int + Writer % String
+    val prog: Int ! F = direct {          // F inferred from the expected type
+      val env = Reader.Ask[Int, Int]().!?  // an operation
+      Writer(s"env=$env").!?               // an operation
+      env + 1                             // plain code
+    }
+    // then the ordinary handlers:
+    docOneMarkEverywhereDemo(prog)
+    assertEquals(!.run(Writer.run(Reader.run(41)(prog))), (Seq("env=41"), 42))
+  }
+
   test("a mark that is neither F nor a row operation is refused by type") {
     val e = compileErrors(
       "okay.Direct.direct[Option] { List(1).reflect }(using summon[Monad[Option]]) ")
@@ -305,6 +353,18 @@ class TestDirect extends munit.FunSuite {
     assertEquals(direct[Option] { eff(true).reflect || eff(false).reflect }, Some(true))
     assertEquals(n, 2)
   }
+
+  test("docs/direct-style.md: && keeps its short-circuit, marked .!?") {
+    var n = 0
+    def eff(b: Boolean): Option[Boolean] = { n += 1; Some(b) }
+    docAndDemo(eff)
+    assertEquals(direct[Option] { eff(false).!? && eff(true).!? }, Some(false))
+    assertEquals(n, 2)
+  }
+
+  @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+  private def docAndDemo(eff: Boolean => Option[Boolean]): Unit =
+    direct[Option] { eff(false).!? && eff(true).!? }   // right side never runs
 
   test("for-do: an effect per element, in order") {
     val order = collection.mutable.ListBuffer[Int]()

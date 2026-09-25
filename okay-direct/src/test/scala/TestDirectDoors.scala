@@ -36,6 +36,19 @@ class TestDirectDoors extends munit.FunSuite {
     assertEquals(uid, 1)
   }
 
+  test("docs/direct-style.md: composing with capabilities, verbatim") {
+    def told: Env ?=> Int ! Writer % String = direct {
+      Writer(s"hello ${wire[Env].user}"): Unit
+      wire[Env].uid
+    }
+    docCapabilitiesDemo(told)
+    assertEquals(provide(Env("ada", 7)) { !.run(Writer.run(told)) }, (Vector("hello ada"), 7))
+  }
+
+  @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+  private def docCapabilitiesDemo(told: Env ?=> Int ! Writer % String): Unit =
+    provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+
   test("providing composes over the block too") {
     val base = providing[Env](Env("ada", 7))
     val (_, uid) = (base and providing[Env](Env("eve", 9))) {

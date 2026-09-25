@@ -169,6 +169,15 @@ class TestDirectOnce extends munit.FunSuite {
     assertEquals(logged(prog(false)), (Seq(), 0))
   }
 
+  test("docs/direct-style.md: Once, the prefix spelling, verbatim") {
+    def told(s: String): Int ! (Once + Writer % String) = direct { Writer(s).reflect; s.length }
+    val prog: Int ! (Once + Writer % String) = direct:
+      lazy val x = !told("abc")      // runs at the FIRST use, in that position, once
+      val y = !told("de")            // runs here
+      x + x + y + !told("f")         // log: de, abc, f
+    assertEquals(logged(prog), (Seq("de", "abc", "f"), 9))
+  }
+
   test("lazy val with a mark: the prefix spelling, a program-typed rhs, and the three words side by side") {
     def told(s: String): Int ! R = direct { Writer(s).reflect; s.length }
     val prog: Int ! R = direct:
@@ -211,9 +220,9 @@ class TestDirectOnce extends munit.FunSuite {
   test("no marks, no ascriptions: val is by value, lazy val by need, def by name") {
     def fetch(key: String): Int ! R = direct { key.tell; key.length }
     def demo(use: Boolean): Int ! R = direct:
-      val      x = fetch("val")
-      lazy val y = fetch("lazy val")
-      def      z = fetch("def")
+      val      x = fetch("val")        // by value
+      lazy val y = fetch("lazy val")   // by need
+      def      z = fetch("def")        // by name
       if use then x + x + y + y + z + z else 0
     assertEquals(logged(demo(false))._1, Seq("val"))
     assertEquals(logged(demo(true))._1, Seq("val", "lazy val", "def", "def"))

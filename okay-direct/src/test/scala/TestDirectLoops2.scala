@@ -130,3 +130,50 @@ class TestDirectLoops2 extends munit.FunSuite:
     """)
     assert(e.contains("collection type"), e)
   }
+
+  test("docs/direct-style.md: Loops and comprehensions in full, verbatim") {
+    val xs = List(1, 2, 3)
+    def isEven(x: Int): Boolean ! W = Writer.tell(s"test $x").flatMap(_ => pure(x % 2 == 0))
+
+    // a guard — `xs.withFilter(x => p)` — runs per element, in source
+    // order; a MARKED guard binds before the body runs
+    val (guardLog, _) = run(direct {
+      for x <- xs if isEven(x).!? do say(s"body $x").!?
+    })
+    assertEquals(guardLog, Seq("test 1", "test 2", "body 2", "test 3"))
+
+    // two generators — `xs.flatMap(x => ys.map(y => …))` — results in
+    // the comprehension's order; a guard between them is honoured
+    val r: List[Int] ! W = direct {
+      for
+        x <- List(1, 2)
+        y <- List(10, 20) if y > 10
+      yield look(x + y).!?
+    }                                    // List(210, 220); log: look 21, look 22
+    val (rLog, rOut) = run(r)
+    assertEquals(rOut, List(210, 220))
+    assertEquals(rLog, Seq("look 21", "look 22"))
+
+    // the yield answers the node's own collection: Vector, Set, Map of pairs
+    val m: Option[Map[String, Int]] = direct[Option] {
+      for (k, n) <- Map("a" -> 1, "b" -> 2) yield (k * 2, Some(n * 10).!?)
+    }                                    // Some(Map("aa" -> 10, "bb" -> 20))
+    assertEquals(m, Some(Map("aa" -> 10, "bb" -> 20)))
+
+    // the HOFs: exists/forall/find STOP at the element that decides
+    val (log, e) = run(direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) })
+    // e == true, log == Seq("look 1", "look 2") — 3 and 4 never looked at
+    assertEquals(e, true)
+    assertEquals(log, Seq("look 1", "look 2"))
+
+    // filter keeps the matches; foldLeft threads the accumulator
+    docFoldDemo()
+    val (foldLog, foldOut) = run(direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) })
+    assertEquals(foldOut, 60)
+    assertEquals(foldLog, Seq("look 1", "look 2", "look 3"))
+  }
+
+  @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+  private def docFoldDemo(): Unit =
+    val _: Int ! W =
+      direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }   // 60

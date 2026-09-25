@@ -12,6 +12,26 @@ import okay.Direct.*
  */
 class TestStaged extends munit.FunSuite:
 
+  test("docs/direct-style.md: a recursive staged block over State + Writer") {
+    val sw = Stager.StateWriter[Int, String, Int]()   // the row's staged interpreter
+
+    def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
+      if i >= 100 then Handled.pure(acc)
+      else Direct.staged(sw) {
+        val a = State.get[Int].!?
+        val _ = State.set[Int](i).!?
+        Writer.tell("w").!?
+        step(i + 1, acc + a).!?
+      }
+
+    val ((state, log), answer) = sw.run(0)(step(0, 0))
+    val (expectedState, expectedAnswer) =
+      (0 until 100).foldLeft((0, 0)) { case ((s, acc), i) => (i, acc + s) }
+    assertEquals(state, expectedState)
+    assertEquals(log, Vector.fill(100)("w"))
+    assertEquals(answer, expectedAnswer)
+  }
+
   type Row = State % Int + Writer % String
   type R = Stager.Answer[Int, String, Int]
   val sw = Stager.StateWriter[Int, String, Int]()

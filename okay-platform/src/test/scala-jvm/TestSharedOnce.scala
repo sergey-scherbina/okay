@@ -21,7 +21,7 @@ class TestSharedOnce extends munit.FunSuite:
     val runs = AtomicInteger(0)
     val p = slow(runs)
     val store = SharedOnce()
-    val (a, b) = Async.par(store.run(p), store.run(p)).runWith
+    val (a, b) = Async.par(store.run(p), store.run(p)).runWith   // p ran once; a == b
     assertEquals((a, b), (42, 42))
     assertEquals(runs.get, 1, "the shared store ran the program more than once")
   }

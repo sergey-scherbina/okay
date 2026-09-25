@@ -57,6 +57,39 @@ class TestConditionDirect extends munit.FunSuite {
     assertEquals(trail, Vector("inside", "outside"))
   }
 
+  // pinned verbatim from docs/direct-style.md as a bare, unused-result
+  // statement (its own REPL-echo style) — the discard warning is
+  // silenced on this helper rather than reshaping the pinned text
+  // (2026-09-25)
+  @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+  private def docConditionDemo(prog: Int ! Op): Unit =
+    !.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog))   // 42; before, after(41)
+
+  test("docs/direct-style.md: a condition reads as a call that may return, marked with .!?") {
+    var steps = Vector.empty[String]
+    val prog: Int ! Op = direct {
+      steps :+= "before"
+      val v = signal[Int]("how many?").!?   // raise; Resume(41) lands HERE
+      steps :+= s"after($v)"               // ... and this line runs
+      v + 1
+    }
+    docConditionDemo(prog)
+    assertEquals(!.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog)), 42)
+    assertEquals(steps, Vector("before", "after(41)", "after(41)"))
+  }
+
+  test("docs/direct-style.md: the frame door, marked with .!?") {
+    val prog: String ! Op = direct {
+      val a = frame[String, Pure]("skip") {
+        val v = signal[String]("bad").!?      // policy says Invoke("skip", x)
+        v                                    // ...so this never runs
+      }(v => s"skipped:$v").!?                // ...and the frame answers
+      a
+    }
+    val out = !.run(Condition.run[String, Pure]((_, _) => Invoke("skip", "x"))(prog))
+    assertEquals(out, "skipped:x")
+  }
+
   test("a signal in a for-do loop: repair per element, mid-stream") {
     // the operator's story: malformed elements repaired by the
     // policy, the loop continues from each signal point

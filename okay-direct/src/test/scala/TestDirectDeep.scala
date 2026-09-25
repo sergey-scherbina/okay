@@ -114,7 +114,7 @@ class TestDirectDeep extends munit.FunSuite {
   /** the opt-out: `import Direct.eagerCalls.given` gives up deferring a
    * call where it stands, and keeps the two shapes measured free */
   object Opted:
-    import okay.Direct.eagerCalls.given
+    import okay.Direct.eagerCalls.given    // this scope builds calls where they stand
     def fib(n: Int): Long ! okay.Pure = direct:
       if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)      // self, non-tail: still deferred
     def even(n: Int): Boolean ! okay.Pure = direct:
@@ -126,6 +126,56 @@ class TestDirectDeep extends munit.FunSuite {
     assertEquals(!.run(Opted.fib(25)), 75025L)
     assertEquals(!.run(Opted.even(1_000_001)), false)
     assertEquals(!.run(Opted.odd(1_000_001)), true)
+  }
+
+  // ---- docs/direct-style.md, "Recursion in a block", verbatim
+  object DocRecursion:
+    def fib(n: Int): Long ! Pure = direct:
+      if n < 2 then n.toLong else fib(n - 1) + fib(n - 2)     // coloured, deferred
+
+    def sum(n: Int): Long ! Pure = direct:                      // 1 + sum(n - 1): not tail
+      if n == 0 then 0L else 1L + sum(n - 1)
+
+    def count(xs: List[Int], acc: Long): Long ! Pure = direct:
+      xs match
+        case Nil => acc
+        case h :: t => count(t, acc + h)
+
+    def isEven(n: Int): Boolean ! Pure = direct:
+      if n == 0 then true else isOdd(n - 1)      // deferred: tail position
+    def isOdd(n: Int): Boolean ! Pure = direct:
+      if n == 0 then false else isEven(n - 1)
+
+    def sumEven(n: Int): Long ! Pure = direct:
+      if n == 0 then 0L else 1L + sumOdd(n - 1)     // NOT tail — deferred anyway
+    def sumOdd(n: Int): Long ! Pure = direct:
+      if n == 0 then 0L else 1L + sumEven(n - 1)
+
+    // pinned verbatim, bare (REPL-echo style) — nowarn rather than
+    // reshaping the pinned text (2026-09-25)
+    @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+    def demoSum(): Unit =
+      !.run(sum(1_000_000))   // 1000000, on the default stack
+
+    @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+    def demoIsEven(): Unit =
+      !.run(isEven(1_000_001))   // false, on the default stack
+
+  test("docs/direct-style.md: fib, sum, count — the recursion section verbatim") {
+    DocRecursion.demoSum()
+    assertEquals(!.run(DocRecursion.fib(25)), 75025L)
+    assertEquals(!.run(DocRecursion.sum(1_000_000)), 1_000_000L)
+    assertEquals(!.run(DocRecursion.count(List.fill(300_000)(1), 0L)), 300_000L)
+  }
+
+  test("docs/direct-style.md: mutual recursion needs nothing either") {
+    DocRecursion.demoIsEven()
+    assertEquals(!.run(DocRecursion.isEven(1_000_001)), false)
+  }
+
+  test("docs/direct-style.md: a NOT-tail mutual call is deferred anyway") {
+    assertEquals(!.run(DocRecursion.sumEven(1_000_000)), 1_000_000L)
+    assertEquals(!.run(DocRecursion.sumOdd(1_000_000)), 1_000_000L)
   }
 
   test("a self-call under a lambda is a value, untouched") {

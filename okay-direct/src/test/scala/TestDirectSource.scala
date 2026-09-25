@@ -43,6 +43,27 @@ class TestDirectSource extends munit.FunSuite:
     assertEquals(log, Seq("even 2", "even 4"))
   }
 
+  test("docs/direct-style.md: a loop over a source (direct-loops v3), verbatim") {
+    val producer: Unit ! Writer % Int + State % Int = direct[[A] =>> A ! Writer % Int + State % Int] {
+      Writer.tell(1).!?; val _ = State.modify[Int](_ + 1).!?
+      Writer.tell(2).!?; val _ = State.modify[Int](_ + 1).!?
+      Writer.tell(3).!?; val _ = State.modify[Int](_ + 1).!?
+    }
+    @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
+    def docSourceDemo(): Unit =
+      direct[[A] =>> A ! State % Int + Writer % String] {
+        for x <- Pull.toldIn(producer) do            // the producer performs State between tells
+          say(s"got $x after ${State.get[Int].!?} steps").!?
+      }
+    docSourceDemo()
+    val prog = direct[[A] =>> A ! State % Int + Writer % String] {
+      for x <- Pull.toldIn(producer) do say(s"got $x after ${State.get[Int].!?} steps").!?
+    }
+    val (log, (cell, _)) = run(State.handle(0)(prog))
+    assertEquals(log, Seq("got 1 after 0 steps", "got 2 after 1 steps", "got 3 after 2 steps"))
+    assertEquals(cell, 3)
+  }
+
   test("the source's own effects interleave with the body's, one step per element (Pull.toldIn)") {
     // a producer that counts its tells in a State cell between them
     val producer: Unit ! Writer % Int + State % Int = direct[[A] =>> A ! Writer % Int + State % Int] {
