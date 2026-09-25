@@ -1,5 +1,0 @@
-slug: foreign-facade-4b
-who: claude (session 6f505c09)
-what: foreign-facade stage 4b — Holds[M] (hold, a function with the handle as first argument, release) for Python (PyWorkers routes by ref) and R (one worker per module holds); Methods[M] (method, attr) Python-only; conformance bodies
-files: okay-foreign-cluster Facade.scala, tests, specs/foreign-facade.md
-since: 2026-09-25
