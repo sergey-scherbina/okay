@@ -1,6 +1,0 @@
-feature/cont-stack-fastpath 2026-09-25T19:50:00Z
-agent: claude-code
-heartbeat: 2026-09-25T19:50:00Z
-status: in-progress
-done-so-far: claim (second round: the inlining item)
-next: PrintInlining on fib100 for both trees, diff step/applyAt/callK/enter; then a smaller hot path, one change per number
