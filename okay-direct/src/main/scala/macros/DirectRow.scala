@@ -257,11 +257,56 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       // and its side condition is Row's too: an `In[F2, row]`
       // summoned HERE, so the compiler proves the membership and the
       // macro emits no cast of its own.
-      case Some(row) => narrowRow(m, elem, row, at)
+      // a FOREIGN monad's value, with its `Layered` layer in scope
+      // (direct-layers-instances): `list.?` inside `reify[List, …]` is
+      // `Layered.reflect(list)`, a `X ! Delim`, which `narrowRow` then
+      // widens to this block's row by Row's own proof
+      case Some(row) =>
+        layerTerm(m) match
+          case Some(reflected) =>
+            if !(TypeRepr.of[okay.Delim].appliedTo(elem.widen) <:< row.appliedTo(elem.widen)) then
+              report.errorAndAbort(
+                s"the marked value ${m.tpe.show} has a Layered layer in scope, and reflecting into it " +
+                  s"is a Delim capture, but this block's row ${row.show} has no Delim: " +
+                  "write the block at a row with Delim (the layer's reify needs one anyway)", at)
+            narrowRow(reflected, elem, row, at)
+          case None => narrowRow(m, elem, row, at)
       case _ =>
         report.errorAndAbort(
           s"the marked value has type ${m.tpe.show} — neither this block's ${fT.show}" +
             anyRow.fold("")(r => s" nor an operation of its row ${r.show}"), at)
+
+  lazy val layeredModule = Symbol.requiredModule("okay.Layered")
+  lazy val reflectCapability = Symbol.requiredClass("okay.Layered.Reflect")
+
+  /**
+   * `Layered.reflect(m)[R, Pure]` when `m: M[X]` is not a program and a
+   * `Layered.Reflect[M, R]` is in the implicit scope at the mark: the
+   * layer's own reflect, found by the same search a hand-written
+   * `m.reflect` would make. `None` when there is no layer, and the mark
+   * then falls to the refusal it always had.
+   */
+  def layerTerm(m: Term): Option[Term] =
+    val mt = m.tpe.widen.dealias
+    if mt.derivesFrom(freeClass) then None
+    else
+      // the value's own class first, then its parents, one type
+      // parameter each: `Some[Int]` and `None | Some[Int]` (an `if`'s
+      // type) reach `Option`'s layer, `List[Int]` reaches `List`'s
+      val candidates = mt.baseClasses.iterator.flatMap(c => mt.baseType(c) match
+        case AppliedType(tycon, List(x)) => Some((tycon, x))
+        case _ => None)
+      candidates.map((tycon, x) =>
+        Implicits.search(reflectCapability.typeRef.appliedTo(List(tycon, TypeBounds.empty))) match
+          case found: ImplicitSearchSuccess =>
+            (found.tree.tpe.widen.dealias.baseType(reflectCapability), Implicits.search(TypeRepr.of[okay.At])) match
+              case (AppliedType(_, List(_, r)), at: ImplicitSearchSuccess) =>
+                val reflect = layeredModule.methodMember("reflect").head
+                Some(Ref(layeredModule).select(reflect).appliedToTypes(List(tycon, x)).appliedTo(m)
+                  .appliedToTypes(List(r, TypeRepr.of[okay.Pure])).appliedTo(found.tree, at.tree))
+              case _ => None
+          case _ => None
+      ).collectFirst { case Some(t) => t }
 
   /** `m.at[row]`, when m is a program of a row this block's row CONTAINS */
   def narrowRow(m: Term, elem: TypeRepr, row: TypeRepr, at: Position): Term =

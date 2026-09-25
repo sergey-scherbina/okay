@@ -282,6 +282,10 @@ object Lexical:
     extension [S, G[+_]](i: Inst[okay.State % S, G])
       def get: S ! G = i.perform(okay.State.Get[S, S]())
       def set(s: S): S ! G = i.perform(okay.State.Set[S, S](s))
+      /** `set` as a STATEMENT: the same operation, answering `Unit`, so a
+       * marked `s.put(v).?` on its own line leaves nothing unused (what
+       * `tell` is for Writer) */
+      def put(s: S): Unit ! G = i.perform(okay.State.Set[S, S](s)).map(_ => ())
 
   /**
    * STACKED INSTANCES (stage 2): the same strategies over

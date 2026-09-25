@@ -191,6 +191,21 @@ A monad that cannot run a program inside its `flatMap`, such as a
 this because its continuation is an impure function, but that road is
 one-shot and JVM-only.
 
+**In a `direct` block the mark is enough.** Inside a layer, `.?` on the
+monad's own value IS its reflect: the macro finds the layer in scope by
+the value's type, so an `if` whose branches are `None` and `Some(…)`
+reaches `Option`'s layer too (direct-layers-instances):
+
+```scala
+val x = List(1, 2, 3).?
+val y = (if x == 2 then None else Some(x * 10)).?
+```
+
+A layer's reflect is a `Delim` capture, so the block's row must have
+`Delim`. Outside every layer the mark is refused as before. `Lexical`
+instances need nothing new in a block: their operations are programs, so
+`s.get.?` works, and `s.put(v).?` is the statement form of `set`.
+
 **Two practical notes.** `M` is read off the receiver, so write
 `Option(2).reflect`, not `Some(2).reflect` (the same trap as `.some`
 in cats). A capability kept past its `reify` fails with `NoPrompt`
