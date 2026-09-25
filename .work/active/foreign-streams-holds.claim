@@ -1,6 +1,0 @@
-feature/foreign-streams-holds 2026-09-25T21:18:14Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-25T21:18:14Z
-status: in-progress
-done-so-far: design: Holds = per-interpreter materialised ref; Streams = one interpreter per partition, open/step/finish
-next: Holds.scala, Streams.scala, py/r/jvm instances, mapHeld/streamIn, tests, docs
