@@ -51,7 +51,7 @@ lane, since deleting is its own diff.
 
 ## Behavior
 
-- [ ] the A/B: `ManyProducersBenchmark.default_elem`/`default_chunk`
+- [x] the A/B: `ManyProducersBenchmark.default_elem`/`default_chunk`
       at 1 / 2 / 4 / 16 producers, `ActorReactiveBenchmark.actorTell`,
       `actorTellMpmc`, `actorTellBacklog`, `actorAsk`; each arm its own
       JVM, alternating, two rounds; a control lane that builds its
@@ -60,7 +60,7 @@ lane, since deleting is its own diff.
       band (~15%, docs/benchmarks.md §6) on any row, and the
       one-producer rows are the ones that decide — that is where
       partitioning from the first push was priced at 19%.
-- [ ] a verdict written here either way.
+- [x] a verdict written here either way.
 
 ## Out of scope
 
@@ -77,4 +77,46 @@ lane, since deleting is its own diff.
 
 ## Results
 
-(filled by the lane.)
+**Verdict (2026-09-25): NOT matched — the default stays `growing`.**
+`adaptive` loses beyond the bar on the row that decides it, and the
+row is the one the spec did not expect: TWO producers, not one.
+
+Method as specified, with three corrections the run itself forced:
+the arm printed by the benchmark's own `@Setup` (the fork received
+`buffer=adaptive parts=8` / `buffer=growing`, checked, not assumed);
+one lane per `Jmh/run` through gate.sh, the arms alternating; and, from
+15:06 on, a lane accepted only when its error was <= 10% of its score,
+after the first round showed a quiet-before/quiet-after check lets a
+sibling's gate start mid-lane (+-60% rows). The box sat at load 30-80
+all afternoon with a VM at ~600% (excluded from the quiet check: it
+loads both arms alike). `consumers` pinned to 1 — the mailbox's shape.
+Rows (us/op, adaptive / growing), src/jmh/history.d/*-channel-default-adaptive.tsv:
+
+| lane | adaptive | growing | ratio |
+|---|---|---|---|
+| default_elem p=1, r1 / r2 | 493 / 501 | 586 / 559 | 0.84 / 0.90 |
+| default_chunk p=1 | 142 | 189 | 0.75 |
+| **default_elem p=2, r1 / r2** | **460 / 433** | **364 / 372** | **1.26 / 1.16** |
+| default_elem p=4 | 292 | 311 | 0.94 |
+| default_elem / chunk p=16 | 203 / 117 | 249 / 152 | 0.82 / 0.77 |
+| actorTell / Mpmc / Backlog / Ask | 13542 / 13286 / 9632 / 2009 | 13603 / 13860 / 10026 / 1957 | 1.00 / 0.96 / 0.96 / 1.03 |
+| controls oneRing_chunk / plainSource | 120 / 64 | 125 / 65 | 0.96 / 0.99 (held) |
+
+- The one-producer rows, which the spec named as the ones that
+  decide, are WINS for adaptive (0.75-0.90): partitioning from the
+  first push costs nothing measurable at one producer now.
+- Two producers is where adoption pays: `growing` runs one ring until
+  the second producer arrives and then one swap, while `adaptive`
+  partitions from the first element. 16% and 26% in the two
+  alternating rounds, both past the ~15% contended-lane band.
+- `growing`'s `default_chunk` at p=2 never measured under 10% error in
+  ten attempts, and read 795 +- 346 in the one early run — a bimodal
+  cost, filed as backlog okay-core/growing-two-producer-variance rather
+  than argued from here.
+- Round 2 of the p=4/16 and actor rows was not taken: the p=2 row
+  decided the question, and the box was needed by siblings.
+
+So the exact per-producer law does not return to the default, and
+`Growing`'s adoption path is not deletable; `adaptive` stays an arm of
+the switch, and `merge`/`buffer` keep building for their known
+producers (channel-known-producers).

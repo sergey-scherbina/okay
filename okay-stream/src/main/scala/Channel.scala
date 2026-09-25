@@ -643,11 +643,11 @@ object Channel {
    * queue rather than a snapshot, so a receiver that re-parked was
    * re-woken for ever (the 100% CPU "livelock"). None of those was
    * the ring's; all three were in the day's changes or found by the
-   * day's laws. What remains before the default can change is the
-   * A/B of every single-producer path the default feeds -- buffer,
-   * bufferChunked, merge -- under the adaptive buffer, since its
-   * capacity is PER PART and a lone producer must not pay for parts
-   * it never opens.
+   * day's laws. The A/B that was to decide the default has run
+   * (channel-default-adaptive, 2026-09-25): adaptive WINS at one
+   * producer (0.75-0.90 of growing) and LOSES at two (1.16-1.26 on
+   * default_elem, past the ~15% band), so the default stays growing —
+   * specs/channel-default-adaptive.md holds the table.
    */
   /** which buffer `apply` builds, so a default can be A/B'd on the
    * paths it actually feeds (buffer, bufferChunked, merge) without
