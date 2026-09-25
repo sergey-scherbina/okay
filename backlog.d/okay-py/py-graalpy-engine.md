@@ -10,3 +10,18 @@
       by `okay.Foreign` — Python performing okay effects, one-shot.
       Measure a call against PySubprocess/PyWorkers before claiming it
       is faster: Truffle warm-up is real.
+      PROBED 2026-09-25 (outside sbt, java + coursier jars): our
+      UNCHANGED shim.py runs inside GraalPy 25.4.4.1.1 (Python 3.13.14)
+      with the Context's stdin/stdout on Java pipes — so the in-process
+      engine is `WireLink` streams over a Context, and every ForeignWorker
+      feature comes for free. But on a stock JDK it is SLOWER on both
+      axes: start 3.1 s against CPython's 57 ms, a call ~51 us after
+      6000 calls against a pipe to CPython's ~11 us. The JIT is not
+      reachable here: 25.4.4.1.1 needs a newer JVMCI than Temurin
+      25.0.4.1; 25.0.4.1 with `-XX:+EnableJVMCI --upgrade-module-path`
+      dies at Context creation ("VM config values missing ...
+      NMethodPatchingType::conc_data_patch"); 24.2.2 on the GraalVM
+      21.0.11 JDK finds no stdlib (`No module named 'json'`). Worth doing
+      only on a GraalVM JDK of the matching release, and only if a
+      measurement there beats 11 us/call; the one thing it offers that a
+      subprocess cannot is a Python generator walked in-process.
