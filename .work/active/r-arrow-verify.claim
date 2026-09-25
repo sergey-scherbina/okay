@@ -1,0 +1,6 @@
+feature/r-arrow-verify 2026-09-25T15:02:14Z
+agent: claude-fable-5-1
+heartbeat: 2026-09-25T15:02:14Z
+status: in-progress
+done-so-far: docker image okay-r-arrow-test (r-base 4.4.1 + r-cran-arrow 25.0.0) built; Rscript shim written
+next: run TestRArrow and TestRMapReduce through it, fix shim.R where a live R disagrees, record in specs/r.md
