@@ -1,0 +1,5 @@
+slug: foreign-facade-1
+who: claude (session 6f505c09)
+what: foreign-facade stage 1 — Calls[M] and Speaks[M] for PyModule, RModule, JvmModule over the existing workers; FacadeConformance (one body per capability), TestFacade (default), TestPyFacade/TestRFacade (Live); a missing capability a compile error
+files: okay-foreign-cluster (Facade.scala, Engine.scala JvmModule), its tests, specs/foreign-facade.md
+since: 2026-09-25
