@@ -1,1 +1,3 @@
 - [ ] plutus-machine — TRIGGER MET 2026-09-23 (operator: "да оформи"), promoted from the backlog by backlog-audit-0923 — stage 0 of specs/plutus.md: new module okay-plutus; the CEK machine as `step: Machine => Machine ! (Budget + Builtin + Trace)` with `Machine` an immutable value; `Term`, flat codec, `BuiltinRuntime` and cost models from scalus_3 1.2.0, never re-implemented. Gate: the Plutus conformance suite green with EXACT budgets, and a differential test against scalus `CekMachine`. Operator: "да оформи" (2026-09-23). Independent of okay-scalus-spark; only stage 3 needs it.
+      DEMOTED from the sprint 2026-09-25 evening (operator: "Плютус не
+      нужно") — not to be picked until asked again.
