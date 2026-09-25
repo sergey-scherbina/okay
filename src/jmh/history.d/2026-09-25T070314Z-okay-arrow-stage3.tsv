@@ -1,3 +1,3 @@
-2026-09-25	bba53c14	240	ArrowIpcBench.write_arrays 500k rows: OkayArrow (optimised) vs Arrow Java 19, B/op	17041747	63512796	0.27	B/op; before the optimisation 128710573; ms/op 14.8 vs 15.4 (round 2), 18.3 vs 18.7 (round 1)
-2026-09-25	bba53c14	240	ArrowIpcBench.read_arrays 500k rows: OkayArrow (optimised) vs Arrow Java 19, ms/op	42.1	157.3	0.27	ms/op round 2 (round 1 43.5 vs 45.9: noise wider than the gap); B/op 69978130 vs 104665584, before 136245417
-2026-09-25	bba53c14	240	ArrowIpcBench.read_native 500k rows: OkayArrow (optimised) vs Arrow Java 19, ms/op	13.6	0.88	15.4	ms/op round 2 (round 1 18.5 vs 1.05); a String per row against buffers loaded as they are; before 29.8 ms
+2026-09-25	fe11b303	240	ArrowIpcBench.write_arrays 500k rows: OkayArrow (optimised) vs Arrow Java 19, B/op	17041747	63512796	0.27	B/op; before the optimisation 128710573; ms/op 14.8 vs 15.4 (round 2), 18.3 vs 18.7 (round 1)
+2026-09-25	fe11b303	240	ArrowIpcBench.read_arrays 500k rows: OkayArrow (optimised) vs Arrow Java 19, ms/op	42.1	157.3	0.27	ms/op round 2 (round 1 43.5 vs 45.9: noise wider than the gap); B/op 69978130 vs 104665584, before 136245417
+2026-09-25	fe11b303	240	ArrowIpcBench.read_native 500k rows: OkayArrow (optimised) vs Arrow Java 19, ms/op	13.6	0.88	15.4	ms/op round 2 (round 1 18.5 vs 1.05); a String per row against buffers loaded as they are; before 29.8 ms
