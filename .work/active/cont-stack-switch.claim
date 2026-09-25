@@ -1,6 +1,0 @@
-feature/cont-stack-switch 2026-09-25T08:45:02Z
-agent: claude-code
-heartbeat: 2026-09-25T08:45:02Z
-status: in-progress
-done-so-far: claim; design agreed with the operator
-next: spec stage 1c decisions; depth parameter in Cont.step; switch to a fresh thread at depth 32 (VT on 21+, big platform stack otherwise); tests red first
