@@ -1,0 +1,1 @@
+2026-09-25	cb3d40bb	7-12	instances-unify: stateLexWalk on Instances.Of vs stateHandle	21.96	15.23	1.44	us/op; B/op 286272 vs 222040 (1.29x), unchanged from the Local signature it replaced (286192)

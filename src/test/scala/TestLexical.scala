@@ -318,27 +318,33 @@ class TestLexicalWalk extends munit.FunSuite:
   type W = Writer % String
   given Answers[W] = Answers.writer[String]
 
+  /** the one member every walk of State % Int puts in the row */
+  type SI = Instances.Of[State % Int]
+
+  /** the top: every walk's operations answered, or Instances.Survived */
+  def done[A, G[+_]](p: A ! SI + G): A ! G = Instances.exhausted[State % Int, A, G](p)
+
   test("walk is Bisim-equal to State.handle on the Writer row, after runLocal") {
     val t = new TestLexical
-    val walked: (Int, Int) ! W = Lexical.runLocal(Lexical.State.walk[Int, Int, W](1) { s =>
+    val walked: (Int, Int) ! W = done(Lexical.State.walk[Int, Int, W](1) { s =>
       for
         a <- s.get
-        _ <- Writer.tell(s"a=$a").at[Local + W]
+        _ <- Writer.tell(s"a=$a").at[SI + W]
         _ <- s.set(a + 10)
         b <- s.get
-        _ <- Writer.tell(s"b=$b").at[Local + W]
+        _ <- Writer.tell(s"b=$b").at[SI + W]
       yield a + b
     })
     assertEquals(Bisim.check(walked, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
   }
 
   test("walk on the pure row: runLocal and !.run, no Delim anywhere") {
-    assertEquals(!.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
+    assertEquals(!.run(done(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
   }
 
   test("two walk instances of one effect: the outer's get passes the inner walk and reaches its own") {
-    val r = !.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](0) { outer =>
-      Lexical.State.walk[Int, Int, Local + Pure](10) { inner =>
+    val r = !.run(done(Lexical.State.walk[Int, Int, Pure](0) { outer =>
+      Lexical.State.walk[Int, Int, Pure](10) { inner =>
         outer.get.flatMap(o => inner.get.map(i => o * 100 + i))
       }.map(_._2)
     }))
@@ -346,49 +352,49 @@ class TestLexicalWalk extends munit.FunSuite:
   }
 
   test("an instance used after its walk returned escapes to runLocal, which throws LocalEscaped") {
-    var leaked: Lexical.Inst[State % Int, Local + Pure] | Null = null
+    var leaked: Lexical.Inst[State % Int, SI + Pure] | Null = null
     val p = Lexical.State.walk[Int, Int, Pure](0)(s => { leaked = s; s.get })
       .flatMap(_ => leaked.nn.get.map(v => (v, v)))
-    intercept[Lexical.LocalEscaped](!.run(Lexical.runLocal(p)))
+    intercept[Instances.Survived](!.run(done(p)))
   }
 
   test("multi-shot ACROSS the walk (List outside): each branch resumes the walk at its captured state — deep's answer") {
-    def pick(s: Lexical.Inst[State % Int, Local + Delim + Pure])(using Layered.Reflect[List, (Int, Int)]): Int ! Local + Delim + Pure =
+    def pick(s: Lexical.Inst[State % Int, SI + Delim + Pure])(using Layered.Reflect[List, (Int, Int)]): Int ! SI + Delim + Pure =
       for
-        x <- List(1, 2, 3).reflect[(Int, Int), Local + Pure]
+        x <- List(1, 2, 3).reflect[(Int, Int), SI + Pure]
         v <- s.get
         _ <- s.set(v + x)
       yield v
-    val r = !.run(Lexical.runLocal(Delim.run[List[(Int, Int)], Local + Pure](
-      reify[List, (Int, Int), Local + Pure](Lexical.State.walk[Int, Int, Delim + Pure](0)(s => pick(s))))))
+    val r = !.run(done(Delim.run[List[(Int, Int)], SI + Pure](
+      reify[List, (Int, Int), SI + Pure](Lexical.State.walk[Int, Int, Delim + Pure](0)(s => pick(s))))))
     assertEquals(r, List((1, 0), (2, 0), (3, 0)))
   }
 
   test("multi-shot INSIDE the walk with the machine OUTSIDE it: the operation inside the delimiter escapes, loudly") {
-    def pick(s: Lexical.Inst[State % Int, Local + Delim + Pure])(using Layered.Reflect[List, Int]): Int ! Local + Delim + Pure =
+    def pick(s: Lexical.Inst[State % Int, SI + Delim + Pure])(using Layered.Reflect[List, Int]): Int ! SI + Delim + Pure =
       for
-        x <- List(1, 2, 3).reflect[Int, Local + Pure]
+        x <- List(1, 2, 3).reflect[Int, SI + Pure]
         v <- s.get
         _ <- s.set(v + x)
       yield v
-    intercept[Lexical.LocalEscaped](!.run(Lexical.runLocal(Delim.run[(Int, List[Int]), Local + Pure](
-      Lexical.State.walk[Int, List[Int], Delim + Pure](0)(s => reify[List, Int, Local + Pure](pick(s)))))))
+    intercept[Instances.Survived](!.run(done(Delim.run[(Int, List[Int]), SI + Pure](
+      Lexical.State.walk[Int, List[Int], Delim + Pure](0)(s => reify[List, Int, SI + Pure](pick(s)))))))
   }
 
   test("multi-shot INSIDE the walk with the machine INSIDE it: the walk threads the state through the branches — deep's answer") {
-    def pick(s: Lexical.Inst[State % Int, Local + Pure])(using Layered.Reflect[List, Int]): Int ! Delim + Local + Pure =
+    def pick(s: Lexical.Inst[State % Int, SI + Pure])(using Layered.Reflect[List, Int]): Int ! Delim + SI + Pure =
       for
-        x <- List(1, 2, 3).reflect[Int, Local + Pure]
-        v <- s.get.up[Delim + Local + Pure]
-        _ <- s.set(v + x).up[Delim + Local + Pure]
+        x <- List(1, 2, 3).reflect[Int, SI + Pure]
+        v <- s.get.up[Delim + SI + Pure]
+        _ <- s.set(v + x).up[Delim + SI + Pure]
       yield v
-    val r = !.run(Lexical.runLocal(Lexical.State.walk[Int, List[Int], Pure](0)(s =>
-      Delim.run[List[Int], Local + Pure](reify[List, Int, Local + Pure](pick(s))))))
+    val r = !.run(done(Lexical.State.walk[Int, List[Int], Pure](0)(s =>
+      Delim.run[List[Int], SI + Pure](reify[List, Int, SI + Pure](pick(s))))))
     assertEquals(r, (6, List(0, 1, 3)))
   }
 
   test("depth: 100 000 operations through one walk, in constant stack") {
-    def spin(s: Lexical.Inst[State % Int, Local + Pure], n: Int): Int ! Local + Pure =
+    def spin(s: Lexical.Inst[State % Int, SI + Pure], n: Int): Int ! SI + Pure =
       if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => spin(s, n - 1))
-    assertEquals(!.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](0)(s => spin(s, 100_000)))), (100_000, 100_000))
+    assertEquals(!.run(done(Lexical.State.walk[Int, Int, Pure](0)(s => spin(s, 100_000)))), (100_000, 100_000))
   }

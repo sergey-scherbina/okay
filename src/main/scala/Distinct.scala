@@ -224,8 +224,9 @@ object Distinct:
         "it at run time; this is the same thing, earlier).\n" +
         "\n" +
         "Give the instances an identity the split can see — a key with Tag, a handle\n" +
-        "with Instances, a prompt with Delim, a cell with Refs. docs/many-instances.md\n" +
-        "chooses between them.\n" +
+        "with Instances, a cell with Refs — or take them OFF the row: with Lexical\n" +
+        "each instance is an installation the body names, so nothing is split by class\n" +
+        "(Lexical.State(s0) { s => ... }). docs/many-instances.md chooses between them.\n" +
         "\n" +
         "If this signature's own TypeableK reads the operation's VALUE and CAN tell\n" +
         "them apart — as Writer's does — say so in its declared type:\n" +

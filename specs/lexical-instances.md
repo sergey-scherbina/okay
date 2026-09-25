@@ -237,3 +237,8 @@ WALK, 2026-09-25 (TestLexicalWalk 8; bytes per 1000 get/set, time too noisy at l
   1, 3))`, and 100 000 operations in constant stack.
 - WATCHED FAILING: `mine` mutated to recognise nothing turned six red. The
   two that expect `LocalEscaped` stay green, as they should.
+
+INSTANCES-UNIFY, 2026-09-25: walk on `Instances.Of[F]` is 286 272 B per
+1000 get/set, against 286 192 with `Local`, so the same. Time at load 7:
+22.0 against 15.2 µs for the row, 1.44x. TestLexicalWalk's eight tests
+are unchanged in meaning, with `Instances.Survived` for `LocalEscaped`.

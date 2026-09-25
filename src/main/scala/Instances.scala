@@ -136,9 +136,15 @@ object Instances:
    */
   def exhausted[F[+_], A, G[+_]](using TypeableK[Of[F]])
                                 (p: A ! Of[F] + G): A ! G =
-    !.interpret[A, Of[F], okay.Pure, G](p)([X] => (e: Instances[F, X]) =>
-      throw new IllegalStateException(
-        s"an operation of ${e.at} survived: that instance was never stripped by `only`"))
+    !.interpret[A, Of[F], okay.Pure, G](p)([X] => (e: Instances[F, X]) => throw Survived(e.at))
+
+  /** an instance's operation reached `exhausted`: nothing answered it.
+   * Either `only` never stripped that handle, or a `Lexical.walk`
+   * instance was used outside its installation, or inside a `Delim`
+   * delimiter's body, which a walk does not enter */
+  final class Survived(val at: Handle)
+    extends IllegalStateException(
+      s"an operation of $at survived: that instance was never stripped by `only`, or, for a `Lexical.walk` instance, it was performed outside its installation or inside a `Delim` delimiter's body, which a walk does not enter (docs/many-instances.md)")
 
 /**
  * ANY effect, under a key — so a row may hold several instances of

@@ -275,25 +275,27 @@ val p: (Int, Int) ! Pure = Lexical.State[Int, Int, Pure](5)(s => s.get.flatMap(v
 
 The guard and the `Delim` machine appear only when the row has `Delim`.
 
-**One more strategy, by name only: `walk`.** The installation walks its
-body the way a row handler does. Its operations are inert
-`Inject(Local.Op(owner, e))` nodes of one shared signature, `Local`, and
-the state is threaded through the walk, with no cell and no `Delay` per
-operation. It costs 1.29x a row handler's bytes, where `tail` costs
-1.65x. The row gets one `Local` however many walk instances there are,
-and `Lexical.runLocal` goes at the top:
+**One more strategy, by name only: `walk`.** It is `Instances`, made
+lexical. The installation makes a fresh handle and walks its body the
+way a row handler does, with the state threaded through the walk: no
+cell and no `Delay` per operation. Its operations are ordinary
+`Instances(handle, e)` nodes, typed by their signature, so the row gets
+`Instances.Of[F]` once per effect however many walks there are.
+`Instances.exhausted` goes at the top. It costs 1.29x a row handler's
+bytes, where `tail` costs 1.65x.
 
 ```scala
-assertEquals(!.run(Lexical.runLocal(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
+def done[A, G[+_]](p: A ! SI + G): A ! G = Instances.exhausted[State % Int, A, G](p)
+assertEquals(!.run(done(Lexical.State.walk[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3))))), (15, 15))
 ```
 
 A walk sees the program's spine. An instance operation performed inside
 a `Delim` delimiter's body, such as a `reset`, a `dollar` or a
-`Layered.reify`, reaches the machine and not the walk. `runLocal` then
-throws `LocalEscaped`: it does not answer wrongly. Put `Delim.run` inside
-the walk and the walk sees those operations in order. It is not the
-default because of that rule and because `Local` has to appear in the
-row.
+`Layered.reify`, reaches the machine and not the walk. `exhausted` then
+throws `Instances.Survived`: it does not answer wrongly. Put `Delim.run`
+inside the walk and the walk sees those operations in order. It is not
+the default because of that rule and because `Instances.Of[F]` has to
+appear in the row.
 
 `Lexical.handle` picks by what the clauses are: `TailClauses` run tail,
 `Clauses` run deep, `ShallowClauses` run shallow. `Lexical.State(s0)`
@@ -304,17 +306,23 @@ one handler of a kind.
 
 ## Choosing
 
-| the instances are… | of which effect | route | identity is | cost |
-|---|---|---|---|---|
-| named when you write the type | any | `Tag` | a compile-time key | a wrapper per operation, no cast |
-| made at run time | state | `Refs` | the cell | a heap and one cast |
-| made at run time | any | `Instances` | the handle | a wrapper per operation, no cast |
-| nested, or addressed past a handler of the same effect | any | `Lexical` | the installation (a prompt) | ~4x a row handler (capture per operation) |
+This table is the one place the choice is made. Instance identity has
+three binding times: named in the type, made from data, or installed
+lexically. The row handler is what you use when there is one of a kind.
 
-Use a key when the instances can be named, `Refs` when they are cells,
-`Instances` when they are instances of something bigger made from data,
-and `Lexical` when they must nest, or an operation must reach one
-handler past another of the same effect.
+| the instances are… | of which effect | route | identity is | in the row | cost (1000 State get+set) |
+|---|---|---|---|---|---|
+| one of a kind | any | a row handler (`State.handle`, …) | the class | the signature | the floor: 222 KB |
+| named when you write the type, or an ALREADY WRITTEN program must run twice | any | `Tag` | a compile-time key | `Tag.Of[K, F]` each | a wrapper per operation, no cast |
+| made at run time, as cells | state | `Refs` | the cell | `Refs` | a heap and one cast |
+| made at run time from data, one handler choosing by handle | any | `Instances` | the handle | `Instances.Of[F]` | a wrapper per operation, no cast |
+| installed where they are used, nested, or reached past a handler of the same effect | any | `Lexical.State(s0)` / `Lexical.handle` (tail) | the installation | nothing | 1.65x |
+| the same, cheapest, on the spine only | tail-resumptive | `Lexical.walk` (by name) | a fresh `Instances` handle | `Instances.Of[F]` | 1.29x |
+| the same, with multi-shot, dropped or stored `k` | any | `Lexical.deep` / `shallow` (by name) | a prompt | nothing (needs `Delim`) | ~7x bytes, ~4x time |
+| any of those, and use outside the installation must not compile | deep or tail | `Lexical.Stacked` | a prompt on the typed stack | nothing | as unstacked |
+
+The compiler enforces the first row's condition: `Distinct` refuses a row
+whose members cannot be told apart, and its message names these routes.
 
 ## What this means for the bare rule
 
