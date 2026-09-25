@@ -1,0 +1,6 @@
+feature/mrjar-jdk25-ci-gap-2 2026-09-25T10:25:00Z
+agent: claude-code
+heartbeat: 2026-09-25T10:25:00Z
+status: in-progress
+done-so-far: claim; the lane landed once as 565a98465 and was reverted by the runner (6a12b9802) over okay-ops TestSignals timing under load 21 — now Live (4d7528956)
+next: revert the revert, keep the runner's record, note the re-landing in the changelog entry; scoped gate; land
