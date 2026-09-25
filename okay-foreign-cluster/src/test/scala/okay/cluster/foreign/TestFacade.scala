@@ -77,6 +77,11 @@ class TestFacade extends munit.FunSuite:
     assert(compileErrors("summon[Streams[Mute]]").nonEmpty)
     // programs as data have no JVM instance: nothing crosses (Decision 7)
     assert(compileErrors("summon[Programs[JvmModule]]").nonEmpty)
+    // R holds objects but has no methods to call on them: Holds yes, Methods no
+    assert(compileErrors("summon[Holds[okay.r.RModule]]").isEmpty)
+    assert(compileErrors("summon[Methods[okay.r.RModule]]").nonEmpty)
+    // a handle from Holds is what Methods takes: the two refined givens agree
+    assert(compileErrors("val H = summon[Holds[okay.py.PyModule]]; val M = summon[Methods[okay.py.PyModule]]; (r: H.Ref) => (r: M.Ref)").isEmpty)
     assert(compileErrors("summon[Programs[okay.py.PyModule]]").isEmpty)
     // a Frames instance is a Streams instance: the derived road
     assert(compileErrors("summon[Streams[CountingModule]]").isEmpty)

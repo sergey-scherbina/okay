@@ -61,8 +61,15 @@ trait Programs[-M]:   // programs as data: perform/continue/done, multi-shot whe
   def program[Arg: Schema, Out: Schema, F[+_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op)
   def run[A](module: M)(prog: A ! Op): A   // the whole dialogue on ONE worker
 trait Cb[F[+_]]:      // a callback: a name and a function at Schema types — one type, not one per language
-trait Holds[-M]:      // object handles: method, attribute, release
-  def hold[A: Schema](module: M, fn: String)(a: A): Either[Condition, Handle] ! Async
+trait Holds[-M]:      // object handles: hold, a function with the handle first, release
+  type Ref
+  def hold[Arg: Schema](module: M, fn: String)(a: Arg): Either[Batcher.Failed, Ref]
+  def apply[Arg: Schema, Out: Schema](module: M, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out]
+  def release(module: M)(ref: Ref): Unit
+trait Methods[-M]:    // a held object's own method and attribute (Python)
+  type Ref
+  def method[Arg: Schema, Out: Schema](module: M, ref: Ref, name: String)(a: Arg): Either[Batcher.Failed, Out]
+  def attr[Out: Schema](module: M, ref: Ref, name: String): Either[Batcher.Failed, Out]
 ```
 
 A module type per language — `PyModule`, `RModule`, `JvmModule` exist;
@@ -222,9 +229,20 @@ with its date, load and sha (the `performance` skill).
       answered under a Reader, and a continuation resumed twice by
       Choice (multi-shot across the process) — green over python3 here.
       No JVM instance (Decision 7).
-- [ ] Stage 4b — `Holds[M]`: object handles (Python's `Method`/`Attr`/
-      `Release`, R's `Hold`/`Release`) under the same shape, with the
-      handle's type a member of the instance.
+- [x] Stage 4b — `Holds[M]` and `Methods[M]` (foreign-facade-4b,
+      2026-09-25). `Holds` is hold / a function with the handle as its
+      first argument / release, for Python and R; `Methods` (a held
+      object's method and attribute) is Python's only — R's objects have
+      no methods to call, so R has no instance, an honest absence. The
+      handle's type is a member of the instance (`Ref`), and the givens
+      are the refined aliases `Holds.Py`/`Holds.R`/`Methods.Py`, so a
+      handle from `Holds` is what `Methods` takes (checked by
+      `compileErrors`). Where a handle LIVES decides the runtime: Python
+      goes through `PyWorkers`, the pool that routes a call naming a
+      handle to the worker holding it; R keeps every handle of a module
+      on one worker of its own (`r-holds` pool of one). Bodies `holds`
+      (two objects, each described with its own state, released) and
+      `methods` green over python3 here.
 - [ ] Stage 5 — the measurement table filled, every claimed cell.
 - [ ] Stage 6 — docs: docs/foreign-facade.md with runnable examples
       pinned by `TestDocExamplesForeignFacade` and the literature — the
@@ -324,6 +342,14 @@ with its date, load and sha (the `performance` skill).
   Python here: `priced` under a Reader answered 12.0, `pairs` resumed
   twice by Choice answered 11, 21, 12, 22 — multi-shot across the
   process, through the facade.
+- **Stage 4b (2026-09-25).** A handle lives in one process, and that
+  decided the runtime per language rather than one pool for all:
+  `PyWorkers` already routes by handle (foreign-object-handles), so
+  Python's `Holds`/`Methods` run there — a second set of processes
+  beside `PyPool`'s for a module that uses both, accepted for now and a
+  cell for stage 5; R has no such pool, so a module's handles all live
+  on one worker. A refinement cannot sit on a `given` (its `{` reads as
+  a body), hence the aliases `Holds.Py`, `Holds.R`, `Methods.Py`.
 - Python here: python3 3.14 on the box, echo/boom/missing green over
   pipes, frames `columnar-json` (no pyarrow in the box's interpreter —
   the venv of MeasurePyArrow has it). R: not installed on this box;

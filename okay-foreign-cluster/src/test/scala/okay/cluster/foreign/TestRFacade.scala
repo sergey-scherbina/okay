@@ -8,6 +8,8 @@ object RFacadeMod:
     boom <- function(rec) stop("nope")
     fecho <- function(frame) frame
     fboom <- function(frame) stop("nope")
+    make <- function(n) list(n = n)
+    describe <- function(c, k) c$n + k
     priced <- function(order) okay_then(okay_perform("price_of", order$sku), function(p) okay_done(p * order$qty))
     pairs <- function(x) okay_then(okay_perform("choose", c(1, 2)), function(a)
       okay_then(okay_perform("choose", c(10, 20)), function(b) okay_done(a + b)))
@@ -23,6 +25,11 @@ class TestRFacade extends munit.FunSuite:
   given Speaks[okay.r.RModule] = Speaks.r(TestR.rscript.getOrElse("Rscript"))
   given Frames[okay.r.RModule] = Frames.r(TestR.rscript.getOrElse("Rscript"))
   given Programs[okay.r.RModule] = Programs.r(TestR.rscript.getOrElse("Rscript"))
+  given holds: Holds.R = Holds.r(TestR.rscript.getOrElse("Rscript"))
+
+  test("Holds over Rscript: two objects held, each described with its own state, released") {
+    FacadeConformance.holds(RFacadeMod.mod, "make", "describe")
+  }
 
   test("Programs over Rscript: a callback under a Reader, and a continuation resumed twice") {
     FacadeConformance.programs(RFacadeMod.mod, "priced", "pairs")

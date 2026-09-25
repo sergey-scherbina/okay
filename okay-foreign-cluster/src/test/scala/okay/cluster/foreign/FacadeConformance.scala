@@ -81,6 +81,27 @@ object FacadeConformance:
     val all = P.run(module)(runChoice(P.program[Int, Long, Choose](module, pairs, Vector(choose))(0)))
     assertEquals(all.toList, List(Right(11L), Right(21L), Right(12L), Right(22L)), s"${P.name}: pairs, multi-shot")
 
+  /**
+   * `Holds`: `make` holds an object on the far side; `describe` takes the
+   * handle as its first argument and a value as its second; the handle is
+   * released. Two handles are two objects.
+   */
+  def holds[M](module: M, make: String, describe: String)(using H: Holds[M]): Unit =
+    val a = H.hold[Long](module, make)(3L).fold(f => fail(s"${H.name}: hold: $f"), identity)
+    val b = H.hold[Long](module, make)(10L).fold(f => fail(s"${H.name}: hold: $f"), identity)
+    assertEquals(H.apply[Long, Long](module, describe)(a, 2L), Right(5L), s"${H.name}: describe a")
+    assertEquals(H.apply[Long, Long](module, describe)(b, 2L), Right(12L), s"${H.name}: describe b")
+    H.release(module)(a)
+    H.release(module)(b)
+
+  /** `Methods`: a held object's method and attribute, through the same
+   * handle `Holds` gave */
+  def methods[M](module: M, make: String, method: String, attr: String)(using H: Holds[M], Me: Methods[M] { type Ref = H.Ref }): Unit =
+    val c = H.hold[Long](module, make)(3L).fold(f => fail(s"${H.name}: hold: $f"), identity)
+    assertEquals(Me.method[Long, Long](module, c, method)(4L), Right(7L), s"${H.name}: method")
+    assertEquals(Me.attr[Long](module, c, attr), Right(3L), s"${H.name}: attr")
+    H.release(module)(c)
+
   /** `Speaks`: a report names the language and the link, and what it
    * says of frames is one of the three words the spec has */
   def speaks[M](module: M, language: String)(using s: Speaks[M]): Speaks.Report =

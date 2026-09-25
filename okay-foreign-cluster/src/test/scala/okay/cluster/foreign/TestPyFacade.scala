@@ -16,6 +16,18 @@ object PyFacadeMod:
     def fboom(frame):
         raise ValueError("nope")
 
+    class Counter:
+        def __init__(self, n):
+            self.n = n
+        def add(self, k):
+            return self.n + k
+
+    def make(n):
+        return Counter(n)
+
+    def describe(c, k):
+        return c.n + k
+
     import okay
 
     def priced(order):
@@ -37,6 +49,16 @@ class TestPyFacade extends munit.FunSuite:
   given Speaks[okay.py.PyModule] = Speaks.py(TestPy.python.getOrElse("python3"))
   given Frames[okay.py.PyModule] = Frames.py(TestPy.python.getOrElse("python3"))
   given Programs[okay.py.PyModule] = Programs.py(TestPy.python.getOrElse("python3"))
+  given holds: Holds.Py = Holds.py(TestPy.python.getOrElse("python3"))
+  given methods: Methods.Py = Methods.py(TestPy.python.getOrElse("python3"))
+
+  test("Holds over python3: two objects held, each described with its own state, released") {
+    FacadeConformance.holds(PyFacadeMod.mod, "make", "describe")
+  }
+
+  test("Methods over python3: a held Counter's add and n") {
+    FacadeConformance.methods(PyFacadeMod.mod, "make", "add", "n")
+  }
 
   test("Programs over python3: a callback under a Reader, and a continuation resumed twice") {
     FacadeConformance.programs(PyFacadeMod.mod, "priced", "pairs")

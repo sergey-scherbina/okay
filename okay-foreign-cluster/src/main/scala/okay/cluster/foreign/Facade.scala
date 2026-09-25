@@ -206,6 +206,85 @@ object Programs:
       RPool.of(module, rscript, Stage.Workers).use(w => (prog.runWith(using w.handler), false))
 
 /**
+ * OBJECT HANDLES (foreign-object-handles): a value the far side KEEPS —
+ * a fitted model, an open dataset — and this side names by a handle. A
+ * handle is an argument like any other (`apply` hands it to a function
+ * as its first argument), and it lives in ONE process: a Python pool
+ * routes a call naming a handle to the worker holding it (`PyWorkers`),
+ * R keeps every handle of a module on one worker of its own.
+ * `Ref` is the instance's handle type; a given is refined with it so a
+ * handle from `Holds` is what `Methods` takes.
+ */
+trait Holds[-M]:
+  type Ref
+  def name: String
+  def hold[Arg: Schema](module: M, fn: String)(a: Arg): Either[Batcher.Failed, Ref]
+  def apply[Arg: Schema, Out: Schema](module: M, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out]
+  def release(module: M)(ref: Ref): Unit
+
+/** a held object's own methods and attributes — Python's road; R's
+ * objects have no methods to call, so R has no instance (an honest
+ * absence, as `Programs[JvmModule]`'s) */
+trait Methods[-M]:
+  type Ref
+  def method[Arg: Schema, Out: Schema](module: M, ref: Ref, name: String)(a: Arg): Either[Batcher.Failed, Out]
+  def attr[Out: Schema](module: M, ref: Ref, name: String): Either[Batcher.Failed, Out]
+
+object Holds:
+  /** the instance types with their handle type visible: a `given` cannot
+   * carry a refinement (the parser reads its `{` as a body), an alias can */
+  type Py = Holds[okay.py.PyModule] { type Ref = okay.py.PyRef }
+  type R = Holds[okay.r.RModule] { type Ref = okay.r.RRef }
+
+  /** the Python pool that routes by handle, one per (interpreter, module) */
+  private val pyPools = scala.collection.concurrent.TrieMap[String, okay.py.PyWorkers]()
+  private[foreign] def pyWorkers(module: okay.py.PyModule, python: String): okay.py.PyWorkers =
+    pyPools.getOrElseUpdate(s"$python|${module.name}|${module.source.hashCode}",
+      okay.py.PyWorkers.start(Stage.Workers, python, modules = Seq(module)))
+  private def failed(c: okay.py.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
+
+  given py: Py = py("python3")
+  def py(python: String): Py = new Holds[okay.py.PyModule]:
+    type Ref = okay.py.PyRef
+    def name = s"py:$python"
+    def hold[Arg: Schema](module: okay.py.PyModule, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
+      okay.py.Py.hold(s"${module.name}:$fn")(a).runWith(using pyWorkers(module, python).handler).left.map(failed)
+    def apply[Arg: Schema, Out: Schema](module: okay.py.PyModule, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
+      okay.py.Py.fn[Out](s"${module.name}:$fn")(ref, a).runWith(using pyWorkers(module, python).handler).left.map(failed)
+    def release(module: okay.py.PyModule)(ref: Ref): Unit =
+      ref.release.runWith(using pyWorkers(module, python).handler)
+
+  /** R: one worker per module holds every handle of it — R has no pool
+   * that routes by handle, and a handle answers only where it lives */
+  private def rHolder(module: okay.r.RModule, rscript: String): Pool[okay.r.RSubprocess] =
+    Pools.get[okay.r.RSubprocess](s"r-holds|$rscript|${module.name}|${module.source.hashCode}") {
+      Pool[okay.r.RSubprocess](s"r-holds:${module.name}", 1, () => okay.r.RSubprocess.start(rscript, modules = Seq(module)), _ => true, _.close())
+    }
+  private def rfailed(c: okay.r.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
+
+  given r: R = r("Rscript")
+  def r(rscript: String): R = new Holds[okay.r.RModule]:
+    type Ref = okay.r.RRef
+    def name = s"r:$rscript"
+    def hold[Arg: Schema](module: okay.r.RModule, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
+      rHolder(module, rscript).use(w => (okay.r.R.hold(s"${module.name}:$fn")(a).runWith(using w.handler), false)).left.map(rfailed)
+    def apply[Arg: Schema, Out: Schema](module: okay.r.RModule, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
+      rHolder(module, rscript).use(w => (okay.r.R.fn[Out](s"${module.name}:$fn")(ref, a).runWith(using w.handler), false)).left.map(rfailed)
+    def release(module: okay.r.RModule)(ref: Ref): Unit =
+      rHolder(module, rscript).use(w => (ref.release.runWith(using w.handler), false))
+
+object Methods:
+  type Py = Methods[okay.py.PyModule] { type Ref = okay.py.PyRef }
+  given py: Py = py("python3")
+  def py(python: String): Py = new Methods[okay.py.PyModule]:
+    type Ref = okay.py.PyRef
+    private def failed(c: okay.py.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
+    def method[Arg: Schema, Out: Schema](module: okay.py.PyModule, ref: Ref, name: String)(a: Arg): Either[Batcher.Failed, Out] =
+      ref.call[Out](name)(a).runWith(using Holds.pyWorkers(module, python).handler).left.map(failed)
+    def attr[Out: Schema](module: okay.py.PyModule, ref: Ref, name: String): Either[Batcher.Failed, Out] =
+      ref.attr[Out](name).runWith(using Holds.pyWorkers(module, python).handler).left.map(failed)
+
+/**
  * The doors a job uses, each picking the tier by the SHAPE it is handed
  * (Decision 6): a value is a call, rows are one frame — and every road
  * answers the same `Either[Batcher.Failed, _]`.
