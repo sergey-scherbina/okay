@@ -79,19 +79,36 @@ when neither road changes an operation. The law says so as a tree
 equivalence, with `Bisim.check` over sampled answers rather than one
 run's result:
 
-- [ ] `Bisim.check(!.widen(p), !.normalize(p))` is `Same`, with ended
+- [x] `Bisim.check(!.widen(p), !.normalize(p))` is `Same`, with ended
       paths, for a program of every core signature the oracle answers
       (State, Reader, Writer, Stop) and for mixed rows: State + Writer,
       two `Tag` keys over ONE signature, and a `Writer.byValue` pair.
-- [ ] and running agrees with the program before widening: the
+- [x] and running agrees with the program before widening: the
       widened program under the wider row's handlers gives what the
       program gives under its own.
-- [ ] MUTANT: a `Row.into` that walks the tree and swaps the keys of two
+- [x] MUTANT: a `Row.into` that walks the tree and swaps the keys of two
       `Tag` instances of one signature (the row "reordered") is caught
       with a path. So is okay2's real incoherence, the intersection
       row's `#Op` taking the LAST parent's, if okay2 can state the law
       (see the twin below).
-- [ ] okay2 twin, if its intersection encoding can express it.
+- [x] okay2 twin, if its intersection encoding can express it.
+- RESULT (TestRowCoherence, both cores):
+  - The law holds over State, Reader, Writer, Writer + Stop, the
+    deferred shapes and a 200-deep fold (depth 1 000, about 800
+    operations on one path), State + Writer, two `Tag` keys over one
+    State, and a `Writer.byValue` pair. The widened programs also run as
+    the originals did.
+  - The mutant `into` (a walk swapping the keys `small` and `big`) was
+    caught twice: `Differ at the start: left performed Tag(big,Get()),
+    right performed Tag(small,Get())`, and the two-key run disagreed.
+  - okay2 has ONE road: `Free` is contravariant in its row, so
+    `!.widen` returns the program itself (`eq`), and there is no walk to
+    compare it with. Its twin pins that, and that the program runs as
+    it did. okay2's real incoherence (`#Op` of an intersection) is in
+    typing an operation, not in widening.
+  - A note for the next law: `Answers.+` takes its runtime test from
+    its LEFT member, so a row of answers nests to the right,
+    `A + (B + C)`; `(A + B) + C` asks for a `TypeableK` of a row.
 
 ## Out of scope
 

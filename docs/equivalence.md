@@ -84,6 +84,28 @@ both sides: `take` counting down by two keeps `take(5).take(3)` and
 measured against deliberate mutants of the library's own stage code
 (specs/handler-equivalence-oracle.md, Results).
 
+## Coherence: two roads to a wider row
+
+A program at row `F` reaches `F + G` by a coercion, `!.widen`, or by a
+walk that rebuilds the tree, `!.normalize`. What the program means must
+not depend on which road it took. That property is coherence of effect
+subtyping \[[Biernacki & Polesiuk 2018](#ref-coherence-2018)\]. A row
+member is found by a runtime test on the operation's value (its class,
+a `Tag`'s key, a `Writer.byValue` element class), so the two roads agree
+exactly when neither changes an operation. `TestRowCoherence` states it
+as a law over every core signature and over mixed rows, including two
+`Tag` keys over one signature:
+
+```scala
+    Bisim.check(!.widen[A, F, Added](p), !.normalize[A, F, Added](p), depth) match
+      case Verdict.Same(paths, _) => assert(paths > 0, s"$name: no sampled path ended")
+    coherent("two keys", keyed, keyedAnswers)
+```
+
+A coercion that swapped the two keys fails it with a path: `Differ at
+the start: left performed Tag(big,Get()), right performed
+Tag(small,Get())`.
+
 ## What it does not check
 
 `Bisim.check` compares programs across **all** handlers, so it does not
@@ -101,6 +123,12 @@ Operations are compared with `==`, so an operation that carries a
 function (a `Delim` shift) cannot be compared yet.
 
 ## References
+
+- <a id="ref-coherence-2018"></a>Dariusz Biernacki, Piotr Polesiuk.
+  *Logical relations for coherence of effect subtyping.* Logical
+  Methods in Computer Science, 2018 (first at TLCA 2015). Why a
+  program's meaning must not depend on the derivation that widened its
+  effects.
 
 - <a id="ref-bisim-2020"></a>Dariusz Biernacki, Sergueï Lenglet, Piotr
   Polesiuk. *A complete normal-form bisimilarity for algebraic effects
