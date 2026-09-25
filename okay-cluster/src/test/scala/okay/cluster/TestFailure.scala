@@ -226,23 +226,12 @@ class TestFailure extends munit.FunSuite {
   }
 
   test("A REAL WORKER PROCESS IS KILLED MID-RUN, and the job finishes") {
-    val cp = System.getProperty("okay.cluster.cp")
-    assume(cp != null, "the test classpath was not handed over (see build.sbt)")
-
-    val procs = (0 until 4).map { _ =>
-      val pb = ProcessBuilder("java", "-cp", cp, "okay.cluster.WorkerMain", "0",
-        "okay.cluster.TestJobs$")
-      pb.redirectErrorStream(true)
-      pb.start()
-    }
+    val procs = Workers.spawn(4, "okay.cluster.TestJobs$")
     try
-      val ports = procs.map { pr =>
-        val in = scala.io.Source.fromInputStream(pr.getInputStream)
-        in.getLines().find(_.startsWith("worker listening"))
-          .getOrElse(throw IllegalStateException("a worker never announced a port"))
-          .split(' ')(2).toInt
-      }
-      val sockets = ports.toVector.map(p => Served.connect("127.0.0.1", p))
+      // a deadline on the wait, failing with every worker's thread dump
+      // (cluster-forked-stall)
+      val ports = Workers.ports(procs).map(_.split(' ')(2).toInt)
+      val sockets = ports.map(p => Served.connect("127.0.0.1", p))
 
       // the kill happens DURING the run, at a chosen request: the
       // first worker's third request destroys its own process, so

@@ -167,20 +167,11 @@ class TestFederation extends munit.FunSuite {
   }
 
   liveTest("TWO REAL PROCESSES, each its own party: the union's answer, the bytes, and B killed") {
-    val cp = System.getProperty("okay.cluster.cp")
-    assume(cp != null, "the test classpath was not handed over (see build.sbt)")
-
-    val procs = (0 until 2).map { n =>
-      val pb = ProcessBuilder("java", s"-Dokay.party=$n", "-cp", cp,
-        "okay.cluster.WorkerMain", "0", "okay.cluster.Party$")
-      pb.redirectErrorStream(true)
-      pb.start()
-    }
+    val procs = Workers.spawn(2, "okay.cluster.Party$", n => Seq(s"-Dokay.party=$n"))
     try
-      val ports = procs.map { pr =>
-        val in = scala.io.Source.fromInputStream(pr.getInputStream)
-        val line = in.getLines().find(_.startsWith("worker listening"))
-          .getOrElse(throw IllegalStateException("a party never announced a port"))
+      // a deadline on the wait, failing with every party's thread dump
+      // (cluster-forked-stall)
+      val ports = Workers.ports(procs).map { line =>
         assert(line.contains("test.party"), s"the party did not register the job: $line")
         line.split(' ')(2).toInt
       }

@@ -2,6 +2,7 @@ package okay.cluster
 
 import okay.given
 import java.net.ServerSocket
+import scala.concurrent.duration.*
 
 /**
  * THE ENGINE ACROSS PROCESSES (specs/dataflow.md, stage 4b).
@@ -20,6 +21,13 @@ class TestDistributed extends munit.FunSuite {
   import Feeds.*
 
   TestJobs.install()
+
+  /** the two tests below that bind sockets or spawn JVMs: Live, as every
+   * binding suite is (AGENTS.md, nio-port-scope), and TestFailure's and
+   * TestFederation's process tests already were. This one was not, and
+   * three default gates on 2026-09-25 stalled in it with four workers
+   * at 0% (cluster-forked-stall); its waits have deadlines now too. */
+  def liveTest(name: String)(body: => Any): Unit = test(name.tag(new munit.Tag("Live")))(body)
 
   val feed: Feed = Feed(20000, Late - 1)
   val late: Feed = Feed(20000, Late * 8)
@@ -68,51 +76,42 @@ class TestDistributed extends munit.FunSuite {
     assert(e.getMessage.contains("test.window"), s"it should say what it DOES know: ${e.getMessage}")
   }
 
-  test("FOUR REAL PROCESSES: the answer does not depend on where a partition ran") {
+  liveTest("FOUR REAL PROCESSES: the answer does not depend on where a partition ran") {
     // the point of the whole stage. Four JVMs that share nothing but
     // an artifact and a job NAME; the coordinator here holds only
     // sockets. Everything the workers need to build the same plan
     // travels as `Feed`, described by its Schema — no closure, no
     // serialized lambda, no class shipped.
-    val cp = System.getProperty("okay.cluster.cp")
-    assume(cp != null, "the test classpath was not handed over (see build.sbt)")
-
-    val procs = (0 until 4).map { _ =>
-      val pb = ProcessBuilder("java", "-cp", cp, "okay.cluster.WorkerMain", "0",
-        "okay.cluster.TestJobs$")
-      pb.redirectErrorStream(true)
-      pb.start()
-    }
+    val procs = Workers.spawn(4, "okay.cluster.TestJobs$")
     try
       // each worker prints its port once it is bound — waiting for
-      // that line beats sleeping and guessing
-      val ports = procs.map { pr =>
-        val in = scala.io.Source.fromInputStream(pr.getInputStream)
-        val line = in.getLines().find(_.startsWith("worker listening"))
-          .getOrElse(throw IllegalStateException("a worker never announced a port"))
+      // that line beats sleeping and guessing, and the wait has a
+      // deadline that fails with every worker's thread dump
+      val ports = Workers.ports(procs).map { line =>
         assert(line.contains("test.window"), s"the worker did not register the jobs: $line")
         line.split(' ')(2).toInt
       }
-      val wire = ports.toVector.map(p => Served.connect("127.0.0.1", p))
+      val wire = ports.map(p => Served.connect("127.0.0.1", p))
+      Workers.within(10.minutes, () => Workers.dumps(procs)) {
+        for parts <- Vector(4, 8) do
+          val here = local(FanJob, feed, parts)
+          val there = Cluster.run(FanJob, feed, parts, wire).runWith
+          assertEquals(there.value, here.value, s"$parts partitions over 4 processes")
+          assertEquals(there.dropped, here.dropped, s"$parts partitions over 4 processes")
+          assertEquals(there.merged, here.merged, s"$parts partitions over 4 processes")
 
-      for parts <- Vector(4, 8) do
-        val here = local(FanJob, feed, parts)
-        val there = Cluster.run(FanJob, feed, parts, wire).runWith
-        assertEquals(there.value, here.value, s"$parts partitions over 4 processes")
-        assertEquals(there.dropped, here.dropped, s"$parts partitions over 4 processes")
-        assertEquals(there.merged, here.merged, s"$parts partitions over 4 processes")
-
-      // and the late feed, whose drop count only agrees if every
-      // worker seeded its watermark from the coordinator's bounds
-      val hereLate = local(WindowJob, late, 8)
-      val thereLate = Cluster.run(WindowJob, late, 8, wire).runWith
-      assert(hereLate.dropped > 0)
-      assertEquals(thereLate.dropped, hereLate.dropped, "the seeding did not cross")
-      assertEquals(thereLate.value, hereLate.value)
+        // and the late feed, whose drop count only agrees if every
+        // worker seeded its watermark from the coordinator's bounds
+        val hereLate = local(WindowJob, late, 8)
+        val thereLate = Cluster.run(WindowJob, late, 8, wire).runWith
+        assert(hereLate.dropped > 0)
+        assertEquals(thereLate.dropped, hereLate.dropped, "the seeding did not cross")
+        assertEquals(thereLate.value, hereLate.value)
+      }
     finally procs.foreach(_.destroyForcibly(): Unit)
   }
 
-  test("over sockets, in this JVM: real framing, real bytes") {
+  liveTest("over sockets, in this JVM: real framing, real bytes") {
     val server = ServerSocket(0)
     val serving = okay.Threads.spawnThread("okay-cluster-test-serving")(() => Served.serve(server, Cluster.local))
     try
