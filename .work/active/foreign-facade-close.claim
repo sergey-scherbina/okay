@@ -1,5 +1,0 @@
-slug: foreign-facade-close
-owner: claude (session 01Ujs4BY)
-started: 2026-09-26
-task: the two open Behavior boxes of specs/foreign-facade.md (one job text over Py/R/JVM; Speaks checked against the hello both ways), then foreign-facade off the sprint
-files: okay-foreign-cluster/src/test (FacadeConformance, TestFacade, TestPyFacade, TestRFacade), maybe Facade.scala Speaks; specs/foreign-facade.md; sprint.d/doing/foreign-facade.md
