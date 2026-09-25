@@ -27,14 +27,14 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
     while i < n do { pool.put(ForeignWorker.start(python, env)); i += 1 }
 
   /**
-   * A call with callbacks is a DIALOGUE (foreign-callbacks): `Start`,
-   * then a `Resume` per ask, all with ONE worker — its Python frame is
-   * the one waiting. A dialogue that took its worker from the pool keeps
-   * it until the `Done`; each ask's `k` is renamed to a pool-wide one so a
-   * resume finds its worker.
+   * A PROGRAM lives in one worker (remote-foreign), and is routed there by
+   * its run. A direct function's program (foreign-one-program: a node
+   * marked `once`) is its parked Python frame, so its worker is kept OUT of
+   * the pool until the function answers — another call would run nested
+   * inside that frame; a program as data leaves its worker in the pool,
+   * since its continuations are values.
    */
-  private val parked = java.util.concurrent.ConcurrentHashMap[Long, (ForeignWorker, Long, Boolean)]()
-  private val nextK = java.util.concurrent.atomic.AtomicLong()
+  private val runs = java.util.concurrent.ConcurrentHashMap[Long, (ForeignWorker, Boolean)]()
 
   /**
    * A HELD object ties its calls to its worker (foreign-object-handles):
@@ -45,23 +45,22 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
    * worker an unpinned call gets. Ref ids are renamed pool-wide.
    */
   private val refs = java.util.concurrent.ConcurrentHashMap[Long, (ForeignWorker, Long)]()
-  /** a program-as-data run's continuations live in one worker (remote-foreign) */
-  private val runs = java.util.concurrent.ConcurrentHashMap[Long, ForeignWorker]()
   private val nextRef = java.util.concurrent.atomic.AtomicLong()
 
   /** the same shape as one worker's handler — programs cannot tell */
   def handler: Handler[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
-      case ForeignEval.Resume(k, a) =>
-        val (w, local, fromPool) = Option(parked.remove(k)).getOrElse(
-          throw IllegalStateException(s"okay.py: resume $k matches no waiting call (resumed twice?)"))
-        dialogue(w, fromPool)(_.handle(ForeignEval.Resume(local, a)))
       case ForeignEval.Continue(run, k, a) =>
-        val w = Option(runs.get(run)).getOrElse(
-          throw IllegalArgumentException(s"okay.py: run $run is not known to this pool (forgotten?)"))
-        w.synchronized(w.handler.handle(ForeignEval.Continue(run, k, local(a))))
+        val (w, checkedOut) = Option(runs.get(run)).getOrElse(
+          throw IllegalArgumentException(s"okay.py: run $run is not known to this pool (forgotten, or answered)"))
+        try stepped(w, run, checkedOut)(w.handler.handle(ForeignEval.Continue(run, k, a.map(local))))
+        catch case dead: IllegalStateException if dead.getMessage.contains("DEAD") =>
+          retire(w)
+          throw dead
       case ForeignEval.Forget(run) =>
-        Option(runs.remove(run)).foreach(w => w.synchronized(w.handler.handle(ForeignEval.Forget(run))))
+        Option(runs.remove(run)).foreach((w, checkedOut) =>
+          try w.synchronized(w.handler.handle(ForeignEval.Forget(run)))
+          finally if checkedOut then pool.put(w))
       case ForeignEval.Release(r) =>
         Option(refs.remove(r.id)).foreach { (w, local) =>
           w.synchronized(w.handler.handle(ForeignEval.Release(PyRef(local, r.pyType))))
@@ -71,10 +70,10 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
           case Some(w) => on(w, other, fromPool = false)
           case None =>
             val w = pool.take()
-            val dialogueKeepsIt = other match
-              case ForeignEval.Start(_, _, _) => true
-              case _ => false
-            var back = !dialogueKeepsIt
+            // a program decides after its first node whether it keeps the worker
+            var back = other match
+              case ForeignEval.Program(_, _, _, _, _) => false
+              case _ => true
             try on(w, other, fromPool = true)
             catch
               case dead: IllegalStateException if dead.getMessage.contains("DEAD") =>
@@ -86,7 +85,6 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
   /** run one operation on `w` under its lock, its refs renamed to the
    * worker's own and any ref it answers registered pool-wide */
   private def on[A](w: ForeignWorker, e: ForeignEval[A], fromPool: Boolean): A = e match
-    case ForeignEval.Start(fn, args, cbs) => dialogue(w, fromPool)(_.handle(ForeignEval.Start(fn, args.map(local), cbs)))
     case ForeignEval.Call(fn, args) => w.synchronized(w.handler.handle(ForeignEval.Call(fn, args.map(local))))
     case ForeignEval.Frame(fn, f, args) => w.synchronized(w.handler.handle(ForeignEval.Frame(fn, f, args.map(local))))
     case ForeignEval.Hold(fn, args) =>
@@ -97,22 +95,22 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
         case v => v
       }
     case ForeignEval.Attr(r, name) => w.synchronized(w.handler.handle(ForeignEval.Attr(localRef(r), name)))
-    case ForeignEval.Program(run, fn, args) =>
-      runs.put(run, w): Unit
-      w.synchronized(w.handler.handle(ForeignEval.Program(run, fn, args.map(local))))
-    case ForeignEval.Resume(_, _) | ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) =>
-      throw IllegalStateException("unreachable: resume and release are routed by the handler")
+    case ForeignEval.Program(run, fn, args, cbs, d) =>
+      // a worker reached through a ref was never taken from the pool
+      runs.put(run, (w, false)): Unit
+      stepped(w, run, fromPool)(w.handler.handle(ForeignEval.Program(run, fn, args.map(local), cbs, d)))
+    case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) =>
+      throw IllegalStateException("unreachable: continue, forget and release are routed by the handler")
 
   /** the refs an operation names */
   private def named[A](e: ForeignEval[A]): Vector[Long] = e match
     case ForeignEval.Call(_, args) => args.flatMap(refsIn)
     case ForeignEval.Frame(_, _, args) => args.flatMap(refsIn)
-    case ForeignEval.Start(_, args, _) => args.flatMap(refsIn)
     case ForeignEval.Hold(_, args) => args.flatMap(refsIn)
     case ForeignEval.Method(r, _, args, _) => r.id +: args.flatMap(refsIn)
     case ForeignEval.Attr(r, _) => Vector(r.id)
-    case ForeignEval.Program(_, _, args) => args.flatMap(refsIn)
-    case ForeignEval.Resume(_, _) | ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) => Vector.empty
+    case ForeignEval.Program(_, _, args, _, _) => args.flatMap(refsIn)
+    case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) => Vector.empty
 
   private def refsIn(v: PyValue): Vector[Long] = PyValue.refs(v)
 
@@ -138,27 +136,44 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
     refs.put(g, (w, r.id)): Unit
     PyRef(g, r.pyType)
 
-  /** one step of a dialogue on `w`: park it again on an ask; on the
-   * answer, give it back to the pool if that is where it came from */
-  private def dialogue(w: ForeignWorker, fromPool: Boolean)(step: Handler[ForeignEval] => PyStep): PyStep =
-    try w.synchronized(step(w.handler)) match
-      case PyStep.Ask(cb, args, local) =>
-        val k = nextK.incrementAndGet()
-        parked.put(k, (w, local, fromPool)): Unit
-        PyStep.Ask(cb, args, k)
-      case done =>
-        if fromPool then pool.put(w)
-        done
-    catch
-      case dead: IllegalStateException if dead.getMessage.contains("DEAD") =>
-        retire(w)
-        throw dead
+  /**
+   * One step of a program on `w`, under its lock. A node marked `once` is a
+   * parked frame: the worker stays out of the pool (it came from there) or
+   * pinned (it did not). The function's answer, or a failure, ends that:
+   * the worker goes back to where it came from. A program as data leaves
+   * the worker in the pool after every step, found again by its run.
+   */
+  private def stepped(w: ForeignWorker, run: Long, checkedOut: Boolean)
+                     (step: => Either[Condition, PyNode]): Either[Condition, PyNode] =
+    val node =
+      try w.synchronized(step)
+      catch case t: Throwable =>
+        // the run is over either way; a death is retired by the caller,
+        // anything else gives a checked-out worker back
+        runs.remove(run): Unit
+        val dead = t.isInstanceOf[IllegalStateException] && Option(t.getMessage).exists(_.contains("DEAD"))
+        if checkedOut && !dead then pool.put(w)
+        throw t
+    node match
+      case Right(PyNode.Perform(_, _, _, true)) =>
+        runs.put(run, (w, checkedOut)): Unit
+      case Right(PyNode.Perform(_, _, _, false)) =>
+        runs.put(run, (w, false)): Unit
+        if checkedOut then pool.put(w)
+      case _ =>
+        // answered, or failed: a direct run is over; a data run keeps its
+        // continuations (a Choice may continue one again) until forgotten
+        val direct = Option(runs.get(run)).exists(_._2) || checkedOut
+        if direct then
+          runs.remove(run): Unit
+          if checkedOut then pool.put(w)
+    node
 
   /** a dead worker: its refs die with it (a later use is refused by
    * name), and a fresh worker takes its place in the pool */
   private def retire(w: ForeignWorker): Unit =
     refs.entrySet.removeIf(_.getValue._1 eq w): Unit
-    runs.entrySet.removeIf(_.getValue eq w): Unit
+    runs.entrySet.removeIf(_.getValue._1 eq w): Unit
     // a worker reached through a ref may still be IN the pool: take it
     // out, or the pool would hold a corpse beside its replacement
     pool.remove(w): Unit

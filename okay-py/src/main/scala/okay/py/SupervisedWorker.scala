@@ -96,34 +96,32 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
     case other => other
   }
 
-  private def inStep(s: PyStep): PyStep = s match
-    case PyStep.Ask(cb, args, k) => PyStep.Ask(cb, args.map(in), expose(k))
-    case PyStep.Done(a) => PyStep.Done(a.map(in))
-
   // ---- programs as data: every continuation remembers how it was reached --
 
   /** a continuation the CALLER holds: its run, the path of answers from the
    * program's start, the operation it stands at, and where it lives now */
   private final case class Kont(run: Long, path: Vector[PyValue], op: String, args: Vector[PyValue],
-                                var local: Long, var gen: Long)
+                                var local: Long, var gen: Long,
+                                /** a parked frame (the direct style): continued once, never replayed */
+                                once: Boolean = false)
 
-  private val runs = scala.collection.mutable.Map.empty[Long, (String, Vector[PyValue])]
+  private val runs = scala.collection.mutable.Map.empty[Long, (String, Vector[PyValue], Vector[String])]
   private val konts = scala.collection.mutable.Map.empty[Long, Kont]
   private var nextK = 0L
 
   /** a node from the worker, its `k` renamed to one the caller can keep */
   private def node(run: Long, path: Vector[PyValue], n: PyNode): PyNode = n match
     case PyNode.Done(v) => PyNode.Done(in(v))
-    case PyNode.Perform(op, args, k) =>
+    case PyNode.Perform(op, args, k, once) =>
       nextK += 1
-      konts(nextK) = Kont(run, path, op, args, k, generation)
-      PyNode.Perform(op, args.map(in), nextK)
+      konts(nextK) = Kont(run, path, op, args, k, generation, once)
+      PyNode.Perform(op, args.map(in), nextK, once)
 
   /** on the CURRENT worker: the program re-run and `path` replayed, to the
    * continuation standing at `op(args)`; its local k */
   private def replay(w: ForeignWorker, run: Long, path: Vector[PyValue], op: String,
                      args: Vector[PyValue]): Either[Condition, Long] =
-    val (fn, fnArgs) = runs(run)
+    val (fn, fnArgs, cbs) = runs(run)
     // one loop over the recorded path, not a frame per answer: a
     // durable run replays as many steps as it journaled (stack-safety-py-r)
     def step(n0: Either[Condition, PyNode], rest0: Vector[PyValue]): Either[Condition, Long] =
@@ -132,39 +130,54 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
       var result: Option[Either[Condition, Long]] = None
       while result.isEmpty do n match
         case Left(c) => result = Some(Left(c))
-        case Right(PyNode.Perform(o, as, k)) if rest.isEmpty =>
+        case Right(PyNode.Perform(o, as, k, _)) if rest.isEmpty =>
           result = Some(if o == op && as == args then Right(k)
             else Left(Condition("ReplayDrift",
               s"replaying run $run met $o$as where the path recorded $op$args: the far-side program is not a pure function of its answers")))
-        case Right(PyNode.Perform(_, _, k)) =>
-          n = w.handler.handle(ForeignEval.Continue(run, k, rest.head)); rest = rest.tail
+        case Right(PyNode.Perform(_, _, k, _)) =>
+          n = w.handler.handle(ForeignEval.Continue(run, k, Right(rest.head))); rest = rest.tail
         case Right(PyNode.Done(v)) =>
           result = Some(Left(Condition("ReplayDrift", s"replaying run $run finished ($v) before the recorded path did")))
       result.get
-    val started = outAll(fnArgs).flatMap(a => w.handler.handle(ForeignEval.Program(run, fn, a)))
+    val started = outAll(fnArgs).flatMap(a => w.handler.handle(ForeignEval.Program(run, fn, a, cbs)))
     step(started, path)
 
   /** continue `k` with `answer`, recovering a lost worker by replay; one
    * restart per step, so a far side that dies every time still answers */
-  private def continue(k: Long, answer: PyValue): Either[Condition, PyNode] =
+  private def continue(k: Long, answer: Either[Condition, PyValue]): Either[Condition, PyNode] =
     konts.get(k) match
       case None => Left(Condition("LookupError", s"continuation $k is not held (forgotten?)"))
-      case Some(c) =>
-        @tailrec def attempt(recovering: Boolean): Either[Condition, PyNode] =
-          use { w =>
-            val local =
-              if c.gen == generation then Right(c.local)
-              else replay(w, c.run, c.path, c.op, c.args).map { l => c.local = l; c.gen = generation; l }
-            for
-              l <- local
-              a <- out(answer)
-              n <- w.handler.handle(ForeignEval.Continue(c.run, l, a))
-            yield node(c.run, c.path :+ answer, n)
-          } match
-            case Left(cond) if !recovering && !current.exists(_.alive) &&
-              Set("WorkerDied", "timeout").contains(cond.kind) => attempt(recovering = true)
-            case other => other
-        attempt(recovering = false)
+      case Some(c) if c.once =>
+        // a parked frame: continued once, on the worker that parked it
+        konts.remove(k): Unit
+        if c.gen != generation || !current.exists(_.alive) then
+          Left(Condition("WorkerDied",
+            s"the call waiting on $k was in a worker that died: its far-side frame is gone, so the call cannot be resumed"))
+        else
+          val sent = answer match
+            case Right(v) => out(v).map(Right(_))
+            case Left(cond) => Right(Left(cond))
+          sent.flatMap(a => use(w => w.handler.handle(ForeignEval.Continue(c.run, c.local, a))))
+            .map(n => node(c.run, c.path, n))
+      case Some(c) => answer match
+        // a program as data takes answers, not failures: the API stops at a Left
+        case Left(cond) => Left(cond)
+        case Right(value) =>
+          @tailrec def attempt(recovering: Boolean): Either[Condition, PyNode] =
+            use { w =>
+              val local =
+                if c.gen == generation then Right(c.local)
+                else replay(w, c.run, c.path, c.op, c.args).map { l => c.local = l; c.gen = generation; l }
+              for
+                l <- local
+                a <- out(value)
+                n <- w.handler.handle(ForeignEval.Continue(c.run, l, Right(a)))
+              yield node(c.run, c.path :+ value, n)
+            } match
+              case Left(cond) if !recovering && !current.exists(_.alive) &&
+                Set("WorkerDied", "timeout").contains(cond.kind) => attempt(recovering = true)
+              case other => other
+          attempt(recovering = false)
 
   // ---- a host that did not see its own past -------------------------------
 
@@ -185,10 +198,10 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
    * shape, because `ForeignEval` is covariant and a match on the operation
    * bounds `X` only from below — a pattern on the value, not a cast */
   private def seen[X](op: ForeignEval[X], answer: X): Unit = op match
-    case ForeignEval.Program(run, fn, args) =>
-      runs(run) = (fn, args)
+    case ForeignEval.Program(run, fn, args, cbs, _) =>
+      runs(run) = (fn, args, cbs)
       rebuilt(run, Vector.empty, answer)
-    case ForeignEval.Continue(run, k, a) =>
+    case ForeignEval.Continue(run, k, Right(a)) =>
       konts.get(k).foreach(c => rebuilt(run, c.path :+ a, answer))
     case ForeignEval.Forget(run) =>
       runs.remove(run): Unit
@@ -198,8 +211,8 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
   /** a replayed node: a Perform's continuation, kept under the journal's
    * own id, standing on no live worker */
   private def rebuilt[X](run: Long, path: Vector[PyValue], node: X): Unit = node match
-    case Right(PyNode.Perform(op, args, k)) =>
-      konts(k) = Kont(run, path, op, args, local = -1L, gen = -1L)
+    case Right(PyNode.Perform(op, args, k, once)) =>
+      konts(k) = Kont(run, path, op, args, local = -1L, gen = -1L, once = once)
       nextK = math.max(nextK, k)
     case _ => ()
 
@@ -228,26 +241,13 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
           current.filter(_.alive).foreach(w =>
             try w.handler.handle(ForeignEval.Release(r.copy(id = localOf(r.id))))
             catch case e: IllegalStateException if dead(e) => ())
-      case ForeignEval.Start(fn, args, cbs) =>
-        use(w => outAll(args).map(a => w.handler.handle(ForeignEval.Start(fn, a, cbs)))) match
-          case Right(step) => inStep(step)
-          case Left(c) => PyStep.Done(Left(c))
-      case ForeignEval.Resume(k, answer) =>
-        if genOf(k) != generation || !current.exists(_.alive) then
-          PyStep.Done(Left(Condition("WorkerDied",
-            s"the call waiting on $k was in a worker that died: its far-side frame is gone, so the call cannot be resumed")))
-        else
-          val sent = answer match
-            case Right(v) => out(v).map(Right(_))
-            case Left(c) => Right(Left(c))
-          sent.flatMap(a => use(w => Right(w.handler.handle(ForeignEval.Resume(localOf(k), a))))) match
-            case Right(step) => inStep(step)
-            case Left(c) => PyStep.Done(Left(c))
-      case ForeignEval.Program(run, fn, args) =>
-        runs(run) = (fn, args)
+      case ForeignEval.Program(run, fn, args, cbs, direct) =>
+        runs(run) = (fn, args, cbs)
+        // a start that died mid-flight is re-run on a fresh worker unless the
+        // host said it is DIRECT code, which may have acted before it died
         @tailrec def attempt(recovering: Boolean): Either[Condition, PyNode] =
-          use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Program(run, fn, a)))) match
-            case Left(c) if !recovering && !current.exists(_.alive) &&
+          use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Program(run, fn, a, cbs, direct)))) match
+            case Left(c) if !direct && !recovering && !current.exists(_.alive) &&
               Set("WorkerDied", "timeout").contains(c.kind) => attempt(recovering = true)
             case other => other
         attempt(recovering = false).map(n => node(run, Vector.empty, n))

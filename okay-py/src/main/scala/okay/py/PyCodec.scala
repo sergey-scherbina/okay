@@ -368,14 +368,14 @@ object Py {
       def step(e: Either[Condition, PyNode]): Either[Condition, Out] ! R = e match
         case Left(c) => pure[R, Either[Condition, Out]](Left(c))
         case Right(PyNode.Done(v)) => pure[R, Either[Condition, Out]](shape.decode[Out](v))
-        case Right(PyNode.Perform(name, as, k)) => cbs.get(name) match
+        case Right(PyNode.Perform(name, as, k, _)) => cbs.get(name) match
           case None => pure[R, Either[Condition, Out]](Left(Condition("NoCallback",
             s"'$name' is not among this program's callbacks (${cbs.names.mkString(", ")})")))
           case Some(cb) => cb.run(as).plus[ForeignEval].flatMap {
             case Left(c) => pure[R, Either[Condition, Out]](Left(c))
-            case Right(a) => effect[R, Either[Condition, PyNode]](ForeignEval.Continue(id, k, a)).flatMap(step)
+            case Right(a) => effect[R, Either[Condition, PyNode]](ForeignEval.Continue(id, k, Right(a))).flatMap(step)
           }
-      effect[R, Either[Condition, PyNode]](ForeignEval.Program(id, address, args)).flatMap(step)
+      effect[R, Either[Condition, PyNode]](ForeignEval.Program(id, address, args, cbs.names)).flatMap(step)
 
     /** drop every continuation the far side keeps for this run */
     def forget: Unit ! ForeignEval = effect[ForeignEval, Unit](ForeignEval.Forget(id))
@@ -476,20 +476,24 @@ object Py {
         dialogue(Vector(ToPy(a), ToPy(b), ToPy(c)))
 
       /**
-       * The dialogue as a program: start, then per ask run the callback's
-       * program and resume, until the function answers. Each step is an
-       * okay node, so a function that calls back a million times is a loop,
-       * not a million frames.
+       * The call as a PROGRAM (foreign-one-program): started under a run of
+       * its own, each `okay_call` a node whose callback runs under the
+       * caller's handlers and whose answer — or failure, raised in the far
+       * side's code where it may be caught — continues it, until the
+       * function answers. Each step is an okay node, so a function that
+       * calls back a million times is a loop, not a million frames.
        */
       private def dialogue(args: Vector[PyValue]): Either[Condition, Out] ! F + ForeignEval =
         type R = F + ForeignEval
-        def go(step: PyStep): Either[Condition, Out] ! R = step match
-          case PyStep.Done(a) => pure[R, Either[Condition, Out]](a.flatMap(shape.decode[Out](_)))
-          case PyStep.Ask(name, as, k) =>
+        val run = runIds.incrementAndGet()
+        def go(node: Either[Condition, PyNode]): Either[Condition, Out] ! R = node match
+          case Left(c) => pure[R, Either[Condition, Out]](Left(c))
+          case Right(PyNode.Done(v)) => pure[R, Either[Condition, Out]](shape.decode[Out](v))
+          case Right(PyNode.Perform(name, as, k, _)) =>
             val answered: Either[Condition, PyValue] ! R = cbs.get(name) match
               case Some(cb) => cb.run(as).plus[ForeignEval]
               case None => pure[R, Either[Condition, PyValue]](Left(Condition("NoCallback",
                 s"'$name' is not among this call's callbacks (${cbs.names.mkString(", ")})")))
-            answered.flatMap(a => effect[R, PyStep](ForeignEval.Resume(k, a))).flatMap(go)
-        effect[R, PyStep](ForeignEval.Start(address, args, cbs.names)).flatMap(go)
+            answered.flatMap(a => effect[R, Either[Condition, PyNode]](ForeignEval.Continue(run, k, a))).flatMap(go)
+        effect[R, Either[Condition, PyNode]](ForeignEval.Program(run, address, args, cbs.names, direct = true)).flatMap(go)
 }

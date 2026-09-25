@@ -2,7 +2,7 @@ package okay.py.workflow
 
 import okay.{!, +, At, Delim, Wf, effect}
 import okay.codec.Schema
-import okay.py.{Condition, ForeignEval, PyStep, PyValue, Shape, ToPy, Wire}
+import okay.py.{Condition, ForeignEval, PyNode, PyValue, Shape, ToPy, Wire}
 
 /** a foreign call as a workflow QUESTION: the function's address and its
  * arguments (specs/foreign-workflow.md) */
@@ -56,22 +56,29 @@ object ForeignActivity:
    */
   def oracle: ForeignCall => String ! ForeignEval = oracle(attempts = 3)
 
+  /** the run ids this activity's programs are started under */
+  private val runs = java.util.concurrent.atomic.AtomicLong()
+
   def oracle(attempts: Int): ForeignCall => String ! ForeignEval = c =>
-    // `start`, not `call`: every language serves it (Go and Rust functions
-    // are direct-style). An activity offers no callbacks, so an okay_call
-    // from the far side is ANSWERED with a refusal — its frame must not be
-    // left waiting — and the function's own answer is the activity's.
-    def settle(step: PyStep): Either[Condition, PyValue] ! ForeignEval = step match
-      case PyStep.Done(answer) => okay.pure[ForeignEval, Either[Condition, PyValue]](answer)
-      case PyStep.Ask(cb, _, k) =>
-        effect[ForeignEval, PyStep](ForeignEval.Resume(k, Left(Condition("NoCallback",
-          s"the activity '${c.address}' called okay_call('$cb'), and an activity offers no callbacks")))).flatMap(settle)
+    // a PROGRAM, not a `call`: every language serves it (Go's and Rust's
+    // functions are direct-style). An activity offers no callbacks, so an
+    // okay_call from the far side is ANSWERED with a refusal — its frame
+    // must not be left waiting — and the function's own answer is the
+    // activity's. DIRECT: a start that died is the retry loop's to redo.
+    def settle(run: Long)(node: Either[Condition, PyNode]): Either[Condition, PyValue] ! ForeignEval = node match
+      case Left(cond) => okay.pure[ForeignEval, Either[Condition, PyValue]](Left(cond))
+      case Right(PyNode.Done(v)) => okay.pure[ForeignEval, Either[Condition, PyValue]](Right(v))
+      case Right(PyNode.Perform(cb, _, k, _)) =>
+        effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Continue(run, k, Left(Condition("NoCallback",
+          s"the activity '${c.address}' called okay_call('$cb'), and an activity offers no callbacks")))).flatMap(settle(run))
     def attempt(left: Int): Either[Condition, PyValue] ! ForeignEval =
-      effect[ForeignEval, PyStep](ForeignEval.Start(c.address, c.args, Vector.empty)).flatMap(settle).flatMap {
-        case Left(cond) if transport(cond.kind) =>
-          if left > 1 then attempt(left - 1) else throw Unreachable(c.address, cond)
-        case answer => okay.pure[ForeignEval, Either[Condition, PyValue]](answer)
-      }
+      val run = runs.incrementAndGet()
+      effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Program(run, c.address, c.args, Vector.empty, direct = true))
+        .flatMap(settle(run)).flatMap {
+          case Left(cond) if transport(cond.kind) =>
+            if left > 1 then attempt(left - 1) else throw Unreachable(c.address, cond)
+          case answer => okay.pure[ForeignEval, Either[Condition, PyValue]](answer)
+        }
     attempt(math.max(1, attempts)).map(answer => Wire.written(answer.map(Wire.enc)))
 
   /** what a journalled answer says, back as a value or a condition */

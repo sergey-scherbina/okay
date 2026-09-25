@@ -224,15 +224,6 @@ enum ForeignEval[+A] derives okay.Effect:
     extends ForeignEval[Either[Condition, PyValue]]
   case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
     extends ForeignEval[Either[Condition, PyFrame]]
-  /** a call that may CALL BACK (foreign-callbacks): Python may use
-   * `okay.call(name, ...)` for the names offered here, and each use comes
-   * back as a `PyStep.Ask` rather than as the call's answer */
-  case Start(fn: String, args: Vector[PyValue], callbacks: Vector[String])
-    extends ForeignEval[PyStep]
-  /** the answer to an `Ask`, which resumes the Python frame waiting in
-   * `okay.call`; the next step is another ask or the call's answer */
-  case Resume(k: Long, answer: Either[Condition, PyValue])
-    extends ForeignEval[PyStep]
   /** call `fn` and KEEP its result in the worker (foreign-object-handles) */
   case Hold(fn: String, args: Vector[PyValue]) extends ForeignEval[Either[Condition, PyRef]]
   /** a method of a held object: its value, or held in turn when `hold` */
@@ -242,27 +233,33 @@ enum ForeignEval[+A] derives okay.Effect:
   case Attr(ref: PyRef, name: String) extends ForeignEval[Either[Condition, PyValue]]
   /** drop a held object; idempotent */
   case Release(ref: PyRef) extends ForeignEval[Unit]
-  /** start a program-as-data (remote-foreign): the function returns a
-   * Python `okay.done`/`okay.perform(...).then(...)` tree, handed over one
-   * node at a time under the run id the HOST chose */
-  case Program(run: Long, fn: String, args: Vector[PyValue]) extends ForeignEval[Either[Condition, PyNode]]
-  /** continue run `run` at continuation `k` with `answer`; the far side
-   * keeps `k`, so the same one may be continued again (multi-shot) */
-  case Continue(run: Long, k: Long, answer: PyValue) extends ForeignEval[Either[Condition, PyNode]]
+  /**
+   * Start a PROGRAM under the run id the host chose (foreign-one-program:
+   * the one program protocol). The function is either kind, and the far
+   * side answers the same nodes for both: a program as data (Python's
+   * `okay.done`/`okay.perform(...).then(...)`, whose continuations are
+   * values — multi-shot), or ordinary code calling `okay_call` (the direct
+   * style, whose continuation is its parked stack — a node marked `once`).
+   * `callbacks` names what `okay_call` may ask for. `direct` is the HOST's
+   * intent (`Fn.calling` sets it): a start that died mid-flight is not
+   * re-run, because a direct function may have acted before it died.
+   */
+  case Program(run: Long, fn: String, args: Vector[PyValue], callbacks: Vector[String] = Vector.empty,
+               direct: Boolean = false) extends ForeignEval[Either[Condition, PyNode]]
+  /** continue run `run` at continuation `k` with the callback's answer, or
+   * its failure (raised in the far side's code); a multi-shot `k` may be
+   * continued again, a `once` one is refused by name the second time */
+  case Continue(run: Long, k: Long, answer: Either[Condition, PyValue]) extends ForeignEval[Either[Condition, PyNode]]
   /** drop every continuation of a run; idempotent */
   case Forget(run: Long) extends ForeignEval[Unit]
 
-/** one node of a program-as-data (remote-foreign) */
+/** one node of a program (remote-foreign; foreign-one-program) */
 enum PyNode:
   case Done(value: PyValue)
-  case Perform(name: String, args: Vector[PyValue], k: Long)
-
-/** where a call with callbacks stands (foreign-callbacks) */
-enum PyStep:
-  /** the function returned (or raised) */
-  case Done(answer: Either[Condition, PyValue])
-  /** the function called `okay.call(callback, *args)`; `k` resumes it */
-  case Ask(callback: String, args: Vector[PyValue], k: Long)
+  /** `once`: `k` is a parked stack (the direct style), continued at most
+   * once — the far side refuses a second continue, and a supervisor cannot
+   * replay onto it; otherwise `k` is a value, continued as often as asked */
+  case Perform(name: String, args: Vector[PyValue], k: Long, once: Boolean = false)
 
 object ForeignEval:
   /**
@@ -286,28 +283,24 @@ object ForeignEval:
     def name[A](op: ForeignEval[A]): String = op match
       case Call(fn, _) => fn
       case Frame(fn, _, _) => fn
-      case Start(fn, _, _) => fn
-      case Resume(_, _) => "resume"
       case Hold(fn, _) => s"hold:$fn"
       case Method(_, name, _, _) => s"method:$name"
       case Attr(_, name) => s"attr:$name"
       case Release(_) => "release"
-      case Program(_, fn, _) => s"program:$fn"
+      case Program(_, fn, _, _, _) => s"program:$fn"
       case Continue(_, _, _) => "continue"
       case Forget(_) => "forget"
     def fingerprint[A](op: ForeignEval[A]): String = op match
       case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Frame(fn, in, args) =>
         s"$fn#${Wire.digest(Json.JArr(Vector(Wire.encFrame(in), Json.JArr(args.map(Wire.enc)))))}"
-      case Start(fn, args, cbs) =>
-        s"$fn#${Wire.digest(Json.JArr(Vector(Json.JArr(args.map(Wire.enc)), Json.JArr(cbs.map(Json.JStr(_))))))}"
-      case Resume(k, answer) => s"resume/$k#${Wire.digest(Json.parse(Wire.written(answer.map(Wire.enc))))}"
       case Hold(fn, args) => s"hold:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Method(r, name, args, h) => s"method:${r.id}.$name/$h#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Attr(r, name) => s"attr:${r.id}.$name"
       case Release(r) => s"release:${r.id}"
-      case Program(run, fn, args) => s"program:$run:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
-      case Continue(run, k, a) => s"continue:$run/$k#${Wire.digest(Wire.enc(a))}"
+      case Program(run, fn, args, cbs, _) =>
+        s"program:$run:$fn#${Wire.digest(Json.JArr(Vector(Json.JArr(args.map(Wire.enc)), Json.JArr(cbs.map(Json.JStr(_))))))}"
+      case Continue(run, k, a) => s"continue:$run/$k#${Wire.digest(Json.parse(Wire.written(a.map(Wire.enc))))}"
       case Forget(run) => s"forget:$run"
     def withKey[A](op: ForeignEval[A], key: String): ForeignEval[A] = op
     def perform[A](op: ForeignEval[A], inner: okay.Handler[ForeignEval]): (A, String) = op match
@@ -317,12 +310,6 @@ object ForeignEval:
       case Frame(fn, in, args) =>
         val answer = inner.handle(Frame(fn, in, args))
         (answer, Wire.written(answer.map(Wire.encFrame)))
-      case Start(fn, args, cbs) =>
-        val step = inner.handle(Start(fn, args, cbs))
-        (step, Wire.writtenStep(step))
-      case Resume(k, a) =>
-        val step = inner.handle(Resume(k, a))
-        (step, Wire.writtenStep(step))
       case Hold(fn, args) =>
         val answer = inner.handle(Hold(fn, args))
         (answer, Wire.written(answer.map(r => Wire.enc(PyValue.Ref(r)))))
@@ -335,8 +322,8 @@ object ForeignEval:
       case Release(r) =>
         inner.handle(Release(r))
         ((), "released")
-      case Program(run, fn, args) =>
-        val answer = inner.handle(Program(run, fn, args))
+      case Program(run, fn, args, cbs, d) =>
+        val answer = inner.handle(Program(run, fn, args, cbs, d))
         (answer, Wire.written(answer.map(Wire.encNode)))
       case Continue(run, k, a) =>
         val answer = inner.handle(Continue(run, k, a))
@@ -348,13 +335,11 @@ object ForeignEval:
       case Call(_, _) => Wire.read(written).map(Wire.dec)
       // an answer frame is read by the rules its REQUEST frame was made under
       case Frame(_, in, _) => Wire.read(written).flatMap(Wire.decFrame).map(_.ruledBy(in.shape))
-      case Start(_, _, _) => Wire.readStep(written)
-      case Resume(_, _) => Wire.readStep(written)
       case Hold(_, _) => Wire.read(written).flatMap(j => Wire.asRef(Wire.dec(j)))
       case Method(_, _, _, _) => Wire.read(written).map(Wire.dec)
       case Attr(_, _) => Wire.read(written).map(Wire.dec)
       case Release(_) => ()
-      case Program(_, _, _) => Wire.read(written).flatMap(Wire.decNode)
+      case Program(_, _, _, _, _) => Wire.read(written).flatMap(Wire.decNode)
       case Continue(_, _, _) => Wire.read(written).flatMap(Wire.decNode)
       case Forget(_) => ()
 
@@ -378,45 +363,25 @@ private[okay] object Wire {
       Left(Condition(field("kind"), field("message")))
     case other => throw IllegalStateException(s"okay.py: not a journalled answer: ${Json.print(other)}")
 
-  /** a journalled step: `{"done": <written answer>}` or `{"ask": {...}}` */
-  def writtenStep(step: PyStep): String = Json.print(step match
-    case PyStep.Done(a) => Json.JObj(Vector("done" -> Json.JStr(written(a.map(enc)))))
-    case PyStep.Ask(cb, args, k) => Json.JObj(Vector("ask" -> Json.JObj(Vector(
-      "cb" -> Json.JStr(cb), "args" -> Json.JArr(args.map(enc)), "k" -> Json.JStr(k.toString))))))
-
-  def readStep(w: String): PyStep = Json.parse(w) match
-    case Json.JObj(Vector(("done", Json.JStr(a)))) => PyStep.Done(read(a).map(dec))
-    case j => step(j).getOrElse(throw IllegalStateException(s"okay.py: not a journalled step: $w"))
-
-  /** an `ask` message from the shim (or the journal), if this is one */
-  def step(j: Json): Option[PyStep.Ask] = j match
-    case Json.JObj(fs) => fs.collectFirst { case ("ask", Json.JObj(a)) =>
-      val m = a.toMap
-      PyStep.Ask(
-        m.get("cb").collect { case Json.JStr(c) => c }.getOrElse(""),
-        m.get("args").collect { case Json.JArr(xs) => xs.map(dec) }.getOrElse(Vector.empty),
-        m.get("k").collect {
-          case Json.JNum(n) => n.toLong
-          case Json.JStr(n) => n.toLong
-        }.getOrElse(-1L))
-    }
-    case _ => None
-
   /** a program node on the wire: `{"done": v}` or `{"perform": n, "args": [...], "k": k}` */
   def encNode(n: PyNode): Json = n match
     case PyNode.Done(v) => Json.JObj(Vector("done" -> enc(v)))
-    case PyNode.Perform(name, args, k) => Json.JObj(Vector(
-      "perform" -> Json.JStr(name), "args" -> Json.JArr(args.map(enc)), "k" -> Json.JNum(k.toDouble)))
+    case PyNode.Perform(name, args, k, once) => Json.JObj(Vector(
+      "perform" -> Json.JStr(name), "args" -> Json.JArr(args.map(enc)), "k" -> Json.JNum(k.toDouble))
+      ++ Option.when(once)("once" -> Json.JBool(true)))
 
   def decNode(j: Json): Either[Condition, PyNode] = j match
     case Json.JObj(fs) =>
       val m = fs.toMap
-      (m.get("done"), m.get("perform")) match
+      // jsonlite may box a scalar: the name, k and once are read either way
+      (m.get("done"), unboxed(m.get("perform"))) match
         case (Some(v), _) => Right(PyNode.Done(dec(v)))
         case (_, Some(Json.JStr(name))) =>
           val args = m.get("args").collect { case Json.JArr(xs) => xs.map(dec) }.getOrElse(Vector.empty)
-          m.get("k") match
-            case Some(Json.JNum(k)) => Right(PyNode.Perform(name, args, k.toLong))
+          val once = unboxed(m.get("once")).contains(Json.JBool(true))
+          unboxed(m.get("k")) match
+            case Some(Json.JNum(k)) => Right(PyNode.Perform(name, args, k.toLong, once))
+            case Some(Json.JStr(k)) if k.toLongOption.isDefined => Right(PyNode.Perform(name, args, k.toLong, once))
             case _ => Left(Condition("WireError", s"a perform without a continuation: $j"))
         case _ => Left(Condition("WireError", s"not a program node: $j"))
     case other => Left(Condition("WireError", s"not a program node: $other"))

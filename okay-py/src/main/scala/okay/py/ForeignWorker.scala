@@ -38,7 +38,6 @@ final class ForeignWorker private (session: WireSession,
 
   private def arrow = session.arrow
   private def exchange(req: Json): Json = session.exchange(req)
-  private def send(body: Json): Json = session.send(body)
 
   /** frames that crossed as Arrow: (sent, answered) — the JSON road
    * gives the same values, so this is how a caller (or a test) sees
@@ -68,9 +67,6 @@ final class ForeignWorker private (session: WireSession,
   private def timed[A](f: => Either[Condition, A]): Either[Condition, A] =
     try f catch case t: ForeignWorker.TimedOut => Left(Condition("timeout", t.getMessage))
 
-  private def timedStep(f: => PyStep): PyStep =
-    try f catch case t: ForeignWorker.TimedOut => PyStep.Done(Left(Condition("timeout", t.getMessage)))
-
   private def answer[A](j: Json)(ok: Json => Either[Condition, A]): Either[Condition, A] =
     WireSession.answer(j)(Condition(_, _))(ok)
 
@@ -98,18 +94,6 @@ final class ForeignWorker private (session: WireSession,
             Left(Condition("NotArrow", s"this host's given FrameFormat is arrow, and $why"))
           case Left(_) =>
             answer(exchange(Json.JObj(head :+ ("in" -> frameOut(frame)))))(Wire.decFrame).map(_.ruledBy(shape))
-      case ForeignEval.Start(fn, args, cbs) => timedStep:
-        stepOf(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("start"), "fn" -> Json.JStr(fn),
-          "args" -> Json.JArr(args.map(Wire.enc)),
-          "callbacks" -> Json.JArr(cbs.map(Json.JStr(_)))))))
-      case ForeignEval.Resume(k, a) =>
-        val answered = a match
-          case Right(v) => "ok" -> Wire.enc(v)
-          case Left(c) => "condition" -> Json.JObj(Vector(
-            "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message)))
-        timedStep(stepOf(send(Json.JObj(Vector(
-          "op" -> Json.JStr("resume"), "k" -> Json.JNum(k.toDouble), answered)))))
       case ForeignEval.Hold(fn, args) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("hold"), "fn" -> Json.JStr(fn),
@@ -122,24 +106,25 @@ final class ForeignWorker private (session: WireSession,
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("attr"), "ref" -> Json.JNum(r.id.toDouble),
           "name" -> Json.JStr(name)))))(v => Right(Wire.dec(v)))
-      case ForeignEval.Program(run, fn, args) => timed:
+      case ForeignEval.Program(run, fn, args, cbs, _) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
-          "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decNode)
+          "args" -> Json.JArr(args.map(Wire.enc)))
+          ++ Option.when(cbs.nonEmpty)("callbacks" -> Json.JArr(cbs.map(Json.JStr(_)))))))(Wire.decNode)
       case ForeignEval.Continue(run, k, a) => timed:
+        val answered = a match
+          case Right(v) => "answer" -> Wire.enc(v)
+          case Left(c) => "condition" -> Json.JObj(Vector(
+            "kind" -> Json.JStr(c.kind), "message" -> Json.JStr(c.message)))
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
-          "answer" -> Wire.enc(a)))))(Wire.decNode)
+          answered))))(Wire.decNode)
       case ForeignEval.Forget(run) =>
         val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("forget"), "run" -> Json.JNum(run.toDouble))))
       case ForeignEval.Release(r) =>
         // idempotent on both sides: releasing twice, or a ref the
         // process never held, is not an error worth a program's attention
         val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("release"), "ref" -> Json.JNum(r.id.toDouble))))
-
-  /** a call's next message: an ask, or its answer */
-  private def stepOf(j: Json): PyStep =
-    Wire.step(j).getOrElse(PyStep.Done(answer(j)(v => Right(Wire.dec(v)))))
 
   /** presence and version of named packages via importlib.metadata,
    * mismatches as data naming the package — the wrong venv becomes
@@ -153,7 +138,8 @@ object ForeignWorker:
   /** an answer that did not come within the deadline (`WireSession`'s) */
   type TimedOut = WireSession.TimedOut
 
-  val ShimVersion = 6
+  /** 7: foreign-one-program — `start`/`resume` folded into `program`/`continue` */
+  val ShimVersion = 7
 
   /**
    * Start a worker: the configured interpreter (resolved against

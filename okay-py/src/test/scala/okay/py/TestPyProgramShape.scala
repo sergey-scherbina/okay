@@ -21,7 +21,7 @@ class TestPyProgramShape extends munit.FunSuite {
       konts(next) = k
       PyNode.Perform(name, args, next)
     def handle[A](op: PyEval[A]): A = op match
-      case PyEval.Program(_, "m:pairs", _) =>
+      case PyEval.Program(_, "m:pairs", _, _, _) =>
         node(step("choose", Vector(Arr(Vector(I64(1), I64(2)))), {
           case I64(x) => step("choose", Vector(Arr(Vector(I64(10), I64(20)))), {
             case I64(y) => PyNode.Done(I64(x + y))
@@ -31,7 +31,7 @@ class TestPyProgramShape extends munit.FunSuite {
         }))
       case PyEval.Continue(_, k, a) =>
         continued :+= k
-        node(konts(k)(a))
+        a.map(konts(k))
       case PyEval.Forget(_) => ()
       case other => throw IllegalArgumentException(s"not scripted: $other")
 

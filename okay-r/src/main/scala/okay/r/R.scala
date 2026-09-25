@@ -2,7 +2,7 @@ package okay.r
 
 import okay.!
 import okay.codec.Schema
-import okay.py.{ForeignEval, Py, PyFrame, PyNode, PyRef, PyStep, PyStream, PyValue, Shape, ToPy}
+import okay.py.{ForeignEval, Py, PyFrame, PyNode, PyRef, PyStream, PyValue, Shape, ToPy}
 
 /*
  * R as a handler (specs/r.md): calls are OPERATIONS — journalled by
@@ -146,10 +146,6 @@ val REval: ForeignEval.type = ForeignEval
 /** one node of an R program-as-data (remote-foreign) */
 type RNode = PyNode
 val RNode: PyNode.type = PyNode
-
-/** where an R call with callbacks stands (foreign-callbacks) */
-type RStep = PyStep
-val RStep: PyStep.type = PyStep
 
 /**
  * R's VALUE RULES as a `Shape` (foreign-one-value): a Scala value becomes

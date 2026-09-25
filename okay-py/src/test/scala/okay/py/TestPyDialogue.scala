@@ -5,7 +5,9 @@ import okay.given
 import PyValue.*
 
 /**
- * The callback dialogue without python3 (foreign-callbacks): a canned
+ * The callback dialogue without python3 (foreign-callbacks; since
+ * foreign-one-program it is a direct PROGRAM, `program` then a `continue`
+ * per ask): a canned
  * handler plays the Python side — `twice(x)` asks `inc` twice and answers
  * the sum — so the loop's shape is checked in the default gate.
  */
@@ -16,17 +18,17 @@ class TestPyDialogue extends munit.FunSuite {
     var seen = Vector.empty[String]
     private var got = Vector.empty[Long]
     def handle[A](op: PyEval[A]): A = op match
-      case PyEval.Start(fn, Vector(I64(x)), cbs) =>
+      case PyEval.Program(_, fn, Vector(I64(x)), cbs, _) =>
         seen :+= s"start $fn ${cbs.mkString(",")}"
-        PyStep.Ask("inc", Vector(I64(x)), 1)
-      case PyEval.Resume(k, Right(I64(v))) =>
+        Right(PyNode.Perform("inc", Vector(I64(x)), 1, once = true))
+      case PyEval.Continue(_, k, Right(I64(v))) =>
         seen :+= s"resume $k $v"
         got :+= v
-        if got.size < 2 then PyStep.Ask("inc", Vector(I64(v)), 2)
-        else PyStep.Done(Right(I64(got.sum)))
-      case PyEval.Resume(k, Left(c)) =>
+        if got.size < 2 then Right(PyNode.Perform("inc", Vector(I64(v)), 2, once = true))
+        else Right(PyNode.Done(I64(got.sum)))
+      case PyEval.Continue(_, k, Left(c)) =>
         seen :+= s"resume $k ${c.kind}"
-        PyStep.Done(Left(c))
+        Left(c)
       case other => throw IllegalArgumentException(s"not scripted: $other")
 
   private val inc = Py.callback[Long, Long]("inc")(x => State.modify[Int](_ + 1).map(_ => x + 1))

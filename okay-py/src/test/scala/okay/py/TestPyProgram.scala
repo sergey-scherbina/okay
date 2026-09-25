@@ -49,10 +49,10 @@ class TestPyProgram extends munit.FunSuite {
     val pairs = Py.program[Long]("progs:pairs").calling(Py.callbacks(choose))()
     val first = w.handler.handle(PyEval.Program(pairs.id, "progs:pairs", Vector.empty))
     val k = first match
-      case Right(PyNode.Perform(_, _, k)) => k
+      case Right(PyNode.Perform(_, _, k, _)) => k
       case other => fail(s"$other")
     pairs.forget.runWith
-    val after = w.handler.handle(PyEval.Continue(pairs.id, k, PyValue.I64(1)))
+    val after = w.handler.handle(PyEval.Continue(pairs.id, k, Right(PyValue.I64(1))))
     assert(after.left.exists(_.message.contains("is not held here")), s"$after")
     val bad = Py.program[Long]("progs:not_a_program").calling(Py.callbacks(choose))()
     assertEquals(runChoice(bad.program).runWith.map(_.left.map(_.kind)), Seq(Left("TypeError")))
