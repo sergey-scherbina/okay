@@ -224,8 +224,12 @@ deleted.
       its sixth column) and PAID (a row whose recursion, or whose file,
       is gone; `--write` deletes exactly those). Only the modules whose
       main sources the diff touched are scanned, about 3 s each, and a
-      module whose classes are older than its sources is skipped and
-      named, because stale classes lie in both directions. `--all` is the
+      module with no classes, or with an UNCOMMITTED edit newer than its
+      classes, is skipped and named, because stale classes lie in both
+      directions. (Corrected by stack-safety-arrow: the first cut compared
+      every source's mtime, and a rebase gives committed files new mtimes
+      that zinc rightly ignores, so it skipped a module the same gate had
+      just compiled.) `--all` is the
       whole build (about 9 s for okay2 and a minute for okay).
       recscan.py itself learned two things for it: `RECSCAN_ONLY`, and
       reading only the NEWEST `scala-*` classes of a target, since a

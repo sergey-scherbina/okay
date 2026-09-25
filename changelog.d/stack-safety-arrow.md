@@ -25,3 +25,11 @@ on any EMPTY root with a list column, because Arrow Java allocates a
 list's offsets buffer with its first value and the conversion read
 offset 0 from nothing. An empty list vector's offsets are `Array(0)` now,
 tested at 0, 1, 2 and 64 levels.
+
+The guard itself was corrected by this lane's own staged gate, which
+reported "okay-arrow: not compiled since its last source change" about a
+module it had just compiled. The rebase had rewritten the committed
+sources with new mtimes, and zinc, which compares content, rightly
+recompiled nothing. `recscan-check.sh` now judges freshness only by
+UNCOMMITTED edits newer than the classes, and a module with no classes is
+still skipped by name.

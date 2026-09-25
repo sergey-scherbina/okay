@@ -20,9 +20,10 @@
 # Run from a build root (the repo, or okay2/): gate.sh calls it after a
 # GREEN with `--since master`, which scans only the modules whose MAIN
 # sources the diff touched (a few seconds each; the whole tree is about
-# a minute, `--all`). A module whose classes are older than its newest
-# main source was not compiled by this gate, so it is skipped and said
-# so — stale classes would report rows for code that is gone.
+# a minute, `--all`). A module with no classes, or with an UNCOMMITTED
+# edit newer than its classes, is skipped and said so — stale classes
+# would report rows for code that is gone. (Committed files are trusted:
+# a rebase gives them new mtimes that zinc rightly ignores.)
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 since=master
@@ -120,6 +121,9 @@ if mode == 'all':
 else:
     changed = subprocess.run(['git', 'diff', '--name-only', '--relative', base], capture_output=True, text=True, cwd=root).stdout.split()
     changed += subprocess.run(['git', 'ls-files', '--others', '--exclude-standard'], capture_output=True, text=True, cwd=root).stdout.split()
+dirty = [l[3:].split(' -> ')[-1] for l in subprocess.run(['git', 'status', '--porcelain', '--untracked-files=all', '.'],
+          capture_output=True, text=True, cwd=root).stdout.split('\n') if len(l) > 3 and l[3:].endswith('.scala')]
+dirty = [os.path.relpath(os.path.join(subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, cwd=root).stdout.strip(), f), root) for f in dirty]
 if True:
     mods = sorted({m for m in (module_of_src(p) for p in changed if p.endswith('.scala')) if m is not None
                    and not (skip and (m == skip or m.startswith(skip + '/')))})
@@ -137,13 +141,22 @@ if True:
             if os.path.isdir(td):
                 vs = [os.path.join(td, v, 'classes') for v in os.listdir(td) if v.startswith('scala-') and os.path.isdir(os.path.join(td, v, 'classes'))]
                 cls += vs
+        # FRESHNESS BY UNCOMMITTED EDITS ONLY. A rebase or checkout
+        # rewrites committed files with new mtimes while zinc, which
+        # compares content, rightly recompiles nothing — so "a source
+        # newer than the classes" read a module this very gate had
+        # compiled as stale (stack-safety-arrow's staged gate). An
+        # uncommitted edit newer than the classes is the one case mtime
+        # does answer; at landing, `affected master staged` compiles every
+        # touched module, so there the result is exact.
         src_t = 0
-        for s in srcs:
-            for d, _, fs in os.walk(s):
-                for f in fs:
-                    if f.endswith('.scala'): src_t = max(src_t, os.path.getmtime(os.path.join(d, f)))
-        if not cls or newest(cls) < src_t:
-            print(f'recscan: {m}: not compiled since its last source change — skipped (compile it to have it checked)')
+        for f in dirty:
+            if module_of_src(f) == m and os.path.exists(os.path.join(root, f)):
+                src_t = max(src_t, os.path.getmtime(os.path.join(root, f)))
+        if not cls:
+            print(f'recscan: {m}: no classes — skipped (compile it to have it checked)')
+        elif newest(cls) < src_t:
+            print(f'recscan: {m}: edited since its last compile — skipped (compile it to have it checked)')
         else:
             fresh.append(m)
     mods = fresh
