@@ -1,0 +1,3 @@
+slug: okay2-lex-parse
+agent: claude (session 6f505c09)
+what: okay-lex (Lex, Mealy, Json lexer) and okay-parse (Parse, JsonParse, Cst) as okay2-lex/okay2-parse, cross, with their suites
