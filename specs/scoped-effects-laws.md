@@ -165,6 +165,15 @@ only the laws.
   is a pure function of THAT value, applied once. Making it anything
   more protected (a private prompt) is the `effect-instances-
   tunnelling` lane, not this one.
+- **The forwarding arm both laws lean on is itself a law now
+  (row-parametricity-forwarding-law, 2026-09-25).** "Forwarded
+  UNCHANGED" and "forwarded transparently" above were assumed from the
+  free theorem (Biernacki, Piróg, Polesiuk & Sieczkowski, POPL 2018)
+  and never tested directly. TestRowForwarding checks it as a `Bisim`
+  law against a reference that answers the handled signature in place
+  and re-emits everything else (specs/row-parametricity-forwarding-law.md);
+  it caught `Writer.collect` splitting a `byValue` row on the wrong test
+  the day it was written, so it is not a formality.
 - **`local` is built on `Effects[Free].handle`, the same tool
   `recover` uses**, not a bespoke loop: the two are the same shape
   (peel one operation's own signature, forward the rest). The GADT
