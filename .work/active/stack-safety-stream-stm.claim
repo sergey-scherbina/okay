@@ -1,5 +1,0 @@
-slug: stack-safety-stream-stm
-who: claude (session 6f505c09)
-what: stack-safety stage 3 — okay-stream/okay-stm and okay2-stream/okay2-stm: Stm perform/runWithLog/attempt/finish, Channel step/go, Pipe loops, Pipeline once/chunks/depth, Tables show/estimate/optimize/compile, okay2 Take loops; red first where input reaches the depth
-files: okay-stream, okay-stm, okay2/okay2-stream, okay2/okay2-stm, specs/stack-safety*
-since: 2026-09-25
