@@ -46,7 +46,7 @@ agents commit to.
 ./bench.sh wroclaw [days] [rounds] [fraction]
                                          the Wrocław streaming benchmark
 ./bench.sh ab <name>                    an A/B that decides a default
-./bench.sh history [grep-pattern]       src/jmh/history.tsv, tabulated
+./bench.sh history [grep-pattern]       the benchmark history (history.d + the archive), tabulated
 ```
 
 `run` and `compare` go through `scripts/gate.sh` too, for the same
@@ -60,9 +60,11 @@ Before trusting a benchmark number, read the `performance` skill
 measurement is a hypothesis, alternate A/B in the same session, never
 compare a fresh number against yesterday's table. The numbers
 themselves, with methodology and the refuted experiments, are in
-[`docs/benchmarks.md`](docs/benchmarks.md); the raw log is
-`src/jmh/history.tsv` (tab-separated, `date sha host_load workload
-mine ref ratio note`).
+[`docs/benchmarks.md`](docs/benchmarks.md); the raw log is one file
+per measurement in `src/jmh/history.d/` (`scripts/history.sh new
+<measure>` names it by its UTC instant; tab-separated, `date sha
+host_load workload mine ref ratio note`), with everything before
+2026-09-25 in the archive `src/jmh/history.tsv`.
 
 ## Where the rest of the documentation lives
 

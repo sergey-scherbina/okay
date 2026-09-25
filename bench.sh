@@ -10,7 +10,8 @@
 #   ./bench.sh wroclaw [days] [rounds] [fraction]
 #                                            the Wrocław streaming benchmark (docs/benchmarks.md §20)
 #   ./bench.sh ab <name>                    an A/B that decides a default (scripts/ab-defaults.sh)
-#   ./bench.sh history [grep-pattern]       src/jmh/history.tsv, tabulated
+#   ./bench.sh history [grep-pattern]       the benchmark history (src/jmh/history.d + the archive), tabulated
+#   (record a measurement: scripts/history.sh new <measure>, then write its rows)
 #
 # `run`/`compare` go through scripts/gate.sh, same as build.sh: a JMH
 # fork that hangs on a lock (a real, documented failure — see
@@ -50,11 +51,12 @@ case "$cmd" in
     exec bash scripts/ab-defaults.sh "$@"
     ;;
   history)
+    # the archive and src/jmh/history.d together, oldest first (history-d)
     tab="$(printf '\t')"
     if [ -n "${1:-}" ]; then
-      { head -1 src/jmh/history.tsv; grep -i -- "$1" src/jmh/history.tsv; } | column -t -s "$tab"
+      sh scripts/history.sh "$1" | column -t -s "$tab"
     else
-      tail -30 src/jmh/history.tsv | column -t -s "$tab"
+      sh scripts/history.sh | { head -1; tail -30; } | column -t -s "$tab"
     fi
     ;;
   help|-h|--help)

@@ -238,4 +238,4 @@ esac
 
 echo
 echo "host load at end: $(load_now)"
-echo "Record the verdict in src/jmh/history.tsv with the load column filled in."
+echo "Record the verdict: f=\$(scripts/history.sh new <measure>), its rows in \$f with the load column filled in."

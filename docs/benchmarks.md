@@ -1,7 +1,9 @@
 # Benchmarks: the cases, the numbers, and the why
 
 Every number here is JMH average time (us/op, lower is better) from
-`src/jmh/history.tsv`, which records every run with its date, commit,
+the benchmark history — one file per measurement in `src/jmh/history.d/`
+since 2026-09-25, the archive `src/jmh/history.tsv` before it, read
+together by `scripts/history.sh` — which records every run with its date, commit,
 host load and protocol — including the experiments that were tried
 and REFUTED, so nobody re-runs them blind. The working rule of
 specs/interpreter-optimization.md applies throughout: one measurement

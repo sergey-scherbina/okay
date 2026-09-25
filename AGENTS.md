@@ -216,8 +216,8 @@ force, all already practiced, none previously written down:
   entry for work that had not landed.
 - Coordination room: rozum (etiquette: the `rozum` skill). Announce
   landings; flag files you both
-  touch (`build.sbt`, `src/jmh/history.tsv` — append-only, expect
-  tail conflicts, resolve by keeping both sides).
+  touch (`build.sbt`). The benchmark history no longer conflicts: see
+  Benchmarks below.
 
 ## Boards
 - The protocol is the `scrumban` skill: write the plan into the board
@@ -532,9 +532,18 @@ force, all already practiced, none previously written down:
   `liveTest`-style per-test helper (TestChatDemo's own) where a
   suite mixes live and non-live tests. specs/integration-test-gate.md.
 - Benchmarks: the `performance` skill is the protocol — measure
-  before optimizing, record in
-  `src/jmh/history.tsv` (TABS, eight columns — literal `\t` has
-  slipped in before and breaks parsing), keep refuted experiments.
+  before optimizing, record, keep refuted experiments. **THE HISTORY IS
+  A DIRECTORY** (history-d, 2026-09-25, the operator's ask), for the
+  reason changelog.d and the boards are: every lane appending to the
+  tail of one file conflicted on its last lines. A measurement is its
+  own file, `src/jmh/history.d/<UTC yyyy-mm-ddTHHMMSSZ>-<measure>.tsv`,
+  made by `scripts/history.sh new <measure>` (it prints the path), with
+  the rows it produced — TABS, eight columns, `date sha host_load
+  workload mine ref ratio note`, no header (a literal `\t` has slipped
+  in before and breaks parsing). `src/jmh/history.tsv` is the ARCHIVE,
+  frozen: `TestHistoryEntries` runs `scripts/history.sh --check`, which
+  refuses a row appended to it. Read everything with
+  `scripts/history.sh [pattern]` or `./bench.sh history [pattern]`.
 - **A competitor lane's SOURCE is checked in the competitor's own
   code before the lane is named `_chunk_` or called "native"**
   (benchmark-fairness-audit + fs2-chunked-merge-lanes, 2026-09-06).
