@@ -386,3 +386,20 @@ deleted.
    the compiler's own, and a tree that deep had already stopped the
    compiler. That is a bound, but a borrowed one. Stage 7 either writes
    it down as the bound or converts the walks.
+   - DECIDED for `ContMacro.rewrite` (stack-safety-catch-up,
+     2026-09-25): the borrowed bound is written down, because it was
+     MEASURED rather than argued. `scripts/probe-contmacro-depth.sh <n>`
+     writes one `shift` whose body is a tail `if … else if …` chain n
+     levels deep, the shape `rewrite` follows one frame per level. On
+     Scala 3.9.0 and sbt's compile thread (-Xss8m):
+     - 2 000 and 2 075 compile, and the bytecode calls
+       `Cont$.tailShift`, so the macro rewrote every level;
+     - 2 150, 2 300, 2 450, 2 600, 3 000, 3 500 and 4 200 overflow in
+       PostTyper;
+     - 4 800 overflows in Typer, and 10 000 in the parser.
+     PostTyper, Typer and the parser all run BEFORE the Inlining phase
+     where the macro expands, and no overflow trace holds a ContMacro
+     frame. So any tree the compiler lets through, `rewrite` walks. A
+     future Scala that changes this re-runs the probe: a ContMacro frame
+     in an overflow is the signal to convert the walk. The other stage-7
+     macros stay open under this decision.

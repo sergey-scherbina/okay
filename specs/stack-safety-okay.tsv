@@ -307,7 +307,7 @@ okay-workflow/src/main/scala/ProcMacro.scala	805	compileEnvBody	mutual	List.fore
 okay-workflow/src/main/scala/Wf.scala	838	go	direct	
 okay-workflow/src/main/scala/Wf.scala	928	loop	direct	
 okay-x402-cdp/src/main/scala/okay/x402/cdp/CdpAuth.scala	95	sorted	lambda	StrictOptimizedIterableOps.map,Vector.map
-src/main/scala/ContMacro.scala	53	rewrite	direct	List.map,Option.flatMap	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+src/main/scala/ContMacro.scala	53	rewrite	direct	List.map,Option.flatMap	BOUNDED: by the compiler's own recursion over the same tree, MEASURED: scalac's parser, Typer or PostTyper (all before Inlining, where this runs) overflow first at every depth tried, 2 150 to 10 000 levels; 2 075 compiles and rewrites (scripts/probe-contmacro-depth.sh, specs/stack-safety.md Decision 2)
 src/main/scala/Distinct.scala	144	leaves	direct	
 src/main/scala/Distinct.scala	175	identityOf	mutual	
 src/main/scala/Distinct.scala	197	under	mutual	
