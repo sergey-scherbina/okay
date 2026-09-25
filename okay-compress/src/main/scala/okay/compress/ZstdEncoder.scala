@@ -83,10 +83,14 @@ object ZstdEncoder:
   /** a hash chain over the whole input: `head` the latest position of a
    * hash, `prev` the one before a position with the same hash */
   private final class Matcher(src: Array[Byte], depthLimit: Int):
-    private val head = Array.fill(1 << HashLog)(-1)
+    // a table sized to the input: a 2^17-entry one (512 KiB) per call was
+    // most of the cost of a small buffer (okay-compress-zstd-ratio, Arrow's
+    // per-buffer compression)
+    private val hashLog = math.max(10, math.min(HashLog, 32 - Integer.numberOfLeadingZeros(math.max(1, src.length - 1))))
+    private val head = Array.fill(1 << hashLog)(-1)
     private val prev = new Array[Int](math.max(1, src.length))
     private var inserted = 0
-    private def hash(i: Int): Int = (Mem.i32(src, i) * -1640531535) >>> (32 - HashLog)
+    private def hash(i: Int): Int = (Mem.i32(src, i) * -1640531535) >>> (32 - hashLog)
 
     /** every position before `upTo` into the chain */
     def insertUpTo(upTo: Int): Unit =
