@@ -189,3 +189,7 @@
       2026-09-25, okayKernelNative, GREEN on the rerun alone (20 tests): lost
       its test process in the affected-set gate of keccak-pure (7512 tests,
       0 failed), a lane with no okay-kernel source. Recorded per the ledger.
+      2026-09-25, okayStreamNative, GREEN on the rerun alone (11 tests, 1
+      ignored): lost its test process (Errors 4, Failed 0) in the affected-
+      set gate of lexical-tail-guard-abort (7366 tests, 0 failed), a lane
+      touching Delim/Lexical only. Recorded per the ledger.
