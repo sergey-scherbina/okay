@@ -227,7 +227,7 @@ object Cont:
 
     def apply(k: A => S): R = k match
       case r: Reentry[?, ?, ?, ?] => applyAt(k, r.room)
-      case _ => applyAt(Gauged(k, Gauge()), StackSwitch.firstRoom)
+      case _ => applyAt(k, StackSwitch.firstRoom)
 
     /** the leaf re-enters the runner with the room the runner has left
      * (specs/stack-safety.md stage 1c) */
@@ -262,7 +262,7 @@ object Cont:
       case _ => Bind(c, a => Free.Return(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(Gauged(k, Gauge()))(StackSwitch.firstRoom)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)
 
   /**
    * What a run's stack looked like at its last GRANT (specs/cont-stack.md
@@ -276,9 +276,16 @@ object Cont:
    * rises. A different `top` means a different stack (a segment thread,
    * or a virtual thread moved to another carrier): the mark is dropped.
    *
-   * One per run, reached from any depth by walking the continuation
-   * chain to its `Gauged` root — a pointer chase paid at exhaustion
-   * only, so the per-level path carries nothing for it.
+   * One per run, and NOTHING allocated for it until a run's first
+   * exhaustion (plan stage C, C1): the gauge is attached THEN, at the
+   * root of the continuation chain — the outermost `Reentry`'s `k`,
+   * the user's own function, wrapped in a `Gauged` — and found by the
+   * same walk at every exhaustion after. The first cut wrapped the
+   * user's `k` at `run`, two allocations for every run whether or not
+   * it ever went deep, and fib100 (a run per element) paid +1 664 B/op
+   * and 1.17x for it (history.d cont-stack-ab). A chain called from
+   * two threads at once may attach two gauges and keep one: a lost
+   * measurement, never a wrong one — `worst` starts cold either way.
    */
   private[okay] final class Gauge:
     var top: Long = 0L
@@ -286,18 +293,21 @@ object Cont:
     var granted: Int = 0
     var worst: Long = StackSwitch.coldBytesPerLevel
 
-  /** the root of a run's continuation chain: the user's `k`, and the
-   * run's gauge behind it */
+  /** the root of a run's continuation chain once it has a gauge: the
+   * user's `k`, and the run's gauge behind it */
   private final class Gauged[B, S](val k: B => S, val gauge: Gauge) extends (B => S):
     def apply(b: B): S = k(b)
 
-  /** the gauge behind a continuation, or a fresh one for a chain that
-   * has no root (a leaf called by the user's own function, a `Mapped`
-   * leaf's lambda): a fresh gauge only makes the next grant
-   * conservative — `worst` starts cold — never wrong */
+  /** the gauge behind a continuation: the one at the chain's root, or
+   * one attached there now; a fresh, unattached one for a chain that
+   * has no `Reentry` at all (a `Mapped` leaf's lambda): a fresh gauge
+   * only makes the next grant conservative — `worst` starts cold —
+   * never wrong */
   @annotation.tailrec
   private def gaugeOf(k: Any): Gauge = k match
-    case r: Reentry[?, ?, ?, ?] => gaugeOf(r.k)
+    case r: Reentry[?, ?, ?, ?] => r.k match
+      case inner: Reentry[?, ?, ?, ?] => gaugeOf(inner)
+      case _ => r.gauge
     case g: Gauged[?, ?] => g.gauge
     case _ => Gauge()
 
@@ -315,8 +325,17 @@ object Cont:
    * simply stays where it is, on the stack below, until the answer
    * comes back.
    */
-  private final class Reentry[X, B, S, T](f: X => Rep[B, S, T], val k: B => S, val room: Int) extends (X => T):
+  private final class Reentry[X, B, S, T](f: X => Rep[B, S, T], var k: B => S, val room: Int) extends (X => T):
     def apply(x: X): T = enter(x, room)
+
+    /** this chain root's gauge, attached on the first ask: `k` is the
+     * user's function here (see `gaugeOf`), wrapped once */
+    def gauge: Gauge = k match
+      case g: Gauged[?, ?] => g.gauge
+      case _ =>
+        val g = Gauge()
+        k = Gauged(k, g)
+        g
 
     /** enter from a place with `here` levels of room left: a
      * continuation may be called DEEPER than it was made (the runner
