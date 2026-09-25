@@ -1,0 +1,3 @@
+slug: remote-arrow-frames
+agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
+what: okay-arrow stage 7b: okay-cluster Remote sends chunks as tagged binary frames — Arrow by default, CBOR or the old JSON by a given, optional LZ4/ZSTD; measured end to end over a socket
