@@ -82,8 +82,13 @@ claim=".work/active/$slug.claim"
   cd "$wt"
   gap=$(git log --oneline "HEAD..master" 2>/dev/null || true)
   if [ -n "$gap" ]; then
+    # history.d is a ledger the way changelog.d is (history-d,
+    # 2026-09-25): a sibling's benchmark row under src/jmh/ is not a
+    # source change in the core, and read as one it forced a core lane
+    # to re-gate for a TSV (row-parametricity-forwarding-law).
     source_files=$(git diff --name-only "HEAD...master" -- . \
-      ':!.work' ':!sprint.d' ':!backlog.d' ':!changelog.d' ':!docs' ':!specs' 2>/dev/null || true)
+      ':!.work' ':!sprint.d' ':!backlog.d' ':!changelog.d' ':!docs' ':!specs' \
+      ':!src/jmh/history.d' ':!src/jmh/history.tsv' 2>/dev/null || true)
     # RE-GATE ONLY WHAT INTERSECTS THIS LANE (ci-staged, 2026-09-25,
     # specs/ci-staged.md). The pre-merge gate is the lane's OWN modules;
     # a sibling's source change in a module this lane never touched is
@@ -99,7 +104,8 @@ claim=".work/active/$slug.claim"
       */*) case "$1" in project/*|*.sbt) echo BUILD ;; *) echo "${1%%/*}" ;; esac ;;
       *.sbt) echo BUILD ;; *) echo ROOT ;; esac; }
     mine=$(git diff --name-only "master...HEAD" -- . \
-      ':!.work' ':!sprint.d' ':!backlog.d' ':!changelog.d' ':!docs' ':!specs' 2>/dev/null \
+      ':!.work' ':!sprint.d' ':!backlog.d' ':!changelog.d' ':!docs' ':!specs' \
+      ':!src/jmh/history.d' ':!src/jmh/history.tsv' 2>/dev/null \
       | while read -r f; do module_of "$f"; done | sort -u)
     theirs=$(printf '%s\n' "$source_files" | while read -r f; do [ -n "$f" ] && module_of "$f"; done | sort -u)
     clash=""
