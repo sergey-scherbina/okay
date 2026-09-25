@@ -102,13 +102,9 @@ private[okay] object StackSwitch:
         g.granted = grant
         grant
 
+  /** the rest on a PARKED worker's 1 GB stack (`StackPool`: reused, so
+   * its thread is started and its pages warm — a new thread each time
+   * was statePara's 4.9x on the count road) */
   def fresh[R](body: Int => R): R =
     switches.incrementAndGet()
-    var out: Either[Throwable, R] | Null = null
-    val th = new Thread(null, () => out = try Right(body(bigRoom)) catch case e: Throwable => Left(e), "okay-cont-stack", bigStack)
-    th.start()
-    th.join()
-    out match
-      case Right(r) => r
-      case Left(e) => throw e
-      case null => throw IllegalStateException("okay: a Cont stack switch finished without an answer")
+    StackPool.run(bigStack)(() => body(bigRoom))
