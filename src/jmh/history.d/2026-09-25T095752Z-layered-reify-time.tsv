@@ -1,0 +1,1 @@
+2026-09-25	4a99c9a3	3-5	layered reify: layeredViaDollar vs layeredViaPush	58.34	64.58	0.90	us/op, 1000 List-layer resumptions, one run -f3 -wi5 -i8, errors 0.35/0.68; with the bytes (-40 B per resumption) the eta $ e form is cheaper on both

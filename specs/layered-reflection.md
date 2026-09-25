@@ -156,3 +156,6 @@ STAGES 1-2, 2026-09-25 (TestLayered 7 + TestLayeredStacked 3; DelimBenchmark lay
   box at ~1000% CPU), and 121 ± 37 against 243 ± 46 µs says nothing
   at that load. Backlog `layered-reify-time` re-prices it. The change
   is adopted on semantics (λ$'s form) and bytes.
+  PRICED 2026-09-25 (layered-reify-time), load 3-5, one run with both
+  lanes: 58.34 ± 0.35 against 64.58 ± 0.68 µs, ratio 0.90. The dollar
+  form is cheaper on time as well as on bytes.
