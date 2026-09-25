@@ -109,11 +109,16 @@ class TestMonadic extends munit.FunSuite {
     assertEquals(clamp(None), None)
   }
 
-  test("a strict monad reflects a modest chain: 1_000 binds") {
+  test("a strict monad reflects a modest chain: 200 binds") {
     // a strict flatMap invokes the continuation in place, so each
     // reflect costs a stack frame — the budget is the MONAD's, not
-    // Cont's (see the spec's Decisions); trampolined depth is below
-    val n = 1_000
+    // Cont's (see the spec's Decisions); trampolined depth is below.
+    // MODEST means inside a default stack with room to spare:
+    // 1_000 overflowed -Xss512k cold on JDK 21 here and the 1 MB
+    // default of a CI runner's x64 JVM (interpreted frames are the
+    // wide ones), so the chain that was green for weeks was one
+    // JIT decision from red (ci-runner-shape-flakes, 2026-09-20)
+    val n = 200
     val r: Option[Int] = reify:
       (1 to n).foldLeft(Cont.Pure(0): Cont[Int, Option[Int], Option[Int]]) {
         (acc, _) => acc.flatMap(x => reflect(Option(x + 1)))

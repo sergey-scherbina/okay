@@ -49,8 +49,9 @@ a different construction that happens to deserve the same words.
   between reflects behave as in direct style
 - [x] stack safety is the REFLECTED monad's, not Cont's: a strict
   flatMap (Option) invokes the continuation in place and costs a
-  frame per reflect (1_000 binds tested, deep chains are the
-  monad's budget); a trampolined monad (`A ! F`) returns a tree and
+  frame per reflect (200 binds tested — 1_000 overflowed a CI
+  runner's 1 MB default stack cold, ci-runner-shape-flakes
+  2026-09-20 — deep chains are the monad's budget); a trampolined monad (`A ! F`) returns a tree and
   100_000 reflected binds run flat
 - [x] okay's own monads reflect too: an `A ! F` program via
   `Monad[Free[F, *]]` — Writer effects survive the round trip and
