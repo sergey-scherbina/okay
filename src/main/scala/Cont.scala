@@ -210,7 +210,9 @@ object Cont:
      */
     case Mapped[A, B, S, R](s: (A => S) => R, g: A => B) extends Leaf[B, S, R]
 
-    def apply(k: A => S): R = applyAt(k, roomOf(k))
+    def apply(k: A => S): R = k match
+      case r: Reentry[?, ?, ?, ?] => applyAt(k, r.room)
+      case _ => applyAt(Gauged(k, Gauge()), StackSwitch.firstRoom)
 
     /** the leaf re-enters the runner with the room the runner has left
      * (specs/stack-safety.md stage 1c) */
@@ -245,7 +247,44 @@ object Cont:
       case _ => Bind(c, a => Free.Return(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(Gauged(k, Gauge()))(StackSwitch.firstRoom)
+
+  /**
+   * What a run's stack looked like at its last GRANT (specs/cont-stack.md
+   * Layer 3): the stack it was on, the stack pointer then, the levels
+   * granted, and the most bytes one level has ever taken in this run.
+   * `StackSwitch.more` reads the pointer again at the next exhaustion,
+   * and the difference over the levels between is a measured
+   * bytes-per-level — opaque bodies' frames included — kept as a
+   * maximum, since a body deeper down may be fatter than the ones seen.
+   * `worst` starts at the cold constant (interpreted frames) and only
+   * rises. A different `top` means a different stack (a segment thread,
+   * or a virtual thread moved to another carrier): the mark is dropped.
+   *
+   * One per run, reached from any depth by walking the continuation
+   * chain to its `Gauged` root — a pointer chase paid at exhaustion
+   * only, so the per-level path carries nothing for it.
+   */
+  private[okay] final class Gauge:
+    var top: Long = 0L
+    var mark: Long = 0L
+    var granted: Int = 0
+    var worst: Long = StackSwitch.coldBytesPerLevel
+
+  /** the root of a run's continuation chain: the user's `k`, and the
+   * run's gauge behind it */
+  private final class Gauged[B, S](val k: B => S, val gauge: Gauge) extends (B => S):
+    def apply(b: B): S = k(b)
+
+  /** the gauge behind a continuation, or a fresh one for a chain that
+   * has no root (a leaf called by the user's own function, a `Mapped`
+   * leaf's lambda): a fresh gauge only makes the next grant
+   * conservative — `worst` starts cold — never wrong */
+  @annotation.tailrec
+  private def gaugeOf(k: Any): Gauge = k match
+    case r: Reentry[?, ?, ?, ?] => gaugeOf(r.k)
+    case g: Gauged[?, ?] => g.gauge
+    case _ => Gauge()
 
   /**
    * THE CONTINUATION A SHIFT'S BODY RECEIVES, when calling it re-enters
@@ -261,28 +300,27 @@ object Cont:
    * simply stays where it is, on the stack below, until the answer
    * comes back.
    */
-  private final class Reentry[X, B, S, T](f: X => Rep[B, S, T], k: B => S, val room: Int) extends (X => T):
+  private final class Reentry[X, B, S, T](f: X => Rep[B, S, T], val k: B => S, val room: Int) extends (X => T):
     def apply(x: X): T = enter(x, room)
 
     /** enter from a place with `here` levels of room left: a
      * continuation may be called DEEPER than it was made (the runner
      * hands an answer to an outer continuation from inside an inner
-     * segment), so the room is the smaller of the two */
+     * segment), so the room is the smaller of the two. At ZERO the
+     * stack is asked how much it really has left (Layer 3): a grant
+     * continues here, and only a stack with no room switches. */
     def enter(x: X, here: Int): T =
       val r = math.min(here, room)
       if r > 0 then step(f(x))(k)(r)
-      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh))
+      else
+        val more = StackSwitch.more(gaugeOf(k))
+        if more > 0 then step(f(x))(k)(more)
+        else StackSwitch.fresh(fresh => step(f(x))(k)(fresh))
 
   /** call a continuation from inside the runner, with the room HERE */
   private def callK[A, S](k: A => S, a: A, room: Int): S = k match
     case r: Reentry[x, ?, ?, t] => r.enter(a, room)
     case _ => k(a)
-
-  /** the room a continuation carries: a runner's own, or the first
-   * room when a user's function calls in */
-  private def roomOf(k: Any): Int = k match
-    case r: Reentry[?, ?, ?, ?] => r.room
-    case _ => StackSwitch.firstRoom
 
   /**
    * Is this program already an ANSWER — and if so, continue on the

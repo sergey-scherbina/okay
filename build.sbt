@@ -367,8 +367,22 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "okay",
   )
-  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  // the JDK 22+ variant of okay.StackRoom (specs/cont-stack.md Layer 3),
+  // built by `versioned` below; `test->compile` so the jar the tests
+  // run against carries it
+  .jvmConfigure(_.enablePlugins(JmhPlugin).dependsOn(okayJdk22 % "test->compile"))
   .jvmSettings(
+    multiRelease("okayJdk22", 22),
+    // the forked suite runs with native access, so on JDK 22+ the
+    // StackRoom variant READS the stack (TestStackRoom, TestContStack's
+    // zero-switch test); the count road is what verifyJdk17 runs. The
+    // flag exists since JDK 17 (JEP 412), so the 17 fork takes it too.
+    Test / javaOptions += "--enable-native-access=ALL-UNNAMED",
+    // a small first room, so the suite exercises exhaustion — the grant
+    // on a stack that has room, the switch on one that has not (a
+    // 128 KB thread) — without 850 levels of nesting before the first
+    // look; the derived default is what the benchmarks run with
+    Test / javaOptions += "-Dokay.cont.room=64",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Compile / unmanagedSourceDirectories +=
@@ -428,6 +442,10 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * The portable asynchronous effect and its callback-based runtime
  * semantics.  It deliberately supplies no platform default instances.
  */
+/** okay.StackRoom reading the stack pointer through FFM, for JDK 22+
+ * (`versioned`; specs/cont-stack.md Layer 3, Decision 12) */
+lazy val okayJdk22 = versioned("okayJdk22", "jdk22", 22, "okayJVM")
+
 lazy val okayAsync = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-async"))
@@ -2481,6 +2499,11 @@ lazy val okayRust = crossProject(JVMPlatform, NativePlatform)
     ),
     Test / fork := true,
     Test / javaOptions += "--enable-native-access=ALL-UNNAMED",
+    // a small first room, so the suite exercises exhaustion — the grant
+    // on a stack that has room, the switch on one that has not (a
+    // 128 KB thread) — without 850 levels of nesting before the first
+    // look; the derived default is what the benchmarks run with
+    Test / javaOptions += "-Dokay.cont.room=64",
   )
   // stage 2: the crate's STATICLIB linked into a Native binary. The path is
   // an environment variable because the library is built by cargo, not by
@@ -3249,7 +3272,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayJdk22, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
