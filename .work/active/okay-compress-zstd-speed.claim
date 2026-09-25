@@ -1,3 +1,0 @@
-slug: okay-compress-zstd-speed
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: ZSTD on the JVM still 3.5x behind aircompressor: profile first (JMH -prof stack), then the hot spots one at a time, each measured
