@@ -37,7 +37,12 @@ object OkayArrow extends ArrowCodec:
    * or `okay.compress.Zstd`, Arrow's LZ4_FRAME and ZSTD): each buffer
    * alone, its uncompressed length first, and one that does not shrink
    * stored as it is (length -1), as the IPC format says */
-  def write(t: Table, compression: Option[okay.compress.Codec]): Array[Byte] =
+  def write(t: Table, compression: Option[okay.compress.Codec]): Array[Byte] = encode(t, compression).bytes
+
+  /** a stream, and where its record batch sits: what the file footer's block names */
+  private final case class Encoded(bytes: Array[Byte], schemaLen: Int, batchHeadLen: Int, bodyLen: Long)
+
+  private def encode(t: Table, compression: Option[okay.compress.Codec]): Encoded =
     val codecId = compression.map(c => c.name match
       case "lz4" => 0
       case "zstd" => 1
@@ -167,6 +172,95 @@ object OkayArrow extends ArrowCodec:
       fill(out, at)
       at += pad8(len)
     putInt(out, at, -1)                           // end of stream: marker, then 0
+    Encoded(out, schemaMsg.length, batchHead.length, bodyLen)
+
+  // ---- the IPC FILE format ------------------------------------------------------
+
+  private val FileMagic = "ARROW1".getBytes(UTF_8)
+
+  /**
+   * The IPC FILE format: `ARROW1` and two bytes of padding, the stream
+   * (schema, record batch, end-of-stream marker, as pyarrow writes it), a
+   * FlatBuffers `Footer` naming the schema and each record batch's BLOCK
+   * (its offset, metadata length and body length), the footer's length,
+   * and `ARROW1` again. A reader finds any batch from the footer without
+   * reading the ones before it.
+   */
+  override def writeFile(t: Table, compression: Option[okay.compress.Codec]): Array[Byte] =
+    val e = encode(t, compression)
+    val block = new Array[Byte](24)
+    val offset = 8L + e.schemaLen
+    putInt(block, 0, offset.toInt); putInt(block, 4, (offset >>> 32).toInt)
+    putInt(block, 8, e.batchHeadLen)
+    putInt(block, 16, e.bodyLen.toInt); putInt(block, 20, (e.bodyLen >>> 32).toInt)
+    val footer = Fb.finish(Fb.Table(Vector(
+      Some(Fb.I16(MetadataV5)),
+      Some(schema(t)),
+      Some(Fb.Structs(Array.emptyByteArray, 24)),
+      Some(Fb.Structs(block, 24)))))
+    val out = new Array[Byte](8 + e.bytes.length + footer.length + 4 + 6)
+    System.arraycopy(FileMagic, 0, out, 0, 6)
+    System.arraycopy(e.bytes, 0, out, 8, e.bytes.length)
+    val footerAt = 8 + e.bytes.length
+    System.arraycopy(footer, 0, out, footerAt, footer.length)
+    putInt(out, footerAt + footer.length, footer.length)
+    System.arraycopy(FileMagic, 0, out, footerAt + footer.length + 4, 6)
+    out
+
+  /** a file's footer: the schema message's extent, the dictionary blocks
+   * and the record batch blocks, each (offset, length) in the file */
+  private final case class FileLayout(schema: (Int, Int), dictionaries: Vector[(Int, Int)], batches: Vector[(Int, Int)])
+
+  private def layout(bytes: Array[Byte]): FileLayout =
+    def magicAt(at: Int) = at >= 0 && at + 6 <= bytes.length && (0 until 6).forall(k => bytes(at + k) == FileMagic(k))
+    if !magicAt(0) then refuse("not an Arrow FILE: no ARROW1 at its start")
+    if bytes.length < 8 + 10 || !magicAt(bytes.length - 6) then refuse("an Arrow file without its closing ARROW1 (cut short?)")
+    val flen = Fb.i32le(bytes, bytes.length - 10)
+    val footerAt = bytes.length - 10 - flen
+    if flen <= 0 || footerAt < 8 then refuse(s"a footer of $flen bytes that does not fit the file")
+    val footer = Fb.root(java.util.Arrays.copyOfRange(bytes, footerAt, footerAt + flen))
+    def blocks(i: Int): Vector[(Int, Int)] = footer.structs(i, 24).map { s =>
+      val off = Fb.i64le(s, 0); val meta = Fb.i32le(s, 8); val body = Fb.i64le(s, 16)
+      if off < 8 || meta < 8 || body < 0 || off + meta + body > footerAt then
+        refuse(s"a block [$off, +${meta.toLong + body}) outside the file's messages")
+      (off.toInt, (meta + body).toInt)
+    }
+    // the schema message is the first at offset 8: its prefix says how long
+    if Fb.i32le(bytes, 8) != -1 then refuse("the file's first message has no continuation marker")
+    val schemaLen = 8 + Fb.i32le(bytes, 12)
+    if schemaLen < 8 || 8 + schemaLen > footerAt then refuse("the file's schema message runs past its messages")
+    FileLayout((8, schemaLen), blocks(2), blocks(3))
+
+  /** the record batches a file holds, from its footer */
+  override def fileBatches(bytes: Array[Byte]): Int =
+    try layout(bytes).batches.length
+    catch case _: IndexOutOfBoundsException => refuse("an offset points outside the file (cut short?)")
+
+  /** ONE record batch of a file, found from its footer: the schema, the
+   * dictionaries and that batch, read as a stream of their own */
+  override def readFileBatch(bytes: Array[Byte], i: Int): Table =
+    try
+      val l = layout(bytes)
+      if i < 0 || i >= l.batches.length then refuse(s"batch $i of ${l.batches.length}")
+      readStream(framed(bytes, l.schema +: l.dictionaries :+ l.batches(i)))
+    catch case _: IndexOutOfBoundsException | _: NegativeArraySizeException =>
+      refuse("an offset points outside the file (cut short?)")
+
+  override def readFile(bytes: Array[Byte]): Table =
+    try
+      val l = layout(bytes)
+      readStream(framed(bytes, (l.schema +: l.dictionaries) ++ l.batches))
+    catch case _: IndexOutOfBoundsException | _: NegativeArraySizeException =>
+      refuse("an offset points outside the file (cut short?)")
+
+  /** messages of a file laid end to end as a stream, closed by its marker */
+  private def framed(bytes: Array[Byte], parts: Vector[(Int, Int)]): Array[Byte] =
+    val out = new Array[Byte](parts.map(_._2).sum + 8)
+    var at = 0
+    for (off, len) <- parts do
+      System.arraycopy(bytes, off, out, at, len)
+      at += len
+    putInt(out, at, -1)
     out
 
   private def pad8(len: Int): Int = (len + 7) & ~7

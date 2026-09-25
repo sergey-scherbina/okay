@@ -126,3 +126,26 @@ print(t.num_rows, t.num_columns)
       assertEquals(Tables.same(Tables.everything, OkayArrow.read(java.nio.file.Files.readAllBytes(f))), None, codec.name)
   }
 
+  test("IPC files both ways: pyarrow opens ours; ours finds pyarrow's batches from the footer") {
+    val ours = file(OkayArrow.writeFile(Tables.everything, None))
+    assertEquals(run("""
+import sys, pyarrow as pa, pyarrow.ipc as ipc
+r = ipc.open_file(pa.memory_map(sys.argv[1]))
+t = r.read_all(); t.validate(full=True)
+print(r.num_record_batches, t.num_rows, t.num_columns)
+""", ours), "1 4 25")
+    val f = file()
+    val _ = run("""
+import sys, pyarrow as pa, pyarrow.ipc as ipc
+s = pa.schema([("n", pa.int64()), ("tag", pa.string())])
+with ipc.new_file(sys.argv[1], s) as w:
+    for k in range(3):
+        w.write_batch(pa.record_batch([pa.array([k * 10 + j for j in range(4)]), pa.array(["b%d" % k] * 4)], schema=s))
+""", f)
+    val bytes = java.nio.file.Files.readAllBytes(f)
+    assertEquals(OkayArrow.fileBatches(bytes), 3)
+    assertEquals(Tables.cells(OkayArrow.readFileBatch(bytes, 1).cols(0)._2), Vector(10L, 11L, 12L, 13L).map(Some(_)))
+    assertEquals(Tables.cells(OkayArrow.readFileBatch(bytes, 2).cols(1)._2), Vector.fill(4)(Some("b2")))
+    assertEquals(OkayArrow.readFile(bytes).rows, 12)
+  }
+

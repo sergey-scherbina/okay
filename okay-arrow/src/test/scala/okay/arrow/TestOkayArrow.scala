@@ -101,3 +101,18 @@ class TestOkayArrow extends munit.FunSuite:
       assert(packed.length < plain * limit, s"${codec.name}: ${packed.length} of $plain")
       assertEquals(Tables.same(repetitive, OkayArrow.read(packed)), None, codec.name)
   }
+
+  test("the IPC FILE format: every kind round-trips, plain and compressed; one batch by index; a cut file refused") {
+    for codec <- Vector(None, Some(okay.compress.Lz4Frame), Some(okay.compress.Zstd)) do
+      val f = OkayArrow.writeFile(Tables.everything, codec)
+      assertEquals(new String(f.take(6), "UTF-8"), "ARROW1")
+      assertEquals(new String(f.takeRight(6), "UTF-8"), "ARROW1")
+      assertEquals(OkayArrow.fileBatches(f), 1)
+      assertEquals(Tables.same(Tables.everything, OkayArrow.readFile(f)), None, codec.toString)
+      assertEquals(Tables.same(Tables.everything, OkayArrow.readFileBatch(f, 0)), None, codec.toString)
+    val f = OkayArrow.writeFile(Tables.everything)
+    val cut = (1 until f.length by 5).filter(n => scala.util.Try(OkayArrow.readFile(f.dropRight(n))).isSuccess)
+    assertEquals(cut.toVector, Vector.empty)
+    assert(intercept[IllegalStateException](OkayArrow.readFileBatch(f, 1)).getMessage.contains("batch 1 of 1"))
+    assert(intercept[IllegalStateException](OkayArrow.readFile(OkayArrow.write(Tables.everything))).getMessage.contains("no ARROW1"))
+  }

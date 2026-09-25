@@ -89,6 +89,50 @@ object ApacheArrow extends ArrowCodec:
       finally r.close()
     finally alloc.close()
 
+  override def writeFile(t: Table, compression: Option[okay.compress.Codec]): Array[Byte] =
+    ready
+    if compression.isDefined then
+      throw IllegalArgumentException("ApacheArrow writes files uncompressed here: Arrow Java's codecs are another optional jar (arrow-compression)")
+    val alloc = RootAllocator()
+    try
+      val root = toRoot(t, alloc)
+      try
+        val out = java.io.ByteArrayOutputStream()
+        val w = org.apache.arrow.vector.ipc.ArrowFileWriter(root, null, java.nio.channels.Channels.newChannel(out))
+        try { w.start(); w.writeBatch(); w.end() } finally w.close()
+        out.toByteArray
+      finally root.close()
+    finally alloc.close()
+
+  private def fileReader[A](bytes: Array[Byte])(f: org.apache.arrow.vector.ipc.ArrowFileReader => A): A =
+    ready
+    val alloc = RootAllocator()
+    try
+      val r = org.apache.arrow.vector.ipc.ArrowFileReader(
+        org.apache.arrow.vector.util.ByteArrayReadableSeekableByteChannel(bytes), alloc)
+      try f(r)
+      catch case e: java.io.IOException => throw IllegalStateException(s"not an Arrow file Arrow Java reads: ${e.getMessage}", e)
+      finally r.close()
+    finally alloc.close()
+
+  override def fileBatches(bytes: Array[Byte]): Int = fileReader(bytes)(_.getRecordBlocks.size)
+
+  override def readFileBatch(bytes: Array[Byte], i: Int): Table = fileReader(bytes) { r =>
+    val blocks = r.getRecordBlocks
+    if i < 0 || i >= blocks.size then throw IllegalStateException(s"not an Arrow file Arrow Java reads: batch $i of ${blocks.size}")
+    r.loadRecordBatch(blocks.get(i)): Unit
+    fromRoot(r.getVectorSchemaRoot)
+  }
+
+  override def readFile(bytes: Array[Byte]): Table = fileReader(bytes) { r =>
+    val root = r.getVectorSchemaRoot
+    val names = root.getSchema.getFields.asScala.toVector.map(_.getName)
+    var parts = Vector.empty[Vector[Column]]
+    while r.loadNextBatch() do parts :+= root.getFieldVectors.asScala.toVector.map(v => column(v))
+    if parts.isEmpty then Table(root.getFieldVectors.asScala.toVector.map(v => v.getName -> column(v)), metadata(root.getSchema))
+    else Table(names.indices.toVector.map(j => names(j) -> Column.concat(parts.map(_(j)))), metadata(root.getSchema))
+  }
+
   private def metadata(s: Schema): Vector[(String, String)] =
     Option(s.getCustomMetadata).fold(Vector.empty[(String, String)])(_.asScala.toVector)
 

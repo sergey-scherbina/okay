@@ -22,6 +22,14 @@ trait ArrowCodec:
    * decoded); anything outside the model, or a stream cut short, is
    * refused by name */
   def read(bytes: Array[Byte]): Table
+  /** a table as an IPC FILE: the stream, a footer, random access by batch */
+  def writeFile(t: Table, compression: Option[okay.compress.Codec] = None): Array[Byte]
+  /** every record batch of an IPC file, as one table */
+  def readFile(bytes: Array[Byte]): Table
+  /** how many record batches an IPC file holds */
+  def fileBatches(bytes: Array[Byte]): Int
+  /** the i-th record batch of an IPC file, found from its footer */
+  def readFileBatch(bytes: Array[Byte], i: Int): Table
 
 object ArrowCodec:
   /** THE DEFAULT: ours, on every platform */

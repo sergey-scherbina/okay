@@ -88,3 +88,11 @@ class TestApacheArrow extends munit.FunSuite:
     finally alloc.close()
   }
 
+
+  test("IPC files: each implementation reads the other's, every kind of column") {
+    val t = Tables.everything
+    assertEquals(Tables.same(t, ApacheArrow.readFile(OkayArrow.writeFile(t, None))), None)
+    assertEquals(Tables.same(t, OkayArrow.readFile(ApacheArrow.writeFile(t, None))), None)
+    assertEquals(ApacheArrow.fileBatches(OkayArrow.writeFile(t, None)), 1)
+    assertEquals(Tables.same(t, ApacheArrow.readFileBatch(OkayArrow.writeFile(t, None), 0)), None)
+  }
