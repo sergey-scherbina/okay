@@ -24,8 +24,21 @@ import java.util.concurrent.TimeUnit.SECONDS
  * A latch is a real wait, and it gives the happens-before edge the
  * plain `var` never had, so the timeout became a timeout and the
  * cross-thread read became legal in one move.
+ *
+ * `Live` since testsignals-live (2026-09-25): the latch fixed the
+ * false start, not the timing the suite still depends on — a releaser
+ * thread that sleeps 60 ms and a drain that gives up after a 2 s
+ * grace. In the runner's whole build at load 21 (7 421 results) the
+ * drain "did not see the request finish", and the runner reverted the
+ * one landing in the range (mrjar-jdk25-ci-gap, build.sbt only —
+ * ci-revert-mrjar-jdk25-ci-gap), which had not touched okay-ops. A
+ * result that depends on the box's scheduling is the `Live` policy's
+ * shape (AGENTS.md, "no flaky tests in the default gate");
+ * `sbt integrationTest` still runs it.
  */
 class TestSignals extends munit.FunSuite:
+
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
 
   test("stop: readiness off, a delay, then the drain waits for the request in flight") {
     val l = Lifecycle()
