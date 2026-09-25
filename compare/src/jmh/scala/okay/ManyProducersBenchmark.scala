@@ -180,6 +180,11 @@ class ManyProducersBenchmark {
   // builds. These two do — the bounded DEFAULT, whichever arm
   // `-Dokay.channel.buffer` selects (growing today; `adaptive` with
   // `-Dokay.channel.parts=8` is the arm that differs in adoption only).
+  // the arm must be SEEN to reach the fork: JMH forks its own JVM, and
+  // a -D that does not arrive makes both arms the shipped default
+  @Setup(Level.Trial) def arm(): Unit =
+    System.err.println(s"# arm: okay.channel.buffer=${System.getProperty("okay.channel.buffer")} parts=${System.getProperty("okay.channel.parts")}")
+
   @Benchmark def default_chunk(): Long =
     runChunked(Channel[Long](Cap))
 
