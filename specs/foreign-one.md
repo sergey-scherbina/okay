@@ -1,378 +1,547 @@
-# foreign-one — one runtime model behind the foreign facade
+# foreign-one — the foreign languages as ONE model
 
 ## Overview
 
-The operator's ask (2026-09-25): "посмотри как у нас сделано
-взаимодействие с внешними языками — R, питон, rust, haskell, clojure,
-frege — подумай как это унифицировать и абстрагировать, чтобы один и
-тот же код прозрачно работал с каждым из них, чтобы новый язык
-вписывался в эту же систему, и чтобы работало всё — эффекты, коллбеки
-в обе стороны, стримы, асинхронность, большие объёмы данных — быстро и
-оптимально."
+The operator's ask, in two steps. 2026-09-25: "посмотри как у нас
+сделано взаимодействие с внешними языками — R, питон, rust, haskell,
+clojure, frege — подумай как это унифицировать и абстрагировать, чтобы
+один и тот же код прозрачно работал с каждым из них, чтобы новый язык
+вписывался в эту же систему, и чтобы работало всё — эффекты, коллбеки в
+обе стороны, стримы, асинхронность, большие объёмы данных — быстро и
+оптимально." 2026-09-26, after the first cut of this spec listed five
+gaps: "ты должен взять то, что сделали до тебя все другие, и ещё раз
+подумать и всё это обобщить в одну непротиворечивую и стройную систему,
+где не будет ничего лишнего и будет всё правильно и самое необходимое и
+немного больше для удобства."
 
-The CALLER's side of that is done: `okay-foreign-cluster`'s facade
-(specs/foreign-facade.md, landed the same day) is one typeclass per
-capability by the module's type — `Calls`/`Frames`/`Streams`/
-`Programs`/`Holds`/`Methods`/`Speaks[-M]` — so a job written once runs
-on every module type that has the instances it asks for, and a
-capability a language lacks is a compile error. This spec is about the
-RUNTIMES under it, which are still three families that do not share
-enough:
+So this is not a list of repairs. It is the model the existing work
+IMPLIES, written once, with every existing piece mapped onto it: kept
+as is, folded into a derived form, or deleted. The pieces it is derived
+from, each of which proved a part of it:
 
-| family | languages | engine | continuation | what only it has |
-|---|---|---|---|---|
-| wire (`ForeignWorker` over `WireLink`) | Python, TypeScript, Haskell, Go, Rust | one protocol (`call`, `frame`, `start`/`ask`/`resume`, `program`/`continue`/`forget`, `hold`/`method`/`attr`/`release`), links pipes/TCP/FFM/wasm, givens for format, compression, auth, TLS, deadline, `SupervisedWorker` replay (specs/polyglot-one-wire.md) | one-shot (direct style) or multi-shot (programs as data, `k` by id) | the gateway, TCP, auth, TLS, crash conformance |
-| R | R | its OWN engine `RSubprocess` + `RValue`/`RCodec`/`REval` + shim.R — the same protocol by shape, a second copy of ~2 300 lines; shares only `okay.codec.Wire*` (wire-givens-r) | the same, in its own code | nothing — and it LACKS the column above (docs/one-language.md "Limits": "R is not behind the gateway") |
-| in-JVM (`okay.Foreign` walker over `View[P]`, interop-shared) | Frege, Clojure (Java gatherers through `Push`) | the program tree walked directly; values are `Object`; an operation is tested by `Member[F]` | the language's own function, multi-shot, 0.27 µs a step | zero copy, no wire at all |
+- **Programs as data on one wire** (specs/remote-foreign.md,
+  specs/polyglot-one-wire.md): `perform`/`continue`/`done` over pipes,
+  TCP, FFM and Wasm, one conformance body per link, negotiation by
+  givens, supervision with replay. Proved: one engine can serve six
+  languages, and the transport is the smallest part.
+- **The caller's facade** (specs/foreign-facade.md): a typeclass per
+  CAPABILITY, tiers chosen by the DATA, `Schema` and `Table` as the only
+  vocabulary, the JVM's zero-cost tier as the test. Proved: the caller
+  never needs the language's name in the code.
+- **The cluster stages** (specs/foreign-map-reduce.md and its stage 4
+  on feature/foreign-streams-holds): a chunk of typed rows is a frame,
+  a frame crosses as one message, a pool of interpreters is the
+  parallelism, a model is a recipe per interpreter, a stateful stage is
+  a leased interpreter. Proved: everything above a call is a
+  COMBINATION of call, table, held object and pool — nothing needs a
+  new wire operation.
+- **The JVM languages** (specs/frege.md, specs/clojure.md,
+  specs/interop-shared.md): a foreign program is a tree — an answer, or
+  an operation and a function to the rest — walked by `okay.Foreign`
+  over a `View`; the continuation is the language's own function, so
+  multi-shot is free and a step costs 0.27 µs. Proved: the same node
+  protocol, with no wire at all, is the fastest road.
 
-Measured against the ask, five gaps sit between the facade and the
-runtimes. Each is one stage below, filed as its own backlog item under
-`polyglot`, and this spec is the one place their Decisions and Results
-go.
+And what those pieces, taken together, do NOT yet have: they are three
+engines (`ForeignWorker`, `RSubprocess`, the JVM walker) with two value
+enums, two failure types, three pools, eleven typeclasses (seven of them
+with a body per language), two program protocols (one-shot dialogue,
+multi-shot data), a half-duplex wire, and a language-named API per
+language (`Py.*`, `R.*`, `Ts.*`). Each was right when built; together
+they are the same idea written several times.
 
-1. **Two engines** — R is outside the `ForeignWorker` family, so every
-   wire feature is built twice or not for R.
-2. **A half-duplex wire** — one exchange in flight per worker; the
-   callback dialogue nests strictly; a stream is only host-driven
-   (`Streams.viaFrames`), `Speaks.stream` is false everywhere, and a
-   foreign function cannot await two okay operations at once even in
-   a language that could.
-3. **Bulk data is not on every side** — `frame` only in Python, R and
-   TypeScript; in-process (FFM) a frame is still IPC bytes COPIED
-   through `okay_exchange`.
-4. **Two vocabularies for "what the far side may perform"** — on the
-   wire an effect is a `Cb[F]` with `Schema`s and typed stubs are
-   generated (`Rs.ops`, `Go.ops`, `Hs.ops`, `Ts.ops`); in the JVM
-   family an operation is a raw `Object` and Frege/Clojure bind
-   `okay.frege.Ops`/`okay.clojure.Ops` by hand.
-5. **The facade is not filled, and "add a language" is not a
-   procedure** — no `TsModule`/`HsModule`/`GoModule`/`RustModule`;
-   Clojure and Frege reach the facade only by hand-registering a
-   Scala function on `JvmModule`, not through their own programs.
+## The model
 
-The claim: after the five stages ONE engine (`ForeignWorker`) serves
-every language that is not in the JVM, ONE walker (`okay.Foreign`)
-serves every language that is, ONE wire carries calls, callbacks,
-programs, streams and frames concurrently on every link, ONE effect
-declaration in Scala produces the typed stubs of every language, and a
-new language is a checklist against three conformance suites and one
-golden transcript — with every existing suite green and the price of
-each road measured, not believed.
+### Four things cross a language boundary, and a program
 
-## What is NOT being redone (decided elsewhere, and right)
+Everything any bridge here has ever carried is one of these:
 
-- **The facade's shape** (specs/foreign-facade.md Decisions 1–6): a
-  typeclass per capability, tiers by the data, `Schema` and `Table` as
-  the vocabulary, the JVM's zero-cost tier as the test of the model.
-- **`okay_call` as a dialogue, not an upcall** (polyglot-one-wire,
-  "Why a dialogue"): a callback is a program that must run under ALL
-  the caller's handlers. Stage 2 keeps every transport a dialogue.
-- **No native struct per operation over FFM** (polyglot-one-wire,
-  Decisions): a message is a line or a frame everywhere.
-- **Continuations kept by id, not replayed** (remote-foreign): replay
-  is a RECOVERY road, not the multi-shot road.
-- **Chunks over a generator, for R** (foreign-highlevel stage 6): R is
-  single-threaded, so R stays sequential BY RULE; stage 2 makes that a
-  claim in the hello rather than a fact only the shim knows.
-- **The lane rules for numbers** (docs/benchmarks.md, `performance`
-  skill): a cell in this spec's tables is measured through
-  `MeasureFacade`/`WireCodecBench`/`MeasureRFrame`, with load and sha.
+| thing | on the host | on the wire | in the JVM (Clojure, Frege, Scala) |
+|---|---|---|---|
+| a **value** | `A: Schema` | the value tree (JSON or CBOR, with the escapes: `int` digits, `na`, `dict`, `ref`, `table`, `stream`) | the object itself |
+| a **table** | `okay.arrow.Table` | an Arrow IPC part beside the head where the far side speaks Arrow; columnar JSON in the tree where it does not | the same `Table`, by reference |
+| an **object** | `Ref[L]` — a handle to something kept on the far side | `{"t":"ref","id":n}`; lives in ONE worker, dies with it | the object itself |
+| a **stream** | `Chunks[A]` / `Flow[A]` | `{"t":"stream","id":s}` in the tree, then `chunk`/`end` messages under CREDIT, in either direction | `Chunks` itself |
+| a **program** | `Out ! (F + Foreign[L])` | `program`/`continue`/`forget`: a node is `done(v)` or `perform(name, args, k)` | the language's tree, walked |
 
-## Interface
+An ARGUMENT of a call is any of the first four; the ANSWER of a call is
+any of the first four. **The tier is per argument, not per call**: a
+far function `scale(frame, model)` takes a table and an object;
+`step(frame, acc)` a table and a value; `dedup(rows)` a stream and
+answers one. This is the facade's "the shape picks the road" (Decision
+6 there) carried to where it ends: there is no `Frame` operation and no
+`Hold` operation, there is a `call` whose arguments and answer each go
+on their own road.
 
-### One engine: R as a `ForeignWorker` far side (stage 1)
+A PROGRAM is the fifth thing, and it is what makes effects and
+callbacks work in both directions: a far-side program performs NAMED
+operations; the host answers each one as an okay program under the
+caller's own handlers (`Reader`, `State`, `Async`, `Choice`, …), and
+continues the far program by `k` — once, or as many times as a handler
+resumes it. Whether `k` may be continued twice is a CLAIM of the
+language: `multi-shot` where continuations are values (Python's
+lambdas, R's closures, Haskell, Rust's `Rc<dyn Fn>`, Go's and Rust's
+program-as-data forms, Clojure, Frege), `one-shot` where `k` is a
+parked stack (the direct style, `okay_call`). Both are the SAME three
+messages; the one-shot far side refuses the second `continue` by name.
+The `start`/`ask`/`resume` dialogue of foreign-callbacks and the
+`program`/`perform`/`continue` protocol of remote-foreign were the same
+protocol with two spellings; the model has one.
 
-R's shim speaks exactly the messages of `okay/py/shim.py`; the value
-escapes it needs and Python's do not are additive on the SAME wire:
+### The vocabulary
 
-| R value | on the wire | why not Python's |
+```scala
+package okay.foreign
+
+/** a language, as a TYPE TAG: what the compiler keys capabilities on */
+sealed trait Lang
+sealed trait Py extends Lang; sealed trait R extends Lang; sealed trait Ts extends Lang
+sealed trait Hs extends Lang; sealed trait Go extends Lang; sealed trait Rust extends Lang
+sealed trait Jvm extends Lang    // Scala, Clojure, Frege, Java: the same process
+
+/** WHERE code of L runs: a placement plus a pool of workers of it */
+trait Runtime[L <: Lang]:
+  def speaks: Speaks                  // what THESE workers do (from the hello), as against what L can (the markers)
+  def call[Out: Ret[L]](address: Address[L])(args: Arg[L]*): Either[Refused, Out]
+  def hold[Out: Ret[L]](address: Address[L])(args: Arg[L]*)(using Objects[L]): Either[Refused, Ref[L]]
+  def program[Out: Schema, F[+_]](address: Address[L], cbs: Cbs[F])(args: Arg[L]*)(using Programs[L]): Either[Refused, Out] ! (F + Foreign[L])
+  def stream[A: Schema, B: Schema](address: Address[L])(in: Chunks[A])(using Streams[L] | Tables[L]): Chunks[B]
+  def run[A](prog: A ! Foreign[L]): A   // the whole program on ONE leased worker (its continuations live there)
+  def release(ref: Ref[L]): Unit
+
+/** WHAT is called: a namespace of L, optionally shipped as inline source */
+final case class Module[L <: Lang](name: String, inline: Option[String])
+/** an address in it: a function, or a held object's method or attribute */
+enum Address[L <: Lang]:
+  case Fn(module: Module[L], name: String)
+  case Method(ref: Ref[L], name: String)(using Methods[L])
+  case Attr(ref: Ref[L], name: String)(using Methods[L])
+
+/** an argument: built by a given from a Schema value, a Table (needs Tables[L]),
+ *  a Ref[L] (needs Objects[L]) or a Chunks[A] (needs Streams[L]) */
+opaque type Arg[L <: Lang]
+/** an answer type: Schema, Table (Tables[L]), Ref[L] (Objects[L]), Chunks[B] (Streams[L]) */
+trait Ret[L <: Lang, Out]
+
+/** ONE refusal on every road (was: okay.py.Condition, okay.r.Condition, Batcher.Failed) */
+final case class Refused(kind: String, message: String)
+object Refused: val transient: Set[String]   // the wire's kinds, retried on a fresh worker
+
+/** a callback the far side may perform: a name and a program at Schema types (the facade's Cb) */
+trait Cb[F[+_]]; final class Cbs[F[+_]](val all: Vector[Cb[F]])
+
+/** the effect a program performs to reach L — one enum, tagged by L, so two languages in one row are two effects */
+enum Foreign[L <: Lang, +A]:
+  case Call(address, args, held: Boolean) extends Foreign[L, Either[Refused, Value]]
+  case Program(run, address, args)        extends Foreign[L, Either[Refused, Node]]
+  case Continue(run, k, answer)           extends Foreign[L, Either[Refused, Node]]
+  case Forget(run)                        extends Foreign[L, Unit]
+  case Release(ref)                       extends Foreign[L, Unit]
+```
+
+**Capabilities are compile-time MARKERS on the language tag**, not
+typeclasses with a body per language — because there is ONE engine
+under every wire language and one walker under every JVM language, so
+the code exists once and only the CLAIM differs:
+
+| marker | means L can carry | who has it |
 |---|---|---|
-| `NULL` | `null` | Python's None is `null` already |
-| `NA` (typed) | `{"t":"na","of":"int"\|"double"\|"string"\|"bool"}` | Python has no NA; the escape is the distinctness `TestRCodec` holds (NA ≠ NULL) |
-| a named list that is not a data.frame | `{"t":"dict","kv":[...]}` | it is what `Named` already was (wire v2) |
-| a `Long` past 2^53 | `{"t":"int","digits":"..."}` | already Python's road since foreign-typed-calls |
+| (none: `Runtime[L]` itself) | a value; a program's `call` | every language |
+| `Tables[L]` | a `Table` argument or answer | Py, R, Ts today; Rust, Go, Hs after the frame road (stage 6); Jvm by reference |
+| `Objects[L]` | a `Ref[L]`: hold, pass, release | Py, R, Jvm; Rust/Go/Hs/Ts when their libraries keep a table of held values (small; stage 6) |
+| `Methods[L]` | `Address.Method`/`Attr` on a held object | Py, Ts, Jvm — R's and Rust's objects have nothing to call by name, an honest absence |
+| `Programs[L]` | a program as data; `Programs.MultiShot[L]` refines it | every language; MultiShot: all but the direct-style-only far sides |
+| `Streams[L]` | a stream argument or answer driven by the far side under credit | after stage 5: Go, Rust (not wasm), Ts, Hs, Py; R and wasm-Rust are `mux: false` by design |
 
-Then `okay.r.RSubprocess` is `ForeignWorker.speaking(Seq(rscript, shim))`
-with R's `WireDeadline` as the deadline it already takes; `okay.r.R` is
-a facade over `okay.py.Foreign` the way `okay.py.Ts` is (33 lines);
-`REval` is an alias of `ForeignEval` as `PyEval` is; `RValue` is gone
-and `RCodec` is `PyCodec` at `Shape.r` (the one place NA is decided).
-`Programs.r`, `Holds.r`, `Speaks.r` in the facade lose their own
-bodies and become the Python instances at an R command.
+The facade's `Speaks(module)` stays as `runtime.speaks`: the marker
+says the language CAN, the hello says these workers DO (Arrow or
+columnar JSON, `mux` or not, multi-shot or one-shot), and a STRICT given
+(`FrameFormat.Arrow.given`) refuses by name where the two disagree.
 
-### One wire, multiplexed, with credits (stage 2)
+### Two runtimes, not seven
 
-Every message carries an `id`, and the id is USED: a reader per link
-matches answers to requests, so more than one exchange is in flight on
-one worker. The five message kinds of today keep their shape; two are
-added, one each way:
+- **`WireRuntime[L]`** — today's `ForeignWorker` and its `PyWorkers`/
+  `SupervisedWorker`/cluster `Pool` folded into one engine over a
+  `WireLink` and ONE `Pool`: N workers of one command or connection;
+  `use` (one exchange), `lease` (a program, a partition, a dialogue
+  keeps its worker), routing by `Ref` (a ref is `generation << 40 |
+  local`, so it names its worker and a stale one is refused by name —
+  `SupervisedWorker`'s scheme, made the pool's), `perWorker(recipe)` (a
+  value materialised once per worker — what `Models` needs),
+  supervision (a dead worker is reopened; a program in flight is
+  replayed from its journal of answers by `(id, seq)`; a ref dies with
+  its worker). Language-specific is only: the command that starts a
+  worker (`Language[L].command`), its `Shape` (where the value tree is
+  read differently: R's NA, Python's `dict`), and its environment
+  (`PyEnv`/`REnv`). Every wire language is `WireRuntime[L]` with a
+  `Language[L]`.
+- **`JvmRuntime`** — today's `okay.Foreign` walker over a `View[P]`:
+  values, tables, objects and streams cross by reference; a program is
+  the language's tree; `Member[F]` tests a raw operation. Clojure and
+  Frege supply their `View`; a Scala function is a `JvmModule` entry as
+  today. Its `Refused` is the caught exception; its `speaks` is
+  `by-reference`, `multi-shot`, `in-jvm`.
+
+`Language[L]` is the one object a language adds: how to start or build
+a worker (`command`, `build`), its `Shape`, its typed-stub writer
+(`ops(cbs)`: today's `Rs.ops`/`Go.ops`/`Hs.ops`/`Ts.ops`, and after
+stage 7 `Frege.ops`/`Clj.ops`), its facade writer (`describe` →
+a Scala object, today's `PyFacade`/`RFacade`), and its environment
+(`Env`). Adding a language is writing this object and its far-side
+library against the transcript (below).
+
+### One wire: five operations, two channels
+
+The far side's contract, replacing `call`/`frame`/`start`/`resume`/
+`hold`/`method`/`attr`/`program`/`continue`/`forget`/`release`:
 
 ```
-host -> {"id": n, "op": "program"|"call"|"frame"|"start"|"continue"|..., ...}   as today
-far  <- {"id": n, "ok": ...} | {"id": n, "condition": ...}                       in ANY order
-far  <- {"id": n, "ask": {"cb": ..., "args": [...], "k": k}}                     a callback, as today
-host -> {"op": "resume", "k": k, "ok"|"condition": ...}                          as today
+host -> {"id":n, "op":"call",     "fn":addr, "args":[…], "held":false}      addr: "mod:fn" | {"ref":r,"name":m} | {"ref":r,"attr":a}
+host -> {"id":n, "op":"program",  "run":r, "fn":addr, "args":[…]}
+host -> {"id":n, "op":"continue", "run":r, "k":k, "answer":v | "condition":{…}}
+host -> {"id":n, "op":"forget",   "run":r}
+host -> {"id":n, "op":"release",  "ref":r}
 
-far  <- {"stream": s, "chunk": <one tier-2 frame>}                               NEW: a far-driven chunk
-far  <- {"stream": s, "end": true} | {"stream": s, "condition": ...}
-host -> {"stream": s, "credit": c}                                               NEW: back-pressure by credit
+far  <- {"id":n, "ok":v} | {"id":n, "condition":{"kind":…,"message":…}}
+far  <- {"id":n, "ok":{"done":v}} | {"id":n, "ok":{"perform":name, "args":[…], "k":k}}
+
+either -> {"stream":s, "chunk":<part>} | {"stream":s, "end":true} | {"stream":s, "condition":{…}}
+either -> {"stream":s, "credit":c}
 ```
 
-- A stream `s` is OPENED by an ordinary request whose answer is
-  `{"ok": {"stream": s}}` (a `frame` op with `"stream": true`, or a
-  program performing `okay.stream(...)`); the host grants `credit`
-  chunks, the far side sends at most that many, and asks for nothing —
-  a credit of 0 is a pause. This is the credit-based flow control of
-  reactive streams and HTTP/2, on the wire okay already has.
-- A far side ANNOUNCES it in the hello: `"speaks": {"mux": true,
-  "stream": true}`. One without `mux` is served exactly as today —
-  one exchange in flight, strictly nested — and `Speaks(module)`
-  reports `stream: false`, so the facade's `Streams` takes
-  `viaFrames`. R (single-threaded) and Rust on wasip1 (no threads)
-  say `mux: false` by design.
-- In-process links gain a second entry point beside `okay_exchange`:
-  `okay_poll(out_len) -> resp` answers the next message the far side
-  has to send (a chunk, an ask from a thread of its own), or nothing.
-  `okay_exchange` stays the whole link for a worker without `mux`.
-- **Async on the far side is what `mux` gives**: a Go/Rust/TS/Haskell
-  function may have several `ask`s outstanding (each its own `k`), and
-  two programs of one worker interleave. The host answers every ask as
-  a program under the caller's handlers, on the caller's scheduler —
-  nothing changes in what a callback IS, only in how many are open.
-- **`Durable` and `SupervisedWorker` journal by `(id | stream, seq)`**,
-  not by position: the strict nesting was what made "the path of
-  answers" a list, and on a multiplexed wire the path is a map from
-  request id to its answers. A replay that meets an id the journal
-  has no entry for is `ReplayDrift`, as today.
-- Every `WireLink` keeps `roundTrip`/`exchange` for the handshake and
-  for a non-mux far side; a mux far side is driven by `send` and a
-  reader that `receive`s.
+- **A message is a head and zero or more PARTS.** A `Table` argument
+  or answer is a part (an Arrow IPC stream) named from the tree by
+  `{"t":"table","part":i}`; a stream's chunk is one part. On a framed
+  wire (pipes, TCP after `configure`) the head's frame is followed by
+  its parts' frames; in process `okay_exchange` takes and answers a
+  vector of buffers, or — over FFM — Arrow C Data pointers (stage 6).
+  Where the far side does not speak Arrow, a table is in the tree as
+  the columnar JSON of r-frame-columnar-wire. This replaces py-arrow's
+  "the whole message is one Arrow stream with the head in its
+  metadata", which could carry exactly one table.
+- **`held: true`** keeps the answer on the far side and answers a
+  `ref` — what `hold`, and `method`'s `hold` flag, were.
+- **`perform` is the one callback message.** A direct-style far side
+  (a parked thread) and a program-as-data far side send the same line;
+  the difference is the claim `programs: one-shot | multi-shot` in the
+  hello and the refusal of a second `continue` on the former.
+- **Streams are symmetric.** An argument `{"t":"stream","id":s}` is a
+  stream the HOST feeds under the far side's credit; an answer with one
+  is a stream the FAR SIDE feeds under the host's credit. A stream
+  argument and a stream answer in one call is a full-duplex transform
+  — the far side holds whatever state it likes inside its own loop,
+  which is what `Stateful`'s `open`/`step`/`finish` was spelling from
+  outside. Credit is the flow control of reactive streams and HTTP/2:
+  the receiver grants `c` chunks, the sender sends at most `c` more,
+  and a credit of 0 is a pause. Neither side holds more than the frame.
+- **`id` is used.** A reader per link matches answers by id, so a
+  worker announcing `mux` has several programs in flight and several
+  `perform`s outstanding — that is the far side's ASYNC: a Go or Rust
+  function awaiting two okay operations at once, two programs
+  interleaved on one process. A far side without `mux` (R, Rust on
+  wasip1, an old shim) is served one exchange at a time, byte for byte
+  as today. The host is async already: every `perform` is an okay
+  program on the caller's scheduler.
+- **The hello claims everything**: `{"shim":7, "lang":"python",
+  "speaks":{"format":[…], "compress":[…], "tables":["arrow","json"],
+  "objects":true, "methods":true, "programs":"multi-shot",
+  "stream":true, "mux":true, "describe":true}}`. `Speaks` is read from
+  it and nothing else.
+- **`Durable` journals five operations once** (`Journalled[Foreign[L]]`,
+  one instance), by `(id, seq)`; `SupervisedWorker`'s replay of a
+  program is the pool's, keyed the same way; a `Ref` in a journal
+  replays as a refusal by name on a fresh worker (values survive,
+  handles do not — foreign-object-handles' rule, unchanged).
 
-### Bulk data on every side, and zero copy in process (stage 3)
+The protocol is written down as **one golden transcript**,
+`specs/foreign-wire.txt`: every conformance case's messages in order,
+both sides labelled, replayed against a fake far side in the default
+gate (`TestWireTranscript`) and against each shim in its live suite.
+The transcript is the specification; the shims are its implementations
+— until now the Python shim was the reference by being first.
 
-- `frame` in the Rust, Haskell and Go shims (the backlog item
-  `foreign-frame-op-rust-hs-go` names the per-language shape: a struct
-  of columns, the columnar JSON of r-frame-columnar-wire, Arrow where
-  the language has a library, announced as `frames: ["arrow"]`).
-- **FFM: the Arrow C Data Interface.** In process a frame crosses as
-  two structs, `ArrowSchema` and `ArrowArray`, whose buffers the
-  producer OWNS and the consumer reads in place: `okay.arrow.Table`
-  exported to a Rust `arrow::ffi::FFI_ArrowArray` and back, with the
-  message head (`fn`, `args`) as a JSON line beside it. The `frame`
-  request carries `{"arrow": {"schema": <addr>, "array": <addr>}}`
-  instead of bytes; the far side's answer the same. Wasm has no shared
-  buffers with the host in this sense, so its road stays IPC bytes
-  written straight into the module's linear memory (as `WasmLib`
-  already does).
-- **Tier 3 is a stream of frames with credit** (stage 2), not a loop
-  of tier-2 exchanges; `Streams.viaFrames` stays as the road for a
-  far side without `stream`.
+### The caller's API, and what is "a little more"
 
-### One effect declaration (stage 4)
+The necessary: `Runtime[L]`'s five methods and the markers. The
+convenience, each a few lines DERIVED from them, each existing once
+for every language:
 
-A set of operations a far-side program may perform is declared ONCE,
-in Scala, as the `Cb`s the facade already has (`Cb[F]`: a name, an
-argument `Schema`, an answer `Schema`, a program). From it:
+```scala
+// the module addresses its own functions
+m / "score"                                        // Address.Fn(m, "score")
+ref.method("predict")                              // Address.Method(ref, "predict"), needs Methods[L]
 
-- the wire languages get their typed stubs as today (`Rs.ops`,
-  `Go.ops`, `Hs.ops`, `Ts.ops`);
-- the JVM languages get theirs the SAME way: `Frege.ops(name, cbs)`
-  writes the `native` bindings and the `Operation a` constructors a
-  Frege module imports, `Clj.ops` the `defn`s of a namespace — in
-  place of the hand-written `okay.frege.Ops`/`okay.clojure.Ops`, which
-  stay as the generated output for the core effects (Reader, State,
-  Throws, Choose, Async);
-- the JVM walker's `Member[F]` test stays the runtime mechanism; the
-  DECLARATION is what moves.
+// typed functions and callbacks, as Py.fn / Py.callback were
+val score = rt.fn[Double](m / "score")             // (args: Arg[L]*) => Either[Refused, Double]
+val priceOf = Cb[String, Double]("price_of")(sku => Reader.ask[Prices].map(_(sku)))
 
-So "the same code" holds on the far side too: an effect is spelled
-once and a program in any language performs it by its typed name.
+// held objects as a Resource
+rt.holding[Model](m / "fit")(params).use(model => rt.call[Table](m / "predict")(table, model))
 
-### The facade filled, and a language as a checklist (stage 5)
+// streams: a Flow or Chunks through a far function — far-driven where Streams[L], one frame per chunk otherwise
+flow.through(rt, m / "dedup", batch = 4096)
 
-- Module types `TsModule`, `HsModule`, `GoModule`, `RustModule` (a
-  name, and what the language needs to find the code: a directory, a
-  binary, a library) with the instances each honestly gives after
-  stages 1–3 — `Calls`/`Programs`/`Speaks` for all four, `Frames`
-  once stage 3 lands, `Holds` where the language has it.
-- `CljModule` and `FregeModule` over their own `Foreign.View`, with
-  `Programs` instances whose `Op` is empty (in-JVM): a Clojure or
-  Frege program as data IS something to walk, so Decision 7 of
-  foreign-facade (no JVM instance) is narrowed to `JvmModule`, the
-  Scala-function case, where it is right.
-- **The protocol as one golden transcript**: `specs/foreign-wire.txt`,
-  the messages of every conformance case in order, host and far side
-  labelled, which `TestWireTranscript` replays against a fake far side
-  and which each shim's own tests replay against the shim. A new
-  language is written against the transcript, not by reading shim.py.
-- **Adding a language is four things**, written in
-  docs/foreign-facade.md "Adding a language": (1) a library speaking
-  the transcript on a link (Rust's `okay` crate, 1 010 lines, is the
-  size); (2) a module type and the instances it gives; (3) its `ops`
-  stub writer; (4) `WireConformance`, `CrashConformance` and
-  `FacadeConformance` green for each instance it claims.
+// the cluster, as today, ONE body each (were: PyStage/RStage, PyReducer/RReducer, PyStreamer/RStreamer, PyModel/RModel):
+flow.mapIn[B](m / "scale")                          // Calls + Tables
+Reduce.in[A, Acc](m / "step", m / "merge")          // step(table, acc) + merge(a, b): call with a table and a value
+flow.statefulIn[B](m / "open", m / "step", m / "finish")   // Objects + Tables + Pool.lease; or one stream call where Streams[L]
+Model.in(m / "fit", params); flow.mapModel[B](model, m / "scale")  // Objects + Tables + Pool.perWorker
+Activity.foreign(rt, m / "score")                   // okay-foreign-workflow, unchanged in shape
+
+// stubs and facades from one declaration
+Language[Rust].ops("shop", Cbs(priceOf, discount))  // the typed ops a Rust program performs
+Language[Py].facade(m)                              // a Scala object from the module's describe
+```
+
+`Py`, `R`, `Ts` … keep existing as the language TAGS, and
+`okay.py.Py.fn`, `okay.r.R.fn`, `okay.py.Foreign.*` stay as aliases
+for one release, so nothing written against them breaks and the docs
+can still say "Python" — but they are the same code.
+
+## Today → the model: keep, fold, delete
+
+| today | in the model |
+|---|---|
+| `WireLink` (pipes, tcp, ffm, wasm), `WireFormat`/`WireCompression`/`WireAuth`/`WireSecurity`/`WireDeadline`/`FrameFormat` givens, `WireNegotiation`, gateway.py | **keep** — the transport layer is right; FFM/wasm gain parts |
+| `ForeignWorker` | **fold** → the engine of `WireRuntime[L]`; loses `Frame`/`Start`/`Resume`/`Hold`/`Method`/`Attr` |
+| `ForeignEval` (11 ops) | **fold** → `Foreign[L, +A]` (5 ops) |
+| `PyStep.Done/Ask` + `Node` | **fold** → one `Node` |
+| `PyValue`, `RValue`, `Wire` enc/dec, `Walk` | **fold** → one `Value` tree with the escapes; `Walk` stays (stack safety) |
+| `PyCodec`, `RCodec`, `Shape`, `ToPy` | **fold** → one `Codec` at a `Shape[L]`; `ToPy` → `Arg[L]` (it already took Schema values and refs) |
+| `okay.py.Condition`, `okay.r.Condition`, `Batcher.Failed` | **fold** → `Refused` |
+| `PyWorkers`, cluster `Pool`/`PyPool`/`RPool`, `Holds.pyWorkers`, `SupervisedWorker` | **fold** → one `Pool` (use, lease, route by ref, perWorker, supervise) |
+| `RSubprocess`, shim.R's own protocol | **delete** — R is a `Language[R]` on the engine; shim.R speaks the transcript |
+| `Py.*`, `R.*`, `Ts.*`, `Foreign.*` typed APIs | **fold** → `Runtime[L]` + the derived helpers; names kept as aliases |
+| `PyStream`/`RStream` (chunked stage) | **fold** → `flow.through(rt, address)` |
+| `PyEnv`, `REnv` | **keep** as `Language[L].env` |
+| `PyFacade`, `RFacade`, `Rs/Go/Hs/Ts.ops`, `Stubs` | **keep** as `Language[L].facade`/`.ops`; Frege/Clj gain `ops` (stage 7) |
+| `TsWorker`, `HaskellWorker`, `RustWorker`, `GoWorker`, `ForeignGateway` | **keep** as `Language[L].command`/`.build` |
+| facade `Calls`, `Frames`, `Programs`, `Holds`, `Methods`, `Speaks`, `Cb`, `Road` | **fold** → `Runtime[L]` methods + markers; `Cb` stays; `Speaks` → `runtime.speaks`; `Road` is `Arg`/`Ret` |
+| facade `Streams.viaFrames` | **fold** → `stream` where `Streams[L]` is absent and `Tables[L]` present |
+| `Engine[M]`, `Batcher` | **fold** → `call` with a table (`Batcher` stays as the cluster's chunk seam, built by `Stage`) |
+| `Reduces[M]`, `PyReducer`, `RReducer` | **fold** → `Reduce.in`, one body over `call(table, acc)` and `call(a, b)` |
+| `Stateful[M]`, `PyStreamer`, `RStreamer`, `Pool.lease` (feature/foreign-streams-holds) | **fold** → `statefulIn`, one body over `hold`/`call(table, ref)`/`lease`; or one `stream` call where `Streams[L]`; `lease` is the pool's |
+| `Models[M]`, `PyModel`, `RModel` | **fold** → `Model.in`/`mapModel`, one body over `Pool.perWorker(hold)` + `call(table, ref)` |
+| `JvmModule` | **keep** as `Module[Jvm]`'s registry; `Runtime.jvm` |
+| `okay.Foreign` walker, `View[P]`, `Member[F]`, `Push` | **keep** — `JvmRuntime` is the walker; `Push` is a stage driver, not a call |
+| `okay.frege.Ops`, `okay.clojure.Ops`, `okay.Operations` | **fold** → generated from the core effects' `Cbs` (stage 7); the names stay |
+| `Transducers`, `Gather`, `CoreAsync`, `Frege.list/chunks` | **keep, out of this model** — they are bridges of STREAM SHAPES (transducer ↔ stage, gatherer ↔ stage, core.async ↔ channel, lazy list ↔ Chunks), not calls into a language |
+| okay-rust kernels (`PasswordHash`, `Digest`), `NativeLib`, `WasmLib` | **keep** — a kernel is an effect of its own; the links are the model's FFM/wasm links |
+| okay-js `Direct`/`Emit` (Scala → JS source) | **keep, out of this model** — code generation, not a runtime |
+| `ForeignActivity`, `ForeignProc` | **keep** over `Runtime[L].call` |
+| `mapPy`, `mapR`, `Reduce.py`, `Reduce.r`, `Stateful.py/r`, `Models.py/r` | **delete** after their derived forms land — the language is the module's type |
+
+Module layout: `okay-foreign` (the model: `Value`, `Arg`/`Ret`,
+`Runtime`, `Module`, `Pool`, the wire engine, `Foreign[L]`, `Cb`, the
+transcript test) depending on okay-codec, okay-arrow and okay-stream;
+`okay-py`, `okay-r` shrink to their `Language[L]` (shim, `Shape`, env,
+describe); `okay-rust` keeps FFM/Chicory and its kernels; okay-frege
+and okay-clojure keep their `View`s; `okay-foreign-cluster` keeps the
+cluster combinators, each one body. `okay.py` stays as an alias
+package for one release. The engine's package stops being called
+`okay.py`, which it has not been about since foreign-names (2026-09-24).
 
 ## Behavior
 
-Stage 1 — one engine (foreign-one-r):
-- [ ] shim.R speaks the `ForeignWorker` protocol at `ShimVersion`; the
-      handshake refuses the old shim by name
-- [ ] every okay-r suite (75 live, the default-gate codec and journal
-      suites) is green unchanged over `ForeignWorker.speaking`; NA and
-      NULL are still distinct at every depth
-- [ ] `RWireConformance`'s four wires pass through `WireConformance`
-      itself, with R as a row of docs/one-language.md's table: gateway,
-      TCP, `WireAuth`, TLS, `CrashConformance` (SIGKILL) all green over R
-- [ ] `okay-r/src/main` shrinks by the engine, the codec and the value
-      enum (a line count in Results); `okay.r.R`'s public API is
-      unchanged (the doc snippets still pin)
-- [ ] R's timeout-respawn is `WireDeadline` + `supervised`, and
-      `TestRReplay` holds
+Held to by the three conformance bodies that already exist —
+`WireConformance` (links), `CrashConformance` (SIGKILL), `FacadeConformance`
+(capabilities) — plus the transcript. Every box names the body that
+holds it.
 
-Stage 2 — one wire, multiplexed (foreign-one-mux):
-- [ ] a far side announcing `mux` has two programs interleaved on one
-      worker, each answered correctly (Go, Rust, TypeScript, Haskell)
-- [ ] a far-side function with two asks outstanding is answered under
-      the caller's Reader for both (Go, Rust)
+The model:
+- [ ] one job text — a call with a value, a call with a table, a held
+      object passed to a call, a stream through, a program with two
+      callbacks resumed twice — compiles against `Runtime[L]` and runs
+      unchanged on `Py`, `R`, `Rust`, `Go`, `Hs`, `Ts` and `Jvm`,
+      changing only the runtime (FacadeConformance; the body is one
+      file, the subclasses name a runtime)
+- [ ] a thing a language cannot carry is a compile error at the call:
+      a `Table` argument to a runtime without `Tables[L]`, a `Method`
+      address without `Methods[L]`, a second continue without
+      `Programs.MultiShot[L]` (`compileErrors`)
+- [ ] `runtime.speaks` agrees with the hello and the conformance suite
+      fails when a claim and a test disagree in EITHER direction
+- [ ] the transcript replays against the fake far side (default gate)
+      and against every shim (live)
+
+The wire:
+- [ ] the five operations serve every case the eleven did: every
+      existing live suite of okay-py, okay-r, the Go/Rust/Hs/Ts suites
+      and okay-foreign-cluster is green on shim 7 with its test bodies
+      unchanged except for renamed constructors
+- [ ] a call with a table AND an object AND a value as arguments crosses
+      as one head and one part, and answers a table (Py with pyarrow,
+      Rust over FFM); the same call answers columnar JSON in the tree
+      where Arrow is not spoken, equal column for column
+- [ ] two programs interleaved on one `mux` worker, each answered
+      correctly; a far function with two `perform`s outstanding answered
+      under one Reader (Go, Rust, Ts)
 - [ ] a far-driven stream of 100 000 rows in chunks of 4 096 arrives in
-      order, and the far side never has more than `credit` chunks
-      unacknowledged — COUNTED on the far side (a shim counter read at
-      the end), not believed; a credit of 0 pauses it
-- [ ] a far side WITHOUT `mux` (R, Rust on wasm, a v-old shim) is served
-      exactly as today: the existing conformance suites green, and
-      `Speaks` says `stream: false`
-- [ ] `Durable` journals by id; a replay of a two-program interleaving
-      answers both from the journal; a missing id is `ReplayDrift`
-- [ ] `SupervisedWorker` recovers a killed worker with two programs
-      open: both replayed, every branch of a multi-shot back
-- [ ] in-process: `okay_poll` over FFM and wasm; the stream case green
-      over (Rust, FFM) and (Go, wasm)
-- [ ] the price: `WireCodecBench`'s small/medium/large messages on the
-      mux reader within noise of the sequential reader (a reader
-      thread that costs a hop per message is a defect; measured before
-      and after, alternating)
+      order, the far side never more than `credit` chunks ahead — COUNTED
+      on the far side, a credit of 0 pausing it; a host-driven stream the
+      same in the other direction; a full-duplex transform (a dedup) both
+      at once
+- [ ] a far side without `mux` is served byte for byte as today (the
+      existing suites, unchanged)
+- [ ] `Durable` journals by `(id, seq)`: a replay of an interleaving
+      answers both programs from the journal; a killed `mux` worker with
+      two programs open is replayed, every multi-shot branch back
+- [ ] price: the mux reader within noise of today's sequential exchange
+      on `WireCodecBench`'s three messages, measured alternating
 
-Stage 3 — bulk on every side (foreign-one-bulk):
-- [ ] `frame` served by Rust, Haskell and Go; `Frames[RustModule]`,
-      `Frames[HsModule]`, `Frames[GoModule]` pass `FacadeConformance.frames`
-- [ ] FFM: a 1M-row `Table` through a Rust `frame` function with NO copy
-      of its buffers — held by an allocation count (the JVM's Arrow
-      allocator's bytes allocated before and after), not by time alone
-- [ ] the measurement table below has a number in every cell a language
-      claims; a cell worse than the language's own road is a defect
+The pool:
+- [ ] `use`, `lease`, route-by-ref, `perWorker`, supervision are one
+      class; `Programs.run`, `statefulIn`, `Model.in`, `hold` are its
+      callers; a leased worker whose partition fails for ANY reason
+      (a far raise, a downstream that stops pulling) is released — the
+      leak found on feature/foreign-streams-holds is the test
+- [ ] a ref names its worker; a stale ref (its generation gone) is
+      refused by name, never re-pointed
 
-Stage 4 — one effect declaration (foreign-one-ops):
-- [ ] `Frege.ops` and `Clj.ops` write the bindings for a `Cb` set; the
-      shipped `okay.frege.Ops` and `okay.core` are regenerated from the
-      core effects' declaration and the diff is empty
-- [ ] a Frege program performing a generated typed operation runs under
-      the Scala caller's Reader; a wrong argument type is a Frege TYPE
-      error (as hs-typed-effects holds for GHC)
-- [ ] the same for Clojure (a runtime refusal by name — Clojure has no
-      static types to refuse with, said so)
+The JVM runtime:
+- [ ] `Runtime.jvm` passes FacadeConformance by reference (identity
+      holds for a Table and an object); Clojure and Frege programs run
+      through `program` as data, multi-shot (their `View`s; the tests of
+      okay-clojure/okay-frege unchanged)
 
-Stage 5 — the facade filled (foreign-one-modules):
-- [ ] `TsModule`, `HsModule`, `GoModule`, `RustModule`, `CljModule`,
-      `FregeModule` with their instances; `FacadeConformance` green for
-      every instance each claims; a claimed-but-absent instance fails
-      `summon` under `compileErrors`
-- [ ] the golden transcript replays against a fake far side in the
-      default gate and against every shim in its live suite
+The languages:
+- [ ] `Language[L]` for every L: command/build, Shape, ops, facade, env;
+      Frege and Clojure `ops` generated from the core effects' `Cbs`,
+      the shipped `okay.frege.Ops`/`okay.core` regenerated with an
+      empty diff
+- [ ] the frame road in Rust, Haskell, Go; FFM tables as Arrow C Data
+      with NO buffer copy (held by the Arrow allocator's byte count)
 - [ ] docs/foreign-facade.md "Adding a language" is the four-step
-      checklist, with the transcript named, pinned by the snippet check
+      checklist against the transcript
 
-## Measurements — language × tier × link (to fill)
+Measured, in Results, before it is claimed:
+- [ ] the table below has a number in every cell a language claims, and
+      a cell worse than that language's own road before the model is a
+      defect
 
-Extends specs/foreign-facade.md's table with the rows and links this
-spec adds. Medians, load and sha in Results, per the `performance` skill.
+## Measurements — language × thing × link (to fill)
 
-| language | link | tier 1 value | tier 2 frame | tier 3 stream (far-driven) | async: two asks open | instrument |
-|---|---|---|---|---|---|---|
-| R | pipes (`ForeignWorker`) | — | 100 000 rows columnar JSON 180 ms today (MeasureRFrame); Arrow: to measure | viaFrames only (mux: false) | no (single-threaded) | MeasureRFrame, MeasureFacade |
-| Rust | FFM, C Data | — | to measure, zero copy | to measure | to measure | MeasureFacade |
-| Rust | pipes/TCP | — | to measure | to measure | to measure | MeasureFacade |
-| Go | pipes/TCP/wasm | — | to measure | to measure | to measure | MeasureFacade |
-| Haskell | pipes | — | to measure | to measure | to measure | MeasureFacade |
-| TypeScript | pipes | — | serves `frame` today | to measure | to measure | MeasureFacade |
-| Clojure, Frege | in-JVM | 1 µs (JvmModule today) | by reference | by reference | n/a | MeasureFacade |
-
-## Out of scope
-
-- A cross-language call that does not pass through Scala (Python
-  calling R): every hop goes through the facade (foreign-facade).
-- Python's own asyncio in the shim: Python announces `mux: false`
-  until somebody measures that a threaded shim beats a pool of
-  processes under the GIL (specs/py.md's original argument).
-- mTLS, a WebSocket transport, an authenticated in-process link: the
-  links stay what polyglot-one-wire made them.
-- okay-foreign-cluster's per-partition `Holds`/`Streams` and the
-  foreign REDUCE (lanes foreign-streams-holds and foreign-reduce, in
-  progress the day this spec was written): they build on the facade
-  and take stage 2's far-driven stream when it exists; nothing here
-  changes their interface.
+| language | link | value | table | object (hold + call) | stream (far-driven) | program step | instrument |
+|---|---|---|---|---|---|---|---|
+| Jvm | in-JVM | 1 µs today | by reference | by reference | by reference | 0.27 µs (Frege) | MeasureFacade, PriceInterop |
+| Py | pipes | 0.130 ms today | 100 000 rows 176 ms JSON, ~95 ms Arrow | to measure | viaFrames only until the shim says `stream` | to measure | MeasureFacade, MeasurePyArrow |
+| R | pipes | to measure on the one engine | 180 ms JSON today | to measure | viaFrames (mux: false) | to measure | MeasureRFrame |
+| Rust | FFM, C Data | to measure | to measure, zero copy | to measure | to measure | to measure | MeasureFacade |
+| Rust, Go | pipes / TCP | to measure | to measure | to measure | to measure | to measure | MeasureFacade |
+| Ts, Hs | pipes | to measure | to measure | to measure | to measure | to measure | MeasureFacade |
 
 ## Stages
 
-- [x] Stage 0 — this spec, on the boards (foreign-one, 2026-09-25).
-- [ ] Stage 1 — foreign-one-r: R onto `ForeignWorker`.
-- [ ] Stage 2 — foreign-one-mux: the multiplexed wire with credits,
-      journal by id, `okay_poll` in process. Go and Rust first (they
-      have threads and are the reference far sides), then TypeScript
-      and Haskell.
-- [ ] Stage 3 — foreign-one-bulk: `frame` in Rust/Haskell/Go
-      (subsumes foreign-frame-op-rust-hs-go), Arrow C Data over FFM,
-      the table filled.
-- [ ] Stage 4 — foreign-one-ops: one effect declaration, JVM stubs
-      generated.
-- [ ] Stage 5 — foreign-one-modules: the module types, the transcript,
-      the checklist.
+Each stage lands alone, keeps every existing suite green, and DELETES
+more than it adds (the line count of what it removed goes in Results).
 
-Order: 1 is a pure deletion with no design risk and unblocks R for
-everything after; 3's `frame` half and 5's module types are mechanical
-and can run beside 2; 2 is the one protocol change and is spec-gated —
-its Decisions are written here BEFORE the Go reference lands; 3's C
-Data half follows 2 so streams of frames go on the zero-copy road from
-the first; 4 last, since it only moves a declaration.
+- [x] Stage 0 — this spec (foreign-one, 2026-09-25; rewritten as the
+      model by foreign-one-model, 2026-09-26).
+- [ ] Stage 1 — **foreign-one-r**: R onto the engine. shim.R speaks
+      the wire; `RSubprocess`, `RValue`, `RCodec` deleted; `okay.r.R` an
+      alias facade. Unblocks every later stage for R and removes the
+      second copy of everything.
+- [ ] Stage 2 — **foreign-one-protocol**: the five operations and
+      parts (shim 7 in every shim; `held`, `Address`, `perform` as the one
+      callback message, tables as parts); the transcript written and
+      replayed; `Foreign[L, +A]`; `Refused`; `Value`.
+- [ ] Stage 3 — **foreign-one-pool**: one `Pool` (use, lease, route by
+      ref, perWorker, supervise); `PyWorkers`, the cluster pools,
+      `Holds.pyWorkers`, `SupervisedWorker` folded; the lease-leak test.
+- [ ] Stage 4 — **foreign-one-runtime**: `Runtime[L]`, `Module[L]`,
+      `Arg`/`Ret`, the markers, `Language[L]`; the facade's typeclasses
+      and the cluster's per-language stages become the derived
+      combinators (one body each); `okay-foreign` as the module,
+      `okay.py` an alias. Subsumes the earlier foreign-one-modules.
+- [ ] Stage 5 — **foreign-one-mux**: `id` matched by a reader; streams
+      both ways under credit; `okay_poll`; journal by `(id, seq)`. Go and
+      Rust first, then Ts and Hs; Python's shim may follow if a threaded
+      shim is measured to beat a pool under the GIL.
+- [ ] Stage 6 — **foreign-one-bulk**: the frame road in Rust, Hs, Go
+      (subsumes foreign-frame-op-rust-hs-go); `Objects` in their
+      libraries; Arrow C Data over FFM; the table filled.
+- [ ] Stage 7 — **foreign-one-ops**: `Language[L].ops` for Frege and
+      Clojure from the core effects' `Cbs`; the hand-written `Ops`
+      become generated output.
+- [ ] Stage 8 — **foreign-one-docs**: one entry page, "Foreign
+      languages", with the five things, the two runtimes, the markers,
+      one program in every language and the same Scala over every
+      runtime; the existing pages become its per-language chapters;
+      every Scala line pinned.
+
+Order: 1 first (pure deletion; everything after has one engine to
+change); 2 and 3 are the protocol and the pool, each a mechanical
+collapse with the existing suites as the net; 4 is where the caller's
+API becomes one and the cluster combinators lose their per-language
+bodies — it waits for foreign-reduce and foreign-streams-holds to land,
+and changes their implementation, not their API; 5 is the one NEW
+capability and is spec-gated by the Decisions below; 6 after 5 so
+streams of tables take the zero-copy road from the first; 7 and 8 close.
+
+## Out of scope
+
+- A cross-language call that does not pass through Scala.
+- mTLS, WebSocket, an authenticated in-process link.
+- The stream-shape bridges (transducers, gatherers, core.async, lazy
+  lists) — closed arcs of their own, not calls.
+- GraalPy/Jython as a JVM Python (backlog py-graalpy-engine): a
+  `JvmRuntime` with a `View` over Python generators, if ever; nothing
+  here prevents it and nothing here needs it.
 
 ## Decisions
 
-1. **One engine, and the second one is deleted, not bridged.** A
-   bridge (`RSubprocess` implementing `WireLink`) would keep the
-   codec and value enum duplicated, which is where the R-only defects
-   have lived (the `toInt` truncation, the 15-digit doubles). The
-   deletion is the point.
-2. **Multiplexing by id, not a second connection per stream.** A
-   second socket per stream is how Arrow Flight and gRPC do it, and
-   it does not exist on pipes, FFM or wasm; ids exist on every link
-   already. One reader per link is the price, and stage 2's last box
-   measures it.
-3. **Credits, not acks.** An ack per chunk is a round trip per chunk —
-   the pull road we have, renamed. A credit lets the far side run
-   ahead by a bounded amount and the host set that bound per stream
-   (the frame is still the memory bound on both sides).
-4. **`mux` is a claim in the hello, and the old shape stays a first-
-   class road.** A far side that says nothing is the strict nested
-   dialogue of today, byte for byte: nothing written against it
-   changes, and R is not a special case, it is a far side with
-   `mux: false`.
-5. **The journal keys by id because the wire does.** The alternative —
-   serialising the multiplexed dialogue into one path for `Durable` —
-   would need a deterministic interleaving the far side does not
-   promise. A map from id to answers is what actually happened.
-6. **C Data, not IPC, in process** — and only in process. The C Data
-   Interface is a pointer handoff, which is what FFM is; over a pipe
-   or a socket the bytes have to be written anyway, and IPC is the
-   right serialisation of the same buffers.
-7. **Decision 7 of foreign-facade narrows to `JvmModule`.** A Scala
-   function has nothing to walk; a Clojure `(step op k)` or a Frege
-   `Step op k` does, and `okay.Foreign` already walks it — so
-   `Programs[CljModule]` is a real instance whose `run` is the walker,
-   not a wire in disguise.
-8. **The transcript is the protocol's specification, the shims are its
-   implementations.** Until now the Python shim was the reference by
-   being first; a new language had to read it. A transcript is
-   replayable, so a shim's conformance to it is a test, not a reading.
+1. **Four things and a program, not tiers per call.** The facade's
+   tiers were the right idea one level too high: a call has arguments
+   and an answer, and EACH is a value, a table, an object or a stream.
+   `frame`, `hold`, `method`, `attr` were calls with a particular
+   argument or answer; naming them separately made eleven operations of
+   five and a typeclass of each.
+2. **Capabilities are markers on a language tag, not instances with
+   bodies.** foreign-facade's typeclasses had a body per language
+   because there were three engines. With one wire engine and one JVM
+   walker the body exists twice at most, and what differs per language
+   is a CLAIM — which is what a marker is. The compile error the facade
+   promised is kept exactly.
+3. **One program protocol; one-shot is a claim, not a second protocol.**
+   `start`/`ask`/`resume` and `program`/`perform`/`continue` carried
+   the same three messages. The far side that cannot continue twice
+   says so in the hello and refuses the second continue by name; the
+   host has one loop and `Durable` one journal.
+4. **A message is a head and parts.** One Arrow stream with the head
+   in its metadata (py-arrow) carried one table. Parts carry any number
+   of tables and stream chunks, on framed wires and in process alike,
+   and leave the tree's shape untouched for a far side without Arrow.
+5. **Credits, symmetric, on the existing ids** — not a connection per
+   stream (Arrow Flight, gRPC), which pipes, FFM and wasm do not have,
+   and not an ack per chunk, which is the pull road renamed. The
+   receiver grants, the sender runs ahead by a bound, the frame is the
+   memory bound on both sides.
+6. **One pool, and refs name their worker.** Three pools existed
+   because three things needed an interpreter for longer than one
+   exchange (a dialogue, a partition, a held object). A `lease` is that
+   one thing; routing by a generation-tagged ref is what
+   `SupervisedWorker` already did for continuations. `perWorker` is
+   `Models`' WeakHashMap made the pool's.
+7. **R is deleted into the engine, not bridged.** A bridge would keep
+   `RValue`/`RCodec`, where R's own defects lived (`toInt`, 15 digits).
+8. **The JVM runtime is the walker, and it IS a `Runtime[L]`.** If
+   Clojure and Frege could not pass FacadeConformance by reference
+   through the same interface, the interface would be a wire in
+   disguise (foreign-facade Decision 4, kept). foreign-facade's
+   Decision 7 (no JVM `Programs`) narrows to the Scala-function module:
+   a Clojure `(step op k)` is walkable and is a program.
+9. **The transcript is the specification.** A shim's conformance is a
+   replay, not a reading of shim.py.
+10. **Stream-shape bridges stay outside.** A transducer is not a call
+    into Clojure; it is the same stage in another notation. Putting it
+    under `Runtime[L]` would make the model say something false.
+11. **What is "a little more for convenience"** is exactly the derived
+    layer: `fn`, `holding`, `through`, `mapIn`, `Reduce.in`,
+    `statefulIn`, `Model.in`, `Activity.foreign`, `ops`, `facade` —
+    each a few lines over the five methods, each written once for every
+    language, each removable without touching the model.
 
 ## Results
 
-(none yet — stage 0 is the spec)
+(none yet — stage 0 is the spec; the first cut's gap list of 2026-09-25
+is subsumed by the model above)

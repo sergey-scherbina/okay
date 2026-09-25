@@ -26,6 +26,18 @@ unchanged: the Python or R code ships as an inline module
 (`Foreign.module`, `R.module`) inside the job's own source, so a worker
 that can run the job can start its interpreter.
 
+> **Where this goes next (foreign-one-model, 2026-09-26).** `Engine`,
+> `Reduces` and stage 4's `Stateful`/`Models` are, in specs/foreign-one.md,
+> DERIVED combinators over one `Runtime[L]`: a map is a call with a
+> table, a reduce step a call with a table and a value, a model a held
+> object materialised per worker (`Pool.perWorker`) and passed to a call,
+> a stateful stage a leased worker — or one full-duplex stream call where
+> the language drives streams. `mapIn`, `Reduce.in`, `statefulIn`,
+> `Model.in` keep their signatures; `PyStage`/`RStage`, `PyReducer`/
+> `RReducer`, `PyStreamer`/`RStreamer`, `PyModel`/`RModel` become one body
+> each in its stage 4 (backlog foreign-one-runtime), after this spec's
+> lanes land.
+
 ## Interface
 
 A new JVM module, `okay-foreign-cluster` (package `okay.cluster.foreign`),

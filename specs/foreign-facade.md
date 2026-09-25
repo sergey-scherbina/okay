@@ -38,6 +38,17 @@ road that language has for the data's SHAPE, and a language that lacks a
 road degrades to the one below by a rule — never by a surprise, never
 silently to a slower road than its best.
 
+> **Where this goes next (foreign-one-model, 2026-09-26).** The SHAPE of
+> this facade — a capability per typeclass, tiers by the data, `Schema`
+> and `Table` as the vocabulary, the JVM zero-cost tier as the test — is
+> kept by specs/foreign-one.md, which derives the one model under it:
+> the tier becomes per ARGUMENT (a value, a table, an object, a stream),
+> the typeclasses become compile-time markers on a language tag
+> (`Tables[L]`, `Objects[L]`, …) over ONE engine, and `Speaks` becomes
+> `runtime.speaks`. Its stage 4 (backlog foreign-one-runtime) is where
+> the instances below lose their per-language bodies; the API a job is
+> written against does not change.
+
 ## Interface
 
 ### One typeclass per capability, by the module's type
@@ -304,7 +315,7 @@ with its date, load and sha (the `performance` skill).
    to hold a continuation and nothing to cross, so `Programs[JvmModule]`
    would be a wire in disguise — the compile error is the honest
    answer, and the zero-cost tier for programs is calling the function.
-   NARROWED to `JvmModule` by specs/foreign-one.md (Decision 7, stage 5,
+   NARROWED to `JvmModule` by specs/foreign-one.md (Decision 8, stage 4,
    proposed 2026-09-25): a Clojure or Frege program as data IS walkable
    (`okay.Foreign`), so `Programs[CljModule]`/`[FregeModule]` are real
    instances; only the Scala-function module has nothing to cross.
