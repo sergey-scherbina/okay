@@ -123,6 +123,12 @@ revenue(using okay.localBulk)     // one JVM, the same answer
 
 ## Gotchas
 
+- `SparkSchema` refuses a type nested deeper than
+  `SparkSchema.MaxNesting` (64 levels) with an `IllegalArgumentException`,
+  checked before any conversion starts. That is Arrow's own limit (C++
+  `kMaxNestingDepth`), the one okay-arrow keeps. It lets every walk over a
+  type recurse without risking the stack. A recursive type is not
+  affected: `Columns` folds it into a `json` column first.
 - Spark publishes for Scala 2.13 only — the dependency is
   `.cross(CrossVersion.for3Use2_13)`; implicit conversions from the
   Scala 2 API (e.g. `rddToPairRDDFunctions`) must be applied

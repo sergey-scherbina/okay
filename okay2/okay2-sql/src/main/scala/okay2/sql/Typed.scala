@@ -232,7 +232,22 @@ object Typed {
   }
 
   /** a field type that reads a column type */
-  private def fits(field: SqlType, col: SqlType): Boolean = (field, col) match {
+  private[sql] def fits(field: SqlType, col: SqlType): Boolean = {
+    // an AND over pairs of nodes, and both trees nest as deep as a type
+    // does: a worklist, not a frame per level (stack-safety-catch-up-okay2)
+    val todo = new java.util.ArrayDeque[(SqlType, SqlType)]()
+    todo.push((field, col))
+    var ok = true
+    while (ok && !todo.isEmpty) {
+      val (f, c) = todo.pop()
+      ok = fitsHere(f, c, todo)
+    }
+    ok
+  }
+
+  /** whether this pair fits, the pairs below it left on `todo` */
+  private def fitsHere(field: SqlType, col: SqlType,
+                       todo: java.util.ArrayDeque[(SqlType, SqlType)]): Boolean = (field, col) match {
     case (SqlType.I64, SqlType.I32) => true
     case (SqlType.F64, SqlType.Num) => true
     case (SqlType.Text, SqlType.Num) => true
@@ -240,8 +255,9 @@ object Typed {
     case (SqlType.Text, SqlType.Other(_)) => true
     case (SqlType.Text, SqlType.Timestamp | SqlType.Date | SqlType.Time | SqlType.Uuid | SqlType.Json) => true
     case (SqlType.Arr(_), SqlType.Arr(SqlType.Other(_))) => true
-    case (SqlType.Arr(f), SqlType.Arr(c)) => fits(f, c)
-    case (SqlType.Row(fs), SqlType.Row(cs)) => fs.length == cs.length && fs.zip(cs).forall { case (a, b) => fits(a, b) }
+    case (SqlType.Arr(f), SqlType.Arr(c)) => todo.push((f, c)); true
+    case (SqlType.Row(fs), SqlType.Row(cs)) =>
+      fs.length == cs.length && { fs.lazyZip(cs).foreach((f, c) => todo.push((f, c))); true }
     case _ => field == col
   }
 

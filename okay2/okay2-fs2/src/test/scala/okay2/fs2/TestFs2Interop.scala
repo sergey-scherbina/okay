@@ -49,5 +49,18 @@ class TestFs2Interop extends munit.FunSuite {
     val p: Unit ! Writer[Int] = (1 to n).foldLeft(pure[Writer[Int], Unit](()))((m, i) => m.flatMap(_ => Writer.tell(i)))
     assertEquals(toFs2[_root_.fs2.Pure, Int, Unit, Pure](p).fold(0L)(_ + _).toList, List(n.toLong * (n + 1) / 2))
   }
+  test("stack safety: 200 000 other operations before a tell, each an IO the stream runs") {
+    // the path the tells above never take: `again` from inside the
+    // stream's flatMap, which fs2 runs on its own trampoline
+    // (stack-safety-catch-up-okay2)
+    type Row = Writer[Int] + Produce
+    implicit val produceIO: Into[Produce, IO] = new Into.Of[Produce, IO] {
+      def apply[X](e: Produce.Emit[X]): IO[X] = IO.pure(e.a)
+    }
+    val n = 200000
+    val p: Unit ! Row = (1 to n).foldLeft(pure[Row, Int](0))((m, _) => m.flatMap(x => produce(x + 1).at[Row]))
+      .flatMap(x => Writer.tell(x).at[Row])
+    assertEquals(toFs2[IO, Int, Unit, Produce](p).compile.toList.unsafeRunSync(), List(n))
+  }
   // fromFs2 is scoped now: TestFs2Scoped
 }

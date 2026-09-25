@@ -254,7 +254,7 @@ deleted.
         `javaOf` per level of a value the program built; r2dbc's `valueOf`
         per dimension of a driver array. Left in stage 4: okay-py and
         okay-r (4b).
-      - [ ] The stage-9 catch-up rows of the same modules, in both cores
+      - [x] The stage-9 catch-up rows of the same modules, in both cores
         (stack-safety-catch-up-okay2, 2026-09-25). Each gets a depth test
         first, red on the recursion:
         - `JdbcSql.valueOf`/`arrayOf` walk a driver's nested arrays, and
@@ -271,6 +271,14 @@ deleted.
           `++`/`flatMap`, so they are TRAMPOLINED. A test drives a
           million non-Writer operations through each, the path the
           million-tells tests never took.
+        - RESULT. Red first in the okay core: TestJdbcDepth and
+          TestTypedDepth overflowed at 200 000 levels, and TestSparkDepth
+          saw a 65-level type go through. In okay2 the same tests ran
+          against a mutant that put `fits`'s recursive call back, and it
+          overflowed. 14 rows were paid, 8 were marked BOUNDED (the
+          Spark walks under their new names) and 2 TRAMPOLINED (the
+          `again`s, 200 000 operations each through fs2 and ZIO). No
+          UNAUDITED row is left in okay2.
 - [ ] Stage 5 — workflow: `Proc.go`/`nodes`, `Wf.go`, recursing per
       `Then` of a composed arrow.
 - [ ] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js.

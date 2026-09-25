@@ -82,5 +82,18 @@ class TestZioInterop extends munit.FunSuite {
     val s = toZStream[Any, Nothing, Int, Unit, Pure](p)
     assertEquals(run(s.runFold(0L)(_ + _)), n.toLong * (n + 1) / 2)
   }
+  test("stack safety: 200 000 other operations before a tell, each a ZIO the stream runs") {
+    // the path the tells above never take: `again` from inside ZIO's
+    // flatMap, which the ZIO runtime runs on its own trampoline
+    // (stack-safety-catch-up-okay2)
+    type Row = Writer[Int] + Produce
+    val into: IntoZ[Produce, Any, Nothing] = new IntoZ.Of[Produce, Any, Nothing] {
+      def apply[X](e: Produce.Emit[X]): ZIO[Any, Nothing, X] = ZIO.succeed(e.a)
+    }
+    val n = 200000
+    val p: Unit ! Row = (1 to n).foldLeft(pure[Row, Int](0))((m, _) => m.flatMap(x => produce(x + 1).at[Row]))
+      .flatMap(x => Writer.tell(x).at[Row])
+    assertEquals(run(toZStream[Any, Nothing, Int, Unit, Produce](p)(into, implicitly).runCollect).toList, List(n))
+  }
   // fromZStream is scoped now: TestZioAsync
 }
