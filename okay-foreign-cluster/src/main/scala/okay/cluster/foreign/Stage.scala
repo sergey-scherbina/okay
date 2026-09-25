@@ -52,17 +52,24 @@ object Stage:
       Chunks.mapWith(Chunks.rechunk(c)(batch))(chunk => one(batcher, chunk, attempts)))
 
   private def one[A, B](b: Batcher[A, B], chunk: Chunk[A], attempts: Int): Chunk[B] =
-    val rows = chunk.toVector
-    @tailrec def go(left: Int): Vector[B] =
-      b(rows) match
-        case Right(out) => out
-        case Left(f) if Batcher.transient(f.kind) =>
+    ArraySeq.untagged.from(Attempts.run(b.name, attempts)(b(chunk.toVector)))
+
+/** the two failure roads, shared by the map stage and the reduce: a
+ * transient failure retried `attempts` times, then an ordinary error (a
+ * dead worker to the coordinator); any other failure a `Cluster.Refused`
+ * naming the stage (the worker's considered answer, not retried) */
+object Attempts:
+  def run[X](name: String, attempts: Int)(f: => Either[Batcher.Failed, X]): X =
+    @tailrec def go(left: Int): X =
+      f match
+        case Right(x) => x
+        case Left(fl) if Batcher.transient(fl.kind) =>
           if left > 1 then go(left - 1)
           else throw IllegalStateException(
-            s"the stage '${b.name}' could not reach its interpreter in $attempts attempts (${f.kind}: ${f.message})")
-        case Left(f) =>
-          throw Cluster.Refused(s"the stage '${b.name}' failed a chunk of ${rows.length} rows: ${f.kind}: ${f.message}")
-    ArraySeq.untagged.from(go(attempts))
+            s"the stage '$name' could not reach its interpreter in $attempts attempts (${fl.kind}: ${fl.message})")
+        case Left(fl) =>
+          throw Cluster.Refused(s"the stage '$name' failed: ${fl.kind}: ${fl.message}")
+    go(attempts)
 
 /**
  * A POOL of interpreters for one stage on one worker JVM: `size` at

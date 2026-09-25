@@ -14,6 +14,8 @@ JVM's `Wire`; okay-cluster learns nothing.
 |---|---|
 | `flow.mapPy[B](module, fn, python, batch, workers)` | the map in Python: `fn` in an inline `PyModule` takes the frame (a dict of lists, or the `pyarrow.Table` under `@okay.arrow`) and answers `B`'s columns |
 | `flow.mapR[B](module, fn, rscript, batch, workers)` | the same in R: a `data.frame` in, a `data.frame` out |
+| `Reduce.py[A, Acc](module, step, merge, …)` / `Reduce.r` | the reduce in Python or R: `step(frame, acc)` folds one chunk (answers one row as columns), `merge(a, b)` folds two partials on the coordinator; a `Wire[A, Option[Acc]]`, `None` for no rows |
+| `Reduce.through(reducer, batch, attempts)` | any `Reducer[A, Acc]` |
 | `flow.through(batcher, batch, attempts)` | any `Batcher[A, B]` — `PyStage`, `RStage`, or one of your own (a test's fake) |
 | `Batcher` | `name` and `apply(Vector[A]) => Either[Failed, Vector[B]]`; `Batcher.transient` names the failure kinds that are the wire's and are retried |
 | `Pool` / `Pools` | interpreters per worker JVM: `workers` at most, opened on demand, shared by every partition and every job naming the same module; closed when the JVM exits |
@@ -51,9 +53,8 @@ object Scaling:
 - A row type that is not a flat case class is refused when the stage is
   built, not on a worker at the first chunk.
 
-Not here: the reduce in the foreign language (`foreign-reduce`), and
-Rust, Haskell, Go, whose shims do not serve the `frame` op yet
-(`foreign-frame-op-rust-hs-go`). Clojure and Frege need nothing — they
+Not here: Rust, Haskell, Go, whose shims do not serve the `frame` op
+yet (`foreign-frame-op-rust-hs-go`). Clojure and Frege need nothing — they
 run inside the JVM, so their map is `flow.map(f)`.
 
 The whole story: [okay-cluster, "The map in Python or R"](okay-cluster.md#the-map-in-python-or-r).

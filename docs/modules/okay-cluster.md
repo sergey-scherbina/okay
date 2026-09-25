@@ -552,6 +552,34 @@ then recomputed on a survivor as any partition is. A row type that is
 not a flat case class is refused when the stage is built, not on a
 worker at the first chunk.
 
+The REDUCE can run there too (foreign-reduce): an `Aggregator`'s two
+functions, a `step` over a chunk and a `merge` of two partials, answered
+by the interpreter. The accumulator is a flat case class; a partition
+hands `step` its chunk as one frame with the running accumulator beside
+it, and the coordinator folds partials through `merge`:
+
+```scala
+    def step(frame, acc):
+        vs = frame["v"]
+        n = len(vs) + (acc["n"] if acc else 0)
+        s = sum(vs) + (acc["sum"] if acc else 0)
+        m = max(vs + ([acc["max"]] if acc else []))
+        return {"n": [n], "sum": [s], "max": [m]}
+
+    def merge(a, b):
+        return {"n": a["n"] + b["n"], "sum": a["sum"] + b["sum"], "max": max(a["max"], b["max"])}
+```
+
+```scala
+    def sink(p: Scale): Wire[Rec, Option[Stat]] = Reduce.py[Rec, Stat](Stats.mod, "step", "merge", python)
+```
+
+`step` answers ONE ROW AS COLUMNS — a frame function answers a frame —
+and `merge` two dicts of fields into one, since a call answers a value;
+in R `step` answers a one-row `data.frame` and `merge` a named list. The
+answer is `None` for a run that saw no rows. The map and the reduce of
+one module share one pool of interpreters.
+
 Rust, Haskell and Go do not take a stage yet: their shims serve calls,
 not the `frame` op (`foreign-frame-op-rust-hs-go`). Clojure and Frege
 need none — they run inside the JVM, so their map is `flow.map(f)`.
@@ -572,6 +600,8 @@ need none — they run inside the JVM, so their map is `flow.map(f)`.
 | `Flow.map/filter` | `(A => B) / (A => Boolean) => Flow[…]` | per-partition, held as a `Chunks` transformer |
 | `Flow.mapPy` | `(PyModule, fn, python, batch, workers)(using Schema[A], Schema[B]) => Flow[B]` | the map in Python, a chunk per frame; okay-foreign-cluster |
 | `Flow.mapR` | `(RModule, fn, rscript, batch, workers)(using Schema[A], Schema[B]) => Flow[B]` | the same in R |
+| `Reduce.py` / `Reduce.r` | `(module, step, merge, …)(using Schema[A], Schema[Acc]) => Wire[A, Option[Acc]]` | the reduce in Python or R: `step(frame, acc)` per chunk, `merge(a, b)` on the coordinator |
+| `Reduce.through` | `(Reducer[A, Acc], batch, attempts) => Wire[A, Option[Acc]]` | any reducer |
 | `Flow.through` | `(Batcher[A, B], batch, attempts) => Flow[B]` | any batcher — `PyStage`, `RStage`, or one of your own |
 | `Batcher` | `name`, `apply(Vector[A]) => Either[Failed, Vector[B]]` | a batch of rows through something outside the JVM; `Batcher.transient` names the kinds that are retried |
 | `Flow.keyBy` | `(A => K, Finish)(Aggregator[A, Acc, O]) => Flow[(K, O)]` | a keyed aggregation |

@@ -186,17 +186,17 @@ THE CONTRACT ON THE FAR SIDE, shaped by what each op already answers:
   module and interpreter (`PyPool.of`, `RPool.of`), so a job whose map
   and reduce are in one module costs one set of processes.
 
-- [ ] A job whose reduce is `Reduce.through(fake)` computes, through
+- [x] A job whose reduce is `Reduce.through(fake)` computes, through
       `Cluster.run` over 1 and 3 in-process workers, exactly what the
       fan computes and what the JVM computes directly (count, sum, max).
-- [ ] An empty input answers `None`; a partition shorter than `batch`
+- [x] An empty input answers `None`; a partition shorter than `batch`
       still folds; the fake sees `batch`-row chunks and `None` as the
       first `acc` of every partition; `merge` runs `partitions - 1`
       times on the coordinator.
-- [ ] The function's failure is a `Cluster.Refused` naming the reducer;
+- [x] The function's failure is a `Cluster.Refused` naming the reducer;
       a wire failure that heals is invisible to the coordinator.
-- [ ] The same over a REAL python3: `step`/`merge` in Python (Live).
-- [ ] The same over a REAL R (Live, in the r-arrow-verify container).
+- [x] The same over a REAL python3: `step`/`merge` in Python (Live).
+- [x] The same over a REAL R (Live, in the r-arrow-verify container).
 
 ## Results
 
@@ -225,3 +225,24 @@ okay-cluster changed.
   than as a subclass; and `RSubprocess` has no `alive`, so `RStage`
   reports a death from the exception (`DEAD` in its message) and the pool
   replaces the session on that.
+
+Stage 2 (foreign-reduce, 2026-09-25). `Reducer`, `ForeignWire`,
+`Reduce.through/py/r`, `PyReducer`, `RReducer`; `PyPool`/`RPool` factored
+out of the stages so a module's map and reduce share one pool of
+interpreters; `Attempts.run` is the two failure roads, shared.
+- `TestForeignReduce` (5, default gate): the fan, `Cluster.run` over 1
+  and 3 workers and the JVM agree on count/sum/max; no rows answers
+  `None` and 7 rows fold; the fake sees 1000, 1000, 500 per 2500-row
+  partition with `None` first on each of the four, and `merge` runs 3
+  times; a function failure is a `Cluster.Refused` naming the reducer; a
+  reducer that dies once heals with `retried == 0`.
+- `TestPyReduce` (2, Live, run here): 20 000 rows, 4 partitions, 3
+  workers, `step`/`merge` in python3, the JVM's answer to the row; a
+  `ValueError` in `step` names `py:stats:boom/merge`.
+- `TestRReduce` (1, Live, run here in the r-arrow-verify container):
+  the same in R, 5 000 rows over 2 workers.
+- Decided while writing: `peek` IS `finish` for this wire — what is
+  folded so far leaves and the partition restarts from `None`, which a
+  merge that is associative makes exact; and a partial that is not
+  exactly one row is the FUNCTION's failure (`ReduceShape`), since the
+  contract says one row and a wrong count is the code, not the wire.
