@@ -17,6 +17,10 @@ import org.apache.spark.sql.SparkSession
  */
 class TestSparkBulk extends munit.FunSuite {
 
+  // see TestSparkInterop's own comment: Spark's local[2] bring-up can
+  // exceed munit's 30s default on a shared box.
+  override def munitTimeout: scala.concurrent.duration.Duration = scala.concurrent.duration.Duration(3, "min")
+
   lazy val spark = SparkSession.builder()
     .master("local[2]").appName("okay2-spark-bulk-test")
     .config("spark.ui.enabled", "false")

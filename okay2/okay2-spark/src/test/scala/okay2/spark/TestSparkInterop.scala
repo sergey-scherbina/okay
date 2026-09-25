@@ -12,6 +12,13 @@ import org.apache.spark.sql.{Encoders, SparkSession}
  * way that changes with the JDK differently than the Scala 3 build. */
 class TestSparkInterop extends munit.FunSuite {
 
+  // Spark's local[2] session bring-up is genuinely slow (the root
+  // build's own Spark suites already override this the same way, up
+  // to 30 minutes for the heaviest one) — measured timing out at
+  // munit's 30s default on a box shared by several other agents' own
+  // sbt gates, not a defect in the test itself.
+  override def munitTimeout: scala.concurrent.duration.Duration = scala.concurrent.duration.Duration(3, "min")
+
   lazy val spark = SparkSession.builder()
     .master("local[2]").appName("okay2-spark-test")
     .config("spark.ui.enabled", "false")
