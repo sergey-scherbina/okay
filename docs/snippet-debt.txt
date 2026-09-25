@@ -1118,7 +1118,6 @@ docs/tutorial.md	countdown(1000000).toLazyList.take(3).toList   // List(1000000,
 docs/tutorial.md	cut.stopped    // true: the tokens after the closing brace were never pulled
 docs/tutorial.md	cut.value      // Some(Answer(...)) — decoded mid-stream
 docs/tutorial.md	def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
-docs/tutorial.md	def look(i: Int): Int ! (Writer % String) = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
 docs/tutorial.md	def loop(raws: List[String]): Vector[Int] ! Op = ...
 docs/tutorial.md	def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong)))
 docs/tutorial.md	def risky(n: Int): Int ! F =
@@ -1183,7 +1182,6 @@ docs/tutorial.md	val events: Source[Battery | Charging] = battery merge charging
 docs/tutorial.md	val f = Async.spawn(Async.sleep(50).map(_ => work()))
 docs/tutorial.md	val fast = Async.race(fetch, Async.timeout(500)(fetch).map(_.getOrElse("fallback")))
 docs/tutorial.md	val fetch: String ! Async = async(blockingHttpCall())
-docs/tutorial.md	val fib: Gen[Long] = generator[Long] {        // or a block: while/if/recursion, emit, stop
 docs/tutorial.md	val kotlin = Language("kotlin", Set("kt", "kts"), "//", Some(("/*", "*/")),
 docs/tutorial.md	val link = Stdio.of(Stdio.spawn(Seq("npx", "-y", "@modelcontextprotocol/server-everything")))
 docs/tutorial.md	val name  = nonEmpty("name", in)
@@ -1195,7 +1193,6 @@ docs/tutorial.md	val plan = eachLine.traverseOf(priceLine)(order)
 docs/tutorial.md	val plan = traverse(keys)(k => Static.op(Get(k)))   // the same traverse
 docs/tutorial.md	val profile: Profile ! Async = direct:
 docs/tutorial.md	val prog: Int ! State % Int =
-docs/tutorial.md	val prog: List[Int] ! (Writer % String) = direct {
 docs/tutorial.md	val repo = RepoAgent.index(RepoAgent.load(File(".")))   // parse, don't regex
 docs/tutorial.md	val retriever = Retrieve.hybrid(Seq(
 docs/tutorial.md	val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
@@ -1205,14 +1202,12 @@ docs/tutorial.md	val source = Chunks.map(Chunks.range(0, 1000, 16))(_ * 0.5)
 docs/tutorial.md	val spec = ToolSpec[SearchArgs]("search", "look something up")  // schema DERIVED
 docs/tutorial.md	val stats = Aggregator.mean[Double].zip(Sketch.tDigest())
 docs/tutorial.md	val sum = Chunks.fold(
-docs/tutorial.md	val sw = Stager.StateWriter[Int, String, Int]()      // the row's staged interpreter
 docs/tutorial.md	val triples =                            // pythagorean, in order
 docs/tutorial.md	val u = fetchUser(id).reflect     // neither mentions the other,
 docs/tutorial.md	val y = !told("de")                    // runs here
 docs/tutorial.md	wire[Env].uid                        // the capability, inside the block
 docs/tutorial.md	x + x + y + !told("f")                 // log: de, abc, f
 docs/tutorial.md	x <- State.get[Int]
-docs/tutorial.md	y <- List(10, 20) if y > 10        // a guard between generators
 docs/tutorial.md	y <- State.get[Int]
 docs/tutorial.md	yield y + 2
 docs/tutorial.md	}                                        // List(1, 2)
