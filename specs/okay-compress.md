@@ -194,3 +194,23 @@ native bindings (lz4-java, zstd-jni) and a pure-Java port
     aircompressor's level 3 is "double fast" with no chains. Filed as
     `okay-compress-zstd-speed-2` with the FSE and Native leads;
     history.d okay-compress-zstd-speed.
+
+- okay-compress-zstd-speed-2 (2026-09-25, PLAN): compression's time is
+  the chain search (`Matcher.best` 22%, `insertUpTo` 13%, from
+  async-profiler). Reference zstd and aircompressor use "double fast" at
+  levels 1 to 3 (`ZSTD_compressBlock_doubleFast`):
+  - an 8-byte hash table for long matches and a 5-byte one for short
+    matches;
+  - one probe each and no chain;
+  - a repeat offset tried at `ip+1`, and matches extended backward;
+  - a step that grows through input that does not match;
+  - the tables filled at a few positions inside a match, not at every
+    byte.
+  Levels 1 to 3 (the default is 3) move to it, and the chain stays for
+  higher levels.
+  - [ ] every sample round-trips at levels 1, 3, 6 and 19, and pyarrow
+        reads the default level's frames (TestZstdPyArrow);
+  - [ ] the ratio at the default level is measured beside pyarrow's,
+        because a faster search that loses bytes has to say how many;
+  - [ ] CompressBench `zstd_compress` lines, ours against aircompressor
+        (16.5 vs 6.45 ms before), one lane at a time.
