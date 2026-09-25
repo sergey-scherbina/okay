@@ -580,6 +580,33 @@ in R `step` answers a one-row `data.frame` and `merge` a named list. The
 answer is `None` for a run that saw no rows. The map and the reduce of
 one module share one pool of interpreters.
 
+ONE API over all of it (`Engine`, a typeclass by the module's type): a
+job names a module and its functions, and the implicit says what runs
+them — Python for a `PyModule`, R for an `RModule`, the JVM for a
+`JvmModule` of Scala (or Clojure, or Frege) functions by name. The job
+is one text:
+
+```scala
+final class StatsJob[M](val name: String, mod: M)(using Engine[M], Reduces[M]) extends Job[Scale, Option[Stat]]:
+  type A = Out
+  def params: Schema[Scale] = summon[Schema[Scale]]
+  def answer: Schema[Option[Stat]] = Schema.SOption(() => summon[Schema[Stat]])
+  def flow(p: Scale, parts: Int): Flow[Out] = Flow.slices(Rows.of(p.n), parts).mapIn[Out](mod, "double")
+  def sink(p: Scale): Wire[Out, Option[Stat]] = Reduce.in[Out, Stat](mod, "step", "merge")
+```
+
+```scala
+  val mod: JvmModule = JvmModule("stats")
+    .map[Rec, Out]("double")(rows => rows.map(r => Out(r.key, r.v * 2)))
+```
+
+`Engine` is the BASE (map) and `Reduces` an EXTENSION, each its own
+instance and each optional: a language implements what it can, a job asks
+for what it uses, and a reduce on a module type without `Reduces` does
+not compile while a map on it still does. The interpreter is a given too
+— `given Engine[PyModule] = Engine.py("/venv/bin/python3")` — so a job
+moves between languages and interpreters with an import, never an edit.
+
 Measured (`MeasureForeignMapReduce`, 1M rows, 4 partitions, medians of
 three at box load 8–13; a run at load 21–27 read 2–3x slower on every
 lane and was discarded):
@@ -617,6 +644,9 @@ need none — they run inside the JVM, so their map is `flow.map(f)`.
 | `Flow.map/filter` | `(A => B) / (A => Boolean) => Flow[…]` | per-partition, held as a `Chunks` transformer |
 | `Flow.mapPy` | `(PyModule, fn, python, batch, workers)(using Schema[A], Schema[B]) => Flow[B]` | the map in Python, a chunk per frame; okay-foreign-cluster |
 | `Flow.mapR` | `(RModule, fn, rscript, batch, workers)(using Schema[A], Schema[B]) => Flow[B]` | the same in R |
+| `Engine[M]` / `Reduces[M]` | typeclasses by the module's type | the base (map) and the extension (reduce), each optional; `Engine.py(path)`, `Engine.r(path)`, `Engine.jvm` |
+| `Flow.mapIn` / `Reduce.in` | `[B](module, fn, …)(using Engine[module.type])` / `[A, Acc](module, step, merge, …)(using Reduces[module.type])` | ONE API: the language is the module's type |
+| `JvmModule` | `JvmModule(name).map[A, B](fn)(f).reduce[A, Acc](step, merge)(stepF, mergeF)` | Scala, Clojure, Frege functions by name, the shape a PyModule has |
 | `Reduce.py` / `Reduce.r` | `(module, step, merge, …)(using Schema[A], Schema[Acc]) => Wire[A, Option[Acc]]` | the reduce in Python or R: `step(frame, acc)` per chunk, `merge(a, b)` on the coordinator |
 | `Reduce.through` | `(Reducer[A, Acc], batch, attempts) => Wire[A, Option[Acc]]` | any reducer |
 | `Flow.through` | `(Batcher[A, B], batch, attempts) => Flow[B]` | any batcher — `PyStage`, `RStage`, or one of your own |

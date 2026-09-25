@@ -12,6 +12,8 @@ JVM's `Wire`; okay-cluster learns nothing.
 
 | | |
 |---|---|
+| `flow.mapIn[B](module, fn, …)` / `Reduce.in[A, Acc](module, step, merge, …)` | ONE API: the language is the module's type, through `Engine[M]` (the base, map) and `Reduces[M]` (an extension) in scope — Python for a `PyModule`, R for an `RModule`, the JVM for a `JvmModule`; each instance optional, a job asks for what it uses |
+| `JvmModule(name).map[A, B](fn)(f).reduce[A, Acc](step, merge)(…)` | Scala, Clojure, Frege functions by name, the shape a `PyModule` has |
 | `flow.mapPy[B](module, fn, python, batch, workers)` | the map in Python: `fn` in an inline `PyModule` takes the frame (a dict of lists, or the `pyarrow.Table` under `@okay.arrow`) and answers `B`'s columns |
 | `flow.mapR[B](module, fn, rscript, batch, workers)` | the same in R: a `data.frame` in, a `data.frame` out |
 | `Reduce.py[A, Acc](module, step, merge, …)` / `Reduce.r` | the reduce in Python or R: `step(frame, acc)` folds one chunk (answers one row as columns), `merge(a, b)` folds two partials on the coordinator; a `Wire[A, Option[Acc]]`, `None` for no rows |

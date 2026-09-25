@@ -82,6 +82,14 @@ object Reduce:
   def through[A, Acc: Schema](reducer: Reducer[A, Acc], batch: Int = Stage.Batch, attempts: Int = 3): Wire[A, Option[Acc]] =
     ForeignWire[A, Acc](reducer, batch, attempts)
 
+  /** THE ONE REDUCE: `step` and `merge` of `module`, in whatever language
+   * the module's type says, through the `Reduces` in scope for it (stage 3) —
+   * a module type without one does not compile here */
+  def in[A: Schema, Acc: Schema](module: Any, step: String, merge: String,
+                                 batch: Int = Stage.Batch, workers: Int = Stage.Workers)
+                                (using e: Reduces[module.type]): Wire[A, Option[Acc]] =
+    through(e.reducer[A, Acc](module, step, merge, workers), batch, 3)
+
   /** the reduce in Python: `step(frame, acc)` answers one row as columns,
    * `merge(a, b)` two dicts of fields into one */
   def py[A: Schema, Acc: Schema](module: okay.py.PyModule, step: String, merge: String, python: String = "python3",

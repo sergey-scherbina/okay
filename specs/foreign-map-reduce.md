@@ -198,6 +198,70 @@ THE CONTRACT ON THE FAR SIDE, shaped by what each op already answers:
 - [x] The same over a REAL python3: `step`/`merge` in Python (Live).
 - [x] The same over a REAL R (Live, in the r-arrow-verify container).
 
+## Stage 3 — one API over every language (foreign-engine-typeclass)
+
+The operator, after stages 1 and 2: "можно тоже какую то удобную фасад
+абстракцию поверх этого? Чтобы один и тот же код работал со всем этим
+прозрачно через имплиситы и тайпклассы" — and, while it was being built:
+"каждая модель сама опционально реализовывала набор базовых методов плюс
+расширения в отдельных классах типов (тоже опционально) а фасад собирал
+из этого работающую конструкцию".
+
+The engine is a TYPECLASS BY THE MODULE'S TYPE, in two layers:
+
+```scala
+trait Engine[-M]:                       // the BASE: every engine maps
+  def name: String
+  def batcher[A: Schema, B: Schema](module: M, fn: String, workers: Int): Batcher[A, B]
+
+trait Reduces[-M]:                      // an EXTENSION, its own instance
+  def reducer[A: Schema, Acc: Schema](module: M, step: String, merge: String, workers: Int): Reducer[A, Acc]
+
+extension [A](flow: Flow[A])
+  def mapIn[B](module: Any, fn: String, …)(using Engine[module.type], Schema[A], Schema[B]): Flow[B]
+object Reduce:
+  def in[A: Schema, Acc: Schema](module: Any, step: String, merge: String, …)(using Reduces[module.type]): Wire[A, Option[Acc]]
+```
+
+- **A job names a module and functions, nothing else.** `StatsJob[M](mod:
+  M)(using Engine[M], Reduces[M])` is ONE text; handed a `PyModule` it runs
+  in Python, an `RModule` in R, a `JvmModule` in the JVM. The tests are
+  that text three times (`TestEngine`, `TestPyEngine`, `TestREngine`).
+- **Base and extensions are separate instances, each optional.** A
+  language implements `Engine[M]` and whichever extensions it can;
+  `mapIn` asks for the base, `Reduce.in` for `Reduces`, and a job that
+  reduces on a module type without one does not COMPILE — while `mapIn` on
+  it still does (`TestEngine`, by `compileErrors`). The facade assembles a
+  working job out of the instances the module has; the next capability
+  (a streaming stage, held objects) is the next typeclass, not a new
+  method every engine must fake.
+- **Contravariant, on `module.type`.** `mapIn[Out](mod, "double")` names
+  no module type: the extension asks for `Engine[mod.type]`, and
+  `Engine[PyModule]` is one since `mod.type <: PyModule`. A test's own
+  `Engine[FakeModule]` is a given like any other: the typeclass is open.
+- **The interpreter is a given**: `given Engine[PyModule] = Engine.py(path)`
+  and `given Reduces[PyModule] = Reduces.py(path)` move a job to another
+  python without an edit; the instances live in their own companions,
+  where the implicit search looks.
+- **`JvmModule`**: the JVM's own languages — Scala, Clojure (`Clj.fn` as
+  the function it is), Frege — as functions by name, the shape a
+  `PyModule` has, so a job reads the same. The one cast is its registry's
+  (a heterogeneous map keyed by the name the job gives), isolated and
+  said; a name never registered is refused when the flow is built,
+  naming what the module has.
+- `mapPy`/`mapR`/`Reduce.py`/`Reduce.r` stay as the named cases; the
+  generic is the API.
+
+- [x] The same job text over the JVM (`TestEngine`, default gate, 3 in-process
+      workers, count/sum/max), a fake engine of the test's own, python3
+      (`TestPyEngine`, Live, run here) and R (`TestREngine`, Live, run here
+      in the r-arrow-verify container).
+- [x] With the base alone a module maps and a reduce on it is a compile
+      error naming `Reduces`.
+- [x] A JVM function's exception is the function's failure (a
+      `Cluster.Refused` naming `jvm:stats:boom`); a name the module lacks
+      is refused at build, naming what it has.
+
 ## Results
 
 foreign-map-reduce (2026-09-25). New JVM module okay-foreign-cluster

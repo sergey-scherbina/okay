@@ -153,6 +153,13 @@ extension [A](flow: Flow[A])
   def through[B](batcher: Batcher[A, B], batch: Int = Stage.Batch, attempts: Int = 3): Flow[B] =
     Stage.through(flow, batcher, batch, attempts)
 
+  /** THE ONE MAP: `fn` of `module`, in whatever language the module's type
+   * says — a `PyModule` runs in Python, an `RModule` in R, a `JvmModule`
+   * here — through the `Engine` in scope for it (stage 3) */
+  def mapIn[B](module: Any, fn: String, batch: Int = Stage.Batch, workers: Int = Stage.Workers)
+              (using e: Engine[module.type], sa: okay.codec.Schema[A], sb: okay.codec.Schema[B]): Flow[B] =
+    Stage.through(flow, e.batcher[A, B](module, fn, workers), batch, 3)
+
   /** the map in Python: `fn` in `module` takes the frame (a dict of
    * lists, or the `pyarrow.Table` under `@okay.arrow`) and answers one of
    * `B`'s columns; the frame crosses as Arrow where the python has pyarrow */
