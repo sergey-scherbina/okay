@@ -1,3 +1,0 @@
-slug: okay-compress-jvm-fast-paths
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: 8-byte loads/compares/copies through a per-platform Mem (VarHandle on the JVM, bytes on JS/Native) in the codecs hot loops; measured against aircompressor on the same run
