@@ -609,3 +609,40 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   - Found beside it: an unused import in okay-foreign-cluster's
     `Stateful.scala`, landed by foreign-streams-holds and visible only to
     a cold compile — removed.
+- **Stage 2a, foreign-one-value (2026-09-26).**
+  - okay-r's main code 1 869 → 1 220 lines (R's value enum, effect, journal
+    instance, wire codec, API copy, engine handler and replay deleted);
+    main code across okay-py, okay-r and okay-foreign-cluster −376 net.
+    What R keeps is R's: its names for the tree (`RValue`), its value
+    rules (`RCodec` = `R.shape`, with the frame rules), its handle type,
+    its Arrow rules, its shim.
+  - The design found two things the earlier code got wrong without a test
+    that could see them: the shared API (`Py.fn`/`program`/`hold`/
+    `callback`) fixed Python's `Shape` INSIDE `object Py`, so no caller
+    could give another — R's conformance row failed with "expected a str,
+    got a list of 1" until each took the caller's `Shape`; and a frame
+    read by whatever `Shape` was in scope would read an R frame by
+    Python's rules in the cluster's R stages — so a frame now CARRIES its
+    rules (`PyFrame.shape`, outside equality), tagged by the worker that
+    answered it, by `RFrame.of`, and on replay by its request.
+  - The columnar frame (R's v2) is the frame on the wire wherever the far
+    side's hello claims it (`"frames": ["columnar"]`: Python, TypeScript,
+    R); a far side that does not (an old shim) gets v1, and both are read.
+  - R's shim v9 speaks the shared tags; the shared decoder still reads R's
+    pre-v9 tags (`i`, `raw`, `named`), which `TestRMock`'s v1-frame fixture
+    holds.
+  - Tests. Live, R 4.4.1 in docker: okay-r 98 passed + 2 skipped, among
+    them the new `TestRConformance` (the one `WireConformance` body at
+    `R.shape`: multi-shot, callbacks under a Reader, direct style, a
+    failure by name) and `TestRCrash` (the one `CrashConformance`: SIGKILL
+    between choices, idle, mid-`okay_call` — R now recovers from a DEATH).
+    okay-py Live 226, okay-foreign-cluster Live 26 (`TestRFacade` for the
+    first time: it found the facade's five R instances addressing R as
+    `module:fn`, which R cannot resolve — fixed to `module::fn`),
+    okay-foreign-workflow Live 12. Default gate: `TestRFrameRules` (2, new).
+  - Mutant: the worker's tagging of an answered frame removed. It SURVIVED
+    every existing suite — they compare cells, not rules — which is why
+    `TestRFrameRules` exists; with it, the mutant fails.
+  - Durable journals of R programs written before v9 no longer replay:
+    their fingerprints hashed R's old tags, so the journal's drift check
+    refuses them by name rather than answering from them.
