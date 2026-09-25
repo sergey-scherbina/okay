@@ -1,0 +1,7 @@
+feature/clojure-go-block-timeout-under-load 2026-09-25T07:26:42Z
+agent: claude-code (session 013hkJA4)
+heartbeat: 2026-09-25T07:26:42Z
+status: in-progress
+done-so-far: claim
+next: tag the go-block test Live (operator: move to the integration scope if not fixable under load)
+touches: okay-clojure/src/test/scala/okay/clojure/TestCoreAsync.scala
