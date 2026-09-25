@@ -247,9 +247,10 @@ What it cost:
 That was ONE stack. The sharper problem shows up the day two pieces of
 code written against DIFFERENT stacks meet — and the difference that
 hurts most is not the order of the layers but what the stacks are MADE
-of. Two teams, one shared effect, and the rest their own:
+of. Two teams, one shared effect (errors), and one monad each that the
+other does not have:
 
-- **team A** needs choices that may fail — a list and an error, no log:
+- **team A** chooses a shop and prices it — a list and an error:
 
 ```scala
 type Choices[A] = EitherT[List, String, A]
@@ -258,50 +259,110 @@ def priceOf(shop: String, item: String): Choices[Int] =
   EitherT.fromOption[List](prices(shop).get(item), s"$shop has no $item")
 ```
 
-- **team B** needs a log that may fail — a writer and an error, no
-  choices:
+- **team B** knows delivery, which a shop may simply not offer — an
+  `Option` (absent is not an error) and an error (an unknown shop is):
 
 ```scala
-type Logs[A]    = Writer[Vector[String], A]
-type Journal[A] = EitherT[Logs, String, A]
+type Checked[A]  = Either[String, A]
+type Delivered[A] = OptionT[Checked, A]
 
-def note(msg: String): Journal[Unit] =
-  EitherT.liftF(Writer.tell(Vector(msg)))
+def deliveryFee(shop: String): Delivered[Int] =
+  OptionT(fees.get(shop).toRight(s"unknown shop $shop"))
 ```
 
-Both stacks put the error in the same place; there is no ordering to
-agree on. And still neither team's helper types in the other's stack:
+There is no ordering to agree on. Call both in one expression:
+
+```text
+val p: Choices[Int] =
+  for
+    fee   <- CatsDelivery.deliveryFee("north")
+    price <- CatsTeams.priceOf("north", "tea")
+  yield fee + price
+```
+
+and it does not compile:
 
 ```text
 Found:    cats.data.EitherT[List, String, Int]
-Required: cats.data.EitherT[bookcats.CatsTeams.Logs, String, Int]
+Required: cats.data.OptionT[bookcats.CatsDelivery.Checked, B]
 ```
 
-The basket needs all three effects, so it needs a THIRD stack, the
-union, which neither team wrote (`App` above). Each team's helpers get
-into it through a conversion written by hand, one per team — per pair
-of stacks, in general:
+The order needs all three monads, so it needs a THIRD stack, the union,
+which neither team wrote, and each team's helpers get into it through a
+conversion written by hand, one per team — per pair of stacks, in
+general:
 
 ```scala
-def fromA[A](fa: Choices[A]): App[A] = EitherT(WriterT.liftF(fa.value))
-def fromB[A](fb: Journal[A]): App[A] = EitherT(WriterT(List(fb.value.run)))
+type Order[A] = OptionT[Choices, A]
+
+def fromA[A](fa: Choices[A]): Order[A]   = OptionT.liftF(fa)
+def fromB[A](fb: Delivered[A]): Order[A] = OptionT(EitherT(List(fb.value)))
 ```
 
 and every call site says which team it came from:
 
 ```scala
-_     <- fromB(note(s"shop $shop"))
-ps    <- items.traverse(item => fromA(priceOf(shop, item)))
+fee  <- fromB(deliveryFee(shop))
+ps   <- items.traverse(item => fromA(priceOf(shop, item)))
 ```
 
-Now multiply: every new team with a slightly different set of effects
-is one more stack, one more union for everybody who combines it, and
-one more conversion into each union. The conversions are not free
-either: each has to know the structure of both stacks, and change when
-either does.
+For `List("tea", "cake")` the order is `List(Right(Some(850)),
+Right(None))`: north delivers, south does not. Now multiply: every new
+team with a slightly different set of monads is one more stack, one
+more union for everybody who combines it, and one more conversion into
+each union — each knowing the structure of both stacks, and changing
+when either does.
+
+The two roads below have none of this. With layered reflection each
+team's helper returns a plain value of a plain monad, and the order is
+three `reify` blocks:
+
+```scala
+def deliveryFee(shop: String): Either[String, Option[Int]] =
+  fees.get(shop).toRight(s"unknown shop $shop")
+```
+
+```scala
+reify[List, Out, Pure]:
+  reify[Checked, Option[Int], Pure]:
+    reify[Option, Int, Pure]:
+      for
+        shop <- List("north", "south").reflect[Out, Pure]
+        fee  <- deliveryFee(shop).reflect[Option[Int], Pure]
+        f    <- fee.reflect[Int, Pure]
+```
+
+With algebraic effects each helper declares only the effects it uses —
+and "absent" is an effect of the user's, an operation and a handler:
+
+```scala
+def absent[A]: A ! Stop = effect(Stop.Now)
+
+def runOption[A, F[+_]](a: A ! Stop + F): Option[A] ! F =
+  Effects[Free].handle[Stop, F](a)(x => pure[F, Option[A]](Some(x))):
+    [X] => _ => shift(_ => pure[F, Option[A]](None))
+```
+
+```scala
+def deliveryFee(shop: String): Int ! Stop + Throws % String =
+```
+
+and the union is just the row of the program that uses both helpers,
+each widened into it:
+
+```scala
+type Order = Choose + Stop + Throws % String
+```
+
+```scala
+fee  <- deliveryFee(shop).at[Order]
+```
+
+All three give the same `List(Right(Some(850)), Right(None))`
+(`TestBookTwoMonadsCats`).
 
 **The same effects in another order are no better.** Agreeing on the
-set of effects is not enough; the order is part of the stack too.
+set of monads is not enough; the order is part of the stack too.
 
 Take team X with the basket's own stack and team Y with the same three
 effects in the other order, the error OUTSIDE the log, plus team Z with
@@ -381,8 +442,8 @@ pick one stack for all its users. The two roads below have no such
 thing to pick. A layered helper is a plain value — `Logged(Vector(msg),
 ())` works under any nesting of `reify` blocks. An effect helper is
 written against the effects IT uses, and the union is nothing but the
-row of the program that uses both teams — team A's helper and team B's
-helper widen into it with `.at`, no conversion, no stack to agree on:
+row of the program that uses it — a price helper and a log helper widen
+into the basket's row with `.at`, no conversion, no stack to agree on:
 
 ```scala
 def priceOf(shop: String, item: String): Int ! Throws % String =
