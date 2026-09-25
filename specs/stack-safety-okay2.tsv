@@ -15,20 +15,16 @@ okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	53	value	mutual		BOUNDED:
 okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	66	valueNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	85	objNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	119	arrNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
-okay2-jdbc/src/main/scala/okay2/jdbc/JdbcSql.scala	229	arrayOf	mutual	Vector$.tabulate,Vector.map	BOUNDED: per dimension of a database ARRAY value; a column's array type is declared in the DDL, not chosen per row, and Postgres caps dimensions at MAXDIM = 6 (src/include/utils/array.h)
-okay2-jdbc/src/main/scala/okay2/jdbc/JdbcSql.scala	329	jdbcOf	lambda	Vector.map	BOUNDED: per level of a SqlValue.Arr the calling program built as a parameter — its own value, not input; Typed.encode produces one level per level of the row type, which is finite (TestTypedRecursive)
-okay2-jdbc/src/main/scala/okay2/jdbc/JdbcSql.scala	203	valueOf	mutual	Vector$.tabulate,Vector.map	BOUNDED: per dimension of a database ARRAY value; a column's array type is declared in the DDL, not chosen per row, and Postgres caps dimensions at MAXDIM = 6 (src/include/utils/array.h)
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	20	dimap	lambda	Mealy.<init>
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	23	first	lambda	Mealy.<init>
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	26	right	lambda	Mealy.<init>
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	37	compose	lambda	Mealy.<init>
 okay2-parse/src/main/scala/okay2/parse/Parse.scala	82	rebase	lambda	Vector.map
 okay2-platform/src/main/scala-jvm-native/okay2/platform/BlockingOps.scala	23	go	direct	
-okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	22	dataType	direct	Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one Json/CBOR column (Columns.recursiveNames), so the depth is the type's own finite nesting; value/rowOf follow that type
-okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	50	rowOf	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one Json/CBOR column (Columns.recursiveNames), so the depth is the type's own finite nesting; value/rowOf follow that type
-okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	35	struct	direct	Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one Json/CBOR column (Columns.recursiveNames), so the depth is the type's own finite nesting; value/rowOf follow that type
-okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	39	value	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which Columns derives from the row's Scala type with a recursive product cut to one Json/CBOR column (Columns.recursiveNames), so the depth is the type's own finite nesting; value/rowOf follow that type
-okay2-sql/src/main/scala/okay2/sql/Typed.scala	225	fits	lambda	IterableOnceOps.forall	BOUNDED: per level of a SqlType, which Typed.shapeOf derives from the row's Scala type at construction and REFUSES when recursive (a product met again on its own path: TestTypedRecursive), so the depth is the type's own finite nesting
+okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	76	rowOf	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
+okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	63	structAt	direct	Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
+okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	50	typeOf	direct	Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
+okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	66	valueAt	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
 okay2-stm/src/main/scala/okay2/Stm.scala	88	pending	lambda	Option.flatMap,Option.orElse
 okay2-stm/src/main/scala/okay2/Stm.scala	124	perform	mutual	
 okay2-stm/src/main/scala/okay2/Stm.scala	153	runWithLog	mutual	

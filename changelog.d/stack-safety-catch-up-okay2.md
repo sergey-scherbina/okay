@@ -10,8 +10,10 @@
 - The fs2/ZIO `again`s are TRAMPOLINED by the library's own lazy
   `++`/`flatMap`. New tests drive 200 000 non-Writer operations through
   each.
-- Both cores. 14 inventory rows were paid, 8 marked BOUNDED and 2
-  TRAMPOLINED.
+- Both cores, on top of stack-safety-okay2-catch-up, which had written
+  bounds for the same rows. The jdbc and Spark bounds did not hold (a
+  program-built value, a public `ColType`), and code replaces them now.
+  7 rows paid and 4 BOUNDED in each core.
 - Found on the way: `java.util.ArrayDeque` on Scala.js returns null
   from a non-empty deque (192 of 66 667 pops). The cross `Typed.fits`
   uses Scala's own `Stack`; filed as `scalajs-arraydeque-null`.

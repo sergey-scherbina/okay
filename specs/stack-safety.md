@@ -275,10 +275,20 @@ deleted.
           TestTypedDepth overflowed at 200 000 levels, and TestSparkDepth
           saw a 65-level type go through. In okay2 the same tests ran
           against a mutant that put `fits`'s recursive call back, and it
-          overflowed. 14 rows were paid, 8 were marked BOUNDED (the
-          Spark walks under their new names) and 2 TRAMPOLINED (the
-          `again`s, 200 000 operations each through fs2 and ZIO). No
-          UNAUDITED row is left in okay2.
+          overflowed.
+        - It landed ON TOP of stack-safety-okay2-catch-up (the item
+          above), which had audited the same rows the same afternoon and
+          written bounds for them. Two of those bounds did not hold, and
+          this lane replaced them with code:
+          - `jdbcOf` "per level of a parameter the program built". A
+            program can build one 200 000 deep, and it overflowed.
+          - SparkSchema "per level of a ColType". A ColType is public and
+            nothing refused a deep one; now `MaxNesting` does.
+          The rows: 7 paid in each core, 4 BOUNDED in each (the Spark
+          walks under their new names). The `again`s needed no row,
+          because recscan already knows those binds, and the new tests
+          prove it at 200 000 operations. No UNAUDITED row is left in
+          okay2.
         - FOUND on the way: `java.util.ArrayDeque` on Scala.js 1.22
           answers NULL from a non-empty deque. The first gate ran
           `fits`'s worklist on it, and the 200 000-deep test failed on
