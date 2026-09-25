@@ -1,5 +1,0 @@
-slug: stack-safety-guard
-who: claude (session 6f505c09)
-what: stack-safety stage 9 — scripts/recscan-check.sh: the inventory only shrinks (new recursion refused unless its row gives a reason; fixed rows must go), run by gate.sh after GREEN over the modules the diff touches
-files: scripts/recscan.py, scripts/recscan-check.sh, scripts/gate.sh, specs/stack-safety.md, AGENTS.md
-since: 2026-09-25
