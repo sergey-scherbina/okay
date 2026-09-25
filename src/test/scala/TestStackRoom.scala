@@ -15,7 +15,7 @@ class TestStackRoom extends munit.FunSuite:
     val sp = StackRoom.sp()
     val top = StackRoom.top()
     val floor = StackRoom.floor()
-    println(s"TestStackRoom: JDK ${Runtime.version()} sp=$sp top=$top floor=$floor native-access=${getClass.getModule.isNativeAccessEnabled}")
+    println(s"TestStackRoom: JDK ${Runtime.version()} sp=$sp top=$top floor=$floor")
     if Runtime.version().feature() >= 22 && System.getProperty("os.name").startsWith("Mac") && System.getProperty("os.arch") == "aarch64" then
       assert(sp > 0 && top > 0 && floor > 0, "unreadable on a JVM and layout that can read")
       assert(floor < sp && sp < top, s"pointer outside the bounds: $floor < $sp < $top")
