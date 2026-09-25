@@ -96,7 +96,7 @@ def platformTests(dirs: String*) =
 lazy val jvmSuitesOnly = Test / unmanagedSources / excludeFilter := HiddenFileFilter ||
   "TestChannelLaws.scala" || "TestChannel.scala" || "TestGrowing.scala" || "TestGrowingSeal.scala" ||
   "TestRing.scala" || "TestBulk.scala" || "TestPlan.scala" || "TablesFixtures.scala" ||
-  "TestFlush.scala" || "TestParallelChunks.scala"
+  "TestFlush.scala" || "TestParallelChunks.scala" || "TestSchedulerLawsChannel.scala"
 
 /** the aggregate, and nothing else: its own `src` is the core's shared
  * sources, which the crossProject compiles */
