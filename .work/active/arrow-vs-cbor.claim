@@ -1,3 +1,0 @@
-slug: arrow-vs-cbor
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: okay-arrow stage 7a: typed rows as Arrow (plain, LZ4, ZSTD) against CBOR (plain, ZSTD), size and round trip, by shape and batch size — the measurement that decides where Arrow replaces CBOR
