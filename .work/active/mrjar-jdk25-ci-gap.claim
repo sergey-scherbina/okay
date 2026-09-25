@@ -1,6 +1,0 @@
-feature/mrjar-jdk25-ci-gap 2026-09-25T10:05:00Z
-agent: claude-code
-heartbeat: 2026-09-25T10:05:00Z
-status: in-progress
-done-so-far: claim; plan in sprint.d/doing/mrjar-jdk25-ci-gap.md
-next: versioned() helper in build.sbt; jdk25 project; packaging on okay-platform; jar-first test classpath; TestScopedBackend asserts per JDK; delete the script
