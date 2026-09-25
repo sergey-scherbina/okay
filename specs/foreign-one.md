@@ -437,17 +437,31 @@ more than it adds (the line count of what it removed goes in Results).
 
 - [x] Stage 0 — this spec (foreign-one, 2026-09-25; rewritten as the
       model by foreign-one-model, 2026-09-26).
-- [ ] Stage 1 — **foreign-one-r**: R onto the engine. shim.R speaks
-      the wire; `RSubprocess`, `RValue`, `RCodec` deleted; `okay.r.R` an
-      alias facade. Unblocks every later stage for R and removes the
-      second copy of everything.
+- [x] Stage 1 — **foreign-one-r**: ONE ENGINE. `okay.py.WireSession`
+      is the language-neutral wire — handshake (shim version, a `fatal`
+      the far side names, auth, format/compression/frames), exchange,
+      deadline, the Arrow road, a broken or ended wire as DEAD, `verify` —
+      and both `ForeignWorker` (Python's values) and `okay.r.RSubprocess`
+      (R's) are handlers over it; R's second copy of all of that is gone.
+      R thereby reaches TCP, the gateway, `WireAuth` and `WireSecurity`
+      (`RSubprocess.connect`, `.over`, `.command`), and a timeout over TCP
+      reconnects and replays. Narrowed on the way (Decision 12): R's VALUE
+      tree (`RValue`, the `na` escape, `RCodec`) moves to stage 2 and R's
+      REPLAY (its `Kont` beside `SupervisedWorker`'s) to stage 3.
 - [ ] Stage 2 — **foreign-one-protocol**: the five operations and
       parts (shim 7 in every shim; `held`, `Address`, `perform` as the one
       callback message, tables as parts); the transcript written and
-      replayed; `Foreign[L, +A]`; `Refused`; `Value`.
+      replayed; `Foreign[L, +A]`; `Refused`; `Value` — which ABSORBS
+      `RValue` (its one extra case, a typed `na`, becomes an escape of the
+      one tree; `I32` is `Int` at `Shape[R]`, `Named` is `Dict`), so
+      `RCodec`, R's `Wire` and `REval` fold into the one codec and effect,
+      and R passes `WireConformance` and `CrashConformance` as a row.
 - [ ] Stage 3 — **foreign-one-pool**: one `Pool` (use, lease, route by
       ref, perWorker, supervise); `PyWorkers`, the cluster pools,
-      `Holds.pyWorkers`, `SupervisedWorker` folded; the lease-leak test.
+      `Holds.pyWorkers`, `SupervisedWorker` AND `RSubprocess`'s own
+      respawn-and-replay (`Kont`, ~90 lines — the same algorithm keyed the
+      same way) folded; R gains recovery from a DEATH, not only from a
+      timeout; the lease-leak test.
 - [ ] Stage 4 — **foreign-one-runtime**: `Runtime[L]`, `Module[L]`,
       `Arg`/`Ret`, the markers, `Language[L]`; the facade's typeclasses
       and the cluster's per-language stages become the derived
@@ -540,6 +554,17 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     `statefulIn`, `Model.in`, `Activity.foreign`, `ops`, `facade` —
     each a few lines over the five methods, each written once for every
     language, each removable without touching the model.
+
+12. **Stage 1 is the ENGINE, not the values** (foreign-one-r,
+    2026-09-26). The first text of stage 1 also deleted `RValue` and
+    `RCodec`. Measured against the code, that is a change to `PyValue` —
+    a new case (R's typed NA) in an enum every codec, walk and facade
+    matches on — in the same lane as the engine, two risks behind one
+    gate, and exactly what stage 2's "one `Value` tree" is. So stage 1
+    folds what is identical today (the transport and everything on it)
+    and leaves what is different today (the value tree, and the replay
+    that is keyed on it) to the stages that own them. Nothing was
+    bridged: R's handler speaks `Json` to the same session Python's does.
 
 ## Results
 

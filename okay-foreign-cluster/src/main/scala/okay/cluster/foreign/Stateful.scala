@@ -1,6 +1,6 @@
 package okay.cluster.foreign
 
-import okay.{Chunk, Chunks}
+import okay.Chunks
 import okay.cluster.Flow
 import okay.codec.Schema
 import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyRef, PyValue}

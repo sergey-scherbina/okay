@@ -238,8 +238,9 @@ Format Specification", 1996, doi:10.17487/RFC1951; P. Deutsch and
 J.-L. Gailly, RFC 1950, "ZLIB Compressed Data Format Specification",
 1996, doi:10.17487/RFC1950.
 
-**R** has its own engine (`okay.r.RSubprocess`), and it takes the same
-givens; the codecs live in okay-codec (`okay.codec.WireFormat`,
+**R** runs on the same engine (`okay.py.WireSession`, since
+foreign-one-r; `okay.r.RSubprocess` is the handler for R's values over
+it), and it takes the same givens; the codecs live in okay-codec (`okay.codec.WireFormat`,
 `okay.codec.WireCompression`), and `okay.py` keeps the names. Two things
 about R are worth knowing:
 - Base R cannot inflate raw DEFLATE safely. `gzcon` over a hand-made gzip
@@ -396,6 +397,23 @@ a pipe. The tests run the conformance suite through it:
   as well;
 - TypeScript, behind a secret, with a worker per connection;
 - Haskell, speaking CBOR.
+
+R too, since foreign-one-r: R's handler runs on the same engine
+(`WireSession`) as every other language, so its worker is one more
+command for the gateway:
+
+```scala
+  private lazy val plain = ForeignGateway.start(RSubprocess.command(TestR.rscript.get, modules), python = python.get)
+```
+
+```scala
+    val r = RSubprocess.connect("127.0.0.1", plain._1)
+```
+
+With a deadline, a timeout over TCP RECONNECTS (the gateway starts a
+fresh R for the new connection) and an R program as data is replayed
+onto it, every branch of a multi-shot `Choice` coming back
+(`TestRNetwork`).
 
 ## When the far side fails: deadlines and recovery
 
@@ -632,7 +650,7 @@ conformance suite (`WireConformance`) is the same test body in every one.
 | **Go** | pipes, TCP, WebAssembly | `okay.Call(c, …)` | yes | yes | DEFLATE | itself | itself | itself | supervised, reconnect, replay |
 | **Rust** | pipes, TCP, FFM, WebAssembly | `okay_call` (not on wasm) | yes | yes | DEFLATE | itself | itself | itself (`tls` feature) | supervised, replay |
 | **Haskell** | pipes; TCP by gateway | no (programs only) | yes | yes | none (GHC ships no zlib) | gateway | gateway | gateway | supervised, replay |
-| **R** | pipes (its own engine) | `okay_call` | yes | yes | zlib | no | no | no | timeout respawn, replay |
+| **R** | pipes; TCP by gateway | `okay_call` | yes | yes | zlib | gateway | gateway | gateway | timeout respawn or reconnect, replay |
 
 The Compression column is what the far side SPEAKS. The default uses it
 over TCP only; on pipes and in-process it is used when a given asks for it
@@ -655,7 +673,8 @@ The suites behind the rows:
 - **Haskell**: `TestHsPipes`, `TestHsPipesCbor` (DEFLATE refused by name),
   `TestGatewayHs` (CBOR through the gateway).
 - **R**: `TestRWireDefault`, `TestRWireZlib`, `TestRWireCbor`,
-  `TestRWireCborPlain`, `TestRReplay`.
+  `TestRWireCborPlain`, `TestRReplay`, `TestRNetwork` (the gateway, a
+  secret, a timeout reconnected and replayed).
 
 `ForeignWorker.supervised`, with its replay of programs as data, is one
 class over every ForeignWorker link, and ONE crash suite holds it on each
@@ -695,11 +714,11 @@ else on the line, and a call there cannot be abandoned.
 
 ## Limits
 
-- **R is not behind the gateway.** okay-r has its own engine
-  (`RSubprocess`), which starts R itself; the gateway serves the
-  `ForeignWorker` family. Closing this is stage 1 of
-  specs/foreign-one.md (backlog foreign-one-r): R as a `ForeignWorker`
-  far side, so it takes every column of the table above.
+- **R speaks its own values.** Since foreign-one-r R runs on the one
+  engine, but its handler still speaks `RValue` (R's typed NA has no case
+  in `PyValue`), so the conformance suites, written against the `Foreign`
+  API, do not run over R yet; that is stage 2 of specs/foreign-one.md.
+  R recovers from a timeout, not yet from a death (stage 3).
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.
 - **Go in-process.** Only as WebAssembly.
 

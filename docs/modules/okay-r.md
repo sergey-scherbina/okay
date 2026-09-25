@@ -15,6 +15,7 @@ reaches R only as data.
 | `RFrame` | a data.frame as columns of primitives, with `rows[A: Schema]` and `RFrame.of[A: Schema]` mapping a flat case class to and from it — the same move `Typed.rows` makes over a SQL row |
 | `Condition` | R's own failure vocabulary as data (`kind`, `message`) — a failing call is a value and the process survives |
 | `RSubprocess` | stage 0: one `Rscript` per session running the shim SHIPPED WITH THIS MODULE (a versioned resource whose handshake refuses drift loudly), with a CLEAN environment — the parent leaks nothing into R unless the config names it. `start` takes an optional deadline and an optional set of REQUIRED packages |
+| `RSubprocess.connect` / `.over` / `.command` | R on the network (foreign-one-r): the engine is the one every wire language shares (`okay.py.WireSession`), so an R worker is served by `okay.py.ForeignGateway` from `RSubprocess.command(...)` and reached with `connect(host, port)` under the same `WireAuth`/`WireSecurity` givens as any other language; with `timeoutMillis` a timeout reconnects to a fresh R and replays its programs as data |
 
 ## Using it
 

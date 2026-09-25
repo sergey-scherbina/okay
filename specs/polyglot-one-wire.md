@@ -488,7 +488,8 @@ replays a program.
   - `WireConformance` runs unchanged under CBOR on every link built so
     far: Go (pipes, TCP, wasm), Rust (pipes, TCP, FFM, wasm), Python,
     TypeScript and Haskell (pipes).
-  - R is NOT done. okay-r has its own engine (`RSubprocess`, a character
+  - R is NOT done (it is since wire-givens-r below, and since
+    foreign-one-r, 2026-09-26, R runs on the one engine, `WireSession`). okay-r has its own engine (`RSubprocess`, a character
     reader with its own deadline), not `ForeignWorker`, so its framing is
     a lane of its own: backlog `wire-givens-r`. It is testable here
     through the local `r-base` image.

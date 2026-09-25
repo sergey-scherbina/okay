@@ -17,3 +17,8 @@
       fake far side (default gate) and every shim (live). Gate: every
       existing live suite green with only constructors renamed; a call
       with a table AND a ref AND a value crossing as one head + one part.
+      R JOINS HERE (foreign-one-r, 2026-09-26, spec Decision 12): `RValue`
+      becomes the one `Value` (a typed `na` escape; `I32` = Int at
+      `Shape[R]`; `Named` = `Dict`), `RCodec`/R's `Wire`/`REval` fold into
+      the one codec and effect, and R runs `WireConformance` and
+      `CrashConformance` as a row.
