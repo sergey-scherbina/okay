@@ -1843,8 +1843,16 @@ lazy val okayDocs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     libraryDependencies ++= Seq(
-      "org.mongodb" % "mongodb-driver-sync" % "5.2.1",
-      "org.apache.cassandra" % "java-driver-core" % "4.18.1",
+      // PROVIDED, so a driver reaches only who asked for its engine
+      // (ops-docs-vendor-drivers, 2026-09-25): okay-ops depends on this
+      // module for `Docs.Stats`, and with the drivers on the compile
+      // scope every ops user — every server — carried Mongo and
+      // Cassandra and their Netty, jnr and Typesafe config: 18.9 MB of
+      // okay-watch's 64 MB jar, none of it called. Whoever builds a
+      // MongoDocs or a CassandraDocs names the driver, as a JDBC user
+      // names theirs.
+      "org.mongodb" % "mongodb-driver-sync" % "5.2.1" % Provided,
+      "org.apache.cassandra" % "java-driver-core" % "4.18.1" % Provided,
     ),
     Test / fork := true,
   )

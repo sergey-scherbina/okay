@@ -428,6 +428,11 @@ list in its spec or spec section)
   (dynamo, cassandra) had never been in the root aggregate, so the
   gate never compiled them — and an unused import in
   `TestPersistenceE2E` had been sitting there since it was written.
+  The price was then taken back for the drivers (ops-docs-vendor-
+  drivers, 2026-09-25): they are `Provided`, because okay-ops depends
+  on okay-docs for `Docs.Stats` and every server carried both drivers
+  (18.9 MB of okay-watch's 64 MB jar, never called). A program that
+  builds a Mongo or Cassandra engine names its driver.
 
 ## Results
 

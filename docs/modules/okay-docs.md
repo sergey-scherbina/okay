@@ -11,7 +11,11 @@ three foreign engines — `MongoDocs`, `DynamoDocs`, `CassandraDocs`
 only, which is where the JVM side's extra dependencies come from:
 mongodb-driver-sync, the Apache Cassandra java-driver-core,
 `okay-blob` (SigV4) and `okay-http`. They were three satellite
-modules until docs-adapters-merge (2026-09-23).
+modules until docs-adapters-merge (2026-09-23). The two vendor
+drivers are `Provided` since ops-docs-vendor-drivers (2026-09-25):
+they do not travel to a module that depends on okay-docs, so a
+program that builds a `MongoDocs` or a `CassandraDocs` names the
+driver in its own build, as a JDBC user names theirs.
 
 ## Guide
 
