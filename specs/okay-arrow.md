@@ -81,7 +81,7 @@ full reimplementation buys speed in one niche and costs months.
 а и в js и native". So `OkayArrow` grows from the wire's five columns to
 okay's columnar format, on every platform:
 
-- [ ] Stage 4: the TYPES: ints 8/16/32/64 signed and unsigned, float32
+- [x] Stage 4: the TYPES: ints 8/16/32/64 signed and unsigned, float32
       and float64, bool, utf8/binary and their large forms, decimal128,
       date32/date64, timestamp (unit, zone), duration, fixed-size
       binary, LIST and STRUCT (nested), and dictionary-encoded columns
@@ -185,3 +185,23 @@ okay's columnar format, on every platform:
     Allocation on write fell 7.6x (a stream written once into an array
     of its exact size, UTF-8 encoded in place) and on read halved (the
     body read in place, bulk little-endian copies).
+
+- Stage 4 (okay-arrow-types, 2026-09-25): the model's 16 column kinds
+  (25 Arrow types with their parameters) in both implementations.
+  `OkayArrow` rewritten recursively — field nodes and buffers in
+  pre-order, dictionary batches (deltas too) decoded through
+  `Column.take`, lists normalised to offsets from 0 (a sliced list's
+  first offset is not 0 in pyarrow's stream), half floats widened by
+  hand (`Float.float16ToFloat` is JDK 20+ and JVM-only). `ApacheArrow`
+  maps every kind through Arrow Java's own vectors (fixed-width through
+  the data buffer, lists through `startNewValue`/`endValue`, structs
+  through their children), never through okay's IPC, so each checks the
+  other.
+  - Tests: `TestOkayArrow` (9, on JVM, Scala.js and Native: every kind
+    round-trips, cut streams refused, `take`, `concat`), `TestApacheArrow`
+    (7: both ways across implementations for every kind; a dictionary
+    Arrow Java wrote), `TestPyArrowOracle` (3, Live: pyarrow validates
+    all 25 types we write, names them, and ITS writer's stream reads back
+    the same; large forms, dictionary, float16, two batches and slices
+    only pyarrow makes; a map refused by name).
+  - Mutant: decimal128 bytes in big-endian order — four tests red.

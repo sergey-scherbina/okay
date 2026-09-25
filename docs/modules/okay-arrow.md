@@ -1,15 +1,34 @@
 # okay-arrow
 
 Apache Arrow IPC streams behind one facade, with two implementations
-(specs/okay-arrow.md). A table is named columns of one length. The model
-holds five kinds of column (int64, float64, text, bool, and all-null),
-every one nullable, and the schema's metadata. That is exactly what
-okay's wire carries to Python (`FrameFormat`, docs/python-and-r.md).
+(specs/okay-arrow.md). A table is named columns of one length, with the
+schema's metadata. The model is okay's columnar format, and every column
+in it is nullable:
+
+| Arrow type | `Column` |
+|---|---|
+| int8/16/32 and uint8/16/32/64 | `Ints(bits, signed, …)` |
+| int64 | `Int64` |
+| float16 (read), float32, float64 | `Float32`, `Float64` |
+| bool, null | `Bool`, `Nulls` |
+| utf8, large_utf8 (read) | `Utf8` |
+| binary, large_binary (read), fixed_size_binary | `Binary`, `FixedBinary` |
+| decimal128 | `Decimal(precision, scale, …)`: the unscaled value |
+| date32, date64 | `Date32` (days), `Date64` (milliseconds) |
+| timestamp, with unit and zone | `Timestamp(unit, zone, …)` |
+| duration | `Duration(unit, …)` |
+| list, large_list (read) | `ListOf(offsets, child, …)` |
+| struct | `Struct(fields, …)` |
+
+A dictionary-encoded column is read as its values. What the model does
+not hold (decimal256, maps, unions, run-end encoding, views, intervals,
+times of day) is refused by name. The wire to Python uses five of these
+columns (`FrameFormat`, docs/python-and-r.md).
 
 | | |
 |---|---|
 | `ArrowCodec` | the facade: `write(Table): Array[Byte]`, `read(Array[Byte]): Table`; `ArrowCodec.isStream` tells an Arrow stream from JSON or CBOR by its first four bytes |
-| `OkayArrow` | OURS and the default: on the JVM, Scala.js and Scala Native, with no dependency |
+| `OkayArrow` | OURS and the default: every type above, on the JVM, Scala.js and Scala Native, with no dependency |
 | `ApacheArrow` | JVM only: the same facade over Apache Arrow Java 19, plus `toRoot`/`fromRoot` to and from a `VectorSchemaRoot`; Arrow Java is an OPTIONAL dependency you add |
 
 ## Which one
@@ -35,12 +54,12 @@ The two write the same format, and each reads the other's streams
     same(t, OkayArrow.read(ApacheArrow.write(t)))
 ```
 
-Choose `OkayArrow` when the table is one of the five kinds of column and
-the program should stay light and cross-platform. Its whole cost is this
+Choose `OkayArrow` when the table's columns are in the model and the
+program should stay light and cross-platform. Its whole cost is this
 module, it runs on Scala.js and Native, and it needs no JVM flags.
 Choose `ApacheArrow` when the table lives in Arrow Java already, or when
 the rest of Arrow is needed: nested types, dictionaries, the file
-format, compression, Flight. `toRoot` hands the table to that world:
+format, compression, maps and unions, Flight. `toRoot` hands the table to that world:
 
 ```scala
       val root = ApacheArrow.toRoot(t, alloc)
