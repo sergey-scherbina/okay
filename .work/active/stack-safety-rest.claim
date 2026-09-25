@@ -1,5 +1,0 @@
-slug: stack-safety-rest
-who: claude (session 6f505c09)
-what: stack-safety stages 7 and 8 — the macros (okay-direct, okay-js Direct, ProcMacro, ContMacro, okay-staging, okay-optics Fuse) as compile-time bounds, and the remaining runtime walks in the single-digit modules of both cores: red first where a wire or a file reaches the depth
-files: many small modules, specs/stack-safety*
-since: 2026-09-25
