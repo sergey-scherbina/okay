@@ -1,0 +1,2 @@
+# gate.sh --read writes <log>.clean beside each fixture it reads
+*.clean

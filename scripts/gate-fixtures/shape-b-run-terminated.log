@@ -1,0 +1,3 @@
+[info] Passed: Total 112, Failed 0, Errors 0, Passed 112, Ignored 1
+[error] (okayLexNative / Test / executeTests) scala.scalanative.testinterface.common.RPCCore$ClosedException: scala.scalanative.testinterface.NativeRunnerRPC$RunTerminatedException
+[error] Total time: 60 s (0:01:00.0), completed Sep 9, 2026, 6:55:00 PM

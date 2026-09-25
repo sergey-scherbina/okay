@@ -1,0 +1,7 @@
+[info] Passed: Total 112, Failed 0, Errors 0, Passed 112, Ignored 1
+[warn] Force close java.net.SocketTimeoutException: Accept timed out
+[error] Test runner interrupted by fatal signal 9
+[warn] Force close java.lang.RuntimeException: Process /work/okay-chain/.native/target/scala-3.9.0/okay-chain-test finished with non-zero value 137 (0x89)
+[error] Caused by: java.net.SocketTimeoutException: Accept timed out
+[error] (okayChainNative / Test / loadedTestFrameworks) scala.scalanative.testinterface.common.RPCCore$ClosedException: scala.scalanative.testinterface.NativeRunnerRPC$RunTerminatedException
+[error] Total time: 300 s (0:05:00.0), completed Sep 25, 2026, 12:34:18 PM

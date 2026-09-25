@@ -130,6 +130,36 @@ GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/closed.log" run_gate "affected 
 got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/closed.log" | tr '\n' '|')
 [ "$got" = 'fake-sbt-arg: <affected master test jvm>|fake-sbt-arg: <affected master test rest>|' ] && ok "the plain form is unchanged" || bad "sbt was handed: $got"
 
+say "9. the lost-process classifier, over real logs, in both directions"
+# native-accept-timeout: shape C (a Native binary that never connected
+# within ComRunner's 40 s accept, killed by the adapter) was read as
+# "a failure this script does not recognise", and the ci-runner reverted
+# a green lane for it. The fixtures are the verbatim lines of real logs.
+fx="$here/gate-fixtures"
+read_gate() { run_gate --read "$fx/$1" > "$tmp/$1.out" 2>&1; echo $?; }
+rc=$(read_gate shape-c-accept-timeout.log)
+grep -q "lost a test process" "$tmp/shape-c-accept-timeout.log.out" && grep -q "okayChainNative" "$tmp/shape-c-accept-timeout.log.out" \
+  && [ "$rc" -eq 0 ] && ok "shape C is a lost process, and would be re-run alone" || bad "shape C: rc=$rc, $(grep '^gate:' "$tmp/shape-c-accept-timeout.log.out" | tail -1)"
+rc=$(read_gate shape-c-beside-a-real-failure.log)
+grep -q "gate: RED — tests failed" "$tmp/shape-c-beside-a-real-failure.log.out" && grep -q "==> X okay.foo.TestBar" "$tmp/shape-c-beside-a-real-failure.log.out" \
+  && ! grep -q "lost a test process" "$tmp/shape-c-beside-a-real-failure.log.out" \
+  && [ "$rc" -ne 0 ] && ok "shape C beside a real ==> X stays RED, naming the real one" || bad "a real failure was excused: rc=$rc"
+rc=$(read_gate loaded-frameworks-no-accept-timeout.log)
+grep -q "does not recognise" "$tmp/loaded-frameworks-no-accept-timeout.log.out" && [ "$rc" -ne 0 ] \
+  && ok "loadedTestFrameworks WITHOUT the accept timeout stays RED" || bad "an unexplained shape was excused: rc=$rc"
+rc=$(read_gate shape-b-run-terminated.log)
+grep -q "lost a test process" "$tmp/shape-b-run-terminated.log.out" && grep -q "okayLexNative" "$tmp/shape-b-run-terminated.log.out" \
+  && [ "$rc" -eq 0 ] && ok "shape B is still a lost process" || bad "shape B regressed: rc=$rc"
+# the whole path, not --read: a box busy enough to starve the matrix's
+# binary starves the rerun's too, and that is KILLED (retried), not RED
+# (which ci-runner bisects and reverts)
+GATE_SBT="$here/fake-sbt-accept-timeout.sh" GATE_LOG="$tmp/accept.log" run_gate test > "$tmp/accept.out" 2>&1
+rc=$?
+grep -q "gate: KILLED" "$tmp/accept.out" && ! grep -q "gate: RED" "$tmp/accept.out" && [ "$rc" -eq 137 ] \
+  && ok "a rerun lost to the same accept timeout is KILLED, not RED" || bad "rc=$rc, $(grep '^gate:' "$tmp/accept.out" | tail -1)"
+[ "$(sh "$here/gate-retry.sh" --read "$tmp/accept.out")" = "$tmp/accept.out: gate: KILLED — a signal, not a verdict; retry" ] \
+  && ok "and gate-retry retries it" || bad "gate-retry reads it as: $(sh "$here/gate-retry.sh" --read "$tmp/accept.out")"
+
 say ""
 # and now the same suite under the OTHER shell, once
 if [ -z "$GATE_SELFTEST_SHELL" ] && [ "$fail" -eq 0 ]; then

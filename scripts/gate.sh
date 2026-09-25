@@ -458,7 +458,20 @@ fi
 #      under it). Filed by the `failing-over` gate, 2026-09-09 18:55,
 #      after this script called it "unrecognised" and re-ran nothing.
 #
-# Conservative on purpose: a project that failed in NEITHER shape
+#   C  it never CONNECTED (native-accept-timeout, 2026-09-25): the
+#      binary did not dial back within the adapter's hard-coded 40 s
+#      (`ComRunner`, `ServerSocket.setSoTimeout(40000)` in test-runner
+#      0.5.12), the adapter logged `Force close … Accept timed out` and
+#      killed it (`destroyForcibly`: exit 137, "fatal signal 9"), and
+#      sbt reports `(<m> / Test / loadedTestFrameworks)` carrying the
+#      same `RPCCore$ClosedException` — before any test of the module
+#      ran. Accepted ONLY with the `Accept timed out` line in the log:
+#      a loadedTestFrameworks failure without it is not this mechanism.
+#      Measured occurrences: okayOpticsNative 2026-09-22, okayAsyncNative
+#      2026-09-23 and 2026-09-25 (the ci-runner run that reverted a green
+#      lane for it), okayChainNative and okayConfNative 2026-09-25.
+#
+# Conservative on purpose: a project that failed in NONE of the shapes
 # means we do not understand this red, so nothing is re-run.
 lost_a=$(grep -E "^\[error\] \(.*Test / test\) sbt.TestsFailedException" "$clean" \
       | sed -E 's/^\[error\] \(([^ ]+) \/ Test \/ test\).*/\1/' | sort -u)
@@ -468,9 +481,14 @@ lost_b=$(grep -E "^\[error\] \(.*Test / executeTests\).*(RunTerminatedException|
 if [ -n "$lost_a" ] && ! grep -qE "^\[error\] Error: Total [0-9]+, Failed 0, Errors [1-9]" "$clean"; then
   lost_a=""
 fi
-lost=$(printf '%s\n%s\n' "$lost_a" "$lost_b" | grep -v '^$' | sort -u)
-failed_projects=$(grep -E "^\[error\] \([^)]*Test / (test|executeTests)\)" "$clean" \
-      | sed -E 's/^\[error\] \(([^ ]+) \/ Test \/ (test|executeTests)\).*/\1/' | sort -u)
+lost_c=""
+if grep -qE "Accept timed out" "$clean"; then
+  lost_c=$(grep -E "^\[error\] \(.*Test / loadedTestFrameworks\).*(RunTerminatedException|RPCCore\$ClosedException)" "$clean" \
+        | sed -E 's/^\[error\] \(([^ ]+) \/ Test \/ loadedTestFrameworks\).*/\1/' | sort -u)
+fi
+lost=$(printf '%s\n%s\n%s\n' "$lost_a" "$lost_b" "$lost_c" | grep -v '^$' | sort -u)
+failed_projects=$(grep -E "^\[error\] \([^)]*Test / (test|executeTests|loadedTestFrameworks)\)" "$clean" \
+      | sed -E 's/^\[error\] \(([^ ]+) \/ Test \/ (test|executeTests|loadedTestFrameworks)\).*/\1/' | sort -u)
 # comm needs two FILES, and `<(...)` process substitution is a
 # bashism — this script is invoked as both `scripts/gate.sh` (its own
 # bash shebang) and `sh scripts/gate.sh` (plain POSIX sh) around this
@@ -502,7 +520,7 @@ rerun=""
 for p in $lost; do rerun="$rerun $p/test"; done
 rlog="${log}.rerun"
 # shellcheck disable=SC2086
-sbt $rerun > "$rlog" 2>&1
+$GATE_SBT $rerun > "$rlog" 2>&1
 rstatus=$?
 if [ $rstatus -eq 0 ]; then
   echo "gate: GREEN AFTER RERUN — the matrix's only failure was a lost process in:"
@@ -510,7 +528,19 @@ if [ $rstatus -eq 0 ]; then
   echo "gate: (rerun log: $rlog) — record the recurrence in BACKLOG's native-runner-error entry"
   exit 0
 fi
-echo "gate: RED — the rerun failed too, so this is not the known signature:"
 perl -pe 's/\e\[[0-9;]*m//g' "$rlog" > "${rlog}.clean"
+# A rerun that lost its process to the SAME accept timeout has still
+# said nothing about the tree: the box that starved the matrix's binary
+# for 40 s can starve one module's too (load ~100 on 14 cores, measured
+# 2026-09-25). Reported as KILLED, which gate-retry retries and
+# ci-runner never bisects — a red here is what reverted a green lane.
+if ! grep -q "==> X" "${rlog}.clean" \
+   && grep -q "Accept timed out" "${rlog}.clean" \
+   && ! grep -qE "Failed [1-9]" "${rlog}.clean"; then
+  echo "gate: KILLED — the rerun lost its test process the same way (Accept timed out) and no test failed"
+  echo "gate: this is NOT a verdict about the tree; run it again on a quieter box"
+  exit 137
+fi
+echo "gate: RED — the rerun failed too, so this is not the known signature:"
 grep -E "==> X|^\[error\]" "${rlog}.clean" | head -20
 exit $rstatus

@@ -1,9 +1,41 @@
-- [ ] native-runner-error, RECURRENCE LEDGER (the entry itself is
-      closed in BACKLOG-ARCHIVE.md — the cause is settled: the test
-      binary's connection ends and it exits 0 while sbt still has a
-      call in flight, so the module reports no tests and sbt reports a
-      lost process). Recorded here only so the rate stays visible, as
-      `scripts/gate.sh` asks on every occurrence:
+- [ ] native-runner-error, RECURRENCE LEDGER — TWO MECHANISMS, NOT ONE
+      (split by native-accept-timeout, 2026-09-25). The entry itself is
+      closed in BACKLOG-ARCHIVE.md, and what it settled is ONE of them;
+      the ledger below then read every later sighting as that one and
+      wrote "nothing changes the settled cause" under readings that
+      named a different one. They are told apart by sbt's own line:
+      B  EXIT 0, NOBODY KILLED IT (settled 2026-09-09): the binary's
+         connection ends and it exits 0 while sbt still has a call in
+         flight — `Error: Total N, Failed 0, Errors 1` (shape A in
+         gate.sh) or `(<m> / Test / executeTests)` RunTerminatedException
+         (shape B). Recognised and re-run by gate.sh since 2026-09-09.
+      C  THE ADAPTER KILLED IT: the binary did not connect back within
+         `ComRunner`'s hard-coded 40 s accept (test-runner 0.5.12,
+         `setSoTimeout(40000)`), the adapter logged `Force close …
+         Accept timed out` and `destroyForcibly`'d it (exit 137, "fatal
+         signal 9"), and sbt fails `(<m> / Test / loadedTestFrameworks)`
+         before any test ran, under load (~80–100 on 14 cores in every
+         reading that recorded it). WHY the binary misses 40 s is OPEN:
+         native-timeline's first 24 min (2026-09-25, load 66–100, 123
+         binaries, 67 alive at once) saw no kill and at most 2 binaries
+         runnable per sample — a connected binary waits asleep, so the
+         lost 40 s may be on sbt's side of the socket, not the binary's. First seen
+         2026-09-18 (okayParseNative), named 2026-09-22 (the accept
+         line), and read as "unrecognised" by gate.sh until
+         native-accept-timeout taught it: shape C is now re-run alone,
+         and a rerun lost the same way is `gate: KILLED` (retried),
+         never RED — a RED is what made ci-runner revert a green lane
+         (closed by ci-runner-revert-confirm, which also stops the runner bisecting any red with no `==> X`).
+      Readings below that are C: 2026-09-18 okayParseNative (twelfth),
+      2026-09-22 okayOpticsNative (thirteenth), 2026-09-23
+      okayAsyncNative; and 2026-09-25's okayAsyncNative (the reverted
+      run), okayChainNative and okayConfNative, which are in the gate
+      fixtures rather than here. The rest name no call and are
+      consistent with B. `scripts/native-timeline.sh` samples every
+      Native test binary once a second beside a gate, which is the
+      measurement the C readings kept lacking: how long a killed binary
+      lived and what state it spent it in. Record a new reading under
+      its mechanism; a reading that names neither is its own finding.
       2026-09-10, okayCodecNative, one lost process in a full gate,
       GREEN on the rerun of that module alone (bench-native-lanes).
       2026-09-10 23:12, okayCrdtNative, same shape, GREEN on the rerun
