@@ -1,7 +1,0 @@
-feature/mark-glyph-only 2026-09-25T06:19:53Z
-agent: claude-code (session 013hkJA4)
-heartbeat: 2026-09-25T06:19:53Z
-status: in-progress
-done-so-far: claim
-next: retire the .!? mark; .? is the only postfix mark (Direct, Gen, Cont.Monadic, macros, tests, benches, docs)
-touches: okay-direct/src/**, src/main/scala/{Cont,Handler,Refs,Throws}.scala, docs/*.md, specs/unwrap-glyph.md
