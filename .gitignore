@@ -34,3 +34,9 @@ compare/jmh-result.text
 
 # scala-cli
 .scala-build/
+
+# JMH -prof async writes its report beside the project (<Benchmark>-<Mode>-<params>/)
+*-AverageTime-*/
+*-Throughput-*/
+*-SampleTime-*/
+*-SingleShotTime-*/
