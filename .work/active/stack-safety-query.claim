@@ -1,0 +1,5 @@
+slug: stack-safety-query
+who: claude (session 6f505c09)
+what: Query predicate walks (render/both/collect/eval) in okay-sql and okay2-sql on explicit stacks, red first on a folded predicate; ArrowFrames.cells bound
+files: okay-sql/src/main/scala/okay/sql/Query.scala, okay2/okay2-sql/src/main/scala/okay2/sql/Query.scala, okay-py/src/main/scala/okay/py/ArrowFrames.scala, specs/stack-safety*
+since: 2026-09-25
