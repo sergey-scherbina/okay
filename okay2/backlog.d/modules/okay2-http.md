@@ -3,4 +3,4 @@
       (request/response, Acceptance, Urls), `Ws`, the NIO `Server` and
       the client `Transports` on the JVM (JS client after). NOT McpHttp
       and TsClient: okay-http depends on okay-mcp for those, and the MCP
-      stack is not ported. Needs okay2-codec. (2026-09-25)
+      stack is not ported. Its Schema is okay2-codec (landed, stage 41). (2026-09-25)

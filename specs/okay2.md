@@ -2076,6 +2076,69 @@ okay2-optics: the lossless readers JSON's CST path and XML stand on.
 - The shared `ArrowLawsSuite` is not in okay2: the laws a Mealy machine
   can break are stated in TestMealy directly.
 
+## Stage 41 — okay2-codec: Schema and JSON (2026-09-25)
+The modules section's second item (operator: "Http, json, xml, sql"). The
+okay-codec core that the HTTP and SQL ports stand on: `Schema`, its
+derivation, and JSON. Cbor, Edn, Yaml, Markdown, JsonSchema, Validate,
+Columns, the staged codecs and the provider registry are on demand
+(backlog `okay2-codec-dialects`).
+
+- [x] `Schema[A]`: the Scala 3 cases (scalars, bytes, bigint, Option,
+      List, Vector, product with defaults, sum, iso with vocabulary) as
+      a sealed class, DISPATCHED BY A VISITOR (`visit(Visit[F]): F[A]`)
+      where Scala 3 relies on GADT refinement in a match, which Scala 2
+      does not do for a case object; `fold` ties the knot by identity,
+      `Folded` memoises per schema, `Step` walks a value native to
+      `Codecs.NativeThreshold` and on a `Cont.defer` trampoline past it
+      (TestSchemaFold, TestSchemaOnce)
+- [x] derivation as a blackbox macro (`Schema.derived`, at lower
+      priority than the instances): a case class is a product, a case
+      object an empty product, a sealed trait or abstract class a sum;
+      `scala.`/`java.` types are never derived, so `Option` stays the
+      option (TestCodec); defaults from the companion's
+      `<init>$default$N`, APPLIED to the type's arguments, so a generic
+      product's default works where Scala 3's `Defaults` holds None
+      (TestDefaults); a local case class's companion by name
+- [x] a recursive type names its schema in its companion; the
+      derivation's field lookup finds it and the edge is that instance
+      itself (TestSchemaOnce, TestVector)
+- [x] Json: the value, print, `parse` (the fast `JsonValue` road, the
+      lossless CST when unsure, agreeing on every document and every
+      prefix of the corpus — TestJsonValue), `cst`/`render`/`lossless`
+      (TestJsonCst), RFC 7396 `mergePatch` (TestJsonMergePatch),
+      `escape` (TestJsonEscape), encode/decode/read/write (TestCodec,
+      TestIso, TestEnumeration, TestIntRange, TestBigInt)
+- [x] `JsonStrict`: the same answer as the lossless road on well-formed
+      input, `Left` on damage and truncation (TestJsonStrict)
+- [x] every walk is safe at 100 000 levels: both parsers, projection,
+      decode, strict read, print, encode, merge patch
+      (TestJsonTrampoline). A mutant with the threshold at `Int.MaxValue`
+      fails all six of those tests with StackOverflowError.
+- [x] `Json.literals`: a string LITERAL, Int, Double and Boolean
+      convert; a String value, a Long, a Char and a Float are refused
+      (TestJsonLiterals, via munit's `compileErrors`)
+- [x] JVM, Scala.js and Scala Native (86 results each)
+
+### Found while building it
+- A view `Double => Json` APPLIES to a `Long` in Scala 2: numeric
+  widening makes it applicable, so `val j: Json = 9007199254740993L`
+  compiled to a rounded `JNum` without a word. The test that pins the
+  refusal failed first. The numeric views take the exact type
+  by `=:=` now.
+- A thunk typed `() => Schema[_]` cannot be opened by a type parameter:
+  it is a function whose every call MAY answer a different type, not one
+  function of one `T`, and Scala 2 is right to refuse. It is one schema
+  (`once`), so `fold`'s edge takes it at the type its parts are read at,
+  in `Erased.schema` beside the product's other erased-part casts: the
+  heterogeneous-list case of the no-cast rule.
+- An implicit parameter passed on by name inside `Schema` itself
+  (`enumeration` calling `vocabulary`) searched the companion's
+  `derived` too, and a macro cannot expand in the run that defines it:
+  the parameter is passed explicitly.
+- `knownDirectSubclasses` is empty for a sealed type whose children the
+  typer has not reached (SI-7046): the derivation refuses naming it, and
+  the tests declare their sums before deriving them.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

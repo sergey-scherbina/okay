@@ -107,6 +107,7 @@ lazy val root: Project = (project in file("."))
     okay2Optics.jvm, okay2Optics.js, okay2Optics.native,
     okay2Lex.jvm, okay2Lex.js, okay2Lex.native,
     okay2Parse.jvm, okay2Parse.js, okay2Parse.native,
+    okay2Codec.jvm, okay2Codec.js, okay2Codec.native,
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
     okay2Async.jvm, okay2Async.js, okay2Async.native,
     okay2Platform.jvm, okay2Platform.js, okay2Platform.native,
@@ -254,6 +255,24 @@ lazy val okay2Parse = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(jvmOnlyTests)
   .jsSettings(jsTests)
   .jvmConfigure(_.withId("okay2Parse"))
+
+/** okay-codec for the Scala 2 core: `Schema` and its derivation (a
+ * blackbox macro where Scala 3 reads a Mirror), and JSON — the value,
+ * the fast and lossless parsers, merge patch, encode/decode, the strict
+ * reader */
+lazy val okay2Codec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-codec"))
+  .dependsOn(okay2Parse)
+  .settings(
+    name := "okay2-codec",
+    common,
+    libraryDependencies += "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+  )
+  .jvmSettings(reflect(None), jvmOnlyTests)
+  .jsSettings(jsTests, reflect(Some(Provided)))
+  .nativeSettings(reflect(Some(Provided)))
+  .jvmConfigure(_.withId("okay2Codec"))
 
 /** okay-workflow for the Scala 2 core: `Wf`, the durable program's
  * own questions over `Delim`'s dialogue, and `Proc`, the free arrow

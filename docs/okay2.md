@@ -59,7 +59,8 @@ Contents:
 30. [Durable workflows](#30-durable-workflows)
 31. [Tables on any platform](#31-tables-on-any-platform)
 32. [Lexing and parsing, lossless and total](#32-lexing-and-parsing-lossless-and-total)
-33. [Literature](#33-literature)
+33. [JSON over a Schema](#33-json-over-a-schema)
+34. [Literature](#34-literature)
 
 ## 1. The build
 
@@ -1776,7 +1777,64 @@ explicit stack, as the Scala 3 core's do since `cst-walk-stack-safe`
 (2026-09-25): a recursive walk overflowed on a 20 000-deep document the
 parse itself builds.
 
-## 33. Literature
+## 33. JSON over a Schema
+
+`okay2-codec` is okay-codec's `Schema` and JSON (stage 41). A `Schema[A]`
+is the shape of `A` as data — scalars, `Option`/`List`/`Vector`,
+products, sums, and a checked view of another schema — and every codec
+is a fold over it. A case class is a product and a sealed trait a sum,
+derived by a macro wherever a `Schema` is asked for; a recursive type
+names its schema once, in its companion, so the derivation's own field
+lookup finds it:
+
+```scala
+  implicit lazy val schema: Schema[Person] = Schema.derived
+    val text = Json.write(p)
+    assertEquals(Json.read[Person](text), Right(p))
+```
+
+A sum travels as the one-entry object of its case, and a case object as
+an empty one:
+
+```scala
+    assertEquals(Json.write[Shape](Shape.Circle(1.5)), """{"Circle":{"r":1.5}}""")
+    assertEquals(Json.write[Shape](Shape.Dot), """{"Dot":{}}""")
+```
+
+Decoding is total over what arrived: an absent field takes its declared
+default, then `None` if it is optional, then a `Left` naming it. The
+macro calls a generic product's default with the type's own arguments,
+where Scala 3's `Defaults` macro gives up:
+
+```scala
+    assertEquals(Json.read[Job]("""{"name":"x"}"""), Right(Job("x", 3, Some(5), false)))
+    assertEquals(Json.read[Poly[Int]]("""{"x":1}"""), Right(Poly(1, Nil)))
+    assertEquals(Json.read[Strict]("""{"id":"a"}"""), Left("missing field 'count' in Strict"))
+```
+
+There are three ways to read. `Json.parse` uses the fast value parser
+when it is sure and the lossless CST (okay2-parse, section 32) when it
+is not, so damage comes back as `JErr` in place. `Json.cst`/`render` is
+the lossless road, byte for byte. `Json.readStrict` reads characters
+straight into the schema. It gives the same answer as `Json.read` on
+well-formed input and a `Left` on anything truncated. `Json.mergePatch`
+is RFC 7396. Every walk here (both parsers, the projection, decode,
+print, encode, merge patch) runs natively for `Codecs.NativeThreshold`
+open containers and then continues on a `Cont.defer` trampoline. A
+100 000-deep document round-trips on the JVM, Scala.js and Scala Native.
+
+`Json.literals` is opt-in. A string LITERAL, an `Int`, a `Double` or a
+`Boolean` converts to `Json`. A `String` value is refused with a message
+naming `JStr` and `Json.parse`. A `Long`, `Char` or `Float` is refused
+too, because Scala 2 would otherwise widen it silently into the `Double`
+view:
+
+```scala
+    import Json.literals._
+    assertEquals(take("ada"), JStr("ada"))
+```
+
+## 34. Literature
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
@@ -1796,6 +1854,13 @@ parse itself builds.
   "What you needa know about Yoneda" (ICFP 2018); Bryce Clarke et al.,
   "Profunctor Optics, a Categorical Update" (Compositionality 2024);
   John Hughes, "Generalising monads to arrows" (2000).
+- Erik Meijer, Maarten Fokkinga and Ross Paterson, "Functional
+  Programming with Bananas, Lenses, Envelopes and Barbed Wire" (FPCA
+  1991): `Schema.fold` as the catamorphism, the algebra per case; Jeremy
+  Gibbons, "Datatype-Generic Programming" (2007); Rúnar Bjarnason,
+  "Stackless Scala With Free Monads" (2012): the trampoline past the
+  threshold. RFC 8259 (JSON), RFC 7396 (JSON Merge Patch), RFC 4648
+  (base64).
 - Philippe Flajolet, Éric Fusy, Olivier Gandouet and Frédéric Meunier,
   "HyperLogLog" (2007); Graham Cormode and S. Muthukrishnan, "An improved
   data stream summary: the count-min sketch" (2005); Ted Dunning, "The
