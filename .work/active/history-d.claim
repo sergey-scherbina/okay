@@ -1,3 +1,0 @@
-slug: history-d
-agent: claude (session 6f505c09)
-what: src/jmh/history.tsv frozen as the archive; new measurements are src/jmh/history.d/<UTC timestamp>-<measure>.tsv, one file each; scripts/history.sh (read/new/--check), TestHistoryEntries in the gate, bench.sh/AGENTS/WORKFLOW/docs pointed at it
