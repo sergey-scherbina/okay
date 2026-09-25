@@ -40,7 +40,7 @@ class TestDocExamplesTutorialMarks extends munit.FunSuite:
       if i >= 100 then Handled.pure(acc)
       else Direct.staged(sw) {
         val a = State.get[Int].?
-        State.modify[Int](_ + i).?          // compound programs are walked too
+        val _ = State.modify[Int](_ + i).?  // compound programs are walked too
         Writer.tell("w").?
         step(i + 1, acc + a).?
       }

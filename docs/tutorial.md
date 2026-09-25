@@ -338,7 +338,7 @@ def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
   if i >= 100 then Handled.pure(acc)
   else Direct.staged(sw) {
     val a = State.get[Int].?
-    State.modify[Int](_ + i).?          // compound programs are walked too
+    val _ = State.modify[Int](_ + i).?  // compound programs are walked too
     Writer.tell("w").?
     step(i + 1, acc + a).?
   }
