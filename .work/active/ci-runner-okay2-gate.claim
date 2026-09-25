@@ -1,0 +1,5 @@
+slug: ci-runner-okay2-gate
+who: claude (session 6f505c09)
+what: gate-retry.sh runs `scripts/gate.sh` relative to the worktree it is handed, so the runner okay2 step (cd okay2 && gate-retry "$PWD") dies with rc=127 six times and every range touching okay2/ ends in "no verdict": locate gate.sh beside gate-retry.sh instead
+files: scripts/gate-retry.sh
+since: 2026-09-26
