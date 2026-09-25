@@ -49,10 +49,23 @@ object ApacheArrow extends ArrowCodec:
 
   private lazy val ready: Unit = missing().foreach(why => throw IllegalStateException(why))
 
+  /** `f` with an allocator, closed after. When `f` has already failed, a
+   * leak the close then reports does not REPLACE that failure: Arrow Java
+   * leaves a half-loaded batch allocated when it throws, and "Memory was
+   * leaked" hid the reading error (found by okay-arrow-file's mutant) */
+  private def withAllocator[A](f: BufferAllocator => A): A =
+    val alloc = RootAllocator()
+    val out =
+      try f(alloc)
+      catch case e: Throwable =>
+        try alloc.close() catch case _: IllegalStateException => ()
+        throw e
+    alloc.close()
+    out
+
   def write(t: Table): Array[Byte] =
     ready
-    val alloc = RootAllocator()
-    try
+    withAllocator { alloc =>
       val root = toRoot(t, alloc)
       try
         val out = java.io.ByteArrayOutputStream()
@@ -60,12 +73,11 @@ object ApacheArrow extends ArrowCodec:
         try { w.start(); w.writeBatch(); w.end() } finally w.close()
         out.toByteArray
       finally root.close()
-    finally alloc.close()
+    }
 
   def read(bytes: Array[Byte]): Table =
     ready
-    val alloc = RootAllocator()
-    try
+    withAllocator { alloc =>
       val r = ArrowStreamReader(java.io.ByteArrayInputStream(bytes), alloc)
       try
         val root = r.getVectorSchemaRoot
@@ -87,14 +99,13 @@ object ApacheArrow extends ArrowCodec:
         Table(names.zip(cols), metadata(schema))
       catch case e: java.io.IOException => throw IllegalStateException(s"not an Arrow stream Arrow Java reads: ${e.getMessage}", e)
       finally r.close()
-    finally alloc.close()
+    }
 
   override def writeFile(t: Table, compression: Option[okay.compress.Codec]): Array[Byte] =
     ready
     if compression.isDefined then
       throw IllegalArgumentException("ApacheArrow writes files uncompressed here: Arrow Java's codecs are another optional jar (arrow-compression)")
-    val alloc = RootAllocator()
-    try
+    withAllocator { alloc =>
       val root = toRoot(t, alloc)
       try
         val out = java.io.ByteArrayOutputStream()
@@ -102,18 +113,17 @@ object ApacheArrow extends ArrowCodec:
         try { w.start(); w.writeBatch(); w.end() } finally w.close()
         out.toByteArray
       finally root.close()
-    finally alloc.close()
+    }
 
   private def fileReader[A](bytes: Array[Byte])(f: org.apache.arrow.vector.ipc.ArrowFileReader => A): A =
     ready
-    val alloc = RootAllocator()
-    try
+    withAllocator { alloc =>
       val r = org.apache.arrow.vector.ipc.ArrowFileReader(
         org.apache.arrow.vector.util.ByteArrayReadableSeekableByteChannel(bytes), alloc)
       try f(r)
       catch case e: java.io.IOException => throw IllegalStateException(s"not an Arrow file Arrow Java reads: ${e.getMessage}", e)
       finally r.close()
-    finally alloc.close()
+    }
 
   override def fileBatches(bytes: Array[Byte]): Int = fileReader(bytes)(_.getRecordBlocks.size)
 

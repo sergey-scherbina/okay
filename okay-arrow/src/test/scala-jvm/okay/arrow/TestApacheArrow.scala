@@ -96,3 +96,18 @@ class TestApacheArrow extends munit.FunSuite:
     assertEquals(ApacheArrow.fileBatches(OkayArrow.writeFile(t, None)), 1)
     assertEquals(Tables.same(t, ApacheArrow.readFileBatch(OkayArrow.writeFile(t, None), 0)), None)
   }
+
+  test("a file Arrow Java fails to read fails with ITS reason, not with the allocator's leak") {
+    val good = OkayArrow.writeFile(Tables.everything, None)
+    // the footer's block offset (8 + the schema message), moved 8 bytes early
+    val schemaLen = 8 + (good(12) & 0xff | (good(13) & 0xff) << 8 | (good(14) & 0xff) << 16)
+    val target = (8L + schemaLen).toInt
+    val footerAt = good.length - 10 - (good(good.length - 10) & 0xff | (good(good.length - 9) & 0xff) << 8)
+    val at = (footerAt until good.length - 18).find { k =>
+      (0 until 8).forall(j => good(k + j) == ((target.toLong >>> (8 * j)) & 0xff).toByte)
+    }.getOrElse(fail("no block offset in the footer"))
+    val bad = good.clone()
+    bad(at) = (bad(at) - 8).toByte
+    val e = intercept[Throwable](ApacheArrow.readFileBatch(bad, 0))
+    assert(!String.valueOf(e.getMessage).contains("Memory was leaked"), e.toString)
+  }
