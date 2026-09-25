@@ -106,6 +106,31 @@ A coercion that swapped the two keys fails it with a path: `Differ at
 the start: left performed Tag(big,Get()), right performed
 Tag(small,Get())`.
 
+## The forwarding law: what a handler may not touch
+
+A handler polymorphic in the rest of its row cannot interact with the
+operations it does not own \[[Biernacki, Piróg, Polesiuk & Sieczkowski
+2018](#ref-handle-with-care-2018)\]: its forwarding arm is forced to
+perform each foreign operation once, in place, and hand the answer back.
+`TestRowForwarding` states that as a law against a reference interpreter
+that does exactly that and nothing else, under a spy row the handler has
+no business with:
+
+```scala
+    Bisim.check(left, right, depth) match
+      case Verdict.Same(paths, _) => assert(paths > 0, s"$name: no sampled path ended")
+    same("Writer.collect", Writer.collect[Int, Int, Spy](writerProg), ref)
+```
+
+A reference that forwards an operation twice, or answers a `Say` without
+performing it, fails it with a path. The law also found a real one on
+its first run: `Writer.collect` summoned Writer's class test inside its
+own companion, so under `Writer.byValue` a `Writer % Int + Writer % String`
+row was accepted and `collect[Int]` took the String's `Say` — the verdict
+read `left returned (Vector(1, spy true, 2),20), right performed Say(spy
+true)`. `collect`, `map`, `expand` and `uncons` now take the caller's
+`TypeableK`, as `run` and `fold` did.
+
 ## What it does not check
 
 `Bisim.check` compares programs across **all** handlers, so it does not
@@ -124,6 +149,9 @@ function (a `Delim` shift) cannot be compared yet.
 
 ## References
 
+- <a id="ref-handle-with-care-2018"></a>Dariusz Biernacki, Maciej Piróg,
+  Piotr Polesiuk, Filip Sieczkowski. *Handle with care: relational
+  interpretation of algebraic effects and handlers.* POPL 2018.
 - <a id="ref-coherence-2018"></a>Dariusz Biernacki, Piotr Polesiuk.
   *Logical relations for coherence of effect subtyping.* Logical
   Methods in Computer Science, 2018 (first at TLCA 2015). Why a

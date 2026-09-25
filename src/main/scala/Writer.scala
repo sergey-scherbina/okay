@@ -181,7 +181,8 @@ object Writer {
    * cons per tell and one reverse, not a `Vector :+` per tell
    * (writer-collect-loops).
    */
-  def collect[W, A, G[+_]](a: A ! Writer % W + G)(using Distinct[Writer % W + G]): (Vector[W], A) ! G =
+  def collect[W, A, G[+_]](a: A ! Writer % W + G)(using Distinct[Writer % W + G])
+                          (using TypeableK[Writer % W]): (Vector[W], A) ! G =
     loopWith[W, List[W], A, (Vector[W], A), G](a)(Nil)((s, w) => w :: s)((s, a) => (s.reverse.toVector, a))
 
   /**
@@ -202,7 +203,7 @@ object Writer {
    * no transform, where only the Free nodes need rebuilding and the
    * told OPERATION can be reused as is.
    */
-  def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using Distinct[Writer % W + G])(f: W => V)
+  def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using Distinct[Writer % W + G], TypeableK[Writer % W])(f: W => V)
   : A ! Writer % V + G = (a.resume: @unchecked) match
     case Free.Return(x) => Free.Return(x)
     // THE HANDLED SIGNATURE IS TESTED FIRST (distinct-on-handlers,
@@ -246,7 +247,7 @@ object Writer {
    * result drops the told value, which makes this a filter as well as
    * an expansion.
    */
-  def expand[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using Distinct[Writer % W + G])(f: W => IndexedSeq[V])
+  def expand[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using Distinct[Writer % W + G], TypeableK[Writer % W])(f: W => IndexedSeq[V])
   : A ! Writer % V + G =
     def tellAll(vs: IndexedSeq[V], i: Int): Unit ! Writer % V + G =
       if i >= vs.length then Free.Return(())
@@ -350,7 +351,7 @@ object Writer {
    * Handler-able residue (Async, say) is what the consumer pays at
    * each pull. G is split from the told values by its runtime class.
    */
-  def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
+  def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)(using TypeableK[Writer % W])
   : Either[A, (W, A ! Writer % W + G)] ! G = (a.resume: @unchecked) match
     case Free.Return(a) => okay.pure(Left(a))
     // Writer tested first, for `map`'s reason: with the rest inferred
@@ -389,6 +390,16 @@ object Writer {
    * package, with no import.
    */
   given writerK[W]: TypeableK[Writer % W] = typeableK[Writer % W](classOf[Writer.Say[?, ?]])
+  // AND EVERY DOOR THAT SPLITS ON `Writer % W` TAKES ITS `TypeableK`
+  // FROM THE CALLER (row-parametricity-forwarding-law, 2026-09-25):
+  // a door that let `split` summon it HERE got this class test even
+  // when the caller had `byValue` in scope, so `Distinct` accepted a
+  // `Writer % Int + Writer % String` row on the finer test and
+  // `collect[Int]` then took the String's Say by the coarser one — the
+  // forwarding law caught it (TestRowForwarding). `run`, `fold` and
+  // `foldUntil` already took it; `collect`, `map`, `expand` and
+  // `uncons` do now. The `Stream` instance below (`writerStreamIn`)
+  // cannot: a given has no per-W parameter, so it streams by class.
 
   /**
    * The finer test, opt-in: the told value's own class as well, which
