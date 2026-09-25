@@ -1,0 +1,8 @@
+# claim: okay2-spark-columns
+
+agent: session 4c4f0061 (continuing okay2-spark)
+started: 2026-09-25
+scope: port okay-codec/Columns.scala -> okay2-codec, then
+  okay-spark/SparkSchema.scala -> okay2-spark, completing the
+  user's "full port" instruction (Bulk/Csv/Sort/Tables/State done;
+  Schema/Json landed by okay2-codec sibling; Columns is next).
