@@ -1949,7 +1949,78 @@ declares a credential that `Router.enforcing` checks. A `Router`
 dispatches through a trie, and the same table is its description: the
 body and answer schemas come from `JsonSchema`.
 
-## 36. Literature
+## 36. `$`, handler instances and layered monads
+
+Three things the Scala 3 core took from Biernacki's line of work
+(APLAS 2012, POPL 2018/2020, FSCD 2019), ported here with the same
+tests (specs/okay2.md stages 46-48).
+
+**`Delim.dollar(p)(ret)(body)`** is λ$'s delimiter: run the body, and
+when it returns leave through `ret`. It is not `push(body).flatMap(ret)`:
+a `shift0` captures the delimiter TOGETHER with `ret`, so a capture that
+drops `k` never runs `ret` and one that resumes twice runs it twice.
+`push` is `dollar` with the unit as `ret`. `Delim.dollarResumed` is the
+same delimiter told each time the machine enters it, which is what a
+handler keeping its state in a cell needs to refuse a second run.
+
+**`Lexical`** makes a handler INSTALLATION a prompt, and the body reaches
+it through the instance value — two `State[Int]` in one program are two
+names, and an operation addressed to the outer one passes through the
+inner untouched. Every strategy is a name: `deep` (shift0 under a
+dollar), `shallow` (control0 under a push), `tail` (a cell, guarded),
+`tailPure` (no `Delim` in the row: a walk), `walk` (over `Instances`).
+`Lexical.State` has every one with typed `get`/`set`/`put`:
+
+```scala
+    val prog = Lexical.State.deep[Int, (Int, Int), P](0) { a =>
+      Lexical.State.deep[Int, Int, P](10) { b =>
+        for {
+          x <- a.get
+          y <- b.get
+          _ <- a.set(x + y)
+          _ <- b.set(y * 2)
+        } yield x + y
+      }.map(_._2).flatMap(r => a.get.map(sa => (r, sa)))
+    }
+    assertEquals(run(prog), (10, (10, 10)))
+```
+
+**`Layered`** is monadic reflection over a tower: each `reify[M, R, F]`
+installs its own delimiter (`η $ e`) and hands the body a capability,
+and `m.reflect(cap)` reaches that layer past any inner ones. The order
+of the blocks is the order of the layers, as with transformers:
+
+```scala
+    val prog = reify[List, Option[Int], P] { lst =>
+      reify[Option, Int, P] { opt =>
+        for {
+          x <- List(1, 2, 3).reflect[Option[Int], P](lst)
+          y <- (if (x == 2) None else Some(x * 10)).reflect[Int, P](opt)
+        } yield x + y
+      }
+    }
+    assertEquals(run(prog), List(Some(11), None, Some(33)))
+```
+
+The stacked forms (`Lexical.Stacked`, `Layered.Stacked`) refuse an
+instance or a layer used outside its installation at compile time; in
+Scala 2 the stack is a value, so a stacked door takes it
+(`a.get(st)`, `m.reflectAt[F](st, layer)`) and is a builder for the
+type arguments a lambda cannot supply (`tail[A, G](st)(s0)(body)`).
+Two Scala 2 limits, recorded in the spec: a clause cannot refine a
+State operation's answer type (the instance's typed doors are the API,
+`perform` is one cast), and there is no `Bisim` twin, so the suites
+compare values.
+
+## 37. Literature
+
+- Marek Materzok and Dariusz Biernacki, "A dynamic interpretation of the
+  CPS hierarchy" (APLAS 2012): λ$ and the `$` delimiter; Dariusz
+  Biernacki, Maciej Piróg, Piotr Polesiuk and Filip Sieczkowski,
+  "Binders by day, labels by night" (POPL 2020): handler instances as
+  lexically scoped prompts; Andrzej Filinski, "Representing layered
+  monads" (POPL 1999) and Brachthäuser, Boruch-Gruszecki and Odersky,
+  "Representing monads with capabilities" (2020): `Layered`.
 
 - B. P. Welford, "Note on a method for calculating corrected sums of
   squares and products" (Technometrics 1962); Tony Chan, Gene Golub and
