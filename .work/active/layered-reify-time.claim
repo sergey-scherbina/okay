@@ -1,4 +1,0 @@
-slug: layered-reify-time
-agent: claude (session 01VZwf6d)
-since: 2026-09-25
-what: time of reify as eta $ e vs push(e.map(eta)): the two DelimBenchmark.layered lanes, one gated run
