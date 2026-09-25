@@ -18,3 +18,9 @@ operator's foreign-facade item off the sprint.
   foreign-one-mux gives it an observation.
 - Found: `TestRFacade` runs on this box — `TestR.rscript` falls back to
   the container's R through a shim; the spec said it skipped.
+- Found and fixed: `okayForeignCluster` was never in the root
+  `.aggregate` (since 25199ebaf), so neither `affected` nor the runner's
+  `family all` ever ran the facade's tests — the lane's own staged gate
+  answered "nothing to run". It is aggregated now; its 39 default tests
+  are green from clean. Gated as the module alone (a build.sbt edit
+  widens `affected` to every project), the same scoping foreign-one-r used.

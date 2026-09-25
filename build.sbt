@@ -3313,7 +3313,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayCompress.jvm, okayCompress.js, okayCompress.native, okayForeignWorkflow, okayR,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayCompress.jvm, okayCompress.js, okayCompress.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
