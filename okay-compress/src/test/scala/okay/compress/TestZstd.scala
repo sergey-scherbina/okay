@@ -43,8 +43,10 @@ class TestZstd extends munit.FunSuite:
   test("a damaged frame fails as Corrupt, never as an index past the output") {
     // sequence lengths are only trusted up to the block's 128 KiB: a flip
     // that makes one huge must be named, not run off the reserved room
+    // ~450 decompressions: 1 500 took 43 s on Native in a loaded whole
+    // build (30 s is the limit); the mutant without the check still fails
     val c = Zstd.compress(Samples.big.take(1 << 18))
-    val wrong = (4 until c.length by (c.length / 500).max(1)).flatMap { i =>
+    val wrong = (4 until c.length by (c.length / 150).max(1)).flatMap { i =>
       Vector(0x01, 0x10, 0x80).flatMap { bit =>
         val d = c.clone(); d(i) = (d(i) ^ bit).toByte
         scala.util.Try(Zstd.decompress(d)).failed.toOption.filterNot(_.isInstanceOf[Corrupt]).map(e => s"$i^$bit: $e")
