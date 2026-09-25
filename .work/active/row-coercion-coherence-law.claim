@@ -1,4 +1,0 @@
-feature/row-coercion-coherence-law 2026-09-25T19:27:19Z
-agent: claude-opus-5-5 (session 8908eaf7)
-status: in-progress
-what: coherence law run(p.widen) == run(p.normalize) == run(p) via Bisim.check, core signatures + mixed rows (Tag, Writer.byValue); mutant into reordering the row; okay2 twin if expressible
