@@ -2002,6 +2002,10 @@ of the blocks is the order of the layers, as with transformers:
     assertEquals(run(prog), List(Some(11), None, Some(33)))
 ```
 
+The problem this answers — why two monads need transformers, and what
+they cost — is told with cats and okay side by side in the book's
+chapter [16b · Two monads at once](continuations/16b-two-monads-at-once.md).
+
 The stacked forms (`Lexical.Stacked`, `Layered.Stacked`) refuse an
 instance or a layer used outside its installation at compile time; in
 Scala 2 the stack is a value, so a stacked door takes it

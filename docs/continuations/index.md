@@ -221,6 +221,17 @@ different hat, not a third mechanism.
 runs in direct style — is the reason `!` exists, and it is the most
 practically important theorem in this book. Shown, not cited.
 
+### [16b. Two monads at once](16b-two-monads-at-once.md) ✓
+
+**Thesis.** Monads do not compose by themselves: two of them need a
+"swap" nobody wrote. One real program — a basket over several shops,
+with errors and a log — written three ways: cats' transformers (the
+composite is a type, every operation lifted to its position), layered
+reflection with Biernacki's `$` and `shift0` (a delimiter per monad,
+the order is the nesting of the blocks), and algebraic effects
+(operations in a row, the order chosen by the handlers where it runs).
+The last two are one mechanism.
+
 ### [17. In the effect system](17-in-the-effect-system.md) ✓
 
 **Thesis.** Where a capture sits relative to a handler decides what it

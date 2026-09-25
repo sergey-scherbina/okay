@@ -133,7 +133,11 @@ stay in the short code where they belong.
 `Cont` has one prompt, so the answer type fixes one `F` per `reify`.
 Composing effects is what the effect rows (`F + G`) are for, and one
 block reflects any *single* monad, including `A ! Row` for an
-arbitrary row. For several monads in one block, see the next section.
+arbitrary row. For several monads in one block, see the next section;
+for WHY two monads need anything special at all — the missing "swap",
+what monad transformers do about it (on a real cats stack) and what
+they cost — see the book's chapter
+[16b · Two monads at once](continuations/16b-two-monads-at-once.md).
 
 ## Layer 1½ — several monads in one block: layered reflection
 

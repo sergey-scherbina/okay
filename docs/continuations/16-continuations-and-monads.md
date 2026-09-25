@@ -242,4 +242,4 @@ lines above are its proof by construction.
 
 ← [15 · Resumable exceptions](15-resumable-exceptions.md) ·
 [Contents](index.md) ·
-[17 · In the effect system →](17-in-the-effect-system.md)
+[16b · Two monads at once →](16b-two-monads-at-once.md)

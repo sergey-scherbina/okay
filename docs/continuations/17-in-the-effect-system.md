@@ -180,6 +180,6 @@ the rule; that one gives you the cases where the rule bites.
 
 ---
 
-← [16 · Continuations and monads](16-continuations-and-monads.md) ·
+← [16b · Two monads at once](16b-two-monads-at-once.md) ·
 [Contents](index.md) ·
 [18 · What belongs in a library →](18-what-belongs-in-a-library.md)

@@ -63,7 +63,13 @@ honest restatement of the fact that monads do not compose \[[Moggi
 1991](#ref-moggi-1991)\]. Blocks *nest* — Filinski's own treatment of
 layering \[[Filinski 1999](#ref-filinski-1999)\] — and composition
 proper is what the effect rows of chapter 5 are for: one block over
-`A ! F + G` reflects a row, not a monad stack.
+`A ! F + G` reflects a row, not a monad stack. For monads the library
+does not own, `Layered` gives each its own delimiter — reify as
+`η $ e`, reflect as `shift0` \[[Materzok & Biernacki
+2012](#ref-materzok-2012)\] — so the nesting of the blocks is the order
+of the layers. The problem, transformers on a real cats stack, and both
+answers are told step by step in the book's
+[chapter 16b](../continuations/16b-two-monads-at-once.md).
 
 ## Elaboration: the macro as a normalization proof
 
@@ -300,6 +306,8 @@ users today.
   *Abstracting control.* LISP and Functional Programming, 1990.
 - <a id="ref-filinski-1994"></a>Andrzej Filinski.
   *Representing monads.* POPL 1994.
+- <a id="ref-materzok-2012"></a>Marek Materzok, Dariusz Biernacki.
+  *A Dynamic Interpretation of the CPS Hierarchy.* APLAS 2012.
 - <a id="ref-filinski-1999"></a>Andrzej Filinski.
   *Representing layered monads.* POPL 1999.
 - <a id="ref-kameyama-2003"></a>Yukiyoshi Kameyama, Masahito
