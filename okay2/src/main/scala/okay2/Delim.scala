@@ -125,6 +125,14 @@ object Delim {
    *                 control-variants hand back a bare segment)
    */
   final case class Capture[R, A](prompt: Prompt[R], f: Any, underPrompt: Boolean, delimitK: Boolean, at: String) extends Op[A]
+  /**
+   * `ret $ body` at the delimiter `prompt` (λ$, Materzok & Biernacki,
+   * APLAS 2012): the body answers `R0`, the delimiter answers `R`, and
+   * a `shift0` to `prompt` takes `ret` along with the delimiter. Body
+   * and `ret` are programs in the machine's row, erased here as
+   * `Push`'s body is and re-typed at the machine's claim lines.
+   */
+  final case class Dollar[R0, R](prompt: Prompt[R], ret: Any, body: Any) extends Op[R]
 
   implicit val effect: Effect[Delim] = Effect.of[Delim]
 
@@ -169,6 +177,19 @@ object Delim {
   /** run the body under the delimiter — reset, as an operation */
   def push[R, F <: Row](p: Prompt[R])(body: Free[Delim with F, R]): R ! (Delim + F) =
     Free.inject[Delim, R](Push(p, body)).plus[F]
+
+  /**
+   * `ret $ body` at the delimiter `p`: the body answers `R0`, the
+   * delimiter answers `R`, and a `shift0` to `p` captures `ret` along
+   * with the delimiter. `push(p)(body)` is `dollar(p)(pure)(body)`.
+   * The under-prompt captures (`shift`, `control`) run their body under
+   * a PLAIN delimiter, APLAS 2012's `S k.e = S0 k.<e>`. The
+   * control-variants need the bare segment, which answers `R0` and not
+   * `R`, and are refused at a `dollar` (see the machine). The Scala 3
+   * core's twin (specs/shift0-dollar.md, okay2-dollar).
+   */
+  def dollar[R0, R, F <: Row](p: Prompt[R])(ret: R0 => R ! (Delim + F))(body: Free[Delim with F, R0]): R ! (Delim + F) =
+    Free.inject[Delim, R](Dollar[R0, R](p, ret, body)).plus[F]
 
   /**
    * Capture the continuation up to `p` and hand it to `f`. The
@@ -543,11 +564,36 @@ object Delim {
     final case class Done[F <: Row, A, Z](ev: A =:= Z) extends Segs[F, A, Z]
     final case class K[F <: Row, X, Y, Z](f: X => Y ! (Delim + F), rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
     final case class Mark[F <: Row, X, Z](p: Prompt[X], rest: Segs[F, X, Z]) extends Segs[F, X, Z]
+    /** a `dollar` delimiter: the body's X0 leaves through `ret` into
+     * the prompt's X */
+    final case class Ret[F <: Row, X0, X, Z](p: Prompt[X], ret: X0 => X ! (Delim + F), rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
   }
 
-  /** the stack cut at a prompt: what was captured (a chain ending
-   * where the prompt's mark was) and what lies outside it */
-  private final case class Cut[F <: Row, A, P, Z](captured: Segs[F, A, P], outer: Segs[F, P, Z])
+  /** the stack cut at a prompt. TWO SHAPES, as in the Scala 3 core: a
+   * `dollar` changes the answer type and a plain mark does not */
+  private sealed trait Cut[F <: Row, A, P, Z]
+
+  /** a plain mark: the chain up to it, answering the prompt's P */
+  private final case class Plain[F <: Row, A, P, Z](captured: Segs[F, A, P], outer: Segs[F, P, Z]) extends Cut[F, A, P, Z]
+
+  /** a `dollar`: the chain answers the body's `P0`, and `close` (the
+   * `Ret` with its function) leads to `P`. A delimited continuation is
+   * `captured` then `close`, so `ret` goes with it (`$/S0`). `P0` is an
+   * existential spelled as a type MEMBER, so `captured` and `close` stay
+   * linked through one stable value, with no cast. */
+  private sealed abstract class AtRet[F <: Row, A, P, Z] extends Cut[F, A, P, Z] {
+    type P0
+    val captured: Segs[F, A, P0]
+    val close: Segs[F, P0, P]
+    val outer: Segs[F, P, Z]
+  }
+  private def atRet[F <: Row, A, Q, P, Z](c: Segs[F, A, Q], cl: Segs[F, Q, P], o: Segs[F, P, Z]): AtRet[F, A, P, Z] =
+    new AtRet[F, A, P, Z] {
+      type P0 = Q
+      val captured: Segs[F, A, Q] = c
+      val close: Segs[F, Q, P] = cl
+      val outer: Segs[F, P, Z] = o
+    }
 
   /**
    * The segments `cut` walked past, as a type-aligned stack
@@ -640,6 +686,7 @@ object Delim {
       case Segs.Done(ev) => ev.substituteCo[Prog](start)
       case Segs.K(f, rest) => reify(rest, start.flatMap(f))
       case Segs.Mark(p, rest) => reify(rest, Free.inject[Delim, A](Push(p, start)).plus[F])
+      case r: Segs.Ret[F, A, x, P] => reify(r.rest, Free.inject[Delim, x](Dollar[A, x](r.p, r.ret, start)).plus[F])
     }
 
     /** the delimiters this machine has installed, innermost first —
@@ -648,6 +695,7 @@ object Delim {
       @tailrec def go(k: Segs[F, _, R], acc: List[String]): List[String] = k match {
         case Segs.Done(_) => acc.reverse
         case Segs.Mark(q, rest) => go(rest, q.label :: acc)
+        case Segs.Ret(q, _, rest) => go(rest, q.label :: acc)
         case Segs.K(_, rest) => go(rest, acc)
       }
       go(kont, Nil)
@@ -668,10 +716,21 @@ object Delim {
         case Segs.Done(_) => None
         case m: Segs.Mark[F, x, Z] => samePrompt.same(m.p, p) match {
           case Some(ev) =>
-            Some(Cut(unwind(here.w.step(Segs.Done[F, x, P](ev))), ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](m.rest)))
+            Some(Plain(unwind(here.w.step(Segs.Done[F, x, P](ev))), ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](m.rest)))
           case None =>
             walk[A, P, Z](Walk(m.rest, On(here.w, new Frame[F, x, x] {
               def apply[Q](c: Segs[F, x, Q]): Segs[F, x, Q] = Segs.Mark(m.p, c)
+            })), p)
+        }
+        case r: Segs.Ret[F, x, x1, Z] => samePrompt.same(r.p, p) match {
+          case Some(ev) =>
+            // the body's chain ends at x; the Ret leads from x to the prompt's P
+            Some(atRet[F, A, x, P, Z](unwind(here.w.step(Segs.Done[F, x, x](implicitly[x =:= x]))),
+              Segs.Ret[F, x, x1, P](r.p, r.ret, Segs.Done[F, x1, P](ev)),
+              ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](r.rest)))
+          case None =>
+            walk[A, P, Z](Walk(r.rest, On(here.w, new Frame[F, x, x1] {
+              def apply[Q](c: Segs[F, x1, Q]): Segs[F, x, Q] = Segs.Ret(r.p, r.ret, c)
             })), p)
         }
         case k: Segs.K[F, x, y, Z] =>
@@ -697,6 +756,8 @@ object Delim {
         case Segs.K(f, rest) => loop(next(f(x), rest))
         // the delimited block finished normally: drop its marker
         case Segs.Mark(_, rest) => loop(next(pure[Rw, state.A](x), rest))
+        // a `dollar` finished normally: leave it, through its return
+        case Segs.Ret(_, ret, rest) => loop(next(ret(x), rest))
       }
       case Inject(e) => loop(next(Bind(Inject[Rw, state.A](e), (y: state.A) => Return[Rw, state.A](y)), state.kont))
       case Bind(Inject(Mine(op)), k) =>
@@ -709,19 +770,32 @@ object Delim {
             loop(next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => pure[Rw, Any](a), kont))))
 
           case cap: Capture[p, a] =>
+            // claim 2: f takes a continuation into the prompt's answer
+            // and gives back a program at it, in this row. shift/control
+            // put the body back under the delimiter; the 0-variants have
+            // consumed it
+            def resume(k: a => Prog[p], outer: Segs[F, p, R]): Next[F, R] = {
+              val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
+              if (cap.underPrompt) next(Free.inject[Delim, p](Push(cap.prompt, body)).plus[F], outer)
+              else next(body, outer)
+            }
+            // shift/shift0 re-install the delimiter (a dollar's with its
+            // return function, `$/S0`); control/control0 hand back the
+            // bare segment, which answers the prompt's type only at a
+            // plain mark
             cut(kont, cap.prompt) match {
-              case Some(c) =>
-                val k = (v: a) => {
-                  val seg = reify(c.captured, pure[Rw, Any](v))
+              // AtRet BEFORE Plain: in the other order scalac 2.13 calls
+              // this arm "unreachable code" (a false reachability verdict on
+              // the type pattern); the two cases are disjoint either way
+              case Some(r: AtRet[F, Any, p, R]) =>
+                if (cap.delimitK) loop(resume((v: a) => reify(r.close, reify(r.captured, pure[Rw, Any](v))), r.outer))
+                else throw new UnsupportedOperationException(
+                  s"${cap.at}: a control-capture to ${cap.prompt.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
+              case Some(Plain(captured, outer)) =>
+                loop(resume((v: a) => {
+                  val seg = reify(captured, pure[Rw, Any](v))
                   if (cap.delimitK) Free.inject[Delim, p](Push(cap.prompt, seg)).plus[F] else seg
-                }
-                // claim 2: f takes a continuation into the prompt's
-                // answer and gives back a program at it, in this row
-                val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
-                // shift/control put the body back under the delimiter;
-                // the 0-variants have consumed it
-                if (cap.underPrompt) loop(next(Free.inject[Delim, p](Push(cap.prompt, body)).plus[F], c.outer))
-                else loop(next(body, c.outer))
+                }, outer))
               case None => forward match {
                 case Some(in) =>
                   // re-emit, and resume this machine with the same
@@ -732,6 +806,13 @@ object Delim {
                 case None => throw new NoPrompt(cap.at, cap.prompt.label, installed(kont))
               }
             }
+
+          case d: Dollar[r0, r] =>
+            // claims 1b and 1c, the same as Push's: the body answers r0
+            // and ret leads from r0 to the prompt's r, in this row
+            val body = d.body.asInstanceOf[Prog[r0]]
+            val ret = d.ret.asInstanceOf[r0 => Prog[r]]
+            loop(next(body, Segs.Ret[F, r0, r, R](d.prompt, ret, Segs.K((a: r) => pure[Rw, Any](a), kont))))
         }
       // a foreign operation suspends the machine: the residual program
       // performs it and resumes with the same stack

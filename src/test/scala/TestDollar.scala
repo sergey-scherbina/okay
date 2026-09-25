@@ -68,6 +68,23 @@ class TestDollar extends munit.FunSuite:
     assertEquals(run(dollar(p)(angle)(body)), "a-second")
   }
 
+  test("ret runs OUTSIDE the re-installed dollar: a shift0 in ret escapes past it to the next delimiter") {
+    // okay2-dollar: k(v) = ret $ E[v], so ret is not under p: its shift0 takes
+    // the rest of f (the "|f") up to the OUTER push. push(p)(E[v] >>= ret)
+    // would catch it, and no test here told the two apart before
+    val p = Delim.prompt[String]
+    val ret: String => String ! Row = _ => shift0(p)(_ => okay.pure("R"))
+    val body = shift0(p)(k => k("a").map(_ + "|f"))
+    assertEquals(run(Delim.push(p)(dollar(p)(ret)(body))), "R")
+  }
+
+  test("a capture to an OUTER prompt passing a dollar keeps it: k re-installs the dollar with its ret") {
+    val p = Delim.prompt[String]
+    val q = Delim.prompt[String]
+    val body = Delim.shift0[String, String, Pure](q)(k => k("a").map(_ + "|q"))
+    assertEquals(run(Delim.push(q)(dollar(p)(angle)(body))), "<a>|q")
+  }
+
   // ------------------------------------------------ against stage 0's references
 
   test("the primitive agrees with APLAS 2012's macro on every body") {
