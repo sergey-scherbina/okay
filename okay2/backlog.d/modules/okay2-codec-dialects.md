@@ -6,4 +6,4 @@
       JsonSchema parts of TestSchemaFold and TestEnumeration wait on
       it), `Validate`, `Digest`/`Compat`, `Edn`, `Yaml`, `Markdown`,
       `Columns`, the staged codecs, and the `Codecs` provider registry.
-      XML is `okay2-xml`. (2026-09-25)
+      XML landed as okay2-xml (stage 43). (2026-09-25)

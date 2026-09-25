@@ -2199,6 +2199,27 @@ and JdbcInterop, are on demand (backlog `okay2-jdbc-tails`).
 - `Params.bind(p)(1)` does not index the result in Scala 2: the implicit
   `Schema` list takes the `(1)`. The tests write `.apply(1)`.
 
+## Stage 43 — okay2-xml: the nesting prover (2026-09-25)
+okay-codec's Xml into okay2-codec: the lossless XML/HTML dialect over
+okay2-lex-parse, which nests by NAMED tags, so a close can be wrong.
+
+- [x] the scanner: tags, attributes (quoted `>` included), text and
+      whitespace runs, comments and CDATA kept whole, an unterminated
+      tag still a token; `render(cst(s)) == s` (TestXml)
+- [x] the driver: a mismatched close closes the unclosed ones and says
+      so, a close with nothing open is an error leaf, void elements and
+      `/>` never open a frame; incremental reparse equals a full parse
+- [x] the projections `text` and `elements` walk on an explicit stack:
+      a 20 000-deep document the parser builds is walked (the recursive
+      form, as a mutant, throws StackOverflowError there)
+- [x] JVM, Scala.js and Scala Native
+
+### Found while building it
+- okay-codec's `Xml.text` and `Xml.elements` recurse per nesting level,
+  the same defect as `cst-walk-stack-safe`: a document `Xml.cst`
+  builds without trouble overflows the walks. Scala 3 half:
+  `xml-projection-stack-safe`.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog

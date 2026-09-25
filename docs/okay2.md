@@ -1778,6 +1778,20 @@ explicit stack, as the Scala 3 core's do since `cst-walk-stack-safe`
 (2026-09-25): a recursive walk overflowed on a 20 000-deep document the
 parse itself builds.
 
+`okay2.codec.Xml` is the dialect that nests by NAMED tags (stage 43), so
+a close can be wrong. Total as always: a close that skips an unclosed
+element closes it too and says so on the error channel, and a close
+with nothing open is an error leaf:
+
+```scala
+    val bad = "<a><b>text</a>"
+    assert(errs.exists(_.contains("<b> was never closed")), errs.toString)
+    assertEquals(Xml.text(Xml.elements(tree, "a").head), "text")
+```
+
+Void elements (`<br>`, `<img>`) and `/>` never open a frame, comments
+and CDATA are kept whole, and `render(cst(s)) == s` for every string.
+
 ## 33. JSON over a Schema
 
 `okay2-codec` is okay-codec's `Schema` and JSON (stage 41). A `Schema[A]`
