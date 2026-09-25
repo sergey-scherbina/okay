@@ -39,3 +39,16 @@ class TestZstd extends munit.FunSuite:
       assertEquals(Lz4Frame.decompress(Lz4Frame.compress(b)).toVector, b.toVector, s"LZ4, period $period, length $len")
   }
 
+
+  test("a damaged frame fails as Corrupt, never as an index past the output") {
+    // sequence lengths are only trusted up to the block's 128 KiB: a flip
+    // that makes one huge must be named, not run off the reserved room
+    val c = Zstd.compress(Samples.big.take(1 << 18))
+    val wrong = (4 until c.length by (c.length / 500).max(1)).flatMap { i =>
+      Vector(0x01, 0x10, 0x80).flatMap { bit =>
+        val d = c.clone(); d(i) = (d(i) ^ bit).toByte
+        scala.util.Try(Zstd.decompress(d)).failed.toOption.filterNot(_.isInstanceOf[Corrupt]).map(e => s"$i^$bit: $e")
+      }
+    }
+    assertEquals(wrong.take(3).toVector, Vector.empty, s"${wrong.size} damaged frames failed some other way")
+  }

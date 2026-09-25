@@ -1,0 +1,2764 @@
+--- Execution profile ---
+Total samples       : 811
+
+--- 500000000 ns (6.17%), 50 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 460000000 ns (5.67%), 46 samples
+  [ 0] okay.compress.Mem$.copyMatch
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 320000000 ns (3.95%), 32 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 310000000 ns (3.82%), 31 samples
+  [ 0] okay.compress.Mem$.copyMatch
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 280000000 ns (3.45%), 28 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 250000000 ns (3.08%), 25 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Zstd$.sequences
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 240000000 ns (2.96%), 24 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 230000000 ns (2.84%), 23 samples
+  [ 0] okay.compress.Out.bytes
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 220000000 ns (2.71%), 22 samples
+  [ 0] okay.compress.Fse.symbol
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 220000000 ns (2.71%), 22 samples
+  [ 0] okay.compress.Fse.symbol
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 200000000 ns (2.47%), 20 samples
+  [ 0] okay.compress.Out.buf
+  [ 1] okay.compress.Out.room
+  [ 2] okay.compress.Out.bytes
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 200000000 ns (2.47%), 20 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 190000000 ns (2.34%), 19 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 160000000 ns (1.97%), 16 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 150000000 ns (1.85%), 15 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 140000000 ns (1.73%), 14 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 130000000 ns (1.60%), 13 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 130000000 ns (1.60%), 13 samples
+  [ 0] okay.compress.Fse.symbol
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 130000000 ns (1.60%), 13 samples
+  [ 0] okay.compress.Mem$.copyMatch
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 120000000 ns (1.48%), 12 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 120000000 ns (1.48%), 12 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 120000000 ns (1.48%), 12 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 110000000 ns (1.36%), 11 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 110000000 ns (1.36%), 11 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 110000000 ns (1.36%), 11 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 100000000 ns (1.23%), 10 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 100000000 ns (1.23%), 10 samples
+  [ 0] okay.compress.Out.buf
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 100000000 ns (1.23%), 10 samples
+  [ 0] okay.compress.Mem$.copyMatch
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 100000000 ns (1.23%), 10 samples
+  [ 0] okay.compress.BackBits.read
+  [ 1] okay.compress.Fse.next
+  [ 2] okay.compress.Zstd$.sequences
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 90000000 ns (1.11%), 9 samples
+  [ 0] okay.compress.Out.n_$eq
+  [ 1] okay.compress.Out.bytes
+  [ 2] okay.compress.Zstd$.sequences
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 90000000 ns (1.11%), 9 samples
+  [ 0] okay.compress.Out.n_$eq
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 90000000 ns (1.11%), 9 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 80000000 ns (0.99%), 8 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 80000000 ns (0.99%), 8 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 80000000 ns (0.99%), 8 samples
+  [ 0] okay.compress.Mem$.copyMatch
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 70000000 ns (0.86%), 7 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 70000000 ns (0.86%), 7 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 70000000 ns (0.86%), 7 samples
+  [ 0] okay.compress.Mem$.copyMatch
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 60000000 ns (0.74%), 6 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 60000000 ns (0.74%), 6 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 60000000 ns (0.74%), 6 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 60000000 ns (0.74%), 6 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 60000000 ns (0.74%), 6 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 50000000 ns (0.62%), 5 samples
+  [ 0] okay.compress.Fse$.build
+  [ 1] okay.compress.Fse$.read
+  [ 2] okay.compress.Zstd$.table$1
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 50000000 ns (0.62%), 5 samples
+  [ 0] jdk.internal.misc.Unsafe.getLongUnaligned
+  [ 1] java.lang.invoke.VarHandleByteArrayAsLongs$ArrayHandle.get
+  [ 2] java.lang.invoke.VarHandleGuards.guard_LI_J
+  [ 3] okay.compress.Mem$.i64
+  [ 4] okay.compress.Mem$.copyMatch
+  [ 5] okay.compress.Zstd$.sequences
+  [ 6] okay.compress.Zstd$.block
+  [ 7] okay.compress.Zstd$.frame
+  [ 8] okay.compress.Zstd$.decompress
+  [ 9] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [10] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [11] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [12] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [13] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [14] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [15] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [16] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [17] java.lang.reflect.Method.invoke
+  [18] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [19] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.Executors$RunnableAdapter.call
+  [22] java.util.concurrent.FutureTask.run
+  [23] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [24] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [25] java.lang.Thread.runWith
+  [26] java.lang.Thread.run
+
+--- 50000000 ns (0.62%), 5 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 50000000 ns (0.62%), 5 samples
+  [ 0] okay.compress.Out.room
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 50000000 ns (0.62%), 5 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 50000000 ns (0.62%), 5 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 50000000 ns (0.62%), 5 samples
+  [ 0] okay.compress.Out.n
+  [ 1] okay.compress.Out.room
+  [ 2] okay.compress.Out.bytes
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 50000000 ns (0.62%), 5 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.Mem$.copyMatch
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.Fse$$$Lambda.0x00003f8001127798.apply
+  [ 1] scala.Array$.fill
+  [ 2] okay.compress.Fse$.read
+  [ 3] okay.compress.Zstd$.table$1
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.BackBits.read
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 40000000 ns (0.49%), 4 samples
+  [ 0] okay.compress.Out.room
+  [ 1] okay.compress.Out.bytes
+  [ 2] okay.compress.Zstd$.sequences
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 30000000 ns (0.37%), 3 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 30000000 ns (0.37%), 3 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 30000000 ns (0.37%), 3 samples
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 30000000 ns (0.37%), 3 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 30000000 ns (0.37%), 3 samples
+  [ 0] okay.compress.Mem$.copyMatch
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 30000000 ns (0.37%), 3 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] zero_blocks_stub
+  [ 1] java.util.Arrays.copyOf
+  [ 2] okay.compress.Out.room
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] okay.compress.Fse$.build
+  [ 1] okay.compress.Fse$.read
+  [ 2] okay.compress.Zstd$.table$1
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] okay.compress.Fse.symbol
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] semaphore_wait_trap
+  [ 1] WorkerThread::run
+  [ 2] Thread::call_run
+  [ 3] thread_native_entry
+  [ 4] _pthread_start
+  [ 5] thread_start
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] mach_msg2_trap
+  [ 1] thread_info
+  [ 2] os::thread_cpu_time
+  [ 3] G1ServiceThread::run_task
+  [ 4] G1ServiceThread::run_service
+  [ 5] ConcurrentGCThread::run
+  [ 6] Thread::call_run
+  [ 7] thread_native_entry
+  [ 8] _pthread_start
+  [ 9] thread_start
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 20000000 ns (0.25%), 2 samples
+  [ 0] __psynch_cvwait
+  [ 1] PlatformMonitor::wait
+  [ 2] Monitor::wait_without_safepoint_check
+  [ 3] MonitorDeflationThread::monitor_deflation_thread_entry
+  [ 4] JavaThread::thread_main_inner
+  [ 5] Thread::call_run
+  [ 6] thread_native_entry
+  [ 7] _pthread_start
+  [ 8] thread_start
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Zstd$State.ml
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] PlatformMonitor::wait
+  [ 1] Monitor::wait_without_safepoint_check
+  [ 2] G1ConcurrentRefineThread::wait_for_work
+  [ 3] G1ConcurrentRefineThread::run_service
+  [ 4] ConcurrentGCThread::run
+  [ 5] Thread::call_run
+  [ 6] thread_native_entry
+  [ 7] _pthread_start
+  [ 8] thread_start
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] __psynch_cvsignal
+  [ 1] Unsafe_Unpark
+  [ 2] jdk.internal.misc.Unsafe.unpark
+  [ 3] java.util.concurrent.locks.LockSupport.unpark
+  [ 4] java.util.concurrent.locks.AbstractQueuedSynchronizer.signalNext
+  [ 5] java.util.concurrent.locks.AbstractQueuedSynchronizer.release
+  [ 6] java.util.concurrent.locks.ReentrantLock.unlock
+  [ 7] java.util.concurrent.LinkedBlockingQueue.signalNotEmpty
+  [ 8] java.util.concurrent.LinkedBlockingQueue.offer
+  [ 9] java.util.concurrent.ThreadPoolExecutor.execute
+  [10] java.util.concurrent.ExecutorCompletionService.submit
+  [11] org.openjdk.jmh.runner.BenchmarkHandler.runIteration
+  [12] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [13] org.openjdk.jmh.runner.BaseRunner.runBenchmark
+  [14] org.openjdk.jmh.runner.BaseRunner.doSingle
+  [15] org.openjdk.jmh.runner.BaseRunner.runBenchmarksForked
+  [16] org.openjdk.jmh.runner.ForkedRunner.run
+  [17] org.openjdk.jmh.runner.ForkedMain.main
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse$$$Lambda.0x00003f8001127798.apply
+  [ 1] scala.Array$.fill
+  [ 2] okay.compress.Fse$.read
+  [ 3] okay.compress.Zstd$.table$1
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse$.build
+  [ 1] okay.compress.Fse$.read
+  [ 2] okay.compress.Zstd$.table$1
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.BackBits.bitsAt
+  [ 1] okay.compress.BackBits.peek
+  [ 2] okay.compress.Huffman.stream
+  [ 3] okay.compress.Huffman.decode
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse$$$Lambda.0x00003f8001127798.apply
+  [ 1] scala.Array$.fill
+  [ 2] okay.compress.Fse$.read
+  [ 3] okay.compress.Zstd$.table$1
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] semaphore_signal_trap
+  [ 1] WorkerThread::run
+  [ 2] Thread::call_run
+  [ 3] thread_native_entry
+  [ 4] _pthread_start
+  [ 5] thread_start
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] copy_byte_f_stub
+  [ 1] arrayof_jbyte_disjoint_arraycopy_stub
+  [ 2] java.util.Arrays.copyOf
+  [ 3] okay.compress.Out.room
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] JvmtiGCMarker::~JvmtiGCMarker
+  [ 1] VM_G1TryInitiateConcMark::doit
+  [ 2] VM_Operation::evaluate
+  [ 3] VMThread::evaluate_operation
+  [ 4] VMThread::inner_execute
+  [ 5] VMThread::run
+  [ 6] Thread::call_run
+  [ 7] thread_native_entry
+  [ 8] _pthread_start
+  [ 9] thread_start
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse$.build
+  [ 1] okay.compress.Fse$.read
+  [ 2] okay.compress.Zstd$.table$1
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] __psynch_cvwait
+  [ 1] Parker::park
+  [ 2] Unsafe_Park
+  [ 3] jdk.internal.misc.Unsafe.park
+  [ 4] java.util.concurrent.locks.LockSupport.park
+  [ 5] java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionNode.block
+  [ 6] java.util.concurrent.ForkJoinPool.unmanagedBlock
+  [ 7] java.util.concurrent.ForkJoinPool.managedBlock
+  [ 8] java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await
+  [ 9] java.util.concurrent.LinkedBlockingQueue.take
+  [10] java.util.concurrent.ThreadPoolExecutor.getTask
+  [11] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [12] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [13] java.lang.Thread.runWith
+  [14] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.BackBits.bitsAt
+  [ 1] okay.compress.BackBits.peek
+  [ 2] okay.compress.Huffman.stream
+  [ 3] okay.compress.Huffman.decode
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse.next
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse$.build
+  [ 1] okay.compress.Fse$.read
+  [ 2] okay.compress.Zstd$.table$1
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Out.room
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.XxHash$.xxh64
+  [ 1] okay.compress.Zstd$.frame
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] G1Analytics::predict_card_scan_time_ms
+  [ 1] G1CollectionSet::finalize_young_part
+  [ 2] G1CollectionSet::finalize_initial_collection_set
+  [ 3] G1YoungCollector::pre_evacuate_collection_set
+  [ 4] G1YoungCollector::collect
+  [ 5] G1CollectedHeap::do_collection_pause_at_safepoint
+  [ 6] VM_G1TryInitiateConcMark::doit
+  [ 7] VM_Operation::evaluate
+  [ 8] VMThread::evaluate_operation
+  [ 9] VMThread::inner_execute
+  [10] VMThread::run
+  [11] Thread::call_run
+  [12] thread_native_entry
+  [13] _pthread_start
+  [14] thread_start
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.Zstd$.sequences
+  [ 2] okay.compress.Zstd$.block
+  [ 3] okay.compress.Zstd$.frame
+  [ 4] okay.compress.Zstd$.decompress
+  [ 5] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 8] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [13] java.lang.reflect.Method.invoke
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.Executors$RunnableAdapter.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [20] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [21] java.lang.Thread.runWith
+  [22] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse$.build
+  [ 1] okay.compress.Fse$.read
+  [ 2] okay.compress.Zstd$.table$1
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] mach_msg2_trap
+  [ 1] thread_info
+  [ 2] os::thread_cpu_time
+  [ 3] CPUTimeThreadClosure::do_thread
+  [ 4] WorkerThreads::threads_do
+  [ 5] G1CollectedHeap::gc_threads_do
+  [ 6] CPUTimeUsage::GC::gc_threads
+  [ 7] G1Analytics::gc_cpu_time_ms
+  [ 8] G1Policy::record_pause
+  [ 9] G1Policy::record_young_collection_end
+  [10] G1YoungCollector::collect
+  [11] G1CollectedHeap::do_collection_pause_at_safepoint
+  [12] VM_G1TryInitiateConcMark::doit
+  [13] VM_Operation::evaluate
+  [14] VMThread::evaluate_operation
+  [15] VMThread::inner_execute
+  [16] VMThread::run
+  [17] Thread::call_run
+  [18] thread_native_entry
+  [19] _pthread_start
+  [20] thread_start
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.BackBits.readLong
+  [ 1] okay.compress.BackBits.read
+  [ 2] okay.compress.Fse.next
+  [ 3] okay.compress.Zstd$.sequences
+  [ 4] okay.compress.Zstd$.block
+  [ 5] okay.compress.Zstd$.frame
+  [ 6] okay.compress.Zstd$.decompress
+  [ 7] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 9] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [10] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [12] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [14] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [15] java.lang.reflect.Method.invoke
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [18] java.util.concurrent.FutureTask.run
+  [19] java.util.concurrent.Executors$RunnableAdapter.call
+  [20] java.util.concurrent.FutureTask.run
+  [21] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [22] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [23] java.lang.Thread.runWith
+  [24] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] zero_blocks_stub
+  [ 1] okay.compress.Out.<init>
+  [ 2] okay.compress.Zstd$.decompress
+  [ 3] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 4] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 6] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 7] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [ 9] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [11] java.lang.reflect.Method.invoke
+  [12] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] java.util.concurrent.FutureTask.run
+  [15] java.util.concurrent.Executors$RunnableAdapter.call
+  [16] java.util.concurrent.FutureTask.run
+  [17] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [18] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [19] java.lang.Thread.runWith
+  [20] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse$.build
+  [ 1] okay.compress.Fse$.read
+  [ 2] okay.compress.Zstd$.table$1
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Zstd$.sequences
+  [ 1] okay.compress.Zstd$.block
+  [ 2] okay.compress.Zstd$.frame
+  [ 3] okay.compress.Zstd$.decompress
+  [ 4] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 5] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 6] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 7] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [ 8] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [ 9] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [10] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [11] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [12] java.lang.reflect.Method.invoke
+  [13] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [14] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [15] java.util.concurrent.FutureTask.run
+  [16] java.util.concurrent.Executors$RunnableAdapter.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [19] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [20] java.lang.Thread.runWith
+  [21] java.lang.Thread.run
+
+--- 10000000 ns (0.12%), 1 sample
+  [ 0] okay.compress.Fse$.build
+  [ 1] okay.compress.Fse$.read
+  [ 2] okay.compress.Zstd$.table$1
+  [ 3] okay.compress.Zstd$.block
+  [ 4] okay.compress.Zstd$.frame
+  [ 5] okay.compress.Zstd$.decompress
+  [ 6] okay.compress.bench.CompressBench.zstd_decompress_okay
+  [ 7] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_avgt_jmhStub
+  [ 8] okay.compress.bench.jmh_generated.CompressBench_zstd_decompress_okay_jmhTest.zstd_decompress_okay_AverageTime
+  [ 9] java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial
+  [10] java.lang.invoke.LambdaForm$MH.0x00003f8001064800.invoke
+  [11] java.lang.invoke.LambdaForm$MH.0x00003f8001064c00.invokeExact_MT
+  [12] jdk.internal.reflect.DirectMethodHandleAccessor.invokeImpl
+  [13] jdk.internal.reflect.DirectMethodHandleAccessor.invoke
+  [14] java.lang.reflect.Method.invoke
+  [15] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [16] org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call
+  [17] java.util.concurrent.FutureTask.run
+  [18] java.util.concurrent.Executors$RunnableAdapter.call
+  [19] java.util.concurrent.FutureTask.run
+  [20] java.util.concurrent.ThreadPoolExecutor.runWorker
+  [21] java.util.concurrent.ThreadPoolExecutor$Worker.run
+  [22] java.lang.Thread.runWith
+  [23] java.lang.Thread.run
+
+          ns  percent  samples  top
+  ----------  -------  -------  ---
+  1670000000   20.59%      167  okay.compress.Zstd$.sequences
+  1220000000   15.04%      122  okay.compress.Mem$.copyMatch
+  1190000000   14.67%      119  okay.compress.Fse.next
+  1120000000   13.81%      112  okay.compress.XxHash$.xxh64
+   880000000   10.85%       88  okay.compress.BackBits.readLong
+   590000000    7.27%       59  okay.compress.Fse.symbol
+   300000000    3.70%       30  okay.compress.Out.buf
+   230000000    2.84%       23  okay.compress.Out.bytes
+   180000000    2.22%       18  okay.compress.Out.n_$eq
+   140000000    1.73%       14  okay.compress.BackBits.read
+   130000000    1.60%       13  okay.compress.Fse$.build
+   100000000    1.23%       10  okay.compress.Out.room
+    60000000    0.74%        6  okay.compress.Fse$$$Lambda.0x00003f8001127798.apply
+    50000000    0.62%        5  okay.compress.Out.n
+    50000000    0.62%        5  jdk.internal.misc.Unsafe.getLongUnaligned
+    30000000    0.37%        3  zero_blocks_stub
+    30000000    0.37%        3  mach_msg2_trap
+    30000000    0.37%        3  __psynch_cvwait
+    20000000    0.25%        2  okay.compress.BackBits.bitsAt
+    20000000    0.25%        2  semaphore_wait_trap
+    10000000    0.12%        1  copy_byte_f_stub
+    10000000    0.12%        1  __psynch_cvsignal
+    10000000    0.12%        1  PlatformMonitor::wait
+    10000000    0.12%        1  JvmtiGCMarker::~JvmtiGCMarker
+    10000000    0.12%        1  okay.compress.Zstd$State.ml
+    10000000    0.12%        1  semaphore_signal_trap
+    10000000    0.12%        1  G1Analytics::predict_card_scan_time_ms

@@ -228,11 +228,19 @@ object Zstd extends Codec:
     var lp = litFrom
     val litEnd = litFrom + litLen
     val reps = st.reps
+    // the output and the tables in locals, the room taken once: a block
+    // makes at most BlockMax bytes (RFC 8878 3.1.1.2.4), so one check per
+    // sequence against `limit` replaces a `room` call per copy (zstd-speed)
+    out.room(BlockMax)
+    val buf = out.buf
+    var n = out.n
+    val limit = n + BlockMax
+    val llSym = st.ll.syms; val mlSym = st.ml.syms; val ofSym = st.of.syms
     var s = 0
     while s < nSeq do
-      val ofCode = st.of.symbol(ofState)
-      val mlCode = st.ml.symbol(mlState)
-      val llCode = st.ll.symbol(llState)
+      val ofCode = ofSym(ofState)
+      val mlCode = mlSym(mlState)
+      val llCode = llSym(llState)
       if ofCode > 31 then corrupt(s"offset code $ofCode")
       val ov = (1L << ofCode) + bits.readLong(ofCode)
       val ml = MlBase(mlCode) + bits.read(MlBits(mlCode))
@@ -256,19 +264,21 @@ object Zstd extends Codec:
               o
       // literals, then the match
       if ll > litEnd - lp then corrupt(s"a sequence wants $ll literals where ${litEnd - lp} remain")
-      out.bytes(lit, lp, ll)
+      if ll + ml > limit - n then corrupt(s"a block's output past 128 KiB")
+      System.arraycopy(lit, lp, buf, n, ll)
+      n += ll
       lp += ll
-      if offset > out.n - frameStart then corrupt(s"offset $offset reaches before the frame's output")
-      out.room(ml)
-      val ref = out.n - offset
-      if offset >= ml && ml > 32 then System.arraycopy(out.buf, ref, out.buf, out.n, ml)
-      else Mem.copyMatch(out.buf, ref, out.n, ml)     // eight at a time where the distance allows
-      out.n += ml
+      if offset > n - frameStart then corrupt(s"offset $offset reaches before the frame's output")
+      val ref = n - offset
+      if offset >= ml && ml > 32 then System.arraycopy(buf, ref, buf, n, ml)
+      else Mem.copyMatch(buf, ref, n, ml)     // eight at a time where the distance allows
+      n += ml
       s += 1
       if s < nSeq then
         llState = st.ll.next(llState, bits)
         mlState = st.ml.next(mlState, bits)
         ofState = st.of.next(ofState, bits)
+    out.n = n
     if !bits.exhausted then corrupt("the sequences bitstream has bits left over")
     out.bytes(lit, lp, litEnd - lp)
 
@@ -334,6 +344,8 @@ private[compress] final class BackBits(src: Array[Byte], from: Int, end: Int):
 /** an FSE decoding table (RFC 8878 4.1.1): per state, a symbol, the bits to
  * read, and the baseline the read is added to */
 private[compress] final class Fse(val log: Int, sym: Array[Int], nbBits: Array[Int], base: Array[Int]):
+  /** the symbol per state, for a decoding loop to hold in a local */
+  def syms: Array[Int] = sym
   def symbol(state: Int): Int = sym(state)
   def baseAt(state: Int): Int = base(state)
   def bitsAt(state: Int): Int = nbBits(state)

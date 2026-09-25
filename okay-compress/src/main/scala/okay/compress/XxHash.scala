@@ -23,16 +23,16 @@ object XxHash:
         var v4 = seed - P32_1
         val limit = end - 16
         while i <= limit do
-          v1 = Integer.rotateLeft(v1 + Le.i32(b, i) * P32_2, 13) * P32_1
-          v2 = Integer.rotateLeft(v2 + Le.i32(b, i + 4) * P32_2, 13) * P32_1
-          v3 = Integer.rotateLeft(v3 + Le.i32(b, i + 8) * P32_2, 13) * P32_1
-          v4 = Integer.rotateLeft(v4 + Le.i32(b, i + 12) * P32_2, 13) * P32_1
+          v1 = Integer.rotateLeft(v1 + Mem.i32(b, i) * P32_2, 13) * P32_1
+          v2 = Integer.rotateLeft(v2 + Mem.i32(b, i + 4) * P32_2, 13) * P32_1
+          v3 = Integer.rotateLeft(v3 + Mem.i32(b, i + 8) * P32_2, 13) * P32_1
+          v4 = Integer.rotateLeft(v4 + Mem.i32(b, i + 12) * P32_2, 13) * P32_1
           i += 16
         Integer.rotateLeft(v1, 1) + Integer.rotateLeft(v2, 7) + Integer.rotateLeft(v3, 12) + Integer.rotateLeft(v4, 18)
       else seed + P32_5
     h += len
     while i + 4 <= end do
-      h = Integer.rotateLeft(h + Le.i32(b, i) * P32_3, 17) * P32_4
+      h = Integer.rotateLeft(h + Mem.i32(b, i) * P32_3, 17) * P32_4
       i += 4
     while i < end do
       h = Integer.rotateLeft(h + (b(i) & 0xff) * P32_5, 11) * P32_1
@@ -60,8 +60,8 @@ object XxHash:
         var v4 = seed - P64_1
         val limit = end - 32
         while i <= limit do
-          v1 = round(v1, Le.i64(b, i)); v2 = round(v2, Le.i64(b, i + 8))
-          v3 = round(v3, Le.i64(b, i + 16)); v4 = round(v4, Le.i64(b, i + 24))
+          v1 = round(v1, Mem.i64(b, i)); v2 = round(v2, Mem.i64(b, i + 8))
+          v3 = round(v3, Mem.i64(b, i + 16)); v4 = round(v4, Mem.i64(b, i + 24))
           i += 32
         var acc = java.lang.Long.rotateLeft(v1, 1) + java.lang.Long.rotateLeft(v2, 7) +
           java.lang.Long.rotateLeft(v3, 12) + java.lang.Long.rotateLeft(v4, 18)
@@ -69,11 +69,11 @@ object XxHash:
       else seed + P64_5
     h += len.toLong
     while i + 8 <= end do
-      h ^= round(0L, Le.i64(b, i))
+      h ^= round(0L, Mem.i64(b, i))
       h = java.lang.Long.rotateLeft(h, 27) * P64_1 + P64_4
       i += 8
     if i + 4 <= end then
-      h ^= (Le.i32(b, i).toLong & 0xffffffffL) * P64_1
+      h ^= (Mem.i32(b, i).toLong & 0xffffffffL) * P64_1
       h = java.lang.Long.rotateLeft(h, 23) * P64_2 + P64_3
       i += 4
     while i < end do
