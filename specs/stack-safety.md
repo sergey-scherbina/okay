@@ -245,7 +245,7 @@ deleted.
       `Tables.show`/`estimate`/`optimize`/`compile` walk a plan the
       program built by applying operators, its own text and never a
       peer's data.
-- [ ] Stage 4 — data codecs over values: okay-py, okay-r, okay-sql,
+- [x] Stage 4 — data codecs over values: okay-py, okay-r, okay-sql,
       okay-pg, okay-jdbc, okay-r2dbc. Two known suspects:
       - `PyCodec.enc`/`dec` and `RCodec.enc`/`dec` recurse per level
         of a recursive VALUE;
