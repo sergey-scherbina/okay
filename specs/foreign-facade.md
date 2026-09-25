@@ -254,13 +254,18 @@ with its date, load and sha (the `performance` skill).
       Results: tier 3 costs nothing over tier 2, the JVM's tiers are a
       microsecond, and the tier-2 seam over Python is 37% of the own road
       on 100 000 rows — filed as facade-frame-seam.
-- [ ] Stage 6 — docs: docs/foreign-facade.md with runnable examples
-      pinned by `TestDocExamplesForeignFacade` and the literature — the
-      GraalVM/Truffle interop protocol (one facade over languages, the
-      closest prior art and what it costs), Arrow Flight and the "one
-      memory format" argument, Jupyter's kernel protocol (a hello that
-      says what a kernel speaks), Erlang ports, Substrait — and what
-      this design takes and refuses from each.
+- [x] Stage 6 — docs (foreign-facade-6, 2026-09-25):
+      docs/foreign-facade.md — the shop priced by whoever runs it, the
+      data picking the road, what a language cannot do not compiling,
+      programs and handles, adding a language — every Scala line pinned
+      by `TestDocExamplesForeignFacade` (the JVM examples run in the
+      default gate; the snippet map in TestDocSnippets names
+      okay-foreign-cluster/src/test as the page's source), a README row,
+      and the literature: Truffle's interop protocol (Grimmer et al.,
+      DLS 2015), Wadler & Blott's typeclasses, Raasveldt & Mühleisen on
+      client protocols, Arrow Flight, Jupyter's kernel messaging, Erlang
+      ports, Substrait, hexagonal architecture — each with what this
+      design takes from it.
 
 ## Decisions
 
