@@ -1,5 +1,0 @@
-slug: foreign-facade-4
-who: claude (session 6f505c09)
-what: foreign-facade stage 4 — Programs[M] and Holds[M] under the same typeclass shape: one Callbacks over Schema values (not PyValue/RValue twins), an effect type member per language and a run door over a pooled worker; conformance bodies; Python Live
-files: okay-foreign-cluster Facade.scala, tests, specs/foreign-facade.md
-since: 2026-09-25
