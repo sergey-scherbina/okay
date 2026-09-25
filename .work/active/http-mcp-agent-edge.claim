@@ -1,0 +1,7 @@
+feature/http-mcp-agent-edge 2026-09-25T05:13:20Z
+agent: claude-code (okay-watch session)
+heartbeat: 2026-09-25T05:13:20Z
+status: in-progress
+done-so-far: worktree created
+next: okay-http off okay-mcp and okay-persist: Sse to okay-stream, McpHttp/McpAuth/links into okay-mcp (packages kept), tests with them
+touches: build.sbt, okay-http, okay-mcp, okay-security, okay-stream, okay-llm (Sse), okay-jetty/netty tests
