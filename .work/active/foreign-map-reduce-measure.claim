@@ -1,0 +1,6 @@
+feature/foreign-map-reduce-measure 2026-09-25T16:48:30Z
+agent: claude-fable-5-1
+heartbeat: 2026-09-25T16:48:30Z
+status: in-progress
+done-so-far: pyarrow venv building; MeasurePyArrow read as the pattern
+next: MeasureForeignMapReduce in okay-foreign-cluster, run, record
