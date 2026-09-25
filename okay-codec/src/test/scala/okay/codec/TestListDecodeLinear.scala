@@ -12,7 +12,7 @@ class TestListDecodeLinear extends munit.FunSuite:
   final case class Rec(id: Long, name: String) derives Schema
 
   private def best(f: => Any): Long =
-    (1 to 3).map { _ => val t = System.nanoTime(); f; System.nanoTime() - t }.min
+    (1 to 3).map { _ => val t = System.nanoTime(); val _ = f; System.nanoTime() - t }.min
 
   test("CBOR and JSON read a 40 000-element List about as fast as the same Vector") {
     val xs = List.tabulate(40000)(i => Rec(i.toLong, s"r$i"))
