@@ -1,4 +1,0 @@
-slug: instances-unify
-agent: claude (session 01VZwf6d)
-since: 2026-09-25
-what: Lexical.walk on Instances.Of[F] (Local, its cast and runLocal removed; Instances.exhausted closes walks); Distinct message names Lexical; one decision table in many-instances.md
