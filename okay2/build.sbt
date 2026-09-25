@@ -113,7 +113,7 @@ lazy val root: Project = (project in file("."))
     okay2Platform.jvm, okay2Platform.js, okay2Platform.native,
     okay2Stm.jvm, okay2Stm.js, okay2Stm.native,
     okay2Stream.jvm, okay2Stream.js, okay2Stream.native,
-    okay2Cats, okay2Fs2, okay2Zio)
+    okay2Cats, okay2Fs2, okay2Zio, okay2Spark)
   .settings(
     name := "okay2-root",
     publish / skip := true,
@@ -326,5 +326,53 @@ lazy val okay2Zio: Project = (project in file("okay2-zio"))
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % "2.1.14",
       "dev.zio" %% "zio-streams" % "2.1.14",
+    ),
+  )
+
+/**
+ * SPARK: the Scala 3 core's `okay-spark`, native to this build's own
+ * Scala 2.13 (operator request, specs/cluster-pool.md's own numbers
+ * work led here) — no `CrossVersion.for3Use2_13` shim, no explicit
+ * `scala-reflect` pin, no cross-stdlib `ArraySeq` serialization trap:
+ * this whole build already IS Spark's own Scala 2.13, so its artifacts
+ * are ordinary same-Scala-version dependencies.
+ *
+ * `SparkInterop.aggregate`/`aggregateByKey`/`toSpark` need only
+ * `okay2.Aggregator` (core); `SparkBulk` needs `okay2.stream.Bulk`/
+ * `Csv`/`Sort`/`Tables` (already ported). `SparkSchema` (needs
+ * `Columns`/`Schema`/`Json`) waits on `okay2-codec`
+ * (backlog.d/modules/okay2-codec.md), not yet ported.
+ */
+lazy val okay2Spark: Project = (project in file("okay2-spark"))
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Stream.jvm % "compile->compile;test->test")
+  .settings(
+    name := "okay2-spark",
+    common,
+    libraryDependencies += "org.apache.spark" %% "spark-sql" % "4.2.0",
+    // THE SAME `--add-opens` SET the Scala 3 `okaySpark` build.sbt's
+    // `sparkTestSettings` names (root build.sbt) — measured there, not
+    // guessed here: Kryo's shuffle serializer reflects into
+    // `java.nio.HeapByteBuffer` and JDK 17+'s module system refuses it
+    // without these, which surfaced on the FIRST shuffle-shaped call
+    // this port made (`aggregateByKey`; the three non-shuffling tests
+    // passed with no flags at all). `LegacyStdlib`/`for3Use2_13`'s own
+    // settings do NOT apply here — this build already compiles as
+    // Spark's own Scala 2.13, nothing to cross.
+    Test / fork := true,
+    Test / javaOptions ++= Seq(
+      "-Xmx2g",
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.net=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+      "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+      "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
     ),
   )
