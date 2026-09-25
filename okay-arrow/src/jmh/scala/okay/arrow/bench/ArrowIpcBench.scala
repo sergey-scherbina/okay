@@ -30,7 +30,7 @@ import org.openjdk.jmh.annotations.*
 @Fork(value = 1, jvmArgsAppend = Array(
   "--add-opens=java.base/java.nio=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow",
   "--enable-native-access=ALL-UNNAMED"))
-class OkayArrowBench:
+class ArrowIpcBench:
 
   @Param(Array("500000"))
   var rows: Int = 500000
