@@ -1,6 +1,7 @@
 package okay
 
 import okay.!.*
+import scala.annotation.tailrec
 
 /**
  * Backtracking search over the nondeterminism effect — LogicT
@@ -40,17 +41,20 @@ object Logic {
    */
   def msplit[A, F[+_]](m: A ! Choose + F)
   : Option[(A, A ! Choose + F)] ! F =
-    def go(stack: LazyList[A ! Choose + F]): Option[(A, A ! Choose + F)] ! F =
+    // a forwarded operation resumes the walk from inside flatMap, a call
+    // that cannot be a jump; `again` takes it, so `go` stays a checked loop
+    def again(stack: LazyList[A ! Choose + F]): Option[(A, A ! Choose + F)] ! F = go(stack)
+    @tailrec def go(stack: LazyList[A ! Choose + F]): Option[(A, A ! Choose + F)] ! F =
       stack match
         case LazyList() => pure(None)
         case p #:: rest => (p.resume: @unchecked) match
           case Return(a) => pure(Some((a, alts(rest))))
           case Inject(e) => split[Choose, F](e)
             (c => go(c.as.to(LazyList).map(a => Return(a): A ! Choose + F) #::: rest))
-            (g => Inject(g).flatMap(a => go(Return(a) #:: rest)))
+            (g => Inject(g).flatMap(a => again(Return(a) #:: rest)))
           case Bind(Inject(e), k) => split[Choose, F](e)
             (c => go(c.as.to(LazyList).map(x => k(x)) #::: rest))
-            (g => Inject(g).flatMap(x => go(k(x) #:: rest)))
+            (g => Inject(g).flatMap(x => again(k(x) #:: rest)))
 
     go(LazyList(m))
 

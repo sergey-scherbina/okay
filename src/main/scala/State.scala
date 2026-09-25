@@ -159,7 +159,7 @@ object State {
       !.widen[A, State % S, F](get[S].flatMap(s => set(put(a)(s))).map(_ => a))
 
     def _loop(x: X ! State % A + F): X ! State % S + F = loop(x)
-    def loop(x: X ! State % A + F): X ! State % S + F = (x.resume: @unchecked) match
+    @tailrec def loop(x: X ! State % A + F): X ! State % S + F = (x.resume: @unchecked) match
       case Return(v) => Return(v)
       // A LONE OPERATION IS A BIND WITH A PURE CONTINUATION, and the
       // arm below already knows that case. Written out here it would

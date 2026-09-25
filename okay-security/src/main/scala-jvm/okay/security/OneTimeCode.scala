@@ -1,6 +1,7 @@
 package okay.security
 
 import java.util.concurrent.atomic.AtomicReference
+import scala.annotation.tailrec
 
 /**
  * Confirm-and-sign (specs/security.md, security-sessions): mint a
@@ -23,7 +24,7 @@ final class OneTimeCode(ttlMs: Long = 10L * 60 * 1000):
     code
 
   /** spend the code: right key, right code, not expired, ONCE */
-  def confirm(key: String, code: String, now: Long = System.currentTimeMillis()): Boolean =
+  @tailrec def confirm(key: String, code: String, now: Long = System.currentTimeMillis()): Boolean =
     val cur = pending.get()
     cur.get(key) match
       case Some((c, exp)) if c == code && now <= exp =>

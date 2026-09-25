@@ -4,6 +4,7 @@ import okay.{!, %, +, Async, Writer}
 import okay.codec.{Json, Schema}
 import okay.lex.Json as JsonLex
 import okay.parse.{Cst, JsonParse, Parse}
+import scala.annotation.tailrec
 
 /**
  * Structured output, validated AS IT ARRIVES — and generation cut the
@@ -55,7 +56,7 @@ object Structured {
       if Cst.errors(session.tree).nonEmpty then None
       else okay.codec.Codecs.json(s).decode(Json.value(session.tree)).toOption
 
-    def walk(rest: Unit ! F): Cut[A] = (rest.resume: @unchecked) match
+    @tailrec def walk(rest: Unit ! F): Cut[A] = (rest.resume: @unchecked) match
       case Return(_) => Cut(None, text, count, stopped = false)
       case Inject(e) => okay.<|>[Async, Writer % String](e) match
         case Left(a) => h.handle(a); Cut(None, text, count, stopped = false)

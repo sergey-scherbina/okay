@@ -1,6 +1,7 @@
 package okay
 
 import scala.quoted.*
+import scala.annotation.tailrec
 
 /**
  * THE MACRO BEHIND `Proc.direct` — specs/proc-notation.md.
@@ -174,7 +175,7 @@ object ProcMacro:
     // procedure whose input was a `ProcCtx`.
     val ctxSym = TypeRepr.of[Proc.ProcCtx[[A] =>> Any]].typeSymbol
 
-    def asLambda(t: Term): Option[(Symbol, Term)] = t match
+    @tailrec def asLambda(t: Term): Option[(Symbol, Term)] = t match
       case Inlined(_, _, inner) => asLambda(inner)
       case Typed(inner, _) => asLambda(inner)
       case Block(List(DefDef(_, List(TermParamClause(List(p))), _, Some(b))), Closure(_, _)) =>
@@ -297,7 +298,7 @@ object ProcMacro:
 
     /** a leaf's name, taken from what the author called the operation */
     def nameOf(t: Term): String =
-      def root(x: Term): String = x match
+      @tailrec def root(x: Term): String = x match
         case Apply(f, _) => root(f)
         case TypeApply(f, _) => root(f)
         case Inlined(_, Nil, i) => root(i)

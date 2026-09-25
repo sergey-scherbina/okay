@@ -1,5 +1,7 @@
 package okay
 
+import scala.annotation.tailrec
+
 /**
  * A DURABLE PROGRAM'S OWN NON-DETERMINISM (dialogue-asks, stage 1b of
  * specs/durable-workflow.md).
@@ -923,7 +925,7 @@ object Wf:
             case stop: Walked.Bad[Q, A] => stop
 
         case okay.Proc.Iter(body) =>
-          def loop(cur: X, left: Journal[A], u: Int, round: Int): Walked[Q, A, Y] =
+          @tailrec def loop(cur: X, left: Journal[A], u: Int, round: Int): Walked[Q, A, Y] =
             go(body, cur, left, u, at / okay.Proc.Step.Round(round), undos) match
               case Walked.Ran(Left(again), l2, u2) => loop(again, l2, u2, round + 1)
               case Walked.Ran(Right(y), l2, u2) => Walked.Ran(y, l2, u2)

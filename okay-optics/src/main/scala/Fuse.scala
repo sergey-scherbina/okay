@@ -2,6 +2,7 @@ package okay
 
 import scala.quoted.*
 import okay.Optic.{Forget, First, Star}
+import scala.annotation.tailrec
 
 /**
  * Optics fused in the COMPILER (specs/optics.md, optics-fuse).
@@ -209,7 +210,7 @@ object Fuse {
    * with `Some_` anywhere answers None here and the caller falls back
    * to the interpretation, which knows what to do about absence.
    */
-  private def emitGet(using q: Quotes)(p: Plan[q.reflect.Term], s: q.reflect.Term): Option[q.reflect.Term] =
+  @tailrec private def emitGet(using q: Quotes)(p: Plan[q.reflect.Term], s: q.reflect.Term): Option[q.reflect.Term] =
     flatten(p) match
       case Plan.L(get, _) => Some(beta(apply1(get, s)))
       case Plan.Some_ => None
@@ -280,7 +281,7 @@ object Fuse {
    * `Inlined` carrying bindings is kept — those are definitions the
    * body needs.
    */
-  private def peel(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
+  @tailrec private def peel(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
     import q.reflect.*
     t match
       case Inlined(_, Nil, inner) => peel(inner)
@@ -338,7 +339,7 @@ object Fuse {
    * Both fall through to the ordinary path, which is what the code
    * did before this existed.
    */
-  private def fuseTwice[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
+  @tailrec private def fuseTwice[C[_[_, _]]: Type, S: Type, T: Type, A: Type, B: Type](using q: Quotes)(
       o: Expr[Optic[C, S, T, A, B]], f: Expr[A => B], s: Expr[S]): Option[(Expr[A => B], Expr[S])] =
     import q.reflect.*
     if !(TypeRepr.of[S] =:= TypeRepr.of[T]) || !(TypeRepr.of[A] =:= TypeRepr.of[B]) then None

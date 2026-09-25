@@ -3,6 +3,7 @@ package okay.deploy
 import okay.{Fact, Handler, Module, Monoid, Static, moduleAs}
 import okay.given
 import scala.quoted.*
+import scala.annotation.tailrec
 
 /**
  * The root module's unresolved inputs are what a deployment declares
@@ -94,7 +95,7 @@ object Needs:
   def ofImpl[Root: Type](using Quotes): Expr[Vector[Need]] =
     import quotes.reflect.*
     val module = TypeRepr.of[Module[?]]
-    def inputs(t: TypeRepr, acc: List[TypeRepr]): List[TypeRepr] = t.dealias match
+    @tailrec def inputs(t: TypeRepr, acc: List[TypeRepr]): List[TypeRepr] = t.dealias match
       case AppliedType(fn, args) if fn.typeSymbol.name.startsWith("ContextFunction") =>
         inputs(args.last, acc ++ args.init)
       case t if t <:< module => acc

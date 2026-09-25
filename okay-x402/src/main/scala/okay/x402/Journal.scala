@@ -4,6 +4,7 @@ import okay.*
 import okay.chain.Network
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed, of}
+import scala.annotation.tailrec
 
 /**
  * One decision about a payment, as a record (specs/x402.md stage 4). The
@@ -68,7 +69,7 @@ object PaymentJournal:
       typed.append(0, e.subject.getBytes("UTF-8"), e, Ack.Durable): Unit
     def events: Vector[PaymentEvent] =
       val t = typed.topic
-      def go(from: Long, acc: Vector[PaymentEvent]): Vector[PaymentEvent] =
+      @tailrec def go(from: Long, acc: Vector[PaymentEvent]): Vector[PaymentEvent] =
         if from >= t.end(0) then acc
         else typed.read(0, from, 1024) match
           case Typed.Read.TooEarly(b) => go(b, acc)

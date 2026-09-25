@@ -3,6 +3,7 @@ package okay.r
 import java.io.{BufferedInputStream, BufferedOutputStream}
 import okay.Handler
 import okay.codec.{Json, WireCompression, WireFormat, WireFrames, WireNegotiation}
+import scala.annotation.tailrec
 
 /**
  * The subprocess engine (stage 0, specs/r.md): one `Rscript` per
@@ -198,7 +199,7 @@ final class RSubprocess private (private var proc: Process,
     konts.get(k) match
       case None => Left(Condition("LookupError", s"continuation $k is not held (forgotten?)"))
       case Some(c) =>
-        def attempt(again: Boolean): Either[Condition, RNode] =
+        @tailrec def attempt(again: Boolean): Either[Condition, RNode] =
           val local =
             if c.gen == generation then Right(c.local)
             else replay(c).map { l => c.local = l; c.gen = generation; l }

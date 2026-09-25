@@ -2,6 +2,7 @@ package okay
 package macros
 
 import scala.quoted.*
+import scala.annotation.tailrec
 
 /**
  * THE CORE of the `direct` compiler, and the class the phases mix
@@ -415,7 +416,7 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
     case _ => None
 
   /** a child whose evaluation nobody can observe being moved */
-  def trivial(t: Term): Boolean = t match
+  @tailrec def trivial(t: Term): Boolean = t match
     case _: Ident | _: Literal | _: This => true
     case Typed(inner, _) => trivial(inner)
     case _ => false

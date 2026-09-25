@@ -6,6 +6,7 @@ import okay.codec.{Json, Schema}
 import okay.persist.{Ack, Record, Topic}
 
 import java.nio.charset.StandardCharsets.UTF_8
+import scala.annotation.tailrec
 
 /**
  * Event-sourced UI sessions on the durable log (specs/ui.md, the low
@@ -55,7 +56,7 @@ object Sessions {
 
   private def records(s: Session, from: Long): Vector[Record] =
     val stop = s.topic.end(s.partition)
-    def go(at: Long, acc: Vector[Record]): Vector[Record] =
+    @tailrec def go(at: Long, acc: Vector[Record]): Vector[Record] =
       if at >= stop then acc
       else s.topic.read(s.partition, at, 512) match
         case Topic.Read.Records(rs) if rs.nonEmpty => go(rs.last.offset + 1, acc ++ rs)

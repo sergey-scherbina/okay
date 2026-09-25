@@ -1,6 +1,7 @@
 package okay.ui
 
 import okay.*
+import scala.annotation.tailrec
 
 /**
  * A screen is CODATA: what it shows, and what it becomes when the
@@ -109,7 +110,7 @@ object Nav {
   /** drop to the named frame and let it route; an ABSENT boundary
    * changes nothing (total, like every fold here) — the stack is
    * data, and a name not on it names nothing */
-  private def popTo[A](stack: List[Screen], k: Key[A], a: A)
+  @tailrec private def popTo[A](stack: List[Screen], k: Key[A], a: A)
   : (List[Screen], Vector[okay.![Event, okay.Async]]) =
     // the boundary whose key IS k — and by Same's witness, a Boundary[A]
     def boundaryFor(s: Screen): Option[Boundary[A]] = s match

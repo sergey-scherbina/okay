@@ -2,6 +2,7 @@ package okay
 package macros
 
 import scala.quoted.*
+import scala.annotation.tailrec
 
 /**
  * THE DEFER PRE-PASS: a Term-to-Term rewrite that runs BEFORE any
@@ -126,7 +127,7 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
          * all, and asks the name at the bottom.
          */
         def alreadyDefers(t: Term): Boolean =
-          def root(x: Term): String = x match
+          @tailrec def root(x: Term): String = x match
             case Inlined(_, _, inner) => root(inner)
             case Typed(inner, _) => root(inner)
             case Block(_, expr) => root(expr)
@@ -139,7 +140,7 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
         /** a program-typed call, whoever it calls — the tail rule's test */
         /** a CALL, under whatever the typer wrapped it in — a program
          * VALUE is not deferred, since naming one builds nothing */
-        def isCall(t: Term): Boolean = t match
+        @tailrec def isCall(t: Term): Boolean = t match
           case Inlined(_, _, inner) => isCall(inner)
           case Typed(inner, _) => isCall(inner)
           case Block(_, expr) => isCall(expr)

@@ -508,7 +508,10 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
  * awaits, the stage's tells are the result stream */
 @scala.annotation.targetName("throughProducer")
 def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = {
-  def loop(rest: A ! Writer % W, d: Stage[W, M, B], depth: Int = 0): B ! Writer % M =
+  // a call from inside flatMap cannot be a jump; `again` takes it, so
+  // the walk itself stays a checked loop
+  def again(rest: A ! Writer % W, d: Stage[W, M, B]): B ! Writer % M = loop(rest, d)
+  @tailrec def loop(rest: A ! Writer % W, d: Stage[W, M, B], depth: Int = 0): B ! Writer % M =
     (d.resume: @unchecked) match
       case Return(b) => pure(b)
       case Inject(e) => split[Take % W, Writer % M](e)
@@ -519,13 +522,13 @@ def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = 
           if depth >= PullBudget then
             pure[Writer % M, Unit](()).flatMap: _ =>
               Writer.uncons(rest) match
-                case Right((w, r)) => loop(r, k(Erased.resumeWith(Some(w))))
-                case Left(_) => loop(rest, k(None))
+                case Right((w, r)) => again(r, k(Erased.resumeWith(Some(w))))
+                case Left(_) => again(rest, k(None))
           else Writer.uncons(rest) match
             case Right((w, r)) => loop(r, k(Erased.resumeWith(Some(w))), depth + 1)
             case Left(_) => loop(rest, k(None), depth + 1) }
         (m =>
-          effect[Writer % M, Any](Erased.reinject[(Writer % M)[Any]](m)).flatMap(x => loop(rest, k(Erased.resumeWith(x)))))
+          effect[Writer % M, Any](Erased.reinject[(Writer % M)[Any]](m)).flatMap(x => again(rest, k(Erased.resumeWith(x)))))
 
   Free.delay(() => loop(p, s))
 }

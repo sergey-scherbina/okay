@@ -5,6 +5,7 @@ import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
 import okay.sql.{Sql, SqlValue}
 import okay.sql.given
+import scala.annotation.tailrec
 
 /**
  * The write bridge (specs/jdbc.md, "Writing correctly into a
@@ -48,7 +49,10 @@ final class Writes(db: Sql, topic: Topic, run: String):
    * DATA per entry — a batch recovery reports, the caller decides */
   def recover(policy: String => Policy): Vector[Recovered] ! Async =
     val open = fold().collect { case (i, None) => i }
-    def resolve(rest: List[Rec.Intent], acc: Vector[Recovered]): Vector[Recovered] ! Async =
+    // an intent settled inside flatMap continues from there, a call that
+    // cannot be a jump; `again` takes it, so the walk stays a loop
+    def again(rest: List[Rec.Intent], acc: Vector[Recovered]): Vector[Recovered] ! Async = resolve(rest, acc)
+    @tailrec def resolve(rest: List[Rec.Intent], acc: Vector[Recovered]): Vector[Recovered] ! Async =
       rest match
         case Nil => okay.pure(acc)
         case i :: tail => policy(i.key) match
@@ -57,14 +61,14 @@ final class Writes(db: Sql, topic: Topic, run: String):
             // answers "already happened" (MERGE / ON CONFLICT)
             db.update(i.sql, i.params).flatMap { n =>
               async { typed.append(partition, runKey, Rec.Done(i.seq, n), Ack.Durable) }
-                .flatMap(_ => resolve(tail, acc :+ Recovered.Reapplied(i.key, n)))
+                .flatMap(_ => again(tail, acc :+ Recovered.Reapplied(i.key, n)))
             }
           case Policy.Reconcile(select) =>
             countRows(db.query(select, Vector(SqlValue.Text(i.key)))).flatMap { found =>
               if found > 0 then
                 async { typed.append(partition, runKey, Rec.Done(i.seq, found), Ack.Durable) }
-                  .flatMap(_ => resolve(tail, acc :+ Recovered.Settled(i.key, found)))
-              else resolve(tail, acc :+ Recovered.Unresolved(i.key, "the far end has no row for this key"))
+                  .flatMap(_ => again(tail, acc :+ Recovered.Settled(i.key, found)))
+              else again(tail, acc :+ Recovered.Unresolved(i.key, "the far end has no row for this key"))
             }
           case Policy.Fail =>
             resolve(tail, acc :+ Recovered.Unresolved(i.key, "policy forbids repeating and asking"))

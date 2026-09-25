@@ -6,6 +6,7 @@ import okay.ui.*
 import scala.scalanative.unsafe.*
 import scala.scalanative.unsigned.*
 import Gtk4.Widget
+import scala.annotation.tailrec
 
 /**
  * GTK 4 on Scala Native as a Backend (ui-gtk): the native toolkit leg
@@ -131,7 +132,7 @@ object Gtk {
       out
     private def at(path: List[Int], from: Ui): Widget =
       // a Scroll's child is the scrolled window's child, not a sibling walk
-      def go(w: Widget, u: Ui, rest: List[Int]): Widget = rest match
+      @tailrec def go(w: Widget, u: Ui, rest: List[Int]): Widget = rest match
         case Nil => w
         case i :: more => u match
           case Ui.Scroll(c, _) => go(scrolled(w), c, more)

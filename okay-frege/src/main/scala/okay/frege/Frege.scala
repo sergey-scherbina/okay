@@ -6,6 +6,7 @@ import frege.prelude.PreludeBase.{TList, TMaybe}
 import frege.prelude.PreludeBase.TST
 import frege.run8.Thunk
 import scala.reflect.ClassTag
+import scala.annotation.tailrec
 
 /**
  * Frege programs as okay programs (specs/frege.md).
@@ -138,9 +139,12 @@ object Frege {
    * source is a `perform` in a `Prog`, not a list.
    */
   def list[A](c: Chunks[A]): TList[A] =
-    def cells(chunk: Chunk[A], i: Int, rest: Chunks[A]): TList[A] =
+    // the tail of a cell is a lazy thunk that calls back in, which cannot
+    // be a jump; `again` takes it, so the walk across chunks stays a loop
+    def again(chunk: Chunk[A], i: Int, rest: Chunks[A]): TList[A] = cells(chunk, i, rest)
+    @tailrec def cells(chunk: Chunk[A], i: Int, rest: Chunks[A]): TList[A] =
       if i < chunk.length then
-        TList.DCons.mk[A](Thunk.`lazy`[A](chunk(i)), Thunk.shared[TList[A]](() => cells(chunk, i + 1, rest)))
+        TList.DCons.mk[A](Thunk.`lazy`[A](chunk(i)), Thunk.shared[TList[A]](() => again(chunk, i + 1, rest)))
       else Chunks.pull(rest) match
         case Some((next, more)) => cells(next, 0, more)
         case None => TList.DList.mk[A]()

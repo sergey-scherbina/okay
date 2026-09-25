@@ -296,6 +296,18 @@ force, all already practiced, none previously written down:
   command yourself on a docs lane (backlog: affected-docs-run-no-doc-tests).
 
 ## Code rules the operator has set
+- NO UNBOUNDED STACK RECURSION (operator, 2026-09-25). A recursive
+  method is one of three things: TAIL (`@tailrec`, so the compiler
+  checks it), TRAMPOLINED (the recursive call deferred into a `Free`,
+  `Cont` or program `flatMap`, or an explicit stack/worklist), or
+  BOUNDED by a limit written down beside it (a fixed depth, a constant
+  such as `PullBudget`). "The tree is usually shallow" is not a bound.
+  A method the compiler already turns into a loop carries `@tailrec`.
+  When a tail loop also resumes from inside a `flatMap` or a thunk,
+  that call goes through a one-line `again` wrapper, so `@tailrec` can
+  still check the loop. Found by tailrec-audit: okay2's
+  `Producer.each` threw StackOverflowError at 200 000 productions, and
+  the same text in okay was safe only because its `split` is `inline`.
 - NO CAST WITHOUT A REAL NECESSITY (operator, 2026-09-02). An
   `asInstanceOf`, an `@unchecked` pattern, an `Any` where a type
   parameter would do, is a claim the compiler cannot check — and

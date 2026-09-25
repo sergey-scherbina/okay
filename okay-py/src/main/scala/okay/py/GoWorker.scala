@@ -2,6 +2,7 @@ package okay.py
 
 import java.nio.file.{Files, Path}
 import okay.codec.Schema
+import scala.annotation.tailrec
 
 /**
  * A Go worker for okay's programs-as-data (polyglot-go,
@@ -97,7 +98,7 @@ object GoWorker:
 object Go:
 
   /** (Go type, decoder expression, how an argument of it is put on the wire) */
-  private def goType(s: Schema[?]): Option[(String, String, String => String)] = s match
+  @tailrec private def goType(s: Schema[?]): Option[(String, String, String => String)] = s match
     case Schema.SInt | Schema.SLong => Some(("int64", "okay.Int", identity))
     case Schema.SDouble => Some(("float64", "okay.Float", identity))
     case Schema.SBool => Some(("bool", "okay.Bool", identity))

@@ -3,6 +3,7 @@ package okay.js
 import scala.annotation.compileTimeOnly
 import scala.language.dynamics
 import scala.quoted.*
+import scala.annotation.tailrec
 
 /**
  * `js { … }` — the tree, written as Scala (specs/js.md stage 4).
@@ -122,7 +123,7 @@ object Direct:
       else no(s"a value of type ${w.show} as TypeScript", where,
         "js { } values are numbers, strings, booleans, Dyn, Js and functions of them")
 
-    def block(t: Term): Vector[Stmt] = t match
+    @tailrec def block(t: Term): Vector[Stmt] = t match
       case Inlined(_, _, inner) => block(inner)
       case Block(stats, last) =>
         stats.toVector.flatMap(stat) ++ tail(last)
@@ -130,7 +131,7 @@ object Direct:
 
     /** the last expression of a block is a statement, not a value:
      * `js { }` builds a program */
-    def tail(t: Term): Vector[Stmt] = t match
+    @tailrec def tail(t: Term): Vector[Stmt] = t match
       case Literal(UnitConstant()) => Vector.empty
       case Inlined(_, _, inner) => tail(inner)
       // through `statement`, not `expr`: an `if` or a `while` at the
@@ -181,7 +182,7 @@ object Direct:
     /** the one name that is scaffolding rather than JavaScript: it
      * exists so `global.console.log(x)` typechecks, and it is not in
      * the output */
-    def isGlobal(t: Term): Boolean = t match
+    @tailrec def isGlobal(t: Term): Boolean = t match
       case Inlined(_, _, inner) => isGlobal(inner)
       case Select(_, "global") => true
       case i: Ident => i.name == "global"

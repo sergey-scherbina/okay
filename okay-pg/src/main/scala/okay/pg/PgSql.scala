@@ -4,6 +4,7 @@ import okay.{!, +, %, Async, Chunk, ChunkBuf, effect, Net, NetConn, pure, Source
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import okay.crypto.Crypto
 import java.nio.charset.StandardCharsets.UTF_8
+import scala.annotation.tailrec
 
 /**
  * The Postgres v3 wire, natively (specs/sql.md): the direct road
@@ -70,7 +71,10 @@ final class PgSql private (conn: NetConn) extends Sql:
           case (_, acc) => acc
         }.flatMap { cols =>
           // RowDescription has no nullability; the catalog does
-          def resolve(rest: List[(String, Int, Int, Int)],
+          // a column read inside flatMap continues from there, a call that
+          // cannot be a jump; `again` takes it, so the walk stays a loop
+          def again(rest: List[(String, Int, Int, Int)], acc: Vector[Col]): Vector[Col] ! Async = resolve(rest, acc)
+          @tailrec def resolve(rest: List[(String, Int, Int, Int)],
                       acc: Vector[Col]): Vector[Col] ! Async = rest match
             case Nil => pure(acc)
             case (label, oid, tableOid, attnum) :: more =>
@@ -79,7 +83,7 @@ final class PgSql private (conn: NetConn) extends Sql:
               else
                 simpleValue(s"select attnotnull from pg_attribute " +
                   s"where attrelid = $tableOid and attnum = $attnum").flatMap { v =>
-                  resolve(more, acc :+ Col(label, colType(oid), !v.contains("t")))
+                  again(more, acc :+ Col(label, colType(oid), !v.contains("t")))
                 }
           resolve(cols.toList, Vector.empty)
         }

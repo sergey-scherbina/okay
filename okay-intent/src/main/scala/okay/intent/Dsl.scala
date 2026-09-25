@@ -1,5 +1,6 @@
 package okay.intent
 
+
 /**
  * A RULE, BUILT RATHER THAN WRITTEN.
  *

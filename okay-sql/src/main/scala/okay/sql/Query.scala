@@ -3,6 +3,7 @@ package okay.sql
 import okay.*
 import okay.given
 import okay.codec.Schema
+import scala.annotation.tailrec
 
 /**
  * A QUERY IS AN OPTIC-SHAPED DECLARATION (specs/optics-outside.md,
@@ -101,7 +102,7 @@ object Query:
     yield new Field[A, T](name, Typed.snake(name), idx, v => Typed.encodeOne(t, v).getOrElse(SqlValue.Null))
 
   /** the column list a row of A reads, in declared order, as `Typed` names it */
-  def columns[A](using s: Schema[A]): Either[String, Vector[String]] = s match
+  @tailrec def columns[A](using s: Schema[A]): Either[String, Vector[String]] = s match
     case p: Schema.SProduct[?] => Right(p.fields.map((n, _) => Typed.snake(n)))
     case Schema.SIso(u, _, _) => columns(using u())
     case _ => Left("a row is a product (a case class)")

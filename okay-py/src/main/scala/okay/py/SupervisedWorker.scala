@@ -1,6 +1,7 @@
 package okay.py
 
 import okay.Handler
+import scala.annotation.tailrec
 
 /**
  * A foreign worker that COMES BACK (polyglot-one-wire stage 6): the same
@@ -146,7 +147,7 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
     konts.get(k) match
       case None => Left(Condition("LookupError", s"continuation $k is not held (forgotten?)"))
       case Some(c) =>
-        def attempt(recovering: Boolean): Either[Condition, PyNode] =
+        @tailrec def attempt(recovering: Boolean): Either[Condition, PyNode] =
           use { w =>
             val local =
               if c.gen == generation then Right(c.local)
@@ -241,7 +242,7 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
             case Left(c) => PyStep.Done(Left(c))
       case ForeignEval.Program(run, fn, args) =>
         runs(run) = (fn, args)
-        def attempt(recovering: Boolean): Either[Condition, PyNode] =
+        @tailrec def attempt(recovering: Boolean): Either[Condition, PyNode] =
           use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Program(run, fn, a)))) match
             case Left(c) if !recovering && !current.exists(_.alive) &&
               Set("WorkerDied", "timeout").contains(c.kind) => attempt(recovering = true)

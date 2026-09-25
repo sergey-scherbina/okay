@@ -3,6 +3,7 @@ package okay.wroclaw
 import okay.{Feed as _, *}
 import okay.given
 import scala.collection.mutable
+import scala.annotation.tailrec
 
 /**
  * THE OKAY LANE: the same job, in one JVM, with no engine under it.
@@ -439,13 +440,16 @@ object OkayLane {
    * driven by, so that both of them pay for it and the difference
    * between them is the coroutine alone */
   private def produce(feed: Feed, tram: Array[Boolean]): Unit ! Writer % Ride =
-    def go(i: Int): Unit ! Writer % Ride =
+    // a call from inside flatMap cannot be a jump; `again` takes it, so
+    // the walk itself stays a checked loop
+    def again(i: Int): Unit ! Writer % Ride = go(i)
+    @tailrec def go(i: Int): Unit ! Writer % Ride =
       if i >= feed.events.length then pure(())
       else
         val d = feed.events(i)
         if d.route >= 0 && d.route < tram.length then
           Writer.tell(new Ride(d.ts, d.route, d.stop, d.vehicle, d.delay, tram(d.route)))
-            .flatMap(_ => go(i + 1))
+            .flatMap(_ => again(i + 1))
         else go(i + 1)
     go(0)
 

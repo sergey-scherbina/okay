@@ -2,6 +2,7 @@ package okay.conf
 
 import okay.Validated
 import okay.codec.{Json, Schema}
+import scala.annotation.tailrec
 
 /**
  * Configuration as data, secrets as references (specs/conf.md): a
@@ -151,7 +152,7 @@ object Conf:
   /** the scalars an environment can carry, and the named refusal for
    * everything else — a list smuggled through a comma-separated
    * variable is a parser nobody agreed on */
-  private def scalar(under: Schema[?], text: String, name: String, field: String): Either[String, Json] =
+  @tailrec private def scalar(under: Schema[?], text: String, name: String, field: String): Either[String, Json] =
     under match
       case Schema.SString => Right(Json.JStr(text))
       case Schema.SInt => text.toIntOption.map(i => Json.JNum(i.toDouble))

@@ -1,5 +1,6 @@
 package okay.codec
 
+
 /**
  * TypeScript declarations READ into Scala types (typescript-types T3,
  * specs/typescript-types.md): the direction where a type is written first

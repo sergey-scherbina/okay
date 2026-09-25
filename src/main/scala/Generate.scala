@@ -213,23 +213,27 @@ object Producer {
     fold[Chunk[X], Vector[X], Chunk[X], G](p)(Vector.empty)((acc, c) => acc ++ c).map(_._1)
 
   /**
-   * Run `f` on every production, G performed as before. Stack-safe
-   * without `@tailrec` because `split` is INLINE: the produced arm's
-   * `each(k(w))(f)` lands in tail position and scalac compiles it to a
-   * loop (`goto 0` in the bytecode). okay2, whose `split` is an ordinary
-   * method taking closures, had the same text and overflowed at 200 000
-   * productions (okay2-split-at-rest); TestFoldUntil pins it here.
+   * Run `f` on every production, G performed as before. A checked
+   * loop: `split` is INLINE, so the produced arm's `loop(k(w))` is in
+   * tail position, and a forwarded operation resumes through `again`
+   * from inside flatMap. okay2, whose `split` is an ordinary method
+   * taking closures, had this walk as one recursive method and
+   * overflowed at 200 000 productions (okay2-split-at-rest);
+   * TestFoldUntil pins it here.
    */
   def each[W, A, G[+_] : TypeableK](p: A ! Produce + G)(f: W => Unit): A ! G =
     import !.*
-    (p.resume: @unchecked) match
-      case Free.Return(a) => pure(a)
-      case Inject(e) => split[G, Produce](e)
-        (g => Inject(g): A ! G)
-        (w => { f(produced[W](w)); pure(produced[A](w)) })
-      case Bind(Inject(e), k) => split[G, Produce](e)
-        (g => Inject(g).flatMap(x => each[W, A, G](k(x))(f)): A ! G)
-        (w => { f(produced[W](w)); each[W, A, G](k(w))(f) })
+    def again(x: A ! Produce + G): A ! G = loop(x)
+    @tailrec def loop(x: A ! Produce + G): A ! G =
+      (x.resume: @unchecked) match
+        case Free.Return(a) => pure(a)
+        case Inject(e) => split[G, Produce](e)
+          (g => Inject(g): A ! G)
+          (w => { f(produced[W](w)); pure(produced[A](w)) })
+        case Bind(Inject(e), k) => split[G, Produce](e)
+          (g => Inject(g).flatMap(x => again(k(x))): A ! G)
+          (w => { f(produced[W](w)); loop(k(w)) })
+    loop(p)
 
   /** a Handler printing each produced value on the way through */
   def log(prefix: String = "", suffix: String = "\n"): Handler[Produce] = new:
@@ -364,6 +368,7 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
         elem
 
 import scala.math.Numeric.Implicits.given
+import scala.annotation.tailrec
 
 /** the naturals: 0, 1, 2, ... */
 inline def nats[N: Numeric as N, F[_] : Put]: F[N] =

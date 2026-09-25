@@ -2,6 +2,7 @@ package okay
 
 import scala.quoted.*
 import scala.language.implicitConversions
+import scala.annotation.tailrec
 
 /**
  * The flat block (specs/direct-macro.md): `direct[F] { ... m.reflect ... }`
@@ -357,7 +358,7 @@ object Direct:
       stage0 = Some(st.asTerm))
 
   /** a term with its inlining and ascription wrappers taken off */
-  private[okay] def stripped(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
+  @tailrec private[okay] def stripped(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
     import q.reflect.*
     t match
       case Inlined(_, Nil, inner) => stripped(inner)

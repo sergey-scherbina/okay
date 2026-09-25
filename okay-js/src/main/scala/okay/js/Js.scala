@@ -1,5 +1,7 @@
 package okay.js
 
+import scala.annotation.tailrec
+
 /**
  * JavaScript AS A VALUE (specs/js.md).
  *
@@ -356,7 +358,7 @@ object Js:
     /** does this expression's TEXT begin with `function` or `{`? The
      * leftmost spine is what a parser sees first, so a call on a
      * function literal counts and a call on a name does not */
-    private def leadsWithFunctionOrObject(j: Js): Boolean = j match
+    @tailrec private def leadsWithFunctionOrObject(j: Js): Boolean = j match
       case _: Fun | _: TypedFun | _: Obj => true
       case Call(fn, _) => leadsWithFunctionOrObject(fn)
       case Field(of, _) => leadsWithFunctionOrObject(of)

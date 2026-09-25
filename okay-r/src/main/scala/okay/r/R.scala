@@ -2,6 +2,7 @@ package okay.r
 
 import okay.!
 import okay.codec.Json
+import scala.annotation.tailrec
 
 /**
  * R as a handler (specs/r.md): calls are OPERATIONS — journalled by
@@ -163,7 +164,7 @@ object RFrame:
         case Left(why) => Left(why))
     case (sc, other) => Left(s"$other does not fit $sc")
 
-  private def encode[X](s: Schema[X], v: Any): RValue = (s, v) match
+  @tailrec private def encode[X](s: Schema[X], v: Any): RValue = (s, v) match
     case (o: Schema.SOption[?], None) => naOf(o.of())
     case (o: Schema.SOption[?], Some(x)) => encode(o.of(), x)
     case (Schema.SInt, x: Int) => RValue.I32(x)

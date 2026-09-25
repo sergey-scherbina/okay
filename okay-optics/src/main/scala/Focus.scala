@@ -2,6 +2,7 @@ package okay
 
 import scala.quoted.*
 import scala.deriving.Mirror
+import scala.annotation.tailrec
 
 /**
  * `Lens[S](_.field)`: the field selector as CODE, not a string
@@ -29,7 +30,7 @@ object Focus:
    */
   def impl[S: Type, A: Type](get: Expr[S => A], m: Expr[Mirror.ProductOf[S]])(using Quotes): Expr[Lens[S, S, A, A]] =
     import quotes.reflect.*
-    def selector(t: Term): Option[String] = t match
+    @tailrec def selector(t: Term): Option[String] = t match
       case Inlined(_, _, inner) => selector(inner)
       case Block(Nil, inner) => selector(inner)
       case Typed(inner, _) => selector(inner)

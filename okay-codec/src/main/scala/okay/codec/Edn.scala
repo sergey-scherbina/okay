@@ -2,6 +2,7 @@ package okay.codec
 
 import okay.{Cont, reset, />}
 import scala.collection.mutable
+import scala.annotation.tailrec
 
 /**
  * EDN — Clojure's extensible data notation (https://github.com/edn-format/edn)
@@ -510,7 +511,10 @@ object Edn {
         loop(items(v).get.toList, Vector.empty)
       case (p: Schema.SProduct[A], EMap(kvs)) =>
         val m = entriesOf(kvs)
-        def loop(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R =
+        // the field decoded inside Cont.defer continues from its continuation,
+        // a call that cannot be a jump; `again` takes it, so this stays a loop
+        def again(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R = loop(remaining, acc)
+        @tailrec def loop(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R =
           remaining match
             case Nil => Cont.Pure(Right(acc))
             case ((name, sc), i) :: more => m.get(name) match
@@ -519,7 +523,7 @@ object Edn {
                 case Right(v) => loop(more, acc :+ v)
               case Some(v) => Cont.defer(() => fieldC(sc(), v)) {
                 case Left(err) => Cont.Pure(Left(err))
-                case Right(x) => loop(more, acc :+ x)
+                case Right(x) => again(more, acc :+ x)
               }
         loop(p.fields.zipWithIndex.toList, Vector.empty).flatMap(r => Cont.Pure(r.map(p.make)))
       case (su: Schema.SSum[A], ETagged(ns, name, v)) =>

@@ -2,6 +2,7 @@ package okay
 package macros
 
 import scala.quoted.*
+import scala.annotation.tailrec
 
 /**
  * LOOPS AND THE STATEMENT TAIL: for-do and for-yield over the
@@ -280,7 +281,7 @@ private[okay] trait DirectLoops[F[_]] extends DirectVals[F]:
   // harmless `loop(tl, acc)` the parts are taken from.
 
   /** the function reference and argument refs of a `loop(…)` call */
-  private def parts(call: Term): (Term, List[Term]) = call match
+  @tailrec private def parts(call: Term): (Term, List[Term]) = call match
     case Apply(fn, args) => (fn, args)
     case Inlined(_, _, inner) => parts(inner)
     case other => report.errorAndAbort(s"direct loops (macro bug): not a call: ${other.show}")

@@ -1,5 +1,7 @@
 package okay
 
+import scala.annotation.tailrec
+
 /**
  * Parallelism and resilience over fibers (specs/parallel-resilience.md):
  * the half that needs nothing but Async, a Scheduler and a retry
@@ -24,7 +26,7 @@ def parTraverse[A, B](xs: Seq[A])(f: A => B ! Async)(using Scheduler): Seq[B] ! 
  */
 def retry[A](policy: LazyList[Long])(prog: => A ! Async): A ! Async =
   async {
-    def go(delays: LazyList[Long]): A =
+    @tailrec def go(delays: LazyList[Long]): A =
       try prog.runWith
       catch
         case e: Throwable => delays match

@@ -5,6 +5,7 @@ import okay.conf.Secret
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
+import scala.annotation.tailrec
 
 /**
  * A whole deployable system as ONE value (specs/deployment.md): the
@@ -40,7 +41,7 @@ final case class Deployment(
    * two services that each wait for the other is a deployment that
    * can never start, and better said here than at 3am. */
   def ordered: Either[String, Vector[Service]] =
-    def go(done: Vector[Service], left: Vector[Service], stuck: Int): Either[String, Vector[Service]] =
+    @tailrec def go(done: Vector[Service], left: Vector[Service], stuck: Int): Either[String, Vector[Service]] =
       if left.isEmpty then Right(done)
       else if stuck > left.length then
         Left(s"these services wait on each other and none can start first: ${left.map(_.name).mkString(", ")}")

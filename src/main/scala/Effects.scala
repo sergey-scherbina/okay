@@ -232,7 +232,10 @@ given Effects[Free] with
     def capture[X](c: Cont[X, Free[G, B], Free[G, B]], k: X => Free[F + G, A]): Free[G, B] =
       c / (x => Free.delay(() => loop(k(x))))
 
-    def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
+    // a call from inside flatMap cannot be a jump; `again` takes it, so
+    // the walk itself stays a checked loop
+    def again(x: Free[F + G, A]): Free[G, B] = loop(x)
+    @tailrec def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
       case Free.Return(a) => ret(a)
       case Free.Inject(e) => last(e)
       case Free.Bind(Free.Inject(e), k) =>
@@ -243,7 +246,7 @@ given Effects[Free] with
               val c = h(e)
               Cont.onAnswer(c)(a => loop(k(a)))(capture(c, k))
             })
-          (e => Free.Inject(e).flatMap(x => loop(k(x))))
+          (e => Free.Inject(e).flatMap(x => again(k(x))))
 
     loop(m)
 

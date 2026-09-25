@@ -3,6 +3,7 @@ package okay.rag
 import okay.lex.{Channel, Scan, ScanInto, Span, Token}
 import okay.parse.{Instr, Parse}
 import scala.collection.mutable.Growable
+import scala.annotation.tailrec
 
 /**
  * Source code as a corpus (specs/rag.md, P10f), for any language a
@@ -108,7 +109,7 @@ object Code {
         out += Token(K.Punct, c.toString, Span(at.off, at.line, at.col, 1))
       case Mode.Base => ()
 
-    override def stepInto(s: S, c: Char, out: Growable[T]): S =
+    @tailrec override def stepInto(s: S, c: Char, out: Growable[T]): S =
       val next = s.at + c
       def fresh(m: Mode) = S(m, "", next, next)
       def begin(m: Mode) = S(m, c.toString, s.at, next)

@@ -4,6 +4,7 @@ import okay.{Cont, reset, />}
 import okay.lex.Json as JsonLex
 import okay.lex.Json.K
 import okay.parse.{Cst, JsonParse, Parse}
+import scala.annotation.tailrec
 
 /**
  * The JSON dialect: the semantic projection of the lossless CST, and
@@ -719,7 +720,10 @@ object Json {
       loop(vs.filterNot(_.isInstanceOf[JErr]).toList, Vector.empty)
     case (p: Schema.SProduct[A], JObj(fs)) =>
       val m = fs.toMap
-      def loop(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R =
+      // the field decoded inside Cont.defer continues from its continuation,
+      // a call that cannot be a jump; `again` takes it, so this stays a loop
+      def again(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R = loop(remaining, acc)
+      @tailrec def loop(remaining: List[((String, () => Schema[?]), Int)], acc: Vector[Any]): Either[String, Vector[Any]] /> R =
         remaining match
           case Nil => Cont.Pure(Right(acc))
           case (f, i) :: more =>
@@ -737,7 +741,7 @@ object Json {
                 case Right(v) => loop(more, acc :+ v)
               case (Some(v), sc) => Cont.defer(() => fieldC(sc, v)) {
                 case Left(e) => Cont.Pure(Left(e))
-                case Right(x) => loop(more, acc :+ x)
+                case Right(x) => again(more, acc :+ x)
               }
       loop(p.fields.zipWithIndex.toList, Vector.empty).flatMap(r => Cont.Pure(r.map(p.make)))
     case (su: Schema.SSum[A], JObj(Vector((name, v)))) =>

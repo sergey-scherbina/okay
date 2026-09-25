@@ -1,5 +1,7 @@
 package okay
 
+import scala.annotation.tailrec
+
 /**
  * The installer half of the capability pair
  * (specs/context-functions.md, ctx-everywhere): expression-scoped
@@ -473,7 +475,7 @@ object Module:
   private def chain(using q: Quotes)(t: q.reflect.TypeRepr, end: q.reflect.TypeRepr)
       : List[(q.reflect.TypeRepr, q.reflect.TypeRepr)] =
     import q.reflect.*
-    def walk(t: TypeRepr, acc: List[(TypeRepr, TypeRepr)]): List[(TypeRepr, TypeRepr)] = t.dealias match
+    @tailrec def walk(t: TypeRepr, acc: List[(TypeRepr, TypeRepr)]): List[(TypeRepr, TypeRepr)] = t.dealias match
       case AppliedType(fn, List(a, rest)) if fn.typeSymbol.name.startsWith("ContextFunction") =>
         walk(rest, (a, rest) :: acc)
       case t if t =:= end => acc.reverse

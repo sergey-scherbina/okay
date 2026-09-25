@@ -2,6 +2,7 @@ package okay.mcp
 
 import okay.agent.{ToolCall, ToolSpec, Turn}
 import okay.codec.Json
+import scala.annotation.tailrec
 
 /**
  * The protocol's own vocabulary, and nothing else: method names, the
@@ -98,7 +99,7 @@ object Mcp {
     /** the REVERSE: does this uri fit the template, and with which
      * variables? Never guesses — a leftover or a mismatch is None */
     def matches(template: String, uri: String): Option[Map[String, String]] =
-      def go(ti: Int, ui: Int, acc: Map[String, String]): Option[Map[String, String]] =
+      @tailrec def go(ti: Int, ui: Int, acc: Map[String, String]): Option[Map[String, String]] =
         if ti >= template.length then
           if ui >= uri.length then Some(acc) else None
         else if template.charAt(ti) == '{' then

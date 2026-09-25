@@ -3,6 +3,7 @@ package okay.agent
 import okay.{Aggregator, Group}
 import okay.given
 import okay.codec.{Json, Schema}
+import scala.annotation.tailrec
 
 /**
  * Context management as an ALGEBRA (specs/llm-agentic.md). A policy
@@ -55,7 +56,7 @@ object Compact {
 
     def cost(w: Window): Int = w.tokens + marker(w).fold(0)(size)
 
-    def evict(w: Window): Window =
+    @tailrec def evict(w: Window): Window =
       if cost(w) <= budget || w.recent.isEmpty then w
       else
         val head = w.recent.head

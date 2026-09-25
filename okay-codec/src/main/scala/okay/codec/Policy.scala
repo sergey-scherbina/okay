@@ -2,6 +2,7 @@ package okay.codec
 
 import okay.*
 import okay.given
+import scala.annotation.tailrec
 
 /**
  * A PROJECTION POLICY (specs/optics-outside.md, stage 7): which fields
@@ -89,7 +90,7 @@ object Policy:
       case Some(bad) => Left(s"policy: `$bad` names no field the schema of ${nameOf(s)} writes")
       case None => Right(new Policy[A](ks, resolved.collect { case (k, Some((to, last))) => (k, to, last) }, s))
 
-  private def nameOf(s: Schema[?]): String = s match
+  @tailrec private def nameOf(s: Schema[?]): String = s match
     case p: Schema.SProduct[?] => p.name
     case su: Schema.SSum[?] => su.name
     case Schema.SIso(u, _, _) => nameOf(u())

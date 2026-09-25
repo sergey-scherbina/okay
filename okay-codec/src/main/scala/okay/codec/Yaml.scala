@@ -3,6 +3,7 @@ package okay.codec
 import okay.lex.{Channel, Scan, ScanInto, Span, Token}
 import okay.parse.{Cst, Instr, Parse}
 import scala.collection.mutable.Growable
+import scala.annotation.tailrec
 
 /**
  * The YAML dialect — the INDENTATION prover of specs/codecs.md:
@@ -77,7 +78,7 @@ object Yaml {
       case Mode.InQuote(_) => tokInto(K.Quoted, s, out)         // unterminated: still a token
       case Mode.InComment => tokInto(K.Comment, s, out, Channel.Comment)
 
-    override def stepInto(s: S, c: Char, out: Growable[T]): S =
+    @tailrec override def stepInto(s: S, c: Char, out: Growable[T]): S =
       val next = s.at + c
       def fresh(m: Mode) = S(m, "", next, next)
       def keep(m: Mode) = S(m, s.buf + c, if s.buf.isEmpty then s.at else s.start, next)

@@ -2,6 +2,7 @@ package okay.cluster
 
 import okay.{Aggregator, Chunks}
 import okay.codec.Json
+import scala.annotation.tailrec
 
 /**
  * The ONE shared-source definition both ends of the acceptance run
@@ -19,7 +20,7 @@ object Acceptance:
 
   /** the chunks as wire frames, one Schema-encoded JSON line each */
   def frames: List[String] =
-    def go(rest: Chunks[Double], acc: List[String]): List[String] =
+    @tailrec def go(rest: Chunks[Double], acc: List[String]): List[String] =
       Chunks.pull(rest) match
         case Some((c, r)) => go(r, Json.write(c.toList) :: acc)
         case None => acc.reverse

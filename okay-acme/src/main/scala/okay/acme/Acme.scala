@@ -11,6 +11,7 @@ import java.nio.file.{Files, Path}
 import java.security.{KeyPair, KeyPairGenerator, PublicKey}
 import java.security.interfaces.ECPublicKey
 import java.security.spec.{ECGenParameterSpec, PKCS8EncodedKeySpec, X509EncodedKeySpec}
+import scala.annotation.tailrec
 
 /**
  * An ACME client (RFC 8555) — the protocol a certificate authority
@@ -412,7 +413,7 @@ object Acme:
 
     def post(url: String, payload: String): Either[String, Answer] = post(url, payload, retried = false)
 
-    private def post(url: String, payload: String, retried: Boolean): Either[String, Answer] =
+    @tailrec private def post(url: String, payload: String, retried: Boolean): Either[String, Answer] =
       val attempt =
         for
           n <- freshNonce()

@@ -1,6 +1,7 @@
 package okay
 
 import scala.quoted.*
+import scala.annotation.tailrec
 
 /**
  * A ROW WHOSE MEMBERS CAN ACTUALLY BE TOLD APART, checked by the
@@ -195,7 +196,7 @@ object Distinct:
      * `Tag` and `Instances` hold in their first parameter */
     def under(f: TypeRepr): Id = identityOf(body(f))
 
-    def collide(a: Id, b: Id): Boolean = (a, b) match
+    @tailrec def collide(a: Id, b: Id): Boolean = (a, b) match
       case (Cls(x), Cls(y))           => x == y
       case (Keyed(k, x), Keyed(l, y)) => k == l && collide(x, y)
       case (Inst(x), Inst(y))         => collide(x, y)

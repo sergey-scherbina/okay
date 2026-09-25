@@ -2,6 +2,7 @@ package okay
 package macros
 
 import scala.quoted.*
+import scala.annotation.tailrec
 
 /**
  * INDEPENDENT BINDS, RUN TOGETHER (specs/applicative-static.md,
@@ -89,7 +90,7 @@ private[okay] trait DirectParallel[F[_]] extends DirectMarks[F] with DirectRow[F
 
   /** the maximal leading run of vals that may be spawned together */
   def independentRun(stats: List[Statement]): List[(ValDef, Term, TypeRepr)] =
-    def go(rest: List[Statement], bound: Set[Symbol],
+    @tailrec def go(rest: List[Statement], bound: Set[Symbol],
            acc: List[(ValDef, Term, TypeRepr)]): List[(ValDef, Term, TypeRepr)] =
       rest match
         case (vd @ ValDef(_, _, Some(rhs))) :: tail

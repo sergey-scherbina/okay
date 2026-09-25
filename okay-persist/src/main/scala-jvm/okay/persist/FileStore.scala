@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.zip.CRC32C
 import scala.jdk.CollectionConverters.*
+import scala.annotation.tailrec
 
 /**
  * The file engine (specs/persist.md, Storage engine): per partition,
@@ -167,7 +168,7 @@ final class FileStore(root: Path) extends Store:
     // from a segment left by a previous run. So: look again. Bounded,
     // because a directory that empties itself between two glances is
     // a different problem and should be reported rather than spun on.
-    private def openExisting(attempt: Int = 0): Unit =
+    @tailrec private def openExisting(attempt: Int = 0): Unit =
       val listing = Files.list(dir)
       val found =
         try listing.iterator.asScala.toVector

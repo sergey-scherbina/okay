@@ -2,6 +2,7 @@ package okay.cluster
 
 import okay.*
 import okay.codec.{Codecs, Digest, Schema}
+import scala.annotation.tailrec
 
 /**
  * THE WORKER PROTOCOL (specs/dataflow.md, stage 4b).
@@ -319,7 +320,7 @@ object Cluster {
    * already settled on.
    */
   private def ask(workers: Vector[Serve], living: Living, part: Int, req: Req): Resp =
-    def go(tried: Int, first: Throwable | Null): Resp =
+    @tailrec def go(tried: Int, first: Throwable | Null): Resp =
       living.pick(part + tried) match
         case None =>
           val why = IllegalStateException(
@@ -978,7 +979,7 @@ object Cluster {
             case other => other
         case other => other
 
-    def go(tried: Int, first: Throwable | Null): Resp =
+    @tailrec def go(tried: Int, first: Throwable | Null): Resp =
       living.pick(part + tried) match
         case None =>
           val why = IllegalStateException(

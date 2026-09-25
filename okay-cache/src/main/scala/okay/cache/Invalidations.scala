@@ -2,6 +2,7 @@ package okay.cache
 
 import okay.{!, Async, pure}
 import okay.persist.{Ack, Topic}
+import scala.annotation.tailrec
 
 /**
  * Cross-node regime 2 (specs/cache.md stage 2): the invalidation is
@@ -25,7 +26,7 @@ object Invalidations {
    * and the offset journaled by the caller is what makes a restart
    * converge instead of guessing.
    */
-  def drain[K, V](topic: Topic, cache: Cache[K, V], keyOf: String => K,
+  @tailrec def drain[K, V](topic: Topic, cache: Cache[K, V], keyOf: String => K,
                   from: Long, max: Int = 512): Long ! Async =
     topic.read(0, from, max) match
       case Topic.Read.TooEarly(begin) => drain(topic, cache, keyOf, begin, max)

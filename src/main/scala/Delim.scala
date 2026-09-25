@@ -831,7 +831,7 @@ object Delim {
 
     /** frames back into a program: binds become flatMaps, markers
      * become pushes — the continuation re-installs its delimiter */
-    def reify[A, P](segs: Segs[F, A, P], start: Prog[A]): Prog[P] = segs match
+    @tailrec def reify[A, P](segs: Segs[F, A, P], start: Prog[A]): Prog[P] = segs match
       case Segs.Done() => start
       case Segs.K(f, rest) => reify(rest, start.flatMap(f))
       case Segs.Mark(p, rest) => reify(rest, effect[Row, A](Push(p, start)))

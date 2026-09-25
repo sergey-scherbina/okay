@@ -2,6 +2,7 @@ package okay.ui
 
 import okay.*
 import okay.given
+import scala.annotation.tailrec
 
 /**
  * A CHAT AS ONE MORE HOST (specs/ui-telegram.md).
@@ -98,7 +99,7 @@ object Telegram {
     val fs = cs.map(go)
     Frag(fs.flatMap(_.lines), fs.flatMap(_.rows))
 
-  private def go(u: Ui): Frag = u match
+  @tailrec private def go(u: Ui): Frag = u match
     case Ui.Text(s, st) => if s.isEmpty then nothing else Frag(Vector(styled(s, st)), Vector.empty)
     case Ui.Image(_, alt) => Frag(Vector(s"🖼 ${esc(alt)}"), Vector.empty)
     case Ui.Button(label, key, role) => button(Pending.Callback(labelled(label, role), Meaning.Press(key)))

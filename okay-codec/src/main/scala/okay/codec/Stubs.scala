@@ -1,6 +1,7 @@
 package okay.codec
 
 import scala.collection.mutable
+import scala.annotation.tailrec
 
 /**
  * The OTHER side's declaration of a value, from the same `Schema` the
@@ -116,7 +117,7 @@ object Stubs:
     def typed(s: Schema[?], nullable: Boolean): String =
       val t = tsType(s, w)
       if nullable && !t.endsWith("| null") then s"$t | null" else t
-    def element(s: Schema[?]): Option[Schema[?]] = s match
+    @tailrec def element(s: Schema[?]): Option[Schema[?]] = s match
       case i: Schema.SIso[?, ?] => element(i.under())
       case o: Schema.SOption[?] => element(o.of())
       case l: Schema.SList[?] => Some(l.of())

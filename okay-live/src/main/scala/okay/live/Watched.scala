@@ -3,6 +3,7 @@ package okay.live
 import okay.*
 import okay.given
 import okay.codec.{Json, JsonOptic, Schema}
+import scala.annotation.tailrec
 
 /**
  * SUBSCRIBE TO A LENS (specs/optics-outside.md, stage 10): a document
@@ -66,7 +67,7 @@ final class Watched[A](initial: Json)(using s: Schema[A]):
   def put(a: A): Unit = modify(_ => Json.parse(Json.write(a)))
 
 object Watched:
-  private def nameOf(s: Schema[?]): String = s match
+  @tailrec private def nameOf(s: Schema[?]): String = s match
     case p: Schema.SProduct[?] => p.name
     case su: Schema.SSum[?] => su.name
     case Schema.SIso(u, _, _) => nameOf(u())

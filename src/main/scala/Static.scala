@@ -1,5 +1,7 @@
 package okay
 
+import scala.annotation.tailrec
+
 /**
  * THE FREE SELECTIVE (stage 2 of specs/applicative-static.md): a
  * program whose EFFECTS ARE KNOWN BEFORE IT RUNS.
@@ -139,7 +141,7 @@ object Static:
    * level, not N. A program nested the other way pays its own depth,
    * exactly as `toFree` does.
    */
-  private def foldSpine[F[+_], G[_], T, C](s: Static[F, T], nt: F ==> G,
+  @tailrec private def foldSpine[F[+_], G[_], T, C](s: Static[F, T], nt: F ==> G,
                                            args: Args[F, T, C])(using G: Selective[G]): G[C] =
     s match
       // the shape every fold builds: a pure function applied to a

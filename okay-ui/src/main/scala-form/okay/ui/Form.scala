@@ -3,6 +3,7 @@ package okay.ui
 import okay.{!, +, Pure, Cont, reset, />}
 import okay.given
 import okay.codec.{Codecs, Json, Schema}
+import scala.annotation.tailrec
 
 /**
  * The fifth algebra over Schema (after JSON, CBOR, YAML and JSON
@@ -514,12 +515,12 @@ object Form {
         case (_: Schema.SProduct[?], Nil) => Cont.Pure(value)
         case _ => Cont.Pure(value)
 
-  private def isList(s: Schema[?]): Boolean = s match
+  @tailrec private def isList(s: Schema[?]): Boolean = s match
     case Schema.SIso(u, _, _) => isList(u())
     case Schema.SList(_) | Schema.SVector(_) => true
     case _ => false
 
-  private def isComposite(s: Schema[?]): Boolean = s match
+  @tailrec private def isComposite(s: Schema[?]): Boolean = s match
     case Schema.SIso(u, _, _) => isComposite(u())
     case _: Schema.SProduct[?] | _: Schema.SSum[?] => true
     case _ => false
@@ -530,7 +531,7 @@ object Form {
     case Schema.SVector(of) => Some(of())
     case _ => None
 
-  private def empty(s: Schema[?]): Json = s match
+  @tailrec private def empty(s: Schema[?]): Json = s match
     case Schema.SIso(u, _, _) => empty(u())
     case Schema.SList(_) | Schema.SVector(_) => Json.JArr(Vector.empty)
     case su: Schema.SSum[?] => Json.JObj(Vector(su.cases.head._1 -> Json.JObj(Vector.empty)))
@@ -538,7 +539,7 @@ object Form {
 
   /** a leaf edit: Set/Flag against the field's own schema; Add on a
    * list appends that item's empty */
-  private def leaf(s: Schema[?], ev: Edit, old: Option[Json]): Json = (s, ev) match
+  @tailrec private def leaf(s: Schema[?], ev: Edit, old: Option[Json]): Json = (s, ev) match
     case (Schema.SIso(u, _, _), _) => leaf(u(), ev, old)
     case (Schema.SOption(of), _) => leaf(of(), ev, old)
     case (_, Edit.Flag(on)) => Json.JBool(on)
@@ -555,7 +556,7 @@ object Form {
         :+ leafEmpty(of()))
     case _ => old.getOrElse(Json.JNull)
 
-  private def leafEmpty(s: Schema[?]): Json = s match
+  @tailrec private def leafEmpty(s: Schema[?]): Json = s match
     case Schema.SIso(u, _, _) => leafEmpty(u())
     case Schema.SString => Json.JStr("")
     case Schema.SBool => Json.JBool(false)
