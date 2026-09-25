@@ -36,7 +36,7 @@ object JsonEditor:
 
   def view(s: Ed): Ui =
     import Ui.*
-    val doc = Column(outline(s.z.root, Nil, s.z.path, 0), key = "$doc")
+    val doc = Column(outline(s.z.root, s.z.path), key = "$doc")
     val moves = Row(Vector(Button("into", "$into"), Button("out", "$out"),
                            Button("prev", "$prev"), Button("next", "$next")))
     val edits = Row(Vector(Input(s.value, "$value", "value"), Button("set", "$set"),
@@ -47,15 +47,33 @@ object JsonEditor:
 
   /** one line per node, indented by depth; the focused line is marked
    * and emphasised, and it is the only one that is */
-  private def outline(j: Json, path: List[Int], focus: List[Int], depth: Int, label: String = ""): Vector[Ui] =
-    val here = path == focus
-    val text = "  " * depth + (if here then "> " else "  ") + label + summary(j)
-    val line = Ui.Text(text, if here then Style(bold = true, tone = Tone.Emphasis) else Style.none)
-    val kids = j match
-      case Json.JArr(vs) => vs.zipWithIndex.flatMap((v, i) => outline(v, path :+ i, focus, depth + 1, s"$i: "))
-      case Json.JObj(fs) => fs.zipWithIndex.flatMap { case ((k, v), i) => outline(v, path :+ i, focus, depth + 1, s"$k: ") }
-      case _ => Vector.empty
-    line +: kids
+  private def outline(root: Json, focus: List[Int]): Vector[Ui] =
+    // preorder on an explicit stack, children pushed in reverse so they
+    // pop in order: the document is whatever the client is editing, as
+    // deep as it made it (stack-safety-ui, TestUiDepth). Paths are held
+    // REVERSED so a level costs one cons, not a copy of the path so far.
+    val rfocus = focus.reverse
+    val out = Vector.newBuilder[Ui]
+    val todo = scala.collection.mutable.Stack[(Json, List[Int], Int, String)]((root, Nil, 0, ""))
+    while todo.nonEmpty do
+      val (j, rpath, depth, label) = todo.pop()
+      val here = rpath == rfocus
+      // the indentation stops growing past MaxIndent levels: a line that
+      // begins with a screenful of spaces says nothing more than one that
+      // begins with sixty-four
+      val text = "  " * math.min(depth, MaxIndent) + (if here then "> " else "  ") + label + summary(j)
+      out += Ui.Text(text, if here then Style(bold = true, tone = Tone.Emphasis) else Style.none)
+      j match
+        case Json.JArr(vs) =>
+          var i = vs.length - 1
+          while i >= 0 do { todo.push((vs(i), i :: rpath, depth + 1, s"$i: ")); i -= 1 }
+        case Json.JObj(fs) =>
+          var i = fs.length - 1
+          while i >= 0 do { todo.push((fs(i)._2, i :: rpath, depth + 1, s"${fs(i)._1}: ")); i -= 1 }
+        case _ => ()
+    out.result()
+
+  private val MaxIndent = 64
 
   private def summary(j: Json): String = j match
     case Json.JArr(vs) => s"[${vs.length}]"

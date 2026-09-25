@@ -142,22 +142,22 @@ okay-intent/src/main/scala/okay/intent/Classify.scala	147	group	mutual	Schema$.e
 okay-intent/src/main/scala/okay/intent/Classify.scala	185	skeleton	direct	Option.map
 okay-intent/src/main/scala/okay/intent/Dsl.scala	121	render	direct	
 okay-intent/src/main/scala/okay/intent/Dsl.scala	153	raws	direct	
-okay-js/src/main/scala/okay/js/Direct.scala	109	tsType	direct	List.map
-okay-js/src/main/scala/okay/js/Direct.scala	134	tail	direct	Vector.flatMap,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	142	stat	direct	Vector.flatMap,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	155	statement	direct	Vector.flatMap,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	193	callee	direct	Vector.flatMap,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	196	args	direct	Vector.flatMap,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	202	expr	direct	Vector.flatMap,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	297	lift	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	320	liftAll	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	323	liftJs	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map
-okay-js/src/main/scala/okay/js/Direct.scala	350	liftJsAll	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map
-okay-js/src/main/scala/okay/js/Js.scala	118	inJs	direct	Option.map,Vector.map
-okay-js/src/main/scala/okay/js/Js.scala	132	inStmt	direct	Option.map,Vector.map
-okay-js/src/main/scala/okay/js/Js.scala	263	expr	direct	Option.foreach,Vector.foreach
-okay-js/src/main/scala/okay/js/Js.scala	347	fun	direct	Option.foreach,Vector.foreach
-okay-js/src/main/scala/okay/js/Js.scala	377	stmt	direct	Option.foreach,Vector.foreach
+okay-js/src/main/scala/okay/js/Direct.scala	109	tsType	direct	List.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	134	tail	direct	Vector.flatMap,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	142	stat	direct	Vector.flatMap,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	155	statement	direct	Vector.flatMap,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	193	callee	direct	Vector.flatMap,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	196	args	direct	Vector.flatMap,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	202	expr	direct	Vector.flatMap,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	297	lift	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	320	liftAll	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	323	liftJs	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Direct.scala	350	liftJsAll	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map	BOUNDED: compile time — per node of the user's source the macro reads (a `direct` block), which is text a person wrote
+okay-js/src/main/scala/okay/js/Js.scala	118	inJs	direct	Option.map,Vector.map	BOUNDED: per node of a JS AST the `direct` macro built from the user's source at compile time — text a person wrote, printed at run time
+okay-js/src/main/scala/okay/js/Js.scala	132	inStmt	direct	Option.map,Vector.map	BOUNDED: per node of a JS AST the `direct` macro built from the user's source at compile time — text a person wrote, printed at run time
+okay-js/src/main/scala/okay/js/Js.scala	263	expr	direct	Option.foreach,Vector.foreach	BOUNDED: per node of a JS AST the `direct` macro built from the user's source at compile time — text a person wrote, printed at run time
+okay-js/src/main/scala/okay/js/Js.scala	347	fun	direct	Option.foreach,Vector.foreach	BOUNDED: per node of a JS AST the `direct` macro built from the user's source at compile time — text a person wrote, printed at run time
+okay-js/src/main/scala/okay/js/Js.scala	377	stmt	direct	Option.foreach,Vector.foreach	BOUNDED: per node of a JS AST the `direct` macro built from the user's source at compile time — text a person wrote, printed at run time
 okay-kyo/src/main/scala/okay/kyo/KyoInterop.scala	50	toKyoEnv	mutual	
 okay-kyo/src/main/scala/okay/kyo/KyoInterop.scala	93	toKyoChoice	mutual	
 okay-langchain4j/src/main/scala/okay/langchain4j/Langchain4j.scala	46	element	lambda	Option.map,Vector.foreach,Vector.map
@@ -257,39 +257,36 @@ okay-stream/src/main/scala/Tables.scala	69	show	direct		BOUNDED: per node of a P
 okay-stream/src/main/scala/Tables.scala	87	estimate	direct		BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
 okay-stream/src/main/scala/Tables.scala	107	optimize	direct		BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
 okay-stream/src/main/scala/Tables.scala	144	compile	direct		BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
-okay-ui-gtk/src/main/scala/okay/ui/gtk/Gtk.scala	86	nodeAt	lambda	Option.flatMap
-okay-ui-gtk/src/main/scala/okay/ui/gtk/Gtk.scala	197	build	direct	Vector.map
-okay-ui/src/main/scala-form/okay/ui/Form.scala	278	focusAt	lambda	Option.flatMap
-okay-ui/src/main/scala-form/okay/ui/Form.scala	422	editAtAt	mutual	
-okay-ui/src/main/scala-form/okay/ui/Form.scala	426	editAtNative	mutual	
-okay-ui/src/main/scala-form/okay/ui/Form.scala	675	decodeField	direct	
-okay-ui/src/main/scala-form/okay/ui/Html.scala	153	write	lambda	Vector.foreach
-okay-ui/src/main/scala-form/okay/ui/Protocol.scala	162	nameOf	direct	Vector.map
-okay-ui/src/main/scala-form/okay/ui/Protocol.scala	177	fields	direct	Vector.map
-okay-ui/src/main/scala-form/okay/ui/Protocol.scala	179	define	direct	Vector.map
-okay-ui/src/main/scala-form/okay/ui/Sessions.scala	110	segments	direct	
-okay-ui/src/main/scala-jvm/okay/ui/Swing.scala	93	build	direct	Vector.map
-okay-ui/src/main/scala/okay/ui/Frame.scala	77	at	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera
-okay-ui/src/main/scala/okay/ui/Frame.scala	166	go	lambda	IndexedSeqView.flatMap
-okay-ui/src/main/scala/okay/ui/Frame.scala	200	stacked	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera
-okay-ui/src/main/scala/okay/ui/Frame.scala	229	side	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera
-okay-ui/src/main/scala/okay/ui/Frame.scala	258	wrap	direct	
-okay-ui/src/main/scala/okay/ui/Frame.scala	655	interpret	direct	
-okay-ui/src/main/scala/okay/ui/JsonEditor.scala	50	outline	lambda	StrictOptimizedIterableOps.flatMap
-okay-ui/src/main/scala/okay/ui/PWizard.scala	55	loop	lambda	PWizard$Machine$Showing$.apply
-okay-ui/src/main/scala/okay/ui/React.scala	73	elem	direct	StrictOptimizedIterableOps.map,Vector.map
-okay-ui/src/main/scala/okay/ui/Telegram.scala	90	across	mutual	Vector.map
-okay-ui/src/main/scala/okay/ui/Telegram.scala	98	down	mutual	Vector.map
-okay-ui/src/main/scala/okay/ui/Telegram.scala	102	go	mutual	Vector.map
-okay-ui/src/main/scala/okay/ui/Ui.scala	185	go	mutual	Range.flatMap,StrictOptimizedIterableOps.flatMap,Vector.flatMap
-okay-ui/src/main/scala/okay/ui/Ui.scala	220	children	mutual	Range.flatMap,StrictOptimizedIterableOps.flatMap,Vector.flatMap
-okay-ui/src/main/scala/okay/ui/Ui.scala	279	at	direct	
-okay-ui/src/main/scala/okay/ui/Ui.scala	316	focusable	lambda	Vector.flatMap
-okay-ui/src/main/scala/okay/ui/Ui.scala	330	keys	direct	Option.map,StrictOptimizedIterableOps.flatMap,Vector.flatMap
-okay-ui/src/main/scala/okay/ui/Ui.scala	354	forms	lambda	Option.map,StrictOptimizedIterableOps.flatMap,Vector.flatMap
-okay-ui/src/main/scala/okay/ui/Ui.scala	530	walk	lambda	Vector.foldLeft
-okay-ui/src/main/scala/okay/ui/Ui.scala	543	map	direct	Vector.map
-okay-ui/src/main/scala/okay/ui/Ui.scala	574	go	direct	Option.map,Vector.map
+okay-ui-gtk/src/main/scala/okay/ui/gtk/Gtk.scala	86	nodeAt	lambda	Option.flatMap	BOUNDED: per level of the GTK widget tree mirroring the program's view, looked up by a Patch path the diff produced
+okay-ui-gtk/src/main/scala/okay/ui/gtk/Gtk.scala	197	build	direct	Vector.map	BOUNDED: per level of the program's own Ui tree, mirrored into native widgets
+okay-ui/src/main/scala-form/okay/ui/Form.scala	422	editAtAt	mutual		BOUNDED: `Codecs.NativeThreshold`-then-`Cont.defer` (form-recursive-depth-safety, editAtC): a path of any length costs heap, TestFormDepth 100 000 segments
+okay-ui/src/main/scala-form/okay/ui/Form.scala	426	editAtNative	mutual		BOUNDED: `Codecs.NativeThreshold`-then-`Cont.defer` (form-recursive-depth-safety, editAtC): a path of any length costs heap, TestFormDepth 100 000 segments
+okay-ui/src/main/scala-form/okay/ui/Form.scala	675	decodeField	direct		BOUNDED: per Iso/Option wrapper of ONE field's schema, then the codec's own (trampolined) decode
+okay-ui/src/main/scala-form/okay/ui/Html.scala	153	write	lambda	Vector.foreach	BOUNDED: per level of the Elem tree React.elem builds from the Ui tree — the program's view (see Ui above)
+okay-ui/src/main/scala-form/okay/ui/Protocol.scala	162	nameOf	direct	Vector.map	BOUNDED: per level of a Schema the program declares; a name is reserved in `out` before its fields are walked (the guard in the code), so a recursive type is defined once
+okay-ui/src/main/scala-form/okay/ui/Protocol.scala	177	fields	direct	Vector.map	BOUNDED: per level of a Schema the program declares; a name is reserved in `out` before its fields are walked (the guard in the code), so a recursive type is defined once
+okay-ui/src/main/scala-form/okay/ui/Protocol.scala	179	define	direct	Vector.map	BOUNDED: per level of a Schema the program declares; a name is reserved in `out` before its fields are walked (the guard in the code), so a recursive type is defined once
+okay-ui/src/main/scala-jvm/okay/ui/Swing.scala	93	build	direct	Vector.map	BOUNDED: per level of the program's own Ui tree, mirrored into native widgets
+okay-ui/src/main/scala/okay/ui/Frame.scala	77	at	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera	BOUNDED: per level of a Frame the terminal host lays out from the program's view — the Ui tree's own nesting
+okay-ui/src/main/scala/okay/ui/Frame.scala	166	go	lambda	IndexedSeqView.flatMap	BOUNDED: per level of a Frame the terminal host lays out from the program's view — the Ui tree's own nesting
+okay-ui/src/main/scala/okay/ui/Frame.scala	200	stacked	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera	BOUNDED: per level of a Frame the terminal host lays out from the program's view — the Ui tree's own nesting
+okay-ui/src/main/scala/okay/ui/Frame.scala	229	side	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera	BOUNDED: per level of a Frame the terminal host lays out from the program's view — the Ui tree's own nesting
+okay-ui/src/main/scala/okay/ui/Frame.scala	258	wrap	direct		BOUNDED: per level of a Frame the terminal host lays out from the program's view — the Ui tree's own nesting
+okay-ui/src/main/scala/okay/ui/Frame.scala	655	interpret	direct		BOUNDED: per level of a Frame the terminal host lays out from the program's view — the Ui tree's own nesting
+okay-ui/src/main/scala/okay/ui/PWizard.scala	55	loop	lambda	PWizard$Machine$Showing$.apply	DEFERRED: the retry is inside the `Showing` frame's event handler, a function the runtime calls with the next event — one frame per event, not per retry
+okay-ui/src/main/scala/okay/ui/React.scala	73	elem	direct	StrictOptimizedIterableOps.map,Vector.map	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Telegram.scala	90	across	mutual	Vector.map	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Telegram.scala	98	down	mutual	Vector.map	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Telegram.scala	102	go	mutual	Vector.map	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	185	go	mutual	Range.flatMap,StrictOptimizedIterableOps.flatMap,Vector.flatMap	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	220	children	mutual	Range.flatMap,StrictOptimizedIterableOps.flatMap,Vector.flatMap	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	279	at	direct		BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	316	focusable	lambda	Vector.flatMap	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	330	keys	direct	Option.map,StrictOptimizedIterableOps.flatMap,Vector.flatMap	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	354	forms	lambda	Option.map,StrictOptimizedIterableOps.flatMap,Vector.flatMap	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	530	walk	lambda	Vector.foldLeft	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	543	map	direct	Vector.map	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
+okay-ui/src/main/scala/okay/ui/Ui.scala	574	go	direct	Option.map,Vector.map	BOUNDED: per level of a Ui tree the program's own view builds; a value from outside (a JSON document, a form value) reaches it as a FLAT list of lines (JsonEditor.outline) or one level of a drill (Form.renderAt), never as nesting
 okay-workflow/src/main/scala/Proc.scala	334	foldMap	direct		BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)
 okay-workflow/src/main/scala/Proc.scala	352	loop	lambda	Monad.flatMap	DEFERRED: the round recurses through G's own flatMap, which holds its continuation as a value at every program row (Free.Bind); one frame per round only at a STRICT monad, which the code states
 okay-workflow/src/main/scala/Proc.scala	447	go	direct		BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)

@@ -275,6 +275,11 @@ object Form {
    * reading instead of writing: sums go into their chosen case
    * without consuming a segment, isos and options are transparent,
    * the case knob is not a place */
+  // a tail loop over the path (stack-safety-ui): a dotted path is a string
+  // an Event carries, whatever length whoever built it chose — `editAt`
+  // trampolines for the same reason, and this read-only twin recursed
+  // once per segment inside a `flatMap` until TestUiDepth caught it
+  @tailrec
   private def focusAt(s: Schema[?], value: Option[Json], path: List[Seg]): Option[(Schema[?], Option[Json])] =
     s match
       case Schema.SIso(u, _, _) => focusAt(u(), value, path)
@@ -291,14 +296,15 @@ object Form {
               case Some(Json.JObj(Vector((_, v)))) => v
               case _ => Json.JObj(Vector.empty)
             focusAt(cs(), Some(inner), path)
-          case (p: Schema.SProduct[?], Seg.Field(n)) =>
-            p.fields.find(_._1 == n).flatMap((_, fs) => focusAt(fs(), value.flatMap(get(_, n)), rest))
+          case (p: Schema.SProduct[?], Seg.Field(n)) => p.fields.find(_._1 == n) match
+            case None => None
+            case Some((_, fs)) => focusAt(fs(), value.flatMap(get(_, n)), rest)
           case (p: Schema.SProduct[?], Seg.Index(n, i)) =>
-            p.fields.find(_._1 == n).flatMap((_, fs) => itemSchema(fs())).flatMap { item =>
-              value.flatMap(get(_, n)) match
+            p.fields.find(_._1 == n).flatMap((_, fs) => itemSchema(fs())) match
+              case None => None
+              case Some(item) => value.flatMap(get(_, n)) match
                 case Some(Json.JArr(vs)) if vs.isDefinedAt(i) => focusAt(item, Some(vs(i)), rest)
                 case _ => None
-            }
           case _ => None
 
   /** the drill screen's state: the whole partial value, where the

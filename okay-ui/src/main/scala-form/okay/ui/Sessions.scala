@@ -107,11 +107,17 @@ object Sessions {
     // line appended after a Closed vanished from a naive refold.)
     def isClosed(line: String): Boolean =
       Protocol.closes(line)
-    def segments(rest: List[String]): List[List[String]] =
-      if rest.isEmpty then Nil
-      else
+    // a loop, one segment per connection that closed: a session's journal
+    // grows with its life, and a refold recursing per Closed overflowed
+    // at 200 000 (stack-safety-ui, TestUiDepth)
+    def segments(rest0: List[String]): List[List[String]] =
+      val out = List.newBuilder[List[String]]
+      var rest = rest0
+      while rest.nonEmpty do
         val (seg, more) = rest.span(l => !isClosed(l))
-        seg :: segments(more.drop(1))
+        out += seg
+        rest = more.drop(1)
+      out.result()
     val replayed = segments(tail.map(_._2).toList).foldLeft(start) { (st, seg) =>
       if seg.isEmpty then st
       else !.run(Writer.run(through(Writer.of(seg))(Wire.serve(st)(view)(update))))._2

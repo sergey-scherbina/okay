@@ -375,7 +375,24 @@ deleted.
       composes thousands of steps dynamically today. The `Iter` round
       recurses through `G`'s own flatMap, a value at every program row.
       ProcMacro's rows are stage 7 (compile time).
-- [ ] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js.
+- [x] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js
+      (stack-safety-ui, 2026-09-25). 49 rows; the tree walks themselves
+      are bounded by the program's own view (a value from outside reaches
+      the tree as a flat list of lines or one level of a drill, never as
+      nesting), the okay-js rows are a macro over the user's source, and
+      three walks were holes because they are fed from OUTSIDE the
+      program — each red first at its own depth (TestUiDepth):
+      `Form.focusAt` descended once per segment of a browser's dotted
+      path (`editAt`, its writing twin, had been trampolined for exactly
+      that reason; the reading twin recursed inside a `flatMap`) — a
+      tail loop now, 100 000 segments; `Sessions.segments` recursed once
+      per connection that CLOSED in a session's journal, which grows with
+      the session's life — a loop now, 200 000 closes; and
+      `JsonEditor.outline` recursed per level of the document under edit
+      — preorder on an explicit stack now, 100 000 levels, with the path
+      held reversed so a level costs one cons rather than a copy of the
+      path so far, and the indentation capped at 64 levels (a line that
+      begins with a screenful of spaces says nothing more).
 - [ ] Stage 7 — macros and staging: okay-direct, okay-staging,
       okay-optics `Fuse`, `ProcMacro`, per Decision 2.
 - [ ] Stage 8 — the remaining single-digit modules.
