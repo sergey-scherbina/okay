@@ -188,17 +188,30 @@ class DelimBenchmark {
   // `tail` answers in place (evidence passing) with one guard delimiter
   // per installation; `deep` captures per operation.
 
-  def lexSpin(s: Lexical.Inst[okay.State % Int, Pure], n: Int): Int ! Row =
+  def lexSpin[G[+_]](s: Lexical.Inst[okay.State % Int, G], n: Int): Int ! G =
     import Lexical.State.{get, set}
     if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => lexSpin(s, n - 1))
 
+  /** tail on a row with Delim: the guard, and the machine */
   @Benchmark
   def stateLexTail(): Int =
-    !.run(Delim.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Pure](0)(s => lexSpin(s, N))))._2
+    !.run(Delim.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Row](0)(s => lexSpin(s, N))))._2
+
+  /** tail on a row WITHOUT Delim: no guard, no machine (lexical-tail-allocs) */
+  @Benchmark
+  def stateLexTailPure(): Int =
+    !.run(Lexical.State.tail[Int, Int, Pure](0)(s => lexSpin(s, N)))._2
+
+  /** DIAGNOSTIC (lexical-tail-allocs): the unguarded program, but run
+   * through the Delim machine, to split runner from guard */
+  @Benchmark
+  def stateLexTailPureInMachine(): Int =
+    import okay.Row.up
+    !.run(Delim.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Pure](0)(s => lexSpin(s, N)).up[Row]))._2
 
   @Benchmark
   def stateLexDeep(): Int =
-    !.run(Delim.run[(Int, Int), Pure](Lexical.State.deep[Int, Int, Pure](0)(s => lexSpin(s, N))))._2
+    !.run(Delim.run[(Int, Int), Pure](Lexical.State.deep[Int, Int, Row](0)(s => lexSpin(s, N))))._2
 
   // ---- ONE push, then ordinary work INSIDE the machine
   //

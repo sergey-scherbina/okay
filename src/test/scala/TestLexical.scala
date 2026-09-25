@@ -17,8 +17,8 @@ class TestLexical extends munit.FunSuite:
   // ------------------------------------------------ two of a kind
 
   test("TWO State[Int] instances in one program, each operation reaching its own — deep") {
-    val prog = Lexical.State.deep[Int, (Int, Int), Pure](0) { a =>
-      Lexical.State.deep[Int, Int, Pure](10) { b =>
+    val prog = Lexical.State.deep[Int, (Int, Int), Delim + Pure](0) { a =>
+      Lexical.State.deep[Int, Int, Delim + Pure](10) { b =>
         for
           x <- a.get
           y <- b.get
@@ -32,8 +32,8 @@ class TestLexical extends munit.FunSuite:
   }
 
   test("the same two instances through `shallow`: the same answer") {
-    val prog = Lexical.State.shallow[Int, (Int, Int), Pure](0) { a =>
-      Lexical.State.shallow[Int, Int, Pure](10) { b =>
+    val prog = Lexical.State.shallow[Int, (Int, Int), Delim + Pure](0) { a =>
+      Lexical.State.shallow[Int, Int, Delim + Pure](10) { b =>
         for
           x <- a.get
           y <- b.get
@@ -59,8 +59,8 @@ class TestLexical extends munit.FunSuite:
     // the innermost State % Int handler (and two in one row are refused,
     // above). An instance NAMES its installation, and the capture crosses
     // the inner one of the same effect untouched.
-    val lex = run(Lexical.State.deep[Int, Int, Pure](0) { outer =>
-      Lexical.State.deep[Int, Int, Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
+    val lex = run(Lexical.State.deep[Int, Int, Delim + Pure](0) { outer =>
+      Lexical.State.deep[Int, Int, Delim + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
         .map(_._2)
     })
     assertEquals(lex, (0, 10), "outer answered 0, inner answered 10")
@@ -70,7 +70,7 @@ class TestLexical extends munit.FunSuite:
 
   given Answers[W] = Answers.writer[String]
 
-  val counter: Lexical.Inst[State % Int, W] => Int ! Delim + W = s =>
+  val counter: Lexical.Inst[State % Int, Delim + W] => Int ! Delim + W = s =>
     for
       a <- s.get
       _ <- effect[Delim + W, Unit](Writer(s"a=$a"))
@@ -89,8 +89,8 @@ class TestLexical extends munit.FunSuite:
 
   test("ONE instance, deep and shallow, is Bisim-equivalent to State.handle on the Writer row") {
     val row = State.handle[Int](1)(counterRow)
-    val deep = Delim.run[(Int, Int), W](Lexical.State.deep[Int, Int, W](1)(counter))
-    val shallow = Delim.run[(Int, Int), W](Lexical.State.shallow[Int, Int, W](1)(counter))
+    val deep = Delim.run[(Int, Int), W](Lexical.State.deep[Int, Int, Delim + W](1)(counter))
+    val shallow = Delim.run[(Int, Int), W](Lexical.State.shallow[Int, Int, Delim + W](1)(counter))
     assertEquals(Bisim.check(deep, row), Verdict.Same(1, 0))
     assertEquals(Bisim.check(shallow, row), Verdict.Same(1, 0))
   }
@@ -101,7 +101,7 @@ class TestLexical extends munit.FunSuite:
     case Coin() extends Flip[Boolean]
 
   test("a NON-tail-resumptive handler from user clauses: every answer of two coin flips, k called twice") {
-    val all = new Lexical.Clauses[Flip, (Boolean, Boolean), List[(Boolean, Boolean)], Pure]:
+    val all = new Lexical.Clauses[Flip, (Boolean, Boolean), List[(Boolean, Boolean)], Delim + Pure]:
       def ret(a: (Boolean, Boolean)): List[(Boolean, Boolean)] ! Delim + Pure = okay.pure(List(a))
       def op[X](e: Flip[X], k: X => List[(Boolean, Boolean)] ! Delim + Pure): List[(Boolean, Boolean)] ! Delim + Pure =
         e match
@@ -113,9 +113,9 @@ class TestLexical extends munit.FunSuite:
   }
 
   test("depth: 10 000 get/set through one deep instance, in constant stack") {
-    def spin(s: Lexical.Inst[State % Int, Pure], n: Int): Int ! Delim + Pure =
+    def spin(s: Lexical.Inst[State % Int, Delim + Pure], n: Int): Int ! Delim + Pure =
       if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => spin(s, n - 1))
-    assertEquals(run(Lexical.State.deep[Int, Int, Pure](0)(s => spin(s, 10_000))), (10_000, 10_000))
+    assertEquals(run(Lexical.State.deep[Int, Int, Delim + Pure](0)(s => spin(s, 10_000))), (10_000, 10_000))
   }
 
 /** specs/lexical-instances.md stage 1: the `tail` strategy */
@@ -130,13 +130,13 @@ class TestLexicalTail extends munit.FunSuite:
 
   test("tail is Bisim-equivalent to State.handle on the Writer row") {
     val t = new TestLexical
-    val tail = Delim.run[(Int, Int), W](Lexical.State.tail[Int, Int, W](1)(t.counter))
+    val tail = Delim.run[(Int, Int), W](Lexical.State.tail[Int, Int, Delim + W](1)(t.counter))
     assertEquals(Bisim.check(tail, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
   }
 
   test("strategies MIX in one program: a deep outer and a tail inner State[Int], the same answer as two deeps") {
-    val prog = Lexical.State.deep[Int, (Int, Int), Pure](0) { a =>
-      Lexical.State.tail[Int, Int, Pure](10) { b =>
+    val prog = Lexical.State.deep[Int, (Int, Int), Delim + Pure](0) { a =>
+      Lexical.State.tail[Int, Int, Delim + Pure](10) { b =>
         for
           x <- a.get
           y <- b.get
@@ -149,7 +149,7 @@ class TestLexicalTail extends munit.FunSuite:
   }
 
   /** the body both multi-shot tests run: pick from a List layer, read and bump the state */
-  def pick[R](s: Lexical.Inst[State % Int, Pure])(using Layered.Reflect[List, R]): Int ! Delim + Pure =
+  def pick[R](s: Lexical.Inst[State % Int, Delim + Pure])(using Layered.Reflect[List, R]): Int ! Delim + Pure =
     for
       x <- List(1, 2, 3).reflect[R, Pure]
       v <- s.get
@@ -157,30 +157,30 @@ class TestLexicalTail extends munit.FunSuite:
     yield v
 
   test("multi-shot INSIDE the installation: tail threads the cell through the branches exactly as deep does") {
-    val deep = run(Lexical.State.deep[Int, List[Int], Pure](0)(s => reify[List, Int, Pure](pick(s))))
-    val tail = run(Lexical.State.tail[Int, List[Int], Pure](0)(s => reify[List, Int, Pure](pick(s))))
+    val deep = run(Lexical.State.deep[Int, List[Int], Delim + Pure](0)(s => reify[List, Int, Pure](pick(s))))
+    val tail = run(Lexical.State.tail[Int, List[Int], Delim + Pure](0)(s => reify[List, Int, Pure](pick(s))))
     assertEquals(deep, (6, List(0, 1, 3)))
     assertEquals(tail, deep)
   }
 
   test("multi-shot ACROSS the installation: deep keeps a state per branch, tail refuses loudly instead of sharing its cell") {
-    val deep = run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Pure](0)(s => pick(s))))
+    val deep = run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Delim + Pure](0)(s => pick(s))))
     assertEquals(deep, List((1, 0), (2, 0), (3, 0)))
     val e = intercept[Lexical.MultiShotAcrossTail](
-      run(reify[List, (Int, Int), Pure](Lexical.State.tail[Int, Int, Pure](0)(s => pick(s)))))
+      run(reify[List, (Int, Int), Pure](Lexical.State.tail[Int, Int, Delim + Pure](0)(s => pick(s)))))
     assert(e.getMessage.contains("deep"), e.getMessage)
   }
 
   test("the same program run TWICE is not a multi-shot: the cell and the guard are made per run") {
-    val once = Lexical.State.tail[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v + 1)))
+    val once = Lexical.State.tail[Int, Int, Delim + Pure](5)(s => s.get.flatMap(v => s.set(v + 1)))
     assertEquals(run(once), (6, 6))
     assertEquals(run(once), (6, 6))
   }
 
   test("depth: 100 000 operations through one tail instance, in constant stack") {
-    def spin(s: Lexical.Inst[State % Int, Pure], n: Int): Int ! Delim + Pure =
+    def spin(s: Lexical.Inst[State % Int, Delim + Pure], n: Int): Int ! Delim + Pure =
       if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => spin(s, n - 1))
-    assertEquals(run(Lexical.State.tail[Int, Int, Pure](0)(s => spin(s, 100_000))), (100_000, 100_000))
+    assertEquals(run(Lexical.State.tail[Int, Int, Delim + Pure](0)(s => spin(s, 100_000))), (100_000, 100_000))
   }
 
 /** specs/lexical-instances.md stage 2: stacked instances */
@@ -192,7 +192,7 @@ class TestLexicalStacked extends munit.FunSuite:
 
   object StateClauses:
     type Ans = Int => (Int, Int) ! Delim + P
-    val deep = new Lexical.Clauses[State % Int, Int, Ans, P]:
+    val deep = new Lexical.Clauses[State % Int, Int, Ans, Delim + P]:
       def ret(a: Int): Ans ! Delim + P = okay.pure((s: Int) => okay.pure((s, a)))
       def op[X](e: State[Int, X], k: X => Ans ! Delim + P): Ans ! Delim + P = e match
         case State.Get() => okay.pure((s: Int) => k(s).flatMap(f => f(s)))
@@ -241,7 +241,7 @@ class TestLexicalDefault extends munit.FunSuite:
 
   def run[A](p: A ! Delim + Pure): A = !.run(Delim.run[A, Pure](p))
 
-  def pick[R](s: Lexical.Inst[State % Int, Pure])(using Layered.Reflect[List, R]): Int ! Delim + Pure =
+  def pick[R](s: Lexical.Inst[State % Int, Delim + Pure])(using Layered.Reflect[List, R]): Int ! Delim + Pure =
     for
       x <- List(1, 2, 3).reflect[R, Pure]
       v <- s.get
@@ -249,9 +249,9 @@ class TestLexicalDefault extends munit.FunSuite:
     yield v
 
   test("Lexical.State(s0) is tail: the guard trips across a multi-shot capture, and naming `deep` is the way out") {
-    val e = intercept[Lexical.MultiShotAcrossTail](run(reify[List, (Int, Int), Pure](Lexical.State[Int, Int, Pure](0)(s => pick(s)))))
+    val e = intercept[Lexical.MultiShotAcrossTail](run(reify[List, (Int, Int), Pure](Lexical.State[Int, Int, Delim + Pure](0)(s => pick(s)))))
     assert(e.getMessage.contains("deep"), "the refusal names the way out")
-    assertEquals(run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Pure](0)(s => pick(s)))),
+    assertEquals(run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Delim + Pure](0)(s => pick(s)))),
       List((1, 0), (2, 0), (3, 0)))
   }
 
@@ -259,7 +259,7 @@ class TestLexicalDefault extends munit.FunSuite:
     case Coin() extends Flip[Boolean]
 
   test("Lexical.handle picks by clause kind: general clauses run deep (multi-shot works), tail clauses run tail") {
-    val all = new Lexical.Clauses[Flip, Boolean, List[Boolean], Pure]:
+    val all = new Lexical.Clauses[Flip, Boolean, List[Boolean], Delim + Pure]:
       def ret(a: Boolean): List[Boolean] ! Delim + Pure = okay.pure(List(a))
       def op[X](e: Flip[X], k: X => List[Boolean] ! Delim + Pure): List[Boolean] ! Delim + Pure = e match
         case Flip.Coin() => k(true).flatMap(xs => k(false).map(xs ++ _))
@@ -269,4 +269,42 @@ class TestLexicalDefault extends munit.FunSuite:
         case State.Get() => (s, s)
         case State.Set(s1) => (s1, s1)
     assertEquals(run(Lexical.handle(7)(counter)(s => s.get.flatMap(v => s.set(v * 2)))), (14, 14))
+  }
+
+/** lexical-tail-allocs: pay only for what the row can do */
+class TestLexicalPayAsYouGo extends munit.FunSuite:
+  import Lexical.State.{get, set}
+
+  type W = Writer % String
+  given Answers[W] = Answers.writer[String]
+
+  val counterW: Lexical.Inst[State % Int, W] => Int ! W = s =>
+    for
+      a <- s.get
+      _ <- Writer.tell(s"a=$a")
+      _ <- s.set(a + 10)
+      b <- s.get
+      _ <- Writer.tell(s"b=$b")
+    yield a + b
+
+  test("tail on a row WITHOUT Delim: no guard, no machine — the program is (S, A) ! Writer, and Bisim-equal to State.handle") {
+    val t = new TestLexical
+    val lex: (Int, Int) ! W = Lexical.State.tail[Int, Int, W](1)(counterW)
+    assertEquals(Bisim.check(lex, State.handle[Int](1)(t.counterRow)), Verdict.Same(1, 0))
+  }
+
+  test("the default on the pure row: Lexical.State(0) runs with !.run alone — no Delim anywhere") {
+    val p: (Int, Int) ! Pure = Lexical.State[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))
+    assertEquals(!.run(p), (15, 15))
+  }
+
+  test("deep NEEDS Delim in the row: on a Writer-only row it does not compile") {
+    val e = compileErrors("okay.Lexical.State.deep[Int, Int, okay.Writer % String](0)(s => okay.Lexical.State.get(s))")
+    assert(e.contains("Delim"), s"compiled, or refused for another reason: $e")
+  }
+
+  test("depth, unguarded: 100 000 operations in constant stack") {
+    def spin(s: Lexical.Inst[State % Int, Pure], n: Int): Int ! Pure =
+      if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => spin(s, n - 1))
+    assertEquals(!.run(Lexical.State[Int, Int, Pure](0)(s => spin(s, 100_000))), (100_000, 100_000))
   }

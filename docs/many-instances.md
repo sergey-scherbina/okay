@@ -227,8 +227,8 @@ and Sieczkowski, POPL 2020): a lexical binder in the types, a fresh
 label at run time. `okay.Lexical` is the API:
 
 ```scala
-val lex = run(Lexical.State.deep[Int, Int, Pure](0) { outer =>
-  Lexical.State.deep[Int, Int, Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
+val lex = run(Lexical.State.deep[Int, Int, Delim + Pure](0) { outer =>
+  Lexical.State.deep[Int, Int, Delim + Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
     .map(_._2)
 })
 assertEquals(lex, (0, 10), "outer answered 0, inner answered 10")
@@ -263,6 +263,17 @@ strategies run the same body, because the body only sees `Inst[F, G]`:
   handler.
 - `Lexical.shallow` uses control0, and the clause re-installs the
   handler if it wants to.
+
+**You pay for what the row can do.** The instance's type carries the
+body's whole row, `Inst[F, G]`. `deep` and `shallow` need `Delim` in it.
+`tail` on a row WITHOUT `Delim` cannot be crossed by a capture, so it
+gets no guard and no machine, and the program is an ordinary one:
+
+```scala
+val p: (Int, Int) ! Pure = Lexical.State[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))
+```
+
+The guard and the `Delim` machine appear only when the row has `Delim`.
 
 `Lexical.handle` picks by what the clauses are: `TailClauses` run tail,
 `Clauses` run deep, `ShallowClauses` run shallow. `Lexical.State(s0)`

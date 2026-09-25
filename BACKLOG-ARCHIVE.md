@@ -7580,4 +7580,21 @@ one that type-checked, which is a shape worth removing.
       path was measured before adoption: tail 1.65x the row's bytes (~2x
       time), deep 6.8x (3.8x time). The class-keyed row stays the default
       for one handler of a kind. The remaining gap is lexical-tail-allocs.
+- [x] lexical-tail-allocs — PRIORITY: LOW (perf; measured gap). `Lexical.tail` costs 1.65x
+      the row handler's bytes (366 590 vs 222 040 B per 1000 get/set,
+      lexical-instances 2026-09-25): +72 B per operation, from the
+      `Free.delay` thunk around the cell access, the `(S, X)` pair from
+      `TailClauses.op`, the polymorphic `run`, and a `Return`. Candidates,
+      each measured on its own (performance skill): a `TailClauses` shape
+      that writes the state through a setter instead of returning a
+      pair; an `Inst` subclass per strategy with `perform` as a plain
+      method (no polymorphic function value); and whether the thunk is
+      needed at all when the program is never re-run concurrently. DONE
+      WHEN the row/tail byte ratio is recorded after each, kept or
+      refuted. (2026-09-25)
+      CLOSED 2026-09-25: the row decides the closing (no Delim → no guard,
+      no machine). The unguarded close walks instead of mapping (−72 B per
+      operation against its first cut). The Cell shape was refuted (escape
+      analysis already did it). Tail is 1.65x the row's bytes, and the
+      remainder is laziness per operation. Follow-up: lexical-tagged-walk.
 

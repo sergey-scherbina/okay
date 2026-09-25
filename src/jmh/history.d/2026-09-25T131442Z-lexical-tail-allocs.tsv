@@ -1,0 +1,3 @@
+2026-09-25	0e0e5393	11-42	lexical-tail-allocs A: stateLexTailPure (no Delim, no guard) before the walk fix	438304	366656	1.20	B/op vs the guarded stateLexTail; the SAME program run in the Delim machine was 438364, so not the runner: body.map(finish) at the root re-associated every step (+36 B/op)
+2026-09-25	0e0e5393	11-42	lexical-tail-allocs A2: stateLexTailPure after the walk	366224	222040	1.65	B/op vs stateHandle; unguarded now equals guarded (366659); remaining +72 B/op is the Delay node, its thunk and a Return per operation
+2026-09-25	0e0e5393	11-42	lexical-tail-allocs B (REFUTED): TailClauses writing a Cell instead of returning (S, X)	366224	366224	1.00	B/op unchanged: escape analysis already removed the pair; reverted, the pair API kept

@@ -146,7 +146,21 @@ and not an ambiguous implicit.
   unsafe shape fails loudly. The row stays the library's default for
   one handler of a kind. `Lexical` is for when that is not enough.
 
-## Results
+- **Pay as you go (lexical-tail-allocs, 2026-09-25).** `Inst[F, G]`
+  now works over the WHOLE row the body uses. `deep` and `shallow`
+  require evidence that `G` has `Delim`. `tail` chooses how to close by
+  the row, at compile time (`Closing`): a row without `Delim` cannot
+  capture, so it gets no guard and no machine, the program stays
+  `A ! G` and is run by whatever runs `G`. A row with `Delim` gets the
+  guard. `Delim + G` read as `G` uses a witness built without a cast:
+  `ev.liftCo[[x] =>> x | G[Any]]` turns `Delim ⊆ G` into
+  `(Delim | G) ⊆ G`.
+- **The unguarded close WALKS the body; it does not map over it.** The
+  first cut ended with `body.map(finish)`, a `Bind` over the whole
+  body, and `resume` re-associated every step under it. That cost +36 B
+  per operation, which made "no guard, no machine" MORE expensive than
+  the guarded path (438 304 against 366 656 B). The walk is
+  `State.handle`'s loop with nothing to handle.
 
 STAGE 0, 2026-09-25 (TestLexical 7):
 
@@ -196,3 +210,18 @@ one run, load 27 → 75: time noisy, bytes exact):
   a `TailClauses` answer returns, the polymorphic `run`, and a
   `Return`. Backlog `lexical-tail-allocs` has the ways to take them out,
   each to be measured. The strategies and the default do not change.
+
+PAY AS YOU GO, 2026-09-25 (bytes per 1000 get/set; time too noisy to quote):
+
+- Row 222 040. Tail with the guard 366 659. Tail on a row without Delim,
+  first cut 438 304. The same program in the Delim machine gave 438 364,
+  which ruled out the runner as the cause. After the walk fix: 366 224.
+- REFUTED: a `Cell` the clause writes instead of an `(S, X)` pair.
+  366 224 against 366 224: escape analysis had already removed the pair.
+  Reverted.
+- What is left, +72 B per operation over the row, is a `Delay` node,
+  its thunk and a `Return`, which keep an instance's operation lazy.
+  That is the price of instance identity by evidence instead of routing
+  by class. The row stays the zero-overhead default for one handler of a
+  kind. Backlog `lexical-tagged-walk` has the one design that could
+  close most of it, and the semantic reason it is not the default.
