@@ -66,30 +66,34 @@ run on threads.
 
 ## Behavior
 
-- [ ] A `Job` whose flow is `Flow.slices(rows, parts).mapPy[Out](mod,
+- [x] A `Job` whose flow is `Flow.slices(rows, parts).mapPy[Out](mod,
       "scale")` with a JVM `Wire` reduce computes, through
       `Cluster.run` over several in-process workers, EXACTLY what the
       same job computes through `Flows.fan` in one process — the bar
       every level of dataflow is held to — with the map actually run
-      by a real python3 (Live, skipped where there is none).
-- [ ] The same over a real R (Live).
-- [ ] The rows cross as ONE frame per chunk, `batch` rows at a time: the
+      by a real python3 (Live, skipped where there is none). RUN HERE:
+      `TestPyMapReduce`, 2 passed over the box's python3 (no pyarrow, so
+      the frames took the JSON road; Arrow where it is installed).
+- [ ] The same over a real R (Live) — `TestRMapReduce` is written and
+      skipped: no R on the box that wrote this.
+- [x] The rows cross as ONE frame per chunk, `batch` rows at a time: the
       source's chunk size is not the batch size (a `Flow.slices` chunk
       of 256 would be a Python round trip per 256 rows); `through`
       rechunks to `batch` first. A fake batcher sees chunks of exactly
       `batch` rows, the last one shorter.
-- [ ] The FUNCTION's failure (its own exception, a frame of the wrong
-      shape) fails the chunk and so the run, by name — `Stage.Failed`
-      carries the function's address and the far side's condition. A
-      deterministic error is not retried into a wrong answer.
-- [ ] A WIRE failure (the interpreter died, a deadline) is retried on a
+- [x] The FUNCTION's failure (its own exception, a frame of the wrong
+      shape) fails the chunk and so the run, by name — thrown as
+      `Cluster.Refused` with the stage's name and the far side's
+      condition, the worker's considered answer. A deterministic error
+      is not retried into a wrong answer.
+- [x] A WIRE failure (the interpreter died, a deadline) is retried on a
       fresh interpreter, `attempts` times, and the answer is intact: a
       fake batcher that dies once mid-partition yields the same answer as
       one that never dies. After `attempts` the chunk fails as above.
-- [ ] A row type that is not a flat case class is refused when the stage
+- [x] A row type that is not a flat case class is refused when the stage
       is BUILT, not at the first chunk: `mapPy[B]` on such a `B` throws
       naming it.
-- [ ] Interpreters are pooled per worker JVM: four partitions on four
+- [x] Interpreters are pooled per worker JVM: four partitions on four
       threads through one `PyStage` open at most `workers` python
       processes, not one per chunk and not one per partition.
 
@@ -137,4 +141,28 @@ run on threads.
 
 ## Results
 
-(after implementation)
+foreign-map-reduce (2026-09-25). New JVM module okay-foreign-cluster
+(`okay.cluster.foreign`): `Batcher`, `Stage.through` (a `Flow.Local`
+node over `Chunks.rechunk` + `Chunks.mapWith`), `Pool`/`Pools`,
+`PyStage`, `RStage`, and `flow.through / mapPy / mapR`. Nothing in
+okay-cluster changed.
+
+- `TestForeignStage` (7, default gate, no interpreter): the fan and
+  `Cluster.run` over 1 and 3 in-process workers agree with the batcher
+  in the JVM; a source chunked at 256 reaches the batcher as 1000, 1000,
+  500 per 2500-row partition; a function failure is a `Cluster.Refused`
+  naming the stage and the condition on both roads; a batcher that dies
+  once is retried and the coordinator sees `retried == 0`; one that
+  always dies exhausts `attempts` and the run names the stage and "2
+  attempts"; `mapPy[Long]` is refused at build time; a `Pool` of 2 under
+  4 threads opens 2, reuses them, replaces a dead one.
+- `TestPyMapReduce` (2, Live): 20 000 rows, 4 partitions, 3 in-process
+  workers, the map in python3 — `there.value == here.value ==
+  Rows.doubled`, `retried == 0`, 0.5 s; a `ValueError` in the function
+  fails the run naming `py:scaling:boom` and the message.
+- `TestRMapReduce` (1, Live): written to the same bar, skipped here.
+- Decided while writing: `Cluster.Refused` is `final`, so a function
+  failure is thrown AS one (with the stage's name in its message) rather
+  than as a subclass; and `RSubprocess` has no `alive`, so `RStage`
+  reports a death from the exception (`DEAD` in its message) and the pool
+  replaces the session on that.

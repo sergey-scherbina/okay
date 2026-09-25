@@ -2621,6 +2621,20 @@ lazy val okayForeignWorkflow = (project in file("okay-foreign-workflow"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+// okay-foreign-cluster: the MAP of a cluster job in Python or R
+// (specs/foreign-map-reduce.md) — a `Flow.Local` stage whose chunk
+// crosses to an interpreter as one Arrow frame; the reduce stays the JVM
+// `Wire`. Its own module so okay-cluster stays free of the engines. Test
+// scopes of okay-py and okay-r for their interpreter finders (TestPy,
+// TestR); okay-cluster's for its Feeds and the in-process workers.
+lazy val okayForeignCluster = (project in file("okay-foreign-cluster"))
+  .dependsOn(okayCluster.jvm % "compile->compile;test->test",
+    okayPy % "compile->compile;test->test", okayR % "compile->compile;test->test")
+  .settings(
+    name := "okay-foreign-cluster",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 // okay-r: R as a handler (specs/r.md) — the same shape okay-py built
 // first, with R's own two absences. okay-agent is deliberately NOT a
 // dependency: Durable journals R steps because they are operations,

@@ -488,6 +488,74 @@ val wire: Cluster.Worker[Double, Double] = c =>
     case s => Json.read[Double](s).fold(m => throw RuntimeException(m), identity)
 ```
 
+## The map in Python or R
+
+A job's map step can run outside the JVM. `mapPy` and `mapR`
+(okay-foreign-cluster, specs/foreign-map-reduce.md) put a stage on a
+flow whose chunks cross to an interpreter as ONE frame each — an Arrow
+IPC stream where the python has pyarrow or R has the `arrow` package,
+the JSON frame otherwise — and come back as rows of the next type. The
+reduce stays the JVM's `Wire`, so map-side combine, the exchange, resume
+and the fault model are exactly what they are for a Scala map.
+
+The Python code ships as an inline module inside the job, which is what
+keeps "every worker runs the same artifact" true:
+
+```scala
+object Scaling:
+  val mod = Foreign.module("scaling", """
+    def double(frame):
+        return {"key": frame["key"], "v": [x * 2 for x in frame["v"]]}
+
+    def boom(frame):
+        raise ValueError("no")
+  """)
+```
+
+```scala
+    def flow(p: Scale, parts: Int): Flow[Out] =
+      Flow.slices(Rows.of(p.n), parts).mapPy[Out](Scaling.mod, "double", python)
+    def sink(p: Scale): Wire[Out, Long] = Wire.fold(Aggregator.sum[Long].contramap[Out](_.v))
+```
+
+The function receives the frame as a dict of lists (or the
+`pyarrow.Table` itself under `@okay.arrow`) and answers the columns of
+`Out`; in R it receives and answers a `data.frame`:
+
+```scala
+    double <- function(frame) { frame$v <- frame$v * 2L; frame }
+```
+
+Over three in-process workers the answer is the fan's, to the row:
+
+```scala
+    val here = Flows.fan(PyJobs.Doubling.flow(p, 4), PyJobs.Doubling.sink(p)).runWith
+    val there = Cluster.run(PyJobs.Doubling, p, 4, Vector.fill(3)(Cluster.local)).runWith
+    assertEquals(there.value, here.value)
+```
+
+What decides the cost is the BATCH: `Flow.slices` chunks at 256, and a
+round trip to Python per 256 rows would be the r-measure-harden number
+again, so the stage rechunks to `batch` rows (4096 by default) before
+the frame crosses. Interpreters are POOLED per worker JVM — `workers` of
+them at most, opened on demand, shared by every partition and every job
+that names the same module — because a `ForeignWorker` is one pipe and
+partitions run on threads.
+
+Two failures, two roads, both the cluster's own. The FUNCTION's failure
+(its exception, a frame of the wrong shape) is a considered refusal:
+the run fails naming the stage and the message, and the coordinator does
+not carry it to the next worker as if this one had died. A WIRE failure
+(the interpreter died, a deadline) is retried on a fresh interpreter,
+three times, and only past that is the worker dead — the partition is
+then recomputed on a survivor as any partition is. A row type that is
+not a flat case class is refused when the stage is built, not on a
+worker at the first chunk.
+
+Rust, Haskell and Go do not take a stage yet: their shims serve calls,
+not the `frame` op (`foreign-frame-op-rust-hs-go`). Clojure and Frege
+need none — they run inside the JVM, so their map is `flow.map(f)`.
+
 ## API reference
 
 | member | signature | meaning |
@@ -502,6 +570,10 @@ val wire: Cluster.Worker[Double, Double] = c =>
 | `Flow.slices` | `(IndexedSeq[A], parts, chunk) => Flow[A]` | contiguous slices of the input's own ORDER |
 | `Flow.of` | `(Vector[() => Chunks[A]]) => Flow[A]` | partitions as recipes — a thunk, so a partition can be replayed |
 | `Flow.map/filter` | `(A => B) / (A => Boolean) => Flow[…]` | per-partition, held as a `Chunks` transformer |
+| `Flow.mapPy` | `(PyModule, fn, python, batch, workers)(using Schema[A], Schema[B]) => Flow[B]` | the map in Python, a chunk per frame; okay-foreign-cluster |
+| `Flow.mapR` | `(RModule, fn, rscript, batch, workers)(using Schema[A], Schema[B]) => Flow[B]` | the same in R |
+| `Flow.through` | `(Batcher[A, B], batch, attempts) => Flow[B]` | any batcher — `PyStage`, `RStage`, or one of your own |
+| `Batcher` | `name`, `apply(Vector[A]) => Either[Failed, Vector[B]]` | a batch of rows through something outside the JVM; `Batcher.transient` names the kinds that are retried |
 | `Flow.keyBy` | `(A => K, Finish)(Aggregator[A, Acc, O]) => Flow[(K, O)]` | a keyed aggregation |
 | `Flow.tumbling/sliding` | `(size, slide, lateness, seeded, finish)(key)(at)(agg) => Flow[Pane[K, O]]` | event-time windows; `seeded` buys exactness for one pre-pass |
 | `Finish` | `Merge` / `Shuffle(r)` / `Auto` | where the partials are combined; `Auto` decides during the run |
@@ -608,3 +680,9 @@ specs/cluster-pool.md (2026-09-23): the four roads above become a POOL
 compose, a cloud) keeps alive, found by its DNS, any of which takes a
 job by name over HTTP and coordinates it. Stage 1 is
 `cluster-pool-process` in the sprint queue.
+
+## Literature
+
+- Jeffrey Dean, Sanjay Ghemawat. *[MapReduce: simplified data processing on large clusters.](https://doi.org/10.1145/1327452.1327492)* OSDI 2004 / CACM 51(1), 2008. The shape `Job` has: a map per partition, a merge the framework owns, recomputation as the fault model.
+- Matei Zaharia et al. *[Resilient distributed datasets: a fault-tolerant abstraction for in-memory cluster computing.](https://www.usenix.org/conference/nsdi12/technical-sessions/presentation/zaharia)* NSDI 2012. A partition as a RECIPE that can be recomputed — `Flow.Src` holds thunks for the same reason.
+- Mark Raasveldt, Hannes Mühleisen. *[Don't hold my data hostage: a case for client protocol redesign.](https://doi.org/10.14778/3115404.3115408)* PVLDB 10(10), 2017. Why a chunk crosses to Python as one columnar frame and not as rows: the cost is per message, not per byte.
