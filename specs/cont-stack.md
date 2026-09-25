@@ -668,7 +668,15 @@ C. **The fast path's bookkeeping** — C1 LANDED 2026-09-25
    wrong lever; what is left of C is an inlining question —
    `-XX:+PrintInlining` / `-prof perfasm` on fib100 against the base,
    then a smaller `enter`/`callK` — filed back as cont-stack-fastpath
-   with that recipe. Below: the plan as written before A. Candidates, each measured alone against the stage
+   with that recipe. ROUND 2 (same evening): `PrintInlining` named it —
+   `Reentry.enter` at 106 bytes "callee is too large", `callK` through
+   it "too much stack", where the base's 13-byte lambda inlined and
+   was scalar-replaced. The exhaustion road moved out of `enter` (53
+   bytes, inlines hot); one JMH fork in three then read the base's
+   bytes (21 568 vs 21 552), the others the old 23 152 — the lever is
+   right and the JIT's decision not yet deterministic; time 1.19 in a
+   busy evening's noise. Next: `Leaf.applyAt` (131 bytes) and `callK`.
+   Below: the plan as written before A. Candidates, each measured alone against the stage
    before, kept only when it pays: `Gauge` as a field of the OUTERMOST
    `Reentry` (found by the same walk) instead of a `Gauged` root per
    `run` — two allocations a `run` gone; `Mapped`'s lambda as a class
