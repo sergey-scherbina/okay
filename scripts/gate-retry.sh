@@ -52,6 +52,7 @@ set -e
 # sides). Read that file for what "quiet" means and why the numbers
 # are what they are.
 . "$(cd "$(dirname "$0")" && pwd)/quiet.sh"
+GATE_SH="$(cd "$(dirname "$0")" && pwd)/gate.sh"
 
 # What one attempt's log says. This is the whole safety property, so it
 # is one function and `--read` runs exactly it: `done` means the gate
@@ -158,7 +159,13 @@ while [ "$i" -le "$N" ]; do
   # of the bug the watchdog was written for. Caught in production the
   # same afternoon: gate-drv.log has the verdict and, ten minutes
   # later, "STALLED".
-  ( set +e; cd "$WT"; bash scripts/gate.sh "$GATE_CMD"; echo $? > "$rcfile" ) >> "$LOG" 2>&1 &
+  # gate.sh is the one BESIDE this script, not `scripts/gate.sh` under
+  # the worktree: the runner hands okay2/ as the worktree (its own build,
+  # `cd okay2 && ../scripts/gate.sh`), where that path does not exist —
+  # six attempts of rc=127 read as "the box took it", and every whole
+  # build whose range touched okay2/ ended in no verdict and no push
+  # (ci-runner-okay2-gate, 2026-09-26: origin 222 commits behind)
+  ( set +e; cd "$WT"; bash "$GATE_SH" "$GATE_CMD"; echo $? > "$rcfile" ) >> "$LOG" 2>&1 &
   gpid=$!
   stalled=0
   quietmin=0
