@@ -348,7 +348,11 @@ STAGE 1, 2026-09-24/25 (TestDollar 11; DelimBenchmark, history.tsv):
   per capture (910 329 to 1 014 330 B/op) and 7-9%. Two shapes
   (`Plain` = the old cut, `AtRet` = a dollar's) brought the bytes to
   +32. Returning `NotFound` instead of an `Option` per frame brought
-  them to exactly the baseline (910 330). The time was still 1.023 to
+  them to exactly the baseline (910 330).
+  [BASELINE MOVED: 942 312 since stack-safety-core (b27ae0c5d, the
+  same morning), +32 B per capture for `split` as a loop — bisected by
+  delim-generator-bytes-drift, 2026-09-25; not this lane's.] The time
+  was still 1.023 to
   1.028 over three gated rounds. Moving the `Dollar` case after
   `Capture` in the step, and matching `Plain | AtRet | NotFound`
   directly, gave 1.002, 1.012 and 1.044 (±2.5 on the last). That is

@@ -124,7 +124,14 @@ deleted.
       - `Delim.split` walks the segment chain as a loop and wraps the
         captured part from a type-aligned `Wrap` of polymorphic frames,
         with no cast. A shift under 20 000 nested prompts had
-        overflowed.
+        overflowed. PRICE, found and bisected by
+        delim-generator-bytes-drift (2026-09-25): +32 B per capture on
+        DelimBenchmark.delimGenerator (910 312 → 942 312 B/op at this
+        commit alone, parent and later commits measured), the `Wrap.On`
+        node and its polymorphic frame per segment the walk passes,
+        where the recursive version rebuilt the prefix on the JVM stack
+        for free. Kept: it is the cost of the loop the rule requires;
+        backlog `delim-split-wrap-free` has the recipe to take it back.
       - `Static.foldMap` is ONE loop over a type-aligned continuation
         (`Args`: `More`, `AppTo`, `Mapped`, `SelectE`, `SelectF`). All
         three nesting axes (a select's condition, an application's
