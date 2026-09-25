@@ -1772,9 +1772,9 @@ reconverges, and splices the old tree back — by reference when the edit
 kept offsets, so an untouched subtree is the same object. A `Scan` is
 also a `Mealy` machine, an arrow (`Optic.Arrow` and `Optic.Choice`), so
 scanners compose and run side by side. `Cst.lexemes`/`errors` walk on an
-explicit stack here: the Scala 3 core's recursive walks overflow on a
-20 000-deep document the parse itself builds (backlog
-`cst-walk-stack-safe`).
+explicit stack, as the Scala 3 core's do since `cst-walk-stack-safe`
+(2026-09-25): a recursive walk overflowed on a 20 000-deep document the
+parse itself builds.
 
 ## 33. Literature
 

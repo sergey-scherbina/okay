@@ -2069,8 +2069,9 @@ okay2-optics: the lossless readers JSON's CST path and XML stand on.
 ### Found while building it
 - `Cst.errors` overflowed the stack at 20 000 levels where `Parse.full`
   did not: the Scala 3 core's recursive walks. okay2 walks on an explicit
-  stack; the Scala 3 half is filed as `cst-walk-stack-safe` (backlog
-  okay-lex). The Scala 3 depth test is timing-only and Live-tagged; the
+  stack; the Scala 3 half was filed as `cst-walk-stack-safe` (backlog
+  okay-lex) and FIXED the same day — `lexemes`, `errors` and `rebase`
+  on an explicit stack, TestParse asserting all three at 20 000 levels. The Scala 3 depth test is timing-only and Live-tagged; the
   okay2 one asserts the walks at depth instead.
 - The shared `ArrowLawsSuite` is not in okay2: the laws a Mealy machine
   can break are stated in TestMealy directly.

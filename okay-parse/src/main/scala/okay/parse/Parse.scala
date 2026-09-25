@@ -32,17 +32,49 @@ enum Cst[K]:
   case Err(tok: Option[Token[K]], message: String)
 
 object Cst:
+  /**
+   * Every walk below runs on an EXPLICIT stack, never the JVM's: the
+   * builder is a fold, so `Parse.full` makes a tree as deep as its
+   * input without trouble, and a walk that recursed per level
+   * (`cs.map(lexemes)`, `cs.flatMap(errors)`, `cs.map(rebase(...))`)
+   * then threw StackOverflowError on a tree the parser had just
+   * handed back — at 20 000 levels of `{"kids":[...]}`
+   * (cst-walk-stack-safe, found porting to okay2, 2026-09-25).
+   */
+  private def preorder[K](c: Cst[K])(visit: Cst[K] => Unit): Unit =
+    var stack: List[Cst[K]] = c :: Nil
+    while stack.nonEmpty do
+      val here = stack.head
+      stack = stack.tail
+      visit(here)
+      here match
+        case Cst.Node(_, cs) => stack = cs.foldRight(stack)(_ :: _)
+        case _ => ()
+
   /** the lossless law: every kept token's lexeme, in order */
-  def lexemes[K](c: Cst[K]): String = c match
-    case Cst.Node(_, cs) => cs.map(lexemes).mkString
-    case Cst.Leaf(t) => t.lexeme
-    case Cst.Err(t, _) => t.fold("")(_.lexeme)
+  def lexemes[K](c: Cst[K]): String =
+    val out = new StringBuilder
+    preorder(c) {
+      case Cst.Leaf(t) => out ++= t.lexeme
+      case Cst.Err(t, _) => t.foreach(x => out ++= x.lexeme)
+      case _ => ()
+    }
+    out.result()
 
   /** the diagnostics are IN the tree: collect them */
-  def errors[K](c: Cst[K]): Vector[(Option[Token[K]], String)] = c match
-    case Cst.Node(_, cs) => cs.flatMap(errors)
-    case Cst.Err(t, m) => Vector((t, m))
-    case _ => Vector.empty
+  def errors[K](c: Cst[K]): Vector[(Option[Token[K]], String)] =
+    val out = Vector.newBuilder[(Option[Token[K]], String)]
+    preorder(c) {
+      case Cst.Err(t, m) => out += ((t, m))
+      case _ => ()
+    }
+    out.result()
+
+  /** one open node of `rebase`'s walk: its kind, its children, how far
+   * through them, and the rebuilt ones so far */
+  private final class Open[K](val kind: String, val kids: Vector[Cst[K]]):
+    var at = 0
+    val built = Vector.newBuilder[Cst[K]]
 
   /** shift every span in a subtree (the absolute-span tax on reuse
    * after a length-changing edit; a length-preserving edit reuses by
@@ -53,10 +85,28 @@ object Cst:
       def tok(t: Token[K]): Token[K] =
         t.copy(span = t.span.copy(offset = t.span.offset + offsetDelta,
           line = t.span.line + lineDelta))
-      c match
-        case Cst.Node(k, cs) => Cst.Node(k, cs.map(rebase(_, offsetDelta, lineDelta)))
+      def flat(x: Cst[K]): Cst[K] = x match
         case Cst.Leaf(t) => Cst.Leaf(tok(t))
         case Cst.Err(t, m) => Cst.Err(t.map(tok), m)
+        case n => n
+      c match
+        case Cst.Node(k0, cs0) =>
+          var stack: List[Open[K]] = Open(k0, cs0) :: Nil
+          var result: Cst[K] = c
+          while stack.nonEmpty do
+            val top = stack.head
+            if top.at < top.kids.length then
+              val kid = top.kids(top.at)
+              top.at += 1
+              kid match
+                case Cst.Node(k, cs) => stack = Open(k, cs) :: stack
+                case x => top.built += flat(x)
+            else
+              stack = stack.tail
+              val done = Cst.Node(top.kind, top.built.result())
+              if stack.isEmpty then result = done else stack.head.built += done
+          result
+        case x => flat(x)
 
 object Parse {
 

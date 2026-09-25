@@ -37,10 +37,11 @@ object Cst {
   /**
    * Every node of the tree, pre-order, on an EXPLICIT stack: the tree is
    * as deep as the document, and the recursive walks the Scala 3 core
-   * writes (`cs.map(lexemes)`, `cs.flatMap(errors)`) overflow the JVM
+   * wrote until `cst-walk-stack-safe` (`cs.map(lexemes)`,
+   * `cs.flatMap(errors)`) overflow the JVM
    * stack on a document `Parse.full` itself builds without trouble —
    * measured here at 20 000 levels (`errors` overflowed where the parse
-   * did not; okay-parse backlog `cst-walk-stack-safe`).
+   * did not; fixed there the same way).
    */
   private def preorder[K](c: Cst[K])(visit: Cst[K] => Unit): Unit = {
     var stack: List[Cst[K]] = c :: Nil

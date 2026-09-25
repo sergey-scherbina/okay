@@ -100,4 +100,23 @@ class TestParse extends munit.FunSuite {
     assertEquals(re.tree, Parse.full(JsonLex.scan, JsonParse.instrs)(edited).tree)
     assertEquals(Cst.lexemes(re.tree), edited)   // spans rebased, content exact
   }
+
+  // cst-walk-stack-safe: the parse was always fine at this depth, the
+  // WALKS were not — `cs.flatMap(errors)` threw StackOverflowError at
+  // 20 000 levels (found porting to okay2, 2026-09-25)
+  test("depth: every Cst walk survives a 20 000-deep document the parser builds") {
+    val n = 20000
+    val s = ("{\"kids\":[" * n) + "{\"kids\":[]}" + ("]}" * n)
+    val tree = Parse.full(JsonLex.scan, JsonParse.instrs)(s).tree
+    assertEquals(Cst.lexemes(tree), s)
+    assertEquals(Cst.errors(tree), Vector.empty)
+    val moved = Cst.rebase(tree, 3, 1)
+    assertEquals(Cst.lexemes(moved), s)
+    def firstLeaf(c: Cst[K]): Token[K] = c match
+      case Cst.Node(_, cs) => firstLeaf(cs.head)
+      case Cst.Leaf(t) => t
+      case Cst.Err(t, m) => fail(s"unexpected error leaf: $m")
+    val (was, now) = (firstLeaf(tree), firstLeaf(moved))
+    assertEquals((now.span.offset, now.span.line), (was.span.offset + 3, was.span.line + 1))
+  }
 }
