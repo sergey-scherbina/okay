@@ -387,10 +387,12 @@ object Cbor {
       if in.isNull then { in.skipNull(); Right(None) }
       else get(in, of()).map(Some(_))
     case l: Schema.SList[a] =>
+      // prepended and reversed once: `xs :+ _` on a List copied it per
+      // element, 2.4 s for 16 000 records (remote-arrow-frames)
       inside(in) { in.arrayHeader().flatMap { n =>
         (0L until n).foldLeft(Right(Nil): Either[String, List[a]]) { (acc, _) =>
-          acc.flatMap(xs => get(in, l.of()).map(xs :+ _))
-        }
+          acc.flatMap(xs => get(in, l.of()).map(_ :: xs))
+        }.map(_.reverse)
       } }
     case vec: Schema.SVector[a] =>
       inside(in) { in.arrayHeader().flatMap { n =>

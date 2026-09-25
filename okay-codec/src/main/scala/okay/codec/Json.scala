@@ -625,8 +625,10 @@ object Json {
       // wants to know that the document was damaged.
       vs.filterNot(_.isInstanceOf[JErr])
         .foldLeft(Right(Nil): Either[String, List[a]]) { (acc, v) =>
-          acc.flatMap(xs => decodeAt(l.of(), v, depth + 1).map(xs :+ _))
-        }
+          // prepended and reversed once, as Edn's: `xs :+ _` on a List
+          // copied it per element (remote-arrow-frames)
+          acc.flatMap(xs => decodeAt(l.of(), v, depth + 1).map(_ :: xs))
+        }.map(_.reverse)
     case (vec: Schema.SVector[a], JArr(vs)) =>
       // the same totality rule as SList above: damaged elements are
       // skipped, the ones that arrived survive
