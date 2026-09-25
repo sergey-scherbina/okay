@@ -1,0 +1,6 @@
+feature/r-arrow 2026-09-25T13:23:25Z
+agent: claude-sonnet-5
+heartbeat: 2026-09-25T13:23:25Z
+status: in-progress
+done-so-far: promoted from backlog to sprint.d/doing; researched shim.py/ForeignWorker's arrow design to port
+next: RArrowFrames.scala, RSubprocess FrameFormat + arrow negotiation, shim.R arrow support, tests, docs
