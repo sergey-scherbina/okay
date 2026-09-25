@@ -580,6 +580,23 @@ in R `step` answers a one-row `data.frame` and `merge` a named list. The
 answer is `None` for a run that saw no rows. The map and the reduce of
 one module share one pool of interpreters.
 
+Measured (`MeasureForeignMapReduce`, 1M rows, 4 partitions, medians of
+three at box load 8–13; a run at load 21–27 read 2–3x slower on every
+lane and was discarded):
+
+| lane | fan, ms | 3 workers, ms |
+|---|---|---|
+| the map in Scala | 6–12 | 6 |
+| the map in Python, JSON road | ~200 | ~205 |
+| the map in Python, Arrow | ~95 | ~98 |
+| `@okay.arrow` + `pyarrow.compute` | ~86 | ~90 |
+| … and the reduce in Python | ~163 | ~170 |
+
+Arrow halves the Python map against JSON; a Python map is ~10x a Scala
+one on this shape, at 90 ms for a million rows; the cluster protocol
+adds nothing visible; the reduce in Python costs ~70 ms that `Wire.fold`
+does not — move it across only for a reduction the JVM has not got.
+
 Rust, Haskell and Go do not take a stage yet: their shims serve calls,
 not the `frame` op (`foreign-frame-op-rust-hs-go`). Clojure and Frege
 need none — they run inside the JVM, so their map is `flow.map(f)`.

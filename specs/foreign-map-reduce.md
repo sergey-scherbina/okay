@@ -246,3 +246,39 @@ interpreters; `Attempts.run` is the two failure roads, shared.
   merge that is associative makes exact; and a partial that is not
   exactly one row is the FUNCTION's failure (`ReduceShape`), since the
   contract says one row and a wrong count is the code, not the wire.
+
+## Measured (foreign-map-reduce-measure, 2026-09-25)
+
+`MeasureForeignMapReduce` (Live): 1M rows of `Rec(key: Int, v: Long)`, 4
+partitions, doubled and summed — in one process (`Flows.fan`, the
+stage's own cost) and over three in-process workers (`Cluster.run`).
+Medians of three per lane; the JSON lane is the box's python3 (no
+pyarrow), the Arrow lanes a venv of the SAME interpreter with pyarrow
+25.0.1 (`OKAY_PYARROW_PYTHON`), so only the road differs. Two runs at
+load 8 and 13 agree within ~10% and are the number; a first run at load
+21–27 read 2–3x slower on every lane and is DISCARDED (it also showed a
+batch-size effect, 4096 → 65536 halving the time, that the quiet runs do
+not: an artefact of a busy box, not of the batch).
+
+| lane (1M rows, 4 partitions) | fan, ms | 3 workers, ms |
+|---|---|---|
+| the map in Scala (`flow.map`) | 6–12 | 6 |
+| the map in Python, JSON road | 198–204 | 197–215 |
+| the map in Python, Arrow (batch 4096) | 89–108 | 94–103 |
+| the map in Python, Arrow (batch 65536) | 101–102 | 101–107 |
+| `@okay.arrow` + `pyarrow.compute` (no Python loop) | 83–90 | 88–92 |
+| … and the REDUCE in Python (`step`/`merge`) | 158–168 | 167–172 |
+
+What it says:
+- Arrow halves the Python map against JSON (~200 → ~95 ms), the same
+  ratio py-arrow measured on a single frame; the cluster protocol adds
+  nothing visible (fan ≈ three workers on every lane).
+- a Python map is ~10x a Scala map on this shape — but 90 ms for a
+  million rows, all of it Python's own work and the pipe; a vectorised
+  `@okay.arrow` function buys another ~10%, since `x * 2` per element
+  was never the cost — crossing was.
+- 4096 rows per frame is already past the knee on a quiet box; a bigger
+  batch buys nothing here. Left at 4096.
+- the reduce in Python costs ~+70 ms: `sum` over 1M ints in Python plus
+  three merges; `Wire.fold` on the JVM is free by comparison. Move the
+  reduce across only when the reduction is not one the JVM has.
