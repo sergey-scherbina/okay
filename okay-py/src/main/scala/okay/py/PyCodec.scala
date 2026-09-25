@@ -331,7 +331,10 @@ object PyCodec {
  * over any of them.
  */
 object Py {
-  def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Fn(address)
+  // every entry below takes the caller's `Shape` (Python's unless one is
+  // given): the value rules are the CALL SITE's, so the same API serves
+  // R at `R.shape` and TypeScript at `Shape.json` (foreign-one-value)
+  def fn[Out](address: String)(using Schema[Out], Shape): Fn[Out] = Fn(address)
 
   /**
    * A Python PROGRAM-AS-DATA (remote-foreign, specs/remote-foreign.md): the
@@ -341,7 +344,7 @@ object Py {
    * the same pure Python function twice — multi-shot across a process. The
    * run holds its continuations until `forget`.
    */
-  def program[Out: Schema](address: String): ProgramOf[Out] = ProgramOf(address)
+  def program[Out: Schema](address: String)(using Shape): ProgramOf[Out] = ProgramOf(address)
 
   private val runIds = java.util.concurrent.atomic.AtomicLong()
 
@@ -397,7 +400,7 @@ object Py {
    * (foreign-object-handles): `Py.hold("random:Random")(42)` is a seeded
    * generator living in Python, whose methods `ref.call` reaches.
    */
-  def hold(address: String): Hold = Hold(address)
+  def hold(address: String)(using Shape): Hold = Hold(address)
 
   final class Hold(address: String)(using shape: Shape):
     def apply(): Either[Condition, PyRef] ! ForeignEval = go(Vector.empty)
@@ -419,7 +422,7 @@ object Py {
    * val objective = Py.callback[Vector[Double], Double]("objective")(x => Reader.ask[Double].map(...))
    * }}}
    */
-  def callback[Arg: Schema, Res: Schema](name: String): CallbackOf[Arg, Res] = CallbackOf(name)
+  def callback[Arg: Schema, Res: Schema](name: String)(using Shape): CallbackOf[Arg, Res] = CallbackOf(name)
 
   /** the callbacks one call offers, all in one row `F` (a union row for
    * several effects: callbacks are programs, and a program has one row) */

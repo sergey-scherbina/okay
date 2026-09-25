@@ -21,6 +21,11 @@ abstract class CrashConformance extends munit.FunSuite:
   def address(name: String): String = name
   /** whether the far side serves direct-style functions (`quote`) */
   def direct: Boolean = true
+  /** the value rules the far side is read by (Python's; R's for R) */
+  def shape: Shape = Shape.python
+  given Shape = shape
+  /** a link to this far side as a worker: the handshake of its shim family */
+  def speaking(link: WireLink, name: String): ForeignWorker = ForeignWorker.over(link, name)
 
   /** the process the supervisor is talking to now */
   @volatile private var current: Option[Process] = None
@@ -33,11 +38,16 @@ abstract class CrashConformance extends munit.FunSuite:
     pb.redirectError(ProcessBuilder.Redirect.INHERIT)
     val p = pb.start()
     current = Some(p)
-    ForeignWorker.over(WireLink.pipes(p), s"the worker ${c.command.head}")
+    speaking(WireLink.pipes(p), s"the worker ${c.command.head}")
 
-  /** SIGKILL the far side, and wait until it is gone */
+  /** SIGKILL the far side, and wait until it is gone — its whole process
+   * TREE, since a worker command may be a wrapper (R through a container
+   * shim) whose child holds the pipes open after the wrapper dies */
   private def kill(): Unit =
-    current.foreach(p => p.destroyForcibly().waitFor(): Unit)
+    current.foreach { p =>
+      p.descendants().forEach(d => d.destroyForcibly(): Unit)
+      p.destroyForcibly().waitFor(): Unit
+    }
 
   private val choose = Foreign.callback[Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))
 

@@ -2651,9 +2651,10 @@ lazy val okayR = (project in file("okay-r"))
   // okay-agent for TESTS only: its Durable journals these operations
   // through their own `Journalled` instances (foreign-journalled);
   // okay-arrow for frames as Arrow IPC streams (r-arrow), okay-py's twin;
-  // okay-py for the ENGINE every wire language shares (`WireSession`,
-  // foreign-one-r): R's handler speaks its own values over it
-  .dependsOn(okay.jvm, okayCodec.jvm, okayArrow.jvm, okayStream.jvm, okayPy, okayAgent.jvm % Test)
+  // okay-py for the ENGINE, value tree, effect and API every wire language
+  // shares (foreign-one-r, foreign-one-value), and its conformance suites,
+  // which R runs as one more row
+  .dependsOn(okay.jvm, okayCodec.jvm, okayArrow.jvm, okayStream.jvm, okayPy % "compile->compile;test->test", okayAgent.jvm % Test)
   .settings(
     name := "okay-r",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

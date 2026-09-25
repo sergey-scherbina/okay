@@ -140,9 +140,25 @@ object RSubprocess:
               env: Map[String, String] = Map.empty): okay.py.WorkerCommand =
     okay.py.WorkerCommand(Vector(WireSession.resolve(rscript), "--vanilla", shimFile().toString), RModule.env(modules, env))
 
+  /**
+   * R as one more `ForeignWorker` (foreign-one-value): the process
+   * `command` starts, spoken to over its pipes, unsupervised — what the
+   * conformance suites every wire language answers to take.
+   */
+  def worker(rscript: String = "Rscript", modules: Seq[RModule] = Nil, env: Map[String, String] = Map.empty)
+            (using WireFormat, WireCompression)(using okay.codec.FrameFormat): ForeignWorker =
+    val c = command(rscript, modules, env)
+    val pb = ProcessBuilder(c.command*)
+    pb.environment().clear()
+    c.env.foreach((k, v) => pb.environment().put(k, v))
+    val proc = pb.start()
+    given WireAuth = WireAuth.Off
+    given WireDeadline = WireDeadline(None)
+    speaking(WireLink.pipes(proc), "the R shim")
+
   /** the one engine over R's far side: R's shim version, R's name for its
    * version in the hello, R's rules for frames as Arrow and for values */
-  private def speaking(link: WireLink, name: String)
+  def speaking(link: WireLink, name: String)
                       (using WireFormat, WireCompression, WireAuth, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
     ForeignWorker.speakingAs(link, name, ShimVersion, "r", "the R process", RArrowFrames, R.shape)
 

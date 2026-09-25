@@ -23,6 +23,11 @@ abstract class WireConformance extends munit.FunSuite:
   /** how this far side addresses a served name (Python: `module:name`) */
   def address(name: String): String = name
 
+  /** the value rules this far side is read by: Python's, or a language's
+   * own (R's vectors-of-one are read by `R.shape`) — the body is the same */
+  def shape: Shape = Shape.python
+  given Shape = shape
+
   /** the engine over this suite's link, made once */
   def engine: ForeignWorker
   private given okay.Handler[ForeignEval] = engine.handler
