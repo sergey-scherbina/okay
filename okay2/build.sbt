@@ -308,8 +308,10 @@ lazy val okay2Http = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("okay2-http"))
   .dependsOn(okay2Codec, okay2Stream)
   .settings(name := "okay2-http", common)
-  .jvmSettings(jvmOnlyTests, platformSources("scala-jvm"))
-  .jsSettings(jsTests)
+  // its own macro (`route.of[C]`)
+  .jvmSettings(reflect(None), jvmOnlyTests, platformSources("scala-jvm"))
+  .jsSettings(jsTests, reflect(Some(Provided)))
+  .nativeSettings(reflect(Some(Provided)))
   .jvmConfigure(_.withId("okay2Http").dependsOn(okay2Platform.jvm))
 
 /** okay-jdbc's driver for the Scala 2 core: `JdbcSql`, tested against

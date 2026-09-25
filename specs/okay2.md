@@ -2252,10 +2252,50 @@ Found while building it:
   `okay2-http-routes`).
 
 
-### Part B — typed routes (backlog `okay2-http-routes`)
-- [ ] `Route`/`Query`/`Headed`/`Router` over Schema, their arity and
-      split in Scala 2 terms (the Scala 3 core's tuples), `Urls`,
-      `Acceptance`
+### Part B — typed routes (okay2-http-routes, 2026-09-25)
+- [x] a capture's outside form is `Unit`, the value, or a tuple (up to
+      8), at the handler AND at the optic; its inside form is a list
+      (`Captures`, `Tupled`), and `Split` joins two captures through
+      `Concat` on the lists; the join/split law at every seam (TestArity)
+- [x] `Route`/`Queried`: MATCH (`unapply`, a pattern), BUILD (`url`),
+      DESCRIBE; the prism law over paths and queries, escaping per
+      segment, a segment after a query refused at compile time, the
+      prism through `Optic` (TestRoute)
+- [x] `route.of[C]` by a blackbox macro: the field TYPES against the
+      capture at compile time (Scala 3: the Mirror), the names at
+      construction
+- [x] `Headed`: headers declared, read case-insensitively, the url half
+      unmoved (TestRouteHeaders); `secured`, and `Router.enforcing`
+      refusing exactly the entries the description calls protected
+      (TestRouteSecured)
+- [x] `Router`: on/at/json/out/jsonOut/html/bytes/events/media for both
+      shapes, `answering`, `summarised`, `++`, the trie index agreeing
+      with a first-match scan on generated tables (TestRouterIndex),
+      bodies decoded or refused with a 400 (TestRouteBody), declared
+      answers equal to the wire (TestRouterOut, TestRouterMedia,
+      TestRouterSummary); `Urls`; `Acceptance`, served by `Server` and
+      read by `Transports` (TestHttp, `Live`)
+- [x] `JsonSchema` in okay2-codec, the fold's first algebra, which the
+      router describes bodies with: `$ref`/`$defs` for recursion, `enum`
+      from a vocabulary (TestJsonSchema)
+- [x] JVM, Scala.js and Scala Native: 107 okay2-http results on each
+      (every route suite is pure and runs everywhere, the JVM's
+      TestRouteBody/TestRouterIndex/TestRouteSecured included), 106
+      okay2-codec
+
+Found while building it:
+- `implicitly[Split[Int, String]]` drops the `Out` refinement in Scala
+  2, so `.join` answers `Split[Int, String]#Out`, which nothing compares
+  with a tuple. `Split.apply`/`Captures.apply` keep it (shapeless's
+  `the`).
+- A handler over several captures is `{ case (id, slug) => ... }`:
+  Scala 2 does not untuple a two-argument lambda into a `Function1` of
+  a pair. One capture is handed the value, as in Scala 3.
+- The HList cons is `:*:`, not `::`: a `::` in package `okay2.http`
+  would shadow `List`'s in every pattern of the package.
+- Not ported: TestRouteFacts (it exercises okay-di's `Fact`/`Module`,
+  which okay2 has not got), and the Scala.js client transports (backlog
+  `okay2-http-js-transports`).
 
 ## Stage 45 — every handler loop splits by `Split.at` (2026-09-25)
 Backlog `okay2-split-at-rest`. okay2-handler-allocs moved State, relay,

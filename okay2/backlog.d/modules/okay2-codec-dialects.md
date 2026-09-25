@@ -1,9 +1,7 @@
 - [ ] okay2-codec-dialects: the rest of okay-codec on okay2, once a
-      caller needs it. okay2-codec (stage 41) ported `Schema` and JSON
-      only. Still unported: `Cbor` (RFC 8949, and the BigInt preferred
-      serialization TestBigInt pins), `JsonSchema` (the fold's first
-      algebra, with `$defs`/`$ref` and `enum` from a vocabulary; the
-      JsonSchema parts of TestSchemaFold and TestEnumeration wait on
-      it), `Validate`, `Digest`/`Compat`, `Edn`, `Yaml`, `Markdown`,
-      `Columns`, the staged codecs, and the `Codecs` provider registry.
-      XML landed as okay2-xml (stage 43). (2026-09-25)
+      caller needs it. Landed so far: `Schema` and JSON (stage 41), XML
+      (stage 43), `JsonSchema` (with okay2-http-routes, stage 44B), and
+      `Columns` (okay2-spark-columns). Still unported: `Cbor` (RFC 8949,
+      and the BigInt preferred serialization TestBigInt pins),
+      `Validate`, `Digest`/`Compat`, `Edn`, `Yaml`, `Markdown`, the
+      staged codecs, and the `Codecs` provider registry. (2026-09-25)

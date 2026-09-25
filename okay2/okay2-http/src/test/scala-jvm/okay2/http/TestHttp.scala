@@ -113,4 +113,10 @@ class TestHttp extends Live {
       catch { case _: Throwable => true }
     assert(failed, "the server outlived its Resource scope")
   }
+
+  test("the acceptance router, served by Server and read by Transports: every check holds") {
+    val checks = serving(r => Acceptance.routes.applyOrElse(r, (_: Request) => Server.notFound))(port => run(Acceptance.rest(client, port)))
+    assertEquals(checks.filterNot(_._2), Seq.empty, checks.toString)
+    assertEquals(checks.length, 3)
+  }
 }

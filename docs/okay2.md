@@ -1928,8 +1928,26 @@ same session over a real one:
 On the JVM, `Server` is the JDK server as a Resource, `Nio` gives raw
 channels, and `Transports` provides the JDK client and WebSocket. The
 suites that bind a port are tagged `Live`: `test` leaves them out, and
-`integrationTest` (or `liveOnly; okay2Http/test`) runs them. Typed
-routes are part B.
+`integrationTest` (or `liveOnly; okay2Http/test`) runs them.
+
+A typed route (stage 44, part B) is one declaration with three
+interpreters. `unapply` matches it (as a pattern too), `url` builds it,
+and `describe` renders it with no request at hand.
+`unapply(url(a)) == Some(a)` is the route's law:
+
+```scala
+  val userPost = Route / "users" / Route[Int]("id") / "posts" / Route[String]("slug")
+    assertEquals(userPost.unapply("/users/7/posts/hello"), Some((7, "hello")))
+      .on(Method.Get, userPost) { case (id, slug) => seen = s"$id:$slug"; blank }
+```
+
+A route captures `Unit`, one value, or a tuple. Joining two routes joins
+their captures, through a list form the compiler builds by induction.
+Scala 3 does the same with its tuples. `:?` starts the query, after which
+no path segment compiles. `:@` declares request headers, and `secured`
+declares a credential that `Router.enforcing` checks. A `Router`
+dispatches through a trie, and the same table is its description: the
+body and answer schemas come from `JsonSchema`.
 
 ## 36. Literature
 
@@ -1958,6 +1976,9 @@ routes are part B.
   "Stackless Scala With Free Monads" (2012): the trampoline past the
   threshold. RFC 8259 (JSON), RFC 7396 (JSON Merge Patch), RFC 4648
   (base64).
+- Miles Sabin, shapeless (2011–): the HList and the `Aux` pattern the
+  route captures are joined by; RFC 3986 (URI syntax): the escaping a
+  segment is decoded by, after the split.
 - RFC 9110 (HTTP semantics), RFC 6455 (the WebSocket protocol), the
   WHATWG HTML standard's server-sent events: the three wire contracts
   `okay2-http` speaks.
