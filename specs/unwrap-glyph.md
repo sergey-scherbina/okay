@@ -122,6 +122,22 @@ Stage 4 — the record:
       one glyph, and the three-strikes history moves into the spec's
       Decisions where a reader looks for it.
 
+Stage 5 — `.!?` retires after all (mark-glyph-only, operator
+2026-09-25: «уберем .!? и … будем использовать именно только .?»):
+- [ ] `Direct`'s `def !?` is gone, on `F[A]` and on `Gen[W]`; `Gen[W]`
+      gets its own `def ? : Unit`, for the same reason it had its own
+      `!?` (the generic mark would answer a `W` that never was).
+- [ ] `Cont.Monadic`'s symbolic μ is `.?[B]`, not `.!?[B]`.
+- [ ] The macros' mark sets and every "use the explicit marks"
+      message name `.reflect / .? / !prog` and nothing else.
+- [ ] `m.!?` REFUSES to compile with `Direct.*` imported
+      (`compileErrors` non-empty in TestUnwrapMark), watched failing
+      first while the method still exists.
+- [ ] Every call site in main, test and jmh sources, and every live doc
+      under docs/, is written `.?`; `git grep -F '.!?'` finds only the
+      archives (CHANGELOG.md, BACKLOG-ARCHIVE.md, src/jmh/history.tsv,
+      changelog.d) and the history in specs.
+
 ## Out of scope
 
 - The prefix `!p` mark. It shadows nothing, reads as "perform" for
