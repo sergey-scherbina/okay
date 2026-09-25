@@ -1,8 +1,0 @@
-feature/ci-staged 2026-09-25
-agent: claude-code
-status: in-progress
-scope: specs/ci-staged.md (operator, 2026-09-25): pre-merge gates a
-  lane's OWN projects only (affected --self + Test/compile of
-  dependents), a serial post-merge runner gates last-green..master
-  once for everyone, bisect+revert on red. Lane 1: spec + affected
-  --self + gate.sh/land.sh wiring. Runner is lane 2.
