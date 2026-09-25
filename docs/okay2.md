@@ -500,7 +500,12 @@ Each of these was measured before it was decided (specs/okay2.md):
   operation, not dispatch: since okay2-handler-allocs the loops split by
   a name-based pattern (`Split.at`) and continue by their own tail call,
   and they read **1.24x** (State, bytes within 88 B of the Scala 3
-  core), **0.98x** (relay) and **1.03x** (handle).
+  core), **0.98x** (relay) and **1.03x** (handle). Since
+  okay2-split-at-rest every other loop splits the same way. One of them,
+  `Producer.each`, had called itself from inside the split's closure,
+  and a Scala 2 closure call can never be a jump: 200 000 productions
+  overflowed the stack there, where okay's inline `split` had turned
+  the same text into a loop.
 - **Handlers are traits**, since Scala 2 has no polymorphic function
   types: `Interpr[F, S]` (the Cont-valued `F !> S`), `Interpret[F, G]`
   (translate's), `Relay[F]` (relay's).

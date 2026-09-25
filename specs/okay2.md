@@ -2257,6 +2257,44 @@ Found while building it:
       split in Scala 2 terms (the Scala 3 core's tuples), `Urls`,
       `Acceptance`
 
+## Stage 45 — every handler loop splits by `Split.at` (2026-09-25)
+Backlog `okay2-split-at-rest`. okay2-handler-allocs moved State, relay,
+handle, Reader, Writer's loops, Once, Resource and Refs onto the
+name-based `Split.at`. This stage moves every other loop that still
+went through `Split.split`, which cost two closures, a `Tuple2` and an
+`Either` per handled operation:
+- the Delim machine;
+- `Producer.fold`/`foldUntil`/`each`/`streamIn`;
+- `Writer.unconsIn`/`expand`/`mapAt`;
+- `Logic.msplit`, `Stream.iterator`, `Effects.translate`, `State.zoomAt`;
+- `SharedOnce.runIn`, `Source.runForeach`, `Channel.feedFlushing`,
+  `Flush.map`;
+- the four `Take` pipes;
+- fs2's `toFs2At`, zio's `toZStreamAt`.
+
+`Split.split` stays for `<|>` and for callers outside the library.
+
+### Behavior (stage 45)
+- [x] `Producer.each` is stack-safe: 200 000 back-to-back productions.
+      The test threw StackOverflowError on master: `each` recursed
+      inside the split's closure, where no tail call is possible.
+      okay's `each` has the same text but was safe, because its
+      `split` is inline (producer-each-stack).
+- [x] every okay2 suite green on JVM, JS and Native (1909 results
+      before the rebase)
+
+### Decisions (stage 45)
+- A `Take` pipe's row is exactly `Take + Writer`, so what is not an
+  await IS a tell. That arm reads it with `Split.only`, where
+  `splitBoth` claimed the same without a test.
+- NOT MEASURED. Four lanes were added to `HandlerBenchmark`
+  (`delimShift`, `produceFold`, `writerMap`, `msplitObserve`), with an
+  A/B driver against master. In an hour the box never went quiet: a
+  macOS VM held ~1300% CPU at load 120-200, and the one lane that ran
+  was discarded. The lane lands for the stack-safety fix and the
+  allocation mechanism measured in stage 36. The numbers are backlog
+  `okay2-split-at-rest-measure`.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
