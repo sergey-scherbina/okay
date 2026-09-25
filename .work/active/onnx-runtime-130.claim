@@ -1,7 +1,0 @@
-feature/onnx-runtime-130 2026-09-25T07:40:19Z
-agent: claude-code (session 015Dgo1djjZ2sTTSg7xfQoEY)
-heartbeat: 2026-09-25T07:40:19Z
-status: in-progress
-done-so-far: measured in okay-chat (0d6f6db6 there); okay-onnx has no dependents in this repo and is not aggregated
-next: bump to 1.30.0 in a worktree; okayOnnx/test with OKAY_ONNX_MODEL under 1.20 and 1.30; gate affected; land
-files: build.sbt sprint.d/doing/onnx-runtime-130.md changelog.d/onnx-runtime-130.md

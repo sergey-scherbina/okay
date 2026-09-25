@@ -15,3 +15,8 @@ over 400 phrases). fp32 is right under both.
 - Consumers' vectors move: okay-chat measured its routing and journal
   regress unchanged and its slot readers slightly better, and recompiled
   its artifacts (0d6f6db6 there). Any other consumer recompiles too.
+- Landed on a TARGETED gate at the operator's word («Выполни тесты только
+  тех модулей которые ты менял и зависимые от них»): okay-onnx, which
+  nothing in this repository depends on — okayOnnx/test 5 of 5 with the
+  MiniLM on disk. Two affected gates had run green before rebases
+  (7381 and 7436 results, 0 warnings).
