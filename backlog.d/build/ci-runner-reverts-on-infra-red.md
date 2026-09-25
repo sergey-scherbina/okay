@@ -11,4 +11,8 @@
       settle it: the runner treats a red with no `==> X` as NO VERDICT
       (as gate.sh's KILLED/STALLED are), re-runs once on a quieter box,
       and reverts only on a red that names a test. The lane was re-landed
-      by hand. (2026-09-25)
+      by hand. The same kill recurs: two staged gates of the re-landing
+      lane that afternoon lost okay-chain's and okay-conf's Native test
+      binaries to signal 9 (then "Accept timed out"), each green when
+      re-run alone. A kill of a Native test process is therefore routine
+      on this box, and a revert keyed on it will keep firing. (2026-09-25)
