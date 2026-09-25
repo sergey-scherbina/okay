@@ -42,10 +42,12 @@ class TestCont extends munit.FunSuite {
 
   test("absorption: the FIRST bind enters the leaf, the second is a node") {
     // the structural half of the one-step rule (specs/freer-base.md).
+    // The leaf is built with `shiftLeaf`: `shift` would rewrite this
+    // tail-shaped body to a Return at compile time (ContMacro).
     // `Cont` is an opaque facade over `Free[Shift, A]`, so from here
     // the nodes are reached by a class test on `Any` — which is all a
     // structural probe needs, and all the facade allows.
-    val s = shift[Int, Int, Int](k => k(0))
+    val s = Cont.shiftLeaf[Int, Int, Int](k => k(0))
     def succ(x: Int): Int /> Int = Cont.Pure(x + 1)
     def isOp(c: Any) = c match { case Free.Inject(_) => true; case _ => false }
     def isBind(c: Any) = c match { case Free.Bind(_, _) => true; case _ => false }
@@ -62,7 +64,7 @@ class TestCont extends munit.FunSuite {
     // nest 1M closure calls. It stops after one, and the rest are Bind
     // nodes the tail-recursive `resume` rotates.
     val n = 1000000
-    val m = (1 to n).foldLeft(shift[Int, Int, Int](k => k(0))): (m, _) =>
+    val m = (1 to n).foldLeft(Cont.shiftLeaf[Int, Int, Int](k => k(0))): (m, _) =>
       m.flatMap(x => Cont.Pure(x + 1))
     assertEquals(reset(m), n)
   }
@@ -70,7 +72,7 @@ class TestCont extends munit.FunSuite {
   test("absorption is per leaf, not per program") {
     // each leaf absorbs its OWN first bind; joining two absorbed
     // leaves makes a node and leaves both absorptions intact
-    def leaf(i: Int) = shift[Int, Int, Int](k => k(i)).flatMap(x => Cont.Pure(x * 2))
+    def leaf(i: Int) = Cont.shiftLeaf[Int, Int, Int](k => k(i)).flatMap(x => Cont.Pure(x * 2))
     // a structural probe on Any: the facade is opaque from here
     def isOp(c: Any) = c match { case Free.Inject(_) => true; case _ => false }
 

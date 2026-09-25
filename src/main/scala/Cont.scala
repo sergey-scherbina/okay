@@ -35,7 +35,7 @@ infix type />[A, R] = Cont[A, R, R]
 /** what reset can delimit: the value and its inner answer coincide */
 infix type ^[A, R] = Cont[A, A, R]
 /** capture the current continuation (Danvy–Filinski, with answer-type modification) */
-inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.shift(f)
+inline def shift[A, S, R](inline f: (A => S) => R): Cont[A, S, R] = Cont.shift(f)
 /** delimit: run the computation with the identity continuation */
 inline def reset[A, R](c: A ^ R): R = c / identity
 /**
@@ -151,8 +151,23 @@ object Cont:
   def Pure[A, R](a: A): Rep[A, R, R] = Free.Return(a)
 
   /** a computation as a function of its continuation — the shift of
-   * Danvy and Filinski, through `Shift.of` */
-  inline def shift[A, S, R](f: (A => S) => R): Rep[A, S, R] = Free.Inject(Shift.of(f))
+   * Danvy and Filinski. A body that only calls `k` in tail position is
+   * rewritten at compile time to the value it passes (`ContMacro`,
+   * specs/cont-stack.md Layer 1 A); any other body is `shiftLeaf`. */
+  inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
+
+  /** the leaf every non-tail body becomes, through `Shift.of` */
+  inline def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Free.Inject(Shift.of(f))
+
+  /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
+   * `v` computed when the runner reaches it, in the runner's own loop.
+   * The indexes are the facade's: `S` flows to `R` exactly as `k`'s
+   * answer did, which the runner's `Return` case already trusts. */
+  def tailShift[A, S, R](v: () => A): Rep[A, S, R] = Free.delay(() => Free.Return(v()))
+
+  /** the same when `v` is a literal or a stable name and nothing runs
+   * before it: no thunk at all */
+  def tailPure[A, S, R](v: A): Rep[A, S, R] = Free.Return(v)
 
   /**
    * A bind whose LEFT side is deferred into the runner's own loop: the
@@ -507,7 +522,13 @@ object Cont:
 /** the stack-safe data instance: the default carrier */
 given Control[Cont] with
   override inline def pure[A, R](a: A): A /> R = Cont.Pure(a)
-  override inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.shift(f)
+  // the LEAF, not the macro: this override implements an abstract
+  // method, so Scala 3 keeps a non-inline retained body for it, and a
+  // macro expanded here — in the file that defines the types
+  // ContMacro reads — made a suspension cycle ("stale symbol Cont$",
+  // every compile, clean or not). `f` is a plain parameter the macro
+  // could not read anyway.
+  override inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.shiftLeaf(f)
   extension [A, S, R](m: Cont[A, S, R])
     // prefix form on purpose: `m / k` here would resolve to this very
     // override (see Cont.bind's comment)
