@@ -459,6 +459,16 @@ more than it adds (the line count of what it removed goes in Results).
       (supervised with a deadline), so R's own replay is gone and R
       recovers from a death — stage 3's R half, done here. R is a row of
       `WireConformance` and `CrashConformance`.
+- [x] Stage 2b — **foreign-one-program** (2026-09-26): ONE program
+      protocol. The direct style (`start`/`ask`/`resume`) folded into
+      `program`/`perform`/`continue` in all six far sides: a direct
+      function is a program whose `perform` nodes are marked `once` (a
+      parked stack). `ForeignEval.Start`/`Resume` and `PyStep` are gone;
+      `Program` carries the callbacks offered and the host's `direct`
+      intent; `Continue` carries an answer or a failure. The supervisor
+      reads `once`; the pool routes both kinds by run. Go and Rust gained a
+      plain `call`.
+- [ ] Stage 2c — **foreign-one-held**: `hold`/`method`/`attr` into `call`.
 - [ ] Stage 2 — **foreign-one-protocol**: the five operations and
       parts (shim 7 in every shim; `held`, `Address`, `perform` as the one
       callback message, tables as parts); the transcript written and
@@ -646,3 +656,32 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   - Durable journals of R programs written before v9 no longer replay:
     their fingerprints hashed R's old tags, so the journal's drift check
     refuses them by name rather than answering from them.
+- **Stage 2b, foreign-one-program (2026-09-26).**
+  - Wire: `start`, `ask` and `resume` are gone from all six far sides
+    (Python and TypeScript shim 7, R shim 10, the Go, Rust and Haskell
+    libraries 7). A direct function's `okay_call` answers the SAME node a
+    program as data answers, `{"perform", "args", "k", "once": true}`, and
+    is continued by the same `continue{run, k, answer | condition}`; a
+    second continue of a `once` k is refused by name. A function that
+    returns a plain value is a program already `done` (it was a refusal
+    under two protocols; remote-foreign's box says so now).
+  - Host: `ForeignEval` 11 → 9 cases; `PyStep` and the journal's step
+    codec deleted; `Fn.calling`, `PyRun`, the pool, the supervisor and the
+    workflow activity all walk one node type. The pool keeps a worker out
+    only while a `once` node is open (a parked frame would otherwise have
+    other calls nested inside it) — decided by the far side's node, not by
+    which op the host happened to send. `Program.direct` is the HOST's
+    intent, used for one thing: a start that died is not re-run.
+  - Go and Rust serve a plain `call` of a direct function (they served
+    only `start` and programs before).
+  - Tests: every Live suite of okay-py (226), okay-r (98 + callbacks 6),
+    okay-rust FFM/wasm (35), okay-foreign-cluster (26) and
+    okay-foreign-workflow (12) green; the only test edits are constructors,
+    the journal's op names (`program:…`, `continue`) and the plain-return
+    case above. Default gate 137.
+  - Mutant: the supervisor ignoring `once`. `TestCrashPython` and
+    `TestSupervised` fail — and the failure is the reason the flag exists:
+    the supervisor re-ran the killed direct function and ANSWERED
+    (`Right(6.0)`), silently repeating whatever it did before it died.
+  - Durable journals written before this lane that contain a direct
+    dialogue (`start`/`resume`) are refused by the drift check.
