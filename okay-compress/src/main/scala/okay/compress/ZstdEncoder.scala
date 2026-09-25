@@ -23,9 +23,24 @@ object ZstdEncoder:
   private final val BlockMax = 128 << 10
   private final val MinMatch = 4
   private final val HashLog = 17
-  private final val ChainDepth = 24
 
-  def compress(bytes: Array[Byte]): Array[Byte] =
+  /** how hard a level searches: candidates per position on the hash chain,
+   * whether one step of lazy matching is tried, and whether the step grows
+   * through input that does not match (okay-compress stage 5: the first cut
+   * searched 24 deep with lazy matching everywhere, and ran 20x slower than
+   * aircompressor's level 3 for a smaller output) */
+  private final case class Effort(depth: Int, lazyMatch: Boolean, accelerate: Boolean)
+  private def effort(level: Int): Effort =
+    if level <= 1 then Effort(1, false, true)
+    else if level <= 3 then Effort(4, true, true)
+    else if level <= 6 then Effort(16, true, false)
+    else Effort(64, true, false)
+
+  /** the default level, 3: ZSTD's own default */
+  def compress(bytes: Array[Byte]): Array[Byte] = compress(bytes, 3)
+
+  def compress(bytes: Array[Byte], level: Int): Array[Byte] =
+    val e = effort(level)
     val out = Out(bytes.length / 2 + 64)
     out.int32(0xfd2fb528)
     // single segment, a checksum, and the content size in the fewest bytes
@@ -35,14 +50,14 @@ object ZstdEncoder:
     else if n < 65536 + 256 then { out.byte(0x40 | 0x20 | 0x04); out.byte((n - 256).toInt); out.byte(((n - 256) >>> 8).toInt) }
     else if n < (1L << 32) then { out.byte(0x80 | 0x20 | 0x04); out.int32(n.toInt) }
     else { out.byte(0xc0 | 0x20 | 0x04); out.int64(n) }
-    val m = Matcher(bytes)
+    val m = Matcher(bytes, e.depth)
     val reps = Array(1, 4, 8)
     var from = 0
     var last = false
     while !last do
       val len = math.min(BlockMax, bytes.length - from)
       last = from + len == bytes.length
-      block(bytes, from, len, last, m, reps, out)
+      block(bytes, from, len, last, m, reps, out, e)
       from += len
     out.int32(XxHash.xxh64(bytes, 0, bytes.length).toInt)
     out.result()
@@ -51,12 +66,12 @@ object ZstdEncoder:
     val h = (size << 3) | (kind << 1) | (if last then 1 else 0)
     out.byte(h); out.byte(h >>> 8); out.byte(h >>> 16)
 
-  private def block(src: Array[Byte], from: Int, len: Int, last: Boolean, m: Matcher, reps: Array[Int], out: Out): Unit =
+  private def block(src: Array[Byte], from: Int, len: Int, last: Boolean, m: Matcher, reps: Array[Int], out: Out, e: Effort): Unit =
     if len > 0 && (1 until len).forall(i => src(from + i) == src(from)) then
       header(out, len, 1, last); out.byte(src(from))
     else
       val saved = reps.clone()
-      val body = compressed(src, from, len, m, reps)
+      val body = compressed(src, from, len, m, reps, e)
       if body == null || body.length >= len then
         System.arraycopy(saved, 0, reps, 0, 3)        // a raw block leaves the decoder's offsets as they were
         header(out, len, 0, last); out.bytes(src, from, len)
@@ -67,7 +82,7 @@ object ZstdEncoder:
 
   /** a hash chain over the whole input: `head` the latest position of a
    * hash, `prev` the one before a position with the same hash */
-  private final class Matcher(src: Array[Byte]):
+  private final class Matcher(src: Array[Byte], depthLimit: Int):
     private val head = Array.fill(1 << HashLog)(-1)
     private val prev = new Array[Int](math.max(1, src.length))
     private var inserted = 0
@@ -97,7 +112,7 @@ object ZstdEncoder:
         var bestLen = 0
         var bestOff = 0
         var depth = 0
-        while cand >= 0 && depth < ChainDepth do
+        while cand >= 0 && depth < depthLimit do
           // a candidate that cannot beat the best so far is skipped on one byte
           if bestLen == 0 || (i + bestLen < end && src(cand + bestLen) == src(i + bestLen)) then
             val l = matchLength(cand, i, end)
@@ -126,7 +141,7 @@ object ZstdEncoder:
     else if litLen == 0 && offset == reps(0) - 1 then { reps(2) = reps(1); reps(1) = reps(0); reps(0) = offset; 3 }
     else { reps(2) = reps(1); reps(1) = reps(0); reps(0) = offset; offset + 3 }
 
-  private def compressed(src: Array[Byte], from: Int, len: Int, m: Matcher, reps: Array[Int]): Array[Byte] =
+  private def compressed(src: Array[Byte], from: Int, len: Int, m: Matcher, reps: Array[Int], e: Effort): Array[Byte] =
     val end = from + len
     val lits = Out(len)
     val seqs = Seqs(len / MinMatch + 1)
@@ -135,6 +150,7 @@ object ZstdEncoder:
     // the last bytes are literals: a match would not pay for its sequence
     val matchEnd = end
     val searchEnd = end - MinMatch
+    var misses = 1 << 6
     while i < searchEnd do
       // a repeat offset first: cheap, and the commonest win in tabular data
       var len1 = 0
@@ -149,16 +165,22 @@ object ZstdEncoder:
       val found = m.best(i, matchEnd)
       if (found >>> 32).toInt > len1 + 1 then { len1 = (found >>> 32).toInt; off1 = found.toInt }
       if len1 >= MinMatch then
-        // lazy: a longer match one byte on wins
-        val next = m.best(i + 1, matchEnd)
-        if (next >>> 32).toInt > len1 + 1 then
-          i += 1
-          len1 = (next >>> 32).toInt; off1 = next.toInt
+        misses = 1 << 6
+        // lazy: a longer match one byte on wins (only worth the search for a short one)
+        if e.lazyMatch && len1 < 32 then
+          val next = m.best(i + 1, matchEnd)
+          if (next >>> 32).toInt > len1 + 1 then
+            i += 1
+            len1 = (next >>> 32).toInt; off1 = next.toInt
         val litLen = i - anchor
         lits.bytes(src, anchor, litLen)
         seqs.add(litLen, len1, offsetValue(off1, litLen, reps))
         i += len1
         anchor = i
+      else if e.accelerate then
+        // through input that does not match, the step grows (LZ4's acceleration)
+        i += misses >>> 6
+        misses += 1
       else i += 1
     lits.bytes(src, anchor, end - anchor)
     encodeBlock(lits.buf, lits.n, seqs)

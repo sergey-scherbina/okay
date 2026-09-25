@@ -20,7 +20,10 @@ in it is nullable:
 | list, large_list (read) | `ListOf(offsets, child, …)` |
 | struct | `Struct(fields, …)` |
 
-A dictionary-encoded column is read as its values. What the model does
+A compressed body (LZ4_FRAME or ZSTD, as pyarrow writes with
+`compression=`) is read, and `OkayArrow.write(t, Some(codec))` writes one,
+through [okay-compress](okay-compress.md). A dictionary-encoded column is
+read as its values. What the model does
 not hold (decimal256, maps, unions, run-end encoding, views, intervals,
 times of day) is refused by name. The wire to Python uses five of these
 columns (`FrameFormat`, docs/python-and-r.md).

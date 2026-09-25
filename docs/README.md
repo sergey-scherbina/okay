@@ -305,6 +305,7 @@ API reference, gotchas.
 | [`okay-mail`](modules/okay-mail.md) | sending mail: SMTP over a socket with STARTTLS, send only, and failure as data |
 | [`okay-blob`](modules/okay-blob.md) | the object-store seam: fs and S3 engines, OWN SigV4 pinned by the AWS vectors, persist backups |
 | [`okay-obs`](modules/okay-obs.md) | tracing without a framework: spans as values on a topic, W3C traceparent, capability routes, OTLP export as a consumer |
+| [`okay-compress`](modules/okay-compress.md) | LZ4 (frame and block) and ZSTD (RFC 8878), both ways, pure Scala on JVM, Scala.js and Native with no dependency; Arrow's compressed IPC bodies use them |
 | [`okay-arrow`](modules/okay-arrow.md) | Apache Arrow IPC behind one facade: `OkayArrow`, ours, on JVM, Scala.js and Native with no dependency (what the wire to Python uses), and `ApacheArrow`, the same facade over Arrow Java, an optional dependency |
 | [`okay-py`](modules/okay-py.md) | Python (and TypeScript, and Haskell) as a handler: typed calls, callbacks into okay's effects, held objects, streams, programs as data (multi-shot), declared environments; a clean-env shim with a version handshake, N workers past the GIL |
 | [`okay-r`](modules/okay-r.md) | R as a handler (typed calls, callbacks, held objects, streams, programs as data), the same model with R's own three-way absence: NULL, a TYPED NA inside a vector, and NaN — kept apart at the type level so a statistical function is not quietly handed the wrong one |

@@ -29,13 +29,15 @@ object Lz4Block:
     val anchorEnd = end - LastLiterals
     var anchor = from
     if len >= MfLimit + 1 then
-      val table = new Array[Int](1 << HashLog)           // position + 1; 0 is empty
+      // a table sized to the input (a small block need not clear 256 KiB)
+      val hashLog = math.max(10, math.min(HashLog, 32 - Integer.numberOfLeadingZeros(len - 1)))
+      val table = new Array[Int](1 << hashLog)           // position + 1; 0 is empty
       val mfLimit = end - MfLimit
       var i = from
       var misses = 1 << 6
       while i < mfLimit do
         val seq = Le.i32(src, i)
-        val h = (seq * -1640531535) >>> (32 - HashLog)    // 2654435761, Knuth's
+        val h = (seq * -1640531535) >>> (32 - hashLog)    // 2654435761, Knuth's
         val ref = table(h) - 1
         table(h) = i + 1
         if ref >= from && i - ref <= MaxOffset && Le.i32(src, ref) == seq then
@@ -47,7 +49,7 @@ object Lz4Block:
           misses = 1 << 6
           // the position just before the match's end, so a run continues
           if i - 2 < mfLimit && i - 2 > from then
-            table((Le.i32(src, i - 2) * -1640531535) >>> (32 - HashLog)) = i - 2 + 1
+            table((Le.i32(src, i - 2) * -1640531535) >>> (32 - hashLog)) = i - 2 + 1
         else
           i += misses >>> 6
           misses += 1
@@ -86,50 +88,62 @@ object Lz4Block:
 
   /** one block decompressed into `dst` from `at`, which may already hold
    * earlier blocks a match may reach back into; answers the new end.
-   * `limit` is how far `dst` may be written */
+   * `limit` is how far `dst` may be written.
+   *
+   * No closure touches `ip` or `op`: a local var a closure mutates becomes
+   * a heap `IntRef`, and every access in this loop would go through it —
+   * measured 5-10x slower than aircompressor before (okay-compress stage 5).
+   * Short copies are loops: `arraycopy`'s setup costs more than 16 bytes. */
   def decompress(src: Array[Byte], from: Int, len: Int, dst: Array[Byte], at: Int, limit: Int, floor: Int = 0): Int =
     val end = from + len
     var ip = from
     var op = at
-    def corrupt(why: String): Nothing = throw Corrupt(s"not an LZ4 block this reads: $why")
-    def more(): Int =
-      var n = 0
-      var b = 255
-      while b == 255 do
-        if ip >= end then corrupt("a length runs past the block (cut short?)")
-        b = src(ip) & 0xff
-        ip += 1
-        n += b
-      n
     var done = false
     while !done do
       if ip >= end then corrupt("the block ends without its last literals (cut short?)")
       val token = src(ip) & 0xff
       ip += 1
       var litLen = token >>> 4
-      if litLen == 15 then litLen += more()
+      if litLen == 15 then
+        var b = 255
+        while b == 255 do
+          if ip >= end then corrupt("a length runs past the block (cut short?)")
+          b = src(ip) & 0xff
+          ip += 1
+          litLen += b
       if litLen > end - ip then corrupt(s"$litLen literals where ${end - ip} bytes remain (cut short?)")
       if litLen > limit - op then corrupt(s"the block decompresses past its $limit-byte limit")
-      System.arraycopy(src, ip, dst, op, litLen)
+      if litLen <= 16 then
+        var k = 0
+        while k < litLen do { dst(op + k) = src(ip + k); k += 1 }
+      else System.arraycopy(src, ip, dst, op, litLen)
       ip += litLen
       op += litLen
       if ip == end then done = true                       // the last sequence: literals only
       else
         if end - ip < 2 then corrupt("an offset cut short")
-        val offset = Le.u16(src, ip)
+        val offset = (src(ip) & 0xff) | (src(ip + 1) & 0xff) << 8
         ip += 2
         if offset == 0 || offset > op - floor then corrupt(s"offset $offset reaches before the start of the output")
         var matchLen = (token & 15) + MinMatch
-        if (token & 15) == 15 then matchLen += more()
+        if (token & 15) == 15 then
+          var b = 255
+          while b == 255 do
+            if ip >= end then corrupt("a length runs past the block (cut short?)")
+            b = src(ip) & 0xff
+            ip += 1
+            matchLen += b
         if matchLen > limit - op then corrupt(s"the block decompresses past its $limit-byte limit")
         val ref = op - offset
-        if offset >= matchLen then System.arraycopy(dst, ref, dst, op, matchLen)
+        if offset >= matchLen && matchLen > 16 then System.arraycopy(dst, ref, dst, op, matchLen)
         else
-          // an overlapping match repeats its own output: byte by byte
+          // short, or overlapping (a match repeating its own output): byte by byte
           var k = 0
           while k < matchLen do { dst(op + k) = dst(ref + k); k += 1 }
         op += matchLen
     op
+
+  private def corrupt(why: String): Nothing = throw Corrupt(s"not an LZ4 block this reads: $why")
 
 /**
  * The LZ4 FRAME format (lz4_Frame_format.md): magic 184D2204, a
