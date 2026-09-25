@@ -38,7 +38,12 @@ object TestR:
       p.waitFor()
     catch case _: Exception => 127
 
-  private def containerShim(): Option[String] =
+  private def containerShim(): Option[String] = container(image, "r-cran-jsonlite")
+
+  /** an `Rscript` that runs the container's, for an image built once
+   * from `r-base:4.4.1` plus `packages` (apt names); `RArrow` asks for
+   * the same road with `r-cran-arrow` on it */
+  private[r] def container(image: String, packages: String): Option[String] =
     if onPath("docker").isEmpty || sh(Vector("docker", "version")) != 0 then None
     else
       val built =
@@ -47,7 +52,7 @@ object TestR:
           Files.writeString(dir.resolve("Dockerfile"),
             "FROM r-base:4.4.1\n" +
               "RUN apt-get update -qq && apt-get install -y --no-install-recommends " +
-              "r-cran-jsonlite && rm -rf /var/lib/apt/lists/*\n", UTF_8): Unit
+              packages + " && rm -rf /var/lib/apt/lists/*\n", UTF_8): Unit
           sh(Vector("docker", "build", "-t", image, dir.toString)) == 0
         }
       Option.when(built) {

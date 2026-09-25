@@ -74,8 +74,9 @@ run on threads.
       by a real python3 (Live, skipped where there is none). RUN HERE:
       `TestPyMapReduce`, 2 passed over the box's python3 (no pyarrow, so
       the frames took the JSON road; Arrow where it is installed).
-- [ ] The same over a real R (Live) — `TestRMapReduce` is written and
-      skipped: no R on the box that wrote this.
+- [x] The same over a real R (Live) — `TestRMapReduce`, run by
+      r-arrow-verify the same day in a container: the map in R over two
+      in-process workers, the fan's answer.
 - [x] The rows cross as ONE frame per chunk, `batch` rows at a time: the
       source's chunk size is not the batch size (a `Flow.slices` chunk
       of 256 would be a Python round trip per 256 rows); `through`
@@ -160,7 +161,7 @@ okay-cluster changed.
   workers, the map in python3 — `there.value == here.value ==
   Rows.doubled`, `retried == 0`, 0.5 s; a `ValueError` in the function
   fails the run naming `py:scaling:boom` and the message.
-- `TestRMapReduce` (1, Live): written to the same bar, skipped here.
+- `TestRMapReduce` (1, Live): passed in a container (r-arrow-verify).
 - Decided while writing: `Cluster.Refused` is `final`, so a function
   failure is thrown AS one (with the stage's name in its message) rather
   than as a subclass; and `RSubprocess` has no `alive`, so `RStage`

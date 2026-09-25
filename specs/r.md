@@ -549,22 +549,25 @@ they needed no change at all.
   trip counted in `arrowFrames`, `FrameFormat.Json`/`Arrow` givens,
   CBOR+zlib composing with Arrow, a strict host refusing a worker
   without the package by name.
-- **UNVERIFIED: shim.R's own Arrow calls, for want of an R with the
-  `arrow` package to test against** (none was available while writing
-  this). Three calls are the ones a first live run should check, named
-  in a comment beside them in shim.R: `t$schema$metadata` reading the
-  request's header off a Table `read_ipc_stream` returned, `tab$metadata
-  <-` setting it before a write, and `BufferOutputStream$create()` /
-  `$finish()` / `as.raw()` round-tripping an in-memory IPC stream. All
-  three are believed to be the arrow R package's documented, ordinary
-  API — mirroring pyarrow's own `schema.metadata` and
-  `BufferOutputStream` closely enough that the design is not in
-  question — but "believed" is not "measured", and `TestRArrow` is
-  written to catch it the moment a real R + arrow environment runs it:
-  it is skipped, not passing, everywhere this was written. Everything
-  on the JVM side (`RArrowFrames`, the negotiation in `RSubprocess`,
-  `WireChoice`) IS tested without R and does not depend on any of the
-  three.
+- **VERIFIED (r-arrow-verify, 2026-09-25)** — shim.R's three Arrow calls
+  against a live R, in a container (`r-base:4.4.1` + `r-cran-arrow`,
+  which pulls R 4.6.1 and arrow 25.0.0): `TestRArrow` 6/6 with no change
+  to any of the three, and `TestRMapReduce` (okay-foreign-cluster) with
+  the map in R over two in-process workers. `RArrow.rscript` now builds
+  that image itself where docker is present (`okay-r-arrow-test`, the
+  `TestR.container` road), so the suite runs wherever `TestR` does.
+  Two things the live run found, neither about Arrow:
+  - a RAW column of a frame came back from R as a character column of
+    base64 on the JSON road: `enc_col`'s per-cell form wrote a raw(1) as
+    a bare string, without its `{"t":"raw"}` tag, so the host read text.
+    The columnar-wire box "a raw column round-trips" above was true only
+    Scala-to-R. Fixed in `enc_col`; `TestRArrow` now reads the bytes back.
+  - `RSubprocess.startWith` starts the shim with a CLEARED environment,
+    so a container wrapper that reads `$TMPDIR` mounts `/tmp` and R
+    cannot open the shim file — the hello is then not the shim's and
+    the host reports "the shim says v-1". `TestR.containerShim` bakes
+    the path in at generation for exactly this reason; the arrow one
+    does the same.
 
 ## Results (stage 0)
 

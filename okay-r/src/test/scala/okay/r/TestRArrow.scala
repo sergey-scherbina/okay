@@ -5,15 +5,17 @@ import RValue.*
 object RArrow:
   /** an Rscript with the `arrow` package: `OKAY_ARROW_RSCRIPT`, else
    * `TestR.rscript` when it happens to have the package (okay-py's
-   * `PyArrow.python` twin) — no dedicated container image here: building
-   * one that compiles the `arrow` package is its own cost, left to
-   * whoever runs this suite for real */
+   * `PyArrow.python` twin), else a container of its own — `TestR`'s
+   * road with `r-cran-arrow` on it (which pulls R 4.6.1 and arrow
+   * 25.0.0 from Debian testing), built once and cached */
   lazy val rscript: Option[String] =
-    sys.env.get("OKAY_ARROW_RSCRIPT").orElse(TestR.rscript).filter { rs =>
-      scala.util.Try(ProcessBuilder(rs, "-e",
-        "quit(status = if (requireNamespace('arrow', quietly = TRUE)) 0L else 1L)")
-        .start().waitFor() == 0).getOrElse(false)
-    }
+    sys.env.get("OKAY_ARROW_RSCRIPT").orElse(TestR.rscript).filter(hasArrow)
+      .orElse(TestR.container("okay-r-arrow-test", "r-cran-jsonlite r-cran-arrow").filter(hasArrow))
+
+  private def hasArrow(rs: String): Boolean =
+    scala.util.Try(ProcessBuilder(rs, "-e",
+      "quit(status = if (requireNamespace('arrow', quietly = TRUE)) 0L else 1L)")
+      .start().waitFor() == 0).getOrElse(false)
 
 object RArrowConf:
   val mod = R.module("rarrowconf", """
@@ -30,7 +32,7 @@ class TestRArrow extends munit.FunSuite:
   lazy val engine: RSubprocess = RSubprocess.start(RArrow.rscript.get, modules = Seq(RArrowConf.mod))
   override def afterAll(): Unit = if !munitIgnore then engine.close()
   private def frame(fn: String, f: RFrame, r: RSubprocess = engine) =
-    r.handler.handle(REval.Frame(s"rarrowconf:$fn", f, Vector.empty))
+    r.handler.handle(REval.Frame(s"rarrowconf::$fn", f, Vector.empty))
 
   private val mixed = RFrame(Vector(
     "id" -> Vector(I32(1), I32(-2), NA(RType.Integer)),
@@ -51,7 +53,10 @@ class TestRArrow extends munit.FunSuite:
   test("a request the model cannot carry takes the JSON road by default, refused by name under the strict given") {
     val odd = RFrame(Vector("x" -> Vector(Bytes(Array[Byte](1)))))
     val before = engine.arrowFrames
-    assertEquals(frame("identity", odd), Right(odd))
+    // `Bytes` holds an Array, so the comparison is by content
+    frame("identity", odd) match
+      case Right(RFrame(Vector(("x", Vector(Bytes(back)))))) => assertEquals(back.toVector, Vector[Byte](1))
+      case other => fail(s"the raw column did not come back as raw: $other")
     assertEquals(engine.arrowFrames, before)
     import okay.codec.FrameFormat.Arrow.given
     val strict = RSubprocess.start(RArrow.rscript.get, modules = Seq(RArrowConf.mod))

@@ -82,6 +82,11 @@ enc_column <- function(name, v) {
 # so an NA keeps the vector's own type on the way back (the per-cell
 # form, kept for columns the four atomic types cannot carry)
 enc_col <- function(v) {
+  # a raw vector's cells keep their tag: `v[[i]]` of a raw is a raw(1),
+  # which jsonlite would write as a bare base64 string, and the host
+  # would read a character column back (found by r-arrow-verify, 2026-09-25)
+  if (is.raw(v))
+    return(lapply(seq_along(v), function(i) list(t = "raw", b64 = jsonlite::base64_enc(v[i]))))
   ty <- if (is.logical(v)) "logical"
     else if (is.integer(v)) "integer"
     else if (is.double(v)) "double"
@@ -559,15 +564,11 @@ okay_decode <- function(body) {
 # metadata under "okay". Its answer goes back the same way where the
 # answer's columns fit. `arrow` is imported only when a frame needs it.
 #
-# UNVERIFIED against a live R + arrow package (none was available to test
-# this against): three calls are the ones to check first if a live run
-# disagrees — `t$schema$metadata` reading custom schema metadata off a
-# Table read by `read_ipc_stream`, `tab$metadata <-` setting it before a
-# write (both assumed to be the R package's settable/gettable convenience
-# mirroring pyarrow's `schema.metadata`), and `sink$finish()` on a
-# `BufferOutputStream` giving a `Buffer` that `as.raw()` converts. The JVM
-# side (`RArrowFrames`, the wire negotiation) is unit-tested without R and
-# does not depend on any of the three.
+# VERIFIED 2026-09-25 (r-arrow-verify) against R 4.6.1 + arrow 25.0.0 in a
+# container (`TestRArrow`, 6/6): `t$schema$metadata` reads the request's
+# header off a Table `read_ipc_stream` returned, `tab$metadata <-` sets it
+# before a write, and `BufferOutputStream$create()`/`$finish()`/`as.raw()`
+# round-trip the stream in memory — all three as the package documents.
 
 okay_arrow_request <- function(body) {
   t <- arrow::read_ipc_stream(body, as_data_frame = FALSE)

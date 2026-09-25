@@ -21,11 +21,6 @@ already had generic — it needed no change at all.
   column mapping. `TestRArrow` (Live, okay-py's `TestArrowFrames` twin)
   proves the wire end to end — skipped everywhere this was written, for
   want of an R with the `arrow` package.
-- **UNVERIFIED: shim.R's own Arrow calls** — no R with the `arrow`
-  package was available to test against. `t$schema$metadata` (read),
-  `tab$metadata <-` (write) and `BufferOutputStream$create()`/`$finish()`/
-  `as.raw()` (in-memory round trip) are believed correct, ordinary API
-  from the package's docs, mirroring pyarrow's own shapes closely, but
-  "believed" is not "measured": the first live run should watch
-  `TestRArrow` and check those three names first if anything disagrees.
-  Everything on the JVM side is real, tested code with no R involved.
+- shim.R's own Arrow calls were UNVERIFIED when this landed (no R with
+  the `arrow` package here); `r-arrow-verify`, the same day, ran them
+  against R 4.6.1 + arrow 25.0.0 in a container: 6/6, no change needed.
