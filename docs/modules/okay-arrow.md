@@ -66,7 +66,21 @@ to add, or to use `OkayArrow` instead.
 
 ## Measured
 
-BENCH
+`ArrowIpcBench` (JMH, a box at load ~240, so the times are wide and the
+allocation per operation is the firm number):
+
+| 500k rows (float64, int64, text) | `OkayArrow` before | `OkayArrow` | Arrow Java 19 |
+|---|---|---|---|
+| write from arrays | 129 MB, 16–39 ms | 17 MB, 15–18 ms | 64 MB, 15–19 ms |
+| read into arrays | 136 MB, ~44 ms | 70 MB, ~42 ms | 105 MB, 46–157 ms |
+| read into its own columns | 136 MB, 30–42 ms | 70 MB, 14–19 ms | 14 KB, ~1 ms |
+| through the facade, both ways to the model | | the rows above | write 65 MB, 14–22 ms; read 122 MB, 64–146 ms |
+
+Through the model, ours writes with a quarter of the allocation and
+reads at least as fast. Arrow Java's own columns win the last row by far:
+it loads buffers as they are and makes no object per row, where the
+model holds a `String` per row. Reading as views over the bytes is the
+spec's deferred item for that.
 
 ## Literature
 

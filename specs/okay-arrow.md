@@ -61,18 +61,18 @@ full reimplementation buys speed in one niche and costs months.
     classpath, the first use is refused by name, saying what to add.
 - okay-py depends on okay-arrow (the wire's frames), never on Arrow Java.
 
-- [ ] Stage 1: the module (cross JVM/JS/Native), the facade and the
+- [x] Stage 1: the module (cross JVM/JS/Native), the facade and the
       model; `OkayArrow` = `ArrowIpc` moved, with arrow-ipc-fast's
       optimisations (the stream written once into an array of its exact
       size, UTF-8 encoded in place with no array per string, bulk
       little-endian copies, the body read in place). The same tests on
       every platform; pyarrow and Arrow Java as oracles on the JVM.
-- [ ] Stage 2: `ApacheArrow`: the facade over Arrow Java and
+- [x] Stage 2: `ApacheArrow`: the facade over Arrow Java and
       `toRoot`/`fromRoot`; the refusal without Arrow on the classpath;
       both implementations read each other's streams.
-- [ ] Stage 3: the measurement again, `ArrowIpcBench` with the
+- [x] Stage 3: the measurement again, `ArrowIpcBench` with the
       facade's two implementations, B/op and time, against stage 0.
-- [ ] Docs: docs/modules/okay-arrow.md — which to choose and why.
+- [x] Docs: docs/modules/okay-arrow.md — which to choose and why.
 ### Arrow wherever it makes sense (operator, 2026-09-25)
 
 "все равно тогда имеет смысл использовать арроу формат максимально везде
@@ -162,3 +162,26 @@ okay's columnar format, on every platform:
   and the allocation says why: a `String` per row, and a writer that
   grows its buffer by doubling and copies it out. Hence the Decisions
   entry above.
+
+- Stages 1–3 (2026-09-25). The module is cross (JVM, Scala.js, Native);
+  `TestOkayArrow` runs on all three. `TestApacheArrow` (5): the default
+  given is ours, the import picks Arrow Java, each reads the other's
+  stream, `toRoot`/`fromRoot`, the refusal text. okay-py's live Arrow
+  suites pass on `OkayArrow` unchanged.
+  - FOUND: an sbt `% Optional` jar is on the compile classpath but not
+    in a forked JMH JVM (`NoClassDefFoundError: BufferAllocator`) —
+    exactly a consumer's position, so the bench and tests carry it
+    explicitly (`optional;test;jmh`), and `ApacheArrow.missing` is the
+    path a consumer without Arrow meets.
+  - The measurement (load 230–250; B/op firm, times wide):
+
+    | 500k rows (float64, int64, text) | `OkayArrow` before | `OkayArrow` | Arrow Java 19 |
+    |---|---|---|---|
+    | write from arrays | 129 MB, 16–39 ms | 17 MB, 15–18 ms | 64 MB, 15–19 ms |
+    | read into arrays | 136 MB, ~44 ms | 70 MB, ~42 ms | 105 MB, 46–157 ms |
+    | read into its own columns | 136 MB, 30–42 ms | 70 MB, 14–19 ms | 14 KB, ~1 ms |
+    | through the facade, both ways to the model | | the rows above | write 65 MB, 14–22 ms; read 122 MB, 64–146 ms |
+
+    Allocation on write fell 7.6x (a stream written once into an array
+    of its exact size, UTF-8 encoded in place) and on read halved (the
+    body read in place, bulk little-endian copies).
