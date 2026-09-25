@@ -13,6 +13,8 @@ observability-blind.
 | `Tracer` | one per request: `root` (the inbound edge) / `span` (a child region) / `outbound` (the header a leaving call carries); `Sample.Never` is a short-circuit by construction |
 | `Tracer.traced` | wrap ANY comonadic handler with a span per operation — composition, not instrumentation |
 | `Traced.route` | the capability form: a route written against `using Tracer` serves under a per-request tracer; a STORED `Tracer ?=> Route` self-wires at each installation |
+
+`Traced.route(tracer, name)` (traced-route-named): the root span is NAMED by the caller — a route template keeps the label set bounded, the default is the method and path; the answer's status is on it (`http.status`, a 5xx is an error); `Traced.context` is the answering span's ids on this thread, for a process-wide logger. `Tracer.to(record)` hands spans to a function rather than a topic; `annotate` and `fail` speak about the span the caller is in.
 | `Log` | log lines as VALUES on the core's own `Writer % Line`: the program says a level, a message and fields, the HANDLER stamps the traceId and spanId from the ambient Tracer; `console` (one JSON object per line), `topic` (keyed by traceId), `collecting` (tests) |
 | `Otlp` / `OtlpPush` | export is a consumer: spans become OTLP/HTTP JSON for any collector; the offset is the resume token; a refusing collector leaves the batch unconsumed (at-least-once) |
 

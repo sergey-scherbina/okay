@@ -75,11 +75,26 @@ enum Sample:
  * call that leaves, and `traced` wraps ANY comonadic handler with a
  * span per operation, without that handler's knowledge.
  */
-final class Tracer(topic: Topic, sample: Sample = Sample.Always,
-                   clock: () => Long = () => System.currentTimeMillis):
+final class Tracer private (record: Span => Unit, sample: Sample, clock: () => Long):
+
+  /** spans appended to a trace topic (specs/obs.md) */
+  def this(topic: Topic, sample: Sample = Sample.Always,
+           clock: () => Long = () => System.currentTimeMillis) =
+    this(s => { val _ = topic.append(s.traceId.getBytes("UTF-8"), Cbor.write(s), Ack.Durable) },
+      sample, clock)
 
   private var current: Option[(String, String)] = None   // (traceId, spanId)
   private var state: Option[String] = None                // tracestate, opaque
+  /** what the body said about the span it runs in: attributes, a status */
+  private final class Said(var attrs: Vector[Attr], var status: Option[String])
+  private var said: Option[Said] = None
+
+  /** attributes for the span the caller is in — an answer's status code,
+   * known only once the body has run (traced-route-named) */
+  def annotate(attrs: Attr*): Unit = said.foreach(s => s.attrs = s.attrs ++ attrs)
+
+  /** the span the caller is in ended badly without a throw — a 5xx answer */
+  def fail(status: String = "error"): Unit = said.foreach(_.status = Some(status))
 
   /** the inbound edge: a valid traceparent continues the trace; an
    * ABSENT one starts a root; a DAMAGED one starts a fresh root
@@ -126,7 +141,10 @@ final class Tracer(topic: Topic, sample: Sample = Sample.Always,
     if sample == Sample.Never then return body
     val self = Trace.freshSpanId()
     val before = current
+    val saidBefore = said
+    val here = Said(Vector.empty, None)
     current = Some((traceId, self))
+    said = Some(here)
     val start = clock()
     var status = "ok"
     try body
@@ -135,11 +153,19 @@ final class Tracer(topic: Topic, sample: Sample = Sample.Always,
       throw e
     finally
       current = before
+      said = saidBefore
       val keep = sample match
         case Sample.Always => true
         case Sample.RootOnly => parentId.isEmpty
         case Sample.Never => false
       if keep then
-        val _ = topic.append(traceId.getBytes("UTF-8"),
-          Cbor.write(Span(traceId, self, parentId, name, start, clock(), attrs, status)),
-          Ack.Durable)
+        record(Span(traceId, self, parentId, name, start, clock(), attrs ++ here.attrs,
+          if status == "ok" then here.status.getOrElse(status) else status))
+
+object Tracer:
+  /** spans handed to `record` — a log line, a test's list — rather than a
+   * topic (traced-route-named). One per request, as every Tracer: it holds
+   * the current span */
+  def to(record: Span => Unit, sample: Sample = Sample.Always,
+         clock: () => Long = () => System.currentTimeMillis): Tracer =
+    new Tracer(record, sample, clock)
