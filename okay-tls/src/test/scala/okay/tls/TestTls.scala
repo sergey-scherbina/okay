@@ -32,6 +32,11 @@ class TestTls extends munit.FunSuite {
   def cert = s"${TestTls.dir}/cert.pem"
   def key = Secret(s"file:${TestTls.dir}/key.pem")
 
+  // The client connects to the LOOPBACK ADDRESS, never "localhost": on
+  // macOS that tries ::1 first, where a neighbour's socket can hold the
+  // same port number (localhost-connects-to-a-stranger). "localhost" stays
+  // as the name the certificate is checked against, which is what it is.
+
   /** a one-shot echo server over the seam's own server half */
   def served[A](body: Int => A): A =
     val ss = Tls.serverSocket(0, cert, key, Secrets.file)
@@ -54,7 +59,7 @@ class TestTls extends munit.FunSuite {
 
   test("verify-full with the CA: the handshake completes and bytes flow") {
     served { port =>
-      val out = Tls.client(Socket("localhost", port), "localhost",
+      val out = Tls.client(Socket(java.net.InetAddress.getLoopbackAddress, port), "localhost",
         TlsConfig(caFile = Some(cert)))
       assertEquals(out.map(echo), Right("ping"))
     }
@@ -70,7 +75,7 @@ class TestTls extends munit.FunSuite {
 
   test("verify-full refuses an unknown CA (the platform store does not know ours)") {
     served { port =>
-      val out = Tls.client(Socket("localhost", port), "localhost", TlsConfig())
+      val out = Tls.client(Socket(java.net.InetAddress.getLoopbackAddress, port), "localhost", TlsConfig())
       assert(out.isLeft, out.toString)
     }
   }
@@ -85,22 +90,22 @@ class TestTls extends munit.FunSuite {
 
   test("require encrypts without identity; against PLAINTEXT it refuses") {
     served { port =>
-      val out = Tls.client(Socket("localhost", port), "localhost",
+      val out = Tls.client(Socket(java.net.InetAddress.getLoopbackAddress, port), "localhost",
         TlsConfig(mode = SslMode.Require))
       assertEquals(out.map(echo), Right("ping"))
     }
     // a plaintext server answers no handshake
-    val plain = ServerSocket(0)
+    val plain = ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress)
     val t = new Thread(() => try { val s = plain.accept(); s.getInputStream.read(); s.close() } catch { case _: Exception => () })
     t.setDaemon(true); t.start()
-    val out = Tls.client(Socket("localhost", plain.getLocalPort), "localhost",
+    val out = Tls.client(Socket(plain.getInetAddress, plain.getLocalPort), "localhost",
       TlsConfig(mode = SslMode.Require))
     assert(out.isLeft, out.toString)
     plain.close()
   }
 
   test("disable connects in the clear — the named decision it is") {
-    val plain = ServerSocket(0)
+    val plain = ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress)
     val t = new Thread(() =>
       try
         val s = plain.accept()
@@ -108,7 +113,7 @@ class TestTls extends munit.FunSuite {
         s.getOutputStream.write(b, 0, n); s.close()
       catch case _: Exception => ())
     t.setDaemon(true); t.start()
-    val out = Tls.client(Socket("localhost", plain.getLocalPort), "localhost",
+    val out = Tls.client(Socket(plain.getInetAddress, plain.getLocalPort), "localhost",
       TlsConfig(mode = SslMode.Disable))
     assertEquals(out.map(echo), Right("ping"))
     plain.close()
@@ -126,7 +131,7 @@ class TestTls extends munit.FunSuite {
     // here: the key managers build from cert+key and change nothing
     // for a server that never sends CertificateRequest
     served { port =>
-      val out = Tls.client(Socket("localhost", port), "localhost",
+      val out = Tls.client(Socket(java.net.InetAddress.getLoopbackAddress, port), "localhost",
         TlsConfig(caFile = Some(cert), clientCert = Some(cert), clientKey = Some(key)),
         Secrets.file)
       assertEquals(out.map(echo), Right("ping"))

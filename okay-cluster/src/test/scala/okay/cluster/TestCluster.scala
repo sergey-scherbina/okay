@@ -31,10 +31,14 @@ class TestCluster extends munit.FunSuite {
     assertEquals(acc._1, 1000L)   // every element counted exactly once
   }
 
-  test("a socket worker dies mid-stream; the wire chunks recompute on the local one") {
+  // binds a port (integration-test-gate: out of the default gate)
+  test("a socket worker dies mid-stream; the wire chunks recompute on the local one".tag(new munit.Tag("Live"))) {
     // the remote end: reads a JSON chunk per line, answers the SUM —
     // and drops the connection after two chunks (the kill)
-    val server = ServerSocket(0)
+    // on THE loopback address, connected to by that address, never
+    // "localhost": on macOS that tries ::1 first, where a neighbour's
+    // socket can hold the same port (localhost-connects-to-a-stranger)
+    val server = ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress)
     val remote = okay.Threads.spawnThread("okay-cluster-test-remote") { () =>
       val sock = server.accept()
       val in = BufferedReader(InputStreamReader(sock.getInputStream))
@@ -48,7 +52,7 @@ class TestCluster extends munit.FunSuite {
       sock.close()
     }
 
-    lazy val conn = Socket("localhost", server.getLocalPort)
+    lazy val conn = Socket(server.getInetAddress, server.getLocalPort)
     lazy val out = PrintWriter(conn.getOutputStream, true)
     lazy val in = BufferedReader(InputStreamReader(conn.getInputStream))
     val wire: Cluster.Worker[Double, Double] = c =>
