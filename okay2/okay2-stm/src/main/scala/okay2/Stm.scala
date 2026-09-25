@@ -287,10 +287,13 @@ object Stm {
           case Left(RetryNow) => Sim.sleep(1).flatMap(_ => attempt)
           case Left(t) => throw t
         }
-        def loop(p: A ! Tx): A ! Sim.Op = Free.resume(p) match {
+        // a call from inside flatMap (or a by-name `++`) cannot be a jump; `again`
+        // takes it, so the walk itself stays a checked loop (specs/stack-safety.md)
+        def again(p: A ! Tx): A ! Sim.Op = loop(p)
+        @tailrec def loop(p: A ! Tx): A ! Sim.Op = Free.resume(p) match {
           case Return(a) => finish(a)
           case Inject(e) => loop(Bind(Inject[Tx, A](e), (v: A) => Return[Tx, A](v)))
-          case Bind(Inject(e), k) => Sim.yieldNow.flatMap(_ => after(step(e))(x => loop(k(x))))
+          case Bind(Inject(e), k) => Sim.yieldNow.flatMap(_ => after(step(e))(x => again(k(x))))
           case other => throw new IllegalStateException("resume left a non-head form: " + other)
         }
         loop(tx)

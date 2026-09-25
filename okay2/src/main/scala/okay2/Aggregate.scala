@@ -1,4 +1,6 @@
 package okay2
+import scala.annotation.tailrec
+
 
 /**
  * A named, typed, reusable unit of aggregation — the Scala 3 core's
@@ -300,16 +302,20 @@ object Aggregator {
    * survives.
    */
   def topK[A](k: Int)(implicit O: Ordering[A]): Aggregator[A, List[A], List[A]] = {
-    def insert(a: A, xs: List[A], remaining: Int): List[A] =
-      if (remaining <= 0) Nil
+    // a loop (specs/stack-safety.md): the kept prefix is carried
+    // reversed and put back in front once the insertion point is found
+    @tailrec def insert(a: A, xs: List[A], remaining: Int, keptRev: List[A]): List[A] =
+      if (remaining <= 0) keptRev.reverse
       else xs match {
-        case Nil => a :: Nil
-        case h :: t => if (O.gt(h, a)) h :: insert(a, t, remaining - 1) else a :: xs.take(remaining - 1)
+        case Nil => keptRev reverse_::: (a :: Nil)
+        case h :: t =>
+          if (O.gt(h, a)) insert(a, t, remaining - 1, h :: keptRev)
+          else keptRev reverse_::: (a :: xs.take(remaining - 1))
       }
     def keep(xs: List[A]) = xs.sorted(O.reverse).take(k)
     apply[A, List[A], List[A]](List.empty[A]) { (s, a) =>
       val kth = s.drop(k - 1)
-      if (kth.isEmpty || O.gt(a, kth.head)) insert(a, s, k) else s
+      if (kth.isEmpty || O.gt(a, kth.head)) insert(a, s, k, Nil) else s
     }((a, b) => keep(a ++ b))(identity)
   }
 

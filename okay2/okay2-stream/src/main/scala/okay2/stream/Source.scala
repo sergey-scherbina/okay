@@ -3,6 +3,7 @@ package okay2.stream
 import okay2._
 import okay2.Free.{Return, Inject, Bind}
 import okay2.async._
+import scala.annotation.tailrec
 
 /**
  * An asynchronous SOURCE: a program that tells its elements as it
@@ -73,11 +74,14 @@ object Source {
     /** run `f` for each element, in order, as ONE walk */
     def runForeach(f: A => Unit ! Async): Unit ! Async = {
       val Mine = okay2.Split.at[Writer[A]]
-      def loop(x: Source[A]): Unit ! Async = Free.resume(x) match {
+      // a call from inside flatMap (or a by-name `++`) cannot be a jump; `again`
+      // takes it, so the walk itself stays a checked loop (specs/stack-safety.md)
+      def again(x: Source[A]): Unit ! Async = loop(x)
+      @tailrec def loop(x: Source[A]): Unit ! Async = Free.resume(x) match {
         case Return(_) => pure(())
         case Inject(e) => loop(Bind(Inject[Writer[A] + Async, Unit](e), (x: Unit) => Return[Writer[A] + Async, Unit](x)))
-        case Bind(Inject(Mine(Writer.Say(a))), k) => f(a).flatMap(_ => loop(k(())))
-        case Bind(Inject(g), k) => Free.Inject[Async, Any](g).flatMap(v => loop(k(v)))
+        case Bind(Inject(Mine(Writer.Say(a))), k) => f(a).flatMap(_ => again(k(())))
+        case Bind(Inject(g), k) => Free.Inject[Async, Any](g).flatMap(v => again(k(v)))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
       loop(s)

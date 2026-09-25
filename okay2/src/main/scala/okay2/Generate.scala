@@ -38,12 +38,15 @@ object Produce {
   def streamIn[G <: Row]: Stream[({ type L[A] = A ! (Produce + G) })#L, G] =
     new Stream[({ type L[A] = A ! (Produce + G) })#L, G] {
       private[this] val Mine = Split.at[Produce]
-      def uncons[A](p: A ! (Produce + G)): Option[(A, A ! (Produce + G))] ! G = Free.resume(p) match {
+      // a call from inside flatMap cannot be a jump; `again` takes it, so the walk
+      // itself stays a checked loop (specs/stack-safety.md)
+      private[this] def again[A](p: A ! (Produce + G)): Option[(A, A ! (Produce + G))] ! G = uncons(p)
+      @tailrec def uncons[A](p: A ! (Produce + G)): Option[(A, A ! (Produce + G))] ! G = Free.resume(p) match {
         case Return(_) => pure[G, Option[(A, A ! (Produce + G))]](None)
         case Inject(e) => uncons(Bind(Inject[Produce + G, A](e), (v: A) => Return[Produce + G, A](v)))
         case Bind(Inject(Mine(w)), k) =>
           pure[G, Option[(A, A ! (Produce + G))]](Some((produced[A](w.a), k(w.a))))
-        case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => uncons(k(x)))
+        case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => again(k(x)))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
     }

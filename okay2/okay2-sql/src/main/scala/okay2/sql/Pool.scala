@@ -3,6 +3,7 @@ package okay2.sql
 import java.util.concurrent.atomic.AtomicBoolean
 import okay2.{!, +, Resource, TRef, pure}
 import okay2.async.{Async, Scheduler, Timer, asyncFailing}
+import scala.annotation.tailrec
 
 /**
  * A bounded connection pool (okay-sql's Pool.scala): at most `size`
@@ -87,7 +88,7 @@ final class Pool[C <: Sql] private (open: () => C ! Async, dispose: C => Unit,
       () => withdraw(w)
     }
 
-  private def release(c: C): Unit = {
+  @tailrec private def release(c: C): Unit = {
     c.cancel()
     val (next, disposeIt) = state.modify { st =>
       if (st.closed) (st.copy(busy = st.busy - 1), (None, true))

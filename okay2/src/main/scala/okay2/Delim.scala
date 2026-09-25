@@ -549,6 +549,38 @@ object Delim {
    * where the prompt's mark was) and what lies outside it */
   private final case class Cut[F <: Row, A, P, Z](captured: Segs[F, A, P], outer: Segs[F, P, Z])
 
+  /**
+   * The segments `cut` walked past, as a type-aligned stack
+   * (specs/stack-safety.md): from a chain leading out of Y it builds one
+   * leading out of A, for ANY end Q. Scala 2 refines no method type
+   * parameter by a match, so each step is a METHOD on the node: `Top`
+   * is finished, `On` hands back the frame below it with one more
+   * segment wrapped. No cast.
+   */
+  private sealed trait Wrap[F <: Row, A, Y] { def step[Q](c: Segs[F, Y, Q]): Unwound[F, A, Q] }
+  private final case class Top[F <: Row, A]() extends Wrap[F, A, A] {
+    def step[Q](c: Segs[F, A, Q]): Unwound[F, A, Q] = Unwound.Finished(c)
+  }
+  private final case class On[F <: Row, A, X, Y](under: Wrap[F, A, X], frame: Frame[F, X, Y]) extends Wrap[F, A, Y] {
+    def step[Q](c: Segs[F, Y, Q]): Unwound[F, A, Q] = Unwound.More(under, frame(c))
+  }
+  /** one segment put back around a chain, whatever that chain's end */
+  private trait Frame[F <: Row, X, Y] { def apply[Q](c: Segs[F, Y, Q]): Segs[F, X, Q] }
+
+  private sealed trait Unwound[F <: Row, A, Q]
+  private object Unwound {
+    final case class Finished[F <: Row, A, Q](c: Segs[F, A, Q]) extends Unwound[F, A, Q]
+    final case class More[F <: Row, A, X, Q](w: Wrap[F, A, X], c: Segs[F, X, Q]) extends Unwound[F, A, Q]
+  }
+
+  @tailrec private def unwind[F <: Row, A, Q](u: Unwound[F, A, Q]): Segs[F, A, Q] = u match {
+    case Unwound.Finished(c) => c
+    case m: Unwound.More[F, A, x, Q] => unwind(m.w.step(m.c))
+  }
+
+  /** where the walk is: the chain still to search, and what it passed */
+  private final case class Walk[F <: Row, A, X, Z](kont: Segs[F, X, Z], w: Wrap[F, A, X])
+
   /** the machine's state between steps: a program and the stack it
    * continues into, the head type an abstract member so a
    * monomorphic `@tailrec` loop can carry it (a polymorphic local loop
@@ -604,7 +636,7 @@ object Delim {
 
     /** frames back into a program: binds become flatMaps, markers
      * become pushes — the continuation re-installs its delimiter */
-    def reify[A, P](segs: Segs[F, A, P], start: Prog[A]): Prog[P] = segs match {
+    @tailrec def reify[A, P](segs: Segs[F, A, P], start: Prog[A]): Prog[P] = segs match {
       case Segs.Done(ev) => ev.substituteCo[Prog](start)
       case Segs.K(f, rest) => reify(rest, start.flatMap(f))
       case Segs.Mark(p, rest) => reify(rest, Free.inject[Delim, A](Push(p, start)).plus[F])
@@ -623,14 +655,30 @@ object Delim {
 
     /** cut the chain at the mark of p: the mark's prompt IS p by
      * identity, and Same's witness makes the mark's type P's */
-    def cut[A, P, Z](kont: Segs[F, A, Z], p: Prompt[P]): Option[Cut[F, A, P, Z]] = kont match {
-      case Segs.Done(_) => None
-      case Segs.Mark(q, rest) => samePrompt.same(q, p) match {
-        case Some(ev) =>
-          Some(Cut(Segs.Done[F, A, P](ev), ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](rest)))
-        case None => cut(rest, p).map(c => Cut(Segs.Mark(q, c.captured), c.outer))
+    def cut[A, P, Z](kont: Segs[F, A, Z], p: Prompt[P]): Option[Cut[F, A, P, Z]] =
+      walk[A, P, Z](Walk(kont, Top[F, A]()), p)
+
+    // A LOOP (specs/stack-safety.md): each segment passed on the way
+    // down is pushed onto `Wrap`, and the captured part is wrapped in
+    // them once the mark is found. The recursive version rebuilt the
+    // prefix on the way back up, one frame per segment, and a shift
+    // under 20 000 other delimiters overflowed.
+    @tailrec def walk[A, P, Z](at: Walk[F, A, _, Z], p: Prompt[P]): Option[Cut[F, A, P, Z]] = at match {
+      case here: Walk[F, A, x, Z] => here.kont match {
+        case Segs.Done(_) => None
+        case m: Segs.Mark[F, x, Z] => samePrompt.same(m.p, p) match {
+          case Some(ev) =>
+            Some(Cut(unwind(here.w.step(Segs.Done[F, x, P](ev))), ev.substituteCo[({ type L[t] = Segs[F, t, Z] })#L](m.rest)))
+          case None =>
+            walk[A, P, Z](Walk(m.rest, On(here.w, new Frame[F, x, x] {
+              def apply[Q](c: Segs[F, x, Q]): Segs[F, x, Q] = Segs.Mark(m.p, c)
+            })), p)
+        }
+        case k: Segs.K[F, x, y, Z] =>
+          walk[A, P, Z](Walk(k.rest, On(here.w, new Frame[F, x, y] {
+            def apply[Q](c: Segs[F, y, Q]): Segs[F, x, Q] = Segs.K(k.f, c)
+          })), p)
       }
-      case Segs.K(f, rest) => cut(rest, p).map(c => Cut(Segs.K(f, c.captured), c.outer))
     }
 
     // the split as a pattern (okay2-split-at-rest): a Delim operation is

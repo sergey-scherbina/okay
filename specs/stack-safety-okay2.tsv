@@ -48,17 +48,12 @@ okay2-workflow/src/main/scala/okay2/Proc.scala	217	loop	lambda	Monad.flatMap
 okay2-workflow/src/main/scala/okay2/Proc.scala	369	nodes	lambda	List.foreach
 okay2-zio/src/main/scala/okay2/zio/ZioInterop.scala	65	foldTo	lambda	ZIO.flatMap
 okay2-zio/src/main/scala/okay2/zio/ZioInterop.scala	83	step	lambda	Writer$.effect,ZIO.flatMap
-src/main/scala/okay2/Aggregate.scala	303	insert	direct	
 src/main/scala/okay2/Choice.scala	111	go	lambda	Choose$.effect
-src/main/scala/okay2/Cont.scala	158	run	mutual	ContImpl$.okay2$ContImpl$$at
-src/main/scala/okay2/Cont.scala	190	step	mutual	ContImpl$.okay2$ContImpl$$at
-src/main/scala/okay2/Delim.scala	627	cut	direct	
+src/main/scala/okay2/Cont.scala	158	run	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)
+src/main/scala/okay2/Cont.scala	190	step	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)
 src/main/scala/okay2/Distinct.scala	84	parts	lambda	List.flatMap
 src/main/scala/okay2/Distinct.scala	96	identityOf	direct	
-src/main/scala/okay2/Gen.scala	385	loop	lambda	Free$Bind.<init>
+src/main/scala/okay2/Gen.scala	385	loop	lambda	Free$Bind.<init>	DEFERRED: the call is inside a Free.Bind built by `new` (Scala 2 has no inline flatMap)
 src/main/scala/okay2/Generate.scala	105	each	lambda	Produce$.effect
 src/main/scala/okay2/Replayable.scala	60	parts	lambda	List.flatMap
-src/main/scala/okay2/Static.scala	78	foldMap	mutual	Selective.select
-src/main/scala/okay2/Static.scala	83	spine	mutual	Selective.select
-src/main/scala/okay2/Static.scala	91	applyArgs	mutual	Selective.select
-src/main/scala/okay2/package.scala	116	go	lambda	LazyList$.toDeferrer
+src/main/scala/okay2/package.scala	116	go	lambda	LazyList$.toDeferrer	LAZY: a LazyList cons tail

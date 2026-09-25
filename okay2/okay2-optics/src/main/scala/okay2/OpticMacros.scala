@@ -1,6 +1,7 @@
 package okay2
 
 import scala.reflect.macros.{blackbox, whitebox}
+import scala.annotation.tailrec
 
 /**
  * The two field constructors as Scala 2 macros — the core's `Focus`
@@ -16,7 +17,7 @@ object OpticMacros {
     import c.universe._
     val S = weakTypeOf[S]
     val A = weakTypeOf[A]
-    def selector(t: Tree): Option[TermName] = t match {
+    @tailrec def selector(t: Tree): Option[TermName] = t match {
       case Function(List(param), Select(Ident(p), f)) if p == param.name => Some(f.toTermName)
       case Typed(inner, _) => selector(inner)
       case Block(Nil, inner) => selector(inner)

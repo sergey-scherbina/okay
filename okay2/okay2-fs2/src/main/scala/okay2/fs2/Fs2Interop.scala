@@ -13,6 +13,7 @@ import okay2._
 import okay2.Free.{Return, Inject, Bind}
 import okay2.cats.{Io, CatsInterop}
 import CatsInterop.Into
+import scala.annotation.tailrec
 
 /**
  * The fs2 side of okay2 (specs/okay2.md, stage 2 — interop).
@@ -39,11 +40,14 @@ object Fs2Interop {
   /** `toFs2` at the handler's own shape */
   def toFs2At[F[_], W, A, G <: Row](p: Free[Writer[W] with G, A])(h: Into[G, F]): Stream[F, W] = {
     val Mine = Split.at[Writer[W]]
-    def go(x: Free[Writer[W] with G, A]): Stream[F, W] = Free.resume(x) match {
+    // a call from inside flatMap (or a by-name `++`) cannot be a jump; `again`
+    // takes it, so the walk itself stays a checked loop (specs/stack-safety.md)
+    def again(x: Free[Writer[W] with G, A]): Stream[F, W] = go(x)
+    @tailrec def go(x: Free[Writer[W] with G, A]): Stream[F, W] = Free.resume(x) match {
       case Return(_) => Stream.empty
       case Inject(e) => go(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
-      case Bind(Inject(Mine(Writer.Say(w))), k) => Stream.emit(w) ++ go(k(()))
-      case Bind(Inject(g), k) => Stream.eval(h.applyOp[Any](g)).flatMap(x => go(k(x)))
+      case Bind(Inject(Mine(Writer.Say(w))), k) => Stream.emit(w) ++ again(k(()))
+      case Bind(Inject(g), k) => Stream.eval(h.applyOp[Any](g)).flatMap(x => again(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
     go(p)

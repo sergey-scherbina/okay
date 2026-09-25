@@ -71,27 +71,49 @@ sealed abstract class Static[F <: Row, A] {
   /**
    * The program read into any Selective G, one leaf at a time through
    * `nt`. The left spine a `traverse` builds (`Ap(Ap(Pure(g), acc), x)`)
-   * is walked in one tail-recursive loop that collects the arguments
-   * still to apply; each is applied as the walk returns, also in a loop,
-   * so 50 000 leaves need no stack.
+   * is walked in one tail-recursive loop over a list of pending frames
+   * (an argument to fold, a function to apply, a select's two sides),
+   * so nothing is folded by an ordinary call and no nesting, along any
+   * axis, needs stack (specs/stack-safety.md).
    */
   def foldMap[G[_]](nt: To[F, G])(implicit G: Selective[G]): G[A] = {
+    // the work still to do, innermost first (specs/stack-safety.md):
+    // every pending piece is a frame here, so ONE loop walks down and up
+    // and nothing is folded by an ordinary call
     sealed trait Arg
+    /** an argument still to fold, then apply the function on the way up */
     final case class More(arg: Static[F, _]) extends Arg
+    /** the function side is folded; the argument's value applies it */
+    final case class AppTo(gf: G[Any]) extends Arg
     final case class Mapped(f: Any => Any) extends Arg
+    /** a Select's condition is folded next; then its function side */
+    final case class SelectE(f: Static[F, _]) extends Arg
+    /** both sides folded: select. The function side is folded BEFORE
+     * `select` is asked, not by-name inside it: folding only builds a G,
+     * so the value is the same, and a G whose select skips that side
+     * receives it folded anyway */
+    final case class SelectF(ge: G[Any]) extends Arg
 
-    @tailrec def spine(s: Static[F, _], args: List[Arg]): G[Any] = s match {
-      case Ap(Pure(g), a) => spine(a, Mapped(erased(g)) :: args)
-      case Ap(f, a) => spine(f, More(a) :: args)
-      case Pure(a) => applyArgs(G.pure[Any](a), args)
-      case Op(fa) => applyArgs(claim[Any](nt(Split.only[F, Any](fa))), args)
-      case sel: Select[F, x, y] => applyArgs(claim[Any](G.select(sel.e.foldMap(nt), sel.f.foldMap(nt))), args)
-    }
+    sealed trait Step
+    final case class Down(s: Static[F, _]) extends Step
+    final case class Up(g: G[Any]) extends Step
 
-    @tailrec def applyArgs(g: G[Any], args: List[Arg]): G[Any] = args match {
-      case Nil => g
-      case More(arg) :: rest => applyArgs(G.app(claim[Any => Any](g), claim[Any](arg.foldMap(nt))), rest)
-      case Mapped(f) :: rest => applyArgs(G.fmap(g, f), rest)
+    @tailrec def fold(step: Step, args: List[Arg]): G[Any] = step match {
+      case Down(s) => s match {
+        case Ap(Pure(g), a) => fold(Down(a), Mapped(erased(g)) :: args)
+        case Ap(f, a) => fold(Down(f), More(a) :: args)
+        case Pure(a) => fold(Up(G.pure[Any](a)), args)
+        case Op(fa) => fold(Up(claim[Any](nt(Split.only[F, Any](fa)))), args)
+        case sel: Select[F, x, y] => fold(Down(sel.e), SelectE(sel.f) :: args)
+      }
+      case Up(g) => args match {
+        case Nil => g
+        case More(arg) :: rest => fold(Down(arg), AppTo(g) :: rest)
+        case AppTo(gf) :: rest => fold(Up(G.app(claim[Any => Any](gf), g)), rest)
+        case Mapped(f) :: rest => fold(Up(G.fmap(g, f)), rest)
+        case SelectE(f) :: rest => fold(Down(f), SelectF(g) :: rest)
+        case SelectF(ge) :: rest => fold(Up(claim[Any](G.select(claim[Either[Any, Any]](ge), claim[Any => Any](g)))), rest)
+      }
     }
 
     /** THE ONE CLAIM, for the walk above: it runs at `Any` because the
@@ -102,7 +124,7 @@ sealed abstract class Static[F <: Row, A] {
     def claim[X](g: G[_]): G[X] = g.asInstanceOf[G[X]]
     def erased(f: Any): Any => Any = f.asInstanceOf[Any => Any]
 
-    claim[A](spine(this, Nil))
+    claim[A](fold(Down(this), Nil))
   }
 }
 

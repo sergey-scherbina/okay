@@ -3,6 +3,7 @@ package okay2
 import scala.annotation.implicitNotFound
 import scala.language.experimental.macros
 import scala.reflect.macros.blackbox
+import scala.annotation.tailrec
 
 /**
  * A ROW WHOSE MEMBERS CAN BE TOLD APART, checked by the compiler
@@ -109,7 +110,7 @@ object DistinctMacro {
       else Cls(sym)
     }
 
-    def collide(a: Id, b: Id): Boolean = (a, b) match {
+    @tailrec def collide(a: Id, b: Id): Boolean = (a, b) match {
       case (Cls(x), Cls(y)) => x == y
       case (Keyed(k, x), Keyed(l, y)) => k == l && collide(x, y)
       case (Inst(x), Inst(y)) => collide(x, y)

@@ -1,6 +1,7 @@
 package okay2.sql
 
 import okay2.codec.{Json, Schema}
+import scala.annotation.tailrec
 
 /**
  * A predicate with TWO readings (okay-sql's Query.scala): the SQL clause
@@ -75,7 +76,7 @@ object Query {
     } yield new Field[A, T](name, Typed.snake(name), found._1, v => Typed.encodeOne(t, v).getOrElse(SqlValue.Null))
 
   /** the row's columns, as Typed names them */
-  def columns[A](implicit s: Schema[A]): Either[String, Vector[String]] = s match {
+  @tailrec def columns[A](implicit s: Schema[A]): Either[String, Vector[String]] = s match {
     case p: Schema.SProduct[_] => Right(p.fields.map(f => Typed.snake(f._1)))
     case i: Schema.SIso[_, _] => columns(i.under())
     case _ => Left("a row is a product (a case class)")

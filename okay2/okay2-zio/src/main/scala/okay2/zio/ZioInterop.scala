@@ -7,6 +7,7 @@ import _root_.zio.stream.ZStream
 import okay2._
 import okay2.Free.{Return, Inject, Bind}
 import okay2.async.{Async, CanBlock, Fiber, Scheduler}
+import scala.annotation.tailrec
 
 /**
  * The zio side of okay2 (specs/okay2.md, stage 2 — interop).
@@ -81,11 +82,14 @@ object ZioInterop {
   def toZStreamAt[Rz, E, W, A, G <: Row](p: Free[Writer[W] with G, A])(h: IntoZ[G, Rz, E]): ZStream[Rz, E, W] = {
     type P = A ! (Writer[W] + G)
     val Mine = Split.at[Writer[W]]
-    def step(x: P): ZIO[Rz, E, Option[(W, P)]] = Free.resume(x) match {
+    // a call from inside flatMap (or a by-name `++`) cannot be a jump; `again`
+    // takes it, so the walk itself stays a checked loop (specs/stack-safety.md)
+    def again(x: P): ZIO[Rz, E, Option[(W, P)]] = step(x)
+    @tailrec def step(x: P): ZIO[Rz, E, Option[(W, P)]] = Free.resume(x) match {
       case Return(_) => ZIO.none
       case Inject(e) => step(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
       case Bind(Inject(Mine(Writer.Say(w))), k) => ZIO.some((w, k(())))
-      case Bind(Inject(g), k) => h.applyOp[Any](g).flatMap(x => step(k(x)))
+      case Bind(Inject(g), k) => h.applyOp[Any](g).flatMap(x => again(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
     ZStream.unfoldZIO(p)(step)

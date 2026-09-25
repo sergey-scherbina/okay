@@ -145,7 +145,10 @@ object Pipe {
    * awaits, the stage's tells are the result stream */
   def into[W, M, A, B](p: Free[Writer[W], A])(s: Stage[W, M, B]): B ! Writer[M] = {
     val Awaits = Split.at[Take[W]]
-    def loop(rest: Free[Writer[W], A], d: Stage[W, M, B], depth: Int): B ! Writer[M] =
+    // a call from inside flatMap (or a by-name `++`) cannot be a jump; `again`
+    // takes it, so the walk itself stays a checked loop (specs/stack-safety.md)
+    def again(rest: Free[Writer[W], A], d: Stage[W, M, B]): B ! Writer[M] = loop(rest, d, 0)
+    @tailrec def loop(rest: Free[Writer[W], A], d: Stage[W, M, B], depth: Int): B ! Writer[M] =
       Free.resume(d) match {
         case Return(b) => pure(b)
         case Inject(Awaits(_)) => pure(Writer.uncons(rest).toOption.map(_._1).asInstanceOf[B])
@@ -154,15 +157,15 @@ object Pipe {
           if (depth >= PullBudget)
             pure[Writer[M], Unit](()).flatMap { _ =>
               Writer.uncons(rest) match {
-                case Right((w, r)) => loop(r, k(Some(w)), 0)
-                case Left(_) => loop(rest, k(None), 0)
+                case Right((w, r)) => again(r, k(Some(w)))
+                case Left(_) => again(rest, k(None))
               }
             }
           else Writer.uncons(rest) match {
             case Right((w, r)) => loop(r, k(Some(w)), depth + 1)
             case Left(_) => loop(rest, k(None), depth + 1)
           }
-        case Bind(Inject(m), k) => Free.Inject[Writer[M], Any](m).flatMap(x => loop(rest, k(x), 0))
+        case Bind(Inject(m), k) => Free.Inject[Writer[M], Any](m).flatMap(x => again(rest, k(x)))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 

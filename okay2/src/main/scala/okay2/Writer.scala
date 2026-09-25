@@ -229,11 +229,14 @@ object Writer {
       else tell(vs(i)).at[Writer[V] + G].flatMap(_ => tellAll(vs, i + 1))
 
     val Mine = Split.at[Writer[W]](effect)
-    def go(a: Free[Writer[W] with G, A]): A ! (Writer[V] + G) = Free.resume(a) match {
+    // a call from inside flatMap cannot be a jump; `again` takes it, so the walk
+    // itself stays a checked loop (specs/stack-safety.md)
+    def again(a: Free[Writer[W] with G, A]): A ! (Writer[V] + G) = go(a)
+    @tailrec def go(a: Free[Writer[W] with G, A]): A ! (Writer[V] + G) = Free.resume(a) match {
       case Return(x) => Return(x)
       case Inject(e) => go(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
-      case Bind(Inject(Mine(Say(w))), k) => tellAll(f(w), 0).flatMap(_ => go(k(())))
-      case Bind(Inject(g), k) => Free.Inject[G, Any](g).at[Writer[V] + G].flatMap(x => go(k(x)))
+      case Bind(Inject(Mine(Say(w))), k) => tellAll(f(w), 0).flatMap(_ => again(k(())))
+      case Bind(Inject(g), k) => Free.Inject[G, Any](g).at[Writer[V] + G].flatMap(x => again(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
     go(a)

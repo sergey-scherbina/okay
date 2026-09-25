@@ -6,6 +6,7 @@ import okay2.{Cont, reset, />}
 import okay2.lex.{Json => JsonLex}
 import okay2.lex.Json.K
 import okay2.parse.{Cst, JsonParse, Parse}
+import scala.annotation.tailrec
 
 /** a JSON value; damage the lossless parser kept is `JErr`, in place */
 sealed trait Json
@@ -168,7 +169,10 @@ object Json {
         case JObj(fs) => fs
         case _ => Vector.empty
       }
-      def loop(rest: Vector[(String, Json)], acc: Vector[(String, Json)]): Vector[(String, Json)] /> R =
+      // a field merged inside Cont.defer continues from its continuation,
+      // a call that cannot be a jump; `again` takes it (specs/stack-safety.md)
+      def again(rest: Vector[(String, Json)], acc: Vector[(String, Json)]): Vector[(String, Json)] /> R = loop(rest, acc)
+      @tailrec def loop(rest: Vector[(String, Json)], acc: Vector[(String, Json)]): Vector[(String, Json)] /> R =
         if (rest.isEmpty) Cont.Pure(acc)
         else {
           val (k, v) = rest.head
@@ -177,7 +181,7 @@ object Json {
             case JNull => loop(rest.tail, without)
             case _ =>
               val orig = acc.find(_._1 == k).map(_._2).getOrElse(JNull)
-              Cont.defer(() => mergePatchC[R](orig, v, open + 1))((merged: Json) => loop(rest.tail, without :+ (k -> merged)))
+              Cont.defer(() => mergePatchC[R](orig, v, open + 1))((merged: Json) => again(rest.tail, without :+ (k -> merged)))
           }
         }
       loop(patchFields, base).flatMap(merged => Cont.Pure[Json, R](JObj(merged)))

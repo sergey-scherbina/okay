@@ -2,6 +2,7 @@ package okay2.stream
 
 import scala.reflect.ClassTag
 import okay2._
+import scala.annotation.tailrec
 
 /**
  * The pipeline as a value: a typed operator tree — program-as-value
@@ -43,7 +44,7 @@ object Pipeline {
    * take pushes through map and into a range; rechunk collapses into
    * rechunk and into a source's own chunk size.
    */
-  def optimize[A](p: Pipeline[A]): Pipeline[A] = {
+  @tailrec def optimize[A](p: Pipeline[A]): Pipeline[A] = {
     def once[X](q: Pipeline[X]): Pipeline[X] = q match {
       case m @ Mapped(Mapped(s, f), g) => Mapped(once(s), f.andThen(g))(m.tag)
       case Filtered(Filtered(s, p1), p2) => Filtered(once(s), (x: X) => p1(x) && p2(x))

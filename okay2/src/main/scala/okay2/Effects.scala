@@ -158,11 +158,14 @@ object Effects {
    */
   def translate[A, F <: Row, G <: Row](prog: Free[F with G, A])(h: Interpret[F, G])(implicit T: TypeableK[F], @unused d: Distinct[F with G]): A ! G = {
     val Mine = Split.at[F](T)
-    def go(prog: Free[F with G, A]): A ! G = Free.resume(prog) match {
+    // a call from inside flatMap cannot be a jump; `again` takes it, so the walk
+    // itself stays a checked loop (specs/stack-safety.md)
+    def again(prog: Free[F with G, A]): A ! G = go(prog)
+    @tailrec def go(prog: Free[F with G, A]): A ! G = Free.resume(prog) match {
       case Return(a) => Return(a)
       case Inject(e) => go(Bind(Inject[F + G, A](e), (x: A) => Return[F + G, A](x)))
-      case Bind(Inject(Mine(f)), k) => h[Any](f).flatMap(x => go(k(x)))
-      case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => go(k(x)))
+      case Bind(Inject(Mine(f)), k) => h[Any](f).flatMap(x => again(k(x)))
+      case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => again(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
     go(prog)

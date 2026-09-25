@@ -1,6 +1,7 @@
 package okay2
 
 import scala.reflect.macros.blackbox
+import scala.annotation.tailrec
 
 /**
  * What a module installed, for a container that wants values BY CLASS
@@ -36,7 +37,7 @@ object ModuleMacro {
       case _ => c.abort(c.enclosingPosition, s"Module: cannot read F off ${c.prefix.actualType}")
     }
     val fn1 = symbolOf[Function1[Any, Any]]
-    def walk(t: Type, acc: List[Type]): List[Type] = t.dealias match {
+    @tailrec def walk(t: Type, acc: List[Type]): List[Type] = t.dealias match {
       case d if d =:= end => acc.reverse
       case TypeRef(_, sym, List(a, rest)) if sym == fn1 => walk(rest, a :: acc)
       case d if !(d eq t) => walk(d, acc)
