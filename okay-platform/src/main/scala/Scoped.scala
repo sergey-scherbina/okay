@@ -19,13 +19,11 @@ package okay
  * 25+ specifically, the class actually loaded is a DIFFERENT one —
  * `jdk25/Scoped.scala` (repo root), backed by the real
  * `java.lang.ScopedValue` (JEP 506, JVM-only — no JS/Native
- * equivalent, so this swap applies to okayPlatformJVM alone) —
- * compiled as project `okayPlatformJdk25` and packaged into THIS
- * module's jar under `META-INF/versions/25/` on every build
- * (build.sbt `versioned`/`multiRelease`, Multi-Release JAR, JEP 238):
- * the JVM picks the class file, not a runtime branch here;
- * `TestScopedBackend` proves it on the JDK the tests run on. Both
- * variants keep the exact same public shape (`current`,
+ * equivalent, so this swap applies to okayJVM alone) — packaged into
+ * that jar's `META-INF/versions/25/` by `scripts/build-mrjar-jdk25.sh`
+ * and `build.sbt`'s `okay` crossProject `.jvmSettings` (Multi-Release
+ * JAR, JEP 238): the JVM picks the class file, not a runtime branch
+ * here. Both variants keep the exact same public shape (`current`,
  * `where`, `backend`) on purpose — that binary contract is what makes
  * the swap invisible to every caller. See
  * specs/script-scoped-state-mrjar.md.

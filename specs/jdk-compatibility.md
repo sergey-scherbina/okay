@@ -125,16 +125,13 @@ confirmed here, not just upstream-claimed.
   `build.sbt` now. 22 and 23 remain genuinely untested — not claimed
   either way — and 24 stays a real ceiling with no known fix.
 - **JDK 25** is not a floor-or-ceiling question at all: it is an
-  *additive* per-feature answer. `okay.Scoped` (okay-platform,
+  *additive* per-feature answer. `okay.Scoped` (core,
   `specs/script-scoped-state-mrjar.md`) ships as a Multi-Release JAR —
   a JDK 21 `ThreadLocal` backend at the jar root, a JDK 25+
   `java.lang.ScopedValue` one under `META-INF/versions/25/`, picked by
   the running JVM per JEP 238 with no runtime branch in this
-  library's own code. Since mrjar-jdk25-ci-gap (2026-09-25) the
-  variant is an sbt project (build.sbt `versioned`), in every jar,
-  and its tests run against the jar on 26 and under `verifyJdk17`.
-  The same helper is what a `jdk22/` variant of the core uses
-  (specs/cont-stack.md).
+  library's own code. Nothing else here does this yet, and nothing
+  requires it to.
 - **`.sdkmanrc` is the AMBIENT/compile pin, not the whole story any
   more (jdk26-default-runtime, below).** It was `21.0.7-tem`; since
   java-gatherers (2026-09-23) it is `25.0.4.1-tem` — see "Compiling

@@ -98,10 +98,8 @@ BY ACCIDENT is now asked for by flag:
   be honest, a Gatherer simply omits it and the JDK serialises — the
   better-fitting contract.
 - **Compile on 25, not a side script.** `scripts/build-mrjar-jdk25.sh`
-  compiled ScopedValue outside sbt, and its own spec recorded the
-  price: the gate never exercised that path (the script is gone since
-  mrjar-jdk25-ci-gap, 2026-09-25: the variant is an sbt project
-  now). Gatherers are new API,
+  compiles ScopedValue outside sbt, and its own spec records the
+  price: the gate never exercises that path. Gatherers are new API,
   not an alternative implementation, so the precedent's shape does
   not even fit; and the operator chose the build change over it.
   Rejected also: stub `java.util.stream.Gatherer` classes on the

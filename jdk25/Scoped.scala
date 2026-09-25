@@ -1,14 +1,12 @@
 package okay
 
 /** The JDK 25+ variant of `okay.Scoped` — see
- * `okay-platform/src/main/scala/Scoped.scala` for the baseline this
- * replaces, only on a JVM that has it, and
+ * `src/main/scala-jvm/Scoped.scala` for the JDK21-and-up baseline
+ * this replaces, only on a JVM that has it, and
  * specs/script-scoped-state-mrjar.md for how it gets there
- * (Multi-Release JAR, JEP 238). Compiled by the build like any other
- * source, as project `okayPlatformJdk25` (build.sbt `versioned`, with
- * `-java-output-version 25`), and packaged into okay-platform's jar
- * under `META-INF/versions/25/` on every build; `TestScopedBackend`
- * proves the swap on the JDK the tests run on.
+ * (Multi-Release JAR, JEP 238). NOT compiled by the normal build —
+ * see scripts/build-mrjar-jdk25.sh — so this file needs no JDK 25 on
+ * a machine that isn't building this variant.
  *
  * `ScopedValue.where(key, value).call(op)` (JEP 506) IS `where`: it
  * binds for `op`'s extent, restores on every exit including an
