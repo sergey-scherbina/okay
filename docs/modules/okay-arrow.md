@@ -29,7 +29,40 @@ columns (`FrameFormat`, docs/python-and-r.md).
 |---|---|
 | `ArrowCodec` | the facade: `write(Table): Array[Byte]`, `read(Array[Byte]): Table`; `ArrowCodec.isStream` tells an Arrow stream from JSON or CBOR by its first four bytes |
 | `OkayArrow` | OURS and the default: every type above, on the JVM, Scala.js and Scala Native, with no dependency |
+| `Rows`, `encode`/`decode` | typed rows of any `Schema[A]` to a table, and back, through either implementation |
 | `ApacheArrow` | JVM only: the same facade over Apache Arrow Java 19, plus `toRoot`/`fromRoot` to and from a `VectorSchemaRoot`; Arrow Java is an OPTIONAL dependency you add |
+
+## Typed rows
+
+Any datatype with an okay-codec `Schema` goes to Arrow and back through
+either implementation, one column per field:
+
+```scala
+  final case class Line(product: String, n: Int) derives Schema
+```
+
+```scala
+    val back = OkayArrow.decode[Order](OkayArrow.encode(orders))
+```
+
+The tabular reading of a type is okay-codec's `Columns`, the same one
+the Spark, DuckDB and Delta encoders use:
+- a nested case class becomes a struct;
+- a `List` or `Vector` becomes a list, and an `Option` a null;
+- an enum of field-less cases becomes its case NAME as text;
+- a sum with payloads becomes a struct of `kind` and one nullable branch
+  per case;
+- a `BigInt` becomes decimal(38, 0);
+- a recursive type becomes its CBOR, beside its JSON.
+
+pyarrow reads the result as ordinary Arrow: `lines` is a list of
+structs, and the sum is `{"kind": "Circle", "Circle": {"r": 1.5},
+"Square": null}`. Reading back folds the same `Schema`. A table that does
+not fit is a `Left` that names the row and the column:
+
+```scala
+      Left("row 1: column 'sku': null where the schema has no Option around a String"))
+```
 
 ## Which one
 

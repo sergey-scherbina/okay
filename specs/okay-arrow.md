@@ -88,7 +88,7 @@ okay's columnar format, on every platform:
       decoded on read. Both implementations map every one; pyarrow and
       Arrow Java are the oracles both ways, on the JVM; the same round
       trips run on Scala.js and Native.
-- [ ] Stage 5: the typed layer: `Schema[A]` rows through okay-codec's
+- [x] Stage 5: the typed layer: `Schema[A]` rows through okay-codec's
       `Columns` (which already has Int32, Decimal, Binary, Arr, Struct):
       `encode[A](rows)` and `decode[A](bytes)`, nested case classes as
       struct and list.
@@ -205,3 +205,19 @@ okay's columnar format, on every platform:
     the same; large forms, dictionary, float16, two batches and slices
     only pyarrow makes; a map refused by name).
   - Mutant: decimal128 bytes in big-endian order — four tests red.
+
+- Stage 5 (okay-arrow-typed, 2026-09-25): `Rows.table`/`Rows.rows` and
+  `ArrowCodec.encode`/`decode` for any `Schema[A]`. okay-arrow now
+  depends on okay-codec (not the other way: okay-codec stays free of
+  Arrow). The write is `Columns.table` translated to the model; the read
+  is a `Schema.Algebra` making Columns' decisions backwards (products by
+  field NAME with codec defaults for a missing one, enums by case name,
+  sums by `kind`, recursive types through their CBOR).
+  - Tests: `TestRows` (6, on JVM, Scala.js and Native: a 13-field order
+    with nested products, lists, options, an enum, a sum, bytes, a
+    BigInt and a Char; the column types; a recursive tree; a non-product
+    value; three misfits as Lefts naming row and column; no rows);
+    `TestPyArrowOracle` +1 (pyarrow validates typed rows and reads the
+    structs, lists and sum as ordinary Arrow).
+  - Mutant: `Option` ignoring the validity — the round trip red, naming
+    row 1, column 'note'.
