@@ -1,6 +1,0 @@
-feature/foreign-engine-typeclass 2026-09-25T18:31:53Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-25T18:31:53Z
-status: in-progress
-done-so-far: design: Engine[M] by module type, JvmModule for in-JVM functions
-next: spec stage 3, Engine.scala + JvmModule, mapIn/Reduce.in, tests (fake engine, jvm, py, r), docs
