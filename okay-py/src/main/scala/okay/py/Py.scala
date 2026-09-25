@@ -95,7 +95,7 @@ private[py] object Walk:
             case None =>
               val o = open.top
               if o.i < o.kids.length then todo = Some(o.kids(o.i))
-              else { open.pop(); value = Some(o.assemble(o.done.result())) }
+              else { val _ = open.pop(); value = Some(o.assemble(o.done.result())) }
     result.get
 
   /** the first Left, or every Right */
