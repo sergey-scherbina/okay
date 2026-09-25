@@ -101,7 +101,7 @@ okay's columnar format, on every platform:
       Rust and Go. Control messages stay JSON/CBOR: a schema and a batch
       header per message make a short message longer (the same reason
       DEFLATE left pipes).
-- [ ] Body compression (LZ4_FRAME, ZSTD): in no JDK and on no JS or
+- [x] Body compression (LZ4_FRAME, ZSTD), landed by okay-compress 2026-09-25: in no JDK and on no JS or
       Native standard library, so OURS, in a module of its own
       (`okay-compress`, usable outside Arrow too — as a
       `WireCompression` beside DEFLATE, for one), pure Scala over

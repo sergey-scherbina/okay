@@ -63,7 +63,24 @@ okay-arrow uses these for Arrow's compressed IPC bodies: `LZ4_FRAME` and
 
 ## Measured
 
-BENCH
+`CompressBench` (JMH) against aircompressor, a pure-Java port. The box was
+loaded (35–112), so the times are wide; the pairs ran side by side:
+
+| 4 MiB, JMH, `lines` / `text` | okay-compress | aircompressor 2.0.3 |
+|---|---|---|
+| LZ4 compress (block) | 4.9 / 5.2 ms | 5.7 / 3.6 ms |
+| LZ4 decompress (block) | 2.7 / 3.6 ms | 1.3 / 0.9 ms |
+| ZSTD compress (level 3) | 30 / 15 ms | 6.6 / 2.1 ms |
+| ZSTD decompress | 7.1 / 5.2 ms | 3.6 / 0.8 ms |
+| LZ4 output | 1 021 339 / 1 746 074 bytes | 1 029 432 / 1 929 484 bytes |
+| ZSTD output | 161 076 / 167 633 bytes | 236 268 / 170 999 bytes |
+
+The output is at least as small as the reference's, and ZSTD's is
+smaller: the hash chain searches more than aircompressor's level 3 does.
+Speed is behind by 2–7x. aircompressor reads and copies eight bytes at a
+time through `Unsafe`, and this code is one source for three platforms,
+byte by byte. A JVM-only fast path is filed in the backlog as
+`okay-compress-jvm-fast-paths`.
 
 ## Literature
 
