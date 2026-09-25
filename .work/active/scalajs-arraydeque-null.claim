@@ -1,4 +1,0 @@
-feature/scalajs-arraydeque-null 2026-09-25T21:13:21Z
-agent: claude-opus-5-5 (session 8908eaf7)
-status: in-progress
-what: reduce the Scala.js ArrayDeque null-pop to a minimal sequence, find the cause in javalib; report drafted, NOT sent (operator)
