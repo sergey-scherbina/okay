@@ -1,6 +1,0 @@
-feature/cont-stack-macro 2026-09-25T13:00:00Z
-agent: claude-code
-heartbeat: 2026-09-25T13:00:00Z
-status: in-progress
-done-so-far: claim
-next: TestContMacro red first (1M tail shifts on 128 KB, zero switches); shift as a macro rewriting tail-k bodies to delay(() => Return(v))
