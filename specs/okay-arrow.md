@@ -94,7 +94,7 @@ okay's columnar format, on every platform:
       struct and list.
 - [x] Stage 6: the IPC FILE format (magic, footer, a batch by index),
       for storage and export.
-- [ ] Stage 7: where Arrow replaces CBOR — each candidate MEASURED
+- [x] Stage 7a (the measurement): where Arrow replaces CBOR — each candidate MEASURED
       against CBOR first, and moved only where it wins: batches of
       records in okay-stream / dataflow / okay-cluster; okay-persist
       export and okay-sql results; frames for R (r-arrow), TypeScript,
@@ -242,3 +242,34 @@ okay's columnar format, on every platform:
     and the allocator's "Memory was leaked" REPLACED the reading error.
     `withAllocator` now keeps the first failure. Its test was watched red
     without the fix.
+
+- Stage 7a (arrow-vs-cbor, 2026-09-25): `ArrowVsCborBench` sends the same
+  typed rows through Arrow (Rows + OkayArrow) and CBOR (its Schema
+  codec), round trip, plain and ZSTD. Three shapes: flat trades; events
+  with an enum, a list and an option; nested orders. Two batch sizes:
+  1 000 and 100 000 rows. Load 33–50: bytes and B/op are firm, times
+  wide. pyarrow wrote the same tables for reference.
+
+  | 1 000 rows | trades | events | orders |
+  |---|---|---|---|
+  | bytes: Arrow / CBOR | 28 944 / 47 443 | 55 560 / 63 411 | 85 104 / 121 738 |
+  | round trip ms: Arrow / CBOR | 0.63 / 3.06 | 0.57 / 2.93 | 1.10 / 3.83 |
+  | B/op: Arrow / CBOR | 1.57 / 5.43 MB | 2.24 / 6.57 MB | 4.21 / 11.2 MB |
+  | bytes, ZSTD: Arrow (ours) / Arrow (pyarrow) / CBOR | 9 168 / 5 808 / 8 155 | 23 584 / 14 344 / 6 289 | 21 816 / 16 680 / 7 454 |
+
+  At 100 000 rows the same holds for bytes and allocation (trades: 2.8 MB
+  vs 4.7 MB, 145 MB vs 569 MB allocated, 61 vs 239 ms). The nested
+  orders' times are wider than their gap (488 +-380 vs 335 ms).
+
+  VERDICT, the rule for stage 7b:
+  - UNCOMPRESSED (in-process, pipes), a batch of typed records is smaller,
+    3.5x lighter on the heap, and 3.5–5x faster as Arrow than as CBOR:
+    move batch transports that do not compress to Arrow.
+  - COMPRESSED (a network), the format itself loses where there is text
+    or nesting: even pyarrow's Arrow+ZSTD is 2.3x (events) and 2.2x
+    (orders) larger than CBOR+ZSTD, because per-buffer compression loses
+    the row-wise repetition. It wins only on flat numeric tables (trades:
+    pyarrow 379 384 vs CBOR 434 398 bytes at 100k). Keep CBOR+ZSTD
+    there, unless the batch is flat and numeric.
+  - Our ZSTD itself is 1.3–1.6x behind pyarrow's on columnar buffers:
+    `okay-compress-zstd-ratio`, with its likely cause.
