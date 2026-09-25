@@ -14,7 +14,7 @@ class TestContStackNative extends munit.FunSuite:
     out.fold(e => throw e, identity)
 
   private def tail(n: Int): Int /> Int =
-    (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1))))
+    (1 to n).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => Cont.shiftLeaf[Int, Int, Int](k => k(x + 1))))
 
   test("a stackalloc address lies inside the bounds the runtime reports (the ThreadInfo layout guard)") {
     val (top, floor, sp) = StackSwitch.probe()
