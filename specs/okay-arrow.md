@@ -1,6 +1,6 @@
 # okay-arrow — the Arrow columnar format, our own
 
-Status: stage 0 done (2026-09-25): NOT faster; the verdict below redesigns stage 1. Asked by the operator
+Status: stage 0 done (2026-09-25): NOT faster. The module is a FACADE with two implementations (below). Asked by the operator
 2026-09-25: "можешь сделать модуль okay-arrow с нашей полноценной
 реализацией формата arrow? У нас получается быстрее чем у оригинального
 apache arrow?"
@@ -36,32 +36,55 @@ skips is not compared.
 
 - [x] Stage 0: the four pairs measured, interop checked, verdict here.
 
-## The module (staged after stage 0; order may change on its verdict)
+## The module: a facade, two implementations (operator, 2026-09-25)
 
-- [ ] Stage 1: `okay-arrow`, the format's TYPE SYSTEM as data: every
-      Arrow type (null, bool, ints 8–64 signed and unsigned, floats
-      16/32/64, binary/utf8 and their large and view forms, decimal
-      128/256, date, time, timestamp with zone, duration, interval,
-      fixed-size binary, list/large list/fixed-size list/list view,
-      struct, map, sparse and dense union, dictionary encoding, run-end
-      encoded), schema and field metadata. `okay.codec.ArrowIpc` becomes
-      a client of it (the five columns stay its fast path).
-- [ ] Stage 2: IPC STREAM for every type, nested included, and
-      dictionary batches (deltas too).
-- [ ] Stage 3: IPC FILE format (magic, footer, random access to a batch).
-- [ ] Stage 4: body compression: LZ4_FRAME and ZSTD — neither is in the
-      JDK; each is its own decision (a pure-Scala codec, or refused by
-      name with the reason).
-- [ ] Stage 5: the C Data Interface over FFM: a pyarrow table in THIS
-      process handed over without a copy (the in-process twin of the
-      wire).
-- [ ] Every stage: pyarrow as the oracle both ways, a cut stream
-      refused at every byte, JMH against Arrow Java on the lanes the
-      stage adds.
+"Делай модуль okay-arrow где будет фасад с двумя реализациями - наша
+которая делает только то что нужно нам на всех платформах и
+оптимизированно для нас. А вторая это просто биндинг к настоящему аппач
+арроу - но зависимость к нему опциональная." — after stage 0 showed a
+full reimplementation buys speed in one niche and costs months.
+
+- `okay.arrow.ArrowCodec`: `write(Table): Array[Byte]` and
+  `read(Array[Byte]): Table` over one model (`okay.arrow.Table`,
+  `okay.arrow.Column`: int64, float64, utf8, bool, null; nullable; the
+  schema's metadata). A given picks the implementation:
+  - `OkayArrow` — OURS, the default (`given ArrowCodec` in the
+    companion), on JVM, Scala.js and Native; exactly the five columns
+    the wire needs, no dependency. `okay.codec.ArrowIpc` moves here.
+  - `ApacheArrow` — JVM only, `import okay.arrow.ApacheArrow.given`: the
+    same facade over Arrow Java 19, plus `toRoot`/`fromRoot` between the
+    model and a `VectorSchemaRoot` for code that lives in Arrow Java.
+    Arrow Java is an OPTIONAL dependency of okay-arrow (Maven
+    `<optional>`): nobody gets it transitively; a program that imports
+    `ApacheArrow` adds `arrow-vector` and `arrow-memory-unsafe` (or
+    `-netty`) itself, and the JVM flags they need. Without them on the
+    classpath, the first use is refused by name, saying what to add.
+- okay-py depends on okay-arrow (the wire's frames), never on Arrow Java.
+
+- [ ] Stage 1: the module (cross JVM/JS/Native), the facade and the
+      model; `OkayArrow` = `ArrowIpc` moved, with arrow-ipc-fast's
+      optimisations (the stream written once into an array of its exact
+      size, UTF-8 encoded in place with no array per string, bulk
+      little-endian copies, the body read in place). The same tests on
+      every platform; pyarrow and Arrow Java as oracles on the JVM.
+- [ ] Stage 2: `ApacheArrow`: the facade over Arrow Java and
+      `toRoot`/`fromRoot`; the refusal without Arrow on the classpath;
+      both implementations read each other's streams.
+- [ ] Stage 3: the measurement again, `ArrowIpcBench` with the
+      facade's two implementations, B/op and time, against stage 0.
+- [ ] Docs: docs/modules/okay-arrow.md — which to choose and why.
+- [ ] Later, on a trigger: `OkayArrow` as VIEWS over the message's bytes
+      (no copy at all on read; stage 0's Decisions entry), when a
+      consumer that does not need JVM values appears; the C Data
+      Interface in `ApacheArrow` (Arrow Java has it) for pyarrow in the
+      same process.
 
 ## Decisions
 
-- **Columns are BUFFERS, not JVM arrays of values** (stage 0's verdict).
+- **Not a full reimplementation** (operator, after stage 0): ours does
+  what the wire needs, on every platform; the full format is Arrow
+  Java's, behind the same facade, for whoever adds it.
+- **Columns as BUFFERS (views) — deferred, not refused** (stage 0's verdict).
   Arrow Java's read into its own columns is 1–1.7 ms for 500 000 rows
   because it copies buffers and makes no objects; `ArrowIpc` spends
   30–45 ms making 500 000 `String`s and boxing nothing else. The module's
