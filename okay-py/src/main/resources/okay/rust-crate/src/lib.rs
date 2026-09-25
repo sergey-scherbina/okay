@@ -26,7 +26,8 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 /// the wire version this worker speaks; the host refuses any other
-pub const SHIM_VERSION: i64 = 6;
+/// 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`
+pub const SHIM_VERSION: i64 = 7;
 
 // ------------------------------------------------------------------ values
 
@@ -268,7 +269,7 @@ pub fn okay_call<A: Wire>(request: Op<A>) -> Result<A, OkayError> {
         let cur = cur.borrow();
         let ctx = cur.as_ref().ok_or_else(|| OkayError {
             kind: "RuntimeError".into(),
-            message: format!("okay_call({:?}) outside a call okay started with callbacks", request.name),
+            message: format!("okay_call({:?}) outside a program okay started", request.name),
         })?;
         if !ctx.offered.iter().any(|n| *n == request.name) {
             return Err(OkayError {
@@ -309,7 +310,6 @@ where
 // ------------------------------------------------------------------ the worker
 
 struct Parked {
-    id: J,
     events: Receiver<Event>,
     reply: Sender<Result<Value, OkayError>>,
 }
@@ -323,7 +323,7 @@ pub struct Worker {
     functions: Functions,
     konts: HashMap<(i64, i64), Rc<dyn Fn(Value) -> Prog>>,
     next: i64,
-    waiting: HashMap<i64, Parked>,
+    waiting: HashMap<(i64, i64), Parked>,
     asks: i64,
     // stage 5b (wire-auth): a worker with a secret answers nothing but an
     // auth until the host has proved it holds the same secret
@@ -459,20 +459,40 @@ impl Worker {
         }
     }
 
-    /// the next thing a direct-style call does: ask the host, or finish
-    fn await_call(&mut self, id: J, events: Receiver<Event>) -> J {
+    /// the next thing a direct-style call does: perform an okay operation (a
+    /// node marked `once`, which the host continues), or finish — `done` as a
+    /// program's node, or, for a plain `call`, the value itself
+    fn await_call(&mut self, id: J, run: i64, events: Receiver<Event>, plain: bool) -> J {
         match events.recv() {
             Ok(Event::Ask { cb, args, reply }) => {
                 self.asks += 1;
                 let k = self.asks;
                 let wire: Vec<J> = args.iter().map(enc).collect();
-                self.waiting.insert(k, Parked { id, events, reply });
-                json!({"ask": {"cb": cb, "args": wire, "k": k}})
+                let answer = json!({"id": id, "ok": {"perform": cb, "args": wire, "k": k, "once": true}});
+                self.waiting.insert((run, k), Parked { events, reply });
+                answer
             }
-            Ok(Event::Done(v)) => json!({"id": id, "ok": enc(&v)}),
+            Ok(Event::Done(v)) if plain => json!({"id": id, "ok": enc(&v)}),
+            Ok(Event::Done(v)) => json!({"id": id, "ok": {"done": enc(&v)}}),
             Ok(Event::Fault(e)) => condition(&id, &e.kind, &e.message),
             Err(_) => condition(&id, "RustError", "the function's thread ended without an answer"),
         }
+    }
+
+    /// a direct-style function on a thread of its own, its okay_call's
+    /// answered through the channel the worker reads
+    fn begin(f: DirectFn, args: Vec<Value>, offered: Vec<String>) -> Receiver<Event> {
+        let (tx, rx) = channel();
+        std::thread::spawn(move || {
+            CURRENT.with(|cur| *cur.borrow_mut() = Some(Ctx { offered, events: tx.clone() }));
+            let out = catch_unwind(AssertUnwindSafe(|| f(args)));
+            let _ = tx.send(match out {
+                Ok(Ok(v)) => Event::Done(v),
+                Ok(Err(why)) => Event::Fault(OkayError { kind: "RustError".into(), message: why }),
+                Err(p) => Event::Fault(OkayError { kind: "RustError".into(), message: panic_message(p) }),
+            });
+        });
+        rx
     }
 
     fn answer(&mut self, id: J, req: &Map<String, J>) -> J {
@@ -483,21 +503,50 @@ impl Worker {
         let args: Vec<Value> = req.get("args").and_then(|a| a.as_array()).map(|a| a.iter().map(dec).collect()).unwrap_or_default();
         match req.get("op").and_then(|o| o.as_str()) {
             Some("program") => {
-                let fn_name = req.get("fn").and_then(|f| f.as_str()).unwrap_or("");
-                let made = match self.programs.get(fn_name) {
-                    None => return condition(&id, "LookupError", &format!("no program named '{}' in this worker", fn_name)),
-                    Some(f) => catch_unwind(AssertUnwindSafe(|| f(args))),
-                };
-                match made {
-                    Ok(p) => json!({"id": id, "ok": self.node(run, p)}),
-                    Err(p) => condition(&id, "RustError", &panic_message(p)),
+                // ONE program protocol (foreign-one-program): a program as data,
+                // or a direct-style function whose okay_call's are `once` nodes
+                let fn_name = req.get("fn").and_then(|f| f.as_str()).unwrap_or("").to_string();
+                if let Some(f) = self.programs.get(&fn_name) {
+                    return match catch_unwind(AssertUnwindSafe(|| f(args))) {
+                        Ok(p) => json!({"id": id, "ok": self.node(run, p)}),
+                        Err(p) => condition(&id, "RustError", &panic_message(p)),
+                    };
                 }
+                let f = match self.functions.get(&fn_name) {
+                    None => return condition(&id, "LookupError", &format!("no program or function named '{}' in this worker", fn_name)),
+                    Some(f) => f.clone(),
+                };
+                let offered: Vec<String> = req.get("callbacks").and_then(|c| c.as_array())
+                    .map(|c| c.iter().filter_map(|n| n.as_str().map(String::from)).collect()).unwrap_or_default();
+                let rx = Worker::begin(f, args, offered);
+                self.await_call(id, run, rx, false)
+            }
+            Some("call") => {
+                // a direct-style function with no callbacks: its value
+                let fn_name = req.get("fn").and_then(|f| f.as_str()).unwrap_or("").to_string();
+                let f = match self.functions.get(&fn_name) {
+                    None => return condition(&id, "LookupError", &format!("no function named '{}' in this worker", fn_name)),
+                    Some(f) => f.clone(),
+                };
+                let rx = Worker::begin(f, args, Vec::new());
+                self.await_call(id, run, rx, true)
             }
             Some("continue") => {
                 let k = req.get("k").and_then(|k| k.as_i64()).unwrap_or(0);
+                if let Some(parked) = self.waiting.remove(&(run, k)) {
+                    let answer = match req.get("condition").and_then(|c| c.as_object()) {
+                        Some(c) => Err(OkayError {
+                            kind: c.get("kind").and_then(|x| x.as_str()).unwrap_or("").into(),
+                            message: c.get("message").and_then(|x| x.as_str()).unwrap_or("").into(),
+                        }),
+                        None => Ok(req.get("answer").map(dec).unwrap_or(Value::Null)),
+                    };
+                    let _ = parked.reply.send(answer);
+                    return self.await_call(id, run, parked.events, false);
+                }
                 let f = match self.konts.get(&(run, k)) {
                     None => return condition(&id, "LookupError", &format!(
-                        "continuation {} of run {} is not held here (forgotten, or another process)", k, run)),
+                        "continuation {} of run {} is not held here (forgotten, continued once already, or another process)", k, run)),
                     Some(f) => f.clone(),
                 };
                 let answer = req.get("answer").map(dec).unwrap_or(Value::Null);
@@ -509,42 +558,6 @@ impl Worker {
             Some("forget") => {
                 self.konts.retain(|(r, _), _| *r != run);
                 json!({"id": id, "ok": null})
-            }
-            Some("start") => {
-                let fn_name = req.get("fn").and_then(|f| f.as_str()).unwrap_or("").to_string();
-                let f = match self.functions.get(&fn_name) {
-                    None => return condition(&id, "LookupError", &format!("no function named '{}' in this worker", fn_name)),
-                    Some(f) => f.clone(),
-                };
-                let offered: Vec<String> = req.get("callbacks").and_then(|c| c.as_array())
-                    .map(|c| c.iter().filter_map(|n| n.as_str().map(String::from)).collect()).unwrap_or_default();
-                let (tx, rx) = channel();
-                std::thread::spawn(move || {
-                    CURRENT.with(|cur| *cur.borrow_mut() = Some(Ctx { offered, events: tx.clone() }));
-                    let out = catch_unwind(AssertUnwindSafe(|| f(args)));
-                    let _ = tx.send(match out {
-                        Ok(Ok(v)) => Event::Done(v),
-                        Ok(Err(why)) => Event::Fault(OkayError { kind: "RustError".into(), message: why }),
-                        Err(p) => Event::Fault(OkayError { kind: "RustError".into(), message: panic_message(p) }),
-                    });
-                });
-                self.await_call(id, rx)
-            }
-            Some("resume") => {
-                let k = req.get("k").and_then(|k| k.as_i64()).unwrap_or(0);
-                let parked = match self.waiting.remove(&k) {
-                    None => return condition(&id, "ValueError", &format!("resume {}: no call is waiting for it (resumed twice?)", k)),
-                    Some(p) => p,
-                };
-                let answer = match req.get("condition").and_then(|c| c.as_object()) {
-                    Some(c) => Err(OkayError {
-                        kind: c.get("kind").and_then(|x| x.as_str()).unwrap_or("").into(),
-                        message: c.get("message").and_then(|x| x.as_str()).unwrap_or("").into(),
-                    }),
-                    None => Ok(req.get("ok").map(dec).unwrap_or(Value::Null)),
-                };
-                let _ = parked.reply.send(answer);
-                self.await_call(parked.id, parked.events)
             }
             Some("configure") => {
                 let f = req.get("format").and_then(|x| x.as_str()).unwrap_or("");

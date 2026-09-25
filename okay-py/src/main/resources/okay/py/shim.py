@@ -3,14 +3,16 @@
 # foreign-callbacks: `start`/`resume` and the injected `okay` module; v4 =
 # foreign-object-handles: `hold`/`method`/`attr`/`release`, refs as values;
 # v5 = foreign-module-trait: `okay.describe`; v6 = remote-foreign: programs
-# as data, `program`/`continue`/`forget`, continuations kept by id). Stdlib only, deliberately:
+# as data, `program`/`continue`/`forget`, continuations kept by id; v7 =
+# foreign-one-program: `start`/`resume` fold into `program`/`continue`, a
+# direct function's okay_call a node marked `once`). Stdlib only, deliberately:
 # json wire, one object per line each way; functions are ADDRESSED
 # as module:qualified.name and imported, never eval'd from source.
 # A failing call answers a condition and the worker survives; only a
 # broken wire ends the process.
 import sys, json, base64, importlib, importlib.metadata, importlib.util, math, dataclasses, types, inspect, struct, zlib
 
-SHIM = 6
+SHIM = 7
 
 # a JSON number is a double: exact only up to 2**53
 EXACT = 2 ** 53
@@ -350,26 +352,34 @@ class OkayError(Exception):
         self.kind = kind
         self.message = message
 
-_offered = []      # a stack: the callback names each active start offered
+# the direct-style programs running now, innermost last: [run, offered
+# callback names, the id of the request this program answers next] — a
+# nested program (a callback calling Python again) runs above its caller
+_direct = []
 _next_k = [0]
 
 def _call(name, *args):
-    if not _offered:
-        raise RuntimeError("okay_call(%r) outside a call okay started with callbacks" % name)
-    if name not in _offered[-1]:
-        raise LookupError("okay_call(%r): this call was offered %s" % (name, sorted(_offered[-1])))
+    if not _direct:
+        raise RuntimeError("okay_call(%r) outside a program okay started" % name)
+    frame = _direct[-1]
+    run, offered = frame[0], frame[1]
+    if name not in offered:
+        raise LookupError("okay_call(%r): this call was offered %s" % (name, sorted(offered)))
     _next_k[0] += 1
     k = _next_k[0]
-    reply({"ask": {"cb": name, "args": [enc(a) for a in args], "k": k}})
+    # the one callback message (foreign-one-program): a node, its k this
+    # frame, continued ONCE
+    reply({"id": frame[2], "ok": {"perform": name, "args": [enc(a) for a in args], "k": k, "once": True}})
     while True:
         req = read_msg()
         if req is None:
             raise SystemExit(0)          # the host is gone
-        if req.get("op") == "resume" and req.get("k") == k:
+        if req.get("op") == "continue" and req.get("run") == run and req.get("k") == k:
+            frame[2] = req.get("id")     # what this program answers next answers THIS
             if "condition" in req:
                 c = req["condition"]
                 raise OkayError(c.get("kind", ""), c.get("message", ""))
-            return dec(req.get("ok"))
+            return dec(req.get("answer"))
         serve(req)                       # a nested request, answered in turn
 
 def _ann(a):
@@ -459,22 +469,34 @@ def serve(req):
             f = resolve(req["fn"])
             out = f(*[dec(a) for a in req.get("args", [])])
             reply({"id": rid, "ok": enc(out)})
-        elif op == "start":
+        elif op == "program":
+            # ONE program protocol (foreign-one-program): the function either
+            # RETURNS a program as data (okay.done / okay.perform(...).then),
+            # walked a node at a time with continuations kept by id, or is
+            # ordinary code whose okay_call's are nodes marked `once`; a plain
+            # return is `done`
             f = resolve(req["fn"])
-            _offered.append(set(req.get("callbacks", [])))
+            run = req["run"]
+            frame = [run, set(req.get("callbacks", [])), rid]
+            _direct.append(frame)
             try:
                 out = f(*[dec(a) for a in req.get("args", [])])
+            except SystemExit:
+                raise
+            except Exception as e:
+                reply({"id": frame[2], "condition": {"kind": type(e).__name__, "message": str(e)}})
+                return
             finally:
-                _offered.pop()
-            reply({"id": rid, "ok": enc(out)})
-        elif op == "program":
-            f = resolve(req["fn"])
-            reply({"id": rid, "ok": _node(req["run"], f(*[dec(a) for a in req.get("args", [])]))})
+                _direct.pop()
+            node = _node(run, out) if isinstance(out, (Done, Step)) else {"done": enc(out)}
+            reply({"id": frame[2], "ok": node})
         elif op == "continue":
             run, k = req["run"], req["k"]
             if run not in _runs or k not in _runs[run]:
-                raise LookupError("continuation %s of run %s is not held here (forgotten, or another process)"
-                                  % (k, run))
+                raise LookupError("continuation %s of run %s is not held here (forgotten, continued "
+                                  "once already, or another process)" % (k, run))
+            if "condition" in req:
+                raise ValueError("a program as data is continued with an answer, not a condition")
             reply({"id": rid, "ok": _node(run, _runs[run][k](dec(req.get("answer"))))})
         elif op == "forget":
             _runs.pop(req["run"], None)
@@ -525,8 +547,6 @@ def serve(req):
                 raise ValueError("this Python worker speaks the compressions none, deflate; not %r" % c)
             reply({"id": rid, "ok": {"format": f, "compress": c, "frames": fr}})
             _mode["format"], _mode["compress"], _mode["frames"] = f, c, fr    # AFTER its own answer
-        elif op == "resume":
-            raise ValueError("resume %r: no call is waiting for it (resumed twice?)" % req.get("k"))
         else:
             raise ValueError("unknown op %r" % op)
     except SystemExit:

@@ -35,7 +35,8 @@ import (
 )
 
 // ShimVersion is the wire version this worker speaks; the host refuses any other.
-const ShimVersion = 6
+// 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`
+const ShimVersion = 7
 
 // KV is one entry of a Dict.
 type KV struct {
@@ -336,7 +337,8 @@ func (e *OkayError) Error() string { return e.Kind + ": " + e.Message }
 
 // Ctx is a direct-style call in progress: what okay.Call reaches okay through.
 type Ctx struct {
-	id      any
+	id      any // the request this call answers next: its start, then each continue
+	run     int64
 	offered map[string]bool
 	events  chan event
 	answers chan answerMsg
@@ -370,7 +372,8 @@ func Call[A any](c *Ctx, request Op[A]) (A, error) {
 	for i, a := range request.Args {
 		wire[i] = enc(a)
 	}
-	c.events <- event{ask: map[string]any{"ask": map[string]any{"cb": request.Name, "args": wire, "k": k}}}
+	// the one callback message (foreign-one-program): a node, continued ONCE
+	c.events <- event{ask: map[string]any{"perform": request.Name, "args": wire, "k": k, "once": true}}
 	a := <-c.answers
 	if a.err != nil {
 		return zero, a.err
@@ -404,7 +407,7 @@ type Worker struct {
 	functions Functions
 	konts     map[key]func(any) Prog
 	next      int64
-	waiting   map[int64]*Ctx // direct-style calls parked in an ask, by k
+	waiting   map[key]*Ctx // direct-style calls parked in an okay.Call, by run and k
 	asks      int64
 	// stage 5b (wire-auth): a worker with a secret answers nothing but an
 	// auth until the host has proved it holds the same secret
@@ -422,21 +425,43 @@ func NewWorker(programs Programs, functions ...Functions) *Worker {
 			fs[k] = v
 		}
 	}
-	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[int64]*Ctx{}}
+	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[key]*Ctx{}}
 }
 
-// await is the next thing a direct-style call does: ask the host, or finish.
-func (w *Worker) await(c *Ctx) map[string]any {
+// await is the next thing a direct-style call does: perform an okay
+// operation (a node the host continues), or finish — `done` as a program's
+// node, or, for a plain `call`, the value itself.
+func (w *Worker) await(c *Ctx, plain bool) map[string]any {
 	e := <-c.events
 	switch {
 	case e.ask != nil:
-		k := e.ask["ask"].(map[string]any)["k"].(int64)
-		w.waiting[k] = c
-		return e.ask
+		w.waiting[key{c.run, e.ask["k"].(int64)}] = c
+		return map[string]any{"id": c.id, "ok": e.ask}
 	case e.fault != nil:
 		return condition(c.id, e.fault.Kind, e.fault.Message)
 	}
-	return map[string]any{"id": c.id, "ok": enc(e.done)}
+	if plain {
+		return map[string]any{"id": c.id, "ok": enc(e.done)}
+	}
+	return map[string]any{"id": c.id, "ok": map[string]any{"done": enc(e.done)}}
+}
+
+// begin runs a direct-style function on a goroutine of its own, its
+// okay.Call's answered through c; await gives its first message.
+func (w *Worker) begin(c *Ctx, f func(c *Ctx, args []any) any, args []any) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if e, ok := r.(*OkayError); ok {
+					c.events <- event{fault: e}
+				} else {
+					c.events <- event{fault: &OkayError{"GoError", fmt.Sprint(r)}}
+				}
+			}
+		}()
+		out := f(c, args)
+		c.events <- event{done: out}
+	}()
 }
 
 // Hello is the handshake line a worker speaks first. It announces the
@@ -540,27 +565,17 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 	run, _ := req["run"].(int64)
 	switch req["op"] {
 	case "program":
+		// ONE program protocol (foreign-one-program): a program as data, or a
+		// direct-style function whose okay.Call's are nodes marked `once`
 		fn, _ := req["fn"].(string)
-		f, ok := w.programs[fn]
-		if !ok {
-			return condition(id, "LookupError", fmt.Sprintf("no program named '%s' in this worker", fn))
-		}
 		args, _ := req["args"].([]any)
-		return map[string]any{"id": id, "ok": w.node(run, f(args))}
-	case "continue":
-		k, _ := req["k"].(int64)
-		f, ok := w.konts[key{run, k}]
-		if !ok {
-			return condition(id, "LookupError", fmt.Sprintf("continuation %d of run %d is not held here (forgotten, or another process)", k, run))
+		if f, ok := w.programs[fn]; ok {
+			return map[string]any{"id": id, "ok": w.node(run, f(args))}
 		}
-		return map[string]any{"id": id, "ok": w.node(run, f(req["answer"]))}
-	case "start":
-		fn, _ := req["fn"].(string)
 		f, ok := w.functions[fn]
 		if !ok {
-			return condition(id, "LookupError", fmt.Sprintf("no function named '%s' in this worker", fn))
+			return condition(id, "LookupError", fmt.Sprintf("no program or function named '%s' in this worker", fn))
 		}
-		args, _ := req["args"].([]any)
 		offered := map[string]bool{}
 		if cbs, ok := req["callbacks"].([]any); ok {
 			for _, n := range cbs {
@@ -569,44 +584,47 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 				}
 			}
 		}
-		c := &Ctx{id: id, offered: offered, events: make(chan event), answers: make(chan answerMsg), next: &w.asks}
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					if e, ok := r.(*OkayError); ok {
-						c.events <- event{fault: e}
-					} else {
-						c.events <- event{fault: &OkayError{"GoError", fmt.Sprint(r)}}
-					}
-				}
-			}()
-			out := f(c, args)
-			c.events <- event{done: out}
-		}()
-		return w.await(c)
-	case "resume":
-		k, _ := req["k"].(int64)
-		c, ok := w.waiting[k]
+		c := &Ctx{id: id, run: run, offered: offered, events: make(chan event), answers: make(chan answerMsg), next: &w.asks}
+		w.begin(c, f, args)
+		return w.await(c, false)
+	case "call":
+		// a direct-style function with no callbacks: its value
+		fn, _ := req["fn"].(string)
+		f, ok := w.functions[fn]
 		if !ok {
-			return condition(id, "ValueError", fmt.Sprintf("resume %d: no call is waiting for it (resumed twice?)", k))
+			return condition(id, "LookupError", fmt.Sprintf("no function named '%s' in this worker", fn))
 		}
-		delete(w.waiting, k)
-		if cond, ok := req["condition"].(Dict); ok {
-			e := &OkayError{}
-			for _, kv := range cond {
-				if s, ok := kv.Val.(string); ok {
-					if kv.Key == "kind" {
-						e.Kind = s
-					} else if kv.Key == "message" {
-						e.Message = s
+		args, _ := req["args"].([]any)
+		c := &Ctx{id: id, offered: map[string]bool{}, events: make(chan event), answers: make(chan answerMsg), next: &w.asks}
+		w.begin(c, f, args)
+		return w.await(c, true)
+	case "continue":
+		k, _ := req["k"].(int64)
+		if c, ok := w.waiting[key{run, k}]; ok {
+			delete(w.waiting, key{run, k})
+			c.id = id
+			if cond, ok := req["condition"].(Dict); ok {
+				e := &OkayError{}
+				for _, kv := range cond {
+					if s, ok := kv.Val.(string); ok {
+						if kv.Key == "kind" {
+							e.Kind = s
+						} else if kv.Key == "message" {
+							e.Message = s
+						}
 					}
 				}
+				c.answers <- answerMsg{err: e}
+			} else {
+				c.answers <- answerMsg{value: req["answer"]}
 			}
-			c.answers <- answerMsg{err: e}
-		} else {
-			c.answers <- answerMsg{value: req["ok"]}
+			return w.await(c, false)
 		}
-		return w.await(c)
+		f, ok := w.konts[key{run, k}]
+		if !ok {
+			return condition(id, "LookupError", fmt.Sprintf("continuation %d of run %d is not held here (forgotten, continued once already, or another process)", k, run))
+		}
+		return map[string]any{"id": id, "ok": w.node(run, f(req["answer"]))}
 	case "configure":
 		f, _ := req["format"].(string)
 		c, _ := req["compress"].(string)
@@ -625,7 +643,7 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 		}
 		return map[string]any{"id": id, "ok": nil}
 	}
-	return condition(id, "ValueError", fmt.Sprintf("this Go worker serves programs only, not '%v'", req["op"]))
+	return condition(id, "ValueError", fmt.Sprintf("this Go worker serves program, continue, forget and call, not '%v'", req["op"]))
 }
 
 // HandleMessage answers one message, in the worker's current encoding, with

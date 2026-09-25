@@ -9,7 +9,9 @@
 # the SHARED value tags every far side speaks — an integer is a plain
 # number, an integral double {"t":"f"}, a named list {"t":"dict"}, raw
 # {"t":"bytes"}, an integer past 2^53 {"t":"int"} — and frames announced
-# columnar; the old tags are still read). One JSON object per
+# columnar; the old tags are still read; v10 = foreign-one-program:
+# `start`/`resume` fold into `program`/`continue`, a direct function's
+# okay_call a node marked `once`). One JSON object per
 # line each way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -20,7 +22,7 @@
 # is OPTIONAL: announced when installed, and frames work exactly as
 # before where it is not.
 
-SHIM <- 9
+SHIM <- 10
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = I(17)), "\n", sep = "")
@@ -209,28 +211,34 @@ resolve <- function(fn) {
 # that failed in okay is an R condition of class `okay_error`, with the
 # okay condition's `kind` beside its message — tryCatch-able.
 
-.okay_offered <- list()
+.okay_direct <- list()
 .okay_next_k <- 0L
 
 okay_call <- function(name, ...) {
-  n <- length(.okay_offered)
+  n <- length(.okay_direct)
   if (n == 0L)
-    stop(sprintf("okay_call('%s') outside a call okay started with callbacks", name))
-  offered <- .okay_offered[[n]]
-  if (!(name %in% offered))
-    stop(sprintf("okay_call('%s'): this call was offered %s", name, paste(offered, collapse = ", ")))
+    stop(sprintf("okay_call('%s') outside a program okay started", name))
+  frame <- .okay_direct[[n]]
+  if (!(name %in% frame$offered))
+    stop(sprintf("okay_call('%s'): this call was offered %s", name, paste(frame$offered, collapse = ", ")))
   k <- .okay_next_k + 1L
   assign(".okay_next_k", k, envir = globalenv())
-  say(list(ask = list(cb = name, args = unname(lapply(list(...), enc)), k = k)))
+  # the one callback message (foreign-one-program): a node, continued ONCE
+  say(list(id = frame$id, ok = list(perform = name, args = unname(lapply(list(...), enc)), k = k, once = TRUE)))
   repeat {
     req <- read_msg()
     if (is.null(req)) quit(status = 0)
-    if (identical(req$op, "resume") && identical(as.integer(req$k), k)) {
+    if (identical(req$op, "continue") && identical(as.numeric(req$run), as.numeric(frame$run)) &&
+        identical(as.integer(req$k), k)) {
+      # what this program answers next answers THIS continue
+      stack <- .okay_direct
+      stack[[n]]$id <- req$id
+      assign(".okay_direct", stack, envir = globalenv())
       if (!is.null(req$condition))
         stop(structure(class = c("okay_error", "error", "condition"),
                        list(message = req$condition$message, call = NULL,
                             kind = req$condition$kind)))
-      return(dec(req$ok))
+      return(dec(req$answer))
     }
     say(serve(req))
   }
@@ -315,10 +323,12 @@ okay_node <- function(run, p) {
   list(perform = p$name, args = unname(lapply(p$args, enc)), k = k)
 }
 
-okay_push <- function(cbs)
-  assign(".okay_offered", c(.okay_offered, list(unlist(cbs))), envir = globalenv())
+# the direct-style programs running now, innermost last: their run, the
+# callbacks offered, and the id of the request each answers next
+okay_push <- function(run, cbs, id)
+  assign(".okay_direct", c(.okay_direct, list(list(run = run, offered = unlist(cbs), id = id))), envir = globalenv())
 okay_pop <- function()
-  assign(".okay_offered", .okay_offered[-length(.okay_offered)], envir = globalenv())
+  assign(".okay_direct", .okay_direct[-length(.okay_direct)], envir = globalenv())
 
 serve <- function(req) {
   rid <- req$id
@@ -327,20 +337,27 @@ serve <- function(req) {
     if (op == "call") {
       f <- resolve(req$fn)
       list(id = rid, ok = enc(do.call(f, lapply(req$args, dec))))
-    } else if (op == "start") {
-      f <- resolve(req$fn)
-      okay_push(req$callbacks)
-      res <- tryCatch(do.call(f, lapply(req$args, dec)), finally = okay_pop())
-      list(id = rid, ok = enc(res))
     } else if (op == "program") {
+      # ONE program protocol (foreign-one-program): the function RETURNS a
+      # program as data (okay_done / okay_then(okay_perform(...), f)), or is
+      # ordinary R whose okay_call's are nodes marked `once`
       f <- resolve(req$fn)
-      list(id = rid, ok = okay_node(req$run, do.call(f, lapply(req$args, dec))))
+      okay_push(req$run, req$callbacks, rid)
+      n <- length(.okay_direct)
+      out <- tryCatch(list(value = do.call(f, lapply(req$args, dec))), error = function(e) list(err = e))
+      id <- .okay_direct[[n]]$id
+      okay_pop()
+      if (!is.null(out$err))
+        list(id = id, condition = list(kind = class(out$err)[1], message = conditionMessage(out$err)))
+      else if (inherits(out$value, "okay_done") || inherits(out$value, "okay_step"))
+        list(id = id, ok = okay_node(req$run, out$value))
+      else list(id = id, ok = list(done = enc(out$value)))
     } else if (op == "continue") {
       key <- as.character(req$run)
       table <- if (exists(key, envir = .okay_runs, inherits = FALSE)) get(key, envir = .okay_runs) else list()
       k <- table[[as.character(req$k)]]
       if (is.null(k))
-        stop(sprintf("continuation %s of run %s is not held here (forgotten, or another process)", req$k, req$run))
+        stop(sprintf("continuation %s of run %s is not held here (forgotten, continued once already, or another process)", req$k, req$run))
       list(id = rid, ok = okay_node(req$run, k(dec(req$answer))))
     } else if (op == "forget") {
       key <- as.character(req$run)
@@ -384,8 +401,6 @@ serve <- function(req) {
       # takes effect AFTER this answer is written (see say)
       .okay_wire$switch_to <- list(format = f, compress = z, frames = fr)
       list(id = rid, ok = list(format = f, compress = z))
-    } else if (op == "resume") {
-      stop(sprintf("resume %s: no call is waiting for it (resumed twice?)", format(req$k)))
     } else stop(sprintf("unknown op '%s'", op))
   }, condition = function(c) {
     list(id = rid, condition = list(kind = class(c)[1], message = conditionMessage(c)))

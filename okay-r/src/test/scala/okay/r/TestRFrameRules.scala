@@ -15,7 +15,7 @@ class TestRFrameRules extends munit.FunSuite:
   final case class Obs(n: Option[Int], x: Double) derives Schema
 
   private def scripted(answer: String): WireLink = new WireLink:
-    def hello(): Option[String] = Some("""{"shim":9,"r":"4.4.1","speaks":{"frames":["columnar"]}}""")
+    def hello(): Option[String] = Some(s"""{"shim":${RSubprocess.ShimVersion},"r":"4.4.1","speaks":{"frames":["columnar"]}}""")
     def roundTrip(line: String): Option[String] = Some(answer)
     def exchange(message: Array[Byte]): Option[Array[Byte]] = None
     def close(): Unit = ()

@@ -32,7 +32,7 @@ class TestWireGivens extends munit.FunSuite:
   test("a far side that did not announce the given format is refused by name") {
     import WireFormat.Cbor.given
     val link = new WireLink:
-      def hello(): Option[String] = Some("""{"shim":6,"python":"haskell"}""")
+      def hello(): Option[String] = Some(s"""{"shim":${ForeignWorker.ShimVersion},"python":"haskell"}""")
       def roundTrip(line: String): Option[String] = None
       def exchange(message: Array[Byte]): Option[Array[Byte]] = None
       def close(): Unit = ()
@@ -46,7 +46,7 @@ class TestWireGivens extends munit.FunSuite:
       extends WireLink:
     override def network: Boolean = !inProcess && !pipe
     var asked = Vector.empty[String]
-    def hello(): Option[String] = Some(s"""{"shim":6,"python":"fake"$speaks}""")
+    def hello(): Option[String] = Some(s"""{"shim":${ForeignWorker.ShimVersion},"python":"fake"$speaks}""")
     def roundTrip(line: String): Option[String] =
       asked :+= line
       Some("""{"id":null,"ok":{}}""")
@@ -156,7 +156,7 @@ class TestWireGivens extends munit.FunSuite:
   private final class Guarded(secret: String, lying: Boolean = false) extends WireLink:
     val ns = "00112233445566778899aabbccddeeff"
     var asked = Vector.empty[String]
-    def hello(): Option[String] = Some(s"""{"shim":6,"python":"fake","auth":{"scheme":"hmac-sha256","nonce":"$ns"}}""")
+    def hello(): Option[String] = Some(s"""{"shim":${ForeignWorker.ShimVersion},"python":"fake","auth":{"scheme":"hmac-sha256","nonce":"$ns"}}""")
     def roundTrip(line: String): Option[String] =
       asked :+= line
       Json.parse(line) match

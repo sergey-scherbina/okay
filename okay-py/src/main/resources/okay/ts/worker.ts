@@ -12,7 +12,7 @@ import * as zlib from "node:zlib";
 import { pathToFileURL } from "node:url";
 import { hooks, OkayError, type Prog } from "./okay.ts";
 
-const SHIM = 6;
+const SHIM = 7;
 const EXACT = 2 ** 53;
 
 // ---- the wire -----------------------------------------------------------
@@ -288,24 +288,27 @@ function resolve(fn: string): any {
   return obj;
 }
 
-// ---- callbacks (start / resume) ------------------------------------------
+// ---- callbacks: a direct function's okay_call is a node (foreign-one-program)
 
-const offered: Set<string>[] = [];
+// the direct-style programs running now, innermost last: their run, the
+// callbacks offered, and the id of the request each answers next
+const direct: { run: number; offered: Set<string>; id: unknown }[] = [];
 let nextAsk = 0;
 
 hooks.call = (name: string, args: unknown[]): unknown => {
-  const mine = offered[offered.length - 1];
-  if (!mine) throw new Error(`call("${name}") outside a call okay started with callbacks`);
-  if (!mine.has(name)) throw new Error(`call("${name}"): this call was offered ${JSON.stringify([...mine].sort())}`);
+  const frame = direct[direct.length - 1];
+  if (!frame) throw new Error(`call("${name}") outside a program okay started`);
+  if (!frame.offered.has(name)) throw new Error(`call("${name}"): this call was offered ${JSON.stringify([...frame.offered].sort())}`);
   nextAsk += 1;
   const k = nextAsk;
-  reply({ ask: { cb: name, args: args.map(enc), k } });
+  reply({ id: frame.id, ok: { perform: name, args: args.map(enc), k, once: true } });
   for (;;) {
     const req = readMsg();
     if (req === null) process.exit(0);
-    if (req.op === "resume" && req.k === k) {
+    if (req.op === "continue" && req.run === frame.run && req.k === k) {
+      frame.id = req.id;
       if (req.condition) throw new OkayError(req.condition.kind, req.condition.message);
-      return dec(req.ok);
+      return dec(req.answer);
     }
     const nested = serve(req);
     reply(nested instanceof Promise
@@ -349,19 +352,26 @@ function serve(req: any): unknown {
     switch (req.op) {
       case "call":
         return settle(id, resolve(req.fn)(...args), enc);
-      case "start": {
-        offered.push(new Set(req.callbacks ?? []));
+      case "program": {
+        // ONE program protocol (foreign-one-program): a program as data
+        // (done/perform), or ordinary code whose okay_call's are `once` nodes
+        const frame = { run: req.run, offered: new Set<string>(req.callbacks ?? []), id };
+        direct.push(frame);
+        let out: any;
         try {
-          return settle(id, resolve(req.fn)(...args), enc);
+          out = resolve(req.fn)(...args);
+        } catch (e) {
+          return condition(frame.id, e);
         } finally {
-          offered.pop();
+          direct.pop();
         }
+        if (out && (out.tag === "done" || out.tag === "perform")) return { id: frame.id, ok: node(req.run, out) };
+        return settle(frame.id, out, (v) => ({ done: enc(v) }));
       }
-      case "program":
-        return { id, ok: node(req.run, resolve(req.fn)(...args)) };
       case "continue": {
         const k = runs.get(req.run)?.get(req.k);
-        if (!k) throw new Error(`continuation ${req.k} of run ${req.run} is not held here (forgotten, or another process)`);
+        if (!k) throw new Error(`continuation ${req.k} of run ${req.run} is not held here (forgotten, continued once already, or another process)`);
+        if (req.condition) throw new Error("a program as data is continued with an answer, not a condition");
         return { id, ok: node(req.run, k(dec(req.answer))) };
       }
       case "forget":
@@ -387,8 +397,6 @@ function serve(req: any): unknown {
         switchTo = { format: req.format, compress: req.compress };
         return { id, ok: { format: req.format, compress: req.compress } };
       }
-      case "resume":
-        throw new Error(`resume ${req.k}: no call is waiting for it (resumed twice?)`);
       default:
         throw new Error(`this TypeScript worker does not serve '${req.op}'`);
     }

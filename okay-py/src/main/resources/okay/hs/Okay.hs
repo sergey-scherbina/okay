@@ -43,7 +43,7 @@ import System.IO
 
 -- | the wire version this worker speaks; the host refuses any other
 shimVersion :: Int
-shimVersion = 6
+shimVersion = 7
 
 -- | a value on the okay wire: what crosses between okay and Haskell
 data Value

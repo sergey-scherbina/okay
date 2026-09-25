@@ -15,7 +15,7 @@ class TestWireWhole extends munit.FunSuite:
 
   test("over a link, a truncated handshake refuses loudly") {
     val link = new WireLink:
-      def hello(): Option[String] = Some("""{"shim":6,"python":"go"""")
+      def hello(): Option[String] = Some(s"""{"shim":${ForeignWorker.ShimVersion},"python":"go"""")
       def roundTrip(line: String): Option[String] = None
       def exchange(message: Array[Byte]): Option[Array[Byte]] = None
       def close(): Unit = ()
