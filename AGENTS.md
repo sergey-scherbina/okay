@@ -576,7 +576,21 @@ force, all already practiced, none previously written down:
   `liveTest`-style per-test helper (TestChatDemo's own) where a
   suite mixes live and non-live tests. specs/integration-test-gate.md.
 - Benchmarks: the `performance` skill is the protocol — measure
-  before optimizing, record, keep refuted experiments. **THE HISTORY IS
+  before optimizing, record, keep refuted experiments. **RUN A JMH
+  LANE THROUGH `scripts/jmh-lane.sh "<sbt Jmh/run command>"`**, never a
+  bare `Jmh/run` and never a whole-class sweep — ci-staged's A-7
+  (`.agents/plugins/ci-staged/commands/ci-staged.md`) is why: a
+  benchmark measures wall-clock behaviour, so a sibling's gate starting
+  mid-run does not slow it down, it makes the NUMBER wrong, silently.
+  The script takes a lock (one lane at a time on this box, separate
+  from `scripts/ci-runner.sh`'s — `quiet()`, shared via
+  `scripts/quiet.sh`, is what keeps a lane and a whole-build gate from
+  overlapping in the first place), waits for a quiet box before
+  starting, and — checked again at the END, which a test gate never
+  needs — discards and RETRIES a lane the box got busy during (default
+  5 attempts). Record what actually landed with `scripts/history.sh new
+  <measure>`; a discarded round belongs there too, marked discarded.
+  **THE HISTORY IS
   A DIRECTORY** (history-d, 2026-09-25, the operator's ask), for the
   reason changelog.d and the boards are: every lane appending to the
   tail of one file conflicted on its last lines. A measurement is its

@@ -195,6 +195,33 @@ build of every landing and pushes only what that build has seen. A
 range pushes it at once (step 3). The one push a human still makes by
 hand is none.
 
+### Stage D — the same lock discipline for benchmarks (`scripts/jmh-lane.sh`)
+
+The operator's own generalization (2026-09-25): the shape is not really
+about tests, it is about a SHARED BOX, and a JMH benchmark loads that box
+exactly as a test gate does — with the extra failure mode that
+contention does not fail the run, it makes the NUMBER wrong, silently.
+`scripts/quiet.sh` factors `gate-retry.sh`'s own `quiet()`/`kill_tree`
+out into a file both it and `jmh-lane.sh` source, so the one threshold
+set (`busy-sbt=0`, `load<15`, `free>=10GB`) never drifts between the two
+consumers. `jmh-lane.sh "<sbt Jmh/run command>" [attempts]` takes its
+OWN lock (`.work/jmh/lock`, separate from the runner's `.work/ci/lock` —
+`quiet()` itself is what keeps a lane and a whole-build gate from
+overlapping, since a live gate is a busy-sbt process either one sees),
+waits for quiet before EVERY attempt (not only the first — a
+contamination-triggered retry must not blindly re-run into the same
+busy box), and — the half a test gate never needs — checks quiet AGAIN
+right after the run; a busy reading there discards the result and
+retries the same lane, up to 5 attempts by default. `scripts/gate.sh` is
+NOT used for the sbt invocation itself: it parses a test summary line
+and a JMH result table is not one, matching `scripts/ab-defaults.sh`'s
+own existing precedent of a bare `$SBT` call for `Jmh/run`.
+`scripts/jmh-lane-selftest.sh` (6 cases, fixture-based, a fake
+`quiet.sh` popping scripted quiet/busy answers off a queue file) found
+the one real bug: the first draft waited for quiet only ONCE, before the
+whole retry loop, so a contamination-triggered retry re-ran immediately
+into whatever the box was doing, never re-checking.
+
 ## Behavior
 
 Stage A — `staged` order (`project/Affected.scala`;
@@ -285,6 +312,26 @@ Policy (AGENTS.md):
       and the narrowed re-gate rule (landed with stage A); the PUSH
       rule is rewritten as "land, then kick" (this lane), with a
       documented fallback for a checkout that predates the runner
+
+Stage D — benchmarks (`scripts/jmh-lane-selftest.sh`, 6 cases, a fixture
+directory with a fake `quiet.sh` popping scripted answers off a queue
+file and a fake `sbt` that always succeeds):
+
+- [x] quiet throughout: one attempt, exit 0
+- [x] the box gets busy DURING the run: that attempt's result is
+      discarded and reported as contaminated; the SAME lane is retried
+      and its own clean result is trusted
+- [x] the box never stays quiet through a whole lane: gives up at the
+      attempt cap (default 5, tested at 3) and exits 99, distinct from
+      a real sbt failure
+- [x] a second lane while one holds `.work/jmh/lock` refuses, naming
+      the holder's pid — a SEPARATE lock from `.work/ci/lock`
+- [x] a lock whose pid is dead is taken over, and it says so
+- [x] the lock is released whether the lane succeeded or not
+- [x] `quiet()`/`kill_tree` live in one file (`scripts/quiet.sh`),
+      sourced by both `gate-retry.sh` and `jmh-lane.sh` — verified by
+      running `gate-retry.sh --probe` and `quiet.sh --probe` from both
+      the main checkout and a worktree and reading identical numbers
 
 ## Out of scope
 
