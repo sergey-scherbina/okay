@@ -28,6 +28,21 @@ private[compress] object Le:
   inline def put64(b: Array[Byte], at: Int, v: Long): Unit =
     put32(b, at, v.toInt); put32(b, at + 4, (v >>> 32).toInt)
 
+/** `Array.tabulate` for ints without its ClassTag road, which boxes every
+ * element: 9% of ZSTD compression was `boxToInteger` (zstd-speed) */
+private[compress] object Ints:
+  inline def tabulate(n: Int)(inline f: Int => Int): Array[Int] =
+    val a = new Array[Int](n)
+    var i = 0
+    while i < n do { a(i) = f(i); i += 1 }
+    a
+  /** how many times each value of `xs` occurs, in an array of `size` */
+  def counts(xs: Array[Int], size: Int): Array[Int] =
+    val c = new Array[Int](size)
+    var i = 0
+    while i < xs.length do { c(xs(i)) += 1; i += 1 }
+    c
+
 /** a growable output: codecs write into it without a copy per append */
 private[compress] final class Out(initial: Int):
   var buf: Array[Byte] = new Array[Byte](math.max(16, initial))

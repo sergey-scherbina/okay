@@ -236,7 +236,7 @@ object ZstdEncoder:
     val llc = new Array[Int](n); val mlc = new Array[Int](n)
     var q = 0
     while q < n do { llc(q) = llCode(seqs.ll(q)); mlc(q) = mlCode(seqs.ml(q)); q += 1 }
-    val ofc = Array.tabulate(n)(k => 31 - Integer.numberOfLeadingZeros(seqs.ov(k)))
+    val ofc = Ints.tabulate(n)(k => 31 - Integer.numberOfLeadingZeros(seqs.ov(k)))
     // a table per stream: its own when that is shorter than the predefined one
     val (llMode, llT, llDesc) = FseEncoder.choose(llc, 35, 9, FseEncoder.LlDefaultNorm, 6)
     val (ofMode, ofT, ofDesc) = FseEncoder.choose(ofc, 31, 8, FseEncoder.OfDefaultNorm, 5)
@@ -295,7 +295,10 @@ private[compress] final class FseEncoder(val log: Int, val base: Array[Int], val
   /** a state of `symbol` whose update READS bits, or -1: the last update
    * of a two-state stream must run past its start, which reading nothing
    * would not */
-  def stateReading(symbol: Int): Int = sym.indices.find(u => sym(u) == symbol && bits(u) > 0).getOrElse(-1)
+  def stateReading(symbol: Int): Int =
+    var u = 0
+    while u < sym.length && !(sym(u) == symbol && bits(u) > 0) do u += 1
+    if u < sym.length then u else -1
 
 private[compress] object FseEncoder:
   val LlDefaultNorm: Array[Int] = Array(4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1,
@@ -308,8 +311,8 @@ private[compress] object FseEncoder:
     val d = Fse.build(norm, log)
     val size = 1 << log
     val symbols = norm.length
-    val base = Array.tabulate(size)(d.baseAt)
-    val bits = Array.tabulate(size)(d.bitsAt)
+    val base = Ints.tabulate(size)(d.baseAt)
+    val bits = Ints.tabulate(size)(d.bitsAt)
     val owner = Array.fill(symbols)(Array.emptyIntArray)
     val firstOf = Array.fill(symbols)(-1)
     var u = 0
@@ -322,23 +325,31 @@ private[compress] object FseEncoder:
       var x = from
       while x < to do { owner(s)(x) = u; x += 1 }
       u += 1
-    FseEncoder(log, base, bits, owner, firstOf, Array.tabulate(size)(d.symbol))
+    FseEncoder(log, base, bits, owner, firstOf, Ints.tabulate(size)(d.symbol))
 
-  private val cache = scala.collection.mutable.Map.empty[Int, FseEncoder]
+  // by the table's symbol count (36, 53, 29): an unboxed key per block
+  private val cache = new java.util.concurrent.atomic.AtomicReferenceArray[FseEncoder](64)
   private def predefined(which: Int, norm: Array[Int], log: Int): FseEncoder =
-    cache.synchronized(cache.getOrElseUpdate(which, of(norm, log)))
+    val hit = cache.get(which)
+    if hit != null then hit
+    else { val t = of(norm, log); cache.compareAndSet(which, null, t): Unit; cache.get(which) }
 
   /** the mode (0 predefined, 1 RLE, 2 own table), its encoder and the
    * table's description: whichever codes these symbols in fewer bits */
   def choose(syms: Array[Int], maxSymbol: Int, maxLog: Int, dfltNorm: Array[Int], dfltLog: Int)
       : (Int, FseEncoder, Array[Byte]) =
-    val counts = new Array[Int](maxSymbol + 1)
-    syms.foreach(s => counts(s) += 1)
-    val used = counts.count(_ > 0)
-    val predefinedOk = syms.forall(s => s < dfltNorm.length && dfltNorm(s) != 0)
+    val counts = Ints.counts(syms, maxSymbol + 1)
+    var used = 0
+    var predefinedOk = true
+    var s = 0
+    while s < counts.length do
+      if counts(s) > 0 then
+        used += 1
+        if s >= dfltNorm.length || dfltNorm(s) == 0 then predefinedOk = false
+      s += 1
     if used == 1 then
-      val s = syms(0)
-      (1, of(Array.tabulate(s + 1)(k => if k == s then 1 else 0), 0), Array(s.toByte))
+      val only = syms(0)
+      (1, of(Ints.tabulate(only + 1)(k => if k == only then 1 else 0), 0), Array(only.toByte))
     else
       val pre = if predefinedOk then predefined(dfltNorm.length, dfltNorm, dfltLog) else null
       val preCost = if pre == null then Long.MaxValue else cost(counts, dfltNorm, dfltLog)
@@ -437,7 +448,7 @@ private[compress] object HuffmanEncoder:
     if lens.foldLeft(0L)((k, l) => if l > 0 then k + (1L << (maxBits - l)) else k) != (1L << maxBits) then return null
     // weights: maxBits + 1 - length; the last present symbol's is implied
     val lastSym = counts.lastIndexWhere(_ > 0)
-    val weights = Array.tabulate(lastSym)(s => if lens(s) == 0 then 0 else maxBits + 1 - lens(s))
+    val weights = Ints.tabulate(lastSym)(s => if lens(s) == 0 then 0 else maxBits + 1 - lens(s))
     if weights.length == 0 then return null
     // the direct form holds at most 128 weights; past that (a binary
     // buffer's bytes span 0-255) the weights are FSE-coded, or the offsets
@@ -507,8 +518,7 @@ private[compress] object HuffmanEncoder:
   private def fseWeights(w: Array[Int]): Array[Byte] =
     val n = w.length
     if n < 2 then return null
-    val counts = new Array[Int](Huffman.MaxBits + 1)
-    w.foreach(x => counts(x) += 1)
+    val counts = Ints.counts(w, Huffman.MaxBits + 1)
     val log = 6
     val norm = FseEncoder.normalise(counts, log)
     val desc = FseEncoder.describe(norm, log)
