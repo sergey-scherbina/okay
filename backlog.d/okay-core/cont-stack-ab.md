@@ -1,6 +1,7 @@
-- [ ] cont-stack-ab — the measurement cont-stack-switch landed without
+- [ ] cont-stack-ab — PLAN STAGE A (specs/cont-stack.md "Stages"): the
+      measurement cont-stack-switch landed without
       (operator's call, 2026-09-25): fib100 / fib1000 / statePara
-      against the commit before it, min of 3 alternating rounds, one
+      against 60a59c97e's parent, plus HandlerBenchmark.handleCapture, min of 3 alternating rounds, one
       lane per `scripts/jmh-lane.sh`, `-f 1 -wi 3 -i 5 -prof gc`, on a
       QUIET box — the afternoon's attempt was disqualified (load
       19–121, fib100 2.2x its own morning number, ±25% within a lane).

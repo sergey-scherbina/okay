@@ -1,4 +1,5 @@
-- [ ] cont-stack-macro — specs/cont-stack.md stage 2, Layer 1 A, after
+- [ ] cont-stack-macro — PLAN STAGE B (specs/cont-stack.md "Stages"),
+      Layer 1 A, independent of the A/B — starts now; after
       cont-stack-switch landed Layers 2 and 3 (2026-09-25): `shift`
       becomes an inline macro that reads the body's tree, and a body
       whose every use of `k` is a tail call `k(v)` with `v` not

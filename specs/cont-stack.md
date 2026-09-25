@@ -584,28 +584,85 @@ Stack knowledge (Layer 3):
   `jmh-lane.sh` runs a bare `sbt` on the PATH's JDK 17, which cannot
   compile a `versioned` variant (backlog jmh-lane-jdk-pin).
 
-## Stages
+## Stages — what landed, and the plan after it (operator's ask, 2026-09-25 evening)
 
-1. Layer 2 — landed with stage 3 (cont-stack-switch, 2026-09-25).
-2. Layer 1 A: the macro and the `Jump` node. Target: statePara back to
-   master's number, with zero switches.
-3. Layer 2 on the platform thread (Decision 8) and Layer 3 on every
-   platform (the matrix above) — LANDED 2026-09-25 (cont-stack-switch):
-   `StackRoom` in the core, the JVM `StackSwitch` with the
-   `ThreadStackSize` first room and `jdk22/StackRoom.scala` via
-   `versioned`/`multiRelease` (macOS arm64; the other layouts are
-   Open question 1), the Native `StackSwitch` reading `ThreadInfo`,
-   `worst` in the run's `Gauge`. Landed BEFORE stage 2 and before the
-   A/B, by the operator's call; "within noise" is backlog cont-stack-ab,
-   and shrinking the fast path (`Mapped`, `Reentry`, `Gauged`) goes
-   with it.
-4. Layer 1 B, then the known higher-order functions, then visible user
-   functions and `direct`.
-5. The remaining `ucontext` layouts on the JVM (Open question 1), each
-   with its probe run on that OS.
-6. okay2: stages 1–4 in Scala 2, as far as its macros reach.
-7. Docs: user docs for Cont's stack behaviour per platform, with the JS
-   bound, and the literature below.
+Landed 2026-09-25 as cont-stack-switch (60a59c97e): Layer 2 (the room
+as a parameter and a `Reentry` field, the 1 GB platform-thread switch
+on every JDK) and Layer 3 on every platform (`StackRoom` root and its
+`jdk22/` FFM variant, Native's `ThreadInfo`, the slice grant, the
+guard-zone floor). Landed before the macro and before the A/B, by the
+operator's call.
+
+WHERE THE FLOOR IS, so the plan chases the right thing: the direct
+road costs 15 ns a level and the road past the switch the same; the
+read is 1.6 ns a level and only on deep opaque programs. What is left
+to pay is the BOOKKEEPING ON PROGRAMS THAT NEVER GO DEEP — fib100's
+1.12x / +1 600 B/op for `Reentry` in the morning's runtime-only A/B,
+plus `Gauged`'s two allocations a `run` since. Every stage below is
+its own lane and claim, gated on the three lanes (fib100, fib1000,
+statePara) plus HandlerBenchmark.handleCapture, min of 3 alternating
+rounds through `jmh-lane.sh` on a quiet box, and lands only within
+noise of the stage before it — or faster.
+
+A. **Measure what landed** — backlog cont-stack-ab. The three lanes
+   plus handleCapture against 60a59c97e's parent. Expected: statePara
+   at master (zero switches, proved by test); fib1000 1.00; fib100 the
+   open number. Blocked on a quiet box (the afternoon's run was
+   disqualified at load 19–121) and on jmh-lane-jdk-pin, or
+   `JAVA_HOME` exported by hand. Nothing below is priced until this is.
+
+B. **Layer 1 A, the macro** — sprint cont-stack-macro. `shift` becomes
+   an inline macro over the lambda literal; a body whose every use of
+   `k` is a tail call `k(v)` with `v` not mentioning `k` — plain, under
+   `if`/`match`, at the end of a block whose statements do not mention
+   `k` — is rewritten to `delay(() => { statements; Pure(v) })`: no
+   leaf, no `Reentry`, no nested frame, no count. Anything else is
+   `Free.Inject(Shift.of(f))` as today. The one change that can make
+   such bodies FASTER than master rather than within noise of it;
+   first user `Effects.handle`'s `shift(k => k(a.a))` (handleCapture).
+   Proof: 1M such shifts on a 128 KB stack, zero switches; every Cont
+   and Effects test green; handleCapture and the Fib lanes measured.
+   Independent of A: starts now.
+
+C. **The fast path's bookkeeping** — backlog cont-stack-fastpath, after
+   A has priced it. Candidates, each measured alone against the stage
+   before, kept only when it pays: `Gauge` as a field of the OUTERMOST
+   `Reentry` (found by the same walk) instead of a `Gauged` root per
+   `run` — two allocations a `run` gone; `Mapped`'s lambda as a class
+   carrying the room, so a `Mapped` chain keeps its gauge and its
+   frame count; the three `Function1` specialisation bridges a level
+   (`apply$mcII$sp`) — cold stack only, the JIT inlines them. Target:
+   fib100 within noise of master, i.e. the morning's 1.12x gone.
+
+D. **The reader's knobs** — only if a profile of a deep opaque program
+   shows them; each with a number, none by taste: `_setjmp` for the
+   pointer on macOS arm64 (326 → ~10 ns: `getcontext` saves the signal
+   mask with a syscall); the slice at 128 KB (half the reads, 128 KB
+   less usable stack); a PARKED thread with a 1 GB stack reused across
+   switches (33 → ~5 µs a switch — matters only to programs that
+   switch often, which with exact reads means ~7 000 warm levels deep,
+   repeatedly). Filed under cont-stack-ucontext-layouts's neighbour
+   cont-stack-fastpath.
+
+E. **Layer 1 B** — backlog cont-stack-layer1-b: answer-using bodies
+   (`k(1) + k(10)`) and the state-passing `k(a)(s2)` of `PState`,
+   CPS-transformed onto an explicit stack of pending parts; then the
+   known higher-order functions, visible user functions, `direct`.
+   Robustness, not speed: such programs stop touching the stack at
+   all — no reads, no switches — at one allocation a call of `k`,
+   which is not obviously cheaper than the direct call it replaces.
+   Measured honestly on statePara before it lands.
+
+F. **The rest, in any order:** cont-stack-ucontext-layouts (macOS
+   x86_64, glibc x86_64/aarch64, musl's missing symbol), cont-stack-docs
+   (the user page with the per-platform bounds and how to enable native
+   access), okay2's cont-stack-okay2 (stages B and E as far as a
+   Scala 2 blackbox macro reaches; Layers 2/3 port straight).
+
+What is NOT on the plan, and why: the count road (JDK 17/21 without
+native access) — one switch past ~850 levels and full speed after, no
+lever worth a lane; `StackWalker` in any role — 7 µs before its first
+frame; catching `StackOverflowError` — Decision 4.
 
 ## Open questions
 
