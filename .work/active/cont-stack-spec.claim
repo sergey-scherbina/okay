@@ -1,0 +1,6 @@
+feature/cont-stack-spec 2026-09-25T10:50:00Z
+agent: claude-code
+heartbeat: 2026-09-25T10:50:00Z
+status: in-progress
+done-so-far: claim
+next: carry specs/cont-stack.md (four spec-only commits of feature/cont-stack-switch) to master with the sprint and backlog items for its stages; docs-only lane
