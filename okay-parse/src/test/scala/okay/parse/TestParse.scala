@@ -115,7 +115,7 @@ class TestParse extends munit.FunSuite {
     def firstLeaf(c: Cst[K]): Token[K] = c match
       case Cst.Node(_, cs) => firstLeaf(cs.head)
       case Cst.Leaf(t) => t
-      case Cst.Err(t, m) => fail(s"unexpected error leaf: $m")
+      case Cst.Err(_, m) => fail(s"unexpected error leaf: $m")
     val (was, now) = (firstLeaf(tree), firstLeaf(moved))
     assertEquals((now.span.offset, now.span.line), (was.span.offset + 3, was.span.line + 1))
   }
