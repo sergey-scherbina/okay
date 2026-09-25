@@ -44,28 +44,27 @@ and become combinators here. `tail` is new. It is only sound when no
 capture crosses the instance between an operation and its answer.
 Stage 1 states that precondition in the type or in the documentation.
 
-## Interface (stage 0)
+## Interface (stage 0, as built)
 
 ```scala
 object Lexical:
-  /** an installed handler of F whose answer is R: the value the body
-   * gets, which its operations go through */
-  final class Inst[F[+_], R] private[Lexical] (...):
-    def perform[X, G[+_]](e: F[X]): X ! Delim + G
-
-  /** a handler's clauses: the return clause and one clause per operation */
-  trait Clauses[F[+_], A, R, G[+_]]:
+  final class Inst[F[+_], R, G[+_]]:                 // made only by an installation
+    val prompt: Prompt[R]
+    def perform[X](e: F[X]): X ! Delim + G           // the same call for every strategy
+  trait Ops[F[+_], R, G[+_]]:            def op[X](e: F[X], k: X => R ! Delim + G): R ! Delim + G
+  trait Clauses[F[+_], A, R, G[+_]] extends Ops[F, R, G]: def ret(a: A): R ! Delim + G
+  trait ShallowClauses[F[+_], A, R, G[+_]]:
     def ret(a: A): R ! Delim + G
-    def op[X](e: F[X], k: X => R ! Delim + G): R ! Delim + G
+    def op[X](e: F[X], k: X => R ! Delim + G, again: (R ! Delim + G) => R ! Delim + G): R ! Delim + G
 
-  /** strategy primitives: the same clauses, two ways to run them */
-  def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, G])(body: Inst[F, R] => A ! Delim + G): R ! Delim + G
-  def shallow[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, G])(body: Inst[F, R] => A ! Delim + G): R ! Delim + G
+  def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, G])(body: Inst[F, R, G] => A ! Delim + G): R ! Delim + G
+  def shallow[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, G])(body: Inst[F, R, G] => A ! Delim + G): R ! Delim + G
 
-  object State:   // the worked instance
-    def deep[S, A, G[+_]](s0: S)(body: Inst[State % S, …] => A ! Delim + G): (S, A) ! Delim + G
+  object State:
+    type Ans[S, A, G[+_]] = S => (S, A) ! Delim + G
+    def deep[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, Ans[S, A, G], G] => A ! Delim + G): (S, A) ! Delim + G
     def shallow[S, A, G[+_]](s0: S)(body: …): (S, A) ! Delim + G
-    extension [S](i: Inst[State % S, ?]) def get: S ! Delim + G; def set(s: S): S ! Delim + G
+    extension [S, R, G[+_]](i: Inst[okay.State % S, R, G]) def get: S ! Delim + G; def set(s: S): S ! Delim + G
 ```
 
 The body gets its instance as a LAMBDA PARAMETER, not a given. Two
@@ -74,14 +73,14 @@ and not an ambiguous implicit.
 
 ## Behavior
 
-- [ ] Stage 0: two `State[Int]` instances in one program, each operation
+- [x] Stage 0: two `State[Int]` instances in one program, each operation
       reaching its own installation. The same program on a row needs
       `Tag` and is refused by `Distinct` without it.
-- [ ] Stage 0: no accidental handling. An inner instance of the SAME
+- [x] Stage 0: no accidental handling. An inner instance of the SAME
       effect does not catch an operation addressed to the outer one.
-- [ ] Stage 0: one instance, `deep` and `shallow`, is `Bisim`-equivalent
+- [x] Stage 0: one instance, `deep` and `shallow`, is `Bisim`-equivalent
       to `State.handle` on the residual row.
-- [ ] Stage 0: the generic `deep`/`shallow` combinators with user
+- [x] Stage 0: the generic `deep`/`shallow` combinators with user
       clauses: a non-tail-resumptive handler (collect every answer of a
       multi-shot choice), which `tail` cannot run.
 - [ ] Stage 1: `tail`, priced against `row` and `deep`, with its
@@ -102,4 +101,34 @@ and not an ambiguous implicit.
 
 ## Decisions
 
+- **The instance is a lambda parameter, and `Inst` carries the
+  operation, not the clauses' types (stage 0).** `Inst[F, R, G]` holds
+  its prompt and a polymorphic `run: [X] => F[X] => X ! Delim + G`
+  built at installation. The strategy is fixed where the instance is
+  made, so `perform` is the same call for every strategy. The body's
+  answer type `A` appears only in the return clause and never in
+  `Inst`.
+- **No row test anywhere.** `F` is a phantom of the instance: the
+  operation travels as a `Delim` capture, so `F` needs no `TypeableK`,
+  the program needs no `Distinct`, and a user effect is a plain `enum`
+  (TestLexical's `Flip`).
+
 ## Results
+
+STAGE 0, 2026-09-25 (TestLexical 7):
+
+- Two `State[Int]` instances in one program, deep and shallow, give
+  `(10, (10, 10))`, worked by hand. On a row the same pair is refused
+  by `Distinct` ("cannot be told apart in one row"). The test first
+  asserted the word "Distinct", which the message does not contain.
+  Reading the actual refusal text caught that.
+- No accidental handling: `outer.get` inside an inner `State[Int]`
+  answers 0 and `inner.get` answers 10. There is no row program to
+  compare it with, because a row cannot address past the innermost
+  handler of one signature.
+- One instance, deep and shallow, is `Same(1, 0)` against
+  `State.handle` on the Writer row.
+- A user effect (`Flip`, a plain enum) with a multi-shot clause gives
+  all four answers of two coin flips, which is what `tail` will not be
+  able to run. 10 000 get/set run through one deep instance in constant
+  stack.

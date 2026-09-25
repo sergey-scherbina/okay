@@ -220,14 +220,43 @@ by reference and the operation is already typed.
 
 ## Route 4: a fresh PROMPT — the instances are NESTED
 
-`Delim` already offers the third route: each handler installation
-creates a fresh prompt, and a prompt is a first-class tag. An instance
-then has an identity that no type has to name and no key has to be
-invented for.
+Each handler INSTALLATION creates a fresh prompt, and the body reaches
+it through the instance value the installation hands it. This is the
+design of "Binders by day, labels by night" (Biernacki, Piróg, Polesiuk
+and Sieczkowski, POPL 2020): a lexical binder in the types, a fresh
+label at run time. `okay.Lexical` is the API:
 
-It is the most scoped of the three — instances nest and separate
-dynamically, which neither a key nor a cell gives you — and the most
-invasive, because the program carries the prompt.
+```scala
+val lex = run(Lexical.State.deep[Int, Int, Pure](0) { outer =>
+  Lexical.State.deep[Int, Int, Pure](10) { inner => outer.get.flatMap(o => inner.get.map(i => o * 100 + i)) }
+    .map(_._2)
+})
+assertEquals(lex, (0, 10), "outer answered 0, inner answered 10")
+```
+
+Two things set it apart from the other routes. **The effect never
+enters the row**: the program is `A ! Delim + G`, so there is nothing
+to split, test or misroute, and two `State[Int]` are two names. And
+**there is no accidental handling**: `outer.get` names its
+installation, so the capture passes the inner handler of the same
+effect untouched. On a row that program cannot be written at all,
+because `get` can only mean the innermost `State % Int`.
+
+Any handler can be written this way from its clauses, including one
+that is not tail-resumptive:
+
+```scala
+case Flip.Coin() => k(true).flatMap(xs => k(false).map(xs ++ _))
+```
+
+**The strategy is yours to name.** `Lexical.deep` runs the clauses
+with shift0 under a `dollar` whose return function is the return
+clause. `Lexical.shallow` uses control0, and the clause re-installs
+the handler if it wants to. Both are exactly `State.handle` by
+`Bisim.check`, and both cost about 4x its time
+(specs/lexical-instances.md, which also plans `tail`, stacked
+instances and a default strategy that picks among them). Use them for
+what a row cannot do, not for what it already does.
 
 ## Choosing
 
@@ -236,11 +265,12 @@ invasive, because the program carries the prompt.
 | named when you write the type | any | `Tag` | a compile-time key | a wrapper per operation, no cast |
 | made at run time | state | `Refs` | the cell | a heap and one cast |
 | made at run time | any | `Instances` | the handle | a wrapper per operation, no cast |
-| nested and separated dynamically | any | `Delim` prompt | the installation | the program carries the prompt |
+| nested, or addressed past a handler of the same effect | any | `Lexical` | the installation (a prompt) | ~4x a row handler (capture per operation) |
 
 Use a key when the instances can be named, `Refs` when they are cells,
 `Instances` when they are instances of something bigger made from data,
-and a prompt when they must nest.
+and `Lexical` when they must nest, or an operation must reach one
+handler past another of the same effect.
 
 ## What this means for the bare rule
 

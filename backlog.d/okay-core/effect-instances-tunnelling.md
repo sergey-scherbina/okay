@@ -32,3 +32,10 @@
       `Stacked` binds a prompt, so an instance can be made at run time
       and still tracked in the row with no cast. The same paper covers
       the escaping case of `delim-region-prompts`.
+      PROGRESS 2026-09-25 (lexical-instances stage 0): the prompt route
+      exists as `okay.Lexical`. Instances are installations, two of one
+      effect are two names, and an operation addressed past an inner
+      handler of the same effect reaches its own (TestLexical). What stays
+      open here is the PRICE of that route (~4x a row handler), which the
+      `tail` strategy in specs/lexical-instances.md stage 1 targets, and a
+      default that picks the strategy.
