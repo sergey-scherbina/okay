@@ -217,8 +217,40 @@ object JdbcSql:
     case Types.ARRAY => SqlType.Arr(SqlType.Other(vendorName))
     case _ => SqlType.Other(vendorName)
 
-  /** an array element as the driver hands it back (java boxes) */
-  private def valueOf(o: Any): SqlValue = o match
+  /** an array element as the driver hands it back (java boxes). Arrays
+   * nest as deep as the VALUE does, and nothing bounds a value, so the
+   * walk keeps its own stack: a container opens a frame, a finished
+   * frame is its parent's next element (stack-safety-catch-up-okay2) */
+  private[jdbc] def valueOf(o: Any): SqlValue =
+    val stack = java.util.ArrayDeque[Reading]()
+    var v = readOrOpen(o, stack)                 // null: a frame was opened
+    while !stack.isEmpty do
+      val top = stack.peek()
+      if v != null then top.out += v
+      v =
+        if top.at < top.size then
+          val x = scala.runtime.ScalaRunTime.array_apply(top.arr, top.at)
+          top.at += 1
+          readOrOpen(x, stack)
+        else { stack.pop(): Unit; SqlValue.Arr(top.out.result()) }
+    v
+
+  /** an array being read: any component type (a primitive int[]
+   * included), walked by the runtime */
+  private final class Reading(val arr: AnyRef):
+    val size: Int = scala.runtime.ScalaRunTime.array_length(arr)
+    var at = 0
+    val out = Vector.newBuilder[SqlValue]
+
+  /** a scalar's value; an array opens a frame on `stack` and answers null */
+  private def readOrOpen(o: Any, stack: java.util.ArrayDeque[Reading]): SqlValue = o match
+    case a: java.sql.Array => a.getArray match
+      case arr: Array[?] => stack.push(Reading(arr)); null
+      case other => SqlValue.Text(other.toString)
+    case xs: Array[AnyRef] => stack.push(Reading(xs)); null
+    case _ => scalarOf(o)
+
+  private def scalarOf(o: Any): SqlValue = o match
     case null => SqlValue.Null
     case b: java.lang.Boolean => SqlValue.Bool(b)
     case i: java.lang.Integer => SqlValue.I32(i)
@@ -239,17 +271,9 @@ object JdbcSql:
     case t: java.sql.Time => SqlValue.Time(t.toLocalTime.toNanoOfDay / 1000L)
     case t: java.time.LocalTime => SqlValue.Time(t.toNanoOfDay / 1000L)
     case u: java.util.UUID => SqlValue.Uuid(u)
-    case a: java.sql.Array => arrayOf(a)
-    case xs: Array[AnyRef] => SqlValue.Arr(xs.toVector.map(valueOf))
     case other => SqlValue.Text(other.toString)
 
-  private def arrayOf(a: java.sql.Array): SqlValue =
-    if a == null then SqlValue.Null
-    else a.getArray match
-      // any component type (a primitive int[] included): walked by the runtime
-      case arr: Array[?] => SqlValue.Arr(Vector.tabulate(scala.runtime.ScalaRunTime.array_length(arr))(i =>
-        valueOf(scala.runtime.ScalaRunTime.array_apply(arr, i))))
-      case other => SqlValue.Text(other.toString)
+  private def arrayOf(a: java.sql.Array): SqlValue = if a == null then SqlValue.Null else valueOf(a)
 
   /** the temporal reads are java.time objects by the column's JDBC
    * code — a `timestamp with time zone` as an OffsetDateTime (absolute),
@@ -357,7 +381,28 @@ object JdbcSql:
           s"param ${i + 1}: a composite parameter is not bindable through JDBC")
       i += 1
 
-  private def jdbcOf(v: SqlValue): AnyRef = v match
+  /** what a statement binds for `v`: an array or a composite as an
+   * `Array[AnyRef]`, as deep as the value, on its own stack as `valueOf` */
+  private[jdbc] def jdbcOf(v: SqlValue): AnyRef =
+    val stack = java.util.ArrayDeque[Binding]()
+    var r = bindOrOpen(v, stack)
+    while !stack.isEmpty do
+      val top = stack.peek()
+      if r ne Opened then { top.out(top.at) = r; top.at += 1 }
+      r =
+        if top.at < top.out.length then bindOrOpen(top.elems(top.at), stack)
+        else { stack.pop(): Unit; top.out }
+    r
+
+  /** a value being bound: its elements and the array they go into */
+  private final class Binding(val elems: Vector[SqlValue]):
+    val out = new Array[AnyRef](elems.length)
+    var at = 0
+
+  /** what `bindOrOpen` answers when it opened a frame (null is SQL NULL) */
+  private val Opened = new AnyRef
+
+  private def bindOrOpen(v: SqlValue, stack: java.util.ArrayDeque[Binding]): AnyRef = v match
     case SqlValue.Null => null
     case SqlValue.Bool(b) => java.lang.Boolean.valueOf(b)
     case SqlValue.I32(x) => java.lang.Integer.valueOf(x)
@@ -371,8 +416,8 @@ object JdbcSql:
     case SqlValue.Time(us) => java.time.LocalTime.ofNanoOfDay(us * 1000L)
     case SqlValue.Uuid(u) => u
     case SqlValue.Json(s) => s
-    case SqlValue.Arr(elems) => elems.map(jdbcOf).toArray
-    case SqlValue.Row(fields) => fields.map(jdbcOf).toArray
+    case SqlValue.Arr(elems) => stack.push(Binding(elems)); Opened
+    case SqlValue.Row(fields) => stack.push(Binding(fields)); Opened
 
   private def levelOf(i: Isolation): Int = i match
     case Isolation.ReadCommitted => Connection.TRANSACTION_READ_COMMITTED

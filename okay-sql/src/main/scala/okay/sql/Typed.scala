@@ -170,7 +170,20 @@ object Typed:
 
   /** a column may hold a wider home than the value needs: an I32
    * column serves an I64 field; everything else is exact */
-  private def fits(field: SqlType, col: SqlType): Boolean = (field, col) match
+  private[sql] def fits(field: SqlType, col: SqlType): Boolean =
+    // an AND over pairs of nodes, and both trees nest as deep as a type
+    // does: a worklist, not a frame per level (stack-safety-catch-up-okay2)
+    val todo = java.util.ArrayDeque[(SqlType, SqlType)]()
+    todo.push((field, col))
+    var ok = true
+    while ok && !todo.isEmpty do
+      val (f, c) = todo.pop()
+      ok = fitsHere(f, c, todo)
+    ok
+
+  /** whether this pair fits, the pairs below it left on `todo` */
+  private def fitsHere(field: SqlType, col: SqlType,
+                       todo: java.util.ArrayDeque[(SqlType, SqlType)]): Boolean = (field, col) match
     case (SqlType.I64, SqlType.I32) => true
     // a Double reads a numeric column — lossy, by the FIELD's choice;
     // a String reads it exactly (its decimal text), and a String reads
@@ -186,9 +199,9 @@ object Typed:
     // the driver could not name the element type (JDBC metadata):
     // decode checks the elements, and decode is total
     case (SqlType.Arr(_), SqlType.Arr(SqlType.Other(_))) => true
-    case (SqlType.Arr(f), SqlType.Arr(c)) => fits(f, c)
+    case (SqlType.Arr(f), SqlType.Arr(c)) => todo.push((f, c)); true
     case (SqlType.Row(fs), SqlType.Row(cs)) =>
-      fs.length == cs.length && fs.zip(cs).forall(fits)
+      fs.length == cs.length && { fs.lazyZip(cs).foreach((f, c) => todo.push((f, c))); true }
     case _ => field == col
 
   // ── verify: the fingerprint lesson at the database seam ────────
