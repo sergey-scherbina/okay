@@ -58,7 +58,7 @@ new_fixture
 out=$(run "Bench.thing" 5 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "exit 0" || bad "exit $rc: $out"
 printf '%s\n' "$out" | grep -q "attempt 1/5" && ok "ran attempt 1" || bad "did not: $out"
-printf '%s\n' "$out" | grep -qv "attempt 2" && ok "no second attempt" || bad "retried when it should not have: $out"
+! printf '%s\n' "$out" | grep -q "attempt 2" && ok "no second attempt" || bad "retried when it should not have: $out"
 rm -rf "$tmp"
 
 say "2. box got busy DURING the run: discarded, retried, then succeeds"
@@ -106,6 +106,38 @@ say "6. the lock is released after a run, successful or not"
 new_fixture
 run "Bench.thing" 5 >/dev/null 2>&1
 [ ! -d "$tmp/.work/jmh/lock" ] && ok "lock released after success" || bad "lock left behind"
+rm -rf "$tmp"
+
+say "7. another JMH holds JMH's own lock: contention, not a failure — waited out and retried"
+new_fixture
+# the fake sbt fails ONCE the way JMH does when a run outside jmh-lane
+# holds $TMPDIR/jmh.lock (jmh-lane-foreign-jmh-lock), then runs
+cat > "$tmp/scripts/fake-sbt.sh" <<'EOF2'
+#!/bin/sh
+n="$(cd "$(dirname "$0")/.." && pwd)/.work/sbt-calls"
+c=$(cat "$n" 2>/dev/null || echo 0); c=$((c + 1)); echo "$c" > "$n"
+if [ "$c" -eq 1 ]; then
+  echo "[error] ERROR: org.openjdk.jmh.runner.RunnerException: ERROR: Another JMH instance might be running. Unable to acquire the JMH lock (/tmp/jmh.lock), exiting. Use -Djmh.ignoreLock=true to forcefully continue."
+  exit 1
+fi
+echo "[info] fake jmh run: $*"
+exit 0
+EOF2
+chmod +x "$tmp/scripts/fake-sbt.sh"
+out=$(JMH_LANE_FOREIGN_WAIT=0 run "Bench.thing" 5 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "exit 0 after the retry" || bad "exit $rc: $out"
+printf '%s\n' "$out" | grep -q "another JMH holds" && ok "named the foreign lock as contention" || bad "did not: $out"
+printf '%s\n' "$out" | grep -q "attempt 2/5" && ok "retried as attempt 2" || bad "did not retry: $out"
+! printf '%s\n' "$out" | grep -q "a real failure" && ok "not called a real failure" || bad "called it a real failure: $out"
+rm -rf "$tmp"
+
+say "8. a real failure is still final: a nonzero run without the lock message is not retried"
+new_fixture
+printf '#!/bin/sh\necho "[error] a compile error"\nexit 1\n' > "$tmp/scripts/fake-sbt.sh"; chmod +x "$tmp/scripts/fake-sbt.sh"
+out=$(run "Bench.thing" 5 2>&1); rc=$?
+[ "$rc" -eq 1 ] && ok "exit 1 passed through" || bad "exit $rc: $out"
+printf '%s\n' "$out" | grep -q "a real failure" && ok "called a real failure" || bad "did not: $out"
+! printf '%s\n' "$out" | grep -q "attempt 2/" && ok "no retry" || bad "retried a real failure: $out"
 rm -rf "$tmp"
 
 say ""

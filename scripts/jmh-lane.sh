@@ -101,9 +101,35 @@ i=1
 while [ "$i" -le "$ATTEMPTS" ]; do
   wait_for_quiet
   echo "jmh-lane: attempt $i/$ATTEMPTS — $CMD"
+  # the run's output is kept to be READ (a foreign JMH lock below), and
+  # the exit code travels through a file: a pipe into tee would report
+  # tee's (memory pipe-masks-exit-status)
+  runlog=$(mktemp); rcfile=$(mktemp)
   # shellcheck disable=SC2086
-  $SBT -batch "$CMD"
-  rc=$?
+  { $SBT -batch "$CMD"; echo $? > "$rcfile"; } 2>&1 | tee "$runlog"
+  rc=$(cat "$rcfile"); rm -f "$rcfile"
+  # ANOTHER JMH HOLDS JMH'S OWN LOCK (jmh-lane-foreign-jmh-lock): a run
+  # started outside this script (a bare Jmh/run, an A/B script) owns
+  # $TMPDIR/jmh.lock and ours died on it at once. That is contention, not
+  # a verdict: wait for it (up to 30 min, as for quiet) and try again. A
+  # fork ASLEEP on that lock at 0% CPU is the idle reaper's orphan
+  # (AGENTS.md) and needs `-Djmh.ignoreLock=true`, which is the caller's
+  # call, not this script's.
+  if [ "$rc" -ne 0 ] && grep -q "Unable to acquire the JMH lock" "$runlog"; then
+    rm -f "$runlog"
+    echo "jmh-lane: another JMH holds \$TMPDIR/jmh.lock (a run outside jmh-lane) — contention, not a failure; waiting for it, then retrying"
+    # JMH_LANE_FOREIGN_WAIT=0 (the selftest's) skips the wait entirely:
+    # a fixture must not depend on this box's real JMH forks
+    pause="${JMH_LANE_FOREIGN_WAIT:-30}"
+    w=0
+    while [ "$pause" -gt 0 ] && [ "$w" -lt 60 ] && pgrep -f org.openjdk.jmh.runner.ForkedMain > /dev/null; do
+      sleep "$pause"; w=$((w + 1))
+    done
+    sleep "$pause"
+    i=$((i + 1))
+    continue
+  fi
+  rm -f "$runlog"
   if quiet; then
     if [ "$rc" -eq 0 ]; then
       echo "jmh-lane: done, box stayed quiet throughout — trust this number"
