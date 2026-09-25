@@ -85,3 +85,19 @@ class TestOkayArrow extends munit.FunSuite:
     val e = intercept[IllegalArgumentException](OkayArrow.write(bad))
     assert(e.getMessage.contains("column 'b' has 3 rows, the first has 2"), e.getMessage)
   }
+
+  test("compressed bodies, LZ4 and ZSTD, round-trip every kind of column, and shrink what repeats") {
+    for codec <- Vector(okay.compress.Lz4Frame, okay.compress.Zstd) do
+      assertEquals(Tables.same(Tables.everything, OkayArrow.read(OkayArrow.write(Tables.everything, Some(codec)))), None, codec.name)
+    val n = 20000
+    val repetitive = Table(Vector(
+      "id" -> Column.Int64(Array.tabulate(n)(_.toLong), Array.fill(n)(true)),
+      "city" -> Column.Utf8(Array.tabulate(n)(i => if i % 2 == 0 then "kyiv" else "lviv"), Array.fill(n)(true))), Vector.empty)
+    val plain = OkayArrow.write(repetitive).length
+    // sequential int64s give LZ4 no long repeats: pyarrow's own LZ4 halves that
+    // buffer too (160000 -> 80069 bytes), where ZSTD's entropy coding takes it to 21019
+    for (codec, limit) <- Vector(okay.compress.Lz4Frame -> 0.6, okay.compress.Zstd -> 0.33) do
+      val packed = OkayArrow.write(repetitive, Some(codec))
+      assert(packed.length < plain * limit, s"${codec.name}: ${packed.length} of $plain")
+      assertEquals(Tables.same(repetitive, OkayArrow.read(packed)), None, codec.name)
+  }

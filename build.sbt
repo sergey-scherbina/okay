@@ -2552,8 +2552,9 @@ lazy val okayCompress = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayArrow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-arrow"))
-  // okay-codec for the typed layer (Rows: Schema[A] through Columns)
-  .dependsOn(okayCodec)
+  // okay-codec for the typed layer (Rows: Schema[A] through Columns);
+  // okay-compress for compressed bodies (LZ4_FRAME, ZSTD)
+  .dependsOn(okayCodec, okayCompress)
   .settings(
     name := "okay-arrow",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

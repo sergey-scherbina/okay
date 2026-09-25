@@ -31,7 +31,17 @@ object OkayArrow extends ArrowCodec:
 
   // ---- writing -------------------------------------------------------------
 
-  def write(t: Table): Array[Byte] =
+  def write(t: Table): Array[Byte] = write(t, None)
+
+  /** `t` with its buffers compressed by `codec` (`okay.compress.Lz4Frame`
+   * or `okay.compress.Zstd`, Arrow's LZ4_FRAME and ZSTD): each buffer
+   * alone, its uncompressed length first, and one that does not shrink
+   * stored as it is (length -1), as the IPC format says */
+  def write(t: Table, compression: Option[okay.compress.Codec]): Array[Byte] =
+    val codecId = compression.map(c => c.name match
+      case "lz4" => 0
+      case "zstd" => 1
+      case other => throw IllegalArgumentException(s"Arrow compresses bodies with lz4 or zstd, not $other"))
     val n = t.rows
     t.cols.find(_._2.length != n).foreach { (name, c) =>
       throw IllegalArgumentException(s"column '$name' has ${c.length} rows, the first has $n")
@@ -40,13 +50,8 @@ object OkayArrow extends ArrowCodec:
     // exact size (arrow-ipc-fast: growing by doubling and copying out made
     // 129 MB of garbage for a 14 MB stream)
     val nodes = Bytes()
-    val buffers = Bytes()
     val fills = Vector.newBuilder[(Int, (Array[Byte], Int) => Unit)]
-    var bodyLen = 0L
-    def add(len: Int, fill: (Array[Byte], Int) => Unit): Unit =
-      buffers.i64(bodyLen); buffers.i64(len.toLong)
-      fills += ((len, fill))
-      bodyLen += pad8(len)
+    def add(len: Int, fill: (Array[Byte], Int) => Unit): Unit = fills += ((len, fill))
     def validity(ok: Array[Boolean]): Unit =
       if ok.forall(identity) then add(0, (_, _) => ())            // absent: every row valid
       else add((ok.length + 7) / 8, (out, at) => bits(ok, out, at))
@@ -125,18 +130,40 @@ object OkayArrow extends ArrowCodec:
           validity(ok)
           fs.foreach((_, f) => column(f))
     t.cols.foreach((_, c) => column(c))
+    // compressed, each buffer becomes its own bytes first; uncompressed, the
+    // plan's fills write straight into the stream
+    val planned = fills.result()
+    val sized: Vector[(Int, (Array[Byte], Int) => Unit)] = compression match
+      case None => planned
+      case Some(codec) => planned.map { (len, fill) =>
+        if len == 0 then (0, (_: Array[Byte], _: Int) => ())
+        else
+          val raw = new Array[Byte](len)
+          fill(raw, 0)
+          val packed = codec.compress(raw)
+          val (stated, data) = if packed.length < len then (len.toLong, packed) else (-1L, raw)
+          (8 + data.length, (out: Array[Byte], at: Int) =>
+            putInt(out, at, stated.toInt); putInt(out, at + 4, (stated >>> 32).toInt)
+            System.arraycopy(data, 0, out, at + 8, data.length))
+      }
+    val buffers = Bytes()
+    var bodyLen = 0L
+    for (len, _) <- sized do
+      buffers.i64(bodyLen); buffers.i64(len.toLong)
+      bodyLen += pad8(len)
     if bodyLen > Int.MaxValue - 1024 then throw IllegalArgumentException(s"a batch of $bodyLen bytes: past what one JVM array holds")
     val schemaMsg = messageHead(HeaderSchema, schema(t), 0L)
     val batch = Fb.Table(Vector(
       Some(Fb.I64(n.toLong)),
       Some(Fb.Structs(nodes.result(), 16)),
-      Some(Fb.Structs(buffers.result(), 16))))
+      Some(Fb.Structs(buffers.result(), 16)),
+      codecId.map(id => Fb.Table(Vector(Some(Fb.U8(id)), Some(Fb.U8(0)))))))     // BodyCompression: codec, per buffer
     val batchHead = messageHead(HeaderRecordBatch, batch, bodyLen)
     val out = new Array[Byte](schemaMsg.length + batchHead.length + bodyLen.toInt + 8)
     System.arraycopy(schemaMsg, 0, out, 0, schemaMsg.length)
     System.arraycopy(batchHead, 0, out, schemaMsg.length, batchHead.length)
     var at = schemaMsg.length + batchHead.length
-    for (len, fill) <- fills.result() do
+    for (len, fill) <- sized do
       fill(out, at)
       at += pad8(len)
     putInt(out, at, -1)                           // end of stream: marker, then 0
@@ -301,12 +328,15 @@ object OkayArrow extends ArrowCodec:
 
   /** one record batch's body, read IN PLACE: a buffer is a position and a
    * length in `bytes`, copied once into its column */
-  private final class Batch(rb: Fb.At, bytes: Array[Byte], body: Int, bodyLen: Int, dictionaries: Map[Long, Column]):
+  private final class Batch(rb: Fb.At, stream: Array[Byte], bodyAt: Int, bodyLength: Int, dictionaries: Map[Long, Column]):
     private val rows = rb.i64(0, 0L)
     if rows < 0 || rows > Int.MaxValue then refuse(s"a batch of $rows rows")
-    if rb.table(3).isDefined then refuse("the record batch is compressed; LZ4 and ZSTD bodies are not read yet (specs/okay-arrow.md)")
     private val nodes = rb.structs(1, 16)
-    private val bufs = rb.structs(2, 16)
+    // a compressed body (LZ4_FRAME or ZSTD, per buffer) is decompressed here,
+    // into a body of its own the rest reads exactly as an uncompressed one
+    private val (bytes, body, bodyLen, bufs) = rb.table(3) match
+      case None => (stream, bodyAt, bodyLength, rb.structs(2, 16))
+      case Some(c) => decompressed(c, rb.structs(2, 16), stream, bodyAt, bodyLength)
     private var node = 0
     private var buf = 0
 
@@ -439,6 +469,43 @@ object OkayArrow extends ArrowCodec:
             fs.find(_._2.length != n).foreach((cn, c) => refuse(s"struct column '$name': field '$cn' has ${c.length} rows for $n"))
             Column.Struct(fs, ok)
           case other => refuse(s"column '$name' has Arrow type ${typeName(other)}; the model does not hold it")
+
+  /** every buffer of a compressed body decompressed, laid out as an
+   * uncompressed body: its bytes, where it starts, its length, the buffers */
+  private def decompressed(c: Fb.At, bufs: Vector[Array[Byte]], stream: Array[Byte], body: Int, bodyLen: Int)
+      : (Array[Byte], Int, Int, Vector[Array[Byte]]) =
+    if c.u8(1, 0) != 0 then refuse(s"body compression method ${c.u8(1, 0)}; this reads per-buffer compression")
+    val codec: okay.compress.Codec = c.u8(0, 0) match
+      case 0 => okay.compress.Lz4Frame
+      case 1 => okay.compress.Zstd
+      case other => refuse(s"body compression codec $other; this reads LZ4_FRAME and ZSTD")
+    val parts = bufs.map { b =>
+      val off = Fb.i64le(b, 0); val len = Fb.i64le(b, 8)
+      if off < 0 || len < 0 || off + len > bodyLen then refuse(s"a buffer [$off, +$len) outside a body of $bodyLen bytes (cut short?)")
+      if len == 0 then Array.emptyByteArray
+      else
+        if len < 8 then refuse("a compressed buffer without its length")
+        val at = body + off.toInt
+        val stated = Fb.i64le(stream, at)
+        if stated == -1 then java.util.Arrays.copyOfRange(stream, at + 8, at + len.toInt)
+        else
+          val out =
+            try codec.decompress(java.util.Arrays.copyOfRange(stream, at + 8, at + len.toInt))
+            catch case e: okay.compress.Corrupt => refuse(s"a ${codec.name} buffer: ${e.getMessage}")
+          if out.length != stated then refuse(s"a ${codec.name} buffer said $stated bytes and held ${out.length}")
+          out
+    }
+    val total = parts.map(p => pad8(p.length)).sum
+    val flat = new Array[Byte](total)
+    var at = 0
+    val laid = parts.map { p =>
+      System.arraycopy(p, 0, flat, at, p.length)
+      val s = new Array[Byte](16)
+      putInt(s, 0, at); putInt(s, 8, p.length)
+      at += pad8(p.length)
+      s
+    }
+    (flat, 0, total, laid)
 
   /** a list whose offsets start at 0 and end at its child's length: what
    * the model's `concat` and `take` assume */

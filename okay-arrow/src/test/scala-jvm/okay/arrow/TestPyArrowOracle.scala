@@ -100,3 +100,29 @@ print(json.dumps({k: r[k] for k in ["sku", "qty", "tags", "lines", "colour", "sh
       """"colour": "Red", "shape": {"kind": "Circle", "Circle": {"r": 1.5}, "Square": null}, "total": "123456789012345678901234567890"}""")
   }
 
+  test("compressed IPC both ways: pyarrow's LZ4 and ZSTD bodies read here; ours validate in pyarrow") {
+    for codec <- Vector("lz4", "zstd") do
+      val f = file()
+      val _ = run(s"""
+import sys, pyarrow as pa, pyarrow.ipc as ipc
+t = pa.table({"id": pa.array(range(5000), pa.int64()), "city": pa.array(["kyiv", "lviv", None, "odesa"] * 1250),
+              "score": pa.array([i * 0.5 for i in range(5000)])})
+opts = ipc.IpcWriteOptions(compression="$codec")
+with ipc.new_stream(sys.argv[1], t.schema, options=opts) as w: w.write_table(t)
+""", f)
+      val t = OkayArrow.read(java.nio.file.Files.readAllBytes(f))
+      assertEquals(t.rows, 5000, codec)
+      assertEquals(Tables.cells(t.cols(1)._2).take(4), Vector(Some("kyiv"), Some("lviv"), None, Some("odesa")), codec)
+    for codec <- Vector(okay.compress.Lz4Frame, okay.compress.Zstd) do
+      val f = file(OkayArrow.write(Tables.everything, Some(codec)))
+      val out = run("""
+import sys, pyarrow.ipc as ipc
+t = ipc.open_stream(open(sys.argv[1], "rb").read()).read_all()
+t.validate(full=True)
+with ipc.new_stream(sys.argv[1], t.schema) as w: w.write_table(t)
+print(t.num_rows, t.num_columns)
+""", f)
+      assertEquals(out, "4 25", codec.name)
+      assertEquals(Tables.same(Tables.everything, OkayArrow.read(java.nio.file.Files.readAllBytes(f))), None, codec.name)
+  }
+
