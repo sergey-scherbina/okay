@@ -1,6 +1,0 @@
-feature/row-parametricity-forwarding-law 2026-09-25T20:10:31Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-25T20:10:31Z
-status: in-progress
-done-so-far: promoted (plan lane 6, after coherence-law landed), claimed
-next: worktree ../okay-wt-row-parametricity-forwarding-law; spec, the law with Bisim under a spy handler, a swallowing/reordering mutant watched failing
