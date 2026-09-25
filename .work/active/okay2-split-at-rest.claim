@@ -1,6 +1,0 @@
-feature/okay2-split-at-rest 2026-09-25T04:30:43Z
-agent: claude-code
-heartbeat: 2026-09-25T04:30:43Z
-status: in-progress
-done-so-far: claim
-next: read Split.at, bench lanes for Delim/Stream/Generate, convert
