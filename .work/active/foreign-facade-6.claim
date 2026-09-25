@@ -1,0 +1,5 @@
+slug: foreign-facade-6
+who: claude (session 6f505c09)
+what: foreign-facade stage 6 — docs/foreign-facade.md (examples pinned by TestDocExamplesForeignFacade, the literature), README row
+files: docs/foreign-facade.md, README.md, okay-foreign-cluster test TestDocExamplesForeignFacade.scala, specs/foreign-facade.md
+since: 2026-09-25
