@@ -22,7 +22,15 @@ class TestCoreAsync extends munit.FunSuite {
   def drain[A](c: CoreAsyncChannel[A]): List[A] =
     Iterator.continually(c.receiveBlocking()).takeWhile(_.isDefined).flatten.toList
 
-  test("a Clojure go block produces, okay consumes, in order, to the end") {
+  // INTEGRATION scope (clojure-go-block-timeout-under-load, 2026-09-25):
+  // 200 elements through a 4-slot buffer are up to 200 park/unpark handoffs
+  // between core.async's go pool and this thread, and each waits for
+  // the OS scheduler. On a saturated shared box (load 80-220 on 14
+  // cores) that wall time crossed munit's 30 s in FIVE unrelated gates
+  // in one day, and the suite alone was green every time: a budget,
+  // not a defect. A longer timeout or a smaller n would weaken the test;
+  // the policy is the tag. `sbt integrationTest` still runs it.
+  test("a Clojure go block produces, okay consumes, in order, to the end".tag(new munit.Tag("Live"))) {
     clj("(require 'clojure.core.async)")
     clj("""(defn okay-test-produce [ch n]
              (clojure.core.async/go
