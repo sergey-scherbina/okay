@@ -54,8 +54,9 @@ native bindings (lz4-java, zstd-jni) and a pure-Java port
       is) and written (`OkayArrow.write(t, compression)`); pyarrow's
       compressed IPC reads, ours validates in pyarrow.
 - [x] Stage 5: the measurement: compress and decompress throughput
-      against aircompressor on the JVM, the ratio beside it, and the
-      same round trip timed on Native; docs.
+      against aircompressor on the JVM, the ratio beside it; docs.
+      NOT done: timing on Native (it has no JMH; the round trips run there
+      as tests only) — carried by okay-compress-jvm-fast-paths.
 
 ## Decisions
 

@@ -8,4 +8,6 @@
       with the same signatures implemented byte by byte for JS/Native,
       used in the three hot loops: LZ4's copies, ZSTD's `matchLength` and
       `BackBits`. Measure each change with CompressBench on a quiet box
-      (the stage-5 numbers were taken at load 35–112). (2026-09-25)
+      (the stage-5 numbers were taken at load 35–112). Native was not timed
+      at all in stage 5 (no JMH there): a plain timing loop in a Native
+      main, beside the JVM's, belongs here too. (2026-09-25)
