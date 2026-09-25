@@ -1,0 +1,5 @@
+slug: py-walk-warning
+who: claude (session 6f505c09)
+what: E176 in okay-py Py.scala:98 (Walk.up discards open.pop()) — landed by stack-safety-py-r behind a warm worktree, now RED on every cold gate
+files: okay-py/src/main/scala/okay/py/Py.scala
+since: 2026-09-25
