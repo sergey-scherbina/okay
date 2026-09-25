@@ -68,6 +68,31 @@ row of the block. Operator, 2026-09-23: "widen несёт двойственну
       or faster — measured per lane on a quiet box, with its known
       ±4x variance (merge-lane-variance) stated beside the number.
 
+### Coherence (row-coercion-coherence-law, 2026-09-25)
+
+The meaning of a program must not depend on HOW it reached a wider row:
+coherence of effect subtyping (Biernacki & Polesiuk, "Logical relations
+for coherence of effect subtyping", TLCA 2015 / LMCS 2018). Here a row
+member is found by a runtime test on the operation VALUE (its class,
+a `Tag`'s key, a `byValue` element class), so coherence holds exactly
+when neither road changes an operation. The law says so as a tree
+equivalence, with `Bisim.check` over sampled answers rather than one
+run's result:
+
+- [ ] `Bisim.check(!.widen(p), !.normalize(p))` is `Same`, with ended
+      paths, for a program of every core signature the oracle answers
+      (State, Reader, Writer, Stop) and for mixed rows: State + Writer,
+      two `Tag` keys over ONE signature, and a `Writer.byValue` pair.
+- [ ] and running agrees with the program before widening: the
+      widened program under the wider row's handlers gives what the
+      program gives under its own.
+- [ ] MUTANT: a `Row.into` that walks the tree and swaps the keys of two
+      `Tag` instances of one signature (the row "reordered") is caught
+      with a path. So is okay2's real incoherence, the intersection
+      row's `#Op` taking the LAST parent's, if okay2 can state the law
+      (see the twin below).
+- [ ] okay2 twin, if its intersection encoding can express it.
+
 ## Out of scope
 
 - `Writer.widen` (element-type widening) — a walk by necessity while
