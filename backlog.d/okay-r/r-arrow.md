@@ -19,7 +19,7 @@
       on ours — a big dependency for a module whose only dependency
       today is jsonlite. Try the cheap shape change first.
       HALF BUILT by py-arrow (2026-09-25): the JVM side exists —
-      `okay.codec.ArrowIpc` writes and reads Arrow IPC streams (int64,
+      `okay.arrow.OkayArrow` (okay-arrow, a cross module since 2026-09-25) writes and reads Arrow IPC streams (int64,
       float64, utf8, bool, null; nullable; pyarrow-validated), and the
       wire carries a frame as ONE Arrow stream with the request header in
       its metadata (`FrameFormat` givens, `frames: ["arrow"]` in the

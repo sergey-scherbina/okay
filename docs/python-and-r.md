@@ -319,7 +319,8 @@ Two things decide where Arrow applies:
   pyarrow is refused when it is opened, and a frame Arrow cannot carry
   answers `NotArrow`, naming the column.
 
-The JVM side writes and reads Arrow itself (`okay.codec.ArrowIpc`), for
+The JVM side writes and reads Arrow itself (`OkayArrow`, in
+[okay-arrow](modules/okay-arrow.md)), for
 exactly those five columns. It does not depend on Arrow Java, which
 brings its own off-heap memory and `--add-opens`. pyarrow checks every
 stream it writes (`TestArrowPy`, `validate(full=True)`).
@@ -419,7 +420,7 @@ backlog as additional engines behind the same interface.
 - Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an alternative to monad transformers.](https://doi.org/10.1145/2503778.2503791)* Haskell 2013. A program indexed by the effects it may perform, and `Member`: `OkayEff`'s shape.
 - Mark Raasveldt, Hannes Mühleisen. *[Don't hold my data hostage: a case for client protocol redesign.](https://doi.org/10.14778/3115404.3115408)* PVLDB 10(10), 2017. Moving a result set cell by cell costs more than computing it; a columnar transfer format is the cure, and frames as Arrow are that cure here.
 - Daniel J. Abadi, Samuel R. Madden, Nabil Hachem. *[Column-stores vs. row-stores: how different are they really?](https://doi.org/10.1145/1376616.1376712)* SIGMOD 2008. Why a column is one buffer and not a list of cells.
-- Apache Arrow. *[Arrow columnar format](https://arrow.apache.org/docs/format/Columnar.html)* and its IPC streaming format: what `okay.codec.ArrowIpc` writes and reads.
+- Apache Arrow. *[Arrow columnar format](https://arrow.apache.org/docs/format/Columnar.html)* and its IPC streaming format: what okay-arrow writes and reads.
 - Martin Fowler. *[Event sourcing.](https://martinfowler.com/eaaDev/EventSourcing.html)* 2005. Why a journal of answers is enough to replay a program.
 
 The whole design, stage by stage, with what was found and refuted on the

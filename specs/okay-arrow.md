@@ -73,6 +73,37 @@ full reimplementation buys speed in one niche and costs months.
 - [ ] Stage 3: the measurement again, `ArrowIpcBench` with the
       facade's two implementations, B/op and time, against stage 0.
 - [ ] Docs: docs/modules/okay-arrow.md — which to choose and why.
+### Arrow wherever it makes sense (operator, 2026-09-25)
+
+"все равно тогда имеет смысл использовать арроу формат максимально везде
+где это имеет смысл. И тогда имеет смысл реализовать его достаточно
+полноценно для того чтобы он компилировался и работал не только на jvm
+а и в js и native". So `OkayArrow` grows from the wire's five columns to
+okay's columnar format, on every platform:
+
+- [ ] Stage 4: the TYPES: ints 8/16/32/64 signed and unsigned, float32
+      and float64, bool, utf8/binary and their large forms, decimal128,
+      date32/date64, timestamp (unit, zone), duration, fixed-size
+      binary, LIST and STRUCT (nested), and dictionary-encoded columns
+      decoded on read. Both implementations map every one; pyarrow and
+      Arrow Java are the oracles both ways, on the JVM; the same round
+      trips run on Scala.js and Native.
+- [ ] Stage 5: the typed layer: `Schema[A]` rows through okay-codec's
+      `Columns` (which already has Int32, Decimal, Binary, Arr, Struct):
+      `encode[A](rows)` and `decode[A](bytes)`, nested case classes as
+      struct and list.
+- [ ] Stage 6: the IPC FILE format (magic, footer, a batch by index),
+      for storage and export.
+- [ ] Stage 7: where Arrow replaces CBOR — each candidate MEASURED
+      against CBOR first, and moved only where it wins: batches of
+      records in okay-stream / dataflow / okay-cluster; okay-persist
+      export and okay-sql results; frames for R (r-arrow), TypeScript,
+      Rust and Go. Control messages stay JSON/CBOR: a schema and a batch
+      header per message make a short message longer (the same reason
+      DEFLATE left pipes).
+- [ ] Body compression (LZ4_FRAME, ZSTD): in no JDK and on no JS or
+      Native standard library; refused by name until its own decision.
+
 - [ ] Later, on a trigger: `OkayArrow` as VIEWS over the message's bytes
       (no copy at all on read; stage 0's Decisions entry), when a
       consumer that does not need JVM values appears; the C Data
