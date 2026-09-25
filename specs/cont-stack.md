@@ -125,43 +125,100 @@ is not landed: see Results.
 
 | platform | the fresh stack | room a segment | where the waiting frames live |
 |---|---|---|---|
-| JVM, JDK 21+ | a virtual thread (`Thread.startVirtualThread` through a `MethodHandle`: the core compiles against 17) | 64 | a waiting virtual thread unmounts; its frames are frozen into heap `StackChunk`s |
-| JVM, JDK 17–20 | a platform thread with a 1 GB stack | ~500 000 | on the waiting threads' stacks, pages committed only as touched |
-| Native | a platform thread with a 1 GB stack | ~500 000 | the same |
+| JVM, every JDK | a platform thread with a 1 GB stack (Decision 8) | ~500 000 by count, exact with Layer 3 | on the waiting threads' stacks, pages committed only as touched, unmapped when the segment returns |
+| Native | a platform thread with a 1 GB stack | the same | the same |
 | JS | none | unbounded count | **the bound**: the depth of nested opaque bodies is limited by the engine's stack, written here and in the docs |
 
-The virtual thread's segment is 64 levels because HotSpot refuses to
-freeze a segment whose chunk would be humongous: at 512 levels the
-freeze failed with "StackOverflowError: Humongous stack chunk". The
-probe ran clean at 32 and 64.
+The lane's first cut used a VIRTUAL thread on JDK 21+ (a waiting
+virtual thread unmounts and its frames freeze into heap `StackChunk`s),
+which forced 64-level segments: HotSpot refuses to freeze a chunk that
+would be humongous ("StackOverflowError: Humongous stack chunk" at 512
+levels; clean at 32 and 64 — the limit is the G1 region size, so it
+moves with the heap). Measured on ONE JDK (26, Results): the virtual
+road costs 0.19–0.26 µs a level past the switch, the platform road
+0.010–0.016 — the price of no switch at all — because the cost is the
+HOP (park, unpark, thaw), not the level, and 1M levels are 15 625 hops
+at 64 a segment against 2 at 500 000. Memory is the same either way:
+what a frame takes, on a chunk or on a page. The virtual road is
+refuted; `StackSwitch` moves to the platform thread on every JDK.
 
 ### Layer 3: how much stack there is — knowing instead of guessing
 
 Layer 2's first room is the part of the CALLER's stack that `Cont` takes
-before its first switch. Today it is a guess, `firstRoom = 256`
-(`-Dokay.cont.room`), and the measurement below shows the guess costs
-10x on a program that fits. The plan: when the room runs out, look,
-and grant more room instead of switching when there is space.
-- **Native:** exact. The address of a `stackalloc` is the current stack
-  pointer, and `pthread_attr_getstack` gives the thread's bounds, so
-  the room left is known in bytes. It is cheap enough to check at
-  every re-entry, and needs no count at all.
-- **JVM:**
-  - our own threads' sizes are ours to set;
-  - a caller's thread's size is known only as the VM default
-    (`ThreadStackSize` through `HotSpotDiagnosticMXBean`); the main
-    thread's comes from the OS, and an explicit size (`new Thread(…,
-    stackSize)`) is not readable;
-  - the depth in frames is `StackWalker`, O(depth): ~tens of µs at
-    5 000 frames, more than a whole statePara run;
-  - bytes a frame differ 3–5x between interpreted and compiled code;
-  - an exact check needs the stack pointer, which Java cannot read: a
-    native call (FFM, JDK 22+: thread bounds from pthread, the stack
-    pointer from `getcontext`) is possible but layout-specific per OS
-    and architecture.
+before its first switch. In the lane's first cut it is a guess,
+`firstRoom = 256` (`-Dokay.cont.room`), and the measurement below shows
+the guess costs 10x on a program that fits. This layer replaces the
+guess with knowledge, and the shape of it is fixed by two facts
+measured 2026-09-25 (Results, probe `StackProbe`):
 
-  Decision pending (Open questions).
+- **Nothing is read on the hot path, and nothing at entry.** The count
+  is the only per-level cost, one decrement in a field. Every look at
+  the stack happens at EXHAUSTION — once per grant — so its price is
+  divided by the grant. Not at `run` either: fib100 is 2.4 µs an op,
+  and the cheapest exact read is 0.33 µs.
+- **What is asked at exhaustion is "how many bytes are left", and the
+  answer decides between a GRANT and a switch.** A grant is
+  `(left − margin) / worst`, where `worst` is the most bytes ONE level
+  has taken so far in this run, measured from the same reads (the
+  stack pointer at the previous exhaustion minus this one, over the
+  levels between). The first grant, before any read, uses the cold
+  constant (1.2 KB, interpreted frames). The margin is 64 KB: HotSpot's
+  yellow zone plus the fattest frame a body is expected to have. A
+  body whose ONE frame exceeds the margin is the written bound of this
+  layer on the JVM. When `left < margin`, switch.
+
+Where the bytes come from, per platform, best knowledge first:
+
+- **Native: exact, always.** The address of a `stackalloc` is the stack
+  pointer; `pthread_attr_getstack` gives the bounds. Cheap enough that
+  the count could go, but the count stays so the runner is one code
+  on every platform; Native only answers the exhaustion question
+  exactly.
+- **JVM with native access: exact.** FFM (JDK 22+), reached through
+  `MethodHandle`s because the core compiles against 17. Bounds:
+  `pthread_get_stackaddr_np`/`pthread_get_stacksize_np` (macOS),
+  `pthread_getattr_np` + `pthread_attr_getstack` (glibc). The pointer:
+  `getcontext`, reading `sp` out of the `ucontext_t` at the offset of
+  the OS and architecture in hand (macOS arm64: 264 into the
+  `mcontext`; the other three layouts are Open question 1). Measured
+  on macOS arm64, JDK 26: present, 326 ns a read (it is a
+  `sigprocmask` syscall inside), 112 B a compiled frame, the main
+  thread 2060 KB, and from a virtual thread it reports the CARRIER's
+  bounds — which is right, since a mounted virtual thread grows on the
+  carrier's stack. USED ONLY WHEN `Module.isNativeAccessEnabled()` says
+  the user allowed it: without `--enable-native-access` JDK 24+ prints
+  four WARNING lines on the first restricted call and says the call
+  will be refused in a future release, and a library does not print
+  that on a user's console. `getcontext` is absent on musl (Alpine):
+  a missing symbol, like a missing permission, falls through to the
+  count.
+- **JVM without native access: a calibrated count, and the written
+  bound.** The VM default stack (`ThreadStackSize`, one read of
+  `HotSpotDiagnosticMXBean`; 2 MB on macOS arm64, 1 MB on Linux x64)
+  over the cold constant, halved for the caller's own use: ~850 levels
+  here, ~400 on Linux — against 256 today. It holds for every thread of
+  the default size, the launcher's main thread included (the `java`
+  launcher runs `main` on a thread of that size, not on the primordial
+  one). The bound: a thread created with an explicit SMALLER stack is
+  not readable and must set `-Dokay.cont.room`. At exhaustion on such
+  a stack there is no read to make, so it switches, as today.
+- **On a stack we made** (a segment thread), the room is known by
+  construction, 1 GB over 2 KB a level, and no read is needed.
 - **JS:** nothing to read.
+
+**`StackWalker` is not the instrument** (proposed 2026-09-25: walk the
+stack before a risky call, keep the maximum depth seen, compare the
+current depth with it). Measured: a walk costs **~7 µs before it looks
+at a single frame** — `count()` and `skip(100).findFirst()` both read
+6.5–7 µs on a 10-frame stack — and O(depth) after that: 56 µs at 2 000
+frames, 209 µs at 10 000. A whole statePara run is 26 µs. And it counts
+FRAMES: 112 B compiled, ~1.2 KB interpreted, an opaque body's frame any
+size, so a maximum in frames is a lower bound on capacity only while
+the frame mix does not change — deoptimisation changes it back. Where
+the idea is right is the MAXIMUM, kept in the unit that is sound: the
+most BYTES a level has taken, from the exact reads above. Where no read
+is available the calibrated count is 20x cheaper than one walk and no
+less right.
 
 ## Decisions (and what was refuted, with why)
 
@@ -199,7 +256,8 @@ and grant more room instead of switching when there is space.
    frames' layout, GC maps or JIT metadata. The API needs
    `--add-exports java.base/jdk.internal.vm=ALL-UNNAMED` from every
    user and is unsupported. Virtual threads ARE this machinery behind a
-   public API, which is why Layer 2 uses them.
+   public API, which is why Layer 2's first cut used them — and
+   Decision 8 is why it no longer does.
 6. **Bytecode rewriting is out of scope for now** (operator). The
    exception-free way to make an opaque frame trampolinable is a
    Kotlin-style state machine: a `SUSPENDED` marker returned up the
@@ -212,6 +270,31 @@ and grant more room instead of switching when there is space.
    rest as a plain loop on the caller's stack. Only an opaque body that
    calls `k` SYNCHRONOUSLY and waits leaves a frame behind, which is
    Layer 2's case.
+8. **The fresh stack is a platform thread with a 1 GB stack, on every
+   JDK; the virtual-thread road is refuted** (2026-09-25, Results:
+   same probe shape, same JDK 26 — 0.19–0.26 µs a level against
+   0.010–0.016). A switch's cost is the hop, and the humongous-chunk
+   limit makes the virtual road hop every 64 levels; the platform road
+   hops every ~500 000 and pays a thread start each time. The
+   waiting frames live on committed stack pages instead of heap chunks
+   and cost the same bytes. The JDK 17 fallback of the first cut is
+   therefore the one implementation, and the `MethodHandle` lookup of
+   `startVirtualThread` goes.
+9. **The JVM reads its stack pointer through FFM when the user allowed
+   native access, and counts otherwise** (Layer 3). Not `StackWalker`:
+   ~7 µs a call before the first frame, and frames are not bytes.
+   Not a per-level read: 326 ns against a 15 ns level. Not a read at
+   `run`: fib100 would pay 13%. Only at exhaustion, where a grant of
+   hundreds of levels pays for it.
+10. **No probe that overflows a stack on purpose to learn its size.**
+    Considered as a way to calibrate the count without native access:
+    a private thread, a pure recursion, `StackOverflowError` caught
+    there and nowhere else. It measures the runner's OWN frames at the
+    JIT state of that moment, not an opaque body's, so it answers the
+    easy half of the question; and it is the exception Decision 4
+    refuses, in a place where it is merely unnecessary rather than
+    unsafe. The `ThreadStackSize` read gives the same first room
+    without it.
 
 ## Behavior
 
@@ -224,7 +307,9 @@ Runtime layer (lane cont-stack-switch, TestContStack; each red on a
 - [x] an exception thrown deep crosses every switch unchanged
 - [ ] the fast path within noise of master on fib100/fib1000/statePara
       (NOT met: see Results)
-- [ ] JDK 17 fallback (1 GB platform stack) exercised by a test run on 17
+- [ ] the platform-thread switch exercised by a test run on JDK 17 as
+      well as 26 (no `MethodHandle` lookup left to differ, but the floor
+      is where it is proved)
 - [ ] Native: the switch runs (a test on a Native thread with a small stack)
 - [ ] JS: the bound written in docs/ and a test that a shallow program
       is unchanged
@@ -242,9 +327,22 @@ Compile-time layer:
 - [ ] every existing Cont test green, statePara/Fib within noise
 - [ ] okay2: A and known higher-order functions; B if it holds up
 
-Stack knowledge:
-- [ ] Native: an exact remaining-stack check replaces the count
-- [ ] JVM: whatever Open question 1 decides
+Stack knowledge (Layer 3):
+- [ ] the fresh stack is a platform thread on JDK 26 too (the test's
+      switch counter sees one switch per ~500 000 levels, not per 64)
+- [ ] Native: at exhaustion the exact bytes left decide grant or switch
+- [ ] JVM, native access enabled (`--enable-native-access` in the
+      test's fork options): statePara-shaped 1000 levels on a 2 MB
+      thread switch ZERO times; a 128 KB thread still switches; a
+      `Thread.ofPlatform().stackSize(8 MB)` thread is granted more than
+      the default would allow
+- [ ] JVM, native access absent: no WARNING line on stderr, ever; the
+      first room is `ThreadStackSize`-derived (test: the counter on a
+      default thread sees no switch below ~800 levels here)
+- [ ] the grant follows `worst`: a run whose later bodies have fatter
+      frames than its first ones still does not overflow (a test body
+      with a large local array past level 500)
+- [ ] `-Dokay.cont.room` still overrides the first room
 
 ## Results
 
@@ -263,6 +361,33 @@ Stack knowledge:
   - 1M levels in 2 switches, 44 ms; 3M in 6, 129 ms.
   - With 4 GB stacks, 3M in 2; with 64 MB stacks, 1M in 31.
   - Multi-shot correct.
+- **The two roads on ONE JDK** (26, same box, load 2.1, 2026-09-25
+  11:28), the decision behind Decision 8:
+
+  | road | 1M levels, `k(x+1)+1` | per level | hops | 3M levels |
+  |---|---|---|---|---|
+  | `StackHop`, virtual thread, 64 a segment | 194–260 ms | 0.19–0.26 µs | 15 625 | — |
+  | `BigStack`, platform thread, 1 GB | 10–16 ms | 0.010–0.016 µs | 2 | 35 ms, 6 hops |
+
+  Heap delta on the virtual road 69–98 MB (the frozen chunks); the
+  platform road's equivalent is committed stack pages, unmapped as
+  each segment thread returns. Multi-shot (`twice`, 2^16 calls) and a
+  thrown exception correct on both.
+- Probe `StackProbe` (JDK 26, macOS arm64, `-Xss2m`), the numbers
+  behind Layer 3 and Decision 9:
+  - `StackWalker.count()`: 7.2 µs at 10 frames, 56 µs at 2 006, 209 µs
+    at 10 006. `skip(100).findFirst()` — a bounded walk — 6.5–6.8 µs at
+    every depth, `skip(2000)` 55 µs: the cost is O(min(depth, limit))
+    PLUS ~6.5 µs to open the walk at all.
+  - FFM: `getcontext` present in libSystem; `sp` read from the
+    `mcontext` at offset 264 agrees with the frame arithmetic: 1000
+    frames of a trivial compiled method = 112 B each, 113 KB used of
+    2060 KB. 326 ns a read, warm. `pthread_get_stacksize_np`: main
+    2060 KB, a `stackSize(64 MB)` thread 65 548 KB (so an explicit size
+    IS readable this way — the count-only road cannot see it, the exact
+    road can), a virtual thread its carrier's 2060 KB.
+  - `Module.isNativeAccessEnabled()` is false without the flag, and the
+    first restricted call then prints four WARNING lines.
 - A/B of the runtime layer against master (src/jmh/history.d,
   2026-09-25T091202Z-cont-stack-switch; min of 3 alternating rounds,
   quiet box, JDK 26):
@@ -284,26 +409,32 @@ Stack knowledge:
 1. Layer 2 (implemented, lane cont-stack-switch, not landed).
 2. Layer 1 A: the macro and the `Jump` node. Target: statePara back to
    master's number, with zero switches.
-3. Shrink Layer 2's fast path (the `Mapped` closure, `Reentry`'s
-   shape), then A/B again. Land 1–3 together, only within noise.
+3. Layer 2 on the platform thread (Decision 8) and Layer 3's JVM side:
+   `StackRoom.left(): Long` (−1 when unknown) behind `StackSwitch`, the
+   FFM read gated on `isNativeAccessEnabled`, the `ThreadStackSize`
+   first room, `worst` carried beside the room. Then shrink the fast
+   path (the `Mapped` closure, `Reentry`'s shape) and A/B again. Land
+   1–3 together, only within noise.
 4. Layer 1 B, then the known higher-order functions, then visible user
    functions and `direct`.
-5. Layer 3: Native exact; JVM per Open question 1.
+5. Layer 3 on Native (exact), and the remaining `ucontext` layouts on
+   the JVM (Open question 1).
 6. okay2: stages 1–4 in Scala 2, as far as its macros reach.
 7. Docs: user docs for Cont's stack behaviour per platform, with the JS
    bound, and the literature below.
 
 ## Open questions
 
-1. JVM stack knowledge. Candidates:
-   - (a) keep a count, and read the default thread stack size once to
-     set a larger first room;
-   - (b) an FFM stack-pointer probe on JDK 22+, per OS and architecture;
-   - (c) a count only, with Layer 1 making the count matter only for
-     opaque bodies.
-
-   After stage 2, measure how often (c) switches on the benchmark and
-   test corpus before paying for (b).
+1. The `sp` offset inside `ucontext_t` on the three layouts not yet
+   measured: macOS x86_64, glibc x86_64 (`uc_mcontext.gregs[REG_RSP]`),
+   glibc aarch64 (`uc_mcontext.sp`). Each is one constant and one probe
+   run; until a layout is measured it counts (the exact road is opened
+   per `(os, arch)`, never guessed). A cheaper pointer read than
+   `getcontext` (326 ns: it saves the signal mask with a syscall) —
+   `_setjmp` stores `sp` at a fixed slot on macOS arm64 and does no
+   syscall — is a refinement to measure only if an exhaustion read
+   ever shows in a profile; glibc mangles the slot, so it is macOS-only
+   either way.
 2. okay2 B on Scala 2 macros: feasible, or opaque there?
 
 ## Literature
