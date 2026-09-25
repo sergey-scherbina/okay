@@ -1,0 +1,6 @@
+feature/testsignals-live 2026-09-25T10:20:00Z
+agent: claude-code
+heartbeat: 2026-09-25T10:20:00Z
+status: in-progress
+done-so-far: claim
+next: tag okay-ops TestSignals Live (timing under load: failed the whole-build runner at load 21 and reverted an unrelated landing, 6a12b9802); scoped gate; land
