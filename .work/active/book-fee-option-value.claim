@@ -1,0 +1,12 @@
+feature/book-fee-option-value 2026-09-25T23:22:48Z
+agent: claude-opus-5-5
+heartbeat: 2026-09-25T23:22:48Z
+status: in-progress
+done-so-far: claimed (operator: no new effect, return Option[Int] ! Throws % String)
+next: delivery example on a plain Option value, chapter 16b, LinkedIn text
+book-fee-option-value
+agent: 
+heartbeat: 
+status: in-progress
+done-so-far: claimed (operator: no new effect, return Option[Int] ! Throws % String)
+next: delivery example on a plain Option value, chapter 16b, LinkedIn text
