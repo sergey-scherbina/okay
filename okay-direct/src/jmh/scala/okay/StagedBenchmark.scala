@@ -31,33 +31,33 @@ class StagedBenchmark {
   def freeBlock(i: Int, acc: Int): Int ! Row =
     if i >= Iters then pure(acc)
     else direct[[A] =>> A ! Row] {
-      val a = State.get[Int].!?
-      val _ = State.set[Int](i).!?
-      Writer.tell("w").!?
-      val b = State.get[Int].!?
-      val _ = State.set[Int](i + 1).!?
-      Writer.tell("w").!?
-      val c = State.get[Int].!?
-      val _ = State.set[Int](i + 2).!?
-      Writer.tell("w").!?
-      val d = State.get[Int].!?
-      freeBlock(i + 1, acc + a + b + c + d).!?
+      val a = State.get[Int].?
+      val _ = State.set[Int](i).?
+      Writer.tell("w").?
+      val b = State.get[Int].?
+      val _ = State.set[Int](i + 1).?
+      Writer.tell("w").?
+      val c = State.get[Int].?
+      val _ = State.set[Int](i + 2).?
+      Writer.tell("w").?
+      val d = State.get[Int].?
+      freeBlock(i + 1, acc + a + b + c + d).?
     }
 
   def stagedBlock(i: Int, acc: Int): Handled[Row, R, Int] =
     if i >= Iters then Handled.pure(acc)
     else Direct.staged(sw) {
-      val a = State.get[Int].!?
-      val _ = State.set[Int](i).!?
-      Writer.tell("w").!?
-      val b = State.get[Int].!?
-      val _ = State.set[Int](i + 1).!?
-      Writer.tell("w").!?
-      val c = State.get[Int].!?
-      val _ = State.set[Int](i + 2).!?
-      Writer.tell("w").!?
-      val d = State.get[Int].!?
-      stagedBlock(i + 1, acc + a + b + c + d).!?
+      val a = State.get[Int].?
+      val _ = State.set[Int](i).?
+      Writer.tell("w").?
+      val b = State.get[Int].?
+      val _ = State.set[Int](i + 1).?
+      Writer.tell("w").?
+      val c = State.get[Int].?
+      val _ = State.set[Int](i + 2).?
+      Writer.tell("w").?
+      val d = State.get[Int].?
+      stagedBlock(i + 1, acc + a + b + c + d).?
     }
 
   /** the parity target: what the macro should emit, by hand */
@@ -117,17 +117,17 @@ class StagedBenchmark {
   def allBlock(i: Int, acc: Int): Handled[aw.Row, aw.R, Int] =
     if i >= Iters then Handled.pure(acc)
     else Direct.staged(aw) {
-      val a = State.get[Int].!?
-      val _ = State.set[Int](i).!?
-      Writer.tell("w").!?
-      val b = State.get[Int].!?
-      val _ = State.set[Int](i + 1).!?
-      Writer.tell("w").!?
-      val c = State.get[Int].!?
-      val _ = State.set[Int](i + 2).!?
-      Writer.tell("w").!?
-      val d = State.get[Int].!?
-      allBlock(i + 1, acc + a + b + c + d).!?
+      val a = State.get[Int].?
+      val _ = State.set[Int](i).?
+      Writer.tell("w").?
+      val b = State.get[Int].?
+      val _ = State.set[Int](i + 1).?
+      Writer.tell("w").?
+      val c = State.get[Int].?
+      val _ = State.set[Int](i + 2).?
+      Writer.tell("w").?
+      val d = State.get[Int].?
+      allBlock(i + 1, acc + a + b + c + d).?
     }
 
   @Benchmark
@@ -147,35 +147,35 @@ class StagedBenchmark {
   def freeRT(i: Int, acc: Int): Int ! RowRT =
     if i >= Iters then pure(acc)
     else direct[[A] =>> A ! RowRT] {
-      val e1 = Reader.ask[Cfg].!?
-      val e2 = Reader.ask[Cfg].!?
-      val e3 = Reader.ask[Cfg].!?
+      val e1 = Reader.ask[Cfg].?
+      val e2 = Reader.ask[Cfg].?
+      val e3 = Reader.ask[Cfg].?
       val a = e1.k + e2.k + e3.k + i
-      val e4 = Reader.ask[Cfg].!?
-      val e5 = Reader.ask[Cfg].!?
-      val g = if a > e4.limit then raise[String, Int]("over").!? else a + e5.k
-      val e6 = Reader.ask[Cfg].!?
-      val e7 = Reader.ask[Cfg].!?
-      val e8 = Reader.ask[Cfg].!?
-      val e9 = Reader.ask[Cfg].!?
-      freeRT(i + 1, acc + g + e6.k + e7.k + e8.k + e9.k).!?
+      val e4 = Reader.ask[Cfg].?
+      val e5 = Reader.ask[Cfg].?
+      val g = if a > e4.limit then raise[String, Int]("over").? else a + e5.k
+      val e6 = Reader.ask[Cfg].?
+      val e7 = Reader.ask[Cfg].?
+      val e8 = Reader.ask[Cfg].?
+      val e9 = Reader.ask[Cfg].?
+      freeRT(i + 1, acc + g + e6.k + e7.k + e8.k + e9.k).?
     }
 
   def stagedRT(i: Int, acc: Int): Handled[rt.Row, rt.R, Int] =
     if i >= Iters then Handled.pure(acc)
     else Direct.staged(rt) {
-      val e1 = Reader.ask[Cfg].!?
-      val e2 = Reader.ask[Cfg].!?
-      val e3 = Reader.ask[Cfg].!?
+      val e1 = Reader.ask[Cfg].?
+      val e2 = Reader.ask[Cfg].?
+      val e3 = Reader.ask[Cfg].?
       val a = e1.k + e2.k + e3.k + i
-      val e4 = Reader.ask[Cfg].!?
-      val e5 = Reader.ask[Cfg].!?
-      val g = if a > e4.limit then raise[String, Int]("over").!? else a + e5.k
-      val e6 = Reader.ask[Cfg].!?
-      val e7 = Reader.ask[Cfg].!?
-      val e8 = Reader.ask[Cfg].!?
-      val e9 = Reader.ask[Cfg].!?
-      stagedRT(i + 1, acc + g + e6.k + e7.k + e8.k + e9.k).!?
+      val e4 = Reader.ask[Cfg].?
+      val e5 = Reader.ask[Cfg].?
+      val g = if a > e4.limit then raise[String, Int]("over").? else a + e5.k
+      val e6 = Reader.ask[Cfg].?
+      val e7 = Reader.ask[Cfg].?
+      val e8 = Reader.ask[Cfg].?
+      val e9 = Reader.ask[Cfg].?
+      stagedRT(i + 1, acc + g + e6.k + e7.k + e8.k + e9.k).?
     }
 
   /** the parity target for (2), by hand — the SAME shape as `handBlock`:

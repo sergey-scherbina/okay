@@ -132,10 +132,10 @@ class RowLiftBenchmark {
    * intermediate node. The candidate for "zero cost AND ergonomic". */
   @Benchmark
   def viaDirect(): Int =
-    var m: Int ! R = direct { State.Get[Int, Int]().!? }
+    var m: Int ! R = direct { State.Get[Int, Int]().? }
     var i = 1
     while i < N do
-      m = m.flatMap(_ => direct { State.Get[Int, Int]().!? })
+      m = m.flatMap(_ => direct { State.Get[Int, Int]().? })
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 

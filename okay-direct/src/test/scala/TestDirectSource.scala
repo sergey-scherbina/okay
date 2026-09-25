@@ -22,42 +22,42 @@ class TestDirectSource extends munit.FunSuite:
     assertEquals(seen.toList, List(1, 2, 3))
   }
 
-  test("for x <- Pull.of(xs) do body.!? — the body's effects per element, in order") {
-    val (log, _) = run(direct { for x <- Pull.of(List(1, 2, 3)) do say(s"x$x").!? })
+  test("for x <- Pull.of(xs) do body.? — the body's effects per element, in order") {
+    val (log, _) = run(direct { for x <- Pull.of(List(1, 2, 3)) do say(s"x$x").? })
     assertEquals(log, Seq("x1", "x2", "x3"))
   }
 
   test("no marks in the body: the loop still runs as a program — the road fires on the receiver's type") {
     val seen = scala.collection.mutable.Buffer[Int]()
     val (log, _) = run(direct {
-      say("before").!?
+      say("before").?
       for x <- Pull.of(List(1, 2)) do seen += x
-      say("after").!?
+      say("after").?
     })
     assertEquals(seen.toList, List(1, 2))
     assertEquals(log, Seq("before", "after"))
   }
 
   test("a guard skips without consuming a bind") {
-    val (log, _) = run(direct { for x <- Pull.of(List(1, 2, 3, 4)) if x % 2 == 0 do say(s"even $x").!? })
+    val (log, _) = run(direct { for x <- Pull.of(List(1, 2, 3, 4)) if x % 2 == 0 do say(s"even $x").? })
     assertEquals(log, Seq("even 2", "even 4"))
   }
 
   test("docs/direct-style.md: a loop over a source (direct-loops v3), verbatim") {
     val producer: Unit ! Writer % Int + State % Int = direct[[A] =>> A ! Writer % Int + State % Int] {
-      Writer.tell(1).!?; val _ = State.modify[Int](_ + 1).!?
-      Writer.tell(2).!?; val _ = State.modify[Int](_ + 1).!?
-      Writer.tell(3).!?; val _ = State.modify[Int](_ + 1).!?
+      Writer.tell(1).?; val _ = State.modify[Int](_ + 1).?
+      Writer.tell(2).?; val _ = State.modify[Int](_ + 1).?
+      Writer.tell(3).?; val _ = State.modify[Int](_ + 1).?
     }
     @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
     def docSourceDemo(): Unit =
       direct[[A] =>> A ! State % Int + Writer % String] {
         for x <- Pull.toldIn(producer) do            // the producer performs State between tells
-          say(s"got $x after ${State.get[Int].!?} steps").!?
+          say(s"got $x after ${State.get[Int].?} steps").?
       }
     docSourceDemo()
     val prog = direct[[A] =>> A ! State % Int + Writer % String] {
-      for x <- Pull.toldIn(producer) do say(s"got $x after ${State.get[Int].!?} steps").!?
+      for x <- Pull.toldIn(producer) do say(s"got $x after ${State.get[Int].?} steps").?
     }
     val (log, (cell, _)) = run(State.handle(0)(prog))
     assertEquals(log, Seq("got 1 after 0 steps", "got 2 after 1 steps", "got 3 after 2 steps"))
@@ -67,12 +67,12 @@ class TestDirectSource extends munit.FunSuite:
   test("the source's own effects interleave with the body's, one step per element (Pull.toldIn)") {
     // a producer that counts its tells in a State cell between them
     val producer: Unit ! Writer % Int + State % Int = direct[[A] =>> A ! Writer % Int + State % Int] {
-      Writer.tell(1).!?; val _ = State.modify[Int](_ + 1).!?
-      Writer.tell(2).!?; val _ = State.modify[Int](_ + 1).!?
-      Writer.tell(3).!?; val _ = State.modify[Int](_ + 1).!?
+      Writer.tell(1).?; val _ = State.modify[Int](_ + 1).?
+      Writer.tell(2).?; val _ = State.modify[Int](_ + 1).?
+      Writer.tell(3).?; val _ = State.modify[Int](_ + 1).?
     }
     val prog: Unit ! State % Int + W = direct[[A] =>> A ! State % Int + W] {
-      for x <- Pull.toldIn(producer) do say(s"got $x after ${State.get[Int].!?} steps").!?
+      for x <- Pull.toldIn(producer) do say(s"got $x after ${State.get[Int].?} steps").?
     }
     // the reader's step runs the producer up to its next tell, so the
     // effect AFTER a tell has not happened when that element is read
@@ -83,17 +83,17 @@ class TestDirectSource extends munit.FunSuite:
 
   test("Pull.told over a pure writer program reads its told values") {
     val prod: Int ! Writer % Int = Writer.tell(10).flatMap(_ => Writer.tell(20)).map(_ => 99)
-    val (log, _) = run(direct { for x <- Pull.told(prod) do say(s"v$x").!? })
+    val (log, _) = run(direct { for x <- Pull.told(prod) do say(s"v$x").? })
     assertEquals(log, Seq("v10", "v20"))
   }
 
   test("a Pull whose G is not in the block's row is refused at the loop; yield over a Pull does not parse to a loop") {
     val refused = compileErrors("""
       val p: Unit ! Writer % Int + Async = Writer.tell(1)
-      run(direct { for x <- Pull.toldIn(p) do say(s"$x").!? })
+      run(direct { for x <- Pull.toldIn(p) do say(s"$x").? })
     """)
     assert(refused.nonEmpty, "an Async source in a Writer-only block must be refused")
-    val noMap = compileErrors("""run(direct { for x <- Pull.of(List(1)) yield say("y").!? })""")
+    val noMap = compileErrors("""run(direct { for x <- Pull.of(List(1)) yield say("y").? })""")
     assert(noMap.nonEmpty, "a Pull has no map")
     val outside = compileErrors("""for x <- Pull.of(List(1)) do println(x)""")
     assert(outside.nonEmpty, "outside a block the for over a source does not typecheck — loop(f) is the program")

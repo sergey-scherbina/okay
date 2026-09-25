@@ -82,7 +82,7 @@ class TestMonadic extends munit.FunSuite {
       reify:
         for
           x <- mx.reflect   // x: Int — a plain value
-          y <- my.!?         // the same μ, spelled short
+          y <- my.?         // the same μ, spelled short
         yield x + y
     assertEquals(add(Some(2), Some(3)), Some(5))
     assertEquals(add(None, Some(3)), None)
@@ -91,8 +91,8 @@ class TestMonadic extends munit.FunSuite {
   test("multi-shot comes free, because k is a pure closure (docs/direct-style.md)") {
     val r: List[Int] = reify:
       for
-        x <- List(1, 2, 3).!?
-        y <- List(10, 20).!?
+        x <- List(1, 2, 3).?
+        y <- List(10, 20).?
       yield x * y           // List(10,20,20,40,30,60) — k ran 6 times
     assertEquals(r, List(10, 20, 20, 40, 30, 60))
   }

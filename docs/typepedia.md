@@ -114,12 +114,13 @@ same material with the measurements attached.
   core-cleanup — nobody matched with it);
   identity-style signatures are split by the runtime class of their
   values, so keep them class-distinct.
-- **the direct marks: `.reflect` / `.!?` / `.?` / `!prog`** — one
-  mark, four spellings, one dispatch-by-type inside `direct { }`
+- **the direct marks: `.reflect` / `.?` / `!prog`** — one
+  mark, three spellings, one dispatch-by-type inside `direct { }`
   blocks (docs/direct-style.md): an `F[T]` of the block reflects, a
-  row operation injects then reflects. `.reflect` is the word, `.!?`
-  the postfix symbol, prefix `!` the one-glyph gesture (`unary_!`
-  under the hood), and `.?` came BACK in unwrap-glyph (2026-09-17):
+  row operation injects then reflects. `.reflect` is the word, `.?`
+  the postfix glyph, prefix `!` the one-glyph gesture (`unary_!`
+  under the hood). `.?`, the stand-in postfix, retired in
+  mark-glyph-only (2026-09-25). `.?` came BACK in unwrap-glyph (2026-09-17):
   it had been retired because `Throws.?` answered it on any value at
   all through the `into` conversion, silently doing nothing, and
   because the row peek held it too. The Throws glyphs now live in

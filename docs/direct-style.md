@@ -73,9 +73,10 @@ object Monadic:
      * method; the prefix form is its desugared call) */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ — the collision-free survivor (see
-     * specs/direct-macro.md Decisions for the three-strikes story) */
-    inline def !?[B]: Cont[A, F[B], F[B]] = reflect[B]
+    /** the symbolic μ — the same glyph as Direct's mark and as
+     * `Throws.?` (specs/unwrap-glyph.md): the value, the context deals
+     * with what was around it */
+    inline def ?[B]: Cont[A, F[B], F[B]] = reflect[B]
 
   /** the delimiter: a direct-style block back into its monad */
   inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
@@ -98,14 +99,14 @@ def add(mx: Option[Int], my: Option[Int]): Option[Int] =
   reify:
     for
       x <- mx.reflect   // x: Int — a plain value
-      y <- my.!?         // the same μ, spelled short
+      y <- my.?         // the same μ, spelled short
     yield x + y
 
 // multi-shot comes free, because k is a pure closure:
 val r: List[Int] = reify:
   for
-    x <- List(1, 2, 3).!?
-    y <- List(10, 20).!?
+    x <- List(1, 2, 3).?
+    y <- List(10, 20).?
   yield x * y           // List(10,20,20,40,30,60) — k ran 6 times
 ```
 
@@ -209,8 +210,8 @@ import Direct.*
 
 def add(mx: Option[Int], my: Option[Int]): Option[Int] =
   direct[Option] {
-    val x = mx.!?
-    val y = my.!?
+    val x = mx.?
+    val y = my.?
     x + y
   }
 ```
@@ -226,7 +227,7 @@ no-macro API: `reflect(m)` *is* `shift(k => m.flatMap(k))`, so the
 two emissions mean the same program.) Every program the macro emits
 is one you could have written by hand; multi-shot, short-circuit and
 the stack discipline are *inherited*, not re-implemented. The mark `.?`
-inside a block is a different symbol from `Monadic.!?` — it typechecks
+inside a block is a different symbol from `Monadic.?` — it typechecks
 as `A` (the block must typecheck *before* the macro expands; that is
 how inline macros work), never executes, and throws loudly if it
 somehow escapes a block.
@@ -235,29 +236,29 @@ Inside the block, plain Scala works:
 
 ```scala
 // subexpression marks hoist left-to-right (evaluation order kept):
-direct[Option] { eff("a", 1).!? + eff("b", 2).!? }  // "a" before "b", always
+direct[Option] { eff("a", 1).? + eff("b", 2).? }  // "a" before "b", always
 
 // if/match with effects in the scrutinee and the branches —
 // only the taken branch's effects run:
-direct[Option] { if c.!? then branch(1).!? else branch(2).!? }
+direct[Option] { if c.? then branch(1).? else branch(2).? }
 
 // && and || keep their short-circuit — the macro desugars them to
 // the if they mean (they are compiler intrinsics whose method type
 // lies about by-name-ness; hoisting their operands would have
 // broken short-circuit silently):
-direct[Option] { eff(false).!? && eff(true).!? }   // right side never runs
+direct[Option] { eff(false).? && eff(true).? }   // right side never runs
 ```
 
 **Effectful iteration** (the shapes the codebase survey named as
 the top real pattern) is rewritten, not refused: `for x <- xs do
-eff(x).!?` runs per element in order and short-circuits mid-loop;
-`for x <- xs yield eff(x).!?` is the traverse shape; `while cond.!?
+eff(x).?` runs per element in order and short-circuits mid-loop;
+`for x <- xs yield eff(x).?` is the traverse shape; `while cond.?
 do body` re-evaluates its condition each turn; loops recurse over an
 immutable materialized List, so multi-shot re-entry into a loop body
 is sound. Since direct-loops v2 (2026-09-22) the whole
-for-comprehension is in: guards (`for x <- xs if p(x).!? …`, the
+for-comprehension is in: guards (`for x <- xs if p(x).? …`, the
 guard may itself be marked), several generators (`for x <- xs; y <-
-ys(x).!? yield …`, results in the comprehension's order, a
+ys(x).? yield …`, results in the comprehension's order, a
 short-circuit in the inner generator ending the whole thing), and a
 `yield` that answers the node's own collection — `List`/`Seq`,
 `Vector`, `Set`, `Map` of pairs. So are the HOFs a marked lambda most
@@ -301,7 +302,7 @@ design philosophy of the macro, and it is why it stays ~300 lines.
 **One mark, not two.** An operation of an effect row —
 `Writer("a")`, a raw `Reader` ask — is not an `F[T]`; it needs
 lifting into the program (`Free.Inject`) before it can reflect. An
-early version had a second mark (`.!?`) for that. It was refuted as
+early version had a second mark for that. It was refuted as
 redundant the day a user asked why there were two: the *type*
 already says which case applies, so the macro dispatches — `F[T]`
 reflects; an operation of the block's row (the macro extracts `Row`
@@ -311,8 +312,8 @@ One `.?` everywhere:
 ```scala
 type F = Reader % Int + Writer % String
 val prog: Int ! F = direct {          // F inferred from the expected type
-  val env = Reader.Ask[Int, Int]().!?  // an operation
-  Writer(s"env=$env").!?               // an operation
+  val env = Reader.Ask[Int, Int]().?  // an operation
+  Writer(s"env=$env").?               // an operation
   env + 1                             // plain code
 }
 // then the ordinary handlers:
@@ -325,17 +326,20 @@ the choice is pure style, and each has a niche:
 | spelling | shape | use it for |
 |---|---|---|
 | `.reflect` | name | any scope, any doubt — it never collides |
-| `.!?` | postfix symbol | chains: `lookup(u).!?.name` needs no parens |
+| `.?` | postfix glyph | chains: `lookup(u).?.name` needs no parens |
 | `!prog` | prefix glyph | the gesture: statements, wizard lines — `val name = !Form.ask[Name]("who?")` |
 
 The family is the survivor set of a recorded three-strikes history
 (specs/direct-macro.md Decisions): `.!` shadows `object !` (every
 `!.run` in the importing file breaks — refuted twice, once per
 lane); `.?` collided with okay's own Throws row-`?` (Ambiguous
-extension methods, found twice independently) and is retired; `.!?`
-— once retired as redundant beside `.?` — returned as the one
-postfix that collides with nothing; and the prefix rides the method
-name `unary_!`, which shadows nothing by construction. Prefix `!`
+extension methods, found twice independently) and was retired while
+`.?` stood in for it as the one postfix that collided with nothing;
+once the Throws glyphs moved into their type's companion and the row
+peek became `peek`, `.?` came back (unwrap-glyph) and `.?` retired
+for good (mark-glyph-only) — `.?` means the same on `A throws E`:
+the value, the context deals with the rest. The prefix rides the
+method name `unary_!`, which shadows nothing by construction. Prefix `!`
 on an effectful program is Idris's bang-notation and Frank's `!`
 arriving at the same point of the design space (see
 [theory ch. 8](theory/08-direct-style.md)). One caution inherited
@@ -358,10 +362,10 @@ val sw = Stager.StateWriter[Int, String, Int]()   // the row's staged interprete
 def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
   if i >= 100 then Handled.pure(acc)
   else Direct.staged(sw) {
-    val a = State.get[Int].!?
-    val _ = State.set[Int](i).!?
-    Writer.tell("w").!?
-    step(i + 1, acc + a).!?
+    val a = State.get[Int].?
+    val _ = State.set[Int](i).?
+    Writer.tell("w").?
+    step(i + 1, acc + a).?
   }
 
 val ((state, log), answer) = sw.run(0)(step(0, 0))
@@ -397,11 +401,11 @@ case class Cfg(k: Int, limit: Int)
 val rt = Stager.All[Cfg, Unit, Nothing, String, Int]()   // Reader + Throws, nothing else
 
 def total(xs: List[Int]): Handled[rt.Row, rt.R, Int] = Direct.staged(rt) {
-  val cfg = Reader.ask[Cfg].!?
+  val cfg = Reader.ask[Cfg].?
   var acc = 0
   for x <- xs do
     acc += x * cfg.k
-    if acc > cfg.limit then raise[String, Unit](s"over $acc").!?   // ends the block: Left
+    if acc > cfg.limit then raise[String, Unit](s"over $acc").?   // ends the block: Left
   acc
 }
 
@@ -409,7 +413,7 @@ rt.run(Cfg(2, 100), ())(total(List(1, 2, 3)))._2     // Right(12)
 rt.run(Cfg(2, 5), ())(total(List(1, 2, 3)))._2       // Left("over 6")
 ```
 
-`raise(e).!?` inside a staged block drops the continuation and
+`raise(e).?` inside a staged block drops the continuation and
 answers `Left(e)` — `run` is the block's catch; `catching`/`local`
 are handlers, i.e. programs, and stay outside (the rule above). The
 four singles — `Stager.Reading[E, A]`, `Stateful[S, A]`,
@@ -603,7 +607,7 @@ to the ENCLOSING def is still deferred anywhere in the block, and a
 call to another def is still deferred in TAIL position. What you take
 on is the rest: a mutual call outside tail position is then built where
 it stands, and needs the word `!.tailcall(other(n))`. `!`, `.reflect`
-and `.!?` are NOT substitutes — they are marks ("bind this program"),
+and `.?` are NOT substitutes — they are marks ("bind this program"),
 not deferrals ("do not build it yet"), so a marked call is still built
 when the block is. A call already wrapped in `!.tailcall` is left
 alone, so the explicit spelling never pays for two nodes, and a call
@@ -885,7 +889,7 @@ exactly as Common Lisp meant it — **a call that may return**:
 ```scala
 val prog: Int ! Op = direct {
   steps :+= "before"
-  val v = signal[Int]("how many?").!?   // raise; Resume(41) lands HERE
+  val v = signal[Int]("how many?").?   // raise; Resume(41) lands HERE
   steps :+= s"after($v)"               // ... and this line runs
   v + 1
 }
@@ -897,9 +901,9 @@ lines, forwarding to `within` over `direct`):
 
 ```scala
 val a = frame[String, Pure]("skip") {
-  val v = signal[String]("bad").!?      // policy says Invoke("skip", x)
+  val v = signal[String]("bad").?      // policy says Invoke("skip", x)
   v                                    // ...so this never runs
-}(v => s"skipped:$v").!?                // ...and the frame answers
+}(v => s"skipped:$v").?                // ...and the frame answers
 ```
 
 And the operator's story — repair a malformed element mid-stream and
@@ -947,7 +951,10 @@ specs' Decisions so the next person does not pay twice.
 - **A general (unscoped) macro** — exists (dotty-cps-async), costs
   years of re-typing machinery for the lambda-coloring corner;
   refusing that corner costs one error message.
-- **A separate op mark (`.!?`)** — redundant: the type dispatches.
+- **A separate op mark** — redundant: the type dispatches.
+- **A second postfix symbol for the one mark (`.?` beside `.?`)** —
+  kept for a week after `.?` returned, then retired: two symbols for
+  one mark was a question every reader asked and none needed answered.
 - **`.!` as the mark** — an imported extension named `!` shadows
   `object !`; `!.run` breaks file-wide.
 - **A prefix `def reflect` beside the extension** — ambiguous
@@ -1000,15 +1007,15 @@ evens.take(3).toList                          // List(4, 16, 36) — the body ra
 val fib: Gen[Long] = generator[Long] {
   var (a, b) = (0L, 1L)
   while true do
-    Gen.emit(a).!?
+    Gen.emit(a).?
     val t = a; a = b; b = t + b
 }
 fib.drop(10).first                            // Some(55)
 
 def countdown(n: Int): Gen[Int] = generator[Int] {
   if n > 0 then
-    Gen.emit(n).!?
-    countdown(n - 1).!?                       // a recursive generator, flat on the stack
+    Gen.emit(n).?
+    countdown(n - 1).?                       // a recursive generator, flat on the stack
 }
 
 // 3. any Writer program you already have, or two generators in sequence
@@ -1032,7 +1039,7 @@ Python generator is one-shot; `toLazyList` gives you that, memoised).
 Gen(1, 2, 3).iterator.toList                   // the body ended: exhausted
 generator[Int] {                               // Gen.stop from inside a loop:
   var i = 0                                    //   nothing after it runs
-  while true do { i += 1; if i > 3 then Gen.stop[Int].!?; Gen.emit(i).!? }
+  while true do { i += 1; if i > 3 then Gen.stop[Int].?; Gen.emit(i).? }
 }.toList                                       // List(1, 2, 3)
 infinite.take(5)                               // the reader stopped: the rest never runs
 ```
@@ -1091,7 +1098,7 @@ def look(i: Int): Int ! W = Writer.tell(s"look $i").flatMap(_ => pure(i * 10))
 
 // a guard — `xs.withFilter(x => p)` — runs per element, in source
 // order; a MARKED guard binds before the body runs
-for x <- xs if isEven(x).!? do say(s"body $x").!?
+for x <- xs if isEven(x).? do say(s"body $x").?
 
 // two generators — `xs.flatMap(x => ys.map(y => …))` — results in
 // the comprehension's order; a guard between them is honoured
@@ -1099,20 +1106,20 @@ val r: List[Int] ! W = direct {
   for
     x <- List(1, 2)
     y <- List(10, 20) if y > 10
-  yield look(x + y).!?
+  yield look(x + y).?
 }                                    // List(210, 220); log: look 21, look 22
 
 // the yield answers the node's own collection: Vector, Set, Map of pairs
 val m: Option[Map[String, Int]] = direct[Option] {
-  for (k, n) <- Map("a" -> 1, "b" -> 2) yield (k * 2, Some(n * 10).!?)
+  for (k, n) <- Map("a" -> 1, "b" -> 2) yield (k * 2, Some(n * 10).?)
 }                                    // Some(Map("aa" -> 10, "bb" -> 20))
 
 // the HOFs: exists/forall/find STOP at the element that decides
-val (log, e) = run(direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) })
+val (log, e) = run(direct { List(1, 2, 3, 4).exists(x => look(x).? > 15) })
 // e == true, log == Seq("look 1", "look 2") — 3 and 4 never looked at
 
 // filter keeps the matches; foldLeft threads the accumulator
-direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }   // 60
+direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).?) }   // 60
 ```
 
 **What runs when.** A short-circuiting monad ends the whole
@@ -1150,7 +1157,7 @@ program, `Take.each[I]` from the input of a stage. Inside a block:
 ```scala
 direct[[A] =>> A ! State % Int + Writer % String] {
   for x <- Pull.toldIn(producer) do            // the producer performs State between tells
-    say(s"got $x after ${State.get[Int].!?} steps").!?
+    say(s"got $x after ${State.get[Int].?} steps").?
 }
 ```
 

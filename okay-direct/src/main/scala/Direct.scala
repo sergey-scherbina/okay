@@ -31,7 +31,7 @@ object Direct:
   /** Marker used by the optional DSL for auto-colouring operations.
    * It refines the core's lightweight capability so core `Effect`
    * never needs a dependency back on this module. */
-  @scala.annotation.implicitNotFound("no Direct.Effect[${G}]: auto-coloring is OPT-IN per signature.\nRegister the effect once — `given Direct.Effect[${G}] with {}` — or use the explicit marks\n(.reflect / .!? / !prog), which need no marker.")
+  @scala.annotation.implicitNotFound("no Direct.Effect[${G}]: auto-coloring is OPT-IN per signature.\nRegister the effect once — `given Direct.Effect[${G}] with {}` — or use the explicit marks\n(.reflect / .? / !prog), which need no marker.")
   trait Effect[G[_]] extends okay.DirectEffect[G]
 
   extension [F[_], A](m: F[A])
@@ -40,41 +40,29 @@ object Direct:
      * macro expands; the macro rewrites every call, so this body
      * only runs when a mark escapes outside a direct block — and
      * then it fails loudly rather than compiling to nothing.
-     * The mark is a NAME, deliberately: of the symbols tried, .!
-     * shadows object ! and .? is ambiguous with the Throws row-? —
-     * the retirements are recorded in specs/direct-macro.md; .!?
-     * and prefix ! survive as the symbolic spellings below.
+     * The word is the spelling that works in every scope; `.?` below
+     * is the glyph, and prefix `!prog` the gesture for rows.
      */
     def reflect: A = throw new IllegalStateException(
       "Direct.reflect outside a direct block — wrap the code in direct[F] { ... }")
-    /**
-     * THE SYMBOLIC SPELLING of the same mark, and since unwrap-glyph
-     * it is the one the glyph itself points at.
-     *
-     * The history is three strikes and a return. `.!` shadowed the
-     * object `!` for every file importing Direct.*, and went. `.?`
-     * was retired because two other things answered it on a program
-     * — `Throws.?`, which through the `into` conversion answered it
-     * on ANY value and did nothing, and the row peek. `.!?` survived
-     * as the symbol that collided with nothing.
-     *
-     * Both collisions are now gone: the Throws glyphs moved into
-     * their type's companion, where a converted receiver cannot
-     * reach them, and the peek took the word `peek`, which is what a
-     * method that RUNS operations through a Handler should have been
-     * called. So `.?` is below, and this stays — it is written in
-     * the repository and in its docs, and a mark with two spellings
-     * costs nothing (specs/unwrap-glyph.md).
-     */
-    def !? : A = throw new IllegalStateException(
-      "Direct.!? outside a direct block — wrap the code in direct[F] { ... }")
 
     /**
-     * The glyph, back where it was meant to be: `val x = m.?` inside
-     * a `direct` block binds the program, exactly as `.reflect` and
-     * `.!?` do — one mark, three spellings, one meaning, and the
-     * meaning is the one `.?` already had on `A throws E`: give me
-     * the value, the context deals with what was around it.
+     * THE GLYPH: `val x = m.?` inside a `direct` block binds the
+     * program, exactly as `.reflect` does — and the meaning is the one
+     * `.?` already has on `A throws E`: give me the value, the context
+     * deals with what was around it.
+     *
+     * The history is three strikes and a return (specs/unwrap-glyph.md).
+     * A postfix `.!` shadowed the object `!` for every file importing
+     * Direct.*, and went. `.?` was retired while two other things
+     * answered it on a program — `Throws.?`, which through the `into`
+     * conversion answered it on ANY value and did nothing, and the row
+     * peek — and `.!?`, the one symbol that collided with nothing,
+     * stood in for it. Both collisions are gone (the Throws glyphs live
+     * in their type's companion, the peek is `peek`), so the glyph came
+     * back, and `.!?` retired for good (mark-glyph-only, 2026-09-25):
+     * two postfix symbols for one mark was a question every reader had
+     * to ask and nobody needed answered.
      *
      * Outside a block it throws like every other mark, and the
      * message says where it belongs.
@@ -84,11 +72,9 @@ object Direct:
 
     /**
      * The one-glyph mark for the rows, PREFIX: `!prog` — a program
-     * of type `A ! F` collapses under its own type's symbol. Exists
-     * because `.?` is AMBIGUOUS on Free rows (Effects carries its
-     * own row-`?` extension), `.reflect` is a word where a wizard
-     * wants a gesture, and a POSTFIX `.!` was tried and refuted the
-     * same hour: the method name `!` shadows the object `!` for
+     * of type `A ! F` collapses under its own type's symbol, and reads
+     * as "perform" where `.reflect` is a word. A POSTFIX `.!` was
+     * tried and refuted the same hour: the method name `!` shadows the object `!` for
      * every file importing Direct.* — `!.run` broke. The prefix
      * spelling (`unary_!`) carries a different name, shadows
      * nothing, and reads as "perform": `val name = !Form.ask[Name]("who?")`.
@@ -120,9 +106,9 @@ object Direct:
         case _ => Writer.tell(w)
 
   // ONE mark, three spellings, all one dispatch-by-TYPE: .reflect
-  // (the name, every scope), .!? (postfix symbol — resurrected once
-  // .? retired; the one postfix that collides with nothing), and
-  // prefix !prog (unary_!, the one-glyph gesture for rows). An
+  // (the name, every scope), .? (the postfix glyph — the one `?`
+  // means on `A throws E` too), and prefix !prog (unary_!, the
+  // one-glyph gesture for rows). An
   // F[T] of the block reflects; an operation of the block's row is
   // injected then reflected — no spelling distinguishes the cases,
   // the type does.
@@ -190,7 +176,7 @@ object Direct:
    * identical to the byte). What you take on: a mutual call OUTSIDE
    * tail position is then built where it stands, and needs the word —
    * `!.tailcall(other(n))`, which is a deferral. `!`, `.reflect` and
-   * `.!?` are NOT substitutes: they are marks ("bind this program"),
+   * `.?` are NOT substitutes: they are marks ("bind this program"),
    * and a marked call is still built when the block is built.
    */
   object eagerCalls:
@@ -258,7 +244,7 @@ object Direct:
       "Direct auto-coloring escaped macro rewriting — this call belongs inside direct[F] { ... }")
 
   /** marked operations auto-color: G[A] as A, row membership checked
-   * by the macro exactly as for .!? */
+   * by the macro exactly as for .? */
   given opColor[F[_], G[_], A](using DirectCtx[F], okay.DirectEffect[G]): Conversion[G[A], A] =
     _ => throw new IllegalStateException(
       "Direct auto-coloring escaped macro rewriting — this call belongs inside direct[F] { ... }")
@@ -303,13 +289,13 @@ object Direct:
   extension [W](g: Gen[W])
     def reflect: Unit = throw new IllegalStateException(
       "Direct.reflect outside a direct block — wrap the code in direct[F] { ... }")
-    def !? : Unit = g.reflect
+    def ? : Unit = g.reflect
     def unary_! : Unit = g.reflect
 
   /**
    * A GENERATOR block (specs/generators.md): the row is `Gen[W]`'s —
-   * `Writer % W + Stop` — so `Gen.emit(w).!?`, a bare `Writer(w)`
-   * statement and `Gen.stop.!?` are its words, `while`/`if`/recursion
+   * `Writer % W + Stop` — so `Gen.emit(w).?`, a bare `Writer(w)`
+   * statement and `Gen.stop.?` are its words, `while`/`if`/recursion
    * work as in any block, and `for x <- xs yield e` in statement or
    * final position EMITS each `e` (the only place `yield` means that:
    * the block says it is a generator). The block's own value is
@@ -427,7 +413,7 @@ object Direct:
     import q.reflect.*
 
     val directSym = TypeRepr.of[Direct.type].typeSymbol
-    val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
+    val markSyms = (directSym.methodMember("reflect")
       ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
     val colorSyms = (directSym.methodMember("selfColor") ++
       directSym.methodMember("opColor") ++

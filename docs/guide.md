@@ -494,7 +494,7 @@ squares.take(3).toList                        // List(1, 4, 9) — the body ran 
 
 val countdown: Gen[Int] = generator[Int] {    // a block: while/if/recursion, emit, stop
   var i = 3
-  while i > 0 do { Gen.emit(i).!?; i -= 1 }
+  while i > 0 do { Gen.emit(i).?; i -= 1 }
 }
 countdown.iterator.next()                     // 3 — the body has run to its first yield and no further
 ```

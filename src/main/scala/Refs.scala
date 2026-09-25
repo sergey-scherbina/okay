@@ -20,9 +20,9 @@ import okay.!.*
  * and identity is the cell itself:
  *
  *     val p: Int ! Refs = direct {
- *       val a = Refs.ref(1).!?
- *       val b = Refs.ref(10).!?
- *       Refs.write(a, Refs.read(a).!? + Refs.read(b).!?).!?
+ *       val a = Refs.ref(1).?
+ *       val b = Refs.ref(10).?
+ *       Refs.write(a, Refs.read(a).? + Refs.read(b).?).?
  *     }
  *
  * The price, stated: the row no longer says which states there are,

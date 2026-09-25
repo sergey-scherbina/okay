@@ -3,7 +3,7 @@
 ## Overview
 
 `direct[F] { block }` lets a plain block use monadic values as plain
-values — `val x = m.!?` with no for-comprehension — by rewriting the
+values — `val x = m.?` with no for-comprehension — by rewriting the
 block at compile time into the monad's own plain flatMap binds
 (direct-flatmap-emission, 2026-09-02, in Decisions; the first cut
 emitted the Cont binds that specs/monadic-reflection.md established
@@ -50,7 +50,7 @@ object Direct:
     inline def apply[A](inline block: A)(using inline M: Monad[F]): F[A]
 ```
 
-The mark is `Direct.!?`, NOT `Monadic.!?` — the two return different
+The mark is `Direct.?`, NOT `Monadic.?` — the two return different
 types (A vs Cont) because they live on different sides of expansion.
 One imports `Direct.*` for flat blocks or `Monadic.*` for
 for-comprehensions; mixing both imports in one scope is an ambiguity
@@ -59,7 +59,7 @@ the compiler will name.
 **Effects are the first-class case** (user directive 2026-09-01):
 a `direct` block over the program monad `!` must work exactly as the
 same program written monadically — operations reflected (`Writer
-.tell("a").!?`), the block's value an `A ! Row` that handlers run
+.tell("a").?`), the block's value an `A ! Row` that handlers run
 afterwards, rows and `+` untouched. The Monad instance is the
 existing `Monad[Free[Row, *]]`; nothing effect-specific enters the
 macro. Since `[A] =>> A ! Row` is noisy at a call site, F is
@@ -263,7 +263,11 @@ Decisions:
   Handler should have been called. The Interface block above showed
   `.?` throughout the retirement, and that contradiction is what made
   the incident in specs/unwrap-glyph.md possible. All four spellings
-  now work: `.reflect`, `.!?`, `.?`, prefix `!p`.
+  now work: `.reflect`, `.!?`, `.?`, prefix `!p`. Then `.!?` retired
+  (mark-glyph-only, 2026-09-25, specs/unwrap-glyph.md stage 5): the
+  marks are `.reflect`, `.?` and prefix `!p`, and `m.!?` no longer
+  compiles. The examples in Behavior below keep the spelling they
+  were checked off in; read `.!?` there as `.?`.
 
 ## Out of scope (v2 roads, recorded not promised)
 

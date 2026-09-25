@@ -18,7 +18,7 @@ class TestTakeLoopInBlock extends munit.FunSuite:
 
   test("a Stage written as a loop: for i <- Take.each[Int] do tell(i * 2)") {
     val doubling: Stage[Int, Int, Unit] = direct[[A] =>> A ! Take % Int + Writer % Int] {
-      for i <- Take.each[Int] do Writer.tell(i * 2).!?
+      for i <- Take.each[Int] do Writer.tell(i * 2).?
     }
     val (out, _) = !.run(Writer.run[Int, Unit, okay.Pure](through(told(1, 2, 3))(doubling)))
     assertEquals(out, Seq(2, 4, 6))

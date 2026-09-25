@@ -86,7 +86,7 @@ squares.take(3).toList                        // List(1, 4, 9); the body ran thr
 
 val fib: Gen[Long] = generator[Long] {        // or a block: while/if/recursion, emit, stop
   var (a, b) = (0L, 1L)
-  while true do { Gen.emit(a).!?; val t = a; a = b; b = t + b }
+  while true do { Gen.emit(a).?; val t = a; a = b; b = t + b }
 }
 fib.iterator.drop(10).next()                  // 55 — and the body has run exactly 11 steps
 ```
@@ -337,10 +337,10 @@ val sw = Stager.StateWriter[Int, String, Int]()      // the row's staged interpr
 def step(i: Int, acc: Int): Handled[sw.Row, sw.R, Int] =
   if i >= 100 then Handled.pure(acc)
   else Direct.staged(sw) {
-    val a = State.get[Int].!?
-    State.modify[Int](_ + i).!?          // compound programs are walked too
-    Writer.tell("w").!?
-    step(i + 1, acc + a).!?
+    val a = State.get[Int].?
+    State.modify[Int](_ + i).?          // compound programs are walked too
+    Writer.tell("w").?
+    step(i + 1, acc + a).?
   }
 
 sw.run(0)(step(0, 0))                    // ((state, log), answer)
@@ -608,7 +608,7 @@ provide(Env("ada", 7)) { !.run(Writer.run(told)) }
 ```
 
 No `for`, no `yield`, no `<-`: the `direct` block rewrites plain
-statements into the binds you would have written, and marks (`m.reflect`, `m.!?`, prefix `!m`)
+statements into the binds you would have written, and marks (`m.reflect`, `m.?`, prefix `!m`)
 or opt-in auto-coloring let monadic values stand in plain positions.
 Multi-shot survives — a bare `List(1, 2, 3)` statement re-runs the
 rest of the block per element. And a block may call its own def:
@@ -642,12 +642,12 @@ val prog: List[Int] ! (Writer % String) = direct {
   for
     x <- List(1, 2)
     y <- List(10, 20) if y > 10        // a guard between generators
-  yield look(x + y).!?                 // List(210, 220); log: look 21, look 22
+  yield look(x + y).?                 // List(210, 220); log: look 21, look 22
 }
 
-direct[Option] { for (k, n) <- Map("a" -> 1) yield (k, Some(n * 10).!?) }   // Some(Map(a -> 10))
-direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) }   // true, and the log stops at "look 2"
-direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }          // 60
+direct[Option] { for (k, n) <- Map("a" -> 1) yield (k, Some(n * 10).?) }   // Some(Map(a -> 10))
+direct { List(1, 2, 3, 4).exists(x => look(x).? > 15) }   // true, and the log stops at "look 2"
+direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).?) }          // 60
 ```
 
 `exists`/`forall`/`find` stop at the element that decides, `filter`

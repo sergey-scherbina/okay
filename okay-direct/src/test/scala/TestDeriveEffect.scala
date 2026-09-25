@@ -85,7 +85,7 @@ class TestDeriveEffect extends munit.FunSuite {
   }
 
   test("derives Effect registers the signature for direct auto-coloring") {
-    // no `.!?`, no `.reflect`: the marker comes with the declaration,
+    // no `.?`, no `.reflect`: the marker comes with the declaration,
     // and the DirectCtx gate still means this colors only in here
     def get(k: String): Option[Int] ! Db = Db.Get(k).perform
     val prog: Option[Int] ! Db = direct {

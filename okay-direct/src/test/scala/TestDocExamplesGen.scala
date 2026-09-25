@@ -13,7 +13,7 @@ class TestDocExamplesGen extends munit.FunSuite:
 
     val countdown: Gen[Int] = generator[Int] {    // a block: while/if/recursion, emit, stop
       var i = 3
-      while i > 0 do { Gen.emit(i).!?; i -= 1 }
+      while i > 0 do { Gen.emit(i).?; i -= 1 }
     }
     val first =
       countdown.iterator.next()                     // 3 — the body has run to its first yield and no further
@@ -26,16 +26,16 @@ class TestDocExamplesGen extends munit.FunSuite:
 
   def leaves(t: Tree): Gen[Int] = generator[Int] {     // chapter 2's tree walk, as a Gen
     t match
-      case Leaf(v)    => Gen.emit(v).!?
-      case Node(l, r) => leaves(l).!?; leaves(r).!?
+      case Leaf(v)    => Gen.emit(v).?
+      case Node(l, r) => leaves(l).?; leaves(r).?
   }
 
   test("theory ch. 7: the tree walk as a Gen, read one leaf at a time") {
     var visited = 0
     def counted(t: Tree): Gen[Int] = generator[Int] {
       t match
-        case Leaf(v)    => visited += 1; Gen.emit(v).!?
-        case Node(l, r) => counted(l).!?; counted(r).!?
+        case Leaf(v)    => visited += 1; Gen.emit(v).?
+        case Node(l, r) => counted(l).?; counted(r).?
     }
     val tree = Node(Node(Leaf(1), Leaf(2)), Leaf(3))
     val it = leaves(tree).iterator
@@ -52,17 +52,17 @@ class TestDocExamplesGen extends munit.FunSuite:
   val fib: Gen[Long] = generator[Long] {
     var (a, b) = (0L, 1L)
     while true do
-      Gen.emit(a).!?
+      Gen.emit(a).?
       val t = a; a = b; b = t + b
   }
 
   def countdown(n: Int): Gen[Int] = generator[Int] {
     if n > 0 then
-      Gen.emit(n).!?
-      countdown(n - 1).!?                       // a recursive generator, flat on the stack
+      Gen.emit(n).?
+      countdown(n - 1).?                       // a recursive generator, flat on the stack
   }
 
-  val infinite: Gen[Int] = generator[Int] { var i = 0; while true do { i += 1; Gen.emit(i).!? } }
+  val infinite: Gen[Int] = generator[Int] { var i = 0; while true do { i += 1; Gen.emit(i).? } }
 
   @scala.annotation.nowarn("msg=unused value|discarded non-Unit value")
   def docThreeWaysDemo(): Unit =
@@ -91,7 +91,7 @@ class TestDocExamplesGen extends munit.FunSuite:
     Gen(1, 2, 3).iterator.toList                   // the body ended: exhausted
     generator[Int] {                               // Gen.stop from inside a loop:
       var i = 0                                    //   nothing after it runs
-      while true do { i += 1; if i > 3 then Gen.stop[Int].!?; Gen.emit(i).!? }
+      while true do { i += 1; if i > 3 then Gen.stop[Int].?; Gen.emit(i).? }
     }.toList                                       // List(1, 2, 3)
     infinite.take(5)                               // the reader stopped: the rest never runs
 
@@ -100,7 +100,7 @@ class TestDocExamplesGen extends munit.FunSuite:
     assertEquals(Gen(1, 2, 3).iterator.toList, List(1, 2, 3))
     val ended = generator[Int] {
       var i = 0
-      while true do { i += 1; if i > 3 then Gen.stop[Int].!?; Gen.emit(i).!? }
+      while true do { i += 1; if i > 3 then Gen.stop[Int].?; Gen.emit(i).? }
     }.toList
     assertEquals(ended, List(1, 2, 3))
     assertEquals(infinite.take(5).toList, List(1, 2, 3, 4, 5))

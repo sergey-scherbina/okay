@@ -18,26 +18,26 @@ class TestStagers extends munit.FunSuite:
   val all = Stager.All[Env, Int, String, String, Int]()
 
   def free4(xs: List[Int]): Int ! Row4 = direct[[A] =>> A ! Row4] {
-    val env = Reader.ask[Env].!?
-    Writer.tell(s"bias ${env.bias}").!?
+    val env = Reader.ask[Env].?
+    Writer.tell(s"bias ${env.bias}").?
     for x <- xs do
-      val s = State.get[Int].!?
-      val s2 = State.set[Int](s + x + env.bias).!?
-      Writer.tell(s"set $s2").!?
-      if s2 > env.limit then raise[String, Unit](s"over $s2").!?
-    val fin = State.get[Int].!?
+      val s = State.get[Int].?
+      val s2 = State.set[Int](s + x + env.bias).?
+      Writer.tell(s"set $s2").?
+      if s2 > env.limit then raise[String, Unit](s"over $s2").?
+    val fin = State.get[Int].?
     fin * 2
   }
 
   def staged4(xs: List[Int]): Handled[Row4, all.R, Int] = Direct.staged(all) {
-    val env = Reader.ask[Env].!?
-    Writer.tell(s"bias ${env.bias}").!?
+    val env = Reader.ask[Env].?
+    Writer.tell(s"bias ${env.bias}").?
     for x <- xs do
-      val s = State.get[Int].!?
-      val s2 = State.set[Int](s + x + env.bias).!?
-      Writer.tell(s"set $s2").!?
-      if s2 > env.limit then raise[String, Unit](s"over $s2").!?
-    val fin = State.get[Int].!?
+      val s = State.get[Int].?
+      val s2 = State.set[Int](s + x + env.bias).?
+      Writer.tell(s"set $s2").?
+      if s2 > env.limit then raise[String, Unit](s"over $s2").?
+    val fin = State.get[Int].?
     fin * 2
   }
 
@@ -64,9 +64,9 @@ class TestStagers extends munit.FunSuite:
       var i = 0
       while i < 5 do
         i += 1
-        val _ = State.set[Int](i).!?
-        Writer.tell(s"i=$i").!?
-        if i == 3 then raise[String, Unit]("three").!?
+        val _ = State.set[Int](i).?
+        Writer.tell(s"i=$i").?
+        if i == 3 then raise[String, Unit]("three").?
         after += 1
       0
     }
@@ -83,20 +83,20 @@ class TestStagers extends munit.FunSuite:
   val rt = Stager.All[Env, Unit, Nothing, String, Int]()
 
   def freeRT(xs: List[Int]): Int ! RowRT = direct[[A] =>> A ! RowRT] {
-    val env = Reader.ask[Env].!?
+    val env = Reader.ask[Env].?
     var acc = env.bias
     for x <- xs do
       acc += x
-      if acc > env.limit then raise[String, Unit](s"over $acc").!?
+      if acc > env.limit then raise[String, Unit](s"over $acc").?
     acc
   }
 
   def stagedRT(xs: List[Int]): Handled[rt.Row, rt.R, Int] = Direct.staged(rt) {
-    val env = Reader.ask[Env].!?
+    val env = Reader.ask[Env].?
     var acc = env.bias
     for x <- xs do
       acc += x
-      if acc > env.limit then raise[String, Unit](s"over $acc").!?
+      if acc > env.limit then raise[String, Unit](s"over $acc").?
     acc
   }
 
@@ -115,17 +115,17 @@ class TestStagers extends munit.FunSuite:
     val aw = Stager.All[Unit, Int, String, Nothing, Int]()
     def viaSw(xs: List[Int]) = Direct.staged(sw) {
       for x <- xs do
-        val s = State.get[Int].!?
-        val _ = State.set[Int](s + x).!?
-        Writer.tell(s"$s").!?
-      State.get[Int].!?
+        val s = State.get[Int].?
+        val _ = State.set[Int](s + x).?
+        Writer.tell(s"$s").?
+      State.get[Int].?
     }
     def viaAll(xs: List[Int]) = Direct.staged(aw) {
       for x <- xs do
-        val s = State.get[Int].!?
-        val _ = State.set[Int](s + x).!?
-        Writer.tell(s"$s").!?
-      State.get[Int].!?
+        val s = State.get[Int].?
+        val _ = State.set[Int](s + x).?
+        Writer.tell(s"$s").?
+      State.get[Int].?
     }
     val rnd = new scala.util.Random(20260925)
     for _ <- 1 to 200 do
@@ -141,14 +141,14 @@ class TestStagers extends munit.FunSuite:
   test("Reading: a Reader-only block") {
     val rd = Stager.Reading[Env, Int]()
     def p(k: Int) = Direct.staged(rd) {
-      val e = Reader.ask[Env].!?
-      val e2 = Reader.ask[Env].!?
+      val e = Reader.ask[Env].?
+      val e2 = Reader.ask[Env].?
       e.bias * k + e2.limit
     }
     assertEquals(rd.run(Env(3, 7))(p(10)), 37)
     assertEquals(rd.run(Env(3, 7))(p(10)), !.run(Reader.run[Env, Int, okay.Pure](Env(3, 7))(direct[[A] =>> A ! Reader % Env] {
-      val e = Reader.ask[Env].!?
-      val e2 = Reader.ask[Env].!?
+      val e = Reader.ask[Env].?
+      val e2 = Reader.ask[Env].?
       e.bias * 10 + e2.limit
     })))
   }
@@ -157,9 +157,9 @@ class TestStagers extends munit.FunSuite:
     val st = Stager.Stateful[Int, Int]()
     def p(xs: List[Int]) = Direct.staged(st) {
       for x <- xs do
-        val s = State.get[Int].!?
-        val _ = State.set[Int](s * 2 + x).!?
-      State.get[Int].!?
+        val s = State.get[Int].?
+        val _ = State.set[Int](s * 2 + x).?
+      State.get[Int].?
     }
     val rnd = new scala.util.Random(20260926)
     for _ <- 1 to 100 do
@@ -172,9 +172,9 @@ class TestStagers extends munit.FunSuite:
   test("Logging: a Writer-only block") {
     val lg = Stager.Logging[String, Int]()
     val p = Direct.staged(lg) {
-      Writer.tell("a").!?
-      for x <- List(1, 2) do Writer.tell(s"x$x").!?
-      Writer.tell("z").!?
+      Writer.tell("a").?
+      for x <- List(1, 2) do Writer.tell(s"x$x").?
+      Writer.tell("z").?
       42
     }
     assertEquals(lg.run(p), (Vector("a", "x1", "x2", "z"), 42))
@@ -183,8 +183,8 @@ class TestStagers extends munit.FunSuite:
   test("Failing: a Throws-only block, both roads") {
     val fl = Stager.Failing[String, Int]()
     def p(n: Int) = Direct.staged(fl) {
-      if n < 0 then raise[String, Unit]("negative").!?
-      val half = if n % 2 == 0 then n / 2 else raise[String, Int]("odd").!?
+      if n < 0 then raise[String, Unit]("negative").?
+      val half = if n % 2 == 0 then n / 2 else raise[String, Int]("odd").?
       half + 1
     }
     assertEquals(fl.run(p(4)), Right(3))
@@ -197,11 +197,11 @@ class TestStagers extends munit.FunSuite:
     val rt = Stager.All[Cfg, Unit, Nothing, String, Int]()   // Reader + Throws, nothing else
 
     def total(xs: List[Int]): Handled[rt.Row, rt.R, Int] = Direct.staged(rt) {
-      val cfg = Reader.ask[Cfg].!?
+      val cfg = Reader.ask[Cfg].?
       var acc = 0
       for x <- xs do
         acc += x * cfg.k
-        if acc > cfg.limit then raise[String, Unit](s"over $acc").!?   // ends the block: Left
+        if acc > cfg.limit then raise[String, Unit](s"over $acc").?   // ends the block: Left
       acc
     }
 

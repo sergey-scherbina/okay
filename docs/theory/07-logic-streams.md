@@ -194,7 +194,7 @@ Here that is literal: `Writer.tell` is `yield`, `Take.await` is the
 iteratee's ask, `pipe` is the transfer, and chapter 8's direct blocks
 let a generator be written as a loop that tells — and, since
 direct-loops v3, a *consumer* as a loop that reads: `for x <-
-Take.each[I] do tell(f(x)).!?` inside a block is a `Stage` written
+Take.each[I] do tell(f(x)).?` inside a block is a `Stage` written
 straight, and `for x <- Pull.of(s) do …` reads any `Stream` carrier
 the same way, one `step` bound per element (docs/direct-style.md,
 "A loop over a source"). The iteratee side of a direct block is no
@@ -235,8 +235,8 @@ import Tree.*
 
 def leaves(t: Tree): Gen[Int] = generator[Int] {     // chapter 2's tree walk, as a Gen
   t match
-    case Leaf(v)    => Gen.emit(v).!?
-    case Node(l, r) => leaves(l).!?; leaves(r).!?
+    case Leaf(v)    => Gen.emit(v).?
+    case Node(l, r) => leaves(l).?; leaves(r).?
 }
 val it = leaves(Node(Node(Leaf(1), Leaf(2)), Leaf(3))).iterator
 it.next()                                            // 1 — the walk ran to its first leaf and holds the rest

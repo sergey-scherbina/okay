@@ -388,7 +388,7 @@ object Cont:
    * same reason `direct` above does: the package-level `reflect`/
    * `reify` (Effects.scala) already name the encoding round-trip — a
    * different construction that happens to deserve the same words —
-   * and `Direct.scala` already has its own `.reflect`/`.!?` marks over
+   * and `Direct.scala` already has its own `.reflect`/`.?` marks over
    * a different receiver. Nesting under `Cont`, not flattening into
    * it, is what keeps all three apart: each needs its own import.
    */
@@ -400,9 +400,10 @@ object Cont:
        * method; the prefix form is its desugared call) */
       inline def reflect[B]: Cont[A, F[B], F[B]] =
         shift(k => m.flatMap(k))
-      /** the symbolic μ — the collision-free survivor (see
-       * specs/direct-macro.md Decisions for the three-strikes story) */
-      inline def !?[B]: Cont[A, F[B], F[B]] = reflect[B]
+      /** the symbolic μ — the same glyph as Direct's mark and as
+       * `Throws.?` (specs/unwrap-glyph.md): the value, the context deals
+       * with what was around it */
+      inline def ?[B]: Cont[A, F[B], F[B]] = reflect[B]
 
     /** the delimiter: a direct-style block back into its monad */
     inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =

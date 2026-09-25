@@ -31,7 +31,7 @@ private[okay] trait MarkSyntax:
   def colorSyms: Set[Symbol]
 
   lazy val directSym: Symbol = TypeRepr.of[Direct.type].typeSymbol
-  lazy val markSyms: Set[Symbol] = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
+  lazy val markSyms: Set[Symbol] = (directSym.methodMember("reflect")
     ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
 
   /** a term with its inlining and ascription wrappers taken off */

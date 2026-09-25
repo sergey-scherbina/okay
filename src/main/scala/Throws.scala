@@ -179,7 +179,7 @@ object throws {
    * as the block's mark — compiled, ran and answered correctly
    * through auto-coloring while the glyph did nothing at all
    * (specs/unwrap-glyph.md carries the incident and the plan; the
-   * marks are `.reflect`, `.!?` and prefix `!p`).
+   * marks are `.reflect`, `.?` and prefix `!p`).
    *
    * A TYPE-LEVEL GUARD WAS TRIED FIRST AND REFUTED, which is why this
    * is a move and not a side condition. `NotGiven[E =:= Nothing]`

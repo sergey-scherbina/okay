@@ -56,7 +56,7 @@ class TestDirectPhases extends munit.FunSuite {
   // ---- marks: what the reader wrote
 
   test("marks: every spelling counts, and so does the colouring conversion") {
-    assertEquals(DirectProbe.marks[Option, Int] { val x = Some(1).reflect; x + Some(2).!? }, 2)
+    assertEquals(DirectProbe.marks[Option, Int] { val x = Some(1).reflect; x + Some(2).? }, 2)
     assertEquals(DirectProbe.marks[Option, Int] { val x: Int = Some(1); x }, 1)
     assertEquals(DirectProbe.marks[Option, Int] { 1 + 1 }, 0)
   }

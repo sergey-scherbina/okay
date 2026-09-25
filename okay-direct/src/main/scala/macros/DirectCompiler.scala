@@ -524,7 +524,7 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
         nestedProgramDef(dd, rest, expr) { (defn, rest2, expr2) =>
           wrapStat(defn, rest2, expr2)
         }.get
-      // `val _ = m.!?` desugars to `m.!? match { case _ => () }` — a
+      // `val _ = m.?` desugars to `m.? match { case _ => () }` — a
       // DISCARD. The general road below bound the mark, matched its
       // value into a `pure(())`, and bound THAT again: a match lambda,
       // a pure closure and a second flatMap per statement. Bind the

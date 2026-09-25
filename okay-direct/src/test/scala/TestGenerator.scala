@@ -23,7 +23,7 @@ class TestGenerator extends munit.FunSuite:
       while i < 5 do
         i += 1
         steps += 1
-        Gen.emit(i).!?
+        Gen.emit(i).?
     }
     val it = g.iterator
     assertEquals(steps, 0)
@@ -38,8 +38,8 @@ class TestGenerator extends munit.FunSuite:
       var i = 0
       while true do
         i += 1
-        if i > 3 then Gen.stop[Int].!?
-        Gen.emit(i).!?
+        if i > 3 then Gen.stop[Int].?
+        Gen.emit(i).?
         after = i
     }
     assertEquals(g.toList, List(1, 2, 3))
@@ -49,7 +49,7 @@ class TestGenerator extends munit.FunSuite:
 
   test("two generators and a guard inside a generator block; yield emits the pairs as the block's value") {
     val g: Gen[(Int, Int)] = generator[(Int, Int)] {
-      Gen.emit((0, 0)).!?
+      Gen.emit((0, 0)).?
       for
         x <- List(1, 2)
         y <- List(10, 20) if x + y > 11
@@ -62,9 +62,9 @@ class TestGenerator extends munit.FunSuite:
     // a for-yield mid-block is a value Scala's own checker sees discarded
     // (E176) before the macro runs, so the mid-block spelling is `do`
     val g: Gen[Int] = generator[Int] {
-      Gen.emit(0).!?
+      Gen.emit(0).?
       for x <- List(1, 2) do Gen.emit(x * 10)
-      Gen.emit(9).!?
+      Gen.emit(9).?
     }
     assertEquals(g.toList, List(0, 10, 20, 9))
   }
@@ -72,7 +72,7 @@ class TestGenerator extends munit.FunSuite:
   test("a yielded value may itself be an effect of the row: the mark inside the yield") {
     def twice(i: Int): Int ! Writer % Int + Stop = Gen.emit(i).program.flatMap(_ => pure(i * 2))
     val g: Gen[Int] = generator[Int] {
-      for x <- List(1, 2) yield twice(x).!?     // emits x, then yields 2x
+      for x <- List(1, 2) yield twice(x).?     // emits x, then yields 2x
     }
     assertEquals(g.toList, List(1, 2, 2, 4))
   }
@@ -84,11 +84,11 @@ class TestGenerator extends munit.FunSuite:
       while true do
         i += 1
         steps += 1
-        Gen.emit(i).!?
+        Gen.emit(i).?
     }
     type W = Writer % String
     val prog: Unit ! W = direct {
-      for x <- src.take(3) do Writer.tell(s"got $x").!?
+      for x <- src.take(3) do Writer.tell(s"got $x").?
     }
     val (log, _) = !.run(Writer.run[String, Unit, okay.Pure](prog))
     assertEquals(log, Seq("got 1", "got 2", "got 3"))
@@ -98,8 +98,8 @@ class TestGenerator extends munit.FunSuite:
   test("a recursive generator: the block calls its own def") {
     def countdown(n: Int): Gen[Int] = generator[Int] {
       if n > 0 then
-        Gen.emit(n).!?
-        countdown(n - 1).!?
+        Gen.emit(n).?
+        countdown(n - 1).?
     }
     assertEquals(countdown(3).toList, List(3, 2, 1))
     assertEquals(countdown(100000).take(2).toList, List(100000, 99999))
@@ -113,7 +113,7 @@ class TestGenerator extends munit.FunSuite:
     val fib: Gen[Long] = generator[Long] {
       var (a, b) = (0L, 1L)
       while true do
-        Gen.emit(a).!?
+        Gen.emit(a).?
         val t = a; a = b; b = t + b
     }
     assertEquals(fib.drop(10).first, Some(55L))
@@ -123,6 +123,6 @@ class TestGenerator extends munit.FunSuite:
     assertEquals(Gen(1, 2, 3).iterator.toList, List(1, 2, 3))
     assertEquals(generator[Int] {
       var i = 0
-      while true do { i += 1; if i > 3 then Gen.stop[Int].!?; Gen.emit(i).!? }
+      while true do { i += 1; if i > 3 then Gen.stop[Int].?; Gen.emit(i).? }
     }.toList, List(1, 2, 3))
   }

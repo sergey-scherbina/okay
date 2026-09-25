@@ -65,11 +65,11 @@ class TestConditionDirect extends munit.FunSuite {
   private def docConditionDemo(prog: Int ! Op): Unit =
     !.run(Condition.run[Int, Pure]((_, _) => Resume(41))(prog))   // 42; before, after(41)
 
-  test("docs/direct-style.md: a condition reads as a call that may return, marked with .!?") {
+  test("docs/direct-style.md: a condition reads as a call that may return, marked with .?") {
     var steps = Vector.empty[String]
     val prog: Int ! Op = direct {
       steps :+= "before"
-      val v = signal[Int]("how many?").!?   // raise; Resume(41) lands HERE
+      val v = signal[Int]("how many?").?   // raise; Resume(41) lands HERE
       steps :+= s"after($v)"               // ... and this line runs
       v + 1
     }
@@ -78,12 +78,12 @@ class TestConditionDirect extends munit.FunSuite {
     assertEquals(steps, Vector("before", "after(41)", "after(41)"))
   }
 
-  test("docs/direct-style.md: the frame door, marked with .!?") {
+  test("docs/direct-style.md: the frame door, marked with .?") {
     val prog: String ! Op = direct {
       val a = frame[String, Pure]("skip") {
-        val v = signal[String]("bad").!?      // policy says Invoke("skip", x)
+        val v = signal[String]("bad").?      // policy says Invoke("skip", x)
         v                                    // ...so this never runs
-      }(v => s"skipped:$v").!?                // ...and the frame answers
+      }(v => s"skipped:$v").?                // ...and the frame answers
       a
     }
     val out = !.run(Condition.run[String, Pure]((_, _) => Invoke("skip", "x"))(prog))

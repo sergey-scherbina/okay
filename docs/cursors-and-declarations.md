@@ -31,12 +31,12 @@ could not read them. `Pull[A, G]` is that source as a value:
 
 ```scala
 // okay-direct TestDirectSource
-val (log, _) = run(direct { for x <- Pull.of(List(1, 2, 3)) do say(s"x$x").!? })
+val (log, _) = run(direct { for x <- Pull.of(List(1, 2, 3)) do say(s"x$x").? })
 assertEquals(log, Seq("x1", "x2", "x3"))
 
 // okay-llm TestTakeLoopInBlock — an iteratee written as a loop: a Stage
 val doubling: Stage[Int, Int, Unit] = direct[[A] =>> A ! Take % Int + Writer % Int] {
-  for i <- Take.each[Int] do Writer.tell(i * 2).!?
+  for i <- Take.each[Int] do Writer.tell(i * 2).?
 }
 ```
 

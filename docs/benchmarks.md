@@ -5188,7 +5188,7 @@ arm, not the tuple — and the four singles with the tuple removed.
 
 **What it took to reach parity, in the order the rows found it**
 (direct-staged): the inliner's proxy val for an operation's argument
-defeats the inline match (put the rhs back); `val _ = m.!?` bound
+defeats the inline match (put the rhs back); `val _ = m.?` bound
 into a match into a `pure` (a discard binds straight: 203 328 →
 164 928 B on the FREE lane too); and the bind itself — `M.flatMap` on
 a val typed `Monad[F]` is the trait's virtual call, on the given's

@@ -123,13 +123,11 @@ docs/capabilities.md	def unlift[E, A, F[+_]](p: A ! (Reader % E + F)): E ?=> A !
 docs/capabilities.md	def wired(...): Http ?=> Engine              =  explicit(summon[Http], ...)
 docs/capabilities.md	def wired(endpoint: String): Http ?=> Engine
 docs/capabilities.md	effect[Reader % E, E](Reader.Ask()).map(e => cf(using e))
-docs/capabilities.md	effect[Reader % Int + W, Unit](Writer(s"env=$env")).!?
 docs/capabilities.md	f.curried <*> wire[Db] <*> wire[Log] <*> wire[Clock]  :  Db ?=> Log ?=> Clock ?=> String
 docs/capabilities.md	given ctxMonad[E]: Monad[[X] =>> E ?=> X]   // Provide.scala
 docs/capabilities.md	import okay.given   // instances need the given import — `import okay.*` is not enough
 docs/capabilities.md	provide(41)(viaCtx)   // same answers as Reader.run(41)(viaReader)
 docs/capabilities.md	val all: Env ?=> Seq[Int] = sequence(xs)     // F is INFERRED
-docs/capabilities.md	val env = effect[Reader % Int + W, Int](Reader.Ask()).!?
 docs/capabilities.md	val getQ: Db ?=> String = wire[Db].q
 docs/capabilities.md	val xs: Seq[Env ?=> Int] = Seq(wire[Env].uid, wire[Env].uid + 1)
 docs/continuations/01-four-programs.md	???            // ← and here the trouble starts
@@ -1102,7 +1100,6 @@ docs/tutorial.md	Retrieve.symbols(repo.index, repo.corpus.sources),    // exact,
 docs/tutorial.md	Scan.all(bpe)("hello hell her").tokens.map(_.lexeme)
 docs/tutorial.md	Some("/**"), Set('"'), triple = true,
 docs/tutorial.md	SparkInterop.aggregate(rdd)(stats)
-docs/tutorial.md	State.modify[Int](_ + i).!?          // compound programs are walked too
 docs/tutorial.md	State.run(0)(prog)   // (40, 42) — the final state and the answer
 docs/tutorial.md	Symbols.project(files)          // language per file, from the path
 docs/tutorial.md	Ui.key(k).modify(field => Ui.Column(Vector(field, Ui.Text(msg))))(t)
@@ -1130,9 +1127,6 @@ docs/tutorial.md	def validate(in: Map[String, String]): Validated[Errors, Signup
 docs/tutorial.md	def withErrors(tree: Ui, errs: Errors): Ui =
 docs/tutorial.md	definers = Set("fun", "class", "object", "val", "var", "interface"),
 docs/tutorial.md	digest.quantile(0.99)
-docs/tutorial.md	direct { List(1, 2, 3).foldLeft(0)((acc, x) => acc + look(x).!?) }          // 60
-docs/tutorial.md	direct { List(1, 2, 3, 4).exists(x => look(x).!? > 15) }   // true, and the log stops at "look 2"
-docs/tutorial.md	direct[Option] { for (k, n) <- Map("a" -> 1) yield (k, Some(n * 10).!?) }   // Some(Map(a -> 10))
 docs/tutorial.md	eachLine.traverseOf(check)(order)
 docs/tutorial.md	eachLine.traverseOf[Par](line => Par(price(line)))(order).seq
 docs/tutorial.md	else pickup
@@ -1215,13 +1209,11 @@ docs/tutorial.md	val sw = Stager.StateWriter[Int, String, Int]()      // the row
 docs/tutorial.md	val triples =                            // pythagorean, in order
 docs/tutorial.md	val u = fetchUser(id).reflect     // neither mentions the other,
 docs/tutorial.md	val y = !told("de")                    // runs here
-docs/tutorial.md	while true do { Gen.emit(a).!?; val t = a; a = b; b = t + b }
 docs/tutorial.md	wire[Env].uid                        // the capability, inside the block
 docs/tutorial.md	x + x + y + !told("f")                 // log: de, abc, f
 docs/tutorial.md	x <- State.get[Int]
 docs/tutorial.md	y <- List(10, 20) if y > 10        // a guard between generators
 docs/tutorial.md	y <- State.get[Int]
-docs/tutorial.md	yield look(x + y).!?                 // List(210, 220); log: look 21, look 22
 docs/tutorial.md	yield y + 2
 docs/tutorial.md	}                                        // List(1, 2)
 docs/typepedia.md	= explicit(...)(p => route(using p))         explicit(summon[Http], ...)
