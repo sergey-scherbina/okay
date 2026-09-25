@@ -1,0 +1,6 @@
+feature/cont-stack-okay2 2026-09-25T22:10:00Z
+agent: claude-code
+heartbeat: 2026-09-25T22:10:00Z
+status: in-progress
+done-so-far: claim
+next: okay2 Cont — room parameter/field, Reentry, Gauge, StackSwitch (jvm count+pool, native ThreadInfo, js bound), StackPool; TestContStack2 red first on 128 KB; then the jdk22 variant via versioned in okay2/build.sbt; the tail-body macro last
