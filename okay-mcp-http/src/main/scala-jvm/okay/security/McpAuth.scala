@@ -1,6 +1,8 @@
 package okay.security
 
-import okay.{!, Async, pure}
+import okay.{!, +, %, Async, Throws, pure, raise, runEither}
+import okay.Row.at
+import okay.given_Effects_Free
 import okay.codec.Json
 import okay.http.{Body, Http, McpHttp, Method, Request, Response}
 import okay.mcp.{Mcp, Rpc}
@@ -253,29 +255,23 @@ object McpAuth {
    * is one of them, and the caller then needs no token at all.
    */
   def discover(http: Http, mcpUrl: String): Either[String, Discovered] ! Async =
-    http.send(Request.post(mcpUrl, okay.http.Body.Text("{}"),
-      Seq(("content-type", "application/json")))).flatMap { probe =>
-      if probe.status != 401 then
-        pure(Left(s"the server did not challenge (HTTP ${probe.status}) — it may be open"))
-      else probe.header("www-authenticate").flatMap(resourceMetadataUrl) match
-        case None => pure(Left("the 401 carried no resource_metadata"))
-        case Some(metaUrl) =>
-          fetchJson(http, metaUrl).flatMap {
-            case Left(e) => pure(Left(s"resource metadata: $e"))
-            case Right(doc) =>
-              val resource = str(doc, "resource").getOrElse(mcpUrl)
-              firstAuthServer(doc) match
-                case None => pure(Left("the resource metadata names no authorization server"))
-                case Some(as) =>
-                  fetchJson(http, asMetadataUrl(as)).map {
-                    case Left(e) => Left(s"authorization server metadata: $e")
-                    case Right(asDoc) =>
-                      (str(asDoc, "authorization_endpoint"), str(asDoc, "token_endpoint")) match
-                        case (Some(a), Some(t)) => Right(Discovered(resource, as, a, t))
-                        case _ => Left("the AS metadata lacks endpoints")
-                  }
-          }
-    }
+    runEither(discovering(http, mcpUrl))
+
+  /** the same walk with every missing link a `raise`: one flat chain
+   * where each step is a line, instead of a pyramid of `Left` cases */
+  private def discovering(http: Http, mcpUrl: String): Discovered ! Failing =
+    for
+      probe <- http.send(Request.post(mcpUrl, okay.http.Body.Text("{}"),
+        Seq(("content-type", "application/json")))).at[Failing]
+      _ <- when(probe.status != 401, s"the server did not challenge (HTTP ${probe.status}) — it may be open")
+      metaUrl <- present(probe.header("www-authenticate").flatMap(resourceMetadataUrl),
+        "the 401 carried no resource_metadata")
+      doc <- fetchJson(http, metaUrl).at[Failing].flatMap(right(_, "resource metadata"))
+      as <- present(firstAuthServer(doc), "the resource metadata names no authorization server")
+      asDoc <- fetchJson(http, asMetadataUrl(as)).at[Failing].flatMap(right(_, "authorization server metadata"))
+      ends <- present(str(asDoc, "authorization_endpoint").zip(str(asDoc, "token_endpoint")),
+        "the AS metadata lacks endpoints")
+    yield Discovered(str(doc, "resource").getOrElse(mcpUrl), as, ends._1, ends._2)
 
   /**
    * The machine-to-machine dance, whole: discover, obtain by client
@@ -286,21 +282,28 @@ object McpAuth {
   def connect(http: Http, mcpUrl: String, clientId: String,
               secret: Option[String], scopes: Seq[String] = Nil)
              (using okay.Scheduler): Either[String, McpHttp.McpLink] ! Async =
-    discover(http, mcpUrl).flatMap {
-      case Left(e) => pure(Left(e))
-      case Right(d) =>
-        val client = OAuth2.Client(clientId, secret, d.authEndpoint,
-          d.tokenEndpoint, "urn:ietf:wg:oauth:2.0:oob", scopes)
-        OAuth2.clientCredentials(http, client).map {
-          case Left(e) => Left(s"token endpoint: $e")
-          case Right(tokens) =>
-            // the supplier holds the token; refresh rotation can
-            // swap it without rebuilding the link
-            val current = java.util.concurrent.atomic.AtomicReference(tokens.access)
-            Right(McpHttp.link(http, mcpUrl,
-              bearer = Some(() => Option(current.get()))))
-        }
-    }
+    runEither(for
+      d <- discovering(http, mcpUrl)
+      client = OAuth2.Client(clientId, secret, d.authEndpoint,
+        d.tokenEndpoint, "urn:ietf:wg:oauth:2.0:oob", scopes)
+      tokens <- OAuth2.clientCredentials(http, client).at[Failing].flatMap(right(_, "token endpoint"))
+    yield
+      // the supplier holds the token; refresh rotation can swap it
+      // without rebuilding the link
+      val current = java.util.concurrent.atomic.AtomicReference(tokens.access)
+      McpHttp.link(http, mcpUrl, bearer = Some(() => Option(current.get()))))
+
+  /** the row the flat chains run in: a named failure, and the network */
+  private type Failing = Throws % String + Async
+
+  private def when(bad: Boolean, why: => String): Unit ! Failing =
+    if bad then raise[String, Unit](why).at[Failing] else pure(())
+
+  private def present[A](o: Option[A], why: => String): A ! Failing =
+    o.fold(raise[String, A](why).at[Failing])(pure)
+
+  private def right[A](e: Either[String, A], label: String): A ! Failing =
+    e.fold(m => raise[String, A](s"$label: $m").at[Failing], pure)
 
   // ---------------------------------------------------------------- small parts
 

@@ -1,6 +1,8 @@
 package okay.security
 
-import okay.{!, Async, pure}
+import okay.{!, +, %, Async, Throws, pure, raise, runEither}
+import okay.Row.at
+import okay.given_Effects_Free
 import okay.codec.Json
 import okay.http.{Http, Request}
 
@@ -70,16 +72,16 @@ object Oidc {
               (using Crypto): Either[String, (Principal, OAuth2.Tokens)] ! Async =
     val client = OAuth2.Client(clientId, None, p.authEndpoint, p.tokenEndpoint,
       redirectUri, Seq("openid"))
-    OAuth2.exchange(http, client, code, attempt.verifier).flatMap {
-      case Left(e) => pure(Left(s"token endpoint: $e"))
-      case Right(tokens) => tokens.idToken match
-        case None => pure(Left("no id_token in the answer"))
-        case Some(idt) =>
-          Jwks.fetch(http, p.jwksUri).map { keys =>
-            validate(idt, keys.get, p.issuer, clientId, attempt.nonce,
-              tokens.access, now, skew).map(principal => (principal, tokens))
-          }
-    }
+    type Failing = Throws % String + Async
+    def fail[A](why: String): A ! Failing = raise[String, A](why).at[Failing]
+    runEither(for
+      tokens <- OAuth2.exchange(http, client, code, attempt.verifier).at[Failing]
+        .flatMap(_.fold(e => fail(s"token endpoint: $e"), pure))
+      idt <- tokens.idToken.fold(fail[String]("no id_token in the answer"))(pure)
+      keys <- Jwks.fetch(http, p.jwksUri).at[Failing]
+      principal <- validate(idt, keys.get, p.issuer, clientId, attempt.nonce,
+        tokens.access, now, skew).fold(fail, pure)
+    yield (principal, tokens))
 
   /** the id_token checks alone — for tokens that arrive by other
    * roads (a front channel, a test) */
