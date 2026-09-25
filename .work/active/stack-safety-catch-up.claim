@@ -1,0 +1,4 @@
+feature/stack-safety-catch-up 2026-09-25T19:15:56Z
+agent: claude-opus-5-5 (session 8908eaf7)
+status: in-progress
+what: ContMacro.rewrite (stage 7, Decision 2): a probe of how deep a tail-shaped shift body can nest before scalac or the macro dies, then the bound written down or the walk converted
