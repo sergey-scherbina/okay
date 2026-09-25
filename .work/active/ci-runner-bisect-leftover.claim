@@ -1,5 +1,0 @@
-slug: ci-runner-bisect-leftover
-who: claude (session 6f505c09)
-what: ci-runner: a leftover ../okay-ci-bisect directory (not a worktree: build outputs a killed bisect left behind) made every bisect fail with "could not create the bisect worktree" — remove it before worktree add
-files: scripts/ci-runner.sh
-since: 2026-09-25
