@@ -49,6 +49,33 @@ object Docs:
   final case class Stats(engine: String, gets: Long, hits: Long, puts: Long, applied: Long, stale: Long,
                          deletes: Long, queries: Long, failures: Long) derives okay.codec.Schema
 
+  /**
+   * The counters as Prometheus text, `okay_docs_*{name,engine}`.
+   *
+   * Rendered HERE and handed to okay-ops as text (`Ops.router(more =
+   * …)`), so okay-ops does not depend on this module: when it named
+   * `Stats`, every server built on okay-ops carried the Mongo and
+   * Cassandra drivers this module's JVM side compiles against
+   * (ops-docs-edge, 2026-09-25).
+   */
+  def prom(pieces: Vector[(String, () => Stats)]): String =
+    def esc(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    val sb = new StringBuilder
+    val read = pieces.map((n, f) => (n, f()))
+    def metric(name: String, help: String)(value: Stats => Long): Unit =
+      if read.nonEmpty then
+        sb ++= s"# HELP $name $help\n# TYPE $name counter\n"
+        read.foreach((n, s) => sb ++= s"""$name{name="${esc(n)}",engine="${esc(s.engine)}"} ${value(s)}""" += '\n')
+    metric("okay_docs_gets_total", "gets asked")(_.gets)
+    metric("okay_docs_hits_total", "gets that found a document")(_.hits)
+    metric("okay_docs_puts_total", "puts asked")(_.puts)
+    metric("okay_docs_applied_total", "conditional writes applied")(_.applied)
+    metric("okay_docs_stale_total", "conditional writes answered Stale")(_.stale)
+    metric("okay_docs_deletes_total", "deletes asked")(_.deletes)
+    metric("okay_docs_queries_total", "index queries asked")(_.queries)
+    metric("okay_docs_failures_total", "calls that failed")(_.failures)
+    sb.result()
+
   /** every engine counted the same way: the seam wraps the adapter,
    * so an adapter needs no counters of its own */
   def counted[A](engine: String, inner: Docs[A]): Counted[A] = new Counted[A](engine, inner)

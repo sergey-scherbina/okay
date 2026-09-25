@@ -367,7 +367,10 @@ list in its spec or spec section)
       no adapter carries counters of its own (Kafka and Cache had
       theirs already; Pool and Saga joined in persistence-e2e); the
       DocsSuite and BlobContract assert the counts on every engine;
-      okay-ops renders them as `okay_docs_*`/`okay_blob_*` counters;
+      okay-ops renders them as `okay_docs_*`/`okay_blob_*` counters
+      (the docs ones rendered by okay-docs itself, `Docs.prom`, and
+      handed to `Ops.router(more = …)` since ops-docs-edge — okay-ops
+      no longer depends on okay-docs);
       `TestNoCredentialLogs` (okay-deploy) reads the committed tree and
       refuses a credential-named value on any print/log/journal line of
       an adapter — today there is no such line at all
@@ -434,8 +437,8 @@ list in its spec or spec section)
   (18.9 MB of okay-watch's 64 MB jar, never called). A program that
   builds a Mongo or Cassandra engine names its driver. That holds for
   the published artifact; inside one build `Provided` still travels
-  through `dependsOn`, so a source consumer excludes the drivers itself
-  until okay-ops stops naming okay-docs (backlog ops-docs-edge).
+  through `dependsOn` — which stopped mattering for servers when okay-ops
+  stopped naming okay-docs (ops-docs-edge, the same day).
 
 ## Results
 

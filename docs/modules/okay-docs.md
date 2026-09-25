@@ -17,9 +17,10 @@ they do not travel to a program that depends on the PUBLISHED
 okay-docs, so a program that builds a `MongoDocs` or a
 `CassandraDocs` names the driver in its own build, as a JDBC user
 names theirs. Inside one sbt build (a `ProjectRef` consumer) they do
-still travel through `dependsOn`; such a consumer that wants them out
-says `excludeDependencies` for org.mongodb, org.apache.cassandra and
-com.datastax.oss.
+still travel through `dependsOn` to a project that depends on
+okay-docs itself; okay-ops no longer does (ops-docs-edge): the
+`okay_docs_*` counters are rendered here, `Docs.prom`, and handed to
+`Ops.router(more = Vector(() => Docs.prom(...)))`.
 
 ## Guide
 

@@ -2026,8 +2026,11 @@ lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
   .in(file("okay-ops"))
   // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows;
   // okaySql: Pool.Stats joins them (persistence-e2e)
-  // okayDocs/okayBlob: Docs.Stats and Blob.Stats join too (adapter-stats)
-  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience, okaySql, okayDocs, okayBlob)
+  // okayBlob: Blob.Stats joins too (adapter-stats). NOT okayDocs: it
+  // renders its own lines (`Docs.prom`, passed as `more`), because naming
+  // its Stats brought the Mongo and Cassandra drivers to every server
+  // (ops-docs-edge, 2026-09-25)
+  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience, okaySql, okayBlob)
   // a real socket for the route-level acceptance test, JVM only
   .jvmConfigure(_.dependsOn(okayJetty % Test))
   .settings(

@@ -52,8 +52,12 @@ object Ops:
              sagas: Vector[() => okay.persist.Saga.Status] = Vector.empty,
              lifecycle: Option[Lifecycle] = None,
              red: Vector[Red] = Vector.empty,
-             docs: Vector[(String, () => okay.docs.Docs.Stats)] = Vector.empty,
-             blobs: Vector[(String, () => okay.blob.Blob.Stats)] = Vector.empty)
+             blobs: Vector[(String, () => okay.blob.Blob.Stats)] = Vector.empty,
+             /** Prometheus text a module renders ITSELF, read per scrape
+              * — `okay.docs.Docs.prom` is the one that needs it: a
+              * module okay-ops depended on for its Stats type brought
+              * two vendor drivers to every server (ops-docs-edge) */
+             more: Vector[() => String] = Vector.empty)
   : Router = Router.empty
     // the status genuinely varies at request time (a Kubernetes probe
     // is exactly the caller who reads it), which every declaring
@@ -77,7 +81,7 @@ object Ops:
       description = "Prometheus text exposition") { _ =>
       pure((Prom.render(store.stats, lagOf) + Prom.guards(guards) + Prom.pools(pools) + Prom.sagas(sagas)
         + lifecycle.fold("")(Prom.lifecycle) + Prom.red(red)
-        + Prom.docs(docs) + Prom.blobs(blobs)).getBytes(UTF_8))
+        + Prom.blobs(blobs) + more.map(_()).mkString).getBytes(UTF_8))
     }
 
   /** the same, as the partial function every server here takes */
@@ -87,7 +91,11 @@ object Ops:
              sagas: Vector[() => okay.persist.Saga.Status] = Vector.empty,
              lifecycle: Option[Lifecycle] = None,
              red: Vector[Red] = Vector.empty,
-             docs: Vector[(String, () => okay.docs.Docs.Stats)] = Vector.empty,
-             blobs: Vector[(String, () => okay.blob.Blob.Stats)] = Vector.empty)
+             blobs: Vector[(String, () => okay.blob.Blob.Stats)] = Vector.empty,
+             /** Prometheus text a module renders ITSELF, read per scrape
+              * — `okay.docs.Docs.prom` is the one that needs it: a
+              * module okay-ops depended on for its Stats type brought
+              * two vendor drivers to every server (ops-docs-edge) */
+             more: Vector[() => String] = Vector.empty)
   : PartialFunction[Request, Response ! Async] =
-    router(store, lagOf, guards, pools, sagas, lifecycle, red, docs, blobs).routes
+    router(store, lagOf, guards, pools, sagas, lifecycle, red, blobs, more).routes
