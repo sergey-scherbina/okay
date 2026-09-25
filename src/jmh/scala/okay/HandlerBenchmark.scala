@@ -136,6 +136,13 @@ class HandlerBenchmark {
       (1 to M).foldLeft(0L.state[Long]): (m, _) =>
         m.flatMap(_ => State.get[Long].flatMap(s => State.set[Long](s + 1)))
 
+  /** a plain answer-using body, `k(x + 1) + 1`, M levels: since
+   * cont-stack-layer1-b walked by the runner (a `Call` and a pending
+   * part per level) instead of a frame per level */
+  @Benchmark
+  def contAnswer(): Int =
+    reset((1 to M).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1))))
+
   @Benchmark
   def statePara(): (Long, Long) =
     PState.run(0L):

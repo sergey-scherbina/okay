@@ -161,8 +161,9 @@ deleted.
       the macro is that item's open half). The inventories lost their
       `Cont` rows in both cores: a body that uses its answer still
       nests, and past the room the rest runs on a fresh stack, so no
-      depth overflows; answer-using bodies without any frame at all are
-      backlog cont-stack-layer1-b.
+      depth overflows; answer-using bodies the macro can read run
+      without any frame since cont-stack-layer1-b (2026-09-26), the
+      rest of them (cont-stack-layer1-c) still on the switch.
 - [x] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
       already `Cont`-trampolined; the other formats, Schema walks,
       Compat, Stubs and Policy are not.

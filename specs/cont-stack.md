@@ -75,6 +75,24 @@ the body's tree and classifies each use of `k`:
   the pending part. This is a real trampoline for any number of nested
   answer-using shifts, and `k` stays multi-shot. It costs one
   allocation per call of `k`.
+  AS LANDED (cont-stack-layer1-b, 2026-09-26): `Cont.Body` is the
+  transformed body — `Done(r)` and `Call(k, a, rest)` — and `Cont.Cps`
+  the leaf, an anonymous subclass per shift. NOT a function answer:
+  the state-passing shape (`s => k(s)(s2)`) was built too, as a `Fun`
+  answer walked in-loop with an `Ap` node for its application, and
+  MEASURED at 2.8x the direct road on statePara (Results, stage E) —
+  ten allocations an operation against three, on a program Layer 3's
+  exact room already runs with no switch; it was taken out and the
+  shape stays the opaque leaf. The macro
+  hoists every k-free part evaluated ahead of a call into a val
+  (A-normal form) so order is kept, follows a block's statements and
+  result, an `if`/`match` in tail position, an application's function
+  part and arguments in order, an ascription and an inlined expansion,
+  and leaves a by-name argument where it is. The runner's `step` gains
+  the pending stack as a parameter; a `Call` continues the program
+  in-loop through the `Reentry`'s fields, and every exit that returned
+  an answer feeds the part on top instead. What stays opaque is listed
+  under cont-stack-layer1-c.
 - **Known higher-order functions.** `k` passed to `map`, `foreach`,
   `flatMap` or `fold` on the standard collections, `Option` and
   `Either`: the macro knows their meaning and substitutes a trampolined
@@ -437,7 +455,12 @@ Compile-time layer:
       nested frame: 1M shifts on a 128 KB stack with NO switch
       (`StackSwitch.switches`; TestContMacro). State-passing bodies are
       B's, not A's (see Layer 1 A)
-- [ ] B: answer-using bodies, the same 1M, no switch, multi-shot intact
+- [x] B: answer-using bodies, the same 1M, no switch, multi-shot intact
+      (TestContMacro: `k(x + 1) + 1` at 1M on 128 KB, zero switches;
+      `k(1) + k(10)`, `k(k(1))`, interpolation, `a :: k(x)`, a block
+      with vals, tail `if`/`match`, evaluation order, an exception
+      after a call; six opaque shapes still correct; a function answer
+      left direct by measurement, see stage E)
 - [ ] known higher-order functions: `xs.map(k)`, `opt.fold(…)(k)`
 - [ ] visible user functions: an `inline def` and a same-compilation
       `def` that call `k`

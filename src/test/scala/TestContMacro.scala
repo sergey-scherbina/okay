@@ -66,7 +66,9 @@ class TestContMacro extends munit.FunSuite:
   // a body that USES the answer of `k` is CPS-transformed onto an
   // explicit stack of pending parts, so it nests no frame either. The
   // zero-switch count on a 128 KB stack is again what tells the
-  // rewrite apart from the runtime layer.
+  // rewrite apart from the runtime layer. A function answer is not
+  // transformed (measured slower than the direct road) and keeps its
+  // meaning through Layer 2.
 
   test("1M answer-using shifts k => k(x + 1) + 1 on a 128 KB stack: the answer and ZERO switches") {
     val (a, s) = switchesDuring(SmallStack.run(128)(reset(row(n)(x => shift[Int, Int, Int](k => k(x + 1) + 1)))))
@@ -74,12 +76,13 @@ class TestContMacro extends munit.FunSuite:
     assertEquals(s, 0L)
   }
 
-  test("1M state-passing shifts (PState's k(a)(s2), a function answer) on a 128 KB stack: ZERO switches") {
-    val (a, s) = switchesDuring(SmallStack.run(128)(
-      PState.run(0L)((1 to n).foldLeft(PState.get[Long, (Long, Long)])((m, _) =>
-        m.flatMap(_ => PState.get.flatMap(s => PState.set(s + 1)))))))
-    assertEquals(a, (n.toLong, n.toLong - 1))
-    assertEquals(s, 0L)
+  test("a function answer (PState's k(a)(s2)) stays on the direct road and keeps its meaning") {
+    // measured 2.8x slower walked than direct on statePara (specs/cont-stack.md stage E)
+    assertEquals(
+      PState.run(0L)((1 to 1000).foldLeft(PState.get[Long, (Long, Long)])((m, _) =>
+        m.flatMap(_ => PState.get.flatMap(s => PState.set(s + 1))))),
+      (1000L, 999L))
+    assertEquals((shift[Int, Int => Int, Int => Int](k => (s: Int) => k(s + 1)(s * 2)) / (a => (s: Int) => a + s))(3), 10)
   }
 
   test("answer-using shapes keep their meaning, multi-shot included") {

@@ -172,56 +172,56 @@ object Cont:
   /**
    * LAYER 1 B (specs/cont-stack.md plan stage E, cont-stack-layer1-b):
    * a body that USES the answer of `k` — `k(1) + k(10)`, `a :: k(x)`,
-   * `PState`'s `s => k(s)(s2)` — cannot become a value the way a tail
-   * body does: something is left to do after each call. `ContMacro`
-   * CPS-transforms such a body SELECTIVELY (Rompf, Maier & Odersky,
-   * ICFP 2009): every `k(e)` becomes a `Call` naming what is left, an
-   * application of an answer that is itself a function (`k(a)(s2)`)
-   * becomes an `Ap`, and a lambda answer whose body calls `k` becomes
-   * a `Fun`. The body is then DATA the runner walks in its own loop,
-   * with the pending parts on an explicit stack (`Pending`) instead of
-   * the JVM's: a call of `k` continues the program in-loop through the
-   * `Reentry`'s fields, and the answer, when the program reaches it,
-   * is fed to the part on top. No body frame, no `enter`, no room
-   * counted, no switch — at one `Call` and one `Pending` per call of
-   * `k`, with `k` multi-shot as before (the rest of the program is a
-   * tree, rebuilt per call).
+   * `s"${k(a)}"` — cannot become a value the way a tail body does:
+   * something is left to do after each call. `ContMacro` CPS-transforms
+   * such a body SELECTIVELY (Rompf, Maier & Odersky, ICFP 2009): every
+   * `k(e)` becomes a `Call` naming what is left. The body is then DATA
+   * the runner walks in its own loop, with the pending parts on an
+   * explicit stack (`Pending`) instead of the JVM's: a call of `k`
+   * continues the program in-loop through the `Reentry`'s fields, and
+   * the answer, when the program reaches it, is fed to the part on
+   * top. No body frame, no `enter`, no room counted, no switch — at a
+   * `Call`, its rest and a `Pending` per call of `k`, with `k`
+   * multi-shot as before (the rest of the program is a tree, rebuilt
+   * per call).
    *
-   * A `Body` is a `Shift` on the tree, extending the function type
-   * exactly as `Leaf` does so `Inject` takes it; applied as one — or a
-   * `Cps` or `Fun` applied by code that is not the runner (`PState.run`
-   * applies the answer function itself) — it runs the same loop from
-   * the top. Public because a macro expansion at the user's call site
-   * builds it; not an API.
+   * NOT a function answer (`PState`'s `s => k(s)(s2)`): measured at
+   * 2.8x the direct road on statePara (specs/cont-stack.md, stage E),
+   * where Layer 3's exact room already runs the same program with no
+   * switch; such a body stays the opaque leaf.
+   *
+   * A `Cps` is a `Shift` on the tree, extending the function type
+   * exactly as `Leaf` does so `Inject` takes it; applied as one by code
+   * that is not the runner, it runs the same loop from the top. Public
+   * because a macro expansion at the user's call site builds it (an
+   * anonymous subclass, one allocation per shift); not an API.
    */
-  enum Body[R] extends ((Any => Nothing) => Any):
+  enum Body[R]:
     /** the body's answer */
     case Done[R](r: R) extends Body[R]
     /** `k(a)`, then `rest` of the answer */
     case Call[A, S, R](k: A => S, a: A, rest: S => Body[R]) extends Body[R]
-    /** `f(x)` where `f` is an answer — a `Fun`, walked in-loop, or any function */
-    case Ap[X, Y, R](f: X => Y, x: X, rest: Y => Body[R]) extends Body[R]
-    def apply(k: Any => Nothing): Any = walk(this)
 
   /** a CPS-transformed body, as the `(A => S) => R` it still means */
-  final class Cps[A, S, R](val body: (A => S) => Body[R]) extends ((A => S) => R):
-    def apply(k: A => S): R = walk(body(k))
-
-  /** a function answer whose body calls `k` */
-  final class Fun[S, R](val body: S => Body[R]) extends (S => R):
-    def apply(s: S): R = walk(body(s))
+  abstract class Cps[A, S, R] extends ((A => S) => R):
+    def body(k: A => S): Body[R]
+    final def apply(k: A => S): R = walk(body(k))
+    /** `Shift.at`'s door out, for the runner: the continuation it
+     * built for this leaf is the one the facade typed the leaf with */
+    private[Cont] def walkWith[X](k: X => Any): Body[?] = body(k.asInstanceOf[A => S])
 
   /** the leaf an answer-using body becomes */
-  def cps[A, S, R](body: (A => S) => Body[R]): Rep[A, S, R] = Free.Inject(Shift.of(Cps(body)))
+  def cps[A, S, R](c: Cps[A, S, R]): Rep[A, S, R] = Free.Inject(Shift.of(c))
 
-  /** the runner's loop from a body: what a body, a `Cps` or a `Fun`
-   * does when applied as the function it means */
+  /** the runner's loop from a body: what a `Cps` does when applied as
+   * the function it means */
   private def walk[R](b: Body[R]): R =
-    step[Any, Any, R](Inject[Shift, Any](b))(noK)(StackSwitch.firstRoom)(Pending.None)
+    step[Any, Any, R](noProgram)(noK)(StackSwitch.firstRoom)(Pending.None)(b)
 
-  /** the continuation a walk starts with — never called: a walked body
-   * answers through its pending parts, and a program it continues
-   * carries its own `k` */
+  /** the program and continuation a walk starts with — never looked
+   * at: a walked body answers through its pending parts, and a program
+   * it continues carries its own */
+  private val noProgram: Rep[Any, Any, Any] = Free.Return(())
   private val noK: Any => Any =
     _ => throw IllegalStateException("a walked body answers through its pending parts, never through k")
 
@@ -332,7 +332,7 @@ object Cont:
       case _ => Bind(c, a => Free.Return(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)(Pending.None)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)(Pending.None)(null)
 
   /**
    * What a run's stack looked like at its last GRANT (specs/cont-stack.md
@@ -415,7 +415,7 @@ object Cont:
      * continues here, and only a stack with no room switches. */
     def enter(x: X, here: Int): T =
       val r = if here < room then here else room
-      if r > 0 then step(f(x))(k)(r)(Pending.None) else exhausted(x)
+      if r > 0 then step(f(x))(k)(r)(Pending.None)(null) else exhausted(x)
 
     /** the rare road, OUT of `enter` so `enter` stays small enough to
      * inline (cont-stack-fastpath round 2, PrintInlining on fib100:
@@ -424,8 +424,8 @@ object Cont:
      * that the base scalar-replaced then escaped) */
     private def exhausted(x: X): T =
       val more = StackSwitch.more(gaugeOf(k))
-      if more > 0 then step(f(x))(k)(more)(Pending.None)
-      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh)(Pending.None))
+      if more > 0 then step(f(x))(k)(more)(Pending.None)(null)
+      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh)(Pending.None)(null))
 
   /** call a continuation from inside the runner, with the room HERE */
   private def callK[A, S](k: A => S, a: A, room: Int): S = k match
@@ -488,17 +488,18 @@ object Cont:
    * to RETURN an answer — the `Return` case's `callK`, an opaque leaf,
    * an opaque body under a `Bind` — now `answer`s it, which is the
    * return when nothing is pending and otherwise feeds the part on
-   * top and walks on. A walk is a program too (`Inject` of a `Body`),
-   * so the loop stays one `@tailrec` method: `Call` continues the
-   * program through the `Reentry`'s fields in-loop, at the room THIS
-   * stack has (no frame was spent), and `Ap` of a `Fun` walks its
-   * body. A nested runner — `Reentry.enter`, from an opaque body's
+   * top and walks on. The body being walked is the loop's fifth
+   * parameter (`null` when none — a wrapper node per step cost an
+   * allocation), so the loop stays one `@tailrec` method: `Call`
+   * continues the program through the `Reentry`'s fields in-loop, at
+   * the room THIS stack has (no frame was spent). A nested runner — `Reentry.enter`, from an opaque body's
    * own call of `k` — starts with nothing pending and returns as
    * before; its answer lands in this loop's `answer`.
    *
-   * The two class casts are `Shift.at`'s claim at the leaf's class: a
-   * leaf or a CPS body is built only by `bind`/`mapped`/`cps`, at the
-   * facade's indexes. The `Any` at the walk's answer is `pinned`'s.
+   * The leaf's class cast is `Shift.at`'s claim at the leaf's class: a
+   * leaf is built only by `bind`/`mapped`, at the facade's indexes;
+   * a CPS body's is `Cps.walkWith`. The `Any` at the walk's answer is
+   * `pinned`'s.
    * Until this stage the room reached an absorbed leaf through a
    * `leafAt` helper, for the reason still true of `applyAt`: a leaf
    * re-enters the runner through ITS continuation, not the one it is
@@ -508,24 +509,20 @@ object Cont:
    * in `k` alone).
    */
   @annotation.tailrec
-  private def step[A, S, R](c: Rep[A, S, R])(k: A => S)(room: Int)(pending: Pending[?, ?]): R =
+  private def step[A, S, R](c: Rep[A, S, R])(k: A => S)(room: Int)(pending: Pending[?, ?])(b: Body[?]): R =
     inline def answer(r: R): R =
       if pending eq Pending.None then r
-      else step[Any, Any, R](Inject[Shift, Any](pending.deliver(r)))(noK)(room)(pending.next)
-    c match
+      else step[A, S, R](c)(k)(room)(pending.next)(pending.deliver(r))
+    if b ne null then b match
+      case Body.Done(r) => answer(pinned[Any, R](r))
+      case Body.Call(kk, e, rest) => kk match
+        case re: Reentry[x, b2, s2, ?] => step[b2, s2, R](re.f(e))(re.k)(room)(Pending(rest, pending))(null)
+        case _ => step[A, S, R](c)(k)(room)(pending)(rest(kk(e)))
+    else c match
       case Return(a) => answer(pinned[S, R](callK(k, a, room)))
       case Inject(s) => s match
         case l: Leaf[?, ?, ?] => answer(l.asInstanceOf[Leaf[A, S, R]].applyAt(k, room))
-        case b: Body[?] => b match
-          case Body.Done(r) => answer(pinned[Any, R](r))
-          case Body.Call(kk, e, rest) => kk match
-            case re: Reentry[x, b2, s2, ?] => step[b2, s2, R](re.f(e))(re.k)(room)(Pending(rest, pending))
-            case _ => step[Any, Any, R](Inject[Shift, Any](rest(kk(e))))(noK)(room)(pending)
-          case Body.Ap(f, x, rest) => f match
-            case fn: Fun[?, ?] => step[Any, Any, R](Inject[Shift, Any](fn.body(x)))(noK)(room)(Pending(rest, pending))
-            case _ => step[Any, Any, R](Inject[Shift, Any](rest(f(x))))(noK)(room)(pending)
-        case c: Cps[?, ?, ?] =>
-          step[Any, Any, R](Inject[Shift, Any](c.asInstanceOf[Cps[A, S, R]].body(k)))(noK)(room)(pending)
+        case cps: Cps[?, ?, ?] => step[A, S, R](c)(k)(room)(pending)(cps.walkWith(k))
         case _ => answer(s.at[S, R](k))
       // the leaf's inner answer is the Bind's existential — `Any` names
       // "whatever it is". Left to inference it came out `Nothing`, and a
@@ -534,13 +531,12 @@ object Cont:
       // rotation laws, 2026-09-15). `typed(s)(...)` never hit this only
       // because its two argument lists resolved the variable differently.
       case Bind(Inject(s), f) => s match
-        case c: Cps[a, ?, ?] =>
-          step[Any, Any, R](Inject[Shift, Any](c.asInstanceOf[Cps[a, Any, R]].body(Reentry(f, k, room - 1))))(noK)(room)(pending)
+        case cps: Cps[?, ?, ?] => step[A, S, R](c)(k)(room)(pending)(cps.walkWith(Reentry(f, k, room - 1)))
         case _ => answer(s.at[Any, R](Reentry(f, k, room - 1)))
-      case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)(room)(pending)
-      case Bind(Return(a), f) => step(f(a))(k)(room)(pending)
-      case Delay(t) => step(t())(k)(room)(pending)
-      case Bind(Delay(t), g) => step(Bind(t(), g))(k)(room)(pending)
+      case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)(room)(pending)(null)
+      case Bind(Return(a), f) => step(f(a))(k)(room)(pending)(null)
+      case Delay(t) => step(t())(k)(room)(pending)(null)
+      case Bind(Delay(t), g) => step(Bind(t(), g))(k)(room)(pending)(null)
 
   extension [A, S, R](c: Cont[A, S, R])
     def flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R] = bind(c)(f)

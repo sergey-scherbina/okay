@@ -25,25 +25,41 @@ val deep = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) 
 reset(deep) // 1000000 — no frame per level: the body is the value it passes
 ```
 
-**A body that uses the answer** — `k(x + 1) + 1`, `k(1) + k(10)`, a `k`
-handed to `map` — runs direct, and each level is a frame. The runner
-counts the levels the current stack has room for; when the count runs
-out it either *reads* how much stack is really left (below) and
-continues here, or hands the rest of the program to a fresh stack — a
-parked worker thread with a 1 GB stack — and waits for the answer. No
+**A body that uses the answer** — `k(x + 1) + 1`, `k(1) + k(10)`,
+`a :: k(x)`, `s"${k(a)}"`, a block with `val a = k(1)`, an `if` or
+`match` in tail position with calls in its branches — is CPS-transformed at compile time (since
+`cont-stack-layer1-b`): each call of `k` becomes a step naming what is
+left to do with its answer, and the runner keeps those pending parts on
+an explicit stack of its own instead of the JVM's. Still no frame per
+level, on any platform; what ran before a call still runs before it;
+`k` is multi-shot as before. A million of these run on a 128 KB stack
+too, at one small allocation per call of `k`:
+
+```scala
+val used = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1)))
+reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
+```
+
+**A body the macro cannot read, or should not** — `k` handed to `map`
+or any other function as a value, a call under a conditional that is
+not in tail position (`1 + (if c then k(1) else 2)`), in a by-name
+argument, under `try`, in a loop, in a lambda (`PState`'s
+`s => k(s)(s2)`: a function answer walked measured 2.8x its direct
+cost, so it is left direct on purpose), `k` passed into Java or an
+abstract method, a body passed to `shift` as a value rather than a
+literal — runs direct, and each level is a frame. The
+runner counts the levels the current stack has room for; when the
+count runs out it either *reads* how much stack is really left (below)
+and continues here, or hands the rest of the program to a fresh stack —
+a parked worker thread with a 1 GB stack — and waits for the answer. No
 exception unwinds anything and nothing runs twice: the frames below
 stay where they are until the answer comes back. Multi-shot bodies
 keep working across the switch.
 
 ```scala
-val used = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1)))
-reset(used) // 40000 — each level a frame; past the room the rest runs on a fresh stack
+val opaque = (1 to 20_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => List(x + 1).map(k).sum)))
+reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the room the rest runs on a fresh stack
 ```
-
-**A body the macro cannot read** — `k` passed into Java, into an
-abstract method, a body passed to `shift` as a value rather than a
-literal — is the second kind as far as the runner knows, whether or not
-it actually nests.
 
 ## How much room, per platform
 
@@ -107,7 +123,8 @@ fits its stack pays one stack reading, 0.3 µs.
   and the answer-type discipline `Cont[A, S, R]` keeps.
 - Rompf, Maier & Odersky, "Implementing First-Class Polymorphic
   Delimited Continuations by a Type-Directed Selective CPS-Transform"
-  (ICFP 2009): the compile-time road the tail-body macro takes, and the
+  (ICFP 2009): the compile-time road the macro takes — the tail body,
+  then the selective transform of a body that uses the answer — and the
   same wall at code it cannot read.
 - Pettyjohn, Clements, Marshall, Krishnamurthi & Felleisen,
   "Continuations from Generalized Stack Inspection" (ICFP 2005): capture

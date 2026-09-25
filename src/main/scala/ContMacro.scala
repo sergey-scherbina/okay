@@ -25,9 +25,10 @@ import scala.quoted.*
  * answer — `k(1) + k(10)`, `a :: k(x)`, `s"${k(a)}"`, `PState`'s
  * `s => k(s)(s2)` — is CPS-transformed SELECTIVELY (Rompf, Maier &
  * Odersky, ICFP 2009) into a `Cont.Body`: each `k(e)` becomes a `Call`
- * naming what is left, an application of the answer (`k(a)(s2)`) an
- * `Ap`, a lambda answer that calls `k` a `Fun`; the runner walks the
- * body in its own loop (Cont.scala, `step`'s pending stack). What ran
+ * naming what is left; the runner walks the body in its own loop
+ * (Cont.scala, `step`'s pending stack). NOT a function answer —
+ * `PState`'s `s => k(s)(s2)` — which measured 2.8x the direct road
+ * on statePara and stays opaque (specs/cont-stack.md, stage E). What ran
  * before a call still runs before it: every k-free part evaluated
  * ahead of a call is bound to a val first (A-normal form), unless it
  * is a literal, a stable name or a lambda. The transform follows a
@@ -35,8 +36,8 @@ import scala.quoted.*
  * position, an application's function part and arguments in order,
  * an ascription, an inlined expansion; a by-name argument is left
  * as it is. Where `k` flows anywhere else — into a by-name argument,
- * a conditional that is not in tail position, a lambda that is not
- * the whole answer, a `try`, a loop, a value position (`xs.map(k)`) —
+ * a conditional that is not in tail position, a lambda, a `try`, a
+ * loop, a value position (`xs.map(k)`) —
  * the body stays opaque, as before, and Layer 2 keeps it safe. The
  * rest of Layer 1 B (known higher-order functions, visible user
  * functions, `direct`) is backlog cont-stack-layer1-c.
@@ -101,12 +102,6 @@ object ContMacro:
 
     // ---- Layer 1 B: the selective CPS transform ----
 
-    val fn1 = defn.FunctionClass(1)
-    /** `X => Y`'s two types */
-    def function1(t: TypeRepr): Option[(TypeRepr, TypeRepr)] = t.dealias.widen match
-      case AppliedType(tc, List(x, y)) if tc.typeSymbol == fn1 => Some((x, y))
-      case _ => None
-
     /** what is left to do with a value: `Done` at answer type `rt`
      * (the tail), or a rest that builds the body from it */
     case class Kont(rt: TypeRepr, rest: Option[Term => Term])
@@ -169,16 +164,6 @@ object ContMacro:
         '{ Cont.Body.Call[A, S, r](${ Ref(k).asExprOf[A => S] }, ${ e.asExprOf[A] },
              ${ lam("s", TypeRepr.of[S], kont.rt)(sv => feed(kont, sv)).asExprOf[S => Cont.Body[r]] }) }.asTerm
 
-    /** `Ap(f, x, y => rest)`, `f` an answer applied to `x` */
-    def ap(f: Term, x: Term, kont: Kont): Term = function1(TypeRepr.of[S]) match
-      case Some((xt, yt)) => xt.asType match
-        case '[xx] => yt.asType match
-          case '[yy] => kont.rt.asType match
-            case '[r] =>
-              '{ Cont.Body.Ap[xx, yy, r](${ f.asExprOf[xx => yy] }, ${ x.asExprOf[xx] },
-                   ${ lam("y", yt, kont.rt)(yv => feed(kont, yv)).asExprOf[yy => Cont.Body[r]] }) }.asTerm
-      case None => throw Opaque
-
     /** the parameter types a function term's arguments are matched against */
     def params(fun: Term): List[TypeRepr] = fun.tpe.widen match
       case MethodType(_, ps, _) => ps
@@ -233,30 +218,12 @@ object ContMacro:
       if !mentions(k, t) then value(t, kont)
       else t match
         case KCall(e) => cps(e, Kont(kont.rt, Some(e2 => call(e2, kont))))
-        case Apply(KCall(e), List(x)) =>
-          cps(e, Kont(kont.rt, Some(e2 => call(e2, Kont(kont.rt, Some(fv =>
-            cps(x, Kont(kont.rt, Some(x2 => ap(fv, x2, kont))))))))))
-        case Apply(Select(KCall(e), "apply"), List(x)) =>
-          cps(e, Kont(kont.rt, Some(e2 => call(e2, Kont(kont.rt, Some(fv =>
-            cps(x, Kont(kont.rt, Some(x2 => ap(fv, x2, kont))))))))))
         case Apply(fun, args) =>
           cpsFun(fun, Kont(kont.rt, Some(f2 => cpsArgs(args, params(fun), kont.rt)(as => feed(kont, Apply.copy(t)(f2, as))))))
         case Inlined(call0, bindings, e) =>
           if bindings.exists(mentions(k, _)) then throw Opaque
           Inlined.copy(t)(call0, bindings, cps(e, kont))
         case Typed(e, _) => cps(e, kont)
-        case Lambda(List(p), inner) if kont.rest.isEmpty =>
-          function1(kont.rt) match
-            case Some((_, r2)) =>
-              val in = p.tpt.tpe
-              val out = r2.asType match
-                case '[r] => TypeRepr.of[Cont.Body[r]]
-              val f = Lambda(Symbol.spliceOwner, MethodType(List(p.name))(_ => List(in), _ => out),
-                (meth, ps) => subst(cps(inner, Kont(r2, None)), p.symbol, Ref(ps.head.symbol)).changeOwner(meth))
-              in.asType match
-                case '[s] => r2.asType match
-                  case '[r] => done(kont.rt, '{ Cont.Fun[s, r](${ f.asExprOf[s => Cont.Body[r]] }) }.asTerm)
-            case None => throw Opaque
         case Block(stats, e) => cpsStats(stats, e, kont)
         case If(c, a, b) =>
           if mentions(k, a) || mentions(k, b) then
@@ -272,13 +239,14 @@ object ContMacro:
           else cps(sc, Kont(kont.rt, Some(s2 => feed(kont, Match.copy(t)(s2, cases)))))
         case _ => throw Opaque
 
-    /** the whole body as `(k: A => S) => Body[R]`, or None where the transform cannot read it */
-    def cpsBody(body: Term)(using k: Symbol): Option[Term] =
+    /** the whole body as a `Cps`, or None where the transform cannot read it */
+    def cpsBody(body: Term)(using k: Symbol): Option[Expr[Cont.Cps[A, S, R]]] =
       try
         val b = cps(body, Kont(TypeRepr.of[R], None))
-        Some(Lambda(Symbol.spliceOwner,
-          MethodType(List("k"))(_ => List(TypeRepr.of[A => S]), _ => TypeRepr.of[Cont.Body[R]]),
-          (meth, ps) => subst(b, k, Ref(ps.head.symbol)).changeOwner(meth)))
+        Some('{
+          new Cont.Cps[A, S, R]:
+            def body(k2: A => S): Cont.Body[R] = ${ subst(b, k, 'k2.asTerm).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Body[R]] }
+        })
       catch case Opaque => None
 
     f.asTerm.underlyingArgument match
@@ -291,6 +259,6 @@ object ContMacro:
             '{ Cont.tailShift[A, S, R](() => ${ v.changeOwner(Symbol.spliceOwner).asExprOf[A] }) }
           case None if !mentions(p.symbol, body) => fallback
           case None => cpsBody(body) match
-            case Some(b) => '{ Cont.cps[A, S, R](${ b.asExprOf[(A => S) => Cont.Body[R]] }) }
+            case Some(b) => '{ Cont.cps[A, S, R]($b) }
             case None => fallback
       case _ => fallback
