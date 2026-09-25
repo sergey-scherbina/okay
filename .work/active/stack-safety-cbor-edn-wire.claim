@@ -1,0 +1,5 @@
+slug: stack-safety-cbor-edn-wire
+who: claude (session 6f505c09)
+what: stack-safety stage 2c — Cbor/Edn/Wire decoders in okay-codec: red-first depth tests, explicit stack or written bound, inventory rows removed/annotated
+files: okay-codec/src/main/scala/okay/codec/{Cbor,Edn}.scala, okay-codec/src/main/scala-jvm/okay/codec/Wire.scala, specs/stack-safety*.{md,tsv}
+since: 2026-09-25
