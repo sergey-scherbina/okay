@@ -1,7 +1,0 @@
-feature/intent-window-by-dim-timeout 2026-09-25
-agent: claude-code
-status: in-progress
-scope: backlog.d/build/intent-window-by-dim-timeout.md — TestWindowByDim
-  ran 30.47s against munit's 30s default in a loaded full gate
-  (okay-arrow's gate, load 80-150); measure quiet time, then raise
-  munitTimeout with the figure or shrink the grid.
