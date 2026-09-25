@@ -2511,8 +2511,11 @@ lazy val okayArrow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies ++= Seq(
-      "org.apache.arrow" % "arrow-vector" % "19.0.0" % Optional,
-      "org.apache.arrow" % "arrow-memory-unsafe" % "19.0.0" % Optional,
+      // optional for consumers; the tests and the JMH (whose forked JVM
+      // does not see an Optional jar: found by a NoClassDefFoundError)
+      // compare against it, so they carry it explicitly
+      "org.apache.arrow" % "arrow-vector" % "19.0.0" % "optional;test;jmh",
+      "org.apache.arrow" % "arrow-memory-unsafe" % "19.0.0" % "optional;test;jmh",
     ),
     Test / fork := true,
     Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED",

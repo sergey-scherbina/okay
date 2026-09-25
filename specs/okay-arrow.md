@@ -102,7 +102,18 @@ okay's columnar format, on every platform:
       header per message make a short message longer (the same reason
       DEFLATE left pipes).
 - [ ] Body compression (LZ4_FRAME, ZSTD): in no JDK and on no JS or
-      Native standard library; refused by name until its own decision.
+      Native standard library, so OURS, in a module of its own
+      (`okay-compress`, usable outside Arrow too — as a
+      `WireCompression` beside DEFLATE, for one), pure Scala over
+      `Array[Byte]`, every platform (operator, 2026-09-25: "Мы можем
+      реализовать свою компрессию ... Чтобы работала на всех таргетах?"):
+      - LZ4 block + frame (xxHash32), both directions: small (a hash
+        table and a copy loop); pyarrow's LZ4_FRAME bodies are the
+        oracle both ways;
+      - ZSTD DECOMPRESSION (RFC 8878: FSE, Huffman, sequences, repeat
+        offsets): what Python's Arrow and Parquet files mostly carry;
+      - ZSTD compression last, and only if LZ4's ratio is measured short.
+      Until each lands, a compressed body is refused by name.
 
 - [ ] Later, on a trigger: `OkayArrow` as VIEWS over the message's bytes
       (no copy at all on read; stage 0's Decisions entry), when a
