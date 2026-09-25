@@ -1,6 +1,0 @@
-feature/foreign-one-model 2026-09-25T22:07:01Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-25T22:07:01Z
-status: in-progress
-done-so-far: synthesis in conversation — one model (Runtime[L], Module[L], four things that cross, one wire of five ops, one Pool, capability markers, derived cluster combinators)
-next: rewrite specs/foreign-one.md as the model with a today->model map; backlog.d/polyglot rebuilt (8 stages); pointers in foreign-facade.md and foreign-map-reduce.md; changelog; board checks; land
