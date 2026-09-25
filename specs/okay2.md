@@ -2139,6 +2139,43 @@ Columns, the staged codecs and the provider registry are on demand
   typer has not reached (SI-7046): the derivation refuses naming it, and
   the tests declare their sums before deriving them.
 
+## Stage 42 — okay2-sql and okay2-jdbc (2026-09-25)
+The modules section's third item. okay-sql (the relational seam over
+okay2-codec's `Schema`) as a cross project, and its JDBC driver on the JVM
+so it runs against real engines in tests (SQLite and H2, embedded). The
+pg wire driver, and okay-jdbc's BulkLoad, Migrate, Poll, SqlStore, Writes
+and JdbcInterop, are on demand (backlog `okay2-jdbc-tails`).
+
+- [ ] the seam: `SqlValue`, `SqlType`, `Col`, `Isolation`, `Granted`
+      (downgrade named), `Drift`, `Bad`, `Sql` (describe, a chunked
+      `Source` query, update, batch, begin/commit/rollback, cancel,
+      sqlState), `Sql.retryable`
+- [ ] `Placeholders.numbered` (quotes left alone); `Temporal` (civil
+      dates over centuries, pg/H2/ISO timestamps with offsets, times)
+- [ ] `Typed`: row shapes (primitives, bytes, BigInt, BigDecimal, UUID,
+      java.time on the JVM, Option, Vector/List as Arr, nested products
+      as Row, isos); decode by column LABEL (camel -> snake), NULL in a
+      non-Option field an error value naming column and row; `verify`
+      names dropped, retyped and nullability drifts; params bind
+      positionally from a product; `rows`/`rowsOf` stream chunked
+- [ ] `transact` (commit on success, rollback on failure and on a
+      failing statement, autocommit restored), `transactRetry` (40001 and
+      40P01 retried, others not, backoff by run number), the typed region
+      `Db[Tx.No]`/`Db[Tx.Yes]` where a nested begin does not compile
+- [ ] `Tx` as a `Prog` typestate: begin Idle->Open, commit/rollback
+      Open->Idle, `Tx.run` only on Idle->Idle
+- [ ] `Column`/`Row` over `HMap`: columns encode in insertion order
+- [ ] `Query`: fields refused by name and by type at construction; the
+      clause and its parameters; the same predicate in memory
+      (three-valued NULL, LIKE, numbers, negation); UPDATE and the same
+      edit in memory. THE LAW against SQLite: the engine's rows for every
+      predicate are the in-memory test's rows
+- [ ] `Pool`: bounded connections, the brake rolls back a returned
+      borrower's transaction, `Exhausted` after the timeout, `pinned`
+      over a Resource scope
+- [ ] `JdbcSql` on SQLite and H2; the okay2-sql suites on JVM, Scala.js
+      and Scala Native
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
