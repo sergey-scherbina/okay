@@ -124,16 +124,16 @@ Stage 4 — the record:
 
 Stage 5 — `.!?` retires after all (mark-glyph-only, operator
 2026-09-25: «уберем .!? и … будем использовать именно только .?»):
-- [ ] `Direct`'s `def !?` is gone, on `F[A]` and on `Gen[W]`; `Gen[W]`
+- [x] `Direct`'s `def !?` is gone, on `F[A]` and on `Gen[W]`; `Gen[W]`
       gets its own `def ? : Unit`, for the same reason it had its own
       `!?` (the generic mark would answer a `W` that never was).
-- [ ] `Cont.Monadic`'s symbolic μ is `.?[B]`, not `.!?[B]`.
-- [ ] The macros' mark sets and every "use the explicit marks"
+- [x] `Cont.Monadic`'s symbolic μ is `.?[B]`, not `.!?[B]`.
+- [x] The macros' mark sets and every "use the explicit marks"
       message name `.reflect / .? / !prog` and nothing else.
-- [ ] `m.!?` REFUSES to compile with `Direct.*` imported
+- [x] `m.!?` REFUSES to compile with `Direct.*` imported
       (`compileErrors` non-empty in TestUnwrapMark), watched failing
       first while the method still exists.
-- [ ] Every call site in main, test and jmh sources, and every live doc
+- [x] Every call site in main, test and jmh sources, and every live doc
       under docs/, is written `.?`; `git grep -F '.!?'` finds only the
       archives (CHANGELOG.md, BACKLOG-ARCHIVE.md, src/jmh/history.tsv,
       changelog.d) and the history in specs.
@@ -300,3 +300,29 @@ the refusals and imports nothing; TestUnwrapMark imports Direct and
 asserts the mark. The split is the feature, stated: which `?` a
 program gets depends on whether the block's marks are in scope, and
 that is now the only thing it depends on.
+
+### Stage 5 — landed 2026-09-25 (mark-glyph-only)
+
+- **`.!?` is gone.** `Direct`'s `def !?` on `F[A]` and on `Gen[W]`,
+  `Cont.Monadic`'s `!?[B]` (now `?[B]`), both macro mark sets and the
+  three "use the explicit marks" messages. `Gen[W]` has its own
+  `def ? : Unit`: the generic mark would unify a `Gen[W]` as `F[A]`
+  with `A = W`, which is why it had its own `!?`.
+- **Pinned both ways.** TestUnwrapMark's refusal (`m.!?` and
+  `Gen.emit(1).!?` no longer compile) was watched RED before the
+  method went; the spellings test now compares `.?`, prefix `!` and
+  `.reflect`.
+- **Every call site moved**: 20 test and benchmark files and every
+  live doc under docs/. Rewriting a doc line makes it a new line, so
+  the eight rewritten debt lines of tutorial.md and capabilities.md
+  were pinned (TestDocExamplesTutorialMarks, TestCtxReaderElim), and
+  six more tutorial lines the new suite covered left the debt.
+- **Pinning found a defect in a doc example.** The tutorial's staged
+  block wrote `State.modify[Int](_ + i).?` as a statement: `modify`
+  answers the new state, so the line discards an `Int`, and under
+  `-Wall` it is E176. The page had passed every gate because nothing
+  compiled it. It is `val _ = …` now, in the doc and in its pin.
+- **What still says `.!?`**: the archives, the Behavior boxes of
+  specs/direct-macro.md and other specs (a note in direct-macro's
+  Decisions says to read them as `.?`), and this file's history.
+
