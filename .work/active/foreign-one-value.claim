@@ -1,6 +1,0 @@
-feature/foreign-one-value 2026-09-25T22:45:26Z
-agent: claude-opus-5-5
-heartbeat: 2026-09-25T22:45:26Z
-status: in-progress
-done-so-far: split stage 2 into value (this) and protocol
-next: PyValue.NA + wire tag; Shape.r from RCodec; aliases in okay.r; shim.R shared tags v9; frame v2 shared; RSubprocess over ForeignWorker/SupervisedWorker; R conformance
