@@ -24,3 +24,13 @@ class TestZstdPyArrow extends munit.FunSuite:
     val back = PyArrow("decompress", "zstd", samples.map((_, b) => Zstd.compress(b)), samples.map(_._2.length.toString))
     samples.zip(back).foreach { case ((name, b), d) => assert(java.util.Arrays.equals(d, b), name) }
   }
+
+  test("the ratio beside pyarrow's own levels (printed; sanity only: ours must compress what repeats)") {
+    val lv3 = PyArrow.zstd(samples.map(_._2), 3)
+    samples.zip(lv3).foreach { case ((name, b), theirs) =>
+      val ours = Zstd.compress(b)
+      println(f"zstd ratio  $name%-18s ${b.length}%9d bytes: ours ${ours.length}%8d, pyarrow level 3 ${theirs.length}%8d")
+    }
+    val text = samples.collectFirst { case ("text", b) => b }.get
+    assert(Zstd.compress(text).length < text.length / 20)
+  }

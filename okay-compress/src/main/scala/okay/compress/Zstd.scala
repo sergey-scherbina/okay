@@ -323,6 +323,8 @@ private[compress] final class BackBits(src: Array[Byte], from: Int, end: Int):
  * read, and the baseline the read is added to */
 private[compress] final class Fse(val log: Int, sym: Array[Int], nbBits: Array[Int], base: Array[Int]):
   def symbol(state: Int): Int = sym(state)
+  def baseAt(state: Int): Int = base(state)
+  def bitsAt(state: Int): Int = nbBits(state)
   def next(state: Int, bits: BackBits): Int = base(state) + bits.read(nbBits(state))
 
 private[compress] object Fse:
