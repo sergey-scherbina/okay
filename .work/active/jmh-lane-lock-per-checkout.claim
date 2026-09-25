@@ -1,0 +1,6 @@
+feature/jmh-lane-lock-per-checkout 2026-09-25T20:20:00Z
+agent: claude-code
+heartbeat: 2026-09-25T20:20:00Z
+status: in-progress
+done-so-far: claim
+next: the lock at a box-wide path (TMPDIR), JMH_LANE_LOCK override, selftest fixture sets it
