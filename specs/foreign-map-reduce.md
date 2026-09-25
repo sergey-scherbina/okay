@@ -140,6 +140,64 @@ run on threads.
   after a death recomputes a pure map, so at-least-once is exact here.
 - **The reduce stays on the JVM** — see Out of scope.
 
+## Stage 2 — the REDUCE in Python or R (foreign-reduce)
+
+The operator, after stage 1 landed: "Делай" to the two-function design.
+v1 left the reduce on the JVM because a `Wire` is an `Aggregator` whose
+merge is part of its type. The foreign reduce keeps that shape and moves
+the two functions across the wire:
+
+```scala
+trait Reducer[A, Acc]:
+  def name: String
+  /** `acc` folded over one chunk: None for a partition's first chunk */
+  def step(acc: Option[Acc], rows: Vector[A]): Either[Batcher.Failed, Acc]
+  /** two partials into one — associative, as any Aggregator's merge */
+  def merge(a: Acc, b: Acc): Either[Batcher.Failed, Acc]
+
+object Reduce:
+  def through[A, Acc: Schema](reducer: Reducer[A, Acc], batch: Int = Stage.Batch, attempts: Int = 3): Wire[A, Option[Acc]]
+  def py[A: Schema, Acc: Schema](module: PyModule, step: String, merge: String, python: String = "python3", ...): Wire[A, Option[Acc]]
+  def r[A: Schema, Acc: Schema](module: RModule, step: String, merge: String, rscript: String = "Rscript", ...): Wire[A, Option[Acc]]
+```
+
+`ForeignWire` is the `Wire[A, Option[Acc]]`: a partition buffers `batch`
+rows and hands them to `step` as ONE frame with the running `Acc` beside
+it; `finish`/`peek` flush the rest and hand over the partial, emptied;
+the coordinator's `absorb` folds partials in partition order through
+`merge`; the answer is `None` for a run that saw no rows. `W` and `S`
+are both `Option[Acc]` with `Schema.SOption` — a job's `answer` is the
+same. Nothing in the engine changes.
+
+THE CONTRACT ON THE FAR SIDE, shaped by what each op already answers:
+- Python `step(frame, acc)`: `frame` a dict of lists (or the
+  `pyarrow.Table` under `@okay.arrow`), `acc` a dict of the fields
+  (scalars) or `None` for the first chunk; answers ONE ROW AS COLUMNS,
+  `{"n": [n], "sum": [s]}` — a frame function answers a frame.
+  `merge(a, b)`: two dicts of fields, answers one — a call answers a
+  value. R: `step(frame, acc)` takes a data.frame and a named list (or
+  NULL), answers a one-row data.frame; `merge(a, b)` takes two named
+  lists, answers one.
+- the same failure roads as the map stage: a function's failure is a
+  `Cluster.Refused` naming the reducer; a wire failure retries on a
+  fresh interpreter; a partial that is not exactly one row of `Acc`
+  is the function's failure ("ReduceShape").
+- the interpreters are the SAME pool as the map stage's for the same
+  module and interpreter (`PyPool.of`, `RPool.of`), so a job whose map
+  and reduce are in one module costs one set of processes.
+
+- [ ] A job whose reduce is `Reduce.through(fake)` computes, through
+      `Cluster.run` over 1 and 3 in-process workers, exactly what the
+      fan computes and what the JVM computes directly (count, sum, max).
+- [ ] An empty input answers `None`; a partition shorter than `batch`
+      still folds; the fake sees `batch`-row chunks and `None` as the
+      first `acc` of every partition; `merge` runs `partitions - 1`
+      times on the coordinator.
+- [ ] The function's failure is a `Cluster.Refused` naming the reducer;
+      a wire failure that heals is invisible to the coordinator.
+- [ ] The same over a REAL python3: `step`/`merge` in Python (Live).
+- [ ] The same over a REAL R (Live, in the r-arrow-verify container).
+
 ## Results
 
 foreign-map-reduce (2026-09-25). New JVM module okay-foreign-cluster
