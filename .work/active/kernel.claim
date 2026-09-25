@@ -1,0 +1,7 @@
+feature/kernel 2026-09-25T06:03:34Z
+agent: claude-code (okay-watch session)
+heartbeat: 2026-09-25T06:03:34Z
+status: in-progress
+done-so-far: worktree created
+next: specs/kernel.md, then okay-kernel, Discover, OkayModules
+touches: build.sbt (new module, root aggregate, onLoad), okay-deploy/sbt-plugin, docs
