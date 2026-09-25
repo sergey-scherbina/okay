@@ -19,3 +19,7 @@
       (docs/equivalence.md) compares the two sides as trees over
       sampled answers, and gives a path when they differ. Write the law
       with it rather than comparing run results.
+      PROMOTED 2026-09-25 (operator approved the shift0/$ follow-up plan):
+      the law lane, in the gate, with an okay2 twin; row-parametricity-
+      forwarding-law (LOW) follows it with the same tool and stays in
+      backlog until this one lands.
