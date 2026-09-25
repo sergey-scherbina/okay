@@ -304,6 +304,10 @@ with its date, load and sha (the `performance` skill).
    to hold a continuation and nothing to cross, so `Programs[JvmModule]`
    would be a wire in disguise — the compile error is the honest
    answer, and the zero-cost tier for programs is calling the function.
+   NARROWED to `JvmModule` by specs/foreign-one.md (Decision 7, stage 5,
+   proposed 2026-09-25): a Clojure or Frege program as data IS walkable
+   (`okay.Foreign`), so `Programs[CljModule]`/`[FregeModule]` are real
+   instances; only the Scala-function module has nothing to cross.
 
 ## Results
 

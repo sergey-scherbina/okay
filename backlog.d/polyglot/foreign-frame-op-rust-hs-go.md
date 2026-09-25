@@ -12,3 +12,6 @@
       the schema metadata, announced as `frames: ["arrow"]` in the hello.
       Then `TsStage`/`RsStage`/… are each a name in okay-foreign-cluster.
       Gate: `TestForeignStage`'s job with the map in each language.
+      SUBSUMED by foreign-one-bulk (specs/foreign-one.md stage 3,
+      2026-09-25), which adds the in-process C Data road; this item keeps
+      the per-language shim shape and is done when that stage is.

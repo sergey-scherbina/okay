@@ -697,7 +697,9 @@ else on the line, and a call there cannot be abandoned.
 
 - **R is not behind the gateway.** okay-r has its own engine
   (`RSubprocess`), which starts R itself; the gateway serves the
-  `ForeignWorker` family.
+  `ForeignWorker` family. Closing this is stage 1 of
+  specs/foreign-one.md (backlog foreign-one-r): R as a `ForeignWorker`
+  far side, so it takes every column of the table above.
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.
 - **Go in-process.** Only as WebAssembly.
 
