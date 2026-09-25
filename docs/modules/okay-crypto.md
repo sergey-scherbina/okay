@@ -29,3 +29,26 @@ this one and delegates the four primitives to its given — named
 platform (security-crypto-dedup, 2026-09-23; until then okay-security
 kept a second copy of all four). A security `Crypto` therefore serves
 wherever this one is asked.
+
+## Which Keccak
+
+`Keccak256` is the one primitive of ours here (the rest is the
+platform's: JCA on the JVM, node:crypto on JS). It is a FACADE
+(specs/own-or-standard.md): ours the default, BouncyCastle's behind an
+import on the JVM over an optional dependency, the caller's code
+unchanged:
+
+```scala
+    assertEquals(summon[Keccak].name, "okay")
+```
+
+```scala
+      import BouncyCastleKeccak.given
+      assertEquals(summon[Keccak].name, "bouncycastle")
+```
+
+`summon[Keccak].hash256(bytes)` either way; the two agree byte for byte
+(`TestBouncyCastleKeccak`). `Keccaks.byName("bouncycastle")` for a
+config value; without the jar the first use is refused by name, saying
+to add `org.bouncycastle:bcprov-jdk18on:1.78.1`. okay-x402-evm's
+`Evm.keccak` follows the given in scope.

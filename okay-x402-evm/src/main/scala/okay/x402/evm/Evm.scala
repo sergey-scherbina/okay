@@ -18,7 +18,9 @@ object Evm:
 
   /** keccak-256 — Ethereum's hash, NOT the standardised SHA3-256 (the
    * padding differs): okay-crypto's, the one implementation (keccak-pure) */
-  def keccak(b: Array[Byte]): Array[Byte] = okay.crypto.Keccak256.hash(b)
+  /** Keccak-256 by whichever `okay.crypto.Keccak` is in scope: ours by
+   * default, `BouncyCastleKeccak.given` for the library's */
+  def keccak(b: Array[Byte])(using k: okay.crypto.Keccak): Array[Byte] = k.hash256(b)
 
   private val curve = CustomNamedCurves.getByName("secp256k1")
   private val n = curve.getN

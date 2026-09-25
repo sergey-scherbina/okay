@@ -52,6 +52,34 @@ does not match, and a feature not implemented (a dictionary).
   The FSE encoder is DERIVED from the decoder's own table (for each symbol,
   which state leads to each next state), so the two cannot disagree.
 
+## Which one
+
+The codecs are a FACADE (specs/own-or-standard.md): ours is the default,
+and the library okay-compress is measured against stands behind an
+import, on the JVM, over an optional dependency. The caller's code does
+not change:
+
+```scala
+    assertEquals(summon[Compression].name, "okay")
+```
+
+```scala
+      import Aircompressor.given
+      assertEquals(summon[Compression].name, "aircompressor")
+```
+
+`summon[Compression].zstd` and `.lz4` are the codecs either way; the
+formats are the same, and each reads the other's frames
+(`TestAircompressor`, on every sample and on pyarrow's fixtures). Where
+the choice is a config value, `Compressions.byName("aircompressor")`.
+Without the jar the import compiles and the first use is refused by
+name, saying what to add: `io.airlift:aircompressor:2.0.3`. Arrow's
+compressed bodies and okay-cluster's `RemoteCompression` follow the
+given in scope the same way.
+
+Aircompressor's LZ4 is its BLOCK codec under our frame envelope (it has
+no frame writer): what it writes is a frame every LZ4 reads.
+
 ## Arrow
 
 okay-arrow uses these for Arrow's compressed IPC bodies: `LZ4_FRAME` and

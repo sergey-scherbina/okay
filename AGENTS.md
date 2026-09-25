@@ -346,6 +346,19 @@ force, all already practiced, none previously written down:
   it, or add its row with the bound in the sixth column (a row with no
   reason is RED too), and delete the row of one you fixed
   (`recscan-check.sh --write` deletes those and only those).
+- OURS OR THE STANDARD ONE, ON CHOICE (operator, 2026-09-25;
+  specs/own-or-standard.md). An implementation of OUR OWN of something a
+  platform or a standard library also provides — written for no
+  dependency, for every platform, or for speed — never lands alone: it
+  lands behind a FACADE trait in the cross source set, ours as the
+  default given, each standard implementation an object behind an
+  import over an OPTIONAL dependency, refused BY NAME when the jar is
+  absent, each proven to read the other's output, and `byName` for a
+  config value. The caller's code never changes — only an import. The
+  shape is okay-arrow's (`ArrowCodec`/`OkayArrow`/`ApacheArrow`); today
+  it holds Arrow, LZ4/ZSTD (`Compression`/`Aircompressor`) and Keccak-256
+  (`Keccak`/`BouncyCastleKeccak`). Everything else in crypto is the
+  platform's already (specs/tls.md's rule) — nothing to choose against.
 - NO CAST WITHOUT A REAL NECESSITY (operator, 2026-09-02). An
   `asInstanceOf`, an `@unchecked` pattern, an `Any` where a type
   parameter would do, is a claim the compiler cannot check — and

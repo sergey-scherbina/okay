@@ -90,7 +90,9 @@ not fit is a `Left` that names the row and the column:
 
 ## Which one
 
-With no import, the given is ours:
+With no import, the given is ours (and a COMPRESSED body is read by the
+`okay.compress.Compression` in scope the same way — ours by default,
+`Aircompressor.given` for the library's; specs/own-or-standard.md):
 
 ```scala
     assertEquals(summon[ArrowCodec].name, "okay")

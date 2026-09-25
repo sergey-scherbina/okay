@@ -238,7 +238,7 @@ object OkayArrow extends ArrowCodec:
 
   /** ONE record batch of a file, found from its footer: the schema, the
    * dictionaries and that batch, read as a stream of their own */
-  override def readFileBatch(bytes: Array[Byte], i: Int): Table =
+  override def readFileBatch(bytes: Array[Byte], i: Int)(using okay.compress.Compression): Table =
     try
       val l = layout(bytes)
       if i < 0 || i >= l.batches.length then refuse(s"batch $i of ${l.batches.length}")
@@ -246,7 +246,7 @@ object OkayArrow extends ArrowCodec:
     catch case _: IndexOutOfBoundsException | _: NegativeArraySizeException =>
       refuse("an offset points outside the file (cut short?)")
 
-  override def readFile(bytes: Array[Byte]): Table =
+  override def readFile(bytes: Array[Byte])(using okay.compress.Compression): Table =
     try
       val l = layout(bytes)
       readStream(framed(bytes, (l.schema +: l.dictionaries) ++ l.batches))
@@ -344,7 +344,7 @@ object OkayArrow extends ArrowCodec:
 
   // ---- reading -------------------------------------------------------------
 
-  def read(bytes: Array[Byte]): Table =
+  def read(bytes: Array[Byte])(using okay.compress.Compression): Table =
     try readStream(bytes)
     catch case _: IndexOutOfBoundsException | _: NegativeArraySizeException =>
       refuse("an offset points outside the stream (cut short, or not Arrow)")
@@ -367,7 +367,7 @@ object OkayArrow extends ArrowCodec:
     }
     Field(name, f.u8(2, 0), f.table(3).getOrElse(Fb.At.empty), f.tables(5).map(parseField(_, depth + 1)), dict)
 
-  private def readStream(bytes: Array[Byte]): Table =
+  private def readStream(bytes: Array[Byte])(using okay.compress.Compression): Table =
     val in = In(bytes)
     var fields = Vector.empty[Field]
     var metadata = Vector.empty[(String, String)]
@@ -427,7 +427,8 @@ object OkayArrow extends ArrowCodec:
 
   /** one record batch's body, read IN PLACE: a buffer is a position and a
    * length in `bytes`, copied once into its column */
-  private final class Batch(rb: Fb.At, stream: Array[Byte], bodyAt: Int, bodyLength: Int, dictionaries: Map[Long, Column]):
+  private final class Batch(rb: Fb.At, stream: Array[Byte], bodyAt: Int, bodyLength: Int, dictionaries: Map[Long, Column])
+                           (using okay.compress.Compression):
     private val rows = rb.i64(0, 0L)
     if rows < 0 || rows > Int.MaxValue then refuse(s"a batch of $rows rows")
     private val nodes = rb.structs(1, 16)
@@ -572,11 +573,11 @@ object OkayArrow extends ArrowCodec:
   /** every buffer of a compressed body decompressed, laid out as an
    * uncompressed body: its bytes, where it starts, its length, the buffers */
   private def decompressed(c: Fb.At, bufs: Vector[Array[Byte]], stream: Array[Byte], body: Int, bodyLen: Int)
-      : (Array[Byte], Int, Int, Vector[Array[Byte]]) =
+                          (using cmp: okay.compress.Compression): (Array[Byte], Int, Int, Vector[Array[Byte]]) =
     if c.u8(1, 0) != 0 then refuse(s"body compression method ${c.u8(1, 0)}; this reads per-buffer compression")
     val codec: okay.compress.Codec = c.u8(0, 0) match
-      case 0 => okay.compress.Lz4Frame
-      case 1 => okay.compress.Zstd
+      case 0 => cmp.lz4
+      case 1 => cmp.zstd
       case other => refuse(s"body compression codec $other; this reads LZ4_FRAME and ZSTD")
     val parts = bufs.map { b =>
       val off = Fb.i64le(b, 0); val len = Fb.i64le(b, 8)

@@ -11,7 +11,20 @@ package okay.compress
  * format's end rules: the last 5 bytes are literals, and no match starts
  * within the last 12.
  */
-object Lz4Block:
+/** the LZ4 BLOCK codec a frame is built over: ours (`Lz4Block`), or a
+ * library's (`Aircompressor` on the JVM) — the frame envelope is the same */
+trait Lz4Blocks:
+  /** the most a block of `n` bytes can grow to */
+  def bound(n: Int): Int
+  /** `src[from, from + len)` compressed into `dst` at `at`; answers the
+   * compressed length (`dst` must hold `bound(len)` from `at`) */
+  def compress(src: Array[Byte], from: Int, len: Int, dst: Array[Byte], at: Int): Int
+  /** `src[from, from + len)` decompressed into `dst` at `at`, no further
+   * than `limit`; a match may reach back to `floor` (a dependent block's
+   * into earlier output); answers the new end */
+  def decompress(src: Array[Byte], from: Int, len: Int, dst: Array[Byte], at: Int, limit: Int, floor: Int = 0): Int
+
+object Lz4Block extends Lz4Blocks:
   private final val MinMatch = 4
   private final val LastLiterals = 5
   private final val MfLimit = 12
@@ -93,7 +106,7 @@ object Lz4Block:
    * a heap `IntRef`, and every access in this loop would go through it —
    * measured 5-10x slower than aircompressor before (okay-compress stage 5).
    * Short copies are loops: `arraycopy`'s setup costs more than 16 bytes. */
-  def decompress(src: Array[Byte], from: Int, len: Int, dst: Array[Byte], at: Int, limit: Int, floor: Int = 0): Int =
+  def decompress(src: Array[Byte], from: Int, len: Int, dst: Array[Byte], at: Int, limit: Int, floor: Int): Int =
     val end = from + len
     var ip = from
     var op = at
@@ -159,7 +172,8 @@ object Lz4Block:
  * block's matches reach into the earlier output, which one contiguous
  * output buffer gives for free). A dictionary id is refused by name.
  */
-object Lz4Frame extends Codec:
+/** the frame over any block codec; `Lz4Frame` is it over ours */
+class Lz4FrameCodec(blocks: Lz4Blocks) extends Codec:
   def name = "lz4"
   private final val Magic = 0x184d2204
   private final val BlockMax = 4 << 20
@@ -175,8 +189,8 @@ object Lz4Frame extends Codec:
     var from = 0
     while from < bytes.length do
       val len = math.min(BlockMax, bytes.length - from)
-      out.room(4 + Lz4Block.bound(len))
-      val c = Lz4Block.compress(bytes, from, len, out.buf, out.n + 4)
+      out.room(4 + blocks.bound(len))
+      val c = blocks.compress(bytes, from, len, out.buf, out.n + 4)
       if c < len then
         Le.put32(out.buf, out.n, c)
         out.n += 4 + c
@@ -235,12 +249,12 @@ object Lz4Frame extends Codec:
         val hc = bytes(ip) & 0xff
         if hc != ((XxHash.xxh32(bytes, desc, ip - desc) >>> 8) & 0xff) then corrupt("the header checksum does not match")
         ip += 1
-        var blocks = true
-        while blocks do
+        var more = true
+        while more do
           need(4, "a block size")
           val raw = Le.i32(bytes, ip)
           ip += 4
-          if raw == 0 then blocks = false
+          if raw == 0 then more = false
           else
             val stored = (raw & 0x80000000) != 0
             val len = raw & 0x7fffffff
@@ -249,7 +263,7 @@ object Lz4Frame extends Codec:
             if stored then out.bytes(bytes, ip, len)
             else
               out.room(blockMax)
-              out.n = Lz4Block.decompress(bytes, ip, len, out.buf, out.n, out.n + blockMax, start)
+              out.n = blocks.decompress(bytes, ip, len, out.buf, out.n, out.n + blockMax, start)
             if blockChecksum then
               need(4, "a block checksum")
               if Le.i32(bytes, ip + len) != XxHash.xxh32(bytes, ip, len) then corrupt("a block checksum does not match")
@@ -261,3 +275,5 @@ object Lz4Frame extends Codec:
           if Le.i32(bytes, ip) != XxHash.xxh32(out.buf, start, out.n - start) then corrupt("the content checksum does not match")
           ip += 4
     out.result()
+
+object Lz4Frame extends Lz4FrameCodec(Lz4Block)

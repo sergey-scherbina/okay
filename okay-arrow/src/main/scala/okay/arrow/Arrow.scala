@@ -20,16 +20,18 @@ trait ArrowCodec:
   def write(t: Table): Array[Byte]
   /** an IPC stream as a table (several batches concatenated, dictionaries
    * decoded); anything outside the model, or a stream cut short, is
-   * refused by name */
-  def read(bytes: Array[Byte]): Table
+   * refused by name. A compressed body is read by whichever
+   * `okay.compress.Compression` is in scope — ours by default,
+   * `Aircompressor.given` for the library's (compress-crypto-facades) */
+  def read(bytes: Array[Byte])(using okay.compress.Compression): Table
   /** a table as an IPC FILE: the stream, a footer, random access by batch */
   def writeFile(t: Table, compression: Option[okay.compress.Codec] = None): Array[Byte]
   /** every record batch of an IPC file, as one table */
-  def readFile(bytes: Array[Byte]): Table
+  def readFile(bytes: Array[Byte])(using okay.compress.Compression): Table
   /** how many record batches an IPC file holds */
   def fileBatches(bytes: Array[Byte]): Int
   /** the i-th record batch of an IPC file, found from its footer */
-  def readFileBatch(bytes: Array[Byte], i: Int): Table
+  def readFileBatch(bytes: Array[Byte], i: Int)(using okay.compress.Compression): Table
 
 object ArrowCodec:
   /** THE DEFAULT: ours, on every platform */
@@ -44,7 +46,7 @@ object ArrowCodec:
   /** typed rows through either implementation (`Rows`, stage 5) */
   extension (codec: ArrowCodec)
     def encode[A](rows: Seq[A])(using okay.codec.Schema[A]): Array[Byte] = codec.write(Rows.table(rows))
-    def decode[A](bytes: Array[Byte])(using okay.codec.Schema[A]): Either[String, Vector[A]] = Rows.rows[A](codec.read(bytes))
+    def decode[A](bytes: Array[Byte])(using okay.codec.Schema[A], okay.compress.Compression): Either[String, Vector[A]] = Rows.rows[A](codec.read(bytes))
 
 /** the unit of a timestamp or a duration */
 enum TimeUnit:

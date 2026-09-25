@@ -34,10 +34,12 @@ final case class RemoteCompression(codec: Option[okay.compress.Codec], tag: Int)
 
 object RemoteCompression:
   given none: RemoteCompression = RemoteCompression(None, 0)
+  // the codec is whichever `Compression` is in scope where the import is
+  // made: ours by default, `Aircompressor.given` for the library's
   object Lz4:
-    given lz4: RemoteCompression = RemoteCompression(Some(okay.compress.Lz4Frame), 1)
+    given lz4(using c: okay.compress.Compression): RemoteCompression = RemoteCompression(Some(c.lz4), 1)
   object Zstd:
-    given zstd: RemoteCompression = RemoteCompression(Some(okay.compress.Zstd), 2)
+    given zstd(using c: okay.compress.Compression): RemoteCompression = RemoteCompression(Some(c.zstd), 2)
 
 /**
  * The remote channel (specs/cluster.md): the Channel discipline with
@@ -57,7 +59,7 @@ object Remote {
    * Listen for one peer: accepted chunks land in an ordinary local
    * Channel — downstream code cannot tell it is remote.
    */
-  def listen[A](server: ServerSocket)(using Schema[A], Scheduler): Channel[Chunk[A]] =
+  def listen[A](server: ServerSocket)(using Schema[A], Scheduler, okay.compress.Compression): Channel[Chunk[A]] =
     val ch = Channel[Chunk[A]]()
     val _ = summon[Scheduler].fork { () =>
       okay.async:
@@ -95,12 +97,12 @@ object Remote {
     in.readFully(payload)
     Some((fmt, cmp, payload))
 
-  private def decode[A](fmt: Int, cmp: Int, payload: Array[Byte])(using Schema[A]): Either[String, List[A]] =
+  private def decode[A](fmt: Int, cmp: Int, payload: Array[Byte])(using Schema[A], c: okay.compress.Compression): Either[String, List[A]] =
     try
       def plain(): Array[Byte] = cmp match
         case 0 => payload
-        case 1 => okay.compress.Lz4Frame.decompress(payload)
-        case 2 => okay.compress.Zstd.decompress(payload)
+        case 1 => c.lz4.decompress(payload)
+        case 2 => c.zstd.decompress(payload)
         case other => throw IllegalStateException(s"compression tag $other")
       fmt match
         case 'A' => OkayArrow.decode[A](payload).map(_.toList)      // Arrow carries its own compression

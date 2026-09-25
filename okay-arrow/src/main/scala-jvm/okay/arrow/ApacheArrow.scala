@@ -75,7 +75,7 @@ object ApacheArrow extends ArrowCodec:
       finally root.close()
     }
 
-  def read(bytes: Array[Byte]): Table =
+  def read(bytes: Array[Byte])(using okay.compress.Compression): Table =
     ready
     withAllocator { alloc =>
       val r = ArrowStreamReader(java.io.ByteArrayInputStream(bytes), alloc)
@@ -127,14 +127,14 @@ object ApacheArrow extends ArrowCodec:
 
   override def fileBatches(bytes: Array[Byte]): Int = fileReader(bytes)(_.getRecordBlocks.size)
 
-  override def readFileBatch(bytes: Array[Byte], i: Int): Table = fileReader(bytes) { r =>
+  override def readFileBatch(bytes: Array[Byte], i: Int)(using okay.compress.Compression): Table = fileReader(bytes) { r =>
     val blocks = r.getRecordBlocks
     if i < 0 || i >= blocks.size then throw IllegalStateException(s"not an Arrow file Arrow Java reads: batch $i of ${blocks.size}")
     r.loadRecordBatch(blocks.get(i)): Unit
     fromRoot(r.getVectorSchemaRoot)
   }
 
-  override def readFile(bytes: Array[Byte]): Table = fileReader(bytes) { r =>
+  override def readFile(bytes: Array[Byte])(using okay.compress.Compression): Table = fileReader(bytes) { r =>
     val root = r.getVectorSchemaRoot
     val names = root.getSchema.getFields.asScala.toVector.map(_.getName)
     var parts = Vector.empty[Vector[Column]]

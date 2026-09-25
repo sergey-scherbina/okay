@@ -1651,6 +1651,9 @@ lazy val okayCrypto = crossProject(JVMPlatform, JSPlatform)
   .jvmSettings(
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    // OPTIONAL for consumers (`BouncyCastleKeccak.given`, compress-crypto-facades):
+    // the library Keccak beside ours; the test compares the two
+    libraryDependencies += "org.bouncycastle" % "bcprov-jdk18on" % "1.78.1" % "optional;test",
   )
 
 lazy val okayPg: sbtcrossproject.CrossProject = crossProject(JVMPlatform, JSPlatform)
@@ -2567,7 +2570,9 @@ lazy val okayCompress = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
-    libraryDependencies += "io.airlift" % "aircompressor" % "2.0.3" % "test;jmh",
+    // OPTIONAL for consumers (`Aircompressor.given`, compress-crypto-facades);
+    // the tests and the JMH compare against it, so they carry it explicitly
+    libraryDependencies += "io.airlift" % "aircompressor" % "2.0.3" % "optional;test;jmh",
   )
   .jsSettings(Compile / unmanagedSourceDirectories +=
     baseDirectory.value.getParentFile / "src" / "main" / "scala-js")
@@ -2604,6 +2609,9 @@ lazy val okayArrow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       // compare against it, so they carry it explicitly
       "org.apache.arrow" % "arrow-vector" % "19.0.0" % "optional;test;jmh",
       "org.apache.arrow" % "arrow-memory-unsafe" % "19.0.0" % "optional;test;jmh",
+      // okay-compress's optional library implementation, for the test that
+      // reads a body under `Aircompressor.given` (compress-crypto-facades)
+      "io.airlift" % "aircompressor" % "2.0.3" % Test,
     ),
     Test / fork := true,
     Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED",
