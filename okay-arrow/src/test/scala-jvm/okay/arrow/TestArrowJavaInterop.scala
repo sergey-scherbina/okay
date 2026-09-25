@@ -6,14 +6,14 @@ import org.apache.arrow.memory.RootAllocator
  * the same table — no number is recorded otherwise */
 class TestArrowJavaInterop extends munit.FunSuite:
 
-  test("Arrow Java reads the stream ArrowIpc writes, value for value") {
+  test("Arrow Java reads the stream OkayArrow writes, value for value") {
     val d = ArrowJava.data(10000)
     val alloc = RootAllocator()
-    try assert(ArrowJava.same(d, ArrowJava.readToArrays(alloc, okay.codec.ArrowIpc.write(d.okay))))
+    try assert(ArrowJava.same(d, ArrowJava.readToArrays(alloc, okay.arrow.OkayArrow.write(d.okay))))
     finally alloc.close()
   }
 
-  test("ArrowIpc reads the stream Arrow Java writes, value for value") {
+  test("OkayArrow reads the stream Arrow Java writes, value for value") {
     val d = ArrowJava.data(10000)
     val alloc = RootAllocator()
     try assert(ArrowJava.same(d, ArrowJava.okayToArrays(ArrowJava.writeFromArrays(alloc, d))))

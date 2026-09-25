@@ -1,7 +1,6 @@
 package okay.py
 
-import okay.codec.ArrowIpc
-import okay.codec.ArrowIpc.{Column, Table}
+import okay.arrow.{Column, OkayArrow, Table}
 
 object PyArrow:
   /** a python with pyarrow: `OKAY_PYARROW_PYTHON`, else python3 when it has it */
@@ -22,7 +21,7 @@ object PyArrow:
 
 /**
  * py-arrow stage 1, against the real thing: pyarrow reads (and fully
- * validates) the streams `ArrowIpc` writes, and `ArrowIpc` reads the
+ * validates) the streams `OkayArrow` writes, and `OkayArrow` reads the
  * streams pyarrow writes, including shapes this side never makes —
  * several record batches, a validity buffer left out.
  */
@@ -37,9 +36,9 @@ class TestArrowPy extends munit.FunSuite:
   private def fromPy(script: String): Table =
     val f = java.nio.file.Files.createTempFile("okay-arrow", ".arrows")
     PyArrow.run(script, f): Unit
-    ArrowIpc.read(java.nio.file.Files.readAllBytes(f))
+    OkayArrow.read(java.nio.file.Files.readAllBytes(f))
 
-  test("pyarrow reads and validates what ArrowIpc writes: types, nulls, NaN, text, metadata") {
+  test("pyarrow reads and validates what OkayArrow writes: types, nulls, NaN, text, metadata") {
     val t = Table(Vector(
       "id" -> Column.Int64(Array(1L, -2L, Long.MaxValue, 0L), Array(true, true, true, false)),
       "temp" -> Column.Float64(Array(0.5, Double.NaN, -0.0, 1e300), Array(true, true, false, true)),
@@ -56,14 +55,14 @@ def cell(v):
 print(json.dumps({"types": [str(f.type) for f in t.schema],
                   "meta": {k.decode(): v.decode() for k, v in (t.schema.metadata or {}).items()},
                   "rows": [[cell(v) for v in r.values()] for r in t.to_pylist()]}, ensure_ascii=False))
-""", tmp(ArrowIpc.write(t)))
+""", tmp(OkayArrow.write(t)))
     assertEquals(out,
       """{"types": ["int64", "double", "string", "bool", "null"], "meta": {"okay": "{\"id\":7}"}, """ +
       """"rows": [[1, 0.5, "kyiv", true, null], [-2, "nan", "", false, null], """ +
       """[9223372036854775807, null, "чай ☕", true, null], [null, 1e+300, null, true, null]]}""")
   }
 
-  test("ArrowIpc reads what pyarrow writes: every type, nulls, a column with no validity buffer") {
+  test("OkayArrow reads what pyarrow writes: every type, nulls, a column with no validity buffer") {
     val t = fromPy("""
 import sys, pyarrow as pa, pyarrow.ipc as ipc
 t = pa.table({"i": pa.array([1, None, 3], pa.int64()), "f": [1.5, float("nan"), None],
@@ -113,7 +112,7 @@ with ipc.new_stream(sys.argv[1], t.schema) as w: w.write_table(t)
 import sys, pyarrow.ipc as ipc
 t = ipc.open_stream(open(sys.argv[1], "rb").read()).read_all()
 t.validate(full=True); print(t.num_rows, t.schema.names)
-""", tmp(ArrowIpc.write(empty))), "0 ['a']")
+""", tmp(OkayArrow.write(empty))), "0 ['a']")
     val back = fromPy("""
 import sys, pyarrow as pa, pyarrow.ipc as ipc
 t = pa.table({"a": pa.array([], pa.int64())})

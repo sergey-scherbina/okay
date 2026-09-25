@@ -1,7 +1,8 @@
 package okay.py
 
 import PyValue.*
-import okay.codec.{ArrowIpc, Json}
+import okay.arrow.OkayArrow
+import okay.codec.Json
 
 /**
  * py-arrow stage 4: a frame's round trip through a real Python worker,
@@ -49,9 +50,9 @@ class MeasurePyArrow extends munit.FunSuite:
         val jsonEnc = median(5)(Json.print(Wire.encFrame(f)))
         val jsonDec = median(5)(Wire.decFrame(Json.parse(text)))
         val table = ArrowFrames.table(f).toOption.get
-        val bytes = ArrowIpc.write(table)
-        val arrowEnc = median(5)(ArrowIpc.write(ArrowFrames.table(f).toOption.get))
-        val arrowDec = median(5)(ArrowFrames.frame(ArrowIpc.read(bytes)))
+        val bytes = OkayArrow.write(table)
+        val arrowEnc = median(5)(OkayArrow.write(ArrowFrames.table(f).toOption.get))
+        val arrowDec = median(5)(ArrowFrames.frame(OkayArrow.read(bytes)))
         println(f"$rows%8d | $jsonRt%9.0f $arrowRt%9.0f $tableRt%9.0f | $jsonEnc%9.0f $jsonDec%9.0f ${text.length / 1e6}%9.1f | $arrowEnc%9.0f $arrowDec%9.0f ${bytes.length / 1e6}%9.1f")
       assertEquals(arrow.arrowFrames._1, arrow.arrowFrames._2)
     finally

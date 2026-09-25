@@ -1,7 +1,6 @@
 package okay.arrow
 
 import java.nio.charset.StandardCharsets.UTF_8
-import okay.codec.ArrowIpc
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.vector.{BigIntVector, Float8Vector, VarCharVector, VectorSchemaRoot}
 import org.apache.arrow.vector.ipc.{ArrowStreamReader, ArrowStreamWriter}
@@ -17,10 +16,10 @@ object ArrowJava:
    * null in every tenth row */
   final case class Data(a: Array[Double], b: Array[Long], s: Array[String], sValid: Array[Boolean]):
     def rows: Int = a.length
-    def okay: ArrowIpc.Table = ArrowIpc.Table(Vector(
-      "a" -> ArrowIpc.Column.Float64(a, Array.fill(rows)(true)),
-      "b" -> ArrowIpc.Column.Int64(b, Array.fill(rows)(true)),
-      "s" -> ArrowIpc.Column.Utf8(s, sValid)), Vector.empty)
+    def okay: Table = Table(Vector(
+      "a" -> Column.Float64(a, Array.fill(rows)(true)),
+      "b" -> Column.Int64(b, Array.fill(rows)(true)),
+      "s" -> Column.Utf8(s, sValid)), Vector.empty)
 
   def data(rows: Int): Data =
     Data(Array.tabulate(rows)(_ + 0.5), Array.tabulate(rows)(_.toLong),
@@ -74,8 +73,8 @@ object ArrowJava:
 
   /** ours: IPC bytes to the same arrays */
   def okayToArrays(bytes: Array[Byte]): Data =
-    ArrowIpc.read(bytes).cols.map(_._2) match
-      case Vector(ArrowIpc.Column.Float64(a, _), ArrowIpc.Column.Int64(b, _), ArrowIpc.Column.Utf8(s, ok)) => Data(a, b, s, ok)
+    OkayArrow.read(bytes).cols.map(_._2) match
+      case Vector(Column.Float64(a, _), Column.Int64(b, _), Column.Utf8(s, ok)) => Data(a, b, s, ok)
       case other => throw IllegalStateException(s"not the stage-0 table: $other")
 
   def same(x: Data, y: Data): Boolean =

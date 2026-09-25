@@ -2481,7 +2481,7 @@ lazy val okaySecurityArgon2 = project
 lazy val okayPy = (project in file("okay-py"))
   // okay-agent for TESTS only: its Durable journals these operations
   // through their own `Journalled` instances (foreign-journalled)
-  .dependsOn(okay.jvm, okayCodec.jvm, okayStream.jvm, okayAgent.jvm % Test)
+  .dependsOn(okay.jvm, okayCodec.jvm, okayArrow.jvm, okayStream.jvm, okayAgent.jvm % Test)
   // JMH for the wire's codecs (wire-compression-measured)
   .enablePlugins(JmhPlugin)
   .settings(
@@ -2489,25 +2489,34 @@ lazy val okayPy = (project in file("okay-py"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
-// okay-arrow: the Arrow columnar format, our own (specs/okay-arrow.md).
-// Stage 0 is a MEASUREMENT against Arrow Java, which is therefore a
-// TEST-only dependency (sbt-jmh's Jmh configuration extends Test): the
-// module itself never depends on it.
-lazy val okayArrow = (project in file("okay-arrow"))
-  .dependsOn(okayCodec.jvm)
-  .enablePlugins(JmhPlugin)
+// okay-arrow: Arrow IPC behind one facade, two implementations
+// (specs/okay-arrow.md). OkayArrow is ours, on every platform, with no
+// dependency; ApacheArrow (JVM) binds Apache Arrow Java, an OPTIONAL
+// dependency (`% Optional`: Maven's <optional>, so no consumer — okay-py
+// included — gets it transitively; a program that imports ApacheArrow
+// adds it). The tests and the stage-0 JMH compare the two, so Arrow's
+// memory flags are set for the forked test JVM.
+lazy val okayArrow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-arrow"))
   .settings(
     name := "okay-arrow",
-    // Arrow Java's memory in the tests that compare against it: its
-    // unsafe allocator needs these on JDK 17+ (and the last one on 24+)
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
+    libraryDependencies ++= Seq(
+      "org.apache.arrow" % "arrow-vector" % "19.0.0" % Optional,
+      "org.apache.arrow" % "arrow-memory-unsafe" % "19.0.0" % Optional,
+    ),
     Test / fork := true,
     Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED",
       "--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED"),
-    libraryDependencies ++= Seq(
-      "org.scalameta" %% "munit" % "1.1.1" % Test,
-      "org.apache.arrow" % "arrow-vector" % "19.0.0" % Test,
-      "org.apache.arrow" % "arrow-memory-unsafe" % "19.0.0" % Test,
-    ),
   )
 
 // okay-foreign-workflow: foreign workers inside okay's durable layers
@@ -3183,7 +3192,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow, okayForeignWorkflow, okayR,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayForeignWorkflow, okayR,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,

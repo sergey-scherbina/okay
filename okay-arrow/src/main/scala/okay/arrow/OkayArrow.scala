@@ -1,9 +1,10 @@
-package okay.codec
+package okay.arrow
 
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**
- * Arrow IPC STREAMS, written and read by hand (py-arrow, specs/py-arrow.md)
+ * OURS (okay-arrow's default implementation): Arrow IPC STREAMS,
+ * written and read by hand (py-arrow, specs/py-arrow.md)
  * for the five columns a foreign frame carries: int64, float64, utf8,
  * bool and the null type, every one nullable. A stream is a schema
  * message, record batches, and an end-of-stream marker; each message is
@@ -13,39 +14,16 @@ import java.nio.charset.StandardCharsets.UTF_8
  * Why not Arrow Java: it brings its own off-heap memory (netty or
  * unsafe) and `--add-opens` for what is, here, four primitive layouts
  * and a string one. okay writes its own CBOR for the same reason, and
- * pyarrow checks every byte this writes (TestArrowPy).
+ * pyarrow and Arrow Java check every byte this writes (TestArrowPy in
+ * okay-py, TestArrowJavaInterop here).
  *
  * A stream this does not understand — another column type, a compressed
  * body, a dictionary — is refused by name, and so is one cut short.
  */
-object ArrowIpc:
+object OkayArrow extends ArrowCodec:
 
-  /** one column; `valid(i)` false is a null at row i (the value there is
-   * ignored). Arrays, not boxed cells: a frame is often large. */
-  enum Column:
-    case Int64(values: Array[Long], valid: Array[Boolean])
-    case Float64(values: Array[Double], valid: Array[Boolean])
-    case Utf8(values: Array[String], valid: Array[Boolean])
-    case Bool(values: Array[Boolean], valid: Array[Boolean])
-    /** Arrow's null type: every row null, no buffers */
-    case Nulls(rows: Int)
+  def name = "okay"
 
-    def length: Int = this match
-      case Int64(v, _) => v.length
-      case Float64(v, _) => v.length
-      case Utf8(v, _) => v.length
-      case Bool(v, _) => v.length
-      case Nulls(n) => n
-
-  /** a table: named columns of one length, and the schema's metadata */
-  final case class Table(cols: Vector[(String, Column)], metadata: Vector[(String, String)]):
-    def rows: Int = cols.headOption.fold(0)(_._2.length)
-
-  /** whether these bytes are an Arrow stream: its first message's
-   * continuation marker, which begins no JSON text and no CBOR item of
-   * the okay wire */
-  def isStream(bytes: Array[Byte]): Boolean =
-    bytes.length >= 4 && bytes(0) == -1 && bytes(1) == -1 && bytes(2) == -1 && bytes(3) == -1
 
   // ---- writing -------------------------------------------------------------
 
@@ -54,26 +32,87 @@ object ArrowIpc:
     t.cols.find(_._2.length != n).foreach { (name, c) =>
       throw IllegalArgumentException(s"column '$name' has ${c.length} rows, the first has $n")
     }
-    val out = Bytes()
-    message(out, HeaderSchema, schema(t), Array.emptyByteArray)
-    val (batch, body) = recordBatch(t)
-    message(out, HeaderRecordBatch, batch, body)
-    out.i32(-1); out.i32(0)                      // end of stream
-    out.result()
+    // the plan first, so the stream is written ONCE into an array of its
+    // exact size (arrow-ipc-fast: growing by doubling and copying out made
+    // 129 MB of garbage for a 14 MB stream)
+    val plans = t.cols.map((_, c) => plan(c))
+    val nodes = Bytes()
+    val buffers = Bytes()
+    var bodyLen = 0L
+    for (p, (_, c)) <- plans.zip(t.cols) do
+      nodes.i64(c.length.toLong); nodes.i64(p.nulls.toLong)
+      for len <- p.lengths do
+        buffers.i64(bodyLen); buffers.i64(len.toLong)
+        bodyLen += pad8(len)
+    if bodyLen > Int.MaxValue - 1024 then throw IllegalArgumentException(s"a batch of $bodyLen bytes: past what one JVM array holds")
+    val schemaMsg = messageHead(HeaderSchema, schema(t), 0L)
+    val batch = Fb.Table(Vector(
+      Some(Fb.I64(n.toLong)),
+      Some(Fb.Structs(nodes.result(), 16)),
+      Some(Fb.Structs(buffers.result(), 16))))
+    val batchHead = messageHead(HeaderRecordBatch, batch, bodyLen)
+    val out = new Array[Byte](schemaMsg.length + batchHead.length + bodyLen.toInt + 8)
+    System.arraycopy(schemaMsg, 0, out, 0, schemaMsg.length)
+    System.arraycopy(batchHead, 0, out, schemaMsg.length, batchHead.length)
+    var at = schemaMsg.length + batchHead.length
+    for p <- plans; (len, fill) <- p.lengths.zip(p.fills) do
+      fill(out, at)
+      at += pad8(len)
+    putInt(out, at, -1)                           // end of stream: marker, then 0
+    out
 
-  /** one encapsulated message: marker, metadata length (padded so the
-   * body starts 8-aligned), the FlatBuffer, the body */
-  private def message(out: Bytes, headerType: Int, header: Fb.Table, body: Array[Byte]): Unit =
-    val msg = Fb.Table(Vector(
-      Some(Fb.I16(MetadataV5)),
-      Some(Fb.U8(headerType)),
-      Some(header),
-      Some(Fb.I64(body.length.toLong))))
-    val fb = Fb.finish(msg)
+  private def pad8(len: Int): Int = (len + 7) & ~7
+
+  /** one column's buffers: their lengths, what writes each at an offset,
+   * and the column's null count */
+  private final case class Plan(lengths: Vector[Int], fills: Vector[(Array[Byte], Int) => Unit], nulls: Int)
+
+  private def plan(c: Column): Plan =
+    def validity(ok: Array[Boolean]): (Int, (Array[Byte], Int) => Unit, Int) =
+      val nulls = ok.count(!_)
+      if nulls == 0 then (0, (_, _) => (), 0)       // absent: every row valid
+      else ((ok.length + 7) / 8, (out, at) => bits(ok, out, at), nulls)
+    c match
+      case Column.Nulls(_) => Plan(Vector.empty, Vector.empty, c.length)
+      case Column.Int64(v, ok) =>
+        val (vl, vf, k) = validity(ok)
+        Plan(Vector(vl, 8 * v.length), Vector(vf, (out, at) => putLongs(out, at, v)), k)
+      case Column.Float64(v, ok) =>
+        val (vl, vf, k) = validity(ok)
+        Plan(Vector(vl, 8 * v.length), Vector(vf, (out, at) => putDoubles(out, at, v)), k)
+      case Column.Bool(v, ok) =>
+        val (vl, vf, k) = validity(ok)
+        Plan(Vector(vl, (v.length + 7) / 8), Vector(vf, (out, at) => bits(v, out, at)), k)
+      case Column.Utf8(v, ok) =>
+        val (vl, vf, k) = validity(ok)
+        // the offsets from each string's UTF-8 length, counted without
+        // encoding; the bytes are then encoded straight into the stream
+        val offsets = new Array[Int](v.length + 1)
+        var total = 0L
+        var i = 0
+        while i < v.length do
+          if ok(i) && v(i) != null then total += Utf8.length(v(i))
+          if total > Int.MaxValue then throw IllegalArgumentException("a utf8 column past 2 GiB: Arrow's large_utf8, not written here")
+          offsets(i + 1) = total.toInt
+          i += 1
+        Plan(Vector(vl, 4 * offsets.length, total.toInt), Vector(vf,
+          (out, at) => putInts(out, at, offsets),
+          (out, at) =>
+            var j = 0
+            while j < v.length do
+              if ok(j) && v(j) != null then Utf8.encode(v(j), out, at + offsets(j))
+              j += 1), k)
+
+  /** a message's prefix and metadata, padded so a body after it starts
+   * 8-aligned (the body itself is written in place by `write`) */
+  private def messageHead(headerType: Int, header: Fb.Table, bodyLen: Long): Array[Byte] =
+    val fb = Fb.finish(Fb.Table(Vector(
+      Some(Fb.I16(MetadataV5)), Some(Fb.U8(headerType)), Some(header), Some(Fb.I64(bodyLen)))))
     val padded = (fb.length + 8 + 7) / 8 * 8 - 8
-    out.i32(-1); out.i32(padded)
-    out.bytes(fb); out.zeros(padded - fb.length)
-    out.bytes(body)
+    val out = new Array[Byte](8 + padded)
+    putInt(out, 0, -1); putInt(out, 4, padded)
+    System.arraycopy(fb, 0, out, 8, fb.length)
+    out
 
   private def schema(t: Table): Fb.Table =
     def field(name: String, c: Column): Fb.Table =
@@ -92,54 +131,57 @@ object ArrowIpc:
       Some(Fb.Tables(t.cols.map(field))),
       if meta.isEmpty then None else Some(Fb.Tables(meta))))
 
-  private def recordBatch(t: Table): (Fb.Table, Array[Byte]) =
-    val body = Bytes()
-    val nodes = Bytes()
-    val buffers = Bytes()
-    def buffer(write: Bytes => Unit): Unit =
-      val start = body.size
-      write(body)
-      val len = body.size - start
-      body.zeros((8 - len % 8) % 8)
-      buffers.i64(start.toLong); buffers.i64(len.toLong)
-    def validity(valid: Array[Boolean]): Int =
-      val nulls = valid.count(!_)
-      if nulls == 0 then buffer(_ => ())           // absent: every row valid
-      else buffer(b => b.bytes(bitmap(valid)))
-      nulls
-    for (_, c) <- t.cols do
-      val nulls = c match
-        case Column.Int64(v, ok) =>
-          val k = validity(ok); buffer(b => v.foreach(b.i64)); k
-        case Column.Float64(v, ok) =>
-          val k = validity(ok); buffer(b => v.foreach(x => b.i64(java.lang.Double.doubleToRawLongBits(x)))); k
-        case Column.Bool(v, ok) =>
-          val k = validity(ok); buffer(b => b.bytes(bitmap(v))); k
-        case Column.Utf8(v, ok) =>
-          val k = validity(ok)
-          val encoded = v.indices.map(i => if ok(i) && v(i) != null then v(i).getBytes(UTF_8) else Array.emptyByteArray)
-          buffer { b =>
-            var at = 0
-            b.i32(0)
-            encoded.foreach { e => at += e.length; b.i32(at) }
-          }
-          buffer(b => encoded.foreach(b.bytes))
-          k
-        case Column.Nulls(n) => n
-      nodes.i64(c.length.toLong); nodes.i64(nulls.toLong)
-    val batch = Fb.Table(Vector(
-      Some(Fb.I64(t.rows.toLong)),
-      Some(Fb.Structs(nodes.result(), 16)),
-      Some(Fb.Structs(buffers.result(), 16))))
-    (batch, body.result())
-
-  private def bitmap(bits: Array[Boolean]): Array[Byte] =
-    val out = new Array[Byte]((bits.length + 7) / 8)
+  /** a bitmap, LSB first, written at `at` */
+  private def bits(v: Array[Boolean], out: Array[Byte], at: Int): Unit =
     var i = 0
-    while i < bits.length do
-      if bits(i) then out(i >> 3) = (out(i >> 3) | (1 << (i & 7))).toByte
+    while i < v.length do
+      if v(i) then out(at + (i >> 3)) = (out(at + (i >> 3)) | (1 << (i & 7))).toByte
       i += 1
-    out
+
+  // bulk little-endian copies: a view buffer's put/get is one intrinsic
+  // copy on the JVM, where a loop of shifts was one store per byte
+  private def le(out: Array[Byte], at: Int, len: Int): java.nio.ByteBuffer =
+    java.nio.ByteBuffer.wrap(out, at, len).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+  private def putLongs(out: Array[Byte], at: Int, v: Array[Long]): Unit = { val _ = le(out, at, 8 * v.length).asLongBuffer().put(v) }
+  private def putDoubles(out: Array[Byte], at: Int, v: Array[Double]): Unit = { val _ = le(out, at, 8 * v.length).asDoubleBuffer().put(v) }
+  private def putInts(out: Array[Byte], at: Int, v: Array[Int]): Unit = { val _ = le(out, at, 4 * v.length).asIntBuffer().put(v) }
+  private def putInt(out: Array[Byte], at: Int, v: Int): Unit =
+    out(at) = v.toByte; out(at + 1) = (v >> 8).toByte; out(at + 2) = (v >> 16).toByte; out(at + 3) = (v >> 24).toByte
+
+  /** UTF-8 as `String.getBytes(UTF_8)` makes it (a lone surrogate is '?'),
+   * counted, then encoded in place: no array per string */
+  private object Utf8:
+    def length(s: String): Int =
+      var n = 0
+      var i = 0
+      while i < s.length do
+        val c = s.charAt(i)
+        if c < 0x80 then n += 1
+        else if c < 0x800 then n += 2
+        else if Character.isHighSurrogate(c) && i + 1 < s.length && Character.isLowSurrogate(s.charAt(i + 1)) then
+          n += 4; i += 1
+        else if Character.isSurrogate(c) then n += 1
+        else n += 3
+        i += 1
+      n
+    def encode(s: String, out: Array[Byte], start: Int): Unit =
+      var at = start
+      var i = 0
+      while i < s.length do
+        val c = s.charAt(i)
+        if c < 0x80 then { out(at) = c.toByte; at += 1 }
+        else if c < 0x800 then
+          out(at) = (0xc0 | (c >> 6)).toByte; out(at + 1) = (0x80 | (c & 0x3f)).toByte; at += 2
+        else if Character.isHighSurrogate(c) && i + 1 < s.length && Character.isLowSurrogate(s.charAt(i + 1)) then
+          val cp = Character.toCodePoint(c, s.charAt(i + 1))
+          out(at) = (0xf0 | (cp >> 18)).toByte; out(at + 1) = (0x80 | ((cp >> 12) & 0x3f)).toByte
+          out(at + 2) = (0x80 | ((cp >> 6) & 0x3f)).toByte; out(at + 3) = (0x80 | (cp & 0x3f)).toByte
+          at += 4; i += 1
+        else if Character.isSurrogate(c) then { out(at) = '?'.toByte; at += 1 }
+        else
+          out(at) = (0xe0 | (c >> 12)).toByte; out(at + 1) = (0x80 | ((c >> 6) & 0x3f)).toByte
+          out(at + 2) = (0x80 | (c & 0x3f)).toByte; at += 3
+        i += 1
 
   // ---- reading -------------------------------------------------------------
 
@@ -170,7 +212,8 @@ object ArrowIpc:
         if version != MetadataV5 then refuse(s"metadata version $version; this reads version 5 (V5 = $MetadataV5)")
         val bodyLen = msg.i64(3, 0L)
         if bodyLen < 0 || bodyLen > in.remaining then refuse(s"a message's body claims $bodyLen bytes; ${in.remaining} remain (cut short?)")
-        val body = in.slice(bodyLen.toInt)
+        val body = in.at
+        in.skip(bodyLen.toInt)
         msg.u8(1, 0) match
           case HeaderSchema =>
             val s = msg.table(2).getOrElse(refuse("a schema message without its schema"))
@@ -186,7 +229,7 @@ object ArrowIpc:
             if !seenSchema then refuse("a record batch before the schema")
             val rb = msg.table(2).getOrElse(refuse("a record batch message without its batch"))
             if rb.table(3).isDefined then refuse("the record batch is compressed; send it uncompressed")
-            batches :+= batch(rb, body, fields)
+            batches :+= batch(rb, bytes, body, bodyLen.toInt, fields)
           case HeaderDictionary => refuse("a dictionary batch; decode dictionaries before sending")
           case other => refuse(s"message header type $other; this reads schemas and record batches")
     if !seenSchema then refuse("a stream without a schema")
@@ -196,82 +239,79 @@ object ArrowIpc:
     }.toVector
     Table(cols, metadata)
 
-  private def batch(rb: Fb.At, body: Array[Byte], fields: Vector[(String, Int, Fb.At)]): Vector[Column] =
+  /** a record batch's columns, read from the stream IN PLACE: a buffer is
+   * a position and a length in `bytes`, copied once into the column */
+  private def batch(rb: Fb.At, bytes: Array[Byte], body: Int, bodyLen: Int,
+                    fields: Vector[(String, Int, Fb.At)]): Vector[Column] =
     val rows = rb.i64(0, 0L)
     if rows < 0 || rows > Int.MaxValue then refuse(s"a batch of $rows rows")
     val nodes = rb.structs(1, 16)
     val bufs = rb.structs(2, 16)
     if nodes.length != fields.length then refuse(s"${nodes.length} field nodes for ${fields.length} fields")
     var b = 0
-    def next(): Array[Byte] =
+    /** the next buffer: its position in `bytes` and its length */
+    def next(): (Int, Int) =
       if b >= bufs.length then refuse("fewer buffers than the columns need")
       val off = Fb.i64le(bufs(b), 0); val len = Fb.i64le(bufs(b), 8)
       b += 1
-      if off < 0 || len < 0 || off + len > body.length then refuse(s"a buffer [$off, +$len) outside a body of ${body.length} bytes (cut short?)")
-      java.util.Arrays.copyOfRange(body, off.toInt, (off + len).toInt)
+      if off < 0 || len < 0 || off + len > bodyLen then refuse(s"a buffer [$off, +$len) outside a body of $bodyLen bytes (cut short?)")
+      (body + off.toInt, len.toInt)
     fields.indices.map { j =>
       val (name, typeId, tpe) = fields(j)
       val n = Fb.i64le(nodes(j), 0).toInt
       val nulls = Fb.i64le(nodes(j), 8)
       def valid(): Array[Boolean] =
-        val bits = next()
-        if bits.isEmpty then
+        val (at, len) = next()
+        if len == 0 then
           if nulls != 0 then refuse(s"column '$name' has $nulls nulls and no validity buffer")
           Array.fill(n)(true)
-        else unpack(bits, n, name)
-      def need(bytes: Array[Byte], len: Long): Unit =
-        if bytes.length < len then refuse(s"column '$name': a buffer of ${bytes.length} bytes for $len (cut short?)")
+        else unpack(bytes, at, len, n, name)
+      def need(len: Int, want: Long): Unit =
+        if len < want then refuse(s"column '$name': a buffer of $len bytes for $want (cut short?)")
       typeId match
         case TypeNull => Column.Nulls(n)
         case TypeInt =>
           val width = tpe.i32(0, 0)
           if width != 64 || !tpe.bool(1, false) then refuse(s"column '$name' is int$width${if tpe.bool(1, false) then "" else " unsigned"}; cast it to int64")
-          val ok = valid(); val d = next(); need(d, 8L * n)
-          Column.Int64(Array.tabulate(n)(i => Fb.i64le(d, 8 * i)), ok)
+          val ok = valid(); val (at, len) = next(); need(len, 8L * n)
+          val v = new Array[Long](n); le(bytes, at, 8 * n).asLongBuffer().get(v)
+          Column.Int64(v, ok)
         case TypeFloat =>
           val p = tpe.i16(0, 0)
           if p != PrecisionDouble then refuse(s"column '$name' is a float of precision $p; cast it to float64")
-          val ok = valid(); val d = next(); need(d, 8L * n)
-          Column.Float64(Array.tabulate(n)(i => java.lang.Double.longBitsToDouble(Fb.i64le(d, 8 * i))), ok)
+          val ok = valid(); val (at, len) = next(); need(len, 8L * n)
+          val v = new Array[Double](n); le(bytes, at, 8 * n).asDoubleBuffer().get(v)
+          Column.Float64(v, ok)
         case TypeBool =>
-          val ok = valid(); val d = next(); need(d, (n + 7) / 8)
-          Column.Bool(unpack(d, n, name), ok)
+          val ok = valid(); val (at, len) = next(); need(len, (n + 7) / 8)
+          Column.Bool(unpack(bytes, at, len, n, name), ok)
         case TypeUtf8 =>
-          val ok = valid(); val offs = next(); val data = next()
-          need(offs, 4L * (n + 1))
+          val ok = valid(); val (oat, olen) = next(); val (dat, dlen) = next()
+          need(olen, 4L * (n + 1))
+          val offs = new Array[Int](n + 1); le(bytes, oat, 4 * (n + 1)).asIntBuffer().get(offs)
           Column.Utf8(Array.tabulate(n) { i =>
-            val a = Fb.i32le(offs, 4 * i); val z = Fb.i32le(offs, 4 * (i + 1))
-            if a < 0 || z < a || z > data.length then refuse(s"column '$name': string $i spans [$a, $z) of ${data.length} bytes")
-            if ok(i) then String(data, a, z - a, UTF_8) else ""
+            val a = offs(i); val z = offs(i + 1)
+            if a < 0 || z < a || z > dlen then refuse(s"column '$name': string $i spans [$a, $z) of $dlen bytes")
+            if ok(i) then String(bytes, dat + a, z - a, UTF_8) else ""
           }, ok)
         case other => refuse(s"column '$name' has Arrow type ${typeName(other)}; this reads int64, float64, utf8, bool and null")
     }.toVector
 
-  private def unpack(bits: Array[Byte], n: Int, name: String): Array[Boolean] =
-    if bits.length < (n + 7) / 8 then refuse(s"column '$name': a bitmap of ${bits.length} bytes for $n rows (cut short?)")
-    Array.tabulate(n)(i => (bits(i >> 3) >> (i & 7) & 1) == 1)
+  private def unpack(bytes: Array[Byte], at: Int, len: Int, n: Int, name: String): Array[Boolean] =
+    if len < (n + 7) / 8 then refuse(s"column '$name': a bitmap of $len bytes for $n rows (cut short?)")
+    Array.tabulate(n)(i => (bytes(at + (i >> 3)) >> (i & 7) & 1) == 1)
 
   /** one column out of the batches' parts, in order */
   private def concat(typeId: Int, parts: Vector[Column], name: String): Column =
-    def bools(f: Column => Array[Boolean]) = parts.map(f).foldLeft(Array.emptyBooleanArray)(_ ++ _)
-    typeId match
-      case TypeNull => Column.Nulls(parts.map(_.length).sum)
-      case _ if parts.isEmpty => typeId match
-        case TypeInt => Column.Int64(Array.emptyLongArray, Array.emptyBooleanArray)
-        case TypeFloat => Column.Float64(Array.emptyDoubleArray, Array.emptyBooleanArray)
-        case TypeBool => Column.Bool(Array.emptyBooleanArray, Array.emptyBooleanArray)
-        case _ => Column.Utf8(Array.empty[String], Array.emptyBooleanArray)
-      case _ if parts.length == 1 => parts.head
-      case _ => parts.head match
-        case Column.Int64(_, _) => Column.Int64(parts.collect { case Column.Int64(v, _) => v }.foldLeft(Array.emptyLongArray)(_ ++ _),
-          bools { case Column.Int64(_, ok) => ok; case _ => refuse(s"column '$name' changed type between batches") })
-        case Column.Float64(_, _) => Column.Float64(parts.collect { case Column.Float64(v, _) => v }.foldLeft(Array.emptyDoubleArray)(_ ++ _),
-          bools { case Column.Float64(_, ok) => ok; case _ => refuse(s"column '$name' changed type between batches") })
-        case Column.Bool(_, _) => Column.Bool(bools { case Column.Bool(v, _) => v; case _ => refuse(s"column '$name' changed type between batches") },
-          bools { case Column.Bool(_, ok) => ok; case _ => refuse(s"column '$name' changed type between batches") })
-        case Column.Utf8(_, _) => Column.Utf8(parts.collect { case Column.Utf8(v, _) => v }.foldLeft(Array.empty[String])(_ ++ _),
-          bools { case Column.Utf8(_, ok) => ok; case _ => refuse(s"column '$name' changed type between batches") })
-        case Column.Nulls(_) => Column.Nulls(parts.map(_.length).sum)
+    if parts.nonEmpty then
+      try Column.concat(parts)
+      catch case e: IllegalArgumentException => refuse(s"column '$name': ${e.getMessage}")
+    else typeId match
+      case TypeNull => Column.Nulls(0)
+      case TypeInt => Column.Int64(Array.emptyLongArray, Array.emptyBooleanArray)
+      case TypeFloat => Column.Float64(Array.emptyDoubleArray, Array.emptyBooleanArray)
+      case TypeBool => Column.Bool(Array.emptyBooleanArray, Array.emptyBooleanArray)
+      case _ => Column.Utf8(Array.empty[String], Array.emptyBooleanArray)
 
   private def refuse(why: String): Nothing = throw IllegalStateException(s"not an Arrow stream this reads: $why")
 
@@ -312,8 +352,9 @@ object ArrowIpc:
     def result(): Array[Byte] = java.util.Arrays.copyOf(buf, n)
 
   private final class In(b: Array[Byte]):
-    private var at = 0
+    var at = 0
     def remaining: Int = b.length - at
+    def skip(k: Int): Unit = at += k
     def i32(): Int = { val v = Fb.i32le(b, at); at += 4; v }
     def slice(k: Int): Array[Byte] = { val s = java.util.Arrays.copyOfRange(b, at, at + k); at += k; s }
 

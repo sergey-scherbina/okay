@@ -1,7 +1,6 @@
 package okay.py
 
-import okay.codec.ArrowIpc
-import okay.codec.ArrowIpc.Column
+import okay.arrow.{Column, Table}
 import PyValue.*
 
 /**
@@ -14,13 +13,13 @@ import PyValue.*
  */
 object ArrowFrames:
 
-  def table(f: PyFrame): Either[String, ArrowIpc.Table] =
+  def table(f: PyFrame): Either[String, Table] =
     val n = f.cols.headOption.fold(0)(_._2.length)
     f.cols.find(_._2.length != n) match
       case Some((name, c)) => Left(s"column '$name' has ${c.length} cells, the first has $n")
       case None =>
         val cols = f.cols.map((name, cells) => column(cells).left.map(why => s"column '$name' $why").map(name -> _))
-        cols.collectFirst { case Left(why) => why }.toLeft(ArrowIpc.Table(cols.collect { case Right(c) => c }, Vector.empty))
+        cols.collectFirst { case Left(why) => why }.toLeft(Table(cols.collect { case Right(c) => c }, Vector.empty))
 
   private def column(cells: Vector[PyValue]): Either[String, Column] =
     val valid = cells.map(_ != PyNone).toArray
@@ -70,7 +69,7 @@ object ArrowFrames:
     case Dict(_) => "dicts"
     case Ref(_) => "handles"
 
-  def frame(t: ArrowIpc.Table): PyFrame =
+  def frame(t: Table): PyFrame =
     PyFrame(t.cols.map { (name, c) =>
       def cells[A](values: Array[A], ok: Array[Boolean])(cell: A => PyValue): Vector[PyValue] =
         Vector.tabulate(values.length)(i => if ok(i) then cell(values(i)) else PyNone)

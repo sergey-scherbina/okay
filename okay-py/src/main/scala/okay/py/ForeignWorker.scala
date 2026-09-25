@@ -82,14 +82,14 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
    * which road a frame took */
   def arrowFrames: (Long, Long) = (arrowOut, arrowIn)
 
-  private def sendArrow(body: Json, table: okay.codec.ArrowIpc.Table): (Json, Option[PyFrame]) =
+  private def sendArrow(body: Json, table: okay.arrow.Table): (Json, Option[PyFrame]) =
     val (format, compression) = codec.getOrElse(throw IllegalStateException("an Arrow frame on an unframed wire"))
     val header = table.copy(metadata = Vector("okay" -> Json.print(body)))
-    val bytes = compression.decompress(onTheWire(link.exchange(compression.compress(okay.codec.ArrowIpc.write(header)))))
+    val bytes = compression.decompress(onTheWire(link.exchange(compression.compress(okay.arrow.OkayArrow.write(header)))))
     arrowOut += 1
-    if okay.codec.ArrowIpc.isStream(bytes) then
+    if okay.arrow.ArrowCodec.isStream(bytes) then
       arrowIn += 1
-      val t = okay.codec.ArrowIpc.read(bytes)
+      val t = okay.arrow.OkayArrow.read(bytes)
       val head = t.metadata.collectFirst { case ("okay", h) => ForeignWorker.whole(h) }
         .getOrElse(throw IllegalStateException("an Arrow answer without its okay header"))
       (head, Some(ArrowFrames.frame(t)))

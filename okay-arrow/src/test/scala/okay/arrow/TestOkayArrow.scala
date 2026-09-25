@@ -1,10 +1,9 @@
-package okay.codec
+package okay.arrow
 
-import ArrowIpc.{Column, Table}
 
 /** py-arrow stage 1, without pyarrow: what this writes it reads back, and
  * a stream cut short at any byte is refused (TestArrowPy is the oracle) */
-class TestArrowIpc extends munit.FunSuite:
+class TestOkayArrow extends munit.FunSuite:
 
   private def table: Table = Table(Vector(
     "id" -> Column.Int64(Array(1L, -2L, Long.MaxValue, 0L), Array(true, true, true, false)),
@@ -31,37 +30,37 @@ class TestArrowIpc extends munit.FunSuite:
     }
 
   test("a table round-trips: every column type, nulls, NaN beside a null, text beyond ASCII, the metadata") {
-    val bytes = ArrowIpc.write(table)
-    assert(ArrowIpc.isStream(bytes))
-    same(table, ArrowIpc.read(bytes))
+    val bytes = OkayArrow.write(table)
+    assert(ArrowCodec.isStream(bytes))
+    same(table, OkayArrow.read(bytes))
   }
 
   test("an empty table and a table without columns round-trip") {
     val empty = Table(Vector("a" -> Column.Int64(Array.emptyLongArray, Array.emptyBooleanArray),
       "s" -> Column.Utf8(Array.empty[String], Array.emptyBooleanArray)), Vector.empty)
-    same(empty, ArrowIpc.read(ArrowIpc.write(empty)))
+    same(empty, OkayArrow.read(OkayArrow.write(empty)))
     val none = Table(Vector.empty, Vector("k" -> "v"))
-    same(none, ArrowIpc.read(ArrowIpc.write(none)))
+    same(none, OkayArrow.read(OkayArrow.write(none)))
   }
 
   test("a stream cut short, at any byte, is refused by name") {
-    val bytes = ArrowIpc.write(table)
+    val bytes = OkayArrow.write(table)
     val accepted = (1 until bytes.length).filter { n =>
-      scala.util.Try(ArrowIpc.read(bytes.dropRight(n))).isSuccess
+      scala.util.Try(OkayArrow.read(bytes.dropRight(n))).isSuccess
     }
     assertEquals(accepted.toVector, Vector.empty)
-    val e = intercept[IllegalStateException](ArrowIpc.read(bytes.take(bytes.length / 2)))
+    val e = intercept[IllegalStateException](OkayArrow.read(bytes.take(bytes.length / 2)))
     assert(e.getMessage.startsWith("not an Arrow stream this reads"), e.getMessage)
   }
 
   test("JSON and CBOR are never mistaken for a stream") {
-    assert(!ArrowIpc.isStream("""{"id":1}""".getBytes))
+    assert(!ArrowCodec.isStream("""{"id":1}""".getBytes))
     // CBOR {"id": 1}: a map of one pair; the wire's first byte is a map's
-    assert(!ArrowIpc.isStream(Array(0xa1, 0x62, 'i', 'd', 0x01).map(_.toByte)))
+    assert(!ArrowCodec.isStream(Array(0xa1, 0x62, 'i', 'd', 0x01).map(_.toByte)))
   }
 
   test("columns of unequal length are refused before a byte is written") {
     val bad = Table(Vector("a" -> Column.Nulls(2), "b" -> Column.Nulls(3)), Vector.empty)
-    val e = intercept[IllegalArgumentException](ArrowIpc.write(bad))
+    val e = intercept[IllegalArgumentException](OkayArrow.write(bad))
     assert(e.getMessage.contains("column 'b' has 3 rows, the first has 2"), e.getMessage)
   }
