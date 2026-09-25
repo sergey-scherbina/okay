@@ -1,0 +1,7 @@
+feature/csv-line-edge-space 2026-09-25T11:42:47Z
+agent: claude-code (okay-watch session)
+heartbeat: 2026-09-25T11:42:47Z
+status: in-progress
+done-so-far: worktree created
+next: Csv.line quotes an edge space and reads null as empty; test
+touches: okay-stream/src/main/scala/Bulk.scala, okay-stream tests
