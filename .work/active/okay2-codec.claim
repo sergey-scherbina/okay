@@ -1,3 +1,0 @@
-slug: okay2-codec
-agent: claude (session 6f505c09)
-what: okay2-codec: Schema (+ derivation as a Scala 2 blackbox macro), Json (value, print, parse, strict read, mergePatch, encode/decode, lossless cst over okay2-parse)
