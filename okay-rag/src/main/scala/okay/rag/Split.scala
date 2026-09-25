@@ -88,11 +88,21 @@ object Corpus:
 
 object Split {
 
-  /** the tokens of a subtree, in order (trivia included — lossless) */
-  private def tokens[K](c: Cst[K]): Vector[Token[K]] = c match
-    case Cst.Node(_, kids) => kids.flatMap(tokens)
-    case Cst.Leaf(t) => Vector(t)
-    case Cst.Err(t, _) => t.toVector
+  /** the tokens of a subtree, in order (trivia included — lossless), on
+   * an EXPLICIT stack: a code tree nests as deep as its source, and a
+   * per-level `kids.flatMap(tokens)` overflowed on one the builder had
+   * just built (cst-walks-remaining, TestCodeDepth, 2026-09-25) */
+  private[rag] def tokens[K](c: Cst[K]): Vector[Token[K]] =
+    val out = Vector.newBuilder[Token[K]]
+    var stack: List[Cst[K]] = c :: Nil
+    while stack.nonEmpty do
+      val here = stack.head
+      stack = stack.tail
+      here match
+        case Cst.Node(_, kids) => stack = kids.foldRight(stack)(_ :: _)
+        case Cst.Leaf(t) => out += t
+        case Cst.Err(t, _) => t.foreach(out += _)
+    out.result()
 
   /** the span covering a run of tokens: from the first offset to the
    * end of the last — exact, because every token's span is */
@@ -128,35 +138,49 @@ object Split {
     def emit(ts: Seq[Token[K]], path: Seq[String]): Seq[Segment] =
       cover(ts).toSeq.map(sp => Segment(src.id, sp, textOf(ts), path))
 
-    def go(node: Cst[K], path: Seq[String]): Seq[Segment] =
-      val ts = tokens(node)
-      if ts.isEmpty then Seq.empty
-      else if size(textOf(ts)) <= budget then emit(ts, path)
-      else node match
-        case Cst.Node(kind, kids) =>
-          // pack consecutive siblings while they fit; a child that
-          // does not fit on its own is entered
-          val out = Vector.newBuilder[Segment]
-          var run = Vector.empty[Token[K]]
+    // A node too big for the budget packs consecutive children while
+    // they fit and ENTERS a child that does not fit on its own. The
+    // entering is a frame on an explicit stack, not a call, since a code
+    // tree nests as deep as its source (cst-walks-remaining): each frame
+    // is a node being packed, its path, the next child, and what it has
+    // emitted and is still holding.
+    final class Frame(val path: Seq[String], val kids: Vector[Cst[K]]):
+      var i = 0
+      val out = Vector.newBuilder[Segment]
+      var run = Vector.empty[Token[K]]
+      def flush(): Unit =
+        if run.nonEmpty then
+          out ++= emit(run, path)
+          run = Vector.empty
 
-          def flush(): Unit =
-            if run.nonEmpty then
-              out ++= emit(run, path)
-              run = Vector.empty
-
-          for kid <- kids do
+    val ts = tokens(cst)
+    if ts.isEmpty then Seq.empty
+    else if size(textOf(ts)) <= budget then emit(ts, Seq(kindOf(cst)))
+    else cst match
+      case Cst.Node(_, kids0) =>
+        var stack: List[Frame] = Frame(Seq(kindOf(cst)), kids0) :: Nil
+        var result: Seq[Segment] = Seq.empty
+        while stack.nonEmpty do
+          val f = stack.head
+          if f.i < f.kids.length then
+            val kid = f.kids(f.i)
+            f.i += 1
             val kt = tokens(kid)
             if kt.isEmpty then ()
-            else if size(textOf(run ++ kt)) <= budget then run = run ++ kt
+            else if size(textOf(f.run ++ kt)) <= budget then f.run = f.run ++ kt
             else
-              flush()
-              if size(textOf(kt)) <= budget then run = kt
-              else out ++= go(kid, path :+ kindOf(kid))
-          flush()
-          out.result()
-        case _ => emit(ts, path)   // an atom bigger than the budget
-
-    go(cst, Seq(kindOf(cst)))
+              f.flush()
+              if size(textOf(kt)) <= budget then f.run = kt
+              else kid match
+                case Cst.Node(_, kk) => stack = Frame(f.path :+ kindOf(kid), kk) :: stack
+                case _ => f.out ++= emit(kt, f.path :+ kindOf(kid))   // an atom bigger than the budget
+          else
+            f.flush()
+            stack = stack.tail
+            val done = f.out.result()
+            if stack.isEmpty then result = done else stack.head.out ++= done
+        result
+      case _ => emit(ts, Seq(kindOf(cst)))   // an atom bigger than the budget
 
   /**
    * The other splitter: fixed windows over a TOKEN stream, with

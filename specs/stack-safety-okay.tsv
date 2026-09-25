@@ -86,7 +86,6 @@ okay-codec/src/main/scala/okay/codec/TsTypes.scala	251	union	mutual
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	264	postfix	mutual	
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	272	primary	mutual	
 okay-codec/src/main/scala/okay/codec/TsTypes.scala	356	typeOf	direct	
-okay-codec/src/main/scala/okay/codec/Yaml.scala	282	values	lambda	Vector.flatMap
 okay-demo/src/main/scala/okay/demo/RepoAgent.scala	47	walk	lambda	IterableOps.flatMap
 okay-deploy/src/main/scala/okay/deploy/Paas.scala	349	pretty	lambda	Vector.map
 okay-direct/src/main/scala/Condition.scala	160	loop	mutual	
@@ -202,10 +201,6 @@ okay-r/src/main/scala/okay/r/RSubprocess.scala	187	step	lambda	Either.flatMap
 okay-r/src/main/scala/okay/r/RSubprocess.scala	349	startWith	lambda	Some$.apply
 okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	215	valueOf	lambda	Vector$.tabulate
 okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	270	javaOf	lambda	Vector.map
-okay-rag/src/main/scala/okay/rag/Split.scala	92	tokens	lambda	Vector.flatMap
-okay-rag/src/main/scala/okay/rag/Split.scala	131	go	lambda	Vector.foreach
-okay-rag/src/main/scala/okay/rag/Symbols.scala	72	walk	lambda	Vector.foreach
-okay-rag/src/main/scala/okay/rag/Symbols.scala	153	toks	lambda	Vector.flatMap
 okay-resilience/src/main/scala/okay/resilience/Bulkhead.scala	84	release	lambda	Option.foreach
 okay-resilience/src/main/scala/okay/resilience/Hedge.scala	57	start	lambda	Timer.after
 okay-scalus/src/main/scala/okay/scalus/Cv.scala	51	item	direct	Vector$.fill,Vector$.unfold

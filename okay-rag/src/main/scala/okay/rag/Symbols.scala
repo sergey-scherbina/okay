@@ -69,7 +69,9 @@ object Symbols {
   def of(source: String, tree: Cst[Code.K], identifiers: Boolean = true): Index =
     var index = Index()
 
-    def walk(node: Cst[Code.K], path: Seq[String]): Unit = node match
+    // pre-order on an EXPLICIT stack of (node, path): a code tree nests
+    // as deep as its source (cst-walks-remaining, TestCodeDepth)
+    def visit(node: Cst[Code.K], path: Seq[String], push: (Cst[Code.K], Seq[String]) => Unit): Unit = node match
       case Cst.Node(kind, kids) =>
         val head = if kind == "def" then defHead(kids) else None
         val here = if kind == "def" then path :+ head.map(_._2).getOrElse("?") else path
@@ -81,7 +83,7 @@ object Symbols {
             val sym = Symbol(name, kw, source, sp, path)
             index = index.copy(defs =
               index.defs.updated(name, index.defs.getOrElse(name, Vector.empty) :+ sym))
-        kids.foreach(walk(_, here))
+        kids.reverseIterator.foreach(push(_, here))
       case Cst.Leaf(t) =>
         if identifiers && isName(t) && t.kind == Code.K.Ident then
           index = index.copy(refs =
@@ -89,7 +91,11 @@ object Symbols {
               index.refs.getOrElse(t.lexeme, Vector.empty) :+ (source, t.span)))
       case Cst.Err(_, _) => ()
 
-    walk(tree, Seq.empty)
+    var stack: List[(Cst[Code.K], Seq[String])] = (tree, Seq.empty) :: Nil
+    while stack.nonEmpty do
+      val (node, path) = stack.head
+      stack = stack.tail
+      visit(node, path, (n, p) => stack = (n, p) :: stack)
     index
 
   /**
@@ -150,12 +156,7 @@ object Symbols {
 
   /** the byte range a subtree covers */
   private def span(c: Cst[Code.K]): Option[okay.lex.Span] =
-    def toks(x: Cst[Code.K]): Vector[Token[Code.K]] = x match
-      case Cst.Node(_, kids) => kids.flatMap(toks)
-      case Cst.Leaf(t) => Vector(t)
-      case Cst.Err(t, _) => t.toVector
-
-    val ts = toks(c)
+    val ts = Split.tokens(c)
     if ts.isEmpty then None
     else
       val first = ts.minBy(_.span.offset).span

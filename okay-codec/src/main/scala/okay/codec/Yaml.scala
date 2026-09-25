@@ -278,31 +278,77 @@ object Yaml {
         case "false" => Json.JBool(false)
         case _ => s.toDoubleOption.fold(Json.JStr(s))(Json.JNum(_))
 
-  /** the semantic values among a node's children */
-  private def values(c: Cst[K]): Vector[Json] = c match
-    case Cst.Node("map", kids) =>
-      Vector(Json.JObj(kids.collect {
-        case p @ Cst.Node("pair", _) => pair(p)
-      }.flatten))
-    case Cst.Node("seq", kids) => Vector(Json.JArr(kids.flatMap(values)))
-    case Cst.Node(_, kids) => kids.flatMap(values)
-    case Cst.Leaf(t) => t.kind match
-      case K.Scalar | K.Quoted => Vector(scalar(t))
-      case _ => Vector.empty
-    case Cst.Err(t, m) => Vector(Json.JErr(m + t.fold("")(x => s" at '${x.lexeme}'")))
+  /**
+   * The semantic values among a node's children, on an EXPLICIT stack:
+   * YAML nests by indentation, so `cst` builds a tree as deep as its
+   * input, and a projection that recursed per level (`kids.flatMap(values)`)
+   * threw StackOverflowError on one the builder had just built
+   * (cst-walks-remaining, TestYamlDepth, 2026-09-25).
+   *
+   * Post-order in two stacks: `work` holds what is still to do — a node
+   * to evaluate, or a step that combines the results its children left
+   * — and `done` holds each evaluated node's values, newest first.
+   */
+  private def values(root: Cst[K]): Vector[Json] =
+    var work: List[Task] = List(Task.Eval(root))
+    var done: List[Vector[Json]] = Nil
+    def take(n: Int): Vector[Vector[Json]] =
+      val out = done.take(n).reverse.toVector
+      done = done.drop(n)
+      out
+    while work.nonEmpty do
+      val t = work.head
+      work = work.tail
+      t match
+        case Task.Eval(c) => c match
+          case Cst.Node("map", kids) =>
+            // each pair: its key read here, its value the first value
+            // among the children after the colon
+            val pairs = kids.collect { case Cst.Node("pair", pk) => pk }
+            var w = Task.Obj(pairs.map(keyOf)) :: work
+            for pk <- pairs.reverseIterator do
+              val after = afterColon(pk)
+              w = Task.Flatten(after.length) :: w
+              for k <- after.reverseIterator do w = Task.Eval(k) :: w
+            work = w
+          case Cst.Node("seq", kids) =>
+            work = kids.foldRight[List[Task]](Task.Arr(kids.length) :: work)((k, w) => Task.Eval(k) :: w)
+          case Cst.Node(_, kids) =>
+            work = kids.foldRight[List[Task]](Task.Flatten(kids.length) :: work)((k, w) => Task.Eval(k) :: w)
+          case Cst.Leaf(tok) => tok.kind match
+            case K.Scalar | K.Quoted => done = Vector(scalar(tok)) :: done
+            case _ => done = Vector.empty :: done
+          case Cst.Err(tok, m) => done = Vector(Json.JErr(m + tok.fold("")(x => s" at '${x.lexeme}'"))) :: done
+        case Task.Flatten(n) => done = take(n).flatten :: done
+        case Task.Arr(n) => done = Vector(Json.JArr(take(n).flatten)) :: done
+        case Task.Obj(keys) =>
+          val vals = take(keys.length)
+          done = Vector(Json.JObj(keys.zip(vals).flatMap((k, v) => k.map((_, v.headOption.getOrElse(Json.JNull)))))) :: done
+    done.headOption.getOrElse(Vector.empty)
 
-  private def pair(p: Cst[K]): Option[(String, Json)] = p match
-    case Cst.Node(_, kids) =>
-      val key = kids.collectFirst {
-        case Cst.Leaf(t) if t.kind == K.Scalar => t.lexeme.trim
-        case Cst.Leaf(t) if t.kind == K.Quoted => unquote(t.lexeme)
-      }
-      val value = kids.dropWhile {
-        case Cst.Leaf(t) => t.kind != K.Colon
-        case _ => true
-      }.drop(1).flatMap(values).headOption.getOrElse(Json.JNull)
-      key.map((_, value))
-    case _ => None
+  /** a step of `values`' walk */
+  private enum Task:
+    case Eval(c: Cst[K])
+    /** the last n results, concatenated */
+    case Flatten(n: Int)
+    /** the last n results, concatenated, as one array */
+    case Arr(n: Int)
+    /** one result per pair, each the pair's value candidates */
+    case Obj(keys: Vector[Option[String]])
+
+  /** a pair's key: its first scalar, unquoted */
+  private def keyOf(kids: Vector[Cst[K]]): Option[String] =
+    kids.collectFirst {
+      case Cst.Leaf(t) if t.kind == K.Scalar => t.lexeme.trim
+      case Cst.Leaf(t) if t.kind == K.Quoted => unquote(t.lexeme)
+    }
+
+  /** a pair's children after its colon: where its value is */
+  private def afterColon(kids: Vector[Cst[K]]): Vector[Cst[K]] =
+    kids.dropWhile {
+      case Cst.Leaf(t) => t.kind != K.Colon
+      case _ => true
+    }.drop(1)
 
   /** the total pipeline: any string yields a Json (JErr for damage) */
   def parse(input: String): Json =
