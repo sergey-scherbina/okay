@@ -84,20 +84,4 @@ object Ws {
         case _ => pure(()),
       _ => pure(()))
 
-  /**
-   * A socket AS an MCP link — which is the whole reason the shapes were
-   * kept the same.
-   *
-   * MCP has two standard transports: stdio, which okay-mcp has, and
-   * HTTP+SSE, which it did not. A `Link` is `send(line)` plus
-   * `lines: Source[String]`, and a WebSocket is exactly that with
-   * frames around it, so `Mcp.run(link(socket), serving)` is the same
-   * server over a different wire, with no protocol code changed.
-   */
-  def link(s: Socket): okay.mcp.Link = new okay.mcp.Link:
-    def send(line: String): Unit ! Async = s.send(Frame.Text(line))
-
-    def lines: Source[String] =
-      through[Frame, String, Async, Unit, Unit](s.frames)(
-        !.widen[Unit, Take % Frame + Writer % String, Async](texts))
 }

@@ -65,7 +65,7 @@ def bytes(r: Response): Chunk[Byte] ! Async            // drain
 def text(r: Response): String ! Async                  // drain, UTF-8
 def lines(r: Response): Source[String]                 // streamed
 def json[A](r: Response)(using Schema[A]): Either[String, A] ! Async
-def sse(r: Response): Source[String]                   // lines through llm.Sse.events
+def sse(r: Response): Source[String]                   // lines through okay.Sse.events
 def discard(r: Response): Unit ! Async                 // let a body go unread
 def framing: Stage[Chunk[Byte], String, Unit]          // the framer itself, reusable
 def one(bs: Array[Byte]): Source[Chunk[Byte]]          // a body already in hand
@@ -133,7 +133,7 @@ earns it" rules out. The traits compile there; nothing implements them.
 
 **Framing is a `Stage`, everywhere.** Chunked-transfer decoding, WS
 frame decoding and SSE all have the same shape and all use
-`Stage.transduce`, the skeleton `llm.Sse.events` is already written
+`Stage.transduce`, the skeleton `llm.Sse.events` (now `okay.Sse.events`, okay-stream) is already written
 with. Nothing in this module parses by hand.
 
 **Bodies ride `through`.** `Pipe.scala:337` documents
@@ -177,7 +177,7 @@ than growing without limit.
       the echo server had to learn to reassemble continuations
 - [x] ping is answered by the transport and shown to the session as
       information; a session that tells a `Pong` still has it sent
-- [x] okay-mcp runs over `Ws.link(socket)`: an `Rpc` encoded, carried as
+- [x] okay-mcp runs over `Ws.link(socket)` (`okay.mcp.WsLink` in okay-mcp-http since http-mcp-agent-edge): an `Rpc` encoded, carried as
       frames and decoded back to the identical message
 - [x] a route that throws is a 500 carrying its message — damage as data
       on the wire too

@@ -18,7 +18,6 @@ A 4xx is a `Response`. Nothing here throws.
 | `Http.bytes / text / lines / json / sse` | reading a body — `lines` streams it, `json` is total, `sse` is the same event reader the LLM client uses |
 | `Server.serve` | a route is `Request => Response ! Async`; the server is a `Resource`, so the port closes when the program ends |
 | `Frame` / `Socket` / `Ws.over` | the WebSocket half: run a `Stage[Frame, Frame, A]` over a socket |
-| `McpHttp` | the MCP transport over HTTP — POST for calls, an SSE GET for what the server says unasked |
 
 ## A server and a client
 
@@ -49,4 +48,4 @@ back, which is why a test never hard-codes one.
 | [`docs/modules/okay-http.md`](../docs/modules/okay-http.md) | the pieces and the reasoning |
 | [`specs/http.md`](../specs/http.md) | the design, the backends, and the decisions |
 | [`okay-jetty/`](../okay-jetty), [`okay-netty/`](../okay-netty) | other backends behind the same seam |
-| [`okay-mcp/`](../okay-mcp) | what `McpHttp` carries |
+| [`okay-mcp-http/`](../okay-mcp-http) | MCP over these wires: `McpHttp`, `WsLink`, `NioLink` — a module of its own so this one does not depend on okay-mcp |

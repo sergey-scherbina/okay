@@ -19,7 +19,7 @@ SecureRandom, and the JS leg answers the same shared code through
 | `OAuth2` / `Oidc` | the client flows: code+PKCE (S256), refresh, client credentials, and a login whose id_token is checked by signature, issuer, audience, nonce and at_hash |
 | `Capability` / `Caveat` | macaroon-shaped authority: anyone can narrow it, nobody can widen it, with no issuer and no registry |
 | `Revocations` | somebody else's list of what is switched off, as a local snapshot you refresh |
-| `McpAuth` | the MCP door: the RFC 9728 metadata, the 401 that teaches, discovery, and per-TOOL authorization |
+| `McpAuth` | the MCP door: the RFC 9728 metadata, the 401 that teaches, discovery, and per-TOOL authorization — in [okay-mcp-http](../okay-mcp-http) since http-mcp-agent-edge, package unchanged |
 
 ## Protecting a route
 

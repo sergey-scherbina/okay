@@ -27,10 +27,9 @@ that module, and it is small because the vocabulary decided most of it:
 |---|---|
 | `Request` / `Response` / `Method` / `Body` | the wire, as data — a 4xx is a `Response`, and no `Throws` appears anywhere |
 | `trait Http { def send(r: Request): Response ! Async }` | the seam. One method, like `llm.Transport`, but carrying the verb, the status and the headers back |
-| `Http.bytes / text / lines / json / sse` | reading a body — `lines` streams, `json` is total, `sse` IS `llm.Sse.events` |
+| `Http.bytes / text / lines / json / sse` | reading a body — `lines` streams, `json` is total, `sse` IS `okay.Sse.events` (okay-stream) |
 | `Frame` / `trait Socket` / `trait Sockets` | the WebSocket side |
 | `Ws.over(socket)(session)` | run a `Stage[Frame, Frame, A]` over a socket |
-| `Ws.link(socket)` | a socket AS an `mcp.Link` |
 | `Transports.http` / `.sockets` (JVM), `.fetch` / `.sockets` (JS) | the two platform seams |
 | `Route` / `Queried` / `Query` / `Router` | a typed path and query: match, build and describe from one declaration; `okay.http.syntax` is the terse form |
 | `Server.serve(port)(route)` | a REST server, JVM only |
@@ -87,9 +86,11 @@ literal, so the answer is the scan's answer, in the scan's order.
 MCP has two standard transports: stdio, which okay-mcp had, and
 HTTP+SSE, which it did not. A `Link` is `send(line)` plus
 `lines: Source[String]`, and a WebSocket is exactly that with frames
-around it — so `Mcp.run(Ws.link(socket), serving)` is the same server
-over a different wire, with no protocol code changed. `TestWs` carries
-an `Rpc` over frames and decodes it back to the identical message.
+around it — so `Mcp.run(WsLink(socket), serving)` is the same server
+over a different wire, with no protocol code changed. `WsLink`, `NioLink`
+and `McpHttp` live in okay-mcp-http (http-mcp-agent-edge, 2026-09-25), so
+this module does not depend on okay-mcp; `TestMcpLinks` there carries an
+`Rpc` over frames and decodes it back to the identical message.
 
 ## Two honesty constraints, in the interface rather than papered over
 

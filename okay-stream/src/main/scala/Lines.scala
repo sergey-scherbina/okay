@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets.UTF_8
  * Written for okay-http and moved here when okay-cluster turned out to
  * need it without the module: it has no dependency, and a
  * `Stage[Chunk[Byte], String, Unit]` is core-stream vocabulary
- * (`Stage.transduce`, like `llm.Sse.events`).
+ * (`Stage.transduce`, like `Sse.events`).
  *
  * Framing happens on BYTES, before decoding, and that is not
  * fussiness: a chunk boundary can fall inside a multi-byte UTF-8

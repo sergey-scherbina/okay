@@ -26,7 +26,7 @@ import java.nio.charset.StandardCharsets.UTF_8
  * What this is NOT is an HTTP client. Writing HTTP/1.1 by hand where
  * `java.net.http` exists is work without a payoff — the same reasoning
  * specs/http.md uses for not cross-building to Native. This is the byte
- * level: two ends, chunks between them, and `Nio.link` for a line
+ * level: two ends, chunks between them, and `okay.mcp.NioLink` for a line
  * protocol on top. Netty is the answer to "NIO with HTTP", and that
  * codec is worth a dependency.
  */
@@ -108,19 +108,4 @@ object Nio {
     case a: InetSocketAddress => a.getPort
     case other => throw IllegalStateException(s"not an inet listener: $other")
 
-  /**
-   * A connection AS an MCP link: newline-delimited lines over a raw
-   * socket, with no HTTP anywhere.
-   *
-   * MCP's own framing is a line per message, and `Http.framing` already
-   * turns a byte source into lines — so this is two lines of glue, and
-   * it means an MCP server can be reached over a bare TCP socket as
-   * well as over pipes and over a WebSocket.
-   */
-  def link(c: Conn): okay.mcp.Link = new okay.mcp.Link:
-    def send(line: String): Unit ! Async = c.send(line + "\n")
-
-    def lines: Source[String] =
-      through[Chunk[Byte], String, Async, Unit, Unit](c.bytes)(
-        !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](Http.framing))
 }

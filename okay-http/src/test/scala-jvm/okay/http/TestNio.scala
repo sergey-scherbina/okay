@@ -4,17 +4,11 @@ import java.nio.channels.ServerSocketChannel
 
 import okay.*
 import okay.given
-import okay.codec.Json
-import okay.mcp.{Mcp, Rpc}
 
 /**
- * Raw NIO: two ends, chunks between them, and nothing parked.
- *
- * The interesting assertion is the last one — an MCP session over a
- * bare TCP socket, no HTTP anywhere. `Http.framing` turns the byte
- * source into lines and `mcp.Link` wants exactly lines, so the glue is
- * two lines and the protocol code is untouched. That is three
- * transports for okay-mcp now: pipes, a WebSocket, and this.
+ * Raw NIO: two ends, chunks between them, and nothing parked. (MCP
+ * over a bare socket is okay-mcp-http's TestMcpLinks since
+ * http-mcp-agent-edge.)
  */
 class TestNio extends munit.FunSuite {
 
@@ -90,36 +84,6 @@ class TestNio extends munit.FunSuite {
           }).runWith
       }).runWith
     assertEquals(got, big.length)
-  }
-
-  test("MCP over a raw socket — the third transport, no HTTP anywhere") {
-    val sent = Rpc.encode(Rpc.Request(Json.JNum(1), Mcp.Initialize,
-      Mcp.initializeParams(Mcp.Info("client", "1"))))
-
-    val back = Resource.run[Seq[String], Pure](
-      // the server end: read one line, send it back, close
-      Nio.listen(0) { conn =>
-        val link = Nio.link(conn)
-        Writer.uncons[String, Unit, Async](link.lines).flatMap {
-          case Right((line, _)) => link.send(line).flatMap(_ => conn.close())
-          case Left(_) => conn.close()
-        }
-      }.map { server =>
-        Async.run[Seq[String], Pure](
-          Nio.connect("127.0.0.1", Nio.port(server)).flatMap { c =>
-            val link = Nio.link(c)
-            link.send(sent).flatMap(_ =>
-              Writer.uncons[String, Unit, Async](link.lines).flatMap {
-                case Right((l, _)) => c.close().map(_ => Seq(l))
-                case Left(_) => c.close().map(_ => Seq.empty[String])
-              })
-          }).runWith
-      }).runWith
-
-    assertEquals(back, Seq(sent))
-    // and it decodes back to the identical message, not just to bytes
-    assertEquals(Rpc.decode(back.head), Rpc.Request(Json.JNum(1), Mcp.Initialize,
-      Mcp.initializeParams(Mcp.Info("client", "1"))))
   }
 
   test("churn: one listener, hundreds of connections lose nothing") {

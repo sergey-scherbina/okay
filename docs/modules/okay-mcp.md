@@ -102,7 +102,7 @@ The outbound side of a server is the stage's answers `merge` a channel
 of pushes — the readiness merge, one fiber each.
 
 The protocol list is COMPLETE for the 2025-06-18 revision —
-authorization included (okay-security's `McpAuth`), every capability
+authorization included (`McpAuth`, okay-mcp-http), every capability
 probed live against the reference server.
 
 ## Does it work with the ecosystem
@@ -125,11 +125,15 @@ it; the reader fiber keeps it.
 |---|---|
 | stdio | `Stdio.of(process)` / `Stdio.std` — the one MCP clients launch |
 | a socket, or any byte stream | `Stdio.of(in, out)` |
-| WebSocket | `okay.http.Ws.link(socket)` (okay-http) |
-| streamable HTTP | `okay.http.McpHttp.link(http, url)`; `McpHttp.route(serving)` to serve, `McpHttp.routed(serving)` when the server also pushes (okay-http; the push half needs okay-jetty) |
+| WebSocket | `okay.mcp.WsLink(socket)` (okay-mcp-http) |
+| a bare TCP socket | `okay.mcp.NioLink(conn)` (okay-mcp-http) |
+| streamable HTTP | `okay.http.McpHttp.link(http, url)`; `McpHttp.route(serving)` to serve, `McpHttp.routed(serving)` when the server also pushes (okay-mcp-http; the push half needs okay-jetty) |
 
-The last two live in okay-http because transports depend on the
-protocol, not the other way round. A `Link` is `send(line)` plus
+The last three live in okay-mcp-http because transports depend on the
+protocol, not the other way round — and not on the wire's module
+either: they were in okay-http until http-mcp-agent-edge (2026-09-25),
+which made every HTTP user carry this module, the agent, the LLM
+client and RAG. A `Link` is `send(line)` plus
 `lines: Source[String]`, so none of `Client`, `Session` or `Server`
 changes when the wire does — the HTTP transport's own test asserts
 that the same `Serving` answers identically over HTTP and over a pair

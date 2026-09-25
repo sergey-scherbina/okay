@@ -2287,6 +2287,9 @@ lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-security"))
   .dependsOn(okayHttp, okayData, okayCrypto)   // the four primitives are okay-crypto's (security-crypto-dedup)
+  // TestReadmes runs the README's agent-with-a-principal example; the
+  // agent came through okay-http until http-mcp-agent-edge
+  .dependsOn(okayAgent % Test)
   .settings(
     name := "okay-security",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -2544,7 +2547,8 @@ lazy val okayOutbox = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 lazy val okayJetty = project
   .in(file("okay-jetty"))
-  .dependsOn(okayHttp.jvm)
+  // okayMcpHttp in Test: McpHttp served by Jetty (TestMcpPush, TestResumable)
+  .dependsOn(okayHttp.jvm, okayMcpHttp.jvm % Test)
   .settings(
     name := "okay-jetty",
     // dotc's classfile target is JDK17 (major 61) regardless of the
@@ -2693,7 +2697,7 @@ lazy val okayLive = project
 
 lazy val okayNetty = project
   .in(file("okay-netty"))
-  .dependsOn(okayHttp.jvm, okayJetty % Test)
+  .dependsOn(okayHttp.jvm, okayJetty % Test, okayMcpHttp.jvm % Test)
   .settings(
     name := "okay-netty",
     libraryDependencies ++= Seq(
@@ -2784,9 +2788,11 @@ lazy val okayX402Evm = (project in file("okay-x402-evm"))
 lazy val okayHttp = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-http"))
-  .dependsOn(okayMcp)
-  // the resumable GET stream journals pushes into a topic (specs/mcp.md v7)
-  .jvmConfigure(_.dependsOn(okayPersist.jvm))
+  // the core and the codec, and NOTHING above them (http-mcp-agent-edge,
+  // 2026-09-25): it depended on okay-mcp (for the MCP transports, now in
+  // okay-mcp) and so every HTTP user carried an agent, an LLM client and
+  // RAG; and on okay-persist for McpHttp's journal alone
+  .dependsOn(okay, okayCodec)
   .settings(
     name := "okay-http",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -2832,6 +2838,41 @@ lazy val okayMcp = crossProject(JVMPlatform, JSPlatform)
   )
   .jsSettings(
     // the protocol is pure and compiles here; the transports are not
+    Test / sources := Seq(),
+  )
+
+/**
+ * MCP over okay-http's wires: a WebSocket (`WsLink`), a bare TCP socket
+ * (`NioLink`), streamable HTTP (`McpHttp`) and the OAuth door in front
+ * of it (`McpAuth`). A module of its own because transports depend on
+ * the protocol AND on the wire, and neither of those should depend on
+ * the other (http-mcp-agent-edge, 2026-09-25): these lived in okay-http,
+ * which therefore depended on okay-mcp, and every HTTP user — every
+ * server — carried an agent, an LLM client and RAG. The packages are
+ * unchanged (`okay.http.McpHttp`, `okay.security.McpAuth`), so an
+ * import still reads the same; only the dependency names this module.
+ */
+lazy val okayMcpHttp = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-mcp-http"))
+  // okayHttp test->test: WsEcho, the test-scope WebSocket server
+  .dependsOn(okayMcp, okayHttp % "compile->compile;test->test")
+  // McpAuth is okay-security's door vocabulary around McpHttp
+  .jvmConfigure(_.dependsOn(okaySecurity.jvm))
+  .settings(
+    name := "okay-mcp-http",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+  )
+  .jsSettings(
+    // WsLink compiles here; every test binds a socket
     Test / sources := Seq(),
   )
 
@@ -2905,7 +2946,7 @@ lazy val okayDemo = (project in file("okay-demo"))
   // (demo-guarded-llm) — the arc's worked instance
   // okayCluster + okayBlob: the one-binary story (`Ledger`) — record,
   // report, page, backup, in one process
-  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayResilience.jvm, okayAdmin, okayChat, okayLive, okayDeploy, okayOpenapi, okayCluster.jvm, okayBlob.jvm)
+  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayMcpHttp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayResilience.jvm, okayAdmin, okayChat, okayLive, okayDeploy, okayOpenapi, okayCluster.jvm, okayBlob.jvm)
   // deployable (specs/deploy.md): the fat jar DemoDeploy's Dockerfile runs
   .settings(_root_.okay.deploy.sbt.OkayDeploy.deployable("okay.demo.ChatDemo"))
   .settings(
@@ -3087,7 +3128,7 @@ lazy val root = (project in file("."))
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
-    okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
+    okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
     okayOutbox.jvm, okayOutbox.js, okayOutbox.native,

@@ -2,8 +2,7 @@ package okay.http
 
 import okay.*
 import okay.given
-import okay.codec.{Json, Schema}
-import okay.mcp.{Mcp, Rpc}
+import okay.codec.Schema
 
 /**
  * The WebSocket transport against a real socket — the handshake, the
@@ -132,32 +131,4 @@ class TestWs extends munit.FunSuite {
   final case class Add(a: Int, b: Int)
   given Schema[Add] = Schema.derived
 
-  test("okay-mcp runs over a WebSocket, with no protocol code changed") {
-    // MCP's two standard transports are stdio and HTTP+SSE; okay-mcp had
-    // the first. A socket IS a Link, so the SAME Stage[Rpc, Rpc, Unit]
-    // that runs over pipes runs over a socket, and this is the proof.
-    val echo = WsEcho()
-    try
-      // the echo server bounces our own lines back, so a client sending
-      // an initialize sees exactly the bytes a Link carries — enough to
-      // prove the Link is well formed over frames
-      val sent = Rpc.encode(Rpc.Request(Json.JNum(1), Mcp.Initialize,
-        Mcp.initializeParams(Mcp.Info("client", "1"))))
-
-      val back = Async.run[Seq[String], Pure](
-        sockets.connect(echo.url).flatMap { sock =>
-          val link = Ws.link(sock)
-          link.send(sent).flatMap(_ =>
-            Writer.uncons[String, Unit, Async](link.lines).flatMap {
-              case Right((line, _)) => sock.close().map(_ => Seq(line))
-              case Left(_) => sock.close().map(_ => Seq.empty[String])
-            })
-        }).runWith
-
-      assertEquals(back, Seq(sent))
-      // and it is a well-formed message on the way back, not just bytes
-      assertEquals(Rpc.decode(back.head), Rpc.Request(Json.JNum(1), Mcp.Initialize,
-        Mcp.initializeParams(Mcp.Info("client", "1"))))
-    finally echo.close()
-  }
 }

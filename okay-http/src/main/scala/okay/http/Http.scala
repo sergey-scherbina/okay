@@ -186,5 +186,5 @@ object Http {
    * stage */
   def sse(r: Response): Source[String] =
     okay.through[String, String, Async, Unit, Unit](lines(r))(
-      !.widen[Unit, Take % String + Writer % String, Async](okay.llm.Sse.events))
+      !.widen[Unit, Take % String + Writer % String, Async](okay.Sse.events))
 }

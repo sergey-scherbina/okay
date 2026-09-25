@@ -467,7 +467,7 @@ over HTTP delivered nothing. This closes it — and note where the fix
 had to go, because it says what the gap really was.
 
 MCP has TWO standard transports, stdio and streamable HTTP. WebSocket
-is not one of them (okay-http's `Ws.link` is ours, for okay-to-okay),
+is not one of them (okay-mcp-http's `WsLink` is ours, for okay-to-okay),
 so the push that matters is the GET event-stream, not a WebSocket
 session.
 

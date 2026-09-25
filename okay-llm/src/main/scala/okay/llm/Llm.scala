@@ -16,25 +16,10 @@ trait Transport:
   def post(url: String, headers: Map[String, String], body: String)
   : Unit ! Writer % String + Async
 
+/** SSE framing for streamed completions — `okay.Sse` (okay-stream),
+ * where okay-http reaches it without this module */
 object Sse {
-  /** SSE framing as a Stage: lines await in, event payloads (the
-   * joined data: fields) tell out; a partial trailing event flushes */
-  def events: Stage[String, String, Unit] =
-    def flush(buf: List[String]): Stage[String, String, List[String]] =
-      if buf.isEmpty then pure(Nil)
-      else Stage.tell[String, String](buf.reverse.mkString("\n")).map(_ => Nil)
-
-    // named rather than inlined into the `.map`: as the receiver of a
-    // call the transduce gets no expected type, and its input type
-    // has nothing else to be inferred from
-    val framed: Stage[String, String, List[String]] =
-      Stage.transduce(List.empty[String])((buf, line) =>
-        if line.isEmpty then flush(buf)
-        else if line.startsWith("data:") then pure(line.drop(5).trim :: buf)
-        else pure(buf),   // comments, event:, id: — framing we do not need yet
-        flush)
-
-    framed.map(_ => ())
+  def events: Stage[String, String, Unit] = okay.Sse.events
 }
 
 object Anthropic {

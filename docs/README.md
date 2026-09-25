@@ -279,7 +279,7 @@ API reference, gotchas.
 | [`okay-rag`](modules/okay-rag.md) | retrieval: split the tree not the string, code in eight languages indexed by parsing it, symbols without embeddings |
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
 | [`okay-pool`](modules/okay-pool.md) | the engine on a cluster manager: a pool of identical processes, any of which takes a submission over HTTP and coordinates it, journal-backed so a member's death is a resume by any other one [specs/cluster-pool.md](../specs/cluster-pool.md) |
-| [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]`, and a socket IS an MCP `Link` |
+| [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]` |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
 | [`okay-staging`](modules/okay-staging.md) | the staged codec for a schema that exists only at run time — JVM only, optional by construction, switchable off at launch |
 | [`okay-netty`](modules/okay-netty.md) | Netty behind the same two seams, plus the cross-backend matrix that proves the seam |
@@ -288,6 +288,7 @@ API reference, gotchas.
 | [`okay-ui`](modules/okay-ui.md) | the toolkit that is not a toolkit: the view is a value, the renderer is a seam — terminal, React, test host, one application; forms derived from Schema |
 | [`okay-ui-gtk`](modules/okay-ui-gtk.md) | GTK 4 on Scala Native over the same Backend seam; aggregated only where pkg-config finds gtk4; one live backend per process, patches marshalled through g_idle_add |
 | [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Handler[Tool]`, our tools are a server, and the protocol is a pure Stage |
+| [`okay-mcp-http`](modules/okay-mcp-http.md) | MCP over okay-http's wires: a socket IS a `Link` (`WsLink`, `NioLink`), streamable HTTP (`McpHttp`) and its OAuth door (`McpAuth`) |
 | [`okay-persist`](modules/okay-persist.md) | the durable log: one primitive, staged — segments and recovery, offsets, compaction, replication's core, Sql/Kafka store engines, the Doctor |
 | [`okay-ops`](modules/okay-ops.md) | health, stats and Prometheus over the persist log's own values: /healthz, /readyz, /stats, /metrics — no SDK, the manifest is the Kubernetes integration |
 | [`okay-deploy`](modules/okay-deploy.md) | a whole deployable SYSTEM as one value — services and what each of them needs — rendered to seven targets: a laptop (compose), a rented host (systemd), a cluster (Helm), fly/render/railway, and AWS (Terraform for ECS). Plus the `okay deploy` CLI, which reads `deployment.json` so an artifacts directory works on a server with no repository. [specs/deployment.md](../specs/deployment.md) |
