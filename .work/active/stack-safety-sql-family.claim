@@ -1,0 +1,5 @@
+slug: stack-safety-sql-family
+who: claude (session 6f505c09)
+what: stack-safety stage 4a — okay-sql Typed/Row walks, okay-pg (colType, decodeCell, valueOf, parseArray, textOf, arrayLiteral, compositeLiteral), okay-r2dbc valueOf/javaOf: red first where input reaches the depth, explicit stack or written bound
+files: okay-sql, okay-pg, okay-r2dbc, specs/stack-safety*
+since: 2026-09-25
