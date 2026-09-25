@@ -2524,6 +2524,24 @@ lazy val okayPy = (project in file("okay-py"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+// okay-compress: LZ4 and ZSTD of our own (specs/okay-compress.md), pure
+// Scala over byte arrays on JVM, JS and Native, NO dependency; the JMH
+// measures it against aircompressor (pure Java), test-only.
+lazy val okayCompress = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-compress"))
+  .settings(
+    name := "okay-compress",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
+    libraryDependencies += "io.airlift" % "aircompressor" % "2.0.3" % "test;jmh",
+  )
+
 // okay-arrow: Arrow IPC behind one facade, two implementations
 // (specs/okay-arrow.md). OkayArrow is ours, on every platform, with no
 // dependency; ApacheArrow (JVM) binds Apache Arrow Java, an OPTIONAL
@@ -3235,7 +3253,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayForeignWorkflow, okayR,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayCompress.jvm, okayCompress.js, okayCompress.native, okayForeignWorkflow, okayR,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
