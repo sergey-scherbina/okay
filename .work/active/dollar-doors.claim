@@ -1,0 +1,6 @@
+feature/dollar-doors 2026-09-25T17:35:01Z
+agent: claude-fable-5-1
+heartbeat: 2026-09-25T17:35:01Z
+status: in-progress
+done-so-far: claimed
+next: worktree ../okay-wt-dollar-doors; (1) Prompted door for dollar + scopeWith, (2) stacked control to a dollar prompt refused at compile time, (3) !Delim.shift0[A] in direct blocks, (4) abort-to-dollar docs line + TestDollar expected value
