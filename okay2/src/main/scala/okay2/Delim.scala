@@ -871,11 +871,20 @@ object Delim {
 
     /** "P is on the stack S" — the evidence that replaces the throw */
     @implicitNotFound("prompt ${P} is not on the prompt stack ${S}: a shift names the prompt of a reset it is INSIDE (in.stack.shift(in.p)(…) under Delim.Stacked.delimited/reset) — not one that has returned, and not one another reset made")
-    sealed trait Has[S <: Stk, P]
+    sealed trait Has[S <: Stk, P] {
+      /** the stack BELOW p: what a capture to p leaves in force, since it
+       * takes p and every delimiter installed inside it. Found by the
+       * same induction that finds p (okay2-dollar; the Scala 3 core's
+       * `Has.Below`) */
+      type Below <: Stk
+    }
     object Has {
-      private val inst: Has[Empty, Nothing] = new Has[Empty, Nothing] {}
-      implicit def here[P, S <: Stk]: Has[Cons[P, S], P] = inst.asInstanceOf[Has[Cons[P, S], P]]
-      implicit def there[P, Q, S <: Stk](implicit h: Has[S, P]): Has[Cons[Q, S], P] = { val _ = h; inst.asInstanceOf[Has[Cons[Q, S], P]] }
+      type Aux[S <: Stk, P, B <: Stk] = Has[S, P] { type Below = B }
+      implicit def here[P, S <: Stk]: Aux[Cons[P, S], P, S] = new Has[Cons[P, S], P] { type Below = S }
+      implicit def there[P, Q, S <: Stk, B <: Stk](implicit h: Aux[S, P, B]): Aux[Cons[Q, S], P, B] = {
+        val _ = h
+        new Has[Cons[Q, S], P] { type Below = B }
+      }
     }
 
     /**
@@ -919,10 +928,42 @@ object Delim {
         push[R, F](in.p)(body(in))
       }
 
-      // `shift0`/`control0` are NOT here: their body runs with the
-      // delimiter CONSUMED, so its stack is the part of `S` below `p` —
-      // a type-level function this stage does not price. The unstacked
-      // doors remain.
+      /**
+       * `Delim.shift0`, stacked: the body runs with `p` CONSUMED, under
+       * the stack BELOW it (ICFP 2011's rule for S0), which it receives
+       * as a `Stack[B]`: a shift to `p` from the body is refused at
+       * compile time, and a shift to a prompt below `p` resolves. `k`
+       * re-installs `p`, so it answers under the same `B`.
+       *
+       * TWO STEPS, `stack.shift0(p).apply { below => k => … }`: the
+       * evidence must be found before the body is typed (the body's
+       * stack is `ev.Below`), and a Scala 2 implicit list is the LAST
+       * one, so it would take a block written right after `(p)` as the
+       * implicit argument (memory implicit-paren-list-eats-next-call).
+       */
+      def shift0[R, A, F <: Row](p: Prompt[R])(implicit ev: Has[S, p.type], at: At): Shift0[R, A, F, ev.Below] =
+        new Shift0[R, A, F, ev.Below](p, at)
+
+      /**
+       * `Delim.dollar`, stacked: a fresh prompt on this stack for the
+       * body, and `ret` run OUTSIDE it, under this stack. A `shift0` to
+       * its prompt takes `ret` along.
+       */
+      def dollar[R0, R, F <: Row](ret: R0 => R ! (Delim + F))(body: In[R, S] => R0 ! (Delim + F))(implicit at: At): R ! (Delim + F) = {
+        val in = new In[R, S](named[R]("dollar")(at))
+        Delim.dollar[R0, R, F](in.p)(ret)(body(in))
+      }
+
+      // `control0` is NOT here, as in the Scala 3 core: its continuation
+      // is a bare segment run where `p` is gone, but the code inside it
+      // was typed with `p` on its stack (specs/shift0-dollar.md,
+      // Decisions). The unstacked door remains.
+    }
+
+    /** the second step of a stacked `shift0`: the body, under `B` */
+    final class Shift0[R, A, F <: Row, B <: Stk] private[Stacked] (p: Prompt[R], at: At) {
+      def apply(f: Stack[B] => (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+        Delim.shift0[R, A, F](p)(k => f(new Stack[B]())(k))(at)
     }
 
     /** what `reset`/`delimited` hand their body: the prompt, and the

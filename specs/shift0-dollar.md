@@ -168,6 +168,10 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
       time and allowed to a `Reset` (TestStackedShift0),
       `!Delim.shift0[A]` in a direct block (TestDirectShift0), and
       `abort` to a dollar skipping `ret` pinned as a value (TestDollar).
+- [x] okay2 twin (okay2-dollar, 2026-09-25): `Delim.dollar` in the
+      okay2 machine (`Segs.Ret`, the cut as `Plain | AtRet`), and
+      stacked `shift0`/`dollar` with `Has.Below`
+      (okay2/TestDollar, okay2/TestStackedShift0).
 
 ## Out of scope
 
@@ -386,3 +390,37 @@ STAGE 3, 2026-09-25 (TestHandlersAsDollar 5; DelimBenchmark state* lanes):
   (3.8x / 7.4x), shallow 164.5 µs / 1 729 014 B (4.7x / 7.8x). The
   bytes do not depend on the load, and a 4x time gap is well outside
   what the load could produce.
+
+- **okay2 twin (okay2-dollar, 2026-09-25).** The okay2 machine has
+  `Delim.dollar` as the Scala 3 core has it:
+  - a `Segs.Ret` segment carrying `ret`, and `reify` rebuilding it as a
+    `Dollar`;
+  - the cut in two shapes, `Plain | AtRet`. `P0` is an existential
+    spelled as a type member, so no cast is added. The only new casts
+    are the two claims `Push` already makes, for the body and for
+    `ret`;
+  - a control-capture to a dollar refused by name, while `push` keeps
+    its plain mark.
+  TestDollar's twin holds every value of the Scala 3 suite, 100 000
+  nested dollars included.
+  - WHAT BOTH SUITES LACKED: no test told `ret $ E[v]` from
+    `push(E[v] >>= ret)`, so a mutant `reify` that rebuilt the
+    continuation the second way passed all 13. Two tests now tell them
+    apart in BOTH cores. One: `ret` runs OUTSIDE the re-installed dollar,
+    so a `shift0` in `ret` escapes to the next delimiter (`"R"`, where
+    the mutant gives `"R|f"`). Two: a capture to an outer prompt passing
+    a dollar keeps it, with its `ret` (`"<a>|q"`).
+  - Stacked: `Has` carries `type Below` by the same induction (`Aux`,
+    as shapeless does), which also removed its two casts. So
+    `stack.shift0(p).apply { below => k => … }` types the body under the
+    stack below `p`, and a shift from it to `p` is a compile error. The
+    door takes TWO steps because a Scala 2 implicit list is the last one:
+    a block right after `(p)` would be taken as the implicit argument.
+    `stack.dollar(ret) { in => … }` needs no evidence.
+  - scalac 2.13 reports the `AtRet` arm as "unreachable code" when it
+    follows the `Plain` arm; it is first, with a comment saying why.
+  - Not ported: the evidence door (`dollar(ret) { body }` with a
+    `Prompted`), because Scala 2 cannot infer a lambda's type through an
+    overload on the first parameter list; and `dollarResumed`, which
+    Lexical's tail guard needs. Filed as okay2/row okay2-layered and
+    okay2-lexical.
