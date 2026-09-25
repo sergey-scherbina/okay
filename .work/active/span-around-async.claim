@@ -1,7 +1,0 @@
-feature/span-around-async 2026-09-25T12:18:27Z
-agent: claude-code (okay-watch session)
-heartbeat: 2026-09-25T12:18:27Z
-status: in-progress
-done-so-far: worktree created
-next: okay.obs.RequestSpans (okay-watch's Doorway, generic) and its tests; okay-obs JVM depends on okay-resilience for Attempt
-touches: build.sbt (okayObs jvm deps), okay-obs src/main/scala-jvm, tests, docs
