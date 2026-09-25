@@ -31,11 +31,23 @@ import java.util.concurrent.locks.LockSupport
  * - the caller waits uninterruptibly — the worker holds the frames of
  *   the caller's own program, there is nothing to abandon — and its
  *   interrupt status is restored when the answer arrives.
+ *
+ * SPIN BEFORE PARKING, on both ends. Measured with the pool alone
+ * (2026-09-25): statePara 134.8 → 50.4 µs against 27.3 on the base, so
+ * ~22 µs a switch remained — two OS wake-ups (the worker's, the
+ * caller's), ~10 µs each on macOS, not memory. A worker that has just
+ * finished spins `spinNanos` for its next task before parking, and a
+ * caller spins the same before parking for its answer: a segment
+ * shorter than the window (statePara's is ~20 µs) costs no wake-up at
+ * all. The price is bounded — at most the window of CPU per switch,
+ * and a switch happens once per ~2 MB of stack.
  */
 private[okay] object StackPool:
 
   private val maxIdle: Int = Integer.getInteger("okay.cont.idleWorkers", 2)
   private val idleNanos: Long = java.lang.Long.getLong("okay.cont.idleMillis", 30_000L) * 1_000_000L
+
+  private val spinNanos: Long = java.lang.Long.getLong("okay.cont.spinMicros", 50L) * 1_000L
 
   private val idle = ConcurrentLinkedDeque[Worker]()
 
@@ -68,6 +80,8 @@ private[okay] object StackPool:
           if idle.size < maxIdle then idle.addFirst(this)
           else live = false
         else
+          val spinUntil = System.nanoTime() + spinNanos
+          while task == null && System.nanoTime() < spinUntil do Thread.onSpinWait()
           val deadline = System.nanoTime() + idleNanos
           while task == null && System.nanoTime() < deadline do
             LockSupport.parkNanos(this, deadline - System.nanoTime())
@@ -90,6 +104,8 @@ private[okay] object StackPool:
       self.setContextClassLoader(null)
       h.done = true
       LockSupport.unpark(h.waiter)
+    val spinUntil = System.nanoTime() + spinNanos
+    while !h.done && System.nanoTime() < spinUntil do Thread.onSpinWait()
     var interrupted = false
     while !h.done do
       LockSupport.park(h)
