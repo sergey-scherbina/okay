@@ -1,0 +1,2 @@
+2026-09-25	8cb04f25	72	Xml.tokens vs Xml.scan, three sanctions lists (OFAC 29 MB, EU 26 MB, UN 2 MB), 4 807 352 tokens: time	1641	5174	0.32	ms; not JMH, median of 5 alternating after one warm pass each, JDK 25, a loaded box
+2026-09-25	8cb04f25	72	Xml.tokens vs Xml.scan, the same files: bytes allocated per pass	164	10334	0.016	MB, ThreadMXBean.getThreadAllocatedBytes; scan per char: S.copy, a P, buf + c

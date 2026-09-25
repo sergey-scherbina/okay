@@ -127,8 +127,10 @@ object Xml {
             S(Mode.InTag, "<", s.at, next)
           else if s.buf.isEmpty then begin(Mode.Text)
           // text and whitespace are different tokens, so a run breaks
-          // where the character class does
-          else if s.buf.forall(_.isWhitespace) != c.isWhitespace then
+          // where the character class does — and so a run IS one class,
+          // and its first character says which (xml-tokens-stream: the
+          // `forall` this replaced rescanned the run per character)
+          else if s.buf.charAt(0).isWhitespace != c.isWhitespace then
             flushedInto(s, out)
             begin(Mode.Text)
           else keep
@@ -137,6 +139,111 @@ object Xml {
       val sink = new Scan.Sink[K]
       flushedInto(s, sink)
       sink.result()
+
+  /**
+   * The same tokens `scan` produces, from a Reader, on a mutable buffer
+   * (xml-tokens-stream, 2026-09-25).
+   *
+   * `scan` is a value-state scanner, which is what incremental relexing
+   * needs (`key`, `rebase`, snapshots) and what a document read once
+   * does not: per character it copies its state, allocates a position
+   * and appends by `buf + c`, a copy of the whole lexeme. Measured on
+   * okay-watch's start, three sanctions lists (55 MB of XML): 80% of
+   * every byte allocated. This walks the same modes with one
+   * StringBuilder and six ints, and a token is made only when one ends.
+   * TestXmlTokens holds it equal to `scan` on random input, cut into
+   * chunks at every size.
+   */
+  def tokens(in: java.io.Reader, chunk: Int = 1 << 16)(emit: T => Unit): Unit =
+    val t = new Tokens(emit)
+    val chars = new Array[Char](math.max(1, chunk))
+    var n = in.read(chars)
+    while n >= 0 do
+      var i = 0
+      while i < n do
+        t.step(chars(i))
+        i += 1
+      n = in.read(chars)
+    // an unterminated tag, comment or CDATA is still a token
+    t.end()
+
+  /** `tokens`' state: fields rather than captured locals, so a
+   * character allocates nothing — neither a position nor a box */
+  private final class Tokens(emit: T => Unit):
+    private val buf = new java.lang.StringBuilder
+    private var mode: Mode = Mode.Text
+    private var sOff, sLine, sCol = 0 // where the token being read began
+    private var off, line, col = 0    // where the next character is
+
+    private def kindOf(b: String): K =
+      if b.startsWith("<!--") then K.Comment
+      else if b.startsWith("<![CDATA[") then K.Cdata
+      else if b.startsWith("</") then K.Close
+      else if b.endsWith("/>") then K.SelfClose
+      else if b.startsWith("<") then K.Open
+      else if b.forall(_.isWhitespace) then K.Ws
+      else K.Text
+
+    private def emitAs(k: K | Null): Unit =
+      if buf.length > 0 then
+        val b = buf.toString
+        val kind = if k == null then kindOf(b) else k
+        val ch = kind match
+          case K.Comment => Channel.Comment
+          case K.Ws => Channel.Trivia
+          case _ => Channel.Syntax
+        emit(Token(kind, b, Span(sOff, sLine, sCol, b.length), ch))
+
+    private def endsWith3(a: Char, b: Char, c: Char): Boolean =
+      val n = buf.length
+      n >= 3 && buf.charAt(n - 3) == a && buf.charAt(n - 2) == b && buf.charAt(n - 1) == c
+
+    private def is(s: String): Boolean = buf.length == s.length && buf.indexOf(s) == 0
+
+    /** the next token begins where `c` is */
+    private def startAtC(): Unit = { sOff = off; sLine = line; sCol = col }
+
+    def step(c: Char): Unit =
+      mode match
+        case Mode.InComment =>
+          buf.append(c)
+          if endsWith3('-', '-', '>') then after(c, K.Comment)
+        case Mode.InCdata =>
+          buf.append(c)
+          if endsWith3(']', ']', '>') then after(c, K.Cdata)
+        case Mode.InQuote(q) =>
+          buf.append(c)
+          if c == q then mode = Mode.InTag
+        case Mode.InTag =>
+          buf.append(c)
+          if c == '"' || c == '\'' then mode = Mode.InQuote(c)
+          else if c == '>' then after(c, null)
+          else if is("<!--") then mode = Mode.InComment
+          else if is("<![CDATA[") then mode = Mode.InCdata
+        case Mode.Text =>
+          if c == '<' then
+            emitAs(null)
+            buf.setLength(0); buf.append(c); mode = Mode.InTag; startAtC()
+          else if buf.length == 0 then { buf.append(c); startAtC() }
+          else if buf.charAt(0).isWhitespace != c.isWhitespace then
+            emitAs(null)
+            buf.setLength(0); buf.append(c); startAtC()
+          else buf.append(c)
+      advance(c)
+
+    /** a token that ended on `c` is emitted; the next starts after `c` */
+    private def after(c: Char, k: K | Null): Unit =
+      emitAs(k)
+      buf.setLength(0)
+      mode = Mode.Text
+      sOff = off + 1
+      if c == '\n' then { sLine = line + 1; sCol = 0 } else { sLine = line; sCol = col + 1 }
+
+    private def advance(c: Char): Unit =
+      off += 1
+      if c == '\n' then { line += 1; col = 0 } else col += 1
+
+    def end(): Unit = emitAs(null)
 
   // ---------------------------------------------------------------- drive
 
