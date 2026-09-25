@@ -1,0 +1,4 @@
+feature/zstd-damaged-test-time 2026-09-25T19:13:29Z
+agent: claude-opus-5-5 (session 8908eaf7)
+status: in-progress
+what: TestZstd "a damaged frame fails as Corrupt" timed out on Native in the whole build (43 s > 30 s); fewer damaged frames, mutant re-checked
