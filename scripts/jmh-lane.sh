@@ -42,8 +42,15 @@ cd "$root"
 # sbt on .sdkmanrc's JDK, as gate.sh runs it (jdk-pin.sh; jmh-lane-jdk-pin)
 JDK_PIN_ROOT="$here/.." . "$here/jdk-pin.sh"
 
-LOCKDIR="$root/.work/jmh/lock"
-mkdir -p "$root/.work/jmh"
+# THE LOCK IS THE BOX'S, NOT THE CHECKOUT'S (jmh-lane-lock-per-checkout,
+# 2026-09-25): at `$root/.work/jmh/lock` two worktrees never saw each
+# other, and an A/B's `mine` and `ref` arms collided on JMH's own
+# `$TMPDIR/jmh.lock` instead — 4 of 18 lanes died with "Another JMH
+# instance might be running". One lane at a time means one per box, so
+# the lock lives beside JMH's own; JMH_LANE_LOCK overrides (the
+# selftest's fixture uses it).
+LOCKDIR="${JMH_LANE_LOCK:-${TMPDIR:-/tmp}/okay-jmh-lane.lock}"
+mkdir -p "$(dirname "$LOCKDIR")"
 
 CMD="${1:?usage: jmh-lane.sh \"<sbt command>\" [attempts]}"
 ATTEMPTS="${2:-5}"

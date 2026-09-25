@@ -18,6 +18,7 @@ bad() { say "  FAIL — $1"; fail=1; }
 new_fixture() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/scripts" "$tmp/.work"
+  export JMH_LANE_LOCK="$tmp/.work/jmh/lock"   # the fixture's own lock, not the box's
   cp "$here/jmh-lane.sh" "$tmp/scripts/jmh-lane.sh"
   cp "$here/jdk-pin.sh" "$tmp/scripts/jdk-pin.sh"   # sourced by jmh-lane.sh; no .sdkmanrc in the fixture, so it pins nothing
   chmod +x "$tmp/scripts/jmh-lane.sh"
