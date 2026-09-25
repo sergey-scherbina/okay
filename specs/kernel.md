@@ -110,7 +110,7 @@ object Kernel {
            disabled: Set[String] = Set.empty): Either[Vector[Problem], Plan]
   def start(plan: Plan, verify: Boolean = true): Running ! Resource
 }
-trait Running { def one/all/maybe(port); def installed: Vector[Installed] }
+trait Running { def one/all/maybe(port); def providers(port): Vector[(String, A)]; def installed: Vector[Installed] }
 // plan + start in one; a plan with problems throws Refused(problems)
 def assemble(plugins, choose, disabled, verify): Running ! Resource
 
@@ -162,7 +162,10 @@ object Discover {
       provider; one that fails to load or construct is a `LoadFailed`
       (class, why) and the others still load.
 - [x] `Discover.jars(dir)` does the same over every `*.jar` in a
-      directory, under one class loader whose parent is the host's.
+      directory, under one class loader whose parent is the host's —
+      reading the service files of THOSE jars, so the host's own entries
+      (visible through the parent) do not come back as duplicates.
+- [x] `Running.providers(port)`: each value with the plugin that made it.
 
 ## Forbidden edges (okay-deploy's sbt plugin)
 

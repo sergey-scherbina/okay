@@ -16,3 +16,5 @@
       green (7 tests). Two red gates from one test on unrelated lanes
       is the shape of a budget, not a bug — a longer timeout on this
       one test is the cheap answer if the dump says it only grows.
+      THIRD sighting the same day: the kernel lane's gate (39.1 s),
+      okay-clojure again only transitive (build.sbt).

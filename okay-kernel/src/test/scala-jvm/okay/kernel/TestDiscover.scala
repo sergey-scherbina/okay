@@ -43,21 +43,26 @@ class TestDiscover extends munit.FunSuite:
     assertEquals(failed.size, 2, failed)
   }
 
-  test("jars finds the directory's plugins through the host's classes") {
+  test("jars reads the directory's own service files: a class in the host is found, the host's own entries are not") {
     val dir = Files.createTempDirectory("okay-kernel-plugins")
-    jar(dir.resolve("hello.jar"), "okay.kernel.HelloPlugin")
-    val isolated = new ClassLoader(getClass.getClassLoader) {
-      // hide this module's own META-INF/services so only the jar speaks
-      override def getResources(name: String): java.util.Enumeration[java.net.URL] =
-        if name.startsWith("META-INF/services/") then java.util.Collections.emptyEnumeration()
-        else super.getResources(name)
-    }
-    val (found, failed) = Discover.jars(dir, parent = isolated)
+    jar(dir.resolve("hello.jar"), "# a comment\nokay.kernel.HelloPlugin")
+    // the parent is the test's loader, whose own META-INF/services lists
+    // HelloPlugin AND BrokenPlugin: neither may come back a second time
+    val (found, failed) = Discover.jars(dir, parent = getClass.getClassLoader)
     assertEquals(found.map(_.id), Vector("hello"))
     assertEquals(failed, Vector.empty)
     val (r, close) = okay.Resource.open(Kernel.assemble(found))
     assertEquals(r.all(TestDiscover.greeting), Vector("hello"))
+    assertEquals(r.providers(TestDiscover.greeting), Vector(("hello", "hello")))
     close()
+  }
+
+  test("an entry that is not a Plugin is named") {
+    val dir = Files.createTempDirectory("okay-kernel-plugins")
+    jar(dir.resolve("x.jar"), "java.lang.Object")
+    val (found, failed) = Discover.jars(dir, parent = getClass.getClassLoader)
+    assertEquals(found, Vector.empty)
+    assert(failed.head.why.contains("not an okay.kernel.Plugin"), failed.toString)
   }
 
   test("a missing or empty directory is no plugins, not a failure") {

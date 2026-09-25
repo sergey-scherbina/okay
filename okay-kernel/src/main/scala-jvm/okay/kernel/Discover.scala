@@ -37,7 +37,13 @@ object Discover:
 
   /** every `*.jar` in `dir`, under one class loader whose parent is the
    * host's: the plugins directory an Enterprise box is given. A missing
-   * directory is no plugins, not a failure. */
+   * directory is no plugins, not a failure.
+   *
+   * The service entries are read from THOSE JARS, not through
+   * `ServiceLoader`: a loader whose parent is the host's would also
+   * answer the host's own `META-INF/services`, and every built-in plugin
+   * would come back a second time as a duplicate. A class an entry names
+   * may live in the jar or in the host. */
   def jars(dir: Path, parent: ClassLoader = classOf[Plugin].getClassLoader)
   : (Vector[Plugin], Vector[Problem.LoadFailed]) =
     if !Files.isDirectory(dir) then (Vector.empty, Vector.empty)
@@ -47,7 +53,30 @@ object Discover:
         try list.iterator.asScala.filter(_.toString.endsWith(".jar")).toVector.sortBy(_.toString)
         finally list.close()
       if jars.isEmpty then (Vector.empty, Vector.empty)
-      else services(java.net.URLClassLoader(jars.map(_.toUri.toURL).toArray, parent))
+      else
+        val loader = java.net.URLClassLoader(jars.map(_.toUri.toURL).toArray, parent)
+        val found = Vector.newBuilder[Plugin]
+        val failed = Vector.newBuilder[Problem.LoadFailed]
+        for jar <- jars; name <- entries(jar, failed) do
+          try Class.forName(name, true, loader).getDeclaredConstructor().newInstance() match
+            case p: Plugin => found += p
+            case other => failed += Problem.LoadFailed(name, s"not an okay.kernel.Plugin (${other.getClass.getName})")
+          catch case NonFatal(e) => failed += Problem.LoadFailed(name, why(e))
+        (found.result(), failed.result())
+
+  /** the class names one jar's service file lists: `#` starts a comment */
+  private def entries(jar: Path, failed: scala.collection.mutable.Builder[Problem.LoadFailed, ?]): Vector[String] =
+    try
+      val jf = java.util.jar.JarFile(jar.toFile)
+      try
+        Option(jf.getEntry("META-INF/services/okay.kernel.Plugin")).fold(Vector.empty[String]) { e =>
+          val text = String(jf.getInputStream(e).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+          text.linesIterator.map(_.takeWhile(_ != '#').trim).filter(_.nonEmpty).toVector
+        }
+      finally jf.close()
+    catch case NonFatal(e) =>
+      failed += Problem.LoadFailed(jar.getFileName.toString, why(e))
+      Vector.empty
 
   private def why(e: Throwable): String =
     val root = Iterator.iterate(e)(_.getCause).takeWhile(_ != null).toVector.last

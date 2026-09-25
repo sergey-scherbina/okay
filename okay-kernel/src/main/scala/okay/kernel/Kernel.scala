@@ -61,6 +61,10 @@ trait Running:
   def one[A](p: Port[A]): A
   def all[A](p: Port[A]): Vector[A]
   def maybe[A](p: Port[A]): Option[A]
+  /** each provider's value with the id of the plugin that made it — for
+   * a host that must say WHO provides what (two sources claiming one
+   * name, a status page) */
+  def providers[A](p: Port[A]): Vector[(String, A)]
   def installed: Vector[Installed]
 
 object Kernel:
@@ -216,6 +220,9 @@ object Kernel:
         def all[A](port: Port[A]): Vector[A] =
           valuesOf(plan.serving.getOrElse(port.name, Vector.empty)).asInstanceOf[Vector[A]]
         def maybe[A](port: Port[A]): Option[A] = all(port).headOption
+        def providers[A](port: Port[A]): Vector[(String, A)] =
+          plan.serving.getOrElse(port.name, Vector.empty).map((p, v) =>
+            (p.id, made((p.id, v.port.name)).asInstanceOf[A]))
         val installed: Vector[Installed] = plan.order.flatMap(p =>
           p.provides.map(v => Installed(p.id, p.version, v.port.name, v.built)))
     }
