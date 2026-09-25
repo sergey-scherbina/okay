@@ -159,6 +159,16 @@ deleted.
 - [ ] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
       already `Cont`-trampolined; the other formats, Schema walks,
       Compat, Stubs and Policy are not.
+      - [x] 2a — the JSON family, both cores (stack-safety-json,
+        2026-09-25). One real defect: past the threshold the STRICT
+        reader skipped each unknown field by a direct call back into its
+        field loop, so an object 40 deep with 200 000 fields the schema
+        does not name threw StackOverflowError (TestJsonStrict, red
+        first in okay and okay2). The skip is a loop now; the two rows
+        are gone from both files. Every other JSON row is marked
+        BOUNDED with its bound: one open container per call below
+        `Codecs.NativeThreshold`, Cont past it, a product's field count
+        for the absent-field step, the schema for an Option/iso chain.
 - [ ] Stage 3 — streams and STM: okay-stream, okay-stm, okay2-stream,
       okay2-stm.
 - [ ] Stage 4 — data codecs over values: okay-py, okay-r, okay-sql,
