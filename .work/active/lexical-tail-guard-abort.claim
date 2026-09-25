@@ -1,0 +1,6 @@
+feature/lexical-tail-guard-abort 2026-09-25T16:40:44Z
+agent: claude-fable-5-1
+heartbeat: 2026-09-25T16:40:44Z
+status: in-progress
+done-so-far: sprint item queued
+next: worktree ../okay-wt-lexical-tail-guard-abort; the red test in TestLexical (a resumption that aborts evades the tail guard)
