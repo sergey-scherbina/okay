@@ -16,6 +16,14 @@ object Samples:
     "random" -> Array.fill(50000)(rnd.nextInt(256).toByte),
     "random then text" -> (Array.fill(3000)(rnd.nextInt(256).toByte) ++ bytes("abcabcabc" * 3000)),
     "numbers" -> bytes((0 until 20000).map(i => s"$i,${i * 7 % 1000},row$i\n").mkString),
+    // an Arrow offsets buffer: increasing int32s whose low bytes span 0-255,
+    // so Huffman needs FSE-coded weights (okay-compress-zstd-ratio)
+    "int32 offsets" -> {
+      val b = new Array[Byte](4 * 3001)
+      var at = 0
+      (0 until 3001).foreach { i => Le.put32(b, 4 * i, at); at += 5 + (i * 7919) % 13 }
+      b
+    },
     "far matches" -> {
       val block = Array.fill(40000)(rnd.nextInt(256).toByte)
       block ++ Array.fill(30000)(rnd.nextInt(256).toByte) ++ block

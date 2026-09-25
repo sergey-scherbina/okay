@@ -275,9 +275,13 @@ private[compress] final class BitWriter(capacity: Int):
 /** an FSE ENCODING table, derived from the decoding table: for each symbol
  * and each state the decoder should reach next, the state it must come from */
 private[compress] final class FseEncoder(val log: Int, val base: Array[Int], val bits: Array[Int], owner: Array[Array[Int]],
-                                         firstOf: Array[Int]):
+                                         firstOf: Array[Int], sym: Array[Int]):
   def from(symbol: Int, nextState: Int): Int = owner(symbol)(nextState)
   def anyState(symbol: Int): Int = firstOf(symbol)
+  /** a state of `symbol` whose update READS bits, or -1: the last update
+   * of a two-state stream must run past its start, which reading nothing
+   * would not */
+  def stateReading(symbol: Int): Int = sym.indices.find(u => sym(u) == symbol && bits(u) > 0).getOrElse(-1)
 
 private[compress] object FseEncoder:
   val LlDefaultNorm: Array[Int] = Array(4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1,
@@ -304,7 +308,7 @@ private[compress] object FseEncoder:
       var x = from
       while x < to do { owner(s)(x) = u; x += 1 }
       u += 1
-    FseEncoder(log, base, bits, owner, firstOf)
+    FseEncoder(log, base, bits, owner, firstOf, Array.tabulate(size)(d.symbol))
 
   private val cache = scala.collection.mutable.Map.empty[Int, FseEncoder]
   private def predefined(which: Int, norm: Array[Int], log: Int): FseEncoder =
@@ -420,15 +424,28 @@ private[compress] object HuffmanEncoder:
     // weights: maxBits + 1 - length; the last present symbol's is implied
     val lastSym = counts.lastIndexWhere(_ > 0)
     val weights = Array.tabulate(lastSym)(s => if lens(s) == 0 then 0 else maxBits + 1 - lens(s))
-    if weights.length > 128 || weights.length == 0 then return null   // the direct form holds 128 weights
-    val tree = Out(1 + (weights.length + 1) / 2)
-    tree.byte(127 + weights.length)
-    var k = 0
-    while k < weights.length do
-      val hi = weights(k)
-      val lo = if k + 1 < weights.length then weights(k + 1) else 0
-      tree.byte((hi << 4) | lo)
-      k += 2
+    if weights.length == 0 then return null
+    // the direct form holds at most 128 weights; past that (a binary
+    // buffer's bytes span 0-255) the weights are FSE-coded, or the offsets
+    // of an Arrow column went RAW (okay-compress-zstd-ratio)
+    val tree =
+      if weights.length <= 128 then
+        val t = Out(1 + (weights.length + 1) / 2)
+        t.byte(127 + weights.length)
+        var k = 0
+        while k < weights.length do
+          val hi = weights(k)
+          val lo = if k + 1 < weights.length then weights(k + 1) else 0
+          t.byte((hi << 4) | lo)
+          k += 2
+        t
+      else
+        val coded = fseWeights(weights)
+        if coded == null then return null
+        val t = Out(1 + coded.length)
+        t.byte(coded.length)
+        t.bytes(coded, 0, coded.length)
+        t
     // canonical codes, as the decoder's table assigns them
     val codes = canonical(lens, maxBits)
     val four = n > 1024
@@ -462,6 +479,48 @@ private[compress] object HuffmanEncoder:
       Vector(0, 1, 2).foreach { j => out.byte(streams(j).length); out.byte(streams(j).length >>> 8) }
     streams.foreach(s => out.bytes(s, 0, s.length))
     out.result()
+
+  /**
+   * Huffman weights FSE-coded (RFC 8878 4.2.1.2): a table description,
+   * then ONE bitstream read by two interleaved states. The decoder emits
+   * a weight from state 1, updates it, then from state 2, and so on, and
+   * stops when an update reads past the stream's start: the other state's
+   * weight is then the last one. So the chain that emits the next-to-last
+   * weight ends on a state whose update reads bits, and the writes are the
+   * reverse of that reading order. Answers null past the 127 bytes the
+   * header byte can say.
+   */
+  private def fseWeights(w: Array[Int]): Array[Byte] =
+    val n = w.length
+    if n < 2 then return null
+    val counts = new Array[Int](Huffman.MaxBits + 1)
+    w.foreach(x => counts(x) += 1)
+    val log = 6
+    val norm = FseEncoder.normalise(counts, log)
+    val desc = FseEncoder.describe(norm, log)
+    val t = FseEncoder.of(norm, log)
+    // the states of each chain, last first: chain A emits w(0), w(2), ...;
+    // chain B emits w(1), w(3), ...
+    val st = new Array[Int](n)
+    val lastOver = n - 2                                     // its update runs past the start
+    st(n - 1) = t.anyState(w(n - 1))
+    st(lastOver) = t.stateReading(w(lastOver))
+    if st(lastOver) < 0 then return null
+    var k = n - 3
+    while k >= 0 do
+      st(k) = t.from(w(k), st(k + 2))
+      k -= 1
+    // reading order: init A, init B, then the update after w(k) for k = 0..n-3
+    val bw = BitWriter(n + 8)
+    k = n - 3
+    while k >= 0 do
+      bw.write(st(k + 2) - t.base(st(k)), t.bits(st(k)))
+      k -= 1
+    bw.write(st(1), log)
+    bw.write(st(0), log)
+    val stream = bw.closed()
+    if desc.length + stream.length > 127 then null
+    else desc ++ stream
 
   /** one stream, written so a [[BackBits]] reads its first literal first:
    * the literals are written LAST first */
