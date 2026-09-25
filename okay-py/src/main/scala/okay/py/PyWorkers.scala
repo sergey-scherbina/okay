@@ -114,11 +114,7 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
     case ForeignEval.Program(_, _, args) => args.flatMap(refsIn)
     case ForeignEval.Resume(_, _) | ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) => Vector.empty
 
-  private def refsIn(v: PyValue): Vector[Long] = v match
-    case PyValue.Ref(r) => Vector(r.id)
-    case PyValue.Arr(xs) => xs.flatMap(refsIn)
-    case PyValue.Dict(kv) => kv.flatMap(p => refsIn(p._2))
-    case _ => Vector.empty
+  private def refsIn(v: PyValue): Vector[Long] = PyValue.refs(v)
 
   /** the one worker holding every ref named, or none named at all */
   private def owner(ids: Vector[Long]): Option[ForeignWorker] =
@@ -132,11 +128,10 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
 
   private def localRef(r: PyRef): PyRef = PyRef(refs.get(r.id)._2, r.pyType)
 
-  private def local(v: PyValue): PyValue = v match
+  private def local(v: PyValue): PyValue = PyValue.rebuild(v) {
     case PyValue.Ref(r) => PyValue.Ref(localRef(r))
-    case PyValue.Arr(xs) => PyValue.Arr(xs.map(local))
-    case PyValue.Dict(kv) => PyValue.Dict(kv.map((k, x) => (k, local(x))))
     case other => other
+  }
 
   private def register(w: ForeignWorker, r: PyRef): PyRef =
     val g = nextRef.incrementAndGet()

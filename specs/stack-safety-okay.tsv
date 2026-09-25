@@ -183,30 +183,23 @@ okay-pg/src/main/scala/okay/pg/PgSql.scala	731	arrayLiteral	mutual	Vector.map	BO
 okay-pg/src/main/scala/okay/pg/PgSql.scala	738	compositeLiteral	mutual	Vector.map	BOUNDED: per level of a SqlValue the calling program built (its own value, not input), or one this module decoded under the catalogue's bound above
 okay-pool/src/main/scala/okay/pool/Pool.scala	124	nudge	lambda	Fiber.onComplete
 okay-py/src/main/scala/okay/py/ArrowFrames.scala	80	cells	direct	Vector.map	BOUNDED: per level of a column's TYPE; `frame` takes a Table's columns, and Table refuses past Column.MaxNesting (64, Arrow C++'s kMaxNestingDepth) since stack-safety-arrow
-okay-py/src/main/scala/okay/py/GoWorker.scala	101	goType	mutual	
-okay-py/src/main/scala/okay/py/GoWorker.scala	111	list	mutual	
-okay-py/src/main/scala/okay/py/Hs.scala	29	haskellType	direct	
-okay-py/src/main/scala/okay/py/PyCodec.scala	37	enc	lambda	Iterator.map,Schema$.eachField,Schema$.theCase,Vector.map
-okay-py/src/main/scala/okay/py/PyCodec.scala	62	dec	direct	PyCodec$.each
-okay-py/src/main/scala/okay/py/PyCodec.scala	132	product	direct	PyCodec$.each
-okay-py/src/main/scala/okay/py/PyFacade.scala	47	scalaType	direct	
-okay-py/src/main/scala/okay/py/PyFacade.scala	49	inner	direct	
-okay-py/src/main/scala/okay/py/PyWorkers.scala	117	refsIn	lambda	Vector.flatMap
-okay-py/src/main/scala/okay/py/PyWorkers.scala	135	local	lambda	Vector.map
-okay-py/src/main/scala/okay/py/RustWorker.scala	101	rustType	direct	
-okay-py/src/main/scala/okay/py/Shape.scala	34	fromJson	lambda	Vector.map
-okay-py/src/main/scala/okay/py/Shape.scala	43	toJson	lambda	Vector.map
-okay-py/src/main/scala/okay/py/SupervisedWorker.scala	80	out	mutual	Either.flatMap,Vector.foldLeft
-okay-py/src/main/scala/okay/py/SupervisedWorker.scala	89	outAll	mutual	Either.flatMap,Vector.foldLeft
-okay-py/src/main/scala/okay/py/SupervisedWorker.scala	96	in	lambda	Vector.map
-okay-py/src/main/scala/okay/py/SupervisedWorker.scala	130	step	lambda	Either.flatMap
-okay-py/src/main/scala/okay/py/TsFacade.scala	57	show	direct	Vector.map
-okay-r/src/main/scala/okay/r/R.scala	144	decode	direct	
-okay-r/src/main/scala/okay/r/RCodec.scala	51	enc	lambda	Iterator.map,Schema$.eachField,Schema$.theCase,Vector.map
-okay-r/src/main/scala/okay/r/RCodec.scala	94	dec	direct	RCodec$.each
-okay-r/src/main/scala/okay/r/RCodec.scala	175	product	direct	RCodec$.each
-okay-r/src/main/scala/okay/r/RSubprocess.scala	187	step	lambda	Either.flatMap
-okay-r/src/main/scala/okay/r/RSubprocess.scala	349	startWith	lambda	Some$.apply
+okay-py/src/main/scala/okay/py/GoWorker.scala	101	goType	mutual		BOUNDED: per level of a Scala type's List/Vector/Option/Iso nesting, written in the program; a product stops the walk (None), so a recursive schema cannot loop it
+okay-py/src/main/scala/okay/py/GoWorker.scala	111	list	mutual		BOUNDED: per level of a Scala type's List/Vector/Option/Iso nesting, written in the program; a product stops the walk (None), so a recursive schema cannot loop it
+okay-py/src/main/scala/okay/py/Hs.scala	29	haskellType	direct		BOUNDED: per level of a Scala type's List/Vector/Option/Iso nesting, written in the program; a product stops the walk (None), so a recursive schema cannot loop it
+okay-py/src/main/scala/okay/py/PyCodec.scala	37	enc	lambda	Iterator.map,Schema$.eachField,Schema$.theCase,Vector.map	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-py/src/main/scala/okay/py/PyCodec.scala	62	dec	direct	PyCodec$.each	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-py/src/main/scala/okay/py/PyCodec.scala	132	product	direct	PyCodec$.each	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-py/src/main/scala/okay/py/PyCodec.scala	177	decNative	mutual	PyCodec$.each	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-py/src/main/scala/okay/py/PyCodec.scala	69	encNative	mutual	Iterator.map,Schema$.eachField,Schema$.theCase,Vector.map	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-py/src/main/scala/okay/py/RustWorker.scala	101	rustType	direct		BOUNDED: per level of a Scala type's List/Vector/Option/Iso nesting, written in the program; a product stops the walk (None), so a recursive schema cannot loop it
+okay-py/src/main/scala/okay/py/TsFacade.scala	57	show	direct	Vector.map	BOUNDED: per level of a TsType parsed from a declaration file the program names — source a person wrote and checked in beside it, not data from a peer
+okay-r/src/main/scala/okay/r/R.scala	144	decode	direct		BOUNDED: per Option level of the field's Scala type; R has no nesting inside a data.frame column, so nothing else recurses
+okay-r/src/main/scala/okay/r/RCodec.scala	51	enc	lambda	Iterator.map,Schema$.eachField,Schema$.theCase,Vector.map	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-r/src/main/scala/okay/r/RCodec.scala	94	dec	direct	RCodec$.each	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-r/src/main/scala/okay/r/RCodec.scala	175	product	direct	RCodec$.each	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-r/src/main/scala/okay/r/RCodec.scala	211	decNative	mutual	RCodec$.each	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-r/src/main/scala/okay/r/RCodec.scala	82	encNative	mutual	Iterator.map,Schema$.eachField,Schema$.theCase,Vector.map	BOUNDED: per level of a VALUE, a direct call below Codecs.NativeThreshold (24) and the Cont trampoline past it (encC/decC), so a value of a recursive type costs heap; TestPyCodecDepth/TestRCodecDepth 200 000 deep
+okay-r/src/main/scala/okay/r/RSubprocess.scala	349	startWith	lambda	Some$.apply	DEFERRED: the respawn is a thunk stored in the new RSubprocess and run later, on a timeout, from the engine's own call — not from this frame
 okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	215	valueOf	lambda	Vector$.tabulate	BOUNDED: per dimension of a database array the driver hands back; a column's array type is declared in the DDL, not chosen per row, and Postgres caps dimensions at MAXDIM = 6
 okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	270	javaOf	lambda	Vector.map	BOUNDED: per level of a SqlValue.Arr the calling program built as a parameter — its own value, not input; a composite parameter is refused
 okay-resilience/src/main/scala/okay/resilience/Bulkhead.scala	84	release	lambda	Option.foreach

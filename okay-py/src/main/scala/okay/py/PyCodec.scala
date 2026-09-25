@@ -1,6 +1,7 @@
 package okay.py
 
-import okay.{!, +, effect, pure}
+import okay.{!, +, effect, pure, Cont, reset, />}
+import okay.codec.Codecs
 import okay.Row.plus
 import okay.codec.Schema
 import PyValue.*
@@ -29,12 +30,32 @@ object PyCodec {
   /** the field a sum's dict names its case in */
   val TypeField = "type"
 
-  def encode[A](a: A)(using s: Schema[A]): PyValue = enc(s, a)
+  def encode[A](a: A)(using s: Schema[A]): PyValue = enc(s, a, 0)
 
   def decode[A](v: PyValue)(using s: Schema[A]): Either[Condition, A] =
-    dec(s, v, "").left.map(Condition("Decode", _))
+    dec(s, v, At.Root, 0).left.map(Condition("Decode", _))
 
-  private def enc[X](s: Schema[X], x: X): PyValue = s match
+  // Both roads recurse once per level of the VALUE, which is as deep as
+  // the program (encode) or the worker (decode) made it: below
+  // `Codecs.NativeThreshold` a direct call per level, at it the rest of
+  // the value on the Cont trampoline — Json's own road (encC/decC below),
+  // so depth costs heap, not native stack (stack-safety-py-r).
+
+  private def enc[X](s: Schema[X], x: X, depth: Int): PyValue =
+    if depth >= Codecs.NativeThreshold then reset(encC[X, PyValue](s, x))
+    else encNative(s, x, depth)
+
+  /** a sum's case as its dict, the case named in `type` */
+  private def tagged(su: Schema.SSum[?], name: String, v: PyValue): PyValue = v match
+    case Dict(kv) =>
+      if kv.exists(_._1 == TypeField) then throw IllegalArgumentException(
+        s"okay.py: case $name of ${su.name} has a field named '$TypeField', which names the case on the wire")
+      Dict((TypeField -> Str(name)) +: kv)
+    case other => Dict(Vector(TypeField -> Str(name), "value" -> other))
+
+  /** the leaves, shared by both roads: a scalar has no children, so this
+   * is where every recursion ends */
+  private def encScalar[X](s: Schema[X], x: X): PyValue = s match
     case Schema.SInt => I64(x.toLong)
     case Schema.SLong => I64(x)
     case Schema.SDouble => F64(x)
@@ -43,24 +64,87 @@ object PyCodec {
     case Schema.SChar => Str(x.toString)
     case Schema.SBytes => Bytes(x)
     case Schema.SBigInt => if x.isValidLong then I64(x.toLong) else BigI(x)
-    case o: Schema.SOption[a] => x match
-      case Some(v) => enc(o.of(), v)
-      case None => PyNone
-    case l: Schema.SList[a] => Arr(x.iterator.map(enc(l.of(), _)).toVector)
-    case v: Schema.SVector[a] => Arr(x.map(enc(v.of(), _)))
-    case p: Schema.SProduct[X] =>
-      Dict(p.eachField(x)([Y] => (name: String, sc: Schema[Y], y: Y) => (name, enc(sc, y))))
-    case su: Schema.SSum[X] =>
-      su.theCase(x)([Y <: X] => (name: String, sc: Schema[Y], y: Y) => enc(sc, y) match
-        case Dict(kv) =>
-          if kv.exists(_._1 == TypeField) then throw IllegalArgumentException(
-            s"okay.py: case $name of ${su.name} has a field named '$TypeField', which names the case on the wire")
-          Dict((TypeField -> Str(name)) +: kv)
-        case other => Dict(Vector(TypeField -> Str(name), "value" -> other)))
-    case i: Schema.SIso[X, b] => enc(i.under(), i.from(x))
+    case other => throw IllegalStateException(s"okay.py: not a scalar schema: $other")
 
-  private def dec[X](s: Schema[X], v: PyValue, at: String): Either[String, X] =
-    def no(what: String): Either[String, X] = Left(s"${if at.isEmpty then "the value" else at}: expected $what, got $v")
+  private def encNative[X](s: Schema[X], x: X, depth: Int): PyValue = s match
+    case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
+       | Schema.SChar | Schema.SBytes | Schema.SBigInt => encScalar(s, x)
+    case o: Schema.SOption[a] => x match
+      case Some(v) => enc(o.of(), v, depth + 1)
+      case None => PyNone
+    case l: Schema.SList[a] => Arr(x.iterator.map(enc(l.of(), _, depth + 1)).toVector)
+    case v: Schema.SVector[a] => Arr(x.map(enc(v.of(), _, depth + 1)))
+    case p: Schema.SProduct[X] =>
+      Dict(p.eachField(x)([Y] => (name: String, sc: Schema[Y], y: Y) => (name, enc(sc, y, depth + 1))))
+    case su: Schema.SSum[X] =>
+      su.theCase(x)([Y <: X] => (name: String, sc: Schema[Y], y: Y) => tagged(su, name, enc(sc, y, depth + 1)))
+    case i: Schema.SIso[X, b] => enc(i.under(), i.from(x), depth + 1)
+
+  /** a field's schema and value at ONE type, held for the trampoline:
+   * `eachField` hands them over erased, and this keeps them paired
+   * without a cast (the typed-pair helper of no-casts-without-necessity) */
+  private final class Held[Y](sc: Schema[Y], y: Y):
+    def encC[R]: PyValue /> R = PyCodec.encC(sc, y)
+
+  private def encC[X, R](s: Schema[X], x: X): PyValue /> R = s match
+    case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
+       | Schema.SChar | Schema.SBytes | Schema.SBigInt => Cont.Pure(encScalar(s, x))
+    case o: Schema.SOption[a] => x match
+      case Some(v) => Cont.delay(() => encC(o.of(), v))
+      case None => Cont.Pure(PyNone)
+    case l: Schema.SList[a] => encAll(l.of(), x.toVector)
+    case v: Schema.SVector[a] => encAll(v.of(), x)
+    case p: Schema.SProduct[X] =>
+      val held = p.eachField(x)([Y] => (name: String, sc: Schema[Y], y: Y) => (name, Held(sc, y): Held[?]))
+      def loop(rest: List[(String, Held[?])], acc: Vector[(String, PyValue)]): PyValue /> R = rest match
+        case Nil => Cont.Pure(Dict(acc))
+        case (name, h) :: more => Cont.defer(() => h.encC[R])(v => loop(more, acc :+ (name -> v)))
+      loop(held.toList, Vector.empty)
+    case su: Schema.SSum[X] =>
+      val (name, h) = su.theCase(x)([Y <: X] => (name: String, sc: Schema[Y], y: Y) => (name, Held(sc, y): Held[?]))
+      Cont.defer(() => h.encC[R])(v => Cont.Pure(tagged(su, name, v)))
+    case i: Schema.SIso[X, b] => Cont.delay(() => encC(i.under(), i.from(x)))
+
+  private def encAll[Y, R](sc: Schema[Y], xs: Vector[Y]): PyValue /> R =
+    def loop(i: Int, acc: Vector[PyValue]): PyValue /> R =
+      if i >= xs.length then Cont.Pure(Arr(acc))
+      else Cont.defer(() => encC[Y, R](sc, xs(i)))(v => loop(i + 1, acc :+ v))
+    loop(0, Vector.empty)
+
+  /** where in the value a decode is: a LINKED path, rendered only into a
+   * message — a string grown per level was quadratic in the depth, and a
+   * 200 000-deep value ran out of heap before it ran out of stack
+   * (stack-safety-py-r) */
+  private enum At:
+    case Root
+    case Field(parent: At, name: String)
+    case Index(parent: At, i: Int)
+    def render: String =
+      val parts = scala.collection.mutable.ArrayBuffer[String]()
+      var cur: At = this
+      while cur != Root do cur match
+        case Field(p, n) => parts += s".$n"; cur = p
+        case Index(p, i) => parts += s"[${i}]"; cur = p
+        case Root => ()
+      parts.reverseIterator.mkString
+    /** the path in a message: "the value" at the root */
+    def where: String = if this == Root then "the value" else render
+
+  /** a value in a message without walking it: a deep one would recurse
+   * in its own toString */
+  private def describe(v: PyValue): String = v match
+    case Arr(xs) => s"a list of ${xs.length}"
+    case Dict(kv) => s"a dict of ${kv.length} keys"
+    case other => other.toString
+
+  private def dec[X](s: Schema[X], v: PyValue, at: At, depth: Int): Either[String, X] =
+    if depth >= Codecs.NativeThreshold then reset(decC[X, Either[String, X]](s, v, at))
+    else decNative(s, v, at, depth)
+
+  /** the leaves, shared by both roads: a scalar has no children, so this
+   * is where every recursion ends */
+  private def decScalar[X](s: Schema[X], v: PyValue, at: At): Either[String, X] =
+    def no(what: String): Either[String, X] = Left(s"${at.where}: expected $what, got ${describe(v)}")
     s match
       case Schema.SInt => v match
         case I64(n) if n.isValidInt => Right(n.toInt)
@@ -88,64 +172,145 @@ object PyCodec {
         case I64(n) => Right(BigInt(n))
         case BigI(n) => Right(n)
         case _ => no("an int")
+      case other => Left(s"${at.where}: not a scalar schema: $other")
+
+  private def decNative[X](s: Schema[X], v: PyValue, at: At, depth: Int): Either[String, X] =
+    def no(what: String): Either[String, X] = Left(s"${at.where}: expected $what, got ${describe(v)}")
+    s match
+      case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
+         | Schema.SChar | Schema.SBytes | Schema.SBigInt => decScalar(s, v, at)
       case o: Schema.SOption[a] => v match
         case PyNone => Right(None)
-        case other => dec(o.of(), other, at).map(Some(_))
+        case other => dec(o.of(), other, at, depth + 1).map(Some(_))
       case l: Schema.SList[a] => v match
-        case Arr(xs) => each(xs, at)(dec(l.of(), _, _)).map(_.toList)
+        case Arr(xs) => each(xs, at)(dec(l.of(), _, _, depth + 1)).map(_.toList)
         case _ => no("a list")
       case sv: Schema.SVector[a] => v match
-        case Arr(xs) => each(xs, at)(dec(sv.of(), _, _))
+        case Arr(xs) => each(xs, at)(dec(sv.of(), _, _, depth + 1))
         case _ => no("a list")
       case p: Schema.SProduct[X] => v match
-        case Dict(kv) => product(p, kv.toMap, at)
+        case Dict(kv) => product(p, kv.toMap, at, depth)
         case _ => no(s"a dict for ${p.name}")
       case su: Schema.SSum[X] => v match
-        case Dict(kv) =>
-          val m = kv.toMap
-          m.get(TypeField) match
-            case Some(Str(name)) =>
-              su.cases.indexWhere(_._1 == name) match
-                case -1 => no(s"one of ${su.cases.map(_._1).mkString(", ")} in '$TypeField'")
-                case i =>
-                  val sc = su.cases(i)._2()
-                  val rest = sc match
-                    case _: Schema.SProduct[?] => Dict(kv.filterNot(_._1 == TypeField))
-                    case _ => m.getOrElse("value", PyNone)
-                  dec(sc, rest, at)
-            case _ => no(s"a dict with a '$TypeField' naming a case of ${su.name}")
+        case Dict(kv) => caseOf(su, kv, at) match
+          case Left(e) => Left(e)
+          case Right((sc, rest)) => dec(sc, rest, at, depth + 1)
         case _ => no(s"a dict for ${su.name}")
       case i: Schema.SIso[X, b] =>
-        dec(i.under(), v, at).flatMap(u => i.to(u).left.map(why => s"${if at.isEmpty then "the value" else at}: $why"))
+        dec(i.under(), v, at, depth + 1).flatMap(u => i.to(u).left.map(why => s"${at.where}: $why"))
 
-  private def each[Y](xs: Vector[PyValue], at: String)(f: (PyValue, String) => Either[String, Y]): Either[String, Vector[Y]] =
+  /** the case a sum's dict names, and the dict it decodes from: the
+   * fields without the tag for a product case, `value` otherwise */
+  private def caseOf[X](su: Schema.SSum[X], kv: Vector[(String, PyValue)], at: At): Either[String, (Schema[? <: X], PyValue)] =
+    def no(what: String) = Left(s"${at.where}: expected $what, got ${describe(Dict(kv))}")
+    val m = kv.toMap
+    m.get(TypeField) match
+      case Some(Str(name)) =>
+        su.cases.indexWhere(_._1 == name) match
+          case -1 => no(s"one of ${su.cases.map(_._1).mkString(", ")} in '$TypeField'")
+          case i =>
+            val sc = su.cases(i)._2()
+            val rest = sc match
+              case _: Schema.SProduct[?] => Dict(kv.filterNot(_._1 == TypeField))
+              case _ => m.getOrElse("value", PyNone)
+            Right((sc, rest))
+      case _ => no(s"a dict with a '$TypeField' naming a case of ${su.name}")
+
+  /** the road past the threshold: the same decisions as `decNative`,
+   * each child a `Cont.defer` (okay-codec's Edn.decodeC, over PyValue) */
+  private def decC[X, R](s: Schema[X], v: PyValue, at: At): Either[String, X] /> R =
+    def no(what: String): Either[String, X] = Left(s"${at.where}: expected $what, got ${describe(v)}")
+    s match
+      case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
+         | Schema.SChar | Schema.SBytes | Schema.SBigInt => Cont.Pure(decScalar(s, v, at))
+      case o: Schema.SOption[a] => v match
+        case PyNone => Cont.Pure(Right(None))
+        case other => Cont.defer(() => decC[a, R](o.of(), other, at))(r => Cont.Pure(r.map(Some(_))))
+      case l: Schema.SList[a] => v match
+        case Arr(xs) => decAll[a, R](l.of(), xs, at).flatMap(r => Cont.Pure(r.map(_.toList)))
+        case _ => Cont.Pure(no("a list"))
+      case sv: Schema.SVector[a] => v match
+        case Arr(xs) => decAll[a, R](sv.of(), xs, at)
+        case _ => Cont.Pure(no("a list"))
+      case p: Schema.SProduct[X] => v match
+        case Dict(kv) =>
+          val m = kv.toMap
+          // a field decoded inside Cont.defer continues from its continuation,
+          // a call that cannot be a jump; `again` takes it, so this stays a loop
+          def again(i: Int, acc: Vector[Any]): Either[String, Vector[Any]] /> R = loop(i, acc)
+          @scala.annotation.tailrec def loop(i: Int, acc: Vector[Any]): Either[String, Vector[Any]] /> R =
+            if i >= p.fields.length then Cont.Pure(Right(acc))
+            else
+              val (name, sc) = p.fields(i)
+              val here = At.Field(at, name)
+              m.get(name) match
+                case Some(fv) => Cont.defer(() => fieldC[R](sc(), fv, here)) {
+                  case Left(e) => Cont.Pure(Left(e))
+                  case Right(x) => again(i + 1, acc :+ x)
+                }
+                case None => absent(p, i, sc, here) match
+                  case Left(e) => Cont.Pure(Left(e))
+                  case Right(d) => loop(i + 1, acc :+ d)
+          loop(0, Vector.empty).flatMap(r => Cont.Pure(r.map(p.make)))
+        case _ => Cont.Pure(no(s"a dict for ${p.name}"))
+      case su: Schema.SSum[X] => v match
+        case Dict(kv) => caseOf(su, kv, at) match
+          case Left(e) => Cont.Pure(Left(e))
+          // the case's schema at its own type c <: X, so the Cont-wrapped
+          // answer can be restated at X (Cont is invariant, Either is not)
+          case Right((sc, rest)) => sc match
+            case sc: Schema[c] => Cont.defer(() => decC[c, R](sc, rest, at))(r => Cont.Pure(r: Either[String, X]))
+        case _ => Cont.Pure(no(s"a dict for ${su.name}"))
+      case i: Schema.SIso[X, b] =>
+        Cont.defer(() => decC[b, R](i.under(), v, at))(r =>
+          Cont.Pure(r.flatMap(u => i.to(u).left.map(why => s"${at.where}: $why"))))
+
+  private def fieldC[R](sc: Schema[?], v: PyValue, at: At): Either[String, Any] /> R = sc match
+    case sc: Schema[y] => Cont.defer(() => decC[y, R](sc, v, at))(r => Cont.Pure(r: Either[String, Any]))
+
+  private def decAll[Y, R](sc: Schema[Y], xs: Vector[PyValue], at: At): Either[String, Vector[Y]] /> R =
+    def loop(i: Int, acc: Vector[Y]): Either[String, Vector[Y]] /> R =
+      if i >= xs.length then Cont.Pure(Right(acc))
+      else Cont.defer(() => decC[Y, R](sc, xs(i), At.Index(at, i))) {
+        case Left(e) => Cont.Pure(Left(e))
+        case Right(y) => loop(i + 1, acc :+ y)
+      }
+    loop(0, Vector.empty)
+
+  /** a field the dict does not carry: its default, None for an option, or
+   * named as missing */
+  private def absent(p: Schema.SProduct[?], i: Int, sc: () => Schema[?], here: At): Either[String, Any] =
+    p.defaultAt(i)([Y] => (_: Schema[Y], d: Y) => d: Any) match
+      case Some(d) => Right(d)
+      case None => sc() match
+        case _: Schema.SOption[?] => Right(None)
+        case _ => Left(s"${here.render}: missing")
+
+  private def each[Y](xs: Vector[PyValue], at: At)(f: (PyValue, At) => Either[String, Y]): Either[String, Vector[Y]] =
     val out = Vector.newBuilder[Y]
     var i = 0
     var bad: Option[String] = None
     while bad.isEmpty && i < xs.length do
-      f(xs(i), s"$at[$i]") match
+      f(xs(i), At.Index(at, i)) match
         case Right(y) => out += y
         case Left(e) => bad = Some(e)
       i += 1
     bad.toLeft(out.result())
 
-  private def product[X](p: Schema.SProduct[X], m: Map[String, PyValue], at: String): Either[String, X] =
+  private def product[X](p: Schema.SProduct[X], m: Map[String, PyValue], at: At, depth: Int): Either[String, X] =
     val vals = Vector.newBuilder[Any]
     var bad: Option[String] = None
     var i = 0
     while bad.isEmpty && i < p.fields.length do
       val (name, sc) = p.fields(i)
-      val here = s"$at.$name"
+      val here = At.Field(at, name)
       m.get(name) match
-        case Some(v) => dec(sc(), v, here) match
+        case Some(v) => dec(sc(), v, here, depth + 1) match
           case Right(x) => vals += x
           case Left(e) => bad = Some(e)
-        case None =>
-          p.defaultAt(i)([Y] => (_: Schema[Y], d: Y) => d: Any) match
-            case Some(d) => vals += d
-            case None => sc() match
-              case _: Schema.SOption[?] => vals += None
-              case _ => bad = Some(s"$here: missing")
+        case None => absent(p, i, sc, here) match
+          case Right(d) => vals += d
+          case Left(e) => bad = Some(e)
       i += 1
     bad.toLeft(p.make(vals.result()))
 }

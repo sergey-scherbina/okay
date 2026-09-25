@@ -77,27 +77,24 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
     Condition("LookupError", s"$what $id belongs to a worker that is gone (restarted since): ask the fresh one again")
 
   /** a value going OUT: its refs must belong to the current worker */
-  private def out(v: PyValue): Either[Condition, PyValue] = v match
+  private def out(v: PyValue): Either[Condition, PyValue] = PyValue.rebuildE(v) {
     case PyValue.Ref(r) =>
       if genOf(r.id) == generation && current.exists(_.alive) then Right(PyValue.Ref(r.copy(id = localOf(r.id))))
       else Left(gone("the held object", r.id))
-    case PyValue.Arr(xs) => outAll(xs).map(PyValue.Arr(_))
-    case PyValue.Dict(kv) =>
-      outAll(kv.map(_._2)).map(vs => PyValue.Dict(kv.map(_._1).zip(vs)))
     case other => Right(other)
+  }
 
   private def outAll(xs: Vector[PyValue]): Either[Condition, Vector[PyValue]] =
-    xs.foldLeft[Either[Condition, Vector[PyValue]]](Right(Vector.empty))((acc, x) => acc.flatMap(a => out(x).map(a :+ _)))
+    Walk.sequence(xs.map(out))
 
   private def outRef(r: PyRef): Either[Condition, PyRef] =
     out(PyValue.Ref(r)).map { case PyValue.Ref(l) => l; case _ => r }
 
   /** a value coming IN: its refs are renamed into this generation */
-  private def in(v: PyValue): PyValue = v match
+  private def in(v: PyValue): PyValue = PyValue.rebuild(v) {
     case PyValue.Ref(r) => PyValue.Ref(r.copy(id = expose(r.id)))
-    case PyValue.Arr(xs) => PyValue.Arr(xs.map(in))
-    case PyValue.Dict(kv) => PyValue.Dict(kv.map((k, x) => (k, in(x))))
     case other => other
+  }
 
   private def inStep(s: PyStep): PyStep = s match
     case PyStep.Ask(cb, args, k) => PyStep.Ask(cb, args.map(in), expose(k))
@@ -127,17 +124,23 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
   private def replay(w: ForeignWorker, run: Long, path: Vector[PyValue], op: String,
                      args: Vector[PyValue]): Either[Condition, Long] =
     val (fn, fnArgs) = runs(run)
-    def step(n: Either[Condition, PyNode], rest: Vector[PyValue]): Either[Condition, Long] =
-      n.flatMap {
-        case PyNode.Perform(o, as, k) if rest.isEmpty =>
-          if o == op && as == args then Right(k)
-          else Left(Condition("ReplayDrift",
-            s"replaying run $run met $o$as where the path recorded $op$args: the far-side program is not a pure function of its answers"))
-        case PyNode.Perform(_, _, k) =>
-          step(w.handler.handle(ForeignEval.Continue(run, k, rest.head)), rest.tail)
-        case PyNode.Done(v) =>
-          Left(Condition("ReplayDrift", s"replaying run $run finished ($v) before the recorded path did"))
-      }
+    // one loop over the recorded path, not a frame per answer: a
+    // durable run replays as many steps as it journaled (stack-safety-py-r)
+    def step(n0: Either[Condition, PyNode], rest0: Vector[PyValue]): Either[Condition, Long] =
+      var n = n0
+      var rest = rest0
+      var result: Option[Either[Condition, Long]] = None
+      while result.isEmpty do n match
+        case Left(c) => result = Some(Left(c))
+        case Right(PyNode.Perform(o, as, k)) if rest.isEmpty =>
+          result = Some(if o == op && as == args then Right(k)
+            else Left(Condition("ReplayDrift",
+              s"replaying run $run met $o$as where the path recorded $op$args: the far-side program is not a pure function of its answers")))
+        case Right(PyNode.Perform(_, _, k)) =>
+          n = w.handler.handle(ForeignEval.Continue(run, k, rest.head)); rest = rest.tail
+        case Right(PyNode.Done(v)) =>
+          result = Some(Left(Condition("ReplayDrift", s"replaying run $run finished ($v) before the recorded path did")))
+      result.get
     val started = outAll(fnArgs).flatMap(a => w.handler.handle(ForeignEval.Program(run, fn, a)))
     step(started, path)
 

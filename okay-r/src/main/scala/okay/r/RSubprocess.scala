@@ -230,15 +230,22 @@ final class RSubprocess private (private var proc: Process,
    */
   private def replay(c: Kont): Either[Condition, Long] =
     val (fn, fnArgs) = runs(c.run)
-    def step(n: Either[Condition, RNode], rest: Vector[RValue]): Either[Condition, Long] =
-      n.flatMap {
-        case RNode.Perform(o, as, k) if rest.isEmpty =>
-          if o == c.op && as == c.args then Right(k)
-          else Left(Condition("ReplayDrift",
-            s"replaying run ${c.run} met $o$as where the path recorded ${c.op}${c.args}: the R program is not a pure function of its answers"))
-        case RNode.Perform(_, _, k) => step(rawContinue(c.run, k, rest.head), rest.tail)
-        case RNode.Done(v) => Left(Condition("ReplayDrift", s"replaying run ${c.run} finished ($v) before the recorded path did"))
-      }
+    // one loop over the recorded path, not a frame per answer: a durable
+    // run replays as many steps as it journaled (stack-safety-py-r)
+    def step(n0: Either[Condition, RNode], rest0: Vector[RValue]): Either[Condition, Long] =
+      var n = n0
+      var rest = rest0
+      var result: Option[Either[Condition, Long]] = None
+      while result.isEmpty do n match
+        case Left(cond) => result = Some(Left(cond))
+        case Right(RNode.Perform(o, as, k)) if rest.isEmpty =>
+          result = Some(if o == c.op && as == c.args then Right(k)
+            else Left(Condition("ReplayDrift",
+              s"replaying run ${c.run} met $o$as where the path recorded ${c.op}${c.args}: the R program is not a pure function of its answers")))
+        case Right(RNode.Perform(_, _, k)) => n = rawContinue(c.run, k, rest.head); rest = rest.tail
+        case Right(RNode.Done(v)) =>
+          result = Some(Left(Condition("ReplayDrift", s"replaying run ${c.run} finished ($v) before the recorded path did")))
+      result.get
     step(rawProgram(c.run, fn, fnArgs), c.path)
 
   private def continueRun(k: Long, a: RValue): Either[Condition, RNode] =

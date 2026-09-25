@@ -45,23 +45,38 @@ object PyFacade:
 
   /** a type hint as a Scala type, or None when it is open */
   def scalaType(ann: String): Option[String] =
-    val a = ann.trim
+    // the wrappers peeled outside-in, applied inside-out: an annotation the
+    // worker introspected nests as deep as it wrote it (stack-safety-py-r)
+    val wrap = scala.collection.mutable.ArrayBuffer[String => String]()
+    var a = ann.trim
+    var leaf: Option[String] = None
+    var open = true
     def inner(prefix: String): Option[String] =
-      if a.startsWith(prefix + "[") && a.endsWith("]") then scalaType(a.substring(prefix.length + 1, a.length - 1))
+      if a.startsWith(prefix + "[") && a.endsWith("]") then Some(a.substring(prefix.length + 1, a.length - 1))
       else None
-    a match
-      case "int" => Some("Long")
-      case "float" => Some("Double")
-      case "str" => Some("String")
-      case "bool" => Some("Boolean")
-      case "bytes" => Some("Array[Byte]")
-      case _ if a.endsWith(" | None") => scalaType(a.stripSuffix(" | None")).map(t => s"Option[$t]")
-      case _ if a.startsWith("None | ") => scalaType(a.stripPrefix("None | ")).map(t => s"Option[$t]")
-      case _ if a.startsWith("Optional[") => inner("Optional").map(t => s"Option[$t]")
-      case _ if a.startsWith("list[") => inner("list").map(t => s"Vector[$t]")
-      case _ if a.startsWith("List[") => inner("List").map(t => s"Vector[$t]")
-      case _ if a.startsWith("Sequence[") => inner("Sequence").map(t => s"Vector[$t]")
-      case _ => None
+    while open do
+      a match
+        case "int" => leaf = Some("Long"); open = false
+        case "float" => leaf = Some("Double"); open = false
+        case "str" => leaf = Some("String"); open = false
+        case "bool" => leaf = Some("Boolean"); open = false
+        case "bytes" => leaf = Some("Array[Byte]"); open = false
+        case _ if a.endsWith(" | None") => wrap += (t => s"Option[$t]"); a = a.stripSuffix(" | None").trim
+        case _ if a.startsWith("None | ") => wrap += (t => s"Option[$t]"); a = a.stripPrefix("None | ").trim
+        case _ if a.startsWith("Optional[") => inner("Optional") match
+          case Some(x) => wrap += (t => s"Option[$t]"); a = x.trim
+          case None => open = false
+        case _ if a.startsWith("list[") => inner("list") match
+          case Some(x) => wrap += (t => s"Vector[$t]"); a = x.trim
+          case None => open = false
+        case _ if a.startsWith("List[") => inner("List") match
+          case Some(x) => wrap += (t => s"Vector[$t]"); a = x.trim
+          case None => open = false
+        case _ if a.startsWith("Sequence[") => inner("Sequence") match
+          case Some(x) => wrap += (t => s"Vector[$t]"); a = x.trim
+          case None => open = false
+        case _ => open = false
+    leaf.map(t => wrap.reverseIterator.foldLeft(t)((acc, w) => w(acc)))
 
   /** the Scala source of an object calling `module`'s functions */
   def render(obj: String, pkg: String, module: String, sigs: Vector[PySig]): String =

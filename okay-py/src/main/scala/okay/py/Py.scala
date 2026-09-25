@@ -31,6 +31,85 @@ enum PyValue:
    * turns back into the object */
   case Ref(ref: PyRef)
 
+object PyValue:
+  /** every `Ref` id in `v`, preorder — on a worklist, since a value a
+   * program passes can nest as deep as it built it (stack-safety-py-r) */
+  def refs(v: PyValue): Vector[Long] =
+    val out = Vector.newBuilder[Long]
+    val todo = scala.collection.mutable.Stack[PyValue](v)
+    while todo.nonEmpty do todo.pop() match
+      case Ref(r) => out += r.id
+      case Arr(xs) => xs.reverseIterator.foreach(todo.push)
+      case Dict(kv) => kv.reverseIterator.foreach(p => todo.push(p._2))
+      case _ => ()
+    out.result()
+
+  /** `v` rebuilt bottom-up: every leaf through `leaf`, every `Arr` and
+   * `Dict` rebuilt around its rebuilt children — the one walk the
+   * workers' `in`/`out`/`local` renamings are (stack-safety-py-r) */
+  def rebuild(v: PyValue)(leaf: PyValue => PyValue): PyValue =
+    Walk.up[PyValue, PyValue](v) {
+      case Arr(xs) => Right((xs, Arr(_)))
+      case Dict(kv) => Right((kv.map(_._2), vs => Dict(kv.map(_._1).zip(vs))))
+      case l => Left(leaf(l))
+    }
+
+  /** `rebuild` where a leaf may refuse: the first refusal is the answer */
+  def rebuildE[E](v: PyValue)(leaf: PyValue => Either[E, PyValue]): Either[E, PyValue] =
+    Walk.up[PyValue, Either[E, PyValue]](v) {
+      case Arr(xs) => Right((xs, vs => Walk.sequence(vs).map(Arr(_))))
+      case Dict(kv) => Right((kv.map(_._2), vs => Walk.sequence(vs).map(ws => Dict(kv.map(_._1).zip(ws)))))
+      case l => Left(leaf(l))
+    }
+
+/**
+ * A bottom-up walk of any tree on an explicit stack (stack-safety-py-r):
+ * `step` says of a node whether it is a leaf (`Left(its value)`) or a
+ * node (`Right(children, assemble)`), and the tree is rebuilt from the
+ * leaves up without a native frame per level. It is what the Json <->
+ * PyValue conversions and the ref renamings share, so that a value as
+ * deep as a worker made it costs heap, not stack.
+ */
+private[py] object Walk:
+  def up[In, Out](root: In)(step: In => Either[Out, (Vector[In], Vector[Out] => Out)]): Out =
+    final class Open(val kids: Vector[In], val assemble: Vector[Out] => Out):
+      var i = 0
+      val done = Vector.newBuilder[Out]
+    val open = scala.collection.mutable.Stack[Open]()
+    var todo: Option[In] = Some(root)
+    var value: Option[Out] = None
+    var result: Option[Out] = None
+    while result.isEmpty do
+      todo match
+        case Some(node) =>
+          todo = None
+          step(node) match
+            case Left(out) => value = Some(out)
+            case Right((kids, assemble)) => open.push(Open(kids, assemble))
+        case None =>
+          value match
+            case Some(out) =>
+              value = None
+              if open.isEmpty then result = Some(out)
+              else { val o = open.top; o.done += out; o.i += 1 }
+            case None =>
+              val o = open.top
+              if o.i < o.kids.length then todo = Some(o.kids(o.i))
+              else { open.pop(); value = Some(o.assemble(o.done.result())) }
+    result.get
+
+  /** the first Left, or every Right */
+  def sequence[E, A](xs: Vector[Either[E, A]]): Either[E, Vector[A]] =
+    val out = Vector.newBuilder[A]
+    var i = 0
+    var bad: Option[E] = None
+    while bad.isEmpty && i < xs.length do
+      xs(i) match
+        case Right(a) => out += a
+        case Left(e) => bad = Some(e)
+      i += 1
+    bad.toLeft(out.result())
+
 /**
  * A handle to a Python object kept in its worker (foreign-object-handles):
  * a fitted model, a tokenizer, an open dataset. Its methods are called by

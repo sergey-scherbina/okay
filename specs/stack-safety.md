@@ -254,6 +254,34 @@ deleted.
         `javaOf` per level of a value the program built; r2dbc's `valueOf`
         per dimension of a driver array. Left in stage 4: okay-py and
         okay-r (4b).
+      - [x] 4b — okay-py and okay-r (stack-safety-py-r, 2026-09-25). The
+        VALUE walks were the holes, and every one was red first at
+        200 000 levels: `PyCodec.enc`/`dec` and `RCodec.enc`/`dec` recursed
+        per level of a value of a recursive type (`Link(next:
+        Option[Link])`), and `Shape.json`'s Json <-> PyValue conversions
+        per level of what a worker sent. The codecs take the threshold-
+        then-`Cont` road now (a direct call below `Codecs.NativeThreshold`,
+        `encC`/`decC` past it, a `Held[Y]` pair carrying a field's schema
+        and value through `eachField` without a cast; the scalar arms are
+        one `encScalar`/`decScalar` both roads end in, so neither road
+        calls back into the other). Two more things that road found: the
+        decode PATH was a string grown per level (`s"$at.$name"`),
+        quadratic in the depth, and a 200 000-deep value ran out of HEAP
+        before it ran out of stack — it is a linked `At` now, rendered
+        only into a message; and a refusal printed the value it met with
+        `toString`, which recurses on a deep one — `describe` says "a dict
+        of N keys" instead. The Json/PyValue conversions and the workers'
+        ref renamings (`in`, `out`, `local`, `refsIn`) share one bottom-up
+        walk on an explicit stack, `Walk.up`, behind
+        `PyValue.refs`/`rebuild`/`rebuildE` (TestPyValueWalk). The replay
+        loops of `SupervisedWorker` and `RSubprocess` are loops (a durable
+        run replays as many steps as it journaled), and
+        `PyFacade.scalaType` peels an annotation's wrappers in a loop.
+        The type printers (`goType`, `haskellType`, `rustType`) stop at a
+        product, so a recursive schema cannot loop them; `TsFacade.show`
+        walks a declaration a person wrote; `RSubprocess.startWith`'s
+        respawn is a stored thunk. Eleven rows are paid, seventeen carry
+        their bound. Stage 4 is closed.
       - [x] The stage-9 catch-up rows of the same modules, in both cores
         (stack-safety-catch-up-okay2, 2026-09-25). Each gets a depth test
         first, red on the recursion:

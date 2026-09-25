@@ -31,23 +31,27 @@ object Shape:
 
   private val Exact = 9007199254740992.0
 
-  private def fromJson(j: Json): PyValue = j match
-    case Json.JNull | Json.JErr(_) => PyValue.PyNone
-    case Json.JBool(b) => PyValue.Bool(b)
-    case Json.JNum(n) if n == math.floor(n) && !n.isInfinite && math.abs(n) < Exact => PyValue.I64(n.toLong)
-    case Json.JNum(n) => PyValue.F64(n)
-    case Json.JStr(s) => PyValue.Str(s)
-    case Json.JArr(xs) => PyValue.Arr(xs.map(fromJson))
-    case Json.JObj(fs) => PyValue.Dict(fs.map((k, v) => (k, fromJson(v))))
+  // both conversions bottom-up on an explicit stack (Walk.up): the Json a
+  // worker sent is as deep as the worker made it (stack-safety-py-r)
+  private def fromJson(j: Json): PyValue = Walk.up[Json, PyValue](j) {
+    case Json.JArr(xs) => Right((xs, PyValue.Arr(_)))
+    case Json.JObj(fs) => Right((fs.map(_._2), vs => PyValue.Dict(fs.map(_._1).zip(vs))))
+    case Json.JNull | Json.JErr(_) => Left(PyValue.PyNone)
+    case Json.JBool(b) => Left(PyValue.Bool(b))
+    case Json.JNum(n) if n == math.floor(n) && !n.isInfinite && math.abs(n) < Exact => Left(PyValue.I64(n.toLong))
+    case Json.JNum(n) => Left(PyValue.F64(n))
+    case Json.JStr(s) => Left(PyValue.Str(s))
+  }
 
-  private def toJson(v: PyValue): Json = v match
-    case PyValue.PyNone => Json.JNull
-    case PyValue.Bool(b) => Json.JBool(b)
-    case PyValue.I64(n) => Json.JNum(n.toDouble)
-    case PyValue.BigI(n) => Json.JNum(n.toDouble)
-    case PyValue.F64(d) => Json.JNum(d)
-    case PyValue.Str(s) => Json.JStr(s)
-    case PyValue.Bytes(b) => Json.JStr(java.util.Base64.getEncoder.encodeToString(b))
-    case PyValue.Arr(xs) => Json.JArr(xs.map(toJson))
-    case PyValue.Dict(kv) => Json.JObj(kv.map((k, x) => (k, toJson(x))))
+  private def toJson(v: PyValue): Json = Walk.up[PyValue, Json](v) {
+    case PyValue.Arr(xs) => Right((xs, Json.JArr(_)))
+    case PyValue.Dict(kv) => Right((kv.map(_._2), vs => Json.JObj(kv.map(_._1).zip(vs))))
+    case PyValue.PyNone => Left(Json.JNull)
+    case PyValue.Bool(b) => Left(Json.JBool(b))
+    case PyValue.I64(n) => Left(Json.JNum(n.toDouble))
+    case PyValue.BigI(n) => Left(Json.JNum(n.toDouble))
+    case PyValue.F64(d) => Left(Json.JNum(d))
+    case PyValue.Str(s) => Left(Json.JStr(s))
+    case PyValue.Bytes(b) => Left(Json.JStr(java.util.Base64.getEncoder.encodeToString(b)))
     case PyValue.Ref(r) => throw IllegalArgumentException(s"okay.py: a held object has no JSON shape: $r")
+  }
