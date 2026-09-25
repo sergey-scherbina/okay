@@ -1,6 +1,0 @@
-feature/tailrec-audit 2026-09-25T06:14:27Z
-agent: claude-code
-heartbeat: 2026-09-25T06:14:27Z
-status: in-progress
-done-so-far: claim
-next: bytecode survey (goto 0 = tail call eliminated) for okay and okay2; add @tailrec; list non-tail recursions
