@@ -208,9 +208,22 @@ native bindings (lz4-java, zstd-jni) and a pure-Java port
     byte.
   Levels 1 to 3 (the default is 3) move to it, and the chain stays for
   higher levels.
-  - [ ] every sample round-trips at levels 1, 3, 6 and 19, and pyarrow
+  - [x] every sample round-trips at levels 1, 3, 6 and 19, and pyarrow
         reads the default level's frames (TestZstdPyArrow);
-  - [ ] the ratio at the default level is measured beside pyarrow's,
+  - [x] the ratio at the default level is measured beside pyarrow's,
         because a faster search that loses bytes has to say how many;
-  - [ ] CompressBench `zstd_compress` lines, ours against aircompressor
+  - [x] CompressBench `zstd_compress` lines, ours against aircompressor
         (16.5 vs 6.45 ms before), one lane at a time.
+  - RESULT:
+    - compress 16.5 -> 7.54 ms on 4 MiB of lines (a second run 7.58),
+      against aircompressor's 6.45. The gap went from 2.6x to 1.17x.
+    - The ratio at level 3 barely moved: `big` +2.0% (424 526 -> 433 035
+      B), `numbers` -6.9% (42 639 -> 39 682), text +3 bytes, the rest
+      within a few bytes.
+    - TestZstdPyArrow still reads and writes against pyarrow.
+    - Found on the way: level 6 (the chain, 16 deep, no lazy skip)
+      compresses `big` and `numbers` WORSE than level 3 did before
+      (437 853 vs 424 526; 47 927 vs 42 639). A deeper search losing
+      bytes is its own defect, filed as zstd-level6-worse-than-3.
+    - Left from the lead list: FSE packed decode entries and the Native
+      timing, as okay-compress-zstd-speed-3.

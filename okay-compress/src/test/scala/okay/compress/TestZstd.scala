@@ -8,6 +8,11 @@ class TestZstd extends munit.FunSuite:
       assertEquals(Zstd.decompress(Zstd.compress(b)).toVector, b.toVector, name)
   }
 
+  test("every sample round-trips at levels 1, 3, 6 and 19: double fast below 4, the chain above") {
+    for (name, b) <- Samples.all :+ ("big" -> Samples.big.take(1 << 20)); level <- Vector(1, 3, 6, 19) do
+      assert(java.util.Arrays.equals(Zstd.decompress(ZstdEncoder.compress(b, level)), b), s"$name at level $level")
+  }
+
   test("a frame of many 128 KiB blocks round-trips") {
     assertEquals(java.util.Arrays.equals(Zstd.decompress(Zstd.compress(Samples.big)), Samples.big), true)
   }

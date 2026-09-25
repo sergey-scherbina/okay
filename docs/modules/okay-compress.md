@@ -135,12 +135,19 @@ copy for twice its real share. Four changes paid:
 
 | 4 MiB of lines | with `Mem` | now | aircompressor |
 |---|---|---|---|
-| ZSTD compress | 21.8 ms | 16.5 ms | 6.45 ms |
+| ZSTD compress | 21.8 ms | 16.5 ms, then 7.54 ms | 6.45 ms |
 | ZSTD decompress | 11.1 ms | 4.28 ms | 2.29 ms |
 
-The rest of compression's gap is the search strategy: a hash chain here,
-aircompressor's "double fast" with no chains at level 3. It is filed as
-`okay-compress-zstd-speed-2`.
+The rest of compression's gap was the search strategy. Levels 1 to 3
+now use "double fast", as the reference zstd and aircompressor do:
+- two hash tables, of 8 and of 5 bytes;
+- one probe each and no chain;
+- a repeat offset tried one byte on;
+- matches extended backward.
+
+The hash chain stays for levels 4 and up. Compression went from 16.5 to
+7.54 ms (aircompressor 6.45), and the ratio moved by 2% at most
+(okay-compress-zstd-speed-2).
 
 ## Literature
 

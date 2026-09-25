@@ -29,10 +29,11 @@ object ZstdEncoder:
    * through input that does not match (okay-compress stage 5: the first cut
    * searched 24 deep with lazy matching everywhere, and ran 20x slower than
    * aircompressor's level 3 for a smaller output) */
-  private final case class Effort(depth: Int, lazyMatch: Boolean, accelerate: Boolean)
+  /** `fast`: double fast (levels 1-3, as the reference); otherwise the
+   * chain, `depth` candidates deep */
+  private final case class Effort(depth: Int, lazyMatch: Boolean, accelerate: Boolean, fast: Boolean = false)
   private def effort(level: Int): Effort =
-    if level <= 1 then Effort(1, false, true)
-    else if level <= 3 then Effort(4, true, true)
+    if level <= 3 then Effort(1, false, true, fast = true)
     else if level <= 6 then Effort(16, true, false)
     else Effort(64, true, false)
 
@@ -50,7 +51,7 @@ object ZstdEncoder:
     else if n < 65536 + 256 then { out.byte(0x40 | 0x20 | 0x04); out.byte((n - 256).toInt); out.byte(((n - 256) >>> 8).toInt) }
     else if n < (1L << 32) then { out.byte(0x80 | 0x20 | 0x04); out.int32(n.toInt) }
     else { out.byte(0xc0 | 0x20 | 0x04); out.int64(n) }
-    val m = Matcher(bytes, e.depth)
+    val m: Strategy = if e.fast then DoubleFast(bytes) else Matcher(bytes, e.depth)
     val reps = Array(1, 4, 8)
     var from = 0
     var last = false
@@ -66,12 +67,14 @@ object ZstdEncoder:
     val h = (size << 3) | (kind << 1) | (if last then 1 else 0)
     out.byte(h); out.byte(h >>> 8); out.byte(h >>> 16)
 
-  private def block(src: Array[Byte], from: Int, len: Int, last: Boolean, m: Matcher, reps: Array[Int], out: Out, e: Effort): Unit =
+  private def block(src: Array[Byte], from: Int, len: Int, last: Boolean, m: Strategy, reps: Array[Int], out: Out, e: Effort): Unit =
     if len > 0 && (1 until len).forall(i => src(from + i) == src(from)) then
       header(out, len, 1, last); out.byte(src(from))
     else
       val saved = reps.clone()
-      val body = compressed(src, from, len, m, reps, e)
+      val body = m match
+        case c: Matcher => compressed(src, from, len, c, reps, e)
+        case t: DoubleFast => compressedFast(src, from, len, t, reps)
       if body == null || body.length >= len then
         System.arraycopy(saved, 0, reps, 0, 3)        // a raw block leaves the decoder's offsets as they were
         header(out, len, 0, last); out.bytes(src, from, len)
@@ -82,7 +85,10 @@ object ZstdEncoder:
 
   /** a hash chain over the whole input: `head` the latest position of a
    * hash, `prev` the one before a position with the same hash */
-  private final class Matcher(src: Array[Byte], depthLimit: Int):
+  /** how a block searches for matches */
+  private sealed trait Strategy
+
+  private final class Matcher(src: Array[Byte], depthLimit: Int) extends Strategy:
     // a table sized to the input: a 2^17-entry one (512 KiB) per call was
     // most of the cost of a small buffer (okay-compress-zstd-ratio, Arrow's
     // per-buffer compression)
@@ -121,6 +127,84 @@ object ZstdEncoder:
           cand = prev(cand)
           depth += 1
         if bestLen >= MinMatch then (bestLen.toLong << 32) | bestOff else 0L
+
+  /**
+   * DOUBLE FAST (okay-compress-zstd-speed-2), the reference's strategy at
+   * levels 1 to 3 (`ZSTD_compressBlock_doubleFast`) and aircompressor's:
+   * a table of 8-byte hashes for long matches and one of 5-byte hashes
+   * for short ones, ONE probe each and no chain. The chain spent 35% of
+   * compression walking and inserting (async-profiler, zstd-speed).
+   */
+  private final class DoubleFast(src: Array[Byte]) extends Strategy:
+    private val longLog = math.max(10, math.min(HashLog, 32 - Integer.numberOfLeadingZeros(math.max(1, src.length - 1))))
+    private val shortLog = math.max(10, longLog - 1)
+    val long: Array[Int] = { val a = new Array[Int](1 << longLog); java.util.Arrays.fill(a, -1); a }
+    val short: Array[Int] = { val a = new Array[Int](1 << shortLog); java.util.Arrays.fill(a, -1); a }
+    // the reference's primes (zstd_compress_internal.h): 8 bytes, and 5
+    // bytes kept by shifting the other three out of a little-endian word
+    def hl(i: Int): Int = ((Mem.i64(src, i) * 0xcf1bbcdcb7a56463L) >>> (64 - longLog)).toInt
+    def hs(i: Int): Int = (((Mem.i64(src, i) << 24) * 889523592379L) >>> (64 - shortLog)).toInt
+    def put(i: Int): Unit = { long(hl(i)) = i; short(hs(i)) = i }
+
+  /** a double-fast block: every hash read is 8 bytes, so the search stops
+   * 8 before the end and the rest are literals */
+  private def compressedFast(src: Array[Byte], from: Int, len: Int, t: DoubleFast, reps: Array[Int]): Array[Byte] =
+    val end = from + len
+    val lits = Out(len)
+    val seqs = Seqs(len / MinMatch + 1)
+    var anchor = from
+    var ip = from
+    val limit = end - 8
+    /** how far `m` and `at` agree, from `n` bytes already known equal */
+    def ext(m: Int, at: Int, n: Int): Int = n + Mem.common(src, m + n, src, at + n, end - at - n)
+    while ip < limit do
+      val hL = t.hl(ip); val hS = t.hs(ip)
+      val mL = t.long(hL); val mS = t.short(hS)
+      t.long(hL) = ip; t.short(hS) = ip
+      var start = ip
+      var mlen = 0
+      var off = 0
+      val r0 = reps(0)
+      // the repeat offset, one byte on: the commonest win in tabular data
+      if r0 <= ip + 1 && Mem.i32(src, ip + 1 - r0) == Mem.i32(src, ip + 1) then
+        start = ip + 1; off = r0; mlen = ext(ip + 1 - r0, ip + 1, 4)
+      else if mL >= 0 && Mem.i64(src, mL) == Mem.i64(src, ip) then
+        off = ip - mL; mlen = ext(mL, ip, 8)
+      else if mS >= 0 && Mem.i32(src, mS) == Mem.i32(src, ip) then
+        // a short match: a long one a byte on is worth more
+        val hL1 = t.hl(ip + 1); val mL1 = t.long(hL1)
+        t.long(hL1) = ip + 1
+        if mL1 >= 0 && Mem.i64(src, mL1) == Mem.i64(src, ip + 1) then
+          start = ip + 1; off = ip + 1 - mL1; mlen = ext(mL1, ip + 1, 8)
+        else
+          off = ip - mS; mlen = ext(mS, ip, 4)
+      if mlen == 0 then
+        // through input that does not match, the step grows (kSearchStrength 8)
+        ip += ((ip - anchor) >> 8) + 1
+      else
+        // a found match reaches back over the literals before it
+        while start > anchor && start - off > 0 && src(start - 1) == src(start - 1 - off) do
+          start -= 1; mlen += 1
+        val litLen = start - anchor
+        lits.bytes(src, anchor, litLen)
+        seqs.add(litLen, mlen, offsetValue(off, litLen, reps))
+        ip = start + mlen
+        anchor = ip
+        if ip <= limit then
+          // a few positions of the match into the tables, not every byte
+          if start + 2 < limit then t.put(start + 2)
+          t.long(t.hl(ip - 2)) = ip - 2
+          t.short(t.hs(ip - 1)) = ip - 1
+          // the second repeat offset, right here: a run of equal rows
+          while ip < limit && reps(1) <= ip && Mem.i32(src, ip) == Mem.i32(src, ip - reps(1)) do
+            val o = reps(1)
+            val ml = ext(ip - o, ip, 4)
+            seqs.add(0, ml, offsetValue(o, 0, reps))
+            t.put(ip)
+            ip += ml
+            anchor = ip
+    lits.bytes(src, anchor, end - anchor)
+    encodeBlock(lits.buf, lits.n, seqs)
 
   // ---- one compressed block --------------------------------------------------
 

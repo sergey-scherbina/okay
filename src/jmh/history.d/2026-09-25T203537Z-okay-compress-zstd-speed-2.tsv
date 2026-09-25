@@ -1,0 +1,1 @@
+2026-09-25	a02c8ee5	5-15	CompressBench.zstd_compress lines 4 MiB, double fast at level 3 (jmh-lane, -f 2, two runs): okay-compress vs aircompressor	7.541	6.454	1.17	ms/op; was 16.525 vs 6.450 (2.56x) with the hash chain; second okay run 7.580 +- 0.407; ratio at level 3: big 424526 -> 433035 B (+2.0%), numbers 42639 -> 39682 (-6.9%)
