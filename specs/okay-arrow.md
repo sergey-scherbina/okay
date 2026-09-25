@@ -285,3 +285,29 @@ okay's columnar format, on every platform:
     ones. CBOR+ZSTD stays 2.2–2.4x smaller where there is text or
     nesting, which is the format's own cost. Over a network the choice
     is bytes (CBOR) against CPU (Arrow).
+
+## Stage 7b — the transports (operator, 2026-09-25: "7b")
+
+The survey of what serializes BATCHES of typed records (grep for the
+codecs over okay-*/src/main): okay-cluster's `Remote` is the one — chunks
+of records between nodes, as JSON lines, "CBOR takes over when its
+dialect lands" in its own header. Everything else sends one value at a
+time (a partial per partition in `Wire`, a Raft image, a span, a journal
+record), where Arrow has nothing to add.
+
+- [ ] `Remote` frames: a 4-byte length, a 1-byte format tag, the
+      payload. The RECEIVER reads the tag, so it needs no configuration
+      and one listener takes any sender. `given RemoteFormat`:
+      - `Arrow` (the default: a chunk is a batch of records, and
+        uncompressed Arrow wins on every shape measured);
+      - `Cbor` (fewer bytes for text or nested records once compressed);
+      - `Json` (the old wire, kept for comparison).
+
+      `given RemoteCompression`: none by default, or LZ4 / ZSTD (Arrow:
+      per buffer, in the IPC body; CBOR and JSON: the whole payload in a
+      frame). The listener's contract is unchanged: a damaged frame is
+      dropped and the stream lives, the wire closing closes the channel
+      after the buffered chunks.
+- [ ] The number: the same chunks through a real socket in each format,
+      bytes on the wire and time end to end.
+
