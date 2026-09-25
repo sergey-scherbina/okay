@@ -193,3 +193,6 @@
       ignored): lost its test process (Errors 4, Failed 0) in the affected-
       set gate of lexical-tail-guard-abort (7366 tests, 0 failed), a lane
       touching Delim/Lexical only. Recorded per the ledger.
+      2026-09-25, okayOpticsNative, GREEN on the rerun alone (Passed: Total 136, Failed 0, Errors 0, Passed 136): lost its test
+      process in the affected-set gate of row-parametricity-forwarding-law
+      (Writer.scala touched, so every dependent ran). Recorded per the ledger.
