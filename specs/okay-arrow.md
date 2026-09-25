@@ -1,6 +1,6 @@
 # okay-arrow — the Arrow columnar format, our own
 
-Status: stage 0 (the measurement) open. Asked by the operator
+Status: stage 0 done (2026-09-25): NOT faster; the verdict below redesigns stage 1. Asked by the operator
 2026-09-25: "можешь сделать модуль okay-arrow с нашей полноценной
 реализацией формата arrow? У нас получается быстрее чем у оригинального
 apache arrow?"
@@ -34,7 +34,7 @@ or no number is recorded. Lane rules (docs/benchmarks.md): each lane
 names what it includes, and a lane where one side does work the other
 skips is not compared.
 
-- [ ] Stage 0: the four pairs measured, interop checked, verdict here.
+- [x] Stage 0: the four pairs measured, interop checked, verdict here.
 
 ## The module (staged after stage 0; order may change on its verdict)
 
@@ -61,4 +61,39 @@ skips is not compared.
 
 ## Decisions
 
+- **Columns are BUFFERS, not JVM arrays of values** (stage 0's verdict).
+  Arrow Java's read into its own columns is 1–1.7 ms for 500 000 rows
+  because it copies buffers and makes no objects; `ArrowIpc` spends
+  30–45 ms making 500 000 `String`s and boxing nothing else. The module's
+  column is therefore a VIEW over the message's bytes: a buffer, an
+  offset and a length per Arrow buffer, values read little-endian on
+  access (`VarHandle` byte-array views, JDK 9+, so the floor 17 holds),
+  and a string decoded only when asked for. Read becomes validating the
+  message and slicing it — no copy at all, where Arrow Java still copies
+  into off-heap memory. Write from such columns is concatenating
+  buffers. `ArrowIpc`'s arrays stay as the conversion at the edge
+  (`PyFrame` needs values), not the representation.
+- **Heap byte arrays, not off-heap memory.** The received message is a
+  heap `Array[Byte]` already; slicing it needs no allocator, no
+  `--add-opens`, no reference counting, and works on Scala.js and Native
+  as well. Off-heap (FFM `MemorySegment`) belongs to stage 5, the C Data
+  Interface, where the memory is pyarrow's.
+
 ## Results
+
+- Stage 0 (`ArrowIpcBench`, JMH, two rounds at load 120–150, 5+5 x 2 s,
+  one fork; Arrow Java 19.0.0, unsafe allocator; both read Arrow Java's
+  14.1 MB stream; interop checked both ways by `TestArrowJavaInterop`
+  and again in setup). Times are noisy at that load; B/op is not:
+
+  | 500k rows | okay round 1 / 2 | Arrow round 1 / 2 | B/op okay | B/op Arrow |
+  |---|---|---|---|---|
+  | write from arrays | 39.0 / 15.8 ms | 19.8 / 15.6 ms | 128.7 MB | 63.5 MB |
+  | write from own columns | 122 / 62 ms (the same code as above: noise) | 15.0 / 3.2 ms | 128.7 MB | 49.8 MB |
+  | read to arrays | 43.2 / 45.0 ms | 59.6 / 23.3 ms | 136.2 MB | 104.7 MB |
+  | read to own columns | 42.4 / 29.8 ms | 1.7 / 1.0 ms | 136.2 MB | 14 KB |
+
+  Level through plain arrays; 5–30x behind in each side's own columns,
+  and the allocation says why: a `String` per row, and a writer that
+  grows its buffer by doubling and copies it out. Hence the Decisions
+  entry above.
