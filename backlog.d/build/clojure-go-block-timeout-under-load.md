@@ -18,3 +18,6 @@
       one test is the cheap answer if the dump says it only grows.
       THIRD sighting the same day: the kernel lane's gate (39.1 s),
       okay-clojure again only transitive (build.sbt).
+      THIRD SIGHTING (okay-arrow's full gate, 2026-09-25 ~09:15, load
+      80–150): the same test, 48.7 s against munit's 30 s; alone at once
+      green.
