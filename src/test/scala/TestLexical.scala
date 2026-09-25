@@ -171,6 +171,31 @@ class TestLexicalTail extends munit.FunSuite:
     assert(e.getMessage.contains("deep"), e.getMessage)
   }
 
+  test("ACROSS, leaving by abort: a second resumption that never RETURNS through the guard still trips it") {
+    // lexical-tail-guard-abort: the guard is a dollar whose `ret` runs
+    // once per resumption — on a normal return. A resumption that leaves
+    // the body by `abort` to an outer prompt drops its k, so `ret` never
+    // runs, while the cell was already written by the first resumption.
+    // The guard has to count RESUMPTIONS, not returns.
+    val p0 = Delim.prompt[Int]
+    val twice: Unit ! Delim + Pure =
+      Delim.shift[Int, Unit, Pure](p0)(k => k(()).flatMap(a => k(()).map(b => a * 10 + b)))
+    def body(s: Lexical.Inst[State % Int, Delim + Pure]): Int ! Delim + Pure =
+      for
+        _ <- twice
+        v <- s.get
+        _ <- s.set(v + 1)
+        r <- s.get
+        _ <- Delim.abort[Int, Unit, Pure](p0)(r)
+      yield r
+    // deep: each resumption starts from the state the capture saw, 0 -> 1, twice
+    assertEquals(run(Delim.push[Int, Pure](p0)(Lexical.State.deep[Int, Int, Delim + Pure](0)(body).map(_._2))), 11)
+    // tail: the second resumption would read the first's cell (1 -> 2, answer 12) — refused instead
+    val e = intercept[Lexical.MultiShotAcrossTail](
+      run(Delim.push[Int, Pure](p0)(Lexical.State.tail[Int, Int, Delim + Pure](0)(body).map(_._2))))
+    assert(e.getMessage.contains("deep"), e.getMessage)
+  }
+
   test("the same program run TWICE is not a multi-shot: the cell and the guard are made per run") {
     val once = Lexical.State.tail[Int, Int, Delim + Pure](5)(s => s.get.flatMap(v => s.set(v + 1)))
     assertEquals(run(once), (6, 6))

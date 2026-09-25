@@ -113,8 +113,8 @@ object Lexical:
    * `Delim` cannot be resumed twice from outside, because nothing in it
    * can capture. It needs no guard and no machine: it ends with a plain
    * `map`, and the program stays `A ! G`, run by whatever runs `G`. A
-   * body whose row HAS `Delim` gets the guard: a `dollar` whose return
-   * function runs once per resumption.
+   * body whose row HAS `Delim` gets the guard: a `dollarResumed` that is
+   * told each time a captured context containing it is run again.
    */
   sealed trait Closing[G[+_]]:
     def close[S, A](body: A ! G, finish: A => (S, A), at: String): (S, A) ! G
@@ -137,16 +137,18 @@ object Lexical:
         walk(body)
 
     given guarded[G[+_]](using ev: Delim[Any] <:< G[Any]): Closing[G] with
+      /** the guard counts RUNS of a captured context, not returns
+       * through `ret`: a resumption that leaves by `abort` never
+       * returns, and had already read the first one's cell
+       * (lexical-tail-guard-abort). `Free.delay` makes the count per
+       * run of the program. */
       def close[S, A](body: A ! G, finish: A => (S, A), at: String): (S, A) ! G =
         given Row.Sub[Delim + G, G] = collapse(ev)
         Free.delay { () =>
-          var returned = false
           val guard = Delim.prompt[(S, A)]
-          Delim.dollar[A, (S, A), G](guard)(a => Free.delay { () =>
-            if returned then throw MultiShotAcrossTail(at)
-            returned = true
-            okay.pure[Delim + G, (S, A)](finish(a))
-          })(body.up[Delim + G]).up[G]
+          Delim.dollarResumed[A, (S, A), G](guard)(
+            a => okay.pure[Delim + G, (S, A)](finish(a)),
+            n => if n > 1 then throw MultiShotAcrossTail(at))(body.up[Delim + G]).up[G]
         }
 
   /**
@@ -328,15 +330,13 @@ object Lexical:
                                  (using at: At): Under[G, (S0, A), st.S] =
       Prog.diag[st.S, Delim + G, (S0, A)](Free.delay { () =>
         var cell = s0
-        var returned = false
         val i = new Tail[F, S0, A, G, st.S](Delim.prompt[(S0, A)], [X] => (e: F[X]) => Free.delay { () =>
           val (s1, x) = c.op(e, cell)
           cell = s1
           okay.pure[Delim + G, X](x)
         })
-        Delim.dollar[A, (S0, A), G](i.p)(a => Free.delay { () =>
-          if returned then throw MultiShotAcrossTail(at.where)
-          returned = true
-          okay.pure[Delim + G, (S0, A)]((cell, a))
-        })(body(i).free)
+        // the guard counts runs of a captured context, as Closing.guarded's does
+        Delim.dollarResumed[A, (S0, A), G](i.p)(
+          a => okay.pure[Delim + G, (S0, A)]((cell, a)),
+          n => if n > 1 then throw MultiShotAcrossTail(at.where))(body(i).free)
       })
