@@ -6,18 +6,37 @@ that consumes it (the next invoke). An edge whose consumer defers the
 body (a program's flatMap/map, Cont, a thunk, a lazy cell) is dropped:
 a cycle through it is trampolined. Every cycle left is stack recursion.
 Output: file:line  def  kind  consumer-of-lambda(s) on the cycle
-usage: recscan.py <root> [skip-prefix ...]"""
+usage: recscan.py <root> [skip-prefix ...]
+RECSCAN_ONLY="mod1 mod2": scan only those modules (paths relative to
+<root>, "." for the root module) — what recscan-check.sh passes for a
+lane's diff. Only the NEWEST scala-* classes of each target is read: a
+module that moved from 3.7.4 to 3.9.0 keeps both, and the old one
+reports rows for code that is gone."""
 import os, re, subprocess, sys, collections
 root = sys.argv[1]; skips = sys.argv[2:]
 DEFER_OWNER = re.compile(r'^(okay2?/Free|okay2?/Free\$.*|okay2?/Cont.*|okay2?/.*package\$\!|okay/package\$|okay2/package\$|okay2?/Thunk.*|okay/frege/Thunk.*|scala/collection/immutable/LazyList.*|scala/Function0|okay2?/Once.*|okay2?/Eval.*|okay2?/\$bang\$.*|okay2?/Row\$.*|okay/async/.*|okay2/async/.*)$')
 DEFER_NAME = re.compile(r'^(flatMap|map|andThen|defer|delay|suspend|onAnswer|foldCont|lazy|shared|bind|then|flatMap\w*|map\w*|resumeWith|tailcall|\$greater\$greater\$eq|\$times\$greater|as|void|attempt|handleWith)$')
 
+def module_of(d):
+    """the module a class dir belongs to, as recscan's rows name it"""
+    return re.sub(r'/(\.jvm|jvm)$', '', d.split('/target/')[0])
+
+def version_key(d):
+    v = re.search(r'/target/scala-([^/]+)/classes$', d).group(1)
+    return [int(x) if x.isdigit() else -1 for x in re.split(r'[.-]', v)]
+
 def class_dirs(root):
+    only = os.environ.get('RECSCAN_ONLY')
+    only = None if only is None else {os.path.normpath(os.path.join(root, m)) for m in only.split()}
+    newest = {}
     for d, subs, _ in os.walk(root):
         subs[:] = [s for s in subs if s not in ('node_modules', '.git', '.bsp', 'streams', 'zinc', 'test-classes', 'src_managed', 'resolution-cache')]
         if re.search(r'/target/scala-[^/]+/classes$', d) and not re.search(r'/(\.js|\.native|js|native)/target', d) and '/project/' not in d:
             if any(os.path.relpath(d, root).startswith(s) for s in skips): continue
-            yield d
+            if only is not None and os.path.normpath(module_of(d)) not in only: continue
+            t = d.split('/target/')[0]
+            if t not in newest or version_key(d) > version_key(newest[t]): newest[t] = d
+    yield from sorted(newest.values())
 
 def scala_index(root):
     idx = collections.defaultdict(list)
@@ -120,7 +139,7 @@ for d in class_dirs(root):
                 cons = sorted({v for (a, b), v in via.items() if a in cs and b in cs})
                 for k in real:
                     m = nodes[k]
-                    if m['lines']: rows.add((c['src'], min(m['lines']), k[0], kind, ','.join(cons)[:80], os.path.relpath(cf, d), re.sub(r'/(\.jvm|jvm)$', '', d.split('/target/')[0])))
+                    if m['lines']: rows.add((c['src'], min(m['lines']), k[0], kind, ','.join(cons)[:80], os.path.relpath(cf, d), module_of(d)))
 
 out = set()
 for src, line, name, kind, cons, cls, mod in rows:

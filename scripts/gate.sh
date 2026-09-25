@@ -426,6 +426,23 @@ else
   echo "gate: no compile warnings ($compiled module compile(s) looked at)"
 fi
 
+# 3b. THE STACK-RECURSION INVENTORY ONLY SHRINKS (stack-safety-guard,
+# 2026-09-25; "NO UNBOUNDED STACK RECURSION", AGENTS.md). After a green
+# run, compiled or warm (deleting a source compiles nothing), recscan
+# reads the classes of the modules whose main sources this branch
+# changed since master and refuses a
+# recursion the inventory does not name, a row added without its reason,
+# and a row whose recursion is gone (scripts/recscan-check.sh says how
+# to fix each). A few seconds per module; GATE_RECSCAN=0 skips it, and
+# a --read replay never runs it (there are no classes behind a log).
+if [ "$status" -eq 0 ] && [ -z "$replay" ] && [ "${GATE_RECSCAN:-1}" != 0 ] \
+   && git rev-parse --verify -q master > /dev/null 2>&1; then
+  if ! sh "$(cd "$(dirname "$0")" && pwd)/recscan-check.sh" --since master; then
+    echo "gate: RED — the stack-recursion inventory (specs/stack-safety.md, stage 9)"
+    exit 1
+  fi
+fi
+
 # 4. GREEN
 [ "$status" -eq 0 ] && { echo "gate: GREEN"; exit 0; }
 

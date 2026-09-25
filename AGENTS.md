@@ -339,6 +339,13 @@ force, all already practiced, none previously written down:
   still check the loop. Found by tailrec-audit: okay2's
   `Producer.each` threw StackOverflowError at 200 000 productions, and
   the same text in okay was safe only because its `split` is `inline`.
+  THE GATE ENFORCES IT (stack-safety-guard, 2026-09-25): after a GREEN,
+  `gate.sh` runs `scripts/recscan-check.sh --since master` over the
+  modules your diff touched, and a recursion the inventory
+  (specs/stack-safety-okay.tsv, -okay2.tsv) does not name is RED. Fix
+  it, or add its row with the bound in the sixth column (a row with no
+  reason is RED too), and delete the row of one you fixed
+  (`recscan-check.sh --write` deletes those and only those).
 - NO CAST WITHOUT A REAL NECESSITY (operator, 2026-09-02). An
   `asInstanceOf`, an `@unchecked` pattern, an `Any` where a type
   parameter would do, is a claim the compiler cannot check — and

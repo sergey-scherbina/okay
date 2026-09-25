@@ -201,9 +201,39 @@ deleted.
 - [ ] Stage 7 — macros and staging: okay-direct, okay-staging,
       okay-optics `Fuse`, `ProcMacro`, per Decision 2.
 - [ ] Stage 8 — the remaining single-digit modules.
-- [ ] Stage 9 — the guard: a check that the inventory only SHRINKS
+- [x] Stage 9 — the guard: a check that the inventory only SHRINKS
       (the `docs/snippet-debt.txt` discipline), run where the gate
-      already compiles.
+      already compiles (stack-safety-guard, 2026-09-25).
+      `scripts/recscan-check.sh [--since <ref> | --all] [--write]`, which
+      `gate.sh` runs after every GREEN as `--since master`. It refuses
+      NEW (a recursion recscan finds that no row names, keyed by file and
+      def since lines move), BARE (a row the diff added with nothing in
+      its sixth column) and PAID (a row whose recursion, or whose file,
+      is gone; `--write` deletes exactly those). Only the modules whose
+      main sources the diff touched are scanned, about 3 s each, and a
+      module whose classes are older than its sources is skipped and
+      named, because stale classes lie in both directions. `--all` is the
+      whole build (about 9 s for okay2 and a minute for okay).
+      recscan.py itself learned two things for it: `RECSCAN_ONLY`, and
+      reading only the NEWEST `scala-*` classes of a target, since a
+      module that moved to 3.9.0 still has its 3.7.4 classes, and those
+      report rows for code that no longer exists.
+      Tested by mutants through the real gate. A recursive def added to
+      the core was RED (NEW), its row without a reason was RED (BARE), the
+      row with one held, and after the def was deleted the row was RED
+      (PAID, file gone) until `--write` removed it. That deletion
+      compiles nothing, which is why the step runs on warm gates too.
+      A first cut of `--all` read an okay2 checkout nobody had compiled
+      as "56 rows paid", and `--write` would have emptied the inventory.
+      The freshness check now covers `--all` as well.
+      THE FIRST RUN named 30 recursions that landed after the inventory:
+      16 in okay (okay-arrow, okay-py's `ArrowFrames`, `ContMacro`) and
+      14 in okay2 (okay2-sql, -jdbc, -spark, the fs2/zio interop). They
+      are rows marked UNAUDITED, each pointing at its backlog item
+      (okay-core/stack-safety-catch-up,
+      okay2/modules/stack-safety-catch-up-okay2). Six rows were paid,
+      because recscan had learned to see their LazyList tail or `new
+      Free.Bind` as deferred, and they are deleted.
 
 ## Decisions
 

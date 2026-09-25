@@ -1,6 +1,21 @@
 # file:line	def	kind	lambda consumers on the cycle
 okay-actor/src/main/scala/okay/actor/Actor.scala	155	stop	mutual	
 okay-actor/src/main/scala/okay/actor/Actor.scala	165	stopAll	mutual	
+okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	179	field	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	211	fill	direct	Vector.foreach	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala-jvm/okay/arrow/ApacheArrow.scala	281	column	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/Arrow.scala	111	take	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/Arrow.scala	152	kind	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/Arrow.scala	162	append	direct	StrictOptimizedIterableOps.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/Fb.scala	121	tables	mutual	Vector.foreach	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/Fb.scala	69	table	mutual	Vector.foreach	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	279	field	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	357	parseField	lambda	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	374	dictFields	lambda	Vector.flatMap	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	447	column	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	653	empty	lambda	Option.fold,Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/OkayArrow.scala	73	column	lambda	Vector.foreach	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
+okay-arrow/src/main/scala/okay/arrow/Rows.scala	56	column	direct	StrictOptimizedIterableOps.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
 okay-async/src/main/scala/Async.scala	205	apply	mutual	Function1.apply
 okay-async/src/main/scala/Async.scala	235	op	mutual	Function1.apply
 okay-cats/src/main/scala/okay/cats/CatsInterop.scala	70	toCats	lambda	Free.flatMap
@@ -170,6 +185,7 @@ okay-pg/src/main/scala/okay/pg/PgSql.scala	711	textOf	mutual	Vector.map
 okay-pg/src/main/scala/okay/pg/PgSql.scala	731	arrayLiteral	mutual	Vector.map
 okay-pg/src/main/scala/okay/pg/PgSql.scala	738	compositeLiteral	mutual	Vector.map
 okay-pool/src/main/scala/okay/pool/Pool.scala	124	nudge	lambda	Fiber.onComplete
+okay-py/src/main/scala/okay/py/ArrowFrames.scala	80	cells	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
 okay-py/src/main/scala/okay/py/GoWorker.scala	101	goType	mutual	
 okay-py/src/main/scala/okay/py/GoWorker.scala	111	list	mutual	
 okay-py/src/main/scala/okay/py/Hs.scala	29	haskellType	direct	
@@ -307,7 +323,7 @@ okay-workflow/src/main/scala/ProcMacro.scala	805	compileEnvBody	mutual	List.fore
 okay-workflow/src/main/scala/Wf.scala	838	go	direct	
 okay-workflow/src/main/scala/Wf.scala	928	loop	direct	
 okay-x402-cdp/src/main/scala/okay/x402/cdp/CdpAuth.scala	95	sorted	lambda	StrictOptimizedIterableOps.map,Vector.map
-src/main/scala/Aggregate.scala	507	go	lambda	LazyList$.toDeferrer	LAZY: the tail of a LazyList cons, forced one cell at a time
+src/main/scala/ContMacro.scala	53	rewrite	direct	List.map,Option.flatMap	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — backlog okay-core/stack-safety-catch-up
 src/main/scala/Distinct.scala	144	leaves	direct	
 src/main/scala/Distinct.scala	175	identityOf	mutual	
 src/main/scala/Distinct.scala	197	under	mutual	

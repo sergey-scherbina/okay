@@ -21,6 +21,9 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shebang and died under /bin/sh on a `case` inside a command
 # substitution, which is the whole reason this loop exists.
 : "${GATE_SELFTEST_SHELL:=}"
+# the fakes compile nothing real: the stack-recursion guard (gate.sh 3b)
+# has no classes to read here, and is exercised by recscan-check.sh itself
+export GATE_RECSCAN=0
 run_gate() { if [ -n "$GATE_SELFTEST_SHELL" ]; then "$GATE_SELFTEST_SHELL" "$here/gate.sh" "$@";
              else "$here/gate.sh" "$@"; fi; }
 tmp="$(mktemp -d -t gate-selftest)"

@@ -16,12 +16,25 @@ okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	66	valueNative	mutual		BO
 okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	85	objNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	119	arrNative	mutual		BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay2-fs2/src/main/scala/okay2/fs2/Fs2Interop.scala	41	go	lambda	NotGiven$.default,Stream.$plus$plus,Writer$.effect
+okay2-fs2/src/main/scala/okay2/fs2/Fs2Interop.scala	45	again	mutual	NotGiven$.default,Stream.$plus$plus	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-jdbc/src/main/scala/okay2/jdbc/JdbcSql.scala	229	arrayOf	mutual	Vector$.tabulate,Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-jdbc/src/main/scala/okay2/jdbc/JdbcSql.scala	329	jdbcOf	lambda	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-jdbc/src/main/scala/okay2/jdbc/JdbcSql.scala	203	valueOf	mutual	Vector$.tabulate,Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	20	dimap	lambda	Mealy.<init>
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	23	first	lambda	Mealy.<init>
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	26	right	lambda	Mealy.<init>
 okay2-lex/src/main/scala/okay2/lex/Mealy.scala	37	compose	lambda	Mealy.<init>
 okay2-parse/src/main/scala/okay2/parse/Parse.scala	82	rebase	lambda	Vector.map
 okay2-platform/src/main/scala-jvm-native/okay2/platform/BlockingOps.scala	23	go	direct	
+okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	22	dataType	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	50	rowOf	mutual	Iterator.map,Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	35	struct	direct	Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	39	value	mutual	Iterator.map,Vector.map	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-sql/src/main/scala/okay2/sql/Query.scala	135	both	direct		UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-sql/src/main/scala/okay2/sql/Query.scala	142	collect	direct		UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-sql/src/main/scala/okay2/sql/Query.scala	152	eval	direct		UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-sql/src/main/scala/okay2/sql/Query.scala	126	render	direct		UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
+okay2-sql/src/main/scala/okay2/sql/Typed.scala	225	fits	lambda	IterableOnceOps.forall	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
 okay2-stm/src/main/scala/okay2/Stm.scala	88	pending	lambda	Option.flatMap,Option.orElse
 okay2-stm/src/main/scala/okay2/Stm.scala	124	perform	mutual	
 okay2-stm/src/main/scala/okay2/Stm.scala	153	runWithLog	mutual	
@@ -33,7 +46,6 @@ okay2-stm/src/main/scala/okay2/Stm.scala	283	finish	mutual
 okay2-stm/src/main/scala/okay2/Stm.scala	290	loop	mutual	
 okay2-stream/src/main/scala/okay2/stream/Channel.scala	521	step	mutual	Channel$.sendIf$1,Flush$.effect,Writer$.effect
 okay2-stream/src/main/scala/okay2/stream/Channel.scala	532	go	mutual	Channel$.sendIf$1,Flush$.effect,Writer$.effect
-okay2-stream/src/main/scala/okay2/stream/Flush.scala	30	map	lambda	Flush$.step
 okay2-stream/src/main/scala/okay2/stream/Pipeline.scala	69	chunks	direct	
 okay2-stream/src/main/scala/okay2/stream/Pipeline.scala	84	depth	direct	
 okay2-stream/src/main/scala/okay2/stream/Tables.scala	140	show	direct	
@@ -46,12 +58,9 @@ okay2-workflow/src/main/scala/okay2/Proc.scala	217	loop	lambda	Monad.flatMap
 okay2-workflow/src/main/scala/okay2/Proc.scala	369	nodes	lambda	List.foreach
 okay2-zio/src/main/scala/okay2/zio/ZioInterop.scala	65	foldTo	lambda	ZIO.flatMap
 okay2-zio/src/main/scala/okay2/zio/ZioInterop.scala	83	step	lambda	Writer$.effect,ZIO.flatMap
-src/main/scala/okay2/Choice.scala	111	go	lambda	Choose$.effect
+okay2-zio/src/main/scala/okay2/zio/ZioInterop.scala	87	again	mutual	ZIO.flatMap	UNAUDITED: named by the stage-9 guard's first run (2026-09-25); arrived after the inventory — okay2 backlog modules/stack-safety-catch-up-okay2
 src/main/scala/okay2/Cont.scala	158	run	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)
 src/main/scala/okay2/Cont.scala	190	step	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)
 src/main/scala/okay2/Distinct.scala	84	parts	lambda	List.flatMap
 src/main/scala/okay2/Distinct.scala	96	identityOf	direct	
-src/main/scala/okay2/Gen.scala	385	loop	lambda	Free$Bind.<init>	DEFERRED: the call is inside a Free.Bind built by `new` (Scala 2 has no inline flatMap)
-src/main/scala/okay2/Generate.scala	105	each	lambda	Produce$.effect
 src/main/scala/okay2/Replayable.scala	60	parts	lambda	List.flatMap
-src/main/scala/okay2/package.scala	116	go	lambda	LazyList$.toDeferrer	LAZY: a LazyList cons tail
