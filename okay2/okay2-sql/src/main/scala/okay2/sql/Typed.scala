@@ -158,7 +158,15 @@ object Typed {
 
   private type Found[X] = Either[String, Shape[X]]
 
-  private[sql] def shapeOf[A](s: Schema[A]): Either[String, Shape[A]] = Known.find(known, s) match {
+  /** `path` is the products above this schema, by name: a derived schema
+   * of a recursive type is a CYCLE of lazy thunks, and a plain walk on it
+   * ran until the stack was gone (stack-safety-okay2-catch-up). A row
+   * cannot hold itself, so a product met again on its own path is refused
+   * by name, at construction; every other walk here is over the finite
+   * Shape this builds. */
+  private[sql] def shapeOf[A](s: Schema[A]): Either[String, Shape[A]] = shapeOf(s, Set.empty)
+
+  private def shapeOf[A](s: Schema[A], path: Set[String]): Either[String, Shape[A]] = Known.find(known, s) match {
     case Some(sh) => Right(sh)
     case None => s.visit(new Schema.Visit[Found] {
       private def refuse[X]: Found[X] =
@@ -171,22 +179,24 @@ object Typed {
       def char = refuse
       def bytes = Right(Typed.bytes)
       def bigInt = Right(Typed.bigInt)
-      def option[B](o: Schema.SOption[B]) = shapeOf(o.of()).map(new Shape.Opt(_))
-      def list[B](l: Schema.SList[B]) = shapeOf(l.of()).map(new Shape.Arr[B, List[B]](_, _.toList, _.toVector))
-      def vector[B](v: Schema.SVector[B]) = shapeOf(v.of()).map(new Shape.Arr[B, Vector[B]](_, identity, identity))
-      def product[B](p: Schema.SProduct[B]) = shapesOf(p).map(new Shape.Row(_, p))
+      def option[B](o: Schema.SOption[B]) = shapeOf(o.of(), path).map(new Shape.Opt(_))
+      def list[B](l: Schema.SList[B]) = shapeOf(l.of(), path).map(new Shape.Arr[B, List[B]](_, _.toList, _.toVector))
+      def vector[B](v: Schema.SVector[B]) = shapeOf(v.of(), path).map(new Shape.Arr[B, Vector[B]](_, identity, identity))
+      def product[B](p: Schema.SProduct[B]) =
+        if (path(p.name)) Left(s"${p.name} is recursive (it holds itself through ${path.mkString(", ")}); a row cannot hold itself")
+        else shapesOf(p, path + p.name).map(new Shape.Row(_, p))
       def sum[B](su: Schema.SSum[B]) = refuse
-      def iso[B, C](i: Schema.SIso[B, C]) = shapeOf(i.under()).map(new Shape.Iso(_, i.to, i.from))
+      def iso[B, C](i: Schema.SIso[B, C]) = shapeOf(i.under(), path).map(new Shape.Iso(_, i.to, i.from))
     })
   }
 
-  private def shapesOf(p: Schema.SProduct[_]): Either[String, Vector[Shape[_]]] = {
+  private def shapesOf(p: Schema.SProduct[_], path: Set[String]): Either[String, Vector[Shape[_]]] = {
     val out = Vector.newBuilder[Shape[_]]
     var err: String = null
     val it = p.fields.iterator
     while (err == null && it.hasNext) {
       val (name, thunk) = it.next()
-      shapeOf(thunk()) match {
+      shapeOf(thunk(), path) match {
         case Right(sh) => out += sh
         case Left(e) => err = s"field $name: $e"
       }
@@ -196,7 +206,7 @@ object Typed {
 
   private def fieldsOf(s: Schema[_]): Either[String, Vector[Field]] = s match {
     case p: Schema.SProduct[_] =>
-      shapesOf(p).left.map(e => s"field $e").map(shapes => p.fields.zip(shapes).map { case (f, sh) => Field(f._1, sh) })
+      shapesOf(p, Set(p.name)).left.map(e => s"field $e").map(shapes => p.fields.zip(shapes).map { case (f, sh) => Field(f._1, sh) })
     case _ => Left("a row is a product (a case class)")
   }
 
@@ -259,7 +269,7 @@ object Typed {
 
   /** a product's fields as positional parameters */
   private[sql] def encodeParams[P](s: Schema[P], p: P): Vector[SqlValue] = s match {
-    case prod: Schema.SProduct[P] => shapesOf(prod) match {
+    case prod: Schema.SProduct[P] => shapesOf(prod, Set(prod.name)) match {
       case Right(_) => encodeFields(prod, p)
       case Left(e) => throw new IllegalArgumentException(s"params: $e")
     }

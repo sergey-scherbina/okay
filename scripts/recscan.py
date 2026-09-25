@@ -3,7 +3,8 @@
 Call graph per class over its methods; a lambda is an edge from the
 method that CREATES it (invokedynamic) to its body, labelled by the call
 that consumes it (the next invoke). An edge whose consumer defers the
-body (a program's flatMap/map, Cont, a thunk, a lazy cell) is dropped:
+body (a program's flatMap/map, Cont, a thunk, a lazy cell, a library's
+own lazy bind — fs2 Stream ++/flatMap, ZIO/IO flatMap) is dropped:
 a cycle through it is trampolined. Every cycle left is stack recursion.
 Output: file:line  def  kind  consumer-of-lambda(s) on the cycle
 usage: recscan.py <root> [skip-prefix ...]
@@ -14,8 +15,8 @@ module that moved from 3.7.4 to 3.9.0 keeps both, and the old one
 reports rows for code that is gone."""
 import os, re, subprocess, sys, collections
 root = sys.argv[1]; skips = sys.argv[2:]
-DEFER_OWNER = re.compile(r'^(okay2?/Free|okay2?/Free\$.*|okay2?/Cont.*|okay2?/.*package\$\!|okay/package\$|okay2/package\$|okay2?/Thunk.*|okay/frege/Thunk.*|scala/collection/immutable/LazyList.*|scala/Function0|okay2?/Once.*|okay2?/Eval.*|okay2?/\$bang\$.*|okay2?/Row\$.*|okay/async/.*|okay2/async/.*)$')
-DEFER_NAME = re.compile(r'^(flatMap|map|andThen|defer|delay|suspend|onAnswer|foldCont|lazy|shared|bind|then|flatMap\w*|map\w*|resumeWith|tailcall|\$greater\$greater\$eq|\$times\$greater|as|void|attempt|handleWith)$')
+DEFER_OWNER = re.compile(r'^(okay2?/Free|okay2?/Free\$.*|okay2?/Cont.*|okay2?/.*package\$\!|okay/package\$|okay2/package\$|okay2?/Thunk.*|okay/frege/Thunk.*|scala/collection/immutable/LazyList.*|scala/Function0|okay2?/Once.*|okay2?/Eval.*|okay2?/\$bang\$.*|okay2?/Row\$.*|okay/async/.*|okay2/async/.*|fs2/Stream.*|zio/ZIO.*|cats/effect/IO.*)$')
+DEFER_NAME = re.compile(r'^(flatMap|map|andThen|defer|delay|suspend|onAnswer|foldCont|lazy|shared|bind|then|flatMap\w*|map\w*|resumeWith|tailcall|\$greater\$greater\$eq|\$times\$greater|as|void|attempt|handleWith|\$plus\$plus)$')
 
 def module_of(d):
     """the module a class dir belongs to, as recscan's rows name it"""
@@ -115,8 +116,10 @@ for d in class_dirs(root):
                     else:
                         tgt = c['boot'].get(x)
                         if not tgt or tgt not in nodes: continue
-                        # the consumer: the next call that is not boxing/runtime plumbing
-                        cons = next((y for kk, y in ins[j+1:] if kk == 'call' and not y[0].startswith(('scala/runtime/', 'java/lang/Integer', 'java/lang/Long', 'java/lang/Boolean', 'java/lang/Double'))), None)
+                        # the consumer: the next call that is not boxing/runtime plumbing —
+                        # nor an implicit EVIDENCE fetched between the thunk and the call it
+                        # goes to (`NotGiven.default` before fs2's `++` read as the consumer)
+                        cons = next((y for kk, y in ins[j+1:] if kk == 'call' and not y[0].startswith(('scala/runtime/', 'java/lang/Integer', 'java/lang/Long', 'java/lang/Boolean', 'java/lang/Double', 'scala/util/NotGiven', 'fs2/compat/NotGiven', 'scala/$less$colon$less', 'scala/$eq$colon$eq', 'scala/Predef$'))), None)
                         deferred = cons is not None and (
                             DEFER_OWNER.match(cons[0]) and DEFER_NAME.match(cons[1])
                             or cons[1] in ('delay', 'defer', 'suspend', 'lazy', 'shared', 'tailcall')

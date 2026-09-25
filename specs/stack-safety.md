@@ -217,6 +217,26 @@ deleted.
         old render's quadratic copy of the string built below each level.
         `eval` is a small continuation machine that keeps `&&`/`||`
         short-circuiting.
+      - [x] `Typed.shapeOf` on a RECURSIVE row type (stack-safety-okay2-
+        catch-up, 2026-09-25), found while auditing okay2's `Typed.fits`:
+        a derived schema of a recursive type is a cycle of lazy thunks,
+        and `shapeOf` matched the tree directly, so `Query.field[Tree, …]`
+        was a StackOverflowError in BOTH cores where "not row-shaped" was
+        the promise (TestTypedRecursive, red first in okay-sql and
+        okay2-sql). A product met again on its own path is refused by
+        name now, and every other Typed walk (`tpe`, `fits`, `decode`,
+        `encode`) is over the finite Shape that builds. The same lane
+        wrote the bounds of okay2's other catch-up rows, and of their
+        Scala 3 twins: jdbc's `valueOf`/`arrayOf` per DIMENSION of a
+        database array (declared in the DDL, Postgres MAXDIM = 6),
+        `jdbcOf` per level of a parameter the program built,
+        SparkSchema's four walks per level of a `ColType` whose recursive
+        products Columns already cuts to one Json column. The fs2/zio
+        interop `again` loops were never stack recursion: they recurse
+        through fs2 `++`/`flatMap` and `ZIO.flatMap`, the library's own
+        lazy bind, and recscan now knows those (and an implicit evidence
+        fetched between a thunk and its call, `NotGiven.default`, is no
+        longer read as the thunk's consumer).
 - [ ] Stage 5 — workflow: `Proc.go`/`nodes`, `Wf.go`, recursing per
       `Then` of a composed arrow.
 - [ ] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js.

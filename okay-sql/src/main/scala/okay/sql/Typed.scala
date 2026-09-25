@@ -104,7 +104,14 @@ object Typed:
     def tpe: SqlType = shape.tpe
     def optional: Boolean = shape.optional
 
-  private def shapeOf[A](s: Schema[A]): Either[String, Shape[A]] = s match
+  /** `path` is the products above this schema, by name: a derived schema
+   * of a recursive type is a CYCLE of lazy thunks, and a plain match on it
+   * ran until the stack was gone (stack-safety-okay2-catch-up). A row
+   * cannot hold itself — there is no column for it — so a product met
+   * again on its own path is refused by name, at construction; every
+   * other walk here (tpe, decode, encode, fits) is over the finite Shape
+   * this builds. */
+  private def shapeOf[A](s: Schema[A], path: Set[String] = Set.empty): Either[String, Shape[A]] = s match
     case s if Known.find(known, s).isDefined => Right(Known.find(known, s).get)
     case Schema.SInt => Right(i32)
     case Schema.SLong => Right(i64)
@@ -113,27 +120,28 @@ object Typed:
     case Schema.SString => Right(text)
     case Schema.SBytes => Right(bytes)
     case Schema.SBigInt => Right(bigInt)
-    case o: Schema.SOption[?] => shapeOf(o.of()).map(Shape.Opt(_))
-    case Schema.SIso(u, to, from) => shapeOf(u()).map(Shape.Iso(_, to, from))
-    case v: Schema.SVector[a] => shapeOf(v.of()).map(Shape.Arr[a, Vector[a]](_, identity, identity))
-    case l: Schema.SList[a] => shapeOf(l.of()).map(Shape.Arr[a, List[a]](_, _.toList, _.toVector))
+    case o: Schema.SOption[?] => shapeOf(o.of(), path).map(Shape.Opt(_))
+    case Schema.SIso(u, to, from) => shapeOf(u(), path).map(Shape.Iso(_, to, from))
+    case v: Schema.SVector[a] => shapeOf(v.of(), path).map(Shape.Arr[a, Vector[a]](_, identity, identity))
+    case l: Schema.SList[a] => shapeOf(l.of(), path).map(Shape.Arr[a, List[a]](_, _.toList, _.toVector))
     case p: Schema.SProduct[?] =>
-      shapesOf(p).map(Shape.Row(_, p))
+      if path(p.name) then Left(s"${p.name} is recursive (it holds itself through ${path.mkString(", ")}); a row cannot hold itself")
+      else shapesOf(p, path + p.name).map(Shape.Row(_, p))
     case other => Left(s"not row-shaped (a row holds primitives, bytes, Option, Vector/List and nested products): $other")
 
   /** a product's field shapes, by position */
-  private def shapesOf(p: Schema.SProduct[?]): Either[String, Vector[Shape[?]]] =
+  private def shapesOf(p: Schema.SProduct[?], path: Set[String]): Either[String, Vector[Shape[?]]] =
     val out = Vector.newBuilder[Shape[?]]
     var err: String = null
     for (name, thunk) <- p.fields if err == null do
-      shapeOf(thunk()) match
+      shapeOf(thunk(), path) match
         case Right(sh) => out += sh
         case Left(e) => err = s"field $name: $e"
     if err == null then Right(out.result()) else Left(err)
 
   private def fieldsOf(s: Schema[?]): Either[String, Vector[Field]] = s match
     case p: Schema.SProduct[?] =>
-      shapesOf(p).left.map(e => s"field ${e}").map(shapes => p.fields.zip(shapes).map((f, sh) => Field(f._1, sh)))
+      shapesOf(p, Set(p.name)).left.map(e => s"field ${e}").map(shapes => p.fields.zip(shapes).map((f, sh) => Field(f._1, sh)))
     case _ => Left("a row is a product (a case class)")
 
   /** a field's column type and whether it is nullable, by name,
