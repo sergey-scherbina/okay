@@ -1,0 +1,4 @@
+slug: auth-either-pyramids
+agent: claude (session 01VZwf6d)
+since: 2026-09-25
+what: McpAuth.discover/connect and Oidc.callback: nested Either-in-program pyramids flattened with Throws inside, public signatures and messages unchanged
