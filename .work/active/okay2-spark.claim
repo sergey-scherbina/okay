@@ -1,0 +1,4 @@
+slug: okay2-spark
+agent: claude (session 01CRCGPc8TkvhH9YJhy2iEgH)
+since: 2026-09-25
+what: port okay-spark to okay2 (operator request) — SparkInterop.aggregate/aggregateByKey/toSpark first (needs only okay2's own Aggregator, unblocked); SparkBulk next (Bulk/Csv/Sort/Tables already ported to okay2-stream); SparkSchema (needs Columns/Schema/Json) waits on the sibling okay2-codec claim (session 6f505c09) to land, since Columns is not yet ported and Schema/Json are actively being worked on there right now — avoiding duplicate work on that piece.
