@@ -279,6 +279,15 @@ deleted.
           Spark walks under their new names) and 2 TRAMPOLINED (the
           `again`s, 200 000 operations each through fs2 and ZIO). No
           UNAUDITED row is left in okay2.
+        - FOUND on the way: `java.util.ArrayDeque` on Scala.js 1.22
+          answers NULL from a non-empty deque. The first gate ran
+          `fits`'s worklist on it, and the 200 000-deep test failed on
+          JS only, with `MatchError: null`. A probe pushed and popped
+          (Int, Int) pairs with 66 667 left over, and draining them gave
+          192 nulls; JVM and Native gave none. The cross `fits` uses
+          `scala.collection.mutable.Stack` now. The JVM-only walks (jdbc,
+          Spark) keep the JDK deque. Filed upstream-side as
+          `scalajs-arraydeque-null`.
 - [ ] Stage 5 — workflow: `Proc.go`/`nodes`, `Wf.go`, recursing per
       `Then` of a composed arrow.
 - [ ] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js.

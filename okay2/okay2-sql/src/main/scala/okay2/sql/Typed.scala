@@ -235,10 +235,12 @@ object Typed {
   private[sql] def fits(field: SqlType, col: SqlType): Boolean = {
     // an AND over pairs of nodes, and both trees nest as deep as a type
     // does: a worklist, not a frame per level (stack-safety-catch-up-okay2)
-    val todo = new java.util.ArrayDeque[(SqlType, SqlType)]()
+    // Scala's own Stack, not java.util.ArrayDeque: Scala.js 1.22's answers
+    // null from a non-empty deque (192 of 66 667 pops, specs/stack-safety.md)
+    val todo = scala.collection.mutable.Stack[(SqlType, SqlType)]()
     todo.push((field, col))
     var ok = true
-    while (ok && !todo.isEmpty) {
+    while (ok && todo.nonEmpty) {
       val (f, c) = todo.pop()
       ok = fitsHere(f, c, todo)
     }
@@ -247,7 +249,7 @@ object Typed {
 
   /** whether this pair fits, the pairs below it left on `todo` */
   private def fitsHere(field: SqlType, col: SqlType,
-                       todo: java.util.ArrayDeque[(SqlType, SqlType)]): Boolean = (field, col) match {
+                       todo: scala.collection.mutable.Stack[(SqlType, SqlType)]): Boolean = (field, col) match {
     case (SqlType.I64, SqlType.I32) => true
     case (SqlType.F64, SqlType.Num) => true
     case (SqlType.Text, SqlType.Num) => true
