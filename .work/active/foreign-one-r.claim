@@ -1,6 +1,0 @@
-feature/foreign-one-r 2026-09-25T22:13:44Z
-agent: claude-opus-5-5
-heartbeat: 2026-09-25T22:13:44Z
-status: in-progress
-done-so-far: claim
-next: read okay-r engine/codec/shim vs okay-py; plan the fold; shim.R on the ForeignWorker protocol; RSubprocess -> ForeignWorker; tests green over docker r-base
