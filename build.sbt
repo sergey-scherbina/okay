@@ -2489,6 +2489,27 @@ lazy val okayPy = (project in file("okay-py"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+// okay-arrow: the Arrow columnar format, our own (specs/okay-arrow.md).
+// Stage 0 is a MEASUREMENT against Arrow Java, which is therefore a
+// TEST-only dependency (sbt-jmh's Jmh configuration extends Test): the
+// module itself never depends on it.
+lazy val okayArrow = (project in file("okay-arrow"))
+  .dependsOn(okayCodec.jvm)
+  .enablePlugins(JmhPlugin)
+  .settings(
+    name := "okay-arrow",
+    // Arrow Java's memory in the tests that compare against it: its
+    // unsafe allocator needs these on JDK 17+ (and the last one on 24+)
+    Test / fork := true,
+    Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED"),
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      "org.apache.arrow" % "arrow-vector" % "19.0.0" % Test,
+      "org.apache.arrow" % "arrow-memory-unsafe" % "19.0.0" % Test,
+    ),
+  )
+
 // okay-foreign-workflow: foreign workers inside okay's durable layers
 // (specs/foreign-workflow.md) — a foreign call is a workflow ACTIVITY, the
 // worker its oracle. Its own module so okay-py stays free of the workflow
@@ -3162,7 +3183,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayForeignWorkflow, okayR,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow, okayForeignWorkflow, okayR,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
