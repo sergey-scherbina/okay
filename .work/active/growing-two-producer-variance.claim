@@ -1,6 +1,0 @@
-feature/growing-two-producer-variance 2026-09-25T21:19:55Z
-agent: claude-code (session 013hkJA4B7z8s2CRHjfv668p)
-heartbeat: 2026-09-25T21:19:55Z
-status: in-progress
-done-so-far: -
-next: default_chunk p=2 c=1 under growing via jmh-lane.sh, -f 4 -i 10, -rf json; look for two clusters in the per-iteration scores
