@@ -1,7 +1,0 @@
-feature/limiter-blocking-pace 2026-09-25T12:03:26Z
-agent: claude-code (okay-watch session)
-heartbeat: 2026-09-25T12:03:26Z
-status: in-progress
-done-so-far: worktree created
-next: Limiter.pace; test
-touches: okay-resilience/src/main/scala/okay/resilience/Limiter.scala, its test
