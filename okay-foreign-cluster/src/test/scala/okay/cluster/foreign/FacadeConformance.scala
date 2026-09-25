@@ -5,6 +5,7 @@ import okay.codec.Schema
 import okay.arrow.Rows
 import okay.cluster.{Flow, Flows}
 import okay.given
+import okay.{!, %, Choose, Reader, effect, runChoice}
 
 /**
  * THE CONFORMANCE SUITE (specs/foreign-facade.md): one body per
@@ -61,6 +62,24 @@ object FacadeConformance:
     if sizes.nonEmpty then
       assert(sizes.forall(_ <= batch), s"${s.name}: a frame held more than $batch rows: $sizes")
       assertEquals(sizes.sum, n, s"${s.name}: the frames add up to the rows")
+
+  /** an order a program prices through a callback */
+  final case class Order(sku: String, qty: Long) derives Schema
+
+  /**
+   * `Programs`: a far-side program performs `price_of` by name and this
+   * side answers it under a Reader (`priced`); and a program that
+   * performs `choose` twice is continued as often as Choice asks —
+   * MULTI-SHOT across the process (`pairs`) — the two dialogues of
+   * specs/remote-foreign.md, over the facade.
+   */
+  def programs[M](module: M, priced: String, pairs: String)(using P: Programs[M]): Unit =
+    val price = Cb[Reader % Map[String, Double], String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
+    val order = P.run(module)(Reader.run(Map("tea" -> 4.0))(P.program[Order, Double, Reader % Map[String, Double]](module, priced, Vector(price))(Order("tea", 3L))))
+    assertEquals(order, Right(12.0), s"${P.name}: priced")
+    val choose = Cb[Choose, Vector[Long], Long]("choose")(xs => effect[Choose, Long](Choose(xs)))
+    val all = P.run(module)(runChoice(P.program[Int, Long, Choose](module, pairs, Vector(choose))(0)))
+    assertEquals(all.toList, List(Right(11L), Right(21L), Right(12L), Right(22L)), s"${P.name}: pairs, multi-shot")
 
   /** `Speaks`: a report names the language and the link, and what it
    * says of frames is one of the three words the spec has */

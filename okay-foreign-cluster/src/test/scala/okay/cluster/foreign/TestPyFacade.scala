@@ -15,6 +15,16 @@ object PyFacadeMod:
 
     def fboom(frame):
         raise ValueError("nope")
+
+    import okay
+
+    def priced(order):
+        return okay.perform("price_of", order["sku"]).then(lambda p: okay.done(p * order["qty"]))
+
+    def pairs(_):
+        return okay.perform("choose", [1, 2]).then(lambda x:
+               okay.perform("choose", [10, 20]).then(lambda y:
+               okay.done(x + y)))
   """)
 
 /** the conformance body over a REAL Python (Live) */
@@ -26,6 +36,11 @@ class TestPyFacade extends munit.FunSuite:
   given Calls[okay.py.PyModule] = Calls.py(TestPy.python.getOrElse("python3"))
   given Speaks[okay.py.PyModule] = Speaks.py(TestPy.python.getOrElse("python3"))
   given Frames[okay.py.PyModule] = Frames.py(TestPy.python.getOrElse("python3"))
+  given Programs[okay.py.PyModule] = Programs.py(TestPy.python.getOrElse("python3"))
+
+  test("Programs over python3: a callback under a Reader, and a continuation resumed twice") {
+    FacadeConformance.programs(PyFacadeMod.mod, "priced", "pairs")
+  }
 
   test("Streams over python3: 20 000 rows through fecho in frames of 4 096, every row back in order") {
     FacadeConformance.streams(PyFacadeMod.mod, "fecho", 20000, 4096)

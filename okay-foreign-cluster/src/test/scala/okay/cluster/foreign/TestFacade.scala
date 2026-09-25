@@ -1,6 +1,7 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
+import okay.%
 import FacadeConformance.Rec
 
 /** a module type with `Calls` and nothing else: the typeclass is open */
@@ -74,12 +75,24 @@ class TestFacade extends munit.FunSuite:
     assert(compileErrors("summon[Speaks[Mute]]").nonEmpty)
     assert(compileErrors("summon[Frames[Mute]]").nonEmpty)
     assert(compileErrors("summon[Streams[Mute]]").nonEmpty)
+    // programs as data have no JVM instance: nothing crosses (Decision 7)
+    assert(compileErrors("summon[Programs[JvmModule]]").nonEmpty)
+    assert(compileErrors("summon[Programs[okay.py.PyModule]]").isEmpty)
     // a Frames instance is a Streams instance: the derived road
     assert(compileErrors("summon[Streams[CountingModule]]").isEmpty)
     // EchoModule gives Calls and not Frames: rows through it do not compile
     assert(compileErrors("Road.rows[EchoModule, Rec, Rec](EchoModule(\"t\"), \"echo\")(Vector.empty)").nonEmpty)
     // and the one it gives compiles
     assert(compileErrors("summon[Calls[EchoModule]]").isEmpty)
+  }
+
+  test("Cb: a callback carries its name and its two schemas, and runs at its types") {
+    val price = Cb[okay.Reader % Map[String, Double], String, Double]("price_of")(sku => okay.Reader.ask[Map[String, Double]].map(_(sku)))
+    assertEquals(price.name, "price_of")
+    // its schemas are the ones it was given, at its own types; running it
+    // is the far side's business (FacadeConformance.programs, Live)
+    assertEquals(price.arg, summon[Schema[String]])
+    assertEquals(price.res, summon[Schema[Double]])
   }
 
   test("Speaks: the JVM is in-jvm, by-reference") {

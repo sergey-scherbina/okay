@@ -3,6 +3,8 @@ package okay.cluster.foreign
 import okay.codec.Schema
 import okay.arrow.{Rows, Table}
 import okay.cluster.Flow
+import okay.{!, +}
+import okay.given
 
 /**
  * THE FACADE OVER EVERY FOREIGN LANGUAGE (specs/foreign-facade.md): one
@@ -131,6 +133,77 @@ object Streams:
   def batcher[M, A: Schema, B: Schema](module: M, fn: String)(using f: Frames[M]): Batcher[A, B] = new:
     val name = s"${f.name}:$fn"
     def apply(rows: Vector[A]): Either[Batcher.Failed, Vector[B]] = Road.rows[M, A, B](module, fn)(rows)
+
+/**
+ * A CALLBACK in the facade's vocabulary: a name, and a function at
+ * `Schema` types — what a far-side program performs by name and this
+ * side answers under its own handlers (Reader, Choice, …). okay-py's and
+ * okay-r's `Callback` say the same thing over `PyValue` and `RValue`;
+ * this one says it once, and each `Programs` instance turns it into its
+ * language's (specs/foreign-facade.md, Decision 3).
+ */
+trait Cb[F[+_]]:
+  type Arg
+  type Res
+  def name: String
+  def arg: Schema[Arg]
+  def res: Schema[Res]
+  def run: Arg => Res ! F
+
+object Cb:
+  def apply[F[+_], A, B](name0: String)(f: A => B ! F)(using sa: Schema[A], sb: Schema[B]): Cb[F] { type Arg = A; type Res = B } = new Cb[F]:
+    type Arg = A
+    type Res = B
+    val name = name0
+    val arg = sa
+    val res = sb
+    val run = f
+
+/**
+ * PROGRAMS AS DATA, behind the same typeclass shape: the far side returns
+ * its program one node at a time — an answer, or a named operation plus
+ * the id of the continuation it keeps — and this side performs the
+ * operation under the caller's handlers and continues it, as often as a
+ * handler asks (specs/remote-foreign.md). `Op` is the language's own
+ * effect (`ForeignEval`, `REval`): a program is `Out ! (F + Op)`, the
+ * caller handles `F` first and hands the rest to `run`, which keeps the
+ * WHOLE dialogue on one pooled worker, because that worker holds the
+ * continuations.
+ *
+ * No JVM instance: a program on the JVM is a Scala function returning
+ * `Out ! F` and there is nothing to cross — the compile error a
+ * `Programs[JvmModule]` gives is the honest answer (Decision 7).
+ */
+trait Programs[-M]:
+  type Op[+A]
+  def name: String
+  def program[Arg: Schema, Out: Schema, F[+_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op)
+  def run[A](module: M)(prog: A ! Op): A
+
+object Programs:
+  given py: Programs[okay.py.PyModule] = py("python3")
+  def py(python: String): Programs[okay.py.PyModule] = new:
+    type Op[+A] = okay.py.ForeignEval[A]
+    def name = s"py:$python"
+    private def cb[F[+_]](c: Cb[F]): okay.py.Py.Callback[F] =
+      okay.py.Py.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
+    def program[Arg: Schema, Out: Schema, F[+_]](module: okay.py.PyModule, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
+      okay.py.Py.program[Out](s"${module.name}:$fn").calling(okay.py.Py.callbacks[F](cbs.map(cb[F])*))(a).program
+        .map(_.left.map(c => Batcher.Failed(c.kind, c.message)))
+    def run[A](module: okay.py.PyModule)(prog: A ! Op): A =
+      PyPool.of(module, python, Stage.Workers).use(w => (prog.runWith(using w.handler), !w.alive))
+
+  given r: Programs[okay.r.RModule] = r("Rscript")
+  def r(rscript: String): Programs[okay.r.RModule] = new:
+    type Op[+A] = okay.r.REval[A]
+    def name = s"r:$rscript"
+    private def cb[F[+_]](c: Cb[F]): okay.r.R.Callback[F] =
+      okay.r.R.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
+    def program[Arg: Schema, Out: Schema, F[+_]](module: okay.r.RModule, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
+      okay.r.R.program[Out](s"${module.name}:$fn").calling(okay.r.R.callbacks[F](cbs.map(cb[F])*))(a).program
+        .map(_.left.map(c => Batcher.Failed(c.kind, c.message)))
+    def run[A](module: okay.r.RModule)(prog: A ! Op): A =
+      RPool.of(module, rscript, Stage.Workers).use(w => (prog.runWith(using w.handler), false))
 
 /**
  * The doors a job uses, each picking the tier by the SHAPE it is handed

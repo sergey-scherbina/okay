@@ -57,7 +57,10 @@ trait Frames[-M]:     // tier 2: a Table in, a Table out
 trait Streams[-M]:    // tier 3: frames crossing one at a time, back-pressured
   def stream[A: Schema, B: Schema](module: M, fn: String, batch: Int)(in: Flow[A]): Flow[B]
 trait Programs[-M]:   // programs as data: perform/continue/done, multi-shot where the far side's continuations are values
-  def program[A: Schema](module: M, fn: String, args: Vector[Json]): A ! (Foreign.Ops)
+  type Op[+A]         // the language's own effect (ForeignEval, REval)
+  def program[Arg: Schema, Out: Schema, F[+_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op)
+  def run[A](module: M)(prog: A ! Op): A   // the whole dialogue on ONE worker
+trait Cb[F[+_]]:      // a callback: a name and a function at Schema types — one type, not one per language
 trait Holds[-M]:      // object handles: method, attribute, release
   def hold[A: Schema](module: M, fn: String)(a: A): Either[Condition, Handle] ! Async
 ```
@@ -208,9 +211,20 @@ with its date, load and sha (the `performance` skill).
       row came back in order (TestFacade); 20 000 rows over python3 in
       frames of 4 096 (Live). A far side that drives a stream itself is
       what `Speaks.stream` will say once a shim grows it.
-- [ ] Stage 4 — `Programs[M]` and `Holds[M]` folded under the same
-      typeclass shape (they exist as `ForeignEval`/`REval` operations;
-      the instances are thin).
+- [x] Stage 4 — `Programs[M]` (foreign-facade-4, 2026-09-25): one
+      `Cb[F]` callback over `Schema` types where okay-py and okay-r each
+      had their own over `PyValue`/`RValue`; `Programs[-M]` with the
+      language's effect as a type member (`Op`: `ForeignEval`, `REval`),
+      `program` answering `Out ! (F + Op)` and `run` keeping the whole
+      dialogue on ONE pooled worker, since that worker holds the
+      continuations. The conformance body `programs` runs the two
+      dialogues of specs/remote-foreign.md over the facade — a callback
+      answered under a Reader, and a continuation resumed twice by
+      Choice (multi-shot across the process) — green over python3 here.
+      No JVM instance (Decision 7).
+- [ ] Stage 4b — `Holds[M]`: object handles (Python's `Method`/`Attr`/
+      `Release`, R's `Hold`/`Release`) under the same shape, with the
+      handle's type a member of the instance.
 - [ ] Stage 5 — the measurement table filled, every claimed cell.
 - [ ] Stage 6 — docs: docs/foreign-facade.md with runnable examples
       pinned by `TestDocExamplesForeignFacade` and the literature — the
@@ -251,6 +265,12 @@ with its date, load and sha (the `performance` skill).
    one into the other. So rows are always one frame (`Road.rows`), a
    value is always a call (`Road.value`), a source is a stream; what a
    frame COSTS per size is a measurement (stage 5), not a switch.
+
+7. **Programs as data have no JVM instance** (stage 4). A program on
+   the JVM is a Scala function returning `Out ! F`; there is no far side
+   to hold a continuation and nothing to cross, so `Programs[JvmModule]`
+   would be a wire in disguise — the compile error is the honest
+   answer, and the zero-cost tier for programs is calling the function.
 
 ## Results
 
@@ -294,6 +314,16 @@ with its date, load and sha (the `performance` skill).
   suite asserts none exceeds the batch — a heap measurement on a shared
   box would have been a belief. Python here: 20 000 rows in frames of
   4 096 through `fecho`, every row back in order.
+- **Stage 4 (2026-09-25).** `Programs` is `Py.program`/`R.program`
+  behind one shape: the callbacks are converted at the instance
+  (`Py.callback[c.Arg, c.Res](c.name)(c.run)`), so the two language
+  `Callbacks` types stay where they are and the facade has one. `run`
+  borrows a pooled worker for the WHOLE program — `Pool.use` around
+  `prog.runWith(using w.handler)` — because a continuation lives in one
+  process; a program spread over two workers would resume nothing.
+  Python here: `priced` under a Reader answered 12.0, `pairs` resumed
+  twice by Choice answered 11, 21, 12, 22 — multi-shot across the
+  process, through the facade.
 - Python here: python3 3.14 on the box, echo/boom/missing green over
   pipes, frames `columnar-json` (no pyarrow in the box's interpreter —
   the venv of MeasurePyArrow has it). R: not installed on this box;
