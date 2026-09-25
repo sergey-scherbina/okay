@@ -238,25 +238,25 @@ okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	486	read	mutual	Fun
 okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	519	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
 okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	554	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
 okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	585	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
-okay-stm/src/main/scala/Stm.scala	146	perform	direct	
-okay-stm/src/main/scala/Stm.scala	183	runWithLog	direct	
-okay-stm/src/main/scala/Stm.scala	184	loop	direct	
-okay-stm/src/main/scala/Stm.scala	267	attempt	lambda	Stm$.okay$Stm$$$park
-okay-stm/src/main/scala/Stm.scala	291	attempt	lambda	Stm$.okay$Stm$$$park
-okay-stm/src/main/scala/Stm.scala	318	finish	mutual	
-okay-stm/src/main/scala/Stm.scala	325	loop	mutual	
-okay-stream/src/main/scala/Channel.scala	866	step	mutual	Channel$.sendIf$1
-okay-stream/src/main/scala/Channel.scala	875	go	mutual	Channel$.sendIf$1
-okay-stream/src/main/scala/Pipe.scala	490	loop	lambda	Pipe$package$.pull$1
-okay-stream/src/main/scala/Pipe.scala	570	loop	lambda	Pipe$package$.pull$2
-okay-stream/src/main/scala/Pipe.scala	614	loop	lambda	Pipe$package$.pull$3
-okay-stream/src/main/scala/Pipeline.scala	56	once	direct	
-okay-stream/src/main/scala/Pipeline.scala	78	chunks	direct	
-okay-stream/src/main/scala/Pipeline.scala	95	depth	direct	
-okay-stream/src/main/scala/Tables.scala	69	show	direct	
-okay-stream/src/main/scala/Tables.scala	87	estimate	direct	
-okay-stream/src/main/scala/Tables.scala	107	optimize	direct	
-okay-stream/src/main/scala/Tables.scala	144	compile	direct	
+okay-stm/src/main/scala/Stm.scala	146	perform	direct		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
+okay-stm/src/main/scala/Stm.scala	183	runWithLog	direct		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
+okay-stm/src/main/scala/Stm.scala	184	loop	direct		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
+okay-stm/src/main/scala/Stm.scala	267	attempt	lambda	Stm$.okay$Stm$$$park	DEFERRED: the retry is a thunk `park` stores and a waker runs later from its own frame, never from this one; the Abort arm of the direct handler cannot fire on one thread (stated in code)
+okay-stm/src/main/scala/Stm.scala	291	attempt	lambda	Stm$.okay$Stm$$$park	DEFERRED: the retry is a thunk `park` stores and a waker runs later from its own frame, never from this one; the Abort arm of the direct handler cannot fire on one thread (stated in code)
+okay-stm/src/main/scala/Stm.scala	318	finish	mutual		BOUNDED: finish -> attempt -> loop reaches a Sim.yieldNow bind at the transaction's first operation, and a transaction with none commits an empty log at once
+okay-stm/src/main/scala/Stm.scala	325	loop	mutual		BOUNDED: finish -> attempt -> loop reaches a Sim.yieldNow bind at the transaction's first operation, and a transaction with none commits an empty log at once
+okay-stream/src/main/scala/Channel.scala	866	step	mutual	Channel$.sendIf$1	BOUNDED: a told element descends at most Source.ChunkSize deep before a send's flatMap breaks the descent, and since stack-safety-stream-stm an empty flush counts against the same budget (FlushBudget) — TestFlushDepth
+okay-stream/src/main/scala/Channel.scala	875	go	mutual	Channel$.sendIf$1	BOUNDED: a told element descends at most Source.ChunkSize deep before a send's flatMap breaks the descent, and since stack-safety-stream-stm an empty flush counts against the same budget (FlushBudget) — TestFlushDepth
+okay-stream/src/main/scala/Pipe.scala	490	loop	lambda	Pipe$package$.pull$1	BOUNDED: PullBudget (256) pulls per descent, then a `pure(()).flatMap` node breaks it (the code's own budget)
+okay-stream/src/main/scala/Pipe.scala	570	loop	lambda	Pipe$package$.pull$2	BOUNDED: PullBudget (256) pulls per descent, then a `pure(()).flatMap` node breaks it (the code's own budget)
+okay-stream/src/main/scala/Pipe.scala	614	loop	lambda	Pipe$package$.pull$3	BOUNDED: PullBudget (256) pulls per descent, then a `pure(()).flatMap` node breaks it (the code's own budget)
+okay-stream/src/main/scala/Pipeline.scala	56	once	direct		BOUNDED: per operator node of a pipeline the program built by applying operators; `optimize` fuses adjacent map/filter/take/drop, so a chain repeats an operator only as many times as the program wrote it
+okay-stream/src/main/scala/Pipeline.scala	78	chunks	direct		BOUNDED: per operator node of a pipeline the program built by applying operators; `optimize` fuses adjacent map/filter/take/drop, so a chain repeats an operator only as many times as the program wrote it
+okay-stream/src/main/scala/Pipeline.scala	95	depth	direct		BOUNDED: per operator node of a pipeline the program built by applying operators; `optimize` fuses adjacent map/filter/take/drop, so a chain repeats an operator only as many times as the program wrote it
+okay-stream/src/main/scala/Tables.scala	69	show	direct		BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
+okay-stream/src/main/scala/Tables.scala	87	estimate	direct		BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
+okay-stream/src/main/scala/Tables.scala	107	optimize	direct		BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
+okay-stream/src/main/scala/Tables.scala	144	compile	direct		BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
 okay-ui-gtk/src/main/scala/okay/ui/gtk/Gtk.scala	86	nodeAt	lambda	Option.flatMap
 okay-ui-gtk/src/main/scala/okay/ui/gtk/Gtk.scala	197	build	direct	Vector.map
 okay-ui/src/main/scala-form/okay/ui/Form.scala	278	focusAt	lambda	Option.flatMap

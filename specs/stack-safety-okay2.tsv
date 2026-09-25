@@ -25,25 +25,25 @@ okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	76	rowOf	mutual	Iterato
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	63	structAt	direct	Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	50	typeOf	direct	Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
 okay2-spark/src/main/scala/okay2/spark/SparkSchema.scala	66	valueAt	mutual	Iterator.map,Vector.map	BOUNDED: per level of a ColType, which every SparkSchema door refuses past SparkSchema.MaxNesting (64) before the walk (stack-safety-catch-up-okay2)
-okay2-stm/src/main/scala/okay2/Stm.scala	88	pending	lambda	Option.flatMap,Option.orElse
-okay2-stm/src/main/scala/okay2/Stm.scala	124	perform	mutual	
-okay2-stm/src/main/scala/okay2/Stm.scala	153	runWithLog	mutual	
-okay2-stm/src/main/scala/okay2/Stm.scala	154	loop	mutual	
-okay2-stm/src/main/scala/okay2/Stm.scala	237	attempt	lambda	Stm$.okay2$Stm$$park
-okay2-stm/src/main/scala/okay2/Stm.scala	260	attempt	direct	Stm$.okay2$Stm$$park
-okay2-stm/src/main/scala/okay2/Stm.scala	260	attempt	mutual	
-okay2-stm/src/main/scala/okay2/Stm.scala	283	finish	mutual	
-okay2-stm/src/main/scala/okay2/Stm.scala	290	loop	mutual	
-okay2-stream/src/main/scala/okay2/stream/Channel.scala	521	step	mutual	Channel$.sendIf$1,Flush$.effect,Writer$.effect
-okay2-stream/src/main/scala/okay2/stream/Channel.scala	532	go	mutual	Channel$.sendIf$1,Flush$.effect,Writer$.effect
-okay2-stream/src/main/scala/okay2/stream/Pipeline.scala	69	chunks	direct	
-okay2-stream/src/main/scala/okay2/stream/Pipeline.scala	84	depth	direct	
-okay2-stream/src/main/scala/okay2/stream/Tables.scala	140	show	direct	
-okay2-stream/src/main/scala/okay2/stream/Tables.scala	156	estimate	direct	Option.flatMap
-okay2-stream/src/main/scala/okay2/stream/Take.scala	129	loop	lambda	Pipe$.pull$1,Take$.effect
-okay2-stream/src/main/scala/okay2/stream/Take.scala	151	loop	lambda	Take$.effect
-okay2-stream/src/main/scala/okay2/stream/Take.scala	211	loop	lambda	Pipe$.pull$2,Take$.effect
-okay2-stream/src/main/scala/okay2/stream/Take.scala	252	loop	lambda	Pipe$.pull$3,Take$.effect
+okay2-stm/src/main/scala/okay2/Stm.scala	88	pending	lambda	Option.flatMap,Option.orElse	BOUNDED: per nesting of `orElse` in the transaction's own text — a branch log's parent chain
+okay2-stm/src/main/scala/okay2/Stm.scala	124	perform	mutual		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
+okay2-stm/src/main/scala/okay2/Stm.scala	153	runWithLog	mutual		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
+okay2-stm/src/main/scala/okay2/Stm.scala	154	loop	mutual		BOUNDED: per nesting of `orElse` in the transaction's own text (an OrElse branch runs a nested runWithLog); a Modify is one Read; the code says so beside it
+okay2-stm/src/main/scala/okay2/Stm.scala	237	attempt	lambda	Stm$.okay2$Stm$$park	DEFERRED: the retry is a thunk `park` stores and a waker runs later from its own frame, never from this one; the Abort arm of the direct handler cannot fire on one thread (stated in code)
+okay2-stm/src/main/scala/okay2/Stm.scala	260	attempt	direct	Stm$.okay2$Stm$$park	DEFERRED: the retry is a thunk `park` stores and a waker runs later from its own frame, never from this one; the Abort arm of the direct handler cannot fire on one thread (stated in code)
+okay2-stm/src/main/scala/okay2/Stm.scala	260	attempt	mutual		DEFERRED: the retry is a thunk `park` stores and a waker runs later from its own frame, never from this one; the Abort arm of the direct handler cannot fire on one thread (stated in code)
+okay2-stm/src/main/scala/okay2/Stm.scala	283	finish	mutual		BOUNDED: finish -> attempt -> loop reaches a Sim.yieldNow bind at the transaction's first operation, and a transaction with none commits an empty log at once
+okay2-stm/src/main/scala/okay2/Stm.scala	290	loop	mutual		BOUNDED: finish -> attempt -> loop reaches a Sim.yieldNow bind at the transaction's first operation, and a transaction with none commits an empty log at once
+okay2-stream/src/main/scala/okay2/stream/Channel.scala	521	step	mutual	Channel$.sendIf$1,Flush$.effect,Writer$.effect	BOUNDED: a told element descends at most Source.ChunkSize deep before a send's flatMap breaks the descent, and since stack-safety-stream-stm an empty flush counts against the same budget (FlushBudget) — TestFlushDepth
+okay2-stream/src/main/scala/okay2/stream/Channel.scala	532	go	mutual	Channel$.sendIf$1,Flush$.effect,Writer$.effect	BOUNDED: a told element descends at most Source.ChunkSize deep before a send's flatMap breaks the descent, and since stack-safety-stream-stm an empty flush counts against the same budget (FlushBudget) — TestFlushDepth
+okay2-stream/src/main/scala/okay2/stream/Pipeline.scala	69	chunks	direct		BOUNDED: per operator node of a pipeline the program built by applying operators; `optimize` fuses adjacent map/filter/take/drop, so a chain repeats an operator only as many times as the program wrote it
+okay2-stream/src/main/scala/okay2/stream/Pipeline.scala	84	depth	direct		BOUNDED: per operator node of a pipeline the program built by applying operators; `optimize` fuses adjacent map/filter/take/drop, so a chain repeats an operator only as many times as the program wrote it
+okay2-stream/src/main/scala/okay2/stream/Tables.scala	140	show	direct		BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
+okay2-stream/src/main/scala/okay2/stream/Tables.scala	156	estimate	direct	Option.flatMap	BOUNDED: per node of a Plan the program built (select/where/join), the program's own text; a plan is not data from a peer
+okay2-stream/src/main/scala/okay2/stream/Take.scala	129	loop	lambda	Pipe$.pull$1,Take$.effect	BOUNDED: PullBudget (256) pulls per descent, then a `pure(()).flatMap` node breaks it (the code's own budget)
+okay2-stream/src/main/scala/okay2/stream/Take.scala	151	loop	lambda	Take$.effect	BOUNDED: PullBudget (256) pulls per descent, then a `pure(()).flatMap` node breaks it (the code's own budget)
+okay2-stream/src/main/scala/okay2/stream/Take.scala	211	loop	lambda	Pipe$.pull$2,Take$.effect	BOUNDED: PullBudget (256) pulls per descent, then a `pure(()).flatMap` node breaks it (the code's own budget)
+okay2-stream/src/main/scala/okay2/stream/Take.scala	252	loop	lambda	Pipe$.pull$3,Take$.effect	BOUNDED: PullBudget (256) pulls per descent, then a `pure(()).flatMap` node breaks it (the code's own budget)
 okay2-workflow/src/main/scala/okay2/Proc.scala	217	loop	lambda	Monad.flatMap	DEFERRED: the round recurses through G's own flatMap, which holds its continuation as a value at every program row (Free.Bind); one frame per round only at a STRICT monad, which the code states
 okay2-workflow/src/main/scala/okay2/Proc.scala	369	nodes	lambda	List.foreach	BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)
 src/main/scala/okay2/Cont.scala	158	run	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)

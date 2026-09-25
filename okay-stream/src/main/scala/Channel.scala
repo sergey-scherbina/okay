@@ -860,23 +860,36 @@ object Channel {
    */
   private def feedFlushing[A](c: Channel[Chunk[A]], p: Flushing[A], size: Int,
                               buf: TRef[ChunkBuffer[A]]): Unit ! Async =
-    def sendIf(o: Option[Chunk[A]])(rest: => Unit ! Async): Unit ! Async = o match
-      case Some(ch) => c.send(ch).flatMap(ok => if ok then rest else okay.pure(()))
-      case None => rest
-    def step[X](e: Flush[X] | (Writer % A + Async)[X], k: X => Flushing[A]): Unit ! Async =
+    // a step that sends nothing continues DIRECTLY into the next, one
+    // native frame each: a told element does that at most `size` times
+    // before a send's flatMap breaks the descent, but an EMPTY flush sends
+    // nothing and a poller that flushes after every empty poll descended
+    // once per poll (stack-safety-stream-stm, TestFlushDepth). `depth`
+    // counts the direct steps and FlushBudget of them go through a
+    // `pure(()).flatMap` node instead — Pipe's PullBudget, here.
+    def sendIf(o: Option[Chunk[A]], depth: Int)(rest: Int => Unit ! Async): Unit ! Async = o match
+      case Some(ch) => c.send(ch).flatMap(ok => if ok then rest(0) else okay.pure(()))
+      case None =>
+        if depth >= FlushBudget then okay.pure[Async, Unit](()).flatMap(_ => rest(0))
+        else rest(depth + 1)
+    def step[X](e: Flush[X] | (Writer % A + Async)[X], k: X => Flushing[A], depth: Int): Unit ! Async =
       split[Flush, Writer % A + Async](e)
         // the producer's own boundary: emit what is held, however short
-        { case Flush.Now => sendIf(takeChunk(buf, size, full = true))(go(k(()))) }
+        { case Flush.Now => sendIf(takeChunk(buf, size, full = true), depth)(d => go(k(()), d)) }
         (rest => split[Async, Writer % A](rest)
-          (a => Inject(a).flatMap(x => go(k(x))))
+          (a => Inject(a).flatMap(x => go(k(x), 0)))
           { case Writer.Say(w) =>
             buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
-            sendIf(takeChunk(buf, size, full = false))(go(k(()))) })
-    def go(p: Flushing[A]): Unit ! Async = (p.resume: @unchecked) match
-      case Return(_) => sendIf(takeChunk(buf, size, full = true))(okay.pure(()))
-      case Inject(e) => step(e, _ => okay.pure(()))
-      case Bind(Inject(e), k) => step(e, k)
-    go(p)
+            sendIf(takeChunk(buf, size, full = false), depth)(d => go(k(()), d)) })
+    def go(p: Flushing[A], depth: Int): Unit ! Async = (p.resume: @unchecked) match
+      case Return(_) => sendIf(takeChunk(buf, size, full = true), depth)(_ => okay.pure(()))
+      case Inject(e) => step(e, _ => okay.pure(()), depth)
+      case Bind(Inject(e), k) => step(e, k, depth)
+    go(p, 0)
+
+  /** how many sending-nothing steps `feedFlushing` takes directly before
+   * a trampoline node (Pipe's `PullBudget`, which is file-private) */
+  private val FlushBudget = 256
 
   /** what both chunking feeds do to the buffer: take a chunk if one
    * is due — `full` meaning "whatever is there, the input is over or

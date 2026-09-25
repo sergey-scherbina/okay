@@ -513,29 +513,42 @@ object Channel {
    * chunked merge through here cost 11% in the Scala 3 core.
    */
   private def feedFlushing[A](c: Channel[Chunk[A]], p: Flushing[A], size: Int, buf: Cell[Vector[A]]): Unit ! Async = {
-    def sendIf(o: Option[Chunk[A]])(rest: => Unit ! Async): Unit ! Async = o match {
-      case Some(ch) => c.send(ch).flatMap(ok => if (ok) rest else pure(()))
-      case None => rest
+    // a step that sends nothing continues DIRECTLY into the next, one
+    // native frame each: a told element does that at most `size` times
+    // before a send's flatMap breaks the descent, but an EMPTY flush sends
+    // nothing and a poller that flushes after every empty poll descended
+    // once per poll (stack-safety-stream-stm, TestFlushDepth). `depth`
+    // counts the direct steps and FlushBudget of them go through a
+    // `pure(()).flatMap` node instead — Take's PullBudget, here.
+    def sendIf(o: Option[Chunk[A]], depth: Int)(rest: Int => Unit ! Async): Unit ! Async = o match {
+      case Some(ch) => c.send(ch).flatMap(ok => if (ok) rest(0) else pure(()))
+      case None =>
+        if (depth >= FlushBudget) pure[Async, Unit](()).flatMap(_ => rest(0))
+        else rest(depth + 1)
     }
     // the two splits as patterns, made once per feed (okay2-split-at-rest)
     val Flushed = Split.at[Flush]
     val Told = Split.at[Writer[A]]
-    def step(e: Any, k: Any => Flushing[A]): Unit ! Async = e match {
+    def step(e: Any, k: Any => Flushing[A], depth: Int): Unit ! Async = e match {
       // the producer's own boundary: emit what is held, however short
-      case Flushed(Flush.Now) => sendIf(takeChunk(buf, size, full = true))(go(k(())))
+      case Flushed(Flush.Now) => sendIf(takeChunk(buf, size, full = true), depth)(d => go(k(()), d))
       case Told(Writer.Say(w)) =>
         buf.modify(b => (b :+ w, () => ()))
-        sendIf(takeChunk(buf, size, full = false))(go(k(())))
-      case a => Inject[Async, Any](a).flatMap(x => go(k(x)))
+        sendIf(takeChunk(buf, size, full = false), depth)(d => go(k(()), d))
+      case a => Inject[Async, Any](a).flatMap(x => go(k(x), 0))
     }
-    def go(p: Flushing[A]): Unit ! Async = Free.resume(p) match {
-      case Return(_) => sendIf(takeChunk(buf, size, full = true))(pure(()))
-      case Inject(e) => step(e, (_: Any) => pure[Flush + (Writer[A] + Async), Unit](()))
-      case Bind(Inject(e), k) => step(e, k)
+    def go(p: Flushing[A], depth: Int): Unit ! Async = Free.resume(p) match {
+      case Return(_) => sendIf(takeChunk(buf, size, full = true), depth)(_ => pure(()))
+      case Inject(e) => step(e, (_: Any) => pure[Flush + (Writer[A] + Async), Unit](()), depth)
+      case Bind(Inject(e), k) => step(e, k, depth)
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
-    go(p)
+    go(p, 0)
   }
+
+  /** how many sending-nothing steps `feedFlushing` takes directly before
+   * a trampoline node (Take's `PullBudget`, which is private there) */
+  private val FlushBudget = 256
 
   /** the chunked merge, for sources that mark their own boundaries */
   def mergeFlushing[A](s: Flushing[A], t: Flushing[A], capacity: Int, size: Int, within: Option[Long])

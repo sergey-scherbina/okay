@@ -217,8 +217,27 @@ deleted.
         IndexOutOfBoundsException on any EMPTY root with a list column,
         because Arrow Java allocates a list's offsets with its first value.
         Fixed and tested.
-- [ ] Stage 3 — streams and STM: okay-stream, okay-stm, okay2-stream,
-      okay2-stm.
+- [x] Stage 3 — streams and STM: okay-stream, okay-stm, okay2-stream,
+      okay2-stm (stack-safety-stream-stm, 2026-09-25). One real hole, in
+      both cores: the flushing chunked feed (`Channel.feedFlushing`)
+      continues DIRECTLY into the next step whenever a step sends
+      nothing. A told element does that at most `Source.ChunkSize` times
+      before a send's flatMap breaks the descent — but an EMPTY flush
+      sends nothing, and a poller that flushes after every empty poll
+      descended once per poll: 200 000 empty flushes were a
+      StackOverflowError (TestFlushDepth, red first in okay-stream and
+      okay2-stream). The feed counts its direct steps now and every
+      `FlushBudget` (256) of them goes through a `pure(()).flatMap` node,
+      the budget idiom Pipe's `PullBudget` already is. Everything else in
+      the two modules is a written bound, mirrored across the cores: the
+      Pipe/Take loops carry `PullBudget`; STM's `perform`/`runWithLog`
+      nest per `orElse` in the transaction's own text (the code says so),
+      its `attempt`s retry through a thunk `park` runs from a waker's
+      frame, the Sim handler's `finish`/`loop` reach a `Sim.yieldNow` bind
+      at the first operation; `Pipeline.once`/`chunks`/`depth` and
+      `Tables.show`/`estimate`/`optimize`/`compile` walk a plan the
+      program built by applying operators, its own text and never a
+      peer's data.
 - [ ] Stage 4 — data codecs over values: okay-py, okay-r, okay-sql,
       okay-pg, okay-jdbc, okay-r2dbc. Two known suspects:
       - `PyCodec.enc`/`dec` and `RCodec.enc`/`dec` recurse per level
