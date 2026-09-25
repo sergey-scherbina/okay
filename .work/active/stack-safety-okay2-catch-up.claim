@@ -1,5 +1,0 @@
-slug: stack-safety-okay2-catch-up
-who: claude (session 6f505c09)
-what: the ten UNAUDITED okay2 rows (Typed.fits, jdbc valueOf/arrayOf/jdbcOf, SparkSchema walks, fs2/zio again): red first where an input can reach the depth, explicit stack or written bound
-files: okay2/okay2-sql, okay2/okay2-jdbc, okay2/okay2-spark, okay2/okay2-fs2, okay2/okay2-zio, specs/stack-safety*
-since: 2026-09-25
