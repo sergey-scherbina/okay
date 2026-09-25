@@ -8,7 +8,7 @@
 # as module:qualified.name and imported, never eval'd from source.
 # A failing call answers a condition and the worker survives; only a
 # broken wire ends the process.
-import sys, json, base64, importlib, importlib.metadata, math, dataclasses, types, inspect, struct, zlib
+import sys, json, base64, importlib, importlib.metadata, importlib.util, math, dataclasses, types, inspect, struct, zlib
 
 SHIM = 6
 
@@ -102,10 +102,10 @@ def resolve(fn):
 
 _IN = sys.stdin.buffer
 _OUT = sys.stdout.buffer
-_mode = {"format": "json", "compress": "none"}
+_mode = {"format": "json", "compress": "none", "frames": "json"}
 
 def _framed():
-    return _mode["format"] != "json" or _mode["compress"] != "none"
+    return _mode["format"] != "json" or _mode["compress"] != "none" or _mode["frames"] == "arrow"
 
 def _cbor_head(out, major, n):
     m = major << 5
@@ -185,11 +185,98 @@ def _encode(obj):
 def _decode(data):
     if _mode["compress"] == "deflate":
         data = zlib.decompress(data, -15)
+    if data[:4] == b"\xff\xff\xff\xff":
+        return _arrow_request(data)
     if _mode["format"] == "cbor":
         v, i = _cbor_dec(data, 0)
         if i != len(data): raise ValueError("CBOR: %d bytes after the message" % (len(data) - i))
         return v
     return json.loads(data)
+
+# ---- frames as Arrow (py-arrow, specs/py-arrow.md) -------------------------
+#
+# A frame request may arrive as ONE Arrow IPC stream: the frame is the
+# table, and the request's header (id, op, fn, args) is the schema's
+# metadata under "okay". Its answer goes back the same way. pyarrow is
+# announced when it is installed and imported only when a frame needs it.
+
+_HAS_ARROW = importlib.util.find_spec("pyarrow") is not None
+
+def _arrow_request(data):
+    import pyarrow.ipc as ipc
+    t = ipc.open_stream(data).read_all()
+    meta = t.schema.metadata or {}
+    if b"okay" not in meta:
+        raise ValueError("an Arrow message without its okay header")
+    req = json.loads(meta[b"okay"])
+    req["in"] = {"t": "arrow", "table": t.replace_schema_metadata(None)}
+    return req
+
+class _NotArrow(Exception):
+    pass
+
+def _to_table(v):
+    """a frame function's answer as a table of the five columns the host
+    reads (int64, float64, string, bool, null), or _NotArrow"""
+    import pyarrow as pa
+    if isinstance(v, pa.Table): t = v
+    elif hasattr(v, "to_dict") and not isinstance(v, dict):
+        t = pa.Table.from_pandas(v, preserve_index=False)
+    elif isinstance(v, dict):
+        t = pa.table(v)
+    else:
+        raise TypeError("a frame function must answer a dict of columns, got %s" % type(v).__name__)
+    cols = []
+    for col in t.columns:
+        ty = col.type
+        if pa.types.is_dictionary(ty):
+            col = col.cast(ty.value_type); ty = col.type
+        if pa.types.is_integer(ty): target = pa.int64()
+        elif pa.types.is_floating(ty): target = pa.float64()
+        elif pa.types.is_string(ty) or pa.types.is_large_string(ty) or str(ty) == "string_view": target = pa.string()
+        elif pa.types.is_boolean(ty) or pa.types.is_null(ty): target = ty
+        else: raise _NotArrow(str(ty))
+        try:
+            cols.append(col.cast(target) if ty != target else col)
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
+            raise _NotArrow(str(e))
+    return pa.table(cols, names=t.column_names)
+
+def _write_message(data):
+    if _mode["compress"] == "deflate":
+        z = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -15)
+        data = z.compress(data) + z.flush()
+    try:
+        _OUT.write(len(data).to_bytes(4, "big") + data)
+        _OUT.flush()
+    except BrokenPipeError:
+        import os
+        os._exit(0)
+
+def reply_frame(rid, out, arrow):
+    """a frame's answer: Arrow when the request came as Arrow and the answer
+    is one of the five columns, else the JSON frame it always was"""
+    if arrow:
+        try:
+            t = _to_table(out)
+        except _NotArrow:
+            t = None
+        if t is not None:
+            import pyarrow as pa, pyarrow.ipc as ipc
+            t = t.replace_schema_metadata({"okay": json.dumps({"id": rid, "ok": {"t": "arrow"}})})
+            sink = pa.BufferOutputStream()
+            with ipc.new_stream(sink, t.schema) as w:
+                w.write_table(t)
+            _write_message(sink.getvalue().to_pybytes())
+            return
+        if hasattr(out, "to_pydict"):
+            out = out.to_pydict()
+    reply({"id": rid, "ok": enc_frame(out)})
+
+def _arrow_marker(fn):
+    """`@okay.arrow`: this frame function takes the pyarrow.Table itself"""
+    fn._okay_arrow = True
+    return fn
 
 def reply(obj):
     try:
@@ -338,6 +425,7 @@ okay_module.describe = _describe
 okay_module.okay_call = _call
 okay_module.call = _call          # the old name, kept
 okay_module.OkayError = OkayError
+okay_module.arrow = _arrow_marker
 sys.modules["okay"] = okay_module
 
 def serve(req):
@@ -382,9 +470,18 @@ def serve(req):
             reply({"id": rid, "ok": None})
         elif op == "frame":
             f = resolve(req["fn"])
-            frame = dec(req["in"])
+            src = req["in"]
+            arrow = isinstance(src, dict) and src.get("t") == "arrow"
+            if arrow:
+                tbl = src["table"]
+                frame = tbl if getattr(f, "_okay_arrow", False) else tbl.to_pydict()
+            else:
+                frame = dec(src)
+                if getattr(f, "_okay_arrow", False) and _HAS_ARROW:
+                    import pyarrow as pa
+                    frame = pa.table(frame)
             out = f(frame, *[dec(a) for a in req.get("args", [])])
-            reply({"id": rid, "ok": enc_frame(out)})
+            reply_frame(rid, out, arrow)
         elif op == "verify":
             pkgs = {}
             for name in req.get("packages", []):
@@ -395,13 +492,16 @@ def serve(req):
             reply({"id": rid, "ok": {"python": "%d.%d.%d" % sys.version_info[:3],
                                      "packages": pkgs}})
         elif op == "configure":
-            f, c = req.get("format"), req.get("compress")
+            f, c, fr = req.get("format"), req.get("compress"), req.get("frames", "json")
+            if fr not in ("json", "arrow") or (fr == "arrow" and not _HAS_ARROW):
+                raise ValueError("this Python worker speaks the frames %s; not %r"
+                                 % (", ".join(["json"] + (["arrow"] if _HAS_ARROW else [])), fr))
             if f not in ("json", "cbor"):
                 raise ValueError("this Python worker speaks the formats json, cbor; not %r" % f)
             if c not in ("none", "deflate"):
                 raise ValueError("this Python worker speaks the compressions none, deflate; not %r" % c)
-            reply({"id": rid, "ok": {"format": f, "compress": c}})
-            _mode["format"], _mode["compress"] = f, c    # AFTER its own answer
+            reply({"id": rid, "ok": {"format": f, "compress": c, "frames": fr}})
+            _mode["format"], _mode["compress"], _mode["frames"] = f, c, fr    # AFTER its own answer
         elif op == "resume":
             raise ValueError("resume %r: no call is waiting for it (resumed twice?)" % req.get("k"))
         else:
@@ -412,7 +512,8 @@ def serve(req):
         reply({"id": rid, "condition": {"kind": type(e).__name__, "message": str(e)}})
 
 reply({"shim": SHIM, "python": "%d.%d.%d" % sys.version_info[:3],
-       "speaks": {"format": ["json", "cbor"], "compress": ["deflate"]}})
+       "speaks": dict({"format": ["json", "cbor"], "compress": ["deflate"]},
+                      **({"frames": ["arrow"]} if _HAS_ARROW else {}))})
 
 # one reader, read_msg, owns the input: okay.call reads the same stream from
 # inside a request

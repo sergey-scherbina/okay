@@ -139,6 +139,28 @@ object WireCompression:
     val Kept = 4
 
 /**
+ * How a FRAME crosses (py-arrow, specs/py-arrow.md): as the wire's JSON
+ * frame, or as an Arrow IPC stream where the far side announces
+ * `"frames":["arrow"]` (a Python worker with pyarrow).
+ *
+ * {{{
+ * // no import: Arrow where spoken, else JSON, never refused
+ * import okay.codec.FrameFormat.Json.given     // never Arrow
+ * import okay.codec.FrameFormat.Arrow.given    // Arrow REQUIRED
+ * }}}
+ */
+final case class FrameFormat(name: String, strict: Boolean)
+
+object FrameFormat:
+  /** THE DEFAULT: measured, the Python side of a 500k-row frame is 909 ms
+   * on the JSON road and 0.5 ms as Arrow; a preference, not a demand */
+  given preferred: FrameFormat = FrameFormat("arrow", strict = false)
+  object Json:
+    given json: FrameFormat = FrameFormat("json", strict = true)
+  object Arrow:
+    given arrow: FrameFormat = FrameFormat("arrow", strict = true)
+
+/**
  * Who may speak on the wire (polyglot-one-wire stage 5b, wire-auth): a
  * MUTUAL HMAC-SHA256 challenge at the handshake. Each side proves it holds
  * the secret without sending it. The secret comes from the source the given
@@ -458,9 +480,26 @@ object WireNegotiation:
           case Some(other) => Left(s"$name answered the authentication with ${Json.print(other)}")
 
   /** the one JSON line that asks the far side to switch */
-  def configure(format: WireFormat, compression: WireCompression): String =
+  def configure(format: WireFormat, compression: WireCompression, arrow: Boolean = false): String =
     Json.print(Json.JObj(Vector("op" -> Json.JStr("configure"), "format" -> Json.JStr(format.name),
-      "compress" -> Json.JStr(compression.name))))
+      "compress" -> Json.JStr(compression.name)) ++ Option.when(arrow)("frames" -> Json.JStr("arrow"))))
+
+  /** whether frames cross as Arrow: Right(true) when the given asks and the
+   * hello announces it; Left when a STRICT Arrow is not spoken */
+  def chooseFrames(hello: Json, name: String)(using frames: FrameFormat): Either[String, Boolean] =
+    val spoken = hello match
+      case Json.JObj(fs) => fs.toMap.get("speaks") match
+        case Some(Json.JObj(sp)) => sp.toMap.get("frames") match
+          case Some(Json.JArr(xs)) => xs.contains(Json.JStr("arrow"))
+          case Some(Json.JStr(x)) => x == "arrow"
+          case _ => false
+        case _ => false
+      case _ => false
+    if frames.name != "arrow" then Right(false)
+    else if spoken then Right(true)
+    else if frames.strict then
+      Left(s"$name speaks the frames json; this host's given FrameFormat is arrow (a Python worker announces arrow when pyarrow is installed)")
+    else Right(false)
 
   /** the far side's answer to `configure`: Left names what went wrong */
   def confirmed(name: String, format: WireFormat, compression: WireCompression, answer: Option[Json]): Either[String, Unit] =

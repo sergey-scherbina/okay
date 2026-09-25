@@ -19,7 +19,9 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
                                    /** the configured format and compression; None: JSON lines */
                                    codec: Option[(WireFormat, WireCompression)],
                                    /** how long an answer may take (stage 6); None: for ever */
-                                   deadline: Option[Long]):
+                                   deadline: Option[Long],
+                                   /** whether frames cross as Arrow (py-arrow), and how strictly */
+                                   arrow: Boolean, frames: okay.codec.FrameFormat):
 
   private var nextId = 0
 
@@ -52,7 +54,7 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
 
   /** what the handshake settled on: "json/none" (the plain JSON lines),
    * "json/deflate", "cbor/none", "cbor/deflate" */
-  def wire: String = codec.fold("json/none")((f, c) => s"${f.name}/${c.name}")
+  def wire: String = codec.fold("json/none")((f, c) => s"${f.name}/${c.name}") + (if arrow then "+arrow" else "")
 
   private def exchange(req: Json): Json =
     nextId += 1
@@ -65,15 +67,39 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
   /** one message out, the next one in — `exchange` without an id, which
    * is how a `resume` goes: it answers an ask, it opens nothing */
   private def send(body: Json): Json =
+    codec match
+      case None => onTheWire(link.roundTrip(Json.print(body)).map(ForeignWorker.whole))
+      case Some((format, compression)) =>
+        format.decode(compression.decompress(onTheWire(link.exchange(compression.compress(format.encode(body))))))
+
+  /** one frame as ONE Arrow stream, its header in the schema's metadata
+   * (py-arrow); the answer is Arrow again, or an ordinary message (a
+   * condition, or a frame Arrow could not carry) */
+  @volatile private var arrowOut = 0L
+  @volatile private var arrowIn = 0L
+  /** frames that crossed as Arrow: (sent, answered) — the JSON road
+   * gives the same values, so this is how a caller (or a test) sees
+   * which road a frame took */
+  def arrowFrames: (Long, Long) = (arrowOut, arrowIn)
+
+  private def sendArrow(body: Json, table: okay.codec.ArrowIpc.Table): (Json, Option[PyFrame]) =
+    val (format, compression) = codec.getOrElse(throw IllegalStateException("an Arrow frame on an unframed wire"))
+    val header = table.copy(metadata = Vector("okay" -> Json.print(body)))
+    val bytes = compression.decompress(onTheWire(link.exchange(compression.compress(okay.codec.ArrowIpc.write(header)))))
+    arrowOut += 1
+    if okay.codec.ArrowIpc.isStream(bytes) then
+      arrowIn += 1
+      val t = okay.codec.ArrowIpc.read(bytes)
+      val head = t.metadata.collectFirst { case ("okay", h) => ForeignWorker.whole(h) }
+        .getOrElse(throw IllegalStateException("an Arrow answer without its okay header"))
+      (head, Some(ArrowFrames.frame(t)))
+    else (format.decode(bytes), None)
+
+  /** one exchange on the link: a death becomes the DEAD the supervisor reads */
+  private def onTheWire[T](f: => Option[T]): T =
     if !live then throw IllegalStateException("the worker is DEAD (its wire was closed) — a supervisor retry gets a fresh one")
     val answer =
-      try io {
-        codec match
-          case None => link.roundTrip(Json.print(body)).map(ForeignWorker.whole)
-          case Some((format, compression)) =>
-            link.exchange(compression.compress(format.encode(body)))
-              .map(bytes => format.decode(compression.decompress(bytes)))
-      }
+      try io(f)
       catch case e: java.io.IOException =>
         // a far side killed from outside (an OOM kill, a crash) does not
         // always end the stream cleanly: the JDK closes a dead child's
@@ -116,10 +142,17 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
           "op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Right(Wire.dec(v)))
       case ForeignEval.Frame(fn, frame, args) => timed:
-        answer(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn),
-          "in" -> Wire.encFrame(frame),
-          "args" -> Json.JArr(args.map(Wire.enc))))))(Wire.decFrame)
+        val head = Vector("op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)))
+        val table = if arrow then ArrowFrames.table(frame) else Left("")
+        table match
+          case Right(t) =>
+            nextId += 1
+            val (j, got) = sendArrow(Json.JObj(("id" -> Json.JNum(nextId.toDouble)) +: head), t)
+            answer(j)(v => got.fold(Wire.decFrame(v))(Right(_)))
+          case Left(why) if arrow && frames.strict =>
+            Left(Condition("NotArrow", s"this host's given FrameFormat is arrow, and $why"))
+          case Left(_) =>
+            answer(exchange(Json.JObj(head :+ ("in" -> Wire.encFrame(frame)))))(Wire.decFrame)
       case ForeignEval.Start(fn, args, cbs) => timedStep:
         stepOf(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("start"), "fn" -> Json.JStr(fn),
@@ -208,11 +241,11 @@ object ForeignWorker:
   def start(python: String = "python3",
             env: Map[String, String] = Map.empty,
             /** inline modules to ship on the worker's path (foreign-inline-modules) */
-            modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
+            modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
     startIn(python, PyModule.env(modules, env))
 
   /** `start` once the modules are already in the environment */
-  private[py] def startIn(python: String, env: Map[String, String])(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
+  private[py] def startIn(python: String, env: Map[String, String])(using WireFormat, WireCompression, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
     startWith(python, shimFile(), env)
 
   /** the shim from this jar, as a file a process can run */
@@ -233,7 +266,7 @@ object ForeignWorker:
 
   /** the seam the handshake test uses: any shim file */
   private[py] def startWith(python: String, shim: java.nio.file.Path,
-                            env: Map[String, String])(using WireFormat, WireCompression, WireDeadline): ForeignWorker =
+                            env: Map[String, String])(using WireFormat, WireCompression, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
     startCommand(Vector(resolve(python), shim.toString), python, env)
 
   /**
@@ -244,7 +277,7 @@ object ForeignWorker:
    * through `Py.program` exactly as Python's do, multi-shot included.
    */
   def speaking(command: Seq[String], env: Map[String, String] = Map.empty)
-              (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline): ForeignWorker =
+              (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
     startCommand(command.toVector, command.headOption.getOrElse("?"), env)
 
   /**
@@ -255,7 +288,7 @@ object ForeignWorker:
    */
   def over(link: WireLink, name: String = "the worker")
           (using format: WireFormat, compression: WireCompression, auth: okay.codec.WireAuth,
-           deadline: WireDeadline): ForeignWorker =
+           deadline: WireDeadline)(using frames: okay.codec.FrameFormat): ForeignWorker =
     if link.inProcess && deadline.millis.isDefined then
       link.close()
       throw IllegalStateException(
@@ -281,21 +314,29 @@ object ForeignWorker:
         link.close()
         throw IllegalStateException(why)
       }
-    new ForeignWorker(link, pyV, configure(link, name, whole(hello)), deadline.millis)
+    val (codec, arrow) = configure(link, name, whole(hello))
+    new ForeignWorker(link, pyV, codec, deadline.millis, arrow, frames)
 
   /** stage 5's handshake (`okay.codec.WireNegotiation`): what the givens
    * ask for, checked against what the far side announced, and confirmed */
   private def configure(link: WireLink, name: String, hello: Json)
-                       (using WireFormat, WireCompression): Option[(WireFormat, WireCompression)] =
+                       (using WireFormat, WireCompression, okay.codec.FrameFormat): (Option[(WireFormat, WireCompression)], Boolean) =
     def refuse(why: String): Nothing =
       link.close()
       throw IllegalStateException(why)
-    okay.codec.WireNegotiation.choose(hello, link.network, name) match
+    val arrow = okay.codec.WireNegotiation.chooseFrames(hello, name).fold(refuse, identity)
+    // Arrow needs frames on the wire, so it configures even json/none
+    val chosen = okay.codec.WireNegotiation.choose(hello, link.network, name) match
       case Left(why) => refuse(why)
-      case Right(None) => None
-      case Right(Some((f, c))) =>
-        okay.codec.WireNegotiation.confirmed(name, f, c, link.roundTrip(okay.codec.WireNegotiation.configure(f, c)).map(whole))
-          .fold(refuse, _ => Some((f, c)))
+      case Right(None) if !arrow => None
+      case Right(None) => Some((WireFormat.json, WireCompression.Off.off))
+      case Right(some) => some
+    chosen match
+      case None => (None, false)
+      case Some((f, c)) =>
+        okay.codec.WireNegotiation.confirmed(name, f, c,
+          link.roundTrip(okay.codec.WireNegotiation.configure(f, c, arrow)).map(whole))
+          .fold(refuse, _ => (Some((f, c)), arrow))
 
   /** a wire line, read strictly (`okay.codec.WireJson.whole`) */
   private[py] def whole(line: String): Json = okay.codec.WireJson.whole(line)
@@ -307,12 +348,12 @@ object ForeignWorker:
   /** a worker SERVING the okay wire on TCP (`okay::serve_tcp`, `okay.ServeTCP`):
    * another process, or another machine — plain TCP, see `WireLink.tcp` */
   def connect(host: String, port: Int)
-             (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline, okay.codec.WireSecurity): ForeignWorker =
+             (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline, okay.codec.WireSecurity)(using okay.codec.FrameFormat): ForeignWorker =
     over(WireLink.tcp(host, port, security = summon[okay.codec.WireSecurity],
       helloMillis = summon[WireDeadline].millis.fold(10000)(_.toInt)), s"the worker at $host:$port")
 
   private def startCommand(cmd: Vector[String], python: String, env: Map[String, String])
-                          (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline): ForeignWorker =
+                          (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
     val pb = ProcessBuilder(cmd*)
     pb.environment().clear()             // the clean-env rule: nothing leaks
     env.foreach((k, v) => pb.environment().put(k, v))
