@@ -107,7 +107,24 @@ deleted.
 - [ ] Stage 0b — the same `@tailrec` pass over okay2, after
       okay2-split-at-rest lands (it rewrites the same loops); tailscan
       listed 21.
-- [ ] Stage 1 — core: okay `src` (14) and okay2 `src` (14).
+- [x] Stage 1a — okay core (stack-safety-core, 2026-09-25). Each test
+      below ran RED on master first (StackOverflowError on a 128 KB
+      stack, `SmallStack` in src/test/scala):
+      - `Aggregate.topK`'s insertion is a `@tailrec` loop over a
+        reversed kept prefix; before, it was k frames deep.
+      - `Delim.split` walks the segment chain as a loop and wraps the
+        captured part from a type-aligned `Wrap` of polymorphic frames,
+        with no cast. A shift under 20 000 nested prompts had
+        overflowed.
+      - `Static.foldMap` is ONE loop over a type-aligned continuation
+        (`Args`: `More`, `AppTo`, `Mapped`, `SelectE`, `SelectF`). All
+        three nesting axes (a select's condition, an application's
+        argument, a select's function side) overflowed at 3 000.
+      - `Effects.reflect` is TRAMPOLINED by its target's `flatMap`:
+        20 000 operations into `Eager` passed on master.
+      - `sliding` is lazy.
+      - `Distinct`, `Handler` and `Provide` are quoted macros (Stage 7).
+- [ ] Stage 1b — okay2 core (14), after okay2-split-at-rest.
 - [ ] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
       already `Cont`-trampolined; the other formats, Schema walks,
       Compat, Stubs and Policy are not.
@@ -134,6 +151,12 @@ deleted.
 1. Deferred edges count as TRAMPOLINED only when the consumer really
    defers. The tool's list is the whole claim, and a consumer added to
    it needs its reason in the tool's comment.
+3. A `Select`'s function side is folded before `select` is called
+   (Stage 1a). Folding only builds a `G`, so the value is the same. A
+   `G` whose `select` skips that side now receives it already folded,
+   which is extra work and never a different answer. Evaluating it
+   lazily would put the fold back on the stack inside `G`'s own
+   `select`.
 2. OPEN: recursion in a macro over the user's source. scalac itself
    recursed over the same tree to typecheck it, so our depth is at most
    the compiler's own, and a tree that deep had already stopped the

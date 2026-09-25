@@ -105,7 +105,9 @@ for d in class_dirs(root):
                             or re.search(r'Free\$(Bind|Delay|Suspend)\$$', cons[0]) and cons[1] == 'apply'
                             or re.search(r'Safepoint\$$', cons[0]) and 'defer' in cons[1]
                             # a callback registered now, run later from another frame
-                            or cons[1] == '<init>' and re.search(r'Waiter$', cons[0]))
+                            or cons[1] == '<init>' and re.search(r'Waiter$', cons[0])
+                            # `a #:: rest`: the tail is a by-name cell
+                            or cons[1] == 'toDeferrer' and 'LazyList' in cons[0])
                         via[(key, tgt)] = (cons[0].split('/')[-1] + '.' + cons[1]) if cons else '?'
                         if not deferred: edges[key].add(tgt)
             for comp in sccs(list(nodes), edges):

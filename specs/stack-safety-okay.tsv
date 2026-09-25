@@ -317,17 +317,12 @@ okay-workflow/src/main/scala/ProcMacro.scala	805	compileEnvBody	mutual	List.fore
 okay-workflow/src/main/scala/Wf.scala	838	go	direct	
 okay-workflow/src/main/scala/Wf.scala	928	loop	direct	
 okay-x402-cdp/src/main/scala/okay/x402/cdp/CdpAuth.scala	95	sorted	lambda	StrictOptimizedIterableOps.map,Vector.map
-src/main/scala/Aggregate.scala	472	insert	direct	
-src/main/scala/Aggregate.scala	507	go	lambda	LazyList$.toDeferrer
-src/main/scala/Delim.scala	854	split	direct	
+src/main/scala/Aggregate.scala	507	go	lambda	LazyList$.toDeferrer	LAZY: the tail of a LazyList cons, forced one cell at a time
 src/main/scala/Distinct.scala	144	leaves	direct	
 src/main/scala/Distinct.scala	175	identityOf	mutual	
 src/main/scala/Distinct.scala	197	under	mutual	
-src/main/scala/Effects.scala	295	reflect	lambda	?,Effects.flatMap,Free.fold
+src/main/scala/Effects.scala	295	reflect	lambda	?,Effects.flatMap,Free.fold	TRAMPOLINED: the call is inside the target M's flatMap; 20 000 ops into Eager on a 128 KB stack (TestStackSafetyCore)
 src/main/scala/Handler.scala	438	members	direct	
 src/main/scala/Handler.scala	473	chain	lambda	QuoteUnpickler.unpickleExprV2
 src/main/scala/Handler.scala	484	build	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2
 src/main/scala/Provide.scala	512	body	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2
-src/main/scala/Static.scala	144	foldSpine	mutual	Selective.select
-src/main/scala/Static.scala	157	applyArgs	mutual	Selective.select
-src/main/scala/Static.scala	289	foldMap	mutual	Selective.select

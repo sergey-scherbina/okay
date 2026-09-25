@@ -104,10 +104,10 @@ object Static:
    * `Args[F, X => R, C]`. Matching on them refines the types, so the
    * fold back up is ordinary typed code.
    */
-  enum Args[F[+_], T, C]:
-    case Done[F[+_], C]() extends Args[F, C, C]
-    case More[F[+_], X, R, C](arg: Static[F, X], rest: Args[F, R, C])
-      extends Args[F, X => R, C]
+  enum Args[F[+_], G[_], T, C]:
+    case Done[F[+_], G[_], C]() extends Args[F, G, C, C]
+    case More[F[+_], G[_], X, R, C](arg: Static[F, X], rest: Args[F, G, R, C])
+      extends Args[F, G, X => R, C]
     /**
      * A PURE function to apply, and it is what makes the walk
      * iterative on the shape that actually occurs.
@@ -126,59 +126,84 @@ object Static:
      * first component is `Pure`: it performs nothing, so running `a`
      * before it changes no order of effects.
      */
-    case Mapped[F[+_], X, R, C](f: X => R, rest: Args[F, R, C])
-      extends Args[F, X, C]
+    case Mapped[F[+_], G[_], X, R, C](f: X => R, rest: Args[F, G, R, C])
+      extends Args[F, G, X, C]
+    /**
+     * The function side is folded; fold the ARGUMENT next, then apply
+     * (stack-safety, 2026-09-25). Until then each argument was folded
+     * by an ordinary call, one host frame per level of nesting inside
+     * an argument, and a Select's two sides the same way.
+     */
+    case AppTo[F[+_], G[_], X, R, C](gf: G[X => R], rest: Args[F, G, R, C])
+      extends Args[F, G, X, C]
+    /** a Select's condition is folded; fold its function side next */
+    case SelectE[F[+_], G[_], X, Y, C](f: Static[F, X => Y], rest: Args[F, G, Y, C])
+      extends Args[F, G, Either[X, Y], C]
+    /** both sides of a Select are folded: select */
+    case SelectF[F[+_], G[_], X, Y, C](ge: G[Either[X, Y]], rest: Args[F, G, Y, C])
+      extends Args[F, G, X => Y, C]
+
+  /** the walk's two directions, each with the rest of the work: DOWN a
+   * program to fold, or UP with a folded value to hand to `args` */
+  private enum Step[F[+_], G[_], C]:
+    case Down[F[+_], G[_], T, C](s: Static[F, T], args: Args[F, G, T, C]) extends Step[F, G, C]
+    case Up[F[+_], G[_], T, C](g: G[T], args: Args[F, G, T, C]) extends Step[F, G, C]
 
   /**
    * Down the left spine, collecting arguments; then back up,
    * applying them. Both halves are tail-recursive loops, so a spine
    * of any depth costs no host stack.
    *
-   * WHAT STILL RECURSES, and it is bounded by a different number:
-   * each ARGUMENT is folded by an ordinary call, and a `Select`'s two
-   * sides are too. A fold over a spine whose arguments are leaves —
-   * which is every spine `traverse` builds — therefore recurses one
-   * level, not N. A program nested the other way pays its own depth,
-   * exactly as `toFree` does.
+   * NOTHING RECURSES (stack-safety, 2026-09-25): the arguments and a
+   * `Select`'s two sides were folded by ordinary calls until then, and
+   * a program nested inside an argument or a condition overflowed a
+   * small stack at 3 000 levels. Now every pending piece of work is a
+   * frame of `Args`, and one loop, `fold`, walks down and up. One
+   * consequence: a `Select`'s function side is folded BEFORE `select`
+   * is called, not by-name inside it. The value is the same, because
+   * folding only builds a `G`. The difference is that a `G` whose
+   * `select` never reads that side still receives it folded.
    */
-  @tailrec private def foldSpine[F[+_], G[_], T, C](s: Static[F, T], nt: F ==> G,
-                                           args: Args[F, T, C])(using G: Selective[G]): G[C] =
-    s match
-      // the shape every fold builds: a pure function applied to a
-      // deep accumulator — walk INTO the accumulator (see Args.Mapped)
-      case Ap(Pure(g), a) => foldSpine(a, nt, Args.Mapped(g, args))
-      case Ap(f, a) => foldSpine(f, nt, Args.More(a, args))
-      case Pure(a) => applyArgs(G.pure(a), nt, args)
-      case Op(fa) => applyArgs(nt(fa), nt, args)
-      case Select(e, f) =>
-        applyArgs(e.foldMap(nt).select(f.foldMap(nt)), nt, args)
-
-  @scala.annotation.tailrec
-  private def applyArgs[F[+_], G[_], T, C](g: G[T], nt: F ==> G,
-                                           args: Args[F, T, C])(using G: Selective[G]): G[C] =
-    args match
-      // `@unchecked` on the TYPE ARGUMENTS, and it is the same claim
-      // `Free.resume`'s callers make: this enum has exactly two
-      // cases, so the CLASS test is total, and the type arguments are
-      // the ones `Args` was built with — `Done` can only exist at
-      // `Args[F, C, C]` and `More` only at `Args[F, X => R, C]`. What
-      // the compiler cannot check at run time, the constructors have
-      // already guaranteed at compile time.
-      //
-      // The ascription is needed rather than a constructor pattern
-      // because `x` and `r` have to be NAMED: the match refines `T`
-      // to `x => r`, but `g` is still written `G[T]` and the
-      // Applicative's `app` cannot find its `F[A => B]` shape through
-      // the alias. Naming the refinement is what makes it resolve.
-      // A helper method taking the pieces would also work and would
-      // cost the `@tailrec` below, which is the whole point.
-      case _: (Args.Done[F, C] @unchecked) => g
-      case m: (Args.More[F, x, r, C] @unchecked) =>
-        val gf: G[x => r] = g
-        applyArgs(gf.app(m.arg.foldMap(nt)), nt, m.rest)
-      case m: (Args.Mapped[F, x, ?, C] @unchecked) =>
-        val gx: G[x] = g
-        applyArgs(G.fmap(gx, m.f), nt, m.rest)
+  @tailrec private def fold[F[+_], G[_], C](step: Step[F, G, C], nt: F ==> G)(using G: Selective[G]): G[C] =
+    step match
+      case d: Step.Down[F, G, t, C] => d.s match
+        // the shape every fold builds: a pure function applied to a
+        // deep accumulator — walk INTO the accumulator (see Args.Mapped)
+        case Ap(Pure(g), a) => fold(Step.Down(a, Args.Mapped(g, d.args)), nt)
+        case Ap(f, a) => fold(Step.Down(f, Args.More(a, d.args)), nt)
+        case Pure(a) => fold(Step.Up(G.pure(a), d.args), nt)
+        case Op(fa) => fold(Step.Up(nt(fa), d.args), nt)
+        // the condition first, then the function side (SelectE, SelectF)
+        case Select(e, f) => fold(Step.Down(e, Args.SelectE(f, d.args)), nt)
+      case u: Step.Up[F, G, t, C] => u.args match
+        // `@unchecked` on the TYPE ARGUMENTS, and it is the same claim
+        // `Free.resume`'s callers make: the class test is total over
+        // this enum's cases, and the type arguments are the ones each
+        // case was built with — `Done` exists only at
+        // `Args[F, G, C, C]`, `More` only at `Args[F, G, X => R, C]`,
+        // and so on. What the compiler cannot check at run time, the
+        // constructors guaranteed at compile time.
+        //
+        // Each value is NAMED at its refined type (`val gf: G[x => r]`)
+        // because the match refines `t`, but `u.g` is still written
+        // `G[t]`, and `app`/`select` cannot find their shapes through
+        // the alias.
+        case _: (Args.Done[F, G, C] @unchecked) => u.g
+        case m: (Args.More[F, G, x, r, C] @unchecked) =>
+          val gf: G[x => r] = u.g
+          fold(Step.Down(m.arg, Args.AppTo(gf, m.rest)), nt)
+        case m: (Args.AppTo[F, G, x, ?, C] @unchecked) =>
+          val gx: G[x] = u.g
+          fold(Step.Up(m.gf.app(gx), m.rest), nt)
+        case m: (Args.Mapped[F, G, x, ?, C] @unchecked) =>
+          val gx: G[x] = u.g
+          fold(Step.Up(G.fmap(gx, m.f), m.rest), nt)
+        case m: (Args.SelectE[F, G, x, y, C] @unchecked) =>
+          val ge: G[Either[x, y]] = u.g
+          fold(Step.Down(m.f, Args.SelectF(ge, m.rest)), nt)
+        case m: (Args.SelectF[F, G, x, y, C] @unchecked) =>
+          val gf: G[x => y] = u.g
+          fold(Step.Up(m.ge.select(gf), m.rest), nt)
 
   extension [F[+_], A](s: Static[F, A])
 
@@ -287,4 +312,4 @@ object Static:
      * used to die.
      */
     def foldMap[G[_]](nt: F ==> G)(using G: Selective[G]): G[A] =
-      Static.foldSpine(s, nt, Static.Args.Done())
+      Static.fold(Static.Step.Down(s, Static.Args.Done[F, G, A]()), nt)

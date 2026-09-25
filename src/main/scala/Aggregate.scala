@@ -1,6 +1,7 @@
 package okay
 
 import scala.compiletime.summonFrom
+import scala.annotation.tailrec
 
 /**
  * A named, typed, reusable unit of aggregation (specs/aggregators.md):
@@ -469,11 +470,16 @@ object Aggregator {
    * instead of a sort and two list rebuilds (docs/benchmarks.md §9h).
    */
   def topK[A](k: Int)(using O: Ordering[A]): Aggregator[A, List[A], List[A]] =
-    def insert(a: A, xs: List[A], remaining: Int): List[A] =
-      if remaining <= 0 then Nil
+    // a loop (specs/stack-safety.md): the kept prefix is carried
+    // reversed and put back in front once the insertion point is found,
+    // so an insertion k deep costs k steps and no stack
+    @tailrec def insert(a: A, xs: List[A], remaining: Int, keptRev: List[A] = Nil): List[A] =
+      if remaining <= 0 then keptRev.reverse
       else xs match
-        case Nil => a :: Nil
-        case h :: t => if O.gt(h, a) then h :: insert(a, t, remaining - 1) else a :: xs.take(remaining - 1)
+        case Nil => keptRev reverse_::: (a :: Nil)
+        case h :: t =>
+          if O.gt(h, a) then insert(a, t, remaining - 1, h :: keptRev)
+          else keptRev reverse_::: (a :: xs.take(remaining - 1))
     def keep(xs: List[A]) = xs.sorted(using O.reverse).take(k)
     apply(List.empty[A]) { (s, a: A) =>
       val kth = s.drop(k - 1)

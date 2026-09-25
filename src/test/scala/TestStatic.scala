@@ -60,6 +60,43 @@ class TestStatic extends munit.FunSuite {
     assertEquals(l1.toList, List("get:a", "get:b"))
   }
 
+  // specs/stack-safety.md: a program nested along each of the three
+  // axes a fold used to recurse on, 3 000 deep, folded on a small stack
+  private val deep = 3000
+  private final case class Count[X](n: Int, x: X)
+  private given Selective[Count] with
+    def pure[X](x: X): Count[X] = Count(0, x)
+    extension [X, Y](f: Count[X => Y])
+      def app(a: Count[X]): Count[Y] = Count(f.n + a.n, f.x(a.x))
+    extension [X, Y](e: Count[Either[X, Y]])
+      def select(f: => Count[X => Y]): Count[Y] = Count(e.n + f.n, e.x.fold(f.x, identity))
+  private val count: Fetch ==> Count = [X] => (op: Fetch[X]) => op match
+    case Get(_) => Count(1, 1)
+    case Flag(_) => Count(1, true)
+
+  test("a deep nest in a select's CONDITION folds without the stack") {
+    var s: Static[Fetch, Int] = get("a")
+    for _ <- 1 to deep do s = S.fmap(s, (i: Int) => Left(i): Either[Int, Int]).select(pure((i: Int) => i + 1))
+    val st = Store(Map("a" -> 1))
+    assertEquals(SmallStack.run()(s.leaves.length), 1)
+    assertEquals(SmallStack.run()(s.toFree.runWith(using handler(st, true, collection.mutable.Buffer.empty))), deep + 1)
+    assertEquals(SmallStack.run()(s.foldMap(count)), Count(1, deep + 1))
+  }
+
+  test("a deep nest in an application's ARGUMENT folds without the stack") {
+    var s: Static[Fetch, Int] = get("a")
+    for _ <- 1 to deep do s = S.fmap(get("a"), (_: Int) => (x: Int) => x + 1).app(s)
+    assertEquals(SmallStack.run()(s.foldMap(count)), Count(deep + 1, deep + 1))
+  }
+
+  test("a deep nest in a select's FUNCTION side folds without the stack") {
+    var s: Static[Fetch, Int] = get("a")
+    for _ <- 1 to deep do
+      val prev = s
+      s = pure(Left(0): Either[Int, Int]).select(S.fmap(prev, (v: Int) => (_: Int) => v + 1))
+    assertEquals(SmallStack.run()(s.foldMap(count)), Count(1, deep + 1))
+  }
+
   test("the Selective laws hold, on leaves and on answers") {
     val st = Store(Map("a" -> 1, "b" -> 2))
     def run[A](p: Static[Fetch, A], f: Boolean = true): A =

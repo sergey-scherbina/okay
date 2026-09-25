@@ -775,6 +775,18 @@ object Delim {
     val close: Segs[F, P0, P]
     val outer: Segs[F, P, Z]
 
+  /** the segments `split` walked past, as a type-aligned stack: from a
+   * chain leading out of Y it builds one leading out of A, for ANY end
+   * Q, which is why a frame is a polymorphic function. `On` pushes the
+   * innermost frame last, so `unwind` applies it first. */
+  private enum Wrap[F[+_], A, Y]:
+    case Top[F[+_], A]() extends Wrap[F, A, A]
+    case On[F[+_], A, X, Y](under: Wrap[F, A, X], frame: [Q] => Segs[F, Y, Q] => Segs[F, X, Q]) extends Wrap[F, A, Y]
+
+  @tailrec private def unwind[F[+_], A, Y, Q](w: Wrap[F, A, Y], c: Segs[F, Y, Q]): Segs[F, A, Q] = w match
+    case Wrap.Top() => c
+    case on: Wrap.On[F, A, x, Y] => unwind(on.under, on.frame[Q](c))
+
   private object AtRet:
     def apply[F[+_], A, Q, P, Z](c: Segs[F, A, Q], cl: Segs[F, Q, P], o: Segs[F, P, Z]): AtRet[F, A, P, Z] =
       new AtRet[F, A, P, Z]:
@@ -850,30 +862,32 @@ object Delim {
       go(kont, Nil)
 
     /** cut the chain at the mark of p: the mark's prompt IS p by
-     * identity, and Same's witness makes the mark's type P's */
-    def split[A, P, Z](kont: Segs[F, A, Z], p: Prompt[P]): Cut[F, A, P, Z] = kont match
+     * identity, and Same's witness makes the mark's type P's.
+     *
+     * A LOOP (specs/stack-safety.md): walking down, each segment it
+     * passes is pushed as a frame onto a type-aligned `Wrap`; at the
+     * mark, `unwind` wraps the captured part in them. The recursive
+     * version rebuilt the prefix on the way back up, one JVM frame per
+     * segment, and a shift under 20 000 other delimiters overflowed. */
+    def split[A, P, Z](kont: Segs[F, A, Z], p: Prompt[P]): Cut[F, A, P, Z] =
+      walk(kont, Wrap.Top[F, A](), p)
+
+    @tailrec def walk[A, X, P, Z](kont: Segs[F, X, Z], w: Wrap[F, A, X], p: Prompt[P]): Cut[F, A, P, Z] = kont match
       case Segs.Done() => NotFound()
-      case Segs.Mark(q, rest) =>
-        (q === p) match
+      case m: Segs.Mark[F, X, Z] =>
+        (m.p === p) match
           case Some(ev) =>
-            Plain(ev.liftCo[[t] =>> Segs[F, A, t]](Segs.Done()), ev.liftCo[[t] =>> Segs[F, t, Z]](rest))
-          case None => split(rest, p) match
-            case Plain(c, o) => Plain(Segs.Mark(q, c), o)
-            case r: AtRet[F, A, P, Z] => AtRet(Segs.Mark(q, r.captured), r.close, r.outer)
-            case NotFound() => NotFound()
-      case r: Segs.Ret[F, A, x, Z] =>
+            Plain(unwind(w, ev.liftCo[[t] =>> Segs[F, X, t]](Segs.Done[F, X]())), ev.liftCo[[t] =>> Segs[F, t, Z]](m.rest))
+          case None => walk(m.rest, Wrap.On[F, A, X, X](w, [Q] => (c: Segs[F, X, Q]) => Segs.Mark(m.p, c)), p)
+      case r: Segs.Ret[F, X, x, Z] =>
         (r.p === p) match
           case Some(ev) =>
-            AtRet[F, A, A, P, Z](Segs.Done(), ev.liftCo[[t] =>> Segs[F, A, t]](Segs.Ret(r.p, r.ret, Segs.Done())),
+            AtRet[F, A, X, P, Z](unwind(w, Segs.Done[F, X]()),
+              ev.liftCo[[t] =>> Segs[F, X, t]](Segs.Ret(r.p, r.ret, Segs.Done[F, x]())),
               ev.liftCo[[t] =>> Segs[F, t, Z]](r.rest))
-          case None => split(r.rest, p) match
-            case Plain(c, o) => Plain(Segs.Ret(r.p, r.ret, c), o)
-            case t: AtRet[F, x, P, Z] => AtRet(Segs.Ret(r.p, r.ret, t.captured), t.close, t.outer)
-            case NotFound() => NotFound()
-      case k: Segs.K[F, A, y, Z] => split(k.rest, p) match
-        case Plain(c, o) => Plain(Segs.K(k.f, c), o)
-        case t: AtRet[F, y, P, Z] => AtRet(Segs.K(k.f, t.captured), t.close, t.outer)
-        case NotFound() => NotFound()
+          case None => walk(r.rest, Wrap.On[F, A, X, x](w, [Q] => (c: Segs[F, x, Q]) => Segs.Ret(r.p, r.ret, c)), p)
+      case k: Segs.K[F, X, y, Z] =>
+        walk(k.rest, Wrap.On[F, A, X, y](w, [Q] => (c: Segs[F, y, Q]) => Segs.K(k.f, c)), p)
 
     // ONE tail-recursive loop: an earlier version split it into
     // loop/onOp, and mutual recursion is not tail-optimised, so every
