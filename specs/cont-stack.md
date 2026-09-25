@@ -433,15 +433,17 @@ Runtime layer (lane cont-stack-switch, TestContStack; each red on a
       is unchanged
 
 Compile-time layer:
-- [ ] A: tail bodies (plain, branched, state-passing) produce no nested
-      frame: 1M shifts on a 128 KB stack with NO switch (a counter in the
-      test's StackSwitch double proves zero switches)
+- [x] A: tail bodies (plain, branched, with statements) produce no
+      nested frame: 1M shifts on a 128 KB stack with NO switch
+      (`StackSwitch.switches`; TestContMacro). State-passing bodies are
+      B's, not A's (see Layer 1 A)
 - [ ] B: answer-using bodies, the same 1M, no switch, multi-shot intact
 - [ ] known higher-order functions: `xs.map(k)`, `opt.fold(…)(k)`
 - [ ] visible user functions: an `inline def` and a same-compilation
       `def` that call `k`
 - [ ] `direct { !k(…) }` in a body
-- [ ] opaque bodies still correct, through Layer 2
+- [x] opaque bodies still correct, through Layer 2 (TestContStack,
+      TestContStackNative, with `shiftLeaf`)
 - [ ] every existing Cont test green, statePara/Fib within noise
 - [ ] okay2: A and known higher-order functions; B if it holds up
 
@@ -611,18 +613,28 @@ A. **Measure what landed** — backlog cont-stack-ab. The three lanes
    disqualified at load 19–121) and on jmh-lane-jdk-pin, or
    `JAVA_HOME` exported by hand. Nothing below is priced until this is.
 
-B. **Layer 1 A, the macro** — sprint cont-stack-macro. `shift` becomes
+B. **Layer 1 A, the macro** — LANDED 2026-09-25 (cont-stack-macro). `shift` becomes
    an inline macro over the lambda literal; a body whose every use of
    `k` is a tail call `k(v)` with `v` not mentioning `k` — plain, under
    `if`/`match`, at the end of a block whose statements do not mention
    `k` — is rewritten to `delay(() => { statements; Pure(v) })`: no
    leaf, no `Reentry`, no nested frame, no count. Anything else is
    `Free.Inject(Shift.of(f))` as today. The one change that can make
-   such bodies FASTER than master rather than within noise of it;
-   first user `Effects.handle`'s `shift(k => k(a.a))` (handleCapture).
-   Proof: 1M such shifts on a 128 KB stack, zero switches; every Cont
-   and Effects test green; handleCapture and the Fib lanes measured.
-   Independent of A: starts now.
+   such bodies FASTER than master rather than within noise of it.
+   CORRECTED at landing: `handleCapture`'s `shift(k => k(a.a))` is
+   `!.shift` (Free's — the benchmark imports `!.*`), not Cont's; the
+   library user is `Reader.local`'s clause `shift(k => k(r2))`, which
+   becomes `tailPure(r2)`, a bare `Return` per `Ask`. Landed: 1M tail
+   shifts on a 128 KB stack, zero switches (TestContMacro, red first:
+   overflow / switches); statements, exceptions and timing unchanged;
+   non-tail bodies unchanged. Two findings: the `given Control[Cont]`'s
+   `override inline def shift` keeps a RETAINED non-inline body, so a
+   macro expanded there — in the file that defines the types the macro
+   reads — was a suspension cycle ("stale symbol Cont$" on every
+   compile, clean or not); it calls `shiftLeaf` now. And every test
+   that probed the leaf or the runtime switch with a tail body had
+   silently stopped testing it — they build the leaf with `shiftLeaf`.
+   Not measured (the box): a lane that exercises it is Reader.local's.
 
 C. **The fast path's bookkeeping** — backlog cont-stack-fastpath, after
    A has priced it. Candidates, each measured alone against the stage
