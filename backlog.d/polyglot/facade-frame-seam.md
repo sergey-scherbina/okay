@@ -1,13 +1,10 @@
-- [ ] facade-frame-seam — tier 2 through the facade is 37% slower than the
-      language's own road (MeasureFacade, 2026-09-25, load 4.9: 100 000
-      rows, python3, columnar JSON — 188 ms against 137 ms). The 51 ms is
-      the seam: `Rows.table` (rows → Table) then `ArrowFrames.frame`
-      (Table → PyFrame) in, `ArrowFrames.table` then `Rows.rows` out —
-      two conversions each way where the own road does one. Two fixes,
-      by the road: where Arrow is spoken, the Table should go to the wire
-      AS ITSELF (`OkayArrow.write` of the Table, no PyFrame in between —
-      `ForeignWorker.sendArrow` already takes a Table); where it is not,
-      `Road.rows` should build the columnar JSON frame from rows in one
-      pass (rows → PyFrame), and `Frames.frame` keep the Table road for a
-      caller that has a Table. Measure both against 137 ms; the spec's
-      rule is that a cell worse than the own road is a defect. (2026-09-25)
+- [ ] facade-frame-seam — the R half. Python's is done (facade-frame-seam,
+      2026-09-25): `Frames.rows` takes the language's own road (rows to a
+      frame in one pass) and `ForeignWorker.frameTable` sends a Table as
+      itself where Arrow is spoken; the first "37%" was a comparison
+      against a pre-built frame no caller has, and rows through the facade
+      now read within 3% of the own road (specs/foreign-facade.md,
+      Results). LEFT: the same two things for R — `Frames.r.rows` over
+      `RFrame.of`/`.rows`, and an `RSubprocess.frameTable` twin — and the
+      Arrow cells of the table, which need a pyarrow/arrow interpreter this
+      box lacks (`OKAY_PYARROW_PYTHON`, as MeasurePyArrow uses). (2026-09-25)

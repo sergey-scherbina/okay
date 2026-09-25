@@ -83,6 +83,13 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
   def arrowFrames: (Long, Long) = (arrowOut, arrowIn)
 
   private def sendArrow(body: Json, table: okay.arrow.Table): (Json, Option[PyFrame]) =
+    val (j, got) = sendArrowTable(body, table)
+    (j, got.map(ArrowFrames.frame))
+
+  /** the Arrow exchange answering the TABLE it read, for a caller that
+   * has a Table and wants one back (facade-frame-seam): the PyFrame in
+   * between was two conversions of the same columns */
+  private def sendArrowTable(body: Json, table: okay.arrow.Table): (Json, Option[okay.arrow.Table]) =
     val (format, compression) = codec.getOrElse(throw IllegalStateException("an Arrow frame on an unframed wire"))
     val header = table.copy(metadata = Vector("okay" -> Json.print(body)))
     val bytes = compression.decompress(onTheWire(link.exchange(compression.compress(okay.arrow.OkayArrow.write(header)))))
@@ -92,8 +99,27 @@ final class ForeignWorker private (link: WireLink, val pythonVersion: String,
       val t = okay.arrow.OkayArrow.read(bytes)
       val head = t.metadata.collectFirst { case ("okay", h) => ForeignWorker.whole(h) }
         .getOrElse(throw IllegalStateException("an Arrow answer without its okay header"))
-      (head, Some(ArrowFrames.frame(t)))
+      (head, Some(t))
     else (format.decode(bytes), None)
+
+  /**
+   * A TABLE through `fn` (facade-frame-seam): where this worker speaks
+   * Arrow the Table goes to the wire as itself and the answer comes back
+   * as the Table it read — no PyFrame in between; where it does not, the
+   * Table is converted once each way. What `ForeignEval.Frame` does for a
+   * PyFrame, for a caller whose frame is already a Table.
+   */
+  def frameTable(fn: String, table: okay.arrow.Table, args: Vector[PyValue]): Either[Condition, okay.arrow.Table] = timed:
+    val head = Vector("op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)))
+    def asTable(f: PyFrame): Either[Condition, okay.arrow.Table] = ArrowFrames.table(f).left.map(Condition("Frame", _))
+    if arrow then
+      nextId += 1
+      val (j, got) = sendArrowTable(Json.JObj(("id" -> Json.JNum(nextId.toDouble)) +: head), table)
+      answer(j)(v => got.fold(Wire.decFrame(v).flatMap(asTable))(Right(_)))
+    else
+      val sent = try Right(ArrowFrames.frame(table))
+        catch case e: IllegalStateException => Left(Condition("Frame", Option(e.getMessage).getOrElse("")))
+      sent.flatMap(f => answer(exchange(Json.JObj(head :+ ("in" -> Wire.encFrame(f)))))(Wire.decFrame).flatMap(asTable))
 
   /** one exchange on the link: a death becomes the DEAD the supervisor reads */
   private def onTheWire[T](f: => Option[T]): T =

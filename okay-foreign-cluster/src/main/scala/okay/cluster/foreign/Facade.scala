@@ -74,20 +74,34 @@ object Calls:
 trait Frames[-M]:
   def name: String
   def frame(module: M, fn: String)(in: Table): Either[Batcher.Failed, Table]
+  /** rows through a frame function, back as rows — the road a caller
+   * with ROWS takes; by default through `frame` and the Rows codec, and
+   * a language overrides it with its own shortest road (Python: rows to
+   * its frame in one pass, facade-frame-seam) */
+  def rows[A: Schema, B: Schema](module: M, fn: String)(in: Vector[A]): Either[Batcher.Failed, Vector[B]] =
+    frame(module, fn)(Rows.table(in)).flatMap(t => Rows.rows[B](t).left.map(m => Batcher.Failed("Frame", m)))
 
 object Frames:
   given py: Frames[okay.py.PyModule] = py("python3")
   def py(python: String): Frames[okay.py.PyModule] = new:
     def name = s"py:$python"
+    // a Table goes to the wire AS ITSELF where the worker speaks Arrow and
+    // is converted once where it does not (ForeignWorker.frameTable): the
+    // PyFrame this once built here was two conversions of the same columns
+    // on the Arrow road (facade-frame-seam)
     def frame(module: okay.py.PyModule, fn: String)(in: Table): Either[Batcher.Failed, Table] =
       val pool = PyPool.of(module, python, Stage.Workers)
-      // a column PyFrame cannot say (a decimal, a timestamp) is refused by
-      // name here, before the wire — `ArrowFrames.frame` throws for it
-      val sent = try Right(okay.py.ArrowFrames.frame(in))
-        catch case e: IllegalStateException => Left(Batcher.Failed("Frame", Option(e.getMessage).getOrElse("")))
-      sent.flatMap(f => PyPool.frame(pool, python, s"${module.name}:$fn", f, Vector.empty)
-        .left.map(c => Batcher.Failed(c.kind, c.message)))
-        .flatMap(f => okay.py.ArrowFrames.table(f).left.map(m => Batcher.Failed("Frame", m)))
+      PyPool.frameTable(pool, python, s"${module.name}:$fn", in, Vector.empty)
+        .left.map(c => Batcher.Failed(c.kind, c.message))
+    // rows take Python's own road: rows to a PyFrame in one pass, the
+    // frame over, its rows back — what PyStage does, and the own road
+    // MeasureFacade compares against
+    override def rows[A: Schema, B: Schema](module: okay.py.PyModule, fn: String)(in: Vector[A]): Either[Batcher.Failed, Vector[B]] =
+      val pool = PyPool.of(module, python, Stage.Workers)
+      okay.py.PyFrame.of(in)
+        .flatMap(f => PyPool.frame(pool, python, s"${module.name}:$fn", f, Vector.empty))
+        .flatMap(_.rows[B])
+        .left.map(c => Batcher.Failed(c.kind, c.message))
 
   given r: Frames[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Frames[okay.r.RModule] = new:
@@ -294,7 +308,7 @@ object Road:
    * frame each way, whatever the count — a function written for a frame
    * is a function written for a frame */
   def rows[M, A: Schema, B: Schema](module: M, fn: String)(rows: Vector[A])(using f: Frames[M]): Either[Batcher.Failed, Vector[B]] =
-    f.frame(module, fn)(Rows.table(rows)).flatMap(t => Rows.rows[B](t).left.map(m => Batcher.Failed("Frame", m)))
+    f.rows[A, B](module, fn)(rows)
 
   /** a flow through a frame function, one frame per chunk of `batch` rows */
   def flow[M, A: Schema, B: Schema](module: M, fn: String, batch: Int = Stage.Batch)(in: Flow[A])(using s: Streams[M]): Flow[B] =

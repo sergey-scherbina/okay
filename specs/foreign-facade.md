@@ -165,7 +165,7 @@ believed):
 | language | tier 1 value | tier 2 frame | tier 3 stream | instrument |
 |---|---|---|---|---|
 | Scala (`JvmModule`) | facade 0.001 ms a call | by reference 0.001 ms; 100 000 rows in and out through `Rows.table`/`Rows.rows` 19.8 ms; 1M rows map: 6–12 ms | — | MeasureFacade, MeasureForeignMapReduce |
-| Python, pipes | facade 0.217 ms a call, own road 0.130 ms (the difference is `PyCodec` encode+decode at `Schema`) | 100 000 rows one frame, columnar JSON: facade 188 ms, own road 137 ms (the seam: `Rows.table` + `Table`→`PyFrame` in, back out — backlog facade-frame-seam); 1M rows map, JSON: ~200 ms; Arrow: ~95 ms; `@okay.arrow` vectorised: ~88 ms; reduce in Python: +70 ms | 100 000 rows in 4096-row frames: 194 ms — the same as one frame | MeasureFacade, MeasureForeignMapReduce, MeasurePyArrow |
+| Python, pipes | facade 0.217 ms a call, own road 0.130 ms (the difference is `PyCodec` encode+decode at `Schema`) | 100 000 rows one frame, columnar JSON: rows through the facade 182 ms, rows on the own road 176 ms (the same road since facade-frame-seam), a `Table` through `Frames.frame` 152 ms, the bare frame 140 ms; 1M rows map, JSON: ~200 ms; Arrow: ~95 ms; `@okay.arrow` vectorised: ~88 ms; reduce in Python: +70 ms | 100 000 rows in 4096-row frames: 194 ms — the same as one frame | MeasureFacade, MeasureForeignMapReduce, MeasurePyArrow |
 | R, pipes | — | 100 000 rows round trip: 13.7 s as JSON records, 180 ms columnar JSON (r-frame-columnar-wire), Arrow: to measure | — | MeasureRFrame |
 | TypeScript | — | serves `frame` (columnar JSON); no Arrow | — | to measure |
 | Haskell, Go, Rust | tier 1 only (no `frame` op: foreign-frame-op-rust-hs-go) | — | — | to measure |
@@ -380,6 +380,22 @@ with its date, load and sha (the `performance` skill).
   over one frame; the bound is free. The JVM: a call and a by-reference
   frame are 1 µs; rows in and out through the Rows codec 19.8 ms per
   100 000, the price of tier 2 for a language that needs no wire at all.
+- **facade-frame-seam (2026-09-25, load 42.7 — a busy box, so the
+  numbers are relative).** The first measurement's "own road" was a
+  PRE-BUILT PyFrame with no rows on either side, which no caller has;
+  the honest own road for a caller with rows is `PyFrame.of(rows)`, the
+  frame over, `.rows[B]` back (PyStage's), and it reads 176 ms. `Frames`
+  now has `rows` beside `frame` — by default through `frame` and the
+  Rows codec, and Python overrides it with exactly that road — so
+  `Road.rows` through the facade reads 182 ms: the same road, and the
+  37% was the comparison, not the facade. What WAS a seam is the Table
+  road: `Frames.frame` built a PyFrame from the Table and the worker
+  built a Table from it again on the Arrow road, two conversions of the
+  same columns; `ForeignWorker.frameTable` sends a Table as itself where
+  Arrow is spoken and converts once where it is not — 152 ms against the
+  bare frame's 140 on the JSON road here, and nothing on the Arrow road
+  (a pyarrow interpreter's cell). R's twin (`RSubprocess`) is not done
+  and the backlog item keeps it.
 - Python here: python3 3.14 on the box, echo/boom/missing green over
   pipes, frames `columnar-json` (no pyarrow in the box's interpreter —
   the venv of MeasurePyArrow has it). R: not installed on this box;

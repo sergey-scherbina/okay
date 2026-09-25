@@ -65,6 +65,11 @@ object PyPool:
   : Either[okay.py.Condition, PyFrame] =
     use(pool, python)(_.handler.handle(ForeignEval.Frame(address, in, args)))
 
+  /** a Table through `address`, as itself where Arrow is spoken (facade-frame-seam) */
+  def frameTable(pool: Pool[ForeignWorker], python: String, address: String, in: okay.arrow.Table, args: Vector[PyValue])
+  : Either[okay.py.Condition, okay.arrow.Table] =
+    use(pool, python)(_.frameTable(address, in, args))
+
   def call(pool: Pool[ForeignWorker], python: String, address: String, args: Vector[PyValue])
   : Either[okay.py.Condition, PyValue] =
     use(pool, python)(_.handler.handle(ForeignEval.Call(address, args)))
