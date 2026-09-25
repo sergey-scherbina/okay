@@ -83,13 +83,14 @@ and not an ambiguous implicit.
 - [x] Stage 0: the generic `deep`/`shallow` combinators with user
       clauses: a non-tail-resumptive handler (collect every answer of a
       multi-shot choice), which `tail` cannot run.
-- [ ] Stage 1: `tail`, priced against `row` and `deep`, with its
-      precondition stated.
-- [ ] Stage 2: stacked instances (`Delim.Stacked`), so an instance used
-      outside its installation is a compile error.
-- [ ] Stage 3: a DEFAULT combinator that picks a strategy from what
-      the clauses are (tail-resumptive or not). Every strategy stays
-      callable by name.
+- [x] Stage 1: `tail`, with its precondition CHECKED (a guard that
+      throws `MultiShotAcrossTail`), and priced against `row` and `deep`
+      (Results).
+- [x] Stage 2: stacked `deep` and `tail` instances (`Lexical.Stacked`),
+      so an instance used outside its installation is a compile error.
+- [x] Stage 3: `Lexical.handle` picks by clause kind (TailClauses →
+      tail, Clauses → deep, ShallowClauses → shallow), and
+      `Lexical.State(s0)` is tail. Every strategy stays callable by name.
 
 ## Out of scope
 
@@ -113,6 +114,38 @@ and not an ambiguous implicit.
   the program needs no `Distinct`, and a user effect is a plain `enum`
   (TestLexical's `Flip`).
 
+- **`Inst[F, G]` lost its answer type (stage 1).** Stage 0 had
+  `Inst[F, R, G]`, where `R` differed by strategy (a state-passing
+  function for deep, a pair for tail). A body written against one
+  strategy then did not type against another. Without `R`, changing
+  strategy is changing one word at the installation, which is the
+  point of naming them.
+- **`tail` is guarded, not trusted (stage 1).** A cell and a
+  continuation-carried state disagree in exactly one shape: a capture
+  from OUTSIDE the installation that resumes its body more than once.
+  A multi-shot capture INSIDE the body threads the cell through its
+  branches in order, and so does `deep`, whose state capture crosses
+  that inner prompt (pinned: both give `(6, List(0, 1, 3))`). The
+  installation is a `dollar` on its own prompt, and its return
+  function runs once per resumption, so the second run throws
+  `MultiShotAcrossTail` with the way out in its message. That costs one
+  delimiter per installation, not per operation. The cell and the flag
+  are made per run of the program, so running a program twice is not a
+  multi-shot (pinned).
+- **Stacked instances ARE their delimiter (stage 2).** `Delim.Stacked.In`
+  became an open class, and `Lexical.Stacked.Deep` and `.Tail` extend it,
+  so `i.p` is the singleton on the stack and `perform` asks the same
+  `Has` a stacked `shift0` does. A wrapper holding an `In` would have
+  two singletons, `i.in.p.type` and `d.p.type`, that the compiler cannot
+  relate: the same trap `Layered.Stacked` avoided by using the `In`
+  itself. `shallow` is not stacked, for control0's reason.
+- **The default is by clause KIND, and the row is not a candidate
+  (stage 3).** Tail-resumptiveness is declared by the type of the
+  clauses (`TailClauses` can only answer in place), so the choice is
+  static and free. `tail` is safe as a default only because its one
+  unsafe shape fails loudly. The row stays the library's default for
+  one handler of a kind. `Lexical` is for when that is not enough.
+
 ## Results
 
 STAGE 0, 2026-09-25 (TestLexical 7):
@@ -132,3 +165,34 @@ STAGE 0, 2026-09-25 (TestLexical 7):
   all four answers of two coin flips, which is what `tail` will not be
   able to run. 10 000 get/set run through one deep instance in constant
   stack.
+
+STAGES 1-3, 2026-09-25 (TestLexicalTail 6, TestLexicalStacked 2, TestLexicalDefault 2):
+
+- tail: `Bisim`-equal to `State.handle` on the Writer row. It mixes
+  with deep in one program (deep outer, tail inner, the stage-0 answer).
+  Multi-shot inside gives `(6, List(0, 1, 3))`, the same as deep. Multi-shot
+  across: deep gives `List((1, 0), (2, 0), (3, 0))`, and tail throws.
+  100 000 operations run in constant stack.
+- WATCHED FAILING: the guard mutated to never throw turned the "across"
+  test red.
+- Stacked: a tail instance outside a deep one gives `(5, 10)` (by hand).
+  A tail instance kept past its installation is refused with "not on the
+  prompt stack".
+- Default: `Lexical.State(0)` trips the guard across a multi-shot, and
+  `Lexical.State.deep` is the named way out. `Lexical.handle` runs
+  general clauses deep (a coin's two answers) and tail clauses in place
+  (`(14, 14)`).
+
+PRICE, 2026-09-25 (DelimBenchmark stateHandle / stateLexTail / stateLexDeep,
+one run, load 27 → 75: time noisy, bytes exact):
+
+- Bytes per 1000 get/set: row 222 040, tail 366 590 (1.65x), deep
+  1 511 046 (6.8x). Time: row 70 ± 15 µs, tail 154 ± 55 (about 2x),
+  deep 1117 ± 401 (not usable; the clean stage-3 run of handlers-as-dollar
+  gave deep 3.8x).
+- THE SPEC'S EXPECTATION WAS WRONG: "tail near row". It is a quarter of
+  deep's cost, not the row's. The +72 B per operation are the
+  `Free.delay` thunk that keeps the cell access lazy, the `(S, X)` pair
+  a `TailClauses` answer returns, the polymorphic `run`, and a
+  `Return`. Backlog `lexical-tail-allocs` has the ways to take them out,
+  each to be measured. The strategies and the default do not change.

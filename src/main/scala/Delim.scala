@@ -1023,8 +1023,11 @@ object Delim {
       type S = S0
 
     /** what `reset` hands its body: the prompt, and the stack that
-     * installing it made — `import s.given` puts it in force */
-    final class In[R, S <: Tuple](val p: Prompt[R]):
+     * installing it made — `import s.given` puts it in force. OPEN so
+     * that an installation elsewhere can hand its body a richer value
+     * that IS the delimiter on the stack (`Lexical.Stacked.SInst`),
+     * with no second singleton to relate to this one. */
+    class In[R, S <: Tuple](val p: Prompt[R]):
       given stack: Stack[p.type *: S] = new Stack[p.type *: S]
 
     /** "p is on the stack" — the using clause that replaces the throw */

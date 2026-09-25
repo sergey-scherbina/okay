@@ -31,12 +31,12 @@ package okay
  */
 object Lexical:
 
-  /** an installed handler of `F`, answering `R`, in a program whose
-   * other effects are `G`: the value a body performs operations
-   * through. Only an installation makes one. */
-  final class Inst[F[+_], R, G[+_]] private[Lexical] (
-      val prompt: Prompt[R],
-      run: [X] => F[X] => X ! Delim + G):
+  /** an installed handler of `F` in a program whose other effects are
+   * `G`: the value a body performs operations through. Only an
+   * installation makes one. The strategy is fixed by the installation,
+   * so a body written against `Inst[F, G]` runs under any of them:
+   * changing strategy is changing one word at the installation. */
+  final class Inst[F[+_], G[+_]] private[Lexical] (run: [X] => F[X] => X ! Delim + G):
     /** the operation, to THIS installation and no other */
     def perform[X](e: F[X]): X ! Delim + G = run(e)
 
@@ -60,10 +60,10 @@ object Lexical:
    * installation whose clause gets `k` with the handler in it (a
    * shift0 to a `dollar` takes the return function along, `$/S0`).
    */
-  def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, G])(body: Inst[F, R, G] => A ! Delim + G)
+  def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, G])(body: Inst[F, G] => A ! Delim + G)
                               (using at: At): R ! Delim + G =
     val p = Delim.prompt[R]
-    val i = new Inst[F, R, G](p, [X] => (e: F[X]) =>
+    val i = new Inst[F, G]([X] => (e: F[X]) =>
       Delim.shift0[R, X, G](p)(k => c.op(e, k))(using at))
     Delim.dollar[A, R, G](p)(c.ret)(body(i))
 
@@ -74,21 +74,96 @@ object Lexical:
    * which is why no typed control0-to-dollar is needed
    * (specs/shift0-dollar.md, stage 3).
    */
-  def shallow[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, G])(body: Inst[F, R, G] => A ! Delim + G)
+  def shallow[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, G])(body: Inst[F, G] => A ! Delim + G)
                                  (using at: At): R ! Delim + G =
     val p = Delim.prompt[R]
     val again: (R ! Delim + G) => R ! Delim + G = prog => Delim.push[R, G](p)(prog)
-    val i = new Inst[F, R, G](p, [X] => (e: F[X]) =>
+    val i = new Inst[F, G]([X] => (e: F[X]) =>
       Delim.control0[R, X, G](p)(k => c.op(e, k, again))(using at))
     Delim.push[R, G](p)(body(i).flatMap(c.ret))
 
-  /** State as instances: the worked example, both strategies */
+  /** a TAIL-RESUMPTIVE handler with state `S`: each clause answers in
+   * place with the new state and the resumption value. It cannot drop,
+   * store or repeat the continuation, which is what makes answering
+   * without a capture possible. */
+  trait TailClauses[F[+_], S]:
+    def op[X](e: F[X], s: S): (S, X)
+
+  /** a tail installation's body was resumed more than once by a
+   * capture from OUTSIDE it: the cell cannot be in both branches */
+  final class MultiShotAcrossTail(at: String)
+    extends IllegalStateException(
+      s"$at: a `tail` handler's body was resumed twice by a capture from outside it, so its state cell would be shared by both branches. Install this handler with `deep`, which keeps the state in the continuation (specs/lexical-instances.md)")
+
+  /**
+   * TAIL: evidence passing (Xie, Brachthäuser, Hillerström, Schuster &
+   * Leijen, "Effect handlers, evidently", ICFP 2020). An operation
+   * calls its clause IN PLACE through the instance. Nothing is
+   * captured, and the handler's state lives in a cell that the
+   * installation makes fresh on every run of the program.
+   *
+   * THE PRECONDITION, AND WHY IT IS CHECKED RATHER THAN ASSUMED. A cell
+   * and a continuation-carried state agree whenever the body runs once
+   * per installation. A multi-shot capture INSIDE the body (to a prompt
+   * installed within it) threads the cell through its branches in order,
+   * which is also what `deep` does, since `deep`'s state capture crosses
+   * that inner prompt. They differ only when a capture from OUTSIDE the
+   * installation resumes its body twice. Then both branches would share
+   * the cell. That case is detected: the installation is a `dollar` on a
+   * private prompt, and its return function runs once per resumption,
+   * so a second run throws `MultiShotAcrossTail` instead of answering
+   * wrongly. The price of the check is one delimiter per INSTALLATION,
+   * not per operation.
+   */
+  def tail[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])(body: Inst[F, G] => A ! Delim + G)
+                              (using at: At): (S, A) ! Delim + G =
+    Free.delay { () =>
+      var cell = s0
+      var returned = false
+      val i = new Inst[F, G]([X] => (e: F[X]) => Free.delay { () =>
+        val (s1, x) = c.op(e, cell)
+        cell = s1
+        okay.pure[Delim + G, X](x)
+      })
+      val guard = Delim.prompt[(S, A)]
+      Delim.dollar[A, (S, A), G](guard)(a => Free.delay { () =>
+        if returned then throw MultiShotAcrossTail(at.where)
+        returned = true
+        okay.pure[Delim + G, (S, A)]((cell, a))
+      })(body(i))
+    }
+
+  /**
+   * THE DEFAULT (stage 3): pick the strategy from what the clauses ARE.
+   * Every strategy it picks from stays callable by name (`tail`,
+   * `deep`, `shallow`), so the default only saves writing the name.
+   *
+   *   - tail-resumptive clauses (`TailClauses`) → `tail`: in place, one
+   *     guard delimiter per installation. It either answers exactly as
+   *     `deep` would, or throws `MultiShotAcrossTail` in the one shape
+   *     where a cell cannot (a capture from outside resuming the body
+   *     twice). It never answers wrongly.
+   *   - general deep clauses (`Clauses`) → `deep`.
+   *   - shallow clauses (`ShallowClauses`) → `shallow`.
+   *
+   * The row (`State.handle` and friends) is not in this list. It is the
+   * library's default for ONE handler of a kind, and instances are for
+   * when that is not enough.
+   */
+  def handle[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])(body: Inst[F, G] => A ! Delim + G)
+                                (using At): (S, A) ! Delim + G = tail(s0)(c)(body)
+  def handle[F[+_], A, R, G[+_]](c: Clauses[F, A, R, G])(body: Inst[F, G] => A ! Delim + G)
+                                (using At): R ! Delim + G = deep(c)(body)
+  def handle[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, G])(body: Inst[F, G] => A ! Delim + G)
+                                (using At): R ! Delim + G = shallow(c)(body)
+
+  /** State as instances: the worked example, all three strategies */
   object State:
     /** the answer of a state handler over a body answering `A`: a
      * state-passing function */
     type Ans[S, A, G[+_]] = S => (S, A) ! Delim + G
 
-    def deep[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, Ans[S, A, G], G] => A ! Delim + G)
+    def deep[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! Delim + G)
                          (using At): (S, A) ! Delim + G =
       Lexical.deep(new Clauses[okay.State % S, A, Ans[S, A, G], G]:
         def ret(a: A): Ans[S, A, G] ! Delim + G = okay.pure((s: S) => okay.pure((s, a)))
@@ -97,7 +172,7 @@ object Lexical:
           case okay.State.Set(s1) => okay.pure((_: S) => k(s1).flatMap(f => f(s1)))
       )(body).flatMap(f => f(s0))
 
-    def shallow[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, Ans[S, A, G], G] => A ! Delim + G)
+    def shallow[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! Delim + G)
                             (using At): (S, A) ! Delim + G =
       Lexical.shallow(new ShallowClauses[okay.State % S, A, Ans[S, A, G], G]:
         def ret(a: A): Ans[S, A, G] ! Delim + G = okay.pure((s: S) => okay.pure((s, a)))
@@ -107,6 +182,72 @@ object Lexical:
           case okay.State.Set(s1) => okay.pure((_: S) => again(k(s1)).flatMap(f => f(s1)))
       )(body).flatMap(f => f(s0))
 
-    extension [S, R, G[+_]](i: Inst[okay.State % S, R, G])
+    /** the DEFAULT for State: its clauses are tail-resumptive, so `tail` */
+    def apply[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! Delim + G)(using At): (S, A) ! Delim + G =
+      tail(s0)(body)
+
+    /** TAIL, for State: the state in the installation's cell */
+    def tail[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! Delim + G)(using At): (S, A) ! Delim + G =
+      Lexical.tail[okay.State % S, S, A, G](s0)(new TailClauses[okay.State % S, S]:
+        def op[X](e: okay.State[S, X], s: S): (S, X) = e match
+          case okay.State.Get() => (s, s)
+          case okay.State.Set(s1) => (s1, s1)
+      )(body)
+
+    extension [S, G[+_]](i: Inst[okay.State % S, G])
       def get: S ! Delim + G = i.perform(okay.State.Get[S, S]())
       def set(s: S): S ! Delim + G = i.perform(okay.State.Set[S, S](s))
+
+  /**
+   * STACKED INSTANCES (stage 2): the same strategies over
+   * `Delim.Stacked`, so an instance used outside its installation does
+   * not compile. The instance IS the installation's delimiter (a
+   * subclass of `Delim.Stacked.In`), so its prompt is the singleton on
+   * the stack, and `perform` asks for the same `Has` evidence a stacked
+   * `shift0` does. `import i.given` puts the installation's stack in
+   * force for the body, exactly as for `Delim.Stacked.reset`. `shallow`
+   * is not stacked, for the reason `control0` is not
+   * (specs/shift0-dollar.md, stage 2).
+   */
+  object Stacked:
+    import Delim.Stacked.{In, Stack, Under, Has}
+
+    /** a stacked DEEP instance: the delimiter on the stack, and its clauses */
+    final class Deep[F[+_], R, G[+_], S <: Tuple] private[Lexical] (p0: Prompt[R], ops: Ops[F, R, G])
+        extends In[R, S](p0):
+      /** the operation, to THIS installation, which must be on the stack */
+      def perform[X](e: F[X])(using st: Stack[?])[B <: Tuple](using Has.Aux[st.S, p.type, B], At): Under[G, X, st.S] =
+        Delim.Stacked.shift0[R, X, G](p)(k => Prog.diag[B, Delim + G, R](ops.op(e, x => k(x).free)))
+
+    def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, G])(using st: Stack[?])
+                                (body: (i: Deep[F, R, G, st.S]) => Under[G, A, i.p.type *: st.S])
+                                (using at: At): Under[G, R, st.S] =
+      val i = new Deep[F, R, G, st.S](Delim.prompt[R], c)
+      Prog.diag[st.S, Delim + G, R](Delim.dollar[A, R, G](i.p)(c.ret)(body(i).free))
+
+    /** a stacked TAIL instance: it answers in place, and the stack check
+     * is what makes holding it safe */
+    final class Tail[F[+_], S0, A, G[+_], S <: Tuple] private[Lexical] (
+        p0: Prompt[(S0, A)], answer: [X] => F[X] => X ! Delim + G) extends In[(S0, A), S](p0):
+      def perform[X](e: F[X])(using st: Stack[?])[B <: Tuple](using Has.Aux[st.S, p.type, B]): Under[G, X, st.S] =
+        Prog.diag[st.S, Delim + G, X](answer(e))
+
+    /** `Lexical.tail`, stacked: the cell and the guard per run, the
+     * guard's delimiter being the instance itself */
+    def tail[F[+_], S0, A, G[+_]](s0: S0)(c: TailClauses[F, S0])(using st: Stack[?])
+                                 (body: (i: Tail[F, S0, A, G, st.S]) => Under[G, A, i.p.type *: st.S])
+                                 (using at: At): Under[G, (S0, A), st.S] =
+      Prog.diag[st.S, Delim + G, (S0, A)](Free.delay { () =>
+        var cell = s0
+        var returned = false
+        val i = new Tail[F, S0, A, G, st.S](Delim.prompt[(S0, A)], [X] => (e: F[X]) => Free.delay { () =>
+          val (s1, x) = c.op(e, cell)
+          cell = s1
+          okay.pure[Delim + G, X](x)
+        })
+        Delim.dollar[A, (S0, A), G](i.p)(a => Free.delay { () =>
+          if returned then throw MultiShotAcrossTail(at.where)
+          returned = true
+          okay.pure[Delim + G, (S0, A)]((cell, a))
+        })(body(i).free)
+      })

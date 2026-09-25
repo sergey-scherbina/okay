@@ -249,14 +249,27 @@ that is not tail-resumptive:
 case Flip.Coin() => k(true).flatMap(xs => k(false).map(xs ++ _))
 ```
 
-**The strategy is yours to name.** `Lexical.deep` runs the clauses
-with shift0 under a `dollar` whose return function is the return
-clause. `Lexical.shallow` uses control0, and the clause re-installs
-the handler if it wants to. Both are exactly `State.handle` by
-`Bisim.check`, and both cost about 4x its time
-(specs/lexical-instances.md, which also plans `tail`, stacked
-instances and a default strategy that picks among them). Use them for
-what a row cannot do, not for what it already does.
+**The strategy is yours to name, and there is a default.** Three
+strategies run the same body, because the body only sees `Inst[F, G]`:
+
+- `Lexical.tail` answers each operation IN PLACE (evidence passing,
+  Xie et al., ICFP 2020), with the handler's state in a cell made per
+  run. Its one unsafe shape is a capture from outside the installation
+  resuming its body twice. That shape throws `MultiShotAcrossTail`
+  rather than sharing the cell.
+- `Lexical.deep` runs the clauses with shift0 under a `dollar` whose
+  return function is the return clause. It suits anything, including
+  clauses that call `k` twice or never. It costs about 4x a row
+  handler.
+- `Lexical.shallow` uses control0, and the clause re-installs the
+  handler if it wants to.
+
+`Lexical.handle` picks by what the clauses are: `TailClauses` run tail,
+`Clauses` run deep, `ShallowClauses` run shallow. `Lexical.State(s0)`
+is tail. `Lexical.Stacked` has deep and tail instances whose use
+outside their installation does not compile. Details and numbers are
+in specs/lexical-instances.md. A row handler stays the right choice for
+one handler of a kind.
 
 ## Choosing
 

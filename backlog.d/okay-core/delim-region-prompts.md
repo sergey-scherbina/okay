@@ -20,3 +20,10 @@
       a lexically bound instance whose runtime label cannot be used
       outside its handler. See `effect-instances-tunnelling`, which
       would close this with the same mechanism.
+      UPDATE 2026-09-25: effect-instances-tunnelling closed through
+      lexical-instances. Its STACKED instances (`Lexical.Stacked`) refuse
+      use outside their installation at compile time, as `Delim.Stacked`
+      does for prompts. What this item asks is unchanged: the UNSTACKED
+      `Prompted[R]` evidence escaping its `delimited` is still a run-time
+      `NoPrompt`. The stacked doors are the compile-time answer where a
+      caller can use them.

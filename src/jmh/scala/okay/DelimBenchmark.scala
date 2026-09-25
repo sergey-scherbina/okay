@@ -183,6 +183,23 @@ class DelimBenchmark {
     val body = rewriteState(op)(stateProg(N)).map(a => (s: Int) => pure[Row, (Int, Int)]((s, a)))
     !.run(Delim.run[(Int, Int), Pure](push[Ans, Pure](p)(body).flatMap(f => f(0))))._2
 
+  // ---- handler INSTANCES (specs/lexical-instances.md): the same N get/set
+  // pairs as stateHandle, through one `Lexical` instance, by strategy.
+  // `tail` answers in place (evidence passing) with one guard delimiter
+  // per installation; `deep` captures per operation.
+
+  def lexSpin(s: Lexical.Inst[okay.State % Int, Pure], n: Int): Int ! Row =
+    import Lexical.State.{get, set}
+    if n == 0 then s.get else s.get.flatMap(v => s.set(v + 1)).flatMap(_ => lexSpin(s, n - 1))
+
+  @Benchmark
+  def stateLexTail(): Int =
+    !.run(Delim.run[(Int, Int), Pure](Lexical.State.tail[Int, Int, Pure](0)(s => lexSpin(s, N))))._2
+
+  @Benchmark
+  def stateLexDeep(): Int =
+    !.run(Delim.run[(Int, Int), Pure](Lexical.State.deep[Int, Int, Pure](0)(s => lexSpin(s, N))))._2
+
   // ---- ONE push, then ordinary work INSIDE the machine
   //
   // This is the shape a GUARD has (okay-llm's `Cut`, okay-ui's

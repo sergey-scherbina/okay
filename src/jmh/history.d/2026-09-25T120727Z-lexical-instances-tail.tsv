@@ -1,0 +1,2 @@
+2026-09-25	5cf06c8c	27-75	lexical-instances: stateLexTail vs stateHandle (BYTES)	366590	222040	1.65	B/op, 1000 get/set through one Lexical tail instance vs the row handler; time 153.5+-55 vs 70.4+-15 us at load 27-75 (noisy, ~2x); +72 B per operation: Free.delay thunk, (S, X) pair, the run function, Return
+2026-09-25	5cf06c8c	27-75	lexical-instances: stateLexDeep vs stateHandle (BYTES)	1511046	222040	6.81	B/op; time 1116+-401 us not usable at this load (a clean run in handlers-as-dollar gave 3.8x)
