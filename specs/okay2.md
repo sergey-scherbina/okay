@@ -2220,6 +2220,29 @@ okay2-lex-parse, which nests by NAMED tags, so a close can be wrong.
   builds without trouble overflows the walks. Scala 3 half:
   `xml-projection-stack-safe` (fixed the same day).
 
+## Stage 44 — okay2-http (2026-09-25)
+The modules section's last item: okay-http's HTTP half on okay2. NOT
+McpHttp and TsClient (okay-http reaches okay-mcp for those, and the MCP
+stack is not ported). Two parts, landed separately.
+
+### Part A — the transport half
+- [ ] `Method`, `Body`, `Request`, `Response` (status is data, headers
+      case-insensitive), `Http` (send), `Http.one`/`bytes`/`text`/
+      `discard`/`lines`/`sse`/`json`, the line framer and SSE events as
+      Stages (TestFraming, pure: every platform)
+- [ ] `Frame`, `Socket`, `Sockets`, `Ws.over` (a session is a Stage),
+      `Ws.texts`
+- [ ] on the JVM: `Server` (the JDK server, a Resource), `Nio` (raw
+      channels), `Transports.http`/`sockets` (the JDK client and
+      WebSocket); TestHttp, TestNio, TestWs against real sockets,
+      `Live`-tagged as every port-binding suite is, and okay2 gains the
+      root build's default `--exclude-tags=Live` and `integrationTest`
+
+### Part B — typed routes
+- [ ] `Route`/`Query`/`Headed`/`Router` over Schema, their arity and
+      split in Scala 2 terms (the Scala 3 core's tuples), `Urls`,
+      `Acceptance`
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
