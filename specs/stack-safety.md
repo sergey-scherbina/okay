@@ -254,6 +254,23 @@ deleted.
         `javaOf` per level of a value the program built; r2dbc's `valueOf`
         per dimension of a driver array. Left in stage 4: okay-py and
         okay-r (4b).
+      - [ ] The stage-9 catch-up rows of the same modules, in both cores
+        (stack-safety-catch-up-okay2, 2026-09-25). Each gets a depth test
+        first, red on the recursion:
+        - `JdbcSql.valueOf`/`arrayOf` walk a driver's nested arrays, and
+          `jdbcOf` walks a user's `SqlValue`. A VALUE has no bound, so
+          all three become explicit stacks.
+        - `Typed.fits` compares two `SqlType` trees. It becomes a
+          worklist of pairs, since `fits` is an AND over them.
+        - `SparkSchema.dataType`/`struct`/`value`/`rowOf` walk a
+          `ColType`, and `value` walks the value in step with its type.
+          They get a BOUND like okay-arrow's: a type deeper than 64
+          levels is refused at the door (depth measured on an explicit
+          stack), so the walks recurse at most that deep.
+        - The fs2/zio `again`s are called from the library's own lazy
+          `++`/`flatMap`, so they are TRAMPOLINED. A test drives a
+          million non-Writer operations through each, the path the
+          million-tells tests never took.
 - [ ] Stage 5 — workflow: `Proc.go`/`nodes`, `Wf.go`, recursing per
       `Then` of a composed arrow.
 - [ ] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js.
