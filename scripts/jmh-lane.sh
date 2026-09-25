@@ -61,6 +61,32 @@ ATTEMPTS="${2:-5}"
 # JMH run's own sbt exit code is what this script trusts
 SBT="${SBT:-sbt}"
 
+# THE ROWS MUST BE TIGHT, NOT ONLY THE BOX QUIET (jmh-lane-error-gate,
+# 2026-09-25). Quiet at the start and at the end cannot see a sibling's
+# gate that starts AND ends inside the lane: channel-default-adaptive's
+# first round kept rows of +-60% that passed both checks, and only
+# "accept a lane at error <= 10% of its score" made its verdict hold.
+# So a PRIMARY result row (JMH's text table: `<name> ... <score> ± <error>
+# <unit>`; a `name:secondary` metric such as `:gc.count` is skipped — its
+# error can exceed its score legitimately) whose error is above
+# JMH_LANE_MAX_ERR percent of its score makes the run CONTAMINATED:
+# discarded and retried like a busy box. JMH_LANE_MAX_ERR=0 turns it off
+# (a lane whose spread is its finding, not its noise).
+MAX_ERR="${JMH_LANE_MAX_ERR:-10}"
+noisy_rows() { # $1 = the run's output; prints each offending row
+  [ "$MAX_ERR" -gt 0 ] 2>/dev/null || return 0
+  awk -v max="$MAX_ERR" '
+    /±/ {
+      n = 1; if ($1 == "[info]") n = 2
+      if (index($n, ":") > 0) next
+      for (i = 1; i <= NF; i++) if ($i == "±") break
+      if (i > NF || i < 2) next
+      score = $(i - 1) + 0; err = $(i + 1) + 0
+      if (score > 0 && err / score * 100 > max)
+        printf "%s: %s ± %s (%.0f%% > %s%%)\n", $n, $(i - 1), $(i + 1), err / score * 100, max
+    }' "$1"
+}
+
 take_lock() {
   if mkdir "$LOCKDIR" 2>/dev/null; then
     echo $$ > "$LOCKDIR/pid"
@@ -129,8 +155,15 @@ while [ "$i" -le "$ATTEMPTS" ]; do
     i=$((i + 1))
     continue
   fi
+  noisy=$(noisy_rows "$runlog")
   rm -f "$runlog"
   if quiet; then
+    if [ "$rc" -eq 0 ] && [ -n "$noisy" ]; then
+      echo "jmh-lane: the box was quiet at both ends but the rows are too NOISY — a spike inside the lane; discarding and retrying:"
+      printf '%s\n' "$noisy" | sed 's/^/jmh-lane:   /'
+      i=$((i + 1))
+      continue
+    fi
     if [ "$rc" -eq 0 ]; then
       echo "jmh-lane: done, box stayed quiet throughout — trust this number"
       exit 0
@@ -142,5 +175,5 @@ while [ "$i" -le "$ATTEMPTS" ]; do
   echo "jmh-lane: the box got busy DURING this lane (busy-sbt=$H load=$L freeGB=$F) — the number is CONTAMINATED, discarding and retrying"
   i=$((i + 1))
 done
-echo "jmh-lane: gave up after $ATTEMPTS attempts, the box never stayed quiet through a whole lane"
+echo "jmh-lane: gave up after $ATTEMPTS attempts — the box never stayed quiet through a whole lane, or its rows never came out within ${MAX_ERR}%"
 exit 99

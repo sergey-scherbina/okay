@@ -140,6 +140,53 @@ printf '%s\n' "$out" | grep -q "a real failure" && ok "called a real failure" ||
 ! printf '%s\n' "$out" | grep -q "attempt 2/" && ok "no retry" || bad "retried a real failure: $out"
 rm -rf "$tmp"
 
+say "9. a quiet box but NOISY rows: discarded as contaminated, retried, the tight run trusted"
+new_fixture
+# jmh-lane-error-gate: a sibling's gate can start and end INSIDE a lane,
+# so quiet-at-both-ends passes while the number is +-60%. The fake sbt
+# prints JMH's result table: noisy on call 1, tight on call 2.
+cat > "$tmp/scripts/fake-sbt.sh" <<'EOF2'
+#!/bin/sh
+n="$(cd "$(dirname "$0")/.." && pwd)/.work/sbt-calls"
+c=$(cat "$n" 2>/dev/null || echo 0); c=$((c + 1)); echo "$c" > "$n"
+echo "[info] Benchmark                  (producers)  Mode  Cnt     Score     Error  Units"
+if [ "$c" -eq 1 ]; then
+  echo "[info] ManyProducers.default_elem            1  avgt   10  1502.945 ±  904.618  us/op"
+else
+  echo "[info] ManyProducers.default_elem            1  avgt   10   492.767 ±   19.824  us/op"
+fi
+exit 0
+EOF2
+chmod +x "$tmp/scripts/fake-sbt.sh"
+out=$(run "Bench.thing" 5 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "exit 0 after the retry" || bad "exit $rc: $out"
+printf '%s\n' "$out" | grep -q "too NOISY" && ok "named the noisy row" || bad "did not flag noise: $out"
+printf '%s\n' "$out" | grep -q "attempt 2/5" && ok "retried as attempt 2" || bad "did not retry: $out"
+printf '%s\n' "$out" | grep -q "trust this number" && ok "the tight run is trusted" || bad "did not trust it: $out"
+rm -rf "$tmp"
+
+say "10. JMH_LANE_MAX_ERR=0 turns the error gate off"
+new_fixture
+printf '#!/bin/sh\necho "[info] ManyProducers.default_elem  1  avgt  10  1502.945 ±  904.618  us/op"\nexit 0\n' > "$tmp/scripts/fake-sbt.sh"; chmod +x "$tmp/scripts/fake-sbt.sh"
+out=$(JMH_LANE_MAX_ERR=0 run "Bench.thing" 5 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "exit 0" || bad "exit $rc: $out"
+! printf '%s\n' "$out" | grep -q "attempt 2/" && ok "no retry" || bad "retried with the gate off: $out"
+rm -rf "$tmp"
+
+say "11. a noisy SECONDARY metric (:gc...) does not reject a tight primary row"
+new_fixture
+cat > "$tmp/scripts/fake-sbt.sh" <<'EOF2'
+#!/bin/sh
+echo "[info] Gen.take                          avgt   10   21.960 ±   0.410  us/op"
+echo "[info] Gen.take:gc.count                 avgt   10    3.000 ±   9.000  counts"
+exit 0
+EOF2
+chmod +x "$tmp/scripts/fake-sbt.sh"
+out=$(run "Bench.thing" 5 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "exit 0" || bad "exit $rc: $out"
+! printf '%s\n' "$out" | grep -q "attempt 2/" && ok "no retry for secondary noise" || bad "retried on a secondary metric: $out"
+rm -rf "$tmp"
+
 say ""
 if [ "$fail" -eq 0 ]; then say "jmh-lane-selftest: PASS"; else say "jmh-lane-selftest: FAIL"; fi
 exit "$fail"
