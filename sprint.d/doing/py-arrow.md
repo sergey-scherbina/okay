@@ -7,3 +7,6 @@
       would still take the serialization hop out, but "the JSON-frame
       road hurts" is ten times less true than when this was filed and
       no consumer has asked. Measure again before building.
+      PROMOTED 2026-09-25 (operator): measured again first — the Python
+      side of a 500k-row frame is 909 ms today and 0.5 ms as Arrow IPC
+      (62 ms to a dict); specs/py-arrow.md, four stages.
