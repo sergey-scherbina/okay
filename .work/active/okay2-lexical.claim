@@ -1,0 +1,6 @@
+feature/okay2-lexical 2026-09-25T21:14:13Z
+agent: claude-fable-5-1
+heartbeat: 2026-09-25T21:14:13Z
+status: in-progress
+done-so-far: promoted from okay2/backlog.d (operator: continue), claimed
+next: worktree ../okay-wt-okay2-lexical; dollarResumed+Shots in okay2 Delim, Lexical port (deep/shallow/tail/walk?, State), TestLexical twin, okay2 gate
