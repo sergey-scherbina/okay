@@ -9,24 +9,21 @@ okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	113	startTake	mutual	Co
 okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	119	arrived	mutual	CoreAsyncChannel.fn1
 okay-cluster/src/main/scala/okay/cluster/Flows.scala	456	shape	direct	
 okay-cluster/src/main/scala/okay/cluster/Leak.scala	124	walk	lambda	Vector.flatMap
-okay-codec/src/main/scala-jvm/okay/codec/Wire.scala	331	damaged	lambda	Vector.exists
-okay-codec/src/main/scala-jvm/okay/codec/Wire.scala	527	go	lambda	Vector.foreach
-okay-codec/src/main/scala-jvm/okay/codec/Wire.scala	572	item	lambda	Vector$.fill
-okay-codec/src/main/scala/okay/codec/Cbor.scala	295	skipItem	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/Cbor.scala	299	skipItemNative	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/Cbor.scala	305	skipHereNative	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/Cbor.scala	321	manyNative	mutual	Either.flatMap
-okay-codec/src/main/scala/okay/codec/Cbor.scala	371	get	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft
-okay-codec/src/main/scala/okay/codec/Cbor.scala	375	getNative	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft
-okay-codec/src/main/scala/okay/codec/Cbor.scala	452	field	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft
+okay-codec/src/main/scala/okay/codec/Cbor.scala	295	skipItem	mutual	Either.flatMap	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
+okay-codec/src/main/scala/okay/codec/Cbor.scala	299	skipItemNative	mutual	Either.flatMap	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
+okay-codec/src/main/scala/okay/codec/Cbor.scala	305	skipHereNative	mutual	Either.flatMap	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
+okay-codec/src/main/scala/okay/codec/Cbor.scala	321	manyNative	mutual	Either.flatMap	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
+okay-codec/src/main/scala/okay/codec/Cbor.scala	371	get	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
+okay-codec/src/main/scala/okay/codec/Cbor.scala	375	getNative	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
+okay-codec/src/main/scala/okay/codec/Cbor.scala	454	field	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft	BOUNDED: each call descends one open container of the INPUT, and past Codecs.NativeThreshold (24) the read continues on the Cont trampoline (getC/skipItemInsideC); TestCborTrampoline 200 000 deep, TestCborEdnDepth on a 256 KB stack
 okay-codec/src/main/scala/okay/codec/Compat.scala	125	shape	direct	
 okay-codec/src/main/scala/okay/codec/Compat.scala	151	walk	mutual	Vector.flatMap
 okay-codec/src/main/scala/okay/codec/Compat.scala	201	compareField	mutual	Vector.flatMap
 okay-codec/src/main/scala/okay/codec/Digest.scala	56	of	direct	Vector.map
 okay-codec/src/main/scala/okay/codec/Digest.scala	95	toSchema	lambda	Predef$ArrowAssoc$.$minus$greater$extension,Schema$SList$.apply,Schema$SOption$.
-okay-codec/src/main/scala/okay/codec/Edn.scala	394	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft
-okay-codec/src/main/scala/okay/codec/Edn.scala	447	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft
-okay-codec/src/main/scala/okay/codec/Edn.scala	477	decodeField	mutual	Either.flatMap,IterableOnceOps.foldLeft
+okay-codec/src/main/scala/okay/codec/Edn.scala	394	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one level of the parsed tree, and past Codecs.NativeThreshold (24) decodeC continues on the Cont trampoline; TestEdn 20 000 deep, TestCborEdnDepth on a 256 KB stack
+okay-codec/src/main/scala/okay/codec/Edn.scala	447	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one level of the parsed tree, and past Codecs.NativeThreshold (24) decodeC continues on the Cont trampoline; TestEdn 20 000 deep, TestCborEdnDepth on a 256 KB stack
+okay-codec/src/main/scala/okay/codec/Edn.scala	477	decodeField	mutual	Either.flatMap,IterableOnceOps.foldLeft	BOUNDED: each call descends one level of the parsed tree, and past Codecs.NativeThreshold (24) decodeC continues on the Cont trampoline; TestEdn 20 000 deep, TestCborEdnDepth on a 256 KB stack
 okay-codec/src/main/scala/okay/codec/Json.scala	133	printInto	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay-codec/src/main/scala/okay/codec/Json.scala	137	printIntoNative	mutual	Vector.foreach	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline
 okay-codec/src/main/scala/okay/codec/Json.scala	243	mergePatchAt	mutual	Vector.foldLeft	BOUNDED: each call descends one open container, and past Codecs.NativeThreshold (24) the walk continues on the Cont trampoline

@@ -383,11 +383,17 @@ object WireJson:
       throw IllegalStateException(s"the worker's line is not whole JSON (cut short?): ${line.take(200)}")
     JsonValue.parse(line).getOrElse {
       val j = Json.parse(line)
-      def damaged(x: Json): Boolean = x match
-        case Json.JErr(_) => true
-        case Json.JArr(vs) => vs.exists(damaged)
-        case Json.JObj(fs) => fs.exists((_, v) => damaged(v))
-        case _ => false
+      // a worklist, not a recursion: the parse above takes any depth, so
+      // the walk over what it built must too (stack-safety-cbor-edn-wire)
+      def damaged(root: Json): Boolean =
+        val todo = scala.collection.mutable.Stack[Json](root)
+        var hit = false
+        while !hit && todo.nonEmpty do todo.pop() match
+          case Json.JErr(_) => hit = true
+          case Json.JArr(vs) => vs.foreach(todo.push)
+          case Json.JObj(fs) => fs.foreach((_, v) => todo.push(v))
+          case _ => ()
+        hit
       if damaged(j) || !line.trim.endsWith("}") then
         throw IllegalStateException(s"the worker's line is not whole JSON (cut short?): ${line.take(200)}")
       j
@@ -579,7 +585,11 @@ object WireCbor:
       else if n < 0x10000 then { out.write(m | 25); out.write((n >> 8).toInt); out.write(n.toInt & 0xff) }
       else if n < 0x100000000L then { out.write(m | 26); (3 to 0 by -1).foreach(i => out.write(((n >> (8 * i)) & 0xff).toInt)) }
       else { out.write(m | 27); (7 to 0 by -1).foreach(i => out.write(((n >> (8 * i)) & 0xff).toInt)) }
-    def go(j: Json): Unit = j match
+    // preorder on an explicit stack, children pushed in reverse so they
+    // pop in order: a tree as deep as the caller built costs heap, not
+    // native stack (stack-safety-cbor-edn-wire)
+    val todo = scala.collection.mutable.Stack[Json](tree)
+    while todo.nonEmpty do todo.pop() match
       case Json.JNull | Json.JErr(_) => out.write(0xf6)
       case Json.JBool(b) => out.write(if b then 0xf5 else 0xf4)
       case Json.JNum(v) if v.isWhole && math.abs(v) < 9.0e18 =>
@@ -595,11 +605,10 @@ object WireCbor:
         out.write(b)
       case Json.JArr(vs) =>
         head(4, vs.length.toLong)
-        vs.foreach(go)
+        vs.reverseIterator.foreach(todo.push)
       case Json.JObj(fs) =>
         head(5, fs.length.toLong)
-        fs.foreach { (k, v) => go(Json.JStr(k)); go(v) }
-    go(tree)
+        fs.reverseIterator.foreach { (k, v) => todo.push(v); todo.push(Json.JStr(k)) }
     out.toByteArray
 
   def decode(bytes: Array[Byte]): Either[String, Json] =
@@ -624,7 +633,49 @@ object WireCbor:
         else if exp != 31 then (mant + 1024) * math.pow(2, exp - 25)
         else if mant == 0 then Double.PositiveInfinity else Double.NaN
       if (h & 0x8000) != 0 then -v else v
+    // one open container on an explicit stack: its remaining count and
+    // what it has read so far. A message as deep as the far side sent
+    // costs heap, not native stack — and a StackOverflowError is no
+    // IllegalStateException, so the recursion this replaces escaped the
+    // catch below and took the reading thread (stack-safety-cbor-edn-wire)
+    final class Open(var left: Long, val arr: Boolean):
+      val items = Vector.newBuilder[Json]
+      val fields = Vector.newBuilder[(String, Json)]
+      var key: String | Null = null
+    def count(info: Int): Long =
+      val n = arg(info)
+      // every item is at least one byte, so a count past what is left is
+      // damage however it is read (and never a two-billion-slot builder)
+      if n > bytes.length - at then throw IllegalStateException("a CBOR container ended early (cut short?)")
+      n
     def item(): Json =
+      val open = scala.collection.mutable.Stack[Open]()
+      var done: Json | Null = null
+      while done == null do
+        // a leaf, or null when `scalar` opened a container instead
+        val v = scalar(open)
+        if v != null then
+          var up: Json | Null = v
+          // hand the value to its container; a container it completes is
+          // the next value handed up
+          while up != null do
+            if open.isEmpty then { done = up; up = null }
+            else
+              val o = open.top
+              val x: Json = up.nn
+              up = null
+              if o.arr then { o.items += x; o.left -= 1 }
+              else if o.key == null then x match
+                case Json.JStr(k) => o.key = k
+                case other => throw IllegalStateException(s"CBOR: a map key that is not text: $other")
+              else { o.fields += ((o.key.nn, x)); o.key = null; o.left -= 1 }
+              if o.left == 0 && o.key == null then
+                val closed = open.pop()
+                up = if closed.arr then Json.JArr(closed.items.result()) else Json.JObj(closed.fields.result())
+      done.nn
+    /** one head: a leaf's value, or null after pushing the container it
+      * opened (an EMPTY container is a leaf: nothing will complete it) */
+    def scalar(open: scala.collection.mutable.Stack[Open]): Json | Null =
       val ib = byte()
       val major = ib >> 5
       val info = ib & 0x1f
@@ -637,12 +688,12 @@ object WireCbor:
           val s = String(bytes, at, n, UTF_8)
           at += n
           Json.JStr(s)
-        case 4 => Json.JArr(Vector.fill(arg(info).toInt)(item()))
-        case 5 => Json.JObj(Vector.fill(arg(info).toInt) {
-          item() match
-            case Json.JStr(k) => (k, item())
-            case other => throw IllegalStateException(s"CBOR: a map key that is not text: $other")
-        })
+        case 4 =>
+          val n = count(info)
+          if n == 0 then Json.JArr(Vector.empty) else { open.push(Open(n, arr = true)); null }
+        case 5 =>
+          val n = count(info)
+          if n == 0 then Json.JObj(Vector.empty) else { open.push(Open(n, arr = false)); null }
         case 7 => info match
           case 20 => Json.JBool(false)
           case 21 => Json.JBool(true)

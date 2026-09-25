@@ -171,6 +171,22 @@ deleted.
         256 KB stack (TestYamlDepth at 5 000 levels, TestCodeDepth at
         3 000 nested definitions) and each now an explicit stack; the
         five rows are gone.
+      - [x] 2c — Cbor, Edn and the wire (stack-safety-cbor-edn-wire,
+        2026-09-25). THREE real defects, all in okay-codec's Wire.scala,
+        each red first on a 256 KB stack at 20 000 levels (TestWireDepth):
+        `WireCbor.decode` recursed per level of the bytes a worker sent,
+        and caught only `IllegalStateException`, so a deep message was a
+        StackOverflowError that escaped the decoder and took the reading
+        thread; `WireCbor.encode` recursed per level of the tree; and
+        `WireJson.whole`'s `damaged` walked the repaired tree of a damaged
+        line recursively after a parse that takes any depth. All three are
+        explicit stacks now (the decoder's frame is one open container:
+        its remaining count and what it has read; a declared count past
+        the bytes left is refused as damage), and the three rows are gone.
+        Cbor and Edn were already threshold-plus-`Cont`: their ten rows are
+        BOUNDED, and TestCborEdnDepth runs encode and decode of both at
+        20 000 levels on the same small stack as the control. okay2 has
+        neither format.
 - [ ] Stage 3 — streams and STM: okay-stream, okay-stm, okay2-stream,
       okay2-stm.
 - [ ] Stage 4 — data codecs over values: okay-py, okay-r, okay-sql,
