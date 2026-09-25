@@ -1,6 +1,0 @@
-feature/okay2-lexical-walk-stacked 2026-09-25T21:41:44Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-25T21:41:44Z
-status: in-progress
-done-so-far: promoted (operator: do it), claimed
-next: worktree ../okay-wt-okay2-lexical-walk-stacked; Lexical.walk over Instances, Lexical.Stacked (Deep/Tail as In subclasses), Layered.Stacked; twins of TestLexicalWalk/TestLexicalStacked/TestLayeredStacked; okay2 gate
