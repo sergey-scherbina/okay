@@ -1,6 +1,6 @@
 feature/lexical-tail-guard-abort 2026-09-25T16:40:44Z
 agent: claude-fable-5-1
-heartbeat: 2026-09-25T16:40:44Z
+heartbeat: 2026-09-25T16:53:16Z
 status: in-progress
-done-so-far: sprint item queued
-next: worktree ../okay-wt-lexical-tail-guard-abort; the red test in TestLexical (a resumption that aborts evades the tail guard)
+done-so-far: red test confirmed (12, no throw), fix landed on the branch (Delim.dollarResumed, Shots), 81 tests green, records written
+next: JMH bytes (delimGenerator, stateLexTail, delimDollarOnly) via jmh-lane, history.d rows, gate affected master staged, land.sh
