@@ -15,4 +15,7 @@
   whose safepoint bias doubled the match copy's share; profile with
   async-profiler.
 - What is left, with its leads: `okay-compress-zstd-speed-2`. Also
-  filed: `jmh-lane-foreign-jmh-lock`. Commits: see the lane's branch.
+  filed: `jmh-lane-foreign-jmh-lock`.
+- Commits: 03383787 (period copies, length codes), 3795b722 (BackBits
+  window), 248b6609 (XXH through Mem, the loop on locals), a72a08bb (no
+  boxing), ff2c95d7 (results).
