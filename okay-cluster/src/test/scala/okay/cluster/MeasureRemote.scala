@@ -2,7 +2,6 @@ package okay.cluster
 
 import okay.given
 
-import java.net.ServerSocket
 
 /**
  * okay-arrow stage 7b's number: the same chunks through a real loopback
@@ -23,10 +22,26 @@ class MeasureRemote extends munit.FunSuite:
       override def write(b: Array[Byte], off: Int, len: Int): Unit = { bytes += len; out.write(b, off, len) }
     override def close(): Unit = s.close()
 
+  /** a run that does not finish within a minute dumps every thread of THIS
+   * JVM, virtual ones included, and fails naming the file: a stall is a
+   * finding, and the gate's own dump is of sbt, not of this forked JVM */
+  private def watched[A](what: String)(body: => A): A =
+    val f = java.util.concurrent.CompletableFuture.supplyAsync(() => body)
+    try f.get(60, java.util.concurrent.TimeUnit.SECONDS)
+    catch case _: java.util.concurrent.TimeoutException =>
+      val dump = java.nio.file.Files.createTempFile("remote-stall", ".json")
+      java.nio.file.Files.delete(dump)
+      java.lang.management.ManagementFactory.getPlatformMXBean(classOf[com.sun.management.HotSpotDiagnosticMXBean])
+        .dumpThreads(dump.toString, com.sun.management.HotSpotDiagnosticMXBean.ThreadDumpFormat.JSON)
+      fail(s"$what stalled; the threads: $dump")
+
   private def run(fmt: RemoteFormat, cmp: RemoteCompression, rows: List[Trade], chunk: Int): (Double, Long) =
-    val server = ServerSocket(0)
+    watched(s"${fmt.name}+${cmp.codec.map(_.name)} chunk=$chunk")(runOnce(fmt, cmp, rows, chunk))
+
+  private def runOnce(fmt: RemoteFormat, cmp: RemoteCompression, rows: List[Trade], chunk: Int): (Double, Long) =
+    val server = RemoteModel.loopback()
     val received = Remote.listen[Trade](server)
-    val sock = Counting(java.net.Socket("localhost", server.getLocalPort))
+    val sock = Counting(java.net.Socket(server.getInetAddress.getHostAddress, server.getLocalPort))
     val sender = Remote.Sender[Trade](sock)(using summon, fmt, cmp)
     val t0 = System.nanoTime()
     val sent = scala.util.Try(rows.grouped(chunk).foreach(g => sender.send(okay.ChunkBuf.of(g))))

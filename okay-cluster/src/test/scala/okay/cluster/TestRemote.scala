@@ -7,6 +7,18 @@ import java.net.ServerSocket
 
 object RemoteModel:
   final case class Trade(id: Long, symbol: String, price: Double, qty: Int, note: Option[String]) derives Schema
+  /**
+   * A server on THE loopback address, which the sender then connects to by
+   * that address — never "localhost". On macOS "localhost" tries ::1 first,
+   * and on a box where other processes bind ephemeral ports a stranger can
+   * be listening on the same port number over IPv6: the sender then talks
+   * to it (a broken pipe, or bytes into nowhere while our listener waits in
+   * `accept` for good). Both were seen measuring Remote (remote-arrow-frames),
+   * and the stall's thread dump showed our listener still in accept after
+   * the sender had finished.
+   */
+  def loopback(): ServerSocket = ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress)
+
   def trades(n: Int, from: Int = 0): List[Trade] = List.tabulate(n)(i =>
     Trade((from + i).toLong, Vector("AAPL", "MSFT", "чай")(i % 3), 100.0 + i * 0.25, i % 50, Option.when(i % 4 == 0)(s"n$i")))
 
@@ -21,11 +33,11 @@ class TestRemote extends munit.FunSuite {
     val (local, remote) = xs.splitAt(400)
     val agg = Aggregator.variance[Double]
 
-    val server = ServerSocket(0)
+    val server = RemoteModel.loopback()
     val received = Remote.listen[Double](server)
 
     // "the other node": ships its part in chunks of 64
-    val sender = Remote.connect[Double]("localhost", server.getLocalPort)
+    val sender = Remote.connect[Double](server.getInetAddress.getHostAddress, server.getLocalPort)
     remote.grouped(64).foreach(g =>
       sender.send(okay.ChunkBuf.of(g)))
     sender.close()
@@ -57,9 +69,9 @@ class TestRemote extends munit.FunSuite {
       (RemoteFormat.Cbor.cbor, RemoteCompression.Zstd.zstd), (RemoteFormat.Json.json, RemoteCompression.none))
   do
     test(s"records cross as ${fmt.name}${cmp.codec.fold("")(c => "+" + c.name)}, to a listener that was told nothing") {
-      val server = ServerSocket(0)
+      val server = RemoteModel.loopback()
       val received = Remote.listen[Trade](server)
-      val sender = Remote.connect[Trade]("localhost", server.getLocalPort)(using summon, fmt, cmp)
+      val sender = Remote.connect[Trade](server.getInetAddress.getHostAddress, server.getLocalPort)(using summon, fmt, cmp)
       val sent = trades(500)
       sent.grouped(128).foreach(g => sender.send(okay.ChunkBuf.of(g)))
       sender.close()
@@ -68,9 +80,9 @@ class TestRemote extends munit.FunSuite {
     }
 
   test("a damaged frame is dropped; the stream lives; close drains") {
-    val server = ServerSocket(0)
+    val server = RemoteModel.loopback()
     val received = Remote.listen[Long](server)
-    val sock = java.net.Socket("localhost", server.getLocalPort)
+    val sock = java.net.Socket(server.getInetAddress.getHostAddress, server.getLocalPort)
     val out = java.io.DataOutputStream(sock.getOutputStream)
     def frame(fmt: Char, payload: Array[Byte]): Unit =
       out.writeInt(payload.length + 2); out.writeByte(fmt); out.writeByte(0); out.write(payload)

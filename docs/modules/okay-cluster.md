@@ -15,8 +15,10 @@ both compile.
 
 **Nothing new is invented here** — that is the design. A remote
 channel is a `Channel` with a socket underneath; the shipping unit is
-the `Chunk`, as everywhere; the wire format is the codec (JSON lines
-now, CBOR when its streaming lands on the wire); the cross-node merge
+the `Chunk`, as everywhere; the wire format is a frame per chunk, ARROW
+by default (a chunk is a batch of records, and measured, Arrow crossed a
+socket 2.3–3.8x faster than JSON or CBOR, and smaller), CBOR or JSON by a
+given, compressed by another (see [okay-arrow](okay-arrow.md)); the cross-node merge
 contract is the `Aggregator` triple `(zero, seqOp, combOp)`; the
 fault model is the P2 one — a pure chunked source is a VALUE, so a
 chunk in hand is lineage, and recompute is just handing it to someone
@@ -490,9 +492,11 @@ val wire: Cluster.Worker[Double, Double] = c =>
 
 | member | signature | meaning |
 |---|---|---|
-| `Remote.listen` | `(ServerSocket)(using Schema[List[A]], Scheduler) => Channel[Chunk[A]]` | accepted chunks land in a local channel |
-| `Remote.connect` | `(host, port)(using Schema[List[A]]) => Sender[A]` | the sending end |
-| `Remote.Sender` | `send(Chunk[A])`, `close()` | one JSON frame per line |
+| `Remote.listen` | `(ServerSocket)(using Schema[A], Scheduler) => Channel[Chunk[A]]` | accepted chunks land in a local channel, whatever format the sender chose (each frame says) |
+| `Remote.connect` | `(host, port)(using Schema[A], RemoteFormat, RemoteCompression) => Sender[A]` | the sending end |
+| `Remote.Sender` | `send(Chunk[A])`, `close()` | one frame per chunk: a length, a format tag, a compression tag, the payload |
+| `RemoteFormat` | `arrow` (the default), `Cbor.given`, `Json.given` | how a chunk is encoded |
+| `RemoteCompression` | `none` (the default), `Lz4.given`, `Zstd.given` | Arrow compresses per buffer, CBOR and JSON the whole payload |
 | `Cluster.Worker[A, Acc]` | `Chunk[A] => Acc` | the work seam; a dead worker throws |
 | `Cluster.distribute` | `(source, workers)(zero, merge) => Acc` | round-robin over the living, per-chunk recompute |
 | `Flow.slices` | `(IndexedSeq[A], parts, chunk) => Flow[A]` | contiguous slices of the input's own ORDER |

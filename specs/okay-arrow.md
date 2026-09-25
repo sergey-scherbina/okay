@@ -295,7 +295,7 @@ dialect lands" in its own header. Everything else sends one value at a
 time (a partial per partition in `Wire`, a Raft image, a span, a journal
 record), where Arrow has nothing to add.
 
-- [ ] `Remote` frames: a 4-byte length, a 1-byte format tag, the
+- [x] `Remote` frames: a 4-byte length, a 1-byte format tag, the
       payload. The RECEIVER reads the tag, so it needs no configuration
       and one listener takes any sender. `given RemoteFormat`:
       - `Arrow` (the default: a chunk is a batch of records, and
@@ -308,6 +308,32 @@ record), where Arrow has nothing to add.
       frame). The listener's contract is unchanged: a damaged frame is
       dropped and the stream lives, the wire closing closes the channel
       after the buffered chunks.
-- [ ] The number: the same chunks through a real socket in each format,
+- [x] The number: the same chunks through a real socket in each format,
       bytes on the wire and time end to end.
+
+- Stage 7b (remote-arrow-frames, 2026-09-25): `Remote` sends tagged
+  binary frames, `RemoteFormat` (Arrow by default, CBOR, JSON) and
+  `RemoteCompression` (none, LZ4, ZSTD). The listener reads the tags.
+  `TestRemote` (8, Live: every format and compression to a listener told
+  nothing; a damaged frame, a stranger's payload and an unknown tag all
+  dropped with the stream living). `MeasureRemote` (Live, medians of
+  five, 200 000 trade records, load 24–31):
+
+  | chunk | JSON | CBOR | Arrow | CBOR+ZSTD | Arrow+ZSTD | Arrow+LZ4 |
+  |---|---|---|---|---|---|---|
+  | 1 000 | 136 ms, 13.7 MB | 182 ms, 9.8 MB | 59 ms, 7.1 MB | 214 ms, 1.46 MB | 159 ms, 1.13 MB | 76 ms, 3.1 MB |
+  | 10 000 | 137 ms | 188 ms | 50 ms, 6.9 MB | 216 ms, 1.49 MB | 141 ms, 0.95 MB | 58 ms, 2.9 MB |
+
+  - FOUND and FIXED: CBOR's and JSON's `List` decoders were QUADRATIC
+    (`xs :+ _` on a List, one copy per element). Before the fix, JSON took
+    13.3 s and CBOR 7.0 s for chunks of 10 000. `TestListDecodeLinear`
+    (okay-codec) was watched red at 463x a Vector's read, and green after
+    (prepend and reverse, as Edn already did).
+  - FOUND: "localhost" can reach a stranger on this box, over IPv6 on
+    the same ephemeral port number. That gave a Broken pipe once and a
+    stall once. The in-JVM thread dump showed our listener still in
+    `accept` after the sender had finished; the gate's own dump is of
+    sbt, not of the forked JVM. The tests now bind and connect to the
+    loopback address. The same shape in three other suites is filed as
+    `localhost-connects-to-a-stranger`.
 

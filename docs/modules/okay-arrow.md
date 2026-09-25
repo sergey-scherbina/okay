@@ -35,6 +35,14 @@ columns (`FrameFormat`, docs/python-and-r.md).
 | `Rows`, `encode`/`decode` | typed rows of any `Schema[A]` to a table, and back, through either implementation |
 | `ApacheArrow` | JVM only: the same facade over Apache Arrow Java 19, plus `toRoot`/`fromRoot` to and from a `VectorSchemaRoot`; Arrow Java is an OPTIONAL dependency you add |
 
+## Where okay uses it
+
+okay-cluster's `Remote` sends each chunk of records between nodes as an
+Arrow stream by default (okay-arrow stage 7b). On 200 000 records it
+crossed a loopback socket in 50–59 ms, where JSON took 136 ms and CBOR
+182 ms, with 7 MB on the wire against 13.7 and 9.8. With ZSTD it was
+smaller than CBOR with ZSTD, and faster.
+
 ## Files
 
 `writeFile` writes an Arrow IPC FILE: the stream, then a footer that names
