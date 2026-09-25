@@ -213,10 +213,19 @@ object ZstdEncoder:
     1027, 2051, 4099, 8195, 16387, 32771, 65539)
   private val MlBits = Array.fill(32)(0) ++ Array(1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
 
-  private def code(v: Int, base: Array[Int]): Int =
+  /** a length's code: a table for the small ones, the high bit beyond
+   * (as zstd's LL_Code/ML_Code do); the linear search from the top this
+   * replaces was 7% of compression (zstd-speed) */
+  private def search(v: Int, base: Array[Int]): Int =
     var c = base.length - 1
     while base(c) > v do c -= 1
     c
+  private val LlSmall = Array.tabulate(64)(search(_, LlBase))
+  private val MlSmall = Array.tabulate(128)(v => search(v + 3, MlBase))
+  private def llCode(ll: Int): Int = if ll < 64 then LlSmall(ll) else (31 - Integer.numberOfLeadingZeros(ll)) + 19
+  private def mlCode(ml: Int): Int =
+    val m = ml - 3
+    if m < 128 then MlSmall(m) else (31 - Integer.numberOfLeadingZeros(m)) + 36
 
   private def sequences(seqs: Seqs, out: Out): Unit =
     val n = seqs.n
@@ -224,8 +233,9 @@ object ZstdEncoder:
     else if n < 0x7f00 then { out.byte((n >>> 8) + 128); out.byte(n) }
     else { out.byte(255); out.byte(n - 0x7f00); out.byte((n - 0x7f00) >>> 8) }
     if n == 0 then return
-    val llc = Array.tabulate(n)(k => code(seqs.ll(k), LlBase))
-    val mlc = Array.tabulate(n)(k => code(seqs.ml(k) , MlBase))
+    val llc = new Array[Int](n); val mlc = new Array[Int](n)
+    var q = 0
+    while q < n do { llc(q) = llCode(seqs.ll(q)); mlc(q) = mlCode(seqs.ml(q)); q += 1 }
     val ofc = Array.tabulate(n)(k => 31 - Integer.numberOfLeadingZeros(seqs.ov(k)))
     // a table per stream: its own when that is shorter than the predefined one
     val (llMode, llT, llDesc) = FseEncoder.choose(llc, 35, 9, FseEncoder.LlDefaultNorm, 6)

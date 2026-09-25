@@ -31,10 +31,19 @@ private[compress] object Mem:
   /** `len` bytes from `src[from]` to `dst[at]`, where a match may overlap
    * its own output: eight at a time when the distance allows it */
   def copyMatch(dst: Array[Byte], ref: Int, at: Int, len: Int): Unit =
-    if at - ref >= 8 then
+    val offset = at - ref
+    if offset >= 8 then
       var k = 0
       while k + 8 <= len do { put64(dst, at + k, i64(dst, ref + k)); k += 8 }
       while k < len do { dst(at + k) = dst(ref + k); k += 1 }
     else
+      // a short offset repeats a pattern of `offset` bytes: once a whole
+      // number of periods reaching 8 bytes is written (p), copying from p
+      // back is the same pattern and eight bytes at a time are safe —
+      // the byte loop here was 39% of ZSTD decompression (zstd-speed)
+      val p = offset * ((8 + offset - 1) / offset)
+      val head = math.min(len, p)
       var k = 0
-      while k < len do { dst(at + k) = dst(ref + k); k += 1 }
+      while k < head do { dst(at + k) = dst(ref + k); k += 1 }
+      while k + 8 <= len do { put64(dst, at + k, i64(dst, at + k - p)); k += 8 }
+      while k < len do { dst(at + k) = dst(at + k - p); k += 1 }

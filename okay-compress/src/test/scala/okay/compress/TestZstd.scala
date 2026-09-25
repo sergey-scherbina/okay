@@ -30,3 +30,12 @@ class TestZstd extends munit.FunSuite:
       val back = if codec == "zstd" then Zstd.decompress(frame) else Lz4Frame.decompress(frame)
       assertEquals(back.toVector, Fixtures.input(name).toVector, s"$codec $name")
   }
+
+  test("short-offset matches (a period under 8 bytes) decode exactly, at every period and length") {
+    for period <- 1 to 9; len <- Vector(3, 7, 8, 9, 15, 16, 17, 100, 1000) do
+      val pattern = Array.tabulate(period)(i => ('a' + i).toByte)
+      val b = Array.tabulate(period * 3 + len)(i => pattern(i % period)) ++ "tail!".getBytes("UTF-8")
+      assertEquals(Zstd.decompress(Zstd.compress(b)).toVector, b.toVector, s"period $period, length $len")
+      assertEquals(Lz4Frame.decompress(Lz4Frame.compress(b)).toVector, b.toVector, s"LZ4, period $period, length $len")
+  }
+
