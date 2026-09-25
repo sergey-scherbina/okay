@@ -30,3 +30,10 @@ to 25.
   jdk-compatibility.md and java-gatherers.md updated where they
   named the script. specs/cont-stack.md's `jdk22/` reader (the FFM
   stack pointer) is the next user of `versioned`.
+
+**Re-landed** after the runner reverted the first landing (565a98465
+→ 6a12b9802, record: ci-revert-mrjar-jdk25-ci-gap): the whole-build
+red was `okay.ops.TestSignals`' drain timing at load 21, in a module
+this lane never touched — the runner reverts the one landing in a red
+range without a bisect, by design. That suite is `Live` since
+testsignals-live (4d7528956); this lane is re-landed unchanged.
