@@ -147,15 +147,10 @@ deleted.
         under the method's one existing claim.
       `Gen`'s loop (a `new Free.Bind`) and `package.go` (a `LazyList`)
       are deferred, not recursion.
-- [ ] Stage 1c — `Cont` in BOTH cores (operator, 2026-09-25: "a
-      trampoline inside, measured first"). 20 000 shifts in a row, each
-      body calling its `k`, overflow a 128 KB stack in okay AND okay2.
-      A direct-style body gets `k`'s VALUE, so `k` runs the rest of the
-      program on the stack. The plan: when the body only returns
-      `k(v)`, run that through a trampoline. When the body USES the
-      answer (`k(1) + k(10)`), the depth is the nesting of such shifts,
-      and that is written down as the bound. Measured against the
-      current `Cont` lanes before it lands.
+- [ ] Stage 1c — `Cont` in both cores: its own spec, specs/cont-stack.md
+      (compile-time trampolining of what the macro can see, a room
+      carried as a value, a fresh stack for opaque bodies; measured and
+      not yet landed).
 - [ ] Stage 2 — codecs: okay-codec (78) and okay2-codec (15). Json is
       already `Cont`-trampolined; the other formats, Schema walks,
       Compat, Stubs and Policy are not.
