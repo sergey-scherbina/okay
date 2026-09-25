@@ -1,0 +1,7 @@
+feature/traced-route-named 2026-09-25T13:02:40Z
+agent: claude-code (okay-watch session)
+heartbeat: 2026-09-25T13:02:40Z
+status: in-progress
+done-so-far: worktree created
+next: Tracer.to, annotate/fail; Traced.route(name); Traced.context; tests
+touches: okay-obs/src/main/scala/okay/obs/Obs.scala, okay-obs/src/main/scala-jvm/okay/obs/Traced.scala, okay-obs tests, docs
