@@ -1,0 +1,6 @@
+feature/foreign-map-reduce 2026-09-25T14:36:55Z
+agent: claude-fable-5-1
+heartbeat: 2026-09-25T14:36:55Z
+status: in-progress
+done-so-far: design read: Flow.Local is the seam; okay-foreign-workflow the module precedent
+next: spec specs/foreign-map-reduce.md, then okay-foreign-cluster with PyStage/RStage
