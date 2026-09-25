@@ -3103,7 +3103,10 @@ lazy val okayOnnx = (project in file("okay-onnx"))
   .settings(
     name := "okay-onnx",
     libraryDependencies ++= Seq(
-      "com.microsoft.onnxruntime" % "onnxruntime" % "1.20.0",
+      // 1.30, not 1.20 (sprint onnx-runtime-130): 1.20 mis-executes a
+      // per-channel int8 MatMul — measured by okay-chat 2026-09-25, and
+      // held by TestRuntimeVersion, which reads the LOADED native version
+      "com.microsoft.onnxruntime" % "onnxruntime" % "1.30.0",
       "ai.djl.huggingface" % "tokenizers" % "0.36.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
