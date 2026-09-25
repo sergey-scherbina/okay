@@ -13,13 +13,7 @@ class TestOkayArrow extends munit.FunSuite:
     "nothing" -> Column.Nulls(4)),
     Vector("okay" -> """{"id":7,"op":"frame"}"""))
 
-  /** a column as comparable cells: None for a null */
-  private def cells(c: Column): Vector[Option[Any]] = c match
-    case Column.Int64(v, ok) => v.indices.map(i => Option.when(ok(i))(v(i))).toVector
-    case Column.Float64(v, ok) => v.indices.map(i => Option.when(ok(i))(java.lang.Double.doubleToRawLongBits(v(i)))).toVector
-    case Column.Utf8(v, ok) => v.indices.map(i => Option.when(ok(i))(v(i))).toVector
-    case Column.Bool(v, ok) => v.indices.map(i => Option.when(ok(i))(v(i))).toVector
-    case Column.Nulls(n) => Vector.fill(n)(None)
+  private def cells(c: Column): Vector[Option[Any]] = Tables.cells(c)
 
   private def same(a: Table, b: Table): Unit =
     assertEquals(b.metadata, a.metadata)
@@ -28,6 +22,33 @@ class TestOkayArrow extends munit.FunSuite:
       assertEquals(y.getClass, x.getClass, n)
       assertEquals(cells(y), cells(x), n)
     }
+
+  test("every kind of column round-trips, nested lists and structs included") {
+    assertEquals(Tables.same(Tables.everything, OkayArrow.read(OkayArrow.write(Tables.everything))), None)
+  }
+
+  test("the all-types stream cut short, at any byte, is refused by name") {
+    val bytes = OkayArrow.write(Tables.everything)
+    val accepted = (1 until bytes.length by 7).filter(n => scala.util.Try(OkayArrow.read(bytes.dropRight(n))).isSuccess)
+    assertEquals(accepted.toVector, Vector.empty)
+  }
+
+  test("a take gathers rows, nested ones included, and nulls where keep says") {
+    val t = Tables.everything
+    val picked = t.cols.map((n, c) => n -> c.take(Array(2, 0, 2), Array(true, true, false)))
+    val back = OkayArrow.read(OkayArrow.write(Table(picked, t.metadata)))
+    assertEquals(Tables.same(Table(picked, t.metadata), back), None)
+    picked.collectFirst { case ("tags", c) => c } match
+      case Some(c) => assertEquals(Tables.cells(c), Vector(Some(Vector(Some("c"))), Some(Vector(Some("a"), None)), None))
+      case None => fail("no tags")
+  }
+
+  test("concat joins batches of every kind, lists by shifted offsets") {
+    val t = Tables.everything
+    val twice = t.cols.map((n, c) => n -> Column.concat(Vector(c, c)))
+    assertEquals(twice.map(_._2.length).distinct, Vector(8))
+    assertEquals(Tables.same(Table(twice, t.metadata), OkayArrow.read(OkayArrow.write(Table(twice, t.metadata)))), None)
+  }
 
   test("a table round-trips: every column type, nulls, NaN beside a null, text beyond ASCII, the metadata") {
     val bytes = OkayArrow.write(table)

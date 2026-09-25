@@ -69,14 +69,34 @@ object ArrowFrames:
     case Dict(_) => "dicts"
     case Ref(_) => "handles"
 
+  /** a table as a frame. The shim normalises an answer to the five columns
+   * the JSON frame has always had; the model's other lossless kinds map
+   * too (narrow ints, float32, bytes, lists, structs), and a kind PyValue
+   * cannot say (a decimal, a date, a timestamp, a duration) is refused by
+   * name rather than flattened to its raw number */
   def frame(t: Table): PyFrame =
-    PyFrame(t.cols.map { (name, c) =>
-      def cells[A](values: Array[A], ok: Array[Boolean])(cell: A => PyValue): Vector[PyValue] =
-        Vector.tabulate(values.length)(i => if ok(i) then cell(values(i)) else PyNone)
-      name -> (c match
-        case Column.Int64(v, ok) => cells(v, ok)(I64(_))
-        case Column.Float64(v, ok) => cells(v, ok)(F64(_))
-        case Column.Utf8(v, ok) => cells(v, ok)(Str(_))
-        case Column.Bool(v, ok) => cells(v, ok)(Bool(_))
-        case Column.Nulls(n) => Vector.fill(n)(PyNone))
-    })
+    PyFrame(t.cols.map((name, c) => name -> cells(c, name)))
+
+  private def cells(c: Column, name: String): Vector[PyValue] =
+    def each[A](values: Array[A], ok: Array[Boolean])(cell: A => PyValue): Vector[PyValue] =
+      Vector.tabulate(values.length)(i => if ok(i) then cell(values(i)) else PyNone)
+    c match
+      case Column.Int64(v, ok) => each(v, ok)(I64(_))
+      case Column.Float64(v, ok) => each(v, ok)(F64(_))
+      case Column.Utf8(v, ok) => each(v, ok)(Str(_))
+      case Column.Bool(v, ok) => each(v, ok)(Bool(_))
+      case Column.Nulls(n) => Vector.fill(n)(PyNone)
+      case Column.Ints(64, false, v, ok) =>
+        each(v, ok)(x => if x >= 0 then I64(x) else BigI(BigInt(java.lang.Long.toUnsignedString(x))))
+      case Column.Ints(_, _, v, ok) => each(v, ok)(I64(_))
+      case Column.Float32(v, ok) => each(v, ok)(x => F64(x.toDouble))
+      case Column.Binary(v, ok) => each(v, ok)(Bytes(_))
+      case Column.FixedBinary(_, v, ok) => each(v, ok)(Bytes(_))
+      case Column.ListOf(offs, child, ok) =>
+        val inner = cells(child, name)
+        Vector.tabulate(offs.length - 1)(i => if ok(i) then Arr(inner.slice(offs(i), offs(i + 1))) else PyNone)
+      case Column.Struct(fs, ok) =>
+        val inner = fs.map((n, f) => n -> cells(f, s"$name.$n"))
+        Vector.tabulate(ok.length)(i => if ok(i) then Dict(inner.map((n, v) => n -> v(i))) else PyNone)
+      case other =>
+        throw IllegalStateException(s"column '$name' is Arrow ${other.getClass.getSimpleName}, which a PyFrame cannot say")

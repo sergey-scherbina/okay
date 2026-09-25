@@ -12,13 +12,7 @@ class TestApacheArrow extends munit.FunSuite:
     "nothing" -> Column.Nulls(4)),
     Vector("okay" -> """{"id":7}"""))
 
-  /** a column as comparable cells: None for a null */
-  private def cells(c: Column): Vector[Option[Any]] = c match
-    case Column.Int64(v, ok) => v.indices.map(i => Option.when(ok(i))(v(i))).toVector
-    case Column.Float64(v, ok) => v.indices.map(i => Option.when(ok(i))(java.lang.Double.doubleToRawLongBits(v(i)))).toVector
-    case Column.Utf8(v, ok) => v.indices.map(i => Option.when(ok(i))(v(i))).toVector
-    case Column.Bool(v, ok) => v.indices.map(i => Option.when(ok(i))(v(i))).toVector
-    case Column.Nulls(n) => Vector.fill(n)(None)
+  private def cells(c: Column): Vector[Option[Any]] = Tables.cells(c)
 
   private def same(a: Table, b: Table): Unit =
     assertEquals(b.metadata, a.metadata)
@@ -60,3 +54,37 @@ class TestApacheArrow extends munit.FunSuite:
       && w.contains("okay.arrow.OkayArrow")), why.toString)
     assertEquals(ApacheArrow.missing(), None)
   }
+
+  test("every kind of column: each implementation reads the other's stream") {
+    val t = Tables.everything
+    assertEquals(Tables.same(t, ApacheArrow.read(ApacheArrow.write(t))), None)
+    assertEquals(Tables.same(t, ApacheArrow.read(OkayArrow.write(t))), None)
+    assertEquals(Tables.same(t, OkayArrow.read(ApacheArrow.write(t))), None)
+  }
+
+  test("a dictionary-encoded column (written by Arrow Java) reads as its values") {
+    import org.apache.arrow.vector.{IntVector, VarCharVector, VectorSchemaRoot}
+    import org.apache.arrow.vector.dictionary.{Dictionary, DictionaryEncoder, DictionaryProvider}
+    import org.apache.arrow.vector.types.pojo.{ArrowType, DictionaryEncoding}
+    val alloc = org.apache.arrow.memory.RootAllocator()
+    try
+      val values = VarCharVector("dict", alloc); values.allocateNew()
+      Vector("kyiv", "lviv").zipWithIndex.foreach((s, i) => values.setSafe(i, s.getBytes("UTF-8"))); values.setValueCount(2)
+      val dict = Dictionary(values, DictionaryEncoding(1L, false, ArrowType.Int(32, true)))
+      val raw = VarCharVector("city", alloc); raw.allocateNew()
+      Vector("lviv", "kyiv", "lviv").zipWithIndex.foreach((s, i) => raw.setSafe(i, s.getBytes("UTF-8"))); raw.setNull(3); raw.setValueCount(4)
+      val root = DictionaryEncoder.encode(raw, dict) match
+        case encoded: IntVector => VectorSchemaRoot.of(encoded)
+        case other => fail(s"int32 indices, not ${other.getClass}")
+      val provider = DictionaryProvider.MapDictionaryProvider(dict)
+      val out = java.io.ByteArrayOutputStream()
+      val w = org.apache.arrow.vector.ipc.ArrowStreamWriter(root, provider, java.nio.channels.Channels.newChannel(out))
+      w.start(); w.writeBatch(); w.end(); w.close()
+      val expected = Vector(Some("lviv"), Some("kyiv"), Some("lviv"), None)
+      for codec <- Vector(OkayArrow, ApacheArrow) do
+        val t = codec.read(out.toByteArray)
+        assertEquals(t.cols.map(c => Tables.cells(c._2)), Vector(expected), codec.name)
+      root.close(); raw.close(); values.close()
+    finally alloc.close()
+  }
+

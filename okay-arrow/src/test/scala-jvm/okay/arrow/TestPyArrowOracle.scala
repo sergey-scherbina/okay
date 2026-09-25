@@ -1,0 +1,87 @@
+package okay.arrow
+
+/**
+ * pyarrow as the independent oracle for every type (stage 4). A python
+ * with pyarrow: `OKAY_PYARROW_PYTHON`, else `python3` when it has it;
+ * Live-tagged, skipped without one.
+ */
+class TestPyArrowOracle extends munit.FunSuite:
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
+  private lazy val python: Option[String] =
+    sys.env.get("OKAY_PYARROW_PYTHON").orElse(Some("python3")).filter { py =>
+      scala.util.Try(ProcessBuilder(py, "-c", "import pyarrow").start().waitFor() == 0).getOrElse(false)
+    }
+  override def munitIgnore: Boolean = python.isEmpty
+
+  /** run a script with a stream file as argv[1] (read from, or written to) */
+  private def run(script: String, file: java.nio.file.Path): String =
+    val p = ProcessBuilder(python.get, "-c", script, file.toString).redirectErrorStream(true).start()
+    val out = String(p.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim
+    if p.waitFor() != 0 then fail(s"python: $out")
+    out
+
+  private def file(bytes: Array[Byte] = Array.emptyByteArray) =
+    val f = java.nio.file.Files.createTempFile("okay-arrow", ".arrows")
+    java.nio.file.Files.write(f, bytes)
+
+  test("pyarrow validates every type OkayArrow writes, names them, and its own writer's stream reads back the same") {
+    val f = file(OkayArrow.write(Tables.everything))
+    val types = run("""
+import sys, pyarrow as pa, pyarrow.ipc as ipc
+t = ipc.open_stream(open(sys.argv[1], "rb").read()).read_all()
+t.validate(full=True)
+with ipc.new_stream(sys.argv[1], t.schema) as w: w.write_table(t)
+print("|".join(str(f.type) for f in t.schema))
+""", f)
+    assertEquals(types.split('|').toVector, Vector("int64", "double", "string", "bool", "null", "int8", "uint8", "int16",
+      "uint16", "int32", "uint32", "uint64", "float", "binary", "fixed_size_binary[2]", "decimal128(10, 2)",
+      "decimal128(38, 0)", "date32[day]", "date64[ms]", "timestamp[us, tz=Europe/Kyiv]", "timestamp[ns]",
+      "duration[ms]", "list<item: string>", "list<item: list<item: int64>>",
+      "struct<name: string, age: int32, tags: list<item: int64>>"))
+    assertEquals(Tables.same(Tables.everything, OkayArrow.read(java.nio.file.Files.readAllBytes(f))), None)
+  }
+
+  test("OkayArrow reads what only pyarrow makes: large forms, dictionaries, float16, several batches, slices") {
+    val f = file()
+    val _ = run("""
+import sys, struct, pyarrow as pa, pyarrow.ipc as ipc
+big = pa.table({
+  "ls": pa.array(["a", None, "ü", "z"], pa.large_string()),
+  "lb": pa.array([b"x", b"", None, b"yz"], pa.large_binary()),
+  "ll": pa.array([[1], [], None, [2, 3]], pa.large_list(pa.int64())),
+  "dict": pa.array(["kyiv", "lviv", None, "kyiv"]).dictionary_encode(),
+  # float16 from its raw bytes: no numpy needed
+  "half": pa.Array.from_buffers(pa.float16(), 4, [None, pa.py_buffer(struct.pack("<4e", 1.5, -2.0, 0.0, 65504.0))]),
+})
+# sliced: offsets that do not start at 0 in the batch pyarrow writes
+sl = pa.table({"s": pa.array(["drop", "k1", "k2", "k3", "k4"]).slice(1),
+               "l": pa.array([[0], [1, 2], [3], [], [4]]).slice(1)})
+with ipc.new_stream(sys.argv[1], big.schema) as w:
+    w.write_table(big.slice(0, 2)); w.write_table(big.slice(2))
+open(sys.argv[1] + ".sliced", "wb").close()
+with ipc.new_stream(sys.argv[1] + ".sliced", sl.schema) as w: w.write_table(sl)
+""", f)
+    val t = OkayArrow.read(java.nio.file.Files.readAllBytes(f))
+    assertEquals(t.cols.map((n, c) => n -> Tables.cells(c)), Vector(
+      "ls" -> Vector(Some("a"), None, Some("ü"), Some("z")),
+      "lb" -> Vector(Some(Vector[Byte]('x')), Some(Vector.empty[Byte]), None, Some(Vector[Byte]('y', 'z'))),
+      "ll" -> Vector(Some(Vector(Some(1L))), Some(Vector()), None, Some(Vector(Some(2L), Some(3L)))),
+      "dict" -> Vector(Some("kyiv"), Some("lviv"), None, Some("kyiv")),
+      "half" -> Vector(1.5f, -2.0f, 0.0f, 65504.0f).map(x => Some(java.lang.Float.floatToRawIntBits(x)))))
+    val sliced = OkayArrow.read(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(f.toString + ".sliced")))
+    assertEquals(sliced.cols.map((n, c) => n -> Tables.cells(c)), Vector(
+      "s" -> Vector(Some("k1"), Some("k2"), Some("k3"), Some("k4")),
+      "l" -> Vector(Some(Vector(Some(1L), Some(2L))), Some(Vector(Some(3L))), Some(Vector()), Some(Vector(Some(4L))))))
+  }
+
+  test("a type outside the model is refused by name") {
+    val f = file()
+    val _ = run("""
+import sys, pyarrow as pa, pyarrow.ipc as ipc
+t = pa.table({"m": pa.array([{"a": 1}], pa.map_(pa.string(), pa.int64()))})
+with ipc.new_stream(sys.argv[1], t.schema) as w: w.write_table(t)
+""", f)
+    val e = intercept[IllegalStateException](OkayArrow.read(java.nio.file.Files.readAllBytes(f)))
+    assert(e.getMessage.contains("column 'm' has Arrow type Map; the model does not hold it"), e.getMessage)
+  }
