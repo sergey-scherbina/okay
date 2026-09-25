@@ -1,6 +1,0 @@
-feature/okay2-at-here 2026-09-25T04:18:03Z
-agent: claude-code
-heartbeat: 2026-09-25T04:18:03Z
-status: in-progress
-done-so-far: claim
-next: At.here as a def macro; compile the core, pass at explicitly where it summons
