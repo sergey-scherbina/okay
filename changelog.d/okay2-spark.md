@@ -18,8 +18,10 @@ constructor pattern (`Sort.By[a, k]`), so the correctly-typed value is
 built first and the whole thing cast once at the boundary — the same
 fix as `Bind(Inject(e), k)` instantiating its answer to `Any`.
 `SparkSchema` (needs `Columns`/`Schema`/`Json`) waited on `okay2-codec`,
-which landed while this was in flight; it did not need naming as a
-separate follow-up.
+which landed while this was in flight — it DID need a follow-up
+(`okay2-spark-columns`: `okay2-codec`'s own `Columns` and `SparkSchema`
+itself, neither of which `okay2-codec`'s own lane had ported), not the
+free ride this entry first assumed.
 
 Two real defects, both found running against actual Spark, neither
 guessable: `aggregateByKey`'s shuffle needs the exact `--add-opens` set

@@ -369,12 +369,12 @@ lazy val okay2Zio: Project = (project in file("okay2-zio"))
  *
  * `SparkInterop.aggregate`/`aggregateByKey`/`toSpark` need only
  * `okay2.Aggregator` (core); `SparkBulk` needs `okay2.stream.Bulk`/
- * `Csv`/`Sort`/`Tables` (already ported). `SparkSchema` (needs
- * `Columns`/`Schema`/`Json`) waits on `okay2-codec`
- * (backlog.d/modules/okay2-codec.md), not yet ported.
+ * `Csv`/`Sort`/`Tables` (already ported); `SparkSchema` needs
+ * `okay2-codec`'s `Columns`/`Schema`/`Json` (landed).
  */
 lazy val okay2Spark: Project = (project in file("okay2-spark"))
-  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Stream.jvm % "compile->compile;test->test")
+  .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Stream.jvm % "compile->compile;test->test",
+    okay2Codec.jvm % "compile->compile;test->test")
   .settings(
     name := "okay2-spark",
     common,
