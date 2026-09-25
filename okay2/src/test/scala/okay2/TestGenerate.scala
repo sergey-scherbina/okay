@@ -87,4 +87,12 @@ class TestGenerate extends munit.FunSuite {
     val first = runP(Produce.streamIn[Writer[String]].uncons(counted(3)))._2
     assertEquals(first.map(_._1), Some(1))
   }
+
+  test("each is stack-safe over a long producer: a production is the loop's own tail call") {
+    val n = 200000
+    var sum = 0L
+    val p = (1 to n).foldLeft(pure[Produce, Unit](()))((m, i) => m.flatMap(_ => produce(i).map(_ => ())))
+    Effects.run(Producer.each[Int, Unit, Pure](p)(sum += _))
+    assertEquals(sum, n.toLong * (n + 1) / 2)
+  }
 }

@@ -2,7 +2,6 @@ package okay2.stream
 
 import okay2._
 import okay2.Free.{Inject, Bind, Return}
-import okay2.Split.split
 import okay2.async._
 
 /**
@@ -27,21 +26,23 @@ object Flush {
   /** map the elements of a flushing stream, leaving its `Flush.now`
    * marks exactly where the producer put them: the row split spelled
    * out, as the core does (`Writer.map`'s rest needs one TypeableK) */
-  def map[A, B](a: Flushing[A])(f: A => B): Flushing[B] = Free.resume(a) match {
-    case Return(x) => Return(x)
-    case Inject(e) => step[A, B](e, (_: Any) => pure[Flush + (Writer[B] + Async), Unit](()), f)
-    case Bind(Inject(e), k) => step[A, B](e, (x: Any) => map(k(x))(f), f)
-    case other => throw new IllegalStateException("resume left a non-head form: " + other)
-  }
-
-  private def step[A, B](e: Any, k: Any => Flushing[B], f: A => B): Flushing[B] =
-    split[Flush, Writer[A] + Async, Any, Flushing[B]](e) { fl =>
-      Inject[Flush, Any](fl).flatMap(k)
-    } { rest =>
-      split[Writer[A], Async, Any, Flushing[B]](rest) {
-        case Writer.Say(w) => Writer.tell(f(w)).flatMap(x => k(x))
-      } { g => Inject[Async, Any](g).flatMap(k) }
+  def map[A, B](a: Flushing[A])(f: A => B): Flushing[B] = {
+    // the two splits as patterns, made once per map (okay2-split-at-rest)
+    val Flushed = Split.at[Flush]
+    val Told = Split.at[Writer[A]]
+    def step(e: Any, k: Any => Flushing[B]): Flushing[B] = e match {
+      case Flushed(fl) => Inject[Flush, Any](fl).flatMap(k)
+      case Told(Writer.Say(w)) => Writer.tell(f(w)).flatMap(x => k(x))
+      case g => Inject[Async, Any](g).flatMap(k)
     }
+    def go(a: Flushing[A]): Flushing[B] = Free.resume(a) match {
+      case Return(x) => Return(x)
+      case Inject(e) => step(e, (_: Any) => pure[Flush + (Writer[B] + Async), Unit](()))
+      case Bind(Inject(e), k) => step(e, (x: Any) => go(k(x)))
+      case other => throw new IllegalStateException("resume left a non-head form: " + other)
+    }
+    go(a)
+  }
 
   implicit final class FlushingOps[A](private val s: Flushing[A]) extends AnyVal {
     /**

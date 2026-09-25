@@ -2,7 +2,6 @@ package okay2
 
 
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * The nondeterminism effect: choose one of several values, and let
@@ -108,14 +107,13 @@ object Logic {
    */
   def msplit[A, F <: Row](m: Free[Choose with F, A]): Option[(A, A ! (Choose + F))] ! F = {
     type P = A ! (Choose + F)
+    val Mine = Split.at[Choose]
     def go(stack: LazyList[P]): Option[(A, P)] ! F = stack match {
       case p #:: rest => Free.resume(p) match {
         case Return(a) => pure[F, Option[(A, P)]](Some((a, alts[A, F](rest))))
         case Inject(e) => go(Bind(Inject[Choose + F, A](e), (x: A) => Return[Choose + F, A](x)) #:: rest)
-        case Bind(Inject(e), k) =>
-          split[Choose, F, Any, Option[(A, P)] ! F](e) { c =>
-            go(c.as.to(LazyList).map(x => k(x)) #::: rest)
-          } { g => Inject[F, Any](g).flatMap(x => go(k(x) #:: rest)) }
+        case Bind(Inject(Mine(c)), k) => go(c.as.to(LazyList).map(x => k(x)) #::: rest)
+        case Bind(Inject(g), k) => Inject[F, Any](g).flatMap(x => go(k(x) #:: rest))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
       case _ => pure[F, Option[(A, P)]](None)   // empty: the search is exhausted

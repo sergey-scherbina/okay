@@ -80,15 +80,12 @@ object ZioInterop {
   /** `toZStream` at the handler's own shape */
   def toZStreamAt[Rz, E, W, A, G <: Row](p: Free[Writer[W] with G, A])(h: IntoZ[G, Rz, E]): ZStream[Rz, E, W] = {
     type P = A ! (Writer[W] + G)
+    val Mine = Split.at[Writer[W]]
     def step(x: P): ZIO[Rz, E, Option[(W, P)]] = Free.resume(x) match {
       case Return(_) => ZIO.none
       case Inject(e) => step(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
-      case Bind(Inject(e), k) =>
-        Split.split[Writer[W], G, Any, ZIO[Rz, E, Option[(W, P)]]](e) {
-          case Writer.Say(w) => ZIO.some((w, k(())))
-        } { g =>
-          h.applyOp[Any](g).flatMap(x => step(k(x)))
-        }
+      case Bind(Inject(Mine(Writer.Say(w))), k) => ZIO.some((w, k(())))
+      case Bind(Inject(g), k) => h.applyOp[Any](g).flatMap(x => step(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
     ZStream.unfoldZIO(p)(step)

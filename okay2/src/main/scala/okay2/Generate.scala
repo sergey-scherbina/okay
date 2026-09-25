@@ -2,7 +2,6 @@ package okay2
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * THE PRODUCER: an operation that IS its answer — okay's
@@ -38,13 +37,13 @@ object Produce {
   /** a producer whose row also holds G: the productions arrive in G */
   def streamIn[G <: Row]: Stream[({ type L[A] = A ! (Produce + G) })#L, G] =
     new Stream[({ type L[A] = A ! (Produce + G) })#L, G] {
+      private[this] val Mine = Split.at[Produce]
       def uncons[A](p: A ! (Produce + G)): Option[(A, A ! (Produce + G))] ! G = Free.resume(p) match {
         case Return(_) => pure[G, Option[(A, A ! (Produce + G))]](None)
         case Inject(e) => uncons(Bind(Inject[Produce + G, A](e), (v: A) => Return[Produce + G, A](v)))
-        case Bind(Inject(e), k) =>
-          split[Produce, G, Any, Option[(A, A ! (Produce + G))] ! G](e) { w =>
-            pure[G, Option[(A, A ! (Produce + G))]](Some((produced[A](w.a), k(w.a))))
-          } { g => Inject[G, Any](g).flatMap(x => uncons(k(x))) }
+        case Bind(Inject(Mine(w)), k) =>
+          pure[G, Option[(A, A ! (Produce + G))]](Some((produced[A](w.a), k(w.a))))
+        case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => uncons(k(x)))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
     }
@@ -60,17 +59,13 @@ object Producer {
 
   /** fold every production, the rest of the row forwarded */
   def fold[W, S, A, G <: Row](p: Free[Produce with G, A])(z: S)(f: (S, W) => S): (S, A) ! G = {
+    val Mine = Split.at[Produce]
     def _loop(acc: S)(x: Free[Produce with G, A]): (S, A) ! G = loop(acc)(x)
     @tailrec def loop(acc: S)(x: Free[Produce with G, A]): (S, A) ! G = Free.resume(x) match {
       case Return(a) => pure[G, (S, A)]((acc, a))
       case Inject(e) => loop(acc)(Bind(Inject[Produce + G, A](e), (v: A) => Return[Produce + G, A](v)))
-      case Bind(Inject(e), k) =>
-        split[Produce, G, Any, Either[(S, Free[Produce with G, A]), (S, A) ! G]](e) { w =>
-          Left((f(acc, Produce.produced[W](w.a)), k(w.a)))
-        } { g => Right(Inject[G, Any](g).flatMap(x => _loop(acc)(k(x)))) } match {
-          case Left((s2, next)) => loop(s2)(next)
-          case Right(done) => done
-        }
+      case Bind(Inject(Mine(w)), k) => loop(f(acc, Produce.produced[W](w.a)))(k(w.a))
+      case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => _loop(acc)(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
     loop(z)(p)
@@ -79,19 +74,15 @@ object Producer {
   /** a fold that STOPS: `done` is asked before each production; a G
    * operation before the stop is performed, one after it never is */
   def foldUntil[W, S, R, A, G <: Row](p: Free[Produce with G, A])(k: FoldUntil[W, S, R]): R ! G = {
+    val Mine = Split.at[Produce]
     def _loop(s: S)(x: Free[Produce with G, A]): R ! G = loop(s)(x)
     @tailrec def loop(s: S)(x: Free[Produce with G, A]): R ! G =
       if (k.done(s)) pure[G, R](k.end(s))
       else Free.resume(x) match {
         case Return(_) => pure[G, R](k.end(s))
         case Inject(e) => loop(s)(Bind(Inject[Produce + G, A](e), (v: A) => Return[Produce + G, A](v)))
-        case Bind(Inject(e), c) =>
-          split[Produce, G, Any, Either[(S, Free[Produce with G, A]), R ! G]](e) { w =>
-            Left((k.add(s, Produce.produced[W](w.a)), c(w.a)))
-          } { g => Right(Inject[G, Any](g).flatMap(x => _loop(s)(c(x)))) } match {
-            case Left((s2, next)) => loop(s2)(next)
-            case Right(done) => done
-          }
+        case Bind(Inject(Mine(w)), c) => loop(k.add(s, Produce.produced[W](w.a)))(c(w.a))
+        case Bind(Inject(g), c) => Inject[G, Any](g).flatMap(x => _loop(s)(c(x)))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
     loop(k.init)(p)
@@ -102,14 +93,19 @@ object Producer {
     fold[IndexedSeq[X], Vector[X], IndexedSeq[X], G](p)(Vector.empty)((acc, c) => acc ++ c).map(_._1)
 
   /** run `f` on every production, the rest of the row forwarded */
-  def each[W, A, G <: Row](p: Free[Produce with G, A])(f: W => Unit): A ! G = Free.resume(p) match {
-    case Return(a) => pure[G, A](a)
-    case Inject(e) => each[W, A, G](Bind(Inject[Produce + G, A](e), (v: A) => Return[Produce + G, A](v)))(f)
-    case Bind(Inject(e), k) =>
-      split[Produce, G, Any, A ! G](e) { w =>
-        f(Produce.produced[W](w.a)); each[W, A, G](k(w.a))(f)
-      } { g => Inject[G, Any](g).flatMap(x => each[W, A, G](k(x))(f)) }
-    case other => throw new IllegalStateException("resume left a non-head form: " + other)
+  def each[W, A, G <: Row](p: Free[Produce with G, A])(f: W => Unit): A ! G = {
+    val Mine = Split.at[Produce]
+    def _loop(x: Free[Produce with G, A]): A ! G = loop(x)
+    // a production is the loop's own tail call: before Split.at it was a
+    // call inside the split's closure, one JVM frame per production
+    @tailrec def loop(x: Free[Produce with G, A]): A ! G = Free.resume(x) match {
+      case Return(a) => pure[G, A](a)
+      case Inject(e) => loop(Bind(Inject[Produce + G, A](e), (v: A) => Return[Produce + G, A](v)))
+      case Bind(Inject(Mine(w)), k) => f(Produce.produced[W](w.a)); loop(k(w.a))
+      case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => _loop(k(x)))
+      case other => throw new IllegalStateException("resume left a non-head form: " + other)
+    }
+    loop(p)
   }
 
   /** a Handler that prints every production and answers it */

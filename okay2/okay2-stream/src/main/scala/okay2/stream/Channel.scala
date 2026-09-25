@@ -6,7 +6,6 @@ import scala.collection.immutable.Queue
 import okay2._
 import okay2.async._
 import okay2.Free.{Bind, Inject, Return}
-import okay2.Split.split
 
 /**
  * ONE immutable value behind ONE compare-and-set: the cell every
@@ -518,17 +517,17 @@ object Channel {
       case Some(ch) => c.send(ch).flatMap(ok => if (ok) rest else pure(()))
       case None => rest
     }
-    def step(e: Any, k: Any => Flushing[A]): Unit ! Async =
-      split[Flush, Writer[A] + Async, Any, Unit ! Async](e) {
-        // the producer's own boundary: emit what is held, however short
-        case Flush.Now => sendIf(takeChunk(buf, size, full = true))(go(k(())))
-      } { rest =>
-        split[Writer[A], Async, Any, Unit ! Async](rest) {
-          case Writer.Say(w) =>
-            buf.modify(b => (b :+ w, () => ()))
-            sendIf(takeChunk(buf, size, full = false))(go(k(())))
-        } { a => Inject[Async, Any](a).flatMap(x => go(k(x))) }
-      }
+    // the two splits as patterns, made once per feed (okay2-split-at-rest)
+    val Flushed = Split.at[Flush]
+    val Told = Split.at[Writer[A]]
+    def step(e: Any, k: Any => Flushing[A]): Unit ! Async = e match {
+      // the producer's own boundary: emit what is held, however short
+      case Flushed(Flush.Now) => sendIf(takeChunk(buf, size, full = true))(go(k(())))
+      case Told(Writer.Say(w)) =>
+        buf.modify(b => (b :+ w, () => ()))
+        sendIf(takeChunk(buf, size, full = false))(go(k(())))
+      case a => Inject[Async, Any](a).flatMap(x => go(k(x)))
+    }
     def go(p: Flushing[A]): Unit ! Async = Free.resume(p) match {
       case Return(_) => sendIf(takeChunk(buf, size, full = true))(pure(()))
       case Inject(e) => step(e, (_: Any) => pure[Flush + (Writer[A] + Async), Unit](()))

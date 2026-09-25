@@ -3,7 +3,6 @@ package okay2.async
 import scala.collection.mutable
 import okay2._
 import okay2.Free.{Return, Inject, Bind}
-import okay2.Split.split
 
 /**
  * ONE STORE FOR MANY FIBRES. `Once.run` threads its cells through its
@@ -91,13 +90,12 @@ final class SharedOnce {
    * of the row forwarded */
   def runIn[A, F <: Row](a: A ! (Once + (Async + F))): A ! (Async + F) = {
     type Rw = Once + (Async + F)
+    val Mine = okay2.Split.at[Once]
     def loop(x: Free[Rw, A]): A ! (Async + F) = Free.resume(x) match {
       case Return(v) => Return(v)
       case Inject(e) => loop(Bind(Inject[Rw, A](e), (v: A) => Return[Rw, A](v)))
-      case Bind(Inject(e), k) =>
-        split[Once, Async + F, Any, A ! (Async + F)](e) { o =>
-          answer(o).plus[F].flatMap(v => loop(k(v)))
-        } { g => Inject[Async + F, Any](g).flatMap(v => loop(k(v))) }
+      case Bind(Inject(Mine(o)), k) => answer(o).plus[F].flatMap(v => loop(k(v)))
+      case Bind(Inject(g), k) => Inject[Async + F, Any](g).flatMap(v => loop(k(v)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
     loop(a)

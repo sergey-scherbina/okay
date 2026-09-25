@@ -3,7 +3,6 @@ package okay2.stream
 import scala.annotation.tailrec
 import okay2._
 import okay2.Free.{Return, Inject, Bind}
-import okay2.Split.{split, splitBoth}
 
 /**
  * The consumer side of a pipeline: await the next element of type V.
@@ -105,40 +104,37 @@ object Pipe {
    */
   def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O, B] = {
     type Res = Take[I] + Writer[O]
+    // the splits as patterns, made once per composition
+    // (okay2-split-at-rest); a stage's row is exactly Take + Writer, so
+    // what is not an await IS a tell (`Split.only`)
+    val UpAwaits = Split.at[Take[I]]
+    val DownAwaits = Split.at[Take[M]]
 
     // drive the upstream until it tells or ends; its own awaits
     // surface as OUR awaits, in CPS to stay a program
     def pull(u: Stage[I, M, A])(cont: (Option[M], Stage[I, M, A]) => B ! Res): B ! Res =
       Free.resume(u) match {
         case Return(_) => cont(None, u)
-        case Inject(e) =>
-          splitBoth[Take[I], Writer[M], A, B ! Res](e) {
-            case Take.Await() => cont(None, u)
-          } {
-            case Writer.Say(w) => cont(Some(w), Return(Writer.loneAnswer[A]))
-          }
-        case Bind(Inject(e), k) =>
-          splitBoth[Take[I], Writer[M], Any, B ! Res](e) {
-            case Take.Await() => Take.await[I].at[Res].flatMap(oi => pull(k(oi))(cont))
-          } {
-            case Writer.Say(w) => cont(Some(w), k(()))
-          }
+        case Inject(UpAwaits(_)) => cont(None, u)
+        case Inject(e) => Split.only[Writer[M], Any](e) match {
+          case Writer.Say(w) => cont(Some(w), Return(Writer.loneAnswer[A]))
+        }
+        case Bind(Inject(UpAwaits(_)), k) => Take.await[I].at[Res].flatMap(oi => pull(k(oi))(cont))
+        case Bind(Inject(e), k) => Split.only[Writer[M], Any](e) match {
+          case Writer.Say(w) => cont(Some(w), k(()))
+        }
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 
     def loop(u: Stage[I, M, A], d: Stage[M, O, B], depth: Int): B ! Res =
       Free.resume(d) match {
         case Return(b) => pure(b)
-        case Inject(e) =>
-          splitBoth[Take[M], Writer[O], B, B ! Res](e) {
-            case Take.Await() => pull(u)((om, _) => pure(om.asInstanceOf[B]))
-          } { o => Free.Inject[Writer[O], B](o).at[Res] }
-        case Bind(Inject(e), k) =>
-          splitBoth[Take[M], Writer[O], Any, B ! Res](e) {
-            case Take.Await() =>
-              if (depth >= PullBudget) pull(u)((om, u2) => pure[Res, Unit](()).flatMap(_ => loop(u2, k(om), 0)))
-              else pull(u)((om, u2) => loop(u2, k(om), depth + 1))
-          } { o => Free.inject[Writer[O], Any](o).at[Res].flatMap(x => loop(u, k(x), 0)) }
+        case Inject(DownAwaits(_)) => pull(u)((om, _) => pure(om.asInstanceOf[B]))
+        case Inject(o) => Free.Inject[Writer[O], B](o).at[Res]
+        case Bind(Inject(DownAwaits(_)), k) =>
+          if (depth >= PullBudget) pull(u)((om, u2) => pure[Res, Unit](()).flatMap(_ => loop(u2, k(om), 0)))
+          else pull(u)((om, u2) => loop(u2, k(om), depth + 1))
+        case Bind(Inject(o), k) => Free.Inject[Writer[O], Any](o).at[Res].flatMap(x => loop(u, k(x), 0))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 
@@ -148,28 +144,25 @@ object Pipe {
   /** run a plain producer through a stage: its tells feed the stage's
    * awaits, the stage's tells are the result stream */
   def into[W, M, A, B](p: Free[Writer[W], A])(s: Stage[W, M, B]): B ! Writer[M] = {
+    val Awaits = Split.at[Take[W]]
     def loop(rest: Free[Writer[W], A], d: Stage[W, M, B], depth: Int): B ! Writer[M] =
       Free.resume(d) match {
         case Return(b) => pure(b)
-        case Inject(e) =>
-          splitBoth[Take[W], Writer[M], B, B ! Writer[M]](e) {
-            case Take.Await() => pure(Writer.uncons(rest).toOption.map(_._1).asInstanceOf[B])
-          } { m => Free.inject[Writer[M], B](m) }
-        case Bind(Inject(e), k) =>
-          splitBoth[Take[W], Writer[M], Any, B ! Writer[M]](e) {
-            case Take.Await() =>
-              if (depth >= PullBudget)
-                pure[Writer[M], Unit](()).flatMap { _ =>
-                  Writer.uncons(rest) match {
-                    case Right((w, r)) => loop(r, k(Some(w)), 0)
-                    case Left(_) => loop(rest, k(None), 0)
-                  }
-                }
-              else Writer.uncons(rest) match {
-                case Right((w, r)) => loop(r, k(Some(w)), depth + 1)
-                case Left(_) => loop(rest, k(None), depth + 1)
+        case Inject(Awaits(_)) => pure(Writer.uncons(rest).toOption.map(_._1).asInstanceOf[B])
+        case Inject(m) => Free.Inject[Writer[M], B](m)
+        case Bind(Inject(Awaits(_)), k) =>
+          if (depth >= PullBudget)
+            pure[Writer[M], Unit](()).flatMap { _ =>
+              Writer.uncons(rest) match {
+                case Right((w, r)) => loop(r, k(Some(w)), 0)
+                case Left(_) => loop(rest, k(None), 0)
               }
-          } { m => Free.inject[Writer[M], Any](m).flatMap(x => loop(rest, k(x), 0)) }
+            }
+          else Writer.uncons(rest) match {
+            case Right((w, r)) => loop(r, k(Some(w)), depth + 1)
+            case Left(_) => loop(rest, k(None), depth + 1)
+          }
+        case Bind(Inject(m), k) => Free.Inject[Writer[M], Any](m).flatMap(x => loop(rest, k(x), 0))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 
@@ -185,42 +178,31 @@ object Pipe {
                                         (down: B ! (Take[M] + (Writer[O] + G))): B ! (Take[I] + (Writer[O] + G)) = {
     type Up = Take[I] + (Writer[M] + G)
     type Res = Take[I] + (Writer[O] + G)
+    val UpAwaits = Split.at[Take[I]]
+    val UpTells = Split.at[Writer[M]]
+    val DownAwaits = Split.at[Take[M]]
 
     def pull(u: Free[Up, A])(cont: (Option[M], A ! Up) => B ! Res): B ! Res =
       Free.resume(u) match {
         case Return(_) => cont(None, u)
-        case Inject(e) =>
-          split[Take[I], Writer[M] + G, A, B ! Res](e) {
-            case Take.Await() => cont(None, u)
-          } { rest =>
-            split[Writer[M], G, A, B ! Res](rest) {
-              case Writer.Say(w) => cont(Some(w), Return(()))
-            } { g => Free.Inject[G, A](g).at[Res].flatMap(_ => cont(None, Return(unreachable[A]))) }
-          }
-        case Bind(Inject(e), k) =>
-          split[Take[I], Writer[M] + G, Any, B ! Res](e) {
-            case Take.Await() => Take.await[I].at[Res].flatMap(oi => pull(k(oi))(cont))
-          } { rest =>
-            split[Writer[M], G, Any, B ! Res](rest) {
-              case Writer.Say(w) => cont(Some(w), k(()))
-            } { g => Free.Inject[G, Any](g).at[Res].flatMap(x => pull(k(x))(cont)) }
-          }
+        case Inject(UpAwaits(_)) => cont(None, u)
+        case Inject(UpTells(Writer.Say(w))) => cont(Some(w), Return(Writer.loneAnswer[A]))
+        case Inject(g) => Free.Inject[G, A](g).at[Res].flatMap(_ => cont(None, Return(unreachable[A])))
+        case Bind(Inject(UpAwaits(_)), k) => Take.await[I].at[Res].flatMap(oi => pull(k(oi))(cont))
+        case Bind(Inject(UpTells(Writer.Say(w))), k) => cont(Some(w), k(()))
+        case Bind(Inject(g), k) => Free.Inject[G, Any](g).at[Res].flatMap(x => pull(k(x))(cont))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 
     def loop(u: Free[Up, A], d: B ! (Take[M] + (Writer[O] + G)), depth: Int): B ! Res =
       Free.resume(d) match {
         case Return(b) => pure(b)
-        case Inject(e) =>
-          split[Take[M], Writer[O] + G, B, B ! Res](e) {
-            case Take.Await() => pull(u)((om, _) => pure(om.asInstanceOf[B]))
-          } { o => Free.Inject[Writer[O] + G, B](o).at[Res] }
-        case Bind(Inject(e), k) =>
-          split[Take[M], Writer[O] + G, Any, B ! Res](e) {
-            case Take.Await() =>
-              if (depth >= PullBudget) pull(u)((om, u2) => pure[Res, Unit](()).flatMap(_ => loop(u2, k(om), 0)))
-              else pull(u)((om, u2) => loop(u2, k(om), depth + 1))
-          } { o => Free.Inject[Writer[O] + G, Any](o).at[Res].flatMap(x => loop(u, k(x), 0)) }
+        case Inject(DownAwaits(_)) => pull(u)((om, _) => pure(om.asInstanceOf[B]))
+        case Inject(o) => Free.Inject[Writer[O] + G, B](o).at[Res]
+        case Bind(Inject(DownAwaits(_)), k) =>
+          if (depth >= PullBudget) pull(u)((om, u2) => pure[Res, Unit](()).flatMap(_ => loop(u2, k(om), 0)))
+          else pull(u)((om, u2) => loop(u2, k(om), depth + 1))
+        case Bind(Inject(o), k) => Free.Inject[Writer[O] + G, Any](o).at[Res].flatMap(x => loop(u, k(x), 0))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 
@@ -234,34 +216,28 @@ object Pipe {
                                   (s: B ! (Take[W] + (Writer[M] + G))): B ! (Writer[M] + G) = {
     type Src = Writer[W] + G
     type Res = Writer[M] + G
+    val Tells = Split.at[Writer[W]]
+    val Awaits = Split.at[Take[W]]
 
     def pull(rest: Free[Src, A])(cont: (Option[W], A ! Src) => B ! Res): B ! Res =
       Free.resume(rest) match {
         case Return(_) => cont(None, rest)
-        case Inject(e) =>
-          split[Writer[W], G, A, B ! Res](e) {
-            case Writer.Say(w) => cont(Some(w), Return(()))
-          } { g => Free.Inject[G, A](g).at[Res].flatMap(_ => cont(None, Return(unreachable[A]))) }
-        case Bind(Inject(e), k) =>
-          split[Writer[W], G, Any, B ! Res](e) {
-            case Writer.Say(w) => cont(Some(w), k(()))
-          } { g => Free.Inject[G, Any](g).at[Res].flatMap(x => pull(k(x))(cont)) }
+        case Inject(Tells(Writer.Say(w))) => cont(Some(w), Return(Writer.loneAnswer[A]))
+        case Inject(g) => Free.Inject[G, A](g).at[Res].flatMap(_ => cont(None, Return(unreachable[A])))
+        case Bind(Inject(Tells(Writer.Say(w))), k) => cont(Some(w), k(()))
+        case Bind(Inject(g), k) => Free.Inject[G, Any](g).at[Res].flatMap(x => pull(k(x))(cont))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 
     def loop(rest: Free[Src, A], d: B ! (Take[W] + (Writer[M] + G)), depth: Int): B ! Res =
       Free.resume(d) match {
         case Return(b) => pure(b)
-        case Inject(e) =>
-          split[Take[W], Writer[M] + G, B, B ! Res](e) {
-            case Take.Await() => pull(rest)((ow, _) => pure(ow.asInstanceOf[B]))
-          } { o => Free.Inject[Writer[M] + G, B](o) }
-        case Bind(Inject(e), k) =>
-          split[Take[W], Writer[M] + G, Any, B ! Res](e) {
-            case Take.Await() =>
-              if (depth >= PullBudget) pull(rest)((ow, r2) => pure[Res, Unit](()).flatMap(_ => loop(r2, k(ow), 0)))
-              else pull(rest)((ow, r2) => loop(r2, k(ow), depth + 1))
-          } { o => Free.Inject[Writer[M] + G, Any](o).flatMap(x => loop(rest, k(x), 0)) }
+        case Inject(Awaits(_)) => pull(rest)((ow, _) => pure(ow.asInstanceOf[B]))
+        case Inject(o) => Free.Inject[Writer[M] + G, B](o)
+        case Bind(Inject(Awaits(_)), k) =>
+          if (depth >= PullBudget) pull(rest)((ow, r2) => pure[Res, Unit](()).flatMap(_ => loop(r2, k(ow), 0)))
+          else pull(rest)((ow, r2) => loop(r2, k(ow), depth + 1))
+        case Bind(Inject(o), k) => Free.Inject[Writer[M] + G, Any](o).flatMap(x => loop(rest, k(x), 0))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
 

@@ -38,15 +38,12 @@ object Fs2Interop {
 
   /** `toFs2` at the handler's own shape */
   def toFs2At[F[_], W, A, G <: Row](p: Free[Writer[W] with G, A])(h: Into[G, F]): Stream[F, W] = {
+    val Mine = Split.at[Writer[W]]
     def go(x: Free[Writer[W] with G, A]): Stream[F, W] = Free.resume(x) match {
       case Return(_) => Stream.empty
       case Inject(e) => go(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
-      case Bind(Inject(e), k) =>
-        Split.split[Writer[W], G, Any, Stream[F, W]](e) {
-          case Writer.Say(w) => Stream.emit(w) ++ go(k(()))
-        } { g =>
-          Stream.eval(h.applyOp[Any](g)).flatMap(x => go(k(x)))
-        }
+      case Bind(Inject(Mine(Writer.Say(w))), k) => Stream.emit(w) ++ go(k(()))
+      case Bind(Inject(g), k) => Stream.eval(h.applyOp[Any](g)).flatMap(x => go(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
     go(p)

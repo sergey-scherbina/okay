@@ -2,7 +2,6 @@ package okay2
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * A stream is codata: defined not by its constructors but by the one
@@ -99,6 +98,7 @@ object Stream {
         Writer.unconsIn[W, A, G](s).map(_.toOption)
 
       override def iterator[W](s: Free[Writer[W] with G, A])(implicit H: Handler[G]): Iterator[W] = new Iterator[W] {
+        private[this] val Mine = Split.at[Writer[W]]
         private var cur: A ! (Writer[W] + G) = s
         private var ready = false
         private var ended = false
@@ -106,15 +106,10 @@ object Stream {
 
         @tailrec private def advance(): Unit = cur match {
           case Return(_) => ended = true
-          case Inject(e) =>
-            split[Writer[W], G, Any, Unit](e) {
-              case Writer.Say(w) => elem = w; ready = true; ended = true
-            } { g => val _ = H.handleOp[Any](g); ended = true }
-          case Bind(Inject(e), k) =>
-            split[Writer[W], G, Any, Unit](e) {
-              case Writer.Say(w) => elem = w; ready = true; cur = k(())
-            } { g => cur = k(H.handleOp[Any](g)) }
-            if (!ready) advance()
+          case Inject(Mine(Writer.Say(w))) => elem = w; ready = true; ended = true
+          case Inject(g) => val _ = H.handleOp[Any](g); ended = true
+          case Bind(Inject(Mine(Writer.Say(w))), k) => elem = w; ready = true; cur = k(())
+          case Bind(Inject(g), k) => cur = k(H.handleOp[Any](g)); advance()
           case _ => cur = Free.resume(cur); advance()
         }
 

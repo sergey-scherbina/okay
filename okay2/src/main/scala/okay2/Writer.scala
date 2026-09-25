@@ -7,7 +7,6 @@ import scala.reflect.ClassTag
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * The Writer effect IS a stream: telling w emits w, and a writer
@@ -136,17 +135,18 @@ object Writer {
   /** the same observation for a writer program performing ARBITRARY
    * effects G: the next told value arrives inside G — the G-operations
    * met on the way are carried into the answer (deferred, not run) */
-  def unconsIn[W, A, G <: Row](a: Free[Writer[W] with G, A])(implicit effect: TypeableK[Writer[W]]): Either[A, (W, A ! (Writer[W] + G))] ! G = Free.resume(a) match {
-    case Return(x) => pure(Left(x))
-    case Inject(e) =>
-      split[Writer[W], G, A, Either[A, (W, A ! (Writer[W] + G))] ! G](e) {
-        case Say(w) => pure(Right((w, Return(()))))
-      } { g => Inject[G, A](g).map(x => Left(x)) }
-    case Bind(Inject(e), k) =>
-      split[Writer[W], G, Any, Either[A, (W, A ! (Writer[W] + G))] ! G](e) {
-        case Say(w) => pure(Right((w, k(()))))
-      } { g => Inject[G, Any](g).flatMap(x => unconsIn[W, A, G](k(x))) }
-    case other => throw new IllegalStateException("resume left a non-head form: " + other)
+  def unconsIn[W, A, G <: Row](a: Free[Writer[W] with G, A])(implicit effect: TypeableK[Writer[W]]): Either[A, (W, A ! (Writer[W] + G))] ! G = {
+    val Mine = Split.at[Writer[W]](effect)
+    def go(a: Free[Writer[W] with G, A]): Either[A, (W, A ! (Writer[W] + G))] ! G = Free.resume(a) match {
+      case Return(x) => pure(Left(x))
+      // a lone Say answers Unit, so the program's A IS Unit here
+      case Inject(Mine(Say(w))) => pure(Right((w, Return(loneAnswer[A]))))
+      case Inject(g) => Inject[G, A](g).map(x => Left(x))
+      case Bind(Inject(Mine(Say(w))), k) => pure(Right((w, k(()))))
+      case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => go(k(x)))
+      case other => throw new IllegalStateException("resume left a non-head form: " + other)
+    }
+    go(a)
   }
 
   /** fold everything told into a Fold algebra, forwarding the rest of
@@ -228,32 +228,30 @@ object Writer {
       if (i >= vs.length) Return(())
       else tell(vs(i)).at[Writer[V] + G].flatMap(_ => tellAll(vs, i + 1))
 
-    Free.resume(a) match {
+    val Mine = Split.at[Writer[W]](effect)
+    def go(a: Free[Writer[W] with G, A]): A ! (Writer[V] + G) = Free.resume(a) match {
       case Return(x) => Return(x)
-      case Inject(e) => expand[W, V, A, G](Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))(f)
-      case Bind(Inject(e), k) =>
-        split[Writer[W], G, Any, A ! (Writer[V] + G)](e) {
-          case Say(w) => tellAll(f(w), 0).flatMap(_ => expand[W, V, A, G](k(()))(f))
-        } { g =>
-          Free.Inject[G, Any](g).at[Writer[V] + G].flatMap(x => expand[W, V, A, G](k(x))(f))
-        }
+      case Inject(e) => go(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
+      case Bind(Inject(Mine(Say(w))), k) => tellAll(f(w), 0).flatMap(_ => go(k(())))
+      case Bind(Inject(g), k) => Free.Inject[G, Any](g).at[Writer[V] + G].flatMap(x => go(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
+    go(a)
   }
 
   /** `map` at the handler's own shape */
-  def mapAt[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => V)(implicit effect: TypeableK[Writer[W]]): A ! (Writer[V] + G) =
-    Free.resume(a) match {
+  def mapAt[W, V, A, G <: Row](a: Free[Writer[W] with G, A])(f: W => V)(implicit effect: TypeableK[Writer[W]]): A ! (Writer[V] + G) = {
+    // the split tests the Writer side (the class of `Say`); G is taken by
+    // exclusion — as a pattern, made once per map (okay2-split-at-rest)
+    val Mine = Split.at[Writer[W]](effect)
+    def go(a: Free[Writer[W] with G, A]): A ! (Writer[V] + G) = Free.resume(a) match {
       case Return(x) => Return(x)
-      case Inject(e) => mapAt[W, V, A, G](Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))(f)
-      case Bind(Inject(e), k) =>
-        // the split tests the Writer side (the class of `Say`); G is taken by exclusion
-        split[Writer[W], G, Any, A ! (Writer[V] + G)](e) {
-          case Say(w) => tell(f(w)).at[Writer[V] + G].flatMap(_ => mapAt[W, V, A, G](k(()))(f))
-        } { g =>
-          // a forwarded operation is re-injected at G and the PROGRAM widened
-          Free.Inject[G, Any](g).at[Writer[V] + G].flatMap(x => mapAt[W, V, A, G](k(x))(f))
-        }
+      case Inject(e) => go(Bind(Inject[Writer[W] + G, A](e), (x: A) => Return[Writer[W] + G, A](x)))
+      case Bind(Inject(Mine(Say(w))), k) => tell(f(w)).at[Writer[V] + G].flatMap(_ => go(k(())))
+      // a forwarded operation is re-injected at G and the PROGRAM widened
+      case Bind(Inject(g), k) => Free.Inject[G, Any](g).at[Writer[V] + G].flatMap(x => go(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
+    go(a)
+  }
 }

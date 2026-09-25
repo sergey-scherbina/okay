@@ -5,7 +5,6 @@ import scala.annotation.{implicitNotFound, tailrec}
 import scala.language.experimental.macros
 import scala.reflect.macros.blackbox
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * Delimited control as an EFFECT — multi-prompt, in the shape of
@@ -634,6 +633,11 @@ object Delim {
       case Segs.K(f, rest) => cut(rest, p).map(c => Cut(Segs.K(f, c.captured), c.outer))
     }
 
+    // the split as a pattern (okay2-split-at-rest): a Delim operation is
+    // an arm of the loop and its continuation the loop's own tail call,
+    // where `split` answered each step through two closures and an Either
+    val Mine = Split.at[Delim]
+
     def _loop(state: Next[F, R]): R ! F = loop(state)
 
     // ONE tail-recursive loop: only a FOREIGN operation (or a forwarded
@@ -647,52 +651,47 @@ object Delim {
         case Segs.Mark(_, rest) => loop(next(pure[Rw, state.A](x), rest))
       }
       case Inject(e) => loop(next(Bind(Inject[Rw, state.A](e), (y: state.A) => Return[Rw, state.A](y)), state.kont))
-      case Bind(Inject(e), k) => step(e, Segs.K(k, state.kont)) match {
-        case Left(answer) => answer
-        case Right(n) => loop(n)
-      }
+      case Bind(Inject(Mine(op)), k) =>
+        val kont: Segs[F, Any, R] = Segs.K(k, state.kont)
+        op match {
+          case pu: Push[r] =>
+            // claim 1: the pushed body answers the prompt's r in this
+            // row; r is an answer of the op, which K carries up
+            val body = pu.body.asInstanceOf[Prog[r]]
+            loop(next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => pure[Rw, Any](a), kont))))
+
+          case cap: Capture[p, a] =>
+            cut(kont, cap.prompt) match {
+              case Some(c) =>
+                val k = (v: a) => {
+                  val seg = reify(c.captured, pure[Rw, Any](v))
+                  if (cap.delimitK) Free.inject[Delim, p](Push(cap.prompt, seg)).plus[F] else seg
+                }
+                // claim 2: f takes a continuation into the prompt's
+                // answer and gives back a program at it, in this row
+                val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
+                // shift/control put the body back under the delimiter;
+                // the 0-variants have consumed it
+                if (cap.underPrompt) loop(next(Free.inject[Delim, p](Push(cap.prompt, body)).plus[F], c.outer))
+                else loop(next(body, c.outer))
+              case None => forward match {
+                case Some(in) =>
+                  // re-emit, and resume this machine with the same
+                  // stack; `kont` is immutable, so a multi-shot outer
+                  // capture may re-enter it as often as it likes
+                  in.substituteContra[({ type L[-x] = Free[x with Row, Any] })#L](Free.inject[Delim, Any](cap))
+                    .flatMap(x => _loop(next(pure[Rw, Any](x), kont)))
+                case None => throw new NoPrompt(cap.at, cap.prompt.label, installed(kont))
+              }
+            }
+        }
+      // a foreign operation suspends the machine: the residual program
+      // performs it and resumes with the same stack
+      case Bind(Inject(g), k) =>
+        val kont: Segs[F, Any, R] = Segs.K(k, state.kont)
+        Inject[F, Any](g).flatMap(x => _loop(next(pure[Rw, Any](x), kont)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
-
-    /** one operation: either the machine is done (Left) or it continues
-     * with a new program and stack (Right) */
-    def step(e: Any, kont: Segs[F, Any, R]): Either[R ! F, Next[F, R]] =
-      split[Delim, F, Any, Either[R ! F, Next[F, R]]](e) {
-        case pu: Push[r] =>
-          // claim 1: the pushed body answers the prompt's r in this
-          // row; r is an answer of the op, which K carries up
-          val body = pu.body.asInstanceOf[Prog[r]]
-          Right(next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => pure[Rw, Any](a), kont))))
-
-        case cap: Capture[p, a] =>
-          cut(kont, cap.prompt) match {
-            case Some(c) =>
-              val k = (v: a) => {
-                val seg = reify(c.captured, pure[Rw, Any](v))
-                if (cap.delimitK) Free.inject[Delim, p](Push(cap.prompt, seg)).plus[F] else seg
-              }
-              // claim 2: f takes a continuation into the prompt's
-              // answer and gives back a program at it, in this row
-              val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
-              // shift/control put the body back under the delimiter;
-              // the 0-variants have consumed it
-              if (cap.underPrompt) Right(next(Free.inject[Delim, p](Push(cap.prompt, body)).plus[F], c.outer))
-              else Right(next(body, c.outer))
-            case None => forward match {
-              case Some(in) =>
-                // re-emit, and resume this machine with the same
-                // stack; `kont` is immutable, so a multi-shot outer
-                // capture may re-enter it as often as it likes
-                Left(in.substituteContra[({ type L[-x] = Free[x with Row, Any] })#L](Free.inject[Delim, Any](cap))
-                  .flatMap(x => _loop(next(pure[Rw, Any](x), kont))))
-              case None => throw new NoPrompt(cap.at, cap.prompt.label, installed(kont))
-            }
-          }
-      } { g =>
-        // a foreign operation suspends the machine: the residual
-        // program performs it and resumes with the same stack
-        Left(Inject[F, Any](g).flatMap(x => _loop(next(pure[Rw, Any](x), kont))))
-      }
 
     loop(next(prog, Segs.Done[F, R, R](implicitly[R =:= R])))
   }

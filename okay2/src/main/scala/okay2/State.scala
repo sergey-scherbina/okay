@@ -4,7 +4,6 @@ import scala.annotation.unused
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind}
-import Split.split
 
 /**
  * The State effect: the signature is fixed at one state type S, and
@@ -98,16 +97,17 @@ object State {
   def zoomAt[S, A, X, F <: Row](look: S => A, put: A => S => S)(p: Free[State[A] with F, X]): Free[State[S] with F, X] = {
     def readPart: Free[State[S] with F, A] = get[S].map(look)
     def writePart(a: A): Free[State[S] with F, A] = get[S].flatMap(s => set(put(a)(s))).map(_ => a)
+    val Mine = Split.at[State[A]]
 
     def loop(x: Free[State[A] with F, X]): Free[State[S] with F, X] = Free.resume(x) match {
       case Return(v) => Return(v)
       // a lone operation is a Bind with a pure continuation (package.scala)
       case Inject(e) => loop(Bind(Inject[State[A] + F, X](e), (v: X) => Return[State[A] + F, X](v)))
-      case Bind(Inject(e), k) =>
-        split[State[A], F, Any, Free[State[S] with F, X]](e) {
-          case Get() => readPart.flatMap(a => loop(k(a)))
-          case Set(a) => writePart(a).flatMap(v => loop(k(v)))
-        } { e => Inject[F, Any](e).flatMap(v => loop(k(v))) }
+      case Bind(Inject(Mine(op)), k) => op match {
+        case Get() => readPart.flatMap(a => loop(k(a)))
+        case Set(a) => writePart(a).flatMap(v => loop(k(v)))
+      }
+      case Bind(Inject(e), k) => Inject[F, Any](e).flatMap(v => loop(k(v)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
 

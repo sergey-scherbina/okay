@@ -4,7 +4,6 @@ import scala.annotation.unused
 
 import scala.annotation.tailrec
 import Free.{Return, Inject, Bind, Delay}
-import Split.split
 
 /**
  * THE TAGLESS INTERFACE: what a carrier of effectful programs offers —
@@ -157,18 +156,17 @@ object Effects {
    * computation. Every step suspends under a flatMap, so the recursion
    * lives in closures rather than on the stack.
    */
-  def translate[A, F <: Row, G <: Row](prog: Free[F with G, A])(h: Interpret[F, G])(implicit T: TypeableK[F], @unused d: Distinct[F with G]): A ! G =
-    Free.resume(prog) match {
+  def translate[A, F <: Row, G <: Row](prog: Free[F with G, A])(h: Interpret[F, G])(implicit T: TypeableK[F], @unused d: Distinct[F with G]): A ! G = {
+    val Mine = Split.at[F](T)
+    def go(prog: Free[F with G, A]): A ! G = Free.resume(prog) match {
       case Return(a) => Return(a)
-      case Inject(e) => translate[A, F, G](Bind(Inject[F + G, A](e), (x: A) => Return[F + G, A](x)))(h)
-      case Bind(Inject(e), k) =>
-        split[F, G, Any, A ! G](e) { f =>
-          h[Any](f).flatMap(x => translate[A, F, G](k(x))(h))
-        } { g =>
-          Inject[G, Any](g).flatMap(x => translate[A, F, G](k(x))(h))
-        }
+      case Inject(e) => go(Bind(Inject[F + G, A](e), (x: A) => Return[F + G, A](x)))
+      case Bind(Inject(Mine(f)), k) => h[Any](f).flatMap(x => go(k(x)))
+      case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => go(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }
+    go(prog)
+  }
 
   /** `translate` with the widening done for you: interpret F into
    * G + H, carrying H through untouched */

@@ -73,6 +73,13 @@ class HandlerBenchmark {
     check("handlePrebuilt", handlePrebuilt(), N)
     check("relayForward", relayForward(), N)
     check("stateEffect", stateEffect()._1, M.toLong)
+    produced = (1 to M).foldLeft(pure[Produce, Unit](()))((m, i) => m.flatMap(_ => Produce.produce(i).map(_ => ())))
+    told = (1 to M).foldLeft(pure[Writer[Int], Unit](()))((m, i) => m.flatMap(_ => Writer.tell(i)))
+    val sum = M.toLong * (M + 1) / 2
+    check("delimShift", delimShift(), sum.toInt)
+    check("produceFold", produceFold(), sum)
+    check("writerMap", writerMap(), sum)
+    check("msplitObserve", msplitObserve(), 1000)
   }
 
   @Benchmark
@@ -91,4 +98,34 @@ class HandlerBenchmark {
       (1 to M).foldLeft(pure[State[Long], Long](0L)) { (m, _) =>
         m.flatMap[State[Long], Long](_ => State.get[Long].flatMap(s => State.set[Long](s + 1)))
       })
+
+  // okay2-split-at-rest: one lane per loop moved onto Split.at, each
+  // M = 1000 operations deep, answer checked in buildOnce
+
+  /** the Delim machine: 1000 shifts to one prompt, each resumed once */
+  @Benchmark
+  def delimShift(): Int = {
+    def deep(p: Prompt[Int], n: Int): Int ! (Delim + Pure) =
+      if (n == 0) pure[Delim + Pure, Int](0)
+      else Delim.shift[Int, Int, Pure](p)(k => k(n)).flatMap(x => deep(p, n - 1).map(_ + x))
+    !.run(Delim.reset[Int, Pure](p => deep(p, M)))
+  }
+
+  private var produced: Unit ! Produce = _
+
+  /** Producer.fold over 1000 productions */
+  @Benchmark
+  def produceFold(): Long = !.run(Producer.fold[Int, Long, Unit, Pure](produced)(0L)(_ + _))._1
+
+  private var told: Unit ! Writer[Int] = _
+
+  /** Writer.map over 1000 tells, folded */
+  @Benchmark
+  def writerMap(): Long =
+    !.run(Writer.foldWith[Long, Long, Unit, Pure](Writer.map[Int, Long, Unit, Pure](told)(_.toLong))(0L)(_ + _))._1
+
+  /** msplit, through observe: 1000 answers from 100 x 10 choice points */
+  @Benchmark
+  def msplitObserve(): Int =
+    !.run(Logic.observe[Int, Pure](1000)(Choose.choose(1 to 100: _*).flatMap(x => Choose.choose(1 to 10: _*).map(_ + x)))).size
 }

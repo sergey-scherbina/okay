@@ -2,7 +2,6 @@ package okay2.stream
 
 import okay2._
 import okay2.Free.{Return, Inject, Bind}
-import okay2.Split.split
 import okay2.async._
 
 /**
@@ -73,13 +72,12 @@ object Source {
 
     /** run `f` for each element, in order, as ONE walk */
     def runForeach(f: A => Unit ! Async): Unit ! Async = {
+      val Mine = okay2.Split.at[Writer[A]]
       def loop(x: Source[A]): Unit ! Async = Free.resume(x) match {
         case Return(_) => pure(())
         case Inject(e) => loop(Bind(Inject[Writer[A] + Async, Unit](e), (x: Unit) => Return[Writer[A] + Async, Unit](x)))
-        case Bind(Inject(e), k) =>
-          split[Writer[A], Async, Any, Unit ! Async](e) {
-            case Writer.Say(a) => f(a).flatMap(_ => loop(k(())))
-          } { g => Free.Inject[Async, Any](g).flatMap(v => loop(k(v))) }
+        case Bind(Inject(Mine(Writer.Say(a))), k) => f(a).flatMap(_ => loop(k(())))
+        case Bind(Inject(g), k) => Free.Inject[Async, Any](g).flatMap(v => loop(k(v)))
         case other => throw new IllegalStateException("resume left a non-head form: " + other)
       }
       loop(s)
