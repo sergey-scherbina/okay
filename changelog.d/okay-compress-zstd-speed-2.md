@@ -11,5 +11,6 @@
   ratio at level 3 moved by 2% at most (`numbers` 7% smaller).
 - Every sample round-trips at levels 1, 3, 6 and 19 (TestZstd), and
   pyarrow interop still holds.
+- Commit: b15088f3.
 - Filed: zstd-level6-worse-than-3 (level 6 compresses worse than level 3
   did), okay-compress-zstd-speed-3 (FSE packing, Native timing).
