@@ -92,7 +92,7 @@ okay's columnar format, on every platform:
       `Columns` (which already has Int32, Decimal, Binary, Arr, Struct):
       `encode[A](rows)` and `decode[A](bytes)`, nested case classes as
       struct and list.
-- [ ] Stage 6: the IPC FILE format (magic, footer, a batch by index),
+- [x] Stage 6: the IPC FILE format (magic, footer, a batch by index),
       for storage and export.
 - [ ] Stage 7: where Arrow replaces CBOR — each candidate MEASURED
       against CBOR first, and moved only where it wins: batches of
@@ -221,3 +221,24 @@ okay's columnar format, on every platform:
     structs, lists and sum as ordinary Arrow).
   - Mutant: `Option` ignoring the validity — the round trip red, naming
     row 1, column 'note'.
+
+- Stage 6 (okay-arrow-file, 2026-09-25): `writeFile`, `readFile`,
+  `fileBatches` and `readFileBatch` on the facade. `OkayArrow` works on
+  every platform, compressed too. `ApacheArrow` goes through Arrow Java's
+  file writer and reader (uncompressed: its codecs are another optional
+  jar). The layout is pyarrow's: `ARROW1` and padding, the stream WITH its
+  end-of-stream marker, the footer, its length, `ARROW1`. A batch is read
+  by framing the schema, the dictionaries and its block as a stream of
+  their own.
+  - Tests: `TestOkayArrow` +1 (every platform: plain, LZ4 and ZSTD
+    files; a batch by index; a file cut at any of every fifth byte
+    refused; a stream is not a file); `TestApacheArrow` +2 (files both
+    ways; a failed read keeps its own reason); `TestPyArrowOracle` +1
+    (pyarrow's `open_file` validates ours; ours reads batch 1 and 2 of
+    pyarrow's three by index).
+  - Mutant: the block offset without the 8-byte `ARROW1` header. Both
+    suites went red, and the mutant FOUND A DEFECT: when Arrow Java
+    failed mid-read, `ApacheArrow` closed its allocator in a `finally`,
+    and the allocator's "Memory was leaked" REPLACED the reading error.
+    `withAllocator` now keeps the first failure. Its test was watched red
+    without the fix.

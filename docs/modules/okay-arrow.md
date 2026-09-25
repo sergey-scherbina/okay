@@ -35,6 +35,19 @@ columns (`FrameFormat`, docs/python-and-r.md).
 | `Rows`, `encode`/`decode` | typed rows of any `Schema[A]` to a table, and back, through either implementation |
 | `ApacheArrow` | JVM only: the same facade over Apache Arrow Java 19, plus `toRoot`/`fromRoot` to and from a `VectorSchemaRoot`; Arrow Java is an OPTIONAL dependency you add |
 
+## Files
+
+`writeFile` writes an Arrow IPC FILE: the stream, then a footer that names
+each record batch's place. `fileBatches` and `readFileBatch` find one batch
+from that footer, without reading the batches before it. This is the
+format `pyarrow.ipc.open_file`, DuckDB and Arrow Java read, and both
+implementations write and read it:
+
+```scala
+      val f = OkayArrow.writeFile(Tables.everything, codec)
+      assertEquals(Tables.same(Tables.everything, OkayArrow.readFileBatch(f, 0)), None, codec.toString)
+```
+
 ## Typed rows
 
 Any datatype with an okay-codec `Schema` goes to Arrow and back through
