@@ -214,16 +214,36 @@ object Xml {
 
   // ---------------------------------------------------------------- project
 
-  /** the text an element contains, trivia and markup dropped */
-  def text(c: Cst[K]): String = c match
-    case Cst.Node(_, kids) => kids.map(text).mkString
-    case Cst.Leaf(t) if t.kind == K.Text || t.kind == K.Ws => t.lexeme
-    case _ => ""
+  /** every node, pre-order, on an EXPLICIT stack: the builder builds a
+   * document as deep as its tags nest, and a walk that recursed per
+   * level (`kids.map(text)`, `kids.flatMap(elements(_, name))`) threw
+   * StackOverflowError on one it had just built — 20 000 levels
+   * (xml-projection-stack-safe, found porting to okay2, 2026-09-25) */
+  private def preorder(c: Cst[K])(visit: Cst[K] => Unit): Unit =
+    var stack: List[Cst[K]] = c :: Nil
+    while stack.nonEmpty do
+      val here = stack.head
+      stack = stack.tail
+      visit(here)
+      here match
+        case Cst.Node(_, kids) => stack = kids.foldRight(stack)(_ :: _)
+        case _ => ()
+
+  /** the text an element contains, trivia kept, markup dropped */
+  def text(c: Cst[K]): String =
+    val out = new StringBuilder
+    preorder(c) {
+      case Cst.Leaf(t) if t.kind == K.Text || t.kind == K.Ws => out ++= t.lexeme
+      case _ => ()
+    }
+    out.result()
 
   /** every element of a given name, in document order */
-  def elements(c: Cst[K], name: String): Vector[Cst[K]] = c match
-    case n @ Cst.Node(k, kids) =>
-      (if k == name then Vector(n) else Vector.empty) ++
-        kids.flatMap(elements(_, name))
-    case _ => Vector.empty
+  def elements(c: Cst[K], name: String): Vector[Cst[K]] =
+    val out = Vector.newBuilder[Cst[K]]
+    preorder(c) {
+      case n @ Cst.Node(k, _) if k == name => out += n
+      case _ => ()
+    }
+    out.result()
 }

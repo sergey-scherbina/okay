@@ -75,4 +75,15 @@ class TestXml extends munit.FunSuite {
     assertEquals(Xml.render(re.tree), edited)
     assertEquals(re.tree, Xml.parse(edited, 16).tree)
   }
+
+  // xml-projection-stack-safe: the parse built this depth without
+  // trouble; the projections recursed per level and overflowed
+  test("depth: the projections walk a 20 000-deep document the parser builds") {
+    val n = 20000
+    val s = ("<a>" * n) + "x" + ("</a>" * n)
+    val tree = Xml.cst(s)
+    assertEquals(Xml.render(tree), s)
+    assertEquals(Xml.text(tree), "x")
+    assertEquals(Xml.elements(tree, "a").length, n)
+  }
 }

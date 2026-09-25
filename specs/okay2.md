@@ -2218,7 +2218,7 @@ okay2-lex-parse, which nests by NAMED tags, so a close can be wrong.
 - okay-codec's `Xml.text` and `Xml.elements` recurse per nesting level,
   the same defect as `cst-walk-stack-safe`: a document `Xml.cst`
   builds without trouble overflows the walks. Scala 3 half:
-  `xml-projection-stack-safe`.
+  `xml-projection-stack-safe` (fixed the same day).
 
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
