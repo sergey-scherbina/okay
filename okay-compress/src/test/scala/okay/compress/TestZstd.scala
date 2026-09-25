@@ -23,3 +23,10 @@ class TestZstd extends munit.FunSuite:
     assertEquals(flipped.toVector, Vector.empty)
     assert(intercept[Corrupt](Zstd.decompress("zstd?".getBytes("UTF-8"))).getMessage.startsWith("not a ZSTD frame this reads"))
   }
+
+  test("frames pyarrow wrote decode on this platform: ZSTD at levels 3 and 19, the LZ4 frame format") {
+    for (codec, name, b64) <- Fixtures.frames do
+      val frame = java.util.Base64.getDecoder.decode(b64)
+      val back = if codec == "zstd" then Zstd.decompress(frame) else Lz4Frame.decompress(frame)
+      assertEquals(back.toVector, Fixtures.input(name).toVector, s"$codec $name")
+  }
