@@ -1,6 +1,0 @@
-feature/jmh-lane-jdk-pin 2026-09-25T14:40:00Z
-agent: claude-code
-heartbeat: 2026-09-25T14:40:00Z
-status: in-progress
-done-so-far: claim
-next: pin .sdkmanrc JDK in one sourced helper for gate.sh and jmh-lane.sh
