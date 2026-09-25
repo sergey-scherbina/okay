@@ -326,8 +326,19 @@ deleted.
           `scala.collection.mutable.Stack` now. The JVM-only walks (jdbc,
           Spark) keep the JDK deque. Filed upstream-side as
           `scalajs-arraydeque-null`.
-- [ ] Stage 5 — workflow: `Proc.go`/`nodes`, `Wf.go`, recursing per
-      `Then` of a composed arrow.
+- [x] Stage 5 — workflow: `Proc.go`/`nodes`, `Wf.go`, recursing per
+      `Then` of a composed arrow (stack-safety-workflow, 2026-09-25).
+      Every walk of a `Proc` term — `foldMap`, the drawer `go`, `nodes`,
+      and `Wf`'s journal walker `go`/`loop` — descends once per node,
+      and the term is what the program COMPOSED: its own text, or a fold
+      over steps it chose. That is the bound written on the six rows
+      (and okay2's two), and Decision 7 says why it is a bound and not a
+      fix: the arrow's GADT (`Then[X, Y, Z]`) threads an existential
+      type through every level, so an explicit stack over it is a
+      redesign of the fold, not a rewrite of a loop — and no consumer
+      composes thousands of steps dynamically today. The `Iter` round
+      recurses through `G`'s own flatMap, a value at every program row.
+      ProcMacro's rows are stage 7 (compile time).
 - [ ] Stage 6 — UI trees: okay-ui, okay-ui-gtk, okay-js.
 - [ ] Stage 7 — macros and staging: okay-direct, okay-staging,
       okay-optics `Fuse`, `ProcMacro`, per Decision 2.
@@ -371,6 +382,20 @@ deleted.
       Free.Bind` as deferred, and they are deleted.
 
 ## Decisions
+
+7. A Proc term's depth is the program's, and the walks over it stay
+   recursive (stack-safety-workflow, 2026-09-25). The shape that made
+   Query's predicate a defect — `steps.reduce(_ andThen _)` over a list
+   the program chose — exists here too, and it is NOT fixed, because
+   `Proc.foldMap` and `Wf`'s walker are typed folds over a GADT whose
+   `Then[X, Y, Z]` hides Y at every level: an explicit stack would have
+   to carry that existential in a frame, which is a redesign of the
+   fold, and the drawers and `nodes` would follow. What is written
+   instead is the bound (the term is the program's own composition) and
+   the trigger for revisiting: a consumer that composes thousands of
+   steps dynamically, which none does today (backlog
+   okay-core/proc-deep-composition names the shape and the measurement
+   to take first).
 
 1. Deferred edges count as TRAMPOLINED only when the consumer really
    defers. The tool's list is the whole claim, and a consumer added to

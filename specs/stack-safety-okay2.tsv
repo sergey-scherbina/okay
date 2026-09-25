@@ -44,8 +44,8 @@ okay2-stream/src/main/scala/okay2/stream/Take.scala	129	loop	lambda	Pipe$.pull$1
 okay2-stream/src/main/scala/okay2/stream/Take.scala	151	loop	lambda	Take$.effect
 okay2-stream/src/main/scala/okay2/stream/Take.scala	211	loop	lambda	Pipe$.pull$2,Take$.effect
 okay2-stream/src/main/scala/okay2/stream/Take.scala	252	loop	lambda	Pipe$.pull$3,Take$.effect
-okay2-workflow/src/main/scala/okay2/Proc.scala	217	loop	lambda	Monad.flatMap
-okay2-workflow/src/main/scala/okay2/Proc.scala	369	nodes	lambda	List.foreach
+okay2-workflow/src/main/scala/okay2/Proc.scala	217	loop	lambda	Monad.flatMap	DEFERRED: the round recurses through G's own flatMap, which holds its continuation as a value at every program row (Free.Bind); one frame per round only at a STRICT monad, which the code states
+okay2-workflow/src/main/scala/okay2/Proc.scala	369	nodes	lambda	List.foreach	BOUNDED: per node of a Proc term the program COMPOSED — its own text, or a fold over steps it chose — never a peer's data; a dynamic composition of N steps nests N deep in every walk of the term (Decision 7 in specs/stack-safety.md, backlog okay-core/proc-deep-composition)
 src/main/scala/okay2/Cont.scala	158	run	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)
 src/main/scala/okay2/Cont.scala	190	step	mutual	ContImpl$.okay2$ContImpl$$at	DIRECT STYLE: a shift body calling k runs the rest on the stack; stage 1c (cont-trampoline)
 src/main/scala/okay2/Distinct.scala	84	parts	lambda	List.flatMap
