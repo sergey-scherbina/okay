@@ -1,5 +1,0 @@
-slug: stack-safety-workflow
-who: claude (session 6f505c09)
-what: stack-safety stage 5 — okay-workflow and okay2-workflow: Proc.go/nodes, Wf.go and the other walks per Then of a composed arrow; red first on a folded composition
-files: okay-workflow, okay2/okay2-workflow, specs/stack-safety*
-since: 2026-09-25
