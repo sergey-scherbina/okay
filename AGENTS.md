@@ -57,35 +57,22 @@ force, all already practiced, none previously written down:
   Claims and merges are LOCAL — no lane needs the network to land, and
   none should wait for it.
 - **LAND, THEN KICK THE RUNNER — THE RUNNER PUSHES** (ci-staged stage B,
-  2026-09-25, specs/ci-staged.md; replaces the 2026-09-18 rule below,
-  which had every lane pushing for itself). `land.sh` step 8 is now
+  2026-09-25; replaces the 2026-09-18 "push what you land" rule). The
+  protocol and its rationale are the `ci-staged` skill
+  (`.agents/plugins/ci-staged/commands/ci-staged.md`, its A-3/A-4); this
+  bullet only fixes what this repo named the slots. `land.sh` step 8 is
   `sh scripts/ci-runner.sh kick`, not `git push origin master` — no
-  lane pushes directly any more. `scripts/ci-runner.sh` is the ONE
-  process that pushes: it gates `origin/master..master` with the WHOLE
-  build (`family all`), once, serially (a `mkdir` lock under
-  `.work/ci/`), and pushes only on green; a RED range is bisected and
-  the first bad landing reverted (stage C) before the next turn pushes
-  the range with the revert in it. `kick` wakes a loop already running
-  or starts one detached run if none is; either way it returns at
-  once — landing does not block on the push.
-  THE OLD RULE, why it existed and why kicking still serves it: pushing
-  was made every lane's own job on 2026-09-18 because "a deliberate act
-  by whoever the operator asks" had left `origin` sitting 60 commits
-  behind (2026-09-08), then 16 (2026-09-18), with okay-watch's pointer
-  — which must name a commit that EXISTS on GitHub — unable to bump.
-  Kicking serves the same end without N lanes each re-gating the family
-  to justify their own push: the runner pushes within one whole build
-  of every landing, and pushes only a tree the whole gate has seen —
-  which asking-per-lane and pushing-per-lane never guaranteed either.
-  WHAT DOES NOT CHANGE: the gate still runs before the merge (now the
-  scoped `affected … staged` gate, `staged` above), and the merge is
-  still its own command whose exit code you read.
-  UNTIL `scripts/ci-runner.sh` EXISTS ON YOUR CHECKOUT (it lands with
-  ci-runner; a checkout that predates it has no such script): fall
-  back to the old behavior — `git push origin master` yourself, and a
-  push that is REJECTED means a sibling pushed first: `git fetch`, see
-  whether origin is genuinely ahead (the bullet below), land that, and
-  push again. Never force.
+  lane pushes directly. `scripts/ci-runner.sh` is the one process that
+  pushes, gating `origin/master..master` with `family all` under a
+  `mkdir` lock at `.work/ci/`; on RED it bisects with `affected
+  <ref>..HEAD` and reverts the culprit before the next turn pushes.
+  `kick` returns at once — landing does not block on the whole build.
+  UNTIL `scripts/ci-runner.sh` EXISTS ON YOUR CHECKOUT (a checkout
+  predating ci-staged has no such script): fall back to the old
+  behavior — `git push origin master` yourself, and a push that is
+  REJECTED means a sibling pushed first: `git fetch`, see whether
+  origin is genuinely ahead (the bullet below), land that, and push
+  again. Never force.
 - **NEVER `reset` or `merge` to `origin/*`.** Not because origin is
   always stale — since 2026-09-08 it is sometimes current — but
   because it is current only in the moments just after somebody
@@ -188,25 +175,17 @@ force, all already practiced, none previously written down:
   during a lane are wrong the moment the branch moves again. The
   window is exactly the gap between gating and merging.
 - Before merging: rebase the branch on `master`, run the gate, then
-  `git merge --ff-only`. The gate is `scripts/gate.sh "affected master
-  staged"` since ci-staged (2026-09-25, specs/ci-staged.md, the
-  operator's shape): the projects the lane's diff touches FIRST, then
-  the projects that depend on them (project/Affected.scala), as two
-  sbt commands in that order — a red in what you wrote stops the run
-  before a single dependent is paid for. The set is the one
-  `affected master` (ci-affected, 2026-09-16) always ran: the whole
-  family when the build files or the core changed, a module and its
-  dependents when a module did. WHAT IS NOT YOUR GATE ANY MORE: a
-  sibling's landing in a module your lane never touched. `land.sh`
-  used to refuse to land over ANY source commit on master; it now
-  refuses only when one lies in a module YOUR diff touched, or in the
-  build — the rest is the post-merge runner's to check, once for
-  everybody, before the push (stage B of the spec; the runner is its
-  own lane, and until it lands the push rule above stands unchanged).
-  The reason is measured, not stylistic: N lanes each re-gating the
-  family for each other's disjoint one-liners is what collapsed the
-  box on 2026-09-25. `scripts/gate.sh` alone is still the whole
-  family, and the nightly runs it split by platform, so a module
+  `git merge --ff-only`. The protocol — why the gate is TWO ordered
+  stages and why the re-gate trigger narrowed — is the `ci-staged`
+  skill (`.agents/plugins/ci-staged/commands/ci-staged.md`, its A-1/A-2);
+  this bullet only fixes what this repo named the slots. The gate is
+  `scripts/gate.sh "affected master staged"` (`project/Affected.scala`):
+  your changed projects' tests, then their dependents', as two sbt
+  commands. `land.sh` re-gates only when master gained a source commit
+  in a module YOUR diff touched, or in the build — a sibling's disjoint
+  landing is the post-merge runner's to check (stage B; until it lands,
+  the old push rule above stands). `scripts/gate.sh` alone is still the
+  whole family, and the nightly runs it split by platform, so a module
   nobody's lane touched is still tested every night — and READ the
   merge output; git refuses a fast-forward over a sibling's
   uncommitted files, and the refusal scrolls past a `tail -1`.
