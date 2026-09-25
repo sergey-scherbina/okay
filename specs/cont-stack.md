@@ -573,7 +573,8 @@ Stack knowledge (Layer 3):
   switches; they are state-passing, `k(s)(s2)` — see Layer 1 A — and it
   is the exact room of stage 3 that removes them.)
 
-- A/B of stage 3 (2026-09-25 afternoon, `jmh-lane.sh`, JDK 26):
+- A/B of stage 3, taken properly in the evening: plan stage A above,
+  and D for the pool. The afternoon's attempt, kept for the record:
   DISQUALIFIED. The box carried siblings' whole-build gates all
   afternoon (load 19–121); the one lane that completed, fib100 on the
   lane's tree, read 5 412 ± 1 336 ns/op against the morning's 2 433 on
@@ -606,12 +607,23 @@ statePara) plus HandlerBenchmark.handleCapture, min of 3 alternating
 rounds through `jmh-lane.sh` on a quiet box, and lands only within
 noise of the stage before it — or faster.
 
-A. **Measure what landed** — backlog cont-stack-ab. The three lanes
-   plus handleCapture against 60a59c97e's parent. Expected: statePara
-   at master (zero switches, proved by test); fib1000 1.00; fib100 the
-   open number. Blocked on a quiet box (the afternoon's run was
-   disqualified at load 19–121) and on jmh-lane-jdk-pin, or
-   `JAVA_HOME` exported by hand. Nothing below is priced until this is.
+A. **Measure what landed** — DONE 2026-09-25 evening (history.d
+   `cont-stack-ab`, ref b4934c052 = the parent of the lane's first
+   commit; a first run against 60a59c97e's parent was an A/A — that
+   parent is INSIDE the lane — and read ~1% noise, the floor for the
+   rows below). MIN of 3 alternating rounds, `jmh-lane.sh`, JDK 26:
+
+   | lane | ratio | bytes | reading |
+   |---|---|---|---|
+   | fib1000 | 1.01 | +64 B | noise |
+   | fib100 | **1.17** | +1 664 B/op | the bookkeeping (`Reentry`, `Gauged`) on a program that never goes deep — stage C |
+   | statePara | **5.03** | +7% | the COUNT road: the JMH fork has neither `--enable-native-access` nor the versioned jar, ~2 000 levels outrun the first room of ~870, ONE switch a run to a NEW 1 GB thread |
+   | statePara, `-Dokay.cont.room=1000000 -Xss64m` | 1.08 | | diagnostic: the same tree with no switch possible — the bookkeeping is 8%, the switch the rest |
+
+   So the expectation "statePara at master" was wrong FOR THE COUNT
+   ROAD, which is what a user without the flag gets: the stack had
+   room (the base ran the same program on the same 2 MB) and the
+   count could not see it. That moved D3 up, next.
 
 B. **Layer 1 A, the macro** — LANDED 2026-09-25 (cont-stack-macro). `shift` becomes
    an inline macro over the lambda literal; a body whose every use of
@@ -646,15 +658,21 @@ C. **The fast path's bookkeeping** — backlog cont-stack-fastpath, after
    (`apply$mcII$sp`) — cold stack only, the JIT inlines them. Target:
    fib100 within noise of master, i.e. the morning's 1.12x gone.
 
-D. **The reader's knobs** — only if a profile of a deep opaque program
-   shows them; each with a number, none by taste: `_setjmp` for the
-   pointer on macOS arm64 (326 → ~10 ns: `getcontext` saves the signal
-   mask with a syscall); the slice at 128 KB (half the reads, 128 KB
-   less usable stack); a PARKED thread with a 1 GB stack reused across
-   switches (33 → ~5 µs a switch — matters only to programs that
-   switch often, which with exact reads means ~7 000 warm levels deep,
-   repeatedly). Filed under cont-stack-ucontext-layouts's neighbour
-   cont-stack-fastpath.
+D. **The switch itself** — D3 LANDED 2026-09-25 (cont-stack-parked),
+   moved up by A: `StackPool`, a parked, reused worker with a 1 GB
+   stack (JVM and Native, one file), at most 2 idle, 30 s idle
+   timeout, the caller's context class loader set for the segment, no
+   inherited thread-locals, the wait uninterruptible with the
+   interrupt restored; then spin-then-park on both ends (50 µs,
+   `-Dokay.cont.spinMicros`), because the ~22 µs a switch still cost
+   with the pool were the two OS wake-ups. statePara on the count
+   road: **134.8 → 50.3 → 31.8 µs against 27.6** (5.03x → 1.88 →
+   1.15; history.d `cont-stack-parked`). Of the 107 µs a switch cost,
+   85 were the thread start and its cold pages, ~18 the wake-ups, ~4
+   remain; the 1.08 measured with no switch is the bookkeeping, stage
+   C's. The reader's other knobs stay filed in cont-stack-fastpath —
+   `_setjmp` (326 → ~10 ns a read), the slice at 128 KB — for a
+   profile that shows them.
 
 E. **Layer 1 B** — backlog cont-stack-layer1-b: answer-using bodies
    (`k(1) + k(10)`) and the state-passing `k(a)(s2)` of `PState`,
