@@ -66,7 +66,7 @@ class TestRCallbacks extends munit.FunSuite {
     val j = Durable.MemoryJournal()
     val prog = R.fn[Long]("twice").calling(R.callbacks(inc))(5L)
     assertEquals(State.handle(0)(prog).runWith(using Durable.over[REval](r.handler, j)()), (2, Right(12L)))
-    assertEquals(j.all.map(_.op), Vector("twice", "resume", "resume"))
+    assertEquals(j.all.map(_.op), Vector("program:twice", "continue", "continue"))
     assertEquals(State.handle(0)(prog).runWith(using Durable.replayingOver[REval](j)), (2, Right(12L)))
   }
 }
