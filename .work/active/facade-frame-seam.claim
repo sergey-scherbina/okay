@@ -1,0 +1,5 @@
+slug: facade-frame-seam
+who: claude (session 6f505c09)
+what: tier 2 through the facade 37% over the own road (backlog polyglot/facade-frame-seam): a Table goes to the wire as itself where Arrow is spoken (ForeignWorker.frameTable, no PyFrame in between) and is converted once where it is not; re-measured with MeasureFacade
+files: okay-py ForeignWorker.scala, okay-foreign-cluster PyStage.scala (PyPool) + Facade.scala, specs/foreign-facade.md
+since: 2026-09-25
