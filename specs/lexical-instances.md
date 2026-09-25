@@ -272,4 +272,5 @@ OKAY2 TWIN, 2026-09-25 (okay2-lexical, specs/okay2.md stage 46): `deep`,
 raw outer `Delim.shift` where this suite uses `Layered`. Scala 2 cannot
 refine the answer type of a State operation in a clause, so the twin's
 State instance has typed `get`/`set` doors and one cast in `perform`;
-`walk` and the stacked instances are not ported (okay2 backlog).
+`walk` and the stacked instances followed in okay2-lexical-walk-stacked
+(stage 48: an instance holds its `In`, doors take the stack in force).

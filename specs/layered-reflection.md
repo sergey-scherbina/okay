@@ -169,5 +169,5 @@ STAGES 1-2, 2026-09-25 (TestLayered 7 + TestLayeredStacked 3; DelimBenchmark lay
 OKAY2 TWIN, 2026-09-25 (okay2-layered, specs/okay2.md stage 47):
 `Layer`, `Reflect`, `reify` (η $ e) and `reflect` (shift0) in the Scala 2
 core, every value of TestLayered reproduced; the body receives its
-capability instead of summoning it; the stacked layers are not ported
-(okay2 backlog `okay2-lexical-walk-stacked`).
+capability instead of summoning it; the stacked layers followed in
+okay2-lexical-walk-stacked (`Layered.Stacked.reify`, `m.reflectAt`).

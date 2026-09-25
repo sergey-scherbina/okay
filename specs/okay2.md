@@ -2414,6 +2414,40 @@ okay2 build), and a test aliases it (`type EitherS[A] = Either[String, A]`).
 - `M` is read off the receiver, as in the Scala 3 core: `Some(2).reflect`
   finds no `Reflect[Some, R]`; write `Option(2)` or ascribe.
 
+## Stage 48 — okay2-lexical-walk-stacked (2026-09-25)
+The rest of `Lexical` and `Layered` for the Scala 2 core: `walk` over
+`Instances`, the stacked instances, the stacked layers.
+- `Lexical.walk`/`Lexical.State.walk`: a `Free.resume` loop over
+  `Instances[F] + G` answering its own handle's operations in place
+  (state threaded purely) and forwarding the rest; `Instances.exhausted`
+  at the top. okay2's `Instances.Op` erases the operation (`op: Any`, by
+  its own design), so the clause is reached through ONE cast, isolated
+  and said.
+- `Lexical.Stacked` and `Lexical.Stacked.State`: okay2's `In` is final
+  and its stack is a VALUE, so an instance HOLDS its `In` and every door
+  takes the stack in force (`a.get(st)`), asking `Has[S2, in.p.type]`
+  as a stacked `shift0` does; the body's own stack is `i.in.stack`. The
+  tail guard is `Stack.dollarResumed`, added to the stacked door.
+- `Layered.Stacked.reify[M, R, F](st)(body)` and `m.reflectAt[F](st,
+  layer)`: a layer is the stacked dollar's `In`; a layer kept past its
+  reify does not compile.
+- EVERY STACKED DOOR IS A BUILDER (`tail[A, G](st)(s0)(body)`): Scala 2
+  takes all type arguments or none, and a lambda's result type is
+  typed after its parameter, so the body's answer `A` and the rest of
+  the row `G` are written and the door's `apply` infers the stack, the
+  seed and the clauses' types.
+
+### Behavior (stage 48)
+- [x] TestLexicalWalk (7): walk answers as `State.handleAt` on the
+      Writer row; the pure row; two walks (0, 10); a leaked instance
+      survives to `exhausted` (named); multi-shot across the walk
+      `List((1, 0), (2, 0), (3, 0))`; inside with the machine inside
+      `(6, List(0, 1, 3))`; inside with the machine outside escapes.
+- [x] TestLexicalStacked (2): tail outside deep `(10, (10, 10))`; an
+      instance kept past its installation does not compile.
+- [x] TestLayeredStacked (3): both layer orders, the stage-0 answers; a
+      layer kept past its reify does not compile.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
@@ -2477,3 +2511,9 @@ the Overview. What follows from it, and was done the same day
   parenthesis in the three-layer test was the only red), 63 results
   with TestLexical across JVM/JS/Native; the whole okay2 gate GREEN
   before landing.
+- Stage 48: 99 results (the five Lexical/Layered suites over three
+  platforms) GREEN 2026-09-25 after two type-inference rounds (a
+  function over a subtype of `Inst` is not a function over `Inst`; a
+  door's `A` cannot come from the lambda), every expected value matched
+  on the first run that compiled; the whole okay2 gate GREEN before
+  landing.

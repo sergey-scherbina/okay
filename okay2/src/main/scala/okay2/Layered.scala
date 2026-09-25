@@ -22,8 +22,7 @@ package okay2
  * function) and `reflect` is a `shift0`, as in the Scala 3 core. Scala 2
  * has no context functions, so a body RECEIVES its capability
  * (`reify[Option, Int, P] { opt => Option(2).reflect(opt) }`) where the
- * Scala 3 body summons it. The stacked layers are not ported yet
- * (okay2-lexical-walk-stacked).
+ * Scala 3 body summons it. The stacked layers are `Layered.Stacked`.
  */
 object Layered {
 
@@ -84,5 +83,37 @@ object Layered {
   implicit class ReflectOps[M[_], X](private val m: M[X]) extends AnyVal {
     def reflect[R, F <: Row](r: Reflect[M, R])(implicit at: At): X ! (Delim + F) =
       Delim.shift0[M[R], X, F](r.prompt)(k => r.layer.bind[X, R, Delim + F](m)(k))
+
+    /** μ, stacked: `m.reflectAt[F](st, layer)`, a `shift0` to the layer,
+     * which must be on the stack in force (`st`) — a layer kept past its
+     * `reify` does not compile. `F` (the rest of the row) is the one type
+     * argument the call cannot infer, so it is the one written. */
+    def reflectAt[F <: Row]: ReflectAt[M, X, F] = new ReflectAt[M, X, F](m)
+  }
+
+  final class ReflectAt[M[_], X, F <: Row] private[Layered] (m: M[X]) {
+    def apply[R, S2 <: Delim.Stacked.Stk, S <: Delim.Stacked.Stk](st: Delim.Stacked.Stack[S2], layer: Delim.Stacked.In[M[R], S])
+             (implicit ev: Delim.Stacked.Has[S2, layer.p.type], L: Layer[M], at: At): X ! (Delim + F) =
+      st.shift0[M[R], X, F](layer.p)(ev, at).apply(_ => k => L.bind[X, R, Delim + F](m)(k))
+  }
+
+  /**
+   * THE STACKED LAYERS: a layer is a stacked `dollar` whose return
+   * function is the monad's unit, and its capability is the `In` that
+   * dollar hands its body; `m.reflectAt[F](st, layer)` asks that the
+   * layer is on the stack in force, so a capability kept past its
+   * `reify` is a compile error where the unstacked door throws
+   * `NoPrompt`. `reify[M, R, F](st)(body)`: the three written type
+   * arguments are the ones the call cannot infer; the stack's comes
+   * from `st`.
+   */
+  object Stacked {
+    import Delim.Stacked.{In, Stack, Stk}
+
+    final class Reify[M[_], R, F <: Row] private[Layered] () {
+      def apply[S <: Stk](st: Stack[S])(body: In[M[R], S] => R ! (Delim + F))(implicit L: Layer[M], at: At): M[R] ! (Delim + F) =
+        st.dollar[R, M[R], F](r => okay2.pure[Delim + F, M[R]](L.pure(r)))(body)
+    }
+    def reify[M[_], R, F <: Row]: Reify[M, R, F] = new Reify[M, R, F]()
   }
 }

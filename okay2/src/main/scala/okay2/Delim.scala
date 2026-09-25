@@ -981,6 +981,14 @@ object Delim {
         Delim.dollar[R0, R, F](in.p)(ret)(body(in))
       }
 
+      /** `Delim.dollarResumed`, stacked: `dollar` told each time the
+       * machine enters it (the stacked tail instance's guard,
+       * okay2-lexical-walk-stacked) */
+      def dollarResumed[R0, R, F <: Row](ret: R0 => R ! (Delim + F), resumed: Int => Unit)(body: In[R, S] => R0 ! (Delim + F))(implicit at: At): R ! (Delim + F) = {
+        val in = new In[R, S](named[R]("dollar")(at))
+        Delim.dollarResumed[R0, R, F](in.p)(ret, resumed)(body(in))
+      }
+
       // `control0` is NOT here, as in the Scala 3 core: its continuation
       // is a bare segment run where `p` is gone, but the code inside it
       // was typed with `p` on its stack (specs/shift0-dollar.md,
