@@ -9,3 +9,9 @@
       them. The `kubectl proxy` suggests a cluster-pool test whose proxy
       outlives it. Dumps were at
       /var/folders/.../okay-gate.1cmy0fzDVN.stall.{json,ps}. (2026-09-25)
+      THIRD sighting, same shape (okay-compress-zstd-speed's "affected
+      master staged", 2026-09-25 18:59): four forked okay-cluster JVMs at
+      0% after TestFederation/TestLeak, `kubectl proxy --port=52700` a
+      child of sbt, 389 test results; dump
+      okay-gate.tISAxr50or.stall.{json,ps}. The forks were killed with
+      the run, so they are still undumped.
