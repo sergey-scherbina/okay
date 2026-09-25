@@ -186,3 +186,6 @@
       its test process in the affected-set gate of stack-safety-core (7150
       tests, 0 failed), a core-only lane with no okay-sql source. Recorded
       per the ledger.
+      2026-09-25, okayKernelNative, GREEN on the rerun alone (20 tests): lost
+      its test process in the affected-set gate of keccak-pure (7512 tests,
+      0 failed), a lane with no okay-kernel source. Recorded per the ledger.
