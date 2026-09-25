@@ -137,10 +137,15 @@ object Csv:
 
   /** one row back OUT: a field with a comma, a quote or a newline in
    * it is quoted and its quotes doubled — the inverse of `fields`, so
-   * a ledger this writes is a ledger this reads */
+   * a ledger this writes is a ledger this reads. A field with a LEADING
+   * or TRAILING space is quoted too: a spreadsheet trims an unquoted one,
+   * and shows a value `fields` would not read back (csv-line-edge-space,
+   * found from okay-watch's own writer). A null field is an empty one. */
   def line(values: IterableOnce[String]): String =
-    values.iterator.map { v =>
-      if v.exists(c => c == ',' || c == '"' || c == '\n' || c == '\r')
+    values.iterator.map { v0 =>
+      val v = if v0 == null then "" else v0
+      if v.exists(c => c == ',' || c == '"' || c == '\n' || c == '\r') ||
+        v.headOption.exists(_.isWhitespace) || v.lastOption.exists(_.isWhitespace)
       then "\"" + v.replace("\"", "\"\"") + "\"" else v
     }.mkString(",")
 

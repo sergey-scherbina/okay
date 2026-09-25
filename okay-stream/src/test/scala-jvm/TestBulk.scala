@@ -12,6 +12,12 @@ class TestBulk extends munit.FunSuite {
     assertEquals(Csv.fields(""), Vector(""))
   }
 
+  test("Csv.line quotes an edge space, reads null as empty, and still round-trips") {
+    val row = Vector(" pad", "pad ", "\tx", "mid dle", null, "")
+    assertEquals(Csv.line(row), "\" pad\",\"pad \",\"\tx\",mid dle,,")
+    assertEquals(Csv.fields(Csv.line(row)), Vector(" pad", "pad ", "\tx", "mid dle", "", ""))
+  }
+
   test("Csv.line is the inverse of Csv.fields, quoting only what needs it") {
     val row = Vector("a", "b,c", "say \"hi\"", "", "plain")
     assertEquals(Csv.line(row), "a,\"b,c\",\"say \"\"hi\"\"\",,plain")
