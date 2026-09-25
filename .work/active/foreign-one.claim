@@ -1,6 +1,0 @@
-feature/foreign-one 2026-09-25T21:37:55Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-25T21:37:55Z
-status: in-progress
-done-so-far: analysis in conversation (five gaps: R engine dedup, multiplexed wire, frame+zero-copy, one effect declaration, module types/onboarding kit)
-next: specs/foreign-one.md, five backlog items in backlog.d/polyglot, changelog entry, board checks, land
