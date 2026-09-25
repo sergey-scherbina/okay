@@ -344,12 +344,18 @@ object Cont:
      * stack is asked how much it really has left (Layer 3): a grant
      * continues here, and only a stack with no room switches. */
     def enter(x: X, here: Int): T =
-      val r = math.min(here, room)
-      if r > 0 then step(f(x))(k)(r)
-      else
-        val more = StackSwitch.more(gaugeOf(k))
-        if more > 0 then step(f(x))(k)(more)
-        else StackSwitch.fresh(fresh => step(f(x))(k)(fresh))
+      val r = if here < room then here else room
+      if r > 0 then step(f(x))(k)(r) else exhausted(x)
+
+    /** the rare road, OUT of `enter` so `enter` stays small enough to
+     * inline (cont-stack-fastpath round 2, PrintInlining on fib100:
+     * `enter` at 106 bytes read "callee is too large" and `callK`
+     * through it "callee uses too much stack", and the `Mapped` lambda
+     * that the base scalar-replaced then escaped) */
+    private def exhausted(x: X): T =
+      val more = StackSwitch.more(gaugeOf(k))
+      if more > 0 then step(f(x))(k)(more)
+      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh))
 
   /** call a continuation from inside the runner, with the room HERE */
   private def callK[A, S](k: A => S, a: A, room: Int): S = k match
