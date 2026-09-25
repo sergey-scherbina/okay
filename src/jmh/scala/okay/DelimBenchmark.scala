@@ -113,6 +113,31 @@ class DelimBenchmark {
       go(0)
     })
 
+  // ---- layered reflection's reify (specs/layered-reflection.md stage 1):
+  // one List layer over N elements, reflect = shift0 with a traversing
+  // bind, so every element resumes the continuation and re-installs the
+  // layer. The two lanes differ ONLY in the delimiter: λ$'s `η $ e`
+  // (what Layered.reify is now) against stage 0's `push(e.map(η))`.
+
+  val layerXs: List[Int] = List.range(0, N)
+
+  def listBind(m: List[Int])(k: Int => List[Int] ! Row): List[Int] ! Row =
+    m.foldRight(pure(List.empty[Int]): List[Int] ! Row)((a, rest) => k(a).flatMap(bs => rest.map(bs ++ _)))
+
+  @Benchmark
+  def layeredViaDollar(): Int =
+    val p = Delim.prompt[List[Int]]
+    !.run(Delim.run[List[Int], Pure](
+      Delim.dollar[Int, List[Int], Pure](p)(r => pure(List(r)))(
+        Delim.shift0[List[Int], Int, Pure](p)(k => listBind(layerXs)(k)).map(_ + 1)))).length
+
+  @Benchmark
+  def layeredViaPush(): Int =
+    val p = Delim.prompt[List[Int]]
+    !.run(Delim.run[List[Int], Pure](
+      push[List[Int], Pure](p)(
+        Delim.shift0[List[Int], Int, Pure](p)(k => listBind(layerXs)(k)).map(_ + 1).map(r => List(r))))).length
+
   // ---- ONE push, then ordinary work INSIDE the machine
   //
   // This is the shape a GUARD has (okay-llm's `Cut`, okay-ui's

@@ -193,8 +193,11 @@ one-shot and JVM-only.
 **Two practical notes.** `M` is read off the receiver, so write
 `Option(2).reflect`, not `Some(2).reflect` (the same trap as `.some`
 in cats). A capability kept past its `reify` fails with `NoPrompt`
-when used. The stacked prompts of `Delim.Stacked` will make that a
-compile error (sprint: stacked-shift0).
+when used. `Layered.Stacked` refuses it at compile time. There, a
+layer is a stacked `dollar` whose return function is the monad's unit,
+Filinski's `reify` read in λ$ as `η $ e`. Its capability is the
+dollar's own `In`, and `m.reflect(layer)` needs evidence that the
+layer's prompt is still on the stack.
 
 ## Layer 2 — the `direct` block: syntax, by a macro that adds nothing else
 

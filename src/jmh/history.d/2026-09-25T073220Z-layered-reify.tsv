@@ -1,0 +1,1 @@
+2026-09-25	c43ad886	108	layered reify: layeredViaDollar vs layeredViaPush (B/op only)	682315	722354	0.94	BYTES per op, 1000 List-layer resumptions; time NOT usable (121+-37 vs 243+-46 us at load 60-108, a VM at ~1000% CPU) — backlog layered-reify-time

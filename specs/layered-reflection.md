@@ -87,7 +87,8 @@ object Layered:
 - [x] Multi-shot through an inner layer (List outside Option).
 - [x] Stage 0: a capability used outside its `reify` fails loudly
       (`NoPrompt`).
-- [ ] Stage 2: the same does not compile.
+- [x] Stage 2: the same does not compile (`Layered.Stacked`,
+      TestLayeredStacked).
 
 ## Out of scope
 
@@ -115,7 +116,19 @@ object Layered:
   `Reflect[Some, R]`. Documented rather than worked around. A
   contravariant `Reflect[-M, R]` would fight `Layer[M]`'s invariance.
 
-## Results
+- **Stage 1: `reify` is `η $ e` (2026-09-25).** `Layered.reify` is
+  `Delim.dollar(p)(r => pure(η r))(body)`, the λ$ reading, where stage
+  0 had `push(p)(body.map(η))`. They mean the same thing: in both, a
+  shift0 to the layer takes `η` with it. The dollar form allocates
+  40 B less per resumption, because `η` is the delimiter's return
+  function instead of one more `K` frame.
+- **Stage 2: the layer IS the stacked dollar's `In`.** `Layered.Stacked.reify`
+  is `Delim.Stacked.dollar` with `η` as the return function, and the
+  capability the body receives is that dollar's `In`. So its prompt is
+  the one on the stack, and `m.reflect(layer)` asks `Has` for it. A
+  separate `Reflect` wrapping `d.p` would not work: `refl.prompt.type`
+  and `d.p.type` are different singletons, and `Has` would never find
+  the wrapper's.
 
 STAGE 0, 2026-09-24 (TestLayered, 7, okayJVM): `Layered.reify` /
 `reflect` / `Layer`, on today's multi-prompt `Delim`.
@@ -131,3 +144,15 @@ STAGE 0, 2026-09-24 (TestLayered, 7, okayJVM): `Layered.reify` /
 - docs/direct-style.md said "what one block cannot do: mix two
   different monads". That is no longer true of `Layered`, so the page
   now says it of `Monadic` only and has a Layer 1½ section.
+
+STAGES 1-2, 2026-09-25 (TestLayered 7 + TestLayeredStacked 3; DelimBenchmark layered lanes):
+
+- Stacked layers give the same answers as stage 0 in both orders, and a
+  layer kept past its `reify` is refused with "not on the prompt stack".
+  All ten tests passed on the first run.
+- `reify` as `η $ e` against `push(e.map(η))`, one List layer over 1000
+  elements: 682 315 against 722 354 B/op, 40 B less per resumption.
+  TIME NOT MEASURED CLEANLY: the only run had load 60-108 (a VM on the
+  box at ~1000% CPU), and 121 ± 37 against 243 ± 46 µs says nothing
+  at that load. Backlog `layered-reify-time` re-prices it. The change
+  is adopted on semantics (λ$'s form) and bytes.

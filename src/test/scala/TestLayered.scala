@@ -106,3 +106,59 @@ class TestLayered extends munit.FunSuite:
       Option(2).reflect[Int, Pure]
     intercept[NoPrompt](run(after))
   }
+
+/** specs/layered-reflection.md stage 2: the stacked layers */
+class TestLayeredStacked extends munit.FunSuite:
+  import okay.Delim.Stacked.delimited
+  import okay.Layered.Stacked.{reify, reflect}
+  import okay.Prog.{flatMap, map}
+
+  type P = okay.Pure
+
+  test("stacked: List outside Option, each reflect reaching its own layer — the stage-0 answer") {
+    val r = !.run(delimited[List[Option[Int]], P] { root =>
+      import root.given
+      reify[List, Option[Int], P] { lst =>
+        import lst.given
+        reify[Option, Int, P] { opt =>
+          import opt.given
+          for
+            x <- List(1, 2, 3).reflect[Option[Int], P](lst)
+            y <- (if x == 2 then None else Some(x * 10)).reflect[Int, P](opt)
+          yield x + y
+        }
+      }
+    })
+    assertEquals(r, List(Some(11), None, Some(33)))
+  }
+
+  test("stacked: Option outside List — None empties everything") {
+    val r = !.run(delimited[Option[List[Int]], P] { root =>
+      import root.given
+      reify[Option, List[Int], P] { opt =>
+        import opt.given
+        reify[List, Int, P] { lst =>
+          import lst.given
+          for
+            x <- List(1, 2, 3).reflect[Int, P](lst)
+            y <- (if x == 2 then None else Some(x * 10)).reflect[List[Int], P](opt)
+          yield x + y
+        }
+      }
+    })
+    assertEquals(r, None)
+  }
+
+  test("stacked: a layer used AFTER its reify returned does not compile (stage 0 threw NoPrompt)") {
+    val e = compileErrors("""
+      okay.Delim.Stacked.delimited[Option[Int], okay.Pure] { root =>
+        import root.given
+        var leaked: okay.Delim.Stacked.In[Option[Int], ?] | Null = null
+        okay.Layered.Stacked.reify[Option, Int, okay.Pure] { opt =>
+          import opt.given
+          leaked = opt
+          okay.Prog.pure(1)
+        }.flatMap(_ => okay.Layered.Stacked.reflect(Option(2))[Int, okay.Pure](leaked.nn).map(Option(_)))
+      }""")
+    assert(e.contains("not on the prompt stack"), s"compiled, or not our message: $e")
+  }

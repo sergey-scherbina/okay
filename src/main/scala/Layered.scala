@@ -79,7 +79,9 @@ object Layered:
    */
   def reify[M[_], R, F[+_]](body: Reflect[M, R] ?=> R ! Delim + F)(using L: Layer[M], at: At): M[R] ! Delim + F =
     val p = Delim.prompt[M[R]]
-    Delim.push(p)(body(using new Reflect[M, R](p, L)).map(L.pure))
+    // λ$'s reading of Filinski's reify, `[e] = η $ e`: the unit is the
+    // delimiter's return function (specs/layered-reflection.md stage 1)
+    Delim.dollar[R, M[R], F](p)(r => okay.pure(L.pure(r)))(body(using new Reflect[M, R](p, L)))
 
   extension [M[_], X](m: M[X])
     /** μ: the layer's value as a plain value, for the rest of the block
@@ -88,3 +90,30 @@ object Layered:
      * write `Option(2)`, or ascribe (the same trap as `.some` in cats). */
     def reflect[R, F[+_]](using r: Reflect[M, R], at: At): X ! Delim + F =
       Delim.shift0[M[R], X, F](r.prompt)(k => r.layer.bind(m)(k))
+
+  /**
+   * THE STACKED LAYERS (stage 2): the same construction over
+   * `Delim.Stacked`, so the capability cannot outlive its layer. A
+   * layer is a stacked `dollar` whose return function is the monad's
+   * unit, and its capability is the `In` that dollar hands its body.
+   * `m.reflect(layer)` asks the compiler for evidence that the layer's
+   * prompt is on the stack in force, so a capability kept past its
+   * `reify` does not compile (the unstacked door throws `NoPrompt`).
+   */
+  object Stacked:
+    import Delim.Stacked.{In, Stack, Under, Has}
+
+    /** a layer answering `M[R]` on the stack in force; the body gets the
+     * layer (`import l.given` puts its stack in force) */
+    def reify[M[_], R, F[+_]](using st: Stack[?])
+                             (body: (l: In[M[R], st.S]) => Under[F, R, l.p.type *: st.S])
+                             (using L: Layer[M], at: At): Under[F, M[R], st.S] =
+      Delim.Stacked.dollar[R, M[R], F]((r: R) => Prog.pure[Delim + F, M[R], st.S](L.pure(r)))(body)
+
+    extension [M[_], X](m: M[X])
+      /** μ, stacked: a `shift0` to the layer, which must be on the stack */
+      def reflect[R, F[+_]](layer: In[M[R], ?])(using st: Stack[?])[B <: Tuple]
+                           (using Has.Aux[st.S, layer.p.type, B], Layer[M], At): Under[F, X, st.S] =
+        Delim.Stacked.shift0[M[R], X, F](layer.p)(k =>
+          Prog.diag[B, Delim + F, M[R]](summon[Layer[M]].bind(m)(x => k(x).free)))
+
