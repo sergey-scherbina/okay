@@ -1948,6 +1948,29 @@ lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
 
 /**
+ * A microkernel (specs/kernel.md): Version and Range (the version
+ * contract), Port, Plugin, the plan and the start; on the JVM, Discover
+ * (ServiceLoader, a plugins directory). The core only — a kernel that
+ * depended on anything would make every plugin carry it.
+ */
+lazy val okayKernel = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-kernel"))
+  .dependsOn(okay)
+  .settings(
+    name := "okay-kernel",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedResourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "resources-jvm",
+  )
+
+/**
  * Configuration as data, secrets as references (specs/conf.md):
  * Secret is a reference a config can store and log by construction;
  * Secrets is the resolver seam at the application edge; Conf is the
@@ -3128,7 +3151,8 @@ lazy val root = (project in file("."))
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
-    okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js, okayUi.jvm, okayUi.js, okayUi.native,
+    okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js,
+    okayKernel.jvm, okayKernel.js, okayKernel.native, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
     okayOutbox.jvm, okayOutbox.js, okayOutbox.native,
