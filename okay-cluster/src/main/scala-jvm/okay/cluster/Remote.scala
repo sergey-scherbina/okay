@@ -97,7 +97,7 @@ object Remote {
     in.readFully(payload)
     Some((fmt, cmp, payload))
 
-  private def decode[A](fmt: Int, cmp: Int, payload: Array[Byte])(using Schema[A], c: okay.compress.Compression): Either[String, List[A]] =
+  private def decode[A](fmt: Int, cmp: Int, payload: Array[Byte])(using Schema[A])(using c: okay.compress.Compression): Either[String, List[A]] =
     try
       def plain(): Array[Byte] = cmp match
         case 0 => payload
