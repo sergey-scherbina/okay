@@ -5,6 +5,15 @@
       a `Fun` answer) on the explicit pending stack. What the transform
       still leaves opaque, each a lane with a red-first shape test and
       the 1M-on-128-KB zero-switch assertion:
+      (0) FIRST, the price: `HandlerBenchmark.contAnswer` (1000 levels
+      of `k(x + 1) + 1`) reads 1.24x walked against direct at 0.81x
+      the bytes (history.d `cont-stack-layer1-b-contAnswer*`), so the
+      24% is dispatch and loop shape, not objects — profile it
+      (`-prof async`, memory async-profiler-not-prof-stack; the `Body`
+      match, `rest.apply`, `Pending` push/pop, the `b ne null` on the
+      hot loop) and either close the gap or make the expansion
+      Scala.js-only (the platform where no switch exists), leaving the
+      JVM and Native on the direct road Layer 2/3 already protect;
       (1) conditionals NOT in tail position (`1 + (if c then k(1) else
       2)`, a `match` feeding an expression): needs a join point — a
       `Body` bind (`Then(body, x => rest)`) the walker rotates as

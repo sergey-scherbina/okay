@@ -467,7 +467,9 @@ Compile-time layer:
 - [ ] `direct { !k(…) }` in a body
 - [x] opaque bodies still correct, through Layer 2 (TestContStack,
       TestContStackNative, with `shiftLeaf`)
-- [ ] every existing Cont test green, statePara/Fib within noise
+- [x] every existing Cont test green, statePara/Fib within noise
+      (core 548; statePara 1.01, fib100 1.00 after cont-stack-layer1-b;
+      the new contAnswer lane 1.24x, by design — stage E)
 - [ ] okay2: A and known higher-order functions; B if it holds up
 
 Stack knowledge (Layer 3):
@@ -724,14 +726,36 @@ D. **The switch itself** — D3 LANDED 2026-09-25 (cont-stack-parked),
    `_setjmp` (326 → ~10 ns a read), the slice at 128 KB — for a
    profile that shows them.
 
-E. **Layer 1 B** — backlog cont-stack-layer1-b: answer-using bodies
-   (`k(1) + k(10)`) and the state-passing `k(a)(s2)` of `PState`,
-   CPS-transformed onto an explicit stack of pending parts; then the
-   known higher-order functions, visible user functions, `direct`.
-   Robustness, not speed: such programs stop touching the stack at
-   all — no reads, no switches — at one allocation a call of `k`,
-   which is not obviously cheaper than the direct call it replaces.
-   Measured honestly on statePara before it lands.
+E. **Layer 1 B** — FIRST SLICE LANDED 2026-09-26 (cont-stack-layer1-b):
+   answer-using bodies (`k(1) + k(10)`, `a :: k(x)`, interpolation, a
+   block with `val a = k(1)`, a tail `if`/`match`) CPS-transformed onto
+   an explicit stack of pending parts — `Cont.Body` (`Done`/`Call`),
+   `Cont.Cps`, `step`'s `Pending` and the walked body as parameters.
+   1M such shifts on a 128 KB stack, zero switches (TestContMacro, red
+   first). MEASURED HONESTLY, as this entry asked, and the price is
+   real: a NEW lane `HandlerBenchmark.contAnswer` (1000 levels of
+   `k(x + 1) + 1`) reads 25.4 vs 20.5 µs, **1.24x** walked against
+   direct (three alternating rounds, every ± under 0.35), at **0.81x
+   the bytes** (198 vs 246 KB/op, `-prof gc`) — the walked road
+   allocates 48 B a level LESS, so the 24% is dispatch and loop shape
+   (the `Body` match, `rest.apply`, the pending push and pop through
+   memory) against a direct road the JIT inlines level into level.
+   statePara 1.01, fib100 1.00: nothing else moved. The plan's own
+   words hold — robustness, not speed — and it lands as such: a
+   readable answer-using program never touches the stack, on a 128 KB
+   thread, on Scala.js where no switch exists; a JVM that would have
+   run it direct and switched for ~4 µs per ~870 levels pays 1.24x.
+   REFUTED WITHIN THE LANE, before landing: the state-passing
+   `k(a)(s2)` of `PState` as a function answer (`Fun`) walked in-loop,
+   its application an `Ap` node — 1M PState operations on 128 KB with
+   no switch, and **89 vs 32 µs on statePara, 2.8x** (three rounds;
+   history.d `cont-stack-layer1-b-fun-*`): ten allocations an
+   operation against three, on the program Layer 3's exact room
+   already runs switch-free. Taken out; the shape stays the opaque
+   leaf. The rest — profiling the 24% (or a JS-only expansion if the
+   JVM price is refused), non-tail conditionals, the known
+   higher-order functions, visible user functions, `direct` — is
+   backlog cont-stack-layer1-c.
 
 F. **The rest, in any order:** cont-stack-ucontext-layouts (macOS
    x86_64, glibc x86_64/aarch64, musl's missing symbol), cont-stack-docs

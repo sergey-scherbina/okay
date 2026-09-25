@@ -42,9 +42,19 @@ k(10)`, `a :: k(x)`, `s"${k(a)}"`, a block with `val a = k(1)`, a tail
   TestDocExamplesContStack re-pinned to docs/cont-stack.md's new
   examples (1M answer-using on 128 KB; 20 000 opaque `map(k)` on the
   switch). Core 548 green.
-- Measured (MIN of 3 alternating rounds, `jmh-lane.sh`, JDK 26, ref
-  master 8411cd62f): STATEPARA_RESULT. fib100 FIB_RESULT
-  (history.d `cont-stack-layer1-b`).
+- Measured (MIN of alternating rounds, `jmh-lane.sh`, JDK 26, ref
+  master 8411cd62f; history.d `cont-stack-layer1-b`): the plain shape,
+  a NEW lane `HandlerBenchmark.contAnswer` (1000 levels of
+  `k(x + 1) + 1`), reads **25.4 vs 20.5 µs, 1.24x** walked against
+  direct, three rounds within ±0.35 — at **0.81x the bytes** (198 vs
+  246 KB/op): the walked road allocates 48 B a level less, so the time
+  is dispatch and loop shape, not objects. statePara 1.01 and fib100
+  1.00 (two rounds each): nothing else moved. This is the price the
+  plan named — robustness, not speed: such a program never touches the
+  stack, on a 128 KB thread, on Scala.js where there is no switch to
+  fall back on, at 1.24x on a JVM that would have run it direct and
+  switched for free. Profiling the 24% is cont-stack-layer1-c's first
+  item; a JS-only expansion is the shape if the JVM price is refused.
 - Inventory: six compile-time walks in ContMacro, bounded by the same
   tree `rewrite` walks (specs/stack-safety-okay.tsv). Off the sprint;
   the rest of Layer 1 B filed as backlog cont-stack-layer1-c (non-tail

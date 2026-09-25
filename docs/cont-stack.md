@@ -33,7 +33,13 @@ left to do with its answer, and the runner keeps those pending parts on
 an explicit stack of its own instead of the JVM's. Still no frame per
 level, on any platform; what ran before a call still runs before it;
 `k` is multi-shot as before. A million of these run on a 128 KB stack
-too, at one small allocation per call of `k`:
+too. The price, measured on a thousand-level program of exactly this
+shape (`HandlerBenchmark.contAnswer`): 1.24x the time of running it
+direct on a JVM that has room, at 0.81x the bytes — the walk is data
+the runner interprets where the direct road was calls the JIT inlines.
+What it buys is that such a program never touches the stack: on a
+small thread, and on Scala.js, where there is no fresh stack to switch
+to.
 
 ```scala
 val used = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) => m.flatMap(x => shift[Int, Int, Int](k => k(x + 1) + 1)))
@@ -111,7 +117,9 @@ warning; it counts.
 ## What it costs when it does not switch
 
 Bookkeeping on a program that never goes deep: fib100 (a hundred
-generator steps) reads 1.08–1.17x its pre-switch number in JMH, with an
+generator steps) reads 1.08–1.17x its pre-switch number in JMH (1.00
+against the tree before the answer-using walk, which added nothing
+fib100 can see), with an
 exact allocation count identical byte for byte — the difference is the
 JIT's escape analysis on a slightly bigger hot path, not objects
 (`specs/cont-stack.md`, plan stage C). A thousand-level program that
