@@ -86,7 +86,7 @@ than it does, or a job degrades for nothing).
 | tier | shape | crosses as | who chooses it |
 |---|---|---|---|
 | 1 VALUE | a `Schema`-typed value, a record, a small list | one JSON line (the wire's tree) | a call with a value |
-| 2 FRAME | a table: `okay.arrow.Table`, or `Vector[A]` past `Frame.Threshold` rows | Arrow IPC where the far side speaks it; the columnar JSON of r-frame-columnar-wire where it does not | a call with a Table, or a Vector past the threshold |
+| 2 FRAME | a table: `okay.arrow.Table`, or rows `Vector[A]` (`Road.rows`) | Arrow IPC where the far side speaks it; the columnar JSON of r-frame-columnar-wire where it does not | a call with a Table, or with rows |
 | 3 STREAM | more than fits in memory: `Source[Chunk[A]]` | one tier-2 frame per chunk, the next asked for by the wire's own `continue` (back-pressure) | a call with a Source |
 
 Every language MUST give tier 1 (the wire needs nothing but a JSON
@@ -122,15 +122,20 @@ nothing for is a tier every language can grow into.
       (`compileErrors`), not a runtime refusal (TestFacade)
 - [ ] `Speaks(module)` answers the hello's claims, and the conformance
       suite fails when a claim and a test disagree in either direction
-- [ ] tier 2 crosses as Arrow IPC to a worker whose hello says
+- [x] tier 2 crosses as Arrow IPC to a worker whose hello says
       `frames: ["arrow"]`, as columnar JSON otherwise, and the caller's
       Table comes back a Table either way, equal column for column
+      (FacadeConformance.frames; columnar JSON exercised here — the
+      box's python3 has no pyarrow — and the Arrow road is
+      `ForeignWorker.sendArrow`'s, py-arrow's own tests)
 - [ ] tier 3: a Source of 1M rows crosses one frame at a time; memory on
       the Scala side is bounded by the frame size (measured, not assumed)
-- [ ] `Frames[JvmModule]` passes the Table by reference (identity holds)
-- [ ] a Vector past `Frame.Threshold` rows takes tier 2 without the
-      caller asking; below it, tier 1 (the threshold measured where the
-      two roads cross)
+- [x] `Frames[JvmModule]` passes the Table by reference (identity holds:
+      TestFacade)
+- [x] the SHAPE picks the tier: a value is a call, rows are one frame
+      (`Road.value`, `Road.rows`), a source a stream — there is no size
+      at which rows become calls (Decision 6; the `Frame.Threshold` the
+      first draft had is withdrawn)
 - [ ] the measurement table below has a number in every cell a language
       claims, from the existing instruments, and a cell worse than that
       language's own best road is a defect, not a result
@@ -179,10 +184,16 @@ with its date, load and sha (the `performance` skill).
       A module type without an instance (`Mute`) fails `summon` under
       `compileErrors`. `JvmModule.fn[A, B](name)(f)` registers a function
       for the zero-cost tier.
-- [ ] Stage 2 — `Frames[M]` with the tier rule and `Frame.Threshold`
-      measured; Arrow where spoken, columnar JSON otherwise; the
-      by-reference `JvmModule` instance; then `frame` in the Ts, Hs, Go
-      and Rust shims so their instances exist.
+- [x] Stage 2 — `Frames[M]` (foreign-facade-2, 2026-09-25): a Table in,
+      a Table out, for `PyModule` and `RModule` over `PyPool.frame` /
+      `RPool.frame` (Arrow where the worker negotiated it, columnar JSON
+      otherwise — the worker's own road, `Speaks` says which) and for
+      `JvmModule` by reference (`JvmModule.frame(name)(f)`, TestFacade
+      holds `eq`). `Road.rows[M, A, B]` is the door: rows of `A` as ONE
+      frame, back as rows of `B`. The threshold the plan had is gone —
+      Decision 6. Still open from this stage: `frame` in the Ts, Hs, Go
+      and Rust shims, so their instances can exist
+      (foreign-frame-op-rust-hs-go).
 - [ ] Stage 3 — `Streams[M]`: one frame per chunk over the wire's own
       `continue`, memory bounded by the frame, measured.
 - [ ] Stage 4 — `Programs[M]` and `Holds[M]` folded under the same
@@ -220,6 +231,15 @@ with its date, load and sha (the `performance` skill).
    what a shim grows toward; a tier it does not have is a claim it does
    not make.
 
+6. **The shape picks the tier; there is no threshold** (stage 2). The
+   first draft had `Frame.Threshold`: a `Vector[A]` past it would cross
+   as a frame, below it as calls. It cannot: a far-side function written
+   for a frame takes a dict of columns and one written for a record
+   takes a record — the two are different functions, and no count turns
+   one into the other. So rows are always one frame (`Road.rows`), a
+   value is always a call (`Road.value`), a source is a stream; what a
+   frame COSTS per size is a measurement (stage 5), not a switch.
+
 ## Results
 
 - **Stage 1 (2026-09-25).** `Calls` answers `Either[Batcher.Failed, B]`
@@ -238,6 +258,19 @@ with its date, load and sha (the `performance` skill).
   (Python's and R's continuations are values: multi-shot); the hello
   keys the Interface promises come with stage 2, when there is a
   frame road to announce.
+- **Stage 2 (2026-09-25).** `Frames` over the workers' own `frame` op,
+  the Table converted at the seam (`ArrowFrames.frame`/`table`,
+  `RArrowFrames` twins) and refused by name BEFORE the wire for a
+  column the frame cannot say. The JVM instance holds `eq`. The
+  threshold withdrawn (Decision 6). Python here, columnar JSON: three
+  rows there and back, the empty table too, `fboom` a `ValueError`.
+  The empty table found a seam: the JSON frame road cannot type a
+  column with no cells and answers `Nulls(0)`, which `Rows.rows[A]`
+  refused ("Nulls where the schema has an Int"); a table of no rows
+  now reads as no rows whatever its columns say — there is nothing in
+  it to refuse (okay-arrow, TestRows). Arrow keeps the schema of an
+  empty frame; the JSON road does not, and this is where the two roads
+  first differed in what they can carry.
 - Python here: python3 3.14 on the box, echo/boom/missing green over
   pipes, frames `columnar-json` (no pyarrow in the box's interpreter —
   the venv of MeasurePyArrow has it). R: not installed on this box;

@@ -6,6 +6,8 @@ object RFacadeMod:
   val mod = R.module("rfacade", """
     echo <- function(rec) rec
     boom <- function(rec) stop("nope")
+    fecho <- function(frame) frame
+    fboom <- function(frame) stop("nope")
   """)
 
 /** the conformance body over a REAL R (Live) */
@@ -16,6 +18,11 @@ class TestRFacade extends munit.FunSuite:
 
   given Calls[okay.r.RModule] = Calls.r(TestR.rscript.getOrElse("Rscript"))
   given Speaks[okay.r.RModule] = Speaks.r(TestR.rscript.getOrElse("Rscript"))
+  given Frames[okay.r.RModule] = Frames.r(TestR.rscript.getOrElse("Rscript"))
+
+  test("Frames over Rscript: a table there and back, the empty one too, boom refused") {
+    FacadeConformance.frames(RFacadeMod.mod, "fecho", "fboom")
+  }
 
   test("Calls over Rscript: echo, boom, a missing function") {
     FacadeConformance.calls(RFacadeMod.mod, "echo", "boom")

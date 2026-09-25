@@ -37,7 +37,11 @@ object Rows:
 
   /** a table as rows of `A`; Left names the first row and column that do not fit */
   def rows[A](t: Table)(using s: Schema[A]): Either[String, Vector[A]] =
-    try
+    // a table of no rows is no rows, whatever its columns say: a column
+    // without a value has no kind on the JSON frame road (it comes back
+    // Nulls(0)), and there is nothing in it to refuse (foreign-facade-2)
+    if t.rows == 0 then Right(Vector.empty)
+    else try
       val reader = Schema.fold(s)(Read(Columns.recursiveNames(s)))
       val root = Columns.column(s).tpe match
         case ColType.Struct(_) if !Columns.column(s).nullable =>

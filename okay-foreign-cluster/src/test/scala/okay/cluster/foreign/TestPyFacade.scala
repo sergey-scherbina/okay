@@ -9,6 +9,12 @@ object PyFacadeMod:
 
     def boom(rec):
         raise ValueError("nope")
+
+    def fecho(frame):
+        return frame
+
+    def fboom(frame):
+        raise ValueError("nope")
   """)
 
 /** the conformance body over a REAL Python (Live) */
@@ -19,6 +25,11 @@ class TestPyFacade extends munit.FunSuite:
 
   given Calls[okay.py.PyModule] = Calls.py(TestPy.python.getOrElse("python3"))
   given Speaks[okay.py.PyModule] = Speaks.py(TestPy.python.getOrElse("python3"))
+  given Frames[okay.py.PyModule] = Frames.py(TestPy.python.getOrElse("python3"))
+
+  test("Frames over python3: a table there and back, the empty one too, boom refused") {
+    FacadeConformance.frames(PyFacadeMod.mod, "fecho", "fboom")
+  }
 
   test("Calls over python3: echo, boom, a missing function") {
     FacadeConformance.calls(PyFacadeMod.mod, "echo", "boom")

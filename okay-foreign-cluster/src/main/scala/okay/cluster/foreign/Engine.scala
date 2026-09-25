@@ -129,6 +129,21 @@ final class JvmModule private (val name: String, private val fns: Map[String, An
   /** a missing name is a REFUSAL here, not a throw as `batcher`'s is:
    * `Calls` answers at call time on every road, and Python's
    * AttributeError comes back the same way */
+  /** a frame function under `fn` for `Frames[JvmModule]`: a Table to a
+   * Table, by reference — nothing crosses, nothing is copied */
+  def frame(fn: String)(f: okay.arrow.Table => okay.arrow.Table): JvmModule =
+    val self = this
+    new JvmModule(name, fns.updated(fn, new JvmModule.Framer:
+      val name = s"jvm:${self.name}:$fn"
+      def apply(t: okay.arrow.Table): Either[Batcher.Failed, okay.arrow.Table] =
+        try Right(f(t))
+        catch case e: Exception => Left(Batcher.Failed(e.getClass.getSimpleName, Option(e.getMessage).getOrElse("")))))
+
+  private[foreign] def framer(fn: String): Either[Batcher.Failed, JvmModule.Framer] =
+    fns.get(fn) match
+      case Some(f: JvmModule.Framer) => Right(f)
+      case _ => Left(Batcher.Failed("NoSuchFunction", s"the JVM module '$name' has no frame function '$fn' (it has ${fns.keys.toVector.sorted.mkString(", ")})"))
+
   private[foreign] def caller[A, B](fn: String): Either[Batcher.Failed, JvmModule.Caller[A, B]] =
     fns.get(fn) match
       // the one cast, as `batcher`'s below: a map keyed by name holds
@@ -149,6 +164,11 @@ final class JvmModule private (val name: String, private val fns: Map[String, An
 
 object JvmModule:
   def apply(name: String): JvmModule = new JvmModule(name, Map.empty)
+
+  /** a table to a table, what `Frames[JvmModule]` runs */
+  trait Framer:
+    def name: String
+    def apply(t: okay.arrow.Table): Either[Batcher.Failed, okay.arrow.Table]
 
   /** one value to one value, what `Calls[JvmModule]` runs */
   trait Caller[A, B]:

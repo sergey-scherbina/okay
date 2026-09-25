@@ -26,6 +26,19 @@ class TestFacade extends munit.FunSuite:
   val jvm = JvmModule("facade")
     .fn[Rec, Rec]("echo")(identity)
     .fn[Rec, Rec]("boom")(_ => throw IllegalStateException("nope"))
+    .frame("fecho")(identity)
+    .frame("fboom")(_ => throw IllegalStateException("nope"))
+
+  test("Frames: the conformance body over the JVM's own module") {
+    FacadeConformance.frames(jvm, "fecho", "fboom")
+  }
+
+  test("Frames on the JVM cross by REFERENCE: the same Table object comes back") {
+    val t = okay.arrow.Rows.table(Vector(Rec(1, 1.0, "x")))
+    val back = summon[Frames[JvmModule]].frame(jvm, "fecho")(t)
+    assert(back.exists(_ eq t), "the table was copied")
+    assertEquals(summon[Frames[JvmModule]].frame(jvm, "echo")(t).left.map(_.kind), Left("NoSuchFunction"))
+  }
 
   test("Calls: the conformance body over the JVM's own module") {
     FacadeConformance.calls(jvm, "echo", "boom")
@@ -38,6 +51,9 @@ class TestFacade extends munit.FunSuite:
   test("a capability a module type does not give is a compile error, not a refusal") {
     assert(compileErrors("summon[Calls[Mute]]").nonEmpty)
     assert(compileErrors("summon[Speaks[Mute]]").nonEmpty)
+    assert(compileErrors("summon[Frames[Mute]]").nonEmpty)
+    // EchoModule gives Calls and not Frames: rows through it do not compile
+    assert(compileErrors("Road.rows[EchoModule, Rec, Rec](EchoModule(\"t\"), \"echo\")(Vector.empty)").nonEmpty)
     // and the one it gives compiles
     assert(compileErrors("summon[Calls[EchoModule]]").isEmpty)
   }

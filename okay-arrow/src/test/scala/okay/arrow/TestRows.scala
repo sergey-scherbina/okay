@@ -89,3 +89,9 @@ class TestRows extends munit.FunSuite:
     assertEquals((t.rows, t.cols.length), (0, 13))
     assertEquals(OkayArrow.decode[Order](OkayArrow.encode(Vector.empty[Order])), Right(Vector.empty))
   }
+
+  test("a table of no rows reads as no rows, even when its columns lost their kind (Nulls(0))") {
+    // the JSON frame road cannot type an empty column and answers Nulls(0)
+    val empty = Table(Vector("key" -> Column.Nulls(0), "v" -> Column.Nulls(0)), Vector.empty)
+    assertEquals(Rows.rows[Line](empty), Right(Vector.empty))
+  }

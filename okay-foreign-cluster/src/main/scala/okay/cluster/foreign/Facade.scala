@@ -1,6 +1,7 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
+import okay.arrow.{Rows, Table}
 
 /**
  * THE FACADE OVER EVERY FOREIGN LANGUAGE (specs/foreign-facade.md): one
@@ -52,6 +53,71 @@ object Calls:
     def name = "jvm"
     def call[A: Schema, B: Schema](module: JvmModule, fn: String)(a: A): Either[Batcher.Failed, B] =
       module.caller[A, B](fn).flatMap(_(a))
+
+/**
+ * TIER 2 of the data model: a TABLE in, a table out — `okay.arrow.Table`,
+ * crossing as Arrow IPC where the worker speaks it and as the columnar
+ * JSON of r-frame-columnar-wire where it does not, the same `Table`
+ * either way (`Speaks` says which). On the JVM the table crosses by
+ * reference: the same object, nothing copied — the zero-cost tier the
+ * spec makes the test of the model.
+ *
+ * THE SHAPE PICKS THE TIER, not a threshold: a function written for a
+ * frame takes a dict of columns and one written for a record takes a
+ * record, so a `Vector[A]` is always a frame (`Road.rows`) and one value
+ * is always a call — there is no size at which the one becomes the
+ * other (specs/foreign-facade.md, Decision 6).
+ */
+trait Frames[-M]:
+  def name: String
+  def frame(module: M, fn: String)(in: Table): Either[Batcher.Failed, Table]
+
+object Frames:
+  given py: Frames[okay.py.PyModule] = py("python3")
+  def py(python: String): Frames[okay.py.PyModule] = new:
+    def name = s"py:$python"
+    def frame(module: okay.py.PyModule, fn: String)(in: Table): Either[Batcher.Failed, Table] =
+      val pool = PyPool.of(module, python, Stage.Workers)
+      // a column PyFrame cannot say (a decimal, a timestamp) is refused by
+      // name here, before the wire — `ArrowFrames.frame` throws for it
+      val sent = try Right(okay.py.ArrowFrames.frame(in))
+        catch case e: IllegalStateException => Left(Batcher.Failed("Frame", Option(e.getMessage).getOrElse("")))
+      sent.flatMap(f => PyPool.frame(pool, python, s"${module.name}:$fn", f, Vector.empty)
+        .left.map(c => Batcher.Failed(c.kind, c.message)))
+        .flatMap(f => okay.py.ArrowFrames.table(f).left.map(m => Batcher.Failed("Frame", m)))
+
+  given r: Frames[okay.r.RModule] = r("Rscript")
+  def r(rscript: String): Frames[okay.r.RModule] = new:
+    def name = s"r:$rscript"
+    def frame(module: okay.r.RModule, fn: String)(in: Table): Either[Batcher.Failed, Table] =
+      val pool = RPool.of(module, rscript, Stage.Workers)
+      val sent = try Right(okay.r.RArrowFrames.frame(in))
+        catch case e: IllegalStateException => Left(Batcher.Failed("Frame", Option(e.getMessage).getOrElse("")))
+      sent.flatMap(f => RPool.frame(pool, rscript, s"${module.name}:$fn", f, Vector.empty)
+        .left.map(c => Batcher.Failed(c.kind, c.message)))
+        .flatMap(f => okay.r.RArrowFrames.table(f).left.map(m => Batcher.Failed("Frame", m)))
+
+  /** the JVM: the table by reference, the function as registered */
+  given jvm: Frames[JvmModule] = new:
+    def name = "jvm"
+    def frame(module: JvmModule, fn: String)(in: Table): Either[Batcher.Failed, Table] =
+      module.framer(fn).flatMap(_(in))
+
+/**
+ * The doors a job uses, each picking the tier by the SHAPE it is handed
+ * (Decision 6): a value is a call, rows are one frame — and every road
+ * answers the same `Either[Batcher.Failed, _]`.
+ */
+object Road:
+  /** rows of `A` through a frame function, back as rows of `B`: ONE
+   * frame each way, whatever the count — a function written for a frame
+   * is a function written for a frame */
+  def rows[M, A: Schema, B: Schema](module: M, fn: String)(rows: Vector[A])(using f: Frames[M]): Either[Batcher.Failed, Vector[B]] =
+    f.frame(module, fn)(Rows.table(rows)).flatMap(t => Rows.rows[B](t).left.map(m => Batcher.Failed("Frame", m)))
+
+  /** one value through a record function */
+  def value[M, A: Schema, B: Schema](module: M, fn: String)(a: A)(using c: Calls[M]): Either[Batcher.Failed, B] =
+    c.call[A, B](module, fn)(a)
 
 /**
  * WHAT A WORKER DOES, as against what its instances promise it CAN

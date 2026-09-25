@@ -2,6 +2,7 @@ package okay.cluster.foreign
 
 import munit.Assertions.*
 import okay.codec.Schema
+import okay.arrow.Rows
 
 /**
  * THE CONFORMANCE SUITE (specs/foreign-facade.md): one body per
@@ -29,6 +30,19 @@ object FacadeConformance:
     c.call[Rec, Rec](module, missing)(rec) match
       case Left(_) => ()
       case Right(v) => fail(s"${c.name}: a missing function answered $v")
+
+  /**
+   * `Frames`: rows go over as ONE table and come back as one, equal row
+   * for row through `echo` (a frame function that answers its frame);
+   * `boom` is a refusal by kind; the empty table crosses too.
+   */
+  def frames[M](module: M, echo: String, boom: String)(using f: Frames[M]): Unit =
+    val recs = Vector(Rec(1, 1.5, "ann"), Rec(2, -2.0, "bob"), Rec(3, 0.0, ""))
+    assertEquals(Road.rows[M, Rec, Rec](module, echo)(recs), Right(recs), s"${f.name}: echo")
+    assertEquals(Road.rows[M, Rec, Rec](module, echo)(Vector.empty), Right(Vector.empty), s"${f.name}: empty")
+    f.frame(module, boom)(Rows.table(recs)) match
+      case Left(Batcher.Failed(kind, message)) => assert(kind.nonEmpty, s"${f.name}: boom refused without a kind: $message")
+      case Right(t) => fail(s"${f.name}: boom answered ${t.rows} rows")
 
   /** `Speaks`: a report names the language and the link, and what it
    * says of frames is one of the three words the spec has */
