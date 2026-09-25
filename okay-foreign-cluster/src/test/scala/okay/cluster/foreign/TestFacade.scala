@@ -16,6 +16,17 @@ object EchoModule:
       case "boom" => Left(Batcher.Failed("ValueError", "nope"))
       case other => Left(Batcher.Failed("AttributeError", s"no $other"))
 
+/** a module type whose `Frames` COUNTS what it is handed: what the
+ * stream road sends is then a number, not a belief */
+final case class CountingModule(tag: String)
+object CountingModule:
+  val sizes = scala.collection.mutable.ArrayBuffer[Int]()
+  given Frames[CountingModule] = new:
+    def name = "counting"
+    def frame(module: CountingModule, fn: String)(in: okay.arrow.Table): Either[Batcher.Failed, okay.arrow.Table] =
+      sizes += in.rows
+      Right(in)
+
 /** a module type that gives NO instance */
 final case class Mute(tag: String)
 
@@ -31,6 +42,16 @@ class TestFacade extends munit.FunSuite:
 
   test("Frames: the conformance body over the JVM's own module") {
     FacadeConformance.frames(jvm, "fecho", "fboom")
+  }
+
+  test("Streams: 10 000 rows through a counting Frames in frames of 1 000 — ten frames, none bigger, every row back") {
+    CountingModule.sizes.clear()
+    FacadeConformance.streams(CountingModule("t"), "any", 10000, 1000, () => CountingModule.sizes.toVector)
+    assertEquals(CountingModule.sizes.length, 10)
+  }
+
+  test("Streams over the JVM's own module: the same body") {
+    FacadeConformance.streams(jvm, "fecho", 5000, 512)
   }
 
   test("Frames on the JVM cross by REFERENCE: the same Table object comes back") {
@@ -52,6 +73,9 @@ class TestFacade extends munit.FunSuite:
     assert(compileErrors("summon[Calls[Mute]]").nonEmpty)
     assert(compileErrors("summon[Speaks[Mute]]").nonEmpty)
     assert(compileErrors("summon[Frames[Mute]]").nonEmpty)
+    assert(compileErrors("summon[Streams[Mute]]").nonEmpty)
+    // a Frames instance is a Streams instance: the derived road
+    assert(compileErrors("summon[Streams[CountingModule]]").isEmpty)
     // EchoModule gives Calls and not Frames: rows through it do not compile
     assert(compileErrors("Road.rows[EchoModule, Rec, Rec](EchoModule(\"t\"), \"echo\")(Vector.empty)").nonEmpty)
     // and the one it gives compiles

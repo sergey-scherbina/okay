@@ -3,6 +3,8 @@ package okay.cluster.foreign
 import munit.Assertions.*
 import okay.codec.Schema
 import okay.arrow.Rows
+import okay.cluster.{Flow, Flows}
+import okay.given
 
 /**
  * THE CONFORMANCE SUITE (specs/foreign-facade.md): one body per
@@ -43,6 +45,22 @@ object FacadeConformance:
     f.frame(module, boom)(Rows.table(recs)) match
       case Left(Batcher.Failed(kind, message)) => assert(kind.nonEmpty, s"${f.name}: boom refused without a kind: $message")
       case Right(t) => fail(s"${f.name}: boom answered ${t.rows} rows")
+
+  /**
+   * `Streams`: `n` rows go through `echo` in frames of `batch`; every
+   * row comes back, in order, and no frame ever held more than `batch`
+   * rows — which is the memory bound on both sides. `seen` is how the
+   * suite counts frames where it can (a fake, the JVM); a real far side
+   * is checked by the rows alone.
+   */
+  def streams[M](module: M, echo: String, n: Int, batch: Int, seen: () => Vector[Int] = () => Vector.empty)(using s: Streams[M]): Unit =
+    val recs = Vector.tabulate(n)(i => Rec(i, i * 0.5, s"r$i"))
+    val out = Flows.collect(Road.flow[M, Rec, Rec](module, echo, batch)(Flow.slices(recs, 1))).runWith
+    assertEquals(out.toVector, recs, s"${s.name}: every row back, in order")
+    val sizes = seen()
+    if sizes.nonEmpty then
+      assert(sizes.forall(_ <= batch), s"${s.name}: a frame held more than $batch rows: $sizes")
+      assertEquals(sizes.sum, n, s"${s.name}: the frames add up to the rows")
 
   /** `Speaks`: a report names the language and the link, and what it
    * says of frames is one of the three words the spec has */

@@ -20,6 +20,10 @@ class TestRFacade extends munit.FunSuite:
   given Speaks[okay.r.RModule] = Speaks.r(TestR.rscript.getOrElse("Rscript"))
   given Frames[okay.r.RModule] = Frames.r(TestR.rscript.getOrElse("Rscript"))
 
+  test("Streams over Rscript: 20 000 rows through fecho in frames of 4 096, every row back in order") {
+    FacadeConformance.streams(RFacadeMod.mod, "fecho", 20000, 4096)
+  }
+
   test("Frames over Rscript: a table there and back, the empty one too, boom refused") {
     FacadeConformance.frames(RFacadeMod.mod, "fecho", "fboom")
   }

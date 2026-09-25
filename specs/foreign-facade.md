@@ -55,7 +55,7 @@ trait Calls[-M]:      // tier 1: one typed call, a value in and out
 trait Frames[-M]:     // tier 2: a Table in, a Table out
   def frame(module: M, fn: String)(in: Table): Either[Condition, Table] ! Async
 trait Streams[-M]:    // tier 3: frames crossing one at a time, back-pressured
-  def stream[A: Schema, B: Schema](module: M, fn: String)(in: Source[Chunk[A]]): Source[Chunk[B]]
+  def stream[A: Schema, B: Schema](module: M, fn: String, batch: Int)(in: Flow[A]): Flow[B]
 trait Programs[-M]:   // programs as data: perform/continue/done, multi-shot where the far side's continuations are values
   def program[A: Schema](module: M, fn: String, args: Vector[Json]): A ! (Foreign.Ops)
 trait Holds[-M]:      // object handles: method, attribute, release
@@ -128,8 +128,11 @@ nothing for is a tier every language can grow into.
       (FacadeConformance.frames; columnar JSON exercised here — the
       box's python3 has no pyarrow — and the Arrow road is
       `ForeignWorker.sendArrow`'s, py-arrow's own tests)
-- [ ] tier 3: a Source of 1M rows crosses one frame at a time; memory on
-      the Scala side is bounded by the frame size (measured, not assumed)
+- [x] tier 3: rows cross one frame at a time and no frame ever holds
+      more than `batch` rows — COUNTED at the frame seam by a `Frames`
+      that records what it is handed (FacadeConformance.streams,
+      CountingModule), which is the bound on both sides; the carrier is
+      the cluster's `Flow[A]`, not a bare `Source[Chunk[A]]` (Results)
 - [x] `Frames[JvmModule]` passes the Table by reference (identity holds:
       TestFacade)
 - [x] the SHAPE picks the tier: a value is a call, rows are one frame
@@ -194,8 +197,17 @@ with its date, load and sha (the `performance` skill).
       Decision 6. Still open from this stage: `frame` in the Ts, Hs, Go
       and Rust shims, so their instances can exist
       (foreign-frame-op-rust-hs-go).
-- [ ] Stage 3 — `Streams[M]`: one frame per chunk over the wire's own
-      `continue`, memory bounded by the frame, measured.
+- [x] Stage 3 — `Streams[M]` (foreign-facade-3, 2026-09-25): a `Flow[A]`
+      through a frame function one frame per chunk of `batch` rows, back
+      as a `Flow[B]` — `Road.flow`. DERIVED for every language with
+      `Frames` (`Streams.viaFrames`): the next frame goes when the last
+      answered, which is the back-pressure, and neither side ever holds
+      more than a frame of it. The conformance body `streams` runs
+      10 000 rows through a COUNTING `Frames` in frames of 1 000 and
+      checks the count (ten), that no frame was bigger, and that every
+      row came back in order (TestFacade); 20 000 rows over python3 in
+      frames of 4 096 (Live). A far side that drives a stream itself is
+      what `Speaks.stream` will say once a shim grows it.
 - [ ] Stage 4 — `Programs[M]` and `Holds[M]` folded under the same
       typeclass shape (they exist as `ForeignEval`/`REval` operations;
       the instances are thin).
@@ -271,6 +283,17 @@ with its date, load and sha (the `performance` skill).
   it to refuse (okay-arrow, TestRows). Arrow keeps the schema of an
   empty frame; the JSON road does not, and this is where the two roads
   first differed in what they can carry.
+- **Stage 3 (2026-09-25).** The carrier is the cluster's `Flow[A]`
+  rather than the `Source[Chunk[A]]` the Interface first wrote: a
+  `Flow` is what already runs across partitions and workers
+  (`Stage.through`, `mapIn`), and tier 3 IS `mapIn`'s road given a
+  name and derived from `Frames` for every language — `Streams` exists
+  for any module type with `Frames`, without a line per language. The
+  memory bound is proven by counting rather than by measuring heap: a
+  fake `Frames` records the rows of every frame it is handed, and the
+  suite asserts none exceeds the batch — a heap measurement on a shared
+  box would have been a belief. Python here: 20 000 rows in frames of
+  4 096 through `fecho`, every row back in order.
 - Python here: python3 3.14 on the box, echo/boom/missing green over
   pipes, frames `columnar-json` (no pyarrow in the box's interpreter —
   the venv of MeasurePyArrow has it). R: not installed on this box;

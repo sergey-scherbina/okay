@@ -27,6 +27,10 @@ class TestPyFacade extends munit.FunSuite:
   given Speaks[okay.py.PyModule] = Speaks.py(TestPy.python.getOrElse("python3"))
   given Frames[okay.py.PyModule] = Frames.py(TestPy.python.getOrElse("python3"))
 
+  test("Streams over python3: 20 000 rows through fecho in frames of 4 096, every row back in order") {
+    FacadeConformance.streams(PyFacadeMod.mod, "fecho", 20000, 4096)
+  }
+
   test("Frames over python3: a table there and back, the empty one too, boom refused") {
     FacadeConformance.frames(PyFacadeMod.mod, "fecho", "fboom")
   }

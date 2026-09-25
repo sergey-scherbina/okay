@@ -2,6 +2,7 @@ package okay.cluster.foreign
 
 import okay.codec.Schema
 import okay.arrow.{Rows, Table}
+import okay.cluster.Flow
 
 /**
  * THE FACADE OVER EVERY FOREIGN LANGUAGE (specs/foreign-facade.md): one
@@ -104,6 +105,34 @@ object Frames:
       module.framer(fn).flatMap(_(in))
 
 /**
+ * TIER 3 of the data model: MORE THAN FITS IN MEMORY crosses one frame at
+ * a time. A `Flow[A]` goes through a frame function chunk by chunk —
+ * each chunk one tier-2 frame there and back — so neither side ever
+ * holds more than `batch` rows of it: the memory bound is the frame.
+ *
+ * Every language with `Frames` has this road, DRIVEN FROM HERE
+ * (`Streams.viaFrames`): the next frame is sent when the last answered,
+ * which is the back-pressure. A far side that drives a stream itself
+ * (a generator answering chunk by chunk) is what `Speaks.stream` will
+ * say when a shim grows it; until then this is the road for all.
+ */
+trait Streams[-M]:
+  def name: String
+  def stream[A: Schema, B: Schema](module: M, fn: String, batch: Int = Stage.Batch)(in: Flow[A]): Flow[B]
+
+object Streams:
+  /** the road every `Frames` language has: one frame per chunk */
+  given viaFrames[M](using f: Frames[M]): Streams[M] = new:
+    def name = f.name
+    def stream[A: Schema, B: Schema](module: M, fn: String, batch: Int)(in: Flow[A]): Flow[B] =
+      Stage.through(in, batcher[M, A, B](module, fn), batch, 3)
+
+  /** a frame function as a Batcher: rows to a table, over, back to rows */
+  def batcher[M, A: Schema, B: Schema](module: M, fn: String)(using f: Frames[M]): Batcher[A, B] = new:
+    val name = s"${f.name}:$fn"
+    def apply(rows: Vector[A]): Either[Batcher.Failed, Vector[B]] = Road.rows[M, A, B](module, fn)(rows)
+
+/**
  * The doors a job uses, each picking the tier by the SHAPE it is handed
  * (Decision 6): a value is a call, rows are one frame — and every road
  * answers the same `Either[Batcher.Failed, _]`.
@@ -114,6 +143,10 @@ object Road:
    * is a function written for a frame */
   def rows[M, A: Schema, B: Schema](module: M, fn: String)(rows: Vector[A])(using f: Frames[M]): Either[Batcher.Failed, Vector[B]] =
     f.frame(module, fn)(Rows.table(rows)).flatMap(t => Rows.rows[B](t).left.map(m => Batcher.Failed("Frame", m)))
+
+  /** a flow through a frame function, one frame per chunk of `batch` rows */
+  def flow[M, A: Schema, B: Schema](module: M, fn: String, batch: Int = Stage.Batch)(in: Flow[A])(using s: Streams[M]): Flow[B] =
+    s.stream[A, B](module, fn, batch)(in)
 
   /** one value through a record function */
   def value[M, A: Schema, B: Schema](module: M, fn: String)(a: A)(using c: Calls[M]): Either[Batcher.Failed, B] =
