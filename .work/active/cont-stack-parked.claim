@@ -1,0 +1,6 @@
+feature/cont-stack-parked 2026-09-25T15:30:00Z
+agent: claude-code
+heartbeat: 2026-09-25T15:30:00Z
+status: in-progress
+done-so-far: claim; stage-A A/B measured (statePara 4.9x = count-road switch)
+next: record the A/B; StackPool (parked, reused 1 GB worker threads) for StackSwitch.fresh on JVM and Native; reuse test red first; A/B statePara
