@@ -432,7 +432,10 @@ list in its spec or spec section)
   drivers, 2026-09-25): they are `Provided`, because okay-ops depends
   on okay-docs for `Docs.Stats` and every server carried both drivers
   (18.9 MB of okay-watch's 64 MB jar, never called). A program that
-  builds a Mongo or Cassandra engine names its driver.
+  builds a Mongo or Cassandra engine names its driver. That holds for
+  the published artifact; inside one build `Provided` still travels
+  through `dependsOn`, so a source consumer excludes the drivers itself
+  until okay-ops stops naming okay-docs (backlog ops-docs-edge).
 
 ## Results
 

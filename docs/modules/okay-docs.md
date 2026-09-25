@@ -13,9 +13,13 @@ mongodb-driver-sync, the Apache Cassandra java-driver-core,
 `okay-blob` (SigV4) and `okay-http`. They were three satellite
 modules until docs-adapters-merge (2026-09-23). The two vendor
 drivers are `Provided` since ops-docs-vendor-drivers (2026-09-25):
-they do not travel to a module that depends on okay-docs, so a
-program that builds a `MongoDocs` or a `CassandraDocs` names the
-driver in its own build, as a JDBC user names theirs.
+they do not travel to a program that depends on the PUBLISHED
+okay-docs, so a program that builds a `MongoDocs` or a
+`CassandraDocs` names the driver in its own build, as a JDBC user
+names theirs. Inside one sbt build (a `ProjectRef` consumer) they do
+still travel through `dependsOn`; such a consumer that wants them out
+says `excludeDependencies` for org.mongodb, org.apache.cassandra and
+com.datastax.oss.
 
 ## Guide
 
