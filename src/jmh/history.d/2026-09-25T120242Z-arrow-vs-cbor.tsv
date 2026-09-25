@@ -1,6 +1,6 @@
-2026-09-25	2ae69a27	33-50	ArrowVsCborBench trades 1000 rows round trip: Arrow (OkayArrow + Rows) vs CBOR (Schema)	0.626	3.062	0.20	ms/op; B/op 1573917 vs 5432985; bytes 28944 vs 47443
-2026-09-25	2ae69a27	33-50	ArrowVsCborBench events 1000 rows round trip: Arrow vs CBOR	0.565	2.928	0.19	ms/op; B/op 2237625 vs 6567509; bytes 55560 vs 63411
-2026-09-25	2ae69a27	33-50	ArrowVsCborBench orders 1000 rows round trip: Arrow vs CBOR	1.103	3.833	0.29	ms/op; B/op 4207741 vs 11214457; bytes 85104 vs 121738
-2026-09-25	2ae69a27	33-50	ArrowVsCborBench trades 100000 rows round trip: Arrow vs CBOR	61.382	239.253	0.26	ms/op +-27.6; B/op 144779189 vs 569089454
-2026-09-25	2ae69a27	33-50	ArrowVsCborBench orders 100000 rows round trip: Arrow vs CBOR	487.797	334.944	1.46	ms/op +-380 (noise wider than the gap); B/op 395991042 vs 1147883256
-2026-09-25	2ae69a27	33-50	ArrowVsCborBench events 1000 rows, ZSTD: Arrow+zstd vs CBOR+zstd, bytes	23584	6289	3.75	bytes; pyarrow's own Arrow+zstd of the same table 14344: our encoder 1.6x behind on columnar buffers AND the format 2.3x behind CBOR+zstd
+2026-09-25	91ee9654	33-50	ArrowVsCborBench trades 1000 rows round trip: Arrow (OkayArrow + Rows) vs CBOR (Schema)	0.626	3.062	0.20	ms/op; B/op 1573917 vs 5432985; bytes 28944 vs 47443
+2026-09-25	91ee9654	33-50	ArrowVsCborBench events 1000 rows round trip: Arrow vs CBOR	0.565	2.928	0.19	ms/op; B/op 2237625 vs 6567509; bytes 55560 vs 63411
+2026-09-25	91ee9654	33-50	ArrowVsCborBench orders 1000 rows round trip: Arrow vs CBOR	1.103	3.833	0.29	ms/op; B/op 4207741 vs 11214457; bytes 85104 vs 121738
+2026-09-25	91ee9654	33-50	ArrowVsCborBench trades 100000 rows round trip: Arrow vs CBOR	61.382	239.253	0.26	ms/op +-27.6; B/op 144779189 vs 569089454
+2026-09-25	91ee9654	33-50	ArrowVsCborBench orders 100000 rows round trip: Arrow vs CBOR	487.797	334.944	1.46	ms/op +-380 (noise wider than the gap); B/op 395991042 vs 1147883256
+2026-09-25	91ee9654	33-50	ArrowVsCborBench events 1000 rows, ZSTD: Arrow+zstd vs CBOR+zstd, bytes	23584	6289	3.75	bytes; pyarrow's own Arrow+zstd of the same table 14344: our encoder 1.6x behind on columnar buffers AND the format 2.3x behind CBOR+zstd
