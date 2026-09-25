@@ -24,7 +24,9 @@
 #   5. only on exit 0: worktree remove, branch delete (-d: refuses a
 #      branch that is not actually merged — a safety net, not
 #      ceremony), claim release (refuses if the claim file is not
-#      actually tracked — the misnamed-claim incident), push
+#      actually tracked — the misnamed-claim incident), then a KICK to
+#      scripts/ci-runner.sh — the runner pushes, once, after gating the
+#      whole build (ci-staged stage B); this script does not push
 #
 # Every step's exit code is printed. Nothing here forces anything:
 # a step that fails STOPS the script and leaves the state for a human
@@ -153,7 +155,7 @@ if [ "$dry_run" = true ]; then
   else
     echo "  (no tracked claim file $claim — release-claim step would be skipped, with a warning)"
   fi
-  echo "  git push origin master"
+  echo "  sh scripts/ci-runner.sh kick   (the runner pushes, once the whole build is green)"
   exit 0
 fi
 
@@ -199,8 +201,12 @@ else
   echo "land.sh: WARNING — $claim is not a tracked file; no claim to release. Master is landed regardless." >&2
 fi
 
-# --- 8. push — the last step, no permission needed -------------------
-push_exit=0
-git push origin master || push_exit=$?
-echo "land.sh: push exit=$push_exit"
-exit "$push_exit"
+# --- 8. kick the runner — it pushes, once, after the whole build -----
+# (ci-staged stage B, specs/ci-staged.md): this lane no longer pushes.
+# scripts/ci-runner.sh is the only pusher; it gates origin/master..master
+# with the WHOLE build and pushes on green, so origin never receives a
+# tree only this one lane's scoped gate has seen.
+kick_exit=0
+sh scripts/ci-runner.sh kick || kick_exit=$?
+echo "land.sh: kick exit=$kick_exit"
+exit "$kick_exit"

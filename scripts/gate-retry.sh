@@ -31,10 +31,16 @@
 # a process-group kill by blast radius.
 #
 # Usage:
-#   scripts/gate-retry.sh <worktree> <log> [attempts]   default 6
+#   scripts/gate-retry.sh <worktree> <log> [attempts] [cmd]   default 6, "test"
 #   scripts/gate-retry.sh --probe                       read the box now
 #   scripts/gate-retry.sh --read <log>                  what it would do
 #                                                       with a log you have
+#
+# [cmd] is what ci-runner.sh (specs/ci-staged.md, stage B) needs this
+# for: "family all", the whole build, run in the MAIN checkout (a
+# perfectly good <worktree>) with the same quiet-wait, stall watchdog
+# and kill-retry a lane already gets for free. Default "test" so every
+# existing call, none of which named a fourth argument, is unchanged.
 #
 # Exit: the gate's own code on a verdict; 99 if none in <attempts>.
 #
@@ -130,9 +136,10 @@ if [ "${1:-}" = "--probe" ]; then
   exit 0
 fi
 
-WT="${1:?usage: gate-retry.sh <worktree> <log> [attempts]}"
-LOG="${2:?usage: gate-retry.sh <worktree> <log> [attempts]}"
+WT="${1:?usage: gate-retry.sh <worktree> <log> [attempts] [cmd]}"
+LOG="${2:?usage: gate-retry.sh <worktree> <log> [attempts] [cmd]}"
 N="${3:-6}"
+GATE_CMD="${4:-test}"
 # Minutes of SILENCE that mean a hang rather than a long compile.
 # Ten, because the longest legitimate quiet stretch here is one big
 # module's compile and the measured hang was 28 minutes and counting.
@@ -203,7 +210,7 @@ while [ "$i" -le "$N" ]; do
   # of the bug the watchdog was written for. Caught in production the
   # same afternoon: gate-drv.log has the verdict and, ten minutes
   # later, "STALLED".
-  ( set +e; cd "$WT"; bash scripts/gate.sh; echo $? > "$rcfile" ) >> "$LOG" 2>&1 &
+  ( set +e; cd "$WT"; bash scripts/gate.sh "$GATE_CMD"; echo $? > "$rcfile" ) >> "$LOG" 2>&1 &
   gpid=$!
   stalled=0
   quietmin=0

@@ -224,48 +224,67 @@ cannot be loaded into a test JVM):
       master, 2026-09-25: refused naming BUILD — master had gained
       `build.sbt`, this lane touches `project/`; the classifier checked
       on eight paths)
-- [ ] `land.sh`'s `landed as` names the branch tip; the release-claim
-      commit carries no attribution trailer
+- [x] `land.sh`'s `landed as` names the branch tip; the release-claim
+      commit carries no attribution trailer (ci-staged's own commit
+      used this and landed clean; land.sh's step 8 is now `ci-runner.sh
+      kick`, see Stage B)
 
 Stage B — the runner (`scripts/ci-runner-selftest.sh`, in the style of
-`gate-selftest.sh`: a fixture repo with a bare `origin`, a fake
-`gate.sh` that answers what the test says, under both `sh` and `bash`):
+`gate-selftest.sh`: a fixture repo with a bare `origin`, fake
+`gate.sh`/`gate-retry.sh` that answer what the test says, under both
+`sh` and `bash`, 11 cases):
 
-- [ ] `once` with `origin/master == master` does nothing and exits 0
-- [ ] `once` on a board-only range pushes without running the gate
-- [ ] `once` on GREEN pushes exactly the gated `to` — not a master that
-      moved during the run; the moved-past commits wait for the next turn
-- [ ] `once` on RED pushes nothing
-- [ ] `once` with origin genuinely ahead merges (a merge commit, no
+- [x] `once` with `origin/master == master` does nothing and exits 0
+- [x] `once` on a board-only range pushes without running the gate —
+      found and fixed a real bug getting here: a git PATHSPEC built
+      from a shell variable (`':!changelog.d'`) does not work, because
+      word-splitting a variable's value does not strip the quotes it
+      contains; `is_board_only_files` filters the name LIST in the
+      shell instead
+- [x] `once` on GREEN pushes exactly the gated `to` — by construction
+      (`to` is captured once, before the gate runs, and is the only
+      value ever pushed); not separately raced against a landing
+      arriving mid-gate
+- [x] `once` on RED pushes nothing
+- [x] `once` with origin genuinely ahead merges (a merge commit, no
       rebase), gates the merged tree, pushes it
-- [ ] a second `once` while the first holds the lock exits without
+- [x] a second `once` while the first holds the lock exits without
       running, naming the holder's pid
-- [ ] a lock whose pid is dead is taken over, and the log says so
+- [x] a lock whose pid is dead is taken over, and the log says so
 - [ ] a `kick` during a run leaves the loop a second run; two kicks
-      during a run leave one
-- [ ] `kick` with no loop running starts `once` detached: the kicking
-      shell exits at once and the run reaches a verdict after it
+      during a run leave one — NOT covered: needs a `loop` process
+      actually mid-gate to kick against, which the fixture's synchronous
+      fake gate does not produce. Filed as a follow-up, not blocking.
+- [x] `kick` with no loop running starts `once` detached: the kicking
+      shell returns before the push happens; the test polls origin for
+      up to 10s and finds it updated
 - [ ] a range touching `okay2/` also gates okay2's own build; one that
-      does not, does not
+      does not, does not — implemented (see Interface) but not
+      exercised by the fixture, which has no okay2/. Filed as a
+      follow-up.
 
 Stage C — bisect and revert (the same selftest, a fixture history of
-landings with one the fake gate calls bad):
+four landings — two plain, one that introduces a marker file, one
+after it — with the fake gate red exactly when the marker is present
+in the tree, so a REAL `git bisect run` has something to find):
 
-- [ ] a red range with one landing commit reverts it without a bisect
-- [ ] a red range with several landing commits reverts exactly the first
-      bad one and no other
-- [ ] the revert commit names the culprit sha and its lane's slug;
+- [x] a red range with one landing commit reverts it without a bisect
+- [x] a red range with several landing commits reverts exactly the
+      first bad one and no other (4 landings, the marker-introducing
+      one alone reverted; the two innocent ones survive)
+- [x] the revert commit names the culprit sha and its lane's slug;
       `changelog.d/ci-revert-<slug>.md` exists and names the same
-- [ ] nothing is pushed on the red turn; the next turn pushes the range
+- [x] nothing is pushed on the red turn; the next turn pushes the range
       with the revert, culprit and revert together
-- [ ] the bisect runs in its own detached worktree; the main checkout's
-      HEAD never leaves master
+- [x] the bisect runs in its own detached worktree; the main checkout's
+      HEAD never leaves master, and the bisect worktree is removed after
 
 Policy (AGENTS.md):
 
-- [ ] "Before merging" names `scripts/gate.sh "affected master staged"`
-      and the narrowed re-gate rule (this lane); the PUSH rule is
-      rewritten as "land, then kick" when the runner lands (lane 2)
+- [x] "Before merging" names `scripts/gate.sh "affected master staged"`
+      and the narrowed re-gate rule (landed with stage A); the PUSH
+      rule is rewritten as "land, then kick" (this lane), with a
+      documented fallback for a checkout that predates the runner
 
 ## Out of scope
 
@@ -355,11 +374,23 @@ waited for the other's gate; origin never saw it.
 
 ## Results
 
-_Stage A, 2026-09-25, `--plan` on this box: an okay-lex main change is
-3 projects then 125; a test-only change 3 then none; the core 3 then
-169; `build.sbt` 182 as one stage; `closed` 128 as one — the same 128
-`affected master` ran before. Wall-time before/after for a real leaf
-lane and a real core lane, the runner's first week (turns, pushes, reds,
-reverts, longest landing-to-push), and the collapse measured against it
-(load average during landings, RAM-guard kills per day): filled as each
-lands._
+Stage A, 2026-09-25, `--plan` on this box: an okay-lex main change is
+3 projects then 125 dependents; a test-only change 3 then none; the
+core 3 then 169; `build.sbt` 182 as one stage; `closed` 128 as one —
+the same 128 `affected master` ran before. The pre-merge gate for THIS
+LANE (build files changed — `project/Affected.scala`, `scripts/`)
+was, correctly, the whole family under `staged`: 7441 tests, 330
+module compiles, GREEN.
+
+Stage B/C, `ci-runner-selftest.sh`, 11 cases, fixture repo (never the
+real okay repo): every case in the spec's Behavior list passed except
+two explicitly filed as follow-ups (a live `loop` process kicked mid-run;
+an `okay2/`-touching range) which the synchronous fixture cannot
+produce. One real bug found and fixed by the selftest itself: a git
+pathspec built from a shell variable does not work (word-splitting
+does not strip the quotes the variable's value contains), which would
+have sent every board-only landing through a full, wasted gate.
+
+The runner's first week in production, and the collapse measured
+against it (load average during landings, RAM-guard kills per day):
+filled once `ci-runner.sh loop` has actually run that long.

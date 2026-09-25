@@ -7,6 +7,11 @@ target/
 
 # git worktrees for parallel work (multi-agent protocol)
 .worktrees/
+# ci-runner's own state (specs/ci-staged.md): a lock dir, kick files and
+# gate logs, local to this box like the claims are — never a commit.
+# .work/active/*.claim stays TRACKED; this rule does not reach it (an
+# ignore rule never un-tracks a path already committed).
+.work/ci/
 okay-chat*.db
 okay-chat.log/
 # the demo board and the two-node log are FileStore DIRECTORIES the

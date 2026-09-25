@@ -56,23 +56,36 @@ force, all already practiced, none previously written down:
   only fixes the repo-specific facts. The branch is `master` (not `main`).
   Claims and merges are LOCAL — no lane needs the network to land, and
   none should wait for it.
-- **PUSH WHAT YOU LAND, IMMEDIATELY, WITHOUT ASKING** (operator,
-  2026-09-18). `git push origin master` is the last step of landing a
-  lane, after the release-claim commit — not a separate errand and not
-  a permission to wait for. The rule it replaces said pushing was "a
-  deliberate act by whoever the operator asks", and what that bought
-  was `origin` sitting 60 commits behind (2026-09-08), then 16
-  (2026-09-18), with every submodule consumer blocked: okay-watch's own
-  rule is that its pointer must name a commit that EXISTS on GitHub, so
-  an unpushed okay is a product that cannot bump. Asking each time cost
-  the operator an interruption per lane and bought nothing.
-  WHAT DOES NOT CHANGE: the gate still runs before the merge, and the
-  merge is still its own command whose exit code you read. You push
-  what is already landed and green — never a branch, never a lane that
-  has not merged.
-  A push that is REJECTED means a sibling pushed first: `git fetch`,
-  see whether origin is genuinely ahead (the bullet below), and land
-  that before pushing again. Never force.
+- **LAND, THEN KICK THE RUNNER — THE RUNNER PUSHES** (ci-staged stage B,
+  2026-09-25, specs/ci-staged.md; replaces the 2026-09-18 rule below,
+  which had every lane pushing for itself). `land.sh` step 8 is now
+  `sh scripts/ci-runner.sh kick`, not `git push origin master` — no
+  lane pushes directly any more. `scripts/ci-runner.sh` is the ONE
+  process that pushes: it gates `origin/master..master` with the WHOLE
+  build (`family all`), once, serially (a `mkdir` lock under
+  `.work/ci/`), and pushes only on green; a RED range is bisected and
+  the first bad landing reverted (stage C) before the next turn pushes
+  the range with the revert in it. `kick` wakes a loop already running
+  or starts one detached run if none is; either way it returns at
+  once — landing does not block on the push.
+  THE OLD RULE, why it existed and why kicking still serves it: pushing
+  was made every lane's own job on 2026-09-18 because "a deliberate act
+  by whoever the operator asks" had left `origin` sitting 60 commits
+  behind (2026-09-08), then 16 (2026-09-18), with okay-watch's pointer
+  — which must name a commit that EXISTS on GitHub — unable to bump.
+  Kicking serves the same end without N lanes each re-gating the family
+  to justify their own push: the runner pushes within one whole build
+  of every landing, and pushes only a tree the whole gate has seen —
+  which asking-per-lane and pushing-per-lane never guaranteed either.
+  WHAT DOES NOT CHANGE: the gate still runs before the merge (now the
+  scoped `affected … staged` gate, `staged` above), and the merge is
+  still its own command whose exit code you read.
+  UNTIL `scripts/ci-runner.sh` EXISTS ON YOUR CHECKOUT (it lands with
+  ci-runner; a checkout that predates it has no such script): fall
+  back to the old behavior — `git push origin master` yourself, and a
+  push that is REJECTED means a sibling pushed first: `git fetch`, see
+  whether origin is genuinely ahead (the bullet below), land that, and
+  push again. Never force.
 - **NEVER `reset` or `merge` to `origin/*`.** Not because origin is
   always stale — since 2026-09-08 it is sometimes current — but
   because it is current only in the moments just after somebody
@@ -109,6 +122,9 @@ force, all already practiced, none previously written down:
   longer exist is a worse defect than a merge commit on an otherwise
   linear branch. Gate the merged tree before pushing it: the merge is
   a tree nobody has tested, however trivial the incoming diff looks.
+  This is `scripts/ci-runner.sh`'s own job now, done automatically as
+  part of `once` — a lane hits this case only on a checkout that
+  predates the runner.
 - Claims live in `.work/active/<slug>.claim`, committed to `master`.
   One claim is one task; release it (`git rm` + commit) when the task
   lands, naming the landing commit.
@@ -221,8 +237,9 @@ force, all already practiced, none previously written down:
   runs ALONE (its own command, from the main checkout, exit code
   printed), and only after reading exit 0 do worktree removal, branch
   deletion, boards and the claim release run — and then
-  `git push origin master`, which is the last step and needs nobody's
-  permission (see Coordination). A `;` after a failed
+  `sh scripts/ci-runner.sh kick`, which is the last step and needs
+  nobody's permission (see Coordination — the runner pushes, not this
+  script). A `;` after a failed
   merge has twice deleted an unmerged branch and pushed a release
   entry for work that had not landed.
 - Coordination room: rozum (etiquette: the `rozum` skill). Announce
@@ -480,10 +497,11 @@ force, all already practiced, none previously written down:
   One E198 false positive is known and recorded in the script: a
   RENAMED import used only as an extension method reads as unused, and
   deleting it fails with E008. Drop the rename, not the import.
-- **`scripts/gate-retry.sh <worktree> <log> [attempts]` is how a long
-  gate is actually run here.** It waits for a quiet box, runs
-  `gate.sh`, and starts over when the run produced NO VERDICT — which
-  is what the RAM guard's kill looks like from outside. It never
+- **`scripts/gate-retry.sh <worktree> <log> [attempts] [cmd]` is how a
+  long gate is actually run here.** It waits for a quiet box, runs
+  `gate.sh` (`[cmd]`, default `test` — `scripts/ci-runner.sh` passes
+  `"family all"`), and starts over when the run produced NO VERDICT —
+  which is what the RAM guard's kill looks like from outside. It never
   retries a `gate: RED`: a run that reached a verdict has said
   something about the tree and its exit code is passed straight
   through, because a loop that re-rolls a red is a machine for landing
