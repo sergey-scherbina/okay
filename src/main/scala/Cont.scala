@@ -210,9 +210,13 @@ object Cont:
      */
     case Mapped[A, B, S, R](s: (A => S) => R, g: A => B) extends Leaf[B, S, R]
 
-    def apply(k: A => S): R = this match
-      case Absorbed(s, g) => s(a => run(g(a))(k))
-      case Mapped(s, g) => s(a => k(g(a)))
+    def apply(k: A => S): R = applyAt(k, roomOf(k))
+
+    /** the leaf re-enters the runner with the room the runner has left
+     * (specs/stack-safety.md stage 1c) */
+    def applyAt(k: A => S, room: Int): R = this match
+      case Absorbed(s, g) => s(Reentry(g, k, room - 1))
+      case Mapped(s, g) => s(a => callK(k, g(a), room - 1))
 
   /**
    * flatMap, in prefix form. The extension below and the
@@ -241,7 +245,44 @@ object Cont:
       case _ => Bind(c, a => Free.Return(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)
+
+  /**
+   * THE CONTINUATION A SHIFT'S BODY RECEIVES, when calling it re-enters
+   * this runner — and the room left on this stack, carried as a FIELD
+   * rather than in a ThreadLocal (specs/stack-safety.md stage 1c).
+   *
+   * Direct style's own cost: a body gets `k`'s VALUE, so `k` runs the
+   * rest of the program inside the body's call, and shifts in a row
+   * nest one level each. `room` counts the levels this stack still
+   * takes; at zero the rest continues on a FRESH stack
+   * (`StackSwitch.fresh`) and this one waits for its answer. No
+   * exception unwinds anything and nothing runs twice: the body's frame
+   * simply stays where it is, on the stack below, until the answer
+   * comes back.
+   */
+  private final class Reentry[X, B, S, T](f: X => Rep[B, S, T], k: B => S, val room: Int) extends (X => T):
+    def apply(x: X): T = enter(x, room)
+
+    /** enter from a place with `here` levels of room left: a
+     * continuation may be called DEEPER than it was made (the runner
+     * hands an answer to an outer continuation from inside an inner
+     * segment), so the room is the smaller of the two */
+    def enter(x: X, here: Int): T =
+      val r = math.min(here, room)
+      if r > 0 then step(f(x))(k)(r)
+      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh))
+
+  /** call a continuation from inside the runner, with the room HERE */
+  private def callK[A, S](k: A => S, a: A, room: Int): S = k match
+    case r: Reentry[x, ?, ?, t] => r.enter(a, room)
+    case _ => k(a)
+
+  /** the room a continuation carries: a runner's own, or the first
+   * room when a user's function calls in */
+  private def roomOf(k: Any): Int = k match
+    case r: Reentry[?, ?, ?, ?] => r.room
+    case _ => StackSwitch.firstRoom
 
   /**
    * Is this program already an ANSWER — and if so, continue on the
@@ -295,21 +336,36 @@ object Cont:
    * match instead is indistinguishable on `relayForward` and loses
    * `statePara` (0.845 vs 0.900) — history.tsv `freer0b-runner-shape`.
    */
+  /**
+   * `Shift.at`, with the runner's room handed to an absorbed leaf. A
+   * leaf re-enters the runner through ITS continuation, not the one it
+   * is given, so the room has to reach it here: read off the
+   * continuation it would only ever see the program's outermost one,
+   * and shifts in a row would never count down (measured: a 20 000
+   * shift program overflowed with the room in `k` alone).
+   *
+   * The cast is `Shift.at`'s own claim at the leaf's class: a leaf is
+   * built only by `bind`/`mapped`, at the facade's indexes.
+   */
+  private inline def leafAt[X, S, R](s: Shift[X], k: X => S, room: Int): R = s match
+    case l: Leaf[?, ?, ?] => l.asInstanceOf[Leaf[X, S, R]].applyAt(k, room)
+    case _ => s.at[S, R](k)
+
   @annotation.tailrec
-  private def step[A, S, R](c: Rep[A, S, R])(k: A => S): R = c match
-    case Return(a) => pinned[S, R](k(a))
-    case Inject(s) => s.at[S, R](k)
+  private def step[A, S, R](c: Rep[A, S, R])(k: A => S)(room: Int): R = c match
+    case Return(a) => pinned[S, R](callK(k, a, room))
+    case Inject(s) => leafAt[A, S, R](s, k, room)
     // the leaf's inner answer is the Bind's existential — `Any` names
     // "whatever it is". Left to inference it came out `Nothing`, and a
     // lambda whose body is typed `Nothing` carries a checkcast to
     // Nothing$ that throws (ClassCastException: null, four TestFree
     // rotation laws, 2026-09-15). `typed(s)(...)` never hit this only
     // because its two argument lists resolved the variable differently.
-    case Bind(Inject(s), f) => s.at[Any, R](x => run(f(x))(k))
-    case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)
-    case Bind(Return(a), f) => step(f(a))(k)
-    case Delay(t) => step(t())(k)
-    case Bind(Delay(t), g) => step(Bind(t(), g))(k)
+    case Bind(Inject(s), f) => s.at[Any, R](Reentry(f, k, room - 1))
+    case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)(room)
+    case Bind(Return(a), f) => step(f(a))(k)(room)
+    case Delay(t) => step(t())(k)(room)
+    case Bind(Delay(t), g) => step(Bind(t(), g))(k)(room)
 
   extension [A, S, R](c: Cont[A, S, R])
     def flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R] = bind(c)(f)
