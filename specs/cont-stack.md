@@ -648,8 +648,27 @@ B. **Layer 1 A, the macro** — LANDED 2026-09-25 (cont-stack-macro). `shift` be
    silently stopped testing it — they build the leaf with `shiftLeaf`.
    Not measured (the box): a lane that exercises it is Reader.local's.
 
-C. **The fast path's bookkeeping** — backlog cont-stack-fastpath, after
-   A has priced it. Candidates, each measured alone against the stage
+C. **The fast path's bookkeeping** — C1 LANDED 2026-09-25
+   (cont-stack-fastpath): nothing allocated per run for the gauge; it is
+   attached at the chain root (the outermost `Reentry`'s `k`, wrapped in
+   `Gauged`) on a run's first exhaustion. Measured: −64 B/op on fib100
+   (one run per op), 1.08 (history.d cont-stack-fastpath). THE FINDING
+   THAT REFRAMES THE STAGE: an EXACT count (`ThreadMXBean
+   .getThreadAllocatedBytes`, 200 warm runs on each tree) reads
+   21 771 bytes per fib100 run on the base AND on the lane, byte for
+   byte — the runtime layer allocates nothing extra. JMH's +1 600 B/op
+   is C2's escape analysis: after seconds of warm-up the base
+   scalar-replaces objects (the `Mapped` lambda, `Reentry`'s
+   predecessor) that on the lane escape, because `callK`'s type test,
+   `Reentry.enter`'s `min` and the re-entry into `step` put the hot
+   path over the inliner's budget (memory: the inlining threshold has
+   four faces; the escape-analysis boundary). Two JFR allocation
+   profiles agree: the same classes on both, no `Reentry`/`Gauge`
+   sampled in fib100's path. So C2/C3 as filed (object shapes) are the
+   wrong lever; what is left of C is an inlining question —
+   `-XX:+PrintInlining` / `-prof perfasm` on fib100 against the base,
+   then a smaller `enter`/`callK` — filed back as cont-stack-fastpath
+   with that recipe. Below: the plan as written before A. Candidates, each measured alone against the stage
    before, kept only when it pays: `Gauge` as a field of the OUTERMOST
    `Reentry` (found by the same walk) instead of a `Gauged` root per
    `run` — two allocations a `run` gone; `Mapped`'s lambda as a class
