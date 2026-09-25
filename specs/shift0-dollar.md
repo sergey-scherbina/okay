@@ -157,8 +157,9 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
 - [x] Stage 2: stacked `shift0` and `dollar` (not `control0`, see
       Decisions), a consumed prompt refused at compile time
       (TestStackedShift0).
-- [ ] Stage 3: a deep State handler as `$` + `shift0` is
-      `Bisim`-equivalent to `State.handle`.
+- [x] Stage 3: a deep State handler as `$` + `shift0` is
+      `Bisim`-equivalent to `State.handle`, and so is a shallow one as
+      `control0` (TestHandlersAsDollar).
 
 ## Out of scope
 
@@ -218,7 +219,21 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   needing `p` even when its code never captures to `p`, so the paper's
   own example is refused (pinned in the tests).
 
-## Results
+- **Stage 3's verdict: nothing in Handler.scala adopts it
+  (2026-09-25).** Both encodings are exactly `State.handle` by
+  `Bisim`, and they cost 3.8x and 4.7x the time and 7.4x and 7.8x the
+  bytes. A handler's own loop answers an operation in place. The
+  encodings build a state-passing function per operation, capture a
+  segment, and run it through the machine. The correspondence is kept
+  as what it is good for: a reference semantics, and an oracle
+  (TestHandlersAsDollar) that any handler can be checked against.
+- **A shallow handler does not need a typed control0-to-`$`.** Stage 1
+  refused control-captures to a dollar because the bare continuation
+  answers the body's type. The shallow State handler avoids that. Its
+  return clause rides INSIDE a plain `push` as a `map`, so the bare
+  segment already answers the handler's type, and the clause re-installs
+  the handler around `k`. So the refusal costs no expressiveness that
+  stage 3 needed.
 
 STAGE 0, 2026-09-24 (TestDollarProbe, 5 tests, okayJVM):
 
@@ -290,3 +305,21 @@ STAGE 2, 2026-09-25 (TestStackedShift0 8, TestProg 12 unchanged):
   (p1.p)])`), not an unrelated error. The test asserts on that.
 - TestProg's twelve tests needed no change: a `k => …` lambda adapts to
   the new context-function body.
+
+STAGE 3, 2026-09-25 (TestHandlersAsDollar 5; DelimBenchmark state* lanes):
+
+- The deep encoding (`ret $ body`, State operations rewritten into
+  shift0 clauses over a state-passing answer) and the shallow one
+  (control0, handler re-installed around k) are both `Same(1, 0)`
+  against `State.handle` on a six-step counter and a 20-step loop,
+  observed on the residual Writer row. Values `(22, 12)` with tells
+  `a=1, b=11`. 10 000 operations run through each in constant stack.
+- MUTANT: a deep Set clause that passes the OLD state to the rest
+  gives "Differ after Say(a=1) -> (): left performed Say(b=1), right
+  performed Say(b=11)". The oracle names the first observable
+  difference.
+- PRICE, one run (load 3.8 at start, 15 at end), 1000 get/set pairs:
+  `State.handle` 35.0 µs / 222 040 B, deep 133.9 µs / 1 632 867 B
+  (3.8x / 7.4x), shallow 164.5 µs / 1 729 014 B (4.7x / 7.8x). The
+  bytes do not depend on the load, and a 4x time gap is well outside
+  what the load could produce.

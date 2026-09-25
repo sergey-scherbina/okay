@@ -138,6 +138,51 @@ class DelimBenchmark {
       push[List[Int], Pure](p)(
         Delim.shift0[List[Int], Int, Pure](p)(k => listBind(layerXs)(k)).map(_ + 1).map(r => List(r))))).length
 
+  // ---- handlers AS delimited control (specs/shift0-dollar.md stage 3,
+  // FSCD 2019): the State handler three ways over the same N get/set
+  // pairs. `stateHandle` is the library's loop; `stateDeep` is ret $ body
+  // with every operation a shift0; `stateShallow` is control0 with the
+  // handler re-installed around k. The construction is TestHandlersAsDollar's,
+  // copied, with the residual row Pure.
+
+  type SRow = okay.State % Int
+  def stateProg(n: Int): Int ! SRow =
+    if n == 0 then okay.State.get[Int]
+    else okay.State.get[Int].flatMap(s => okay.State.set(s + 1)).flatMap(_ => stateProg(n - 1))
+
+  /** every State operation through `op`; the program has no other row */
+  def rewriteState[A](op: [X] => okay.State[Int, X] => X ! Row)(prog: A ! SRow): A ! Row =
+    (prog.resume: @unchecked) match
+      case Free.Return(a) => pure(a)
+      case Free.Inject(e) => op(e)
+      case Free.Bind(Free.Inject(e), k) => op(e).flatMap(x => rewriteState(op)(k(x)))
+
+  @Benchmark
+  def stateHandle(): Int =
+    okay.State.run(0)(stateProg(N))._2
+
+  @Benchmark
+  def stateDeep(): Int =
+    type Ans = Int => (Int, Int) ! Row
+    val p = Delim.prompt[Ans]
+    val op = [X] => (e: okay.State[Int, X]) => (e match
+      case okay.State.Get() => Delim.shift0[Ans, Int, Pure](p)(k => pure((s: Int) => k(s).flatMap(f => f(s))))
+      case okay.State.Set(s1) => Delim.shift0[Ans, Int, Pure](p)(k => pure((_: Int) => k(s1).flatMap(f => f(s1))))
+    ): X ! Row
+    val ret: Int => Ans ! Row = a => pure((s: Int) => pure((s, a)))
+    !.run(Delim.run[(Int, Int), Pure](Delim.dollar[Int, Ans, Pure](p)(ret)(rewriteState(op)(stateProg(N))).flatMap(f => f(0))))._2
+
+  @Benchmark
+  def stateShallow(): Int =
+    type Ans = Int => (Int, Int) ! Row
+    val p = Delim.prompt[Ans]
+    val op = [X] => (e: okay.State[Int, X]) => (e match
+      case okay.State.Get() => Delim.control0[Ans, Int, Pure](p)(k => pure((s: Int) => push[Ans, Pure](p)(k(s)).flatMap(f => f(s))))
+      case okay.State.Set(s1) => Delim.control0[Ans, Int, Pure](p)(k => pure((_: Int) => push[Ans, Pure](p)(k(s1)).flatMap(f => f(s1))))
+    ): X ! Row
+    val body = rewriteState(op)(stateProg(N)).map(a => (s: Int) => pure[Row, (Int, Int)]((s, a)))
+    !.run(Delim.run[(Int, Int), Pure](push[Ans, Pure](p)(body).flatMap(f => f(0))))._2
+
   // ---- ONE push, then ordinary work INSIDE the machine
   //
   // This is the shape a GUARD has (okay-llm's `Cut`, okay-ui's

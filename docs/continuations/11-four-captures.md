@@ -177,6 +177,14 @@ Delim.shift0[String, Int, Pure](p)(k => k(1).flatMap(a => k(2).map(b => s"$a|$b"
 assertEquals(run(Delim.dollar[Int, String, Pure](p)(i => okay.pure(s"n=$i"))(body)), "n=10|n=20")
 ```
 
+The correspondence runs as code in TestHandlersAsDollar. A deep State
+handler written as `ret $ body` with shift0 operations, and a shallow
+one written with control0, are both indistinguishable from
+`State.handle` by `Bisim.check` (see [equivalence](../equivalence.md)).
+They are also 4x slower and allocate 7x more, which is why the
+library's handlers keep their own loop. The encoding is a reference to
+check a handler against, not a replacement for it.
+
 Two rules to know. `shift` and `control` run their body under a PLAIN
 delimiter, not under `ret` (λ$ defines `S k.e` as `S0 k.⟨e⟩`).
 `control` and `control0` are refused at a `dollar`, because their bare

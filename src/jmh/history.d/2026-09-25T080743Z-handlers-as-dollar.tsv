@@ -1,0 +1,2 @@
+2026-09-25	41569cfd	4-15	handlers-as-dollar: stateDeep ($ + shift0) vs stateHandle	133.85	35.00	3.82	us/op, 1000 get/set pairs; B/op 1632867 vs 222040 (7.4x); verdict: not adopted, the encoding is a reference and an oracle
+2026-09-25	41569cfd	4-15	handlers-as-dollar: stateShallow (control0) vs stateHandle	164.54	35.00	4.70	us/op; B/op 1729014 vs 222040 (7.8x)
