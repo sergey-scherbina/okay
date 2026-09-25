@@ -1,0 +1,5 @@
+slug: foreign-facade
+who: claude (session 6f505c09)
+what: one facade over every foreign language and one three-tier data model (backlog polyglot/foreign-facade) — stage 0: the spec, specs/foreign-facade.md, over Engine[M]/Reduces[M], ForeignEval/REval, the one-wire hello and the Arrow road
+files: specs/foreign-facade.md first; then okay-foreign-cluster, okay-py, okay-r
+since: 2026-09-25
