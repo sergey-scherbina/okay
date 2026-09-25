@@ -86,6 +86,9 @@ and not an ambiguous implicit.
 - [x] Stage 1: `tail`, with its precondition CHECKED (a guard that
       throws `MultiShotAcrossTail`), and priced against `row` and `deep`
       (Results).
+- [x] The guard counts RESUMPTIONS, not returns: a second run of a
+      captured context that leaves the body by `abort` is refused too
+      (lexical-tail-guard-abort, TestLexicalTail "leaving by abort").
 - [x] Stage 2: stacked `deep` and `tail` instances (`Lexical.Stacked`),
       so an instance used outside its installation is a compile error.
 - [x] Stage 3: `Lexical.handle` picks by clause kind (TailClauses →
@@ -161,6 +164,26 @@ and not an ambiguous implicit.
   per operation, which made "no guard, no machine" MORE expensive than
   the guarded path (438 304 against 366 656 B). The walk is
   `State.handle`'s loop with nothing to handle.
+- **The guard counts RUNS of a captured context, not returns
+  (lexical-tail-guard-abort, 2026-09-25).** The first guard was a
+  `dollar` whose `ret` set a flag, so it fired on the SECOND RETURN
+  through the delimiter. A resumption that leaves the body by `abort`
+  (or any 0-capture outward) drops its continuation, and `ret` never
+  runs — while the cell was already written by the first resumption:
+  `set(get + 1)` then `abort(p0)(get)` under a doubled `k` answered 12
+  where `deep` answers 11, with no exception. What `ret` cannot see,
+  the machine can: it is the machine that RUNS a reified `Dollar`, so
+  the count lives there. `Delim.dollarResumed(p)(ret, resumed)(body)`
+  is `dollar` with a hook the machine calls when it enters the
+  delimiter, with a count that is fresh PER CAPTURE (`Delim.Shots`: the
+  cut copies a `Ret` frame with a new count, `reify` hands that same
+  count to every program built from the capture, and the `Dollar` step
+  bumps it). The guard is `n => if n > 1 then throw`. Counted at the
+  STEP, not when `k` builds the program, so a continuation built and
+  dropped is not a resumption. Two rejected shapes: counting in the
+  resume closure would put an `IntRef` on the plain-mark capture path
+  too (delimGenerator must stay byte-identical), and a count on the
+  live `Ret` frame would be shared by every capture that passes it.
 
 STAGE 0, 2026-09-25 (TestLexical 7):
 

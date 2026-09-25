@@ -191,6 +191,15 @@ delimiter, not under `ret` (λ$ defines `S k.e` as `S0 k.⟨e⟩`).
 continuation answers the body's type rather than the prompt's. The
 measurements and the rest are in specs/shift0-dollar.md.
 
+One more thing `ret` cannot tell you: how many times it was RESUMED.
+A resumption that leaves the body by `abort` drops its continuation,
+so `ret` never runs for it, yet the body did run again. A delimiter
+that must refuse that (a handler keeping its state in a cell, as
+`Lexical.tail` does) uses `Delim.dollarResumed(p)(ret, resumed)(body)`,
+and the machine calls `resumed(n)` each time it enters the delimiter
+with `n` counting the runs of one captured context. `n > 1` is a
+second resumption, whether or not the first returned.
+
 ## Why the library offers all four
 
 Two reasons, and neither is completeness for its own sake.

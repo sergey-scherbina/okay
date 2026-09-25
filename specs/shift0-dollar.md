@@ -234,6 +234,18 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   segment already answers the handler's type, and the clause re-installs
   the handler around `k`. So the refusal costs no expressiveness that
   stage 3 needed.
+- **A dollar can be told when it is resumed (lexical-tail-guard-abort,
+  2026-09-25).** `Delim.dollarResumed(p)(ret, resumed)(body)`: the
+  machine calls `resumed(n)` when it enters the delimiter, `n` the
+  number of runs of ONE captured context that took it (fresh per
+  capture, `Delim.Shots`; 1 at the `dollar` call itself). `ret` runs on
+  a normal return, and only then; a resumption that leaves by `abort`
+  runs no `ret`, which is the `$/S0` rule and is exactly what
+  `Lexical.tail`'s guard could not see. The plain `dollar` carries a
+  null count and the machine pays one null test per `Dollar` step; a
+  `Mark` and the plain cut are untouched (delimGenerator byte-identical,
+  Results). The λ$ operator is unchanged: this is instrumentation of
+  the delimiter frame, not a new reduction rule.
 
 STAGE 0, 2026-09-24 (TestDollarProbe, 5 tests, okayJVM):
 
