@@ -1,7 +1,0 @@
-feature/xml-tokens-stream 2026-09-25T07:34:29Z
-agent: claude-code (okay-watch session)
-heartbeat: 2026-09-25T07:34:29Z
-status: in-progress
-done-so-far: worktree created
-next: Xml.tokens + the Text rescan; property test vs scan; measure
-touches: okay-codec/src/main/scala/okay/codec/Xml.scala, okay-codec tests
