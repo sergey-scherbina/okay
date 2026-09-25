@@ -1,0 +1,333 @@
+# file:line	def	kind	lambda consumers on the cycle
+okay-actor/src/main/scala/okay/actor/Actor.scala	155	stop	mutual	
+okay-actor/src/main/scala/okay/actor/Actor.scala	165	stopAll	mutual	
+okay-async/src/main/scala/Async.scala	205	apply	mutual	Function1.apply
+okay-async/src/main/scala/Async.scala	235	op	mutual	Function1.apply
+okay-cats/src/main/scala/okay/cats/CatsInterop.scala	70	toCats	lambda	Free.flatMap
+okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	80	startPut	lambda	CoreAsyncChannel.fn1,Option.foreach
+okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	113	startTake	mutual	CoreAsyncChannel.fn1
+okay-clojure/src/main/scala/okay/clojure/CoreAsync.scala	119	arrived	mutual	CoreAsyncChannel.fn1
+okay-cluster/src/main/scala/okay/cluster/Flows.scala	456	shape	direct	
+okay-cluster/src/main/scala/okay/cluster/Leak.scala	124	walk	lambda	Vector.flatMap
+okay-codec/src/main/scala-jvm/okay/codec/Wire.scala	331	damaged	lambda	Vector.exists
+okay-codec/src/main/scala-jvm/okay/codec/Wire.scala	527	go	lambda	Vector.foreach
+okay-codec/src/main/scala-jvm/okay/codec/Wire.scala	572	item	lambda	Vector$.fill
+okay-codec/src/main/scala/okay/codec/Cbor.scala	295	skipItem	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/Cbor.scala	299	skipItemNative	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/Cbor.scala	305	skipHereNative	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/Cbor.scala	321	manyNative	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/Cbor.scala	371	get	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft
+okay-codec/src/main/scala/okay/codec/Cbor.scala	375	getNative	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft
+okay-codec/src/main/scala/okay/codec/Cbor.scala	452	field	mutual	Cbor$.inside,Either.flatMap,NumericRange$Exclusive.foldLeft
+okay-codec/src/main/scala/okay/codec/Compat.scala	125	shape	direct	
+okay-codec/src/main/scala/okay/codec/Compat.scala	151	walk	mutual	Vector.flatMap
+okay-codec/src/main/scala/okay/codec/Compat.scala	201	compareField	mutual	Vector.flatMap
+okay-codec/src/main/scala/okay/codec/Digest.scala	56	of	direct	Vector.map
+okay-codec/src/main/scala/okay/codec/Digest.scala	95	toSchema	lambda	Predef$ArrowAssoc$.$minus$greater$extension,Schema$SList$.apply,Schema$SOption$.
+okay-codec/src/main/scala/okay/codec/Edn.scala	394	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft
+okay-codec/src/main/scala/okay/codec/Edn.scala	447	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft
+okay-codec/src/main/scala/okay/codec/Edn.scala	477	decodeField	mutual	Either.flatMap,IterableOnceOps.foldLeft
+okay-codec/src/main/scala/okay/codec/Json.scala	133	printInto	mutual	Vector.foreach
+okay-codec/src/main/scala/okay/codec/Json.scala	137	printIntoNative	mutual	Vector.foreach
+okay-codec/src/main/scala/okay/codec/Json.scala	243	mergePatchAt	mutual	Vector.foldLeft
+okay-codec/src/main/scala/okay/codec/Json.scala	247	mergePatchNative	mutual	Vector.foldLeft
+okay-codec/src/main/scala/okay/codec/Json.scala	359	into	mutual	Vector.foreach
+okay-codec/src/main/scala/okay/codec/Json.scala	363	intoNative	mutual	Vector.foreach
+okay-codec/src/main/scala/okay/codec/Json.scala	393	pairs	mutual	Vector.foreach
+okay-codec/src/main/scala/okay/codec/Json.scala	397	pairsNative	mutual	Vector.foreach
+okay-codec/src/main/scala/okay/codec/Json.scala	574	decodeAt	mutual	Either.flatMap,IterableOnceOps.foldLeft
+okay-codec/src/main/scala/okay/codec/Json.scala	580	field	mutual	Either.flatMap,IterableOnceOps.foldLeft
+okay-codec/src/main/scala/okay/codec/Json.scala	604	decodeNative	mutual	Either.flatMap,IterableOnceOps.foldLeft
+okay-codec/src/main/scala/okay/codec/JsonOptic.scala	69	creating	direct	
+okay-codec/src/main/scala/okay/codec/JsonOptic.scala	140	go	lambda	Iterator.map
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	101	get	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	105	getNative	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	135	array	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	141	arrayHere	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	171	product	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	177	productHere	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	225	field	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	228	sum	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	234	sumHere	mutual	Either.flatMap
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	408	afterField	mutual	
+okay-codec/src/main/scala/okay/codec/JsonStrict.scala	414	loop	mutual	
+okay-codec/src/main/scala/okay/codec/JsonValue.scala	72	value	mutual	
+okay-codec/src/main/scala/okay/codec/JsonValue.scala	76	valueNative	mutual	
+okay-codec/src/main/scala/okay/codec/JsonValue.scala	91	objNative	mutual	
+okay-codec/src/main/scala/okay/codec/JsonValue.scala	125	arrNative	mutual	
+okay-codec/src/main/scala/okay/codec/Policy.scala	101	to	lambda	Iterator.flatMap,Option.flatMap
+okay-codec/src/main/scala/okay/codec/Schema.scala	170	edge	mutual	?
+okay-codec/src/main/scala/okay/codec/Staged.scala	391	tupleTypes	direct	
+okay-codec/src/main/scala/okay/codec/Staged.scala	420	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	458	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	469	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	480	read	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	522	fieldOf	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	546	go	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	561	chain	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	582	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	616	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	626	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	633	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	689	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	715	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Staged.scala	768	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-codec/src/main/scala/okay/codec/Stubs.scala	47	pyType	direct	Stubs$Writer.declare,Vector.map
+okay-codec/src/main/scala/okay/codec/Stubs.scala	60	pyProduct	direct	Stubs$Writer.declare,Vector.map
+okay-codec/src/main/scala/okay/codec/Stubs.scala	72	pySum	direct	Stubs$Writer.declare,Vector.map
+okay-codec/src/main/scala/okay/codec/Stubs.scala	128	go	lambda	Option.foreach,Vector.foreach
+okay-codec/src/main/scala/okay/codec/Stubs.scala	201	tsType	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map
+okay-codec/src/main/scala/okay/codec/Stubs.scala	221	tsProduct	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map
+okay-codec/src/main/scala/okay/codec/Stubs.scala	232	tsSum	direct	StrictOptimizedIterableOps.map,Stubs$Writer.declare,Vector.map
+okay-codec/src/main/scala/okay/codec/Stubs.scala	260	wireType	direct	Stubs$Writer.declare,Vector.map
+okay-codec/src/main/scala/okay/codec/Stubs.scala	284	wireProduct	direct	Stubs$Writer.declare,Vector.map
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	233	obj	mutual	
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	251	union	mutual	
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	264	postfix	mutual	
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	272	primary	mutual	
+okay-codec/src/main/scala/okay/codec/TsTypes.scala	356	typeOf	direct	
+okay-codec/src/main/scala/okay/codec/Yaml.scala	282	values	lambda	Vector.flatMap
+okay-demo/src/main/scala/okay/demo/RepoAgent.scala	47	walk	lambda	IterableOps.flatMap
+okay-deploy/src/main/scala/okay/deploy/Paas.scala	349	pretty	lambda	Vector.map
+okay-direct/src/main/scala/Condition.scala	160	loop	mutual	
+okay-direct/src/main/scala/Condition.scala	166	step	mutual	
+okay-direct/src/main/scala/Direct.scala	466	go	direct	
+okay-direct/src/main/scala/Direct.scala	636	curry	lambda	Quotes$reflectModule$LambdaModule.apply
+okay-direct/src/main/scala/macros/DirectCompiler.scala	103	compile	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	159	programLambda	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	181	compileMarked	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	228	casesC	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	292	joinUnions	direct	
+okay-direct/src/main/scala/macros/DirectCompiler.scala	371	spineSlots	direct	
+okay-direct/src/main/scala/macros/DirectCompiler.scala	430	anf	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	432	loop	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	461	compileBlock	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	468	compileBlockSeq	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	578	wrapStat	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectCompiler.scala	583	wrapPure	direct	DirectCompiler.bind,DirectCompiler.colourlessVal,DirectCompiler.nestedProgramDef
+okay-direct/src/main/scala/macros/DirectDefer.scala	197	tails	direct	List.map
+okay-direct/src/main/scala/macros/DirectLoops.scala	61	yieldLoop	direct	
+okay-direct/src/main/scala/macros/DirectLoops.scala	111	compileTail	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
+okay-direct/src/main/scala/macros/DirectLoops.scala	125	stmtsTail	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
+okay-direct/src/main/scala/macros/DirectLoops.scala	224	peelGuards	direct	
+okay-direct/src/main/scala/macros/DirectLoops.scala	240	guarded	direct	
+okay-direct/src/main/scala/macros/DirectLoops.scala	320	pullLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
+okay-direct/src/main/scala/macros/DirectLoops.scala	349	foreachLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
+okay-direct/src/main/scala/macros/DirectLoops.scala	510	hofLoop	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
+okay-direct/src/main/scala/macros/DirectLoops.scala	513	emit	direct	DirectLoops.bind,DirectLoops.colourlessVal,DirectLoops.nestedProgramDef,Function
+okay-direct/src/main/scala/macros/DirectParallel.scala	79	go	direct	
+okay-direct/src/main/scala/macros/DirectParallel.scala	137	joins	lambda	DirectParallel.bind
+okay-direct/src/main/scala/macros/DirectParallel.scala	145	spawns	lambda	DirectParallel.bind
+okay-direct/src/main/scala/macros/DirectRow.scala	48	members	direct	
+okay-direct/src/main/scala/macros/DirectRow.scala	141	transformTerm	direct	
+okay-direct/src/main/scala/macros/DirectRow.scala	157	unwrap	direct	
+okay-direct/src/main/scala/macros/DirectRow.scala	179	walk	direct	Option.flatMap
+okay-direct/src/main/scala/macros/MarkSyntax.scala	40	calleeRoot	direct	
+okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	18	typeInfo	direct	Vector.map
+okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	30	rowType	direct	Vector.map
+okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	34	value	mutual	Iterator.foreach,Iterator.map
+okay-flink/src/main/scala/okay/flink/FlinkSchema.scala	46	rowOf	mutual	Iterator.foreach,Iterator.map
+okay-http/src/main/scala/okay/http/Route.scala	1924	walk	direct	
+okay-intent/src/main/scala/okay/intent/Classify.scala	132	path	mutual	Schema$.eachField,Schema$.theCase
+okay-intent/src/main/scala/okay/intent/Classify.scala	147	group	mutual	Schema$.eachField,Schema$.theCase
+okay-intent/src/main/scala/okay/intent/Classify.scala	185	skeleton	direct	Option.map
+okay-intent/src/main/scala/okay/intent/Dsl.scala	121	render	direct	
+okay-intent/src/main/scala/okay/intent/Dsl.scala	153	raws	direct	
+okay-jdbc/src/main/scala/okay/jdbc/JdbcSql.scala	221	valueOf	mutual	Vector$.tabulate,Vector.map
+okay-jdbc/src/main/scala/okay/jdbc/JdbcSql.scala	246	arrayOf	mutual	Vector$.tabulate,Vector.map
+okay-jdbc/src/main/scala/okay/jdbc/JdbcSql.scala	360	jdbcOf	lambda	Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	109	tsType	direct	List.map
+okay-js/src/main/scala/okay/js/Direct.scala	134	tail	direct	Vector.flatMap,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	142	stat	direct	Vector.flatMap,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	155	statement	direct	Vector.flatMap,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	193	callee	direct	Vector.flatMap,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	196	args	direct	Vector.flatMap,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	202	expr	direct	Vector.flatMap,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	297	lift	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	320	liftAll	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	323	liftJs	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map
+okay-js/src/main/scala/okay/js/Direct.scala	350	liftJsAll	mutual	Option.fold,QuoteUnpickler.unpickleExprV2,Vector.map
+okay-js/src/main/scala/okay/js/Js.scala	118	inJs	direct	Option.map,Vector.map
+okay-js/src/main/scala/okay/js/Js.scala	132	inStmt	direct	Option.map,Vector.map
+okay-js/src/main/scala/okay/js/Js.scala	263	expr	direct	Option.foreach,Vector.foreach
+okay-js/src/main/scala/okay/js/Js.scala	347	fun	direct	Option.foreach,Vector.foreach
+okay-js/src/main/scala/okay/js/Js.scala	377	stmt	direct	Option.foreach,Vector.foreach
+okay-kyo/src/main/scala/okay/kyo/KyoInterop.scala	50	toKyoEnv	mutual	
+okay-kyo/src/main/scala/okay/kyo/KyoInterop.scala	93	toKyoChoice	mutual	
+okay-langchain4j/src/main/scala/okay/langchain4j/Langchain4j.scala	46	element	lambda	Option.map,Vector.foreach,Vector.map
+okay-lex/src/main/scala/okay/lex/Mealy.scala	26	dimap	lambda	Mealy$.apply
+okay-lex/src/main/scala/okay/lex/Mealy.scala	29	first	lambda	Mealy$.apply
+okay-lex/src/main/scala/okay/lex/Mealy.scala	32	right	lambda	Mealy$.apply
+okay-lex/src/main/scala/okay/lex/Mealy.scala	42	compose	lambda	Mealy$.apply
+okay-lex/src/main/scala/okay/lex/Mealy.scala	51	at	lambda	Mealy$.apply
+okay-llm/src/main/scala/okay/llm/Llm.scala	172	go	lambda	Anthropic$.emitFrom$1
+okay-llm/src/main/scala/okay/llm/OpenAi.scala	156	go	lambda	OpenAi$.absorb$1
+okay-optics/src/main/scala/Fuse.scala	87	plan	direct	Option.flatMap
+okay-optics/src/main/scala/Fuse.scala	174	emitSet	direct	
+okay-optics/src/main/scala/Fuse.scala	189	emitModify	direct	
+okay-optics/src/main/scala/Fuse.scala	233	emitPreview	direct	
+okay-optics/src/main/scala/Fuse.scala	245	readable	direct	
+okay-optics/src/main/scala/Fuse.scala	251	flatten	direct	
+okay-pg/src/main/scala/okay/pg/PgSql.scala	53	colType	direct	Vector.map
+okay-pg/src/main/scala/okay/pg/PgSql.scala	367	decodeCell	lambda	PgSql$.parseArray,PgSql$.parseCompositeTyped
+okay-pg/src/main/scala/okay/pg/PgSql.scala	585	valueOf	lambda	PgSql$.parseArray
+okay-pg/src/main/scala/okay/pg/PgSql.scala	664	parseArray	lambda	Vector.map
+okay-pg/src/main/scala/okay/pg/PgSql.scala	711	textOf	mutual	Vector.map
+okay-pg/src/main/scala/okay/pg/PgSql.scala	731	arrayLiteral	mutual	Vector.map
+okay-pg/src/main/scala/okay/pg/PgSql.scala	738	compositeLiteral	mutual	Vector.map
+okay-pool/src/main/scala/okay/pool/Pool.scala	124	nudge	lambda	Fiber.onComplete
+okay-py/src/main/scala/okay/py/GoWorker.scala	101	goType	mutual	
+okay-py/src/main/scala/okay/py/GoWorker.scala	111	list	mutual	
+okay-py/src/main/scala/okay/py/Hs.scala	29	haskellType	direct	
+okay-py/src/main/scala/okay/py/PyCodec.scala	37	enc	lambda	Iterator.map,Schema$.eachField,Schema$.theCase,Vector.map
+okay-py/src/main/scala/okay/py/PyCodec.scala	62	dec	direct	PyCodec$.each
+okay-py/src/main/scala/okay/py/PyCodec.scala	132	product	direct	PyCodec$.each
+okay-py/src/main/scala/okay/py/PyFacade.scala	47	scalaType	direct	
+okay-py/src/main/scala/okay/py/PyFacade.scala	49	inner	direct	
+okay-py/src/main/scala/okay/py/PyWorkers.scala	117	refsIn	lambda	Vector.flatMap
+okay-py/src/main/scala/okay/py/PyWorkers.scala	135	local	lambda	Vector.map
+okay-py/src/main/scala/okay/py/RustWorker.scala	101	rustType	direct	
+okay-py/src/main/scala/okay/py/Shape.scala	34	fromJson	lambda	Vector.map
+okay-py/src/main/scala/okay/py/Shape.scala	43	toJson	lambda	Vector.map
+okay-py/src/main/scala/okay/py/SupervisedWorker.scala	80	out	mutual	Either.flatMap,Vector.foldLeft
+okay-py/src/main/scala/okay/py/SupervisedWorker.scala	89	outAll	mutual	Either.flatMap,Vector.foldLeft
+okay-py/src/main/scala/okay/py/SupervisedWorker.scala	96	in	lambda	Vector.map
+okay-py/src/main/scala/okay/py/SupervisedWorker.scala	130	step	lambda	Either.flatMap
+okay-py/src/main/scala/okay/py/TsFacade.scala	57	show	direct	Vector.map
+okay-r/src/main/scala/okay/r/R.scala	144	decode	direct	
+okay-r/src/main/scala/okay/r/RCodec.scala	51	enc	lambda	Iterator.map,Schema$.eachField,Schema$.theCase,Vector.map
+okay-r/src/main/scala/okay/r/RCodec.scala	94	dec	direct	RCodec$.each
+okay-r/src/main/scala/okay/r/RCodec.scala	175	product	direct	RCodec$.each
+okay-r/src/main/scala/okay/r/RSubprocess.scala	187	step	lambda	Either.flatMap
+okay-r/src/main/scala/okay/r/RSubprocess.scala	349	startWith	lambda	Some$.apply
+okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	215	valueOf	lambda	Vector$.tabulate
+okay-r2dbc/src/main/scala/okay/r2dbc/R2dbcSql.scala	270	javaOf	lambda	Vector.map
+okay-rag/src/main/scala/okay/rag/Split.scala	92	tokens	lambda	Vector.flatMap
+okay-rag/src/main/scala/okay/rag/Split.scala	131	go	lambda	Vector.foreach
+okay-rag/src/main/scala/okay/rag/Symbols.scala	72	walk	lambda	Vector.foreach
+okay-rag/src/main/scala/okay/rag/Symbols.scala	153	toks	lambda	Vector.flatMap
+okay-resilience/src/main/scala/okay/resilience/Bulkhead.scala	84	release	lambda	Option.foreach
+okay-resilience/src/main/scala/okay/resilience/Hedge.scala	57	start	lambda	Timer.after
+okay-scalus/src/main/scala/okay/scalus/Cv.scala	51	item	direct	Vector$.fill,Vector$.unfold
+okay-script/src/main/scala/okay/script/Modules.scala	146	resolve	mutual	WithFilter.foreach
+okay-script/src/main/scala/okay/script/Modules.scala	180	build	mutual	WithFilter.foreach
+okay-script/src/main/scala/okay/script/ScalaScript.scala	299	metaValueLiteral	lambda	Vector.map
+okay-script/src/main/scala/okay/script/ScalaScript.scala	307	sectionLiteral	lambda	Vector.map
+okay-script/src/main/scala/okay/script/Site.scala	364	go	direct	Iterator.flatMap,Option.orElse
+okay-script/src/main/scala/okay/script/Site.scala	492	dispatch	mutual	Scoped.where
+okay-script/src/main/scala/okay/script/Site.scala	547	render	mutual	Scoped.where
+okay-spark/src/main/scala/okay/spark/SparkSchema.scala	20	dataType	direct	Vector.map
+okay-spark/src/main/scala/okay/spark/SparkSchema.scala	32	struct	direct	Vector.map
+okay-spark/src/main/scala/okay/spark/SparkSchema.scala	36	value	mutual	Iterator.map,Vector.map
+okay-spark/src/main/scala/okay/spark/SparkSchema.scala	46	rowOf	mutual	Iterator.map,Vector.map
+okay-sql/src/main/scala/okay/sql/Query.scala	143	render	direct	
+okay-sql/src/main/scala/okay/sql/Query.scala	151	both	direct	
+okay-sql/src/main/scala/okay/sql/Query.scala	157	collect	direct	
+okay-sql/src/main/scala/okay/sql/Query.scala	165	eval	direct	
+okay-sql/src/main/scala/okay/sql/Row.scala	75	walk	direct	
+okay-sql/src/main/scala/okay/sql/Typed.scala	47	tpe	direct	
+okay-sql/src/main/scala/okay/sql/Typed.scala	54	optional	direct	
+okay-sql/src/main/scala/okay/sql/Typed.scala	107	shapeOf	direct	WithFilter.foreach
+okay-sql/src/main/scala/okay/sql/Typed.scala	125	shapesOf	direct	WithFilter.foreach
+okay-sql/src/main/scala/okay/sql/Typed.scala	165	fits	lambda	IterableOnceOps.forall
+okay-sql/src/main/scala/okay/sql/Typed.scala	214	decode	direct	
+okay-sql/src/main/scala/okay/sql/Typed.scala	251	decodeAny	direct	
+okay-sql/src/main/scala/okay/sql/Typed.scala	258	encode	lambda	Schema$.eachField,StrictOptimizedIterableOps.map
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	210	visit	lambda	Vector.foreach
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	289	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	318	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	331	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	342	read	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	379	fieldOf	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	392	go	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	403	chain	mutual	Function1.apply,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	437	emit	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	467	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	479	emitSeq	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	486	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	519	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	554	read	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-staging/src/main/scala/okay/staging/RuntimeStaged.scala	585	chain	mutual	Function1.apply,List.map,QuoteUnpickler.unpickleExprV2
+okay-stm/src/main/scala/Stm.scala	146	perform	direct	
+okay-stm/src/main/scala/Stm.scala	183	runWithLog	direct	
+okay-stm/src/main/scala/Stm.scala	184	loop	direct	
+okay-stm/src/main/scala/Stm.scala	267	attempt	lambda	Stm$.okay$Stm$$$park
+okay-stm/src/main/scala/Stm.scala	291	attempt	lambda	Stm$.okay$Stm$$$park
+okay-stm/src/main/scala/Stm.scala	318	finish	mutual	
+okay-stm/src/main/scala/Stm.scala	325	loop	mutual	
+okay-stream/src/main/scala/Channel.scala	866	step	mutual	Channel$.sendIf$1
+okay-stream/src/main/scala/Channel.scala	875	go	mutual	Channel$.sendIf$1
+okay-stream/src/main/scala/Pipe.scala	490	loop	lambda	Pipe$package$.pull$1
+okay-stream/src/main/scala/Pipe.scala	570	loop	lambda	Pipe$package$.pull$2
+okay-stream/src/main/scala/Pipe.scala	614	loop	lambda	Pipe$package$.pull$3
+okay-stream/src/main/scala/Pipeline.scala	56	once	direct	
+okay-stream/src/main/scala/Pipeline.scala	78	chunks	direct	
+okay-stream/src/main/scala/Pipeline.scala	95	depth	direct	
+okay-stream/src/main/scala/Tables.scala	69	show	direct	
+okay-stream/src/main/scala/Tables.scala	87	estimate	direct	
+okay-stream/src/main/scala/Tables.scala	107	optimize	direct	
+okay-stream/src/main/scala/Tables.scala	144	compile	direct	
+okay-ui-gtk/src/main/scala/okay/ui/gtk/Gtk.scala	86	nodeAt	lambda	Option.flatMap
+okay-ui-gtk/src/main/scala/okay/ui/gtk/Gtk.scala	197	build	direct	Vector.map
+okay-ui/src/main/scala-form/okay/ui/Form.scala	278	focusAt	lambda	Option.flatMap
+okay-ui/src/main/scala-form/okay/ui/Form.scala	422	editAtAt	mutual	
+okay-ui/src/main/scala-form/okay/ui/Form.scala	426	editAtNative	mutual	
+okay-ui/src/main/scala-form/okay/ui/Form.scala	675	decodeField	direct	
+okay-ui/src/main/scala-form/okay/ui/Html.scala	153	write	lambda	Vector.foreach
+okay-ui/src/main/scala-form/okay/ui/Protocol.scala	162	nameOf	direct	Vector.map
+okay-ui/src/main/scala-form/okay/ui/Protocol.scala	177	fields	direct	Vector.map
+okay-ui/src/main/scala-form/okay/ui/Protocol.scala	179	define	direct	Vector.map
+okay-ui/src/main/scala-form/okay/ui/Sessions.scala	110	segments	direct	
+okay-ui/src/main/scala-jvm/okay/ui/Swing.scala	93	build	direct	Vector.map
+okay-ui/src/main/scala/okay/ui/Frame.scala	77	at	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera
+okay-ui/src/main/scala/okay/ui/Frame.scala	166	go	lambda	IndexedSeqView.flatMap
+okay-ui/src/main/scala/okay/ui/Frame.scala	200	stacked	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera
+okay-ui/src/main/scala/okay/ui/Frame.scala	229	side	direct	IterableOnceOps.foldLeft,StrictOptimizedIterableOps.flatMap,StrictOptimizedItera
+okay-ui/src/main/scala/okay/ui/Frame.scala	258	wrap	direct	
+okay-ui/src/main/scala/okay/ui/Frame.scala	655	interpret	direct	
+okay-ui/src/main/scala/okay/ui/JsonEditor.scala	50	outline	lambda	StrictOptimizedIterableOps.flatMap
+okay-ui/src/main/scala/okay/ui/PWizard.scala	55	loop	lambda	PWizard$Machine$Showing$.apply
+okay-ui/src/main/scala/okay/ui/React.scala	73	elem	direct	StrictOptimizedIterableOps.map,Vector.map
+okay-ui/src/main/scala/okay/ui/Telegram.scala	90	across	mutual	Vector.map
+okay-ui/src/main/scala/okay/ui/Telegram.scala	98	down	mutual	Vector.map
+okay-ui/src/main/scala/okay/ui/Telegram.scala	102	go	mutual	Vector.map
+okay-ui/src/main/scala/okay/ui/Ui.scala	185	go	mutual	Range.flatMap,StrictOptimizedIterableOps.flatMap,Vector.flatMap
+okay-ui/src/main/scala/okay/ui/Ui.scala	220	children	mutual	Range.flatMap,StrictOptimizedIterableOps.flatMap,Vector.flatMap
+okay-ui/src/main/scala/okay/ui/Ui.scala	279	at	direct	
+okay-ui/src/main/scala/okay/ui/Ui.scala	316	focusable	lambda	Vector.flatMap
+okay-ui/src/main/scala/okay/ui/Ui.scala	330	keys	direct	Option.map,StrictOptimizedIterableOps.flatMap,Vector.flatMap
+okay-ui/src/main/scala/okay/ui/Ui.scala	354	forms	lambda	Option.map,StrictOptimizedIterableOps.flatMap,Vector.flatMap
+okay-ui/src/main/scala/okay/ui/Ui.scala	530	walk	lambda	Vector.foldLeft
+okay-ui/src/main/scala/okay/ui/Ui.scala	543	map	direct	Vector.map
+okay-ui/src/main/scala/okay/ui/Ui.scala	574	go	direct	Option.map,Vector.map
+okay-workflow/src/main/scala/Proc.scala	334	foldMap	direct	
+okay-workflow/src/main/scala/Proc.scala	352	loop	lambda	Monad.flatMap
+okay-workflow/src/main/scala/Proc.scala	447	go	direct	
+okay-workflow/src/main/scala/Proc.scala	537	nodes	direct	
+okay-workflow/src/main/scala/ProcMacro.scala	461	compileIf	mutual	List.foreach,List.map
+okay-workflow/src/main/scala/ProcMacro.scala	496	compileMatch	mutual	List.foreach,List.map
+okay-workflow/src/main/scala/ProcMacro.scala	509	restT	direct	
+okay-workflow/src/main/scala/ProcMacro.scala	511	inject	direct	
+okay-workflow/src/main/scala/ProcMacro.scala	538	dispatch	direct	
+okay-workflow/src/main/scala/ProcMacro.scala	577	compileWhile	mutual	List.foreach,List.map
+okay-workflow/src/main/scala/ProcMacro.scala	590	compileStats	mutual	List.foreach,List.map
+okay-workflow/src/main/scala/ProcMacro.scala	753	compileValue	mutual	List.foreach,List.map
+okay-workflow/src/main/scala/ProcMacro.scala	761	finish	mutual	List.foreach,List.map
+okay-workflow/src/main/scala/ProcMacro.scala	805	compileEnvBody	mutual	List.foreach,List.map
+okay-workflow/src/main/scala/Wf.scala	838	go	direct	
+okay-workflow/src/main/scala/Wf.scala	928	loop	direct	
+okay-x402-cdp/src/main/scala/okay/x402/cdp/CdpAuth.scala	95	sorted	lambda	StrictOptimizedIterableOps.map,Vector.map
+src/main/scala/Aggregate.scala	472	insert	direct	
+src/main/scala/Aggregate.scala	507	go	lambda	LazyList$.toDeferrer
+src/main/scala/Delim.scala	854	split	direct	
+src/main/scala/Distinct.scala	144	leaves	direct	
+src/main/scala/Distinct.scala	175	identityOf	mutual	
+src/main/scala/Distinct.scala	197	under	mutual	
+src/main/scala/Effects.scala	295	reflect	lambda	?,Effects.flatMap,Free.fold
+src/main/scala/Handler.scala	438	members	direct	
+src/main/scala/Handler.scala	473	chain	lambda	QuoteUnpickler.unpickleExprV2
+src/main/scala/Handler.scala	484	build	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2
+src/main/scala/Provide.scala	512	body	lambda	Function1.apply,QuoteUnpickler.unpickleExprV2
+src/main/scala/Static.scala	144	foldSpine	mutual	Selective.select
+src/main/scala/Static.scala	157	applyArgs	mutual	Selective.select
+src/main/scala/Static.scala	289	foldMap	mutual	Selective.select

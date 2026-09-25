@@ -1,0 +1,64 @@
+# file:line	def	kind	lambda consumers on the cycle
+okay2-async/src/main/scala/okay2/async/Async.scala	235	apply	mutual	Function1.apply
+okay2-async/src/main/scala/okay2/async/Async.scala	258	op	mutual	Function1.apply
+okay2-cats/src/main/scala/okay2/cats/CatsInterop.scala	134	toCats	lambda	Free.flatMap
+okay2-codec/src/main/scala/okay2/codec/Json.scala	67	printInto	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	71	printIntoNative	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	141	mergePatchAt	mutual	Vector.foldLeft
+okay2-codec/src/main/scala/okay2/codec/Json.scala	145	mergePatchNative	mutual	Vector.foldLeft
+okay2-codec/src/main/scala/okay2/codec/Json.scala	236	into	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	255	intoNative	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	283	pairs	mutual	Vector.foreach
+okay2-codec/src/main/scala/okay2/codec/Json.scala	536	loop	mutual	
+okay2-codec/src/main/scala/okay2/codec/Json.scala	540	fallback	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonStrict.scala	317	afterField	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonStrict.scala	325	loop	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	53	value	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	66	valueNative	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	85	objNative	mutual	
+okay2-codec/src/main/scala/okay2/codec/JsonValue.scala	119	arrNative	mutual	
+okay2-fs2/src/main/scala/okay2/fs2/Fs2Interop.scala	41	go	lambda	NotGiven$.default,Stream.$plus$plus,Writer$.effect
+okay2-lex/src/main/scala/okay2/lex/Mealy.scala	20	dimap	lambda	Mealy.<init>
+okay2-lex/src/main/scala/okay2/lex/Mealy.scala	23	first	lambda	Mealy.<init>
+okay2-lex/src/main/scala/okay2/lex/Mealy.scala	26	right	lambda	Mealy.<init>
+okay2-lex/src/main/scala/okay2/lex/Mealy.scala	37	compose	lambda	Mealy.<init>
+okay2-parse/src/main/scala/okay2/parse/Parse.scala	82	rebase	lambda	Vector.map
+okay2-platform/src/main/scala-jvm-native/okay2/platform/BlockingOps.scala	23	go	direct	
+okay2-stm/src/main/scala/okay2/Stm.scala	88	pending	lambda	Option.flatMap,Option.orElse
+okay2-stm/src/main/scala/okay2/Stm.scala	124	perform	mutual	
+okay2-stm/src/main/scala/okay2/Stm.scala	153	runWithLog	mutual	
+okay2-stm/src/main/scala/okay2/Stm.scala	154	loop	mutual	
+okay2-stm/src/main/scala/okay2/Stm.scala	237	attempt	lambda	Stm$.okay2$Stm$$park
+okay2-stm/src/main/scala/okay2/Stm.scala	260	attempt	direct	Stm$.okay2$Stm$$park
+okay2-stm/src/main/scala/okay2/Stm.scala	260	attempt	mutual	
+okay2-stm/src/main/scala/okay2/Stm.scala	283	finish	mutual	
+okay2-stm/src/main/scala/okay2/Stm.scala	290	loop	mutual	
+okay2-stream/src/main/scala/okay2/stream/Channel.scala	521	step	mutual	Channel$.sendIf$1,Flush$.effect,Writer$.effect
+okay2-stream/src/main/scala/okay2/stream/Channel.scala	532	go	mutual	Channel$.sendIf$1,Flush$.effect,Writer$.effect
+okay2-stream/src/main/scala/okay2/stream/Flush.scala	30	map	lambda	Flush$.step
+okay2-stream/src/main/scala/okay2/stream/Pipeline.scala	69	chunks	direct	
+okay2-stream/src/main/scala/okay2/stream/Pipeline.scala	84	depth	direct	
+okay2-stream/src/main/scala/okay2/stream/Tables.scala	140	show	direct	
+okay2-stream/src/main/scala/okay2/stream/Tables.scala	156	estimate	direct	Option.flatMap
+okay2-stream/src/main/scala/okay2/stream/Take.scala	129	loop	lambda	Pipe$.pull$1,Take$.effect
+okay2-stream/src/main/scala/okay2/stream/Take.scala	151	loop	lambda	Take$.effect
+okay2-stream/src/main/scala/okay2/stream/Take.scala	211	loop	lambda	Pipe$.pull$2,Take$.effect
+okay2-stream/src/main/scala/okay2/stream/Take.scala	252	loop	lambda	Pipe$.pull$3,Take$.effect
+okay2-workflow/src/main/scala/okay2/Proc.scala	217	loop	lambda	Monad.flatMap
+okay2-workflow/src/main/scala/okay2/Proc.scala	369	nodes	lambda	List.foreach
+okay2-zio/src/main/scala/okay2/zio/ZioInterop.scala	65	foldTo	lambda	ZIO.flatMap
+okay2-zio/src/main/scala/okay2/zio/ZioInterop.scala	83	step	lambda	Writer$.effect,ZIO.flatMap
+src/main/scala/okay2/Aggregate.scala	303	insert	direct	
+src/main/scala/okay2/Choice.scala	111	go	lambda	Choose$.effect
+src/main/scala/okay2/Cont.scala	158	run	mutual	ContImpl$.okay2$ContImpl$$at
+src/main/scala/okay2/Cont.scala	190	step	mutual	ContImpl$.okay2$ContImpl$$at
+src/main/scala/okay2/Delim.scala	627	cut	direct	
+src/main/scala/okay2/Distinct.scala	84	parts	lambda	List.flatMap
+src/main/scala/okay2/Distinct.scala	96	identityOf	direct	
+src/main/scala/okay2/Gen.scala	385	loop	lambda	Free$Bind.<init>
+src/main/scala/okay2/Generate.scala	105	each	lambda	Produce$.effect
+src/main/scala/okay2/Replayable.scala	60	parts	lambda	List.flatMap
+src/main/scala/okay2/Static.scala	78	foldMap	mutual	Selective.select
+src/main/scala/okay2/Static.scala	83	spine	mutual	Selective.select
+src/main/scala/okay2/Static.scala	91	applyArgs	mutual	Selective.select
+src/main/scala/okay2/package.scala	116	go	lambda	LazyList$.toDeferrer
