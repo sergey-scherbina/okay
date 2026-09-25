@@ -28,7 +28,10 @@ final class WireSession private (link: WireLink,
                                  /** how strictly: a strict given refuses a frame Arrow cannot carry */
                                  val frames: okay.codec.FrameFormat,
                                  /** who dies, in a death's message: "the worker", "the R process" */
-                                 who: String):
+                                 who: String,
+                                 /** the far side reads a frame's COLUMNAR shape
+                                  * (it announced `"frames": ["columnar"]`) */
+                                 val columnar: Boolean):
 
   private var nextId = 0
 
@@ -192,7 +195,13 @@ object WireSession:
     // stage 5b: who may speak, before what the wire looks like
     WireNegotiation.authenticate(hello, name, line => link.roundTrip(line).map(whole)).left.foreach(refuse)
     val (codec, arrow) = configure(link, name, hello).fold(refuse, identity)
-    new WireSession(link, version, codec, deadline.millis, arrow, frames, who)
+    val columnar = fields.get("speaks") match
+      case Some(Json.JObj(sp)) => sp.toMap.get("frames") match
+        case Some(Json.JArr(xs)) => xs.contains(Json.JStr("columnar"))
+        case Some(Json.JStr(x)) => x == "columnar"
+        case _ => false
+      case _ => false
+    new WireSession(link, version, codec, deadline.millis, arrow, frames, who, columnar)
 
   /** stage 5's handshake (`okay.codec.WireNegotiation`): what the givens
    * ask for, checked against what the far side announced, and confirmed */

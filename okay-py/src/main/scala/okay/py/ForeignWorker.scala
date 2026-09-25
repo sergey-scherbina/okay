@@ -19,7 +19,11 @@ import okay.codec.Json
  * death — is the language-neutral `WireSession` (foreign-one-r), which R
  * shares; this class is the handler that speaks `PyValue` over it.
  */
-final class ForeignWorker private (session: WireSession):
+final class ForeignWorker private (session: WireSession,
+                                   /** the far side's frames as Arrow tables and back */
+                                   tables: FrameTables,
+                                   /** the far side's value rules, which every frame it answers carries */
+                                   shape: Shape):
 
   /** the far side's own version, from its hello */
   val pythonVersion: String = session.version
@@ -50,14 +54,14 @@ final class ForeignWorker private (session: WireSession):
    */
   def frameTable(fn: String, table: okay.arrow.Table, args: Vector[PyValue]): Either[Condition, okay.arrow.Table] = timed:
     val head = Vector("op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)))
-    def asTable(f: PyFrame): Either[Condition, okay.arrow.Table] = ArrowFrames.table(f).left.map(Condition("Frame", _))
+    def asTable(f: PyFrame): Either[Condition, okay.arrow.Table] = tables.table(f).left.map(Condition("Frame", _))
     if arrow then
       val (j, got) = session.exchangeArrow(head, table)
       answer(j)(v => got.fold(Wire.decFrame(v).flatMap(asTable))(Right(_)))
     else
-      val sent = try Right(ArrowFrames.frame(table))
+      val sent = try Right(tables.frame(table))
         catch case e: IllegalStateException => Left(Condition("Frame", Option(e.getMessage).getOrElse("")))
-      sent.flatMap(f => answer(exchange(Json.JObj(head :+ ("in" -> Wire.encFrame(f)))))(Wire.decFrame).flatMap(asTable))
+      sent.flatMap(f => answer(exchange(Json.JObj(head :+ ("in" -> frameOut(f)))))(Wire.decFrame).flatMap(asTable))
 
   /** a timeout is DATA for an operation that answers an Either: the call
    * failed, the program can see it and decide (stage 6) */
@@ -70,6 +74,12 @@ final class ForeignWorker private (session: WireSession):
   private def answer[A](j: Json)(ok: Json => Either[Condition, A]): Either[Condition, A] =
     WireSession.answer(j)(Condition(_, _))(ok)
 
+  /** a frame on the wire: columnar where the far side reads it (every
+   * shim this jar ships, since foreign-one-value), the per-cell v1
+   * otherwise */
+  private def frameOut(f: PyFrame): Json =
+    if session.columnar then Wire.encFrameColumnar(f) else Wire.encFrame(f)
+
   /** the comonadic handler — one operation, one exchange */
   def handler: Handler[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
@@ -79,15 +89,15 @@ final class ForeignWorker private (session: WireSession):
           "args" -> Json.JArr(args.map(Wire.enc))))))(v => Right(Wire.dec(v)))
       case ForeignEval.Frame(fn, frame, args) => timed:
         val head = Vector("op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)))
-        val table = if arrow then ArrowFrames.table(frame) else Left("")
+        val table = if arrow then tables.table(frame) else Left("")
         table match
           case Right(t) =>
             val (j, got) = session.exchangeArrow(head, t)
-            answer(j)(v => got.fold(Wire.decFrame(v))(t => Right(ArrowFrames.frame(t))))
+            answer(j)(v => got.fold(Wire.decFrame(v))(t => Right(tables.frame(t))).map(_.ruledBy(shape)))
           case Left(why) if arrow && session.frames.strict =>
             Left(Condition("NotArrow", s"this host's given FrameFormat is arrow, and $why"))
           case Left(_) =>
-            answer(exchange(Json.JObj(head :+ ("in" -> Wire.encFrame(frame)))))(Wire.decFrame)
+            answer(exchange(Json.JObj(head :+ ("in" -> frameOut(frame)))))(Wire.decFrame).map(_.ruledBy(shape))
       case ForeignEval.Start(fn, args, cbs) => timedStep:
         stepOf(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("start"), "fn" -> Json.JStr(fn),
@@ -205,7 +215,19 @@ object ForeignWorker:
   def over(link: WireLink, name: String = "the worker")
           (using format: WireFormat, compression: WireCompression, auth: okay.codec.WireAuth,
            deadline: WireDeadline)(using frames: okay.codec.FrameFormat): ForeignWorker =
-    new ForeignWorker(WireSession.over(link, name, ShimVersion, "python", "the worker"))
+    new ForeignWorker(WireSession.over(link, name, ShimVersion, "python", "the worker"), ArrowFrames, Shape.python)
+
+  /**
+   * The engine over a far side of ANOTHER shim family — its own shim
+   * version, the key its hello names its version under, the words a death
+   * is reported in, and its own rule for frames as Arrow tables. R is one
+   * (`okay.r.RSubprocess`, foreign-one-value): the same handler, the same
+   * values, the same `Durable`, a different far side.
+   */
+  def speakingAs(link: WireLink, name: String, shimVersion: Int, versionKey: String, who: String,
+                 tables: FrameTables, shape: Shape)
+                (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
+    new ForeignWorker(WireSession.over(link, name, shimVersion, versionKey, who), tables, shape)
 
   /** a wire line, read strictly (`okay.codec.WireJson.whole`) */
   private[py] def whole(line: String): Json = WireSession.whole(line)

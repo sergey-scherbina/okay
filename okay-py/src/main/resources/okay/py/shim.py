@@ -79,10 +79,33 @@ def dec(v):
         if t == "nan": return float("nan")
         if t == "f": return float(v["v"])
         if t == "bytes": return base64.b64decode(v["b64"])
-        if t == "frame": return {name: [dec(x) for x in col] for name, col in v["cols"]}
+        if t == "na": return None     # R's typed NA: Python has one absence
+        if t == "frame": return dec_frame(v)
         raise ValueError("unknown tagged value: %r" % t)
     if isinstance(v, list): return [dec(x) for x in v]
     return v
+
+_ZERO_OF = {"l": False, "i": 0, "d": 0.0, "s": ""}
+
+def dec_frame(v):
+    """a frame off the wire as a dict of columns: the COLUMNAR shape (v2,
+    foreign-one-value — a type per column, a plain array of values, the
+    absences as index lists) or v1's [name, cells] pairs"""
+    out = {}
+    for c in v["cols"]:
+        if isinstance(c, list):
+            out[c[0]] = [dec(x) for x in c[1]]
+        elif "cells" in c:
+            out[c["name"]] = [dec(x) for x in c["cells"]]
+        else:
+            t = c.get("type", "l")
+            xs = list(c["values"])
+            if t == "i": xs = [int(x) for x in xs]
+            elif t == "d": xs = [float(x) for x in xs]
+            for i in c.get("na", []): xs[i] = None
+            for i in c.get("nan", []): xs[i] = float("nan")
+            out[c["name"]] = xs
+    return out
 
 def resolve(fn):
     mod, _, name = fn.partition(":")
@@ -512,8 +535,8 @@ def serve(req):
         reply({"id": rid, "condition": {"kind": type(e).__name__, "message": str(e)}})
 
 reply({"shim": SHIM, "python": "%d.%d.%d" % sys.version_info[:3],
-       "speaks": dict({"format": ["json", "cbor"], "compress": ["deflate"]},
-                      **({"frames": ["arrow"]} if _HAS_ARROW else {}))})
+       "speaks": {"format": ["json", "cbor"], "compress": ["deflate"],
+                  "frames": ["columnar"] + (["arrow"] if _HAS_ARROW else [])}})
 
 # one reader, read_msg, owns the input: okay.call reads the same stream from
 # inside a request

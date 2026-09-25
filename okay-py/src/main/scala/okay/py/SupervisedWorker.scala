@@ -260,6 +260,16 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
           try w.handler.handle(ForeignEval.Forget(run))
           catch case e: IllegalStateException if dead(e) => ())
 
+  /** what the CURRENT worker's handshake settled on ("" before the first open) */
+  def wire: String = current.fold("")(_.wire)
+
+  /** the current worker's Arrow frames, (sent, answered) */
+  def arrowFrames: (Long, Long) = current.fold((0L, 0L))(_.arrowFrames)
+
+  /** `ForeignWorker.verify` on the worker, opened if it has to be */
+  def verify(packages: Map[String, String]): Vector[String] =
+    worker().fold(c => Vector(s"verify itself failed: ${c.kind}: ${c.message}"), _.verify(packages))
+
   def close(): Unit =
     current.foreach(_.close())
     current = None

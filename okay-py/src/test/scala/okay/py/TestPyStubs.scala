@@ -38,6 +38,7 @@ class TestPyStubs extends munit.FunSuite {
     case Arr(xs) => xs.map(lit).mkString("[", ", ", "]")
     case Dict(kv) => kv.map((k, x) => s"${Json.print(Json.JStr(k))}: ${lit(x)}").mkString("{", ", ", "}")
     case Ref(r) => throw IllegalArgumentException(s"a handle has no literal: $r")
+    case NA(_) => "None"   // R's typed NA: Python has one absence
 
   private def mypy(usage: String): (Int, String) =
     val dir = java.nio.file.Files.createTempDirectory("okay-stubs-py")

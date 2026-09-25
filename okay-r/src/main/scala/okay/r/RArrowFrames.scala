@@ -12,7 +12,7 @@ import RValue.*
  * why. Unlike Python's `I64`-only model, R's own `I32` (32-bit integer)
  * stays 32-bit on the way out too — there is no widening to do.
  */
-object RArrowFrames:
+object RArrowFrames extends okay.py.FrameTables:
 
   def table(f: RFrame): Either[String, Table] =
     val n = f.cols.headOption.fold(0)(_._2.length)
@@ -82,6 +82,7 @@ object RArrowFrames:
     case Vec(_) => "a nested vector"
     case Named(_) => "a named list"
     case Ref(_) => "a held object"
+    case _ => "an integer past 32 bits"
 
   /** a table as a frame. A column past R's own four types is normalised on
    * the way in (narrow ints stay `I32`, a wider or unsigned int and

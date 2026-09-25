@@ -2,7 +2,7 @@ package okay.cluster.foreign
 
 import okay.codec.Schema
 import okay.py.{ForeignEval, ForeignWorker, PyCodec, PyFrame, PyModule, PyRef, PyValue}
-import okay.r.{RCodec, REval, RFrame, RModule, RRef, RSubprocess, RValue}
+import okay.r.{RCodec, REval, RFrame, RModule, RSubprocess}
 
 /**
  * A MODEL ON THE FAR SIDE, as an extension of the engine typeclass
@@ -75,9 +75,9 @@ final class RModel[P](module: RModule, fn: String, params: P, rscript: String, w
                     (using sp: Schema[P]) extends Model:
   val name = s"r:${module.name}:$fn"
   private val pool = RPool.of(module, rscript, workers)
-  private val refs = java.util.WeakHashMap[RSubprocess, RRef]()
+  private val refs = java.util.WeakHashMap[RSubprocess, PyRef]()
 
-  private def refFor(r: RSubprocess): Either[okay.r.Condition, RRef] = refs.synchronized {
+  private def refFor(r: RSubprocess): Either[okay.r.Condition, PyRef] = refs.synchronized {
     Option(refs.get(r)) match
       case Some(ref) => Right(ref)
       case None =>
@@ -93,5 +93,5 @@ final class RModel[P](module: RModule, fn: String, params: P, rscript: String, w
         case Right(frame) =>
           RPool.use(pool, rscript) { r =>
             refFor(r).flatMap(ref =>
-              r.handler.handle(REval.Frame(s"${module.name}::$mapFn", frame, Vector(RValue.Ref(ref)))))
+              r.handler.handle(REval.Frame(s"${module.name}::$mapFn", frame, Vector(PyValue.Ref(ref)))))
           }.flatMap(_.rows[B]).left.map(c => Batcher.Failed(c.kind, c.message))

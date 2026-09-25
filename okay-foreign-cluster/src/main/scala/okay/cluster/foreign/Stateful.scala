@@ -4,7 +4,7 @@ import okay.Chunks
 import okay.cluster.Flow
 import okay.codec.Schema
 import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyRef, PyValue}
-import okay.r.{REval, RFrame, RModule, RRef, RSubprocess, RValue}
+import okay.r.{REval, RFrame, RModule, RSubprocess}
 
 /**
  * A STATEFUL STAGE, as an extension of the engine typeclass
@@ -123,7 +123,7 @@ final class RStreamer[A, B](module: RModule, openFn: String, stepFn: String, fin
                            (using sa: Schema[A], sb: Schema[B]) extends Streamer[A, B]:
   val name = s"r:${module.name}:$openFn/$stepFn/$finishFn"
   private val pool = RPool.of(module, rscript, workers)
-  final class S(val lease: Pool[RSubprocess]#Lease, val ref: RRef)
+  final class S(val lease: Pool[RSubprocess]#Lease, val ref: PyRef)
 
   private def failed(c: okay.r.Condition) = Batcher.Failed(c.kind, c.message)
 
@@ -146,11 +146,11 @@ final class RStreamer[A, B](module: RModule, openFn: String, stepFn: String, fin
 
   def step(s: S, rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
     RFrame.of(rows).left.map(failed).flatMap(frame =>
-      on(s)(_.handler.handle(REval.Frame(s"${module.name}::$stepFn", frame, Vector(RValue.Ref(s.ref)))))
+      on(s)(_.handler.handle(REval.Frame(s"${module.name}::$stepFn", frame, Vector(PyValue.Ref(s.ref)))))
         .flatMap(_.rows[B].left.map(failed)))
 
   def finish(s: S): Either[Batcher.Failed, Vector[B]] =
-    val last = on(s)(_.handler.handle(REval.Frame(s"${module.name}::$finishFn", RFrame(Vector.empty), Vector(RValue.Ref(s.ref)))))
+    val last = on(s)(_.handler.handle(REval.Frame(s"${module.name}::$finishFn", RFrame(Vector.empty), Vector(PyValue.Ref(s.ref)))))
       .flatMap(_.rows[B].left.map(failed))
     if last.isRight || last.left.exists(_.kind != "WorkerDied") then
       try s.lease.e.handler.handle(REval.Release(s.ref)) catch case _: Exception => ()

@@ -5,7 +5,11 @@
 # foreign-module-trait: `okay_describe`; v7 = remote-foreign: programs as
 # data, `program`/`continue`/`forget`, continuations kept by id; v8 =
 # r-arrow: a frame request/answer may cross as ONE Arrow IPC stream when
-# the `arrow` package is installed, okay-py's twin). One JSON object per
+# the `arrow` package is installed, okay-py's twin; v9 = foreign-one-value:
+# the SHARED value tags every far side speaks — an integer is a plain
+# number, an integral double {"t":"f"}, a named list {"t":"dict"}, raw
+# {"t":"bytes"}, an integer past 2^53 {"t":"int"} — and frames announced
+# columnar; the old tags are still read). One JSON object per
 # line each way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -16,7 +20,7 @@
 # is OPTIONAL: announced when installed, and frames work exactly as
 # before where it is not.
 
-SHIM <- 8
+SHIM <- 9
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = I(17)), "\n", sep = "")
@@ -35,7 +39,7 @@ if (!requireNamespace("jsonlite", quietly = TRUE)) {
 # R -> wire. NULL is null; everything JSON cannot say is TAGGED.
 enc <- function(v) {
   if (is.null(v)) return(NULL)
-  if (is.raw(v)) return(list(t = "raw", b64 = jsonlite::base64_enc(v)))
+  if (is.raw(v)) return(list(t = "bytes", b64 = jsonlite::base64_enc(v)))
   if (is.data.frame(v)) {
     cols <- lapply(names(v), function(n) enc_column(n, v[[n]]))
     return(list(t = "frame", v = 2L, cols = cols))
@@ -44,7 +48,7 @@ enc <- function(v) {
   # order (v3). The frame op still answers a frame: it coerces first.
   if (is.list(v) && !is.null(names(v)) && all(names(v) != "")) {
     kv <- lapply(names(v), function(n) list(n, enc(v[[n]])))
-    return(list(t = "named", kv = kv))
+    return(list(t = "dict", kv = kv))
   }
   if (is.list(v)) return(lapply(v, enc))
   enc_col(v)
@@ -86,7 +90,7 @@ enc_col <- function(v) {
   # which jsonlite would write as a bare base64 string, and the host
   # would read a character column back (found by r-arrow-verify, 2026-09-25)
   if (is.raw(v))
-    return(lapply(seq_along(v), function(i) list(t = "raw", b64 = jsonlite::base64_enc(v[i]))))
+    return(lapply(seq_along(v), function(i) list(t = "bytes", b64 = jsonlite::base64_enc(v[i]))))
   ty <- if (is.logical(v)) "logical"
     else if (is.integer(v)) "integer"
     else if (is.double(v)) "double"
@@ -95,8 +99,11 @@ enc_col <- function(v) {
   lapply(seq_along(v), function(i) {
     x <- v[[i]]
     if (is.na(x) && !(is.double(x) && is.nan(x))) return(list(t = "na", of = ty))
-    if (is.integer(x)) return(list(t = "i", v = unname(x)))
+    # the shared tags: an integer is a plain number, and a double that
+    # LOOKS integral is tagged, so the two stay two on a JSON wire
+    if (is.integer(x)) return(unname(x))
     if (is.double(x) && is.nan(x)) return(list(t = "nan"))
+    if (is.double(x) && is.finite(x) && x == floor(x) && abs(x) < 1e15) return(list(t = "f", v = unname(x)))
     unname(x)
   })
 }
@@ -128,10 +135,14 @@ dec <- function(v) {
     if (t == "na") return(switch(v$of,
       logical = NA, integer = NA_integer_, double = NA_real_, character = NA_character_, NA))
     if (t == "nan") return(NaN)
-    if (t == "i") return(as.integer(v$v))
-    if (t == "raw") return(jsonlite::base64_dec(v$b64))
+    if (t == "f") return(as.double(v$v))
+    # an integer past 2^53: R has no 64-bit integer, and a Long in R's
+    # vocabulary is its digits there (RCodec.long)
+    if (t == "int") return(as.character(v$v))
+    if (t == "i") return(as.integer(v$v))   # shim v8's tag, still read
+    if (t == "raw" || t == "bytes") return(jsonlite::base64_dec(v$b64))
     if (t == "ref") return(okay_held(v$id))
-    if (t == "named") {
+    if (t == "named" || t == "dict") {
       out <- lapply(v$kv, function(p) dec(p[[2]]))
       names(out) <- vapply(v$kv, function(p) p[[1]], character(1))
       return(out)
@@ -156,10 +167,13 @@ dec <- function(v) {
       return(simplify_col(xs))
     return(xs)
   }
-  # a PLAIN number on this wire is always a double: an R integer is
-  # tagged "i" on the way in, and jsonlite would otherwise read 3 as
-  # an integer and hand R a different type than the caller sent
-  if (is.numeric(v)) return(as.numeric(v))
+  # a PLAIN integral number is an integer (the shared tags: an integral
+  # DOUBLE arrives tagged "f"), within R's 32 bits; anything else a double
+  if (is.numeric(v)) {
+    if (is.integer(v)) return(v)
+    if (is.finite(v) && v == floor(v) && abs(v) <= .Machine$integer.max) return(as.integer(v))
+    return(as.numeric(v))
+  }
   v
 }
 
@@ -656,8 +670,8 @@ read_msg <- function() {
 con <- file("stdin", open = "rb")
 
 say(list(shim = SHIM, r = paste(R.version$major, R.version$minor, sep = "."),
-         speaks = c(list(format = list("json", "cbor"), compress = list("zlib")),
-                    if (.okay_has_arrow) list(frames = list("arrow")))))
+         speaks = list(format = list("json", "cbor"), compress = list("zlib"),
+                       frames = if (.okay_has_arrow) list("columnar", "arrow") else list("columnar"))))
 
 # ---- the loop ---------------------------------------------------------
 

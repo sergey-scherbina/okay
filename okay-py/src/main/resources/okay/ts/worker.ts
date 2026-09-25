@@ -247,11 +247,28 @@ function dec(v: any): any {
       case "bytes": return new Uint8Array(Buffer.from(v.b64, "base64"));
       case "dict": return Object.fromEntries(v.kv.map(([k, x]: [string, any]) => [k, dec(x)]));
       case "ref": return heldAt(v.id);
-      case "frame": return Object.fromEntries(v.cols.map(([k, xs]: [string, any[]]) => [k, xs.map(dec)]));
+      case "na": return null;   // R's typed NA: TypeScript has one absence
+      case "frame": return decFrame(v);
       default: throw new TypeError(`unknown tagged value: ${v.t}`);
     }
   }
   return v;
+}
+
+/** a frame off the wire as a record of columns: the COLUMNAR shape (v2,
+ * foreign-one-value: a type per column, plain values, absences as index
+ * lists) or v1's [name, cells] pairs */
+function decFrame(v: any): Record<string, unknown[]> {
+  const out: Record<string, unknown[]> = {};
+  for (const c of v.cols) {
+    if (Array.isArray(c)) { out[c[0]] = c[1].map(dec); continue; }
+    if (c.cells !== undefined) { out[c.name] = c.cells.map(dec); continue; }
+    const xs: unknown[] = [...c.values];
+    for (const i of c.na ?? []) xs[i] = null;
+    for (const i of c.nan ?? []) xs[i] = NaN;
+    out[c.name] = xs;
+  }
+  return out;
 }
 
 // ---- modules ------------------------------------------------------------
@@ -385,7 +402,7 @@ async function main(): Promise<void> {
     const at = entry.indexOf("=");
     modules[entry.slice(0, at)] = await import(pathToFileURL(entry.slice(at + 1)).href);
   }
-  reply({ shim: SHIM, python: `node ${process.version}`, speaks: { format: ["json", "cbor"], compress: ["deflate"] } });
+  reply({ shim: SHIM, python: `node ${process.version}`, speaks: { format: ["json", "cbor"], compress: ["deflate"], frames: ["columnar"] } });
   for (;;) {
     const req = readMsg();
     if (req === null) break;

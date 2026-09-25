@@ -30,6 +30,13 @@ enum PyValue:
    * value, a handle to it — an argument like any other, which the shim
    * turns back into the object */
   case Ref(ref: PyRef)
+  /** a missing value OF A TYPE — R's `NA_integer_`, `NA_real_`,
+   * `NA_character_` and logical `NA` (foreign-one-value): four values, and
+   * none of them `PyNone`, because `mean(c(1, NA))` is NA while
+   * `mean(c(1, NULL))` is 1. `of` names the type: "logical", "integer",
+   * "double", "character". A language without typed absences never sends
+   * one; the shared tree carries it so R needs no tree of its own. */
+  case NA(of: String)
 
 object PyValue:
   /** every `Ref` id in `v`, preorder — on a worklist, since a value a
@@ -178,36 +185,35 @@ object ToPy:
   given schema[A](using s: okay.codec.Schema[A]): ToPy[A] with
     def py(a: A)(using shape: Shape): PyValue = shape.encode(a)
 
-/** a columnar frame — dict-of-lists on the far side */
-final case class PyFrame(cols: Vector[(String, Vector[PyValue])]):
+/**
+ * A columnar frame — dict-of-lists on the far side (a data.frame in R).
+ * It CARRIES the value rules it is read by (`shape`, outside equality, as
+ * `PyRef` carries its own): Python's by default, R's for a frame an R
+ * worker answered or `RFrame.of` built (foreign-one-value) — so `rows`
+ * never reads an R frame by Python's rules because of what happened to be
+ * in scope.
+ */
+final case class PyFrame(cols: Vector[(String, Vector[PyValue])], shape: Shape = Shape.python):
   /** the frame as rows of a case class, a row being the dict of its
-   * cells (foreign-typed-calls): the pair okay-r's `RFrame` has */
+   * cells (foreign-typed-calls), by this frame's own value rules */
   def rows[A](using okay.codec.Schema[A]): Either[Condition, Vector[A]] =
-    val n = cols.headOption.fold(0)(_._2.length)
-    cols.find(_._2.length != n) match
-      case Some((name, c)) =>
-        Left(Condition("FrameShape", s"column '$name' has ${c.length} cells, the first has $n"))
-      case None =>
-        val out = Vector.newBuilder[A]
-        var bad: Option[Condition] = None
-        var i = 0
-        while bad.isEmpty && i < n do
-          PyCodec.decode[A](PyValue.Dict(cols.map((k, c) => (k, c(i))))) match
-            case Right(a) => out += a
-            case Left(c) => bad = Some(c.copy(message = s"row $i: ${c.message}"))
-          i += 1
-        bad.toLeft(out.result())
+    shape.rows[A](this)
+
+  /** the same columns, read by `s`'s rules */
+  def ruledBy(s: Shape): PyFrame = PyFrame(cols, s)
+
+  // what a frame IS is its columns; its rules are how it is READ
+  override def equals(other: Any): Boolean = other match
+    case f: PyFrame => f.cols == cols
+    case _ => false
+  override def hashCode: Int = cols.hashCode
+  override def toString: String = s"PyFrame($cols)"
 
 object PyFrame:
-  /** rows of a flat case class as a frame, a column per field */
-  def of[A](rows: Seq[A])(using s: okay.codec.Schema[A]): Either[Condition, PyFrame] = s match
-    case p: okay.codec.Schema.SProduct[A] =>
-      val names = p.fields.map(_._1)
-      val cells = rows.toVector.map(PyCodec.encode(_) match
-        case PyValue.Dict(kv) => kv.map(_._2)
-        case other => Vector(other))
-      Right(PyFrame(names.zipWithIndex.map((n, j) => (n, cells.map(_(j))))))
-    case other => Left(Condition("FrameSchema", s"a frame row is a case class; this Schema is $other"))
+  /** rows of a flat case class as a frame, a column per field, by the
+   * value rules of the shape in scope (Python's unless one is given) */
+  def of[A](rows: Seq[A])(using okay.codec.Schema[A], Shape): Either[Condition, PyFrame] =
+    summon[Shape].frame(rows)
 
 /** what a failing call answers: the exception's type name and text
  * — data, and the worker survives to take the next call */
@@ -340,7 +346,8 @@ object ForeignEval:
         ((), "forgotten")
     def decode[A](op: ForeignEval[A], written: String): A = op match
       case Call(_, _) => Wire.read(written).map(Wire.dec)
-      case Frame(_, _, _) => Wire.read(written).flatMap(Wire.decFrame)
+      // an answer frame is read by the rules its REQUEST frame was made under
+      case Frame(_, in, _) => Wire.read(written).flatMap(Wire.decFrame).map(_.ruledBy(in.shape))
       case Start(_, _, _) => Wire.readStep(written)
       case Resume(_, _) => Wire.readStep(written)
       case Hold(_, _) => Wire.read(written).flatMap(j => Wire.asRef(Wire.dec(j)))
@@ -355,7 +362,7 @@ object ForeignEval:
 /** the wire halves shared by every engine: PyValue <-> the tagged
  * JSON the shim speaks (None = null; NaN and bytes ride tagged
  * objects, because JSON has neither) */
-private[py] object Wire {
+private[okay] object Wire {
 
   /** a journalled answer: `{"ok": ...}` or `{"condition": {...}}` */
   def written(answer: Either[Condition, Json]): String = Json.print(answer match
@@ -459,6 +466,7 @@ private[py] object Wire {
         "b64" -> Json.JStr(java.util.Base64.getEncoder.encodeToString(bs))))
       case PyValue.Ref(r) => Json.JObj(Vector("t" -> Json.JStr("ref"),
         "id" -> Json.JNum(r.id.toDouble), "type" -> Json.JStr(r.pyType)))
+      case PyValue.NA(of) => Json.JObj(Vector("t" -> Json.JStr("na"), "of" -> Json.JStr(of)))
       case PyValue.Arr(_) | PyValue.Dict(_) =>
         throw IllegalStateException("unreachable: containers are handled by the work-list")
 
@@ -521,9 +529,12 @@ private[py] object Wire {
           case Some(Json.JStr("int")) => m.get("v") match
             case Some(Json.JStr(d)) => d.toLongOption.fold(PyValue.BigI(scala.math.BigInt(d)))(PyValue.I64(_))
             case _ => PyValue.PyNone
-          case Some(Json.JStr("ref")) => (m.get("id"), m.get("type")) match
+          // jsonlite may box a scalar: the id and type are read either way
+          case Some(Json.JStr("ref")) => (unboxed(m.get("id")), unboxed(m.get("type"))) match
             case (Some(Json.JNum(i)), Some(Json.JStr(t))) => PyValue.Ref(PyRef(i.toLong, t))
+            case (Some(Json.JNum(i)), _) => PyValue.Ref(PyRef(i.toLong, "?"))
             case _ => PyValue.PyNone
+          case Some(Json.JStr("na")) => PyValue.NA(unboxed(m.get("of")).collect { case Json.JStr(t) => t }.getOrElse("logical"))
           case _ => PyValue.PyNone   // an untagged object has no PyValue shape
       case Json.JErr(_) => PyValue.PyNone
       case Json.JArr(_) => throw IllegalStateException("unreachable: JArr is handled by the work-list")
@@ -565,13 +576,128 @@ private[py] object Wire {
           todo = todo.tail
     results.head
 
+  private def unboxed(j: Option[Json]): Option[Json] = j match
+    case Some(Json.JArr(Vector(one))) => Some(one)
+    case other => other
+
+  /** the frame format's version inside the envelope: 2 is the columnar shape */
+  val FrameFormat = 2
+
+  /**
+   * A frame, COLUMNAR (r-frame-columnar-wire, the shape every far side
+   * that announces `"frames": ["columnar"]` reads since foreign-one-value):
+   * the type belongs to the column, the values are a plain array — the
+   * road a JSON library takes fastest — and the absences are index lists
+   * beside them, so R's typed NAs stay four and NA stays apart from NaN
+   * without a tag per cell. The placeholder at an absent position is the
+   * type's ZERO, never null (a null in a numeric array is jsonlite's slow
+   * path); `na`/`nan` are the authority. A column the four atomic types
+   * cannot carry — bytes, nesting, a mix, an integer past 32 bits (R's
+   * integer is 32-bit) — keeps the per-cell form under `cells`.
+   */
+  def encFrameColumnar(f: PyFrame): Json = Json.JObj(Vector(
+    "t" -> Json.JStr("frame"),
+    "v" -> Json.JNum(FrameFormat.toDouble),
+    "cols" -> Json.JArr(f.cols.map((n, col) => encCol(n, col)))))
+
+  private def encCol(name: String, col: Vector[PyValue]): Json =
+    columnType(col) match
+      case None =>
+        Json.JObj(Vector("name" -> Json.JStr(name), "cells" -> Json.JArr(col.map(enc))))
+      case Some(t) =>
+        val na = Vector.newBuilder[Json]
+        val nan = Vector.newBuilder[Json]
+        val zero: Json = t match
+          case "l" => Json.JBool(false)
+          case "s" => Json.JStr("")
+          case _ => Json.JNum(0)
+        val values = col.zipWithIndex.map { (v, i) =>
+          v match
+            case PyValue.NA(_) | PyValue.PyNone => na += Json.JNum(i.toDouble); zero
+            case PyValue.F64(d) if d.isNaN => nan += Json.JNum(i.toDouble); zero
+            case PyValue.Bool(b) => Json.JBool(b)
+            case PyValue.I64(x) => Json.JNum(x.toDouble)
+            case PyValue.F64(x) => Json.JNum(x)
+            case PyValue.Str(s) => Json.JStr(s)
+            case _ => zero   // unreachable: columnType admitted the column
+        }
+        val fields = Vector("name" -> Json.JStr(name), "type" -> Json.JStr(t),
+          "values" -> Json.JArr(values), "na" -> Json.JArr(na.result()))
+        Json.JObj(if t == "d" then fields :+ ("nan" -> Json.JArr(nan.result())) else fields)
+
+  /** the column's ONE type, when the four atomic ones carry it: "l", "i",
+   * "d", "s" — an NA names its own, a value its own, and a mix (or bytes,
+   * nesting, an integer past 32 bits) has none. An empty column is
+   * logical, which is what R's own `c()` gives. */
+  private def columnType(col: Vector[PyValue]): Option[String] =
+    var seen: Option[String] = None
+    var ok = true
+    col.foreach { v =>
+      val t = v match
+        case PyValue.NA(of) => Some(of.take(1) match { case "c" => "s"; case c => c })
+        case PyValue.Bool(_) => Some("l")
+        case PyValue.I64(x) if x.isValidInt => Some("i")
+        case PyValue.F64(_) => Some("d")
+        case PyValue.Str(_) => Some("s")
+        case PyValue.PyNone => None
+        case _ => ok = false; None
+      (seen, t) match
+        case (_, None) => ()
+        case (None, Some(x)) => seen = Some(x)
+        case (Some(a), Some(b)) if a == b => ()
+        case _ => ok = false
+    }
+    if !ok then None else Some(seen.getOrElse("l"))
+
+  /** a frame off the wire: the columnar shape (v2) or the per-cell pairs
+   * of v1 — every reader accepts both, an encoder writes one */
   def decFrame(j: Json): Either[Condition, PyFrame] = j match
     case Json.JObj(fs) if fs.toMap.get("t").contains(Json.JStr("frame")) =>
-      fs.toMap.get("cols") match
+      val m = fs.toMap
+      val v = unboxed(m.get("v")).collect { case Json.JNum(n) => n.toInt }.getOrElse(1)
+      if v > FrameFormat then
+        Left(Condition("WireError", s"frame format v$v: this host reads up to v$FrameFormat — refuse rather than guess"))
+      else m.get("cols") match
         case Some(Json.JArr(cols)) =>
-          Right(PyFrame(cols.collect {
-            case Json.JArr(Vector(Json.JStr(n), Json.JArr(vals))) => (n, vals.map(dec))
-          }))
+          val out = cols.map(decCol)
+          out.collectFirst { case Left(c) => c }.toLeft(PyFrame(out.collect { case Right(p) => p }))
         case _ => Left(Condition("WireError", "a frame without cols"))
     case other => Left(Condition("WireError", s"expected a frame, got $other"))
+
+  private def decCol(j: Json): Either[Condition, (String, Vector[PyValue])] = j match
+    case Json.JArr(Vector(Json.JStr(n), Json.JArr(vals))) => Right(n -> vals.map(dec))
+    case Json.JObj(fs) =>
+      val m = fs.toMap
+      val name = unboxed(m.get("name")).collect { case Json.JStr(s) => s }.getOrElse("")
+      (m.get("cells"), m.get("values")) match
+        case (Some(cells), _) => Right(name -> asArray(cells).map(dec))
+        case (_, Some(raw)) =>
+          val t = unboxed(m.get("type")).collect { case Json.JStr(s) => s }.getOrElse("l")
+          def idx(k: String): Set[Int] = m.get(k).map(asArray).getOrElse(Vector.empty).collect { case Json.JNum(n) => n.toInt }.toSet
+          val na = idx("na")
+          val nan = idx("nan")
+          val of = t match
+            case "i" => "integer"
+            case "d" => "double"
+            case "s" => "character"
+            case _ => "logical"
+          Right(name -> asArray(raw).zipWithIndex.map { (x, i) =>
+            if na(i) then PyValue.NA(of)
+            else if nan(i) then PyValue.F64(Double.NaN)
+            else (t, x) match
+              case ("l", Json.JBool(b)) => PyValue.Bool(b)
+              case ("i", Json.JNum(n)) => PyValue.I64(n.toLong)
+              case ("d", Json.JNum(n)) => PyValue.F64(n)
+              case ("s", Json.JStr(s)) => PyValue.Str(s)
+              case (_, other) => dec(other)
+          })
+        case _ => Left(Condition("WireError", s"a column with neither values nor cells: $j"))
+    case other => Left(Condition("WireError", s"not a column: $other"))
+
+  /** jsonlite UNBOXES a length-1 vector: a one-row column arrives as a
+   * scalar and a single absence as a bare number (r-frame-columnar-wire) */
+  private def asArray(j: Json): Vector[Json] = j match
+    case Json.JArr(xs) => xs
+    case Json.JNull => Vector.empty
+    case one => Vector(one)
 }

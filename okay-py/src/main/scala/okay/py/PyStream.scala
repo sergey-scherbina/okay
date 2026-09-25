@@ -37,15 +37,15 @@ object PyStream:
   final class Failed(val condition: Condition)
     extends RuntimeException(s"okay.py stage: ${condition.kind}: ${condition.message}")
 
-  private[py] def chunked[I: ToPy, O: Schema](
+  private[okay] def chunked[I: ToPy, O: Schema](
       chunk: Int,
       call: Vector[PyValue] => ForeignEval[Either[Condition, PyValue]],
-      finish: Option[ForeignEval[Either[Condition, PyValue]]]): Unit ! Row[I, O] =
+      finish: Option[ForeignEval[Either[Condition, PyValue]]])(using shape: Shape): Unit ! Row[I, O] =
     require(chunk >= 1, "okay.py stage: a chunk holds at least one element")
     type R = Row[I, O]
 
     def tellAll(answer: Either[Condition, PyValue]): Unit ! R =
-      answer.flatMap(PyCodec.decode[Vector[O]](_)) match
+      answer.flatMap(shape.decode[Vector[O]](_)) match
         case Left(c) => throw Failed(c)
         case Right(os) => os.foldLeft(pure[R, Unit](()))((p, o) => p.flatMap(_ => effect[R, Unit](Writer(o))))
 

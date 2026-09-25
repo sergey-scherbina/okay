@@ -11,7 +11,17 @@ import PyValue.*
  * handle) is not one of the five columns, and the frame takes the JSON
  * road instead: `table` says why.
  */
-object ArrowFrames:
+/**
+ * How a far side's frames become Arrow tables and back — a LANGUAGE's rule,
+ * so a worker carries it (foreign-one-value): Python's is `ArrowFrames`
+ * (None is null, ints are 64-bit), R's is `okay.r.RArrowFrames` (a typed NA
+ * is null in a column of its type, R's integer is 32-bit).
+ */
+trait FrameTables:
+  def table(f: PyFrame): Either[String, Table]
+  def frame(t: Table): PyFrame
+
+object ArrowFrames extends FrameTables:
 
   def table(f: PyFrame): Either[String, Table] =
     val n = f.cols.headOption.fold(0)(_._2.length)
@@ -68,6 +78,7 @@ object ArrowFrames:
     case Arr(_) => "lists"
     case Dict(_) => "dicts"
     case Ref(_) => "handles"
+    case NA(_) => "typed NAs"
 
   /** a table as a frame. The shim normalises an answer to the five columns
    * the JSON frame has always had; the model's other lossless kinds map
