@@ -97,13 +97,21 @@ with ipc.new_stream(sys.argv[1], s) as w:
       case other => fail(s"columns: $other")
   }
 
-  test("a type outside the five is refused by name, with what to cast it to") {
-    val e = intercept[IllegalStateException](fromPy("""
+  test("a narrower int reads as what it is; a type outside the model is refused by name") {
+    val t = fromPy("""
 import sys, pyarrow as pa, pyarrow.ipc as ipc
 t = pa.table({"small": pa.array([1, 2], pa.int32())})
 with ipc.new_stream(sys.argv[1], t.schema) as w: w.write_table(t)
+""")
+    t.cols match
+      case Vector(("small", Column.Ints(32, true, v, _))) => assertEquals(v.toVector, Vector(1L, 2L))
+      case other => fail(s"columns: $other")
+    val e = intercept[IllegalStateException](fromPy("""
+import sys, pyarrow as pa, pyarrow.ipc as ipc
+t = pa.table({"m": pa.array([{"a": 1}], pa.map_(pa.string(), pa.int64()))})
+with ipc.new_stream(sys.argv[1], t.schema) as w: w.write_table(t)
 """))
-    assert(e.getMessage.contains("column 'small' is int32; cast it to int64"), e.getMessage)
+    assert(e.getMessage.contains("column 'm' has Arrow type Map; the model does not hold it"), e.getMessage)
   }
 
   test("an empty table crosses both ways") {
