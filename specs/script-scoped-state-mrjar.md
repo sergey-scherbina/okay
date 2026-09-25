@@ -1,14 +1,16 @@
 # Scoped as a Multi-Release JAR (script-scoped-state-mrjar, 2026-09-19)
 
-**Since moved to core (scoped-to-core, 2026-09-19):** every
+**Since moved to core (scoped-to-core, 2026-09-19), then to
+okay-platform (scoped-cross-platform):** every
 `okay.script.api.Scoped` / `okay-script/jdk25/...` /
 `okayScript` settings reference below is what this looked like on
 first landing, in `okay-script`. The class is now `okay.Scoped`
-(`src/main/scala-jvm/Scoped.scala`), its JDK25 variant is
-`jdk25/Scoped.scala` (repo root), and the `packageBin`/manifest
-wiring lives on the `okay` crossProject's `.jvmSettings` in
-build.sbt, not on `okayScript`. The mechanism, the reasoning, and the
-verification method described here are unchanged — only the location.
+(`okay-platform/src/main/scala/Scoped.scala`), its JDK25 variant is
+`jdk25/Scoped.scala` (repo root). **The script, the "if the directory
+exists" packaging and the manual probe below are HISTORY since
+mrjar-jdk25-ci-gap (2026-09-25, the closing section at the end):**
+the variant is an sbt project, packaged always, and proved by a test
+in the gate on both sides of 25.
 
 `Scoped[A]` (specs/script-scoped-state.md) was built with a thin
 public facade -- `current`, `where` -- specifically so its backend
@@ -148,3 +150,51 @@ that broke the JDK25 path would go unnoticed by the gate. Closing
 that needs either a JDK25 runner in CI or a project decision to make
 JDK 25 a build prerequisite everywhere -- out of scope here; recorded
 as a BACKLOG follow-up rather than silently accepted.
+
+## Closed: the variant is built by the build (mrjar-jdk25-ci-gap, 2026-09-25)
+
+The operator, on being told a published jar carried the variant only
+when whoever built it had run the script: "это нужно исправить". The
+gap the backlog item recorded had two halves, and both are gone.
+
+**Why the script existed, and why it no longer can.** dotc ran on JDK
+21 and `java.lang.ScopedValue` was not in that JVM's class library; no
+`-release` flag grants a compiler an API newer than the JVM it runs
+on. Since java-gatherers (2026-09-23) sbt runs on JDK 25
+(`.sdkmanrc`), so the compiler sees the API and the variant is an
+ordinary source.
+
+**What replaced it (build.sbt `versioned` / `multiRelease`):**
+- `jdk25/` is project `okayPlatformJdk25`: sources compiled with
+  `-java-output-version 25` (the API check and bytecode 69 for that
+  version) against okay-platform's own compile classpath — the root
+  `okay.Scoped` is on it and the source wins, as measured. It has no
+  `dependsOn`; okay-platform depends on it `test->compile`, which is
+  both the truth (the jar its tests run against carries it) and what
+  lets `affected` reach okay-platform from a change under `jdk25/`.
+- okay-platform's `packageBin` maps every class of it to
+  `META-INF/versions/25/` and the manifest says `Multi-Release: true`
+  — unconditionally. The core's copy of that wiring, which had gone
+  on packaging a variant into a jar whose root had no `Scoped` since
+  the class moved, is deleted.
+- okay-platform's tests are FORKED now and run against the packaged
+  JAR: `Test / fullClasspath` puts it first and drops both classes
+  directories (the host's, which would shadow the jar, and the
+  variant's, whose root-path `okay/Scoped.class` would have made
+  every JVM load the 25 class). A class loaded from a directory is
+  never versioned, so without this a green test proved nothing.
+- `TestScopedBackend` asserts that `Scoped` came from a jar, and that
+  the backend is the one the running JDK must have picked; it prints
+  the JDK so the gate log says which JVM decided.
+
+**Measured 2026-09-25**, both through `scripts/gate.sh`: on the
+default `Test / javaHome` (26) — `JDK 26.0.2.1 loaded the ScopedValue
+backend`; with `okayPlatform.jvm / Test / javaHome` set to 17.0.19 —
+`JDK 17.0.19+10 loaded the ThreadLocal backend`. The jar listing:
+`META-INF/versions/25/okay/Scoped.class`, `Scoped$.class`, and
+`Multi-Release: true`.
+
+`scripts/build-mrjar-jdk25.sh` is deleted. The same two helpers are
+how cont-stack (specs/cont-stack.md, Decision 12) adds a `jdk22/`
+variant to the CORE: the FFM stack reader, compiled with
+`-java-output-version 22`, in every jar, tested through it.

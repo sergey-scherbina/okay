@@ -148,6 +148,64 @@ def jdkFloor(n: Int) = scalacOptions ~= { opts =>
   if (n == 0) rest else rest ++ Seq("-java-output-version", n.toString)
 }
 
+/**
+ * A Multi-Release JAR variant (JEP 238), BUILT BY THIS BUILD
+ * (mrjar-jdk25-ci-gap, 2026-09-25). `dir` holds sources that
+ * redefine classes of `hostId` for a JVM of feature version `n` and
+ * up — the same names, the same public shape, a newer API inside
+ * (`jdk25/Scoped.scala` over `java.lang.ScopedValue`). They compile
+ * with `-java-output-version n`, so the compiler refuses an API past
+ * that version and emits the matching bytecode, against the host's
+ * own compile classpath: the host's root class of the same name is on
+ * it, and the source in hand wins. The project has no `dependsOn` —
+ * the host depends on IT (`test->compile`, see `multiRelease`), so a
+ * `dependsOn` here would be a cycle.
+ *
+ * Until this helper the one variant was compiled by a script run by
+ * hand (`scripts/build-mrjar-jdk25.sh`, deleted), because dotc ran on
+ * a JVM that had never seen the newer API; since java-gatherers sbt
+ * runs on 25 and there is no such JVM left. The script's product was
+ * packaged only when it happened to exist, and the operator refused a
+ * variant that a published jar "sometimes" carries.
+ */
+def versioned(id: String, dir: String, n: Int, hostId: String): Project =
+  Project(id, file(dir))
+    .settings(
+      Compile / unmanagedSourceDirectories := Seq(baseDirectory.value),
+      Compile / unmanagedClasspath ++= (LocalProject(hostId) / Compile / fullClasspath).value,
+      jdkFloor(n),
+      publish / skip := true,
+    )
+
+/**
+ * The host side of `versioned`: every class the variant compiled goes
+ * into this project's jar under `META-INF/versions/n/`, the manifest
+ * says `Multi-Release: true`, ALWAYS — never "if the directory
+ * exists". And the forked tests of the host run against that JAR, put
+ * first on the test classpath in place of the two classes
+ * directories (the host's own and the variant's — the variant's at a
+ * ROOT path would make every JVM load the newer class, and the host's
+ * would shadow the jar): a class loaded from a classes directory is
+ * never versioned, so a test against `target/classes` proves nothing
+ * about the swap. `TestScopedBackend` asserts the backend the running
+ * JDK must have picked — "ScopedValue" on 25+, "ThreadLocal" below —
+ * and that `Scoped` came out of a jar at all.
+ */
+def multiRelease(variantId: String, n: Int): Seq[Setting[_]] = Seq(
+  Compile / packageBin / mappings ++= {
+    val dir = (LocalProject(variantId) / Compile / classDirectory).value
+    val _ = (LocalProject(variantId) / Compile / compile).value
+    (dir ** "*.class").get().map(f => f -> s"META-INF/versions/$n/${IO.relativize(dir, f).get}")
+  },
+  packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
+  Test / fullClasspath := {
+    val jar = (Compile / packageBin).value
+    val own = (Compile / classDirectory).value
+    val variant = (LocalProject(variantId) / Compile / classDirectory).value
+    Attributed.blank(jar) +: (Test / fullClasspath).value.filterNot(e => e.data == own || e.data == variant)
+  },
+)
+
 ThisBuild / organization := "dev.okay"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / homepage := Some(url("https://github.com/sergey-scherbina/okay"))
@@ -341,39 +399,6 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / javaOptions += "-Xmx1g",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
-    // Multi-Release JAR (script-scoped-state-mrjar, scoped-to-core,
-    // 2026-09-19): okay.Scoped ships a JDK21-and-up ThreadLocal
-    // backend in the jar root and, WHEN scripts/build-mrjar-jdk25.sh
-    // has been run, a java.lang.ScopedValue backend under
-    // META-INF/versions/25/ -- the JVM picks per JEP 238, nothing here
-    // branches at runtime. The script needs an actual JDK 25+ JVM to
-    // compile against (no -release flag can grant an older compiler
-    // that API), so this is NOT a normal sbt sub-project on this
-    // session's own JDK -- it is a standalone compile whose output
-    // this task picks up IF PRESENT. A checkout that never ran the
-    // script packages the exact jar it always has: this is additive,
-    // never a new hard dependency. See specs/script-scoped-state-mrjar.md.
-    Compile / packageBin / mappings := {
-      val base = (Compile / packageBin / mappings).value
-      val classesDir = baseDirectory.value.getParentFile / "jdk25" / "target" / "classes"
-      def classFiles(dir: File): Seq[File] =
-        Option(dir.listFiles).toSeq.flatten.flatMap { f =>
-          if (f.isDirectory) classFiles(f)
-          else if (f.getName.endsWith(".class")) Seq(f)
-          else Seq.empty
-        }
-      if (classesDir.exists) {
-        val extra = classFiles(classesDir).map { f =>
-          f -> ("META-INF/versions/25/" + IO.relativize(classesDir, f).get)
-        }
-        base ++ extra
-      } else base
-    },
-    packageOptions ++= {
-      val classesDir = baseDirectory.value.getParentFile / "jdk25" / "target" / "classes"
-      if (classesDir.exists) Seq(Package.ManifestAttributes("Multi-Release" -> "true"))
-      else Seq.empty
-    },
   )
   .jsSettings(
     Compile / unmanagedSourceDirectories +=
@@ -472,7 +497,9 @@ lazy val okayPlatform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "okay-platform",
   )
-  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  // the JDK 25+ variant of okay.Scoped, built by `versioned` below;
+  // `test->compile` so the jar the tests run against carries it
+  .jvmConfigure(_.enablePlugins(JmhPlugin).dependsOn(okayPlatformJdk25 % "test->compile"))
   .jvmSettings(
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
@@ -480,6 +507,11 @@ lazy val okayPlatform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    // forked, so the tests run on `Test / javaHome` (26 by default,
+    // 17 under verifyJdk17) and the Multi-Release swap below is
+    // decided by THAT JVM, not by the one sbt happens to run on
+    Test / fork := true,
+    multiRelease("okayPlatformJdk25", 25),
     // Loom is used ON PURPOSE past the 17 floor, behind
     // `Schedulers.hasVirtualThreads` (jdk-adaptive-scheduler): the
     // guard works because call sites link lazily AND the bytecode is
@@ -504,6 +536,9 @@ lazy val okayPlatform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
         baseDirectory.value.getParentFile / "src" / "test" / "scala-native"),
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
+
+/** okay.Scoped over java.lang.ScopedValue, for JDK 25+ (`versioned`) */
+lazy val okayPlatformJdk25 = versioned("okayPlatformJdk25", "jdk25", 25, "okayPlatformJVM")
 
 /**
  * Streams, channels and the buffers under them (core-modules stage 1,
@@ -3188,7 +3223,7 @@ lazy val gtkProjects: Seq[ProjectReference] = if (gtkAvailable) Seq(okayUiGtk) e
 
 lazy val root = (project in file("."))
   .aggregate(gtkProjects: _*)
-  .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayAsync.jvm, okayAsync.js, okayAsync.native, okayDirect.jvm, okayDirect.js, okayDirect.native, okayPlatform.jvm, okayPlatform.js, okayPlatform.native, okayPlatformJdk25, okayStream.jvm, okayStream.js, okayStream.native, okayWorkflow.jvm, okayWorkflow.js, okayWorkflow.native, okayData.jvm, okayData.js, okayData.native, okayOptics.jvm, okayOptics.js, okayOptics.native, okayStm.jvm, okayStm.js, okayStm.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okayClojure, okayFrege, okayScala2, okayScala2Codec, okayScala2Http, okayScala2Sql, okayScala2Agent, okayScala2Ui, okayScala2Ws, okayScala2Resilience, okayScala2Persist, okayScala2Stm, okayScala2Stores, okayScala2Llm, okayScala2Rag, okayScala2Mcp, okayScala2Optics, okayScala2Workflow, okayScala2Services, okayScala2Prelude, okayScala2Probe, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
