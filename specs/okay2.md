@@ -2386,6 +2386,34 @@ and `Lexical.State` with every strategy and typed `get`/`set`/`put`.
   strategy over `Instances`) and `Lexical.Stacked` (instances as
   `Delim.Stacked.In` subclasses with `Has.Below`).
 
+## Stage 47 — okay2-layered: layered monadic reflection (2026-09-25)
+Backlog `okay2-layered` (filed by okay2-dollar). The Scala 3 core's
+`Layered` (specs/layered-reflection.md) for the Scala 2 core: `Layer[M]`
+(a transformer over the programs outside the layer; Option, Either,
+List), `Reflect[M, R]` (the capability: the layer's prompt and bind),
+`reify` as `η $ e` on `Delim.dollar`, `reflect` as a `shift0` through
+an implicit class on `M[X]`. Scala 2 has no context functions, so a
+body RECEIVES its capability and passes it to `reflect`
+(`reify[Option, Int, P] { opt => Option(2).reflect[Int, P](opt) }`);
+Either's layer is a type-lambda instance (no kind-projector in the
+okay2 build), and a test aliases it (`type EitherS[A] = Either[String, A]`).
+
+### Behavior (stage 47)
+- [x] TestLayered (7), every value of the Scala 3 suite: Filinski's
+      law for Option and List; one layer in direct style (`Some(10)`,
+      `None`, the four pairs); Option outside List `None`, List outside
+      Option `List(Some(11), None, Some(33))`, the same order with no
+      failure `Some(List(11, 22, 33))`; three layers `Left("four")` and
+      `Right(List(Some(1), None, Some(3)))`; a capability used outside
+      its reify throws `NoPrompt`.
+
+### Decisions (stage 47)
+- The stacked layers (`Layered.Stacked`: a layer as the stacked dollar's
+  `In`, `reflect` asking `Has`) are NOT ported here, with the stacked
+  Lexical instances: `okay2-lexical-walk-stacked`.
+- `M` is read off the receiver, as in the Scala 3 core: `Some(2).reflect`
+  finds no `Reflect[Some, R]`; write `Option(2)` or ascribe.
+
 ## Decision — okay2 is minimal by default (operator, 2026-09-24)
 Asked whether a new Scala 2 user goes down okay2 or the facade, and
 whether the facade's modules are re-based on okay2 (backlog
@@ -2444,4 +2472,8 @@ the Overview. What follows from it, and was done the same day
   results) GREEN first on 2026-09-25 after the typed-doors restructure
   (the first cut's `TailClauses` for State was refused by scalac at
   `case Get() => (s, s)`: X unrefined); the whole okay2 gate GREEN
+  before landing.
+- Stage 47: TestLayered 7 GREEN on the first compiling run (one
+  parenthesis in the three-layer test was the only red), 63 results
+  with TestLexical across JVM/JS/Native; the whole okay2 gate GREEN
   before landing.

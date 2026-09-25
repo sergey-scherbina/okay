@@ -7,6 +7,9 @@
       instances as subclasses of `Delim.Stacked.In` whose `perform` asks
       for `Has.Below` (okay2 has both since okay2-dollar), so an instance
       used outside its installation is a compile error. Both need the
-      Scala 2 twin of TestLexicalWalk/TestLexicalStacked. DONE WHEN:
+      Scala 2 twin of TestLexicalWalk/TestLexicalStacked; (3) `Layered.Stacked`
+      (okay2-layered, stage 47, left it out for the same reason: a layer as
+      the stacked dollar's `In`, `reflect` asking `Has`; TestLayeredStacked's
+      three tests). DONE WHEN:
       both strategies exist by name with their suites green in the okay2
       gate, and stage 46's "not ported" line is amended.

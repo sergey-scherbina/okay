@@ -165,3 +165,9 @@ STAGES 1-2, 2026-09-25 (TestLayered 7 + TestLayeredStacked 3; DelimBenchmark lay
   PRICED 2026-09-25 (layered-reify-time), load 3-5, one run with both
   lanes: 58.34 ± 0.35 against 64.58 ± 0.68 µs, ratio 0.90. The dollar
   form is cheaper on time as well as on bytes.
+
+OKAY2 TWIN, 2026-09-25 (okay2-layered, specs/okay2.md stage 47):
+`Layer`, `Reflect`, `reify` (η $ e) and `reflect` (shift0) in the Scala 2
+core, every value of TestLayered reproduced; the body receives its
+capability instead of summoning it; the stacked layers are not ported
+(okay2 backlog `okay2-lexical-walk-stacked`).
