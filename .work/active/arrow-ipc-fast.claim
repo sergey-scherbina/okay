@@ -1,0 +1,3 @@
+slug: arrow-ipc-fast
+agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
+what: ArrowIpc writer to an exact-size array with bulk LE copies and UTF-8 encoded in place; reader without buffer copies, bulk LE; measured with okay-arrow stage 0 bench
