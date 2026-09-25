@@ -2536,11 +2536,18 @@ lazy val okayCompress = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
+    // Mem: 8-byte access per platform (okay-compress-jvm-fast-paths)
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies += "io.airlift" % "aircompressor" % "2.0.3" % "test;jmh",
   )
+  .jsSettings(Compile / unmanagedSourceDirectories +=
+    baseDirectory.value.getParentFile / "src" / "main" / "scala-js")
+  .nativeSettings(Compile / unmanagedSourceDirectories +=
+    baseDirectory.value.getParentFile / "src" / "main" / "scala-native")
 
 // okay-arrow: Arrow IPC behind one facade, two implementations
 // (specs/okay-arrow.md). OkayArrow is ours, on every platform, with no

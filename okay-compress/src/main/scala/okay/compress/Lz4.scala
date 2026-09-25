@@ -36,20 +36,19 @@ object Lz4Block:
       var i = from
       var misses = 1 << 6
       while i < mfLimit do
-        val seq = Le.i32(src, i)
+        val seq = Mem.i32(src, i)
         val h = (seq * -1640531535) >>> (32 - hashLog)    // 2654435761, Knuth's
         val ref = table(h) - 1
         table(h) = i + 1
-        if ref >= from && i - ref <= MaxOffset && Le.i32(src, ref) == seq then
-          var m = MinMatch
-          while i + m < anchorEnd && src(ref + m) == src(i + m) do m += 1
+        if ref >= from && i - ref <= MaxOffset && Mem.i32(src, ref) == seq then
+          val m = MinMatch + Mem.common(src, ref + MinMatch, src, i + MinMatch, anchorEnd - i - MinMatch)
           op = sequence(src, anchor, i - anchor, i - ref, m, dst, op)
           i += m
           anchor = i
           misses = 1 << 6
           // the position just before the match's end, so a run continues
           if i - 2 < mfLimit && i - 2 > from then
-            table((Le.i32(src, i - 2) * -1640531535) >>> (32 - hashLog)) = i - 2 + 1
+            table((Mem.i32(src, i - 2) * -1640531535) >>> (32 - hashLog)) = i - 2 + 1
         else
           i += misses >>> 6
           misses += 1
@@ -113,7 +112,11 @@ object Lz4Block:
           litLen += b
       if litLen > end - ip then corrupt(s"$litLen literals where ${end - ip} bytes remain (cut short?)")
       if litLen > limit - op then corrupt(s"the block decompresses past its $limit-byte limit")
-      if litLen <= 16 then
+      if litLen <= 16 && op + 16 <= limit && ip + 16 <= end then
+        // a short run as two 8-byte copies: bytes past it are overwritten
+        // by what follows, inside the limits just checked
+        Mem.put64(dst, op, Mem.i64(src, ip)); Mem.put64(dst, op + 8, Mem.i64(src, ip + 8))
+      else if litLen <= 16 then
         var k = 0
         while k < litLen do { dst(op + k) = src(ip + k); k += 1 }
       else System.arraycopy(src, ip, dst, op, litLen)
@@ -135,11 +138,8 @@ object Lz4Block:
             matchLen += b
         if matchLen > limit - op then corrupt(s"the block decompresses past its $limit-byte limit")
         val ref = op - offset
-        if offset >= matchLen && matchLen > 16 then System.arraycopy(dst, ref, dst, op, matchLen)
-        else
-          // short, or overlapping (a match repeating its own output): byte by byte
-          var k = 0
-          while k < matchLen do { dst(op + k) = dst(ref + k); k += 1 }
+        if offset >= matchLen && matchLen > 32 then System.arraycopy(dst, ref, dst, op, matchLen)
+        else Mem.copyMatch(dst, ref, op, matchLen)    // eight at a time where the distance allows
         op += matchLen
     op
 

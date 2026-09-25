@@ -86,7 +86,7 @@ object ZstdEncoder:
     private val head = Array.fill(1 << HashLog)(-1)
     private val prev = new Array[Int](math.max(1, src.length))
     private var inserted = 0
-    private def hash(i: Int): Int = (Le.i32(src, i) * -1640531535) >>> (32 - HashLog)
+    private def hash(i: Int): Int = (Mem.i32(src, i) * -1640531535) >>> (32 - HashLog)
 
     /** every position before `upTo` into the chain */
     def insertUpTo(upTo: Int): Unit =
@@ -98,10 +98,7 @@ object ZstdEncoder:
         inserted += 1
 
     /** the length of the match at `i` against `ref`, up to `end` */
-    def matchLength(ref: Int, i: Int, end: Int): Int =
-      var k = 0
-      while i + k < end && src(ref + k) == src(i + k) do k += 1
-      k
+    def matchLength(ref: Int, i: Int, end: Int): Int = Mem.common(src, ref, src, i, end - i)
 
     /** the longest match at `i` (its length and offset), 0 if none */
     def best(i: Int, end: Int): Long =

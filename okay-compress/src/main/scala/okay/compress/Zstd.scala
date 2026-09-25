@@ -261,10 +261,8 @@ object Zstd extends Codec:
       if offset > out.n - frameStart then corrupt(s"offset $offset reaches before the frame's output")
       out.room(ml)
       val ref = out.n - offset
-      if offset >= ml then System.arraycopy(out.buf, ref, out.buf, out.n, ml)
-      else
-        var k = 0
-        while k < ml do { out.buf(out.n + k) = out.buf(ref + k); k += 1 }
+      if offset >= ml && ml > 32 then System.arraycopy(out.buf, ref, out.buf, out.n, ml)
+      else Mem.copyMatch(out.buf, ref, out.n, ml)     // eight at a time where the distance allows
       out.n += ml
       s += 1
       if s < nSeq then
@@ -291,6 +289,8 @@ private[compress] final class BackBits(src: Array[Byte], from: Int, end: Int):
   /** `n` bits (at most 56) at `at`, zeros where the stream has none */
   private def bitsAt(at: Int, n: Int): Long =
     if n == 0 then 0L
+    else if at >= 0 && from + (at >> 3) + 8 <= end then
+      (Mem.i64(src, from + (at >> 3)) >>> (at & 7)) & ((1L << n) - 1)   // one 8-byte load
     else
       var v = 0L
       var shift = 0
