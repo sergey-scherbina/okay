@@ -281,6 +281,7 @@ API reference, gotchas.
 | [`okay-pool`](modules/okay-pool.md) | the engine on a cluster manager: a pool of identical processes, any of which takes a submission over HTTP and coordinates it, journal-backed so a member's death is a resume by any other one [specs/cluster-pool.md](../specs/cluster-pool.md) |
 | [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]` |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
+| [`okay-kernel`](modules/okay-kernel.md) | a microkernel: versioned contracts (`Port`), plugins that need and provide them, a plan that names every problem before anything runs, a start that releases in reverse; ServiceLoader and a plugins directory on the JVM |
 | [`okay-staging`](modules/okay-staging.md) | the staged codec for a schema that exists only at run time — JVM only, optional by construction, switchable off at launch |
 | [`okay-netty`](modules/okay-netty.md) | Netty behind the same two seams, plus the cross-backend matrix that proves the seam |
 | [`okay-security`](modules/okay-security.md) | authorization once: claims as values, JWT/JWKS over a crypto seam, PBKDF2, policies as an algebra, routes wrapped so a principal must exist, OAuth2 client flows |

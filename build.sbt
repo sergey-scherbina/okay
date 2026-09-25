@@ -1947,6 +1947,21 @@ lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
   )
 
+// FORBIDDEN MODULE EDGES (specs/kernel.md), refused when the build loads:
+// each rule is a regex over the projects it holds for, one over what their
+// COMPILE closure must not reach, and why. The first two are the two
+// drifts of 2026-09-25 that nothing said no to.
+_root_.okay.deploy.sbt.OkayModules.settings(
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayHttp(JVM|JS)", "okay(Mcp|McpHttp|Agent|Llm|Rag)(JVM|JS)",
+    "okay-http is a wire; an agent, an LLM client and RAG are not (http-mcp-agent-edge)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayOps(JVM|JS)", "okayDocs(JVM|JS|Native)",
+    "okay-ops renders what it is handed; okay-docs brings two database drivers (ops-docs-edge)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okay(JVM|JS|Native)", ".*",
+    "the core is dependency-free (specs/modules-infra.md)"),
+  _root_.okay.deploy.sbt.OkayModules.forbid("okayKernel(JVM|JS|Native)", "(?!okay(JVM|JS|Native)$).*",
+    "the kernel depends on the core only: every plugin carries what it does"),
+)
+
 /**
  * A microkernel (specs/kernel.md): Version and Range (the version
  * contract), Port, Plugin, the plan and the start; on the JVM, Discover

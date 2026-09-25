@@ -99,8 +99,8 @@ trait Plugin {
 
 trait Wiring { def one[A](p: Port[A]): A; def all[A](p: Port[A]): Vector[A]; def maybe[A](p: Port[A]): Option[A] }
 
-enum Problem { DuplicateId, KernelMismatch, Missing, Incompatible, Unserved,
-               Ambiguous, UnknownChoice, Cycle, LoadFailed, LawBroken }
+enum Problem { DuplicateId, KernelMismatch, PortConflict, Missing, Incompatible,
+               Unserved, Ambiguous, UnknownChoice, Cycle, LoadFailed, LawBroken }
 
 final case class Plan(order: Vector[Plugin], serving: Map[String, Vector[(Plugin, Provision[?])]])
 
@@ -110,7 +110,9 @@ object Kernel {
            disabled: Set[String] = Set.empty): Either[Vector[Problem], Plan]
   def start(plan: Plan, verify: Boolean = true): Running ! Resource
 }
-trait Running extends Wiring { def installed: Vector[Installed]; def describe: Vector[String] }
+trait Running { def one/all/maybe(port); def installed: Vector[Installed] }
+// plan + start in one; a plan with problems throws Refused(problems)
+def assemble(plugins, choose, disabled, verify): Running ! Resource
 
 // JVM
 object Discover {
@@ -121,43 +123,45 @@ object Discover {
 
 ## Behavior
 
-- [ ] `Version.parse` reads `1`, `1.2`, `1.2.3`, `1.2.3-rc.1`; refuses
+- [x] `Version.parse` reads `1`, `1.2`, `1.2.3`, `1.2.3-rc.1`; refuses
       anything else with the input named. Order: numeric by part, a
       pre-release below its release, pre-releases compared as strings.
-- [ ] `Range.parse` reads `^1.2`, `=1.2.3`, `>=1.2 <2`, `*`. Caret on
+- [x] `Range.parse` reads `^1.2`, `=1.2.3`, `>=1.2 <2`, `*`. Caret on
       0.x is same MINOR (`^0.3` accepts 0.3.9, refuses 0.4.0).
-- [ ] `plan` answers EVERY problem at once, not the first: a list an
+- [x] `plan` answers EVERY problem at once, not the first: a list an
       operator reads and fixes in one go.
-- [ ] two plugins with one id: `DuplicateId`.
-- [ ] a plugin built for another kernel API: `KernelMismatch`.
-- [ ] a required port nobody provides: `Missing`; an optional one: fine,
+- [x] two plugins with one id: `DuplicateId`.
+- [x] two `Port` values with one name and different versions:
+      `PortConflict` — one name is one contract.
+- [x] a plugin built for another kernel API: `KernelMismatch`.
+- [x] a required port nobody provides: `Missing`; an optional one: fine,
       `maybe` answers None.
-- [ ] a provision built against another major, or a newer minor than the
+- [x] a provision built against another major, or a newer minor than the
       host's port: `Incompatible` (plugin, port, built, host).
-- [ ] providers exist and none is in the need's range: `Unserved`
+- [x] providers exist and none is in the need's range: `Unserved`
       (with each candidate's built version).
-- [ ] a `One` port with two providers: `Ambiguous`, unless `choose`
+- [x] a `One` port with two providers: `Ambiguous`, unless `choose`
       names one (`choose(port) = pluginId`); a choice naming a plugin
       that does not provide it: `UnknownChoice`.
-- [ ] plugin A needs what B provides and B needs what A provides:
+- [x] plugin A needs what B provides and B needs what A provides:
       `Cycle` with the path.
-- [ ] the order is topological (a provider before its users) and, where
+- [x] the order is topological (a provider before its users) and, where
       free, by id — the same plugins give the same order on every run.
-- [ ] `disabled` removes plugins before planning; what then goes missing
+- [x] `disabled` removes plugins before planning; what then goes missing
       is reported as missing.
-- [ ] `start` makes each provision in plan order under one `Resource`:
+- [x] `start` makes each provision in plan order under one `Resource`:
       released in reverse, once, also when a later one throws.
-- [ ] `start(verify = true)` checks every provided value against its
+- [x] `start(verify = true)` checks every provided value against its
       port's laws; a broken law stops the start with `LawBroken`
       (plugin, port, law, why) and releases what was made.
-- [ ] a plugin's `Wiring` answers only the ports it declared in `needs`;
+- [x] a plugin's `Wiring` answers only the ports it declared in `needs`;
       reading another is an error naming both — a plugin cannot reach
       past its declaration.
-- [ ] `Many` ports: `all` answers every compatible provider in plan order.
-- [ ] `Discover.services` loads every `META-INF/services/okay.kernel.Plugin`
+- [x] `Many` ports: `all` answers every compatible provider in plan order.
+- [x] `Discover.services` loads every `META-INF/services/okay.kernel.Plugin`
       provider; one that fails to load or construct is a `LoadFailed`
       (class, why) and the others still load.
-- [ ] `Discover.jars(dir)` does the same over every `*.jar` in a
+- [x] `Discover.jars(dir)` does the same over every `*.jar` in a
       directory, under one class loader whose parent is the host's.
 
 ## Forbidden edges (okay-deploy's sbt plugin)
@@ -174,12 +178,12 @@ reason. At load, the COMPILE-scope closure of every project matching
 runtime, followed transitively) must contain no project matching `to`;
 otherwise the load fails naming the path and the reason.
 
-- [ ] okay's own rules: okay-http reaches no okay-mcp, okay-agent,
+- [x] okay's own rules: okay-http reaches no okay-mcp, okay-agent,
       okay-llm, okay-rag; okay-ops reaches no okay-docs; the core reaches
       nothing; okay-kernel reaches only the core.
-- [ ] a violating rule fails the load with the path
+- [x] a violating rule fails the load with the path
       (`okayHttpJVM -> okayMcpJVM -> okayAgentJVM`) and the why.
-- [ ] a test-scope edge is not a violation.
+- [x] a test-scope edge is not a violation.
 
 ## Module
 
@@ -214,3 +218,20 @@ beside `OkayDeploy`, so a consumer that already loads that plugin
 - **Wiring refuses undeclared ports.** A plugin that reaches past its
   `needs` makes the plan a lie: the order and the missing-check were
   computed from what it said.
+
+## Results (2026-09-25)
+
+- okay-kernel: 4 files, depends on the core only. TestVersion (4),
+  TestKernel (15) on JVM, JS and Native; TestDiscover (4) on the JVM —
+  61 results, no warnings.
+- The version contract is exercised in both directions: a provision
+  built against 2.0 or 1.3 on a 1.2 host is Incompatible, one built
+  against 1.1 is served; a need for ^1.2 against a 1.0 provider is
+  Unserved with the candidate named.
+- Discover: a provider that throws in its constructor, and a service
+  entry naming a class that does not exist, are each a LoadFailed while
+  the rest load; a directory's jars load through the host's classes.
+- OkayModules: the four rules of okay load clean; an `okayHttp dependsOn
+  okayMcp` put in by hand failed the load with
+  `okayHttpJVM -> okayMcpJVM — okay-http is a wire; …` for both
+  platforms, and was taken out; the same edge `% Test` loaded clean.
