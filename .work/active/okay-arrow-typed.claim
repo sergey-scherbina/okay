@@ -1,3 +1,0 @@
-slug: okay-arrow-typed
-agent: claude (session 01LZNspDq7ZU8TRfNoTnpRMD)
-what: okay-arrow stage 5: Schema[A] rows <-> Arrow tables through okay-codec (Columns for the write, a reader fold for the read)
