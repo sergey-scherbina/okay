@@ -1,0 +1,5 @@
+slug: foreign-facade-5
+who: claude (session 6f505c09)
+what: foreign-facade stage 5 — the measurement table: MeasureFacade (Live) times tier 1/2/3 through the facade per language against the language own road, medians, load recorded; the spec table filled where a runtime exists here (python3, JVM)
+files: okay-foreign-cluster/src/test MeasureFacade.scala, specs/foreign-facade.md
+since: 2026-09-25
