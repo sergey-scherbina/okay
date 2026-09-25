@@ -27,13 +27,18 @@ class TestClojureCancel extends munit.FunSuite {
     assert(ms >= 1400 && marked, s"$ms ms, marked=$marked")
   }
 
+  // The property is the MARK, not the wall clock: the cancel's effect
+  // (the lifted sleep never reaches its mark) is what load cannot fake.
+  // A `ms < 1000` bound read 1337ms on a loaded box (py-arrow's gate,
+  // 2026-09-25, load ~200) with the mark correctly absent — the cancel
+  // had landed, only late. backlog: clojure-cancel-wall-clock.
   test("the default scheduler: a cancel interrupts (ok/lift f)") {
     val (ms, marked) = run(summon[Scheduler], key(), 1500, Some(200))
-    assert(ms < 1000 && !marked, s"$ms ms, marked=$marked")
+    assert(!marked, s"$ms ms, marked=$marked")
   }
 
   test("a pool-threaded scheduler: the same") {
     val (ms, marked) = run(Schedulers.drive(), key(), 1500, Some(200))
-    assert(ms < 1000 && !marked, s"$ms ms, marked=$marked")
+    assert(!marked, s"$ms ms, marked=$marked")
   }
 }
