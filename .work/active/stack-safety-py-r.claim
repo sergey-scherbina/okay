@@ -1,0 +1,5 @@
+slug: stack-safety-py-r
+who: claude (session 6f505c09)
+what: stack-safety stage 4b — okay-py and okay-r: PyCodec/RCodec enc/dec per level of a VALUE, Shape.fromJson/toJson per level of wire JSON, the facade type printers (goType, haskellType, rustType, scalaType, TsFacade.show) on a recursive Schema, worker loops; red first where input reaches the depth
+files: okay-py, okay-r, specs/stack-safety*
+since: 2026-09-25
