@@ -244,6 +244,15 @@ object ForeignWorker:
             modules: Seq[PyModule] = Nil)(using WireFormat, WireCompression, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
     startIn(python, PyModule.env(modules, env))
 
+  /** `start`, with the wire picked by an explicit `okay.codec.WireChoice`
+   * instead of the givens above — for a caller that decides the wire at
+   * RUNTIME, from a string (a flag, a config file): `WireChoice.named(format
+   * = cfg.format, frames = cfg.frames)`, or `WireChoice.default` for what
+   * `start` does with no import */
+  def startWithWire(wire: okay.codec.WireChoice, python: String = "python3",
+                    env: Map[String, String] = Map.empty, modules: Seq[PyModule] = Nil): ForeignWorker =
+    startIn(python, PyModule.env(modules, env))(using wire.format, wire.compression, wire.deadline)(using wire.frames)
+
   /** `start` once the modules are already in the environment */
   private[py] def startIn(python: String, env: Map[String, String])(using WireFormat, WireCompression, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
     startWith(python, shimFile(), env)

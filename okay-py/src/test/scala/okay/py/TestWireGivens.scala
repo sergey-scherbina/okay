@@ -214,3 +214,33 @@ class TestWireGivens extends munit.FunSuite:
     assert(e.getMessage.contains("the library is in this process"), e.getMessage)
     assert(e.getMessage.contains("cannot be abandoned"), e.getMessage)
   }
+
+  test("byName picks the same givens an import would, and refuses an unknown name by naming it") {
+    assertEquals(WireFormat.byName("json").map(_.name), Right("json"))
+    assertEquals(WireFormat.byName("cbor").map(_.name), Right("cbor"))
+    assertEquals(WireFormat.byName("bson"), Left("unknown wire format 'bson' (json, cbor)"))
+    assertEquals(WireCompression.byName("auto").map(_.name), Right(WireCompression.preferred.name))
+    assertEquals(WireCompression.byName("none").map(_.name), Right("none"))
+    assertEquals(WireCompression.byName("deflate").map(_.name), Right("deflate"))
+    assertEquals(WireCompression.byName("zlib").map(_.name), Right("zlib"))
+    assertEquals(WireCompression.byName("gzip"), Left("unknown wire compression 'gzip' (auto, none, deflate, zlib)"))
+    assertEquals(okay.codec.FrameFormat.byName("auto"), Right(okay.codec.FrameFormat.preferred))
+    assertEquals(okay.codec.FrameFormat.byName("json"), Right(okay.codec.FrameFormat.Json.json))
+    assertEquals(okay.codec.FrameFormat.byName("arrow"), Right(okay.codec.FrameFormat.Arrow.arrow))
+    assertEquals(okay.codec.FrameFormat.byName("parquet"), Left("unknown frame format 'parquet' (auto, json, arrow)"))
+  }
+
+  test("WireChoice.default is exactly what the compile-time givens pick with no import") {
+    val d = okay.codec.WireChoice.default
+    assertEquals(d.format.name, WireFormat.json.name)
+    assertEquals(d.compression.name, WireCompression.preferred.name)
+    assertEquals(d.frames, okay.codec.FrameFormat.preferred)
+    assertEquals(d.deadline, WireDeadline.none)
+  }
+
+  test("WireChoice.named composes the three byName lookups, Left on the first bad name") {
+    val chosen = okay.codec.WireChoice.named(format = "cbor", compression = "none", frames = "json")
+    assertEquals(chosen.map(w => (w.format.name, w.compression.name, w.frames)),
+      Right(("cbor", "none", okay.codec.FrameFormat.Json.json)))
+    assertEquals(okay.codec.WireChoice.named(format = "yaml"), Left("unknown wire format 'yaml' (json, cbor)"))
+  }

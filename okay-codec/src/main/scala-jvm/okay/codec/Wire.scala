@@ -39,6 +39,13 @@ object WireFormat:
       def encode(tree: Json): Array[Byte] = WireCbor.encode(tree)
       def decode(bytes: Array[Byte]): Json = WireCbor.decode(bytes).fold(why => throw IllegalStateException(why), identity)
 
+  /** the given above, chosen at RUNTIME from a name instead of an import —
+   * a config value or a flag, for `WireChoice.named` */
+  def byName(name: String): Either[String, WireFormat] = name match
+    case "json" => Right(json)
+    case "cbor" => Right(Cbor.cbor)
+    case other => Left(s"unknown wire format '$other' (json, cbor)")
+
 trait WireCompression:
   def name: String
   def compress(bytes: Array[Byte]): Array[Byte]
@@ -80,6 +87,15 @@ object WireCompression:
    * with a header and an adler32 check) REQUIRED */
   object Zlib:
     given zlib: WireCompression = new Zipped(nowrap = false)
+
+  /** the givens above, chosen at RUNTIME from a name instead of an import —
+   * "auto" is `preferred`; a config value or a flag, for `WireChoice.named` */
+  def byName(name: String): Either[String, WireCompression] = name match
+    case "auto" => Right(preferred)
+    case "none" => Right(Off.off)
+    case "deflate" => Right(Deflate.deflate)
+    case "zlib" => Right(Zlib.zlib)
+    case other => Left(s"unknown wire compression '$other' (auto, none, deflate, zlib)")
 
   /** DEFLATE from java.util.zip: raw (`nowrap`), which every far side's
    * standard library has (zlib's `wbits=-15`, Go's compress/flate, Node's
@@ -159,6 +175,45 @@ object FrameFormat:
     given json: FrameFormat = FrameFormat("json", strict = true)
   object Arrow:
     given arrow: FrameFormat = FrameFormat("arrow", strict = true)
+
+  /** the givens above, chosen at RUNTIME from a name instead of an import —
+   * "auto" is `preferred`; a config value or a flag, for `WireChoice.named` */
+  def byName(name: String): Either[String, FrameFormat] = name match
+    case "auto" => Right(preferred)
+    case "json" => Right(Json.json)
+    case "arrow" => Right(Arrow.arrow)
+    case other => Left(s"unknown frame format '$other' (auto, json, arrow)")
+
+/**
+ * `WireFormat`, `WireCompression` and `FrameFormat` as one EXPLICIT value,
+ * for a caller that picks the wire at RUNTIME — from a flag or a config
+ * file, not a compile-time `given` import (the three types above stay
+ * given-based; this is an alternative entry point beside them, not a
+ * replacement): `ForeignWorker.startWithWire`, `RSubprocess.startWithWire`.
+ *
+ * {{{
+ * WireChoice.named(format = "cbor", frames = "json")   // Left on a bad name
+ * }}}
+ */
+final case class WireChoice(format: WireFormat = WireFormat.json,
+                             compression: WireCompression = WireCompression.preferred,
+                             frames: FrameFormat = FrameFormat.preferred,
+                             deadline: WireDeadline = WireDeadline.none)
+
+object WireChoice:
+  /** the same wire the given-based defaults pick with no import at all */
+  val default: WireChoice = WireChoice()
+
+  /** `format`: "json" or "cbor"; `compression`: "auto", "none", "deflate" or
+   * "zlib"; `frames`: "auto", "json" or "arrow" (arrow REQUIRED: refused if
+   * the far side does not speak it) — a name outside these is a `Left`
+   * naming it and its choices, never a silent fallback */
+  def named(format: String = "json", compression: String = "auto", frames: String = "auto"): Either[String, WireChoice] =
+    for
+      f <- WireFormat.byName(format)
+      c <- WireCompression.byName(compression)
+      fr <- FrameFormat.byName(frames)
+    yield WireChoice(f, c, fr)
 
 /**
  * Who may speak on the wire (polyglot-one-wire stage 5b, wire-auth): a

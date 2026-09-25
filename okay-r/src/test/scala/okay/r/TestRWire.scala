@@ -120,3 +120,12 @@ class TestRWireCborPlain extends RWireConformance:
     assert(e.getMessage.contains("the R shim speaks the compressions none, zlib; this host's given WireCompression is deflate"),
       e.getMessage)
   }
+
+/** the wire picked EXPLICITLY at runtime (`WireChoice`), not by a
+ * compile-time given import */
+class TestRWireChoice extends RWireConformance:
+  def expected = "cbor/zlib"
+  def open(timeoutMillis: Option[Long]) =
+    val wire = okay.codec.WireChoice.named(format = "cbor", compression = "zlib")
+      .fold(why => throw IllegalStateException(why), identity)
+    RSubprocess.startWithWire(wire, rscript = TestR.rscript.get, timeoutMillis = timeoutMillis, modules = Seq(RWire.conf))

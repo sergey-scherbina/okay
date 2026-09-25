@@ -345,6 +345,16 @@ object RSubprocess:
           s"the R environment does not meet what this session requires:\n  " +
             drift.mkString("\n  "))
 
+  /** `start`, with the wire picked by an explicit `okay.codec.WireChoice`
+   * instead of the given-based format/compression above — for a caller
+   * that decides the wire at RUNTIME, from a string (a flag, a config
+   * file): `WireChoice.named(format = cfg.format)`. R has no Arrow side
+   * yet (`r-arrow`), so `wire.frames` and `wire.deadline` go unused here. */
+  def startWithWire(wire: okay.codec.WireChoice, rscript: String = "Rscript",
+                    env: Map[String, String] = Map.empty, timeoutMillis: Option[Long] = None,
+                    require: Map[String, String] = Map.empty, modules: Seq[RModule] = Nil): RSubprocess =
+    start(rscript, env, timeoutMillis, require, modules)(using wire.format, wire.compression)
+
   /** the seam the handshake test uses: any shim file */
   private[r] def startWith(rscript: String, shim: java.nio.file.Path,
                            env: Map[String, String],

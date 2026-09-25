@@ -56,3 +56,17 @@ class TestPyPipesCbor extends WireConformance:
   override def address(name: String): String = s"conf:$name"
   lazy val engine: ForeignWorker = ForeignWorker.start(TestPy.python.get, modules = Seq(PyConformance.conf))
   override def afterAll(): Unit = if TestPy.python.nonEmpty then engine.close()
+
+/** (Python, pipes), the wire picked EXPLICITLY at runtime (`WireChoice`),
+ * not by a compile-time given import */
+class TestPyPipesWireChoice extends WireConformance:
+  override def munitIgnore: Boolean = TestPy.python.isEmpty
+  override def address(name: String): String = s"conf:$name"
+  private val wire = okay.codec.WireChoice.named(format = "cbor", compression = "deflate")
+    .fold(why => throw IllegalStateException(why), identity)
+  lazy val engine: ForeignWorker = ForeignWorker.startWithWire(wire, TestPy.python.get, modules = Seq(PyConformance.conf))
+  override def afterAll(): Unit = if TestPy.python.nonEmpty then engine.close()
+
+  test("startWithWire applies WireChoice.named, exactly as the givens above would") {
+    assertEquals(engine.wire, "cbor/deflate")
+  }
