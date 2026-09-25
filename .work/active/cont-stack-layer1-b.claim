@@ -1,6 +1,0 @@
-feature/cont-stack-layer1-b 2026-09-26T00:05:00Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-26T00:05:00Z
-status: in-progress
-done-so-far: promoted (operator: go), claimed; scope narrowed to slice 1 (answer-using bodies + PState function answers), the rest of Layer 1 B refiled as cont-stack-layer1-c
-next: worktree ../okay-wt-cont-stack-layer1-b; Cont.Body/Cps/Fun + pending stack in step; ContMacro selective CPS; TestContMacro red-first (1M on 128 KB, zero switches); statePara/fib100 lanes; spec stage E results; changelog
