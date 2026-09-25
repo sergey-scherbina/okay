@@ -1,0 +1,6 @@
+feature/compress-crypto-facades 2026-09-25T18:13:07Z
+agent: claude-fable-5-1
+heartbeat: 2026-09-25T18:13:07Z
+status: in-progress
+done-so-far: survey: ours = Lz4Frame/Zstd (vs aircompressor), Keccak256 (vs BouncyCastle); everything else already platform
+next: Compression + Aircompressor in okay-compress, Keccak + BouncyCastleKeccak in okay-crypto, consumers, tests, docs
