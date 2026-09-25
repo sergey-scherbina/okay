@@ -1,6 +1,0 @@
-feature/cont-stack-test-8mb 2026-09-25T21:05:00Z
-agent: claude-code
-heartbeat: 2026-09-25T21:05:00Z
-status: in-progress
-done-so-far: claim
-next: TestContStack 8 MB assertion made deterministic (fits: zero switches; cannot fit: at least one)
