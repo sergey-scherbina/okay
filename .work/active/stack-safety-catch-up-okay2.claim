@@ -1,5 +1,0 @@
-feature/stack-safety-catch-up-okay2 2026-09-25T18:31:58Z
-agent: claude-opus-5-5 (session 8908eaf7)
-heartbeat: 2026-09-25T18:31:58Z
-status: in-progress
-next: audit Typed.fits, okay2-jdbc valueOf/arrayOf/jdbcOf, okay2-spark SparkSchema, fs2/zio again; red first on a small stack
