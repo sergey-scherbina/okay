@@ -1,4 +1,4 @@
-- [ ] onnx-runtime-130 — okay-onnx pins onnxruntime 1.20.0, and 1.20
+- [~] onnx-runtime-130 — okay-onnx pins onnxruntime 1.20.0, and 1.20
       MIS-EXECUTES a per-channel int8 MatMul. Measured by okay-chat
       2026-09-25 (its BACKLOG ort-130-minilm, gliner-onnx; specs/meaning.md
       there): GLiNER multi-v2.1 quantised per channel read «москве» 0.31
