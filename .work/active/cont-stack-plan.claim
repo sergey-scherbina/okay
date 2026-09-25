@@ -1,0 +1,6 @@
+feature/cont-stack-plan 2026-09-25T12:40:00Z
+agent: claude-code
+heartbeat: 2026-09-25T12:40:00Z
+status: in-progress
+done-so-far: claim
+next: the ordered plan after cont-stack-switch landed — specs/cont-stack.md "Plan" section, sprint/backlog items reordered; docs-only
