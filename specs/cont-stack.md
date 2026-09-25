@@ -157,15 +157,34 @@ measured 2026-09-25 (Results, probe `StackProbe`):
   divided by the grant. Not at `run` either: fib100 is 2.4 µs an op,
   and the cheapest exact read is 0.33 µs.
 - **What is asked at exhaustion is "how many bytes are left", and the
-  answer decides between a GRANT and a switch.** A grant is
-  `(left − margin) / worst`, where `worst` is the most bytes ONE level
-  has taken so far in this run, measured from the same reads (the
-  stack pointer at the previous exhaustion minus this one, over the
-  levels between). The first grant, before any read, uses the cold
-  constant (1.2 KB, interpreted frames). The margin is 64 KB: HotSpot's
-  yellow zone plus the fattest frame a body is expected to have. A
-  body whose ONE frame exceeds the margin is the written bound of this
-  layer on the JVM. When `left < margin`, switch.
+  answer decides between a GRANT and a switch.** A grant is ONE SLICE
+  of `margin` bytes at the current estimate — `min(left − margin,
+  margin) / worst` — where `worst` is the most bytes ONE level has
+  taken so far in this run, measured from the same reads (the stack
+  pointer at the previous exhaustion minus this one, over the levels
+  between) and never lowered; the first grant, before any read, uses
+  the cold constant (1.2 KB). A slice rather than the whole room
+  (stage 3, measured): the estimate behind a grant is the worst level
+  SEEN, and a fatter body below overshoots it — a slice of `margin`
+  leaves the margin itself to absorb up to a 2x overshoot, and the
+  next exhaustion measures the fatter level and raises `worst`. The
+  first cut granted the whole room at the cold constant and overflowed
+  on 20 000 cold levels. The price is a read per 64 KB of stack — ~200
+  warm levels, ~1.6 ns a level. The margin is 64 KB. A body whose ONE
+  frame exceeds twice the worst seen within one slice is the written
+  bound of this layer on the JVM. When `left < margin`, switch.
+- **The floor is not the end of the stack.** HotSpot throws
+  `StackOverflowError` when the pointer comes within its guard zones
+  PLUS the shadow it bangs ahead of every frame — `StackShadowPages +
+  StackYellowPages + StackRedPages + StackReservedPages` pages, 24 ×
+  16 KB = **384 KB** on macOS arm64. Measured 2026-09-25: with the
+  floor at `top − size`, the runner granted down to 67 KB above it and
+  overflowed, with no switch ever reached. The JDK 22+ reader adds the
+  zone (the VM's own flags × libc's `getpagesize`) to `floor()`.
+  Scala Native's `ThreadInfo.stackGuardPage` is already that floor.
+- **Measured levels (JDK 26, TestContStack):** 1 504 B a level before
+  the JIT settles, 288 B after — so `worst` rises once, early, and the
+  slices are ~220 levels warm.
 
 Where the bytes come from, per platform, best knowledge first:
 
@@ -414,18 +433,22 @@ Compile-time layer:
 - [ ] okay2: A and known higher-order functions; B if it holds up
 
 Stack knowledge (Layer 3):
-- [ ] the fresh stack is a platform thread on JDK 26 too (the test's
-      switch counter sees one switch per ~500 000 levels, not per 64)
+- [x] the fresh stack is a platform thread on JDK 26 too
+      (`StackSwitch.switches` counts; 20 000 levels on 2 MB switch a
+      handful of times, one per ~500 000 past the first)
 - [ ] Native: at exhaustion the exact bytes left decide grant or switch;
       a `stackalloc` address lies inside `ThreadInfo`'s bounds (the
       struct-layout guard); a 128 KB Native thread switches and
       answers; the switch thread's own 1 GB is what `ThreadInfo` reports
-- [ ] JVM, native access enabled (`--enable-native-access` in the
-      test's fork options): statePara-shaped 1000 levels on a 2 MB
-      thread switch ZERO times; a 128 KB thread still switches; a
-      `Thread.ofPlatform().stackSize(8 MB)` thread is granted more than
-      the default would allow; from a virtual thread the read answers
-      the carrier's bounds and the program is correct
+      (TestContStackNative, written; run pending)
+- [x] JVM, native access enabled (`--enable-native-access` in the
+      test's fork options, first room 64 so the suite reaches
+      exhaustion): 1000 levels on a 2 MB thread switch ZERO times; a
+      256 KB thread still switches (128 KB cannot hold the first room's
+      64 cold levels at 1.5 KB — the smaller-thread bound); an 8 MB
+      thread switches fewer times than a 2 MB one on 20 000 levels
+- [ ] from a virtual thread the read answers the carrier's bounds and
+      the program is correct
 - [ ] JVM, native access absent: no WARNING line on stderr, ever; the
       first room is `ThreadStackSize`-derived (test: the counter on a
       default thread sees no switch below ~800 levels here)
@@ -439,7 +462,11 @@ Stack knowledge (Layer 3):
 - [ ] the grant follows `worst`: a run whose later bodies have fatter
       frames than its first ones still does not overflow (a test body
       with a large local array past level 500)
-- [ ] `-Dokay.cont.room` still overrides the first room
+- [x] `-Dokay.cont.room` still overrides the first room (the suite runs
+      at 64; `defaultStackBytes` is asserted ≥ 1 MB beside it)
+- [x] `TestStackRoom`: on 22+ with native access and a known layout,
+      `floor < sp < top`, a fresh thread has used under 8 MB, 200
+      frames deeper reads lower; on 17/21 all three answer −1
 
 ## Results
 
