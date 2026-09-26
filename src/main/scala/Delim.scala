@@ -819,11 +819,6 @@ object Delim {
     /** the first hole of a copy: where its head goes, one per capture */
     final class Head[F[+_], A, E] extends Hole[F, A, E](null)
 
-  /** a delimiter's frame IS itself: identity makes a chain's input type
-   * the found frame's, the axiom prompts use (`Same`). One instance for
-   * every machine: a frame's other two types do not take part */
-  private val segSame: Same[[X] =>> Segs[?, X, ?]] = Same.byIdentity[[X] =>> Segs[?, X, ?]]
-
   /** the copy of a `Watch` a capture takes with it: a FRESH count, one
    * per capture, so the count is "runs of this captured context"
    * (`Shots`). A plain `Ret` is copied as it is: nothing in it is
@@ -852,24 +847,15 @@ object Delim {
   private final case class Plain[F[+_], A, P, Z](captured: Segs[F, A, P], outer: Segs[F, P, Z])
     extends Cut[F, A, P, Z]
 
-  /** a `dollar`: the chain answers the body's `P0`, and `close` (the
-   * `Ret` with its function) leads to `P`. A delimited continuation is
-   * `captured` then `close`, so `ret` goes with it (`$/S0`). `P0` is a
-   * type MEMBER so that `captured` and `close` stay linked through one
-   * stable value, with no cast. */
-  private sealed abstract class AtRet[F[+_], A, P, Z] extends Cut[F, A, P, Z]:
-    type P0
-    val captured: Segs[F, A, P0]
-    val close: Segs[F, P0, P]
-    val outer: Segs[F, P, Z]
-
-  private object AtRet:
-    def apply[F[+_], A, Q, P, Z](c: Segs[F, A, Q], cl: Segs[F, Q, P], o: Segs[F, P, Z]): AtRet[F, A, P, Z] =
-      new AtRet[F, A, P, Z]:
-        type P0 = Q
-        val captured = c
-        val close = cl
-        val outer = o
+  /** a `dollar`: the chain up to it WITH a copy of the dollar's own
+   * frame at its end, so it answers the prompt's P through `ret`. A
+   * delimited continuation is the captured part then `ret` (`$/S0`),
+   * and `reify` is a left fold, so one chain ending in the dollar's
+   * frame reifies to exactly `ret $ E[v]`. (Until
+   * delim-split-wrap-free this was two chains linked by an existential
+   * type member, and the capture reified them one after the other.) */
+  private final case class AtDollar[F[+_], A, P, Z](whole: Segs[F, A, P], outer: Segs[F, P, Z])
+    extends Cut[F, A, P, Z]
 
   /** the machine's state between steps: a program and the stack it
    * continues into */
@@ -942,119 +928,55 @@ object Delim {
     /** cut the chain at the delimiter of p: the delimiter's prompt IS
      * p by identity, and Same's witness makes its type P's.
      *
-     * LOOPS, not recursion (specs/stack-safety.md): a shift under
+     * A LOOP, not recursion (specs/stack-safety.md): a shift under
      * 20 000 other delimiters overflowed the recursive version, which
-     * rebuilt the prefix on the way back up (delim-split-wrap-free):
-     * the prefix is copied FRONT TO BACK, each copy's `rest` set once
-     * into the hole the previous copy left. A plain mark, the hot
-     * case, is ONE pass (`copyPlain`); a dollar or a missing delimiter
-     * takes two (`find`, then `copyTo`). The first loop version pushed
-     * a frame closure and a node per segment onto a type-aligned stack
+     * rebuilt the prefix on the way back up. ONE pass
+     * (delim-split-wrap-free): the prefix is copied FRONT TO BACK
+     * while it is walked, each copy's `rest` set once into the hole
+     * the previous copy left, and the delimiter's own witness (`===`)
+     * closes the copy — with `Done` at a plain mark, with a copy of
+     * the dollar's frame at a dollar. The first loop version pushed a
+     * frame closure and a node per segment onto a type-aligned stack
      * and unwound it, +32 B per capture on delimGenerator. */
     def split[A, P](kont: Segs[F, A, R], p: Prompt[P]): Cut[F, A, P, R] =
       val head = Segs.Head[F, A, P]()
-      val outer = copyPlain(kont, head, p)
-      if outer ne null then Plain(head.rest, outer)
-      else splitSlow(kont, p)
+      copy(kont, head, head, p)
 
-    /** THE HOT PATH, one pass: copy while walking, for a plain mark.
-     * The copy's end type is the prompt's P from the start, so the
-     * mark's own witness (`===`) closes it and no identity claim is
-     * needed. Null when the walk ends anywhere else — at a dollar of
-     * p (whose captured part answers the body's type, not P) or at no
-     * delimiter at all — and the copy made so far is dropped. */
-    @tailrec def copyPlain[X, P](cur: Segs[F, X, R], hole: Hole[F, X, P], p: Prompt[P]): Segs[F, P, R] = cur match
+    /** a missing delimiter drops the copy made so far: that path
+     * forwards or throws `NoPrompt`, and never runs hot */
+    @tailrec def copy[A, X, P](cur: Segs[F, X, R], hole: Hole[F, X, P], head: Segs.Head[F, A, P], p: Prompt[P]): Cut[F, A, P, R] = cur match
       case k: Segs.K[F, X, y, R] =>
         val c = Segs.K[F, X, y, P](k.f, null)
         hole.rest = c
-        copyPlain(k.rest, c, p)
+        copy(k.rest, c, head, p)
       case m: Segs.Mark[F, X, R] =>
         (m.p === p) match
           case Some(ev) =>
             hole.rest = ev.liftCo[[t] =>> Segs[F, X, t]](Segs.Done[F, X]())
-            ev.liftCo[[t] =>> Segs[F, t, R]](m.rest)
+            Plain(head.rest, ev.liftCo[[t] =>> Segs[F, t, R]](m.rest))
           case None =>
             val c = Segs.Mark[F, X, P](m.p, null)
             hole.rest = c
-            copyPlain(m.rest, c, p)
+            copy(m.rest, c, head, p)
       case r: Segs.Ret[F, X, x, R] =>
-        if r.p eq p then null
-        else
-          val c = Segs.Ret[F, X, x, P](r.p, r.ret, null)
-          hole.rest = c
-          copyPlain(r.rest, c, p)
-      case Segs.Done() => null
+        (r.p === p) match
+          case Some(ev) =>
+            hole.rest = ev.liftCo[[t] =>> Segs[F, X, t]](Segs.Ret[F, X, x, x](r.p, r.ret, Segs.Done[F, x]()))
+            AtDollar(head.rest, ev.liftCo[[t] =>> Segs[F, t, R]](r.rest))
+          case None =>
+            val c = Segs.Ret[F, X, x, P](r.p, r.ret, null)
+            hole.rest = c
+            copy(r.rest, c, head, p)
+      case Segs.Done() => NotFound()
       case r: Segs.Watch[F, X, x, R] =>
-        if r.p eq p then null
-        else
-          val c = retake[F, X, x, P](r, null)
-          hole.rest = c
-          copyPlain(r.rest, c, p)
-
-    /** a dollar of p, or no delimiter: find the frame, then copy up to
-     * it (`copyTo`), its end type claimed by the frame's identity */
-    def splitSlow[A, P](kont: Segs[F, A, R], p: Prompt[P]): Cut[F, A, P, R] =
-      find(kont, p) match
-        case m: Segs.Mark[F, x, R] =>
-          (m.p === p) match
-            case Some(ev) =>
-              Plain(ev.liftCo[[t] =>> Segs[F, A, t]](copyTo(kont, m)), ev.liftCo[[t] =>> Segs[F, t, R]](m.rest))
-            case None => NotFound()
-        case r: Segs.Ret[F, x0, x, R] =>
-          (r.p === p) match
-            case Some(ev) =>
-              AtRet[F, A, x0, P, R](copyTo(kont, r),
-                ev.liftCo[[t] =>> Segs[F, x0, t]](Segs.Ret(r.p, r.ret, Segs.Done[F, x]())),
-                ev.liftCo[[t] =>> Segs[F, t, R]](r.rest))
-            case None => NotFound()
-        case r: Segs.Watch[F, x0, x, R] =>
-          (r.p === p) match
-            case Some(ev) =>
-              AtRet[F, A, x0, P, R](copyTo(kont, r),
-                ev.liftCo[[t] =>> Segs[F, x0, t]](retake(r, Segs.Done[F, x]())),
-                ev.liftCo[[t] =>> Segs[F, t, R]](r.rest))
-            case None => NotFound()
-        case _ => NotFound()
-
-    /** the frame that delimits p, or null: prompts compared by
-     * identity, so the walk allocates nothing */
-    @tailrec def find[X](kont: Segs[F, X, R], p: Prompt[?]): Segs[F, ?, R] | Null = kont match
-      case k: Segs.K[F, X, y, R] => find(k.rest, p)
-      case m: Segs.Mark[F, X, R] => if m.p eq p then m else find(m.rest, p)
-      case r: Segs.Ret[F, X, x, R] => if r.p eq p then r else find(r.rest, p)
-      case Segs.Done() => null
-      case r: Segs.Watch[F, X, x, R] => if r.p eq p then r else find(r.rest, p)
-
-    /** the chain from `kont` up to `stop` (a frame on it), copied */
-    def copyTo[A, E](kont: Segs[F, A, R], stop: Segs[F, E, R]): Segs[F, A, E] =
-      val head = Segs.Head[F, A, E]()
-      fill(kont, head, stop)
-      head.rest
-
-    @tailrec def fill[X, E](cur: Segs[F, X, R], hole: Hole[F, X, E], stop: Segs[F, E, R]): Unit =
-      if cur eq stop then
-        segSame.same(cur, stop) match
-          case Some(ev) => hole.rest = ev.flip.liftCo[[t] =>> Segs[F, t, E]](Segs.Done[F, E]())
-          case None => ()
-      else cur match
-        case k: Segs.K[F, X, y, R] =>
-          val c = Segs.K[F, X, y, E](k.f, null)
-          hole.rest = c
-          fill(k.rest, c, stop)
-        case m: Segs.Mark[F, X, R] =>
-          val c = Segs.Mark[F, X, E](m.p, null)
-          hole.rest = c
-          fill(m.rest, c, stop)
-        case r: Segs.Ret[F, X, x, R] =>
-          val c = Segs.Ret[F, X, x, E](r.p, r.ret, null)
-          hole.rest = c
-          fill(r.rest, c, stop)
-        // not reached: `stop` is on the chain
-        case Segs.Done() => ()
-        case r: Segs.Watch[F, X, x, R] =>
-          val c = retake[F, X, x, E](r, null)
-          hole.rest = c
-          fill(r.rest, c, stop)
+        (r.p === p) match
+          case Some(ev) =>
+            hole.rest = ev.liftCo[[t] =>> Segs[F, X, t]](retake[F, X, x, x](r, Segs.Done[F, x]()))
+            AtDollar(head.rest, ev.liftCo[[t] =>> Segs[F, t, R]](r.rest))
+          case None =>
+            val c = retake[F, X, x, P](r, null)
+            hole.rest = c
+            copy(r.rest, c, head, p)
 
     // ONE tail-recursive loop: an earlier version split it into
     // loop/onOp, and mutual recursion is not tail-optimised, so every
@@ -1094,9 +1016,6 @@ object Delim {
             Right(Next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => okay.pure[Row, X](a), kont))))
 
           case cap: Capture[p, a] =>
-            // `p` in a type pattern would BIND a new variable; the alias
-            // makes a pattern name the capture's own prompt type
-            type Pr = p
             // claim 2: f takes a continuation into the prompt's answer and
             // gives back a program at it, in this row; shift/control put the
             // body back under the delimiter, the 0-variants have consumed it
@@ -1113,8 +1032,8 @@ object Delim {
                   val seg = reify(captured, okay.pure[Row, X](v))
                   if cap.delimitK then effect[Row, p](Push(cap.prompt, seg)) else seg
                 }, outer)
-              case r: AtRet[F, X, Pr, R] =>
-                if cap.delimitK then resume((v: a) => reify(r.close, reify(r.captured, okay.pure[Row, X](v))), r.outer)
+              case AtDollar(whole, outer) =>
+                if cap.delimitK then resume((v: a) => reify(whole, okay.pure[Row, X](v)), outer)
                 else throw new UnsupportedOperationException(
                   s"${cap.at}: a control-capture to ${cap.prompt.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
               case NotFound() =>
