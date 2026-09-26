@@ -98,5 +98,6 @@ matter in time.
 - [x] MutualRecursionFxBenchmark `okayRow` and `okayRowSwapped` re-measured;
       docs/benchmarks.md §2d carries the before and after (33.3 -> 18.2 ms,
       18.1 -> 9.7 ms, min of 3 alternating rounds)
-- [ ] the handler lanes (docs/benchmarks.md §2 Reader/Writer, §2c) do not
-      regress
+- [x] the handler lanes (docs/benchmarks.md §2 Reader/Writer, §2c) do not
+      regress (§2c's freeDirectNested, State get/set + Writer: 14.17 against
+      14.22 us, bytes identical; Reader/Writer handlers are untouched)
