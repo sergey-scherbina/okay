@@ -487,7 +487,14 @@ more than it adds (the line count of what it removed goes in Results).
       callback message, tables as parts); the transcript written and
       replayed; `Foreign[L, +A]`; `Refused`; `Value` — which ABSORBS
       `RValue` — DONE by stage 2a (foreign-one-value).
-- [ ] Stage 3 — **foreign-one-pool**: one `Pool` (use, lease, route by
+- [x] Stage 3 — **foreign-one-pool** (2026-09-26): ONE pool. `okay.py.Pool`
+      (+ `Pools`, moved from the cluster) is the pool; `PyWorkers` is its
+      routing layer (by ref, by run; a `once` program keeps its lease);
+      the cluster's `PyPool`/`RPool` are `PyWorkers` over it (R's workers
+      are `ForeignWorker`s since 2a); the facade's second Python pool and
+      R's holder-of-one are gone. `perWorker` stayed in `Models` (Decision
+      15). A stateful stage gives its worker back on every path.
+- [ ] Stage 3 (as first written) — **foreign-one-pool**: one `Pool` (use, lease, route by
       ref, perWorker, supervise); `PyWorkers`, the cluster pools,
       `Holds.pyWorkers` and `SupervisedWorker` folded (R's own replay is
       already gone, stage 2a); the lease-leak test.
@@ -608,6 +615,12 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     (the stream is the call's first argument). A framing of N parts is
     written when a call needs two Arrow tables — until then it would be
     code no test can exercise.
+
+15. **No `perWorker` in the pool** (foreign-one-pool). The model named it
+    for `Models`' cache of one held model per interpreter; measured, it is
+    five lines in `Models` with one caller, and a generic per-worker store
+    in the pool would need a heterogeneous map and a cast for no second
+    user. It moves into the pool when a second caller needs it.
 
 ## Results
 
@@ -740,3 +753,22 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     reference shim to its answers. Both passed on the first run.
   - Mutant: the host spelling the table flag `tabl` fails the default-gate
     transcript test at step 5.
+- **Stage 3, foreign-one-pool (2026-09-26).**
+  - Three pools became one: `okay.py.Pool` (FIFO over idle interpreters,
+    so load goes round; `prime` for an eager start), `PyWorkers` as its
+    routing layer, and the cluster's `Workers` registry giving one
+    `PyWorkers` per (language, interpreter, module) — stages, reduces,
+    models, stateful stages, the facade's handles, methods and programs,
+    Python's and R's, all through it. A dead worker's refs and runs die
+    with it; the pool closes it and opens a fresh one on demand.
+  - The lease leak (found on feature/foreign-streams-holds): a failing
+    step threw out of a partition's iterator with its interpreter still
+    leased. `Streamer.abandon` gives the state back; `TestStatefulLease`
+    (default gate, a counting streamer) was RED before the fix — the
+    failed partition kept its worker — and green after.
+  - Live: okay-py 227, okay-r 98, okay-foreign-cluster 30,
+    okay-foreign-workflow 12; default 143.
+  - Open, and said: a partition whose DOWNSTREAM stops pulling early never
+    reaches `finish` or a failure, so its state is not given back until
+    the JVM ends; `Chunks` has no close signal to hang it on (backlog
+    stateful-early-stop).
