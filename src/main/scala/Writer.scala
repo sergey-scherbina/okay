@@ -265,6 +265,58 @@ object Writer {
         (g => Inject(g).flatMap(x => expand[W, V, A, G](k(x))(f)))
 
   /**
+   * WHAT A PART OF THE PROGRAM TOLD, as its answer — mtl's `listen`,
+   * the Writer dual of `Reader.local` and `Throws.recover`
+   * (specs/core-gaps.md stage 2).
+   *
+   *     Writer.listen(step)   :  (A, Seq[W]) ! Writer % W + G
+   *
+   * The scope's tells are NOT taken away from the outer handler: each
+   * one is re-told at its own place as it is heard, so the order
+   * against every other effect is exactly the one without `listen`,
+   * and a raise inside the scope still leaves the tells before it
+   * told. What `listen` adds is a copy of the scope's tells, and only
+   * the scope's, in the answer.
+   */
+  def listen[W, A, G[+_]](a: A ! Writer % W + G)(using Distinct[Writer % W + G], TypeableK[Writer % W])
+  : (A, Seq[W]) ! Writer % W + G =
+    def go(heard: List[W])(x: A ! Writer % W + G): (A, Seq[W]) ! Writer % W + G = (x.resume: @unchecked) match
+      case Free.Return(v) => Free.Return((v, heard.reverse))
+      // Writer tested first, for `map`'s reason (above)
+      case Inject(e) => split[Writer % W, G](e)
+        { case Say(w) => Inject[Writer % W + G, Unit](Writer(w)).map(u => (u, (w :: heard).reverse)): (A, Seq[W]) ! Writer % W + G }
+        (g => Inject[Writer % W + G, A](g).map(v => (v, heard.reverse)))
+      case Bind(Inject(e), k) => split[Writer % W, G](e)
+        { w0 => (w0: @unchecked) match
+            case Say(w) => Inject[Writer % W + G, Unit](Writer(w)).flatMap(_ => go(w :: heard)(k(()))): (A, Seq[W]) ! Writer % W + G }
+        (g => Inject(g).flatMap(x => go(heard)(k(x))))
+    go(Nil)(a)
+
+  /**
+   * A PART OF THE PROGRAM'S WHOLE OUTPUT, REWRITTEN — mtl's `censor`
+   * (specs/core-gaps.md stage 2): `f` sees everything the scope told
+   * and answers what to tell in its place.
+   *
+   *     Writer.censor(step)(ws => if ws.size > 1 then Seq(s"${ws.size} steps") else ws)
+   *
+   * Seeing it all means WAITING for all of it: the scope's tells are
+   * held back and told at the scope's END, as `f` of them — so a raise
+   * inside the scope drops them, and they come after every other
+   * effect the scope performed. That is the definition, not a defect.
+   * A rewrite of each told value on its own keeps every tell in its
+   * place, and it already exists: `map` (one to one) and `expand` (one
+   * to many, and a filter) over the same scope.
+   */
+  def censor[W, A, G[+_]](a: A ! Writer % W + G)(f: Seq[W] => Seq[W])
+                         (using Distinct[Writer % W + G], TypeableK[Writer % W]): A ! Writer % W + G =
+    def tellAll(ws: IndexedSeq[W], i: Int): Unit ! Writer % W + G =
+      if i >= ws.length then Free.Return(())
+      else Inject[Writer % W + G, Unit](Writer(ws(i))).flatMap(_ => tellAll(ws, i + 1))
+
+    import okay.Row.at
+    collect[W, A, G](a).at[Writer % W + G].flatMap((ws, x) => tellAll(f(ws).toIndexedSeq, 0).map(_ => x))
+
+  /**
    * Re-tell at a WIDER element type with NO transform — `map`'s
    * identity case, priced separately because it is common (every
    * merge of differently-typed sources goes through it) and cheaper

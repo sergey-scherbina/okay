@@ -305,6 +305,20 @@ val p = Reader.local[Int, Int, okay.Pure](_ * 10)(Reader.ask[Int])
 // Reader.run(5)(p) == 50; asking OUTSIDE the local still sees 5
 ```
 
+Writer's two scoped operations (mtl's `MonadWriter`, specs/core-gaps.md
+stage 2) complete the set. `Writer.listen(p)` answers p's value TOGETHER
+with what p told, and every tell still reaches the outer handler at its
+own place. `Writer.censor(p)(f)` rewrites p's WHOLE output. To see all
+of it, it holds p's tells back and tells `f` of them at p's end, so a
+raise inside p drops them. For a rewrite of each told value in place,
+use `Writer.map` or `Writer.expand` over the same scope:
+
+```scala
+val step: Int ! W = for _ <- say("parse"); _ <- say("check") yield 42
+val p = for _ <- say("start"); heard <- Writer.listen[String, Int, Pure](step); _ <- say("end") yield heard
+// Writer.run: told start, parse, check, end; heard == (42, List(parse, check))
+```
+
 Two things about it are worth knowing before reaching further:
 nesting `local(f2)(local(f1)(p))` composes INSIDE-OUT (`f1(f2(r))`,
 not the mtl-style `f2(f1(r))` a first guess assumes) because `local`'s

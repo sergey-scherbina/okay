@@ -189,14 +189,14 @@ object Writer:
   def censor[W, A, G[+_]](p: A ! Writer % W + G)(f: Seq[W] => Seq[W]): A ! Writer % W + G
 ```
 
-- [ ] `listen` answers p's value and p's tells, and only p's
-- [ ] `listen` re-tells in place: a tell before a raise inside p reaches
+- [x] `listen` answers p's value and p's tells, and only p's
+- [x] `listen` re-tells in place: a tell before a raise inside p reaches
       an outer Writer handler that runs after `runEither`
-- [ ] `censor` rewrites p's output as a whole (a summary line in place of
+- [x] `censor` rewrites p's output as a whole (a summary line in place of
       many), and tells outside p are untouched
-- [ ] `censor` holds back: a raise inside p drops p's held tells. The test
+- [x] `censor` holds back: a raise inside p drops p's held tells. The test
       pins this as the documented price of seeing the whole output
-- [ ] both are stack-safe over 100 000 tells
+- [x] both are stack-safe over 100 000 tells
 
 **Why `censor` is the whole-output one.** A rewrite of each told value
 on its own already exists: `Writer.map` (one to one) and `Writer.expand`
@@ -211,3 +211,11 @@ for all of it, so the tells move to p's end.
 reorders a FORWARDED operation. `listen` does not move tells either.
 `censor` moves p's tells, and only those, to p's end, and that is its
 definition.
+
+### Landed 2026-09-26 (writer-listen-censor)
+
+TestWriterScoped covers all five boxes. `G` has to be written at the
+call (`Writer.listen[String, Int, Pure](step)`), as it does for
+`Writer.map`/`expand`/`run`. Left to inference, the rest of the row is
+solved as the row itself (`Writer % W + Writer % W`), and `Distinct`
+refuses it by name. The error is loud, never a wrong answer.
