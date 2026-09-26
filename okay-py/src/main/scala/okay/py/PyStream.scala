@@ -32,6 +32,45 @@ object PyStream:
   /** the row of a Python stage: okay's stage row, plus the calls */
   type Row[I, O] = Take % I + (Writer % O + ForeignEval)
 
+  /** the row of a far-side SOURCE: its elements told, plus the calls */
+  type SourceRow[O] = Writer % O + ForeignEval
+
+  /**
+   * A FAR-SIDE SOURCE (foreign-one-mux, specs/foreign-one.md stage 5): an
+   * iterator the far side OWNS — reading a file, a cursor, a generator —
+   * pulled one chunk at a time, with no operation of its own on the wire:
+   * `open` holds the iterator (a `call … held`), `next` is a call per chunk,
+   * and `release` drops it. The next chunk is asked for when the last has
+   * been told downstream, so a slow consumer back-pressures the far side,
+   * and neither side holds more than a chunk. `ended` says which refusal is
+   * the iterator's END (Python's `StopIteration`) and `empty` which answer
+   * is (R's NULL); any other refusal ends the source naming it. The handle
+   * is released on the end and on a failure; a consumer that stops pulling
+   * early leaves it held until its worker ends (stateful-early-stop).
+   */
+  private[okay] def pulled[O: Schema](open: ForeignEval[Either[Condition, PyValue]],
+                                      next: PyRef => ForeignEval[Either[Condition, PyValue]],
+                                      ended: Condition => Boolean,
+                                      empty: PyValue => Boolean)(using shape: Shape): Unit ! SourceRow[O] =
+    type R = SourceRow[O]
+    def release(r: PyRef): Unit ! R = effect[R, Unit](ForeignEval.Release(r))
+    def tellAll(os: Vector[O]): Unit ! R =
+      os.foldLeft(pure[R, Unit](()))((p, o) => p.flatMap(_ => effect[R, Unit](Writer(o))))
+    def loop(r: PyRef): Unit ! R =
+      effect[R, Either[Condition, PyValue]](next(r)).flatMap {
+        case Left(c) if ended(c) => release(r)
+        case Left(c) => release(r).flatMap(_ => throw Failed(c))
+        case Right(v) if empty(v) => release(r)
+        case Right(v) => shape.decode[Vector[O]](v) match
+          case Left(c) => release(r).flatMap(_ => throw Failed(c))
+          case Right(os) => tellAll(os).flatMap(_ => loop(r))
+      }
+    effect[R, Either[Condition, PyValue]](open).flatMap {
+      case Right(PyValue.Ref(r)) => loop(r)
+      case Right(other) => throw Failed(Condition("WireError", s"a source's open answered $other, not a held iterator"))
+      case Left(c) => throw Failed(c)
+    }
+
   /** a call answered a condition: the stage cannot tell a `Left`, so it
    * ends, naming what Python said */
   final class Failed(val condition: Condition)

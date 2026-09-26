@@ -380,6 +380,24 @@ object Py {
     /** drop every continuation the far side keeps for this run */
     def forget: Unit ! ForeignEval = effect[ForeignEval, Unit](ForeignEval.Forget(id))
 
+  /**
+   * A Python GENERATOR as an okay source (foreign-one-mux): `address` is a
+   * function returning an iterator whose items are CHUNKS (lists of `O`);
+   * each chunk is one call of its `__next__`, `StopIteration` its end.
+   * `through(Py.source[Row]("m:rows")(path))(stage)` reads a far-side
+   * file, cursor or generator at the consumer's pace.
+   */
+  def source[O: Schema](address: String)(using shape: Shape): SourceOf[O] = SourceOf(address)
+
+  final class SourceOf[O: Schema](address: String)(using shape: Shape):
+    def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)
+    def apply[A: ToPy](a: A): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a), ToPy(b)))
+    private def go(args: Vector[PyValue]): Unit ! PyStream.SourceRow[O] =
+      PyStream.pulled[O](ForeignEval.Call(address, args, held = true),
+        r => ForeignEval.Call(Address.Method(r, "__next__"), Vector.empty),
+        _.kind == "StopIteration", _ => false)
+
   /** a Python function over a LIST as an okay stage over chunks
    * (foreign-streaming): see `PyStream` */
   def stage[I: ToPy, O: Schema](address: String, chunk: Int = 64): Unit ! PyStream.Row[I, O] =

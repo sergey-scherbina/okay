@@ -285,6 +285,23 @@ object R:
   def stage[I: ToR, O: Schema](address: String, chunk: Int = 64): Unit ! RStream.Row[I, O] =
     PyStream.chunked[I, O](chunk, buf => ForeignEval.Call(address, Vector(RValue.Vec(buf))), None)
 
+  /**
+   * An R SOURCE (foreign-one-mux): `address` returns a CLOSURE, each call
+   * of which answers the next chunk (a vector of `O`), and NULL at the end
+   * — R's iterator, which R has no generators for. The closure is held on
+   * the far side and called through `base::do.call`, one chunk per call.
+   */
+  def source[O: Schema](address: String): SourceOf[O] = SourceOf(address)
+
+  final class SourceOf[O: Schema](address: String):
+    def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)
+    def apply[A: ToR](a: A): Unit ! PyStream.SourceRow[O] = go(Vector(ToR(a)))
+    def apply[A: ToR, B: ToR](a: A, b: B): Unit ! PyStream.SourceRow[O] = go(Vector(ToR(a), ToR(b)))
+    private def go(args: Vector[PyValue]): Unit ! PyStream.SourceRow[O] =
+      PyStream.pulled[O](ForeignEval.Call(address, args, held = true),
+        r => ForeignEval.Call("base::do.call", Vector(PyValue.Ref(r), PyValue.Arr(Vector.empty))),
+        _ => false, v => v == PyValue.PyNone || v == PyValue.Arr(Vector.empty))
+
   /** R source beside the Scala that calls it (foreign-inline-modules):
    * a compile-time constant, shipped when R starts —
    * `RSubprocess.start(..., modules = Seq(m))` */
