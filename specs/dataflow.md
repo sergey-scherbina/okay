@@ -317,14 +317,14 @@ not against its existence):
       checked by a test that asserts nothing
 
 Stage 18 — table formats as sources (TestDelta):
-- [ ] a Delta table's snapshot is read from `_delta_log` — the last
+- [x] a Delta table's snapshot is read from `_delta_log` — the last
       checkpoint (nested Parquet) and the JSON commits after it — with no
       Hadoop; its live data files become the row-group plan
-- [ ] a file a DELETE removed is not read; the rows equal what delta-rs
+- [x] a file a DELETE removed is not read; the rows equal what delta-rs
       reads for the same version
-- [ ] partition values (not in the data files) arrive as columns typed by
+- [x] partition values (not in the data files) arrive as columns typed by
       the table's schema
-- [ ] deletion vectors, column mapping and v2 checkpoints are refused by
+- [x] deletion vectors, column mapping and v2 checkpoints are refused by
       name, never read wrongly
 
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
@@ -1516,6 +1516,18 @@ it the record in the journal only ever grows and a burst is one write.
 (`Checkpoint.none` is recognised and no record is built); `runLeading`
 is `leading`'s seat and does not wait to be elected, for `leading`'s
 reason.
+
+### Stage 18 — a Delta table as a source (2026-09-26)
+
+The gate's table is delta-rs's (pyarrow's `deltalake` 1.6.6), not ours:
+two appends partitioned by city, a DELETE that rewrites three files, a
+checkpoint, an append after it and a second DELETE — version 5. The
+replay reads the checkpoint (nested Parquet: `add` structs with a
+`partitionValues` map — parquet-nested was what made it readable) and
+the two commits after it; the plan holds no removed file, and the rows
+equal delta-rs's own count and sum, every row's partition value its
+own. The mutant that ignores `remove` puts a removed file in the plan.
+Iceberg (Avro manifests) and Hudi are filed: lake-iceberg, lake-hudi.
 
 ### Stage 17 — objects and Parquet (2026-09-26)
 

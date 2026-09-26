@@ -44,6 +44,21 @@ deletes anything else under `_data/`; a reader plans from the manifest.
 def sink(p: ScoreParams): Wire[Scored, Manifest] = ParquetSink.to[Scored](p.plan.lake, p.out, p.groupRows)
 ```
 
+**A Delta table as the source.** `DeltaSource.plan(lake, table)` replays
+the table's `_delta_log` — the last checkpoint, then the JSON commits
+after it — to its live data files, and plans them as row groups like any
+prefix; a file a DELETE removed is not read, and partition values (not in
+the files) arrive as columns typed by the table's schema:
+
+```scala
+val plan = DeltaSource.plan(lake, "visits")
+val rows = Flows.collect(ParquetSource.flow[Visit](plan)).runWith
+```
+
+Deletion vectors, column mapping and v2 checkpoints are refused by name
+— reading past them would return wrong rows. Iceberg and Hudi are next
+(backlog: lake-iceberg, lake-hudi).
+
 **SQL over the output: DuckDB, by the manifest.** An analyst's DuckDB
 reads exactly what a run made visible — the manifest's objects, never a
 glob a late or lost writer could join:
