@@ -27,6 +27,13 @@ object PyConformance:
     # a TABLE call: the frame arrives as a dict of columns
     def scale(frame, k):
         return {"x": [v * k for v in frame["x"]]}
+
+    # a HELD value, and a function reading it
+    def counter(n):
+        return {"n": n}
+
+    def describe(c, k):
+        return c["n"] + k
   """)
 
 /** (Python, pipes), JSON, uncompressed by default: a pipe is not a network */

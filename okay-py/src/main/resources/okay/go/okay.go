@@ -363,6 +363,12 @@ func dec(j any) any {
 			}
 		case "frame":
 			return decFrame(x)
+		case "ref":
+			// a held value named by the host: the worker puts the value back
+			// in its place before a function sees its arguments
+			if id, ok := dec(x["id"]).(int64); ok {
+				return heldRef{id}
+			}
 		case "dict":
 			if kv, ok := x["kv"].([]any); ok {
 				d := Dict{}
@@ -393,6 +399,29 @@ func dec(j any) any {
 // ------------------------------------------------------------------ the worker
 
 type key struct{ run, k int64 }
+
+// heldRef is a held value's name on the wire (foreign-held-values): a call
+// made `held` keeps its answer in the worker and answers this; an argument
+// that is one is the value again; `release` drops it.
+type heldRef struct{ id int64 }
+
+// resolve puts each held value back in its argument's place; a ref this
+// worker does not hold is refused by name
+func (w *Worker) resolve(args []any) ([]any, error) {
+	out := make([]any, len(args))
+	for i, a := range args {
+		if r, ok := a.(heldRef); ok {
+			v, held := w.held[r.id]
+			if !held {
+				return nil, fmt.Errorf("ref %d is not held by this worker (released, or held by a process that is gone)", r.id)
+			}
+			out[i] = v
+		} else {
+			out[i] = a
+		}
+	}
+	return out, nil
+}
 
 // Programs are programs as data, served by name: what multi-shot needs.
 type Programs map[string]func(args []any) Prog
@@ -484,6 +513,8 @@ type Worker struct {
 	konts     map[key]func(any) Prog
 	next      int64
 	waiting   map[key]*Ctx // direct-style calls parked in an okay.Call, by run and k
+	held      map[int64]any // values kept for the host, by ref (foreign-held-values)
+	nextRef   int64
 	asks      int64
 	// stage 5b (wire-auth): a worker with a secret answers nothing but an
 	// auth until the host has proved it holds the same secret
@@ -501,13 +532,17 @@ func NewWorker(programs Programs, functions ...Functions) *Worker {
 			fs[k] = v
 		}
 	}
-	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[key]*Ctx{}}
+	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[key]*Ctx{}, held: map[int64]any{}}
 }
 
 // await is the next thing a direct-style call does: perform an okay
 // operation (a node the host continues), or finish — `done` as a program's
 // node, or, for a plain `call`, the value itself.
-func (w *Worker) await(c *Ctx, plain bool) map[string]any {
+func (w *Worker) await(c *Ctx, plain bool) map[string]any { return w.awaitHolding(c, plain, false) }
+
+// awaitHolding is await, keeping a plain call's answer in the worker when
+// `hold` (a call made `held`) and answering its ref
+func (w *Worker) awaitHolding(c *Ctx, plain, hold bool) map[string]any {
 	e := <-c.events
 	switch {
 	case e.ask != nil:
@@ -515,6 +550,11 @@ func (w *Worker) await(c *Ctx, plain bool) map[string]any {
 		return map[string]any{"id": c.id, "ok": e.ask}
 	case e.fault != nil:
 		return condition(c.id, e.fault.Kind, e.fault.Message)
+	}
+	if plain && hold {
+		w.nextRef++
+		w.held[w.nextRef] = e.done
+		return map[string]any{"id": c.id, "ok": map[string]any{"t": "ref", "id": w.nextRef, "type": fmt.Sprintf("%T", e.done)}}
 	}
 	if plain {
 		return map[string]any{"id": c.id, "ok": enc(e.done)}
@@ -645,6 +685,10 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 		// direct-style function whose okay.Call's are nodes marked `once`
 		fn, _ := req["fn"].(string)
 		args, _ := req["args"].([]any)
+		args, err := w.resolve(args)
+		if err != nil {
+			return condition(id, "LookupError", err.Error())
+		}
 		if f, ok := w.programs[fn]; ok {
 			return map[string]any{"id": id, "ok": w.node(run, f(args))}
 		}
@@ -671,9 +715,18 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 			return condition(id, "LookupError", fmt.Sprintf("no function named '%s' in this worker", fn))
 		}
 		args, _ := req["args"].([]any)
+		args, err := w.resolve(args)
+		if err != nil {
+			return condition(id, "LookupError", err.Error())
+		}
+		hold, _ := req["held"].(bool)
 		c := &Ctx{id: id, offered: map[string]bool{}, events: make(chan event), answers: make(chan answerMsg), next: &w.asks}
 		w.begin(c, f, args)
-		return w.await(c, true)
+		return w.awaitHolding(c, true, hold)
+	case "release":
+		ref, _ := req["ref"].(int64)
+		delete(w.held, ref)
+		return map[string]any{"id": id, "ok": nil}
 	case "continue":
 		k, _ := req["k"].(int64)
 		if c, ok := w.waiting[key{run, k}]; ok {

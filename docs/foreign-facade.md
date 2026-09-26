@@ -125,8 +125,9 @@ tiers one at a time. Since foreign-more-languages every wire language has
 its module type: `TsModule` (TypeScript source, as `PyModule` is Python's)
 and `WorkerModule` (a compiled Go, Rust or Haskell worker, by the command
 that starts it), each one `Language` value under the same bodies. A
-compiled worker has no `Holds`, `Methods`, `Stateful` or `Models` yet —
-its libraries keep no held objects (backlog foreign-held-values) — and the
+compiled worker has `Holds` and `Models` too since foreign-held-values —
+its libraries keep held values — and no `Methods` or `Stateful`: a value
+has no methods by name, and a held value is not changed in place. The
 compiler says so.
 
 ## Literature

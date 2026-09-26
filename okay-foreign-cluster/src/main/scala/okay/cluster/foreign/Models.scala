@@ -28,7 +28,11 @@ trait Model:
 object Models:
   given py: Models[PyModule] = py("python3")
   given r: Models[RModule] = r("Rscript")
-  /** a model is a held object: TypeScript's, not yet a compiled worker's (foreign-held-values) */
+  /** a model is a held object, read by every chunk: TypeScript's, and a
+   * compiled worker's held value since foreign-held-values */
+  given worker: Models[WorkerModule] = new:
+    def model[P: Schema](module: WorkerModule, fn: String, params: P, workers: Int): Model =
+      ForeignModel[WorkerModule, P](Language.worker, module, fn, params, workers)
   given ts: Models[TsModule] = new:
     def model[P: Schema](module: TsModule, fn: String, params: P, workers: Int): Model =
       ForeignModel[TsModule, P](Language.node, module, fn, params, workers)

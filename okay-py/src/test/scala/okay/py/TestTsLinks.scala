@@ -28,6 +28,10 @@ export function quote(sku: string, qty: number): number {
 export function scale(frame: { x: number[] }, k: number): { x: number[] } {
   return { x: frame.x.map((v) => v * k) };
 }
+
+// a HELD value, and a function reading it
+export function counter(n: number): { n: number } { return { n }; }
+export function describe(c: { n: number }, k: number): number { return c.n + k; }
 """
 
   private def has(cmd: String*) = scala.util.Try(ProcessBuilder(cmd*).start().waitFor() == 0).getOrElse(false)

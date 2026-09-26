@@ -64,7 +64,11 @@ func scale(_ *okay.Ctx, args []any) any {
 	return okay.Frame{{Name: "x", Values: x}}
 }
 
-var functions = okay.Functions{"quote": quote, "scale": scale}
+// a HELD value (the number itself), and a function reading it
+func counter(_ *okay.Ctx, args []any) any  { return args[0] }
+func describe(_ *okay.Ctx, args []any) any { return args[0].(int64) + args[1].(int64) }
+
+var functions = okay.Functions{"quote": quote, "scale": scale, "counter": counter, "describe": describe}
 
 // in-process (a WebAssembly build): what okay_exchange serves
 func init() {

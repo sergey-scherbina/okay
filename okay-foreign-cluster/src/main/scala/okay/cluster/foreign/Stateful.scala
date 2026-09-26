@@ -39,7 +39,8 @@ trait Streamer[A, B]:
 object Stateful:
   given py: Stateful[PyModule] = py("python3")
   given r: Stateful[RModule] = r("Rscript")
-  /** the state is a held object: TypeScript's, not yet a compiled worker's (foreign-held-values) */
+  /** the state is a held object each step CHANGES: TypeScript's; a compiled
+   * worker's held values are values, read and not changed, so it has none */
   given ts: Stateful[TsModule] = new:
     def streamer[A: Schema, B: Schema](module: TsModule, open: String, step: String, finish: String, workers: Int): Streamer[A, B] =
       ForeignStreamer[TsModule, A, B](Language.node, module, open, step, finish, workers)

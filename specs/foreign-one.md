@@ -148,7 +148,7 @@ the code exists once and only the CLAIM differs:
 |---|---|---|
 | (none: `Runtime[L]` itself) | a value; a program's `call` | every language |
 | `Tables[L]` | a `Table` argument or answer | Py, R, Ts, Rust, Go, Hs (the frame road, stage 6: columnar JSON; Rust in process as Arrow C Data, Decision 21; not wasm); Jvm by reference |
-| `Objects[L]` | a `Ref[L]`: hold, pass, release | Py, R, Ts, Jvm; Rust/Go/Hs when a caller needs their libraries to keep a table of held values (Decision 18) |
+| `Objects[L]` | a `Ref[L]`: hold, pass, release | Py, R, Ts, Jvm; Rust/Go/Hs hold VALUES since foreign-held-values (Decision 23) — no methods, not changed in place |
 | `Methods[L]` | `Address.Method`/`Attr` on a held object | Py, Ts, Jvm — R's and Rust's objects have nothing to call by name, an honest absence |
 | `Programs[L]` | a program as data; `Programs.MultiShot[L]` refines it | every language; MultiShot: all but the direct-style-only far sides |
 | `Streams[L]` | a stream argument or answer driven by the far side under credit | after stage 5: Go, Rust (not wasm), Ts, Hs, Py; R and wasm-Rust are `mux: false` by design |
@@ -771,6 +771,18 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     and a thrown program makes no next call); the source's own failure path
     already releases before it throws.
 
+23. **Compiled workers hold values, not objects** (foreign-held-values).
+    Go, Rust and Haskell keep a table in the worker: a call made `held`
+    keeps its answer and answers `{"t":"ref"}`, a ref among a call's or a
+    program's arguments is resolved back to the value before the function
+    sees it (at the top level of the arguments, where the host puts one),
+    `release` drops it, and a ref the worker does not hold is a LookupError
+    by name. No method or attribute by name — a Go or Rust value has none a
+    host can reach without reflection, and Haskell's none at all — and no
+    mutation: a Rust `Value` or a Haskell `Value` is immutable, so the
+    facade's `Stateful`, whose `step` changes its state, is not given to a
+    compiled worker, while `Holds` and `Models` (read-only) are.
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
@@ -1036,3 +1048,11 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   natural end, one at a failure); TestRSource under `R.releasing`.
   Mutant: a scope that releases nothing at the end fails the early-stop
   test.
+- **foreign-held-values (2026-09-26, Decision 23).** The table in the Go,
+  Rust and Haskell libraries; WireConformance's held case (`counter(n)`
+  held, `describe` twice by its ref, released, then refused) over every
+  row that has calls — Python ×4, TypeScript ×3, R, Go ×7 (wasm too), Rust
+  pipes/TCP/TLS/FFM, Haskell ×3; Rust on wasm has no functions and skips
+  it. Facade: `Holds` and `Models` for `WorkerModule`, Holds conformance
+  over Go, Rust and Haskell. Mutant: Go's `release` keeping the value fails
+  the held case.

@@ -379,6 +379,11 @@ pub struct Worker {
     nonce: String,
     authed: bool,
     closing: bool, // a refused auth: the connection ends after its answer
+    // values kept for the host, by ref (foreign-held-values): a call made
+    // `held` keeps its answer here, an argument that is a ref is the value
+    // again, `release` drops it
+    held: HashMap<i64, Value>,
+    next_ref: i64,
 }
 
 /// HMAC-SHA256 (RFC 2104) of `message` under `key`, as lower-case hex
@@ -446,7 +451,7 @@ fn condition(id: &J, kind: &str, message: &str) -> J {
 impl Worker {
     pub fn new(programs: Programs, functions: Functions) -> Worker {
         Worker { format: "json", compress: "none", programs, functions, konts: HashMap::new(), next: 0, waiting: HashMap::new(), asks: 0,
-                 secret: None, nonce: String::new(), authed: false, closing: false }
+                 secret: None, nonce: String::new(), authed: false, closing: false, held: HashMap::new(), next_ref: 0 }
     }
 
     /// a worker that answers only after a mutual HMAC-SHA256 challenge
@@ -527,6 +532,28 @@ impl Worker {
         }
     }
 
+    /// a held call's answer: kept here, its ref answered; an okay_call in it
+    /// is refused (a held call offers no callbacks)
+    fn hold(&mut self, id: J, events: Receiver<Event>) -> J {
+        loop {
+            return match events.recv() {
+                Ok(Event::Ask { cb, reply, .. }) => {
+                    let _ = reply.send(Err(OkayError { kind: "LookupError".into(),
+                        message: format!("okay_call(\"{}\") in a held call, which offers no callbacks", cb) }));
+                    continue;
+                }
+                Ok(Event::Done(v)) => {
+                    self.next_ref += 1;
+                    let kind = match &v { Value::Table(_) => "table", Value::Dict(_) => "dict", Value::List(_) => "list", _ => "value" };
+                    self.held.insert(self.next_ref, v);
+                    json!({"id": id, "ok": {"t": "ref", "id": self.next_ref, "type": kind}})
+                }
+                Ok(Event::Fault(e)) => condition(&id, &e.kind, &e.message),
+                Err(_) => condition(&id, "RustError", "the function's thread ended without an answer"),
+            };
+        }
+    }
+
     /// a direct-style function on a thread of its own, its okay_call's
     /// answered through the channel the worker reads
     fn begin(f: DirectFn, args: Vec<Value>, offered: Vec<String>) -> Receiver<Event> {
@@ -543,12 +570,28 @@ impl Worker {
         rx
     }
 
+    /// the request's arguments, a held value back in each ref's place; a ref
+    /// this worker does not hold is refused by name
+    fn args(&self, req: &Map<String, J>) -> Result<Vec<Value>, String> {
+        req.get("args").and_then(|a| a.as_array()).map(|a| a.iter().map(|j| match j {
+            J::Object(m) if m.get("t").and_then(|t| t.as_str()) == Some("ref") => {
+                let id = m.get("id").and_then(|i| i.as_i64()).unwrap_or(-1);
+                self.held.get(&id).cloned().ok_or_else(|| format!(
+                    "ref {} is not held by this worker (released, or held by a process that is gone)", id))
+            }
+            other => Ok(dec(other)),
+        }).collect()).unwrap_or(Ok(Vec::new()))
+    }
+
     fn answer(&mut self, id: J, req: &Map<String, J>) -> J {
         if self.secret.is_some() && !self.authed {
             return self.authenticate(&id, req);
         }
         let run = req.get("run").and_then(|r| r.as_i64()).unwrap_or(0);
-        let args: Vec<Value> = req.get("args").and_then(|a| a.as_array()).map(|a| a.iter().map(dec).collect()).unwrap_or_default();
+        let args = match self.args(req) {
+            Ok(a) => a,
+            Err(why) => return condition(&id, "LookupError", &why),
+        };
         match req.get("op").and_then(|o| o.as_str()) {
             Some("program") => {
                 // ONE program protocol (foreign-one-program): a program as data,
@@ -577,6 +620,9 @@ impl Worker {
                     Some(f) => f.clone(),
                 };
                 let rx = Worker::begin(f, args, Vec::new());
+                if req.get("held").and_then(|h| h.as_bool()) == Some(true) {
+                    return self.hold(id, rx);
+                }
                 self.await_call(id, run, rx, true)
             }
             Some("continue") => {
@@ -602,6 +648,10 @@ impl Worker {
                     Ok(p) => json!({"id": id, "ok": self.node(run, p)}),
                     Err(p) => condition(&id, "RustError", &panic_message(p)),
                 }
+            }
+            Some("release") => {
+                if let Some(r) = req.get("ref").and_then(|r| r.as_i64()) { self.held.remove(&r); }
+                json!({"id": id, "ok": null})
             }
             Some("forget") => {
                 self.konts.retain(|(r, _), _| *r != run);
@@ -668,7 +718,10 @@ impl Worker {
             Some(f) => f.clone(),
         };
         let mut args = vec![table];
-        args.extend(req.get("args").and_then(|a| a.as_array()).map(|a| a.iter().map(dec).collect::<Vec<_>>()).unwrap_or_default());
+        match self.args(&req) {
+            Ok(rest) => args.extend(rest),
+            Err(why) => return (self.encode(&condition(&id, "LookupError", &why)), None),
+        }
         let events = Worker::begin(f, args, Vec::new());
         loop {
             let reply = match events.recv() {

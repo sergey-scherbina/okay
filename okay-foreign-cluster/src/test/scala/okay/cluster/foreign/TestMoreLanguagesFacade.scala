@@ -8,8 +8,9 @@ import okay.py.{GoWorker, HaskellWorker, RustWorker}
  * (foreign-more-languages): the same text Python and R answer, each
  * language one `Language` value and the givens by its module type. The
  * far side in each is five names — `echo`, `boom` (a record's), `fecho`,
- * `fboom` (a frame's), `priced` and `pairs` (programs) — plus, in
- * TypeScript, a held `Counter`. Live: each needs its toolchain.
+ * `fboom` (a frame's), `priced` and `pairs` (programs), `make` and
+ * `describe` (a held value) — and in TypeScript the held thing is a
+ * `Counter` with a method. Live: each needs its toolchain.
  */
 object MoreLanguages:
   private def has(cmd: String*) = scala.util.Try(ProcessBuilder(cmd*).start().waitFor() == 0).getOrElse(false)
@@ -78,9 +79,12 @@ func pairs(_ []any) okay.Prog {
 	})
 }
 
+func keep(_ *okay.Ctx, args []any) any     { return args[0] }
+func describe(_ *okay.Ctx, args []any) any { return args[0].(int64) + args[1].(int64) }
+
 func main() {
 	okay.Main(okay.Programs{"priced": priced, "pairs": pairs},
-		okay.Functions{"echo": echo, "boom": boom, "fecho": fecho, "fboom": fboom})
+		okay.Functions{"echo": echo, "boom": boom, "fecho": fecho, "fboom": fboom, "make": keep, "describe": describe})
 }
 """
 
@@ -112,6 +116,8 @@ fn make() -> Worker {
     functions.insert("boom".into(), function(|_| Err("nope".to_string())));
     functions.insert("fecho".into(), function(|args| Ok(args[0].clone())));
     functions.insert("fboom".into(), function(|_| Err("nope".to_string())));
+    functions.insert("make".into(), function(|args| Ok(args[0].clone())));
+    functions.insert("describe".into(), function(|args| Ok(Value::Int(i64::from_value(&args[0])? + i64::from_value(&args[1])?))));
     Worker::new(programs, functions)
 }
 
@@ -149,8 +155,15 @@ pairs _ = do
   y <- perform "choose" [VList [VInt 10, VInt 20]]
   return (VInt (round (num x + num y)))
 
+make, describe :: [Value] -> Prog Value
+make [n] = done n
+make _ = error "make takes a number"
+describe [c, k] = done (VInt (round (num c + num k)))
+describe _ = error "describe takes a held value and a number"
+
 main :: IO ()
-main = serve [("echo", echo), ("boom", boom), ("fecho", fecho), ("fboom", fboom), ("priced", priced), ("pairs", pairs)]
+main = serve [("echo", echo), ("boom", boom), ("fecho", fecho), ("fboom", fboom), ("priced", priced), ("pairs", pairs),
+              ("make", make), ("describe", describe)]
 """
 
   private def dir(prefix: String): Path = Files.createTempDirectory(prefix)
@@ -216,13 +229,22 @@ class TestGoFacadeConformance extends MoreLanguagesFacade[WorkerModule]:
   override def munitIgnore: Boolean = !MoreLanguages.go
   def module = MoreLanguages.goModule
   def word = "go"
+  test("Holds: two values held, each described by its ref, released") {
+    FacadeConformance.holds(module, "make", "describe")
+  }
 
 class TestRustFacadeConformance extends MoreLanguagesFacade[WorkerModule]:
   override def munitIgnore: Boolean = !MoreLanguages.cargo
   def module = MoreLanguages.rustModule
   def word = "rust"
+  test("Holds: two values held, each described by its ref, released") {
+    FacadeConformance.holds(module, "make", "describe")
+  }
 
 class TestHsFacadeConformance extends MoreLanguagesFacade[WorkerModule]:
   override def munitIgnore: Boolean = !MoreLanguages.ghc
   def module = MoreLanguages.hsModule
   def word = "haskell"
+  test("Holds: two values held, each described by its ref, released") {
+    FacadeConformance.holds(module, "make", "describe")
+  }

@@ -59,6 +59,7 @@ class TestRustWasm extends WireConformance:
   override def munitIgnore: Boolean = !RustInProcess.available
   override def direct: Boolean = false
   override def tables: Boolean = false
+  override def holds: Boolean = false
   // wasm32-wasip1 builds with panic=abort: a panic traps the module
   override def survivesPanics: Boolean = false
   // one instance for the suite: the panic test, which leaves it dead, is the
@@ -105,6 +106,7 @@ class TestRustWasmCbor extends WireConformance:
   override def munitIgnore: Boolean = !RustInProcess.available
   override def direct: Boolean = false
   override def tables: Boolean = false
+  override def holds: Boolean = false
   override def survivesPanics: Boolean = false
   lazy val engine: ForeignWorker =
     ForeignWorker.inProcessWasm(RustInProcess.wasm)

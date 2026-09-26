@@ -326,6 +326,11 @@ serve progs = do
   hSetBuffering stdout LineBuffering
   konts <- newIORef (M.empty :: M.Map (Integer, Integer) (Value -> Prog Value))
   next <- newIORef (0 :: Integer)
+  -- values kept for the host, by ref (foreign-held-values): a call made
+  -- `held` keeps its answer here, an argument that is a ref is the value
+  -- again, `release` drops it
+  held <- newIORef (M.empty :: M.Map Integer Value)
+  nextRef <- newIORef (0 :: Integer)
   -- the format this worker is speaking: "json" (lines) until a configure
   cbor <- newIORef False
   putStrLn (render (JObj [("shim", JNum (show shimVersion)), ("python", JStr "haskell"),
@@ -339,24 +344,37 @@ serve progs = do
       int j = case j of
         Just (JNum n) -> Just (read (takeWhile (/= '.') n) :: Integer)
         _ -> Nothing
+      -- the request's arguments, each ref's held value in its place
+      argsOf fs = do
+        h <- readIORef held
+        let one (JObj o) | Just (JStr "ref") <- lookup "t" o =
+              case int (lookup "id" o) of
+                Just i | Just v <- M.lookup i h -> Right v
+                i -> Left ("ref " ++ maybe "?" show i ++ " is not held by this worker (released, or held by a process that is gone)")
+            one j = Right (dec j)
+        return (mapM one (case lookup "args" fs of { Just (JArr xs) -> xs; _ -> [] }))
       condition rid kind msg =
         JObj [("id", rid), ("condition", JObj [("kind", JStr kind), ("message", JStr msg)])]
       answer rid fs = do
         ok <- case (lookup "op" fs, int (lookup "run" fs)) of
           (Just (JStr "program"), Just run) -> case lookup "fn" fs of
-            Just (JStr fn) | Just f <- lookup fn progs -> do
-              let args = case lookup "args" fs of { Just (JArr xs) -> map dec xs; _ -> [] }
-              Right <$> node run (f args)
+            Just (JStr fn) | Just f <- lookup fn progs -> argsOf fs >>= \got -> case got of
+              Left why -> return (Left ("LookupError", why))
+              Right args -> Right <$> node run (f args)
             Just (JStr fn) -> return (Left ("LookupError", "no program named '" ++ fn ++ "' in this worker"))
             _ -> return (Left ("ValueError", "a program request names its fn"))
           -- a CALL is a program that answers without performing: the same
           -- named programs serve it, and one that performs is refused by name
           (Just (JStr "call"), _) -> case lookup "fn" fs of
-            Just (JStr fn) | Just f <- lookup fn progs -> do
-              let args = case lookup "args" fs of { Just (JArr xs) -> map dec xs; _ -> [] }
-              return (case f args of
-                Done v -> Right (enc v)
-                Perform n _ _ -> Left ("ValueError", "'" ++ fn ++ "' performs '" ++ n
+            Just (JStr fn) | Just f <- lookup fn progs -> argsOf fs >>= \got -> case got of
+              Left why -> return (Left ("LookupError", why))
+              Right args -> case f args of
+                Done v | Just (JBool True) <- lookup "held" fs -> do
+                  i <- atomicModifyIORef' nextRef (\x -> (x + 1, x + 1))
+                  modifyIORef' held (M.insert i v)
+                  return (Right (JObj [("t", JStr "ref"), ("id", JNum (show i)), ("type", JStr "value")]))
+                Done v -> return (Right (enc v))
+                Perform n _ _ -> return (Left ("ValueError", "'" ++ fn ++ "' performs '" ++ n
                                       ++ "': a call answers a value; run it as a program"))
             Just (JStr fn) -> return (Left ("LookupError", "no program named '" ++ fn ++ "' in this worker"))
             _ -> return (Left ("ValueError", "a call names its fn"))
@@ -375,6 +393,9 @@ serve progs = do
               return (Left ("ValueError", "this Haskell worker speaks the formats json, cbor and no compression; not "
                                            ++ f ++ " with " ++ c))
             _ -> return (Left ("ValueError", "a configure names its format and compression"))
+          (Just (JStr "release"), _) -> do
+            mapM_ (\i -> modifyIORef' held (M.delete i)) (int (lookup "ref" fs))
+            return (Right JNull)
           (Just (JStr "forget"), Just run) -> do
             modifyIORef' konts (M.filterWithKey (\(r, _) _ -> r /= run))
             return (Right JNull)

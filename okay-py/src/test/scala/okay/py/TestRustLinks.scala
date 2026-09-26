@@ -49,6 +49,9 @@ fn make() -> Worker {
         let scaled = x.iter().map(|v| i64::from_value(v).map(|n| Value::Int(n * k))).collect::<Result<Vec<_>, _>>()?;
         Ok(Value::Table(vec![("x".into(), scaled)]))
     }));
+    // a HELD value (the number itself), and a function reading it
+    functions.insert("counter".into(), function(|args| Ok(args[0].clone())));
+    functions.insert("describe".into(), function(|args| Ok(Value::Int(i64::from_value(&args[0])? + i64::from_value(&args[1])?))));
     // a table answered as it came: every column kind, both ways
     functions.insert("echo".into(), function(|args| Ok(args[0].clone())));
     // a column mixing kinds, which C Data cannot carry: answered on the wire instead

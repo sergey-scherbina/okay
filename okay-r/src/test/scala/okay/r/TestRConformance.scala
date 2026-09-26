@@ -22,6 +22,9 @@ object RConformance:
     }
     # a TABLE call: the frame arrives as a data.frame
     scale <- function(frame, k) data.frame(x = frame$x * k)
+    # a HELD value, and a function reading it
+    counter <- function(n) list(n = n)
+    describe <- function(c, k) c$n + k
   """)
 
 /** R is one more row of the ONE conformance body every wire language

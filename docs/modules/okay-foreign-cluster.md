@@ -72,8 +72,10 @@ The same map then runs there, a frame per chunk:
 val out = okay.cluster.Flows.collect(okay.cluster.Flow.slices(recs, 3).mapIn[FacadeConformance.Rec](module, "fecho", batch = 128)).runWith
 ```
 
-A stateful stage and a model need a held object, which a compiled worker
-does not keep yet (foreign-held-values); TypeScript has both. Clojure and
+A model is a held value every chunk reads, which a compiled worker keeps
+since foreign-held-values; a stateful stage CHANGES its held state, which
+a compiled worker's values do not allow, so it stays with TypeScript,
+Python and R. Clojure and
 Frege need nothing — they run inside the JVM, so their map is
 `flow.map(f)`.
 

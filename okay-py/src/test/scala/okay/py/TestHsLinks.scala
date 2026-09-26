@@ -31,8 +31,15 @@ scale :: [Value] -> Prog Value
 scale [frame, VInt k] | Just xs <- col "x" frame = done (VTable [("x", [VInt (round (num x) * k) | x <- xs])])
 scale _ = error "scale takes a frame with a column x and a factor"
 
+-- a HELD value (the number itself), and a function reading it
+counter, describe :: [Value] -> Prog Value
+counter [n] = done n
+counter _ = error "counter takes a number"
+describe [c, k] = done (VInt (round (num c + num k)))
+describe _ = error "describe takes a held value and a number"
+
 main :: IO ()
-main = serve [("pairs", pairs), ("total", total), ("boom", boom), ("scale", scale)]
+main = serve [("pairs", pairs), ("total", total), ("boom", boom), ("scale", scale), ("counter", counter), ("describe", describe)]
 """
 
   lazy val ghc: Boolean = scala.util.Try(ProcessBuilder("ghc", "--version").start().waitFor() == 0).getOrElse(false)

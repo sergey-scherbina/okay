@@ -16,7 +16,9 @@ import okay.{Choose, Reader, effect, runChoice, given}
  *    calling `okay_call` twice (a far side without direct style overrides
  *    `direct` to false);
  *  - `scale(frame, k)`: a TABLE call — a frame with column `x` in, the same
- *    column times `k` out (a far side without table calls overrides `tables`).
+ *    column times `k` out (a far side without table calls overrides `tables`);
+ *  - `counter(n)` held, then `describe(c, k)`: `n + k` from the HELD value
+ *    (a far side that keeps nothing overrides `holds`).
  */
 abstract class WireConformance extends munit.FunSuite:
 
@@ -72,6 +74,23 @@ abstract class WireConformance extends munit.FunSuite:
       case v => fail(s"not a number: $v")
     }))
     assertEquals(xs, Right(Vector("x" -> Vector(3.0, 6.0))))
+  }
+
+  /** whether the far side keeps values for the host (`call … held`) */
+  def holds: Boolean = true
+
+  test("a HELD value: kept on the far side, used twice by its ref, released, then refused by name (foreign-held-values)") {
+    assume(holds, "this far side keeps no values")
+    val h = engine.handler
+    val ref = h.handle(ForeignEval.Call(address("counter"), Vector(PyValue.I64(10)), held = true))
+      .flatMap(Wire.asRef).fold(c => fail(s"hold: $c"), identity)
+    def describe(k: Long): Either[Condition, Double] =
+      // read by this far side's rules: R answers a vector of one
+      h.handle(ForeignEval.Call(address("describe"), Vector(PyValue.Ref(ref), PyValue.I64(k)))).flatMap(shape.decode[Double](_))
+    assertEquals(describe(2), Right(12.0))
+    assertEquals(describe(5), Right(15.0))
+    h.handle(ForeignEval.Release(ref))
+    assert(describe(1).isLeft, "a released value was still found")
   }
 
   /** whether a far-side failure leaves the far side alive: false for Rust

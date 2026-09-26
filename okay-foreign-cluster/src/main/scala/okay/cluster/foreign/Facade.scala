@@ -257,10 +257,12 @@ object Holds:
   def py(python: String): Py = of(Language.py(python))
   given r: R = r("Rscript")
   def r(rscript: String): R = of(Language.r(rscript))
-  /** TypeScript keeps a table of held objects; Go, Rust and Haskell do not
-   * yet (foreign-held-values), so a compiled worker has no instance */
+  /** TypeScript keeps held objects, and since foreign-held-values a compiled
+   * Go, Rust or Haskell worker keeps held VALUES (no methods by name) */
   type Ts = Holds[TsModule] { type Ref = okay.py.PyRef }
   given ts: Ts = of(Language.node)
+  type Worker = Holds[WorkerModule] { type Ref = okay.py.PyRef }
+  given worker: Worker = of(Language.worker)
 
 object Methods:
   type Py = Methods[okay.py.PyModule] { type Ref = okay.py.PyRef }
