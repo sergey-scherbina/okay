@@ -19,6 +19,10 @@ runtimes="${*:-ce kyo loom ox gears okay okayOwn okayAdaptive}"
 here="$(cd "$(dirname "$0")" && pwd)"
 okay_root="$(cd "$here/../.." && pwd)"
 . "$okay_root/scripts/quiet.sh"
+# the bench window (specs/bench-window.md): a request for the whole
+# run, so gates hold their start, and quiet only with no gate token live
+. "$okay_root/scripts/bench-window.sh"
+bw_want
 JAVA_HOME="${FIVE_WAY_JAVA_HOME:-$HOME/.sdkman/candidates/java/25.0.4.1-tem}"
 export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
 mkdir -p "$out"
@@ -34,9 +38,10 @@ take_lock() {
   echo $$ > "$LOCKDIR/pid"
 }
 release_lock() { rm -rf "$LOCKDIR"; }
-trap release_lock EXIT INT TERM
+trap 'release_lock; bw_unwant' EXIT INT TERM
 
-wait_quiet() { n=0; until quiet; do n=$((n + 1)); [ $n -ge 60 ] && break; sleep 30; done; }
+lane_quiet() { quiet && [ -z "$(bw_live gates)" ]; }
+wait_quiet() { n=0; until lane_quiet; do n=$((n + 1)); [ $n -ge 60 ] && break; sleep 30; done; }
 
 JMH="-f 3 -wi 3 -i 3 -w 1s -r 1s -t 1 -foe true -prof gc -bm thrpt -rf json"
 lane() { # name pattern extra-params runtime
@@ -49,7 +54,7 @@ lane() { # name pattern extra-params runtime
     rc=$?
     release_lock
     if grep -q "Compilation failed" "$log"; then echo "$name $rt: COMPILATION FAILED, see $log" >> "$out/summary.txt"; exit 1; fi
-    if quiet; then echo "$name $rt rc=$rc attempt=$attempt"; return; fi
+    if lane_quiet; then echo "$name $rt rc=$rc attempt=$attempt"; return; fi
     echo "$name $rt attempt=$attempt DISCARDED: the box got busy during the run" >> "$out/discarded.txt"
   done
   echo "$name $rt rc=$rc attempt=3 (kept after three busy attempts)"
