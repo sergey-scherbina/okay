@@ -303,3 +303,26 @@ final case class Folded(epoch: Int,
 object Folded:
   given Schema[Flows.Extent] = Resp.given_Schema_Extent
   given Schema[Folded] = Schema.derived
+
+/**
+ * A BATCH RUN'S JOURNAL RECORD (batch-coordinator-resume): which run
+ * it is — job, encoded parameters, width — the pre-pass's bounds once
+ * known, and the partials that have arrived, as the bytes the workers
+ * sent. `kind` is first so a stream's `Folded` can never decode as one.
+ */
+final case class Partials(kind: String, job: String, params: Array[Byte], parts: Int,
+                          bounds: Option[Vector[Vector[Bounds]]],
+                          held: Vector[Partials.Held], finished: Boolean)
+
+object Partials:
+  final case class Held(part: Int, partial: Array[Byte])
+  val Kind: String = "okay.cluster.batch/1"
+
+  given Schema[Bounds] = Req.given_Schema_Bounds
+  given Schema[Held] = Schema.derived
+  given Schema[Partials] = Schema.derived
+
+  def write(p: Partials): Array[Byte] = okay.codec.Codecs.cbor(summon[Schema[Partials]]).encode(p)
+  /** `None` for bytes that are not a batch run's record */
+  def read(bytes: Array[Byte]): Option[Partials] =
+    okay.codec.Codecs.cbor(summon[Schema[Partials]]).decode(bytes).toOption.filter(_.kind == Kind)

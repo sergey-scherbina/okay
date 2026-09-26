@@ -190,8 +190,25 @@ it.
 The other limit, the coordinator being a single point of failure,
 held until stage 8: a STREAM can journal now, so a successor picks
 the run up (see "And the COORDINATOR can be replaced too", below). A
-BATCH `Cluster.run` still dies with its coordinator, and it is a
-two-pass function with nothing to resume from — restart it.
+BATCH `Cluster.run` can too, since batch-coordinator-resume: give it a
+`journal` and every partition's partial is written down as it arrives
+(with the pre-pass's bounds), and a run over the same journal asks only
+for the partitions it does not hold:
+
+```scala
+val journal = Checkpoint.Memory()
+val got = Cluster.run(FanJob, feed, parts, workers, journal = journal).runWith
+```
+
+Kill that coordinator after half the partitions and run the same line
+again — in a new process, over the same journal — and it sends a `Run`
+for the other half only, and answers what an unbroken run answers. A
+journal holding ANOTHER run (a different job, parameters or width, or a
+stream's fold) is refused by name and left untouched; a finished one
+starts afresh. `Cluster.runLeading(job, params, parts, workers,
+journal, lease)` is `leading`'s seat for it. The record is rewritten
+whole on each (coalesced) save, so it suits partials that are
+aggregates — a job whose partial is a table writes it through a sink.
 
 **As a stream.** `Cluster.stream(job, params, parts, workers, take)`
 runs the job epoch by epoch: every round advances each partition by up
@@ -730,6 +747,8 @@ need none — they run inside the JVM, so their map is `flow.map(f)`.
 | `Cluster.run` | `(Job[P,R], P, parts, Vector[Serve]) => Run[R] ! Async` | the coordinator, for a bounded source |
 | `Cluster.stream` | `(Job[P,R], P, parts, Vector[Serve], take, journal) => Run[R] ! Async` | the same, epoch by epoch, with the state kept on the workers; `journal` defaults to `Checkpoint.none` |
 | `Checkpoint` | `save(epoch, bytes)` / `latest` | where a coordinator writes down what it has folded; `Checkpoint.none`, `Checkpoint.Memory` |
+| `Cluster.run(…, journal = j)` | the same, resumable: partials journalled as they arrive | a successor over `j` runs only the partitions `j` lacks |
+| `Cluster.runLeading` | `(Job, P, parts, workers, journal, lease) => Option[Run[R]] ! Async` | a resumable batch run if this process is the coordinator; `None` if not |
 | `Cluster.leading` | `(Job, P, parts, workers, take, journal, lease) => Option[Run[R]] ! Async` | run it if this process is the coordinator; `None` if not |
 | `Lease` | `take(): Option[Long]` / `held(term)` / `release(term)` | who may be the coordinator; `Lease.solitary` is no election |
 | `Checkpoint.fenced` | `(term, lease, under) => Checkpoint` | refuses a commit once the lease is gone (`Checkpoint.Deposed`) |

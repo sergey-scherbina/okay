@@ -680,22 +680,23 @@ Stage 8 — the coordinator survives (TestResume, TestPersisted):
       stream journalled there answers the batch answer, a successor
       given nothing but the log finishes the job, and the log holds
       every epoch's state in order
-- [ ] a batch `Cluster.run` that resumes (batch-coordinator-resume,
+- [x] a batch `Cluster.run` that resumes (batch-coordinator-resume,
       2026-09-26 — REVERSES the decline that stood here; Decisions,
       "A batch run journals its partials", says why): given a journal,
       each partition's partial is recorded as it arrives, and a run
       over the same journal asks only for the partitions not in it
-- [ ] the coordinator killed after half the partitions over 4
+      (TestBatchResume, all six boxes)
+- [x] the coordinator killed after half the partitions over 4
       workers; a successor finishes with the batch answer and sends a
       `Run` for exactly the partitions the journal did not hold
-- [ ] the pre-pass's bounds are journalled too, so a resumed run cuts
+- [x] the pre-pass's bounds are journalled too, so a resumed run cuts
       its windows where the first one did rather than re-asking
-- [ ] a journal holding ANOTHER run (a different job, parameters or
+- [x] a journal holding ANOTHER run (a different job, parameters or
       width, or a stream's fold) is refused by name, not overwritten;
       a FINISHED record starts a fresh run
-- [ ] `Cluster.runLeading` takes a `Lease` as `leading` does: one
+- [x] `Cluster.runLeading` takes a `Lease` as `leading` does: one
       seat, the journal fenced by the term, `None` when it is held
-- [ ] no journal, no cost: `Cluster.run` without one encodes nothing
+- [x] no journal, no cost: `Cluster.run` without one encodes nothing
 - [x] a coordinator ELECTION, so a successor starts by itself — DONE,
       and in two halves that this box was reading as one. The engine's
       half landed in STAGE 10: `Cluster.leading` takes a `Lease`,
@@ -1270,6 +1271,36 @@ making since it landed. Two boxes for one property, and the second one
 kept the stage looking open — the same shape as the roadmap summaries
 this spec had to have corrected a few hours earlier.
 
+### batch-coordinator-resume — the decline, reversed (2026-09-26)
+
+The box read "DECLINED … so the question is not asked a third time",
+and the operator asked it a third time with a reason the decline had
+not weighed: partitions that are an hour of an analyst's model each.
+A batch run DOES have something to resume from — the partials that
+have arrived, each a pure function of (params, index, count, bounds) —
+and a `Checkpoint` already held the stream's fold, so the batch record
+went into the same two-method store (`Partials`, beside `Folded`).
+
+**Counted, not inferred.** `TestBatchResume` kills the coordinator at
+its fourth save over 4 workers and 8 partitions and asserts the
+successor's `Run` requests are EXACTLY the partitions the journal did
+not hold — with the journal ignored (the mutant), that assertion is
+the one that goes red, while the answer stays right. The pre-pass is
+journalled too, and asserted by counting zero `Extent` requests on a
+resume.
+
+**Saves coalesce, and why that was needed rather than nice.** Each
+arrival marks the book dirty and the fibre that finds no save in
+flight saves until nothing new has arrived. Without it, a burst of 400
+arrivals would be 400 writes of a record whose size grows with each —
+the quadratic the Decision warns about, paid in the common case. With
+it the record in the journal only ever grows and a burst is one write.
+
+**What stayed out.** `Cluster.run` without a journal pays nothing
+(`Checkpoint.none` is recognised and no record is built); `runLeading`
+is `leading`'s seat and does not wait to be elected, for `leading`'s
+reason.
+
 ### Stage 5 — a worker dies and the job does not
 
 A thrown error is a DEAD WORKER: it leaves the rotation and its
@@ -1308,7 +1339,8 @@ that entry named, and the section for it is below.
 
 **Two things still fatal, said rather than implied.** The coordinator
 is a single point of failure: if it dies, the run dies with it, and
-nothing is journaled. And a job longer than the workers' patience has
+nothing is journaled (stage 8 lifted it for a stream,
+batch-coordinator-resume for a batch run). And a job longer than the workers' patience has
 no checkpoint to resume from — every recovery here is a recompute
 from the source. For a batch job over a replayable source that is the
 right trade; for an unbounded stream it is not, and that is stage 6.

@@ -250,12 +250,22 @@ object Cluster {
    * the whole claim of this stage: the drop count and the merged
    * count mean the same thing whether the partitions ran here or on
    * four machines.
+   *
+   * GIVEN A `journal` (batch-coordinator-resume), each partition's
+   * partial is written down as it arrives, with the pre-pass's bounds,
+   * and a run over the same journal asks only for the partitions it
+   * does not hold — so a coordinator that dies after half of a long
+   * job costs its successor the other half, not the whole. A journal
+   * holding ANOTHER run is refused rather than overwritten; a finished
+   * one starts afresh. `Checkpoint.none`, the default, writes nothing
+   * and encodes nothing.
    */
   def run[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve],
                 /** consecutive failures that bury a worker — see
                  * `Living.Tolerance` for the default and dataflow-netem
                  * for what it means on a lossy wire */
-                tolerance: Int = Living.Tolerance)
+                tolerance: Int = Living.Tolerance,
+                journal: Checkpoint = Checkpoint.none)
                (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
@@ -269,31 +279,136 @@ object Cluster {
     // decodes it; the cost of ALWAYS sending it is one small,
     // structural CBOR encode per run, not per partition or element.
     val digest = Codecs.cbor(summon[Schema[Digest]]).encode(Digest.of(sink.wire))
+    val book = Book.open(journal, job.name, encoded, parts)
+    def decode(i: Int, bytes: Array[Byte]) =
+      Codecs.cbor(sink.wire).decode(bytes) match
+        case Right(w) => w
+        case Left(why) => throw IllegalStateException(s"partition $i's partial: $why")
 
     val bounds: Vector[Vector[Bounds]] ! Async =
-      if sink.times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(parts)(Vector.empty))
-      else
-        Flows.spread(parts)(i =>
-          ask(workers, living, i, Req.Extent(job.name, encoded, i, parts, digest)) match
-            case Resp.Extents(cols) => cols
-            case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
-            case other => throw IllegalStateException(s"partition $i answered $other to a pre-pass"))
-          .map(Flows.edges)
+      book.flatMap(_.bounds) match
+        case Some(bs) => pure[Async, Vector[Vector[Bounds]]](bs)
+        case None =>
+          if sink.times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(parts)(Vector.empty))
+          else
+            Flows.spread(parts)(i =>
+              ask(workers, living, i, Req.Extent(job.name, encoded, i, parts, digest)) match
+                case Resp.Extents(cols) => cols
+                case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
+                case other => throw IllegalStateException(s"partition $i answered $other to a pre-pass"))
+              .map(Flows.edges)
 
     bounds.flatMap: bs =>
+      book.foreach(_.bounded(bs))
       Flows.spread(parts) { i =>
-        ask(workers, living, i, Req.Run(job.name, encoded, i, parts, bs(i), digest)) match
-          case Resp.Partial(bytes) =>
-            Codecs.cbor(sink.wire).decode(bytes) match
-              case Right(w) => w
-              case Left(why) => throw IllegalStateException(s"partition $i's partial: $why")
-          case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
-          case other => throw IllegalStateException(s"partition $i answered $other to a run")
+        book.flatMap(_.partial(i)) match
+          case Some(bytes) => decode(i, bytes)
+          case None =>
+            ask(workers, living, i, Req.Run(job.name, encoded, i, parts, bs(i), digest)) match
+              case Resp.Partial(bytes) =>
+                val w = decode(i, bytes)
+                book.foreach(_.arrived(i, bytes))
+                w
+              case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
+              case other => throw IllegalStateException(s"partition $i answered $other to a run")
       }.map: ws =>
         val out = Run(sink.result(ws), sink.drops(ws), parts, 1, sink.merged(ws),
           living.retries, living.lost)
+        book.foreach(_.finished())
         sink.committed(1)   // a batch run is ONE epoch, and it is over
         out
+
+  /**
+   * RUN THE BATCH JOB IF THIS PROCESS IS THE COORDINATOR
+   * (batch-coordinator-resume): `leading`'s seat for `run`. The lease
+   * is taken, the journal fenced by its term, the run resumes whatever
+   * the journal holds, and the seat is given up at the end. `None`
+   * means somebody else holds it; a deposed coordinator's next save
+   * throws `Checkpoint.Deposed`, and its successor reads the journal.
+   */
+  def runLeading[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve],
+                       journal: Checkpoint, lease: Lease,
+                       tolerance: Int = Living.Tolerance)
+                      (using Scheduler): Option[Run[R]] ! Async =
+    lease.take() match
+      case None => pure[Async, Option[Run[R]]](None)
+      case Some(term) =>
+        run(job, p, parts, workers, tolerance, Checkpoint.fenced(term, lease, journal))
+          .map { r => lease.release(term); Some(r) }
+
+  /** the partitions a journal holds for an UNFINISHED batch run, or
+   * `None` when it holds none (empty, finished, or not a batch run) */
+  def heldPartitions(journal: Checkpoint): Option[Set[Int]] =
+    journal.latest.flatMap((_, bytes) => Partials.read(bytes)).filterNot(_.finished)
+      .map(_.held.iterator.map(_.part).toSet)
+
+  /**
+   * THE BATCH RUN'S BOOK (batch-coordinator-resume): the record in the
+   * journal, and the one save in flight.
+   *
+   * SAVES COALESCE. Partials arrive on every partition's fibre; each
+   * arrival marks the book dirty, and whoever finds no save in flight
+   * becomes the saver and keeps saving until nothing new has arrived —
+   * so a burst of arrivals is one write carrying all of them, and the
+   * record in the journal only ever grows. A save that throws (a
+   * `Deposed` coordinator, a dead journal) propagates to the partition
+   * that was saving, which ends the run: a coordinator that cannot
+   * write its book down must not go on as if it had.
+   */
+  private final class Book(journal: Checkpoint, from: Partials):
+    private var at: Partials = from
+    private var dirty = false
+    private var saving = false
+
+    def bounds: Option[Vector[Vector[Bounds]]] = synchronized(at.bounds)
+    def partial(i: Int): Option[Array[Byte]] = synchronized(at.held.find(_.part == i).map(_.partial))
+
+    def bounded(bs: Vector[Vector[Bounds]]): Unit =
+      val fresh = synchronized {
+        if at.bounds.isDefined then false else { at = at.copy(bounds = Some(bs)); dirty = true; true }
+      }
+      if fresh then flush()
+    def arrived(i: Int, bytes: Array[Byte]): Unit =
+      synchronized { at = at.copy(held = at.held :+ Partials.Held(i, bytes)); dirty = true }
+      flush()
+    def finished(): Unit =
+      synchronized { at = at.copy(finished = true); dirty = true }
+      flush()
+
+    @tailrec private def flush(): Unit =
+      val next = synchronized {
+        if saving || !dirty then None
+        else { saving = true; dirty = false; Some(at) }
+      }
+      next match
+        case None => ()
+        case Some(record) =>
+          try journal.save(record.held.length, Partials.write(record))
+          finally synchronized { saving = false }
+          flush()
+
+  private object Book:
+    /** the book for this run, `None` when there is no journal to keep
+     * one in; refuses a journal holding another run */
+    def open(journal: Checkpoint, job: String, params: Array[Byte], parts: Int): Option[Book] =
+      if journal eq Checkpoint.none then None
+      else
+        val fresh = Partials(Partials.Kind, job, params, parts, None, Vector.empty, false)
+        journal.latest match
+          case None => Some(Book(journal, fresh))
+          case Some((_, bytes)) =>
+            Partials.read(bytes) match
+              case Some(r) if r.finished => Some(Book(journal, fresh))
+              case Some(r) if r.job == job && r.parts == parts && java.util.Arrays.equals(r.params, params) =>
+                Some(Book(journal, r))
+              case Some(r) =>
+                throw IllegalStateException(s"this journal holds another run (job '${r.job}' " +
+                  s"at ${r.parts} partitions, ${r.held.length} held, parameters " +
+                  (if java.util.Arrays.equals(r.params, params) then "equal" else "different") +
+                  s"); it is not '$job' at $parts, and is left as it is")
+              case None =>
+                throw IllegalStateException("this journal holds another run (not a batch run's " +
+                  "record — a stream's fold?); it is left as it is")
 
   /**
    * ASK A LIVING WORKER, AND KEEP ASKING (specs/dataflow.md, stage 5).
