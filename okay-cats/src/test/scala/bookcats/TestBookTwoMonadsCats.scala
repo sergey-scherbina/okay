@@ -248,7 +248,7 @@ object Delivery:
     List(Right(("green tea", 350)), Right(("black tea", 330)), Right(("green tea", 250)))
 
 object CatsDelivery:
-  import cats.data.{EitherT, OptionT}
+  import cats.data.EitherT
   import Delivery.{catalog, fees}
 
   /** team A: every variety of an item with its price, or an error */
@@ -259,15 +259,17 @@ object CatsDelivery:
       case Some(varieties) => varieties.map(Right(_))
       case None            => List(Left(s"$shop has no $item")))
 
-  /** team B: a fee that may be absent, or an error */
-  type Checked[A]   = Either[String, A]
-  type Delivered[A] = OptionT[Checked, A]
+  /** team B: an error inside an Option — None: no delivery, Left: an unknown shop */
+  type Delivered[A] = EitherT[Option, String, A]
 
   def deliveryFee(shop: String): Delivered[Int] =
-    OptionT(fees.get(shop).toRight(s"unknown shop $shop"))
+    EitherT(fees.get(shop) match
+      case None      => Some(Left(s"unknown shop $shop"))
+      case Some(fee) => fee.map(Right(_)))
 
   /** team B's stack converted by hand into team A's: the Option becomes a value */
-  def fromB[A](fb: Delivered[A]): Choices[Option[A]] = EitherT(List(fb.value))
+  def fromB[A](fb: Delivered[A]): Choices[Option[A]] =
+    EitherT(List(fb.value.fold[Either[String, Option[A]]](Right(None))(_.map(Some(_)))))
 
   def order(item: String): Choices[(String, Int)] =
     for
@@ -356,15 +358,16 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
     assertEquals(EffectsBasket.run(List("tea", "cake")), expected)
   }
 
-  test("DELIVERY: team A's helper (List + Either) and team B's (Option + Either) do not compose in one expression") {
+  test("DELIVERY: team A's helper (EitherT over List) and team B's (EitherT over Option) do not compose in one expression") {
     val e = compileErrors("""
-      for
+      for {
         (tea, price) <- bookcats.CatsDelivery.priceOf("north", "tea")
         fee          <- bookcats.CatsDelivery.deliveryFee("north")
-      yield (tea, price + fee)
+      } yield (tea, price + fee)
     """)
-    assert(e.contains("Found:    cats.data.OptionT[bookcats.CatsDelivery.Checked, (String, Int)]"), e)
+    assert(e.contains("Found:    cats.data.EitherT[Option, String, (String, Int)]"), e)
     assert(e.contains("Required: cats.data.EitherT[List, AA, D]"), e)
+    assert(!e.contains("getOrElse"), e)
   }
 
   test("DELIVERY: the union stack with a conversion per team, layered reflection, and effects agree") {

@@ -263,41 +263,45 @@ def priceOf(shop: String, item: String): Choices[(String, Int)] =
     case None            => List(Left(s"$shop has no $item")))
 ```
 
-- **team B** knows delivery, which a shop may simply not offer — an
-  `Option` (absent is not an error) and an error (an unknown shop is):
+- **team B** knows delivery, which a shop may simply not offer — the
+  same `EitherT` for errors (an unknown shop), over an `Option` instead
+  of a `List` (no delivery is `None`, not an error):
 
 ```scala
-type Checked[A]   = Either[String, A]
-type Delivered[A] = OptionT[Checked, A]
+type Delivered[A] = EitherT[Option, String, A]
 
 def deliveryFee(shop: String): Delivered[Int] =
-  OptionT(fees.get(shop).toRight(s"unknown shop $shop"))
+  EitherT(fees.get(shop) match
+    case None      => Some(Left(s"unknown shop $shop"))
+    case Some(fee) => fee.map(Right(_)))
 ```
 
-There is no ordering to agree on. Call both in one expression — the
-price, then the fee:
+Both are `EitherT[_, String, _]`; only the monad inside differs. There
+is no ordering to agree on. Call both in one expression — the price,
+then the fee:
 
 ```text
-for
+for {
   (tea, price) <- CatsDelivery.priceOf("north", "tea")
   fee          <- CatsDelivery.deliveryFee("north")
-yield (tea, price + fee)
+} yield (tea, price + fee)
 ```
 
 and it does not compile:
 
 ```text
-Found:    cats.data.OptionT[bookcats.CatsDelivery.Checked, (String, Int)]
+Found:    cats.data.EitherT[Option, String, (String, Int)]
 Required: cats.data.EitherT[List, AA, D]
 ```
 
 The order needs team B's fee inside team A's stack, and the only way in
 is a conversion written by hand for this pair of stacks — here it turns
-team B's `OptionT` into a plain `Option` VALUE in team A's
+team B's `Option` layer into a plain `Option` VALUE in team A's
 `EitherT[List]`, so a missing fee can count as zero:
 
 ```scala
-def fromB[A](fb: Delivered[A]): Choices[Option[A]] = EitherT(List(fb.value))
+def fromB[A](fb: Delivered[A]): Choices[Option[A]] =
+  EitherT(List(fb.value.fold[Either[String, Option[A]]](Right(None))(_.map(Some(_)))))
 ```
 
 ```scala
