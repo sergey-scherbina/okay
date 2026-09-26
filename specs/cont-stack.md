@@ -708,11 +708,14 @@ play, and the fork had no `--enable-native-access` either. The road a
 user who passes the flag gets on JDK 22+ had never been measured, while
 docs/cont-stack.md said "no switch at all with the flag".
 
-THE CHANGE: `okayJVM`'s `Jmh / fullClasspath` puts the PACKAGED jar
-first, as `multiRelease` does for the tests, so the versioned reader
-is the class in play. Without the flag it answers −1 exactly like the
-root and every existing lane keeps its meaning; the exact road is the
-same lane with `-jvmArgsAppend --enable-native-access=ALL-UNNAMED`.
+THE CHANGE: `okayJVM`'s Jmh PACKAGE carries the `jdk22/` reader
+under `META-INF/versions/22/` with `Multi-Release: true`, as
+`multiRelease` does for the test jar, so the versioned reader is the
+class in play; and `Jmh / javaOptions` drops the `--enable-native-access`
+it inherits from `Test / javaOptions`. Without the flag the reader
+answers −1 exactly like the root and every existing lane keeps its
+meaning; the exact road is the same lane with
+`-jvmArgsAppend --enable-native-access=ALL-UNNAMED`.
 Every fork of FibBenchmark and HandlerBenchmark prints the road it
 runs (`ContStackRoad`, a trial-level setup outside the measurement).
 
