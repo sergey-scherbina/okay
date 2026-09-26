@@ -146,7 +146,8 @@ print("RESULT " + json.dumps({"before": res(before), "after": res(after)}))
 
     // a data block this reader does not decode is refused by name, not skipped
     val log = Files.walk(dir.resolve("readings")).toList.asScala.toVector
-      .filter(_.getFileName.toString.matches("\\..*\\.log\\..*")).sortBy(_.toString).head
+      .filter(p => !p.toString.contains("/.hoodie/") && p.getFileName.toString.matches("\\.[^.].*\\.log\\.\\d+_[^.]+"))
+      .sortBy(_.toString).head   // a data log — not the metadata table's under .hoodie/
     val bytes = Files.readAllBytes(log)
     java.nio.ByteBuffer.wrap(bytes).putInt(6 + 8 + 4, 5): Unit
     Files.write(log, bytes): Unit

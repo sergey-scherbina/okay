@@ -83,7 +83,7 @@ object HudiSource:
 
     // the base files, newest committed slice per file group
     val Base = """^(.*/)?([^/]+)_([^/_]+)_(\d+)\.parquet$""".r
-    val Log = """^(.*/)?\.([^/_]+)_(\d+)\.log\.(\d+)_([^/]+)$""".r
+    val Log = """^(.*/)?\.([^/_]+)_(\d+)\.log\.(\d+)_([^/.]+)$""".r   // not Hadoop's `..<name>.crc` beside it
     val objects = Run(okay.Source.concat(blob.list(s"$table/"))).filterNot(_.key.stripPrefix(s"$table/").startsWith(".hoodie"))
     val files = objects
       .flatMap { m =>

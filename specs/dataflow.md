@@ -346,13 +346,13 @@ Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro, TestHud
 - [x] an upsert's older file slice, an inflight instant's file and a
       replaced file group are not read; the rows equal Hudi's own read
 - [x] merge-on-read is refused by name — until lake-hudi-mor, below
-- [ ] a Hudi MERGE-ON-READ table reads: each file slice (base Parquet and
+- [x] a Hudi MERGE-ON-READ table reads: each file slice (base Parquet and
       its log files of `#HUDI#` blocks) is one partition, log records
       merged over the base by record key in completed-instant order —
       Avro data blocks upsert under the table's merge mode, delete blocks
       remove, blocks of an uncommitted or rolled-back instant are skipped;
       the rows equal Hudi's own read (lake-hudi-mor, TestHudi)
-- [ ] a log block this reader does not decode (Parquet or HFile data
+- [x] a log block this reader does not decode (Parquet or HFile data
       blocks, a CDC block) is refused by name
 
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
@@ -1590,6 +1590,25 @@ mutant) is caught. The first run found that Hudi compresses its pages
 with GZIP by default, which okay-parquet had refused by name: it now
 reads GZIP through the platform's `java.util.zip` (JVM, Native) and
 still refuses it on Scala.js.
+
+**Hudi merge-on-read (lake-hudi-mor), written by Hudi itself** — the
+same 1.2.1 on Spark 4.1, ordering field `ts`: an insert (`ts` 1), an
+upsert of 100..149 (`ts` 2, v x10), an upsert of 140..159 with an OLDER
+event (`ts` 0) that must lose everywhere, a delete of 0..19; no
+compaction, so every change lives in log files — three per file group,
+two Avro data blocks and one delete block. The merged read equals
+Hudi's own count and sums with no record twice; with the delete's
+completed instant file moved out of the timeline, the read equals
+Hudi's read from BEFORE the delete — its blocks stay in the log and are
+skipped. A data block retyped to PARQUET_DATA is refused by name. The
+log format was read off Hudi's files first (block = `#HUDI#`, size,
+version, type, header map, content, footer, total length; a delete
+block's payload is `HoodieDeleteRecordList` in Avro, its schema taken
+from the bundle). Two things the first runs found: Hadoop's local
+filesystem leaves `..<log>.crc` checksum files beside every log, which
+a loose name pattern took for log files of a base-less group; and Hudi
+keeps a METADATA TABLE of its own under `.hoodie/metadata`, also in log
+files, which is not the table's data and is not read.
 
 ### Stage 17 — objects and Parquet (2026-09-26)
 

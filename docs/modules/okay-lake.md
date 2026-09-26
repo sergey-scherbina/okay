@@ -76,7 +76,7 @@ files (a file without ids is read by name). Avro is read by ours (`OkayAvro`, th
 (`import okay.lake.ApacheAvro.given`, an optional dependency); both give
 the same records for pyiceberg's manifests.
 
-**A Hudi copy-on-write table as the source.** `HudiSource.plan(lake,
+**A Hudi table as the source — copy-on-write or merge-on-read.** `HudiSource.plan(lake,
 table)` reads the `.hoodie` timeline (layout 1, or Hudi 1.x's layout 2)
 and plans, per file group, the latest base file a COMPLETED commit
 wrote; an upsert's older slices, an inflight write's files and file
@@ -87,9 +87,22 @@ read:
 val rows = Flows.collect(ParquetSource.flow[Reading](HudiSource.plan(lake, "readings"))).runWith
 ```
 
-Merge-on-read tables are refused by name — their log files hold rows
-their base files do not. Hudi writes GZIP pages by default; okay-parquet
-reads them with the platform's `java.util.zip`.
+The same line reads a MERGE-ON-READ table. There a file slice is a base
+Parquet file plus LOG FILES of `#HUDI#` blocks, and a slice with logs
+is one partition: its base is read whole and the logs' records merged
+over it by record key, in instant order — under the table's merge mode
+(`EVENT_TIME_ORDERING`: a record replaces the current one when its
+ordering field is not lower; `COMMIT_TIME_ORDERING`: the later write
+wins). Delete blocks and `_hoodie_is_deleted` remove records; a block
+whose instant never completed (a failed or rolled-back write) stays in
+the file and is skipped, as Hudi skips it. A slice without logs is read
+a row group at a time, as copy-on-write. Refused by name: Parquet,
+HFile and CDC log blocks, a file group with logs and no base file, a
+table without its meta fields, a CUSTOM merge mode. Memory for a merged
+slice is the slice (base and logs), not a row group.
+
+Hudi writes GZIP pages by default; okay-parquet reads them with the
+platform's `java.util.zip`.
 
 **SQL over the output: DuckDB, by the manifest.** An analyst's DuckDB
 reads exactly what a run made visible — the manifest's objects, never a
