@@ -171,3 +171,43 @@ dropped from the interface before it was written. Raising on exhaustion
 would put a second `Throws` in the caller's row, and that is exactly the
 conflict this lane exists to remove. `Supply.run(first)(step)` covers
 every generated supply.
+
+## Stage 2 — writer-listen-censor (2026-09-26)
+
+Writer's SCOPED operations are the duals of `Reader.local` and
+`Throws.recover`. In mtl they are `MonadWriter`'s `listen` and `censor`.
+Each is a handler over a PART of the program, and the row comes out
+unchanged.
+
+```scala
+object Writer:
+  // run p and answer its value AND what p told; every tell still reaches
+  // the outer handler at its own place, in order with the other effects
+  def listen[W, A, G[+_]](p: A ! Writer % W + G): (A, Seq[W]) ! Writer % W + G
+  // run p and rewrite its WHOLE output with f; p's tells are held back
+  // until p ends and told there as f(all of them)
+  def censor[W, A, G[+_]](p: A ! Writer % W + G)(f: Seq[W] => Seq[W]): A ! Writer % W + G
+```
+
+- [ ] `listen` answers p's value and p's tells, and only p's
+- [ ] `listen` re-tells in place: a tell before a raise inside p reaches
+      an outer Writer handler that runs after `runEither`
+- [ ] `censor` rewrites p's output as a whole (a summary line in place of
+      many), and tells outside p are untouched
+- [ ] `censor` holds back: a raise inside p drops p's held tells. The test
+      pins this as the documented price of seeing the whole output
+- [ ] both are stack-safe over 100 000 tells
+
+**Why `censor` is the whole-output one.** A rewrite of each told value
+on its own already exists: `Writer.map` (one to one) and `Writer.expand`
+(one to many, and a filter when it answers nothing). Over a
+sub-program, with `V = W`, they are exactly per-element censoring. They
+keep every tell in its place, so they are the ones to use when the order
+against other effects matters. mtl's `censor` sees the accumulated `w`,
+and that is the operation that was missing. Seeing it all means waiting
+for all of it, so the tells move to p's end.
+
+**Law (specs/scoped-effects-laws.md).** Neither operation duplicates or
+reorders a FORWARDED operation. `listen` does not move tells either.
+`censor` moves p's tells, and only those, to p's end, and that is its
+definition.
