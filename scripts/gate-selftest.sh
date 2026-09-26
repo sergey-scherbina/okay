@@ -166,7 +166,7 @@ grep -q "gate: KILLED" "$tmp/accept.out" && ! grep -q "gate: RED" "$tmp/accept.o
 [ "$(sh "$here/gate-retry.sh" --read "$tmp/accept.out")" = "$tmp/accept.out: gate: KILLED — a signal, not a verdict; retry" ] \
   && ok "and gate-retry retries it" || bad "gate-retry reads it as: $(sh "$here/gate-retry.sh" --read "$tmp/accept.out")"
 
-say "9. the bench window: a queued benchmark holds the gate's start; a --read takes no token"
+say "10. the bench window: a queued benchmark holds the gate's start; a --read takes no token"
 # a request whose owner lives 3 s: the gate waits for it, then runs
 sleep 3 & lane=$!
 mkdir -p "$OKAY_BENCH_DIR/want"; : > "$OKAY_BENCH_DIR/want/$lane"

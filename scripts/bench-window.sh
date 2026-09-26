@@ -43,10 +43,10 @@ bw_gate_enter() {
   while :; do
     : > "$BW_DIR/gates/$$"
     [ "${OKAY_BENCH_WINDOW:-on}" = off ] && return 0
-    _w=$(bw_live want | tr '\n' ' ')
+    _w=$(bw_live want | tr '\n' ' '); _w="${_w% }"
     [ -z "$_w" ] && return 0
     if [ "$_waited" -ge "$BW_GATE_MAX_WAIT" ]; then
-      echo "gate: bench window: held ${_waited}s for benchmark(s) ${_w}— starting anyway (OKAY_BENCH_GATE_MAX_WAIT)"
+      echo "gate: bench window: held ${_waited}s for benchmark(s) ${_w} — starting anyway (OKAY_BENCH_GATE_MAX_WAIT)"
       return 0
     fi
     rm -f "$BW_DIR/gates/$$"

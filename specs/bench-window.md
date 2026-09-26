@@ -52,23 +52,23 @@ When no benchmark is queued nothing changes: a gate's cost is one
 
 ## Behavior
 
-- [ ] with no request, a gate enters at once and its token is gone
+- [x] with no request, a gate enters at once and its token is gone
       after it exits (success, failure, or a signal)
-- [ ] with a live request, a gate waits, and enters as soon as the
+- [x] with a live request, a gate waits, and enters as soon as the
       request goes
-- [ ] a gate waits no longer than its cap, then enters and says so
-- [ ] a request or token whose pid is dead is ignored and removed
-- [ ] the gate's token is taken BEFORE it looks for requests, and the
+- [x] a gate waits no longer than its cap, then enters and says so
+- [x] a request or token whose pid is dead is ignored and removed
+- [x] the gate's token is taken BEFORE it looks for requests, and the
       lane's request is filed BEFORE it looks for tokens — so a gate
       and a lane starting at the same instant cannot both proceed
-- [ ] `jmh-lane.sh` does not start a lane while a gate token is live,
+- [x] `jmh-lane.sh` does not start a lane while a gate token is live,
       and starts it when the token goes
-- [ ] `jmh-lane.sh` waits for a held lane lock and runs when it frees;
+- [x] `jmh-lane.sh` waits for a held lane lock and runs when it frees;
       `JMH_LANE_LOCK_WAIT=0` refuses as before
-- [ ] `--read` replays take no token (no sbt runs)
-- [ ] both selftests green under `sh` and `bash`
+- [x] `--read` replays take no token (no sbt runs)
+- [x] both selftests green under `sh` and `bash`
 
-## Stage 2 — draining versus demoting (a measurement, not yet a decision)
+## Stage 2 — draining versus demoting (a measurement, not yet a decision; backlog `bench-window-demote-measure`)
 
 On Apple silicon `taskpolicy -b -p <pid>` moves a running process to
 the background QoS class, which the scheduler keeps on the efficiency
@@ -101,7 +101,29 @@ stays. Runs in the first window this stage makes.
 
 ## Results
 
-(filled by the lane)
+**Stage 1, 2026-09-26.** `scripts/bench-window-selftest.sh` (6 cases,
+under `sh` AND `bash`), `jmh-lane-selftest.sh` 4–4d (queue behind the
+lock, `JMH_LANE_LOCK_WAIT=0` refusal kept, a live gate token holds the
+lane, the request lives exactly as long as the lane) and
+`gate-selftest.sh` 10 (a queued benchmark holds the gate's start; its
+token is gone after; a `--read` takes none), the last also run by hand
+under `/bin/sh`. Two mutants watched failing: a gate that ignores
+requests (bench-window-selftest 2–4 red) and a lane that ignores
+tokens (jmh-lane-selftest 4c red).
+
+The one box behaviour the selftests cannot show — that a window
+actually OPENS on this box with siblings gating — is shown by the
+first lane run after landing: `ready-merge-numbers` is that lane.
+
+Seen on the way, not this lane's: `gate-selftest.sh` 5 (a busy host
+survives) is load-sensitive — its host is a shell spin, and on a
+loaded box one 6 s window got under a whole second of CPU, which the
+integer CPU count reads as 0 and the watchdog as a stall. It passes
+alone in 12 s on master and on this branch; filed as
+`gate-selftest-busyhost-load`.
+
+**Stage 2** (drain versus demote) is carried as backlog
+`bench-window-demote-measure`: it needs the window stage 1 makes.
 
 ## References
 
