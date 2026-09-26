@@ -243,9 +243,10 @@ object Delivery:
   /** None: the shop does not deliver; a missing key: an unknown shop */
   val fees: Map[String, Option[Int]] = Map("north" -> Some(50), "south" -> None)
 
-  /** no delivery costs nothing extra: south's tea at its own price */
-  val expected: List[Either[String, (String, Int)]] =
-    List(Right(("green tea", 350)), Right(("black tea", 330)), Right(("green tea", 250)))
+  /** per shop: north delivers for 50 and has two teas; south delivers free */
+  val expected: Map[String, List[Either[String, (String, Int)]]] = Map(
+    "north" -> List(Right(("green tea", 350)), Right(("black tea", 330))),
+    "south" -> List(Right(("green tea", 250))))
 
 object CatsDelivery:
   import cats.data.EitherT
@@ -271,9 +272,8 @@ object CatsDelivery:
   def fromB[A](fb: Delivered[A]): Choices[Option[A]] =
     EitherT(List(fb.value.fold[Either[String, Option[A]]](Right(None))(_.map(Some(_)))))
 
-  def order(item: String): Choices[(String, Int)] =
+  def order(shop: String, item: String): Choices[(String, Int)] =
     for {
-      shop         <- EitherT.liftF[List, String, String](List("north", "south"))
       (tea, price) <- priceOf(shop, item)
       fee          <- fromB(deliveryFee(shop))
     } yield (tea, price + fee.getOrElse(0))
@@ -295,11 +295,10 @@ object LayeredDelivery:
   def deliveryFee(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
     fees.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
 
-  def order(item: String): List[Out] ! Delim + Pure =
+  def order(shop: String, item: String): List[Out] ! Delim + Pure =
     reify[List, Out, Pure]:
       reify[Checked, (String, Int), Pure]:
         for {
-          shop         <- List("north", "south").reflect[Out, Pure]
           (tea, price) <- priceOf(shop, item)
           fee          <- deliveryFee(shop)
         } yield (tea, price + fee.getOrElse(0))
@@ -324,9 +323,8 @@ object EffectsDelivery:
 
   type Order = Choose + Throws % String
 
-  def order(item: String): (String, Int) ! Order =
+  def order(shop: String, item: String): (String, Int) ! Order =
     for {
-      shop         <- choose("north", "south").at[Order]
       (tea, price) <- priceOf(shop, item)
       fee          <- deliveryFee(shop).at[Order]
     } yield (tea, price + fee.getOrElse(0))
@@ -338,8 +336,8 @@ object EffectsDelivery:
       fee          <- deliveryFee("north").at[Order]
     yield (tea, price + fee.getOrElse(0))
 
-  def run(item: String): List[Either[String, (String, Int)]] =
-    val checked = runEither[(String, Int), Choose, String](order(item))
+  def run(shop: String, item: String): List[Either[String, (String, Int)]] =
+    val checked = runEither[(String, Int), Choose, String](order(shop, item))
     !.run(runChoice[Either[String, (String, Int)], Pure](checked)).toList
 
 class TestBookTwoMonadsCats extends munit.FunSuite:
@@ -363,8 +361,8 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   test("DELIVERY: team A's helper (EitherT over List) and team B's (EitherT over Option) do not compose in one expression") {
     val e = compileErrors("""
       import bookcats.CatsDelivery.*
+      val shop = "north"
       for {
-        shop         <- cats.data.EitherT.liftF[List, String, String](List("north", "south"))
         (tea, price) <- priceOf(shop, "tea")
         fee          <- deliveryFee(shop)
       } yield (tea, price + fee.getOrElse(0))
@@ -377,9 +375,10 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   }
 
   test("DELIVERY: the union stack with a conversion per team, layered reflection, and effects agree") {
-    assertEquals(CatsDelivery.order("tea").value, Delivery.expected)
-    assertEquals(!.run(Delim.run[List[LayeredDelivery.Out], Pure](LayeredDelivery.order("tea"))), Delivery.expected)
-    assertEquals(EffectsDelivery.run("tea"), Delivery.expected)
+    for (shop, answer) <- Delivery.expected do
+      assertEquals(CatsDelivery.order(shop, "tea").value, answer, shop)
+      assertEquals(!.run(Delim.run[List[LayeredDelivery.Out], Pure](LayeredDelivery.order(shop, "tea"))), answer, shop)
+      assertEquals(EffectsDelivery.run(shop, "tea"), answer, shop)
   }
 
   test("DELIVERY: with effects the refused expression compiles as written — both helpers in one for") {

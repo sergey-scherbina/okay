@@ -277,13 +277,12 @@ def deliveryFee(shop: String): Delivered[Int] =
 ```
 
 Both are `EitherT[_, String, _]`; only the monad inside differs. The
-order is the same in all three versions below: for each shop, each
+order is the same in all three versions below: in a given `shop`, each
 variety and its price, then the delivery fee, which is free when the
 shop has none. In cats, written the obvious way:
 
 ```text
 for {
-  shop         <- EitherT.liftF[List, String, String](List("north", "south"))
   (tea, price) <- priceOf(shop, item)
   fee          <- deliveryFee(shop)
 } yield (tea, price + fee.getOrElse(0))
@@ -311,16 +310,14 @@ and the same order compiles:
 
 ```scala
 for {
-  shop         <- EitherT.liftF[List, String, String](List("north", "south"))
   (tea, price) <- priceOf(shop, item)
   fee          <- fromB(deliveryFee(shop))
 } yield (tea, price + fee.getOrElse(0))
 ```
 
-For `"tea"` over both shops it is
-`List(Right(("green tea", 350)), Right(("black tea", 330)), Right(("green
-tea", 250)))`: north delivers for 50 and has two teas, south delivers
-free. Now multiply: every new team with a slightly different set of
+For `"tea"` it is `List(Right(("green tea", 350)), Right(("black tea",
+330)))` in north, which delivers for 50 and has two teas, and
+`List(Right(("green tea", 250)))` in south, which delivers free. Now multiply: every new team with a slightly different set of
 monads is one more stack, and every pair of stacks that meets needs its
 own conversion — each knowing the structure of both stacks, and changing
 when either does.
@@ -343,7 +340,6 @@ def deliveryFee(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int
 reify[List, Out, Pure]:
   reify[Checked, (String, Int), Pure]:
     for {
-      shop         <- List("north", "south").reflect[Out, Pure]
       (tea, price) <- priceOf(shop, item)
       fee          <- deliveryFee(shop)
     } yield (tea, price + fee.getOrElse(0))
@@ -376,7 +372,6 @@ type Order = Choose + Throws % String
 
 ```scala
 for {
-  shop         <- choose("north", "south").at[Order]
   (tea, price) <- priceOf(shop, item)
   fee          <- deliveryFee(shop).at[Order]
 } yield (tea, price + fee.getOrElse(0))
