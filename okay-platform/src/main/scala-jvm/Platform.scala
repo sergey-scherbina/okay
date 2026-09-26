@@ -338,7 +338,8 @@ object Schedulers {
                        private val helpAfterNanos: Long = 50000L,
                        private val spreadAboveNanos: Long = 1000L,
                        private val stuckAfterMillis: Long = 0L,
-                       private val overflowWorkers: Int = 0) {
+                       private val overflowWorkers: Int = 0,
+                       private val monitorEveryNanos: Long = 100000L) {
     /** how many threads the scheduler owns (default: one per core) */
     def workers(n: Int): Own = copy(count = if n < 1 then 1 else n)
     /** how long a dry worker looks for work before parking */
@@ -369,13 +370,24 @@ object Schedulers {
                 overflow: Int = -1): Own =
       copy(stuckAfterMillis = math.max(1L, after.toMillis), overflowWorkers = if overflow < 0 then count else overflow)
 
+    /** how often the monitor looks for a worker stuck in one task with
+     * work waiting behind it (specs/schedulers.md, "The monitor");
+     * zero turns the monitor off */
+    def monitorEvery(nanos: Long): Own = copy(monitorEveryNanos = if nanos < 0 then 0 else nanos)
+    def monitorEvery(d: scala.concurrent.duration.FiniteDuration): Own = monitorEvery(d.toNanos)
+    /** no monitor: a fiber forked inside a worker is seen only by that
+     * worker's helper rule (the behaviour before own-scheduler-monitor) */
+    def unmonitored: Own = monitorEvery(0L)
+
     def build: Running =
-      Owned(count, spinRounds, wakeDeeperThan, helpAfterNanos, spreadAboveNanos, stuckAfterMillis, overflowWorkers)
+      Owned(count, spinRounds, wakeDeeperThan, helpAfterNanos, spreadAboveNanos, stuckAfterMillis, overflowWorkers,
+        monitorEveryNanos)
   }
 
   private[okay] final class Owned(n: Int, spin: Int, wakeAbove: Int,
                                   helpAfterNanos: Long, spreadAboveNanos: Long,
-                                  stuckAfterMillis: Long, overflow: Int) extends Running {
+                                  stuckAfterMillis: Long, overflow: Int,
+                                  monitorEveryNanos: Long) extends Running {
     val id: Int = ownedCount.incrementAndGet()
     @volatile private var stopped = false
     private var watchdog: java.util.concurrent.ScheduledFuture[?] | Null = null
@@ -385,6 +397,8 @@ object Schedulers {
       stopped = true
       val wd = watchdog
       if wd != null then { val _ = wd.cancel(false) }
+      val m = monitor
+      if m != null then java.util.concurrent.locks.LockSupport.unpark(m)
       var i = 0
       while i < workers.length do
         java.util.concurrent.locks.LockSupport.unpark(workers(i).thread)
@@ -458,6 +472,10 @@ object Schedulers {
 
       /** the owner's own fork: onto its deque, no CAS, no signal */
       def pushLocal(t: DriveTask[?]): Unit = deque.push(t)
+
+      /** the monitor's own record of `deque.ownerEnd` at its last look:
+       * read and written by the monitor thread only */
+      var seenOwnerEnd = -1L
 
       /** owner only: its own end first, then what came from outside */
       private def take(): DriveTask[?] | Null =
@@ -534,12 +552,96 @@ object Schedulers {
             if size == 0 && submissions.isEmpty && !stopped then java.util.concurrent.locks.LockSupport.park(this)
             parked = false
             val _ = awake.incrementAndGet()
+            // a worker woke: the monitor parks when nobody is awake, so
+            // it may be asleep. Off the per-task path — once per park.
+            if monitorParked then
+              val m = monitor
+              if m != null then java.util.concurrent.locks.LockSupport.unpark(m)
             spins = 0
     }
 
     private def startWorker(i: Int): Unit = workers(i).thread.start()
     var w0 = 0
     while w0 < n do { startWorker(w0); w0 += 1 }
+
+    /**
+     * THE MONITOR (own-scheduler-monitor, 2026-09-26; specs/schedulers.md,
+     * "The monitor"). A fiber forked from a worker lands on its deque
+     * with no signal, and the helper rule that could spread it runs
+     * only every 16th completed task — so a few LONG fibers, or fibers
+     * that block, sat behind a worker busy with one of them while the
+     * others slept: eight 0.5 ms fibers on one thread, blocking fibers
+     * reaching two workers of eight. Nothing on the per-task path can
+     * know a fiber is long before it has run, so a separate thread
+     * looks: every `monitorEveryNanos` it reads each worker's deque
+     * (two volatile longs it already has) and calls a worker STUCK when
+     * work waits there and its owner end has not moved since the last
+     * look. For a stuck worker it wakes parked workers, one per waiting
+     * task, and on a `watched` scheduler starts overflow workers when
+     * nobody is parked. It parks itself when no worker is awake and
+     * nothing is queued, so an idle scheduler has no ticking thread.
+     */
+    @volatile private var monitorParked = false
+    private val monitor: Thread | Null =
+      if monitorEveryNanos <= 0L then null
+      else
+        val t = Thread(() => monitorLoop(), s"okay-own-$id-monitor")
+        t.setDaemon(true)
+        t
+
+    private def monitorLoop(): Unit =
+      while !stopped do
+        if awake.get == 0 && submissionsSize.get == 0 then
+          // publish "parked" BEFORE the last look, as a worker does: a
+          // worker that wakes after it reads the flag and unparks us
+          monitorParked = true
+          if awake.get == 0 && submissionsSize.get == 0 && !stopped then
+            java.util.concurrent.locks.LockSupport.park(this)
+          monitorParked = false
+        else
+          java.util.concurrent.locks.LockSupport.parkNanos(this, monitorEveryNanos)
+          look()
+
+    /** one look over every worker; bounded by `live` */
+    private def look(): Unit =
+      val alive = live.get
+      var i = 0
+      while i < alive do
+        val w: Worker = workers(i)
+        val end = w.deque.ownerEnd
+        val waiting = w.size
+        if waiting > 0 && end == w.seenOwnerEnd && !w.parked then
+          val woken = wakeUpTo(waiting)
+          if woken < waiting && overflow > 0 then grow(waiting - woken)
+        w.seenOwnerEnd = end
+        i += 1
+
+    /** unpark up to `k` distinct parked workers; how many were */
+    private def wakeUpTo(k: Int): Int =
+      val alive = live.get
+      var woken = 0
+      var i = 0
+      while i < alive && woken < k do
+        val w: Worker = workers(i)
+        if w.parked then
+          val _ = activations.incrementAndGet()
+          java.util.concurrent.locks.LockSupport.unpark(w.thread)
+          woken += 1
+        i += 1
+      woken
+
+    /** start up to `k` overflow workers, never past `n + overflow` */
+    private def grow(k: Int): Unit =
+      var left = k
+      while left > 0 do
+        val next = live.get
+        if next >= n + overflow then left = 0
+        else if live.compareAndSet(next, next + 1) then
+          val _ = activations.incrementAndGet()
+          startWorker(next)
+          left -= 1
+
+    if monitor != null then monitor.start()
 
     /** THE STUCK-CHECK (`Schedulers.adaptive`, `Schedulers.platform`).
      * A fiber that blocks inside a worker holds that thread; with every
@@ -625,6 +727,10 @@ object Schedulers {
       def size: Int =
         val n = bottom - top.get
         if n < 0 then 0 else n.toInt
+
+      /** the owner's end, as the monitor sees it: it moves on every push
+       * and pop by the owner, never on a steal */
+      def ownerEnd: Long = bottom
 
       private def index(i: Long, len: Int): Int = (i & (len - 1)).toInt
 
