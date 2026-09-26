@@ -71,6 +71,7 @@ them read as "we are slow" or "we are fast" for the wrong reason.
 | 1 000 State+Writer operations against a plain `while` loop | **7.8** staged, 14.2 Free | plain loop 0.71 (mutable buffer), 2.79 (the same `Vector` log) | [§2c](#2c-against-no-handlers-at-all--the-plain-loop) |
 | fork and join 100 fibers | 24.0 | **kyo 18.5** | [§4](#4-forkjoin--100-trivial-fibers) |
 | fork and join 10 000, runtime-native | **796** | kyo 884 | [§4b](#4b-adversarial-lanes--the-rows-we-expected-to-lose) |
+| sequential spawn/join ×1 000, in someone else's harness (ops/s, higher better) | **14 486** on `own`, 472 default | kyo 6 371 | [§4a](#4a-someone-elses-harness--the-five-way-scala-runtime-benchmark) |
 | map/filter/take/sum over 1 000 | **1.70** staged, **8.2** chunked | fs2 21.9 | [§5](#5-stream-pipeline--mapfiltertake1000sum) |
 | merge two streams by readiness | **13.3** | ZIO 51.5 | [§6](#6-merge--two-500-element-streams-by-readiness) |
 | 1 000 bracketed acquire/release | **15.2** | ZIO 116 | [§7](#7-resource--1000-bracketed-acquireuserelease) |
@@ -627,6 +628,94 @@ the
 `CompletableFuture` directly instead of through the fiber's
 callback and a slot — measured WORSE, 19.6 → 22.3 in every round
 (`get()` spins before it parks), and was reverted.
+
+## 4a. Someone else's harness — the five-way Scala runtime benchmark
+
+Every other table on this page is okay's own harness. This one is not:
+Stanislav Shevchenko's [scala-effect-bench](https://github.com/stasimus/scala-effect-bench)
+(commit 82ac6f1; his write-up is
+[part 3 of 3](http://sgektor.blogspot.com/2026/09/3-of-3-i-benchmarked-five-scala.html))
+compares CE 3.7.1, Kyo 1.0.0-RC6, Loom, Ox 1.0.6 and Gears 0.3.1 on
+bounded CPU workers, sequential spawn/join, runtime entry and TCP
+request batches. okay was added as a runtime beside them, and all of
+them were re-run on this box (five-way-okay, 2026-09-26).
+
+**What was changed in his harness, and nothing else.** okay's backend
+(`compare/five-way/OkayFiveWay.scala`) mirrors his CE code operation for
+operation — a suspended step per `IO(...)`, a fiber per `.start`, a join
+per `joinWithNever` — and is patched into a local clone by
+`compare/five-way/apply.py`; nothing was pushed to his repository, and
+since it carries no licence none of his code is copied here. The clone
+moves from Scala 3.8.4 to 3.9.0 (okay is compiled with 3.9), for every
+runtime alike. His JMH settings are kept (`-f 3 -wi 3 -i 3 -w 1s -r 1s
+-t 1`, 2 GiB G1, JDK 25.0.4 against his 25.0.3); `compare/five-way/run.sh`
+runs one benchmark × runtime per sbt call, each started on a quiet box
+and re-run if the box got busy during it. Before any number, his own
+validations pass for all five of his runtimes under 3.9 (984, 1 863 and
+the TCP sets), `bench.okay.OkayValidation` checks okay's lanes against
+the answers his Loom backend gives, and his TCP validation passes for
+`okay` and `okayAdaptive`.
+
+**Three okay rows**, because okay's scheduler is a choice: `okay` is
+the default (one virtual thread per fiber), `okayOwn` is
+`Schedulers.own` (platform workers, a fiber forked from a worker stays
+on that worker's deque), `okayAdaptive` is `Schedulers.adaptive` (`own`
+plus a worker when a fiber blocks). `okayOwn` is not run on blocking
+TCP: his validation's parallel-worker gate fails it there, as the
+scheduler's own doc says it will (a blocking call holds the only thread
+that could run its siblings).
+
+Ops/s, higher better, JMH's 99.9% error in the raw files
+(`compare/five-way/results-2026-09-26/`):
+
+| lane | CE | Kyo | Loom | Ox | Gears | okay | okay `own` | okay `adaptive` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| sequential spawn/join, 1 000 | 2 041 | 6 371 | 464 | 454 | 399 | 472 | **14 486** | 14 271 |
+| 8 workers × 4 096, work 64 | 3 148 | 1 835 | 3 447 | 3 460 | 3 318 | **3 466** | 1 847 | 1 849 |
+| 8 workers × 4 096, work 0 | 3 417 | 5 309 | 5 209 | 4 493 | 4 241 | 3 973 | 5 399 | **5 416** |
+| TCP blocking, 64 lanes, 1 ms server | **121** | 4.9 | 117 | 117 | 119 | 117 | — | 5.4 |
+| TCP callback, 64 lanes, 1 ms server | 120 | 126 | 116 | 117 | 121 | 116 | 142 | **142** |
+| runtime entry | 127 830 | 150 004 | 158 599 | 143 101 | 128 380 | **166 091** | 140 388 | 139 799 |
+
+B/op, the same runs:
+
+| lane | CE | Kyo | Loom | Ox | Gears | okay | okay `own` | okay `adaptive` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| sequential spawn/join | 1 453 721 | 526 524 | 465 504 | 701 057 | 1 513 357 | 926 379 | 526 240 | 526 241 |
+| 8 workers, work 64 | 1 390 507 | 1 625 041 | 106 361 | 109 365 | 114 716 | 1 910 376 | 1 906 595 | 1 906 596 |
+
+**How to read it.**
+
+- *Sequential spawn/join*, the row his write-up gives to Kyo: okay on
+  `own` is 2.3x Kyo and 7x CE. A child forked from a worker lands on
+  that worker's own deque with no signal, and the join finds it there;
+  nothing is woken. On the default scheduler okay is Loom (472 against
+  464) — a fiber IS a virtual thread, and starting one is the cost.
+- *Bounded workers*: the default okay ties the direct-style runtimes at
+  work 64; `own` and `adaptive` read exactly Kyo's number, for Kyo's
+  reason — short fibers stay home rather than spreading over cores
+  (Schedulers.own's helper rule), which wins at work 0 and loses at
+  work 64.
+- *TCP*: okay's default is Loom's (117 blocking, 116 callback);
+  `own`/`adaptive` lead the callback transport. **`adaptive` on the
+  blocking transport fails the way Kyo does — 5.4 against Kyo's 4.9** —
+  a scheduler that adds a worker when a fiber blocks does not add them
+  fast enough for 64 concurrent 1 ms calls. Filed as
+  `adaptive-short-blocking-calls` (backlog okay-core); his part 2 found
+  the same mechanism in Kyo.
+- *Bytes*: okay allocates the most on the worker lanes, 1.9 MB against
+  Loom's 0.1 MB and CE's 1.4 MB: every step of every worker is a
+  program node (`async`, `flatMap`) where the direct-style runtimes run
+  a plain loop.
+- *Against his published numbers* (M3 Max): the orderings are the same;
+  CPU-bound rows read somewhat higher here and TCP rows lower (CE
+  blocking 121 against his 145) — a different machine, and the TCP
+  server shares the CPU. His Kyo blocking-TCP collapse reproduces (4.9
+  against his 4.95).
+
+The default-scheduler row is what a user gets without choosing; `own`
+and `adaptive` are opt-in. Re-run: `python3 compare/five-way/apply.py
+<clone>` then `sh compare/five-way/run.sh <clone> <out>`.
 
 ## 4b. Adversarial lanes — the rows we expected to lose
 

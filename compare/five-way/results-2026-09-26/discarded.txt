@@ -1,0 +1,4 @@
+entry ce attempt=1 DISCARDED: the box got busy during the run
+tcp ce attempt=1 DISCARDED: the box got busy during the run
+tcp ce attempt=2 DISCARDED: the box got busy during the run
+workers kyo attempt=1 DISCARDED: the box got busy during the run
