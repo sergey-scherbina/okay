@@ -133,7 +133,9 @@ final class JvmModule private (val name: String, private val fns: Map[String, An
         catch case e: Exception => Left(Batcher.Failed(e.getClass.getSimpleName, Option(e.getMessage).getOrElse("")))
       def open(): Either[Batcher.Failed, S] = guard(openF())
       def step(s: S, rows: Vector[A]): Either[Batcher.Failed, Vector[B]] = guard(stepF(s, rows))
-      def finish(s: S): Either[Batcher.Failed, Vector[B]] = guard(finishF(s))))
+      def finish(s: S): Either[Batcher.Failed, Vector[B]] = guard(finishF(s))
+      // the JVM holds the state in the stage itself: nothing to give back
+      def abandon(s: S): Unit = ()))
 
   private[foreign] def model[P](fn: String, params: P): Model =
     val self = this

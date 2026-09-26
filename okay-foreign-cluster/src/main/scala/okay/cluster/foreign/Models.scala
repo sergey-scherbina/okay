@@ -2,7 +2,7 @@ package okay.cluster.foreign
 
 import okay.codec.Schema
 import okay.py.{ForeignEval, ForeignWorker, PyCodec, PyFrame, PyModule, PyRef, PyValue}
-import okay.r.{RCodec, REval, RFrame, RModule, RSubprocess}
+import okay.r.{RCodec, REval, RFrame, RModule}
 
 /**
  * A MODEL ON THE FAR SIDE, as an extension of the engine typeclass
@@ -75,9 +75,9 @@ final class RModel[P](module: RModule, fn: String, params: P, rscript: String, w
                     (using sp: Schema[P]) extends Model:
   val name = s"r:${module.name}:$fn"
   private val pool = RPool.of(module, rscript, workers)
-  private val refs = java.util.WeakHashMap[RSubprocess, PyRef]()
+  private val refs = java.util.WeakHashMap[ForeignWorker, PyRef]()
 
-  private def refFor(r: RSubprocess): Either[okay.r.Condition, PyRef] = refs.synchronized {
+  private def refFor(r: ForeignWorker): Either[okay.r.Condition, PyRef] = refs.synchronized {
     Option(refs.get(r)) match
       case Some(ref) => Right(ref)
       case None =>

@@ -205,7 +205,8 @@ object Programs:
       okay.py.Py.program[Out](s"${module.name}:$fn").calling(okay.py.Py.callbacks[F](cbs.map(cb[F])*))(a).program
         .map(_.left.map(c => Batcher.Failed(c.kind, c.message)))
     def run[A](module: okay.py.PyModule)(prog: A ! Op): A =
-      PyPool.of(module, python, Stage.Workers).use(w => (prog.runWith(using w.handler), !w.alive))
+      // the pool routes a program by its run: its continuations stay on one worker
+      prog.runWith(using PyPool.of(module, python, Stage.Workers).handler)
 
   given r: Programs[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Programs[okay.r.RModule] = new:
@@ -217,7 +218,7 @@ object Programs:
       okay.r.R.program[Out](s"${module.name}::$fn").calling(okay.r.R.callbacks[F](cbs.map(cb[F])*))(a).program
         .map(_.left.map(c => Batcher.Failed(c.kind, c.message)))
     def run[A](module: okay.r.RModule)(prog: A ! Op): A =
-      RPool.of(module, rscript, Stage.Workers).use(w => (prog.runWith(using w.handler), false))
+      prog.runWith(using RPool.of(module, rscript, Stage.Workers).handler)
 
 /**
  * OBJECT HANDLES (foreign-object-handles): a value the far side KEEPS —
@@ -250,11 +251,11 @@ object Holds:
   type Py = Holds[okay.py.PyModule] { type Ref = okay.py.PyRef }
   type R = Holds[okay.r.RModule] { type Ref = okay.r.RRef }
 
-  /** the Python pool that routes by handle, one per (interpreter, module) */
-  private val pyPools = scala.collection.concurrent.TrieMap[String, okay.py.PyWorkers]()
+  /** the one pool of (interpreter, module), which routes a call naming a
+   * handle to the worker holding it (foreign-one-pool: the second set of
+   * processes this once started beside the stage's is gone) */
   private[foreign] def pyWorkers(module: okay.py.PyModule, python: String): okay.py.PyWorkers =
-    pyPools.getOrElseUpdate(s"$python|${module.name}|${module.source.hashCode}",
-      okay.py.PyWorkers.start(Stage.Workers, python, modules = Seq(module)))
+    PyPool.of(module, python, Stage.Workers)
   private def failed(c: okay.py.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
 
   given py: Py = py("python3")
@@ -268,12 +269,9 @@ object Holds:
     def release(module: okay.py.PyModule)(ref: Ref): Unit =
       ref.release.runWith(using pyWorkers(module, python).handler)
 
-  /** R: one worker per module holds every handle of it — R has no pool
-   * that routes by handle, and a handle answers only where it lives */
-  private def rHolder(module: okay.r.RModule, rscript: String): Pool[okay.r.RSubprocess] =
-    Pools.get[okay.r.RSubprocess](s"r-holds|$rscript|${module.name}|${module.source.hashCode}") {
-      Pool[okay.r.RSubprocess](s"r-holds:${module.name}", 1, () => okay.r.RSubprocess.start(rscript, modules = Seq(module)), _ => true, _.close())
-    }
+  /** R's handles route through the one pool of R workers, as Python's do */
+  private def rWorkers(module: okay.r.RModule, rscript: String): okay.py.PyWorkers =
+    RPool.of(module, rscript, Stage.Workers)
   private def rfailed(c: okay.r.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
 
   given r: R = r("Rscript")
@@ -281,11 +279,11 @@ object Holds:
     type Ref = okay.r.RRef
     def name = s"r:$rscript"
     def hold[Arg: Schema](module: okay.r.RModule, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
-      rHolder(module, rscript).use(w => (okay.r.R.hold(s"${module.name}::$fn")(a).runWith(using w.handler), false)).left.map(rfailed)
+      okay.r.R.hold(s"${module.name}::$fn")(a).runWith(using rWorkers(module, rscript).handler).left.map(rfailed)
     def apply[Arg: Schema, Out: Schema](module: okay.r.RModule, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
-      rHolder(module, rscript).use(w => (okay.r.R.fn[Out](s"${module.name}::$fn")(ref, a).runWith(using w.handler), false)).left.map(rfailed)
+      okay.r.R.fn[Out](s"${module.name}::$fn")(ref, a).runWith(using rWorkers(module, rscript).handler).left.map(rfailed)
     def release(module: okay.r.RModule)(ref: Ref): Unit =
-      rHolder(module, rscript).use(w => (ref.release.runWith(using w.handler), false))
+      ref.release.runWith(using rWorkers(module, rscript).handler)
 
 object Methods:
   type Py = Methods[okay.py.PyModule] { type Ref = okay.py.PyRef }
@@ -346,7 +344,7 @@ object Speaks:
   def py(python: String): Speaks[okay.py.PyModule] = new:
     def speaks(module: okay.py.PyModule): Report =
       val pool = PyPool.of(module, python, Stage.Workers)
-      val wire = pool.use(w => (w.wire, false))
+      val wire = pool.use(_.wire)
       // Python's lambdas are values, so a program's continuation can be
       // resumed twice (specs/remote-foreign.md)
       Report("python", "pipes", if wire.endsWith("+arrow") then "arrow" else "columnar-json", stream = false, "multi-shot")
@@ -355,7 +353,7 @@ object Speaks:
   def r(rscript: String): Speaks[okay.r.RModule] = new:
     def speaks(module: okay.r.RModule): Report =
       val pool = RPool.of(module, rscript, Stage.Workers)
-      val wire = pool.use(w => (w.wire, false))
+      val wire = pool.use(_.wire)
       Report("r", "pipes", if wire.endsWith("+arrow") then "arrow" else "columnar-json", stream = false, "multi-shot")
 
   given jvm: Speaks[JvmModule] = new:

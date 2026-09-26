@@ -1,7 +1,7 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
-import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyValue}
+import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyValue, PyWorkers}
 
 /**
  * A chunk through a Python function as one frame (specs/foreign-map-reduce.md):
@@ -42,34 +42,26 @@ object PyStage:
 /** the python interpreters of this JVM, one pool per (python, module):
  * the map stage and the reduce of one module share them */
 object PyPool:
-  def of(module: PyModule, python: String, workers: Int): Pool[ForeignWorker] =
-    Pools.get[ForeignWorker](s"py|$python|${module.name}|${module.source.hashCode}") {
-      Pool[ForeignWorker](s"py:${module.name}", workers,
-        () => ForeignWorker.start(python, modules = Seq(module)),
-        _.alive, _.close())
-    }
+  /** the Python workers of `module` on this JVM (`Workers`) */
+  def of(module: PyModule, python: String, workers: Int): PyWorkers =
+    Workers.of(s"py|$python|${module.name}|${module.source.hashCode}", s"py:${module.name}", workers,
+      () => ForeignWorker.start(python, modules = Seq(module)))
 
-  private[foreign] def dead(e: Throwable): Boolean =
-    e.isInstanceOf[ForeignWorker.TimedOut] || Option(e.getMessage).exists(_.contains("DEAD"))
+  private[foreign] def dead(e: Throwable): Boolean = Workers.dead(e)
 
-  /** one operation on a borrowed interpreter; a death, or an interpreter
-   * that could not be opened, is a transient condition for `Attempts` */
-  private[foreign] def use[X](pool: Pool[ForeignWorker], python: String)
+  private[foreign] def use[X](pool: PyWorkers, python: String)
                              (f: ForeignWorker => Either[okay.py.Condition, X]): Either[okay.py.Condition, X] =
-    try pool.use(w => (f(w), !w.alive))
-    catch
-      case e: IllegalStateException if dead(e) => Left(okay.py.Condition("WorkerDied", e.getMessage))
-      case e: Exception => Left(okay.py.Condition("WorkerUnavailable", s"the python '$python' could not be opened: ${e.getMessage}"))
+    Workers.use(pool, s"the python '$python'")(f)
 
-  def frame(pool: Pool[ForeignWorker], python: String, address: String, in: PyFrame, args: Vector[PyValue])
+  def frame(pool: PyWorkers, python: String, address: String, in: PyFrame, args: Vector[PyValue])
   : Either[okay.py.Condition, PyFrame] =
     use(pool, python)(_.handler.handle(ForeignEval.Frame(address, in, args)))
 
   /** a Table through `address`, as itself where Arrow is spoken (facade-frame-seam) */
-  def frameTable(pool: Pool[ForeignWorker], python: String, address: String, in: okay.arrow.Table, args: Vector[PyValue])
+  def frameTable(pool: PyWorkers, python: String, address: String, in: okay.arrow.Table, args: Vector[PyValue])
   : Either[okay.py.Condition, okay.arrow.Table] =
     use(pool, python)(_.frameTable(address, in, args))
 
-  def call(pool: Pool[ForeignWorker], python: String, address: String, args: Vector[PyValue])
+  def call(pool: PyWorkers, python: String, address: String, args: Vector[PyValue])
   : Either[okay.py.Condition, PyValue] =
     use(pool, python)(_.handler.handle(ForeignEval.Call(address, args)))

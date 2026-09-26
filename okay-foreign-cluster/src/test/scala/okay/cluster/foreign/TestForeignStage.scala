@@ -110,7 +110,7 @@ class TestForeignStage extends munit.FunSuite:
   }
 
   test("a pool opens at most `size` interpreters under more concurrent chunks than that, reuses them, and replaces a dead one") {
-    val pool = Pool[Object]("p", 2, () => Object(), _ => true, _ => ())
+    val pool = okay.py.Pool[Object]("p", 2, () => Object(), _ => true, _ => ())
     val threads = (1 to 4).map(_ => Thread(() => pool.use { _ => Thread.sleep(40); ((), false) }))
     threads.foreach(_.start()); threads.foreach(_.join())
     assertEquals(pool.opened, 2)

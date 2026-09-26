@@ -2,6 +2,7 @@ package okay.cluster.foreign
 
 import okay.{Chunk, Chunks}
 import okay.cluster.{Cluster, Flow}
+import okay.py.{Condition, ForeignWorker, Pool, Pools, PyWorkers}
 import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq
 
@@ -71,95 +72,6 @@ object Attempts:
           throw Cluster.Refused(s"the stage '$name' failed: ${fl.kind}: ${fl.message}")
     go(attempts)
 
-/**
- * A POOL of interpreters for one stage on one worker JVM: `size` at
- * most, opened on demand, one borrowed per chunk, a dead one closed and
- * replaced. A `ForeignWorker` or an `RSubprocess` is one pipe, and the
- * partitions of a job run on threads; without a pool the choice is one
- * process per chunk (a spawn per 4096 rows) or one per partition (64 of
- * them on a 4-core node).
- */
-final class Pool[E](val name: String, size: Int, open: () => E, alive: E => Boolean, close: E => Unit):
-  require(size > 0, "a pool holds at least one interpreter")
-  private val slots = java.util.concurrent.Semaphore(size)
-  private val idle = java.util.ArrayDeque[E]()
-  private val lock = Object()
-  private var openedTotal = 0
-  private var openNow = 0
-
-  /** how many interpreters were ever opened, restarts included */
-  def opened: Int = lock.synchronized(openedTotal)
-  /** how many are open right now, idle or borrowed */
-  def live: Int = lock.synchronized(openNow)
-
-  /** one chunk's worth of interpreter: blocks while all `size` are busy.
-   * `f` answers the value and whether the interpreter is DEAD after it */
-  def use[X](f: E => (X, Boolean)): X =
-    val l = lease()
-    var dead = true
-    try
-      val (x, d) = f(l.e)
-      dead = d
-      x
-    finally l.release(dead)
-
-  /** an interpreter kept for LONGER than a chunk — a streaming stage holds
-   * one for a partition's life (its state lives there); `release` gives it
-   * back, or closes it when it is dead */
-  final class Lease private[Pool] (val e: E):
-    private var open = true
-    def release(dead: Boolean): Unit =
-      if open then
-        open = false
-        give(e, dead)
-        slots.release()
-
-  def lease(): Lease =
-    slots.acquire()
-    val e =
-      try borrow()
-      catch case t: Throwable => { slots.release(); throw t }
-    Lease(e)
-
-  private def borrow(): E = lock.synchronized {
-    val e = idle.pollFirst()
-    if e != null && alive(e) then e
-    else
-      if e != null then { close(e); openNow -= 1 }
-      val fresh = open()
-      openedTotal += 1
-      openNow += 1
-      fresh
-  }
-
-  private def give(e: E, dead: Boolean): Unit = lock.synchronized {
-    if dead then { try close(e) catch case _: Exception => (); openNow -= 1 }
-    else idle.addFirst(e)
-  }
-
-  def closeAll(): Unit = lock.synchronized {
-    idle.forEach(e => try close(e) catch case _: Exception => ())
-    openNow -= idle.size
-    idle.clear()
-  }
-
-/** the pools of this JVM, one per (stage kind, interpreter, module), so
- * every partition and every job naming the same module share them;
- * closed when the JVM exits */
-object Pools:
-  private val pools = scala.collection.mutable.LinkedHashMap.empty[String, Pool[?]]
-
-  def get[E](key: String)(make: => Pool[E]): Pool[E] = synchronized {
-    // the key names the kind, so the pool under it holds that kind's
-    // interpreters: the one cast this registry needs, isolated here
-    pools.getOrElseUpdate(key, make).asInstanceOf[Pool[E]]
-  }
-
-  def closeAll(): Unit = synchronized {
-    pools.values.foreach(_.closeAll())
-  }
-
-  Runtime.getRuntime.addShutdownHook(Thread(() => closeAll(), "okay-foreign-cluster-pools"))
 
 extension [A](flow: Flow[A])
   /** each chunk through `batcher`, `batch` rows at a time */
@@ -201,3 +113,24 @@ extension [A](flow: Flow[A])
               batch: Int = Stage.Batch, workers: Int = Stage.Workers)
              (using okay.codec.Schema[A], okay.codec.Schema[B]): Flow[B] =
     Stage.through(flow, RStage[A, B](module, fn, rscript, workers), batch, 3)
+
+/**
+ * The pools of a worker JVM, one per (language, interpreter, module): the
+ * ONE pool with its routing (`okay.py.PyWorkers` over `okay.py.Pool`,
+ * foreign-one-pool), shared by every stage, reduce, model, stateful stage,
+ * handle and program that names the same module — Python's and R's alike.
+ */
+object Workers:
+  def of(key: String, name: String, workers: Int, open: () => ForeignWorker): PyWorkers =
+    Pools.get[PyWorkers](key)(PyWorkers.over(Pool[ForeignWorker](name, workers, open, _.alive, _.close())))(_.close())
+
+  private[foreign] def dead(e: Throwable): Boolean =
+    e.isInstanceOf[ForeignWorker.TimedOut] || Option(e.getMessage).exists(_.contains("DEAD"))
+
+  /** one exchange on a borrowed worker; a death, or a worker that could not
+   * be opened, is a transient condition for `Attempts` */
+  def use[X](ws: PyWorkers, who: String)(f: ForeignWorker => Either[Condition, X]): Either[Condition, X] =
+    try ws.use(f)
+    catch
+      case e: IllegalStateException if dead(e) => Left(Condition("WorkerDied", e.getMessage))
+      case e: Exception => Left(Condition("WorkerUnavailable", s"$who could not be opened: ${e.getMessage}"))

@@ -3,8 +3,8 @@ package okay.cluster.foreign
 import okay.Chunks
 import okay.cluster.Flow
 import okay.codec.Schema
-import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyRef, PyValue}
-import okay.r.{REval, RFrame, RModule, RSubprocess}
+import okay.py.{ForeignEval, ForeignWorker, Pool, PyFrame, PyModule, PyRef, PyValue}
+import okay.r.{REval, RFrame, RModule}
 
 /**
  * A STATEFUL STAGE, as an extension of the engine typeclass
@@ -32,6 +32,9 @@ trait Streamer[A, B]:
   def step(s: S, rows: Vector[A]): Either[Batcher.Failed, Vector[B]]
   /** the last rows, and the state released with whatever held it */
   def finish(s: S): Either[Batcher.Failed, Vector[B]]
+  /** the partition ended WITHOUT its finish (a step failed, or it was
+   * refused): the state, and whatever holds it, given back all the same */
+  def abandon(s: S): Unit
 
 object Stateful:
   given py: Stateful[PyModule] = py("python3")
@@ -55,27 +58,38 @@ object Stateful:
     require(batch > 0, "a batch holds at least one row")
     Flow.Local(in, st.name, (c: Chunks[A]) => stateful(Chunks.rechunk(c)(batch), st))
 
-  private def stateful[A, B](src: Chunks[A], st: Streamer[A, B]): Chunks[B] =
+  private[foreign] def stateful[A, B](src: Chunks[A], st: Streamer[A, B]): Chunks[B] =
     Chunks.fromIterator(new Iterator[B]:
       private var rest = src
       private var state: Option[st.S] = None
       private var buf: Iterator[B] = Iterator.empty
       private var done = false
+      // the state is given back on EVERY path (foreign-one-pool): by
+      // `finish`, which owns it once called, or by `abandon` when a step
+      // (or the pull feeding it) fails first — a leased interpreter kept by
+      // a failed partition was a worker of the pool gone for good
       private def fill(): Boolean =
-        while !buf.hasNext && !done do
-          val s = state.getOrElse {
-            val opened = Attempts.run(st.name, 1)(st.open())
-            state = Some(opened)
-            opened
-          }
-          Chunks.pull(rest) match
-            case Some((chunk, r)) =>
-              rest = r
-              buf = Attempts.run(st.name, 1)(st.step(s, chunk.toVector)).iterator
-            case None =>
-              done = true
-              buf = Attempts.run(st.name, 1)(st.finish(s)).iterator
-        buf.hasNext
+        try
+          while !buf.hasNext && !done do
+            val s = state.getOrElse {
+              val opened = Attempts.run(st.name, 1)(st.open())
+              state = Some(opened)
+              opened
+            }
+            Chunks.pull(rest) match
+              case Some((chunk, r)) =>
+                rest = r
+                buf = Attempts.run(st.name, 1)(st.step(s, chunk.toVector)).iterator
+              case None =>
+                done = true
+                state = None
+                buf = Attempts.run(st.name, 1)(st.finish(s)).iterator
+          buf.hasNext
+        catch case t: Throwable =>
+          state.foreach(st.abandon)
+          state = None
+          done = true
+          throw t
       def hasNext: Boolean = fill()
       def next(): B = { fill(): Unit; buf.next() })
 
@@ -111,6 +125,10 @@ final class PyStreamer[A, B](module: PyModule, openFn: String, stepFn: String, f
       on(s)(_.handler.handle(ForeignEval.Frame(s"${module.name}:$stepFn", frame, Vector(PyValue.Ref(s.ref)))))
         .flatMap(_.rows[B].left.map(failed)))
 
+  def abandon(s: S): Unit =
+    try s.lease.e.handler.handle(ForeignEval.Release(s.ref)) catch case _: Exception => ()
+    s.lease.release(dead = !s.lease.e.alive)
+
   def finish(s: S): Either[Batcher.Failed, Vector[B]] =
     val last = on(s)(_.handler.handle(ForeignEval.Frame(s"${module.name}:$finishFn", PyFrame(Vector.empty), Vector(PyValue.Ref(s.ref)))))
       .flatMap(_.rows[B].left.map(failed))
@@ -123,11 +141,11 @@ final class RStreamer[A, B](module: RModule, openFn: String, stepFn: String, fin
                            (using sa: Schema[A], sb: Schema[B]) extends Streamer[A, B]:
   val name = s"r:${module.name}:$openFn/$stepFn/$finishFn"
   private val pool = RPool.of(module, rscript, workers)
-  final class S(val lease: Pool[RSubprocess]#Lease, val ref: PyRef)
+  final class S(val lease: Pool[ForeignWorker]#Lease, val ref: PyRef)
 
   private def failed(c: okay.r.Condition) = Batcher.Failed(c.kind, c.message)
 
-  private def on[X](s: S)(f: RSubprocess => Either[okay.r.Condition, X]): Either[Batcher.Failed, X] =
+  private def on[X](s: S)(f: ForeignWorker => Either[okay.r.Condition, X]): Either[Batcher.Failed, X] =
     try f(s.lease.e).left.map(failed)
     catch case e: IllegalStateException if RPool.dead(e) =>
       s.lease.release(dead = true)
@@ -148,6 +166,10 @@ final class RStreamer[A, B](module: RModule, openFn: String, stepFn: String, fin
     RFrame.of(rows).left.map(failed).flatMap(frame =>
       on(s)(_.handler.handle(REval.Frame(s"${module.name}::$stepFn", frame, Vector(PyValue.Ref(s.ref)))))
         .flatMap(_.rows[B].left.map(failed)))
+
+  def abandon(s: S): Unit =
+    try s.lease.e.handler.handle(REval.Release(s.ref)) catch case _: Exception => ()
+    s.lease.release(dead = !s.lease.e.alive)
 
   def finish(s: S): Either[Batcher.Failed, Vector[B]] =
     val last = on(s)(_.handler.handle(REval.Frame(s"${module.name}::$finishFn", RFrame(Vector.empty), Vector(PyValue.Ref(s.ref)))))

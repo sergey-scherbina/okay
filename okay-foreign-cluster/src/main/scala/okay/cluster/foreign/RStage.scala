@@ -1,6 +1,7 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
+import okay.py.{ForeignWorker, PyWorkers}
 import okay.r.{REval, RFrame, RModule, RSubprocess, RValue}
 
 /**
@@ -41,33 +42,22 @@ object RStage:
  * `alive`: a death throws (DEAD in its message), and `use` reports it so
  * the pool replaces the session */
 object RPool:
-  def of(module: RModule, rscript: String, workers: Int): Pool[RSubprocess] =
-    Pools.get[RSubprocess](s"r|$rscript|${module.name}|${module.source.hashCode}") {
-      Pool[RSubprocess](s"r:${module.name}", workers,
-        () => RSubprocess.start(rscript, modules = Seq(module)),
-        _ => true, _.close())
-    }
+  /** the R workers of `module` on this JVM (`Workers`): R's are
+   * `ForeignWorker`s speaking R (foreign-one-value), pooled as any other */
+  def of(module: RModule, rscript: String, workers: Int): PyWorkers =
+    Workers.of(s"r|$rscript|${module.name}|${module.source.hashCode}", s"r:${module.name}", workers,
+      () => RSubprocess.worker(rscript, Seq(module)))
 
-  private[foreign] def dead(e: Throwable): Boolean = Option(e.getMessage).exists(_.contains("DEAD"))
+  private[foreign] def dead(e: Throwable): Boolean = Workers.dead(e)
 
-  private[foreign] def use[X](pool: Pool[RSubprocess], rscript: String)
-                             (f: RSubprocess => Either[okay.r.Condition, X]): Either[okay.r.Condition, X] =
-    try
-      pool.use { r =>
-        val answer =
-          try Right(f(r))
-          catch case e: IllegalStateException if dead(e) => Left(e)
-        answer match
-          case Right(a) => (a, false)
-          case Left(e) => (Left(okay.r.Condition("WorkerDied", e.getMessage)), true)
-      }
-    catch
-      case e: Exception => Left(okay.r.Condition("WorkerUnavailable", s"'$rscript' could not be opened: ${e.getMessage}"))
+  private[foreign] def use[X](pool: PyWorkers, rscript: String)
+                             (f: ForeignWorker => Either[okay.r.Condition, X]): Either[okay.r.Condition, X] =
+    Workers.use(pool, s"'$rscript'")(f)
 
-  def frame(pool: Pool[RSubprocess], rscript: String, address: String, in: RFrame, args: Vector[RValue])
+  def frame(pool: PyWorkers, rscript: String, address: String, in: RFrame, args: Vector[RValue])
   : Either[okay.r.Condition, RFrame] =
     use(pool, rscript)(_.handler.handle(REval.Frame(address, in, args)))
 
-  def call(pool: Pool[RSubprocess], rscript: String, address: String, args: Vector[RValue])
+  def call(pool: PyWorkers, rscript: String, address: String, args: Vector[RValue])
   : Either[okay.r.Condition, RValue] =
     use(pool, rscript)(_.handler.handle(REval.Call(address, args)))
