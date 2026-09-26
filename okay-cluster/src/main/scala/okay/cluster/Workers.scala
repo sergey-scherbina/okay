@@ -107,6 +107,10 @@ enum Resp:
    * is gone or no longer holds them, and the map side must run again */
   case Lost(parts: Vector[Int])
   case Done
+  /** a measured worker's answer (specs/dataflow.md, stage 15): the
+   * answer it would have given, ENCODED, and what it spent on it —
+   * see `Cluster.measured`; the coordinator unwraps it where it asks */
+  case Measured(inner: Array[Byte], work: Work)
 
 object Req:
   given Schema[Bounds] = Schema.derived
@@ -289,14 +293,21 @@ object Cluster {
                  * `Living.Tolerance` for the default and dataflow-netem
                  * for what it means on a lossy wire */
                 tolerance: Int = Living.Tolerance,
-                journal: Checkpoint = Checkpoint.none)
+                journal: Checkpoint = Checkpoint.none,
+                /** who hears what the run does — stage 15 */
+                probe: Probe = Probe.none)
                (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
     require(tolerance > 0, "a worker is buried after at least one failure")
+    observed(probe, job.name, parts)(runBody(job, p, parts, workers, tolerance, journal, probe))
+
+  private def runBody[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve],
+                            tolerance: Int, journal: Checkpoint, probe: Probe)
+                           (using Scheduler): Run[R] ! Async =
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
-    val living = Living(workers.length, tolerance)
+    val living = Living(workers.length, tolerance, probe)
     // THE DOOR CHECK'S OTHER HALF (specs/federation.md, stage 3):
     // computed ONCE per run and attached to every request that names
     // this job. A party who never opts into `schemaChecked` never
@@ -309,7 +320,7 @@ object Cluster {
         case Right(w) => w
         case Left(why) => throw IllegalStateException(s"partition $i's partial: $why")
 
-    val bounds: Vector[Vector[Bounds]] ! Async =
+    val bounds: Vector[Vector[Bounds]] ! Async = phase(probe, "extent"):
       book.flatMap(_.bounds) match
         case Some(bs) => pure[Async, Vector[Vector[Bounds]]](bs)
         case None =>
@@ -324,7 +335,7 @@ object Cluster {
 
     bounds.flatMap: bs =>
       book.foreach(_.bounded(bs))
-      Flows.spread(parts) { i =>
+      phase(probe, "partitions")(Flows.spread(parts) { i =>
         book.flatMap(_.partial(i)) match
           case Some(bytes) => decode(i, bytes)
           case None =>
@@ -335,9 +346,11 @@ object Cluster {
                 w
               case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
               case other => throw IllegalStateException(s"partition $i answered $other to a run")
-      }.map: ws =>
+      }).map: ws =>
+        val t0 = if probe.on then System.nanoTime() else 0L
         val out = Run(sink.result(ws), sink.drops(ws), parts, 1, sink.merged(ws),
           living.retries, living.lost)
+        if probe.on then probe(Seen.Phase("merge", t0, System.nanoTime()))
         book.foreach(_.finished())
         sink.committed(1)   // a batch run is ONE epoch, and it is over
         out
@@ -352,12 +365,13 @@ object Cluster {
    */
   def runLeading[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve],
                        journal: Checkpoint, lease: Lease,
-                       tolerance: Int = Living.Tolerance)
+                       tolerance: Int = Living.Tolerance,
+                       probe: Probe = Probe.none)
                       (using Scheduler): Option[Run[R]] ! Async =
     lease.take() match
       case None => pure[Async, Option[Run[R]]](None)
       case Some(term) =>
-        run(job, p, parts, workers, tolerance, Checkpoint.fenced(term, lease, journal))
+        run(job, p, parts, workers, tolerance, Checkpoint.fenced(term, lease, journal), probe)
           .map { r => lease.release(term); Some(r) }
 
   /** the partitions a journal holds for an UNFINISHED batch run, or
@@ -466,7 +480,7 @@ object Cluster {
    * run for ever.
    */
   def shuffle[P, R](job: Shuffled[P, R], p: P, parts: Int, reducers: Int, workers: Vector[Peer],
-                    tolerance: Int = Living.Tolerance)
+                    tolerance: Int = Living.Tolerance, probe: Probe = Probe.none)
                    (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(reducers > 0, "a shuffle has at least one reducer")
@@ -476,7 +490,7 @@ object Cluster {
     job.refuseWindows(second): Unit
     val encoded = Codecs.cbor(job.params).encode(p)
     val serves = workers.map(_.serve)
-    val living = Living(workers.length, tolerance)
+    val living = Living(workers.length, tolerance, probe)
     val id = scala.util.Random.nextLong()
     // who holds each partition's buckets; a partition's own lock makes
     // two reducers that lost the same partition re-map it ONCE
@@ -513,9 +527,9 @@ object Cluster {
           case (other, _) => throw IllegalStateException(s"reducer $r answered $other to a reduce")
       go(0, Vector.empty)
 
-    val run: Run[R] ! Async =
-      Flows.spread(parts)(mapped).flatMap: _ =>
-        Flows.spread(reducers)(reduced).map: ws =>
+    val run: Run[R] ! Async = observed(probe, job.name, parts):
+      phase(probe, "map")(Flows.spread(parts)(mapped)).flatMap: _ =>
+        phase(probe, "reduce")(Flows.spread(reducers)(reduced)).map: ws =>
           Run(second.result(ws), second.drops(ws), parts, reducers, second.merged(ws),
             living.retries, living.lost)
     // the buckets go whichever way the run ends: a failed run must not
@@ -577,7 +591,9 @@ object Cluster {
                 val answer =
                   if h == self then fetch(shuffle, i, reducer)
                   else
-                    try dial(h)(Req.Fetch(shuffle, i, reducer))
+                    // a MEASURED peer wraps its bucket (stage 15): unwrapped
+                    // here, or every fetch from one would read as lost
+                    try plain(dial(h)(Req.Fetch(shuffle, i, reducer)))._1
                     catch case t: Throwable => Resp.Failed(s"$h: $t")
                 answer match
                   case Resp.Bucket(bytes) => got += bytes
@@ -600,14 +616,91 @@ object Cluster {
           if first != null then why.initCause(first.nn): Unit
           throw why
         case Some(w) =>
+          val t0 = if living.probe.on then System.nanoTime() else 0L
           try
-            val out = workers(w)(req)
+            val (out, work) = plain(workers(w)(req))
             living.answered(w)
+            if living.probe.on then living.probe(Seen.Asked(part, w, what(req), t0, System.nanoTime(), work))
             (out, w)
           catch case t: Throwable =>
+            if living.probe.on then
+              living.probe(Seen.Lost(part, w, what(req), t0, System.nanoTime(), String.valueOf(t)))
             living.failed(w)
             go(tried + 1, if first == null then t else first)
     go(0, null)
+
+  /** a MEASURED worker's answer as the one it wraps (stage 15); any
+   * other answer as it is — for a caller that asks a worker directly
+   * rather than through `run`/`stream`, which unwrap it themselves */
+  def unwrap(r: Resp): Resp = plain(r)._1
+
+  /** a measured answer, unwrapped; any other answer as it is */
+  private def plain(r: Resp): (Resp, Option[Work]) = r match
+    case Resp.Measured(inner, work) =>
+      Codecs.cbor(Resp.given_Schema_Resp).decode(inner) match
+        case Right(out) => (out, Some(work))
+        case Left(why) => (Resp.Failed(s"undecodable measured answer: $why"), Some(work))
+    case other => (other, None)
+
+  /** what a request is, as the probe names it */
+  private def what(req: Req): String = req match
+    case _: Req.Extent => "extent"
+    case _: Req.Run => "run"
+    case _: Req.Open => "open"
+    case _: Req.Advance => "advance"
+    case _: Req.Close => "close"
+    case _: Req.Shuffle => "shuffle"
+    case _: Req.Reduce => "reduce"
+    case _: Req.Fetch => "fetch"
+    case _: Req.Drop => "drop"
+    case Req.Known => "known"
+
+  /**
+   * A WORKER THAT SAYS WHAT IT SPENT (specs/dataflow.md, stage 15):
+   * every answer but a refusal comes back as `Resp.Measured`, with the
+   * rows the request read, the time it took here, and the time and
+   * calls a foreign function took inside that (`Meter`). The
+   * coordinator unwraps it where it asks; a worker NOT wrapped still
+   * gives the coordinator the round trip, and nothing else changes.
+   */
+  def measured(base: Serve): Serve = req =>
+    Meter.begin()
+    val t0 = System.nanoTime()
+    val out = base(req)
+    val work = Meter.taken(System.nanoTime() - t0)
+    out match
+      case Resp.Failed(_) | Resp.Measured(_, _) => out
+      case _ => Resp.Measured(Codecs.cbor(Resp.given_Schema_Resp).encode(out), work)
+
+  /** the run as a whole, for a probe: `Began`, then the body, then
+   * `Ended` however it ends. Without a probe it is the body, unwrapped
+   * — no program is added to a run nobody observes */
+  private def observed[R](probe: Probe, job: String, parts: Int)(body: => R ! Async)
+                         (using Scheduler): R ! Async =
+    if !probe.on then body
+    else
+      pure[Async, Unit](()).flatMap { _ =>
+        val began = System.nanoTime()
+        probe(Seen.Began(job, parts, System.currentTimeMillis(), began))
+        // BUILDING the run is a phase too: codecs, the digest, a journal
+        // read — measured at 6% of a 350 ms run on a cold JVM, and a
+        // trace that left it out would not add up to its own wall clock
+        val prog = body
+        probe(Seen.Phase("plan", began, System.nanoTime()))
+        Async.attempt(prog).map { out =>
+          probe(Seen.Ended(System.nanoTime(), out.left.toOption.map(t => String.valueOf(t))))
+          out.fold(t => throw t, identity)
+        }
+      }
+
+  /** one phase of a run, for a probe; the program itself without one */
+  private def phase[X](probe: Probe, name: String)(prog: => X ! Async): X ! Async =
+    if !probe.on then prog
+    else
+      pure[Async, Unit](()).flatMap { _ =>
+        val t0 = System.nanoTime()
+        prog.map { x => probe(Seen.Phase(name, t0, System.nanoTime())); x }
+      }
 
   /**
    * ASK A LIVING WORKER, AND KEEP ASKING (specs/dataflow.md, stage 5).
@@ -644,7 +737,7 @@ object Cluster {
    * the same worker; the second is a no-op, which is what
    * `filterNot` gives for free.
    */
-  private final class Living(n: Int, tolerance: Int = Living.Tolerance):
+  private final class Living(n: Int, tolerance: Int = Living.Tolerance, val probe: Probe = Probe.none):
     private var alive: Vector[Int] = (0 until n).toVector
     private var buried: Long = 0L
     private val failures = Array.fill(n)(0)
@@ -675,7 +768,10 @@ object Cluster {
       attempts += 1
       if alive.contains(w) then
         failures(w) += 1
-        if failures(w) >= tolerance then { alive = alive.filterNot(_ == w); buried += 1 }
+        if failures(w) >= tolerance then
+          alive = alive.filterNot(_ == w)
+          buried += 1
+          if probe.on then probe(Seen.Buried(w, System.nanoTime()))
     }
 
     /** whatever this worker had against it, it has just answered */
@@ -820,15 +916,25 @@ object Cluster {
                     * positions do not survive a re-cut) — the run keeps
                     * driving the ORIGINAL `workers`, unaffected, and this
                     * is how the refusal is named rather than silent */
-                   onRefusedRescale: (Int, Int) => Unit = (_, _) => ())
+                   onRefusedRescale: (Int, Int) => Unit = (_, _) => (),
+                   /** who hears what the run does — stage 15 */
+                   probe: Probe = Probe.none)
                   (using Scheduler): Run[R] ! Async =
     require(parts > 0, "a job has at least one partition")
     require(workers.nonEmpty, "a job needs at least one worker")
     require(take > 0, "an epoch advances by at least one element")
     require(tolerance > 0, "a worker is buried after at least one failure")
+    observed(probe, job.name, parts)(
+      streamBody(job, p, parts, workers, take, journal, term, tolerance, resolve, onRefusedRescale, probe))
+
+  private def streamBody[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
+                               journal: Checkpoint, term: Long, tolerance: Int,
+                               resolve: Option[() => Vector[Serve] ! Async],
+                               onRefusedRescale: (Int, Int) => Unit, probe: Probe)
+                              (using Scheduler): Run[R] ! Async =
     val encoded = Codecs.cbor(job.params).encode(p)
     val sink = job.sink(p)
-    val living = Living(workers.length, tolerance)
+    val living = Living(workers.length, tolerance, probe)
     // the door check's other half (specs/federation.md, stage 3) —
     // see `Cluster.run`'s identical line
     val digest = Codecs.cbor(summon[Schema[Digest]]).encode(Digest.of(sink.wire))
@@ -948,6 +1054,7 @@ object Cluster {
       def epoch(state: sink.S, seen: Vector[Vector[Flows.Extent]], drops: Long, merged: Long,
                 positions: Vector[Long], marks: Vector[Seek], below: Long,
                 round: Int): Run[R] ! Async =
+        val began = if probe.on then System.nanoTime() else 0L
         // NO LOCAL COMPLETENESS IN A STREAM, and this is the one
         // place the streaming engine had to stop copying the batch
         // one.
@@ -1038,6 +1145,10 @@ object Cluster {
           sink.committed(round)
           val left = marking(grown, marks, round, stood)
           commit(round, next, grown, d, m, stood, left)
+          if probe.on then
+            val high = grown.iterator.flatMap(_.iterator.map(_.max)).maxOption.getOrElse(Long.MinValue)
+            val lag = if high == Long.MinValue || mark == Long.MinValue then 0L else high - mark
+            probe(Seen.Epoch(round, lag, began, System.nanoTime()))
           if es.forall(_.drained) then
             // THE CLOSE CARRIES A PARTIAL. Every pane still open when
             // the source ran out is swept out by `finish` and comes
@@ -1049,12 +1160,12 @@ object Cluster {
             // (And the close is a PROGRAM: building it and dropping
             // it also left every session alive on every worker, which
             // `Sessions.count` caught separately.)
-            Flows.spread(parts) { i =>
+            phase(probe, "close")(Flows.spread(parts) { i =>
               ask(workers, living, i, Req.Close(sessions(i))) match
                 case e: Resp.Epoch => e
                 case Resp.Failed(why) => throw IllegalStateException(s"partition $i: $why")
                 case other => throw IllegalStateException(s"partition $i answered $other to a close")
-            }.map { last =>
+            }).map { last =>
               val lw = last.zipWithIndex.map { (e, i) =>
                 Codecs.cbor(sink.wire).decode(e.bytes) match
                   case Right(w) => sink.sift(w, below)
@@ -1239,7 +1350,8 @@ object Cluster {
   def leading[P, R](job: Job[P, R], p: P, parts: Int, workers: Vector[Serve], take: Int,
                     journal: Checkpoint, lease: Lease,
                     resolve: Option[() => Vector[Serve] ! Async] = None,
-                    onRefusedRescale: (Int, Int) => Unit = (_, _) => ())
+                    onRefusedRescale: (Int, Int) => Unit = (_, _) => (),
+                    probe: Probe = Probe.none)
                    (using Scheduler): Option[Run[R]] ! Async =
     lease.take() match
       case None => pure[Async, Option[Run[R]]](None)
@@ -1249,7 +1361,7 @@ object Cluster {
         // stale commit that got past the fence is shadowed rather
         // than read back (dataflow-durable)
         stream(job, p, parts, workers, take, Checkpoint.fenced(term, lease, journal), term,
-          resolve = resolve, onRefusedRescale = onRefusedRescale)
+          resolve = resolve, onRefusedRescale = onRefusedRescale, probe = probe)
           .map { run => lease.release(term); Some(run) }
 
   /**
@@ -1273,11 +1385,18 @@ object Cluster {
    */
   private def advancing(workers: Vector[Serve], living: Living, part: Int,
                         open: Req.Open, adv: Req.Advance): Resp =
+    // the rows of the answer that counts: a reopened session's catch-up
+    // is read in the second advance, and the open reads nothing
+    var work: Option[Work] = None
+    def call(w: Int, req: Req): Resp =
+      val (out, k) = plain(workers(w)(req))
+      if k.isDefined then work = k
+      out
     def onceOn(w: Int): Resp =
-      workers(w)(adv) match
+      call(w, adv) match
         case Resp.Failed(why) if why.startsWith("no session") =>
-          workers(w)(open) match
-            case Resp.Opened(_) => workers(w)(adv)
+          call(w, open) match
+            case Resp.Opened(_) => call(w, adv)
             case other => other
         case other => other
 
@@ -1289,11 +1408,16 @@ object Cluster {
           if first != null then why.initCause(first.nn): Unit
           throw why
         case Some(w) =>
+          val t0 = if living.probe.on then System.nanoTime() else 0L
           try
+            work = None
             val out = onceOn(w)
             living.answered(w)
+            if living.probe.on then living.probe(Seen.Asked(part, w, "advance", t0, System.nanoTime(), work))
             out
           catch case t: Throwable =>
+            if living.probe.on then
+              living.probe(Seen.Lost(part, w, "advance", t0, System.nanoTime(), String.valueOf(t)))
             living.failed(w)
             go(tried + 1, if first == null then t else first)
     go(0, null)

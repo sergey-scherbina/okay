@@ -67,6 +67,19 @@ class TestForeignStage extends munit.FunSuite:
       assertEquals(cluster(p, 4, workers).value, Rows.doubled(10000), s"$workers workers")
   }
 
+  test("a measured worker reports every foreign call and its time (specs/dataflow.md, stage 15)") {
+    val trace = okay.cluster.JobTrace()
+    val workers = Vector.fill(2)(Cluster.measured(Cluster.local))
+    val got = Cluster.run(StageJobs.Doubling, Scale(10000), 4, workers, probe = trace).runWith
+    assertEquals(got.value, Rows.doubled(10000))
+    val runs = trace.spans.filter(_.name.startsWith("run "))
+    def n(s: okay.cluster.JobTrace.Span, k: String) = s.attrs.find(_._1 == k).fold(0L)(_._2.toLong)
+    // four partitions of 2500 rows at a batch of 1000: three calls each
+    assertEquals(runs.map(n(_, "foreign_calls")), Vector.fill(4)(3L))
+    assert(runs.forall(n(_, "foreign_ns") > 0), runs.toString)
+    assertEquals(runs.map(n(_, "rows")).sum, 10000L)
+  }
+
   test("a chunk is `batch` rows whatever the source's chunk size: one round trip per batch, the last one shorter") {
     val fake = Fake()
     StageJobs.batcher = fake

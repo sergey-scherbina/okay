@@ -40,6 +40,13 @@ final case class PoolConf(
    * update mixing two artifacts fails loudly rather than mixing
    * answers inside one run. "" (the default) turns the check off. */
   build: String = "",
+  /** answer the worker protocol MEASURED (specs/dataflow.md, stage
+   * 15): every answer says the rows it read and the time it spent,
+   * and how much of it in foreign code, so the coordinating member's
+   * `/metrics` and traces can split a run's time into engine, foreign
+   * and wire. Costs one extra encoding of each answer; false turns it
+   * off and the coordinator still sees round trips. */
+  measured: Boolean = true,
   /** the pool's ONE shared certificate — mTLS between members
    * (specs/cluster-pool.md, stage 4): every member is handed the
    * SAME cert and key, so a connection is authenticated by "does the

@@ -24,6 +24,7 @@ object Routes:
   val runsPath: Route[String *: EmptyTuple] = Route / "pool" / "runs" / "id".as[String]
   val peersPath: Route[EmptyTuple] = Route / "pool" / "peers"
   val metricsPath: Route[EmptyTuple] = Route / "metrics"
+  val tracePath: Route[String *: EmptyTuple] = Route / "pool" / "runs" / "id".as[String] / "trace"
 
   private def text(status: Int, body: String): Response =
     Response(status, Seq("content-type" -> "text/plain; charset=utf-8"), Http.one(body.getBytes(UTF_8)))
@@ -72,7 +73,7 @@ object Routes:
       }
       .on(Method.Get, metricsPath) { _ =>
         pure(Response(200, Seq("content-type" -> "text/plain; version=0.0.4; charset=utf-8"),
-          Http.one(okay.ops.Prom.queued(Pool.queued).getBytes(UTF_8))))
+          Http.one((okay.ops.Prom.queued(Pool.queued) + Pool.stats.render).getBytes(UTF_8))))
       }
       .at(Method.Post, submitPath) { (name, req) =>
         // the capability is checked BEFORE the job name is even
@@ -92,6 +93,11 @@ object Routes:
             }
           case _ => pure(err(400, "a submission body must be a JSON object"))
       }
+      .at(Method.Get, tracePath) { (id, _) =>
+        pure(Pool.traceOf(id) match
+          case None => err(404, s"no trace of a run named '$id' on this member")
+          case Some(t) => json(200, Json.print(okay.obs.Otlp.body("okay-pool", Traces.spans(t)))))
+      }
       .at(Method.Get, runsPath) { (id, _) =>
         Pool.statusOf(id, conf, discovery, store).map {
           case None => err(404, s"no run named '$id'")
@@ -102,3 +108,18 @@ object Routes:
   def routes(conf: PoolConf, discovery: Discovery, store: String => (Checkpoint, Lease), ready: () => Boolean)
             (using Scheduler): PartialFunction[Request, Response ! Async] =
     router(conf, discovery, store, ready).routes
+
+/**
+ * A RUN'S TRACE AS okay-obs SPANS (specs/dataflow.md, stage 15), so
+ * `Otlp.body` makes the OTLP/HTTP JSON any collector ingests: one trace
+ * id per run, the engine's span ids widened to W3C's sixteen hex digits,
+ * nanoseconds to okay-obs' milliseconds.
+ */
+object Traces:
+  def spans(t: okay.cluster.JobTrace): Vector[okay.obs.Span] =
+    val traceId = okay.obs.Trace.freshTraceId()
+    def id(s: String): String = f"${s.toLong + 1}%016x"
+    t.spans.map { s =>
+      okay.obs.Span(traceId, id(s.id), s.parent.map(id), s.name, s.start / 1000000L, s.end / 1000000L,
+        s.attrs.map((k, v) => okay.obs.Attr(k, v)), s.error.fold("ok")(why => s"error: $why"))
+    }

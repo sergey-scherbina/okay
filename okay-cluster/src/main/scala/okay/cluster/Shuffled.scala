@@ -70,9 +70,11 @@ abstract class Shuffled[P, R]:
       val k = key(p)
       val g = agg(p)
       val m = mutable.HashMap.empty[K, Acc]
-      Scope.using(sc => Chunks.foldLeft(Flows.partition(flow(p, of), part, 0L, sc))(())((_, a) =>
+      val rows = Scope.using(sc => Chunks.foldLeft(Flows.partition(flow(p, of), part, 0L, sc))(0L)((n, a) =>
         val kk = k(a)
-        m.update(kk, g.add(m.getOrElse(kk, g.init), a))))
+        m.update(kk, g.add(m.getOrElse(kk, g.init), a))
+        n + 1))
+      Meter.rows(rows)
       val ck = Codecs.cbor(keys)
       val out = Array.fill(reducers)(Vector.newBuilder[(K, Acc)])
       for (kk, acc) <- m do

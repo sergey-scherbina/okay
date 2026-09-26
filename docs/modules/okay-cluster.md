@@ -480,6 +480,27 @@ A bucket is placed by a hash of the key's ENCODING, so a key whose
 The second stage cannot window by event time (refused by name): its
 input is a hash map's order.
 
+**6. What a run did, and where its time went.** Every coordinator
+takes a `probe`, and two readers of its events come with the engine:
+`JobStats` (Prometheus text — attempts, lost attempts, recomputes,
+burials, rows, seconds split into engine, foreign and wire, a stream's
+epoch and watermark lag) and `JobTrace` (a span tree: the run, its
+phases or epochs, every attempt under the phase it began in, a lost
+attempt as an error span). A worker wrapped in `Cluster.measured`
+answers the rows it read and the time it spent — and how much of that
+in foreign code, which okay-foreign-cluster's stages report — so the
+coordinator can split each round trip exactly:
+
+```scala
+val got = Cluster.run(SlowJob, feed, 8, workers, probe = Probe.both(trace, stats.probe())).runWith
+```
+
+okay-pool does this for every run it coordinates: `/metrics` carries
+the `okay_job_*` series and `GET /pool/runs/{id}/trace` answers the
+latest attempt's trace as OTLP/HTTP JSON; its members answer measured
+unless `OKAY_POOL_MEASURED=false`. A `WorkerMain` process is measured
+only with `-Dokay.cluster.measured=true`.
+
 ## Tutorial
 
 A remote channel, indistinguishable from a local one:
@@ -781,6 +802,8 @@ need none — they run inside the JVM, so their map is `flow.map(f)`.
 | `Cluster.runLeading` | `(Job, P, parts, workers, journal, lease) => Option[Run[R]] ! Async` | a resumable batch run if this process is the coordinator; `None` if not |
 | `Cluster.shuffle` | `(Shuffled[P,R], P, parts, reducers, Vector[Peer]) => Run[R] ! Async` | a two-stage keyed job whose exchange runs worker to worker |
 | `Cluster.exchanging` | `(self: String, dial: String => Serve) => Serve` | a worker that can hold buckets and fetch them from its peers |
+| `Cluster.measured` | `Serve => Serve` | a worker whose answers carry the rows read and the time spent (engine, foreign) |
+| `Probe`, `JobStats`, `JobTrace` | events; Prometheus text; a span tree | pass `probe =` to `run`, `stream`, `leading`, `shuffle` |
 | `Cluster.leading` | `(Job, P, parts, workers, take, journal, lease) => Option[Run[R]] ! Async` | run it if this process is the coordinator; `None` if not |
 | `Lease` | `take(): Option[Long]` / `held(term)` / `release(term)` | who may be the coordinator; `Lease.solitary` is no election |
 | `Checkpoint.fenced` | `(term, lease, under) => Checkpoint` | refuses a commit once the lease is gone (`Checkpoint.Deposed`) |

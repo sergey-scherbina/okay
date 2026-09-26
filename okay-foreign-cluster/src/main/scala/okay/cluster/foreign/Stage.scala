@@ -60,7 +60,15 @@ object Stage:
  * dead worker to the coordinator); any other failure a `Cluster.Refused`
  * naming the stage (the worker's considered answer, not retried) */
 object Attempts:
+  /** ONE FOREIGN CALL, retries included — and the worker's `Meter`
+   * hears its time (specs/dataflow.md, stage 15), which is how a
+   * measured worker splits a partition's time into engine and foreign */
   def run[X](name: String, attempts: Int)(f: => Either[Batcher.Failed, X]): X =
+    val t0 = System.nanoTime()
+    try go(name, attempts)(f)
+    finally okay.cluster.Meter.foreign(System.nanoTime() - t0)
+
+  private def go[X](name: String, attempts: Int)(f: => Either[Batcher.Failed, X]): X =
     @tailrec def go(left: Int): X =
       f match
         case Right(x) => x

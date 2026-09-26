@@ -184,5 +184,11 @@ object WorkerMain {
       peers.computeIfAbsent(address, a =>
         val at = a.lastIndexOf(':')
         Served.reconnecting(a.substring(0, at), a.substring(at + 1).toInt))
-    Served.serve(server, Cluster.exchanging(s"$host:${server.getLocalPort}", dial))
+    // MEASURED on request (stage 15, `-Dokay.cluster.measured=true`): its
+    // answers then say what they cost. Off by default, because a measured
+    // answer is encoded twice and the benchmarks that weigh this process's
+    // partials (MeasureWroclawCluster) must weigh the partial itself
+    val exchanging = Cluster.exchanging(s"$host:${server.getLocalPort}", dial)
+    val serving = if java.lang.Boolean.getBoolean("okay.cluster.measured") then Cluster.measured(exchanging) else exchanging
+    Served.serve(server, serving)
 }

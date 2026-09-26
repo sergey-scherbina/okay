@@ -2,6 +2,7 @@ package okay.pool
 
 import okay.*
 import okay.given
+import okay.cluster.{JobStats, JobTrace, Probe}
 import okay.cluster.{Checkpoint, Cluster, Folded, Job, Jobs, Lease, Req, Resp, Served}
 import okay.codec.{Codecs, Json}
 import okay.conf.Schemes
@@ -66,7 +67,7 @@ object Pool:
   private def agrees(build: String, peer: Cluster.Serve, e: Endpoint): Boolean =
     if build.isEmpty then true
     else
-      try peer(Req.Known) match
+      try Cluster.unwrap(peer(Req.Known)) match
         case Resp.Names(_, theirs) if theirs.nonEmpty && theirs != build =>
           System.err.println(s"okay-pool: excluding ${e.authority} — its build '$theirs' disagrees with this one's '$build'")
           false
@@ -105,6 +106,24 @@ object Pool:
   def queued: Int = Attempts.count
 
   /**
+   * WHAT THE RUNS THIS MEMBER COORDINATES SAY ABOUT THEMSELVES
+   * (specs/dataflow.md, stage 15): one `JobStats` for the process —
+   * `/metrics` renders it — and the trace of each run's latest
+   * attempt, by run id, the last `Traces` of them kept.
+   */
+  val stats: JobStats = JobStats()
+  private val Traces = 64
+  private val traces = scala.collection.mutable.LinkedHashMap.empty[String, JobTrace]
+  def traceOf(id: String): Option[JobTrace] = traces.synchronized(traces.get(id))
+  private def tracing(id: String): JobTrace = traces.synchronized {
+    val t = JobTrace()
+    traces.remove(id): Unit
+    traces.update(id, t)
+    while traces.size > Traces do traces.remove(traces.head._1): Unit
+    t
+  }
+
+  /**
    * FIRE THIS RUN'S LEADING PROGRAM IN THE BACKGROUND; the caller
    * never awaits it — the NEXT read of the checkpoint (a `GET`, from
    * anyone) is how its progress becomes visible.
@@ -127,6 +146,7 @@ object Pool:
            (using Scheduler): Unit =
     if Attempts.start(id) then
       job.lead(m.params, m.parts, peers, effectiveTake(m.take), checkpoint, lease,
+        probe = Probe.both(stats.probe(), tracing(id)),
         resolve = Some(() => workers(conf, discovery)),
         onRefusedRescale = (have, want) =>
           System.err.println(s"okay-pool: run '$id' has $have peers but '${m.job}' is not " +
@@ -268,7 +288,8 @@ object Pool:
       var ready = false
       val router = Routes.router(conf, discovery, store, () => ready)
       val socket = serverSocketOf(conf)
-      okay.Threads.spawn("okay-pool-worker")(() => Served.serve(socket, fingerprinted(conf.build)))
+      val worker = if conf.measured then Cluster.measured(fingerprinted(conf.build)) else fingerprinted(conf.build)
+      okay.Threads.spawn("okay-pool-worker")(() => Served.serve(socket, worker))
       ready = true
       val serving = Jetty.serve(conf.httpPort)(router.routes)()
       Resource.run[Unit, Pure](serving.map { s =>

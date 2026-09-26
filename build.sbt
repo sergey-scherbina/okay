@@ -3160,8 +3160,9 @@ lazy val okayDeploy = (project in file("okay-deploy"))
 lazy val okayPool = (project in file("okay-pool"))
   // okayTls: mTLS between members (specs/cluster-pool.md stage 4);
   // okaySecurity: the capability at the submission door
+  // okayObs: a run's trace as OTLP JSON (specs/dataflow.md, stage 15)
   .dependsOn(okayCluster.jvm, okayHttp.jvm, okayOps.jvm, okayResilience.jvm, okayConf.jvm, okayJetty,
-    okayTls, okaySecurity.jvm)
+    okayTls, okaySecurity.jvm, okayObs.jvm)
   .settings(
     name := "okay-pool",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

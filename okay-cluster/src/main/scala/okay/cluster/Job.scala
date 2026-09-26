@@ -174,6 +174,7 @@ abstract class Job[P, R]:
                 extent = grow(extent, Flows.extent(Chunks.fromIterator(c.iterator), s.times))
                 read += c.length
                 consumed += c.length
+                Meter.rows(c.length.toLong)
                 rest = r
               case None => drained = true
           // an epoch hands over what the operator has closed SO FAR;
@@ -201,7 +202,10 @@ abstract class Job[P, R]:
     Codecs.cbor(params).decode(bytes).map { p =>
       val s = sink(p)
       val st = s.start(bounds)
-      Scope.using(sc => Chunks.foldLeft(Flows.partition(flow(p, of), part, 0L, sc))(())((_, a) => s.step(st, a)))
+      val rows = Scope.using(sc => Chunks.foldLeft(Flows.partition(flow(p, of), part, 0L, sc))(0L)((n, a) =>
+        s.step(st, a)
+        n + 1))
+      Meter.rows(rows)
       Codecs.cbor(s.wire).encode(s.finish(st))
     }
 
@@ -229,10 +233,12 @@ abstract class Job[P, R]:
                   * (specs/cluster-pool.md, stage 5) — see `Cluster.stream`.
                   * `None` is the fixed `peers` above, every round. */
                  resolve: Option[() => Vector[Cluster.Serve] ! Async] = None,
-                 onRefusedRescale: (Int, Int) => Unit = (_, _) => ())
+                 onRefusedRescale: (Int, Int) => Unit = (_, _) => (),
+                 /** who hears what the run does (specs/dataflow.md, stage 15) */
+                 probe: Probe = Probe.none)
                 (using okay.Scheduler): Either[String, Option[Job.Answer] ! Async] =
     Codecs.json(params).decode(paramsJson).map { p =>
-      Cluster.leading(this, p, parts, peers, take, checkpoint, lease, resolve, onRefusedRescale).map(_.map { run =>
+      Cluster.leading(this, p, parts, peers, take, checkpoint, lease, resolve, onRefusedRescale, probe).map(_.map { run =>
         Job.Answer(Codecs.writeJson(run.value)(using answer), run.dropped, run.merged, run.retried, run.failed)
       })
     }

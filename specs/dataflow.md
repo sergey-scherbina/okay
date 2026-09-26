@@ -301,21 +301,21 @@ not against its existence):
       checked by a test that asserts nothing
 
 Stage 15 — a job says where its time went (TestObserved, TestPoolObserved):
-- [ ] a job's trace is a root span, one span per phase and one per
+- [x] a job's trace is a root span, one span per phase and one per
       attempt; the phases add up to the root's wall clock within 5%
-- [ ] an attempt on a measured worker splits EXACTLY into the worker's
+- [x] an attempt on a measured worker splits EXACTLY into the worker's
       own work, the foreign function's share of it, and the wire (the
       rest of the round trip)
-- [ ] rows per partition are counted on the worker and reach the
+- [x] rows per partition are counted on the worker and reach the
       coordinator; the total is the input's size
-- [ ] a killed worker shows as a lost attempt (an error span), a
+- [x] a killed worker shows as a lost attempt (an error span), a
       burial and a recompute — in the trace and in the metrics
-- [ ] a stream reports every epoch and its watermark lag
-- [ ] a foreign map stage (okay-foreign-cluster) reports its time and
+- [x] a stream reports every epoch and its watermark lag
+- [x] a foreign map stage (okay-foreign-cluster) reports its time and
       calls through the worker's meter
-- [ ] okay-pool serves the metrics of the runs it coordinates on
+- [x] okay-pool serves the metrics of the runs it coordinates on
       `/metrics` and a run's trace as OTLP JSON
-- [ ] no probe, no cost: the default `Probe.none` builds no event
+- [x] no probe, no cost: the default `Probe.none` builds no event
 
 Stage 14 — the exchange across processes (TestShuffle):
 - [x] a two-stage keyed job (`Shuffled`) over 4 workers answers what
@@ -1394,6 +1394,34 @@ it the record in the journal only ever grows and a burst is one write.
 (`Checkpoint.none` is recognised and no record is built); `runLeading`
 is `leading`'s seat and does not wait to be elected, for `leading`'s
 reason.
+
+### Stage 15 — a job says where its time went (2026-09-26)
+
+**The 5% bar caught a phase nobody had named.** The first trace left
+6% of a 350 ms run outside every phase: BUILDING the run — codecs, the
+schema digest, a journal read — on a cold JVM. The fix was not a wider
+tolerance but a `plan` phase, measured from `Began` to the moment the
+program exists; the phases then cover the wall clock.
+
+**A measured worker broke the exchange, and the test found it.**
+Wrapping workers in `Cluster.measured` made a peer's `Bucket` arrive as
+`Measured`, and a reducer counted every such fetch as LOST — sixteen
+rounds of re-maps, then failure. The reducer now unwraps a peer's
+answer as the coordinator does; `WorkerMain` would have shipped the
+bug, since it was about to serve measured by default.
+
+**Measured is opt-in on a bare worker, and why.** A measured answer is
+the inner answer encoded once more; `MeasureWroclawCluster` weighs the
+partials a `WorkerMain` sends and would have weighed zero bytes. So a
+`WorkerMain` is measured only when asked (`-Dokay.cluster.measured`),
+and okay-pool's members — where the operator wants the split — default
+to measured with `OKAY_POOL_MEASURED=false` to turn it off. The cost of
+the second encoding is not measured yet.
+
+**Not done, said rather than implied**: interpreter restarts and leases
+inside the foreign pools are not reported — the pools are okay-py's,
+and nothing there knows about a probe (backlog:
+foreign-pool-metrics).
 
 ### Stage 14 — the exchange across processes (2026-09-26)
 
