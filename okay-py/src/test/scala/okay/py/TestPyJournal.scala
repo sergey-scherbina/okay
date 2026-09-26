@@ -16,7 +16,7 @@ class TestPyJournal extends munit.FunSuite {
   /** answers by address; counts every call that reached "Python" */
   private def canned(ran: AtomicInteger): Handler[PyEval] = new Handler[PyEval]:
     def handle[A](op: PyEval[A]): A = op match
-      case PyEval.Call(fn, args) =>
+      case PyEval.Call(Address.Fn(fn), args, false) =>
         ran.incrementAndGet(): Unit
         fn match
           case "statistics:median" => Right(F64(2.0))
@@ -26,10 +26,10 @@ class TestPyJournal extends munit.FunSuite {
       case PyEval.Frame(fn, in, _) =>
         ran.incrementAndGet(): Unit
         Right(PyFrame(in.cols :+ ("n" -> Vector(I64(in.cols.headOption.fold(0)(_._2.size).toLong)))))
-      case PyEval.Hold(fn, _) =>
+      case PyEval.Call(Address.Fn(fn), _, true) =>
         ran.incrementAndGet(): Unit
-        Right(PyRef(1, fn))
-      case PyEval.Method(_, name, Vector(I64(x)), _) =>
+        Right(Ref(PyRef(1, fn)))
+      case PyEval.Call(Address.Method(_, name), Vector(I64(x)), _) =>
         ran.incrementAndGet(): Unit
         Right(I64(x * 10))
       case PyEval.Release(_) => ran.incrementAndGet(): Unit
@@ -96,13 +96,13 @@ class TestPyJournal extends munit.FunSuite {
     val j = Durable.MemoryJournal()
     val ran = AtomicInteger()
     val live = Durable.over[PyEval](canned(ran), j)()
-    val ref = live.handle(PyEval.Hold("m:model", Vector.empty)).toOption.get
-    assertEquals(live.handle(PyEval.Method(ref, "score", Vector(I64(4)), hold = false)), Right(I64(40)))
+    val ref = live.handle(PyEval.Call("m:model", Vector.empty, held = true)).flatMap(Wire.asRef).toOption.get
+    assertEquals(live.handle(PyEval.Call(Address.Method(ref, "score"), Vector(I64(4)))), Right(I64(40)))
     live.handle(PyEval.Release(ref))
     assertEquals(j.all.map(_.op), Vector("hold:m:model", "method:score", "release"))
     val replay = Durable.replayingOver[PyEval](j)
-    assertEquals(replay.handle(PyEval.Hold("m:model", Vector.empty)), Right(ref))
-    assertEquals(replay.handle(PyEval.Method(ref, "score", Vector(I64(4)), hold = false)), Right(I64(40)))
+    assertEquals(replay.handle(PyEval.Call("m:model", Vector.empty, held = true)), Right(Ref(ref)))
+    assertEquals(replay.handle(PyEval.Call(Address.Method(ref, "score"), Vector(I64(4)))), Right(I64(40)))
     replay.handle(PyEval.Release(ref))
     assertEquals(ran.get, 3, "replay touches no Python")
   }

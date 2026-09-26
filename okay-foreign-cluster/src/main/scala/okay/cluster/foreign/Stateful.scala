@@ -100,7 +100,7 @@ final class PyStreamer[A, B](module: PyModule, openFn: String, stepFn: String, f
       try pool.lease()
       catch case e: Exception => return Left(Batcher.Failed("WorkerUnavailable", s"the python '$python' could not be opened: ${e.getMessage}"))
     val opened =
-      try lease.e.handler.handle(ForeignEval.Hold(s"${module.name}:$openFn", Vector.empty)).left.map(failed)
+      try lease.e.handler.handle(ForeignEval.Call(s"${module.name}:$openFn", Vector.empty, held = true)).flatMap(okay.py.Wire.asRef).left.map(failed)
       catch case e: IllegalStateException if PyPool.dead(e) => Left(Batcher.Failed("WorkerDied", e.getMessage))
     opened match
       case Right(ref) => Right(S(lease, ref))
@@ -138,7 +138,7 @@ final class RStreamer[A, B](module: RModule, openFn: String, stepFn: String, fin
       try pool.lease()
       catch case e: Exception => return Left(Batcher.Failed("WorkerUnavailable", s"'$rscript' could not be opened: ${e.getMessage}"))
     val opened =
-      try lease.e.handler.handle(REval.Hold(s"${module.name}::$openFn", Vector.empty)).left.map(failed)
+      try lease.e.handler.handle(REval.Call(s"${module.name}::$openFn", Vector.empty, held = true)).flatMap(okay.py.Wire.asRef).left.map(failed)
       catch case e: IllegalStateException if RPool.dead(e) => Left(Batcher.Failed("WorkerDied", e.getMessage))
     opened match
       case Right(ref) => Right(S(lease, ref))

@@ -79,10 +79,16 @@ final class ForeignWorker private (session: WireSession,
   /** the comonadic handler — one operation, one exchange */
   def handler: Handler[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
-      case ForeignEval.Call(fn, args) => timed:
+      case ForeignEval.Call(fn, args, held) => timed:
+        // THE call (foreign-one-held): a name, or a held object's method or
+        // attribute; `held` keeps the answer in the worker as a ref
+        val at = fn match
+          case Address.Fn(n) => Json.JStr(n)
+          case Address.Method(r, n) => Json.JObj(Vector("ref" -> Json.JNum(r.id.toDouble), "method" -> Json.JStr(n)))
+          case Address.Attr(r, n) => Json.JObj(Vector("ref" -> Json.JNum(r.id.toDouble), "attr" -> Json.JStr(n)))
         answer(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
-          "args" -> Json.JArr(args.map(Wire.enc))))))(v => Right(Wire.dec(v)))
+          "op" -> Json.JStr("call"), "fn" -> at, "args" -> Json.JArr(args.map(Wire.enc)))
+          ++ Option.when(held)("held" -> Json.JBool(true)))))(v => Right(Wire.dec(v)))
       case ForeignEval.Frame(fn, frame, args) => timed:
         val head = Vector("op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)))
         val table = if arrow then tables.table(frame) else Left("")
@@ -94,18 +100,6 @@ final class ForeignWorker private (session: WireSession,
             Left(Condition("NotArrow", s"this host's given FrameFormat is arrow, and $why"))
           case Left(_) =>
             answer(exchange(Json.JObj(head :+ ("in" -> frameOut(frame)))))(Wire.decFrame).map(_.ruledBy(shape))
-      case ForeignEval.Hold(fn, args) => timed:
-        answer(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("hold"), "fn" -> Json.JStr(fn),
-          "args" -> Json.JArr(args.map(Wire.enc))))))(v => Wire.asRef(Wire.dec(v)))
-      case ForeignEval.Method(r, name, args, h) => timed:
-        answer(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("method"), "ref" -> Json.JNum(r.id.toDouble), "name" -> Json.JStr(name),
-          "args" -> Json.JArr(args.map(Wire.enc)), "hold" -> Json.JBool(h)))))(v => Right(Wire.dec(v)))
-      case ForeignEval.Attr(r, name) => timed:
-        answer(exchange(Json.JObj(Vector(
-          "op" -> Json.JStr("attr"), "ref" -> Json.JNum(r.id.toDouble),
-          "name" -> Json.JStr(name)))))(v => Right(Wire.dec(v)))
       case ForeignEval.Program(run, fn, args, cbs, _) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
@@ -138,8 +132,9 @@ object ForeignWorker:
   /** an answer that did not come within the deadline (`WireSession`'s) */
   type TimedOut = WireSession.TimedOut
 
-  /** 7: foreign-one-program — `start`/`resume` folded into `program`/`continue` */
-  val ShimVersion = 7
+  /** 7: foreign-one-program — `start`/`resume` folded into `program`/`continue`;
+   * 8: foreign-one-held — `hold`/`method`/`attr` folded into `call` */
+  val ShimVersion = 8
 
   /**
    * Start a worker: the configured interpreter (resolved against

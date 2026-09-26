@@ -11,7 +11,8 @@
 # {"t":"bytes"}, an integer past 2^53 {"t":"int"} — and frames announced
 # columnar; the old tags are still read; v10 = foreign-one-program:
 # `start`/`resume` fold into `program`/`continue`, a direct function's
-# okay_call a node marked `once`). One JSON object per
+# okay_call a node marked `once`; v11 = foreign-one-held: `hold` folds
+# into `call` with `held`). One JSON object per
 # line each way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -22,7 +23,7 @@
 # is OPTIONAL: announced when installed, and frames work exactly as
 # before where it is not.
 
-SHIM <- 10
+SHIM <- 11
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = I(17)), "\n", sep = "")
@@ -335,8 +336,13 @@ serve <- function(req) {
   tryCatch({
     op <- req$op
     if (op == "call") {
+      # THE call (foreign-one-held): R applies functions TO objects, so an
+      # address is a function's name; `held` keeps the answer as a handle
+      if (!is.character(req$fn))
+        stop("an R object has no methods or attributes to call by name: apply a function to its handle")
       f <- resolve(req$fn)
-      list(id = rid, ok = enc(do.call(f, lapply(req$args, dec))))
+      out <- do.call(f, lapply(req$args, dec))
+      list(id = rid, ok = if (isTRUE(req$held)) okay_hold(out) else enc(out))
     } else if (op == "program") {
       # ONE program protocol (foreign-one-program): the function RETURNS a
       # program as data (okay_done / okay_then(okay_perform(...), f)), or is
@@ -363,9 +369,6 @@ serve <- function(req) {
       key <- as.character(req$run)
       if (exists(key, envir = .okay_runs, inherits = FALSE)) rm(list = key, envir = .okay_runs)
       list(id = rid, ok = NULL)
-    } else if (op == "hold") {
-      f <- resolve(req$fn)
-      list(id = rid, ok = okay_hold(do.call(f, lapply(req$args, dec))))
     } else if (op == "release") {
       key <- as.character(req$ref)
       if (exists(key, envir = .okay_objects, inherits = FALSE)) rm(list = key, envir = .okay_objects)

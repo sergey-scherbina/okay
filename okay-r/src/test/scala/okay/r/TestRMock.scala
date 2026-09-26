@@ -18,7 +18,7 @@ class TestRMock extends munit.FunSuite:
   /** the mock, and there is nothing else to it: a handler is the seam */
   private def canned(answers: Map[String, RValue]): Handler[REval] = new:
     def handle[A](e: REval[A]): A = e match
-      case REval.Call(fn, _) =>
+      case REval.Call(okay.py.Address.Fn(fn), _, _) =>
         answers.get(fn).toRight(Condition("simpleError", s"no canned answer for '$fn'"))
       case REval.Frame(_, in, _) => Right(in)
       case other => throw IllegalArgumentException(s"not canned: $other")

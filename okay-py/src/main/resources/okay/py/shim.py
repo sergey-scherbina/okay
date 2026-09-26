@@ -5,14 +5,16 @@
 # v5 = foreign-module-trait: `okay.describe`; v6 = remote-foreign: programs
 # as data, `program`/`continue`/`forget`, continuations kept by id; v7 =
 # foreign-one-program: `start`/`resume` fold into `program`/`continue`, a
-# direct function's okay_call a node marked `once`). Stdlib only, deliberately:
+# direct function's okay_call a node marked `once`; v8 = foreign-one-held:
+# `hold`/`method`/`attr` fold into `call` with an address and `held`).
+# Stdlib only, deliberately:
 # json wire, one object per line each way; functions are ADDRESSED
 # as module:qualified.name and imported, never eval'd from source.
 # A failing call answers a condition and the worker survives; only a
 # broken wire ends the process.
 import sys, json, base64, importlib, importlib.metadata, importlib.util, math, dataclasses, types, inspect, struct, zlib
 
-SHIM = 7
+SHIM = 8
 
 # a JSON number is a double: exact only up to 2**53
 EXACT = 2 ** 53
@@ -466,9 +468,19 @@ def serve(req):
     try:
         op = req["op"]
         if op == "call":
-            f = resolve(req["fn"])
-            out = f(*[dec(a) for a in req.get("args", [])])
-            reply({"id": rid, "ok": enc(out)})
+            # THE call (foreign-one-held): a name, or a held object's method
+            # or attribute; `held` keeps the answer here and answers its ref
+            at = req["fn"]
+            args = [dec(a) for a in req.get("args", [])]
+            if isinstance(at, str):
+                out = resolve(at)(*args)
+            elif "method" in at:
+                out = getattr(held(at["ref"]), at["method"])(*args)
+            elif "attr" in at:
+                out = getattr(held(at["ref"]), at["attr"])
+            else:
+                raise ValueError("a call's address is a name, a method or an attribute, got %r" % (at,))
+            reply({"id": rid, "ok": hold(out) if req.get("held") else enc(out)})
         elif op == "program":
             # ONE program protocol (foreign-one-program): the function either
             # RETURNS a program as data (okay.done / okay.perform(...).then),
@@ -501,15 +513,6 @@ def serve(req):
         elif op == "forget":
             _runs.pop(req["run"], None)
             reply({"id": rid, "ok": None})
-        elif op == "hold":
-            f = resolve(req["fn"])
-            reply({"id": rid, "ok": hold(f(*[dec(a) for a in req.get("args", [])]))})
-        elif op == "method":
-            m = getattr(held(req["ref"]), req["name"])
-            out = m(*[dec(a) for a in req.get("args", [])])
-            reply({"id": rid, "ok": hold(out) if req.get("hold") else enc(out)})
-        elif op == "attr":
-            reply({"id": rid, "ok": enc(getattr(held(req["ref"]), req["name"]))})
         elif op == "release":
             _held.pop(req["ref"], None)
             reply({"id": rid, "ok": None})

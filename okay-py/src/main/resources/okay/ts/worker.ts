@@ -12,7 +12,7 @@ import * as zlib from "node:zlib";
 import { pathToFileURL } from "node:url";
 import { hooks, OkayError, type Prog } from "./okay.ts";
 
-const SHIM = 7;
+const SHIM = 8;
 const EXACT = 2 ** 53;
 
 // ---- the wire -----------------------------------------------------------
@@ -350,8 +350,16 @@ function serve(req: any): unknown {
   try {
     const args = (req.args ?? []).map(dec);
     switch (req.op) {
-      case "call":
-        return settle(id, resolve(req.fn)(...args), enc);
+      case "call": {
+        // THE call (foreign-one-held): a name, or a held object's method or
+        // attribute; `held` keeps the answer here and answers its ref
+        const at = req.fn;
+        const out = typeof at === "string" ? resolve(at)(...args)
+          : at.method !== undefined ? heldAt(at.ref)[at.method](...args)
+          : at.attr !== undefined ? heldAt(at.ref)[at.attr]
+          : (() => { throw new Error(`a call's address is a name, a method or an attribute, got ${JSON.stringify(at)}`); })();
+        return settle(id, out, req.held ? hold : enc);
+      }
       case "program": {
         // ONE program protocol (foreign-one-program): a program as data
         // (done/perform), or ordinary code whose okay_call's are `once` nodes
@@ -377,15 +385,6 @@ function serve(req: any): unknown {
       case "forget":
         runs.delete(req.run);
         return { id, ok: null };
-      case "hold":
-        return settle(id, resolve(req.fn)(...args), hold);
-      case "method": {
-        const obj = heldAt(req.ref);
-        const out = obj[req.name](...args);
-        return settle(id, out, req.hold ? hold : enc);
-      }
-      case "attr":
-        return { id, ok: enc(heldAt(req.ref)[req.name]) };
       case "release":
         held.delete(req.ref);
         return { id, ok: null };

@@ -26,8 +26,9 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 /// the wire version this worker speaks; the host refuses any other
-/// 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`
-pub const SHIM_VERSION: i64 = 7;
+/// 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`;
+/// 8: foreign-one-held — `hold`/`method`/`attr` fold into `call` (shared; no held objects here)
+pub const SHIM_VERSION: i64 = 8;
 
 // ------------------------------------------------------------------ values
 

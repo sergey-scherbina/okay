@@ -74,8 +74,9 @@ final class RSubprocess private (plain: Option[ForeignWorker], supervised: Optio
 object RSubprocess:
 
   /** 9: foreign-one-value — the shared value tags, frames announced columnar;
-   * 10: foreign-one-program — `start`/`resume` fold into `program`/`continue` */
-  val ShimVersion = 10
+   * 10: foreign-one-program — `start`/`resume` fold into `program`/`continue`;
+   * 11: foreign-one-held — `hold` folds into `call` with `held` */
+  val ShimVersion = 11
 
   /**
    * Start a session: the configured `Rscript` (resolved against PATH

@@ -90,6 +90,12 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
   private def outRef(r: PyRef): Either[Condition, PyRef] =
     out(PyValue.Ref(r)).map { case PyValue.Ref(l) => l; case _ => r }
 
+  /** an address going OUT: a held object's ref must be the current worker's */
+  private def outAt(fn: Address): Either[Condition, Address] = fn match
+    case Address.Method(r, n) => outRef(r).map(Address.Method(_, n))
+    case Address.Attr(r, n) => outRef(r).map(Address.Attr(_, n))
+    case other => Right(other)
+
   /** a value coming IN: its refs are renamed into this generation */
   private def in(v: PyValue): PyValue = PyValue.rebuild(v) {
     case PyValue.Ref(r) => PyValue.Ref(r.copy(id = expose(r.id)))
@@ -221,21 +227,14 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
 
   def handler: Handler[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
-      case ForeignEval.Call(fn, args) =>
-        use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Call(fn, a)))).map(in)
+      case ForeignEval.Call(fn, args, held) =>
+        use(w => for
+          at <- outAt(fn)
+          a <- outAll(args)
+          v <- w.handler.handle(ForeignEval.Call(at, a, held))
+        yield in(v))
       case ForeignEval.Frame(fn, frame, args) =>
         use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Frame(fn, frame, a))))
-      case ForeignEval.Hold(fn, args) =>
-        use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Hold(fn, a))))
-          .map(r => r.copy(id = expose(r.id)))
-      case ForeignEval.Method(r, name, args, h) =>
-        use(w => for
-          l <- outRef(r)
-          a <- outAll(args)
-          v <- w.handler.handle(ForeignEval.Method(l, name, a, h))
-        yield in(v))
-      case ForeignEval.Attr(r, name) =>
-        use(w => outRef(r).flatMap(l => w.handler.handle(ForeignEval.Attr(l, name)))).map(in)
       case ForeignEval.Release(r) =>
         if genOf(r.id) == generation then
           current.filter(_.alive).foreach(w =>

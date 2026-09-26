@@ -138,7 +138,7 @@ final case class PyRef(id: Long, pyType: String,
   def hold(method: String): PyRef.HoldMethod = PyRef.HoldMethod(this, method)
   /** an attribute of the held object */
   def attr[Out: okay.codec.Schema](name: String): Either[Condition, Out] ! ForeignEval =
-    okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Attr(this, name))
+    okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(Address.Attr(this, name), Vector.empty))
       .map(_.flatMap(shape.decode[Out](_)))
   /** drop the object in the worker; idempotent */
   def release: Unit ! ForeignEval = okay.effect[ForeignEval, Unit](ForeignEval.Release(this))
@@ -147,8 +147,8 @@ final case class PyRef(id: Long, pyType: String,
   def stage[I: ToPy, O: okay.codec.Schema](method: String, chunk: Int = 64,
                                           finish: Option[String] = None): Unit ! PyStream.Row[I, O] =
     PyStream.chunked[I, O](chunk,
-      buf => ForeignEval.Method(this, method, Vector(PyValue.Arr(buf)), hold = false),
-      finish.map(f => ForeignEval.Method(this, f, Vector.empty, hold = false)))
+      buf => ForeignEval.Call(Address.Method(this, method), Vector(PyValue.Arr(buf))),
+      finish.map(f => ForeignEval.Call(Address.Method(this, f), Vector.empty)))
 
 object PyRef:
   final class Method[Out: okay.codec.Schema](ref: PyRef, name: String):
@@ -159,7 +159,7 @@ object PyRef:
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[PyValue]): Either[Condition, Out] ! ForeignEval =
-      okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Method(ref, name, args, hold = false))
+      okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(Address.Method(ref, name), args))
         .map(_.flatMap(ref.shape.decode[Out](_)))
 
   final class HoldMethod(ref: PyRef, name: String):
@@ -170,7 +170,7 @@ object PyRef:
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! ForeignEval =
-      okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Method(ref, name, args, hold = true))
+      okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(Address.Method(ref, name), args, held = true))
         .map(_.flatMap(Wire.asRef).map(_.copy(shape = ref.shape)))
 
 /** how an argument becomes a `PyValue`: through its `Schema`, or as the
@@ -219,18 +219,36 @@ object PyFrame:
  * — data, and the worker survives to take the next call */
 final case class Condition(kind: String, message: String)
 
+/**
+ * WHAT a call reaches (foreign-one-held): a function by name, or a held
+ * object's method or attribute. A `String` where an address is expected IS
+ * a function's name (`Call("stats::median", args)`), and nothing else a
+ * string could mean here — which is why this, and only this, takes `into`.
+ */
+into enum Address:
+  case Fn(name: String)
+  case Method(ref: PyRef, name: String)
+  case Attr(ref: PyRef, name: String)
+
+  /** what the journal names the call by */
+  def named: String = this match
+    case Fn(n) => n
+    case Method(_, n) => s"method:$n"
+    case Attr(_, n) => s"attr:$n"
+
+object Address:
+  given Conversion[String, Address] = Fn(_)
+
 enum ForeignEval[+A] derives okay.Effect:
-  case Call(fn: String, args: Vector[PyValue])
+  /**
+   * THE call (foreign-one-held: `hold`, `method` and `attr` were calls with
+   * a particular address or answer): `fn` of `args`, answering its value —
+   * or, with `held`, a handle to it kept in the worker (`PyValue.Ref`).
+   */
+  case Call(fn: Address, args: Vector[PyValue], held: Boolean = false)
     extends ForeignEval[Either[Condition, PyValue]]
   case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
     extends ForeignEval[Either[Condition, PyFrame]]
-  /** call `fn` and KEEP its result in the worker (foreign-object-handles) */
-  case Hold(fn: String, args: Vector[PyValue]) extends ForeignEval[Either[Condition, PyRef]]
-  /** a method of a held object: its value, or held in turn when `hold` */
-  case Method(ref: PyRef, name: String, args: Vector[PyValue], hold: Boolean)
-    extends ForeignEval[Either[Condition, PyValue]]
-  /** an attribute of a held object */
-  case Attr(ref: PyRef, name: String) extends ForeignEval[Either[Condition, PyValue]]
   /** drop a held object; idempotent */
   case Release(ref: PyRef) extends ForeignEval[Unit]
   /**
@@ -281,22 +299,21 @@ object ForeignEval:
    */
   given okay.codec.Journalled[ForeignEval] with
     def name[A](op: ForeignEval[A]): String = op match
-      case Call(fn, _) => fn
+      case Call(fn, _, held) => if held then s"hold:${fn.named}" else fn.named
       case Frame(fn, _, _) => fn
-      case Hold(fn, _) => s"hold:$fn"
-      case Method(_, name, _, _) => s"method:$name"
-      case Attr(_, name) => s"attr:$name"
       case Release(_) => "release"
       case Program(_, fn, _, _, _) => s"program:$fn"
       case Continue(_, _, _) => "continue"
       case Forget(_) => "forget"
     def fingerprint[A](op: ForeignEval[A]): String = op match
-      case Call(fn, args) => s"$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Call(fn, args, held) =>
+        val at = fn match
+          case Address.Fn(n) => n
+          case Address.Method(r, n) => s"${r.id}.$n"
+          case Address.Attr(r, n) => s"${r.id}.$n"
+        s"${if held then "hold:" else ""}$at#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Frame(fn, in, args) =>
         s"$fn#${Wire.digest(Json.JArr(Vector(Wire.encFrame(in), Json.JArr(args.map(Wire.enc)))))}"
-      case Hold(fn, args) => s"hold:$fn#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
-      case Method(r, name, args, h) => s"method:${r.id}.$name/$h#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
-      case Attr(r, name) => s"attr:${r.id}.$name"
       case Release(r) => s"release:${r.id}"
       case Program(run, fn, args, cbs, _) =>
         s"program:$run:$fn#${Wire.digest(Json.JArr(Vector(Json.JArr(args.map(Wire.enc)), Json.JArr(cbs.map(Json.JStr(_))))))}"
@@ -304,21 +321,12 @@ object ForeignEval:
       case Forget(run) => s"forget:$run"
     def withKey[A](op: ForeignEval[A], key: String): ForeignEval[A] = op
     def perform[A](op: ForeignEval[A], inner: okay.Handler[ForeignEval]): (A, String) = op match
-      case Call(fn, args) =>
-        val answer = inner.handle(Call(fn, args))
+      case Call(fn, args, held) =>
+        val answer = inner.handle(Call(fn, args, held))
         (answer, Wire.written(answer.map(Wire.enc)))
       case Frame(fn, in, args) =>
         val answer = inner.handle(Frame(fn, in, args))
         (answer, Wire.written(answer.map(Wire.encFrame)))
-      case Hold(fn, args) =>
-        val answer = inner.handle(Hold(fn, args))
-        (answer, Wire.written(answer.map(r => Wire.enc(PyValue.Ref(r)))))
-      case Method(r, name, args, h) =>
-        val answer = inner.handle(Method(r, name, args, h))
-        (answer, Wire.written(answer.map(Wire.enc)))
-      case Attr(r, name) =>
-        val answer = inner.handle(Attr(r, name))
-        (answer, Wire.written(answer.map(Wire.enc)))
       case Release(r) =>
         inner.handle(Release(r))
         ((), "released")
@@ -332,12 +340,9 @@ object ForeignEval:
         inner.handle(Forget(run))
         ((), "forgotten")
     def decode[A](op: ForeignEval[A], written: String): A = op match
-      case Call(_, _) => Wire.read(written).map(Wire.dec)
+      case Call(_, _, _) => Wire.read(written).map(Wire.dec)
       // an answer frame is read by the rules its REQUEST frame was made under
       case Frame(_, in, _) => Wire.read(written).flatMap(Wire.decFrame).map(_.ruledBy(in.shape))
-      case Hold(_, _) => Wire.read(written).flatMap(j => Wire.asRef(Wire.dec(j)))
-      case Method(_, _, _, _) => Wire.read(written).map(Wire.dec)
-      case Attr(_, _) => Wire.read(written).map(Wire.dec)
       case Release(_) => ()
       case Program(_, _, _, _, _) => Wire.read(written).flatMap(Wire.decNode)
       case Continue(_, _, _) => Wire.read(written).flatMap(Wire.decNode)

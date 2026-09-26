@@ -14,7 +14,7 @@ class TestRJournal extends munit.FunSuite {
 
   private def canned(ran: AtomicInteger): Handler[REval] = new Handler[REval]:
     def handle[A](op: REval[A]): A = op match
-      case REval.Call(fn, _) =>
+      case REval.Call(okay.py.Address.Fn(fn), _, _) =>
         ran.incrementAndGet(): Unit
         fn match
           case "stats::median" => Right(Vec(Vector(F64(2.0))))

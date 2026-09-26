@@ -409,7 +409,8 @@ object Py {
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! ForeignEval =
-      effect[ForeignEval, Either[Condition, PyRef]](ForeignEval.Hold(address, args)).map(_.map(_.copy(shape = shape)))
+      effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(address, args, held = true))
+        .map(_.flatMap(Wire.asRef).map(_.copy(shape = shape)))
 
   /**
    * A callback Python may call by name while okay runs one of its

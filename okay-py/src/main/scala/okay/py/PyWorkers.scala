@@ -85,16 +85,14 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
   /** run one operation on `w` under its lock, its refs renamed to the
    * worker's own and any ref it answers registered pool-wide */
   private def on[A](w: ForeignWorker, e: ForeignEval[A], fromPool: Boolean): A = e match
-    case ForeignEval.Call(fn, args) => w.synchronized(w.handler.handle(ForeignEval.Call(fn, args.map(local))))
-    case ForeignEval.Frame(fn, f, args) => w.synchronized(w.handler.handle(ForeignEval.Frame(fn, f, args.map(local))))
-    case ForeignEval.Hold(fn, args) =>
-      w.synchronized(w.handler.handle(ForeignEval.Hold(fn, args.map(local)))).map(register(w, _))
-    case ForeignEval.Method(r, name, args, h) =>
-      w.synchronized(w.handler.handle(ForeignEval.Method(localRef(r), name, args.map(local), h))).map {
-        case PyValue.Ref(held) if h => PyValue.Ref(register(w, held))
+    case ForeignEval.Call(fn, args, held) =>
+      val answer = w.synchronized(w.handler.handle(ForeignEval.Call(localAt(fn), args.map(local), held)))
+      // a held answer is a ref of THIS worker: known pool-wide from now on
+      if held then answer.map {
+        case PyValue.Ref(r) => PyValue.Ref(register(w, r))
         case v => v
-      }
-    case ForeignEval.Attr(r, name) => w.synchronized(w.handler.handle(ForeignEval.Attr(localRef(r), name)))
+      } else answer
+    case ForeignEval.Frame(fn, f, args) => w.synchronized(w.handler.handle(ForeignEval.Frame(fn, f, args.map(local))))
     case ForeignEval.Program(run, fn, args, cbs, d) =>
       // a worker reached through a ref was never taken from the pool
       runs.put(run, (w, false)): Unit
@@ -104,11 +102,8 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
 
   /** the refs an operation names */
   private def named[A](e: ForeignEval[A]): Vector[Long] = e match
-    case ForeignEval.Call(_, args) => args.flatMap(refsIn)
+    case ForeignEval.Call(fn, args, _) => atRefs(fn) ++ args.flatMap(refsIn)
     case ForeignEval.Frame(_, _, args) => args.flatMap(refsIn)
-    case ForeignEval.Hold(_, args) => args.flatMap(refsIn)
-    case ForeignEval.Method(r, _, args, _) => r.id +: args.flatMap(refsIn)
-    case ForeignEval.Attr(r, _) => Vector(r.id)
     case ForeignEval.Program(_, _, args, _, _) => args.flatMap(refsIn)
     case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) => Vector.empty
 
@@ -125,6 +120,17 @@ final class PyWorkers private (n: Int, python: String, env: Map[String, String])
         s"okay.py: refs ${ids.distinct.mkString(", ")} live in different workers; one call reaches one process")
 
   private def localRef(r: PyRef): PyRef = PyRef(refs.get(r.id)._2, r.pyType)
+
+  /** the ref an address names (a held object's method or attribute) */
+  private def atRefs(fn: Address): Vector[Long] = fn match
+    case Address.Method(r, _) => Vector(r.id)
+    case Address.Attr(r, _) => Vector(r.id)
+    case Address.Fn(_) => Vector.empty
+
+  private def localAt(fn: Address): Address = fn match
+    case Address.Method(r, n) => Address.Method(localRef(r), n)
+    case Address.Attr(r, n) => Address.Attr(localRef(r), n)
+    case other => other
 
   private def local(v: PyValue): PyValue = PyValue.rebuild(v) {
     case PyValue.Ref(r) => PyValue.Ref(localRef(r))

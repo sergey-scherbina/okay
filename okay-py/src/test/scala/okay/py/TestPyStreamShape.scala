@@ -12,7 +12,7 @@ class TestPyStreamShape extends munit.FunSuite {
     var seenAtCall = Vector.empty[Int]
     val mock = new okay.Handler[PyEval]:
       def handle[A](op: PyEval[A]): A = op match
-        case PyEval.Call(_, Vector(Arr(xs))) =>
+        case PyEval.Call(_, Vector(Arr(xs)), _) =>
           seenAtCall :+= produced
           Right(Arr(xs))
         case other => throw IllegalArgumentException(s"not scripted: $other")

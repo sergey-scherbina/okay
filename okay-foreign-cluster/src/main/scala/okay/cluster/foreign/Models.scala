@@ -56,7 +56,7 @@ final class PyModel[P](module: PyModule, fn: String, params: P, python: String, 
     Option(refs.get(w)) match
       case Some(r) => Right(r)
       case None =>
-        w.handler.handle(ForeignEval.Hold(s"${module.name}:$fn", Vector(PyCodec.encode(params))))
+        w.handler.handle(ForeignEval.Call(s"${module.name}:$fn", Vector(PyCodec.encode(params)), held = true)).flatMap(okay.py.Wire.asRef)
           .map { r => refs.put(w, r): Unit; r }
   }
 
@@ -81,7 +81,7 @@ final class RModel[P](module: RModule, fn: String, params: P, rscript: String, w
     Option(refs.get(r)) match
       case Some(ref) => Right(ref)
       case None =>
-        r.handler.handle(REval.Hold(s"${module.name}::$fn", Vector(RCodec.encode(params))))
+        r.handler.handle(REval.Call(s"${module.name}::$fn", Vector(RCodec.encode(params)), held = true)).flatMap(okay.py.Wire.asRef)
           .map { ref => refs.put(r, ref): Unit; ref }
   }
 
