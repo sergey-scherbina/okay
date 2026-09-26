@@ -16,5 +16,5 @@ plus a walking loop for Layer 1 B bodies (fib100 1.02x master,
 statePara 0.98x — within noise). statePara is unchanged: 1.11x the
 base with no switch possible and +21 KB/op of REAL allocation (an
 exact count says so), filed back as cont-stack-fastpath with the next
-instrument named. Commits: the spec note 473126bd3, the change
-2611b5f69, and the landing commit that carries this entry.
+instrument named. Commits: the spec note 532f7a16d, the change
+2941e3ac3, and the landing commit that carries this entry.
