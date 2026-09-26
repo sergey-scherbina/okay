@@ -265,6 +265,10 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   no null test. The watched cases are matched LAST, after `K` in the
   walk, so neither the plain dollar nor a capture passing binds pays a
   type test for them. A `Mark` and the plain cut are untouched.
+  MEASURED: delimDollarOnly 388 008 -> 372 008 B/op (exact, both
+  rounds) and 24.75 -> 23.56 us; delimGenerator 942 328 and
+  stateLexTail 366 642 B/op unchanged (history.d
+  delim-dollar-shots-bytes).
 - **Compile time where the arc promised it (dollar-doors, 2026-09-25).**
   Three doors the arc left at the raw-prompt level or at run time:
   (1) `Delim.dollar(ret) { body }` with `Prompted[R]` in scope, the
