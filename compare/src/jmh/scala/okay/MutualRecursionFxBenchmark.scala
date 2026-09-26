@@ -9,7 +9,7 @@ import okay.Row.at
  * unbounded mutual tail recursion as MutualRecursionBenchmark
  * (isEven/isOdd, N = 1 000 000), now doing work on the way — every
  * level counts itself on a `Metrics`, and every 1 000th level writes a
- * line to a `AppLog`. On the JVM roads those are plain interfaces
+ * line to an `AppLog`. On the JVM roads those are plain interfaces
  * passed as parameters, the way a service gets its logger and metrics;
  * the calls go INSIDE each road's own suspension (the trampoline's
  * thunk, `Eval.defer`, `IO.defer`, `ZIO.suspendSucceed`, kyo's `IO`,
@@ -264,9 +264,10 @@ object MutualRecursionFxBenchmark {
    * the type, the handlers their implementation */
   object OkayRow {
     type Fx = State % Int + Writer % String
-    private def stepFx(n: Int): Unit ! Fx =
+    /** the count after this level; the recursion ignores it */
+    private def stepFx(n: Int): Int ! Fx =
       val counted = State.modify[Int](_ + 1).at[Fx]
-      if n % 1000 == 0 then counted.flatMap(_ => Writer.tell(s"level $n").at[Fx]) else counted
+      if n % 1000 == 0 then counted.flatMap(k => Writer.tell(s"level $n").at[Fx].map(_ => k)) else counted
     def even(n: Int): Boolean ! Fx =
       if n == 0 then pure(true) else stepFx(n).flatMap(_ => odd(n - 1))
     def odd(n: Int): Boolean ! Fx =
