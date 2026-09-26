@@ -16,8 +16,11 @@ nothing to write.
   A nested dictionary is refused on write by name. ApacheArrow writes a
   `Dictionary` decoded — the dictionary road is OkayArrow's.
 - okay-py / okay-r: the frames and `Rows` read a `Dictionary` as its
-  values; `ForeignWorker.frameTable(…, keepDictionaries = true)` answers
-  them kept (default unchanged).
+  values; `ForeignWorker.frameTable(…, exact = true)` answers the far
+  side's table exactly — dictionaries kept, and the Python shim no longer
+  narrows it to the five frame kinds (int32, dates, timestamps stay; the
+  request's `exact` flag; R's shim already answered its own types).
+  Default unchanged.
 - Tests: TestArrowDictionary (4), TestArrowFramesDictionary,
   TestRArrowFramesDictionary; TestPyArrowOracle +1 (Live, pyarrow 19.0.1:
   ours is pyarrow's `dictionary<values=string, indices=int32, ordered=1>`

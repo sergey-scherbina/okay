@@ -272,6 +272,16 @@ def _to_table(v):
             raise _NotArrow(str(e))
     return pa.table(cols, names=t.column_names)
 
+def _exact_table(v):
+    """the answer as the function made it (a pyarrow Table, a DataFrame, a
+    dict of columns), its metadata dropped"""
+    import pyarrow as pa
+    if isinstance(v, pa.Table): return v.replace_schema_metadata(None)
+    if hasattr(v, "to_dict") and not isinstance(v, dict):
+        return pa.Table.from_pandas(v, preserve_index=False)
+    if isinstance(v, dict): return pa.table(v)
+    raise TypeError("a frame function must answer a table, a DataFrame or a dict of columns, got %s" % type(v).__name__)
+
 def _write_message(data):
     if _mode["compress"] == "deflate":
         z = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -15)
@@ -283,12 +293,15 @@ def _write_message(data):
         import os
         os._exit(0)
 
-def reply_frame(rid, out, arrow):
+def reply_frame(rid, out, arrow, exact=False):
     """a frame's answer: Arrow when the request came as Arrow and the answer
-    is one of the five columns, else the JSON frame it always was"""
+    is one of the five columns, else the JSON frame it always was. `exact`
+    (okay-arrow stage 8, arrow-dictionary): the host reads every Arrow type,
+    so the answer goes as the function made it — dictionaries, int32, dates
+    and timestamps kept, nothing narrowed to the five"""
     if arrow:
         try:
-            t = _to_table(out)
+            t = _exact_table(out) if exact else _to_table(out)
         except _NotArrow:
             t = None
         if t is not None:
@@ -489,7 +502,7 @@ def serve(req):
                     if getattr(f, "_okay_arrow", False) and _HAS_ARROW:
                         import pyarrow as pa
                         frame = pa.table(frame)
-                reply_frame(rid, f(frame, *[dec(a) for a in raw[1:]]), arrow)
+                reply_frame(rid, f(frame, *[dec(a) for a in raw[1:]]), arrow, bool(req.get("exact")))
                 return
             args = [dec(a) for a in raw]
             if isinstance(at, str):

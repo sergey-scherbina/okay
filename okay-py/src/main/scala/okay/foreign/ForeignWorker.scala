@@ -55,13 +55,16 @@ final class ForeignWorker private (session: WireSession,
    * PyFrame, for a caller whose frame is already a Table.
    */
   def frameTable(fn: String, table: okay.arrow.Table, args: Vector[PyValue],
-                 /** the answer's dictionary-encoded columns as `Column.Dictionary` — an R
-                  * factor's levels, a pandas category's categories — rather than decoded
-                  * (okay-arrow stage 8); only on the Arrow road */
-                 keepDictionaries: Boolean = false): Either[Condition, okay.arrow.Table] = timed:
+                 /** the answer's table EXACTLY as the far side made it (okay-arrow
+                  * stage 8): dictionary-encoded columns kept as `Column.Dictionary` —
+                  * an R factor's levels, a pandas category's categories — and no
+                  * narrowing to the frame's five kinds (int32, dates, timestamps stay);
+                  * only on the Arrow road */
+                 exact: Boolean = false): Either[Condition, okay.arrow.Table] = timed:
     def asTable(f: PyFrame): Either[Condition, okay.arrow.Table] = tables.table(f).left.map(Condition("Frame", _))
     if arrow then
-      val (j, got) = session.exchangeArrow(tableCall(fn, None, args), table, keepDictionaries)
+      val head = tableCall(fn, None, args) ++ (if exact then Vector("exact" -> Json.JBool(true)) else Vector.empty)
+      val (j, got) = session.exchangeArrow(head, table, keepDictionaries = exact)
       answer(j)(v => got.fold(Wire.decFrame(v).flatMap(asTable))(Right(_)))
     else
       val sent = try Right(tables.frame(table))

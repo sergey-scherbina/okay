@@ -373,9 +373,13 @@ writer lists the dictionary blocks in its footer.
 **The rest of okay.** Every match on `Column` that has no use for the
 encoding treats a `Dictionary` as its `decoded` column (the frames of
 okay-py and okay-r, Rows, the lake, parquet, the C Data bridge), so no
-consumer sees a new kind. `ForeignWorker.frameTable(…, keepDictionaries
-= true)` reads its answer with `readKeeping`; the default stays the
-decoded one. `ApacheArrow` writes a `Dictionary` decoded (its values)
+consumer sees a new kind. `ForeignWorker.frameTable(…, exact = true)`
+reads its answer with `readKeeping` and asks the far side for its table
+EXACTLY (the request's `exact`): the Python shim otherwise narrows an
+answer to the frame's five kinds — a dictionary decoded, int32 widened,
+a date or timestamp sent back as JSON — which is right for a frame and
+wrong for a round trip. R's shim answers `arrow_table(as.data.frame(…))`,
+its own types, already. The default stays as it was. `ApacheArrow` writes a `Dictionary` decoded (its values)
 and reads as before — stated, not hidden: the dictionary road is
 OkayArrow's.
 
@@ -398,5 +402,12 @@ OkayArrow's.
       TestArrowDictionary (on `Column.concat`, what the reader calls)
 - [x] a dictionary nested in a struct is refused on write, by name; an
       index outside its dictionary too — TestArrowDictionary
+- [x] `frameTable(exact = true)` through a live python3 + pyarrow answers
+      a dictionary, int32, NaN beside a null, date32 and a timestamp as
+      they were sent — TestFrameTableExact (Live; pyarrow 19.0.1, pandas
+      2.2.3), straight and through pandas on Arrow-backed dtypes. Found:
+      through pandas on NUMPY dtypes a NaN and a null in a float column
+      are one NaN — pandas' own limit, not the wire's; a caller that
+      needs the difference reads with `types_mapper=pd.ArrowDtype`
 - [x] okay-py's and okay-r's frames read a `Dictionary` as its values —
       TestArrowFramesDictionary, TestRArrowFramesDictionary; `Rows` too
