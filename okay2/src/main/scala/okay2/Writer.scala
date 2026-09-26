@@ -122,12 +122,23 @@ object Writer {
    * program's own answer. `Say` is the only constructor, so the match
    * refines the continuation's argument to Unit — no cast.
    */
+  /**
+   * The continuation after a value a stream view has just HANDED OVER,
+   * applied now — the moment pull counting relies on — except that a
+   * throw from it is held back as the rest, a program that throws when
+   * next stepped: applied bare, a throw took the handed-over value along
+   * (okay2-writer-told-then, the Scala 3 core's `Writer.toldThen`).
+   * Nothing changes where nothing throws.
+   */
+  private[okay2] def toldThen[R, A](k: Unit => Free[R, A]): Free[R, A] =
+    try k(()) catch { case e: Throwable => Free.Delay[R, A](() => throw e) }
+
   def uncons[W, A](a: Free[Writer[W], A]): Either[A, (W, A ! Writer[W])] = {
     val Said = said[W]
     Free.resume(a) match {
     case Return(x) => Left(x)
     case Inject(Said(w)) => Right((w, Return(loneAnswer[A])))
-    case Bind(Inject(Said(w)), k) => Right((w, k(())))
+    case Bind(Inject(Said(w)), k) => Right((w, toldThen(k)))
     case other => throw new IllegalStateException("resume left a non-head form: " + other)
   }
   }
@@ -142,7 +153,7 @@ object Writer {
       // a lone Say answers Unit, so the program's A IS Unit here
       case Inject(Mine(Say(w))) => pure(Right((w, Return(loneAnswer[A]))))
       case Inject(g) => Inject[G, A](g).map(x => Left(x))
-      case Bind(Inject(Mine(Say(w))), k) => pure(Right((w, k(()))))
+      case Bind(Inject(Mine(Say(w))), k) => pure(Right((w, toldThen(k))))
       case Bind(Inject(g), k) => Inject[G, Any](g).flatMap(x => go(k(x)))
       case other => throw new IllegalStateException("resume left a non-head form: " + other)
     }

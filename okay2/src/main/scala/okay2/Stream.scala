@@ -69,7 +69,7 @@ object Stream {
       @tailrec private def advance(): Unit = cur match {
         case Return(_) => ended = true
         case Inject(Said(w)) => elem = w; ready = true; ended = true
-        case Bind(Inject(Said(w)), k) => elem = w; ready = true; cur = k(())
+        case Bind(Inject(Said(w)), k) => elem = w; ready = true; cur = Writer.toldThen(k)
         case _ => cur = Free.resume(cur); advance()
       }
 
@@ -108,7 +108,7 @@ object Stream {
           case Return(_) => ended = true
           case Inject(Mine(Writer.Say(w))) => elem = w; ready = true; ended = true
           case Inject(g) => val _ = H.handleOp[Any](g); ended = true
-          case Bind(Inject(Mine(Writer.Say(w))), k) => elem = w; ready = true; cur = k(())
+          case Bind(Inject(Mine(Writer.Say(w))), k) => elem = w; ready = true; cur = Writer.toldThen(k)
           case Bind(Inject(g), k) => cur = k(H.handleOp[Any](g)); advance()
           case _ => cur = Free.resume(cur); advance()
         }
