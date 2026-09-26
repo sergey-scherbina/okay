@@ -29,6 +29,13 @@ enum State[S, +A] derives Effect {
 
   /** replace the state, answering with the new one */
   case Set(s: S) extends State[S, S]
+
+  /** replace the state by a function of it, answering the new one —
+   * `modify` as ONE operation rather than a get then a set: half the
+   * operations of every counter, and half the forwarding when another
+   * handler stands between it and State's (specs/effect-row-cost.md
+   * D1: 240 B a level against 96 for one set, measured exact) */
+  case Modify(f: S => S) extends State[S, S]
 }
 
 /** a value as a stateful computation */
@@ -53,7 +60,7 @@ object State {
    * `.map(_ => ())`, and one who wants the state would otherwise have
    * to ask for it again.
    */
-  inline def modify[S](f: S => S): S ! State % S = get[S].flatMap(s => set(f(s)))
+  inline def modify[S](f: S => S): S ! State % S = effect(Modify(f))
 
   /**
    * a transition that ANSWERS something computed from the old state:
@@ -121,10 +128,12 @@ object State {
       case Inject(e) => split[State[S, *], F](e) {
           case Get() => Return((s, s)): (S, A) ! F
           case Set(s) => Return((s, s)): (S, A) ! F
+          case Modify(f) => { val next = f(s); Return((next, next)): (S, A) ! F }
         } { e => Inject(e).map((s, _)) }
       case Bind(Inject(e), k) => split[State[S, *], F](e) {
           case Get() => loop(s)(k(s))
           case Set(s) => loop(s)(k(s))
+          case Modify(f) => { val next = f(s); loop(next)(k(next)) }
         } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
 
     loop(s)(a)
@@ -157,6 +166,9 @@ object State {
     def readPart: A ! State % S + F = !.widen[A, State % S, F](get[S].map(a => look(a)))
     def writePart(a: A): A ! State % S + F =
       !.widen[A, State % S, F](get[S].flatMap(s => set(put(a)(s))).map(_ => a))
+    // a Modify on the part is ONE Modify on the whole, answering the part
+    def modifyPart(f: A => A): A ! State % S + F =
+      !.widen[A, State % S, F](modify[S](s => put(f(look(s)))(s)).map(look))
 
     def _loop(x: X ! State % A + F): X ! State % S + F = loop(x)
     @tailrec def loop(x: X ! State % A + F): X ! State % S + F = (x.resume: @unchecked) match
@@ -170,6 +182,7 @@ object State {
       case Bind(Inject(e), k) => split[State[A, *], F](e) {
           case Get() => readPart.flatMap(a => _loop(k(a)))
           case Set(a) => writePart(a).flatMap(x => _loop(k(x)))
+          case Modify(f) => modifyPart(f).flatMap(x => _loop(k(x)))
         } { e => Inject(e).flatMap(x => _loop(k(x))) }
 
     loop(p)

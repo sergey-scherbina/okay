@@ -60,10 +60,12 @@ object Fused {
         case Inject(e) => split[State % S, Writer % W](e) {
             case State.Get() => ((s, w), s): ((S, Vector[W]), A)
             case State.Set(s2) => ((s2, w), s2): ((S, Vector[W]), A)
+            case State.Modify(f) => { val s2 = f(s); ((s2, w), s2): ((S, Vector[W]), A) }
           } { case Writer.Say(v) => ((s, w :+ v), ()): ((S, Vector[W]), A) }
         case Bind(Inject(e), k) => split[State % S, Writer % W](e) {
             case State.Get() => loop(s, w)(k(s))
             case State.Set(s2) => loop(s2, w)(k(s2))
+            case State.Modify(f) => { val s2 = f(s); loop(s2, w)(k(s2)) }
           } { w0 =>
             // `Say` is Writer's ONLY constructor, but under a Bind the
             // answer type is existential and the exhaustivity checker
@@ -97,12 +99,14 @@ object Fused {
           } { e => split[State % S, Writer % W](e) {
             case State.Get() => Right(((s, w), s)): Either[E, ((S, Vector[W]), A)]
             case State.Set(s2) => Right(((s2, w), s2)): Either[E, ((S, Vector[W]), A)]
+            case State.Modify(f) => { val s2 = f(s); Right(((s2, w), s2)): Either[E, ((S, Vector[W]), A)] }
           } { case Writer.Say(v) => Right(((s, w :+ v), ())): Either[E, ((S, Vector[W]), A)] } }
         case Bind(Inject(e), k) => split[Throws % E, State % S + Writer % W](e) {
             case Throws(err) => Left(err)
           } { e => split[State % S, Writer % W](e) {
             case State.Get() => loop(s, w)(k(s))
             case State.Set(s2) => loop(s2, w)(k(s2))
+            case State.Modify(f) => { val s2 = f(s); loop(s2, w)(k(s2)) }
           } { w0 => (w0: @unchecked) match
                 case Writer.Say(v) => loop(s, w :+ v)(k(())) } }
     loop(s, Vector.empty)(p)
@@ -147,6 +151,7 @@ object Fused {
     [X] => e => split[State % S, Writer % W](e) {
         case State.Get() => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(acc._1)(acc))
         case State.Set(s2) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(s2)((s2, acc._2)))
+        case State.Modify(f) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => { val s2 = f(acc._1); k(s2)((s2, acc._2)) })
       } { case Writer.Say(v) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(())((acc._1, acc._2 :+ v))) }
 
   /** the same for a program written directly against a Control

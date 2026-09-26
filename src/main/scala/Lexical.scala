@@ -248,6 +248,7 @@ object Lexical:
         def op[X](e: okay.State[S, X], k: X => Ans[S, A, G] ! G): Ans[S, A, G] ! G = e match
           case okay.State.Get() => okay.pure((s: S) => k(s).flatMap(f => f(s)))
           case okay.State.Set(s1) => okay.pure((_: S) => k(s1).flatMap(f => f(s1)))
+          case okay.State.Modify(g) => okay.pure((s: S) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) })
       )(body).flatMap(f => f(s0))
 
     def shallow[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)
@@ -258,6 +259,7 @@ object Lexical:
                   again: (Ans[S, A, G] ! G) => Ans[S, A, G] ! G): Ans[S, A, G] ! G = e match
           case okay.State.Get() => okay.pure((s: S) => again(k(s)).flatMap(f => f(s)))
           case okay.State.Set(s1) => okay.pure((_: S) => again(k(s1)).flatMap(f => f(s1)))
+          case okay.State.Modify(g) => okay.pure((s: S) => { val s1 = g(s); again(k(s1)).flatMap(f => f(s1)) })
       )(body).flatMap(f => f(s0))
 
     /** the DEFAULT for State: its clauses are tail-resumptive, so `tail` */
@@ -270,6 +272,7 @@ object Lexical:
         def op[X](e: okay.State[S, X], s: S): (S, X) = e match
           case okay.State.Get() => (s, s)
           case okay.State.Set(s1) => (s1, s1)
+          case okay.State.Modify(g) => { val s1 = g(s); (s1, s1) }
       )(body)
 
     /** WALK, for State (optional, never the default) */
@@ -279,11 +282,14 @@ object Lexical:
         def op[X](e: okay.State[S, X], s: S): (S, X) = e match
           case okay.State.Get() => (s, s)
           case okay.State.Set(s1) => (s1, s1)
+          case okay.State.Modify(g) => { val s1 = g(s); (s1, s1) }
       )(body)
 
     extension [S, G[+_]](i: Inst[okay.State % S, G])
       def get: S ! G = i.perform(okay.State.Get[S, S]())
       def set(s: S): S ! G = i.perform(okay.State.Set[S, S](s))
+      /** one operation, as `State.modify` (specs/effect-row-cost.md D1) */
+      def modify(f: S => S): S ! G = i.perform(okay.State.Modify[S, S](f))
       /** `set` as a STATEMENT: the same operation, answering `Unit`, so a
        * marked `s.put(v).?` on its own line leaves nothing unused (what
        * `tell` is for Writer) */

@@ -66,6 +66,8 @@ object Bisim:
       def apply[X](op: State[S, X]): List[X] = op match
         case State.Get() => samples.toList
         case State.Set(s) => List(s)
+        // a modify answers the new state: each sample, modified
+        case State.Modify(f) => samples.toList.map(f)
 
     /** every `ask` answered by each sample in turn */
     def reader[R](samples: R*): Answers[Reader % R] = new Answers[Reader % R]:

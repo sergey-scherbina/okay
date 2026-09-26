@@ -43,6 +43,7 @@ class TestRowForwarding extends munit.FunSuite:
   private def stateOn[S, X](s: S, e: State[S, X]): (S, X) = e match
     case State.Get() => (s, s)
     case State.Set(s1) => (s1, s1)
+    case State.Modify(g) => { val s1 = g(s); (s1, s1) }
 
   def readerStep[R]: [X] => (R, Reader[R, X]) => (R, X) = [X] => (r: R, e: Reader[R, X]) => readerOn(r, e)
   private def readerOn[R, X](r: R, e: Reader[R, X]): (R, X) = e match

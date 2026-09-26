@@ -222,10 +222,12 @@ class TestLexicalStacked extends munit.FunSuite:
       def op[X](e: State[Int, X], k: X => Ans ! Delim + P): Ans ! Delim + P = e match
         case State.Get() => okay.pure((s: Int) => k(s).flatMap(f => f(s)))
         case State.Set(s1) => okay.pure((_: Int) => k(s1).flatMap(f => f(s1)))
+        case State.Modify(g) => okay.pure((s: Int) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) })
     val tail = new Lexical.TailClauses[State % Int, Int]:
       def op[X](e: State[Int, X], s: Int): (Int, X) = e match
         case State.Get() => (s, s)
         case State.Set(s1) => (s1, s1)
+        case State.Modify(g) => { val s1 = g(s); (s1, s1) }
 
   test("stacked deep and tail instances, one inside the other: each operation reaches its own") {
     val r = !.run(delimited[(Int, Int), P] { root =>
@@ -293,6 +295,7 @@ class TestLexicalDefault extends munit.FunSuite:
       def op[X](e: State[Int, X], s: Int): (Int, X) = e match
         case State.Get() => (s, s)
         case State.Set(s1) => (s1, s1)
+        case State.Modify(g) => { val s1 = g(s); (s1, s1) }
     assertEquals(run(Lexical.handle(7)(counter)(s => s.get.flatMap(v => s.set(v * 2)))), (14, 14))
   }
 

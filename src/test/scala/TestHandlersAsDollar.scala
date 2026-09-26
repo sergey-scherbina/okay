@@ -42,6 +42,7 @@ class TestHandlersAsDollar extends munit.FunSuite:
     val op = [X] => (e: State[Int, X]) => (e match
       case State.Get() => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
       case State.Set(s1) => Delim.shift0[Ans, Int, W](p)(k => okay.pure((_: Int) => k(s1).flatMap(f => f(s1))))
+      case State.Modify(g) => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) }))
     ): X ! Delim + W
     val ret: A => Ans ! Delim + W = a => okay.pure((s: Int) => okay.pure((s, a)))
     Delim.run[(Int, A), W](Delim.dollar[A, Ans, W](p)(ret)(rewrite(op)(prog)).flatMap(f => f(s0)))
@@ -57,6 +58,8 @@ class TestHandlersAsDollar extends munit.FunSuite:
         Delim.control0[Ans, Int, W](p)(k => okay.pure((s: Int) => Delim.push(p)(k(s)).flatMap(f => f(s))))
       case State.Set(s1) =>
         Delim.control0[Ans, Int, W](p)(k => okay.pure((_: Int) => Delim.push(p)(k(s1)).flatMap(f => f(s1))))
+      case State.Modify(g) =>
+        Delim.control0[Ans, Int, W](p)(k => okay.pure((s: Int) => { val s1 = g(s); Delim.push(p)(k(s1)).flatMap(f => f(s1)) }))
     ): X ! Delim + W
     val body = rewrite(op)(prog).map(a => (s: Int) => okay.pure[Delim + W, (Int, A)]((s, a)))
     Delim.run[(Int, A), W](Delim.push(p)(body).flatMap(f => f(s0)))
@@ -102,6 +105,7 @@ class TestHandlersAsDollar extends munit.FunSuite:
     val op = [X] => (e: State[Int, X]) => (e match
       case State.Get() => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s).flatMap(f => f(s))))
       case State.Set(s1) => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => k(s1).flatMap(f => f(s))))
+      case State.Modify(g) => Delim.shift0[Ans, Int, W](p)(k => okay.pure((s: Int) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) }))
     ): X ! Delim + W
     val ret: Int => Ans ! Delim + W = a => okay.pure((s: Int) => okay.pure((s, a)))
     val wrong = Delim.run[(Int, Int), W](Delim.dollar[Int, Ans, W](p)(ret)(rewrite(op)(counter)).flatMap(f => f(1)))

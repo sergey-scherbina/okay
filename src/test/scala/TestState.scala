@@ -47,4 +47,28 @@ class TestState extends munit.FunSuite {
     assertEquals(r, (true, "42!"))
   }
 
+  // effect-row-cost D1: a counter that pays two operations per update
+  // pays them twice again when forwarded (specs/effect-row-cost.md)
+  test("modify is ONE operation: a single injected Modify, not get then set") {
+    State.modify[Int](_ + 1) match
+      case Free.Inject(State.Modify(_)) => ()
+      case other => fail(s"modify is not one operation: $other")
+  }
+
+  test("Modify answers the new state, and chains as modify always has") {
+    val p: (Int, Int) ! State % Int =
+      for
+        a <- State.modify[Int](_ + 1)
+        b <- State.modify[Int](_ * 10)
+      yield (a, b)
+    assertEquals(State.run(0)(p), (10, (1, 10)))
+  }
+
+  test("a forwarded Modify is handled by the outer State handler") {
+    type Fx = State % Int + Writer % String
+    import okay.Row.at
+    val p: Int ! Fx =
+      State.modify[Int](_ + 5).at[Fx].flatMap(n => Writer.tell(s"n=$n").at[Fx].map(_ => n))
+    assertEquals(State.run[Int, (Seq[String], Int)](1)(Writer.run[String, Int, State % Int](p)), (6, (Seq("n=6"), 6)))
+  }
 }
