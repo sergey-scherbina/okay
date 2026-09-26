@@ -12,9 +12,12 @@ of the old road at the default capacity 64, parity at 1024, a NAMED
 ~10% loss at 256 (two explanations refuted; backlog `merge-cap256-gap`).
 FOUND AND FIXED IN THE CORE on the way: Writer's stream views
 (`Writer.uncons`, both linear iterators — the one `Channel.buffer`
-walks) applied the continuation before handing the told value over,
-so a source whose next step threw lost the value it had just told; the
-old `Source.merge` lost it too. `TestWriterToldBeforeThrow`,
+walks) applied the continuation as they handed a told value over, and
+a throw from it took the value along; the old `Source.merge` lost it
+too. `Writer.toldThen` holds the throw back as the rest, so the value
+is out first and nothing changes where nothing throws (a lazy first
+cut moved when source code runs and broke two FoldUntil pull-count
+laws; reverted). `TestWriterToldBeforeThrow`,
 `TestSourceToldBeforeThrow`, a Source-level failure law in
 `TestChannelFailure`, TestReadyMerge's failure laws rewritten. The
 chunked roads still use the shared channel: backlog

@@ -95,9 +95,15 @@ as a stream — `Writer.uncons` (pure and with effects) and both linear
 iterators, which `Channel.buffer`'s `feed` walks — applied the
 continuation `k(())` BEFORE handing the told value over, so a source
 whose next step throws while being BUILT (`Source.of` over a stream
-whose `uncons` throws) lost the value with it. Fixed in `Writer.scala`:
-the iterators keep `k` unapplied behind a flag (no allocation), the
-`uncons` views return it as a lazy `Bind(Return(()), k)`.
+whose `uncons` throws) lost the value with it. Fixed in `Writer.scala`
+by `Writer.toldThen`: `k` is still applied as the value is handed over,
+but a throw from it becomes the REST — a `Delay` that throws when next
+stepped — so the value is out first. FIRST CUT, REVERTED: applying `k`
+lazily (a flag in the iterators, a `Bind(Return(()), k)` from `uncons`)
+also fixed the loss but moved WHEN a source's code runs, and two
+FoldUntil laws that count pulls by exactly that went red
+(`TestFoldUntilStreams`: `pipe` pulled 2 where `Writer.foldUntil`
+pulls 3). The kept fix changes nothing on a path that does not throw.
 `TestWriterToldBeforeThrow` (core, watched failing first) and
 `TestSourceToldBeforeThrow` (okay-stream, through `Channel.buffer`).
 
@@ -123,11 +129,10 @@ by the script:
   The old arm at 256 is itself unstable — ±9 in 5 of 6 attempts, the
   script gave up on one round — so part of the gap may be the old
   road's good forks. Backlog `merge-cap256-gap`.
-- **The control moved**: `okaySourceSingleDrain` read 45.4-48.7 here
-  against 44.3 / 44.5 before the `Writer.uncons` fix; the fix adds one
-  lazy `Bind` per `uncons` on the `toLazyList` road, so ~2-6% may be
-  its price — inside the controls' own spread, noted rather than
-  claimed.
+- **The control** (`okaySourceSingleDrain`) read 45.4-48.7 in these
+  rounds against 44.3 / 44.5 the day before; those rounds ran the
+  REVERTED lazy cut, which added a `Bind` per `uncons` on that lane's
+  road. The kept `toldThen` adds nothing where nothing throws.
 
 The chunked roads (`chunked = true`, `flushAfter`, `mergeFlushing`,
 `either`) still go through the shared channel: backlog
