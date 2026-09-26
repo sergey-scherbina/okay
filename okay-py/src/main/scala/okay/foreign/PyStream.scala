@@ -112,7 +112,8 @@ object PyStream:
    * (`releasing`) every source runs in. Needs a far side on a multiplexed
    * wire (Go, Rust); elsewhere the stream is refused by name.
    */
-  private[okay] def driven[O: Schema](fn: String, args: Vector[PyValue], credit: Int, id: () => Long)
+  private[okay] def driven[O: Schema](fn: String, args: Vector[PyValue], credit: Int, id: () => Long,
+                                      input: Option[Iterator[PyValue]] = None)
                                      (using shape: Shape): Unit ! SourceRow[O] =
     type R = SourceRow[O]
     require(credit >= 1, "a stream's credit is at least one chunk")
@@ -128,7 +129,7 @@ object PyStream:
       }
     pure[R, Unit](()).flatMap { _ =>
       val s = id()
-      effect[R, Either[Condition, Unit]](ForeignEval.Stream(s, fn, args, credit)).flatMap {
+      effect[R, Either[Condition, Unit]](ForeignEval.Stream(s, fn, args, credit, input)).flatMap {
         case Left(c) => throw Failed(c)
         case Right(()) => effect[R, Unit](Holding.HoldStream(s)).flatMap(_ => loop(s))
       }

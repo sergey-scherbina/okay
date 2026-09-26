@@ -24,7 +24,9 @@ import okay.Row.plus
  *    worker that claims `mux` (Go), each served while the other waits;
  *  - `numbers(n, size, tag)` DRIVES a stream of `0 until n` in chunks of
  *    `size`, `emitted_of(tag)` says how many chunks it has sent and
- *    `stopped_of(tag)` whether it has returned.
+ *    `stopped_of(tag)` whether it has returned;
+ *  - `sum_after(tag)` reads the HOST's stream once `open(tag)` ran, and sends
+ *    its sum; `dedup` answers each chunk in with what it had not seen.
  */
 abstract class WireConformance extends munit.FunSuite:
 
@@ -178,6 +180,32 @@ abstract class WireConformance extends munit.FunSuite:
     def stopped = engine.handler.handle(ForeignEval.Call(address("stopped_of"), Vector(PyValue.Str(tag)))) == Right(PyValue.Bool(true))
     while !stopped && System.nanoTime() < until do Thread.sleep(50)
     assert(stopped, "the stream's function is still blocked: the early stop did not cancel it")
+  }
+
+  test("FED: the host feeds the far function, never more than its credit ahead — counted on the host (foreign-host-streams)") {
+    assume(engine.muxed, "this far side is served one exchange at a time")
+    val tag = s"f${System.nanoTime}"
+    val fed = java.util.concurrent.atomic.AtomicInteger()
+    val input = Iterator.tabulate(1000)(i => { fed.incrementAndGet(); i.toLong })
+    import scala.concurrent.{Await, ExecutionContext, Future}
+    import scala.concurrent.duration.DurationInt
+    val summed = Future(Writer.run(Py.releasing(Py.stream[Long](address("sum_after"), credit = 3)
+      .feeding(input, chunk = 1)(tag))).runWith(using engine.handler)._1)(using ExecutionContext.global)
+    // nothing is taken until the gate opens: the host holds at the credit
+    var last = -1
+    while fed.get != last do { last = fed.get; Thread.sleep(200) }
+    assert(fed.get <= 3 + 1, s"the host fed ${fed.get} chunks ahead of a far side that took none, at a credit of three")
+    assertEquals(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(tag)))), Right(PyValue.Str(tag)))
+    assertEquals(Await.result(summed, 30.seconds).toList, List((0L until 1000L).sum))
+    assertEquals(fed.get, 1000)
+  }
+
+  test("DUPLEX: a dedup both ways at once — 20 000 rows in, the distinct ones out, in order") {
+    assume(engine.muxed, "this far side is served one exchange at a time")
+    val input = Iterator.tabulate(20000)(i => (i % 1000).toLong)
+    val out = within(Writer.run(Py.releasing(Py.stream[Long](address("dedup"), credit = 2)
+      .feeding(input, chunk = 512)())).runWith(using engine.handler)._1)
+    assertEquals(out.toList, (0L until 1000L).toList)
   }
 
   /** whether a far-side failure leaves the far side alive: false for Rust

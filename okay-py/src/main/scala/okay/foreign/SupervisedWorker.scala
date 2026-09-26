@@ -279,8 +279,8 @@ final class SupervisedWorker private[foreign] (open: () => ForeignWorker):
       // a stream lives on the worker that opened it and is NOT replayed: its
       // chunks were the far side's own work, and a fresh worker has none of
       // them — a pull there is refused by name (part 3)
-      case ForeignEval.Stream(s, fn, args, credit) =>
-        use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Stream(s, fn, a, credit))))
+      case ForeignEval.Stream(s, fn, args, credit, input) =>
+        use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Stream(s, fn, a, credit, input))))
       case ForeignEval.Pull(s) =>
         use(w => w.handler.handle(ForeignEval.Pull(s)).map(_.map(in)))
       case ForeignEval.Cancel(s) =>

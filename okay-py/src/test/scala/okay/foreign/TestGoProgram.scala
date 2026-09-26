@@ -111,7 +111,46 @@ func emittedOf(_ *okay.Ctx, args []any) any {
 	return int64(0)
 }
 
-var functions = okay.Functions{"quote": quote, "scale": scale, "counter": counter, "describe": describe,
+// the HOST's stream into a call: summed once its gate opens, so a test can
+// see how far ahead the host fed while nothing was taken
+func sumAfter(c *okay.Ctx, args []any) any {
+	<-gate(args[0].(string))
+	var sum int64
+	for {
+		chunk, ok := okay.Next(c)
+		if !ok {
+			break
+		}
+		for _, v := range chunk.([]any) {
+			sum += v.(int64)
+		}
+	}
+	okay.Emit(c, []any{sum})
+	return nil
+}
+
+// a DUPLEX transform: every chunk in answered by what it had not seen before
+func dedup(c *okay.Ctx, _ []any) any {
+	seen := map[int64]bool{}
+	for {
+		chunk, ok := okay.Next(c)
+		if !ok {
+			return nil
+		}
+		var fresh []any
+		for _, v := range chunk.([]any) {
+			if n := v.(int64); !seen[n] {
+				seen[n] = true
+				fresh = append(fresh, n)
+			}
+		}
+		if len(fresh) > 0 && okay.Emit(c, fresh) != nil {
+			return nil
+		}
+	}
+}
+
+var functions = okay.Functions{"sum_after": sumAfter, "dedup": dedup, "quote": quote, "scale": scale, "counter": counter, "describe": describe,
 	"await_open": awaitOpen, "open": open, "numbers": numbers, "emitted_of": emittedOf,
 	"stopped_of": func(_ *okay.Ctx, args []any) any { _, ok := stopped.Load(args[0].(string)); return ok }}
 

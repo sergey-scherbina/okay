@@ -117,8 +117,8 @@ val quote = Foreign.fn[Double](address("quote")).calling(Foreign.callbacks(price
 | Python | yes | yes (Arrow or columnar) | yes | stages, sources | yes | yes |
 | R | yes | yes (Arrow or columnar) | yes | stages, sources | yes | yes |
 | TypeScript | yes | yes (columnar) | yes | — | yes | yes |
-| Go | yes | yes (columnar) | values (no methods) | — | yes | yes |
-| Rust | yes | yes (columnar; Arrow C Data in process; not on wasm) | values (no methods; not on wasm) | — | yes | yes (not on wasm) |
+| Go | yes | yes (columnar) | values (no methods) | both ways under credit, and duplex (pipes, TCP) | yes | yes |
+| Rust | yes | yes (columnar; Arrow C Data in process; not on wasm) | values (no methods; not on wasm) | both ways under credit, and duplex (pipes, TCP) | yes | yes (not on wasm) |
 | Haskell | yes | yes (columnar) | values (no methods) | — | yes | — |
 | Clojure, Frege | yes | by reference | yes (JVM objects) | stages | yes | — |
 

@@ -1193,3 +1193,18 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   affected gate (132 module compiles, no warnings), okay-py's JMH sources,
   and the Live suites of okay-py 327, okay-r 102, okay-rust 47,
   okay-foreign-cluster 59, okay-foreign-workflow 12.
+- **foreign-host-streams (2026-09-26, Decision 27).** `Stream`'s optional
+  input (an iterator of chunks), sent by a feeder thread under the far
+  side's credit; `Py.stream(...).feeding(in, chunk)`; the head's `input`,
+  `{"op": "chunk"}`/`{"op": "end"}`, and the far side's
+  `{"stream": s, "credit": 1}` per chunk taken; Go's `okay.Next`, Rust's
+  `okay_next`; a cancel ends the call's input too, so a function waiting
+  in `Next` wakes.
+  - Tests (Live, the muxed Go and Rust rows): FED — a far function that
+    takes nothing until its gate opens holds the host at its credit
+    (credit three: at most four elements pulled from the iterator, counted
+    on the HOST), then sums all 1 000; DUPLEX — a dedup, 20 000 rows in,
+    the 1 000 distinct out in order, both directions at once.
+  - Mutants: the feeder ignoring the far side's credit fails FED; Rust's
+    `okay_next` granting no credit fails both cases in 30 s (bounded, not
+    hung).

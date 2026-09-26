@@ -100,6 +100,11 @@ final class WireSession private (link: WireLink,
 
   def closeStream(s: Long): Unit = muxer.closeStream(s)
 
+  /** a stream the host feeds (foreign-host-streams) */
+  def openInput(s: Long, credit: Long): Unit = muxer.openInput(s, credit)
+  def closeInput(s: Long): Unit = muxer.closeInput(s)
+  def takeCredit(s: Long): Boolean = muxer.takeCredit(s)
+
   /** one request among others in flight: sent, and its OWN answer awaited,
    * whatever arrives before it (foreign-mux-duplex) */
   private def muxed(id: Int, body: Json): Json =
@@ -240,6 +245,8 @@ object WireSession:
     /** the far-driven streams' chunks, by the stream id the host chose
      * (part 3): a message with `stream` and no `id` goes to its queue */
     private val streams = java.util.concurrent.ConcurrentHashMap[Long, java.util.concurrent.LinkedBlockingQueue[Json]]()
+    /** the far side's credit on each stream the HOST feeds (foreign-host-streams) */
+    private val credits = java.util.concurrent.ConcurrentHashMap[Long, java.util.concurrent.atomic.AtomicLong]()
     private val reading = java.util.concurrent.locks.ReentrantLock()
     @volatile private var ended = false
     if readerThread then
@@ -284,6 +291,24 @@ object WireSession:
     def openStream(s: Long): Unit = streams.put(s, java.util.concurrent.LinkedBlockingQueue[Json]()): Unit
     def closeStream(s: Long): Unit = streams.remove(s): Unit
 
+    /** a stream the host feeds, with the far side's first credit */
+    def openInput(s: Long, credit: Long): Unit = credits.put(s, java.util.concurrent.atomic.AtomicLong(credit)): Unit
+    def closeInput(s: Long): Unit = credits.remove(s): Unit
+
+    /** one unit of the far side's credit on `s`, reading for everyone while
+     * none is granted; false when the stream or the link has ended */
+    def takeCredit(s: Long): Boolean =
+      def granted = Option(credits.get(s)).forall(_.get > 0)
+      if readerThread then
+        while !granted && !ended do java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L)
+      else pump(() => granted)(java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L))
+      Option(credits.get(s)) match
+        case Some(c) if !ended =>
+          // one feeder per stream: nobody else takes this credit
+          c.decrementAndGet(): Unit
+          true
+        case _ => false
+
     /** the stream's next message — a chunk, its end, or its condition —
      * reading for everyone while it waits; None: no such stream here */
     def nextOf(s: Long, deadline: Option[Long]): Option[Json] =
@@ -311,9 +336,12 @@ object WireSession:
           unboxed(m.get("id")).collect { case Json.JNum(n) => n.toInt } match
             case Some(i) => Option(pending.remove(i)).foreach(_.complete(Json.JObj(fs)): Unit)
             case None =>
-              // a far-driven stream's chunk, end or condition (part 3)
-              unboxed(m.get("stream")).collect { case Json.JNum(n) => n.toLong }
-                .flatMap(s => Option(streams.get(s))).foreach(_.put(Json.JObj(fs)))
+              val s = unboxed(m.get("stream")).collect { case Json.JNum(n) => n.toLong }
+              unboxed(m.get("credit")).collect { case Json.JNum(n) => n.toLong } match
+                // the far side took a chunk of a stream the host feeds: one more may go
+                case Some(k) => s.flatMap(i => Option(credits.get(i))).foreach(_.addAndGet(k): Unit)
+                // a far-driven stream's chunk, end or condition (part 3)
+                case None => s.flatMap(i => Option(streams.get(i))).foreach(_.put(Json.JObj(fs)))
         case Some(_) => ()
         case None =>
           ended = true

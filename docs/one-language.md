@@ -844,6 +844,46 @@ error, so the function returns instead of waiting for ever. The suite
 counts on the FAR side: with a credit of three and nothing taken, exactly
 three chunks go out; one taken lets exactly one more through.
 
+## A stream the host feeds, and both at once
+
+The other direction: the Scala side FEEDS a stream into a Go or Rust
+function, which reads it with `okay.Next(c)` (Go) or `okay_next()` (Rust)
+at its own pace — each chunk it takes grants the host one more, so the host
+runs ahead of it by at most the credit. With the far function sending its
+own stream back while it reads, one call is a full-duplex transform. A
+dedup, in Go:
+
+```go
+chunk, ok := okay.Next(c)
+if !ok {
+	return nil
+}
+var fresh []any
+for _, v := range chunk.([]any) {
+	if n := v.(int64); !seen[n] {
+		seen[n] = true
+		fresh = append(fresh, n)
+	}
+}
+if len(fresh) > 0 && okay.Emit(c, fresh) != nil {
+	return nil
+}
+```
+
+The Scala side hands the input over as an iterator, chunked:
+
+```scala
+val out = within(Writer.run(Py.releasing(Py.stream[Long](address("dedup"), credit = 2)
+.feeding(input, chunk = 512)())).runWith(using engine.handler)._1)
+```
+
+The input is sent by a feeder of its own while the program reads the
+output. A program that did both on one thread could wait for the far
+side's credit while the far side waits, in `Emit`, for its own — each on
+the other. The suite counts on the HOST: with a credit of three and a far
+function that takes nothing yet, the host has pulled at most four elements
+from the iterator (three sent, one waiting to be).
+
 ## Limits
 
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.

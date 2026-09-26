@@ -10,7 +10,7 @@ object RustWorkerBinary:
   // no margin: the docs quote these lines
   val main: String = """mod ops;
 
-use okay::{done, perform, send, function, okay_call, okay_emit, Functions, Program, Programs, Value, Wire, Worker};
+use okay::{done, perform, send, function, okay_call, okay_emit, okay_next, Functions, Program, Programs, Value, Wire, Worker};
 
 /// two choices; okay's Choice handler continues each continuation twice
 fn pairs(_: Vec<Value>) -> okay::Prog {
@@ -82,6 +82,36 @@ fn make() -> Worker {
         *g.0.lock().unwrap() = true;
         g.1.notify_all();
         Ok(Value::Str(name))
+    }));
+    // the HOST's stream into a call: summed once its gate opens, so a test
+    // can see how far ahead the host fed while nothing was taken
+    functions.insert("sum_after".into(), function(|args| {
+        let g = gate(&String::from_value(&args[0])?);
+        {
+            let mut open = g.0.lock().unwrap();
+            while !*open {
+                open = g.1.wait(open).unwrap();
+            }
+        }
+        let mut sum = 0i64;
+        while let Some(chunk) = okay_next() {
+            for v in Vec::<i64>::from_value(&chunk)? {
+                sum += v;
+            }
+        }
+        okay_emit(vec![sum])?;
+        Ok(Value::Null)
+    }));
+    // a DUPLEX transform: every chunk in answered by what it had not seen before
+    functions.insert("dedup".into(), function(|_| {
+        let mut seen = std::collections::HashSet::new();
+        while let Some(chunk) = okay_next() {
+            let fresh: Vec<i64> = Vec::<i64>::from_value(&chunk)?.into_iter().filter(|n| seen.insert(*n)).collect();
+            if !fresh.is_empty() && okay_emit(fresh).is_err() {
+                break;
+            }
+        }
+        Ok(Value::Null)
     }));
     // a STREAM the worker drives: n numbers in chunks of size, each chunk
     // counted as it goes out, so a test can see how far ahead it ran

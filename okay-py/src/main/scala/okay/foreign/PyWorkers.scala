@@ -59,10 +59,10 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
         Option(runs.remove(run)).foreach((w, lease) =>
           try w.synchronized(w.handler.handle(ForeignEval.Forget(run)))
           finally lease.foreach(_.release(!w.alive)))
-      case ForeignEval.Stream(s, fn, args, credit) =>
+      case ForeignEval.Stream(s, fn, args, credit, input) =>
         val l = pool.lease()
         val opened =
-          try l.e.handler.handle(ForeignEval.Stream(s, fn, args.map(local), credit))
+          try l.e.handler.handle(ForeignEval.Stream(s, fn, args.map(local), credit, input))
           catch case t: Throwable => { l.release(dead(t) || !l.e.alive); throw t }
         if opened.isRight then streams.put(s, (l.e, l)): Unit else l.release(!l.e.alive)
         opened
@@ -116,7 +116,7 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
       runs.put(run, (w, lease)): Unit
       stepped(w, run, lease)(w.handler.handle(ForeignEval.Program(run, fn, args.map(local), cbs, d)))
     case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) |
-         ForeignEval.Stream(_, _, _, _) | ForeignEval.Pull(_) | ForeignEval.Cancel(_) =>
+         ForeignEval.Stream(_, _, _, _, _) | ForeignEval.Pull(_) | ForeignEval.Cancel(_) =>
       throw IllegalStateException("unreachable: continue, forget, release and streams are routed by the handler")
 
   /**
@@ -154,7 +154,7 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
     case ForeignEval.Frame(_, _, args) => args.flatMap(refsIn)
     case ForeignEval.Program(_, _, args, _, _) => args.flatMap(refsIn)
     case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) |
-         ForeignEval.Stream(_, _, _, _) | ForeignEval.Pull(_) | ForeignEval.Cancel(_) => Vector.empty
+         ForeignEval.Stream(_, _, _, _, _) | ForeignEval.Pull(_) | ForeignEval.Cancel(_) => Vector.empty
 
   private def refsIn(v: PyValue): Vector[Long] = PyValue.refs(v)
 

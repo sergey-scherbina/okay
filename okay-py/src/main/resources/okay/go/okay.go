@@ -415,6 +415,18 @@ func (w *Worker) openStream(id any, sid int64, req map[string]any, f func(c *Ctx
 	st.more = sync.NewCond(&st.mu)
 	w.streams[sid] = st
 	c := &Ctx{id: id, offered: map[string]bool{}, events: make(chan event), answers: make(chan answerMsg), next: &w.asks, stream: st}
+	// the host's stream into the call, when its head names one
+	if spec, ok := req["input"].(Dict); ok {
+		in := &inStream{push: w.push}
+		for _, kv := range spec {
+			if kv.Key == "id" {
+				in.id = asInt(kv.Val)
+			}
+		}
+		in.more = sync.NewCond(&in.mu)
+		w.inputs[in.id] = in
+		c.input = in
+	}
 	go func() {
 		ended := map[string]any{"stream": sid, "end": true}
 		defer func() {
@@ -428,6 +440,9 @@ func (w *Worker) openStream(id any, sid int64, req map[string]any, f func(c *Ctx
 			}
 			w.mu.Lock()
 			delete(w.streams, sid)
+			if c.input != nil {
+				delete(w.inputs, c.input.id)
+			}
 			w.mu.Unlock()
 			st.push(ended)
 		}()
@@ -486,6 +501,50 @@ type Ctx struct {
 	next    *int64
 	// a far-driven stream this call feeds with Emit (foreign-mux-duplex part 3)
 	stream *outStream
+	// the host's stream into this call, read with Next (foreign-host-streams)
+	input *inStream
+}
+
+// inStream is one stream the HOST feeds into a call: the chunks come as the
+// host sends them, and each one the function takes grants the host one more.
+type inStream struct {
+	id    int64
+	mu    sync.Mutex
+	more  *sync.Cond
+	queue []any
+	ended bool
+	push  func(map[string]any)
+}
+
+// Next is the next chunk of the host's stream into this call
+// (foreign-host-streams), waiting until one comes; false at its end. Taking
+// one grants the host one more chunk of credit, so the host runs ahead of
+// this function by at most the credit it was given.
+func Next(c *Ctx) (any, bool) {
+	in := c.input
+	if in == nil {
+		return nil, false
+	}
+	in.mu.Lock()
+	for len(in.queue) == 0 && !in.ended {
+		in.more.Wait()
+	}
+	if len(in.queue) == 0 {
+		in.mu.Unlock()
+		return nil, false
+	}
+	v := in.queue[0]
+	in.queue = in.queue[1:]
+	in.mu.Unlock()
+	in.push(map[string]any{"stream": in.id, "credit": int64(1)})
+	return v, true
+}
+
+func (in *inStream) end() {
+	in.mu.Lock()
+	in.ended = true
+	in.more.Broadcast()
+	in.mu.Unlock()
 }
 
 // outStream is one stream the far side drives: the credit the host granted
@@ -584,18 +643,19 @@ type Worker struct {
 	functions Functions
 	konts     map[key]func(any) Prog
 	next      int64
-	waiting   map[key]*Ctx // direct-style calls parked in an okay.Call, by run and k
-	held      map[int64]any // values kept for the host, by ref (foreign-held-values)
+	waiting   map[key]*Ctx         // direct-style calls parked in an okay.Call, by run and k
+	held      map[int64]any        // values kept for the host, by ref (foreign-held-values)
 	streams   map[int64]*outStream // streams it drives, by the host's id (part 3)
+	inputs    map[int64]*inStream  // streams the host feeds it (foreign-host-streams)
 	// push sends a message nobody asked for — a stream's chunk; nil where the
 	// wire is not multiplexed (in process), and a stream is refused there
 	push func(map[string]any)
 	// one lock over everything above (foreign-mux-duplex): requests are
 	// answered on goroutines of their own, and a call WAITING on its
 	// function holds it not — await lets it go for the wait
-	mu sync.Mutex
-	nextRef   int64
-	asks      int64
+	mu      sync.Mutex
+	nextRef int64
+	asks    int64
 	// stage 5b (wire-auth): a worker with a secret answers nothing but an
 	// auth until the host has proved it holds the same secret
 	secret  []byte
@@ -612,7 +672,7 @@ func NewWorker(programs Programs, functions ...Functions) *Worker {
 			fs[k] = v
 		}
 	}
-	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[key]*Ctx{}, held: map[int64]any{}, streams: map[int64]*outStream{}}
+	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[key]*Ctx{}, held: map[int64]any{}, streams: map[int64]*outStream{}, inputs: map[int64]*inStream{}}
 }
 
 // await is the next thing a direct-style call does: perform an okay
@@ -819,7 +879,24 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 			st.mu.Unlock()
 		}
 		return map[string]any{"id": id, "ok": nil}
+	case "chunk":
+		if in := w.inputs[asInt(req["stream"])]; in != nil {
+			in.mu.Lock()
+			in.queue = append(in.queue, req["chunk"])
+			in.more.Broadcast()
+			in.mu.Unlock()
+		}
+		return map[string]any{"id": id, "ok": nil}
+	case "end":
+		if in := w.inputs[asInt(req["stream"])]; in != nil {
+			in.end()
+		}
+		return map[string]any{"id": id, "ok": nil}
 	case "cancel":
+		// the call's input ends with it: a function waiting in Next wakes
+		if in := w.inputs[-asInt(req["stream"])]; in != nil {
+			in.end()
+		}
 		if st := w.streams[asInt(req["stream"])]; st != nil {
 			delete(w.streams, st.id)
 			st.mu.Lock()

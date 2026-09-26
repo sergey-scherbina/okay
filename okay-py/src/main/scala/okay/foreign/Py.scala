@@ -284,7 +284,11 @@ enum ForeignEval[+A] derives okay.Effect:
    * reactive streams and HTTP/2. `stream` is the id the HOST chose, as a
    * program's run is. Only a far side on a multiplexed wire streams.
    */
-  case Stream(stream: Long, fn: String, args: Vector[PyValue], credit: Int) extends ForeignEval[Either[Condition, Unit]]
+  case Stream(stream: Long, fn: String, args: Vector[PyValue], credit: Int,
+               /** the host's stream INTO the call (foreign-host-streams): its chunks,
+                * sent by a feeder under the far side's credit while the output is
+                * pulled; not journalled — a replay never contacts the far side */
+               input: Option[Iterator[PyValue]] = None) extends ForeignEval[Either[Condition, Unit]]
   /** the stream's next chunk, None at its end; taking one grants one more */
   case Pull(stream: Long) extends ForeignEval[Either[Condition, Option[PyValue]]]
   /** stop a stream the consumer is done with; idempotent */
@@ -324,7 +328,7 @@ object ForeignEval:
       case Program(_, fn, _, _, _) => s"program:$fn"
       case Continue(_, _, _) => "continue"
       case Forget(_) => "forget"
-      case Stream(_, fn, _, _) => s"stream:$fn"
+      case Stream(_, fn, _, _, _) => s"stream:$fn"
       case Pull(_) => "pull"
       case Cancel(_) => "cancel"
     def fingerprint[A](op: ForeignEval[A]): String = op match
@@ -341,7 +345,7 @@ object ForeignEval:
         s"program:$run:$fn#${Wire.digest(Json.JArr(Vector(Json.JArr(args.map(Wire.enc)), Json.JArr(cbs.map(Json.JStr(_))))))}"
       case Continue(run, k, a) => s"continue:$run/$k#${Wire.digest(Json.parse(Wire.written(a.map(Wire.enc))))}"
       case Forget(run) => s"forget:$run"
-      case Stream(stream, fn, args, credit) => s"stream:$stream:$fn/$credit#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Stream(stream, fn, args, credit, _) => s"stream:$stream:$fn/$credit#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
       case Pull(stream) => s"pull:$stream"
       case Cancel(stream) => s"cancel:$stream"
     def withKey[A](op: ForeignEval[A], key: String): ForeignEval[A] = op
@@ -364,8 +368,8 @@ object ForeignEval:
       case Forget(run) =>
         inner.handle(Forget(run))
         ((), "forgotten")
-      case Stream(stream, fn, args, credit) =>
-        val answer = inner.handle(Stream(stream, fn, args, credit))
+      case Stream(stream, fn, args, credit, input) =>
+        val answer = inner.handle(Stream(stream, fn, args, credit, input))
         (answer, Wire.written(answer.map(_ => Json.JNull)))
       case Pull(stream) =>
         val answer = inner.handle(Pull(stream))
@@ -383,7 +387,7 @@ object ForeignEval:
       case Program(_, _, _, _, _) => Wire.read(written).flatMap(Wire.decNode)
       case Continue(_, _, _) => Wire.read(written).flatMap(Wire.decNode)
       case Forget(_) => ()
-      case Stream(_, _, _, _) => Wire.read(written).map(_ => ())
+      case Stream(_, _, _, _, _) => Wire.read(written).map(_ => ())
       case Pull(_) => Wire.read(written).map {
         case Json.JObj(fs) => fs.toMap.get("chunk").map(Wire.dec)
         case _ => None

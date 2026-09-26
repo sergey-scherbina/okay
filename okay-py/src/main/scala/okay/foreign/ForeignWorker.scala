@@ -88,6 +88,30 @@ final class ForeignWorker private (session: WireSession,
   private def frameOut(f: PyFrame): Json =
     if session.columnar then Wire.encFrameColumnar(f) else Wire.encFrame(f)
 
+  /**
+   * THE FEEDER of a stream the host sends into a call (foreign-host-streams):
+   * each chunk waits for the far side's credit, then goes out; the end
+   * follows the last. On a thread of its own, so the program pulling the
+   * call's output runs meanwhile — one program doing both would wait for
+   * the far side while the far side waits for it (Decision 27). A cancel,
+   * a link that ends, or a failing chunk stops it.
+   */
+  private def feeder(s: Long, it: Iterator[PyValue]): Unit =
+    val t = Thread(() =>
+      try
+        var open = true
+        while open && it.hasNext do
+          if session.takeCredit(s) then
+            session.exchange(Json.JObj(Vector("op" -> Json.JStr("chunk"), "stream" -> Json.JNum(s.toDouble),
+              "chunk" -> Wire.enc(it.next())))): Unit
+          else open = false
+        if open then session.exchange(Json.JObj(Vector("op" -> Json.JStr("end"), "stream" -> Json.JNum(s.toDouble)))): Unit
+      catch case _: Exception => ()
+      finally session.closeInput(s)
+    , s"okay-feeder-$s")
+    t.setDaemon(true)
+    t.start()
+
   /** the comonadic handler — one operation, one exchange */
   def handler: Handler[ForeignEval] = new:
     def handle[A](e: ForeignEval[A]): A = e match
@@ -124,11 +148,18 @@ final class ForeignWorker private (session: WireSession,
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
           answered))))(Wire.decNode)
-      case ForeignEval.Stream(s, fn, args, credit) => timed:
+      case ForeignEval.Stream(s, fn, args, credit, input) => timed:
         if !session.mux then
           Left(Condition("NotStreaming", "this far side claims no mux: a stream the far side drives needs a multiplexed wire"))
-        else answer(session.openStream(s, Vector("op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
-          "args" -> Json.JArr(args.map(Wire.enc)), "stream" -> Json.JNum(s.toDouble), "credit" -> Json.JNum(credit.toDouble))))(_ => Right(()))
+        else
+          // the host's stream into the call is named by the NEGATED id: one call, two streams
+          val fed = input.map { it => session.openInput(-s, credit.toLong); it }
+          val head = Vector("op" -> Json.JStr("call"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)),
+            "stream" -> Json.JNum(s.toDouble), "credit" -> Json.JNum(credit.toDouble)) ++
+            fed.map(_ => "input" -> Json.JObj(Vector("id" -> Json.JNum(-s.toDouble), "credit" -> Json.JNum(credit.toDouble))))
+          val opened = answer(session.openStream(s, head))(_ => Right(()))
+          if opened.isRight then fed.foreach(feeder(-s, _)) else session.closeInput(-s)
+          opened
       case ForeignEval.Pull(s) => timed:
         session.nextOf(s) match
           case None => Left(Condition("LookupError", s"stream $s is not open on this worker (ended, cancelled, or another worker's)"))
@@ -152,6 +183,7 @@ final class ForeignWorker private (session: WireSession,
       case ForeignEval.Cancel(s) =>
         if session.mux then
           session.closeStream(s)
+          session.closeInput(-s)
           try session.exchange(Json.JObj(Vector("op" -> Json.JStr("cancel"), "stream" -> Json.JNum(s.toDouble)))): Unit
           catch case _: IllegalStateException => ()
       case ForeignEval.Forget(run) =>

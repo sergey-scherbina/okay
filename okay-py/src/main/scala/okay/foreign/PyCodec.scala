@@ -399,13 +399,23 @@ object Py {
    */
   def stream[O: Schema](address: String, credit: Int = 4)(using shape: Shape): StreamOf[O] = StreamOf(address, credit)
 
-  final class StreamOf[O: Schema](address: String, credit: Int)(using shape: Shape):
+  final class StreamOf[O: Schema](address: String, credit: Int, input: Option[Iterator[PyValue]] = None)(using shape: Shape):
+    /**
+     * the same call, FED by the host (foreign-host-streams): `in`'s elements
+     * go to the far function in chunks of `chunk`, under the far side's
+     * credit, while this side reads what it sends back — a transform both
+     * ways at once. The far function reads them with `okay.Next` (Go) or
+     * `okay_next` (Rust). `in` is read once: a program run twice feeds once.
+     */
+    def feeding[I: ToPy](in: Iterator[I], chunk: Int = 64): StreamOf[O] =
+      require(chunk >= 1, "a fed chunk holds at least one element")
+      StreamOf[O](address, credit, Some(in.grouped(chunk).map(c => PyValue.Arr(c.map(ToPy(_)).toVector))))
     def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)
     def apply[A: ToPy](a: A): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy](a: A, b: B): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a), ToPy(b)))
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a), ToPy(b), ToPy(c)))
     private def go(args: Vector[PyValue]): Unit ! PyStream.SourceRow[O] =
-      PyStream.driven[O](address, args, credit, () => runIds.incrementAndGet())
+      PyStream.driven[O](address, args, credit, () => runIds.incrementAndGet(), input)
 
   /** the scope a source runs in: whatever it still holds when the program
    * ends — a consumer that stopped early — is released
