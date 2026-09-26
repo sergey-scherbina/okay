@@ -370,8 +370,8 @@ line is a claim like any other and goes stale the same way
 - [x] A REAL WORKER PROCESS killed mid-run, at a chosen request, and
       the job finishes with the same answer
 - [x] a coordinator that dies — stage 8, for a STREAM; a batch
-      `Cluster.run` is a two-pass function with nothing to resume
-      from, and is restarted
+      `Cluster.run` resumes from its journalled partials since
+      batch-coordinator-resume (stage 8's list)
 
 Stage 6a — the epoch loop (TestStream, TestPanesOnce):
 - [x] `Sink`'s coordinator side is a FOLD — `empty` / `absorb(s, ws,
@@ -680,11 +680,22 @@ Stage 8 — the coordinator survives (TestResume, TestPersisted):
       stream journalled there answers the batch answer, a successor
       given nothing but the log finishes the job, and the log holds
       every epoch's state in order
-- [~] a batch `Cluster.run` that resumes — DECLINED, and the box's own
-      text is the reason: it is a two-pass function with nothing to
-      resume from, and restarting it is the answer. Left here as a
-      decision rather than deleted, so the question is not asked a
-      third time
+- [ ] a batch `Cluster.run` that resumes (batch-coordinator-resume,
+      2026-09-26 — REVERSES the decline that stood here; Decisions,
+      "A batch run journals its partials", says why): given a journal,
+      each partition's partial is recorded as it arrives, and a run
+      over the same journal asks only for the partitions not in it
+- [ ] the coordinator killed after half the partitions over 4
+      workers; a successor finishes with the batch answer and sends a
+      `Run` for exactly the partitions the journal did not hold
+- [ ] the pre-pass's bounds are journalled too, so a resumed run cuts
+      its windows where the first one did rather than re-asking
+- [ ] a journal holding ANOTHER run (a different job, parameters or
+      width, or a stream's fold) is refused by name, not overwritten;
+      a FINISHED record starts a fresh run
+- [ ] `Cluster.runLeading` takes a `Lease` as `leading` does: one
+      seat, the journal fenced by the term, `None` when it is held
+- [ ] no journal, no cost: `Cluster.run` without one encodes nothing
 - [x] a coordinator ELECTION, so a successor starts by itself — DONE,
       and in two halves that this box was reading as one. The engine's
       half landed in STAGE 10: `Cluster.leading` takes a `Lease`,
@@ -762,6 +773,28 @@ a way to start from a known mark rather than from nothing.
 - **`Windows` gains a seeded start.** The alternative — declaring
   "the distributed answer equals the local one when nothing is late"
   — is a caveat where a theorem is available for one prefix-max pass.
+- **A batch run journals its partials** (batch-coordinator-resume,
+  2026-09-26, the operator's ask; it reverses a decline that stood
+  twice). The decline read a batch run as "a two-pass function with
+  nothing to resume from, and restarting it is the answer". The first
+  half is still true and the second stopped being so: when a partition
+  is an hour of an analyst's R model, restarting a 400-partition job
+  because the coordinator's machine was drained costs the hours already
+  paid. There IS something to resume from — the partials that have
+  arrived, each a pure function of (params, index, count, bounds), so
+  holding one is exactly as good as recomputing it. The record is the
+  job's name, the encoded parameters, the width, the pre-pass's bounds
+  and the partials held so far; saves COALESCE (one in flight, the next
+  carries everything that arrived meanwhile), so a burst of arrivals is
+  one write, not one each. What it is not: a journal of large data. The
+  record is rewritten whole, so its size is the sum of the partials —
+  right for aggregates, the batch engine's case, and wrong for a job
+  whose "partial" is a table; that job writes its output through a sink
+  (engine-object-store-io) and journals only which parts are done.
+- **A journal is refused, never overwritten, when it holds another
+  run.** A coordinator handed the wrong journal and silently starting
+  fresh would destroy the other run's progress; one that silently
+  RESUMED would merge another job's partials into this answer.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
