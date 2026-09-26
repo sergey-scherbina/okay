@@ -65,12 +65,51 @@ object IcebergSource:
           }
         }
 
+  /**
+   * THE PLAN, columns matched by FIELD ID (lake-iceberg-field-ids): each
+   * file's columns are renamed to the current schema's names by the ids
+   * its Parquet schema carries, and a column the file does not have (added
+   * after it was written) arrives as nulls typed by the schema. A file
+   * whose columns carry no ids is read by name, as before.
+   */
   def plan(lake: String, metadataKey: String, root: String)(using avro: AvroReader, codec: ParquetCodec): LakePlan =
     val blob = Lakes(lake)
+    val fields = schema(lake, metadataKey)
     LakePlan(lake, files(lake, metadataKey, root).sortBy(_._1).flatMap { (uri, size) =>
       val k = key(uri, root)
-      codec.footer(BlobReadAt(blob, k, size)).groups.zipWithIndex.map((rows, g) => Part(k, g, rows))
-    })
+      val f = codec.footer(BlobReadAt(blob, k, size))
+      val byId = f.fieldIds.zip(f.columns.map(_._1)).collect { case (Some(id), n) => id -> n }.toMap
+      val (rename, missing) =
+        if byId.isEmpty then (Vector.empty, Vector.empty)
+        else
+          (fields.flatMap((id, n, _) => byId.get(id).filter(_ != n).map(_ -> n)),
+            fields.collect { case (id, n, _) if !byId.contains(id) => n -> Option.empty[String] })
+      f.groups.zipWithIndex.map((rows, g) => Part(k, g, rows, missing, rename))
+    }, fields.flatMap((_, n, t) => typeName(t).map(n -> _)))
+
+  /** the current schema's top-level fields: (id, name, Iceberg type) */
+  def schema(lake: String, metadataKey: String): Vector[(Int, String, String)] =
+    val meta = Json.parse(Run(Lakes(lake).getBytes(metadataKey)).fold(why => throw IllegalStateException(why), String(_, "UTF-8")))
+    val current = num(field(meta, "current-schema-id"))
+    val s = current.flatMap(id => arr(field(meta, "schemas")).find(x => num(field(x, "schema-id")).contains(id)))
+      .orElse(field(meta, "schema"))
+      .getOrElse(throw IllegalStateException(s"'$metadataKey' has no current schema"))
+    arr(field(s, "fields")).flatMap { f =>
+      for id <- num(field(f, "id")); n <- str(field(f, "name")) yield
+        (id.toInt, n, field(f, "type").collect { case Json.JStr(t) => t }.getOrElse("struct"))
+    }
+
+  /** an Iceberg primitive type as okay-lake's partition-value type */
+  private def typeName(t: String): Option[String] = t match
+    case "long" => Some("long")
+    case "int" => Some("integer")
+    case "string" => Some("string")
+    case "double" => Some("double")
+    case "float" => Some("float")
+    case "boolean" => Some("boolean")
+    case "date" => Some("date")
+    case "timestamp" | "timestamptz" => Some("timestamp")
+    case _ => None
 
   /** an absolute URI in the metadata as the lake's key */
   private def key(uri: String, root: String): String =

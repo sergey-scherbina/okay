@@ -330,7 +330,7 @@ Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro, TestHud
       manifest list and manifests (Avro object container files) — becomes
       the row-group plan; a file an overwrite or delete dropped is not read;
       the rows equal what pyiceberg reads (TestIceberg)
-- [ ] Iceberg columns are matched by FIELD ID: a column renamed after a
+- [x] Iceberg columns are matched by FIELD ID: a column renamed after a
       file was written reads under its current name, one added later
       reads null in older files (lake-iceberg-field-ids)
 - [x] delete files (position or equality deletes), non-Parquet data files

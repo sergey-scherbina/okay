@@ -39,7 +39,9 @@ write with one and read with the other, both ways, read what DuckDB
 writes (its dictionaries, its DECIMALs) and have DuckDB read ours, and
 read what pyarrow writes (data page v1 and v2, dictionary or plain, Snappy, ZSTD,
 none) and have pyarrow read ours. `Parquets.byName("okay" |
-"parquet-java")` picks one from a config value.
+"parquet-java")` picks one from a config value. `Footer.fieldIds` gives
+each top-level column's field id where the writer set one — Iceberg's
+column identity — the same from both.
 
 ## What it reads and writes
 

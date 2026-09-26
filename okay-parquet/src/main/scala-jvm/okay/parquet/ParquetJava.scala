@@ -76,7 +76,8 @@ object ParquetJava extends ParquetCodec:
       Footer(leaves(schema).map(p => p.getName -> Column.describe(empty(p, 0))),
         r.getRowGroups.asScala.toVector.map(_.getRowCount),
         meta.getFileMetaData.getKeyValueMetaData.asScala.toVector.sortBy(_._1),
-        Option(meta.getFileMetaData.getCreatedBy))()
+        Option(meta.getFileMetaData.getCreatedBy),
+        schema.getFields.asScala.toVector.map(f => Option(f.getId).map(_.intValue)))()
     finally r.close()
 
   private def leaves(schema: MessageType): Vector[PrimitiveType] =

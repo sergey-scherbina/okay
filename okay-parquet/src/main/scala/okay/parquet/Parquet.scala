@@ -25,7 +25,10 @@ object ReadAt:
  * kept so reading a row group does not fetch the footer again (on an
  * object store that is a request per group) — outside equality */
 final case class Footer(columns: Vector[(String, String)], groups: Vector[Long],
-                        metadata: Vector[(String, String)], createdBy: Option[String])
+                        metadata: Vector[(String, String)], createdBy: Option[String],
+                        /** each top-level column's field id, where the writer
+                         * set one — what Iceberg names a column by */
+                        fieldIds: Vector[Option[Int]] = Vector.empty)
                        (private[parquet] val parsed: Any = null):
   def rows: Long = groups.sum
 

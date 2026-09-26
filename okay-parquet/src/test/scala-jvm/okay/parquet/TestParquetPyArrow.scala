@@ -169,3 +169,19 @@ print(t.column("tags").null_count, t.column("point").null_count)
       s"${(0 until 1000).count(_ % 5 == 0)} ${(0 until 1000).count(_ % 6 == 0)}").mkString("\n")
     assertEquals(said, expect)
   }
+
+  test("field ids: ours and parquet-java read the same ones from a file that carries them") {
+    assume(python.isDefined, "no python with pyarrow")
+    val file = Files.createTempFile("okay-parquet-ids", ".parquet")
+    val _ = py("""
+import sys, pyarrow as pa, pyarrow.parquet as pq
+s = pa.schema([pa.field("id", pa.int64(), metadata={"PARQUET:field_id": "7"}),
+               pa.field("name", pa.string(), metadata={"PARQUET:field_id": "3"}),
+               pa.field("plain", pa.int32())])
+pq.write_table(pa.table({"id": [1, 2], "name": ["a", "b"], "plain": [1, 2]}, schema=s), sys.argv[1])
+""", file.toString)
+    val bytes = Files.readAllBytes(file)
+    assertEquals(OkayParquet.footer(ReadAt.of(bytes)).fieldIds, Vector(Some(7), Some(3), None))
+    assertEquals(ParquetJava.footer(ReadAt.of(bytes)).fieldIds, Vector(Some(7), Some(3), None))
+  }
+

@@ -27,7 +27,10 @@ object Lakes:
  * the values of a table's partition columns that the file does not hold
  * (a Delta table's `partitionValues`; `None` is a null) */
 final case class Part(key: String, group: Int, rows: Long,
-                      partition: Vector[(String, Option[String])] = Vector.empty)
+                      partition: Vector[(String, Option[String])] = Vector.empty,
+                      /** a file column's name to the table's name for it —
+                       * Iceberg's renames, matched by field id */
+                      rename: Vector[(String, String)] = Vector.empty)
 
 /** the partitions of a source, planned once at submission; `columns`
  * types the partition values (`string`, `long`, `integer`, `short`,
@@ -124,11 +127,22 @@ object ParquetSource:
       val blob = Lakes(plan.lake)
       val size = Run(blob.head(part.key)).getOrElse(throw IllegalStateException(s"'${part.key}' is gone")).size
       val in = BlobReadAt(blob, part.key, size)
-      val read = codec.group(in, codec.footer(in), part.group)
+      val read = renamed(codec.group(in, codec.footer(in), part.group), part.rename)
       val table = if part.partition.isEmpty then read else withPartition(read, part, plan.columns)
       val rows = Rows.rows[A](table).fold(why => throw IllegalStateException(s"'${part.key}' group ${part.group}: $why"), identity)
       Chunks.fromIterator(rows.iterator.drop(start.toInt), 1024)
     }
+
+/** a table's columns renamed (file name to table name); a column not
+ * renamed whose name another now takes is a dropped column, and goes */
+private[lake] def renamed(t: Table, rename: Vector[(String, String)]): Table =
+  if rename.isEmpty then t
+  else
+    val to = rename.toMap
+    val taken = rename.map(_._2).toSet
+    Table(t.cols.flatMap((n, c) => to.get(n) match
+      case Some(m) => Some(m -> c)
+      case None => if taken(n) then None else Some(n -> c)), t.metadata)
 
 /** a group's table with its partition values added as constant columns,
  * typed by the plan (stage 18) */

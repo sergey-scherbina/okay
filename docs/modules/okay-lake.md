@@ -69,9 +69,10 @@ val plan = IcebergSource.plan(lake, metadata, root)
 ```
 
 Delete files (position or equality deletes) and non-Parquet data files
-are refused by name. Columns are read by name, not Iceberg's field ids —
-a table whose columns were renamed after its files were written misses
-them. Avro is read by ours (`OkayAvro`, the default) or Apache Avro's
+are refused by name. Columns are matched by Iceberg's FIELD IDS, which
+each Parquet file carries: a column renamed after a file was written
+reads under its current name, and one added later reads null in older
+files (a file without ids is read by name). Avro is read by ours (`OkayAvro`, the default) or Apache Avro's
 (`import okay.lake.ApacheAvro.given`, an optional dependency); both give
 the same records for pyiceberg's manifests.
 

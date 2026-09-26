@@ -101,12 +101,12 @@ object OkayParquet extends ParquetCodec:
   // ------------------------------------------------------------ the footer
 
   /** the footer as this codec reads it, kept in `Footer.parsed` */
-  private final case class Parsed(f: Struct, leaves: Vector[Leaf], columns: Vector[(String, Shape)])
+  private final case class Parsed(f: Struct, leaves: Vector[Leaf], columns: Vector[(String, Shape)], ids: Vector[Option[Int]])
 
   def footer(in: ReadAt): Footer =
     val p = meta(in)
     Footer(p.columns.map((n, s) => n -> Column.describe(emptyOf(p.leaves, s, 0))), p.f.structs(4).map(_.int(3).getOrElse(0L)),
-      p.f.structs(5).map(kv => kv.str(1).getOrElse("") -> kv.str(2).getOrElse("")), p.f.str(6))(p)
+      p.f.structs(5).map(kv => kv.str(1).getOrElse("") -> kv.str(2).getOrElse("")), p.f.str(6), p.ids)(p)
 
   private def meta(in: ReadAt): Parsed =
     val size = in.size
@@ -116,8 +116,9 @@ object OkayParquet extends ParquetCodec:
     val len = (tail(0) & 0xff) | (tail(1) & 0xff) << 8 | (tail(2) & 0xff) << 16 | (tail(3) & 0xff) << 24
     if len <= 0 || len > size - 12 then throw Refused(s"a Parquet footer of $len bytes in a file of $size")
     val (f, _) = Thrift.read(in.read(size - 8 - len, len))
-    val (leaves, columns) = shapes(tree(f.structs(2)))
-    Parsed(f, leaves, columns)
+    val top = tree(f.structs(2))
+    val (leaves, columns) = shapes(top)
+    Parsed(f, leaves, columns, top.map(_.e.int(9).map(_.toInt)))
 
   /** the schema's pre-order list as a tree: the root's children */
   private def tree(schema: Vector[Struct]): Vector[Node] =

@@ -87,7 +87,7 @@ the same reader).
       BYTE_STREAM_SPLIT read (pyarrow writes each on request)
 - [x] `ParquetJava` stays flat and refuses a nested file by name
 
-- [ ] `Footer.fieldIds` carries each top-level column's field id (the
+- [x] `Footer.fieldIds` carries each top-level column's field id (the
       schema element's field 9), ours and parquet-java's alike — what
       Iceberg matches columns by (lake-iceberg-field-ids)
 

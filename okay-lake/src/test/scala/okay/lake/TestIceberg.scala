@@ -11,6 +11,8 @@ import java.nio.file.{Files, Path}
  * else python3 when it has it); skips without one. And Avro read by ours
  * and by Apache Avro, the same records (specs/own-or-standard.md).
  */
+final case class Town(id: Long, town: String, score: Option[Double]) derives okay.codec.Schema
+
 class TestIceberg extends munit.FunSuite:
 
   lazy val python: Option[String] =
@@ -109,3 +111,48 @@ print(json.dumps({"metadata": tbl.metadata_location, "rows": len(ids), "sum": su
     val e = intercept[AvroRefused](OkayAvro.records("not avro".getBytes))
     assert(e.getMessage.contains("object container"), e.getMessage)
   }
+
+  test("columns matched by FIELD ID: a renamed column reads under its new name, an added one reads null in older files") {
+    assume(python.isDefined, "no python with pyiceberg")
+    val dir = Files.createTempDirectory("okay-iceberg-ids").toRealPath()
+    val said = Json.parse(py("""
+import sys, json, pyarrow as pa
+from pyiceberg.catalog.sql import SqlCatalog
+from pyiceberg.types import DoubleType
+d = sys.argv[1]
+cat = SqlCatalog("t", uri=f"sqlite:///{d}/cat.db", warehouse=f"file://{d}/wh")
+cat.create_namespace("ns")
+tbl = cat.create_table("ns.v", schema=pa.schema([("id", pa.int64()), ("city", pa.string())]))
+tbl.append(pa.table({"id": pa.array(range(0, 100), pa.int64()), "city": pa.array(["c%d" % (i % 3) for i in range(100)])}))
+with tbl.update_schema() as u:
+  u.rename_column("city", "town")
+  u.add_column("score", DoubleType())
+tbl = cat.load_table("ns.v")
+tbl.append(pa.table({"id": pa.array(range(100, 150), pa.int64()), "town": pa.array(["t%d" % i for i in range(100, 150)]),
+                     "score": pa.array([i * 0.5 for i in range(100, 150)])}))
+tbl = cat.load_table("ns.v")
+rows = tbl.scan().to_arrow().to_pylist()
+print(json.dumps({"metadata": tbl.metadata_location, "rows": sorted([[r["id"], r["town"], r["score"]] for r in rows])}))
+""", dir.toString))
+    val lake = s"iceberg-ids-${System.nanoTime()}"
+    Lakes.register(lake, okay.blob.Fs(dir))
+    val root = s"file://$dir"
+    val metadata = s(f(said, "metadata")).stripPrefix(root + "/")
+    val plan = IcebergSource.plan(lake, metadata, root)
+    val old = plan.parts.find(_.rename.nonEmpty).getOrElse(fail(s"no file was renamed by id: ${plan.parts}"))
+    assertEquals(old.rename, Vector("city" -> "town"))
+    val blob = Lakes(lake)
+    val size = okay.lake.Run(blob.head(old.key)).get.size
+    val ids = okay.parquet.OkayParquet.footer(BlobReadAt(blob, old.key, size)).fieldIds
+    assert(ids.nonEmpty && ids.forall(_.isDefined), s"no field ids in pyiceberg's file: $ids")
+    val rows = Flows.collect(ParquetSource.flow[Town](plan)).runWith.sortBy(_.id)
+    val expect = f(said, "rows") match
+      case Json.JArr(rs) => rs.map {
+        case Json.JArr(Vector(Json.JNum(id), Json.JStr(t), sc)) =>
+          Town(id.toLong, t, sc match { case Json.JNum(x) => Some(x); case _ => None })
+        case other => fail(other.toString)
+      }
+      case other => fail(other.toString)
+    assertEquals(rows, expect)
+  }
+
