@@ -132,19 +132,23 @@ deleted.
         where the recursive version rebuilt the prefix on the JVM stack
         for free. Kept: it is the cost of the loop the rule requires;
         backlog `delim-split-wrap-free` has the recipe to take it back.
-        DESIGN (delim-split-wrap-free, 2026-09-26): TWO LOOPS, no
-        `Wrap`. The first walks the chain and returns the node that
-        delimits `p` (a `Mark` or a dollar), allocating nothing. The
-        second copies the prefix FRONT TO BACK into fresh nodes whose
-        `rest` is a machine-private `var`, set exactly once while the
-        copy is still unpublished, into the hole the previous copy left
-        (a `Hole`, which every copied node is; the first hole is one
-        `Head` per capture). It stops when it reaches the found node by
-        identity, and the one type claim, that this segment's input is
-        the found node's, goes through `Same.byIdentity`, the axiom the
-        prompts already use. So per segment one node (what the
-        recursive version also built), per capture one `Head`, and no
-        frame closure.
+        TAKEN BACK (delim-split-wrap-free, 2026-09-26): ONE loop, no
+        `Wrap`. It copies the prefix FRONT TO BACK while it walks, into
+        a separate `Frames` type whose `rest` is a `var` set exactly
+        once, into the hole the previous copy left, while the copy is
+        still unpublished; only `reify` ever reads it. The delimiter's
+        own witness closes the copy: `End` at a plain mark, a copy of
+        the dollar's frame at a dollar (`reify` is a left fold, so the
+        old two-chain `AtRet` became one chain). The machine's frames
+        stay immutable case classes. MEASURED, both arm orders, -f 2:
+        delimGenerator 942 328 -> 902 328 B/op (8 B under the recursive
+        original's 910 312) and 90.0 -> 88.1 us; delimDollarResume
+        740 016 -> 724 016 B/op and 50.0 -> 48.9 us; delimDollarOnly at
+        parity. REFUTED on the way (history.d delim-split-wrap-free):
+        a find-then-copy walk (4% slower: two walks and a `Same` per
+        run), a one-pass plain path with a two-pass dollar path (dollar
+        captures 8% slower), and the `var` on the machine's OWN frames
+        (3-4% slower on lanes that never capture).
       - `Static.foldMap` is ONE loop over a type-aligned continuation
         (`Args`: `More`, `AppTo`, `Mapped`, `SelectE`, `SelectF`). All
         three nesting axes (a select's condition, an application's

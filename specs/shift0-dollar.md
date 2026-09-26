@@ -200,6 +200,13 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   the old `Push(p, seg)`. The existential `P0` is a type MEMBER of
   `Cut`, so `captured` and `close` stay linked through one stable
   value, and no cast was added.
+  SUPERSEDED in the Scala 3 core by delim-split-wrap-free
+  (2026-09-26): `reify` is a left fold, so `captured` then `close` is
+  ONE chain ending in a copy of the dollar's frame, and the cut at a
+  dollar is `AtDollar(whole, outer)` with no type member. -16 B per
+  capture to a dollar (delimDollarResume 740 016 -> 724 016 B/op).
+  okay2 keeps the two chains (okay2/backlog.d perf
+  okay2-split-one-pass).
 - **Control-captures to a `dollar` are refused at run time.** Their
   bare continuation answers the body's `R0`, and `Capture` types `k`
   at the prompt's `R`. Typed shallow handlers (FSCD 2019: shallow
