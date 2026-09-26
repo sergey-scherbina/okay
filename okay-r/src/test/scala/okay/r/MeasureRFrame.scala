@@ -74,3 +74,21 @@ class MeasureRFrame extends munit.FunSuite:
         assertEquals(back.rows[Obs].map(_.length), Right(n))
     finally r.close()
   }
+
+  test("the same round trip as Arrow beside columnar JSON, arms alternating (facade-frame-seam)") {
+    assume(RArrow.rscript.nonEmpty, "no R with the arrow package (OKAY_ARROW_RSCRIPT, or docker)")
+    val json = RSubprocess.start(TestR.rscript.get)
+    val arrow = RSubprocess.start(RArrow.rscript.get)
+    try
+      assertEquals(arrow.wire, "json/none+arrow")
+      for n <- sizes do
+        val f = frameOf(n)
+        for w <- Seq(json, arrow) do w.handler.handle(REval.Frame("identity", frameOf(1000), Vector.empty)): Unit
+        val rounds2 = Vector.fill(rounds)((
+          ms(json.handler.handle(REval.Frame("identity", f, Vector.empty))),
+          ms(arrow.handler.handle(REval.Frame("identity", f, Vector.empty)))))
+        val (j, a) = (median(rounds2.map(_._1)), median(rounds2.map(_._2)))
+        println(f"r frame $n%d rows: columnar JSON $j%.1f ms, Arrow $a%.1f ms, ${j / a}%.1fx")
+        assertEquals(arrow.handler.handle(REval.Frame("identity", f, Vector.empty)).map(_.cols.head._2.length), Right(n))
+    finally { json.close(); arrow.close() }
+  }

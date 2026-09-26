@@ -183,10 +183,10 @@ believed):
 | language | tier 1 value | tier 2 frame | tier 3 stream | instrument |
 |---|---|---|---|---|
 | Scala (`JvmModule`) | facade 0.001 ms a call | by reference 0.001 ms; 100 000 rows in and out through `Rows.table`/`Rows.rows` 19.8 ms; 1M rows map: 6–12 ms | — | MeasureFacade, MeasureForeignMapReduce |
-| Python, pipes | facade 0.217 ms a call, own road 0.130 ms (the difference is `PyCodec` encode+decode at `Schema`) | 100 000 rows one frame, columnar JSON: rows through the facade 182 ms, rows on the own road 176 ms (the same road since facade-frame-seam), a `Table` through `Frames.frame` 152 ms, the bare frame 140 ms; 1M rows map, JSON: ~200 ms; Arrow: ~95 ms; `@okay.arrow` vectorised: ~88 ms; reduce in Python: +70 ms | 100 000 rows in 4096-row frames: 194 ms — the same as one frame | MeasureFacade, MeasureForeignMapReduce, MeasurePyArrow |
-| R, pipes | — | 100 000 rows round trip: 13.7 s as JSON records, 180 ms columnar JSON (r-frame-columnar-wire), Arrow: to measure | — | MeasureRFrame |
+| Python, pipes | facade 0.217 ms a call, own road 0.130 ms (the difference is `PyCodec` encode+decode at `Schema`) | 100 000 rows one frame, columnar JSON: rows through the facade 182 ms, rows on the own road 176 ms (the same road since facade-frame-seam), a `Table` through `Frames.frame` 152 ms, the bare frame 140 ms; 1M rows map, JSON: ~200 ms; Arrow: ~95 ms; `@okay.arrow` vectorised: ~88 ms; reduce in Python: +70 ms. ARROW (pyarrow 25.0.1, 2026-09-26): rows through the facade 51–54 ms (own road 53 ms: no overhead), a `Table` through `Frames.frame` 11.5–12.5 ms, the bare frame 17–18 ms — beside 157–170 / 124–130 / 106–123 ms on columnar JSON in the same session | 100 000 rows in 4096-row frames: 194 ms — the same as one frame; on Arrow 70–87 ms (JSON 153–163 ms that session) | MeasureFacade, MeasureForeignMapReduce, MeasurePyArrow |
+| R, pipes | — | 100 000 rows round trip: 13.7 s as JSON records, 180 ms columnar JSON (r-frame-columnar-wire); Arrow 61.8 ms beside columnar JSON 169.5 ms, arms alternating (2.7x; 10 000 rows: equal, 21 ms) — R with arrow 25 in its own container | — | MeasureRFrame |
 | TypeScript | — | serves `frame` (columnar JSON); no Arrow | — | to measure |
-| Haskell, Go, Rust | tier 1; the table call served since foreign-one-bulk (columnar JSON) | — | — | to measure |
+| Haskell, Go, Rust | tier 1; the table call served since foreign-one-bulk (columnar JSON) | Rust in process, 1M rows through a function: Arrow C Data 20.7 ms, columnar JSON 119.8 ms (foreign-arrow-ffm) | — | MeasureRustTable; the rest wait for a `Language` (foreign-more-languages) |
 | Clojure, Frege | in-JVM, `JvmModule` | same object | — | to measure |
 
 Empty cells are the work; a cell filled by this lane goes into Results
@@ -443,3 +443,13 @@ with its date, load and sha (the `performance` skill).
   suite red. `stream` has no observation: every report says false, and
   a report saying true fails until foreign-one-mux can show a far side
   driving a stream.
+
+- **The Arrow cells (facade-frame-seam, 2026-09-26).** pyarrow 25.0.1 in a
+  uv venv (`OKAY_PYARROW_PYTHON`, or first on PATH), R with arrow 25 in its
+  own container (`RArrow.rscript`). MeasureFacade twice per road, the roads
+  alternating, load 6.6–9.9: through the facade on Arrow, 100 000 rows 51–54
+  ms against 157–170 ms on columnar JSON, a `Table` 11.5–12.5 ms against
+  124–130 ms; the facade's rows equal the own road's (53 ms), so the seam
+  costs nothing on either road. MeasureRFrame's new lane, arms alternating:
+  R, 100 000 rows, Arrow 61.8 ms against 169.5 ms; at 10 000 rows the two
+  are equal — the container's fixed cost dominates there.

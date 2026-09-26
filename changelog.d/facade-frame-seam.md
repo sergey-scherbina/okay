@@ -1,15 +1,11 @@
-## facade-frame-seam - rows through the facade take Python's own road; a Table goes to the wire as itself
+## facade-frame-seam — the Arrow cells of the measurement table (2026-09-26)
 
-The tier-2 cell that read 37% worse than Python's own road
-(foreign-facade-5) was a comparison against a PRE-BUILT frame with no
-rows on either side, which no caller has. Measured against the honest
-own road (rows to a PyFrame, over, rows back — PyStage's), rows through
-the facade are within 3%: `Frames` now has `rows` beside `frame`, by
-default through `frame` and the Rows codec, and Python overrides it with
-that road, which `Road.rows` takes. What was a seam is the Table road:
-`Frames.frame` built a PyFrame from the Table and the worker built a
-Table from it again where Arrow is spoken — two conversions of the same
-columns. `ForeignWorker.frameTable` sends a Table as itself on the Arrow
-road and converts once on the JSON road (152 ms against the bare frame's
-140 here, at load 42.7). R's twin and the Arrow cells stay in the
-backlog item.
+The last of facade-frame-seam: its Arrow cells, which waited for an
+interpreter with pyarrow. pyarrow 25.0.1 now lives in a uv venv
+(`~/.local/share/okay/pyarrow-venv`, `OKAY_PYARROW_PYTHON`), beside a
+system python3 without it so the JSON lanes still have their arm. On Arrow,
+100 000 rows through the facade take 51–54 ms (157–170 ms on columnar
+JSON), a `Table` through `Frames.frame` 11.5–12.5 ms (124–130 ms), and the
+facade equals the own road. MeasureRFrame gained an Arrow lane: R, 100 000
+rows, 61.8 ms against 169.5 ms. The Rust in-process cell is
+foreign-arrow-ffm's 20.7 ms against 119.8 ms. specs/foreign-facade.md.
