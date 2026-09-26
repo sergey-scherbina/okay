@@ -1,0 +1,6 @@
+feature/foreign-one-pool 2026-09-26T00:24:08Z
+agent: claude-opus-5-5
+heartbeat: 2026-09-26T00:24:08Z
+status: in-progress
+done-so-far: claim
+next: Pool[E]+Pools into okay-py; PyWorkers on Pool (routing by ref/run, lease); PyPool/RPool = PyWorkers; Holds/Methods/Programs on the one pool; Stateful lease released on failure
