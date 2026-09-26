@@ -469,7 +469,7 @@ by ADDRESS, since a `Serve` cannot be handed to another process. A
 worker process serves `Cluster.exchanging` — `WorkerMain` does:
 
 ```scala
-Served.serve(server, Cluster.exchanging(s"$host:${server.getLocalPort}", dial))
+val exchanging = Cluster.exchanging(s"$host:${server.getLocalPort}", dial)
 ```
 
 A reducer that dies has its share asked of a survivor, which fetches
