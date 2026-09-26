@@ -234,6 +234,15 @@ than trusting the author.
   a second stage whose partials reach the coordinator. Stage 5's fault
   model carries: a dead reducer's share is asked of a survivor, and a
   holder's lost buckets are recomputed from the source.
+- **15 — a job says where its time went** (engine-observability,
+  2026-09-26). The coordinator reports what it sees to a `Probe`:
+  every attempt (which partition, which worker, how long, and — from a
+  worker wrapped in `Cluster.measured` — how many rows, how much of it
+  was the worker's own work and how much a foreign function's), every
+  lost attempt, every burial, every phase and every epoch with its
+  watermark lag. `JobStats` turns that into Prometheus text and
+  `JobTrace` into a span tree; okay-pool serves the first on `/metrics`
+  and the second as OTLP JSON per run.
 - **10 — the election.** DONE. `Lease` (three methods, no
   dependency), `Cluster.leading`, and a FENCE on the journal so a
   deposed coordinator stops at its next epoch rather than committing
@@ -290,6 +299,23 @@ not against its existence):
       `Pipeline.optimize` discipline) — MOVED TO STAGE 2: there is no
       exchange to push below yet, so this box could only have been
       checked by a test that asserts nothing
+
+Stage 15 — a job says where its time went (TestObserved, TestPoolObserved):
+- [ ] a job's trace is a root span, one span per phase and one per
+      attempt; the phases add up to the root's wall clock within 5%
+- [ ] an attempt on a measured worker splits EXACTLY into the worker's
+      own work, the foreign function's share of it, and the wire (the
+      rest of the round trip)
+- [ ] rows per partition are counted on the worker and reach the
+      coordinator; the total is the input's size
+- [ ] a killed worker shows as a lost attempt (an error span), a
+      burial and a recompute — in the trace and in the metrics
+- [ ] a stream reports every epoch and its watermark lag
+- [ ] a foreign map stage (okay-foreign-cluster) reports its time and
+      calls through the worker's meter
+- [ ] okay-pool serves the metrics of the runs it coordinates on
+      `/metrics` and a run's trace as OTLP JSON
+- [ ] no probe, no cost: the default `Probe.none` builds no event
 
 Stage 14 — the exchange across processes (TestShuffle):
 - [x] a two-stage keyed job (`Shuffled`) over 4 workers answers what
@@ -843,6 +869,25 @@ a way to start from a known mark rather than from nothing.
   (`Cluster.exchanging(self, dial)`; `WorkerMain` dials `host:port`).
   The coordinator's `Serve` values are opaque functions and cannot be
   handed to another process; an address can.
+- **The engine reports EVENTS, and knows no metrics library**
+  (engine-observability, 2026-09-26). okay-cluster is cross-built and
+  depends on two modules; binding it to okay-ops' Prometheus text or
+  okay-obs' spans would drag okay-persist into every worker. So the
+  coordinator emits `Seen` values to a `Probe` (one function) and the
+  two readers of them — `JobStats`, `JobTrace` — are plain folds over
+  those events in okay-cluster; the OTLP JSON is okay-obs' `Otlp.body`,
+  applied in okay-pool, which already depends on both sides.
+- **The worker's share travels in the answer, and only when asked for
+  by construction.** A worker wrapped in `Cluster.measured` answers
+  `Resp.Measured(inner, work)`; the coordinator unwraps it where it
+  asks, so no caller of `ask` sees the difference, and a worker that is
+  not wrapped still gives the coordinator the round trip. The inner
+  answer is carried ENCODED: `Resp` would otherwise be a recursive
+  derived Schema for one wrapper case.
+- **Where time went is measured, not modelled.** "Wire" is the round
+  trip minus what the worker says it spent; "foreign" is what the
+  foreign stage timed around its call, on the worker's thread
+  (`Meter`, thread-local, reset per request). Nothing is estimated.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
