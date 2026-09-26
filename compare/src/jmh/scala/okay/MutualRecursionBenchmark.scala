@@ -126,7 +126,7 @@ class MutualRecursionBenchmark {
   def check(): Unit =
     // the task is real: the direct version cannot run at this depth
     val overflowed =
-      try { Direct.even(N); false }
+      try { val _ = Direct.even(N); false }
       catch case _: StackOverflowError => true
     if !overflowed then throw new IllegalStateException(s"direct mutual recursion did not overflow at $N")
     val expected = stateMachine()
