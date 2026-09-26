@@ -14,17 +14,20 @@ object Stat:
 
 /** a reducer inside the JVM: records every step's chunk size and whether
  * it opened a partition, counts merges, dies once when told to */
-final class FakeReducer(@volatile var diesOnce: Boolean = false) extends Reducer[Rec, Stat]:
+final class FakeReducer(diesOnce: Boolean = false) extends Reducer[Rec, Stat]:
   val name = "fake:stat"
   private val lock = Object()
   private var steps = Vector.empty[(Int, Boolean)]
   @volatile var merges = 0
+  private val dies = java.util.concurrent.atomic.AtomicBoolean(diesOnce)
   @volatile var died = 0
   def seen: Vector[(Int, Boolean)] = lock.synchronized(steps)
   def step(acc: Option[Stat], rows: Vector[Rec]): Either[Batcher.Failed, Stat] =
     lock.synchronized { steps :+= (rows.length, acc.isEmpty) }
-    if diesOnce then
-      diesOnce = false
+    // ONE death, whichever partition gets there first: a check-then-set
+    // on a @volatile var let two workers both see `true` and both die
+    // (died == 2 in a whole-build gate, 2026-09-26)
+    if dies.compareAndSet(true, false) then
       died += 1
       Left(Batcher.Failed("WorkerDied", "the fake died"))
     else

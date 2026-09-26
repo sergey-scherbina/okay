@@ -11,3 +11,8 @@
 - Still open, and written down in specs/core-gaps.md stage 7: the
   callback drive stops between two non-blocking operations without
   discontinuing the residual.
+- Found by this lane's gate, not caused by it: okay-foreign-cluster's
+  `FakeReducer` checked and cleared a `@volatile` flag in two steps, so
+  two workers could both die (`died == 2`). It is atomic now
+  (`AtomicBoolean.compareAndSet`). lake-hudi fixed the same race in
+  `TestForeignStage`'s `Fake` the same day, and its fix is the one kept.
