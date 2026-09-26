@@ -31,7 +31,7 @@ and `mergeReady` takes the failure rule `merge` always had.
 
 ## Behavior
 
-- [ ] DRAIN, THEN FAIL: a source that fails (a `Left` answer, a
+- [x] DRAIN, THEN FAIL: a source that fails (a `Left` answer, a
       throwing `Run`, a throwing continuation) drops out of the ring;
       the others run to their end; then the merge fails with the FIRST
       failure. Nobody is cancelled for it. This is `Channel.merge`'s
@@ -39,26 +39,25 @@ and `mergeReady` takes the failure rule `merge` always had.
       which `Source.merge` users already had, and it is the library's
       general one: the consumer receives everything actually produced
       and only then hears that something broke.
-- [ ] `Source.merge` over a failing side: the healthy side's elements
+- [x] `Source.merge` over a failing side: the healthy side's elements
       all arrive, then the failure (a new law at the Source level; the
       channel-level one is `TestChannelFailure`)
-- [ ] every existing `Source.merge` law still holds, unchanged:
+- [x] every existing `Source.merge` law still holds, unchanged:
       `TestStreamSource`, `TestMergeOrder` (each side's order exact),
       `TestMergeEnds`, `TestChunkEdges`, `TestPullBudget`
-- [ ] the fibers still start at the FIRST PULL, not at construction
-- [ ] `capacity` keeps its meaning: elements per side (what the two-part
+- [x] the fibers still start at the FIRST PULL, not at construction
+- [x] `capacity` keeps its meaning: elements per side (what the two-part
       channel held per part)
-- [ ] the numbers: `MergeBenchmark.okaySourceMerge` and
+- [x] the numbers: `MergeBenchmark.okaySourceMerge` and
       `MergeCapBenchmark` (64 / 256 / 1024), new against old, each arm
       in its own JVM, alternating; the bar is no named loss
 
 ## Design
 
-The old road stays reachable ONLY while it is measured:
-`-Dokay.source.merge=channel` (read once) selects it for the A/B, as
-`okay.channel.known` did for channel-known-producers. When the numbers
-are in, the switch and the old road are deleted in the same lane — one
-mechanism is the point.
+The old road was reachable ONLY while it was measured
+(`-Dokay.source.merge=channel`, as `okay.channel.known` was for
+channel-known-producers) and was deleted with the switch in this lane
+— one mechanism is the point.
 
 `ReadyMerge`'s failure: a per-run `failure` cell (first wins). A
 source's `resume` is wrapped so that a throw from its continuation is
@@ -85,4 +84,48 @@ reaches 0 the merge ends by throwing the recorded failure, if any.
 
 ## Results
 
-(filled by the lane)
+**Found on the way: a told value was lost when the next step threw
+— in the CORE, and the old `Source.merge` had it too.** The new
+Source-level failure law came back `1, 2, 10, 20` for a side that told
+1, 2, 3 and then failed. Isolated by probes: every view of a writer
+as a stream — `Writer.uncons` (pure and with effects) and both linear
+iterators, which `Channel.buffer`'s `feed` walks — applied the
+continuation `k(())` BEFORE handing the told value over, so a source
+whose next step throws while being BUILT (`Source.of` over a stream
+whose `uncons` throws) lost the value with it. Fixed in `Writer.scala`:
+the iterators keep `k` unapplied behind a flag (no allocation), the
+`uncons` views return it as a lazy `Bind(Return(()), k)`.
+`TestWriterToldBeforeThrow` (core, watched failing first) and
+`TestSourceToldBeforeThrow` (okay-stream, through `Channel.buffer`).
+
+**The numbers** (`src/jmh/history.d/…-source-merge-via-ready.tsv`),
+2x500, each arm its own JVM, alternating, jmh-lane through
+bench-window; contaminated and noisy tries were discarded and retried
+by the script:
+
+| lane | new (ring join) | old (shared channel) | |
+|---|---|---|---|
+| `okaySourceMerge` (cap 64) | 98.4 / 104.7, later 103.6 / 105.2 | 107.3 / 108.9, later 115.4 / 111.3 | **0.92-0.96x** |
+| `MergeCapBenchmark` cap 64 | 103.4 / 103.7, later 102.5 / 100.7 | 111.7 / 109.4 | **0.93-0.95x** |
+| cap 256 | 89.6 / 88.2, later 87.7 / 85.1 | 80.4 / 81.6, later 79.2 / 73.6 | **1.08-1.16x — THE NAMED LOSS** |
+| cap 1024 | 78.0 / 78.0 | 76.9 / 78.3 | parity |
+
+- **The default (capacity 64) is faster**, which is what every
+  `merge` call without an explicit capacity gets.
+- **Capacity 256 loses ~10%**, and two explanations were REFUTED
+  before it was named: one element per turn (a quantum of a batch,
+  64, recovered 2-3% everywhere — kept — and left the gap), and the
+  per-side buffer's type (`relaxed.parts(1)`, the old merge's own part
+  type, read 87.1 / 95.8 against `SentinelChannel`'s 87.3 / 89.8).
+  The old arm at 256 is itself unstable — ±9 in 5 of 6 attempts, the
+  script gave up on one round — so part of the gap may be the old
+  road's good forks. Backlog `merge-cap256-gap`.
+- **The control moved**: `okaySourceSingleDrain` read 45.4-48.7 here
+  against 44.3 / 44.5 before the `Writer.uncons` fix; the fix adds one
+  lazy `Bind` per `uncons` on the `toLazyList` road, so ~2-6% may be
+  its price — inside the controls' own spread, noted rather than
+  claimed.
+
+The chunked roads (`chunked = true`, `flushAfter`, `mergeFlushing`,
+`either`) still go through the shared channel: backlog
+`merge-chunked-via-ready`.

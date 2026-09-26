@@ -28,16 +28,20 @@ private[okay] object ReadyMerge:
   /** `onPark` runs each time the merge registers its own park — a
    * test's way to know the merge IS parked (TestReadyMerge's cancel
    * law), since nothing else outside the drive can see it */
-  def apply[A](sources: Seq[Source[A]], onPark: () => Unit = () => ()): Source[A] =
+  /** `quantum`: how many elements a READY source may tell in a row
+   * before its turn passes. 1 (`mergeReady`) is the strict round-robin
+   * its law states; `Source.merge`, which promises no order between its
+   * sides, passes a batch's worth (source-merge-via-ready, Results). */
+  def apply[A](sources: Seq[Source[A]], onPark: () => Unit = () => (), quantum: Int = 1): Source[A] =
     // the state is built per RUN, inside the program: a Source is a
     // value, and running it twice must merge twice
-    okay.pure[Writer % A + Async, Unit](()).flatMap(_ => new Run[A](sources, onPark).again())
+    okay.pure[Writer % A + Async, Unit](()).flatMap(_ => new Run[A](sources, onPark, quantum).again())
 
   /** a registration's answer, when it came before the drive moved on */
   private final class Answer[X](val r: Either[Throwable, X])
   private object Moved
 
-  private final class Run[A](sources: Seq[Source[A]], onPark: () => Unit):
+  private final class Run[A](sources: Seq[Source[A]], onPark: () => Unit, quantum: Int):
     private type R = Writer % A + Async
     private val n = sources.length
 
@@ -83,6 +87,10 @@ private[okay] object ReadyMerge:
       head = if head == 0 then n - 1 else head - 1
       ring(head) = i
       size += 1
+
+    /** the source that told last, and how many in a row */
+    private var last = -1
+    private var streak = 0
 
     private def pop(): Int =
       val i = ring(head)
@@ -146,7 +154,10 @@ private[okay] object ReadyMerge:
                   // told is still delivered, the source is dropped
                   try
                     slot(i) = k(())
-                    pushBack(i)
+                    if i != last then { last = i; streak = 0 }
+                    streak += 1
+                    if streak < quantum then pushFront(i)
+                    else { streak = 0; pushBack(i) }
                   catch case e: Throwable => failed(e)
                   okay.effect[R, Unit](Writer(a)).flatMap(_ => again()) }
             { g =>

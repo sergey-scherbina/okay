@@ -235,11 +235,6 @@ object Source {
    */
   def mergeReady[A](sources: Source[A]*): Source[A] = ReadyMerge(sources)
 
-  /** which road the elementwise `merge` takes — `ready` (the default)
-   * or `channel`, the pre-2026-09-26 one, kept ONLY for the A/B of
-   * source-merge-via-ready and deleted with it */
-  private[okay] val mergeRoad: String =
-    Option(System.getProperty("okay.source.merge")).getOrElse("ready")
 
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart
@@ -458,17 +453,16 @@ extension [A](s: Source[A])
     val tw = Writer.widen[B, A | B, Unit, Async](t)
     if !chunked then
       pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
-        if Source.mergeRoad == "channel" then
-          // THE OLD ROAD, for the A/B only (-Dokay.source.merge=channel):
-          // deleted with the switch once source-merge-via-ready is measured
-          Writer.of(Drain(Channel.merge[A | B, S, Async, S, Async](sw, tw, capacity)))
-        else
-          // a fiber per side into a ring of its own, read in batches
-          // (`drained`), joined by readiness; the fibers start HERE, at
-          // the first pull, as they always did
-          ReadyMerge[A | B](Seq(
-            Channel.buffer[A | B, S, Async](capacity)(sw).drained,
-            Channel.buffer[A | B, S, Async](capacity)(tw).drained))
+        // a fiber per side into a ring of its own, read in batches
+        // (`drained`), joined by readiness; the fibers start HERE, at
+        // the first pull, as they always did. A ready side tells up to
+        // a batch in a row: measured 2-3% better than one per turn
+        // (source-merge-via-ready, Results), and merge promises no
+        // order BETWEEN its sides, only within each
+        ReadyMerge[A | B](Seq(
+          Channel.buffer[A | B, S, Async](capacity)(sw).drained,
+          Channel.buffer[A | B, S, Async](capacity)(tw).drained),
+          quantum = Drain.Batch)
     else
       // capacity counts ELEMENTS, so the channel gets that many
       // divided by what each of its slots now holds

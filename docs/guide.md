@@ -997,10 +997,12 @@ val offCore = Channel.buffer(64)(LazyList.range(0, 1000)).drained
 val both = offCore mergeReady Source.of(List(-1, -2))
 ```
 
-`source merge source` is the case that buffers every side — and
-measured on 2x500 with each side buffered the same way, the ring join
-is 7-14% faster than `merge`'s shared channel (99 us against 107-114),
-while ready inputs merged with no fiber at all cost 68-70 us.
+`source merge source` IS that composition since
+source-merge-via-ready: each side buffered onto a fiber of its own,
+joined by `mergeReady` — one merge mechanism, 4-8% faster than the
+shared channel it replaced at the default capacity (a named ~10% loss
+at capacity 256, specs/source-merge-via-ready.md). Ready inputs merged
+with no fiber at all cost 68-70 us on 2x500.
 
 Chunking is a property of the STREAM, not a parameter of whatever
 consumes it: `s.chunked(size)` gives `Source[Chunk[A]]` and

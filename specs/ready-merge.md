@@ -80,8 +80,9 @@ every side whether it needs one or not.
       answer) is not lost and does not recurse
 - [x] `Async.Run` is performed in the source's own turn, in place
 - [x] a failing source (a `Left` answer, a throwing `Run`) fails the
-      merged program, and the other parked sources' registrations are
-      cancelled
+      merged program — SINCE source-merge-via-ready after the other
+      sources have run to their end (drain, then fail), none cancelled;
+      the first cut failed at once and cancelled the parked ones
 - [x] cancelling the merged program while it is parked cancels every
       parked source's registration
 - [x] stack-safe: 10^6 elements, and 10^5 synchronous wake-ups

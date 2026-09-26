@@ -1247,9 +1247,13 @@ ZIO ties 10.9 / 44.6 against the 10.7 / 45 recorded. 107x inside fs2,
 from the source alone. Okay chunked is 7.7x ahead of fs2 asked
 fairly, not 830x.)
 
-Readiness-merge is what zip and ++ cannot express: here a fiber per
-source feeds one channel, the loser of every race simply arrives
-later. (`Source.mergeReady` is the other road — the sources' own
+Readiness-merge is what zip and ++ cannot express: a fiber per
+source, the loser of every race simply arrives later. (Since
+source-merge-via-ready the elementwise `Source.merge` joins the two
+sides by `mergeReady`, each on its own ring, rather than through one
+shared channel: 0.92-0.96x of the old road at capacity 64, parity at
+1024, a named 1.08-1.16x at 256. The chunked rows below still use the
+shared channel.) (`Source.mergeReady` is the other road — the sources' own
 continuations in a ring, no fiber and no channel, specs/ready-merge.md;
 on 2x500 its matched pair — each side still on its own fiber, joined
 by the ring instead of one shared channel — read 98.6/99.0 us against
