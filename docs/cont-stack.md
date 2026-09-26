@@ -121,13 +121,14 @@ warning; it counts.
 ## What it costs when it does not switch
 
 Bookkeeping on a program that never goes deep: fib100 (a hundred
-generator steps) reads 1.08–1.17x its pre-switch number in JMH (1.00
-against the tree before the answer-using walk, which added nothing
-fib100 can see), with an
-exact allocation count identical byte for byte — the difference is the
-JIT's escape analysis on a slightly bigger hot path, not objects
-(`specs/cont-stack.md`, plan stage C). A thousand-level program that
-fits its stack pays one stack reading, 0.3 µs.
+generator steps) reads 1.04x its pre-switch number in JMH, at the same
+bytes per run (since cont-stack-fastpath round 3, 2026-09-26; it read
+1.08–1.17x before, when a `map`'s continuation escaped the JIT's
+escape analysis). A program built of `flatMap`s over a state answer —
+`PState`, the statePara lane — still pays 1.11x with no switch, and
+there the bytes are real objects, about 21 per operation, filed to
+find (`specs/cont-stack.md`, plan stage C). A thousand-level program
+that fits its stack pays one stack reading, 0.3 µs.
 
 ## Literature
 
