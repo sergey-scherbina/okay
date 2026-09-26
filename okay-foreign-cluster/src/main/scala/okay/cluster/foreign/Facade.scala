@@ -28,27 +28,22 @@ trait Calls[-M]:
   def call[A: Schema, B: Schema](module: M, fn: String)(a: A): Either[Batcher.Failed, B]
 
 object Calls:
+  /** ONE body for every wire language (foreign-one-runtime): the value by
+   * the language's rules, through its one pool, the answer back by them */
+  def of[M](lang: Language[M]): Calls[M] = new:
+    def name = lang.name
+    def call[A: Schema, B: Schema](module: M, fn: String)(a: A): Either[Batcher.Failed, B] =
+      Workers.use(lang.workers(module, Stage.Workers), lang.who)(
+        _.handler.handle(okay.py.ForeignEval.Call(lang.address(module, fn), Vector(lang.shape.encode(a)))))
+        .flatMap(lang.shape.decode[B]).left.map(Language.failed)
+
   /** Python, `python3` on the PATH; `Calls.py(path)` for another */
   given py: Calls[okay.py.PyModule] = py("python3")
-
-  def py(python: String): Calls[okay.py.PyModule] = new:
-    def name = s"py:$python"
-    def call[A: Schema, B: Schema](module: okay.py.PyModule, fn: String)(a: A): Either[Batcher.Failed, B] =
-      val pool = PyPool.of(module, python, Stage.Workers)
-      PyPool.call(pool, python, s"${module.name}:$fn", Vector(okay.py.PyCodec.encode(a)))
-        .flatMap(v => okay.py.PyCodec.decode[B](v))
-        .left.map(c => Batcher.Failed(c.kind, c.message))
+  def py(python: String): Calls[okay.py.PyModule] = of(Language.py(python))
 
   /** R, `Rscript` on the PATH; `Calls.r(path)` for another */
   given r: Calls[okay.r.RModule] = r("Rscript")
-
-  def r(rscript: String): Calls[okay.r.RModule] = new:
-    def name = s"r:$rscript"
-    def call[A: Schema, B: Schema](module: okay.r.RModule, fn: String)(a: A): Either[Batcher.Failed, B] =
-      val pool = RPool.of(module, rscript, Stage.Workers)
-      RPool.call(pool, rscript, s"${module.name}::$fn", Vector(okay.r.RCodec.encode(a)))
-        .flatMap(v => okay.r.RCodec.decode[B](v))
-        .left.map(c => Batcher.Failed(c.kind, c.message))
+  def r(rscript: String): Calls[okay.r.RModule] = of(Language.r(rscript))
 
   /** the JVM's own languages: a function registered by name, called as
    * the Scala function it is — no wire, no codec, the zero-cost tier */
@@ -82,37 +77,26 @@ trait Frames[-M]:
     frame(module, fn)(Rows.table(in)).flatMap(t => Rows.rows[B](t).left.map(m => Batcher.Failed("Frame", m)))
 
 object Frames:
-  given py: Frames[okay.py.PyModule] = py("python3")
-  def py(python: String): Frames[okay.py.PyModule] = new:
-    def name = s"py:$python"
-    // a Table goes to the wire AS ITSELF where the worker speaks Arrow and
-    // is converted once where it does not (ForeignWorker.frameTable): the
-    // PyFrame this once built here was two conversions of the same columns
-    // on the Arrow road (facade-frame-seam)
-    def frame(module: okay.py.PyModule, fn: String)(in: Table): Either[Batcher.Failed, Table] =
-      val pool = PyPool.of(module, python, Stage.Workers)
-      PyPool.frameTable(pool, python, s"${module.name}:$fn", in, Vector.empty)
-        .left.map(c => Batcher.Failed(c.kind, c.message))
-    // rows take Python's own road: rows to a PyFrame in one pass, the
-    // frame over, its rows back — what PyStage does, and the own road
-    // MeasureFacade compares against
-    override def rows[A: Schema, B: Schema](module: okay.py.PyModule, fn: String)(in: Vector[A]): Either[Batcher.Failed, Vector[B]] =
-      val pool = PyPool.of(module, python, Stage.Workers)
-      okay.py.PyFrame.of(in)
-        .flatMap(f => PyPool.frame(pool, python, s"${module.name}:$fn", f, Vector.empty))
-        .flatMap(_.rows[B])
-        .left.map(c => Batcher.Failed(c.kind, c.message))
+  /** ONE body for every wire language: a Table goes to the wire AS ITSELF
+   * where the worker speaks Arrow and is converted once, by the WORKER's
+   * rules, where it does not (`ForeignWorker.frameTable`, facade-frame-seam
+   * — R included since foreign-one-runtime, which converted twice); rows
+   * take the language's own road, one frame by its rules each way */
+  def of[M](lang: Language[M]): Frames[M] = new:
+    def name = lang.name
+    def frame(module: M, fn: String)(in: Table): Either[Batcher.Failed, Table] =
+      Workers.use(lang.workers(module, Stage.Workers), lang.who)(_.frameTable(lang.address(module, fn), in, Vector.empty))
+        .left.map(Language.failed)
+    override def rows[A: Schema, B: Schema](module: M, fn: String)(in: Vector[A]): Either[Batcher.Failed, Vector[B]] =
+      lang.shape.frame(in).flatMap(f =>
+        Workers.use(lang.workers(module, Stage.Workers), lang.who)(
+          _.handler.handle(okay.py.ForeignEval.Frame(lang.address(module, fn), f, Vector.empty))))
+        .flatMap(_.rows[B]).left.map(Language.failed)
 
+  given py: Frames[okay.py.PyModule] = py("python3")
+  def py(python: String): Frames[okay.py.PyModule] = of(Language.py(python))
   given r: Frames[okay.r.RModule] = r("Rscript")
-  def r(rscript: String): Frames[okay.r.RModule] = new:
-    def name = s"r:$rscript"
-    def frame(module: okay.r.RModule, fn: String)(in: Table): Either[Batcher.Failed, Table] =
-      val pool = RPool.of(module, rscript, Stage.Workers)
-      val sent = try Right(okay.r.RArrowFrames.frame(in))
-        catch case e: IllegalStateException => Left(Batcher.Failed("Frame", Option(e.getMessage).getOrElse("")))
-      sent.flatMap(f => RPool.frame(pool, rscript, s"${module.name}::$fn", f, Vector.empty)
-        .left.map(c => Batcher.Failed(c.kind, c.message)))
-        .flatMap(f => okay.r.RArrowFrames.table(f).left.map(m => Batcher.Failed("Frame", m)))
+  def r(rscript: String): Frames[okay.r.RModule] = of(Language.r(rscript))
 
   /** the JVM: the table by reference, the function as registered */
   given jvm: Frames[JvmModule] = new:
@@ -195,30 +179,25 @@ trait Programs[-M]:
   def run[A](module: M)(prog: A ! Op): A
 
 object Programs:
-  given py: Programs[okay.py.PyModule] = py("python3")
-  def py(python: String): Programs[okay.py.PyModule] = new:
+  /** ONE body for every wire language: the one API at the language's value
+   * rules, and the whole walk on the one pool, which routes a program by its
+   * run so its continuations stay on one worker */
+  def of[M](lang: Language[M]): Programs[M] = new:
     type Op[+A] = okay.py.ForeignEval[A]
-    def name = s"py:$python"
+    def name = lang.name
+    private given okay.py.Shape = lang.shape
     private def cb[F[+_]](c: Cb[F]): okay.py.Py.Callback[F] =
       okay.py.Py.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
-    def program[Arg: Schema, Out: Schema, F[+_]](module: okay.py.PyModule, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
-      okay.py.Py.program[Out](s"${module.name}:$fn").calling(okay.py.Py.callbacks[F](cbs.map(cb[F])*))(a).program
-        .map(_.left.map(c => Batcher.Failed(c.kind, c.message)))
-    def run[A](module: okay.py.PyModule)(prog: A ! Op): A =
-      // the pool routes a program by its run: its continuations stay on one worker
-      prog.runWith(using PyPool.of(module, python, Stage.Workers).handler)
+    def program[Arg: Schema, Out: Schema, F[+_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
+      okay.py.Py.program[Out](lang.address(module, fn)).calling(okay.py.Py.callbacks[F](cbs.map(cb[F])*))(a).program
+        .map(_.left.map(Language.failed))
+    def run[A](module: M)(prog: A ! Op): A =
+      prog.runWith(using lang.workers(module, Stage.Workers).handler)
 
+  given py: Programs[okay.py.PyModule] = py("python3")
+  def py(python: String): Programs[okay.py.PyModule] = of(Language.py(python))
   given r: Programs[okay.r.RModule] = r("Rscript")
-  def r(rscript: String): Programs[okay.r.RModule] = new:
-    type Op[+A] = okay.r.REval[A]
-    def name = s"r:$rscript"
-    private def cb[F[+_]](c: Cb[F]): okay.r.R.Callback[F] =
-      okay.r.R.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
-    def program[Arg: Schema, Out: Schema, F[+_]](module: okay.r.RModule, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
-      okay.r.R.program[Out](s"${module.name}::$fn").calling(okay.r.R.callbacks[F](cbs.map(cb[F])*))(a).program
-        .map(_.left.map(c => Batcher.Failed(c.kind, c.message)))
-    def run[A](module: okay.r.RModule)(prog: A ! Op): A =
-      prog.runWith(using RPool.of(module, rscript, Stage.Workers).handler)
+  def r(rscript: String): Programs[okay.r.RModule] = of(Language.r(rscript))
 
 /**
  * OBJECT HANDLES (foreign-object-handles): a value the far side KEEPS —
@@ -247,54 +226,41 @@ trait Methods[-M]:
 
 object Holds:
   /** the instance types with their handle type visible: a `given` cannot
-   * carry a refinement (the parser reads its `{` as a body), an alias can */
+   * carry a refinement (the parser reads its `{` as a body), an alias can.
+   * The handle is the one handle (`okay.py.PyRef`) for every language. */
   type Py = Holds[okay.py.PyModule] { type Ref = okay.py.PyRef }
-  type R = Holds[okay.r.RModule] { type Ref = okay.r.RRef }
+  type R = Holds[okay.r.RModule] { type Ref = okay.py.PyRef }
 
-  /** the one pool of (interpreter, module), which routes a call naming a
-   * handle to the worker holding it (foreign-one-pool: the second set of
-   * processes this once started beside the stage's is gone) */
-  private[foreign] def pyWorkers(module: okay.py.PyModule, python: String): okay.py.PyWorkers =
-    PyPool.of(module, python, Stage.Workers)
-  private def failed(c: okay.py.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
+  /** ONE body for every wire language: a handle lives in one worker of the
+   * one pool, which routes every call naming it there */
+  def of[M](lang: Language[M]): Holds[M] { type Ref = okay.py.PyRef } = new Holds[M]:
+    type Ref = okay.py.PyRef
+    def name = lang.name
+    private given okay.py.Shape = lang.shape
+    private def on(module: M) = lang.workers(module, Stage.Workers).handler
+    def hold[Arg: Schema](module: M, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
+      okay.py.Py.hold(lang.address(module, fn))(a).runWith(using on(module)).left.map(Language.failed)
+    def apply[Arg: Schema, Out: Schema](module: M, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
+      okay.py.Py.fn[Out](lang.address(module, fn))(ref, a).runWith(using on(module)).left.map(Language.failed)
+    def release(module: M)(ref: Ref): Unit =
+      ref.release.runWith(using on(module))
 
   given py: Py = py("python3")
-  def py(python: String): Py = new Holds[okay.py.PyModule]:
-    type Ref = okay.py.PyRef
-    def name = s"py:$python"
-    def hold[Arg: Schema](module: okay.py.PyModule, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
-      okay.py.Py.hold(s"${module.name}:$fn")(a).runWith(using pyWorkers(module, python).handler).left.map(failed)
-    def apply[Arg: Schema, Out: Schema](module: okay.py.PyModule, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
-      okay.py.Py.fn[Out](s"${module.name}:$fn")(ref, a).runWith(using pyWorkers(module, python).handler).left.map(failed)
-    def release(module: okay.py.PyModule)(ref: Ref): Unit =
-      ref.release.runWith(using pyWorkers(module, python).handler)
-
-  /** R's handles route through the one pool of R workers, as Python's do */
-  private def rWorkers(module: okay.r.RModule, rscript: String): okay.py.PyWorkers =
-    RPool.of(module, rscript, Stage.Workers)
-  private def rfailed(c: okay.r.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
-
+  def py(python: String): Py = of(Language.py(python))
   given r: R = r("Rscript")
-  def r(rscript: String): R = new Holds[okay.r.RModule]:
-    type Ref = okay.r.RRef
-    def name = s"r:$rscript"
-    def hold[Arg: Schema](module: okay.r.RModule, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
-      okay.r.R.hold(s"${module.name}::$fn")(a).runWith(using rWorkers(module, rscript).handler).left.map(rfailed)
-    def apply[Arg: Schema, Out: Schema](module: okay.r.RModule, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
-      okay.r.R.fn[Out](s"${module.name}::$fn")(ref, a).runWith(using rWorkers(module, rscript).handler).left.map(rfailed)
-    def release(module: okay.r.RModule)(ref: Ref): Unit =
-      ref.release.runWith(using rWorkers(module, rscript).handler)
+  def r(rscript: String): R = of(Language.r(rscript))
 
 object Methods:
   type Py = Methods[okay.py.PyModule] { type Ref = okay.py.PyRef }
+  /** Python only: R's objects have no methods to call by name */
   given py: Py = py("python3")
   def py(python: String): Py = new Methods[okay.py.PyModule]:
     type Ref = okay.py.PyRef
-    private def failed(c: okay.py.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
+    private val lang = Language.py(python)
     def method[Arg: Schema, Out: Schema](module: okay.py.PyModule, ref: Ref, name: String)(a: Arg): Either[Batcher.Failed, Out] =
-      ref.call[Out](name)(a).runWith(using Holds.pyWorkers(module, python).handler).left.map(failed)
+      ref.call[Out](name)(a).runWith(using lang.workers(module, Stage.Workers).handler).left.map(Language.failed)
     def attr[Out: Schema](module: okay.py.PyModule, ref: Ref, name: String): Either[Batcher.Failed, Out] =
-      ref.attr[Out](name).runWith(using Holds.pyWorkers(module, python).handler).left.map(failed)
+      ref.attr[Out](name).runWith(using lang.workers(module, Stage.Workers).handler).left.map(Language.failed)
 
 /**
  * The doors a job uses, each picking the tier by the SHAPE it is handed
@@ -340,21 +306,18 @@ object Speaks:
    */
   final case class Report(language: String, link: String, frames: String, stream: Boolean, programs: String)
 
-  given py: Speaks[okay.py.PyModule] = py("python3")
-  def py(python: String): Speaks[okay.py.PyModule] = new:
-    def speaks(module: okay.py.PyModule): Report =
-      val pool = PyPool.of(module, python, Stage.Workers)
-      val wire = pool.use(_.wire)
-      // Python's lambdas are values, so a program's continuation can be
-      // resumed twice (specs/remote-foreign.md)
-      Report("python", "pipes", if wire.endsWith("+arrow") then "arrow" else "columnar-json", stream = false, "multi-shot")
+  /** ONE body: the language's word and what its worker negotiated. Every
+   * wire language's continuations are values here (remote-foreign), so
+   * programs are multi-shot */
+  def of[M](lang: Language[M]): Speaks[M] = new:
+    def speaks(module: M): Report =
+      val wire = lang.workers(module, Stage.Workers).use(_.wire)
+      Report(lang.word, "pipes", if wire.endsWith("+arrow") then "arrow" else "columnar-json", stream = false, "multi-shot")
 
+  given py: Speaks[okay.py.PyModule] = py("python3")
+  def py(python: String): Speaks[okay.py.PyModule] = of(Language.py(python))
   given r: Speaks[okay.r.RModule] = r("Rscript")
-  def r(rscript: String): Speaks[okay.r.RModule] = new:
-    def speaks(module: okay.r.RModule): Report =
-      val pool = RPool.of(module, rscript, Stage.Workers)
-      val wire = pool.use(_.wire)
-      Report("r", "pipes", if wire.endsWith("+arrow") then "arrow" else "columnar-json", stream = false, "multi-shot")
+  def r(rscript: String): Speaks[okay.r.RModule] = of(Language.r(rscript))
 
   given jvm: Speaks[JvmModule] = new:
     def speaks(module: JvmModule): Report = Report("jvm", "in-jvm", "by-reference", stream = false, "in-jvm")

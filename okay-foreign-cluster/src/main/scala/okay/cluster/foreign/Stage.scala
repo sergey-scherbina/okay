@@ -8,8 +8,8 @@ import scala.collection.immutable.ArraySeq
 
 /**
  * A batch of typed rows through something outside the JVM, as one frame
- * (specs/foreign-map-reduce.md). The two implementations are `PyStage`
- * and `RStage`; a test's fake is a third.
+ * (specs/foreign-map-reduce.md). `ForeignStage` is the one implementation
+ * over every wire language (foreign-one-runtime); a test's fake is another.
  */
 trait Batcher[A, B]:
   /** what a failure names: `py:scoring:scale`, `r:model:fit` */
@@ -105,14 +105,14 @@ extension [A](flow: Flow[A])
   def mapPy[B](module: okay.py.PyModule, fn: String, python: String = "python3",
                batch: Int = Stage.Batch, workers: Int = Stage.Workers)
               (using okay.codec.Schema[A], okay.codec.Schema[B]): Flow[B] =
-    Stage.through(flow, PyStage[A, B](module, fn, python, workers), batch, 3)
+    Stage.through(flow, ForeignStage[okay.py.PyModule, A, B](Language.py(python), module, fn, workers), batch, 3)
 
   /** the map in R: `fn` in `module` takes a data.frame and answers one;
    * the frame crosses as Arrow where R has the `arrow` package */
   def mapR[B](module: okay.r.RModule, fn: String, rscript: String = "Rscript",
               batch: Int = Stage.Batch, workers: Int = Stage.Workers)
              (using okay.codec.Schema[A], okay.codec.Schema[B]): Flow[B] =
-    Stage.through(flow, RStage[A, B](module, fn, rscript, workers), batch, 3)
+    Stage.through(flow, ForeignStage[okay.r.RModule, A, B](Language.r(rscript), module, fn, workers), batch, 3)
 
 /**
  * The pools of a worker JVM, one per (language, interpreter, module): the

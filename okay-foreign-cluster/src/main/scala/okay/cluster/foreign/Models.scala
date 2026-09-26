@@ -1,8 +1,8 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
-import okay.py.{ForeignEval, ForeignWorker, PyCodec, PyFrame, PyModule, PyRef, PyValue}
-import okay.r.{RCodec, REval, RFrame, RModule}
+import okay.py.PyModule
+import okay.r.RModule
 
 /**
  * A MODEL ON THE FAR SIDE, as an extension of the engine typeclass
@@ -33,65 +33,14 @@ object Models:
 
   def py(python: String): Models[PyModule] = new:
     def model[P: Schema](module: PyModule, fn: String, params: P, workers: Int): Model =
-      PyModel[P](module, fn, params, python, workers)
+      ForeignModel[PyModule, P](Language.py(python), module, fn, params, workers)
 
   def r(rscript: String): Models[RModule] = new:
     def model[P: Schema](module: RModule, fn: String, params: P, workers: Int): Model =
-      RModel[P](module, fn, params, rscript, workers)
+      ForeignModel[RModule, P](Language.r(rscript), module, fn, params, workers)
 
 /** the facade: `Model.in(module, "fit", Params(…))` */
 object Model:
   def in[P: Schema](module: Any, fn: String, params: P, workers: Int = Stage.Workers)
                    (using m: Models[module.type]): Model =
     m.model[P](module, fn, params, workers)
-
-final class PyModel[P](module: PyModule, fn: String, params: P, python: String, workers: Int)
-                     (using sp: Schema[P]) extends Model:
-  val name = s"py:${module.name}:$fn"
-  private val pool = PyPool.of(module, python, workers)
-  private val refs = java.util.WeakHashMap[ForeignWorker, PyRef]()
-
-  /** this interpreter's copy, made on its first chunk */
-  private def refFor(w: ForeignWorker): Either[okay.py.Condition, PyRef] = refs.synchronized {
-    Option(refs.get(w)) match
-      case Some(r) => Right(r)
-      case None =>
-        w.handler.handle(ForeignEval.Call(s"${module.name}:$fn", Vector(PyCodec.encode(params)), held = true)).flatMap(okay.py.Wire.asRef)
-          .map { r => refs.put(w, r): Unit; r }
-  }
-
-  def batcher[A: Schema, B: Schema](mapFn: String): Batcher[A, B] = new:
-    val name = s"py:${module.name}:$mapFn($fn)"
-    def apply(rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
-      PyFrame.of(rows) match
-        case Left(c) => Left(Batcher.Failed(c.kind, c.message))
-        case Right(frame) =>
-          PyPool.use(pool, python) { w =>
-            refFor(w).flatMap(ref =>
-              w.handler.handle(ForeignEval.Frame(s"${module.name}:$mapFn", frame, Vector(PyValue.Ref(ref)))))
-          }.flatMap(_.rows[B]).left.map(c => Batcher.Failed(c.kind, c.message))
-
-final class RModel[P](module: RModule, fn: String, params: P, rscript: String, workers: Int)
-                    (using sp: Schema[P]) extends Model:
-  val name = s"r:${module.name}:$fn"
-  private val pool = RPool.of(module, rscript, workers)
-  private val refs = java.util.WeakHashMap[ForeignWorker, PyRef]()
-
-  private def refFor(r: ForeignWorker): Either[okay.r.Condition, PyRef] = refs.synchronized {
-    Option(refs.get(r)) match
-      case Some(ref) => Right(ref)
-      case None =>
-        r.handler.handle(REval.Call(s"${module.name}::$fn", Vector(RCodec.encode(params)), held = true)).flatMap(okay.py.Wire.asRef)
-          .map { ref => refs.put(r, ref): Unit; ref }
-  }
-
-  def batcher[A: Schema, B: Schema](mapFn: String): Batcher[A, B] = new:
-    val name = s"r:${module.name}:$mapFn($fn)"
-    def apply(rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
-      RFrame.of(rows) match
-        case Left(c) => Left(Batcher.Failed(c.kind, c.message))
-        case Right(frame) =>
-          RPool.use(pool, rscript) { r =>
-            refFor(r).flatMap(ref =>
-              r.handler.handle(REval.Frame(s"${module.name}::$mapFn", frame, Vector(PyValue.Ref(ref)))))
-          }.flatMap(_.rows[B]).left.map(c => Batcher.Failed(c.kind, c.message))

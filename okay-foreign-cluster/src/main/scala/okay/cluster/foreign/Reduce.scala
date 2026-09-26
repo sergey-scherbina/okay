@@ -7,8 +7,9 @@ import scala.collection.mutable.ArrayBuffer
 /**
  * The REDUCE outside the JVM (specs/foreign-map-reduce.md, stage 2): an
  * `Aggregator`'s two functions, a step over a chunk and a merge of two
- * partials, answered by an interpreter. `PyReducer` and `RReducer` are
- * the implementations; a test's fake is a third.
+ * partials, answered by an interpreter. `ForeignReducer` is the one
+ * implementation over every wire language (foreign-one-runtime); a test's
+ * fake is another.
  */
 trait Reducer[A, Acc]:
   def name: String
@@ -94,10 +95,10 @@ object Reduce:
    * `merge(a, b)` two dicts of fields into one */
   def py[A: Schema, Acc: Schema](module: okay.py.PyModule, step: String, merge: String, python: String = "python3",
                                  batch: Int = Stage.Batch, workers: Int = Stage.Workers): Wire[A, Option[Acc]] =
-    through(PyReducer[A, Acc](module, step, merge, python, workers), batch, 3)
+    through(ForeignReducer[okay.py.PyModule, A, Acc](Language.py(python), module, step, merge, workers), batch, 3)
 
   /** the reduce in R: `step(frame, acc)` answers a one-row data.frame,
    * `merge(a, b)` two named lists into one */
   def r[A: Schema, Acc: Schema](module: okay.r.RModule, step: String, merge: String, rscript: String = "Rscript",
                                 batch: Int = Stage.Batch, workers: Int = Stage.Workers): Wire[A, Option[Acc]] =
-    through(RReducer[A, Acc](module, step, merge, rscript, workers), batch, 3)
+    through(ForeignReducer[okay.r.RModule, A, Acc](Language.r(rscript), module, step, merge, workers), batch, 3)

@@ -3,8 +3,8 @@ package okay.cluster.foreign
 import okay.Chunks
 import okay.cluster.Flow
 import okay.codec.Schema
-import okay.py.{ForeignEval, ForeignWorker, Pool, PyFrame, PyModule, PyRef, PyValue}
-import okay.r.{REval, RFrame, RModule}
+import okay.py.PyModule
+import okay.r.RModule
 
 /**
  * A STATEFUL STAGE, as an extension of the engine typeclass
@@ -45,11 +45,11 @@ object Stateful:
 
   def py(python: String): Stateful[PyModule] = new:
     def streamer[A: Schema, B: Schema](module: PyModule, open: String, step: String, finish: String, workers: Int): Streamer[A, B] =
-      PyStreamer[A, B](module, open, step, finish, python, workers)
+      ForeignStreamer[PyModule, A, B](Language.py(python), module, open, step, finish, workers)
 
   def r(rscript: String): Stateful[RModule] = new:
     def streamer[A: Schema, B: Schema](module: RModule, open: String, step: String, finish: String, workers: Int): Streamer[A, B] =
-      RStreamer[A, B](module, open, step, finish, rscript, workers)
+      ForeignStreamer[RModule, A, B](Language.r(rscript), module, open, step, finish, workers)
 
   /** the stage: `open` at the first chunk, `step` per chunk of `batch`
    * rows, `finish` when the partition's input ends — as one chunk
@@ -92,89 +92,3 @@ object Stateful:
           throw t
       def hasNext: Boolean = fill()
       def next(): B = { fill(): Unit; buf.next() })
-
-final class PyStreamer[A, B](module: PyModule, openFn: String, stepFn: String, finishFn: String, python: String, workers: Int)
-                            (using sa: Schema[A], sb: Schema[B]) extends Streamer[A, B]:
-  val name = s"py:${module.name}:$openFn/$stepFn/$finishFn"
-  private val pool = PyPool.of(module, python, workers)
-  final class S(val lease: Pool[ForeignWorker]#Lease, val ref: PyRef)
-
-  private def failed(c: okay.py.Condition) = Batcher.Failed(c.kind, c.message)
-
-  /** one operation on the leased interpreter; a death releases the lease
-   * as dead and is the wire's failure */
-  private def on[X](s: S)(f: ForeignWorker => Either[okay.py.Condition, X]): Either[Batcher.Failed, X] =
-    try f(s.lease.e).left.map(failed)
-    catch case e: IllegalStateException if PyPool.dead(e) =>
-      s.lease.release(dead = true)
-      Left(Batcher.Failed("WorkerDied", e.getMessage))
-
-  def open(): Either[Batcher.Failed, S] =
-    val lease =
-      try pool.lease()
-      catch case e: Exception => return Left(Batcher.Failed("WorkerUnavailable", s"the python '$python' could not be opened: ${e.getMessage}"))
-    val opened =
-      try lease.e.handler.handle(ForeignEval.Call(s"${module.name}:$openFn", Vector.empty, held = true)).flatMap(okay.py.Wire.asRef).left.map(failed)
-      catch case e: IllegalStateException if PyPool.dead(e) => Left(Batcher.Failed("WorkerDied", e.getMessage))
-    opened match
-      case Right(ref) => Right(S(lease, ref))
-      case Left(f) => lease.release(dead = f.kind == "WorkerDied"); Left(f)
-
-  def step(s: S, rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
-    PyFrame.of(rows).left.map(failed).flatMap(frame =>
-      on(s)(_.handler.handle(ForeignEval.Frame(s"${module.name}:$stepFn", frame, Vector(PyValue.Ref(s.ref)))))
-        .flatMap(_.rows[B].left.map(failed)))
-
-  def abandon(s: S): Unit =
-    try s.lease.e.handler.handle(ForeignEval.Release(s.ref)) catch case _: Exception => ()
-    s.lease.release(dead = !s.lease.e.alive)
-
-  def finish(s: S): Either[Batcher.Failed, Vector[B]] =
-    val last = on(s)(_.handler.handle(ForeignEval.Frame(s"${module.name}:$finishFn", PyFrame(Vector.empty), Vector(PyValue.Ref(s.ref)))))
-      .flatMap(_.rows[B].left.map(failed))
-    if last.isRight || last.left.exists(_.kind != "WorkerDied") then
-      try s.lease.e.handler.handle(ForeignEval.Release(s.ref)) catch case _: Exception => ()
-      s.lease.release(dead = false)
-    last
-
-final class RStreamer[A, B](module: RModule, openFn: String, stepFn: String, finishFn: String, rscript: String, workers: Int)
-                           (using sa: Schema[A], sb: Schema[B]) extends Streamer[A, B]:
-  val name = s"r:${module.name}:$openFn/$stepFn/$finishFn"
-  private val pool = RPool.of(module, rscript, workers)
-  final class S(val lease: Pool[ForeignWorker]#Lease, val ref: PyRef)
-
-  private def failed(c: okay.r.Condition) = Batcher.Failed(c.kind, c.message)
-
-  private def on[X](s: S)(f: ForeignWorker => Either[okay.r.Condition, X]): Either[Batcher.Failed, X] =
-    try f(s.lease.e).left.map(failed)
-    catch case e: IllegalStateException if RPool.dead(e) =>
-      s.lease.release(dead = true)
-      Left(Batcher.Failed("WorkerDied", e.getMessage))
-
-  def open(): Either[Batcher.Failed, S] =
-    val lease =
-      try pool.lease()
-      catch case e: Exception => return Left(Batcher.Failed("WorkerUnavailable", s"'$rscript' could not be opened: ${e.getMessage}"))
-    val opened =
-      try lease.e.handler.handle(REval.Call(s"${module.name}::$openFn", Vector.empty, held = true)).flatMap(okay.py.Wire.asRef).left.map(failed)
-      catch case e: IllegalStateException if RPool.dead(e) => Left(Batcher.Failed("WorkerDied", e.getMessage))
-    opened match
-      case Right(ref) => Right(S(lease, ref))
-      case Left(f) => lease.release(dead = f.kind == "WorkerDied"); Left(f)
-
-  def step(s: S, rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
-    RFrame.of(rows).left.map(failed).flatMap(frame =>
-      on(s)(_.handler.handle(REval.Frame(s"${module.name}::$stepFn", frame, Vector(PyValue.Ref(s.ref)))))
-        .flatMap(_.rows[B].left.map(failed)))
-
-  def abandon(s: S): Unit =
-    try s.lease.e.handler.handle(REval.Release(s.ref)) catch case _: Exception => ()
-    s.lease.release(dead = !s.lease.e.alive)
-
-  def finish(s: S): Either[Batcher.Failed, Vector[B]] =
-    val last = on(s)(_.handler.handle(REval.Frame(s"${module.name}::$finishFn", RFrame(Vector.empty), Vector(PyValue.Ref(s.ref)))))
-      .flatMap(_.rows[B].left.map(failed))
-    if last.isRight || last.left.exists(_.kind != "WorkerDied") then
-      try s.lease.e.handler.handle(REval.Release(s.ref)) catch case _: Exception => ()
-      s.lease.release(dead = false)
-    last

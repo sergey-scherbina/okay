@@ -43,7 +43,7 @@ object Engine:
   def py(python: String): Engine[okay.py.PyModule] = new:
     def name = s"py:$python"
     def batcher[A: Schema, B: Schema](module: okay.py.PyModule, fn: String, workers: Int): Batcher[A, B] =
-      PyStage[A, B](module, fn, python, workers)
+      ForeignStage[okay.py.PyModule, A, B](Language.py(python), module, fn, workers)
 
   /** R, `Rscript` on the PATH; `Engine.r(path)` for another */
   given r: Engine[okay.r.RModule] = r("Rscript")
@@ -51,7 +51,7 @@ object Engine:
   def r(rscript: String): Engine[okay.r.RModule] = new:
     def name = s"r:$rscript"
     def batcher[A: Schema, B: Schema](module: okay.r.RModule, fn: String, workers: Int): Batcher[A, B] =
-      RStage[A, B](module, fn, rscript, workers)
+      ForeignStage[okay.r.RModule, A, B](Language.r(rscript), module, fn, workers)
 
   /** the JVM's own languages — Scala, Clojure, Frege — as functions by
    * name in a `JvmModule`: no wire, no frame, no pool */
@@ -71,10 +71,10 @@ object Reduces:
       module.reducer[A, Acc](step, merge)
   def py(python: String): Reduces[okay.py.PyModule] = new:
     def reducer[A: Schema, Acc: Schema](module: okay.py.PyModule, step: String, merge: String, workers: Int): Reducer[A, Acc] =
-      PyReducer[A, Acc](module, step, merge, python, workers)
+      ForeignReducer[okay.py.PyModule, A, Acc](Language.py(python), module, step, merge, workers)
   def r(rscript: String): Reduces[okay.r.RModule] = new:
     def reducer[A: Schema, Acc: Schema](module: okay.r.RModule, step: String, merge: String, workers: Int): Reducer[A, Acc] =
-      RReducer[A, Acc](module, step, merge, rscript, workers)
+      ForeignReducer[okay.r.RModule, A, Acc](Language.r(rscript), module, step, merge, workers)
 
 /**
  * A module of the JVM's own — functions by name, the shape a `PyModule` or
