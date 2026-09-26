@@ -247,6 +247,13 @@ enum ForeignEval[+A] derives okay.Effect:
    */
   case Call(fn: Address, args: Vector[PyValue], held: Boolean = false)
     extends ForeignEval[Either[Condition, PyValue]]
+  /**
+   * A TABLE call: `fn` of a table and `args`, answering a table. On the wire
+   * it is a `call` whose first argument is the table and which asks for a
+   * table back (foreign-one-protocol); here it stays its own case because
+   * its answer is TYPED — a frame, read by the rules its request was made
+   * under — and every caller has exactly one table, first.
+   */
   case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
     extends ForeignEval[Either[Condition, PyFrame]]
   /** drop a held object; idempotent */

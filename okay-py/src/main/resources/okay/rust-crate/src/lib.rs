@@ -27,8 +27,9 @@ use std::sync::Arc;
 
 /// the wire version this worker speaks; the host refuses any other
 /// 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`;
-/// 8: foreign-one-held — `hold`/`method`/`attr` fold into `call` (shared; no held objects here)
-pub const SHIM_VERSION: i64 = 8;
+/// 8: foreign-one-held — `hold`/`method`/`attr` fold into `call` (shared; no held objects here);
+/// 9: foreign-one-protocol — `frame` folds into `call` (shared; no tables here)
+pub const SHIM_VERSION: i64 = 9;
 
 // ------------------------------------------------------------------ values
 

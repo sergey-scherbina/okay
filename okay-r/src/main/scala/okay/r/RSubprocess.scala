@@ -75,8 +75,9 @@ object RSubprocess:
 
   /** 9: foreign-one-value — the shared value tags, frames announced columnar;
    * 10: foreign-one-program — `start`/`resume` fold into `program`/`continue`;
-   * 11: foreign-one-held — `hold` folds into `call` with `held` */
-  val ShimVersion = 11
+   * 11: foreign-one-held — `hold` folds into `call` with `held`;
+   * 12: foreign-one-protocol — `frame` folds into `call` with `table` */
+  val ShimVersion = 12
 
   /**
    * Start a session: the configured `Rscript` (resolved against PATH

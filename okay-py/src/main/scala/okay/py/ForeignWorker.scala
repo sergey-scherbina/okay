@@ -52,15 +52,24 @@ final class ForeignWorker private (session: WireSession,
    * PyFrame, for a caller whose frame is already a Table.
    */
   def frameTable(fn: String, table: okay.arrow.Table, args: Vector[PyValue]): Either[Condition, okay.arrow.Table] = timed:
-    val head = Vector("op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)))
     def asTable(f: PyFrame): Either[Condition, okay.arrow.Table] = tables.table(f).left.map(Condition("Frame", _))
     if arrow then
-      val (j, got) = session.exchangeArrow(head, table)
+      val (j, got) = session.exchangeArrow(tableCall(fn, None, args), table)
       answer(j)(v => got.fold(Wire.decFrame(v).flatMap(asTable))(Right(_)))
     else
       val sent = try Right(tables.frame(table))
         catch case e: IllegalStateException => Left(Condition("Frame", Option(e.getMessage).getOrElse("")))
-      sent.flatMap(f => answer(exchange(Json.JObj(head :+ ("in" -> frameOut(f)))))(Wire.decFrame).flatMap(asTable))
+      sent.flatMap(f => answer(exchange(Json.JObj(tableCall(fn, Some(f), args))))(Wire.decFrame).flatMap(asTable))
+
+  /**
+   * A TABLE call's head (foreign-one-protocol: `frame` folded into `call`):
+   * the table is the first argument — in the args on the JSON road, the
+   * Arrow stream itself on the Arrow road (`in` = None) — and `table` asks
+   * for a table back.
+   */
+  private def tableCall(fn: String, in: Option[PyFrame], args: Vector[PyValue]): Vector[(String, Json)] =
+    Vector("op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
+      "args" -> Json.JArr(in.map(frameOut).toVector ++ args.map(Wire.enc)), "table" -> Json.JBool(true))
 
   /** a timeout is DATA for an operation that answers an Either: the call
    * failed, the program can see it and decide (stage 6) */
@@ -90,16 +99,15 @@ final class ForeignWorker private (session: WireSession,
           "op" -> Json.JStr("call"), "fn" -> at, "args" -> Json.JArr(args.map(Wire.enc)))
           ++ Option.when(held)("held" -> Json.JBool(true)))))(v => Right(Wire.dec(v)))
       case ForeignEval.Frame(fn, frame, args) => timed:
-        val head = Vector("op" -> Json.JStr("frame"), "fn" -> Json.JStr(fn), "args" -> Json.JArr(args.map(Wire.enc)))
         val table = if arrow then tables.table(frame) else Left("")
         table match
           case Right(t) =>
-            val (j, got) = session.exchangeArrow(head, t)
+            val (j, got) = session.exchangeArrow(tableCall(fn, None, args), t)
             answer(j)(v => got.fold(Wire.decFrame(v))(t => Right(tables.frame(t))).map(_.ruledBy(shape)))
           case Left(why) if arrow && session.frames.strict =>
             Left(Condition("NotArrow", s"this host's given FrameFormat is arrow, and $why"))
           case Left(_) =>
-            answer(exchange(Json.JObj(head :+ ("in" -> frameOut(frame)))))(Wire.decFrame).map(_.ruledBy(shape))
+            answer(exchange(Json.JObj(tableCall(fn, Some(frame), args))))(Wire.decFrame).map(_.ruledBy(shape))
       case ForeignEval.Program(run, fn, args, cbs, _) => timed:
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("program"), "run" -> Json.JNum(run.toDouble), "fn" -> Json.JStr(fn),
@@ -133,8 +141,9 @@ object ForeignWorker:
   type TimedOut = WireSession.TimedOut
 
   /** 7: foreign-one-program — `start`/`resume` folded into `program`/`continue`;
-   * 8: foreign-one-held — `hold`/`method`/`attr` folded into `call` */
-  val ShimVersion = 8
+   * 8: foreign-one-held — `hold`/`method`/`attr` folded into `call`;
+   * 9: foreign-one-protocol — `frame` folded into `call` with `table` */
+  val ShimVersion = 9
 
   /**
    * Start a worker: the configured interpreter (resolved against

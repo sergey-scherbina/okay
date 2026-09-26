@@ -6,7 +6,9 @@
 # as data, `program`/`continue`/`forget`, continuations kept by id; v7 =
 # foreign-one-program: `start`/`resume` fold into `program`/`continue`, a
 # direct function's okay_call a node marked `once`; v8 = foreign-one-held:
-# `hold`/`method`/`attr` fold into `call` with an address and `held`).
+# `hold`/`method`/`attr` fold into `call` with an address and `held`; v9 =
+# foreign-one-protocol: `frame` folds into `call` — a table is the first
+# argument, and `table` asks for a table back).
 # Stdlib only, deliberately:
 # json wire, one object per line each way; functions are ADDRESSED
 # as module:qualified.name and imported, never eval'd from source.
@@ -14,7 +16,7 @@
 # broken wire ends the process.
 import sys, json, base64, importlib, importlib.metadata, importlib.util, math, dataclasses, types, inspect, struct, zlib
 
-SHIM = 8
+SHIM = 9
 
 # a JSON number is a double: exact only up to 2**53
 EXACT = 2 ** 53
@@ -236,7 +238,8 @@ def _arrow_request(data):
     if b"okay" not in meta:
         raise ValueError("an Arrow message without its okay header")
     req = json.loads(meta[b"okay"])
-    req["in"] = {"t": "arrow", "table": t.replace_schema_metadata(None)}
+    # the stream IS the call's table argument (foreign-one-protocol): first
+    req["args"] = [{"t": "arrow", "table": t.replace_schema_metadata(None)}] + req.get("args", [])
     return req
 
 class _NotArrow(Exception):
@@ -469,9 +472,26 @@ def serve(req):
         op = req["op"]
         if op == "call":
             # THE call (foreign-one-held): a name, or a held object's method
-            # or attribute; `held` keeps the answer here and answers its ref
+            # or attribute; `held` keeps the answer here and answers its ref.
+            # `table` (foreign-one-protocol): the first argument is a table —
+            # Arrow when it came as Arrow — and the answer is one
             at = req["fn"]
-            args = [dec(a) for a in req.get("args", [])]
+            raw = req.get("args", [])
+            if req.get("table"):
+                f = resolve(at)
+                src = raw[0] if raw else {"t": "frame", "cols": []}
+                arrow = isinstance(src, dict) and src.get("t") == "arrow"
+                if arrow:
+                    tbl = src["table"]
+                    frame = tbl if getattr(f, "_okay_arrow", False) else tbl.to_pydict()
+                else:
+                    frame = dec(src)
+                    if getattr(f, "_okay_arrow", False) and _HAS_ARROW:
+                        import pyarrow as pa
+                        frame = pa.table(frame)
+                reply_frame(rid, f(frame, *[dec(a) for a in raw[1:]]), arrow)
+                return
+            args = [dec(a) for a in raw]
             if isinstance(at, str):
                 out = resolve(at)(*args)
             elif "method" in at:
@@ -516,20 +536,6 @@ def serve(req):
         elif op == "release":
             _held.pop(req["ref"], None)
             reply({"id": rid, "ok": None})
-        elif op == "frame":
-            f = resolve(req["fn"])
-            src = req["in"]
-            arrow = isinstance(src, dict) and src.get("t") == "arrow"
-            if arrow:
-                tbl = src["table"]
-                frame = tbl if getattr(f, "_okay_arrow", False) else tbl.to_pydict()
-            else:
-                frame = dec(src)
-                if getattr(f, "_okay_arrow", False) and _HAS_ARROW:
-                    import pyarrow as pa
-                    frame = pa.table(frame)
-            out = f(frame, *[dec(a) for a in req.get("args", [])])
-            reply_frame(rid, out, arrow)
         elif op == "verify":
             pkgs = {}
             for name in req.get("packages", []):

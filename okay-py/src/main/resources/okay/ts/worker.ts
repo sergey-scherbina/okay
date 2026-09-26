@@ -12,7 +12,7 @@ import * as zlib from "node:zlib";
 import { pathToFileURL } from "node:url";
 import { hooks, OkayError, type Prog } from "./okay.ts";
 
-const SHIM = 8;
+const SHIM = 9;
 const EXACT = 2 ** 53;
 
 // ---- the wire -----------------------------------------------------------
@@ -255,6 +255,14 @@ function dec(v: any): any {
   return v;
 }
 
+/** a record of columns as a frame on the wire (v1's per-cell pairs, which
+ * every host reads) */
+function encFrame(v: any): unknown {
+  if (v === null || typeof v !== "object" || Array.isArray(v))
+    throw new TypeError("a table function must answer a record of columns");
+  return { t: "frame", cols: Object.entries(v).map(([k, xs]) => [k, (xs as unknown[]).map(enc)]) };
+}
+
 /** a frame off the wire as a record of columns: the COLUMNAR shape (v2,
  * foreign-one-value: a type per column, plain values, absences as index
  * lists) or v1's [name, cells] pairs */
@@ -358,7 +366,9 @@ function serve(req: any): unknown {
           : at.method !== undefined ? heldAt(at.ref)[at.method](...args)
           : at.attr !== undefined ? heldAt(at.ref)[at.attr]
           : (() => { throw new Error(`a call's address is a name, a method or an attribute, got ${JSON.stringify(at)}`); })();
-        return settle(id, out, req.held ? hold : enc);
+        // `table` (foreign-one-protocol): the answer is a table — a record
+        // of columns, as the first argument arrived
+        return settle(id, out, req.held ? hold : req.table ? encFrame : enc);
       }
       case "program": {
         // ONE program protocol (foreign-one-program): a program as data

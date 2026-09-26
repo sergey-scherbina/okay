@@ -12,7 +12,8 @@
 # columnar; the old tags are still read; v10 = foreign-one-program:
 # `start`/`resume` fold into `program`/`continue`, a direct function's
 # okay_call a node marked `once`; v11 = foreign-one-held: `hold` folds
-# into `call` with `held`). One JSON object per
+# into `call` with `held`; v12 = foreign-one-protocol: `frame` folds into
+# `call` — a table is the first argument, `table` asks for one back). One JSON object per
 # line each way; functions are ADDRESSED as pkg::name (or a base name) and
 # looked up, never eval'd from source. A failing call answers a
 # condition and the process survives; only a broken wire ends it.
@@ -23,7 +24,7 @@
 # is OPTIONAL: announced when installed, and frames work exactly as
 # before where it is not.
 
-SHIM <- 11
+SHIM <- 12
 
 say <- function(x) {
   cat(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = I(17)), "\n", sep = "")
@@ -341,8 +342,21 @@ serve <- function(req) {
       if (!is.character(req$fn))
         stop("an R object has no methods or attributes to call by name: apply a function to its handle")
       f <- resolve(req$fn)
-      out <- do.call(f, lapply(req$args, dec))
-      list(id = rid, ok = if (isTRUE(req$held)) okay_hold(out) else enc(out))
+      if (isTRUE(req$table)) {
+        # a TABLE call (foreign-one-protocol): the first argument is a table
+        # (already a data.frame when it came as Arrow, r-arrow), the answer one
+        arrow_in <- isTRUE(req$.okay_arrow_in)
+        input <- if (arrow_in) req$.okay_arrow_table else dec(req$args[[1]])
+        rest <- if (arrow_in) req$args else req$args[-1]
+        res <- do.call(f, c(list(input), lapply(rest, dec)))
+        if (!is.data.frame(res) && !is.list(res))
+          stop(sprintf("a table function must answer a data.frame, got %s", class(res)[1]))
+        if (arrow_in) okay_arrow_reply(rid, res) else
+          list(id = rid, ok = enc(as.data.frame(res, stringsAsFactors = FALSE)))
+      } else {
+        out <- do.call(f, lapply(req$args, dec))
+        list(id = rid, ok = if (isTRUE(req$held)) okay_hold(out) else enc(out))
+      }
     } else if (op == "program") {
       # ONE program protocol (foreign-one-program): the function RETURNS a
       # program as data (okay_done / okay_then(okay_perform(...), f)), or is
@@ -373,16 +387,6 @@ serve <- function(req) {
       key <- as.character(req$ref)
       if (exists(key, envir = .okay_objects, inherits = FALSE)) rm(list = key, envir = .okay_objects)
       list(id = rid, ok = NULL)
-    } else if (op == "frame") {
-      f <- resolve(req$fn)
-      # an Arrow-carried request already IS a data.frame (r-arrow):
-      # `dec` is for the wire's tagged JSON/CBOR frame form only
-      input <- if (isTRUE(req$.okay_arrow_in)) req$`in` else dec(req$`in`)
-      res <- do.call(f, c(list(input), lapply(req$args, dec)))
-      if (!is.data.frame(res) && !is.list(res))
-        stop(sprintf("a frame function must answer a data.frame, got %s", class(res)[1]))
-      if (isTRUE(req$.okay_arrow_in)) okay_arrow_reply(rid, res) else
-        list(id = rid, ok = enc(as.data.frame(res, stringsAsFactors = FALSE)))
     } else if (op == "verify") {
       pkgs <- list()
       for (name in req$packages) {
@@ -608,7 +612,8 @@ okay_arrow_request <- function(body) {
   if (is.null(meta) || is.null(meta[["okay"]]))
     stop("an Arrow message without its okay header")
   req <- jsonlite::fromJSON(meta[["okay"]], simplifyVector = FALSE)
-  req$`in` <- as.data.frame(t)
+  # the stream IS the call's table argument (foreign-one-protocol): first
+  req$.okay_arrow_table <- as.data.frame(t)
   req$.okay_arrow_in <- TRUE
   req
 }

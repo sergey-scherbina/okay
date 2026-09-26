@@ -37,8 +37,9 @@ import (
 // ShimVersion is the wire version this worker speaks; the host refuses any other.
 // 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`;
 // 8: foreign-one-held — `hold`/`method`/`attr` fold into `call` (the version
-// every far side shares; this library serves no held objects)
-const ShimVersion = 8
+// every far side shares; this library serves no held objects);
+// 9: foreign-one-protocol — `frame` folds into `call` (shared; no tables here)
+const ShimVersion = 9
 
 // KV is one entry of a Dict.
 type KV struct {

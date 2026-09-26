@@ -1,0 +1,93 @@
+# THE OKAY WIRE, as a transcript (foreign-one-protocol, specs/foreign-one.md).
+#
+# This file is the protocol's specification: a far side in any language is
+# written against it, and two tests hold it — the host must SEND exactly the
+# `>` lines when its program performs the operations named in the comments
+# (TestWireTranscript, default gate), and the reference far side (the Python
+# shim, serving module `t` below) must ANSWER exactly the `<` lines
+# (TestWireTranscriptPython, Live). Every other far side answers the same
+# requests with its own language's values (R answers vectors of one), which
+# the conformance suites hold.
+#
+# `>` host to far side, `<` far side to host: one JSON object each, compared
+# as JSON (key order and number spelling do not matter). A string "*" in an
+# expected answer matches any value. Plain JSON lines are shown; after a
+# `configure` the same trees travel as frames (CBOR, compression).
+#
+# The module the far side serves, in Python:
+#
+#   import okay
+#   from okay import okay_call
+#   def add(a, b): return a + b
+#   class Counter:
+#       def __init__(self, n): self.n = n
+#       def inc(self, by): self.n += by; return self.n
+#   def counter(n): return Counter(n)
+#   def scale(frame, k): return {"x": [v * k for v in frame["x"]]}
+#   def pairs(): return okay.perform("choose", [1, 2]).then(lambda x: okay.done(x * 10))
+#   def quote(sku): return okay_call("price_of", sku) * 2
+#   def boom(): raise ValueError("no")
+#
+# ---- the hello: the far side speaks first -------------------------------
+# its shim version (the host refuses any other), its own version, and what
+# it can be configured to; a `fatal` names a prerequisite it lacks
+< {"shim": 9, "python": "*", "speaks": {"format": ["json", "cbor"], "compress": ["deflate"], "frames": ["columnar"]}}
+#
+# ---- call: a function by name --------------------------------------------
+# ForeignEval.Call("t:add", [2, 3])
+> {"id": 1, "op": "call", "fn": "t:add", "args": [2, 3]}
+< {"id": 1, "ok": 5}
+#
+# ---- call, held: the answer stays on the far side, a ref comes back -------
+# ForeignEval.Call("t:counter", [10], held = true)
+> {"id": 2, "op": "call", "fn": "t:counter", "args": [10], "held": true}
+< {"id": 2, "ok": {"t": "ref", "id": 1, "type": "t.Counter"}}
+#
+# ---- call: a held object's method, and its attribute ----------------------
+# ForeignEval.Call(Address.Method(ref 1, "inc"), [5])
+> {"id": 3, "op": "call", "fn": {"ref": 1, "method": "inc"}, "args": [5]}
+< {"id": 3, "ok": 15}
+# ForeignEval.Call(Address.Attr(ref 1, "n"), [])
+> {"id": 4, "op": "call", "fn": {"ref": 1, "attr": "n"}, "args": []}
+< {"id": 4, "ok": 15}
+#
+# ---- call, table: the first argument is a table, and a table comes back ---
+# ForeignEval.Frame("t:scale", frame x = [1, 2], [3]) — the columnar shape
+# where the hello claims "columnar"; v1's [name, cells] pairs answer
+> {"id": 5, "op": "call", "fn": "t:scale", "args": [{"t": "frame", "v": 2, "cols": [{"name": "x", "type": "i", "values": [1, 2], "na": []}]}, 3], "table": true}
+< {"id": 5, "ok": {"t": "frame", "cols": [["x", [3, 6]]]}}
+#
+# ---- program: a program as data, continued TWICE (multi-shot) ------------
+# ForeignEval.Program(run 1, "t:pairs", [], callbacks ["choose"])
+> {"id": 6, "op": "program", "run": 1, "fn": "t:pairs", "args": [], "callbacks": ["choose"]}
+< {"id": 6, "ok": {"perform": "choose", "args": [[1, 2]], "k": 1}}
+# ForeignEval.Continue(run 1, k 1, 1), then the SAME k again with 2
+> {"id": 7, "op": "continue", "run": 1, "k": 1, "answer": 1}
+< {"id": 7, "ok": {"done": 10}}
+> {"id": 8, "op": "continue", "run": 1, "k": 1, "answer": 2}
+< {"id": 8, "ok": {"done": 20}}
+# ForeignEval.Forget(run 1): the continuations are dropped
+> {"id": 9, "op": "forget", "run": 1}
+< {"id": 9, "ok": null}
+#
+# ---- program: ordinary code calling okay_call (the direct style) ---------
+# the same messages; the node says `once` — a parked stack, continued once
+# ForeignEval.Program(run 2, "t:quote", ["tea"], callbacks ["price_of"], direct)
+> {"id": 10, "op": "program", "run": 2, "fn": "t:quote", "args": ["tea"], "callbacks": ["price_of"]}
+< {"id": 10, "ok": {"perform": "price_of", "args": ["tea"], "k": 1, "once": true}}
+# ForeignEval.Continue(run 2, k 1, 4.25)
+> {"id": 11, "op": "continue", "run": 2, "k": 1, "answer": 4.25}
+< {"id": 11, "ok": {"done": 8.5}}
+#
+# ---- a failure is a condition by name; the far side lives on -------------
+# ForeignEval.Call("t:boom", [])
+> {"id": 12, "op": "call", "fn": "t:boom", "args": []}
+< {"id": 12, "condition": {"kind": "ValueError", "message": "no"}}
+#
+# ---- release: a held object is dropped; its ref is refused by name after -
+# ForeignEval.Release(ref 1)
+> {"id": 13, "op": "release", "ref": 1}
+< {"id": 13, "ok": null}
+# ForeignEval.Call(Address.Attr(ref 1, "n"), [])
+> {"id": 14, "op": "call", "fn": {"ref": 1, "attr": "n"}, "args": []}
+< {"id": 14, "condition": {"kind": "LookupError", "message": "*"}}
