@@ -9,12 +9,12 @@ import java.nio.file.{Files, Path, Paths}
  * the same line protocol as okay-py's Python shim: `start` writes the
  * worker (`worker.ts`) and its library (`okay.ts`) beside the user's
  * modules and runs `node worker.ts`, and the engine it answers is the one
- * Python uses. `Py.fn`, `Py.callback`, `Py.hold`, `Py.program`, `Durable`
+ * Python uses. `Foreign.fn`, `Foreign.callback`, `Foreign.hold`, `Foreign.program`, `Durable`
  * — all of it drives TypeScript unchanged:
  *
  * {{{
  * val w = TsWorker.start(dir, modules = Seq("shop"))       // dir/shop.ts
- * Py.fn[Double]("shop:total").calling(Py.callbacks(priceOf))(order)
+ * Foreign.fn[Double]("shop:total").calling(Foreign.callbacks(priceOf))(order)
  * }}}
  *
  * A module imports what it uses from `./okay.ts`: `call` (a callback into

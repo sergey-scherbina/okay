@@ -255,7 +255,7 @@ object ForeignWorker:
    * line first, then one JSON request and one answer per line
    * (remote-foreign). A compiled Haskell worker built on the `Okay` module
    * this jar ships (`/okay/hs/Okay.hs`) is one: its programs-as-data run
-   * through `Py.program` exactly as Python's do, multi-shot included.
+   * through `Foreign.program` exactly as Python's do, multi-shot included.
    */
   def speaking(command: Seq[String], env: Map[String, String] = Map.empty)
               (using WireFormat, WireCompression, okay.codec.WireAuth, WireDeadline)(using okay.codec.FrameFormat): ForeignWorker =
@@ -264,7 +264,7 @@ object ForeignWorker:
   /**
    * The engine over ANY link (polyglot-one-wire): the far side speaks the
    * handshake first, then one request and one answer per line. Pipes,
-   * a socket, an in-process call — the same `Py.program`, the same
+   * a socket, an in-process call — the same `Foreign.program`, the same
    * callbacks and multi-shot, the same `Durable`.
    */
   def over(link: WireLink, name: String = "the worker")

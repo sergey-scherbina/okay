@@ -192,10 +192,10 @@ object Programs:
     type Op[+A] = okay.foreign.ForeignEval[A]
     def name = lang.name
     private given okay.foreign.Shape = lang.shape
-    private def cb[F[+_]](c: Cb[F]): okay.foreign.Py.Callback[F] =
-      okay.foreign.Py.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
+    private def cb[F[+_]](c: Cb[F]): okay.foreign.Foreign.Callback[F] =
+      okay.foreign.Foreign.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
     def program[Arg: Schema, Out: Schema, F[+_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
-      okay.foreign.Py.program[Out](lang.address(module, fn)).calling(okay.foreign.Py.callbacks[F](cbs.map(cb[F])*))(a).program
+      okay.foreign.Foreign.program[Out](lang.address(module, fn)).calling(okay.foreign.Foreign.callbacks[F](cbs.map(cb[F])*))(a).program
         .map(_.left.map(Language.failed))
     def run[A](module: M)(prog: A ! Op): A =
       prog.runWith(using lang.workers(module, Stage.Workers).handler)
@@ -247,9 +247,9 @@ object Holds:
     private given okay.foreign.Shape = lang.shape
     private def on(module: M) = lang.workers(module, Stage.Workers).handler
     def hold[Arg: Schema](module: M, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
-      okay.foreign.Py.hold(lang.address(module, fn))(a).runWith(using on(module)).left.map(Language.failed)
+      okay.foreign.Foreign.hold(lang.address(module, fn))(a).runWith(using on(module)).left.map(Language.failed)
     def apply[Arg: Schema, Out: Schema](module: M, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
-      okay.foreign.Py.fn[Out](lang.address(module, fn))(ref, a).runWith(using on(module)).left.map(Language.failed)
+      okay.foreign.Foreign.fn[Out](lang.address(module, fn))(ref, a).runWith(using on(module)).left.map(Language.failed)
     def release(module: M)(ref: Ref): Unit =
       ref.release.runWith(using on(module))
 

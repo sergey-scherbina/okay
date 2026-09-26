@@ -14,10 +14,10 @@ over decides how it crosses. There is no "fast mode" switch:
 
 | you hand over | it crosses as | e.g. |
 |---|---|---|
-| a value | one message of the wire: JSON lines, or CBOR when a given asks | `Py.fn[Double]("m:f")(x)` |
+| a value | one message of the wire: JSON lines, or CBOR when a given asks | `Foreign.fn[Double]("m:f")(x)` |
 | a table | ONE value, column by column: Arrow where both sides speak it, the wire's columnar JSON where they do not, the same object on the JVM | `Road.rows`, `Frames` |
-| an object | a handle; the object stays where it was made, and dies when released | `Py.hold`, `R.hold`, `Holds` |
-| a stream | chunks, pulled at the consumer's pace: the next is asked for only when the last was taken | `Py.stage`, `Py.source`, `R.source` |
+| an object | a handle; the object stays where it was made, and dies when released | `Foreign.hold`, `R.hold`, `Holds` |
+| a stream | chunks, pulled at the consumer's pace, or pushed under credit (Go, Rust) | `Foreign.stage`, `Foreign.source`, `Foreign.stream`, `R.source` |
 | a program | data: an answer, or one operation and the rest of the program as a function of its answer | `Foreign.program`, `Frege.run`, `Program.run` |
 
 A program is how the other language takes part in okay's effects. Its
@@ -132,7 +132,8 @@ languages whose objects have state.
 
 ## Two runtimes
 
-The engine's package is `okay.foreign` (module okay-py). Until 2026-09-26
+The engine's package is `okay.foreign` (module okay-py), and its API is
+the object `Foreign`; `Py` is the same object under Python's name. Until 2026-09-26
 it was `okay.py`, from when it served Python alone; that name is kept as
 aliases for a release, so older code compiles unchanged.
 

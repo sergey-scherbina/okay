@@ -7,14 +7,14 @@ import okay.codec.Schema
  * (foreign-inline-modules, specs/foreign-highlevel.md stage 4):
  *
  * {{{
- * val scoring = Py.module("scoring", """
+ * val scoring = Foreign.module("scoring", """
  *   def score(xs):
  *       return sum(xs) / len(xs)
  * """)
  * scoring.fn[Double]("score")(Vector(1.0, 2.0))
  * }}}
  *
- * The source is a COMPILE-TIME CONSTANT — `Py.module` refuses anything
+ * The source is a COMPILE-TIME CONSTANT — `Foreign.module` refuses anything
  * else — and this class has a private constructor, so a module is
  * reviewed, versioned code in the jar and never a string built at run
  * time. The engine ships it when a worker STARTS (a file on the worker's
@@ -26,14 +26,14 @@ import okay.codec.Schema
  */
 final class PyModule private (val name: String, val source: String):
   /** a function of this module, typed (foreign-typed-calls) */
-  def fn[Out: Schema](function: String): Py.Fn[Out] = Py.fn[Out](s"$name:$function")
+  def fn[Out: Schema](function: String): Foreign.Fn[Out] = Foreign.fn[Out](s"$name:$function")
   /** a function of this module whose result is held (foreign-object-handles) */
-  def hold(function: String): Py.Hold = Py.hold(s"$name:$function")
+  def hold(function: String): Foreign.Hold = Foreign.hold(s"$name:$function")
 
 object PyModule:
   private val Identifier = "[A-Za-z_][A-Za-z0-9_]*".r
 
-  /** only `Py.module` calls this, with constants it has checked */
+  /** only `Foreign.module` calls this, with constants it has checked */
   def fromConstant(name: String, source: String): PyModule =
     require(Identifier.matches(name), s"okay.foreign: a module name is a Python identifier, got '$name'")
     new PyModule(name, dedent(source))

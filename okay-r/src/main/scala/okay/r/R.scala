@@ -2,7 +2,7 @@ package okay.r
 
 import okay.!
 import okay.codec.Schema
-import okay.foreign.{ForeignEval, Py, PyFrame, PyNode, PyRef, PyStream, PyValue, Shape, ToPy}
+import okay.foreign.{ForeignEval, Foreign, PyFrame, PyNode, PyRef, PyStream, PyValue, Shape, ToPy}
 
 /*
  * R as a handler (specs/r.md): calls are OPERATIONS — journalled by
@@ -266,19 +266,19 @@ object R:
   /** R's value rules: every call below encodes and decodes by them */
   given shape: Shape = RShape
 
-  type Fn[Out] = Py.Fn[Out]
-  type ProgramOf[Out] = Py.ProgramOf[Out]
-  type RRun[F[+_], Out] = Py.PyRun[F, Out]
-  type CallbackOf[Arg, Res] = Py.CallbackOf[Arg, Res]
-  type Callback[F[+_]] = Py.Callback[F]
-  type Callbacks[F[+_]] = Py.Callbacks[F]
+  type Fn[Out] = Foreign.Fn[Out]
+  type ProgramOf[Out] = Foreign.ProgramOf[Out]
+  type RRun[F[+_], Out] = Foreign.PyRun[F, Out]
+  type CallbackOf[Arg, Res] = Foreign.CallbackOf[Arg, Res]
+  type Callback[F[+_]] = Foreign.Callback[F]
+  type Callbacks[F[+_]] = Foreign.Callbacks[F]
 
-  def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Py.Fn(address)
+  def fn[Out](address: String)(using Schema[Out]): Fn[Out] = Foreign.Fn(address)
 
   /** an R PROGRAM-AS-DATA (remote-foreign): the function returns
    * `okay_done(v)` or `okay_then(okay_perform(name, ...), f)`; R keeps each
    * continuation (a closure) by id, so a Choice handler continues one twice */
-  def program[Out: Schema](address: String): ProgramOf[Out] = Py.ProgramOf(address)
+  def program[Out: Schema](address: String): ProgramOf[Out] = Foreign.ProgramOf(address)
 
   /** an R function over a vector as an okay stage over chunks
    * (foreign-streaming) */
@@ -319,7 +319,7 @@ object R:
   def hold(address: String): Hold = Hold(address)
 
   final class Hold(address: String):
-    private val held = Py.Hold(address)
+    private val held = Foreign.Hold(address)
     def apply(): Either[Condition, RRef] ! REval = held().map(_.map(RRef.of))
     def apply[A: ToR](a: A): Either[Condition, RRef] ! REval = held(a).map(_.map(RRef.of))
     def apply[A: ToR, B: ToR](a: A, b: B): Either[Condition, RRef] ! REval = held(a, b).map(_.map(RRef.of))
@@ -329,6 +329,6 @@ object R:
   /** a callback R may call by name while okay runs one of its functions
    * (foreign-callbacks): `okay_call("objective", x)` in R decodes `x` as
    * `Arg` by R's rules, runs `f` under the caller's handlers, and answers */
-  def callback[Arg: Schema, Res: Schema](name: String): CallbackOf[Arg, Res] = Py.CallbackOf(name)
+  def callback[Arg: Schema, Res: Schema](name: String): CallbackOf[Arg, Res] = Foreign.CallbackOf(name)
 
-  def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Py.callbacks(cbs*)
+  def callbacks[F[+_]](cbs: Callback[F]*): Callbacks[F] = Foreign.callbacks(cbs*)

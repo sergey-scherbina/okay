@@ -316,21 +316,25 @@ object PyCodec {
 }
 
 /**
- * A Python function as a typed Scala function (foreign-typed-calls):
+ * A far-side function as a typed Scala function (foreign-typed-calls) — the
+ * host's API for EVERY wire language: calls, held objects, programs,
+ * callbacks, sources, streams. Named `Py` until foreign-api-name
+ * (2026-09-26), from when it served Python alone; `Py` stays as its alias,
+ * the same object, and Python's own code and docs keep using it:
  *
  * {{{
- * val median = Py.fn[Double]("statistics:median")
+ * val median = Foreign.fn[Double]("statistics:median")
  * median(Vector(3.0, 1.0, 2.0))   // Either[Condition, Double] ! ForeignEval
  * }}}
  *
  * The arguments are encoded through their `Schema`, the answer decoded
- * through `Out`'s; a Python exception and an answer of the wrong shape
+ * through `Out`'s; a far-side exception and an answer of the wrong shape
  * are both a `Left(Condition)`, so a caller matches one channel. The
  * result is an okay program over `ForeignEval`, run by whichever handler is
  * installed — a subprocess, a worker pool, a canned mock, or `Durable`
  * over any of them.
  */
-object Py {
+object Foreign {
   // every entry below takes the caller's `Shape` (Python's unless one is
   // given): the value rules are the CALL SITE's, so the same API serves
   // R at `R.shape` and TypeScript at `Shape.json` (foreign-one-value)
@@ -384,7 +388,7 @@ object Py {
    * A Python GENERATOR as an okay source (foreign-one-mux): `address` is a
    * function returning an iterator whose items are CHUNKS (lists of `O`);
    * each chunk is one call of its `__next__`, `StopIteration` its end.
-   * `Py.releasing(through(Py.source[Row]("m:rows")(path))(stage))` reads a
+   * `Foreign.releasing(through(Foreign.source[Row]("m:rows")(path))(stage))` reads a
    * far-side file, cursor or generator at the consumer's pace, and gives
    * the iterator back however the consumer ended (foreign-source-early-stop).
    */
@@ -450,7 +454,7 @@ object Py {
 
   /**
    * Call `address` and KEEP its result in the worker, answering a handle
-   * (foreign-object-handles): `Py.hold("random:Random")(42)` is a seeded
+   * (foreign-object-handles): `Foreign.hold("random:Random")(42)` is a seeded
    * generator living in Python, whose methods `ref.call` reaches.
    */
   def hold(address: String)(using Shape): Hold = Hold(address)
@@ -473,7 +477,7 @@ object Py {
    * `okay.call`. More than one argument arrives as a list.
    *
    * {{{
-   * val objective = Py.callback[Vector[Double], Double]("objective")(x => Reader.ask[Double].map(...))
+   * val objective = Foreign.callback[Vector[Double], Double]("objective")(x => Reader.ask[Double].map(...))
    * }}}
    */
   def callback[Arg: Schema, Res: Schema](name: String)(using Shape): CallbackOf[Arg, Res] = CallbackOf(name)

@@ -24,7 +24,7 @@ enum Holding[+A] derives okay.Effect:
  * chunks (foreign-streaming, specs/foreign-highlevel.md stage 6):
  *
  * {{{
- * through(source.plus[ForeignEval])(Py.stage[Double, Double]("model:predict", chunk = 256))
+ * through(source.plus[ForeignEval])(Foreign.stage[Double, Double]("model:predict", chunk = 256))
  * }}}
  *
  * The stage pulls up to `chunk` elements, calls the function ONCE with

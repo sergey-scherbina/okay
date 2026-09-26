@@ -8,12 +8,12 @@ import java.nio.file.{Files, Path}
  * ships (`/okay/hs/Okay.hs`), writes its programs in `Prog`, and `serve`s
  * them by name; `build` compiles it with GHC, and
  * `ForeignWorker.speaking(Seq(binary.toString))` runs it — the same wire as
- * Python, so `Py.program` drives it unchanged:
+ * Python, so `Foreign.program` drives it unchanged:
  *
  * {{{
  * val bin = HaskellWorker.build(dirWithMainHs)
  * val w = ForeignWorker.speaking(Seq(bin.toString))
- * runChoice(Py.program[Long]("pairs").calling(Py.callbacks(choose))().program).runWith(using w.handler)
+ * runChoice(Foreign.program[Long]("pairs").calling(Foreign.callbacks(choose))().program).runWith(using w.handler)
  * }}}
  *
  * A Haskell continuation is a pure function, so the multi-shot claim is

@@ -21,13 +21,13 @@ import okay.codec.Schema
 object Ts:
   private given Shape = Shape.json
 
-  def fn[Out: Schema](address: String): Py.Fn[Out] = Py.Fn(address)
-  def hold(address: String): Py.Hold = Py.Hold(address)
-  def program[Out: Schema](address: String): Py.ProgramOf[Out] = Py.ProgramOf(address)
-  def callback[Arg: Schema, Res: Schema](name: String): Py.CallbackOf[Arg, Res] = Py.CallbackOf(name)
-  def callbacks[F[+_]](cbs: Py.Callback[F]*): Py.Callbacks[F] = Py.callbacks(cbs*)
+  def fn[Out: Schema](address: String): Foreign.Fn[Out] = Foreign.Fn(address)
+  def hold(address: String): Foreign.Hold = Foreign.Hold(address)
+  def program[Out: Schema](address: String): Foreign.ProgramOf[Out] = Foreign.ProgramOf(address)
+  def callback[Arg: Schema, Res: Schema](name: String): Foreign.CallbackOf[Arg, Res] = Foreign.CallbackOf(name)
+  def callbacks[F[+_]](cbs: Foreign.Callback[F]*): Foreign.Callbacks[F] = Foreign.callbacks(cbs*)
 
   /** the TypeScript type of these callbacks as a program's operations
    * (typescript-types T12), for `effects<Name>()` in a worker module */
-  def ops[F[+_]](name: String, cbs: Py.Callbacks[F]): String =
+  def ops[F[+_]](name: String, cbs: Foreign.Callbacks[F]): String =
     okay.codec.Stubs.typescriptOps(name, cbs.all.map(c => (c.name, c.types)))

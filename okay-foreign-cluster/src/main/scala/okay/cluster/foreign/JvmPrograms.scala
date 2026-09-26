@@ -5,7 +5,7 @@ import okay.given
 import okay.Row.plus
 import okay.codec.Schema
 import okay.frege.Prog.TProg
-import okay.foreign.{Jvm, Py, Shape}
+import okay.foreign.{Jvm, Foreign, Shape}
 
 /**
  * PROGRAMS AS DATA FROM THE JVM'S OWN LANGUAGES, through the facade
@@ -68,7 +68,7 @@ private[foreign] object JvmPrograms:
 
   /** the facade's callbacks, as the walker asks them */
   def calls[F[+_]](cbs: Vector[Cb[F]]): okay.Foreign.Calls[F] =
-    Jvm.calls(Py.callbacks[F](cbs.map(c => Py.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run))*))
+    Jvm.calls(Foreign.callbacks[F](cbs.map(c => Foreign.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run))*))
 
   /** a row whose own operations a facade program does not perform: through
    * the facade a program performs its CALLBACKS, as a wire language's does,

@@ -16,7 +16,7 @@ final case class PySig(name: String, params: Vector[PyParam], returns: String, d
  * The worker describes the module — `okay.describe`, a function of the
  * `okay` module its shim injects, reached by an ordinary call — and this
  * writes one Scala method per public function, each calling it through
- * `Py.fn`. Type hints map to types (`int` Long, `float` Double, `str`
+ * `Py.fn` (a Python module's facade speaks Python's alias of `Foreign`). Type hints map to types (`int` Long, `float` Double, `str`
  * String, `bool` Boolean, `bytes` Array[Byte], `list[T]` Vector[T],
  * `Optional[T]`/`T | None` Option[T]); what is not annotated, or not in
  * that list, becomes a TYPE PARAMETER (`ToPy` for an argument, `Schema`
@@ -34,7 +34,7 @@ object PyFacade:
 
   /** the module's public functions, described by the worker */
   def describe(module: String): Either[Condition, Vector[PySig]] ! PyEval =
-    Py.fn[Vector[PySig]]("okay:describe")(module)
+    Foreign.fn[Vector[PySig]]("okay:describe")(module)
 
   private val keywords = Set("abstract", "case", "catch", "class", "def", "do", "else", "enum", "export",
     "extends", "false", "final", "finally", "for", "given", "if", "implicit", "import", "lazy", "match",
