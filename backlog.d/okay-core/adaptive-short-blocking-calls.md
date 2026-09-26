@@ -13,3 +13,15 @@
       detecting the block sooner and handing a blocked worker's deque
       to a fresh one. The callback transport is unaffected (142, the
       best on the row). (2026-09-26, five-way-okay)
+      PROBED (2026-09-26, the five-way clone's ThreadProbe, 64 lanes x
+      4 calls of a 1 ms sleep): Loom reaches 64 concurrent calls, 8.5
+      ms a batch; `adaptive` peaks at 5 concurrent calls on 5 threads,
+      167 ms a batch. CAUSE, read in Platform.scala: the 64 lane fibers
+      are forked from inside one worker (its deque, no signal — the
+      same gate as own-few-long-tasks-serial), that worker blocks, and
+      the stuck-check adds a thread only when NOTHING has completed for
+      `stuckAfter` (100 ms by default). Lanes keep completing every few
+      milliseconds, so the check sees progress and adds almost nothing.
+      "No progress" is the wrong test when a few blocked workers hold
+      most of the pending work: a worker in one task longer than
+      `stuckAfter` with a non-empty deque is the signal to act on.
