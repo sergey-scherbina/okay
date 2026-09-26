@@ -19,3 +19,10 @@
       measured against today's nested `handle`s. The no-tree roads of
       handler-fusion stage B (Eff/Func/Cont 0.58-0.86x) are REFUTED, so
       this must keep the Free tree and change only who walks it.
+      RE-MEASURED 2026-09-27 (specs/handler-fusion.md, the last Results
+      section): fused vs nested 1.36x / 1.31x on foldLeft-built programs
+      and 1.05x right-nested. The bar is cleared only for the foldLeft
+      shape, and 60-70% of that shape's time is the ROTATION, which
+      fusion does not touch. Parked behind `left-nested-build-cost`; take
+      this up again only if a foldLeft-shaped program is still slow after
+      that.

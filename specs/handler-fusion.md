@@ -605,3 +605,32 @@ again — 61 KB over 667 operations, more than the accumulator it was
 finishing. `loopWith` exists so that a finishing step happens where
 the program ends and nowhere else.
 
+
+### Re-measured 2026-09-27 (handler-single-pass, after split-without-either and State.Modify)
+
+The same six lanes, each its own `jmh-lane.sh` run on a quiet box, two
+alternated rounds, minima (src/jmh/history.d/*-pass-fusion-remeasure.tsv):
+
+| lane | nested | fused | ratio | B/op nested → fused |
+|---|---:|---:|---:|---:|
+| State + Writer, foldLeft (`SW`) | 32.2 | 23.7 | **1.36x** | 332 280 → 306 208 |
+| Throws + State + Writer (`TSW`) | 32.0 | 24.4 | **1.31x** | 332 316 → 306 240 |
+| State + Writer, right-nested (`SWr`) | 13.1 | 12.4 | **1.05x** | 148 696 → 122 624 |
+
+The foldLeft shape now clears the 1.3x bar, while the right-nested
+twin, the shape of an ordinary recursion, gains 5%. The bytes saved are
+the same 26 KB in all three, so the extra time is not allocation.
+
+**`-prof stack` says where it is** (nestedSW / fusedSW, share of the
+benchmark thread's samples in µs): `Free.resume` plus its rotation
+lambda `f(_).flatMap(g)` take ~23 / ~19.5 µs, the handler loops ~5.7 /
+~3.3, and the Writer's collection (`List.reverse` / `Vector :+`) ~2.3 /
+~0.6. Rotating the left-nested binds costs 60-70% of BOTH, and fusion
+does not touch it. The same 1000 operations take 32 µs left-nested
+against 13 µs right-nested: **the program's SHAPE costs 2.5x, and
+fusing the handlers costs 1.3x.**
+
+Verdict: a generic fused runner (stages 1-2) is not started on this
+evidence. It would buy 1.3x for foldLeft-built programs and 1.05x for
+recursion. The larger lever is the shape. See backlog
+`left-nested-build-cost`.
