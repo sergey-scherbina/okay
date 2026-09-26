@@ -188,6 +188,42 @@ task, the model loaded once per task), outcomes handed to the driver's
 `DecisionSink`. Behaviour: the recorded records through local Spark give
 the stream's answers.
 
+### okay-model-chain (open, JVM) — for okay-watch's `specs/mdr-crypto.md`
+
+okay-chain's follower as an MDR source, and what a chain adds to a
+decision.
+
+- **The source**: `Follower.step()`'s `Confirmed(block)` becomes records
+  for the runtime, `Rewound(from, to)` a ROLLBACK event the runtime hands to
+  the `DecisionSink` hook (the commercial journal appends `orphaned`
+  records; the open default writes the event to the dead-letter/file sink).
+- **The chain position**, a value of every decision from chain data:
+  network (CAIP-2, okay-chain's `Network`), block height, block hash, tx
+  hash, output or log index, confirmation depth at decision time, finality
+  status (`provisional` | `final` | `orphaned`).
+- **Finality per deployment and chain**: `depth(n)` or `declared` (okay-chain's
+  `Chain.finalized`, where the chain declares one — EVM, Tron, Solana; a
+  refusal on Bitcoin and Cardano). A decision below finality is
+  `provisional`; the source emits a `finalised(position)` event when the
+  block reaches it, so a sink can move the decision to `final`.
+- **Act on provisional or on final only**: the deployment chooses; acting
+  on provisional is fast and may be corrected.
+- **Re-appearance**: after a rollback, a transaction seen again in the new
+  canonical chain is offered again with its new position and a link to the
+  orphaned one.
+
+Behaviour:
+- [ ] on recorded blocks with a simulated rollback of depth 1..k: every
+      decision in the rolled-back range gets a rollback event, a reappeared
+      transaction is re-offered once, nothing is left `provisional` forever
+- [ ] `declared` finality refused by name on a chain that declares none
+- [ ] the chain position round-trips through the contract (CAIP-2, hashes)
+
+okay-chain changes: none required for the source — `Rewound` and
+`finalized` exist. One addition: a `Position` value (network, height, hash,
+tx, index) with its CAIP-10/-19 forms, so the runtime and the journal name a
+place on a chain the same way.
+
 ### okay-model-cli (open)
 
 `mdr package check | publish`, `mdr deploy`, `mdr replay`, `mdr bench` —
@@ -284,6 +320,8 @@ them is okay-watch's.
 7. **okay-kafka offset identity** and the crash test (kill -9, no loss, no
    duplicate). (M1)
 8. **okay-model-spark**, **okay-model-cli**. (M1)
+8a. **okay-model-chain** — the crypto pack's open part: the chain source,
+    positions, rollback and finality events. (the pack's C0, after M0)
 9. **Analyst packages** R `okaymodel`, Python `okay_model`. (M1–M2)
 
 ## Measurements each stage owes (MDR §15, §16)
