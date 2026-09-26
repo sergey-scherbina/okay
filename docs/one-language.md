@@ -821,9 +821,14 @@ Reactive Streams' `request(n)` and HTTP/2's window, on okay's wire:
 
 ```go
 for i := int64(0); i < n; i += size {
-	if okay.Emit(c, chunk(i, size)) != nil {
-		return nil // the consumer is done: stop producing
+	var chunk []any
+	for j := i; j < i+size && j < n; j++ {
+		chunk = append(chunk, j)
 	}
+	if okay.Emit(c, chunk) != nil {
+		return nil // cancelled: stop producing
+	}
+	atomic.AddInt64(count, 1)
 }
 ```
 
