@@ -32,7 +32,9 @@ lists it must convert itself.
 - **One message, one Arrow stream.** A frame request is an Arrow IPC
   STREAM (schema, one record batch, end-of-stream) whose schema
   `custom_metadata` carries the request header under the key `okay`:
-  `{"id":7,"op":"frame","fn":"m:f","args":[..]}`. The answer is the
+  `{"id":7,"op":"frame","fn":"m:f","args":[..]}` (since foreign-one-protocol,
+  2026-09-26: `{"id":7,"op":"call","fn":"m:f","args":[..],"table":true}`, the
+  stream being the first argument). The answer is the
   same shape with `{"id":7,"ok":{"t":"arrow"}}`. A condition answers as
   an ordinary message. An Arrow stream begins with the continuation
   marker `FF FF FF FF`, which begins no JSON text and no CBOR item of

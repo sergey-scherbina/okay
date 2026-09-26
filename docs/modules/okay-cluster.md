@@ -661,7 +661,7 @@ adds nothing visible; the reduce in Python costs ~70 ms that `Wire.fold`
 does not — move it across only for a reduction the JVM has not got.
 
 Rust, Haskell and Go do not take a stage yet: their shims serve calls,
-not the `frame` op (`foreign-frame-op-rust-hs-go`). Clojure and Frege
+not a table call (`foreign-frame-op-rust-hs-go`; the `frame` op until foreign-one-protocol folded it into `call`). Clojure and Frege
 need none — they run inside the JVM, so their map is `flow.map(f)`.
 
 ## API reference

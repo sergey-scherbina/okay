@@ -57,7 +57,7 @@ object Scaling:
 - A row type that is not a flat case class is refused when the stage is
   built, not on a worker at the first chunk.
 
-Not here: Rust, Haskell, Go, whose shims do not serve the `frame` op
+Not here: Rust, Haskell, Go, whose libraries do not serve a TABLE call (a `call` with a table argument, `"table": true` — the `frame` op until foreign-one-protocol)
 yet (`foreign-frame-op-rust-hs-go`). Clojure and Frege need nothing — they
 run inside the JVM, so their map is `flow.map(f)`.
 

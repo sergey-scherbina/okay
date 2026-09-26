@@ -473,7 +473,16 @@ more than it adds (the line count of what it removed goes in Results).
       in the effect: `into enum Address` (a function's name, or a held
       object's method or attribute; a `String` converts to a name) and
       `ForeignEval.Call(fn, args, held)`. `ForeignEval` 9 → 6 cases.
-- [ ] Stage 2 — **foreign-one-protocol**: the five operations and
+- [x] Stage 2d — **foreign-one-protocol** (2026-09-26): `frame` folded
+      into `call` on the wire (the table is the first argument, `table: true`
+      asks for one back; on the Arrow road the stream IS that argument), so
+      the far sides serve five operations — `call`, `program`, `continue`,
+      `forget`, `release` — plus the handshake's `configure`/`auth` and
+      `verify`. The golden transcript ships in the jar
+      (`okay/py/wire.txt`), held by the host and the reference shim.
+      Narrowed (Decisions 13, 14): the host keeps `Frame` as a typed case,
+      and parts for several tables wait for a caller with two.
+- [ ] Stage 2 — **foreign-one-protocol** (as first written): the five operations and
       parts (shim 7 in every shim; `held`, `Address`, `perform` as the one
       callback message, tables as parts); the transcript written and
       replayed; `Foreign[L, +A]`; `Refused`; `Value` — which ABSORBS
@@ -585,6 +594,20 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     and leaves what is different today (the value tree, and the replay
     that is keyed on it) to the stages that own them. Nothing was
     bridged: R's handler speaks `Json` to the same session Python's does.
+
+13. **`Frame` stays a host case; on the wire it is a `call`**
+    (foreign-one-protocol). Measured: 21 files use it, every caller has
+    exactly one table and it comes first, and its answer is TYPED (a frame
+    read by the rules its request was made under). Folding it into `Call`
+    on the host would buy no call anyone makes, at ~30 rewritten sites and
+    a lost result type; the wire — what a new language implements — is
+    where "one call" pays, and there it is one.
+14. **Parts for several tables wait for a caller with two.** A table is a
+    value in the tree (`{"t":"frame",...}`) on the JSON road already, so a
+    call may carry any number of them there; the Arrow road carries one
+    (the stream is the call's first argument). A framing of N parts is
+    written when a call needs two Arrow tables — until then it would be
+    code no test can exercise.
 
 ## Results
 
@@ -705,3 +728,15 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   - Mutant: the pool not registering a held answer pool-wide fails both
     pool-of-handles tests (a pool of one refuses its own ref; a pool of
     two gives two objects one id).
+- **Stage 2d, foreign-one-protocol (2026-09-26).**
+  - The far sides' operations: `call` (a name, a held object's method or
+    attribute; `held`; `table`), `program`, `continue`, `forget`,
+    `release`, and the handshake's `configure`/`auth` and `verify`.
+    Python shim 9, TypeScript 9 — which never served a table before and
+    does now — R 12, the Go, Rust and Haskell libraries 9.
+  - `okay/py/wire.txt`: the protocol as 14 request/answer steps with the
+    module that answers them. `TestWireTranscript` (default gate) holds the
+    host to its requests; `TestWireTranscriptPython` (Live) holds the
+    reference shim to its answers. Both passed on the first run.
+  - Mutant: the host spelling the table flag `tabl` fails the default-gate
+    transcript test at step 5.

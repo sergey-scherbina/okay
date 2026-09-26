@@ -1,4 +1,6 @@
-- [ ] foreign-frame-op-rust-hs-go — the `frame` op in the Rust, Haskell
+- [ ] foreign-frame-op-rust-hs-go — a TABLE call (since foreign-one-protocol:
+      `call` with a table first argument and `"table": true`, the old `frame`
+      op) in the Rust, Haskell
       and Go shims (foreign-map-reduce, 2026-09-25). A cluster stage sends
       a chunk as ONE frame (`ForeignEval.Frame`), and only Python's, R's
       and TypeScript's shims serve that op today: `grep -l '"frame"'` over
