@@ -154,3 +154,22 @@ cap 64 **0.81-0.82x** of the old road, cap 256 **0.91-0.93x**, cap
 1024 **0.77-0.85x**, `okaySourceMerge` **0.73-0.82x**, and 12-14% fewer
 bytes per operation. No named loss remains.
 
+**The chunked roads, TRIED and REVERTED (merge-chunked-via-ready,
+2026-09-27).** A chunk channel per side (its own `feedChunked` or
+`feedFlushing`, its own flusher, two parts when windowed) joined by
+`mergeReady` and unchunked by `Writer.expand`, against the shared
+chunk channel, on `ChunkFlushBenchmark` (`okayChunked`,
+`okayChunkedFlush`, `okayChunkedFlushShort`, k = 16/256/1024), 5 forks
+per arm, two rounds: no win anywhere, and 1.2x slower in half the
+forks — the ring road's forks were BIMODAL (~195-210, the old road's
+level, or ~246-266), the old road's steady at ~200-215. Rows in
+`src/jmh/history.d/…-merge-chunked-via-ready.tsv`. The chunked roads
+stay on the shared channel: one mechanism for the elementwise merge,
+and a measured reason the batch road differs. Kept from the attempt:
+the flusher as one helper (`flusherFor`), and a real fix it found —
+a chunking feed that FAILED dropped its partial chunk, so
+`Source.merge(chunked = true)` and `Channel.mergeChunked` over a
+source telling 1, 2, 3 and then failing delivered the other side and
+the failure but none of the three (`failAfterTail`; two laws in
+`TestChannelFailure`, both watched red on master first).
+

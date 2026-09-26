@@ -476,17 +476,10 @@ extension [A](s: Source[A])
       // re-tells the elements into a plain Free chain, which is what
       // `Source.unchunked` already does; this path had been left on
       // the old road when that fix landed.
-      //
-      // Since merge-chunked-via-ready the two sides are chunk channels of
-      // their own — each with its own feed and, with a window, its own
-      // flusher — joined by `mergeReady` as the elementwise merge joins
-      // two `buffer`s: one merge mechanism for both roads.
       pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
         Writer.expand[Chunk[A | B], A | B, Unit, Async](
-          ReadyMerge[Chunk[A | B]](Seq(
-            Channel.chunkedSideOf[A | B, S, Async](sw, slots, Source.ChunkSize, flushAfter).drained,
-            Channel.chunkedSideOf[A | B, S, Async](tw, slots, Source.ChunkSize, flushAfter).drained),
-            quantum = Drain.Batch))(c => c)
+          Writer.of(Channel.mergeChunked[A | B, S, Async, S, Async](
+            sw, tw, slots, Source.ChunkSize, flushAfter)))(c => c)
 
   /**
    * `merge`, but keeping which side each element came from instead of
@@ -594,14 +587,11 @@ extension [A](s: Flushing[A])
     val slots = math.max(1, capacity / Source.ChunkSize)
     val sw = !.widen[Unit, Flush + (Writer % A + Async), Writer % (A | B)](s)
     val tw = !.widen[Unit, Flush + (Writer % B + Async), Writer % (A | B)](t)
-    // a chunk channel per side joined by `mergeReady`, unchunked by
-    // `Writer.expand` — the chunked merge's road (merge-chunked-via-ready)
     pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
-      Writer.expand[Chunk[A | B], A | B, Unit, Async](
-        ReadyMerge[Chunk[A | B]](Seq(
-          Channel.chunkedSideFlushing[A | B](sw, slots, Source.ChunkSize, flushAfter).drained,
-          Channel.chunkedSideFlushing[A | B](tw, slots, Source.ChunkSize, flushAfter).drained),
-          quantum = Drain.Batch))(c => c)
+      through(
+        Writer.of(Channel.mergeFlushing[A | B](sw, tw, slots, Source.ChunkSize, flushAfter)))(
+        !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
+          Stage.unchunk[A | B]))
 
   /**
    * `mergeFlushing`, but tagging which side each element came from —
