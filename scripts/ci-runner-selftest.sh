@@ -250,6 +250,39 @@ printf '%s\n' "$out" | grep -q "confirmed RED on its own gate, re-run alone" && 
 [ ! -d "$tmp/okay-ci-bisect" ] && ok "the bisect worktree was cleaned up" || bad "the bisect worktree is still there"
 rm -rf "$tmp"
 
+say "12. a lane red in its FIRST commits and fixed in its last is not a culprit: bisect tests landing tips only"
+new_fixture
+( cd "$work" && echo bad > BAD_MARKER && git add BAD_MARKER && git commit -q -m "lanex: first commit, red on its own" )
+( cd "$work" && echo more > x.txt && git add x.txt && git commit -q -m "lanex: second commit, still red" )
+first=$(sha master~1)
+( cd "$work" && git rm -q BAD_MARKER && git commit -q -m "lanex: the lane's own fix" )
+tip=$(sha master)
+( cd "$work" && echo x > changelog.d/lanex.md && git add changelog.d/lanex.md \
+  && git commit -q -m "release-claim: lanex, landed as $(git rev-parse --short=9 HEAD)" )
+target=$(sha master)
+# the whole build flakes red once; every later gate reads the tree
+queue red
+out=$(run once); rc=$?
+printf '%s\n' "$out" | grep -q "names $first" && bad "bisect named the lane's intermediate commit $first: $out" \
+  || ok "no intermediate commit named"
+printf '%s\n' "$out" | grep -q "names $(sha master~2)" && bad "bisect named an intermediate commit" || ok "the second commit not named either"
+[ "$(cd "$work" && git rev-parse master)" = "$target" ] && ok "nothing reverted — master unchanged" || bad "master moved: $(cd "$work" && git log --oneline -3)"
+( cd "$work" && [ ! -f .git/REVERT_HEAD ] ) && ok "the main checkout is not mid-revert" || bad "left mid-revert"
+rm -rf "$tmp"
+
+say "13. a revert that CONFLICTS aborts itself: the main checkout is never left mid-revert"
+new_fixture
+( cd "$work" && echo one > shared.txt && git add shared.txt && git commit -q -m "culprit: adds shared.txt" )
+( cd "$work" && echo two >> shared.txt && git add shared.txt && git commit -q -m "later: builds on shared.txt" )
+# the fake gate's queue: the whole build red, the bisect names the
+# culprit (red at culprit, green at base via marker absence is not
+# usable here), so queue every call: build red, bisect steps, confirm red
+queue red red red red red red
+out=$(run once); rc=$?
+( cd "$work" && [ ! -f .git/REVERT_HEAD ] && git diff --quiet && git diff --cached --quiet ) \
+  && ok "no revert in progress, a clean tree" || bad "left mid-revert or dirty: $(cd "$work" && git status --short | head -5)"
+rm -rf "$tmp"
+
 say ""
 if [ "$fail" -eq 0 ]; then say "ci-runner-selftest: PASS"; else say "ci-runner-selftest: FAIL"; fi
 exit "$fail"

@@ -370,6 +370,25 @@ file and a fake `sbt` that always succeeds):
       running `gate-retry.sh --probe` and `quiet.sh --probe` from both
       the main checkout and a worktree and reading identical numbers
 
+- [x] the bisect tests LANDING TIPS only — commits a `release-claim:
+      …, landed as <sha>` names; every other commit of a lane is skipped
+      (exit 125), and a range with no release-claim bisects every commit
+      as before (ci-runner-bisect-intermediate-commits, 2026-09-26;
+      selftest case 12). Found by a false revert: parquet-codec's FIRST
+      commit, red on the docs index its own later commit added, was
+      bisected, "confirmed" and reverted while the lane's tip was green;
+      the whole-build red was two load flakes elsewhere
+- [x] a revert that conflicts ABORTS itself and says so: the main
+      checkout is never left mid-revert (selftest case 13) — the false
+      revert above conflicted with the lanes built on it and blocked every
+      sibling's `merge --ff-only` until a human ran `git revert --abort`
+- [ ] NOT YET: the confirmation re-runs the culprit's scoped gate on the
+      MAIN checkout's tree (HEAD), not the culprit's; for a culprit that
+      changed build.sbt that set is everything, so a flake at HEAD can
+      "confirm" it. And a landing is reverted as its one tip commit, not
+      as the lane's commits. Both stay in backlog
+      (ci-runner-confirm-at-culprit)
+
 ## Out of scope
 
 - GitHub Actions. The push job there already runs `affected before..sha`

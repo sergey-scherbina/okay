@@ -116,6 +116,25 @@ bisect_and_revert() {
     git worktree remove --force "$bwt" >/dev/null 2>&1 || true
     rm -rf "$bwt"
     git worktree add --detach "$bwt" "$to" >>"$log" 2>&1 || { echo "ci-runner: could not create the bisect worktree" | tee -a "$log"; return 1; }
+    # LANDING TIPS ONLY (ci-runner-bisect-intermediate-commits,
+    # 2026-09-26): a lane lands several commits, and one in the middle
+    # may be red where the lane's own later commit fixed it — the first
+    # commit of parquet-codec, two commits before its docs index line,
+    # was bisected, "confirmed" and reverted while the lane's tip was
+    # green. A tip is a commit a `release-claim: …, landed as <sha>`
+    # names; every other commit is SKIPPED (exit 125). A range with no
+    # release-claim at all (a hand merge) bisects every commit, as before.
+    tips=$(git log --format=%s "$from..$to" | sed -n 's/^release-claim: .*, landed as \([0-9a-f][0-9a-f]*\).*/\1/p' \
+      | while read -r t; do git rev-parse --verify -q "$t^{commit}"; done)
+    # an EMPTY file when there is no tip: `printf '%s\n' ""` writes a
+    # newline, and a one-byte file read as "skip everything"
+    if [ -n "$tips" ]; then printf '%s\n' "$tips" > "$bwt.tips"; else : > "$bwt.tips"; fi
+    cat > "$bwt.step.sh" <<STEP
+#!/bin/sh
+here=\$(git rev-parse HEAD)
+if [ -s "$bwt.tips" ] && ! grep -qx "\$here" "$bwt.tips"; then exit 125; fi
+exec sh scripts/gate.sh "affected $from..HEAD"
+STEP
     (
       cd "$bwt"
       git bisect start "$to" "$from" >>"$log" 2>&1
@@ -124,11 +143,15 @@ bisect_and_revert() {
       # the same economy stage A buys, applied to the hunt. Verified
       # (2026-09-25): `gate.sh` exits nonzero on a genuine RED and 0 on
       # GREEN — plain enough for `bisect run` to read.
-      git bisect run sh scripts/gate.sh "affected $from..HEAD" >>"$log" 2>&1
-      git rev-parse HEAD
+      git bisect run sh "$bwt.step.sh" > "$bwt.run" 2>&1
+      cat "$bwt.run" >> "$log"
+      # only skipped commits left: no tip turned red — no culprit
+      if grep -q "only 'skip'ped commits left" "$bwt.run"; then echo ""
+      else git rev-parse HEAD
+      fi
     ) > "$bwt.culprit" 2>>"$log"
     culprit=$(tail -1 "$bwt.culprit")
-    rm -f "$bwt.culprit"
+    rm -f "$bwt.culprit" "$bwt.run" "$bwt.step.sh" "$bwt.tips"
     (cd "$bwt" && git bisect reset "$to" >>"$log" 2>&1)
     git worktree remove --force "$bwt" 2>>"$log"
     if [ -z "$culprit" ]; then
@@ -165,7 +188,11 @@ bisect_and_revert() {
   slug=$(printf '%s\n' "$culprit_subject" | sed -n 's/^\([a-zA-Z0-9-]*\):.*/\1/p')
   [ -z "$slug" ] && slug="unnamed"
   git revert --no-edit "$culprit" >>"$log" 2>&1 || {
-    echo "ci-runner: revert of $culprit CONFLICTED — leaving it for a human; the tree is mid-revert" | tee -a "$log"
+    # NEVER leave the main checkout mid-revert: every sibling's
+    # `merge --ff-only` fails on it until somebody aborts by hand
+    # (2026-09-26, ci-runner-bisect-intermediate-commits)
+    git revert --abort >>"$log" 2>&1
+    echo "ci-runner: revert of $culprit CONFLICTED — aborted it, master unchanged; a human must look (later landings build on it)" | tee -a "$log"
     return 1
   }
   cat > "changelog.d/ci-revert-$slug.md" <<EOF
