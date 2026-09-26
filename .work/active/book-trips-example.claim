@@ -1,0 +1,12 @@
+feature/book-trips-example 2026-09-26T01:27:39Z
+agent: claude-opus-5-5
+heartbeat: 2026-09-26T01:27:39Z
+status: in-progress
+done-so-far: claimed (operator: an example that needs monad composition — a two-leg trip)
+next: Trips three ways (cats EitherT[List] + EitherT[Writer] -> union; layered List/Logged/Either; effects Choose+Writer+Throws), refusal pinned, delivery example removed, chapter, LinkedIn
+book-trips-example
+agent: 
+heartbeat: 
+status: in-progress
+done-so-far: claimed (operator: an example that needs monad composition — a two-leg trip)
+next: Trips three ways (cats EitherT[List] + EitherT[Writer] -> union; layered List/Logged/Either; effects Choose+Writer+Throws), refusal pinned, delivery example removed, chapter, LinkedIn
