@@ -1,0 +1,1 @@
+merge-cap256-gap — why Source.merge via mergeReady reads ~10% slower than the old shared channel at capacity 256 only
