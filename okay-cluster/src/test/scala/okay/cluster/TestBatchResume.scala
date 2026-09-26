@@ -36,28 +36,44 @@ class TestBatchResume extends munit.FunSuite {
     Cluster.local(req)
 
   /**
-   * A COORDINATOR THAT DIES at its `at`-th save and writes nothing
-   * after: the saves already made are what a successor finds, and the
-   * partitions still in flight when it died reach nobody — which is
+   * A COORDINATOR THAT DIES once `at` partials have arrived, and
+   * writes nothing after: the saves already made are what a successor
+   * finds, and the partitions still in flight reach nobody — which is
    * what a dead process's in-flight replies do.
+   *
+   * IN LOCKSTEP, because saves coalesce: left to run freely, a burst of
+   * arrivals is one save, and "died after half" would mean anything
+   * from nothing to everything depending on the box's load (the first
+   * cut of this fixture died by save COUNT and went red under a busy
+   * gate for exactly that reason). `serve` lets one `Run` through at a
+   * time and the journal lets the next one through only once the
+   * previous partial is written, so the record grows one partial per
+   * save and the death lands at exactly `at`.
    */
   final class Dying(at: Int, kept: Checkpoint) extends Checkpoint:
-    private var saves = 0
+    private val turn = java.util.concurrent.Semaphore(1)
+    private var held = 0
     private var dead = false
+    def serve(base: Cluster.Serve): Cluster.Serve = req =>
+      req match
+        case _: Req.Run => turn.acquire(); base(req)
+        case _ => base(req)
     def save(epoch: Int, bytes: Array[Byte]): Unit =
+      val n = Partials.read(bytes).fold(0)(_.held.length)
       val die = synchronized {
         if dead then true
+        else if n >= at then { dead = true; true }
         else
-          saves += 1
           kept.save(epoch, bytes)
-          if saves >= at then dead = true
-          dead
+          if n > held then { held = n; turn.release() }
+          false
       }
-      if die then throw Dying.Died(at)
+      // a dead coordinator lets every waiting reply through, to die
+      if die then { turn.release(at * 4); throw Dying.Died(at) }
     def latest: Option[(Int, Array[Byte])] = kept.latest
 
   object Dying:
-    final case class Died(at: Int) extends RuntimeException(s"the coordinator died at save $at")
+    final case class Died(at: Int) extends RuntimeException(s"the coordinator died at its partial $at")
 
   def held(journal: Checkpoint): Set[Int] =
     Cluster.heldPartitions(journal).getOrElse(Set.empty)
@@ -65,15 +81,15 @@ class TestBatchResume extends munit.FunSuite {
   test("killed after half the partitions, a successor finishes with the batch answer and runs only the rest") {
     val journal = Checkpoint.Memory()
     val first = ConcurrentLinkedQueue[Int]()
-    val workers1 = Vector.fill(4)(counting(first))
+    val dying = Dying(parts / 2, journal)
+    val workers1 = Vector.fill(4)(dying.serve(counting(first)))
     val died = intercept[Throwable](
-      Cluster.run(FanJob, feed, parts, workers1, journal = Dying(parts / 2, journal)).runWith)
+      Cluster.run(FanJob, feed, parts, workers1, journal = dying).runWith)
     assert(Iterator.iterate(died)(_.getCause).takeWhile(_ != null).exists(_.isInstanceOf[Dying.Died]),
       s"the run died of something else: $died")
 
     val kept = held(journal)
-    assert(kept.nonEmpty, "nothing was journalled before the death")
-    assert(kept.size < parts, "every partition was journalled — the death came too late to test anything")
+    assertEquals(kept.size, parts / 2 - 1, "the death did not land where the fixture put it")
 
     val second = ConcurrentLinkedQueue[Int]()
     val workers = Vector.fill(4)(counting(second))
@@ -87,8 +103,9 @@ class TestBatchResume extends munit.FunSuite {
 
   test("the pre-pass is journalled: a resumed run asks for no extents") {
     val journal = Checkpoint.Memory()
-    val _ = intercept[Throwable](Cluster.run(FanJob, feed, parts, Vector.fill(4)(Cluster.local),
-      journal = Dying(2, journal)).runWith)
+    val dying = Dying(2, journal)
+    val _ = intercept[Throwable](Cluster.run(FanJob, feed, parts, Vector.fill(4)(dying.serve(Cluster.local)),
+      journal = dying).runWith)
     val extents = ConcurrentLinkedQueue[Int]()
     val watching: Cluster.Serve = req =>
       req match
@@ -113,8 +130,9 @@ class TestBatchResume extends munit.FunSuite {
 
   test("a journal holding another run is refused by name, and left as it was") {
     val journal = Checkpoint.Memory()
-    val _ = intercept[Throwable](Cluster.run(FanJob, feed, parts, Vector(Cluster.local),
-      journal = Dying(2, journal)).runWith)
+    val dying = Dying(2, journal)
+    val _ = intercept[Throwable](Cluster.run(FanJob, feed, parts, Vector.fill(4)(dying.serve(Cluster.local)),
+      journal = dying).runWith)
     val before = journal.latest.map(_._2.toVector)
     val wider = intercept[IllegalStateException](
       Cluster.run(FanJob, feed, parts * 2, Vector(Cluster.local), journal = journal).runWith)

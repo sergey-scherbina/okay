@@ -1281,8 +1281,10 @@ have arrived, each a pure function of (params, index, count, bounds) —
 and a `Checkpoint` already held the stream's fold, so the batch record
 went into the same two-method store (`Partials`, beside `Folded`).
 
-**Counted, not inferred.** `TestBatchResume` kills the coordinator at
-its fourth save over 4 workers and 8 partitions and asserts the
+**Counted, not inferred.** `TestBatchResume` kills the coordinator as
+its fourth partial arrives, over 4 workers and 8 partitions (in lockstep:
+the first fixture died by save COUNT, and coalescing made that land
+anywhere from nothing held to everything — a busy gate caught it), and asserts the
 successor's `Run` requests are EXACTLY the partitions the journal did
 not hold — with the journal ignored (the mutant), that assertion is
 the one that goes red, while the answer stays right. The pre-pass is
