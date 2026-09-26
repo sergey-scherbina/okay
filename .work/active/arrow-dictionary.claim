@@ -1,0 +1,6 @@
+feature/arrow-dictionary 2026-09-26T19:26:03Z
+agent: claude-code (okay-watch scoring)
+heartbeat: 2026-09-26T19:26:03Z
+status: in-progress
+done-so-far: claimed
+next: spec (okay-arrow.md, dictionary columns), then Column.Dictionary, write + keep-on-read, frameTable keepDictionaries
