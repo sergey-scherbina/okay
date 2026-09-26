@@ -247,136 +247,157 @@ What it cost:
 That was ONE stack. The sharper problem shows up the day two pieces of
 code written against DIFFERENT stacks meet — and the difference that
 hurts most is not the order of the layers but what the stacks are MADE
-of. Two teams, one shared effect (errors), and one monad each that the
-other does not have:
+of. It needs an example where the composition is not optional, and a
+trip with a change of plane is one:
 
-- **team A** knows the catalog: every item a shop sells, with its
-  price — a list, and an error for a shop it does not know:
+- the second flight depends on where the first one landed, so the
+  itineraries are a TREE nobody can list in advance — `List` is a monad
+  here, not a container;
+- a leg can fail (a closed airport, no seats) and only THAT itinerary
+  fails; the others go on, and the answer says which failed and why;
+- every itinerary keeps its OWN booking log: a log shared by all
+  branches would mix them, and one kept as data outside would have to
+  know the path.
+
+The routes out of A: to B (200), C (150) and E (100); from B to D (250),
+from C to D (300); airport E is closed, and C → D is sold out.
+
+- **team A** knows flights — every flight out of a city, and an error
+  for a closed airport:
 
 ```scala
-type Choices[A] = EitherT[List, String, A]
+type Flights[A] = EitherT[List, String, A]
 
-def prices(shop: String): Choices[(String, Int)] =
-  EitherT(catalog.get(shop) match
-    case Some(items) => items.map(Right(_))
-    case None        => List(Left(s"unknown shop $shop")))
+def flights(from: String): Flights[(String, Int)] =
+  EitherT(routes.get(from) match
+    case Some(out) => out.map(Right(_))
+    case None      => List(Left(s"airport $from is closed")))
 ```
 
-- **team B** knows the delivery fee, which a shop may not charge — the
-  same `EitherT` for errors (an unknown shop), over an `Option` instead
-  of a `List` (no fee is `None`: delivery is free, not an error):
+- **team B** books seats — a booking written to a log, and an error when
+  the leg is sold out:
 
 ```scala
-type Delivered[A] = EitherT[Option, String, A]
+type Log[A]     = Writer[Vector[String], A]
+type Booking[A] = EitherT[Log, String, A]
 
-def delivery(shop: String): Delivered[Int] =
-  EitherT(fees.get(shop) match
-    case None      => Some(Left(s"unknown shop $shop"))
-    case Some(fee) => fee.map(Right(_)))
+def book(from: String, to: String): Booking[Unit] =
+  if soldOut((from, to)) then EitherT.leftT[Log, Unit](s"$from → $to: sold out")
+  else EitherT.liftF(Writer.tell(Vector(s"booked $from → $to")))
 ```
 
-Both are `EitherT[_, String, _]`; only the monad inside differs. The
-order is the same in all three versions below: in a given `shop`, each
-item and its price, then the delivery fee, which is free when the
-shop has none. In cats, written the obvious way:
+Both are `EitherT[_, String, _]`; the monad inside differs, and there is
+no ordering to agree on. The trip, written the obvious way:
 
 ```text
 for {
-  (item, price) <- prices(shop)
-  fee           <- delivery(shop)
-} yield (item, price + fee.getOrElse(0))
+  (hub, p1) <- flights(from)
+  _         <- book(from, hub)
+  (to, p2)  <- flights(hub)
+  _         <- book(hub, to)
+} yield p1 + p2
 ```
 
-it does not compile. The first error is the stacks:
+does not compile — at every switch between the teams:
 
 ```text
-Found:    cats.data.EitherT[Option, String, D]
-Required: cats.data.EitherT[List, AA, D²]
+Found:    cats.data.EitherT[bookcats.CatsTrips.Log, AA, D]
+Required: cats.data.EitherT[List, AA, D]
 ```
 
-and the second says what team B's stack did with "no delivery": it is
-the `Option` LAYER there, so the fee is an `Int`, not an `Option` value
-(`value getOrElse is not a member of Int`). The only way in is a
-conversion written by hand for this pair of stacks, which folds team
-B's `Option` layer into an `Option` value in team A's `EitherT[List]`:
+The trip needs all three monads, so it needs a THIRD stack, the union,
+which neither team wrote, and each team's helpers get into it through a
+conversion written by hand, one per team:
 
 ```scala
-def fromB[A](fb: Delivered[A]): Choices[Option[A]] =
-  EitherT(List(fb.value.fold[Either[String, Option[A]]](Right(None))(_.map(Some(_)))))
-```
+type Branches[A] = WriterT[List, Vector[String], A]
+type Trip[A]     = EitherT[Branches, String, A]
 
-and the same order compiles:
+def fromA[A](fa: Flights[A]): Trip[A] = EitherT(WriterT.liftF(fa.value))
+def fromB[A](fb: Booking[A]): Trip[A] = EitherT(WriterT(List(fb.value.run)))
+```
 
 ```scala
 for {
-  (item, price) <- prices(shop)
-  fee           <- fromB(delivery(shop))
-} yield (item, price + fee.getOrElse(0))
+  (hub, p1) <- fromA(flights(from))
+  _         <- fromB(book(from, hub))
+  (to, p2)  <- fromA(flights(hub))
+  _         <- fromB(book(hub, to))
+} yield p1 + p2
 ```
 
-It is `List(Right(("green tea", 350)), Right(("black tea", 330)))` in
-north, which delivers for 50 and sells two teas, and
-`List(Right(("green tea", 250)))` in south, which delivers free. Now multiply: every new team with a slightly different set of
-monads is one more stack, and every pair of stacks that meets needs its
-own conversion — each knowing the structure of both stacks, and changing
-when either does.
+From A that is three itineraries, each with its own log and outcome:
+
+```scala
+(Vector("booked A → B", "booked B → D"), Right(450)),
+(Vector("booked A → C"), Left("C → D: sold out")),
+(Vector("booked A → E"), Left("airport E is closed")))
+```
+
+Now multiply: every new team with a slightly different set of monads is
+one more stack, one more union for everybody who combines it, and one
+more conversion into each union — each knowing the structure of both
+stacks, and changing when either does.
 
 The two roads below have none of this, and the `for` is the same one.
-With layered reflection each team's helper reflects its own monads
-through the capabilities its `reify` blocks hand out, and returns a
-plain value — the fee stays an `Option`:
+With layered reflection the monads stay plain values — `List`, `Either`
+and a Writer that is a case class of the user's (`Logged`, whose layer
+is shown earlier in this chapter) — and each team's helper reflects its
+own monads through the capabilities its `reify` blocks hand out:
 
 ```scala
-def prices(shop: String)(using Reflect[List, Out], Reflect[Checked, (String, Int)]): (String, Int) ! Delim + Pure =
-  catalog.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
+def flights(from: String)(using Reflect[List, Out], Reflect[Checked, Int]): (String, Int) ! Delim + Pure =
+  routes.get(from).toRight(s"airport $from is closed").reflect[Int, Pure]
     .flatMap(_.reflect[Out, Pure])
-
-def delivery(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
-  fees.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
 ```
 
 ```scala
 reify[List, Out, Pure]:
-  reify[Checked, (String, Int), Pure]:
-    for {
-      (item, price) <- prices(shop)
-      fee           <- delivery(shop)
-    } yield (item, price + fee.getOrElse(0))
+  reify[Logged, Either[String, Int], Pure]:
+    reify[Checked, Int, Pure]:
+      for {
+        (hub, p1) <- flights(from)
+        _         <- book(from, hub)
+        (to, p2)  <- flights(hub)
+        _         <- book(hub, to)
+      } yield p1 + p2
 ```
 
-With algebraic effects each helper declares only the effects it uses.
-Team A's items are a `choose`; team B's "no delivery" is not an
-effect at all — it is a plain `Option` value, and only the unknown shop
-is an error:
+With algebraic effects each helper declares only the effects it uses —
+team A a choice and an error, team B a log and an error:
 
 ```scala
-def prices(shop: String): (String, Int) ! Choose + Throws % String =
-  catalog.get(shop) match
-    case Some(items) => choose(items*).at[Choose + Throws % String]
+def flights(from: String): (String, Int) ! Choose + Throws % String =
 ```
 
 ```scala
-def delivery(shop: String): Option[Int] ! Throws % String =
-  fees.get(shop) match
-    case Some(fee) => pure[Throws % String, Option[Int]](fee)
-    case None      => raise[String, Option[Int]](s"unknown shop $shop")
+def book(from: String, to: String): Unit ! Writer % String + Throws % String =
 ```
 
-The union is just the row of the program that uses both helpers, each
-widened into it:
+The union is just the row of the program that uses both, each helper
+widened into it, and the handlers, applied where it runs, give each
+itinerary its own error and its own log:
 
 ```scala
-type Order = Choose + Throws % String
+type Trip = Choose + Writer % String + Throws % String
 ```
 
 ```scala
 for {
-  (item, price) <- prices(shop)
-  fee           <- delivery(shop).at[Order]
-} yield (item, price + fee.getOrElse(0))
+  (hub, p1) <- flights(from).at[Trip]
+  _         <- book(from, hub).at[Trip]
+  (to, p2)  <- flights(hub).at[Trip]
+  _         <- book(hub, to).at[Trip]
+} yield p1 + p2
 ```
 
-All three give the same answer (`TestBookTwoMonadsCats`).
+```scala
+val checked = runEither[Int, Choose + Writer % String, String](trip(from))
+val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
+!.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList
+```
+
+All three give the same three itineraries (`TestBookTwoMonadsCats`).
 
 **The same effects in another order are no better.** Agreeing on the
 set of monads is not enough; the order is part of the stack too.

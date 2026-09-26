@@ -229,116 +229,138 @@ object EffectsBasket:
     !.run(runEither[Seq[(Vector[String], Int)], Pure, String](chosen))
 
 /**
- * TWO TEAMS, TWO DIFFERENT MONADS BEYOND THE SHARED ONE: team A lists
- * every variety of an item with its price (List + Either); team B knows
- * delivery, which a shop may simply not offer (Option + Either: absent
- * is not an error, an unknown shop is). The order needs all three.
+ * A TWO-LEG TRIP: where monad composition is not optional. The second
+ * leg depends on where the first one landed, so the choices are a tree,
+ * not a list computed in advance (List as a MONAD); a leg can fail and
+ * only that itinerary fails (Either per branch); and every itinerary
+ * keeps its own booking log (Writer per branch). Team A knows flights
+ * (List + Either), team B books seats (Writer + Either).
  */
-object Delivery:
-  /** every item a shop sells, with its price */
-  val catalog: Map[String, List[(String, Int)]] = Map(
-    "north" -> List(("green tea", 300), ("black tea", 280)),
-    "south" -> List(("green tea", 250)))
+object Trips:
+  /** flights out of each city: (to, price); a city missing here has its airport closed */
+  val routes: Map[String, List[(String, Int)]] = Map(
+    "A" -> List(("B", 200), ("C", 150), ("E", 100)),
+    "B" -> List(("D", 250)),
+    "C" -> List(("D", 300)))
 
-  /** None: the shop does not deliver; a missing key: an unknown shop */
-  val fees: Map[String, Option[Int]] = Map("north" -> Some(50), "south" -> None)
+  /** legs with no seats left */
+  val soldOut: Set[(String, String)] = Set(("C", "D"))
 
-  /** per shop: north delivers for 50 and sells two teas; south delivers free */
-  val expected: Map[String, List[Either[String, (String, Int)]]] = Map(
-    "north" -> List(Right(("green tea", 350)), Right(("black tea", 330))),
-    "south" -> List(Right(("green tea", 250))))
+  /** every itinerary from A: its own log, its own outcome */
+  val expected: List[(Vector[String], Either[String, Int])] = List(
+    (Vector("booked A → B", "booked B → D"), Right(450)),
+    (Vector("booked A → C"), Left("C → D: sold out")),
+    (Vector("booked A → E"), Left("airport E is closed")))
 
-object CatsDelivery:
-  import cats.data.EitherT
-  import Delivery.{catalog, fees}
+object CatsTrips:
+  import cats.data.{EitherT, Writer, WriterT}
+  import Trips.{routes, soldOut}
 
-  /** team A: every item of a shop with its price, or an error */
-  type Choices[A] = EitherT[List, String, A]
+  /** team A: every flight out of a city, or an error for this branch */
+  type Flights[A] = EitherT[List, String, A]
 
-  def prices(shop: String): Choices[(String, Int)] =
-    EitherT(catalog.get(shop) match
-      case Some(items) => items.map(Right(_))
-      case None        => List(Left(s"unknown shop $shop")))
+  def flights(from: String): Flights[(String, Int)] =
+    EitherT(routes.get(from) match
+      case Some(out) => out.map(Right(_))
+      case None      => List(Left(s"airport $from is closed")))
 
-  /** team B: an error inside an Option — None: no delivery, Left: an unknown shop */
-  type Delivered[A] = EitherT[Option, String, A]
+  /** team B: a booking written to the log, or an error */
+  type Log[A]     = Writer[Vector[String], A]
+  type Booking[A] = EitherT[Log, String, A]
 
-  def delivery(shop: String): Delivered[Int] =
-    EitherT(fees.get(shop) match
-      case None      => Some(Left(s"unknown shop $shop"))
-      case Some(fee) => fee.map(Right(_)))
+  def book(from: String, to: String): Booking[Unit] =
+    if soldOut((from, to)) then EitherT.leftT[Log, Unit](s"$from → $to: sold out")
+    else EitherT.liftF(Writer.tell(Vector(s"booked $from → $to")))
 
-  /** team B's stack converted by hand into team A's: the Option becomes a value */
-  def fromB[A](fb: Delivered[A]): Choices[Option[A]] =
-    EitherT(List(fb.value.fold[Either[String, Option[A]]](Right(None))(_.map(Some(_)))))
+  /** the union neither team wrote, and one conversion per team */
+  type Branches[A] = WriterT[List, Vector[String], A]
+  type Trip[A]     = EitherT[Branches, String, A]
 
-  def order(shop: String): Choices[(String, Int)] =
+  def fromA[A](fa: Flights[A]): Trip[A] = EitherT(WriterT.liftF(fa.value))
+  def fromB[A](fb: Booking[A]): Trip[A] = EitherT(WriterT(List(fb.value.run)))
+
+  def trip(from: String): Trip[Int] =
     for {
-      (item, price) <- prices(shop)
-      fee           <- fromB(delivery(shop))
-    } yield (item, price + fee.getOrElse(0))
+      (hub, p1) <- fromA(flights(from))
+      _         <- fromB(book(from, hub))
+      (to, p2)  <- fromA(flights(hub))
+      _         <- fromB(book(hub, to))
+    } yield p1 + p2
 
-object LayeredDelivery:
-  import okay.Layered.{Reflect, reify, reflect}
-  import Delivery.{catalog, fees}
+  def run(from: String): List[(Vector[String], Either[String, Int])] =
+    trip(from).value.run
+
+object LayeredTrips:
+  import okay.Layered.{Layer, Reflect, reify, reflect}
+  import Trips.{routes, soldOut}
+
+  /** Writer as a plain monad of the user's: a value and what was written */
+  final case class Logged[A](log: Vector[String], value: A)
+
+  given Layer[Logged] with
+    def pure[A](a: A): Logged[A] = Logged(Vector.empty, a)
+    def bind[A, B, G[+_]](m: Logged[A])(k: A => Logged[B] ! G): Logged[B] ! G =
+      k(m.value).map(next => Logged(m.log ++ next.log, next.value))
 
   type Checked[A] = Either[String, A]
-  type Out        = Either[String, (String, Int)]
+  type Out        = Logged[Either[String, Int]]
 
-  /** team A's helper: reflects its own two monads — an unknown shop into
-   * the error layer, the items into the list layer */
-  def prices(shop: String)(using Reflect[List, Out], Reflect[Checked, (String, Int)]): (String, Int) ! Delim + Pure =
-    catalog.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
+  /** team A's helper: an error into the error layer, the flights into the list layer */
+  def flights(from: String)(using Reflect[List, Out], Reflect[Checked, Int]): (String, Int) ! Delim + Pure =
+    routes.get(from).toRight(s"airport $from is closed").reflect[Int, Pure]
       .flatMap(_.reflect[Out, Pure])
 
-  /** team B's helper: an unknown shop into the error layer; the fee stays an Option value */
-  def delivery(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
-    fees.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
+  /** team B's helper: an error into the error layer, the booking into the log layer */
+  def book(from: String, to: String)(using Reflect[Logged, Either[String, Int]], Reflect[Checked, Int]): Unit ! Delim + Pure =
+    val seat: Either[String, Unit] = if soldOut((from, to)) then Left(s"$from → $to: sold out") else Right(())
+    seat.reflect[Int, Pure].flatMap(_ => Logged(Vector(s"booked $from → $to"), ()).reflect[Either[String, Int], Pure])
 
-  def order(shop: String): List[Out] ! Delim + Pure =
+  def trip(from: String): List[Out] ! Delim + Pure =
     reify[List, Out, Pure]:
-      reify[Checked, (String, Int), Pure]:
-        for {
-          (item, price) <- prices(shop)
-          fee           <- delivery(shop)
-        } yield (item, price + fee.getOrElse(0))
+      reify[Logged, Either[String, Int], Pure]:
+        reify[Checked, Int, Pure]:
+          for {
+            (hub, p1) <- flights(from)
+            _         <- book(from, hub)
+            (to, p2)  <- flights(hub)
+            _         <- book(hub, to)
+          } yield p1 + p2
 
-object EffectsDelivery:
-  import okay.{Choose, Throws, choose, raise, runChoice, runEither}
+  def run(from: String): List[(Vector[String], Either[String, Int])] =
+    !.run(Delim.run[List[Out], Pure](trip(from))).map(o => (o.log, o.value))
+
+object EffectsTrips:
+  import okay.{Choose, Throws, Writer, choose, raise, runChoice, runEither}
   import okay.Row.at
   import okay.given
-  import Delivery.{catalog, fees}
+  import Trips.{routes, soldOut}
 
-  /** team A's helper: a choice among the shop's items, or an error */
-  def prices(shop: String): (String, Int) ! Choose + Throws % String =
-    catalog.get(shop) match
-      case Some(items) => choose(items*).at[Choose + Throws % String]
-      case None        => raise[String, (String, Int)](s"unknown shop $shop").at[Choose + Throws % String]
+  /** team A's helper: only the effects IT uses */
+  def flights(from: String): (String, Int) ! Choose + Throws % String =
+    routes.get(from) match
+      case Some(out) => choose(out*).at[Choose + Throws % String]
+      case None      => raise[String, (String, Int)](s"airport $from is closed").at[Choose + Throws % String]
 
-  /** team B's helper: absence is a plain Option VALUE, the error an effect */
-  def delivery(shop: String): Option[Int] ! Throws % String =
-    fees.get(shop) match
-      case Some(fee) => pure[Throws % String, Option[Int]](fee)
-      case None      => raise[String, Option[Int]](s"unknown shop $shop")
+  /** team B's helper: only the effects IT uses */
+  def book(from: String, to: String): Unit ! Writer % String + Throws % String =
+    if soldOut((from, to)) then raise[String, Unit](s"$from → $to: sold out").at[Writer % String + Throws % String]
+    else Writer.tell(s"booked $from → $to").at[Writer % String + Throws % String]
 
-  type Order = Choose + Throws % String
+  type Trip = Choose + Writer % String + Throws % String
 
-  def order(shop: String): (String, Int) ! Order =
+  def trip(from: String): Int ! Trip =
     for {
-      (item, price) <- prices(shop)
-      fee           <- delivery(shop).at[Order]
-    } yield (item, price + fee.getOrElse(0))
+      (hub, p1) <- flights(from).at[Trip]
+      _         <- book(from, hub).at[Trip]
+      (to, p2)  <- flights(hub).at[Trip]
+      _         <- book(hub, to).at[Trip]
+    } yield p1 + p2
 
-  /** the expression cats refused, with effects: both helpers in one for */
-  val north: (String, Int) ! Order =
-    for
-      (item, price) <- prices("north").at[Order]
-      fee           <- delivery("north").at[Order]
-    yield (item, price + fee.getOrElse(0))
-
-  def run(shop: String): List[Either[String, (String, Int)]] =
-    val checked = runEither[(String, Int), Choose, String](order(shop))
-    !.run(runChoice[Either[String, (String, Int)], Pure](checked)).toList
+  /** errors handled first, then the log, then the choice: each itinerary keeps its own */
+  def run(from: String): List[(Vector[String], Either[String, Int])] =
+    val checked = runEither[Int, Choose + Writer % String, String](trip(from))
+    val logged  = Writer.collect[String, Either[String, Int], Choose](checked)
+    !.run(runChoice[(Vector[String], Either[String, Int]), Pure](logged)).toList
 
 class TestBookTwoMonadsCats extends munit.FunSuite:
 
@@ -358,35 +380,26 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
     assertEquals(EffectsBasket.run(List("tea", "cake")), expected)
   }
 
-  test("DELIVERY: team A's helper (EitherT over List) and team B's (EitherT over Option) do not compose in one expression") {
+  test("TRIPS: team A's helper (EitherT over List) and team B's (EitherT over Writer) do not compose in one for") {
     val e = compileErrors("""
-      import bookcats.CatsDelivery.*
-      val shop = "north"
+      import bookcats.CatsTrips.*
+      val from = "A"
       for {
-        (item, price) <- prices(shop)
-        fee           <- delivery(shop)
-      } yield (item, price + fee.getOrElse(0))
+        (hub, p1) <- flights(from)
+        _         <- book(from, hub)
+        (to, p2)  <- flights(hub)
+        _         <- book(hub, to)
+      } yield p1 + p2
     """)
-    // first: the two stacks differ in the monad inside (List vs Option)
-    assert(e.contains("Found:    cats.data.EitherT[Option, String, D]"), e)
-    assert(e.contains("Required: cats.data.EitherT[List, AA, D²]"), e)
-    // second: in team B's stack "no delivery" is the Option LAYER, so the fee is an Int, not an Option value
-    assert(e.contains("value getOrElse is not a member of Int"), e)
+    // every switch of team inside the for is refused; the first:
+    assert(e.contains("Found:    cats.data.EitherT[bookcats.CatsTrips.Log, AA, D]"), e)
+    assert(e.contains("Required: cats.data.EitherT[List, AA, D]"), e)
   }
 
-  test("DELIVERY: the union stack with a conversion per team, layered reflection, and effects agree") {
-    for (shop, answer) <- Delivery.expected do
-      assertEquals(CatsDelivery.order(shop).value, answer, shop)
-      assertEquals(!.run(Delim.run[List[LayeredDelivery.Out], Pure](LayeredDelivery.order(shop))), answer, shop)
-      assertEquals(EffectsDelivery.run(shop), answer, shop)
-  }
-
-  test("DELIVERY: with effects the refused expression compiles as written — both helpers in one for") {
-    import okay.{Choose, runChoice, runEither}
-    import okay.given
-    val checked = runEither[(String, Int), Choose, String](EffectsDelivery.north)
-    assertEquals(!.run(runChoice[Either[String, (String, Int)], Pure](checked)).toList,
-      List(Right(("green tea", 350)), Right(("black tea", 330))))
+  test("TRIPS: the union stack with a conversion per team, layered reflection, and effects agree") {
+    assertEquals(CatsTrips.run("A"), Trips.expected)
+    assertEquals(LayeredTrips.run("A"), Trips.expected)
+    assertEquals(EffectsTrips.run("A"), Trips.expected)
   }
 
   test("DIFFERENT COMPOSITION: team A's helper (List + Either) does not type in team B's stack (Writer + Either), nor in the union") {
