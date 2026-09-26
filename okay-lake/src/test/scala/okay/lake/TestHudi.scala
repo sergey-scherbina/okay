@@ -18,7 +18,9 @@ final case class Reading(id: Long, city: String, v: Double) derives Schema
  * (`OKAY_SPARK_JAVA_HOME`), and the Hudi bundle from Maven the first time.
  */
 class TestHudi extends munit.FunSuite:
-  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+  // the tables are written by Spark: Live; the Avro datum test needs nothing
+  override def munitTests(): Seq[Test] =
+    super.munitTests().map(t => if t.name.startsWith("a single Avro datum") then t else t.tag(new munit.Tag("Live")))
   override def munitTimeout: scala.concurrent.duration.Duration = scala.concurrent.duration.Duration(900, "s")
 
   val javaHome: Option[String] =
@@ -153,4 +155,30 @@ print("RESULT " + json.dumps({"before": res(before), "after": res(after)}))
     Files.write(log, bytes): Unit
     val e = intercept[Exception](Flows.collect(ParquetSource.flow[Reading](HudiSource.plan(lake, "readings"))).runWith)
     assert(Iterator.iterate[Throwable](e)(_.getCause).takeWhile(_ != null).exists(x => String.valueOf(x.getMessage).contains("PARQUET_DATA")), e.toString)
+  }
+
+  test("a single Avro datum (how a log block holds its records): ours and Apache Avro's decoders read Apache's writer the same") {
+    val schema = """{"type":"record","name":"R","fields":[{"name":"id","type":"long"},{"name":"city","type":["null","string"]},""" +
+      """{"name":"v","type":"double"},{"name":"tags","type":{"type":"array","items":"string"}},{"name":"raw","type":"bytes"},""" +
+      """{"name":"inner","type":["null",{"type":"record","name":"I","fields":[{"name":"n","type":"int"}]}]}]}"""
+    val s = org.apache.avro.Schema.Parser().parse(schema)
+    val r = org.apache.avro.generic.GenericData.Record(s)
+    r.put("id", 42L); r.put("city", "c1"); r.put("v", 2.5); r.put("tags", java.util.List.of("a", "b"))
+    r.put("raw", java.nio.ByteBuffer.wrap(Array[Byte](1, 2, 3)))
+    val inner = org.apache.avro.generic.GenericData.Record(s.getField("inner").schema.getTypes.get(1))
+    inner.put("n", 7)
+    r.put("inner", inner)
+    val out = java.io.ByteArrayOutputStream()
+    val enc = org.apache.avro.io.EncoderFactory.get().binaryEncoder(out, null)
+    org.apache.avro.generic.GenericDatumWriter[org.apache.avro.generic.GenericRecord](s).write(r, enc)
+    enc.flush()
+    def plain(v: Any): Any = v match
+      case b: Array[Byte] => b.toVector
+      case xs: Vector[?] => xs.map(plain)
+      case (k, x) => (k, plain(x))
+      case other => other
+    val ours = plain(OkayAvro.decoder(schema)(out.toByteArray))
+    assertEquals(ours, plain(ApacheAvro.decoder(schema)(out.toByteArray)))
+    assertEquals(ours, Vector("id" -> 42L, "city" -> "c1", "v" -> 2.5, "tags" -> Vector("a", "b"),
+      "raw" -> Vector[Byte](1, 2, 3), "inner" -> Vector("n" -> 7L)))
   }

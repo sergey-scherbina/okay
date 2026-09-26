@@ -9,7 +9,8 @@ an instant that never completed are skipped. A slice without logs is
 read a row group at a time, as copy-on-write. Parquet/HFile/CDC log
 blocks, log-only file groups, tables without meta fields and CUSTOM
 merge modes are refused by name. `AvroReader.decoder` (ours and Apache
-Avro) decodes single Avro-binary values. TestHudi (Live): a MOR table
+Avro) decodes single Avro-binary values; both read a datum Apache's own
+writer made the same (TestHudi, not Live). TestHudi (Live): a MOR table
 written by Hudi 1.2.1 — insert, upsert, an older event's upsert, delete
 — reads equal to Hudi's own read, and equal to its pre-delete read with
 the delete's instant uncommitted. specs/dataflow.md stage 18,
