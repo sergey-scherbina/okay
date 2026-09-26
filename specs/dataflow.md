@@ -529,6 +529,21 @@ Stage 11 — the log is the source (box 1 landed; TestSourceLog):
       that exists is the right one: `Sink.staging(...)(move)` takes
       the two moments, and the topic writer is forty lines in whatever
       module owns the store — which is where a store belongs
+- [ ] AN EPOCH LARGER THAN A RECORD (staging-large-epochs, 2026-09-26,
+      operator): okay-kafka's `EpochLog` writes an epoch as chunks of at
+      most `chunkBytes` inside ONE Kafka transaction, committed when the
+      epoch is final, so a `read_committed` reader sees an epoch whole or
+      not at all. Gate (Live, TestEpochLog): an epoch of 100 MB, its
+      writer killed between chunks — a reader sees nothing of it; a
+      successor with the same transactional id fences the dead writer,
+      learns the last committed epoch from the log and writes the epoch
+      again; the reader then sees it whole, once
+- [ ] a repeated `move` of a committed epoch is skipped, learned from
+      the log by a writer with no memory — stage 9's contract, kept
+- [ ] the framing (rows length-prefixed into chunks, a row larger than
+      a chunk alone in its record) round-trips without a broker
+- [ ] `Sink.staging(...)(move)` into an `EpochLog`: a stream's panes
+      reach the topic, each epoch once (Live)
 - [x] exactly-once from log to log: the coordinator dies between the
       append and the journal commit, at four epochs, and the output
       topic holds every pane once. THE DEDUP STATE IS THE OUTPUT — a
@@ -888,6 +903,17 @@ a way to start from a known mark rather than from nothing.
   trip minus what the worker says it spent; "foreign" is what the
   foreign stage timed around its call, on the worker's thread
   (`Meter`, thread-local, reset per request). Nothing is estimated.
+- **A large epoch is ONE Kafka transaction, not chunks with a marker**
+  (staging-large-epochs, 2026-09-26). Stage 9 named both roads. The
+  marker road needs every reader to honour the marker — a consumer that
+  does not reads a half epoch as a whole one, silently — and a writer
+  to recognise its own half-written tail on recovery. A transaction
+  puts both halves in the broker: `read_committed` never returns an
+  aborted or open epoch, and a successor's `initTransactions` under the
+  same transactional id FENCES the dead writer and aborts its open
+  epoch, so recovery is "read the last committed epoch", unchanged. It
+  lives in okay-kafka beside `KafkaStore`, for stage 9's reason:
+  okay-cluster knows no store, and `Sink.staging(...)(move)` is the seam.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
