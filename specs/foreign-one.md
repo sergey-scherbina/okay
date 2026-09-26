@@ -535,7 +535,15 @@ more than it adds (the line count of what it removed goes in Results).
 - [ ] Stage 6 (as first written) — **foreign-one-bulk**: the frame road in Rust, Hs, Go
       (subsumes foreign-frame-op-rust-hs-go); `Objects` in their
       libraries; Arrow C Data over FFM; the table filled.
-- [ ] Stage 7 — **foreign-one-ops**: `Language[L].ops` for Frege and
+- [ ] Stage 7 — **foreign-one-ops** (narrowed — Decision 19): the
+      caller's `Foreign.Callbacks` serve Frege and Clojure programs as
+      they serve every wire language — the JVM walker performs a
+      `Foreign.Call(name, arg)` against them (`calls.jvm`), and
+      `Jvm.frege(module, cbs)` / `Jvm.clojure(ns, cbs)` write the typed
+      Frege module and the Clojure namespace, as `Hs.ops` writes Haskell's.
+      The core effects keep `okay.frege.Ops`/`okay.clojure.Ops`: they are
+      the row's own operations, not callbacks.
+- [ ] Stage 7 (as first written) — **foreign-one-ops**: `Language[L].ops` for Frege and
       Clojure from the core effects' `Cbs`; the hand-written `Ops`
       become generated output.
 - [ ] Stage 8 — **foreign-one-docs**: one entry page, "Foreign
@@ -685,6 +693,23 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     in a measurement; neither the crate (offline: not in the cargo
     registry, nor Go's module in GOMODCACHE) nor the caller exists. Both
     are filed with their gates.
+
+19. **Callbacks are the one declaration; the core effects are not
+    callbacks** (foreign-one-ops). The stage said the hand-written
+    `okay.frege.Ops` and `okay.core` would become generated from the core
+    effects' `Cbs`. Read against the code, there are no such `Cbs`:
+    `okay.core` holds no operations at all (it is the program monad), and
+    the two `Ops` objects bind `okay.Operations` — the row's OWN effects,
+    which a JVM program performs directly and a wire program cannot. What
+    WAS declared twice is a caller's own operation: a Scala
+    `Foreign.callback` served Python, TypeScript, Go, Rust, Haskell and R,
+    while a Frege or Clojure program needed a hand-written static method
+    per operation. So the callback becomes the declaration everywhere:
+    the JVM walker resolves a `Foreign.Call(name, arg)` against the
+    caller's callbacks, the callback's own Schema decodes the argument (a
+    wrong one is refused by name, no cast), and the Frege module the
+    generator writes types each operation from the callback's Schemas, so
+    a wrong argument there is a Frege type error.
 
 ## Results
 
