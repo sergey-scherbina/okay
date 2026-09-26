@@ -18,7 +18,9 @@ import okay.{Choose, Reader, effect, runChoice, given}
  *  - `scale(frame, k)`: a TABLE call — a frame with column `x` in, the same
  *    column times `k` out (a far side without table calls overrides `tables`);
  *  - `counter(n)` held, then `describe(c, k)`: `n + k` from the HELD value
- *    (a far side that keeps nothing overrides `holds`).
+ *    (a far side that keeps nothing overrides `holds`);
+ *  - `await_open(name)` answers once `open(name)` has been called — on a
+ *    worker that claims `mux` (Go), each served while the other waits.
  */
 abstract class WireConformance extends munit.FunSuite:
 
@@ -91,6 +93,21 @@ abstract class WireConformance extends munit.FunSuite:
     assertEquals(describe(5), Right(15.0))
     h.handle(ForeignEval.Release(ref))
     assert(describe(1).isLeft, "a released value was still found")
+  }
+
+  test("MUX: a call that waits for another is answered once the other arrives, on ONE worker (foreign-mux-duplex)") {
+    assume(engine.muxed, "this far side is served one exchange at a time")
+    import scala.concurrent.{Await, ExecutionContext, Future}
+    import scala.concurrent.duration.DurationInt
+    given ExecutionContext = ExecutionContext.global
+    val name = s"g${System.nanoTime}"
+    val waiting = Future(engine.handler.handle(ForeignEval.Call(address("await_open"), Vector(PyValue.Str(name)))))
+    // best effort to send the waiting call first: if it ran second it would
+    // not wait at all, and the test would say nothing; if it runs first on a
+    // wire that is not multiplexed, `open` is never read and this times out
+    Thread.sleep(200)
+    assertEquals(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(name)))), Right(PyValue.Str(name)))
+    assertEquals(Await.result(waiting, 30.seconds), Right(PyValue.Str(name)))
   }
 
   /** whether a far-side failure leaves the far side alive: false for Rust

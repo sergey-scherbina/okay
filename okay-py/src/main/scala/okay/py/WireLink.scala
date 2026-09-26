@@ -32,6 +32,11 @@ trait WireLink:
    * in this process reading the Arrow C Data Interface in place,
    * foreign-arrow-ffm); None where a table must be bytes on the wire */
   def tables: Option[WireLink.Tables] = None
+  /** the link's two directions APART (foreign-mux-duplex): a message out
+   * without waiting for its answer, and the next answer in, whichever it
+   * is — what a reader matching answers by id needs; None where a call is
+   * an exchange (in process) */
+  def duplex: Option[WireLink.Duplex] = None
   /** whether a message crosses a network (TCP): the only link where the
    * default compression compresses — on a pipe and in-process it would
    * only cost (wire-compression-measured) */
@@ -43,6 +48,13 @@ object WireLink:
    * answered a table, that table (foreign-arrow-ffm) */
   trait Tables:
     def exchange(message: Array[Byte], table: okay.arrow.Table): (Array[Byte], Option[okay.arrow.Table])
+
+  /** a message out, or the next one in: a line before a configure, a frame after */
+  trait Duplex:
+    def sendLine(line: String): Unit
+    def receiveLine(): Option[String]
+    def sendFrame(message: Array[Byte]): Unit
+    def receiveFrame(): Option[Array[Byte]]
 
   /**
    * A byte stream pair: what pipes and sockets both are, framed by
@@ -61,6 +73,12 @@ object WireLink:
     def exchange(message: Array[Byte]): Option[Array[Byte]] =
       WireFrames.writeFrame(output, message)
       WireFrames.readFrame(input)
+
+    override def duplex: Option[WireLink.Duplex] = Some(new WireLink.Duplex:
+      def sendLine(line: String): Unit = WireFrames.writeLine(output, line)
+      def receiveLine(): Option[String] = WireFrames.readLine(input)
+      def sendFrame(message: Array[Byte]): Unit = WireFrames.writeFrame(output, message)
+      def receiveFrame(): Option[Array[Byte]] = WireFrames.readFrame(input))
 
   /** a child process's stdin and stdout */
   def pipes(proc: Process): WireLink =

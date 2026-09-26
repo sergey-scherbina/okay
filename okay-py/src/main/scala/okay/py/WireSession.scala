@@ -31,7 +31,11 @@ final class WireSession private (link: WireLink,
                                  who: String,
                                  /** the far side reads a frame's COLUMNAR shape
                                   * (it announced `"frames": ["columnar"]`) */
-                                 val columnar: Boolean):
+                                 val columnar: Boolean,
+                                 /** requests in flight together, answers matched by
+                                  * id: the far side claimed `mux` and the link has two
+                                  * directions apart (foreign-mux-duplex) */
+                                 val mux: Boolean):
 
   private var nextId = 0
 
@@ -70,11 +74,31 @@ final class WireSession private (link: WireLink,
 
   /** a request that OPENS something: numbered, sent, its answer read */
   def exchange(req: Json): Json =
-    nextId += 1
+    val id = synchronized { nextId += 1; nextId }
     val body = req match
-      case Json.JObj(fs) => Json.JObj(("id" -> Json.JNum(nextId.toDouble)) +: fs)
+      case Json.JObj(fs) => Json.JObj(("id" -> Json.JNum(id.toDouble)) +: fs)
       case other => other
-    send(body)
+    if mux then muxed(id, body) else send(body)
+
+  /** the one reader of a multiplexed link, made at its first request — after
+   * the handshake, which is an exchange at a time */
+  private lazy val muxer = WireSession.Mux(link.duplex.getOrElse(throw IllegalStateException("mux without a duplex link")),
+    codec, readerThread = deadline.isDefined, () => live = false)
+
+  /** one request among others in flight: sent, and its OWN answer awaited,
+   * whatever arrives before it (foreign-mux-duplex) */
+  private def muxed(id: Int, body: Json): Json =
+    if !live then throw IllegalStateException(s"$who is DEAD (its wire was closed) — a supervisor retry gets a fresh one")
+    val answer = muxer.request(id, body, who)
+    try deadline match
+      case None => muxer.await(answer)
+      case Some(ms) => answer.get(ms, java.util.concurrent.TimeUnit.MILLISECONDS)
+    catch
+      case _: java.util.concurrent.TimeoutException =>
+        live = false
+        link.close()
+        throw WireSession.TimedOut(deadline.getOrElse(0L))
+      case e: java.util.concurrent.ExecutionException => throw e.getCause
 
   /** one message out, the next one in — `exchange` without an id, which
    * is how a `resume` goes: it answers an ask, it opens nothing */
@@ -182,6 +206,83 @@ final class WireSession private (link: WireLink,
 
 object WireSession:
 
+  /**
+   * THE READER of a multiplexed link (foreign-mux-duplex): every answer is
+   * matched to its request by id, so a request that waits long holds up no
+   * other. Whoever is waiting READS — leader and followers: a caller that
+   * finds nobody reading reads the stream itself until its own answer comes,
+   * completing the others' on the way, so a lone caller never hands an
+   * answer to another thread (a dedicated reader cost 1.42x on 2 000
+   * sequential calls, MeasureMux). A session with a deadline keeps one
+   * reader thread instead: a blocked read cannot be abandoned, and the
+   * deadline has to be able to give up on it. Sends are one at a time (the
+   * link is one stream); a link that ends fails everything still waiting,
+   * with the DEAD a supervisor reads.
+   */
+  private[py] final class Mux(duplex: WireLink.Duplex, codec: Option[(WireFormat, WireCompression)],
+                              readerThread: Boolean, dead: () => Unit):
+    private val pending = java.util.concurrent.ConcurrentHashMap[Int, java.util.concurrent.CompletableFuture[Json]]()
+    private val reading = java.util.concurrent.locks.ReentrantLock()
+    @volatile private var ended = false
+    if readerThread then
+      val t = Thread(() => while !ended do readOne(), "okay-wire-mux")
+      t.setDaemon(true)
+      t.start()
+
+    def request(id: Int, body: Json, who: String): java.util.concurrent.CompletableFuture[Json] =
+      val answer = java.util.concurrent.CompletableFuture[Json]()
+      pending.put(id, answer): Unit
+      try synchronized(codec match
+        case None => duplex.sendLine(Json.print(body))
+        case Some((format, compression)) => duplex.sendFrame(compression.compress(format.encode(body))))
+      catch case e: java.io.IOException =>
+        // a send that fails is a link that ended, as a read that finds its
+        // end is: while nobody reads, a killed worker is found HERE, and the
+        // supervisor must see the session dead to give a fresh one
+        pending.remove(id): Unit
+        answer.completeExceptionally(IllegalStateException(s"$who is DEAD (${e.getMessage}) — a supervisor retry gets a fresh one")): Unit
+        ended = true
+        dead()
+      // the link may have ended between the put and here: nothing would complete it
+      if ended then fail(who)
+      answer
+
+    /** this request's answer, reading for everyone while nobody else is */
+    def await(answer: java.util.concurrent.CompletableFuture[Json]): Json =
+      while !answer.isDone do
+        if reading.tryLock() then
+          try while !answer.isDone && !ended do readOne()
+          finally reading.unlock()
+        else
+          // someone else reads, and completes ours when it passes; look again
+          // soon, in case they found theirs and stopped reading
+          try answer.get(1, java.util.concurrent.TimeUnit.MILLISECONDS): Unit
+          catch case _: java.util.concurrent.TimeoutException => ()
+      answer.get()
+
+    /** one message off the link, handed to the request it answers */
+    private def readOne(): Unit =
+      val next =
+        try codec match
+          case None => duplex.receiveLine().map(whole)
+          case Some((format, compression)) => duplex.receiveFrame().map(b => format.decode(compression.decompress(b)))
+        catch case _: Exception => None
+      next match
+        case Some(Json.JObj(fs)) =>
+          unboxed(fs.toMap.get("id")).collect { case Json.JNum(n) => n.toInt }
+            .flatMap(i => Option(pending.remove(i))).foreach(_.complete(Json.JObj(fs)): Unit)
+        case Some(_) => ()
+        case None =>
+          ended = true
+          dead()
+          fail("the worker")
+
+    private def fail(who: String): Unit =
+      pending.keySet.forEach { i =>
+        Option(pending.remove(i)).foreach(_.completeExceptionally(
+          IllegalStateException(s"$who is DEAD (its wire ended) — a supervisor retry gets a fresh one")): Unit)
+      }
+
   /** an answer that did not come within the deadline; the message says DEAD
    * so a supervisor that retires dead workers (`PyWorkers`) retires it */
   final class TimedOut(val millis: Long) extends IllegalStateException(
@@ -228,7 +329,11 @@ object WireSession:
       case _ => false
     // a link that carries a table as itself takes the table road whatever
     // the far side's hello said about Arrow streams (foreign-arrow-ffm)
-    new WireSession(link, version, codec, deadline.millis, arrow || link.tables.isDefined, frames, who, columnar)
+    val mux = fields.get("speaks") match
+      case Some(Json.JObj(sp)) => sp.toMap.get("mux").contains(Json.JBool(true))
+      case _ => false
+    new WireSession(link, version, codec, deadline.millis, arrow || link.tables.isDefined, frames, who, columnar,
+      mux = mux && link.duplex.isDefined && !arrow && link.tables.isEmpty)
 
   /** stage 5's handshake (`okay.codec.WireNegotiation`): what the givens
    * ask for, checked against what the far side announced, and confirmed */

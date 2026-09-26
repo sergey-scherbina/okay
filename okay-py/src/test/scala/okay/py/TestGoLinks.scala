@@ -46,6 +46,10 @@ class TestGoPipes extends WireConformance:
   lazy val engine: ForeignWorker = ForeignWorker.speaking(Seq(GoWorkerBinary.binary.toString))
   override def afterAll(): Unit = if GoWorkerBinary.available then engine.close()
 
+  test("a Go worker claims mux, and a pipe carries it: requests in flight together (foreign-mux-duplex)") {
+    assert(engine.muxed)
+  }
+
 /** (Go, TCP): the same binary with OKAY_LISTEN, reached over a socket */
 class TestGoTcp extends WireConformance:
   override def munitIgnore: Boolean = !GoWorkerBinary.available

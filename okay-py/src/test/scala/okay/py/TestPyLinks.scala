@@ -47,6 +47,10 @@ class TestPyPipes extends WireConformance:
     assertEquals(engine.wire, "json/none")
   }
 
+  test("the Python shim claims no mux: served one exchange at a time, as before") {
+    assert(!engine.muxed)
+  }
+
 /** (Python, pipes), DEFLATE asked for by an import */
 class TestPyPipesDeflate extends WireConformance:
   import WireCompression.Deflate.given

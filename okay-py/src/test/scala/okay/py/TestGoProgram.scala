@@ -11,6 +11,8 @@ object TestGoProgram:
   val main: String = """package main
 
 import (
+	"sync"
+
 	"worker/okay"
 	"worker/shop"
 )
@@ -68,7 +70,19 @@ func scale(_ *okay.Ctx, args []any) any {
 func counter(_ *okay.Ctx, args []any) any  { return args[0] }
 func describe(_ *okay.Ctx, args []any) any { return args[0].(int64) + args[1].(int64) }
 
-var functions = okay.Functions{"quote": quote, "scale": scale, "counter": counter, "describe": describe}
+// MUX: a call that waits until another opens its gate — answerable only
+// when the worker takes the second request while the first still runs
+var gates sync.Map
+
+func gate(name string) chan struct{} {
+	ch, _ := gates.LoadOrStore(name, make(chan struct{}))
+	return ch.(chan struct{})
+}
+func awaitOpen(_ *okay.Ctx, args []any) any { <-gate(args[0].(string)); return args[0] }
+func open(_ *okay.Ctx, args []any) any      { close(gate(args[0].(string))); return args[0] }
+
+var functions = okay.Functions{"quote": quote, "scale": scale, "counter": counter, "describe": describe,
+	"await_open": awaitOpen, "open": open}
 
 // in-process (a WebAssembly build): what okay_exchange serves
 func init() {

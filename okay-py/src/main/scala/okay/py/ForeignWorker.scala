@@ -35,6 +35,9 @@ final class ForeignWorker private (session: WireSession,
   /** what the handshake settled on: "json/none" (the plain JSON lines),
    * "json/deflate", "cbor/none", "cbor/deflate" */
   def wire: String = session.wire
+  /** whether requests to this worker are in flight together, answers
+   * matched by id (foreign-mux-duplex) */
+  def muxed: Boolean = session.mux
 
   private def arrow = session.arrow
   private def exchange(req: Json): Json = session.exchange(req)

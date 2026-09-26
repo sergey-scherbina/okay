@@ -32,6 +32,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 // ShimVersion is the wire version this worker speaks; the host refuses any other.
@@ -471,8 +473,8 @@ func Call[A any](c *Ctx, request Op[A]) (A, error) {
 	if !c.offered[request.Name] {
 		return zero, &OkayError{"LookupError", fmt.Sprintf("okay.Call(%q): this call was offered %v", request.Name, keys(c.offered))}
 	}
-	*c.next++
-	k := *c.next
+	// atomic: with the wire multiplexed, several functions ask at once
+	k := atomic.AddInt64(c.next, 1)
 	wire := make([]any, len(request.Args))
 	for i, a := range request.Args {
 		wire[i] = enc(a)
@@ -514,6 +516,10 @@ type Worker struct {
 	next      int64
 	waiting   map[key]*Ctx // direct-style calls parked in an okay.Call, by run and k
 	held      map[int64]any // values kept for the host, by ref (foreign-held-values)
+	// one lock over everything above (foreign-mux-duplex): requests are
+	// answered on goroutines of their own, and a call WAITING on its
+	// function holds it not — await lets it go for the wait
+	mu sync.Mutex
 	nextRef   int64
 	asks      int64
 	// stage 5b (wire-auth): a worker with a secret answers nothing but an
@@ -543,7 +549,10 @@ func (w *Worker) await(c *Ctx, plain bool) map[string]any { return w.awaitHoldin
 // awaitHolding is await, keeping a plain call's answer in the worker when
 // `hold` (a call made `held`) and answering its ref
 func (w *Worker) awaitHolding(c *Ctx, plain, hold bool) map[string]any {
+	// the function runs without the worker: other requests go on meanwhile
+	w.mu.Unlock()
 	e := <-c.events
+	w.mu.Lock()
 	switch {
 	case e.ask != nil:
 		w.waiting[key{c.run, e.ask["k"].(int64)}] = c
@@ -588,7 +597,9 @@ func Hello() string { return NewWorker(nil).Hello() }
 // secret, the challenge its host must answer (stage 5b).
 func (w *Worker) Hello() string {
 	h := map[string]any{"shim": ShimVersion, "python": "go",
-		"speaks": map[string]any{"format": []any{"json", "cbor"}, "compress": []any{"deflate"}, "frames": []any{"columnar"}}}
+		"speaks": map[string]any{"format": []any{"json", "cbor"}, "compress": []any{"deflate"}, "frames": []any{"columnar"},
+			// requests answered as they finish, matched by id (foreign-mux-duplex)
+			"mux": true}}
 	if w.secret != nil {
 		var b [16]byte
 		if _, err := rand.Read(b[:]); err != nil {
@@ -779,6 +790,8 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 // one message in the same encoding. A configure takes effect AFTER its own
 // answer, which goes out in the encoding it was asked in.
 func (w *Worker) HandleMessage(msg []byte) []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	var reply map[string]any
 	raw, err := w.decode(msg)
 	if err != nil {
@@ -1047,40 +1060,69 @@ func serveLines(w *Worker, in *bufio.Reader, out *bufio.Writer) {
 	out.WriteString(w.Hello())
 	out.WriteByte('\n')
 	out.Flush()
-	for {
-		if w.Framed() {
-			var n [4]byte
-			if _, err := io.ReadFull(in, n[:]); err != nil {
-				return
-			}
-			msg := make([]byte, binary.BigEndian.Uint32(n[:]))
-			if _, err := io.ReadFull(in, msg); err != nil {
-				return
-			}
-			reply := w.HandleMessage(msg)
+	// one reply at a time on the stream, whichever request finished first
+	var writing sync.Mutex
+	write := func(reply []byte, framed bool) {
+		writing.Lock()
+		defer writing.Unlock()
+		if framed {
 			var m [4]byte
 			binary.BigEndian.PutUint32(m[:], uint32(len(reply)))
 			out.Write(m[:])
 			out.Write(reply)
-			out.Flush()
+		} else {
+			out.Write(reply)
+			out.WriteByte('\n')
+		}
+		out.Flush()
+	}
+	for {
+		framed := w.Framed()
+		var msg []byte
+		if framed {
+			var n [4]byte
+			if _, err := io.ReadFull(in, n[:]); err != nil {
+				return
+			}
+			msg = make([]byte, binary.BigEndian.Uint32(n[:]))
+			if _, err := io.ReadFull(in, msg); err != nil {
+				return
+			}
+		} else {
+			line, err := in.ReadString('\n')
+			if len(strings.TrimSpace(line)) > 0 {
+				msg = []byte(line)
+			} else if err != nil {
+				return
+			} else {
+				continue
+			}
+		}
+		// the handshake's requests change the wire itself, so they are
+		// answered in order; every other runs beside the rest (foreign-mux-duplex)
+		if w.inline(msg) {
+			write(w.HandleMessage(msg), framed)
 			if w.closing {
 				return
 			}
 			continue
 		}
-		line, err := in.ReadString('\n')
-		if len(strings.TrimSpace(line)) > 0 {
-			out.WriteString(w.Handle(line))
-			out.WriteByte('\n')
-			out.Flush()
-			if w.closing {
-				return
-			}
-		}
-		if err != nil {
-			return
-		}
+		go func(m []byte) { write(w.HandleMessage(m), framed) }(msg)
 	}
+}
+
+// inline: whether a request must be answered before the next is read — a
+// configure (it changes the framing after its answer), an auth, anything
+// while the host has not proved the secret, and what does not decode
+func (w *Worker) inline(msg []byte) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	raw, err := w.decode(msg)
+	if err != nil {
+		return true
+	}
+	op := raw["op"]
+	return op == "configure" || op == "auth" || (w.secret != nil && !w.authed)
 }
 
 // Serve is the worker's main loop on stdin/stdout: a child process.

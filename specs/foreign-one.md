@@ -1070,3 +1070,28 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   it. Facade: `Holds` and `Models` for `WorkerModule`, Holds conformance
   over Go, Rust and Haskell. Mutant: Go's `release` keeping the value fails
   the held case.
+- **foreign-mux-duplex, part 1: the multiplexed wire (2026-09-26,
+  Decision 24).** `WireLink.Duplex` (pipes and TCP/TLS have it), the hello's
+  `"mux": true`, `WireSession.Mux`: answers matched by id; whoever waits
+  reads (leader/follower), a session with a deadline keeps one reader
+  thread. Go claims it: a goroutine per request, `configure`/`auth` still
+  answered in order, one worker lock released while a call waits on its
+  function, `okay.Call`'s counter atomic.
+  - Tests (Live): WireConformance's MUX case — `await_open` answered only
+    after `open` ran on the same worker — on the six Go rows (pipes, CBOR,
+    TCP, TCP+CBOR, auth, TLS), every other case on those rows green over
+    the muxed wire; Python and the rest unchanged (their rows skip it, and
+    TestPyPipes asserts no mux).
+  - Mutant: Go answering every request inline fails the MUX case (the
+    blocked call holds the worker; Go's runtime reports the deadlock).
+  - PRICE, 2 000 sequential calls, min of 7 alternating: a dedicated reader
+    thread 57.7 / 83.0 ms against 54.4 / 58.4 ms one at a time (1.06x,
+    1.42x at load 12–14) — refuted as the shape; leader/follower 50.7 ms
+    against 50.2 ms (1.01x, load 10.5).
+  - Found by TestCrashGo, not by the MUX case: with a dedicated reader a
+    killed worker's end was READ at once; with nobody reading while idle it
+    is found by the next SEND, which then has to end the session too, or
+    the supervisor never sees it dead and hands the caller WorkerDied
+    instead of a fresh worker.
+  - Left, in foreign-mux-duplex: Rust, credit streams both ways, `Durable`
+    by `(id, seq)`.
