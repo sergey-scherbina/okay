@@ -83,6 +83,18 @@ enum Column:
   case ListOf(offsets: Array[Int], child: Column, valid: Array[Boolean])
   /** row i is the i-th row of every field */
   case Struct(fields: Vector[(String, Column)], valid: Array[Boolean])
+  /** DICTIONARY-ENCODED (stage 8): row i is `dictionary`'s row
+   * `indices(i)` — int32 indices into a dictionary column of any kind,
+   * kept as they came so its values, their order and the unused ones
+   * survive (an R factor's levels, a pandas category's categories) */
+  case Dictionary(indices: Array[Int], dictionary: Column, ordered: Boolean, valid: Array[Boolean])
+
+  /** the column this one reads as: a `Dictionary`'s values gathered by its
+   * indices, anything else itself — what a consumer that has no use for
+   * the encoding reads (stage 8) */
+  def decoded: Column = this match
+    case Dictionary(idx, dict, _, ok) => dict.take(Array.tabulate(idx.length)(i => if ok(i) then idx(i) else 0), ok)
+    case other => other
 
   def length: Int = this match
     case Nulls(n) => n
@@ -107,6 +119,7 @@ enum Column:
     case Duration(_, _, ok) => ok
     case ListOf(_, _, ok) => ok
     case Struct(_, ok) => ok
+    case Dictionary(_, _, _, ok) => ok
 
   /** the rows at `at`, in that order (how a dictionary is decoded); a row
    * whose `keep` is false is null */
@@ -135,6 +148,7 @@ enum Column:
         while i < at.length do { out(i + 1) = out(i) + rows(i).length; i += 1 }
         ListOf(out, child.take(rows.flatMap(r => r).toArray, Array.fill(out(at.length))(true)), ok(o))
       case Struct(fs, o) => Struct(fs.map((n, c) => n -> c.take(at, keep)), ok(o))
+      case Dictionary(idx, dict, ord, o) => Dictionary(pick(idx), dict, ord, ok(o))
 
 object Column:
   /** how deep a column's TYPE may nest (lists and structs, a leaf is 0) —
@@ -181,7 +195,16 @@ object Column:
     case Column.FixedBinary(w, _, _) => s"fixed_size_binary($w)"
     case Column.ListOf(_, child, _) => s"list<${kind(child)}>"
     case Column.Struct(fs, _) => fs.map((n, c) => s"$n: ${kind(c)}").mkString("struct<", ", ", ">")
+    case Column.Dictionary(_, dict, _, _) => s"dictionary<${kind(dict)}>"
     case other => other.getClass.getSimpleName
+
+  /** two dictionaries with the same values in the same order */
+  private def same(a: Column, b: Column): Boolean =
+    a.length == b.length && ((a, b) match
+      case (Column.Utf8(x, xo), Column.Utf8(y, yo)) => x.sameElements(y) && xo.sameElements(yo)
+      case (Column.Int64(x, xo), Column.Int64(y, yo)) => x.sameElements(y) && xo.sameElements(yo)
+      case (Column.Ints(xb, xs, x, xo), Column.Ints(yb, ys, y, yo)) => xb == yb && xs == ys && x.sameElements(y) && xo.sameElements(yo)
+      case _ => false)
 
   private def append(a: Column, b: Column): Column =
     val ok = a.validity ++ b.validity
@@ -206,6 +229,11 @@ object Column:
         Column.ListOf(xo ++ yo.tail.map(_ - yo.head + xo.last), append(xc, yc), ok)
       case (Column.Struct(xf, _), Column.Struct(yf, _)) =>
         Column.Struct(xf.zip(yf).map { case ((n, x), (_, y)) => n -> append(x, y) }, ok)
+      // one dictionary: the indices concatenate; a replacement one is
+      // appended and the later indices shifted past it (stage 8)
+      case (Column.Dictionary(xi, xd, ord, _), Column.Dictionary(yi, yd, _, _)) =>
+        if same(xd, yd) then Column.Dictionary(xi ++ yi, xd, ord, ok)
+        else Column.Dictionary(xi ++ yi.map(_ + xd.length), append(xd, yd), ord, ok)
       case _ => throw IllegalArgumentException(s"a column changed kind between batches: ${kind(a)}, ${kind(b)}")
 
 /** a table: named columns of one length, and the schema's metadata */

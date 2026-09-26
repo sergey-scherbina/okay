@@ -91,7 +91,9 @@ object RArrowFrames extends okay.foreign.FrameTables:
   def frame(t: Table): RFrame =
     RFrame(t.cols.map((name, c) => name -> cells(c, name)))
 
-  private def cells(c: Column, name: String): Vector[RValue] =
+  private def cells(c0: Column, name: String): Vector[RValue] =
+    // a dictionary reads as its values (okay-arrow stage 8)
+    val c = c0.decoded
     def each[A](values: Array[A], ok: Array[Boolean])(cell: A => RValue, na: RType): Vector[RValue] =
       Vector.tabulate(values.length)(i => if ok(i) then cell(values(i)) else NA(na))
     c match

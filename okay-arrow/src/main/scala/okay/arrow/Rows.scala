@@ -44,9 +44,10 @@ object Rows:
     else try
       val reader = Schema.fold(s)(Read(Columns.recursiveNames(s)))
       val root = Columns.column(s).tpe match
+        // a dictionary reads as its values (stage 8)
         case ColType.Struct(_) if !Columns.column(s).nullable =>
-          Column.Struct(t.cols, Array.fill(t.rows)(true))
-        case _ => t.cols.collectFirst { case ("value", c) => c }
+          Column.Struct(t.cols.map((n, c) => n -> c.decoded), Array.fill(t.rows)(true))
+        case _ => t.cols.collectFirst { case ("value", c) => c.decoded }
           .getOrElse(throw Mismatch(s"no 'value' column (the table has ${t.cols.map(_._1).mkString(", ")})"))
       val at = reader.at(root, "")
       Right(Vector.tabulate(t.rows)(i =>

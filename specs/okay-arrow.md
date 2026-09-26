@@ -381,13 +381,22 @@ OkayArrow's.
 
 ### Behavior
 
-- [ ] a `Dictionary` column round-trips through OkayArrow's stream and
+- [x] a `Dictionary` column round-trips through OkayArrow's stream and
       file writers and `readKeeping`: indices, the dictionary's values
-      and order (unused values included), `ordered`, nulls
-- [ ] `read` of the same bytes answers the decoded column, as before
-- [ ] a stream from pyarrow / R with a dictionary column reads kept
-      (the fixture a writer of theirs made)
-- [ ] two batches with one dictionary concatenate; a replacement
-      dictionary shifts the later indices and every row reads its value
-- [ ] a dictionary nested in a struct is refused on write, by name
-- [ ] okay-py's and okay-r's frames read a `Dictionary` as its values
+      and order (unused values included), `ordered`, nulls —
+      TestArrowDictionary; the file read decoded (`readFile` keeps
+      nothing — no caller asks), pyarrow opens it from the footer
+- [x] `read` of the same bytes answers the decoded column, as before —
+      TestArrowDictionary; TestOkayArrow unchanged and green
+- [x] a stream from pyarrow with a dictionary column reads kept, and
+      ours is pyarrow's `dictionary<values=string, indices=int32,
+      ordered=1>`, levels in order — TestPyArrowOracle (Live; pyarrow
+      19.0.1). R's side is exercised by okay-watch's scoring tests over
+      R + arrow in a container.
+- [x] two batches with one dictionary concatenate; a replacement
+      dictionary shifts the later indices and every row reads its value —
+      TestArrowDictionary (on `Column.concat`, what the reader calls)
+- [x] a dictionary nested in a struct is refused on write, by name; an
+      index outside its dictionary too — TestArrowDictionary
+- [x] okay-py's and okay-r's frames read a `Dictionary` as its values —
+      TestArrowFramesDictionary, TestRArrowFramesDictionary; `Rows` too

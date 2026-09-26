@@ -10,6 +10,7 @@ object Tables:
     def each[A](v: Array[A], ok: Array[Boolean])(f: A => Any): Vector[Option[Any]] =
       v.indices.map(i => Option.when(ok(i))(f(v(i)))).toVector
     c match
+      case d: Column.Dictionary => ("dictionary" +: d.dictionary.length +: cells(d.decoded)).map(Some(_))
       case Column.Int64(v, ok) => each(v, ok)(x => x)
       case Column.Float64(v, ok) => each(v, ok)(java.lang.Double.doubleToRawLongBits(_))
       case Column.Utf8(v, ok) => each(v, ok)(x => x)

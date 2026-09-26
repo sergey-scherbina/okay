@@ -142,10 +142,12 @@ final class WireSession private (link: WireLink,
    * message (a condition, or a table Arrow could not carry). Only where
    * the handshake settled on `arrow`.
    */
-  def exchangeArrow(head: Vector[(String, Json)], table: okay.arrow.Table): (Json, Option[okay.arrow.Table]) =
+  def exchangeArrow(head: Vector[(String, Json)], table: okay.arrow.Table,
+                    /** answer a dictionary-encoded column as a `Column.Dictionary` (okay-arrow stage 8) */
+                    keepDictionaries: Boolean = false): (Json, Option[okay.arrow.Table]) =
     link.tables match
       case Some(native) => exchangeNative(native, head, table)
-      case None => exchangeStream(head, table)
+      case None => exchangeStream(head, table, keepDictionaries)
 
   /** the table beside the message, as itself: a link that reads it in place
    * (foreign-arrow-ffm) — the message in the wire's format, no Arrow stream */
@@ -165,7 +167,8 @@ final class WireSession private (link: WireLink,
       case Some((format, _)) => format.decode(bytes)
     (answer, got)
 
-  private def exchangeStream(head: Vector[(String, Json)], table: okay.arrow.Table): (Json, Option[okay.arrow.Table]) =
+  private def exchangeStream(head: Vector[(String, Json)], table: okay.arrow.Table,
+                             keepDictionaries: Boolean): (Json, Option[okay.arrow.Table]) =
     val (format, compression) = codec.getOrElse(throw IllegalStateException("an Arrow table on an unframed wire"))
     nextId += 1
     val body = Json.JObj(("id" -> Json.JNum(nextId.toDouble)) +: head)
@@ -174,7 +177,7 @@ final class WireSession private (link: WireLink,
     arrowOut += 1
     if okay.arrow.ArrowCodec.isStream(bytes) then
       arrowIn += 1
-      val t = okay.arrow.OkayArrow.read(bytes)
+      val t = if keepDictionaries then okay.arrow.OkayArrow.readKeeping(bytes) else okay.arrow.OkayArrow.read(bytes)
       val answer = t.metadata.collectFirst { case ("okay", h) => WireSession.whole(h) }
         .getOrElse(throw IllegalStateException("an Arrow answer without its okay header"))
       (answer, Some(t))

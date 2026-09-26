@@ -149,3 +149,33 @@ with ipc.new_file(sys.argv[1], s) as w:
     assertEquals(OkayArrow.readFile(bytes).rows, 12)
   }
 
+  test("a dictionary OkayArrow writes is pyarrow's dictionary, levels and order kept; pyarrow's reads kept (stage 8)") {
+    val levels = Column.Utf8(Array("employed", "unemployed", "self-employed"), Array.fill(3)(true))
+    val t = Table(Vector("employment" -> Column.Dictionary(Array(0, 1, 0, 2), levels, ordered = true, Array(true, true, false, true))), Vector.empty)
+    val f = file(OkayArrow.write(t))
+    val said = run("""
+import sys, pyarrow as pa, pyarrow.ipc as ipc
+t = ipc.open_stream(open(sys.argv[1], "rb").read()).read_all()
+t.validate(full=True)
+c = t.column("employment").combine_chunks()
+print(str(t.schema.field("employment").type), "|", ",".join(c.dictionary.to_pylist()), "|", c.to_pylist())
+# pyarrow's own dictionary back, one level unused
+d = pa.DictionaryArray.from_arrays(pa.array([2, 0, None], pa.int32()), pa.array(["a", "b", "c"]), ordered=False)
+with ipc.new_stream(sys.argv[1], pa.schema([("d", d.type)])) as w: w.write_table(pa.table({"d": d}))
+""", f)
+    assertEquals(said, "dictionary<values=string, indices=int32, ordered=1> | employed,unemployed,self-employed | ['employed', 'unemployed', None, 'self-employed']")
+    // the FILE: pyarrow finds the dictionary block from our footer
+    val ff = file(OkayArrow.writeFile(t))
+    assertEquals(run("""
+import sys, pyarrow as pa, pyarrow.ipc as ipc
+r = ipc.open_file(open(sys.argv[1], "rb").read())
+c = r.read_all().column("employment").combine_chunks()
+print(",".join(c.dictionary.to_pylist()), c.to_pylist())
+""", ff), "employed,unemployed,self-employed ['employed', 'unemployed', None, 'self-employed']")
+    OkayArrow.readKeeping(java.nio.file.Files.readAllBytes(f)).cols.head._2 match
+      case Column.Dictionary(idx, Column.Utf8(vs, _), ord, ok) =>
+        assertEquals((vs.toVector, ord, ok.toVector), (Vector("a", "b", "c"), false, Vector(true, true, false)))
+        assertEquals(idx.take(2).toVector, Vector(2, 0))
+      case other => fail(Column.describe(other))
+  }
+

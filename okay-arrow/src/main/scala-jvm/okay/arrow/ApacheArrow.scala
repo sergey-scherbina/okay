@@ -63,6 +63,10 @@ object ApacheArrow extends ArrowCodec:
     alloc.close()
     out
 
+  /** a `Dictionary` is written DECODED — the dictionary road is
+   * OkayArrow's (okay-arrow stage 8) */
+  private def decoded(t: Table): Table = t.copy(cols = t.cols.map((n, c) => n -> c.decoded))
+
   def write(t: Table): Array[Byte] =
     ready
     withAllocator { alloc =>
@@ -149,7 +153,8 @@ object ApacheArrow extends ArrowCodec:
   // ---- the model into Arrow Java ---------------------------------------------
 
   /** the model as Arrow Java's columns, in `alloc` (the caller closes the root) */
-  def toRoot(t: Table, alloc: BufferAllocator): VectorSchemaRoot =
+  def toRoot(t0: Table, alloc: BufferAllocator): VectorSchemaRoot =
+    val t = decoded(t0)
     ready
     val n = t.rows
     t.cols.find(_._2.length != n).foreach { (name, c) =>
@@ -179,6 +184,7 @@ object ApacheArrow extends ArrowCodec:
   private def field(name: String, c: Column): Field =
     def leaf(t: ArrowType) = Field(name, FieldType.nullable(t), null)
     c match
+      case d: Column.Dictionary => field(name, d.decoded)
       case Column.Int64(_, _) => leaf(ArrowType.Int(64, true))
       case Column.Ints(b, s, _, _) => leaf(ArrowType.Int(b, s))
       case Column.Float64(_, _) => leaf(ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE))

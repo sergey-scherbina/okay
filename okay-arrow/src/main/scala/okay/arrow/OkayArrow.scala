@@ -40,17 +40,17 @@ object OkayArrow extends ArrowCodec:
   def write(t: Table, compression: Option[okay.compress.Codec]): Array[Byte] = encode(t, compression).bytes
 
   /** a stream, and where its record batch sits: what the file footer's block names */
-  private final case class Encoded(bytes: Array[Byte], schemaLen: Int, batchHeadLen: Int, bodyLen: Long)
+  private final case class Encoded(bytes: Array[Byte], schemaLen: Int, batchHeadLen: Int, bodyLen: Long,
+                                   /** each dictionary message: its offset in `bytes`, metadata length, body length */
+                                   dictionaries: Vector[(Int, Int, Long)] = Vector.empty,
+                                   /** where the record batch's message starts in `bytes` */
+                                   batchAt: Int = -1)
 
-  private def encode(t: Table, compression: Option[okay.compress.Codec]): Encoded =
-    val codecId = compression.map(c => c.name match
-      case "lz4" => 0
-      case "zstd" => 1
-      case other => throw IllegalArgumentException(s"Arrow compresses bodies with lz4 or zstd, not $other"))
-    val n = t.rows
-    t.cols.find(_._2.length != n).foreach { (name, c) =>
-      throw IllegalArgumentException(s"column '$name' has ${c.length} rows, the first has $n")
-    }
+  /** a record batch of `cols` (`rows0` rows): its FlatBuffers header, and the
+   * body as sized fills — the stream's record batch and each dictionary's
+   * values are both one of these */
+  private def recordBatch(cols: Vector[Column], rows0: Int, codecId: Option[Int], compression: Option[okay.compress.Codec])
+  : (Fb.Table, Vector[(Int, (Array[Byte], Int) => Unit)], Long) =
     // the plan first, so the stream is written ONCE into an array of its
     // exact size (arrow-ipc-fast: growing by doubling and copying out made
     // 129 MB of garbage for a 14 MB stream)
@@ -70,7 +70,7 @@ object OkayArrow extends ArrowCodec:
         offs(i + 1) = total.toInt
         i += 1
       offs
-    def column(c: Column): Unit =
+    def column(c: Column, top: Boolean): Unit =
       val rows = c.length
       nodes.i64(rows.toLong)
       nodes.i64((c match { case Column.Nulls(k) => k; case other => other.validity.count(!_) }).toLong)
@@ -127,14 +127,23 @@ object OkayArrow extends ArrowCodec:
               j += 1)
         case Column.ListOf(offs, child, ok) =>
           validity(ok); add(4 * (rows + 1), (out, at) => putInts(out, at, offs))
-          column(child)
+          column(child, top = false)
         case Column.Struct(fs, ok) =>
           fs.find(_._2.length != rows).foreach { (name, f) =>
             throw IllegalArgumentException(s"struct field '$name' has ${f.length} rows, the struct has $rows")
           }
           validity(ok)
-          fs.foreach((_, f) => column(f))
-    t.cols.foreach((_, c) => column(c))
+          fs.foreach((_, f) => column(f, top = false))
+        // the INDICES; the values went ahead as the dictionary batch (stage 8)
+        case Column.Dictionary(idx, dict, _, ok) =>
+          if !top then throw IllegalArgumentException("a dictionary nested in a list or struct: only a top-level column is written dictionary-encoded")
+          idx.indices.find(i => ok(i) && (idx(i) < 0 || idx(i) >= dict.length)).foreach { i =>
+            throw IllegalArgumentException(s"a dictionary index ${idx(i)} at row $i outside a dictionary of ${dict.length}")
+          }
+          validity(ok)
+          val safe = Array.tabulate(rows)(i => if ok(i) then idx(i) else 0)
+          add(4 * rows, (out, at) => putInts(out, at, safe))
+    cols.foreach(c => column(c, top = true))
     // compressed, each buffer becomes its own bytes first; uncompressed, the
     // plan's fills write straight into the stream
     val planned = fills.result()
@@ -157,22 +166,57 @@ object OkayArrow extends ArrowCodec:
       buffers.i64(bodyLen); buffers.i64(len.toLong)
       bodyLen += pad8(len)
     if bodyLen > Int.MaxValue - 1024 then throw IllegalArgumentException(s"a batch of $bodyLen bytes: past what one JVM array holds")
-    val schemaMsg = messageHead(HeaderSchema, schema(t), 0L)
     val batch = Fb.Table(Vector(
-      Some(Fb.I64(n.toLong)),
+      Some(Fb.I64(rows0.toLong)),
       Some(Fb.Structs(nodes.result(), 16)),
       Some(Fb.Structs(buffers.result(), 16)),
       codecId.map(id => Fb.Table(Vector(Some(Fb.U8(id)), Some(Fb.U8(0)))))))     // BodyCompression: codec, per buffer
+    (batch, sized, bodyLen)
+
+  /** the dictionary-encoded columns, each with its id: its position in the table */
+  private def dictionaryIds(t: Table): Vector[(Int, Column.Dictionary)] =
+    t.cols.zipWithIndex.collect { case ((_, d: Column.Dictionary), i) => (i, d) }
+
+  private def encode(t: Table, compression: Option[okay.compress.Codec]): Encoded =
+    val codecId = compression.map(c => c.name match
+      case "lz4" => 0
+      case "zstd" => 1
+      case other => throw IllegalArgumentException(s"Arrow compresses bodies with lz4 or zstd, not $other"))
+    val n = t.rows
+    t.cols.find(_._2.length != n).foreach { (name, c) =>
+      throw IllegalArgumentException(s"column '$name' has ${c.length} rows, the first has $n")
+    }
+    val schemaMsg = messageHead(HeaderSchema, schema(t), 0L)
+    // a DictionaryBatch per dictionary-encoded column, ahead of the record
+    // batch: its id, its values as a record batch of one column (stage 8)
+    val dictMsgs = dictionaryIds(t).map { (id, d) =>
+      val (rb, fills, len) = recordBatch(Vector(d.dictionary), d.dictionary.length, codecId, compression)
+      val db = Fb.Table(Vector(Some(Fb.I64(id.toLong)), Some(rb), Some(Fb.Bool(false))))
+      (messageHead(HeaderDictionary, db, len), fills, len)
+    }
+    val (batch, sized, bodyLen) = recordBatch(t.cols.map(_._2), n, codecId, compression)
     val batchHead = messageHead(HeaderRecordBatch, batch, bodyLen)
-    val out = new Array[Byte](schemaMsg.length + batchHead.length + bodyLen.toInt + 8)
+    val dictBytes = dictMsgs.map((h, _, len) => h.length.toLong + len).sum
+    val total = schemaMsg.length.toLong + dictBytes + batchHead.length + bodyLen + 8
+    if total > Int.MaxValue - 1024 then throw IllegalArgumentException(s"a stream of $total bytes: past what one JVM array holds")
+    val out = new Array[Byte](total.toInt)
     System.arraycopy(schemaMsg, 0, out, 0, schemaMsg.length)
-    System.arraycopy(batchHead, 0, out, schemaMsg.length, batchHead.length)
-    var at = schemaMsg.length + batchHead.length
+    var at = schemaMsg.length
+    val blocks = Vector.newBuilder[(Int, Int, Long)]
+    for (head, fills, len) <- dictMsgs do
+      blocks += ((at, head.length, len))
+      System.arraycopy(head, 0, out, at, head.length)
+      var b = at + head.length
+      for (flen, fill) <- fills do { fill(out, b); b += pad8(flen) }
+      at += head.length + len.toInt
+    val batchAt = at
+    System.arraycopy(batchHead, 0, out, at, batchHead.length)
+    at += batchHead.length
     for (len, fill) <- sized do
       fill(out, at)
       at += pad8(len)
     putInt(out, at, -1)                           // end of stream: marker, then 0
-    Encoded(out, schemaMsg.length, batchHead.length, bodyLen)
+    Encoded(out, schemaMsg.length, batchHead.length, bodyLen, blocks.result(), batchAt)
 
   // ---- the IPC FILE format ------------------------------------------------------
 
@@ -188,15 +232,19 @@ object OkayArrow extends ArrowCodec:
    */
   override def writeFile(t: Table, compression: Option[okay.compress.Codec]): Array[Byte] =
     val e = encode(t, compression)
-    val block = new Array[Byte](24)
-    val offset = 8L + e.schemaLen
-    putInt(block, 0, offset.toInt); putInt(block, 4, (offset >>> 32).toInt)
-    putInt(block, 8, e.batchHeadLen)
-    putInt(block, 16, e.bodyLen.toInt); putInt(block, 20, (e.bodyLen >>> 32).toInt)
+    def blockOf(offset: Long, metaLen: Int, bodyLen: Long): Array[Byte] =
+      val block = new Array[Byte](24)
+      putInt(block, 0, offset.toInt); putInt(block, 4, (offset >>> 32).toInt)
+      putInt(block, 8, metaLen)
+      putInt(block, 16, bodyLen.toInt); putInt(block, 20, (bodyLen >>> 32).toInt)
+      block
+    // the file's own 8 bytes of magic come before the stream
+    val block = blockOf(8L + e.batchAt, e.batchHeadLen, e.bodyLen)
+    val dictBlocks = e.dictionaries.map((at, meta, body) => blockOf(8L + at, meta, body)).foldLeft(Array.emptyByteArray)(_ ++ _)
     val footer = Fb.finish(Fb.Table(Vector(
       Some(Fb.I16(MetadataV5)),
       Some(schema(t)),
-      Some(Fb.Structs(Array.emptyByteArray, 24)),
+      Some(Fb.Structs(dictBlocks, 24)),
       Some(Fb.Structs(block, 24)))))
     val out = new Array[Byte](8 + e.bytes.length + footer.length + 4 + 6)
     System.arraycopy(FileMagic, 0, out, 0, 6)
@@ -276,8 +324,22 @@ object OkayArrow extends ArrowCodec:
     System.arraycopy(fb, 0, out, 8, fb.length)
     out
 
-  private def field(name: String, c: Column): Fb.Table =
+  private def field(name: String, c: Column): Fb.Table = field(name, c, None)
+
+  /** `dictId`: the id of a top-level dictionary-encoded column — its field
+   * declares the VALUE type and a DictionaryEncoding (stage 8) */
+  private def field(name: String, c: Column, dictId: Option[Int]): Fb.Table =
     def t(fields: Option[Fb.Node]*) = Fb.Table(fields.toVector)
+    c match
+      case Column.Dictionary(_, dict, ordered, _) =>
+        val inner = field(name, dict, None)
+        val encoding = Fb.Table(Vector(
+          Some(Fb.I64(dictId.getOrElse(throw IllegalArgumentException(
+            s"column '$name': a dictionary nested in a list or struct is not written")).toLong)),
+          Some(Fb.Table(Vector(Some(Fb.I32(32)), Some(Fb.Bool(true))))),       // indexType: int32, signed
+          Some(Fb.Bool(ordered))))
+        return Fb.Table(inner.fields.updated(4, Some(encoding)))
+      case _ => ()
     val (typeId, tpe, children) = c match
       case Column.Int64(_, _) => (TypeInt, t(Some(Fb.I32(64)), Some(Fb.Bool(true))), Vector.empty)
       case Column.Ints(b, s, _, _) => (TypeInt, t(Some(Fb.I32(b)), Some(Fb.Bool(s))), Vector.empty)
@@ -294,7 +356,8 @@ object OkayArrow extends ArrowCodec:
       case Column.Timestamp(u, z, _, _) => (TypeTimestamp, t(Some(Fb.I16(u.ordinal)), z.map(Fb.Str(_))), Vector.empty)
       case Column.Duration(u, _, _) => (TypeDuration, t(Some(Fb.I16(u.ordinal))), Vector.empty)
       case Column.ListOf(_, child, _) => (TypeList, t(), Vector(field("item", child)))
-      case Column.Struct(fs, _) => (TypeStruct, t(), fs.map(field))
+      case Column.Struct(fs, _) => (TypeStruct, t(), fs.map((n, f) => field(n, f)))
+      case Column.Dictionary(_, _, _, _) => throw IllegalStateException("unreachable: handled above")
     Fb.Table(Vector(
       Some(Fb.Str(name)), Some(Fb.Bool(true)), Some(Fb.U8(typeId)), Some(tpe),
       None, Some(Fb.Tables(children))))
@@ -303,7 +366,8 @@ object OkayArrow extends ArrowCodec:
     val meta = t.metadata.map((k, v) => Fb.Table(Vector(Some(Fb.Str(k)), Some(Fb.Str(v)))))
     Fb.Table(Vector(
       Some(Fb.I16(0)),                                      // little-endian
-      Some(Fb.Tables(t.cols.map(field))),
+      Some(Fb.Tables(t.cols.zipWithIndex.map { case ((n, c), i) =>
+        field(n, c, Option.when(c.isInstanceOf[Column.Dictionary])(i)) })),
       if meta.isEmpty then None else Some(Fb.Tables(meta))))
 
   /** a bitmap, LSB first, written at `at` */
@@ -344,15 +408,22 @@ object OkayArrow extends ArrowCodec:
 
   // ---- reading -------------------------------------------------------------
 
-  def read(bytes: Array[Byte])(using okay.compress.Compression): Table =
-    try readStream(bytes)
+  def read(bytes: Array[Byte])(using okay.compress.Compression): Table = read(bytes, keep = false)
+
+  /** `read`, with every TOP-LEVEL dictionary-encoded field answered as a
+   * `Column.Dictionary` — its values, their order and the unused ones as
+   * the writer sent them (stage 8); a nested one is still decoded */
+  def readKeeping(bytes: Array[Byte])(using okay.compress.Compression): Table = read(bytes, keep = true)
+
+  private def read(bytes: Array[Byte], keep: Boolean)(using okay.compress.Compression): Table =
+    try readStream(bytes, keep)
     catch case _: IndexOutOfBoundsException | _: NegativeArraySizeException =>
       refuse("an offset points outside the stream (cut short, or not Arrow)")
 
   /** a field of the schema, as it was declared: its dictionary's id and
    * index type when it is dictionary-encoded */
   private final case class Field(name: String, typeId: Int, tpe: Fb.At, children: Vector[Field],
-                                 dictionary: Option[(Long, Int, Boolean)])
+                                 dictionary: Option[(Long, Int, Boolean)], ordered: Boolean = false)
 
   /** `depth` is the field's nesting below the schema: the schema is the
    * one type here that comes from outside, so it is where the limit is
@@ -365,9 +436,10 @@ object OkayArrow extends ArrowCodec:
       val idx = d.table(1)
       (d.i64(0, 0L), idx.fold(32)(_.i32(0, 32)), idx.fold(true)(_.bool(1, true)))
     }
-    Field(name, f.u8(2, 0), f.table(3).getOrElse(Fb.At.empty), f.tables(5).map(parseField(_, depth + 1)), dict)
+    Field(name, f.u8(2, 0), f.table(3).getOrElse(Fb.At.empty), f.tables(5).map(parseField(_, depth + 1)), dict,
+      f.table(4).fold(false)(_.bool(2, false)))
 
-  private def readStream(bytes: Array[Byte])(using okay.compress.Compression): Table =
+  private def readStream(bytes: Array[Byte], keep: Boolean = false)(using okay.compress.Compression): Table =
     val in = In(bytes)
     var fields = Vector.empty[Field]
     var metadata = Vector.empty[(String, String)]
@@ -404,7 +476,7 @@ object OkayArrow extends ArrowCodec:
           case HeaderRecordBatch =>
             if !seenSchema then refuse("a record batch before the schema")
             val rb = msg.table(2).getOrElse(refuse("a record batch message without its batch"))
-            batches :+= Batch(rb, bytes, body, bodyLen.toInt, dictionaries).columns(fields)
+            batches :+= Batch(rb, bytes, body, bodyLen.toInt, dictionaries, keep).columns(fields)
           case HeaderDictionary =>
             if !seenSchema then refuse("a dictionary batch before the schema")
             val db = msg.table(2).getOrElse(refuse("a dictionary message without its batch"))
@@ -421,13 +493,17 @@ object OkayArrow extends ArrowCodec:
     val cols = fields.indices.map { j =>
       val f = fields(j)
       val parts = batches.map(_(j))
-      (f.name, if parts.nonEmpty then concat(parts, f.name) else empty(f))
+      (f.name, if parts.nonEmpty then concat(parts, f.name)
+        else f.dictionary.filter(_ => keep).flatMap((id, _, _) => dictionaries.get(id))
+          .fold(empty(f))(d => Column.Dictionary(Array.emptyIntArray, d, f.ordered, Array.emptyBooleanArray)))
     }.toVector
     Table(cols, metadata)
 
   /** one record batch's body, read IN PLACE: a buffer is a position and a
    * length in `bytes`, copied once into its column */
-  private final class Batch(rb: Fb.At, stream: Array[Byte], bodyAt: Int, bodyLength: Int, dictionaries: Map[Long, Column])
+  private final class Batch(rb: Fb.At, stream: Array[Byte], bodyAt: Int, bodyLength: Int, dictionaries: Map[Long, Column],
+                            /** a top-level dictionary field is answered as a `Dictionary` (stage 8) */
+                            keep: Boolean = false)
                            (using okay.compress.Compression):
     private val rows = rb.i64(0, 0L)
     if rows < 0 || rows > Int.MaxValue then refuse(s"a batch of $rows rows")
@@ -440,7 +516,7 @@ object OkayArrow extends ArrowCodec:
     private var node = 0
     private var buf = 0
 
-    def columns(fields: Vector[Field]): Vector[Column] = fields.map(column)
+    def columns(fields: Vector[Field]): Vector[Column] = fields.map(f => column(f, top = true))
 
     /** the next buffer: its position in `bytes` and its length */
     private def next(): (Int, Int) =
@@ -450,7 +526,7 @@ object OkayArrow extends ArrowCodec:
       if off < 0 || len < 0 || off + len > bodyLen then refuse(s"a buffer [$off, +$len) outside a body of $bodyLen bytes (cut short?)")
       (body + off.toInt, len.toInt)
 
-    private def column(f: Field): Column =
+    private def column(f: Field, top: Boolean): Column =
       if node >= nodes.length then refuse("fewer field nodes than the columns need")
       val n = Fb.i64le(nodes(node), 0).toInt
       val nulls = Fb.i64le(nodes(node), 8)
@@ -497,7 +573,7 @@ object OkayArrow extends ArrowCodec:
             if ok(i) && (k < 0 || k >= dict.length) then refuse(s"column '$name': index $k at row $i outside a dictionary of ${dict.length}")
             if ok(i) then k.toInt else 0
           }
-          dict.take(at, ok)
+          if keep && top then Column.Dictionary(at, dict, f.ordered, ok) else dict.take(at, ok)
         case None => f.typeId match
           case TypeNull => Column.Nulls(n)
           case TypeInt =>
@@ -560,12 +636,12 @@ object OkayArrow extends ArrowCodec:
           case TypeList | TypeLargeList =>
             if f.children.length != 1 then refuse(s"list column '$name' with ${f.children.length} children")
             val ok = valid(); val offs = offsets(if f.typeId == TypeList then 4 else 8)
-            val child = column(f.children.head)
+            val child = column(f.children.head, top = false)
             if offs(n) > child.length then refuse(s"list column '$name' ends at ${offs(n)} of ${child.length} child rows")
             normalised(offs, child, ok)
           case TypeStruct =>
             val ok = valid()
-            val fs = f.children.map(c => c.name -> column(c))
+            val fs = f.children.map(c => c.name -> column(c, top = false))
             fs.find(_._2.length != n).foreach((cn, c) => refuse(s"struct column '$name': field '$cn' has ${c.length} rows for $n"))
             Column.Struct(fs, ok)
           case other => refuse(s"column '$name' has Arrow type ${typeName(other)}; the model does not hold it")

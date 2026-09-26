@@ -88,7 +88,9 @@ object ArrowFrames extends FrameTables:
   def frame(t: Table): PyFrame =
     PyFrame(t.cols.map((name, c) => name -> cells(c, name)))
 
-  private def cells(c: Column, name: String): Vector[PyValue] =
+  private def cells(c0: Column, name: String): Vector[PyValue] =
+    // a dictionary reads as its values (okay-arrow stage 8)
+    val c = c0.decoded
     def each[A](values: Array[A], ok: Array[Boolean])(cell: A => PyValue): Vector[PyValue] =
       Vector.tabulate(values.length)(i => if ok(i) then cell(values(i)) else PyNone)
     c match
