@@ -699,6 +699,23 @@ flags at the libc's 4 KB page — while macOS keeps a quarter-megabyte
 of slack (its zones at 16 KB pages). Either way the runner never grants
 into the last `margin` (64 KB) above the floor.
 
+### cont-stack-jmh-native-access (2026-09-26): both roads on one lane
+
+Until this lane every cont-stack number in history.d was the COUNT
+road: the JMH fork loaded okay from its classes directory, which the
+JVM never versions, so the `jdk22/` reader was not even the class in
+play, and the fork had no `--enable-native-access` either. The road a
+user who passes the flag gets on JDK 22+ had never been measured, while
+docs/cont-stack.md said "no switch at all with the flag".
+
+THE CHANGE: `okayJVM`'s `Jmh / fullClasspath` puts the PACKAGED jar
+first, as `multiRelease` does for the tests, so the versioned reader
+is the class in play. Without the flag it answers −1 exactly like the
+root and every existing lane keeps its meaning; the exact road is the
+same lane with `-jvmArgsAppend --enable-native-access=ALL-UNNAMED`.
+Every fork of FibBenchmark and HandlerBenchmark prints the road it
+runs (`ContStackRoad`, a trial-level setup outside the measurement).
+
 ## Stages — what landed, and the plan after it (operator's ask, 2026-09-25 evening)
 
 Landed 2026-09-25 as cont-stack-switch (60a59c97e): Layer 2 (the room
