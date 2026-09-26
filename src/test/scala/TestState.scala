@@ -71,4 +71,17 @@ class TestState extends munit.FunSuite {
       State.modify[Int](_ + 5).at[Fx].flatMap(n => Writer.tell(s"n=$n").at[Fx].map(_ => n))
     assertEquals(State.run[Int, (Seq[String], Int)](1)(Writer.run[String, Int, State % Int](p)), (6, (Seq("n=6"), 6)))
   }
+
+  // effect-op-cost D1: a fieldless operation is one shared node, not a
+  // fresh Get and a fresh Inject per call (specs/effect-op-cost.md)
+  test("State.get is ONE shared node") {
+    assert(State.get[Int] eq State.get[Int])
+    assert(State.get[Int].asInstanceOf[AnyRef] eq State.get[String].asInstanceOf[AnyRef])
+    assertEquals(State.run(7)(State.get[Int].flatMap(a => State.get[Int].map(b => a + b))), (7, 14))
+  }
+
+  test("Reader.ask is ONE shared node") {
+    assert(Reader.ask[Int] eq Reader.ask[Int])
+    assertEquals(!.run(Reader.run[Int, Int, Pure](5)(Reader.ask[Int].flatMap(a => Reader.ask[Int].map(_ * a)))), 25)
+  }
 }
