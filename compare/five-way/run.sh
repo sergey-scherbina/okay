@@ -61,15 +61,18 @@ lane() { # name pattern extra-params runtime
   echo "$name $rt rc=$rc attempt=3 (kept after three busy attempts)"
 }
 
+# FIVE_WAY_LANES="workers spawnJoin" runs only those (default: all four)
+want() { case " ${FIVE_WAY_LANES:-workers spawnJoin entry tcp} " in *" $1 "*) return 0;; *) return 1;; esac; }
+
 for rt in $runtimes; do
-  lane workers    'bench.direct.ParallelBench.workers'   '-p size=4096 -p parallelism=8' "$rt"
-  lane spawnJoin  'bench.direct.PrimitivesBench.spawnJoin' '-p ops=1000' "$rt"
-  lane entry      'bench.direct.RunnerBench.entry'       '' "$rt"
+  want workers   && lane workers    'bench.direct.ParallelBench.workers'   '-p size=4096 -p parallelism=8' "$rt"
+  want spawnJoin && lane spawnJoin  'bench.direct.PrimitivesBench.spawnJoin' '-p ops=1000' "$rt"
+  want entry     && lane entry      'bench.direct.RunnerBench.entry'       '' "$rt"
   # okay's `own` scheduler runs fibers on platform workers and okay's
   # docs say not to block in it (a blocked worker strands the fibers it
   # forked); his TCP validation's parallel-worker gate fails it on the
   # blocking transport, so `okayOwn` runs the callback transport only
   if [ "$rt" = okayOwn ]; then transport='-p transport=nonblocking'; else transport=''; fi
-  lane tcp        'bench.io.IoBench.requests'            "-p parallelism=64 -p size=256 -p delayMicros=1000 $transport" "$rt"
+  want tcp       && lane tcp        'bench.io.IoBench.requests'            "-p parallelism=64 -p size=256 -p delayMicros=1000 $transport" "$rt"
 done >> "$out/summary.txt"
 echo DONE >> "$out/summary.txt"
