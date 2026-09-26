@@ -835,7 +835,7 @@ for i := int64(0); i < n; i += size {
 The Scala side reads it as a source, inside the scope every source runs in:
 
 ```scala
-val out = within(Writer.run(Py.releasing(Py.stream[Long](address("numbers"), credit = 2)(100L, 7L, tag))).runWith(using engine.handler)._1)
+val out = within(Writer.run(Foreign.releasing(Foreign.stream[Long](address("numbers"), credit = 2)(100L, 7L, tag))).runWith(using engine.handler)._1)
 ```
 
 A consumer that stops early — a stage that has had enough — cancels the
@@ -873,7 +873,7 @@ if len(fresh) > 0 && okay.Emit(c, fresh) != nil {
 The Scala side hands the input over as an iterator, chunked:
 
 ```scala
-val out = within(Writer.run(Py.releasing(Py.stream[Long](address("dedup"), credit = 2)
+val out = within(Writer.run(Foreign.releasing(Foreign.stream[Long](address("dedup"), credit = 2)
 .feeding(input, chunk = 512)())).runWith(using engine.handler)._1)
 ```
 

@@ -145,7 +145,7 @@ abstract class WireConformance extends munit.FunSuite:
   test("STREAM: the far side drives it, every element in order, under a credit of two (foreign-mux-duplex part 3)") {
     assume(engine.muxed, "this far side is served one exchange at a time")
     val tag = s"s${System.nanoTime}"
-    val out = within(Writer.run(Py.releasing(Py.stream[Long](address("numbers"), credit = 2)(100L, 7L, tag))).runWith(using engine.handler)._1)
+    val out = within(Writer.run(Foreign.releasing(Foreign.stream[Long](address("numbers"), credit = 2)(100L, 7L, tag))).runWith(using engine.handler)._1)
     assertEquals(out.toList, (0L until 100L).toList)
   }
 
@@ -171,8 +171,8 @@ abstract class WireConformance extends munit.FunSuite:
         case Some(x) => effect[S, Unit](Writer(x)).flatMap(_ => take(left - 1))
         case None => pure(())
       }
-    val consumer = okay.through(Py.stream[Long](address("numbers"), credit = 2)(100000L, 1L, tag))(take(4).plus[ForeignEval + Holding])
-    assertEquals(within(Writer.run(Py.releasing(consumer)).runWith(using engine.handler)._1.toList), List(0L, 1L, 2L, 3L))
+    val consumer = okay.through(Foreign.stream[Long](address("numbers"), credit = 2)(100000L, 1L, tag))(take(4).plus[ForeignEval + Holding])
+    assertEquals(within(Writer.run(Foreign.releasing(consumer)).runWith(using engine.handler)._1.toList), List(0L, 1L, 2L, 3L))
     val sent = settled(tag)
     assert(sent <= 4 + 2, s"the far side sent $sent chunks for a consumer that took four at a credit of two")
     // cancelled, its Emit fails and the function returns — not left blocked for ever
@@ -189,7 +189,7 @@ abstract class WireConformance extends munit.FunSuite:
     val input = Iterator.tabulate(1000)(i => { fed.incrementAndGet(); i.toLong })
     import scala.concurrent.{Await, ExecutionContext, Future}
     import scala.concurrent.duration.DurationInt
-    val summed = Future(Writer.run(Py.releasing(Py.stream[Long](address("sum_after"), credit = 3)
+    val summed = Future(Writer.run(Foreign.releasing(Foreign.stream[Long](address("sum_after"), credit = 3)
       .feeding(input, chunk = 1)(tag))).runWith(using engine.handler)._1)(using ExecutionContext.global)
     // nothing is taken until the gate opens: the host holds at the credit
     var last = -1
@@ -203,7 +203,7 @@ abstract class WireConformance extends munit.FunSuite:
   test("DUPLEX: a dedup both ways at once — 20 000 rows in, the distinct ones out, in order") {
     assume(engine.muxed, "this far side is served one exchange at a time")
     val input = Iterator.tabulate(20000)(i => (i % 1000).toLong)
-    val out = within(Writer.run(Py.releasing(Py.stream[Long](address("dedup"), credit = 2)
+    val out = within(Writer.run(Foreign.releasing(Foreign.stream[Long](address("dedup"), credit = 2)
       .feeding(input, chunk = 512)())).runWith(using engine.handler)._1)
     assertEquals(out.toList, (0L until 1000L).toList)
   }

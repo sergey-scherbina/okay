@@ -393,8 +393,10 @@ object Py {
   /**
    * A STREAM the far side drives (foreign-mux-duplex part 3): `address`'s
    * function sends chunks (lists of `O`) as it makes them, up to `credit`
-   * ahead of the consumer. Run it as a source, inside `Py.releasing`:
-   * `Writer.run(Py.releasing(Py.stream[Long]("numbers", credit = 2)(100L)))`.
+   * ahead of the consumer. Run it as a source, inside `Foreign.releasing`:
+   * `Writer.run(Foreign.releasing(Foreign.stream[Long]("numbers", credit = 2)(100L)))`.
+   * Written `Foreign.stream` (Foreign re-exports this object): the far side
+   * that streams is Go or Rust, never Python, whose shim claims no mux.
    * Go and Rust workers on a multiplexed wire stream; others refuse by name.
    */
   def stream[O: Schema](address: String, credit: Int = 4)(using shape: Shape): StreamOf[O] = StreamOf(address, credit)
