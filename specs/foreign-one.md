@@ -783,6 +783,20 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     facade's `Stateful`, whose `step` changes its state, is not given to a
     compiled worker, while `Holds` and `Models` (read-only) are.
 
+24. **The multiplexed wire lands in parts** (foreign-mux-duplex, the
+    operator's ask). Part 1 is the WIRE: a far side that claims `"mux":
+    true` in its hello, reached over a byte stream (pipes, TCP, TLS), is
+    read by ONE reader thread on the host that matches every answer to its
+    request by `id`, so several requests are in flight on one worker at
+    once and a call that blocks does not hold the others up. A far side
+    that does not claim it, and every in-process link (a call there is a
+    function call), is served one exchange at a time, byte for byte as
+    before. Go claims it first (a goroutine per request, one worker lock
+    released while a call waits on its function). Later parts: Rust (whose
+    programs hold `Rc` continuations, so a worker thread multiplexes its
+    functions' events instead), credit streams both ways, and `Durable` by
+    `(id, seq)`.
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
