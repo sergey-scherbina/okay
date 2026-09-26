@@ -716,6 +716,22 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     generator writes types each operation from the callback's Schemas, so
     a wrong argument there is a Frege type error.
 
+20. **A partition's end belongs to the engine** (stateful-early-stop). A
+    chunked stream is a pure value: a consumer that stops reading just
+    stops, and nothing in the stream reaches the stage above it, so a
+    stateful stage under a downstream `take` never finished and never
+    failed and kept its leased interpreter until the JVM ended. A finaliser
+    on `Chunks` would put a close protocol in every combinator; a GC
+    `Cleaner` would give it back at an unknown time. The engine already
+    knows when it is done with a partition — it is the one folding it — so
+    it opens a `Scope` around each fold (six sites in `Flows`, three in the
+    distributed worker; a streaming session's is closed at `finish`) and a
+    stage that holds something is a `Flow.Owned`, handed the scope. The
+    same gap for a far-side SOURCE outside the cluster is a different
+    problem — its release is a far-side request that needs a handler, and
+    the finaliser that could run it is a plain function — filed as
+    foreign-source-early-stop.
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
@@ -937,3 +953,14 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   trigger: foreign-mux-duplex, foreign-held-values, foreign-arrow-ffm,
   foreign-more-languages, foreign-jvm-programs, foreign-package-name,
   stateful-early-stop.
+- **stateful-early-stop (2026-09-26, Decision 20).** `okay.cluster.Scope`
+  and `Flow.Owned`; the engine's partition functions take the scope and
+  every fold closes it; `Stateful.through` is an owned stage whose state is
+  abandoned at the partition's end when neither `finish` nor a failure gave
+  it back. Tests (`TestStatefulLease`, default gate): a `take` of 3 over
+  1000 rows gives the state back once when the scope closes, and a second
+  close does nothing; the same through `Flows.fold` end to end; a partition
+  read to its end gives it back by `finish` alone. The first cut of the
+  engine test passed WITHOUT the fix: `Chunks.fromIterator` reads 64 rows a
+  chunk, so ten rows finished before `take` could stop them — both tests
+  now read past one chunk. Mutant: dropping the registration fails both.

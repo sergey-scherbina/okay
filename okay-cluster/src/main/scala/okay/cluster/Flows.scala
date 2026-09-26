@@ -156,11 +156,11 @@ object Flows {
     val times = sink.times
     val bounds: Vector[Vector[Bounds]] ! Async =
       if times.isEmpty then pure[Async, Vector[Vector[Bounds]]](Vector.fill(n)(Vector.empty))
-      else parallel(n)(i => extent(src(i), times)).map(edges)
+      else parallel(n)(i => Scope.using(sc => extent(src(i, sc), times))).map(edges)
     bounds.flatMap: bs =>
       parallel(n) { i =>
         val p = sink.start(bs(i))
-        Chunks.foldLeft(src(i))(())((_, a) => sink.step(p, a))
+        Scope.using(sc => Chunks.foldLeft(src(i, sc))(())((_, a) => sink.step(p, a)))
         handOver(sink.finish(p))
       }.map: ws =>
         val out = Run(sink.result(ws), sink.drops(ws), n, 1, sink.merged(ws))
@@ -211,14 +211,14 @@ object Flows {
   /** one partition of a plan, as the chunks a worker will read.
    * Refuses the same way `fan` does when the plan already has a keyed
    * stage in it, since a partition of that is not a thing */
-  private[cluster] def partition[A](flow: Flow[A], i: Int, from: Long = 0L): Chunks[A] =
+  private[cluster] def partition[A](flow: Flow[A], i: Int, from: Long, sc: Scope): Chunks[A] =
     val sh = shape(flow)
     val head = sh.sourceAt
     if head == null then
       throw IllegalArgumentException(
         "a distributed job reads ONE source: put the keyed stages in the sinks " +
           "(specs/dataflow.md, stage 3)")
-    head.nn(i, from)
+    head.nn(i, from, sc)
 
   /** every column's extent, in ONE pass over the partition */
   private[cluster] def extent[A](c: Chunks[A], times: Vector[A => Long]): Vector[Extent] =
@@ -340,10 +340,13 @@ object Flows {
      * null once a keyed stage has been compiled into it — which is
      * how a second keyed stage is refused by name rather than
      * answered wrongly */
-    def source: (Int => Chunks[A]) | Null
+    def source: ((Int, Scope) => Chunks[A]) | Null
     /** the same, positioned: a partition opened `from` elements in */
-    def sourceAt: ((Int, Long) => Chunks[A]) | Null
+    def sourceAt: ((Int, Long, Scope) => Chunks[A]) | Null
     def andThen[B](f: Chunks[A] => Chunks[B]): Shape[B]
+    /** a stage holding something for the partition: it closes with the
+     * partition's `Scope` (stateful-early-stop) */
+    def owning[B](f: (Chunks[A], Scope) => Chunks[B]): Shape[B]
     def job[Acc](into: Aggregator[A, Acc, ?]): Job[Acc]
 
   /**
@@ -382,11 +385,13 @@ object Flows {
      * assert it rather than a benchmark merely notice it */
     def merged(ps: Vector[P]): Long
 
-  private final class Pipe[A](val parts: Int, val at: (Int, Long) => Chunks[A]) extends Shape[A]:
-    def source: (Int => Chunks[A]) | Null = i => at(i, 0L)
-    def sourceAt: ((Int, Long) => Chunks[A]) | Null = at
+  private final class Pipe[A](val parts: Int, val at: (Int, Long, Scope) => Chunks[A]) extends Shape[A]:
+    def source: ((Int, Scope) => Chunks[A]) | Null = (i, sc) => at(i, 0L, sc)
+    def sourceAt: ((Int, Long, Scope) => Chunks[A]) | Null = at
     def andThen[B](f: Chunks[A] => Chunks[B]): Shape[B] =
-      new Pipe(parts, (i, s) => f(at(i, s)))
+      new Pipe(parts, (i, s, sc) => f(at(i, s, sc)))
+    def owning[B](f: (Chunks[A], Scope) => Chunks[B]): Shape[B] =
+      new Pipe(parts, (i, s, sc) => f(at(i, s, sc), sc))
     def job[Acc](into: Aggregator[A, Acc, ?]): Job[Acc] =
       val self = this
       new Job[Acc]:
@@ -395,7 +400,7 @@ object Flows {
         def prepass: (Int => Extent) | Null = null
         def ordered: Boolean = true
         def work(i: Int, bounds: Bounds): Acc =
-          Chunks.foldLeft(self.at(i, 0L))(into.init)((acc, a) => into.add(acc, a))
+          Scope.using(sc => Chunks.foldLeft(self.at(i, 0L, sc))(into.init)((acc, a) => into.add(acc, a)))
         def reducers(ps: Vector[Acc]): Int = 1
         def reduce(ps: Vector[Acc], r: Int, of: Int): Acc = ps.reduceLeft(into.merge)
         def drops(ps: Vector[Acc]): Long = 0L
@@ -416,14 +421,16 @@ object Flows {
     def reducers(ps: Vector[P]): Int
     /** the elements of buckets [lo, hi), merged across the partitions
      * IN INDEX ORDER */
-    def out(ps: Vector[P], lo: Int, hi: Int): Chunks[A]
+    def out(ps: Vector[P], lo: Int, hi: Int, sc: Scope): Chunks[A]
     def drops(ps: Vector[P]): Long
     def merged(ps: Vector[P]): Long
 
-    final def source: (Int => Chunks[A]) | Null = null
-    final def sourceAt: ((Int, Long) => Chunks[A]) | Null = null
+    final def source: ((Int, Scope) => Chunks[A]) | Null = null
+    final def sourceAt: ((Int, Long, Scope) => Chunks[A]) | Null = null
 
-    final def andThen[B](f: Chunks[A] => Chunks[B]): Shape[B] =
+    final def andThen[B](f: Chunks[A] => Chunks[B]): Shape[B] = owning((c, _) => f(c))
+
+    final def owning[B](f: (Chunks[A], Scope) => Chunks[B]): Shape[B] =
       val self = this
       new Wide[B]:
         type P = self.P
@@ -432,7 +439,7 @@ object Flows {
         def buckets: Int = self.buckets
         def work(i: Int, bounds: Bounds): P = self.work(i, bounds)
         def reducers(ps: Vector[P]): Int = self.reducers(ps)
-        def out(ps: Vector[P], lo: Int, hi: Int): Chunks[B] = f(self.out(ps, lo, hi))
+        def out(ps: Vector[P], lo: Int, hi: Int, sc: Scope): Chunks[B] = f(self.out(ps, lo, hi, sc), sc)
         def drops(ps: Vector[P]): Long = self.drops(ps)
         def merged(ps: Vector[P]): Long = self.merged(ps)
 
@@ -449,20 +456,21 @@ object Flows {
           val b = self.buckets
           val lo = (b.toLong * r / of).toInt
           val hi = (b.toLong * (r + 1) / of).toInt
-          Chunks.foldLeft(self.out(ps, lo, hi))(into.init)((acc, a) => into.add(acc, a))
+          Scope.using(sc => Chunks.foldLeft(self.out(ps, lo, hi, sc))(into.init)((acc, a) => into.add(acc, a)))
         def drops(ps: Vector[P]): Long = self.drops(ps)
         def merged(ps: Vector[P]): Long = self.merged(ps)
 
   private def shape[A](flow: Flow[A]): Shape[A] = flow match
     case Flow.Src(ps) =>
       require(ps.nonEmpty, "a source has at least one partition")
-      new Pipe(ps.length, (i, s) => ps(i)(s))
+      new Pipe(ps.length, (i, s, _) => ps(i)(s))
     case Flow.Local(in, _, f) => shape(in).andThen(f)
+    case Flow.Owned(in, _, f) => shape(in).owning(f)
     case Flow.Keyed(in, key, agg, finish) => keyed(shape(in), key, agg, finish)
     case Flow.Windowed(in, size, slide, lateness, key, at, agg, seeded, finish) =>
       windowed(shape(in), size, slide, lateness, key, at, agg, seeded, finish)
 
-  private def one[X, A](in: Shape[X], what: String): Int => Chunks[X] =
+  private def one[X, A](in: Shape[X], what: String): (Int, Scope) => Chunks[X] =
     val at = in.source
     if at == null then
       throw IllegalArgumentException(
@@ -545,14 +553,14 @@ object Flows {
       def buckets: Int = b
       def work(i: Int, bounds: Bounds): P =
         val ms = Array.fill(b)(mutable.HashMap.empty[K, Acc])
-        Chunks.foldLeft(at(i))(())((_, x) =>
+        Scope.using(sc => Chunks.foldLeft(at(i, sc))(())((_, x) =>
           val k = key(x)
           val m = ms(bucketOf(k.##, b))
-          m.update(k, agg.add(m.getOrElse(k, agg.init), x)))
+          m.update(k, agg.add(m.getOrElse(k, agg.init), x))))
         ms
       def reducers(ps: Vector[P]): Int =
         chosen(finish, b, entries(ps))
-      def out(ps: Vector[P], lo: Int, hi: Int): Chunks[(K, O)] =
+      def out(ps: Vector[P], lo: Int, hi: Int, sc: Scope): Chunks[(K, O)] =
         val all = mutable.HashMap.empty[K, Acc]
         var j = lo
         while j < hi do
@@ -611,7 +619,7 @@ object Flows {
       // what lets a partition finish a pane alone
       def prepass: (Int => Extent) | Null =
         if !seeded then null
-        else (i: Int) => extent(src(i), Vector(at)).head
+        else (i: Int) => Scope.using(sc => extent(src(i, sc), Vector(at)).head)
       def work(i: Int, bounds: Bounds): P =
         val w = new Windows[K, X, Acc, Acc](size, slide, lateness, key, at, partial)
         if bounds.lower != Long.MinValue then w.seed(bounds.lower)
@@ -639,14 +647,14 @@ object Flows {
             val id = (p.start, p.key)
             val m = ms(bucketOf(id.##, b))
             m.update(id, m.get(id).fold(p.value)(agg.merge(_, p.value)))
-        Chunks.foldLeft(src(i))(())((_, x) => w.add(x)(keep))
+        Scope.using(sc => Chunks.foldLeft(src(i, sc))(())((_, x) => w.add(x)(keep)))
         w.close()(keep)
         Panes(ms, done, w.dropped)
       def reducers(ps: Vector[P]): Int =
         var t = 0L
         for p <- ps do for m <- p.panes do t += m.size
         chosen(finish, b, t)
-      def out(ps: Vector[P], lo: Int, hi: Int): Chunks[Pane[K, O]] =
+      def out(ps: Vector[P], lo: Int, hi: Int, sc: Scope): Chunks[Pane[K, O]] =
         val all = mutable.HashMap.empty[(Long, K), Acc]
         val finished = Vector.newBuilder[Iterator[Pane[K, O]]]
         var j = lo

@@ -1,7 +1,9 @@
 package okay.cluster.foreign
 
 import java.util.concurrent.atomic.AtomicInteger
-import okay.Chunks
+import okay.{Aggregator, Chunks}
+import okay.cluster.{Flow, Flows, Scope}
+import okay.given
 
 /**
  * A stateful stage gives back what holds a partition's state on EVERY path
@@ -37,8 +39,8 @@ class TestStatefulLease extends munit.FunSuite:
       case None => more = false
     out.result()
 
-  private def partition(st: Streamer[Int, Int]): Chunks[Int] =
-    Stateful.stateful(Chunks.rechunk(Chunks.fromIterator((1 to 10).iterator))(2), st)
+  private def partition(st: Streamer[Int, Int], scope: Scope = Scope(), rows: Int = 10): Chunks[Int] =
+    Stateful.stateful(Chunks.rechunk(Chunks.fromIterator((1 to rows).iterator))(2), st, scope)
 
   test("a partition that finishes gives its state back once") {
     val st = Counting(failAt = -1)
@@ -51,4 +53,32 @@ class TestStatefulLease extends munit.FunSuite:
     val refused = intercept[okay.cluster.Cluster.Refused](drain(partition(st)))
     assert(refused.getMessage.contains("step says no"), refused.getMessage)
     assertEquals((st.opened.get, st.givenBack.get), (1, 1), "the failed partition kept its worker")
+  }
+
+  test("a partition whose consumer stops early gives its state back when the partition ends (stateful-early-stop)") {
+    val st = Counting(failAt = -1)
+    val scope = Scope()
+    // past one chunk of the stage's output (64 rows), so `take` really stops it
+    assertEquals(drain(Chunks.take(partition(st, scope, rows = 1000))(3)), Vector(1, 2, 3))
+    assertEquals(st.givenBack.get, 0, "nothing downstream said it stopped: only the partition's end can")
+    scope.close()
+    assertEquals((st.opened.get, st.givenBack.get), (1, 1), "the stopped partition kept its worker")
+    scope.close()
+    assertEquals(st.givenBack.get, 1, "a scope closes once")
+  }
+
+  test("through the engine: a take after a stateful stage, and the state is given back once") {
+    val st = Counting(failAt = -1)
+    // past one chunk of the stage's output (64 rows), so `take` really
+    // stops the partition before its end
+    val staged = Stateful.through(Flow.slices(1 to 1000, 1), st, 2)
+    val taken = Flow.Local(staged, "take", (c: Chunks[Int]) => Chunks.take(c)(3))
+    assertEquals(Flows.fold(taken, Aggregator.count[Int]).runWith, 3L)
+    assertEquals((st.opened.get, st.givenBack.get), (1, 1))
+  }
+
+  test("through the engine, read to its end: finish gives the state back, and the scope does not again") {
+    val st = Counting(failAt = -1)
+    assertEquals(Flows.fold(Stateful.through(Flow.slices(1 to 10, 1), st, 2), Aggregator.count[Int]).runWith, 10L)
+    assertEquals((st.opened.get, st.givenBack.get), (1, 1))
   }

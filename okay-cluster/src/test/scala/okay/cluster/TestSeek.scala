@@ -132,18 +132,18 @@ class TestSeek extends munit.FunSuite {
 
   test("Flow.slices seeks natively: a partition opened mid-way yields only its tail") {
     val xs = events(feed)
-    val whole = Chunks.foldLeft(Flows.partition(Flow.slices(xs, Parts), 1, 0L))(0L)((n, _) => n + 1)
-    val tail = Chunks.foldLeft(Flows.partition(Flow.slices(xs, Parts), 1, 100L))(0L)((n, _) => n + 1)
+    val whole = Scope.using(sc => Chunks.foldLeft(Flows.partition(Flow.slices(xs, Parts), 1, 0L, sc))(0L)((n, _) => n + 1))
+    val tail = Scope.using(sc => Chunks.foldLeft(Flows.partition(Flow.slices(xs, Parts), 1, 100L, sc))(0L)((n, _) => n + 1))
     assertEquals(tail, whole - 100L)
     // and past the end is empty, not an error
-    assertEquals(Chunks.foldLeft(Flows.partition(Flow.slices(xs, Parts), 1, whole + 5))(0L)((n, _) => n + 1), 0L)
+    assertEquals(Scope.using(sc => Chunks.foldLeft(Flows.partition(Flow.slices(xs, Parts), 1, whole + 5, sc))(0L)((n, _) => n + 1)), 0L)
   }
 
   test("Flow.of skips by reading — the replay, named: the tail is right and the reads happened") {
     SeekStore.fill(events(feed), 1)
     val before = SeekStore.counting.records.get
     val plain = Flow.of(Vector(() => SeekStore.partition(0, 0L)))
-    val tail = Chunks.foldLeft(Flows.partition(plain, 0, 1000L))(0L)((n, _) => n + 1)
+    val tail = Scope.using(sc => Chunks.foldLeft(Flows.partition(plain, 0, 1000L, sc))(0L)((n, _) => n + 1))
     assertEquals(tail, total - 1000L)
     assert(SeekStore.counting.records.get - before >= total,
       "a non-seekable source skipped without reading — where did the elements go?")

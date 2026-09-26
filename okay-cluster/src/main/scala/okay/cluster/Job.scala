@@ -103,7 +103,7 @@ abstract class Job[P, R]:
     Codecs.cbor(params).decode(bytes).map { p =>
       val s = sink(p)
       if s.times.isEmpty then Vector.empty
-      else Flows.extent(Flows.partition(flow(p, of), part), s.times)
+      else Scope.using(sc => Flows.extent(Flows.partition(flow(p, of), part, 0L, sc), s.times))
     }
 
   /**
@@ -124,7 +124,10 @@ abstract class Job[P, R]:
         // already at `epoch`, so the first `advance` asks for the next
         // one and nothing is replayed. Only a seekable sink's
         // coordinator asks for this; a windowed one opens at zero.
-        private var rest: Chunks[A] = Flows.partition(flow(p, of), part, from)
+        // the partition's life is the SESSION's: whatever a stage holds for
+        // it is given back at `finish`, which every close goes through
+        private val scope = Scope()
+        private var rest: Chunks[A] = Flows.partition(flow(p, of), part, from, scope)
         private var state: s.P | Null = null
         private var extent: Vector[Flows.Extent] = Vector.empty
         private var consumed: Long = from
@@ -179,8 +182,10 @@ abstract class Job[P, R]:
           Resp.Epoch(Codecs.cbor(s.wire).encode(s.peek(st)), extent, drained, consumed)
 
         def finish(): Resp =
-          val st = if state == null then s.start(Vector.empty) else state.nn
-          Resp.Epoch(Codecs.cbor(s.wire).encode(s.finish(st)), extent, true, consumed)
+          try
+            val st = if state == null then s.start(Vector.empty) else state.nn
+            Resp.Epoch(Codecs.cbor(s.wire).encode(s.finish(st)), extent, true, consumed)
+          finally scope.close()
     }
 
   private def grow(a: Vector[Flows.Extent], b: Vector[Flows.Extent]): Vector[Flows.Extent] =
@@ -196,7 +201,7 @@ abstract class Job[P, R]:
     Codecs.cbor(params).decode(bytes).map { p =>
       val s = sink(p)
       val st = s.start(bounds)
-      Chunks.foldLeft(Flows.partition(flow(p, of), part))(())((_, a) => s.step(st, a))
+      Scope.using(sc => Chunks.foldLeft(Flows.partition(flow(p, of), part, 0L, sc))(())((_, a) => s.step(st, a)))
       Codecs.cbor(s.wire).encode(s.finish(st))
     }
 

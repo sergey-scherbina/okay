@@ -82,6 +82,13 @@ enum Flow[A]:
    * transformer, so the local plan owns this level */
   case Local[A, B](in: Flow[A], name: String, f: Chunks[A] => Chunks[B]) extends Flow[B]
 
+  /** a per-partition stage that HOLDS something until the partition ends
+   * (a leased interpreter, a far-side state): `f` registers its close on
+   * the partition's `Scope`, which the engine closes when it is done with
+   * the partition — at its end, at an early stop downstream, at a failure
+   * (stateful-early-stop) */
+  case Owned[A, B](in: Flow[A], name: String, f: (Chunks[A], Scope) => Chunks[B]) extends Flow[B]
+
   /** a keyed aggregation — the node the engine exists for */
   case Keyed[A, K, Acc, O](in: Flow[A], key: A => K,
                            agg: Aggregator[A, Acc, O],

@@ -624,6 +624,31 @@ so a death loses it and the partition recomputes elsewhere:
     Flow.slices(Rows.of(p.n), parts).statefulIn[Run](mod, "open", "step", "finish")
 ```
 
+The interpreter holding a partition's state is given back on every path:
+by `finish` at the partition's end, by `abandon` when a step fails, and —
+when something downstream stops reading early, a `take` — by `abandon` when
+the ENGINE is done with the partition. A chunked stream is a pure value, so
+a consumer that stops just stops; what knows the partition is over is the
+engine, which opens a `Scope` around each partition's fold and closes it at
+the fold's end, however it ended:
+
+```scala
+val taken = Flow.Local(staged, "take", (c: Chunks[Int]) => Chunks.take(c)(3))
+assertEquals(Flows.fold(taken, Aggregator.count[Int]).runWith, 3L)
+```
+
+A stage of your own that holds something for a partition — a connection, a
+lease, a far-side object — is a `Flow.Owned` rather than a `Flow.Local`: it
+is handed the partition's `Scope` and registers its close with `onEnd`, the
+way the stateful stage does:
+
+```scala
+Flow.Owned(in, st.name, (c: Chunks[A], scope: Scope) => stateful(Chunks.rechunk(c)(batch), st, scope))
+```
+
+A streaming session's partition ends at its `finish`, which every close of
+a session goes through.
+
 **A model** (`Models[M]`): fit once from its parameters, then the second
 argument of every chunk's map, `scale(frame, model)` — materialised once
 per interpreter of the pool, since a model lives in one process:

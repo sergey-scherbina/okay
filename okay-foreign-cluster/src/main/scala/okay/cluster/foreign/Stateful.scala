@@ -1,7 +1,7 @@
 package okay.cluster.foreign
 
 import okay.Chunks
-import okay.cluster.Flow
+import okay.cluster.{Flow, Scope}
 import okay.codec.Schema
 import okay.py.PyModule
 import okay.r.RModule
@@ -56,9 +56,9 @@ object Stateful:
    * transformer, the seam the engine already has */
   def through[A, B](in: Flow[A], st: Streamer[A, B], batch: Int): Flow[B] =
     require(batch > 0, "a batch holds at least one row")
-    Flow.Local(in, st.name, (c: Chunks[A]) => stateful(Chunks.rechunk(c)(batch), st))
+    Flow.Owned(in, st.name, (c: Chunks[A], scope: Scope) => stateful(Chunks.rechunk(c)(batch), st, scope))
 
-  private[foreign] def stateful[A, B](src: Chunks[A], st: Streamer[A, B]): Chunks[B] =
+  private[foreign] def stateful[A, B](src: Chunks[A], st: Streamer[A, B], scope: Scope): Chunks[B] =
     Chunks.fromIterator(new Iterator[B]:
       private var rest = src
       private var state: Option[st.S] = None
@@ -67,7 +67,15 @@ object Stateful:
       // the state is given back on EVERY path (foreign-one-pool): by
       // `finish`, which owns it once called, or by `abandon` when a step
       // (or the pull feeding it) fails first — a leased interpreter kept by
-      // a failed partition was a worker of the pool gone for good
+      // a failed partition was a worker of the pool gone for good — or,
+      // when the consumer stops before the end and neither ever runs, by
+      // `abandon` at the partition's end (stateful-early-stop)
+      scope.onEnd(() => giveBack())
+      private def giveBack(): Unit =
+        val held = state
+        state = None
+        done = true
+        held.foreach(st.abandon)
       private def fill(): Boolean =
         try
           while !buf.hasNext && !done do
@@ -86,9 +94,7 @@ object Stateful:
                 buf = Attempts.run(st.name, 1)(st.finish(s)).iterator
           buf.hasNext
         catch case t: Throwable =>
-          state.foreach(st.abandon)
-          state = None
-          done = true
+          giveBack()
           throw t
       def hasNext: Boolean = fill()
       def next(): B = { fill(): Unit; buf.next() })
