@@ -732,6 +732,29 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     the finaliser that could run it is a plain function — filed as
     foreign-source-early-stop.
 
+21. **A table into in-process Rust crosses as the Arrow C Data Interface**
+    (foreign-arrow-ffm, the operator's ask; its trigger measured first).
+    MEASURED 2026-09-26 (load ~10, min of 5): one 1M-row Int64 column
+    through the conformance crate's `scale` over FFM took 119 ms, of which
+    the host's encode was 20 ms (6.9 MB of columnar JSON), the host's decode
+    of the v1 answer 53 ms, and the other 46 ms Rust's JSON codec, its map
+    and two copies of the text — the call WAS its codec. So an in-process
+    link that can take a table directly does: `okay_exchange_table` beside
+    `okay_exchange`, the head a message in the wire's format, the table the
+    two C Data structs (a struct array of columns: `l`, `g`, `u`, `b`, `n`
+    — what `ArrowFrames` makes of a frame), the answer's table the same way
+    back, released by its producer's callback. The Rust side is written by
+    hand (two `repr(C)` structs; the `arrow` crate would be every worker
+    build's cost). The JVM side is a facade by the own-or-standard rule:
+    `OkayCData`, ours, over FFM, the default — it copies each column ONCE
+    between the heap arrays of `okay.arrow.Table` and native memory — and
+    `ApacheCData` behind an import over the optional `arrow-c-data`, each
+    proven to read the other's output. "No buffer copy" as first written
+    was the wrong gate: the host's frame is boxed cells and okay's Table is
+    heap arrays, so the copy that remains is one memcpy per column, and the
+    gate is the measured call beside today's road plus a byte-exact round
+    trip through both codecs. wasm keeps the JSON road (no shared pointers).
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
