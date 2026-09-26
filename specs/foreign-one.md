@@ -827,6 +827,22 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     its first publication. Resource paths (`/okay/py/shim.py`) are file
     locations, not the package, and stay.
 
+27. **The host feeds a stream from a feeder, not from the program**
+    (foreign-host-streams, the operator's ask). A duplex transform written
+    as ONE okay program — take input, feed it, pull output, tell it — can
+    wait for the far side's input credit while the far side waits, inside
+    `Emit`, for the host's output credit: each waits on the other. So the
+    host's input is a VALUE the call carries (an iterator of chunks), sent
+    by a feeder thread under the far side's credit while the program pulls
+    the output; on a multiplexed wire the two run together, and neither
+    side holds more than its credit. The wire: the call's head names the
+    input stream and its first credit (`"input": {"id", "credit"}`); the
+    host sends `{"op": "chunk"}` per chunk and `{"op": "end"}` at the end;
+    the far side grants `{"stream": s, "credit": 1}` each time its function
+    takes one (`okay.Next` in Go, `okay_next` in Rust). The input is not
+    journalled — a replay reads the OUTPUT from the journal and never
+    contacts the far side, so it has nothing to feed.
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
