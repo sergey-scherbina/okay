@@ -522,7 +522,6 @@ docs/modules/okay-cluster.md	def sink(f: Feed) = Wire.tumbling(Size, Late, _.key
 docs/modules/okay-cluster.md	got.dropped    // late elements, COUNTED
 docs/modules/okay-cluster.md	got.merged     // accumulators that reached the coordinator
 docs/modules/okay-cluster.md	got.value      // the answer
-docs/modules/okay-cluster.md	import okay.cluster.Cluster
 docs/modules/okay-cluster.md	mergeChunks(localSource, /* drain ch into a source */ ...)
 docs/modules/okay-cluster.md	object MyJobs:                       // loading this class registers them
 docs/modules/okay-cluster.md	object WindowJob extends Job[Feed, Sum]:
