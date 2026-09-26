@@ -132,6 +132,19 @@ deleted.
         where the recursive version rebuilt the prefix on the JVM stack
         for free. Kept: it is the cost of the loop the rule requires;
         backlog `delim-split-wrap-free` has the recipe to take it back.
+        DESIGN (delim-split-wrap-free, 2026-09-26): TWO LOOPS, no
+        `Wrap`. The first walks the chain and returns the node that
+        delimits `p` (a `Mark` or a dollar), allocating nothing. The
+        second copies the prefix FRONT TO BACK into fresh nodes whose
+        `rest` is a machine-private `var`, set exactly once while the
+        copy is still unpublished, into the hole the previous copy left
+        (a `Hole`, which every copied node is; the first hole is one
+        `Head` per capture). It stops when it reaches the found node by
+        identity, and the one type claim, that this segment's input is
+        the found node's, goes through `Same.byIdentity`, the axiom the
+        prompts already use. So per segment one node (what the
+        recursive version also built), per capture one `Head`, and no
+        frame closure.
       - `Static.foldMap` is ONE loop over a type-aligned continuation
         (`Args`: `More`, `AppTo`, `Mapped`, `SelectE`, `SelectF`). All
         three nesting axes (a select's condition, an application's
