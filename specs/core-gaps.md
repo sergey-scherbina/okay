@@ -252,15 +252,15 @@ object Chronicle:
   def all[E, X, B, F[+_]](xs: Iterable[X])(f: X => B ! Chronicle % E + F): Vector[B] ! Chronicle % E + F
 ```
 
-- [ ] nothing recorded → `Clean(a)`
-- [ ] two dictates, then a value → `Warned(a, [e1, e2])`
-- [ ] `confess` stops: effects after it do not run → `Failed(all so far)`
-- [ ] `all`: an element's halt does not stop the next element, and every
+- [x] nothing recorded → `Clean(a)`
+- [x] two dictates, then a value → `Warned(a, [e1, e2])`
+- [x] `confess` stops: effects after it do not run → `Failed(all so far)`
+- [x] `all`: an element's halt does not stop the next element, and every
       element's errors come out in element order; `Failed` at the end
-- [ ] `all` with warnings only → `Warned(values, warnings)`
-- [ ] a row `Chronicle % String + Throws % IOError`: both handlers answer
+- [x] `all` with warnings only → `Warned(values, warnings)`
+- [x] a row `Chronicle % String + Throws % IOError`: both handlers answer
       their own
-- [ ] stack-safe: 100 000 dictates
+- [x] stack-safe: 100 000 dictates
 
 **Why not `Writer % E + Throws % E`**, which the backlog item asked about
 first. It does model the linear case: `Writer.run(runEither(p))` answers
@@ -278,3 +278,11 @@ avoids all three.
 errors it has ALREADY re-dictated rather than inventing one to confess.
 A bare `halt` with nothing recorded answers `Failed(Vector())`. That is a
 possible verdict, and the type does not pretend otherwise.
+
+### Landed 2026-09-26 (error-accumulation-effect)
+
+TestChronicle covers all seven boxes in five tests. As with
+`Writer.listen`, `all`'s rest-of-row has to be written at the call when
+`f`'s row is `Chronicle` alone (`Chronicle.all[String, String, Int,
+Pure]`). Otherwise it is solved as the row itself, and `Distinct` refuses
+it by name.

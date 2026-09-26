@@ -264,6 +264,25 @@ val sum = for a <- ok.orRaise; b <- bad.orRaise yield a + b
 // runEither(sum) == Left("no")
 ```
 
+**Errors that accumulate — `Chronicle`** (specs/core-gaps.md stage 3).
+`Throws` stops at the first error, and `Validated` collects all of them
+only across independent checks. `Chronicle` RECORDS an error and goes
+on. `dictate(e)` records, `halt` stops, `confess(e)` does both, and
+`Chronicle.run` answers a `Verdict`: `Clean(a)`, `Warned(a, errors)` or
+`Failed(errors)`. `Chronicle.all(xs)(f)` runs every element even when
+some fail, then reports all their errors in order (arrow-kt's
+`mapOrAccumulate`; the name is from Haskell's `these`):
+
+```scala
+def port(s: String): Int ! C = s.toIntOption.fold(Chronicle.confess[String, Int](s"port: '$s' is not a number"))(pure)
+val ports = Chronicle.all[String, String, Int, Pure](List("80", "x", "443", "y"))(port)
+// Chronicle.run(ports) == Failed(Vector("port: 'x' is not a number", "port: 'y' is not a number"))
+```
+
+It is its own class, so a row holds it next to a `Throws` (`Chronicle %
+String + Throws % IOError`): validation findings accumulate, and a real
+I/O failure still stops.
+
 **Fresh values — `Supply`.** One operation, `Supply.next[S]`: each draw
 answers a value not answered before (Launchbury's supply; `Fresh` in
 fused-effects and polysemy). `Supply.run(first)(step)` makes the
