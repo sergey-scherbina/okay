@@ -1275,15 +1275,16 @@ lazy val okayKafka = (project in file("okay-kafka"))
   // test->test borrows the ElectionSuite for the Kafka control-log
   // leg of the consensus battery (specs/consensus.md).
   //
-  // okay-cluster is TEST->TEST ONLY, and the direction is deliberate:
-  // the dataflow engine must not know what a Kafka is (its compile
-  // graph stops at okay-codec, and `Checkpoint` is two methods over
-  // bytes on purpose). What borrows is the staging BATTERY —
-  // `StagingTopicSuite` — so stage 11's last box, the same
-  // exactly-once run against a real broker, asserts the same things
-  // as the memory run rather than a second thing that looks alike.
+  // okay-cluster, and the direction is deliberate: the dataflow engine
+  // must not know what a Kafka is (its compile graph stops at
+  // okay-codec, and `Checkpoint` is two methods over bytes on purpose),
+  // so it is THIS module that depends on the engine. In compile scope
+  // since engine-kafka-source (2026-09-26): `KafkaSource` is a `Flow`.
+  // test->test borrows the staging BATTERY — `StagingTopicSuite` — so
+  // stage 11's last box, the same exactly-once run against a real
+  // broker, asserts the same things as the memory run.
   .dependsOn(okay.jvm, okayPersist.jvm % "compile->compile;test->test",
-             okayCluster.jvm % "test->test")
+             okayCluster.jvm % "compile->compile;test->test")
   .settings(
     name := "okay-kafka",
     libraryDependencies ++= Seq(

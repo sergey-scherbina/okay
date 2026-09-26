@@ -243,6 +243,12 @@ than trusting the author.
   watermark lag. `JobStats` turns that into Prometheus text and
   `JobTrace` into a span tree; okay-pool serves the first on `/metrics`
   and the second as OTLP JSON per run.
+- **16 — Kafka is a source** (engine-kafka-source, 2026-09-26). A
+  topic's Kafka partitions are the flow's partitions (okay-kafka's
+  `KafkaSource`); a session's position is a record count, and on a
+  contiguous partition the source SEEKS to `from + position` — stage
+  11's seek, on a real broker — so a replacement worker or a resumed
+  coordinator reads exactly the records the journal has not folded.
 - **10 — the election.** DONE. `Lease` (three methods, no
   dependency), `Cluster.leading`, and a FENCE on the journal so a
   deposed coordinator stops at its next epoch rather than committing
@@ -299,6 +305,22 @@ not against its existence):
       `Pipeline.optimize` discipline) — MOVED TO STAGE 2: there is no
       exchange to push below yet, so this box could only have been
       checked by a test that asserts nothing
+
+Stage 16 — Kafka is a source (TestKafkaSource, TestFlowOpened):
+- [ ] a streaming job over a Live topic of 1M records in 4 partitions,
+      a worker killed mid-epoch: every record counted once, the answer
+      equal to one computed without the engine
+- [ ] the replacement SEEKS: the records fetched from the broker are
+      the topic once plus at most the epochs replayed, not the topic
+      twice
+- [ ] a partition whose offsets are not contiguous (a transactional or
+      compacted topic) is refused by name where it seeks, and read by
+      skipping records when declared `contiguous = false`
+- [ ] `Flow.opened`: a source partition that holds a resource opens it
+      at its position and closes it with the partition's scope — at
+      the end, at an early stop, at a failure
+- [ ] the job's width must be the topic's: a flow over a different
+      partition count is refused by name
 
 Stage 15 — a job says where its time went (TestObserved, TestPoolObserved):
 - [x] a job's trace is a root span, one span per phase and one per
@@ -912,6 +934,22 @@ a way to start from a known mark rather than from nothing.
   epoch, so recovery is "read the last committed epoch", unchanged. It
   lives in okay-kafka beside `KafkaStore`, for stage 9's reason:
   okay-cluster knows no store, and `Sink.staging(...)(move)` is the seam.
+- **A Kafka source's positions live in the engine's journal, not in a
+  consumer group** (engine-kafka-source, 2026-09-26). Stage 11 already
+  journals every partition's position with the fold, in one fenced
+  write; committing offsets to a Kafka group as well would make a
+  second record of the same fact that can disagree with the first
+  after a crash between the two. The job's parameters carry each
+  partition's span `[from, until)` — a snapshot taken at submission —
+  so a position is an offset only relative to a `from` that retention
+  cannot move under it.
+- **A position is a record count; it is an offset only where the
+  offsets are contiguous.** A transactional or compacted partition has
+  offsets with no record (markers, removed keys), so `from + count`
+  would land past the right record — silently. `KafkaSource` checks
+  every record's offset against the one it expected and refuses a gap
+  by name; a caller who knows the topic has gaps says `contiguous =
+  false`, and a seek becomes a read that skips `count` records.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
