@@ -235,15 +235,15 @@ object EffectsBasket:
  * is not an error, an unknown shop is). The order needs all three.
  */
 object Delivery:
-  /** a shop sells several varieties of an item, each with its own price */
-  val catalog: Map[String, Map[String, List[(String, Int)]]] = Map(
-    "north" -> Map("tea" -> List(("green tea", 300), ("black tea", 280))),
-    "south" -> Map("tea" -> List(("green tea", 250))))
+  /** every item a shop sells, with its price */
+  val catalog: Map[String, List[(String, Int)]] = Map(
+    "north" -> List(("green tea", 300), ("black tea", 280)),
+    "south" -> List(("green tea", 250)))
 
   /** None: the shop does not deliver; a missing key: an unknown shop */
   val fees: Map[String, Option[Int]] = Map("north" -> Some(50), "south" -> None)
 
-  /** per shop: north delivers for 50 and has two teas; south delivers free */
+  /** per shop: north delivers for 50 and sells two teas; south delivers free */
   val expected: Map[String, List[Either[String, (String, Int)]]] = Map(
     "north" -> List(Right(("green tea", 350)), Right(("black tea", 330))),
     "south" -> List(Right(("green tea", 250))))
@@ -252,18 +252,18 @@ object CatsDelivery:
   import cats.data.EitherT
   import Delivery.{catalog, fees}
 
-  /** team A: every variety of an item with its price, or an error */
+  /** team A: every item of a shop with its price, or an error */
   type Choices[A] = EitherT[List, String, A]
 
-  def priceOf(shop: String, item: String): Choices[(String, Int)] =
-    EitherT(catalog(shop).get(item) match
-      case Some(varieties) => varieties.map(Right(_))
-      case None            => List(Left(s"$shop has no $item")))
+  def prices(shop: String): Choices[(String, Int)] =
+    EitherT(catalog.get(shop) match
+      case Some(items) => items.map(Right(_))
+      case None        => List(Left(s"unknown shop $shop")))
 
   /** team B: an error inside an Option — None: no delivery, Left: an unknown shop */
   type Delivered[A] = EitherT[Option, String, A]
 
-  def deliveryFee(shop: String): Delivered[Int] =
+  def delivery(shop: String): Delivered[Int] =
     EitherT(fees.get(shop) match
       case None      => Some(Left(s"unknown shop $shop"))
       case Some(fee) => fee.map(Right(_)))
@@ -272,11 +272,11 @@ object CatsDelivery:
   def fromB[A](fb: Delivered[A]): Choices[Option[A]] =
     EitherT(List(fb.value.fold[Either[String, Option[A]]](Right(None))(_.map(Some(_)))))
 
-  def order(shop: String, item: String): Choices[(String, Int)] =
+  def order(shop: String): Choices[(String, Int)] =
     for {
-      (tea, price) <- priceOf(shop, item)
-      fee          <- fromB(deliveryFee(shop))
-    } yield (tea, price + fee.getOrElse(0))
+      (item, price) <- prices(shop)
+      fee           <- fromB(delivery(shop))
+    } yield (item, price + fee.getOrElse(0))
 
 object LayeredDelivery:
   import okay.Layered.{Reflect, reify, reflect}
@@ -285,23 +285,23 @@ object LayeredDelivery:
   type Checked[A] = Either[String, A]
   type Out        = Either[String, (String, Int)]
 
-  /** team A's helper: reflects its own two monads — a missing item into
-   * the error layer, the varieties into the list layer */
-  def priceOf(shop: String, item: String)(using Reflect[List, Out], Reflect[Checked, (String, Int)]): (String, Int) ! Delim + Pure =
-    catalog(shop).get(item).toRight(s"$shop has no $item").reflect[(String, Int), Pure]
+  /** team A's helper: reflects its own two monads — an unknown shop into
+   * the error layer, the items into the list layer */
+  def prices(shop: String)(using Reflect[List, Out], Reflect[Checked, (String, Int)]): (String, Int) ! Delim + Pure =
+    catalog.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
       .flatMap(_.reflect[Out, Pure])
 
   /** team B's helper: an unknown shop into the error layer; the fee stays an Option value */
-  def deliveryFee(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
+  def delivery(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
     fees.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
 
-  def order(shop: String, item: String): List[Out] ! Delim + Pure =
+  def order(shop: String): List[Out] ! Delim + Pure =
     reify[List, Out, Pure]:
       reify[Checked, (String, Int), Pure]:
         for {
-          (tea, price) <- priceOf(shop, item)
-          fee          <- deliveryFee(shop)
-        } yield (tea, price + fee.getOrElse(0))
+          (item, price) <- prices(shop)
+          fee           <- delivery(shop)
+        } yield (item, price + fee.getOrElse(0))
 
 object EffectsDelivery:
   import okay.{Choose, Throws, choose, raise, runChoice, runEither}
@@ -309,35 +309,35 @@ object EffectsDelivery:
   import okay.given
   import Delivery.{catalog, fees}
 
-  /** team A's helper: a choice among varieties, or an error */
-  def priceOf(shop: String, item: String): (String, Int) ! Choose + Throws % String =
-    catalog(shop).get(item) match
-      case Some(varieties) => choose(varieties*).at[Choose + Throws % String]
-      case None            => raise[String, (String, Int)](s"$shop has no $item").at[Choose + Throws % String]
+  /** team A's helper: a choice among the shop's items, or an error */
+  def prices(shop: String): (String, Int) ! Choose + Throws % String =
+    catalog.get(shop) match
+      case Some(items) => choose(items*).at[Choose + Throws % String]
+      case None        => raise[String, (String, Int)](s"unknown shop $shop").at[Choose + Throws % String]
 
   /** team B's helper: absence is a plain Option VALUE, the error an effect */
-  def deliveryFee(shop: String): Option[Int] ! Throws % String =
+  def delivery(shop: String): Option[Int] ! Throws % String =
     fees.get(shop) match
       case Some(fee) => pure[Throws % String, Option[Int]](fee)
       case None      => raise[String, Option[Int]](s"unknown shop $shop")
 
   type Order = Choose + Throws % String
 
-  def order(shop: String, item: String): (String, Int) ! Order =
+  def order(shop: String): (String, Int) ! Order =
     for {
-      (tea, price) <- priceOf(shop, item)
-      fee          <- deliveryFee(shop).at[Order]
-    } yield (tea, price + fee.getOrElse(0))
+      (item, price) <- prices(shop)
+      fee           <- delivery(shop).at[Order]
+    } yield (item, price + fee.getOrElse(0))
 
   /** the expression cats refused, with effects: both helpers in one for */
   val north: (String, Int) ! Order =
     for
-      (tea, price) <- priceOf("north", "tea").at[Order]
-      fee          <- deliveryFee("north").at[Order]
-    yield (tea, price + fee.getOrElse(0))
+      (item, price) <- prices("north").at[Order]
+      fee           <- delivery("north").at[Order]
+    yield (item, price + fee.getOrElse(0))
 
-  def run(shop: String, item: String): List[Either[String, (String, Int)]] =
-    val checked = runEither[(String, Int), Choose, String](order(shop, item))
+  def run(shop: String): List[Either[String, (String, Int)]] =
+    val checked = runEither[(String, Int), Choose, String](order(shop))
     !.run(runChoice[Either[String, (String, Int)], Pure](checked)).toList
 
 class TestBookTwoMonadsCats extends munit.FunSuite:
@@ -363,9 +363,9 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
       import bookcats.CatsDelivery.*
       val shop = "north"
       for {
-        (tea, price) <- priceOf(shop, "tea")
-        fee          <- deliveryFee(shop)
-      } yield (tea, price + fee.getOrElse(0))
+        (item, price) <- prices(shop)
+        fee           <- delivery(shop)
+      } yield (item, price + fee.getOrElse(0))
     """)
     // first: the two stacks differ in the monad inside (List vs Option)
     assert(e.contains("Found:    cats.data.EitherT[Option, String, D]"), e)
@@ -376,9 +376,9 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
 
   test("DELIVERY: the union stack with a conversion per team, layered reflection, and effects agree") {
     for (shop, answer) <- Delivery.expected do
-      assertEquals(CatsDelivery.order(shop, "tea").value, answer, shop)
-      assertEquals(!.run(Delim.run[List[LayeredDelivery.Out], Pure](LayeredDelivery.order(shop, "tea"))), answer, shop)
-      assertEquals(EffectsDelivery.run(shop, "tea"), answer, shop)
+      assertEquals(CatsDelivery.order(shop).value, answer, shop)
+      assertEquals(!.run(Delim.run[List[LayeredDelivery.Out], Pure](LayeredDelivery.order(shop))), answer, shop)
+      assertEquals(EffectsDelivery.run(shop), answer, shop)
   }
 
   test("DELIVERY: with effects the refused expression compiles as written — both helpers in one for") {

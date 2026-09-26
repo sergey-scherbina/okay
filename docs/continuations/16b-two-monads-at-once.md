@@ -250,17 +250,16 @@ hurts most is not the order of the layers but what the stacks are MADE
 of. Two teams, one shared effect (errors), and one monad each that the
 other does not have:
 
-- **team A** knows the catalog: a shop sells several varieties of an
-  item, so a price comes with the variety it is for — a list, and an
-  error for an item the shop does not sell:
+- **team A** knows the catalog: every item a shop sells, with its
+  price — a list, and an error for a shop it does not know:
 
 ```scala
 type Choices[A] = EitherT[List, String, A]
 
-def priceOf(shop: String, item: String): Choices[(String, Int)] =
-  EitherT(catalog(shop).get(item) match
-    case Some(varieties) => varieties.map(Right(_))
-    case None            => List(Left(s"$shop has no $item")))
+def prices(shop: String): Choices[(String, Int)] =
+  EitherT(catalog.get(shop) match
+    case Some(items) => items.map(Right(_))
+    case None        => List(Left(s"unknown shop $shop")))
 ```
 
 - **team B** knows the delivery fee, which a shop may not charge — the
@@ -270,7 +269,7 @@ def priceOf(shop: String, item: String): Choices[(String, Int)] =
 ```scala
 type Delivered[A] = EitherT[Option, String, A]
 
-def deliveryFee(shop: String): Delivered[Int] =
+def delivery(shop: String): Delivered[Int] =
   EitherT(fees.get(shop) match
     case None      => Some(Left(s"unknown shop $shop"))
     case Some(fee) => fee.map(Right(_)))
@@ -278,14 +277,14 @@ def deliveryFee(shop: String): Delivered[Int] =
 
 Both are `EitherT[_, String, _]`; only the monad inside differs. The
 order is the same in all three versions below: in a given `shop`, each
-variety and its price, then the delivery fee, which is free when the
+item and its price, then the delivery fee, which is free when the
 shop has none. In cats, written the obvious way:
 
 ```text
 for {
-  (tea, price) <- priceOf(shop, item)
-  fee          <- deliveryFee(shop)
-} yield (tea, price + fee.getOrElse(0))
+  (item, price) <- prices(shop)
+  fee           <- delivery(shop)
+} yield (item, price + fee.getOrElse(0))
 ```
 
 it does not compile. The first error is the stacks:
@@ -310,13 +309,13 @@ and the same order compiles:
 
 ```scala
 for {
-  (tea, price) <- priceOf(shop, item)
-  fee          <- fromB(deliveryFee(shop))
-} yield (tea, price + fee.getOrElse(0))
+  (item, price) <- prices(shop)
+  fee           <- fromB(delivery(shop))
+} yield (item, price + fee.getOrElse(0))
 ```
 
-For `"tea"` it is `List(Right(("green tea", 350)), Right(("black tea",
-330)))` in north, which delivers for 50 and has two teas, and
+It is `List(Right(("green tea", 350)), Right(("black tea", 330)))` in
+north, which delivers for 50 and sells two teas, and
 `List(Right(("green tea", 250)))` in south, which delivers free. Now multiply: every new team with a slightly different set of
 monads is one more stack, and every pair of stacks that meets needs its
 own conversion — each knowing the structure of both stacks, and changing
@@ -328,11 +327,11 @@ through the capabilities its `reify` blocks hand out, and returns a
 plain value — the fee stays an `Option`:
 
 ```scala
-def priceOf(shop: String, item: String)(using Reflect[List, Out], Reflect[Checked, (String, Int)]): (String, Int) ! Delim + Pure =
-  catalog(shop).get(item).toRight(s"$shop has no $item").reflect[(String, Int), Pure]
+def prices(shop: String)(using Reflect[List, Out], Reflect[Checked, (String, Int)]): (String, Int) ! Delim + Pure =
+  catalog.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
     .flatMap(_.reflect[Out, Pure])
 
-def deliveryFee(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
+def delivery(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
   fees.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
 ```
 
@@ -340,24 +339,24 @@ def deliveryFee(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int
 reify[List, Out, Pure]:
   reify[Checked, (String, Int), Pure]:
     for {
-      (tea, price) <- priceOf(shop, item)
-      fee          <- deliveryFee(shop)
-    } yield (tea, price + fee.getOrElse(0))
+      (item, price) <- prices(shop)
+      fee           <- delivery(shop)
+    } yield (item, price + fee.getOrElse(0))
 ```
 
 With algebraic effects each helper declares only the effects it uses.
-Team A's varieties are a `choose`; team B's "no delivery" is not an
+Team A's items are a `choose`; team B's "no delivery" is not an
 effect at all — it is a plain `Option` value, and only the unknown shop
 is an error:
 
 ```scala
-def priceOf(shop: String, item: String): (String, Int) ! Choose + Throws % String =
-  catalog(shop).get(item) match
-    case Some(varieties) => choose(varieties*).at[Choose + Throws % String]
+def prices(shop: String): (String, Int) ! Choose + Throws % String =
+  catalog.get(shop) match
+    case Some(items) => choose(items*).at[Choose + Throws % String]
 ```
 
 ```scala
-def deliveryFee(shop: String): Option[Int] ! Throws % String =
+def delivery(shop: String): Option[Int] ! Throws % String =
   fees.get(shop) match
     case Some(fee) => pure[Throws % String, Option[Int]](fee)
     case None      => raise[String, Option[Int]](s"unknown shop $shop")
@@ -372,9 +371,9 @@ type Order = Choose + Throws % String
 
 ```scala
 for {
-  (tea, price) <- priceOf(shop, item)
-  fee          <- deliveryFee(shop).at[Order]
-} yield (tea, price + fee.getOrElse(0))
+  (item, price) <- prices(shop)
+  fee           <- delivery(shop).at[Order]
+} yield (item, price + fee.getOrElse(0))
 ```
 
 All three give the same answer (`TestBookTwoMonadsCats`).
