@@ -243,8 +243,9 @@ object Delivery:
   /** None: the shop does not deliver; a missing key: an unknown shop */
   val fees: Map[String, Option[Int]] = Map("north" -> Some(50), "south" -> None)
 
-  val expected: List[Either[String, Option[(String, Int)]]] =
-    List(Right(Some(("green tea", 350))), Right(Some(("black tea", 330))), Right(None))
+  /** no delivery costs nothing extra: south's tea at its own price */
+  val expected: List[Either[String, (String, Int)]] =
+    List(Right(("green tea", 350)), Right(("black tea", 330)), Right(("green tea", 250)))
 
 object CatsDelivery:
   import cats.data.{EitherT, OptionT}
@@ -265,25 +266,22 @@ object CatsDelivery:
   def deliveryFee(shop: String): Delivered[Int] =
     OptionT(fees.get(shop).toRight(s"unknown shop $shop"))
 
-  /** the union neither team wrote, and one conversion per team */
-  type Order[A] = OptionT[Choices, A]
+  /** team B's stack converted by hand into team A's: the Option becomes a value */
+  def fromB[A](fb: Delivered[A]): Choices[Option[A]] = EitherT(List(fb.value))
 
-  def fromA[A](fa: Choices[A]): Order[A]   = OptionT.liftF(fa)
-  def fromB[A](fb: Delivered[A]): Order[A] = OptionT(EitherT(List(fb.value)))
-
-  def order(item: String): Order[(String, Int)] =
+  def order(item: String): Choices[(String, Int)] =
     for
-      shop         <- fromA(EitherT.liftF(List("north", "south")))
+      shop         <- EitherT.liftF[List, String, String](List("north", "south"))
+      (tea, price) <- priceOf(shop, item)
       fee          <- fromB(deliveryFee(shop))
-      (tea, price) <- fromA(priceOf(shop, item))
-    yield (tea, price + fee)
+    yield (tea, price + fee.getOrElse(0))
 
 object LayeredDelivery:
   import okay.Layered.{reify, reflect}
   import Delivery.{catalog, fees}
 
   type Checked[A] = Either[String, A]
-  type Out        = Either[String, Option[(String, Int)]]
+  type Out        = Either[String, (String, Int)]
 
   /** team A's helper and team B's helper: plain values of plain monads */
   def priceOf(shop: String, item: String): Either[String, List[(String, Int)]] =
@@ -294,15 +292,13 @@ object LayeredDelivery:
 
   def order(item: String): List[Out] ! Delim + Pure =
     reify[List, Out, Pure]:
-      reify[Checked, Option[(String, Int)], Pure]:
-        reify[Option, (String, Int), Pure]:
-          for
-            shop         <- List("north", "south").reflect[Out, Pure]
-            fee          <- deliveryFee(shop).reflect[Option[(String, Int)], Pure]
-            f            <- fee.reflect[(String, Int), Pure]
-            varieties    <- priceOf(shop, item).reflect[Option[(String, Int)], Pure]
-            (tea, price) <- varieties.reflect[Out, Pure]
-          yield (tea, price + f)
+      reify[Checked, (String, Int), Pure]:
+        for
+          shop         <- List("north", "south").reflect[Out, Pure]
+          varieties    <- priceOf(shop, item).reflect[(String, Int), Pure]
+          (tea, price) <- varieties.reflect[Out, Pure]
+          fee          <- deliveryFee(shop).reflect[(String, Int), Pure]
+        yield (tea, price + fee.getOrElse(0))
 
 object EffectsDelivery:
   import okay.{Choose, Throws, choose, raise, runChoice, runEither}
@@ -324,23 +320,23 @@ object EffectsDelivery:
 
   type Order = Choose + Throws % String
 
-  def order(item: String): Option[(String, Int)] ! Order =
+  def order(item: String): (String, Int) ! Order =
     for
       shop         <- choose("north", "south").at[Order]
-      fee          <- deliveryFee(shop).at[Order]
       (tea, price) <- priceOf(shop, item)
-    yield fee.map(f => (tea, price + f))
+      fee          <- deliveryFee(shop).at[Order]
+    yield (tea, price + fee.getOrElse(0))
 
   /** the expression cats refused, with effects: both helpers in one for */
-  val north: Option[(String, Int)] ! Order =
+  val north: (String, Int) ! Order =
     for
-      fee          <- deliveryFee("north").at[Order]
       (tea, price) <- priceOf("north", "tea").at[Order]
-    yield fee.map(f => (tea, price + f))
+      fee          <- deliveryFee("north").at[Order]
+    yield (tea, price + fee.getOrElse(0))
 
-  def run(item: String): List[Either[String, Option[(String, Int)]]] =
-    val checked = runEither[Option[(String, Int)], Choose, String](order(item))
-    !.run(runChoice[Either[String, Option[(String, Int)]], Pure](checked)).toList
+  def run(item: String): List[Either[String, (String, Int)]] =
+    val checked = runEither[(String, Int), Choose, String](order(item))
+    !.run(runChoice[Either[String, (String, Int)], Pure](checked)).toList
 
 class TestBookTwoMonadsCats extends munit.FunSuite:
 
@@ -363,16 +359,16 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   test("DELIVERY: team A's helper (List + Either) and team B's (Option + Either) do not compose in one expression") {
     val e = compileErrors("""
       for
-        fee          <- bookcats.CatsDelivery.deliveryFee("north")
         (tea, price) <- bookcats.CatsDelivery.priceOf("north", "tea")
+        fee          <- bookcats.CatsDelivery.deliveryFee("north")
       yield (tea, price + fee)
     """)
-    assert(e.contains("Found:    cats.data.EitherT[List, String, (String, Int)]"), e)
-    assert(e.contains("Required: cats.data.OptionT[bookcats.CatsDelivery.Checked, B]"), e)
+    assert(e.contains("Found:    cats.data.OptionT[bookcats.CatsDelivery.Checked, (String, Int)]"), e)
+    assert(e.contains("Required: cats.data.EitherT[List, AA, D]"), e)
   }
 
   test("DELIVERY: the union stack with a conversion per team, layered reflection, and effects agree") {
-    assertEquals(CatsDelivery.order("tea").value.value, Delivery.expected)
+    assertEquals(CatsDelivery.order("tea").value, Delivery.expected)
     assertEquals(!.run(Delim.run[List[LayeredDelivery.Out], Pure](LayeredDelivery.order("tea"))), Delivery.expected)
     assertEquals(EffectsDelivery.run("tea"), Delivery.expected)
   }
@@ -380,9 +376,9 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
   test("DELIVERY: with effects the refused expression compiles as written — both helpers in one for") {
     import okay.{Choose, runChoice, runEither}
     import okay.given
-    val checked = runEither[Option[(String, Int)], Choose, String](EffectsDelivery.north)
-    assertEquals(!.run(runChoice[Either[String, Option[(String, Int)]], Pure](checked)).toList,
-      List(Right(Some(("green tea", 350))), Right(Some(("black tea", 330)))))
+    val checked = runEither[(String, Int), Choose, String](EffectsDelivery.north)
+    assertEquals(!.run(runChoice[Either[String, (String, Int)], Pure](checked)).toList,
+      List(Right(("green tea", 350)), Right(("black tea", 330))))
   }
 
   test("DIFFERENT COMPOSITION: team A's helper (List + Either) does not type in team B's stack (Writer + Either), nor in the union") {

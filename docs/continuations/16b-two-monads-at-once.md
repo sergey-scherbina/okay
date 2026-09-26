@@ -274,52 +274,49 @@ def deliveryFee(shop: String): Delivered[Int] =
   OptionT(fees.get(shop).toRight(s"unknown shop $shop"))
 ```
 
-There is no ordering to agree on. Call both in one expression:
+There is no ordering to agree on. Call both in one expression — the
+price, then the fee:
 
 ```text
 for
-  fee          <- CatsDelivery.deliveryFee("north")
   (tea, price) <- CatsDelivery.priceOf("north", "tea")
+  fee          <- CatsDelivery.deliveryFee("north")
 yield (tea, price + fee)
 ```
 
 and it does not compile:
 
 ```text
-Found:    cats.data.EitherT[List, String, (String, Int)]
-Required: cats.data.OptionT[bookcats.CatsDelivery.Checked, B]
+Found:    cats.data.OptionT[bookcats.CatsDelivery.Checked, (String, Int)]
+Required: cats.data.EitherT[List, AA, D]
 ```
 
-The order needs all three monads, so it needs a THIRD stack, the union,
-which neither team wrote, and each team's helpers get into it through a
-conversion written by hand, one per team — per pair of stacks, in
-general:
+The order needs team B's fee inside team A's stack, and the only way in
+is a conversion written by hand for this pair of stacks — here it turns
+team B's `OptionT` into a plain `Option` VALUE in team A's
+`EitherT[List]`, so a missing fee can count as zero:
 
 ```scala
-type Order[A] = OptionT[Choices, A]
-
-def fromA[A](fa: Choices[A]): Order[A]   = OptionT.liftF(fa)
-def fromB[A](fb: Delivered[A]): Order[A] = OptionT(EitherT(List(fb.value)))
+def fromB[A](fb: Delivered[A]): Choices[Option[A]] = EitherT(List(fb.value))
 ```
 
-and every call site says which team it came from:
-
 ```scala
+(tea, price) <- priceOf(shop, item)
 fee          <- fromB(deliveryFee(shop))
-(tea, price) <- fromA(priceOf(shop, item))
+yield (tea, price + fee.getOrElse(0))
 ```
 
 For `"tea"` over both shops the order is
-`List(Right(Some(("green tea", 350))), Right(Some(("black tea", 330))),
-Right(None))`: north delivers and has two teas, south does not deliver.
-Now multiply: every new team with a slightly different set of monads is
-one more stack, one more union for everybody who combines it, and one
-more conversion into each union — each knowing the structure of both
-stacks, and changing when either does.
+`List(Right(("green tea", 350)), Right(("black tea", 330)), Right(("green
+tea", 250)))`: north delivers for 50 and has two teas, south does not
+deliver, so its tea costs just its price. Now multiply: every new team
+with a slightly different set of monads is one more stack, and every
+pair of stacks that meets needs its own conversion — each knowing the
+structure of both stacks, and changing when either does.
 
 The two roads below have none of this. With layered reflection each
 team's helper returns a plain value of plain monads, and the order is
-three `reify` blocks:
+two `reify` blocks — the fee's `Option` is just a value here too:
 
 ```scala
 def priceOf(shop: String, item: String): Either[String, List[(String, Int)]] =
@@ -328,15 +325,13 @@ def priceOf(shop: String, item: String): Either[String, List[(String, Int)]] =
 
 ```scala
 reify[List, Out, Pure]:
-  reify[Checked, Option[(String, Int)], Pure]:
-    reify[Option, (String, Int), Pure]:
-      for
-        shop         <- List("north", "south").reflect[Out, Pure]
-        fee          <- deliveryFee(shop).reflect[Option[(String, Int)], Pure]
-        f            <- fee.reflect[(String, Int), Pure]
-        varieties    <- priceOf(shop, item).reflect[Option[(String, Int)], Pure]
-        (tea, price) <- varieties.reflect[Out, Pure]
-      yield (tea, price + f)
+  reify[Checked, (String, Int), Pure]:
+    for
+      shop         <- List("north", "south").reflect[Out, Pure]
+      varieties    <- priceOf(shop, item).reflect[(String, Int), Pure]
+      (tea, price) <- varieties.reflect[Out, Pure]
+      fee          <- deliveryFee(shop).reflect[(String, Int), Pure]
+    yield (tea, price + fee.getOrElse(0))
 ```
 
 With algebraic effects each helper declares only the effects it uses.
@@ -358,7 +353,7 @@ def deliveryFee(shop: String): Option[Int] ! Throws % String =
 ```
 
 The union is just the row of the program that uses both helpers, each
-widened into it, and the `Option` is mapped in the `yield`:
+widened into it:
 
 ```scala
 type Order = Choose + Throws % String
@@ -366,26 +361,20 @@ type Order = Choose + Throws % String
 
 ```scala
 shop         <- choose("north", "south").at[Order]
-fee          <- deliveryFee(shop).at[Order]
 (tea, price) <- priceOf(shop, item)
-yield fee.map(f => (tea, price + f))
+fee          <- deliveryFee(shop).at[Order]
+yield (tea, price + fee.getOrElse(0))
 ```
-
-One difference from the other two versions, visible only with other
-data: here the varieties are looked up in a shop that does not deliver
-too, so a shop that neither delivers nor stocks the item answers with
-its error, where they answer `None`. To skip the lookup, fold the fee:
-`fee.fold(pure(None))(f => priceOf(…).map(…))`.
 
 And the one expression cats refused is, with effects, just written
 down — both helpers in one `for`:
 
 ```scala
-val north: Option[(String, Int)] ! Order =
+val north: (String, Int) ! Order =
   for
-    fee          <- deliveryFee("north").at[Order]
     (tea, price) <- priceOf("north", "tea").at[Order]
-  yield fee.map(f => (tea, price + f))
+    fee          <- deliveryFee("north").at[Order]
+  yield (tea, price + fee.getOrElse(0))
 ```
 
 All three give the same answer (`TestBookTwoMonadsCats`).
