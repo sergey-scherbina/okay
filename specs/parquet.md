@@ -45,7 +45,9 @@ the same reader).
   name (parquet-java's default v1 writer, Spark's and DuckDB's defaults
   use none of them).
 - Compression: UNCOMPRESSED, SNAPPY, ZSTD through okay-compress's
-  `Compression` in scope; GZIP, LZ4, BROTLI refused by name.
+  `Compression` in scope; GZIP by the platform's `java.util.zip` (JVM,
+  Native — Hudi writes GZIP by default, lake-hudi found it), refused by
+  name on Scala.js; LZ4, BROTLI refused by name.
 - Written: PLAIN values, every column OPTIONAL, one data page v1 per
   column per row group (at most `pageRows` rows each), Snappy by
   default.

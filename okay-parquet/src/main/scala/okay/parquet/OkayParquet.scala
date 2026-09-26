@@ -406,9 +406,10 @@ object OkayParquet extends ParquetCodec:
       case 0 => raw
       case 1 => z.snappy.decompress(raw)
       case 6 => z.zstd.decompress(raw)
+      case 2 => Gzip.inflate(raw)
       case other =>
         val named = Vector("UNCOMPRESSED", "SNAPPY", "GZIP", "LZO", "BROTLI", "LZ4", "ZSTD", "LZ4_RAW").lift(other).getOrElse(other.toString)
-        throw Refused(s"column '${leaf.name}' is compressed with $named: read are UNCOMPRESSED, SNAPPY and ZSTD (specs/parquet.md)")
+        throw Refused(s"column '${leaf.name}' is compressed with $named: read are UNCOMPRESSED, SNAPPY, GZIP and ZSTD (specs/parquet.md)")
     if out.length != usize then throw Refused(s"column '${leaf.name}': a page of ${out.length} bytes declaring $usize")
     out
 

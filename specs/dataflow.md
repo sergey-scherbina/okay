@@ -335,14 +335,14 @@ Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro, TestHud
 - [x] Avro is read by ours (`OkayAvro`) or Apache Avro's
       (`ApacheAvro.given`, optional), each giving the same records for
       pyiceberg's manifests (specs/own-or-standard.md)
-- [ ] a HUDI copy-on-write table (timeline layout 1 or 2) becomes the
+- [x] a HUDI copy-on-write table (timeline layout 1 or 2) becomes the
       row-group plan: per file group the latest base file of a COMPLETED
       commit, file groups a completed replacecommit replaced dropped,
       files older than the active timeline taken as committed (TestHudi,
       Live: written by Hudi 1.2.1 on Spark 4.1 through pyspark)
-- [ ] an upsert's older file slice, an inflight instant's file and a
+- [x] an upsert's older file slice, an inflight instant's file and a
       replaced file group are not read; the rows equal Hudi's own read
-- [ ] merge-on-read is refused by name (its log files hold rows the base
+- [x] merge-on-read is refused by name (its log files hold rows the base
       files do not)
 
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
@@ -1570,6 +1570,16 @@ table ended with an append, and pyiceberg's fast append carries the
 live entries only, so no DELETED entry was left to skip. The table now
 ends with the delete, and the test asserts the current snapshot HOLDS a
 DELETED entry before believing the plan skipped it.
+
+**Hudi (lake-hudi), written by Hudi itself** — 1.2.1 on Spark 4.1
+through pyspark, timeline layout 2: an insert, an upsert that rewrote
+every file group, a delete, an insert_overwrite of one partition. The
+plan reads Hudi's own count and sums, no record twice, and leaves out
+the older slices and the replaced group; keeping replaced groups (the
+mutant) is caught. The first run found that Hudi compresses its pages
+with GZIP by default, which okay-parquet had refused by name: it now
+reads GZIP through the platform's `java.util.zip` (JVM, Native) and
+still refuses it on Scala.js.
 
 ### Stage 17 — objects and Parquet (2026-09-26)
 

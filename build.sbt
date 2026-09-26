@@ -2667,6 +2667,12 @@ lazy val okayParquet = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-parquet",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
+  // GZIP pages (Hudi's default) are the platform's inflate: java.util.zip
+  // on the JVM and on Native, refused by name on Scala.js
+  .jsSettings(Compile / unmanagedSourceDirectories +=
+    baseDirectory.value.getParentFile / "src" / "main" / "scala-js")
+  .nativeSettings(Compile / unmanagedSourceDirectories +=
+    baseDirectory.value.getParentFile / "src" / "main" / "scala-native")
   .jvmSettings(
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",

@@ -73,8 +73,22 @@ are refused by name. Columns are read by name, not Iceberg's field ids —
 a table whose columns were renamed after its files were written misses
 them. Avro is read by ours (`OkayAvro`, the default) or Apache Avro's
 (`import okay.lake.ApacheAvro.given`, an optional dependency); both give
-the same records for pyiceberg's manifests. Hudi is next (backlog:
-lake-hudi).
+the same records for pyiceberg's manifests.
+
+**A Hudi copy-on-write table as the source.** `HudiSource.plan(lake,
+table)` reads the `.hoodie` timeline (layout 1, or Hudi 1.x's layout 2)
+and plans, per file group, the latest base file a COMPLETED commit
+wrote; an upsert's older slices, an inflight write's files and file
+groups a replacecommit (insert_overwrite, clustering) replaced are not
+read:
+
+```scala
+val rows = Flows.collect(ParquetSource.flow[Reading](HudiSource.plan(lake, "readings"))).runWith
+```
+
+Merge-on-read tables are refused by name — their log files hold rows
+their base files do not. Hudi writes GZIP pages by default; okay-parquet
+reads them with the platform's `java.util.zip`.
 
 **SQL over the output: DuckDB, by the manifest.** An analyst's DuckDB
 reads exactly what a run made visible — the manifest's objects, never a
