@@ -473,9 +473,9 @@ object Schedulers {
       /** the owner's own fork: onto its deque, no CAS, no signal */
       def pushLocal(t: DriveTask[?]): Unit = deque.push(t)
 
-      /** the monitor's own record of `deque.ownerEnd` at its last look:
+      /** the monitor's own record of `deque.thiefEnd` at its last look:
        * read and written by the monitor thread only */
-      var seenOwnerEnd = -1L
+      var seenThiefEnd = -1L
 
       /** owner only: its own end first, then what came from outside */
       private def take(): DriveTask[?] | Null =
@@ -575,11 +575,12 @@ object Schedulers {
      * know a fiber is long before it has run, so a separate thread
      * looks: every `monitorEveryNanos` it reads each worker's deque
      * (two volatile longs it already has) and calls a worker STUCK when
-     * work waits there and its owner end has not moved since the last
-     * look. For a stuck worker it wakes parked workers, one per waiting
+     * work waits there and its thief end has not moved since the last
+     * look — the waiting tasks have waited a whole tick. For a stuck worker it wakes parked workers, one per waiting
      * task, and on a `watched` scheduler starts overflow workers when
-     * nobody is parked. It parks itself when no worker is awake and
-     * nothing is queued, so an idle scheduler has no ticking thread.
+     * nobody is parked. It parks itself after ~10 ms with no worker
+     * awake and nothing queued, so an idle scheduler has no ticking
+     * thread.
      */
     @volatile private var monitorParked = false
     private val monitor: Thread | Null =
@@ -589,31 +590,49 @@ object Schedulers {
         t.setDaemon(true)
         t
 
+    /** idle looks in a row before the monitor parks: ~10 ms at the
+     * default tick. Parking at the FIRST idle look put an unpark — a
+     * syscall — on the worker that woke next, once per park, and a
+     * program that parks its workers between short operations paid it
+     * every time (measured: +7% on sequential spawn/join). */
+    private val idleLooksBeforePark: Int =
+      if monitorEveryNanos <= 0L then 0 else math.max(1L, 10000000L / monitorEveryNanos).toInt
+
     private def monitorLoop(): Unit =
+      var idle = 0
       while !stopped do
-        if awake.get == 0 && submissionsSize.get == 0 then
+        if awake.get == 0 && submissionsSize.get == 0 then idle += 1 else idle = 0
+        if idle >= idleLooksBeforePark then
           // publish "parked" BEFORE the last look, as a worker does: a
           // worker that wakes after it reads the flag and unparks us
           monitorParked = true
           if awake.get == 0 && submissionsSize.get == 0 && !stopped then
             java.util.concurrent.locks.LockSupport.park(this)
           monitorParked = false
+          idle = 0
         else
           java.util.concurrent.locks.LockSupport.parkNanos(this, monitorEveryNanos)
           look()
 
-    /** one look over every worker; bounded by `live` */
+    /** one look over every worker; bounded by `live`. Work has WAITED a
+     * whole tick when the deque's thief end has not moved: it moves on
+     * every steal and when the owner pops the last task, so a worker
+     * turning over tiny tasks moves it constantly, and a worker working
+     * down a burst — long tasks or short, blocking or not — leaves it
+     * where it is. (The owner end was the first cut, and a burst of
+     * 87 us tasks moved it between every two looks: never "stuck",
+     * never spread.) */
     private def look(): Unit =
       val alive = live.get
       var i = 0
       while i < alive do
         val w: Worker = workers(i)
-        val end = w.deque.ownerEnd
+        val end = w.deque.thiefEnd
         val waiting = w.size
-        if waiting > 0 && end == w.seenOwnerEnd && !w.parked then
+        if waiting > 0 && end == w.seenThiefEnd && !w.parked then
           val woken = wakeUpTo(waiting)
           if woken < waiting && overflow > 0 then grow(waiting - woken)
-        w.seenOwnerEnd = end
+        w.seenThiefEnd = end
         i += 1
 
     /** unpark up to `k` distinct parked workers; how many were */
@@ -728,9 +747,9 @@ object Schedulers {
         val n = bottom - top.get
         if n < 0 then 0 else n.toInt
 
-      /** the owner's end, as the monitor sees it: it moves on every push
-       * and pop by the owner, never on a steal */
-      def ownerEnd: Long = bottom
+      /** the thieves' end, as the monitor sees it: it moves on every
+       * steal and when the owner pops the last task, never on a push */
+      def thiefEnd: Long = top.get
 
       private def index(i: Long, len: Int): Int = (i & (len - 1)).toInt
 
