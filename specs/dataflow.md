@@ -316,6 +316,17 @@ not against its existence):
       exchange to push below yet, so this box could only have been
       checked by a test that asserts nothing
 
+Stage 18 — table formats as sources (TestDelta):
+- [ ] a Delta table's snapshot is read from `_delta_log` — the last
+      checkpoint (nested Parquet) and the JSON commits after it — with no
+      Hadoop; its live data files become the row-group plan
+- [ ] a file a DELETE removed is not read; the rows equal what delta-rs
+      reads for the same version
+- [ ] partition values (not in the data files) arrive as columns typed by
+      the table's schema
+- [ ] deletion vectors, column mapping and v2 checkpoints are refused by
+      name, never read wrongly
+
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
 - [x] a prefix of Parquet objects is planned as one partition per row
       group; a job over 4 workers reads every row once and writes
@@ -991,6 +1002,14 @@ a way to start from a known mark rather than from nothing.
   retry writes another. The commit writes `_manifest.json` naming the
   objects the run's partials named — one per partition — and a reader
   plans from it; the commit then deletes what it does not name.
+- **Reading a Delta log is not writing one** (lake-delta,
+  2026-09-26). specs/data.md refuses hand-rolled table COMMIT protocols
+  and adopts Delta Kernel for writes; a snapshot READ is a replay of an
+  append-only journal — adds minus removes after the last checkpoint —
+  and okay-delta's Kernel road cannot run in a worker (Hadoop, JDK 21).
+  What the replay cannot honour it refuses by name: a deletion vector
+  would silently resurrect deleted rows, column mapping would read the
+  wrong columns.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
