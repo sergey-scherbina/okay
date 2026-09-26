@@ -64,7 +64,6 @@ DuckDB reads through okay-sql's `Sql` seam as `JdbcSql` does everywhere
   through a staging sink (okay-kafka's `EpochLog`).
 - Local disk: a worker holds one partition's output file on disk until
   it is put.
-- Flat Parquet only, as okay-parquet reads and writes.
 
 ## Literature
 

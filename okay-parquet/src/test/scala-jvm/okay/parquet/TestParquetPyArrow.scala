@@ -69,3 +69,103 @@ print(t.num_rows, f.num_row_groups, t.column("name").null_count, t.column("name"
 """, file.toString)
     assertEquals(said, s"3000 3 ${(0 until 3000).count(_ % 7 == 3)} row 1 — чай ${2L * 1000003L}")
   }
+
+  /** the rows pyarrow writes below, as ours must read them */
+  def expected(n: Int): Vector[(String, Vector[Any])] =
+    def tags(i: Int): Any =
+      if i % 5 == 0 then null else if i % 7 == 0 then Vector() else
+        (0 to i % 4).toVector.map(k => if k == 2 && i % 3 == 0 then null else s"t${i}_$k")
+    def pt(i: Int): Any = if i % 6 == 0 then null else Vector("x" -> i * 0.5, "y" -> (if i % 4 == 0 then null else i * 1.5))
+    def trips(i: Int): Any = (0 until i % 3).toVector.map(k => Vector("id" -> (i * 10L + k), "km" -> k * 0.25))
+    def mat(i: Int): Any = (0 until i % 3).toVector.map(k => (0 until k % 3).toVector.map(_.toLong))
+    def m(i: Int): Any = if i % 10 == 1 then null else if i % 2 == 0 then
+      Vector(Vector("key" -> "a", "value" -> i.toLong), Vector("key" -> "b", "value" -> (i + 1L))) else Vector()
+    Vector("id" -> Vector.tabulate(n)(_.toLong), "tags" -> Vector.tabulate(n)(tags), "pt" -> Vector.tabulate(n)(pt),
+      "trips" -> Vector.tabulate(n)(trips), "mat" -> Vector.tabulate(n)(mat), "m" -> Vector.tabulate(n)(m))
+
+  test("pyarrow's NESTED files — lists, structs, lists of structs and of lists, maps — read equal, v1 and v2") {
+    assume(python.isDefined, "no python with pyarrow")
+    val dir = Files.createTempDirectory("okay-parquet-nested")
+    val _ = py("""
+import sys, os, pyarrow as pa, pyarrow.parquet as pq
+d = sys.argv[1]
+n = 2000
+def tags(i):
+  if i % 5 == 0: return None
+  if i % 7 == 0: return []
+  return [None if k == 2 and i % 3 == 0 else "t%d_%d" % (i, k) for k in range(i % 4 + 1)]
+t = pa.table({
+  "id": pa.array(range(n), pa.int64()),
+  "tags": pa.array([tags(i) for i in range(n)], pa.list_(pa.string())),
+  "pt": pa.array([None if i % 6 == 0 else {"x": i * 0.5, "y": None if i % 4 == 0 else i * 1.5} for i in range(n)],
+                 pa.struct([("x", pa.float64()), ("y", pa.float64())])),
+  "trips": pa.array([[{"id": i * 10 + k, "km": k * 0.25} for k in range(i % 3)] for i in range(n)],
+                    pa.list_(pa.struct([("id", pa.int64()), ("km", pa.float64())]))),
+  "mat": pa.array([[[j for j in range(k % 3)] for k in range(i % 3)] for i in range(n)], pa.list_(pa.list_(pa.int64()))),
+  "m": pa.array([None if i % 10 == 1 else ([("a", i), ("b", i + 1)] if i % 2 == 0 else []) for i in range(n)],
+                pa.map_(pa.string(), pa.int64())),
+})
+for v in ["1.0", "2.0"]:
+  for dic in [True, False]:
+    pq.write_table(t, os.path.join(d, "n-%s-%s.parquet" % (v, dic)), data_page_version=v, use_dictionary=dic, row_group_size=700)
+""", dir.toString)
+    for f <- Files.list(dir).toArray.map(_.toString).sorted do
+      val t = OkayParquet.read(ReadAt.of(Files.readAllBytes(java.nio.file.Path.of(f))))
+      assertEquals(values(t), expected(2000), f)
+  }
+
+  test("pyarrow's DELTA and BYTE_STREAM_SPLIT encodings read equal") {
+    assume(python.isDefined, "no python with pyarrow")
+    val file = Files.createTempFile("okay-parquet-delta", ".parquet")
+    val _ = py("""
+import sys, pyarrow as pa, pyarrow.parquet as pq
+n = 5000
+t = pa.table({
+  "i": pa.array([i * 7 - 1000 for i in range(n)], pa.int64()),
+  "j": pa.array([(i * 13) % 997 for i in range(n)], pa.int32()),
+  "s": pa.array(["prefix-%05d" % (i // 3) for i in range(n)], pa.string()),
+  "b": pa.array([("x" * (i % 5)).encode() for i in range(n)], pa.binary()),
+  "f": pa.array([i * 0.125 for i in range(n)], pa.float64()),
+})
+pq.write_table(t, sys.argv[1], use_dictionary=False, data_page_version="2.0",
+  column_encoding={"i": "DELTA_BINARY_PACKED", "j": "DELTA_BINARY_PACKED", "s": "DELTA_BYTE_ARRAY",
+                   "b": "DELTA_LENGTH_BYTE_ARRAY", "f": "BYTE_STREAM_SPLIT"})
+""", file.toString)
+    val t = OkayParquet.read(ReadAt.of(Files.readAllBytes(file)))
+    val n = 5000
+    assertEquals(values(t), Vector(
+      "i" -> Vector.tabulate(n)(i => i * 7L - 1000),
+      "j" -> Vector.tabulate(n)(i => ((i * 13) % 997).toLong),
+      "s" -> Vector.tabulate(n)(i => f"prefix-${i / 3}%05d"),
+      "b" -> Vector.tabulate(n)(i => ("x" * (i % 5)).getBytes.toVector),
+      "f" -> Vector.tabulate(n)(_ * 0.125)))
+  }
+
+  test("ours NESTED, read by pyarrow") {
+    assume(python.isDefined, "no python with pyarrow")
+    val t = nested(1000)
+    val file = Files.createTempFile("okay-parquet-nested", ".parquet")
+    Files.write(file, OkayParquet.write(t, groupRows = 300)): Unit
+    val said = py("""
+import sys, json, pyarrow.parquet as pq
+t = pq.read_table(sys.argv[1])
+print(json.dumps([t.column("tags")[i].as_py() for i in (0, 1, 3, 7, 12)]))
+print(json.dumps([t.column("point")[i].as_py() for i in (0, 1, 4)]))
+print(json.dumps(t.column("trips")[5].as_py()), json.dumps(t.column("matrix")[5].as_py()))
+print(t.column("tags").null_count, t.column("point").null_count)
+""", file.toString)
+    val v = values(t).toMap
+    def json(x: Any): String = x match
+      case null => "null"
+      case s: String => "\"" + s + "\""
+      case fs: Vector[?] if fs.headOption.exists(_.isInstanceOf[(?, ?)]) =>
+        fs.collect { case (k: String, v) => s"\"$k\": ${json(v)}" }.mkString("{", ", ", "}")
+      case xs: Vector[?] => xs.map(json).mkString("[", ", ", "]")
+      case other => other.toString
+    val expect = Vector(
+      Vector(0, 1, 3, 7, 12).map(v("tags")(_)).map(json).mkString("[", ", ", "]"),
+      Vector(0, 1, 4).map(v("point")(_)).map(json).mkString("[", ", ", "]"),
+      json(v("trips")(5)) + " " + json(v("matrix")(5)),
+      s"${(0 until 1000).count(_ % 5 == 0)} ${(0 until 1000).count(_ % 6 == 0)}").mkString("\n")
+    assertEquals(said, expect)
+  }

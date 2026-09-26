@@ -44,6 +44,11 @@ class TestParquetJava extends munit.FunSuite:
     same(t, OkayParquet.read(ReadAt.of(bytes)))
   }
 
+  test("ParquetJava stays flat: a nested file is refused by name, not misread") {
+    val e = intercept[Refused](ParquetJava.footer(ReadAt.of(OkayParquet.write(nested(10)))))
+    assert(e.getMessage.contains("nested"), e.getMessage)
+  }
+
   test("by name, and the refusal names the jar to add") {
     assertEquals(Parquets.byName("okay").map(_.name), Right("okay"))
     assertEquals(Parquets.byName("parquet-java").map(_.name), Right("parquet-java"))

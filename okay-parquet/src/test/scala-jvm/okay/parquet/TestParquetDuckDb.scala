@@ -64,3 +64,44 @@ class TestParquetDuckDb extends munit.FunSuite:
         case Column.Decimal(_, 2, v, _) => assertEquals(v(3), BigInt(75), codec)
         case other => fail(s"$codec: price as ${Column.describe(other)}")
   }
+
+  test("DuckDB's nested columns — lists, structs, a list of structs — read equal") {
+    val file = Files.createTempFile("okay-duckdb-nested", ".parquet")
+    Files.delete(file)
+    val c = DriverManager.getConnection("jdbc:duckdb:")
+    try c.createStatement().execute(
+      s"""copy (select range as id,
+                case when range % 5 = 0 then null else list_transform(range(range % 3), k -> 'v' || k) end as xs,
+                case when range % 4 = 0 then null else {'a': range, 'b': 'b' || range} end as st,
+                list_transform(range(range % 2), k -> {'k': k, 'w': k * 0.5}) as ps
+                from range(3000))
+          to '$file' (format parquet, row_group_size 1000)""")
+    finally c.close()
+    val t = OkayParquet.read(ReadAt.of(Files.readAllBytes(file)))
+    val n = 3000
+    assertEquals(values(t), Vector(
+      "id" -> Vector.tabulate(n)(_.toLong),
+      "xs" -> Vector.tabulate(n)(i => if i % 5 == 0 then null else (0 until i % 3).toVector.map(k => s"v$k")),
+      "st" -> Vector.tabulate(n)(i => if i % 4 == 0 then null else Vector("a" -> i.toLong, "b" -> s"b$i")),
+      "ps" -> Vector.tabulate(n)(i => (0 until i % 2).toVector.map(k => Vector("k" -> k.toLong, "w" -> k * 0.5)))))
+  }
+
+  test("DuckDB reads ours NESTED") {
+    val t = nested(2000)
+    val file = Files.createTempFile("okay-parquet-nested", ".parquet")
+    Files.write(file, OkayParquet.write(t, groupRows = 700)): Unit
+    val v = values(t).toMap
+    def lists(col: String) = v(col).collect { case xs: Vector[?] => xs.length.toLong }.sum
+    val (tags, nullTags, trips, points) = query(
+      s"""select sum(len(tags)), count(*) - count(tags), sum(len(trips)), count(point)
+          from read_parquet('$file')""") { rs => (rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }
+    assertEquals(tags, lists("tags"))
+    assertEquals(nullTags, v("tags").count(_ == null).toLong)
+    assertEquals(trips, lists("trips"))
+    assertEquals(points, v("point").count(_ != null).toLong)
+    val km = query(s"select sum(t.km) from (select unnest(trips) as t from read_parquet('$file'))")(_.getDouble(1))
+    val expected = v("trips").collect { case xs: Vector[?] => xs }.flatten.collect {
+      case fs: Vector[?] => fs.collectFirst { case ("km", k: Double) => k }.getOrElse(0.0) }.sum
+    assertEqualsDouble(km, expected, 1e-9)
+  }
+

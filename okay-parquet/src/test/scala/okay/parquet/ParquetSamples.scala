@@ -47,3 +47,52 @@ object ParquetSamples extends munit.Assertions:
     case Column.Decimal(_, _, v, _) => v(i)
     case other => other
 
+  /** a cell as a comparable value, nulls and nesting included */
+  def value(c: Column, i: Int): Any =
+    if !c.validity(i) then null
+    else c match
+      case Column.ListOf(o, child, _) => (o(i) until o(i + 1)).toVector.map(value(child, _))
+      case Column.Struct(fs, _) => fs.map((k, f) => k -> value(f, i))
+      case other => cell(other, i)
+
+  /** every column's rows as values */
+  def values(t: Table): Vector[(String, Vector[Any])] =
+    t.cols.map((n, c) => n -> (0 until c.length).toVector.map(value(c, _)))
+
+  /** lists (null, empty, with null elements), structs (null, with null
+   * fields), a list of structs and a list of lists */
+  def nested(n: Int): Table =
+    val all = Array.fill(n)(true)
+    // tags: row i has i % 4 strings; every 5th row a null list, every 7th an empty one
+    val tagOk = Array.tabulate(n)(i => i % 5 != 0)
+    val tagLen = Array.tabulate(n)(i => if !tagOk(i) || i % 7 == 0 then 0 else i % 4 + 1)
+    val tagOff = tagLen.scanLeft(0)(_ + _)
+    val tagVals = Array.tabulate(tagOff(n))(k => s"tag $k")
+    val tagValid = Array.tabulate(tagOff(n))(k => k % 9 != 4)
+    // point: null every 6th row, y null every 4th
+    val px = Array.tabulate(n)(_ * 0.5)
+    val py = Array.tabulate(n)(_ * 1.5)
+    // trips: list of (id, km), i % 3 of them
+    val tripLen = Array.tabulate(n)(_ % 3)
+    val tripOff = tripLen.scanLeft(0)(_ + _)
+    val m = tripOff(n)
+    // matrix: list of lists of ints: i % 3 rows of (i % 2 + 1) ints
+    val rowsLen = Array.tabulate(n)(_ % 3)
+    val rowsOff = rowsLen.scanLeft(0)(_ + _)
+    val inner = rowsOff(n)
+    val innerLen = Array.tabulate(inner)(k => k % 2 + (if k % 5 == 0 then 0 else 1))
+    val innerOff = innerLen.scanLeft(0)(_ + _)
+    Table(Vector(
+      "id" -> Column.Int64(Array.tabulate(n)(_.toLong), all),
+      "tags" -> Column.ListOf(tagOff, Column.Utf8(tagVals, tagValid), tagOk),
+      "point" -> Column.Struct(Vector(
+        "x" -> Column.Float64(px, Array.fill(n)(true)),
+        "y" -> Column.Float64(py, Array.tabulate(n)(_ % 4 != 0))), Array.tabulate(n)(_ % 6 != 0)),
+      "trips" -> Column.ListOf(tripOff, Column.Struct(Vector(
+        "id" -> Column.Int64(Array.tabulate(m)(_.toLong * 10), Array.fill(m)(true)),
+        "km" -> Column.Float64(Array.tabulate(m)(_ * 0.25), Array.tabulate(m)(_ % 3 != 1))), Array.fill(m)(true)), all),
+      "matrix" -> Column.ListOf(rowsOff, Column.ListOf(innerOff,
+        Column.Int64(Array.tabulate(innerOff(inner))(_.toLong), Array.fill(innerOff(inner))(true)),
+        Array.fill(inner)(true)), all)),
+      Vector.empty)
+

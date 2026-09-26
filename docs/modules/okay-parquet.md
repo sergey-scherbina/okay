@@ -55,18 +55,23 @@ none) and have pyarrow read ours. `Parquets.byName("okay" |
 | FIXED_LEN_BYTE_ARRAY | `FixedBinary(width)` | both ways |
 | INT96 (Spark's legacy timestamp) | `Timestamp(Nano, Some("UTC"))` | read |
 | DECIMAL | `Decimal(precision, scale)` | read |
+| a group | `Struct(fields)` | both ways |
+| LIST (three-level; two-level and unannotated repeated read) | `ListOf(child)` | both ways |
+| MAP | `ListOf(Struct(key, value))` | read |
 
-Every column is written OPTIONAL, its values PLAIN, one data page per
-64K rows. Read are data pages v1 and v2, dictionary pages, PLAIN and the
-dictionary encodings, and RLE booleans.
+Every node is written OPTIONAL — a list the three-level standard —
+its values PLAIN, one data page per 64K rows. Read are data pages v1
+and v2, dictionary pages, PLAIN, the dictionary encodings, RLE booleans,
+DELTA_BINARY_PACKED, DELTA_LENGTH_BYTE_ARRAY, DELTA_BYTE_ARRAY and
+BYTE_STREAM_SPLIT. Nested columns are Dremel's levels, assembled per
+leaf; pyarrow's and DuckDB's nested files read equal, and they read ours.
 
 ## Gotchas
 
-- FLAT schemas only: a group or a REPEATED column (lists, structs, maps)
-  is refused by name, naming the column.
-- Refused by name too: the DELTA_* and BYTE_STREAM_SPLIT encodings, and
-  GZIP, LZ4 or BROTLI pages. Spark's, DuckDB's, pyarrow's and
-  parquet-java's defaults use none of them.
+- `ParquetJava` is flat: a nested file is refused by name there; ours
+  reads and writes both.
+- Refused by name: GZIP, LZ4 or BROTLI pages. Spark's, DuckDB's,
+  pyarrow's and parquet-java's defaults use none of them.
 - A timestamp's zone other than UTC is written as UTC-adjusted and read
   back as `Some("UTC")`: Parquet records whether a timestamp is adjusted,
   not the zone.

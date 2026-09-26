@@ -71,19 +71,19 @@ the same reader).
 
 ## Stage 2 — nested columns (parquet-nested, 2026-09-26)
 
-- [ ] structs, lists and maps both ways: okay-arrow's `Struct` and
+- [x] structs, lists and maps both ways: okay-arrow's `Struct` and
       `ListOf` shredded into repetition and definition levels (Dremel) on
       write, assembled from them on read, to any depth `Column.MaxNesting`
       allows; a map reads as a list of `key`/`value` structs
-- [ ] the list forms other writers use are read: the three-level
+- [x] the list forms other writers use are read: the three-level
       standard, the two-level legacy (a repeated primitive, a repeated
       group named `array` or `<name>_tuple`), and an unannotated repeated
       field
-- [ ] pyarrow's and DuckDB's nested files read equal to what they wrote;
+- [x] pyarrow's and DuckDB's nested files read equal to what they wrote;
       ours read by both equal to what we wrote
-- [ ] DELTA_BINARY_PACKED, DELTA_LENGTH_BYTE_ARRAY, DELTA_BYTE_ARRAY and
+- [x] DELTA_BINARY_PACKED, DELTA_LENGTH_BYTE_ARRAY, DELTA_BYTE_ARRAY and
       BYTE_STREAM_SPLIT read (pyarrow writes each on request)
-- [ ] `ParquetJava` stays flat and refuses a nested file by name
+- [x] `ParquetJava` stays flat and refuses a nested file by name
 
 ## Decisions
 
@@ -121,3 +121,22 @@ passing on PLAIN pages alone.
   readers use — decides a list's offsets and a struct's validity from
   ONE leaf's levels and each leaf's own element ranges, so a column is
   built in one pass per leaf and never as a tree of objects per row.
+
+## Results (parquet-nested, 2026-09-26)
+
+**Columnar assembly held on the first run against every writer**: our
+own round trip (lists of strings with null lists, empty lists and null
+elements; structs with null fields; lists of structs; lists of lists),
+pyarrow's nested files at data page v1 and v2 with and without
+dictionaries (maps included), and DuckDB's. The mutant that never
+splits a list at its repetition level turns the round trip red.
+
+**The DELTA encodings read what pyarrow writes on request** — sorted
+and scattered INT64 and INT32 (DELTA_BINARY_PACKED), prefix-sharing
+strings (DELTA_BYTE_ARRAY), byte strings by length
+(DELTA_LENGTH_BYTE_ARRAY), doubles split by byte (BYTE_STREAM_SPLIT).
+
+**The test was wrong once and the tool was right**: hand-computed
+expectations of which tags row 3 holds disagreed with pyarrow reading
+our file; the file was right, and the test now derives what pyarrow
+should print from the values it wrote.

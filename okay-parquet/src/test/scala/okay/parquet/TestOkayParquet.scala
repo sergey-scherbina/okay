@@ -57,9 +57,25 @@ class TestOkayParquet extends munit.FunSuite:
     val good = OkayParquet.write(sample(100))
     val e2 = intercept[Refused](OkayParquet.footer(ReadAt.of(good.dropRight(20) ++ good.takeRight(8))))
     assert(e2.getMessage.contains("footer") || e2.getMessage.contains("Thrift"), e2.getMessage)
-    val nested = Table(Vector("xs" -> Column.ListOf(Array(0, 1), Column.Int64(Array(1L), Array(true)), Array(true))), Vector.empty)
-    val e3 = intercept[Refused](OkayParquet.write(nested))
+    val durations = Table(Vector("d" -> Column.Duration(okay.arrow.TimeUnit.Milli, Array(1L), Array(true))), Vector.empty)
+    val e3 = intercept[Refused](OkayParquet.write(durations))
     assert(e3.getMessage.contains("not written yet"), e3.getMessage)
+  }
+
+  test("nested columns round-trip: lists, structs, lists of structs, lists of lists — nulls and empties") {
+    val t = nested(3000)
+    for compress <- Compress.values do
+      val back = OkayParquet.read(ReadAt.of(OkayParquet.write(t, groupRows = 700, compress = compress)))
+      assertEquals(back.cols.map((n, c) => n -> Column.describe(c)), t.cols.map((n, c) => n -> Column.describe(c)), s"$compress")
+      assertEquals(values(back), values(t), s"$compress")
+  }
+
+  test("a projection of nested columns reads only theirs") {
+    val bytes = OkayParquet.write(nested(500))
+    val in = ReadAt.of(bytes)
+    val g = OkayParquet.group(in, OkayParquet.footer(in), 0, Some(Set("trips")))
+    assertEquals(g.cols.map(_._1), Vector("trips"))
+    assertEquals(values(g), values(nested(500)).filter(_._1 == "trips"))
   }
 
   test("with no import the codec is ours") {
