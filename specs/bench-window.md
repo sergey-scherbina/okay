@@ -112,8 +112,12 @@ requests (bench-window-selftest 2–4 red) and a lane that ignores
 tokens (jmh-lane-selftest 4c red).
 
 The one box behaviour the selftests cannot show — that a window
-actually OPENS on this box with siblings gating — is shown by the
-first lane run after landing: `ready-merge-numbers` is that lane.
+actually OPENS on this box with siblings gating — was shown the same
+evening by `ready-merge-numbers`: its own `Jmh/compile` gate was held
+900 s behind two sibling lanes queued ahead of it (pids 33476, 42345)
+and then started on the cap, as designed; its eight lanes then ran
+back to back in eight minutes, every one quiet at both ends, after an
+afternoon in which 101 attempts had not run one.
 
 Seen on the way, not this lane's: `gate-selftest.sh` 5 (a busy host
 survives) is load-sensitive — its host is a shell spin, and on a

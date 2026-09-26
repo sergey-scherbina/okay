@@ -1218,8 +1218,11 @@ Readiness-merge is what zip and ++ cannot express: here a fiber per
 source feeds one channel, the loser of every race simply arrives
 later. (`Source.mergeReady` is the other road — the sources' own
 continuations in a ring, no fiber and no channel, specs/ready-merge.md;
-its lanes `okayReadyMergePure`/`okayReadyMergeBuffered` are in
-MergeBenchmark and not yet measured: backlog `ready-merge-numbers`.) Chunking the STREAM (not the queue — a chunked-queue variant
+on 2x500 its matched pair — each side still on its own fiber, joined
+by the ring instead of one shared channel — read 98.6/99.0 us against
+`Source.merge`'s 114.3/106.6, and with no fiber at all on ready inputs
+68-70 us, beside 44 us for draining one source alone; ready-merge's
+Results.) Chunking the STREAM (not the queue — a chunked-queue variant
 was tried and REFUTED, it's in history.tsv) beat ZIO's own
 chunk-aware merge 3.2x. fs2's number is its worst case (singleton
 elements through its concurrency machinery), stated as such.

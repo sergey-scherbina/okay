@@ -89,7 +89,7 @@ every side whether it needs one or not.
       order and merges with an unbuffered one
 - [x] the merged source is consumed by an iteratee (`Take`/`through`)
 - [x] cross-platform: the laws that need no thread run on JS too
-- [ ] the numbers: `MergeBenchmark` 2x500, see Results
+- [x] the numbers: `MergeBenchmark` 2x500, see Results
 
 ## Design
 
@@ -180,11 +180,34 @@ the initial sources were never put in the ring (`size = 0`, `live =
 n`), so the merge parked on its first step with nothing to wake it —
 caught as a gate STALL, located from a `jstack` of the test fork.
 
-**Numbers: NOT MEASURED.** The lanes are written and compile
-(`okayReadyMergePure`, `okayReadyMergeBuffered`, beside
-`okaySourceMerge` and the control `okaySourceSingleDrain`). Over an
-hour of `jmh-lane.sh` attempts (101 tries) never got the lane lock and
-a quiet box at once: siblings' gates ran back to back (load 17-65,
-up to three sbt at once) and a Docker VM burst to ~1250% CPU for a
-while. Carried as backlog `ready-merge-numbers`; the protocol that
-should make such a window exist is `bench-window`.
+**Numbers, 2026-09-26 evening** (ready-merge-numbers, the first lanes
+through `bench-window`; `src/jmh/history.d/2026-09-26T165404Z-ready-merge.tsv`).
+`MergeBenchmark`, 2x500 `LazyList` in, `toLazyList` sum, `-f 2 -wi 3 -i
+5`, JDK 26, two rounds alternating, quiet at both ends of every lane.
+The control (`okaySourceSingleDrain`, one source, no merge) read 44.31
+±0.79 and 44.51 ±0.96: the box held still.
+
+| lane | round 1 | round 2 | against `okaySourceMerge` |
+|---|---|---|---|
+| `okaySourceMerge` (a fiber per side, one two-part channel) | 114.3 ±8.0 | 106.6 ±5.1 | — |
+| `okayReadyMergeBuffered` (a fiber per side, each into its own ring, read by the ready-merge) | 98.6 ±2.8 | 99.0 ±1.7 | **0.86x / 0.93x** |
+| `okayReadyMergePure` (no fiber, no channel) | 69.8 ±1.0 | 68.1 ±1.7 | 0.61x / 0.64x (not a matched pair) |
+
+- **The matched pair favours the ready-merge**, 7-14% in both rounds,
+  bars separate in both, same sign — and it is also the TIGHTER lane
+  (±2-3% against ±5-7%). Same fibers, same buffering, same `Drain`
+  batches; what differs is the join: two private rings and a queue of
+  wake-ups here, one shared two-part channel with a scanning reader
+  there. Filed as `source-merge-via-ready` (backlog okay-core): with
+  this, `Source.merge` can be buffer-each-side + `mergeReady` — one
+  merge mechanism — provided it keeps `chunked` and `flushAfter`.
+- **Pure is the price of merging ready inputs with no concurrency at
+  all**: 68-70 us for 1000 elements against 44 us for draining ONE
+  source of 1000 — ~25 ns per element for the ring, the tell and the
+  second source's walk. It is not a faster concurrent merge and is not
+  quoted as one; it is what a caller whose sources are already ready
+  (in memory, decoded, generated) no longer has to pay a fiber for.
+
+Before this, over an hour of `jmh-lane.sh` attempts (101 tries) never
+got the lane lock and a quiet box at once; the protocol that made the
+window is `bench-window`.
