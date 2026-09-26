@@ -50,9 +50,13 @@ object State {
   inline def set[S](s: S): S ! State % S = effect(Set(s))
 
   /**
-   * apply f to the state. Get and set are what it is, and saying so
-   * once is worth it: a `modify` spelt out is two operations with a
-   * name in between that never means anything.
+   * apply f to the state, as ONE operation (`Modify`). It means a get
+   * then a set, and until effect-row-recursion-cost (2026-09-26) it was
+   * exactly that — two operations, a closure between them, and two
+   * forwards through every handler standing between it and State's:
+   * 240 B a level of a counting recursion against 96 now, measured
+   * exact (specs/effect-row-cost.md). A handler of State's operations
+   * answers `Modify(f)` with `f(s)` as the new state and the answer.
    *
    * It answers the NEW state, as both operations do — the file's one
    * convention, and worth keeping over the statement-shaped `Unit`

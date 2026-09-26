@@ -350,6 +350,23 @@ narrower case one level past this one. specs/scoped-effects-laws.md
 has both, found (and one first written down wrong) against tests
 that were run rather than assumed correct.
 
+**The order is also a price.** A handler meets every operation of the
+program run under it, and the ones it does not handle it FORWARDS: it
+hands them outward with its own continuation attached, one node and
+one closure each (72 B an operation, measured exact —
+specs/effect-row-cost.md). So when the effects are not equally
+frequent, handle the FREQUENT one innermost and let the rare one be
+forwarded. A recursion that bumps a counter every level and logs every
+thousandth pays 168 B a level under `State.run(Writer.run(p))` — every
+counter step crosses the Writer handler — and 96 B under
+`Writer.run(State.handle(p))`, where only the rare tell crosses State.
+The answer changes shape with the order (the log outside or inside the
+pair), and where the two orders mean different things (the scoped
+effects above) the meaning decides; where they mean the same, pick the
+cheaper. Likewise prefer `State.modify(f)` to a `get` then a `set`: it
+is ONE operation (since effect-row-recursion-cost, 2026-09-26), where
+the pair is two operations, two forwards, and a closure between them.
+
 **Handling.** `runWith(using h)` for a per-operation `Handler[F]`;
 `h.tracing(log)` makes any handler a recording one, since the
 operations are already data; `!.translate` interprets each operation
