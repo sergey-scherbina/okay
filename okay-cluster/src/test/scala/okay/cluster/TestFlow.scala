@@ -452,6 +452,7 @@ class TestFlow extends munit.FunSuite {
     val twice = Flow.slices(xs, 2).keyBy(_.key)(value).map((k, v) => Ev(v, k, 1)).keyBy(_.key)(value)
     val e = intercept[IllegalArgumentException](Flows.fold(twice, keySum).runWith)
     assert(e.getMessage.contains("exchange"), e.getMessage)
-    assert(e.getMessage.contains("stage 2"), e.getMessage)
+    // and it names the road that does run two: a Shuffled job (stage 14)
+    assert(e.getMessage.contains("Shuffled"), e.getMessage)
   }
 }
