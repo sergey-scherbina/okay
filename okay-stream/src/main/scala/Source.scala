@@ -216,6 +216,25 @@ object Source {
         // branch types the re-injection — `Writer.widen`'s own shape
         (g => Inject(g).flatMap(x => toProducer[A, G](k(x))(end)))
 
+  /**
+   * Merge by READINESS on ONE thread of control (specs/ready-merge.md):
+   * the merged program keeps a ring of the sources themselves and steps
+   * them — an element that is ready is told out and its source goes to
+   * the back, a source that is not ready (an `Async.Await`) parks and
+   * its callback wakes the merge. No fiber, no `Scheduler`: it runs
+   * wherever `Async` is handled, JS included.
+   *
+   * Each source keeps its own order. When no source ever waits, the
+   * turns are a strict round-robin, so the result is deterministic.
+   *
+   * The price is the one a single thread has: a source that COMPUTES
+   * before its next element holds the others meanwhile. Give such a
+   * source its own fiber by buffering it — `Channel.buffer(n)(s).drained`
+   * — and the merge reads it like any other not-yet-ready source.
+   * `Source.merge` is the case that buffers every side.
+   */
+  def mergeReady[A](sources: Source[A]*): Source[A] = ReadyMerge(sources)
+
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart
    * across a 4x span) and exposing it would quietly break
@@ -292,6 +311,11 @@ extension [A](s: Source[A])
         { w0 => (w0: @unchecked) match
             case Writer.Say(a) => f(a).flatMap(_ => loop(k(()))) }
     loop(s)
+
+  /** `Source.mergeReady` of two sources: by readiness, on this
+   * program's own thread of control, no fiber per side */
+  infix def mergeReady[B](t: Source[B]): Source[A | B] =
+    ReadyMerge[A | B](Seq(Writer.widen[A, A | B, Unit, Async](s), Writer.widen[B, A | B, Unit, Async](t)))
 
   /**
    * Merge two sources by READINESS, back into a source — the
