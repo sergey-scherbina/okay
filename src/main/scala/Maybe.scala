@@ -46,6 +46,44 @@ object Maybe:
         case Some(x) => Cont.Pure(x)
         case None => shift(_ => pure[F, Option[A]](None))
 
+  /**
+   * SKIP INSTEAD OF STOP. `run` answers a whole program's absence;
+   * these answer it per ELEMENT or per BRANCH, and that is what makes
+   * `Maybe` more than `Abort`: an absence is decided by the handler's
+   * SCOPE, and a narrow scope drops one element and goes on.
+   *
+   * `collect` runs `f` once per element, each under its own `run`, and
+   * keeps the elements that were there — Haskell's `mapMaybe`, Scala's
+   * `collect`, with an effectful `f`. Effects of `f` other than Maybe
+   * are forwarded in element order, including those of an element that
+   * then turned out empty.
+   */
+  def collect[X, B, F[+_]](xs: Iterable[X])(f: X => B ! Maybe + F): Vector[B] ! F =
+    xs.foldLeft(pure[F, Vector[B]](Vector.empty)): (acc, x) =>
+      acc.flatMap(v => run[B, F](f(x)).map(o => if o.isEmpty then v else v :+ o.get))
+
+  /**
+   * An absence as a PRUNED BRANCH: every `Maybe` becomes a `Choose` —
+   * `Some(x)` one alternative, `None` none — so under `runChoice` a
+   * branch that found nothing dies and the others go on, and the
+   * answers are exactly the branches where everything was there.
+   *
+   * A walk of its own rather than `Effects.interpret`: the row being
+   * pruned usually carries `Choose` ALREADY (that is why it is pruned),
+   * and `interpret`'s `Distinct[Maybe + Choose + H]` refuses a second
+   * `Choose`. Here `Maybe` is tested first and everything else is
+   * forwarded as it is, so `H` may hold `Choose` — the new alternatives
+   * join the ones already there, which is the point.
+   */
+  def prune[A, H[+_]](p: A ! Maybe + H): A ! Choose + H = (p.resume: @unchecked) match
+    case Free.Return(a) => Free.Return(a)
+    case Free.Inject(e) => split[Maybe, H](e)
+      (m => Free.Inject(Choose(m.value.toList)): A ! Choose + H)
+      (h => Free.Inject(h): A ! Choose + H)
+    case Free.Bind(Free.Inject(e), k) => split[Maybe, H](e)
+      (m => Free.Inject(Choose(m.value.toList)).flatMap(x => prune(k(x))): A ! Choose + H)
+      (h => Free.Inject(h).flatMap(x => prune(k(x))): A ! Choose + H)
+
   extension [A, F[+_]](p: A ! Maybe + F)
     /** where p found nothing, try q — a handler installed over p alone,
      * so the row comes out unchanged (Throws' `orElse`, for absence) */

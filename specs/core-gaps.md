@@ -40,6 +40,8 @@ extension [A](o: Option[A]) inline def maybe: A ! Maybe   // Some → answer, No
 object Maybe:
   inline def none[A]: A ! Maybe
   def run[A, F[+_]](p: A ! Maybe + F): Option[A] ! F     // Nothing found → None
+  def collect[X, B, F[+_]](xs: Iterable[X])(f: X => B ! Maybe + F): Vector[B] ! F  // skip the absent
+  def prune[A, H[+_]](p: A ! Maybe + H): A ! Choose + H  // absent → a dead branch
   extension [A, F[+_]](p: A ! Maybe + F)
     def orElse(q: => A ! Maybe + F): A ! Maybe + F      // try q where p found nothing
     def getOrElse(a: => A): A ! F
@@ -77,6 +79,9 @@ object Fresh:                                        // not a top-level `fresh`:
       nothing, and `getOrElse` answers the default
 - [x] a refutable pattern in a `Maybe` row compiles and stops through
       `Maybe` (`CanFail`)
+- [x] `collect` skips the elements that are not there and goes on
+- [x] `prune` under `runChoice`: a branch that found nothing dies and the
+      others answer, including in a row that already holds `Choose`
 - [x] stack-safe: 100 000 `Some(i).maybe` binds in a row
 
 ### Either → Throws
@@ -108,6 +113,16 @@ family's handlers. `Maybe` is an absence. With `Maybe` and `Throws` now in
 one row, the question "was it not there, or did it break?" finally has two
 answers. `Abort` stays as it is because there are call sites using it
 (docs/guide.md, okay2).
+
+**Stop OR skip: the handler's scope decides** (operator's question,
+2026-09-26: "otherwise it is the same Abort"). An absence ends the
+scope of the handler that answers it, and nothing more. `run` over the
+whole program stops it. `collect` puts a `run` around EACH element, so an
+absent element is skipped and the rest go on. `prune` turns each `Maybe`
+into a `Choose` (`Some(x)` is one alternative, `None` is none), so under
+`runChoice` an absent branch dies and the others answer. `Abort` has
+only the first reading, because its scope is always a `Throws`
+handler's.
 
 **CanFail priority: Choose > Maybe > Abort.** A searching row prunes, as
 before. Between the two stopping effects, `Maybe` wins, because a refuted

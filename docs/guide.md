@@ -241,6 +241,18 @@ def adult(name: String): Int ! R =
 // runEither(Maybe.run(adult("eve"))) == Right(None); a minor is Left("minor")
 ```
 
+Stopping is only one reading of an absence. The handler's SCOPE decides
+what `None` ends, and a narrow scope SKIPS instead. `Maybe.collect` runs
+each element under its own handler and keeps the ones that were there.
+`Maybe.prune` turns an absence into a dead branch of a search, so
+`runChoice` answers the branches where everything was found:
+
+```scala
+assertEquals(!.run(Maybe.collect(List("ann", "eve", "bob"))(age)), Vector(31, 42))
+val known: Int ! Maybe + Choose = for n <- choose("ann", "eve", "bob").plus[Maybe]; a <- age(n).plus[Choose] yield a
+assertEquals(!.run(runChoice(Maybe.prune(known))), Seq(31, 42))
+```
+
 `p.orElse(q)` tries `q` where `p` found nothing, `p.getOrElse(a)` ends
 in a default, and a refuted `case Some(x) <-` in a `Maybe` row stops
 through `Maybe` (it wins over `Abort` where a row has both). An

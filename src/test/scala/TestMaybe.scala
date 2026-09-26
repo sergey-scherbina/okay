@@ -57,6 +57,15 @@ class TestMaybe extends munit.FunSuite {
     assertEquals(!.run(Maybe.run(Maybe.none[Int])), None)
   }
 
+  test("collect skips the elements that are not there, and goes on") {
+    assertEquals(!.run(Maybe.collect(List("ann", "eve", "bob"))(age)), Vector(31, 42))
+  }
+
+  test("prune: under Choose a branch that found nothing dies, the others go on") {
+    val known: Int ! Maybe + Choose = for n <- choose("ann", "eve", "bob").plus[Maybe]; a <- age(n).plus[Choose] yield a
+    assertEquals(!.run(runChoice(Maybe.prune(known))), Seq(31, 42))
+  }
+
   test("stack-safe over 100 000 binds") {
     val n = 100000
     val p = (1 to n).foldLeft(pure[Maybe, Long](0L))((acc, i) => acc.flatMap(s => Some(i).maybe.map(s + _)))

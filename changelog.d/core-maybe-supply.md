@@ -7,6 +7,12 @@
   `Maybe + Throws % E` is a good row. `Abort + Throws % E` is refused by
   `Distinct`, and TestMaybe now pins that. A refuted pattern in a `Maybe`
   row stops through `Maybe` (`CanFail`: Choose > Maybe > Abort).
+- An absence can be SKIPPED instead of stopping. The handler's scope
+  decides. `Maybe.collect(xs)(f)` keeps the elements that were there
+  (`mapMaybe`). `Maybe.prune(p)` makes `None` a dead branch under
+  `runChoice`, including in a row that already holds `Choose`, which is
+  why it is its own walk and not `interpret`: `Distinct` refuses a second
+  `Choose`.
 - `either.orRaise`: the `Right` is the answer and the `Left` is raised
   into `Throws % E`.
 - `Supply[S]` (src/main/scala/Supply.scala) has one operation,
@@ -14,7 +20,7 @@
   so the program can be re-run and each `Choose` branch keeps its own seed.
   `Fresh` is `Supply % Long` with `Fresh.next`/`Fresh.run`. It is not a
   top-level `fresh`, because DI owns that name.
-- TestMaybe, TestOrRaise, TestSupply: 12 tests, including stack safety at
+- TestMaybe, TestOrRaise, TestSupply: 14 tests, including stack safety at
   100 000 binds.
 - Seven findings of the review are filed in backlog.d/okay-core:
   handler-single-pass, resume-inline-budget-guard, tag-rename-pass-cost,
