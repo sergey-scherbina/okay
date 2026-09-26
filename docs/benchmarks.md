@@ -570,6 +570,39 @@ What the handlers buy for the factor is the program as a value: the
 same block run under other handlers, a continuation that can be
 resumed again, a row type that says which effects are still unhandled.
 
+## 2d. An effect-typed recursion — what a level costs, and what it cost
+
+A 1 000 000-level mutual tail recursion (`isEven`/`isOdd`) that counts
+every level with `State` and logs every 1 000th with `Writer`, written
+the way the guide teaches — the effects in the type,
+`Boolean ! State % Int + Writer % String` — and run by the shipping
+handlers (compare `MutualRecursionFxBenchmark`; effect-row-recursion-cost,
+2026-09-26). Minima of three alternating rounds, before = master, after =
+master with `State.Modify`:
+
+| lane | before | after | |
+|---|---:|---:|---:|
+| `okayRow`, `State.run(Writer.run(p))` | 33.3 ms, 376 B a level | **18.2 ms, 160 B a level** | 1.83x |
+| `okayRowSwapped`, `Writer.run(State.handle(p))` | 18.1 ms, 232 B a level | **9.7 ms, 88 B a level** | 1.87x |
+
+Two causes, found with an exact bytes-a-level probe
+(`ProbeRowCost`, specs/effect-row-cost.md) and fixed or documented:
+
+- **`modify` was two operations**, a `get` then a `set`, with a closure
+  between them. It is one now (`State.Modify`), in every interpreter of
+  State's operations.
+- **Forwarding costs 72 B an operation.** Under `State.run(Writer.run(p))`
+  every count crosses the Writer handler on its way out; handled the
+  other way round only the rare tell is forwarded. The guide now says
+  so ("The order is also a price"): the frequent effect innermost.
+
+Together the idiomatic program went from 33 ns to 9.7 ns a level. For
+scale, the same recursion with the count and the log passed as
+interfaces over `!.tailcall` reads about 4 ns a level, and cats Eval
+with the same interfaces about 2.5 ns — the effect row still costs
+something over an interface call, now a factor of about 2.4 rather
+than 9.
+
 ## 3. Choice — 2^13 branches, all collected
 
 | List (floor) | **Okay** | kyo | atnos |

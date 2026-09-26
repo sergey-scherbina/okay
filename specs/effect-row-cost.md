@@ -95,7 +95,8 @@ matter in time.
 - [ ] the forwarding arms reuse the matched `Inject` (ProbeRowCost: the
       row's forwarding cost per operation down by 16 B)
 - [x] docs say which handler order to choose, with this measurement (guide, "The order is also a price")
-- [ ] MutualRecursionFxBenchmark `okayRow` and `okayRowSwapped` re-measured;
-      docs/benchmarks.md carries the before and after
+- [x] MutualRecursionFxBenchmark `okayRow` and `okayRowSwapped` re-measured;
+      docs/benchmarks.md §2d carries the before and after (33.3 -> 18.2 ms,
+      18.1 -> 9.7 ms, min of 3 alternating rounds)
 - [ ] the handler lanes (docs/benchmarks.md §2 Reader/Writer, §2c) do not
       regress
