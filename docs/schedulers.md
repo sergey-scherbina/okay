@@ -63,6 +63,7 @@ Schedulers.adaptive.workers(8).watched(200.millis).build
 | `helpAfter(d)` | how long a worker may be busy, with work still pending, before it asks for help | 50 µs |
 | `spreadAbove(d)` | the task cost above which spreading pays at all | 1 µs |
 | `watched(after, overflow)` | start one more worker when nothing has completed for `after` | off in `own`, 100 ms in `adaptive` |
+| `monitorEvery(d)` / `unmonitored` | how often the monitor looks for a worker stuck in one task with work waiting behind it; see below | 100 µs (off in `forShortTasks`) |
 
 ## The one decision this scheduler makes
 
@@ -104,6 +105,22 @@ change size gets both without touching a setting.
 `forShortTasks` and `forLongTasks` exist for when you already know,
 and they are the same rule with the threshold pinned.
 
+**The monitor, for work nobody was told about** (2026-09-26). A fiber
+forked inside a worker goes on that worker's own queue silently, and
+the rule above is asked only every sixteenth completed task — so a few
+LONG fibers, or fibers that block, used to sit behind a worker busy
+with one of them while the others slept: eight long fibers ran on one
+thread. A small monitor thread per scheduler now looks every 100 µs
+(`monitorEvery`) for a worker whose queued work has waited a whole
+look without being touched, and wakes sleeping workers to take it —
+on `adaptive` it also starts overflow workers when nobody is asleep. It
+costs nothing measurable on tiny fibers (sequential spawn/join within
+2%), goes to sleep after ~10 ms with nothing to do, and turns a burst
+of 87 µs fibers from 700 µs into 260 µs. It spreads work that has
+WAITED, whatever it is: a burst of tiny fibers over shared state is
+faster kept on one core (five-way workers at work 0: 5 400 ops/s home,
+4 000 spread), which is what `forShortTasks` — monitor off — is for.
+
 ## What `own` costs you, and what `adaptive` buys back
 
 A worker is a real thread, and a fiber that BLOCKS inside one holds
@@ -115,7 +132,13 @@ they are unattended.
 `Schedulers.adaptive` is `own` with the stuck-check on. Every
 `watched(after)` it looks at one thing: is work pending while nothing
 at all has completed since the last look? If so it starts another
-worker. Blocking then costs latency instead of the program.
+worker. Blocking then costs latency instead of the program. Since the
+monitor (above), fibers that block inside a worker are also spread
+within a tick onto sleeping workers and then overflow workers — up to
+`overflow`, which defaults to one per core. That bound is the ceiling:
+64 fibers each making 1 ms blocking calls reach 28 at once on 14 cores
+(17.6 ms a batch); `watched(overflow = 64)` reaches 64 (7.4 ms, Loom's
+8.5).
 
 ```scala
 given Scheduler = Schedulers.adaptive.workers(1).build

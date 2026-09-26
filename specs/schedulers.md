@@ -336,15 +336,44 @@ it sees progress and grows almost nothing.
   would make blocking cheap on `adaptive` rather than survivable, and
   the monitor is needed for the long-CPU case regardless.
 
-- [ ] eight 0.5 ms CPU-bound fibers forked inside an `own` fiber run
+- [x] eight 0.5 ms CPU-bound fibers forked inside an `own` fiber run
       on more than one thread (TestOwnMonitor; red on master: one)
-- [ ] fibers forked inside an `own` fiber that block wake the parked
+- [x] fibers forked inside an `own` fiber that block wake the parked
       workers (TestOwnMonitor; red on master: a peak of 2 calls on 4)
-- [ ] on `adaptive` they also reach the overflow workers
+- [x] on `adaptive` they also reach the overflow workers
       (TestOwnMonitor; red on master: a peak of 2 calls on 4 + 4)
-- [ ] the scheduler laws hold for every member (TestSchedulerLaws)
-- [ ] must not regress: sequential spawn/join on `own` (five-way) and
+- [x] the scheduler laws hold for every member (TestSchedulerLaws)
+- [x] must not regress: sequential spawn/join on `own` (five-way) and
       the kyo-shape fork/join lanes (AdversarialBenchmark
-      forkJoin10k_okayOwnInside / forkJoin10k_okayOwn)
-- [ ] must improve: five-way workers work=64 on `own`/`adaptive`,
+      forkJoin10k_okayOwnInside / forkJoin10k_okayOwn) — within 2%
+- [x] must improve: five-way workers work=64 on `own`/`adaptive`,
       blocking TCP on `adaptive`
+
+### Results (2026-09-26)
+- **As landed, two corrections to the design above, both found by
+  measurement in one fork** (compare OwnMonitorBenchmark, the monitor a
+  `@Param`). (1) "Stuck" is the deque's THIEF end unmoved for a tick,
+  not the owner end: on a burst of 87 µs tasks the owner pops one
+  between every two looks, so the owner-end test never fired — the
+  burst read 709 µs with the monitor and 695 without. The thief end
+  moves on every steal and when the owner pops the LAST task, so tiny
+  fork/join moves it constantly and a burst being worked down leaves it
+  still. With it: 254 µs. (2) The monitor parks only after ~10 ms idle.
+  Parking at the first idle look put an unpark syscall on whichever
+  worker woke next, and sequential spawn/join — whose workers park
+  between operations — paid 7% for it (85.9 against 80.2 µs); parked
+  late, 82.3 against 81.8.
+- **Refuted on the way**: spurious wakes as the spawn/join cost —
+  ProbeMonitorWakes counted ~110 extra wakes over 2 million tasks.
+- **Tick**: 100 µs. A 1 ms tick is longer than the bursts it exists
+  for (longBurst 703 µs at 1 ms, i.e. not spread).
+- **Five-way** (docs/benchmarks.md §4a note): workers work=64 on `own`
+  1 841 -> 3 339 ops/s, `adaptive` 1 838 -> 3 350; blocking TCP on
+  `adaptive` 5.2 -> 51.2, its overflow bound being the ceiling
+  (ProbeAdaptiveOverflow: 28 threads on 14 cores, 17.6 ms a batch;
+  `watched(overflow = 64)` reaches 64 at 7.4 ms, Loom's 8.5).
+- **The price, stated**: workers at work 0 on `own` 5 343 -> 4 097. Tiny
+  steps over one shared index are faster on one core, and the monitor
+  spreads work that WAITED, without knowing what it is. `own` now reads
+  Loom's number there. `forShortTasks` ("never spread") turns the
+  monitor off, so the shape has its builder.

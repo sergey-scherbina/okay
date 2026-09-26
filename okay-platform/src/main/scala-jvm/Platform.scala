@@ -355,10 +355,12 @@ object Schedulers {
     def spreadAbove(nanos: Long): Own = copy(spreadAboveNanos = if nanos < 0 then 0 else nanos)
     def spreadAbove(d: scala.concurrent.duration.FiniteDuration): Own = spreadAbove(d.toNanos)
 
-    /** never spread: every fiber runs where it was forked. For bursts
-     * of very short fibers, and for a program that wants its own
-     * ordering back */
-    def forShortTasks: Own = copy(spreadAboveNanos = Long.MaxValue)
+    /** never spread: every fiber runs where it was forked — the helper
+     * rule off AND the monitor off. For bursts of very short fibers
+     * over shared state, where one core beats many (five-way workers at
+     * work 0: 5 400 ops/s kept home against 4 000 spread), and for a
+     * program that wants its own ordering back */
+    def forShortTasks: Own = copy(spreadAboveNanos = Long.MaxValue, monitorEveryNanos = 0L)
     /** spread as soon as there is anything to spread: a core per
      * fiber where the machine has one */
     def forLongTasks: Own = copy(helpAfterNanos = 0L, spreadAboveNanos = 0L)

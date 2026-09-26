@@ -803,14 +803,14 @@ B/op, the same runs:
   work 64; `own` and `adaptive` read exactly Kyo's number, for Kyo's
   reason — short fibers stay home rather than spreading over cores
   (Schedulers.own's helper rule), which wins at work 0 and loses at
-  work 64.
+  work 64. (Fixed since: see the dated note below.)
 - *TCP*: okay's default is Loom's (117 blocking, 116 callback);
   `own`/`adaptive` lead the callback transport. **`adaptive` on the
   blocking transport fails the way Kyo does — 5.4 against Kyo's 4.9** —
   a scheduler that adds a worker when a fiber blocks does not add them
   fast enough for 64 concurrent 1 ms calls. Filed as
-  `adaptive-short-blocking-calls` (backlog okay-core); his part 2 found
-  the same mechanism in Kyo.
+  `adaptive-short-blocking-calls`; his part 2 found the same mechanism
+  in Kyo. (Fixed since: see the dated note below.)
 - *Bytes*: okay allocates the most on the worker lanes, 1.9 MB against
   Loom's 0.1 MB and CE's 1.4 MB: every step of every worker is a
   program node (`async`, `flatMap`) where the direct-style runtimes run
@@ -820,6 +820,29 @@ B/op, the same runs:
   blocking 121 against his 145) — a different machine, and the TCP
   server shares the CPU. His Kyo blocking-TCP collapse reproduces (4.9
   against his 4.95).
+
+**Fixed since, 2026-09-26 (own-scheduler-monitor).** Both `own`
+defects above had one root — a fiber forked inside a worker goes on
+its queue silently — and a monitor thread per scheduler now spreads
+work that has waited a tick (docs/schedulers.md; specs/schedulers.md,
+"Two defects"). Measured in this harness, master and the lane
+published and run alternately (ops/s, higher better):
+
+| lane | master | with the monitor |
+|---|---:|---:|
+| 8 workers, work 64, `own` | 1 841 / 1 933 | **3 339 / 3 273** |
+| 8 workers, work 64, `adaptive` | 1 838 / 1 895 | **3 350** |
+| TCP blocking, `adaptive` | 5.2 / 5.1 | **51.2** (its overflow bound: 28 threads; `watched(overflow = 64)` reaches 64) |
+| TCP callback, `own` / `adaptive` | 138.7 / 138.0 | 146.0 / 145.8 |
+| sequential spawn/join, `adaptive` | 14 318 ± 274 | 14 016 ± 210 |
+| 8 workers, work 0, `own` | 5 343 / 5 424 | 4 097 / 3 985 |
+
+The last row is the price, stated: the monitor spreads work that has
+waited, and a burst of tiny steps over one shared index is faster on
+one core — `own` now reads Loom's number there (the default okay:
+3 973) where it used to read Kyo's. `forShortTasks` turns the monitor
+off for exactly that shape. The second lane round was cut short by an
+unrelated stop and kept only where it finished (`own` workers).
 
 The default-scheduler row is what a user gets without choosing; `own`
 and `adaptive` are opt-in. Re-run: `python3 compare/five-way/apply.py
