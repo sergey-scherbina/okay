@@ -7,3 +7,6 @@
       learn its consumer is done — a finaliser on `Chunks`, or the cluster
       engine calling a stage's close — then `abandon` from it. Gate: a
       counting streamer under a downstream `take`, given back once.
+      The same gap holds for a far-side SOURCE (`Py.source`/`R.source`,
+      foreign-one-mux): a consumer that stops early leaves the iterator held
+      on the far side until its worker ends.

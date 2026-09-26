@@ -249,6 +249,7 @@ Each of these has a section with its tests in
 | modules beside the Scala | `Py.module("name", """...""")`: a few lines of Python or R in the Scala file, shipped with the jar |
 | a generated facade | `runMain okay.py.PyFacade <module> <Object> <package>`: a typed Scala object written from the module's type hints |
 | streams | `Py.stage(...)`: a function over a list becomes a stage over chunks, and a slow model holds back its source |
+| sources | `Py.source[A]("m:rows")(args)`: a Python generator of chunks (R: a closure answering the next chunk, NULL at the end) read at the consumer's pace — a file, a cursor, a query on the far side |
 | a declared environment | `PyEnv(python, packages)` through uv, `REnv(packages)` through CRAN, built once and then cached |
 | a journal | `Durable` records every call, and a replay needs no interpreter |
 
@@ -257,6 +258,15 @@ A model held on the Python side, used from Scala:
 ```scala
 val model = scoring.hold("Model")(10L).runWith.toOption.get
 assertEquals(model.call[Long]("predict")(5L).runWith, Right(15L))
+```
+
+A source the far side owns, read one chunk per call — the next chunk is
+asked for only when the consumer has taken the last, so a Scala consumer
+that stops after four rows reads two chunks of three, not the whole file
+(foreign-one-mux). In R the source is a closure:
+
+```scala
+      val out = Writer.run(R.source[Long]("rsources::rows")(10L, 3L)).runWith(using r.handler)._1.toList
 ```
 
 An R fit held in R, predicted on new data:

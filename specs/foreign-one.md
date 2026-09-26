@@ -512,7 +512,15 @@ more than it adds (the line count of what it removed goes in Results).
       and the cluster's per-language stages become the derived
       combinators (one body each); `okay-foreign` as the module,
       `okay.py` an alias. Subsumes the earlier foreign-one-modules.
-- [ ] Stage 5 — **foreign-one-mux**: `id` matched by a reader; streams
+- [x] Stage 5 — **foreign-one-mux** (2026-09-26, narrowed — Decision 17):
+      far-side SOURCES, derived from the five operations — an iterator held
+      on the far side (`call … held`), one call per chunk, `release` at its
+      end — `Py.source` (a generator; `StopIteration` its end) and
+      `R.source` (a closure; NULL its end), pulled at the consumer's pace.
+      No wire change. Duplex multiplexing with credits is filed
+      (foreign-mux-duplex) for the caller that needs two requests in
+      flight on one worker.
+- [ ] Stage 5 (as first written) — **foreign-one-mux**: `id` matched by a reader; streams
       both ways under credit; `okay_poll`; journal by `(id, seq)`. Go and
       Rust first, then Ts and Hs; Python's shim may follow if a threaded
       shim is measured to beat a pool under the GIL.
@@ -641,6 +649,17 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     exists to remove. Module types for TypeScript, Haskell, Go and Rust
     are one `Language` each, written when a cluster or facade caller needs
     one (their table road is stage 6 first).
+
+17. **Sources before multiplexing** (foreign-one-mux). The stage bundled
+    two things. A far-side STREAM (a generator, a cursor) needs no new
+    operation: it is a held iterator and a call per chunk, pulled — the
+    back-pressure is the pull, and the memory bound is one chunk each side.
+    CREDITS pay only where the far side may run ahead, which needs a duplex
+    wire with several requests in flight on one worker; no caller has that
+    need (the pool gives parallelism across workers; Python and R are
+    single-threaded by design), and the journal, the supervisor's replay and
+    six far sides would all change for it. So the source is derived now, and
+    the duplex wire waits for its first caller (foreign-mux-duplex).
 
 ## Results
 
@@ -808,3 +827,16 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     cluster stage over python3 and R), okay-foreign-workflow 12.
   - Mutant: R's `Language` addressing with Python's `:` fails 8 tests of
     `TestRFacade` and `TestRMapReduce`.
+- **Stage 5, foreign-one-mux (2026-09-26, narrowed by Decision 17).**
+  - `PyStream.pulled`: a source over any held iterator and a per-chunk
+    call; `Py.source` and `R.source` on it. Nothing new on the wire.
+  - Tests (Live): `TestPySource` — every element in order with one call per
+    chunk and a release at the end; BACK-PRESSURE: a consumer taking four of
+    ten asks the far side for two chunks of three; a generator's failure
+    ends the source by name and releases it. `TestRSource` — an R closure,
+    every element in order.
+  - Mutant: reading the whole source before telling it (read-ahead) fails
+    the order test and the back-pressure test.
+  - Open: a consumer that stops early leaves the iterator held until its
+    worker ends — the same missing close signal as stateful-early-stop,
+    which now names sources too.
