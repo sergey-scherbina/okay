@@ -34,7 +34,7 @@ class ResourceBenchmark {
   def okayBracket(): Int =
     var c = 0
     val r = (1 to N).foldLeft(pure[Produce, Int](0)): (m, _) =>
-      m.flatMap(x => bracket(x)(_ => c += 1)(r => produce(r + 1)))
+      m.flatMap(x => bracketNow(x)(_ => c += 1)(r => produce(r + 1)))
     r.runWith + c
 
   @Benchmark
@@ -45,25 +45,25 @@ class ResourceBenchmark {
     !.run(Resource.run[Int, Nothing](prog)) + c
 
   /**
-   * `bracket` PAIRED with the region lane above: the same workload —
+   * `bracketNow` PAIRED with the region lane above: the same workload —
    * N acquire/release pairs, one counter increment each, a value
    * threaded — and nothing performed inside the scope. The lane that
    * carried the "bracket costs 21%" reading is `okayBracket` above,
    * which also performs a `Produce` effect per step and runs it
-   * through bracket's own nested drive; against a bare acquire that
+   * through bracketNow's own nested drive; against a bare acquire that
    * was never a pair (bracket-pairing, 2026-09-09).
    */
   @Benchmark
   def okayBracketPure(): Int =
     var c = 0
     val r = (1 to N).foldLeft(pure[Produce, Int](0)): (m, _) =>
-      m.flatMap(x => bracket(x)(_ => c += 1)(r => pure[Produce, Int](r + 1)))
+      m.flatMap(x => bracketNow(x)(_ => c += 1)(r => pure[Produce, Int](r + 1)))
     r.runWith + c
 
   /**
    * The region PAIRED with `okayBracket`, ZIO and cats: an effect is
    * performed inside the scope, as `acquireReleaseWith`'s and
-   * `bracket`'s use bodies do. The row is `Resource + Produce`, the
+   * `bracketNow`'s use bodies do. The row is `Resource + Produce`, the
    * scope runs outermost and hands the residual to Produce's handler.
    */
   @Benchmark

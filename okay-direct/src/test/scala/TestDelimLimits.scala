@@ -83,13 +83,13 @@ class TestDelimLimits extends munit.FunSuite {
     assert(!cleaned, "the dropped continuation ran its cleanup line")
   }
 
-  test("bracket is REFUSED in a Delim row — the unsafe mix cannot be written") {
-    // `bracket` runs its body to completion inside one suspension,
+  test("bracketNow is REFUSED in a Delim row — the unsafe mix cannot be written") {
+    // `bracketNow` runs its body to completion inside one suspension,
     // which is exactly what a capture breaks. It needs a Handler for
     // the row, and Delim has none: the compiler says no.
     val e = compileErrors(
-      "okay.bracket[Int, Int, okay.Delim + okay.Pure](1)(_ => ())(r => okay.pure(r))")
-    assert(e.nonEmpty, "bracket compiled under Delim")
+      "okay.bracketNow[Int, Int, okay.Delim + okay.Pure](1)(_ => ())(r => okay.pure(r))")
+    assert(e.nonEmpty, "bracketNow compiled under Delim")
     assert(e.contains("Handler"), s"refused for the wrong reason: $e")
   }
 

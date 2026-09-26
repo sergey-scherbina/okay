@@ -64,13 +64,34 @@ class TestResource extends munit.FunSuite {
     assertEquals(released, true)
   }
 
-  test("bracket over any Handler-able row, not only Async") {
+  test("bracketNow over any Handler-able row, not only Async") {
     var released = 0
-    assertEquals(bracket(41)(_ => released += 1)(r => async(r + 1)).runWith, 42)
-    assertEquals(bracket(1)(_ => released += 1)(r => produce(r + 1)).runWith, 2)
+    assertEquals(bracketNow(41)(_ => released += 1)(r => async(r + 1)).runWith, 42)
+    assertEquals(bracketNow(1)(_ => released += 1)(r => produce(r + 1)).runWith, 2)
+    val _ = intercept[RuntimeException]:
+      bracketNow(0)(_ => released += 1)(_ => async[Int](throw RuntimeException("boom"))).runWith
+    assertEquals(released, 3)
+  }
+
+  test("bracket FORWARDS the use-program's effects, and releases after them") {
+    var log = List.empty[String]
+    val p: Int ! Writer % String =
+      bracket { log ::= "open"; 41 }(_ => log ::= "close")(r => Writer.tell(s"use $r").map(_ => r + 1))
+    assertEquals(log, Nil, "nothing runs until the program does")
+    assertEquals(!.run(Writer.run[String, Int, Pure](p)), (List("use 41"), 42))
+    assertEquals(log.reverse, List("open", "close"))
+    // a program is a value: run twice, it acquires and releases twice
+    assertEquals(!.run(Writer.run[String, Int, Pure](p)), (List("use 41"), 42))
+    assertEquals(log.reverse, List("open", "close", "open", "close"))
+  }
+
+  test("bracket releases when a forwarded Async step throws") {
+    var released = 0
     val _ = intercept[RuntimeException]:
       bracket(0)(_ => released += 1)(_ => async[Int](throw RuntimeException("boom"))).runWith
-    assertEquals(released, 3)
+    assertEquals(released, 1)
+    assertEquals(bracket(41)(_ => released += 1)(r => async(r + 1)).runWith, 42)
+    assertEquals(released, 2)
   }
 
   test("a forwarded Async.Run that THROWS still releases (resource-async-failure)") {

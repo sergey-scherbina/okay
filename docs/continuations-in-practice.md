@@ -450,7 +450,7 @@ rather than by reasoning — every line below is a test in
 | `Resource.acquire`, then `exit` (k dropped) | **the release still runs.** Resource's handler is outside the machine, so it closes what was opened |
 | `Resource.acquire` under a k invoked twice | two acquires, then two releases **at the end of the program**, LIFO — n branches hold n handles at once |
 | a cleanup line written by hand after the capture point | **it does not run.** It was part of the continuation that was dropped. Cleanup goes in `Resource`, not in the block |
-| `bracket` in a row containing `Delim` | **a compile error** ("no Handler"). Bracket runs its body to completion in one suspension, which is what a capture breaks — so the unsafe mix cannot be written |
+| `bracketNow` in a row containing `Delim` | **a compile error** ("no Handler"). It runs its body to completion in one suspension, which is what a capture breaks — so the unsafe mix cannot be written. `bracket` is `Resource` in one expression and behaves as the two rows above |
 | `try { !x } finally { … }` in a `direct` block | **a compile error**, naming the finalizer |
 | `try { !x } catch { … }` in a `direct` block | **compiles, and catches nothing.** The catch guards the BUILDING of the program; the throw happens when it is run, one stack away. Failure belongs in the row: `Throws` |
 | `raise` inside or instead of a captured `k` | reaches the handler normally; the abandoned part does not run |

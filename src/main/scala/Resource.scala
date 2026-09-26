@@ -1,6 +1,7 @@
 package okay
 
 import okay.!.*
+import okay.Row.plus
 import scala.annotation.tailrec
 
 /**
@@ -141,14 +142,47 @@ object Resource {
   }
 }
 /**
- * Bracket over any Handler-able row F (Async, Produce, Pure, ...):
- * acquire, use, release — the use-program runs to completion inside
- * one suspension, so no outer handler can skip or repeat the release;
- * a fiber's cancellation is an interrupt exception, and the finally
- * sees it. For a release scoped to a whole program of arbitrary
- * effects, use the Resource effect above instead.
+ * ACQUIRE, USE, RELEASE — with the use-program's effects FORWARDED
+ * (bracket-forwards-no-effects, 2026-09-26): `use` may perform anything
+ * in F, and an outer handler answers it, as it would anywhere else.
+ * It is `Resource` in one expression: the acquire is the scope's one
+ * `Resource.acquire`, and the scope is `Resource.run` around `use`, so
+ * the release runs when `use` finishes, when a step throws, and when a
+ * forwarded operation fails out on its handler (`Failing[F]`: `Async`'s
+ * thrown `Run` or failed `Await`; rows beyond `Pure`/`Async` need
+ * `import okay.AsyncFailing.anyRow`, as `Resource.run` does).
+ *
+ * What it inherits from `Resource.run`, said here too because a reader
+ * of `bracket` expects the other kind: an ABORTIVE handler outside the
+ * scope (`runEither` of a raise inside `use`, `Maybe.run` of a `None`)
+ * drops the rest of the program, release included. Turn aborts into
+ * values INSIDE `use` for a guaranteed release. `bracketNow` gives that
+ * guarantee without the forwarding.
+ *
+ * This is the name cats (`bracket`), ZIO (`acquireReleaseWith`) and kyo
+ * give the effect-polymorphic form. It belonged to `bracketNow` until
+ * this lane.
  */
-def bracket[R, A, F[+_] : Handler](acquire: => R)(release: R => Unit)(use: R => A ! F): A ! F =
+def bracket[R, A, F[+_]](acquire: => R)(release: R => Unit)(use: R => A ! F)(using Failing[F]): A ! F =
+  // DELAYED: `Resource.run`, like every handler loop here, walks the
+  // program up to its first forwarded operation when it is CALLED, so
+  // without this the acquire would run when the program is BUILT, and
+  // a program built once and run twice would acquire once (the test
+  // "releases after them" caught exactly that)
+  Free.delay(() => Resource.run[A, F](Resource.acquire(acquire)(release).plus[F].flatMap(r => use(r).plus[Resource])))
+
+/**
+ * Bracket over any Handler-able row F (Async, Produce, Pure, ...), RUN
+ * NOW: acquire, use, release — the use-program runs to completion inside
+ * one suspension, by the row's comonadic `Handler`, so no outer handler
+ * can skip or repeat the release; a fiber's cancellation is an interrupt
+ * exception, and the finally sees it. The price of that guarantee is
+ * that nothing in `use` reaches an outer handler: every effect of F is
+ * answered in place. For a release around effects that ARE forwarded,
+ * use `bracket` above (it was this function's name until
+ * bracket-forwards-no-effects, 2026-09-26).
+ */
+def bracketNow[R, A, F[+_] : Handler](acquire: => R)(release: R => Unit)(use: R => A ! F): A ! F =
   pure[F, Unit](()).flatMap: _ =>
     val r = acquire
     try pure(use(r).runWith)

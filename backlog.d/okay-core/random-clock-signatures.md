@@ -14,3 +14,11 @@
       and every consumer re-invents them. Survey first: grep for
       `System.nanoTime`, `currentTimeMillis`, `Random` in main code, and
       count how many would move.
+      SURVEYED 2026-09-26: 54 main files read the time directly
+      (nanoTime/currentTimeMillis/Instant.now), mostly timeouts, metrics
+      and logs. 19 read randomness, one per module, and much of that is
+      SecureRandom for keys and tokens (x402, security), which must NOT
+      become a swappable effect. DECIDED with the operator: not in the
+      core. A small `Clock` with a deterministic handler goes where
+      retry/backoff/timeout live (okay-resilience/okay-async) when the
+      first test needs it; no `Random` signature.

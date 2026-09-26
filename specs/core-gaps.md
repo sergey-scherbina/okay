@@ -309,3 +309,34 @@ classes, and compiling the first draft crashed in `ClassfileParser`. The
 test checks the UPPER line only. Shrinking a loop under the line is
 case 2 of the measured history (worse, not better), so it is a question
 for a benchmark, not for a guard.
+
+## Stage 5 — bracket-forwards-no-effects (2026-09-26)
+
+`bracket` used to run `use` to the end INSIDE, by the row's comonadic
+`Handler` under `try/finally`. So `use` could perform only effects that
+have such a handler (`Async`, `Produce`, `Pure`), and nothing in it
+reached an outer handler. That is a strong release guarantee under a name
+that promises the other thing. Every other library's `bracket` is the
+forwarding form.
+
+- `bracketNow` is the old function, unchanged, under an honest name.
+  Its callers were four tests and one benchmark class, and all are
+  renamed.
+- `bracket` is `Resource` in one expression:
+  `Resource.run(acquire.flatMap(use))` behind `Free.delay`. `use`'s
+  effects are forwarded, and the release runs when `use` finishes, when
+  a step throws, and when a forwarded `Async` step fails (`Failing`).
+  Like `Resource`, it releases nothing when an ABORTIVE handler outside
+  drops the rest of the program, and its doc says so.
+
+- [x] `bracket` forwards a `Writer` from inside `use`, and releases after it
+- [x] `bracket` releases when a forwarded `Async` step throws
+- [x] built once and run twice, it acquires and releases twice. The
+      first cut acquired when the program was BUILT, because
+      `Resource.run` walks to the first forwarded operation when it is
+      called. `Free.delay` fixes it, and the test caught it.
+- [x] `bracketNow` keeps its tests, and is still refused in a `Delim` row
+
+Also decided the same day (random-clock-signatures, surveyed): no
+`Random` or `Clock` in the core. The backlog item records the numbers and
+where a `Clock` goes when a test first needs it.

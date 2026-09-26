@@ -299,8 +299,8 @@ same material with the measurements attached.
   exchange continues), `spawn/par/race/timeout/sleep` — all
   cross-platform: par pairs by completion and a child failure cancels
   the sibling; race's first SUCCESS wins, two failures fail it;
-  `sleep` rides the platform **`Timer`**; **`bracket`** (any
-  Handler-able row).
+  `sleep` rides the platform **`Timer`**; **`bracketNow`** (any
+  Handler-able row; `bracket` is the Resource form, which forwards).
 - **`Channel`** — the queue between fibers: what pull cannot express
   is two fibers meeting, and pacing. READINESS alone it can:
   `Source.mergeReady` (specs/ready-merge.md) steps a ring of sources

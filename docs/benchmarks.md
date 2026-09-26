@@ -1960,6 +1960,11 @@ queue underneath it.
 
 ## 7. Resource — 1000 bracketed acquire/use/release
 
+"bracket" in this section is the function named `bracketNow` since
+2026-09-26 (bracket-forwards-no-effects): the same code, renamed when
+`bracket` became the forwarding `Resource` form. The numbers are
+unchanged, and the lanes call `bracketNow`.
+
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
 |---|---|---|---|---|---|
 | right-nested (recursion) | **15.2** | | | | 696 |
@@ -1979,7 +1984,7 @@ built around suspension pay their machinery for nothing.
 
 **The "bracket costs 21%" row was two different workloads, and pairing
 them turned the answer around** (bracket-pairing, 2026-09-09). The
-lane read as bracket's price — `bracket(x)(rel)(r => produce(r + 1))`
+lane read as bracket's price — `bracketNow(x)(rel)(r => produce(r + 1))`
 — performs an effect INSIDE the scope; the region lane it was compared
 against (`Resource.acquire`) performs none. Two lanes were added so
 each shape has both forms, and the box had three sibling builds, so
