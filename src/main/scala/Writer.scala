@@ -391,7 +391,11 @@ object Writer {
   def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
     case Free.Return(a) => Left(a)
     case Inject(Say(w)) => Right((w, Free.Return(())))
-    case Bind(Inject(Say(w)), k) => Right((w, k(())))
+    // the rest is `k` NOT YET APPLIED (a lazy Bind; `flatMap` is one):
+    // applying it here ran the source's next step before `w` was handed
+    // over, and a step that threw took `w` with it (source-merge-via-
+    // ready, TestWriterToldBeforeThrow)
+    case Bind(Inject(Say(w)), k) => Right((w, Free.Return[Writer % W, Unit](()).flatMap(k)))
 
   /**
    * The same observation for a writer program performing ARBITRARY
@@ -414,7 +418,8 @@ object Writer {
       (g => Inject(g).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
     case Bind(Inject(e), k) => split[Writer % W, G](e)
       { w0 => (w0: @unchecked) match
-          case Say(w) => okay.pure(Right((w, k(())))): Either[A, (W, A ! Writer % W + G)] ! G }
+          // `k` not yet applied, for the pure `uncons`'s reason above
+          case Say(w) => okay.pure(Right((w, Free.Return[Writer % W + G, Unit](()).flatMap(k)))): Either[A, (W, A ! Writer % W + G)] ! G }
       (g => Inject(g).flatMap(x => uncons[W, A, G](k(x))))
 
   /**
@@ -554,19 +559,30 @@ given feedStream[A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
       private var ready = false
       private var ended = false
       private var elem: W = scala.compiletime.uninitialized
+      /** `cur` is the `Bind(Say, k)` whose value was just handed over,
+       * `k` NOT YET APPLIED: it is the source's next step, and running it
+       * before the value is out lost the value when it threw
+       * (TestWriterToldBeforeThrow). A flag and not a `Bind(Return(()), k)`
+       * so the linear view still allocates nothing per element. */
+      private var told = false
 
       // `Say` is Writer's only constructor, so the two Inject shapes
       // are exhaustive over what a pure writer program can resume to
-      @tailrec private def advance(): Unit = (cur: @unchecked) match
+      @tailrec private def advance(): Unit =
+        if told then
+          told = false
+          cur = (cur: @unchecked) match
+            case Bind(Inject(Writer.Say(_)), k) => k(())
+        (cur: @unchecked) match
         case Free.Return(_) => ended = true
         case Inject(Writer.Say(w)) =>
           elem = w
           ready = true
           ended = true
-        case Bind(Inject(Writer.Say(w)), k) =>
+        case Bind(Inject(Writer.Say(w)), _) =>
           elem = w
           ready = true
-          cur = k(())
+          told = true
         case _ =>
           cur = cur.resume
           advance()
@@ -612,8 +628,23 @@ given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G
       private var ready = false
       private var ended = false
       private var elem: W = scala.compiletime.uninitialized
+      /** `k` of the value just handed over, not yet applied — the pure
+       * iterator's reason (TestSourceToldBeforeThrow in okay-stream) */
+      private var told = false
 
-      @tailrec private def advance(): Unit = cur match
+      /** apply the held `k` of the `Bind(Say, k)` in `cur` */
+      private def afterTold(x: A ! Writer % W + G): A ! Writer % W + G = (x: @unchecked) match
+        case Bind(Inject(e), k) =>
+          split[Writer % W, G](e)(
+            w0 => (w0: @unchecked) match
+              case Writer.Say(_) => k(())
+          )(_ => x)
+
+      @tailrec private def advance(): Unit =
+        if told then
+          told = false
+          cur = afterTold(cur)
+        cur match
         case Free.Return(_) => ended = true
         // Writer tested first, for `map`'s reason
         case Inject(e) =>
@@ -626,7 +657,7 @@ given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G
         case Bind(Inject(e), k) =>
           split[Writer % W, G](e)(
             w0 => (w0: @unchecked) match
-              case Writer.Say(w) => { elem = w; ready = true; cur = k(()) }
+              case Writer.Say(w) => { elem = w; ready = true; told = true }
           )(
             g => { cur = k(H.handle(g)); advance() }
           )

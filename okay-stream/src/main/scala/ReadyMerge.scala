@@ -56,6 +56,15 @@ private[okay] object ReadyMerge:
     /** sources not yet ended: in the ring, parked, or woken */
     private var live = n
 
+    /** DRAIN, THEN FAIL (specs/source-merge-via-ready.md): a source that
+     * fails drops out, the others run to their end, and the merge then
+     * fails with the FIRST failure — `Channel.merge`'s rule, so the
+     * consumer gets everything actually produced before it hears */
+    private var failure: Throwable | Null = null
+    private def failed(e: Throwable): Unit =
+      if failure == null then failure = e
+      live -= 1
+
     /** indices a callback made ready */
     private val woken = ConcurrentLinkedQueue[Integer]()
     /** the merge's own callback, set only while it is parked; whoever
@@ -106,11 +115,18 @@ private[okay] object ReadyMerge:
       import !.*
       drainWoken()
       if size == 0 then
-        if live == 0 then okay.pure(())
-        else park()
+        if live > 0 then park()
+        else
+          val f = failure
+          if f == null then okay.pure(())
+          else okay.effect[R, Unit](Async.Run[Unit](() => throw f))
       else
         val i = pop()
-        (slot(i).resume: @unchecked) match
+        // `resume` runs the source's own code (a `Bind(Return(x), f)`
+        // applies `f`), so a throw here is that source failing
+        val node = try slot(i).resume catch case e: Throwable => { failed(e); null }
+        if node == null then step()
+        else (node: @unchecked) match
           case Free.Return(_) =>
             live -= 1
             step()
@@ -126,8 +142,12 @@ private[okay] object ReadyMerge:
           case Bind(Inject(e), k) => split[Writer % A, Async](e)
             { w0 => (w0: @unchecked) match
                 case Writer.Say(a) =>
-                  slot(i) = k(())
-                  pushBack(i)
+                  // `k(())` is the source's code too: the element it
+                  // told is still delivered, the source is dropped
+                  try
+                    slot(i) = k(())
+                    pushBack(i)
+                  catch case e: Throwable => failed(e)
                   okay.effect[R, Unit](Writer(a)).flatMap(_ => again()) }
             { g =>
                 turn(i, g, k)
@@ -136,11 +156,15 @@ private[okay] object ReadyMerge:
     /** source `i`'s Async operation: a Run is performed in its own turn
      * (it goes back to the FRONT), an Await answered during its own
      * registration likewise, and an Await that is not answered parks the
-     * source until its callback publishes it */
-    private def turn[X](i: Int, g: Async[X], k: X => Source[A]): Unit = g match
+     * source until its callback publishes it. Anything the source's own
+     * code throws on the way — the Run, the registration, the
+     * continuation — drops that source (drain, then fail) */
+    private def turn[X](i: Int, g: Async[X], k: X => Source[A]): Unit =
+      try operate(i, g, k) catch case e: Throwable => failed(e)
+
+    private def operate[X](i: Int, g: Async[X], k: X => Source[A]): Unit = g match
       case Async.Run(f) =>
-        val x = try f() catch case e: Throwable => { cancelAll(); throw e }
-        slot(i) = k(x)
+        slot(i) = k(f())
         pushFront(i)
       case Async.Await(reg) =>
         val cell = AtomicReference[Answer[X] | Moved.type | Null](null)
@@ -163,9 +187,7 @@ private[okay] object ReadyMerge:
               case Right(x) =>
                 slot(i) = k(x)
                 pushFront(i)
-              case Left(e) =>
-                cancelAll()
-                throw e
+              case Left(e) => failed(e)
           case _ => ()
 
     /** every live source is parked: the merge parks ONCE. The callback

@@ -105,23 +105,40 @@ class TestReadyMerge extends munit.FunSuite {
     assertEquals(calls.get, 2)
   }
 
-  test("a failing source fails the merge and cancels the parked ones") {
+  /** run with runForeach, so what arrived BEFORE a failure is seen */
+  private def outAndFailure(s: Source[Int]): (Vector[Int], Option[String]) =
+    var out = Vector.empty[Int]
+    val err =
+      try { s.runForeach(x => okay.async { out :+= x }).runWith; None }
+      catch case e: Throwable => Some(e.getMessage)
+    (out, err)
+
+  test("DRAIN, THEN FAIL: a failing source drops out, the others run to their end, then the merge fails") {
     val parked, failing = Gate()
-    val (_, result) = inBackground(Source.mergeReady(parked.source, failing.source))
+    @volatile var result: (Vector[Int], Option[String]) = (Vector.empty, None)
+    val t = Thread.ofVirtual().start(() => result = outAndFailure(Source.mergeReady(parked.source, failing.source)))
     parked.registered.await(); failing.registered.await()
     failing.fail(RuntimeException("boom"))
-    val e = intercept[RuntimeException](result())
-    assertEquals(e.getMessage, "boom")
-    assert(parked.cancelled.get, "the other parked source's registration must be cancelled")
+    parked.fire(7)
+    t.join()
+    assertEquals(result, (Vector(7), Some("boom")))
+    assert(!parked.cancelled.get, "a healthy source is not cancelled for another's failure")
   }
 
-  test("a throwing Run fails the merge and cancels the parked ones") {
-    val parked = Gate()
+  test("a throwing Run drops its source; the others drain first") {
     val throwing: Source[Int] = okay.effect[R, Int](Async.Run(() => throw RuntimeException("run")))
       .flatMap(say)
-    val e = intercept[RuntimeException](collect(Source.mergeReady(parked.source, throwing)))
-    assertEquals(e.getMessage, "run")
-    assert(parked.cancelled.get)
+    assertEquals(outAndFailure(Source.mergeReady(throwing, list(1, 2, 3))), (Vector(1, 2, 3), Some("run")))
+  }
+
+  test("a source whose own continuation throws keeps what it told, and the first failure wins") {
+    // the element before the throw is delivered: the throw is in the
+    // continuation AFTER the tell
+    val tellsThenThrows: Source[Int] = say(1).flatMap(_ => throw RuntimeException("first"))
+    val laterFailure: Source[Int] = say(2).flatMap(_ => say(3)).flatMap(_ => throw RuntimeException("second"))
+    val (out, err) = outAndFailure(Source.mergeReady(tellsThenThrows, laterFailure, list(10, 20)))
+    assertEquals(out.sorted, Vector(1, 2, 3, 10, 20))
+    assertEquals(err, Some("first"))
   }
 
   test("cancelling the merge while it is parked cancels every parked source") {

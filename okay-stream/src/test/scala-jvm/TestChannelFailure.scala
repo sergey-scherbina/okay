@@ -64,4 +64,13 @@ class TestChannelFailure extends munit.FunSuite {
     // ...and the merge still reports that one side broke
     assert(failed, "a merge with a failed source ended as if all was well")
   }
+
+  test("Source.merge over a failing side: the healthy side's elements all arrive, THEN the failure") {
+    var got = Vector.empty[Int]
+    var failure = Option.empty[String]
+    try Source.of(Boom[Int](0)).merge(Source.of(LazyList(10, 20))).runForeach(x => okay.async { got :+= x }).runWith
+    catch case e: Throwable => failure = Some(e.getMessage)
+    assertEquals(got.sorted, Vector(1, 2, 3, 10, 20), "the healthy side was cut short")
+    assertEquals(failure, Some("the producer failed"), "a merge with a failed side ended as if all was well")
+  }
 }

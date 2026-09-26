@@ -235,6 +235,12 @@ object Source {
    */
   def mergeReady[A](sources: Source[A]*): Source[A] = ReadyMerge(sources)
 
+  /** which road the elementwise `merge` takes — `ready` (the default)
+   * or `channel`, the pre-2026-09-26 one, kept ONLY for the A/B of
+   * source-merge-via-ready and deleted with it */
+  private[okay] val mergeRoad: String =
+    Option(System.getProperty("okay.source.merge")).getOrElse("ready")
+
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart
    * across a 4x span) and exposing it would quietly break
@@ -320,10 +326,19 @@ extension [A](s: Source[A])
   /**
    * Merge two sources by READINESS, back into a source — the
    * concurrent join, in the shape the pipeline combinators consume
-   * (`through`, `pipe`, a Stage). A fiber per source feeds one
-   * channel; the channel is told out again as a program, so what
-   * comes back is an ordinary source and nothing had to leave the
-   * effect world.
+   * (`through`, `pipe`, a Stage). Each source is BUFFERED onto a
+   * fiber of its own, and the two buffers are joined by
+   * `Source.mergeReady` — a ring of the sides' continuations on the
+   * consumer's thread (specs/source-merge-via-ready.md). Until
+   * 2026-09-26 both fibers pushed into ONE shared two-part channel;
+   * with the same fibers and the same buffering, the ring join
+   * measured 0.86x / 0.93x of it (ready-merge-numbers), so there is one
+   * merge mechanism now, and a caller who wants a side NOT on a fiber
+   * of its own calls `mergeReady` directly.
+   *
+   * A side that FAILS drops out, the other still runs to its end, and
+   * then the merge fails with the failure — so everything actually
+   * produced is delivered first.
    *
    * The element types need NOT agree: the result tells their union,
    * which is what a join of two differently shaped feeds actually is
@@ -443,10 +458,17 @@ extension [A](s: Source[A])
     val tw = Writer.widen[B, A | B, Unit, Async](t)
     if !chunked then
       pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
-        // read in batches: the elements and their order are the
-        // channel's, only the CAS is paid once per batch instead of
-        // once per element (channel-drain)
-        Writer.of(Drain(Channel.merge[A | B, S, Async, S, Async](sw, tw, capacity)))
+        if Source.mergeRoad == "channel" then
+          // THE OLD ROAD, for the A/B only (-Dokay.source.merge=channel):
+          // deleted with the switch once source-merge-via-ready is measured
+          Writer.of(Drain(Channel.merge[A | B, S, Async, S, Async](sw, tw, capacity)))
+        else
+          // a fiber per side into a ring of its own, read in batches
+          // (`drained`), joined by readiness; the fibers start HERE, at
+          // the first pull, as they always did
+          ReadyMerge[A | B](Seq(
+            Channel.buffer[A | B, S, Async](capacity)(sw).drained,
+            Channel.buffer[A | B, S, Async](capacity)(tw).drained))
     else
       // capacity counts ELEMENTS, so the channel gets that many
       // divided by what each of its slots now holds
