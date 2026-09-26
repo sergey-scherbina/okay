@@ -844,8 +844,10 @@ E. **Layer 1 B** — FIRST SLICE LANDED 2026-09-26 (cont-stack-layer1-b):
    higher-order functions, visible user functions, `direct` — is
    backlog cont-stack-layer1-c.
 
-F. **The rest, in any order:** cont-stack-ucontext-layouts (macOS
-   x86_64, glibc x86_64/aarch64, musl's missing symbol), cont-stack-docs
+F. **The rest, in any order:** cont-stack-ucontext-layouts (LANDED
+   2026-09-26 for glibc aarch64/x86_64 and musl's missing symbol,
+   Decision 13; macOS x86_64 and a native x86_64 run are backlog
+   cont-stack-ucontext-x86-native), cont-stack-docs
    (the user page with the per-platform bounds and how to enable native
    access), okay2's cont-stack-okay2 (stages B and E as far as a
    Scala 2 blackbox macro reaches; Layers 2/3 port straight).
