@@ -263,9 +263,9 @@ def priceOf(shop: String, item: String): Choices[(String, Int)] =
     case None            => List(Left(s"$shop has no $item")))
 ```
 
-- **team B** knows delivery, which a shop may simply not offer — the
+- **team B** knows the delivery fee, which a shop may not charge — the
   same `EitherT` for errors (an unknown shop), over an `Option` instead
-  of a `List` (no delivery is `None`, not an error):
+  of a `List` (no fee is `None`: delivery is free, not an error):
 
 ```scala
 type Delivered[A] = EitherT[Option, String, A]
@@ -276,66 +276,77 @@ def deliveryFee(shop: String): Delivered[Int] =
     case Some(fee) => fee.map(Right(_)))
 ```
 
-Both are `EitherT[_, String, _]`; only the monad inside differs. There
-is no ordering to agree on. Call both in one expression — the price,
-then the fee:
+Both are `EitherT[_, String, _]`; only the monad inside differs. The
+order is the same in all three versions below: for each shop, each
+variety and its price, then the delivery fee, which is free when the
+shop has none. In cats, written the obvious way:
 
 ```text
 for {
-  (tea, price) <- CatsDelivery.priceOf("north", "tea")
-  fee          <- CatsDelivery.deliveryFee("north")
-} yield (tea, price + fee)
+  shop         <- EitherT.liftF[List, String, String](List("north", "south"))
+  (tea, price) <- priceOf(shop, item)
+  fee          <- deliveryFee(shop)
+} yield (tea, price + fee.getOrElse(0))
 ```
 
-and it does not compile:
+it does not compile. The first error is the stacks:
 
 ```text
-Found:    cats.data.EitherT[Option, String, (String, Int)]
-Required: cats.data.EitherT[List, AA, D]
+Found:    cats.data.EitherT[Option, String, D]
+Required: cats.data.EitherT[List, AA, D²]
 ```
 
-The order needs team B's fee inside team A's stack, and the only way in
-is a conversion written by hand for this pair of stacks — here it turns
-team B's `Option` layer into a plain `Option` VALUE in team A's
-`EitherT[List]`, so a missing fee can count as zero:
+and the second says what team B's stack did with "no delivery": it is
+the `Option` LAYER there, so the fee is an `Int`, not an `Option` value
+(`value getOrElse is not a member of Int`). The only way in is a
+conversion written by hand for this pair of stacks, which folds team
+B's `Option` layer into an `Option` value in team A's `EitherT[List]`:
 
 ```scala
 def fromB[A](fb: Delivered[A]): Choices[Option[A]] =
   EitherT(List(fb.value.fold[Either[String, Option[A]]](Right(None))(_.map(Some(_)))))
 ```
 
+and the same order compiles:
+
 ```scala
-(tea, price) <- priceOf(shop, item)
-fee          <- fromB(deliveryFee(shop))
-yield (tea, price + fee.getOrElse(0))
+for {
+  shop         <- EitherT.liftF[List, String, String](List("north", "south"))
+  (tea, price) <- priceOf(shop, item)
+  fee          <- fromB(deliveryFee(shop))
+} yield (tea, price + fee.getOrElse(0))
 ```
 
-For `"tea"` over both shops the order is
+For `"tea"` over both shops it is
 `List(Right(("green tea", 350)), Right(("black tea", 330)), Right(("green
-tea", 250)))`: north delivers for 50 and has two teas, south does not
-deliver, so its tea costs just its price. Now multiply: every new team
-with a slightly different set of monads is one more stack, and every
-pair of stacks that meets needs its own conversion — each knowing the
-structure of both stacks, and changing when either does.
+tea", 250)))`: north delivers for 50 and has two teas, south delivers
+free. Now multiply: every new team with a slightly different set of
+monads is one more stack, and every pair of stacks that meets needs its
+own conversion — each knowing the structure of both stacks, and changing
+when either does.
 
-The two roads below have none of this. With layered reflection each
-team's helper returns a plain value of plain monads, and the order is
-two `reify` blocks — the fee's `Option` is just a value here too:
+The two roads below have none of this, and the `for` is the same one.
+With layered reflection each team's helper reflects its own monads
+through the capabilities its `reify` blocks hand out, and returns a
+plain value — the fee stays an `Option`:
 
 ```scala
-def priceOf(shop: String, item: String): Either[String, List[(String, Int)]] =
-  catalog(shop).get(item).toRight(s"$shop has no $item")
+def priceOf(shop: String, item: String)(using Reflect[List, Out], Reflect[Checked, (String, Int)]): (String, Int) ! Delim + Pure =
+  catalog(shop).get(item).toRight(s"$shop has no $item").reflect[(String, Int), Pure]
+    .flatMap(_.reflect[Out, Pure])
+
+def deliveryFee(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
+  fees.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
 ```
 
 ```scala
 reify[List, Out, Pure]:
   reify[Checked, (String, Int), Pure]:
-    for
+    for {
       shop         <- List("north", "south").reflect[Out, Pure]
-      varieties    <- priceOf(shop, item).reflect[(String, Int), Pure]
-      (tea, price) <- varieties.reflect[Out, Pure]
-      fee          <- deliveryFee(shop).reflect[(String, Int), Pure]
-    yield (tea, price + fee.getOrElse(0))
+      (tea, price) <- priceOf(shop, item)
+      fee          <- deliveryFee(shop)
+    } yield (tea, price + fee.getOrElse(0))
 ```
 
 With algebraic effects each helper declares only the effects it uses.
@@ -364,21 +375,11 @@ type Order = Choose + Throws % String
 ```
 
 ```scala
-shop         <- choose("north", "south").at[Order]
-(tea, price) <- priceOf(shop, item)
-fee          <- deliveryFee(shop).at[Order]
-yield (tea, price + fee.getOrElse(0))
-```
-
-And the one expression cats refused is, with effects, just written
-down — both helpers in one `for`:
-
-```scala
-val north: (String, Int) ! Order =
-  for
-    (tea, price) <- priceOf("north", "tea").at[Order]
-    fee          <- deliveryFee("north").at[Order]
-  yield (tea, price + fee.getOrElse(0))
+for {
+  shop         <- choose("north", "south").at[Order]
+  (tea, price) <- priceOf(shop, item)
+  fee          <- deliveryFee(shop).at[Order]
+} yield (tea, price + fee.getOrElse(0))
 ```
 
 All three give the same answer (`TestBookTwoMonadsCats`).

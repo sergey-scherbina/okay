@@ -272,35 +272,37 @@ object CatsDelivery:
     EitherT(List(fb.value.fold[Either[String, Option[A]]](Right(None))(_.map(Some(_)))))
 
   def order(item: String): Choices[(String, Int)] =
-    for
+    for {
       shop         <- EitherT.liftF[List, String, String](List("north", "south"))
       (tea, price) <- priceOf(shop, item)
       fee          <- fromB(deliveryFee(shop))
-    yield (tea, price + fee.getOrElse(0))
+    } yield (tea, price + fee.getOrElse(0))
 
 object LayeredDelivery:
-  import okay.Layered.{reify, reflect}
+  import okay.Layered.{Reflect, reify, reflect}
   import Delivery.{catalog, fees}
 
   type Checked[A] = Either[String, A]
   type Out        = Either[String, (String, Int)]
 
-  /** team A's helper and team B's helper: plain values of plain monads */
-  def priceOf(shop: String, item: String): Either[String, List[(String, Int)]] =
-    catalog(shop).get(item).toRight(s"$shop has no $item")
+  /** team A's helper: reflects its own two monads — a missing item into
+   * the error layer, the varieties into the list layer */
+  def priceOf(shop: String, item: String)(using Reflect[List, Out], Reflect[Checked, (String, Int)]): (String, Int) ! Delim + Pure =
+    catalog(shop).get(item).toRight(s"$shop has no $item").reflect[(String, Int), Pure]
+      .flatMap(_.reflect[Out, Pure])
 
-  def deliveryFee(shop: String): Either[String, Option[Int]] =
-    fees.get(shop).toRight(s"unknown shop $shop")
+  /** team B's helper: an unknown shop into the error layer; the fee stays an Option value */
+  def deliveryFee(shop: String)(using Reflect[Checked, (String, Int)]): Option[Int] ! Delim + Pure =
+    fees.get(shop).toRight(s"unknown shop $shop").reflect[(String, Int), Pure]
 
   def order(item: String): List[Out] ! Delim + Pure =
     reify[List, Out, Pure]:
       reify[Checked, (String, Int), Pure]:
-        for
+        for {
           shop         <- List("north", "south").reflect[Out, Pure]
-          varieties    <- priceOf(shop, item).reflect[(String, Int), Pure]
-          (tea, price) <- varieties.reflect[Out, Pure]
-          fee          <- deliveryFee(shop).reflect[(String, Int), Pure]
-        yield (tea, price + fee.getOrElse(0))
+          (tea, price) <- priceOf(shop, item)
+          fee          <- deliveryFee(shop)
+        } yield (tea, price + fee.getOrElse(0))
 
 object EffectsDelivery:
   import okay.{Choose, Throws, choose, raise, runChoice, runEither}
@@ -323,11 +325,11 @@ object EffectsDelivery:
   type Order = Choose + Throws % String
 
   def order(item: String): (String, Int) ! Order =
-    for
+    for {
       shop         <- choose("north", "south").at[Order]
       (tea, price) <- priceOf(shop, item)
       fee          <- deliveryFee(shop).at[Order]
-    yield (tea, price + fee.getOrElse(0))
+    } yield (tea, price + fee.getOrElse(0))
 
   /** the expression cats refused, with effects: both helpers in one for */
   val north: (String, Int) ! Order =
@@ -360,14 +362,18 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
 
   test("DELIVERY: team A's helper (EitherT over List) and team B's (EitherT over Option) do not compose in one expression") {
     val e = compileErrors("""
+      import bookcats.CatsDelivery.*
       for {
-        (tea, price) <- bookcats.CatsDelivery.priceOf("north", "tea")
-        fee          <- bookcats.CatsDelivery.deliveryFee("north")
-      } yield (tea, price + fee)
+        shop         <- cats.data.EitherT.liftF[List, String, String](List("north", "south"))
+        (tea, price) <- priceOf(shop, "tea")
+        fee          <- deliveryFee(shop)
+      } yield (tea, price + fee.getOrElse(0))
     """)
-    assert(e.contains("Found:    cats.data.EitherT[Option, String, (String, Int)]"), e)
-    assert(e.contains("Required: cats.data.EitherT[List, AA, D]"), e)
-    assert(!e.contains("getOrElse"), e)
+    // first: the two stacks differ in the monad inside (List vs Option)
+    assert(e.contains("Found:    cats.data.EitherT[Option, String, D]"), e)
+    assert(e.contains("Required: cats.data.EitherT[List, AA, D²]"), e)
+    // second: in team B's stack "no delivery" is the Option LAYER, so the fee is an Int, not an Option value
+    assert(e.contains("value getOrElse is not a member of Int"), e)
   }
 
   test("DELIVERY: the union stack with a conversion per team, layered reflection, and effects agree") {
