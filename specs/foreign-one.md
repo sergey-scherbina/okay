@@ -546,7 +546,12 @@ more than it adds (the line count of what it removed goes in Results).
 - [ ] Stage 7 (as first written) — **foreign-one-ops**: `Language[L].ops` for Frege and
       Clojure from the core effects' `Cbs`; the hand-written `Ops`
       become generated output.
-- [ ] Stage 8 — **foreign-one-docs**: one entry page, "Foreign
+- [x] Stage 8 — **foreign-one-docs** (2026-09-26): docs/foreign-languages.md,
+      linked from README and docs/README; the seven language and layer
+      pages carry "a chapter of" at their head. The markers are the
+      facade's typeclasses (Decision 16), so the page's "who carries
+      what" is a table of claims, each backed by a conformance row.
+- [ ] Stage 8 (as first written) — **foreign-one-docs**: one entry page, "Foreign
       languages", with the five things, the two runtimes, the markers,
       one program in every language and the same Scala over every
       runtime; the existing pages become its per-language chapters;
@@ -920,3 +925,15 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     callback's answer fails the Clojure program test.
   - Not built: callbacks inside a Frege or Clojure STAGE (`stageWith`), which
     would need the callbacks' row widened into the stage's; no caller yet.
+- **Stage 8, foreign-one-docs (2026-09-26).** docs/foreign-languages.md:
+  what crosses, one program in eight languages over the same Scala (every
+  Scala line pinned by TestDocSnippets — a mutant reordering one fails it),
+  who carries what, the two runtimes, the five operations and the
+  transcript, adding a language in four steps, literature. Found while
+  writing it: TypeScript already holds objects (worker.ts keeps a table),
+  so foreign-held-values and the capability table name Go, Rust and
+  Haskell only.
+- **The arc (2026-09-26).** Stages 1–8 landed. What is filed, each with its
+  trigger: foreign-mux-duplex, foreign-held-values, foreign-arrow-ffm,
+  foreign-more-languages, foreign-jvm-programs, foreign-package-name,
+  stateful-early-stop.
