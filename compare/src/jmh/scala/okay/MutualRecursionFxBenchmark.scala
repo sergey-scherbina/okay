@@ -108,6 +108,27 @@ class MutualRecursionFxBenchmark {
       State.run[Int, (Seq[String], Boolean)](0)(Writer.run[String, Boolean, State % Int](OkayRow.even(N)))
     Answer(b, count, log.size)
 
+  // ---- effect-row-recursion-cost DIAGNOSTICS: okayRow taken apart.
+  // Not competitors — each removes one suspected cost and checks its
+  // own answer (the Swapped lane answers the same triple).
+
+  /** the same program, handlers the other way round: State handled
+   * first, so its two operations a level are not forwarded through
+   * Writer; only the rare tell is forwarded, through State */
+  @Benchmark
+  def okayRowSwapped(): Answer =
+    val (log, (count, b)) =
+      !.run(Writer.run[String, (Int, Boolean), Pure](State.handle[Int](0)(OkayRow.even(N))))
+    Answer(b, count, log.size)
+
+  /** State alone, `modify` (two operations) a level, nothing forwarded */
+  @Benchmark
+  def okayRowStateOnly(): (Int, Boolean) = State.run[Int, Boolean](0)(OkayStateOnly.even(N))
+
+  /** State alone, ONE operation a level (`set`) — the price of one */
+  @Benchmark
+  def okayRowOneOp(): (Int, Boolean) = State.run[Int, Boolean](0)(OkayOneOp.even(N))
+
   private val bigStack = java.util.concurrent.Executors.newSingleThreadExecutor { r =>
     val t = new Thread(null, r, "big-stack", 1L << 30)
     t.setDaemon(true)
@@ -128,6 +149,9 @@ class MutualRecursionFxBenchmark {
       "vtSegments" -> vtSegments(), "okayFree" -> okayFree(), "okayRow" -> okayRow())
     for (lane, a) <- answers if a != expected do
       throw new IllegalStateException(s"$lane answers $a, expected $expected")
+    if okayRowSwapped() != expected then throw new IllegalStateException(s"okayRowSwapped answers ${okayRowSwapped()}")
+    if okayRowStateOnly() != (N, true) then throw new IllegalStateException(s"okayRowStateOnly answers ${okayRowStateOnly()}")
+    if okayRowOneOp() != (1, true) then throw new IllegalStateException(s"okayRowOneOp answers ${okayRowOneOp()}")
 }
 
 object MutualRecursionFxBenchmark {
@@ -258,6 +282,22 @@ object MutualRecursionFxBenchmark {
       if n == 0 then pure(true) else !.tailcall { step(n, c, l); odd(n - 1, c, l) }
     def odd(n: Int, c: Metrics, l: AppLog): Boolean ! Pure =
       if n == 0 then pure(false) else !.tailcall { step(n, c, l); even(n - 1, c, l) }
+  }
+
+  object OkayStateOnly {
+    def even(n: Int): Boolean ! State % Int =
+      if n == 0 then pure(true) else State.modify[Int](_ + 1).flatMap(_ => odd(n - 1))
+    def odd(n: Int): Boolean ! State % Int =
+      if n == 0 then pure(false) else State.modify[Int](_ + 1).flatMap(_ => even(n - 1))
+  }
+
+  /** one operation a level: the level number itself is set, so the
+   * final state is the last level written, 1 */
+  object OkayOneOp {
+    def even(n: Int): Boolean ! State % Int =
+      if n == 0 then pure(true) else State.set[Int](n).flatMap(_ => odd(n - 1))
+    def odd(n: Int): Boolean ! State % Int =
+      if n == 0 then pure(false) else State.set[Int](n).flatMap(_ => even(n - 1))
   }
 
   /** the idiomatic okay program: the count and the log are effects in
