@@ -286,3 +286,26 @@ TestChronicle covers all seven boxes in five tests. As with
 `f`'s row is `Chronicle` alone (`Chronicle.all[String, String, Int,
 Pure]`). Otherwise it is solved as the row itself, and `Distinct` refuses
 it by name.
+
+## Stage 4 — resume-inline-budget-guard (2026-09-26)
+
+`TestInlineBudget` reads the code length of `Free.resume`, `relay`'s
+loop and `Effects[Free].handle`'s loop out of the compiled classes and
+fails when one exceeds HotSpot's `FreqInlineSize` (325). The failure
+names the benchmark lanes to re-measure. At landing: resume 323, handle
+loop 318, relay loop 266.
+
+- [x] each hand-sized method is found by exact name (a local `loop` is
+      `loop$N`; `resume$$anonfun$1` is not `resume`)
+- [x] watched RED: one extra case in `resume` read 465 bytes and failed
+      with the re-measure message; reverted
+- [x] the instrument's control: a one-call wrapper (`relay`) reads under
+      20 bytes
+
+**Decisions.** The test uses a class-file reader of its own (JVMS §4, one
+screen), not `java.lang.classfile`. dotty 3.9 cannot load that API's
+sealed model types, because their permitted subclasses are `jdk.internal`
+classes, and compiling the first draft crashed in `ClassfileParser`. The
+test checks the UPPER line only. Shrinking a loop under the line is
+case 2 of the measured history (worse, not better), so it is a question
+for a benchmark, not for a guard.
