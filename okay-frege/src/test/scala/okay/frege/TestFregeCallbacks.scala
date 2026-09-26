@@ -10,6 +10,11 @@ object ShopCallbacks:
   val priceOf = Foreign.callback[String, Double]("price_of")(sku => Reader.ask[Map[String, Double]].map(_(sku)))
   val discount = Foreign.callback[Double, Double]("discount")(a => Reader.ask[Map[String, Double]].map(m => a * m("rate")))
   val cbs = Foreign.callbacks(priceOf, discount)
+  /** the facade conformance body's callbacks, for the module their types
+   * generate — a list argument crosses as a Java array. (The generator reads
+   * names and types; the body the facade offers is its own.) */
+  val choose = Foreign.callback[Vector[Long], Long]("choose")(xs => Reader.ask[Map[String, Double]].map(_ => xs.head))
+  val facade = Foreign.callbacks(priceOf, choose)
 
 /**
  * A Frege program performs the caller's `Foreign.callbacks` (foreign-one-ops,
@@ -28,6 +33,12 @@ class TestFregeCallbacks extends munit.FunSuite:
       .map(java.nio.file.Path.of(_)).find(java.nio.file.Files.exists(_)).get
     val checkedIn = java.nio.file.Files.readString(file)
     assertEquals(Jvm.frege("okay.frege.Shop", cbs), checkedIn)
+  }
+
+  test("the checked-in FacadeShop.fr is the generator's, a list callback typed `JArray Long`") {
+    val file = Seq("src/test/frege/okay/frege/FacadeShop.fr", "okay-frege/src/test/frege/okay/frege/FacadeShop.fr")
+      .map(java.nio.file.Path.of(_)).find(java.nio.file.Files.exists(_)).get
+    assertEquals(Jvm.frege("okay.frege.FacadeShop", ShopCallbacks.facade), java.nio.file.Files.readString(file))
   }
 
   test("a Frege program performs the callbacks, each run under the caller's Reader") {
@@ -62,7 +73,7 @@ class TestFregeCallbacks extends munit.FunSuite:
 
   test("a callback whose Schemas have no Frege type is refused when the module is generated") {
     given Shape = Shape.python
-    val listy = Foreign.callback[Vector[Long], Long]("total")(xs => Reader.ask[Long].map(_ + xs.sum))
-    val e = intercept[IllegalArgumentException](Jvm.frege("okay.frege.Listy", Foreign.callbacks(listy)))
+    val maybe = Foreign.callback[Option[Long], Long]("total")(x => Reader.ask[Long].map(_ + x.getOrElse(0L)))
+    val e = intercept[IllegalArgumentException](Jvm.frege("okay.frege.Maybe", Foreign.callbacks(maybe)))
     assert(e.getMessage.contains("the callback 'total' has no Frege type"), e.getMessage)
   }

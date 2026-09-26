@@ -326,6 +326,10 @@ with its date, load and sha (the `performance` skill).
    proposed 2026-09-25): a Clojure or Frege program as data IS walkable
    (`okay.Foreign`), so `Programs[CljModule]`/`[FregeModule]` are real
    instances; only the Scala-function module has nothing to cross.
+   BUILT by foreign-jvm-programs (2026-09-26): through the facade such a
+   program performs its CALLBACKS — a `Member` that recognises no row
+   operation, so the row's own effects are refused by name, never cast —
+   which is exactly what every wire language's program may do.
 
 ## Results
 
@@ -464,3 +468,15 @@ with its date, load and sha (the `performance` skill).
   stage among them. One trap met: Node runs TypeScript by stripping types,
   so a constructor PARAMETER PROPERTY is refused ("not supported in
   strip-only mode") — a module declares its fields.
+- **foreign-jvm-programs (2026-09-26, Decision 7 as narrowed).**
+  `CljModule` and `FregeModule` with `Programs` instances: the Clojure
+  function or the registered Frege program is walked by `okay.Foreign`
+  with the facade's `Cb`s as its calls (through `okay.py.Jvm.calls`), the
+  argument crossing as JVM data and the answer read at `Out`. `Op` is
+  `Nothing`: nothing is left for a worker, and `run` just runs. A list
+  argument now crosses from Frege as a Java array (`Jvm.value`), and
+  `Jvm.frege` types a list callback `JArray X`. okay-frege's test classes
+  are products (`OkayFrege.before(Test)`) so a dependent's tests see them.
+  Tests (default gate): FacadeConformance.programs over Clojure and over
+  Frege — a callback under a Reader and a continuation resumed on every
+  branch — and a missing Clojure function refused by name.

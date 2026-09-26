@@ -907,7 +907,10 @@ lazy val okayFrege = (project in file("okay-frege"))
   // the build half is okay-frege/sbt-plugin, what a user of okay-frege enables too
   .enablePlugins(_root_.okay.frege.sbt.OkayFrege)
   .settings(_root_.okay.frege.sbt.OkayFrege.before(Compile))
-  .settings(_root_.okay.frege.sbt.OkayFrege.in(Test))
+  // before(Test), not in(Test): the Frege test classes are PRODUCTS, so a
+  // dependent's test->test sees them (okay-foreign-cluster's facade
+  // programs, foreign-jvm-programs)
+  .settings(_root_.okay.frege.sbt.OkayFrege.before(Test))
 
 /**
  * okay from SCALA 2.13 (specs/scala2-facade.md): a facade written in
@@ -2646,8 +2649,11 @@ lazy val okayForeignWorkflow = (project in file("okay-foreign-workflow"))
 // scopes of okay-py and okay-r for their interpreter finders (TestPy,
 // TestR); okay-cluster's for its Feeds and the in-process workers.
 lazy val okayForeignCluster = (project in file("okay-foreign-cluster"))
+  // okayClojure + okayFrege: their programs through the facade's Programs,
+  // walked in this process (foreign-jvm-programs)
   .dependsOn(okayCluster.jvm % "compile->compile;test->test",
-    okayPy % "compile->compile;test->test", okayR % "compile->compile;test->test")
+    okayPy % "compile->compile;test->test", okayR % "compile->compile;test->test",
+    okayClojure, okayFrege % "compile->compile;test->test")
   .settings(
     name := "okay-foreign-cluster",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

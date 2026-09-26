@@ -54,6 +54,8 @@ object Jvm:
     case n: (java.lang.Double | java.lang.Float) => Right(PyValue.F64(n.doubleValue))
     case s: String => Right(PyValue.Str(s))
     case s: java.lang.Iterable[?] => all(s.asScala, depth + 1)
+    // a Java array (Frege's `JArray`, a `long[]` or a `String[]`): its elements, boxed
+    case a: Array[?] => all((0 until java.lang.reflect.Array.getLength(a)).map(java.lang.reflect.Array.get(a, _)), depth + 1)
     case s: Iterable[?] => all(s, depth + 1)
     case other => Left(s"a ${other.getClass.getName} has no wire value")
 
@@ -90,6 +92,9 @@ object Jvm:
     case Schema.SBool => Some("Bool")
     case Schema.SString => Some("String")
     case i: Schema.SIso[?, ?] => fregeType(i.under())
+    // a list crosses from Frege as a Java array: `arrayFromList [1, 2]`
+    case l: Schema.SList[?] => fregeType(l.of()).map(t => s"JArray $t")
+    case v: Schema.SVector[?] => fregeType(v.of()).map(t => s"JArray $t")
     case _ => None
 
   /** `price_of` -> `priceOf`: a Frege or Clojure-free function name */

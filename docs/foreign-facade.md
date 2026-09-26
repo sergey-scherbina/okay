@@ -117,6 +117,20 @@ done; its own methods and attributes are `Methods`, which only Python
 gives. The bodies for both are in `FacadeConformance`, run over python3
 in `TestPyFacade`.
 
+The JVM's own languages take `Programs` too (foreign-jvm-programs): a
+Clojure namespace (`CljModule`) or a set of Frege programs (`FregeModule`)
+is walked in this process by `okay.Foreign`, and what it performs is the
+same `Cb` callbacks — so the one conformance body runs over them:
+
+```scala
+FacadeConformance.programs(CljModule("okay.cluster.facade"), "priced", "pairs")
+```
+
+The Clojure function takes the argument as JVM data (a record is a
+`java.util.Map`) and answers the program; a Frege program is registered
+with the small glue its lazy arguments need. A Scala function module has
+no instance: there, a program is just a function returning `Out ! F`.
+
 ## Adding a language
 
 A module type, the instances it can honestly give, and the conformance

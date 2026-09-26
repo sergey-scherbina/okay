@@ -1,0 +1,19 @@
+--- Frege programs the facade runs (foreign-jvm-programs): the conformance
+--- body's `priced` and `pairs`, performing the caller's callbacks through
+--- `FacadeShop`, generated from them.
+module okay.frege.FacadePrograms where
+
+import okay.frege.Prog
+import okay.frege.FacadeShop
+
+priced :: String -> Long -> Prog Double
+priced sku qty = do
+  p <- perform (priceOf sku)
+  pure (p * qty.double)
+
+--- a list crosses to a callback as a Java array
+pairs :: Prog Long
+pairs = do
+  x <- perform (choose (arrayFromList [1L, 2L]))
+  y <- perform (choose (arrayFromList [10L, 20L]))
+  pure (x + y)
