@@ -1,7 +1,7 @@
 package okay.lake
 
 import okay.{!, Async, Chunks, given}
-import okay.arrow.Rows
+import okay.arrow.{Column, Rows, Table}
 import okay.blob.{Blob, Bytes}
 import okay.cluster.{Bounds, Flow, Wire}
 import okay.codec.{Codecs, Schema}
@@ -23,11 +23,16 @@ object Lakes:
   def apply(name: String): Blob = synchronized(known.get(name)).getOrElse(
     throw IllegalStateException(s"no lake named '$name' in this process; it knows ${synchronized(known.keys.toVector)}"))
 
-/** one partition of a plan: row group `group` of the object `key` */
-final case class Part(key: String, group: Int, rows: Long)
+/** one partition of a plan: row group `group` of the object `key`, and
+ * the values of a table's partition columns that the file does not hold
+ * (a Delta table's `partitionValues`; `None` is a null) */
+final case class Part(key: String, group: Int, rows: Long,
+                      partition: Vector[(String, Option[String])] = Vector.empty)
 
-/** the partitions of a source, planned once at submission */
-final case class LakePlan(lake: String, parts: Vector[Part])
+/** the partitions of a source, planned once at submission; `columns`
+ * types the partition values (`string`, `long`, `integer`, `short`,
+ * `byte`, `double`, `float`, `boolean`, `date`, `timestamp`) */
+final case class LakePlan(lake: String, parts: Vector[Part], columns: Vector[(String, String)] = Vector.empty)
 
 /** one object a sink wrote: its key, rows and bytes */
 final case class Written(key: String, rows: Long, bytes: Long)
@@ -119,10 +124,42 @@ object ParquetSource:
       val blob = Lakes(plan.lake)
       val size = Run(blob.head(part.key)).getOrElse(throw IllegalStateException(s"'${part.key}' is gone")).size
       val in = BlobReadAt(blob, part.key, size)
-      val table = codec.group(in, codec.footer(in), part.group)
+      val read = codec.group(in, codec.footer(in), part.group)
+      val table = if part.partition.isEmpty then read else withPartition(read, part, plan.columns)
       val rows = Rows.rows[A](table).fold(why => throw IllegalStateException(s"'${part.key}' group ${part.group}: $why"), identity)
       Chunks.fromIterator(rows.iterator.drop(start.toInt), 1024)
     }
+
+/** a group's table with its partition values added as constant columns,
+ * typed by the plan (stage 18) */
+private[lake] def withPartition(t: Table, part: Part, types: Vector[(String, String)]): Table =
+  val n = t.rows
+  val typeOf = types.toMap
+  val added = part.partition.map { (name, v) =>
+    val ok = Array.fill(n)(v.isDefined)
+    val s = v.getOrElse("")
+    def parse[X](f: String => X): X =
+      try f(s) catch case e: Exception => throw IllegalStateException(s"partition value '$s' of '$name': ${e.getMessage}")
+    val col = typeOf.getOrElse(name, "string") match
+      case "string" => Column.Utf8(Array.fill(n)(s), ok)
+      case "long" => Column.Int64(Array.fill(n)(if v.isDefined then parse(_.toLong) else 0L), ok)
+      case "integer" => Column.Ints(32, true, Array.fill(n)(if v.isDefined then parse(_.toLong) else 0L), ok)
+      case "short" => Column.Ints(16, true, Array.fill(n)(if v.isDefined then parse(_.toLong) else 0L), ok)
+      case "byte" => Column.Ints(8, true, Array.fill(n)(if v.isDefined then parse(_.toLong) else 0L), ok)
+      case "double" => Column.Float64(Array.fill(n)(if v.isDefined then parse(_.toDouble) else 0.0), ok)
+      case "float" => Column.Float32(Array.fill(n)(if v.isDefined then parse(_.toFloat) else 0f), ok)
+      case "boolean" => Column.Bool(Array.fill(n)(v.isDefined && parse(_.toBoolean)), ok)
+      case "date" =>
+        Column.Date32(Array.fill(n)(if v.isDefined then parse(java.time.LocalDate.parse(_).toEpochDay.toInt) else 0), ok)
+      case "timestamp" =>
+        val micros = if v.isEmpty then 0L else parse { x =>
+          val i = java.time.LocalDateTime.parse(x.replace(' ', 'T')).toInstant(java.time.ZoneOffset.UTC)
+          i.getEpochSecond * 1000000L + i.getNano / 1000 }
+        Column.Timestamp(okay.arrow.TimeUnit.Micro, Some("UTC"), Array.fill(n)(micros), ok)
+      case other => throw IllegalStateException(s"partition column '$name' of type $other: not read")
+    name -> col
+  }
+  Table(t.cols ++ added, t.metadata)
 
 /**
  * A BATCH JOB'S OUTPUT AS PARQUET OBJECTS (stage 17).
