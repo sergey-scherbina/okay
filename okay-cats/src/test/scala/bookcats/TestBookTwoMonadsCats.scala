@@ -333,6 +333,13 @@ object EffectsDelivery:
         case Some(f) => priceOf(shop, item).map((tea, price) => Some((tea, price + f)))
     yield out
 
+  /** the expression cats refused, with effects: both helpers in one for */
+  val north: Option[(String, Int)] ! Order =
+    for
+      fee          <- deliveryFee("north").at[Order]
+      (tea, price) <- priceOf("north", "tea").at[Order]
+    yield fee.map(f => (tea, price + f))
+
   def run(item: String): List[Either[String, Option[(String, Int)]]] =
     val checked = runEither[Option[(String, Int)], Choose, String](order(item))
     !.run(runChoice[Either[String, Option[(String, Int)]], Pure](checked)).toList
@@ -371,6 +378,14 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
     assertEquals(CatsDelivery.order("tea").value.value, Delivery.expected)
     assertEquals(!.run(Delim.run[List[LayeredDelivery.Out], Pure](LayeredDelivery.order("tea"))), Delivery.expected)
     assertEquals(EffectsDelivery.run("tea"), Delivery.expected)
+  }
+
+  test("DELIVERY: with effects the refused expression compiles as written — both helpers in one for") {
+    import okay.{Choose, runChoice, runEither}
+    import okay.given
+    val checked = runEither[Option[(String, Int)], Choose, String](EffectsDelivery.north)
+    assertEquals(!.run(runChoice[Either[String, Option[(String, Int)]], Pure](checked)).toList,
+      List(Right(Some(("green tea", 350))), Right(Some(("black tea", 330)))))
   }
 
   test("DIFFERENT COMPOSITION: team A's helper (List + Either) does not type in team B's stack (Writer + Either), nor in the union") {

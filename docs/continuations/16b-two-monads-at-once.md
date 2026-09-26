@@ -372,6 +372,17 @@ out  <- fee match
   case Some(f) => priceOf(shop, item).map((tea, price) => Some((tea, price + f)))
 ```
 
+And the one expression cats refused is, with effects, just written
+down — both helpers in one `for`:
+
+```scala
+val north: Option[(String, Int)] ! Order =
+  for
+    fee          <- deliveryFee("north").at[Order]
+    (tea, price) <- priceOf("north", "tea").at[Order]
+  yield fee.map(f => (tea, price + f))
+```
+
 All three give the same answer (`TestBookTwoMonadsCats`).
 
 **The same effects in another order are no better.** Agreeing on the
