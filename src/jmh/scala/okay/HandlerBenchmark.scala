@@ -28,6 +28,10 @@ case class Ask[+A](a: A) derives Effect
 @Fork(2)
 class HandlerBenchmark {
 
+  /** the cont-stack road this fork runs, printed once (ContStackRoad) */
+  @Setup(Level.Trial)
+  def road(): Unit = ContStackRoad.announce()
+
   final val N = 10000
 
   /** 10k ops, every 100th handled (Ask), the rest forwarded (Produce) */

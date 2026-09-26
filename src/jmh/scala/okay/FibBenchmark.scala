@@ -12,6 +12,10 @@ import !.*
 @Fork(2)
 class FibBenchmark {
 
+  /** the cont-stack road this fork runs, printed once (ContStackRoad) */
+  @Setup(Level.Trial)
+  def road(): Unit = ContStackRoad.announce()
+
   @Benchmark
   def fib10(): Any =
     fibs[Int, Producer].next(10).peek

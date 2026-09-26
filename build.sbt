@@ -381,7 +381,10 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // a small first room, so the suite exercises exhaustion — the grant
     // on a stack that has room, the switch on one that has not (a
     // 128 KB thread) — without 850 levels of nesting before the first
-    // look; the derived default is what the benchmarks run with
+    // look. The JMH lanes INHERIT it (see `Jmh / javaOptions` below):
+    // measured 2026-09-26, statePara's exact road is 1.53x the count
+    // road at this room and 0.99x at the derived default of 873 — pass
+    // `-jvmArgsAppend -Dokay.cont.room=873` to price what a user runs
     Test / javaOptions += "-Dokay.cont.room=64",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
@@ -392,6 +395,27 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
+    // THE CONT-STACK ROAD OF A BENCHMARK (cont-stack-jmh-native-access,
+    // specs/cont-stack.md). The JMH forks run from the Jmh PACKAGE — the
+    // `-jmh.jar` sbt puts first on the run's classpath, okay's main
+    // classes inside it — and a jar is versioned only when it says so, so
+    // until this the ROOT StackRoom was the class in play on every JDK:
+    // every lane counted, whatever its flags. The package now carries the
+    // `jdk22/` reader as `multiRelease`'s test jar does. And the Jmh host
+    // inherits `Test / javaOptions` (so do its forks), which ENABLE native
+    // access for the tests; for JMH that flag is dropped, so a lane keeps
+    // the meaning of its history — the COUNT road — and the EXACT road is
+    // the same lane with `-jvmArgsAppend --enable-native-access=ALL-UNNAMED`.
+    // (Also inherited, and kept so the history stays comparable:
+    // `-Dokay.cont.room=64` and `-Xmx1g` — the lanes run at the tests'
+    // room of 64; the room's own comment above says what that costs.)
+    Jmh / packageBin / mappings ++= {
+      val dir = (LocalProject("okayJdk22") / Compile / classDirectory).value
+      val _ = (LocalProject("okayJdk22") / Compile / compile).value
+      (dir ** "*.class").get().map(f => f -> s"META-INF/versions/22/${IO.relativize(dir, f).get}")
+    },
+    Jmh / packageBin / packageOptions += Package.ManifestAttributes("Multi-Release" -> "true"),
+    Jmh / javaOptions := (Test / javaOptions).value.filterNot(_.startsWith("--enable-native-access")),
     // The core suite runs in its OWN JVM, and that is not a
     // workaround for heavy tests — they are not heavy. Measured: the
     // 1M-operation stack-safety tests pass in 256MB in 0.2s.
