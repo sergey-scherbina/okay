@@ -196,3 +196,7 @@
       2026-09-25, okayOpticsNative, GREEN on the rerun alone (Passed: Total 136, Failed 0, Errors 0, Passed 136): lost its test
       process in the affected-set gate of row-parametricity-forwarding-law
       (Writer.scala touched, so every dependent ran). Recorded per the ledger.
+      2026-09-26, okayArrowNative, GREEN on the rerun alone: lost its test
+      process (137 after "Accept timed out", TestArrowNesting, Errors 3)
+      in the affected-set gate of release-all-finalizers (Resource.scala
+      touched, so every dependent ran, 7668 tests). Recorded per the ledger.
