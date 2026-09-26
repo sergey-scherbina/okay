@@ -797,6 +797,21 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     functions' events instead), credit streams both ways, and `Durable` by
     `(id, seq)`.
 
+25. **Recovery with several programs open; the journal needs no new key**
+    (foreign-mux-duplex part 4). The multiplexed wire let two programs be
+    open on one worker from two threads, which the supervisor had never
+    met: both found the killed worker dead, both reopened it, and one
+    program's new continuations were filed under the other's worker ("not
+    held here"). The supervisor now opens a fresh worker under its lock —
+    whoever comes second sees it — and every operation carries the
+    generation of the worker it ACTUALLY ran on into the continuations it
+    records; the far-side call stays outside the lock. `Durable` is
+    unchanged: a durable run journals ITS program's operations in its own
+    order, so two programs interleaved on one worker never interleave in
+    one journal, and the `(id, seq)` key the first text asked for had
+    nothing to disambiguate. With that the item closes; the host-driven
+    stream and the duplex transform are filed (foreign-host-streams).
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
@@ -1132,3 +1147,10 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     transform in one call. `Stateful` already carries the duplex shape (a
     far state stepped per chunk), and no caller has asked for the far side
     to PULL a host stream under credit.
+- **foreign-mux-duplex, part 4: recovery (foreign-mux-recovery,
+  2026-09-26, Decision 25).** CrashConformance gained "two programs open on
+  one worker, the worker killed": both parked at their first choice, the
+  process SIGKILLed, both must come back with every branch. RED first on Go
+  and Rust ("continuation 2 of run 3 is not held here"); green after the
+  supervisor's fix, three runs out of three; Python, R, TypeScript and
+  Haskell skip it (no mux).

@@ -67,6 +67,34 @@ abstract class CrashConformance extends munit.FunSuite:
     finally w.close()
   }
 
+  test("MUX: two programs open on one worker, the worker killed: both come back, every branch (foreign-mux-duplex part 4)") {
+    val w = ForeignWorker.supervised(open())
+    given okay.Handler[ForeignEval] = w.handler
+    val probe = Foreign.program[Long](address("pairs")).calling(Foreign.callbacks(choose))()
+    assertEquals(runChoice(probe.program).runWith.size, 4)
+    assume(w.muxed, "this far side is served one exchange at a time")
+    // both programs parked at their first choice, THEN the kill
+    val parked = java.util.concurrent.CountDownLatch(2)
+    val killedOnce = java.util.concurrent.atomic.AtomicBoolean(false)
+    val waiting = Foreign.callback[Vector[Long], Long]("choose") { xs =>
+      parked.countDown()
+      parked.await(30, java.util.concurrent.TimeUnit.SECONDS): Unit
+      if killedOnce.compareAndSet(false, true) then kill()
+      effect[Choose, Long](Choose(xs))
+    }
+    import scala.concurrent.{Await, ExecutionContext, Future}
+    import scala.concurrent.duration.DurationInt
+    given ExecutionContext = ExecutionContext.global
+    def one = Future(runChoice(Foreign.program[Long](address("pairs")).calling(Foreign.callbacks(waiting))().program).runWith.toList)
+    try
+      val (a, b) = (one, one)
+      val all = List(Right(11L), Right(21L), Right(12L), Right(22L))
+      assertEquals(Await.result(a, 60.seconds), all)
+      assertEquals(Await.result(b, 60.seconds), all)
+      assert(killedOnce.get)
+    finally w.close()
+  }
+
   test("killed while idle: the next program runs on a fresh worker") {
     val w = ForeignWorker.supervised(open())
     given okay.Handler[ForeignEval] = w.handler

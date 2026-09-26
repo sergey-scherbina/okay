@@ -40,10 +40,15 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
   /** how many times a worker was REopened (the first open is not counted) */
   def restarts: Int = math.max(0, opened - 1)
 
-  /** the worker to use: the current one while it lives, a fresh one after */
-  private def worker(): Either[Condition, ForeignWorker] =
+  /** the worker to use and its generation, TOGETHER: the current one while
+   * it lives, a fresh one after. Under the lock, so two callers that find
+   * the same worker dead open ONE fresh worker between them — on a
+   * multiplexed worker several programs are open at once, and each must
+   * record its continuations against the worker it actually used
+   * (foreign-mux-duplex part 4) */
+  private def worker(): Either[Condition, (ForeignWorker, Long)] = synchronized {
     current match
-      case Some(w) if w.alive => Right(w)
+      case Some(w) if w.alive => Right((w, generation))
       case _ =>
         current.foreach(_.close())
         current = None
@@ -52,17 +57,24 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
           opened += 1
           generation += 1
           current = Some(w)
-          Right(w)
+          Right((w, generation))
         catch case e: Exception =>
           Left(Condition("WorkerUnavailable", s"the worker could not be (re)opened: ${e.getMessage}"))
+  }
 
   private def dead(e: Throwable): Boolean =
     e.isInstanceOf[ForeignWorker.TimedOut] || Option(e.getMessage).exists(_.contains("DEAD"))
 
-  /** one operation on the live worker; a death becomes data */
+  /** one operation on the live worker; a death becomes data. The call to
+   * the far side is outside the lock: a multiplexed worker serves others
+   * meanwhile */
   private def use[X](f: ForeignWorker => Either[Condition, X]): Either[Condition, X] =
-    worker().flatMap { w =>
-      try f(w)
+    useAt((w, _) => f(w))
+
+  /** `use`, with the generation of the worker it ran on */
+  private def useAt[X](f: (ForeignWorker, Long) => Either[Condition, X]): Either[Condition, X] =
+    worker().flatMap { (w, g) =>
+      try f(w, g)
       catch case e: IllegalStateException if dead(e) => Left(Condition("WorkerDied", e.getMessage))
     }
 
@@ -116,18 +128,21 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
   private var nextK = 0L
 
   /** a node from the worker, its `k` renamed to one the caller can keep */
-  private def node(run: Long, path: Vector[PyValue], n: PyNode): PyNode = n match
+  private def node(run: Long, path: Vector[PyValue], n: PyNode): PyNode = synchronized(nodeAt(run, path, n, generation))
+
+  /** a node from the worker of generation `gen`: its continuation lives THERE */
+  private def nodeAt(run: Long, path: Vector[PyValue], n: PyNode, gen: Long): PyNode = synchronized(n match
     case PyNode.Done(v) => PyNode.Done(in(v))
     case PyNode.Perform(op, args, k, once) =>
       nextK += 1
-      konts(nextK) = Kont(run, path, op, args, k, generation, once)
-      PyNode.Perform(op, args.map(in), nextK, once)
+      konts(nextK) = Kont(run, path, op, args, k, gen, once)
+      PyNode.Perform(op, args.map(in), nextK, once))
 
   /** on the CURRENT worker: the program re-run and `path` replayed, to the
    * continuation standing at `op(args)`; its local k */
   private def replay(w: ForeignWorker, run: Long, path: Vector[PyValue], op: String,
                      args: Vector[PyValue]): Either[Condition, Long] =
-    val (fn, fnArgs, cbs) = runs(run)
+    val (fn, fnArgs, cbs) = synchronized(runs(run))
     // one loop over the recorded path, not a frame per answer: a
     // durable run replays as many steps as it journaled (stack-safety-py-r)
     def step(n0: Either[Condition, PyNode], rest0: Vector[PyValue]): Either[Condition, Long] =
@@ -151,11 +166,11 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
   /** continue `k` with `answer`, recovering a lost worker by replay; one
    * restart per step, so a far side that dies every time still answers */
   private def continue(k: Long, answer: Either[Condition, PyValue]): Either[Condition, PyNode] =
-    konts.get(k) match
+    synchronized(konts.get(k)) match
       case None => Left(Condition("LookupError", s"continuation $k is not held (forgotten?)"))
       case Some(c) if c.once =>
         // a parked frame: continued once, on the worker that parked it
-        konts.remove(k): Unit
+        synchronized(konts.remove(k)): Unit
         if c.gen != generation || !current.exists(_.alive) then
           Left(Condition("WorkerDied",
             s"the call waiting on $k was in a worker that died: its far-side frame is gone, so the call cannot be resumed"))
@@ -170,15 +185,18 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
         case Left(cond) => Left(cond)
         case Right(value) =>
           @tailrec def attempt(recovering: Boolean): Either[Condition, PyNode] =
-            use { w =>
+            useAt { (w, g) =>
+              // where this continuation lives, read and moved under the lock:
+              // two programs replayed at once on one fresh worker each move their own
+              val (at, gen) = synchronized((c.local, c.gen))
               val local =
-                if c.gen == generation then Right(c.local)
-                else replay(w, c.run, c.path, c.op, c.args).map { l => c.local = l; c.gen = generation; l }
+                if gen == g then Right(at)
+                else replay(w, c.run, c.path, c.op, c.args).map { l => synchronized { c.local = l; c.gen = g }; l }
               for
                 l <- local
                 a <- out(value)
                 n <- w.handler.handle(ForeignEval.Continue(c.run, l, Right(a)))
-              yield node(c.run, c.path :+ value, n)
+              yield nodeAt(c.run, c.path :+ value, n, g)
             } match
               case Left(cond) if !recovering && !current.exists(_.alive) &&
                 Set("WorkerDied", "timeout").contains(cond.kind) => attempt(recovering = true)
@@ -241,20 +259,20 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
             try w.handler.handle(ForeignEval.Release(r.copy(id = localOf(r.id))))
             catch case e: IllegalStateException if dead(e) => ())
       case ForeignEval.Program(run, fn, args, cbs, direct) =>
-        runs(run) = (fn, args, cbs)
+        synchronized(runs(run) = (fn, args, cbs))
         // a start that died mid-flight is re-run on a fresh worker unless the
         // host said it is DIRECT code, which may have acted before it died
         @tailrec def attempt(recovering: Boolean): Either[Condition, PyNode] =
-          use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Program(run, fn, a, cbs, direct)))) match
+          useAt((w, g) => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Program(run, fn, a, cbs, direct)))
+              .map(n => nodeAt(run, Vector.empty, n, g))) match
             case Left(c) if !direct && !recovering && !current.exists(_.alive) &&
               Set("WorkerDied", "timeout").contains(c.kind) => attempt(recovering = true)
             case other => other
-        attempt(recovering = false).map(n => node(run, Vector.empty, n))
+        attempt(recovering = false)
       case ForeignEval.Continue(_, k, answer) =>
         continue(k, answer)
       case ForeignEval.Forget(run) =>
-        runs.remove(run): Unit
-        konts.filterInPlace((_, c) => c.run != run)
+        synchronized { runs.remove(run): Unit; konts.filterInPlace((_, c) => c.run != run): Unit }
         current.filter(_.alive).foreach(w =>
           try w.handler.handle(ForeignEval.Forget(run))
           catch case e: IllegalStateException if dead(e) => ())
@@ -273,12 +291,15 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
   /** what the CURRENT worker's handshake settled on ("" before the first open) */
   def wire: String = current.fold("")(_.wire)
 
+  /** whether the current worker takes requests in flight together (foreign-mux-duplex) */
+  def muxed: Boolean = current.exists(_.muxed)
+
   /** the current worker's Arrow frames, (sent, answered) */
   def arrowFrames: (Long, Long) = current.fold((0L, 0L))(_.arrowFrames)
 
   /** `ForeignWorker.verify` on the worker, opened if it has to be */
   def verify(packages: Map[String, String]): Vector[String] =
-    worker().fold(c => Vector(s"verify itself failed: ${c.kind}: ${c.message}"), _.verify(packages))
+    worker().fold(c => Vector(s"verify itself failed: ${c.kind}: ${c.message}"), (w, _) => w.verify(packages))
 
   def close(): Unit =
     current.foreach(_.close())
