@@ -340,3 +340,30 @@ forwarding form.
 Also decided the same day (random-clock-signatures, surveyed): no
 `Random` or `Clock` in the core. The backlog item records the numbers and
 where a `Clock` goes when a test first needs it.
+
+### Stage 5b — the release at an abort (bracket-final, operator ask, same day)
+
+The first cut documented a hole it had inherited from `Resource.run`. A
+raise inside `use`, caught by `runEither` OUTSIDE the scope, dropped the
+continuation that held the finalizers, and the resource leaked. The
+operator refused to keep the hole ("release must be guaranteed").
+
+- `trait Final` (Resource.scala) marks an operation no handler resumes.
+  `Throws` (so `Abort`) always; `Maybe` when `None`; `Chronicle.Halt`;
+  `Choose` with no alternatives. The name is Koka's `final ctl`, the
+  operation-side view of OCaml 5's `discontinue`.
+- `Resource.run` releases everything BEFORE forwarding a final
+  operation, and hands on a continuation holding no finalizers, so a
+  handler that resumed it anyway could not release twice.
+
+- [x] raise inside `bracket`, `runEither` outside: released; `recover`
+      outside: released exactly once more
+- [x] `None`, `confess`/halt, empty `choose` inside: released
+- [x] a `Some` is not final: open, use, close in that order
+- [x] watched RED before the change (both release tests failed)
+
+What stays open, stated rather than hidden: a handler that decides to
+drop the continuation of an operation that normally resumes. No effect
+system knows that without the handler saying so (OCaml needs the
+handler to call `discontinue`). `bracketNow` covers it with
+`try/finally`.

@@ -36,7 +36,7 @@ enum Chronicle[E, +A] derives Effect:
   /** record an error and go on */
   case Dictate(e: E) extends Chronicle[E, Unit]
   /** stop, with what has been recorded so far */
-  case Halt() extends Chronicle[E, Nothing]
+  case Halt() extends Chronicle[E, Nothing], Final
 
 object Chronicle:
   /** record an error and go on */

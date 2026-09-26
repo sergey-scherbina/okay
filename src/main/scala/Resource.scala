@@ -23,6 +23,30 @@ object Failing:
     def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e
 
 /**
+ * AN OPERATION THAT NEVER RESUMES — Koka's `final ctl`, OCaml 5's
+ * `discontinue` seen from the operation's side (bracket-final,
+ * 2026-09-26). `raise`, `abort`, a `None` of `Maybe`, `Chronicle`'s
+ * `halt`, a `Choose` with no alternatives: no handler in this library
+ * calls their continuation, and their meaning says none should.
+ *
+ * A scope that FORWARDS such an operation will therefore never continue,
+ * and `Resource.run` releases everything it holds BEFORE forwarding it,
+ * instead of leaving the finalizers inside a continuation that the outer
+ * handler is about to drop. Without this marker, `runEither` outside
+ * a `bracket` whose body raised leaked the resource.
+ *
+ * An operation is final by its VALUE where it has to be (`Maybe`,
+ * `Choose`), so `isFinal` is a method, not only the type. What a marker
+ * cannot know: a handler that decides NOT to resume an operation that
+ * normally resumes (a timeout of its own, `Logic.once` dropping the
+ * remaining alternatives). No effect system detects that without the
+ * handler saying so. `bracketNow` (a `try/finally`) is the release that
+ * holds even then.
+ */
+trait Final:
+  def isFinal: Boolean = true
+
+/**
  * The resource effect, tied to no other effect: acquire inside a
  * scope, and the release is the SCOPE's obligation — it runs when the
  * scope ends, in reverse acquisition order, whatever else the program
@@ -41,10 +65,12 @@ object Resource {
   /**
    * The scope: run the region, forwarding the effects F. Every
    * acquired release runs when the scope ends — at its value, or at a
-   * JVM exception thrown during a step — in reverse acquisition
-   * order. Run this handler OUTERMOST: turn aborts into values inside
-   * the scope (runEither before run), so no abortive handler discards
-   * the finalizers; a multi-shot handler inside replays only the
+   * JVM exception thrown during a step, or at a forwarded FINAL
+   * operation (`raise`, a `None`, `halt`, a pruned branch: see `Final`)
+   * — in reverse acquisition order. An abortive handler OUTSIDE the
+   * scope therefore no longer leaks it (bracket-final, 2026-09-26); only
+   * a handler that drops the continuation of an operation that normally
+   * resumes still can. A multi-shot handler inside replays only the
    * scope's inner part, so each acquire still releases exactly once.
    * A forwarded F-operation suspends the scope with its finalizers
    * carried into the residual — they run when the residual completes
@@ -99,6 +125,10 @@ object Resource {
   def run[A, F[+_]](a: A ! Resource + F)(using failing: Failing[F]): A ! F = {
     def releaseAll(fin: List[() => Unit]): Unit = fin.foreach(_())
 
+    def isFinal(e: Any): Boolean = e match
+      case f: Final => f.isFinal
+      case _ => false
+
     /** user code under the CURRENT finalizer list: a throw releases
      * everything acquired so far and propagates. Every place the walk
      * runs code it did not write — the tree's own `resume` (Delay
@@ -125,17 +155,27 @@ object Resource {
               val r = guarded(fin)(mk())
               releaseAll((() => rel(r)) :: fin)
               Return(r): A ! F
-          } { e => Inject(failing.guard(e, () => releaseAll(fin))).map { a => releaseAll(fin); a } }
+          } { e =>
+            if isFinal(e) then { releaseAll(fin); Inject(e): A ! F }
+            else Inject(failing.guard(e, () => releaseAll(fin))).map { a => releaseAll(fin); a }
+          }
         case Bind(Inject(e), k) => split[Resource, F](e) {
             case Acquire(mk, rel) =>
               val r = guarded(fin)(mk())
               val f2 = (() => rel(r)) :: fin
               loop(f2)(guarded(f2)(k(r)))
           } { e =>
-            // k(y) runs USER code (the composed continuation) at the
-            // outer handler's call site — a throw there must not skip
-            // the finalizers, so it is guarded like every other call
-            Inject(failing.guard(e, () => releaseAll(fin))).flatMap { y => _loop(fin)(guarded(fin)(k(y))) }
+            // a FINAL operation is never resumed, so the scope ends HERE:
+            // release now, and hand on a continuation holding nothing —
+            // were a handler to resume it anyway, nothing is released twice
+            if isFinal(e) then
+              releaseAll(fin)
+              Inject(e).flatMap { y => _loop(Nil)(k(y)) }
+            else
+              // k(y) runs USER code (the composed continuation) at the
+              // outer handler's call site — a throw there must not skip
+              // the finalizers, so it is guarded like every other call
+              Inject(failing.guard(e, () => releaseAll(fin))).flatMap { y => _loop(fin)(guarded(fin)(k(y))) }
           }
 
     loop(Nil)(a)
@@ -152,12 +192,13 @@ object Resource {
  * thrown `Run` or failed `Await`; rows beyond `Pure`/`Async` need
  * `import okay.AsyncFailing.anyRow`, as `Resource.run` does).
  *
- * What it inherits from `Resource.run`, said here too because a reader
- * of `bracket` expects the other kind: an ABORTIVE handler outside the
- * scope (`runEither` of a raise inside `use`, `Maybe.run` of a `None`)
- * drops the rest of the program, release included. Turn aborts into
- * values INSIDE `use` for a guaranteed release. `bracketNow` gives that
- * guarantee without the forwarding.
+ * An ABORT from `use` releases too, whichever handler catches it
+ * outside: `raise`, `abort`, a `None`, `halt` and a pruned branch are
+ * `Final` operations, and `Resource.run` releases before forwarding one
+ * (bracket-final). What no marker can see is a handler that drops the
+ * continuation of an operation that normally resumes (a timeout of its
+ * own, `Logic.once` cutting alternatives). `bracketNow`'s `try/finally`
+ * is the release that holds even then.
  *
  * This is the name cats (`bracket`), ZIO (`acquireReleaseWith`) and kyo
  * give the effect-polymorphic form. It belonged to `bracketNow` until

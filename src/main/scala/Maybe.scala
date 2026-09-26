@@ -27,7 +27,9 @@ import okay.Row.at
  * The class IS the whole identity: `Maybe` has no parameter but its
  * erased answer type, so splitting a row on it is a TOTAL test.
  */
-final case class Maybe[+A](value: Option[A]) derives Effect
+final case class Maybe[+A](value: Option[A]) extends Final derives Effect:
+  /** nothing there: no handler resumes it */
+  override def isFinal: Boolean = value.isEmpty
 
 extension [A](o: Option[A])
   /** the value, or stop: `None` ends the program at `Maybe.run` */

@@ -26,7 +26,7 @@ import okay.Row.{In, at}
  * second continuation gets a ClassCastException, rather than a
  * plausible wrong answer.
  */
-case class Throws[E, +A](e: E) derives Effect
+case class Throws[E, +A](e: E) extends Final derives Effect
 
 /** perform the failure */
 inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))

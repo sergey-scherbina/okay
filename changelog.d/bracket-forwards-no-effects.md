@@ -10,6 +10,12 @@
   (TestResource, TestDelimLimits, compare's ResourceBenchmark) are
   renamed. docs/benchmarks.md §7 says its numbers belong to
   `bracketNow`.
+- The release now also happens at an ABORT caught outside. `trait Final`
+  marks the operations no handler resumes: `raise`/`abort`, a `None`,
+  `Chronicle.halt`, and an empty `choose`. `Resource.run` releases
+  before forwarding one, so a raise in `bracket` or in any
+  `Resource.run` scope, caught by `runEither`/`recover`/`Maybe.run`
+  outside, no longer leaks. Watched red first.
 - Found by the new test: without `Free.delay`, `Resource.run` acquired
   when the program was BUILT, and a program run twice acquired once.
 - random-clock-signatures is surveyed and decided (not in the core); the

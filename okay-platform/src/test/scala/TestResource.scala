@@ -85,6 +85,35 @@ class TestResource extends munit.FunSuite {
     assertEquals(log.reverse, List("open", "close", "open", "close"))
   }
 
+  test("bracket releases at a raise, whichever handler catches it outside") {
+    var released = 0
+    val p: Int ! Throws % String = bracket(1)(_ => released += 1)(_ => raise[String, Int]("boom"))
+    assertEquals(!.run(runEither(p)), Left("boom"))
+    assertEquals(released, 1)
+    assertEquals(!.run(runEither(p.recover(_ => pure(0)))), Right(0))
+    assertEquals(released, 2, "recovered outside: released exactly once more")
+  }
+
+  test("bracket releases at a None, a halt and a pruned branch") {
+    var released = 0
+    val m: Int ! Maybe = bracket(1)(_ => released += 1)(_ => None.maybe)
+    assertEquals(!.run(Maybe.run(m)), None)
+    assertEquals(released, 1)
+    val h: Int ! Chronicle % String = bracket(1)(_ => released += 1)(_ => Chronicle.confess[String, Int]("bad"))
+    assertEquals(!.run(Chronicle.run[String, Int, Pure](h)), Chronicle.Verdict.Failed(Vector("bad")))
+    assertEquals(released, 2)
+    val c: Int ! Choose = bracket(1)(_ => released += 1)(_ => choose[Int]())
+    assertEquals(!.run(runChoice(c)), Seq())
+    assertEquals(released, 3)
+  }
+
+  test("a Some is not final: the release waits for the end of use") {
+    var log = List.empty[String]
+    val m: Int ! Maybe = bracket { log ::= "open"; 1 }(_ => log ::= "close")(r => Some(r).maybe.map { x => log ::= "use"; x })
+    assertEquals(!.run(Maybe.run(m)), Some(1))
+    assertEquals(log.reverse, List("open", "use", "close"))
+  }
+
   test("bracket releases when a forwarded Async step throws") {
     var released = 0
     val _ = intercept[RuntimeException]:

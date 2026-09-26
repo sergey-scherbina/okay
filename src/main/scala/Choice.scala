@@ -8,7 +8,9 @@ package okay
  * by parametricity) nor an ordinary exception-style handler can.
  * Each nesting level of choose costs stack at run time.
  */
-case class Choose[+A](as: Seq[A]) derives Effect
+case class Choose[+A](as: Seq[A]) extends Final derives Effect:
+  /** no alternatives: the branch is pruned and never resumes */
+  override def isFinal: Boolean = as.isEmpty
 
 /** The class IS the whole identity: Choose has no parameter but its
  * (erased) answer type, so splitting a row on it is a TOTAL test —
