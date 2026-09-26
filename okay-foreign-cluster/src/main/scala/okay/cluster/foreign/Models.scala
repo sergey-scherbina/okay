@@ -28,6 +28,10 @@ trait Model:
 object Models:
   given py: Models[PyModule] = py("python3")
   given r: Models[RModule] = r("Rscript")
+  /** a model is a held object: TypeScript's, not yet a compiled worker's (foreign-held-values) */
+  given ts: Models[TsModule] = new:
+    def model[P: Schema](module: TsModule, fn: String, params: P, workers: Int): Model =
+      ForeignModel[TsModule, P](Language.node, module, fn, params, workers)
   given jvm: Models[JvmModule] = new:
     def model[P: Schema](module: JvmModule, fn: String, params: P, workers: Int): Model = module.model(fn, params)
 

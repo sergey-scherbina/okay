@@ -121,10 +121,13 @@ in `TestPyFacade`.
 
 A module type, the instances it can honestly give, and the conformance
 suite green for each. No `mapXx`, no new door. The shims grow toward the
-tiers one at a time. The Rust, Haskell and Go libraries serve the table
-call since foreign-one-bulk; their module types are one `Language` value
-each, written with the first caller who needs one (backlog
-foreign-more-languages), and until then the compiler says so.
+tiers one at a time. Since foreign-more-languages every wire language has
+its module type: `TsModule` (TypeScript source, as `PyModule` is Python's)
+and `WorkerModule` (a compiled Go, Rust or Haskell worker, by the command
+that starts it), each one `Language` value under the same bodies. A
+compiled worker has no `Holds`, `Methods`, `Stateful` or `Models` yet —
+its libraries keep no held objects (backlog foreign-held-values) — and the
+compiler says so.
 
 ## Literature
 

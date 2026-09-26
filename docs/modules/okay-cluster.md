@@ -685,9 +685,9 @@ one on this shape, at 90 ms for a million rows; the cluster protocol
 adds nothing visible; the reduce in Python costs ~70 ms that `Wire.fold`
 does not — move it across only for a reduction the JVM has not got.
 
-Rust, Haskell and Go do not take a stage yet: their libraries serve the
-table call since foreign-one-bulk, and each waits for its `Language` value
-(`foreign-more-languages`). Clojure and Frege
+TypeScript (`TsModule`) and compiled Go, Rust and Haskell workers
+(`WorkerModule`) take the same stage since foreign-more-languages
+([okay-foreign-cluster](okay-foreign-cluster.md)). Clojure and Frege
 need none — they run inside the JVM, so their map is `flow.map(f)`.
 
 ## API reference

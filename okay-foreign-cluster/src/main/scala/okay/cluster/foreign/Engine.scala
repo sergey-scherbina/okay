@@ -45,6 +45,15 @@ object Engine:
     def batcher[A: Schema, B: Schema](module: okay.py.PyModule, fn: String, workers: Int): Batcher[A, B] =
       ForeignStage[okay.py.PyModule, A, B](Language.py(python), module, fn, workers)
 
+  /** ONE body for every wire language: a chunk of rows as one table */
+  def of[M](lang: Language[M]): Engine[M] = new:
+    def name = lang.name
+    def batcher[A: Schema, B: Schema](module: M, fn: String, workers: Int): Batcher[A, B] =
+      ForeignStage[M, A, B](lang, module, fn, workers)
+
+  given ts: Engine[TsModule] = of(Language.node)
+  given worker: Engine[WorkerModule] = of(Language.worker)
+
   /** R, `Rscript` on the PATH; `Engine.r(path)` for another */
   given r: Engine[okay.r.RModule] = r("Rscript")
 
@@ -66,6 +75,11 @@ object Engine:
 object Reduces:
   given py: Reduces[okay.py.PyModule] = py("python3")
   given r: Reduces[okay.r.RModule] = r("Rscript")
+  def of[M](lang: Language[M]): Reduces[M] = new:
+    def reducer[A: Schema, Acc: Schema](module: M, step: String, merge: String, workers: Int): Reducer[A, Acc] =
+      ForeignReducer[M, A, Acc](lang, module, step, merge, workers)
+  given ts: Reduces[TsModule] = of(Language.node)
+  given worker: Reduces[WorkerModule] = of(Language.worker)
   given jvm: Reduces[JvmModule] = new:
     def reducer[A: Schema, Acc: Schema](module: JvmModule, step: String, merge: String, workers: Int): Reducer[A, Acc] =
       module.reducer[A, Acc](step, merge)

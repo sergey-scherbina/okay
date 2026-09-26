@@ -185,8 +185,8 @@ believed):
 | Scala (`JvmModule`) | facade 0.001 ms a call | by reference 0.001 ms; 100 000 rows in and out through `Rows.table`/`Rows.rows` 19.8 ms; 1M rows map: 6–12 ms | — | MeasureFacade, MeasureForeignMapReduce |
 | Python, pipes | facade 0.217 ms a call, own road 0.130 ms (the difference is `PyCodec` encode+decode at `Schema`) | 100 000 rows one frame, columnar JSON: rows through the facade 182 ms, rows on the own road 176 ms (the same road since facade-frame-seam), a `Table` through `Frames.frame` 152 ms, the bare frame 140 ms; 1M rows map, JSON: ~200 ms; Arrow: ~95 ms; `@okay.arrow` vectorised: ~88 ms; reduce in Python: +70 ms. ARROW (pyarrow 25.0.1, 2026-09-26): rows through the facade 51–54 ms (own road 53 ms: no overhead), a `Table` through `Frames.frame` 11.5–12.5 ms, the bare frame 17–18 ms — beside 157–170 / 124–130 / 106–123 ms on columnar JSON in the same session | 100 000 rows in 4096-row frames: 194 ms — the same as one frame; on Arrow 70–87 ms (JSON 153–163 ms that session) | MeasureFacade, MeasureForeignMapReduce, MeasurePyArrow |
 | R, pipes | — | 100 000 rows round trip: 13.7 s as JSON records, 180 ms columnar JSON (r-frame-columnar-wire); Arrow 61.8 ms beside columnar JSON 169.5 ms, arms alternating (2.7x; 10 000 rows: equal, 21 ms) — R with arrow 25 in its own container | — | MeasureRFrame |
-| TypeScript | — | serves `frame` (columnar JSON); no Arrow | — | to measure |
-| Haskell, Go, Rust | tier 1; the table call served since foreign-one-bulk (columnar JSON) | Rust in process, 1M rows through a function: Arrow C Data 20.7 ms, columnar JSON 119.8 ms (foreign-arrow-ffm) | — | MeasureRustTable; the rest wait for a `Language` (foreign-more-languages) |
+| TypeScript (`TsModule`) | every facade instance since foreign-more-languages, Holds and Methods included | columnar JSON; no Arrow | frames driven from here | TestTsFacadeConformance; timings to measure |
+| Haskell, Go, Rust (`WorkerModule`) | Calls, Frames, Streams, Programs, Speaks, Engine, Reduces since foreign-more-languages; no Holds yet (foreign-held-values) | Rust in process, 1M rows through a function: Arrow C Data 20.7 ms, columnar JSON 119.8 ms (foreign-arrow-ffm) | — | MeasureRustTable; Test{Go,Rust,Hs}FacadeConformance |
 | Clojure, Frege | in-JVM, `JvmModule` | same object | — | to measure |
 
 Empty cells are the work; a cell filled by this lane goes into Results
@@ -453,3 +453,14 @@ with its date, load and sha (the `performance` skill).
   costs nothing on either road. MeasureRFrame's new lane, arms alternating:
   R, 100 000 rows, Arrow 61.8 ms against 169.5 ms; at 10 000 rows the two
   are equal — the container's fixed cost dominates there.
+- **foreign-more-languages (2026-09-26).** `TsModule` and `WorkerModule`
+  (a compiled Go, Rust or Haskell worker, by its command), `Language.ts` /
+  `Language.node` and `Language.worker`, and the instances by module type:
+  Calls, Frames, Streams (through Frames), Programs, Speaks, Engine,
+  Reduces for both; Holds, Methods, Stateful, Models for TypeScript alone.
+  `Methods`, `Engine` and `Reduces` gained the `of(lang)` the other bodies
+  had. Tests (Live): the conformance body over each — TypeScript 8 (Holds
+  and Methods too), Go, Rust and Haskell 6 each, a partitioned cluster
+  stage among them. One trap met: Node runs TypeScript by stripping types,
+  so a constructor PARAMETER PROPERTY is refused ("not supported in
+  strip-only mode") — a module declares its fields.

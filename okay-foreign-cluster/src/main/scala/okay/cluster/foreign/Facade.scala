@@ -45,6 +45,10 @@ object Calls:
   given r: Calls[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Calls[okay.r.RModule] = of(Language.r(rscript))
 
+  /** TypeScript, `node` on the PATH; a compiled Go, Rust or Haskell worker */
+  given ts: Calls[TsModule] = of(Language.node)
+  given worker: Calls[WorkerModule] = of(Language.worker)
+
   /** the JVM's own languages: a function registered by name, called as
    * the Scala function it is — no wire, no codec, the zero-cost tier */
   given jvm: Calls[JvmModule] = new:
@@ -97,6 +101,8 @@ object Frames:
   def py(python: String): Frames[okay.py.PyModule] = of(Language.py(python))
   given r: Frames[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Frames[okay.r.RModule] = of(Language.r(rscript))
+  given ts: Frames[TsModule] = of(Language.node)
+  given worker: Frames[WorkerModule] = of(Language.worker)
 
   /** the JVM: the table by reference, the function as registered */
   given jvm: Frames[JvmModule] = new:
@@ -198,6 +204,8 @@ object Programs:
   def py(python: String): Programs[okay.py.PyModule] = of(Language.py(python))
   given r: Programs[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Programs[okay.r.RModule] = of(Language.r(rscript))
+  given ts: Programs[TsModule] = of(Language.node)
+  given worker: Programs[WorkerModule] = of(Language.worker)
 
 /**
  * OBJECT HANDLES (foreign-object-handles): a value the far side KEEPS —
@@ -249,18 +257,27 @@ object Holds:
   def py(python: String): Py = of(Language.py(python))
   given r: R = r("Rscript")
   def r(rscript: String): R = of(Language.r(rscript))
+  /** TypeScript keeps a table of held objects; Go, Rust and Haskell do not
+   * yet (foreign-held-values), so a compiled worker has no instance */
+  type Ts = Holds[TsModule] { type Ref = okay.py.PyRef }
+  given ts: Ts = of(Language.node)
 
 object Methods:
   type Py = Methods[okay.py.PyModule] { type Ref = okay.py.PyRef }
-  /** Python only: R's objects have no methods to call by name */
-  given py: Py = py("python3")
-  def py(python: String): Py = new Methods[okay.py.PyModule]:
+  type Ts = Methods[TsModule] { type Ref = okay.py.PyRef }
+
+  /** ONE body for a language whose objects have methods and attributes by
+   * name: Python's and TypeScript's (R's have none, an honest absence) */
+  def of[M](lang: Language[M]): Methods[M] { type Ref = okay.py.PyRef } = new Methods[M]:
     type Ref = okay.py.PyRef
-    private val lang = Language.py(python)
-    def method[Arg: Schema, Out: Schema](module: okay.py.PyModule, ref: Ref, name: String)(a: Arg): Either[Batcher.Failed, Out] =
+    def method[Arg: Schema, Out: Schema](module: M, ref: Ref, name: String)(a: Arg): Either[Batcher.Failed, Out] =
       ref.call[Out](name)(a).runWith(using lang.workers(module, Stage.Workers).handler).left.map(Language.failed)
-    def attr[Out: Schema](module: okay.py.PyModule, ref: Ref, name: String): Either[Batcher.Failed, Out] =
+    def attr[Out: Schema](module: M, ref: Ref, name: String): Either[Batcher.Failed, Out] =
       ref.attr[Out](name).runWith(using lang.workers(module, Stage.Workers).handler).left.map(Language.failed)
+
+  given py: Py = py("python3")
+  def py(python: String): Py = of(Language.py(python))
+  given ts: Ts = of(Language.node)
 
 /**
  * The doors a job uses, each picking the tier by the SHAPE it is handed
@@ -318,6 +335,10 @@ object Speaks:
   def py(python: String): Speaks[okay.py.PyModule] = of(Language.py(python))
   given r: Speaks[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Speaks[okay.r.RModule] = of(Language.r(rscript))
+  given ts: Speaks[TsModule] = of(Language.node)
+  /** a compiled worker says which language it is in its module */
+  given worker: Speaks[WorkerModule] = new:
+    def speaks(module: WorkerModule): Report = of(Language.worker).speaks(module).copy(language = module.language)
 
   given jvm: Speaks[JvmModule] = new:
     def speaks(module: JvmModule): Report = Report("jvm", "in-jvm", "by-reference", stream = false, "in-jvm")

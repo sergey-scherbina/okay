@@ -4,6 +4,16 @@ import okay.codec.Schema
 import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyRef, PyValue, PyWorkers, Shape}
 import okay.r.{RFrame, RModule, RSubprocess, RValue, REval}
 
+/** a TypeScript module: its source, loaded by a Node worker
+ * (foreign-more-languages) — the shape a `PyModule` has */
+final case class TsModule(name: String, source: String)
+
+/** a COMPILED worker — Go, Rust or Haskell (foreign-more-languages): the
+ * command that starts it; its functions and programs are the ones it was
+ * built with, addressed by their bare names. `language` is its word:
+ * "go", "rust", "haskell" */
+final case class WorkerModule(language: String, name: String, command: Seq[String])
+
 /**
  * A WIRE LANGUAGE, as the cluster and the facade need it (foreign-one-runtime,
  * specs/foreign-one.md stage 4): where its workers come from, how its
@@ -61,6 +71,38 @@ object Language:
     def address(module: RModule, fn: String): String = s"${module.name}::$fn"
     def shape: Shape = okay.r.R.shape
     def who = s"'$rscript'"
+
+  /** TypeScript, `node` on the PATH (foreign-more-languages) */
+  val node: Language[TsModule] = ts("node")
+
+  def ts(node: String): Language[TsModule] = new:
+    def name = s"ts:$node"
+    def tag = "ts"
+    def module(m: TsModule): String = m.name
+    def word = "typescript"
+    def workers(module: TsModule, n: Int): PyWorkers =
+      Workers.of(s"ts|$node|${module.name}|${module.source.hashCode}", s"ts:${module.name}", n, () =>
+        val dir = java.nio.file.Files.createTempDirectory("okay-ts-module")
+        java.nio.file.Files.writeString(dir.resolve(s"${module.name}.ts"), module.source): Unit
+        okay.py.TsWorker.start(dir, modules = Seq(module.name), node = node))
+    def address(module: TsModule, fn: String): String = s"${module.name}:$fn"
+    def shape: Shape = Shape.python
+    def who = s"the node '$node'"
+
+  /** a compiled worker, Go, Rust or Haskell: started by its command, its
+   * functions by their bare names (foreign-more-languages) */
+  val worker: Language[WorkerModule] = new:
+    def name = "worker"
+    def tag = "worker"
+    def module(m: WorkerModule): String = m.name
+    override def label(m: WorkerModule, fn: String): String = s"${m.language}:${m.name}:$fn"
+    def word = "worker"
+    def workers(module: WorkerModule, n: Int): PyWorkers =
+      Workers.of(s"worker|${module.command.mkString(" ")}", s"${module.language}:${module.name}", n, () =>
+        ForeignWorker.speaking(module.command))
+    def address(module: WorkerModule, fn: String): String = fn
+    def shape: Shape = Shape.python
+    def who = "the worker"
 
   private[foreign] def failed(c: okay.py.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
 

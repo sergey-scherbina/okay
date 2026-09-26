@@ -57,10 +57,24 @@ object Scaling:
 - A row type that is not a flat case class is refused when the stage is
   built, not on a worker at the first chunk.
 
-Not here yet: Rust, Haskell, Go. Their libraries serve the TABLE call (a
-`call` with a table argument, `"table": true`) since foreign-one-bulk; each
-still needs its `Language` value, written with its first caller
-(`foreign-more-languages`). Clojure and Frege need nothing — they
-run inside the JVM, so their map is `flow.map(f)`.
+TypeScript, Go, Rust and Haskell too (foreign-more-languages): a
+`TsModule` is TypeScript source run by Node, and a `WorkerModule` is a
+compiled worker — Go, Rust or Haskell — named by the command that starts
+it, its functions by their bare names:
+
+```scala
+WorkerModule("go", "gofacade", Seq(GoWorker.build(d).toString))
+```
+
+The same map then runs there, a frame per chunk:
+
+```scala
+val out = okay.cluster.Flows.collect(okay.cluster.Flow.slices(recs, 3).mapIn[FacadeConformance.Rec](module, "fecho", batch = 128)).runWith
+```
+
+A stateful stage and a model need a held object, which a compiled worker
+does not keep yet (foreign-held-values); TypeScript has both. Clojure and
+Frege need nothing — they run inside the JVM, so their map is
+`flow.map(f)`.
 
 The whole story: [okay-cluster, "The map in Python or R"](okay-cluster.md#the-map-in-python-or-r).

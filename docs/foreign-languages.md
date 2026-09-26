@@ -169,7 +169,9 @@ its replies, and every language answers the same conformance suites
    `Jvm.frege` are.
 4. **A `Language` value** for the facade and the cluster
    (okay-foreign-cluster): how to open its pool, how it addresses a
-   function, its `Shape`. One small object; nothing else is per language.
+   function, its `Shape`. One small object; nothing else is per language —
+   `Language.ts` and `Language.worker` (any compiled worker) are twelve
+   lines each.
 
 ## The chapters
 
