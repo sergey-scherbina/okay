@@ -22,6 +22,8 @@ trait Compression:
   def name: String
   def lz4: Codec
   def zstd: Codec
+  /** the RAW Snappy format — what a Parquet page holds (stage 6) */
+  def snappy: Codec
 
 object Compression:
   /** THE DEFAULT: ours, on every platform */
@@ -31,3 +33,4 @@ object Compression:
     def name = "okay"
     def lz4: Codec = Lz4Frame
     def zstd: Codec = Zstd
+    def snappy: Codec = Snappy

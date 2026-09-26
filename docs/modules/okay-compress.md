@@ -11,6 +11,7 @@ JDK has neither codec. The JVM's usual choices are native bindings
 | `Lz4Frame` | the LZ4 frame format, both ways: independent blocks of up to 4 MiB, the content size, the XXH32 content checksum; any frame read (dependent blocks, block checksums, skippable frames) |
 | `Lz4Block` | a bare LZ4 block, into a buffer you give it (the format Arrow's `lz4_raw` and aircompressor use) |
 | `Zstd` | ZSTD frames (RFC 8878), both ways |
+| `Snappy` | RAW Snappy blocks (no framing) — what a Parquet page holds — both ways; `summon[Compression].snappy` (compress-snappy) |
 | `XxHash` | XXH32 and XXH64, the two frames' checksums |
 | `Codec` | the facade: `name`, `compress`, `decompress` |
 
@@ -68,7 +69,7 @@ not change:
       assertEquals(summon[Compression].name, "aircompressor")
 ```
 
-`summon[Compression].zstd` and `.lz4` are the codecs either way; the
+`summon[Compression].zstd`, `.lz4` and `.snappy` are the codecs either way; the
 formats are the same, and each reads the other's frames
 (`TestAircompressor`, on every sample and on pyarrow's fixtures). Where
 the choice is a config value, `Compressions.byName("aircompressor")`.

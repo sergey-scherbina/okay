@@ -31,6 +31,23 @@ class TestAircompressor extends munit.FunSuite:
       assertEquals(Aircompressor.lz4.decompress(Lz4Frame.compress(in)).toVector, in.toVector, s"$name: theirs reads ours")
   }
 
+  test("Snappy: aircompressor round-trips, ours reads its blocks, it reads ours") {
+    for (name, in) <- inputs do
+      val theirs = Aircompressor.snappy.compress(in)
+      assertEquals(Aircompressor.snappy.decompress(theirs).toVector, in.toVector, s"$name: their round trip")
+      assertEquals(Snappy.decompress(theirs).toVector, in.toVector, s"$name: ours reads theirs")
+      assertEquals(Aircompressor.snappy.decompress(Snappy.compress(in)).toVector, in.toVector, s"$name: theirs reads ours")
+      // the ratio beside the library's, per sample: a greedy matcher that
+      // missed most matches would still round-trip
+      assert(Snappy.compress(in).length <= theirs.length * 13 / 10 + 16,
+        s"$name: ours ${Snappy.compress(in).length} bytes against aircompressor's ${theirs.length}")
+    locally {
+      import Aircompressor.given
+      assertEquals(summon[Compression].snappy.name, "snappy")
+      assert(!(summon[Compression].snappy eq Snappy), "the import did not pick aircompressor's")
+    }
+  }
+
   test("pyarrow's frames read through aircompressor too") {
     val b64 = java.util.Base64.getDecoder
     assertEquals(Aircompressor.zstd.decompress(b64.decode(Fixtures.zstd_text_3)).toVector, Fixtures.input("text").toVector)

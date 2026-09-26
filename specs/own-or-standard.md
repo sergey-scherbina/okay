@@ -51,7 +51,7 @@ and now the norm:
 | facade | ours (the default) | standard, behind an import | platforms |
 |---|---|---|---|
 | `okay.arrow.ArrowCodec` | `OkayArrow` | `ApacheArrow.given` (Arrow Java 19, optional) | JVM (ours everywhere) |
-| `okay.compress.Compression` | `Compression.Okay` (`Lz4Frame`, `Zstd`) | `Aircompressor.given` (io.airlift:aircompressor 2.0.3, optional) | JVM (ours everywhere) |
+| `okay.compress.Compression` | `Compression.Okay` (`Lz4Frame`, `Zstd`, `Snappy`) | `Aircompressor.given` (io.airlift:aircompressor 2.0.3, optional) | JVM (ours everywhere) |
 | `okay.crypto.Keccak` | `Keccak.Okay` (`Keccak256`) | `BouncyCastleKeccak.given` (bcprov 1.78.1, optional) | JVM (ours on JVM and JS) |
 
 Consumers made transparent with them: okay-arrow's compressed bodies

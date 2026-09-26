@@ -65,6 +65,25 @@ object Aircompressor extends Compression:
 
   val lz4: Codec = Lz4FrameCodec(blocks)
 
+  /** aircompressor's raw Snappy (stage 6) */
+  object snappy extends Codec:
+    def name = "snappy"
+    def compress(bytes: Array[Byte]): Array[Byte] =
+      ready
+      val c = io.airlift.compress.snappy.SnappyCompressor()
+      val out = new Array[Byte](c.maxCompressedLength(bytes.length))
+      val n = c.compress(bytes, 0, bytes.length, out, 0, out.length)
+      java.util.Arrays.copyOf(out, n)
+    def decompress(bytes: Array[Byte]): Array[Byte] =
+      ready
+      val size = malformed("a Snappy block's length")(
+        io.airlift.compress.snappy.SnappyDecompressor.getUncompressedLength(bytes, 0))
+      if size < 0 || size > Int.MaxValue - 16 then throw Corrupt(s"a Snappy block declaring $size bytes")
+      val out = new Array[Byte](size)
+      val n = malformed("a Snappy block")(
+        io.airlift.compress.snappy.SnappyDecompressor().decompress(bytes, 0, bytes.length, out, 0, out.length))
+      if n == out.length then out else throw Corrupt(s"a Snappy block of $n bytes declaring $size")
+
 /** the implementations by NAME, for a config value or a flag — as
  * `WireChoice.named` picks the wire (JVM: the library one lives here) */
 object Compressions:
