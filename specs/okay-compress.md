@@ -58,6 +58,15 @@ native bindings (lz4-java, zstd-jni) and a pure-Java port
       NOT done: timing on Native (it has no JMH; the round trips run there
       as tests only) — carried by okay-compress-jvm-fast-paths.
 
+- [ ] Stage 6: SNAPPY (compress-snappy, 2026-09-26), the RAW format
+      (a varint length, literals and copies with 1-, 2- and 4-byte
+      offsets — no framing): what Parquet pages use. Ours in the facade
+      as `Compression.snappy` (greedy 4-byte hash matching; the decoder
+      refuses a copy before the start, a length past the end, a cut
+      element), aircompressor's `SnappyRaw*` behind `Aircompressor.given`;
+      every sample round-trips, each reads the other's output, a damaged
+      block is refused as `Corrupt`.
+
 ## Decisions
 
 - **One source for three platforms, byte arrays only.** No `ByteBuffer`
