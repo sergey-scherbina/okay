@@ -254,3 +254,14 @@ op) is **1.0x** — C2 removes the allocation and nothing else; the
 `inline match` on the operation term is 8.15 µs / 84 568 B, 1.45x —
 and does not reduce through a polymorphic lambda (`[X] => e =>
 stage(e)`), which is why the macro applies the stage to the term.
+
+**2026-09-26, handlers-vs-plain-loop** (history.d
+`handlers-vs-plain-loop`): the baseline this table lacked — the same
+1 000 operations as a plain `while` loop with a `var` state. With the
+same persistent `Vector` log the staged answer threads it reads 2.79
+µs / 34 136 B, so `stagedDirect` (7.79 / 85 368) is **2.79x** the loop
+and the Free block (14.2 / 164 928) **5.10x**; with a mutable
+`ArrayBuffer` log, 0.706 µs / 4 192 B, the factors are 11x and 20x.
+The staged road is the closest a library gets to a compiled handler,
+and it is not a plain loop: what is left is the continuation closure
+per operation. docs/benchmarks.md §2c.

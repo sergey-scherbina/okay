@@ -68,6 +68,7 @@ them read as "we are slow" or "we are fast" for the wrong reason.
 | direct syntax over its own flatMap chain | **1.05x** | zio-direct 0.65x | [§1b](#1b-direct-syntax--the-same-10k-binds-written-as-code) |
 | 10 000 handled reads | **79** | kyo 253 | [§2](#2-reader--10k-asks--writer--10k-tells) |
 | 10 000 handled writes | **159** | kyo 178 | [§2](#2-reader--10k-asks--writer--10k-tells) |
+| 1 000 State+Writer operations against a plain `while` loop | **7.8** staged, 14.2 Free | plain loop 0.71 (mutable buffer), 2.79 (the same `Vector` log) | [§2c](#2c-against-no-handlers-at-all--the-plain-loop) |
 | fork and join 100 fibers | 24.0 | **kyo 18.5** | [§4](#4-forkjoin--100-trivial-fibers) |
 | fork and join 10 000, runtime-native | **796** | kyo 884 | [§4b](#4b-adversarial-lanes--the-rows-we-expected-to-lose) |
 | map/filter/take/sum over 1 000 | **1.70** staged, **8.2** chunked | fs2 21.9 | [§5](#5-stream-pipeline--mapfiltertake1000sum) |
@@ -525,6 +526,48 @@ what an optimizing JIT proves closed-form and folds, and every
 effectful lane cannot be. All four land within one order of magnitude
 of each other, matching the literature's own description of this
 shape as every runtime's cheapest.
+
+## 2c. Against no handlers at all — the plain loop
+
+Every other row on this page compares okay with another effect
+library. This one compares it with no effect library: the SAME 1 000
+State+Writer operations as `StagedBenchmark` (a 10-operation block —
+get, set, tell, three times, then get — inside a 100-iteration loop),
+written as a plain `while` loop with a `var` state
+(handlers-vs-plain-loop, 2026-09-26).
+
+| lane (okay-direct `StagedBenchmark`, 1 000 operations) | µs/op | ns per operation | B/op | against the Vector loop |
+|---|---:|---:|---:|---:|
+| `plainLoopBuffer` — `var` state, mutable `ArrayBuffer` log | **0.706** | 0.71 | 4 192 | 0.25x |
+| `plainLoopVector` — `var` state, the same persistent `Vector` log the handlers thread | **2.79** | 2.8 | 34 136 | 1.00x |
+| `stagedDirect` — `Direct.staged`, the handler inlined into every operation | 7.79 | 7.8 | 85 368 | 2.79x |
+| `stagedHand` — the same staged program written by hand | 7.91 | 7.9 | 84 568 | 2.83x |
+| `freeDirectNested` — a Free `direct` block, the shipping `State.run`/`Writer.run` | 14.2 | 14.2 | 164 928 | 5.10x |
+
+Minima of three rounds, `-f 2 -wi 3 -i 5 -prof gc`, JDK 26, every
+round through `scripts/jmh-lane.sh` and quiet at both ends; the
+rounds agree within 1% (history.d `handlers-vs-plain-loop`). A trial
+`@Setup` checks that all five roads compute the same answer, the same
+final state and the same log before any of them is timed.
+
+**How to read it.** The `Vector` loop isolates the effect machinery:
+it pays for the same immutable log, so what is left between it and a
+handler lane is the handlers themselves — the continuation closure per
+operation and the accumulator threaded as a value. That is **2.8x**
+when the handler is inlined at compile time and **5.1x** on the
+general Free road. Against what an imperative programmer actually
+writes, a mutable buffer, the gap is 11x and 20x, and most of the
+buffer's lead is the log, not the control flow: the 300 immutable
+appends are about 2.1 µs of the `Vector` loop's 2.8, some 7 ns each.
+
+So effect handlers here are not "goto speed". Compilers that own the
+language — Koka's evidence passing (Xie & Leijen, ICFP 2021), OCaml
+5's fibers — turn a tail-resumptive handler into an ordinary call; a
+library on the JVM gets the closest thing to that only when the
+program is static at its call site, which is what `Direct.staged` is.
+What the handlers buy for the factor is the program as a value: the
+same block run under other handlers, a continuation that can be
+resumed again, a row type that says which effects are still unhandled.
 
 ## 3. Choice — 2^13 branches, all collected
 
