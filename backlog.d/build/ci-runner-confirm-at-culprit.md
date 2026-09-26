@@ -1,10 +1,11 @@
-- [ ] ci-runner-confirm-at-culprit — the runner's confirmation re-runs
-      `gate.sh "affected $from..$culprit"` in the MAIN checkout, so the tree
-      it tests is HEAD's, not the culprit's (found 2026-09-26 with
-      ci-runner-bisect-intermediate-commits). For a culprit that touched
-      build.sbt the affected set is every module, and a load flake at HEAD
-      "confirms" it — which is how parquet-codec's first commit was
-      confirmed RED. Needs: confirm in the bisect worktree checked out AT
-      the culprit (tip), and revert a landing as the lane's commits since
-      the previous tip rather than its tip alone. Gate: ci-runner-selftest
-      cases where HEAD flakes and the culprit tip is green.
+- [ ] ci-runner-confirm-at-culprit — what is left after
+      ci-runner-flake-before-bisect (2026-09-26), which now re-runs a
+      whole-build red's own suites alone on HEAD before any bisect, so a
+      flake no longer reaches the bisect at all. Still open: (1) a red
+      that REPRODUCES is bisected and its culprit confirmed by
+      `gate.sh "affected $from..$culprit"` on HEAD's tree — for a culprit
+      that touched build.sbt that is every module, a second chance for an
+      unrelated flake to "confirm" it; confirming by the reproduced SUITES
+      at the culprit's tree would say more. (2) a landing is reverted as
+      its tip commit, not as the lane's commits since the previous tip.
+      Gate: ci-runner-selftest cases for both.

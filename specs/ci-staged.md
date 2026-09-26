@@ -382,6 +382,13 @@ file and a fake `sbt` that always succeeds):
       checkout is never left mid-revert (selftest case 13) — the false
       revert above conflicted with the lanes built on it and blocked every
       sibling's `merge --ff-only` until a human ran `git revert --abort`
+- [x] a whole-build red is REPRODUCED before any bisect: the suites its
+      `==> X` lines name are re-run alone on HEAD, and green there is a
+      flake — no bisect, no revert, the next turn re-tests the range
+      (ci-runner-flake-before-bisect, 2026-09-26; selftest case 14).
+      Both incidents were flakes at HEAD: a 2 h 40 min bisect converging
+      anywhere (2026-09-25), and parquet-codec's intermediate commit
+      reverted (2026-09-26)
 - [ ] NOT YET: the confirmation re-runs the culprit's scoped gate on the
       MAIN checkout's tree (HEAD), not the culprit's; for a culprit that
       changed build.sbt that set is everything, so a flake at HEAD can

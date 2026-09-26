@@ -309,7 +309,24 @@ run_once() {
         release_lock; trap - EXIT INT TERM
         return 1
       fi
-      echo "ci-runner: RED (exit $rc) — bisecting $from..$to" | tee -a "$log"
+      # DOES THE RED REPRODUCE? (ci-runner-flake-before-bisect, 2026-09-26)
+      # Re-run ONLY the suites the whole build named, alone, on HEAD. A
+      # red that is green alone is a flake with no culprit to find: a
+      # bisect over it converges anywhere (2 h 40 min over ~180 landings
+      # on 2026-09-25) or on a lane's intermediate commit (parquet-codec's,
+      # reverted on 2026-09-26). The next whole-build turn just runs again.
+      suites=$(grep -a "==> X " "$log" | sed 's/\x1b\[[0-9;]*m//g' | sed -n 's/.*==> X \([^ ]*\).*/\1/p' \
+        | awk -F. '{ s = ""; for (i = 1; i <= NF; i++) { s = (s == "" ? $i : s "." $i); if ($i ~ /^[A-Z]/) break } print s }' \
+        | sort -u | tr '\n' ' ')
+      echo "ci-runner: RED (exit $rc) on: $suites— re-running them alone on HEAD before any bisect" | tee -a "$log"
+      if sh scripts/gate-retry.sh "$root" "$log.suites" 2 "testOnly $suites"; then
+        cat "$log.suites" >> "$log" 2>/dev/null; rm -f "$log.suites"
+        echo "ci-runner: the red did not reproduce on its suites alone — a flake, not a regression; not bisecting, not pushing (the next whole-build turn re-tests $from..$to fresh)" | tee -a "$log"
+        release_lock; trap - EXIT INT TERM
+        return 1
+      fi
+      cat "$log.suites" >> "$log" 2>/dev/null; rm -f "$log.suites"
+      echo "ci-runner: RED (exit $rc) reproduced alone — bisecting $from..$to" | tee -a "$log"
       bisect_and_revert "$from" "$to" "$log"
       release_lock; trap - EXIT INT TERM
       return 1

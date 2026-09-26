@@ -217,7 +217,8 @@ new_fixture
 commit_file src.txt one
 target=$(sha master)
 before_origin=$(origin_sha)
-queue red green
+# whole build red, its suites alone red again, the culprit's confirmation green
+queue red red green
 out=$(run once); rc=$?
 [ "$rc" -ne 0 ] && ok "nonzero exit (still not pushed this turn)" || bad "exit 0"
 [ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed" || bad "origin moved"
@@ -281,6 +282,22 @@ queue red red red red red red
 out=$(run once); rc=$?
 ( cd "$work" && [ ! -f .git/REVERT_HEAD ] && git diff --quiet && git diff --cached --quiet ) \
   && ok "no revert in progress, a clean tree" || bad "left mid-revert or dirty: $(cd "$work" && git status --short | head -5)"
+rm -rf "$tmp"
+
+say "14. a whole-build red whose named suites pass ALONE is a flake: no bisect, no revert"
+new_fixture
+commit_file a.txt one
+commit_file b.txt two
+target=$(sha master)
+before_origin=$(origin_sha)
+# the whole build red, the named suites re-run alone green
+queue red green
+out=$(run once); rc=$?
+[ "$rc" -ne 0 ] && ok "nonzero exit (not pushed this turn)" || bad "exit 0"
+printf '%s\n' "$out" | grep -q "did not reproduce" && ok "said the red did not reproduce" || bad "did not say so: $out"
+printf '%s\n' "$out" | grep -q "bisect over\|reproduced alone — bisecting" && bad "a bisect ran over a flake: $out" || ok "no bisect ran"
+[ "$(cd "$work" && git rev-parse master)" = "$target" ] && ok "master unchanged" || bad "master moved"
+[ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed" || bad "origin moved"
 rm -rf "$tmp"
 
 say ""
