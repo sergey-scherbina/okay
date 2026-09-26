@@ -175,5 +175,14 @@ object WorkerMain {
     val server = ServerSocket(port)
     println(s"worker listening ${server.getLocalPort} knowing ${Jobs.names.mkString(",")}")
     System.out.flush()
-    Served.serve(server, Cluster.local)
+    // an EXCHANGING worker (specs/dataflow.md, stage 14): it serves what
+    // `local` does, and reaches its peers by the `host:port` the
+    // coordinator hands it — one reconnecting socket per peer
+    val host = System.getProperty("okay.cluster.host", "127.0.0.1")
+    val peers = java.util.concurrent.ConcurrentHashMap[String, Cluster.Serve]()
+    def dial(address: String): Cluster.Serve =
+      peers.computeIfAbsent(address, a =>
+        val at = a.lastIndexOf(':')
+        Served.reconnecting(a.substring(0, at), a.substring(at + 1).toInt))
+    Served.serve(server, Cluster.exchanging(s"$host:${server.getLocalPort}", dial))
 }

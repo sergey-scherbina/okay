@@ -81,6 +81,36 @@ object FanJob extends Job[Feed, ((Feeds.Sum, Feeds.Sum), Feeds.Sum)] {
 }
 
 /**
+ * A GROUP-BY WITH A SECOND STAGE AFTER IT (specs/dataflow.md, stage
+ * 14): the sum of `v` per (key, slot) — every key in every partition,
+ * so the exchange has something to merge — and then a histogram of
+ * those sums, folded into a `Sum`.
+ */
+object ShuffleJob extends Shuffled[Feed, Feeds.Sum] {
+  import Feeds.*
+  type A = Ev
+  type K = Long
+  type Acc = Long
+  type O = Long
+  def name: String = "test.shuffle"
+  def params: Schema[Feed] = summon[Schema[Feed]]
+  def answer: Schema[Sum] = summon[Schema[Sum]]
+  def flow(f: Feed, parts: Int): Flow[Ev] = Flow.slices(events(f), parts)
+  def slot(e: Ev): Long = e.key.toLong * 1000 + math.floorMod(e.ts / 10, 1000L)
+  def key(f: Feed): Ev => Long = slot
+  def agg(f: Feed): Aggregator[Ev, Long, Long] = value
+  def keys: Schema[Long] = summon[Schema[Long]]
+  def accs: Schema[Long] = summon[Schema[Long]]
+  val histogram: Aggregator[(Int, Long), Sum, Sum] =
+    Aggregator[(Int, Long), Sum, Sum](Sum(0, 0, 0))((s, kv) =>
+      Sum(s.n + 1, s.total + kv._2, s.x ^ mix(kv._1 * 31 + kv._2)))((a, b) =>
+      Sum(a.n + b.n, a.total + b.total, a.x ^ b.x))(identity)
+  def andThen(f: Feed): Wire[(Long, Long), Sum] =
+    Wire.keyed((kv: (Long, Long)) => math.floorMod(kv._2, 13L).toInt,
+      Aggregator.sum[Long].contramap[(Long, Long)](_ => 1L))(histogram)
+}
+
+/**
  * WHAT THIS BUILD KNOWS HOW TO RUN.
  *
  * `WorkerMain` is handed this class's name and loads it, which runs
@@ -91,6 +121,7 @@ object FanJob extends Job[Feed, ((Feeds.Sum, Feeds.Sum), Feeds.Sum)] {
 object TestJobs {
   Jobs.register(WindowJob)
   Jobs.register(FanJob)
+  Shuffled.register(ShuffleJob)
 
   /** loading the class is what registers; this exists so a caller in
    * THIS process can be explicit about it rather than relying on

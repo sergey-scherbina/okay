@@ -61,6 +61,20 @@ enum Req:
   /** the stream is over: close what is open and let the state go */
   case Close(session: Long)
 
+  // --- the exchange across processes (specs/dataflow.md, stage 14) --
+
+  /** the MAP side of a `Shuffled` job over one partition: fold it,
+   * cut the accumulators into `reducers` hash buckets and HOLD them
+   * here under `shuffle`, answering only their sizes */
+  case Shuffle(job: String, params: Array[Byte], part: Int, of: Int, reducers: Int, shuffle: Long)
+  /** the REDUCE side: fetch bucket `reducer` of every partition from
+   * the worker at `holders(part)`, merge, run the second stage */
+  case Reduce(job: String, params: Array[Byte], reducer: Int, holders: Vector[String], shuffle: Long)
+  /** one held bucket, asked worker to worker */
+  case Fetch(shuffle: Long, part: Int, bucket: Int)
+  /** the run is over: let its buckets go */
+  case Drop(shuffle: Long)
+
 enum Resp:
   case Extents(cols: Vector[Flows.Extent])
   /** the partial, encoded by the sink's own `wire` — the coordinator
@@ -85,6 +99,14 @@ enum Resp:
              consumed: Long = 0L)
   case Opened(session: Long)
   case Failed(why: String)
+  /** the map side's buckets are held; their encoded sizes, per bucket */
+  case Mapped(sizes: Vector[Long])
+  /** one bucket, as its holder encoded it */
+  case Bucket(bytes: Array[Byte])
+  /** a reducer could not fetch these partitions' buckets: their holder
+   * is gone or no longer holds them, and the map side must run again */
+  case Lost(parts: Vector[Int])
+  case Done
 
 object Req:
   given Schema[Bounds] = Schema.derived
@@ -200,7 +222,9 @@ object Cluster {
     case Req.Extent(job, _, _, _, _) => Some(job)
     case Req.Run(job, _, _, _, _, _) => Some(job)
     case Req.Open(job, _, _, _, _, _, _, _) => Some(job)
-    case Req.Known | Req.Advance(_, _, _, _) | Req.Close(_) => None
+    case Req.Shuffle(job, _, _, _, _, _) => Some(job)
+    case Req.Reduce(job, _, _, _, _) => Some(job)
+    case Req.Known | Req.Advance(_, _, _, _) | Req.Close(_) | Req.Fetch(_, _, _) | Req.Drop(_) => None
 
   /**
    * THE DOOR CHECK (specs/federation.md, stage 3): a job whose
@@ -410,6 +434,181 @@ object Cluster {
                 throw IllegalStateException("this journal holds another run (not a batch run's " +
                   "record — a stream's fold?); it is left as it is")
 
+  /** a worker as a PEER: its `Serve` for the coordinator, and the
+   * address another worker dials to reach it (stage 14) */
+  final case class Peer(address: String, serve: Serve)
+
+  /**
+   * RUN A `Shuffled` JOB WITH THE EXCHANGE ACROSS PROCESSES
+   * (specs/dataflow.md, stage 14).
+   *
+   * Two phases. The MAP side runs partition i on a living worker,
+   * which folds it by key, cuts the accumulators into `reducers` hash
+   * buckets and HOLDS them — only their sizes come back. The REDUCE
+   * side asks reducer r of a living worker, handing it the address of
+   * every partition's holder; the reducer fetches bucket r from each
+   * directly, merges, runs the job's second stage over the merged
+   * `(key, value)` pairs and answers that stage's partial, which is
+   * the only thing besides the sizes the coordinator ever receives.
+   *
+   * THE FAULT MODEL IS STAGE 5'S on both sides. A reducer that dies
+   * is a thrown `ask`, and its share is asked of the next survivor —
+   * who fetches the same buckets again, because the holders still
+   * have them. A holder that dies, or answers that it no longer holds
+   * a partition, makes the reducer answer `Lost(parts)`; those
+   * partitions' map side runs again on a survivor and the reducer is
+   * asked again. Every partition is a recipe, so a re-map is a
+   * recompute and never a restore.
+   *
+   * BOUNDED: a reducer is re-asked after a loss at most `Rounds`
+   * times, then the run fails naming what is still lost — a worker
+   * that keeps accepting map work and keeps losing it must not hold a
+   * run for ever.
+   */
+  def shuffle[P, R](job: Shuffled[P, R], p: P, parts: Int, reducers: Int, workers: Vector[Peer],
+                    tolerance: Int = Living.Tolerance)
+                   (using Scheduler): Run[R] ! Async =
+    require(parts > 0, "a job has at least one partition")
+    require(reducers > 0, "a shuffle has at least one reducer")
+    require(workers.nonEmpty, "a job needs at least one worker")
+    require(tolerance > 0, "a worker is buried after at least one failure")
+    val second = job.andThen(p)
+    job.refuseWindows(second): Unit
+    val encoded = Codecs.cbor(job.params).encode(p)
+    val serves = workers.map(_.serve)
+    val living = Living(workers.length, tolerance)
+    val id = scala.util.Random.nextLong()
+    // who holds each partition's buckets; a partition's own lock makes
+    // two reducers that lost the same partition re-map it ONCE
+    val holders = Array.fill(parts)(-1)
+    val locks = Array.fill(parts)(new Object)
+
+    def mapped(i: Int): Unit =
+      askAt(serves, living, i, Req.Shuffle(job.name, encoded, i, parts, reducers, id)) match
+        case (Resp.Mapped(_), w) => holders.synchronized { holders(i) = w }
+        case (Resp.Failed(why), _) => throw IllegalStateException(s"partition $i: $why")
+        case (other, _) => throw IllegalStateException(s"partition $i answered $other to a shuffle")
+
+    def remap(i: Int, was: Int): Unit = locks(i).synchronized {
+      if holders.synchronized(holders(i)) == was then
+        living.failed(was)
+        mapped(i)
+    }
+
+    def reduced(r: Int): second.W =
+      @tailrec def go(round: Int, lost: Vector[Int]): second.W =
+        if round > Rounds then
+          throw IllegalStateException(s"reducer $r: the buckets of partitions ${lost.mkString(", ")} " +
+            s"were still lost after $Rounds re-maps")
+        val seen = holders.synchronized(holders.clone())
+        askAt(serves, living, r, Req.Reduce(job.name, encoded, r, seen.toVector.map(workers(_).address), id)) match
+          case (Resp.Partial(bytes), _) =>
+            Codecs.cbor(second.wire).decode(bytes) match
+              case Right(w) => w
+              case Left(why) => throw IllegalStateException(s"reducer $r's partial: $why")
+          case (Resp.Lost(ps), _) =>
+            ps.foreach(i => remap(i, seen(i)))
+            go(round + 1, ps)
+          case (Resp.Failed(why), _) => throw IllegalStateException(s"reducer $r: $why")
+          case (other, _) => throw IllegalStateException(s"reducer $r answered $other to a reduce")
+      go(0, Vector.empty)
+
+    val run: Run[R] ! Async =
+      Flows.spread(parts)(mapped).flatMap: _ =>
+        Flows.spread(reducers)(reduced).map: ws =>
+          Run(second.result(ws), second.drops(ws), parts, reducers, second.merged(ws),
+            living.retries, living.lost)
+    // the buckets go whichever way the run ends: a failed run must not
+    // leave a long-lived worker holding them
+    Async.attempt(run).map: out =>
+      serves.foreach(s => try s(Req.Drop(id)): Unit catch case _: Throwable => ())
+      out.fold(t => throw t, identity)
+
+  /** how many times one reducer is re-asked after a loss — a fixed
+   * limit, not a measurement: every loss re-maps at least one
+   * partition, and a run losing the same buckets this often has a
+   * worker that accepts work and cannot keep it */
+  private val Rounds: Int = 16
+
+  /**
+   * A WORKER THAT CAN TAKE PART IN AN EXCHANGE (stage 14): everything
+   * `local` serves, plus the map side's held buckets and the reduce
+   * side's fetches. `self` is this worker's own address — a fetch from
+   * itself reads its own store instead of dialling — and `dial` turns
+   * a peer's address into a `Serve` (`WorkerMain`: `host:port`
+   * through `Served.reconnecting`).
+   *
+   * Each call makes a worker with its OWN store, so in-process workers
+   * are as separate as processes are: killing one loses exactly the
+   * buckets it held.
+   */
+  def exchanging(self: String, dial: String => Serve): Serve =
+    val held = scala.collection.mutable.HashMap.empty[(Long, Int), Vector[Array[Byte]]]
+    def fetch(shuffle: Long, part: Int, bucket: Int): Resp =
+      held.synchronized(held.get((shuffle, part))) match
+        case Some(bs) if bucket < bs.length => Resp.Bucket(bs(bucket))
+        case _ => Resp.Failed(s"no bucket: partition $part of shuffle $shuffle is not held here")
+    req =>
+      req match
+        case Req.Shuffle(name, params, part, of, reducers, shuffle) =>
+          Shuffled.find(name) match
+            case None => Resp.Failed(s"no shuffled job named '$name' in this build; it knows ${Shuffled.names}")
+            case Some(job) =>
+              try
+                job.mapAt(params, part, of, reducers) match
+                  case Right(bs) =>
+                    held.synchronized(held.update((shuffle, part), bs))
+                    Resp.Mapped(bs.map(_.length.toLong))
+                  case Left(why) => Resp.Failed(s"parameters for '$name': $why")
+              catch case r: Refused => Resp.Failed(r.getMessage)
+        case Req.Fetch(shuffle, part, bucket) => fetch(shuffle, part, bucket)
+        case Req.Drop(shuffle) =>
+          held.synchronized(held.filterInPlace((k, _) => k._1 != shuffle)): Unit
+          Resp.Done
+        case Req.Reduce(name, params, reducer, holders, shuffle) =>
+          Shuffled.find(name) match
+            case None => Resp.Failed(s"no shuffled job named '$name' in this build; it knows ${Shuffled.names}")
+            case Some(job) =>
+              // one fetch per partition, in partition order; a holder
+              // that throws or no longer holds is LOST, not fatal
+              val got = Vector.newBuilder[Array[Byte]]
+              val lost = Vector.newBuilder[Int]
+              for (h, i) <- holders.zipWithIndex do
+                val answer =
+                  if h == self then fetch(shuffle, i, reducer)
+                  else
+                    try dial(h)(Req.Fetch(shuffle, i, reducer))
+                    catch case t: Throwable => Resp.Failed(s"$h: $t")
+                answer match
+                  case Resp.Bucket(bytes) => got += bytes
+                  case _ => lost += i
+              val missing = lost.result()
+              if missing.nonEmpty then Resp.Lost(missing)
+              else job.reduceAt(params, got.result()) match
+                case Right(bytes) => Resp.Partial(bytes)
+                case Left(why) => Resp.Failed(s"'$name', reducer $reducer: $why")
+        case other => local(other)
+
+  /** `ask`, answering WHICH worker answered too — the map side must
+   * know where its buckets are held */
+  private def askAt(workers: Vector[Serve], living: Living, part: Int, req: Req): (Resp, Int) =
+    @tailrec def go(tried: Int, first: Throwable | Null): (Resp, Int) =
+      living.pick(part + tried) match
+        case None =>
+          val why = IllegalStateException(
+            s"partition $part: no workers left (${workers.length} were given)")
+          if first != null then why.initCause(first.nn): Unit
+          throw why
+        case Some(w) =>
+          try
+            val out = workers(w)(req)
+            living.answered(w)
+            (out, w)
+          catch case t: Throwable =>
+            living.failed(w)
+            go(tried + 1, if first == null then t else first)
+    go(0, null)
+
   /**
    * ASK A LIVING WORKER, AND KEEP ASKING (specs/dataflow.md, stage 5).
    *
@@ -435,22 +634,7 @@ object Cluster {
    * already settled on.
    */
   private def ask(workers: Vector[Serve], living: Living, part: Int, req: Req): Resp =
-    @tailrec def go(tried: Int, first: Throwable | Null): Resp =
-      living.pick(part + tried) match
-        case None =>
-          val why = IllegalStateException(
-            s"partition $part: no workers left (${workers.length} were given)")
-          if first != null then why.initCause(first.nn): Unit
-          throw why
-        case Some(w) =>
-          try
-            val out = workers(w)(req)
-            living.answered(w)
-            out
-          catch case t: Throwable =>
-            living.failed(w)
-            go(tried + 1, if first == null then t else first)
-    go(0, null)
+    askAt(workers, living, part, req)._1
 
   /**
    * Who is still answering.
@@ -577,6 +761,9 @@ object Cluster {
           job.partialAt(params, part, of, bounds) match
             case Right(bytes) => Resp.Partial(bytes)
             case Left(why) => Resp.Failed(s"parameters for '$name': $why")
+    case Req.Shuffle(_, _, _, _, _, _) | Req.Reduce(_, _, _, _, _) | Req.Fetch(_, _, _) | Req.Drop(_) =>
+      Resp.Failed("this worker holds no buckets and fetches none: serve Cluster.exchanging(self, dial) " +
+        "to take part in an exchange (specs/dataflow.md, stage 14)")
   }
 
   /**

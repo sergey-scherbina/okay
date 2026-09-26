@@ -292,20 +292,20 @@ not against its existence):
       checked by a test that asserts nothing
 
 Stage 14 — the exchange across processes (TestShuffle):
-- [ ] a two-stage keyed job (`Shuffled`) over 4 workers answers what
+- [x] a two-stage keyed job (`Shuffled`) over 4 workers answers what
       one process answers, at several partition and reducer counts
-- [ ] the buckets travel WORKER TO WORKER: the coordinator sends no
+- [x] the buckets travel WORKER TO WORKER: the coordinator sends no
       bucket and receives none — it hears sizes from the map side and
       the second stage's partials from the reducers
-- [ ] a reducer killed mid-exchange: its share is asked of a survivor
+- [x] a reducer killed mid-exchange: its share is asked of a survivor
       and the answer is unchanged
-- [ ] a map holder killed after the map side: the buckets it held are
+- [x] a map holder killed after the map side: the buckets it held are
       reported LOST by name, those partitions are recomputed on a
       survivor, and the answer is unchanged
-- [ ] a run's buckets are dropped from every worker when it ends
-- [ ] a second stage with event-time windows is refused by name (the
+- [x] a run's buckets are dropped from every worker when it ends
+- [x] a second stage with event-time windows is refused by name (the
       reducer's output has no event-time order to window over)
-- [ ] FOUR REAL PROCESSES, one of them killed as the reduce side
+- [x] FOUR REAL PROCESSES, one of them killed as the reduce side
       starts, and the answer is the one-process answer (Live)
 
 Stage 2 (TestFlow, TestWroclawFlow, MeasureExchange):
@@ -1349,6 +1349,29 @@ it the record in the journal only ever grows and a burst is one write.
 (`Checkpoint.none` is recognised and no record is built); `runLeading`
 is `leading`'s seat and does not wait to be elected, for `leading`'s
 reason.
+
+### Stage 14 — the exchange across processes (2026-09-26)
+
+**The shape was Spark's, and for Spark's reason.** The map worker holds
+its buckets and reducers pull them, so the two deaths cost different
+things and neither costs everything: a dead reducer costs a re-fetch
+(the holders still have its buckets), a dead holder costs a re-map of
+exactly the partitions it held. `TestShuffle` kills each kind in
+process and asserts the answer against a `groupMapReduce` written
+without the engine; the four-process Live test kills a real JVM as the
+reduce side starts. With the re-map removed (the mutant), both
+in-process death tests fail naming the partitions still lost after
+the bound.
+
+**The coordinator carries no bucket, asserted rather than assumed**: a
+test records every answer the coordinator receives and finds no
+`Bucket`, while the workers between them served at least 24 of the 32
+fetches an 8x4 exchange needs.
+
+**One thing the protocol does not yet do**: a reducer fetches its
+buckets one after another. A reducer with many holders pays their
+round trips in sequence; parallel fetches are the next thing a
+measurement would ask for, and nobody has measured yet.
 
 ### Stage 5 — a worker dies and the job does not
 

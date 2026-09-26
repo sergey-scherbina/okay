@@ -450,6 +450,36 @@ bytes, so both bind to whatever you already run: `TestPersisted`
 binds them to okay-persist's `Election` and its compacted log in
 about a dozen lines each.
 
+**5. A large group-by, finished on the workers.** A `Job` finishes its
+keyed stage by the coordinator's merge — right while the merged result
+fits one machine, the bottleneck once it does not (feature engineering
+over all of the data). A `Shuffled` job names a first keyed stage
+(`key`, `agg`) and a second stage (`andThen`, any `Wire` over its
+`(key, value)` output). The map side holds its hash buckets; each
+reducer, on a worker, fetches its bucket of every partition from the
+worker holding it, merges, and runs the second stage; the coordinator
+sees bucket SIZES and the second stage's partials, never a bucket:
+
+```scala
+val got = Cluster.shuffle(ShuffleJob, feed, 8, 4, workers).runWith
+```
+
+`workers` are `Cluster.Peer(address, serve)`: a worker reaches another
+by ADDRESS, since a `Serve` cannot be handed to another process. A
+worker process serves `Cluster.exchanging` — `WorkerMain` does:
+
+```scala
+Served.serve(server, Cluster.exchanging(s"$host:${server.getLocalPort}", dial))
+```
+
+A reducer that dies has its share asked of a survivor, which fetches
+the same buckets again; a holder that dies makes the reducers answer
+`Lost(parts)`, and exactly those partitions' map side runs again.
+A bucket is placed by a hash of the key's ENCODING, so a key whose
+`hashCode` is identity still lands on one reducer in every process.
+The second stage cannot window by event time (refused by name): its
+input is a hash map's order.
+
 ## Tutorial
 
 A remote channel, indistinguishable from a local one:
@@ -749,6 +779,8 @@ need none — they run inside the JVM, so their map is `flow.map(f)`.
 | `Checkpoint` | `save(epoch, bytes)` / `latest` | where a coordinator writes down what it has folded; `Checkpoint.none`, `Checkpoint.Memory` |
 | `Cluster.run(…, journal = j)` | the same, resumable: partials journalled as they arrive | a successor over `j` runs only the partitions `j` lacks |
 | `Cluster.runLeading` | `(Job, P, parts, workers, journal, lease) => Option[Run[R]] ! Async` | a resumable batch run if this process is the coordinator; `None` if not |
+| `Cluster.shuffle` | `(Shuffled[P,R], P, parts, reducers, Vector[Peer]) => Run[R] ! Async` | a two-stage keyed job whose exchange runs worker to worker |
+| `Cluster.exchanging` | `(self: String, dial: String => Serve) => Serve` | a worker that can hold buckets and fetch them from its peers |
 | `Cluster.leading` | `(Job, P, parts, workers, take, journal, lease) => Option[Run[R]] ! Async` | run it if this process is the coordinator; `None` if not |
 | `Lease` | `take(): Option[Long]` / `held(term)` / `release(term)` | who may be the coordinator; `Lease.solitary` is no election |
 | `Checkpoint.fenced` | `(term, lease, under) => Checkpoint` | refuses a commit once the lease is gone (`Checkpoint.Deposed`) |

@@ -475,7 +475,8 @@ object Flows {
     if at == null then
       throw IllegalArgumentException(
         s"$what follows another keyed stage: two of them need an exchange between " +
-          "them, which is stage 2 of specs/dataflow.md")
+          "them. Across processes that is a `Shuffled` job run by `Cluster.shuffle` " +
+          "(specs/dataflow.md, stage 14)")
     at.nn
 
   /** how many hash buckets the map side writes, and how many reducers

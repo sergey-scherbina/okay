@@ -61,9 +61,10 @@ enum Finish:
  *
  * WHAT IS STILL NOT HERE: a second keyed stage in one flow. The
  * exchange of stage 2 finishes a keyed stage on several reducers; it
- * does not yet FEED another keyed stage from them, which is what a
- * multi-stage plan needs. `Flows` says so by name when a plan asks
- * for two.
+ * does not FEED another keyed stage in a `Flow`. Across processes a
+ * `Shuffled` job does (stage 14): its reducers run on the workers and
+ * feed a second stage. `Flows` says so by name when a plan asks for
+ * two.
  */
 enum Flow[A]:
 
