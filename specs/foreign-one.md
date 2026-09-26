@@ -498,7 +498,16 @@ more than it adds (the line count of what it removed goes in Results).
       ref, perWorker, supervise); `PyWorkers`, the cluster pools,
       `Holds.pyWorkers` and `SupervisedWorker` folded (R's own replay is
       already gone, stage 2a); the lease-leak test.
-- [ ] Stage 4 — **foreign-one-runtime**: `Runtime[L]`, `Module[L]`,
+- [x] Stage 4 — **foreign-one-runtime** (2026-09-26, narrowed — Decision
+      16): `Language[M]` (pool, address, value rules) makes every cluster
+      stage kind and every facade capability ONE body; the Python/R twins
+      (`PyStage`/`RStage`, `PyReducer`/`RReducer`, `PyStreamer`/
+      `RStreamer`, `PyModel`/`RModel`, and each capability's two instances)
+      are deleted. The facade's typeclasses stay the capability claims.
+      Filed, not built: module types for the other wire languages
+      (foreign-more-languages), Clojure/Frege programs in the facade
+      (foreign-jvm-programs), the package name (foreign-package-name).
+- [ ] Stage 4 (as first written) — **foreign-one-runtime**: `Runtime[L]`, `Module[L]`,
       `Arg`/`Ret`, the markers, `Language[L]`; the facade's typeclasses
       and the cluster's per-language stages become the derived
       combinators (one body each); `okay-foreign` as the module,
@@ -621,6 +630,17 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     five lines in `Models` with one caller, and a generic per-worker store
     in the pool would need a heterogeneous map and a cast for no second
     user. It moves into the pool when a second caller needs it.
+
+16. **The capability typeclasses ARE the markers** (foreign-one-runtime).
+    The model named `Runtime[L]` with marker types because the facade's
+    instances each had a body per language. With one engine, pool and
+    protocol under them, the bodies fold into `of(lang: Language[M])` and
+    the instances that remain are exactly claims — present or absent,
+    absent being a compile error at the call, which is what a marker was
+    for. A second API beside them would be the duplication this spec
+    exists to remove. Module types for TypeScript, Haskell, Go and Rust
+    are one `Language` each, written when a cluster or facade caller needs
+    one (their table road is stage 6 first).
 
 ## Results
 
@@ -772,3 +792,19 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     reaches `finish` or a failure, so its state is not given back until
     the JVM ends; `Chunks` has no close signal to hang it on (backlog
     stateful-early-stop).
+- **Stage 4, foreign-one-runtime (2026-09-26).**
+  - `Language[M]`: what a wire language is to the cluster and the facade —
+    its name and tag, its one pool, how it addresses a function, its value
+    rules. `ForeignStage`, `ForeignReducer`, `ForeignStreamer`,
+    `ForeignModel` and the facade's `Calls`, `Frames`, `Programs`,
+    `Holds`, `Speaks` are one body each over it; the named givens and the
+    `py(path)`/`r(path)` factories stay, so no caller changed.
+    okay-foreign-cluster: 11 files, +330/−480.
+  - Found on the way: the facade's R table road converted twice (Table →
+    R frame → Table); the one body sends a Table as itself where Arrow is
+    spoken and converts once by the WORKER's rules where it is not — the R
+    half of backlog facade-frame-seam, closed.
+  - Live: okay-foreign-cluster 30 (every facade capability and every
+    cluster stage over python3 and R), okay-foreign-workflow 12.
+  - Mutant: R's `Language` addressing with Python's `:` fails 8 tests of
+    `TestRFacade` and `TestRMapReduce`.

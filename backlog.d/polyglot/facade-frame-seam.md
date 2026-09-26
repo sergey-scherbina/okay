@@ -8,3 +8,7 @@
       `RFrame.of`/`.rows`, and an `RSubprocess.frameTable` twin — and the
       Arrow cells of the table, which need a pyarrow/arrow interpreter this
       box lacks (`OKAY_PYARROW_PYTHON`, as MeasurePyArrow uses). (2026-09-25)
+      R's HALF CLOSED by foreign-one-runtime (2026-09-26): the facade's one
+      `Frames` body sends a Table as itself where Arrow is spoken and
+      converts once by the worker's rules where not, R included. LEFT: the
+      Arrow cells of the measurement table (a pyarrow/arrow interpreter).
