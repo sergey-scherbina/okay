@@ -50,11 +50,9 @@ object State {
   // every `Get[S, S]` is the same object, and a program node is an
   // immutable value its handlers only read — sharing one across every
   // S changes nothing a program can observe. Inline, so the staging
-  // macro sees `getNode` itself (DirectRow's shared-node table).
-  inline def get[S]: S ! State % S = getNode.asInstanceOf[S ! State % S]
+  // macro sees `SharedOps.getNode` itself (DirectRow's shared-node table).
+  inline def get[S]: S ! State % S = SharedOps.getNode.asInstanceOf[S ! State % S]
 
-  /** the one node every `get` answers with; not for direct use */
-  val getNode: Any ! State % Any = effect(Get[Any, Any]())
 
 
   /** replace the state */

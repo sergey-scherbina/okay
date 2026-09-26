@@ -87,8 +87,12 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
    * fresh node it replaced.
    */
   lazy val sharedNodes: Map[String, Type[?] => Term] = Map(
-    "okay.State.getNode" -> { case '[e] => '{ okay.State.Get[e, e]() }.asTerm },
-    "okay.Reader.askNode" -> { case '[e] => '{ okay.Reader.Ask[e, e]() }.asTerm })
+    // `new`, not `Get()`: the companion's `apply` is a method call the
+    // inliner keeps for its effects, so the stage's inline match left a
+    // live `Get$.apply()` per block — 1 600 B a run on StagedBenchmark,
+    // read in its bytecode; a constructor it drops when nothing uses it
+    "okay.SharedOps.getNode" -> { case '[e] => '{ new okay.State.Get[e, e]() }.asTerm },
+    "okay.SharedOps.askNode" -> { case '[e] => '{ new okay.Reader.Ask[e, e]() }.asTerm })
 
   /** a symbol's key in that table: its full name, the module's `$` off
    * (a reference from inside the object and one from outside name the
@@ -141,6 +145,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
       core match
         case Lambda(_, _) | Literal(_) | Ident(_) | This(_) => true
         case sel: Select if sel.symbol.flags.is(Flags.Module) => true
+        // a shared operation node (effect-op-cost D2) is a stable val:
+        // substituting it keeps the operation visible to the stager
+        case r: Ref if sharedNodes.contains(sharedKey(r.symbol)) => true
         case Apply(TypeApply(f, _), _) if Set(injectApply, pureApply, bindApply)(f.symbol) => true
         case x => x.tpe.widen <:< row.appliedTo(TypeRepr.of[Any])
     def substitutable(v: ValDef): Boolean = v.rhs.exists(pureRhs)

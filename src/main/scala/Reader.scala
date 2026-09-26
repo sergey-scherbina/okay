@@ -28,11 +28,9 @@ object Reader {
   // every `Ask[R, R]` is the same object, and a program node is an
   // immutable value its handlers only read — sharing one across every
   // R changes nothing a program can observe. Inline, so the staging
-  // macro sees `askNode` itself (DirectRow's shared-node table).
-  inline def ask[R]: R ! Reader % R = askNode.asInstanceOf[R ! Reader % R]
+  // macro sees `SharedOps.askNode` itself (DirectRow's shared-node table).
+  inline def ask[R]: R ! Reader % R = SharedOps.askNode.asInstanceOf[R ! Reader % R]
 
-  /** the one node every `ask` answers with; not for direct use */
-  val askNode: Any ! Reader % Any = effect(Ask[Any, Any]())
 
 
   /**
