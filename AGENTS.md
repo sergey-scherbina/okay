@@ -213,6 +213,28 @@ force, all already practiced, none previously written down:
   nobody's lane touched is still tested every night — and READ the
   merge output; git refuses a fast-forward over a sibling's
   uncommitted files, and the refusal scrolls past a `tail -1`.
+- **A LANE THAT ONLY ADDS COMPILES ITS DEPENDENTS, IT DOES NOT TEST
+  THEM** (operator, 2026-09-26: "you only added, so why test what did not
+  change?"). A lane is ADDITIVE when it brings new files, new top-level
+  names, new methods, new effects or new tests, and changes NO existing
+  method body, signature, `given` or its priority chain, and NO existing
+  behavior. Its gate is its own new suites
+  (`scripts/gate.sh "<module>/testOnly <Suite>"`) plus
+  `scripts/gate.sh "affected master Test/compile"`. Compiling the
+  dependents catches the one way an addition breaks them: a new name
+  clashing with one of theirs (Supply's top-level `fresh` against DI's
+  `fresh[A]`, E161, the same day). A dependent's own tests cannot fail
+  because of code they never call. For a core lane, measured the same
+  day, the difference is ~7 600 tests and ~15 minutes against about one
+  minute warm. Anything that CHANGES existing behavior runs the full
+  `affected master staged`; judge that honestly, and when in doubt it is
+  a change. The same day's example is `Resource.run` releasing at `Final`
+  operations: its transaction consumers had to run. When `land.sh`
+  refuses an additive lane because a sibling's disjoint `build.sbt`
+  landed, rebase, re-run the compile check and land. `ci-runner.sh` still
+  tests the whole build after the push (stage B), so nothing goes
+  untested; the lane just stops paying for it twice. A docs-only lane is
+  unchanged: run `TestDocSnippets` (the Specs section).
 - **A GATE THAT HANGS NOW SAYS SO (gate-watchdog, 2026-09-18).**
   `gate.sh` watches its own log: 8 minutes with no new output AND an
   idle process tree is a STALL, and it takes a `jcmd` thread dump plus
