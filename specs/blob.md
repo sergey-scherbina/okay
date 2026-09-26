@@ -95,6 +95,13 @@ across machines; persist-backup copies (specs/persist.md, Backup).
       algorithm pinned by test, not by trust)
 - [x] a secret key never appears in a URL, a log line, or an error
       (the conf invariants asserted at this seam)
+- [x] a put holds ONE PART (s3-multipart-put, 2026-09-26): a body
+      longer than `partSize` goes up as an S3 multipart upload, each
+      part signed with its real hash; an object of four parts comes
+      back byte for byte and its etag says `-4` (TestS3Multipart, Live)
+- [x] a put that fails mid-way ABORTS its upload: no object, no upload
+      left open; `pending(key)`/`abandon(key, id)` find and discard what
+      a killed process left
 
 ## Out of scope
 
@@ -118,7 +125,13 @@ across machines; persist-backup copies (specs/persist.md, Backup).
   surface; MinIO/R2/GCS-compat all speak it. Rejected:
   per-provider dialects now.
 - **Multipart as engine detail** — callers say put; thresholds are
-  tuning, not semantics. Rejected: a multipart API surface.
+  tuning, not semantics. Rejected: a multipart API surface. KEPT when
+  it was built (s3-multipart-put, 2026-09-26): `put` goes multipart by
+  itself above `partSize`; the only additions are `pending`/`abandon`,
+  the cleanup of an upload whose PROCESS died — a put that merely
+  fails aborts its own. `pending` takes a key, not a prefix: MinIO
+  lists an object's uploads only by its exact name, which a prefix
+  test found by passing vacuously.
 - **get answers Either, chunks ride the effects** — the absent key
   needed a place to BE a value: the produced chunks are the body,
   the program's answer is the outcome. (Adjusted at blob-fs; the
@@ -219,3 +232,14 @@ puts arrive together; stated in the engine doc); gets stream. The
 SAME BlobContract passes against live MinIO — round-trip, ranges,
 list order, absent keys, overwrite — and a recording transport
 proves the secret reaches the HMAC chain and nothing else.
+
+## Results (s3-multipart-put, 2026-09-26)
+
+A 15.1 MB object in four 5 MiB parts: put 120 ms, get 55 ms, against
+MinIO in docker on this box — one part (5 MiB) in memory for the put.
+Two findings on the way. MinIO writes the quote in a completed
+upload's ETag as `&#34;`, which the XML unescape did not know, so the
+etag came back wrapped in entities. And MinIO's ListMultipartUploads
+matches exact keys only: the "no upload left open" assertion passed
+with a prefix whether or not the abort ran; with the key, removing the
+abort turns it red.

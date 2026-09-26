@@ -11,16 +11,24 @@ import scala.collection.immutable.ArraySeq
  * client, signed by our own SigV4. Path-style URLs, so MinIO, R2 and
  * AWS all fit; one engine, the whole S3-compatible family.
  *
- * Puts buffer: okay-http's Body is deliberately unstreamed
- * (specs/http.md), and the payload hash a signature wants is of the
- * WHOLE body anyway — so the producer is drained first and the hash
- * is real, never UNSIGNED-PAYLOAD. When the http client learns
- * streaming bodies, multipart and constant-memory puts arrive
- * together. Gets stream: the response body is already chunked.
+ * Puts hold ONE PART (s3-multipart-put): okay-http's Body is
+ * deliberately unstreamed (specs/http.md) and the payload hash a
+ * signature wants is of the whole body, so a put pulls the source
+ * until it holds `partSize` bytes. A body that ends before that is one
+ * signed PUT, as before; one that does not becomes an S3 MULTIPART
+ * upload — each part signed with its real hash, never
+ * UNSIGNED-PAYLOAD — and memory is one part whatever the object's
+ * size. A put that fails mid-way ABORTS its upload: an incomplete
+ * multipart upload is never an object, so nothing half-written is
+ * ever visible. Gets stream: the response body is already chunked.
  */
 final class S3(http: Http, endpoint: String, bucket: String, region: String,
                creds: SigV4.Creds,
-               clock: () => java.time.Instant = () => java.time.Instant.now) extends Blob {
+               clock: () => java.time.Instant = () => java.time.Instant.now,
+               /** the size a put holds before it goes multipart — S3's
+                * floor for every part but the last is 5 MiB */
+               partSize: Int = S3.PartSize) extends Blob {
+  require(partSize >= S3.MinPart, s"S3 refuses a part under ${S3.MinPart} bytes (all but the last)")
 
   private type F = Writer % Chunk[Byte] + Async
 
@@ -46,12 +54,126 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
   private def keyPath(key: String) = s"/$bucket/$key"
 
   def put(key: String, bytes: Source[Chunk[Byte]]): Etag ! Async =
-    drainBytes(bytes).flatMap { payload =>
-      http.send(signed(Method.Put, keyPath(key), payload = payload)).flatMap { r =>
+    // the buffer and the cell are allocated when the program RUNS, so the
+    // program is a value that can run twice
+    okay.async((java.io.ByteArrayOutputStream(), Opened())).flatMap { (buf, opened) =>
+      attempt(filling(key, bytes, buf, None, opened)).flatMap {
+        case Right(etag) => okay.pure[Async, Etag](etag)
+        // a put that FAILS aborts the upload it opened: an incomplete
+        // upload is never an object, and now it holds no parts either
+        case Left(why) =>
+          val gone = opened.upload.fold(okay.pure[Async, Unit](()))(u => attempt(abandon(key, u.id)).map(_ => ()))
+          gone.map(_ => throw why)
+      }
+    }
+
+  /** the upload a put opened, if it opened one */
+  private final class Opened:
+    @volatile var upload: Option[Upload] = None
+
+  /** a program's failure as a value, on no scheduler of this engine's:
+   * the program is driven where it stands (`Async.runAsync`) and its
+   * outcome handed back */
+  private def attempt[A](prog: A ! Async): Either[Throwable, A] ! Async =
+    Async.await { k =>
+      Async.runAsync(prog).onComplete(t => k(Right(t.toEither)))(using scala.concurrent.ExecutionContext.parasitic)
+      () => ()
+    }
+
+  /** one signed PUT of the whole body */
+  private def single(key: String, payload: Array[Byte]): Etag ! Async =
+    http.send(signed(Method.Put, keyPath(key), payload = payload)).flatMap { r =>
+      r.release.map { _ =>
+        if !r.ok then throw IllegalStateException(s"put '$key': HTTP ${r.status}")
+        Etag(r.header("etag").getOrElse("").stripPrefix("\"").stripSuffix("\""))
+      }
+    }
+
+  /** pull until a part is held; the first full part opens the upload.
+   * Recursion through the program's flatMap: trampolined */
+  private def filling(key: String, src: Source[Chunk[Byte]], buf: java.io.ByteArrayOutputStream,
+                      up: Option[Upload], opened: Opened): Etag ! Async =
+    Writer.uncons[Chunk[Byte], Unit, Async](src).flatMap {
+      case Left(()) =>
+        up match
+          case None => single(key, buf.toByteArray)
+          case Some(u) =>
+            val last = if buf.size > 0 then u.part(buf.toByteArray) else okay.pure[Async, Unit](())
+            last.flatMap(_ => u.complete())
+      case Right((chunk, rest)) =>
+        buf.write(chunk.toArray)
+        if buf.size < partSize then filling(key, rest, buf, up, opened)
+        else
+          val started = up.fold(initiate(key).map { u => opened.upload = Some(u); u })(u => okay.pure[Async, Upload](u))
+          started.flatMap { u =>
+            val part = buf.toByteArray
+            buf.reset()
+            u.part(part).flatMap(_ => filling(key, rest, buf, Some(u), opened))
+          }
+    }
+
+  /** one multipart upload in progress: its parts' etags, in order */
+  private final class Upload(key: String, val id: String):
+    private var etags = Vector.empty[String]
+    def part(bytes: Array[Byte]): Unit ! Async =
+      val n = etags.length + 1
+      http.send(signed(Method.Put, keyPath(key),
+        Seq("partNumber" -> n.toString, "uploadId" -> id), payload = bytes)).flatMap { r =>
         r.release.map { _ =>
-          if !r.ok then throw IllegalStateException(s"put '$key': HTTP ${r.status}")
-          Etag(r.header("etag").getOrElse("").stripPrefix("\"").stripSuffix("\""))
+          if !r.ok then throw IllegalStateException(s"put '$key', part $n: HTTP ${r.status}")
+          etags :+= r.header("etag").getOrElse("").stripPrefix("\"").stripSuffix("\"")
         }
+      }
+    def complete(): Etag ! Async =
+      val xml = etags.zipWithIndex.map((e, i) =>
+        s"<Part><PartNumber>${i + 1}</PartNumber><ETag>\"$e\"</ETag></Part>").mkString(
+        "<CompleteMultipartUpload>", "", "</CompleteMultipartUpload>")
+      http.send(signed(Method.Post, keyPath(key), Seq("uploadId" -> id), payload = xml.getBytes("UTF-8")))
+        .flatMap(r => Http.text(r).map(t => (r.status, t)))
+        .map { (status, body) =>
+          // S3 may answer 200 and put the error in the body
+          if status != 200 || body.contains("<Error>") then
+            throw IllegalStateException(s"put '$key': completing the upload: HTTP $status ${tag(body, "Code").getOrElse("")}")
+          Etag(tag(body, "ETag").map(unescape).getOrElse("").stripPrefix("\"").stripSuffix("\""))
+        }
+
+  private def initiate(key: String): Upload ! Async =
+    http.send(signed(Method.Post, keyPath(key), Seq("uploads" -> "")))
+      .flatMap(r => Http.text(r).map(t => (r.status, t)))
+      .map { (status, body) =>
+        if status != 200 then throw IllegalStateException(s"put '$key': starting an upload: HTTP $status")
+        Upload(key, tag(body, "UploadId").getOrElse(
+          throw IllegalStateException(s"put '$key': the upload answered no UploadId")))
+      }
+
+  /**
+   * THE UPLOADS STILL OPEN under `prefix`, as (key, upload id) — what a
+   * put left behind when its PROCESS died before it could abort (a put
+   * that merely fails aborts its own). Not a second way to write: the
+   * cleanup a writer's successor does before it starts.
+   *
+   * Pass the KEY: MinIO lists an object's uploads only for its exact
+   * name, and a prefix finds none there (AWS matches prefixes) — found
+   * when a prefix made the "no upload left open" test pass vacuously.
+   */
+  def pending(prefix: String): Vector[(String, String)] ! Async =
+    http.send(signed(Method.Get, s"/$bucket", Seq("prefix" -> prefix, "uploads" -> "")))
+      .flatMap(r => Http.text(r).map(t => (r.status, t)))
+      .map { (status, xml) =>
+        if status != 200 then throw IllegalStateException(s"pending '$prefix': HTTP $status")
+        blocks(xml, "Upload").map(u =>
+          (tag(u, "Key").map(unescape).getOrElse(""), tag(u, "UploadId").getOrElse("")))
+      }
+
+  /** an upload started and not finished — what a writer killed between
+   * its parts leaves; for a test that needs one */
+  private[blob] def begin(key: String): String ! Async = initiate(key).map(_.id)
+
+  /** abandon one open upload: its parts are discarded */
+  def abandon(key: String, uploadId: String): Unit ! Async =
+    http.send(signed(Method.Delete, keyPath(key), Seq("uploadId" -> uploadId))).flatMap { r =>
+      r.release.map { _ =>
+        if !r.ok && r.status != 404 then throw IllegalStateException(s"abandon '$key': HTTP ${r.status}")
       }
     }
 
@@ -158,26 +280,21 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
     blocks(xml, name).headOption
 
   private def unescape(s: String): String = s
-    .replace("&quot;", "\"").replace("&lt;", "<").replace("&gt;", ">")
+    // MinIO writes a quote as `&#34;` in a completed upload's ETag
+    .replace("&quot;", "\"").replace("&#34;", "\"").replace("&lt;", "<").replace("&gt;", ">")
     .replace("&#39;", "'").replace("&amp;", "&")   // amp LAST, the usual rule
 
   private def iso(s: String): Option[Long] =
     try Some(java.time.Instant.parse(s).toEpochMilli)
     catch case _: Exception => None
-
-  // Writer % Chunk[Byte]'s split test is unchecked under erasure — sound
-  // by construction (Say is Writer's ONLY constructor), the TypeableK
-  // caveat Writer.scala documents on Writer.run
-  private def drainBytes(p: Source[Chunk[Byte]]): Array[Byte] ! Async =
-    // the buffer is allocated when the program RUNS, so the program
-    // is a value that can run twice
-    okay.async(java.io.ByteArrayOutputStream()).flatMap { out =>
-      val sink: okay.Fold[Chunk[Byte], Unit] = okay.Fold(())((_, c) => out.write(c.toArray))
-      Writer.fold[Chunk[Byte], Unit, Unit, Async](p)(using summon)(using summon, sink).map(_ => out.toByteArray)
-    }
 }
 
 object S3:
+  /** 8 MiB: the part a put holds before it goes multipart */
+  val PartSize: Int = 8 * 1024 * 1024
+  /** S3's floor for every part but the last */
+  val MinPart: Int = 5 * 1024 * 1024
+
   /** the wiring form (ctx-everywhere): the engine awaiting the one
    * http client — provide(http){ S3.wired(...) } */
   def wired(endpoint: String, bucket: String, region: String,
