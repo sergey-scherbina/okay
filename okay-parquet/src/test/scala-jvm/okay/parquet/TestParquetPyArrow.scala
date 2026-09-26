@@ -25,7 +25,7 @@ class TestParquetPyArrow extends munit.FunSuite:
   test("pyarrow writes — data page v2 and v1, dictionary and plain, snappy and zstd — ours reads the rows") {
     assume(python.isDefined, "no python with pyarrow")
     val dir = Files.createTempDirectory("okay-parquet-pyarrow")
-    py("""
+    val _ = py("""
 import sys, os, pyarrow as pa, pyarrow.parquet as pq
 d = sys.argv[1]
 n = 5000
