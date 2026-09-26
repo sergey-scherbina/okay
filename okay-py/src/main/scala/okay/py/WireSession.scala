@@ -85,6 +85,21 @@ final class WireSession private (link: WireLink,
   private lazy val muxer = WireSession.Mux(link.duplex.getOrElse(throw IllegalStateException("mux without a duplex link")),
     codec, readerThread = deadline.isDefined, () => live = false)
 
+  /** a far-driven stream's head goes out after its queue exists (part 3) */
+  def openStream(s: Long, head: Vector[(String, Json)]): Json =
+    muxer.openStream(s)
+    exchange(Json.JObj(head))
+
+  /** the stream's next message; None when this session has no such stream */
+  def nextOf(s: Long): Option[Json] =
+    try muxer.nextOf(s, deadline)
+    catch case _: java.util.concurrent.TimeoutException =>
+      live = false
+      link.close()
+      throw WireSession.TimedOut(deadline.getOrElse(0L))
+
+  def closeStream(s: Long): Unit = muxer.closeStream(s)
+
   /** one request among others in flight: sent, and its OWN answer awaited,
    * whatever arrives before it (foreign-mux-duplex) */
   private def muxed(id: Int, body: Json): Json =
@@ -222,6 +237,9 @@ object WireSession:
   private[py] final class Mux(duplex: WireLink.Duplex, codec: Option[(WireFormat, WireCompression)],
                               readerThread: Boolean, dead: () => Unit):
     private val pending = java.util.concurrent.ConcurrentHashMap[Int, java.util.concurrent.CompletableFuture[Json]]()
+    /** the far-driven streams' chunks, by the stream id the host chose
+     * (part 3): a message with `stream` and no `id` goes to its queue */
+    private val streams = java.util.concurrent.ConcurrentHashMap[Long, java.util.concurrent.LinkedBlockingQueue[Json]]()
     private val reading = java.util.concurrent.locks.ReentrantLock()
     @volatile private var ended = false
     if readerThread then
@@ -249,16 +267,36 @@ object WireSession:
 
     /** this request's answer, reading for everyone while nobody else is */
     def await(answer: java.util.concurrent.CompletableFuture[Json]): Json =
-      while !answer.isDone do
+      pump(() => answer.isDone)(answer.get(1, java.util.concurrent.TimeUnit.MILLISECONDS): Unit)
+      answer.get()
+
+    /** read for everyone until `done`, or, while somebody else reads, `wait`
+     * a moment and look again — in case they found theirs and stopped */
+    private def pump(done: () => Boolean)(wait: => Unit): Unit =
+      while !done() && !ended do
         if reading.tryLock() then
-          try while !answer.isDone && !ended do readOne()
+          try while !done() && !ended do readOne()
           finally reading.unlock()
         else
-          // someone else reads, and completes ours when it passes; look again
-          // soon, in case they found theirs and stopped reading
-          try answer.get(1, java.util.concurrent.TimeUnit.MILLISECONDS): Unit
-          catch case _: java.util.concurrent.TimeoutException => ()
-      answer.get()
+          try wait catch case _: java.util.concurrent.TimeoutException => ()
+
+    /** a stream's queue, made before its request goes out */
+    def openStream(s: Long): Unit = streams.put(s, java.util.concurrent.LinkedBlockingQueue[Json]()): Unit
+    def closeStream(s: Long): Unit = streams.remove(s): Unit
+
+    /** the stream's next message — a chunk, its end, or its condition —
+     * reading for everyone while it waits; None: no such stream here */
+    def nextOf(s: Long, deadline: Option[Long]): Option[Json] =
+      Option(streams.get(s)).map { q =>
+        if readerThread then
+          Option(deadline.fold(q.take())(ms => q.poll(ms, java.util.concurrent.TimeUnit.MILLISECONDS)))
+            .getOrElse(throw java.util.concurrent.TimeoutException())
+        else
+          // wait WITHOUT taking: a chunk taken and put back would go to the tail
+          pump(() => !q.isEmpty)(java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L))
+          Option(q.poll()).getOrElse(Json.JObj(Vector("condition" -> Json.JObj(Vector(
+            "kind" -> Json.JStr("WorkerDied"), "message" -> Json.JStr("the worker is DEAD (its wire ended mid-stream)"))))))
+      }
 
     /** one message off the link, handed to the request it answers */
     private def readOne(): Unit =
@@ -269,13 +307,21 @@ object WireSession:
         catch case _: Exception => None
       next match
         case Some(Json.JObj(fs)) =>
-          unboxed(fs.toMap.get("id")).collect { case Json.JNum(n) => n.toInt }
-            .flatMap(i => Option(pending.remove(i))).foreach(_.complete(Json.JObj(fs)): Unit)
+          val m = fs.toMap
+          unboxed(m.get("id")).collect { case Json.JNum(n) => n.toInt } match
+            case Some(i) => Option(pending.remove(i)).foreach(_.complete(Json.JObj(fs)): Unit)
+            case None =>
+              // a far-driven stream's chunk, end or condition (part 3)
+              unboxed(m.get("stream")).collect { case Json.JNum(n) => n.toLong }
+                .flatMap(s => Option(streams.get(s))).foreach(_.put(Json.JObj(fs)))
         case Some(_) => ()
         case None =>
           ended = true
           dead()
           fail("the worker")
+          // a stream waiting on a link that ended: its condition, so the puller wakes
+          streams.values.forEach(_.put(Json.JObj(Vector("condition" -> Json.JObj(Vector(
+            "kind" -> Json.JStr("WorkerDied"), "message" -> Json.JStr("the worker is DEAD (its wire ended mid-stream)")))))))
 
     private def fail(who: String): Unit =
       pending.keySet.forEach { i =>

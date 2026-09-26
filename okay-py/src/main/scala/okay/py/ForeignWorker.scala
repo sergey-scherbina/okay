@@ -124,6 +124,36 @@ final class ForeignWorker private (session: WireSession,
         answer(exchange(Json.JObj(Vector(
           "op" -> Json.JStr("continue"), "run" -> Json.JNum(run.toDouble), "k" -> Json.JNum(k.toDouble),
           answered))))(Wire.decNode)
+      case ForeignEval.Stream(s, fn, args, credit) => timed:
+        if !session.mux then
+          Left(Condition("NotStreaming", "this far side claims no mux: a stream the far side drives needs a multiplexed wire"))
+        else answer(session.openStream(s, Vector("op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
+          "args" -> Json.JArr(args.map(Wire.enc)), "stream" -> Json.JNum(s.toDouble), "credit" -> Json.JNum(credit.toDouble))))(_ => Right(()))
+      case ForeignEval.Pull(s) => timed:
+        session.nextOf(s) match
+          case None => Left(Condition("LookupError", s"stream $s is not open on this worker (ended, cancelled, or another worker's)"))
+          case Some(Json.JObj(fs)) =>
+            val m = fs.toMap
+            m.get("chunk") match
+              case Some(v) =>
+                // taken: the far side may send one more
+                session.exchange(Json.JObj(Vector("op" -> Json.JStr("credit"), "stream" -> Json.JNum(s.toDouble),
+                  "credit" -> Json.JNum(1)))): Unit
+                Right(Some(Wire.dec(v)))
+              case None =>
+                session.closeStream(s)
+                m.get("condition") match
+                  case Some(Json.JObj(c)) =>
+                    val cm = c.toMap
+                    def str(k: String) = cm.get(k).collect { case Json.JStr(x) => x }.getOrElse("")
+                    Left(Condition(str("kind"), str("message")))
+                  case _ => Right(None)
+          case Some(other) => Left(Condition("WireError", s"a stream message that is not an object: $other"))
+      case ForeignEval.Cancel(s) =>
+        if session.mux then
+          session.closeStream(s)
+          try session.exchange(Json.JObj(Vector("op" -> Json.JStr("cancel"), "stream" -> Json.JNum(s.toDouble)))): Unit
+          catch case _: IllegalStateException => ()
       case ForeignEval.Forget(run) =>
         val _ = exchange(Json.JObj(Vector("op" -> Json.JStr("forget"), "run" -> Json.JNum(run.toDouble))))
       case ForeignEval.Release(r) =>

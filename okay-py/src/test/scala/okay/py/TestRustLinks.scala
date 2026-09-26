@@ -10,7 +10,7 @@ object RustWorkerBinary:
   // no margin: the docs quote these lines
   val main: String = """mod ops;
 
-use okay::{done, perform, send, function, okay_call, Functions, Program, Programs, Value, Wire, Worker};
+use okay::{done, perform, send, function, okay_call, okay_emit, Functions, Program, Programs, Value, Wire, Worker};
 
 /// two choices; okay's Choice handler continues each continuation twice
 fn pairs(_: Vec<Value>) -> okay::Prog {
@@ -24,6 +24,12 @@ fn pairs(_: Vec<Value>) -> okay::Prog {
 /// the same operations, typed: generated from the Scala callbacks by Rs.ops
 fn total(sku: String, qty: i64) -> Program<f64> {
     send(ops::price_of(sku)).and_then(move |price| send(ops::discount(price * qty as f64)))
+}
+
+/// a stream's chunks sent, and whether its function returned, by tag
+fn counters() -> &'static std::sync::Mutex<std::collections::HashMap<String, (i64, bool)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (i64, bool)>>> = std::sync::OnceLock::new();
+    C.get_or_init(Default::default)
 }
 
 type Gate = std::sync::Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>;
@@ -76,6 +82,31 @@ fn make() -> Worker {
         *g.0.lock().unwrap() = true;
         g.1.notify_all();
         Ok(Value::Str(name))
+    }));
+    // a STREAM the worker drives: n numbers in chunks of size, each chunk
+    // counted as it goes out, so a test can see how far ahead it ran
+    functions.insert("numbers".into(), function(|args| {
+        let (n, size, tag) = (i64::from_value(&args[0])?, i64::from_value(&args[1])?, String::from_value(&args[2])?);
+        counters().lock().unwrap().insert(tag.clone(), (0, false));
+        let mut i = 0;
+        while i < n {
+            let chunk: Vec<i64> = (i..(i + size).min(n)).collect();
+            if okay_emit(chunk).is_err() {
+                break; // cancelled: stop producing
+            }
+            counters().lock().unwrap().entry(tag.clone()).or_default().0 += 1;
+            i += size;
+        }
+        counters().lock().unwrap().entry(tag).or_default().1 = true;
+        Ok(Value::Null)
+    }));
+    functions.insert("emitted_of".into(), function(|args| {
+        let tag = String::from_value(&args[0])?;
+        Ok(Value::Int(counters().lock().unwrap().get(&tag).map(|c| c.0).unwrap_or(0)))
+    }));
+    functions.insert("stopped_of".into(), function(|args| {
+        let tag = String::from_value(&args[0])?;
+        Ok(Value::Bool(counters().lock().unwrap().get(&tag).map(|c| c.1).unwrap_or(false)))
     }));
     // a table answered as it came: every column kind, both ways
     functions.insert("echo".into(), function(|args| Ok(args[0].clone())));

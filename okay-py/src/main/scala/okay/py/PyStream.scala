@@ -14,6 +14,10 @@ import scala.annotation.tailrec
 enum Holding[+A] derives okay.Effect:
   case Hold(ref: PyRef) extends Holding[Unit]
   case Let(ref: PyRef) extends Holding[Unit]
+  /** a stream the far side drives, open until it ends or is let go; the
+   * scope CANCELS what is still open (foreign-mux-duplex part 3) */
+  case HoldStream(stream: Long) extends Holding[Unit]
+  case LetStream(stream: Long) extends Holding[Unit]
 
 /**
  * A Python function, or a method of a held object, as an okay STAGE over
@@ -69,21 +73,66 @@ object PyStream:
 
   /** the walk behind `releasing`, over any row that holds and calls */
   private[okay] def holding[A, F[+_]](p: A ! Holding + F)(using ev: OkRow.Sub[ForeignEval, F]): A ! F =
-    def releaseAll(held: List[PyRef]): Unit ! F =
-      held.foldLeft(pure[F, Unit](()))((acc, r) => acc.flatMap(_ => effect[F, Any](ev(ForeignEval.Release(r))).map(_ => ())))
-    def again(held: List[PyRef])(x: A ! Holding + F): A ! F = loop(held)(x)
-    @tailrec def loop(held: List[PyRef])(x: A ! Holding + F): A ! F =
+    // what is held: refs to release, streams to cancel
+    final case class Held(refs: List[PyRef], streams: List[Long]):
+      def apply(h: Holding[?]): Held = h match
+        case Holding.Hold(r) => copy(refs = r :: refs)
+        case Holding.Let(r) => copy(refs = refs.filterNot(_ == r))
+        case Holding.HoldStream(s) => copy(streams = s :: streams)
+        case Holding.LetStream(s) => copy(streams = streams.filterNot(_ == s))
+    def perform(op: ForeignEval[Any]): Unit ! F = effect[F, Any](ev(op)).map(_ => ())
+    def releaseAll(held: Held): Unit ! F =
+      val ops = held.streams.map(ForeignEval.Cancel(_)) ++ held.refs.map(ForeignEval.Release(_))
+      ops.foldLeft(pure[F, Unit](()))((acc, op) => acc.flatMap(_ => perform(op)))
+    def again(held: Held)(x: A ! Holding + F): A ! F = loop(held)(x)
+    @tailrec def loop(held: Held)(x: A ! Holding + F): A ! F =
       (x.resume: @unchecked) match
         case Return(a) => releaseAll(held).map(_ => a)
         case Inject(e) => split[Holding, F](e) {
-            case Holding.Hold(r) => releaseAll(held.filterNot(_ == r)): A ! F
-            case Holding.Let(r) => releaseAll(held.filterNot(_ == r)): A ! F
+            case h @ Holding.Hold(_) => releaseAll(held(h)).map(_ => ()): A ! F
+            case h @ Holding.Let(_) => releaseAll(held(h)): A ! F
+            case h @ Holding.HoldStream(_) => releaseAll(held(h)): A ! F
+            case h @ Holding.LetStream(_) => releaseAll(held(h)): A ! F
           } { e => Inject(e).flatMap(a => releaseAll(held).map(_ => a)) }
         case Bind(Inject(e), k) => split[Holding, F](e) {
-            case Holding.Hold(r) => loop(r :: held)(k(()))
-            case Holding.Let(r) => loop(held.filterNot(_ == r))(k(()))
+            case h @ Holding.Hold(_) => loop(held(h))(k(()))
+            case h @ Holding.Let(_) => loop(held(h))(k(()))
+            case h @ Holding.HoldStream(_) => loop(held(h))(k(()))
+            case h @ Holding.LetStream(_) => loop(held(h))(k(()))
           } { e => Inject(e).flatMap(y => again(held)(k(y))) }
-    loop(Nil)(p)
+    loop(Held(Nil, Nil))(p)
+
+  /**
+   * A STREAM THE FAR SIDE DRIVES (foreign-mux-duplex part 3): `fn` of `args`
+   * sends chunks of `O` (lists) from its own code as it makes them, up to
+   * `credit` ahead of what this side has taken — the far side runs ahead, a
+   * cursor fills its buffer while the consumer works, and the credit bounds
+   * how much of that waits in memory. Its end, or a failure by name, ends
+   * the source; a consumer that stops early cancels it, through the scope
+   * (`releasing`) every source runs in. Needs a far side on a multiplexed
+   * wire (Go, Rust); elsewhere the stream is refused by name.
+   */
+  private[okay] def driven[O: Schema](fn: String, args: Vector[PyValue], credit: Int, id: () => Long)
+                                     (using shape: Shape): Unit ! SourceRow[O] =
+    type R = SourceRow[O]
+    require(credit >= 1, "a stream's credit is at least one chunk")
+    def tellAll(os: Vector[O]): Unit ! R =
+      os.foldLeft(pure[R, Unit](()))((p, o) => p.flatMap(_ => effect[R, Unit](Writer(o))))
+    def loop(s: Long): Unit ! R =
+      effect[R, Either[Condition, Option[PyValue]]](ForeignEval.Pull(s)).flatMap {
+        case Left(c) => effect[R, Unit](Holding.LetStream(s)).flatMap(_ => throw Failed(c))
+        case Right(None) => effect[R, Unit](Holding.LetStream(s))
+        case Right(Some(v)) => shape.decode[Vector[O]](v) match
+          case Left(c) => effect[R, Unit](Holding.LetStream(s)).flatMap(_ => throw Failed(c))
+          case Right(os) => tellAll(os).flatMap(_ => loop(s))
+      }
+    pure[R, Unit](()).flatMap { _ =>
+      val s = id()
+      effect[R, Either[Condition, Unit]](ForeignEval.Stream(s, fn, args, credit)).flatMap {
+        case Left(c) => throw Failed(c)
+        case Right(()) => effect[R, Unit](Holding.HoldStream(s)).flatMap(_ => loop(s))
+      }
+    }
 
   /**
    * A FAR-SIDE SOURCE (foreign-one-mux, specs/foreign-one.md stage 5): an

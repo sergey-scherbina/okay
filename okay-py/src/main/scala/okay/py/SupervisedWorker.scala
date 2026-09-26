@@ -258,6 +258,17 @@ final class SupervisedWorker private[py] (open: () => ForeignWorker):
         current.filter(_.alive).foreach(w =>
           try w.handler.handle(ForeignEval.Forget(run))
           catch case e: IllegalStateException if dead(e) => ())
+      // a stream lives on the worker that opened it and is NOT replayed: its
+      // chunks were the far side's own work, and a fresh worker has none of
+      // them — a pull there is refused by name (part 3)
+      case ForeignEval.Stream(s, fn, args, credit) =>
+        use(w => outAll(args).flatMap(a => w.handler.handle(ForeignEval.Stream(s, fn, a, credit))))
+      case ForeignEval.Pull(s) =>
+        use(w => w.handler.handle(ForeignEval.Pull(s)).map(_.map(in)))
+      case ForeignEval.Cancel(s) =>
+        current.filter(_.alive).foreach(w =>
+          try w.handler.handle(ForeignEval.Cancel(s))
+          catch case e: IllegalStateException if dead(e) => ())
 
   /** what the CURRENT worker's handshake settled on ("" before the first open) */
   def wire: String = current.fold("")(_.wire)

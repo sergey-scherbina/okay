@@ -390,6 +390,23 @@ object Py {
    */
   def source[O: Schema](address: String)(using shape: Shape): SourceOf[O] = SourceOf(address)
 
+  /**
+   * A STREAM the far side drives (foreign-mux-duplex part 3): `address`'s
+   * function sends chunks (lists of `O`) as it makes them, up to `credit`
+   * ahead of the consumer. Run it as a source, inside `Py.releasing`:
+   * `Writer.run(Py.releasing(Py.stream[Long]("numbers", credit = 2)(100L)))`.
+   * Go and Rust workers on a multiplexed wire stream; others refuse by name.
+   */
+  def stream[O: Schema](address: String, credit: Int = 4)(using shape: Shape): StreamOf[O] = StreamOf(address, credit)
+
+  final class StreamOf[O: Schema](address: String, credit: Int)(using shape: Shape):
+    def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)
+    def apply[A: ToPy](a: A): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a), ToPy(b), ToPy(c)))
+    private def go(args: Vector[PyValue]): Unit ! PyStream.SourceRow[O] =
+      PyStream.driven[O](address, args, credit, () => runIds.incrementAndGet())
+
   /** the scope a source runs in: whatever it still holds when the program
    * ends — a consumer that stopped early — is released
    * (foreign-source-early-stop; `PyStream.releasing`) */

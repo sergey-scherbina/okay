@@ -40,6 +40,9 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
    * worker an unpinned call gets. Ref ids are renamed pool-wide.
    */
   private val refs = java.util.concurrent.ConcurrentHashMap[Long, (ForeignWorker, Long)]()
+  /** a far-driven stream keeps the worker it was opened on, leased, until
+   * it ends or is cancelled (part 3) */
+  private val streams = java.util.concurrent.ConcurrentHashMap[Long, (ForeignWorker, Lease)]()
   private val nextRef = java.util.concurrent.atomic.AtomicLong()
 
   private def dead(t: Throwable): Boolean =
@@ -56,6 +59,28 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
         Option(runs.remove(run)).foreach((w, lease) =>
           try w.synchronized(w.handler.handle(ForeignEval.Forget(run)))
           finally lease.foreach(_.release(!w.alive)))
+      case ForeignEval.Stream(s, fn, args, credit) =>
+        val l = pool.lease()
+        val opened =
+          try l.e.handler.handle(ForeignEval.Stream(s, fn, args.map(local), credit))
+          catch case t: Throwable => { l.release(dead(t) || !l.e.alive); throw t }
+        if opened.isRight then streams.put(s, (l.e, l)): Unit else l.release(!l.e.alive)
+        opened
+      case ForeignEval.Pull(s) =>
+        Option(streams.get(s)) match
+          case None => Left(Condition("LookupError", s"stream $s is not known to this pool (ended, or cancelled)"))
+          case Some((w, l)) =>
+            // not under the worker's lock: a pull WAITS, and a multiplexed
+            // worker serves the pool's other callers meanwhile
+            val next =
+              try w.handler.handle(ForeignEval.Pull(s))
+              catch case t: Throwable => { streams.remove(s): Unit; l.release(dead(t) || !w.alive); throw t }
+            next match
+              case Right(Some(_)) => next
+              case _ => { streams.remove(s): Unit; l.release(!w.alive); next }
+      case ForeignEval.Cancel(s) =>
+        Option(streams.remove(s)).foreach((w, l) =>
+          try w.handler.handle(ForeignEval.Cancel(s)) finally l.release(!w.alive))
       case ForeignEval.Release(r) =>
         Option(refs.remove(r.id)).foreach { (w, local) =>
           w.synchronized(w.handler.handle(ForeignEval.Release(PyRef(local, r.pyType))))
@@ -90,8 +115,9 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
     case ForeignEval.Program(run, fn, args, cbs, d) =>
       runs.put(run, (w, lease)): Unit
       stepped(w, run, lease)(w.handler.handle(ForeignEval.Program(run, fn, args.map(local), cbs, d)))
-    case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) =>
-      throw IllegalStateException("unreachable: continue, forget and release are routed by the handler")
+    case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) |
+         ForeignEval.Stream(_, _, _, _) | ForeignEval.Pull(_) | ForeignEval.Cancel(_) =>
+      throw IllegalStateException("unreachable: continue, forget, release and streams are routed by the handler")
 
   /**
    * One step of a program on `w`, under its lock. A node marked `once` is a
@@ -127,7 +153,8 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
     case ForeignEval.Call(fn, args, _) => atRefs(fn) ++ args.flatMap(refsIn)
     case ForeignEval.Frame(_, _, args) => args.flatMap(refsIn)
     case ForeignEval.Program(_, _, args, _, _) => args.flatMap(refsIn)
-    case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) => Vector.empty
+    case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) |
+         ForeignEval.Stream(_, _, _, _) | ForeignEval.Pull(_) | ForeignEval.Cancel(_) => Vector.empty
 
   private def refsIn(v: PyValue): Vector[Long] = PyValue.refs(v)
 

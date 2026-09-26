@@ -402,6 +402,40 @@ func dec(j any) any {
 
 type key struct{ run, k int64 }
 
+func asInt(v any) int64 { n, _ := v.(int64); return n }
+
+// openStream starts a call that FEEDS a stream (part 3): answered at once,
+// its function runs beside the worker, each Emit a chunk message, its return
+// the stream's end and its panic the stream's condition.
+func (w *Worker) openStream(id any, sid int64, req map[string]any, f func(c *Ctx, args []any) any, args []any) map[string]any {
+	if w.push == nil {
+		return condition(id, "NotStreaming", "this Go worker is not on a multiplexed wire: it cannot drive a stream")
+	}
+	st := &outStream{id: sid, credit: asInt(req["credit"]), push: w.push}
+	st.more = sync.NewCond(&st.mu)
+	w.streams[sid] = st
+	c := &Ctx{id: id, offered: map[string]bool{}, events: make(chan event), answers: make(chan answerMsg), next: &w.asks, stream: st}
+	go func() {
+		ended := map[string]any{"stream": sid, "end": true}
+		defer func() {
+			if r := recover(); r != nil {
+				msg := fmt.Sprint(r)
+				kind := "GoError"
+				if e, ok := r.(*OkayError); ok {
+					kind, msg = e.Kind, e.Message
+				}
+				ended = map[string]any{"stream": sid, "condition": map[string]any{"kind": kind, "message": msg}}
+			}
+			w.mu.Lock()
+			delete(w.streams, sid)
+			w.mu.Unlock()
+			st.push(ended)
+		}()
+		f(c, args)
+	}()
+	return map[string]any{"id": id, "ok": nil}
+}
+
 // heldRef is a held value's name on the wire (foreign-held-values): a call
 // made `held` keeps its answer in the worker and answers this; an argument
 // that is one is the value again; `release` drops it.
@@ -450,6 +484,42 @@ type Ctx struct {
 	events  chan event
 	answers chan answerMsg
 	next    *int64
+	// a far-driven stream this call feeds with Emit (foreign-mux-duplex part 3)
+	stream *outStream
+}
+
+// outStream is one stream the far side drives: the credit the host granted
+// and has not yet seen used, and whether the host cancelled it.
+type outStream struct {
+	id        int64
+	mu        sync.Mutex
+	more      *sync.Cond
+	credit    int64
+	cancelled bool
+	push      func(map[string]any)
+}
+
+// Emit sends one chunk of the stream this call feeds (foreign-mux-duplex
+// part 3), waiting while the host has granted no credit: the far side runs
+// ahead of its consumer by at most the credit. An error when the host
+// cancelled the stream — stop producing — or when this call is no stream.
+func Emit(c *Ctx, chunk any) error {
+	st := c.stream
+	if st == nil {
+		return &OkayError{"ValueError", "okay.Emit outside a stream: this call was not opened as one"}
+	}
+	st.mu.Lock()
+	for st.credit == 0 && !st.cancelled {
+		st.more.Wait()
+	}
+	if st.cancelled {
+		st.mu.Unlock()
+		return &OkayError{"Cancelled", "the host cancelled this stream"}
+	}
+	st.credit--
+	st.mu.Unlock()
+	st.push(map[string]any{"stream": st.id, "chunk": enc(chunk)})
+	return nil
 }
 
 type event struct {
@@ -516,6 +586,10 @@ type Worker struct {
 	next      int64
 	waiting   map[key]*Ctx // direct-style calls parked in an okay.Call, by run and k
 	held      map[int64]any // values kept for the host, by ref (foreign-held-values)
+	streams   map[int64]*outStream // streams it drives, by the host's id (part 3)
+	// push sends a message nobody asked for — a stream's chunk; nil where the
+	// wire is not multiplexed (in process), and a stream is refused there
+	push func(map[string]any)
 	// one lock over everything above (foreign-mux-duplex): requests are
 	// answered on goroutines of their own, and a call WAITING on its
 	// function holds it not — await lets it go for the wait
@@ -538,7 +612,7 @@ func NewWorker(programs Programs, functions ...Functions) *Worker {
 			fs[k] = v
 		}
 	}
-	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[key]*Ctx{}, held: map[int64]any{}}
+	return &Worker{format: "json", compress: "none", programs: programs, functions: fs, konts: map[key]func(any) Prog{}, waiting: map[key]*Ctx{}, held: map[int64]any{}, streams: map[int64]*outStream{}}
 }
 
 // await is the next thing a direct-style call does: perform an okay
@@ -730,10 +804,30 @@ func (w *Worker) answer(id any, req map[string]any) (reply map[string]any) {
 		if err != nil {
 			return condition(id, "LookupError", err.Error())
 		}
+		if sid, streamed := req["stream"].(int64); streamed {
+			return w.openStream(id, sid, req, f, args)
+		}
 		hold, _ := req["held"].(bool)
 		c := &Ctx{id: id, offered: map[string]bool{}, events: make(chan event), answers: make(chan answerMsg), next: &w.asks}
 		w.begin(c, f, args)
 		return w.awaitHolding(c, true, hold)
+	case "credit":
+		if st := w.streams[asInt(req["stream"])]; st != nil {
+			st.mu.Lock()
+			st.credit += asInt(req["credit"])
+			st.more.Broadcast()
+			st.mu.Unlock()
+		}
+		return map[string]any{"id": id, "ok": nil}
+	case "cancel":
+		if st := w.streams[asInt(req["stream"])]; st != nil {
+			delete(w.streams, st.id)
+			st.mu.Lock()
+			st.cancelled = true
+			st.more.Broadcast()
+			st.mu.Unlock()
+		}
+		return map[string]any{"id": id, "ok": nil}
 	case "release":
 		ref, _ := req["ref"].(int64)
 		delete(w.held, ref)
@@ -1076,6 +1170,10 @@ func serveLines(w *Worker, in *bufio.Reader, out *bufio.Writer) {
 		}
 		out.Flush()
 	}
+	// a stream's chunk goes out whenever its function emits one (part 3)
+	w.mu.Lock()
+	w.push = func(m map[string]any) { write(w.encode(m), w.Framed()) }
+	w.mu.Unlock()
 	for {
 		framed := w.Framed()
 		var msg []byte

@@ -810,6 +810,35 @@ its programs on one thread (they hold `Rc` continuations): a reader thread
 takes requests off the wire, each running function's events come to the
 same loop, and each request is answered when its call finishes.
 
+## A stream the far side drives
+
+On the same multiplexed wire a Go or Rust function can SEND a stream: it
+calls `okay.Emit(c, chunk)` (Go) or `okay_emit(chunk)` (Rust) for each
+chunk as it makes it — a cursor's rows, a file's lines — and runs ahead of
+the Scala consumer by at most the CREDIT the consumer granted. Each chunk
+taken grants one more; with none left, `Emit` waits. The flow control is
+Reactive Streams' `request(n)` and HTTP/2's window, on okay's wire:
+
+```go
+for i := int64(0); i < n; i += size {
+	if okay.Emit(c, chunk(i, size)) != nil {
+		return nil // the consumer is done: stop producing
+	}
+}
+```
+
+The Scala side reads it as a source, inside the scope every source runs in:
+
+```scala
+val out = within(Writer.run(Py.releasing(Py.stream[Long](address("numbers"), credit = 2)(100L, 7L, tag))).runWith(using engine.handler)._1)
+```
+
+A consumer that stops early — a stage that has had enough — cancels the
+stream when the scope ends, and the far side's next `Emit` answers an
+error, so the function returns instead of waiting for ever. The suite
+counts on the FAR side: with a credit of three and nothing taken, exactly
+three chunks go out; one taken lets exactly one more through.
+
 ## Limits
 
 - **Rust on WebAssembly.** No direct style, and a panic ends the module.

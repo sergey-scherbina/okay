@@ -9,5 +9,8 @@
       (`Py.source`) and parallelism is the pool's.
       PART 1 LANDED (foreign-mux-part1, 2026-09-26): the reader matching by
       id, the hello's `mux`, Go serving concurrently. PART 2 LANDED
-      (foreign-mux-rust): Rust over pipes and TCP. LEFT: streams under credit
-      both ways, `Durable` by `(id, seq)`.
+      (foreign-mux-rust): Rust over pipes and TCP. PART 3 LANDED
+      (foreign-mux-streams): streams the far side drives, under credit, Go
+      and Rust. LEFT: `Durable` by `(id, seq)` for interleaved programs;
+      the host-driven stream and the duplex transform wait for a caller
+      (Stateful carries the duplex shape today).

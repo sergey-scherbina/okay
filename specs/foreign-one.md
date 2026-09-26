@@ -1110,3 +1110,25 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     too (found by this part's mutant, which hung it for 490 s).
   - Mutant: a loop that claims `mux` but does not forward its calls' events
     fails the MUX case.
+- **foreign-mux-duplex, part 3: streams the far side drives
+  (foreign-mux-streams, 2026-09-26).** `ForeignEval.Stream/Pull/Cancel`
+  (the host chooses the stream's id, as a run's; the pool keeps the stream
+  on its worker, leased; the supervisor does not replay it; `Durable`
+  journals each pull); `Py.stream[O](address, credit)`, a source in the
+  `releasing` scope, which CANCELS a stream still open at its end; the
+  wire: a `call` with `stream` and `credit` answered at once, then
+  `{"stream": s, "chunk": v}` messages, `{"op": "credit"}` per chunk taken,
+  `{"op": "cancel"}`, and the stream's `end` or `condition`. Go's
+  `okay.Emit` and Rust's `okay_emit` wait while the credit is spent.
+  - Tests (Live): three STREAM cases on every muxed row — Go pipes/TCP and
+    the five Rust rows: order at a credit of two; the bound COUNTED on the
+    far side (credit three, nothing taken: exactly three sent; one taken:
+    exactly four); an early stop cancels, and the far function returns.
+  - Mutants: Go and Rust ignoring the credit fail the bound (and the
+    early-stop count); a scope that does not cancel leaves the far function
+    blocked, which the early-stop case now reads (`stopped_of`) — the first
+    cut asserted only the count, which the credit alone keeps small.
+  - NOT built, with the reason: the host-driven stream and the full-duplex
+    transform in one call. `Stateful` already carries the duplex shape (a
+    far state stepped per chunk), and no caller has asked for the far side
+    to PULL a host stream under credit.

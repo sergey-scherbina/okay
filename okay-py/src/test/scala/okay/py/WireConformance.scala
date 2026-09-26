@@ -1,6 +1,7 @@
 package okay.py
 
-import okay.{Choose, Reader, effect, runChoice, given}
+import okay.{!, %, +, Choose, Reader, Take, Writer, effect, pure, runChoice, given}
+import okay.Row.plus
 
 /**
  * ONE test body over every link (polyglot-one-wire): whatever the far side
@@ -20,7 +21,10 @@ import okay.{Choose, Reader, effect, runChoice, given}
  *  - `counter(n)` held, then `describe(c, k)`: `n + k` from the HELD value
  *    (a far side that keeps nothing overrides `holds`);
  *  - `await_open(name)` answers once `open(name)` has been called — on a
- *    worker that claims `mux` (Go), each served while the other waits.
+ *    worker that claims `mux` (Go), each served while the other waits;
+ *  - `numbers(n, size, tag)` DRIVES a stream of `0 until n` in chunks of
+ *    `size`, `emitted_of(tag)` says how many chunks it has sent and
+ *    `stopped_of(tag)` whether it has returned.
  */
 abstract class WireConformance extends munit.FunSuite:
 
@@ -111,6 +115,69 @@ abstract class WireConformance extends munit.FunSuite:
     val opened = Future(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(name)))))
     assertEquals(Await.result(opened, 30.seconds), Right(PyValue.Str(name)))
     assertEquals(Await.result(waiting, 30.seconds), Right(PyValue.Str(name)))
+  }
+
+  /** a stream that stalls must fail in seconds, not at the suite's timeout */
+  private def within[X](body: => X): X =
+    import scala.concurrent.{Await, ExecutionContext, Future}
+    import scala.concurrent.duration.DurationInt
+    Await.result(Future(body)(using ExecutionContext.global), 30.seconds)
+
+  private def emittedOf(tag: String): Long =
+    engine.handler.handle(ForeignEval.Call(address("emitted_of"), Vector(PyValue.Str(tag)))) match
+      case Right(v) => shape.decode[Long](v).getOrElse(-1L)
+      case Left(c) => fail(s"emitted_of: $c")
+
+  /** `emitted_of(tag)` once it stops moving (a far side's goroutine may be
+   * a moment behind the host) */
+  private def settled(tag: String): Long =
+    var last = -1L
+    var now = emittedOf(tag)
+    val until = System.nanoTime() + 5_000_000_000L
+    while now != last && System.nanoTime() < until do
+      last = now
+      Thread.sleep(150)
+      now = emittedOf(tag)
+    now
+
+  test("STREAM: the far side drives it, every element in order, under a credit of two (foreign-mux-duplex part 3)") {
+    assume(engine.muxed, "this far side is served one exchange at a time")
+    val tag = s"s${System.nanoTime}"
+    val out = within(Writer.run(Py.releasing(Py.stream[Long](address("numbers"), credit = 2)(100L, 7L, tag))).runWith(using engine.handler)._1)
+    assertEquals(out.toList, (0L until 100L).toList)
+  }
+
+  test("STREAM: the far side runs ahead by the credit and no further — counted on the far side") {
+    assume(engine.muxed, "this far side is served one exchange at a time")
+    val h = engine.handler
+    val tag = s"c${System.nanoTime}"
+    val s = System.nanoTime()
+    assertEquals(h.handle(ForeignEval.Stream(s, address("numbers"), Vector(PyValue.I64(1000), PyValue.I64(1), PyValue.Str(tag)), 3)), Right(()))
+    assertEquals(settled(tag), 3L, "with nothing taken, the far side sent more than its credit")
+    assertEquals(h.handle(ForeignEval.Pull(s)).map(_.isDefined), Right(true))
+    assertEquals(settled(tag), 4L, "one chunk taken is one more chunk allowed")
+    h.handle(ForeignEval.Cancel(s))
+  }
+
+  test("STREAM: a consumer that stops early cancels it, and the far side stops producing") {
+    assume(engine.muxed, "this far side is served one exchange at a time")
+    val tag = s"e${System.nanoTime}"
+    type S = Take % Long + Writer % Long
+    def take(left: Int): Unit ! S =
+      if left == 0 then pure(())
+      else effect[S, Option[Long]](Take.Await()).flatMap {
+        case Some(x) => effect[S, Unit](Writer(x)).flatMap(_ => take(left - 1))
+        case None => pure(())
+      }
+    val consumer = okay.through(Py.stream[Long](address("numbers"), credit = 2)(100000L, 1L, tag))(take(4).plus[ForeignEval + Holding])
+    assertEquals(within(Writer.run(Py.releasing(consumer)).runWith(using engine.handler)._1.toList), List(0L, 1L, 2L, 3L))
+    val sent = settled(tag)
+    assert(sent <= 4 + 2, s"the far side sent $sent chunks for a consumer that took four at a credit of two")
+    // cancelled, its Emit fails and the function returns — not left blocked for ever
+    val until = System.nanoTime() + 5_000_000_000L
+    def stopped = engine.handler.handle(ForeignEval.Call(address("stopped_of"), Vector(PyValue.Str(tag)))) == Right(PyValue.Bool(true))
+    while !stopped && System.nanoTime() < until do Thread.sleep(50)
+    assert(stopped, "the stream's function is still blocked: the early stop did not cancel it")
   }
 
   /** whether a far-side failure leaves the far side alive: false for Rust

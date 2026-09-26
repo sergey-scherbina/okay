@@ -12,6 +12,7 @@ object TestGoProgram:
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"worker/okay"
 	"worker/shop"
@@ -81,8 +82,38 @@ func gate(name string) chan struct{} {
 func awaitOpen(_ *okay.Ctx, args []any) any { <-gate(args[0].(string)); return args[0] }
 func open(_ *okay.Ctx, args []any) any      { close(gate(args[0].(string))); return args[0] }
 
+// a STREAM the worker drives: n numbers in chunks of size, each chunk
+// counted as it goes out, so a test can see how far ahead the far side ran
+var emitted, stopped sync.Map
+
+func numbers(c *okay.Ctx, args []any) any {
+	n, size, tag := args[0].(int64), args[1].(int64), args[2].(string)
+	count := new(int64)
+	emitted.Store(tag, count)
+	defer stopped.Store(tag, true)
+	for i := int64(0); i < n; i += size {
+		var chunk []any
+		for j := i; j < i+size && j < n; j++ {
+			chunk = append(chunk, j)
+		}
+		if okay.Emit(c, chunk) != nil {
+			return nil // cancelled: stop producing
+		}
+		atomic.AddInt64(count, 1)
+	}
+	return nil
+}
+
+func emittedOf(_ *okay.Ctx, args []any) any {
+	if v, ok := emitted.Load(args[0].(string)); ok {
+		return atomic.LoadInt64(v.(*int64))
+	}
+	return int64(0)
+}
+
 var functions = okay.Functions{"quote": quote, "scale": scale, "counter": counter, "describe": describe,
-	"await_open": awaitOpen, "open": open}
+	"await_open": awaitOpen, "open": open, "numbers": numbers, "emitted_of": emittedOf,
+	"stopped_of": func(_ *okay.Ctx, args []any) any { _, ok := stopped.Load(args[0].(string)); return ok }}
 
 // in-process (a WebAssembly build): what okay_exchange serves
 func init() {

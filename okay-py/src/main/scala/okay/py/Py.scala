@@ -277,6 +277,18 @@ enum ForeignEval[+A] derives okay.Effect:
   case Continue(run: Long, k: Long, answer: Either[Condition, PyValue]) extends ForeignEval[Either[Condition, PyNode]]
   /** drop every continuation of a run; idempotent */
   case Forget(run: Long) extends ForeignEval[Unit]
+  /**
+   * A STREAM the far side drives (foreign-mux-duplex part 3): `fn` of `args`
+   * sends chunks as its own code produces them (`emit`), never more than
+   * `credit` ahead of what the host has pulled — the flow control of
+   * reactive streams and HTTP/2. `stream` is the id the HOST chose, as a
+   * program's run is. Only a far side on a multiplexed wire streams.
+   */
+  case Stream(stream: Long, fn: String, args: Vector[PyValue], credit: Int) extends ForeignEval[Either[Condition, Unit]]
+  /** the stream's next chunk, None at its end; taking one grants one more */
+  case Pull(stream: Long) extends ForeignEval[Either[Condition, Option[PyValue]]]
+  /** stop a stream the consumer is done with; idempotent */
+  case Cancel(stream: Long) extends ForeignEval[Unit]
 
 /** one node of a program (remote-foreign; foreign-one-program) */
 enum PyNode:
@@ -312,6 +324,9 @@ object ForeignEval:
       case Program(_, fn, _, _, _) => s"program:$fn"
       case Continue(_, _, _) => "continue"
       case Forget(_) => "forget"
+      case Stream(_, fn, _, _) => s"stream:$fn"
+      case Pull(_) => "pull"
+      case Cancel(_) => "cancel"
     def fingerprint[A](op: ForeignEval[A]): String = op match
       case Call(fn, args, held) =>
         val at = fn match
@@ -326,6 +341,9 @@ object ForeignEval:
         s"program:$run:$fn#${Wire.digest(Json.JArr(Vector(Json.JArr(args.map(Wire.enc)), Json.JArr(cbs.map(Json.JStr(_))))))}"
       case Continue(run, k, a) => s"continue:$run/$k#${Wire.digest(Json.parse(Wire.written(a.map(Wire.enc))))}"
       case Forget(run) => s"forget:$run"
+      case Stream(stream, fn, args, credit) => s"stream:$stream:$fn/$credit#${Wire.digest(Json.JArr(args.map(Wire.enc)))}"
+      case Pull(stream) => s"pull:$stream"
+      case Cancel(stream) => s"cancel:$stream"
     def withKey[A](op: ForeignEval[A], key: String): ForeignEval[A] = op
     def perform[A](op: ForeignEval[A], inner: okay.Handler[ForeignEval]): (A, String) = op match
       case Call(fn, args, held) =>
@@ -346,6 +364,17 @@ object ForeignEval:
       case Forget(run) =>
         inner.handle(Forget(run))
         ((), "forgotten")
+      case Stream(stream, fn, args, credit) =>
+        val answer = inner.handle(Stream(stream, fn, args, credit))
+        (answer, Wire.written(answer.map(_ => Json.JNull)))
+      case Pull(stream) =>
+        val answer = inner.handle(Pull(stream))
+        // a chunk and the end apart: a chunk may itself be None
+        (answer, Wire.written(answer.map(_.fold(Json.JObj(Vector("end" -> Json.JBool(true))))(v =>
+          Json.JObj(Vector("chunk" -> Wire.enc(v)))))))
+      case Cancel(stream) =>
+        inner.handle(Cancel(stream))
+        ((), "cancelled")
     def decode[A](op: ForeignEval[A], written: String): A = op match
       case Call(_, _, _) => Wire.read(written).map(Wire.dec)
       // an answer frame is read by the rules its REQUEST frame was made under
@@ -354,6 +383,12 @@ object ForeignEval:
       case Program(_, _, _, _, _) => Wire.read(written).flatMap(Wire.decNode)
       case Continue(_, _, _) => Wire.read(written).flatMap(Wire.decNode)
       case Forget(_) => ()
+      case Stream(_, _, _, _) => Wire.read(written).map(_ => ())
+      case Pull(_) => Wire.read(written).map {
+        case Json.JObj(fs) => fs.toMap.get("chunk").map(Wire.dec)
+        case _ => None
+      }
+      case Cancel(_) => ()
 
 
 /** the wire halves shared by every engine: PyValue <-> the tagged

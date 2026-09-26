@@ -293,6 +293,8 @@ enum Event {
     Ask { cb: String, args: Vec<Value>, reply: Sender<Result<Value, OkayError>> },
     Done(Value),
     Fault(OkayError),
+    /// a stream's chunk, emitted (foreign-mux-duplex part 3)
+    Chunk(Value),
 }
 
 /// a direct-style call in progress: what [`okay_call`] reaches okay through,
@@ -300,6 +302,53 @@ enum Event {
 struct Ctx {
     offered: Vec<String>,
     events: Sender<Event>,
+    /// the stream this call feeds with okay_emit (foreign-mux-duplex part 3)
+    stream: Option<Arc<OutStream>>,
+}
+
+/// one stream the far side drives: the credit the host granted and has not
+/// yet seen used, and whether the host cancelled it
+#[doc(hidden)]
+pub struct OutStream {
+    state: std::sync::Mutex<(i64, bool)>,
+    more: std::sync::Condvar,
+}
+
+impl OutStream {
+    fn new(credit: i64) -> OutStream { OutStream { state: std::sync::Mutex::new((credit, false)), more: std::sync::Condvar::new() } }
+    fn grant(&self, k: i64) {
+        let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        st.0 += k;
+        self.more.notify_all();
+    }
+    fn cancel(&self) {
+        let mut st = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        st.1 = true;
+        self.more.notify_all();
+    }
+}
+
+/// okay_emit(chunk): one chunk of the stream this call feeds (foreign-mux-
+/// duplex part 3), waiting while the host has granted no credit — the far
+/// side runs ahead of its consumer by at most the credit. An error when the
+/// host cancelled the stream (stop producing), or when this call is no stream.
+pub fn okay_emit(chunk: impl Wire) -> Result<(), OkayError> {
+    let (stream, events) = CURRENT.with(|cur| {
+        let cur = cur.borrow();
+        let ctx = cur.as_ref()?;
+        Some((ctx.stream.clone()?, ctx.events.clone()))
+    }).ok_or_else(|| OkayError { kind: "ValueError".into(), message: "okay_emit outside a stream: this call was not opened as one".into() })?;
+    {
+        let mut st = stream.state.lock().unwrap_or_else(|p| p.into_inner());
+        while st.0 == 0 && !st.1 {
+            st = stream.more.wait(st).unwrap_or_else(|p| p.into_inner());
+        }
+        if st.1 {
+            return Err(OkayError { kind: "Cancelled".into(), message: "the host cancelled this stream".into() });
+        }
+        st.0 -= 1;
+    }
+    events.send(Event::Chunk(chunk.to_value())).map_err(|_| gone())
 }
 
 thread_local! {
@@ -383,6 +432,8 @@ struct Pending {
     run: i64,
     plain: bool,
     hold: bool,
+    /// the stream it feeds: its chunks and its end go out as stream messages
+    stream: Option<i64>,
 }
 
 /// the okay wire's protocol with no I/O: the programs and functions it serves,
@@ -412,6 +463,8 @@ pub struct Worker {
     events_to: Option<Sender<Loop>>,
     calls: HashMap<u64, Pending>,
     next_call: u64,
+    /// the streams it drives, by the host's id (part 3)
+    streams: HashMap<i64, Arc<OutStream>>,
 }
 
 /// HMAC-SHA256 (RFC 2104) of `message` under `key`, as lower-case hex
@@ -480,7 +533,7 @@ impl Worker {
     pub fn new(programs: Programs, functions: Functions) -> Worker {
         Worker { format: "json", compress: "none", programs, functions, konts: HashMap::new(), next: 0, waiting: HashMap::new(), asks: 0,
                  secret: None, nonce: String::new(), authed: false, closing: false, held: HashMap::new(), next_ref: 0,
-                 events_to: None, calls: HashMap::new(), next_call: 0 }
+                 events_to: None, calls: HashMap::new(), next_call: 0, streams: HashMap::new() }
     }
 
     /// a worker that answers only after a mutual HMAC-SHA256 challenge
@@ -563,6 +616,8 @@ impl Worker {
             Ok(Event::Done(v)) if plain => json!({"id": id, "ok": enc(&v)}),
             Ok(Event::Done(v)) => json!({"id": id, "ok": {"done": enc(&v)}}),
             Ok(Event::Fault(e)) => condition(&id, &e.kind, &e.message),
+            // okay_emit refuses outside a stream, so no chunk comes here
+            Ok(Event::Chunk(_)) => condition(&id, "RustError", "a chunk from a call that feeds no stream"),
             Err(_) => condition(&id, "RustError", "the function's thread ended without an answer"),
         }
     }
@@ -570,11 +625,11 @@ impl Worker {
     /// a call on a MULTIPLEXED wire (foreign-mux-duplex): its events go to the
     /// worker's loop, tagged with the call, and it is answered when they come
     /// — J::Null here is "no reply yet"
-    fn defer(&mut self, id: J, run: i64, events: Receiver<Event>, plain: bool, hold: bool) -> J {
+    fn defer(&mut self, id: J, run: i64, events: Receiver<Event>, plain: bool, hold: bool, stream: Option<i64>) -> J {
         let to = match &self.events_to { Some(t) => t.clone(), None => return condition(&id, "RustError", "no loop to defer to") };
         self.next_call += 1;
         let call = self.next_call;
-        self.calls.insert(call, Pending { id, run, plain, hold });
+        self.calls.insert(call, Pending { id, run, plain, hold, stream });
         std::thread::spawn(move || {
             for e in events.iter() {
                 if to.send(Loop::Event(call, e)).is_err() {
@@ -590,7 +645,29 @@ impl Worker {
     /// parked on an okay_call, or already answered)
     fn on_event(&mut self, call: u64, e: Option<Event>) -> Option<J> {
         let p = self.calls.remove(&call)?;
+        if let Some(s) = p.stream {
+            // a stream's messages: its chunks, then its end or its condition
+            return Some(match e {
+                Some(Event::Chunk(v)) => {
+                    self.calls.insert(call, p);
+                    json!({"stream": s, "chunk": enc(&v)})
+                }
+                Some(Event::Ask { cb, reply, .. }) => {
+                    let _ = reply.send(Err(OkayError { kind: "LookupError".into(),
+                        message: format!("okay_call(\"{}\") in a stream, which offers no callbacks", cb) }));
+                    self.calls.insert(call, p);
+                    return None;
+                }
+                Some(Event::Done(_)) => { self.streams.remove(&s); json!({"stream": s, "end": true}) }
+                Some(Event::Fault(e)) => { self.streams.remove(&s); json!({"stream": s, "condition": {"kind": e.kind, "message": e.message}}) }
+                None => { self.streams.remove(&s); json!({"stream": s, "condition": {"kind": "RustError", "message": "the stream's thread ended without an answer"}}) }
+            });
+        }
         Some(match e {
+            Some(Event::Chunk(_)) => {
+                self.calls.insert(call, p);
+                return None;
+            }
             Some(Event::Ask { cb, reply, .. }) if p.hold => {
                 let _ = reply.send(Err(OkayError { kind: "LookupError".into(),
                     message: format!("okay_call(\"{}\") in a held call, which offers no callbacks", cb) }));
@@ -634,6 +711,8 @@ impl Worker {
                     json!({"id": id, "ok": {"t": "ref", "id": self.next_ref, "type": kind}})
                 }
                 Ok(Event::Fault(e)) => condition(&id, &e.kind, &e.message),
+                // okay_emit refuses outside a stream, so no chunk comes here
+                Ok(Event::Chunk(_)) => continue,
                 Err(_) => condition(&id, "RustError", "the function's thread ended without an answer"),
             };
         }
@@ -642,9 +721,13 @@ impl Worker {
     /// a direct-style function on a thread of its own, its okay_call's
     /// answered through the channel the worker reads
     fn begin(f: DirectFn, args: Vec<Value>, offered: Vec<String>) -> Receiver<Event> {
+        Worker::begin_feeding(f, args, offered, None)
+    }
+
+    fn begin_feeding(f: DirectFn, args: Vec<Value>, offered: Vec<String>, stream: Option<Arc<OutStream>>) -> Receiver<Event> {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
-            CURRENT.with(|cur| *cur.borrow_mut() = Some(Ctx { offered, events: tx.clone() }));
+            CURRENT.with(|cur| *cur.borrow_mut() = Some(Ctx { offered, events: tx.clone(), stream }));
             let out = catch_unwind(AssertUnwindSafe(|| f(args)));
             let _ = tx.send(match out {
                 Ok(Ok(v)) => Event::Done(v),
@@ -696,7 +779,7 @@ impl Worker {
                     .map(|c| c.iter().filter_map(|n| n.as_str().map(String::from)).collect()).unwrap_or_default();
                 let rx = Worker::begin(f, args, offered);
                 if self.events_to.is_some() {
-                    return self.defer(id, run, rx, false, false);
+                    return self.defer(id, run, rx, false, false, None);
                 }
                 self.await_call(id, run, rx, false)
             }
@@ -707,10 +790,21 @@ impl Worker {
                     None => return condition(&id, "LookupError", &format!("no function named '{}' in this worker", fn_name)),
                     Some(f) => f.clone(),
                 };
+                if let Some(s) = req.get("stream").and_then(|s| s.as_i64()) {
+                    if self.events_to.is_none() {
+                        return condition(&id, "NotStreaming", "this Rust worker is not on a multiplexed wire: it cannot drive a stream");
+                    }
+                    let st = Arc::new(OutStream::new(req.get("credit").and_then(|c| c.as_i64()).unwrap_or(1)));
+                    self.streams.insert(s, st.clone());
+                    let rx = Worker::begin_feeding(f, args, Vec::new(), Some(st));
+                    // answered at once: the stream's messages follow as it makes them
+                    let _ = self.defer(id.clone(), run, rx, true, false, Some(s));
+                    return json!({"id": id, "ok": null});
+                }
                 let rx = Worker::begin(f, args, Vec::new());
                 let held = req.get("held").and_then(|h| h.as_bool()) == Some(true);
                 if self.events_to.is_some() {
-                    return self.defer(id, run, rx, true, held);
+                    return self.defer(id, run, rx, true, held, None);
                 }
                 if held {
                     return self.hold(id, rx);
@@ -731,7 +825,7 @@ impl Worker {
                     return match (parked.call, parked.events) {
                         // its events come to the loop: answered when the next one does
                         (Some(call), _) => {
-                            self.calls.insert(call, Pending { id, run, plain: false, hold: false });
+                            self.calls.insert(call, Pending { id, run, plain: false, hold: false, stream: None });
                             J::Null
                         }
                         (None, Some(events)) => self.await_call(id, run, events, false),
@@ -748,6 +842,18 @@ impl Worker {
                     Ok(p) => json!({"id": id, "ok": self.node(run, p)}),
                     Err(p) => condition(&id, "RustError", &panic_message(p)),
                 }
+            }
+            Some("credit") => {
+                if let Some(st) = req.get("stream").and_then(|s| s.as_i64()).and_then(|s| self.streams.get(&s)) {
+                    st.grant(req.get("credit").and_then(|c| c.as_i64()).unwrap_or(0));
+                }
+                json!({"id": id, "ok": null})
+            }
+            Some("cancel") => {
+                if let Some(st) = req.get("stream").and_then(|s| s.as_i64()).and_then(|s| self.streams.remove(&s)) {
+                    st.cancel();
+                }
+                json!({"id": id, "ok": null})
             }
             Some("release") => {
                 if let Some(r) = req.get("ref").and_then(|r| r.as_i64()) { self.held.remove(&r); }
@@ -846,6 +952,7 @@ impl Worker {
                 Ok(Event::Done(v @ Value::Table(_))) => return (self.encode(&json!({"id": id, "ok": {"t": "cdata"}})), Some(v)),
                 Ok(Event::Done(v)) => json!({"id": id, "ok": enc(&v)}),
                 Ok(Event::Fault(e)) => condition(&id, &e.kind, &e.message),
+                Ok(Event::Chunk(_)) => continue,
                 Err(_) => condition(&id, "RustError", "the function's thread ended without an answer"),
             };
             return (self.encode(&reply), None);
