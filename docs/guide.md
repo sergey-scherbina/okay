@@ -218,6 +218,53 @@ is answered in the row by `p.orElse(q)` / `p.recover(h)`. Where the row
 carries `Choose` instead, the same pattern PRUNES the branch and the
 search goes on.
 
+**Absence — `Maybe`** (specs/core-gaps.md). `Abort` is a failure; a
+value that is simply not there is `Maybe`, an effect of its own lifted
+from an `Option`. `Some(x).maybe` answers `x`, `None.maybe` stops the
+program, and `Maybe.run` answers the `Option` at the end:
+
+```scala
+def age(name: String): Int ! Maybe = ages.get(name).maybe
+val both = for a <- age("ann"); b <- age("bob") yield a + b
+val stops = for a <- age("ann"); b <- age("eve") yield a + b
+// Maybe.run(both) answers Some(73), Maybe.run(stops) None
+```
+
+Because it is not a `Throws`, it shares a row with one — which `Abort`
+cannot, since a row holds one `Throws` — and "not there" and "broken"
+come out of two handlers:
+
+```scala
+type R = Maybe + Throws % String
+def adult(name: String): Int ! R =
+  age(name).at[R].flatMap(a => if a >= 18 then pure(a) else raise[String, Int]("minor").at[R])
+// runEither(Maybe.run(adult("eve"))) == Right(None); a minor is Left("minor")
+```
+
+`p.orElse(q)` tries `q` where `p` found nothing, `p.getOrElse(a)` ends
+in a default, and a refuted `case Some(x) <-` in a `Maybe` row stops
+through `Maybe` (it wins over `Abort` where a row has both). An
+`Either` from a library joins a `Throws` row with `.orRaise` — the
+`Right` answers, the `Left` is raised:
+
+```scala
+val sum = for a <- ok.orRaise; b <- bad.orRaise yield a + b
+// runEither(sum) == Left("no")
+```
+
+**Fresh values — `Supply`.** One operation, `Supply.next[S]`: each draw
+answers a value not answered before (Launchbury's supply; `Fresh` in
+fused-effects and polysemy). `Supply.run(first)(step)` makes the
+values; `Fresh` is the numbers, from 0. Unlike `State % Long` there is
+no `set`, so the code that draws cannot rewind the supply, and the seed
+is threaded through the answer the way `State`'s is, so under `Choose`
+each branch continues from where it was captured:
+
+```scala
+val three = for a <- Fresh.next; b <- Fresh.next; c <- Fresh.next yield List(a, b, c)
+assertEquals(!.run(Fresh.run(three)), List(0L, 1L, 2L))
+```
+
 **Scoped effects — `recover`×`State`'s order, and `Reader.local`**
 (specs/scoped-effects-laws.md). A `catch`/`local` whose body performs
 OTHER effects raises a question algebraic operations never do (Wu,

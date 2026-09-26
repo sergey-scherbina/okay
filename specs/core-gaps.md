@@ -58,39 +58,40 @@ type Fresh = Supply % Long
 object Supply:
   inline def next[S]: S ! Supply % S
   def run[S](first: S)(step: S => S)[A, F[+_]](p: A ! Supply % S + F): (S, A) ! F
-inline def fresh: Long ! Fresh
-def runFresh[A, F[+_]](p: A ! Fresh + F): A ! F    // 0, 1, 2, …
+object Fresh:                                        // not a top-level `fresh`: DI owns that name
+  inline def next: Long ! Fresh
+  def run[A, F[+_]](p: A ! Fresh + F): A ! F       // 0, 1, 2, …
 ```
 
 ## Behavior
 
 ### Maybe
-- [ ] `Some(x).maybe` answers `x`; `None.maybe` stops the program and
+- [x] `Some(x).maybe` answers `x`; `None.maybe` stops the program and
       `Maybe.run` answers `None`
-- [ ] `Maybe.run` of a program that never stops answers `Some`
-- [ ] a row `Maybe + Throws % E` passes `Distinct` and each handler
+- [x] `Maybe.run` of a program that never stops answers `Some`
+- [x] a row `Maybe + Throws % E` passes `Distinct` and each handler
       answers its own: the review's point 1, which `Abort` cannot do
-- [ ] forwarding: effects after a `Some` still run, and effects after a
+- [x] forwarding: effects after a `Some` still run, and effects after a
       `None` do not
-- [ ] `orElse` runs the alternative only where the first program found
+- [x] `orElse` runs the alternative only where the first program found
       nothing, and `getOrElse` answers the default
-- [ ] a refutable pattern in a `Maybe` row compiles and stops through
+- [x] a refutable pattern in a `Maybe` row compiles and stops through
       `Maybe` (`CanFail`)
-- [ ] stack-safe: 100 000 `Some(i).maybe` binds in a row
+- [x] stack-safe: 100 000 `Some(i).maybe` binds in a row
 
 ### Either → Throws
-- [ ] `Right(a).orRaise` answers `a`; `Left(e).orRaise` raises `e`, and
+- [x] `Right(a).orRaise` answers `a`; `Left(e).orRaise` raises `e`, and
       `runEither` answers `Left(e)`
 
 ### Supply
-- [ ] `runFresh` draws 0, 1, 2 … in program order
-- [ ] `Supply.run(first)(step)` answers the final seed with the value
-- [ ] forwarding: another effect interleaved with draws keeps its place
-- [ ] under `Choose` both branches draw from the same point: the handler
+- [x] `Fresh.run` draws 0, 1, 2 … in program order
+- [x] `Supply.run(first)(step)` answers the final seed with the value
+- [x] forwarding: another effect interleaved with draws keeps its place
+- [x] under `Choose` both branches draw from the same point: the handler
       threads the seed through the answer (as `State` does), so the
       residual program can be run again, and each branch continues from
       the seed it was captured with
-- [ ] stack-safe: 100 000 draws
+- [x] stack-safe: 100 000 draws
 
 ## Design
 
@@ -144,3 +145,14 @@ time:
   follows State and the single-shot-row refutation.
 
 ## Results
+
+### Landed 2026-09-26 (core-maybe-supply)
+
+Every behavior box above is covered by TestMaybe, TestOrRaise and
+TestSupply (JVM). Found on the way: a top-level `fresh` collides with
+DI's `fresh[A]` (Provide.scala, E161), so the numbers live under
+`object Fresh`. `Supply.from(xs)` (drawing from a collection) was
+dropped from the interface before it was written. Raising on exhaustion
+would put a second `Throws` in the caller's row, and that is exactly the
+conflict this lane exists to remove. `Supply.run(first)(step)` covers
+every generated supply.

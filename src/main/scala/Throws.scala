@@ -64,6 +64,19 @@ inline def abort[A]: A ! Abort = raise[Unit, A](())
 inline def runOption[A, F[+_]](a: A ! Abort + F): Option[A] ! F =
   runEither[A, F, Unit](a).map(_.toOption)
 
+/**
+ * AN EITHER INTO THE EFFECT: the `Right` is the answer, the `Left` is
+ * raised. What a library hands back as `Either[E, A]` joins a program
+ * without the `fold(raise, pure)` every call site used to spell out
+ * (specs/core-gaps.md).
+ *
+ *     parse(s).orRaise   :  Int ! Throws % String
+ */
+extension [E, A](e: Either[E, A])
+  inline def orRaise: A ! Throws % E = e match
+    case Right(a) => pure(a)
+    case Left(err) => raise(err)
+
 /** handle Throws by actually throwing: the JVM is the handler */
 inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F)(using Distinct[Throws % E + F]): A ! F =
   Effects[Free].handle[Throws % E, F](a)(a => pure(a)):
@@ -335,17 +348,20 @@ object CanTry:
  * below is the whole design, and everything else follows from which
  * effect supplies it.
  *
- * TWO EFFECTS CAN FAIL, AND THEY MEAN DIFFERENT THINGS.
+ * THREE EFFECTS CAN FAIL, AND THEY MEAN DIFFERENT THINGS.
  *
  *   Choose   the BRANCH dies and the search goes on — `guard`, under
  *            the syntax people reach for first
+ *   Maybe    nothing is THERE and `Maybe.run` answers None — the
+ *            refuted `case Some(x) <-` said exactly that
  *   Abort    the PROGRAM stops and `runOption` answers None — a lookup
  *            with nothing to look up, which has no other branch to
  *            continue into
  *
  * A row carrying `Choose` gets the search meaning: where a program
  * searches, `guard` already means prune, and one syntax must not mean
- * two things in one row.
+ * two things in one row. Between the two that stop, Maybe wins over
+ * Abort (specs/core-gaps.md).
  *
  * WHY MEMBERSHIP AND NOT `MonadPlus`. The obvious evidence is
  * `MonadPlus[[X] =>> X ! F]`, and it was shipped that way first. It
@@ -363,7 +379,7 @@ object CanTry:
  */
 @implicitNotFound("""this row cannot drop a step, so a refutable pattern (`case Some(x) <- p`) and an `if` guard have no meaning in it: ${F}
 Both desugar to withFilter, which needs somewhere for the dropped step to GO.
-Put a failing effect in the row and it works: Abort (the program stops, runOption answers None) or Choose (the branch dies, the search goes on).
+Put a failing effect in the row and it works: Maybe (nothing is there, Maybe.run answers None), Abort (the program stops, runOption answers None) or Choose (the branch dies, the search goes on).
 Or keep the row as it is and write the branch yourself: `old.fold(pure(()))(...)` says the same thing and hides nothing""")
 trait CanFail[F[+_]]:
   def fail[A]: A ! F
@@ -373,7 +389,14 @@ trait CanFailLow:
   given viaAbort: [F[+_]] => In[Abort, F] => CanFail[F] = new:
     def fail[A]: A ! F = abort[A].at[F]
 
-object CanFail extends CanFailLow:
+trait CanFailMid extends CanFailLow:
+  /** nothing is there: a refuted `case Some(x) <-` IS an absence, so
+   * where a row carries both Maybe and Abort, Maybe answers it
+   * (specs/core-gaps.md) */
+  given viaMaybe: [F[+_]] => In[Maybe, F] => CanFail[F] = new:
+    def fail[A]: A ! F = Maybe.none[A].at[F]
+
+object CanFail extends CanFailMid:
   /** prune: this branch dies, the search continues — and it wins over
    * Abort where a row carries both, because in a searching row `guard`
    * already means prune */
