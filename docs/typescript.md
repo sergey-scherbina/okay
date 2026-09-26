@@ -1,5 +1,8 @@
 # okay with TypeScript
 
+> A chapter of [Foreign languages](foreign-languages.md): the model every
+> language here shares — what crosses, who carries what, the wire.
+
 okay is an effects library for Scala 3: a program is a value, and handlers
 decide what its operations mean. This page is about Scala and TypeScript
 working together in the three places they meet:

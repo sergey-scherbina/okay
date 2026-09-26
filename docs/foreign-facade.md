@@ -1,5 +1,8 @@
 # One facade over every foreign language
 
+> A chapter of [Foreign languages](foreign-languages.md): the model every
+> language here shares — what crosses, who carries what, the wire.
+
 okay talks to Python, R, TypeScript, Haskell, Go, Rust — each in its
 own process, over one wire — and to Clojure, Frege and Java inside the
 JVM. This page is about writing the Scala side ONCE: a job names a

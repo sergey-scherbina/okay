@@ -1,5 +1,8 @@
 # okay with Rust (and a word on Go)
 
+> A chapter of [Foreign languages](foreign-languages.md): the model every
+> language here shares — what crosses, who carries what, the wire.
+
 Rust brings okay COMPUTE: kernels such as hashing, parsing, compression
 and SIMD, written once and fast. It does not host okay programs. A Rust
 `async` future is not a continuation that okay could resume from

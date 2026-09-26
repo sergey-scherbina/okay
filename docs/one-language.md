@@ -1,5 +1,8 @@
 # Rust and Go as okay
 
+> A chapter of [Foreign languages](foreign-languages.md): the model every
+> language here shares — what crosses, who carries what, the wire.
+
 okay's effects are Scala's. This page is about Rust and Go code that
 takes part in them as if it were written in the same language. It is
 called with types, it calls okay's effects in the middle of its work, and

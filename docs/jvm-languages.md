@@ -1,5 +1,8 @@
 # okay with other JVM languages: Java streams, Clojure, Frege
 
+> A chapter of [Foreign languages](foreign-languages.md): the model every
+> language here shares — what crosses, who carries what, the wire.
+
 okay is a Scala 3 library, but the JVM has other languages, and each has
 its own way of transforming a stream and of doing effects. This guide is
 about using them TOGETHER with okay: a JDK stream running an okay stage,

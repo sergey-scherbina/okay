@@ -86,6 +86,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   backend (a Node worker, a generated Scala facade). Types are written
   once, in either language, and every generated file is checked by
   `tsc --strict`.
+- **[Foreign languages](foreign-languages.md)** — the one model under
+  every language okay runs: what crosses (a value, a table, an object, a
+  stream, a program), one program in every language over the same Scala,
+  who carries what, the two runtimes, the wire's five operations, and
+  adding a language in four steps; the pages below are its chapters.
 - **[Rust and Go as okay](one-language.md)** — one program in either
   language, reached over a pipe, TCP, FFM or WebAssembly by the same Scala;
   one conformance suite over every link.

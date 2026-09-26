@@ -148,7 +148,7 @@ the code exists once and only the CLAIM differs:
 |---|---|---|
 | (none: `Runtime[L]` itself) | a value; a program's `call` | every language |
 | `Tables[L]` | a `Table` argument or answer | Py, R, Ts, Rust, Go, Hs (the frame road, stage 6: columnar JSON; Rust in process too, not wasm); Jvm by reference |
-| `Objects[L]` | a `Ref[L]`: hold, pass, release | Py, R, Jvm; Rust/Go/Hs/Ts when a caller needs their libraries to keep a table of held values (Decision 18) |
+| `Objects[L]` | a `Ref[L]`: hold, pass, release | Py, R, Ts, Jvm; Rust/Go/Hs when a caller needs their libraries to keep a table of held values (Decision 18) |
 | `Methods[L]` | `Address.Method`/`Attr` on a held object | Py, Ts, Jvm — R's and Rust's objects have nothing to call by name, an honest absence |
 | `Programs[L]` | a program as data; `Programs.MultiShot[L]` refines it | every language; MultiShot: all but the direct-style-only far sides |
 | `Streams[L]` | a stream argument or answer driven by the far side under credit | after stage 5: Go, Rust (not wasm), Ts, Hs, Py; R and wasm-Rust are `mux: false` by design |

@@ -1,5 +1,8 @@
 # okay with Go
 
+> A chapter of [Foreign languages](foreign-languages.md): the model every
+> language here shares — what crosses, who carries what, the wire.
+
 Go code is mostly services, and a Go runtime does not belong inside the
 JVM ([why](rust.md#go)). So Go reaches okay the way Haskell does: as a
 **worker process** on okay's line protocol. A Scala program calls Go

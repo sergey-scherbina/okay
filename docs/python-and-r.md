@@ -1,5 +1,8 @@
 # okay with Python and R
 
+> A chapter of [Foreign languages](foreign-languages.md): the model every
+> language here shares — what crosses, who carries what, the wire.
+
 okay is an effects library for Scala 3, with a facade for Scala 2.13. A
 program is a value, a tree of operations, and handlers decide what each
 operation means. This page shows two languages taking part in such a
