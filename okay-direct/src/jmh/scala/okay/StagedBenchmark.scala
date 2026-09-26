@@ -109,6 +109,71 @@ class StagedBenchmark {
   @Benchmark
   def stagedHand(): Int = sw.run(0)(handBlock(0, 0))._2
 
+  // ---- handlers-vs-plain-loop: the SAME 1 000 operations with no
+  // effect machinery at all — a `while` loop and a `var` state. The
+  // lane returns (answer, state, log) so JMH consumes all three and
+  // the loop cannot be dropped; that is one 24 B tuple a run, against
+  // the thousand operations measured.
+
+  /** the effect machinery isolated: the log is the SAME persistent
+   * `Vector` the staged answer threads, appended the same way */
+  @Benchmark
+  def plainLoopVector(): (Int, Int, Vector[String]) =
+    var s = 0
+    var log = Vector.empty[String]
+    var acc = 0
+    var i = 0
+    while i < Iters do
+      val a = s
+      s = i
+      log = log :+ "w"
+      val b = s
+      s = i + 1
+      log = log :+ "w"
+      val c = s
+      s = i + 2
+      log = log :+ "w"
+      val d = s
+      acc = acc + a + b + c + d
+      i += 1
+    (acc, s, log)
+
+  /** what an imperative programmer writes: a mutable buffer */
+  @Benchmark
+  def plainLoopBuffer(): (Int, Int, scala.collection.mutable.ArrayBuffer[String]) =
+    var s = 0
+    val log = scala.collection.mutable.ArrayBuffer.empty[String]
+    var acc = 0
+    var i = 0
+    while i < Iters do
+      val a = s
+      s = i
+      val _ = log.addOne("w")
+      val b = s
+      s = i + 1
+      val _ = log.addOne("w")
+      val c = s
+      s = i + 2
+      val _ = log.addOne("w")
+      val d = s
+      acc = acc + a + b + c + d
+      i += 1
+    (acc, s, log)
+
+  /** the lanes' own control: every road computes the same answer,
+   * state and log, or the comparison is between different programs */
+  @Setup(Level.Trial)
+  def sameProgram(): Unit =
+    val ((s, log), a) = sw.run(0)(handBlock(0, 0))
+    val (pa, ps, plog) = plainLoopVector()
+    val (ba, bs, blog) = plainLoopBuffer()
+    if a != pa || s != ps || log != plog then
+      throw new IllegalStateException(s"plainLoopVector differs: ($a, $s, ${log.size}) vs ($pa, $ps, ${plog.size})")
+    if a != ba || s != bs || log != blog.toVector then
+      throw new IllegalStateException(s"plainLoopBuffer differs: ($a, $s, ${log.size}) vs ($ba, $bs, ${blog.size})")
+    if stagedDirect() != a || freeDirectNested() != a then
+      throw new IllegalStateException("the staged or Free block answers differently from the hand block")
+
   // ---- specs/direct-stagers.md: (1) the SAME block through Stager.All
   // with two unused slots — the price of the layout
 
