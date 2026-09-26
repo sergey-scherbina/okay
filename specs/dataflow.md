@@ -345,7 +345,15 @@ Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro, TestHud
       Live: written by Hudi 1.2.1 on Spark 4.1 through pyspark)
 - [x] an upsert's older file slice, an inflight instant's file and a
       replaced file group are not read; the rows equal Hudi's own read
-- [x] merge-on-read is refused by name (its log files hold rows the base
+- [x] merge-on-read is refused by name — until lake-hudi-mor, below
+- [ ] a Hudi MERGE-ON-READ table reads: each file slice (base Parquet and
+      its log files of `#HUDI#` blocks) is one partition, log records
+      merged over the base by record key in completed-instant order —
+      Avro data blocks upsert under the table's merge mode, delete blocks
+      remove, blocks of an uncommitted or rolled-back instant are skipped;
+      the rows equal Hudi's own read (lake-hudi-mor, TestHudi)
+- [ ] a log block this reader does not decode (Parquet or HFile data
+      blocks, a CDC block) is refused by name (its log files hold rows the base
       files do not)
 
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
