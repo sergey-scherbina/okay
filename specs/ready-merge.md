@@ -147,6 +147,26 @@ waker then reads the queue — at least one side sees the other.
   fibers keep feeding a channel nobody reads). A source whose
   registration consumes data (a channel receive, whose canceller is
   `() => ()`) loses that element either way; recorded, not solved here.
+- **A cancel is seen by the sources — with one narrow window, on one
+  scheduler** (ready-merge-cancel-race, 2026-09-26). MEASURED, 200
+  rounds each, the fiber JOINED before the flags are read: on Loom (the
+  default) 0 misses whether the cancel lands before or after the
+  merge's first park — the interrupt is sticky, and `block` registers
+  the merge's park, sees it and calls the merge's canceller. On `own`
+  (a `DriveTask`, where a cancel is the drive's `stopped` flag) 0 misses
+  after the park and **2 of 200 before it**: the drive stops at its next
+  operation without running it, knows only the Await it last parked on,
+  and nothing calls the merge's canceller — the sources already parked
+  stay registered, as on an early stop. Backlog
+  `ready-merge-own-cancel-window`. The law cancels once the merge is
+  parked (`ReadyMerge`'s `onPark` hook, a test's only view of that
+  moment) and joins before it reads. THE FIRST CUT of the law read the
+  flags right after `cancel()` and so measured the cancel still in
+  flight: 297 misses of 300 in a loop, green in the lane's gates by
+  luck, red in a ci-runner whole build. Rejected for the window:
+  registering the sources' Awaits only when the merge itself parks —
+  that delays a parked source's timer or read while the others are
+  busy, which is what a readiness merge exists not to do.
 
 ## Results
 

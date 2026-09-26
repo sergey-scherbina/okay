@@ -25,16 +25,19 @@ import scala.collection.mutable.ArrayBuffer
  */
 private[okay] object ReadyMerge:
 
-  def apply[A](sources: Seq[Source[A]]): Source[A] =
+  /** `onPark` runs each time the merge registers its own park — a
+   * test's way to know the merge IS parked (TestReadyMerge's cancel
+   * law), since nothing else outside the drive can see it */
+  def apply[A](sources: Seq[Source[A]], onPark: () => Unit = () => ()): Source[A] =
     // the state is built per RUN, inside the program: a Source is a
     // value, and running it twice must merge twice
-    okay.pure[Writer % A + Async, Unit](()).flatMap(_ => new Run[A](sources).again())
+    okay.pure[Writer % A + Async, Unit](()).flatMap(_ => new Run[A](sources, onPark).again())
 
   /** a registration's answer, when it came before the drive moved on */
   private final class Answer[X](val r: Either[Throwable, X])
   private object Moved
 
-  private final class Run[A](sources: Seq[Source[A]]):
+  private final class Run[A](sources: Seq[Source[A]], onPark: () => Unit):
     private type R = Writer % A + Async
     private val n = sources.length
 
@@ -173,5 +176,6 @@ private[okay] object ReadyMerge:
       okay.effect[R, Unit](Async.Await[Unit] { cb =>
         waker.set(cb)
         if !woken.isEmpty then fire()
+        onPark()
         () => cancelAll()
       }).flatMap(_ => again())

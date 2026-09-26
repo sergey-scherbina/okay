@@ -125,10 +125,21 @@ class TestReadyMerge extends munit.FunSuite {
   }
 
   test("cancelling the merge while it is parked cancels every parked source") {
+    // a cancel is ASYNCHRONOUS — on Loom it is an interrupt the fiber
+    // acts on when it next looks — so the law joins before it reads
+    // the flags; the first cut read them at once and missed 297 times
+    // in 300 while the cancels were still on their way (it passed the
+    // lane's gates by luck and went red in a ci-runner whole build).
+    // And it cancels once the merge IS parked: on the `own` scheduler a
+    // cancel before the merge's first park is not seen by its sources
+    // (specs/ready-merge.md, Decisions).
     val a, b = Gate()
-    val f = summon[Scheduler].fork(() => Source.mergeReady(a.source, b.source).runCollect)
-    a.registered.await(); b.registered.await()
+    val parked = CountDownLatch(1)
+    val m = ReadyMerge(Seq(a.source, b.source), () => parked.countDown())
+    val f = summon[Scheduler].fork(() => m.runCollect)
+    parked.await()
     f.cancel()
+    assert(f.joinEither().isLeft, "a cancelled merge answers with a failure")
     assert(a.cancelled.get && b.cancelled.get, s"cancelled: a=${a.cancelled.get} b=${b.cancelled.get}")
   }
 
