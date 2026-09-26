@@ -20,6 +20,7 @@
 module Okay
   ( Prog (..)
   , Value (..)
+  , col
   , done
   , perform
   , serve
@@ -54,6 +55,9 @@ data Value
   | VStr String
   | VList [Value]
   | VDict [(String, Value)]
+  -- | a TABLE (foreign-one-bulk): named columns in order. A table call's
+  -- first argument arrives as one; a program answering one answers a table
+  | VTable [(String, [Value])]
   deriving (Eq, Show)
 
 -- | a program as data: an answer, or a named operation and the pure
@@ -265,6 +269,7 @@ enc (VDouble d)
 enc (VStr s) = JStr s
 enc (VList xs) = JArr (map enc xs)
 enc (VDict kv) = JObj [("t", JStr "dict"), ("kv", JArr [JArr [JStr k, enc v] | (k, v) <- kv])]
+enc (VTable cs) = JObj [("t", JStr "frame"), ("cols", JArr [JArr [JStr k, JArr (map enc vs)] | (k, vs) <- cs])]
 
 dec :: Json -> Value
 dec JNull = VNull
@@ -279,7 +284,28 @@ dec (JObj fs) = case lookup "t" fs of
   Just (JStr "f") | Just (JNum n) <- lookup "v" fs -> VDouble (readDouble n)
   Just (JStr "int") | Just (JStr d) <- lookup "v" fs -> VInt (read d)
   Just (JStr "dict") | Just (JArr ps) <- lookup "kv" fs -> VDict [(k, dec v) | JArr [JStr k, v] <- ps]
+  Just (JStr "frame") | Just (JArr cs) <- lookup "cols" fs -> VTable [column c | JObj c <- cs]
   _ -> VDict [(k, dec v) | (k, v) <- fs]
+  where
+    -- the columnar shape this worker claims in its hello: a type per column,
+    -- plain values, the absences as index lists (or a column of cells)
+    column c =
+      let name = case lookup "name" c of { Just (JStr n) -> n; _ -> "" }
+          list k = case lookup k c of { Just (JArr xs) -> xs; _ -> [] }
+          double = case lookup "type" c of { Just (JStr "d") -> True; _ -> False }
+          plain = [if double then asDouble (dec x) else dec x | x <- list "values"]
+          marks = [(i, VNull) | JNum i <- list "na"] ++ [(i, VDouble (0 / 0)) | JNum i <- list "nan"]
+          put vs (i, v) = let n = read (takeWhile (/= '.') i) :: Int in take n vs ++ [v] ++ drop (n + 1) vs
+      in (name, case lookup "cells" c of
+                  Just (JArr xs) -> map dec xs
+                  _ -> foldl put plain marks)
+    asDouble (VInt n) = VDouble (fromInteger n)
+    asDouble v = v
+
+-- | the named column of a table, if it has one
+col :: String -> Value -> Maybe [Value]
+col n (VTable cs) = lookup n cs
+col _ _ = Nothing
 
 -- | JSON's numbers as Haskell reads them ("1e-5" wants a mantissa point)
 readDouble :: String -> Double
@@ -303,7 +329,7 @@ serve progs = do
   -- the format this worker is speaking: "json" (lines) until a configure
   cbor <- newIORef False
   putStrLn (render (JObj [("shim", JNum (show shimVersion)), ("python", JStr "haskell"),
-                          ("speaks", JObj [("format", JArr [JStr "json", JStr "cbor"]), ("compress", JArr [])])]))
+                          ("speaks", JObj [("format", JArr [JStr "json", JStr "cbor"]), ("compress", JArr []), ("frames", JArr [JStr "columnar"])])]))
   let node run p = case p of
         Done v -> return (JObj [("done", enc v)])
         Perform n as k -> do
@@ -323,6 +349,17 @@ serve progs = do
               Right <$> node run (f args)
             Just (JStr fn) -> return (Left ("LookupError", "no program named '" ++ fn ++ "' in this worker"))
             _ -> return (Left ("ValueError", "a program request names its fn"))
+          -- a CALL is a program that answers without performing: the same
+          -- named programs serve it, and one that performs is refused by name
+          (Just (JStr "call"), _) -> case lookup "fn" fs of
+            Just (JStr fn) | Just f <- lookup fn progs -> do
+              let args = case lookup "args" fs of { Just (JArr xs) -> map dec xs; _ -> [] }
+              return (case f args of
+                Done v -> Right (enc v)
+                Perform n _ _ -> Left ("ValueError", "'" ++ fn ++ "' performs '" ++ n
+                                      ++ "': a call answers a value; run it as a program"))
+            Just (JStr fn) -> return (Left ("LookupError", "no program named '" ++ fn ++ "' in this worker"))
+            _ -> return (Left ("ValueError", "a call names its fn"))
           (Just (JStr "continue"), Just run) -> case int (lookup "k" fs) of
             Just k -> do
               m <- readIORef konts
@@ -341,7 +378,7 @@ serve progs = do
           (Just (JStr "forget"), Just run) -> do
             modifyIORef' konts (M.filterWithKey (\(r, _) _ -> r /= run))
             return (Right JNull)
-          (Just (JStr op), _) -> return (Left ("ValueError", "this Haskell worker serves programs only, not '" ++ op ++ "'"))
+          (Just (JStr op), _) -> return (Left ("ValueError", "this Haskell worker serves programs and calls, not '" ++ op ++ "'"))
           _ -> return (Left ("ValueError", "not a request"))
         return (case ok of
           Right j -> JObj [("id", rid), ("ok", j)]

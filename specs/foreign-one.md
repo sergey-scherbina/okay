@@ -147,8 +147,8 @@ the code exists once and only the CLAIM differs:
 | marker | means L can carry | who has it |
 |---|---|---|
 | (none: `Runtime[L]` itself) | a value; a program's `call` | every language |
-| `Tables[L]` | a `Table` argument or answer | Py, R, Ts today; Rust, Go, Hs after the frame road (stage 6); Jvm by reference |
-| `Objects[L]` | a `Ref[L]`: hold, pass, release | Py, R, Jvm; Rust/Go/Hs/Ts when their libraries keep a table of held values (small; stage 6) |
+| `Tables[L]` | a `Table` argument or answer | Py, R, Ts, Rust, Go, Hs (the frame road, stage 6: columnar JSON; Rust in process too, not wasm); Jvm by reference |
+| `Objects[L]` | a `Ref[L]`: hold, pass, release | Py, R, Jvm; Rust/Go/Hs/Ts when a caller needs their libraries to keep a table of held values (Decision 18) |
 | `Methods[L]` | `Address.Method`/`Attr` on a held object | Py, Ts, Jvm — R's and Rust's objects have nothing to call by name, an honest absence |
 | `Programs[L]` | a program as data; `Programs.MultiShot[L]` refines it | every language; MultiShot: all but the direct-style-only far sides |
 | `Streams[L]` | a stream argument or answer driven by the far side under credit | after stage 5: Go, Rust (not wasm), Ts, Hs, Py; R and wasm-Rust are `mux: false` by design |
@@ -524,7 +524,15 @@ more than it adds (the line count of what it removed goes in Results).
       both ways under credit; `okay_poll`; journal by `(id, seq)`. Go and
       Rust first, then Ts and Hs; Python's shim may follow if a threaded
       shim is measured to beat a pool under the GIL.
-- [ ] Stage 6 — **foreign-one-bulk**: the frame road in Rust, Hs, Go
+- [x] Stage 6 — **foreign-one-bulk** (2026-09-26, narrowed — Decision 18):
+      the TABLE call in Go, Rust and Haskell over the wire's own columnar
+      frame, claimed in each library's hello — Go `okay.Frame`, Rust
+      `Value::Table`, Haskell `VTable`, each with a `col(name)` — and in
+      Haskell, `call` itself: a named program that answers without
+      performing. Every wire language answers the one conformance body's
+      table case. Held objects in those libraries and Arrow C Data over
+      FFM are filed (foreign-held-values, foreign-arrow-ffm).
+- [ ] Stage 6 (as first written) — **foreign-one-bulk**: the frame road in Rust, Hs, Go
       (subsumes foreign-frame-op-rust-hs-go); `Objects` in their
       libraries; Arrow C Data over FFM; the table filled.
 - [ ] Stage 7 — **foreign-one-ops**: `Language[L].ops` for Frege and
@@ -660,6 +668,23 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     single-threaded by design), and the journal, the supervisor's replay and
     six far sides would all change for it. So the source is derived now, and
     the duplex wire waits for its first caller (foreign-mux-duplex).
+
+18. **The table road is the columnar JSON the wire already has; held
+    values and C Data wait for a caller** (foreign-one-bulk). The stage
+    bundled three things. The TABLE call is what blocked a cluster stage in
+    Go, Rust or Haskell, so it is built: each library reads the columnar
+    frame r-frame-columnar-wire defined, claims it in its hello (a claim the
+    host already honours), and answers a table in v1 cells, which the host
+    reads beside columnar. Haskell had no `call`; it gets one without a
+    second registry — a call is a named program that answers without
+    performing, and one that performs is refused by name. HELD VALUES in
+    these libraries have no caller: none of their far-side values is an
+    object with state a caller holds across calls (Decision 16's rule).
+    ARROW C DATA over FFM wants the `arrow` crate linked into the test
+    library and a caller moving tables big enough that the JSON copy shows
+    in a measurement; neither the crate (offline: not in the cargo
+    registry, nor Go's module in GOMODCACHE) nor the caller exists. Both
+    are filed with their gates.
 
 ## Results
 
@@ -840,3 +865,17 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   - Open: a consumer that stops early leaves the iterator held until its
     worker ends — the same missing close signal as stateful-early-stop,
     which now names sources too.
+- **Stage 6, foreign-one-bulk (2026-09-26, narrowed by Decision 18).**
+  - Go `okay.Frame`, Rust `Value::Table`, Haskell `VTable`: each reads the
+    columnar frame it claims in its hello and answers a table in v1 cells;
+    Haskell serves `call` from its named programs (a program that performs
+    is refused by name).
+  - Tests (Live): WireConformance's table case (`scale`) over 27 rows —
+    Python ×4, TypeScript ×3, R, Go ×7 (pipes, TCP, CBOR, auth, TLS, wasm),
+    Rust ×7 (pipes, TCP, CBOR, auth, TLS, FFM), Haskell ×3 (pipes, CBOR,
+    gateway). Skipped: Rust on wasm (no direct functions). okay-py 253,
+    okay-r 100, okay-rust 39, all green.
+  - Mutant: Go reading a columnar column's values under the wrong key fails
+    TestGoPipes' table case.
+  - Open: answers from Go, Rust, Haskell and TypeScript are v1 cells, not
+    columnar; worth changing when a measurement shows the answer's codec.

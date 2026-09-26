@@ -38,7 +38,8 @@ import (
 // 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`;
 // 8: foreign-one-held — `hold`/`method`/`attr` fold into `call` (the version
 // every far side shares; this library serves no held objects);
-// 9: foreign-one-protocol — `frame` folds into `call` (shared; no tables here)
+// 9: foreign-one-protocol — `frame` folds into `call`; tables since
+// foreign-one-bulk (a `Frame` argument and answer)
 const ShimVersion = 9
 
 // KV is one entry of a Dict.
@@ -190,6 +191,70 @@ func ListOf[A any](item func(any) (A, error)) func(any) ([]A, error) {
 
 const exact = int64(1) << 53
 
+// Column is one named column of a table.
+type Column struct {
+	Name   string
+	Values []any
+}
+
+// Frame is a TABLE on the wire (foreign-one-bulk): named columns in order.
+// A table call's first argument arrives as one, and a function that
+// answers one answers a table.
+type Frame []Column
+
+// Col is the named column's values, or nil.
+func (f Frame) Col(name string) []any {
+	for _, c := range f {
+		if c.Name == name {
+			return c.Values
+		}
+	}
+	return nil
+}
+
+// decFrame reads a frame in the columnar shape this worker claims in its
+// hello: a type per column, plain values, the absences as index lists (or a
+// column of cells, where one column mixes kinds).
+func decFrame(x map[string]any) Frame {
+	cols, _ := x["cols"].([]any)
+	out := make(Frame, 0, len(cols))
+	for _, c := range cols {
+		switch col := c.(type) {
+		case map[string]any:
+			name, _ := col["name"].(string)
+			if cells, ok := col["cells"].([]any); ok {
+				out = append(out, Column{name, dec(cells).([]any)})
+				continue
+			}
+			vals, _ := col["values"].([]any)
+			vs := dec(vals).([]any)
+			if ty, _ := col["type"].(string); ty == "d" {
+				for i, v := range vs {
+					if n, ok := v.(int64); ok {
+						vs[i] = float64(n)
+					}
+				}
+			}
+			if na, ok := col["na"].([]any); ok {
+				for _, i := range na {
+					if n, ok := dec(i).(int64); ok && int(n) < len(vs) {
+						vs[n] = nil
+					}
+				}
+			}
+			if nan, ok := col["nan"].([]any); ok {
+				for _, i := range nan {
+					if n, ok := dec(i).(int64); ok && int(n) < len(vs) {
+						vs[n] = math.NaN()
+					}
+				}
+			}
+			out = append(out, Column{name, vs})
+		}
+	}
+	return out
+}
+
 func enc(v any) any {
 	switch x := v.(type) {
 	case nil:
@@ -242,6 +307,12 @@ func enc(v any) any {
 			d[i] = KV{k, x[k]}
 		}
 		return enc(d)
+	case Frame:
+		cols := make([]any, len(x))
+		for i, c := range x {
+			cols[i] = []any{c.Name, enc(c.Values)}
+		}
+		return map[string]any{"t": "frame", "cols": cols}
 	}
 	panic(fmt.Sprintf("a %T does not cross the okay wire", v))
 }
@@ -290,6 +361,8 @@ func dec(j any) any {
 				b, _ := new(big.Int).SetString(s, 10)
 				return b
 			}
+		case "frame":
+			return decFrame(x)
 		case "dict":
 			if kv, ok := x["kv"].([]any); ok {
 				d := Dict{}
@@ -475,7 +548,7 @@ func Hello() string { return NewWorker(nil).Hello() }
 // secret, the challenge its host must answer (stage 5b).
 func (w *Worker) Hello() string {
 	h := map[string]any{"shim": ShimVersion, "python": "go",
-		"speaks": map[string]any{"format": []any{"json", "cbor"}, "compress": []any{"deflate"}}}
+		"speaks": map[string]any{"format": []any{"json", "cbor"}, "compress": []any{"deflate"}, "frames": []any{"columnar"}}}
 	if w.secret != nil {
 		var b [16]byte
 		if _, err := rand.Read(b[:]); err != nil {

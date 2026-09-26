@@ -23,6 +23,11 @@ export function quote(sku: string, qty: number): number {
   const price = okay_call<number>("price_of", sku);
   return okay_call<number>("discount", price * qty);
 }
+
+// a TABLE call: the frame arrives as a record of columns
+export function scale(frame: { x: number[] }, k: number): { x: number[] } {
+  return { x: frame.x.map((v) => v * k) };
+}
 """
 
   private def has(cmd: String*) = scala.util.Try(ProcessBuilder(cmd*).start().waitFor() == 0).getOrElse(false)

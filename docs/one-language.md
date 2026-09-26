@@ -580,6 +580,41 @@ three spellings (do-notation, the term, and the block) write the SAME
 journal, record for record, so a run begun in one can be finished by
 another, and `Wf.Proc.walk` reads any of them without calling anything.
 
+## A table, in every language
+
+A table crosses as ONE value: the host sends the whole frame as the first
+argument of a call, column by column (a type per column, plain values, the
+missing cells as a list of indexes), and each language reads it as its own
+table type. The conformance suite's `scale` takes a frame with a column
+`x` and a factor, and answers the column times the factor — in Go:
+
+```go
+// a TABLE call: the frame arrives as an okay.Frame of columns
+func scale(_ *okay.Ctx, args []any) any {
+	k := args[1].(int64)
+	var x []any
+	for _, v := range args[0].(okay.Frame).Col("x") {
+		x = append(x, v.(int64)*k)
+	}
+	return okay.Frame{{Name: "x", Values: x}}
+}
+```
+
+and in Haskell, where a call is a named program that answers without
+performing (one that performs is refused by name — run it as a program):
+
+```haskell
+scale :: [Value] -> Prog Value
+scale [frame, VInt k] | Just xs <- col "x" frame = done (VTable [("x", [VInt (round (num x) * k) | x <- xs])])
+scale _ = error "scale takes a frame with a column x and a factor"
+```
+
+Rust's is a `Value::Table`, Python's a dict of columns, TypeScript's a
+record of columns, R's a `data.frame`. Python and R also take a table as
+Arrow when both sides have it ([Python and R](python-and-r.md)); the
+others read the columnar JSON, which is what a hello's
+`"frames": ["columnar"]` claims.
+
 ## One `okay_call`, step by step
 
 In-process, the Scala side can do exactly one thing with the loaded Rust
@@ -648,14 +683,14 @@ the layer is the gateway's (`okay/py/gateway.py`), so the worker itself
 does nothing for it. Each cell names the suites that hold it; the
 conformance suite (`WireConformance`) is the same test body in every one.
 
-| | Links | `okay_call` | Programs as data | CBOR | Compression | TCP | `WireAuth` | TLS | Recovery |
-|---|---|---|---|---|---|---|---|---|---|
-| **Python** | pipes; TCP by gateway | `okay_call` | yes | yes | DEFLATE | gateway | gateway | gateway | supervised, replay |
-| **TypeScript** | pipes; TCP by gateway | `okay_call` | yes | yes | DEFLATE | gateway | gateway | gateway | supervised, replay |
-| **Go** | pipes, TCP, WebAssembly | `okay.Call(c, …)` | yes | yes | DEFLATE | itself | itself | itself | supervised, reconnect, replay |
-| **Rust** | pipes, TCP, FFM, WebAssembly | `okay_call` (not on wasm) | yes | yes | DEFLATE | itself | itself | itself (`tls` feature) | supervised, replay |
-| **Haskell** | pipes; TCP by gateway | no (programs only) | yes | yes | none (GHC ships no zlib) | gateway | gateway | gateway | supervised, replay |
-| **R** | pipes; TCP by gateway | `okay_call` | yes | yes | zlib | gateway | gateway | gateway | supervised, reconnect, replay |
+| | Links | `okay_call` | Programs as data | Table call | CBOR | Compression | TCP | `WireAuth` | TLS | Recovery |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **Python** | pipes; TCP by gateway | `okay_call` | yes | yes (dict of columns) | yes | DEFLATE | gateway | gateway | gateway | supervised, replay |
+| **TypeScript** | pipes; TCP by gateway | `okay_call` | yes | yes (record of columns) | yes | DEFLATE | gateway | gateway | gateway | supervised, replay |
+| **Go** | pipes, TCP, WebAssembly | `okay.Call(c, …)` | yes | yes (`okay.Frame`) | yes | DEFLATE | itself | itself | itself | supervised, reconnect, replay |
+| **Rust** | pipes, TCP, FFM, WebAssembly | `okay_call` (not on wasm) | yes | yes (`Value::Table`; not on wasm) | yes | DEFLATE | itself | itself | itself (`tls` feature) | supervised, replay |
+| **Haskell** | pipes; TCP by gateway | no (programs and calls) | yes | yes (`VTable`, a program that does not perform) | yes | none (GHC ships no zlib) | gateway | gateway | gateway | supervised, replay |
+| **R** | pipes; TCP by gateway | `okay_call` | yes | yes (`data.frame`) | yes | zlib | gateway | gateway | gateway | supervised, reconnect, replay |
 
 The Compression column is what the far side SPEAKS. The default uses it
 over TCP only; on pipes and in-process it is used when a given asks for it

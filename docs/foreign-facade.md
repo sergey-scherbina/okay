@@ -118,9 +118,10 @@ in `TestPyFacade`.
 
 A module type, the instances it can honestly give, and the conformance
 suite green for each. No `mapXx`, no new door. The shims grow toward the
-tiers one at a time — `frame` in the Rust, Haskell and Go shims is the
-next step (backlog foreign-frame-op-rust-hs-go), and until it lands
-those languages have tier 1 and the compiler says so.
+tiers one at a time. The Rust, Haskell and Go libraries serve the table
+call since foreign-one-bulk; their module types are one `Language` value
+each, written with the first caller who needs one (backlog
+foreign-more-languages), and until then the compiler says so.
 
 ## Literature
 

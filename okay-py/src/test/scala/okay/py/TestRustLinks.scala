@@ -42,6 +42,13 @@ fn make() -> Worker {
         let total = okay_call(ops::discount(price * qty as f64))?;
         Ok(total.to_value())
     }));
+    // a TABLE call: the frame arrives as a Value::Table of columns
+    functions.insert("scale".into(), function(|args| {
+        let k = i64::from_value(&args[1])?;
+        let x = args[0].col("x").ok_or("no column x")?;
+        let scaled = x.iter().map(|v| i64::from_value(v).map(|n| Value::Int(n * k))).collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::Table(vec![("x".into(), scaled)]))
+    }));
     Worker::new(programs, functions)
 }
 

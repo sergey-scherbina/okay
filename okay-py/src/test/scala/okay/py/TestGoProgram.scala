@@ -54,7 +54,17 @@ var programs = okay.Programs{
 	"boom":  boom,
 }
 
-var functions = okay.Functions{"quote": quote}
+// a TABLE call: the frame arrives as an okay.Frame of columns
+func scale(_ *okay.Ctx, args []any) any {
+	k := args[1].(int64)
+	var x []any
+	for _, v := range args[0].(okay.Frame).Col("x") {
+		x = append(x, v.(int64)*k)
+	}
+	return okay.Frame{{Name: "x", Values: x}}
+}
+
+var functions = okay.Functions{"quote": quote, "scale": scale}
 
 // in-process (a WebAssembly build): what okay_exchange serves
 func init() {

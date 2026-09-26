@@ -28,7 +28,8 @@ use std::sync::Arc;
 /// the wire version this worker speaks; the host refuses any other
 /// 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`;
 /// 8: foreign-one-held — `hold`/`method`/`attr` fold into `call` (shared; no held objects here);
-/// 9: foreign-one-protocol — `frame` folds into `call` (shared; no tables here)
+/// 9: foreign-one-protocol — `frame` folds into `call`; tables since
+/// foreign-one-bulk (`Value::Table` argument and answer)
 pub const SHIM_VERSION: i64 = 9;
 
 // ------------------------------------------------------------------ values
@@ -43,6 +44,48 @@ pub enum Value {
     Str(String),
     List(Vec<Value>),
     Dict(Vec<(String, Value)>),
+    /// a TABLE (foreign-one-bulk): named columns in order; a table call's
+    /// first argument arrives as one, and a function answering one answers
+    /// a table
+    Table(Vec<(String, Vec<Value>)>),
+}
+
+impl Value {
+    /// the named column of a table
+    pub fn col(&self, name: &str) -> Option<&Vec<Value>> {
+        match self {
+            Value::Table(cols) => cols.iter().find(|(n, _)| n == name).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+}
+
+/// a frame in the columnar shape this worker claims in its hello: a type per
+/// column, plain values, the absences as index lists (or a column of cells,
+/// where one column mixes kinds)
+fn dec_frame(m: &Map<String, J>) -> Value {
+    let cols = m.get("cols").and_then(|c| c.as_array()).cloned().unwrap_or_default();
+    Value::Table(cols.iter().filter_map(|c| match c {
+        J::Object(col) => {
+            let name = col.get("name")?.as_str()?.to_string();
+            if let Some(cells) = col.get("cells").and_then(|c| c.as_array()) {
+                return Some((name, cells.iter().map(dec).collect()));
+            }
+            let doubles = col.get("type").and_then(|t| t.as_str()) == Some("d");
+            let mut vs: Vec<Value> = col.get("values").and_then(|v| v.as_array()).map(|a| a.iter().map(|x| {
+                let v = dec(x);
+                match v { Value::Int(n) if doubles => Value::Float(n as f64), other => other }
+            }).collect()).unwrap_or_default();
+            for i in col.get("na").and_then(|a| a.as_array()).cloned().unwrap_or_default() {
+                if let Some(i) = i.as_u64() { if (i as usize) < vs.len() { vs[i as usize] = Value::Null; } }
+            }
+            for i in col.get("nan").and_then(|a| a.as_array()).cloned().unwrap_or_default() {
+                if let Some(i) = i.as_u64() { if (i as usize) < vs.len() { vs[i as usize] = Value::Float(f64::NAN); } }
+            }
+            Some((name, vs))
+        }
+        _ => None,
+    }).collect())
 }
 
 const EXACT: i64 = 1 << 53;
@@ -59,6 +102,8 @@ fn enc(v: &Value) -> J {
         Value::Str(s) => J::String(s.clone()),
         Value::List(xs) => J::Array(xs.iter().map(enc).collect()),
         Value::Dict(kv) => json!({"t": "dict", "kv": kv.iter().map(|(k, v)| json!([k, enc(v)])).collect::<Vec<_>>()}),
+        Value::Table(cols) => json!({"t": "frame", "cols": cols.iter()
+            .map(|(k, vs)| json!([k, vs.iter().map(enc).collect::<Vec<_>>()])).collect::<Vec<_>>()}),
     }
 }
 
@@ -76,6 +121,7 @@ fn dec(j: &J) -> Value {
             Some("nan") => Value::Float(f64::NAN),
             Some("f") => Value::Float(m.get("v").and_then(|v| v.as_f64()).unwrap_or(f64::NAN)),
             Some("int") => Value::Int(m.get("v").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0)),
+            Some("frame") => dec_frame(m),
             Some("dict") => Value::Dict(
                 m.get("kv").and_then(|kv| kv.as_array()).map(|ps| {
                     ps.iter()
@@ -420,7 +466,7 @@ impl Worker {
             .expect("okay: no randomness for the auth nonce (/dev/urandom)");
         self.nonce = b.iter().map(|x| format!("{:02x}", x)).collect();
         json!({"shim": SHIM_VERSION, "python": "rust",
-               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"]},
+               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"], "frames": ["columnar"]},
                "auth": {"scheme": "hmac-sha256", "nonce": self.nonce}}).to_string()
     }
 
@@ -444,7 +490,7 @@ impl Worker {
     /// the handshake line a worker speaks first
     pub fn hello() -> String {
         json!({"shim": SHIM_VERSION, "python": "rust",
-               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"]}}).to_string()
+               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"], "frames": ["columnar"]}}).to_string()
     }
 
     /// after a configure other than the defaults the wire carries frames

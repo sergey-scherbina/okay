@@ -186,7 +186,7 @@ believed):
 | Python, pipes | facade 0.217 ms a call, own road 0.130 ms (the difference is `PyCodec` encode+decode at `Schema`) | 100 000 rows one frame, columnar JSON: rows through the facade 182 ms, rows on the own road 176 ms (the same road since facade-frame-seam), a `Table` through `Frames.frame` 152 ms, the bare frame 140 ms; 1M rows map, JSON: ~200 ms; Arrow: ~95 ms; `@okay.arrow` vectorised: ~88 ms; reduce in Python: +70 ms | 100 000 rows in 4096-row frames: 194 ms — the same as one frame | MeasureFacade, MeasureForeignMapReduce, MeasurePyArrow |
 | R, pipes | — | 100 000 rows round trip: 13.7 s as JSON records, 180 ms columnar JSON (r-frame-columnar-wire), Arrow: to measure | — | MeasureRFrame |
 | TypeScript | — | serves `frame` (columnar JSON); no Arrow | — | to measure |
-| Haskell, Go, Rust | tier 1 only (no `frame` op: foreign-frame-op-rust-hs-go) | — | — | to measure |
+| Haskell, Go, Rust | tier 1; the table call served since foreign-one-bulk (columnar JSON) | — | — | to measure |
 | Clojure, Frege | in-JVM, `JvmModule` | same object | — | to measure |
 
 Empty cells are the work; a cell filled by this lane goes into Results

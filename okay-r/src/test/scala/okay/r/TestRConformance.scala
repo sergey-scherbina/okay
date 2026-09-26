@@ -20,6 +20,8 @@ object RConformance:
       price <- okay_call("price_of", sku)
       okay_call("discount", price * qty)
     }
+    # a TABLE call: the frame arrives as a data.frame
+    scale <- function(frame, k) data.frame(x = frame$x * k)
   """)
 
 /** R is one more row of the ONE conformance body every wire language

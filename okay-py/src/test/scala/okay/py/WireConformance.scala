@@ -14,7 +14,9 @@ import okay.{Choose, Reader, effect, runChoice, given}
  *  - `boom()`: fails with a message containing "says no";
  *  - `quote(sku, qty)`: the same as `total`, in DIRECT STYLE — ordinary code
  *    calling `okay_call` twice (a far side without direct style overrides
- *    `direct` to false).
+ *    `direct` to false);
+ *  - `scale(frame, k)`: a TABLE call — a frame with column `x` in, the same
+ *    column times `k` out (a far side without table calls overrides `tables`).
  */
 abstract class WireConformance extends munit.FunSuite:
 
@@ -54,6 +56,22 @@ abstract class WireConformance extends munit.FunSuite:
     assume(direct, "this far side serves programs only")
     val quote = Foreign.fn[Double](address("quote")).calling(Foreign.callbacks(priceOf, discount))("tea", 3L)
     assertEquals(Reader.run(Map("tea" -> 4.0, "rate" -> 0.5))(quote).runWith, Right(6.0))
+  }
+
+  /** whether the far side serves table calls (a frame as the first argument) */
+  def tables: Boolean = true
+
+  test("a TABLE call: a frame in, a frame out, by the far side's own codec (foreign-one-bulk)") {
+    assume(tables, "this far side serves no table calls")
+    val in = PyFrame(Vector("x" -> Vector(PyValue.I64(1), PyValue.I64(2))))
+    val out = engine.handler.handle(ForeignEval.Frame(address("scale"), in, Vector(PyValue.I64(3))))
+    // numbers compare as numbers: R and TypeScript may answer a double where Go answers an int
+    val xs = out.map(_.cols.map((n, vs) => n -> vs.map {
+      case PyValue.I64(v) => v.toDouble
+      case PyValue.F64(v) => v
+      case v => fail(s"not a number: $v")
+    }))
+    assertEquals(xs, Right(Vector("x" -> Vector(3.0, 6.0))))
   }
 
   /** whether a far-side failure leaves the far side alive: false for Rust

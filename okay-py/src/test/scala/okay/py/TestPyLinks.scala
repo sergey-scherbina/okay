@@ -23,6 +23,10 @@ object PyConformance:
     def quote(sku, qty):
         price = okay_call("price_of", sku)
         return okay_call("discount", price * qty)
+
+    # a TABLE call: the frame arrives as a dict of columns
+    def scale(frame, k):
+        return {"x": [v * k for v in frame["x"]]}
   """)
 
 /** (Python, pipes), JSON, uncompressed by default: a pipe is not a network */

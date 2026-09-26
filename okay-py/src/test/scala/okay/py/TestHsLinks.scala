@@ -1,6 +1,6 @@
 package okay.py
 
-/** the conformance programs in Haskell: programs only (no direct style) */
+/** the conformance programs in Haskell: programs, and a call (no direct style) */
 object HsConformance:
   val main: String = """module Main (main) where
 
@@ -26,8 +26,13 @@ total _ = error "total takes a sku and a quantity"
 boom :: [Value] -> Prog Value
 boom _ = error "haskell says no"
 
+-- a TABLE call: a program that answers without performing is a function
+scale :: [Value] -> Prog Value
+scale [frame, VInt k] | Just xs <- col "x" frame = done (VTable [("x", [VInt (round (num x) * k) | x <- xs])])
+scale _ = error "scale takes a frame with a column x and a factor"
+
 main :: IO ()
-main = serve [("pairs", pairs), ("total", total), ("boom", boom)]
+main = serve [("pairs", pairs), ("total", total), ("boom", boom), ("scale", scale)]
 """
 
   lazy val ghc: Boolean = scala.util.Try(ProcessBuilder("ghc", "--version").start().waitFor() == 0).getOrElse(false)
