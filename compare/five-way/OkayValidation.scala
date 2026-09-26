@@ -15,7 +15,7 @@ object OkayValidation:
     checks += 1
 
   def main(args: Array[String]): Unit =
-    for runtime <- Vector("okay", "okayOwn") do
+    for runtime <- Vector("okay", "okayOwn", "okayAdaptive") do
       val parallel = new ParallelBench
       parallel.runtime = runtime
       parallel.setupBackend()

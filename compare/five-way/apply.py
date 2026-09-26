@@ -19,7 +19,7 @@ import shutil
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-OKAY = '"okay", "okayOwn"'
+OKAY = '"okay", "okayOwn", "okayAdaptive"'
 
 
 def edit(path, pairs):
@@ -47,15 +47,15 @@ def main():
          'if runtime != "ce" && runtime != "kyo" && !bench.okay.OkayFiveWay.isOkay(runtime) then backend'),
         ('case "kyo" => reference.kyoWorkers()\n        case _ =>',
          'case "kyo" => reference.kyoWorkers()\n'
-         f'        case "okay" | "okayOwn" => {run}(bench.okay.OkayFiveWay.workers(reference.values, parallelism)(i => okay.async(Work(i, work))))\n'
+         f'        case "okay" | "okayOwn" | "okayAdaptive" => {run}(bench.okay.OkayFiveWay.workers(reference.values, parallelism)(i => okay.async(Work(i, work))))\n'
          '        case _ =>'),
         ('case "kyo" => reference.kyoSpawnJoin()\n        case _ =>',
          'case "kyo" => reference.kyoSpawnJoin()\n'
-         f'        case "okay" | "okayOwn" => {run}(bench.okay.OkayFiveWay.spawnJoin(ops))\n'
+         f'        case "okay" | "okayOwn" | "okayAdaptive" => {run}(bench.okay.OkayFiveWay.spawnJoin(ops))\n'
          '        case _ =>'),
         ('case "kyo" => reference.kyoRunner()\n        case _ =>',
          'case "kyo" => reference.kyoRunner()\n'
-         f'        case "okay" | "okayOwn" => {run}(okay.pure[okay.Async, Int](1))\n'
+         f'        case "okay" | "okayOwn" | "okayAdaptive" => {run}(okay.pure[okay.Async, Int](1))\n'
          '        case _ =>'),
     ])
     io = root / "io-bench/src/main/scala/bench/io/IoBench.scala"
@@ -68,12 +68,15 @@ def main():
          f'require(Set("ce", "kyo", "loom", "gears", "ox", {OKAY})(runtime) || transport == "blocking")'),
         ('case "loom" => loomBatch(io)',
          'case "loom" => loomBatch(io)\n'
-         f'        case "okay" | "okayOwn" => {run}(bench.okay.OkayFiveWay.batch(io, size, parallelism, transport == "blocking"))'),
+         f'        case "okay" | "okayOwn" | "okayAdaptive" => {run}(bench.okay.OkayFiveWay.batch(io, size, parallelism, transport == "blocking"))'),
     ])
     # the TCP validation counts calls made on virtual threads: okay's
     # default scheduler is one virtual thread per fiber, `own` is not
     edit(root / "io-bench/src/test/scala/bench/io/Validation.scala", [
         ('Set("loom", "gears", "ox", "ceVirtual")(runtime)', 'Set("loom", "gears", "ox", "ceVirtual", "okay")(runtime)'),
+    ])
+    edit(root / "io-bench/src/test/scala/bench/io/MeasuredIoValidation.scala", [
+        ('Set("loom", "ceVirtual", "gears", "ox")(runtime)', 'Set("loom", "ceVirtual", "gears", "ox", "okay")(runtime)'),
     ])
     main_dir = root / "io-bench/src/main/scala/bench/okay"
     test_dir = root / "io-bench/src/test/scala/bench/okay"

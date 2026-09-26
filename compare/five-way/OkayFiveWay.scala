@@ -18,12 +18,16 @@ object OkayFiveWay:
    * JDK 21+); "okayOwn" is okay's own work-stealing scheduler over
    * platform threads. */
   private lazy val own: Scheduler = Schedulers.own.build
+  /** "okayAdaptive": `own` plus a worker when a fiber blocks — okay's
+   * platform-thread answer for blocking code */
+  private lazy val adaptive: Scheduler = Schedulers.adaptive.build
   def scheduler(runtime: String): Scheduler = runtime match
-    case "okay"    => summon[Scheduler]
-    case "okayOwn" => own
-    case other     => throw new IllegalArgumentException(other)
+    case "okay"         => summon[Scheduler]
+    case "okayOwn"      => own
+    case "okayAdaptive" => adaptive
+    case other          => throw new IllegalArgumentException(other)
 
-  def isOkay(runtime: String): Boolean = runtime == "okay" || runtime == "okayOwn"
+  def isOkay(runtime: String): Boolean = runtime == "okay" || runtime == "okayOwn" || runtime == "okayAdaptive"
 
   /** the runtime entry: the program on one fiber, the caller joins it —
    * as the Loom backend submits to its executor and gets */

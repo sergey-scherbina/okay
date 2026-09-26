@@ -8,19 +8,22 @@
 #
 #   sh compare/five-way/run.sh <clone> <out-dir> [runtimes...]
 #
-# JDK: $JAVA_HOME if set, else sdkman's 25 (his run was 25.0.3).
+# JDK: $FIVE_WAY_JAVA_HOME if set, else sdkman's 25 (his run was 25.0.3).
+# Deliberately NOT $JAVA_HOME: the ambient one here is 17, and his
+# sources need JDK 21+ APIs (virtual threads) to compile at all.
 set -u
 clone="$(cd "${1:?clone}" && pwd)"
 out="${2:?out-dir}"
 shift 2
-runtimes="${*:-ce kyo loom ox gears okay okayOwn}"
+runtimes="${*:-ce kyo loom ox gears okay okayOwn okayAdaptive}"
 here="$(cd "$(dirname "$0")" && pwd)"
 okay_root="$(cd "$here/../.." && pwd)"
 . "$okay_root/scripts/quiet.sh"
-: "${JAVA_HOME:=$HOME/.sdkman/candidates/java/25.0.4.1-tem}"
+JAVA_HOME="${FIVE_WAY_JAVA_HOME:-$HOME/.sdkman/candidates/java/25.0.4.1-tem}"
 export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
-LOCKDIR="${JMH_LANE_LOCK:-${TMPDIR:-/tmp}/okay-jmh-lane.lock}"
 mkdir -p "$out"
+"$JAVA_HOME/bin/java" -version 2>&1 | head -1 > "$out/jdk.txt"
+LOCKDIR="${JMH_LANE_LOCK:-${TMPDIR:-/tmp}/okay-jmh-lane.lock}"
 
 take_lock() {
   while ! mkdir "$LOCKDIR" 2>/dev/null; do
@@ -45,6 +48,7 @@ lane() { # name pattern extra-params runtime
     (cd "$clone" && sbt -batch "ioBench/Jmh/run $JMH -rff $out/$name-$rt.json -p runtime=$rt $params $pattern") > "$log" 2>&1
     rc=$?
     release_lock
+    if grep -q "Compilation failed" "$log"; then echo "$name $rt: COMPILATION FAILED, see $log" >> "$out/summary.txt"; exit 1; fi
     if quiet; then echo "$name $rt rc=$rc attempt=$attempt"; return; fi
     echo "$name $rt attempt=$attempt DISCARDED: the box got busy during the run" >> "$out/discarded.txt"
   done
