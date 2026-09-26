@@ -226,7 +226,8 @@ Where the bytes come from, per platform, best knowledge first:
   `pthread_getattr_np` + `pthread_attr_getstack` (glibc). The pointer:
   `getcontext`, reading `sp` out of the `ucontext_t` at the offset of
   the OS and architecture in hand (macOS arm64: 264 into the
-  `mcontext`; the other three layouts are Open question 1). Measured
+  `mcontext`; glibc aarch64 432 and glibc x86_64 160, inline — Decision
+  13; macOS x86_64 is Open question 1). Measured
   on macOS arm64, JDK 26: present, 326 ns a read (it is a
   `sigprocmask` syscall inside), 112 B a compiled frame, the main
   thread 2060 KB, and from a virtual thread it reports the CARRIER's
@@ -426,6 +427,43 @@ transparent body counts nothing and only an opaque one decrements.
     and the reader in the core artifact itself. okay-platform is not
     involved. The Native reader needs only the runtime's own
     `ThreadInfo`, so it never left the core.
+13. **A layout is MEASURED on its OS, never read off a header, and a
+    glibc layout is more than one constant** (cont-stack-ucontext-layouts,
+    2026-09-26). Open question 1 said "one constant and one probe run"
+    per layout; the probe showed three things the sentence missed.
+    (a) glibc keeps `mcontext` INLINE in `ucontext_t`, where macOS
+    keeps a POINTER at 48, so the read differs in shape, not only in
+    offset. (b) The bounds are a different call: glibc has no
+    `pthread_get_stackaddr_np`, so it is `pthread_getattr_np` +
+    `pthread_attr_getstack`, with the guard from
+    `pthread_attr_getguardsize` taken off the bottom — exactly
+    HotSpot's `os::Linux::current_stack_region`, so the floor the
+    reader computes and the end HotSpot guards are the same address.
+    (c) The buffer: glibc aarch64's `ucontext_t` is 4560 bytes and
+    `getcontext` wrote up to byte 1004 of it — 20 bytes short of the
+    1024 the macOS reader allocated, a margin a libc update could
+    close. A glibc read hands `getcontext` 8192 bytes.
+    THE PROBE, so the next layout is found the same way: fill a 16 KB
+    buffer, call `getcontext` at depth 0 and again 1000 frames of a
+    method compiled with `dontinline` deeper, and list every 8-byte
+    word that lies inside the thread's bounds both times and FELL
+    between them. On both glibc layouts exactly two words did, falling
+    by the same 32 032 B (32 B a compiled frame of that probe method):
+    the stack pointer and the frame pointer.
+
+    | layout | `sp` | frame pointer | measured |
+    |---|---|---|---|
+    | macOS arm64 | 264 behind the pointer at 48 | — | 2026-09-25, native, JDK 26 |
+    | glibc aarch64 | 432 inline | x29 at 416 | 2026-09-26, Docker linux/arm64 on Apple silicon, NATIVE, JDK 26 |
+    | glibc x86_64 | 160 inline (`gregs[REG_RSP]`, 40 + 15 × 8) | RBP at 120 | 2026-09-26, Docker linux/amd64 on Apple silicon, UNDER EMULATION, JDK 26 |
+
+    The x86_64 row was measured under emulation: the offsets are the
+    libc's and the emulator runs that libc, so they carry; a native
+    x86_64 run is still owed and is what the backlog keeps. macOS
+    x86_64 is not measured and answers −1. musl has no `getcontext`,
+    and a missing symbol falls through to the count: `readableWithout`
+    builds the handles with a symbol hidden, and TestStackRoom asserts
+    it cannot read without `getcontext` or `pthread_self`.
 
 ## Behavior
 
@@ -793,11 +831,11 @@ frame; catching `StackOverflowError` — Decision 4.
 
 ## Open questions
 
-1. The `sp` offset inside `ucontext_t` on the three layouts not yet
-   measured: macOS x86_64, glibc x86_64 (`uc_mcontext.gregs[REG_RSP]`),
-   glibc aarch64 (`uc_mcontext.sp`). Each is one constant and one probe
-   run; until a layout is measured it counts (the exact road is opened
-   per `(os, arch)`, never guessed). A cheaper pointer read than
+1. The `sp` offset inside `ucontext_t` on macOS x86_64, the one layout
+   not yet measured, and a NATIVE x86_64 run of the glibc row measured
+   under emulation (Decision 13 has both glibc rows and the probe that
+   found them). Until a layout is measured it counts (the exact road is
+   opened per `(os, arch)`, never guessed). A cheaper pointer read than
    `getcontext` (326 ns: it saves the signal mask with a syscall) —
    `_setjmp` stores `sp` at a fixed slot on macOS arm64 and does no
    syscall — is a refinement to measure only if an exhaustion read
