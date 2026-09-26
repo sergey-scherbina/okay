@@ -859,6 +859,29 @@ C. **The fast path's bookkeeping** — C1 LANDED 2026-09-25
    frame, not a recursion); (2) decide `callK`'s type test when the
    `Mapped` leaf is applied, not per call of its lambda; (3) whatever
    the next PrintInlining names.
+   RESULTS (history.d `cont-stack-fastpath-r3-*`, MIN of 3 alternating
+   rounds through `jmh-lane.sh`, base b4934c052 and master e2020046b
+   in every series): (1) REFUTED, reverted — fib100 2537 vs master
+   2496 ns, statePara 32.29 vs 32.91 µs; a smaller `step` alone moves
+   neither. (2) KEPT — `mappedK`: fib100 **2281 vs master 2501 ns
+   (0.91x), 1.04x the base's 2200**, and the base's EXACT bytes, 21 552
+   B/op, on all three rounds where master read 23 152 on all three: the
+   `Mapped` lambda scalar-replaces again, deterministically. statePara
+   unchanged (33.08 vs 32.64) — it builds `Absorbed` leaves, not
+   `Mapped`. WHAT IS LEFT, priced: statePara with no switch possible
+   (`-Dokay.cont.room=1000000 -Xss64m`, both arms) reads 30.13 vs the
+   base's 27.13 µs, **1.11x**, and +20 928 B/op on every round; the
+   count road's one switch a run is the other ~3 µs. Unlike fib100's,
+   these bytes are REAL objects — an exact `ThreadMXBean` count reads
+   359 296 vs 321 888 bytes a run — and a JFR allocation sample by
+   class does not separate them from noise (this tree's `Reentry` plus
+   one lambda weigh what the base's three lambdas do). PrintInlining
+   on statePara names `run` (20 bytes, three `Pending.None`/`null`
+   arguments since Layer 1 B) refused "callee uses too much stack" at
+   three sites where the base's 7-byte `run` inlines — but (1) shrank
+   exactly that and did not move the lane. Next, filed back as
+   cont-stack-fastpath: an EXACT count by class (an allocation
+   instrumenting agent, not a sampler) to name the ~21 B an operation.
    Below: the plan as written before A. Candidates, each measured alone against the stage
    before, kept only when it pays: `Gauge` as a field of the OUTERMOST
    `Reentry` (found by the same walk) instead of a `Gauged` root per
