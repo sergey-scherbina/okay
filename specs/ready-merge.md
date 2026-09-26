@@ -65,30 +65,30 @@ every side whether it needs one or not.
 
 ## Behavior
 
-- [ ] each source's elements arrive in exactly the order it told them
-- [ ] nothing lost, nothing invented: the multiset of outputs is the
+- [x] each source's elements arrive in exactly the order it told them
+- [x] nothing lost, nothing invented: the multiset of outputs is the
       union of the inputs
-- [ ] all sources always ready (no `Await` anywhere) ⇒ strict
+- [x] all sources always ready (no `Await` anywhere) ⇒ strict
       round-robin: s0, s1, …, s(n-1), s0, …; an ended source drops out
       and the turn passes on — a DETERMINISTIC interleave
-- [ ] a parked source does not hold the others: a source waiting on a
+- [x] a parked source does not hold the others: a source waiting on a
       timer/channel does not delay elements another source has ready
-- [ ] when every live source is parked, the merge itself parks ONCE
+- [x] when every live source is parked, the merge itself parks ONCE
       (one `Await`) and resumes on the first wake-up; woken sources
       rejoin the ring in wake order
-- [ ] a callback that fires DURING its own registration (synchronous
+- [x] a callback that fires DURING its own registration (synchronous
       answer) is not lost and does not recurse
-- [ ] `Async.Run` is performed in the source's own turn, in place
-- [ ] a failing source (a `Left` answer, a throwing `Run`) fails the
+- [x] `Async.Run` is performed in the source's own turn, in place
+- [x] a failing source (a `Left` answer, a throwing `Run`) fails the
       merged program, and the other parked sources' registrations are
       cancelled
-- [ ] cancelling the merged program while it is parked cancels every
+- [x] cancelling the merged program while it is parked cancels every
       parked source's registration
-- [ ] stack-safe: 10^6 elements, and 10^5 synchronous wake-ups
-- [ ] parallelism by buffering: a `Channel.buffer`ed side keeps its
+- [x] stack-safe: 10^6 elements, and 10^5 synchronous wake-ups
+- [x] parallelism by buffering: a `Channel.buffer`ed side keeps its
       order and merges with an unbuffered one
-- [ ] the merged source is consumed by an iteratee (`Take`/`through`)
-- [ ] cross-platform: the laws that need no thread run on JS too
+- [x] the merged source is consumed by an iteratee (`Take`/`through`)
+- [x] cross-platform: the laws that need no thread run on JS too
 - [ ] the numbers: `MergeBenchmark` 2x500, see Results
 
 ## Design
@@ -117,9 +117,13 @@ or the merge's own park):
 2. `i = ring.pop`, `resume slot(i)`: `Return` → drop `i`; `Say(a)` +
    `k` → `slot(i) = k(())`, push `i` to the BACK, emit `tell(a)` and
    continue; `Run(f)` + `k` → `slot(i) = k(f())`, push `i` to the FRONT
-   (its turn continues); `Await(reg)` + `k` → register a callback that
-   on `Right(x)` sets `slot(i) = k(x)`, clears `cancels(i)`, enqueues
-   `i`, fires the waker; on `Left(e)` stores the failure and fires.
+   (its turn continues); `Await(reg)` + `k` → register a callback. An
+   answer DURING the registration (the callback wins a CAS on a per-
+   registration cell, `Async.Drive`'s handshake) is taken in place and
+   the source keeps its turn — no queue touched. A later answer sets
+   `slot(i) = pure(x).flatMap(k)` (a `Left` becomes a continuation that
+   throws) — BUILT, not run, since `k` is the source's code and only the
+   drive runs that — clears `cancels(i)`, enqueues `i`, fires the waker.
 
 The race between a wake-up and the park is Dekker's with volatiles on
 both sides: the callback ENQUEUES then reads the waker; the park SETS the
@@ -146,4 +150,21 @@ waker then reads the queue — at least one side sees the other.
 
 ## Results
 
-(filled by the lane)
+**Laws, 2026-09-26.** `TestReadyMerge` (13, JVM) and
+`TestReadyMergeCross` (2, every platform) green; every box above but
+the numbers is covered. Two were watched FAIL under a mutant before
+being trusted: the park's canceller as `() => ()` (the cancel law read
+`a=false b=false`) and a `Run` that gives its turn away (`Vector(1,
+10, 2, 20)` came back reordered). The first run found a real defect:
+the initial sources were never put in the ring (`size = 0`, `live =
+n`), so the merge parked on its first step with nothing to wake it —
+caught as a gate STALL, located from a `jstack` of the test fork.
+
+**Numbers: NOT MEASURED.** The lanes are written and compile
+(`okayReadyMergePure`, `okayReadyMergeBuffered`, beside
+`okaySourceMerge` and the control `okaySourceSingleDrain`). Over an
+hour of `jmh-lane.sh` attempts (101 tries) never got the lane lock and
+a quiet box at once: siblings' gates ran back to back (load 17-65,
+up to three sbt at once) and a Docker VM burst to ~1250% CPU for a
+while. Carried as backlog `ready-merge-numbers`; the protocol that
+should make such a window exist is `bench-window`.

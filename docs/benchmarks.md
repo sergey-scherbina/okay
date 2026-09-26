@@ -1214,9 +1214,12 @@ ZIO ties 10.9 / 44.6 against the 10.7 / 45 recorded. 107x inside fs2,
 from the source alone. Okay chunked is 7.7x ahead of fs2 asked
 fairly, not 830x.)
 
-Readiness-merge is what zip and ++ cannot express: a fiber per
+Readiness-merge is what zip and ++ cannot express: here a fiber per
 source feeds one channel, the loser of every race simply arrives
-later. Chunking the STREAM (not the queue — a chunked-queue variant
+later. (`Source.mergeReady` is the other road — the sources' own
+continuations in a ring, no fiber and no channel, specs/ready-merge.md;
+its lanes `okayReadyMergePure`/`okayReadyMergeBuffered` are in
+MergeBenchmark and not yet measured: backlog `ready-merge-numbers`.) Chunking the STREAM (not the queue — a chunked-queue variant
 was tried and REFUTED, it's in history.tsv) beat ZIO's own
 chunk-aware merge 3.2x. fs2's number is its worst case (singleton
 elements through its concurrency machinery), stated as such.

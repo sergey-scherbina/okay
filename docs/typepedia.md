@@ -301,10 +301,13 @@ same material with the measurements attached.
   the sibling; race's first SUCCESS wins, two failures fail it;
   `sleep` rides the platform **`Timer`**; **`bracket`** (any
   Handler-able row).
-- **`Channel`** — the queue between fibers, and the primitive pull
-  cannot express (readiness, pacing). `merge` feeds one channel from
-  two sources by READINESS; `buffer` runs a producer ahead of its
-  consumer. `fail` records a producer's error WITHOUT closing (the
+- **`Channel`** — the queue between fibers: what pull cannot express
+  is two fibers meeting, and pacing. READINESS alone it can:
+  `Source.mergeReady` (specs/ready-merge.md) steps a ring of sources
+  on one thread of control, an `Async.Await` being "not ready yet",
+  with no channel at all. `merge` feeds one channel from two sources
+  by readiness, a fiber per source; `buffer` runs a producer ahead of
+  its consumer. `fail` records a producer's error WITHOUT closing (the
   other source is still feeding) and `close` then ends the stream
   with it — so a consumer receives everything actually produced and
   only then hears that something broke. Before that existed, a
