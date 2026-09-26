@@ -962,27 +962,20 @@ object Channel {
      * costing less is the inversion that identified this.
      */
     def flusher(buf: TRef[ChunkBuffer[A]], done: AtomicInteger): Fiber[Unit] | Null =
-      within match
-        case None => null
-        case Some(ms) =>
-          def tick(): Unit ! Async =
-            Async.sleep(ms).flatMap: _ =>
-              if done.get > 0 then
-                takeChunk(buf, size, full = true) match
-                  case Some(ch) => c.send(ch).flatMap(_ => tick())
-                  case None => tick()
-              else pure(())
-          sch.fork(() => tick())
-    def watch(f: Fiber[Unit], mine: AtomicInteger, fl: => (Fiber[Unit] | Null)): Unit =
+      flusherFor(c, buf, size, within, done)
+    def watch(f: Fiber[Unit], mine: AtomicInteger, buf: TRef[ChunkBuffer[A]], fl: => (Fiber[Unit] | Null)): Unit =
       f.onComplete { r =>
         mine.set(0)
-        r.left.foreach(e => c.fail(e))
         // this source is finished and has already flushed its own
         // tail, so its flusher has nothing left to do: stop it now
         // rather than at its next tick
         val t = fl
         if t != null then t.nn.cancel()
-        if alive.decrementAndGet() == 0 then c.close()
+        def ended(): Unit = if alive.decrementAndGet() == 0 then c.close()
+        r match
+          case Right(_) => ended()
+          // a FAILED feed's partial chunk was told: out before the failure
+          case Left(e) => failAfterTail(c, buf, size, e)(ended())
       }
     val (bs, bt) = (TRef.bare(ChunkBuffer[A](Vector.empty)), TRef.bare(ChunkBuffer[A](Vector.empty)))
     val (ds, dt) = (AtomicInteger(1), AtomicInteger(1))
@@ -991,9 +984,87 @@ object Channel {
     // flusher rather than racing past a `null`
     lazy val fs: Fiber[Unit] | Null = flusher(bs, ds)
     lazy val ft: Fiber[Unit] | Null = flusher(bt, dt)
-    watch(sch.fork(() => feedS(c, bs)), ds, fs); val _ = fs
-    watch(sch.fork(() => feedT(c, bt)), dt, ft); val _ = ft
+    watch(sch.fork(() => feedS(c, bs)), ds, bs, fs); val _ = fs
+    watch(sch.fork(() => feedT(c, bt)), dt, bt, ft); val _ = ft
     c
+
+  /** the timed flusher of one chunking feed: sleeps `within` and TAKES
+   * what has accumulated, while `done` is above 0; null without a
+   * window. Returned so the feed's end can cancel it (flush-premium) */
+  private def flusherFor[A](c: Channel[Chunk[A]], buf: TRef[ChunkBuffer[A]], size: Int,
+                            within: Option[Long], done: AtomicInteger)
+                           (using sch: Scheduler, timer: Timer): Fiber[Unit] | Null =
+    within match
+      case None => null
+      case Some(ms) =>
+        def tick(): Unit ! Async =
+          Async.sleep(ms).flatMap: _ =>
+            if done.get > 0 then
+              takeChunk(buf, size, full = true) match
+                case Some(ch) => c.send(ch).flatMap(_ => tick())
+                case None => tick()
+            else pure(())
+        sch.fork(() => tick())
+
+  /**
+   * ONE SIDE of a chunked merge as a channel of its own
+   * (merge-chunked-via-ready): `feed` accumulates into `buf` and sends
+   * full chunks, a timed flusher — when there is a window — sends what
+   * has waited too long, and the channel closes when the feed completes
+   * (a failure recorded first, so it is read after the side's chunks).
+   * The flusher is a second sender, so a windowed side gets two parts;
+   * without a window it is the single-producer ring `buffer` uses.
+   * `Source.merge(chunked = true)` and `Source.mergeFlushing` join two of
+   * these with `Source.mergeReady`, as the elementwise merge joins two
+   * `buffer`s.
+   */
+  private def chunkedSide[A](capacity: Int, size: Int, within: Option[Long])
+                            (feed: (Channel[Chunk[A]], TRef[ChunkBuffer[A]]) => Unit ! Async)
+                            (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
+    val c = forProducers[Chunk[A]](if within.isDefined then 2 else 1, capacity)
+    val buf = TRef.bare(ChunkBuffer[A](Vector.empty))
+    val done = AtomicInteger(1)
+    // referred to by name before it is forced, as in `chunkedMerge`: a
+    // feed that finishes at once still cancels the flusher
+    lazy val fl: Fiber[Unit] | Null = flusherFor(c, buf, size, within, done)
+    sch.fork(() => feed(c, buf)).onComplete { r =>
+      done.set(0)
+      val t = fl
+      if t != null then t.nn.cancel()
+      r match
+        case Right(_) => c.close()
+        case Left(e) => failAfterTail(c, buf, size, e)(c.close())
+    }
+    val _ = fl
+    c
+
+  /**
+   * A chunking feed FAILED: what it had accumulated was told by its
+   * source, so it goes out before the failure does (merge-chunked-via-
+   * ready). Until then a side that failed with a partial chunk in hand
+   * lost it — `Source.merge(chunked = true)` over a source telling 1, 2, 3
+   * and then throwing delivered the other side and the failure, and
+   * none of the three. `c.fail` records at once (a consumer hears it
+   * only after reading what is left); the tail is sent from a fiber of
+   * its own, since the channel may be full; `after` runs once it is out.
+   */
+  private def failAfterTail[A](c: Channel[Chunk[A]], buf: TRef[ChunkBuffer[A]], size: Int, e: Throwable)
+                              (after: => Unit)(using sch: Scheduler): Unit =
+    c.fail(e)
+    takeChunk(buf, size, full = true) match
+      case Some(ch) => sch.fork(() => c.send(ch)).onComplete(_ => after)
+      case None => after
+
+  /** a chunked side over an ordinary stream (`feedChunked`) */
+  private[okay] def chunkedSideOf[A, S[_], F[+_]](s: S[A], capacity: Int, size: Int, within: Option[Long])
+                                                 (using Stream[S, F], Handler[F])
+                                                 (using Scheduler, Timer): Channel[Chunk[A]] =
+    chunkedSide(capacity, size, within)((c, buf) => feedChunked(c, s, size, buf))
+
+  /** a chunked side over a source that marks its own boundaries */
+  private[okay] def chunkedSideFlushing[A](p: Flushing[A], capacity: Int, size: Int, within: Option[Long])
+                                          (using Scheduler, Timer): Channel[Chunk[A]] =
+    chunkedSide(capacity, size, within)((c, buf) => feedFlushing(c, p, size, buf))
 
   /** the chunking merge for ordinary sources: the common path, fed
    * through `feedChunked` rather than the flushing walk because that

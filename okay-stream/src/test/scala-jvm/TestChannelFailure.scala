@@ -73,4 +73,29 @@ class TestChannelFailure extends munit.FunSuite {
     assertEquals(got.sorted, Vector(1, 2, 3, 10, 20), "the healthy side was cut short")
     assertEquals(failure, Some("the producer failed"), "a merge with a failed side ended as if all was well")
   }
+
+  test("Source.merge(chunked = true) over a failing side: what the side told before failing still arrives, then the failure") {
+    for window <- Seq(None, Some(5L)) do
+      var got = Vector.empty[Int]
+      var failure = Option.empty[String]
+      try Source.of(Boom[Int](0)).merge(Source.of(LazyList(10, 20)), chunked = true, flushAfter = window)
+            .runForeach(x => okay.async { got :+= x }).runWith
+      catch case e: Throwable => failure = Some(e.getMessage)
+      assertEquals(got.sorted, Vector(1, 2, 3, 10, 20), s"flushAfter=$window: a told element was lost")
+      assertEquals(failure, Some("the producer failed"), s"flushAfter=$window")
+  }
+
+  test("Channel.mergeChunked over a failing side: its partial chunk still arrives, then the failure") {
+    val c = Channel.mergeChunked[Int, Boom, Pure, LazyList, Pure](Boom[Int](0), LazyList(10, 20), 8, 16, None)
+    var got = Vector.empty[Int]
+    var failed = false
+    try
+      var more = true
+      while more do c.receiveBlocking() match
+        case Some(ch) => got ++= ch.toVector
+        case None => more = false
+    catch case _: Throwable => failed = true
+    assertEquals(got.sorted, Vector(1, 2, 3, 10, 20))
+    assert(failed, "the failure was not reported")
+  }
 }
