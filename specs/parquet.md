@@ -32,8 +32,8 @@ the same reader).
 
 ## Scope
 
-- FLAT schemas: every column a leaf of the root, REQUIRED or OPTIONAL.
-  A REPEATED field or a group is refused by name, naming the column.
+- Schemas of any nesting since stage 2 (structs, lists, maps as lists
+  of key/value structs); stage 1 was flat.
 - Types, both ways: BOOLEAN, INT32 (with INT(8/16/32, signed or not) and
   DATE), INT64 (with INT(64) and TIMESTAMP millis/micros/nanos), FLOAT,
   DOUBLE, BYTE_ARRAY (STRING → `Utf8`, otherwise `Binary`),
@@ -69,6 +69,22 @@ the same reader).
       dictionary or plain, Snappy/ZSTD/none) read by ours, ours read by
       it (TestParquetPyArrow; skips without a python with pyarrow)
 
+## Stage 2 — nested columns (parquet-nested, 2026-09-26)
+
+- [ ] structs, lists and maps both ways: okay-arrow's `Struct` and
+      `ListOf` shredded into repetition and definition levels (Dremel) on
+      write, assembled from them on read, to any depth `Column.MaxNesting`
+      allows; a map reads as a list of `key`/`value` structs
+- [ ] the list forms other writers use are read: the three-level
+      standard, the two-level legacy (a repeated primitive, a repeated
+      group named `array` or `<name>_tuple`), and an unannotated repeated
+      field
+- [ ] pyarrow's and DuckDB's nested files read equal to what they wrote;
+      ours read by both equal to what we wrote
+- [ ] DELTA_BINARY_PACKED, DELTA_LENGTH_BYTE_ARRAY, DELTA_BYTE_ARRAY and
+      BYTE_STREAM_SPLIT read (pyarrow writes each on request)
+- [ ] `ParquetJava` stays flat and refuses a nested file by name
+
 ## Decisions
 
 - **Ours, over Arrow's Table, rather than parquet-java alone.**
@@ -99,3 +115,9 @@ designed, naming the column and the encoding.
 **The dictionary road is checked by breaking it**: an index read one
 off turns both parquet-java-writes tests red (a mutant), so ours is not
 passing on PLAIN pages alone.
+- **Nested columns are assembled per leaf, not record by record**
+  (stage 2). Dremel's record assembly walks every leaf of a record in
+  step; the columnar form — which pyarrow and parquet-java's vectorised
+  readers use — decides a list's offsets and a struct's validity from
+  ONE leaf's levels and each leaf's own element ranges, so a column is
+  built in one pass per leaf and never as a tree of objects per row.
