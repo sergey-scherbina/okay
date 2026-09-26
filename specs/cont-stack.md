@@ -611,6 +611,23 @@ Stack knowledge (Layer 3):
   alternating rounds, one lane per `jmh-lane.sh`). Found on the way:
   `jmh-lane.sh` runs a bare `sbt` on the PATH's JDK 17, which cannot
   compile a `versioned` variant (backlog jmh-lane-jdk-pin).
+- Bytes a Cont LEVEL takes, by JIT state (cont-stack-8mb-flake,
+  2026-09-26; a probe reading `StackRoom.sp` at the deepest point of 2 000
+  opaque tail shifts on an 8 MB thread, macOS arm64, JDK 26): **1 858 B
+  under `-Xint`, 1 223 B under `-XX:TieredStopAtLevel=1`, ~288 B warm
+  C2** (1 726 B for the first, cold, run of a default JVM). A level is
+  several frames, so the "~1.2 KB interpreted" above is a frame's, not a
+  level's. Consequence for tests: a switch COUNT is a function of the
+  JIT's state, and under load the C2 threads fall behind — the first
+  8 MB test ("8 MB switches fewer times than 2 MB", 20 000 levels) read
+  1 vs 1 whenever the code was still cold, and -Xint makes that red
+  every time. TestContStack now asserts the bounds the reader reports
+  (`top − floor`: ~7.6 MB on an 8 MB thread, ~1.66 MB on 2 MB) and
+  sizes every "switches zero times" program to fit even interpreted.
+  The cold constant (1 200 B) sits under the interpreted level: the
+  margin's 2x covers a grant, but the count road's first room
+  (`defaultStackBytes / 1 200 / 2`) spends its halving on it — backlog
+  cont-stack-cold-bytes-per-level.
 
 ## Stages — what landed, and the plan after it (operator's ask, 2026-09-25 evening)
 
