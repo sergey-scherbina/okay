@@ -114,6 +114,27 @@ object Foreign {
     case r: AnyRef => r
     case _ => null
 
+  /**
+   * A CALLBACK call from another JVM language's program (foreign-one-ops):
+   * the operation a generated Frege or Clojure binding makes. The row does
+   * not answer it; the callbacks the caller offered to `run` do, the same
+   * `Foreign.callback`s that serve every wire language.
+   */
+  final case class Call(name: String, arg: AnyRef)
+
+  /** the callbacks a program was offered, as the walker asks them: the
+   * program answering `name` applied to `arg`, or None where none has it */
+  trait Calls[F[+_]]:
+    def apply(name: String, arg: AnyRef): Option[AnyRef ! F]
+    /** the names offered, for a refusal */
+    def names: Seq[String]
+
+  object Calls:
+    /** no callbacks: a `Call` is refused by name */
+    def none[F[+_]]: Calls[F] = new Calls[F]:
+      def apply(name: String, arg: AnyRef): Option[AnyRef ! F] = None
+      def names: Seq[String] = Nil
+
   private def described(x: Any): String = if x == null then "null" else x.getClass.getName
 
   /**
@@ -139,16 +160,22 @@ object Foreign {
               "stage's row (a stage's own are await and tell; stageWith[I, O, F] adds F)")
     Free.delay(() => go(prog))
 
-  /** the program as `A ! F`; its await and tell belong to a stage */
-  def run[F[+_], A: ClassTag, P](prog: => P, name: String)(using v: View[P], m: Member[F]): A ! F =
+  /** the program as `A ! F`; its await and tell belong to a stage, and a
+   * `Call` it performs is answered by `calls` */
+  def run[F[+_], A: ClassTag, P](prog: => P, name: String, calls: Calls[F] = Calls.none[F])
+                                (using v: View[P], m: Member[F]): A ! F =
     def go(p: P): A ! F = v.kind(p) match
       case Done => pure(as[A](v.payload(p), s"$name's answer", v.who))
       case Lift => v.liftAsOperation(p).flatMap(m.operation) match
         case Some(o) => effect[F, Any](o).flatMap(x => go(v.resume(p, obj(x))))
         case None => Free.delay(() => go(v.resume(p, v.lift(p))))
-      case Perform =>
-        val raw = v.payload(p)
-        m.operation(raw) match
+      case Perform => v.payload(p) match
+        case Call(n, arg) => calls(n, arg) match
+          case Some(answer) => answer.flatMap(x => go(v.resume(p, x)))
+          case None => throw IllegalArgumentException(
+            s"${v.who}: $name called '$n', which no callback offered to it answers " +
+              s"(offered: ${calls.names.mkString("[", ", ", "]")})")
+        case raw => m.operation(raw) match
           case Some(o) => effect[F, Any](o).flatMap(x => go(v.resume(p, obj(x))))
           case None => throw IllegalArgumentException(
             s"${v.who}: $name performed ${described(raw)}, which is not an operation of this program's row")

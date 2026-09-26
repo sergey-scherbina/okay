@@ -1,0 +1,16 @@
+--- A Frege program performing the caller's callbacks (foreign-one-ops):
+--- `Shop` is generated from the Scala `Foreign.callbacks` that serve every
+--- wire language the same two operations.
+module okay.frege.Quote where
+
+import okay.frege.Prog
+import okay.frege.Shop
+
+quote :: String -> Long -> Prog Double
+quote sku qty = do
+  price <- perform (priceOf sku)
+  perform (discount (price * qty.double))
+
+--- three of tea, the entry the Scala test runs
+teaForThree :: Prog Double
+teaForThree = quote "tea" 3

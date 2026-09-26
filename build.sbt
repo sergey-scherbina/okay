@@ -869,8 +869,10 @@ lazy val okayClojure = (project in file("okay-clojure"))
   // ChannelLawsSuite every okay channel does (clojure-core-async)
   // okayCodec in Test: EDN written by okay is read by clojure.edn, and
   // Clojure's pr-str is read by okay's Edn (edn-codec)
+  // okayPy in Test: a Clojure program performs the caller's Foreign.callbacks,
+  // through a namespace okay.py.Jvm generated from them (foreign-one-ops)
   .dependsOn(okay.jvm, okayStream.jvm % "compile->compile;test->test", okayAsync.jvm, okayPlatform.jvm,
-    okayCodec.jvm % Test)
+    okayCodec.jvm % Test, okayPy % Test)
   .settings(
     name := "okay-clojure",
     libraryDependencies ++= Seq(
@@ -891,7 +893,9 @@ lazy val okayClojure = (project in file("okay-clojure"))
  */
 lazy val okayFrege = (project in file("okay-frege"))
   // okayAsync + okayPlatform: `Ops.sleep` builds an Async operation on the platform Timer
-  .dependsOn(okay.jvm, okayStream.jvm, okayAsync.jvm, okayPlatform.jvm)
+  // okayPy in Test: a Frege program performs the caller's Foreign.callbacks,
+  // through a module okay.py.Jvm generated from them (foreign-one-ops)
+  .dependsOn(okay.jvm, okayStream.jvm, okayAsync.jvm, okayPlatform.jvm, okayPy % Test)
   .settings(
     name := "okay-frege",
     libraryDependencies ++= Seq(

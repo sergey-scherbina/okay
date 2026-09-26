@@ -98,10 +98,13 @@ object Frege {
    * operation of `F`, under whatever handlers run the result, and its
    * answer handed to the Frege continuation — which a multi-shot handler
    * may call more than once. An operation outside `F` is refused by
-   * name; `await`/`tell` belong to `stage`.
+   * name; `await`/`tell` belong to `stage`. A caller's own operation — one
+   * a module `okay.py.Jvm.frege` generated binds — is answered by `calls`
+   * (`Jvm.calls(cbs)`, the callbacks every wire language is offered).
    */
-  def run[F[+_], A: ClassTag](prog: => TProg[?], name: String = "a Frege program")(using Row[F]): A ! F =
-    Foreign.run[F, A, TProg[?]](prog, name)
+  def run[F[+_], A: ClassTag](prog: => TProg[?], name: String = "a Frege program",
+                             calls: Foreign.Calls[F] = Foreign.Calls.none[F])(using Row[F]): A ! F =
+    Foreign.run[F, A, TProg[?]](prog, name, calls)
 
   // ------------------------------------------------------------ data
 

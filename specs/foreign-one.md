@@ -535,7 +535,7 @@ more than it adds (the line count of what it removed goes in Results).
 - [ ] Stage 6 (as first written) — **foreign-one-bulk**: the frame road in Rust, Hs, Go
       (subsumes foreign-frame-op-rust-hs-go); `Objects` in their
       libraries; Arrow C Data over FFM; the table filled.
-- [ ] Stage 7 — **foreign-one-ops** (narrowed — Decision 19): the
+- [x] Stage 7 — **foreign-one-ops** (2026-09-26, narrowed — Decision 19): the
       caller's `Foreign.Callbacks` serve Frege and Clojure programs as
       they serve every wire language — the JVM walker performs a
       `Foreign.Call(name, arg)` against them (`calls.jvm`), and
@@ -904,3 +904,19 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     TestGoPipes' table case.
   - Open: answers from Go, Rust, Haskell and TypeScript are v1 cells, not
     columnar; worth changing when a measurement shows the answer's codec.
+- **Stage 7, foreign-one-ops (2026-09-26, narrowed by Decision 19).**
+  - `okay.Foreign.Call(name, arg)` and `Calls[F]` in the JVM walker;
+    `Frege.run`/`Program.run` take `calls`; `okay.frege.Ops.call` and
+    `okay.clojure.Ops.call` make the operation; `okay.py.Jvm` adapts
+    `Foreign.Callbacks` (`Jvm.calls`) and generates `Jvm.frege`/`Jvm.clojure`.
+  - Tests: `TestFregeCallbacks` — the checked-in `Shop.fr` equals the
+    generator's output; a Frege program performs both callbacks under the
+    caller's Reader (6.0); an unoffered call is refused by name; `priceOf 42`
+    fails the Frege compiler at `Bad.fr:5`; a callback with no Frege type is
+    refused at generation. `TestClojureCallbacks` — the checked-in
+    `shop.clj` equals the generator's; the program answers 6.0; a wrong
+    argument is refused by the callback's Schema, by name.
+  - Mutant: the walker resuming with the call's argument instead of the
+    callback's answer fails the Clojure program test.
+  - Not built: callbacks inside a Frege or Clojure STAGE (`stageWith`), which
+    would need the callbacks' row widened into the stage's; no caller yet.

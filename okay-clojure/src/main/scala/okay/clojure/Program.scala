@@ -92,8 +92,9 @@ object Program {
    * A Clojure program as `A ! F`: each `perform` an operation of F under
    * whatever handlers run the result; `await`/`tell` belong to a stage.
    */
-  def run[F[+_], A: ClassTag](prog: => AnyRef, name: String = "a Clojure program")(using Row[F]): A ! F =
-    Foreign.run[F, A, AnyRef](prog, name)
+  def run[F[+_], A: ClassTag](prog: => AnyRef, name: String = "a Clojure program",
+                             calls: Foreign.Calls[F] = Foreign.Calls.none[F])(using Row[F]): A ! F =
+    Foreign.run[F, A, AnyRef](prog, name, calls)
 
   // ------------------------------------------------------------ data
 
