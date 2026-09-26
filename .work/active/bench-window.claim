@@ -1,0 +1,1 @@
+bench-window — benchmarks get a quiet window by protocol: gate tokens, writer-preference admission, a budgeted window for queued JMH lanes; E-core demotion measured as the cheaper arm (operator ask)
