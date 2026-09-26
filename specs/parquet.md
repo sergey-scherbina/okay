@@ -40,8 +40,8 @@ the same reader).
   FIXED_LEN_BYTE_ARRAY. Read only: INT96 (Spark's legacy timestamp → a
   nanosecond `Timestamp`), DECIMAL over INT32/INT64/FIXED (→ `Decimal`).
 - Pages: data page v1 and v2, dictionary pages; encodings PLAIN,
-  PLAIN_DICTIONARY/RLE_DICTIONARY and the RLE/bit-packed hybrid for
-  levels. The DELTA_* and BYTE_STREAM_SPLIT encodings are refused by
+  PLAIN_DICTIONARY/RLE_DICTIONARY, the RLE/bit-packed hybrid for
+  levels, and RLE for booleans (pyarrow's data page v2 writes them so). The DELTA_* and BYTE_STREAM_SPLIT encodings are refused by
   name (parquet-java's default v1 writer, Spark's and DuckDB's defaults
   use none of them).
 - Compression: UNCOMPRESSED, SNAPPY, ZSTD through okay-compress's
@@ -52,19 +52,22 @@ the same reader).
 
 ## Behavior
 
-- [ ] a table of every writable type, nulls included, round-trips
+- [x] a table of every writable type, nulls included, round-trips
       through our writer and reader, row group by row group
-- [ ] ours writes, parquet-java reads the same rows; parquet-java
+- [x] ours writes, parquet-java reads the same rows; parquet-java
       writes (dictionary pages, Snappy, its defaults), ours reads the
       same rows (JVM, `ParquetJava`)
-- [ ] the reader holds one row group: a file of many row groups is read
+- [x] the reader holds one row group: a file of many row groups is read
       group by group from a `ReadAt` that counts the bytes it hands out,
       and no read exceeds one group's chunks plus the footer
-- [ ] with no import the codec is ours; `ParquetJava.given` picks the
+- [x] with no import the codec is ours; `ParquetJava.given` picks the
       library; without its jar the first use is refused by name
-- [ ] a nested schema, an unsupported encoding or codec, a file cut
+- [x] a nested schema, an unsupported encoding or codec, a file cut
       short or with a bad magic is refused by name
-- [ ] by name: `Parquets.byName("okay" | "parquet-java")`
+- [x] by name: `Parquets.byName("okay" | "parquet-java")`
+- [x] pyarrow as a second oracle: its files (data page v1 and v2,
+      dictionary or plain, Snappy/ZSTD/none) read by ours, ours read by
+      it (TestParquetPyArrow; skips without a python with pyarrow)
 
 ## Decisions
 
@@ -78,3 +81,21 @@ the same reader).
 - **A flat schema first, said.** The operator's data (model features
   and scores) is flat; nested columns (Dremel levels over lists and
   structs) are a stage of their own, refused by name until then.
+
+## Results (parquet-codec, 2026-09-26)
+
+**parquet-java ran on JDK 26 with no Hadoop file system.** The fear in
+the first Decision was its readers and writers reaching Hadoop; through
+its own `InputFile`/`OutputFile` and a `PlainParquetConfiguration` they
+do not, and the standard implementation's tests run on the JDK the rest
+of okay runs on. The Decision stands for the dependency's weight (the
+Hadoop client API is 20 MB), not for the JDK.
+
+**Every interop test passed the first time it ran, and the one that did
+not was pyarrow's**: its data page v2 writes booleans RLE-encoded, which
+the reader had refused by name. Supported now; the refusal worked as
+designed, naming the column and the encoding.
+
+**The dictionary road is checked by breaking it**: an index read one
+off turns both parquet-java-writes tests red (a mutant), so ours is not
+passing on PLAIN pages alone.

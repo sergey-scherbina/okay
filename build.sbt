@@ -2656,6 +2656,33 @@ lazy val okayArrow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED"),
   )
 
+// okay-parquet: Parquet without Spark or Hadoop (specs/parquet.md) — our
+// codec over okay-arrow's Table on every platform, parquet-java behind an
+// import on the JVM (specs/own-or-standard.md)
+lazy val okayParquet = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-parquet"))
+  .dependsOn(okayArrow, okayCompress)
+  .settings(
+    name := "okay-parquet",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    libraryDependencies ++= Seq(
+      // the standard implementation, OPTIONAL for consumers: the tests
+      // prove each codec reads the other's files
+      "org.apache.parquet" % "parquet-hadoop" % "1.16.0" % "optional;test",
+      "org.apache.hadoop" % "hadoop-client-api" % "3.4.1" % "optional;test",
+      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.1" % "optional;test",
+      "io.airlift" % "aircompressor" % "2.0.3" % Test,
+    ),
+    Test / fork := true,
+  )
+
 // okay-foreign-workflow: foreign workers inside okay's durable layers
 // (specs/foreign-workflow.md) — a foreign call is a workflow ACTIVITY, the
 // worker its oracle. Its own module so okay-py stays free of the workflow
@@ -3355,7 +3382,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayCompress.jvm, okayCompress.js, okayCompress.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayCompress.jvm, okayCompress.js, okayCompress.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
