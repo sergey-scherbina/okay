@@ -326,12 +326,10 @@ object EffectsDelivery:
 
   def order(item: String): Option[(String, Int)] ! Order =
     for
-      shop <- choose("north", "south").at[Order]
-      fee  <- deliveryFee(shop).at[Order]
-      out  <- fee match
-        case None    => pure[Order, Option[(String, Int)]](None)
-        case Some(f) => priceOf(shop, item).map((tea, price) => Some((tea, price + f)))
-    yield out
+      shop         <- choose("north", "south").at[Order]
+      fee          <- deliveryFee(shop).at[Order]
+      (tea, price) <- priceOf(shop, item)
+    yield fee.map(f => (tea, price + f))
 
   /** the expression cats refused, with effects: both helpers in one for */
   val north: Option[(String, Int)] ! Order =

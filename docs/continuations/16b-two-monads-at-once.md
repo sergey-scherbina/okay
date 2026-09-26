@@ -358,18 +358,24 @@ def deliveryFee(shop: String): Option[Int] ! Throws % String =
 ```
 
 The union is just the row of the program that uses both helpers, each
-widened into it, and the program looks at the `Option` itself:
+widened into it, and the `Option` is mapped in the `yield`:
 
 ```scala
 type Order = Choose + Throws % String
 ```
 
 ```scala
-fee  <- deliveryFee(shop).at[Order]
-out  <- fee match
-  case None    => pure[Order, Option[(String, Int)]](None)
-  case Some(f) => priceOf(shop, item).map((tea, price) => Some((tea, price + f)))
+shop         <- choose("north", "south").at[Order]
+fee          <- deliveryFee(shop).at[Order]
+(tea, price) <- priceOf(shop, item)
+yield fee.map(f => (tea, price + f))
 ```
+
+One difference from the other two versions, visible only with other
+data: here the varieties are looked up in a shop that does not deliver
+too, so a shop that neither delivers nor stocks the item answers with
+its error, where they answer `None`. To skip the lookup, fold the fee:
+`fee.fold(pure(None))(f => priceOf(…).map(…))`.
 
 And the one expression cats refused is, with effects, just written
 down — both helpers in one `for`:
