@@ -400,6 +400,14 @@ different host. It is recorded, not explained.)
 | right-nested (recursion) | **159** | | | 178 |
 | left-nested (foldLeft) | **217** | 1222 | 3385 | 375 400* |
 
+**Since effect-op-cost (2026-09-27)** `Reader.ask` and `State.get` are
+ONE shared node each rather than a fresh `Inject(Ask())` per call, 32 B
+an operation fewer: the right-nested Reader row reads **60.6 µs, 560 KB**
+against 73.3 µs, 880 KB on master in the same series (min of three
+alternating rounds; this table's 79 is an older session's), and a
+State+Writer block with 400 gets 13.1 against 14.2 µs. Staged blocks are
+unchanged to the byte. specs/effect-op-cost.md.
+
 **Two shapes, deliberately (kyo-fair-lanes, 2026-09-02).** The
 foldLeft build — `(1 to N).foldLeft(ask)((m, _) => m.flatMap(_ =>
 ask))` — nests LEFT: `((ask >>= f) >>= f) >>= f`. A for-comprehension,
