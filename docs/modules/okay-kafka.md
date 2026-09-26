@@ -52,6 +52,34 @@ Tests run over `MockConsumer`/`MockProducer` — no broker, no
 testcontainers: `assign` + `updateBeginningOffsets` + `addRecord`,
 and `MockProducer(...).history` on the way out.
 
+### A dataflow epoch larger than a record, exactly once
+
+A stream's staging sink (okay-cluster, `Sink.staging`) hands each
+epoch over when it is final, and the obvious writer appends it as ONE
+record — which caps an epoch at Kafka's 1 MB. `EpochLog` writes an
+epoch of any size as chunks inside ONE transaction, so a
+`read_committed` reader sees it whole or not at all; a writer that
+dies mid-epoch is fenced by its successor (same transactional id),
+whose `initTransactions` aborts the open epoch, and the successor
+learns the last committed epoch from the log:
+
+```scala
+EpochLogJob.log = EpochLog(bootstrap, topic, s"$topic-writer", chunkBytes = 4096)
+```
+
+and the stream's sink moves each epoch into it:
+
+```scala
+Wire.tumblingStaged(Size, Late, (e: Ev) => e.key, (e: Ev) => e.ts, value)((epoch, panes) =>
+  val _ = log.nn.move(epoch, panes.iterator.map(p => pane.encode((p.start, p.key, p.value)))))
+```
+
+`move` answers `false` for an epoch already committed — stage 9 may
+move one twice across a restart. `EpochLog.epochs(bootstrap, topic)`
+reads every committed epoch back. 100 MB in one epoch, its writer
+killed half way, is `TestEpochLog`'s Live test (about 8 s on a local
+broker).
+
 ## API reference
 
 | member | signature | meaning |
@@ -61,6 +89,7 @@ and `MockProducer(...).history` on the way out.
 | `commit` | `(consumer) => Unit ! Async` | commitSync after a processed chunk |
 | `sink` | `(producer)(records) => Unit ! Async` | one batch, flushed |
 | `managedConsumer` / `managedProducer` | under `Resource` | lifecycle in the region |
+| `EpochLog(bootstrap, topic, transactionalId, chunkBytes?)` | `.move(epoch, rows): Boolean`, `.committed` | a dataflow epoch of any size in one transaction; a repeat is skipped |
 
 ## Gotchas
 

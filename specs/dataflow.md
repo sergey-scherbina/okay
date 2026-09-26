@@ -529,7 +529,7 @@ Stage 11 — the log is the source (box 1 landed; TestSourceLog):
       that exists is the right one: `Sink.staging(...)(move)` takes
       the two moments, and the topic writer is forty lines in whatever
       module owns the store — which is where a store belongs
-- [ ] AN EPOCH LARGER THAN A RECORD (staging-large-epochs, 2026-09-26,
+- [x] AN EPOCH LARGER THAN A RECORD (staging-large-epochs, 2026-09-26,
       operator): okay-kafka's `EpochLog` writes an epoch as chunks of at
       most `chunkBytes` inside ONE Kafka transaction, committed when the
       epoch is final, so a `read_committed` reader sees an epoch whole or
@@ -538,11 +538,11 @@ Stage 11 — the log is the source (box 1 landed; TestSourceLog):
       successor with the same transactional id fences the dead writer,
       learns the last committed epoch from the log and writes the epoch
       again; the reader then sees it whole, once
-- [ ] a repeated `move` of a committed epoch is skipped, learned from
+- [x] a repeated `move` of a committed epoch is skipped, learned from
       the log by a writer with no memory — stage 9's contract, kept
-- [ ] the framing (rows length-prefixed into chunks, a row larger than
+- [x] the framing (rows length-prefixed into chunks, a row larger than
       a chunk alone in its record) round-trips without a broker
-- [ ] `Sink.staging(...)(move)` into an `EpochLog`: a stream's panes
+- [x] `Sink.staging(...)(move)` into an `EpochLog`: a stream's panes
       reach the topic, each epoch once (Live)
 - [x] exactly-once from log to log: the coordinator dies between the
       append and the journal commit, at four epochs, and the output
@@ -712,10 +712,8 @@ Stage 9 — the commit window (TestStaged):
       for 11 epochs" the moment anybody appends per pane again.
       THE COST IS STATED: an epoch must fit in one record (the largest
       here is ~64 KB, well under Kafka's 1 MB default). A job whose
-      epoch does not fit needs chunking with a per-epoch completion
-      marker, or a transactional writer — the Kafka interop has
-      transactions and `TestKafkaEos` exercises them. Neither is
-      built, because nothing here has an epoch that big
+      epoch does not fit uses okay-kafka's `EpochLog` — one transaction
+      per epoch, built by staging-large-epochs (the boxes above)
 
 Stage 8 — the coordinator survives (TestResume, TestPersisted):
 - [x] `Wire.state: Schema[S]` — the coordinator's fold is a value,
@@ -1420,6 +1418,25 @@ it the record in the journal only ever grows and a burst is one write.
 (`Checkpoint.none` is recognised and no record is built); `runLeading`
 is `leading`'s seat and does not wait to be elected, for `leading`'s
 reason.
+
+### staging-large-epochs — one transaction per epoch (2026-09-26)
+
+**100 MB in one epoch, its writer killed half way, took 7.8 s on a
+local broker** (`apache/kafka:3.9.0` in docker), including the
+successor writing the whole epoch again and a reader checking all
+102 400 rows against what was written. The kill is a real crash from
+the broker's side: the dying writer's thread is parked mid-iterator
+with its transaction open and its producer never closed or aborted;
+only the successor's `initTransactions` under the same id ends it.
+
+**The reader is the assertion, and it was checked to fail**: with the
+writer committing per chunk (the mutant), a `read_committed` reader
+sees half of epoch 2 while its writer is dead, and the test says so.
+
+**What it does not do**: an epoch with no rows commits an empty
+transaction, which leaves nothing in the log to learn it from — a
+successor re-moves it, harmlessly (it writes nothing). And one
+partition only, on purpose (the recovery rule reads one tail).
 
 ### Stage 15 — a job says where its time went (2026-09-26)
 
