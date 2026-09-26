@@ -253,11 +253,18 @@ def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Deli
   capture, `Delim.Shots`; 1 at the `dollar` call itself). `ret` runs on
   a normal return, and only then; a resumption that leaves by `abort`
   runs no `ret`, which is the `$/S0` rule and is exactly what
-  `Lexical.tail`'s guard could not see. The plain `dollar` carries a
-  null count and the machine pays one null test per `Dollar` step; a
-  `Mark` and the plain cut are untouched (delimGenerator byte-identical,
-  Results). The λ$ operator is unchanged: this is instrumentation of
-  the delimiter frame, not a new reduction rule.
+  `Lexical.tail`'s guard could not see. The λ$ operator is unchanged:
+  this is instrumentation of the delimiter frame, not a new reduction
+  rule.
+  FIRST CUT: the plain `dollar` carried a null count (a `Shots | Null`
+  field on `Delim.Dollar` and on the machine's `Segs.Ret`), +16 B per
+  plain dollar (delimDollarOnly 372 008 -> 388 008 B/op).
+  NOW (delim-dollar-shots-bytes, 2026-09-26): a watched dollar is its
+  OWN node on both sides, `Delim.Watched` and `Segs.Watch`, each
+  carrying its `Shots`; the plain `Dollar` and `Ret` carry no field and
+  no null test. The watched cases are matched LAST, after `K` in the
+  walk, so neither the plain dollar nor a capture passing binds pays a
+  type test for them. A `Mark` and the plain cut are untouched.
 - **Compile time where the arc promised it (dollar-doors, 2026-09-25).**
   Three doors the arc left at the raw-prompt level or at run time:
   (1) `Delim.dollar(ret) { body }` with `Prompted[R]` in scope, the
