@@ -293,6 +293,10 @@ object R:
    */
   def source[O: Schema](address: String): SourceOf[O] = SourceOf(address)
 
+  /** the scope an R source runs in: what it still holds at the end — a
+   * consumer that stopped early — is released (foreign-source-early-stop) */
+  def releasing[A, O](p: A ! PyStream.SourceRow[O]): A ! PyStream.Released[O] = PyStream.releasing(p)
+
   final class SourceOf[O: Schema](address: String):
     def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)
     def apply[A: ToR](a: A): Unit ! PyStream.SourceRow[O] = go(Vector(ToR(a)))

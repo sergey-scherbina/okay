@@ -1,7 +1,19 @@
 package okay.py
 
-import okay.{!, %, +, Take, Writer, effect, pure}
+import okay.{!, %, +, Row as OkRow, Take, Writer, effect, pure, split}
+import okay.!.*
 import okay.codec.Schema
+import scala.annotation.tailrec
+
+/**
+ * A far-side object a program HOLDS until the program's scope ends
+ * (foreign-source-early-stop): a source's iterator. `Hold` when it is taken,
+ * `Let` when its owner released it itself; `Foreign.releasing` releases, at
+ * the end, whatever is still held — what a consumer that stopped early left.
+ */
+enum Holding[+A] derives okay.Effect:
+  case Hold(ref: PyRef) extends Holding[Unit]
+  case Let(ref: PyRef) extends Holding[Unit]
 
 /**
  * A Python function, or a method of a held object, as an okay STAGE over
@@ -32,8 +44,46 @@ object PyStream:
   /** the row of a Python stage: okay's stage row, plus the calls */
   type Row[I, O] = Take % I + (Writer % O + ForeignEval)
 
-  /** the row of a far-side SOURCE: its elements told, plus the calls */
-  type SourceRow[O] = Writer % O + ForeignEval
+  /** the row of a far-side SOURCE: its elements told, plus the calls, plus
+   * the iterator it holds — so a source runs only inside
+   * `Foreign.releasing`, which gives the iterator back however the
+   * consumer ended (foreign-source-early-stop) */
+  type SourceRow[O] = Writer % O + (ForeignEval + Holding)
+
+  /** a source's row once its scope has released what it held */
+  type Released[O] = Writer % O + ForeignEval
+
+  /**
+   * THE SCOPE of a program holding far-side objects (foreign-source-early-stop):
+   * the program runs, and when it ends every object it still holds is
+   * released — by the same handler as every other call, so a pool routes it,
+   * a supervisor sees it and a journal records it. It exists because a
+   * consumer that stops early (`through` with a stage that has had enough)
+   * simply drops the source's residual: nothing in the source runs again,
+   * so only a scope around the whole consumption can know it is over. A
+   * JVM exception ending the program releases nothing: a release is a call,
+   * and a program that threw has no next step to make it.
+   */
+  def releasing[A, O](p: A ! SourceRow[O]): A ! Released[O] =
+    holding[A, Released[O]](p)
+
+  /** the walk behind `releasing`, over any row that holds and calls */
+  private[okay] def holding[A, F[+_]](p: A ! Holding + F)(using ev: OkRow.Sub[ForeignEval, F]): A ! F =
+    def releaseAll(held: List[PyRef]): Unit ! F =
+      held.foldLeft(pure[F, Unit](()))((acc, r) => acc.flatMap(_ => effect[F, Any](ev(ForeignEval.Release(r))).map(_ => ())))
+    def again(held: List[PyRef])(x: A ! Holding + F): A ! F = loop(held)(x)
+    @tailrec def loop(held: List[PyRef])(x: A ! Holding + F): A ! F =
+      (x.resume: @unchecked) match
+        case Return(a) => releaseAll(held).map(_ => a)
+        case Inject(e) => split[Holding, F](e) {
+            case Holding.Hold(r) => releaseAll(held.filterNot(_ == r)): A ! F
+            case Holding.Let(r) => releaseAll(held.filterNot(_ == r)): A ! F
+          } { e => Inject(e).flatMap(a => releaseAll(held).map(_ => a)) }
+        case Bind(Inject(e), k) => split[Holding, F](e) {
+            case Holding.Hold(r) => loop(r :: held)(k(()))
+            case Holding.Let(r) => loop(held.filterNot(_ == r))(k(()))
+          } { e => Inject(e).flatMap(y => again(held)(k(y))) }
+    loop(Nil)(p)
 
   /**
    * A FAR-SIDE SOURCE (foreign-one-mux, specs/foreign-one.md stage 5): an
@@ -53,7 +103,10 @@ object PyStream:
                                       ended: Condition => Boolean,
                                       empty: PyValue => Boolean)(using shape: Shape): Unit ! SourceRow[O] =
     type R = SourceRow[O]
-    def release(r: PyRef): Unit ! R = effect[R, Unit](ForeignEval.Release(r))
+    // released by the source itself at its end or its failure; `Let` first,
+    // so the scope does not release it a second time
+    def release(r: PyRef): Unit ! R =
+      effect[R, Unit](Holding.Let(r)).flatMap(_ => effect[R, Unit](ForeignEval.Release(r)))
     def tellAll(os: Vector[O]): Unit ! R =
       os.foldLeft(pure[R, Unit](()))((p, o) => p.flatMap(_ => effect[R, Unit](Writer(o))))
     def loop(r: PyRef): Unit ! R =
@@ -66,7 +119,7 @@ object PyStream:
           case Right(os) => tellAll(os).flatMap(_ => loop(r))
       }
     effect[R, Either[Condition, PyValue]](open).flatMap {
-      case Right(PyValue.Ref(r)) => loop(r)
+      case Right(PyValue.Ref(r)) => effect[R, Unit](Holding.Hold(r)).flatMap(_ => loop(r))
       case Right(other) => throw Failed(Condition("WireError", s"a source's open answered $other, not a held iterator"))
       case Left(c) => throw Failed(c)
     }

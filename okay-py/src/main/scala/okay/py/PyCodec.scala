@@ -384,10 +384,16 @@ object Py {
    * A Python GENERATOR as an okay source (foreign-one-mux): `address` is a
    * function returning an iterator whose items are CHUNKS (lists of `O`);
    * each chunk is one call of its `__next__`, `StopIteration` its end.
-   * `through(Py.source[Row]("m:rows")(path))(stage)` reads a far-side
-   * file, cursor or generator at the consumer's pace.
+   * `Py.releasing(through(Py.source[Row]("m:rows")(path))(stage))` reads a
+   * far-side file, cursor or generator at the consumer's pace, and gives
+   * the iterator back however the consumer ended (foreign-source-early-stop).
    */
   def source[O: Schema](address: String)(using shape: Shape): SourceOf[O] = SourceOf(address)
+
+  /** the scope a source runs in: whatever it still holds when the program
+   * ends — a consumer that stopped early — is released
+   * (foreign-source-early-stop; `PyStream.releasing`) */
+  def releasing[A, O](p: A ! PyStream.SourceRow[O]): A ! PyStream.Released[O] = PyStream.releasing(p)
 
   final class SourceOf[O: Schema](address: String)(using shape: Shape):
     def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)

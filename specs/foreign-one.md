@@ -755,6 +755,22 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     gate is the measured call beside today's road plus a byte-exact round
     trip through both codecs. wasm keeps the JSON road (no shared pointers).
 
+22. **A far-side source is held by an effect and released by a scope**
+    (foreign-source-early-stop). The filed shape — the handler answering the
+    open with a releaser bound to itself — would have put a closure among
+    the answers the journal and the supervisor's replay record. A program
+    can do it instead: `pulled` performs `Holding.Hold(ref)` when it takes
+    the iterator and `Holding.Let(ref)` when it releases it itself, and
+    `Py.releasing` / `R.releasing` walk the program (Resource.run's shape:
+    a `@tailrec` loop, the other effects forwarded through an `again`) and
+    perform `ForeignEval.Release` for what is still held when it ends —
+    through the caller's handler, so a pool routes it, a supervisor sees it
+    and a journal records it like any call. `Holding` is in `SourceRow`, so a
+    source outside the scope does not compile. What it does not cover: a
+    program ended by a JVM exception releases nothing (a release is a call,
+    and a thrown program makes no next call); the source's own failure path
+    already releases before it throws.
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
@@ -1010,3 +1026,13 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     Rust's `Value::Table` is a Vec of cells. A columnar Rust table type,
     or a caller already holding Arrow Java vectors, is where the next
     factor would come from; nothing asks for it yet.
+- **foreign-source-early-stop (2026-09-26, Decision 22).** `Holding` and
+  `PyStream.releasing` (`Py.releasing`, `R.releasing`); `SourceRow` is now
+  `Writer % O + (ForeignEval + Holding)` — right-nested so `through`'s `G`
+  is the pair — and a consumer stage adds `ForeignEval + Holding`.
+  Tests (Live): TestPySource — a consumer taking four of 10 000 rows gives
+  the iterator back once, and the far side then refuses a `__next__` on it;
+  the three earlier tests run inside the scope unchanged (one release at a
+  natural end, one at a failure); TestRSource under `R.releasing`.
+  Mutant: a scope that releases nothing at the end fails the early-stop
+  test.

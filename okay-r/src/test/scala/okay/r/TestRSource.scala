@@ -24,7 +24,7 @@ class TestRSource extends munit.FunSuite:
   test("every element, in order, from an R closure; NULL ends it") {
     val r = RSubprocess.start(TestR.rscript.get, modules = Seq(TestRSource.m))
     try
-      val out = Writer.run(R.source[Long]("rsources::rows")(10L, 3L)).runWith(using r.handler)._1.toList
+      val out = Writer.run(R.releasing(R.source[Long]("rsources::rows")(10L, 3L))).runWith(using r.handler)._1.toList
       assertEquals(out, (0L until 10L).toList)
     finally r.close()
   }

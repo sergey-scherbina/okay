@@ -269,8 +269,25 @@ that stops after four rows reads two chunks of three, not the whole file
 (foreign-one-mux). In R the source is a closure:
 
 ```scala
-      val out = Writer.run(R.source[Long]("rsources::rows")(10L, 3L)).runWith(using r.handler)._1.toList
+      val out = Writer.run(R.releasing(R.source[Long]("rsources::rows")(10L, 3L))).runWith(using r.handler)._1.toList
 ```
+
+A source HOLDS its iterator on the far side, and its type says so: its row
+carries `Holding`, which only `Py.releasing` / `R.releasing` handles — so a
+source cannot be run outside that scope; the compiler asks for it. The
+scope is what gives the iterator back when the consumer stops early: a
+stage that has had enough simply drops the source, and nothing in the
+source runs again, so the release happens when the whole program ends,
+through the same handler as every other call (foreign-source-early-stop).
+Put the scope around the consumption, and give the consuming stage the
+source's row:
+
+```scala
+val out = run(okay.through(Py.source[Long]("sources:rows")(10000L, 3L))(takeFour.plus[ForeignEval + Holding]), h)
+```
+
+Here `run` is `Writer.run(Py.releasing(p))`; four rows are read, and the
+iterator is released once.
 
 An R fit held in R, predicted on new data:
 
