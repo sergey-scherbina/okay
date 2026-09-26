@@ -307,19 +307,19 @@ not against its existence):
       checked by a test that asserts nothing
 
 Stage 16 — Kafka is a source (TestKafkaSource, TestFlowOpened):
-- [ ] a streaming job over a Live topic of 1M records in 4 partitions,
+- [x] a streaming job over a Live topic of 1M records in 4 partitions,
       a worker killed mid-epoch: every record counted once, the answer
       equal to one computed without the engine
-- [ ] the replacement SEEKS: the records fetched from the broker are
+- [x] the replacement SEEKS: the records fetched from the broker are
       the topic once plus at most the epochs replayed, not the topic
       twice
-- [ ] a partition whose offsets are not contiguous (a transactional or
+- [x] a partition whose offsets are not contiguous (a transactional or
       compacted topic) is refused by name where it seeks, and read by
       skipping records when declared `contiguous = false`
-- [ ] `Flow.opened`: a source partition that holds a resource opens it
+- [x] `Flow.opened`: a source partition that holds a resource opens it
       at its position and closes it with the partition's scope — at
       the end, at an early stop, at a failure
-- [ ] the job's width must be the topic's: a flow over a different
+- [x] the job's width must be the topic's: a flow over a different
       partition count is refused by name
 
 Stage 15 — a job says where its time went (TestObserved, TestPoolObserved):
@@ -1456,6 +1456,29 @@ it the record in the journal only ever grows and a burst is one write.
 (`Checkpoint.none` is recognised and no record is built); `runLeading`
 is `leading`'s seat and does not wait to be elected, for `leading`'s
 reason.
+
+### Stage 16 — Kafka is a source (2026-09-26)
+
+**The first reopen test tested nothing, and said so only because it
+asserted the reopen.** In-process workers share one `Sessions`
+registry, so when the "dead" worker stopped answering, its survivor
+found the dead one's session still there and carried on reading it —
+no partition was reopened, the answer was right, and a test that had
+asserted only the answer would have passed. The test's `Dying` worker
+now drops the sessions it opened when it dies, as a process's death
+does, and `TestFlowOpened` asserts a partition WAS opened past zero.
+
+**Seek, not replay, asserted by counting**: `KafkaSource.fetched`
+counts records the broker handed over; a million-record stream with a
+worker killed after its fifth advance fetches fewer than the topic
+plus two epochs and a poll's buffer per partition — a replay of the
+dead worker's partitions from zero would fetch half a million more.
+The mutant that ignores the position double-counts and turns the
+answer red.
+
+**The end of a transactional partition is a marker**, an offset with no
+record; a reader waiting for the record at `until - 1` waited a minute.
+The source now asks the consumer's position, which steps over markers.
 
 ### staging-large-epochs — one transaction per epoch (2026-09-26)
 

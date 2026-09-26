@@ -80,6 +80,32 @@ reads every committed epoch back. 100 MB in one epoch, its writer
 killed half way, is `TestEpochLog`'s Live test (about 8 s on a local
 broker).
 
+### A topic as a source of the cluster engine
+
+`KafkaSource` makes a topic's Kafka partitions a job's partitions. The
+job's parameters are the topic's spans, taken once at submission —
+`[from, until)` per partition — and its flow is the source:
+
+```scala
+def flow(s: KafkaSpans, parts: Int): Flow[KafkaRecord] = KafkaSource.flow(s, parts)
+```
+
+```scala
+val spans = KafkaSource.spans(bootstrap, topic)
+val got = Cluster.stream(KafkaSumJob, spans, 4, Vector(dying, Cluster.local, Cluster.local), take).runWith
+```
+
+A partition is opened at its position and SEEKS there, so a worker that
+dies mid-epoch is replaced by one that reads exactly the records the
+coordinator's journal has not folded — `TestKafkaSource` streams a
+million records over four partitions with a worker killed mid-epoch and
+counts every record once. The positions live in the engine's journal
+(fenced, with the fold); nothing is committed to a consumer group. The
+job's width must be the topic's. A transactional or compacted topic has
+offsets with no record; the source refuses that gap by name, and
+`KafkaSource.spans(bootstrap, topic, contiguous = false)` reads it by
+skipping records instead of seeking.
+
 ## API reference
 
 | member | signature | meaning |
@@ -89,6 +115,7 @@ broker).
 | `commit` | `(consumer) => Unit ! Async` | commitSync after a processed chunk |
 | `sink` | `(producer)(records) => Unit ! Async` | one batch, flushed |
 | `managedConsumer` / `managedProducer` | under `Resource` | lifecycle in the region |
+| `KafkaSource.spans` / `KafkaSource.flow` | `(bootstrap, topic, contiguous?) => KafkaSpans`; `(spans, parts) => Flow[KafkaRecord]` | a topic as the engine's source, positions seeked |
 | `EpochLog(bootstrap, topic, transactionalId, chunkBytes?)` | `.move(epoch, rows): Boolean`, `.committed` | a dataflow epoch of any size in one transaction; a repeat is skipped |
 
 ## Gotchas

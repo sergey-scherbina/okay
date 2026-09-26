@@ -176,6 +176,28 @@ object Flow {
   def one[A](chunks: => Chunks[A]): Flow[A] = Src(Vector(start => skip(chunks, start)))
 
   /**
+   * PARTITIONS THAT HOLD SOMETHING WHILE THEY ARE READ — a connection,
+   * a consumer, a file (specs/dataflow.md, stage 16). `open(i, start,
+   * scope)` opens partition `i` positioned `start` elements in, and
+   * registers its close on `scope`, which the engine closes when it is
+   * done with the partition: at its end, at an early stop downstream,
+   * at a failure (stateful-early-stop's `Scope`). A `Src` thunk has no
+   * scope, so a source holding a resource leaked it whenever a session
+   * was abandoned; this is `Owned` over a one-element source carrying
+   * the position, which is all it takes.
+   */
+  def opened[A](parts: Int)(open: (Int, Long, Scope) => Chunks[A]): Flow[A] =
+    require(parts > 0, "a source has at least one partition")
+    val at: Flow[(Int, Long)] =
+      Src(Vector.tabulate(parts)(i => (start: Long) => Chunks.fromIterator(Iterator.single((i, start)))))
+    Owned(at, "opened", (c: Chunks[(Int, Long)], scope: Scope) =>
+      Chunks.pull(c) match
+        case Some((chunk, _)) if chunk.length > 0 =>
+          val (i, start) = chunk(0)
+          open(i, start, scope)
+        case _ => Chunks.fromIterator(Iterator.empty[A]))
+
+  /**
    * Cut an indexed collection into `parts` CONTIGUOUS slices of its
    * own order. Contiguity is not a convenience: a `Sequential`
    * summary merges consecutive slices, and a partitioning that
