@@ -667,6 +667,38 @@ Stack knowledge (Layer 3):
   (`defaultStackBytes / 1 200 / 2`) spends its halving on it — backlog
   cont-stack-cold-bytes-per-level.
 
+### cont-stack-ucontext-layouts (2026-09-26): the reader on Linux
+
+The glibc layouts of Decision 13, checked with the REAL suites and not
+only the probe: `TestStackRoom` and `TestContStack` run from the
+packaged Multi-Release jar (the `META-INF/versions/22/` class in play)
+through JUnit inside Docker, `--enable-native-access=ALL-UNNAMED`,
+`-Dokay.cont.room=64` as the build passes them.
+
+| container | reader | TestStackRoom + TestContStack |
+|---|---|---|
+| glibc aarch64, JDK 26 (native) | reads: floor < sp < top | 11 of 11 |
+| glibc x86_64, JDK 26 (emulated) | reads: floor < sp < top | 11 of 11 |
+| musl aarch64 (Alpine), JDK 25 | −1: no `getcontext`, counts | 11 of 11 |
+
+The floor against the real end, the risk the macOS incident of Layer 3
+named (a floor too low overflows with no switch): a thread recursing
+while it reads `sp` at every level reached the reader's floor and ran
+on to the StackOverflowError, and the last pointer read lay this far
+BELOW the floor — so the floor is above the overflow on every one:
+
+| platform | 256 KB thread | 2 MB thread |
+|---|---|---|
+| glibc aarch64 | 3 KB | 4 KB |
+| glibc x86_64 (emulated) | 3 KB | 3 KB |
+| macOS arm64 | 255 KB | 256 KB |
+
+On glibc the floor is HotSpot's own guard boundary to within a page —
+the bounds are the ones HotSpot computes and the zones are its own
+flags at the libc's 4 KB page — while macOS keeps a quarter-megabyte
+of slack (its zones at 16 KB pages). Either way the runner never grants
+into the last `margin` (64 KB) above the floor.
+
 ## Stages — what landed, and the plan after it (operator's ask, 2026-09-25 evening)
 
 Landed 2026-09-25 as cont-stack-switch (60a59c97e): Layer 2 (the room

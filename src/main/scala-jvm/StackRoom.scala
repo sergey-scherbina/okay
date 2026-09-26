@@ -24,3 +24,5 @@ private[okay] object StackRoom:
   def top(): Long = -1L
   /** the lowest address a frame may reach — the stack's end plus the VM's guard and shadow zones (the 22+ variant knows them) — or −1 */
   def floor(): Long = -1L
+  /** whether this platform reads with `symbol` absent — never, here */
+  def readableWithout(symbol: String): Boolean = false

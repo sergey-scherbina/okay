@@ -71,7 +71,7 @@ reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the roo
 
 | platform | how the room is known | first look | what a switch costs |
 |---|---|---|---|
-| JVM 22+ **with** `--enable-native-access=ALL-UNNAMED` | exactly: the stack pointer and the thread's bounds through the FFM API (macOS arm64 today; other layouts count) | after ~870 levels on a 2 MB thread (1.2 KB a level, cold) — then the exact reading grants the rest | never, while the stack has room: a 1000-level program on a default thread switches **zero** times |
+| JVM 22+ **with** `--enable-native-access=ALL-UNNAMED` | exactly: the stack pointer and the thread's bounds through the FFM API (macOS arm64, and Linux aarch64 and x86_64 on glibc; macOS x86_64 and musl/Alpine count) | after ~870 levels on a 2 MB thread (1.2 KB a level, cold) — then the exact reading grants the rest | never, while the stack has room: a 1000-level program on a default thread switches **zero** times |
 | JVM 17–25 **without** the flag (a library on a classpath, by default) | counted: the VM's default thread stack over a cold level, halved for the caller | ~870 levels | one switch per ~870 levels on the caller's stack, then ~500 000 per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
 | Scala Native | exactly, from the runtime's own thread info, always | 64 levels | as the JVM's |
 | Scala.js | not at all: no thread to switch to | — | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
