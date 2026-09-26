@@ -56,8 +56,25 @@ val rows = Flows.collect(ParquetSource.flow[Visit](plan)).runWith
 ```
 
 Deletion vectors, column mapping and v2 checkpoints are refused by name
-— reading past them would return wrong rows. Iceberg and Hudi are next
-(backlog: lake-iceberg, lake-hudi).
+— reading past them would return wrong rows.
+
+**An Iceberg table as the source.** `IcebergSource.plan(lake,
+metadataKey, root)` reads the table's metadata JSON, its current
+snapshot's manifest list and manifests (Avro), and plans the live data
+files; `root` is the URI the lake's keys are relative to (`s3://bucket`,
+`file:///dir`), since Iceberg's metadata holds absolute paths:
+
+```scala
+val plan = IcebergSource.plan(lake, metadata, root)
+```
+
+Delete files (position or equality deletes) and non-Parquet data files
+are refused by name. Columns are read by name, not Iceberg's field ids —
+a table whose columns were renamed after its files were written misses
+them. Avro is read by ours (`OkayAvro`, the default) or Apache Avro's
+(`import okay.lake.ApacheAvro.given`, an optional dependency); both give
+the same records for pyiceberg's manifests. Hudi is next (backlog:
+lake-hudi).
 
 **SQL over the output: DuckDB, by the manifest.** An analyst's DuckDB
 reads exactly what a run made visible — the manifest's objects, never a

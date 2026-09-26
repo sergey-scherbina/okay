@@ -53,6 +53,7 @@ and now the norm:
 | `okay.arrow.ArrowCodec` | `OkayArrow` | `ApacheArrow.given` (Arrow Java 19, optional) | JVM (ours everywhere) |
 | `okay.compress.Compression` | `Compression.Okay` (`Lz4Frame`, `Zstd`, `Snappy`) | `Aircompressor.given` (io.airlift:aircompressor 2.0.3, optional) | JVM (ours everywhere) |
 | `okay.parquet.ParquetCodec` | `OkayParquet` | `ParquetJava.given` (parquet-hadoop 1.16.0 + hadoop-client-api, optional) | JVM (ours everywhere) |
+| `okay.lake.AvroReader` | `OkayAvro` | `ApacheAvro.given` (org.apache.avro:avro 1.12.1, optional) | JVM |
 | `okay.crypto.Keccak` | `Keccak.Okay` (`Keccak256`) | `BouncyCastleKeccak.given` (bcprov 1.78.1, optional) | JVM (ours on JVM and JS) |
 
 Consumers made transparent with them: okay-arrow's compressed bodies

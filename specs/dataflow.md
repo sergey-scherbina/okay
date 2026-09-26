@@ -326,13 +326,13 @@ Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro):
       the table's schema
 - [x] deletion vectors, column mapping and v2 checkpoints are refused by
       name, never read wrongly
-- [ ] an ICEBERG table's current snapshot — its metadata JSON, the
+- [x] an ICEBERG table's current snapshot — its metadata JSON, the
       manifest list and manifests (Avro object container files) — becomes
       the row-group plan; a file an overwrite or delete dropped is not read;
       the rows equal what pyiceberg reads (TestIceberg)
-- [ ] delete files (position or equality deletes), non-Parquet data files
+- [x] delete files (position or equality deletes), non-Parquet data files
       and an Avro codec this reader does not have are refused by name
-- [ ] Avro is read by ours (`OkayAvro`) or Apache Avro's
+- [x] Avro is read by ours (`OkayAvro`) or Apache Avro's
       (`ApacheAvro.given`, optional), each giving the same records for
       pyiceberg's manifests (specs/own-or-standard.md)
 
@@ -1544,6 +1544,23 @@ the two commits after it; the plan holds no removed file, and the rows
 equal delta-rs's own count and sum, every row's partition value its
 own. The mutant that ignores `remove` puts a removed file in the plan.
 Iceberg (Avro manifests) and Hudi are filed: lake-iceberg, lake-hudi.
+
+**Iceberg followed the same day (lake-iceberg).** pyiceberg 0.12 with a
+SQLite catalog wrote the gate's table: two appends, a delete that
+rewrote files as the LAST snapshot. The plan holds exactly pyiceberg's
+current files and none of the removed ones; the rows equal pyiceberg's
+count and sum. Our Avro reader and Apache Avro's give the same records
+for every manifest list and manifest the table has — deflate blocks,
+named nested records, unions. The first run "hung" for fifteen minutes:
+it was the bench-window protocol holding the gate behind queued
+benchmarks, as designed, not the reader.
+
+**The mutant found a test that tested nothing.** Planning every manifest
+entry, DELETED ones included, passed the first version of the test: its
+table ended with an append, and pyiceberg's fast append carries the
+live entries only, so no DELETED entry was left to skip. The table now
+ends with the delete, and the test asserts the current snapshot HOLDS a
+DELETED entry before believing the plan skipped it.
 
 ### Stage 17 — objects and Parquet (2026-09-26)
 

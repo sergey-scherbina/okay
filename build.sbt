@@ -2696,6 +2696,9 @@ lazy val okayLake = (project in file("okay-lake"))
       "org.scalameta" %% "munit" % "1.1.1" % Test,
       // DuckDB reading a run's output through its manifest (duckdb-lake-reads)
       "org.duckdb" % "duckdb_jdbc" % "1.3.2.0" % Test,
+      // Avro's standard implementation behind `ApacheAvro.given`, OPTIONAL
+      // for consumers (lake-iceberg; specs/own-or-standard.md)
+      "org.apache.avro" % "avro" % "1.12.1" % "optional;test",
     ),
     Test / fork := true,
   )
