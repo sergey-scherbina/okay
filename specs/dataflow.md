@@ -316,7 +316,7 @@ not against its existence):
       exchange to push below yet, so this box could only have been
       checked by a test that asserts nothing
 
-Stage 18 — table formats as sources (TestDelta):
+Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro):
 - [x] a Delta table's snapshot is read from `_delta_log` — the last
       checkpoint (nested Parquet) and the JSON commits after it — with no
       Hadoop; its live data files become the row-group plan
@@ -326,6 +326,15 @@ Stage 18 — table formats as sources (TestDelta):
       the table's schema
 - [x] deletion vectors, column mapping and v2 checkpoints are refused by
       name, never read wrongly
+- [ ] an ICEBERG table's current snapshot — its metadata JSON, the
+      manifest list and manifests (Avro object container files) — becomes
+      the row-group plan; a file an overwrite or delete dropped is not read;
+      the rows equal what pyiceberg reads (TestIceberg)
+- [ ] delete files (position or equality deletes), non-Parquet data files
+      and an Avro codec this reader does not have are refused by name
+- [ ] Avro is read by ours (`OkayAvro`) or Apache Avro's
+      (`ApacheAvro.given`, optional), each giving the same records for
+      pyiceberg's manifests (specs/own-or-standard.md)
 
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
 - [x] a prefix of Parquet objects is planned as one partition per row
@@ -1010,6 +1019,13 @@ a way to start from a known mark rather than from nothing.
   What the replay cannot honour it refuses by name: a deletion vector
   would silently resurrect deleted rows, column mapping would read the
   wrong columns.
+- **Avro is read by our own reader, behind a facade** (lake-iceberg,
+  2026-09-26). Iceberg's manifests are Avro object container files; the
+  Apache library reads them and pulls Jackson and its own codecs into a
+  worker. Ours is the default (`OkayAvro`: the object container, the
+  binary encoding, deflate/snappy/zstd blocks), Apache Avro's is
+  `ApacheAvro.given` over an optional dependency, and the test reads
+  pyiceberg's manifests with both — the own-or-standard rule's shape.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
