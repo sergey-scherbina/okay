@@ -603,6 +603,59 @@ with the same interfaces about 2.5 ns — the effect row still costs
 something over an interface call, now a factor of about 2.4 rather
 than 9.
 
+## 2e. Unbounded mutual recursion — the trampolines and the roads that are not
+
+The task plain JVM code cannot do at all: `isEven` calls `isOdd` calls
+`isEven`, 1 000 000 deep. The JVM has no tail calls, so the direct
+version overflows (the trial setup proves it on the benchmark thread),
+and every lane brings its own machinery (compare
+`MutualRecursionBenchmark`, stack-safe-mutual-recursion, 2026-09-26).
+**PARTIAL:** the run was stopped by the operator after round 2 of the
+plain lanes and round 1 of the effects lanes, to free the box for the
+performance fixes; the numbers below are minima of what ran, the
+number of rounds beside each, every run through `jmh-lane.sh` and
+discarded when the box got busy during it.
+
+Per level, lower better:
+
+| road | time | bytes | rounds |
+|---|---:|---:|---:|
+| state machine, a `while` loop (the floor: what a compiler with tail calls emits) | 0.50 ns | 0 | 2 |
+| **the direct recursion on a thread with a 1 GB stack** | **1.51 ns** | 0 | 2 |
+| hand-written trampoline (`Done`/`More`) | 1.90 ns | 32 | 2 |
+| cats `Eval.defer` | 1.91 ns | 32 | 2 |
+| `scala.util.control.TailCalls` | 1.92 ns | 32 | 2 |
+| okay `Cont.delay` | 2.16 ns | 32 | 1 |
+| okay `!.tailcall` (Free) | 2.26 ns | 40 | 1 |
+| ZIO `suspendSucceed` | 4.17 ns | 56 | 2 |
+| `Iterator.iterate` (no recursion left: a stepped state) | 5.55 ns | 40 | 1 |
+| kyo `IO` | 8.35 ns | 88 | 2 |
+| cats `IO.defer` | 8.89 ns | 64 | 2 |
+| virtual threads as stack segments, a hop every 1 000 levels | 15.2 ns | 13 | 2 |
+| Cheney on the M.T.A., a stackless exception every 1 000 levels | 15.3 ns | 0 | 1 |
+
+okay's two trampolines sit with cats `Eval` and the hand-written one —
+one small object a level, 32–40 B — and ahead of the effect runtimes
+(ZIO 1.9x, kyo 3.8x, cats IO 4x). The fastest road that is not a state
+machine is the plain recursion on a big stack, bounded by memory
+rather than by -Xss; the two "unwind the stack" roads (an exception, a
+virtual-thread hop) pay about 15 µs per 1 000 levels each.
+
+**With effects** (`MutualRecursionFxBenchmark`, round 1): a counter
+every level and a log line every 1 000th, as interfaces passed in on
+every road (the calls inside each road's own suspension), and in okay
+also as a row. State machine 0.43 ns; the 1 GB stack 2.1 ns; cats
+`Eval` 2.5 ns; hand trampoline and `TailCalls` 3.1 ns; okay `!.tailcall`
+with the interfaces 4.0 ns; ZIO about 5.7 and kyo about 13 (both runs
+flagged noisy); cats `IO` 9.9 ns. okay with the effects IN THE TYPE
+read 35 ns and 376 B a level here — which is what effect-row-recursion-cost
+took apart and fixed (§2d: 18.2 ns as written, 9.7 ns with the frequent
+effect innermost).
+
+Not measured: `jdk.internal.vm.Continuation` (not a public API), and
+compiler tail calls — `@tailrec` and Kotlin `tailrec` take
+self-recursion only, and merging the pair by hand IS the state machine.
+
 ## 3. Choice — 2^13 branches, all collected
 
 | List (floor) | **Okay** | kyo | atnos |
