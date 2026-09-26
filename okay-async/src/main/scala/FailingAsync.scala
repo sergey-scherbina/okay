@@ -72,7 +72,27 @@ object AsyncFailing extends FailingLow:
       // a release that throws must not REPLACE the failure being
       // reported: it is suppressed on it (release-all-finalizers)
       case Async.Run(f) => Async.Run(() => try f() catch { case t: Throwable => failed(t, onFailure); throw t })
-      case Async.Await(reg) => Async.Await(k => reg { r => r.left.foreach(failed(_, onFailure)); k(r) })
+      case Async.Await(reg) => Async.Await { k =>
+        // a CANCELLED wait is a failure too (cancel-releases-resource,
+        // 2026-09-26): both schedulers cancel a parked Await through the
+        // canceller its registration answered with (`CanBlock.block` on
+        // an interrupt, the callback drive's `unregister`), and a scope
+        // waiting there will never continue, as ZIO's interruption.
+        // Released ONCE across the three doors, and only while the wait
+        // is still open: the callback drive keeps the canceller of an
+        // Await that has already ANSWERED and calls it on a later cancel,
+        // when the scope is still running.
+        val answered = java.util.concurrent.atomic.AtomicBoolean(false)
+        val released = java.util.concurrent.atomic.AtomicBoolean(false)
+        val cancel = reg { r =>
+          answered.set(true)
+          r.left.foreach(t => if !released.getAndSet(true) then failed(t, onFailure))
+          k(r)
+        }
+        () =>
+          cancel()
+          if !answered.get && !released.getAndSet(true) then onFailure()
+      }
 
   private def failed(cause: Throwable, onFailure: () => Unit): Unit =
     try onFailure()

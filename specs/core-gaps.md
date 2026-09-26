@@ -396,3 +396,32 @@ during a failure its exception REPLACED the program's. `bracketNow`'s
       failing Async step
 - [x] watched RED before the change: the first four tests (the Async one
       was written together with its fix)
+
+## Stage 7 — cancel-releases-resource (2026-09-26)
+
+In ZIO, a timeout or a lost race INTERRUPTS the fiber, and interruption
+runs every finalizer. The test asked the same of us, and two cases failed
+first: a `bracket` whose `use` was parked on an `Await` (`Async.sleep`)
+leaked its resource when `Async.timeout` cancelled it, and again when it
+lost an `Async.race`. Cancelling a parked wait called the canceller its
+registration answered with, and nothing else. The scope waiting there
+could never continue, and its finalizers went with it.
+
+- The Async `Failing` guard now wraps the Await's CANCELLER too.
+  Cancelling an open wait releases the scope, once across all three
+  doors (answer Left, thrown Run, cancel). It does not release after the
+  wait has ANSWERED: the callback drive keeps that canceller and calls it
+  on a later cancel, when the scope is still running.
+- A `use` blocked inside a `Run` (`Thread.sleep`) was already released by
+  the interrupt the virtual-thread fiber takes. The same test pins it.
+
+- [x] timeout around a `use` parked on an Await: released (watched RED)
+- [x] timeout around a `use` blocked in a Run: released
+- [x] a `bracket` losing a race: released (watched RED)
+
+What stays open: the callback drive (`Drive`, JS and `Schedulers.own`)
+stops BETWEEN two operations when cancelled while running non-blocking
+code, and the residual it drops is not discontinued. The next wait would
+have released the scope, but the drive never reaches it. A virtual-thread
+fiber (the JVM default) takes that cancel as an interrupt at its next
+blocking point, which does release it.

@@ -89,6 +89,26 @@ class TestAsync extends munit.FunSuite {
     assert((System.nanoTime() - t0) / 1e9 < 3, "the sleeper did not hold us")
   }
 
+  test("a bracket cancelled by timeout releases its resource, as ZIO's interruption does") {
+    import java.util.concurrent.{CountDownLatch, TimeUnit}
+    val parked = CountDownLatch(1)
+    val onAwait = bracket("r")(_ => parked.countDown())(_ => Async.sleep(5000).map(_ => 1))
+    assertEquals(Async.timeout(50)(onAwait).runWith, None)
+    assert(parked.await(2, TimeUnit.SECONDS), "a use parked on an Await leaked its resource when cancelled")
+    val blocked = CountDownLatch(1)
+    val onRun = bracket("r")(_ => blocked.countDown())(_ => async { Thread.sleep(5000); 1 })
+    assertEquals(Async.timeout(50)(onRun).runWith, None)
+    assert(blocked.await(2, TimeUnit.SECONDS), "a use blocked in a Run leaked its resource when cancelled")
+  }
+
+  test("a bracket that loses a race releases its resource") {
+    import java.util.concurrent.{CountDownLatch, TimeUnit}
+    val lost = CountDownLatch(1)
+    val slow = bracket("r")(_ => lost.countDown())(_ => Async.sleep(5000).map(_ => "slow"))
+    assertEquals(Async.race(slow, async("fast")).runWith, "fast")
+    assert(lost.await(2, TimeUnit.SECONDS), "the race's loser leaked its resource")
+  }
+
   test("joinEither: a fiber's failure comes back as a value") {
     assertEquals(Async.spawn(async(7)).joinEither(), Right(7))
     val boom = RuntimeException("boom")
