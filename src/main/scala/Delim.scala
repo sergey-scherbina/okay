@@ -819,6 +819,11 @@ object Delim {
     /** the first hole of a copy: where its head goes, one per capture */
     final class Head[F[+_], A, E] extends Hole[F, A, E](null)
 
+  /** a delimiter's frame IS itself: identity makes a chain's input type
+   * the found frame's, the axiom prompts use (`Same`). One instance for
+   * every machine: a frame's other two types do not take part */
+  private val segSame: Same[[X] =>> Segs[?, X, ?]] = Same.byIdentity[[X] =>> Segs[?, X, ?]]
+
   /** the copy of a `Watch` a capture takes with it: a FRESH count, one
    * per capture, so the count is "runs of this captured context"
    * (`Shots`). A plain `Ret` is copied as it is: nothing in it is
@@ -934,23 +939,61 @@ object Delim {
         case r: Segs.Watch[F, X, x, Z] => go(r.rest, r.p.label :: acc)
       go(kont, Nil)
 
-    /** a delimiter's frame IS itself: identity makes a chain's input
-     * type the found frame's, the axiom prompts use (`Same`) */
-    val sameSeg: Same[[X] =>> Segs[F, X, R]] = Same.byIdentity[[X] =>> Segs[F, X, R]]
-
     /** cut the chain at the delimiter of p: the delimiter's prompt IS
      * p by identity, and Same's witness makes its type P's.
      *
      * LOOPS, not recursion (specs/stack-safety.md): a shift under
      * 20 000 other delimiters overflowed the recursive version, which
-     * rebuilt the prefix on the way back up. TWO of them
-     * (delim-split-wrap-free): `find` walks to the delimiting frame and
-     * allocates nothing; `copyTo` copies the prefix FRONT TO BACK, each
-     * copy's `rest` set once into the hole the previous copy left. The
-     * first loop version pushed a frame closure and a node per segment
-     * onto a type-aligned stack and unwound it, +32 B per capture on
-     * delimGenerator. */
+     * rebuilt the prefix on the way back up (delim-split-wrap-free):
+     * the prefix is copied FRONT TO BACK, each copy's `rest` set once
+     * into the hole the previous copy left. A plain mark, the hot
+     * case, is ONE pass (`copyPlain`); a dollar or a missing delimiter
+     * takes two (`find`, then `copyTo`). The first loop version pushed
+     * a frame closure and a node per segment onto a type-aligned stack
+     * and unwound it, +32 B per capture on delimGenerator. */
     def split[A, P](kont: Segs[F, A, R], p: Prompt[P]): Cut[F, A, P, R] =
+      val head = Segs.Head[F, A, P]()
+      val outer = copyPlain(kont, head, p)
+      if outer ne null then Plain(head.rest, outer)
+      else splitSlow(kont, p)
+
+    /** THE HOT PATH, one pass: copy while walking, for a plain mark.
+     * The copy's end type is the prompt's P from the start, so the
+     * mark's own witness (`===`) closes it and no identity claim is
+     * needed. Null when the walk ends anywhere else — at a dollar of
+     * p (whose captured part answers the body's type, not P) or at no
+     * delimiter at all — and the copy made so far is dropped. */
+    @tailrec def copyPlain[X, P](cur: Segs[F, X, R], hole: Hole[F, X, P], p: Prompt[P]): Segs[F, P, R] = cur match
+      case k: Segs.K[F, X, y, R] =>
+        val c = Segs.K[F, X, y, P](k.f, null)
+        hole.rest = c
+        copyPlain(k.rest, c, p)
+      case m: Segs.Mark[F, X, R] =>
+        (m.p === p) match
+          case Some(ev) =>
+            hole.rest = ev.liftCo[[t] =>> Segs[F, X, t]](Segs.Done[F, X]())
+            ev.liftCo[[t] =>> Segs[F, t, R]](m.rest)
+          case None =>
+            val c = Segs.Mark[F, X, P](m.p, null)
+            hole.rest = c
+            copyPlain(m.rest, c, p)
+      case r: Segs.Ret[F, X, x, R] =>
+        if r.p eq p then null
+        else
+          val c = Segs.Ret[F, X, x, P](r.p, r.ret, null)
+          hole.rest = c
+          copyPlain(r.rest, c, p)
+      case Segs.Done() => null
+      case r: Segs.Watch[F, X, x, R] =>
+        if r.p eq p then null
+        else
+          val c = retake[F, X, x, P](r, null)
+          hole.rest = c
+          copyPlain(r.rest, c, p)
+
+    /** a dollar of p, or no delimiter: find the frame, then copy up to
+     * it (`copyTo`), its end type claimed by the frame's identity */
+    def splitSlow[A, P](kont: Segs[F, A, R], p: Prompt[P]): Cut[F, A, P, R] =
       find(kont, p) match
         case m: Segs.Mark[F, x, R] =>
           (m.p === p) match
@@ -990,7 +1033,7 @@ object Delim {
 
     @tailrec def fill[X, E](cur: Segs[F, X, R], hole: Hole[F, X, E], stop: Segs[F, E, R]): Unit =
       if cur eq stop then
-        sameSeg.same(cur, stop) match
+        segSame.same(cur, stop) match
           case Some(ev) => hole.rest = ev.flip.liftCo[[t] =>> Segs[F, t, E]](Segs.Done[F, E]())
           case None => ()
       else cur match
