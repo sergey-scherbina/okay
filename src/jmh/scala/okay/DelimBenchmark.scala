@@ -168,6 +168,8 @@ class DelimBenchmark {
     val op = [X] => (e: okay.State[Int, X]) => (e match
       case okay.State.Get() => Delim.shift0[Ans, Int, Pure](p)(k => pure((s: Int) => k(s).flatMap(f => f(s))))
       case okay.State.Set(s1) => Delim.shift0[Ans, Int, Pure](p)(k => pure((_: Int) => k(s1).flatMap(f => f(s1))))
+      // State.Modify since effect-row-recursion-cost; stateProg performs none
+      case okay.State.Modify(f1) => Delim.shift0[Ans, Int, Pure](p)(k => pure((s: Int) => { val s1 = f1(s); k(s1).flatMap(f => f(s1)) }))
     ): X ! Row
     val ret: Int => Ans ! Row = a => pure((s: Int) => pure((s, a)))
     !.run(Delim.run[(Int, Int), Pure](Delim.dollar[Int, Ans, Pure](p)(ret)(rewriteState(op)(stateProg(N))).flatMap(f => f(0))))._2
@@ -179,6 +181,7 @@ class DelimBenchmark {
     val op = [X] => (e: okay.State[Int, X]) => (e match
       case okay.State.Get() => Delim.control0[Ans, Int, Pure](p)(k => pure((s: Int) => push[Ans, Pure](p)(k(s)).flatMap(f => f(s))))
       case okay.State.Set(s1) => Delim.control0[Ans, Int, Pure](p)(k => pure((_: Int) => push[Ans, Pure](p)(k(s1)).flatMap(f => f(s1))))
+      case okay.State.Modify(f1) => Delim.control0[Ans, Int, Pure](p)(k => pure((s: Int) => { val s1 = f1(s); push[Ans, Pure](p)(k(s1)).flatMap(f => f(s1)) }))
     ): X ! Row
     val body = rewriteState(op)(stateProg(N)).map(a => (s: Int) => pure[Row, (Int, Int)]((s, a)))
     !.run(Delim.run[(Int, Int), Pure](push[Ans, Pure](p)(body).flatMap(f => f(0))))._2
