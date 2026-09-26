@@ -561,6 +561,28 @@ writes, a mutable buffer, the gap is 11x and 20x, and most of the
 buffer's lead is the log, not the control flow: the 300 immutable
 appends are about 2.1 µs of the `Vector` loop's 2.8, some 7 ns each.
 
+**And against an ordinary interface** (handlers-vs-virtual-calls,
+2026-09-26): the same 1 000 operations through an abstract class whose
+`get`/`set`/`tell` are virtual methods — the handler as dependency
+injection. MONO is one subclass (C2 inlines the calls); MEGA is four
+identical subclasses rotated per invocation, so every call site sees
+four receivers and stays a vtable call (the JIT's inlining log says
+"failed to inline: virtual call" at each). ONE round, stopped by the
+operator; the rows it has:
+
+| lane | µs/op | ns per operation | B/op |
+|---|---:|---:|---:|
+| `virtualMonoBuffer` — one subclass, mutable log | 0.605 | 0.6 | 4 192 |
+| `virtualMegaBuffer` — four subclasses, mutable log | 1.43 | 1.4 | 4 216 |
+| `virtualMegaVector` — four subclasses, `Vector` log | 4.19 | 4.2 | 34 160 |
+| `virtualMonoVector` | — | — | every attempt discarded, the box got busy |
+
+A megamorphic virtual call costs under a nanosecond an operation over
+the plain loop; the staged handler's 7.8 ns is several of those. That
+is the honest gap between "an interface passed in" and "an effect in
+the type": the handler is a program the runner walks, where the
+interface is a call the CPU predicts.
+
 So effect handlers here are not "goto speed". Compilers that own the
 language — Koka's evidence passing (Xie & Leijen, ICFP 2021), OCaml
 5's fibers — turn a tail-resumptive handler into an ordinary call; a
