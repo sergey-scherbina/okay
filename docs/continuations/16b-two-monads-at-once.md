@@ -277,11 +277,10 @@ def deliveryFee(shop: String): Delivered[Int] =
 There is no ordering to agree on. Call both in one expression:
 
 ```text
-val p: Choices[(String, Int)] =
-  for
-    fee          <- CatsDelivery.deliveryFee("north")
-    (tea, price) <- CatsDelivery.priceOf("north", "tea")
-  yield (tea, price + fee)
+for
+  fee          <- CatsDelivery.deliveryFee("north")
+  (tea, price) <- CatsDelivery.priceOf("north", "tea")
+yield (tea, price + fee)
 ```
 
 and it does not compile:

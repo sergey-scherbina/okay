@@ -364,11 +364,10 @@ class TestBookTwoMonadsCats extends munit.FunSuite:
 
   test("DELIVERY: team A's helper (List + Either) and team B's (Option + Either) do not compose in one expression") {
     val e = compileErrors("""
-      val p: bookcats.CatsDelivery.Choices[(String, Int)] =
-        for
-          fee          <- bookcats.CatsDelivery.deliveryFee("north")
-          (tea, price) <- bookcats.CatsDelivery.priceOf("north", "tea")
-        yield (tea, price + fee)
+      for
+        fee          <- bookcats.CatsDelivery.deliveryFee("north")
+        (tea, price) <- bookcats.CatsDelivery.priceOf("north", "tea")
+      yield (tea, price + fee)
     """)
     assert(e.contains("Found:    cats.data.EitherT[List, String, (String, Int)]"), e)
     assert(e.contains("Required: cats.data.OptionT[bookcats.CatsDelivery.Checked, B]"), e)
