@@ -316,7 +316,7 @@ not against its existence):
       exchange to push below yet, so this box could only have been
       checked by a test that asserts nothing
 
-Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro):
+Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro, TestHudi):
 - [x] a Delta table's snapshot is read from `_delta_log` — the last
       checkpoint (nested Parquet) and the JSON commits after it — with no
       Hadoop; its live data files become the row-group plan
@@ -335,6 +335,15 @@ Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro):
 - [x] Avro is read by ours (`OkayAvro`) or Apache Avro's
       (`ApacheAvro.given`, optional), each giving the same records for
       pyiceberg's manifests (specs/own-or-standard.md)
+- [ ] a HUDI copy-on-write table (timeline layout 1 or 2) becomes the
+      row-group plan: per file group the latest base file of a COMPLETED
+      commit, file groups a completed replacecommit replaced dropped,
+      files older than the active timeline taken as committed (TestHudi,
+      Live: written by Hudi 1.2.1 on Spark 4.1 through pyspark)
+- [ ] an upsert's older file slice, an inflight instant's file and a
+      replaced file group are not read; the rows equal Hudi's own read
+- [ ] merge-on-read is refused by name (its log files hold rows the base
+      files do not)
 
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
 - [x] a prefix of Parquet objects is planned as one partition per row
