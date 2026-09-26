@@ -35,8 +35,9 @@ Ours is the default everywhere; parquet-java is `import
 okay.parquet.ParquetJava.given` on the JVM, over an optional dependency
 (`org.apache.parquet:parquet-hadoop` with Hadoop's client API — no
 Hadoop file system is touched). Each reads the other's files: the tests
-write with one and read with the other, both ways, and read what
-pyarrow writes (data page v1 and v2, dictionary or plain, Snappy, ZSTD,
+write with one and read with the other, both ways, read what DuckDB
+writes (its dictionaries, its DECIMALs) and have DuckDB read ours, and
+read what pyarrow writes (data page v1 and v2, dictionary or plain, Snappy, ZSTD,
 none) and have pyarrow read ours. `Parquets.byName("okay" |
 "parquet-java")` picks one from a config value.
 

@@ -36,6 +36,18 @@ final case class Written(key: String, rows: Long, bytes: Long)
 final case class Manifest(files: Vector[Written]):
   def rows: Long = files.map(_.rows).sum
 
+  /**
+   * THE RUN'S VISIBLE OUTPUT AS A DUCKDB TABLE (duckdb-lake-reads):
+   * `read_parquet([...])` of exactly the manifest's objects under `root`
+   * (`s3://bucket` with DuckDB's httpfs, or the directory a `Fs` lake
+   * lives in). Never a glob: a glob over `_data/` reads what a racing or
+   * lost writer left there, and the manifest is what the commit made
+   * visible.
+   */
+  def duckdb(root: String): String =
+    if files.isEmpty then throw IllegalStateException("an empty manifest names nothing for DuckDB to read")
+    files.map(f => "'" + s"${root.stripSuffix("/")}/${f.key}".replace("'", "''") + "'").mkString("read_parquet([", ", ", "])")
+
 object LakePlan:
   given Schema[Part] = Schema.derived
   given Schema[LakePlan] = Schema.derived
@@ -47,6 +59,12 @@ object Manifest:
   given Schema[Manifest] = Schema.derived
   /** where a run's manifest lives under its prefix */
   def keyOf(prefix: String): String = s"$prefix/_manifest.json"
+
+  /** the manifest a run committed under `prefix`, if it has one */
+  def of(lake: String, prefix: String): Option[Manifest] =
+    Run(Lakes(lake).getBytes(keyOf(prefix))).toOption.map(json =>
+      Codecs.readJson[Manifest](String(json, "UTF-8"))
+        .fold(why => throw IllegalStateException(s"the manifest of '$prefix': $why"), identity))
 
 /** blocking reads of a lake: a flow's partition runs on its own thread */
 private[lake] object Run:

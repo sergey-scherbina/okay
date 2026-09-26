@@ -44,6 +44,19 @@ deletes anything else under `_data/`; a reader plans from the manifest.
 def sink(p: ScoreParams): Wire[Scored, Manifest] = ParquetSink.to[Scored](p.plan.lake, p.out, p.groupRows)
 ```
 
+**SQL over the output: DuckDB, by the manifest.** An analyst's DuckDB
+reads exactly what a run made visible — the manifest's objects, never a
+glob a late or lost writer could join:
+
+```scala
+s"select count(*), sum(score), count(distinct id) from ${m.duckdb(root(name))}")
+```
+
+where `m` is `Manifest.of(lake, prefix)` and the root is `s3://bucket`
+(DuckDB's httpfs with a secret for the store) or a lake's directory.
+DuckDB reads through okay-sql's `Sql` seam as `JdbcSql` does everywhere
+(specs/data.md); okay-parquet and DuckDB read each other's files.
+
 ## Gotchas
 
 - A batch run only (`Cluster.run`): a stream is refused by name, since a

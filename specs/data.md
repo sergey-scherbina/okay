@@ -294,9 +294,9 @@ list in its spec or spec section)
       exact scan v1 — an approximate index is a later, measured
       choice precisely because agreement is only testable while
       search is exact)
-- [ ] DuckDB and okay-parquet read each other's files, embedded
+- [x] DuckDB and okay-parquet read each other's files, embedded
       (duckdb-lake-reads, 2026-09-26; TestParquetDuckDb)
-- [ ] `Manifest.duckdb` points DuckDB at exactly a run's visible output
+- [x] `Manifest.duckdb` points DuckDB at exactly a run's visible output
       — its manifest's objects, never a glob a stray could join — and a
       Live MinIO read through the seam equals the run
       (TestLakeDuckDb)

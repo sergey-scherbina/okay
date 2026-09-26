@@ -92,9 +92,42 @@ trait LakeSuite extends munit.FunSuite:
     assert(Iterator.iterate(e)(_.getCause).takeWhile(_ != null).exists(_.getMessage.contains("batch run")), e.toString)
   }
 
+  /** where DuckDB finds a lake's objects: `s3://bucket`, or a directory */
+  def root(name: String): String
+  /** a DuckDB connection that can read `root` */
+  def duck(): java.sql.Connection = java.sql.DriverManager.getConnection("jdbc:duckdb:")
+
+  test("DuckDB reads exactly a run's visible output through its manifest, never a stray") {
+    val name = lake()
+    val _ = inputs(name)
+    val plan = ParquetSource.plan(name, "in")
+    Faults.arm(-1)
+    val got = Cluster.run(ScoreJob, ScoreParams(plan, "out", 10000), plan.parts.length, Vector.fill(2)(Cluster.local)).runWith
+    // a writer racing the reader drops an object AFTER the commit: a glob
+    // would read it, the manifest does not name it
+    Run(blob(name).putBytes("out/_data/late.parquet",
+      OkayParquet.write(Rows.table(Vector(Scored(-1, "late", 1e9)))))): Unit
+    val m = Manifest.of(name, "out").getOrElse(fail("no manifest"))
+    assertEquals(m, got.value)
+    val c = duck()
+    try
+      val rs = c.createStatement().executeQuery(
+        s"select count(*), sum(score), count(distinct id) from ${m.duckdb(root(name))}")
+      rs.next(): Unit
+      assertEquals(rs.getLong(1), got.value.rows)
+      assertEquals(rs.getLong(3), got.value.rows, "a row twice")
+      val expected = (0L until objects.toLong * rowsPer).map(i => ScoreJob.score(trip(i))).sum
+      assertEqualsDouble(rs.getDouble(2), expected, math.abs(expected) * 1e-9)
+    finally c.close()
+  }
+
 /** the battery over a directory: the default gate */
 class TestLake extends LakeSuite:
+  private val dirs = scala.collection.mutable.Map.empty[String, java.nio.file.Path]
   def lake(): String =
     val name = s"fs-${System.nanoTime()}"
-    Lakes.register(name, okay.blob.Fs(java.nio.file.Files.createTempDirectory("okay-lake")))
+    val dir = java.nio.file.Files.createTempDirectory("okay-lake")
+    dirs.update(name, dir)
+    Lakes.register(name, okay.blob.Fs(dir))
     name
+  def root(name: String): String = dirs(name).toString

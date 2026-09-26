@@ -2679,6 +2679,8 @@ lazy val okayParquet = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.apache.hadoop" % "hadoop-client-api" % "3.4.1" % "optional;test",
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.1" % "optional;test",
       "io.airlift" % "aircompressor" % "2.0.3" % Test,
+      // a third oracle, embedded: DuckDB reads ours and writes for ours
+      "org.duckdb" % "duckdb_jdbc" % "1.3.2.0" % Test,
     ),
     Test / fork := true,
   )
@@ -2690,7 +2692,11 @@ lazy val okayLake = (project in file("okay-lake"))
   .dependsOn(okayCluster.jvm % "compile->compile;test->test", okayBlob.jvm, okayParquet.jvm)
   .settings(
     name := "okay-lake",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      // DuckDB reading a run's output through its manifest (duckdb-lake-reads)
+      "org.duckdb" % "duckdb_jdbc" % "1.3.2.0" % Test,
+    ),
     Test / fork := true,
   )
 

@@ -38,3 +38,18 @@ class TestLakeS3 extends LakeSuite:
     assert(r.ok, s"bucket create: HTTP ${r.status}")
     Lakes.register(bucket, S3(http, "http://127.0.0.1:9000", bucket, "us-east-1", creds))
     bucket
+
+  def root(name: String): String = s"s3://$name"
+
+  /** DuckDB with httpfs and a secret for the MinIO — the extension is
+   * DuckDB's own download, so a box that cannot fetch it skips */
+  override def duck(): java.sql.Connection =
+    val c = super.duck()
+    val st = c.createStatement()
+    try st.execute("install httpfs; load httpfs")
+    catch case e: java.sql.SQLException =>
+      c.close()
+      assume(false, s"DuckDB's httpfs extension is not available here: ${e.getMessage}")
+    st.execute("create secret (type s3, key_id 'minioadmin', secret 'minioadmin', " +
+      "endpoint '127.0.0.1:9000', url_style 'path', use_ssl false, region 'us-east-1')")
+    c
