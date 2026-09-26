@@ -8,8 +8,8 @@ import okay.Row.at
  * stack-safe-mutual-recursion, with effects (2026-09-26): the SAME
  * unbounded mutual tail recursion as MutualRecursionBenchmark
  * (isEven/isOdd, N = 1 000 000), now doing work on the way — every
- * level counts itself on a `Counter`, and every 1 000th level writes a
- * line to a `Logger`. On the JVM roads those are plain interfaces
+ * level counts itself on a `Metrics`, and every 1 000th level writes a
+ * line to a `AppLog`. On the JVM roads those are plain interfaces
  * passed as parameters, the way a service gets its logger and metrics;
  * the calls go INSIDE each road's own suspension (the trampoline's
  * thunk, `Eval.defer`, `IO.defer`, `ZIO.suspendSucceed`, kyo's `IO`,
@@ -37,7 +37,7 @@ class MutualRecursionFxBenchmark {
 
   @Benchmark
   def stateMachine(): Answer =
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     var n = N
     var even = true
     while n != 0 do
@@ -48,29 +48,29 @@ class MutualRecursionFxBenchmark {
 
   @Benchmark
   def handTrampoline(): Answer =
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     Answer(Bounce.run(Bounce.even(N, c, l)), c.count, l.lines)
 
   @Benchmark
   def scalaTailCalls(): Answer =
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     Answer(TC.even(N, c, l).result, c.count, l.lines)
 
   @Benchmark
   def catsEval(): Answer =
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     Answer(CatsEval.even(N, c, l).value, c.count, l.lines)
 
   @Benchmark
   def catsIO(): Answer =
     import cats.effect.unsafe.implicits.global
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     Answer(CatsIO.even(N, c, l).unsafeRunSync(), c.count, l.lines)
 
   @Benchmark
   def zio(): Answer =
     import _root_.zio.*
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     val b = Unsafe.unsafe(implicit u => Runtime.default.unsafe.run(Zio.even(N, c, l)).getOrThrowFiberFailure())
     Answer(b, c.count, l.lines)
 
@@ -78,28 +78,28 @@ class MutualRecursionFxBenchmark {
   def kyoIO(): Answer =
     import _root_.kyo.*
     import AllowUnsafe.embrace.danger
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     Answer(IO.Unsafe.evalOrThrow(KyoIO.even(N, c, l)), c.count, l.lines)
 
   @Benchmark
   def bigStackThread(): Answer =
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     val call: java.util.concurrent.Callable[Boolean] = () => Direct.even(N, c, l)
     Answer(bigStack.submit(call).get(), c.count, l.lines)
 
   @Benchmark
   def exceptionUnwind(): Answer =
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     Answer(Unwind.run(() => Unwind.even(N, 0, c, l)), c.count, l.lines)
 
   @Benchmark
   def vtSegments(): Answer =
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     Answer(Segments.even(N, 0, c, l), c.count, l.lines)
 
   @Benchmark
   def okayFree(): Answer =
-    val c = CounterImpl(); val l = LoggerImpl()
+    val c = MetricsImpl(); val l = AppLogImpl()
     Answer(!.run(OkayFree.even(N, c, l)), c.count, l.lines)
 
   @Benchmark
@@ -135,32 +135,32 @@ object MutualRecursionFxBenchmark {
   final case class Answer(even: Boolean, counted: Int, logged: Int)
 
   /** the effects as a service gets them: interfaces, passed in */
-  trait Counter { def inc(): Unit; def count: Int }
-  trait Logger { def log(line: String): Unit; def lines: Int }
-  final class CounterImpl extends Counter { private var c = 0; def inc(): Unit = c += 1; def count: Int = c }
-  final class LoggerImpl extends Logger {
+  trait Metrics { def inc(): Unit; def count: Int }
+  trait AppLog { def log(line: String): Unit; def lines: Int }
+  final class MetricsImpl extends Metrics { private var c = 0; def inc(): Unit = c += 1; def count: Int = c }
+  final class AppLogImpl extends AppLog {
     private val buf = scala.collection.mutable.ArrayBuffer.empty[String]
     def log(line: String): Unit = { val _ = buf.addOne(line) }
     def lines: Int = buf.size
   }
 
   /** what every level does before it recurses */
-  inline def step(n: Int, c: Counter, l: Logger): Unit =
+  inline def step(n: Int, c: Metrics, l: AppLog): Unit =
     c.inc()
     if n % 1000 == 0 then l.log(s"level $n")
 
   object Direct {
-    def even(n: Int, c: Counter, l: Logger): Boolean = if n == 0 then true else { step(n, c, l); odd(n - 1, c, l) }
-    def odd(n: Int, c: Counter, l: Logger): Boolean = if n == 0 then false else { step(n, c, l); even(n - 1, c, l) }
+    def even(n: Int, c: Metrics, l: AppLog): Boolean = if n == 0 then true else { step(n, c, l); odd(n - 1, c, l) }
+    def odd(n: Int, c: Metrics, l: AppLog): Boolean = if n == 0 then false else { step(n, c, l); even(n - 1, c, l) }
   }
 
   sealed trait Bounce
   object Bounce {
     final case class Done(b: Boolean) extends Bounce
     final case class More(next: () => Bounce) extends Bounce
-    def even(n: Int, c: Counter, l: Logger): Bounce =
+    def even(n: Int, c: Metrics, l: AppLog): Bounce =
       if n == 0 then Done(true) else More(() => { step(n, c, l); odd(n - 1, c, l) })
-    def odd(n: Int, c: Counter, l: Logger): Bounce =
+    def odd(n: Int, c: Metrics, l: AppLog): Bounce =
       if n == 0 then Done(false) else More(() => { step(n, c, l); even(n - 1, c, l) })
     def run(b: Bounce): Boolean =
       var cur = b
@@ -175,52 +175,52 @@ object MutualRecursionFxBenchmark {
 
   object TC {
     import scala.util.control.TailCalls.*
-    def even(n: Int, c: Counter, l: Logger): TailRec[Boolean] =
+    def even(n: Int, c: Metrics, l: AppLog): TailRec[Boolean] =
       if n == 0 then done(true) else tailcall { step(n, c, l); odd(n - 1, c, l) }
-    def odd(n: Int, c: Counter, l: Logger): TailRec[Boolean] =
+    def odd(n: Int, c: Metrics, l: AppLog): TailRec[Boolean] =
       if n == 0 then done(false) else tailcall { step(n, c, l); even(n - 1, c, l) }
   }
 
   object CatsEval {
     import cats.Eval
-    def even(n: Int, c: Counter, l: Logger): Eval[Boolean] =
+    def even(n: Int, c: Metrics, l: AppLog): Eval[Boolean] =
       if n == 0 then Eval.True else Eval.defer { step(n, c, l); odd(n - 1, c, l) }
-    def odd(n: Int, c: Counter, l: Logger): Eval[Boolean] =
+    def odd(n: Int, c: Metrics, l: AppLog): Eval[Boolean] =
       if n == 0 then Eval.False else Eval.defer { step(n, c, l); even(n - 1, c, l) }
   }
 
   object CatsIO {
     import cats.effect.IO
-    def even(n: Int, c: Counter, l: Logger): IO[Boolean] =
+    def even(n: Int, c: Metrics, l: AppLog): IO[Boolean] =
       if n == 0 then IO.pure(true) else IO.defer { step(n, c, l); odd(n - 1, c, l) }
-    def odd(n: Int, c: Counter, l: Logger): IO[Boolean] =
+    def odd(n: Int, c: Metrics, l: AppLog): IO[Boolean] =
       if n == 0 then IO.pure(false) else IO.defer { step(n, c, l); even(n - 1, c, l) }
   }
 
   object Zio {
     import _root_.zio.*
-    def even(n: Int, c: Counter, l: Logger): UIO[Boolean] =
+    def even(n: Int, c: Metrics, l: AppLog): UIO[Boolean] =
       if n == 0 then ZIO.succeed(true) else ZIO.suspendSucceed { step(n, c, l); odd(n - 1, c, l) }
-    def odd(n: Int, c: Counter, l: Logger): UIO[Boolean] =
+    def odd(n: Int, c: Metrics, l: AppLog): UIO[Boolean] =
       if n == 0 then ZIO.succeed(false) else ZIO.suspendSucceed { step(n, c, l); even(n - 1, c, l) }
   }
 
   object KyoIO {
     import _root_.kyo.*
-    def even(n: Int, c: Counter, l: Logger): Boolean < IO =
+    def even(n: Int, c: Metrics, l: AppLog): Boolean < IO =
       if n == 0 then true else IO { step(n, c, l); odd(n - 1, c, l) }
-    def odd(n: Int, c: Counter, l: Logger): Boolean < IO =
+    def odd(n: Int, c: Metrics, l: AppLog): Boolean < IO =
       if n == 0 then false else IO { step(n, c, l); even(n - 1, c, l) }
   }
 
   object Unwind {
     final class Resume(val next: () => Boolean) extends RuntimeException(null, null, false, false)
     final val Limit = 1000
-    def even(n: Int, d: Int, c: Counter, l: Logger): Boolean =
+    def even(n: Int, d: Int, c: Metrics, l: AppLog): Boolean =
       if n == 0 then true
       else if d >= Limit then throw Resume(() => even(n, 0, c, l))
       else { step(n, c, l); odd(n - 1, d + 1, c, l) }
-    def odd(n: Int, d: Int, c: Counter, l: Logger): Boolean =
+    def odd(n: Int, d: Int, c: Metrics, l: AppLog): Boolean =
       if n == 0 then false
       else if d >= Limit then throw Resume(() => odd(n, 0, c, l))
       else { step(n, c, l); even(n - 1, d + 1, c, l) }
@@ -236,11 +236,11 @@ object MutualRecursionFxBenchmark {
 
   object Segments {
     final val Limit = 1000
-    def even(n: Int, d: Int, c: Counter, l: Logger): Boolean =
+    def even(n: Int, d: Int, c: Metrics, l: AppLog): Boolean =
       if n == 0 then true
       else if d >= Limit then hop(() => even(n, 0, c, l))
       else { step(n, c, l); odd(n - 1, d + 1, c, l) }
-    def odd(n: Int, d: Int, c: Counter, l: Logger): Boolean =
+    def odd(n: Int, d: Int, c: Metrics, l: AppLog): Boolean =
       if n == 0 then false
       else if d >= Limit then hop(() => odd(n, 0, c, l))
       else { step(n, c, l); even(n - 1, d + 1, c, l) }
@@ -254,9 +254,9 @@ object MutualRecursionFxBenchmark {
   }
 
   object OkayFree {
-    def even(n: Int, c: Counter, l: Logger): Boolean ! Pure =
+    def even(n: Int, c: Metrics, l: AppLog): Boolean ! Pure =
       if n == 0 then pure(true) else !.tailcall { step(n, c, l); odd(n - 1, c, l) }
-    def odd(n: Int, c: Counter, l: Logger): Boolean ! Pure =
+    def odd(n: Int, c: Metrics, l: AppLog): Boolean ! Pure =
       if n == 0 then pure(false) else !.tailcall { step(n, c, l); even(n - 1, c, l) }
   }
 
