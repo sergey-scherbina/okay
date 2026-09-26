@@ -106,7 +106,10 @@ abstract class WireConformance extends munit.FunSuite:
     // not wait at all, and the test would say nothing; if it runs first on a
     // wire that is not multiplexed, `open` is never read and this times out
     Thread.sleep(200)
-    assertEquals(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(name)))), Right(PyValue.Str(name)))
+    // `open` in a future too: on a wire that is not multiplexed it would
+    // block for ever, and the test must fail in seconds, not at the suite's timeout
+    val opened = Future(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(name)))))
+    assertEquals(Await.result(opened, 30.seconds), Right(PyValue.Str(name)))
     assertEquals(Await.result(waiting, 30.seconds), Right(PyValue.Str(name)))
   }
 

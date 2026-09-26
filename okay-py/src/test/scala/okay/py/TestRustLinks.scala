@@ -26,6 +26,13 @@ fn total(sku: String, qty: i64) -> Program<f64> {
     send(ops::price_of(sku)).and_then(move |price| send(ops::discount(price * qty as f64)))
 }
 
+type Gate = std::sync::Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>;
+
+fn gate(name: &str) -> Gate {
+    static GATES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Gate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(Default::default).lock().unwrap().entry(name.to_string()).or_default().clone()
+}
+
 fn make() -> Worker {
     let mut programs = Programs::new();
     programs.insert("pairs".into(), Box::new(pairs));
@@ -52,6 +59,24 @@ fn make() -> Worker {
     // a HELD value (the number itself), and a function reading it
     functions.insert("counter".into(), function(|args| Ok(args[0].clone())));
     functions.insert("describe".into(), function(|args| Ok(Value::Int(i64::from_value(&args[0])? + i64::from_value(&args[1])?))));
+    // MUX: a call that waits until another opens its gate — answerable only
+    // when the worker takes the second request while the first still runs
+    functions.insert("await_open".into(), function(|args| {
+        let name = String::from_value(&args[0])?;
+        let g = gate(&name);
+        let mut open = g.0.lock().unwrap();
+        while !*open {
+            open = g.1.wait(open).unwrap();
+        }
+        Ok(Value::Str(name))
+    }));
+    functions.insert("open".into(), function(|args| {
+        let name = String::from_value(&args[0])?;
+        let g = gate(&name);
+        *g.0.lock().unwrap() = true;
+        g.1.notify_all();
+        Ok(Value::Str(name))
+    }));
     // a table answered as it came: every column kind, both ways
     functions.insert("echo".into(), function(|args| Ok(args[0].clone())));
     // a column mixing kinds, which C Data cannot carry: answered on the wire instead
@@ -105,6 +130,10 @@ class TestRustPipes extends WireConformance:
   override def munitIgnore: Boolean = !RustWorkerBinary.available
   lazy val engine: ForeignWorker = ForeignWorker.speaking(Seq(RustWorkerBinary.binary.toString))
   override def afterAll(): Unit = if RustWorkerBinary.available then engine.close()
+
+  test("a Rust worker claims mux over its pipes: requests in flight together (foreign-mux-duplex)") {
+    assert(engine.muxed)
+  }
 
 /** (Rust, TCP): the same binary with OKAY_LISTEN, reached over a socket */
 class TestRustTcp extends WireConformance:

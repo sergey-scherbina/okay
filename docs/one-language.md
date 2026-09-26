@@ -786,7 +786,7 @@ else on the line, and a call there cannot be abandoned.
 
 ## Several requests at once on one worker
 
-A Go worker says `"mux": true` in its hello, and over a pipe or a socket
+A Go or Rust worker says `"mux": true` in its hello, and over a pipe or a socket
 okay then sends it a request without waiting for the last answer: each
 request is answered when it finishes, matched by its `id`. A Go function
 that waits — on a lock, a queue, another request — no longer holds the
@@ -794,7 +794,8 @@ worker up. The conformance suite proves it with a call that can only
 finish once a second call has run on the same worker:
 
 ```scala
-assertEquals(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(name)))), Right(PyValue.Str(name)))
+val opened = Future(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(name)))))
+assertEquals(Await.result(opened, 30.seconds), Right(PyValue.Str(name)))
 assertEquals(Await.result(waiting, 30.seconds), Right(PyValue.Str(name)))
 ```
 
@@ -802,8 +803,12 @@ Nothing is asked of the caller: `ForeignWorker.speaking` reads the claim,
 and `muxed` says whether it was taken. Whoever is waiting reads the
 answers, so a lone caller costs what it did before (2 000 calls: 50.7 ms
 muxed, 50.2 ms one at a time, MeasureMux). A far side that does not claim
-it — Python, R, TypeScript, Haskell, Rust for now — and every in-process
-worker are served one exchange at a time, exactly as before.
+it — Python, R, TypeScript, Haskell, a Rust worker behind TLS (its stream
+cannot be read and written from two threads) — and every in-process worker
+are served one exchange at a time, exactly as before. A Rust worker keeps
+its programs on one thread (they hold `Rc` continuations): a reader thread
+takes requests off the wire, each running function's events come to the
+same loop, and each request is answered when its call finishes.
 
 ## Limits
 

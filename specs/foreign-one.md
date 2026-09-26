@@ -1095,3 +1095,18 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     instead of a fresh worker.
   - Left, in foreign-mux-duplex: Rust, credit streams both ways, `Durable`
     by `(id, seq)`.
+- **foreign-mux-duplex, part 2: Rust (foreign-mux-rust, 2026-09-26).** A
+  Rust worker served over a split link (stdin/stdout, a TCP stream and its
+  clone) claims `mux`: a reader thread takes requests off the wire (and
+  waits for the worker after a `configure`, which changes the framing),
+  each running function's events are forwarded to the same loop tagged with
+  their call, and the worker — still on one thread, its programs holding
+  `Rc` continuations — answers each request when its call's event comes.
+  The blocking path is unchanged for in-process libraries and for TLS
+  (rustls' stream cannot be read and written from two threads).
+  - Tests (Live): the MUX case on the five Rust rows over pipes and TCP;
+    every other Rust case, the crash suite and TLS green. The MUX case now
+    fails in 30 s, not at the suite's timeout: its `open` runs in a future
+    too (found by this part's mutant, which hung it for 490 s).
+  - Mutant: a loop that claims `mux` but does not forward its calls' events
+    fails the MUX case.

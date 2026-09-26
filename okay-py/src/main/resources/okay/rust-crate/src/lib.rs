@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::cell::RefCell;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// the wire version this worker speaks; the host refuses any other
 /// 7: foreign-one-program — `start`/`resume` fold into `program`/`continue`;
@@ -358,8 +359,30 @@ where
 // ------------------------------------------------------------------ the worker
 
 struct Parked {
-    events: Receiver<Event>,
+    /// the call's events, when this worker waits on them itself; None when
+    /// they are forwarded to the worker's loop (a multiplexed wire)
+    events: Option<Receiver<Event>>,
     reply: Sender<Result<Value, OkayError>>,
+    /// the call, in the loop's table of calls (a multiplexed wire)
+    call: Option<u64>,
+}
+
+/// what a multiplexed worker's loop takes, in whatever order it comes
+/// (foreign-mux-duplex): a request off the wire, a running call's event, a
+/// call whose thread is gone, or the wire's end
+enum Loop {
+    Request(Vec<u8>),
+    Event(u64, Event),
+    Gone(u64),
+    Closed,
+}
+
+/// a call answered when its event comes, not when its request did
+struct Pending {
+    id: J,
+    run: i64,
+    plain: bool,
+    hold: bool,
 }
 
 /// the okay wire's protocol with no I/O: the programs and functions it serves,
@@ -384,6 +407,11 @@ pub struct Worker {
     // again, `release` drops it
     held: HashMap<i64, Value>,
     next_ref: i64,
+    // the multiplexed wire (foreign-mux-duplex): where a call's events go,
+    // and the calls answered when they come
+    events_to: Option<Sender<Loop>>,
+    calls: HashMap<u64, Pending>,
+    next_call: u64,
 }
 
 /// HMAC-SHA256 (RFC 2104) of `message` under `key`, as lower-case hex
@@ -451,7 +479,8 @@ fn condition(id: &J, kind: &str, message: &str) -> J {
 impl Worker {
     pub fn new(programs: Programs, functions: Functions) -> Worker {
         Worker { format: "json", compress: "none", programs, functions, konts: HashMap::new(), next: 0, waiting: HashMap::new(), asks: 0,
-                 secret: None, nonce: String::new(), authed: false, closing: false, held: HashMap::new(), next_ref: 0 }
+                 secret: None, nonce: String::new(), authed: false, closing: false, held: HashMap::new(), next_ref: 0,
+                 events_to: None, calls: HashMap::new(), next_call: 0 }
     }
 
     /// a worker that answers only after a mutual HMAC-SHA256 challenge
@@ -462,16 +491,18 @@ impl Worker {
 
     /// this worker's handshake line: `hello`'s, plus, for a worker with a
     /// secret, the challenge its host must answer (stage 5b)
-    pub fn hello_line(&mut self) -> String {
+    pub fn hello_line(&mut self) -> String { self.hello_line_claiming(false) }
+
+    fn hello_line_claiming(&mut self, mux: bool) -> String {
         if self.secret.is_none() {
-            return Worker::hello();
+            return Worker::hello_claiming(mux);
         }
         let mut b = [0u8; 16];
         std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b))
             .expect("okay: no randomness for the auth nonce (/dev/urandom)");
         self.nonce = b.iter().map(|x| format!("{:02x}", x)).collect();
         json!({"shim": SHIM_VERSION, "python": "rust",
-               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"], "frames": ["columnar"]},
+               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"], "frames": ["columnar"], "mux": mux},
                "auth": {"scheme": "hmac-sha256", "nonce": self.nonce}}).to_string()
     }
 
@@ -493,9 +524,13 @@ impl Worker {
     }
 
     /// the handshake line a worker speaks first
-    pub fn hello() -> String {
+    pub fn hello() -> String { Worker::hello_claiming(false) }
+
+    /// the handshake line, claiming `mux` where the loop serving it answers
+    /// requests as they finish (foreign-mux-duplex)
+    fn hello_claiming(mux: bool) -> String {
         json!({"shim": SHIM_VERSION, "python": "rust",
-               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"], "frames": ["columnar"]}}).to_string()
+               "speaks": {"format": ["json", "cbor"], "compress": ["deflate"], "frames": ["columnar"], "mux": mux}}).to_string()
     }
 
     /// after a configure other than the defaults the wire carries frames
@@ -522,7 +557,7 @@ impl Worker {
                 let k = self.asks;
                 let wire: Vec<J> = args.iter().map(enc).collect();
                 let answer = json!({"id": id, "ok": {"perform": cb, "args": wire, "k": k, "once": true}});
-                self.waiting.insert((run, k), Parked { events, reply });
+                self.waiting.insert((run, k), Parked { events: Some(events), reply, call: None });
                 answer
             }
             Ok(Event::Done(v)) if plain => json!({"id": id, "ok": enc(&v)}),
@@ -530,6 +565,56 @@ impl Worker {
             Ok(Event::Fault(e)) => condition(&id, &e.kind, &e.message),
             Err(_) => condition(&id, "RustError", "the function's thread ended without an answer"),
         }
+    }
+
+    /// a call on a MULTIPLEXED wire (foreign-mux-duplex): its events go to the
+    /// worker's loop, tagged with the call, and it is answered when they come
+    /// — J::Null here is "no reply yet"
+    fn defer(&mut self, id: J, run: i64, events: Receiver<Event>, plain: bool, hold: bool) -> J {
+        let to = match &self.events_to { Some(t) => t.clone(), None => return condition(&id, "RustError", "no loop to defer to") };
+        self.next_call += 1;
+        let call = self.next_call;
+        self.calls.insert(call, Pending { id, run, plain, hold });
+        std::thread::spawn(move || {
+            for e in events.iter() {
+                if to.send(Loop::Event(call, e)).is_err() {
+                    return;
+                }
+            }
+            let _ = to.send(Loop::Gone(call));
+        });
+        J::Null
+    }
+
+    /// a deferred call's event: its reply, or None while it has none (it is
+    /// parked on an okay_call, or already answered)
+    fn on_event(&mut self, call: u64, e: Option<Event>) -> Option<J> {
+        let p = self.calls.remove(&call)?;
+        Some(match e {
+            Some(Event::Ask { cb, reply, .. }) if p.hold => {
+                let _ = reply.send(Err(OkayError { kind: "LookupError".into(),
+                    message: format!("okay_call(\"{}\") in a held call, which offers no callbacks", cb) }));
+                self.calls.insert(call, p);
+                return None;
+            }
+            Some(Event::Ask { cb, args, reply }) => {
+                self.asks += 1;
+                let k = self.asks;
+                let wire: Vec<J> = args.iter().map(enc).collect();
+                self.waiting.insert((p.run, k), Parked { events: None, reply, call: Some(call) });
+                json!({"id": p.id, "ok": {"perform": cb, "args": wire, "k": k, "once": true}})
+            }
+            Some(Event::Done(v)) if p.hold => {
+                self.next_ref += 1;
+                let kind = match &v { Value::Table(_) => "table", Value::Dict(_) => "dict", Value::List(_) => "list", _ => "value" };
+                self.held.insert(self.next_ref, v);
+                json!({"id": p.id, "ok": {"t": "ref", "id": self.next_ref, "type": kind}})
+            }
+            Some(Event::Done(v)) if p.plain => json!({"id": p.id, "ok": enc(&v)}),
+            Some(Event::Done(v)) => json!({"id": p.id, "ok": {"done": enc(&v)}}),
+            Some(Event::Fault(e)) => condition(&p.id, &e.kind, &e.message),
+            None => condition(&p.id, "RustError", "the function's thread ended without an answer"),
+        })
     }
 
     /// a held call's answer: kept here, its ref answered; an okay_call in it
@@ -610,6 +695,9 @@ impl Worker {
                 let offered: Vec<String> = req.get("callbacks").and_then(|c| c.as_array())
                     .map(|c| c.iter().filter_map(|n| n.as_str().map(String::from)).collect()).unwrap_or_default();
                 let rx = Worker::begin(f, args, offered);
+                if self.events_to.is_some() {
+                    return self.defer(id, run, rx, false, false);
+                }
                 self.await_call(id, run, rx, false)
             }
             Some("call") => {
@@ -620,7 +708,11 @@ impl Worker {
                     Some(f) => f.clone(),
                 };
                 let rx = Worker::begin(f, args, Vec::new());
-                if req.get("held").and_then(|h| h.as_bool()) == Some(true) {
+                let held = req.get("held").and_then(|h| h.as_bool()) == Some(true);
+                if self.events_to.is_some() {
+                    return self.defer(id, run, rx, true, held);
+                }
+                if held {
                     return self.hold(id, rx);
                 }
                 self.await_call(id, run, rx, true)
@@ -636,7 +728,15 @@ impl Worker {
                         None => Ok(req.get("answer").map(dec).unwrap_or(Value::Null)),
                     };
                     let _ = parked.reply.send(answer);
-                    return self.await_call(id, run, parked.events, false);
+                    return match (parked.call, parked.events) {
+                        // its events come to the loop: answered when the next one does
+                        (Some(call), _) => {
+                            self.calls.insert(call, Pending { id, run, plain: false, hold: false });
+                            J::Null
+                        }
+                        (None, Some(events)) => self.await_call(id, run, events, false),
+                        (None, None) => condition(&id, "RustError", "a parked call with nowhere to wait"),
+                    };
                 }
                 let f = match self.konts.get(&(run, k)) {
                     None => return condition(&id, "LookupError", &format!(
@@ -675,6 +775,12 @@ impl Worker {
     /// one message in the worker's current encoding in, one out in the same
     /// encoding; a configure takes effect AFTER its own answer
     pub fn handle_message(&mut self, msg: &[u8]) -> Vec<u8> {
+        self.respond(msg).unwrap_or_default()
+    }
+
+    /// one message's reply, or None when it has none YET (a call deferred on
+    /// a multiplexed wire, answered when its event comes)
+    fn respond(&mut self, msg: &[u8]) -> Option<Vec<u8>> {
         let (reply, configured) = match self.decode(msg) {
             Ok(J::Object(req)) => {
                 let id = req.get("id").cloned().unwrap_or(J::Null);
@@ -688,13 +794,19 @@ impl Worker {
             Ok(_) => (condition(&J::Null, "ValueError", "a request is a map"), None),
             Err(why) => (condition(&J::Null, "ValueError", &why), None),
         };
+        if reply.is_null() {
+            return None;
+        }
         let out = self.encode(&reply);
         if let Some((cbor, deflate)) = configured {
             self.format = if cbor { "cbor" } else { "json" };
             self.compress = if deflate { "deflate" } else { "none" };
         }
-        out
+        Some(out)
     }
+
+    /// a reply that came late, once its call's event did (foreign-mux-duplex)
+    fn late(&self, reply: &J) -> Vec<u8> { self.encode(reply) }
 
     /// a TABLE call in-process (foreign-arrow-ffm): the head a message in
     /// the wire's format, the table itself the first argument — imported from
@@ -947,21 +1059,6 @@ impl<S: Read + Write> Write for Duplex<S> {
     fn flush(&mut self) -> std::io::Result<()> { self.0.get_mut().flush() }
 }
 
-/// stdin and stdout as one duplex
-struct Stdio<'a>(std::io::StdinLock<'a>, std::io::Stdout);
-
-impl Read for Stdio<'_> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> { self.0.read(buf) }
-}
-impl BufRead for Stdio<'_> {
-    fn fill_buf(&mut self) -> std::io::Result<&[u8]> { self.0.fill_buf() }
-    fn consume(&mut self, n: usize) { self.0.consume(n) }
-}
-impl Write for Stdio<'_> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> { self.1.write(buf) }
-    fn flush(&mut self) -> std::io::Result<()> { self.1.flush() }
-}
-
 fn serve_lines(mut w: Worker, mut io: impl BufRead + Write) {
     let _ = writeln!(io, "{}", w.hello_line());
     let _ = io.flush();
@@ -1001,10 +1098,110 @@ fn serve_lines(mut w: Worker, mut io: impl BufRead + Write) {
     }
 }
 
+/// serve a link whose two directions are apart — stdin and stdout, a TCP
+/// stream and its clone — MULTIPLEXED (foreign-mux-duplex): a reader thread
+/// takes requests off the wire, each running call's events come to the same
+/// loop, and every request is answered when it finishes, matched by its id.
+/// The worker stays on this thread (its programs hold `Rc` continuations);
+/// only bytes and events cross threads.
+fn serve_split(mut w: Worker, mut reader: impl BufRead + Send + 'static, mut writer: impl Write) {
+    let _ = writeln!(writer, "{}", w.hello_line_claiming(true));
+    let _ = writer.flush();
+    let (to, from) = channel::<Loop>();
+    w.events_to = Some(to.clone());
+    let framed = Arc::new(AtomicBool::new(false));
+    let (switched, switch) = channel::<()>();
+    {
+        let framed = framed.clone();
+        std::thread::spawn(move || loop {
+            let msg = if framed.load(Ordering::SeqCst) {
+                let mut n = [0u8; 4];
+                if reader.read_exact(&mut n).is_err() {
+                    let _ = to.send(Loop::Closed);
+                    return;
+                }
+                let mut msg = vec![0u8; u32::from_be_bytes(n) as usize];
+                if reader.read_exact(&mut msg).is_err() {
+                    let _ = to.send(Loop::Closed);
+                    return;
+                }
+                msg
+            } else {
+                let mut line = String::new();
+                match reader.read_line(&mut line) {
+                    Ok(0) | Err(_) => {
+                        let _ = to.send(Loop::Closed);
+                        return;
+                    }
+                    Ok(_) => {}
+                }
+                if line.trim().is_empty() {
+                    continue;
+                }
+                line.trim_end().as_bytes().to_vec()
+            };
+            // a configure changes how the NEXT message is read: wait for it
+            let configure = !framed.load(Ordering::SeqCst) && is_configure(&msg);
+            if to.send(Loop::Request(msg)).is_err() {
+                return;
+            }
+            if configure && switch.recv().is_err() {
+                return;
+            }
+        });
+    }
+    let write = |writer: &mut dyn Write, out: &[u8], frame: bool| {
+        if frame {
+            let _ = writer.write_all(&(out.len() as u32).to_be_bytes());
+            let _ = writer.write_all(out);
+        } else {
+            let _ = writer.write_all(out);
+            let _ = writer.write_all(b"\n");
+        }
+        let _ = writer.flush();
+    };
+    for m in from.iter() {
+        match m {
+            Loop::Request(bytes) => {
+                let was = w.framed();
+                let configure = !was && is_configure(&bytes);
+                if let Some(out) = w.respond(&bytes) {
+                    write(&mut writer, &out, was);
+                }
+                if configure {
+                    framed.store(w.framed(), Ordering::SeqCst);
+                    let _ = switched.send(());
+                }
+                if w.closing {
+                    return;
+                }
+            }
+            Loop::Event(call, e) => {
+                if let Some(reply) = w.on_event(call, Some(e)) {
+                    let out = w.late(&reply);
+                    write(&mut writer, &out, w.framed());
+                }
+            }
+            Loop::Gone(call) => {
+                if let Some(reply) = w.on_event(call, None) {
+                    let out = w.late(&reply);
+                    write(&mut writer, &out, w.framed());
+                }
+            }
+            Loop::Closed => return,
+        }
+    }
+}
+
+/// whether a line-mode message is a configure (it changes the framing)
+fn is_configure(msg: &[u8]) -> bool {
+    serde_json::from_slice::<J>(msg).ok()
+        .and_then(|j| j.get("op").and_then(|o| o.as_str()).map(|o| o == "configure")).unwrap_or(false)
+}
+
 /// serve on stdin/stdout: a child process
 pub fn serve_stdio(make: fn() -> Worker) {
-    let stdin = std::io::stdin();
-    serve_lines(make(), Stdio(stdin.lock(), std::io::stdout()));
+    serve_split(make(), BufReader::new(std::io::stdin()), std::io::stdout());
 }
 
 /// serve on a socket: another process, another machine. Each connection gets
@@ -1028,7 +1225,11 @@ pub fn serve_tcp(addr: &str, make: fn() -> Worker) -> std::io::Result<()> {
             let _ = stream.set_nodelay(true);
             let w = make().with_secret(secret);
             match tls {
-                None => serve_lines(w, Duplex(BufReader::new(stream))),
+                // two handles on one socket: read on one thread, written on this one
+                None => match stream.try_clone() {
+                    Ok(reading) => serve_split(w, BufReader::new(reading), stream),
+                    Err(_) => serve_lines(w, Duplex(BufReader::new(stream))),
+                },
                 Some(config) => serve_tls(w, config, stream),
             }
         });
