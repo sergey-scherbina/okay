@@ -646,6 +646,54 @@ impl Worker {
         out
     }
 
+    /// a TABLE call in-process (foreign-arrow-ffm): the head a message in
+    /// the wire's format, the table itself the first argument — imported from
+    /// C Data by `exchange_table_in`, never text. Answers the reply and, when
+    /// the function answered a table, that table: the reply then says
+    /// `{"t": "cdata"}` and the table crosses back as C Data.
+    pub fn handle_table(&mut self, msg: &[u8], table: Value) -> (Vec<u8>, Option<Value>) {
+        let req = match self.decode(msg) {
+            Ok(J::Object(req)) => req,
+            Ok(_) => return (self.encode(&condition(&J::Null, "ValueError", "a request is a map")), None),
+            Err(why) => return (self.encode(&condition(&J::Null, "ValueError", &why)), None),
+        };
+        let id = req.get("id").cloned().unwrap_or(J::Null);
+        if self.secret.is_some() && !self.authed {
+            let refused = self.authenticate(&id, &req);
+            return (self.encode(&refused), None);
+        }
+        let fn_name = req.get("fn").and_then(|f| f.as_str()).unwrap_or("").to_string();
+        let f = match self.functions.get(&fn_name) {
+            None => return (self.encode(&condition(&id, "LookupError", &format!("no function named '{}' in this worker", fn_name))), None),
+            Some(f) => f.clone(),
+        };
+        let mut args = vec![table];
+        args.extend(req.get("args").and_then(|a| a.as_array()).map(|a| a.iter().map(dec).collect::<Vec<_>>()).unwrap_or_default());
+        let events = Worker::begin(f, args, Vec::new());
+        loop {
+            let reply = match events.recv() {
+                // a table call offers no callbacks: an okay_call in it is refused, and it runs on
+                Ok(Event::Ask { cb, reply, .. }) => {
+                    let _ = reply.send(Err(OkayError { kind: "LookupError".into(),
+                        message: format!("okay_call(\"{}\") in a table call, which offers no callbacks", cb) }));
+                    continue;
+                }
+                Ok(Event::Done(v @ Value::Table(_))) => return (self.encode(&json!({"id": id, "ok": {"t": "cdata"}})), Some(v)),
+                Ok(Event::Done(v)) => json!({"id": id, "ok": enc(&v)}),
+                Ok(Event::Fault(e)) => condition(&id, &e.kind, &e.message),
+                Err(_) => condition(&id, "RustError", "the function's thread ended without an answer"),
+            };
+            return (self.encode(&reply), None);
+        }
+    }
+
+    /// the reply for a table answer that C Data cannot carry (a column mixing
+    /// kinds): the same table, as an ordinary answer on the wire
+    pub fn answer_in_line(&self, msg: &[u8], table: &Value) -> Vec<u8> {
+        let id = match self.decode(msg) { Ok(J::Object(req)) => req.get("id").cloned().unwrap_or(J::Null), _ => J::Null };
+        self.encode(&json!({"id": id, "ok": enc(table)}))
+    }
+
     /// one request line in, one answer line out (the JSON-lines wire)
     pub fn handle(&mut self, line: &str) -> String {
         String::from_utf8_lossy(&self.handle_message(line.as_bytes())).into_owned()
@@ -1028,6 +1076,257 @@ pub fn exchange_in(global: &std::sync::Mutex<Option<InProcess>>, make: fn() -> W
     w.0.handle_message(req)
 }
 
+/// one TABLE exchange in-process (foreign-arrow-ffm): the head in `req`, the
+/// table as the Arrow C Data Interface — imported (and released) here, the
+/// function run, and a table answer exported to `schema_out`/`array_out`,
+/// released by the host through the callback the structs carry
+///
+/// # Safety
+/// `schema_in`/`array_in` are live C Data structs of a struct array, and
+/// `schema_out`/`array_out` point at writable ones
+#[doc(hidden)]
+pub unsafe fn exchange_table_in(global: &std::sync::Mutex<Option<InProcess>>, make: fn() -> Worker, req: &[u8],
+                         schema_in: *mut cdata::FFI_ArrowSchema, array_in: *mut cdata::FFI_ArrowArray,
+                         schema_out: *mut cdata::FFI_ArrowSchema, array_out: *mut cdata::FFI_ArrowArray) -> Vec<u8> {
+    let mut guard = global.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let w = guard.get_or_insert_with(|| InProcess(make()));
+    // SAFETY: the host hands two C Data structs it filled, and two it zeroed for the answer
+    let table = match cdata::import(schema_in, array_in) {
+        Ok(t) => t,
+        Err(why) => return w.0.encode(&condition(&J::Null, "ValueError", &format!("a C Data table: {}", why))),
+    };
+    let (reply, answered) = w.0.handle_table(req, table);
+    match answered {
+        None => reply,
+        Some(t) => match cdata::export(&t, schema_out, array_out) {
+            Ok(()) => reply,
+            Err(_) => w.0.answer_in_line(req, &t),
+        },
+    }
+}
+
+/// The Arrow C Data Interface (https://arrow.apache.org/docs/format/CDataInterface.html),
+/// written out rather than taken from the `arrow` crate, which every worker
+/// build would pay for: a table is a struct array whose children are its
+/// columns — int64 `l`, float64 `g`, utf8 `u`, boolean `b`, null `n`, the
+/// columns a frame makes — each with a validity bitmap.
+pub mod cdata {
+    use super::Value;
+    use std::ffi::{c_char, c_void, CStr, CString};
+
+    #[repr(C)]
+    pub struct FFI_ArrowSchema {
+        pub format: *const c_char,
+        pub name: *const c_char,
+        pub metadata: *const c_char,
+        pub flags: i64,
+        pub n_children: i64,
+        pub children: *mut *mut FFI_ArrowSchema,
+        pub dictionary: *mut FFI_ArrowSchema,
+        pub release: Option<unsafe extern "C" fn(*mut FFI_ArrowSchema)>,
+        pub private_data: *mut c_void,
+    }
+
+    #[repr(C)]
+    pub struct FFI_ArrowArray {
+        pub length: i64,
+        pub null_count: i64,
+        pub offset: i64,
+        pub n_buffers: i64,
+        pub n_children: i64,
+        pub buffers: *mut *const c_void,
+        pub children: *mut *mut FFI_ArrowArray,
+        pub dictionary: *mut FFI_ArrowArray,
+        pub release: Option<unsafe extern "C" fn(*mut FFI_ArrowArray)>,
+        pub private_data: *mut c_void,
+    }
+
+    const NULLABLE: i64 = 2;
+
+    unsafe fn valid(bits: *const u8, i: usize) -> bool {
+        bits.is_null() || (*bits.add(i / 8) >> (i % 8)) & 1 == 1
+    }
+
+    /// read a table the host exported, then release it: the consumer's duty
+    ///
+    /// # Safety
+    /// `schema` and `array` are live C Data structs of a struct array
+    pub unsafe fn import(schema: *mut FFI_ArrowSchema, array: *mut FFI_ArrowArray) -> Result<Value, String> {
+        let out = read(&*schema, &*array);
+        if let Some(r) = (*array).release { r(array) }
+        if let Some(r) = (*schema).release { r(schema) }
+        out
+    }
+
+    unsafe fn read(schema: &FFI_ArrowSchema, array: &FFI_ArrowArray) -> Result<Value, String> {
+        let fmt = CStr::from_ptr(schema.format).to_string_lossy();
+        if fmt != "+s" {
+            return Err(format!("a table is a struct array (+s), not {}", fmt));
+        }
+        let n = array.length as usize;
+        let mut cols = Vec::with_capacity(schema.n_children as usize);
+        for c in 0..schema.n_children as usize {
+            let cs = &**schema.children.add(c);
+            let ca = &**array.children.add(c);
+            let name = if cs.name.is_null() { String::new() } else { CStr::from_ptr(cs.name).to_string_lossy().into_owned() };
+            let off = ca.offset as usize;
+            let buf = |i: usize| *ca.buffers.add(i) as *const u8;
+            let nulls = if ca.n_buffers > 0 { buf(0) } else { std::ptr::null() };
+            let f = CStr::from_ptr(cs.format).to_string_lossy();
+            let mut vs = Vec::with_capacity(n);
+            for i in 0..n {
+                let j = off + i;
+                vs.push(if f == "n" || !valid(nulls, j) { Value::Null } else {
+                    match &*f {
+                        "l" => Value::Int(*(buf(1) as *const i64).add(j)),
+                        "g" => Value::Float(*(buf(1) as *const f64).add(j)),
+                        "b" => Value::Bool((*buf(1).add(j / 8) >> (j % 8)) & 1 == 1),
+                        "u" => {
+                            let o = buf(1) as *const i32;
+                            let (a, b) = (*o.add(j) as usize, *o.add(j + 1) as usize);
+                            Value::Str(String::from_utf8_lossy(std::slice::from_raw_parts(buf(2).add(a), b - a)).into_owned())
+                        }
+                        other => return Err(format!("column '{}' is {}, not one of l g u b n", name, other)),
+                    }
+                });
+            }
+            cols.push((name, vs));
+        }
+        Ok(Value::Table(cols))
+    }
+
+    /// what a column of Values is on the wire, or None where it mixes kinds
+    fn kind(vs: &[Value]) -> Option<&'static str> {
+        let mut k = "n";
+        for v in vs {
+            k = match (k, v) {
+                (_, Value::Null) => k,
+                ("n", Value::Int(_)) | ("l", Value::Int(_)) => "l",
+                ("n", Value::Float(_)) | ("g", Value::Float(_)) | ("l", Value::Float(_)) | ("g", Value::Int(_)) => "g",
+                ("n", Value::Str(_)) | ("u", Value::Str(_)) => "u",
+                ("n", Value::Bool(_)) | ("b", Value::Bool(_)) => "b",
+                _ => return None,
+            };
+        }
+        Some(k)
+    }
+
+    /// everything an exported struct points at, freed by its release
+    struct Owned {
+        _strings: Vec<CString>,
+        _bytes: Vec<Vec<u8>>,
+        _schemas: Vec<FFI_ArrowSchema>,
+        _arrays: Vec<FFI_ArrowArray>,
+        _schema_ptrs: Vec<*mut FFI_ArrowSchema>,
+        _array_ptrs: Vec<*mut FFI_ArrowArray>,
+        _buffer_ptrs: Vec<Vec<*const c_void>>,
+    }
+
+    unsafe extern "C" fn release_schema(s: *mut FFI_ArrowSchema) {
+        if !(*s).private_data.is_null() { drop(Box::from_raw((*s).private_data as *mut Owned)) }
+        (*s).release = None;
+    }
+    unsafe extern "C" fn release_array(a: *mut FFI_ArrowArray) {
+        if !(*a).private_data.is_null() { drop(Box::from_raw((*a).private_data as *mut Owned)) }
+        (*a).release = None;
+    }
+    /// a child's memory is its parent's; releasing it only marks it released
+    unsafe extern "C" fn release_child_schema(s: *mut FFI_ArrowSchema) { (*s).release = None; }
+    unsafe extern "C" fn release_child_array(a: *mut FFI_ArrowArray) { (*a).release = None; }
+
+    fn schema(format: *const c_char, name: *const c_char, flags: i64) -> FFI_ArrowSchema {
+        FFI_ArrowSchema { format, name, metadata: std::ptr::null(), flags, n_children: 0, children: std::ptr::null_mut(),
+                          dictionary: std::ptr::null_mut(), release: Some(release_child_schema), private_data: std::ptr::null_mut() }
+    }
+
+    /// export a table into the two structs the host zeroed; Err where a column
+    /// mixes kinds (the caller answers it on the wire instead)
+    ///
+    /// # Safety
+    /// `schema` and `array` point at writable C Data structs
+    pub unsafe fn export(t: &Value, schema_out: *mut FFI_ArrowSchema, array_out: *mut FFI_ArrowArray) -> Result<(), String> {
+        let cols = match t { Value::Table(c) => c, _ => return Err("not a table".into()) };
+        let kinds = cols.iter().map(|(n, vs)| kind(vs).ok_or_else(|| format!("column '{}' mixes kinds", n)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let rows = cols.first().map(|(_, v)| v.len()).unwrap_or(0);
+        let mut strings = Vec::new();
+        let mut bytes: Vec<Vec<u8>> = Vec::new();
+        let mut schemas = Vec::new();
+        let mut arrays = Vec::new();
+        let mut buffer_ptrs = Vec::new();
+        let top = CString::new("+s").unwrap();
+        let mut child_formats = Vec::new();
+        for ((name, vs), k) in cols.iter().zip(&kinds) {
+            let f = CString::new(*k).unwrap();
+            let nm = CString::new(name.as_str()).unwrap_or_default();
+            schemas.push(schema(f.as_ptr(), nm.as_ptr(), NULLABLE));
+            child_formats.push(f);
+            strings.push(nm);
+            // validity: one bit a row, 1 = present
+            let mut bits = vec![0u8; rows.div_ceil(8)];
+            let mut nulls = 0i64;
+            for (i, v) in vs.iter().enumerate() {
+                if matches!(v, Value::Null) { nulls += 1 } else { bits[i / 8] |= 1 << (i % 8) }
+            }
+            let data: Vec<Vec<u8>> = match *k {
+                "l" => vec![vs.iter().flat_map(|v| match v { Value::Int(n) => *n, _ => 0 }.to_le_bytes()).collect()],
+                "g" => vec![vs.iter().flat_map(|v| match v { Value::Float(d) => *d, Value::Int(n) => *n as f64, _ => 0.0 }.to_le_bytes()).collect()],
+                "b" => {
+                    let mut b = vec![0u8; rows.div_ceil(8)];
+                    for (i, v) in vs.iter().enumerate() { if let Value::Bool(true) = v { b[i / 8] |= 1 << (i % 8) } }
+                    vec![b]
+                }
+                "u" => {
+                    let mut offs: Vec<u8> = Vec::with_capacity((rows + 1) * 4);
+                    let mut chars = Vec::new();
+                    offs.extend_from_slice(&0i32.to_le_bytes());
+                    for v in vs {
+                        if let Value::Str(x) = v { chars.extend_from_slice(x.as_bytes()) }
+                        offs.extend_from_slice(&(chars.len() as i32).to_le_bytes());
+                    }
+                    vec![offs, chars]
+                }
+                _ => vec![],
+            };
+            let mut ptrs: Vec<*const c_void> = Vec::new();
+            if *k != "n" {
+                ptrs.push(if nulls == 0 { std::ptr::null() } else { bits.as_ptr() as *const c_void });
+                bytes.push(bits);
+                for d in data {
+                    ptrs.push(d.as_ptr() as *const c_void);
+                    bytes.push(d);
+                }
+            }
+            arrays.push(FFI_ArrowArray {
+                length: rows as i64, null_count: if *k == "n" { rows as i64 } else { nulls }, offset: 0,
+                n_buffers: ptrs.len() as i64, n_children: 0, buffers: ptrs.as_mut_ptr(), children: std::ptr::null_mut(),
+                dictionary: std::ptr::null_mut(), release: Some(release_child_array), private_data: std::ptr::null_mut() });
+            buffer_ptrs.push(ptrs);
+        }
+        strings.extend(child_formats);
+        // taken once every child is in place: a Vec's heap buffer does not move with the Vec
+        let mut schema_ptrs: Vec<*mut FFI_ArrowSchema> = schemas.iter_mut().map(|b| b as *mut _).collect();
+        let mut array_ptrs: Vec<*mut FFI_ArrowArray> = arrays.iter_mut().map(|b| b as *mut _).collect();
+        let mut top_buffers: Vec<*const c_void> = vec![std::ptr::null()];
+        *array_out = FFI_ArrowArray {
+            length: rows as i64, null_count: 0, offset: 0, n_buffers: 1, n_children: cols.len() as i64,
+            buffers: top_buffers.as_mut_ptr(), children: array_ptrs.as_mut_ptr(), dictionary: std::ptr::null_mut(),
+            release: Some(release_array), private_data: std::ptr::null_mut() };
+        *schema_out = FFI_ArrowSchema {
+            format: top.as_ptr(), name: std::ptr::null(), metadata: std::ptr::null(), flags: 0, n_children: cols.len() as i64,
+            children: schema_ptrs.as_mut_ptr(), dictionary: std::ptr::null_mut(), release: Some(release_schema),
+            private_data: std::ptr::null_mut() };
+        buffer_ptrs.push(top_buffers);
+        strings.push(top);
+        // the schema side and the array side are released apart, so each owns its half
+        (*schema_out).private_data = Box::into_raw(Box::new(Owned { _strings: strings, _bytes: Vec::new(), _schemas: schemas,
+            _arrays: Vec::new(), _schema_ptrs: schema_ptrs, _array_ptrs: Vec::new(), _buffer_ptrs: Vec::new() })) as *mut c_void;
+        (*array_out).private_data = Box::into_raw(Box::new(Owned { _strings: Vec::new(), _bytes: bytes, _schemas: Vec::new(),
+            _arrays: arrays, _schema_ptrs: Vec::new(), _array_ptrs: array_ptrs, _buffer_ptrs: buffer_ptrs })) as *mut c_void;
+        Ok(())
+    }
+}
+
 /// Export a worker IN-PROCESS: `okay_exchange(req, len, out_len) -> resp`
 /// (one request line in, one answer line out; an empty request answers the
 /// handshake), `okay_free(p, n)` for an answer, and `okay_alloc(n)` for a
@@ -1057,6 +1356,21 @@ macro_rules! export_worker {
                 // SAFETY: `p` and `n` are exactly what okay_exchange or okay_alloc handed out
                 unsafe { drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(p, n))) }
             }
+        }
+
+        /// a TABLE call (foreign-arrow-ffm): the head in `req`, the table as
+        /// Arrow C Data in, a table answer as Arrow C Data out
+        #[no_mangle]
+        pub extern "C" fn okay_exchange_table(req: *const u8, len: usize, out_len: *mut usize,
+                                              schema_in: *mut $crate::cdata::FFI_ArrowSchema, array_in: *mut $crate::cdata::FFI_ArrowArray,
+                                              schema_out: *mut $crate::cdata::FFI_ArrowSchema, array_out: *mut $crate::cdata::FFI_ArrowArray) -> *mut u8 {
+            // SAFETY: the host hands `len` readable bytes at `req`, a writable `usize` at `out_len`, and four C Data structs
+            let bytes = if req.is_null() || len == 0 { &[][..] } else { unsafe { std::slice::from_raw_parts(req, len) } };
+            let mut out = unsafe { $crate::exchange_table_in(&OKAY_WORKER, $make, bytes, schema_in, array_in, schema_out, array_out) }.into_boxed_slice();
+            unsafe { *out_len = out.len() };
+            let p = out.as_mut_ptr();
+            std::mem::forget(out);
+            p
         }
 
         /// `n` bytes of this module's memory, for a host to fill (n >= 1)

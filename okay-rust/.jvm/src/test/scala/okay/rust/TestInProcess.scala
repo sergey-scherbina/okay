@@ -43,8 +43,8 @@ class TestRustFfm extends WireConformance:
     ForeignWorker.inProcess(RustInProcess.dylib)
   override def afterAll(): Unit = if RustInProcess.available then engine.close()
 
-  test("in-process, the default does not compress: a message here is a memory copy") {
-    assertEquals(engine.wire, "json/none")
+  test("in-process, the default does not compress: a message here is a memory copy, and a table crosses in place") {
+    assertEquals(engine.wire, "json/none+cdata")
   }
 
   test("a library that is not an okay worker is refused by name") {

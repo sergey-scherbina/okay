@@ -14,13 +14,41 @@ import okay.py.WireLink
  */
 object InProcessLinks:
 
-  /** a Rust `cdylib` built with `okay::export_worker!`, through FFM */
-  def ffm(lib: NativeLib): Either[String, WireLink] =
+  /** a Rust `cdylib` built with `okay::export_worker!`, through FFM. A
+   * library that also exports `okay_exchange_table` takes a table as the
+   * Arrow C Data Interface, in place (foreign-arrow-ffm), through `codec` */
+  def ffm(lib: NativeLib)(using codec: CDataCodec): Either[String, WireLink] =
+    val P = ValueLayout.ADDRESS
     for
       exchangeFn <- lib.function("okay_exchange",
         FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS))
       free <- lib.function("okay_free", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG))
     yield new WireLink:
+      private val tableFn = lib.function("okay_exchange_table",
+        FunctionDescriptor.of(P, P, ValueLayout.JAVA_LONG, P, P, P, P, P)).toOption
+      override def tables: Option[WireLink.Tables] = tableFn.map { fn =>
+        new WireLink.Tables:
+          def exchange(message: Array[Byte], table: okay.arrow.Table): (Array[Byte], Option[okay.arrow.Table]) =
+            codec.exporting(table) { (schemaIn, arrayIn) =>
+              val arena = Arena.ofConfined()
+              try
+                val req = arena.allocate(math.max(1L, message.length.toLong))
+                MemorySegment.copy(message, 0, req, ValueLayout.JAVA_BYTE, 0L, message.length)
+                val outLen = arena.allocate(ValueLayout.JAVA_LONG)
+                // zeroed: a release still NULL after the call is "no table came back"
+                val schemaOut = arena.allocate(CData.SchemaSize)
+                val arrayOut = arena.allocate(CData.ArraySize)
+                fn.invokeWithArguments(req, message.length.toLong, outLen, schemaIn, arrayIn, schemaOut, arrayOut) match
+                  case resp: MemorySegment =>
+                    val n = outLen.get(ValueLayout.JAVA_LONG, 0L)
+                    val answer = resp.reinterpret(n).toArray(ValueLayout.JAVA_BYTE)
+                    val _ = free.invokeWithArguments(resp, n)
+                    val got = Option.when(CData.ptr(arrayOut, CData.ARelease).address != 0L)(codec.importing(schemaOut, arrayOut))
+                    (answer, got)
+                  case other => throw IllegalStateException(s"okay_exchange_table answered $other, not a pointer")
+              finally arena.close()
+            }
+      }
       private def call(line: String): String = String(callBytes(line.getBytes(UTF_8)), UTF_8)
       private def callBytes(bytes: Array[Byte]): Array[Byte] =
         val arena = Arena.ofConfined()

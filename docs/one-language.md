@@ -618,6 +618,32 @@ Arrow when both sides have it ([Python and R](python-and-r.md)); the
 others read the columnar JSON, which is what a hello's
 `"frames": ["columnar"]` claims.
 
+**In this process, a table is not text at all.** A Rust library loaded
+through FFM exports `okay_exchange_table` beside `okay_exchange`, and a
+table call hands it the table as the [Arrow C Data
+Interface](https://arrow.apache.org/docs/format/CDataInterface.html) — two C
+structs pointing at the columns, read in place — with only the call's head
+as a message. The answer's table comes back the same way, released by
+Rust's own callback; an answer C Data cannot carry (a column mixing kinds)
+comes back as an ordinary message. Nothing changes for the caller:
+`ForeignWorker.inProcess(dylib)` finds the export, and `wire` says
+`json/none+cdata`. Measured on one 1M-row column through `scale`: 20.7 ms
+as C Data against 119.8 ms as JSON, the same library (MeasureRustTable).
+
+The codec on the JVM side is a choice, by the rule every such codec here
+follows: ours (`OkayCData`, over FFM, copying each column once between
+okay's arrays and native memory) is the default, and Apache Arrow's
+`arrow-c-data` is one import away, each proven to read what the other
+wrote (TestCData):
+
+```scala
+import ApacheCData.given
+val w = ForeignWorker.inProcess(RustInProcess.dylib)
+```
+
+WebAssembly keeps the message road: a module's memory is its own, so
+there is nothing to point into.
+
 ## One `okay_call`, step by step
 
 In-process, the Scala side can do exactly one thing with the loaded Rust

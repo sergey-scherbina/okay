@@ -118,7 +118,7 @@ val quote = Foreign.fn[Double](address("quote")).calling(Foreign.callbacks(price
 | R | yes | yes (Arrow or columnar) | yes | stages, sources | yes | yes |
 | TypeScript | yes | yes (columnar) | yes | — | yes | yes |
 | Go | yes | yes (columnar) | — | — | yes | yes |
-| Rust | yes | yes (columnar; not on wasm) | — | — | yes | yes (not on wasm) |
+| Rust | yes | yes (columnar; Arrow C Data in process; not on wasm) | — | — | yes | yes (not on wasm) |
 | Haskell | yes | yes (columnar) | — | — | yes | — |
 | Clojure, Frege | yes | by reference | yes (JVM objects) | stages | yes | — |
 
@@ -194,5 +194,5 @@ its replies, and every language answers the same conformance suites
 - Joe Armstrong. *[Making reliable distributed systems in the presence of software errors.](https://erlang.org/download/armstrong_thesis_2003.pdf)* PhD thesis, 2003. Ports: a foreign program as a process that speaks a protocol, supervised and restarted — the wire and its supervisor.
 - Project Jupyter. *[Messaging in Jupyter.](https://jupyter-client.readthedocs.io/en/stable/messaging.html)* A kernel says what it speaks before anything runs: the hello.
 - Mark Raasveldt, Hannes Mühleisen. *[Don't hold my data hostage: a case for client protocol redesign.](https://doi.org/10.14778/3115404.3115408)* PVLDB 2017. Why a table crosses as columns and not as cells.
-- Apache Arrow. *[The Arrow C Data Interface.](https://arrow.apache.org/docs/format/CDataInterface.html)* and *[Arrow Flight RPC.](https://arrow.apache.org/docs/format/Flight.html)* One memory format on both sides: IPC streams over the wire today, and the zero-copy road over FFM the design leaves open (backlog foreign-arrow-ffm).
+- Apache Arrow. *[The Arrow C Data Interface.](https://arrow.apache.org/docs/format/CDataInterface.html)* and *[Arrow Flight RPC.](https://arrow.apache.org/docs/format/Flight.html)* One memory format on both sides: IPC streams over the wire, and the two C structs a table crosses as into a Rust library in this process ([details](one-language.md#a-table-in-every-language)).
 - *[Reactive Streams, §3 (Subscription).](https://github.com/reactive-streams/reactive-streams-jvm/blob/master/README.md#3-subscription-code)* and M. Thomson, C. Benfield (eds.). *[RFC 9113, HTTP/2, §5.2 Flow Control.](https://www.rfc-editor.org/rfc/rfc9113#section-5.2)* Demand signalled by the consumer: a source here is pulled one chunk per request, and credits for a far side running ahead wait for their first caller (backlog foreign-mux-duplex).

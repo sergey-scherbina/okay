@@ -49,6 +49,10 @@ fn make() -> Worker {
         let scaled = x.iter().map(|v| i64::from_value(v).map(|n| Value::Int(n * k))).collect::<Result<Vec<_>, _>>()?;
         Ok(Value::Table(vec![("x".into(), scaled)]))
     }));
+    // a table answered as it came: every column kind, both ways
+    functions.insert("echo".into(), function(|args| Ok(args[0].clone())));
+    // a column mixing kinds, which C Data cannot carry: answered on the wire instead
+    functions.insert("mixed".into(), function(|_| Ok(Value::Table(vec![("m".into(), vec![Value::Int(1), Value::Str("two".into())])]))));
     Worker::new(programs, functions)
 }
 

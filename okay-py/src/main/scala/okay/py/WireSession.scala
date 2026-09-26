@@ -63,8 +63,10 @@ final class WireSession private (link: WireLink,
         case e: java.util.concurrent.ExecutionException => throw e.getCause
 
   /** what the handshake settled on: "json/none" (the plain JSON lines),
-   * "json/deflate", "cbor/zlib", …, and "+arrow" where tables cross as Arrow */
-  def wire: String = codec.fold("json/none")((f, c) => s"${f.name}/${c.name}") + (if arrow then "+arrow" else "")
+   * "json/deflate", "cbor/zlib", …, and "+arrow" where tables cross as an
+   * Arrow stream, "+cdata" where they cross in place (foreign-arrow-ffm) */
+  def wire: String = codec.fold("json/none")((f, c) => s"${f.name}/${c.name}") +
+    (if link.tables.isDefined then "+cdata" else if arrow then "+arrow" else "")
 
   /** a request that OPENS something: numbered, sent, its answer read */
   def exchange(req: Json): Json =
@@ -97,6 +99,29 @@ final class WireSession private (link: WireLink,
    * the handshake settled on `arrow`.
    */
   def exchangeArrow(head: Vector[(String, Json)], table: okay.arrow.Table): (Json, Option[okay.arrow.Table]) =
+    link.tables match
+      case Some(native) => exchangeNative(native, head, table)
+      case None => exchangeStream(head, table)
+
+  /** the table beside the message, as itself: a link that reads it in place
+   * (foreign-arrow-ffm) — the message in the wire's format, no Arrow stream */
+  private def exchangeNative(native: WireLink.Tables, head: Vector[(String, Json)],
+                             table: okay.arrow.Table): (Json, Option[okay.arrow.Table]) =
+    nextId += 1
+    val body = Json.JObj(("id" -> Json.JNum(nextId.toDouble)) +: head)
+    val (bytes, got) = onTheWire(Some(codec match
+      case None => native.exchange(Json.print(body).getBytes(java.nio.charset.StandardCharsets.UTF_8), table)
+      case Some((format, compression)) =>
+        val (b, t) = native.exchange(compression.compress(format.encode(body)), table)
+        (compression.decompress(b), t)))
+    arrowOut += 1
+    got.foreach(_ => arrowIn += 1)
+    val answer = codec match
+      case None => WireSession.whole(String(bytes, java.nio.charset.StandardCharsets.UTF_8))
+      case Some((format, _)) => format.decode(bytes)
+    (answer, got)
+
+  private def exchangeStream(head: Vector[(String, Json)], table: okay.arrow.Table): (Json, Option[okay.arrow.Table]) =
     val (format, compression) = codec.getOrElse(throw IllegalStateException("an Arrow table on an unframed wire"))
     nextId += 1
     val body = Json.JObj(("id" -> Json.JNum(nextId.toDouble)) +: head)
@@ -201,7 +226,9 @@ object WireSession:
         case Some(Json.JStr(x)) => x == "columnar"
         case _ => false
       case _ => false
-    new WireSession(link, version, codec, deadline.millis, arrow, frames, who, columnar)
+    // a link that carries a table as itself takes the table road whatever
+    // the far side's hello said about Arrow streams (foreign-arrow-ffm)
+    new WireSession(link, version, codec, deadline.millis, arrow || link.tables.isDefined, frames, who, columnar)
 
   /** stage 5's handshake (`okay.codec.WireNegotiation`): what the givens
    * ask for, checked against what the far side announced, and confirmed */

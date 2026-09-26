@@ -147,7 +147,7 @@ the code exists once and only the CLAIM differs:
 | marker | means L can carry | who has it |
 |---|---|---|
 | (none: `Runtime[L]` itself) | a value; a program's `call` | every language |
-| `Tables[L]` | a `Table` argument or answer | Py, R, Ts, Rust, Go, Hs (the frame road, stage 6: columnar JSON; Rust in process too, not wasm); Jvm by reference |
+| `Tables[L]` | a `Table` argument or answer | Py, R, Ts, Rust, Go, Hs (the frame road, stage 6: columnar JSON; Rust in process as Arrow C Data, Decision 21; not wasm); Jvm by reference |
 | `Objects[L]` | a `Ref[L]`: hold, pass, release | Py, R, Ts, Jvm; Rust/Go/Hs when a caller needs their libraries to keep a table of held values (Decision 18) |
 | `Methods[L]` | `Address.Method`/`Attr` on a held object | Py, Ts, Jvm — R's and Rust's objects have nothing to call by name, an honest absence |
 | `Programs[L]` | a program as data; `Programs.MultiShot[L]` refines it | every language; MultiShot: all but the direct-style-only far sides |
@@ -987,3 +987,26 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   engine test passed WITHOUT the fix: `Chunks.fromIterator` reads 64 rows a
   chunk, so ten rows finished before `take` could stop them — both tests
   now read past one chunk. Mutant: dropping the registration fails both.
+- **foreign-arrow-ffm (2026-09-26, Decision 21).** `okay_exchange_table` in
+  the Rust library (a hand-written `cdata` module: import, export with the
+  producer's release); `WireLink.Tables`, taken by `WireSession.exchangeArrow`
+  when the link has it; `InProcessLinks.ffm` offers it when the library
+  exports the function; `CDataCodec` with `OkayCData` (default, FFM) and
+  `ApacheCData` (import, optional `arrow-c-data`). `wire` reads
+  `json/none+cdata`.
+  - MEASURED (min of 7, arms alternating, load 3.2): one 1M-row Int64
+    column through `scale`, C Data 20.7 ms, JSON 119.8 ms — 5.8x; the same
+    at load 4.2 read 21.6 / 119.4.
+  - Tests: TestCData (default gate) — each codec reads the other's export
+    and its own, cell for cell (nulls, NaN, an empty string, non-ASCII, a
+    null column), and a table of no rows; a column outside the five refused
+    by name. TestRustCData (Live) — a table to Rust and back through both
+    codecs, counted as C Data both ways; a mixed-kind answer back as a
+    message. The in-process conformance rows pass unchanged.
+  - Mutant: our exporter writing the validity bitmap inverted fails two of
+    the four codec pairs.
+  - What remains a copy: the host's frame is boxed cells and okay's Table
+    heap arrays, so each column is copied once each way on the JVM, and
+    Rust's `Value::Table` is a Vec of cells. A columnar Rust table type,
+    or a caller already holding Arrow Java vectors, is where the next
+    factor would come from; nothing asks for it yet.

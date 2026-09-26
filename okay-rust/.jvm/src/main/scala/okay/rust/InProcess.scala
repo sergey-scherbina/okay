@@ -20,7 +20,7 @@ import okay.py.ForeignWorker
 extension (worker: ForeignWorker.type)
 
   /** a Rust `cdylib` built with `okay::export_worker!`, loaded through FFM */
-  def inProcess(library: Path)(using WireFormat, WireCompression, WireAuth, WireDeadline): ForeignWorker =
+  def inProcess(library: Path)(using WireFormat, WireCompression, WireAuth, WireDeadline, CDataCodec): ForeignWorker =
     val lib = NativeLib.load(library)
     InProcessLinks.ffm(lib) match
       case Right(link) => worker.over(link, s"the library $library")

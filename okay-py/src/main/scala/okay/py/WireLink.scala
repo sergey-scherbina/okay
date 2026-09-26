@@ -28,12 +28,21 @@ trait WireLink:
   def close(): Unit
   /** whether a message stays in this process (FFM, wasm) */
   def inProcess: Boolean = false
+  /** a link that carries a TABLE as itself, beside the message (a library
+   * in this process reading the Arrow C Data Interface in place,
+   * foreign-arrow-ffm); None where a table must be bytes on the wire */
+  def tables: Option[WireLink.Tables] = None
   /** whether a message crosses a network (TCP): the only link where the
    * default compression compresses — on a pipe and in-process it would
    * only cost (wire-compression-measured) */
   def network: Boolean = false
 
 object WireLink:
+
+  /** one message and ONE table out; the answer and, when the far side
+   * answered a table, that table (foreign-arrow-ffm) */
+  trait Tables:
+    def exchange(message: Array[Byte], table: okay.arrow.Table): (Array[Byte], Option[okay.arrow.Table])
 
   /**
    * A byte stream pair: what pipes and sockets both are, framed by

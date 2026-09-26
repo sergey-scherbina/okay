@@ -2505,9 +2505,15 @@ lazy val okayRust = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "com.dylibso.chicory" % "runtime" % "1.7.5",
       "com.dylibso.chicory" % "wasi" % "1.7.5",
+      // ApacheCData, the standard C Data codec beside ours (foreign-arrow-ffm):
+      // optional for consumers, carried by the tests that prove each reads the other
+      "org.apache.arrow" % "arrow-c-data" % "19.0.0" % "optional;test",
+      "org.apache.arrow" % "arrow-vector" % "19.0.0" % "optional;test",
+      "org.apache.arrow" % "arrow-memory-unsafe" % "19.0.0" % "optional;test",
     ),
     Test / fork := true,
-    Test / javaOptions += "--enable-native-access=ALL-UNNAMED",
+    Test / javaOptions ++= Seq("--enable-native-access=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow"),
     // a small first room, so the suite exercises exhaustion — the grant
     // on a stack that has room, the switch on one that has not (a
     // 128 KB thread) — without 850 levels of nesting before the first
