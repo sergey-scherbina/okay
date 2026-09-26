@@ -1,0 +1,1 @@
+ready-merge — merge by readiness on ONE thread of control: a ring of source continuations, Async.Await as Pending+waker; beside Channel.merge, measured (operator ask)
