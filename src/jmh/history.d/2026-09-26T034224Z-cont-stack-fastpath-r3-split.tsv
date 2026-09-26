@@ -1,0 +1,2 @@
+2026-09-26	e2020046b	quiet	cont-stack-fastpath-r3-split-fib100 vs master	2537.46	2495.53	1.02	ns/op, REFUTED: step split into a 3-parameter loop + a walking loop (1087 -> small); MIN of 3 alternating rounds, jmh-lane.sh -f2 -wi3 -i5, JDK 26; base b4934c052 read 2198.35 (master 1.135x base); bytes 23152 on 2 of 3 rounds as master; reverted
+2026-09-26	e2020046b	quiet	cont-stack-fastpath-r3-split-statePara vs master	32.29	32.91	0.98	us/op, REFUTED: within noise, same series; base read 27.55 (master 1.19x); reverted

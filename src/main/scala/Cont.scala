@@ -302,7 +302,7 @@ object Cont:
      * (specs/stack-safety.md stage 1c) */
     def applyAt(k: A => S, room: Int): R = this match
       case Absorbed(s, g) => s(Reentry(g, k, room - 1))
-      case Mapped(s, g) => s(a => callK(k, g(a), room - 1))
+      case Mapped(s, g) => s(mappedK(k, g, room - 1))
 
   /**
    * flatMap, in prefix form. The extension below and the
@@ -426,6 +426,19 @@ object Cont:
       val more = StackSwitch.more(gaugeOf(k))
       if more > 0 then step(f(x))(k)(more)(Pending.None)(null)
       else StackSwitch.fresh(fresh => step(f(x))(k)(fresh)(Pending.None)(null))
+
+  /**
+   * A `Mapped` leaf's continuation: `callK`'s type test taken ONCE, when
+   * the leaf is applied, rather than inside the lambda on every call
+   * (cont-stack-fastpath round 3). A plain `k` gets the base's own
+   * two-capture lambda, `a => k(g(a))`, which the JIT inlines into the
+   * shift's body and scalar-replaces; a `Reentry` gets one that enters
+   * it directly. Same meaning as `a => callK(k, g(a), room)`: `k` is
+   * fixed for the leaf's life.
+   */
+  private def mappedK[A, B, S](k: B => S, g: A => B, room: Int): A => S = k match
+    case r: Reentry[x, ?, ?, t] => a => r.enter(g(a), room)
+    case _ => a => k(g(a))
 
   /** call a continuation from inside the runner, with the room HERE */
   private def callK[A, S](k: A => S, a: A, room: Int): S = k match
