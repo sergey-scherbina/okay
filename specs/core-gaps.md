@@ -219,3 +219,62 @@ call (`Writer.listen[String, Int, Pure](step)`), as it does for
 `Writer.map`/`expand`/`run`. Left to inference, the rest of the row is
 solved as the row itself (`Writer % W + Writer % W`), and `Distinct`
 refuses it by name. The error is loud, never a wrong answer.
+
+## Stage 3 — error-accumulation-effect: `Chronicle` (2026-09-26)
+
+Between `Throws` (stop at the first error) and `Validated` (collect every
+error, but no step may depend on another) sits the program that RECORDS
+an error and goes on, and fails at the end, or at a point it chooses, if
+anything was recorded. The literature's name is Chronicle (Haskell
+`these`: `MonadChronicle`, `dictate`/`confess`/`condemn`). Its siblings
+are cats' `Ior`, arrow-kt's `Raise.accumulate`/`mapOrAccumulate`, and
+zio-prelude's `ZValidation` with warnings.
+
+```scala
+enum Chronicle[E, +A] derives Effect:
+  case Dictate(e: E) extends Chronicle[E, Unit]    // record, go on
+  case Halt()        extends Chronicle[E, Nothing] // stop with what is recorded
+
+object Chronicle:
+  def dictate[E](e: E): Unit ! Chronicle % E
+  def confess[E, A](e: E): A ! Chronicle % E        // dictate(e), then halt
+  def halt[E, A]: A ! Chronicle % E
+
+  enum Verdict[+E, +A]:
+    case Clean(a: A)                                // nothing recorded
+    case Warned(a: A, errors: Vector[E])            // recorded, finished anyway
+    case Failed(errors: Vector[E])                  // halted
+
+  def run[E, A, F[+_]](p: A ! Chronicle % E + F): Verdict[E, A] ! F
+  // every element under its own scope: one element's halt does not stop
+  // the others; all errors re-dictated in element order; halt at the end
+  // if any element halted
+  def all[E, X, B, F[+_]](xs: Iterable[X])(f: X => B ! Chronicle % E + F): Vector[B] ! Chronicle % E + F
+```
+
+- [ ] nothing recorded → `Clean(a)`
+- [ ] two dictates, then a value → `Warned(a, [e1, e2])`
+- [ ] `confess` stops: effects after it do not run → `Failed(all so far)`
+- [ ] `all`: an element's halt does not stop the next element, and every
+      element's errors come out in element order; `Failed` at the end
+- [ ] `all` with warnings only → `Warned(values, warnings)`
+- [ ] a row `Chronicle % String + Throws % IOError`: both handlers answer
+      their own
+- [ ] stack-safe: 100 000 dictates
+
+**Why not `Writer % E + Throws % E`**, which the backlog item asked about
+first. It does model the linear case: `Writer.run(runEither(p))` answers
+`(warnings, Either[firstFatal, A])`. It fails on three points. (1) It
+takes the row's ONE `Throws` slot, so a program that already raises
+`Throws % IOError` cannot also accumulate validation errors, the same
+class conflict that made `Maybe` its own effect. (2) The handler order is
+load-bearing: with `runEither` outside, the warnings vanish on a raise.
+(3) Accumulating ACROSS elements is a scoped operation (`all`) that
+neither handler has. One signature with two operations and one handler
+avoids all three.
+
+**`Halt` carries no error.** `confess(e)` is `dictate(e)` followed by
+`halt`, which is `these`' `condemn` shape. That lets `all` stop with the
+errors it has ALREADY re-dictated rather than inventing one to confess.
+A bare `halt` with nothing recorded answers `Failed(Vector())`. That is a
+possible verdict, and the type does not pretend otherwise.
