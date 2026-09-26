@@ -425,3 +425,35 @@ code, and the residual it drops is not discontinued. The next wait would
 have released the scope, but the drive never reaches it. A virtual-thread
 fiber (the JVM default) takes that cancel as an interrupt at its next
 blocking point, which does release it.
+
+## Stage 8 — drive-discontinue (2026-09-26)
+
+Stage 7 left one case open, and the operator asked for it to be closed.
+The callback drive (`Async.Drive`: JS, `Schedulers.own`, `runAsync`) is
+cancelled between two NON-BLOCKING operations. It stops before the next
+one and drops the residual, and a Resource scope inside the residual
+drops its finalizers with it. A virtual thread notices the same cancel
+only at a blocking point, so a use that never blocks is invisible to it.
+
+- The Async `Failing` guard builds RECOGNISABLE operations:
+  `GuardedRun` / `GuardedAwait`, each a `Discontinue`. `discontinue()`
+  releases the guarding scope without running the operation, and an inner
+  scope's guard (nested inside) first. One `Release` per guarded operation
+  makes the release happen once across all four doors: a throw, a Left
+  answer, a cancelled wait, a discontinuation.
+- `Drive`, stopped after an operation, calls `discontinue(cur)`. It
+  reaches the NEXT operation by descending the left spine of `Bind`s
+  without rotating a node or calling a continuation, so no user code
+  runs. That is OCaml 5's `discontinue`, done by the runner. A `Return` or
+  a `Delay` has nothing reachable, and a finished scope has already
+  released.
+
+- [x] a `bracket` spinning non-blocking `async` steps on `Schedulers.own`,
+      cancelled by `timeout(50)`: released (watched RED: "the drive
+      dropped a cancelled scope without releasing it")
+
+Still not a runner's to fix: a virtual-thread fiber whose use never
+blocks cannot be stopped by an interrupt (the JVM's rule, ZIO's too). It
+runs to its end and releases then. A handler that drops the continuation
+of an operation that normally resumes (`Logic.cut`/`once`) is filed as
+backlog `logic-cut-releases`.

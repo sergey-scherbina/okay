@@ -101,6 +101,23 @@ class TestAsync extends munit.FunSuite {
     assert(blocked.await(2, TimeUnit.SECONDS), "a use blocked in a Run leaked its resource when cancelled")
   }
 
+  test("a bracket cancelled between two non-blocking steps on the callback drive releases") {
+    import java.util.concurrent.{CountDownLatch, TimeUnit}
+    // Schedulers.own runs a fiber as a callback DRIVE, which a cancel
+    // stops between two operations; a virtual thread would only notice
+    // the interrupt at a blocking point, and this use never blocks
+    val sch = Schedulers.own.workers(2).build
+    try
+      given Scheduler = sch
+      val released = CountDownLatch(1)
+      val end = System.nanoTime() + 5_000_000_000L
+      def spin(n: Long): Long ! Async = async(System.nanoTime()).flatMap(t => if t > end then pure(n) else spin(n + 1))
+      val p = bracket("r")(_ => released.countDown())(_ => spin(0))
+      assertEquals(Async.timeout(50)(p).runWith, None)
+      assert(released.await(2, TimeUnit.SECONDS), "the drive dropped a cancelled scope without releasing it")
+    finally sch.close()
+  }
+
   test("a bracket that loses a race releases its resource") {
     import java.util.concurrent.{CountDownLatch, TimeUnit}
     val lost = CountDownLatch(1)

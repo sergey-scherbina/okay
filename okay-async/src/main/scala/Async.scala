@@ -1,6 +1,7 @@
 package okay
 
 import scala.annotation.implicitNotFound
+import scala.annotation.tailrec
 
 /**
  * Asynchrony, cross-platform (specs/cross-platform-async.md): programs
@@ -222,12 +223,30 @@ object Async {
               if next != null then
                 cur = next
                 looping = !stopped
+                if !looping then discontinue(cur)
             case Free.Inject(e) =>
               val next = op(e, Free.Return(_))
               if next != null then
                 cur = next
                 looping = !stopped
+                if !looping then discontinue(cur)
       catch case e: Throwable => fail(e)
+
+    /**
+     * CANCELLED BETWEEN TWO OPERATIONS (drive-discontinue, 2026-09-26):
+     * the rest of the program is dropped here, and a Resource scope
+     * inside it would drop its finalizers with it. The next operation
+     * is the LEFTMOST node of the tree, reached by descending `Bind`s
+     * without rotating them or calling any continuation, so no user
+     * code runs. If a scope guarded it, it releases. A `Return`, or a
+     * `Delay` whose thunk is user code, has nothing reachable, and a
+     * scope that has already finished has already released.
+     */
+    @tailrec private def discontinue(p: Free[Async, ?]): Unit = p match
+      case Free.Bind(a, _) => discontinue(a)
+      case Free.Inject(Run(d: Discontinue)) => d.discontinue()
+      case Free.Inject(Await(d: Discontinue)) => d.discontinue()
+      case _ => ()
 
     /** one operation: the continuation to drive next when the answer
      * came synchronously, null when the drive parked on a callback

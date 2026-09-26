@@ -68,32 +68,74 @@ object AsyncFailing extends FailingLow:
    * rebuilt under a GADT match and no cast is needed. Higher priority
    * than `anyRow`, which would answer the same way through the cast. */
   given async: okay.Failing[Async] = new:
-    def guard[X](e: Async[X], onFailure: () => Unit): Async[X] = e match
-      // a release that throws must not REPLACE the failure being
-      // reported: it is suppressed on it (release-all-finalizers)
-      case Async.Run(f) => Async.Run(() => try f() catch { case t: Throwable => failed(t, onFailure); throw t })
-      case Async.Await(reg) => Async.Await { k =>
-        // a CANCELLED wait is a failure too (cancel-releases-resource,
-        // 2026-09-26): both schedulers cancel a parked Await through the
-        // canceller its registration answered with (`CanBlock.block` on
-        // an interrupt, the callback drive's `unregister`), and a scope
-        // waiting there will never continue, as ZIO's interruption.
-        // Released ONCE across the three doors, and only while the wait
-        // is still open: the callback drive keeps the canceller of an
-        // Await that has already ANSWERED and calls it on a later cancel,
-        // when the scope is still running.
-        val answered = java.util.concurrent.atomic.AtomicBoolean(false)
-        val released = java.util.concurrent.atomic.AtomicBoolean(false)
-        val cancel = reg { r =>
-          answered.set(true)
-          r.left.foreach(t => if !released.getAndSet(true) then failed(t, onFailure))
-          k(r)
-        }
-        () =>
-          cancel()
-          if !answered.get && !released.getAndSet(true) then onFailure()
-      }
+    def guard[X](e: Async[X], onFailure: () => Unit): Async[X] =
+      val release = Release(onFailure)
+      e match
+        case Async.Run(f) => Async.Run(GuardedRun(f, release))
+        case Async.Await(reg) => Async.Await(GuardedAwait(reg, release))
 
-  private def failed(cause: Throwable, onFailure: () => Unit): Unit =
-    try onFailure()
-    catch { case t: Throwable => if t ne cause then cause.addSuppressed(t) }
+/**
+ * A GUARDED OPERATION'S RELEASE, REACHABLE WITHOUT RUNNING IT
+ * (drive-discontinue, 2026-09-26). The callback drive, cancelled between
+ * two operations, stops before the next one, and the scope that forwarded
+ * that operation would never continue. The drive therefore asks the next
+ * operation to `discontinue`: release the scopes it was guarded by,
+ * innermost first, and run NO user code. This is OCaml 5's
+ * `discontinue`, done by the runner rather than by a handler's author.
+ */
+trait Discontinue:
+  def discontinue(): Unit
+
+/** a scope's release, ONCE, across every door an operation has: its
+ * failure, its cancellation, its discontinuation */
+private final class Release(onFailure: () => Unit):
+  private val done = java.util.concurrent.atomic.AtomicBoolean(false)
+  /** a failure is propagating: the release runs, and a release that
+   * throws must not REPLACE that failure, so it is suppressed on it
+   * (release-all-finalizers) */
+  def failed(cause: Throwable): Unit =
+    if !done.getAndSet(true) then
+      try onFailure()
+      catch { case t: Throwable => if t ne cause then cause.addSuppressed(t) }
+  /** the operation will never answer: release now */
+  def now(): Unit = if !done.getAndSet(true) then onFailure()
+
+/** a guarded Run: a throw releases; `discontinue` releases without
+ * running `f` */
+private final class GuardedRun[X](f: () => X, release: Release) extends (() => X), Discontinue:
+  def apply(): X =
+    try f()
+    catch { case t: Throwable => release.failed(t); throw t }
+  def discontinue(): Unit =
+    f match
+      case d: Discontinue => d.discontinue()   // an inner scope first
+      case _ => ()
+    release.now()
+
+/**
+ * A guarded Await. A Left answer releases. Cancelling an OPEN wait
+ * releases too (cancel-releases-resource): both schedulers cancel a
+ * parked Await through the canceller its registration answered with
+ * (`CanBlock.block` on an interrupt, the callback drive's `unregister`),
+ * and a scope waiting there will never continue, as with ZIO's
+ * interruption. Nothing is released after the wait has ANSWERED: the
+ * callback drive keeps that canceller and calls it on a later cancel,
+ * when the scope is still running.
+ */
+private final class GuardedAwait[X](reg: (Either[Throwable, X] => Unit) => (() => Unit), release: Release)
+    extends ((Either[Throwable, X] => Unit) => (() => Unit)), Discontinue:
+  def apply(k: Either[Throwable, X] => Unit): () => Unit =
+    val answered = java.util.concurrent.atomic.AtomicBoolean(false)
+    val cancel = reg { r =>
+      answered.set(true)
+      r.left.foreach(release.failed)
+      k(r)
+    }
+    () =>
+      cancel()
+      if !answered.get then release.now()
+  def discontinue(): Unit =
+    reg match
+      case d: Discontinue => d.discontinue()
+      case _ => ()
+    release.now()
