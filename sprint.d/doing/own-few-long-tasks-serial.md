@@ -22,3 +22,6 @@
       size > 0), or a coarse per-worker "local work waiting since"
       stamp a sleeper-waking tick can see. (2026-09-26, analysis of
       five-way-okay)
+      CHOSEN (2026-09-26): a sysmon-style monitor per own scheduler that wakes
+      parked workers for a worker stuck in one task with work waiting;
+      specs/schedulers.md, "Two defects: local work nobody was told about".

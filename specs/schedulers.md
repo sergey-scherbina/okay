@@ -264,3 +264,87 @@ implementations share no machinery (Loom parks against wait/notify).
       not force the window — it guards the composed path, the unit
       suite proves the rule
 
+
+## Two defects: local work nobody was told about (2026-09-26, own-scheduler-monitor)
+
+### own-few-long-tasks-serial
+**Symptom.** A burst of a FEW LONG fibers forked from inside a fiber
+runs on one thread. The five-way benchmark (docs/benchmarks.md §4a),
+8 workers x 4 096 items at work 64: `own` and `adaptive` 1 847 ops/s,
+the default Loom scheduler 3 466 — `own`'s number is the serial time
+(4 096 x ~135 ns = 0.54 ms). **Probe** (the five-way clone's
+ThreadProbe, distinct thread ids running the work): 8 on Loom, 1 on
+`own`, 1 on `own.forLongTasks` (both thresholds 0), 1 on `adaptive`.
+**Cause** (Platform.scala). A fiber forked FROM a worker is
+`pushLocal`ed onto that worker's deque with no CAS and no signal, and
+the only thing that wakes a sleeper for local work is the helper rule,
+evaluated once per 16 COMPLETED tasks (`(windowRan & 15) == 0`). This
+burst is about ten tasks, so the rule never runs and its thresholds
+never matter — which is why `forLongTasks` is no better.
+
+### adaptive-short-blocking-calls
+**Symptom.** Fibers that block inside a worker reach a handful of
+threads on `adaptive`. Five-way blocking TCP (64 lanes, 1 ms server):
+`adaptive` 5.4 batches/s against Loom's 117 and CE's 121 — the collapse
+Kyo shows there too (4.9). **Probe** (64 lanes x 4 calls of a 1 ms
+sleep): Loom reaches 64 concurrent calls, 8.5 ms a batch; `adaptive`
+peaks at 5 concurrent calls on 5 threads, 167 ms a batch.
+**Cause** (Platform.scala). The 64 lane fibers are forked from inside
+one worker (its deque, no signal — the same gate as above) and that
+worker blocks in the first call. The stuck-check (`watched`, every
+100 ms) starts a worker only when NOTHING has completed since its last
+look; the lanes keep completing something every few milliseconds, so
+it sees progress and grows almost nothing.
+
+### Decisions
+- **Chosen: a monitor, Go's sysmon in miniature.** One daemon thread
+  per `own` scheduler looks, every `monitorEvery` (a knob on `Own`,
+  default by measurement; `unmonitored` turns it off), at each
+  worker's deque and calls a worker STUCK when work waits on it and the
+  owner has not moved since the last look — the owner has been inside
+  one task for a whole tick while work queues behind it. For a stuck
+  worker it wakes parked workers, one per waiting task (they steal);
+  on a `watched` scheduler (`adaptive`, `platform`), when nobody is
+  parked, it starts overflow workers the same way, up to `overflow`.
+  It parks itself when no worker is awake and nothing is queued, so an
+  idle scheduler has no ticking thread. The old stuck-check stays for
+  the case the monitor cannot see: work in the shared submission queue
+  with every worker wedged.
+  *"The owner has not moved" is read from the deque's owner end*
+  (`bottom`, a volatile the deque already has; it moves on every push
+  and pop by the owner, never on a steal) rather than from a
+  per-worker completed count: a count the monitor can trust needs a
+  published write per task, the one thing the per-task path must not
+  gain. A pop and a push between two looks can leave the end where it
+  was and cost one spurious wake, which the woken worker answers by
+  finding nothing and parking again.
+- **Rejected: a signal on every local push, or on a burst of pushes**
+  (ForkJoinPool's `signalWork`). It spreads long fibers at once, and it
+  is exactly the cost `own` exists to avoid: sequential spawn/join on
+  `own` reads 14 486 ops/s against Kyo's 6 371 because a tiny child
+  stays home and nothing is woken; the kyo-shape fork/join lanes
+  (~30 ns fibers, AdversarialBenchmark) are the same case.
+- **Rejected: reading the clock per task** (deciding at task end
+  whether a task was long). Also on the per-task path, and it decides
+  too late: the long task has already run, and with a shared work
+  index the first long fiber does all the work before any end is seen.
+- **Rejected: a shorter stuck-check interval alone.** "Nothing
+  completed" is the wrong question when a few blocked workers hold most
+  of the pending work and the rest keep completing; any interval is
+  defeated by one completion per interval.
+- **Deferred: moving a blocking fiber to Loom** (Open boxes, above). It
+  would make blocking cheap on `adaptive` rather than survivable, and
+  the monitor is needed for the long-CPU case regardless.
+
+- [ ] eight 0.5 ms CPU-bound fibers forked inside an `own` fiber run
+      on more than one thread (TestOwnMonitor; red on master: one)
+- [ ] fibers forked inside an `own` fiber that block wake the parked
+      workers (TestOwnMonitor; red on master: a peak of 2 calls on 4)
+- [ ] on `adaptive` they also reach the overflow workers
+      (TestOwnMonitor; red on master: a peak of 2 calls on 4 + 4)
+- [ ] the scheduler laws hold for every member (TestSchedulerLaws)
+- [ ] must not regress: sequential spawn/join on `own` (five-way) and
+      the kyo-shape fork/join lanes (AdversarialBenchmark
+      forkJoin10k_okayOwnInside / forkJoin10k_okayOwn)
+- [ ] must improve: five-way workers work=64 on `own`/`adaptive`,
+      blocking TCP on `adaptive`

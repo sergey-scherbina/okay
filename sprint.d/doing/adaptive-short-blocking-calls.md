@@ -25,3 +25,6 @@
       "No progress" is the wrong test when a few blocked workers hold
       most of the pending work: a worker in one task longer than
       `stuckAfter` with a non-empty deque is the signal to act on.
+      CHOSEN (2026-09-26): the same monitor, which on a watched scheduler also
+      starts overflow workers when nobody is parked; specs/schedulers.md,
+      "Two defects: local work nobody was told about".
