@@ -146,7 +146,12 @@ OLTP or a cache. Filed: `jdbc-bulk-load`.
   streaming included. A native columnar codec (a Parquet algebra
   over Schema, the Spark-encoder move again) is real work with a
   real payoff — staged for when a consumer hurts through the
-  DuckDB path, not before.
+  DuckDB path, not before. THE CONSUMER ARRIVED (2026-09-26,
+  engine-object-store-io): the cluster engine's WORKERS read one row
+  group of an object and write one partition's output, which a
+  one-process SQL engine is not shaped to do — hence okay-parquet (our
+  codec, parquet-java behind an import) and okay-lake. DuckDB stays the
+  road for SQL over the same files (duckdb-lake-reads, below).
 - WRITE, own posture: okay-persist's stage 3 already names segment
   offload to object storage — our log's cold tail IS our lake, in
   our format, readable by the same recovery scan. Writing
@@ -289,6 +294,12 @@ list in its spec or spec section)
       exact scan v1 — an approximate index is a later, measured
       choice precisely because agreement is only testable while
       search is exact)
+- [ ] DuckDB and okay-parquet read each other's files, embedded
+      (duckdb-lake-reads, 2026-09-26; TestParquetDuckDb)
+- [ ] `Manifest.duckdb` points DuckDB at exactly a run's visible output
+      — its manifest's objects, never a glob a stray could join — and a
+      Live MinIO read through the seam equals the run
+      (TestLakeDuckDb)
 - [x] a Parquet file on disk is read through the JDBC seam (DuckDB)
       with `verify` passing and constant-memory streaming asserted
       (TestLake in okay-jdbc, DuckDB embedded test-scope: 100k rows
