@@ -844,6 +844,21 @@ C. **The fast path's bookkeeping** — C1 LANDED 2026-09-25
    bytes (21 568 vs 21 552), the others the old 23 152 — the lever is
    right and the JIT's decision not yet deterministic; time 1.19 in a
    busy evening's noise. Next: `Leaf.applyAt` (131 bytes) and `callK`.
+   ROUND 3 (2026-09-26, the continuations perf review): PrintInlining
+   on fib100 again, base b4934c052 against master e2020046b. Two
+   differences: `step` is 1 087 bytecodes on master against 509 on the
+   base — Layer 1 B's pending stack and walked body are two more
+   parameters and two more cases on EVERY program, CPS or not — and
+   the `Mapped` leaf's lambda reaches its continuation through `callK`
+   (a type test, then `Reentry.enter`), which some compiles refuse
+   with "callee uses too much stack", where the base's lambda called
+   `k` directly and was scalar-replaced. The plan, one change per
+   number, each kept only when fib100 or statePara moves: (1) split
+   `step` — a small loop in the base's shape plus `room`, handing over
+   ONCE to the full walking loop at the first `Cps` it meets (one
+   frame, not a recursion); (2) decide `callK`'s type test when the
+   `Mapped` leaf is applied, not per call of its lambda; (3) whatever
+   the next PrintInlining names.
    Below: the plan as written before A. Candidates, each measured alone against the stage
    before, kept only when it pays: `Gauge` as a field of the OUTERMOST
    `Reentry` (found by the same walk) instead of a `Gauged` root per
