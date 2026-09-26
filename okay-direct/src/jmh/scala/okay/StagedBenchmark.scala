@@ -174,6 +174,60 @@ class StagedBenchmark {
     if stagedDirect() != a || freeDirectNested() != a then
       throw new IllegalStateException("the staged or Free block answers differently from the hand block")
 
+  // ---- handlers-vs-virtual-calls: the handler as an ordinary class,
+  // `get`/`set`/`tell` virtual methods, the rung between the plain
+  // loop and the staged handler. MONO: one subclass, so C2 inlines the
+  // calls. MEGA: four identical subclasses rotated per invocation, so
+  // every call site in `vBlock`/`bBlock` sees four receivers and stays
+  // a vtable call (C2 inlines at most two). One object per run is made
+  // through the rotation — 1 allocation against 1 000 operations.
+
+  import StagedBenchmark.*
+  private var turn = 0
+  private val vMake: Array[() => VOps] = Array(() => V0(), () => V1(), () => V2(), () => V3())
+  private val bMake: Array[() => BOps] = Array(() => B0(), () => B1(), () => B2(), () => B3())
+
+  @Benchmark
+  def virtualMonoVector(): (Int, Int, Vector[String]) =
+    val o = V0()
+    (vBlock(o, Iters), o.s, o.log)
+
+  @Benchmark
+  def virtualMegaVector(): (Int, Int, Vector[String]) =
+    val o = vMake(turn & 3)()
+    turn += 1
+    (vBlock(o, Iters), o.s, o.log)
+
+  @Benchmark
+  def virtualMonoBuffer(): (Int, Int, scala.collection.mutable.ArrayBuffer[String]) =
+    val o = B0()
+    (bBlock(o, Iters), o.s, o.log)
+
+  @Benchmark
+  def virtualMegaBuffer(): (Int, Int, scala.collection.mutable.ArrayBuffer[String]) =
+    val o = bMake(turn & 3)()
+    turn += 1
+    (bBlock(o, Iters), o.s, o.log)
+
+  /** the virtual lanes' control. It never calls `vBlock`/`bBlock` with
+   * a second subclass — that would pollute the MONO lanes' profile in
+   * their own forks — so the subclasses are checked one operation at a
+   * time here, at this method's own call sites, and the block once on
+   * the first subclass against the plain loop */
+  @Setup(Level.Trial)
+  def sameVirtualProgram(): Unit =
+    val (pa, ps, plog) = plainLoopVector()
+    val v = V0()
+    val b = B0()
+    if (vBlock(v, Iters), v.s, v.log) != (pa, ps, plog) || (bBlock(b, Iters), b.s, b.log.toVector) != (pa, ps, plog) then
+      throw new IllegalStateException("the virtual block answers differently from the plain loop")
+    for o <- vMake.map(_()) do
+      o.set(7); o.tell("w")
+      if o.get() != 7 || o.s != 7 || o.log != Vector("w") then throw new IllegalStateException(s"${o.getClass} differs")
+    for o <- bMake.map(_()) do
+      o.set(7); o.tell("w")
+      if o.get() != 7 || o.s != 7 || o.log.toVector != Vector("w") then throw new IllegalStateException(s"${o.getClass} differs")
+
   // ---- specs/direct-stagers.md: (1) the SAME block through Stager.All
   // with two unused slots — the price of the layout
 
@@ -276,4 +330,72 @@ class StagedBenchmark {
   def stagedHandRT(): Int = rt.run(cfg, ())(handRT(0, 0))._2 match
     case Right(a) => a
     case Left(_) => -1
+}
+
+object StagedBenchmark {
+
+  /** the State+Writer handler as a plain class hierarchy; every
+   * subclass overrides every method with the same body, so class
+   * hierarchy analysis cannot devirtualize the calls to one target */
+  abstract class VOps {
+    var s: Int = 0
+    var log: Vector[String] = Vector.empty
+    def get(): Int
+    def set(x: Int): Unit
+    def tell(w: String): Unit
+  }
+  final class V0 extends VOps { def get(): Int = s; def set(x: Int): Unit = s = x; def tell(w: String): Unit = log = log :+ w }
+  final class V1 extends VOps { def get(): Int = s; def set(x: Int): Unit = s = x; def tell(w: String): Unit = log = log :+ w }
+  final class V2 extends VOps { def get(): Int = s; def set(x: Int): Unit = s = x; def tell(w: String): Unit = log = log :+ w }
+  final class V3 extends VOps { def get(): Int = s; def set(x: Int): Unit = s = x; def tell(w: String): Unit = log = log :+ w }
+
+  abstract class BOps {
+    var s: Int = 0
+    val log: scala.collection.mutable.ArrayBuffer[String] = scala.collection.mutable.ArrayBuffer.empty
+    def get(): Int
+    def set(x: Int): Unit
+    def tell(w: String): Unit
+  }
+  final class B0 extends BOps { def get(): Int = s; def set(x: Int): Unit = s = x; def tell(w: String): Unit = { val _ = log.addOne(w) } }
+  final class B1 extends BOps { def get(): Int = s; def set(x: Int): Unit = s = x; def tell(w: String): Unit = { val _ = log.addOne(w) } }
+  final class B2 extends BOps { def get(): Int = s; def set(x: Int): Unit = s = x; def tell(w: String): Unit = { val _ = log.addOne(w) } }
+  final class B3 extends BOps { def get(): Int = s; def set(x: Int): Unit = s = x; def tell(w: String): Unit = { val _ = log.addOne(w) } }
+
+  /** the same 10-operation block as every other lane, each operation a
+   * virtual call on `o` */
+  def vBlock(o: VOps, iters: Int): Int =
+    var acc = 0
+    var i = 0
+    while i < iters do
+      val a = o.get()
+      o.set(i)
+      o.tell("w")
+      val b = o.get()
+      o.set(i + 1)
+      o.tell("w")
+      val c = o.get()
+      o.set(i + 2)
+      o.tell("w")
+      val d = o.get()
+      acc = acc + a + b + c + d
+      i += 1
+    acc
+
+  def bBlock(o: BOps, iters: Int): Int =
+    var acc = 0
+    var i = 0
+    while i < iters do
+      val a = o.get()
+      o.set(i)
+      o.tell("w")
+      val b = o.get()
+      o.set(i + 1)
+      o.tell("w")
+      val c = o.get()
+      o.set(i + 2)
+      o.tell("w")
+      val d = o.get()
+      acc = acc + a + b + c + d
+      i += 1
+    acc
 }
