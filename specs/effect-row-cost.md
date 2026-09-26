@@ -41,6 +41,21 @@ Two causes, each read in the code and now measured:
    96 for one `set` — more than the sum of its parts, because the
    `flatMap` closure over `f` and the boxed new state come on top.
 
+## Results after D1 (ProbeRowCost, exact, the same probe)
+
+| variant | before | after |
+|---|---:|---:|
+| the row as written, `State.run(Writer.run(p))` | 384 | 168 |
+| the same program, `Writer.run(State.handle(p))` | 240 | 96 |
+| State alone, `modify` | 240 | 96 |
+
+The row's remaining 72 B over the swapped order is one forward per
+level (was two). D2 — reusing the matched `Inject` when forwarding —
+would save 16 of those 72 but needs a cast from `Writer % W + F` to
+`F` (Free is invariant in its row), and the repo's rule is no cast
+without a real necessity: deferred until a measurement shows the 16 B
+matter in time.
+
 ## Decisions
 
 - **D1. A one-step `Modify` operation in State** (`case Modify(f: S => S)`,
@@ -70,15 +85,16 @@ Two causes, each read in the code and now measured:
 
 ## Behavior
 
-- [ ] `State.modify(f)` is ONE operation: a handler sees `Modify(f)`, and
-      `State.handle` answers the new state (TestState pins it, and a
-      program counting operations sees one per modify)
-- [ ] every interpreter of State's operations handles `Modify` (compile
-      is the check: no non-exhaustive match anywhere)
-- [ ] ProbeRowCost: State-only `modify` at most `set` + 32 B a level
+- [x] `State.modify(f)` is ONE operation: a handler sees `Modify(f)`, and
+      `State.handle` answers the new state (TestState pins it: the
+      program is a single `Inject(Modify(_))`, red on master first)
+- [x] every interpreter of State's operations handles `Modify` (compile
+      is the check: seventeen exhaustivity warnings named them —
+      State.handle, zoom, Bisim, Lexical x4, the stagers, the test handlers)
+- [x] ProbeRowCost: State-only `modify` at most `set` + 32 B a level (96 = set's 96)
 - [ ] the forwarding arms reuse the matched `Inject` (ProbeRowCost: the
       row's forwarding cost per operation down by 16 B)
-- [ ] docs say which handler order to choose, with this measurement
+- [x] docs say which handler order to choose, with this measurement (guide, "The order is also a price")
 - [ ] MutualRecursionFxBenchmark `okayRow` and `okayRowSwapped` re-measured;
       docs/benchmarks.md carries the before and after
 - [ ] the handler lanes (docs/benchmarks.md §2 Reader/Writer, §2c) do not
