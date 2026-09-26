@@ -50,7 +50,10 @@ and `mergeReady` takes the failure rule `merge` always had.
       channel held per part)
 - [x] the numbers: `MergeBenchmark.okaySourceMerge` and
       `MergeCapBenchmark` (64 / 256 / 1024), new against old, each arm
-      in its own JVM, alternating; the bar is no named loss
+      in its own JVM, alternating. The bar was "no named loss"; ONE is
+      named (capacity 256, ~10%, two causes refuted, backlog
+      `merge-cap256-gap`) and landed with the operator's ask for one
+      mechanism, since the default capacity is faster
 
 ## Design
 
