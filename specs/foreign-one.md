@@ -1208,3 +1208,16 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   - Mutants: the feeder ignoring the far side's credit fails FED; Rust's
     `okay_next` granting no credit fails both cases in 30 s (bounded, not
     hung).
+- **foreign-pipe-hello-timeout (2026-09-26).** `WireLink.pipes(proc,
+  helloMillis = 300000)`: the hello is read on a thread of its own, and a
+  process that says nothing within the limit is refused by name and
+  destroyed (which ends the read). Found by foreign-host-streams' Live
+  runs: twice at load 32–35, R's docker shim started containers that never
+  printed the handshake, and only the gate's stall watchdog (480 s) ended
+  the wait. Tests (default gate): a process sleeping 30 s before its hello
+  is refused within the 500 ms asked for and stopped; a prompt one is
+  served. Mutant: waiting past the limit fails the first (it hangs to the
+  suite's 30 s). The first default, 60 s, turned TestR RED: with ~19
+  `docker run` clients in flight (`docker ps` itself timing out), R
+  containers took over a minute to say hello — slow, not dead — so the
+  default is 5 minutes, still well inside the gate's 480 s watchdog.

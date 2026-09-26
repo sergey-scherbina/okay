@@ -425,6 +425,13 @@ network that stopped delivering), or it DIES (a crash, a killed process, a
 dropped connection). okay's answer is the one it gives everywhere else:
 the failure is data, and what to do about it is the caller's choice.
 
+A far side can also be silent BEFORE it starts: a container that never
+comes up, an interpreter stuck before its shim. Its hello has a limit —
+5 minutes over a pipe (`WireLink.pipes(proc, helloMillis)`; a container
+start on a busy machine was measured past a minute), 10 s over TCP — and
+a worker that says nothing in that time is refused by name and its process
+stopped, so its opener is never left in a read.
+
 **A deadline** is a given:
 
 ```scala

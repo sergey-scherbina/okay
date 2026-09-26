@@ -80,9 +80,36 @@ object WireLink:
       def sendFrame(message: Array[Byte]): Unit = WireFrames.writeFrame(output, message)
       def receiveFrame(): Option[Array[Byte]] = WireFrames.readFrame(input))
 
-  /** a child process's stdin and stdout */
-  def pipes(proc: Process): WireLink =
+  /**
+   * A child process's stdin and stdout. Its hello must come within
+   * `helloMillis` (foreign-pipe-hello-timeout): a process that says nothing —
+   * a container that never started, an interpreter stuck before its shim —
+   * is refused by name and STOPPED, rather than leaving its opener in a read
+   * for ever. The limit is generous by default: MEASURED 2026-09-26, R's
+   * docker shim with ~19 container starts in flight took over 60 s to say
+   * hello while `docker ps` itself timed out — slow, not dead. Five minutes
+   * tolerates that and still ends a worker that never speaks, by name, well
+   * before a gate's 480 s stall watchdog. TCP has the same guard.
+   */
+  def pipes(proc: Process, helloMillis: Long = 300000): WireLink =
     new Streams(proc.getOutputStream, proc.getInputStream):
+      override def hello(): Option[String] =
+        val said = java.util.concurrent.CompletableFuture[Option[String]]()
+        // the read on a thread of its own: a blocked read cannot be abandoned,
+        // but a process destroyed ends it
+        val reader = Thread(() =>
+          try said.complete(super.hello()): Unit
+          catch case e: Throwable => said.completeExceptionally(e): Unit
+        , "okay-pipe-hello")
+        reader.setDaemon(true)
+        reader.start()
+        try said.get(helloMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
+        catch
+          case _: java.util.concurrent.TimeoutException =>
+            close()
+            throw IllegalStateException(s"the worker said nothing for ${helloMillis}ms (it may still have been starting — " +
+              "a container, an interpreter under load): refused, and its process stopped")
+          case e: java.util.concurrent.ExecutionException => throw e.getCause
       def close(): Unit =
         try { proc.getOutputStream.close(); proc.getInputStream.close() } catch case _: Exception => ()
         proc.destroy()
