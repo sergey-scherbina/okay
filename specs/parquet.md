@@ -1,0 +1,80 @@
+# okay-parquet: Parquet without Spark or Hadoop
+
+## Why
+
+The operator's case (2026-09-26): risk and fraud models in R and Python
+reading and writing large data in object storage, run by okay's cluster
+engine. The data is Parquet, and until this module the only Parquet
+road in the repository was Spark's or Delta Kernel's — both over Hadoop,
+which meets JEP 486 on JDK 24+ and pins okay-delta's tests to JDK 21. A
+cluster worker must read a row group of a Parquet object with nothing
+but okay on its classpath (engine-object-store-io; bulk-parquet asks for
+the same reader).
+
+## The design
+
+- **The data model is okay-arrow's `Table`** — named `Column`s with
+  validity. Parquet is a columnar file of the same columns; a row group
+  is a `Table`. No second in-memory model.
+- **Random access, one row group at a time.** `ReadAt` is two methods
+  (`size`, `read(offset, len)`); a file on disk, an S3 object by range
+  GET and a byte array all are one. The reader fetches the footer, then
+  each row group's column chunks as byte ranges — memory is one row
+  group's chunks, never the file.
+- **The writer holds one row group.** `ParquetCodec.writer(out)` hands
+  bytes to a sink as each row group is appended, and the footer at
+  `close()`; the caller decides the row group's size by the tables it
+  appends.
+- **The facade (specs/own-or-standard.md)**: `ParquetCodec`, ours
+  (`OkayParquet`) the default given on every platform, parquet-java
+  (`ParquetJava`, JVM, over an OPTIONAL dependency) behind an import,
+  refused by name without its jar, each reading the other's files.
+
+## Scope
+
+- FLAT schemas: every column a leaf of the root, REQUIRED or OPTIONAL.
+  A REPEATED field or a group is refused by name, naming the column.
+- Types, both ways: BOOLEAN, INT32 (with INT(8/16/32, signed or not) and
+  DATE), INT64 (with INT(64) and TIMESTAMP millis/micros/nanos), FLOAT,
+  DOUBLE, BYTE_ARRAY (STRING → `Utf8`, otherwise `Binary`),
+  FIXED_LEN_BYTE_ARRAY. Read only: INT96 (Spark's legacy timestamp → a
+  nanosecond `Timestamp`), DECIMAL over INT32/INT64/FIXED (→ `Decimal`).
+- Pages: data page v1 and v2, dictionary pages; encodings PLAIN,
+  PLAIN_DICTIONARY/RLE_DICTIONARY and the RLE/bit-packed hybrid for
+  levels. The DELTA_* and BYTE_STREAM_SPLIT encodings are refused by
+  name (parquet-java's default v1 writer, Spark's and DuckDB's defaults
+  use none of them).
+- Compression: UNCOMPRESSED, SNAPPY, ZSTD through okay-compress's
+  `Compression` in scope; GZIP, LZ4, BROTLI refused by name.
+- Written: PLAIN values, every column OPTIONAL, one data page v1 per
+  column per row group (at most `pageRows` rows each), Snappy by
+  default.
+
+## Behavior
+
+- [ ] a table of every writable type, nulls included, round-trips
+      through our writer and reader, row group by row group
+- [ ] ours writes, parquet-java reads the same rows; parquet-java
+      writes (dictionary pages, Snappy, its defaults), ours reads the
+      same rows (JVM, `ParquetJava`)
+- [ ] the reader holds one row group: a file of many row groups is read
+      group by group from a `ReadAt` that counts the bytes it hands out,
+      and no read exceeds one group's chunks plus the footer
+- [ ] with no import the codec is ours; `ParquetJava.given` picks the
+      library; without its jar the first use is refused by name
+- [ ] a nested schema, an unsupported encoding or codec, a file cut
+      short or with a bad magic is refused by name
+- [ ] by name: `Parquets.byName("okay" | "parquet-java")`
+
+## Decisions
+
+- **Ours, over Arrow's Table, rather than parquet-java alone.**
+  parquet-java reaches Hadoop's `Configuration` from its readers and
+  writers, and okay-delta already had to pin its tests to JDK 21 for
+  Hadoop's JEP 486 wall; a worker that must run on the JDK the rest of
+  okay runs on cannot carry that. parquet-java stays as the standard
+  implementation behind an import, on the rule's terms, and is how the
+  format is checked.
+- **A flat schema first, said.** The operator's data (model features
+  and scores) is flat; nested columns (Dremel levels over lists and
+  structs) are a stage of their own, refused by name until then.
