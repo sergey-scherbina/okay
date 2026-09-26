@@ -249,6 +249,16 @@ than trusting the author.
   contiguous partition the source SEEKS to `from + position` — stage
   11's seek, on a real broker — so a replacement worker or a resumed
   coordinator reads exactly the records the journal has not folded.
+- **17 — object storage and Parquet as source and sink**
+  (engine-object-store-io, 2026-09-26; okay-lake). Objects under a
+  prefix are the flow's partitions — one per Parquet ROW GROUP, so a
+  large object is several — read by byte range through any okay-blob
+  `Blob` (S3, a directory) with okay-parquet, no Spark. A batch job's
+  output is written per partition as a Parquet object that appears
+  WHOLE (the partition's file is built on local disk a row group at a
+  time and put in one piece, multipart above 8 MiB), and the sink's
+  commit writes a MANIFEST naming exactly the objects the run produced
+  — the visible set — and deletes any stray a lost reply left.
 - **10 — the election.** DONE. `Lease` (three methods, no
   dependency), `Cluster.leading`, and a FENCE on the journal so a
   deposed coordinator stops at its next epoch rather than committing
@@ -305,6 +315,23 @@ not against its existence):
       `Pipeline.optimize` discipline) — MOVED TO STAGE 2: there is no
       exchange to push below yet, so this box could only have been
       checked by a test that asserts nothing
+
+Stage 17 — objects and Parquet (TestLake, TestLakeS3):
+- [ ] a prefix of Parquet objects is planned as one partition per row
+      group; a job over 4 workers reads every row once and writes
+      them back scored; the output read back through its manifest is
+      every input row, once
+- [ ] a worker killed mid-write leaves no object half-visible: its
+      partition is written whole by a survivor, the manifest names one
+      object per partition, and the output prefix holds nothing else
+- [ ] memory is one row group per partition: no read of an input
+      exceeds one group's column chunks and the footer, and the writer
+      never holds more than `groupRows` rows
+- [ ] a reader of an output uses its manifest when there is one, so a
+      stray object is never read even before the commit deletes it
+- [ ] the same over S3 on a Live MinIO, at a size set by
+      `OKAY_LAKE_MB` (the operator's 100 GB is that knob, not this box's
+      disk)
 
 Stage 16 — Kafka is a source (TestKafkaSource, TestFlowOpened):
 - [x] a streaming job over a Live topic of 1M records in 4 partitions,
@@ -950,6 +977,20 @@ a way to start from a known mark rather than from nothing.
   every record's offset against the one it expected and refuses a gap
   by name; a caller who knows the topic has gaps says `contiguous =
   false`, and a seek becomes a read that skips `count` records.
+- **An output object is built on local disk and put whole**
+  (engine-object-store-io, 2026-09-26). A sink's `step` is pushed rows;
+  S3's multipart is pulled parts. Streaming a partition straight into an
+  upload would hold an S3 upload open for the partition's whole life and
+  make "killed mid-write" mean an upload to find and abort. Building the
+  file locally (a row group in memory, the rest on disk) and putting it
+  at `finish` makes the object appear whole or not at all by the
+  store's own atomicity — a dead worker uploaded nothing. The cost is
+  local disk the size of one partition's output, said here.
+- **Visibility is a manifest, not a listing.** A worker whose reply was
+  lost after its put leaves an object nobody will account for; the
+  retry writes another. The commit writes `_manifest.json` naming the
+  objects the run's partials named — one per partition — and a reader
+  plans from it; the commit then deletes what it does not name.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
