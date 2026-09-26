@@ -337,3 +337,57 @@ record), where Arrow has nothing to add.
     loopback address. The same shape in three other suites is filed as
     `localhost-connects-to-a-stranger`.
 
+
+## Stage 8 — dictionary-encoded columns, kept and written (arrow-dictionary, 2026-09-26)
+
+**Why.** okay-watch's production scoring (its specs/scoring.md, the
+operator's addendum 2) sends chunks to R and Python as Arrow record
+batches and asks that factors survive the round trip EXACTLY — the
+levels, their order, the unused ones — dictionary-encoded on the wire.
+R's `arrow` maps a dictionary to a factor and back by itself; pyarrow to
+a pandas `category`. What cannot carry it is the JVM side: the model has
+no dictionary column, the reader decodes one to its values (the levels
+and their order are lost), and the writer has nothing to write.
+
+**The model.** `Column.Dictionary(indices: Array[Int], dictionary:
+Column, ordered: Boolean, valid: Array[Boolean])` — int32 indices, the
+index type every producer here meets (R, pyarrow, Arrow Java all default
+to it), into a dictionary column of any kind; `decoded` is the column the
+reader answered before this stage (`dictionary.take(indices, valid)`).
+
+**Reading.** `OkayArrow.read` is UNCHANGED — dictionaries decoded, as
+every consumer written so far expects. `OkayArrow.readKeeping(bytes)`
+answers a TOP-LEVEL dictionary-encoded field as a `Dictionary` (a nested
+one is still decoded; nothing asks for it). Batches whose dictionaries
+are equal concatenate their indices; different ones (a replacement
+dictionary between batches) are appended and the later indices shifted,
+so every row still reads its own value.
+
+**Writing.** A `Dictionary` column is written as Arrow writes one: the
+field declares `DictionaryEncoding{id, int32 signed, isOrdered}` with the
+VALUE type as its type, a `DictionaryBatch` for it precedes the record
+batch, and the record batch holds the indices. Top-level only; a
+dictionary nested in a list or struct is refused by name. The IPC FILE
+writer lists the dictionary blocks in its footer.
+
+**The rest of okay.** Every match on `Column` that has no use for the
+encoding treats a `Dictionary` as its `decoded` column (the frames of
+okay-py and okay-r, Rows, the lake, parquet, the C Data bridge), so no
+consumer sees a new kind. `ForeignWorker.frameTable(…, keepDictionaries
+= true)` reads its answer with `readKeeping`; the default stays the
+decoded one. `ApacheArrow` writes a `Dictionary` decoded (its values)
+and reads as before — stated, not hidden: the dictionary road is
+OkayArrow's.
+
+### Behavior
+
+- [ ] a `Dictionary` column round-trips through OkayArrow's stream and
+      file writers and `readKeeping`: indices, the dictionary's values
+      and order (unused values included), `ordered`, nulls
+- [ ] `read` of the same bytes answers the decoded column, as before
+- [ ] a stream from pyarrow / R with a dictionary column reads kept
+      (the fixture a writer of theirs made)
+- [ ] two batches with one dictionary concatenate; a replacement
+      dictionary shifts the later indices and every row reads its value
+- [ ] a dictionary nested in a struct is refused on write, by name
+- [ ] okay-py's and okay-r's frames read a `Dictionary` as its values
