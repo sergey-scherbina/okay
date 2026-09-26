@@ -69,5 +69,11 @@ object AsyncFailing extends FailingLow:
    * than `anyRow`, which would answer the same way through the cast. */
   given async: okay.Failing[Async] = new:
     def guard[X](e: Async[X], onFailure: () => Unit): Async[X] = e match
-      case Async.Run(f) => Async.Run(() => try f() catch { case t: Throwable => onFailure(); throw t })
-      case Async.Await(reg) => Async.Await(k => reg { r => if r.isLeft then onFailure(); k(r) })
+      // a release that throws must not REPLACE the failure being
+      // reported: it is suppressed on it (release-all-finalizers)
+      case Async.Run(f) => Async.Run(() => try f() catch { case t: Throwable => failed(t, onFailure); throw t })
+      case Async.Await(reg) => Async.Await(k => reg { r => r.left.foreach(failed(_, onFailure)); k(r) })
+
+  private def failed(cause: Throwable, onFailure: () => Unit): Unit =
+    try onFailure()
+    catch { case t: Throwable => if t ne cause then cause.addSuppressed(t) }

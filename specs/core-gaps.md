@@ -367,3 +367,32 @@ drop the continuation of an operation that normally resumes. No effect
 system knows that without the handler saying so (OCaml needs the
 handler to call `discontinue`). `bracketNow` covers it with
 `try/finally`.
+
+## Stage 6 — release-all-finalizers (2026-09-26, operator's question "and if a resource throws, as in ZIO?")
+
+ZIO's answer has three parts. A failing `use` still runs the release.
+A failing `acquire` releases what came before it. A failing RELEASE
+neither stops the other finalizers of the Scope nor hides the original
+failure, because all of them are composed into one `Cause`. We had the
+first two and not the third. `releaseAll` was `fin.foreach(_())`, so a
+throwing finalizer skipped every later one (their resources leaked), and
+during a failure its exception REPLACED the program's. `bracketNow`'s
+`try … finally` did the same on the JVM level.
+
+- `Resource.releaseAll` / `releaseAfter` call every finalizer exactly
+  once. The first failure is thrown and the rest are `addSuppressed` on
+  it, or, when a failure is already propagating, every release failure is
+  suppressed on THAT. This is Java's try-with-resources, the JVM's shape
+  for ZIO's `Cause`.
+- Used by `Resource.run`, `Resource.open` (its closer and its
+  acquire-failure path), `bracketNow`, and the Async `Failing.guard`
+  (a thrown `Run` and a failed `Await` keep their error).
+
+- [x] a throwing finalizer: the others still run, in reverse order, and
+      its error is thrown
+- [x] a failing use + a failing release: the use's error, with the
+      release's suppressed on it
+- [x] the same for `bracketNow`, for `Resource.open`'s closer, and for a
+      failing Async step
+- [x] watched RED before the change: the first four tests (the Async one
+      was written together with its fix)

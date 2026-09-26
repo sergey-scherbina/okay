@@ -85,6 +85,57 @@ class TestResource extends munit.FunSuite {
     assertEquals(log.reverse, List("open", "close", "open", "close"))
   }
 
+  test("a throwing finalizer does not skip the others, and its error is reported") {
+    var log = List.empty[String]
+    val prog: Int ! Resource =
+      for
+        _ <- Resource.acquire("a")(_ => log ::= "close a")
+        _ <- Resource.acquire("b")(_ => throw RuntimeException("close b failed"))
+        _ <- Resource.acquire("c")(_ => log ::= "close c")
+      yield 1
+    val e = intercept[RuntimeException](Resource.scoped(prog))
+    assertEquals(e.getMessage, "close b failed")
+    assertEquals(log.reverse, List("close c", "close a"), "every finalizer ran, in reverse order")
+  }
+
+  test("a failing use keeps its error; a failing release is attached, not swapped in") {
+    var log = List.empty[String]
+    val prog: Int ! Resource =
+      for
+        _ <- Resource.acquire("a")(_ => log ::= "close a")
+        _ <- Resource.acquire("b")(_ => throw RuntimeException("close b failed"))
+        n <- pure[Resource, Int](0)
+      yield 1 / n
+    val e = intercept[ArithmeticException](Resource.scoped(prog))
+    assertEquals(e.getSuppressed.toList.map(_.getMessage), List("close b failed"))
+    assertEquals(log, List("close a"))
+  }
+
+  test("a failing Async step keeps its error over a failing release") {
+    val e = intercept[IllegalStateException]:
+      bracket(0)(_ => throw RuntimeException("release failed"))(_ => async[Int](throw IllegalStateException("step failed"))).runWith
+    assertEquals(e.getSuppressed.toList.map(_.getMessage), List("release failed"))
+  }
+
+  test("bracketNow: a failing use keeps its error over a failing release") {
+    val e = intercept[IllegalStateException]:
+      bracketNow(0)(_ => throw RuntimeException("release failed"))(_ => pure[Produce, Int](0).map[Int](_ => throw IllegalStateException("use failed"))).runWith
+    assertEquals(e.getMessage, "use failed")
+    assertEquals(e.getSuppressed.toList.map(_.getMessage), List("release failed"))
+  }
+
+  test("Resource.open's closer runs every finalizer even when one throws") {
+    var log = List.empty[String]
+    val (_, close) = Resource.open(
+      for
+        _ <- Resource.acquire("a")(_ => log ::= "close a")
+        _ <- Resource.acquire("b")(_ => throw RuntimeException("close b failed"))
+      yield ())
+    val e = intercept[RuntimeException](close())
+    assertEquals(e.getMessage, "close b failed")
+    assertEquals(log, List("close a"))
+  }
+
   test("bracket releases at a raise, whichever handler catches it outside") {
     var released = 0
     val p: Int ! Throws % String = bracket(1)(_ => released += 1)(_ => raise[String, Int]("boom"))

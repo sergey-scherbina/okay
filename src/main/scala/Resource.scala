@@ -58,6 +58,44 @@ enum Resource[+A] derives Effect:
 
 object Resource {
 
+  /**
+   * RUN EVERY FINALIZER, WHATEVER ONE OF THEM THROWS (release-all-finalizers,
+   * 2026-09-26). This used to be `fin.foreach(_())`, and a throwing
+   * release then did two things wrong. It skipped every release after it,
+   * so those resources leaked. And, when the release was happening
+   * because the program had FAILED, its exception replaced the program's,
+   * so the cause was lost. ZIO runs all of a Scope's finalizers and
+   * composes their failures with the original into one `Cause`. The JVM's
+   * own shape for the same thing is try-with-resources: the first error
+   * wins, and the others are attached to it with `addSuppressed`.
+   *
+   * A loop, not a fold that could stop: every finalizer is called exactly
+   * once, in list order (the lists here are newest first, so release
+   * order is the reverse of acquisition).
+   */
+  private def runAll(fin: List[() => Unit]): List[Throwable] =
+    var failed = List.empty[Throwable]
+    var rest = fin
+    while rest.nonEmpty do
+      try rest.head()
+      catch { case t: Throwable => failed = t :: failed }
+      rest = rest.tail
+    failed.reverse
+
+  /** release everything; the first failure is thrown, with the later
+   * ones suppressed on it */
+  def releaseAll(fin: List[() => Unit]): Unit =
+    runAll(fin) match
+      case Nil => ()
+      case first :: more =>
+        more.foreach(first.addSuppressed)
+        throw first
+
+  /** release everything because `cause` is propagating; every failure of
+   * a release is attached to `cause`, which the caller rethrows */
+  def releaseAfter(fin: List[() => Unit], cause: Throwable): Unit =
+    runAll(fin).foreach(t => if t ne cause then cause.addSuppressed(t))
+
   /** acquire inside the enclosing Resource.run scope */
   inline def acquire[R](make: => R)(release: R => Unit): R ! Resource =
     effect(Acquire(() => make, release))
@@ -87,7 +125,7 @@ object Resource {
    */
   def open[A](a: A ! Resource): (A, () => Unit) = {
     var fin = List.empty[() => Unit]
-    def close(): Unit = { val f = fin; fin = Nil; f.foreach(_()) }
+    def close(): Unit = { val f = fin; fin = Nil; releaseAll(f) }
     var x = a
     try
       while true do (x.resume: @unchecked) match
@@ -103,7 +141,8 @@ object Resource {
       throw MatchError(x)
     catch
       case t: Throwable =>
-        close()
+        val f = fin; fin = Nil
+        releaseAfter(f, t)
         throw t
   }
 
@@ -123,7 +162,6 @@ object Resource {
       def guard[X](e: Nothing, onFailure: () => Unit): Nothing = e))
 
   def run[A, F[+_]](a: A ! Resource + F)(using failing: Failing[F]): A ! F = {
-    def releaseAll(fin: List[() => Unit]): Unit = fin.foreach(_())
 
     def isFinal(e: Any): Boolean = e match
       case f: Final => f.isFinal
@@ -137,7 +175,7 @@ object Resource {
      * so a throwing finalizer is not released twice. */
     def guarded[T](fin: List[() => Unit])(body: => T): T =
       try body
-      catch { case t: Throwable => releaseAll(fin); throw t }
+      catch { case t: Throwable => releaseAfter(fin, t); throw t }
 
     def _loop(fin: List[() => Unit])(x: A ! Resource + F): A ! F = loop(fin)(x)
 
@@ -226,8 +264,15 @@ def bracket[R, A, F[+_]](acquire: => R)(release: R => Unit)(use: R => A ! F)(usi
 def bracketNow[R, A, F[+_] : Handler](acquire: => R)(release: R => Unit)(use: R => A ! F): A ! F =
   pure[F, Unit](()).flatMap: _ =>
     val r = acquire
-    try pure(use(r).runWith)
-    finally release(r)
+    // not `try … finally release(r)`: a release that throws from a
+    // `finally` REPLACES the exception of the `try`, and the cause is
+    // lost (release-all-finalizers) — the use's error wins, the
+    // release's is suppressed on it
+    val a =
+      try use(r).runWith
+      catch { case t: Throwable => Resource.releaseAfter(List(() => release(r)), t); throw t }
+    release(r)
+    pure(a)
 
 /** The class IS the whole identity: Resource has no parameter but its
  * (erased) answer type, so splitting a row on it is a TOTAL test —
