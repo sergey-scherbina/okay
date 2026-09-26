@@ -468,7 +468,11 @@ more than it adds (the line count of what it removed goes in Results).
       intent; `Continue` carries an answer or a failure. The supervisor
       reads `once`; the pool routes both kinds by run. Go and Rust gained a
       plain `call`.
-- [ ] Stage 2c — **foreign-one-held**: `hold`/`method`/`attr` into `call`.
+- [x] Stage 2c — **foreign-one-held** (2026-09-26): `hold`, `method` and
+      `attr` folded into ONE `call{fn: address, args, held}` on the wire and
+      in the effect: `into enum Address` (a function's name, or a held
+      object's method or attribute; a `String` converts to a name) and
+      `ForeignEval.Call(fn, args, held)`. `ForeignEval` 9 → 6 cases.
 - [ ] Stage 2 — **foreign-one-protocol**: the five operations and
       parts (shim 7 in every shim; `held`, `Address`, `perform` as the one
       callback message, tables as parts); the transcript written and
@@ -685,3 +689,19 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     (`Right(6.0)`), silently repeating whatever it did before it died.
   - Durable journals written before this lane that contain a direct
     dialogue (`start`/`resume`) are refused by the drift check.
+- **Stage 2c, foreign-one-held (2026-09-26).**
+  - The effect has six cases now: `Call`, `Frame` (until the parts
+    stage), `Program`, `Continue`, `Forget`, `Release`. `Address` is the
+    one place a `String` converts (Scala 3.9 `into`, the rule of
+    into-modifier-rule: a target of ours, and nothing else a string could
+    mean here), so `REval.Call("stats::median", args)` reads unchanged.
+    The journal names are unchanged (`hold:fn`, `method:m`, `attr:a`).
+  - Wire: Python and TypeScript shim 8, R shim 11 (an address that is not
+    a name is refused by name — R applies functions to objects), the Go,
+    Rust and Haskell libraries 8 (the shared version; they hold nothing).
+  - Live: okay-py 226, okay-r 98, okay-rust FFM/wasm 35,
+    okay-foreign-cluster 30, okay-foreign-workflow 12 — green on the first
+    run; tests changed only in constructors and patterns.
+  - Mutant: the pool not registering a held answer pool-wide fails both
+    pool-of-handles tests (a pool of one refuses its own ref; a pool of
+    two gives two objects one id).
