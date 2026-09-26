@@ -602,6 +602,18 @@ force, all already practiced, none previously written down:
   (`.agents/plugins/ci-staged/commands/ci-staged.md`) is why: a
   benchmark measures wall-clock behaviour, so a sibling's gate starting
   mid-run does not slow it down, it makes the NUMBER wrong, silently.
+  **A LANE GETS ITS QUIET BY PROTOCOL** (bench-window, 2026-09-26,
+  specs/bench-window.md): every `gate.sh` holds a token in
+  `$TMPDIR/okay-bench/gates/` while it runs, and a queued lane files a
+  request in `want/`; a gate that STARTS while a request is live waits
+  (at most 15 min, `OKAY_BENCH_GATE_MAX_WAIT`, then starts anyway and
+  says so), running gates finish untouched, and the lane runs when no
+  token is live. So a sibling's gate may print `gate: bench window: a
+  benchmark is queued` and sit a few minutes — that is the protocol,
+  not a hang; `sh scripts/bench-window.sh --status` names who holds
+  what. `jmh-lane.sh` now QUEUES behind a held lock instead of
+  refusing, so do not wrap it in a retry loop. Measured why: before
+  this, 101 lane attempts in an hour never met a quiet box.
   The script takes a lock (one lane at a time on this box, separate
   from `scripts/ci-runner.sh`'s — `quiet()`, shared via
   `scripts/quiet.sh`, is what keeps a lane and a whole-build gate from

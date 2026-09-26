@@ -242,6 +242,15 @@ else
   cmd="${1:-test}"
   log="${GATE_LOG:-$(mktemp -t okay-gate)}"
 
+  # THE BENCH WINDOW (specs/bench-window.md): this gate holds a token
+  # while it runs, and waits at its start while a JMH lane is queued —
+  # at most OKAY_BENCH_GATE_MAX_WAIT seconds. EXIT only: a gate killed
+  # by a signal leaves its file behind, and the dead pid makes it
+  # ignored by the next reader — no signal trap needed, none added.
+  . "$(cd "$(dirname "$0")" && pwd)/bench-window.sh"
+  bw_gate_enter
+  trap bw_gate_leave EXIT
+
   # JVM FIRST, AND THE OTHER PLATFORMS ONLY IF IT IS GREEN
   # (gate-jvm-first, 2026-09-18). MEASURED: sampling one full gate's
   # own descendants every 4 s, `node` is 684 of 944 samples — 72% of

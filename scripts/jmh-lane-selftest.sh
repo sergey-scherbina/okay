@@ -19,7 +19,10 @@ new_fixture() {
   tmp=$(mktemp -d)
   mkdir -p "$tmp/scripts" "$tmp/.work"
   export JMH_LANE_LOCK="$tmp/.work/jmh/lock"   # the fixture's own lock, not the box's
+  export OKAY_BENCH_DIR="$tmp/.work/bench"     # and its own bench window
+  export JMH_LANE_LOCK_POLL=1 JMH_LANE_QUIET_POLL=1
   cp "$here/jmh-lane.sh" "$tmp/scripts/jmh-lane.sh"
+  cp "$here/bench-window.sh" "$tmp/scripts/bench-window.sh"
   cp "$here/jdk-pin.sh" "$tmp/scripts/jdk-pin.sh"   # sourced by jmh-lane.sh; no .sdkmanrc in the fixture, so it pins nothing
   chmod +x "$tmp/scripts/jmh-lane.sh"
   cat > "$tmp/scripts/fake-sbt.sh" <<'EOF'
@@ -84,12 +87,48 @@ printf '%s\n' "$out" | grep -q "attempt 3/3" && ok "used all 3 attempts" || bad 
 printf '%s\n' "$out" | grep -q "gave up after 3 attempts" && ok "said it gave up" || bad "did not say so: $out"
 rm -rf "$tmp"
 
-say "4. a second lane while one holds the lock refuses, naming the pid"
+say "4. JMH_LANE_LOCK_WAIT=0: a second lane while one holds the lock refuses, naming the pid"
 new_fixture
 mkdir -p "$tmp/.work/jmh/lock"; echo $$ > "$tmp/.work/jmh/lock/pid"
-out=$(run "Bench.thing" 5 2>&1); rc=$?
+out=$(JMH_LANE_LOCK_WAIT=0 run "Bench.thing" 5 2>&1); rc=$?
 [ "$rc" -ne 0 ] && ok "refused (nonzero exit)" || bad "ran anyway"
 printf '%s\n' "$out" | grep -q "held by pid $$" && ok "named the holder's pid" || bad "did not name the pid: $out"
+[ -z "$(ls "$tmp/.work/bench/want" 2>/dev/null)" ] && ok "its request is gone after it gave up" || bad "left a request behind"
+rm -rf "$tmp"
+
+say "4b. by default a lane QUEUES behind a held lock and runs when it frees (bench-window)"
+new_fixture
+sleep 3 & holder=$!
+mkdir -p "$tmp/.work/jmh/lock"; echo "$holder" > "$tmp/.work/jmh/lock/pid"
+out=$(run "Bench.thing" 5 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "ran and exited 0" || bad "exit $rc: $out"
+printf '%s\n' "$out" | grep -q "queued behind it" && ok "said it was queued" || bad "did not queue: $out"
+printf '%s\n' "$out" | grep -q "trust this number" && ok "then ran the lane" || bad "did not run: $out"
+rm -rf "$tmp"
+
+say "4c. a live gate token holds the lane's start; it runs once the gate is gone (bench-window)"
+new_fixture
+sleep 3 & gatepid=$!
+mkdir -p "$tmp/.work/bench/gates"; : > "$tmp/.work/bench/gates/$gatepid"
+start=$(date +%s)
+out=$(run "Bench.thing" 5 2>&1); rc=$?
+took=$(( $(date +%s) - start ))
+[ "$rc" -eq 0 ] && ok "exit 0" || bad "exit $rc: $out"
+printf '%s\n' "$out" | grep -q "gates=$gatepid" && ok "named the gate it waited for" || bad "did not wait on the gate: $out"
+[ "$took" -ge 2 ] && ok "started only after the gate ended (${took}s)" || bad "started while the gate ran (${took}s)"
+rm -rf "$tmp"
+
+say "4d. while a lane is queued its request is filed; after it, the request is gone"
+new_fixture
+cat > "$tmp/scripts/fake-sbt.sh" <<'EOF2'
+#!/bin/sh
+ls "$OKAY_BENCH_DIR/want" > "$OKAY_BENCH_DIR/seen-during-run"
+exit 0
+EOF2
+chmod +x "$tmp/scripts/fake-sbt.sh"
+out=$(run "Bench.thing" 5 2>&1); rc=$?
+[ -s "$tmp/.work/bench/seen-during-run" ] && ok "request filed while the lane ran" || bad "no request during the run: $out"
+[ -z "$(ls "$tmp/.work/bench/want" 2>/dev/null)" ] && ok "request removed after" || bad "request left behind"
 rm -rf "$tmp"
 
 say "5. a lock whose pid is dead is taken over"

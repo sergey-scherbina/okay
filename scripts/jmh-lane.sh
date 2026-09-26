@@ -87,6 +87,12 @@ noisy_rows() { # $1 = the run's output; prints each offending row
     }' "$1"
 }
 
+# THE BENCH WINDOW (specs/bench-window.md): this lane files a REQUEST
+# the moment it is queued, so new gates hold their start (running ones
+# finish), and it runs only when no gate token is live. Filed before
+# the lock wait, so a queue of lanes keeps the gates held for all of it.
+. "$(cd "$(dirname "$0")" && pwd)/bench-window.sh"
+
 take_lock() {
   if mkdir "$LOCKDIR" 2>/dev/null; then
     echo $$ > "$LOCKDIR/pid"
@@ -94,7 +100,8 @@ take_lock() {
   fi
   holder=$(cat "$LOCKDIR/pid" 2>/dev/null || echo "")
   if [ -n "$holder" ] && ps -p "$holder" >/dev/null 2>&1; then
-    echo "jmh-lane: lock held by pid $holder — another lane is running on this box"
+    # `take_lock quiet` is the queue's poll: the wait says it once
+    [ "${1:-}" = quiet ] || echo "jmh-lane: lock held by pid $holder — another lane is running on this box"
     return 1
   fi
   echo "jmh-lane: lock dir exists but its pid ($holder) is dead — taking it over"
@@ -105,20 +112,47 @@ take_lock() {
 }
 release_lock() { rm -rf "$LOCKDIR"; }
 
-take_lock || exit 1
-trap release_lock EXIT INT TERM
+# WAIT FOR THE LOCK, don't refuse it (bench-window): a refusal made
+# every caller write its own retry loop, and each loop polled on its
+# own clock — ready-merge's lost the lock to the holder's next lane 101
+# times. JMH_LANE_LOCK_WAIT seconds (default an hour); 0 refuses as
+# before.
+bw_want
+trap bw_unwant EXIT INT TERM
+lock_wait="${JMH_LANE_LOCK_WAIT:-3600}"
+lock_poll="${JMH_LANE_LOCK_POLL:-10}"
+waited=0
+until take_lock quiet; do
+  if [ "$waited" -ge "$lock_wait" ]; then
+    take_lock   # once more, for its message
+    exit 1
+  fi
+  [ "$waited" -eq 0 ] && echo "jmh-lane: lock held by pid $(cat "$LOCKDIR/pid" 2>/dev/null) — queued behind it, at most ${lock_wait}s"
+  sleep "$lock_poll"
+  waited=$((waited + lock_poll))
+done
+trap 'release_lock; bw_unwant' EXIT INT TERM
+
+# quiet, AND no gate token live: a gate between two of its tasks burns
+# no CPU and reads quiet, but it is about to (bench-window)
+lane_quiet() {
+  quiet || return 1
+  G=$(bw_live gates | tr '\n' ' ')
+  [ -z "$G" ]
+}
 
 # up to 30 minutes waiting for quiet, same cap as gate-retry.sh, then
 # go anyway — a lane that never starts is worse than one run once on a
 # box that stayed stubbornly at load 16. BEFORE EVERY ATTEMPT, not just
 # the first: a contamination-triggered retry must not blindly re-run
 # into the same busy box that just ruined the previous one.
+quiet_poll="${JMH_LANE_QUIET_POLL:-30}"
 wait_for_quiet() {
   w=0
-  while [ "$w" -lt 60 ]; do
-    quiet && return
-    [ $((w % 4)) -eq 0 ] && echo "jmh-lane: waiting for a quiet box, $((w / 2)) min: busy-sbt=$H load=$L freeGB=$F"
-    sleep 30
+  while [ "$w" -lt $((1800 / quiet_poll)) ]; do
+    lane_quiet && return
+    [ $((w % 4)) -eq 0 ] && echo "jmh-lane: waiting for a quiet box, $((w * quiet_poll))s: busy-sbt=$H load=$L freeGB=$F gates=${G:-?}"
+    sleep "$quiet_poll"
     w=$((w + 1))
   done
 }
@@ -157,7 +191,7 @@ while [ "$i" -le "$ATTEMPTS" ]; do
   fi
   noisy=$(noisy_rows "$runlog")
   rm -f "$runlog"
-  if quiet; then
+  if lane_quiet; then
     if [ "$rc" -eq 0 ] && [ -n "$noisy" ]; then
       echo "jmh-lane: the box was quiet at both ends but the rows are too NOISY — a spike inside the lane; discarding and retrying:"
       printf '%s\n' "$noisy" | sed 's/^/jmh-lane:   /'
@@ -172,7 +206,7 @@ while [ "$i" -le "$ATTEMPTS" ]; do
       exit "$rc"
     fi
   fi
-  echo "jmh-lane: the box got busy DURING this lane (busy-sbt=$H load=$L freeGB=$F) — the number is CONTAMINATED, discarding and retrying"
+  echo "jmh-lane: the box got busy DURING this lane (busy-sbt=$H load=$L freeGB=$F gates=${G:-none}) — the number is CONTAMINATED, discarding and retrying"
   i=$((i + 1))
 done
 echo "jmh-lane: gave up after $ATTEMPTS attempts — the box never stayed quiet through a whole lane, or its rows never came out within ${MAX_ERR}%"

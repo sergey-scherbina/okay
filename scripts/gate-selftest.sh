@@ -27,6 +27,9 @@ export GATE_RECSCAN=0
 run_gate() { if [ -n "$GATE_SELFTEST_SHELL" ]; then "$GATE_SELFTEST_SHELL" "$here/gate.sh" "$@";
              else "$here/gate.sh" "$@"; fi; }
 tmp="$(mktemp -d -t gate-selftest)"
+# the fixture's own bench window (specs/bench-window.md): a JMH lane
+# really queued on this box must not hold the selftest's gates
+export OKAY_BENCH_DIR="$tmp/bench" OKAY_BENCH_POLL=1
 fail=0
 say() { printf '%s\n' "$*"; }
 ok()  { say "  ok   — $*"; }
@@ -162,6 +165,21 @@ grep -q "gate: KILLED" "$tmp/accept.out" && ! grep -q "gate: RED" "$tmp/accept.o
   && ok "a rerun lost to the same accept timeout is KILLED, not RED" || bad "rc=$rc, $(grep '^gate:' "$tmp/accept.out" | tail -1)"
 [ "$(sh "$here/gate-retry.sh" --read "$tmp/accept.out")" = "$tmp/accept.out: gate: KILLED — a signal, not a verdict; retry" ] \
   && ok "and gate-retry retries it" || bad "gate-retry reads it as: $(sh "$here/gate-retry.sh" --read "$tmp/accept.out")"
+
+say "9. the bench window: a queued benchmark holds the gate's start; a --read takes no token"
+# a request whose owner lives 3 s: the gate waits for it, then runs
+sleep 3 & lane=$!
+mkdir -p "$OKAY_BENCH_DIR/want"; : > "$OKAY_BENCH_DIR/want/$lane"
+start=$(date +%s)
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/bw.log" OKAY_BENCH_GATE_MAX_WAIT=30 \
+  run_gate "okayJVM/testOnly A" > "$tmp/bw.out" 2>&1
+rc9=$?; took=$(( $(date +%s) - start ))
+grep -q "a benchmark is queued (pid $lane" "$tmp/bw.out" && ok "said it was held for the benchmark" || bad "did not: $(cat "$tmp/bw.out")"
+[ "$took" -ge 2 ] && ok "started after the benchmark (${took}s)" || bad "started at once (${took}s)"
+[ "$rc9" -eq 0 ] && grep -q "fake-sbt-arg" "$tmp/bw.log" && ok "then ran" || bad "did not run (exit $rc9)"
+[ -z "$(ls "$OKAY_BENCH_DIR/gates" 2>/dev/null)" ] && ok "its token is gone" || bad "token left behind"
+run_gate --read "$tmp/bw.log" > /dev/null 2>&1
+[ -z "$(ls "$OKAY_BENCH_DIR/gates" 2>/dev/null)" ] && ok "a --read took no token" || bad "--read left a token"
 
 say ""
 # and now the same suite under the OTHER shell, once
