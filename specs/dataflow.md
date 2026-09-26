@@ -224,6 +224,16 @@ than trusting the author.
   or FOLD sink (all state in the coordinator's fold). Box 2 — the
   same for a WINDOWED sink, whose open panes are not in the journal —
   is refused rather than faked, and named below.
+- **14 — the exchange across processes** (cross-process-exchange,
+  2026-09-26). Stage 2's exchange runs in one process; across
+  processes a keyed stage finished by the coordinator's MERGE, and a
+  second keyed stage was refused. A `Shuffled` job is a keyed stage
+  whose finish is a real shuffle between workers — the map side holds
+  its hash buckets, reducers on the workers FETCH them from their
+  holders directly, and the reducers' `(key, value)` output flows into
+  a second stage whose partials reach the coordinator. Stage 5's fault
+  model carries: a dead reducer's share is asked of a survivor, and a
+  holder's lost buckets are recomputed from the source.
 - **10 — the election.** DONE. `Lease` (three methods, no
   dependency), `Cluster.leading`, and a FENCE on the journal so a
   deposed coordinator stops at its next epoch rather than committing
@@ -280,6 +290,23 @@ not against its existence):
       `Pipeline.optimize` discipline) — MOVED TO STAGE 2: there is no
       exchange to push below yet, so this box could only have been
       checked by a test that asserts nothing
+
+Stage 14 — the exchange across processes (TestShuffle):
+- [ ] a two-stage keyed job (`Shuffled`) over 4 workers answers what
+      one process answers, at several partition and reducer counts
+- [ ] the buckets travel WORKER TO WORKER: the coordinator sends no
+      bucket and receives none — it hears sizes from the map side and
+      the second stage's partials from the reducers
+- [ ] a reducer killed mid-exchange: its share is asked of a survivor
+      and the answer is unchanged
+- [ ] a map holder killed after the map side: the buckets it held are
+      reported LOST by name, those partitions are recomputed on a
+      survivor, and the answer is unchanged
+- [ ] a run's buckets are dropped from every worker when it ends
+- [ ] a second stage with event-time windows is refused by name (the
+      reducer's output has no event-time order to window over)
+- [ ] FOUR REAL PROCESSES, one of them killed as the reduce side
+      starts, and the answer is the one-process answer (Live)
 
 Stage 2 (TestFlow, TestWroclawFlow, MeasureExchange):
 - [x] the exchange answers what the merge answers, at every
@@ -796,6 +823,26 @@ a way to start from a known mark rather than from nothing.
   run.** A coordinator handed the wrong journal and silently starting
   fresh would destroy the other run's progress; one that silently
   RESUMED would merge another job's partials into this answer.
+- **The shuffle is PULL, and the holder is the map worker**
+  (cross-process-exchange, 2026-09-26). Push — the map side sending
+  each bucket to its reducer — would make a reducer's death lose data
+  the map side no longer has, and would need every map worker to know
+  the reducers before it starts. Pull is Spark's and MapReduce's
+  answer for the same reason: the map output stays where it was made,
+  a reducer is a function of (which buckets, from whom), and a dead
+  reducer costs a re-fetch, not a re-map. A dead HOLDER costs a
+  re-map of exactly its partitions, which is stage 5's "a partition is
+  a recipe" applied to the map side.
+- **Buckets travel as CBOR accumulators, not Arrow records.** What
+  crosses is `(key, accumulator)` pairs — the same kind of value a
+  batch partial already is — so it uses the partial's wire. Arrow is
+  the wire for RECORDS (Remote's frames); an accumulator of a mean is
+  not a column.
+- **A worker reaches its peers by ADDRESS**, a string the coordinator
+  hands it, dialled through a function the worker is started with
+  (`Cluster.exchanging(self, dial)`; `WorkerMain` dials `host:port`).
+  The coordinator's `Serve` values are opaque functions and cannot be
+  handed to another process; an address can.
 - **Refused: a second plan type.** A `Flow` node that is "just a
   local pipeline" holds the local plan rather than re-deriving map,
   filter and take at the distributed level.
