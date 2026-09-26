@@ -21,11 +21,16 @@ final class Fake(@volatile var diesOnce: Boolean = false) extends Batcher[Rec, O
   def sizes: Vector[Int] = lock.synchronized(seen)
   @volatile var died = 0
   def apply(rows: Vector[Rec]): Either[Batcher.Failed, Vector[Out]] =
-    lock.synchronized { seen :+= rows.length }
-    if diesOnce then
-      diesOnce = false
-      died += 1
-      Left(Batcher.Failed("WorkerDied", "the fake died"))
+    // ONCE, atomically: a check and then a write of the volatile flag let
+    // two partitions' chunks both see `true` under load, and the fake died
+    // twice (found by lake-hudi's affected gate, 2026-09-26)
+    val dies = lock.synchronized {
+      seen :+= rows.length
+      val d = diesOnce
+      if d then { diesOnce = false; died += 1 }
+      d
+    }
+    if dies then Left(Batcher.Failed("WorkerDied", "the fake died"))
     else Right(rows.map(r => Out(r.key, r.v * 2)))
 
 /** the job a worker is asked for by name; its batcher is whatever the
