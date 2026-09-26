@@ -77,6 +77,29 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   lazy val injectApply: Symbol =
     Symbol.requiredModule("okay.Free.Inject").methodMember("apply").head
 
+  /**
+   * SHARED OPERATION NODES (specs/effect-op-cost.md D2). `State.get`
+   * and `Reader.ask` answer ONE shared `Inject` of a fieldless
+   * operation instead of a fresh one, so after inlining they are a
+   * reference to a val, not a `Free.Inject(op)` call. This table reads
+   * each such val as the operation it holds, typed at the element the
+   * reference was cast to, so a staged block stages it exactly as the
+   * fresh node it replaced.
+   */
+  lazy val sharedNodes: Map[String, Type[?] => Term] = Map(
+    "okay.State.getNode" -> { case '[e] => '{ okay.State.Get[e, e]() }.asTerm },
+    "okay.Reader.askNode" -> { case '[e] => '{ okay.Reader.Ask[e, e]() }.asTerm })
+
+  /** a symbol's key in that table: its full name, the module's `$` off
+   * (a reference from inside the object and one from outside name the
+   * same val by different owners' spellings) */
+  def sharedKey(sym: Symbol): String = sym.fullName.replace("$", "")
+
+  /** the element a program term answers: `A` of `A ! F` */
+  def elemOf(t: Term): Option[TypeRepr] = t.tpe.widen.dealias match
+    case AppliedType(_, List(_, a)) => Some(a)
+    case _ => None
+
   /** Free.Inject[Row, elem](op) — the op lifted into the row program */
   def injectTerm(op: Term, elem: TypeRepr, row: TypeRepr): Term =
     Apply(TypeApply(Ref(injectApply), List(Inferred(row), Inferred(elem.widen))), List(op))
@@ -182,6 +205,11 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
         case Apply(TypeApply(f, targs), List(op)) if f.symbol == injectApply =>
           val elem = targs.last.tpe.widen
           if stripped(op).tpe.widen <:< row.appliedTo(elem) then Some(wrap(bs, liftOp(op, elem, row))) else None
+        case ref: Ref if sharedNodes.contains(sharedKey(ref.symbol)) =>
+          elemOf(t).flatMap { elem =>
+            val op = sharedNodes(sharedKey(ref.symbol))(elem.asType)
+            if op.tpe.widen <:< row.appliedTo(elem) then Some(wrap(bs, liftOp(op, elem, row))) else None
+          }
         case Apply(TypeApply(f, targs), List(a)) if f.symbol == pureApply =>
           Some(wrap(bs, pureF(Typed(a, Inferred(targs.last.tpe.widen)))))
         case Apply(TypeApply(f, targs), List(m, k)) if f.symbol == bindApply =>

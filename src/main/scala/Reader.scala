@@ -22,8 +22,18 @@ enum Reader[R, +A] derives Effect {
 }
 
 object Reader {
-  /** the environment */
-  inline def ask[R]: R ! Reader % R = effect(Ask())
+  /** the environment — ONE shared node, as `State.get`
+   * (specs/effect-op-cost.md): `Ask` carries no data */
+  // THE CAST, and the only one: `Ask` has no fields, so after erasure
+  // every `Ask[R, R]` is the same object, and a program node is an
+  // immutable value its handlers only read — sharing one across every
+  // R changes nothing a program can observe. Inline, so the staging
+  // macro sees `askNode` itself (DirectRow's shared-node table).
+  inline def ask[R]: R ! Reader % R = askNode.asInstanceOf[R ! Reader % R]
+
+  /** the one node every `ask` answers with; not for direct use */
+  val askNode: Any ! Reader % Any = effect(Ask[Any, Any]())
+
 
   /**
    * E HOLDS A T, and here is how to take it out — the accessor, as a

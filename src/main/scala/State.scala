@@ -43,8 +43,19 @@ extension [A](a: A)
   inline def state[S]: A ! State % S = pure(a)
 
 object State {
-  /** the current state */
-  inline def get[S]: S ! State % S = effect(Get())
+  /** the current state — ONE shared node (specs/effect-op-cost.md):
+   * `Get` carries no data, so every `get` is the same `Inject(Get())`
+   * rather than a fresh pair, 32 B a call */
+  // THE CAST, and the only one: `Get` has no fields, so after erasure
+  // every `Get[S, S]` is the same object, and a program node is an
+  // immutable value its handlers only read — sharing one across every
+  // S changes nothing a program can observe. Inline, so the staging
+  // macro sees `getNode` itself (DirectRow's shared-node table).
+  inline def get[S]: S ! State % S = getNode.asInstanceOf[S ! State % S]
+
+  /** the one node every `get` answers with; not for direct use */
+  val getNode: Any ! State % Any = effect(Get[Any, Any]())
+
 
   /** replace the state */
   inline def set[S](s: S): S ! State % S = effect(Set(s))
