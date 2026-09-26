@@ -119,6 +119,10 @@ private[okay] object ReadyMerge:
      * checks the loop */
     def again(): Unit ! R = step()
 
+    /** `again` as the continuation of a told value: ONE function per
+     * merge, not a lambda per element (merge-cap256-gap) */
+    private val resumeMerge: Any => Unit ! R = _ => again()
+
     @tailrec private def step(): Unit ! R =
       import !.*
       drainWoken()
@@ -138,18 +142,20 @@ private[okay] object ReadyMerge:
           case Free.Return(_) =>
             live -= 1
             step()
-          // Writer tested first, for `Writer.uncons`'s reason
-          case Inject(e) => split[Writer % A, Async](e)
+          // Writer tested first, for `Writer.uncons`'s reason. A told
+          // value goes out as the SOURCE'S OWN `Inject(Say)` node — not
+          // a new `Say` and `Inject` per element (merge-cap256-gap)
+          case inj @ Inject(e) => split[Writer % A, Async](e)
             { w0 => (w0: @unchecked) match
-                case Writer.Say(a) =>
+                case Writer.Say(_) =>
                   live -= 1
-                  okay.effect[R, Unit](Writer(a)).flatMap(_ => again()) }
+                  inj.flatMap(resumeMerge) }
             { g =>
                 turn(i, g, _ => okay.pure[R, Unit](()))
                 step() }
-          case Bind(Inject(e), k) => split[Writer % A, Async](e)
+          case Bind(inj @ Inject(e), k) => split[Writer % A, Async](e)
             { w0 => (w0: @unchecked) match
-                case Writer.Say(a) =>
+                case Writer.Say(_) =>
                   // `k(())` is the source's code too: the element it
                   // told is still delivered, the source is dropped
                   try
@@ -159,7 +165,7 @@ private[okay] object ReadyMerge:
                     if streak < quantum then pushFront(i)
                     else { streak = 0; pushBack(i) }
                   catch case e: Throwable => failed(e)
-                  okay.effect[R, Unit](Writer(a)).flatMap(_ => again()) }
+                  inj.flatMap(resumeMerge) }
             { g =>
                 turn(i, g, k)
                 step() }

@@ -999,10 +999,11 @@ val both = offCore mergeReady Source.of(List(-1, -2))
 
 `source merge source` IS that composition since
 source-merge-via-ready: each side buffered onto a fiber of its own,
-joined by `mergeReady` — one merge mechanism, 4-8% faster than the
-shared channel it replaced at the default capacity (a named ~10% loss
-at capacity 256, specs/source-merge-via-ready.md). Ready inputs merged
-with no fiber at all cost 68-70 us on 2x500.
+joined by `mergeReady` — one merge mechanism, 0.73-0.93x of the
+shared channel it replaced at every capacity measured (64, 256, 1024),
+with 12-14% fewer bytes, and none of the old road's pathological forks
+(specs/source-merge-via-ready.md, Results). Ready inputs merged with no
+fiber at all cost 68-70 us on 2x500.
 
 Chunking is a property of the STREAM, not a parameter of whatever
 consumes it: `s.chunked(size)` gives `Source[Chunk[A]]` and

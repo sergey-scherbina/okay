@@ -504,7 +504,24 @@ extension [A](c: Channel[A])
    * Nothing is delayed for a batch: `receiveMany` takes only what is
    * already buffered and parks for a single element when nothing is.
    */
-  def drained: Source[A] = Writer.of(Drain(c))
+  def drained: Source[A] =
+    // A HAND LOOP over the batch, not `Writer.of(Drain(c))`
+    // (merge-cap256-gap, 2026-09-26): the generic road built, per
+    // element, the `Stream[Drain]` observation — a `Some`, a tuple, a
+    // `Drain` copy and the program around them — before the tell. Here
+    // an element costs its tell and the Bind that continues the batch.
+    // Same batches, same order, same failure: `receiveManyAsync` answers
+    // what is buffered, parks for one when nothing is, and a failed
+    // channel answers its failure once drained.
+    type R = Writer % A + Async
+    def pull: Source[A] =
+      okay.effect[R, Chunk[A]](
+        Async.Await[Chunk[A]](k => { c.receiveManyAsync(Drain.Batch)(k); () => () })).flatMap: got =>
+        if got.isEmpty then okay.pure(()) else tellFrom(got, 0)
+    def tellFrom(got: Chunk[A], i: Int): Source[A] =
+      okay.effect[R, Unit](Writer(got(i))).flatMap: _ =>
+        if i + 1 < got.length then tellFrom(got, i + 1) else pull
+    okay.pure[R, Unit](()).flatMap(_ => pull)
 
   /**
    * The channel as a source of CHUNKS: each `receiveMany` batch told

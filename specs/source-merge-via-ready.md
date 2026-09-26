@@ -137,3 +137,20 @@ by the script:
 The chunked roads (`chunked = true`, `flushAfter`, `mergeFlushing`,
 `either`) still go through the shared channel: backlog
 `merge-chunked-via-ready`.
+
+**The 256 gap, CLOSED the same evening (merge-cap256-gap).** Ten
+forks per arm showed two things the two-fork rounds hid: the OLD
+road has pathological forks (one round at cap 256 ran 81..725 us,
+half of them 5-10x slow; at cap 64 up to 1046), which the new road
+never showed; and in its good forks the old road really was ~16%
+faster at 256. `-prof gc` named why: ~65 B more per element, because
+every element was told TWICE — once by the side (`Writer.of(Drain)`:
+a `Some`, a tuple, a `Drain` copy and the nodes around them) and again
+by the merge (a fresh `Say`, `Inject`, `Bind` and a lambda). Fixed:
+`drained` is a hand loop over the batch (an element costs its tell and
+one Bind), and the merge forwards the source's own `Inject(Say)` node
+with ONE shared continuation. After, median of 5 forks, two rounds:
+cap 64 **0.81-0.82x** of the old road, cap 256 **0.91-0.93x**, cap
+1024 **0.77-0.85x**, `okaySourceMerge` **0.73-0.82x**, and 12-14% fewer
+bytes per operation. No named loss remains.
+
