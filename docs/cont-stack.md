@@ -76,10 +76,14 @@ reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the roo
 | Scala Native | exactly, from the runtime's own thread info, always | 64 levels | as the JVM's |
 | Scala.js | not at all: no thread to switch to | — | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
 
-*Native access is the whole difference for deep programs on the JVM.*
+*Native access decides WHERE a deep program runs, not how fast.*
 Measured on `HandlerBenchmark.statePara` (a state-passing program of
-~2 000 levels): 1.15x the pre-switch number on the counted road, and no
-switch at all with the flag. A library cannot enable it for you — a JVM
+~2 000 levels, 2026-09-26, both roads on the same lane): with the flag
+it never leaves the caller's thread, and it costs what the counted
+road's one hand-off to a parked worker costs — 0.99x the time, +0.9%
+the bytes, at the default first room. What the flag buys is the
+caller's own thread for the whole run: its thread-locals, its stack
+traces, no second thread involved. A library cannot enable it for you — a JVM
 prints warnings on the first restricted call unless the launcher said
 `--enable-native-access` — so the flag is yours to pass:
 

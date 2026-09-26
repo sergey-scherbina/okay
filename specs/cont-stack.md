@@ -716,6 +716,42 @@ same lane with `-jvmArgsAppend --enable-native-access=ALL-UNNAMED`.
 Every fork of FibBenchmark and HandlerBenchmark prints the road it
 runs (`ContStackRoad`, a trial-level setup outside the measurement).
 
+WHAT THE FIRST ATTEMPT GOT WRONG, found by that print: putting the
+packaged jar first on `Jmh / fullClasspath` changed nothing — sbt runs
+JMH from the Jmh PACKAGE (a `-jmh.jar` holding okay's main classes,
+first on the run's classpath, no `Multi-Release` in its manifest), so
+the root reader stayed the class in play, and the "exact" arm counted.
+The fix is the Jmh package itself: the variant's classes under
+`META-INF/versions/22/` and the manifest attribute, as `multiRelease`
+does for the test jar. And the forks turned out to carry
+`--enable-native-access` ALREADY — the Jmh host inherits `Test /
+javaOptions` — so the moment the reader became versioned every lane
+would have moved to the exact road silently; `Jmh / javaOptions`
+drops that one flag, and the lanes keep the count road they were
+recorded on. The same inheritance puts `-Dokay.cont.room=64` on every
+lane, where build.sbt's comment said the benchmarks ran at the derived
+default.
+
+THE NUMBERS (history.d `cont-stack-jmh-native-access`, MIN of 3
+alternating rounds, one lane per jmh-lane.sh run, JDK 26, macOS arm64):
+
+| lane | room | exact road | count road | ratio |
+|---|---|---|---|---|
+| statePara | 64 (the lanes' inherited room) | 50.23 µs, 362 752 B | 32.81 µs, 343 265 B | **1.53x**, 1.057x bytes |
+| fib100 | 64 | 2 533 ns | 2 560 ns | 0.99x, bytes equal |
+| statePara | 873 (the derived default) | 32.67 µs, 346 192 B | 32.95 µs, 343 264 B | **0.99x**, 1.009x bytes |
+
+At the room a user runs the two roads cost the same on statePara: the
+exact road's reads (each an `Arena`, a `ucontext_t`, `getcontext`'s
+326 ns and the bounds) price out at the count road's one hand-off to a
+parked worker. At the tests' room of 64 the first look comes at level
+64 and each grant is a 64 KB slice at the cold 1.2 KB a level, so the
+exact road reads many more times a run, and that is the 1.53x — a cost
+of the room setting, not of the road. The flag's gain is therefore not
+speed but place: no second thread. The reader also re-reads the
+bounds, which never change for a thread, at every exhaustion (backlog
+`cont-stack-read-bounds-once`).
+
 ## Stages — what landed, and the plan after it (operator's ask, 2026-09-25 evening)
 
 Landed 2026-09-25 as cont-stack-switch (60a59c97e): Layer 2 (the room
