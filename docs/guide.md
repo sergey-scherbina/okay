@@ -921,6 +921,34 @@ side holds on the wire at exactly that point. It costs the ordinary
 chunked path nothing — the two feeds are separate walks precisely
 because routing both through the flushing one measured 11% dearer.
 
+A merge does not have to buy a fiber per side. `Source.mergeReady`
+(specs/ready-merge.md) keeps the ring of the SOURCES themselves and
+steps them on the consumer's own thread of control: an element that
+is ready is told out and its source goes to the back of the ring; a
+source that is not ready yet — an `Async.Await`, which is exactly
+"pending, and here is how to wake me", the shape Rust's `Poll::Pending`
+plus `Waker` has — parks in its slot, and its callback wakes the
+merge. What crosses threads is one index per wake-up, never an
+element. No `Scheduler` is needed, so it runs on JS as it is, and
+when no source ever waits the turns are a strict round-robin:
+
+```scala
+val merged = Source.mergeReady(Source.of(List(1, 2, 3)), Source.of(List(10, 20)))
+val out = merged.runCollect.runWith                 // Vector(1, 10, 2, 20, 3)
+```
+
+The price is a single thread's: a source that COMPUTES before its
+next element holds the others meanwhile. So parallelism is chosen
+per SOURCE, not per merge — buffer the side that deserves a core, and
+the merge reads it as one more source that is sometimes not ready:
+
+```scala
+val offCore = Channel.buffer(64)(LazyList.range(0, 1000)).drained
+val both = offCore mergeReady Source.of(List(-1, -2))
+```
+
+`source merge source` is the case that buffers every side.
+
 Chunking is a property of the STREAM, not a parameter of whatever
 consumes it: `s.chunked(size)` gives `Source[Chunk[A]]` and
 `.unchunked` gives the elements back, so `merge`, `buffer` and

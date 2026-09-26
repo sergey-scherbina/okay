@@ -41,6 +41,33 @@ class MergeBenchmark {
     (Source.of(LazyList.range(0L, N.toLong)) merge Source.of(LazyList.range(N.toLong, 2L * N)))
       .toLazyList.foldLeft(0L)(_ + _)
 
+  /**
+   * `Source.mergeReady` (specs/ready-merge.md) on the SAME inputs and
+   * the same drain as `okaySourceMerge` — but it is not the same
+   * machine, and the pair says what by: these sources are pure, so they
+   * are always ready and the merge is a round-robin on this thread, no
+   * fiber, no channel. It prices what a merge of ready inputs costs when
+   * it needs no concurrency, not a faster concurrent merge.
+   */
+  @Benchmark
+  def okayReadyMergePure(): Long =
+    (Source.of(LazyList.range(0L, N.toLong)) mergeReady Source.of(LazyList.range(N.toLong, 2L * N)))
+      .toLazyList.foldLeft(0L)(_ + _)
+
+  /**
+   * THE MATCHED PAIR for `okaySourceMerge`: each side on its own fiber
+   * through its own 64-slot ring (what `Source.merge` builds — two parts
+   * of 64, channel-known-producers), read by the ready-merge on this
+   * thread. Same fibers, same buffering, same per-batch `Drain`; what
+   * differs is only the join — a ring of the sources' continuations and
+   * a queue of wake-ups here, one shared two-part channel there.
+   */
+  @Benchmark
+  def okayReadyMergeBuffered(): Long =
+    (Channel.buffer(64)(LazyList.range(0L, N.toLong)).drained mergeReady
+      Channel.buffer(64)(LazyList.range(N.toLong, 2L * N)).drained)
+      .toLazyList.foldLeft(0L)(_ + _)
+
   /** DIAGNOSTIC (channel-merge-regression follow-up): ONE Source,
    * no Channel.merge, no fiber, no Async at all — isolates the raw
    * cost of wrapping a LazyList as a Writer program and draining it,

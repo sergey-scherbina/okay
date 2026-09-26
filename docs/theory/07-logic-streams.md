@@ -281,6 +281,37 @@ are Frege functions a multi-shot handler resumes them per branch — the
 freer construction \[[Kiselyov & Ishii 2015](#ref-kiselyov-ishii-2015)\]
 crossing a language boundary with nothing but data.
 
+### Merging producers: the pull form, and readiness
+
+An iteratee is the CONSUMER as a suspended program, and one
+consumer fed by one enumerator composes by pure mechanics. Two
+producers feeding one consumer is the case the push form finds hard:
+each enumerator wants to drive, and one of them must be turned inside
+out into something that is asked rather than asking. A `Source` is
+already on the asked side — it is a program, and `resume` is its pull —
+so the merge of producers is written in the pull form directly: a ring
+of the sources' own continuations, stepped in turn (`Source.mergeReady`,
+specs/ready-merge.md). Every step answers one of four things: ended,
+an element (`Say`), work to do now (`Async.Run`), or not ready yet
+(`Async.Await`). The last is the whole of asynchrony, and it is the
+same observation Rust's futures make — `Stream::poll_next` answers
+`Pending` and keeps a `Waker` \[[Rust `Waker`](#ref-rust-waker)\],
+and `select_all` is a ring of such streams
+\[[futures-rs `select_all`](#ref-rust-select-all)\] — so a not-ready
+source parks in its slot, and what crosses threads is a wake-up, not
+an element.
+
+The ring makes the old boundary visible. Kahn's networks are
+deterministic because each process reads its inputs in an order it
+fixes \[[Kahn 1974](#ref-kahn-1974)\]; a merge that takes whichever
+input is READY is precisely the operator Kahn's model excludes. Here
+the two sit in one loop: while no source waits, the turns are a fixed
+round-robin and the merge is deterministic, and nondeterminism enters
+only through the order in which wake-ups arrive. Parallelism stays
+outside the merge, chosen per source: buffering a source through a
+channel gives it its own fiber and turns its pull into an `Await`,
+which the ring reads like any other.
+
 ## Sketches: approximation with stated error
 
 Some aggregations are impossible exactly in bounded space — distinct
@@ -314,6 +345,11 @@ where that property was established.
   (functional pearl).](https://okmij.org/ftp/papers/LogicT.pdf)* ICFP 2005.
 - <a id="ref-kiselyov-2012"></a>Oleg Kiselyov. *[Iteratees.](https://doi.org/10.1007/978-3-642-29822-6_15)*
   FLOPS 2012, LNCS 7294.
+- <a id="ref-kahn-1974"></a>Gilles Kahn. *The semantics of a simple language for parallel programming.*
+  Information Processing 74 (IFIP Congress), North-Holland, 1974.
+- <a id="ref-rust-waker"></a>The Rust standard library. *[`std::task::Waker`](https://doc.rust-lang.org/std/task/struct.Waker.html)*
+  and *[`Poll`](https://doc.rust-lang.org/std/task/enum.Poll.html)*.
+- <a id="ref-rust-select-all"></a>futures-rs. *[`futures::stream::select_all`](https://docs.rs/futures/latest/futures/stream/fn.select_all.html)*.
 - <a id="ref-kiselyov-2012-yield"></a>Oleg Kiselyov, Simon Peyton Jones, Amr Sabry. *[Lazy v. Yield:
   incremental, linear pretty-printing.](https://doi.org/10.1007/978-3-642-35182-2_14)* APLAS 2012, LNCS 7705.
 - <a id="ref-pep-255"></a>Neil Schemenauer, Tim Peters, Magnus Lie Hetland. *[PEP 255 — Simple Generators.](https://peps.python.org/pep-0255/)*
