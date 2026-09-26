@@ -1,0 +1,6 @@
+feature/foreign-one-protocol 2026-09-26T00:13:55Z
+agent: claude-opus-5-5
+heartbeat: 2026-09-26T00:13:55Z
+status: in-progress
+done-so-far: claim
+next: PyValue.Table; Frame -> Call(table arg, table answer); shims py/ts/R; arrow road for a call with one table; transcript + replay test
