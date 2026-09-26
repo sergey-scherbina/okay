@@ -1,6 +1,0 @@
-feature/foreign-one-bulk 2026-09-26T00:50:06Z
-agent: claude-opus-5-5
-heartbeat: 2026-09-26T00:50:06Z
-status: in-progress
-done-so-far: claim; Arrow C Data blocked offline (no arrow crate / go module)
-next: table call in Go/Rust/Hs libraries (columnar frame in, v1 frame out); WireConformance table case over every language
