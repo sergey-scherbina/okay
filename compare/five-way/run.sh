@@ -14,6 +14,7 @@
 set -u
 clone="$(cd "${1:?clone}" && pwd)"
 out="${2:?out-dir}"
+mkdir -p "$out" && out="$(cd "$out" && pwd)" # JMH writes from the clone: the path must be absolute
 shift 2
 runtimes="${*:-ce kyo loom ox gears okay okayOwn okayAdaptive}"
 here="$(cd "$(dirname "$0")" && pwd)"
