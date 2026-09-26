@@ -317,19 +317,19 @@ not against its existence):
       checked by a test that asserts nothing
 
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
-- [ ] a prefix of Parquet objects is planned as one partition per row
+- [x] a prefix of Parquet objects is planned as one partition per row
       group; a job over 4 workers reads every row once and writes
       them back scored; the output read back through its manifest is
       every input row, once
-- [ ] a worker killed mid-write leaves no object half-visible: its
+- [x] a worker killed mid-write leaves no object half-visible: its
       partition is written whole by a survivor, the manifest names one
       object per partition, and the output prefix holds nothing else
-- [ ] memory is one row group per partition: no read of an input
+- [x] memory is one row group per partition: no read of an input
       exceeds one group's column chunks and the footer, and the writer
       never holds more than `groupRows` rows
-- [ ] a reader of an output uses its manifest when there is one, so a
+- [x] a reader of an output uses its manifest when there is one, so a
       stray object is never read even before the commit deletes it
-- [ ] the same over S3 on a Live MinIO, at a size set by
+- [x] the same over S3 on a Live MinIO, at a size set by
       `OKAY_LAKE_MB` (the operator's 100 GB is that knob, not this box's
       disk)
 
@@ -1497,6 +1497,29 @@ it the record in the journal only ever grows and a burst is one write.
 (`Checkpoint.none` is recognised and no record is built); `runLeading`
 is `leading`'s seat and does not wait to be elected, for `leading`'s
 reason.
+
+### Stage 17 — objects and Parquet (2026-09-26)
+
+Built in four landings: S3 puts in parts (s3-multipart-put), Snappy in
+the Compression facade (compress-snappy), Parquet without Spark
+(parquet-codec, okay-parquet) and this one (okay-lake).
+
+**Measured on this box, MinIO in docker**: 6.7 million trips (the
+`OKAY_LAKE_MB=256` setting) in four objects of two row groups, read by
+four workers, scored and written back, one worker killed mid-write —
+57 s, every trip once in the output read back through its manifest,
+nothing else under `_data/`. The operator's 100 GB is the same test with
+`OKAY_LAKE_MB=102400` on a machine with the disk for input plus output;
+this one has 182 GB free and is shared, so it was not run here — said
+rather than implied.
+
+**The test caught its own arithmetic first**: an odd row count cut in
+halves makes a third group of one row; the plan was right to count
+twelve partitions and the test's expectation of eight was wrong.
+
+**What is not here**: a stream's output (refused by name; `EpochLog` is
+that road), Delta or Iceberg tables as sources (backlog:
+lake-table-formats), nested Parquet (parquet-nested).
 
 ### Stage 16 — Kafka is a source (2026-09-26)
 

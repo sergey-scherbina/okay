@@ -2683,6 +2683,17 @@ lazy val okayParquet = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / fork := true,
   )
 
+// okay-lake: object storage and Parquet as the cluster engine's source and
+// sink (specs/dataflow.md, stage 17) — okay-blob's lakes, okay-parquet's
+// codec, the engine's flows; the engine itself knows none of them
+lazy val okayLake = (project in file("okay-lake"))
+  .dependsOn(okayCluster.jvm % "compile->compile;test->test", okayBlob.jvm, okayParquet.jvm)
+  .settings(
+    name := "okay-lake",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    Test / fork := true,
+  )
+
 // okay-foreign-workflow: foreign workers inside okay's durable layers
 // (specs/foreign-workflow.md) — a foreign call is a workflow ACTIVITY, the
 // worker its oracle. Its own module so okay-py stays free of the workflow
@@ -3382,7 +3393,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayCompress.jvm, okayCompress.js, okayCompress.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
