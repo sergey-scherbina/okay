@@ -62,7 +62,7 @@ class TestS3Multipart extends munit.FunSuite {
     val out = Writer.fold[Chunk[Byte], Unit, Either[String, Unit], Async](s3.get("big/object"))(
       using summon)(using summon, okay.Fold(())((_, c) =>
         for b <- c do { if bad < 0 && b != byteAt(at) then bad = at; at += 1 }))
-    run(out)
+    assertEquals(run(out)._2, Right(()), "the get did not find the object")
     assertEquals(at, n)
     assertEquals(bad, -1L, s"byte $bad differs")
   }
