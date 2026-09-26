@@ -1,10 +1,10 @@
-package okay.py.workflow
+package okay.foreign.workflow
 
 import okay.{!, +, Delim, Pure, Wf}
 import okay.Direct.*
 import okay.codec.{Schema, WireAuth, WireFormat}
 import okay.persist.{Dialogue, MemoryStore}
-import okay.py.{ForeignEval, ForeignWorker, GoWorker, GoWorkerBinary, PyValue}
+import okay.foreign.{ForeignEval, ForeignWorker, GoWorker, GoWorkerBinary, PyValue}
 import scala.language.implicitConversions
 
 object GoShop:

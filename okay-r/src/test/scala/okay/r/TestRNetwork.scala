@@ -2,7 +2,7 @@ package okay.r
 
 import okay.{Choose, Reader, effect, runChoice, given}
 import okay.codec.{WireAuth, WireCompression, WireFormat}
-import okay.py.ForeignGateway
+import okay.foreign.ForeignGateway
 
 /**
  * R ON THE NETWORK (foreign-one-r): once R's handler runs on the engine

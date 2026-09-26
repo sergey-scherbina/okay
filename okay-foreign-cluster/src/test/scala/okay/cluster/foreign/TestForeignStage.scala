@@ -104,13 +104,13 @@ class TestForeignStage extends munit.FunSuite:
   }
 
   test("a row type that is not a flat case class is refused when the stage is BUILT, not at the first chunk") {
-    val mod = okay.py.Foreign.module("nothing", "def f(frame): return frame")
+    val mod = okay.foreign.Foreign.module("nothing", "def f(frame): return frame")
     val e = intercept[IllegalArgumentException](Flow.slices(Rows.of(10), 1).mapPy[Long](mod, "f"))
     assert(e.getMessage.contains("flat case class"), e.getMessage)
   }
 
   test("a pool opens at most `size` interpreters under more concurrent chunks than that, reuses them, and replaces a dead one") {
-    val pool = okay.py.Pool[Object]("p", 2, () => Object(), _ => true, _ => ())
+    val pool = okay.foreign.Pool[Object]("p", 2, () => Object(), _ => true, _ => ())
     val threads = (1 to 4).map(_ => Thread(() => pool.use { _ => Thread.sleep(40); ((), false) }))
     threads.foreach(_.start()); threads.foreach(_.join())
     assertEquals(pool.opened, 2)

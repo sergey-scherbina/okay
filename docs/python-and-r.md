@@ -250,7 +250,7 @@ Each of these has a section with its tests in
 | typed calls | `Py.fn[Out]("module:function")(args)`: case classes cross as dicts or named lists, and sealed traits as dicts with a `"type"` field |
 | held objects | `Py.hold(...)`: a fitted model stays in the worker, and its methods are called by name |
 | modules beside the Scala | `Py.module("name", """...""")`: a few lines of Python or R in the Scala file, shipped with the jar |
-| a generated facade | `runMain okay.py.PyFacade <module> <Object> <package>`: a typed Scala object written from the module's type hints |
+| a generated facade | `runMain okay.foreign.PyFacade <module> <Object> <package>`: a typed Scala object written from the module's type hints |
 | streams | `Py.stage(...)`: a function over a list becomes a stage over chunks, and a slow model holds back its source |
 | sources | `Py.source[A]("m:rows")(args)`: a Python generator of chunks (R: a closure answering the next chunk, NULL at the end) read at the consumer's pace — a file, a cursor, a query on the far side |
 | a declared environment | `PyEnv(python, packages)` through uv, `REnv(packages)` through CRAN, built once and then cached |

@@ -1,6 +1,6 @@
 package okay.r
 
-import okay.py.{CrashConformance, ForeignWorker, Shape, WireConformance, WireLink, WorkerCommand}
+import okay.foreign.{CrashConformance, ForeignWorker, Shape, WireConformance, WireLink, WorkerCommand}
 
 /** the conformance programs, in R: what Python, TypeScript, Go, Rust and
  * Haskell each serve for the same suites (foreign-one-value) */

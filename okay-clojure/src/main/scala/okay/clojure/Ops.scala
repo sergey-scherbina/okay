@@ -31,7 +31,7 @@ object Ops {
   def sleep(millis: Long): AnyRef = Operations.sleep(millis)
 
   /** a CALLBACK of the caller's, by name (foreign-one-ops): what a namespace
-   * `okay.py.Jvm.clojure` generated calls, answered by the `calls` given to
+   * `okay.foreign.Jvm.clojure` generated calls, answered by the `calls` given to
    * `Program.run` rather than by the row */
   def call(name: String, arg: Any): AnyRef = okay.Foreign.Call(name, okay.Foreign.obj(arg))
 }

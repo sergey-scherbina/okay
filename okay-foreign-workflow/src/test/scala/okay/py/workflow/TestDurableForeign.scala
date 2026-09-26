@@ -1,8 +1,8 @@
-package okay.py.workflow
+package okay.foreign.workflow
 
 import okay.{Choose, effect, runChoice, given}
 import okay.agent.Durable
-import okay.py.{Foreign, ForeignEval, ForeignWorker, Reliable, TestPy}
+import okay.foreign.{Foreign, ForeignEval, ForeignWorker, Reliable, TestPy}
 
 /**
  * foreign-workflow stage 3: a durable foreign PROGRAM surviving a crash of

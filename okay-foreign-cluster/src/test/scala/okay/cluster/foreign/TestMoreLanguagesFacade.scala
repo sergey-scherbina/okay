@@ -1,7 +1,7 @@
 package okay.cluster.foreign
 
 import java.nio.file.{Files, Path}
-import okay.py.{GoWorker, HaskellWorker, RustWorker}
+import okay.foreign.{GoWorker, HaskellWorker, RustWorker}
 
 /**
  * The facade's conformance body over TypeScript, Go, Rust and Haskell

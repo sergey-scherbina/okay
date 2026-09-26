@@ -1,7 +1,7 @@
 package okay.frege
 
 import okay.{!, %, Reader}
-import okay.py.{Foreign, Jvm, Shape}
+import okay.foreign.{Foreign, Jvm, Shape}
 
 /** the caller's callbacks, declared once: the same two the wire
  * conformance suite offers Python, Go, Rust, Haskell, TypeScript and R */
@@ -19,7 +19,7 @@ object ShopCallbacks:
 /**
  * A Frege program performs the caller's `Foreign.callbacks` (foreign-one-ops,
  * specs/foreign-one.md Decision 19): through `Shop`, the module
- * `okay.py.Jvm.frege` writes from them, each operation typed by the
+ * `okay.foreign.Jvm.frege` writes from them, each operation typed by the
  * callback's Schemas.
  */
 class TestFregeCallbacks extends munit.FunSuite:

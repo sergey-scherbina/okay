@@ -3,7 +3,7 @@ package okay.cluster.foreign
 import okay.given
 import okay.cluster.{Cluster, Flow, Flows, Job, Jobs, Wire}
 import okay.codec.Schema
-import okay.py.{Foreign, TestPy}
+import okay.foreign.{Foreign, TestPy}
 
 /** the reduce, in Python: a step over a chunk, a merge of two partials */
 object Stats:

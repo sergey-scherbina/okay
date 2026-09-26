@@ -1,0 +1,120 @@
+package okay.foreign
+
+import okay.{!, given}
+import okay.agent.Durable
+
+object TestPyHandles:
+  val module: String =
+    """class Acc:
+      |    def __init__(self):
+      |        self.total = 0
+      |    def add(self, x):
+      |        self.total += x
+      |        return self.total
+      |    def fork(self):
+      |        a = Acc()
+      |        a.total = self.total
+      |        return a
+      |
+      |def acc():
+      |    return Acc()
+      |
+      |def total_of(a):
+      |    return a.total
+      |""".stripMargin
+
+/** foreign-object-handles against a LIVE python3 (specs/foreign-highlevel.md stage 3) */
+class TestPyHandles extends munit.FunSuite {
+
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+  override def munitIgnore: Boolean = TestPy.python.isEmpty
+
+  private lazy val dir =
+    val d = java.nio.file.Files.createTempDirectory("okay-py-h")
+    java.nio.file.Files.writeString(d.resolve("okayh.py"), TestPyHandles.module): Unit
+    d
+  private lazy val w = PySubprocess.start(TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
+  override def afterAll(): Unit = if TestPy.python.nonEmpty then w.close()
+
+  test("a seeded Random held in Python: its state lives there between calls") {
+    given okay.Handler[PyEval] = w.handler
+    val rng = Py.hold("random:Random")(42L).runWith.toOption.get
+    assertEquals(rng.pyType, "random.Random")
+    val draws = (1 to 2).map(_ => rng.call[Double]("random")().runWith)
+    // Python's own Mersenne Twister, seeded 42: random.Random(42).random() twice
+    assertEquals(draws, Vector(Right(0.6394267984578837), Right(0.025010755222666936)))
+  }
+
+  test("an object's methods, its attribute, the object as an argument, and a held method result") {
+    given okay.Handler[PyEval] = w.handler
+    val acc = Py.hold("okayh:acc")().runWith.toOption.get
+    assertEquals(acc.call[Long]("add")(5L).runWith, Right(5L))
+    assertEquals(acc.call[Long]("add")(3L).runWith, Right(8L))
+    assertEquals(acc.attr[Long]("total").runWith, Right(8L))
+    assertEquals(Py.fn[Long]("okayh:total_of")(acc).runWith, Right(8L))
+    val fork = acc.hold("fork")().runWith.toOption.get
+    assertEquals(fork.call[Long]("add")(1L).runWith, Right(9L))
+    assertEquals(acc.attr[Long]("total").runWith, Right(8L), "the fork is its own object")
+  }
+
+  test("a released ref is refused by name") {
+    given okay.Handler[PyEval] = w.handler
+    val acc = Py.hold("okayh:acc")().runWith.toOption.get
+    acc.release.runWith
+    val after = acc.call[Long]("add")(1L).runWith
+    assertEquals(after.left.map(_.kind), Left("LookupError"))
+    assert(after.left.exists(_.message.contains("not held")), s"$after")
+    acc.release.runWith   // idempotent
+  }
+
+  test("Durable: a program with handles REPLAYS; a recovery onto a fresh process is refused by name") {
+    def steps(n: Int): Either[Condition, Long] ! PyEval =
+      Py.hold("okayh:acc")().flatMap {
+        case Left(c) => okay.pure(Left(c))
+        case Right(acc) =>
+          (1 to n).foldLeft(okay.pure[PyEval, Either[Condition, Long]](Right(0L))) { (p, i) =>
+            p.flatMap(_ => acc.call[Long]("add")(i.toLong))
+          }
+      }
+    val j = Durable.MemoryJournal()
+    assertEquals(steps(3).runWith(using Durable.over[PyEval](w.handler, j)()), Right(6L))
+    // the whole program, answered from the journal: no Python
+    assertEquals(steps(3).runWith(using Durable.replayingOver[PyEval](j)), Right(6L))
+    // a recovery: the journalled steps replay, the FOURTH runs live on a
+    // fresh process, which never held the ref the journal hands back
+    val fresh = PySubprocess.start(TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
+    try
+      val recovered = steps(4).runWith(using Durable.over[PyEval](fresh.handler, j)())
+      assertEquals(recovered.left.map(_.kind), Left("LookupError"))
+      assert(recovered.left.exists(_.message.contains("not held")), s"$recovered")
+    finally fresh.close()
+  }
+
+  test("a pool of ONE: a held object's calls reach its worker, and plain calls still get through") {
+    val pool = PyWorkers.start(1, TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
+    try
+      given okay.Handler[PyEval] = pool.handler
+      val acc = Py.hold("okayh:acc")().runWith.toOption.get
+      assertEquals(acc.call[Long]("add")(2L).runWith, Right(2L))
+      assertEquals(Py.fn[Double]("math:sqrt")(16.0).runWith, Right(4.0))
+      assertEquals(Py.fn[Long]("okayh:total_of")(acc).runWith, Right(2L))
+      acc.release.runWith
+      // a ref the POOL no longer knows is refused before any worker is asked
+      val gone = intercept[IllegalArgumentException](Py.fn[Long]("okayh:total_of")(acc).runWith)
+      assert(gone.getMessage.contains("not held by this pool"), gone.getMessage)
+    finally pool.close()
+  }
+
+  test("a pool of two: refs are renamed pool-wide and each reaches its own worker") {
+    val pool = PyWorkers.start(2, TestPy.python.get, Map("PYTHONPATH" -> dir.toString))
+    try
+      given okay.Handler[PyEval] = pool.handler
+      val a = Py.hold("okayh:acc")().runWith.toOption.get
+      val b = Py.hold("okayh:acc")().runWith.toOption.get
+      assertNotEquals(a.id, b.id)
+      assertEquals(a.call[Long]("add")(10L).runWith, Right(10L))
+      assertEquals(b.call[Long]("add")(1L).runWith, Right(1L))
+      assertEquals(a.attr[Long]("total").runWith, Right(10L))
+    finally pool.close()
+  }
+}

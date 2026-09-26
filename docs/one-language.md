@@ -241,10 +241,10 @@ Format Specification", 1996, doi:10.17487/RFC1951; P. Deutsch and
 J.-L. Gailly, RFC 1950, "ZLIB Compressed Data Format Specification",
 1996, doi:10.17487/RFC1950.
 
-**R** runs on the same engine (`okay.py.WireSession`, since
+**R** runs on the same engine (`okay.foreign.WireSession`, since
 foreign-one-r; `okay.r.RSubprocess` is the handler for R's values over
 it), and it takes the same givens; the codecs live in okay-codec (`okay.codec.WireFormat`,
-`okay.codec.WireCompression`), and `okay.py` keeps the names. Two things
+`okay.codec.WireCompression`), and `okay.foreign` keeps the names. Two things
 about R are worth knowing:
 - Base R cannot inflate raw DEFLATE safely. `gzcon` over a hand-made gzip
   header prints a CRC error per message and accepts a cut stream, and

@@ -1,8 +1,8 @@
-package okay.py.workflow
+package okay.foreign.workflow
 
 import okay.Wf
 import okay.codec.Schema
-import okay.py.{Condition, PyValue, Shape, ToPy}
+import okay.foreign.{Condition, PyValue, Shape, ToPy}
 
 /**
  * Foreign calls as leaves of a static `Proc` (foreign-workflow stage 2):

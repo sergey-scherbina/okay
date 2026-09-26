@@ -2,7 +2,7 @@ package okay.cluster.foreign
 
 import okay.given
 import okay.cluster.{Cluster, Jobs}
-import okay.py.{Foreign, TestPy}
+import okay.foreign.{Foreign, TestPy}
 
 /** the model and the stateful stage, in Python: `fit` makes the held
  * object, `scale(frame, model)` uses it; `open` makes the state, `step`
@@ -31,8 +31,8 @@ object PyStateful:
 
 object PyStatefulJobs:
   private val python = TestPy.python.getOrElse("python3")
-  given Models[okay.py.PyModule] = Models.py(python)
-  given Stateful[okay.py.PyModule] = Stateful.py(python)
+  given Models[okay.foreign.PyModule] = Models.py(python)
+  given Stateful[okay.foreign.PyModule] = Stateful.py(python)
   val scale = ScaleJob("test.held.py", PyStateful.mod)
   val running = RunningJob("test.stream.py", PyStateful.mod)
   Jobs.register(scale)

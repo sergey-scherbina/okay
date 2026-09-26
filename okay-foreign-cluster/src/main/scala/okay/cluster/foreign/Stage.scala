@@ -2,7 +2,7 @@ package okay.cluster.foreign
 
 import okay.{Chunk, Chunks}
 import okay.cluster.{Cluster, Flow}
-import okay.py.{Condition, ForeignWorker, Pool, Pools, PyWorkers}
+import okay.foreign.{Condition, ForeignWorker, Pool, Pools, PyWorkers}
 import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq
 
@@ -102,10 +102,10 @@ extension [A](flow: Flow[A])
   /** the map in Python: `fn` in `module` takes the frame (a dict of
    * lists, or the `pyarrow.Table` under `@okay.arrow`) and answers one of
    * `B`'s columns; the frame crosses as Arrow where the python has pyarrow */
-  def mapPy[B](module: okay.py.PyModule, fn: String, python: String = "python3",
+  def mapPy[B](module: okay.foreign.PyModule, fn: String, python: String = "python3",
                batch: Int = Stage.Batch, workers: Int = Stage.Workers)
               (using okay.codec.Schema[A], okay.codec.Schema[B]): Flow[B] =
-    Stage.through(flow, ForeignStage[okay.py.PyModule, A, B](Language.py(python), module, fn, workers), batch, 3)
+    Stage.through(flow, ForeignStage[okay.foreign.PyModule, A, B](Language.py(python), module, fn, workers), batch, 3)
 
   /** the map in R: `fn` in `module` takes a data.frame and answers one;
    * the frame crosses as Arrow where R has the `arrow` package */
@@ -116,7 +116,7 @@ extension [A](flow: Flow[A])
 
 /**
  * The pools of a worker JVM, one per (language, interpreter, module): the
- * ONE pool with its routing (`okay.py.PyWorkers` over `okay.py.Pool`,
+ * ONE pool with its routing (`okay.foreign.PyWorkers` over `okay.foreign.Pool`,
  * foreign-one-pool), shared by every stage, reduce, model, stateful stage,
  * handle and program that names the same module — Python's and R's alike.
  */

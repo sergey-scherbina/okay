@@ -2,7 +2,7 @@ package okay.cluster.foreign
 
 import okay.given
 import okay.cluster.{Flow, Flows}
-import okay.py.{Foreign, TestPy}
+import okay.foreign.{Foreign, TestPy}
 import FacadeConformance.Rec
 
 object MeasureFacadeMod:
@@ -27,8 +27,8 @@ class MeasureFacade extends munit.FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
 
   private val python = TestPy.python.getOrElse("python3")
-  given Calls[okay.py.PyModule] = Calls.py(python)
-  given Frames[okay.py.PyModule] = Frames.py(python)
+  given Calls[okay.foreign.PyModule] = Calls.py(python)
+  given Frames[okay.foreign.PyModule] = Frames.py(python)
 
   private def ms(body: => Any): Double =
     val t0 = System.nanoTime(); body: Unit; (System.nanoTime() - t0) / 1e6
@@ -45,24 +45,24 @@ class MeasureFacade extends munit.FunSuite:
     val rs = rows(n)
     val table = okay.arrow.Rows.table(rs)
     // warm the pools
-    Road.value[okay.py.PyModule, Rec, Rec](py, "echo")(one): Unit
-    Road.rows[okay.py.PyModule, Rec, Rec](py, "fecho")(rs.take(10)): Unit
+    Road.value[okay.foreign.PyModule, Rec, Rec](py, "echo")(one): Unit
+    Road.rows[okay.foreign.PyModule, Rec, Rec](py, "fecho")(rs.take(10)): Unit
     val pool = PyPool.of(py, python, Stage.Workers)
-    val ownFrame = okay.py.ArrowFrames.frame(table)
+    val ownFrame = okay.foreign.ArrowFrames.frame(table)
 
-    val callFacade = median(5)(Road.value[okay.py.PyModule, Rec, Rec](py, "echo")(one))
-    val callOwn = median(5)(PyPool.call(pool, python, "facademeasure:echo", Vector(okay.py.PyCodec.encode(one))))
-    val frameFacade = median(5)(Road.rows[okay.py.PyModule, Rec, Rec](py, "fecho")(rs))
+    val callFacade = median(5)(Road.value[okay.foreign.PyModule, Rec, Rec](py, "echo")(one))
+    val callOwn = median(5)(PyPool.call(pool, python, "facademeasure:echo", Vector(okay.foreign.PyCodec.encode(one))))
+    val frameFacade = median(5)(Road.rows[okay.foreign.PyModule, Rec, Rec](py, "fecho")(rs))
     // the own road for a caller with ROWS: rows to a PyFrame, over, its rows back (PyStage's)
-    val frameOwn = median(5)(okay.py.PyFrame.of(rs).flatMap(f => PyPool.frame(pool, python, "facademeasure:fecho", f, Vector.empty)).flatMap(_.rows[Rec]))
+    val frameOwn = median(5)(okay.foreign.PyFrame.of(rs).flatMap(f => PyPool.frame(pool, python, "facademeasure:fecho", f, Vector.empty)).flatMap(_.rows[Rec]))
     val frameBare = median(5)(PyPool.frame(pool, python, "facademeasure:fecho", ownFrame, Vector.empty))
-    val tableFacade = median(5)(summon[Frames[okay.py.PyModule]].frame(py, "fecho")(table))
-    val streamFacade = median(3)(Flows.collect(Road.flow[okay.py.PyModule, Rec, Rec](py, "fecho", 4096)(Flow.slices(rs, 1))).runWith)
+    val tableFacade = median(5)(summon[Frames[okay.foreign.PyModule]].frame(py, "fecho")(table))
+    val streamFacade = median(3)(Flows.collect(Road.flow[okay.foreign.PyModule, Rec, Rec](py, "fecho", 4096)(Flow.slices(rs, 1))).runWith)
     val jvmCall = median(5)(Road.value[JvmModule, Rec, Rec](jvm, "echo")(one))
     val jvmFrame = median(5)(summon[Frames[JvmModule]].frame(jvm, "fecho")(table))
     val jvmRows = median(5)(Road.rows[JvmModule, Rec, Rec](jvm, "fecho")(rs))
     val load = java.lang.management.ManagementFactory.getOperatingSystemMXBean.getSystemLoadAverage
-    println(f"facade measure: load $load%.1f, python $python, frames ${summon[Speaks[okay.py.PyModule]].speaks(py).frames}")
+    println(f"facade measure: load $load%.1f, python $python, frames ${summon[Speaks[okay.foreign.PyModule]].speaks(py).frames}")
     println(f"  python tier 1 (one value):        facade $callFacade%8.3f ms   own road $callOwn%8.3f ms")
     println(f"  python tier 2 ($n rows, one frame): rows facade $frameFacade%8.1f ms   rows own road $frameOwn%8.1f ms   frame alone $frameBare%8.1f ms   a Table through Frames.frame $tableFacade%8.1f ms")
     println(f"  python tier 3 ($n rows, 4096/frame): facade $streamFacade%8.1f ms")

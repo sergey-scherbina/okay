@@ -3,7 +3,7 @@ package okay.cluster.foreign
 import okay.{Aggregator, given}
 import okay.cluster.{Cluster, Flow, Flows, Job, Jobs, Wire}
 import okay.codec.Schema
-import okay.py.{Foreign, PyArrow, TestPy}
+import okay.foreign.{Foreign, PyArrow, TestPy}
 
 /** the map and the reduce for the measurement: the JSON road's function,
  * the same under `@okay.arrow` with no Python loop at all, and a reduce */

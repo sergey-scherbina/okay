@@ -2,7 +2,7 @@ package okay.cluster.foreign
 
 import okay.given
 import okay.cluster.{Cluster, Jobs}
-import okay.py.{Foreign, TestPy}
+import okay.foreign.{Foreign, TestPy}
 
 /** the map AND the reduce of one Python module, for the one job text */
 object PyStats:
@@ -24,8 +24,8 @@ object PyStats:
 object PyEngineJobs:
   /** the interpreter is a given, not an edit of the job — the base and
    * the extension both */
-  given Engine[okay.py.PyModule] = Engine.py(TestPy.python.getOrElse("python3"))
-  given Reduces[okay.py.PyModule] = Reduces.py(TestPy.python.getOrElse("python3"))
+  given Engine[okay.foreign.PyModule] = Engine.py(TestPy.python.getOrElse("python3"))
+  given Reduces[okay.foreign.PyModule] = Reduces.py(TestPy.python.getOrElse("python3"))
   val job = StatsJob("test.engine.py", PyStats.mod)
   Jobs.register(job)
   def install(): Unit = ()

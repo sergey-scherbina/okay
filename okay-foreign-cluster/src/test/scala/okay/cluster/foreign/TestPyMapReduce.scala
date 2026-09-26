@@ -3,7 +3,7 @@ package okay.cluster.foreign
 import okay.{Aggregator, given}
 import okay.cluster.{Cluster, Flow, Flows, Job, Jobs, Wire}
 import okay.codec.Schema
-import okay.py.{Foreign, TestPy}
+import okay.foreign.{Foreign, TestPy}
 
 /** the map, in Python */
 object Scaling:

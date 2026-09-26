@@ -2,7 +2,7 @@ package okay.r
 
 import okay.Handler
 import okay.codec.{WireAuth, WireCompression, WireDeadline, WireFormat, WireSecurity}
-import okay.py.{ForeignWorker, SupervisedWorker, WireLink, WireSession}
+import okay.foreign.{ForeignWorker, SupervisedWorker, WireLink, WireSession}
 
 /**
  * The subprocess engine (stage 0, specs/r.md): one `Rscript` per
@@ -116,7 +116,7 @@ object RSubprocess:
     start(rscript, env, timeoutMillis, require, modules)(using wire.format, wire.compression)(using wire.frames)
 
   /**
-   * R SERVED ON THE NETWORK: a worker behind `okay.py.ForeignGateway`
+   * R SERVED ON THE NETWORK: a worker behind `okay.foreign.ForeignGateway`
    * (`ForeignGateway.start(RSubprocess.command(...))`), with the gateway's
    * TLS and HMAC — `WireSecurity` and `WireAuth` given here exactly as for
    * any other language. A timeout RECONNECTS: the gateway starts a fresh R
@@ -140,8 +140,8 @@ object RSubprocess:
   /** the R worker as a COMMAND, for a process okay does not start itself:
    * the gateway runs one per connection */
   def command(rscript: String = "Rscript", modules: Seq[RModule] = Nil,
-              env: Map[String, String] = Map.empty): okay.py.WorkerCommand =
-    okay.py.WorkerCommand(Vector(WireSession.resolve(rscript), "--vanilla", shimFile().toString), RModule.env(modules, env))
+              env: Map[String, String] = Map.empty): okay.foreign.WorkerCommand =
+    okay.foreign.WorkerCommand(Vector(WireSession.resolve(rscript), "--vanilla", shimFile().toString), RModule.env(modules, env))
 
   /**
    * R as one more `ForeignWorker` (foreign-one-value): the process

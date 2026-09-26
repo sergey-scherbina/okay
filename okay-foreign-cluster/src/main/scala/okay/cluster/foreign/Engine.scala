@@ -38,12 +38,12 @@ trait Reduces[-M]:
 
 object Engine:
   /** Python, `python3` on the PATH; `Engine.py(path)` for another */
-  given py: Engine[okay.py.PyModule] = py("python3")
+  given py: Engine[okay.foreign.PyModule] = py("python3")
 
-  def py(python: String): Engine[okay.py.PyModule] = new:
+  def py(python: String): Engine[okay.foreign.PyModule] = new:
     def name = s"py:$python"
-    def batcher[A: Schema, B: Schema](module: okay.py.PyModule, fn: String, workers: Int): Batcher[A, B] =
-      ForeignStage[okay.py.PyModule, A, B](Language.py(python), module, fn, workers)
+    def batcher[A: Schema, B: Schema](module: okay.foreign.PyModule, fn: String, workers: Int): Batcher[A, B] =
+      ForeignStage[okay.foreign.PyModule, A, B](Language.py(python), module, fn, workers)
 
   /** ONE body for every wire language: a chunk of rows as one table */
   def of[M](lang: Language[M]): Engine[M] = new:
@@ -73,7 +73,7 @@ object Engine:
  * implicit search for `Reduces[M]` looks — one per language, the
  * interpreter a given (`Reduces.py(path)`) as for `Engine` */
 object Reduces:
-  given py: Reduces[okay.py.PyModule] = py("python3")
+  given py: Reduces[okay.foreign.PyModule] = py("python3")
   given r: Reduces[okay.r.RModule] = r("Rscript")
   def of[M](lang: Language[M]): Reduces[M] = new:
     def reducer[A: Schema, Acc: Schema](module: M, step: String, merge: String, workers: Int): Reducer[A, Acc] =
@@ -83,9 +83,9 @@ object Reduces:
   given jvm: Reduces[JvmModule] = new:
     def reducer[A: Schema, Acc: Schema](module: JvmModule, step: String, merge: String, workers: Int): Reducer[A, Acc] =
       module.reducer[A, Acc](step, merge)
-  def py(python: String): Reduces[okay.py.PyModule] = new:
-    def reducer[A: Schema, Acc: Schema](module: okay.py.PyModule, step: String, merge: String, workers: Int): Reducer[A, Acc] =
-      ForeignReducer[okay.py.PyModule, A, Acc](Language.py(python), module, step, merge, workers)
+  def py(python: String): Reduces[okay.foreign.PyModule] = new:
+    def reducer[A: Schema, Acc: Schema](module: okay.foreign.PyModule, step: String, merge: String, workers: Int): Reducer[A, Acc] =
+      ForeignReducer[okay.foreign.PyModule, A, Acc](Language.py(python), module, step, merge, workers)
   def r(rscript: String): Reduces[okay.r.RModule] = new:
     def reducer[A: Schema, Acc: Schema](module: okay.r.RModule, step: String, merge: String, workers: Int): Reducer[A, Acc] =
       ForeignReducer[okay.r.RModule, A, Acc](Language.r(rscript), module, step, merge, workers)

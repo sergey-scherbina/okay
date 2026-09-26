@@ -1,0 +1,138 @@
+package okay.foreign
+
+import java.nio.file.{Files, Path}
+import okay.codec.Schema
+import scala.annotation.tailrec
+
+/**
+ * A Go worker for okay's programs-as-data (polyglot-go,
+ * specs/polyglot-go.md). A Go `main` package imports `worker/okay` (the
+ * package this jar ships, `/okay/go/okay.go`), writes its programs in
+ * `okay.Prog` or the typed `okay.Program[A]`, and `okay.Serve`s them by
+ * name. `build` compiles it with `go build`, and
+ * `ForeignWorker.speaking(Seq(binary.toString))` runs it — the same wire as
+ * Python and Haskell, so `Foreign.program` drives it unchanged, multi-shot
+ * included.
+ *
+ * {{{
+ * val bin = GoWorker.build(dirWithMainGo)
+ * val w = ForeignWorker.speaking(Seq(bin.toString))
+ * }}}
+ */
+object GoWorker:
+
+  /** the `okay` package's source, as this jar ships it */
+  def library: String = resource("okay.go")
+
+  /** the in-process exports a WebAssembly build adds (`//go:build wasip1`) */
+  def wasmExports: String = resource("okay_wasm.go")
+
+  private def resource(name: String): String =
+    val res = getClass.getResourceAsStream(s"/okay/go/$name")
+    if res == null then throw IllegalStateException(s"okay.foreign: /okay/go/$name is missing from the jar")
+    try String(res.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8) finally res.close()
+
+  /**
+   * Compile the Go module in `dir` against the shipped `okay` package and
+   * answer the binary. `okay/okay.go` is written into `dir`, and a
+   * `go.mod` naming the module `worker` is written if `dir` has none. The
+   * build is OFFLINE — standard library only, `GOTOOLCHAIN=local` so Go
+   * never fetches a toolchain — and a compile error refuses with Go's own
+   * words.
+   */
+  def build(dir: Path, go: String = "go"): Path =
+    Files.createDirectories(dir.resolve("okay")): Unit
+    Files.writeString(dir.resolve("okay").resolve("okay.go"), library): Unit
+    Files.writeString(dir.resolve("okay").resolve("okay_wasm.go"), wasmExports): Unit
+    if !Files.exists(dir.resolve("go.mod")) then
+      Files.writeString(dir.resolve("go.mod"), "module worker\n\ngo 1.24\n"): Unit
+    val bin = dir.resolve(".okay-build").resolve("worker")
+    val pb = ProcessBuilder(go, "build", "-o", bin.toString, ".").directory(dir.toFile).redirectErrorStream(true)
+    pb.environment().put("GOTOOLCHAIN", "local")
+    val p =
+      try pb.start()
+      catch case e: java.io.IOException =>
+        throw IllegalStateException(s"okay.foreign: '$go' did not start (${e.getMessage}) — is Go installed?")
+    val log = String(p.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    if p.waitFor() != 0 then
+      throw IllegalStateException(s"okay.foreign: the Go worker did not compile:\n${log.linesIterator.toVector.takeRight(20).mkString("\n")}")
+    bin
+
+  /**
+   * The same module compiled to WebAssembly for use IN-PROCESS
+   * (`GOOS=wasip1 GOARCH=wasm -buildmode=c-shared`, no TinyGo): its `init()`
+   * calls `okay.Export(programs, functions)`, and Chicory runs it through
+   * `okay_exchange`. Answers the `.wasm`.
+   */
+  def buildWasm(dir: Path, go: String = "go"): Path =
+    val _ = build(dir, go) // writes the package and go.mod, and proves the native build too
+    val out = dir.resolve(".okay-build").resolve("worker.wasm")
+    val pb = ProcessBuilder(go, "build", "-buildmode=c-shared", "-o", out.toString, ".")
+      .directory(dir.toFile).redirectErrorStream(true)
+    pb.environment().put("GOTOOLCHAIN", "local")
+    pb.environment().put("GOOS", "wasip1")
+    pb.environment().put("GOARCH", "wasm")
+    val p = pb.start()
+    val log = String(p.getInputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+    if p.waitFor() != 0 then
+      throw IllegalStateException(s"okay.foreign: the Go module did not compile to wasm:\n${log.linesIterator.toVector.takeRight(20).mkString("\n")}")
+    out
+
+/**
+ * Go's side of typed operations (polyglot-go): the operations a Go program
+ * may perform, written from the Scala callbacks that answer them, as
+ * `Ts.ops` and `Hs.ops` write TypeScript's and Haskell's. One constructor
+ * function per operation, typed by its argument and its answer:
+ *
+ * {{{
+ * func PriceOf(a0 string) okay.Op[float64] {
+ *     return okay.Op[float64]{Name: "price_of", Args: []any{a0}, Decode: okay.Float}
+ * }
+ * }}}
+ *
+ * Go has no type-level lists, so a program's SET of operations cannot be
+ * in its type; each operation's types can. Integers, doubles, booleans,
+ * strings and lists of them map to Go types; anything else is `any`,
+ * decoded by `okay.Any`, and the comment says so.
+ */
+object Go:
+
+  /** (Go type, decoder expression, how an argument of it is put on the wire) */
+  @tailrec private def goType(s: Schema[?]): Option[(String, String, String => String)] = s match
+    case Schema.SInt | Schema.SLong => Some(("int64", "okay.Int", identity))
+    case Schema.SDouble => Some(("float64", "okay.Float", identity))
+    case Schema.SBool => Some(("bool", "okay.Bool", identity))
+    case Schema.SString => Some(("string", "okay.String", identity))
+    case l: Schema.SList[?] => list(l.of())
+    case v: Schema.SVector[?] => list(v.of())
+    case i: Schema.SIso[?, ?] => goType(i.under())
+    case _ => None
+
+  private def list(item: Schema[?]): Option[(String, String, String => String)] =
+    goType(item).map((t, d, _) => (s"[]$t", s"okay.ListOf($d)", a => s"okay.List($a)"))
+
+  /** `price_of` -> `PriceOf` */
+  def constructor(op: String): String = Hs.constructor(op)
+
+  /** the Go source of package `pkg`: one typed constructor per callback */
+  def ops[F[+_]](pkg: String, cbs: Foreign.Callbacks[F]): String =
+    val funcs = cbs.all.map { c =>
+      val (arg, res) = c.types match
+        case Some((a, r)) => (goType(a), goType(r))
+        case None => (None, None)
+      val (at, _, wire) = arg.getOrElse(("any", "okay.Any", (x: String) => x))
+      val (rt, rd, _) = res.getOrElse(("any", "okay.Any", (x: String) => x))
+      val open = if arg.isEmpty || res.isEmpty then s" // ${c.name}: a type Go reads as any" else ""
+      s"""// ${constructor(c.name)} is the operation "${c.name}".$open
+         |func ${constructor(c.name)}(a0 $at) okay.Op[$rt] {
+         |\treturn okay.Op[$rt]{Name: "${c.name}", Args: []any{${wire("a0")}}, Decode: $rd}
+         |}""".stripMargin
+    }
+    s"""// Code generated by okay.foreign.Go from the Scala callbacks. DO NOT EDIT.
+       |
+       |package $pkg
+       |
+       |import "worker/okay"
+       |
+       |${funcs.mkString("\n\n")}
+       |""".stripMargin

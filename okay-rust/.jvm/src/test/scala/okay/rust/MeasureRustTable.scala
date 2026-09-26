@@ -1,6 +1,6 @@
 package okay.rust
 
-import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyValue, WireLink}
+import okay.foreign.{ForeignEval, ForeignWorker, PyFrame, PyValue, WireLink}
 
 /**
  * A TABLE CALL INTO IN-PROCESS RUST, TWO ROADS (foreign-arrow-ffm): one

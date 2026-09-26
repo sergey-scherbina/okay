@@ -132,6 +132,10 @@ languages whose objects have state.
 
 ## Two runtimes
 
+The engine's package is `okay.foreign` (module okay-py). Until 2026-09-26
+it was `okay.py`, from when it served Python alone; that name is kept as
+aliases for a release, so older code compiles unchanged.
+
 Everything above runs on one of two things:
 
 - **The wire**, for every language in another process or behind FFM or

@@ -2,7 +2,7 @@ package okay.r
 
 import okay.!
 import okay.codec.Schema
-import okay.py.{ForeignEval, Py, PyFrame, PyNode, PyRef, PyStream, PyValue, Shape, ToPy}
+import okay.foreign.{ForeignEval, Py, PyFrame, PyNode, PyRef, PyStream, PyValue, Shape, ToPy}
 
 /*
  * R as a handler (specs/r.md): calls are OPERATIONS — journalled by
@@ -124,20 +124,20 @@ object RFrame:
   def unapply(f: PyFrame): Some[Vector[(String, Vector[PyValue])]] = Some(f.cols)
 
 /**
- * R's view of the one wire codec (`okay.py.Wire`): a value's tree, and a
+ * R's view of the one wire codec (`okay.foreign.Wire`): a value's tree, and a
  * frame in the COLUMNAR shape R's shim reads fastest, read back by R's
  * rules. There is no second codec behind it (foreign-one-value).
  */
 private[r] object Wire:
-  def enc(v: PyValue): okay.codec.Json = okay.py.Wire.enc(v)
-  def dec(j: okay.codec.Json): PyValue = okay.py.Wire.dec(j)
-  def encFrame(f: PyFrame): okay.codec.Json = okay.py.Wire.encFrameColumnar(f)
-  def decFrame(j: okay.codec.Json): Either[Condition, PyFrame] = okay.py.Wire.decFrame(j).map(_.ruledBy(R.shape))
+  def enc(v: PyValue): okay.codec.Json = okay.foreign.Wire.enc(v)
+  def dec(j: okay.codec.Json): PyValue = okay.foreign.Wire.dec(j)
+  def encFrame(f: PyFrame): okay.codec.Json = okay.foreign.Wire.encFrameColumnar(f)
+  def decFrame(j: okay.codec.Json): Either[Condition, PyFrame] = okay.foreign.Wire.decFrame(j).map(_.ruledBy(R.shape))
 
 /** what a failing call answers: the R condition's class and its message —
  * data, and the process survives to take the next call */
-type Condition = okay.py.Condition
-val Condition: okay.py.Condition.type = okay.py.Condition
+type Condition = okay.foreign.Condition
+val Condition: okay.foreign.Condition.type = okay.foreign.Condition
 
 /** the effect an R call is: the one foreign effect (foreign-one-value) */
 type REval[+A] = ForeignEval[A]
@@ -254,7 +254,7 @@ object RShape extends Shape:
       case _ => RNull
 
 /**
- * R functions from Scala — the one foreign API (`okay.py.Py`) at R's value
+ * R functions from Scala — the one foreign API (`okay.foreign.Py`) at R's value
  * rules (foreign-one-value; before it, a copy of that API over `RValue`).
  *
  * {{{

@@ -1,7 +1,7 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
-import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyRef, PyValue, PyWorkers, Shape}
+import okay.foreign.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyRef, PyValue, PyWorkers, Shape}
 import okay.r.{RFrame, RModule, RSubprocess, RValue, REval}
 
 /** a TypeScript module: its source, loaded by a Node worker
@@ -84,7 +84,7 @@ object Language:
       Workers.of(s"ts|$node|${module.name}|${module.source.hashCode}", s"ts:${module.name}", n, () =>
         val dir = java.nio.file.Files.createTempDirectory("okay-ts-module")
         java.nio.file.Files.writeString(dir.resolve(s"${module.name}.ts"), module.source): Unit
-        okay.py.TsWorker.start(dir, modules = Seq(module.name), node = node))
+        okay.foreign.TsWorker.start(dir, modules = Seq(module.name), node = node))
     def address(module: TsModule, fn: String): String = s"${module.name}:$fn"
     def shape: Shape = Shape.python
     def who = s"the node '$node'"
@@ -104,7 +104,7 @@ object Language:
     def shape: Shape = Shape.python
     def who = "the worker"
 
-  private[foreign] def failed(c: okay.py.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
+  private[foreign] def failed(c: okay.foreign.Condition): Batcher.Failed = Batcher.Failed(c.kind, c.message)
 
   /** a row type that is not a flat case class is refused where the stage is
    * MADE, not at the first chunk on a worker */
@@ -162,11 +162,11 @@ final class ForeignStreamer[M, A, B](lang: Language[M], module: M, openFn: Strin
                                     (using sa: Schema[A], sb: Schema[B]) extends Streamer[A, B]:
   val name = lang.label(module, s"$openFn/$stepFn/$finishFn")
   private val pool = lang.workers(module, workers)
-  final class S(val lease: okay.py.Pool[ForeignWorker]#Lease, val ref: PyRef)
+  final class S(val lease: okay.foreign.Pool[ForeignWorker]#Lease, val ref: PyRef)
 
   /** one operation on the leased worker; a death releases the lease as dead
    * and is the wire's failure */
-  private def on[X](s: S)(f: ForeignWorker => Either[okay.py.Condition, X]): Either[Batcher.Failed, X] =
+  private def on[X](s: S)(f: ForeignWorker => Either[okay.foreign.Condition, X]): Either[Batcher.Failed, X] =
     try f(s.lease.e).left.map(Language.failed)
     catch case e: IllegalStateException if Workers.dead(e) =>
       s.lease.release(dead = true)
@@ -179,7 +179,7 @@ final class ForeignStreamer[M, A, B](lang: Language[M], module: M, openFn: Strin
     leased.flatMap { lease =>
       val opened =
         try lease.e.handler.handle(ForeignEval.Call(lang.address(module, openFn), Vector.empty, held = true))
-          .flatMap(okay.py.Wire.asRef).left.map(Language.failed)
+          .flatMap(okay.foreign.Wire.asRef).left.map(Language.failed)
         catch case e: IllegalStateException if Workers.dead(e) => Left(Batcher.Failed("WorkerDied", e.getMessage))
       opened match
         case Right(ref) => Right(S(lease, ref))
@@ -210,12 +210,12 @@ final class ForeignModel[M, P](lang: Language[M], module: M, fn: String, params:
   private val refs = java.util.WeakHashMap[ForeignWorker, PyRef]()
 
   /** this worker's copy, made on its first chunk */
-  private def refFor(w: ForeignWorker): Either[okay.py.Condition, PyRef] = refs.synchronized {
+  private def refFor(w: ForeignWorker): Either[okay.foreign.Condition, PyRef] = refs.synchronized {
     Option(refs.get(w)) match
       case Some(r) => Right(r)
       case None =>
         w.handler.handle(ForeignEval.Call(lang.address(module, fn), Vector(lang.shape.encode(params)), held = true))
-          .flatMap(okay.py.Wire.asRef).map { r => refs.put(w, r): Unit; r }
+          .flatMap(okay.foreign.Wire.asRef).map { r => refs.put(w, r): Unit; r }
   }
 
   def batcher[A: Schema, B: Schema](mapFn: String): Batcher[A, B] = new:
@@ -236,20 +236,20 @@ object PyPool:
   private[foreign] def dead(e: Throwable): Boolean = Workers.dead(e)
 
   private[foreign] def use[X](pool: PyWorkers, python: String)
-                             (f: ForeignWorker => Either[okay.py.Condition, X]): Either[okay.py.Condition, X] =
+                             (f: ForeignWorker => Either[okay.foreign.Condition, X]): Either[okay.foreign.Condition, X] =
     Workers.use(pool, s"the python '$python'")(f)
 
   def frame(pool: PyWorkers, python: String, address: String, in: PyFrame, args: Vector[PyValue])
-  : Either[okay.py.Condition, PyFrame] =
+  : Either[okay.foreign.Condition, PyFrame] =
     use(pool, python)(_.handler.handle(ForeignEval.Frame(address, in, args)))
 
   /** a Table through `address`, as itself where Arrow is spoken (facade-frame-seam) */
   def frameTable(pool: PyWorkers, python: String, address: String, in: okay.arrow.Table, args: Vector[PyValue])
-  : Either[okay.py.Condition, okay.arrow.Table] =
+  : Either[okay.foreign.Condition, okay.arrow.Table] =
     use(pool, python)(_.frameTable(address, in, args))
 
   def call(pool: PyWorkers, python: String, address: String, args: Vector[PyValue])
-  : Either[okay.py.Condition, PyValue] =
+  : Either[okay.foreign.Condition, PyValue] =
     use(pool, python)(_.handler.handle(ForeignEval.Call(address, args)))
 
 /** the R workers of a module on this JVM — `ForeignWorker`s speaking R

@@ -34,12 +34,12 @@ object Calls:
     def name = lang.name
     def call[A: Schema, B: Schema](module: M, fn: String)(a: A): Either[Batcher.Failed, B] =
       Workers.use(lang.workers(module, Stage.Workers), lang.who)(
-        _.handler.handle(okay.py.ForeignEval.Call(lang.address(module, fn), Vector(lang.shape.encode(a)))))
+        _.handler.handle(okay.foreign.ForeignEval.Call(lang.address(module, fn), Vector(lang.shape.encode(a)))))
         .flatMap(lang.shape.decode[B]).left.map(Language.failed)
 
   /** Python, `python3` on the PATH; `Calls.py(path)` for another */
-  given py: Calls[okay.py.PyModule] = py("python3")
-  def py(python: String): Calls[okay.py.PyModule] = of(Language.py(python))
+  given py: Calls[okay.foreign.PyModule] = py("python3")
+  def py(python: String): Calls[okay.foreign.PyModule] = of(Language.py(python))
 
   /** R, `Rscript` on the PATH; `Calls.r(path)` for another */
   given r: Calls[okay.r.RModule] = r("Rscript")
@@ -94,11 +94,11 @@ object Frames:
     override def rows[A: Schema, B: Schema](module: M, fn: String)(in: Vector[A]): Either[Batcher.Failed, Vector[B]] =
       lang.shape.frame(in).flatMap(f =>
         Workers.use(lang.workers(module, Stage.Workers), lang.who)(
-          _.handler.handle(okay.py.ForeignEval.Frame(lang.address(module, fn), f, Vector.empty))))
+          _.handler.handle(okay.foreign.ForeignEval.Frame(lang.address(module, fn), f, Vector.empty))))
         .flatMap(_.rows[B]).left.map(Language.failed)
 
-  given py: Frames[okay.py.PyModule] = py("python3")
-  def py(python: String): Frames[okay.py.PyModule] = of(Language.py(python))
+  given py: Frames[okay.foreign.PyModule] = py("python3")
+  def py(python: String): Frames[okay.foreign.PyModule] = of(Language.py(python))
   given r: Frames[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Frames[okay.r.RModule] = of(Language.r(rscript))
   given ts: Frames[TsModule] = of(Language.node)
@@ -189,19 +189,19 @@ object Programs:
    * rules, and the whole walk on the one pool, which routes a program by its
    * run so its continuations stay on one worker */
   def of[M](lang: Language[M]): Programs[M] = new:
-    type Op[+A] = okay.py.ForeignEval[A]
+    type Op[+A] = okay.foreign.ForeignEval[A]
     def name = lang.name
-    private given okay.py.Shape = lang.shape
-    private def cb[F[+_]](c: Cb[F]): okay.py.Py.Callback[F] =
-      okay.py.Py.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
+    private given okay.foreign.Shape = lang.shape
+    private def cb[F[+_]](c: Cb[F]): okay.foreign.Py.Callback[F] =
+      okay.foreign.Py.callback[c.Arg, c.Res](c.name)(using c.arg, c.res)(c.run)
     def program[Arg: Schema, Out: Schema, F[+_]](module: M, fn: String, cbs: Vector[Cb[F]])(a: Arg): Either[Batcher.Failed, Out] ! (F + Op) =
-      okay.py.Py.program[Out](lang.address(module, fn)).calling(okay.py.Py.callbacks[F](cbs.map(cb[F])*))(a).program
+      okay.foreign.Py.program[Out](lang.address(module, fn)).calling(okay.foreign.Py.callbacks[F](cbs.map(cb[F])*))(a).program
         .map(_.left.map(Language.failed))
     def run[A](module: M)(prog: A ! Op): A =
       prog.runWith(using lang.workers(module, Stage.Workers).handler)
 
-  given py: Programs[okay.py.PyModule] = py("python3")
-  def py(python: String): Programs[okay.py.PyModule] = of(Language.py(python))
+  given py: Programs[okay.foreign.PyModule] = py("python3")
+  def py(python: String): Programs[okay.foreign.PyModule] = of(Language.py(python))
   given r: Programs[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Programs[okay.r.RModule] = of(Language.r(rscript))
   given ts: Programs[TsModule] = of(Language.node)
@@ -235,21 +235,21 @@ trait Methods[-M]:
 object Holds:
   /** the instance types with their handle type visible: a `given` cannot
    * carry a refinement (the parser reads its `{` as a body), an alias can.
-   * The handle is the one handle (`okay.py.PyRef`) for every language. */
-  type Py = Holds[okay.py.PyModule] { type Ref = okay.py.PyRef }
-  type R = Holds[okay.r.RModule] { type Ref = okay.py.PyRef }
+   * The handle is the one handle (`okay.foreign.PyRef`) for every language. */
+  type Py = Holds[okay.foreign.PyModule] { type Ref = okay.foreign.PyRef }
+  type R = Holds[okay.r.RModule] { type Ref = okay.foreign.PyRef }
 
   /** ONE body for every wire language: a handle lives in one worker of the
    * one pool, which routes every call naming it there */
-  def of[M](lang: Language[M]): Holds[M] { type Ref = okay.py.PyRef } = new Holds[M]:
-    type Ref = okay.py.PyRef
+  def of[M](lang: Language[M]): Holds[M] { type Ref = okay.foreign.PyRef } = new Holds[M]:
+    type Ref = okay.foreign.PyRef
     def name = lang.name
-    private given okay.py.Shape = lang.shape
+    private given okay.foreign.Shape = lang.shape
     private def on(module: M) = lang.workers(module, Stage.Workers).handler
     def hold[Arg: Schema](module: M, fn: String)(a: Arg): Either[Batcher.Failed, Ref] =
-      okay.py.Py.hold(lang.address(module, fn))(a).runWith(using on(module)).left.map(Language.failed)
+      okay.foreign.Py.hold(lang.address(module, fn))(a).runWith(using on(module)).left.map(Language.failed)
     def apply[Arg: Schema, Out: Schema](module: M, fn: String)(ref: Ref, a: Arg): Either[Batcher.Failed, Out] =
-      okay.py.Py.fn[Out](lang.address(module, fn))(ref, a).runWith(using on(module)).left.map(Language.failed)
+      okay.foreign.Py.fn[Out](lang.address(module, fn))(ref, a).runWith(using on(module)).left.map(Language.failed)
     def release(module: M)(ref: Ref): Unit =
       ref.release.runWith(using on(module))
 
@@ -259,19 +259,19 @@ object Holds:
   def r(rscript: String): R = of(Language.r(rscript))
   /** TypeScript keeps held objects, and since foreign-held-values a compiled
    * Go, Rust or Haskell worker keeps held VALUES (no methods by name) */
-  type Ts = Holds[TsModule] { type Ref = okay.py.PyRef }
+  type Ts = Holds[TsModule] { type Ref = okay.foreign.PyRef }
   given ts: Ts = of(Language.node)
-  type Worker = Holds[WorkerModule] { type Ref = okay.py.PyRef }
+  type Worker = Holds[WorkerModule] { type Ref = okay.foreign.PyRef }
   given worker: Worker = of(Language.worker)
 
 object Methods:
-  type Py = Methods[okay.py.PyModule] { type Ref = okay.py.PyRef }
-  type Ts = Methods[TsModule] { type Ref = okay.py.PyRef }
+  type Py = Methods[okay.foreign.PyModule] { type Ref = okay.foreign.PyRef }
+  type Ts = Methods[TsModule] { type Ref = okay.foreign.PyRef }
 
   /** ONE body for a language whose objects have methods and attributes by
    * name: Python's and TypeScript's (R's have none, an honest absence) */
-  def of[M](lang: Language[M]): Methods[M] { type Ref = okay.py.PyRef } = new Methods[M]:
-    type Ref = okay.py.PyRef
+  def of[M](lang: Language[M]): Methods[M] { type Ref = okay.foreign.PyRef } = new Methods[M]:
+    type Ref = okay.foreign.PyRef
     def method[Arg: Schema, Out: Schema](module: M, ref: Ref, name: String)(a: Arg): Either[Batcher.Failed, Out] =
       ref.call[Out](name)(a).runWith(using lang.workers(module, Stage.Workers).handler).left.map(Language.failed)
     def attr[Out: Schema](module: M, ref: Ref, name: String): Either[Batcher.Failed, Out] =
@@ -333,8 +333,8 @@ object Speaks:
       val wire = lang.workers(module, Stage.Workers).use(_.wire)
       Report(lang.word, "pipes", if wire.endsWith("+arrow") then "arrow" else "columnar-json", stream = false, "multi-shot")
 
-  given py: Speaks[okay.py.PyModule] = py("python3")
-  def py(python: String): Speaks[okay.py.PyModule] = of(Language.py(python))
+  given py: Speaks[okay.foreign.PyModule] = py("python3")
+  def py(python: String): Speaks[okay.foreign.PyModule] = of(Language.py(python))
   given r: Speaks[okay.r.RModule] = r("Rscript")
   def r(rscript: String): Speaks[okay.r.RModule] = of(Language.r(rscript))
   given ts: Speaks[TsModule] = of(Language.node)

@@ -44,7 +44,7 @@ object RoadModule:
     def frame(module: RoadModule, fn: String)(in: okay.arrow.Table): Either[Batcher.Failed, okay.arrow.Table] =
       module.road match
         case "arrow" => Right(okay.arrow.OkayArrow.read(okay.arrow.OkayArrow.write(in)))
-        case _ => okay.py.ArrowFrames.table(okay.py.ArrowFrames.frame(in)).left.map(m => Batcher.Failed("Frame", m))
+        case _ => okay.foreign.ArrowFrames.table(okay.foreign.ArrowFrames.frame(in)).left.map(m => Batcher.Failed("Frame", m))
   given Speaks[RoadModule] = new:
     def speaks(module: RoadModule) = Speaks.Report("road", "fake", module.road, stream = false, "none")
 
@@ -101,8 +101,8 @@ class TestFacade extends munit.FunSuite:
     assert(compileErrors("summon[Holds[okay.r.RModule]]").isEmpty)
     assert(compileErrors("summon[Methods[okay.r.RModule]]").nonEmpty)
     // a handle from Holds is what Methods takes: the two refined givens agree
-    assert(compileErrors("val H = summon[Holds[okay.py.PyModule]]; val M = summon[Methods[okay.py.PyModule]]; (r: H.Ref) => (r: M.Ref)").isEmpty)
-    assert(compileErrors("summon[Programs[okay.py.PyModule]]").isEmpty)
+    assert(compileErrors("val H = summon[Holds[okay.foreign.PyModule]]; val M = summon[Methods[okay.foreign.PyModule]]; (r: H.Ref) => (r: M.Ref)").isEmpty)
+    assert(compileErrors("summon[Programs[okay.foreign.PyModule]]").isEmpty)
     // a Frames instance is a Streams instance: the derived road
     assert(compileErrors("summon[Streams[CountingModule]]").isEmpty)
     // EchoModule gives Calls and not Frames: rows through it do not compile

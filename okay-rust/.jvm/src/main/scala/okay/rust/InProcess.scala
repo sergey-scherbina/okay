@@ -2,7 +2,7 @@ package okay.rust
 
 import java.nio.file.{Files, Path}
 import okay.codec.{WireAuth, WireCompression, WireDeadline, WireFormat}
-import okay.py.ForeignWorker
+import okay.foreign.ForeignWorker
 
 /**
  * A worker IN THIS PROCESS in one line (polyglot-one-wire, stage 3):

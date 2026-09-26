@@ -93,9 +93,9 @@ object Reduce:
 
   /** the reduce in Python: `step(frame, acc)` answers one row as columns,
    * `merge(a, b)` two dicts of fields into one */
-  def py[A: Schema, Acc: Schema](module: okay.py.PyModule, step: String, merge: String, python: String = "python3",
+  def py[A: Schema, Acc: Schema](module: okay.foreign.PyModule, step: String, merge: String, python: String = "python3",
                                  batch: Int = Stage.Batch, workers: Int = Stage.Workers): Wire[A, Option[Acc]] =
-    through(ForeignReducer[okay.py.PyModule, A, Acc](Language.py(python), module, step, merge, workers), batch, 3)
+    through(ForeignReducer[okay.foreign.PyModule, A, Acc](Language.py(python), module, step, merge, workers), batch, 3)
 
   /** the reduce in R: `step(frame, acc)` answers a one-row data.frame,
    * `merge(a, b)` two named lists into one */

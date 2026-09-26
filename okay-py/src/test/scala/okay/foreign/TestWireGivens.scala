@@ -1,0 +1,246 @@
+package okay.foreign
+
+import okay.codec.Json
+
+/** stage 5a's codecs and refusals, without a far side (default gate) */
+class TestWireGivens extends munit.FunSuite:
+
+  private val tree = Json.JObj(Vector(
+    "id" -> Json.JNum(7), "ok" -> Json.JObj(Vector(
+      "args" -> Json.JArr(Vector(Json.JArr(Vector(Json.JNum(1), Json.JNum(-2))))), "k" -> Json.JNum(1),
+      "perform" -> Json.JStr("choose"), "price" -> Json.JNum(4.5), "none" -> Json.JNull, "yes" -> Json.JBool(true),
+      "big" -> Json.JNum(1e300), "text" -> Json.JStr("чай ☕")))))
+
+  test("CBOR carries the wire's tree and back, unchanged") {
+    assertEquals(WireCbor.decode(WireCbor.encode(tree)), Right(tree))
+  }
+
+  test("a CBOR message cut short, at any byte, is refused") {
+    val bytes = WireCbor.encode(tree)
+    val accepted = (1 until bytes.length).filter(n => WireCbor.decode(bytes.dropRight(n)).isRight)
+    assertEquals(accepted.toVector, Vector.empty)
+  }
+
+  test("DEFLATE round-trips, and an inflated message cut short is refused") {
+    val d = WireCompression.Deflate.deflate
+    val bytes = WireCbor.encode(tree)
+    assertEquals(d.decompress(d.compress(bytes)).toVector, bytes.toVector)
+    val cut = d.compress(bytes).dropRight(3)
+    assert(scala.util.Try(d.decompress(cut)).isFailure)
+  }
+
+  test("a far side that did not announce the given format is refused by name") {
+    import WireFormat.Cbor.given
+    val link = new WireLink:
+      def hello(): Option[String] = Some(s"""{"shim":${ForeignWorker.ShimVersion},"python":"haskell"}""")
+      def roundTrip(line: String): Option[String] = None
+      def exchange(message: Array[Byte]): Option[Array[Byte]] = None
+      def close(): Unit = ()
+    val e = intercept[IllegalStateException](ForeignWorker.over(link, "the Haskell worker"))
+    assert(e.getMessage.contains("speaks the formats json; this host's given WireFormat is cbor"), e.getMessage)
+  }
+
+  /** a far side that announces `speaks` (or nothing) and records the
+   * configure it was sent */
+  private final class Fake(speaks: String, override val inProcess: Boolean = false, pipe: Boolean = false)
+      extends WireLink:
+    override def network: Boolean = !inProcess && !pipe
+    var asked = Vector.empty[String]
+    def hello(): Option[String] = Some(s"""{"shim":${ForeignWorker.ShimVersion},"python":"fake"$speaks}""")
+    def roundTrip(line: String): Option[String] =
+      asked :+= line
+      Some("""{"id":null,"ok":{}}""")
+    def exchange(message: Array[Byte]): Option[Array[Byte]] = None
+    def close(): Unit = ()
+
+  private val speaksDeflate = ""","speaks":{"format":["json","cbor"],"compress":["deflate"]}"""
+
+  test("DEFLATE is the default over a network: with no import, a far side that speaks it is asked for it") {
+    val link = Fake(speaksDeflate)
+    val w = ForeignWorker.over(link)
+    assertEquals(w.wire, "json/deflate")
+    assertEquals(link.asked, Vector("""{"op":"configure","format":"json","compress":"deflate"}"""))
+  }
+
+  test("the default is a preference: a far side without DEFLATE keeps the plain wire, unrefused") {
+    val link = Fake(""","speaks":{"format":["json","cbor"],"compress":[]}""")
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked, Vector.empty)
+    val old = Fake("")
+    assertEquals(ForeignWorker.over(old).wire, "json/none")
+    assertEquals(old.asked, Vector.empty)
+  }
+
+  test("the default does not compress in-process, where a message is a memory copy") {
+    val link = Fake(speaksDeflate, inProcess = true)
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked, Vector.empty)
+  }
+
+  test("the default does not compress on a pipe either, where bandwidth is a memory copy's (wire-compression-measured)") {
+    val link = Fake(speaksDeflate, pipe = true)
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked, Vector.empty)
+    import WireCompression.Deflate.given
+    assertEquals(ForeignWorker.over(Fake(speaksDeflate, pipe = true)).wire, "json/deflate")
+  }
+
+  test("a kept Deflater and Inflater carry nothing between messages, and a refusal does not poison the next") {
+    for c <- Seq(WireCompression.Deflate.deflate, WireCompression.Zlib.zlib) do
+      val a = WireCbor.encode(tree)
+      val b = "x".repeat(40000).getBytes
+      for m <- Seq(a, b, a, Array.emptyByteArray, b) do
+        assertEquals(c.decompress(c.compress(m)).toVector, m.toVector)
+      assert(scala.util.Try(c.decompress(c.compress(b).dropRight(3))).isFailure)
+      assertEquals(c.decompress(c.compress(a)).toVector, a.toVector)
+      val many = (1 to 64).map(n => java.util.concurrent.CompletableFuture.supplyAsync(() =>
+        val m = s"message $n ".repeat(n * 10).getBytes
+        c.decompress(c.compress(m)).toVector == m.toVector))
+      assert(many.forall(_.join()))
+  }
+
+  test("Off turns it off: a far side that speaks DEFLATE is not asked") {
+    import WireCompression.Off.given
+    val link = Fake(speaksDeflate)
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked, Vector.empty)
+  }
+
+  test("an EXPLICIT Deflate is strict: refused by name where it is not spoken, used in-process too") {
+    import WireCompression.Deflate.given
+    val e = intercept[IllegalStateException](ForeignWorker.over(Fake(""), "the old worker"))
+    assert(e.getMessage.contains("the old worker speaks the compressions none; this host's given WireCompression is deflate"), e.getMessage)
+    assertEquals(ForeignWorker.over(Fake(speaksDeflate, inProcess = true)).wire, "json/deflate")
+  }
+
+  test("CBOR with the default compression: both, where both are spoken") {
+    import WireFormat.Cbor.given
+    val link = Fake(speaksDeflate)
+    assertEquals(ForeignWorker.over(link).wire, "cbor/deflate")
+    val plain = Fake(""","speaks":{"format":["json","cbor"],"compress":[]}""")
+    assertEquals(ForeignWorker.over(plain).wire, "cbor/none")
+    assertEquals(plain.asked, Vector("""{"op":"configure","format":"cbor","compress":"none"}"""))
+  }
+
+  test("zlib round-trips, a cut one and a damaged checksum are refused") {
+    val z = WireCompression.Zlib.zlib
+    val bytes = WireCbor.encode(tree)
+    assertEquals(z.decompress(z.compress(bytes)).toVector, bytes.toVector)
+    assert(scala.util.Try(z.decompress(z.compress(bytes).dropRight(2))).isFailure)
+    val bad = z.compress(bytes)
+    bad(bad.length - 1) = (bad(bad.length - 1) ^ 1).toByte
+    assert(scala.util.Try(z.decompress(bad)).isFailure)
+  }
+
+  test("the default is an ORDER: deflate where spoken, else zlib (R), else nothing") {
+    assertEquals(ForeignWorker.over(Fake(""","speaks":{"compress":["zlib","deflate"]}""")).wire, "json/deflate")
+    val r = Fake(""","speaks":{"format":["json","cbor"],"compress":"zlib"}""")
+    assertEquals(ForeignWorker.over(r).wire, "json/zlib")
+    assertEquals(r.asked, Vector("""{"op":"configure","format":"json","compress":"zlib"}"""))
+    assertEquals(ForeignWorker.over(Fake(""","speaks":{"compress":["zlib"]}""", inProcess = true)).wire, "json/none")
+  }
+
+  test("an explicit Zlib is strict, like Deflate") {
+    import WireCompression.Zlib.given
+    val e = intercept[IllegalStateException](ForeignWorker.over(Fake(speaksDeflate), "the Go worker"))
+    assert(e.getMessage.contains("the Go worker speaks the compressions none, deflate; this host's given WireCompression is zlib"), e.getMessage)
+  }
+
+  test("WireAuth.mac is HMAC-SHA256: RFC 4231's test case 2") {
+    assertEquals(WireAuth.mac("Jefe".getBytes, "what do ya want for nothing?"),
+      "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843")
+  }
+
+  /** a server with a secret: it answers the auth as the Go and Rust servers
+   * do, or, `lying`, with a mac that proves nothing */
+  private final class Guarded(secret: String, lying: Boolean = false) extends WireLink:
+    val ns = "00112233445566778899aabbccddeeff"
+    var asked = Vector.empty[String]
+    def hello(): Option[String] = Some(s"""{"shim":${ForeignWorker.ShimVersion},"python":"fake","auth":{"scheme":"hmac-sha256","nonce":"$ns"}}""")
+    def roundTrip(line: String): Option[String] =
+      asked :+= line
+      Json.parse(line) match
+        case Json.JObj(fs) =>
+          val m = fs.toMap
+          val nc = m.get("nonce").collect { case Json.JStr(s) => s }.getOrElse("")
+          val mac = m.get("mac").collect { case Json.JStr(s) => s }.getOrElse("")
+          if mac != WireAuth.mac(secret.getBytes, s"okay-wire client|$ns|$nc") then
+            Some("""{"id":null,"condition":{"kind":"PermissionError","message":"authentication refused"}}""")
+          else
+            val proof = if lying then "00" * 32 else WireAuth.mac(secret.getBytes, s"okay-wire server|$ns|$nc")
+            Some(s"""{"id":null,"ok":{"mac":"$proof"}}""")
+        case _ => None
+    def exchange(message: Array[Byte]): Option[Array[Byte]] = None
+    def close(): Unit = ()
+
+  test("WireAuth: both sides prove the secret, and the host's proof is sent once, before anything else") {
+    given WireAuth = WireAuth.secret("tea for two".getBytes)
+    val link = Guarded("tea for two")
+    assertEquals(ForeignWorker.over(link).wire, "json/none")
+    assertEquals(link.asked.size, 1)
+    assert(link.asked.head.startsWith("""{"op":"auth","nonce":"""), link.asked.head)
+    assert(!link.asked.head.contains("tea for two"), "the secret itself never crosses")
+  }
+
+  test("WireAuth is MUTUAL: a server whose answer does not prove the secret is refused") {
+    given WireAuth = WireAuth.secret("tea for two".getBytes)
+    val e = intercept[IllegalStateException](ForeignWorker.over(Guarded("tea for two", lying = true), "the relay"))
+    assert(e.getMessage.contains("the relay answered with a mac that does not prove the secret from a secret in the program"), e.getMessage)
+  }
+
+  test("WireAuth refusals name what is missing, on each side") {
+    val none = intercept[IllegalStateException](ForeignWorker.over(Guarded("x"), "the Go worker"))
+    assert(none.getMessage.contains("the Go worker requires hmac-sha256 authentication; this host has no given WireAuth"), none.getMessage)
+    locally {
+      given WireAuth = WireAuth.fromEnv("OKAY_TEST_NO_SUCH_SECRET")
+      val unset = intercept[IllegalStateException](ForeignWorker.over(Guarded("x")))
+      assert(unset.getMessage.contains("the wire secret's environment variable OKAY_TEST_NO_SUCH_SECRET is not set"), unset.getMessage)
+      val plain = intercept[IllegalStateException](ForeignWorker.over(Fake(""), "the old worker"))
+      assert(plain.getMessage.contains("from the environment variable OKAY_TEST_NO_SUCH_SECRET) requires the old worker to authenticate; it announced none"),
+        plain.getMessage)
+    }
+  }
+
+  test("WireAuth.fromFile drops the newline an editor adds") {
+    val f = java.nio.file.Files.createTempFile("okay-secret", ".txt")
+    java.nio.file.Files.writeString(f, "tea for two\n"): Unit
+    given WireAuth = WireAuth.fromFile(f)
+    assertEquals(ForeignWorker.over(Guarded("tea for two")).wire, "json/none")
+  }
+
+  test("a deadline on an in-process link is refused by name: a call there cannot be abandoned") {
+    given WireDeadline = WireDeadline.after(scala.concurrent.duration.Duration(1, "second"))
+    val e = intercept[IllegalStateException](ForeignWorker.over(Fake("", inProcess = true), "the library"))
+    assert(e.getMessage.contains("the library is in this process"), e.getMessage)
+    assert(e.getMessage.contains("cannot be abandoned"), e.getMessage)
+  }
+
+  test("byName picks the same givens an import would, and refuses an unknown name by naming it") {
+    assertEquals(WireFormat.byName("json").map(_.name), Right("json"))
+    assertEquals(WireFormat.byName("cbor").map(_.name), Right("cbor"))
+    assertEquals(WireFormat.byName("bson"), Left("unknown wire format 'bson' (json, cbor)"))
+    assertEquals(WireCompression.byName("auto").map(_.name), Right(WireCompression.preferred.name))
+    assertEquals(WireCompression.byName("none").map(_.name), Right("none"))
+    assertEquals(WireCompression.byName("deflate").map(_.name), Right("deflate"))
+    assertEquals(WireCompression.byName("zlib").map(_.name), Right("zlib"))
+    assertEquals(WireCompression.byName("gzip"), Left("unknown wire compression 'gzip' (auto, none, deflate, zlib)"))
+    assertEquals(okay.codec.FrameFormat.byName("auto"), Right(okay.codec.FrameFormat.preferred))
+    assertEquals(okay.codec.FrameFormat.byName("json"), Right(okay.codec.FrameFormat.Json.json))
+    assertEquals(okay.codec.FrameFormat.byName("arrow"), Right(okay.codec.FrameFormat.Arrow.arrow))
+    assertEquals(okay.codec.FrameFormat.byName("parquet"), Left("unknown frame format 'parquet' (auto, json, arrow)"))
+  }
+
+  test("WireChoice.default is exactly what the compile-time givens pick with no import") {
+    val d = okay.codec.WireChoice.default
+    assertEquals(d.format.name, WireFormat.json.name)
+    assertEquals(d.compression.name, WireCompression.preferred.name)
+    assertEquals(d.frames, okay.codec.FrameFormat.preferred)
+    assertEquals(d.deadline, WireDeadline.none)
+  }
+
+  test("WireChoice.named composes the three byName lookups, Left on the first bad name") {
+    val chosen = okay.codec.WireChoice.named(format = "cbor", compression = "none", frames = "json")
+    assertEquals(chosen.map(w => (w.format.name, w.compression.name, w.frames)),
+      Right(("cbor", "none", okay.codec.FrameFormat.Json.json)))
+    assertEquals(okay.codec.WireChoice.named(format = "yaml"), Left("unknown wire format 'yaml' (json, cbor)"))
+  }

@@ -5,7 +5,7 @@ import okay.given
 import okay.Row.plus
 import okay.codec.Schema
 import okay.frege.Prog.TProg
-import okay.py.{Jvm, Py, Shape}
+import okay.foreign.{Jvm, Py, Shape}
 
 /**
  * PROGRAMS AS DATA FROM THE JVM'S OWN LANGUAGES, through the facade

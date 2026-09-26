@@ -1,7 +1,7 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
-import okay.py.PyModule
+import okay.foreign.PyModule
 import okay.r.RModule
 
 /**

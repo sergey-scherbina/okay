@@ -1,6 +1,6 @@
 package okay.cluster.foreign
 
-import okay.py.{Foreign, TestPy}
+import okay.foreign.{Foreign, TestPy}
 
 object PyFacadeMod:
   val mod = Foreign.module("pyfacade", """
@@ -45,10 +45,10 @@ class TestPyFacade extends munit.FunSuite:
   override def munitIgnore: Boolean = TestPy.python.isEmpty
   override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
 
-  given Calls[okay.py.PyModule] = Calls.py(TestPy.python.getOrElse("python3"))
-  given Speaks[okay.py.PyModule] = Speaks.py(TestPy.python.getOrElse("python3"))
-  given Frames[okay.py.PyModule] = Frames.py(TestPy.python.getOrElse("python3"))
-  given Programs[okay.py.PyModule] = Programs.py(TestPy.python.getOrElse("python3"))
+  given Calls[okay.foreign.PyModule] = Calls.py(TestPy.python.getOrElse("python3"))
+  given Speaks[okay.foreign.PyModule] = Speaks.py(TestPy.python.getOrElse("python3"))
+  given Frames[okay.foreign.PyModule] = Frames.py(TestPy.python.getOrElse("python3"))
+  given Programs[okay.foreign.PyModule] = Programs.py(TestPy.python.getOrElse("python3"))
   given holds: Holds.Py = Holds.py(TestPy.python.getOrElse("python3"))
   given methods: Methods.Py = Methods.py(TestPy.python.getOrElse("python3"))
 
@@ -87,10 +87,10 @@ class TestPyFacade extends munit.FunSuite:
   }
 
   test("Speaks over python3 agrees with what the worker does: frames as observed, programs multi-shot, and a lie refused") {
-    val honest = summon[Speaks[okay.py.PyModule]]
+    val honest = summon[Speaks[okay.foreign.PyModule]]
     assertEquals(FacadeConformance.agree(PyFacadeMod.mod, "fecho", "pairs").programs, "multi-shot")
     // an ability the report does not claim fails too: programs said to be none
-    val none = new Speaks[okay.py.PyModule]:
-      def speaks(m: okay.py.PyModule) = honest.speaks(m).copy(programs = "none")
+    val none = new Speaks[okay.foreign.PyModule]:
+      def speaks(m: okay.foreign.PyModule) = honest.speaks(m).copy(programs = "none")
     intercept[AssertionError](FacadeConformance.agree(PyFacadeMod.mod, "fecho", "pairs")(using none, summon, summon))
   }

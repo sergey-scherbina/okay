@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 /**
  * How a wire message's tree becomes bytes (polyglot-one-wire stage 5), chosen
  * at COMPILE TIME by the given in scope where an engine is opened — the
- * foreign workers' (`okay.py.ForeignWorker`) and R's (`okay.r.RSubprocess`)
+ * foreign workers' (`okay.foreign.ForeignWorker`) and R's (`okay.r.RSubprocess`)
  * alike:
  *
  * {{{

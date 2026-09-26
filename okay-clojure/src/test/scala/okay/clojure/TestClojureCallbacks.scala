@@ -1,12 +1,12 @@
 package okay.clojure
 
 import okay.{!, %, Reader}
-import okay.py.{Foreign, Jvm, Shape}
+import okay.foreign.{Foreign, Jvm, Shape}
 
 /**
  * A Clojure program performs the caller's `Foreign.callbacks`
  * (foreign-one-ops, specs/foreign-one.md Decision 19): through
- * `okay.clojure.shop`, the namespace `okay.py.Jvm.clojure` writes from them.
+ * `okay.clojure.shop`, the namespace `okay.foreign.Jvm.clojure` writes from them.
  */
 class TestClojureCallbacks extends munit.FunSuite:
   given Shape = Shape.python

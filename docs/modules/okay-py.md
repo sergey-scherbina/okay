@@ -187,7 +187,7 @@ val model = scoring.hold("Model")(10L).runWith.toOption.get
 A whole module can sit behind a typed Scala object, generated from the
 module's own signatures and type hints:
 
-    sbt "okayPy/runMain okay.py.PyFacade statistics Stats my.pkg"
+    sbt "okayPy/runMain okay.foreign.PyFacade statistics Stats my.pkg"
 
 prints a source file to check in. From
 

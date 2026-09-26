@@ -1,10 +1,10 @@
 package okay.r
 
-import okay.py.{ForeignEval, PyStream}
+import okay.foreign.{ForeignEval, PyStream}
 
 /**
  * An R function over a vector as an okay STAGE over chunks
- * (foreign-streaming) — the one foreign stage (`okay.py.PyStream`) at R's
+ * (foreign-streaming) — the one foreign stage (`okay.foreign.PyStream`) at R's
  * value rules. The function receives up to `chunk` elements as one vector
  * and answers a vector of any length; the next pull waits for it.
  * STATEFUL: a held CLOSURE (`R.hold` of a function that returns a function)

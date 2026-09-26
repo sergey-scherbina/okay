@@ -1,10 +1,10 @@
-package okay.py.workflow
+package okay.foreign.workflow
 
 import okay.{!, +, Delim, Pure, Wf}
 import okay.Direct.*
 import okay.codec.Schema
 import okay.persist.{Dialogue, MemoryStore}
-import okay.py.{Foreign, ForeignEval, ForeignWorker, TestPy}
+import okay.foreign.{Foreign, ForeignEval, ForeignWorker, TestPy}
 import scala.language.implicitConversions
 
 object Shop:

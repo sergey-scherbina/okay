@@ -1,7 +1,7 @@
 package okay.rust
 
 import java.nio.file.{Files, Path}
-import okay.py.{ForeignWorker, RustWorker, RustWorkerBinary, Rs, Foreign, WireConformance}
+import okay.foreign.{ForeignWorker, RustWorker, RustWorkerBinary, Rs, Foreign, WireConformance}
 
 /** the conformance crate as a LIBRARY: the same programs and functions as the
  * Rust worker binary, exported in-process by `okay::export_worker!` */
@@ -69,7 +69,7 @@ class TestRustWasm extends WireConformance:
 
 /** (Go, WebAssembly): the Go worker compiled to wasip1, in this process under Chicory */
 class TestGoWasm extends WireConformance:
-  override def munitIgnore: Boolean = !okay.py.GoWorkerBinary.available
+  override def munitIgnore: Boolean = !okay.foreign.GoWorkerBinary.available
   lazy val engine: ForeignWorker =
     ForeignWorker.inProcessWasm(GoInProcess.wasm)
 
@@ -78,22 +78,22 @@ object GoInProcess:
     val dir = Files.createTempDirectory("okay-go-inprocess")
     Files.createDirectories(dir.resolve("shop")): Unit
     Files.writeString(dir.resolve("shop").resolve("ops.go"),
-      okay.py.Go.ops("shop", Foreign.callbacks(okay.py.TestGoProgram.priceOf, okay.py.TestGoProgram.discount))): Unit
-    Files.writeString(dir.resolve("main.go"), okay.py.TestGoProgram.main): Unit
-    okay.py.GoWorker.buildWasm(dir)
+      okay.foreign.Go.ops("shop", Foreign.callbacks(okay.foreign.TestGoProgram.priceOf, okay.foreign.TestGoProgram.discount))): Unit
+    Files.writeString(dir.resolve("main.go"), okay.foreign.TestGoProgram.main): Unit
+    okay.foreign.GoWorker.buildWasm(dir)
 
 /** (Go, WebAssembly), CBOR and DEFLATE chosen by givens */
 class TestGoWasmCbor extends WireConformance:
-  import okay.py.WireFormat.Cbor.given
-  import okay.py.WireCompression.Deflate.given
-  override def munitIgnore: Boolean = !okay.py.GoWorkerBinary.available
+  import okay.foreign.WireFormat.Cbor.given
+  import okay.foreign.WireCompression.Deflate.given
+  override def munitIgnore: Boolean = !okay.foreign.GoWorkerBinary.available
   lazy val engine: ForeignWorker =
     ForeignWorker.inProcessWasm(GoInProcess.wasm)
 
 /** (Rust, FFM), CBOR and DEFLATE */
 class TestRustFfmCbor extends WireConformance:
-  import okay.py.WireFormat.Cbor.given
-  import okay.py.WireCompression.Deflate.given
+  import okay.foreign.WireFormat.Cbor.given
+  import okay.foreign.WireCompression.Deflate.given
   override def munitIgnore: Boolean = !RustInProcess.available
   lazy val engine: ForeignWorker =
     ForeignWorker.inProcess(RustInProcess.dylib)
@@ -101,8 +101,8 @@ class TestRustFfmCbor extends WireConformance:
 
 /** (Rust, WebAssembly), CBOR and DEFLATE */
 class TestRustWasmCbor extends WireConformance:
-  import okay.py.WireFormat.Cbor.given
-  import okay.py.WireCompression.Deflate.given
+  import okay.foreign.WireFormat.Cbor.given
+  import okay.foreign.WireCompression.Deflate.given
   override def munitIgnore: Boolean = !RustInProcess.available
   override def direct: Boolean = false
   override def tables: Boolean = false

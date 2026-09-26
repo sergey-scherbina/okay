@@ -1,8 +1,8 @@
-package okay.py.workflow
+package okay.foreign.workflow
 
 import okay.{!, +, At, Delim, Wf, effect}
 import okay.codec.Schema
-import okay.py.{Condition, ForeignEval, PyNode, PyValue, Shape, ToPy, Wire}
+import okay.foreign.{Condition, ForeignEval, PyNode, PyValue, Shape, ToPy, Wire}
 
 /** a foreign call as a workflow QUESTION: the function's address and its
  * arguments (specs/foreign-workflow.md) */

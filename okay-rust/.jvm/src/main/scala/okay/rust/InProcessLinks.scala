@@ -2,7 +2,7 @@ package okay.rust
 
 import java.lang.foreign.{Arena, FunctionDescriptor, MemorySegment, ValueLayout}
 import java.nio.charset.StandardCharsets.UTF_8
-import okay.py.WireLink
+import okay.foreign.WireLink
 
 /**
  * The okay wire IN THIS PROCESS (polyglot-one-wire, stage 3): a worker

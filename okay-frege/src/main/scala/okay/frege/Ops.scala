@@ -37,7 +37,7 @@ object Ops {
   def sleep(millis: Long): AnyRef = Operations.sleep(millis)
 
   /** a CALLBACK of the caller's, by name (foreign-one-ops): what a module
-   * `okay.py.Jvm.frege` generated binds, answered by the `calls` given to
+   * `okay.foreign.Jvm.frege` generated binds, answered by the `calls` given to
    * `Frege.run` rather than by the row */
   def call(name: String, arg: AnyRef): AnyRef = okay.Foreign.Call(name, arg)
 }

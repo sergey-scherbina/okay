@@ -1,7 +1,7 @@
 package okay.r
 
 import okay.codec.Schema
-import okay.py.WireLink
+import okay.foreign.WireLink
 
 /**
  * A frame an R worker ANSWERS is read by R's value rules, whatever is in
@@ -32,6 +32,6 @@ class TestRFrameRules extends munit.FunSuite:
 
   test("the same cells built by Python's rules are refused at the NA — the rules are what differs") {
     val cols = Vector("n" -> Vector(RValue.I32(7), RValue.NA(RType.Integer)), "x" -> Vector(RValue.F64(1.5), RValue.F64(2.5)))
-    assert(okay.py.PyFrame(cols).rows[Obs].isLeft)
+    assert(okay.foreign.PyFrame(cols).rows[Obs].isLeft)
     assertEquals(RFrame(cols).rows[Obs], Right(Vector(Obs(Some(7), 1.5), Obs(None, 2.5))))
   }

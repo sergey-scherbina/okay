@@ -1,11 +1,11 @@
-package okay.py.workflow
+package okay.foreign.workflow
 
 import okay.{!, +, Delim, Proc, Pure, Wf}
 import okay.Direct.*
 import okay.Optic.arrows.*
 import okay.codec.Schema
 import okay.persist.{Dialogue, MemoryStore}
-import okay.py.{Condition, ForeignEval, ForeignWorker, PyValue, TestPy}
+import okay.foreign.{Condition, ForeignEval, ForeignWorker, PyValue, TestPy}
 import scala.language.implicitConversions
 
 object ShopProc:

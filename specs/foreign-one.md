@@ -812,6 +812,21 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     nothing to disambiguate. With that the item closes; the host-driven
     stream and the duplex transform are filed (foreign-host-streams).
 
+26. **The package is `okay.foreign`; the module keeps its name for now**
+    (foreign-package-name). The engine every wire language shares was in
+    `okay.py`, a name from when it served Python alone. The PACKAGE is what
+    a caller types, so it moves — 80 files of the module, 44 in its
+    dependents, the living docs, the refusal prefix (`okay.foreign: …`) —
+    and `okay.py` stays for a release as aliases of every public name (a
+    type, its companion, its patterns: TestPackageAlias), so a branch still
+    importing `okay.py` compiles unchanged. The MODULE's directory and
+    artifact (`okay-py`) do not move here: its path is cited 196 times in 99
+    files, most of them history (specs, changelog entries) that should keep
+    what was true when written, and a directory rename under eight open
+    worktrees buys nothing a caller sees. The artifact's name belongs with
+    its first publication. Resource paths (`/okay/py/shim.py`) are file
+    locations, not the package, and stay.
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
@@ -1154,3 +1169,11 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
   and Rust ("continuation 2 of run 3 is not held here"); green after the
   supervisor's fix, three runs out of three; Python, R, TypeScript and
   Haskell skip it (no mux).
+- **foreign-package-name (2026-09-26, Decision 26).** `package okay.foreign`
+  in okay-py (sources moved to `okay/foreign/`), every reference in
+  okay-r, okay-rust, okay-foreign-cluster, okay-foreign-workflow,
+  okay-frege, okay-clojure and okay-codec, the living docs, the generated
+  modules' headers; `okay/py/Aliases.scala` keeps the old names. Gates: the
+  affected gate (132 module compiles, no warnings), okay-py's JMH sources,
+  and the Live suites of okay-py 327, okay-r 102, okay-rust 47,
+  okay-foreign-cluster 59, okay-foreign-workflow 12.

@@ -12,7 +12,7 @@ import RValue.*
  * why. Unlike Python's `I64`-only model, R's own `I32` (32-bit integer)
  * stays 32-bit on the way out too — there is no widening to do.
  */
-object RArrowFrames extends okay.py.FrameTables:
+object RArrowFrames extends okay.foreign.FrameTables:
 
   def table(f: RFrame): Either[String, Table] =
     val n = f.cols.headOption.fold(0)(_._2.length)

@@ -1,7 +1,7 @@
 package okay.rust
 
 import okay.arrow.{Column, Table}
-import okay.py.{ForeignEval, ForeignWorker, PyFrame, PyValue}
+import okay.foreign.{ForeignEval, ForeignWorker, PyFrame, PyValue}
 
 /** a table's cells as plain values, so two tables compare */
 object Cells:
