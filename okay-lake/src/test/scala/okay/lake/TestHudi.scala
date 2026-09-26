@@ -4,6 +4,7 @@ import okay.given
 import okay.cluster.Flows
 import okay.codec.{Json, Schema}
 import java.nio.file.{Files, Path}
+import scala.jdk.CollectionConverters.*
 
 final case class Reading(id: Long, city: String, v: Double) derives Schema
 
@@ -89,12 +90,66 @@ print("RESULT " + json.dumps({"rows": r.count(), "v": row["sum(v)"], "ids": row[
     assertEquals(rows.map(_.id).distinct.length, rows.length, "a record read twice: an older slice was planned")
   }
 
-  test("merge-on-read is refused by name") {
-    val dir = Files.createTempDirectory("okay-hudi-mor")
-    Files.createDirectories(dir.resolve("t/.hoodie"))
-    Files.writeString(dir.resolve("t/.hoodie/hoodie.properties"), "hoodie.table.type=MERGE_ON_READ\nhoodie.table.name=t\n"): Unit
+  test("Hudi's own MERGE_ON_READ table — insert, upsert, an older event's upsert, delete — read equal; an uncommitted instant's blocks skipped") {
+    assume(python.isDefined && javaHome.isDefined, "no pyspark or no JDK 21")
+    val dir = Files.createTempDirectory("okay-hudi-mor").toRealPath()
+    val said = Json.parse(spark("""
+import sys, json
+from pyspark.sql import SparkSession
+d = sys.argv[1]
+spark = (SparkSession.builder.master("local[2]")
+  .config("spark.jars.packages", "org.apache.hudi:hudi-spark4.1-bundle_2.13:1.2.1")
+  .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+  .config("spark.sql.extensions", "org.apache.spark.sql.hudi.HoodieSparkSessionExtension")
+  .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.hudi.catalog.HoodieCatalog")
+  .config("spark.ui.enabled", "false")
+  .getOrCreate())
+path = d + "/readings"
+opts = {"hoodie.table.name": "readings", "hoodie.datasource.write.recordkey.field": "id",
+        "hoodie.datasource.write.precombine.field": "ts", "hoodie.datasource.write.table.type": "MERGE_ON_READ",
+        "hoodie.datasource.write.partitionpath.field": "city", "hoodie.clean.automatic": "false",
+        "hoodie.compact.inline": "false"}
+df = lambda lo, hi, m, ts: spark.createDataFrame([(i, "c%d" % (i % 3), i * m, ts) for i in range(lo, hi)], ["id", "city", "v", "ts"])
+up = lambda d, op: d.write.format("hudi").options(**opts).option("hoodie.datasource.write.operation", op).mode("append").save(path)
+df(0, 300, 1.0, 1).write.format("hudi").options(**opts).mode("overwrite").save(path)
+up(df(100, 150, 10.0, 2), "upsert")
+up(df(140, 160, -1.0, 0), "upsert")
+agg = lambda: spark.read.format("hudi").load(path).agg({"v": "sum", "id": "sum", "*": "count"}).collect()[0]
+before = agg()
+up(df(0, 20, 1.0, 1), "delete")
+after = agg()
+res = lambda r: {"rows": r["count(1)"], "v": r["sum(v)"], "ids": r["sum(id)"]}
+print("RESULT " + json.dumps({"before": res(before), "after": res(after)}))
+""", dir.toString))
+    def f(j: Json, k: String) = j match { case Json.JObj(fs) => fs.collectFirst { case (`k`, v) => v }.get; case _ => fail(j.toString) }
+    def num(j: Json) = j match { case Json.JNum(n) => n; case _ => fail(j.toString) }
     val lake = s"hudi-mor-${System.nanoTime()}"
     Lakes.register(lake, okay.blob.Fs(dir))
-    val e = intercept[IllegalStateException](HudiSource.snapshot(lake, "t"))
-    assert(e.getMessage.contains("MERGE_ON_READ"), e.getMessage)
+    def check(expected: Json) =
+      val plan = HudiSource.plan(lake, "readings")
+      assert(plan.parts.exists(p => p.group == -1 && p.logs.nonEmpty), s"no slice with logs: ${plan.parts}")
+      val rows = Flows.collect(ParquetSource.flow[Reading](plan)).runWith
+      assertEquals(rows.length.toLong, num(f(expected, "rows")).toLong)
+      assertEqualsDouble(rows.map(_.v).sum, num(f(expected, "v")), 1e-6)
+      assertEquals(rows.map(_.id).sum, num(f(expected, "ids")).toLong)
+      assertEquals(rows.map(_.id).distinct.length, rows.length, "a record read twice")
+    check(f(said, "after"))
+
+    // the delete's instant, uncommitted: its blocks stay in the log and must not count
+    val timeline = dir.resolve("readings/.hoodie/timeline")
+    val deltas = Files.list(timeline).toList.asScala.toVector.filter(_.getFileName.toString.matches("\\d+_\\d+\\.deltacommit")).sortBy(_.toString)
+    val last = deltas.last
+    val aside = dir.resolve(last.getFileName.toString)
+    Files.move(last, aside): Unit
+    check(f(said, "before"))
+    Files.move(aside, last): Unit
+
+    // a data block this reader does not decode is refused by name, not skipped
+    val log = Files.walk(dir.resolve("readings")).toList.asScala.toVector
+      .filter(_.getFileName.toString.matches("\\..*\\.log\\..*")).sortBy(_.toString).head
+    val bytes = Files.readAllBytes(log)
+    java.nio.ByteBuffer.wrap(bytes).putInt(6 + 8 + 4, 5): Unit
+    Files.write(log, bytes): Unit
+    val e = intercept[Exception](Flows.collect(ParquetSource.flow[Reading](HudiSource.plan(lake, "readings"))).runWith)
+    assert(Iterator.iterate[Throwable](e)(_.getCause).takeWhile(_ != null).exists(x => String.valueOf(x.getMessage).contains("PARQUET_DATA")), e.toString)
   }

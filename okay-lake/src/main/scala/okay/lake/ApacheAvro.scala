@@ -29,6 +29,12 @@ object ApacheAvro extends AvroReader:
     try r.iterator().asScala.map(plain(_, 0)).toVector
     finally r.close()
 
+  def decoder(schema: String): Array[Byte] => Any =
+    ready
+    val s = org.apache.avro.Schema.Parser().parse(schema)
+    val reader = org.apache.avro.generic.GenericDatumReader[Any](s)
+    bytes => plain(reader.read(null, org.apache.avro.io.DecoderFactory.get().binaryDecoder(bytes, null)), 0)
+
   /** the library's value as the facade's; bounded by the schema's depth,
    * which Avro's own reader has walked to produce it */
   private def plain(v: Any, depth: Int): Any =

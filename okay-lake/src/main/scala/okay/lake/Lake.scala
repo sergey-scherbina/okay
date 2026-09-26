@@ -25,17 +25,28 @@ object Lakes:
 
 /** one partition of a plan: row group `group` of the object `key`, and
  * the values of a table's partition columns that the file does not hold
- * (a Delta table's `partitionValues`; `None` is a null) */
+ * (a Delta table's `partitionValues`; `None` is a null). A Hudi
+ * merge-on-read FILE SLICE is one part: `group` is -1 (the whole base
+ * file), `logs` its log files in the order they merge, and `rows` the
+ * base file's */
 final case class Part(key: String, group: Int, rows: Long,
                       partition: Vector[(String, Option[String])] = Vector.empty,
                       /** a file column's name to the table's name for it —
                        * Iceberg's renames, matched by field id */
-                      rename: Vector[(String, String)] = Vector.empty)
+                      rename: Vector[(String, String)] = Vector.empty,
+                      logs: Vector[String] = Vector.empty)
 
 /** the partitions of a source, planned once at submission; `columns`
  * types the partition values (`string`, `long`, `integer`, `short`,
  * `byte`, `double`, `float`, `boolean`, `date`, `timestamp`) */
-final case class LakePlan(lake: String, parts: Vector[Part], columns: Vector[(String, String)] = Vector.empty)
+final case class LakePlan(lake: String, parts: Vector[Part], columns: Vector[(String, String)] = Vector.empty,
+                          hudi: Option[HudiMerge] = None)
+
+/** how a Hudi merge-on-read slice merges its logs: the table's merge
+ * mode (`EVENT_TIME_ORDERING` or `COMMIT_TIME_ORDERING`), its ordering
+ * fields, the instants that completed, and the earliest on the active
+ * timeline (an older one was archived, so it completed) */
+final case class HudiMerge(mode: String, ordering: Vector[String], committed: Vector[String], earliest: String)
 
 /** one object a sink wrote: its key, rows and bytes */
 final case class Written(key: String, rows: Long, bytes: Long)
@@ -57,6 +68,7 @@ final case class Manifest(files: Vector[Written]):
     files.map(f => "'" + s"${root.stripSuffix("/")}/${f.key}".replace("'", "''") + "'").mkString("read_parquet([", ", ", "])")
 
 object LakePlan:
+  given Schema[HudiMerge] = Schema.derived
   given Schema[Part] = Schema.derived
   given Schema[LakePlan] = Schema.derived
 
@@ -118,16 +130,23 @@ object ParquetSource:
    * THE FLOW: partition `i` is `plan.parts(i)`, its rows decoded as `A`
    * (okay-arrow's `Rows`, a Schema's fields by name). Opened at its
    * position: a replacement reads its group and drops the rows already
-   * folded — a group is the unit a Parquet reader can seek to.
+   * folded — a group is the unit a Parquet reader can seek to. A Hudi
+   * merge-on-read slice (`group` -1) is read whole and merged with its
+   * logs ([[HudiSource.merged]]); the merge is deterministic, so a
+   * replacement drops the same rows.
    */
-  def flow[A](plan: LakePlan)(using s: Schema[A], codec: ParquetCodec): Flow[A] =
+  def flow[A](plan: LakePlan)(using s: Schema[A], codec: ParquetCodec, avro: AvroReader): Flow[A] =
     require(plan.parts.nonEmpty, s"the plan of lake '${plan.lake}' has no row groups")
     Flow.opened(plan.parts.length) { (i, start, _) =>
       val part = plan.parts(i)
       val blob = Lakes(plan.lake)
       val size = Run(blob.head(part.key)).getOrElse(throw IllegalStateException(s"'${part.key}' is gone")).size
       val in = BlobReadAt(blob, part.key, size)
-      val read = renamed(codec.group(in, codec.footer(in), part.group), part.rename)
+      val read = renamed(
+        if part.group >= 0 then codec.group(in, codec.footer(in), part.group)
+        else HudiSource.merged(blob, in, part, plan.hudi.getOrElse(
+          throw IllegalStateException(s"'${part.key}' is a merge-on-read slice in a plan without Hudi's merge rule"))),
+        part.rename)
       val table = if part.partition.isEmpty then read else withPartition(read, part, plan.columns)
       val rows = Rows.rows[A](table).fold(why => throw IllegalStateException(s"'${part.key}' group ${part.group}: $why"), identity)
       Chunks.fromIterator(rows.iterator.drop(start.toInt), 1024)

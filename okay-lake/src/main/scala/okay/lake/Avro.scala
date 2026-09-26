@@ -17,6 +17,9 @@ trait AvroReader:
   def name: String
   /** every record of an object container file */
   def records(bytes: Array[Byte]): Vector[Any]
+  /** a decoder of single Avro-binary values written with `schema` (JSON)
+   * — how a Hudi log block holds its records, no container around them */
+  def decoder(schema: String): Array[Byte] => Any
 
 object AvroReader:
   /** THE DEFAULT: ours */
@@ -85,6 +88,12 @@ object OkayAvro extends AvroReader:
   /** every named type in the schema, before any value is read: a name
    * defined inside a union branch the data never takes is still a type a
    * later field may refer to */
+  def decoder(schema: String): Array[Byte] => Any =
+    val s = Json.parse(schema)
+    val names = scala.collection.mutable.Map.empty[String, Json]
+    register(s, names, 0)
+    bytes => value(In(bytes, 0, bytes.length), s, names, 0)
+
   private def register(s: Json, names: scala.collection.mutable.Map[String, Json], depth: Int): Unit =
     if depth > MaxDepth then throw AvroRefused(s"an Avro schema nested deeper than $MaxDepth")
     s match

@@ -353,8 +353,7 @@ Stage 18 — table formats as sources (TestDelta, TestIceberg, TestAvro, TestHud
       remove, blocks of an uncommitted or rolled-back instant are skipped;
       the rows equal Hudi's own read (lake-hudi-mor, TestHudi)
 - [ ] a log block this reader does not decode (Parquet or HFile data
-      blocks, a CDC block) is refused by name (its log files hold rows the base
-      files do not)
+      blocks, a CDC block) is refused by name
 
 Stage 17 — objects and Parquet (TestLake, TestLakeS3):
 - [x] a prefix of Parquet objects is planned as one partition per row
