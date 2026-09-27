@@ -404,6 +404,18 @@ Stage 15 — a job says where its time went (TestObserved, TestPoolObserved):
 - [x] okay-pool serves the metrics of the runs it coordinates on
       `/metrics` and a run's trace as OTLP JSON
 - [x] no probe, no cost: the default `Probe.none` builds no event
+- [ ] foreign-pool-metrics: the foreign pools say what they did — every
+      interpreter a pool opens, and every one opened to REPLACE a dead
+      one (a restart), is heard on the thread that caused it and counted
+      into the request's `Work`; a measured worker also reports, at each
+      answer, how many interpreters its pools hold and how many are
+      borrowed (a stateful stage's lease is one). `JobStats` renders
+      `okay_job_foreign_interpreters_opened_total`,
+      `okay_job_foreign_restarts_total` and the per-worker gauges
+      `okay_job_foreign_interpreters` / `okay_job_foreign_borrowed`
+- [ ] a job whose python interpreter is killed mid-run shows exactly one
+      restart in the rendered metrics, and its answer is unchanged
+      (TestPoolMetrics, Live: a real python3)
 
 Stage 14 — the exchange across processes (TestShuffle):
 - [x] a two-stage keyed job (`Shuffled`) over 4 workers answers what
