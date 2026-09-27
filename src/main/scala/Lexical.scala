@@ -249,6 +249,7 @@ object Lexical:
           case okay.State.Get() => okay.pure((s: S) => k(s).flatMap(f => f(s)))
           case okay.State.Set(s1) => okay.pure((_: S) => k(s1).flatMap(f => f(s1)))
           case okay.State.Modify(g) => okay.pure((s: S) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) })
+          case okay.State.Update(g) => okay.pure((s: S) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
       )(body).flatMap(f => f(s0))
 
     def shallow[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)
@@ -260,6 +261,7 @@ object Lexical:
           case okay.State.Get() => okay.pure((s: S) => again(k(s)).flatMap(f => f(s)))
           case okay.State.Set(s1) => okay.pure((_: S) => again(k(s1)).flatMap(f => f(s1)))
           case okay.State.Modify(g) => okay.pure((s: S) => { val s1 = g(s); again(k(s1)).flatMap(f => f(s1)) })
+          case okay.State.Update(g) => okay.pure((s: S) => { val (b, s1) = g(s); again(k(b)).flatMap(f => f(s1)) })
       )(body).flatMap(f => f(s0))
 
     /** the DEFAULT for State: its clauses are tail-resumptive, so `tail` */
@@ -273,6 +275,7 @@ object Lexical:
           case okay.State.Get() => (s, s)
           case okay.State.Set(s1) => (s1, s1)
           case okay.State.Modify(g) => { val s1 = g(s); (s1, s1) }
+          case okay.State.Update(g) => { val (b, s1) = g(s); (s1, b) }
       )(body)
 
     /** WALK, for State (optional, never the default) */
@@ -283,6 +286,7 @@ object Lexical:
           case okay.State.Get() => (s, s)
           case okay.State.Set(s1) => (s1, s1)
           case okay.State.Modify(g) => { val s1 = g(s); (s1, s1) }
+          case okay.State.Update(g) => { val (b, s1) = g(s); (s1, b) }
       )(body)
 
     extension [S, G[+_]](i: Inst[okay.State % S, G])

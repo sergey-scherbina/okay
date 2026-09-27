@@ -68,6 +68,8 @@ object Bisim:
         case State.Set(s) => List(s)
         // a modify answers the new state: each sample, modified
         case State.Modify(f) => samples.toList.map(f)
+        // an update answers what its function says from each sample
+        case State.Update(f) => samples.toList.map(s => f(s)._1)
 
     /** every `ask` answered by each sample in turn */
     def reader[R](samples: R*): Answers[Reader % R] = new Answers[Reader % R]:

@@ -84,4 +84,11 @@ class BuildShapeBenchmark {
   @Benchmark
   def stateOneBind(): Int =
     !.run(State.handle[Int](0)(stateOne(0, 0)))._2
+
+  /** op-map-constructors: a step that is `State.update` — before, a get,
+   * a set and a map; after, ONE `Update` operation */
+  @Benchmark
+  def stateUpdate(): Int =
+    val p = !.foldM(items)(0)((acc, i) => State.update[Int, Int](s => (s, s + i)).map(acc + _))
+    !.run(State.handle[Int](0)(p))._2
 }

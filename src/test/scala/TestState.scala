@@ -72,6 +72,38 @@ class TestState extends munit.FunSuite {
     assertEquals(State.run[Int, (Seq[String], Int)](1)(Writer.run[String, Int, State % Int](p)), (6, (Seq("n=6"), 6)))
   }
 
+  // op-map-constructors: update was a get, a set and a map
+  test("update is ONE operation, and answers from the OLD state") {
+    State.update[Int, String](s => (s"was $s", s + 1)) match
+      case Free.Inject(State.Update(_)) => ()
+      case other => fail(s"update is not one operation: $other")
+    val p: (String, (Int, Int)) ! State % Int =
+      for
+        a <- State.update[Int, String](s => (s"was $s", s + 1))
+        b <- State.swap[Int](_ * 10)
+      yield (a, b)
+    assertEquals(State.run(4)(p), (50, ("was 4", (5, 50))))
+  }
+
+  test("a forwarded Update is handled by the outer State handler") {
+    type Fx = State % Int + Writer % String
+    import okay.Row.at
+    val p: Int ! Fx =
+      State.update[Int, Int](s => (s * 2, s + 1)).at[Fx].flatMap(n => Writer.tell(s"n=$n").at[Fx].map(_ => n))
+    assertEquals(State.run[Int, (Seq[String], Int)](3)(Writer.run[String, Int, State % Int](p)), (4, (Seq("n=6"), 6)))
+  }
+
+  test("zoomWith: every operation on the part, update included, reaches the whole") {
+    val p: (Int, String, Int) ! State % Int =
+      for
+        a <- State.get[Int]
+        b <- State.update[Int, String](s => (s"part $s", s + 1))
+        c <- State.modify[Int](_ * 2)
+      yield (a, b, c)
+    val whole: (Int, String, Int) ! State % (String, Int) = State.zoomWith[(String, Int), Int, (Int, String, Int), Pure](_._2, n => w => (w._1, n))(p)
+    assertEquals(State.run(("k", 5))(whole), (("k", 12), (5, "part 5", 12)))
+  }
+
   // effect-op-cost D1: a fieldless operation is one shared node, not a
   // fresh Get and a fresh Inject per call (specs/effect-op-cost.md)
   test("State.get is ONE shared node") {

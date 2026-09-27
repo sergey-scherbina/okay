@@ -36,6 +36,11 @@ enum State[S, +A] derives Effect {
    * handler stands between it and State's (specs/effect-row-cost.md
    * D1: 240 B a level against 96 for one set, measured exact) */
   case Modify(f: S => S) extends State[S, S]
+
+  /** transition the state and answer from the OLD one, as ONE operation
+   * (op-map-constructors, 2026-09-27): `f` gives the answer and the new
+   * state. `update` and `swap` were a get, a set and a map. */
+  case Update[S, B](f: S => (B, S)) extends State[S, B]
 }
 
 /** a value as a stateful computation */
@@ -87,8 +92,7 @@ object State {
    * it is one step, and the answer type is whatever `f`'s first
    * component is.
    */
-  inline def update[S, B](f: S => (B, S)): B ! State % S =
-    get[S].flatMap { s => val (b, next) = f(s); set(next).map(_ => b) }
+  inline def update[S, B](f: S => (B, S)): B ! State % S = effect(Update[S, B](f))
 
   /**
    * both states — what it was and what it is.
@@ -142,11 +146,13 @@ object State {
           case Get() => Return((s, s)): (S, A) ! F
           case Set(s) => Return((s, s)): (S, A) ! F
           case Modify(f) => { val next = f(s); Return((next, next)): (S, A) ! F }
+          case Update(f) => { val (b, next) = f(s); Return((next, b)): (S, A) ! F }
         } { _ => forwarded[State[S, *], F](i).map((s, _)) }
       case Bind(i @ Inject(e), k) => split[State[S, *], F](e) {
           case Get() => loop(s)(k(s))
           case Set(s) => loop(s)(k(s))
           case Modify(f) => { val next = f(s); loop(next)(k(next)) }
+          case Update(f) => { val (b, next) = f(s); loop(next)(k(b)) }
         } { _ => forwarded[State[S, *], F](i).flatMap(x => _loop(s)(k(x))) }
 
     loop(s)(a)
@@ -176,12 +182,15 @@ object State {
   def zoomWith[S, A, X, F[+_]](look: S => A, put: A => S => S)(p: X ! State % A + F)(using Distinct[State % A + F]): X ! State % S + F = {
     // the part, read and written through the two functions, as a
     // program over the whole — what this interpretation is made of
-    def readPart: A ! State % S + F = !.widen[A, State % S, F](get[S].map(a => look(a)))
+    // every operation on the part is ONE `Update` on the whole
+    // (op-map-constructors): it was a get or a modify followed by a map
+    def readPart: A ! State % S + F = !.widen[A, State % S, F](update[S, A](s => (look(s), s)))
     def writePart(a: A): A ! State % S + F =
-      !.widen[A, State % S, F](get[S].flatMap(s => set(put(a)(s))).map(_ => a))
-    // a Modify on the part is ONE Modify on the whole, answering the part
+      !.widen[A, State % S, F](update[S, A](s => (a, put(a)(s))))
     def modifyPart(f: A => A): A ! State % S + F =
-      !.widen[A, State % S, F](modify[S](s => put(f(look(s)))(s)).map(look))
+      !.widen[A, State % S, F](update[S, A](s => { val s2 = put(f(look(s)))(s); (look(s2), s2) }))
+    def updatePart[B](g: A => (B, A)): B ! State % S + F =
+      !.widen[B, State % S, F](update[S, B](s => { val (b, a2) = g(look(s)); (b, put(a2)(s)) }))
 
     def _loop(x: X ! State % A + F): X ! State % S + F = loop(x)
     @tailrec def loop(x: X ! State % A + F): X ! State % S + F = (x.resume: @unchecked) match
@@ -196,6 +205,7 @@ object State {
           case Get() => readPart.flatMap(a => _loop(k(a)))
           case Set(a) => writePart(a).flatMap(x => _loop(k(x)))
           case Modify(f) => modifyPart(f).flatMap(x => _loop(k(x)))
+          case Update(g) => updatePart(g).flatMap(x => _loop(k(x)))
         } { e => Inject(e).flatMap(x => _loop(k(x))) }
 
     loop(p)
