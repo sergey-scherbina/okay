@@ -867,8 +867,14 @@ object Delim {
     extends Cut[F, A, P, Z]
 
   /** the machine's state between steps: a program and the stack it
-   * continues into */
-  private final case class Next[F[+_], A, Z](prog: A ! Delim + F, kont: Segs[F, A, Z])
+   * continues into (`Next`), or the machine is done (`Out`). ONE
+   * answer from `step` and not an `Either` of them
+   * (delim-machine-allocs): a Delim operation allocates its `Next` and
+   * nothing around it; only the foreign path, which builds a residual
+   * program anyway, pays the `Out` */
+  private sealed trait Step[F[+_], Z]
+  private final case class Next[F[+_], A, Z](prog: A ! Delim + F, kont: Segs[F, A, Z]) extends Step[F, Z]
+  private final case class Out[F[+_], Z](answer: Z ! F) extends Step[F, Z]
 
   /**
    * The machine. Our Bind nodes already reify continuations as plain
@@ -1008,34 +1014,37 @@ object Delim {
           case Segs.Ret(_, ret, rest) => loop(Next(ret(x), rest))
           case Segs.Watch(_, ret, _, rest) => loop(Next(ret(x), rest))
 
+        // the Step is read HERE and not by passing it back into
+        // loop: `loop(step(..))` made the foreign path one loop entry
+        // longer and writerTellUnderDelim 4% slower (1.041x, three
+        // alternating rounds; delim-machine-allocs)
         case Inject(e) => step(e, n.kont) match
-          case Left(answer) => answer
-          case Right(next) => loop(next)
+          case next: Next[F, ?, R] => loop(next)
+          case o: Out[F, R] => o.answer
 
-        case Bind(Inject(e), k) =>
-          step(e, Segs.K(k, n.kont)) match
-            case Left(answer) => answer
-            case Right(next) => loop(next)
+        case Bind(Inject(e), k) => step(e, Segs.K(k, n.kont)) match
+          case next: Next[F, ?, R] => loop(next)
+          case o: Out[F, R] => o.answer
 
-    /** one operation: either the machine is done (Left) or it
-     * continues with a new program and stack (Right) */
-    def step[X](e: Row[X], kont: Segs[F, X, R]): Either[R ! F, Next[F, ?, R]] =
+    /** one operation: either the machine is done (`Out`) or it
+     * continues with a new program and stack (`Next`) */
+    def step[X](e: Row[X], kont: Segs[F, X, R]): Step[F, R] =
       // `okay.split`, not this object's own `split` (the segment stack)
       okay.split[Delim, F](e) { c => c match
           case pu: Push[r] =>
             // claim 1: the pushed body answers the prompt's r in this
             // row; r is an X (the op's answer), which K carries up
             val body = pu.body.asInstanceOf[Prog[r]]
-            Right(Next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => okay.pure[Row, X](a), kont))))
+            Next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => okay.pure[Row, X](a), kont)))
 
           case cap: Capture[p, a] =>
             // claim 2: f takes a continuation into the prompt's answer and
             // gives back a program at it, in this row; shift/control put the
             // body back under the delimiter, the 0-variants have consumed it
-            def resume(k: a => Prog[p], outer: Segs[F, p, R]): Either[R ! F, Next[F, ?, R]] =
+            def resume(k: a => Prog[p], outer: Segs[F, p, R]): Step[F, R] =
               val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
-              if cap.underPrompt then Right(Next(effect[Row, p](Push(cap.prompt, body)), outer))
-              else Right(Next(body, outer))
+              if cap.underPrompt then Next(effect[Row, p](Push(cap.prompt, body)), outer)
+              else Next(body, outer)
             // shift/shift0 re-install the delimiter (a dollar's with its
             // return function, `$/S0`); control/control0 hand back the bare
             // segment, which answers the prompt's type only at a plain mark
@@ -1059,7 +1068,7 @@ object Delim {
                   // resume this machine with the same stack. `kont` is
                   // immutable, so a multi-shot outer capture may
                   // re-enter it as often as it likes.
-                  Left(Inject(c.asInstanceOf[F[X]])
+                  Out(Inject(c.asInstanceOf[F[X]])
                     .flatMap(x => loop(Next(okay.pure[Row, X](x), kont))))
                 else throw NoPrompt(cap.at, cap.prompt.label, installed(kont))
 
@@ -1069,7 +1078,7 @@ object Delim {
             // and ret leads from r0 to the prompt's r, in this row
             val body = d.body.asInstanceOf[Prog[r0]]
             val ret = d.ret.asInstanceOf[r0 => Prog[r]]
-            Right(Next(body, Segs.Ret(d.prompt, ret, Segs.K((a: r) => okay.pure[Row, X](a), kont))))
+            Next(body, Segs.Ret(d.prompt, ret, Segs.K((a: r) => okay.pure[Row, X](a), kont)))
 
           // last: only `dollarResumed` makes one
           case d: Watched[r0, r] =>
@@ -1082,11 +1091,11 @@ object Delim {
             val shots = d.shots
             shots.n += 1
             shots.resumed(shots.n)
-            Right(Next(body, Segs.Watch(d.prompt, ret, shots, Segs.K((a: r) => okay.pure[Row, X](a), kont))))
+            Next(body, Segs.Watch(d.prompt, ret, shots, Segs.K((a: r) => okay.pure[Row, X](a), kont)))
         }
         // a foreign operation suspends the machine: the residual
         // program performs it and resumes with the same stack
-        (g => Left(Inject(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
+        (g => Out(Inject(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
 
     loop(Next(prog, Segs.Done()))
   }
