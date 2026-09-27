@@ -302,23 +302,36 @@ object Schedulers {
       val f = CompletableFuture[A]()
       // an explicit Runnable: with a `() => Unit` lambda the two
       // `submit` overloads (Runnable and Callable[T]) both match
-      val started = java.util.concurrent.atomic.AtomicBoolean(false)
+      // THE RUNNING THREAD, tracked under a monitor (supervised-waits-on-
+      // failure, 2026-09-28). `Future.cancel(true)` does not interrupt a
+      // running ForkJoinTask at all (`ForkJoinTask.cancel` documents that
+      // the flag "has no effect"), so on the common pool a cancelled child
+      // sleeping 3 s slept its 3 s: TestSupervised's ten-child scope had
+      // only ever LEFT its siblings, not cancelled them, and a scope that
+      // now waits for their answers read 3015 ms. The interrupt is ours,
+      // delivered under `lock` so it lands in THIS task — the `finally`
+      // takes the same lock before the worker moves on to an unrelated
+      // task, the stale-interrupt hazard Native's pool names.
+      val lock = new Object
+      val runner = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
       val task: Runnable = () =>
-        started.set(true)
+        runner.set(Thread.currentThread())
         try { val _ = f.complete(prog().runWith) }
         catch case e: Throwable => { val _ = f.completeExceptionally(e) }
+        finally lock.synchronized { runner.set(null) }
       val fut = pool.submit(task)
-      // cancel ANSWERS the fiber (specs/cross-platform-async.md,
-      // supervised-waits-on-failure): a task cancelled while still
-      // QUEUED never runs, so nothing else would complete `f` — a join
-      // waited forever and a scope waiting for the child hung. A task
-      // already running is interrupted and completes `f` itself; one
-      // that starts in the window after this read finds `f` answered
-      // and its own completion ignored (first wins).
+      // cancel ANSWERS the fiber (specs/cross-platform-async.md): a task
+      // cancelled while still QUEUED never runs, so nothing else would
+      // complete `f` — a join waited forever and a scope waiting for the
+      // child hung. A running task is interrupted and completes `f`
+      // itself; one that starts in the window after this read finds `f`
+      // answered and its own completion ignored (first wins).
       fiberOf(f, () => {
-        val _ = fut.cancel(true)
-        if !started.get() then
-          val _ = f.completeExceptionally(java.util.concurrent.CancellationException("fiber cancelled"))
+        val _ = fut.cancel(false)
+        lock.synchronized:
+          runner.get() match
+            case null => val _ = f.completeExceptionally(java.util.concurrent.CancellationException("fiber cancelled"))
+            case t => t.interrupt()
       })
 
   /** fibers as continuations on a pool — the JS shape on the JVM: no
