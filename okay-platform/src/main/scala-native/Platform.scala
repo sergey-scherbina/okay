@@ -110,9 +110,15 @@ object Schedulers {
 
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val cell = FiberCell[A]()
-      val task = new Task(() =>
-        try cell.complete(Right(prog().runWith))
-        catch case e: Throwable => cell.complete(Left(e)))
+      val task = new Task(
+        () =>
+          try cell.complete(Right(prog().runWith))
+          catch case e: Throwable => cell.complete(Left(e)),
+        // cancel ANSWERS the fiber (specs/cross-platform-async.md,
+        // supervised-waits-on-failure): a task skipped for being
+        // cancelled while queued answers as it is skipped, so a join on
+        // it returns and a scope waiting for it does not hang
+        () => cell.complete(Left(java.util.concurrent.CancellationException("fiber cancelled"))))
       q.offer(task)
       new Fiber[A]:
         def onComplete(k: Either[Throwable, A] => Unit): Unit = cell.subscribe(k)
@@ -130,14 +136,15 @@ given Scheduler = Schedulers.threads
 /** one queued unit of work, cancellable while queued or running —
  * the runner reference is set only for the task actually executing
  * on it, so a stale cancel() can never reach a later task */
-private final class Task(body: () => Unit):
+private final class Task(body: () => Unit, skipped: () => Unit):
   @volatile private var cancelled = false
   @volatile private var runner: Thread = null
 
   def run(): Unit =
     if !cancelled then
       runner = Thread.currentThread()
-      if !cancelled then body()
+      if !cancelled then body() else skipped()
+    else skipped()
 
   def cancel(): Unit =
     cancelled = true

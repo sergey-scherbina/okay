@@ -78,4 +78,22 @@ class TestSupervised extends munit.FunSuite {
         a.joinAsync.flatMap(x => b.joinAsync.map(y => x + y))))
     assertEquals(out, 42)
   }
+
+  test("forkJoin: a fiber cancelled while still QUEUED answers (supervised-waits-on-failure)") {
+    val one = java.util.concurrent.Executors.newFixedThreadPool(1)
+    try
+      given Scheduler = Schedulers.forkJoin(one)
+      val gate = java.util.concurrent.CountDownLatch(1)
+      val occupying = Async.spawn(async { gate.await(); 0 })
+      val queued = Async.spawn(async(1))
+      val answered = java.util.concurrent.CountDownLatch(1)
+      queued.onComplete(_ => answered.countDown())
+      queued.cancel()
+      assert(answered.await(2, java.util.concurrent.TimeUnit.SECONDS),
+        "a fiber cancelled while queued never answered — a join on it would wait forever")
+      gate.countDown()
+      occupying.join(): Unit
+    finally one.shutdown()
+  }
+
 }

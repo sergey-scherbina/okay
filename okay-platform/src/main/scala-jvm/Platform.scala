@@ -302,11 +302,24 @@ object Schedulers {
       val f = CompletableFuture[A]()
       // an explicit Runnable: with a `() => Unit` lambda the two
       // `submit` overloads (Runnable and Callable[T]) both match
+      val started = java.util.concurrent.atomic.AtomicBoolean(false)
       val task: Runnable = () =>
+        started.set(true)
         try { val _ = f.complete(prog().runWith) }
         catch case e: Throwable => { val _ = f.completeExceptionally(e) }
       val fut = pool.submit(task)
-      fiberOf(f, () => { fut.cancel(true); () })
+      // cancel ANSWERS the fiber (specs/cross-platform-async.md,
+      // supervised-waits-on-failure): a task cancelled while still
+      // QUEUED never runs, so nothing else would complete `f` — a join
+      // waited forever and a scope waiting for the child hung. A task
+      // already running is interrupted and completes `f` itself; one
+      // that starts in the window after this read finds `f` answered
+      // and its own completion ignored (first wins).
+      fiberOf(f, () => {
+        val _ = fut.cancel(true)
+        if !started.get() then
+          val _ = f.completeExceptionally(java.util.concurrent.CancellationException("fiber cancelled"))
+      })
 
   /** fibers as continuations on a pool — the JS shape on the JVM: no
    * thread per fiber, the program's tree walked by `Async.Drive` on

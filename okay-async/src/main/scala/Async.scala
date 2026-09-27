@@ -342,6 +342,15 @@ object Async {
   private[okay] final class PromiseDrive[A](p: Promise[A]) extends Drive[A] {
     protected def succeed(a: A): Unit = { val _ = p.trySuccess(a) }
     protected def fail(e: Throwable): Unit = { val _ = p.tryFailure(e) }
+    /** cancel ANSWERS the fiber (specs/cross-platform-async.md,
+     * supervised-waits-on-failure): a stopped drive parked in an Await
+     * never resumes, so nothing else would ever settle this promise —
+     * a join on the fiber waited forever, and a scope waiting for its
+     * cancelled child would hang. A late real answer is ignored, as
+     * `trySuccess`/`tryFailure` already say. */
+    override def cancel(): Unit =
+      super.cancel()
+      val _ = p.tryFailure(java.util.concurrent.CancellationException("fiber cancelled"))
   }
 
   /** run the program on its own fiber (a virtual thread by default on
@@ -426,19 +435,36 @@ object Async {
     await: k =>
       val n = Nursery(S)
       val settled = AtomicBoolean(false)
+      val first = AtomicReference[Throwable | Null](null)
       def done(r: Either[Throwable, A]): Unit =
         if !settled.getAndSet(true) then k(r)
 
-      n.onFirstFailure = e =>
-        n.cancelAll()
-        done(Left(e))
+      // THE FAILURE ANSWER WAITS FOR THE CHILDREN, as the success answer
+      // does (supervised-waits-on-failure, 2026-09-28): the header's
+      // "the scope does not finish while a child is still running" used
+      // to hold only on the Right path — a failure cancelled the children
+      // and answered at once, and a child the cancel reached late (its
+      // own drive delivers it a moment after `cancelAll`) was still
+      // running when the scope had already answered. Safe because cancel
+      // ANSWERS the fiber on every platform (specs/cross-platform-async.md):
+      // `whenIdle` fires once each child's answer, cancelled or not, has
+      // come in. The FIRST failure is the scope's: a body that fails after
+      // a child did finds `first` taken and registers nothing, and a body
+      // that SUCCEEDS after a child failed reads `first` when idle fires,
+      // so the later registration cannot turn the answer into a Right.
+      def failWith(e: Throwable): Unit =
+        if first.compareAndSet(null, e) then
+          n.cancelAll()
+          n.whenIdle(() => done(Left(e)))
+
+      n.onFirstFailure = failWith
 
       val main = spawn(body(using n))
       main.onComplete:
-        case Left(e) =>
-          n.cancelAll()
-          done(Left(e))
-        case Right(a) => n.whenIdle(() => done(Right(a)))
+        case Left(e) => failWith(e)
+        case Right(a) => n.whenIdle(() => done(first.get() match
+          case null => Right(a)
+          case e => Left(e)))
       () =>
         n.cancelAll()
         main.cancel()

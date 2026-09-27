@@ -152,4 +152,36 @@ class TestAsyncCross extends munit.FunSuite {
     Async.runAsync(prog).failed.map(e => assertEquals(e.getMessage, "wire down"))
   }
 
+  // ---- supervised-waits-on-failure (specs/cross-platform-async.md)
+
+  test("cancel ANSWERS the fiber: parked in an Await that never fires, it still completes with a Left") {
+    val f = Async.spawn(Async.await[Int](_ => () => ()))
+    val p = Promise[Either[Throwable, Int]]()
+    f.onComplete(r => { val _ = p.trySuccess(r) })
+    f.cancel()
+    p.future.map(r => assert(r.isLeft, s"a cancelled fiber answered $r"))
+  }
+
+  test("a supervised scope that fails answers only after every cancelled child has answered") {
+    val boom = RuntimeException("boom")
+    @volatile var kids = List.empty[Fiber[Int]]
+    val prog = Async.supervised: n ?=>
+      kids = (1 to 3).toList.map(_ => n.fork(Async.await[Int](_ => () => ())))
+      val _ = n.fork[Int](Async.sleep(10).flatMap(_ => async(throw boom)))
+      okay.pure[Async, Int](0)
+    Async.runAsync(prog).failed.map { e =>
+      assertEquals(e.getMessage, "boom")
+      // a completed fiber calls a new onComplete at once, on every platform
+      val answered = kids.count { f => var now = false; f.onComplete(_ => now = true); now }
+      assertEquals(answered, 3, "the scope answered before its cancelled children had")
+    }
+  }
+
+  test("the FIRST failure is the scope's answer, even when the body fails later") {
+    val prog = Async.supervised: n ?=>
+      val _ = n.fork[Int](async(throw RuntimeException("first")))
+      Async.sleep(30).flatMap(_ => async[Int](throw RuntimeException("later")))
+    Async.runAsync(prog).failed.map(e => assertEquals(e.getMessage, "first"))
+  }
+
 }

@@ -38,11 +38,15 @@ class TestNativeScheduler extends munit.FunSuite {
     })
     @volatile var ran = false
     val queued = Async.spawn(async { ran = true; 1 })
+    @volatile var answered = false
+    queued.onComplete(_ => answered = true)
     queued.cancel()
     block.synchronized { release = true; block.notifyAll() }
     occupying.join(): Unit
     // give the worker a moment to reach (and skip) the cancelled task
     Thread.sleep(50)
     assert(!ran, "a task cancelled while still queued must never run")
+    // supervised-waits-on-failure: skipped, but ANSWERED — a join on it returns
+    assert(answered, "a task cancelled while still queued never answered")
   }
 }
