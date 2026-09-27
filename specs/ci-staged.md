@@ -389,12 +389,15 @@ file and a fake `sbt` that always succeeds):
       Both incidents were flakes at HEAD: a 2 h 40 min bisect converging
       anywhere (2026-09-25), and parquet-codec's intermediate commit
       reverted (2026-09-26)
-- [ ] NOT YET: the confirmation re-runs the culprit's scoped gate on the
-      MAIN checkout's tree (HEAD), not the culprit's; for a culprit that
-      changed build.sbt that set is everything, so a flake at HEAD can
-      "confirm" it. And a landing is reverted as its one tip commit, not
-      as the lane's commits. Both stay in backlog
-      (ci-runner-confirm-at-culprit)
+- [ ] the culprit is CONFIRMED BY THE REPRODUCED SUITES AT ITS OWN TREE
+      and BEFORE ITS LANE (ci-runner-confirm-at-culprit): in a detached
+      worktree, the suites the whole build named are RED at the culprit
+      and GREEN at the commit before the lane's first — red at both means
+      the red predates the lane: not reverted, said so (selftest 15)
+- [ ] a landing is reverted as ITS LANE'S COMMITS — every commit in the
+      range whose subject names the culprit's slug, newest first, in ONE
+      revert commit — not only its tip; the other lanes' commits and the
+      boards survive (selftest 16)
 
 ## Out of scope
 
