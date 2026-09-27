@@ -631,7 +631,9 @@ force, all already practiced, none previously written down:
   (at most 15 min, `OKAY_BENCH_GATE_MAX_WAIT`, then starts anyway and
   says so), running gates finish untouched, and the lane runs when no
   token is live. So a sibling's gate may print `gate: bench window: a
-  benchmark is queued` and sit a few minutes — that is the protocol,
+  benchmark is queued` and sit a few minutes, with a `still holding`
+  line every 30 s (so `gate-retry`'s 10-minute stall watchdog sees it
+  alive — bench-window-hold-reads-as-stall) — that is the protocol,
   not a hang; `sh scripts/bench-window.sh --status` names who holds
   what. `jmh-lane.sh` now QUEUES behind a held lock instead of
   refusing, so do not wrap it in a retry loop. Measured why: before

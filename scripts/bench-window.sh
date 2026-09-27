@@ -20,6 +20,13 @@
 BW_DIR="${OKAY_BENCH_DIR:-${TMPDIR:-/tmp}/okay-bench}"
 BW_POLL="${OKAY_BENCH_POLL:-10}"
 BW_GATE_MAX_WAIT="${OKAY_BENCH_GATE_MAX_WAIT:-900}"
+# A HELD GATE SAYS IT IS ALIVE (bench-window-hold-reads-as-stall,
+# 2026-09-26): gate-retry kills a gate whose log has not grown for
+# GATE_STALL_MIN minutes (10), and a hold is up to 15 — one line for
+# the whole hold was read as a stall, three attempts, no verdict, and
+# the ci-runner's gate goes through the same road. A line every 30 s,
+# half the watchdog's one-minute growth window, so no window is empty.
+BW_HEARTBEAT="${OKAY_BENCH_HEARTBEAT:-30}"
 
 # the live pids filed under $BW_DIR/<gates|want>, one per line; a dead
 # owner's file is removed on the way
@@ -52,7 +59,10 @@ bw_gate_enter() {
     rm -f "$BW_DIR/gates/$$"
     if [ -z "$_said" ]; then
       echo "gate: bench window: a benchmark is queued (pid ${_w}) — holding this gate's start until it has run, at most ${BW_GATE_MAX_WAIT}s (OKAY_BENCH_WINDOW=off to skip)"
-      _said=1
+      _said=1; _beat=0
+    elif [ $((_waited - _beat)) -ge "$BW_HEARTBEAT" ]; then
+      echo "gate: bench window: still holding for benchmark(s) ${_w}, ${_waited}s of ${BW_GATE_MAX_WAIT}s"
+      _beat=$_waited
     fi
     sleep "$BW_POLL"
     _waited=$((_waited + BW_POLL))
