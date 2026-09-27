@@ -56,8 +56,10 @@ specs/schedulers.md, "The default"). Same code, only
 - **`adaptive` loses** the two shapes a default cannot afford to lose:
   64 fibers in blocking 1 ms calls run at 0.45 of Loom's throughput
   (64 blocked fibers over 28 threads), and the Wrocław benchmark's
-  headline, eight long CPU fibers forked from `main`, takes 355-605 ms
-  where Loom takes 106-111.
+  headline, eight long CPU fibers forked from `main`, took 355-605 ms
+  where Loom took 106-111. That second loss is FIXED (2026-09-28, the
+  monitor below now also watches forks from outside): 110-112 ms
+  against Loom's 111-113. Blocking is the reason that remains.
 - **And it has a number Loom does not**: `workers + overflow` fibers
   blocked at once (28 on a 14-core machine by default) is where it
   stops. One more, if the fiber that would release them is queued
@@ -147,6 +149,15 @@ of 87 µs fibers from 700 µs into 260 µs. It spreads work that has
 WAITED, whatever it is: a burst of tiny fibers over shared state is
 faster kept on one core (five-way workers at work 0: 5 400 ops/s home,
 4 000 spread), which is what `forShortTasks` — monitor off — is for.
+
+The monitor also watches the queue that forks from OUTSIDE the
+scheduler land in (2026-09-27). Such a fork wakes a worker only when
+none is awake, so eight long fibers forked from `main` used to wake one
+worker and wait behind it: eight 70 ms fibers took 560 ms on one
+thread. Now a task still at the head of that queue a whole look later
+wakes sleeping workers too, and the same eight run at once, as on Loom.
+Short fibers from outside leave the head moving and stay with the
+workers already awake.
 
 ## What `own` costs you, and what `adaptive` buys back
 

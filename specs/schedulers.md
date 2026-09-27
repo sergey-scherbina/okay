@@ -640,6 +640,11 @@ arm itself, not a defect. So correctness is not what stands in the way.
 - **What would reopen it**: `adaptive-outside-long-fibers-serial` fixed
   AND the blocking rows answered — i.e. Wrocław within noise of Loom and
   the TCP blocking lane within 10%, with the deadlock bound still stated.
+  **Half met (2026-09-28):** the Wrocław half is answered. The monitor now
+  watches the submission queue, and Wrocław on `adaptive` reads 110/112
+  ms against Loom's 111/113 ("Outside bursts", below). Blocking is now the
+  ONLY open condition: five-way TCP blocking at 0.45x and the `n +
+  overflow` bound.
   Until then the fast member is one line away and documented as the
   choice for fork/join-heavy, non-blocking programs:
   `given Scheduler = Schedulers.adaptive.build`.
@@ -665,15 +670,98 @@ nothing completed for a whole `watched` interval (100 ms on
 `adaptive`) — so the eight run mostly one after another.
 
 ### Behavior
-- [ ] PROBE: eight 70 ms fibers forked from outside on `adaptive.build`
+- [x] PROBE: eight 70 ms fibers forked from outside on `adaptive.build`
       and `own.build`: distinct threads and start times (ProbeOutsideLong)
-- [ ] LAW: eight long fibers forked from OUTSIDE onto parked workers run
+- [x] LAW: eight long fibers forked from OUTSIDE onto parked workers run
       on more than one thread and overlap in time, on `own` and on
       `adaptive` (TestOwnMonitor) — red on master first
-- [ ] the fix at the cause the probe names; nothing added to the
+- [x] the fix at the cause the probe names; nothing added to the
       per-task or per-fork path
-- [ ] must not regress (short tasks stay home): AdversarialBenchmark
+- [x] must not regress (short tasks stay home): AdversarialBenchmark
       forkJoin10k_okay (outside) and forkJoin10k_okayInside on
       `adaptive`, OwnMonitorBenchmark.spawnJoinSeq — alternating arms
-- [ ] must improve: Wrocław 8 fibres under `-Dokay.scheduler=adaptive`,
+- [x] must improve: Wrocław 8 fibres under `-Dokay.scheduler=adaptive`,
       two rounds; the verdict against Loom stated below
+
+### Probe (master 66fa8351f)
+ProbeOutsideLong, eight 70 ms spins forked from the test thread after
+50 ms idle, three rounds per member (start times in ms after the first
+fork):
+
+| member | threads | wall | starts |
+|---|---:|---:|---|
+| `adaptive` | 1, 1, 2 | 568, 560, 280 ms | 0, 70, 140, 210, 280, 350, 420, 490 |
+| `own` | 2, 2, 2 | 280 ms | 0, 0, 70, 70, 140, 140, 210, 210 |
+| `loom` | 8 | 70-74 ms | all at 0-3 |
+
+**The hypothesis holds, and the probe adds two details.** (1) The
+fibers run strictly one after another: each one starts when the one
+before it ends. The first fork finds `awake == 0` and wakes a worker.
+The next seven see it awake and wake nobody. That worker's helper rule
+checks its deque (`size > 0`), and the deque is empty because the
+fibers sit in the submission queue. The monitor looks only at deques.
+(2) The stuck-check does not rescue it. It fires only when NOTHING
+completed in a whole `watched` interval (100 ms), and a 70 ms fiber
+completes inside every interval. The two threads on `own` are a race,
+not a rescue: the second fork arrived before the first woken worker had
+counted itself awake.
+
+### The fix
+The monitor asks of the submission queue the question it already asks
+of each deque: has the work at its head waited a whole look? It reads
+`submissions.peek()` each tick. If the head is the SAME task it saw
+last tick, it wakes parked workers, one per waiting submission, and on
+a `watched` scheduler it starts overflow workers when nobody is parked.
+That is `look()`'s rule for a stuck deque, unchanged. The fork path and
+the per-task path gain nothing. A worker taking tiny submissions changes
+the head every few nanoseconds, so short fibers from outside stay with
+the workers already awake. `forShortTasks` (monitor off) still never
+spreads.
+
+- Rejected: waking a worker on every outside fork, or waking when a
+  worker is awake but BUSY. Both are the per-fork signal that `own` was
+  measured without (1 249 -> 5 822 us when the victim was random,
+  "The policy of own"), and both decide before anyone knows whether the
+  fiber is long.
+- Rejected: shortening the stuck-check. "Nothing completed" is the
+  wrong question (own-scheduler-monitor's Decisions), and here one
+  completion every 70 ms defeats any interval longer than that.
+- Rejected: counting a worker's submissions into its helper rule. The
+  rule runs every 16th completed task, and eight fibers complete fewer
+  than 16 before the burst is over (own-few-long-tasks-serial again).
+
+### Results (2026-09-28)
+Law red on master: TestOwnMonitor's two new tests, "a round used 1
+thread(s), 1 at once, on four workers" on `own` and on `adaptive`.
+Green with the fix, together with the monitor's other three tests. The
+probe with the fix: 8 threads on both, wall 76-127 ms on a loaded box
+(Loom 84-101 ms in the same run).
+
+A/B: master 66fa8351f (ref) against the lane, each lane its own
+`scripts/jmh-lane.sh`, arms alternating, `-f 2 -wi 3 -i 5`. Rows:
+`src/jmh/history.d/2026-09-27T233129Z-adaptive-outside-long-fibers-serial.tsv`.
+
+| lane | master r1 / r2 | lane r1 / r2 | lane / master |
+|---|---:|---:|---:|
+| **Wrocław, okay 8 fibres, `adaptive`, ms wall (best of 5)** | **262 / 359** | **110 / 112** | **0.36** |
+| Wrocław, okay 8 fibres, Loom (lane build) | — | 111 / 113 | — |
+| forkJoin10k_okay OUTSIDE, work=100, `adaptive` (us) | 2 203 * / 2 164 * | 2 200 * / 2 291 * | 1.03 (pooled medians 2 246 / 2 184) |
+| forkJoin10k_okayInside, work=100, `adaptive` (us) | 3 230 / 2 888 * | 3 055 * / 2 821 * | 0.97 (pooled medians 2 972 / 3 059) |
+| OwnMonitorBenchmark.spawnJoinSeq, `own`, monitor 100 us (us) | 73.8 / 87.2 / 92.1 | 86.8 / 83.6 / 88.0 | 1.00 (medians 86.8 / 87.2) |
+
+spawnJoinSeq got a third pair, run lane-first. The first two read 1.18x
+and 0.96x, and master alone moved from 73.8 to 92.1 across its three
+runs.
+
+\* median of every attempt jmh-lane.sh made. The fork/join lanes read
++-10-30% within a run on this box, on BOTH builds: master's outside lane
+gave up after five noisy attempts in round 1, and so did the lane's
+inside lane. The pooled medians are the comparison, and both are inside
+the noise. Nothing here moves the short-task lanes.
+
+**Verdict: the Wrocław gap to Loom is closed.** `adaptive` reads 110/112
+ms against Loom's 111/113 on the same build and box (it was 3.3-5.5x
+slower in scheduler-default-decision, and 2.4-3.2x in this lane's master
+arm). One of the two conditions in "What would reopen it" is met. The
+other, blocking TCP within 10% of Loom, is not, so the default stays
+`loom` (see the note there).
