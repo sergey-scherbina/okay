@@ -1,4 +1,4 @@
-- [ ] bind-continuation-queue — ORDER 3 of the map-cost plan, a PROTOTYPE
+- bind-continuation-queue — PROTOTYPED AND DROPPED 2026-09-27 (specs/map-fusion.md, last section: map-heavy lanes unchanged, nestedSW 0.83x, map-free lanes 1.01-1.03x slower). ORDER 3 of the map-cost plan, a PROTOTYPE
       first (operator, 2026-09-27). This is the general fix for a map
       followed by a bind, and for left-nested binds in general. `Bind`
       holds a QUEUE of continuations (van der Ploeg and Kiselyov,
