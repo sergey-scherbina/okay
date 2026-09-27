@@ -21,5 +21,5 @@
   before the change, and the change moved nothing measurable.
 - specs/schedulers.md: the `adaptive` row no longer says it moves a fiber
   to Loom. That was never built.
-- Commits: spec and laws 49c860c84, the door 6bdf378bc, the benchmark
-  lane 5fefc7475, the (B) revert fbe63c81b.
+- Commits: spec and laws 232442448, the door bc9d58110, the benchmark
+  lane 8d0baefc5, the (B) revert 128e1ab54.
