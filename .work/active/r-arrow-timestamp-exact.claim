@@ -1,1 +1,0 @@
-r-arrow-timestamp-exact — shim.R rounds a POSIXct column to whole microseconds on the Arrow reply (arrow truncates; okay-watch found 1 µs lost)
