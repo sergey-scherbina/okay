@@ -35,7 +35,14 @@ private[okay] object ReadyMerge:
   def apply[A](sources: Seq[Source[A]], onPark: () => Unit = () => (), quantum: Int = 1): Source[A] =
     // the state is built per RUN, inside the program: a Source is a
     // value, and running it twice must merge twice
-    okay.pure[Writer % A + Async, Unit](()).flatMap(_ => new Run[A](sources, onPark, quantum).again())
+    // the merge OPENS A CANCEL SCOPE with its drive first, and closes it
+    // when every source has ended (ready-merge-cancel-under-consumer-ops):
+    // a cancel — or a consumer that stops early — then reaches the
+    // sources it has parked even while its code sits inside the
+    // consumer's continuation and it never parks itself
+    okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
+      val r = new Run[A](sources, onPark, quantum)
+      okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(r.scope))).flatMap(_ => r.again())
 
   /** a registration's answer, when it came before the drive moved on */
   private final class Answer[X](val r: Either[Throwable, X])
@@ -115,6 +122,10 @@ private[okay] object ReadyMerge:
         if c != null then c()
         j += 1
 
+    /** this run's cancel scope: its release is `cancelAll`, idempotent
+     * (every slot is taken once) and safe from any thread */
+    val scope: Async.CancelScope = Async.CancelScope(() => cancelAll())
+
     /** the re-entry `step` takes through `flatMap`, so `@tailrec` still
      * checks the loop */
     def again(): Unit ! R = step()
@@ -129,9 +140,12 @@ private[okay] object ReadyMerge:
       if size == 0 then
         if live > 0 then park()
         else
+          // every source has ended: the scope closes, then the answer
           val f = failure
-          if f == null then okay.pure(())
-          else okay.effect[R, Unit](Async.Run[Unit](() => throw f))
+          val done =
+            if f == null then okay.pure[R, Unit](())
+            else okay.effect[R, Unit](Async.Run[Unit](() => throw f))
+          okay.effect[R, Unit](Async.Run(Async.Exit(scope))).flatMap(_ => done)
       else
         val i = pop()
         // `resume` runs the source's own code (a `Bind(Return(x), f)`

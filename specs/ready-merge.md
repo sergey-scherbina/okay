@@ -146,7 +146,26 @@ waker then reads the queue — at least one side sees the other.
 - **Indices, not pairs** — the ring and the wake queue carry an `Int`,
   the continuation lives in `slot(i)`, so a turn allocates nothing but
   the continuation the source itself built.
-- **Early stop is not cancellation** — a consumer that stops reading
+- **Early stop and a cancel under the consumer's work reach the parked
+  sources on a DRIVE** (ready-merge-cancel-under-consumer-ops,
+  2026-09-27). The merge opens an `Async.CancelScope` with its drive when
+  it starts and closes it when every source has ended; the drive (`own`,
+  `adaptive`, JS) releases every scope still open when it is cancelled —
+  between operations, while parked, or from outside — and when the
+  program ENDS with one open, which is exactly a consumer that stopped
+  early. The release is the merge's `cancelAll`, idempotent. Before it:
+  a cancel landing while the consumer worked (the merge never parked, its
+  code inside the consumer's continuation) missed 50 of 50 on `own`, and
+  an early stop left every parked source registered. The laws:
+  TestReadyMerge "a cancel while the CONSUMER is working…" (own and Loom)
+  and "an EARLY STOP…" (own), TestReadyMergeCross's early stop on every
+  platform's drive — each watched red first. Price: one class test per
+  `Run` on the drive, ~1% on a chain of 10 000 bare `Run`s
+  (`DriveRunBenchmark`), and 8 B per drive. On Loom (`Async.run`) the
+  markers are empty `Run`s: a cancel is an interrupt seen at the next
+  wait, whose own canceller releases; an early stop there still leaves
+  parked sources registered (below).
+- **Early stop is not cancellation (Loom)** — a consumer that stops reading
   (`take`, `runFoldUntil`) drops the merged program without running it,
   so a PARKED source's registration stays registered and its answer is
   dropped when it fires. `Source.merge` has the same property (its

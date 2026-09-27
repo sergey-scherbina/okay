@@ -181,6 +181,37 @@ object Async {
    * cancel() stops the drive at its next operation AND unregisters a
    * parked Await (the canceller the registration answered with).
    */
+  /**
+   * A CANCEL SCOPE A RUNNING PROGRAM OPENS WITH ITS DRIVE
+   * (ready-merge-cancel-under-consumer-ops, 2026-09-27). The callback
+   * drive, cancelled, stops at the next operation and knows only what
+   * that operation and its last parked Await can release. A program
+   * that holds registrations it made ITSELF — `mergeReady`'s parked
+   * sources, living inside a consumer's continuation that the drive
+   * will never call — is invisible there. So a program says `enter`
+   * (an `Async.Run` the drive recognises by class) and the drive keeps
+   * the scope until `exit`; a cancel — between operations, while
+   * parked, or a program that ENDS with the scope still open (a
+   * consumer that stopped early) — runs its `release`. `release` may run
+   * more than once and from any thread, so it must be idempotent. On a
+   * blocking handler (Loom's `Async.run`) the markers are empty `Run`s:
+   * there a cancel is an interrupt, seen at the next wait, whose own
+   * canceller does the releasing.
+   */
+  final class CancelScope(release: () => Unit):
+    private[okay] def released(): Unit = release()
+    /** the operation that opens the scope */
+    def enter[F[+_]]: Unit ! Async + F = okay.effect(Run(Enter(this)))
+    /** the operation that closes it */
+    def exit[F[+_]]: Unit ! Async + F = okay.effect(Run(Exit(this)))
+
+  /** the two markers share a class, so the drive's `Run` arm asks ONE
+   * class test of every operation (+1.5% on a pure-Run chain with two) */
+  private[okay] sealed abstract class ScopeMark(val scope: CancelScope, val entering: Boolean) extends (() => Unit):
+    def apply(): Unit = ()
+  private[okay] final class Enter(s: CancelScope) extends ScopeMark(s, true)
+  private[okay] final class Exit(s: CancelScope) extends ScopeMark(s, false)
+
   private[okay] trait Drive[A] {
     /** where the answer goes — a Promise on JS, the task's own cell
      * on the JVM (`Schedulers.DriveTask`, one object for fiber, task
@@ -189,10 +220,26 @@ object Async {
     protected def fail(e: Throwable): Unit
     @volatile private var stopped = false
     @volatile private var unregister: () => Unit = () => ()
+    /** the open cancel scopes (CancelScope), newest first. A volatile
+     * field changed under the drive's own monitor, not an
+     * AtomicReference: that was 24 B on EVERY fiber's drive for a list
+     * almost every fiber leaves empty, and a scope opens and closes
+     * rarely (once per `mergeReady` run) */
+    @volatile private var scopes: List[CancelScope] = Nil
+
+    private def marked(m: ScopeMark): Unit = synchronized {
+      scopes = if m.entering then m.scope :: scopes else scopes.filterNot(_ eq m.scope)
+    }
+    /** every open scope released — idempotent releases, so a second call
+     * (the loop's own stop after a cancel from outside) is harmless and
+     * catches what was registered in between */
+    private def releaseScopes(): Unit =
+      scopes.foreach(s => try s.released() catch case _: Throwable => ())
 
     def cancel(): Unit =
       stopped = true
       unregister()
+      releaseScopes()
 
     /**
      * A direct loop over the tree's cases, the shape `runFree` and
@@ -217,20 +264,25 @@ object Async {
           // runs no user code, and the check that matters, the one
           // before the next operation, is exactly where it was.
           (cur.resume: @unchecked) match
-            case Free.Return(a) => succeed(a)
+            case Free.Return(a) =>
+              // a scope still open at the END was never exited: its
+              // program stopped early (a consumer that took what it
+              // needed) — release what it holds
+              releaseScopes()
+              succeed(a)
             case Free.Bind(Free.Inject(e), f) =>
               val next = op(e, f)
               if next != null then
                 cur = next
                 looping = !stopped
-                if !looping then discontinue(cur)
+                if !looping then { discontinue(cur); releaseScopes() }
             case Free.Inject(e) =>
               val next = op(e, Free.Return(_))
               if next != null then
                 cur = next
                 looping = !stopped
-                if !looping then discontinue(cur)
-      catch case e: Throwable => fail(e)
+                if !looping then { discontinue(cur); releaseScopes() }
+      catch case e: Throwable => { releaseScopes(); fail(e) }
 
     /**
      * CANCELLED BETWEEN TWO OPERATIONS (drive-discontinue, 2026-09-26):
@@ -252,7 +304,11 @@ object Async {
      * came synchronously, null when the drive parked on a callback
      * (which re-enters `apply`) or the program finished here */
     private def op[X](e: Async[X], k: X => A ! Async): (A ! Async) | Null = e match
-      case Run(f) => k(f())
+      case Run(f) =>
+        f match
+          case m: ScopeMark => marked(m)
+          case _ => ()
+        k(f())
       case Await(reg) =>
         // the cell holds the answer, the "moved on" marker, or nothing:
         // typed, so what comes out is the operation's Either
@@ -261,13 +317,13 @@ object Async {
           if !cell.compareAndSet(null, Got(r)) then
             if !stopped then r match
               case Right(x) => apply(k(x))
-              case Left(e) => fail(e)
+              case Left(e) => { releaseScopes(); fail(e) }
         }
         cell.getAndSet(Moved) match
           case g: Got[X] =>
             g.x match
               case Right(x) => k(x)
-              case Left(e) => { fail(e); null }
+              case Left(e) => { releaseScopes(); fail(e); null }
           case _ =>
             unregister = cancelReg
             if stopped then cancelReg()

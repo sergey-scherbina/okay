@@ -22,4 +22,19 @@ class TestReadyMergeCross extends munit.FunSuite {
     val m = answered(1).flatMap(_ => answered(2)) mergeReady Source.of(List(10, 20))
     Async.runAsync(m.runCollect).map(v => assertEquals(v, Vector(1, 10, 2, 20)))
   }
+
+  test("an early stop releases a parked source when the program ends, on the callback drive of every platform") {
+    // ready-merge-cancel-under-consumer-ops: `runAsync` is the Drive `own`
+    // and JS run on; the consumer takes two elements and ends while the
+    // second source is still parked — the drive's end runs the merge's
+    // cancel scope, which it never exited
+    var cancelled = false
+    val parked: Source[Int] = okay.effect[R, Int](Async.Await[Int](_ => () => cancelled = true))
+      .flatMap(v => okay.effect[R, Unit](Writer(v)))
+    val m = Source.mergeReady(Source.of(List(1, 2, 3, 4)), parked)
+    Async.runAsync(m.runFoldUntil(using FoldUntil.take[Int](2))).map { got =>
+      assertEquals(got.size, 2)
+      assert(cancelled, "the parked source outlived the program")
+    }
+  }
 }

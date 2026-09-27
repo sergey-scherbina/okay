@@ -184,6 +184,45 @@ class TestReadyMerge extends munit.FunSuite {
       assert(seen, s"$name round $round: cancelled a=${a.cancelled.get} b=${b.cancelled.get}")
   }
 
+  test("a cancel while the CONSUMER is working reaches a parked source, on own and on Loom") {
+    // ready-merge-cancel-under-consumer-ops: one side stays ready for
+    // 200 000 elements, the other is parked on a gate, and the consumer
+    // performs an operation per element and cancels ITSELF at the 10th.
+    // The drive stops before the consumer's next operation; the merge's
+    // code lives inside the consumer's continuation and never parks, so
+    // neither its park's canceller nor a Discontinue on the next op can
+    // reach the gate. Before the drive's cancel hooks: 50 of 50 missed on
+    // `own` (the probe that filed the item). On Loom the interrupt is seen
+    // at the merge's first park, after the ready side ends — late, but it
+    // arrives.
+    val schedulers = List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build)
+    for (name, sch) <- schedulers; round <- 0 until 20 do
+      val g = Gate()
+      val self = java.util.concurrent.CompletableFuture[Fiber[Unit]]()
+      val seen = java.util.concurrent.atomic.AtomicInteger(0)
+      val m = ReadyMerge(Seq(Source.of(LazyList.range(0, 200000)), g.source))
+      val f = sch.fork(() => m.runForeach(_ => okay.effect[Async, Unit](Async.Run(() =>
+        if seen.incrementAndGet() == 10 then self.get().cancel()))))
+      self.complete(f): Unit
+      val _ = f.joinEither()
+      assert(g.gone.await(10, java.util.concurrent.TimeUnit.SECONDS),
+        s"$name round $round: the parked source was never cancelled (registered=${g.registered.getCount == 0})")
+  }
+
+  test("an EARLY STOP releases a parked source when the program ends, on own") {
+    // the consumer takes three elements and finishes; the gate is still
+    // parked. On a drive (own, JS) the program's end runs the merge's
+    // cancel hook, which it never exited. On Loom nothing sees the end:
+    // specs/ready-merge.md, Decisions ("early stop is not cancellation").
+    val sch = Schedulers.own.build
+    for round <- 0 until 20 do
+      val g = Gate()
+      val m = ReadyMerge(Seq(Source.of(LazyList.range(0, 200000)), g.source))
+      val f = sch.fork(() => m.runFoldUntil(using FoldUntil.take[Int](3)))
+      assertEquals(f.joinEither().map(_.size), Right(3), s"round $round")
+      assert(g.gone.await(10, java.util.concurrent.TimeUnit.SECONDS), s"round $round: the parked source outlived the program")
+  }
+
   test("stack-safe over 10^6 elements") {
     val n = 500000
     val m = Source.of(LazyList.range(0, n)) mergeReady Source.of(LazyList.range(0, n))
