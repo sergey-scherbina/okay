@@ -399,8 +399,10 @@ the stuck-check (every `watched` interval: 5 ms on `platform`, 100 ms on
   fails the type test and parks as before.
 - **`blocking()`** (owner thread only): the worker leaves `awake` — a
   blocked worker cannot see a submission, and counting it as awake is the
-  lost wakeup own-lost-wakeup found — and, if work is waiting on its deque
-  or in the submission queue, wakes ONE parked worker; when none is parked
+  lost wakeup own-lost-wakeup found — and, if work is waiting anywhere
+  (the submission queue or ANY worker's deque: a woken worker that steals
+  one of a burst and blocks in turn must pass the wake on), wakes ONE
+  parked worker; when none is parked
   and the scheduler has overflow room (`watched`), it starts one, within
   `n + overflow`, exactly as the stuck-check does. **`unblocked()`**
   rejoins `awake` (and wakes a parked monitor, as a worker leaving a park

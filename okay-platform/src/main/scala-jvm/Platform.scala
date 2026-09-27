@@ -53,6 +53,34 @@ private final class BoolSlot:
 // of cancelling them. A/B against the plain exception: 1082 -> 1087us
 // per 1000, 1.01x, inside the bars. The cost of a cancel is the
 // interrupt reaching the park and the join, not the trace.
+/**
+ * A worker thread that wants to be TOLD when a fiber on it blocks
+ * (own-managed-blocking, specs/schedulers.md "Managed blocking"): the
+ * doors below test `Thread.currentThread()` for this class on their SLOW
+ * path only, right before the first park, so a fiber that never blocks
+ * pays nothing and a virtual or foreign thread parks as before. The
+ * `ForkJoinPool.ManagedBlocker` protocol, ours: `blocking()` before the
+ * park, `unblocked()` after it, on the owner thread, in pairs.
+ */
+private[okay] final class ManagedWorker(val hooks: ManagedWorker.Hooks, name: String) extends Thread(hooks, name):
+  // here rather than at the construction site: a worker makes its thread
+  // in its own constructor, and the init checker (rightly) flags handing
+  // a thread that holds the half-built worker to an external method there
+  setDaemon(true)
+
+private[okay] object ManagedWorker:
+  /** what the worker's own loop implements: its `run`, and the two calls */
+  trait Hooks extends Runnable:
+    def blocking(): Unit
+    def unblocked(): Unit
+
+/** the door's side of the protocol: the current thread, told it is about
+ * to block, if it is a worker that asked to be told */
+private def enterBlocking(): ManagedWorker | Null =
+  Thread.currentThread() match
+    case w: ManagedWorker => w.hooks.blocking(); w
+    case _ => null
+
 given CanBlock = new:
   def block[A](register: (A => Unit) => (() => Unit)): A =
     val slot = Slot[A]()
@@ -75,16 +103,19 @@ given CanBlock = new:
       // publish who to wake BEFORE re-reading the flag: a completer
       // that misses the waiter is one whose flag we are about to see
       slot.waiter = Thread.currentThread()
-      var out = false
-      while !out do
-        // the interrupt is read FIRST: after a cancel, an answer that
-        // arrives anyway must not become this fiber's answer. Reading
-        // `filled` first let it (found by the scheduler law, 2026-09-07)
-        if Thread.interrupted() then
-          cancel()
-          throw InterruptedException()
-        else if slot.filled then out = true
-        else java.util.concurrent.locks.LockSupport.park(slot)
+      val managed = enterBlocking()
+      try
+        var out = false
+        while !out do
+          // the interrupt is read FIRST: after a cancel, an answer that
+          // arrives anyway must not become this fiber's answer. Reading
+          // `filled` first let it (found by the scheduler law, 2026-09-07)
+          if Thread.interrupted() then
+            cancel()
+            throw InterruptedException()
+          else if slot.filled then out = true
+          else java.util.concurrent.locks.LockSupport.park(slot)
+      finally if managed != null then managed.hooks.unblocked()
       slot.value
 
   /** the JVM handoff: the waiter is a parked (virtual) thread, woken
@@ -108,11 +139,14 @@ given CanBlock = new:
       case p: ParkHandoff[?] =>
         // publish who to wake BEFORE re-reading the flag, as `block` does
         p.waiter = Thread.currentThread()
-        var out = false
-        while !out do
-          if Thread.interrupted() then throw InterruptedException()
-          else if p.filled then out = true
-          else java.util.concurrent.locks.LockSupport.park(p)
+        val managed = enterBlocking()
+        try
+          var out = false
+          while !out do
+            if Thread.interrupted() then throw InterruptedException()
+            else if p.filled then out = true
+            else java.util.concurrent.locks.LockSupport.park(p)
+        finally if managed != null then managed.hooks.unblocked()
       case other =>
         throw IllegalStateException("a handoff not made by this CanBlock: " + other.getClass.getName)
 
@@ -134,13 +168,16 @@ given CanBlock = new:
     else if slot.filled then slot.value
     else
       slot.waiter = Thread.currentThread()
-      var out = false
-      while !out do
-        if Thread.interrupted() then
-          cancel()
-          throw InterruptedException()
-        else if slot.filled then out = true
-        else java.util.concurrent.locks.LockSupport.park(slot)
+      val managed = enterBlocking()
+      try
+        var out = false
+        while !out do
+          if Thread.interrupted() then
+            cancel()
+            throw InterruptedException()
+          else if slot.filled then out = true
+          else java.util.concurrent.locks.LockSupport.park(slot)
+      finally if managed != null then managed.hooks.unblocked()
       slot.value
 
 /** the timer: a virtual thread sleeps for the duration; cancelling
@@ -457,7 +494,7 @@ object Schedulers {
      * Owner-only: `push`, `pop`. Any thread: `steal`, `size`.
      */
 
-    private final class Worker(val id: Int) extends Runnable {
+    private final class Worker(val id: Int) extends ManagedWorker.Hooks {
       /** the owner's own work: pushed and popped by this thread,
        * stolen from the other end */
       val deque = Deque(256)
@@ -468,7 +505,13 @@ object Schedulers {
        * read it, and the stuck-check SUMS it on its tick (see there) */
       var ran = 0L
       var stolen = 0L
-      val thread: Thread = { val t = Thread(this, s"okay-own-${Owned.this.id}-$id"); t.setDaemon(true); t }
+      val thread: Thread = ManagedWorker(this, s"okay-own-${Owned.this.id}-$id")   // a daemon
+      def blocking(): Unit = Owned.this.blocking(this)
+      def unblocked(): Unit = Owned.this.unblocked(this)
+
+      /** how deep this worker is in the blocking door: owner thread only,
+       * so a register that itself blocks is counted once */
+      var blockDepth = 0
 
       /** the load the helper rule reads */
       def size: Int = deque.size
@@ -563,6 +606,47 @@ object Schedulers {
     }
 
     private def startWorker(i: Int): Unit = workers(i).thread.start()
+
+    /**
+     * MANAGED BLOCKING (own-managed-blocking, specs/schedulers.md). A
+     * fiber on `w` is about to park in a `CanBlock` door. The worker
+     * leaves `awake` — a blocked worker sees no submission, and counting
+     * it awake let an outside fork wake nobody — and when work is
+     * waiting anywhere (`workPending`), ONE parked worker
+     * is woken to take it; when none is parked and the scheduler has
+     * overflow room (`watched`), one is started, within `n + overflow`,
+     * as the stuck-check would a tick later. Plain `own` (no overflow)
+     * only ever wakes: its thread count is its contract. The spare steps
+     * down by parking when it runs dry, like any worker.
+     */
+    private def blocking(w: Worker): Unit =
+      w.blockDepth += 1
+      if w.blockDepth == 1 then
+        val _ = awake.decrementAndGet()
+        if workPending() && !activateNext() && overflow > 0 then grow(1)
+
+    /** is work waiting anywhere — the submission queue or ANY worker's
+     * deque, not only the blocking worker's: a woken worker that steals
+     * one of a burst and blocks in turn must pass the wake on, or the
+     * chain stops at the second link. Bounded by `live`; on the park
+     * path only. */
+    private def workPending(): Boolean =
+      if submissionsSize.get > 0 then true
+      else
+        val alive = live.get
+        var i = 0
+        while i < alive && workers(i).size == 0 do i += 1
+        i < alive
+
+    private def unblocked(w: Worker): Unit =
+      w.blockDepth -= 1
+      if w.blockDepth == 0 then
+        val _ = awake.incrementAndGet()
+        // as a worker leaving a park does: the monitor parks when nobody
+        // is awake, and a blocked worker was nobody
+        if monitorParked then
+          val m = monitor
+          if m != null then java.util.concurrent.locks.LockSupport.unpark(m)
     var w0 = 0
     while w0 < n do { startWorker(w0); w0 += 1 }
 
