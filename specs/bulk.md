@@ -158,6 +158,22 @@ Tables.run(SparkBulk(spark))(prog); Tables.run(localBulk)(prog)   // the same va
       turned back, equal to the join as written; unknown sizes are not
       guessed (TestPlan); the rewrite measured A/B on both platforms
       (TestWroclawStages)
+- [ ] bulk-parquet: `Bulk.read(path, format)` reads a file in any
+      format by its SPLITS — the pieces that read independently (a
+      Parquet row group) — spread with `of` and read by `flatMap`
+      wherever they land, so every instance has it with no platform
+      reader; a `Bulk.Format` is serializable (a Spark executor reads it)
+- [ ] `ParquetFormat.rows[A]` (okay-parquet): row groups as splits, a
+      group decoded as `A` by its Schema (okay-arrow `Rows`), pruned to
+      A's fields at the reader — no Spark, no Hadoop; on `localBulk`
+      equal to the rows written (TestParquetBulk)
+- [ ] a Long field reads a timestamp column's raw value in its unit,
+      and a date's days (okay-arrow `Rows`), so a timestamp column has a
+      Schema field to land in
+- [ ] the taxi demo (TestTaxiAlgebra, Live) reads its month through
+      `Bulk.read` — on Spark with our reader on the executors, and in one
+      JVM on `localBulk` — and the two agree per hour, the way the old
+      Spark-reader lane did
 
 ## Out of scope
 - Flink: `flink-core` alone carries no DataStream, so no instance yet;
