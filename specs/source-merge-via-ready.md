@@ -173,3 +173,24 @@ source telling 1, 2, 3 and then failing delivered the other side and
 the failure but none of the three (`failAfterTail`; two laws in
 `TestChannelFailure`, both watched red on master first).
 
+**Why the ring is slow with chunks — ANSWERED (ring-chunk-bimodal-forks,
+2026-09-27).** Per-fork counters on the reverted road (built from
+f0f355bd4): the slow forks are not a JIT outcome (raising
+`FreqInlineSize` or `MaxInlineLevel` leaves them) nor thread placement
+(one carrier makes every fork 2x slower, without modes), nor the merge's
+own parks (a bounded spin before parking removes those — 0.0 per op at
+20 000 checks — and the slow forks stay). They are the SIDES' parked
+receives: 84-96 (up to 217) async wakes per op in a slow fork against
+11-20 in a fast one, 206-213 awaits per op against 73-95 for 250 chunks.
+Two self-sustaining regimes: PRODUCERS AHEAD — chunks pile up in each
+side's channel and the merge takes them in batches, synchronously — or
+CONSUMER CAUGHT UP — each side's channel runs empty, its receive parks,
+and the channel hands the next send over as ONE element, the wake-up
+(callback, wake queue, waker) running on the PRODUCER's thread inside
+its send, which slows the producer and keeps the consumer caught up.
+The early timing of a fork picks the regime. The shared channel of the
+old road rarely runs empty — two producers feed one queue — so it stays
+in the first. A fix is a design change, not a knob: a STANDING receiver
+per side that accumulates sends into a buffer of its own, instead of a
+one-shot park per element (backlog `ring-standing-receiver`).
+
