@@ -34,9 +34,15 @@ class TestOwnMonitor extends munit.FunSuite {
       for _ <- 1 to 10 do
         Thread.sleep(20) // every worker parked: only the monitor can spread the burst
         val ids = ConcurrentHashMap.newKeySet[Long]()
-        burst(8) { () => { val _ = ids.add(Thread.currentThread().threadId()); busy(500000L) } }
+        // 5 ms a fiber, not 0.5 (own-monitor-burst-load-flake, 2026-09-27):
+        // eight 0.5 ms fibers are 4 ms of work, inside the monitor's own
+        // 5 ms tick, so one run in ten where the tick came late finished
+        // on the forking worker and the MINIMUM failed. Measured under 20
+        // CPU burners: 7 of 60 law runs failed at 0.5 ms, 0 of 60 at 5 ms.
+        // The law is unchanged: the monitor spreads a burst.
+        burst(8) { () => { val _ = ids.add(Thread.currentThread().threadId()); busy(5000000L) } }
         fewest = math.min(fewest, ids.size)
-      assert(fewest >= 2, s"a run used $fewest thread(s) for eight 0.5 ms fibers on four workers")
+      assert(fewest >= 2, s"a run used $fewest thread(s) for eight 5 ms fibers on four workers")
     finally sch.close()
   }
 
