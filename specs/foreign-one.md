@@ -843,6 +843,21 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     journalled — a replay reads the OUTPUT from the journal and never
     contacts the far side, so it has nothing to feed.
 
+28. **A frame is a VALUE too** (pyvalue-table, 2026-09-27, the
+    operator's "Делай а"). `PyValue.Table(frame)`: a `{"t": "frame"}`
+    object is read as a table wherever it sits in a value — among a
+    call's arguments, inside an answered dict, an element of a list —
+    and written back the same, where before it was read only as a frame
+    op's WHOLE answer and became a `Dict` of its raw fields anywhere
+    else. The one rule kept: a frame's own column may not hold a frame,
+    refused by name both ways, because a column is one kind of cell and
+    the columnar encoders have no cell kind for a table. The shims
+    already tagged a nested table (Go, Rust, Haskell, R); Python gains
+    `okay.frame(cols)` to say so, since a dict of lists is also just a
+    dict of lists. What this buys: `step(frame, state) -> {rows, state}`,
+    the functional stateful stage a compiled worker can have under
+    Decision 23 (specs/foreign-map-reduce.md, stage 5).
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
