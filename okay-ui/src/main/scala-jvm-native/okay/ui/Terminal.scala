@@ -114,8 +114,8 @@ object Terminal {
               keyState = st
               // one byte can complete no key (mid-sequence) or two (a
               // lone ESC and the byte after it), so this folds
-              val emit = keys.foldLeft(pure(()): Unit ! Writer % Event + Async) { (acc, key) =>
-                acc.flatMap { _ =>
+              val emit = okay.!.each(keys) { key =>
+                {
                   // the view keys are the HOST's: they move no focus
                   // and say nothing to the application
                   if key == Frame.Key.PageUp || key == Frame.Key.PageDown then

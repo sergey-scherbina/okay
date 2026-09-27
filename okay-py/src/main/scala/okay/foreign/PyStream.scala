@@ -83,7 +83,7 @@ object PyStream:
     def perform(op: ForeignEval[Any]): Unit ! F = effect[F, Any](ev(op)).map(_ => ())
     def releaseAll(held: Held): Unit ! F =
       val ops = held.streams.map(ForeignEval.Cancel(_)) ++ held.refs.map(ForeignEval.Release(_))
-      ops.foldLeft(pure[F, Unit](()))((acc, op) => acc.flatMap(_ => perform(op)))
+      okay.!.each(ops)(op => perform(op))
     def again(held: Held)(x: A ! Holding + F): A ! F = loop(held)(x)
     @tailrec def loop(held: Held)(x: A ! Holding + F): A ! F =
       (x.resume: @unchecked) match
@@ -118,7 +118,7 @@ object PyStream:
     type R = SourceRow[O]
     require(credit >= 1, "a stream's credit is at least one chunk")
     def tellAll(os: Vector[O]): Unit ! R =
-      os.foldLeft(pure[R, Unit](()))((p, o) => p.flatMap(_ => effect[R, Unit](Writer(o))))
+      okay.!.each(os)(o => effect[R, Unit](Writer(o)))
     def loop(s: Long): Unit ! R =
       effect[R, Either[Condition, Option[PyValue]]](ForeignEval.Pull(s)).flatMap {
         case Left(c) => effect[R, Unit](Holding.LetStream(s)).flatMap(_ => throw Failed(c))
@@ -158,7 +158,7 @@ object PyStream:
     def release(r: PyRef): Unit ! R =
       effect[R, Unit](Holding.Let(r)).flatMap(_ => effect[R, Unit](ForeignEval.Release(r)))
     def tellAll(os: Vector[O]): Unit ! R =
-      os.foldLeft(pure[R, Unit](()))((p, o) => p.flatMap(_ => effect[R, Unit](Writer(o))))
+      okay.!.each(os)(o => effect[R, Unit](Writer(o)))
     def loop(r: PyRef): Unit ! R =
       effect[R, Either[Condition, PyValue]](next(r)).flatMap {
         case Left(c) if ended(c) => release(r)
@@ -189,7 +189,7 @@ object PyStream:
     def tellAll(answer: Either[Condition, PyValue]): Unit ! R =
       answer.flatMap(shape.decode[Vector[O]](_)) match
         case Left(c) => throw Failed(c)
-        case Right(os) => os.foldLeft(pure[R, Unit](()))((p, o) => p.flatMap(_ => effect[R, Unit](Writer(o))))
+        case Right(os) => okay.!.each(os)(o => effect[R, Unit](Writer(o)))
 
     def end: Unit ! R = finish match
       case None => pure(())

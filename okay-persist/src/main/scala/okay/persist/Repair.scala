@@ -34,15 +34,13 @@ object Repair {
    * goes; answers (offset, value) pairs in record order */
   def decode[A](typed: Typed[A], records: Vector[Record])
                (using scala.reflect.ClassTag[A]): Vector[(Long, A)] ! Condition.Op =
-    records.foldLeft(pure[Condition.Op, Vector[(Long, A)]](Vector.empty)) { (acc, r) =>
-      acc.flatMap { done =>
-        typed.decode(r) match
-          case Typed.Decoded.Ok(off, _, _, a) => pure(done :+ (off, a))
-          case Typed.Decoded.Bad(off, err) =>
-            Condition.within[Vector[(Long, A)], Pure]("skip") {
-              Condition.signal[A](Damaged(off, err, r)).map(a => done :+ (off, a))
-            }(_ => done)
-      }
+    okay.!.foldM(records)(Vector.empty[(Long, A)]) { (done, r) =>
+      typed.decode(r) match
+        case Typed.Decoded.Ok(off, _, _, a) => pure(done :+ (off, a))
+        case Typed.Decoded.Bad(off, err) =>
+          Condition.within[Vector[(Long, A)], Pure]("skip") {
+            Condition.signal[A](Damaged(off, err, r)).map(a => done :+ (off, a))
+          }(_ => done)
     }
 
   /** the read-and-repair convenience: one partition slice through

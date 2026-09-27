@@ -1,6 +1,6 @@
 package okay.clojure
 
-import okay.{Foreign, Free, Push, Stage, pure}
+import okay.{Foreign, Free, Push, Stage}
 import clojure.lang.{AFn, IFn, RT, Reduced}
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
@@ -119,7 +119,7 @@ object Transducers {
       def flush(): Stage[I, O, Unit] =
         val batch = out.toVector
         out.clear()
-        batch.foldLeft(pure(()): Stage[I, O, Unit])((p, o) => p.flatMap(_ => Stage.tell[I, O](o)))
+        okay.!.each(batch)(o => Stage.tell[I, O](o))
 
       def finish(acc: AnyRef): Stage[I, O, Unit] =
         live()

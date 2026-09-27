@@ -129,9 +129,7 @@ object Agent {
 
   /** run every requested tool and remember each result */
   def runTools(calls: Seq[ToolCall]): Unit ! Agent =
-    calls.foldLeft(pure[Agent, Unit](())) { (acc, c) =>
-      acc.flatMap(_ => call(c).flatMap(r => remember(Turn.Result(c.id, r))))
-    }
+    okay.!.each(calls)(c => call(c).flatMap(r => remember(Turn.Result(c.id, r))))
 
   /**
    * The loop: remember the message, ask (recall compacts on the way),

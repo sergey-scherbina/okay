@@ -61,8 +61,7 @@ object Maybe:
    * then turned out empty.
    */
   def collect[X, B, F[+_]](xs: Iterable[X])(f: X => B ! Maybe + F): Vector[B] ! F =
-    xs.foldLeft(pure[F, Vector[B]](Vector.empty)): (acc, x) =>
-      acc.flatMap(v => run[B, F](f(x)).map(o => if o.isEmpty then v else v :+ o.get))
+    okay.!.foldM(xs)(Vector.empty[B])((v, x) => run[B, F](f(x)).map(o => if o.isEmpty then v else v :+ o.get))
 
   /**
    * An absence as a PRUNED BRANCH: every `Maybe` becomes a `Choose` —

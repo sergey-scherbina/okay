@@ -27,10 +27,18 @@ class TestBuildShape extends munit.FunSuite {
   test("the program is RIGHT-nested: its head is one operation, not a chain to rotate") {
     val p: Unit ! W = !.each(1 to 5)(i => Writer.tell(i.toString))
     // a foldLeft build's root is a Bind whose left side is another Bind,
-    // four deep here; this one's root is Bind(Inject(...), k)
-    p match
+    // four deep here; this one, once its Delay is forced, is Bind(Inject(...), k)
+    (p.resume: @unchecked) match
       case Free.Bind(Free.Inject(_), _) => ()
       case other => fail(s"not right-nested: ${other.getClass.getSimpleName}")
+  }
+
+  test("f runs when the program runs, not when it is built (as in a foldLeft)") {
+    var calls = 0
+    val p: Unit ! W = !.each(List("a", "b"))(s => { calls += 1; Writer.tell(s) })
+    assertEquals(calls, 0, "the first element's f ran at build time")
+    val _ = !.run(Writer.run[String, Unit, Pure](p))
+    assertEquals(calls, 2)
   }
 
   test("stack-safe over 1 000 000 elements") {

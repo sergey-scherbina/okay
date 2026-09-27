@@ -65,5 +65,14 @@ does one `flatMap` per operation. That is a HYPOTHESIS, and backlog
 - 2026-09-27: `foldM`/`each` land as API. Their right-nested build is the
   honest default, it saves 17-27% of the allocation, and they read better
   than a `foldLeft` over `flatMap`.
-- 2026-09-27: the 22 builders are not converted for speed. The
-  measurement says ≤1.1x.
+- 2026-09-27: the 22 builders are not worth converting for SPEED (≤1.1x).
+  The operator then decided to convert them for MEMORY (−17-27% on the
+  measured shapes), and they are converted: core `Choice` ×2, `Prob`,
+  `Maybe.collect`, `Chronicle.all` ×2; streams `Pipe` ×2, `JsonParse`,
+  clojure `Transducers`, java `Gather`, `PyStream` ×4; `Agent.runTools`,
+  `Repair.decode`, `Retrieve`, `Telegram` ×2, `Terminal`, `TransportJs`.
+- 2026-09-27: `foldM` is DELAYED (`Free.delay` around the first step),
+  so `f` runs when the program runs, exactly as in the foldLeft it
+  replaces. The first cut called `f` on element 0 at BUILD time, and
+  `Terminal`'s fold, which moves `focus` and `caret`, would have moved
+  them early. TestBuildShape pins it.

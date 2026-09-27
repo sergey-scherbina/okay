@@ -208,12 +208,12 @@ object Telegram {
     val lock = new Object
 
     def run(acts: Vector[Act]): Unit ! Async =
-      acts.foldLeft(pure(()): Unit ! Async) { (p, a) =>
-        p.flatMap(_ => perform(a).map { id =>
+      okay.!.each(acts) { a =>
+        perform(a).map { id =>
           a match
             case Act.Send(_) => id.foreach(i => lock.synchronized { session = Session.sent(session, i) })
             case _ => ()
-        })
+        }
       }
 
     val h = new Host:
@@ -225,7 +225,7 @@ object Telegram {
     val hear: Update => Unit ! Async = u =>
       async { lock.synchronized { val (s, evs, acts) = Session.hear(session, u); session = s; (evs, acts) } }
         .flatMap { (evs, acts) =>
-          evs.foldLeft(pure(()): Unit ! Async)((p, e) => p.flatMap(_ => feed.send(e).map(_ => ())))
+          okay.!.each(evs)(e => feed.send(e).map(_ => ()))
             .flatMap(_ => run(acts))
         }
     (h, hear)

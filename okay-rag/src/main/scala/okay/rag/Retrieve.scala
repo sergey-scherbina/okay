@@ -79,9 +79,8 @@ object Retrieve {
   def hybrid[F[+_]](rs: Seq[Retriever[F]], fanOut: Int = 10): Retriever[F] = new:
     def retrieve(query: String, k: Int): Seq[Scored] ! F =
       val each = math.max(fanOut, k)
-      rs.foldLeft(pure[F, Seq[Seq[Scored]]](Seq.empty)) { (acc, r) =>
-        acc.flatMap(ls => r.retrieve(query, each).map(ls :+ _))
-      }.map(ls => Fusion.rrf(ls).take(k))
+      okay.!.foldM(rs)(Seq.empty[Seq[Scored]])((ls, r) => r.retrieve(query, each).map(ls :+ _))
+        .map(ls => Fusion.rrf(ls).take(k))
 
   /**
    * Multi-query: rewrites of one question explored as NONDETERMINISM

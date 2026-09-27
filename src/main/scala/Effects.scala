@@ -416,7 +416,11 @@ object Effects {
     def go(i: Int, acc: B): B ! F =
       if i >= n then Return(acc)
       else f(acc, v(i)).flatMap(b => go(i + 1, b))
-    go(0, z)
+    // DELAYED, so `f` runs only when the program does, as it does in a
+    // foldLeft over flatMap: a caller whose `f` touches state (a UI
+    // fold updating its focus) must not see the first element's work
+    // happen at BUILD time when it converts to this
+    Free.delay(() => go(0, z))
 
   /** `f` on each element, in order, for its effects: `foldM` with no
    * accumulator, and the same right-nested build */

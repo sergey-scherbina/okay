@@ -39,7 +39,7 @@ object JsonParse {
     case _ => Vector(Instr.Emit(t))
 
   private def step(t: T): Stage[T, Instr[K], Unit] =
-    instrs(t).foldLeft(pure(()): Stage[T, Instr[K], Unit])((m, i) => m.flatMap(_ => tell(i)))
+    okay.!.each(instrs(t))(i => tell(i))
 
   // ------------------------------------------------------------------
   // the combinator surface: little total parsers over Take, compiling

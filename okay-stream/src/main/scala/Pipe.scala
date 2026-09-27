@@ -202,7 +202,7 @@ object Stage {
       endBody: S2 => Vector[O]): Stage[I, O, Either[S1, S2]] =
 
     def tellAll(os: Vector[O]): Stage[I, O, Unit] =
-      os.foldLeft(pure(()): Stage[I, O, Unit])((p, o) => p.flatMap(_ => tell[I, O](o)))
+      okay.!.each(os)(o => tell[I, O](o))
 
     // the switch, run through PState: the Atkey instance executed
     type R = (Either[S1, S2], Vector[O])
@@ -255,7 +255,7 @@ object Stage {
       endThird: S3 => Vector[O]): Stage[I, O, Either[S1, Either[S2, S3]]] =
 
     def tellAll(os: Vector[O]): Stage[I, O, Unit] =
-      os.foldLeft(pure(()): Stage[I, O, Unit])((p, o) => p.flatMap(_ => tell[I, O](o)))
+      okay.!.each(os)(o => tell[I, O](o))
 
     // each seam's switch runs through PState — the same executed
     // Atkey step as `phased`, at both type changes

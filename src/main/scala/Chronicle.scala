@@ -100,13 +100,13 @@ object Chronicle:
    */
   def all[E, X, B, F[+_]](xs: Iterable[X])(f: X => B ! Chronicle % E + F)
                          (using Distinct[Chronicle % E + F]): Vector[B] ! Chronicle % E + F =
-    val each: (Vector[B], Vector[E], Boolean) ! F =
-      xs.foldLeft(pure[F, (Vector[B], Vector[E], Boolean)]((Vector.empty, Vector.empty, false))): (acc, x) =>
-        acc.flatMap: (bs, es, halted) =>
-          run[E, B, F](f(x)).map:
-            case Clean(b) => (bs :+ b, es, halted)
-            case Warned(b, more) => (bs :+ b, es ++ more, halted)
-            case Failed(more) => (bs, es ++ more, true)
-    each.at[Chronicle % E + F].flatMap: (bs, es, halted) =>
-      val told = es.foldLeft(pure[Chronicle % E + F, Unit](()))((acc, e) => acc.flatMap(_ => dictate(e).at[Chronicle % E + F]))
+    val perElement: (Vector[B], Vector[E], Boolean) ! F =
+      okay.!.foldM(xs)((Vector.empty[B], Vector.empty[E], false)): (acc, x) =>
+        val (bs, es, halted) = acc
+        run[E, B, F](f(x)).map:
+          case Clean(b) => (bs :+ b, es, halted)
+          case Warned(b, more) => (bs :+ b, es ++ more, halted)
+          case Failed(more) => (bs, es ++ more, true)
+    perElement.at[Chronicle % E + F].flatMap: (bs, es, halted) =>
+      val told = okay.!.each(es)(e => dictate(e).at[Chronicle % E + F])
       told.flatMap(_ => if halted then halt[E, Vector[B]].at[Chronicle % E + F] else pure(bs))
