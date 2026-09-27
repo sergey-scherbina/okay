@@ -1,0 +1,1 @@
+ring-standing-receiver — make the ring's caught-up regime cheap: zero-allocation side wake-ups first, a standing receiver if that is not enough (operator: continue all)
