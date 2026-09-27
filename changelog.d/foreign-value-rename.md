@@ -22,4 +22,4 @@ specs that name them, and the stack inventory's rows for
 `TestValueCodecDepth`, `TestValueWalk`, `TestValueTable`,
 `TestFrameInValue`. Decision 29 in specs/foreign-one.md.
 
-Commits: (filled at landing).
+Commits: 9b5816a73 5cf924462 48a07c9b2 (the landing adds this line).
