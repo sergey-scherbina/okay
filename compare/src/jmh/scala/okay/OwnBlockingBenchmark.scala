@@ -18,6 +18,11 @@ import java.util.concurrent.TimeUnit
  *                      1 ms through `CanBlock.block` on a timer — the
  *                      library's own door, what `join()` and a blocking
  *                      receive go through
+ *   outsideForkWhileBlocked  one fiber blocked in the door, the other
+ *                      workers parked; a tiny fiber forked from OUTSIDE
+ *                      and joined. Before managed blocking the blocked
+ *                      worker counted as awake, the submission woke
+ *                      nobody, and the fiber waited for the stuck-check
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -75,4 +80,16 @@ class OwnBlockingBenchmark {
         fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
       }
     }.join()
+
+  @Benchmark
+  def outsideForkWhileBlocked(): Long =
+    given Scheduler = s
+    val k = java.util.concurrent.atomic.AtomicReference[(Unit => Unit) | Null](null)
+    val blocked = Async.spawn(async(summon[CanBlock].block[Unit] { cb => k.set(cb); () => () }))
+    while k.get == null do Thread.onSpinWait()
+    Thread.sleep(1) // the other workers spin out and park
+    val r = Async.spawn(async(1L)).join()
+    k.get.nn(())
+    blocked.join()
+    r
 }
