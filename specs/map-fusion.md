@@ -1,62 +1,51 @@
-# Map fusion — `p.map(f).flatMap(g)` is one Bind
+# Map fusion — measured, and REFUTED in its safe form
 
 ## Overview
 
 left-nested-build-cost showed that a program's global shape is worth
 ≤1.1x, yet two programs of the same 1000 operations under the same two
 handlers differed 2.27x. BuildShapeBenchmark measured the difference
-directly (2026-09-27): each step written `op.map(acc + _)` followed by a
-flatMap took 28.6 µs / 306 KB, and each step written as ONE flatMap took
-12.6 µs / 138 KB. `map` was `flatMap(a => Return(f(a)))`, so every such
-step was `Bind(Bind(op, mapK), g)`: two binds nested left, which
-`resume` rotated on every step, plus a `Return` and a `Bind(Return, g)`
-to resolve.
+directly (2026-09-27), with two rounds agreeing within 1%. With each step
+written `op.map(acc + _)` then a flatMap (`rowFoldM`), the program took
+28.6 µs / 306 KB. With each step ONE flatMap (`rowOneBind`, the new
+lane), it took 12.6 µs / 138 KB. `map` is `flatMap(a => Return(f(a)))`,
+so such a step is `Bind(Bind(op, mapK), g)`: two binds nested left,
+rotated on every step, plus a `Return` and a `Bind(Return, g)` to
+resolve. **The gap is real, and it is the step's two binds.**
 
-## Interface (Free.scala)
+## What was tried (Free.scala, not landed)
 
-```scala
-object Free:
-  final class Mapped[F[+_], X, A](val f: X => A, val depth: Int) extends (X => Free[F, A])
-  inline val MaxFusedMaps = 32
-  def bind[F[+_], A, B](m: Free[F, A], g: A => Free[F, B]): Free[F, B]   // Free#flatMap
-  def mapped[F[+_], A, B](m: Free[F, A], f: A => B): Free[F, B]         // Free#map
-```
+`map` left a recognisable `Mapped(f)` continuation, and a `flatMap` on
+top of it built one Bind over the operation. Two forms of that Bind's
+continuation were tried:
 
-`map` leaves a `Mapped` as the continuation. A `flatMap` on top of it
-builds `Bind(op, y => g(f(y)))`, and a `map` on top composes the
-functions. Either way there is ONE Bind over the operation. Composition
-stops at 32 maps: the composed function is a chain of `andThen` applies
-on the JVM stack, so it is bounded, and past the bound a new Bind is
-nested and rotated as before.
+1. **Direct: `y => g(f(y))`.** A/B against master: nestedSW 1.23x,
+   rowFoldM 1.17x, stateFoldM 1.21x, bytes −17-29%, and the map-free
+   lanes (relay/handle/fusedSWr) unchanged. **Not stack-safe.** The
+   next continuation is CALLED rather than returned to the interpreter,
+   and continuations composed by continuations (Delim's
+   `k1(x).flatMap(k2)`, n segments) chain n direct calls.
+   TestStackSafetyCore's Delim test overflowed at n = 20 000. The
+   operator's rule (no unbounded stack recursion) refuses it, and no
+   bound is available: the chain runs through user and library lambdas
+   the builder cannot see.
+2. **Trampolined: `y => Bind(Return(f(y)), g)`**, the stack-safe form.
+   A/B: stateFoldM 1.15x, rowFoldM 1.02x, **nestedSW 1.21x SLOWER**
+   (31.7 → 38.3 µs). Refuted.
 
-- [x] map + flatMap and map + map build one `Bind(Inject, _)` (watched RED)
-- [x] the mapped function runs at run time, and again on every run
-- [x] 1 000 000 maps in a row stay stack-safe (the bound)
-- [x] a map over a raise still stops; over Choose it runs per branch
-- [x] `TestInlineBudget`: `resume` untouched, still under 325 bytes
+Both runs are in history.d (`*-map-fusion.tsv`). Free.scala is unchanged
+on master.
 
-## Results (history.d `*-map-fusion.tsv`, A/B against master)
+## What stays
 
-| lane | master | fused | time | B/op |
-|---|---:|---:|---:|---:|
-| FusionBenchmark.nestedSW | 32.1 µs | 26.2 | 1.23x | −17% |
-| BuildShapeBenchmark.rowFoldM | 28.7 | 24.6 | 1.17x | −18% |
-| BuildShapeBenchmark.stateFoldM | 26.6 | 22.0 | 1.21x | −29% |
-| relayPrebuilt / handlePrebuilt / fusedSWr (no maps) | — | — | 1.00 / 1.00 / 1.01 | identical |
-
-The type test every `flatMap` now makes costs nothing measurable on the
-map-free lanes.
-
-**What is left.** `rowFoldM` at 24.6 µs is still 2x `rowOneBind`'s
-12.6. `map` still ALLOCATES the Bind and the `Mapped` that the next
-`flatMap` discards. That is filed as backlog `map-fusion-residual`.
+- `BuildShapeBenchmark.rowOneBind`, the control that shows the gap.
+- The finding, for whoever writes a hot step. Write it as one `flatMap`
+  (`op.flatMap(x => next(acc + x))`) rather than `op.map(f).flatMap(g)`
+  when the loop is hot. That is a 2x on the step, and it needs no
+  library change.
 
 ## Decisions
 
-- 2026-09-27: fuse at CONSTRUCTION, not in `resume`. `resume` is 323 of
-  325 bytes (`TestInlineBudget`), and a case added there re-decides the
-  inlining of every interpreter loop.
-- 2026-09-27: the two `@unchecked` type tests live in `bind`/`mapped`
-  only. A `Mapped` found as the continuation of a `Bind[F, x, A]` IS a
-  `Mapped[F, x, A]` by where it sits (the no-cast rule's one isolated
-  claim).
+- 2026-09-27: not landed. The fast form is stack-unsafe with composed
+  continuations, and the safe form regresses the left-nested row by
+  21%.

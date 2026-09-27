@@ -4,3 +4,6 @@
 2026-09-27	33e36f844	quiet	mapfusion-guard-relayPrebuilt	154.01	154.21	1.00	us/op, A/B alternated per lane (master then branch), each its own jmh-lane.sh run on a quiet box (-f 2 -wi 3 -w 1 -i 5 -r 1 -prof gc), one round; ratio branch/master, lower = fusion wins; B/op identical 1753945
 2026-09-27	33e36f844	quiet	mapfusion-guard-handlePrebuilt	139.25	139.11	1.00	us/op, A/B alternated per lane (master then branch), each its own jmh-lane.sh run on a quiet box (-f 2 -wi 3 -w 1 -i 5 -r 1 -prof gc), one round; ratio branch/master, lower = fusion wins; B/op identical 1753929
 2026-09-27	33e36f844	quiet	mapfusion-guard-fusedSWr	11.64	11.50	1.01	us/op, A/B alternated per lane (master then branch), each its own jmh-lane.sh run on a quiet box (-f 2 -wi 3 -w 1 -i 5 -r 1 -prof gc), one round; ratio branch/master, lower = fusion wins; B/op identical 111968; within the ±0.13 bar
+2026-09-27	62654ffa7	quiet	mapfusion-safe-nestedSW	38.28	31.69	1.21	REFUTED variant: the fused continuation hands g to the interpreter (Bind(Return, g)), the only stack-safe form; A/B vs master, one round; 305616 vs 321592 B/op
+2026-09-27	62654ffa7	quiet	mapfusion-safe-rowFoldM	27.69	28.20	0.98	REFUTED variant (as above); 289816 vs 305816 B/op
+2026-09-27	62654ffa7	quiet	mapfusion-safe-stateFoldM	22.73	26.21	0.87	REFUTED variant (as above); 239704 vs 279704 B/op
