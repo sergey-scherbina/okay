@@ -334,6 +334,7 @@ src/main/scala/ContMacro.scala	137	trivial	direct		BOUNDED: by the compiler's ow
 src/main/scala/Distinct.scala	144	leaves	direct		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 src/main/scala/Distinct.scala	175	identityOf	mutual		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 src/main/scala/Distinct.scala	197	under	mutual		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
+src/main/scala/Effects.scala	416	go	lambda	Effects$.step	DEFERRED: `step` STORES `next` in a Bind on both arms (`Bind(m, next)`, or inside the fused continuation `y => next(g(y))`) and never calls it; each step of `!.foldM` runs when the Free runner resumes that Bind (one-bind-hot-steps)
 src/main/scala/Effects.scala	295	reflect	lambda	?,Effects.flatMap,Free.fold	TRAMPOLINED: the call is inside the target M's flatMap; 20 000 ops into Eager on a 128 KB stack (TestStackSafetyCore)
 src/main/scala/Handler.scala	438	members	direct		BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value
 src/main/scala/Handler.scala	473	chain	lambda	QuoteUnpickler.unpickleExprV2	BOUNDED: per member of a row TYPE — its width, written in the program's types — during derivation, never per value

@@ -72,6 +72,23 @@ object Free {
     _ => throw new IllegalStateException(
       "Direct auto-coloring escaped macro rewriting — this call belongs inside direct { ... }")
 
+  /**
+   * A CONTINUATION THAT ONLY MAPS, left by `map` (one-bind-hot-steps,
+   * 2026-09-27). It runs exactly as `a => Return(f(a))` did, and the tree
+   * is the same shape. What it adds is that a BUILDER can see the
+   * function. `!.foldM` meets `op.map(f)` as its step and builds
+   * `Bind(op, y => next(f(y)))`, one bind instead of the map's and its
+   * own nested left and rotated every step (specs/map-fusion.md: 28.6 µs
+   * / 306 KB against 12.6 / 138 per 1000 steps).
+   *
+   * Only a builder that CALLS NOTHING BUT ITS OWN NEXT STEP may do that.
+   * `Free.flatMap` itself must not: its continuation is anybody's, and
+   * calling it directly chained Delim's composed continuations 20 000
+   * deep (map-fusion, refuted).
+   */
+  final class Mapped[F[+_], X, A](val f: X => A) extends (X => Free[F, A]):
+    def apply(x: X): Free[F, A] = Return(f(x))
+
   /** Free[F, *] is a Monad for every signature F, with no constraint on F */
   given [F[+_]]: Monad[Free[F, *]] with
     override inline def pure[A](a: A): Free[F, A] = Return(a)
@@ -102,7 +119,10 @@ enum Free[F[+_], +A] {
   /** sequencing is a data node: nothing runs until an interpreter walks the tree */
   inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = Bind(this, f)
 
-  inline def map[B](f: A => B): Free[F, B] = flatMap(a => Return(f(a)))
+  /** a Bind whose continuation is a `Free.Mapped`: the same node and the
+   * same run as `flatMap(a => Return(f(a)))`, but a builder that knows it
+   * (`!.foldM`) can read the function back out (one-bind-hot-steps) */
+  inline def map[B](f: A => B): Free[F, B] = Bind(this, Free.Mapped[F, A, B](f))
 
   /**
    * THE rotation, and the only one on this side of the library:

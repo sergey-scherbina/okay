@@ -46,4 +46,13 @@ class TestBuildShape extends munit.FunSuite {
     val p: Int ! State % Int = !.foldM(0 until n)(0)((acc, _) => State.modify[Int](_ + 1).map(_ => acc + 1))
     assertEquals(!.run(State.handle[Int](0)(p)), (n, n))
   }
+
+  test("a foldM step written op.map(g) is ONE bind: the map is folded into the next step") {
+    val p: Int ! State % Int = !.foldM(1 to 3)(0)((acc, x) => State.modify[Int](_ + x).map(acc + _))
+    // forcing the Delay: the head is Bind(Inject(Modify), k), not Bind(Bind(Inject, mapK), k)
+    (p.resume: @unchecked) match
+      case Free.Bind(Free.Inject(_), _) => ()
+      case other => fail(s"not one bind: ${other}")
+    assertEquals(!.run(State.handle[Int](0)(p)), (6, 1 + 3 + 6))
+  }
 }

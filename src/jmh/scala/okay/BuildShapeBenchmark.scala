@@ -75,4 +75,13 @@ class BuildShapeBenchmark {
   @Benchmark
   def rowOneBind(): Int =
     State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](oneBind(0, 0)))._2._2
+
+  /** one-bind-hot-steps: stateFoldM's work written by hand with ONE
+   * flatMap a step, the ceiling a fused foldM step aims at */
+  private def stateOne(i: Int, acc: Int): Int ! State % Int =
+    if i >= N then pure(acc) else State.modify[Int](_ + i).flatMap(s => stateOne(i + 1, acc + s))
+
+  @Benchmark
+  def stateOneBind(): Int =
+    !.run(State.handle[Int](0)(stateOne(0, 0)))._2
 }
