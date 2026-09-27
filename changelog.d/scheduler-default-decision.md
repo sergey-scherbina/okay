@@ -24,3 +24,5 @@
   Wrocław loss.
 - Docs: docs/schedulers.md, "Why the default is Loom, measured". Rows:
   `src/jmh/history.d/2026-09-27T192315Z-scheduler-default-decision.tsv`.
+- Commits: spec 88483cf15, the bound law and the benchmark lane 6d5eefe68,
+  part 1 results 951f8278e, part 2 and the decision be31ac072.
