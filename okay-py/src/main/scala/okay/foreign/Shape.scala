@@ -83,5 +83,6 @@ object Shape:
     case PyValue.Str(s) => Left(Json.JStr(s))
     case PyValue.Bytes(b) => Left(Json.JStr(java.util.Base64.getEncoder.encodeToString(b)))
     case PyValue.NA(_) => Left(Json.JNull)
+    case PyValue.Table(f) => Left(Wire.encFrame(f))
     case PyValue.Ref(r) => throw IllegalArgumentException(s"okay.foreign: a held object has no JSON shape: $r")
   }

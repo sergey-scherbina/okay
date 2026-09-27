@@ -15,6 +15,7 @@ JVM's `Wire`; okay-cluster learns nothing.
 | `flow.mapIn[B](module, fn, …)` / `Reduce.in[A, Acc](module, step, merge, …)` | ONE API: the language is the module's type, through `Engine[M]` (the base, map) and `Reduces[M]` (an extension) in scope — Python for a `PyModule`, R for an `RModule`, the JVM for a `JvmModule`; each instance optional, a job asks for what it uses |
 | `JvmModule(name).map[A, B](fn)(f).reduce[A, Acc](step, merge)(…)` | Scala, Clojure, Frege functions by name, the shape a `PyModule` has |
 | `flow.statefulIn[B](module, open, step, finish, …)` | a STATEFUL stage through `Stateful[M]`: the state made by `open` on the far side, folded by `step` per chunk, flushed by `finish`, kept in one interpreter for the partition's life |
+| `flow.statefulValueIn[B, St, P](module, open, step, finish, params, …)` | the FUNCTIONAL stateful stage through `StatefulValue[M]`: `open(params)` answers the state, `step(frame, state)` answers `{rows, state}`, `finish(state)` the last rows — the state a value the JVM carries, nothing held, so a compiled worker (Go, Rust, Haskell) has it too |
 | `Model.in(module, fn, params)` / `flow.mapModel[B](model, fn)` | a model fit once (`Models[M]`), materialised per pooled interpreter, the map's second argument |
 | `flow.mapPy[B](module, fn, python, batch, workers)` | the map in Python: `fn` in an inline `PyModule` takes the frame (a dict of lists, or the `pyarrow.Table` under `@okay.arrow`) and answers `B`'s columns |
 | `flow.mapR[B](module, fn, rscript, batch, workers)` | the same in R: a `data.frame` in, a `data.frame` out |
@@ -73,9 +74,24 @@ val out = okay.cluster.Flows.collect(okay.cluster.Flow.slices(recs, 3).mapIn[Fac
 ```
 
 A model is a held value every chunk reads, which a compiled worker keeps
-since foreign-held-values; a stateful stage CHANGES its held state, which
-a compiled worker's values do not allow, so it stays with TypeScript,
-Python and R. Clojure and
+since foreign-held-values; a stateful stage that CHANGES its held state
+(`statefulIn`) is not something a compiled worker's values allow, so that
+form stays with TypeScript, Python and R. The FUNCTIONAL form is every
+language's (pyvalue-table): the state is a value the JVM carries, `step`
+answers the rows and the next state together, and nothing is held —
+
+```scala
+Flow.slices(Rows.of(p.n), parts).statefulValueIn[Run, Long, Factor](mod, open, step, finish, Factor(0))
+```
+
+— in Python `vstep(frame, state)` answers `{"rows": okay.frame({...}),
+"state": state}`, a frame tagged as a value (`okay.frame`, or a pandas
+frame); in Rust `Value::Dict` with a `Value::Table` inside; on the JVM
+`JvmModule.streamValue(open, step, finish)(p => st, (st, rows) =>
+(out, st2), st => last)`. Because nothing is held, no worker is leased
+for the partition: any worker takes any step, and a death costs the
+chunk a retry, not the partition. The price is the state's size on the
+wire per chunk — a sum is bytes, a window is its rows. Clojure and
 Frege need nothing — they run inside the JVM, so their map is
 `flow.map(f)`.
 

@@ -135,6 +135,7 @@ object PyCodec {
   private def describe(v: PyValue): String = v match
     case Arr(xs) => s"a list of ${xs.length}"
     case Dict(kv) => s"a dict of ${kv.length} keys"
+    case Table(f) => s"a frame of ${f.cols.length} columns"
     case other => other.toString
 
   private def dec[X](s: Schema[X], v: PyValue, at: At, depth: Int): Either[String, X] =
@@ -184,9 +185,12 @@ object PyCodec {
         case other => dec(o.of(), other, at, depth + 1).map(Some(_))
       case l: Schema.SList[a] => v match
         case Arr(xs) => each(xs, at)(dec(l.of(), _, _, depth + 1)).map(_.toList)
+        // a frame where rows are expected: its rows, by the row's Schema (pyvalue-table)
+        case Table(f) => f.rows[a](using l.of()).left.map(c => s"${at.where}: ${c.message}").map(_.toList)
         case _ => no("a list")
       case sv: Schema.SVector[a] => v match
         case Arr(xs) => each(xs, at)(dec(sv.of(), _, _, depth + 1))
+        case Table(f) => f.rows[a](using sv.of()).left.map(c => s"${at.where}: ${c.message}")
         case _ => no("a list")
       case p: Schema.SProduct[X] => v match
         case Dict(kv) => product(p, kv.toMap, at, depth)
@@ -228,9 +232,11 @@ object PyCodec {
         case other => Cont.defer(() => decC[a, R](o.of(), other, at))(r => Cont.Pure(r.map(Some(_))))
       case l: Schema.SList[a] => v match
         case Arr(xs) => decAll[a, R](l.of(), xs, at).flatMap(r => Cont.Pure(r.map(_.toList)))
+        case Table(f) => Cont.Pure(f.rows[a](using l.of()).left.map(c => s"${at.where}: ${c.message}").map(_.toList))
         case _ => Cont.Pure(no("a list"))
       case sv: Schema.SVector[a] => v match
         case Arr(xs) => decAll[a, R](sv.of(), xs, at)
+        case Table(f) => Cont.Pure(f.rows[a](using sv.of()).left.map(c => s"${at.where}: ${c.message}"))
         case _ => Cont.Pure(no("a list"))
       case p: Schema.SProduct[X] => v match
         case Dict(kv) =>

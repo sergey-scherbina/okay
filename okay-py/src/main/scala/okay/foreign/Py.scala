@@ -26,6 +26,16 @@ enum PyValue:
    * (foreign-typed-calls): before it a dict answered by a call was sent
    * as a FRAME and reached okay as None, or failed in the shim */
   case Dict(kv: Vector[(String, PyValue)])
+  /** a FRAME AS A VALUE (pyvalue-table): a table anywhere a value goes —
+   * inside a call's answer, among a call's arguments — so a function can
+   * answer `{rows: frame, state: …}` and a stateful step can carry its
+   * state as a value beside its rows. On the wire it is the frame's own
+   * shape tagged `frame`, which Go, Rust and Haskell already write for a
+   * nested table and R for a nested data.frame; Python marks one with
+   * `okay.frame(cols)` (or answers a pandas frame). A frame's COLUMN may
+   * not hold a frame: refused by name on both roads, so the nesting is
+   * bounded at one. */
+  case Table(frame: PyFrame)
   /** an object HELD in the worker (foreign-object-handles): not its
    * value, a handle to it — an argument like any other, which the shim
    * turns back into the object */
@@ -483,6 +493,9 @@ private[okay] object Wire {
       case PyValue.Ref(r) => Json.JObj(Vector("t" -> Json.JStr("ref"),
         "id" -> Json.JNum(r.id.toDouble), "type" -> Json.JStr(r.pyType)))
       case PyValue.NA(of) => Json.JObj(Vector("t" -> Json.JStr("na"), "of" -> Json.JStr(of)))
+      // a frame is one level: its cells are scalars (a Table cell is refused
+      // in encCol), so this leaf's recursion into `enc` is bounded at one
+      case PyValue.Table(f) => encFrameColumnar(f)
       case PyValue.Arr(_) | PyValue.Dict(_) =>
         throw IllegalStateException("unreachable: containers are handled by the work-list")
 
@@ -551,6 +564,11 @@ private[okay] object Wire {
             case (Some(Json.JNum(i)), _) => PyValue.Ref(PyRef(i.toLong, "?"))
             case _ => PyValue.PyNone
           case Some(Json.JStr("na")) => PyValue.NA(unboxed(m.get("of")).collect { case Json.JStr(t) => t }.getOrElse("logical"))
+          // a frame inside a value (pyvalue-table); a malformed one is the
+          // wire's error, not a None — a None would be a wrong answer
+          case Some(Json.JStr("frame")) => decFrame(j) match
+            case Right(f) => PyValue.Table(f)
+            case Left(c) => throw IllegalStateException(s"a frame inside a value: ${c.message}")
           // R's own tags before foreign-one-value (shim v8 and older journals),
           // still READ so a host meeting its older frames is not stuck
           case Some(Json.JStr("i")) => unboxed(m.get("v")) match
@@ -625,6 +643,8 @@ private[okay] object Wire {
     "cols" -> Json.JArr(f.cols.map((n, col) => encCol(n, col)))))
 
   private def encCol(name: String, col: Vector[PyValue]): Json =
+    if col.exists(_.isInstanceOf[PyValue.Table]) then
+      throw IllegalArgumentException(s"column '$name' holds a frame: a frame's column may not hold a frame (pyvalue-table)")
     columnType(col) match
       case None =>
         Json.JObj(Vector("name" -> Json.JStr(name), "cells" -> Json.JArr(col.map(enc))))
@@ -688,7 +708,13 @@ private[okay] object Wire {
         case _ => Left(Condition("WireError", "a frame without cols"))
     case other => Left(Condition("WireError", s"expected a frame, got $other"))
 
-  private def decCol(j: Json): Either[Condition, (String, Vector[PyValue])] = j match
+  private def decCol(j: Json): Either[Condition, (String, Vector[PyValue])] = decColRaw(j).flatMap { (name, cells) =>
+    if cells.exists(_.isInstanceOf[PyValue.Table]) then
+      Left(Condition("WireError", s"column '$name' holds a frame: a frame's column may not hold a frame (pyvalue-table)"))
+    else Right(name -> cells)
+  }
+
+  private def decColRaw(j: Json): Either[Condition, (String, Vector[PyValue])] = j match
     case Json.JArr(Vector(Json.JStr(n), Json.JArr(vals))) => Right(n -> vals.map(dec))
     case Json.JObj(fs) =>
       val m = fs.toMap

@@ -703,6 +703,16 @@ so a death loses it and the partition recomputes elsewhere:
     Flow.slices(Rows.of(p.n), parts).statefulIn[Run](mod, "open", "step", "finish")
 ```
 
+The functional twin, `StatefulValue[M]`, holds nothing: `open(params)`
+answers the state, `step(frame, state)` answers the rows AND the next
+state, `finish(state)` the last rows, and the JVM carries the state
+between calls — which is why a compiled worker (Go, Rust, Haskell), whose
+values are never changed in place, has this form and not the other:
+
+```scala
+Flow.slices(Rows.of(p.n), parts).statefulValueIn[Run, Long, Factor](mod, open, step, finish, Factor(0))
+```
+
 The interpreter holding a partition's state is given back on every path:
 by `finish` at the partition's end, by `abandon` when a step fails, and —
 when something downstream stops reading early, a `take` — by `abandon` when

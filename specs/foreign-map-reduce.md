@@ -341,7 +341,7 @@ object Model:
   threads with `@volatile var += 1` lost an update (read 3 of 4) — an
   `AtomicInteger` in the test, and a reminder that partitions are threads.
 
-## Stage 5 — PROPOSED: a functional stateful stage, for the compiled workers too
+## Stage 5 — a functional stateful stage, for the compiled workers too (pyvalue-table)
 
 Decision 23 of specs/foreign-one.md: Go, Rust and Haskell hold VALUES —
 kept, passed, released, never changed in place — so `Stateful[M]`, whose
@@ -355,32 +355,60 @@ step(frame, state)   -> {rows: frame, state: state'}
 finish(state)        -> frame
 ```
 
-— three plain calls with a table among the arguments (what `frame` already
-is for a compiled worker since foreign-one-held), no held object, no ref,
-the state `Schema`-typed on the JVM and sent back each chunk. It is the
-natural shape for those three languages (an immutable accumulator), it
-would also serve Python and R (a `StatefulValue[M]` beside `Stateful[M]`,
-each optional, as the rule says), and it costs the state's size on the wire
-per chunk — a running sum is bytes, a window is its rows.
+— three plain calls with a table among the arguments, no held object, no
+ref, the state `Schema`-typed on the JVM and sent back each chunk.
 
-WHAT BLOCKS IT, found before code: the JVM's value decoder (`okay.foreign
-Wire.dec`) has NO frame case — a `{"t":"frame"}` NESTED in a call's answer
-becomes a `Dict` of its raw fields, since `PyValue` has no table case and
-frames are read only as a frame op's whole answer (`decFrame`). So
-`step`'s `{rows, state}` cannot be read today. Two roads, both in
-okay-foreign, the arc's own module:
-- a `PyValue.Table` case, decoded where `t == "frame"` inside a value and
-  encoded back — every `match` over `PyValue` in the module gains a case
-  (exhaustiveness names each); the cleanest, and the one that also lets a
-  call ANSWER a frame anywhere;
-- or a `frame` op variant whose answer is a frame PLUS a value
-  (`{"ok": {"t": "frame", …}, "state": …}`), read by `decFrame`'s caller
-  — smaller, but a second shape of answer for one op.
+```scala
+trait StatefulValue[-M]:
+  def streamer[A: Schema, B: Schema, St: Schema, P: Schema]
+              (module: M, open: String, step: String, finish: String, params: P, workers: Int): Streamer[A, B]
+```
 
-Posted in the room (2026-09-27) for the foreign-one author; not built
-here, since either road is theirs to shape. Until then a compiled
-worker's stateful stage is written as `Reduces` where the state is the
-partial (a running sum IS a reduce), which needs nothing new.
+WHAT BLOCKED IT, found before code (2026-09-27): the JVM's value decoder
+(`okay.foreign.Wire.dec`) had NO frame case — a `{"t":"frame"}` NESTED in
+a call's answer became a `Dict` of its raw fields, since `PyValue` had no
+table case and frames were read only as a frame op's whole answer
+(`decFrame`). Two roads: a `PyValue.Table` case (the cleanest, and the one
+that also lets a call ANSWER a frame anywhere), or a `frame` op variant
+whose answer is a frame plus a value (smaller, but a second answer shape
+for one op). The operator chose the first ("Делай а").
+
+- **`PyValue.Table(frame)`.** `Wire.enc/dec` write and read it where
+  `t == "frame"` at any depth of a value; a frame's own COLUMN may not
+  hold a frame — refused by name on the way out (`IllegalArgumentException`)
+  and on the way in (a `WireError` condition) rather than quietly
+  flattened, because a column is one kind of cell and the columnar
+  encoders (`ArrowFrames.kind`) have no cell kind for it. `PyCodec`
+  reads a `Vector[A]`/`List[A]` from a `Table` by `A`'s Schema, so
+  `{rows: frame, state: …}` decodes into a case class. The Python shim
+  gains `okay.frame(cols)`, a `dict` subclass `enc` tags as a frame
+  wherever it sits (a pandas frame is tagged the same); Go, Rust and
+  Haskell already tagged a nested table, R's `enc` a nested data.frame.
+- **`StatefulValue[-M]`**, beside `Stateful` (each optional):
+  `StatefulValue.py/r/worker/jvm`, `JvmModule.streamValue(open, step,
+  finish)(p => st, (st, rows) => (out, st'), st => last)`,
+  `flow.statefulValueIn[B, St, P](module, open, step, finish, params)`.
+  Because nothing is held, NO worker is leased for the partition: any
+  worker of the pool takes the next step and a death costs the chunk a
+  retry, not the partition — the cheaper fault model of the two. The
+  price is the state's size on the wire per chunk: a running sum is
+  bytes, a window is its rows. A step that answers something other than
+  `{rows, state}` is a `StepShape` failure naming what came.
+
+- [x] A frame inside a dict, a list, and alone crosses the wire and comes
+      back a `Table`, cells intact; nesting a frame in a column is refused
+      by name both ways; rows are read from a `Table` by Schema
+      (`TestPyValueTable`, okay-py, default gate).
+- [x] Over python3: `okay.frame(...)` inside an answered dict arrives as a
+      `Table`, a plain dict of lists stays a dict, a `Table` argument
+      arrives as a dict of columns (`TestPyFrameInValue`, Live).
+- [x] The running sum per PARTITION with the state a value: opened and
+      finished once on each of four, the finals summing to the total,
+      `open` seeded from the parameters, an empty partition, a module type
+      without the typeclass refused at compile time naming `StatefulValue`
+      — on the JVM (`TestStatefulValue`, default gate), in python3
+      (`TestPyStatefulValue`, Live) and in a cargo-built Rust worker
+      (`TestRustStatefulValue`, Live), the same job text.
 
 ## Results
 

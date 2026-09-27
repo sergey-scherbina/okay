@@ -81,6 +81,9 @@ object Jvm:
     case PyValue.Bytes(b) => b
     case PyValue.Arr(xs) => xs.map(jvm(_, depth + 1)).asJava
     case PyValue.Dict(kv) => kv.map((k, x) => k -> jvm(x, depth + 1)).toMap.asJava
+    // a frame as a value: a map of columns, each a list — the dict-of-lists a
+    // frame function takes
+    case PyValue.Table(f) => f.cols.map((k, col) => k -> col.map(jvm(_, depth + 1)).asJava).toMap.asJava
     case PyValue.Ref(r) => r
 
   /** the Frege type of a Schema, where the JVM value `jvm` answers is that

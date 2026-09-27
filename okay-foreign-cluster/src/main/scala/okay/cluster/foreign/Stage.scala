@@ -118,6 +118,16 @@ extension [A](flow: Flow[A])
                    (using st: Stateful[module.type], sa: okay.codec.Schema[A], sb: okay.codec.Schema[B]): Flow[B] =
     Stateful.through(flow, st.streamer[A, B](module, open, step, finish, workers), batch)
 
+  /** a FUNCTIONAL stateful stage in whatever language the module's type
+   * says: `open(params) -> state`, `step(frame, state) -> {rows, state'}`,
+   * `finish(state) -> frame`, the state a value the JVM carries — the
+   * compiled workers' stateful stage (stage 5) */
+  def statefulValueIn[B, St, P](module: Any, open: String, step: String, finish: String, params: P,
+                                batch: Int = Stage.Batch, workers: Int = Stage.Workers)
+                               (using sv: StatefulValue[module.type], sa: okay.codec.Schema[A], sb: okay.codec.Schema[B],
+                                sst: okay.codec.Schema[St], sp: okay.codec.Schema[P]): Flow[B] =
+    Stateful.through(flow, sv.streamer[A, B, St, P](module, open, step, finish, params, workers), batch)
+
   /** the map in Python: `fn` in `module` takes the frame (a dict of
    * lists, or the `pyarrow.Table` under `@okay.arrow`) and answers one of
    * `B`'s columns; the frame crosses as Arrow where the python has pyarrow */

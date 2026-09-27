@@ -79,6 +79,7 @@ object ArrowFrames extends FrameTables:
     case Dict(_) => "dicts"
     case Ref(_) => "handles"
     case NA(_) => "typed NAs"
+    case Table(_) => "frames"
 
   /** a table as a frame. The shim normalises an answer to the five columns
    * the JSON frame has always had; the model's other lossless kinds map

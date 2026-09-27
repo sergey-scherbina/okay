@@ -151,6 +151,34 @@ final class JvmModule private (val name: String, private val fns: Map[String, An
       // the JVM holds the state in the stage itself: nothing to give back
       def abandon(s: S): Unit = ()))
 
+  /** a FUNCTIONAL stateful stage: `open` makes the state from its
+   * parameters, `step` answers rows AND the next state, `finish` the last
+   * rows — the shape a compiled worker has (StatefulValue) */
+  def streamValue[A, St, B, P](openName: String, stepName: String, finishName: String)
+                              (openF: P => St, stepF: (St, Vector[A]) => (Vector[B], St), finishF: St => Vector[B]): JvmModule =
+    new JvmModule(name, fns.updated(s"value:$openName/$stepName/$finishName", (openF, stepF, finishF)))
+
+  private[foreign] def valueStreamer[A, B, St, P](open: String, step: String, finish: String, params: P): Streamer[A, B] =
+    val self = this
+    fns.get(s"value:$open/$step/$finish") match
+      case Some((o, st, f)) =>
+        // the registry's one cast: the three are the ones `streamValue`
+        // registered under these names
+        val openF = o.asInstanceOf[P => St]; val stepF = st.asInstanceOf[(St, Vector[A]) => (Vector[B], St)]
+        val finishF = f.asInstanceOf[St => Vector[B]]
+        new Streamer[A, B]:
+          val name = s"jvm:${self.name}:$open/$step/$finish"
+          final class S(var state: St)
+          private def guard[X](x: => X): Either[Batcher.Failed, X] =
+            try Right(x)
+            catch case e: Exception => Left(Batcher.Failed(e.getClass.getSimpleName, Option(e.getMessage).getOrElse("")))
+          def open(): Either[Batcher.Failed, S] = guard(S(openF(params)))
+          def step(s: S, rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
+            guard(stepF(s.state, rows)).map { (out, next) => s.state = next; out }
+          def finish(s: S): Either[Batcher.Failed, Vector[B]] = guard(finishF(s.state))
+          def abandon(s: S): Unit = ()
+      case _ => throw IllegalArgumentException(s"the JVM module '$name' has no value stream '$open'/'$step'/'$finish' (it has $names)")
+
   private[foreign] def model[P](fn: String, params: P): Model =
     val self = this
     fns.get(s"model:$fn") match

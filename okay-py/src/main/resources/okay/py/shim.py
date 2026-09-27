@@ -21,8 +21,17 @@ SHIM = 9
 # a JSON number is a double: exact only up to 2**53
 EXACT = 2 ** 53
 
+class Frame(dict):
+    """a dict of columns MARKED as a frame (pyvalue-table): `okay.frame({...})`
+    crosses tagged `frame` wherever it sits in a value — inside a dict a
+    function answers, say — so the host reads a table, not a dict of lists;
+    a pandas frame inside a value crosses the same way"""
+    pass
+
 def enc(v):
     if v is None: return None
+    if isinstance(v, Frame) or (hasattr(v, "to_dict") and not isinstance(v, dict)):
+        return enc_frame(v)
     if isinstance(v, bool): return v
     if isinstance(v, float):
         if math.isnan(v): return {"t": "nan"}
@@ -484,6 +493,7 @@ okay_module.okay_call = _call
 okay_module.call = _call          # the old name, kept
 okay_module.OkayError = OkayError
 okay_module.arrow = _arrow_marker
+okay_module.frame = Frame
 sys.modules["okay"] = okay_module
 
 def serve(req):
