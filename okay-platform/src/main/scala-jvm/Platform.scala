@@ -422,7 +422,6 @@ object Schedulers {
     private val workers: Array[Worker] = Array.tabulate(n + overflow)(i => Worker(i))
     /** how many of them exist; the extras are started by the watchdog */
     private val live = java.util.concurrent.atomic.AtomicInteger(n)
-    private val completed = java.util.concurrent.atomic.AtomicLong()
     @volatile private var lastCompleted = -1L
     // DEBUG-PROBE (schedulers-family): what actually happened
     private[okay] val activations = java.util.concurrent.atomic.AtomicLong()
@@ -465,7 +464,9 @@ object Schedulers {
       /** true from the moment the worker decides to park until it runs
        * again: what a submitter reads to wake it */
       @volatile var parked = false
-      var ran = 0L   // diagnostics only: plain, so the hot path has no fence
+      /** tasks run: plain, so the hot path has no fence. The diagnostics
+       * read it, and the stuck-check SUMS it on its tick (see there) */
+      var ran = 0L
       var stolen = 0L
       val thread: Thread = { val t = Thread(this, s"okay-own-${Owned.this.id}-$id"); t.setDaemon(true); t }
 
@@ -513,7 +514,6 @@ object Schedulers {
             val _ = t.exec()
             ran += 1L
             windowRan += 1
-            if stuckAfterMillis > 0L then { val _ = completed.incrementAndGet() }
             // THE HELPER RULE, in two clauses, because the fork/join
             // table has two columns. Work stays HOME while the queue
             // drains fast — that is kyo's win at 30 ns a fiber, where
@@ -688,7 +688,17 @@ object Schedulers {
       val check: Runnable = () =>
         val pending = submissionsSize.get > 0 || { var any = false; var i = 0; val alive = live.get
           while i < alive do { if workers(i).size > 0 then any = true; i += 1 }; any }
-        val done = completed.get
+        // "has anything completed?" as the SUM of the workers' plain `ran`
+        // counters, read on the tick (own-managed-blocking). It was a
+        // global `completed.incrementAndGet()` on EVERY task whenever the
+        // check was on — one contended atomic across all the workers.
+        // A stale or torn read of a plain long can only make one tick see
+        // "no progress" and wake or grow one worker early: the check's own
+        // failure mode is latency, never correctness.
+        var done = 0L
+        var r = 0
+        val grown = live.get
+        while r < grown do { done += workers(r).ran; r += 1 }
         if pending && done == lastCompleted && !activateNext() then
           val next = live.get
           if next < n + overflow && live.compareAndSet(next, next + 1) then
