@@ -13,3 +13,7 @@
       where close publishes the end and the single-consumer park misses
       it. Found by stack-safety-catch-up-okay2's session, not caused by
       it. (2026-09-25)
+      RECURRED 2026-09-27 in op-map-constructors' whole-build gate
+      (okay-gate.1ya5OvIuUv, a State-only change): "SentinelChannel: a
+      consumer never saw the end of a closed channel: runner 2 round 190
+      (finished=true)". The same shape as 2026-09-25.
