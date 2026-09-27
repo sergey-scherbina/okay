@@ -646,3 +646,34 @@ arm itself, not a defect. So correctness is not what stands in the way.
 - Rejected, as the item said in advance: deciding on spawn/join alone.
   On spawn/join alone the flip reads 26x; on the full table it is a loss
   on the two rows a default cannot afford.
+
+
+## Outside bursts: work the monitor could not see (2026-09-27, adaptive-outside-long-fibers-serial)
+
+**Symptom.** The Wrocław headline (compare `okay.wroclaw.OkayBench 8 5 1
+8`, `OkayLane.parallel`): eight CPU-bound slices of ~70 ms, each an
+`Async.spawn` from `main`, then joined. 106/111 ms on Loom, 355/605 ms
+under `-Dokay.scheduler=adaptive` (scheduler-default-decision, part 2).
+
+**Hypothesis, to be checked by a probe before any fix.** A fork from
+OUTSIDE goes into the one submission queue, which wakes a worker only
+when nobody is awake or the queue is deeper than `wakeAbove` (64). The
+first fork wakes one worker; the other seven see it awake and wake
+nobody. The helper rule reads the worker's DEQUE size (zero here), the
+monitor looks only at deques, and the stuck-check fires only when
+nothing completed for a whole `watched` interval (100 ms on
+`adaptive`) — so the eight run mostly one after another.
+
+### Behavior
+- [ ] PROBE: eight 70 ms fibers forked from outside on `adaptive.build`
+      and `own.build`: distinct threads and start times (ProbeOutsideLong)
+- [ ] LAW: eight long fibers forked from OUTSIDE onto parked workers run
+      on more than one thread and overlap in time, on `own` and on
+      `adaptive` (TestOwnMonitor) — red on master first
+- [ ] the fix at the cause the probe names; nothing added to the
+      per-task or per-fork path
+- [ ] must not regress (short tasks stay home): AdversarialBenchmark
+      forkJoin10k_okay (outside) and forkJoin10k_okayInside on
+      `adaptive`, OwnMonitorBenchmark.spawnJoinSeq — alternating arms
+- [ ] must improve: Wrocław 8 fibres under `-Dokay.scheduler=adaptive`,
+      two rounds; the verdict against Loom stated below
