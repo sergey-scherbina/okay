@@ -60,6 +60,17 @@ object Stage:
  * dead worker to the coordinator); any other failure a `Cluster.Refused`
  * naming the stage (the worker's considered answer, not retried) */
 object Attempts:
+  // the foreign pools report to the worker's meter (foreign-pool-metrics):
+  // an open is heard on the thread whose request caused it, and a measured
+  // worker reads what the pools hold at each answer. Installed once, when
+  // the first foreign call of this JVM is made.
+  okay.foreign.Pool.listen { case okay.foreign.Pool.Heard.Opened(_, restart) => okay.cluster.Meter.opened(restart) }
+  okay.cluster.Meter.holding { () => val (open, lent) = okay.foreign.Pool.held; (open.toLong, lent.toLong) }
+
+  /** the listener above, for a road that makes no foreign call through
+   * `run` (a stateful stage's lease) */
+  def install(): Unit = ()
+
   /** ONE FOREIGN CALL, retries included — and the worker's `Meter`
    * hears its time (specs/dataflow.md, stage 15), which is how a
    * measured worker splits a partition's time into engine and foreign */

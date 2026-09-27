@@ -9,9 +9,14 @@ import scala.collection.mutable
  * request and answering it, and — of those — the nanoseconds and the
  * calls a foreign function took. A worker wrapped in `Cluster.measured`
  * answers this beside its answer; the coordinator computes the wire as
- * the round trip minus `nanos`.
+ * the round trip minus `nanos`. And what the foreign POOLS under it did
+ * (foreign-pool-metrics): interpreters opened for this request, and of
+ * those the ones that replaced a dead one; at the answer, how many
+ * interpreters the worker's pools hold and how many are borrowed.
  */
-final case class Work(rows: Long, nanos: Long, foreignNanos: Long, foreignCalls: Long)
+final case class Work(rows: Long, nanos: Long, foreignNanos: Long, foreignCalls: Long,
+                      foreignOpened: Long = 0, foreignRestarts: Long = 0,
+                      interpreters: Long = 0, borrowed: Long = 0)
 
 object Work:
   given Schema[Work] = Schema.derived
@@ -68,6 +73,8 @@ object Meter:
     var rows = 0L
     var foreignNanos = 0L
     var foreignCalls = 0L
+    var opened = 0L
+    var restarts = 0L
 
   private val here: ThreadLocal[Now] = new ThreadLocal[Now]:
     override def initialValue(): Now = Now()
@@ -83,13 +90,27 @@ object Meter:
     h.foreignNanos += nanos
     h.foreignCalls += 1
 
+  /** an interpreter opened for the request on this thread; `restart`
+   * when it replaced one that died (foreign-pool-metrics) */
+  def opened(restart: Boolean): Unit =
+    val h = here.get.nn
+    h.opened += 1
+    if restart then h.restarts += 1
+
+  @volatile private var pools: () => (Long, Long) = () => (0L, 0L)
+
+  /** how a worker reads its foreign pools at each answer: (interpreters
+   * held, borrowed) — installed by whatever keeps pools here */
+  def holding(f: () => (Long, Long)): Unit = pools = f
+
   private[cluster] def begin(): Unit =
     val h = here.get.nn
-    h.rows = 0L; h.foreignNanos = 0L; h.foreignCalls = 0L
+    h.rows = 0L; h.foreignNanos = 0L; h.foreignCalls = 0L; h.opened = 0L; h.restarts = 0L
 
   private[cluster] def taken(nanos: Long): Work =
     val h = here.get.nn
-    Work(h.rows, nanos, h.foreignNanos, h.foreignCalls)
+    val (held, lent) = pools()
+    Work(h.rows, nanos, h.foreignNanos, h.foreignCalls, h.opened, h.restarts, held, lent)
 
 /**
  * A JOB'S METRICS, AS PROMETHEUS TEXT (stage 15): a fold over the
@@ -120,7 +141,7 @@ final class JobStats:
         case Seen.Ended(_, failure) =>
           add("okay_job_runs_total", l(s""",outcome="${if failure.isEmpty then "ok" else "failed"}""""), 1)
         case Seen.Phase(_, _, _) => ()
-        case Seen.Asked(part, _, what, start, end, work) =>
+        case Seen.Asked(part, worker, what, start, end, work) =>
           add("okay_job_attempts_total", l(s""",what="$what""""), 1)
           if hurt.remove((what, part)) then add("okay_job_recomputes_total", l(), 1)
           val took = (end - start).toDouble / 1e9
@@ -132,6 +153,11 @@ final class JobStats:
               add("okay_job_seconds_total", l(""",where="engine""""), (w.nanos - w.foreignNanos).toDouble / 1e9)
               add("okay_job_seconds_total", l(""",where="wire""""), took - w.nanos.toDouble / 1e9)
               add("okay_job_foreign_calls_total", l(), w.foreignCalls.toDouble)
+              if w.foreignOpened > 0 then add("okay_job_foreign_interpreters_opened_total", l(), w.foreignOpened.toDouble)
+              if w.foreignRestarts > 0 then add("okay_job_foreign_restarts_total", l(), w.foreignRestarts.toDouble)
+              if w.interpreters > 0 || w.borrowed > 0 then
+                set("okay_job_foreign_interpreters", l(s""",worker="$worker""""), w.interpreters.toDouble)
+                set("okay_job_foreign_borrowed", l(s""",worker="$worker""""), w.borrowed.toDouble)
             case None =>
               add("okay_job_seconds_total", l(""",where="unmeasured""""), took)
         case Seen.Lost(part, _, what, _, _, _) =>
@@ -176,6 +202,10 @@ object JobStats:
     "okay_job_partition_rows_total" -> "rows the workers read, per partition",
     "okay_job_seconds_total" -> "time spent, by where: engine and foreign on the worker, wire the rest of the round trip",
     "okay_job_foreign_calls_total" -> "foreign function calls on the workers",
+    "okay_job_foreign_interpreters_opened_total" -> "foreign interpreters the workers' pools opened, restarts included",
+    "okay_job_foreign_restarts_total" -> "foreign interpreters opened to replace one that died",
+    "okay_job_foreign_interpreters" -> "foreign interpreters a worker's pools held at its last answer",
+    "okay_job_foreign_borrowed" -> "of those, the ones borrowed — an exchange, a program in flight, a stateful stage's lease",
     "okay_job_epoch" -> "the last epoch a stream committed",
     "okay_job_watermark_lag" -> "how far the watermark stood behind the greatest event time, in event-time units")
 
@@ -216,6 +246,8 @@ final class JobTrace extends Probe:
               "engine_ns" -> (k.nanos - k.foreignNanos).toString,
               "foreign_ns" -> k.foreignNanos.toString,
               "foreign_calls" -> k.foreignCalls.toString,
+              "foreign_opened" -> k.foreignOpened.toString,
+              "foreign_restarts" -> k.foreignRestarts.toString,
               "wire_ns" -> ((e - s) - k.nanos).toString))
             Span(id(), Some(under(s)), s"$what $part", wall(s), wall(e),
               Vector("partition" -> part.toString, "worker" -> w.toString) ++ split, None)

@@ -61,7 +61,7 @@ object Stateful:
    * transformer, the seam the engine already has */
   def through[A, B](in: Flow[A], st: Streamer[A, B], batch: Int): Flow[B] =
     require(batch > 0, "a batch holds at least one row")
-    Flow.Owned(in, st.name, (c: Chunks[A], scope: Scope) => stateful(Chunks.rechunk(c)(batch), st, scope))
+    Flow.Owned(in, st.name, (c: Chunks[A], scope: Scope) => { Attempts.install(); stateful(Chunks.rechunk(c)(batch), st, scope) })
 
   private[foreign] def stateful[A, B](src: Chunks[A], st: Streamer[A, B], scope: Scope): Chunks[B] =
     Chunks.fromIterator(new Iterator[B]:
