@@ -413,33 +413,33 @@ object Effects {
     // `toIndexedSeq` is the Vector itself, a List is copied once
     val v = xs.toIndexedSeq
     val n = v.length
+    // The step's `flatMap` into the NEXT step, with a trailing `map`
+    // folded in (one-bind-hot-steps, 2026-09-27): a step written
+    // `op.map(g)` arrives as `Bind(op, Mapped(g))` and becomes
+    // `Bind(op, y => go(i + 1, g(y)))`, one bind a step instead of two
+    // nested left. Safe HERE, and only for a `go` that builds the rest
+    // and calls no continuation: `g` is the user's pure function and
+    // `go` returns a program, so nothing chains on the stack.
+    // `Free.flatMap` cannot do this in general (specs/map-fusion.md,
+    // refuted). The continuation is built IN PLACE, not through a
+    // `next` closure handed to a helper: that helper's second closure
+    // was 24 B and ~2 µs a step of the builder's residual over a
+    // hand-written loop (map-cost-residual, the ladder).
+    //
+    // The one type claim is the one `Mapped` licenses: found as the
+    // continuation of a `Bind[F, x, B]`, it IS a `Mapped[F, x, B]`.
     def go(i: Int, acc: B): B ! F =
       if i >= n then Return(acc)
-      else step(f(acc, v(i)), (b: B) => go(i + 1, b))
+      else f(acc, v(i)) match
+        case b: Bind[F, x, B] @unchecked => b.f match
+          case k: Free.Mapped[F, x, B] @unchecked => Bind(b.a, (y: x) => go(i + 1, k.f(y)))
+          case _ => Bind(b, (y: B) => go(i + 1, y))
+        case m => Bind(m, (y: B) => go(i + 1, y))
     // DELAYED, so `f` runs only when the program does, as it does in a
     // foldLeft over flatMap: a caller whose `f` touches state (a UI
     // fold updating its focus) must not see the first element's work
     // happen at BUILD time when it converts to this
     Free.delay(() => go(0, z))
-
-  /**
-   * `m.flatMap(next)` for a builder's OWN next step, with a trailing
-   * `map` folded in (one-bind-hot-steps, 2026-09-27). A step written
-   * `op.map(g)` arrives as `Bind(op, Mapped(g))`, and it becomes
-   * `Bind(op, y => next(g(y)))`: one bind a step instead of two nested
-   * left. Safe HERE, and only for a `next` that builds the rest and
-   * calls no continuation: `g` is the user's pure function and `next`
-   * returns a program, so nothing chains on the stack. `Free.flatMap`
-   * cannot do this in general (specs/map-fusion.md, refuted).
-   *
-   * The one type claim is the one `Mapped` licenses: found as the
-   * continuation of a `Bind[F, x, B]`, it IS a `Mapped[F, x, B]`.
-   */
-  private def step[B, C, F[+_]](m: B ! F, next: B => C ! F): C ! F = m match
-    case b: Bind[F, x, B] @unchecked => b.f match
-      case k: Free.Mapped[F, x, B] @unchecked => Bind(b.a, (y: x) => next(k.f(y)))
-      case _ => Bind(m, next)
-    case _ => Bind(m, next)
 
   /** `f` on each element, in order, for its effects: `foldM` with no
    * accumulator, and the same right-nested build */

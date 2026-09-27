@@ -80,3 +80,49 @@ is only user code's own `op.map(f).flatMap(k)`, which `direct` already
 writes as one bind (direct-one-bind-steps) and a hand-written chain can
 write as one `flatMap`.
 
+
+## Where the other four fifths are (map-cost-residual, 2026-09-27)
+
+The Overview's "the gap is real, and it is the step's two binds" was
+only a fifth right. With the map fused in the DIRECT form — `foldM`'s
+own step, one-bind-hot-steps — `rowFoldM` still read 23.4 against
+`rowOneBind`'s 11.3 (history `…-bind-continuation-queue.tsv`, the master
+arm), and `nestedSW` under the refuted direct fusion read 26.2 against
+`nestedSWr`'s 13.7. Both refuted roads above attacked the fifth. This
+lane named the rest with a LADDER of control lanes in
+BuildShapeBenchmark, each rung adding one thing `foldM` does that the
+hand-written `oneBind` loop does not, every lane its own `jmh-lane.sh`
+run on a quiet box (`-f 2 -wi 3 -w 1 -i 5 -r 1 -prof gc`; history.d
+`…-map-cost-residual.tsv`):
+
+| rung | lane | µs | B/op | adds |
+|---|---|---:|---:|---|
+| 0 | rowOneBind | 11.48 | 127 416 | — (one flatMap a step, `acc: Int`) |
+| 1 | rowUnwrap | 17.76 | 175 096 | the step is `op.map(acc + _)`, unwrapped as `step` does: **+6.3 µs, +48 B a step** — the `Bind` + `Mapped` (+ the lambda) that `.map` builds and the builder throws away |
+| 2 | rowFoldM | 23.67 | 231 144 | the same through `!.foldM`: +5.9 µs, +56 B — `go`'s second closure, the boxed accumulator, ~16 B unnamed |
+| — | rowOneBindAcc | 13.44 | 151 424 | `case class Acc(n: Int)` accumulator: ONE small object a step is **+2.0 µs** here, the ladder's calibration |
+| — | rowFoldMAcc | 23.05 | 247 488 | the pair's ratio 1.72x against 2.06x: boxing of the erased `B` is ~2 µs of the residual |
+
+**The residual 12.2 µs over the one-flatMap loop is allocation, about
+2 µs an object: 6.3 in the map node the builder discards, ~2 in the
+boxed accumulator, ~4 in the builder's second closure and generic
+call.** None of it is a rotation and none of it is `Bind(Return, g)`:
+`rowUnwrap` has neither and carries half the gap on its own. The map
+node is the price of the syntax — `op.map(f)` must build something for
+`foldM` to read the function out of — and the only cheaper node is a
+`Map(a, f)` case of `Free` itself (one object instead of `Bind` +
+`Mapped`, −16 B of the 48), which is a core enum change against
+`resume`'s 325-byte budget (`TestInlineBudget`) and is NOT taken here.
+The boxing is Scala 3's (no `@specialized`). The second closure was the
+builder's own and is removed below.
+
+Also read, not measured: form 2 above ("nestedSW 1.21x SLOWER") did
+strictly less work than master and saved only 16 B a step where the
+rotation it skipped weighs ~48. Its diff (`8f40e0bdf`) made
+`inline def flatMap` a call to `Free.bind` with two type tests, on
+EVERY flatMap in the library — the rotation's own `f(_).flatMap(g)`,
+every handler's forwarding bind — while the fusion fired only inside the
+rotation closure. The 21% priced those type tests, not the form. A
+clean retest puts the same continuation in `resume`'s rotation case,
+where the `Bind(Bind(a, f), g)` match already runs, and leaves
+`flatMap` a constructor.
