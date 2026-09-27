@@ -134,7 +134,11 @@ trap 'stop 143' TERM
 lock_wait="${JMH_LANE_LOCK_WAIT:-3600}"
 lock_poll="${JMH_LANE_LOCK_POLL:-10}"
 waited=0
-until take_lock quiet; do
+# FIFO (jmh-lane-fifo): the freed lock goes to the OLDEST queued lane,
+# not to whichever happens to poll first — a lane queued 34 min lost it
+# to one queued 49 s. Our own request was filed above, before the wait
+my_turn() { [ "$(bw_first_want)" = "$$" ]; }
+until my_turn && take_lock quiet; do
   if [ "$waited" -ge "$lock_wait" ]; then
     take_lock   # once more, for its message
     exit 1

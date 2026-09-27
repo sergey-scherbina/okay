@@ -127,7 +127,19 @@ bw_gate_enter() {
 
 bw_gate_leave() { rm -f "$BW_DIR/gates/$$"; }
 
-bw_want() { mkdir -p "$BW_DIR/want" "$BW_DIR/gates"; : > "$BW_DIR/want/$$"; }
+# a request carries its filing time, so the lane lock can serve the
+# OLDEST first (jmh-lane-fifo); an empty one (a script from before that)
+# reads as the oldest of all, which only ever makes us wait for it
+bw_want() { mkdir -p "$BW_DIR/want" "$BW_DIR/gates"; echo "$(date +%s) $$" > "$BW_DIR/want/$$"; }
+
+# the pid of the oldest live request: filing time, then pid
+bw_first_want() {
+  for _p in $(bw_live want); do
+    _l=$(cat "$BW_DIR/want/$_p" 2>/dev/null)
+    set -- $_l
+    echo "${1:-0} $_p"
+  done | sort -n -k1,1 -k2,2 | head -1 | cut -d' ' -f2
+}
 bw_unwant() { rm -f "$BW_DIR/want/$$"; }
 
 case "$(basename "$0" 2>/dev/null)" in

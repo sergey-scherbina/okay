@@ -291,6 +291,30 @@ sleep 0.3
 if pgrep -f "$tmp/scripts/fake-sbt.sh" >/dev/null; then bad "the run it started is still alive"; pkill -f "$tmp/scripts/fake-sbt.sh"; else ok "the run it started is gone"; fi
 rm -rf "$tmp"
 
+say "14. the lock goes to the OLDEST queued lane, not the first to poll (jmh-lane-fifo)"
+new_fixture
+# 2026-09-27: a lane queued 34 min lost the freed lock to one queued 49 s
+cat > "$tmp/scripts/fake-sbt.sh" <<'EOF2'
+#!/bin/sh
+echo "$LANE_ID" >> "$(cd "$(dirname "$0")/.." && pwd)/.work/order"
+exit 0
+EOF2
+chmod +x "$tmp/scripts/fake-sbt.sh"
+sleep 60 & holder=$!
+mkdir -p "$JMH_LANE_LOCK" && echo "$holder" > "$JMH_LANE_LOCK/pid"
+( cd "$tmp" && LANE_ID=old SBT="$tmp/scripts/fake-sbt.sh" exec sh scripts/jmh-lane.sh "Bench.old" 5 > "$tmp/out14a" 2>&1 ) & a=$!
+sleep 2
+( cd "$tmp" && LANE_ID=new SBT="$tmp/scripts/fake-sbt.sh" exec sh scripts/jmh-lane.sh "Bench.new" 5 > "$tmp/out14b" 2>&1 ) & b=$!
+sleep 1.5
+# the NEW lane gets the head start: it is the one polling when the lock frees
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+i=0; while { kill -0 "$a" 2>/dev/null || kill -0 "$b" 2>/dev/null; } && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+kill "$a" "$b" 2>/dev/null
+first=$(head -1 "$tmp/.work/order" 2>/dev/null)
+[ "$first" = old ] && ok "the older lane ran first" || bad "ran first: '${first}' (order: $(tr '\n' ' ' < "$tmp/.work/order" 2>/dev/null))"
+[ "$(wc -l < "$tmp/.work/order" 2>/dev/null | tr -d ' ')" = 2 ] && ok "both lanes ran" || bad "not both ran: $(cat "$tmp/out14a" "$tmp/out14b")"
+rm -rf "$tmp"
+
 say ""
 if [ "$fail" -eq 0 ]; then say "jmh-lane-selftest: PASS"; else say "jmh-lane-selftest: FAIL"; fi
 exit "$fail"
