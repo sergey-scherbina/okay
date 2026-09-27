@@ -35,10 +35,14 @@ class MeasureRemote extends munit.FunSuite:
         .dumpThreads(dump.toString, com.sun.management.HotSpotDiagnosticMXBean.ThreadDumpFormat.JSON)
       fail(s"$what stalled; the threads: $dump")
 
-  private def run(fmt: RemoteFormat, cmp: RemoteCompression, rows: List[Trade], chunk: Int): (Double, Long) =
-    watched(s"${fmt.name}+${cmp.codec.map(_.name)} chunk=$chunk")(runOnce(fmt, cmp, rows, chunk))
+  private def run(fmt: RemoteFormat, cmp: RemoteCompression, rows: List[Trade], chunk: Int,
+                  impl: okay.compress.Compression = okay.compress.Compression.Okay): (Double, Long) =
+    watched(s"${fmt.name}+${cmp.codec.map(_.name)} chunk=$chunk")(runOnce(fmt, cmp, rows, chunk, impl))
 
-  private def runOnce(fmt: RemoteFormat, cmp: RemoteCompression, rows: List[Trade], chunk: Int): (Double, Long) =
+  private def runOnce(fmt: RemoteFormat, cmp: RemoteCompression, rows: List[Trade], chunk: Int,
+                      impl: okay.compress.Compression): (Double, Long) =
+    // the receiver decodes by the Compression in scope (compress-crypto-facades)
+    given okay.compress.Compression = impl
     val server = RemoteModel.loopback()
     val received = Remote.listen[Trade](server)
     val sock = Counting(java.net.Socket(server.getInetAddress.getHostAddress, server.getLocalPort))
@@ -71,4 +75,15 @@ class MeasureRemote extends munit.FunSuite:
         val runs = Vector.fill(5)(run(fmt, cmp, rows, chunk))
         val ms = runs.map(_._1).sorted.apply(2)
         println(f"REMOTE chunk=$chunk%6d ${fmt.name + cmp.codec.fold("")("+" + _.name)}%-10s ${runs.head._2}%10d bytes ${ms}%8.1f ms")
+  }
+
+  test("ZSTD on the wire: ours against aircompressor, both ends, the same chunks") {
+    val rows = trades(200000)
+    val impls = Vector(okay.compress.Compression.Okay, okay.compress.Aircompressor)
+    for chunk <- Vector(1000, 10000); fmt <- Vector(RemoteFormat.arrow, RemoteFormat.Cbor.cbor); impl <- impls do
+      val cmp = RemoteCompression(Some(impl.zstd), 2)
+      run(fmt, cmp, rows.take(20000), chunk, impl): Unit          // warm
+      val runs = Vector.fill(5)(run(fmt, cmp, rows, chunk, impl))
+      val ms = runs.map(_._1).sorted.apply(2)
+      println(f"REMOTE zstd chunk=$chunk%6d ${fmt.name}%-6s ${impl.name}%-14s ${runs.head._2}%10d bytes ${ms}%8.1f ms")
   }

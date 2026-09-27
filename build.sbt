@@ -2370,6 +2370,9 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   )
   .jvmSettings(
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    // okay-compress's optional library implementation, for MeasureRemote's
+    // zstd column (compress-crypto-facades): ours against aircompressor
+    libraryDependencies += "io.airlift" % "aircompressor" % "2.0.3" % Test,
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     // the acceptance test runs `node <linked client>` against a local server

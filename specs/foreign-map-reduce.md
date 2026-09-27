@@ -341,6 +341,47 @@ object Model:
   threads with `@volatile var += 1` lost an update (read 3 of 4) — an
   `AtomicInteger` in the test, and a reminder that partitions are threads.
 
+## Stage 5 — PROPOSED: a functional stateful stage, for the compiled workers too
+
+Decision 23 of specs/foreign-one.md: Go, Rust and Haskell hold VALUES —
+kept, passed, released, never changed in place — so `Stateful[M]`, whose
+`step(frame, state)` MUTATES the state, has no instance for them, and that
+absence is honest. The functional form has: the state a value the JVM
+carries, each step answering the NEXT one beside its rows —
+
+```
+open(params)         -> state
+step(frame, state)   -> {rows: frame, state: state'}
+finish(state)        -> frame
+```
+
+— three plain calls with a table among the arguments (what `frame` already
+is for a compiled worker since foreign-one-held), no held object, no ref,
+the state `Schema`-typed on the JVM and sent back each chunk. It is the
+natural shape for those three languages (an immutable accumulator), it
+would also serve Python and R (a `StatefulValue[M]` beside `Stateful[M]`,
+each optional, as the rule says), and it costs the state's size on the wire
+per chunk — a running sum is bytes, a window is its rows.
+
+WHAT BLOCKS IT, found before code: the JVM's value decoder (`okay.foreign
+Wire.dec`) has NO frame case — a `{"t":"frame"}` NESTED in a call's answer
+becomes a `Dict` of its raw fields, since `PyValue` has no table case and
+frames are read only as a frame op's whole answer (`decFrame`). So
+`step`'s `{rows, state}` cannot be read today. Two roads, both in
+okay-foreign, the arc's own module:
+- a `PyValue.Table` case, decoded where `t == "frame"` inside a value and
+  encoded back — every `match` over `PyValue` in the module gains a case
+  (exhaustiveness names each); the cleanest, and the one that also lets a
+  call ANSWER a frame anywhere;
+- or a `frame` op variant whose answer is a frame PLUS a value
+  (`{"ok": {"t": "frame", …}, "state": …}`), read by `decFrame`'s caller
+  — smaller, but a second shape of answer for one op.
+
+Posted in the room (2026-09-27) for the foreign-one author; not built
+here, since either road is theirs to shape. Until then a compiled
+worker's stateful stage is written as `Reduces` where the state is the
+partial (a running sum IS a reduce), which needs nothing new.
+
 ## Results
 
 foreign-map-reduce (2026-09-25). New JVM module okay-foreign-cluster

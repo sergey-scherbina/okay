@@ -24,7 +24,41 @@ object Measured:
 
     def merge(a, b):
         return {"sum": a["sum"] + b["sum"]}
+
+    # the model lane: fit once, scale every chunk by it
+    def fit(params):
+        return {"by": params["by"]}
+
+    def scale(frame, model):
+        return {"key": frame["key"], "v": [x * model["by"] for x in frame["v"]]}
+
+    # the stateful lane: the same doubling, with a state counted along
+    def sopen():
+        return {"n": 0}
+
+    def sstep(frame, state):
+        state["n"] += len(frame["v"])
+        return {"key": frame["key"], "v": [x * 2 for x in frame["v"]]}
+
+    def sfinish(frame, state):
+        return {"key": [], "v": []}
   """)
+
+final case class By(by: Long) derives Schema
+
+/** the map with a model, and the stateful stage — the same doubling, so
+ * the difference to the plain map is the extension's own cost */
+final class ExtLane(val name: String, py: String, kind: String) extends Job[Scale, Long]:
+  type A = Out
+  def params: Schema[Scale] = summon[Schema[Scale]]
+  def answer: Schema[Long] = summon[Schema[Long]]
+  def flow(p: Scale, parts: Int): Flow[Out] =
+    given Models[okay.foreign.PyModule] = Models.py(py)
+    given Stateful[okay.foreign.PyModule] = Stateful.py(py)
+    val src = Flow.slices(Rows.of(p.n), parts)
+    if kind == "model" then src.mapModel[Out](Model.in(Measured.mod, "fit", By(2)), "scale")
+    else src.statefulIn[Out](Measured.mod, "sopen", "sstep", "sfinish")
+  def sink(p: Scale): Wire[Out, Long] = Wire.fold(Aggregator.sum[Long].contramap[Out](_.v))
 
 final case class Sum(sum: Long) derives Schema
 
@@ -82,13 +116,15 @@ class MeasureForeignMapReduce extends munit.FunSuite:
     val n = 1000000
     val p = Scale(n)
     val expected = Rows.doubled(n)
-    val lanes = Vector(
+    val lanes: Vector[Job[Scale, Long]] = Vector(
       Lane("measure.scala", json, "scala", 4096, reduce = false),
       Lane("measure.py.json", json, "double", 4096, reduce = false),
       Lane("measure.py.arrow", arrow, "double", 4096, reduce = false),
       Lane("measure.py.arrow.64k", arrow, "double", 65536, reduce = false),
       Lane("measure.py.arrow.compute", arrow, "double_arrow", 65536, reduce = false),
-      Lane("measure.py.arrow.reduce", arrow, "double_arrow", 65536, reduce = true))
+      Lane("measure.py.arrow.reduce", arrow, "double_arrow", 65536, reduce = true),
+      ExtLane("measure.py.arrow.model", arrow, "model"),
+      ExtLane("measure.py.arrow.stateful", arrow, "stateful"))
     lanes.foreach(Jobs.register)
     println(s"load before: $load")
     println("%-26s | %10s | %10s".format("lane (1M rows, 4 parts)", "fan ms", "3 workers ms"))
