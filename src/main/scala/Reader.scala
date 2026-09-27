@@ -19,6 +19,10 @@ import okay.Row.at
 enum Reader[R, +A] derives Effect {
   /** read the environment */
   case Ask() extends Reader[R, R]
+
+  /** read the environment through `f`, as ONE operation
+   * (reader-asks-op, 2026-09-27): `read` and `lift` were an Ask and a map */
+  case Asks[R, A](f: R => A) extends Reader[R, A]
 }
 
 object Reader {
@@ -94,7 +98,7 @@ object Reader {
    * them apart (the note above, and `Tag.Of` is the answer when two
    * readers really must be separate members).
    */
-  def read[E, T](using h: Has[E, T]): T ! Reader % E = ask[E].map(h.get)
+  def read[E, T](using h: Has[E, T]): T ! Reader % E = effect(Asks[E, T](h.get))
 
   /**
    * THE ROW OF A BLOCK'S PROGRAM TYPE, recovered by the compiler:
@@ -165,7 +169,7 @@ object Reader {
    * `with apply` form inherits the eagerness. One line each, so the
    * library carries them rather than every call site.
    */
-  def lift[E, A](cf: E ?=> A): A ! Reader % E = ask[E].map(e => cf(using e))
+  def lift[E, A](cf: E ?=> A): A ! Reader % E = effect(Asks[E, A](e => cf(using e)))
 
   /** a Reader program as a context function: run under the ambient E */
   def unlift[E, A, F[+_]](p: A ! Reader % E + F)(using Distinct[Reader % E + F]): E ?=> A ! F = run[E, A, F](summon[E])(p)
@@ -175,6 +179,7 @@ object Reader {
     relay[A, A, Reader % R, F](a)(pure(_)):
       [X, Y] => e => e match
         case Ask() => Cont.Pure(r)
+        case Asks(f) => Cont.Pure(f(r))
 
   /**
    * SCOPED override: `p`'s own asks answer `f(r)`, `r` the AMBIENT
@@ -209,6 +214,7 @@ object Reader {
     // (gadt-on-a-covariant-enum: the same trap SharedOnce.answer met)
     def answer[X](e: Reader[R, X], r2: R): Cont[X, Free[F, A], Free[F, A]] = e match
       case Ask() => shift(k => k(r2))
+      case Asks(g) => shift(k => k(g(r2)))
     ask[R].at[Reader % R + F].flatMap { r =>
       val r2 = f(r)
       (Effects[Free].handle[Reader % R, F](p)(a => pure[F, A](a)):

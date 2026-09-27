@@ -112,6 +112,7 @@ class TestDirectApplicative extends munit.FunSuite {
     given Handler[Reader % Int] = new:
       def handle[A](e: Reader[Int, A]): A = e match
         case Reader.Ask() => 21
+        case Reader.Asks(f) => f(21)
     val prog: Int ! Reader % Int = direct:
       val a = Reader.ask[Int].reflect
       val b = Reader.ask[Int].reflect

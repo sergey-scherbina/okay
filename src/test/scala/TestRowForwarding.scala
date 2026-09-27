@@ -49,6 +49,7 @@ class TestRowForwarding extends munit.FunSuite:
   def readerStep[R]: [X] => (R, Reader[R, X]) => (R, X) = [X] => (r: R, e: Reader[R, X]) => readerOn(r, e)
   private def readerOn[R, X](r: R, e: Reader[R, X]): (R, X) = e match
     case Reader.Ask() => (r, r)
+    case Reader.Asks(f) => (r, f(r))
 
   def writerStep[W]: [X] => (Vector[W], Writer[W, X]) => (Vector[W], X) =
     [X] => (ws: Vector[W], e: Writer[W, X]) => writerOn(ws, e)

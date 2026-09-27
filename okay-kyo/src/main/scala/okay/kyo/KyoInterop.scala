@@ -53,6 +53,10 @@ object KyoInterop {
       case Inject(Reader.Ask()) => Env.get[R]
       case Bind(Inject(Reader.Ask()), k) =>
         Env.get[R].flatMap((r: R) => toKyoEnv(k(r)))
+      // `read`/`lift` are ONE `Asks` since reader-asks-op
+      case Inject(Reader.Asks(f)) => Env.get[R].map((r: R) => f(r))
+      case Bind(Inject(Reader.Asks(f)), k) =>
+        Env.get[R].flatMap((r: R) => toKyoEnv(k(f(r))))
 
   /** Env → Reader: one ask, then their computation runs with it */
   def fromKyoEnv[R, A: Flat](v: A < Env[R])(using Tag[R], Frame): A ! Reader % R =

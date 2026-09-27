@@ -108,6 +108,7 @@ object Stager:
     inline def stage[X](inline op: Row[X]): Handled[Row, R, X] =
       inline op match
         case Reader.Ask() => Handled.shift[Row, R, X](k => env => acc => k(env)(env)(acc))
+        case Reader.Asks(f) => Handled.shift[Row, R, X](k => env => acc => k(f(env))(env)(acc))
         case State.Get() => Handled.shift[Row, R, X](k => env => acc => k(acc._1)(env)(acc))
         case State.Set(s2) => Handled.shift[Row, R, X](k => env => acc => k(s2)(env)((s2, acc._2)))
         case State.Modify(f) => Handled.shift[Row, R, X](k => env => acc => { val s2 = f(acc._1); k(s2)(env)((s2, acc._2)) })
@@ -135,6 +136,7 @@ object Stager:
     inline def stage[X](inline op: Row[X]): Handled[Row, R, X] =
       inline op match
         case Reader.Ask() => Handled.shift[Row, R, X](k => env => k(env)(env))
+        case Reader.Asks(f) => Handled.shift[Row, R, X](k => env => k(f(env))(env))
     def run(env: E)(p: Handled[Row, R, A]): A = Handled.run(p)(a => _ => a)(env)
 
   final class Stateful[S, A] extends Stager[State % S, S => (S, A)]:

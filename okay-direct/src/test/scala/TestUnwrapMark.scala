@@ -16,6 +16,7 @@ class TestUnwrapMark extends munit.FunSuite {
     given Handler[Reader % Int] = new:
       def handle[A](e: Reader[Int, A]): A = e match
         case Reader.Ask() => log += "ask"; 21
+        case Reader.Asks(f) => log += "ask"; f(21)
 
     def viaGlyph: Int ! Reader % Int = Direct.direct(Reader.ask[Int].? * 2)
     def viaPrefix: Int ! Reader % Int = Direct.direct(!Reader.ask[Int] * 2)

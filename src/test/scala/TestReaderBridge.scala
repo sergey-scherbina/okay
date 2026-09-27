@@ -20,8 +20,28 @@ class TestReaderBridge extends munit.FunSuite:
     val counted = relay[Int, Int, Reader % Int, okay.Pure](p)(pure(_)):
       [X, Y] => e => e match
         case Reader.Ask() => asks += 1; Cont.Pure(5)
+        case Reader.Asks(f) => asks += 1; Cont.Pure(f(5))
     assertEquals(!.run(counted), 10)
     assertEquals(asks, 1)
+  }
+
+  // reader-asks-op: lift/read were the shared Ask plus a map
+  test("lift is ONE operation, Asks, and local answers it through f") {
+    Reader.lift[Int, Int]((e: Int) ?=> e + 1) match
+      case Free.Inject(Reader.Asks(_)) => ()
+      case other => fail(s"lift is not one operation: $other")
+    val p: Int ! Reader % Int = Reader.lift[Int, Int]((e: Int) ?=> e * 10)
+    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](4)(p)), 40)
+    val scoped = Reader.local[Int, Int, okay.Pure](_ + 1)(p)
+    assertEquals(!.run(Reader.run[Int, Int, okay.Pure](4)(scoped)), 50)
+  }
+
+  test("a forwarded Asks is answered by the outer Reader") {
+    type Fx = Reader % Int + Writer % String
+    import okay.Row.at
+    val p: Int ! Fx =
+      Reader.lift[Int, Int]((e: Int) ?=> e + 2).at[Fx].flatMap(n => Writer.tell(s"n=$n").at[Fx].map(_ => n))
+    assertEquals(!.run(Reader.run[Int, (Seq[String], Int), okay.Pure](5)(Writer.run[String, Int, Reader % Int](p))), (Seq("n=7"), 7))
   }
 
   test("unlift: a Reader program is a context function run under the ambient E, the rest forwarded") {

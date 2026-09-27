@@ -123,6 +123,9 @@ class TestEffects extends munit.FunSuite {
           case Reader.Ask() =>
             effect[Writer % String + okay.Pure, Unit](Writer("asked"))
               .map(_ => 21.asInstanceOf[X])
+          case Reader.Asks(f) =>
+            effect[Writer % String + okay.Pure, Unit](Writer("asked"))
+              .map(_ => f(21))
       }
 
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
@@ -137,6 +140,7 @@ class TestEffects extends munit.FunSuite {
     val viaTranslate = !.run(!.translate[Int, Reader % Int, okay.Pure](prog) {
       [X] => (e: (Reader % Int)[X]) => e match
         case Reader.Ask() => okay.pure(7.asInstanceOf[X])
+        case Reader.Asks(f) => okay.pure(f(7))
     })
     val viaHandler = !.run(Reader.run[Int, Int, okay.Pure](7)(prog))
     assertEquals(viaTranslate, viaHandler)
@@ -152,6 +156,7 @@ class TestEffects extends munit.FunSuite {
     val told = !.translate[Int, Reader % Int, Writer % String + okay.Pure](prog) {
       [X] => (e: (Reader % Int)[X]) => e match
         case Reader.Ask() => okay.pure(5.asInstanceOf[X])
+        case Reader.Asks(f) => okay.pure(f(5))
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
     assertEquals(a, 5)

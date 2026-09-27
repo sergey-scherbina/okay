@@ -113,7 +113,7 @@ class TestInstances extends munit.FunSuite:
     val hs = Instances.handler[Store](_ => new:
       def handle[A](e: Store[A]): A = e match { case Store.Get() => "ada" })
     val hr = Instances.handler[Reader % Int](_ => new:
-      def handle[A](e: Reader[Int, A]): A = e match { case Reader.Ask() => 7 })
+      def handle[A](e: Reader[Int, A]): A = e match { case Reader.Ask() => 7; case Reader.Asks(f) => f(7) })
 
     // an Effect IS a TypeableK, so the union's split is the row's own
     assertEquals(

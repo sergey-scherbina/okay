@@ -75,6 +75,7 @@ object Bisim:
     def reader[R](samples: R*): Answers[Reader % R] = new Answers[Reader % R]:
       def apply[X](op: Reader[R, X]): List[X] = op match
         case Reader.Ask() => samples.toList
+        case Reader.Asks(f) => samples.toList.map(f)
 
     /** a tell has one answer, and the told value is compared as part
      * of the operation */

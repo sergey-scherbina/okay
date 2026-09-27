@@ -91,4 +91,11 @@ class BuildShapeBenchmark {
   def stateUpdate(): Int =
     val p = !.foldM(items)(0)((acc, i) => State.update[Int, Int](s => (s, s + i)).map(acc + _))
     !.run(State.handle[Int](0)(p))._2
+
+  /** reader-asks-op: a step that is `Reader.lift` (and `read`, the same
+   * shape) — before, the shared Ask and a map; after, ONE `Asks` */
+  @Benchmark
+  def readerLift(): Int =
+    val p = !.foldM(items)(0)((acc, i) => Reader.lift[Int, Int]((e: Int) ?=> e + i).map(acc + _))
+    !.run(Reader.run[Int, Int, Pure](7)(p))
 }
