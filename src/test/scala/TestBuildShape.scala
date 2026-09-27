@@ -55,4 +55,15 @@ class TestBuildShape extends munit.FunSuite {
       case other => fail(s"not one bind: ${other}")
     assertEquals(!.run(State.handle[Int](0)(p)), (6, 1 + 3 + 6))
   }
+
+  test("foldEach: the element's program, then a pure combine, in order; lazy; stack-safe") {
+    val p: Vector[Int] ! W = !.foldEach(Vector(1, 2, 3))(Vector.empty[Int])(x => Writer.tell(x.toString).map(_ => x * 2))(_ :+ _)
+    assertEquals(!.run(Writer.run[String, Vector[Int], Pure](p)), (List("1", "2", "3"), Vector(2, 4, 6)))
+    var combined = 0
+    val q: Int ! W = !.foldEach(List("a", "b"))(0)(s => Writer.tell(s))((acc, _) => { combined += 1; acc + 1 })
+    assertEquals(combined, 0, "combine ran at build time")
+    assertEquals(!.run(Writer.run[String, Int, Pure](q)), (List("a", "b"), 2))
+    val big: Int ! State % Int = !.foldEach(0 until 1000000)(0)(_ => State.modify[Int](_ + 1))((acc, _) => acc + 1)
+    assertEquals(!.run(State.handle[Int](0)(big)), (1000000, 1000000))
+  }
 }

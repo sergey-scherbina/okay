@@ -441,6 +441,28 @@ object Effects {
     // happen at BUILD time when it converts to this
     Free.delay(() => go(0, z))
 
+  /**
+   * A FOLD WHOSE STEP IS ONE BIND by construction (fold-each, 2026-09-27):
+   * `f` is each element's program, and `combine` folds its answer into the
+   * accumulator PURELY.
+   *
+   *     !.foldEach(orders)(0L)(o => price(o))(_ + _)
+   *
+   * `foldM` with the same step written `(acc, x) => f(x).map(combine(acc,
+   * _))` folds that trailing map into its next step, but the map has
+   * already built its Bind and its `Mapped` by then, and they are thrown
+   * away. Here nothing is built but the bind: `f(x).flatMap(a => go(i + 1,
+   * combine(acc, a)))`. `combine` runs where the map did, when the
+   * element's answer arrives. Delayed, indexed and stack-safe as `foldM`.
+   */
+  def foldEach[X, A, B, F[+_]](xs: Iterable[X])(z: B)(f: X => A ! F)(combine: (B, A) => B): B ! F =
+    val v = xs.toIndexedSeq
+    val n = v.length
+    def go(i: Int, acc: B): B ! F =
+      if i >= n then Return(acc)
+      else f(v(i)).flatMap(a => go(i + 1, combine(acc, a)))
+    Free.delay(() => go(0, z))
+
   /** `f` on each element, in order, for its effects: `foldM` with no
    * accumulator, and the same right-nested build */
   def each[X, F[+_]](xs: Iterable[X])(f: X => Unit ! F): Unit ! F =

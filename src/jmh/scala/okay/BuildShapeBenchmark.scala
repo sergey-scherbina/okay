@@ -149,4 +149,11 @@ class BuildShapeBenchmark {
   @Benchmark
   def rowOneBindAcc(): Int =
     State.run[Int, (Seq[String], Acc)](0)(Writer.run[String, Acc, State % Int](oneBindAcc(0, Acc(0))))._2._2.n
+
+  /** fold-each: stateFoldM's work with the step split into the element's
+   * program and a pure combine, one bind a step by construction */
+  @Benchmark
+  def stateFoldEach(): Int =
+    val p = !.foldEach(items)(0)(i => State.modify[Int](_ + i))(_ + _)
+    !.run(State.handle[Int](0)(p))._2
 }
