@@ -10,7 +10,7 @@ only as data.
 | | |
 |---|---|
 | `PyEval` | `Call("module:qualified.name", args)` / `Frame(fn, frame, args)` — both answer `Either[Condition, _]`: a failing call is DATA and the worker survives it |
-| `Value` / `Frame` | None and NaN are DISTINCT; bytes and integral floats ride tagged past JSON's gaps; frames are columnar (dict-of-lists on the far side) |
+| `Value` / `Frame` / `Handle` | the ONE value model every language here speaks (None and NaN are DISTINCT; bytes and integral floats ride tagged past JSON's gaps; frames are columnar, dict-of-lists on the far side; a handle is an object held in the worker). Named `PyValue` / `PyFrame` / `PyRef` until foreign-value-rename; those names stay as aliases |
 | `PySubprocess` | stage 0: one `python3` per session running the stdlib-only shim SHIPPED WITH THE MODULE — the shim/host version handshake refuses drift loudly; the child environment is CLEAN (the parent leaks nothing unless config names it) |
 | `verify` | importlib.metadata presence/version per package, mismatches as data — the wrong venv becomes a loud startup refusal instead of a subtly different model fit |
 | `PyWorkers` | stage 1: N resident processes behind the SAME handler shape — parallelism is N workers and the GIL is then irrelevant; a dead worker throws to its caller and the pool replaces the corpse COLD |

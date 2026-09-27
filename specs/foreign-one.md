@@ -861,6 +861,25 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     the functional stateful stage a compiled worker can have under
     Decision 23 (specs/foreign-map-reduce.md, stage 5).
 
+29. **The value model is named for what it is** (foreign-value-rename,
+    2026-09-28; the operator, 2026-09-27: "PyValue — общий enum на весь
+    okay.foreign — а почему он Py если общий на весь foreign?"). Decision
+    26 moved the package and kept the names "for now"; now is over.
+    `PyValue` → `Value` (its `PyNone` → `Null`, the name Go, Rust and
+    Haskell already use), `PyFrame` → `Frame`, `PyRef` → `Handle` (a
+    handle to an object held in the worker — `Ref` is the enum case that
+    carries one), `PyCodec` → `ValueCodec`. The module types stay per
+    language (`PyModule`, `RModule`, `WorkerModule`, `TsModule`): a module
+    IS Python's or R's. The old names stay as aliases in `okay.foreign`
+    (`type PyValue = Value; val PyValue = Value`, …, `Value.PyNone`), the
+    way `okay.RowLift` stayed for `okay.Row`, so every caller compiles
+    unchanged; `okay.py.Aliases` resolves through them. One name to spell
+    out: inside `enum ForeignEval` the bare `Frame` is the frame OP, so
+    its argument is written `okay.foreign.Frame` there. Test suites named
+    after the old names were renamed with their files
+    (`TestValueCodec`, `TestValueCodecDepth`, `TestValueWalk`,
+    `TestValueTable`, `TestFrameInValue`).
+
 ## Results
 
 - Stage 0 (2026-09-25/26): the spec; the first cut's gap list is
