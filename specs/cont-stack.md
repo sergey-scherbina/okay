@@ -882,6 +882,40 @@ C. **The fast path's bookkeeping** — C1 LANDED 2026-09-25
    exactly that and did not move the lane. Next, filed back as
    cont-stack-fastpath: an EXACT count by class (an allocation
    instrumenting agent, not a sampler) to name the ~21 B an operation.
+   ROUND 4 (2026-09-27/28, cont-stack-fastpath; history.d
+   `cont-stack-fastpath-r4-static`, `-r5-erased`). NAMED: the count by
+   class is a heap histogram `-all` (no GC) before and after 500 warm
+   operations with the GC count checked unmoved across them — every
+   real object, exact to the object, run on the base, master and the
+   branch alike. Base b4934c052 against master 6981bcb50, per
+   statePara op: `Free$Bind` 2995 = 2995, `Free$Inject` 3002 = 3002,
+   `Absorbed` 1001 = 1001, `Reentry` 2000 (48 000 B) against the base's
+   two lambdas 1001 + 999 (48 000 B) — equal — and **`java.lang.Long`
+   2617 against 1745: +872 × 24 B = +20 928 B, the whole gap**. 872 is
+   the values past `Long.valueOf`'s cache (1000 - 128). JFR's
+   `ObjectAllocationOutsideTLAB` with `-XX:-UseTLAB`, recorded over a
+   short batch after warm-up, put the extra box in `PState.get`'s
+   `s => k(s)(s)`: inlined at the call site that lambda is specialised
+   to `S = Long`, so the boxed state is unboxed into it and boxed again
+   for each of its two uses. C2 folded both re-boxes at the base; after
+   cont-stack's `Reentry` it folds one. The receiver refuted first:
+   (r4) `Reentry`'s rare road as a static method handed the fields, on
+   the guess that `this` escaped through it, measured BYTE-IDENTICAL on
+   all four lanes, both rounds (statePara no-switch 29.75 vs 29.74 µs,
+   342 816 B both) — reverted.
+   KEPT (r5): `PState.get`/`set` call ERASED generic bodies (`getAt`,
+   `setAt`) instead of carrying the lambdas, so the state passes through
+   as the object it is — no re-box for the JIT to fold or miss. statePara
+   no switch **28.20 vs master 29.16 µs (0.967x), 300 960 vs 342 816
+   B/op** on both rounds — 21 KB BELOW the base's 321 888, since set's
+   two boxes of `s + 1` are now one; default room 31.23 vs 32.43 µs
+   (0.963x), 301 409 vs 343 265 B. contAnswer and fib100 do not reach
+   the change and read the same bytes (245 904, 21 552); times 1.03x
+   (contAnswer, master alone spread 25.3–27.3 across its rounds) and
+   1.00x. The base's 27.13 µs is still ~1 µs away with no switch and
+   the bytes now lower: what is left is time, not allocation, and the
+   switch's ~3 µs is the count road's, priced by
+   cont-stack-jmh-native-access.
    Below: the plan as written before A. Candidates, each measured alone against the stage
    before, kept only when it pays: `Gauge` as a field of the OUTERMOST
    `Reentry` (found by the same walk) instead of a `Gauged` root per
@@ -903,9 +937,11 @@ D. **The switch itself** — D3 LANDED 2026-09-25 (cont-stack-parked),
    1.15; history.d `cont-stack-parked`). Of the 107 µs a switch cost,
    85 were the thread start and its cold pages, ~18 the wake-ups, ~4
    remain; the 1.08 measured with no switch is the bookkeeping, stage
-   C's. The reader's other knobs stay filed in cont-stack-fastpath —
-   `_setjmp` (326 → ~10 ns a read), the slice at 128 KB — for a
-   profile that shows them.
+   C's. The reader's other knobs — `_setjmp` (326 → ~10 ns a read),
+   the slice at 128 KB — wait for a profile that shows them, filed
+   beside the per-read cost in cont-stack-read-bounds-once
+   (cont-stack-fastpath, where this said they lived, closed 2026-09-28
+   without ever carrying them).
 
 E. **Layer 1 B** — FIRST SLICE LANDED 2026-09-26 (cont-stack-layer1-b):
    answer-using bodies (`k(1) + k(10)`, `a :: k(x)`, interpolation, a

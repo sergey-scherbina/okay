@@ -1,0 +1,4 @@
+2026-09-27	8ee0a0e3b	quiet	cont-stack-fastpath-r4-static-statePara-noswitch vs master	29.750	29.741	1.00	us/op, REFUTED: Reentry rare road (exhausted) a static method handed the fields instead of an instance method handed this; -Dokay.cont.room=1000000 -Xss64m both arms; MIN of 2 alternating rounds, jmh-lane.sh -f2 -wi3 -i5 -prof gc, JDK 26; master 6981bcb50; bytes 342816 on both arms, both rounds (byte-identical): the receiver was not what escaped; reverted
+2026-09-27	8ee0a0e3b	quiet	cont-stack-fastpath-r4-static-statePara vs master	33.345	33.785	0.99	us/op, REFUTED: same series, default room; bytes 343264 vs 343265
+2026-09-27	8ee0a0e3b	quiet	cont-stack-fastpath-r4-static-contAnswer vs master	25.562	25.568	1.00	us/op, REFUTED: same series; bytes 245904 both
+2026-09-27	8ee0a0e3b	quiet	cont-stack-fastpath-r4-static-fib100 vs master	2286.91	2272.52	1.01	ns/op, REFUTED: same series; bytes 21552 both

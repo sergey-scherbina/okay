@@ -16,3 +16,7 @@
       exact road is within noise of the count road, or the residual is
       measured and named. PRIORITY: LOW — at the room a user runs the
       two roads already cost the same.
+      ALSO HERE (moved from the spec's pointer to cont-stack-fastpath,
+      which never carried them; closed 2026-09-28): the reader's other
+      knobs, `_setjmp` for `getcontext` (326 -> ~10 ns a read) and the
+      slice at 128 KB, for a profile that shows them.

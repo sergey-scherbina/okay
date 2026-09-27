@@ -125,9 +125,16 @@ generator steps) reads 1.04x its pre-switch number in JMH, at the same
 bytes per run (since cont-stack-fastpath round 3, 2026-09-26; it read
 1.08–1.17x before, when a `map`'s continuation escaped the JIT's
 escape analysis). A program built of `flatMap`s over a state answer —
-`PState`, the statePara lane — still pays 1.11x with no switch, and
-there the bytes are real objects, about 21 per operation, filed to
-find (`specs/cont-stack.md`, plan stage C). A thousand-level program
+`PState`, the statePara lane — read 1.11x with no switch and 21 more
+bytes per operation until cont-stack-fastpath round 4 (2026-09-28)
+counted them: one `java.lang.Long` per `get`, the state unboxed into a
+lambda specialised to `Long` and boxed again, which the JIT had folded
+away before. `get` and `set` now pass the state through as the object
+it already is, and the lane allocates 12% less than master did and
+less than it did before the switch existed (`specs/cont-stack.md`,
+plan stage C). The lesson generalises to any shift over a primitive
+state: a lambda written at an inline call site is specialised to the
+caller's type, and a boxed value that crosses it is boxed again. A thousand-level program
 that fits its stack pays one stack reading, 0.3 µs.
 
 ## Literature
