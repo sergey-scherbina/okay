@@ -283,6 +283,26 @@ It is its own class, so a row holds it next to a `Throws` (`Chronicle %
 String + Throws % IOError`): validation findings accumulate, and a real
 I/O failure still stops.
 
+**Folding with effects — `!.foldM` and `!.each`** (specs/left-nested-build-cost.md,
+specs/map-fusion.md). A loop over a collection that performs on every
+element is `!.foldM(xs)(z)((acc, x) => …)` or `!.each(xs)(x => …)`, not
+`xs.foldLeft(pure(z))((m, x) => m.flatMap(…))`:
+
+```scala
+val p: Unit ! W = !.each(List("a", "b", "c"))(s => Writer.tell(s))
+val p: Int ! State % Int = !.foldM(1 to 3)(0)((acc, x) => State.modify[Int](_ + x).map(acc + _))
+```
+
+Both build the program right-nested, and 17-27% of the allocation goes
+away. `f` runs when the program runs, as in the foldLeft. What costs time
+is a step made of TWO binds: `op.map(g)` followed by the loop's own
+flatMap is two binds nested left, which the runner rotates on every step
+(28.6 against 12.6 µs per 1000 steps, measured). `!.foldM` and `!.each`
+fold a step's trailing `map` into their own next step, so the line above
+is one bind a step. In a loop of your own that is hot, write the step as
+ONE flatMap: `op.flatMap(x => loop(i + 1, acc + x))`, not
+`op.map(acc + _).flatMap(…)`.
+
 **Fresh values — `Supply`.** One operation, `Supply.next[S]`: each draw
 answers a value not answered before (Launchbury's supply; `Fresh` in
 fused-effects and polysemy). `Supply.run(first)(step)` makes the
