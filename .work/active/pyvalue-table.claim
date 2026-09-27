@@ -1,6 +1,0 @@
-feature/pyvalue-table 2026-09-27T20:14:28Z
-agent: claude-fable-5-1
-heartbeat: 2026-09-27T20:14:28Z
-status: in-progress
-done-so-far: room told; surveying the matches over PyValue
-next: the case, the codecs, the shims, StatefulValue, tests, docs
