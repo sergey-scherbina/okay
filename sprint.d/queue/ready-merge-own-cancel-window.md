@@ -13,3 +13,16 @@
       user on `own` whose sources hold something a missed cancel leaks
       (a channel receive, a socket read). (2026-09-26,
       ready-merge-cancel-race)
+      PROMOTED 2026-09-27 (perf-plan) with the fix named: the drive
+      ALREADY has a "cancelled between operations" door —
+      `Drive.discontinue` (Async.scala:245-248) descends to the
+      leftmost node and calls `discontinue()` on a `Run`/`Await`
+      whose payload is a `Discontinue` (drive-discontinue, the
+      Resource-scope fix). `ReadyMerge` can start with a `Run` carrying
+      a `Discontinue` that is its `cancelAll`, so a cancel that lands
+      before the first park reaches every registration the merge has
+      made; after the park the park's own canceller covers it, as now.
+      Verify with the existing law at 200 rounds on `own`: 2/200 ->
+      0/200, and Loom still 0/200; `TestReadyMerge` green. Also the
+      law `scheduler-default-decision` reads. Spec:
+      specs/ready-merge.md, the Decision that named the window.
