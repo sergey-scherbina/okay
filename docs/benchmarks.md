@@ -66,7 +66,7 @@ them read as "we are slow" or "we are fast" for the wrong reason.
 | run an already-finished program | **0.0021** | ZIO 0.043 | [§0](#0-the-floor--what-each-runtime-charges-to-run-nothing) |
 | 10 000 flatMaps, built and run | **5.5** eager, **95** Cont | kyo 60 | [§1](#1-bind-chain--10k-left-nested-flatmaps-built-and-run) |
 | direct syntax over its own flatMap chain | **1.05x** | zio-direct 0.65x | [§1b](#1b-direct-syntax--the-same-10k-binds-written-as-code) |
-| 10 000 handled reads | **79** | kyo 253 | [§2](#2-reader--10k-asks--writer--10k-tells) |
+| 10 000 handled reads | **60.6** | kyo 253 | [§2](#2-reader--10k-asks--writer--10k-tells) |
 | 10 000 handled writes | **159** | kyo 178 | [§2](#2-reader--10k-asks--writer--10k-tells) |
 | 1 000 State+Writer operations against a plain `while` loop | **7.8** staged, 14.2 Free | plain loop 0.71 (mutable buffer), 2.79 (the same `Vector` log) | [§2c](#2c-against-no-handlers-at-all--the-plain-loop) |
 | fork and join 100 fibers | 24.0 | **kyo 18.5** | [§4](#4-forkjoin--100-trivial-fibers) |
@@ -383,12 +383,13 @@ spellings and the competitors in the one they allow.
 
 | Reader | **Okay ctx direct** | **Okay ctx instance** | **Okay row** | ZIO | cats Kleisli | atnos | kyo Env |
 |---|---|---|---|---|---|---|---|
-| right-nested (recursion) | **0.35** | **46**† | **79** | | | | 253 |
+| right-nested (recursion) | **0.35** | **46**† | **60.6**‡ | | | | 253 |
 | left-nested (foldLeft) | | | **116** | 258 | 346 | 1469 | 382 800* |
 
 († the ctx instance is measured at 1 000 binds — 4.4 µs, scaled ×10
 here — because the chain is stack-bounded at ~2-5k binds; see the
-paragraph below.)
+paragraph below. ‡ effect-op-cost, 2026-09-27; the row read 79 before
+it, from an older session.)
 
 (atnos's left-nested Reader reads 1460 here against the 3123 this
 table carried from an older session — the largest single move in this
@@ -404,7 +405,7 @@ different host. It is recorded, not explained.)
 ONE shared node each rather than a fresh `Inject(Ask())` per call, 32 B
 an operation fewer: the right-nested Reader row reads **60.6 µs, 560 KB**
 against 73.3 µs, 880 KB on master in the same series (min of three
-alternating rounds; this table's 79 is an older session's), and a
+alternating rounds; the 79 this table carried was an older session's), and a
 State+Writer block with 400 gets 13.1 against 14.2 µs. Staged blocks are
 unchanged to the byte. specs/effect-op-cost.md.
 
@@ -456,7 +457,8 @@ the build-on-every-call pair agrees at 2 154 017 on both sides. What
 remains is 3% of TIME with identical bytes, and that was chased and
 CLOSED the same day (`handle-loop-inlining`). `handle`'s loop is 388
 bytes against `FreqInlineSize` 325 and inlines nowhere, where
-`relay`'s 262-byte loop inlines hot — an exact diagnosis that bought
+`relay`'s 262-byte loop (266 at resume-inline-budget-guard,
+2026-09-26, specs/core-gaps.md Stage 4) inlines hot — an exact diagnosis that bought
 nothing: bringing the loop to 318 flipped the verdicts to "inline
 (hot)" and moved no lane, the in-run ratio reading 1.039 / 1.030 /
 1.011 against 1.029 / 1.039 before. The 3% is the one extra test
@@ -727,7 +729,8 @@ here. That is a real loss on this shape and it is stated as one.
 **Why Okay's number.** There is almost no Okay here — that is the
 design. A fiber IS a virtual thread; spawn is `Thread.startVirtualThread`,
 join parks. No fiber runtime of our own means nothing added over the
-floor but 8us of bookkeeping. ZIO and cats IO pay their own
+floor but ~27 ns of bookkeeping per fork/join (measured in the next
+paragraph; the 8 µs once written here did not reproduce). ZIO and cats IO pay their own
 schedulers, run-loops and interruption protocols; kyo sits close to
 the metal too (its scheduler is excellent) — we simply refuse to
 compete by NOT having one.
@@ -739,7 +742,7 @@ fork/join, not 80. bench-refresh 2026-09-08 reads **24.4 against the
 floor's 21.7: 2.7 µs over 100 fork/joins, so ~27 ns each**, and kyo at
 18.3 is now UNDER the raw-Loom floor rather than beside it. The honest
 ratio to quote is 1.13x the floor, not 1.0x and not the 8 µs the
-paragraph above still says. An attempt to shave the join — parking on
+paragraph above once said. An attempt to shave the join — parking on
 the
 `CompletableFuture` directly instead of through the fiber's
 callback and a slot — measured WORSE, 19.6 → 22.3 in every round
@@ -1331,7 +1334,14 @@ the three per-element ones 1.6–9.9 MB.
 
 | **Okay chunked** | ZIO | fs2 chunk-native | Okay elementwise | fs2 singletons |
 |---|---|---|---|---|
-| **13.3** | 51.5 | 94.4 | **122** | 10 746 |
+| **13.3** | 51.5 | 94.4 | **122**§ | 10 746 |
+
+(§ predates source-merge-via-ready, 2026-09-26: the elementwise
+`Source.merge` is now a fiber per side joined by `mergeReady`
+(okay-stream Source.scala, `merge`), and this row has not been re-run
+on that road. The chunked column still runs through the shared
+channel — merge-chunked-via-ready measured the ring road for chunks and
+kept the channel.)
 
 (Re-measured after `Channel.apply`'s default became `growing`
 (default-retable, 2026-09-08). `Okay elementwise` — `Source.merge`,
@@ -1576,7 +1586,11 @@ element at a time (`ZStream.range(chunkSize = 1)`, fs2's `.unchunk`)
 — it is to ask every library the same question:
 
 **These rows predate the default change and are being re-measured
-lane by lane; the ones below carry their 2026-09-06 values.** What is
+lane by lane; the ones below carry their 2026-09-06 values.** (The
+lanes on the elementwise `Source.merge` — `okayElementwise`,
+`elementwiseFromRange` and the okay per-element row — also predate
+source-merge-via-ready, 2026-09-26, which put that merge on `mergeReady`; none was re-run on it. `chunked = true` lanes kept the
+shared channel.) What is
 already known from `default-retable` (2026-09-08), against a noise
 floor of 5.9% established from 54 lanes that cannot be affected by the
 change:
@@ -5465,7 +5479,11 @@ forks, `-prof gc`; rows `ds-*`, `dst-*`, `dib-*`.
 | State + Writer (get/set/tell) | 16.8 µs / 164 928 B | **7.50 / 85 368** | 7.69 / 84 568 |
 | Reader + Throws (nine asks, a guarded raise) | 11.25 / 112 896 | **4.40 / 51 288** | 4.35 / 48 888 |
 
-2.24x and 2.56x over what a user has today, parity to 1% with the
+2.24x and 2.56x over what a user had then (direct-staged's session;
+since effect-op-cost, 2026-09-27, the State+Writer Free lane reads 13.1
+µs / 152 128 B against the staged block's 7.77 in one series, **1.69x**
+— §2c's 14.2 is the same lane before that change; the Reader+Throws row was not
+re-run), parity to 1% with the
 hand-written program (the +800 and +2 400 B are the block's hoisted
 vals). The stagers that ship (direct-stagers): `Stager.All[E, S, W,
 Err, A]` over Reader + State + Writer + Throws in one layout, a subrow

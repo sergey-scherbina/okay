@@ -3,7 +3,7 @@
 Follow-up to jdk-adaptive-scheduler (core) and jdk17-compat-check
 (measurement). That work made `okayJVM` itself adaptive
 (`Schedulers.hasVirtualThreads`, `Schedulers.auto`, see
-`src/main/scala-jvm/Platform.scala:200-209`) and then measured, for real,
+`okay-platform/src/main/scala-jvm/Platform.scala`, object `Schedulers`) and then measured, for real,
 which OTHER modules still call a JDK21+ `Thread`/`Executors` API
 unconditionally and break the first time that code path runs on JDK 17
 (`specs/jdk-compatibility.md`, "Building for JDK 17 is not the question").
@@ -37,7 +37,7 @@ thread that runs `body`, virtual if this JVM has them, platform otherwise."
 Duplicating that branch five times across five modules is exactly the case
 that earns a shared primitive rather than an inline `if` at each site — one
 place to get the naming/daemon-flag/interrupt behavior right, one thing to
-test. Proposed, in core (`src/main/scala-jvm/Platform.scala`, next to
+test. Proposed, in core (`okay-platform/src/main/scala-jvm/Platform.scala`, next to
 `Schedulers`, not inside it — this is a thread primitive, not a scheduler):
 
 ```scala

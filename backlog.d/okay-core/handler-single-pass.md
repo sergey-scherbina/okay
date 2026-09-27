@@ -14,8 +14,9 @@
       re-materialised per layer. That is evidence passing (Xie & Leijen,
       "Generalized Evidence Passing for Effect Handlers", ICFP 2021),
       and it is how Koka and kyo run. The bar is task-state
-      handler-fusion.floor (FusionBenchmark.fusedSWr 13.7 us / 122641
-      B/op per 1000 ops): a stack of 3-4 handlers over a mixed program,
+      handler-fusion.floor (FusionBenchmark.fusedSWr, 13.7 us / 122641
+      B/op per 1000 ops when set; re-measured 12.4 us / 122 624 B,
+      specs/handler-fusion.md's 2026-09-27 re-measure): a stack of 3-4 handlers over a mixed program,
       measured against today's nested `handle`s. The no-tree roads of
       handler-fusion stage B (Eff/Func/Cont 0.58-0.86x) are REFUTED, so
       this must keep the Free tree and change only who walks it.

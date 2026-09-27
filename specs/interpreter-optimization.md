@@ -1,5 +1,13 @@
 # Cont interpreter optimization
 
+**HISTORY (dated 2026-09-27, perf-records-stale).** The code this spec
+describes is gone: since freer-base stage 0 (2026-09-15,
+specs/freer-base.md) `Cont` is `Free[Shift, A]`
+(src/main/scala/Cont.scala, `opaque type Rep`), so there is no `Shift`
+depth field, no `Cont.Fuse` budget and no three-shape `/` runner, and
+BACKLOG `cont-fuse-one-step` was absorbed there. The experiments and
+measurements below are the record of the encoding that preceded it.
+
 ## Overview
 
 The defunctionalized `Cont` (data nodes + tail-recursive `/`) buys stack safety at the

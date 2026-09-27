@@ -139,7 +139,8 @@ this entry is closed because a test said to close it. Every
 order and never claimed to cancel anything.
 
 ## growing-stale-route — a route taken before the swap names the adopted part, and overtakes its own producer
-<!-- status: reopened
+<!-- status: wontfix
+     closed: 2026-09-18 as a documented trade (8af62bc77), see CLOSED below
      reopened: 2026-09-17, TestGrowing round 36, producer 1: 29, +37, 31, 35, -37, 39
      see: the REOPENED section at the end of this entry -->
 <!-- previous status: fixed
