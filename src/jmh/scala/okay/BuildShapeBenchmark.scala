@@ -98,4 +98,55 @@ class BuildShapeBenchmark {
   def readerLift(): Int =
     val p = !.foldM(items)(0)((acc, i) => Reader.lift[Int, Int]((e: Int) ?=> e + i).map(acc + _))
     !.run(Reader.run[Int, Int, Pure](7)(p))
+
+  // ---- map-cost-residual: the ladder from rowOneBind up to rowFoldM
+  //
+  // rowFoldM's map is ALREADY fused in the direct form (Effects.step),
+  // and it still reads ~2x rowOneBind. Each rung below adds ONE of the
+  // things foldM does that oneBind does not, so the gap can be named.
+
+  /** rung 1: rowOneBind's loop, but the step is `op(i, acc)` — the
+   * `Bind(Inject, Mapped)` that `.map` builds — unwrapped the way
+   * `Effects.step` unwraps it. Adds the discarded pair and the run-time
+   * match; still one closure a step, still a primitive accumulator.
+   * The type claims are `step`'s own. */
+  private def unwrap(i: Int, acc: Int): Int ! SW =
+    if i >= N then pure(acc)
+    else op(i, acc) match
+      case b: Free.Bind[SW, x, Int] @unchecked => b.f match
+        case k: Free.Mapped[SW, x, Int] @unchecked => Free.Bind(b.a, (y: x) => unwrap(i + 1, k.f(y)))
+        case _ => Free.Bind(op(i, acc), (y: Int) => unwrap(i + 1, y))
+      case m => Free.Bind(m, (y: Int) => unwrap(i + 1, y))
+
+  @Benchmark
+  def rowUnwrap(): Int =
+    State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](unwrap(0, 0)))._2._2
+
+  /** boxing control: the same two programs over a `case class`
+   * accumulator, so BOTH allocate one accumulator a step. foldM's `B`
+   * is erased and boxes an Int on every step; oneBind's `acc: Int`
+   * never does. If this pair's ratio is smaller than rowFoldM/rowOneBind,
+   * the difference is boxing. */
+  final case class Acc(n: Int)
+
+  private def opAcc(i: Int, acc: Acc): Acc ! SW = (i % 3) match
+    case 0 => State.get[Int].at[SW].map(x => Acc(acc.n + x))
+    case 1 => State.set[Int](i).at[SW].map(x => Acc(acc.n + x))
+    case _ => Writer.tell("w").at[SW].map(_ => Acc(acc.n + 1))
+
+  @Benchmark
+  def rowFoldMAcc(): Int =
+    val p = !.foldM(items)(Acc(0))((acc, i) => opAcc(i, acc))
+    State.run[Int, (Seq[String], Acc)](0)(Writer.run[String, Acc, State % Int](p))._2._2.n
+
+  private def oneBindAcc(i: Int, acc: Acc): Acc ! SW =
+    if i >= N then pure(acc)
+    else (i % 3) match
+      case 0 => State.get[Int].at[SW].flatMap(x => oneBindAcc(i + 1, Acc(acc.n + x)))
+      case 1 => State.set[Int](i).at[SW].flatMap(x => oneBindAcc(i + 1, Acc(acc.n + x)))
+      case _ => Writer.tell("w").at[SW].flatMap(_ => oneBindAcc(i + 1, Acc(acc.n + 1)))
+
+  @Benchmark
+  def rowOneBindAcc(): Int =
+    State.run[Int, (Seq[String], Acc)](0)(Writer.run[String, Acc, State % Int](oneBindAcc(0, Acc(0))))._2._2.n
 }
