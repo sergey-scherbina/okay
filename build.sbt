@@ -1369,7 +1369,8 @@ lazy val sparkTestSettings: Seq[Setting[_]] = Seq(
 
 lazy val okaySpark = (project in file("okay-spark"))
   // okay-codec for `Schema` (SparkSchema: the DataFrame encoder is a fold of it)
-  .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm, compare % "test->compile")
+  // okayParquet (test): the taxi demo reads its month through Bulk.read (bulk-parquet)
+  .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm, compare % "test->compile", okayParquet.jvm % "test->compile")
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(
@@ -2662,7 +2663,8 @@ lazy val okayArrow = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayParquet = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-parquet"))
-  .dependsOn(okayArrow, okayCompress)
+  // okayStream: a Parquet file is a `Bulk` source (bulk-parquet)
+  .dependsOn(okayArrow, okayCompress, okayStream)
   .settings(
     name := "okay-parquet",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

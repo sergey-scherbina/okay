@@ -106,9 +106,16 @@ object Rows:
     private def present(ok: Array[Boolean], i: Int, where: String, what: String): Unit =
       if !ok(i) then fail(where, s"null where the schema has no Option around $what")
 
+    // a timestamp, a duration and a date64 read as their raw value in
+    // their unit, a date32 as its days: a time column lands in a Long
+    // field, and the unit is the column's, named by its type (bulk-parquet)
     private def longs(c: Column, where: String, what: String): (Array[Long], Array[Boolean]) = c match
       case Column.Int64(v, ok) => (v, ok)
       case Column.Ints(_, _, v, ok) => (v, ok)
+      case Column.Timestamp(_, _, v, ok) => (v, ok)
+      case Column.Duration(_, v, ok) => (v, ok)
+      case Column.Date64(v, ok) => (v, ok)
+      case Column.Date32(v, ok) => (v.map(_.toLong), ok)
       case other => fail(where, s"${Column.describe(other)} where the schema has $what")
 
     private def within(lo: Long, hi: Long, what: String): R[Long] = R { (c, w) =>

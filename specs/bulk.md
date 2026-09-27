@@ -158,22 +158,39 @@ Tables.run(SparkBulk(spark))(prog); Tables.run(localBulk)(prog)   // the same va
       turned back, equal to the join as written; unknown sizes are not
       guessed (TestPlan); the rewrite measured A/B on both platforms
       (TestWroclawStages)
-- [ ] bulk-parquet: `Bulk.read(path, format)` reads a file in any
+- [x] bulk-parquet: `Bulk.read(path, format)` reads a file in any
       format by its SPLITS — the pieces that read independently (a
       Parquet row group) — spread with `of` and read by `flatMap`
       wherever they land, so every instance has it with no platform
       reader; a `Bulk.Format` is serializable (a Spark executor reads it)
-- [ ] `ParquetFormat.rows[A]` (okay-parquet): row groups as splits, a
+- [x] `ParquetFormat.rows[A]` (okay-parquet): row groups as splits, a
       group decoded as `A` by its Schema (okay-arrow `Rows`), pruned to
       A's fields at the reader — no Spark, no Hadoop; on `localBulk`
       equal to the rows written (TestParquetBulk)
-- [ ] a Long field reads a timestamp column's raw value in its unit,
+- [x] a Long field reads a timestamp column's raw value in its unit,
       and a date's days (okay-arrow `Rows`), so a timestamp column has a
       Schema field to land in
-- [ ] the taxi demo (TestTaxiAlgebra, Live) reads its month through
+- [x] the taxi demo (TestTaxiAlgebra, Live) reads its month through
       `Bulk.read` — on Spark with our reader on the executors, and in one
       JVM on `localBulk` — and the two agree per hour, the way the old
       Spark-reader lane did
+
+### bulk-parquet, measured (2026-09-27)
+
+The taxi month (the TLC's January 2024 file: 2 964 624 rows, three row
+groups, ZSTD) through `Bulk.read` with our reader: 2 318 848 card-paid
+January trips — the same count pyarrow gives under the same filters —
+loaded and cached on Spark (local[4]) in 3.3 s with the row groups read
+on the executors, and read and aggregated per hour in ONE JVM with no
+Spark in 1.5 s; the two agree at every hour. Pruning is measured, not
+assumed: a type naming two of five columns reads under a fifth of the
+bytes of the one wide column it skips, and the mutant that stops
+pruning reads 2.2 MB instead (caught). Two findings on the way: the
+first pruning check compared against a column of repeated text, which
+Snappy squeezed below two long columns — the instrument, not the
+reader, was wrong, so the wide column is random now; and the old demo's
+`CAST(... AS TIMESTAMP)` read the file's wall-clock times through the
+JVM's zone, where a `Long` field reads them as the file holds them.
 
 ## Out of scope
 - Flink: `flink-core` alone carries no DataStream, so no instance yet;

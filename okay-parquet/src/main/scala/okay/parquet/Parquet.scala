@@ -46,7 +46,7 @@ trait ParquetWriter:
  * is the default on every platform; parquet-java's is `ParquetJava.given`
  * on the JVM. The files are the same either way — each reads the other's.
  */
-trait ParquetCodec:
+trait ParquetCodec extends Serializable:   // a Bulk.Format carries one to a Spark executor
   def name: String
   /** the footer: columns (name, type as `Column.describe` names it) and
    * row groups */

@@ -43,6 +43,18 @@ trait Bulk[D[_]]:
   def csv(path: String, columns: Option[Set[String]]): D[Csv.Row] =
     columns.fold(csv(path))(cs => map(csv(path))(row => row.filter((k, _) => cs(k))))
 
+  /**
+   * A FILE IN ANY FORMAT, read by its SPLITS — the pieces of it that
+   * read independently, a Parquet file's row groups (bulk-parquet). The
+   * splits are listed where this is called, spread with `of`, and each
+   * is read by `flatMap` wherever it lands — so every instance has a
+   * reader for every format with no platform reader at all: on Spark an
+   * executor reads its own row groups. A DEFAULT, like `csv`'s pruning:
+   * an instance with a better road for a format may take it.
+   */
+  def read[A](path: String, format: Bulk.Format[A]): D[A] =
+    flatMap(of(format.splits(path)))(s => format.read(path, s))
+
   /** what a source is worth in bytes, when the platform can tell —
    * the estimate a plan rewrite orders joins by (specs/bulk.md) */
   def size(path: String): Option[Long] = None
@@ -64,6 +76,18 @@ trait Bulk[D[_]]:
   def toChunks[A](d: D[A]): Chunks[A]
 
 object Bulk:
+  /**
+   * A FILE FORMAT, as `Bulk.read` needs it: a file's splits by index, and
+   * one split's rows. Serializable, because a distributed instance ships
+   * it to where a split is read; a format opens the file itself there.
+   */
+  trait Format[A] extends Serializable:
+    def name: String
+    /** the independent pieces of the file at `path` (a row group each) */
+    def splits(path: String): Vector[Int]
+    /** the rows of split `split` of the file at `path` */
+    def read(path: String, split: Int): Iterator[A]
+
 
   /** the collection view: a program over `D[_] : Bulk` reads as a collection */
   extension [D[_], A](d: D[A])(using B: Bulk[D])

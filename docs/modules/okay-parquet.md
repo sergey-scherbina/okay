@@ -43,6 +43,28 @@ none) and have pyarrow read ours. `Parquets.byName("okay" |
 each top-level column's field id where the writer set one — Iceberg's
 column identity — the same from both.
 
+**A file as a `Bulk` source** (bulk-parquet; [specs/bulk.md](../../specs/bulk.md)).
+`Bulk.read(path, format)` reads any format by its SPLITS — here a row
+group each — spread with the platform's `of` and read by its `flatMap`
+wherever a split lands, so every `Bulk` instance reads Parquet with no
+platform reader: `localBulk` in one JVM, and on Spark each executor
+reads its own row groups with this codec, no Spark reader and no
+Hadoop. `ParquetFile.rows[A]` decodes a group as rows of `A` by its
+Schema and PRUNES at the reader to A's fields — a column the type does
+not name is never decompressed. A timestamp column lands in a `Long`
+field as its raw value (the unit is the column's), a nullable column in
+an `Option`. The NYC taxi demo in okay-spark reads its month this way:
+
+```scala
+final case class Ride(tpep_pickup_datetime: Option[Long], fare_amount: Option[Double],
+tip_amount: Option[Double], payment_type: Option[Long]) derives Schema
+def trips[D[_]](bulk: Bulk[D], path: String): D[Trip] =
+bulk.flatMap(bulk.read(path, ParquetFile.rows[Ride]))(trip)
+```
+
+The same `trips` runs on `SparkBulk(spark)` and on `localBulk`, and the
+two agree per hour (TestTaxiAlgebra, Live).
+
 ## What it reads and writes
 
 | Parquet | `Column` | |

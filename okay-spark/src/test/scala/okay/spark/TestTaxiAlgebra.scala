@@ -1,14 +1,42 @@
 package okay.spark
 
-import okay.{Aggregator, Chunks, Monoid, sliding}
+import okay.{Aggregator, Bulk, Chunks, Monoid, localBulk, sliding}
+import okay.Chunks.elements
 import okay.given // Group[N] for every Numeric — the window's evidence
-import SparkInterop.*
+import okay.codec.Schema
+import okay.parquet.ParquetFile
 import org.apache.spark.sql.SparkSession
 import java.io.File
-import java.time.LocalDateTime
+import java.time.{LocalDateTime, ZoneOffset}
 
 /** One trip, reduced to the four numbers this demo aggregates. */
 final case class Trip(minute: Int, hour: Int, fare: Double, tip: Double)
+
+/** the four columns of the TLC's file this demo reads, as the file names
+ * them — every one nullable there; the pickup time in microseconds */
+final case class Ride(tpep_pickup_datetime: Option[Long], fare_amount: Option[Double],
+                      tip_amount: Option[Double], payment_type: Option[Long]) derives Schema
+
+object Ride:
+  private val january = LocalDateTime.of(2024, 1, 1, 0, 0).toEpochSecond(ZoneOffset.UTC) * 1000000L
+  private val february = LocalDateTime.of(2024, 2, 1, 0, 0).toEpochSecond(ZoneOffset.UTC) * 1000000L
+
+  /** a card-paid January ride as a Trip — tips are only recorded for card
+   * payments, so a tip figure over cash rides would be a statistic about
+   * zeros. The pickup time is the wall clock the file holds. */
+  def trip(r: Ride): Option[Trip] = for
+    t <- r.tpep_pickup_datetime if t >= january && t < february
+    fare <- r.fare_amount if fare > 0
+    tip <- r.tip_amount if tip >= 0
+    pay <- r.payment_type if pay == 1
+  yield
+    val at = LocalDateTime.ofEpochSecond(Math.floorDiv(t, 1000000L), 0, ZoneOffset.UTC)
+    Trip((at.getDayOfMonth - 1) * 1440 + at.getHour * 60 + at.getMinute, at.getHour, fare, tip)
+
+  /** the month's trips on any platform: our Parquet reader, a row group
+   * per split — no Spark reader, no Hadoop (bulk-parquet) */
+  def trips[D[_]](bulk: Bulk[D], path: String): D[Trip] =
+    bulk.flatMap(bulk.read(path, ParquetFile.rows[Ride]))(trip)
 
 /** A running maximum: a Monoid with no inverse — nothing un-sees a peak. */
 final case class Peak(value: Double)
@@ -19,7 +47,10 @@ object Peak:
 
 /**
  * The aggregation algebra against real data on real Spark: NYC yellow
- * taxi trips, January 2024 (the TLC's own parquet, ~3M rows).
+ * taxi trips, January 2024 (the TLC's own parquet, ~3M rows), read
+ * through `Bulk.read` with OUR Parquet reader — on Spark each executor
+ * reads its own row groups, and in one JVM `localBulk` reads the same
+ * file the same way (bulk-parquet: Spark's own reader is gone from here).
  *
  * `Live`-tagged: it wants a downloaded file and a Spark session, which
  * is exactly what the default gate must not depend on. Fetch with
@@ -53,26 +84,15 @@ class TestTaxiAlgebra extends munit.FunSuite:
 
   override def afterAll(): Unit = if !munitIgnore then spark.stop()
 
-  // The month as trips. Tips are only recorded for card payments, so a
-  // tip figure over cash rides would be a statistic about zeros.
-  lazy val trips: org.apache.spark.rdd.RDD[Trip] =
+  lazy val bulk: SparkBulk.SparkBulk = SparkBulk(spark)
+
+  // The month as trips, cached on Spark: read by our reader on the executors
+  lazy val trips: SparkBulk.Rows[Trip] =
     val t0 = System.nanoTime()
-    val df = spark.read.parquet(data.getPath)
-      .selectExpr(
-        "CAST(tpep_pickup_datetime AS TIMESTAMP) AS t",
-        "CAST(fare_amount AS DOUBLE) AS fare",
-        "CAST(tip_amount AS DOUBLE) AS tip",
-        "CAST(payment_type AS LONG) AS pay")
-      .where("pay = 1 AND fare > 0 AND tip >= 0")
-      .where("t >= TIMESTAMP '2024-01-01 00:00:00' AND t < TIMESTAMP '2024-02-01 00:00:00'")
-    val rdd = df.rdd.map { r =>
-      val t = r.getAs[java.sql.Timestamp]("t").toLocalDateTime
-      val minute = (t.getDayOfMonth - 1) * 1440 + t.getHour * 60 + t.getMinute
-      Trip(minute, t.getHour, r.getAs[Double]("fare"), r.getAs[Double]("tip"))
-    }.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
-    val n = rdd.count() // materialise, so no timing below is a parquet read
-    println(f"  loaded $n%,d card-paid trips in ${(System.nanoTime() - t0) / 1000000}%,d ms")
-    rdd
+    val rows = bulk.cache(Ride.trips(bulk, data.getPath))
+    val n = bulk.aggregate(rows)(Aggregator.count[Trip]) // materialise, so no timing below is a parquet read
+    println(f"  loaded $n%,d card-paid trips in ${(System.nanoTime() - t0) / 1000000}%,d ms (our reader, on the executors)")
+    rows
 
   // ---------------------------------------------------------------- the algebra
   val rides = Aggregator.count[Trip]
@@ -86,12 +106,12 @@ class TestTaxiAlgebra extends munit.FunSuite:
   val hourly = Aggregator.groupBy((t: Trip) => t.hour)(rides.zip(fares).zip(tipPct))
 
   test("the same aggregator: distributed on Spark, and local over Chunks") {
-    trips.count(): Unit // load and cache OUTSIDE the timer: no lane here is a parquet read
+    val _ = trips // load and cache OUTSIDE the timer: no lane here is a parquet read
     val t0 = System.nanoTime()
-    val onSpark = aggregate(trips)(hourly)
+    val onSpark = bulk.aggregate(trips)(hourly)
     val sparkMs = (System.nanoTime() - t0) / 1000000
 
-    val rows = trips.collect()
+    val rows = bulk.toChunks(trips).elements.toVector
     val t1 = System.nanoTime()
     val local = hourly.present(Chunks.fold(Chunks.fromIterator(rows.iterator))(using hourly.fold))
     val localMs = (System.nanoTime() - t1) / 1000000
@@ -124,8 +144,23 @@ class TestTaxiAlgebra extends munit.FunSuite:
       assert(math.abs(tipS - tipL) < 1e-9, s"tip% at $h: $tipS vs $tipL")
   }
 
+  test("one JVM, no Spark: localBulk reads the same file with the same reader, and agrees per hour") {
+    val t0 = System.nanoTime()
+    val local = localBulk.aggregate(Ride.trips(localBulk, data.getPath))(hourly)
+    val ms = (System.nanoTime() - t0) / 1000000
+    val onSpark = bulk.aggregate(trips)(hourly)
+    println(f"  read and aggregated in one JVM, no Spark: $ms%,d ms")
+    assertEquals(local.keySet, onSpark.keySet)
+    for h <- onSpark.keys do
+      val ((ns, revS), tipS) = onSpark(h)
+      val ((nl, revL), tipL) = local(h)
+      assertEquals(nl, ns, s"count differs at hour $h")
+      assert(math.abs(revS - revL) / revL < 1e-9, s"fares at $h: $revS vs $revL")
+      assert(math.abs(tipS - tipL) < 1e-9, s"tip% at $h: $tipS vs $tipL")
+  }
+
   test("a group is a window: 44,640 minutes of January, rolling revenue") {
-    val perMinute = aggregate(trips)(Aggregator.groupBy((t: Trip) => t.minute)(fares))
+    val perMinute = bulk.aggregate(trips)(Aggregator.groupBy((t: Trip) => t.minute)(fares))
     val minutes = 31 * 1440
     val series = LazyList.tabulate(minutes)(m => perMinute.getOrElse(m, 0.0))
 
