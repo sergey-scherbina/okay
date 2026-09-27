@@ -532,3 +532,50 @@ managed blocking's.
       exactly `n + overflow` (that many finish, one more wedges until
       someone outside the scheduler releases it) (TestManagedBlocking)
 - [ ] the decision, with the table as its reason
+
+### Results, part 1 (2026-09-27) — the reduced run, one round
+Worktree on master 625316caa + this lane's lane and laws; each arm its own
+`scripts/jmh-lane.sh`, loom then adaptive, `-f 2 -wi 3 -i 5`, us/op (lower
+better). AdversarialBenchmark carries an unrelated `shape` param, so each
+fork/join cell below has two runs of 10 samples; both are shown.
+
+| lane | loom | adaptive | loom / adaptive |
+|---|---:|---:|---:|
+| §4b fork/join 10k OUTSIDE, work=100 | 3 279 / 3 221 | 1 773 / 1 824 | 1.8x |
+| §4b fork/join 10k OUTSIDE, work=10 000 | 3 214 / 3 260 | 3 020 / 3 051 | 1.06x |
+| §4b fork/join 10k INSIDE, work=100 | 3 249 / 3 276 | 2 948 / 2 803 * | 1.1x |
+| §4b fork/join 10k INSIDE, work=10 000 | 3 258 / 3 298 | 3 231 / 3 264 * | 1.0x |
+| cancel 1 000 parked | 1 010 / 1 023 | 670 / 673 | 1.5x |
+| `DirectParallelBenchmark.parallel8` | 10.3 | 6.7 | 1.5x |
+
+\* the adaptive inside arm was flagged by jmh-lane's END quiet check on all
+three attempts (load 18-23 with no other sbt running — the lane's own 28
+threads are the likely load) and the last attempt is shown; its error bars
+(5-20%) are inside what separates the cells that matter.
+
+Already measured the same day in the five-way harness (two rounds, his
+settings, `okay` = the default against `okayAdaptive`; ops/s, higher
+better, `.work` results copied into the history rows):
+
+| lane | loom | adaptive | adaptive / loom |
+|---|---:|---:|---:|
+| sequential spawn/join, 1 000 | 485 / 498 | 12 917 / 13 041 | 26x |
+| 8 workers x 4 096, work 0 | 3 959 / 3 990 | 3 781 / 4 312 | 1.0x |
+| 8 workers x 4 096, work 64 | 3 408 / 3 438 | 3 169 / 3 445 | 0.97x |
+| TCP blocking, 64 lanes, 1 ms | 128.0 / 131.9 | **58.2 / 58.4** | **0.45x** |
+| TCP callback, 64 lanes, 1 ms | 131.8 / 128.6 | 157.9 / 157.4 | 1.2x |
+| runtime entry | 151 429 / 148 027 | 138 768 / 146 429 | 0.96x |
+
+The TCP blocking batch is 7.7 ms on loom and 17.2 ms on adaptive (1 / ops);
+the harness records no per-request latency, so there is no histogram — the
+batch time is the latency this lane can state.
+
+**Preliminary verdict: keep `loom`.** `adaptive` wins every CPU-bound
+fork/join and cancel lane (1.0x-1.8x here, 26x on sequential spawn/join)
+and loses the one lane where fibers block: 64 concurrent blocking calls
+read 0.45x, because 64 blocked fibers meet a ceiling of `n + overflow` =
+28 threads — the same bound the law in TestManagedBlocking pins as a
+deadlock when the fiber that would release them is queued behind it. A
+default that is 2.2x slower and can wedge on the program shape Loom makes
+free is the wrong trade for the default; `adaptive` stays one import away.
+Part 2 (second round, §4, Wrocław) decides.
