@@ -212,9 +212,21 @@ private[okay] object ReadyMerge:
      * reads the queue — Dekker's handshake, so a wake-up between the two
      * is seen by one side or the other */
     private def park(): Unit ! R =
-      okay.effect[R, Unit](Async.Await[Unit] { cb =>
+      okay.effect[R, Unit](Async.Await[Unit](parking)).flatMap(_ => again())
+
+    private val cancelling: () => Unit = () => cancelAll()
+
+    /** the park's registration, ONE per merge, and a `Discontinue`
+     * (ready-merge-own-cancel-window): a callback drive that is
+     * cancelled BETWEEN two operations stops before the next one without
+     * performing it, and when that next one is this park the sources the
+     * merge already registered would stay registered. The drive asks the
+     * leftmost node to `discontinue` (Async.Drive.discontinue), and
+     * this answers with the canceller the park itself would have given */
+    private object parking extends ((Either[Throwable, Unit] => Unit) => (() => Unit)), Discontinue:
+      def apply(cb: Either[Throwable, Unit] => Unit): () => Unit =
         waker.set(cb)
         if !woken.isEmpty then fire()
         onPark()
-        () => cancelAll()
-      }).flatMap(_ => again())
+        cancelling
+      def discontinue(): Unit = cancelAll()

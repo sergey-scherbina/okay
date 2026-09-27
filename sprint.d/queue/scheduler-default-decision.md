@@ -19,8 +19,10 @@
       cancel 1 000 parked, `DirectParallelBenchmark.parallel8`, and
       the Wroclaw 8-core row (the headline; it must not move down). A
       correctness column beside the numbers: `TestSchedulerLaws`,
-      `TestAdaptiveScheduler`, the `ready-merge-own-cancel-window` law
-      (it is `own`'s window — see that item), and one new law: N =
+      `TestAdaptiveScheduler`, `TestReadyMerge`'s cancel laws (they
+      run on `own` and Loom since ready-merge-own-cancel-window; the
+      window still open on the callback drive is backlog
+      `ready-merge-cancel-under-consumer-ops`), and one new law: N =
       overflow + 1 fibers blocking at once on the library's own doors
       still finish (managed blocking must grow past overflow for
       LIBRARY blocking, or the decision says the bound out loud).

@@ -85,7 +85,7 @@ every side whether it needs one or not.
       the first cut failed at once and cancelled the parked ones
 - [x] cancelling the merged program while it is parked cancels every
       parked source's registration
-- [ ] a cancel that stops the drive BETWEEN two operations, with the
+- [x] a cancel that stops the drive BETWEEN two operations, with the
       merge's park the next one, cancels every parked source's
       registration — on `own` as on Loom (ready-merge-own-cancel-window:
       the park's registration is a `Discontinue` whose `discontinue` is
@@ -221,6 +221,19 @@ being trusted: the park's canceller as `() => ()` (the cancel law read
 the initial sources were never put in the ring (`size = 0`, `live =
 n`), so the merge parked on its first step with nothing to wake it —
 caught as a gate STALL, located from a `jstack` of the test fork.
+
+**Cancel between operations, 2026-09-27** (ready-merge-own-cancel-window).
+The law (`TestReadyMerge`, "a cancel between the consumer's operation
+and the merge's park…") runs 200 rounds on Loom and 200 on `own`, the
+fiber cancelling itself inside the consumer's operation for the first
+element, and waits on the sources' cancellers (5 s bound), not the
+join. Unfixed: Loom 200/200 cancelled, `own` red at round 0
+(`a=false b=false`). With the park's registration a `Discontinue`:
+both 200/200. The earlier "2/200 before the park" reproduced as a join
+artefact only (probe, `own`, 400 rounds: missed at the join 400/400,
+registered-and-never-cancelled 0/400). What stays open is in
+Decisions and backlog `ready-merge-cancel-under-consumer-ops` (50/50
+leaked on `own`).
 
 **Numbers, 2026-09-26 evening** (ready-merge-numbers, the first lanes
 through `bench-window`; `src/jmh/history.d/2026-09-26T165404Z-ready-merge.tsv`).
