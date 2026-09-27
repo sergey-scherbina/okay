@@ -1,3 +1,6 @@
 2026-09-27T21:40:36Z	b57e03286	-	stateFoldEach vs stateFoldM us/op	17.3	20.9	0.83	BuildShapeBenchmark N=1000 -f 2 jmh-lane
 2026-09-27T21:40:36Z	b57e03286	-	stateFoldEach vs stateOneBind us/op	17.3	9.6	1.80	hand-written ceiling not reached
 2026-09-27T21:40:36Z	b57e03286	-	stateFoldEach vs stateFoldM B/op	143712	191704	0.75	-prof gc -f 1
+2026-09-27T22:53:59Z	6b6c0562f	quiet	stateFoldEach vs stateFoldM us/op, rebased on map-cost-residual in-place foldM	18.07	18.29	0.99	-f 2 -wi 3 -i 5 jmh-lane; parity within error
+2026-09-27T22:53:59Z	6b6c0562f	quiet	stateFoldEach vs stateFoldM B/op, rebased	143712	175704	0.82	-prof gc; -32 B an element
+2026-09-27T22:53:59Z	6b6c0562f	quiet	stateFoldEach vs stateOneBind us/op, rebased	18.07	10.00	1.81	hand-written ceiling not reached

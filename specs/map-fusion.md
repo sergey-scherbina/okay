@@ -156,22 +156,25 @@ so no map is ever built), the second is the language's.
 ## foldEach: one bind a step by construction (fold-each, 2026-09-27)
 
 `!.foldEach(xs)(z)(x => prog(x))(combine)` splits foldM's step into the
-element's program and a PURE combine, so a step is one bind without
-relying on `step`'s Mapped fusion. BuildShapeBenchmark, N = 1000, one
-lane per `Jmh/run` through jmh-lane.sh, `-prof gc`:
+element's program and a PURE combine, so a step never builds the map node
+that foldM then unwraps and discards. BuildShapeBenchmark, N = 1000, one
+lane per `Jmh/run` through jmh-lane.sh, `-f 2 -wi 3 -i 5 -prof gc`, on
+top of map-cost-residual's in-place foldM:
 
 | lane | µs/op | B/op |
 |---|---|---|
-| stateFoldM | 20.9 ± 1.3 | 191 704 |
-| stateFoldEach | 17.3 ± 0.2 | 143 712 |
-| stateOneBind (hand-written ceiling) | 9.6 ± 0.7 | 111 816 |
+| stateFoldM | 18.3 ± 0.2 | 175 704 |
+| stateFoldEach | 18.1 ± 0.6 | 143 712 |
+| stateOneBind (hand-written ceiling) | 10.0 ± 0.1 | 111 816 |
 
-- [x] foldEach is 1.21x faster than foldM and allocates 48 B less per
-  element.
-- The gap to the hand-written ceiling is NOT closed, and it is not the
-  bind count (both are one bind a step): 32 B/element more (two Integer
-  boxes, the generic accumulator and the answer through `combine`) cannot
-  account for 7.7 µs on its own. The rest is presumably the generic
-  `Function1`/`Function2` calls and the indexed read. Not measured
-  further; the next step is to split these apart in a specialised lane
-  before any change.
+- [x] foldEach allocates 32 B less per element (-18%). Its time is the
+  same as foldM's: the difference is inside the error. Against the
+  foldM before map-cost-residual (20.9 µs, 191 704 B) it read 1.21x.
+  The map node that map-cost-residual priced at 6.3 µs is not built
+  here; the time it saves is taken back by `combine`, a second generic
+  call a step.
+- The ceiling is still 1.8x away. What remains is what
+  map-cost-residual's ladder named: the boxed accumulator (erased `B`)
+  and the generic calls. It is not bind count.
+- Use it for MEMORY, where a fold is long and its step is `prog.map(g)`;
+  for time, foldM is the same.
