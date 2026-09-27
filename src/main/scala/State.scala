@@ -232,10 +232,25 @@ object State {
  */
 object PState {
   /** read the state, leaving its type unchanged */
-  inline def get[S, R]: Cont[S, S => R, S => R] = shift(k => s => k(s)(s))
+  inline def get[S, R]: Cont[S, S => R, S => R] = shift(k => getAt(k))
 
   /** write a state of a possibly different type; the old state is the value */
-  inline def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = shift(k => s => k(s)(s2))
+  inline def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = shift(k => setAt(k, s2))
+
+  // The two bodies are GENERIC methods, not lambdas at the inline call
+  // site (cont-stack-fastpath, 2026-09-27). Written inline, the lambda
+  // is specialised to the caller's S: a Long state arrives boxed, is
+  // unboxed into it and boxed AGAIN for each use. Whether C2 folds the
+  // re-box away depends on how deep the continuation's call chain
+  // inlines — at the pre-cont-stack base it did, after cont-stack's
+  // Reentry one of get's two did not, and that one Long per operation
+  // was ALL of statePara's +20 928 B/op (an exact class histogram,
+  // specs/cont-stack.md Results). Erased, the state passes through as
+  // the object it already is: nothing to re-box, whatever inlines.
+  // Public because the expansion at a user's call site calls them; not
+  // an API.
+  def getAt[S, R](k: S => S => R): S => R = s => k(s)(s)
+  def setAt[S, S2, R](k: S => S2 => R, s2: S2): S => R = s => k(s)(s2)
 
   /** run from an initial state to (final state, value) */
   inline def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
