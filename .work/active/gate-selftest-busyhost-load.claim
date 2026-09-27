@@ -1,0 +1,1 @@
+gate-selftest-busyhost-load — gate.sh's watchdog counts CPU in centiseconds (integer seconds read a starved-but-working host as idle)
