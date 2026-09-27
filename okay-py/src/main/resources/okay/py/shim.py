@@ -309,7 +309,14 @@ def reply_frame(rid, out, arrow, exact=False):
             t = t.replace_schema_metadata({"okay": json.dumps({"id": rid, "ok": {"t": "arrow"}})})
             sink = pa.BufferOutputStream()
             with ipc.new_stream(sink, t.schema) as w:
-                w.write_table(t)
+                if t.num_rows == 0:
+                    # write_table sends a zero-row table as its schema alone,
+                    # and a dictionary column's levels go with the batch it
+                    # never writes: one empty batch carries them
+                    # (arrow-empty-dictionary)
+                    w.write_batch(pa.RecordBatch.from_arrays([c.combine_chunks() for c in t.columns], schema=t.schema))
+                else:
+                    w.write_table(t)
             _write_message(sink.getvalue().to_pybytes())
             return
         if hasattr(out, "to_pydict"):

@@ -63,3 +63,24 @@ class TestArrowDictionary extends munit.FunSuite:
     val bad = Table(Vector("d" -> Column.Dictionary(Array(3), levels("a"), false, Array(true))), Vector.empty)
     assert(intercept[IllegalArgumentException](OkayArrow.write(bad)).getMessage.contains("outside a dictionary"))
   }
+
+  test("a zero-row stream that is its schema alone keeps a dictionary field's type (arrow-empty-dictionary)") {
+    // what pyarrow's write_table and R arrow's write_ipc_stream send for a
+    // zero-row table: the schema message, then the end-of-stream marker
+    val none = Array.emptyBooleanArray
+    val empty = Table(Vector("id" -> Column.Int64(Array.emptyLongArray, none),
+      "employment" -> Column.Dictionary(Array.emptyIntArray, levels("employed", "unemployed", "self-employed"), false, none),
+      "grade" -> Column.Dictionary(Array.emptyIntArray, levels("low", "mid", "high"), ordered = true, none)), Vector.empty)
+    val bytes = OkayArrow.write(empty)
+    val bb = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    val schemaLen = bb.getInt(4)
+    val schemaOnly = bytes.take(8 + schemaLen) ++ Array[Byte](-1, -1, -1, -1, 0, 0, 0, 0)
+    val back = OkayArrow.readKeeping(schemaOnly)
+    assertEquals(back.rows, 0)
+    back.cols(1)._2 match
+      case Column.Dictionary(idx, Column.Utf8(vs, _), false, _) => assertEquals((idx.length, vs.length), (0, 0))
+      case other => fail(s"not a dictionary: ${Column.describe(other)}")
+    assert(back.cols(2)._2.asInstanceOf[Column.Dictionary].ordered, "the field's ordered flag")
+    // what OUR writer sends for zero rows keeps the levels themselves
+    assertKept(OkayArrow.readKeeping(bytes).cols(1)._2, empty.cols(1)._2.asInstanceOf[Column.Dictionary])
+  }

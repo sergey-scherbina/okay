@@ -63,6 +63,17 @@ class TestFrameTableExact extends munit.FunSuite:
       same(w.frameTable(s"exactecho:$fn", sent, Vector.empty, exact = true).fold(c => fail(c.toString), identity))
     }
 
+  for fn <- Vector("echo", "via_pandas") do
+    test(s"$fn: a ZERO-row table keeps its dictionary's levels and order (arrow-empty-dictionary)") {
+      val none = Array.emptyBooleanArray
+      val zero = Table(Vector(
+        "level" -> Column.Dictionary(Array.emptyIntArray, Column.Utf8(Array("employed", "unemployed", "retired"), Array.fill(3)(true)),
+          ordered = true, none),
+        "age" -> Column.Ints(32, true, Array.emptyLongArray, none)), Vector.empty)
+      val got = w.frameTable(s"exactecho:$fn", zero, Vector.empty, exact = true).fold(c => fail(c.toString), identity)
+      assertEquals(got.cols.map((n, c) => n -> cells(c)), zero.cols.map((n, c) => n -> cells(c)))
+    }
+
   test("without exact, the answer is narrowed to the frame's kinds, as before") {
     val got = w.frameTable("exactecho:echo", sent.copy(cols = sent.cols.take(3)), Vector.empty).fold(c => fail(c.toString), identity)
     assertEquals(got.cols.map((n, c) => n -> Column.describe(c)), Vector("level" -> "Utf8", "age" -> "Int64", "ratio" -> "Float64"))

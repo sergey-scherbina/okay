@@ -494,8 +494,15 @@ object OkayArrow extends ArrowCodec:
       val f = fields(j)
       val parts = batches.map(_(j))
       (f.name, if parts.nonEmpty then concat(parts, f.name)
-        else f.dictionary.filter(_ => keep).flatMap((id, _, _) => dictionaries.get(id))
-          .fold(empty(f))(d => Column.Dictionary(Array.emptyIntArray, d, f.ordered, Array.emptyBooleanArray)))
+        // no batch at all: pyarrow's `write_table` and R arrow's
+        // `write_ipc_stream` send a zero-row table as its schema alone, so
+        // a dictionary field may have no dictionary either — kept, it is a
+        // Dictionary over an empty one, never a column of another type
+        // (arrow-empty-dictionary)
+        else if keep && f.dictionary.isDefined then
+          val d = dictionaries.getOrElse(f.dictionary.get._1, empty(f.copy(dictionary = None)))
+          Column.Dictionary(Array.emptyIntArray, d, f.ordered, Array.emptyBooleanArray)
+        else empty(f))
     }.toVector
     Table(cols, metadata)
 
@@ -735,7 +742,8 @@ object OkayArrow extends ArrowCodec:
   private def empty(f: Field): Column =
     val none = Array.emptyBooleanArray
     f.typeId match
-      case _ if f.dictionary.isDefined => Column.Utf8(Array.empty[String], none)
+      // decoded: the dictionary's own value type, which is the field's
+      case _ if f.dictionary.isDefined => empty(f.copy(dictionary = None))
       case TypeNull => Column.Nulls(0)
       case TypeInt =>
         if f.tpe.i32(0, 0) == 64 && f.tpe.bool(1, false) then Column.Int64(Array.emptyLongArray, none)

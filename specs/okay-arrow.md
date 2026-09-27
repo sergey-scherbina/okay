@@ -427,15 +427,18 @@ as an empty Utf8. Two causes, one on each side:
   and no dictionary with `empty(f)`, which is Utf8 for any dictionary
   field. So even the TYPE was lost.
 
-- [ ] The reader keeps it: a dictionary field with no batch is, kept, a
+- [x] The reader keeps it: a dictionary field with no batch is, kept, a
       `Column.Dictionary` over its dictionary when one came and over an
       empty one of the value type when none did; decoded, an empty
       column of the value type (no longer Utf8 regardless).
-- [ ] Both shims write a zero-row answer as ONE empty record batch
+- [x] Both shims write a zero-row answer as ONE empty record batch
       (`write_batch` in okay-py; `RecordBatchStreamWriter` over
       `record_batch(df)` in okay-r), which carries the dictionary and so
       the levels. Answers with rows are written as before.
-- [ ] Proof: `TestArrowDictionary` (default gate) on a schema-only
+- [x] Proof: `TestArrowDictionary` (default gate) on a schema-only
       stream; Live, `TestFrameTableExact` (straight and through pandas)
       and `TestRArrowZeroRows` get a zero-row table's levels back in
-      order. Red first.
+      order. Red first: the reader test, both Python cases and the R
+      case failed on master (a dictionary field came back an empty
+      Utf8); green after, beside `TestArrowFrames` 15/15 and `TestRArrow`,
+      `TestRArrowTimestamp`.

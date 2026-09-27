@@ -36,3 +36,28 @@ class TestRArrowTimestamp extends munit.FunSuite:
         assertEquals(wrong.take(5), Vector.empty, s"${wrong.size} of ${us.size} changed")
       case other => fail(s"not a UTC microsecond timestamp: ${Column.describe(other)}")
   }
+
+/** arrow-empty-dictionary: a zero-row answer keeps a factor's levels. R
+ * arrow's `write_ipc_stream` sends a zero-row table as its schema alone,
+ * and the levels go with the batch it never writes */
+class TestRArrowZeroRows extends munit.FunSuite:
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+  override def munitIgnore: Boolean = RArrow.rscript.isEmpty
+  override val munitTimeout = scala.concurrent.duration.Duration(10, "min")
+
+  private given FrameFormat = FrameFormat("arrow", strict = true)
+  private lazy val w = RSubprocess.worker(RArrow.rscript.get, Seq(RArrowEcho.mod))
+  override def afterAll(): Unit = if !munitIgnore then w.close()
+
+  test("a zero-row frame comes back with its factor's levels, in order, the unused ones too") {
+    val none = Array.emptyBooleanArray
+    val sent = Table(Vector(
+      "f" -> Column.Dictionary(Array.emptyIntArray, Column.Utf8(Array("employed", "unemployed", "Київ"), Array.fill(3)(true)),
+        ordered = false, none),
+      "n" -> Column.Ints(32, true, Array.emptyLongArray, none)), Vector.empty)
+    val back = w.frameTable("rarrowecho::echo", sent, Vector.empty, exact = true).fold(c => fail(c.toString), identity)
+    assertEquals(back.rows, 0)
+    back.cols.head._2 match
+      case Column.Dictionary(_, Column.Utf8(vs, _), _, _) => assertEquals(vs.toVector, Vector("employed", "unemployed", "Київ"))
+      case other => fail(s"not a dictionary: ${Column.describe(other)}")
+  }

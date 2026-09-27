@@ -643,7 +643,16 @@ okay_arrow_reply <- function(rid, res) {
       tab[[nm]] <- okay_arrow_time(df[[nm]])
     tab$metadata <- list(okay = jsonlite::toJSON(list(id = rid, ok = list(t = "arrow")), auto_unbox = TRUE))
     sink <- arrow::BufferOutputStream$create()
-    arrow::write_ipc_stream(tab, sink)
+    if (nrow(df) == 0L) {
+      # write_ipc_stream sends a zero-row table as its schema alone, and a
+      # factor's levels go with the batch it never writes: one empty batch
+      # carries them (arrow-empty-dictionary)
+      rb <- arrow::record_batch(df)
+      rb$metadata <- tab$metadata
+      w <- arrow::RecordBatchStreamWriter$create(sink, rb$schema)
+      w$write_batch(rb)
+      w$close()
+    } else arrow::write_ipc_stream(tab, sink)
     as.raw(sink$finish())
   }, error = function(e) NULL)
   if (is.null(bytes)) list(id = rid, ok = enc(as.data.frame(res, stringsAsFactors = FALSE)))
