@@ -35,4 +35,4 @@ specs/foreign-map-reduce.md also gained "Stage 5 — PROPOSED: a functional
 stateful stage, for the compiled workers too", which the sibling lane
 `pyvalue-table` is building.
 
-Commits: (filled at landing).
+Commits: b5021ea54 04cd01e2b (the two lane commits; the landing adds this line).
