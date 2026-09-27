@@ -1098,8 +1098,12 @@ object Delim {
             Next(body, Segs.Watch(d.prompt, ret, shots, <:<.refl[r]: r <:< X, kont))
         }
         // a foreign operation suspends the machine: the residual
-        // program performs it and resumes with the same stack
-        (g => Out(Inject(g).flatMap(x => loop(Next(okay.pure(x), kont)))))
+        // program performs it and resumes with the same stack — at
+        // the head frame's program when it is a bind, not at a `pure`
+        // the loop would pop into it one step later (delim-machine-allocs)
+        (g => Out(Inject(g).flatMap(kont match
+          case k: Segs.K[F, X, ?, R] => x => loop(Next(k.f(x), k.rest))
+          case _ => x => loop(Next(okay.pure(x), kont)))))
 
     loop(Next(prog, Segs.Done()))
   }
