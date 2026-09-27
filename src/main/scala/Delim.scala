@@ -791,14 +791,18 @@ object Delim {
   private enum Segs[F[+_], A, Z]:
     case Done[F[+_], Z]() extends Segs[F, Z, Z]
     case K[F[+_], X, Y, Z](f: X => Y ! Delim + F, rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
-    case Mark[F[+_], X, Z](p: Prompt[X], rest: Segs[F, X, Z]) extends Segs[F, X, Z]
+    /** a delimiter: the prompt's X, which `up` carries to the Y the
+     * operation that installed it answers — the witness the compiler
+     * already holds at the `Push` (`r <: X`), kept on the frame instead
+     * of an identity `K` under it (delim-machine-allocs) */
+    case Mark[F[+_], X, Y, Z](p: Prompt[X], up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
     /** a `dollar` delimiter: the body's X0 leaves through `ret` into
-     * the prompt's X */
-    case Ret[F[+_], X0, X, Z](p: Prompt[X], ret: X0 => X ! Delim + F, rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
+     * the prompt's X, and `up` carries that on as Mark's does */
+    case Ret[F[+_], X0, X, Y, Z](p: Prompt[X], ret: X0 => X ! Delim + F, up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X0, Z]
     /** a watched `dollar` (`dollarResumed`): a `Ret` with its count.
      * Matched LAST wherever the chain is walked, so the plain frames
      * pay no type test for it */
-    case Watch[F[+_], X0, X, Z](p: Prompt[X], ret: X0 => X ! Delim + F, shots: Shots, rest: Segs[F, X, Z]) extends Segs[F, X0, Z]
+    case Watch[F[+_], X0, X, Y, Z](p: Prompt[X], ret: X0 => X ! Delim + F, shots: Shots, up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X0, Z]
 
   /**
    * A CAPTURED part of the chain: the frames `split` copied, which only
@@ -819,12 +823,12 @@ object Delim {
     final case class End[F[+_], Z]() extends Frames[F, Z, Z]
     final class K[F[+_], X, Y, Z](val f: X => Y ! Delim + F)
       extends Hole[F, Y, Z](null), Frames[F, X, Z]
-    final class Mark[F[+_], X, Z](val p: Prompt[X])
-      extends Hole[F, X, Z](null), Frames[F, X, Z]
-    final class Ret[F[+_], X0, X, Z](val p: Prompt[X], val ret: X0 => X ! Delim + F)
-      extends Hole[F, X, Z](null), Frames[F, X0, Z]
-    final class Watch[F[+_], X0, X, Z](val p: Prompt[X], val ret: X0 => X ! Delim + F, val shots: Shots)
-      extends Hole[F, X, Z](null), Frames[F, X0, Z]
+    final class Mark[F[+_], X, Y, Z](val p: Prompt[X], val up: X <:< Y)
+      extends Hole[F, Y, Z](null), Frames[F, X, Z]
+    final class Ret[F[+_], X0, X, Y, Z](val p: Prompt[X], val ret: X0 => X ! Delim + F, val up: X <:< Y)
+      extends Hole[F, Y, Z](null), Frames[F, X0, Z]
+    final class Watch[F[+_], X0, X, Y, Z](val p: Prompt[X], val ret: X0 => X ! Delim + F, val shots: Shots, val up: X <:< Y)
+      extends Hole[F, Y, Z](null), Frames[F, X0, Z]
     /** the first hole of a copy: where its head goes, one per capture */
     final class Head[F[+_], A, E] extends Hole[F, A, E](null)
 
@@ -832,8 +836,8 @@ object Delim {
    * per capture, so the count is "runs of this captured context"
    * (`Shots`). A plain `Ret` is copied as it is: nothing in it is
    * per-capture */
-  private def retake[F[+_], X0, X, Q](r: Segs.Watch[F, X0, X, ?]): Frames.Watch[F, X0, X, Q] =
-    Frames.Watch(r.p, r.ret, Shots(r.shots.resumed))
+  private def retake[F[+_], X0, X, Y, Q](r: Segs.Watch[F, X0, X, ?, ?], up: X <:< Y): Frames.Watch[F, X0, X, Y, Q] =
+    Frames.Watch(r.p, r.ret, Shots(r.shots.resumed), up)
 
   /**
    * The stack cut at a prompt: what was captured and what lies outside
@@ -853,7 +857,7 @@ object Delim {
 
 
   /** a plain mark: the chain up to it, answering the prompt's P */
-  private final case class Plain[F[+_], A, P, Z](captured: Frames[F, A, P], outer: Segs[F, P, Z])
+  private final case class Plain[F[+_], A, P, Q, Z](captured: Frames[F, A, P], up: P <:< Q, outer: Segs[F, Q, Z])
     extends Cut[F, A, P, Z]
 
   /** a `dollar`: the chain up to it WITH a copy of the dollar's own
@@ -863,7 +867,7 @@ object Delim {
    * frame reifies to exactly `ret $ E[v]`. (Until
    * delim-split-wrap-free this was two chains linked by an existential
    * type member, and the capture reified them one after the other.) */
-  private final case class AtDollar[F[+_], A, P, Z](whole: Frames[F, A, P], outer: Segs[F, P, Z])
+  private final case class AtDollar[F[+_], A, P, Q, Z](whole: Frames[F, A, P], up: P <:< Q, outer: Segs[F, Q, Z])
     extends Cut[F, A, P, Z]
 
   /** the machine's state between steps: a program and the stack it
@@ -923,9 +927,9 @@ object Delim {
     @tailrec def reify[A, P](segs: Frames[F, A, P], start: Prog[A]): Prog[P] = segs match
       case Frames.End() => start
       case k: Frames.K[F, A, y, P] => reify(k.rest, start.flatMap(k.f))
-      case m: Frames.Mark[F, A, P] => reify(m.rest, effect[Row, A](Push(m.p, start)))
-      case r: Frames.Ret[F, A, x, P] => reify(r.rest, effect[Row, x](Dollar[A, x](r.p, r.ret, start)))
-      case r: Frames.Watch[F, A, x, P] => reify(r.rest, effect[Row, x](Watched[A, x](r.p, r.ret, start, r.shots)))
+      case m: Frames.Mark[F, A, y, P] => reify(m.rest, m.up.liftCo[Prog](effect[Row, A](Push(m.p, start))))
+      case r: Frames.Ret[F, A, x, ?, P] => reify(r.rest, r.up.liftCo[Prog](effect[Row, x](Dollar[A, x](r.p, r.ret, start))))
+      case r: Frames.Watch[F, A, x, ?, P] => reify(r.rest, r.up.liftCo[Prog](effect[Row, x](Watched[A, x](r.p, r.ret, start, r.shots))))
 
     /** the delimiters this machine has installed, innermost first —
      * what `NoPrompt` prints instead of saying nothing
@@ -934,10 +938,10 @@ object Delim {
     def installed[A, Z](kont: Segs[F, A, Z]): List[String] =
       @tailrec def go(k: Segs[F, ?, Z], acc: List[String]): List[String] = k match
         case Segs.Done() => acc.reverse
-        case Segs.Mark(q, rest) => go(rest, q.label :: acc)
-        case Segs.Ret(q, _, rest) => go(rest, q.label :: acc)
+        case Segs.Mark(q, _, rest) => go(rest, q.label :: acc)
+        case Segs.Ret(q, _, _, rest) => go(rest, q.label :: acc)
         case Segs.K(_, rest) => go(rest, acc)
-        case Segs.Watch(q, _, _, rest) => go(rest, q.label :: acc)
+        case Segs.Watch(q, _, _, _, rest) => go(rest, q.label :: acc)
       go(kont, Nil)
 
     /** cut the chain at the delimiter of p: the delimiter's prompt IS
@@ -964,36 +968,36 @@ object Delim {
         val c = Frames.K[F, X, y, P](k.f)
         hole.rest = c
         copy(k.rest, c, head, p)
-      case m: Segs.Mark[F, X, R] =>
+      case m: Segs.Mark[F, X, y, R] =>
         (m.p === p) match
           case Some(ev) =>
             hole.rest = ev.liftCo[[t] =>> Frames[F, X, t]](Frames.End[F, X]())
-            Plain(head.rest, ev.liftCo[[t] =>> Segs[F, t, R]](m.rest))
+            Plain(head.rest, ev.liftCo[[t] =>> t <:< y](m.up), m.rest)
           case None =>
-            val c = Frames.Mark[F, X, P](m.p)
+            val c = Frames.Mark[F, X, y, P](m.p, m.up)
             hole.rest = c
             copy(m.rest, c, head, p)
-      case r: Segs.Ret[F, X, x, R] =>
+      case r: Segs.Ret[F, X, x, y, R] =>
         (r.p === p) match
           case Some(ev) =>
-            val c = Frames.Ret[F, X, x, x](r.p, r.ret)
+            val c = Frames.Ret[F, X, x, x, x](r.p, r.ret, <:<.refl[x])
             c.rest = Frames.End[F, x]()
             hole.rest = ev.liftCo[[t] =>> Frames[F, X, t]](c)
-            AtDollar(head.rest, ev.liftCo[[t] =>> Segs[F, t, R]](r.rest))
+            AtDollar(head.rest, ev.liftCo[[t] =>> t <:< y](r.up), r.rest)
           case None =>
-            val c = Frames.Ret[F, X, x, P](r.p, r.ret)
+            val c = Frames.Ret[F, X, x, y, P](r.p, r.ret, r.up)
             hole.rest = c
             copy(r.rest, c, head, p)
       case Segs.Done() => NotFound()
-      case r: Segs.Watch[F, X, x, R] =>
+      case r: Segs.Watch[F, X, x, y, R] =>
         (r.p === p) match
           case Some(ev) =>
-            val c = retake[F, X, x, x](r)
+            val c = retake[F, X, x, x, x](r, <:<.refl[x])
             c.rest = Frames.End[F, x]()
             hole.rest = ev.liftCo[[t] =>> Frames[F, X, t]](c)
-            AtDollar(head.rest, ev.liftCo[[t] =>> Segs[F, t, R]](r.rest))
+            AtDollar(head.rest, ev.liftCo[[t] =>> t <:< y](r.up), r.rest)
           case None =>
-            val c = retake[F, X, x, P](r)
+            val c = retake[F, X, x, y, P](r, r.up)
             hole.rest = c
             copy(r.rest, c, head, p)
 
@@ -1009,10 +1013,10 @@ object Delim {
           case Segs.Done() => okay.pure(x)
           case Segs.K(f, rest) => loop(Next(f(x), rest))
           // the delimited block finished normally: drop its marker
-          case Segs.Mark(_, rest) => loop(Next(okay.pure(x), rest))
+          case Segs.Mark(_, up, rest) => loop(Next(okay.pure(up(x)), rest))
           // a `dollar` finished normally: leave it, through its return
-          case Segs.Ret(_, ret, rest) => loop(Next(ret(x), rest))
-          case Segs.Watch(_, ret, _, rest) => loop(Next(ret(x), rest))
+          case r: Segs.Ret[F, a, ?, ?, R] => loop(Next(r.up.liftCo[Prog](r.ret(x)), r.rest))
+          case r: Segs.Watch[F, a, ?, ?, R] => loop(Next(r.up.liftCo[Prog](r.ret(x)), r.rest))
 
         // the Step is read HERE and not by passing it back into
         // loop: `loop(step(..))` made the foreign path one loop entry
@@ -1033,29 +1037,29 @@ object Delim {
       okay.split[Delim, F](e) { c => c match
           case pu: Push[r] =>
             // claim 1: the pushed body answers the prompt's r in this
-            // row; r is an X (the op's answer), which K carries up
+            // row; r is an X (the op's answer), which the mark carries up
             val body = pu.body.asInstanceOf[Prog[r]]
-            Next(body, Segs.Mark(pu.prompt, Segs.K((a: r) => okay.pure[Row, X](a), kont)))
+            Next(body, Segs.Mark(pu.prompt, <:<.refl[r]: r <:< X, kont))
 
           case cap: Capture[p, a] =>
             // claim 2: f takes a continuation into the prompt's answer and
             // gives back a program at it, in this row; shift/control put the
             // body back under the delimiter, the 0-variants have consumed it
-            def resume(k: a => Prog[p], outer: Segs[F, p, R]): Step[F, R] =
+            def resume[Q](k: a => Prog[p], up: p <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
               val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
-              if cap.underPrompt then Next(effect[Row, p](Push(cap.prompt, body)), outer)
-              else Next(body, outer)
+              if cap.underPrompt then Next(up.liftCo[Prog](effect[Row, p](Push(cap.prompt, body))), outer)
+              else Next(up.liftCo[Prog](body), outer)
             // shift/shift0 re-install the delimiter (a dollar's with its
             // return function, `$/S0`); control/control0 hand back the bare
             // segment, which answers the prompt's type only at a plain mark
             split(kont, cap.prompt) match
-              case Plain(captured, outer) =>
+              case Plain(captured, up, outer) =>
                 resume((v: a) => {
                   val seg = reify(captured, okay.pure[Row, X](v))
                   if cap.delimitK then effect[Row, p](Push(cap.prompt, seg)) else seg
-                }, outer)
-              case AtDollar(whole, outer) =>
-                if cap.delimitK then resume((v: a) => reify(whole, okay.pure[Row, X](v)), outer)
+                }, up, outer)
+              case AtDollar(whole, up, outer) =>
+                if cap.delimitK then resume((v: a) => reify(whole, okay.pure[Row, X](v)), up, outer)
                 else throw new UnsupportedOperationException(
                   s"${cap.at}: a control-capture to ${cap.prompt.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
               case NotFound() =>
@@ -1078,7 +1082,7 @@ object Delim {
             // and ret leads from r0 to the prompt's r, in this row
             val body = d.body.asInstanceOf[Prog[r0]]
             val ret = d.ret.asInstanceOf[r0 => Prog[r]]
-            Next(body, Segs.Ret(d.prompt, ret, Segs.K((a: r) => okay.pure[Row, X](a), kont)))
+            Next(body, Segs.Ret(d.prompt, ret, <:<.refl[r]: r <:< X, kont))
 
           // last: only `dollarResumed` makes one
           case d: Watched[r0, r] =>
@@ -1091,7 +1095,7 @@ object Delim {
             val shots = d.shots
             shots.n += 1
             shots.resumed(shots.n)
-            Next(body, Segs.Watch(d.prompt, ret, shots, Segs.K((a: r) => okay.pure[Row, X](a), kont)))
+            Next(body, Segs.Watch(d.prompt, ret, shots, <:<.refl[r]: r <:< X, kont))
         }
         // a foreign operation suspends the machine: the residual
         // program performs it and resumes with the same stack
