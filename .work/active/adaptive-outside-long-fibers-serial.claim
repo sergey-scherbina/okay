@@ -1,0 +1,1 @@
+adaptive-outside-long-fibers-serial — why 8 long fibers forked from outside do not spread on own/adaptive (Wroclaw 3.3-5.5x), fix (claude session_01VZwf6drLbEaLiAvXi7aDGG, 2026-09-27, operator: Бери)
