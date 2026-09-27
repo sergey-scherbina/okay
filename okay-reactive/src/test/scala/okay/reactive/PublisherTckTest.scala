@@ -29,8 +29,8 @@ import okay.given
  */
 class PublisherTckTest extends munit.FunSuite {
 
-  private def verification(timeout: Long = 300L): FlowPublisherVerification[Long] =
-    new FlowPublisherVerification[Long](TestEnvironment(timeout)) {
+  private def verification(timeout: Long = 300L, gc: Long = 300L): FlowPublisherVerification[Long] =
+    new FlowPublisherVerification[Long](TestEnvironment(timeout), gc) {
       given Scheduler = Schedulers.loom
 
       override def createFlowPublisher(n: Long): Flow.Publisher[Long] =
@@ -75,15 +75,30 @@ class PublisherTckTest extends munit.FunSuite {
    * cleanup had not dropped the subscriber by then. These cases get
    * ten times that (load-flakes, 2026-09-23) — the property is "the
    * reference is dropped eventually", which the TCK itself states;
-   * 300 ms was a budget, never part of it. */
+   * 300 ms was a budget, never part of it. BUT the budget went to the
+   * wrong knob until reactive-tck-spec313-gc (2026-09-27): §3.13 sleeps
+   * `publisherReferenceGCTimeoutMillis` before its System.gc(), the
+   * verification's SECOND constructor argument (default 300 ms), and the
+   * environment's timeout never reached it — so the case failed at 1.6 s
+   * "inside" a 3000 ms budget it never had. The assertion below checks
+   * the wait it is for. */
   private val byTheCollector = Set("required_spec313_cancelMustMakeThePublisherEventuallyDropAllReferencesToTheSubscriber")
+  private val gcBudget = 3000L
 
   cases.foreach: m =>
     val name = s"tck: ${m.getName}"
     test(name) {
-      val v = if byTheCollector(m.getName) then verification(3000L) else verification()
+      val v = if byTheCollector(m.getName) then verification(gcBudget, gcBudget) else verification()
       v.setUp()
-      try m.invoke(v)
+      val t0 = System.nanoTime()
+      try
+        m.invoke(v)
+        // the budget must reach the wait it is for: §3.13 sleeps
+        // `publisherReferenceGCTimeoutMillis` before System.gc(), a
+        // constructor argument of its own — not the environment's timeout
+        if byTheCollector(m.getName) then
+          val ms = (System.nanoTime() - t0) / 1000000
+          assert(ms >= gcBudget, s"§3.13 waited $ms ms before collecting, not the $gcBudget ms budget")
       catch
         case e: java.lang.reflect.InvocationTargetException =>
           e.getCause match
