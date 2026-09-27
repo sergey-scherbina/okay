@@ -1,11 +1,11 @@
 - [ ] ready-merge-chunk-forward — the chunked merge roads
       (`Source.merge(chunked = true)`, `flushAfter`, `mergeFlushing`,
       `either`) onto the ring join, so there is ONE merge mechanism —
-      a retry of merge-chunked-via-ready (reverted 2026-09-27) AFTER
-      `ring-standing-receiver` (sprint.d/doing) lands: ring-chunk-
-      bimodal-forks ANSWERED the split (be8035d23/b90b6aa78) — not JIT,
-      not placement: the sides' one-shot parked receives (84-217 wakes
-      per op vs 11-20), which that lane fixes. BLOCKED on it. WHY: the elementwise ready-merge pays ~25 ns per
+      a retry of merge-chunked-via-ready (reverted 2026-09-27) ON TOP
+      OF `ring-standing-receiver`, which is claimed together with this
+      item as its first stage: ring-chunk-bimodal-forks ANSWERED the
+      split (be8035d23/b90b6aa78) — not JIT, not placement: the sides'
+      one-shot parked receives (84-217 wakes per op vs 11-20). WHY: the elementwise ready-merge pays ~25 ns per
       element for the ring, the tell and the walk (specs/ready-merge.md
       Results: pure 68-70 us vs single-drain 44 us per 1000), and a
       per-side `Chunk[A]` of 64 amortises that to under 1 ns;
@@ -43,4 +43,6 @@
       forks ~250 us) — so "that lane fixes it" above is a hypothesis, not
       a result; the remaining candidate is a standing receiver inside
       `SentinelChannel`, for a reward of parity (~200 us), not a win.
-
+      UNPAUSED 2026-09-27 by the operator ("Разблокируй"): the pause
+      above is lifted; this item and ring-standing-receiver run as one
+      lane, standing receiver first.
