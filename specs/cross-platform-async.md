@@ -56,6 +56,26 @@ cross-build lands so nothing has to be broken later.
       REGISTRATION itself (unregistering the timer/IO completion)
       would need the register to answer with a canceller — open box
       below.
+- [ ] **cancel ANSWERS the fiber, on every platform and every
+      scheduler** (supervised-waits-on-failure, 2026-09-28): after
+      `cancel()`, the fiber's `onComplete` fires — a `Left` — whether it
+      was parked in an `Await` that will never fire (JS's `PromiseDrive`
+      never settled its promise; a `join` on it waited forever), queued
+      behind a busy worker and never started (`Schedulers.forkJoin`'s
+      `Future.cancel(true)` and Native's `pool` both skipped the task and
+      completed nothing), or running. The JVM `DriveTask` stated the rule
+      first ("a join() on a cancelled fiber must return rather than wait
+      for an answer that will never come"); this box makes it the
+      contract. A fiber blocked where interruption cannot reach it
+      answers when it next can — best effort, as `cancel` always was.
+- [ ] **a supervised scope's failure answer comes after every child has
+      answered**: `supervised` cancels the children and answers `Left`
+      from `whenIdle`, as it answers `Right` — the header's "the scope
+      does not finish while a child is still running" holds on the
+      failure path too, and the FIRST failure is the answer even when
+      the body fails later. It is the box above that makes this safe: a
+      cancelled child that never answered would now hang the scope
+      instead of leaving it early.
 
 ## Decisions
 - **Await(register) over a Promise/Future-shaped op** — no dependency,
