@@ -69,6 +69,15 @@ Wire v2 (shim 2) added the record. Before it, the shim sent every
 string-keyed `dict` as a frame. A dict answered by a call either failed
 in the shim or reached okay as `None`.
 
+A frame is also a VALUE (pyvalue-table): `PyValue.Table(frame)` can sit
+among a call's arguments, inside the dict a function answers, or in a
+list, and the Python side says so with `okay.frame({...})` (a pandas
+frame is tagged the same way); a plain dict of lists stays a dict.
+`PyCodec` reads rows from it by the row's `Schema`, so
+`{"rows": okay.frame(...), "state": s}` decodes into a case class of
+`Vector[Row]` and `S`. The one rule: a frame's column may not hold a
+frame, at any depth, refused by name both ways.
+
 ## Callbacks into okay
 
 Python code can call back into okay in the middle of a call.
