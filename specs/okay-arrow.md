@@ -411,3 +411,31 @@ OkayArrow's.
       needs the difference reads with `types_mapper=pd.ArrowDtype`
 - [x] okay-py's and okay-r's frames read a `Dictionary` as its values —
       TestArrowFramesDictionary, TestRArrowFramesDictionary; `Rows` too
+
+## arrow-empty-dictionary — a zero-row table keeps its dictionary (2026-09-27)
+
+Found by okay-watch's round-trip property (seed 83: a random table of
+ZERO rows through Python and pandas): the dictionary column came back
+as an empty Utf8. Two causes, one on each side:
+
+- pyarrow's `write_table` and R arrow's `write_ipc_stream` write a
+  zero-row table as its SCHEMA ALONE — no dictionary batch and no record
+  batch (seen in both containers, message by message). The levels go
+  with a batch that is never written, so they are lost before the JVM
+  reads anything.
+- `OkayArrow.readKeeping` answered a dictionary field that had no batch
+  and no dictionary with `empty(f)`, which is Utf8 for any dictionary
+  field. So even the TYPE was lost.
+
+- [ ] The reader keeps it: a dictionary field with no batch is, kept, a
+      `Column.Dictionary` over its dictionary when one came and over an
+      empty one of the value type when none did; decoded, an empty
+      column of the value type (no longer Utf8 regardless).
+- [ ] Both shims write a zero-row answer as ONE empty record batch
+      (`write_batch` in okay-py; `RecordBatchStreamWriter` over
+      `record_batch(df)` in okay-r), which carries the dictionary and so
+      the levels. Answers with rows are written as before.
+- [ ] Proof: `TestArrowDictionary` (default gate) on a schema-only
+      stream; Live, `TestFrameTableExact` (straight and through pandas)
+      and `TestRArrowZeroRows` get a zero-row table's levels back in
+      order. Red first.
