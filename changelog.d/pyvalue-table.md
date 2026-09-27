@@ -37,4 +37,4 @@ partition, compile-time refusal naming `StatefulValue`),
 `TestPyStatefulValue` and `TestRustStatefulValue` (Live: the same job
 text over a `PyModule` and a cargo-built `WorkerModule`).
 
-Commits: (filled at landing).
+Commits: edb24d3ec b438dc2e2 6d19fc6f1 3bfc1f300 96563aeb8 e2272571b 9f354135c 7ff389691 75c4ec01c (the landing adds this line).
