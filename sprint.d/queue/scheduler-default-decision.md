@@ -33,3 +33,14 @@
       mismatched-pair mistake of default-scheduler-shape, refuted
       2026-09-08). Spec: specs/schedulers.md Decisions. (2026-09-27,
       perf-plan)
+      FROM own-managed-blocking (landed 2026-09-27; specs/schedulers.md
+      "Managed blocking", Results): the door does NOT grow past
+      `overflow` — it wakes a parked worker or starts one within
+      `n + overflow`, exactly the stuck-check's bound — so the
+      overflow + 1 law above is still open and the bound is still
+      real. Measured: an outside fork while a worker is blocked 210 ms
+      -> 1.4 ms on `adaptive` (the stuck-check wait is gone); a burst
+      of 64 blocking fibers unchanged (17.4 ms, overflow is the
+      ceiling); spawnJoinSeq on `adaptive` unchanged (83.8 vs 83.6 us).
+      The stuck-check's per-task atomic was NOT removed (refuted: no
+      measurable cost on the kyo-shape lane).

@@ -420,36 +420,34 @@ the stuck-check (every `watched` interval: 5 ms on `platform`, 100 ms on
 - **Not covered, said so:** a third-party blocking call (JDBC, a raw
   `Thread.sleep`, a socket read not through `Nio`) does not pass a door;
   it is still the monitor's and the stuck-check's.
-- **The per-task counter** (second part, its own commit): the stuck-check
-  asked "has anything completed?" from a global `completed.incrementAndGet()`
-  on EVERY task whenever `watched` — a contended atomic across all workers
-  on exactly the schedulers meant for real programs. It now SUMS the plain
-  per-worker `ran` counters on its tick. A stale or torn read of a plain
-  long can only make one tick see "no progress" and wake or grow one worker
-  early — the check's own failure mode is latency, never correctness.
+- **The per-task counter** (second part, its own commit) — REFUTED and
+  reverted, see Results: the stuck-check's global
+  `completed.incrementAndGet()` per task stays.
 
 ### Behavior
-- [ ] a fiber that blocks through `CanBlock` inside a worker does not stall
+- [x] a fiber that blocks through `CanBlock` inside a worker does not stall
       a sibling forked before it: `own.workers(2).unmonitored` — the
       sibling runs while the first is blocked (red before: never, no
       stuck-check on plain `own`) (TestManagedBlocking)
-- [ ] on a `watched` scheduler with no parked worker, the door starts an
+- [x] on a `watched` scheduler with no parked worker, the door starts an
       overflow worker at once: `workers(1).unmonitored.watched(10 s,
       overflow = 1)` — the sibling runs well inside the interval (red
       before: it waited for the stuck-check) (TestManagedBlocking)
-- [ ] a blocked worker is not counted awake: `own.workers(2).unmonitored`,
+- [x] a blocked worker is not counted awake: `own.workers(2).unmonitored`,
       one worker blocked in the door, the other parked — a fork from
       OUTSIDE runs (red before: the blocked worker counted as awake, so
       the submission woke nobody) (TestManagedBlocking)
-- [ ] the scheduler laws and the monitor's tests hold (TestSchedulerLaws,
+- [x] the scheduler laws and the monitor's tests hold (TestSchedulerLaws,
       TestOwnMonitor)
-- [ ] must not regress (non-blocking path): forkJoin10k inside and
+- [x] must not regress (non-blocking path): forkJoin10k inside and
       spawnJoinSeq on `own` and `adaptive`, alternating arms
       (OwnBlockingBenchmark)
-- [ ] must improve: a burst of fibers blocking through the door on
-      `adaptive` (OwnBlockingBenchmark.blockingBurst)
-- [ ] the counter: `adaptive` forkJoin10k inside no slower than before;
-      if `adaptive` lagged `own` by >3 % before, the gap closes
+- [x] must improve: a fiber forked from outside while a worker is blocked
+      (OwnBlockingBenchmark.outsideForkWhileBlocked) — the burst lane
+      (blockingBurst) did NOT move, see Results
+- [x] the counter: `adaptive` forkJoin10k inside no slower than before;
+      if `adaptive` lagged `own` by >3 % before, the gap closes — it did
+      not lag: refuted, reverted
 
 ### Rejected
 - the per-task clock read and a shorter stuck interval (above, the
@@ -457,3 +455,35 @@ the stuck-check (every `watched` interval: 5 ms on `platform`, 100 ms on
 - a ThreadLocal lookup in the door: `Owned.current` is per scheduler, so
   the door would need a global one; the class test is one load and a
   compare, and only on the park path.
+
+### Results (2026-09-27)
+All three laws were RED on master first (TestManagedBlocking: each
+sibling or outside fork waited its 3 s deadline out) and green with the
+door; TestSchedulerLaws, TestOwnMonitor and TestParkInterruptOrder hold
+(59 tests). Rows: `src/jmh/history.d/2026-09-27T102953Z-own-managed-blocking.tsv`.
+
+- **The win is the lost wakeup, not the burst.** One fiber blocked in the
+  door, the other workers parked, a tiny fiber forked from OUTSIDE and
+  joined, on `adaptive`: **210 ms -> 1.41 ms** (of which 1 ms is the
+  lane's own sleep), three alternating rounds against master, -f 2. On
+  master the blocked worker counted as awake, so the submission woke
+  nobody and waited for the stuck-check (two 100 ms ticks); on
+  `platform` (5 ms) the same stall is shorter but is the same stall.
+- **blockingBurst did not move** (64 fibers x 4 x 1 ms forked inside a
+  fiber: `adaptive` 17.36 -> 17.49 ms, `own` 29.0 -> 29.0 ms). The
+  monitor already spreads a burst within a 100 us tick, and `adaptive`'s
+  ceiling is `overflow` (28 threads on 14 cores). The "5-100 ms stair"
+  the plan named was the monitor's to remove, and it had.
+- **Non-blocking path unchanged**: spawnJoinSeq on `adaptive` 83.8 ->
+  83.6 us against master (-f 2). The -f 1 rounds read +-10% either way
+  on the same code (own's forkJoin10kInside, untouched by either part,
+  2 998 vs 2 730), which is why only the -f 2 row is quoted.
+- **(B) REFUTED, reverted.** Before it, `adaptive` trailed `own` on
+  forkJoin10kInside by 2.4% (3 071 vs 2 998 us, medians) — under the 3%
+  the plan set as the sign that the counter costs anything — and with the
+  per-worker sum in its place the lane read 3 155 (1.03, noise). The
+  kyo-shape lane keeps its fibers on one worker, so that atomic is
+  uncontended there; a shape that spreads short tasks over every worker
+  on a `watched` scheduler is the one place it could still show, and it
+  was not measured. The global counter stays until a lane shows it.
+

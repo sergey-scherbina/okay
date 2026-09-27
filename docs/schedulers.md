@@ -140,6 +140,24 @@ within a tick onto sleeping workers and then overflow workers — up to
 (17.6 ms a batch); `watched(overflow = 64)` reaches 64 (7.4 ms, Loom's
 8.5).
 
+A fiber that blocks through the library's own doors — `join()`,
+`receiveBlocking`, a blocking send, `Nio` — does not wait for a tick at
+all: the door tells the worker before it parks (the protocol of the
+JDK's `ForkJoinPool.ManagedBlocker`). The worker stops counting as
+awake, and if work is waiting anywhere, one sleeping worker is woken to
+take it; on `adaptive`, when nobody is asleep, an overflow worker is
+started, within `overflow`. Measured on `adaptive`: a fiber forked from
+outside while one worker is blocked and the rest asleep used to wait
+for the stuck-check (210 ms a round trip); it now takes 1.4 ms, a
+millisecond of which is the benchmark's own sleep. Plain `own` only ever wakes — its thread
+count is its contract — so a sibling left behind a blocked fiber runs on
+a sleeping worker, but blocking on every worker at once still stops it.
+A blocking call that does not go through a door (JDBC, a raw
+`Thread.sleep`) is still found by the monitor and the stuck-check.
+Nothing moves a fiber to a virtual thread: a running platform-thread
+stack cannot move, and `Schedulers.loom` is the member where blocking
+is free.
+
 ```scala
 given Scheduler = Schedulers.adaptive.workers(1).build
 // this deadlocks under `own` and completes under `adaptive`
