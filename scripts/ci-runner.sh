@@ -94,7 +94,7 @@ release_lock() { rm -rf "$LOCKDIR"; }
 # ---- stage C: bisect (a DETACHED worktree, never the main checkout),
 # CONFIRM the culprit on its own before trusting it, then revert
 bisect_and_revert() {
-  from="$1"; to="$2"; log="$3"
+  from="$1"; to="$2"; log="$3"; suites="${4:-}"
   landings=$(git rev-list --reverse "$from..$to" | while read -r c; do
     is_board_only_commit "$c" || echo "$c"
   done)
@@ -145,8 +145,15 @@ STEP
       # GREEN — plain enough for `bisect run` to read.
       git bisect run sh "$bwt.step.sh" > "$bwt.run" 2>&1
       cat "$bwt.run" >> "$log"
-      # only skipped commits left: no tip turned red — no culprit
-      if grep -q "only 'skip'ped commits left" "$bwt.run"; then echo ""
+      # only skipped commits left: the first bad commit is one of a list.
+      # A lane of several commits always ends here — its intermediate
+      # commits are skipped — so the list is read: exactly ONE landing tip
+      # in it is the culprit (the others are commits of its lane or
+      # boards); none, or more than one, names nothing
+      # (ci-runner-confirm-at-culprit, 2026-09-27)
+      if grep -q "only 'skip'ped commits left" "$bwt.run"; then
+        cands=$(sed -n '/could be any of/,/cannot bisect more/p' "$bwt.run" | grep -oE '^[0-9a-f]{40}' | grep -xF -f "$bwt.tips" 2>/dev/null)
+        if [ "$(printf '%s\n' "$cands" | grep -c .)" -eq 1 ]; then echo "$cands"; else echo ""; fi
       else git rev-parse HEAD
       fi
     ) > "$bwt.culprit" 2>>"$log"
@@ -161,17 +168,42 @@ STEP
     echo "ci-runner: bisect over $n landing(s) names $culprit" | tee -a "$log"
   fi
 
+  # THE LANE (ci-runner-confirm-at-culprit, 2026-09-27): the culprit is a
+  # landing's tip, and the lane is every commit in the range whose
+  # subject names its slug — `lanex: …` — up to it. Reverting the tip
+  # alone left a lane's earlier commits (its spec, its first code) on
+  # master; the lane is what landed, so the lane is what goes.
+  culprit_subject=$(git log -1 --format=%s "$culprit")
+  slug=$(printf '%s\n' "$culprit_subject" | sed -n 's/^\([a-zA-Z0-9-]*\):.*/\1/p')
+  lane=""
+  if [ -n "$slug" ]; then
+    lane=$(git log --format='%H %s' "$from..$culprit" | while read -r c subject; do
+      # a prefix test, not `case`: a `)` pattern inside $( ) ends the
+      # substitution for macOS's /bin/sh (bash 3.2)
+      [ "${subject#"$slug:"}" != "$subject" ] && echo "$c"
+    done)
+  fi
+  [ -z "$lane" ] && lane="$culprit"
+  [ -z "$slug" ] && slug="unnamed"
+  first=$(printf '%s\n' "$lane" | tail -1)   # git log lists newest first
+  before=$(git rev-parse "$first^")
+
   # CONFIRM BEFORE REVERTING (ci-runner-revert-needs-confirmation,
   # 2026-09-25): two real reverts landed on a real red that never
   # repeated — a load-induced test timeout and a Native runner killed
-  # by signal 9, neither a fault in the reverted change. `gate.sh`
-  # already re-runs its ONE known false-red shape (native-runner-error)
-  # before trusting it; the culprit a bisect names deserves the same
-  # scepticism, generically. Re-run ONLY the culprit's own SCOPED gate
-  # — not the whole build again, and not the whole bisect — waiting for
-  # quiet first, since a re-run on the same noisy box just repeats the
-  # same false red.
-  echo "ci-runner: confirming $culprit before reverting — re-running its own gate once more" | tee -a "$log"
+  # by signal 9, neither a fault in the reverted change. And confirm
+  # WHERE THE CLAIM IS (ci-runner-confirm-at-culprit, 2026-09-27): the
+  # claim is "these suites turned red with this lane", so they are
+  # re-run at the culprit's OWN tree (red) and at the commit BEFORE the
+  # lane (green), in a detached worktree. Until then the confirmation ran
+  # the culprit's scoped gate on the main checkout — HEAD's tree, not the
+  # culprit's — and for a lane that touched build.sbt that scope is every
+  # module: a second chance for an unrelated flake to "confirm" it.
+  # Waiting for quiet first, since a re-run on the same noisy box just
+  # repeats the same false red.
+  what="testOnly $suites"
+  [ -z "$suites" ] && what="affected $from..HEAD"
+  echo "ci-runner: confirming $culprit before reverting — '$what' at its tree, then before its lane ($before)" | tee -a "$log"
   w=0
   while [ "$w" -lt 60 ]; do
     quiet && break
@@ -179,37 +211,51 @@ STEP
     sleep 30
     w=$((w + 1))
   done
-  if sh scripts/gate.sh "affected $from..$culprit" >>"$log" 2>&1; then
+  cwt="$root/../okay-ci-confirm"
+  git worktree remove --force "$cwt" >/dev/null 2>&1 || true
+  rm -rf "$cwt"
+  git worktree add --detach "$cwt" "$culprit" >>"$log" 2>&1 || { echo "ci-runner: could not create the confirmation worktree" | tee -a "$log"; return 1; }
+  if ( cd "$cwt" && sh scripts/gate.sh "$what" ) >>"$log" 2>&1; then
+    git worktree remove --force "$cwt" >>"$log" 2>&1
     echo "ci-runner: $culprit is GREEN on its own gate, re-run alone — a flake, not a regression; NOT reverting, NOT pushing (the next whole-build turn re-tests $from..$to fresh)" | tee -a "$log"
     return 1
   fi
-  echo "ci-runner: $culprit confirmed RED on its own gate, re-run alone — reverting" | tee -a "$log"
-  culprit_subject=$(git log -1 --format=%s "$culprit")
-  slug=$(printf '%s\n' "$culprit_subject" | sed -n 's/^\([a-zA-Z0-9-]*\):.*/\1/p')
-  [ -z "$slug" ] && slug="unnamed"
-  git revert --no-edit "$culprit" >>"$log" 2>&1 || {
+  if ( cd "$cwt" && git checkout -q --detach "$before" && sh scripts/gate.sh "$what" ) >>"$log" 2>&1; then
+    git worktree remove --force "$cwt" >>"$log" 2>&1
+  else
+    git worktree remove --force "$cwt" >>"$log" 2>&1
+    echo "ci-runner: '$what' is RED before the lane $slug too ($before) — the red predates it; NOT reverting, leaving red, alerting the room" | tee -a "$log"
+    return 1
+  fi
+  n_lane=$(printf '%s\n' "$lane" | grep -c .)
+  echo "ci-runner: $culprit confirmed RED on its own gate, re-run alone, and green before its lane — reverting the lane's $n_lane commit(s)" | tee -a "$log"
+  # newest first, one revert commit for the whole lane
+  # shellcheck disable=SC2086
+  git revert --no-edit --no-commit $lane >>"$log" 2>&1 || {
     # NEVER leave the main checkout mid-revert: every sibling's
     # `merge --ff-only` fails on it until somebody aborts by hand
     # (2026-09-26, ci-runner-bisect-intermediate-commits)
     git revert --abort >>"$log" 2>&1
-    echo "ci-runner: revert of $culprit CONFLICTED — aborted it, master unchanged; a human must look (later landings build on it)" | tee -a "$log"
+    echo "ci-runner: revert of $culprit's lane CONFLICTED — aborted it, master unchanged; a human must look (later landings build on it)" | tee -a "$log"
     return 1
   }
   cat > "changelog.d/ci-revert-$slug.md" <<EOF
 ## ci-revert-$slug - reverted by ci-runner
 
-Culprit \`$culprit\` ("$culprit_subject", lane \`$slug\`) failed the
-whole-build gate over \`$from..$to\`. Reverted so master stays
+Culprit \`$culprit\` ("$culprit_subject", lane \`$slug\`, $n_lane commit(s))
+failed the whole-build gate over \`$from..$to\`, red at its own tree and
+green before its lane on \`$what\`. The lane is reverted so master stays
 something the next lane can rebase onto; re-land with the fix. Runner
 log: \`$log\`.
 EOF
   git add "changelog.d/ci-revert-$slug.md"
-  git commit --amend -m "$(cat <<AMENDMSG
+  git commit -q -m "$(cat <<AMENDMSG
 Revert "$culprit_subject"
 
-This reverts commit $culprit, which the whole-build gate over
-$from..$to failed (lane: $slug). changelog.d/ci-revert-$slug.md
-and the runner log ($log) have the failure.
+This reverts lane $slug — $n_lane commit(s) up to $culprit — which the
+whole-build gate over $from..$to failed: '$what' red at the culprit,
+green before the lane. changelog.d/ci-revert-$slug.md and the runner
+log ($log) have the failure.
 AMENDMSG
 )" >>"$log" 2>&1
   echo "ci-runner: reverted $culprit ($slug); changelog.d/ci-revert-$slug.md" | tee -a "$log"
@@ -318,7 +364,7 @@ run_once() {
       suites=$(grep -a "==> X " "$log" | sed 's/\x1b\[[0-9;]*m//g' | sed -n 's/.*==> X \([^ ]*\).*/\1/p' \
         | awk -F. '{ s = ""; for (i = 1; i <= NF; i++) { s = (s == "" ? $i : s "." $i); if ($i ~ /^[A-Z]/) break } print s }' \
         | sort -u | tr '\n' ' ')
-      echo "ci-runner: RED (exit $rc) on: $suites— re-running them alone on HEAD before any bisect" | tee -a "$log"
+      echo "ci-runner: RED (exit $rc) on: ${suites}— re-running them alone on HEAD before any bisect" | tee -a "$log"
       if sh scripts/gate-retry.sh "$root" "$log.suites" 2 "testOnly $suites"; then
         cat "$log.suites" >> "$log" 2>/dev/null; rm -f "$log.suites"
         echo "ci-runner: the red did not reproduce on its suites alone — a flake, not a regression; not bisecting, not pushing (the next whole-build turn re-tests $from..$to fresh)" | tee -a "$log"
@@ -327,7 +373,7 @@ run_once() {
       fi
       cat "$log.suites" >> "$log" 2>/dev/null; rm -f "$log.suites"
       echo "ci-runner: RED (exit $rc) reproduced alone — bisecting $from..$to" | tee -a "$log"
-      bisect_and_revert "$from" "$to" "$log"
+      bisect_and_revert "$from" "$to" "$log" "$suites"
       release_lock; trap - EXIT INT TERM
       return 1
       ;;

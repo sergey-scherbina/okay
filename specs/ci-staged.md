@@ -389,15 +389,18 @@ file and a fake `sbt` that always succeeds):
       Both incidents were flakes at HEAD: a 2 h 40 min bisect converging
       anywhere (2026-09-25), and parquet-codec's intermediate commit
       reverted (2026-09-26)
-- [ ] the culprit is CONFIRMED BY THE REPRODUCED SUITES AT ITS OWN TREE
+- [x] the culprit is CONFIRMED BY THE REPRODUCED SUITES AT ITS OWN TREE
       and BEFORE ITS LANE (ci-runner-confirm-at-culprit): in a detached
       worktree, the suites the whole build named are RED at the culprit
       and GREEN at the commit before the lane's first — red at both means
       the red predates the lane: not reverted, said so (selftest 15)
-- [ ] a landing is reverted as ITS LANE'S COMMITS — every commit in the
+- [x] a landing is reverted as ITS LANE'S COMMITS — every commit in the
       range whose subject names the culprit's slug, newest first, in ONE
       revert commit — not only its tip; the other lanes' commits and the
-      boards survive (selftest 16)
+      boards survive (selftest 16). A lane of several commits always
+      ends a tips-only bisect with "only skipped commits left": the list
+      it prints is read, and exactly ONE landing tip in it is the culprit
+      (none or several names nothing, as before)
 
 ## Out of scope
 
@@ -507,3 +510,24 @@ have sent every board-only landing through a full, wasted gate.
 The runner's first week in production, and the collapse measured
 against it (load average during landings, RAM-guard kills per day):
 filled once `ci-runner.sh loop` has actually run that long.
+
+
+### ci-runner-confirm-at-culprit (2026-09-27)
+
+The confirmation moved to where the claim is. Before, the runner re-ran
+`affected $from..$culprit` in the main checkout — HEAD's tree, not the
+culprit's, and for a culprit that touched build.sbt every module, a
+second chance for an unrelated flake to "confirm" it. Now the suites the
+whole build named are re-run in a detached worktree at the culprit
+(must be RED) and at the commit before its lane (must be GREEN); red at
+both says the red predates the lane, and nothing is reverted. The revert
+takes the LANE: every commit of the range whose subject names the
+culprit's slug, in one revert commit. Writing selftest 16 found a hole in
+the tips-only bisect: a multi-commit lane's intermediate commits are all
+skipped, so the bisect always ended "only skipped commits left" and
+named nothing — the candidate list is now read for its one landing tip.
+Two latent shell traps on the way, both macOS /bin/sh (bash 3.2): a
+`case` pattern's `)` inside `$( )` closes the substitution, and
+`"$suites—"` reads the em-dash's first byte as part of the name under
+`set -u`. Mutants — revert the tip alone, skip the before-lane run —
+each turn the selftest red.

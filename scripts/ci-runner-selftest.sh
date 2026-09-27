@@ -51,7 +51,9 @@ EOF
 # the confirmation re-run"; otherwise green unless CI_TEST_VERDICT=red,
 # OR (for the bisect case, a REAL git bisect over real commits) a
 # BAD_MARKER file is present in the checked-out tree
-Q="$(cd "$(dirname "$0")/.." && pwd)/.work/gate-queue"
+# the queue is the fixture's, wherever this runs — the confirmation and
+# the bisect run in their own worktrees (CI_TEST_QUEUE, set by run())
+Q="${CI_TEST_QUEUE:-$(cd "$(dirname "$0")/.." && pwd)/.work/gate-queue}"
 if [ -s "$Q" ]; then
   line=$(head -1 "$Q")
   tail -n +2 "$Q" > "$Q.tmp" 2>/dev/null && mv "$Q.tmp" "$Q"
@@ -82,7 +84,7 @@ EOF
   )
 }
 
-run() { ( cd "$work" && CI_TEST_VERDICT="${CI_TEST_VERDICT:-green}" sh scripts/ci-runner.sh "$@" ); }
+run() { ( cd "$work" && CI_TEST_QUEUE="$work/.work/gate-queue" CI_TEST_VERDICT="${CI_TEST_VERDICT:-green}" sh scripts/ci-runner.sh "$@" ); }
 sha() { ( cd "$work" && git rev-parse "$1" ); }
 origin_sha() { git -C "$bare" rev-parse master 2>/dev/null || echo none; }
 commit_file() { # <name> <content>
@@ -196,11 +198,11 @@ out2=$(CI_TEST_VERDICT=green run once); rc2=$?
 [ "$(origin_sha)" = "$target" ] && ok "the original commit reached origin" || bad "origin at $(origin_sha), wanted $target"
 rm -rf "$tmp"
 
-say "10. RED with ONE landing commit, confirmed RED again: reverted without a bisect"
+say "10. RED with ONE landing commit, confirmed RED at its tree and green before it: reverted without a bisect"
 new_fixture
-commit_file src.txt one
+( cd "$work" && echo bad > BAD_MARKER && git add BAD_MARKER && git commit -q -m "lane10: breaks the build" )
 before_origin=$(origin_sha)
-out=$(CI_TEST_VERDICT=red run once); rc=$?
+out=$(run once); rc=$?
 [ "$rc" -ne 0 ] && ok "nonzero exit on the red turn" || bad "exit 0"
 [ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed on the red turn" || bad "origin moved on red"
 printf '%s\n' "$out" | grep -q "confirming .* before reverting" && ok "confirmed before reverting" || bad "did not confirm: $out"
@@ -273,13 +275,14 @@ rm -rf "$tmp"
 
 say "13. a revert that CONFLICTS aborts itself: the main checkout is never left mid-revert"
 new_fixture
-( cd "$work" && echo one > shared.txt && git add shared.txt && git commit -q -m "culprit: adds shared.txt" )
+( cd "$work" && echo one > shared.txt && echo bad > BAD_MARKER && git add shared.txt BAD_MARKER \
+  && git commit -q -m "culprit: adds shared.txt" )
 ( cd "$work" && echo two >> shared.txt && git add shared.txt && git commit -q -m "later: builds on shared.txt" )
-# the fake gate's queue: the whole build red, the bisect names the
-# culprit (red at culprit, green at base via marker absence is not
-# usable here), so queue every call: build red, bisect steps, confirm red
-queue red red red red red red
+# every gate reads the tree: red wherever the marker is — the build, the
+# suites alone, the bisect, the culprit; green before it. The revert of
+# the culprit then conflicts with "later"
 out=$(run once); rc=$?
+printf '%s\n' "$out" | grep -q "CONFLICTED — aborted" && ok "the revert was attempted and aborted" || bad "no conflicted revert happened: $out"
 ( cd "$work" && [ ! -f .git/REVERT_HEAD ] && git diff --quiet && git diff --cached --quiet ) \
   && ok "no revert in progress, a clean tree" || bad "left mid-revert or dirty: $(cd "$work" && git status --short | head -5)"
 rm -rf "$tmp"
@@ -298,6 +301,33 @@ printf '%s\n' "$out" | grep -q "did not reproduce" && ok "said the red did not r
 printf '%s\n' "$out" | grep -q "bisect over\|reproduced alone — bisecting" && bad "a bisect ran over a flake: $out" || ok "no bisect ran"
 [ "$(cd "$work" && git rev-parse master)" = "$target" ] && ok "master unchanged" || bad "master moved"
 [ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed" || bad "origin moved"
+rm -rf "$tmp"
+
+say "15. a red that is red BEFORE the lane too predates it: not reverted"
+new_fixture
+commit_file src.txt one
+target=$(sha master)
+out=$(CI_TEST_VERDICT=red run once); rc=$?
+[ "$rc" -ne 0 ] && ok "nonzero exit" || bad "exit 0"
+printf '%s\n' "$out" | grep -q "RED before the lane .* too .* the red predates it; NOT reverting" && ok "said the red predates the lane" || bad "did not say so: $out"
+[ "$(cd "$work" && git rev-parse master)" = "$target" ] && ok "master unchanged" || bad "master moved: $(cd "$work" && git log --oneline -3)"
+[ ! -d "$tmp/okay-ci-confirm" ] && ok "the confirmation worktree was cleaned up" || bad "the confirmation worktree is still there"
+rm -rf "$tmp"
+
+say "16. a landing is reverted as its LANE's commits, not its tip alone; other lanes and the boards survive"
+new_fixture
+commit_file other.txt fine
+( cd "$work" && echo x > .work/active/lane16.claim && git add .work/active/lane16.claim && git commit -q -m "claim: lane16" )
+( cd "$work" && echo p1 > p1.txt && git add p1.txt && git commit -q -m "lane16: part one" )
+( cd "$work" && echo p2 > p2.txt && echo bad > BAD_MARKER && git add p2.txt BAD_MARKER && git commit -q -m "lane16: part two" )
+tip=$(sha master)
+( cd "$work" && git rm -q .work/active/lane16.claim && echo y > changelog.d/lane16.md && git add changelog.d/lane16.md \
+  && git commit -q -m "release-claim: lane16, landed as $(git rev-parse --short=9 HEAD)" )
+out=$(run once); rc=$?
+printf '%s\n' "$out" | grep -q "reverting the lane's 2 commit(s)" && ok "reverted the lane's 2 commits" || bad "did not revert the lane: $out"
+( cd "$work" && [ ! -f p1.txt ] && [ ! -f p2.txt ] && [ ! -f BAD_MARKER ] ) && ok "both of the lane's commits undone" || bad "a lane commit survived: $(cd "$work" && ls)"
+( cd "$work" && [ -f other.txt ] && [ -f changelog.d/lane16.md ] ) && ok "the other landing and the boards survive" || bad "an innocent file was lost"
+[ "$(cd "$work" && git log --oneline -1 --format=%s)" = "Revert \"lane16: part two\"" ] && ok "one revert commit, named by the tip" || bad "the revert commit: $(cd "$work" && git log --oneline -2)"
 rm -rf "$tmp"
 
 say ""
