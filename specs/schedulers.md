@@ -40,7 +40,7 @@ chooses where NOT to wake one.
   | `forkJoin(pool)` | a pool task, Loom-free | holds a pool thread | ~230 | nothing | a JVM without Loom |
   | `threads` | a platform thread | free | heavy (a thread start) | nothing | Native's default; a JVM that must not use Loom |
   | JS `given` | a PromiseDrive on the event loop | a compile error (no CanBlock) | — | nothing | the only one there |
-  | `adaptive` | starts as `own`, moves a fiber to `loom` when it blocks | free after the move | `own`'s until a block is seen | — | when the program's shape is not known where the scheduler is chosen |
+  | `adaptive` | `own` plus overflow workers: a fiber that blocks through `CanBlock` says so and a spare runs the rest (managed blocking, below); a third-party blocking call is found by the monitor/stuck-check. Nothing moves a fiber to `loom` — NOT BUILT, a running platform-thread stack cannot move | holds its worker; the others keep running, up to `overflow` spares | `own`'s | nothing | when the program's shape is not known where the scheduler is chosen |
 
 - **The facade** (`Schedulers`, scala-jvm), LANDED 2026-09-07 and
   shaped like `Queues`: `loom`, `threads`, `forkJoin(pool)` and
@@ -377,3 +377,81 @@ it sees progress and grows almost nothing.
   spreads work that WAITED, without knowing what it is. `own` now reads
   Loom's number there. `forShortTasks` ("never spread") turns the
   monitor off, so the shape has its builder.
+
+
+## Managed blocking (2026-09-27, own-managed-blocking)
+
+A fiber that blocks on an `own`/`adaptive` worker through the library's
+own doors — `CanBlock.block`, `blockAccepted`, `await(Handoff)`, which is
+every `join()`, `receiveBlocking`, blocking send and `Nio` park — SAYS SO
+before it parks, and the scheduler answers at once instead of noticing a
+tick later (`ForkJoinPool.ManagedBlocker`'s protocol, ours). Before this
+the remedies were sampling only: the monitor (100 us, a stuck deque) and
+the stuck-check (every `watched` interval: 5 ms on `platform`, 100 ms on
+`adaptive`), and an `unmonitored` scheduler had the stuck-check alone.
+
+### Design
+- **The door knows its thread by its CLASS, not a ThreadLocal.** A worker
+  thread is a `ManagedWorker` (a `Thread` subclass with `blocking()` /
+  `unblocked()`); the door tests `Thread.currentThread()` only on its
+  SLOW path — after the fast path found no answer, right before the first
+  park. The non-blocking path gains nothing; a virtual or foreign thread
+  fails the type test and parks as before.
+- **`blocking()`** (owner thread only): the worker leaves `awake` — a
+  blocked worker cannot see a submission, and counting it as awake is the
+  lost wakeup own-lost-wakeup found — and, if work is waiting on its deque
+  or in the submission queue, wakes ONE parked worker; when none is parked
+  and the scheduler has overflow room (`watched`), it starts one, within
+  `n + overflow`, exactly as the stuck-check does. **`unblocked()`**
+  rejoins `awake` (and wakes a parked monitor, as a worker leaving a park
+  does). Re-entrant blocking (a register that itself blocks) is counted
+  once.
+- **Plain `own` (no overflow) — decided:** the door WAKES a parked worker
+  and never starts a thread. `own` owns `workers` threads and that is its
+  contract; a sibling left on the blocked worker's deque now runs on a
+  worker that was asleep, but `workers` fibers all blocked at once still
+  stall the program (law 8's deadlock is kept: it is what `adaptive` is
+  for).
+- **Spares step down by PARKING**, as every dry worker does; an overflow
+  thread is not retired (`live` only grows, bounded by `overflow`), and a
+  later block wakes the parked spare instead of starting another.
+- **Not covered, said so:** a third-party blocking call (JDBC, a raw
+  `Thread.sleep`, a socket read not through `Nio`) does not pass a door;
+  it is still the monitor's and the stuck-check's.
+- **The per-task counter** (second part, its own commit): the stuck-check
+  asked "has anything completed?" from a global `completed.incrementAndGet()`
+  on EVERY task whenever `watched` — a contended atomic across all workers
+  on exactly the schedulers meant for real programs. It now SUMS the plain
+  per-worker `ran` counters on its tick. A stale or torn read of a plain
+  long can only make one tick see "no progress" and wake or grow one worker
+  early — the check's own failure mode is latency, never correctness.
+
+### Behavior
+- [ ] a fiber that blocks through `CanBlock` inside a worker does not stall
+      a sibling forked before it: `own.workers(2).unmonitored` — the
+      sibling runs while the first is blocked (red before: never, no
+      stuck-check on plain `own`) (TestManagedBlocking)
+- [ ] on a `watched` scheduler with no parked worker, the door starts an
+      overflow worker at once: `workers(1).unmonitored.watched(10 s,
+      overflow = 1)` — the sibling runs well inside the interval (red
+      before: it waited for the stuck-check) (TestManagedBlocking)
+- [ ] a blocked worker is not counted awake: `own.workers(2).unmonitored`,
+      one worker blocked in the door, the other parked — a fork from
+      OUTSIDE runs (red before: the blocked worker counted as awake, so
+      the submission woke nobody) (TestManagedBlocking)
+- [ ] the scheduler laws and the monitor's tests hold (TestSchedulerLaws,
+      TestOwnMonitor)
+- [ ] must not regress (non-blocking path): forkJoin10k inside and
+      spawnJoinSeq on `own` and `adaptive`, alternating arms
+      (OwnBlockingBenchmark)
+- [ ] must improve: a burst of fibers blocking through the door on
+      `adaptive` (OwnBlockingBenchmark.blockingBurst)
+- [ ] the counter: `adaptive` forkJoin10k inside no slower than before;
+      if `adaptive` lagged `own` by >3 % before, the gap closes
+
+### Rejected
+- the per-task clock read and a shorter stuck interval (above, the
+  monitor's Decisions) — both still refuted; the door is not sampling.
+- a ThreadLocal lookup in the door: `Owned.current` is per scheduler, so
+  the door would need a global one; the class test is one load and a
+  compare, and only on the park path.
