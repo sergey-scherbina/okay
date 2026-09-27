@@ -137,3 +137,20 @@ clauses, the three stagers, the test handlers, and the Jmh sources.
 Measured, BuildShapeBenchmark.stateUpdate (1000 foldM steps of
 `State.update`), min of two rounds each side: **47.4 → 21.0 µs
 (2.26x), 463 → 207 KB (−55%)**. That is `modify`'s level (19.3 µs).
+
+
+## D5 — `Reader.Asks`, one operation (reader-asks-op, 2026-09-27)
+
+`Reader.read` and `Reader.lift` were `ask.map(f)`, the shared `Ask` node
+and a map (two binds under a caller's flatMap). `case Asks[R, A](f: R =>
+A)` is one operation answered `f(r)`. `run`, `local` (which answers
+`g(r2)`), `Bisim.Answers.reader`, the two Reader stagers, okay-kyo's
+`toKyoEnv` (an `@unchecked` match, so a missing arm would have been a run
+time MatchError) and the test handlers learn the case.
+
+- [x] `lift` is one `Inject(Asks(_))`; `local` answers it through `f`
+- [x] a forwarded `Asks` is answered by the outer `Reader.run`
+
+Measured, BuildShapeBenchmark.readerLift (1000 foldM steps of
+`Reader.lift`), min of two rounds each side: **29.3 → 15.9 µs (1.84x),
+302 → 206 KB (−32%)**.
