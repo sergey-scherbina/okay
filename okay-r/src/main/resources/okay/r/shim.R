@@ -622,9 +622,25 @@ okay_arrow_request <- function(body) {
 # untouched by JSON/CBOR; falls back to the ordinary encoded frame answer
 # when the R side cannot make an Arrow table of it (rare: a data.frame's
 # columns are almost always one of Arrow's types, unlike a Python dict's)
+# a POSIXct column to whole microseconds (r-arrow-timestamp-exact). R
+# holds seconds as a double, 536.074 is 536.07399999999996, and arrow's
+# own POSIXct -> timestamp[us] TRUNCATES toward zero: 536074000 us went
+# out as 536073999 (21 of 1005 values in TestRArrowTimestamp). Rounded
+# here, then cast through int64, which is exact for any date an R double
+# can hold to the microsecond.
+okay_arrow_time <- function(x) {
+  tz <- attr(x, "tzone")
+  tz <- if (is.null(tz)) "" else tz[[1]]
+  us <- arrow::Array$create(round(as.numeric(x) * 1e6), type = arrow::float64())
+  us$cast(arrow::int64())$cast(arrow::timestamp("us", tz))
+}
+
 okay_arrow_reply <- function(rid, res) {
   bytes <- tryCatch({
-    tab <- arrow::arrow_table(as.data.frame(res, stringsAsFactors = FALSE))
+    df <- as.data.frame(res, stringsAsFactors = FALSE)
+    tab <- arrow::arrow_table(df)
+    for (nm in names(df)[vapply(df, inherits, logical(1), "POSIXct")])
+      tab[[nm]] <- okay_arrow_time(df[[nm]])
     tab$metadata <- list(okay = jsonlite::toJSON(list(id = rid, ok = list(t = "arrow")), auto_unbox = TRUE))
     sink <- arrow::BufferOutputStream$create()
     arrow::write_ipc_stream(tab, sink)

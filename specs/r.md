@@ -579,13 +579,14 @@ own POSIXct → `timestamp[us]` conversion TRUNCATES toward zero. Any
 value whose seconds are not an exact double can lose one microsecond,
 before 1970 as well (toward zero there too).
 
-- [ ] `okay_arrow_reply` rounds every POSIXct column to whole
+- [x] `okay_arrow_reply` rounds every POSIXct column to whole
       microseconds and casts it through int64 to `timestamp[us]` in its
       own time zone; every other column is arrow's as before.
-- [ ] Proof (Live, `TestRArrowTimestamp`): 1005 timestamps — the found
+- [x] Proof (Live, `TestRArrowTimestamp`): 1005 timestamps — the found
       value, its negative, whole milliseconds, random microseconds
       1900..2100 — and a null come back exactly. RED first: 21 of 1005
-      changed, each by one microsecond toward zero.
+      changed, each by one microsecond toward zero. GREEN after, with
+      `TestRArrow` 6/6 beside it.
 
 The opposite direction needs nothing: Arrow → R divides by 1e6 into a
 double, and the round on the way back is what restores the integer.
