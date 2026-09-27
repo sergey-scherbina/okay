@@ -169,11 +169,11 @@ object Producer {
     @tailrec def loop(acc: S)(x: A ! Produce + G): (S, A) ! G =
       (x.resume: @unchecked) match
         case Free.Return(a) => pure((acc, a))
-        case Inject(e) => split[G, Produce](e)
-          (g => Inject(g).map(a => (acc, a)): (S, A) ! G)
+        case i @ Inject(e) => split[G, Produce](e)
+          (_ => forwarded[Produce, G](i).map(a => (acc, a)): (S, A) ! G)
           (w => pure((f(acc, produced[W](w)), produced[A](w))))
-        case Bind(Inject(e), k) => split[G, Produce](e)
-          (g => Inject(g).flatMap(x => again(acc)(k(x))))
+        case Bind(i @ Inject(e), k) => split[G, Produce](e)
+          (_ => forwarded[Produce, G](i).flatMap(x => again(acc)(k(x))))
           (w => loop(f(acc, produced[W](w)))(k(w)))
     loop(z)(p)
 
@@ -194,11 +194,11 @@ object Producer {
       if K.done(s) then pure(K.end(s))
       else (x.resume: @unchecked) match
         case Free.Return(_) => pure(K.end(s))
-        case Inject(e) => split[G, Produce](e)
-          (g => Inject(g).map(_ => K.end(s)): R ! G)
+        case i @ Inject(e) => split[G, Produce](e)
+          (_ => forwarded[Produce, G](i).map(_ => K.end(s)): R ! G)
           (w => pure(K.end(K.add(s, produced[W](w)))))
-        case Bind(Inject(e), k) => split[G, Produce](e)
-          (g => Inject(g).flatMap(x => again(s)(k(x))))
+        case Bind(i @ Inject(e), k) => split[G, Produce](e)
+          (_ => forwarded[Produce, G](i).flatMap(x => again(s)(k(x))))
           (w => loop(K.add(s, produced[W](w)))(k(w)))
     loop(K.init)(p)
 
@@ -230,8 +230,8 @@ object Producer {
         case Inject(e) => split[G, Produce](e)
           (g => Inject(g): A ! G)
           (w => { f(produced[W](w)); pure(produced[A](w)) })
-        case Bind(Inject(e), k) => split[G, Produce](e)
-          (g => Inject(g).flatMap(x => again(k(x))): A ! G)
+        case Bind(i @ Inject(e), k) => split[G, Produce](e)
+          (_ => forwarded[Produce, G](i).flatMap(x => again(k(x))): A ! G)
           (w => { f(produced[W](w)); loop(k(w)) })
     loop(p)
 
@@ -314,11 +314,11 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
   def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = (p.resume: @unchecked) match
     case Free.Return(_) => pure(None)
     // `split`, not `<|>`: no Either per element (split-over-either)
-    case Inject(e) => split[G, Produce](e)
-      (g => Inject(g).map(_ => None): Option[(A, A ! Produce + G)] ! G)
+    case i @ Inject(e) => split[G, Produce](e)
+      (_ => forwarded[Produce, G](i).map(_ => None): Option[(A, A ! Produce + G)] ! G)
       (w => pure(Some((produced[A](w), Free.Return(produced[A](w))))))
-    case Bind(Inject(e), k) => split[G, Produce](e)
-      (g => Inject(g).flatMap(x => uncons(k(x))): Option[(A, A ! Produce + G)] ! G)
+    case Bind(i @ Inject(e), k) => split[G, Produce](e)
+      (_ => forwarded[Produce, G](i).flatMap(x => uncons(k(x))): Option[(A, A ! Produce + G)] ! G)
       (w => pure(Some((produced[A](w), k(w)))))
 
   /**

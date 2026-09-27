@@ -138,16 +138,16 @@ object State {
     // where the constructor has refined the answer type to S.
     @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = (x.resume: @unchecked) match
       case Return(a) => Return((s, a))
-      case Inject(e) => split[State[S, *], F](e) {
+      case i @ Inject(e) => split[State[S, *], F](e) {
           case Get() => Return((s, s)): (S, A) ! F
           case Set(s) => Return((s, s)): (S, A) ! F
           case Modify(f) => { val next = f(s); Return((next, next)): (S, A) ! F }
-        } { e => Inject(e).map((s, _)) }
-      case Bind(Inject(e), k) => split[State[S, *], F](e) {
+        } { _ => forwarded[State[S, *], F](i).map((s, _)) }
+      case Bind(i @ Inject(e), k) => split[State[S, *], F](e) {
           case Get() => loop(s)(k(s))
           case Set(s) => loop(s)(k(s))
           case Modify(f) => { val next = f(s); loop(next)(k(next)) }
-        } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
+        } { _ => forwarded[State[S, *], F](i).flatMap(x => _loop(s)(k(x))) }
 
     loop(s)(a)
   }

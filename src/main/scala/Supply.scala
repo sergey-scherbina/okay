@@ -56,12 +56,12 @@ object Supply:
 
     @tailrec def loop(s: S)(x: A ! Supply % S + F): (S, A) ! F = (x.resume: @unchecked) match
       case Return(a) => Return((s, a))
-      case Inject(e) => split[Supply % S, F](e) {
+      case i @ Inject(e) => split[Supply % S, F](e) {
           case Next() => Return((step(s), s)): (S, A) ! F
-        } { e => Inject(e).map((s, _)) }
-      case Bind(Inject(e), k) => split[Supply % S, F](e) {
+        } { _ => forwarded[Supply % S, F](i).map((s, _)) }
+      case Bind(i @ Inject(e), k) => split[Supply % S, F](e) {
           case Next() => loop(step(s))(k(s))
-        } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
+        } { _ => forwarded[Supply % S, F](i).flatMap(x => _loop(s)(k(x))) }
 
     loop(first)(p)
   }

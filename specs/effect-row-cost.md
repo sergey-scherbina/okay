@@ -75,6 +75,20 @@ matter in time.
   very `Inject`; bind it (`case Bind(i @ Inject(e), k)`) and forward
   `Bind(i, …)`. Saves 16 of the 72 B. The closure over `(s, k)` and the
   `Bind` are the residual's continuation and stay.
+  DONE 2026-09-27 (relay-forward-same-inject): ONE named door,
+  `forwarded[F, G](i)` beside `split` (Handler.scala), with the claim
+  written once — the excluded middle `split` already makes — and every
+  forwarding arm that sends the operation to the REST of the row uses
+  it: `relay`, `handle` and `translate` in Effects, Writer's
+  `loopWith`/`foldUntil`/`uncons`/`widen`, State, Supply, Chronicle,
+  Refs, Once, Logic, Generate. The compiler refused it — correctly —
+  at the six arms whose operation goes to a DIFFERENT row (Lexical's
+  `R`, `State.zoomWith`, Writer's `map`/`expand`/`listen`): reusing the
+  node there would be a second claim (a widening) and stays unwritten.
+  Measured: `ProbeRowCost`'s row 168.4 -> 152.4 B per level (exactly
+  -16); `handlePrebuilt` 0.96x time and -9% bytes, `relayForward`
+  0.96-0.98x and -7%, the four-effect `okayRow` 0.92-0.93x and -10%;
+  `TestInlineBudget` green (relay's and handle's loops still inline).
 - **D3. Say which order to handle in.** The frequent effect innermost:
   that is the whole of cause 1 for this shape, and it costs a user
   nothing but knowing. docs (effects guide, State and Writer pages) and

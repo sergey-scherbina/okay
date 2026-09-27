@@ -49,12 +49,12 @@ object Logic {
         case LazyList() => pure(None)
         case p #:: rest => (p.resume: @unchecked) match
           case Return(a) => pure(Some((a, alts(rest))))
-          case Inject(e) => split[Choose, F](e)
+          case i @ Inject(e) => split[Choose, F](e)
             (c => go(c.as.to(LazyList).map(a => Return(a): A ! Choose + F) #::: rest))
-            (g => Inject(g).flatMap(a => again(Return(a) #:: rest)))
-          case Bind(Inject(e), k) => split[Choose, F](e)
+            (_ => forwarded[Choose, F](i).flatMap(a => again(Return(a) #:: rest)))
+          case Bind(i @ Inject(e), k) => split[Choose, F](e)
             (c => go(c.as.to(LazyList).map(x => k(x)) #::: rest))
-            (g => Inject(g).flatMap(x => again(k(x) #:: rest)))
+            (_ => forwarded[Choose, F](i).flatMap(x => again(k(x) #:: rest)))
 
     go(LazyList(m))
 

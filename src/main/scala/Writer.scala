@@ -125,20 +125,20 @@ object Writer {
     // `split`, not `<|>` (split-without-either): no Either per tell.
     @tailrec def loop(s: S)(x: A ! Writer % W + F): R ! F = (x.resume: @unchecked) match
       case Return(a) => Return(finish(s, a))
-      case Inject(e) => split[Writer % W, F](e) {
+      case i @ Inject(e) => split[Writer % W, F](e) {
           // matching the constructor refines the answer type to Unit:
           // the program ends here, and a tell ends it with nothing —
           // the ascription is where the refined value meets the loop
           case Say(v) => Return(finish(step(s, v), ())): R ! F
-        } { e => Inject(e).map(finish(s, _)) }
-      case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
+        } { _ => forwarded[Writer % W, F](i).map(finish(s, _)) }
+      case Bind(i @ Inject(e), k) => split[Writer % W, F](e) { w0 =>
           // here it refines the CONTINUATION's domain, so this is an
           // ordinary call and not an assertion; the checker cannot see
           // that `Say` is the only constructor under an existential
           // answer type — the same claim `resume`'s @unchecked makes
           (w0: @unchecked) match
             case Say(v) => loop(step(s, v))(k(()))
-        } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
+        } { _ => forwarded[Writer % W, F](i).flatMap(x => _loop(s)(k(x))) }
 
     loop(z)(a)
   }
@@ -162,13 +162,13 @@ object Writer {
       if K.done(s) then Return(K.end(s))
       else (x.resume: @unchecked) match
         case Return(_) => Return(K.end(s))
-        case Inject(e) => split[Writer % W, F](e) {
+        case i @ Inject(e) => split[Writer % W, F](e) {
             case Say(v) => Return(K.end(K.add(s, v))): R ! F
-          } { e => Inject(e).map(_ => K.end(s)) }
-        case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
+          } { _ => forwarded[Writer % W, F](i).map(_ => K.end(s)) }
+        case Bind(i @ Inject(e), k) => split[Writer % W, F](e) { w0 =>
             (w0: @unchecked) match
               case Say(v) => loop(K.add(s, v))(k(()))
-          } { e => Inject(e).flatMap(x => _loop(s)(k(x))) }
+          } { _ => forwarded[Writer % W, F](i).flatMap(x => _loop(s)(k(x))) }
 
     loop(K.init)(a)
   }
@@ -427,14 +427,14 @@ object Writer {
     // Writer tested first, for `map`'s reason: with the rest inferred
     // as the Writer itself, a rest-first split sent every Say to G and
     // answered Left — no elements, the told values escaped (TestDistinct)
-    case Inject(e) => split[Writer % W, G](e)
+    case i @ Inject(e) => split[Writer % W, G](e)
       { case Say(w) => okay.pure(Right((w, Free.Return(())))): Either[A, (W, A ! Writer % W + G)] ! G }
-      (g => Inject(g).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
-    case Bind(Inject(e), k) => split[Writer % W, G](e)
+      (_ => forwarded[Writer % W, G](i).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
+    case Bind(i @ Inject(e), k) => split[Writer % W, G](e)
       { w0 => (w0: @unchecked) match
           // `toldThen`: the pure `uncons`'s reason above
           case Say(w) => okay.pure(Right((w, Writer.toldThen(k)))): Either[A, (W, A ! Writer % W + G)] ! G }
-      (g => Inject(g).flatMap(x => uncons[W, A, G](k(x))))
+      (_ => forwarded[Writer % W, G](i).flatMap(x => uncons[W, A, G](k(x))))
 
   /**
    * Writer's split is COMPLETE, and by the CLASS of `Say` alone.

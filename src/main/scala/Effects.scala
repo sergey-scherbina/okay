@@ -238,7 +238,7 @@ given Effects[Free] with
     @tailrec def loop(x: Free[F + G, A]): Free[G, B] = (x.resume: @unchecked) match
       case Free.Return(a) => ret(a)
       case Free.Inject(e) => last(e)
-      case Free.Bind(Free.Inject(e), k) =>
+      case Free.Bind(i @ Free.Inject(e), k) =>
         split[F, G](e)
           // `h` is asked ONCE: the answered test and the fallback both
           // read the same program, and a handler is not assumed pure
@@ -246,7 +246,7 @@ given Effects[Free] with
               val c = h(e)
               Cont.onAnswer(c)(a => loop(k(a)))(capture(c, k))
             })
-          (e => Free.Inject(e).flatMap(x => again(k(x))))
+          (_ => forwarded[F, G](i).flatMap(x => again(k(x))))
 
     loop(m)
 
@@ -558,12 +558,12 @@ object Effects {
     // budget the way they would inside `relay`
     (prog.resume: @unchecked) match
       case Return(a) => Return(a)
-      case Inject(e) => split[F, G](e)(f => h(f))(g => Inject(g))
-      case Bind(Inject(e), k) =>
+      case i @ Inject(e) => split[F, G](e)(f => h(f))(_ => forwarded[F, G](i))
+      case Bind(i @ Inject(e), k) =>
         // the Bind node types e and k together
         split[F, G](e)
           (f => h(f).flatMap(x => translate[A, F, G](k(x))(h)))
-          (g => Inject(g).flatMap(x => translate[A, F, G](k(x))(h)))
+          (_ => forwarded[F, G](i).flatMap(x => translate[A, F, G](k(x))(h)))
 
   /**
    * handle_relay (Kiselyov): tail-resumptive handling. It was 1.51x
@@ -604,7 +604,7 @@ object Effects {
     @tailrec def loop(x: A ! F + G): B ! G = (x.resume: @unchecked) match
       // `g(e) / k`, not `g(e)(k)`: the Cont carrier's application is
       // `/` since Cont became a facade over Free (specs/freer-base.md)
-      case Bind(Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(e => Inject(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
+      case Bind(i @ Inject(e), k) => split[F, G](e)(e => loop(g(e) / k))(_ => forwarded[F, G](i).flatMap(x => relay[A, B, F, G](k(x))(f)(g)))
       case Inject(e) => last(e)
       case Return(a) => f(a)
 

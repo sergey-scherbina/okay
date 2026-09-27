@@ -105,11 +105,11 @@ object Refs:
             case Read(c) => Return(slot(h, c)): A ! F
             case Write(_, s) => Return(s): A ! F
           } (e => Inject(e))
-        case Bind(Inject(e), k) => split[Refs, F](e) {
+        case Bind(i @ Inject(e), k) => split[Refs, F](e) {
             case New(init) => loop(n + 1, h.updated(n, init))(k(n))
             case Read(c) => loop(n, h)(k(slot(h, c)))
             case Write(c, s) => loop(n, h.updated(c, s))(k(s))
-          } (e => Inject(e).flatMap(x => _loop(n, h)(k(x))))
+          } (_ => forwarded[Refs, F](i).flatMap(x => _loop(n, h)(k(x))))
 
     loop(0, Map.empty)(p)
 

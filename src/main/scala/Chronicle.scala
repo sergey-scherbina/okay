@@ -71,18 +71,18 @@ object Chronicle:
     // record has to be threaded through it
     @tailrec def loop(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = (x.resume: @unchecked) match
       case Return(a) => Return(verdict(errs, a))
-      case Inject(e) => split[Chronicle % E, F](e) {
+      case i @ Inject(e) => split[Chronicle % E, F](e) {
           case Dictate(err) => Return(verdict(err :: errs, ())): Verdict[E, A] ! F
           case Halt() => Return(Failed(errs.reverse.toVector)): Verdict[E, A] ! F
-        } { e => Inject(e).map(verdict(errs, _)) }
-      case Bind(Inject(e), k) => split[Chronicle % E, F](e) { c =>
+        } { _ => forwarded[Chronicle % E, F](i).map(verdict(errs, _)) }
+      case Bind(i @ Inject(e), k) => split[Chronicle % E, F](e) { c =>
           // the constructor refines the CONTINUATION's domain here; the
           // checker cannot see that under an existential answer type the
           // two cases are all there is — `Writer.loopWith`'s claim
           (c: @unchecked) match
             case Dictate(err) => loop(err :: errs)(k(()))
             case Halt() => Return(Failed(errs.reverse.toVector)): Verdict[E, A] ! F
-        } { e => Inject(e).flatMap(x => _loop(errs)(k(x))) }
+        } { _ => forwarded[Chronicle % E, F](i).flatMap(x => _loop(errs)(k(x))) }
 
     loop(Nil)(p)
   }
