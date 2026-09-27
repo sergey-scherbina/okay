@@ -1,1 +1,0 @@
-claude session_01LZNspDq7ZU8TRfNoTnpRMD, 2026-09-27, operator ask: bulk-parquet — Bulk.read(path, Format) over splits; Parquet as a Format without Spark; taxi demo off Spark's reader
