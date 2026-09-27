@@ -756,7 +756,7 @@ private[okay] object Wire {
       else Right(name -> xs.map(dec))
     j match
       case Json.JArr(Vector(Json.JStr(n), Json.JArr(vals))) => cells(n, vals)
-      case Json.JObj(fs) if fs.exists((k, v) => k == "cells") =>
+      case Json.JObj(fs) if fs.exists((k, _) => k == "cells") =>
         val m = fs.toMap
         cells(unboxed(m.get("name")).collect { case Json.JStr(s) => s }.getOrElse(""), asArray(m("cells")))
       case other => decColRaw(other)
