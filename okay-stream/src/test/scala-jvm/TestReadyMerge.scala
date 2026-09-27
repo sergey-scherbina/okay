@@ -149,8 +149,8 @@ class TestReadyMerge extends munit.FunSuite {
     // the flags; the first cut read them at once and missed 297 times
     // in 300 while the cancels were still on their way (it passed the
     // lane's gates by luck and went red in a ci-runner whole build).
-    // And it cancels once the merge IS parked: on the `own` scheduler a
-    // cancel before the merge's first park is not seen by its sources
+    // And it cancels once the merge IS parked; a cancel between two
+    // operations, before the park, is the next law's case
     // (specs/ready-merge.md, Decisions).
     val a, b = Gate()
     val parked = CountDownLatch(1)

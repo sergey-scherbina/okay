@@ -164,7 +164,9 @@ waker then reads the queue — at least one side sees the other.
   operation without running it, knows only the Await it last parked on,
   and nothing calls the merge's canceller — the sources already parked
   stay registered, as on an early stop. Backlog
-  `ready-merge-own-cancel-window`. The law cancels once the merge is
+  `ready-merge-own-cancel-window` — CORRECTED by it, next entry: the
+  2 of 200 was the join reading a cancel in flight, and the real window
+  was a cancel between two operations. The law cancels once the merge is
   parked (`ReadyMerge`'s `onPark` hook, a test's only view of that
   moment) and joins before it reads. THE FIRST CUT of the law read the
   flags right after `cancel()` and so measured the cancel still in
