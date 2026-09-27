@@ -259,3 +259,28 @@ question the tree could not answer by reading:
   a 3 000-answer replay all run.
 - `exit` works from inside a lambda the block does not own, and a
   dialogue pauses on either side of an async operation.
+
+## Machine allocations (2026-09-27, delim-machine-allocs)
+
+Three allocations per operation that carry no information, each its
+own commit with its own `-prof gc` A/B (DelimBenchmark: delimPushOnly,
+delimDollarOnly, delimDollarResume, delimGenerator,
+writerTellUnderDelim; one lane per `Jmh/run`, arms alternating). A
+change that does not pay, or costs >2% time on any lane, is reverted
+alone and recorded here as refuted.
+
+- [ ] (1) `step` answers the next state itself: no `Either`/`Right`
+      per Delim operation; the finished program travels as its own
+      state (`Out`), which only the foreign/forward path builds.
+- [ ] (2) `Push`/`Dollar`/`Watched` carry the op's answer type on the
+      delimiter frame (`r <:< X`, a typed witness, no cast) instead of
+      an identity `K` frame under it: one frame fewer per delimiter,
+      per capture copy, and one loop step fewer per normal return.
+- [ ] (3) a foreign operation whose continuation head is a `K`
+      resumes as `f(x)` on the rest, not `pure(x)` on the whole stack.
+- [ ] Laws unchanged: every Delim suite, TestStackSafetyCore, the
+      `dollarResumed` shots count.
+- [ ] DATA: `delimCaptureDepth` — N = 1/16/256 `flatMap` frames
+      between a `shift` and its prompt, k called once and 8 times;
+      the slope per frame per call recorded below (for
+      `continuations-as-data-spike`).
