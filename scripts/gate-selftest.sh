@@ -94,6 +94,15 @@ rc5=$?
 grep -q "gate: STALLED" "$out5" && bad "killed a compiling host" || ok "not stalled"
 [ "$rc5" -eq 0 ] && ok "reached a verdict (exit 0)" || bad "exit was $rc5, expected 0"
 
+say "5b. a host burning well under a second per window is still WORKING (CPU counted below whole seconds)"
+out5b="$tmp/lighthost.out"
+GATE_SBT="$here/fake-sbt-light-host.sh" GATE_STALL_SECS=6 GATE_TICK_SECS=2 \
+  GATE_STALL_CPU=0 GATE_STALL_HOST_CPU=0 \
+  GATE_LOG="$tmp/lighthost.log" run_gate test > "$out5b" 2>&1
+rc5b=$?
+grep -q "gate: STALLED" "$out5b" && bad "killed a lightly working host: $(grep STALLED "$out5b")" || ok "not stalled"
+[ "$rc5b" -eq 0 ] && ok "reached a verdict (exit 0)" || bad "exit was $rc5b, expected 0"
+
 say "6. a \";\"-chained command reaches sbt as SEPARATE commands, none dropped"
 # gate-command-chain: `gate.sh "a; b"` handed sbt ONE argument and sbt
 # ran `a` alone — "0 test results" in the verdict was the only tell.

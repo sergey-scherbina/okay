@@ -127,7 +127,7 @@ descendants() {
 
 # the tree split in two: the HOST (the root pid, and whatever in the
 # tree is sbt's own JVM by its command line) and the WORKERS (the rest).
-# `host_pids`/`worker_pids` print pids; `cpu_of` sums their CPU seconds.
+# `host_pids`/`worker_pids` print pids; `cpu_of` sums their CPU time.
 host_pids() {
   echo "$1"
   descendants "$1" | while read -r p; do
@@ -140,10 +140,15 @@ worker_pids() {
     if ! printf '%s\n' "$hosts" | grep -qx "$p"; then echo "$p"; fi
   done
 }
-# CPU SECONDS of a set of pids. `ps -o pcpu` is the average over a
-# process's whole life and says nothing about now (it read 5.8% for a
-# JVM that had been idle for an hour), so this reads cumulative CPU
-# TIME and the caller differences two samples.
+# CPU time of a set of pids, in CENTISECONDS. `ps -o pcpu` is the
+# average over a process's whole life and says nothing about now (it
+# read 5.8% for a JVM that had been idle for an hour), so this reads
+# cumulative CPU TIME and the caller differences two samples.
+# CENTISECONDS, not seconds (gate-selftest-busyhost-load, 2026-09-27):
+# the total used to be cut to whole seconds, so a window in which a host
+# burned 0.3 s differenced to 0 and a WORKING host was called STALLED —
+# case 5 of gate-selftest went red that way on a loaded box, and case 5b
+# (a host that works lightly on purpose) is the reproduction.
 cpu_of() {
   sort -u | while read -r p; do
     ps -o time= -p "$p" 2>/dev/null
@@ -151,8 +156,10 @@ cpu_of() {
     { n=NF; s=0; m=1
       for (i=n; i>=1; i--) { s += $i * m; m *= 60 }
       total += s }
-    END { printf "%d\n", total+0 }'
+    END { printf "%d\n", total * 100 + 0.5 }'
 }
+# centiseconds as seconds, for the messages
+secs() { printf '%d.%02d' $(($1 / 100)) $(($1 % 100)); }
 
 stall_evidence() {
   # the dump is the whole point: without it a stall is a shrug
@@ -206,14 +213,14 @@ sbt_run() {
     quiet=$((quiet + tick_secs))
     [ "$quiet" -lt "$stall_secs" ] && continue
     now=$(worker_pids "$pid" | cpu_of); hnow=$(host_pids "$pid" | cpu_of)
-    if [ $((now - base)) -gt "$stall_cpu" ] || [ $((hnow - hbase)) -gt "$stall_host_cpu" ]; then
+    if [ $((now - base)) -gt $((stall_cpu * 100)) ] || [ $((hnow - hbase)) -gt $((stall_host_cpu * 100)) ]; then
       # silent but working: a long compile (the host) or a long test
       # (a worker). Say it once per window and keep waiting, with both
       # baselines moved forward.
-      echo "gate: quiet for ${quiet}s but the workers burned $((now - base))s and sbt $((hnow - hbase))s of CPU — still working"
+      echo "gate: quiet for ${quiet}s but the workers burned $(secs $((now - base)))s and sbt $(secs $((hnow - hbase)))s of CPU — still working"
       quiet=0; base="$now"; hbase="$hnow"; continue
     fi
-    echo "gate: STALLED — no output for ${quiet}s; the workers burned $((now - base))s and sbt $((hnow - hbase))s of CPU in that window"
+    echo "gate: STALLED — no output for ${quiet}s; the workers burned $(secs $((now - base)))s and sbt $(secs $((hnow - hbase)))s of CPU in that window"
     stall_evidence "$pid" "$l.stall"
     echo "gate: killing the run BY PID ($pid and its tree); this is NOT a verdict about the tree"
     descendants "$pid" | while read -r p; do kill "$p" 2>/dev/null; done
