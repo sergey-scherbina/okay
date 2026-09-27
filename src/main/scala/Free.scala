@@ -108,7 +108,14 @@ object Free {
   /** `m.flatMap(g)`, fused through a `Mapped` continuation */
   def bind[F[+_], A, B](m: Free[F, A], g: A => Free[F, B]): Free[F, B] = m match
     case b: Bind[F, x, A] @unchecked => b.f match
-      case k: Mapped[F, x, A] @unchecked => Bind(b.a, (y: x) => g(k.f(y)))
+      // NOT `y => g(k.f(y))`: that calls the next continuation DIRECTLY,
+      // and continuations composed by other continuations (Delim's
+      // `k1(x).flatMap(k2)`, n segments long) then chain n direct calls
+      // on the JVM stack. TestStackSafetyCore's Delim test overflowed at
+      // n = 20 000 with the first cut. `Bind(Return(_), g)` hands `g` back
+      // to the interpreter's loop, as the rotation used to, and still
+      // saves the rotation's Bind and closure.
+      case k: Mapped[F, x, A] @unchecked => Bind(b.a, (y: x) => Bind(Return(k.f(y)), g))
       case _ => Bind(m, g)
     case _ => Bind(m, g)
 
