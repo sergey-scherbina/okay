@@ -1,0 +1,1 @@
+claude session_01XyJb5emMoPWpsJAEFDoBos, 2026-09-27, operator ask: !.foldEach — the element's program + a pure combine, one bind a step (foldM still reads 2x a hand-written one-bind loop)
