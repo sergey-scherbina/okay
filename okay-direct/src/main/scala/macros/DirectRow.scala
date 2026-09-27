@@ -122,6 +122,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     Symbol.requiredModule("okay.Free.Return").methodMember("apply").head
   lazy val bindApply: Symbol =
     Symbol.requiredModule("okay.Free.Bind").methodMember("apply").head
+  /** `map`'s continuation (one-bind-hot-steps): `new Free.Mapped(f)` runs
+   * as `a => Free.Return(f(a))`, and the stager reads it as that */
+  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.Free.Mapped")
 
   /**
    * THE INLINER'S PROXIES, SUBSTITUTED. An inline method's by-value
@@ -222,7 +225,24 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
         case Apply(TypeApply(f, targs), List(m, k)) if f.symbol == bindApply =>
           val aT = targs(1).tpe.widen
           val bT = targs(2).tpe.widen
+          // `map`'s continuation, `new Free.Mapped(x => body)`: a bind whose
+          // continuation is the pure `x => Return(body)` (one-bind-hot-steps)
+          def mappedFn(t: Term): Option[Term] = t match
+            case Apply(TypeApply(Select(New(tpt), _), _), List(fn)) if tpt.tpe.typeSymbol == mappedClass => Some(fn)
+            case Apply(Select(New(tpt), _), List(fn)) if tpt.tpe.typeSymbol == mappedClass => Some(fn)
+            case _ => None
           stripped(k) match
+            case kk if mappedFn(kk).isDefined =>
+              stripped(mappedFn(kk).get) match
+                case Lambda(List(param), body) =>
+                  def renamedTo(to: Term): Term =
+                    val r = new TreeMap:
+                      override def transformTerm(tree: Term)(o: Symbol): Term = tree match
+                        case id: Ident if id.symbol == param.symbol => to
+                        case _ => super.transformTerm(tree)(o)
+                    r.transformTerm(body)(Symbol.spliceOwner)
+                  walk(m).map(ms => wrap(bs, bind(ms, aT, bT)(v => pureF(Typed(renamedTo(v), Inferred(bT))))))
+                case _ => None
             case Lambda(List(param), body) =>
               // the body is walked FIRST, against a fresh name for the
               // parameter, and the bind is emitted only if it walks —
