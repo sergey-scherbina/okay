@@ -122,7 +122,33 @@ rotation it skipped weighs ~48. Its diff (`8f40e0bdf`) made
 `inline def flatMap` a call to `Free.bind` with two type tests, on
 EVERY flatMap in the library — the rotation's own `f(_).flatMap(g)`,
 every handler's forwarding bind — while the fusion fired only inside the
-rotation closure. The 21% priced those type tests, not the form. A
-clean retest puts the same continuation in `resume`'s rotation case,
-where the `Bind(Bind(a, f), g)` match already runs, and leaves
-`flatMap` a constructor.
+rotation closure. The 21% priced those type tests, not the form. It is
+NOT retested here, because its ceiling is now known and small: the safe
+form can only skip the rotation — the outer `Bind` and its closure, two
+of the ~9 objects a `map`-then-bind step allocates, ~4 µs of nestedSW's
+32 at the ladder's 2 µs an object — and only by testing the receiver in
+`flatMap`, which every bind in the library pays (the continuation
+queue's map-free lanes paid 1-3% for a test of that kind). In `resume`'s
+rotation case the same form saves nothing at all: the outer `Bind` is
+already built, and a `MapThen` there is the closure it replaces.
+
+**The builder's second closure, removed.** `foldM`'s `go` now builds
+its continuation in place — `Bind(op, y => go(i + 1, g(y)))` — instead
+of handing a `next` closure to a `step` helper that wrapped it in a
+second one. Same session, arms alternated, each lane its own run
+(history.d `…-map-cost-residual-foldm.tsv`): `rowFoldM` 23.45 → 21.12 µs
+(1.11x, 231 → 191 KB/op), `stateFoldM` 21.03 → 18.43 (1.14x, 192 → 176
+KB). What is left of the builder's residual over `rowOneBind` is the
+map node the user's `.map` builds (48 B) and the boxed accumulator
+(16 B), neither of which a builder can remove: the first is the road of
+`fold-each` (a step given as the element's program and a pure combine,
+so no map is ever built), the second is the language's.
+
+## Decisions
+
+- 2026-09-27 (map-cost-residual): the Overview's diagnosis is corrected
+  — the two binds were a fifth of the gap; the rest is allocation the
+  ladder names. `foldM` builds its continuation in place. The `Map`
+  node of `Free` (−16 B a map, against `resume`'s inline budget) and
+  the build-time safe fusion (two objects a step, a type test on every
+  `flatMap`) are both priced above and NOT taken.

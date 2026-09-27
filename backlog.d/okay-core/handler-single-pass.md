@@ -26,4 +26,9 @@
       shape. (The "60-70% is rotation" reading was corrected the same
       day: specs/left-nested-build-cost.md.) Parked behind
       `map-flatmap-pair-cost`, which measures what the nestedSW/nestedSWr
-      gap actually is.
+      gap actually is. ANSWERED by map-cost-residual (2026-09-27,
+      specs/map-fusion.md, last section): the gap is allocation at ~2 µs
+      an object per 1000 steps — the map node the user's `.map` builds,
+      the boxed accumulator, the builder's closures — not the rotation
+      and not `Bind(Return, g)`; the shape itself is ≤1.1x
+      (left-nested-build-cost). The bar above stands as written.
