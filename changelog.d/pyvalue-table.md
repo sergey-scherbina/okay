@@ -4,8 +4,11 @@
 a frame can now sit INSIDE a value — among a call's arguments, inside the
 dict a function answers, an element of a list. `Wire.enc/dec` write and
 read it where `t == "frame"` at any depth; a frame's own column may not
-hold a frame, refused by name both ways (`IllegalArgumentException` out,
-a `WireError` condition in). `PyCodec` decodes a `Vector[A]`/`List[A]`
+hold a frame, at any depth of its cells, refused by name both ways
+(`IllegalArgumentException` out, a `WireError` condition in, checked on
+the JSON before the cell is decoded) — the rule that also bounds the
+value -> frame -> cell -> value cycle to one pass, written into
+specs/stack-safety-okay.tsv for the eight methods on it. `PyCodec` decodes a `Vector[A]`/`List[A]`
 from a `Table` by `A`'s Schema, so `{rows: frame, state: …}` reads
 straight into a case class; `Shape.toJson`, `ArrowFrames.kind` and `Jvm`
 name the case. The Python shim gains `okay.frame(cols)` (a `dict`

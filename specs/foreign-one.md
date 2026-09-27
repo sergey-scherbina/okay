@@ -849,9 +849,12 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     call's arguments, inside an answered dict, an element of a list —
     and written back the same, where before it was read only as a frame
     op's WHOLE answer and became a `Dict` of its raw fields anywhere
-    else. The one rule kept: a frame's own column may not hold a frame,
-    refused by name both ways, because a column is one kind of cell and
-    the columnar encoders have no cell kind for a table. The shims
+    else. The one rule kept: a frame's own column may not hold a frame, at
+    any depth of its cells, refused by name both ways (on the way in,
+    on the JSON before the cell is decoded), because a column is one
+    kind of cell and the columnar encoders have no cell kind for a
+    table — and because that rule is what bounds the value -> frame ->
+    cell -> value cycle to one pass (specs/stack-safety-okay.tsv). The shims
     already tagged a nested table (Go, Rust, Haskell, R); Python gains
     `okay.frame(cols)` to say so, since a dict of lists is also just a
     dict of lists. What this buys: `step(frame, state) -> {rows, state}`,

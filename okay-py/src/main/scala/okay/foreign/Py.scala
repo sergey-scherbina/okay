@@ -642,9 +642,45 @@ private[okay] object Wire {
     "v" -> Json.JNum(FrameFormat.toDouble),
     "cols" -> Json.JArr(f.cols.map((n, col) => encCol(n, col)))))
 
+  /** does a frame sit anywhere inside `v`? A work-list, not a recursion:
+   * this is what bounds `enc`/`encCol` (below) and it must not itself be
+   * the unbounded walk it exists to prevent. */
+  def holdsFrame(v: PyValue): Boolean =
+    var todo: List[PyValue] = v :: Nil
+    var found = false
+    while !found && todo.nonEmpty do
+      val h = todo.head; todo = todo.tail
+      h match
+        case PyValue.Table(_) => found = true
+        case PyValue.Arr(xs) => todo = xs.toList ::: todo
+        case PyValue.Dict(kv) => todo = kv.map(_._2).toList ::: todo
+        case _ => ()
+    found
+
+  /** the JSON twin of `holdsFrame`: an object tagged `"t": "frame"`
+   * anywhere inside `j`, found BEFORE `dec` is asked to read it */
+  def jsonHoldsFrame(j: Json): Boolean =
+    var todo: List[Json] = j :: Nil
+    var found = false
+    while !found && todo.nonEmpty do
+      val h = todo.head; todo = todo.tail
+      h match
+        case Json.JObj(fs) =>
+          if fs.exists((k, v) => k == "t" && v == Json.JStr("frame")) then found = true
+          else todo = fs.map(_._2).toList ::: todo
+        case Json.JArr(xs) => todo = xs.toList ::: todo
+        case _ => ()
+    found
+
+  /** A frame's column holds NO frame, at any depth of its cells. The rule
+   * is what bounds the stack: `enc` -> `encFrameColumnar` -> `encCol` ->
+   * `enc` on a cell is a cycle, and a cell that holds no frame never
+   * re-enters `encFrameColumnar`, so the cycle is walked at most once
+   * (specs/stack-safety-okay.tsv names each method on it). Refused by
+   * name, not flattened: a column is one kind of cell. */
   private def encCol(name: String, col: Vector[PyValue]): Json =
-    if col.exists(_.isInstanceOf[PyValue.Table]) then
-      throw IllegalArgumentException(s"column '$name' holds a frame: a frame's column may not hold a frame (pyvalue-table)")
+    if col.exists(holdsFrame) then
+      throw IllegalArgumentException(s"column '$name' holds a frame: a frame's column may not hold a frame, at any depth (pyvalue-table)")
     columnType(col) match
       case None =>
         Json.JObj(Vector("name" -> Json.JStr(name), "cells" -> Json.JArr(col.map(enc))))
@@ -708,11 +744,22 @@ private[okay] object Wire {
         case _ => Left(Condition("WireError", "a frame without cols"))
     case other => Left(Condition("WireError", s"expected a frame, got $other"))
 
-  private def decCol(j: Json): Either[Condition, (String, Vector[PyValue])] = decColRaw(j).flatMap { (name, cells) =>
-    if cells.exists(_.isInstanceOf[PyValue.Table]) then
-      Left(Condition("WireError", s"column '$name' holds a frame: a frame's column may not hold a frame (pyvalue-table)"))
-    else Right(name -> cells)
-  }
+  /** `encCol`'s mirror: a cell that holds a frame (at any depth) is
+   * refused BEFORE `dec` reads it, so `dec` -> `decFrame` -> `decCol` ->
+   * `dec` on a cell never re-enters `decFrame` — the same bound, on the
+   * way in, checked on the JSON rather than after a decode that would
+   * already have walked the nesting. */
+  private def decCol(j: Json): Either[Condition, (String, Vector[PyValue])] =
+    def cells(name: String, xs: Vector[Json]): Either[Condition, (String, Vector[PyValue])] =
+      if xs.exists(jsonHoldsFrame) then
+        Left(Condition("WireError", s"column '$name' holds a frame: a frame's column may not hold a frame, at any depth (pyvalue-table)"))
+      else Right(name -> xs.map(dec))
+    j match
+      case Json.JArr(Vector(Json.JStr(n), Json.JArr(vals))) => cells(n, vals)
+      case Json.JObj(fs) if fs.exists((k, v) => k == "cells") =>
+        val m = fs.toMap
+        cells(unboxed(m.get("name")).collect { case Json.JStr(s) => s }.getOrElse(""), asArray(m("cells")))
+      case other => decColRaw(other)
 
   private def decColRaw(j: Json): Either[Condition, (String, Vector[PyValue])] = j match
     case Json.JArr(Vector(Json.JStr(n), Json.JArr(vals))) => Right(n -> vals.map(dec))

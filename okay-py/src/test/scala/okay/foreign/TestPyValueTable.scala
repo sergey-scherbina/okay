@@ -43,6 +43,19 @@ class TestPyValueTable extends munit.FunSuite:
     assert(d.getMessage.contains("may not hold a frame"), d.getMessage)
   }
 
+  test("...at any depth: a frame inside a dict inside a column is refused too, before it is decoded — that is what bounds the stack") {
+    val deep = PyFrame(Vector("x" -> Vector(Dict(Vector("inner" -> Arr(Vector(Table(frame))))))))
+    val e = intercept[IllegalArgumentException](Wire.enc(Table(deep)))
+    assert(e.getMessage.contains("at any depth"), e.getMessage)
+    val text = """{"t":"frame","cols":[["x",[{"inner":[{"t":"frame","cols":[["y",[1]]]}]}]]]}"""
+    val d = intercept[IllegalStateException](Wire.dec(Json.parse(text)))
+    assert(d.getMessage.contains("at any depth"), d.getMessage)
+    // and the scans themselves are not the recursion they prevent: 100 000 levels of nesting, no overflow
+    val nested = (1 to 100000).foldLeft(Table(frame): PyValue)((v, _) => Arr(Vector(v)))
+    assert(Wire.holdsFrame(nested))
+    assert(!Wire.holdsFrame(Arr(Vector(I64(1), Dict(Vector("a" -> Str("b")))))))
+  }
+
   test("rows expected, a frame answered: PyCodec reads the rows by the row's Schema") {
     val rows = Vector(Row(1, 10), Row(2, 20))
     val t = Table(PyFrame(Vector("key" -> Vector(I64(1), I64(2)), "v" -> Vector(I64(10), I64(20)))))

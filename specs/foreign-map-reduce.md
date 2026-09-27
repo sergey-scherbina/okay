@@ -375,10 +375,15 @@ for one op). The operator chose the first ("Делай а").
 
 - **`PyValue.Table(frame)`.** `Wire.enc/dec` write and read it where
   `t == "frame"` at any depth of a value; a frame's own COLUMN may not
-  hold a frame — refused by name on the way out (`IllegalArgumentException`)
-  and on the way in (a `WireError` condition) rather than quietly
-  flattened, because a column is one kind of cell and the columnar
-  encoders (`ArrowFrames.kind`) have no cell kind for it. `PyCodec`
+  hold a frame, AT ANY DEPTH of its cells — refused by name on the way
+  out (`IllegalArgumentException`) and on the way in (a `WireError`
+  condition, checked on the JSON before the cell is decoded) rather than
+  quietly flattened, because a column is one kind of cell and the
+  columnar encoders (`ArrowFrames.kind`) have no cell kind for it. The
+  rule is also what BOUNDS the stack: value -> frame -> cell -> value is
+  a cycle, and a cell that holds no frame never re-enters it, so it is
+  walked at most once (specs/stack-safety-okay.tsv names the eight
+  methods on it; `holdsFrame`/`jsonHoldsFrame` are work-lists). `PyCodec`
   reads a `Vector[A]`/`List[A]` from a `Table` by `A`'s Schema, so
   `{rows: frame, state: …}` decodes into a case class. The Python shim
   gains `okay.frame(cols)`, a `dict` subclass `enc` tags as a frame
