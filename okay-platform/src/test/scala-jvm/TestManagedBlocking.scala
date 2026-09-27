@@ -77,4 +77,47 @@ class TestManagedBlocking extends munit.FunSuite {
       assert(ran, "the outside fork woke nobody: the blocked worker counted as awake")
     finally sch.close()
   }
+
+  // ── the bound (scheduler-default-decision) ──────────────────────────
+  // `blocked` fibers park in the library's door, then ONE more fiber is
+  // forked that would release them all. Every fork is from outside, so
+  // they queue in submission order and the releaser is taken last: it
+  // gets a thread only if the scheduler has one beyond the blocked ones.
+
+  /** forks `blocked` door-blocked fibers and then their releaser; true when
+   * the releaser ran within `within` ms. Always unwedges before returning
+   * (from this thread, outside the scheduler) and joins everything. */
+  private def releaserRuns(blocked: Int, within: Long)(using Scheduler): Boolean =
+    val gates = Vector.fill(blocked)(Gate())
+    val fs = gates.map(g => Async.spawn(async(g.await())))
+    gates.foreach(g => assert(g.entered.await(10, TimeUnit.SECONDS), "a blocker never started"))
+    val once = java.util.concurrent.atomic.AtomicBoolean(false)
+    def releaseAll(): Unit = if once.compareAndSet(false, true) then gates.foreach(_.release())
+    val ran = CountDownLatch(1)
+    val r = Async.spawn(async { ran.countDown(); releaseAll() })
+    val inTime = ran.await(within, TimeUnit.MILLISECONDS)
+    if !inTime then releaseAll()
+    fs.foreach(_.join()); r.join()
+    inTime
+
+  test("bound: on loom, n + overflow + 1 fibers blocked in the door all finish") {
+    given Scheduler = Schedulers.loom
+    assert(releaserRuns(blocked = 2 + 2 + 1, within = 3000))
+  }
+
+  test("bound: on adaptive, n + overflow blocked fibers are survivable and one more is not") {
+    // stuck-check every 20 ms: fifteen looks inside the 300 ms window, so a
+    // wedge here is the bound, not a check that has not looked yet
+    val build = () => Schedulers.own.workers(2).watched(scala.concurrent.duration.Duration(20, "ms"), overflow = 2).build
+    val a = build()
+    try
+      given Scheduler = a
+      assert(releaserRuns(blocked = 2 + 2 - 1, within = 3000), "n + overflow - 1 blocked: the releaser has the last thread")
+    finally a.close()
+    val b = build()
+    try
+      given Scheduler = b
+      assert(!releaserRuns(blocked = 2 + 2, within = 300), "n + overflow blocked: the scheduler grew past its bound")
+    finally b.close()
+  }
 }

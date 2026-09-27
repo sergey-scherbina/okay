@@ -140,6 +140,17 @@ class AdversarialBenchmark {
       fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
     }.join()
 
+  /** the inside shape on the DEFAULT given, for the loom-vs-adaptive
+   * pair (scheduler-default-decision): the same code as
+   * `okayOwnInside`, with no scheduler named, so `-Dokay.scheduler`
+   * alone decides which one runs it */
+  @Benchmark
+  def forkJoin10k_okayInside(): Long =
+    Async.spawn {
+      val fs = (0 until K).map(i => Async.spawn(async(step(i))))
+      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+    }.join()
+
   /** okay's drive scheduler: the JS shape on the JVM, fiber = task =
    * promise (`DriveTask`); 25 % over the raw pool, §4b */
   @Benchmark
