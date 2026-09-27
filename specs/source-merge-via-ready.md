@@ -210,21 +210,37 @@ buffered when the merge's drive comes back to it. Re-armed only when
 that take finds nothing. `drained` reads through it; any other channel
 falls back to `receiveManyAsync`.
 
-- [ ] order: a side's elements arrive in the order sent, across
-      notify / take cycles
-- [ ] end: a close while the watch is armed notifies, and the look
-      that follows answers the end (after everything buffered)
-- [ ] failure: a failed channel answers its failure once drained,
-      through the watch as through `receiveManyAsync`
-- [ ] cancel: a cancelled watch is never called, and the element that
-      would have woken it is still received by the next reader
-- [ ] the existing laws unchanged: TestChannel*, TestSentinel*,
-      TestReadyMerge*, TestSourceMerge*/TestMergeOrder/TestMergeEnds,
-      TestChannelFailure, TestDrain
-- [ ] THE REGIME CHECK: the chunked ring road (f0f355bd4's, rebuilt)
+- order, end, failure, cancel: laws written (a `TestChannelWatch`
+  suite, seven laws) and GREEN with the existing channel, drain and
+  merge suites (186 results) — dropped with the code, below
+- [x] THE REGIME CHECK: the chunked ring road (f0f355bd4's, rebuilt)
       over `okayChunked`, -f 10, one-shot receive against the notifying
-      one, slow forks counted and the per-fork side wakes read. If the
-      slow regime stays, STOP: stage 2 is not run.
+      one, slow forks counted and the per-fork side wakes read. The
+      slow regime STAYED: stage 2 was not run.
+
+**Result — REFUTED (2026-09-27).** Five arms of 10 forks, alternating
+through `jmh-lane.sh` on a quiet box (rows in
+`src/jmh/history.d/…-ring-standing-receiver-notify.tsv`):
+
+| arm | slow forks (>225 us) | side wakes/op, slow forks | fast forks |
+|---|---|---|---|
+| ring, one-shot receive | 2/10, then 5/10 | 91-106 | 11-23 |
+| ring, notifying receive | 1/10, then 5/10 | 137-149 | 11-24 |
+| shared channel (today's road) | 0/10 (196-211) | 1.0-1.2 | — |
+
+Deferring the take to the reader's own thread did not turn a caught-up
+consumer's wake-ups into batches: it made MORE wake cycles. That is
+the answer to the whole line of fixes, not just to this one — once the
+consumer is caught up, a side holds one chunk whenever it is looked at,
+whichever thread pops it and however cheap the wake is, because no
+receive-side design can batch what the producer has not made yet. Two
+receive-side designs now refuted (zero-allocation wakes, and this);
+the regime is a matter of relative speed, set by early timing, and
+the shared channel escapes it only because two producers feed one
+queue. The code was dropped; the chunked roads stay on the shared
+channel (one mechanism for the elementwise merge, a measured reason
+for the batch road), and `ready-merge-chunk-forward` went back to the
+backlog without a candidate fix.
 
 **Stage 2 (conditional).** `Source.merge(chunked = true)`,
 `mergeFlushing`, `either` onto `ReadyMerge[Chunk[A]]` over a chunk

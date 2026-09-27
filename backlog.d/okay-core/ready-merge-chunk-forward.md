@@ -46,3 +46,14 @@
       UNPAUSED 2026-09-27 by the operator ("Разблокируй"): the pause
       above is lifted; this item and ring-standing-receiver run as one
       lane, standing receiver first.
+      BACK TO THE BACKLOG 2026-09-27 (this lane, stage 1 failed): its
+      first stage, `ring-standing-receiver`, was run as a notifying
+      receive in `SentinelChannel` and REFUTED — the chunked ring road
+      stayed bimodal (6/20 slow forks against the one-shot's 7/20; the
+      shared channel 0/10), so stage 2 was not run and nothing moved.
+      There is no candidate fix left on the receive side
+      (backlog.d/refuted-declined-or-answered/ring-standing-receiver.md).
+      The chunked roads stay on the shared channel. TRIGGER: a design
+      that changes the relative speed of a chunk side and the merge, or
+      the operator deciding one mechanism is worth a bimodal ~1.25x in
+      some forks.
