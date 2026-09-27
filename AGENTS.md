@@ -627,16 +627,18 @@ force, all already practiced, none previously written down:
   **A LANE GETS ITS QUIET BY PROTOCOL** (bench-window, 2026-09-26/27,
   specs/bench-window.md): every `gate.sh` holds a token in
   `$TMPDIR/okay-bench/gates/` while it runs, and a queued lane files a
-  request in `want/`. Since stage 2 (2026-09-27) a gate that meets a
-  request does NOT wait: it moves itself — sbt and every fork — to the
-  efficiency cores (`taskpolicy -b`) and runs on, slower, printing `gate:
-  bench window: ... runs on the efficiency cores meanwhile`; the lane
-  demotes the gates already running and puts them all back when it is
-  done. Measured: 14 burners in that class left a lane at 44 us, the same
-  burners in the foreground made it 69-84. `OKAY_BENCH_DEMOTE=off` is the
-  stage-1 protocol — a starting gate WAITS for the lane, at most 15 min
-  (`OKAY_BENCH_GATE_MAX_WAIT`), with a `still holding` line every 30 s so
-  `gate-retry`'s stall watchdog sees it alive. `sh
+  request in `want/`. A gate that STARTS while a request is live WAITS
+  for the lane, at most 15 min (`OKAY_BENCH_GATE_MAX_WAIT`), with a
+  `still holding` line every 30 s so `gate-retry`'s stall watchdog sees
+  it alive. `OKAY_BENCH_DEMOTE=on` is stage 2, OPT-IN: the gate moves
+  itself to the efficiency cores (`taskpolicy -b`) and runs on instead —
+  a lane stays quiet (44 us beside 14 demoted burners, 69-84 beside the
+  same burners in the foreground), but a whole gate on 4 E-cores FAILS
+  TIMEOUT-BOUND TESTS: it was the default for a day, and a gate whose
+  queue of lanes never emptied ran demoted end to end and lost nine
+  tests to timeouts in seven modules (bench-window-demote-opt-in). If
+  a gate log begins "runs on the efficiency cores meanwhile" and its
+  reds are TimeoutExceptions, that is why. `sh
   scripts/bench-window.sh --status` names who holds what. `jmh-lane.sh`
   QUEUES behind a held lock instead of refusing, so do not wrap it in a
   retry loop. Measured why: before this, 101 lane attempts in an hour

@@ -17,11 +17,11 @@
 # burners on this 10P+4E box read 69-84 us against 44 alone — and 44.4 /
 # 42.7 when the same burners ran in the BACKGROUND QoS class
 # (`taskpolicy -b`), which macOS keeps on the efficiency cores. So by
-# default a gate that meets a benchmark does not wait: it demotes itself
+# request (OKAY_BENCH_DEMOTE=on — NOT the default, see BW_DEMOTE below) a gate that meets a benchmark does not wait: it demotes itself
 # (its sbt and every fork inherit the class) and runs on, slower; the
 # lane demotes the gates already running before each attempt and puts
-# them all back (`taskpolicy -B`) when it is done. OKAY_BENCH_DEMOTE=off,
-# or a box without `taskpolicy`, is the stage-1 protocol: wait.
+# them all back (`taskpolicy -B`) when it is done. The default, and any
+# box without `taskpolicy`, is the stage-1 protocol: wait.
 #
 # A token or request is a file named by its owner's pid. A dead pid's
 # file is ignored and removed by whoever reads it, so a crashed gate
@@ -38,7 +38,13 @@ BW_GATE_MAX_WAIT="${OKAY_BENCH_GATE_MAX_WAIT:-900}"
 # the ci-runner's gate goes through the same road. A line every 30 s,
 # half the watchdog's one-minute growth window, so no window is empty.
 BW_HEARTBEAT="${OKAY_BENCH_HEARTBEAT:-30}"
-BW_DEMOTE="${OKAY_BENCH_DEMOTE:-on}"
+# OPT-IN since 2026-09-27 (bench-window-demote-opt-in): ON by default it
+# ran whole gates on the 4 efficiency cores for as long as the JMH queue
+# stayed non-empty — a relay-forward-same-inject gate ran its entire
+# affected matrix demoted and nine timeout-bound tests failed across
+# seven modules (TestGenerate's 1M: 243 s against its 120 s limit). A
+# lane is quiet either way; a gate's tests with timeouts are not.
+BW_DEMOTE="${OKAY_BENCH_DEMOTE:-off}"
 command -v taskpolicy > /dev/null 2>&1 || BW_DEMOTE=off
 
 # a pid and every descendant (a process tree, bounded by the box)

@@ -164,3 +164,19 @@ list is where it would show). Selftests: bench-window-selftest 9-10,
 jmh-lane-selftest 4e; the stage-1 cases now set `OKAY_BENCH_DEMOTE=off`.
 Rows in `src/jmh/history.d/…-bench-window-demote-measure.tsv`.
 
+**Stage 2 made OPT-IN the same day (bench-window-demote-opt-in,
+2026-09-27).** The caveat above came true within hours: with siblings'
+lanes queued back to back the request set never emptied, so a gate that
+started demoted stayed demoted end to end (each lane restores at its
+end, the next demotes again), and a whole affected matrix on 4
+efficiency cores lost nine timeout-bound tests in seven modules
+(TestGenerate's 1M values: 243 s against 120; TestChildren, TestOwnMonitor,
+TestScopeExtrusion, TestStackBytes, TestUiDepth, TestCoreAsync,
+TestCodeDepth x2). The lane's quiet held; the gate's verdict did not.
+Default back to stage 1 (wait, with the heartbeat); `OKAY_BENCH_DEMOTE=on`
+keeps the mechanism for a caller who knows its gate has no timeouts to
+lose. A demotion that would be safe as a default needs a bound the gate
+can see — e.g. only while a lane is actually RUNNING, restored the moment
+its attempt ends, and never for a gate already past some share of its
+run — measured against the timeout-bound suites, not assumed.
+

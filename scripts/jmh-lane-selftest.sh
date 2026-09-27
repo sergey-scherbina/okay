@@ -124,8 +124,9 @@ rm -rf "$tmp"
 unset OKAY_BENCH_DEMOTE
 
 if command -v taskpolicy > /dev/null 2>&1; then
-say "4e. demotion on (stage 2): a live gate is demoted, not waited for, and restored after the lane"
+say "4e. demotion on (stage 2, opt-in): a live gate is demoted, not waited for, and restored after the lane"
 new_fixture
+export OKAY_BENCH_DEMOTE=on
 sh -c 'perl -e "sleep 20" & wait' & gatepid=$!
 sleep 1
 gchild=$(pgrep -P "$gatepid" | head -1)
@@ -145,6 +146,7 @@ took=$(( $(date +%s) - start ))
 [ "$(ps -o pri= -p "$gchild" | tr -d ' ')" -gt 4 ] && ok "restored after the lane" || bad "still demoted: $(ps -o pri= -p "$gchild")"
 for c in $(pgrep -P "$gatepid"); do kill "$c" 2>/dev/null; done; kill "$gatepid" 2>/dev/null; wait "$gatepid" 2>/dev/null
 rm -rf "$tmp"
+unset OKAY_BENCH_DEMOTE
 fi
 
 say "4d. while a lane is queued its request is filed; after it, the request is gone"
