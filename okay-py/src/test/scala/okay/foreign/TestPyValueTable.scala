@@ -10,14 +10,23 @@ final case class Row(key: Int, v: Long) derives Schema
 class TestPyValueTable extends munit.FunSuite:
 
   private val frame = PyFrame(Vector(
-    "key" -> Vector(I64(1), I64(2), PyNone),
-    "v" -> Vector(I64(10), PyNone, I64(30)),
+    "key" -> Vector(I64(1), I64(2), I64(3)),
+    "v" -> Vector(I64(10), F64(2.5), I64(30)),
     "s" -> Vector(Str("a"), Str("чай"), Str("c"))))
 
   test("a frame inside a dict crosses the wire and comes back a Table, cells intact") {
     val v = Dict(Vector("rows" -> Table(frame), "state" -> Dict(Vector("n" -> I64(3)))))
     val back = Wire.dec(Json.parse(Json.print(Wire.enc(v))))
     assertEquals(back, v)
+  }
+
+  test("a null cell in a typed column comes back as a typed absence, as a frame op's answer always did") {
+    val withNull = PyFrame(Vector("key" -> Vector(I64(1), PyNone)))
+    Wire.dec(Json.parse(Json.print(Wire.enc(Dict(Vector("rows" -> Table(withNull))))))) match
+      case Dict(Vector(("rows", Table(f)))) => f.cols.head._2 match
+        case Vector(I64(1), NA(_)) => ()
+        case other => fail(s"a null read back as $other")
+      case other => fail(s"not the dict: $other")
   }
 
   test("a Table among a list's elements, and alone, round-trips") {
@@ -44,7 +53,7 @@ class TestPyValueTable extends munit.FunSuite:
   }
 
   test("on the JVM a frame is a map of columns, each a list") {
-    val j = Jvm.value(Table(PyFrame(Vector("a" -> Vector(I64(1), I64(2))))))
+    val j = Jvm.jvm(Table(PyFrame(Vector("a" -> Vector(I64(1), I64(2))))))
     val m = j.asInstanceOf[java.util.Map[String, java.util.List[Any]]]
     assertEquals(m.get("a").size, 2)
     assertEquals(m.get("a").get(1), java.lang.Long.valueOf(2))
