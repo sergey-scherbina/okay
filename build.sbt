@@ -2594,6 +2594,53 @@ lazy val okayPy = (project in file("okay-py"))
 // okay-compress: LZ4 and ZSTD of our own (specs/okay-compress.md), pure
 // Scala over byte arrays on JVM, JS and Native, NO dependency; the JMH
 // measures it against aircompressor (pure Java), test-only.
+/**
+ * okay-diagnose (specs/okay-diagnose.md): diagnosis for library and tests
+ * alike, package okay.diagnose: a flight recorder, a failure's diagnosis,
+ * thread states, late-or-lost, `Diagnosable`. It depends on NOTHING, so
+ * any module, the core included, can use it in main code as well as tests.
+ */
+lazy val okayDiagnose = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-diagnose"))
+  .settings(
+    name := "okay-diagnose",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
+/**
+ * okay-test (specs/okay-diagnose.md, "okay-test"): what only tests need,
+ * package okay.testkit: stress rounds, CPU load, and the test-framework
+ * adapters, each over an OPTIONAL dependency (the operator's rule,
+ * 2026-09-27: every dependency behind an abstraction, optional). A module
+ * uses it `% "test->compile"`.
+ */
+lazy val okayTest = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-test"))
+  .dependsOn(okayDiagnose)
+  .settings(
+    name := "okay-test",
+    // OPTIONAL: only `okay.testkit.Munit` names it
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % "optional;test",
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+  .jsSettings(Compile / unmanagedSourceDirectories +=
+    baseDirectory.value.getParentFile / "src" / "main" / "scala-js")
+  .nativeSettings(Compile / unmanagedSourceDirectories +=
+    baseDirectory.value.getParentFile / "src" / "main" / "scala-native")
+
 lazy val okayCompress = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-compress"))
@@ -3410,7 +3457,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
