@@ -115,3 +115,25 @@ matter in time.
 - [x] the handler lanes (docs/benchmarks.md §2 Reader/Writer, §2c) do not
       regress (§2c's freeDirectNested, State get/set + Writer: 14.17 against
       14.22 us, bytes identical; Reader/Writer handlers are untouched)
+
+
+## D4 — `State.Update`, one operation (op-map-constructors, 2026-09-27)
+
+`update` (and `swap`, which is written on it) was `get`, then `set`,
+then a `map` to answer. That is three binds a step, two of them nested
+left under a caller's flatMap (specs/map-fusion.md explains why that
+shape costs). `case Update[S, B](f: S => (B, S))` is one operation: the
+handler applies `f`, keeps the new state and answers `b`. `zoomWith`'s
+part operations (`readPart`/`writePart`/`modifyPart`, each a get or a
+modify followed by a map) are one `Update` on the whole now, and an
+`Update` on the part is one on the whole. Every State matcher learns
+the case: the handler, zoom, `Bisim.Answers.state`, Lexical's four
+clauses, the three stagers, the test handlers, and the Jmh sources.
+
+- [x] `update` is one `Inject(Update(_))` and answers from the OLD state
+- [x] a forwarded `Update` is handled by the outer State handler
+- [x] `zoomWith` carries get/update/modify on the part to the whole
+
+Measured, BuildShapeBenchmark.stateUpdate (1000 foldM steps of
+`State.update`), min of two rounds each side: **47.4 → 21.0 µs
+(2.26x), 463 → 207 KB (−55%)**. That is `modify`'s level (19.3 µs).

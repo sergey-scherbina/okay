@@ -1,0 +1,1 @@
+2026-09-27	4635211f9	quiet	stateUpdate one-op vs get+set+map	20.98	47.45	0.44	us/op, BuildShapeBenchmark.stateUpdate (1000 foldM steps of State.update), min of two rounds each side, each its own jmh-lane.sh run (-f 2 -wi 3 -w 1 -i 5 -r 1 -prof gc); before = the same lane on the branch before State.Update; 207416 vs 463416 B/op
