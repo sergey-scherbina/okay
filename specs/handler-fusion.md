@@ -621,16 +621,17 @@ The foldLeft shape now clears the 1.3x bar, while the right-nested
 twin, the shape of an ordinary recursion, gains 5%. The bytes saved are
 the same 26 KB in all three, so the extra time is not allocation.
 
-**`-prof stack` says where it is** (nestedSW / fusedSW, share of the
-benchmark thread's samples in µs): `Free.resume` plus its rotation
-lambda `f(_).flatMap(g)` take ~23 / ~19.5 µs, the handler loops ~5.7 /
-~3.3, and the Writer's collection (`List.reverse` / `Vector :+`) ~2.3 /
-~0.6. Rotating the left-nested binds costs 60-70% of BOTH, and fusion
-does not touch it. The same 1000 operations take 32 µs left-nested
-against 13 µs right-nested: **the program's SHAPE costs 2.5x, and
-fusing the handlers costs 1.3x.**
+**`-prof stack`** (nestedSW / fusedSW): `Free.resume` plus the frame
+`resume$$anonfun$1` take ~23 / ~19.5 µs. This section first read that
+frame as the rotation alone ("60-70% is rotation; the SHAPE costs
+2.5x"). CORRECTED the same day by left-nested-build-cost
+(specs/left-nested-build-cost.md): the frame is the rotation's lambda
+`f(_).flatMap(g)`, and it RUNS `f`, the user's continuation and the
+handler work behind it. Measured directly, the same programs built
+right-nested are ≤1.1x faster (memory −17-27%), so the shape is not
+the 2.5x. The 32-vs-13 µs gap between nestedSW and nestedSWr is left to
+backlog `map-flatmap-pair-cost`: `sw`'s steps are map + flatMap, two
+binds, where `rightSW`'s are one.
 
 Verdict: a generic fused runner (stages 1-2) is not started on this
-evidence. It would buy 1.3x for foldLeft-built programs and 1.05x for
-recursion. The larger lever is the shape. See backlog
-`left-nested-build-cost`.
+evidence: 1.3x for foldLeft-built programs, 1.05x for recursion.

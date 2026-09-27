@@ -2,6 +2,7 @@ package okay
 
 import java.util.concurrent.TimeUnit
 import org.openjdk.jmh.annotations.{State as JmhState, *}
+import okay.Row.at
 
 /**
  * THE SHAPE A PROGRAM IS BUILT IN (left-nested-build-cost, 2026-09-27).
@@ -39,4 +40,24 @@ class BuildShapeBenchmark {
   def stateFoldM(): Int =
     val p = !.foldM(items)(0)((acc, i) => State.modify[Int](_ + i).map(acc + _))
     !.run(State.handle[Int](0)(p))._2
+
+  /** TWO handlers over a mixed row, FusionBenchmark's `sw` program built
+   * per call, the only difference the build: does the 32-vs-13 µs gap of
+   * nestedSW/nestedSWr come from the shape when two passes run? */
+  type SW = State % Int + Writer % String
+
+  private def op(i: Int, acc: Int): Int ! SW = (i % 3) match
+    case 0 => State.get[Int].at[SW].map(acc + _)
+    case 1 => State.set[Int](i).at[SW].map(acc + _)
+    case _ => Writer.tell("w").at[SW].map(_ => acc + 1)
+
+  @Benchmark
+  def rowFoldLeft(): Int =
+    val p = items.foldLeft(pure[SW, Int](0))((m, i) => m.flatMap(acc => op(i, acc)))
+    State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](p))._2._2
+
+  @Benchmark
+  def rowFoldM(): Int =
+    val p = !.foldM(items)(0)((acc, i) => op(i, acc))
+    State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](p))._2._2
 }
