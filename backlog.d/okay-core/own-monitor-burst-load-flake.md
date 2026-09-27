@@ -14,3 +14,6 @@
       under 20 CPU burners (the channel-known-producers recipe) before
       and after. TRIGGER: its next red, or anyone touching the own
       monitor. (2026-09-27, relay-forward-same-inject)
+      AGAIN 2026-09-27 in op-map-constructors' whole-build gate
+      (okay-gate.3fcpoaWYNc, State-only change, not demoted): "a run used
+      1 thread(s) for eight 0.5 ms fibers on four workers".
