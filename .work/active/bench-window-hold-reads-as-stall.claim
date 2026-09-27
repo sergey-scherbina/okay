@@ -1,0 +1,1 @@
+bench-window-hold-reads-as-stall — a gate held by the bench window writes a heartbeat so gate-retry's stall watchdog does not kill it (my protocol's defect, HIGH)
