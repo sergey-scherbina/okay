@@ -57,3 +57,36 @@
       that changes the relative speed of a chunk side and the merge, or
       the operator deciding one mechanism is worth a bimodal ~1.25x in
       some forks.
+      CANDIDATE 2026-09-27 (operator, "Да"): LAZY REGISTRATION —
+      poll, then park. Both refuted fixes changed HOW a side wakes
+      (cost, thread); neither changed WHEN a side registers. In
+      `ReadyMerge.operate`'s `Async.Await` arm (ReadyMerge.scala:186)
+      a side whose channel is empty registers its callback AT ONCE,
+      whatever the other side holds, and `receiveManyAsync` on an empty
+      ring falls to `receiveAsync` (SentinelChannel.scala:434), so the
+      producer's next send must hand ONE element over on its own thread
+      — the self-sustaining cycle. Already measured and consistent with
+      it: in a slow fork the merge's OWN parks are ~0 per op (the spin
+      experiment) while side wakes are 84-217 per op, so ~100
+      registrations per op are made by a side the merge never parked on
+      and would have come back to by itself. The shared channel is in
+      one mode because it registers only at a REAL park, when both
+      producers' data is gone — that semantics, on per-side channels, is
+      the candidate: (1) a non-registering `receiveManyNow` in
+      `SentinelChannel` over the existing `popMany` (no channel has a
+      non-registering read today); (2) a side's step is `Run(takeNow)`
+      answering a chunk or "empty"; "empty" puts the side into an `idle`
+      set WITHOUT `reg`; (3) ring and `woken` empty → re-poll the idle
+      sides (a volatile read each); one gave a chunk → continue; all
+      empty a second consecutive time → only now `reg` on every idle
+      side and park. Meets this item's own reopen criterion: it changes
+      the RELATIVE speed (the producer stops paying the hand-over), not
+      the receive; and it is not the spin experiment, which spun at the
+      merge's park after the sides had already registered. FIRST STEP,
+      cheap, decides it: one more per-fork counter beside the existing
+      ones — "registered while the other side was non-empty". ≈ side
+      wakes → the lane is worth running; ≈ 0 → the regime is the
+      producer's own speed and this candidate is wrong too. Expected
+      reward is parity (~200 us) plus one mechanism, not a win; the
+      known cost is one extra poll round before a real park, microseconds
+      on a park that happens a few times per op. Then stage 2 as above.
