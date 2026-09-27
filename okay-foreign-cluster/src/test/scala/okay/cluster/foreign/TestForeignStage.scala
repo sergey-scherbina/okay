@@ -33,49 +33,49 @@ final class Fake(@volatile var diesOnce: Boolean = false) extends Batcher[Rec, O
     if dies then Left(Batcher.Failed("WorkerDied", "the fake died"))
     else Right(rows.map(r => Out(r.key, r.v * 2)))
 
-/** the job a worker is asked for by name; its batcher is whatever the
- * test installed, which every in-process worker of this JVM shares */
+/** a job with ITS OWN batcher, under a name no other test uses: an
+ * in-process worker finds the job by name, so a batcher a test installed
+ * in a shared variable was read by whichever partition ran next —
+ * another test's, under a parallel suite or a lingering task
+ * (foreign-reduce-wire-heal-flake, 2026-09-26) */
+final class StageJob(val name: String, batcher: Batcher[Rec, Out], batch: Int, attempts: Int) extends Job[Scale, Long]:
+  type A = Out
+  def params: Schema[Scale] = summon[Schema[Scale]]
+  def answer: Schema[Long] = summon[Schema[Long]]
+  def flow(p: Scale, parts: Int): Flow[Out] =
+    Flow.slices(Rows.of(p.n), parts, chunk = 256).through(batcher, batch, attempts)
+  def sink(p: Scale): Wire[Out, Long] = Wire.fold(Aggregator.sum[Long].contramap[Out](_.v))
+
 object StageJobs:
-  @volatile var batcher: Batcher[Rec, Out] = Fake()
-  @volatile var batch: Int = 1000
-  @volatile var attempts: Int = 3
-
-  object Doubling extends Job[Scale, Long]:
-    type A = Out
-    def name: String = "test.foreign.double"
-    def params: Schema[Scale] = summon[Schema[Scale]]
-    def answer: Schema[Long] = summon[Schema[Long]]
-    def flow(p: Scale, parts: Int): Flow[Out] =
-      Flow.slices(Rows.of(p.n), parts, chunk = 256).through(batcher, batch, attempts)
-    def sink(p: Scale): Wire[Out, Long] = Wire.fold(Aggregator.sum[Long].contramap[Out](_.v))
-
-  Jobs.register(Doubling)
-  def install(): Unit = ()
+  private val n = java.util.concurrent.atomic.AtomicInteger(0)
+  /** this test's job, registered as itself */
+  def of(batcher: Batcher[Rec, Out], batch: Int = 1000, attempts: Int = 3): StageJob =
+    val job = StageJob(s"test.foreign.double.${n.incrementAndGet()}", batcher, batch, attempts)
+    Jobs.register(job)
+    job
 
 /** the stage without an interpreter: the plumbing, the two failure roads,
  * the batch, the pool (default gate) */
 class TestForeignStage extends munit.FunSuite:
-  StageJobs.install()
 
-  private def local(p: Scale, parts: Int) =
-    Flows.fan(StageJobs.Doubling.flow(p, parts), StageJobs.Doubling.sink(p)).runWith
-  private def cluster(p: Scale, parts: Int, workers: Int) =
-    Cluster.run(StageJobs.Doubling, p, parts, Vector.fill(workers)(Cluster.local)).runWith
-
-  override def beforeEach(context: BeforeEach): Unit =
-    StageJobs.batcher = Fake(); StageJobs.batch = 1000; StageJobs.attempts = 3
+  private def local(job: StageJob, p: Scale, parts: Int) =
+    Flows.fan(job.flow(p, parts), job.sink(p)).runWith
+  private def cluster(job: StageJob, p: Scale, parts: Int, workers: Int) =
+    Cluster.run(job, p, parts, Vector.fill(workers)(Cluster.local)).runWith
 
   test("the map through a batcher computes, over in-process workers, what the fan computes: every row, doubled") {
+    val job = StageJobs.of(Fake())
     val p = Scale(10000)
-    assertEquals(local(p, 4).value, Rows.doubled(10000))
+    assertEquals(local(job, p, 4).value, Rows.doubled(10000))
     for workers <- Vector(1, 3) do
-      assertEquals(cluster(p, 4, workers).value, Rows.doubled(10000), s"$workers workers")
+      assertEquals(cluster(job, p, 4, workers).value, Rows.doubled(10000), s"$workers workers")
   }
 
   test("a measured worker reports every foreign call and its time (specs/dataflow.md, stage 15)") {
+    val job = StageJobs.of(Fake())
     val trace = okay.cluster.JobTrace()
     val workers = Vector.fill(2)(Cluster.measured(Cluster.local))
-    val got = Cluster.run(StageJobs.Doubling, Scale(10000), 4, workers, probe = trace).runWith
+    val got = Cluster.run(job, Scale(10000), 4, workers, probe = trace).runWith
     assertEquals(got.value, Rows.doubled(10000))
     val runs = trace.spans.filter(_.name.startsWith("run "))
     def n(s: okay.cluster.JobTrace.Span, k: String) = s.attrs.find(_._1 == k).fold(0L)(_._2.toLong)
@@ -87,36 +87,35 @@ class TestForeignStage extends munit.FunSuite:
 
   test("a chunk is `batch` rows whatever the source's chunk size: one round trip per batch, the last one shorter") {
     val fake = Fake()
-    StageJobs.batcher = fake
-    assertEquals(local(Scale(10000), 4).value, Rows.doubled(10000))
+    val job = StageJobs.of(fake)
+    assertEquals(local(job, Scale(10000), 4).value, Rows.doubled(10000))
     // four partitions of 2500 rows, from a source chunked at 256: 1000, 1000, 500 each
     assertEquals(fake.sizes.sorted, Vector.fill(4)(500) ++ Vector.fill(8)(1000))
   }
 
   test("the FUNCTION's failure fails the run by name, as a considered refusal") {
-    StageJobs.batcher = new Batcher[Rec, Out]:
+    val job = StageJobs.of(new Batcher[Rec, Out]:
       val name = "fake:boom"
-      def apply(rows: Vector[Rec]) = Left(Batcher.Failed("ValueError", "no"))
-    val e = intercept[Throwable](cluster(Scale(1000), 2, 3))
+      def apply(rows: Vector[Rec]) = Left(Batcher.Failed("ValueError", "no")))
+    val e = intercept[Throwable](cluster(job, Scale(1000), 2, 3))
     assert(e.getMessage.contains("fake:boom") && e.getMessage.contains("ValueError: no"), e.getMessage)
-    val f = intercept[Throwable](local(Scale(1000), 2))
+    val f = intercept[Throwable](local(job, Scale(1000), 2))
     assert(f.getMessage.contains("fake:boom"), f.getMessage)
   }
 
   test("a WIRE failure is retried on a fresh interpreter, and the answer is intact") {
     val fake = Fake(diesOnce = true)
-    StageJobs.batcher = fake
-    assertEquals(cluster(Scale(10000), 4, 2).value, Rows.doubled(10000))
+    val job = StageJobs.of(fake)
+    assertEquals(cluster(job, Scale(10000), 4, 2).value, Rows.doubled(10000))
     assertEquals(fake.died, 1)
-    assertEquals(cluster(Scale(10000), 4, 2).retried, 0L, "the coordinator saw nothing: the stage healed itself")
+    assertEquals(cluster(job, Scale(10000), 4, 2).retried, 0L, "the coordinator saw nothing: the stage healed itself")
   }
 
   test("past `attempts` a dead wire is a dead worker: the run says so, naming the stage") {
-    StageJobs.batcher = new Batcher[Rec, Out]:
+    val job = StageJobs.of(new Batcher[Rec, Out]:
       val name = "fake:gone"
-      def apply(rows: Vector[Rec]) = Left(Batcher.Failed("WorkerDied", "always"))
-    StageJobs.attempts = 2
-    val e = intercept[Throwable](cluster(Scale(1000), 2, 2))
+      def apply(rows: Vector[Rec]) = Left(Batcher.Failed("WorkerDied", "always")), attempts = 2)
+    val e = intercept[Throwable](cluster(job, Scale(1000), 2, 2))
     val text = Iterator.iterate(e)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" | ")
     assert(text.contains("fake:gone") && text.contains("2 attempts"), text)
   }
