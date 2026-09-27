@@ -1,0 +1,29 @@
+2026-09-27	cd8251b95	gated	delim-machine-allocs (1) delimPushOnly	22.526	22.892	0.984	us/op; 342040 vs 358040 B/op; step answers Step, no Right; 3 alternating rounds -f1 -prof gc vs 2c500a983
+2026-09-27	cd8251b95	gated	delim-machine-allocs (1) delimGenerator	82.152	86.405	0.951	us/op; 854315 vs 902329 B/op
+2026-09-27	cd8251b95	gated	delim-machine-allocs (1) writerTellUnderDelim	25.773	25.868	0.996	us/op; 310296 vs 310313 B/op
+2026-09-27	cd8251b95	gated	delim-machine-allocs (1) REFUTED first cut loop(step(..)) writerTellUnderDelim	27.06	26.002	1.041	us/op; 1.041x all 3 rounds, bytes unchanged; first cut also: dollarOnly 0.993x dollarResume 0.940x (356008/676015 B)
+2026-09-27	447524bbc	gated	delim-machine-allocs (2) delimPushOnly	17.776	22.608	0.786	us/op; 278040 vs 342040 B/op; witness on the delimiter frame, no identity K; vs cd8251b95
+2026-09-27	447524bbc	gated	delim-machine-allocs (2) delimDollarOnly	19.916	23.306	0.855	us/op; 300008 vs 356008 B/op; witness on the delimiter frame, no identity K; vs cd8251b95
+2026-09-27	447524bbc	gated	delim-machine-allocs (2) delimDollarResume	39.609	46.597	0.850	us/op; 572013 vs 676015 B/op; witness on the delimiter frame, no identity K; vs cd8251b95
+2026-09-27	447524bbc	gated	delim-machine-allocs (2) delimGenerator	68.785	83.302	0.826	us/op; 726254 vs 854315 B/op; witness on the delimiter frame, no identity K; vs cd8251b95
+2026-09-27	447524bbc	gated	delim-machine-allocs (2) writerTellUnderDelim	26.281	26.107	1.007	us/op; 310232 vs 310296 B/op; witness on the delimiter frame, no identity K; vs cd8251b95
+2026-09-27	55ee861d7	gated	delim-machine-allocs (3) delimPushOnly	17.477	17.544	0.996	us/op; 278040 vs 278040 B/op; foreign resume at head K's f(x); vs 447524bbc
+2026-09-27	55ee861d7	gated	delim-machine-allocs (3) delimDollarOnly	19.535	19.473	1.003	us/op; 300008 vs 300008 B/op; foreign resume at head K's f(x); vs 447524bbc
+2026-09-27	55ee861d7	gated	delim-machine-allocs (3) delimDollarResume	39.246	39.166	1.002	us/op; 572013 vs 572013 B/op; foreign resume at head K's f(x); vs 447524bbc
+2026-09-27	55ee861d7	gated	delim-machine-allocs (3) delimGenerator	67.868	68.388	0.992	us/op; 726253 vs 726254 B/op; foreign resume at head K's f(x); vs 447524bbc
+2026-09-27	55ee861d7	gated	delim-machine-allocs (3) writerTellUnderDelim	25.643	25.867	0.991	us/op; 270232 vs 310232 B/op; foreign resume at head K's f(x); vs 447524bbc
+2026-09-27	55ee861d7	gated	delim-machine-allocs (3) REFUTED skip-K inline-in-loop delimPushOnly	18.543	17.602	1.053	us/op; bytes equal; writerTellUnderDelim 0.875x 238232 vs 310232 B; dollarOnly 1.052x dollarResume 1.024x generator 1.020x
+2026-09-27	55ee861d7	gated	delim-machine-allocs (3) REFUTED skip-K stepBind method delimPushOnly	18.672	17.782	1.050	us/op; bytes equal; writerTellUnderDelim 0.871x -72 B/op; dollarOnly 1.041x dollarResume 1.036x generator 1.023x
+2026-09-27	55ee861d7	gated	delim-machine-allocs (3) REFUTED skip-K stepBind + delim() one test delimPushOnly	18.323	17.527	1.045	us/op; bytes equal; writerTellUnderDelim 0.869x -72 B/op; dollarOnly 1.021x dollarResume 1.019x generator 1.004x
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=bind shots=1 depth=1	81.7	81.7	1.00	ns/op vs depth=1; 984 vs 984 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=bind shots=1 depth=16	271.3	81.7	3.32	ns/op vs depth=1; 2904 vs 984 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=bind shots=1 depth=256	3273.4	81.7	40.05	ns/op vs depth=1; 35720 vs 984 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=bind shots=8 depth=1	404.0	404.0	1.00	ns/op vs depth=1; 3280 vs 3280 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=bind shots=8 depth=16	1176.5	404.0	2.91	ns/op vs depth=1; 9416 vs 3280 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=bind shots=8 depth=256	14025.8	404.0	34.71	ns/op vs depth=1; 123976 vs 3280 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=push shots=1 depth=1	109.4	109.4	1.00	ns/op vs depth=1; 1296 vs 1296 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=push shots=1 depth=16	711.0	109.4	6.50	ns/op vs depth=1; 7536 vs 1296 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=push shots=1 depth=256	10834.4	109.4	99.08	ns/op vs depth=1; 109488 vs 1296 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=push shots=8 depth=1	438.8	438.8	1.00	ns/op vs depth=1; 4824 vs 4824 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=push shots=8 depth=16	3465.1	438.8	7.90	ns/op vs depth=1; 33760 vs 4824 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5
+2026-09-27	447524bbc	gated	delimCaptureDepth shape=push shots=8 depth=256	48320.4	438.8	110.12	ns/op vs depth=1; 513155 vs 4824 B/op; data lane (DelimDepthBenchmark) at (1)+(2)+a refuted (3) variant, Delim-only bytes = landed; -f1 -wi3 -i5

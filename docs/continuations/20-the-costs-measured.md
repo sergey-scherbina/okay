@@ -142,6 +142,47 @@ by honest numbers that answered adjacent questions.
 This is the single most transferable thing in Part V, and it is the
 first entry in chapter 27's catalogue.
 
+## What the machine allocated for nothing (2026-09-27)
+
+The first table above is from 2026-09-17. Ten days later
+`delim-machine-allocs` read the machine for allocations that carry no
+information, and found three that paid (`-prof gc`, three alternating
+rounds per change, each against the commit before it):
+
+| change | `delimPushOnly` | `delimGenerator` | `writerTellUnderDelim` |
+|---|---|---|---|
+| before | 358 B, 22.9 µs | 902 B, 87.4 µs | 310 B, 26.0 µs |
+| `step` answers its next state, no `Right` per op | −16 B, 0.99x | −48 B, 0.94x | ±0, 1.00x |
+| the delimiter frame carries the answer type, no identity bind under it | −64 B, 0.79x | −128 B, 0.83x | ±0, 1.01x |
+| a foreign op resumes at the head bind's program, not at a `pure` | ±0, 1.00x | ±0, 0.99x | −40 B, 0.99x |
+
+(bytes per operation, N = 1000.) The second one is the lesson. Every
+`push` added a frame whose only job was to say "the prompt's answer is
+also the operation's answer" — a TYPE fact, paid for at run time as a
+closure call, a `pure` and a loop step on every return, and as one more
+frame copied by every capture. Carried as a witness on the delimiter
+itself (`r <:< X`, which the compiler already had), it costs a field
+and nothing else. A capture now costs about **69 ns and 726 B**.
+
+And one that was refuted three times over: skipping the bind frame a
+foreign operation is suspended under saved 72 B and 13% on
+`writerTellUnderDelim`, and in every shape tried it made the lanes
+that never meet a foreign operation 2-5% slower with not one byte
+changed. Bytes decompose; time also answers to what the JIT decides
+about a method's shape, and only the lanes you did NOT mean to touch
+tell you that.
+
+CAPTURE DEPTH was never measured before this: `delimGenerator` has
+about one frame between the shift and its prompt. `DelimDepthBenchmark`
+varies it. A level the machine holds as frames (a delimiter and a bind)
+costs ~42 ns and ~425 B for one capture called once, and ~21 ns and
+~225 B more per level for each further call of k; a level of plain
+`map`s — which `Free.resume` folds into one composed k before the
+machine ever sees them — costs ~12.5 ns and ~137 B, and ~6 ns and
+~49 B per further call. A search that captures through many delimiters
+and resumes often pays the first slope; that is what a defunctionalized
+continuation would have to beat.
+
 ## How to price your own
 
 1. **Write the lane that has your shape.** If none of the existing

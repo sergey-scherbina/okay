@@ -168,7 +168,8 @@ The lane also found a real bug. The machine was split into `loop` and
 operation cost stack frames and a thousand nested captures threw
 StackOverflowError — invisible to the tests, which nest a handful of
 times. Merged into ONE `@tailrec` loop with a `step` function
-answering `Either[done, (next, kont)]`; only a foreign operation now
+answering `Either[done, (next, kont)]` (since delim-machine-allocs a
+`Step`: `Next`, or `Out` when done); only a foreign operation now
 suspends under a closure, the shape `State.handle` uses. Fixing it
 also took 20% off the delimiter lane (33.8 to 25.4).
 
@@ -229,7 +230,8 @@ programs in this machine's row, erased at the operation because the
 row's other half F is not the operation's to name — re-typed at
 their two lines. One frame more per push (the K that carries the
 prompt's answer up to the op's), measured on DelimBenchmark (see the
-changelog). The suite is the spec: TestDelim unchanged.
+changelog). (Gone since delim-machine-allocs: the
+delimiter frame carries that as a `<:<` witness instead.) The suite is the spec: TestDelim unchanged.
 
 ## What a capture does to everything else (2026-09-17, delim-limits)
 
@@ -269,18 +271,61 @@ writerTellUnderDelim; one lane per `Jmh/run`, arms alternating). A
 change that does not pay, or costs >2% time on any lane, is reverted
 alone and recorded here as refuted.
 
-- [ ] (1) `step` answers the next state itself: no `Either`/`Right`
+- [x] (1) `step` answers the next state itself: no `Either`/`Right`
       per Delim operation; the finished program travels as its own
       state (`Out`), which only the foreign/forward path builds.
-- [ ] (2) `Push`/`Dollar`/`Watched` carry the op's answer type on the
+- [x] (2) `Push`/`Dollar`/`Watched` carry the op's answer type on the
       delimiter frame (`r <:< X`, a typed witness, no cast) instead of
       an identity `K` frame under it: one frame fewer per delimiter,
       per capture copy, and one loop step fewer per normal return.
-- [ ] (3) a foreign operation whose continuation head is a `K`
+- [x] (3) a foreign operation whose continuation head is a `K`
       resumes as `f(x)` on the rest, not `pure(x)` on the whole stack.
-- [ ] Laws unchanged: every Delim suite, TestStackSafetyCore, the
+- [x] Laws unchanged: every Delim suite, TestStackSafetyCore, the
       `dollarResumed` shots count.
-- [ ] DATA: `delimCaptureDepth` — N = 1/16/256 `flatMap` frames
+- [x] DATA: `delimCaptureDepth` — N = 1/16/256 `flatMap` frames
       between a `shift` and its prompt, k called once and 8 times;
       the slope per frame per call recorded below (for
       `continuations-as-data-spike`).
+
+### Results (2026-09-27)
+
+Medians of three alternating rounds, `-f 1 -wi 3 -i 5 -prof gc`, each
+change against the commit before it (µs per 1000 ops; bytes per op).
+Column (1) is the landed shape where it was measured (pushOnly,
+generator, writerTell) and the first cut elsewhere, whose Delim path
+is the same code:
+
+| lane | before | (1) | (2) | (3) |
+|---|---|---|---|---|
+| delimPushOnly | 22.9 / 358 B | 0.98x / 342 B | 0.79x / 278 B | 1.00x / 278 B |
+| delimDollarOnly | 23.5 / 372 B | 0.99x / 356 B | 0.85x / 300 B | 1.00x / 300 B |
+| delimDollarResume | 49.0 / 724 B | 0.94x / 676 B | 0.85x / 572 B | 1.00x / 572 B |
+| delimGenerator | 87.4 / 902 B | 0.95x / 854 B | 0.83x / 726 B | 0.99x / 726 B |
+| writerTellUnderDelim | 26.0 / 310 B | 1.00x / 310 B | 1.01x / 310 B | 0.99x / 270 B |
+
+- (1) FIRST CUT REFUTED, the landed shape is its second: `loop` took a
+  `Step` and `loop(step(..))` fed it back, so a foreign operation
+  entered the loop once more to be read as `Out` —
+  writerTellUnderDelim 1.041x in all three rounds, bytes unchanged.
+  Reading the `Step` at the call site (as the `Either` was) is 0.996x.
+- (2) is the prize: the identity `K` cost a frame, its closure call, a
+  `pure` and a loop step on every return, and one more frame copied by
+  every capture — 64 B per push, 128 B per capture. The witness is
+  `<:<.refl` (one shared instance), lifted with `liftCo` over the
+  covariant program type — no cast, and `Segs.Mark` stays 24 B.
+- (3) landed as the NARROW form: the foreign resume matches the head
+  frame and continues at `f(x)` (-40 B per foreign op, no time moved).
+  REFUTED, three shapes of the wider form that also skips allocating
+  the `K` for a foreign op under a bind (-72 B, writerTellUnderDelim
+  0.87x): inline in `loop` (Delim-only lanes 1.02-1.05x), as its own
+  `stepBind` method (1.02-1.05x), and with the Delim cases split out so
+  the operation is tested once (delimPushOnly 1.045x, delimDollarOnly
+  1.021x). Every one moved the Delim-only lanes by more than the 2%
+  rule with no byte changed there; the foreign lane's gain does not buy
+  that. Retake only with a reason the JIT would see it differently.
+- DEPTH (`DelimDepthBenchmark`, measured at (1)+(2) with a (3) variant,
+  whose Delim-only bytes are the landed ones): a `push` level (a mark
+  and a bind on the machine's stack) is ~425 B / ~42 ns for one capture
+  called once and ~225 B / ~21 ns per further call; a `bind` level (maps
+  that `Free.resume` composes into one k) ~137 B / ~12.5 ns and ~49 B /
+  ~6 ns. Recorded against continuations-as-data-spike (backlog).
