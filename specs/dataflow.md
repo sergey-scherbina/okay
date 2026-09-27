@@ -404,7 +404,7 @@ Stage 15 — a job says where its time went (TestObserved, TestPoolObserved):
 - [x] okay-pool serves the metrics of the runs it coordinates on
       `/metrics` and a run's trace as OTLP JSON
 - [x] no probe, no cost: the default `Probe.none` builds no event
-- [ ] foreign-pool-metrics: the foreign pools say what they did — every
+- [x] foreign-pool-metrics: the foreign pools say what they did — every
       interpreter a pool opens, and every one opened to REPLACE a dead
       one (a restart), is heard on the thread that caused it and counted
       into the request's `Work`; a measured worker also reports, at each
@@ -413,7 +413,7 @@ Stage 15 — a job says where its time went (TestObserved, TestPoolObserved):
       `okay_job_foreign_interpreters_opened_total`,
       `okay_job_foreign_restarts_total` and the per-worker gauges
       `okay_job_foreign_interpreters` / `okay_job_foreign_borrowed`
-- [ ] a job whose python interpreter is killed mid-run shows exactly one
+- [x] a job whose python interpreter is killed mid-run shows exactly one
       restart in the rendered metrics, and its answer is unchanged
       (TestPoolMetrics, Live: a real python3)
 
@@ -1715,6 +1715,18 @@ inside the foreign pools are not reported — the pools are okay-py's,
 and nothing there knows about a probe (backlog:
 foreign-pool-metrics).
 
+
+**The pools under it (foreign-pool-metrics, 2026-09-27).** okay-py's
+`Pool` counts what it opened, what died and what it opened to replace a
+death, and tells a listener on the thread that caused each open;
+okay-foreign-cluster installs the one listener that adds those to the
+worker's `Meter`, so they ride in `Work` like the foreign time. The live
+check is a python map that `os._exit`s on its first frame — once per
+JVM, by an O_EXCL marker, so of the interpreters racing there exactly
+one dies: the answer is unchanged and the rendered metrics hold
+`okay_job_foreign_restarts_total{job=…} 1`; a pool that never flags a
+restart (the mutant) is caught. `Foreign.module` takes a constant, so
+the marker is named on the python side by the parent's pid.
 ### Stage 14 — the exchange across processes (2026-09-26)
 
 **The shape was Spark's, and for Spark's reason.** The map worker holds

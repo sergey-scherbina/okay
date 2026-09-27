@@ -1,7 +1,7 @@
 package okay.r
 
 import okay.arrow.{Column, Table, TimeUnit}
-import okay.codec.{FrameFormat, given}
+import okay.codec.FrameFormat
 
 object RArrowEcho:
   val mod = R.module("rarrowecho", """

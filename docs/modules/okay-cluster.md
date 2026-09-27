@@ -495,6 +495,17 @@ coordinator can split each round trip exactly:
 val got = Cluster.run(SlowJob, feed, 8, workers, probe = Probe.both(trace, stats.probe())).runWith
 ```
 
+The foreign POOLS under those stages report too (foreign-pool-metrics):
+every interpreter a pool opens is heard on the thread whose request
+needed it, and one opened to replace an interpreter that died is a
+RESTART — `okay_job_foreign_interpreters_opened_total` and
+`okay_job_foreign_restarts_total` count them per job, and the gauges
+`okay_job_foreign_interpreters{worker=…}` / `okay_job_foreign_borrowed`
+say what a worker's pools held, and lent out (an exchange, a program in
+flight, a stateful stage's lease), at its last answer. A job whose
+python interpreter was killed mid-run reads `okay_job_foreign_restarts_total 1`
+and the answer it would have had anyway.
+
 okay-pool does this for every run it coordinates: `/metrics` carries
 the `okay_job_*` series and `GET /pool/runs/{id}/trace` answers the
 latest attempt's trace as OTLP/HTTP JSON; its members answer measured
