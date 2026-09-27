@@ -387,6 +387,42 @@ object Effects {
       case Right(a) => Return(a)
     }
 
+  /**
+   * A FOLD THAT PERFORMS, BUILT RIGHT-NESTED (left-nested-build-cost,
+   * 2026-09-27). `f` runs on each element in order, with the answer of
+   * the one before as its accumulator.
+   *
+   *     !.foldM(orders)(0L)((total, o) => price(o).map(total + _))
+   *
+   * It is not `xs.foldLeft(pure(z))((m, x) => m.flatMap(...))`, and the
+   * difference is measured. That spelling builds a LEFT-nested chain, and
+   * `Free.resume` has to rotate it one bind at a time, allocating a
+   * closure and a Bind per step. The same 1000 State/Writer operations
+   * run in 32 µs built that way against 13 µs right-nested, and
+   * `-prof stack` puts 60-70% of the left-nested time in the rotation
+   * (specs/handler-fusion.md, re-measured 2026-09-27). Here each step's
+   * continuation builds the next, so the head is always one operation and
+   * nothing is ever rotated.
+   *
+   * Stack-safe as `loop` is: the recursive call sits inside a
+   * `flatMap`'s continuation. A value, as every program is: the input is
+   * indexed, not iterated, so the program runs again from the start.
+   */
+  def foldM[X, B, F[+_]](xs: Iterable[X])(z: B)(f: (B, X) => B ! F): B ! F =
+    // indexed, so the program is a value that runs again; a Vector's
+    // `toIndexedSeq` is the Vector itself, a List is copied once
+    val v = xs.toIndexedSeq
+    val n = v.length
+    def go(i: Int, acc: B): B ! F =
+      if i >= n then Return(acc)
+      else f(acc, v(i)).flatMap(b => go(i + 1, b))
+    go(0, z)
+
+  /** `f` on each element, in order, for its effects: `foldM` with no
+   * accumulator, and the same right-nested build */
+  def each[X, F[+_]](xs: Iterable[X])(f: X => Unit ! F): Unit ! F =
+    foldM[X, Unit, F](xs)(())((_, x) => f(x))
+
   /** run p at most once under `Once.run`: the by-need word, an effect —
    * `Once.once`, here because `!.tailcall` (by-name) is its sibling */
   inline def once[A, F[+_]](p: => A ! Once + F): A ! Once + F = Once.once(p)
