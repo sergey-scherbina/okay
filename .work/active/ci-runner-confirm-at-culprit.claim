@@ -1,0 +1,1 @@
+claude session_01LZNspDq7ZU8TRfNoTnpRMD, 2026-09-27, operator ask: ci-runner-confirm-at-culprit — confirm by the reproduced suites at the culprit's tree and before its lane; revert the lane's commits, not only its tip
