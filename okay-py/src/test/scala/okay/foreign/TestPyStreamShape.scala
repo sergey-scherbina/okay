@@ -2,7 +2,7 @@ package okay.foreign
 
 import okay.{!, %, +, Writer, given}
 import okay.Row.plus
-import PyValue.*
+import Value.*
 
 /** the stage's shape without python3 (foreign-streaming): default gate */
 class TestPyStreamShape extends munit.FunSuite {

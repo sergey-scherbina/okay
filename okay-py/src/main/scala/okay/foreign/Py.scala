@@ -11,8 +11,8 @@ import okay.codec.Json
  * only: there is deliberately NO operation that evals a string, so
  * untrusted input reaches Python only as data.
  */
-enum PyValue:
-  case PyNone                          // Python None — DISTINCT from NaN
+enum Value:
+  case Null                          // Python None — DISTINCT from NaN
   case Bool(v: Boolean)
   case I64(v: Long)
   /** an int past a Long: Python's ints are unbounded (schema-stubs found a
@@ -21,11 +21,11 @@ enum PyValue:
   case F64(v: Double)                  // NaN is a value here, not an absence
   case Str(v: String)
   case Bytes(v: Array[Byte])
-  case Arr(v: Vector[PyValue])
+  case Arr(v: Vector[Value])
   /** a `dict` with string keys, in insertion order — a record. Wire v2
    * (foreign-typed-calls): before it a dict answered by a call was sent
    * as a FRAME and reached okay as None, or failed in the shim */
-  case Dict(kv: Vector[(String, PyValue)])
+  case Dict(kv: Vector[(String, Value)])
   /** a FRAME AS A VALUE (pyvalue-table): a table anywhere a value goes —
    * inside a call's answer, among a call's arguments — so a function can
    * answer `{rows: frame, state: …}` and a stateful step can carry its
@@ -35,25 +35,29 @@ enum PyValue:
    * `okay.frame(cols)` (or answers a pandas frame). A frame's COLUMN may
    * not hold a frame: refused by name on both roads, so the nesting is
    * bounded at one. */
-  case Table(frame: PyFrame)
+  case Table(frame: Frame)
   /** an object HELD in the worker (foreign-object-handles): not its
    * value, a handle to it — an argument like any other, which the shim
    * turns back into the object */
-  case Ref(ref: PyRef)
+  case Ref(ref: Handle)
   /** a missing value OF A TYPE — R's `NA_integer_`, `NA_real_`,
    * `NA_character_` and logical `NA` (foreign-one-value): four values, and
-   * none of them `PyNone`, because `mean(c(1, NA))` is NA while
+   * none of them `Null`, because `mean(c(1, NA))` is NA while
    * `mean(c(1, NULL))` is 1. `of` names the type: "logical", "integer",
    * "double", "character". A language without typed absences never sends
    * one; the shared tree carries it so R needs no tree of its own. */
   case NA(of: String)
 
-object PyValue:
+object Value:
+  /** the old name of `Null` (foreign-value-rename): a stable identifier,
+   * so `case PyNone =>` still matches — as an equality test, which an
+   * exhaustiveness check does not count; new code writes `Null` */
+  val PyNone: Value = Null
   /** every `Ref` id in `v`, preorder — on a worklist, since a value a
    * program passes can nest as deep as it built it (stack-safety-py-r) */
-  def refs(v: PyValue): Vector[Long] =
+  def refs(v: Value): Vector[Long] =
     val out = Vector.newBuilder[Long]
-    val todo = scala.collection.mutable.Stack[PyValue](v)
+    val todo = scala.collection.mutable.Stack[Value](v)
     while todo.nonEmpty do todo.pop() match
       case Ref(r) => out += r.id
       case Arr(xs) => xs.reverseIterator.foreach(todo.push)
@@ -64,16 +68,16 @@ object PyValue:
   /** `v` rebuilt bottom-up: every leaf through `leaf`, every `Arr` and
    * `Dict` rebuilt around its rebuilt children — the one walk the
    * workers' `in`/`out`/`local` renamings are (stack-safety-py-r) */
-  def rebuild(v: PyValue)(leaf: PyValue => PyValue): PyValue =
-    Walk.up[PyValue, PyValue](v) {
+  def rebuild(v: Value)(leaf: Value => Value): Value =
+    Walk.up[Value, Value](v) {
       case Arr(xs) => Right((xs, Arr(_)))
       case Dict(kv) => Right((kv.map(_._2), vs => Dict(kv.map(_._1).zip(vs))))
       case l => Left(leaf(l))
     }
 
   /** `rebuild` where a leaf may refuse: the first refusal is the answer */
-  def rebuildE[E](v: PyValue)(leaf: PyValue => Either[E, PyValue]): Either[E, PyValue] =
-    Walk.up[PyValue, Either[E, PyValue]](v) {
+  def rebuildE[E](v: Value)(leaf: Value => Either[E, Value]): Either[E, Value] =
+    Walk.up[Value, Either[E, Value]](v) {
       case Arr(xs) => Right((xs, vs => Walk.sequence(vs).map(Arr(_))))
       case Dict(kv) => Right((kv.map(_._2), vs => Walk.sequence(vs).map(ws => Dict(kv.map(_._1).zip(ws)))))
       case l => Left(leaf(l))
@@ -84,7 +88,7 @@ object PyValue:
  * `step` says of a node whether it is a leaf (`Left(its value)`) or a
  * node (`Right(children, assemble)`), and the tree is rebuilt from the
  * leaves up without a native frame per level. It is what the Json <->
- * PyValue conversions and the ref renamings share, so that a value as
+ * Value conversions and the ref renamings share, so that a value as
  * deep as a worker made it costs heap, not stack.
  */
 private[foreign] object Walk:
@@ -139,16 +143,16 @@ private[foreign] object Walk:
  * process never held, and is refused by name. Durable programs keep
  * values, not handles.
  */
-final case class PyRef(id: Long, pyType: String,
+final case class Handle(id: Long, pyType: String,
                        /** the shape its methods speak: the API that held it */
                        shape: Shape = Shape.python):
   /** a method of the held object, answering its value */
-  def call[Out: okay.codec.Schema](method: String): PyRef.Method[Out] = PyRef.Method(this, method)
+  def call[Out: okay.codec.Schema](method: String): Handle.Method[Out] = Handle.Method(this, method)
   /** a method of the held object whose result is HELD in turn */
-  def hold(method: String): PyRef.HoldMethod = PyRef.HoldMethod(this, method)
+  def hold(method: String): Handle.HoldMethod = Handle.HoldMethod(this, method)
   /** an attribute of the held object */
   def attr[Out: okay.codec.Schema](name: String): Either[Condition, Out] ! ForeignEval =
-    okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(Address.Attr(this, name), Vector.empty))
+    okay.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Attr(this, name), Vector.empty))
       .map(_.flatMap(shape.decode[Out](_)))
   /** drop the object in the worker; idempotent */
   def release: Unit ! ForeignEval = okay.effect[ForeignEval, Unit](ForeignEval.Release(this))
@@ -157,76 +161,93 @@ final case class PyRef(id: Long, pyType: String,
   def stage[I: ToPy, O: okay.codec.Schema](method: String, chunk: Int = 64,
                                           finish: Option[String] = None): Unit ! PyStream.Row[I, O] =
     PyStream.chunked[I, O](chunk,
-      buf => ForeignEval.Call(Address.Method(this, method), Vector(PyValue.Arr(buf))),
+      buf => ForeignEval.Call(Address.Method(this, method), Vector(Value.Arr(buf))),
       finish.map(f => ForeignEval.Call(Address.Method(this, f), Vector.empty)))
 
-object PyRef:
-  final class Method[Out: okay.codec.Schema](ref: PyRef, name: String):
+object Handle:
+  final class Method[Out: okay.codec.Schema](ref: Handle, name: String):
     private given Shape = ref.shape
     def apply(): Either[Condition, Out] ! ForeignEval = go(Vector.empty)
     def apply[A: ToPy](a: A): Either[Condition, Out] ! ForeignEval = go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Out] ! ForeignEval = go(Vector(ToPy(a), ToPy(b)))
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Out] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
-    private def go(args: Vector[PyValue]): Either[Condition, Out] ! ForeignEval =
-      okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(Address.Method(ref, name), args))
+    private def go(args: Vector[Value]): Either[Condition, Out] ! ForeignEval =
+      okay.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Method(ref, name), args))
         .map(_.flatMap(ref.shape.decode[Out](_)))
 
-  final class HoldMethod(ref: PyRef, name: String):
+  final class HoldMethod(ref: Handle, name: String):
     private given Shape = ref.shape
-    def apply(): Either[Condition, PyRef] ! ForeignEval = go(Vector.empty)
-    def apply[A: ToPy](a: A): Either[Condition, PyRef] ! ForeignEval = go(Vector(ToPy(a)))
-    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! ForeignEval = go(Vector(ToPy(a), ToPy(b)))
-    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! ForeignEval =
+    def apply(): Either[Condition, Handle] ! ForeignEval = go(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, Handle] ! ForeignEval = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Handle] ! ForeignEval = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Handle] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
-    private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! ForeignEval =
-      okay.effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(Address.Method(ref, name), args, held = true))
+    private def go(args: Vector[Value]): Either[Condition, Handle] ! ForeignEval =
+      okay.effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(Address.Method(ref, name), args, held = true))
         .map(_.flatMap(Wire.asRef).map(_.copy(shape = ref.shape)))
 
-/** how an argument becomes a `PyValue`: through its `Schema`, or as the
+/** how an argument becomes a `Value`: through its `Schema`, or as the
  * handle it is */
 trait ToPy[A]:
-  def py(a: A)(using Shape): PyValue
+  def py(a: A)(using Shape): Value
 
 object ToPy:
-  def apply[A](a: A)(using t: ToPy[A], shape: Shape): PyValue = t.py(a)
-  given ref: ToPy[PyRef] with
-    def py(a: PyRef)(using Shape): PyValue = PyValue.Ref(a)
+  def apply[A](a: A)(using t: ToPy[A], shape: Shape): Value = t.py(a)
+  given ref: ToPy[Handle] with
+    def py(a: Handle)(using Shape): Value = Value.Ref(a)
   given schema[A](using s: okay.codec.Schema[A]): ToPy[A] with
-    def py(a: A)(using shape: Shape): PyValue = shape.encode(a)
+    def py(a: A)(using shape: Shape): Value = shape.encode(a)
 
 /**
  * A columnar frame — dict-of-lists on the far side (a data.frame in R).
  * It CARRIES the value rules it is read by (`shape`, outside equality, as
- * `PyRef` carries its own): Python's by default, R's for a frame an R
+ * `Handle` carries its own): Python's by default, R's for a frame an R
  * worker answered or `RFrame.of` built (foreign-one-value) — so `rows`
  * never reads an R frame by Python's rules because of what happened to be
  * in scope.
  */
-final case class PyFrame(cols: Vector[(String, Vector[PyValue])], shape: Shape = Shape.python):
+final case class Frame(cols: Vector[(String, Vector[Value])], shape: Shape = Shape.python):
   /** the frame as rows of a case class, a row being the dict of its
    * cells (foreign-typed-calls), by this frame's own value rules */
   def rows[A](using okay.codec.Schema[A]): Either[Condition, Vector[A]] =
     shape.rows[A](this)
 
   /** the same columns, read by `s`'s rules */
-  def ruledBy(s: Shape): PyFrame = PyFrame(cols, s)
+  def ruledBy(s: Shape): Frame = Frame(cols, s)
 
   // what a frame IS is its columns; its rules are how it is READ
   override def equals(other: Any): Boolean = other match
-    case f: PyFrame => f.cols == cols
+    case f: Frame => f.cols == cols
     case _ => false
   override def hashCode: Int = cols.hashCode
-  override def toString: String = s"PyFrame($cols)"
+  override def toString: String = s"Frame($cols)"
 
-object PyFrame:
+object Frame:
   /** rows of a flat case class as a frame, a column per field, by the
    * value rules of the shape in scope (Python's unless one is given) */
-  def of[A](rows: Seq[A])(using okay.codec.Schema[A], Shape): Either[Condition, PyFrame] =
+  def of[A](rows: Seq[A])(using okay.codec.Schema[A], Shape): Either[Condition, Frame] =
     summon[Shape].frame(rows)
 
 /** what a failing call answers: the exception's type name and text
  * — data, and the worker survives to take the next call */
+/**
+ * THE OLD NAMES, kept (foreign-value-rename, 2026-09-28; specs/foreign-one.md
+ * Decision 29). `PyValue`, `PyFrame`, `PyRef` and `PyCodec` were named
+ * when okay-py alone spoke this wire; since foreign-one it is the value
+ * model of every language here, so the names are `Value`, `Frame`,
+ * `Handle` and `ValueCodec`. These aliases keep every caller compiling
+ * unchanged, the way `okay.RowLift` stayed for `okay.Row`; they go a
+ * release later. `Value.PyNone` is `Value.Null` the same way.
+ */
+type PyValue = Value
+val PyValue: Value.type = Value
+type PyFrame = Frame
+val PyFrame: Frame.type = Frame
+type PyRef = Handle
+val PyRef: Handle.type = Handle
+val PyCodec: ValueCodec.type = ValueCodec
+
 final case class Condition(kind: String, message: String)
 
 /**
@@ -237,8 +258,8 @@ final case class Condition(kind: String, message: String)
  */
 into enum Address:
   case Fn(name: String)
-  case Method(ref: PyRef, name: String)
-  case Attr(ref: PyRef, name: String)
+  case Method(ref: Handle, name: String)
+  case Attr(ref: Handle, name: String)
 
   /** what the journal names the call by */
   def named: String = this match
@@ -253,10 +274,10 @@ enum ForeignEval[+A] derives okay.Effect:
   /**
    * THE call (foreign-one-held: `hold`, `method` and `attr` were calls with
    * a particular address or answer): `fn` of `args`, answering its value —
-   * or, with `held`, a handle to it kept in the worker (`PyValue.Ref`).
+   * or, with `held`, a handle to it kept in the worker (`Value.Ref`).
    */
-  case Call(fn: Address, args: Vector[PyValue], held: Boolean = false)
-    extends ForeignEval[Either[Condition, PyValue]]
+  case Call(fn: Address, args: Vector[Value], held: Boolean = false)
+    extends ForeignEval[Either[Condition, Value]]
   /**
    * A TABLE call: `fn` of a table and `args`, answering a table. On the wire
    * it is a `call` whose first argument is the table and which asks for a
@@ -264,10 +285,12 @@ enum ForeignEval[+A] derives okay.Effect:
    * its answer is TYPED — a frame, read by the rules its request was made
    * under — and every caller has exactly one table, first.
    */
-  case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
-    extends ForeignEval[Either[Condition, PyFrame]]
+  // `okay.foreign.Frame` spelled out: inside this enum the bare name is
+  // this very case, the frame OP (foreign-value-rename, Decision 29)
+  case Frame(fn: String, in: okay.foreign.Frame, args: Vector[Value])
+    extends ForeignEval[Either[Condition, okay.foreign.Frame]]
   /** drop a held object; idempotent */
-  case Release(ref: PyRef) extends ForeignEval[Unit]
+  case Release(ref: Handle) extends ForeignEval[Unit]
   /**
    * Start a PROGRAM under the run id the host chose (foreign-one-program:
    * the one program protocol). The function is either kind, and the far
@@ -279,12 +302,12 @@ enum ForeignEval[+A] derives okay.Effect:
    * intent (`Fn.calling` sets it): a start that died mid-flight is not
    * re-run, because a direct function may have acted before it died.
    */
-  case Program(run: Long, fn: String, args: Vector[PyValue], callbacks: Vector[String] = Vector.empty,
+  case Program(run: Long, fn: String, args: Vector[Value], callbacks: Vector[String] = Vector.empty,
                direct: Boolean = false) extends ForeignEval[Either[Condition, PyNode]]
   /** continue run `run` at continuation `k` with the callback's answer, or
    * its failure (raised in the far side's code); a multi-shot `k` may be
    * continued again, a `once` one is refused by name the second time */
-  case Continue(run: Long, k: Long, answer: Either[Condition, PyValue]) extends ForeignEval[Either[Condition, PyNode]]
+  case Continue(run: Long, k: Long, answer: Either[Condition, Value]) extends ForeignEval[Either[Condition, PyNode]]
   /** drop every continuation of a run; idempotent */
   case Forget(run: Long) extends ForeignEval[Unit]
   /**
@@ -294,23 +317,23 @@ enum ForeignEval[+A] derives okay.Effect:
    * reactive streams and HTTP/2. `stream` is the id the HOST chose, as a
    * program's run is. Only a far side on a multiplexed wire streams.
    */
-  case Stream(stream: Long, fn: String, args: Vector[PyValue], credit: Int,
+  case Stream(stream: Long, fn: String, args: Vector[Value], credit: Int,
                /** the host's stream INTO the call (foreign-host-streams): its chunks,
                 * sent by a feeder under the far side's credit while the output is
                 * pulled; not journalled — a replay never contacts the far side */
-               input: Option[Iterator[PyValue]] = None) extends ForeignEval[Either[Condition, Unit]]
+               input: Option[Iterator[Value]] = None) extends ForeignEval[Either[Condition, Unit]]
   /** the stream's next chunk, None at its end; taking one grants one more */
-  case Pull(stream: Long) extends ForeignEval[Either[Condition, Option[PyValue]]]
+  case Pull(stream: Long) extends ForeignEval[Either[Condition, Option[Value]]]
   /** stop a stream the consumer is done with; idempotent */
   case Cancel(stream: Long) extends ForeignEval[Unit]
 
 /** one node of a program (remote-foreign; foreign-one-program) */
 enum PyNode:
-  case Done(value: PyValue)
+  case Done(value: Value)
   /** `once`: `k` is a parked stack (the direct style), continued at most
    * once — the far side refuses a second continue, and a supervisor cannot
    * replay onto it; otherwise `k` is a value, continued as often as asked */
-  case Perform(name: String, args: Vector[PyValue], k: Long, once: Boolean = false)
+  case Perform(name: String, args: Vector[Value], k: Long, once: Boolean = false)
 
 object ForeignEval:
   /**
@@ -405,7 +428,7 @@ object ForeignEval:
       case Cancel(_) => ()
 
 
-/** the wire halves shared by every engine: PyValue <-> the tagged
+/** the wire halves shared by every engine: Value <-> the tagged
  * JSON the shim speaks (None = null; NaN and bytes ride tagged
  * objects, because JSON has neither) */
 private[okay] object Wire {
@@ -448,8 +471,8 @@ private[okay] object Wire {
     case other => Left(Condition("WireError", s"not a program node: $other"))
 
   /** a held object's handle, or the refusal of an answer that is not one */
-  def asRef(v: PyValue): Either[Condition, PyRef] = v match
-    case PyValue.Ref(r) => Right(r)
+  def asRef(v: Value): Either[Condition, Handle] = v match
+    case Value.Ref(r) => Right(r)
     case other => Left(Condition("WireError", s"expected a held object, got $other"))
 
   /** SHA-256 of a value's printed JSON, hex */
@@ -459,7 +482,7 @@ private[okay] object Wire {
       .map(b => f"${b & 0xff}%02x").mkString
 
   /**
-   * `PyValue.Arr`/`Json.JArr` recurse on the VALUE's own nesting —
+   * `Value.Arr`/`Json.JArr` recurse on the VALUE's own nesting —
    * Python's `list` nests as deep as a script chooses, and this is
    * the boundary an arbitrarily-deep Python return value crosses
    * (subprocess-wire-depth-safety, the same defect shape
@@ -472,35 +495,35 @@ private[okay] object Wire {
    * accumulates finished values, most recent first, so `Combine`
    * reverses its slice before rebuilding the array.
    */
-  def enc(v0: PyValue): Json =
-    def leaf(v: PyValue): Json = v match
-      case PyValue.PyNone => Json.JNull
-      case PyValue.Bool(b) => Json.JBool(b)
+  def enc(v0: Value): Json =
+    def leaf(v: Value): Json = v match
+      case Value.Null => Json.JNull
+      case Value.Bool(b) => Json.JBool(b)
       // exact on the JSON wire only up to 2^53; past it, the digits
-      case PyValue.I64(n) if math.abs(n.toDouble) >= Exact =>
+      case Value.I64(n) if math.abs(n.toDouble) >= Exact =>
         Json.JObj(Vector("t" -> Json.JStr("int"), "v" -> Json.JStr(n.toString)))
-      case PyValue.I64(n) => Json.JNum(n.toDouble)
-      case PyValue.BigI(n) =>
+      case Value.I64(n) => Json.JNum(n.toDouble)
+      case Value.BigI(n) =>
         Json.JObj(Vector("t" -> Json.JStr("int"), "v" -> Json.JStr(n.toString)))
-      case PyValue.F64(d) if d.isNaN => Json.JObj(Vector("t" -> Json.JStr("nan")))
+      case Value.F64(d) if d.isNaN => Json.JObj(Vector("t" -> Json.JStr("nan")))
       // an integral F64 would merge with I64 on the json wire; tagged
-      case PyValue.F64(d) if d == math.floor(d) && !d.isInfinite && math.abs(d) < 1e15 =>
+      case Value.F64(d) if d == math.floor(d) && !d.isInfinite && math.abs(d) < 1e15 =>
         Json.JObj(Vector("t" -> Json.JStr("f"), "v" -> Json.JNum(d)))
-      case PyValue.F64(d) => Json.JNum(d)
-      case PyValue.Str(s) => Json.JStr(s)
-      case PyValue.Bytes(bs) => Json.JObj(Vector("t" -> Json.JStr("bytes"),
+      case Value.F64(d) => Json.JNum(d)
+      case Value.Str(s) => Json.JStr(s)
+      case Value.Bytes(bs) => Json.JObj(Vector("t" -> Json.JStr("bytes"),
         "b64" -> Json.JStr(java.util.Base64.getEncoder.encodeToString(bs))))
-      case PyValue.Ref(r) => Json.JObj(Vector("t" -> Json.JStr("ref"),
+      case Value.Ref(r) => Json.JObj(Vector("t" -> Json.JStr("ref"),
         "id" -> Json.JNum(r.id.toDouble), "type" -> Json.JStr(r.pyType)))
-      case PyValue.NA(of) => Json.JObj(Vector("t" -> Json.JStr("na"), "of" -> Json.JStr(of)))
+      case Value.NA(of) => Json.JObj(Vector("t" -> Json.JStr("na"), "of" -> Json.JStr(of)))
       // a frame is one level: its cells are scalars (a Table cell is refused
       // in encCol), so this leaf's recursion into `enc` is bounded at one
-      case PyValue.Table(f) => encFrameColumnar(f)
-      case PyValue.Arr(_) | PyValue.Dict(_) =>
+      case Value.Table(f) => encFrameColumnar(f)
+      case Value.Arr(_) | Value.Dict(_) =>
         throw IllegalStateException("unreachable: containers are handled by the work-list")
 
     enum Step:
-      case Todo(v: PyValue)
+      case Todo(v: Value)
       case Combine(n: Int)
       case CombineDict(keys: Vector[String])
 
@@ -508,9 +531,9 @@ private[okay] object Wire {
     var results = List.empty[Json]
     while todo.nonEmpty do
       todo.head match
-        case Step.Todo(PyValue.Arr(xs)) =>
+        case Step.Todo(Value.Arr(xs)) =>
           todo = xs.toList.map(Step.Todo(_)) ::: Step.Combine(xs.length) :: todo.tail
-        case Step.Todo(PyValue.Dict(kv)) =>
+        case Step.Todo(Value.Dict(kv)) =>
           todo = kv.toList.map(p => Step.Todo(p._2)) ::: Step.CombineDict(kv.map(_._1)) :: todo.tail
         case Step.Todo(other) =>
           results = leaf(other) :: results
@@ -529,56 +552,56 @@ private[okay] object Wire {
   /** the largest magnitude a JSON number (a double) carries exactly */
   private val Exact = 9007199254740992.0
 
-  def encFrame(f: PyFrame): Json = Json.JObj(Vector(
+  def encFrame(f: Frame): Json = Json.JObj(Vector(
     "t" -> Json.JStr("frame"),
     "cols" -> Json.JArr(f.cols.map((n, col) =>
       Json.JArr(Vector(Json.JStr(n), Json.JArr(col.map(enc))))))))
 
   /** `enc`'s mirror — same work-list, same reasoning */
-  def dec(j0: Json): PyValue =
-    def leaf(j: Json): PyValue = j match
-      case Json.JNull => PyValue.PyNone
-      case Json.JBool(b) => PyValue.Bool(b)
+  def dec(j0: Json): Value =
+    def leaf(j: Json): Value = j match
+      case Json.JNull => Value.Null
+      case Json.JBool(b) => Value.Bool(b)
       case Json.JNum(n) if n.isValidInt || (n == math.floor(n) && !n.isInfinite && math.abs(n) < 1e15) =>
-        PyValue.I64(n.toLong)
-      case Json.JNum(n) => PyValue.F64(n)
-      case Json.JStr(s) => PyValue.Str(s)
+        Value.I64(n.toLong)
+      case Json.JNum(n) => Value.F64(n)
+      case Json.JStr(s) => Value.Str(s)
       case Json.JObj(fs) =>
         val m = fs.toMap
         m.get("t") match
-          case Some(Json.JStr("nan")) => PyValue.F64(Double.NaN)
+          case Some(Json.JStr("nan")) => Value.F64(Double.NaN)
           case Some(Json.JStr("f")) => m.get("v") match
-            case Some(Json.JNum(d)) => PyValue.F64(d)
-            case _ => PyValue.PyNone
+            case Some(Json.JNum(d)) => Value.F64(d)
+            case _ => Value.Null
           case Some(Json.JStr("bytes")) => m.get("b64") match
-            case Some(Json.JStr(b)) => PyValue.Bytes(java.util.Base64.getDecoder.decode(b))
-            case _ => PyValue.PyNone
+            case Some(Json.JStr(b)) => Value.Bytes(java.util.Base64.getDecoder.decode(b))
+            case _ => Value.Null
           // a Python int past 2^53: exact as a Long when it fits one,
           // and its digits when it does not (Python ints are unbounded)
           case Some(Json.JStr("int")) => m.get("v") match
-            case Some(Json.JStr(d)) => d.toLongOption.fold(PyValue.BigI(scala.math.BigInt(d)))(PyValue.I64(_))
-            case _ => PyValue.PyNone
+            case Some(Json.JStr(d)) => d.toLongOption.fold(Value.BigI(scala.math.BigInt(d)))(Value.I64(_))
+            case _ => Value.Null
           // jsonlite may box a scalar: the id and type are read either way
           case Some(Json.JStr("ref")) => (unboxed(m.get("id")), unboxed(m.get("type"))) match
-            case (Some(Json.JNum(i)), Some(Json.JStr(t))) => PyValue.Ref(PyRef(i.toLong, t))
-            case (Some(Json.JNum(i)), _) => PyValue.Ref(PyRef(i.toLong, "?"))
-            case _ => PyValue.PyNone
-          case Some(Json.JStr("na")) => PyValue.NA(unboxed(m.get("of")).collect { case Json.JStr(t) => t }.getOrElse("logical"))
+            case (Some(Json.JNum(i)), Some(Json.JStr(t))) => Value.Ref(Handle(i.toLong, t))
+            case (Some(Json.JNum(i)), _) => Value.Ref(Handle(i.toLong, "?"))
+            case _ => Value.Null
+          case Some(Json.JStr("na")) => Value.NA(unboxed(m.get("of")).collect { case Json.JStr(t) => t }.getOrElse("logical"))
           // a frame inside a value (pyvalue-table); a malformed one is the
           // wire's error, not a None — a None would be a wrong answer
           case Some(Json.JStr("frame")) => decFrame(j) match
-            case Right(f) => PyValue.Table(f)
+            case Right(f) => Value.Table(f)
             case Left(c) => throw IllegalStateException(s"a frame inside a value: ${c.message}")
           // R's own tags before foreign-one-value (shim v8 and older journals),
           // still READ so a host meeting its older frames is not stuck
           case Some(Json.JStr("i")) => unboxed(m.get("v")) match
-            case Some(Json.JNum(n)) => PyValue.I64(n.toLong)
-            case _ => PyValue.PyNone
+            case Some(Json.JNum(n)) => Value.I64(n.toLong)
+            case _ => Value.Null
           case Some(Json.JStr("raw")) => unboxed(m.get("b64")) match
-            case Some(Json.JStr(b)) => PyValue.Bytes(java.util.Base64.getDecoder.decode(b))
-            case _ => PyValue.PyNone
-          case _ => PyValue.PyNone   // an untagged object has no PyValue shape
-      case Json.JErr(_) => PyValue.PyNone
+            case Some(Json.JStr(b)) => Value.Bytes(java.util.Base64.getDecoder.decode(b))
+            case _ => Value.Null
+          case _ => Value.Null   // an untagged object has no Value shape
+      case Json.JErr(_) => Value.Null
       case Json.JArr(_) => throw IllegalStateException("unreachable: JArr is handled by the work-list")
 
     enum Step:
@@ -593,7 +616,7 @@ private[okay] object Wire {
       } }
 
     var todo = List[Step](Step.Todo(j0))
-    var results = List.empty[PyValue]
+    var results = List.empty[Value]
     while todo.nonEmpty do
       todo.head match
         case Step.Todo(Json.JArr(xs)) =>
@@ -610,11 +633,11 @@ private[okay] object Wire {
           todo = todo.tail
         case Step.Combine(n) =>
           val (items, rest) = results.splitAt(n)
-          results = PyValue.Arr(items.reverse.toVector) :: rest
+          results = Value.Arr(items.reverse.toVector) :: rest
           todo = todo.tail
         case Step.CombineDict(keys) =>
           val (items, rest) = results.splitAt(keys.length)
-          results = PyValue.Dict(keys.zip(items.reverse)) :: rest
+          results = Value.Dict(keys.zip(items.reverse)) :: rest
           todo = todo.tail
     results.head
 
@@ -637,7 +660,7 @@ private[okay] object Wire {
    * cannot carry — bytes, nesting, a mix, an integer past 32 bits (R's
    * integer is 32-bit) — keeps the per-cell form under `cells`.
    */
-  def encFrameColumnar(f: PyFrame): Json = Json.JObj(Vector(
+  def encFrameColumnar(f: Frame): Json = Json.JObj(Vector(
     "t" -> Json.JStr("frame"),
     "v" -> Json.JNum(FrameFormat.toDouble),
     "cols" -> Json.JArr(f.cols.map((n, col) => encCol(n, col)))))
@@ -645,15 +668,15 @@ private[okay] object Wire {
   /** does a frame sit anywhere inside `v`? A work-list, not a recursion:
    * this is what bounds `enc`/`encCol` (below) and it must not itself be
    * the unbounded walk it exists to prevent. */
-  def holdsFrame(v: PyValue): Boolean =
-    var todo: List[PyValue] = v :: Nil
+  def holdsFrame(v: Value): Boolean =
+    var todo: List[Value] = v :: Nil
     var found = false
     while !found && todo.nonEmpty do
       val h = todo.head; todo = todo.tail
       h match
-        case PyValue.Table(_) => found = true
-        case PyValue.Arr(xs) => todo = xs.toList ::: todo
-        case PyValue.Dict(kv) => todo = kv.map(_._2).toList ::: todo
+        case Value.Table(_) => found = true
+        case Value.Arr(xs) => todo = xs.toList ::: todo
+        case Value.Dict(kv) => todo = kv.map(_._2).toList ::: todo
         case _ => ()
     found
 
@@ -678,7 +701,7 @@ private[okay] object Wire {
    * re-enters `encFrameColumnar`, so the cycle is walked at most once
    * (specs/stack-safety-okay.tsv names each method on it). Refused by
    * name, not flattened: a column is one kind of cell. */
-  private def encCol(name: String, col: Vector[PyValue]): Json =
+  private def encCol(name: String, col: Vector[Value]): Json =
     if col.exists(holdsFrame) then
       throw IllegalArgumentException(s"column '$name' holds a frame: a frame's column may not hold a frame, at any depth (pyvalue-table)")
     columnType(col) match
@@ -693,12 +716,12 @@ private[okay] object Wire {
           case _ => Json.JNum(0)
         val values = col.zipWithIndex.map { (v, i) =>
           v match
-            case PyValue.NA(_) | PyValue.PyNone => na += Json.JNum(i.toDouble); zero
-            case PyValue.F64(d) if d.isNaN => nan += Json.JNum(i.toDouble); zero
-            case PyValue.Bool(b) => Json.JBool(b)
-            case PyValue.I64(x) => Json.JNum(x.toDouble)
-            case PyValue.F64(x) => Json.JNum(x)
-            case PyValue.Str(s) => Json.JStr(s)
+            case Value.NA(_) | Value.Null => na += Json.JNum(i.toDouble); zero
+            case Value.F64(d) if d.isNaN => nan += Json.JNum(i.toDouble); zero
+            case Value.Bool(b) => Json.JBool(b)
+            case Value.I64(x) => Json.JNum(x.toDouble)
+            case Value.F64(x) => Json.JNum(x)
+            case Value.Str(s) => Json.JStr(s)
             case _ => zero   // unreachable: columnType admitted the column
         }
         val fields = Vector("name" -> Json.JStr(name), "type" -> Json.JStr(t),
@@ -709,17 +732,17 @@ private[okay] object Wire {
    * "d", "s" — an NA names its own, a value its own, and a mix (or bytes,
    * nesting, an integer past 32 bits) has none. An empty column is
    * logical, which is what R's own `c()` gives. */
-  private def columnType(col: Vector[PyValue]): Option[String] =
+  private def columnType(col: Vector[Value]): Option[String] =
     var seen: Option[String] = None
     var ok = true
     col.foreach { v =>
       val t = v match
-        case PyValue.NA(of) => Some(of.take(1) match { case "c" => "s"; case c => c })
-        case PyValue.Bool(_) => Some("l")
-        case PyValue.I64(x) if x.isValidInt => Some("i")
-        case PyValue.F64(_) => Some("d")
-        case PyValue.Str(_) => Some("s")
-        case PyValue.PyNone => None
+        case Value.NA(of) => Some(of.take(1) match { case "c" => "s"; case c => c })
+        case Value.Bool(_) => Some("l")
+        case Value.I64(x) if x.isValidInt => Some("i")
+        case Value.F64(_) => Some("d")
+        case Value.Str(_) => Some("s")
+        case Value.Null => None
         case _ => ok = false; None
       (seen, t) match
         case (_, None) => ()
@@ -731,7 +754,7 @@ private[okay] object Wire {
 
   /** a frame off the wire: the columnar shape (v2) or the per-cell pairs
    * of v1 — every reader accepts both, an encoder writes one */
-  def decFrame(j: Json): Either[Condition, PyFrame] = j match
+  def decFrame(j: Json): Either[Condition, Frame] = j match
     case Json.JObj(fs) if fs.toMap.get("t").contains(Json.JStr("frame")) =>
       val m = fs.toMap
       val v = unboxed(m.get("v")).collect { case Json.JNum(n) => n.toInt }.getOrElse(1)
@@ -740,7 +763,7 @@ private[okay] object Wire {
       else m.get("cols") match
         case Some(Json.JArr(cols)) =>
           val out = cols.map(decCol)
-          out.collectFirst { case Left(c) => c }.toLeft(PyFrame(out.collect { case Right(p) => p }))
+          out.collectFirst { case Left(c) => c }.toLeft(Frame(out.collect { case Right(p) => p }))
         case _ => Left(Condition("WireError", "a frame without cols"))
     case other => Left(Condition("WireError", s"expected a frame, got $other"))
 
@@ -749,8 +772,8 @@ private[okay] object Wire {
    * `dec` on a cell never re-enters `decFrame` — the same bound, on the
    * way in, checked on the JSON rather than after a decode that would
    * already have walked the nesting. */
-  private def decCol(j: Json): Either[Condition, (String, Vector[PyValue])] =
-    def cells(name: String, xs: Vector[Json]): Either[Condition, (String, Vector[PyValue])] =
+  private def decCol(j: Json): Either[Condition, (String, Vector[Value])] =
+    def cells(name: String, xs: Vector[Json]): Either[Condition, (String, Vector[Value])] =
       if xs.exists(jsonHoldsFrame) then
         Left(Condition("WireError", s"column '$name' holds a frame: a frame's column may not hold a frame, at any depth (pyvalue-table)"))
       else Right(name -> xs.map(dec))
@@ -761,7 +784,7 @@ private[okay] object Wire {
         cells(unboxed(m.get("name")).collect { case Json.JStr(s) => s }.getOrElse(""), asArray(m("cells")))
       case other => decColRaw(other)
 
-  private def decColRaw(j: Json): Either[Condition, (String, Vector[PyValue])] = j match
+  private def decColRaw(j: Json): Either[Condition, (String, Vector[Value])] = j match
     case Json.JArr(Vector(Json.JStr(n), Json.JArr(vals))) => Right(n -> vals.map(dec))
     case Json.JObj(fs) =>
       val m = fs.toMap
@@ -779,13 +802,13 @@ private[okay] object Wire {
             case "s" => "character"
             case _ => "logical"
           Right(name -> asArray(raw).zipWithIndex.map { (x, i) =>
-            if na(i) then PyValue.NA(of)
-            else if nan(i) then PyValue.F64(Double.NaN)
+            if na(i) then Value.NA(of)
+            else if nan(i) then Value.F64(Double.NaN)
             else (t, x) match
-              case ("l", Json.JBool(b)) => PyValue.Bool(b)
-              case ("i", Json.JNum(n)) => PyValue.I64(n.toLong)
-              case ("d", Json.JNum(n)) => PyValue.F64(n)
-              case ("s", Json.JStr(s)) => PyValue.Str(s)
+              case ("l", Json.JBool(b)) => Value.Bool(b)
+              case ("i", Json.JNum(n)) => Value.I64(n.toLong)
+              case ("d", Json.JNum(n)) => Value.F64(n)
+              case ("s", Json.JStr(s)) => Value.Str(s)
               case (_, other) => dec(other)
           })
         case _ => Left(Condition("WireError", s"a column with neither values nor cells: $j"))

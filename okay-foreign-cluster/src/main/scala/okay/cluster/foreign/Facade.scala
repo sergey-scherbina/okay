@@ -17,7 +17,7 @@ import okay.given
  *
  * `Calls` is TIER 1 of the data model: one typed value in, one out,
  * crossing as one line of the wire. The value's vocabulary is `Schema`;
- * a language's own value enum (`PyValue`, `RValue`) is its codec's
+ * a language's own value enum (`Value`, `RValue`) is its codec's
  * business behind the instance, not the caller's.
  */
 trait Calls[-M]:
@@ -142,7 +142,7 @@ object Streams:
  * A CALLBACK in the facade's vocabulary: a name, and a function at
  * `Schema` types — what a far-side program performs by name and this
  * side answers under its own handlers (Reader, Choice, …). okay-py's and
- * okay-r's `Callback` say the same thing over `PyValue` and `RValue`;
+ * okay-r's `Callback` say the same thing over `Value` and `RValue`;
  * this one says it once, and each `Programs` instance turns it into its
  * language's (specs/foreign-facade.md, Decision 3).
  */
@@ -235,14 +235,14 @@ trait Methods[-M]:
 object Holds:
   /** the instance types with their handle type visible: a `given` cannot
    * carry a refinement (the parser reads its `{` as a body), an alias can.
-   * The handle is the one handle (`okay.foreign.PyRef`) for every language. */
-  type Py = Holds[okay.foreign.PyModule] { type Ref = okay.foreign.PyRef }
-  type R = Holds[okay.r.RModule] { type Ref = okay.foreign.PyRef }
+   * The handle is the one handle (`okay.foreign.Handle`) for every language. */
+  type Py = Holds[okay.foreign.PyModule] { type Ref = okay.foreign.Handle }
+  type R = Holds[okay.r.RModule] { type Ref = okay.foreign.Handle }
 
   /** ONE body for every wire language: a handle lives in one worker of the
    * one pool, which routes every call naming it there */
-  def of[M](lang: Language[M]): Holds[M] { type Ref = okay.foreign.PyRef } = new Holds[M]:
-    type Ref = okay.foreign.PyRef
+  def of[M](lang: Language[M]): Holds[M] { type Ref = okay.foreign.Handle } = new Holds[M]:
+    type Ref = okay.foreign.Handle
     def name = lang.name
     private given okay.foreign.Shape = lang.shape
     private def on(module: M) = lang.workers(module, Stage.Workers).handler
@@ -259,19 +259,19 @@ object Holds:
   def r(rscript: String): R = of(Language.r(rscript))
   /** TypeScript keeps held objects, and since foreign-held-values a compiled
    * Go, Rust or Haskell worker keeps held VALUES (no methods by name) */
-  type Ts = Holds[TsModule] { type Ref = okay.foreign.PyRef }
+  type Ts = Holds[TsModule] { type Ref = okay.foreign.Handle }
   given ts: Ts = of(Language.node)
-  type Worker = Holds[WorkerModule] { type Ref = okay.foreign.PyRef }
+  type Worker = Holds[WorkerModule] { type Ref = okay.foreign.Handle }
   given worker: Worker = of(Language.worker)
 
 object Methods:
-  type Py = Methods[okay.foreign.PyModule] { type Ref = okay.foreign.PyRef }
-  type Ts = Methods[TsModule] { type Ref = okay.foreign.PyRef }
+  type Py = Methods[okay.foreign.PyModule] { type Ref = okay.foreign.Handle }
+  type Ts = Methods[TsModule] { type Ref = okay.foreign.Handle }
 
   /** ONE body for a language whose objects have methods and attributes by
    * name: Python's and TypeScript's (R's have none, an honest absence) */
-  def of[M](lang: Language[M]): Methods[M] { type Ref = okay.foreign.PyRef } = new Methods[M]:
-    type Ref = okay.foreign.PyRef
+  def of[M](lang: Language[M]): Methods[M] { type Ref = okay.foreign.Handle } = new Methods[M]:
+    type Ref = okay.foreign.Handle
     def method[Arg: Schema, Out: Schema](module: M, ref: Ref, name: String)(a: Arg): Either[Batcher.Failed, Out] =
       ref.call[Out](name)(a).runWith(using lang.workers(module, Stage.Workers).handler).left.map(Language.failed)
     def attr[Out: Schema](module: M, ref: Ref, name: String): Either[Batcher.Failed, Out] =

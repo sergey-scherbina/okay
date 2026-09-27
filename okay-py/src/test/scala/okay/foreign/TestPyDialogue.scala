@@ -2,7 +2,7 @@ package okay.foreign
 
 import okay.State
 import okay.given
-import PyValue.*
+import Value.*
 
 /**
  * The callback dialogue without python3 (foreign-callbacks; since

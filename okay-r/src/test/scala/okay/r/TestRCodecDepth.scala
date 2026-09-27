@@ -4,7 +4,7 @@ import okay.codec.Schema
 
 /** stack-safety-py-r: `RCodec.enc`/`dec` recurse once per level of a
  * VALUE; past `Codecs.NativeThreshold` they continue on the Cont
- * trampoline now (okay-py's TestPyCodecDepth, the same shape) */
+ * trampoline now (okay-py's TestValueCodecDepth, the same shape) */
 class TestRCodecDepth extends munit.FunSuite:
   import TestRCodecDepth.*
 

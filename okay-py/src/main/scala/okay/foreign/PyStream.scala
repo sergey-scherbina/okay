@@ -12,8 +12,8 @@ import scala.annotation.tailrec
  * the end, whatever is still held — what a consumer that stopped early left.
  */
 enum Holding[+A] derives okay.Effect:
-  case Hold(ref: PyRef) extends Holding[Unit]
-  case Let(ref: PyRef) extends Holding[Unit]
+  case Hold(ref: Handle) extends Holding[Unit]
+  case Let(ref: Handle) extends Holding[Unit]
   /** a stream the far side drives, open until it ends or is let go; the
    * scope CANCELS what is still open (foreign-mux-duplex part 3) */
   case HoldStream(stream: Long) extends Holding[Unit]
@@ -74,7 +74,7 @@ object PyStream:
   /** the walk behind `releasing`, over any row that holds and calls */
   private[okay] def holding[A, F[+_]](p: A ! Holding + F)(using ev: OkRow.Sub[ForeignEval, F]): A ! F =
     // what is held: refs to release, streams to cancel
-    final case class Held(refs: List[PyRef], streams: List[Long]):
+    final case class Held(refs: List[Handle], streams: List[Long]):
       def apply(h: Holding[?]): Held = h match
         case Holding.Hold(r) => copy(refs = r :: refs)
         case Holding.Let(r) => copy(refs = refs.filterNot(_ == r))
@@ -112,15 +112,15 @@ object PyStream:
    * (`releasing`) every source runs in. Needs a far side on a multiplexed
    * wire (Go, Rust); elsewhere the stream is refused by name.
    */
-  private[okay] def driven[O: Schema](fn: String, args: Vector[PyValue], credit: Int, id: () => Long,
-                                      input: Option[Iterator[PyValue]] = None)
+  private[okay] def driven[O: Schema](fn: String, args: Vector[Value], credit: Int, id: () => Long,
+                                      input: Option[Iterator[Value]] = None)
                                      (using shape: Shape): Unit ! SourceRow[O] =
     type R = SourceRow[O]
     require(credit >= 1, "a stream's credit is at least one chunk")
     def tellAll(os: Vector[O]): Unit ! R =
       okay.!.each(os)(o => effect[R, Unit](Writer(o)))
     def loop(s: Long): Unit ! R =
-      effect[R, Either[Condition, Option[PyValue]]](ForeignEval.Pull(s)).flatMap {
+      effect[R, Either[Condition, Option[Value]]](ForeignEval.Pull(s)).flatMap {
         case Left(c) => effect[R, Unit](Holding.LetStream(s)).flatMap(_ => throw Failed(c))
         case Right(None) => effect[R, Unit](Holding.LetStream(s))
         case Right(Some(v)) => shape.decode[Vector[O]](v) match
@@ -148,19 +148,19 @@ object PyStream:
    * is released on the end and on a failure; a consumer that stops pulling
    * early leaves it held until its worker ends (stateful-early-stop).
    */
-  private[okay] def pulled[O: Schema](open: ForeignEval[Either[Condition, PyValue]],
-                                      next: PyRef => ForeignEval[Either[Condition, PyValue]],
+  private[okay] def pulled[O: Schema](open: ForeignEval[Either[Condition, Value]],
+                                      next: Handle => ForeignEval[Either[Condition, Value]],
                                       ended: Condition => Boolean,
-                                      empty: PyValue => Boolean)(using shape: Shape): Unit ! SourceRow[O] =
+                                      empty: Value => Boolean)(using shape: Shape): Unit ! SourceRow[O] =
     type R = SourceRow[O]
     // released by the source itself at its end or its failure; `Let` first,
     // so the scope does not release it a second time
-    def release(r: PyRef): Unit ! R =
+    def release(r: Handle): Unit ! R =
       effect[R, Unit](Holding.Let(r)).flatMap(_ => effect[R, Unit](ForeignEval.Release(r)))
     def tellAll(os: Vector[O]): Unit ! R =
       okay.!.each(os)(o => effect[R, Unit](Writer(o)))
-    def loop(r: PyRef): Unit ! R =
-      effect[R, Either[Condition, PyValue]](next(r)).flatMap {
+    def loop(r: Handle): Unit ! R =
+      effect[R, Either[Condition, Value]](next(r)).flatMap {
         case Left(c) if ended(c) => release(r)
         case Left(c) => release(r).flatMap(_ => throw Failed(c))
         case Right(v) if empty(v) => release(r)
@@ -168,8 +168,8 @@ object PyStream:
           case Left(c) => release(r).flatMap(_ => throw Failed(c))
           case Right(os) => tellAll(os).flatMap(_ => loop(r))
       }
-    effect[R, Either[Condition, PyValue]](open).flatMap {
-      case Right(PyValue.Ref(r)) => effect[R, Unit](Holding.Hold(r)).flatMap(_ => loop(r))
+    effect[R, Either[Condition, Value]](open).flatMap {
+      case Right(Value.Ref(r)) => effect[R, Unit](Holding.Hold(r)).flatMap(_ => loop(r))
       case Right(other) => throw Failed(Condition("WireError", s"a source's open answered $other, not a held iterator"))
       case Left(c) => throw Failed(c)
     }
@@ -181,25 +181,25 @@ object PyStream:
 
   private[okay] def chunked[I: ToPy, O: Schema](
       chunk: Int,
-      call: Vector[PyValue] => ForeignEval[Either[Condition, PyValue]],
-      finish: Option[ForeignEval[Either[Condition, PyValue]]])(using shape: Shape): Unit ! Row[I, O] =
+      call: Vector[Value] => ForeignEval[Either[Condition, Value]],
+      finish: Option[ForeignEval[Either[Condition, Value]]])(using shape: Shape): Unit ! Row[I, O] =
     require(chunk >= 1, "okay.foreign stage: a chunk holds at least one element")
     type R = Row[I, O]
 
-    def tellAll(answer: Either[Condition, PyValue]): Unit ! R =
+    def tellAll(answer: Either[Condition, Value]): Unit ! R =
       answer.flatMap(shape.decode[Vector[O]](_)) match
         case Left(c) => throw Failed(c)
         case Right(os) => okay.!.each(os)(o => effect[R, Unit](Writer(o)))
 
     def end: Unit ! R = finish match
       case None => pure(())
-      case Some(op) => effect[R, Either[Condition, PyValue]](op).flatMap(tellAll)
+      case Some(op) => effect[R, Either[Condition, Value]](op).flatMap(tellAll)
 
-    def flush(buf: Vector[PyValue], more: Boolean): Unit ! R =
-      effect[R, Either[Condition, PyValue]](call(buf)).flatMap(tellAll)
+    def flush(buf: Vector[Value], more: Boolean): Unit ! R =
+      effect[R, Either[Condition, Value]](call(buf)).flatMap(tellAll)
         .flatMap(_ => if more then fill(Vector.empty) else end)
 
-    def fill(buf: Vector[PyValue]): Unit ! R =
+    def fill(buf: Vector[Value]): Unit ! R =
       if buf.size == chunk then flush(buf, more = true)
       else effect[R, Option[I]](Take.Await()).flatMap {
         case Some(i) => fill(buf :+ ToPy(i))

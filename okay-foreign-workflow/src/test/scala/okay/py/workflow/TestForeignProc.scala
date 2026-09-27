@@ -5,7 +5,7 @@ import okay.Direct.*
 import okay.Optic.arrows.*
 import okay.codec.Schema
 import okay.persist.{Dialogue, MemoryStore}
-import okay.foreign.{Condition, ForeignEval, ForeignWorker, PyValue, TestPy}
+import okay.foreign.{Condition, ForeignEval, ForeignWorker, Value, TestPy}
 import scala.language.implicitConversions
 
 object ShopProc:
@@ -21,9 +21,9 @@ object ShopProc:
       A.arr((e: Either[String, String]) => e.merge)
 
   /** the order in PROC-NOTATION: each far function a helper, drawn by its name */
-  def price(sku: String): Wf.Question[ForeignCall, String, String] = ForeignProc.ask("shop:price")(PyValue.Str(sku))
+  def price(sku: String): Wf.Question[ForeignCall, String, String] = ForeignProc.ask("shop:price")(Value.Str(sku))
   def total(p: Double): Wf.Question[ForeignCall, String, String] =
-    ForeignProc.ask("shop:total")(PyValue.F64(p), PyValue.I64(3L))
+    ForeignProc.ask("shop:total")(Value.F64(p), Value.I64(3L))
 
   val block: Wf.Proc[ForeignCall, String, String, String] =
     Proc.direct[ForeignProc.Sig, String, String]: sku =>

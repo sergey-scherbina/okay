@@ -46,45 +46,45 @@ object Jvm:
   val MaxNesting = 64
 
   /** a JVM value as the wire's: what a Frege or Clojure program passes */
-  def value(x: Any, depth: Int = 0): Either[String, PyValue] = x match
+  def value(x: Any, depth: Int = 0): Either[String, Value] = x match
     case _ if depth > MaxNesting => Left(s"a value nested past $MaxNesting levels")
-    case null => Right(PyValue.PyNone)
-    case b: java.lang.Boolean => Right(PyValue.Bool(b))
-    case n: (java.lang.Long | java.lang.Integer | java.lang.Short | java.lang.Byte) => Right(PyValue.I64(n.longValue))
-    case n: (java.lang.Double | java.lang.Float) => Right(PyValue.F64(n.doubleValue))
-    case s: String => Right(PyValue.Str(s))
+    case null => Right(Value.Null)
+    case b: java.lang.Boolean => Right(Value.Bool(b))
+    case n: (java.lang.Long | java.lang.Integer | java.lang.Short | java.lang.Byte) => Right(Value.I64(n.longValue))
+    case n: (java.lang.Double | java.lang.Float) => Right(Value.F64(n.doubleValue))
+    case s: String => Right(Value.Str(s))
     case s: java.lang.Iterable[?] => all(s.asScala, depth + 1)
     // a Java array (Frege's `JArray`, a `long[]` or a `String[]`): its elements, boxed
     case a: Array[?] => all((0 until java.lang.reflect.Array.getLength(a)).map(java.lang.reflect.Array.get(a, _)), depth + 1)
     case s: Iterable[?] => all(s, depth + 1)
     case other => Left(s"a ${other.getClass.getName} has no wire value")
 
-  private def all(xs: Iterable[?], depth: Int): Either[String, PyValue] =
-    val out = Vector.newBuilder[PyValue]
+  private def all(xs: Iterable[?], depth: Int): Either[String, Value] =
+    val out = Vector.newBuilder[Value]
     val it = xs.iterator
     var err: Option[String] = None
     while err.isEmpty && it.hasNext do value(it.next(), depth) match
       case Right(v) => out += v
       case Left(e) => err = Some(e)
-    err.toLeft(PyValue.Arr(out.result()))
+    err.toLeft(Value.Arr(out.result()))
 
   /** a wire value as the JVM's: what the program's continuation is handed —
    * boxed numbers, strings, a `java.util.List` for a list */
-  def jvm(v: PyValue, depth: Int = 0): AnyRef = v match
+  def jvm(v: Value, depth: Int = 0): AnyRef = v match
     case _ if depth > MaxNesting => throw IllegalArgumentException(s"an answer nested past $MaxNesting levels")
-    case PyValue.PyNone | PyValue.NA(_) => null
-    case PyValue.Bool(b) => java.lang.Boolean.valueOf(b)
-    case PyValue.I64(n) => java.lang.Long.valueOf(n)
-    case PyValue.BigI(n) => n.bigInteger
-    case PyValue.F64(d) => java.lang.Double.valueOf(d)
-    case PyValue.Str(s) => s
-    case PyValue.Bytes(b) => b
-    case PyValue.Arr(xs) => xs.map(jvm(_, depth + 1)).asJava
-    case PyValue.Dict(kv) => kv.map((k, x) => k -> jvm(x, depth + 1)).toMap.asJava
+    case Value.Null | Value.NA(_) => null
+    case Value.Bool(b) => java.lang.Boolean.valueOf(b)
+    case Value.I64(n) => java.lang.Long.valueOf(n)
+    case Value.BigI(n) => n.bigInteger
+    case Value.F64(d) => java.lang.Double.valueOf(d)
+    case Value.Str(s) => s
+    case Value.Bytes(b) => b
+    case Value.Arr(xs) => xs.map(jvm(_, depth + 1)).asJava
+    case Value.Dict(kv) => kv.map((k, x) => k -> jvm(x, depth + 1)).toMap.asJava
     // a frame as a value: a map of columns, each a list — the dict-of-lists a
     // frame function takes
-    case PyValue.Table(f) => f.cols.map((k, col) => k -> col.map(jvm(_, depth + 1)).asJava).toMap.asJava
-    case PyValue.Ref(r) => r
+    case Value.Table(f) => f.cols.map((k, col) => k -> col.map(jvm(_, depth + 1)).asJava).toMap.asJava
+    case Value.Ref(r) => r
 
   /** the Frege type of a Schema, where the JVM value `jvm` answers is that
    * type's: integers are `Long` (a boxed `java.lang.Long`), doubles

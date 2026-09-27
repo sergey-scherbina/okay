@@ -184,7 +184,7 @@ side's declaration from the same `Schema`, so the other language's type
 checker sees the type too:
 
 - **`Stubs.python(schemas*)`** writes a module of `TypedDict`s in the
-  shape okay-py's `PyCodec` sends: a product is a dict, and a sum is its
+  shape okay-py's `ValueCodec` sends: a product is a dict, and a sum is its
   case's dict plus `"type": Literal["Case"]`.
 - **`Stubs.typescript(schemas*)`** writes a `.d.ts` in the shape `Json`
   writes. A product is an interface. A sum is `{ "Case": {...} }`. `None`

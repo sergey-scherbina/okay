@@ -80,7 +80,7 @@ close.
 
 ## Module
 
-`okay-py`: `PyEval`/`PyValue`/`PyFrame` plus both engines and the
+`okay-py`: `PyEval`/`Value`/`Frame` plus both engines and the
 shim (shipped as a resource, versioned with the module — shim/host
 version handshake on startup, drift refuses loudly). JVM first,
 Native open via the same stdio road. Depends on okay-codec.
@@ -94,20 +94,20 @@ are not a rule of three).
 ```scala
 package okay.py
 
-enum PyValue:
-  case PyNone                       // Python None — distinct from NaN
+enum Value:
+  case Null                       // Python None — distinct from NaN
   case Bool(v: Boolean); case I64(v: Long); case F64(v: Double)
   case Str(v: String); case Bytes(v: Array[Byte])
-  case Arr(v: Vector[PyValue])
+  case Arr(v: Vector[Value])
 
-final case class PyFrame(cols: Vector[(String, Vector[PyValue])])
+final case class Frame(cols: Vector[(String, Vector[Value])])
 final case class Condition(kind: String, message: String)  // type(e).__name__, str(e)
 
 enum PyEval[A]:
-  case Call(fn: String, args: Vector[PyValue])
-    extends PyEval[Either[Condition, PyValue]]
-  case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
-    extends PyEval[Either[Condition, PyFrame]]
+  case Call(fn: String, args: Vector[Value])
+    extends PyEval[Either[Condition, Value]]
+  case Frame(fn: String, in: Frame, args: Vector[Value])
+    extends PyEval[Either[Condition, Frame]]
 ```
 
 One deviation from the r.md sketch, recorded: the operations answer
@@ -129,7 +129,7 @@ Python-specific additions:)
       survives
 - [x] None vs NaN round-trip distinctly (and an integral float
       stays a float — the json wire tags what it would merge); a
-      frame column carries PyNone in place
+      frame column carries Null in place
 - [x] the shim/host version handshake refuses a mismatched shim
       loudly
 - [x] verify names a missing package and a version mismatch via
@@ -182,8 +182,8 @@ timings)
 
 ## Results (stage 0)
 
-Shipped 2026-09-01 (py-subprocess): okay-py (jvm) — PyEval/PyValue/
-PyFrame with conditions as Either (the deviation recorded above),
+Shipped 2026-09-01 (py-subprocess): okay-py (jvm) — PyEval/Value/
+Frame with conditions as Either (the deviation recorded above),
 the stdlib-only shim as a versioned resource, the comonadic handler
 over a clean-env subprocess. Proven live against python3 (skip
 where absent): plain and dotted addressing, ModuleNotFoundError/
@@ -206,7 +206,7 @@ subprocess and pool unchanged. 4 more tests, all live.
 
 ## Wire depth safety (2026-09-11, subprocess-wire-depth-safety)
 
-`Wire.enc`/`Wire.dec` recursed natively on `PyValue.Arr`/`Json.JArr`
+`Wire.enc`/`Wire.dec` recursed natively on `Value.Arr`/`Json.JArr`
 depth — a Python `list` nests as deep as a script chooses, and
 nothing bounded it. The same defect shape `okay-mcp/Rpc.damaged` and
 `okay-demo/StateMcp.damaged` already had fixed twice

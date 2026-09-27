@@ -4,7 +4,7 @@
 
 okay-py and okay-r (specs/py.md, specs/r.md) are call-shaped: okay
 addresses a named function in a worker process and gets a value or a
-condition back, built by hand from `PyValue`/`RValue`. That is the right
+condition back, built by hand from `Value`/`RValue`. That is the right
 FLOOR — crash isolation, real CPython and R, no eval of a string — and
 this spec builds the storeys above it, for Python and R both, one lane
 each (operator, 2026-09-23: "Да ок делай. В R тоже все что можно
@@ -25,7 +25,7 @@ BUILD operations, or a new instance over them.
    enums' companions, so they are found without an import.
 2. **foreign-typed-calls** — a foreign function as a typed Scala
    function through `Schema`: `Py.fn[In, Out]`, `R.fn[In, Out]`. Python
-   frames gain `rows[A]`/`PyFrame.of[A]`, which R has.
+   frames gain `rows[A]`/`Frame.of[A]`, which R has.
 3. **foreign-object-handles** — objects kept on the far side behind a
    `Resource` handle; methods by name; a handle pins its worker.
 4. **foreign-inline-modules** — Python/R source beside the Scala,
@@ -80,22 +80,22 @@ Each stage is its own lane and appends its Decisions and Results here.
 A Python `dict` answered by an ordinary `Call` never reached okay as a
 dict. The shim encodes EVERY str-keyed dict as a frame (dict of
 columns); the host's `dec` has no frame case for a value and answers
-`PyNone`, and a dict whose values are not lists fails inside the shim
+`Null`, and a dict whose values are not lists fails inside the shim
 (`[enc(x) for x in 1]`). R has the same shape: a named list that is not a
-data.frame is sent as a frame. Nothing tested it because `PyValue` and
+data.frame is sent as a frame. Nothing tested it because `Value` and
 `RValue` had no case to hold a record. A typed call needs one, so this
 stage fixes the wire first.
 
 ### Behavior
 
 - [x] Wire v2 (Python shim 1 → 2, R shim 2 → 3; the handshake refuses
-      the old shim by name): `PyValue.Dict(kv)` and `RValue.Named(kv)`,
+      the old shim by name): `Value.Dict(kv)` and `RValue.Named(kv)`,
       tagged `{"t":"dict"}` / `{"t":"named"}` with ordered `kv` pairs,
       nested to any depth through the existing explicit work-list (no
       native recursion on the host). A Python `dict` or dataclass answered
       by a `Call` arrives as a `Dict`; an R named list that is not a
       data.frame arrives as `Named`. Frame operations still answer frames.
-- [x] `PyCodec` / `RCodec`: `encode[A: Schema]` and `decode[A: Schema]`,
+- [x] `ValueCodec` / `RCodec`: `encode[A: Schema]` and `decode[A: Schema]`,
       TYPED folds over `Schema` (GADT refinement; the product and sum
       kernels `eachField`/`theCase` hold the only casts, as everywhere).
       A product is a `Dict`/`Named`; a sum is one with a `"type"` field
@@ -112,7 +112,7 @@ stage fixes the wire first.
       `Either[Condition, Out] ! PyEval` (`! REval`). A decode failure is
       a `Condition("Decode", path-and-reason)`, the same channel as a
       Python exception, so a caller matches one `Left`.
-- [x] `PyFrame.of[A]` and `frame.rows[A]`, the pair R has.
+- [x] `Frame.of[A]` and `frame.rows[A]`, the pair R has.
 - [x] Live (python3 on the box; R through the docker image): a case class
       sent to a Python function that reads its fields and answers another
       case class; a dict and a dataclass answered by `Call`; the same
@@ -227,7 +227,7 @@ handler that resumes twice is refused by name, not answered wrongly.
 ### Behavior
 
 - [ ] `PyEval.Hold(fn, args)` calls the function and KEEPS its result in
-      the worker, answering a `PyRef(id, pyType)`; `REval.Hold` the same
+      the worker, answering a `Handle(id, pyType)`; `REval.Hold` the same
       in R (`RRef(id, rClass)`). A ref is a value on the wire
       (`{"t": "ref", "id": n}`), so it may be passed as an argument to ANY
       call — `stats::predict(model, newdata)`, `m:score(model, X)`.
@@ -315,7 +315,7 @@ handler that resumes twice is refused by name, not answered wrongly.
 ### Behavior
 
 - [ ] `PyEval.Hold(fn, args)` calls the function and KEEPS its result in
-      the worker, answering a `PyRef(id, pyType)`; `REval.Hold` the same
+      the worker, answering a `Handle(id, pyType)`; `REval.Hold` the same
       in R (`RRef(id, rClass)`). A ref is a value on the wire
       (`{"t": "ref", "id": n}`), so it may be passed as an argument to ANY
       call — `stats::predict(model, newdata)`, `m:score(model, X)`.
@@ -440,7 +440,7 @@ handler that resumes twice is refused by name, not answered wrongly.
 ### Behavior
 
 - [ ] `PyEval.Hold(fn, args)` calls the function and KEEPS its result in
-      the worker, answering a `PyRef(id, pyType)`; `REval.Hold` the same
+      the worker, answering a `Handle(id, pyType)`; `REval.Hold` the same
       in R (`RRef(id, rClass)`). A ref is a value on the wire
       (`{"t": "ref", "id": n}`), so it may be passed as an argument to ANY
       call — `stats::predict(model, newdata)`, `m:score(model, X)`.
@@ -616,7 +616,7 @@ the diff.
 - Stage 2 (foreign-typed-calls, 2026-09-23).
   - The defect was shown failing first, live: `json:loads('{"a": 1}')`
     answered `Left(TypeError: 'int' object is not iterable)` and
-    `{"a": [1, 2]}` answered `Right(PyNone)`. Both now arrive as `Dict`.
+    `{"a": [1, 2]}` answered `Right(Null)`. Both now arrive as `Dict`.
   - The first probe asserted only "not None" and PASSED, because the
     scalar case never reached None: it died in the shim. The probe was
     wrong, not the fix.
@@ -624,7 +624,7 @@ the diff.
     until now nobody could write an okay program over them, only call
     `handler.handle`. The journal instances already rebuilt the call
     inside their match, so nothing else changed.
-  - Tests: TestPyCodec (5) and TestRCodec (7) run in the default gate,
+  - Tests: TestValueCodec (5) and TestRCodec (7) run in the default gate,
     without an interpreter. TestPyTyped (8, python3) and TestRTyped (5,
     R 4.4.1 in docker) are Live. The existing live TestPy and TestR
     suites are green on shims 2 and 3.

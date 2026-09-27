@@ -30,7 +30,7 @@ long an input is kept, who may approve a model) is okay-watch's.
 | --- | --- | --- |
 | R and Python as handlers behind one wire (§6.1) | okay-foreign (`ForeignWorker`, `ForeignEval`, the shims), okay-r (`RSubprocess.worker`) | built; one wire for Python, R, TS, Go, Rust, Haskell |
 | a chunk as ONE Arrow table, exact types (§6.4) | okay-arrow (`Column`, `OkayArrow`), `ForeignWorker.frameTable(…, exact = true)` | built; dictionaries since `arrow-dictionary` (stage 8, 2026-09-26) |
-| held objects (the model loaded once per worker) | `ForeignEval.Call(…, held = true)`, `PyValue.Ref` | built |
+| held objects (the model loaded once per worker) | `ForeignEval.Call(…, held = true)`, `Value.Ref` | built |
 | inline modules shipped with the host | `Foreign.module`, `R.module` | built |
 | a partitioned batch engine with retries and resume | okay-cluster (`Job`, `Flow`, `Cluster.run`), okay-foreign-cluster (map stages in R/Python) | built |
 | append-only durable logs, compaction | okay-persist (`Store`, `Topic`, `FileStore`, `compact`) | built |

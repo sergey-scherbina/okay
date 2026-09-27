@@ -4,7 +4,7 @@ import okay.{!, +, Delim, Pure, Wf}
 import okay.Direct.*
 import okay.codec.{Schema, WireAuth, WireFormat}
 import okay.persist.{Dialogue, MemoryStore}
-import okay.foreign.{ForeignEval, ForeignWorker, GoWorker, GoWorkerBinary, PyValue}
+import okay.foreign.{ForeignEval, ForeignWorker, GoWorker, GoWorkerBinary, Value}
 import scala.language.implicitConversions
 
 object GoShop:
@@ -110,9 +110,9 @@ class TestForeignActivityGo extends munit.FunSuite:
       assertEquals(w.restarts, 1)
       // the NEW server did the second activity only
       def counted(name: String) =
-        ForeignActivity.answer(ForeignActivity.oracle(ForeignCall("counted", Vector(PyValue.Str(name)))).runWith)
-      assertEquals(counted("total"), Right(PyValue.I64(1L)))
-      assertEquals(counted("price"), Right(PyValue.I64(0L)))
+        ForeignActivity.answer(ForeignActivity.oracle(ForeignCall("counted", Vector(Value.Str(name)))).runWith)
+      assertEquals(counted("total"), Right(Value.I64(1L)))
+      assertEquals(counted("price"), Right(Value.I64(0L)))
     finally
       w.close()
       server.destroy()

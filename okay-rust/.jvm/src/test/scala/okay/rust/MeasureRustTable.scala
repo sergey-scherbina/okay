@@ -1,6 +1,6 @@
 package okay.rust
 
-import okay.foreign.{ForeignEval, ForeignWorker, PyFrame, PyValue, WireLink}
+import okay.foreign.{ForeignEval, ForeignWorker, Frame, Value, WireLink}
 
 /**
  * A TABLE CALL INTO IN-PROCESS RUST, TWO ROADS (foreign-arrow-ffm): one
@@ -15,7 +15,7 @@ class MeasureRustTable extends munit.FunSuite:
 
   test("MEASURE: the same call as C Data and as JSON, arms alternating") {
     val n = 1_000_000
-    val frame = PyFrame(Vector("x" -> Vector.tabulate(n)(i => PyValue.I64(i.toLong))))
+    val frame = Frame(Vector("x" -> Vector.tabulate(n)(i => Value.I64(i.toLong))))
     val cdata = ForeignWorker.inProcess(RustInProcess.dylib)
     // the same library, its table road hidden: what every table took before
     val link = InProcessLinks.ffm(NativeLib.load(RustInProcess.dylib)).fold(e => fail(e), identity)
@@ -28,7 +28,7 @@ class MeasureRustTable extends munit.FunSuite:
     try
       def call(w: ForeignWorker): Double =
         val t0 = System.nanoTime()
-        assert(w.handler.handle(ForeignEval.Frame("scale", frame, Vector(PyValue.I64(3)))).isRight)
+        assert(w.handler.handle(ForeignEval.Frame("scale", frame, Vector(Value.I64(3)))).isRight)
         (System.nanoTime() - t0) / 1e6
       (1 to 3).foreach { _ => val _ = (call(cdata), call(json)) }
       val rounds = (1 to 7).map(_ => (call(cdata), call(json)))

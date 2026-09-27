@@ -1,7 +1,7 @@
 package okay.rust
 
 import okay.arrow.{Column, Table}
-import okay.foreign.{ForeignEval, ForeignWorker, PyFrame, PyValue}
+import okay.foreign.{ForeignEval, ForeignWorker, Frame, Value}
 
 /** a table's cells as plain values, so two tables compare */
 object Cells:
@@ -59,12 +59,12 @@ class TestRustCData extends munit.FunSuite:
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = !RustInProcess.available
 
-  private val frame = PyFrame(Vector(
-    "id" -> Vector(PyValue.I64(1), PyValue.I64(-2), PyValue.PyNone),
-    "temp" -> Vector(PyValue.F64(0.5), PyValue.PyNone, PyValue.F64(1e300)),
-    "site" -> Vector(PyValue.Str("kyiv"), PyValue.Str("чай ☕"), PyValue.PyNone),
-    "ok" -> Vector(PyValue.Bool(true), PyValue.PyNone, PyValue.Bool(false)),
-    "nothing" -> Vector(PyValue.PyNone, PyValue.PyNone, PyValue.PyNone)))
+  private val frame = Frame(Vector(
+    "id" -> Vector(Value.I64(1), Value.I64(-2), Value.Null),
+    "temp" -> Vector(Value.F64(0.5), Value.Null, Value.F64(1e300)),
+    "site" -> Vector(Value.Str("kyiv"), Value.Str("чай ☕"), Value.Null),
+    "ok" -> Vector(Value.Bool(true), Value.Null, Value.Bool(false)),
+    "nothing" -> Vector(Value.Null, Value.Null, Value.Null)))
 
   private def roundTrip(w: ForeignWorker): Unit =
     val before = w.arrowFrames
@@ -87,7 +87,7 @@ class TestRustCData extends munit.FunSuite:
     try
       val before = w.arrowFrames
       assertEquals(w.handler.handle(ForeignEval.Frame("mixed", frame, Vector.empty)).map(_.cols),
-        Right(Vector("m" -> Vector(PyValue.I64(1), PyValue.Str("two")))))
+        Right(Vector("m" -> Vector(Value.I64(1), Value.Str("two")))))
       assertEquals(w.arrowFrames, (before._1 + 1, before._2), "out as C Data, back as a message")
     finally w.close()
   }

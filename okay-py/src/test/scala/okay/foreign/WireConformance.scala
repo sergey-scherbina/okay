@@ -73,12 +73,12 @@ abstract class WireConformance extends munit.FunSuite:
 
   test("a TABLE call: a frame in, a frame out, by the far side's own codec (foreign-one-bulk)") {
     assume(tables, "this far side serves no table calls")
-    val in = PyFrame(Vector("x" -> Vector(PyValue.I64(1), PyValue.I64(2))))
-    val out = engine.handler.handle(ForeignEval.Frame(address("scale"), in, Vector(PyValue.I64(3))))
+    val in = Frame(Vector("x" -> Vector(Value.I64(1), Value.I64(2))))
+    val out = engine.handler.handle(ForeignEval.Frame(address("scale"), in, Vector(Value.I64(3))))
     // numbers compare as numbers: R and TypeScript may answer a double where Go answers an int
     val xs = out.map(_.cols.map((n, vs) => n -> vs.map {
-      case PyValue.I64(v) => v.toDouble
-      case PyValue.F64(v) => v
+      case Value.I64(v) => v.toDouble
+      case Value.F64(v) => v
       case v => fail(s"not a number: $v")
     }))
     assertEquals(xs, Right(Vector("x" -> Vector(3.0, 6.0))))
@@ -90,11 +90,11 @@ abstract class WireConformance extends munit.FunSuite:
   test("a HELD value: kept on the far side, used twice by its ref, released, then refused by name (foreign-held-values)") {
     assume(holds, "this far side keeps no values")
     val h = engine.handler
-    val ref = h.handle(ForeignEval.Call(address("counter"), Vector(PyValue.I64(10)), held = true))
+    val ref = h.handle(ForeignEval.Call(address("counter"), Vector(Value.I64(10)), held = true))
       .flatMap(Wire.asRef).fold(c => fail(s"hold: $c"), identity)
     def describe(k: Long): Either[Condition, Double] =
       // read by this far side's rules: R answers a vector of one
-      h.handle(ForeignEval.Call(address("describe"), Vector(PyValue.Ref(ref), PyValue.I64(k)))).flatMap(shape.decode[Double](_))
+      h.handle(ForeignEval.Call(address("describe"), Vector(Value.Ref(ref), Value.I64(k)))).flatMap(shape.decode[Double](_))
     assertEquals(describe(2), Right(12.0))
     assertEquals(describe(5), Right(15.0))
     h.handle(ForeignEval.Release(ref))
@@ -107,16 +107,16 @@ abstract class WireConformance extends munit.FunSuite:
     import scala.concurrent.duration.DurationInt
     given ExecutionContext = ExecutionContext.global
     val name = s"g${System.nanoTime}"
-    val waiting = Future(engine.handler.handle(ForeignEval.Call(address("await_open"), Vector(PyValue.Str(name)))))
+    val waiting = Future(engine.handler.handle(ForeignEval.Call(address("await_open"), Vector(Value.Str(name)))))
     // best effort to send the waiting call first: if it ran second it would
     // not wait at all, and the test would say nothing; if it runs first on a
     // wire that is not multiplexed, `open` is never read and this times out
     Thread.sleep(200)
     // `open` in a future too: on a wire that is not multiplexed it would
     // block for ever, and the test must fail in seconds, not at the suite's timeout
-    val opened = Future(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(name)))))
-    assertEquals(Await.result(opened, 30.seconds), Right(PyValue.Str(name)))
-    assertEquals(Await.result(waiting, 30.seconds), Right(PyValue.Str(name)))
+    val opened = Future(engine.handler.handle(ForeignEval.Call(address("open"), Vector(Value.Str(name)))))
+    assertEquals(Await.result(opened, 30.seconds), Right(Value.Str(name)))
+    assertEquals(Await.result(waiting, 30.seconds), Right(Value.Str(name)))
   }
 
   /** a stream that stalls must fail in seconds, not at the suite's timeout */
@@ -126,7 +126,7 @@ abstract class WireConformance extends munit.FunSuite:
     Await.result(Future(body)(using ExecutionContext.global), 30.seconds)
 
   private def emittedOf(tag: String): Long =
-    engine.handler.handle(ForeignEval.Call(address("emitted_of"), Vector(PyValue.Str(tag)))) match
+    engine.handler.handle(ForeignEval.Call(address("emitted_of"), Vector(Value.Str(tag)))) match
       case Right(v) => shape.decode[Long](v).getOrElse(-1L)
       case Left(c) => fail(s"emitted_of: $c")
 
@@ -154,7 +154,7 @@ abstract class WireConformance extends munit.FunSuite:
     val h = engine.handler
     val tag = s"c${System.nanoTime}"
     val s = System.nanoTime()
-    assertEquals(h.handle(ForeignEval.Stream(s, address("numbers"), Vector(PyValue.I64(1000), PyValue.I64(1), PyValue.Str(tag)), 3)), Right(()))
+    assertEquals(h.handle(ForeignEval.Stream(s, address("numbers"), Vector(Value.I64(1000), Value.I64(1), Value.Str(tag)), 3)), Right(()))
     assertEquals(settled(tag), 3L, "with nothing taken, the far side sent more than its credit")
     assertEquals(h.handle(ForeignEval.Pull(s)).map(_.isDefined), Right(true))
     assertEquals(settled(tag), 4L, "one chunk taken is one more chunk allowed")
@@ -177,7 +177,7 @@ abstract class WireConformance extends munit.FunSuite:
     assert(sent <= 4 + 2, s"the far side sent $sent chunks for a consumer that took four at a credit of two")
     // cancelled, its Emit fails and the function returns — not left blocked for ever
     val until = System.nanoTime() + 5_000_000_000L
-    def stopped = engine.handler.handle(ForeignEval.Call(address("stopped_of"), Vector(PyValue.Str(tag)))) == Right(PyValue.Bool(true))
+    def stopped = engine.handler.handle(ForeignEval.Call(address("stopped_of"), Vector(Value.Str(tag)))) == Right(Value.Bool(true))
     while !stopped && System.nanoTime() < until do Thread.sleep(50)
     assert(stopped, "the stream's function is still blocked: the early stop did not cancel it")
   }
@@ -195,7 +195,7 @@ abstract class WireConformance extends munit.FunSuite:
     var last = -1
     while fed.get != last do { last = fed.get; Thread.sleep(200) }
     assert(fed.get <= 3 + 1, s"the host fed ${fed.get} chunks ahead of a far side that took none, at a credit of three")
-    assertEquals(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(tag)))), Right(PyValue.Str(tag)))
+    assertEquals(engine.handler.handle(ForeignEval.Call(address("open"), Vector(Value.Str(tag)))), Right(Value.Str(tag)))
     assertEquals(Await.result(summed, 30.seconds).toList, List((0L until 1000L).sum))
     assertEquals(fed.get, 1000)
   }

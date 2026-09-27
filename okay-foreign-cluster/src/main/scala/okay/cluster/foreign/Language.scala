@@ -1,7 +1,7 @@
 package okay.cluster.foreign
 
 import okay.codec.Schema
-import okay.foreign.{ForeignEval, ForeignWorker, PyFrame, PyModule, PyRef, PyValue, PyWorkers, Shape}
+import okay.foreign.{ForeignEval, ForeignWorker, Frame, PyModule, Handle, Value, PyWorkers, Shape}
 import okay.r.{RFrame, RModule, RSubprocess, RValue, REval}
 
 /** a TypeScript module: its source, loaded by a Node worker
@@ -139,7 +139,7 @@ final class ForeignReducer[M, A, Acc](lang: Language[M], module: M, stepFn: Stri
 
   def step(acc: Option[Acc], rows: Vector[A]): Either[Batcher.Failed, Acc] =
     lang.shape.frame(rows).flatMap { frame =>
-      val arg = acc.fold[PyValue](PyValue.PyNone)(lang.shape.encode(_))
+      val arg = acc.fold[Value](Value.Null)(lang.shape.encode(_))
       Workers.use(pool, lang.who)(_.handler.handle(ForeignEval.Frame(lang.address(module, stepFn), frame, Vector(arg))))
     }.flatMap(_.rows[Acc]).left.map(Language.failed).flatMap(ForeignReducer.one(name))
 
@@ -162,7 +162,7 @@ final class ForeignStreamer[M, A, B](lang: Language[M], module: M, openFn: Strin
                                     (using sa: Schema[A], sb: Schema[B]) extends Streamer[A, B]:
   val name = lang.label(module, s"$openFn/$stepFn/$finishFn")
   private val pool = lang.workers(module, workers)
-  final class S(val lease: okay.foreign.Pool[ForeignWorker]#Lease, val ref: PyRef)
+  final class S(val lease: okay.foreign.Pool[ForeignWorker]#Lease, val ref: Handle)
 
   /** one operation on the leased worker; a death releases the lease as dead
    * and is the wire's failure */
@@ -188,12 +188,12 @@ final class ForeignStreamer[M, A, B](lang: Language[M], module: M, openFn: Strin
 
   def step(s: S, rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
     lang.shape.frame(rows).left.map(Language.failed).flatMap(frame =>
-      on(s)(_.handler.handle(ForeignEval.Frame(lang.address(module, stepFn), frame, Vector(PyValue.Ref(s.ref)))))
+      on(s)(_.handler.handle(ForeignEval.Frame(lang.address(module, stepFn), frame, Vector(Value.Ref(s.ref)))))
         .flatMap(_.rows[B].left.map(Language.failed)))
 
   def finish(s: S): Either[Batcher.Failed, Vector[B]] =
-    val last = on(s)(_.handler.handle(ForeignEval.Frame(lang.address(module, finishFn), PyFrame(Vector.empty, lang.shape),
-      Vector(PyValue.Ref(s.ref))))).flatMap(_.rows[B].left.map(Language.failed))
+    val last = on(s)(_.handler.handle(ForeignEval.Frame(lang.address(module, finishFn), Frame(Vector.empty, lang.shape),
+      Vector(Value.Ref(s.ref))))).flatMap(_.rows[B].left.map(Language.failed))
     if last.isRight || last.left.exists(_.kind != "WorkerDied") then abandon(s)
     last
 
@@ -207,10 +207,10 @@ final class ForeignModel[M, P](lang: Language[M], module: M, fn: String, params:
                              (using sp: Schema[P]) extends Model:
   val name = lang.label(module, fn)
   private val pool = lang.workers(module, workers)
-  private val refs = java.util.WeakHashMap[ForeignWorker, PyRef]()
+  private val refs = java.util.WeakHashMap[ForeignWorker, Handle]()
 
   /** this worker's copy, made on its first chunk */
-  private def refFor(w: ForeignWorker): Either[okay.foreign.Condition, PyRef] = refs.synchronized {
+  private def refFor(w: ForeignWorker): Either[okay.foreign.Condition, Handle] = refs.synchronized {
     Option(refs.get(w)) match
       case Some(r) => Right(r)
       case None =>
@@ -223,7 +223,7 @@ final class ForeignModel[M, P](lang: Language[M], module: M, fn: String, params:
     def apply(rows: Vector[A]): Either[Batcher.Failed, Vector[B]] =
       lang.shape.frame(rows).flatMap(frame =>
         Workers.use(pool, lang.who) { w =>
-          refFor(w).flatMap(ref => w.handler.handle(ForeignEval.Frame(lang.address(module, mapFn), frame, Vector(PyValue.Ref(ref)))))
+          refFor(w).flatMap(ref => w.handler.handle(ForeignEval.Frame(lang.address(module, mapFn), frame, Vector(Value.Ref(ref)))))
         }).flatMap(_.rows[B]).left.map(Language.failed)
 
 /** the Python workers of a module on this JVM, and one exchange with them */
@@ -239,17 +239,17 @@ object PyPool:
                              (f: ForeignWorker => Either[okay.foreign.Condition, X]): Either[okay.foreign.Condition, X] =
     Workers.use(pool, s"the python '$python'")(f)
 
-  def frame(pool: PyWorkers, python: String, address: String, in: PyFrame, args: Vector[PyValue])
-  : Either[okay.foreign.Condition, PyFrame] =
+  def frame(pool: PyWorkers, python: String, address: String, in: Frame, args: Vector[Value])
+  : Either[okay.foreign.Condition, Frame] =
     use(pool, python)(_.handler.handle(ForeignEval.Frame(address, in, args)))
 
   /** a Table through `address`, as itself where Arrow is spoken (facade-frame-seam) */
-  def frameTable(pool: PyWorkers, python: String, address: String, in: okay.arrow.Table, args: Vector[PyValue])
+  def frameTable(pool: PyWorkers, python: String, address: String, in: okay.arrow.Table, args: Vector[Value])
   : Either[okay.foreign.Condition, okay.arrow.Table] =
     use(pool, python)(_.frameTable(address, in, args))
 
-  def call(pool: PyWorkers, python: String, address: String, args: Vector[PyValue])
-  : Either[okay.foreign.Condition, PyValue] =
+  def call(pool: PyWorkers, python: String, address: String, args: Vector[Value])
+  : Either[okay.foreign.Condition, Value] =
     use(pool, python)(_.handler.handle(ForeignEval.Call(address, args)))
 
 /** the R workers of a module on this JVM — `ForeignWorker`s speaking R

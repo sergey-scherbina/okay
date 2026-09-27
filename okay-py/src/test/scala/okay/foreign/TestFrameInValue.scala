@@ -1,11 +1,11 @@
 package okay.foreign
 
-import PyValue.*
+import Value.*
 
 /** pyvalue-table over a REAL python3: `okay.frame(...)` inside a dict a
  * function answers reaches the host as a Table, and a Table among a call's
  * arguments reaches the function as a dict of columns (Live) */
-class TestPyFrameInValue extends munit.FunSuite:
+class TestFrameInValue extends munit.FunSuite:
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 
@@ -23,10 +23,10 @@ class TestPyFrameInValue extends munit.FunSuite:
   test("a function answers {rows: okay.frame(...), state: ...}: a Table and a dict, and takes a Table as an argument") {
     val w = ForeignWorker.start(TestPy.python.get, modules = Seq(mod))
     try
-      val frame = PyFrame(Vector("v" -> Vector(I64(1), I64(2), I64(3))))
+      val frame = Frame(Vector("v" -> Vector(I64(1), I64(2), I64(3))))
       val got = w.handler.handle(ForeignEval.Call("framed:stepper", Vector(Table(frame), Dict(Vector("n" -> I64(4))))))
       assertEquals(got, Right(Dict(Vector(
-        "rows" -> Table(PyFrame(Vector("v" -> Vector(I64(2), I64(4), I64(6))))),
+        "rows" -> Table(Frame(Vector("v" -> Vector(I64(2), I64(4), I64(6))))),
         "state" -> Dict(Vector("n" -> I64(7)))))))
       // a plain dict of lists is a dict of lists, as it always was
       assertEquals(w.handler.handle(ForeignEval.Call("framed:untagged", Vector(Table(frame)))),

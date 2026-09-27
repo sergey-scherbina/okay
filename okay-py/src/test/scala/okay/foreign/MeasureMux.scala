@@ -25,7 +25,7 @@ class MeasureMux extends munit.FunSuite:
         val t0 = System.nanoTime()
         var i = 0
         while i < 2000 do
-          assert(w.handler.handle(ForeignEval.Call("describe", Vector(PyValue.I64(i), PyValue.I64(1)))).isRight)
+          assert(w.handler.handle(ForeignEval.Call("describe", Vector(Value.I64(i), Value.I64(1)))).isRight)
           i += 1
         (System.nanoTime() - t0) / 1e6
       (1 to 2).foreach { _ => val _ = (round(muxed), round(plain)) }

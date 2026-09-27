@@ -1,6 +1,6 @@
 package okay.foreign
 
-import PyValue.*
+import Value.*
 
 /**
  * The measurement json-parse-fast-road came out of, kept because it
@@ -22,7 +22,7 @@ object BenchFrame:
     try
       println("  rows | round trip | encode |  parse | lossless |   walk |     bytes")
       for rows <- Vector(1000, 10000, 100000, 500000) do
-        val frame = PyFrame(Vector(
+        val frame = Frame(Vector(
           "a" -> Vector.tabulate(rows)(i => F64(i.toDouble)),
           "b" -> Vector.tabulate(rows)(i => I64(i.toLong)),
           "s" -> Vector.tabulate(rows)(i => Str("row" + i))))

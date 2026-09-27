@@ -1,7 +1,7 @@
 package okay.foreign
 
 
-import PyValue.*
+import Value.*
 
 /**
  * Stage 0 against a LIVE python3 (skipped where absent): addressing,
@@ -29,7 +29,7 @@ class TestPy extends munit.FunSuite {
     w
   override def afterAll(): Unit = workers.foreach(_.close())
 
-  def call(w: PySubprocess, fn: String, args: PyValue*) =
+  def call(w: PySubprocess, fn: String, args: Value*) =
     w.handler.handle(PyEval.Call(fn, args.toVector))
 
   test("module:name addressing — plain, dotted, and the program is data, not code") {
@@ -54,7 +54,7 @@ class TestPy extends munit.FunSuite {
 
   test("None and NaN round-trip DISTINCTLY") {
     val w = worker()
-    assertEquals(call(w, "copy:deepcopy", PyNone), Right(PyNone))
+    assertEquals(call(w, "copy:deepcopy", Null), Right(Null))
     call(w, "copy:deepcopy", F64(Double.NaN)) match
       case Right(F64(d)) => assert(d.isNaN)
       case other => fail(other.toString)
@@ -66,21 +66,21 @@ class TestPy extends munit.FunSuite {
 
   test("the environment is CLEAN: HOME is invisible; a named var is visible") {
     val w = worker()
-    assertEquals(call(w, "os:getenv", Str("HOME")), Right(PyNone))
+    assertEquals(call(w, "os:getenv", Str("HOME")), Right(Null))
     val w2 = worker(env = Map("OKAY_TOKEN" -> "t-42"))
     assertEquals(call(w2, "os:getenv", Str("OKAY_TOKEN")), Right(Str("t-42")))
-    assertEquals(call(w2, "os:getenv", Str("HOME")), Right(PyNone))
+    assertEquals(call(w2, "os:getenv", Str("HOME")), Right(Null))
   }
 
   test("a frame goes over as dict-of-lists and comes back columnar, Nones intact") {
     val w = worker()
-    val in = PyFrame(Vector(
+    val in = Frame(Vector(
       "x" -> Vector(I64(1), I64(2), I64(3)),
-      "label" -> Vector(Str("a"), PyNone, Str("c"))))
+      "label" -> Vector(Str("a"), Null, Str("c"))))
     w.handler.handle(PyEval.Frame("copy:deepcopy", in, Vector.empty)) match
       case Right(out) =>
         assertEquals(out.cols.map(_._1).toSet, Set("x", "label"))
-        assertEquals(out.cols.toMap.apply("label"), Vector(Str("a"), PyNone, Str("c")))
+        assertEquals(out.cols.toMap.apply("label"), Vector(Str("a"), Null, Str("c")))
       case other => fail(other.toString)
     // a function answering a non-frame is a condition, named
     w.handler.handle(PyEval.Frame("builtins:len", in, Vector.empty)) match

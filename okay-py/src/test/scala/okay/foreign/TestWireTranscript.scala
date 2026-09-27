@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.codec.Json
-import PyValue.*
+import Value.*
 
 /** the golden transcript (`/okay/py/wire.txt`): its hello, and its steps
  * as (what the host sends, what the far side answers) */
@@ -55,12 +55,12 @@ class TestWireTranscript extends munit.FunSuite:
       def close(): Unit = ()
     val w = ForeignWorker.over(link, "the transcript")
     val h = w.handler
-    val ref = PyRef(1, "t.Counter")
+    val ref = Handle(1, "t.Counter")
     h.handle(ForeignEval.Call("t:add", Vector(I64(2), I64(3)))): Unit
     h.handle(ForeignEval.Call("t:counter", Vector(I64(10)), held = true)): Unit
     h.handle(ForeignEval.Call(Address.Method(ref, "inc"), Vector(I64(5)))): Unit
     h.handle(ForeignEval.Call(Address.Attr(ref, "n"), Vector.empty)): Unit
-    h.handle(ForeignEval.Frame("t:scale", PyFrame(Vector("x" -> Vector(I64(1), I64(2)))), Vector(I64(3)))): Unit
+    h.handle(ForeignEval.Frame("t:scale", Frame(Vector("x" -> Vector(I64(1), I64(2)))), Vector(I64(3)))): Unit
     h.handle(ForeignEval.Program(1, "t:pairs", Vector.empty, Vector("choose"))): Unit
     h.handle(ForeignEval.Continue(1, 1, Right(I64(1)))): Unit
     h.handle(ForeignEval.Continue(1, 1, Right(I64(2)))): Unit

@@ -137,7 +137,7 @@ okay's columnar format, on every platform:
   message and slicing it — no copy at all, where Arrow Java still copies
   into off-heap memory. Write from such columns is concatenating
   buffers. `ArrowIpc`'s arrays stay as the conversion at the edge
-  (`PyFrame` needs values), not the representation.
+  (`Frame` needs values), not the representation.
 - **Heap byte arrays, not off-heap memory.** The received message is a
   heap `Array[Byte]` already; slicing it needs no allocator, no
   `--add-opens`, no reference counting, and works on Scala.js and Native

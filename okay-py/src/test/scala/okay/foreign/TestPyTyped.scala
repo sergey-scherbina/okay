@@ -2,7 +2,7 @@ package okay.foreign
 
 import okay.given
 import okay.codec.Schema
-import PyValue.*
+import Value.*
 
 object TestPyTyped:
   final case class Order(sku: String, qty: Int, price: Double) derives Schema
@@ -103,7 +103,7 @@ class TestPyTyped extends munit.FunSuite {
   }
 
   test("rows of a case class out as a frame, through a frame function, and back as rows") {
-    val frame = PyFrame.of(Vector(Order("a", 1, 1.0), Order("b", 2, 2.0))).toOption.get
+    val frame = Frame.of(Vector(Order("a", 1, 1.0), Order("b", 2, 2.0))).toOption.get
     val back = w.handler.handle(PyEval.Frame("okaytyped:doubled", frame, Vector.empty))
     assertEquals(back.flatMap(_.rows[Order]), Right(Vector(Order("a", 2, 1.0), Order("b", 4, 2.0))))
   }

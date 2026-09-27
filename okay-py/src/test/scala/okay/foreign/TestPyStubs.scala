@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.codec.{Json, Schema, Stubs}
-import PyValue.*
+import Value.*
 
 object TestPyStubs:
   final case class Line(sku: String, qty: Int, price: Double) derives Schema
@@ -15,7 +15,7 @@ object TestPyStubs:
 
 /**
  * The generated Python declarations (schema-stubs) checked by the REAL
- * mypy, through uvx (Live): what PyCodec SENDS, written as a Python
+ * mypy, through uvx (Live): what ValueCodec SENDS, written as a Python
  * literal, type-checks as the declared TypedDict; a read of a field that
  * does not exist is refused.
  */
@@ -26,9 +26,9 @@ class TestPyStubs extends munit.FunSuite {
   private lazy val uvx = scala.util.Try(ProcessBuilder("uvx", "--version").start().waitFor() == 0).getOrElse(false)
   override def munitIgnore: Boolean = !uvx
 
-  /** a PyValue as the Python literal it is */
-  private def lit(v: PyValue): String = v match
-    case PyNone => "None"
+  /** a Value as the Python literal it is */
+  private def lit(v: Value): String = v match
+    case Null => "None"
     case Bool(b) => if b then "True" else "False"
     case I64(n) => n.toString
     case BigI(n) => n.toString
@@ -54,12 +54,12 @@ class TestPyStubs extends munit.FunSuite {
   private val order = Order(7L, Vector(Line("tea", 2, 4.0)), None, BigInt("123456789012345678901234567890"), Array[Byte](1, 2))
   private val tree: Tree = Tree.Node(List(Tree.Leaf(1), Tree.Node(Nil)))
 
-  test("what PyCodec sends type-checks as the declared TypedDict; a wrong read does not") {
+  test("what ValueCodec sends type-checks as the declared TypedDict; a wrong read does not") {
     val ok = s"""from model import Order, Shape, Tree
                 |
-                |order: Order = ${lit(PyCodec.encode(order))}
-                |shape: Shape = ${lit(PyCodec.encode(Shape.Rect(2, 3): Shape))}
-                |tree: Tree = ${lit(PyCodec.encode(tree))}
+                |order: Order = ${lit(ValueCodec.encode(order))}
+                |shape: Shape = ${lit(ValueCodec.encode(Shape.Rect(2, 3): Shape))}
+                |tree: Tree = ${lit(ValueCodec.encode(tree))}
                 |
                 |def qty(o: Order) -> int:
                 |    return o["lines"][0]["qty"]

@@ -36,7 +36,7 @@ class TestPySource extends munit.FunSuite:
   private final class Counting extends okay.Handler[ForeignEval]:
     var chunks = 0
     var released = 0
-    var held: Option[PyRef] = None
+    var held: Option[Handle] = None
     def handle[A](e: ForeignEval[A]): A =
       e match
         case ForeignEval.Call(Address.Method(r, "__next__"), _, _) => chunks += 1; held = Some(r)

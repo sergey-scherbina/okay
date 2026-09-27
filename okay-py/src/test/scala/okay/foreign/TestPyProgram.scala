@@ -52,7 +52,7 @@ class TestPyProgram extends munit.FunSuite {
       case Right(PyNode.Perform(_, _, k, _)) => k
       case other => fail(s"$other")
     pairs.forget.runWith
-    val after = w.handler.handle(PyEval.Continue(pairs.id, k, Right(PyValue.I64(1))))
+    val after = w.handler.handle(PyEval.Continue(pairs.id, k, Right(Value.I64(1))))
     assert(after.left.exists(_.message.contains("is not held here")), s"$after")
     // one program protocol (foreign-one-program): a function that returns a
     // plain value is a program already done — it was refused before, when a

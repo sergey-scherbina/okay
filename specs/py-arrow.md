@@ -24,7 +24,7 @@ lists it must convert itself.
 ## The design
 
 - **No Arrow Java.** The JVM side writes and reads Arrow IPC itself
-  (`okay.codec.ArrowIpc`), for the columns a `PyFrame` carries: int64,
+  (`okay.codec.ArrowIpc`), for the columns a `Frame` carries: int64,
   float64, utf8, bool, and the null type; every one nullable. Arrow
   Java would bring netty/unsafe memory and `--add-opens` for four
   column types; okay already writes its own CBOR for the same reason.

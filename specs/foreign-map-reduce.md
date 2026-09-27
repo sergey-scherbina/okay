@@ -136,7 +136,7 @@ run on threads.
   exchange all learn a node that behaves exactly like `Local`.
   Rejected: `Flow.Foreign(...)`.
 - **The batch is the frame is the Arrow table.** `Chunks.rechunk` to
-  `batch`, `PyFrame.of`/`RFrame.of` by `Schema`, one `Frame` op per
+  `batch`, `Frame.of`/`RFrame.of` by `Schema`, one `Frame` op per
   chunk — the py-arrow/r-arrow transport as it is. Rejected: a row at a
   time (`Call` per element — the 13.7 s road r-measure-harden measured),
   and a whole-partition frame (unbounded memory on the far side, and a
@@ -366,14 +366,14 @@ trait StatefulValue[-M]:
 
 WHAT BLOCKED IT, found before code (2026-09-27): the JVM's value decoder
 (`okay.foreign.Wire.dec`) had NO frame case — a `{"t":"frame"}` NESTED in
-a call's answer became a `Dict` of its raw fields, since `PyValue` had no
+a call's answer became a `Dict` of its raw fields, since `Value` had no
 table case and frames were read only as a frame op's whole answer
-(`decFrame`). Two roads: a `PyValue.Table` case (the cleanest, and the one
+(`decFrame`). Two roads: a `Value.Table` case (the cleanest, and the one
 that also lets a call ANSWER a frame anywhere), or a `frame` op variant
 whose answer is a frame plus a value (smaller, but a second answer shape
 for one op). The operator chose the first ("Делай а").
 
-- **`PyValue.Table(frame)`.** `Wire.enc/dec` write and read it where
+- **`Value.Table(frame)`.** `Wire.enc/dec` write and read it where
   `t == "frame"` at any depth of a value; a frame's own COLUMN may not
   hold a frame, AT ANY DEPTH of its cells — refused by name on the way
   out (`IllegalArgumentException`) and on the way in (a `WireError`
@@ -383,7 +383,7 @@ for one op). The operator chose the first ("Делай а").
   rule is also what BOUNDS the stack: value -> frame -> cell -> value is
   a cycle, and a cell that holds no frame never re-enters it, so it is
   walked at most once (specs/stack-safety-okay.tsv names the eight
-  methods on it; `holdsFrame`/`jsonHoldsFrame` are work-lists). `PyCodec`
+  methods on it; `holdsFrame`/`jsonHoldsFrame` are work-lists). `ValueCodec`
   reads a `Vector[A]`/`List[A]` from a `Table` by `A`'s Schema, so
   `{rows: frame, state: …}` decodes into a case class. The Python shim
   gains `okay.frame(cols)`, a `dict` subclass `enc` tags as a frame
@@ -403,10 +403,10 @@ for one op). The operator chose the first ("Делай а").
 - [x] A frame inside a dict, a list, and alone crosses the wire and comes
       back a `Table`, cells intact; nesting a frame in a column is refused
       by name both ways; rows are read from a `Table` by Schema
-      (`TestPyValueTable`, okay-py, default gate).
+      (`TestValueTable`, okay-py, default gate).
 - [x] Over python3: `okay.frame(...)` inside an answered dict arrives as a
       `Table`, a plain dict of lists stays a dict, a `Table` argument
-      arrives as a dict of columns (`TestPyFrameInValue`, Live).
+      arrives as a dict of columns (`TestFrameInValue`, Live).
 - [x] The running sum per PARTITION with the state a value: opened and
       finished once on each of four, the finals summing to the total,
       `open` seeded from the parameters, an empty partition, a module type

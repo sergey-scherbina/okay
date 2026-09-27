@@ -10,7 +10,7 @@ only as data.
 | | |
 |---|---|
 | `PyEval` | `Call("module:qualified.name", args)` / `Frame(fn, frame, args)` — both answer `Either[Condition, _]`: a failing call is DATA and the worker survives it |
-| `PyValue` / `PyFrame` | None and NaN are DISTINCT; bytes and integral floats ride tagged past JSON's gaps; frames are columnar (dict-of-lists on the far side) |
+| `Value` / `Frame` | None and NaN are DISTINCT; bytes and integral floats ride tagged past JSON's gaps; frames are columnar (dict-of-lists on the far side) |
 | `PySubprocess` | stage 0: one `python3` per session running the stdlib-only shim SHIPPED WITH THE MODULE — the shim/host version handshake refuses drift loudly; the child environment is CLEAN (the parent leaks nothing unless config names it) |
 | `verify` | importlib.metadata presence/version per package, mismatches as data — the wrong venv becomes a loud startup refusal instead of a subtly different model fit |
 | `PyWorkers` | stage 1: N resident processes behind the SAME handler shape — parallelism is N workers and the GIL is then irrelevant; a dead worker throws to its caller and the pool replaces the corpse COLD |
@@ -57,11 +57,11 @@ Python exception and an answer of the wrong shape arrive on the same
 assertEquals(wrong, Left(Condition("Decode", ".qty: missing")))
 ```
 
-Frames get the same treatment. `PyFrame.of(rows)` turns case classes
+Frames get the same treatment. `Frame.of(rows)` turns case classes
 into columns, and `frame.rows[A]` turns them back:
 
 ```scala
-val frame = PyFrame.of(Vector(Order("a", 1, 1.0), Order("b", 2, 2.0))).toOption.get
+val frame = Frame.of(Vector(Order("a", 1, 1.0), Order("b", 2, 2.0))).toOption.get
 assertEquals(back.flatMap(_.rows[Order]), Right(Vector(Order("a", 2, 1.0), Order("b", 4, 2.0))))
 ```
 
@@ -69,11 +69,11 @@ Wire v2 (shim 2) added the record. Before it, the shim sent every
 string-keyed `dict` as a frame. A dict answered by a call either failed
 in the shim or reached okay as `None`.
 
-A frame is also a VALUE (pyvalue-table): `PyValue.Table(frame)` can sit
+A frame is also a VALUE (pyvalue-table): `Value.Table(frame)` can sit
 among a call's arguments, inside the dict a function answers, or in a
 list, and the Python side says so with `okay.frame({...})` (a pandas
 frame is tagged the same way); a plain dict of lists stays a dict.
-`PyCodec` reads rows from it by the row's `Schema`, so
+`ValueCodec` reads rows from it by the row's `Schema`, so
 `{"rows": okay.frame(...), "state": s}` decodes into a case class of
 `Vector[Row]` and `S`. The one rule: a frame's column may not hold a
 frame, at any depth, refused by name both ways.

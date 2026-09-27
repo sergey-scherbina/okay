@@ -4,7 +4,7 @@ import okay.{!, +, effect, pure, Cont, reset, />}
 import okay.codec.Codecs
 import okay.Row.plus
 import okay.codec.Schema
-import PyValue.*
+import Value.*
 
 /**
  * A Scala value as a Python value and back, through its `Schema`
@@ -25,14 +25,14 @@ import PyValue.*
  * nested ten thousand deep would overflow here where the WIRE would not.
  * Records crossing to Python are shallow; say so rather than pretend.
  */
-object PyCodec {
+object ValueCodec {
 
   /** the field a sum's dict names its case in */
   val TypeField = "type"
 
-  def encode[A](a: A)(using s: Schema[A]): PyValue = enc(s, a, 0)
+  def encode[A](a: A)(using s: Schema[A]): Value = enc(s, a, 0)
 
-  def decode[A](v: PyValue)(using s: Schema[A]): Either[Condition, A] =
+  def decode[A](v: Value)(using s: Schema[A]): Either[Condition, A] =
     dec(s, v, At.Root, 0).left.map(Condition("Decode", _))
 
   // Both roads recurse once per level of the VALUE, which is as deep as
@@ -41,12 +41,12 @@ object PyCodec {
   // the value on the Cont trampoline — Json's own road (encC/decC below),
   // so depth costs heap, not native stack (stack-safety-py-r).
 
-  private def enc[X](s: Schema[X], x: X, depth: Int): PyValue =
-    if depth >= Codecs.NativeThreshold then reset(encC[X, PyValue](s, x))
+  private def enc[X](s: Schema[X], x: X, depth: Int): Value =
+    if depth >= Codecs.NativeThreshold then reset(encC[X, Value](s, x))
     else encNative(s, x, depth)
 
   /** a sum's case as its dict, the case named in `type` */
-  private def tagged(su: Schema.SSum[?], name: String, v: PyValue): PyValue = v match
+  private def tagged(su: Schema.SSum[?], name: String, v: Value): Value = v match
     case Dict(kv) =>
       if kv.exists(_._1 == TypeField) then throw IllegalArgumentException(
         s"okay.foreign: case $name of ${su.name} has a field named '$TypeField', which names the case on the wire")
@@ -55,7 +55,7 @@ object PyCodec {
 
   /** the leaves, shared by both roads: a scalar has no children, so this
    * is where every recursion ends */
-  private def encScalar[X](s: Schema[X], x: X): PyValue = s match
+  private def encScalar[X](s: Schema[X], x: X): Value = s match
     case Schema.SInt => I64(x.toLong)
     case Schema.SLong => I64(x)
     case Schema.SDouble => F64(x)
@@ -66,12 +66,12 @@ object PyCodec {
     case Schema.SBigInt => if x.isValidLong then I64(x.toLong) else BigI(x)
     case other => throw IllegalStateException(s"okay.foreign: not a scalar schema: $other")
 
-  private def encNative[X](s: Schema[X], x: X, depth: Int): PyValue = s match
+  private def encNative[X](s: Schema[X], x: X, depth: Int): Value = s match
     case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
        | Schema.SChar | Schema.SBytes | Schema.SBigInt => encScalar(s, x)
     case o: Schema.SOption[a] => x match
       case Some(v) => enc(o.of(), v, depth + 1)
-      case None => PyNone
+      case None => Null
     case l: Schema.SList[a] => Arr(x.iterator.map(enc(l.of(), _, depth + 1)).toVector)
     case v: Schema.SVector[a] => Arr(x.map(enc(v.of(), _, depth + 1)))
     case p: Schema.SProduct[X] =>
@@ -84,19 +84,19 @@ object PyCodec {
    * `eachField` hands them over erased, and this keeps them paired
    * without a cast (the typed-pair helper of no-casts-without-necessity) */
   private final class Held[Y](sc: Schema[Y], y: Y):
-    def encC[R]: PyValue /> R = PyCodec.encC(sc, y)
+    def encC[R]: Value /> R = ValueCodec.encC(sc, y)
 
-  private def encC[X, R](s: Schema[X], x: X): PyValue /> R = s match
+  private def encC[X, R](s: Schema[X], x: X): Value /> R = s match
     case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
        | Schema.SChar | Schema.SBytes | Schema.SBigInt => Cont.Pure(encScalar(s, x))
     case o: Schema.SOption[a] => x match
       case Some(v) => Cont.delay(() => encC(o.of(), v))
-      case None => Cont.Pure(PyNone)
+      case None => Cont.Pure(Null)
     case l: Schema.SList[a] => encAll(l.of(), x.toVector)
     case v: Schema.SVector[a] => encAll(v.of(), x)
     case p: Schema.SProduct[X] =>
       val held = p.eachField(x)([Y] => (name: String, sc: Schema[Y], y: Y) => (name, Held(sc, y): Held[?]))
-      def loop(rest: List[(String, Held[?])], acc: Vector[(String, PyValue)]): PyValue /> R = rest match
+      def loop(rest: List[(String, Held[?])], acc: Vector[(String, Value)]): Value /> R = rest match
         case Nil => Cont.Pure(Dict(acc))
         case (name, h) :: more => Cont.defer(() => h.encC[R])(v => loop(more, acc :+ (name -> v)))
       loop(held.toList, Vector.empty)
@@ -105,8 +105,8 @@ object PyCodec {
       Cont.defer(() => h.encC[R])(v => Cont.Pure(tagged(su, name, v)))
     case i: Schema.SIso[X, b] => Cont.delay(() => encC(i.under(), i.from(x)))
 
-  private def encAll[Y, R](sc: Schema[Y], xs: Vector[Y]): PyValue /> R =
-    def loop(i: Int, acc: Vector[PyValue]): PyValue /> R =
+  private def encAll[Y, R](sc: Schema[Y], xs: Vector[Y]): Value /> R =
+    def loop(i: Int, acc: Vector[Value]): Value /> R =
       if i >= xs.length then Cont.Pure(Arr(acc))
       else Cont.defer(() => encC[Y, R](sc, xs(i)))(v => loop(i + 1, acc :+ v))
     loop(0, Vector.empty)
@@ -132,19 +132,19 @@ object PyCodec {
 
   /** a value in a message without walking it: a deep one would recurse
    * in its own toString */
-  private def describe(v: PyValue): String = v match
+  private def describe(v: Value): String = v match
     case Arr(xs) => s"a list of ${xs.length}"
     case Dict(kv) => s"a dict of ${kv.length} keys"
     case Table(f) => s"a frame of ${f.cols.length} columns"
     case other => other.toString
 
-  private def dec[X](s: Schema[X], v: PyValue, at: At, depth: Int): Either[String, X] =
+  private def dec[X](s: Schema[X], v: Value, at: At, depth: Int): Either[String, X] =
     if depth >= Codecs.NativeThreshold then reset(decC[X, Either[String, X]](s, v, at))
     else decNative(s, v, at, depth)
 
   /** the leaves, shared by both roads: a scalar has no children, so this
    * is where every recursion ends */
-  private def decScalar[X](s: Schema[X], v: PyValue, at: At): Either[String, X] =
+  private def decScalar[X](s: Schema[X], v: Value, at: At): Either[String, X] =
     def no(what: String): Either[String, X] = Left(s"${at.where}: expected $what, got ${describe(v)}")
     s match
       case Schema.SInt => v match
@@ -175,13 +175,13 @@ object PyCodec {
         case _ => no("an int")
       case other => Left(s"${at.where}: not a scalar schema: $other")
 
-  private def decNative[X](s: Schema[X], v: PyValue, at: At, depth: Int): Either[String, X] =
+  private def decNative[X](s: Schema[X], v: Value, at: At, depth: Int): Either[String, X] =
     def no(what: String): Either[String, X] = Left(s"${at.where}: expected $what, got ${describe(v)}")
     s match
       case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
          | Schema.SChar | Schema.SBytes | Schema.SBigInt => decScalar(s, v, at)
       case o: Schema.SOption[a] => v match
-        case PyNone => Right(None)
+        case Null => Right(None)
         case other => dec(o.of(), other, at, depth + 1).map(Some(_))
       case l: Schema.SList[a] => v match
         case Arr(xs) => each(xs, at)(dec(l.of(), _, _, depth + 1)).map(_.toList)
@@ -205,7 +205,7 @@ object PyCodec {
 
   /** the case a sum's dict names, and the dict it decodes from: the
    * fields without the tag for a product case, `value` otherwise */
-  private def caseOf[X](su: Schema.SSum[X], kv: Vector[(String, PyValue)], at: At): Either[String, (Schema[? <: X], PyValue)] =
+  private def caseOf[X](su: Schema.SSum[X], kv: Vector[(String, Value)], at: At): Either[String, (Schema[? <: X], Value)] =
     def no(what: String) = Left(s"${at.where}: expected $what, got ${describe(Dict(kv))}")
     val m = kv.toMap
     m.get(TypeField) match
@@ -216,19 +216,19 @@ object PyCodec {
             val sc = su.cases(i)._2()
             val rest = sc match
               case _: Schema.SProduct[?] => Dict(kv.filterNot(_._1 == TypeField))
-              case _ => m.getOrElse("value", PyNone)
+              case _ => m.getOrElse("value", Null)
             Right((sc, rest))
       case _ => no(s"a dict with a '$TypeField' naming a case of ${su.name}")
 
   /** the road past the threshold: the same decisions as `decNative`,
-   * each child a `Cont.defer` (okay-codec's Edn.decodeC, over PyValue) */
-  private def decC[X, R](s: Schema[X], v: PyValue, at: At): Either[String, X] /> R =
+   * each child a `Cont.defer` (okay-codec's Edn.decodeC, over Value) */
+  private def decC[X, R](s: Schema[X], v: Value, at: At): Either[String, X] /> R =
     def no(what: String): Either[String, X] = Left(s"${at.where}: expected $what, got ${describe(v)}")
     s match
       case Schema.SInt | Schema.SLong | Schema.SDouble | Schema.SBool | Schema.SString
          | Schema.SChar | Schema.SBytes | Schema.SBigInt => Cont.Pure(decScalar(s, v, at))
       case o: Schema.SOption[a] => v match
-        case PyNone => Cont.Pure(Right(None))
+        case Null => Cont.Pure(Right(None))
         case other => Cont.defer(() => decC[a, R](o.of(), other, at))(r => Cont.Pure(r.map(Some(_))))
       case l: Schema.SList[a] => v match
         case Arr(xs) => decAll[a, R](l.of(), xs, at).flatMap(r => Cont.Pure(r.map(_.toList)))
@@ -271,10 +271,10 @@ object PyCodec {
         Cont.defer(() => decC[b, R](i.under(), v, at))(r =>
           Cont.Pure(r.flatMap(u => i.to(u).left.map(why => s"${at.where}: $why"))))
 
-  private def fieldC[R](sc: Schema[?], v: PyValue, at: At): Either[String, Any] /> R = sc match
+  private def fieldC[R](sc: Schema[?], v: Value, at: At): Either[String, Any] /> R = sc match
     case sc: Schema[y] => Cont.defer(() => decC[y, R](sc, v, at))(r => Cont.Pure(r: Either[String, Any]))
 
-  private def decAll[Y, R](sc: Schema[Y], xs: Vector[PyValue], at: At): Either[String, Vector[Y]] /> R =
+  private def decAll[Y, R](sc: Schema[Y], xs: Vector[Value], at: At): Either[String, Vector[Y]] /> R =
     def loop(i: Int, acc: Vector[Y]): Either[String, Vector[Y]] /> R =
       if i >= xs.length then Cont.Pure(Right(acc))
       else Cont.defer(() => decC[Y, R](sc, xs(i), At.Index(at, i))) {
@@ -292,7 +292,7 @@ object PyCodec {
         case _: Schema.SOption[?] => Right(None)
         case _ => Left(s"${here.render}: missing")
 
-  private def each[Y](xs: Vector[PyValue], at: At)(f: (PyValue, At) => Either[String, Y]): Either[String, Vector[Y]] =
+  private def each[Y](xs: Vector[Value], at: At)(f: (Value, At) => Either[String, Y]): Either[String, Vector[Y]] =
     val out = Vector.newBuilder[Y]
     var i = 0
     var bad: Option[String] = None
@@ -303,7 +303,7 @@ object PyCodec {
       i += 1
     bad.toLeft(out.result())
 
-  private def product[X](p: Schema.SProduct[X], m: Map[String, PyValue], at: At, depth: Int): Either[String, X] =
+  private def product[X](p: Schema.SProduct[X], m: Map[String, Value], at: At, depth: Int): Either[String, X] =
     val vals = Vector.newBuilder[Any]
     var bad: Option[String] = None
     var i = 0
@@ -369,7 +369,7 @@ object Foreign {
 
   /** one run of a program-as-data: the okay program that walks it, and
    * the release of the continuations the far side keeps for it */
-  final class PyRun[F[+_], Out: Schema](val id: Long, address: String, args: Vector[PyValue], cbs: Callbacks[F])(using shape: Shape):
+  final class PyRun[F[+_], Out: Schema](val id: Long, address: String, args: Vector[Value], cbs: Callbacks[F])(using shape: Shape):
     type R = F + ForeignEval
 
     /** walk the far program node by node; each named operation is a
@@ -411,7 +411,7 @@ object Foreign {
    */
   def stream[O: Schema](address: String, credit: Int = 4)(using shape: Shape): StreamOf[O] = StreamOf(address, credit)
 
-  final class StreamOf[O: Schema](address: String, credit: Int, input: Option[Iterator[PyValue]] = None)(using shape: Shape):
+  final class StreamOf[O: Schema](address: String, credit: Int, input: Option[Iterator[Value]] = None)(using shape: Shape):
     /**
      * the same call, FED by the host (foreign-host-streams): `in`'s elements
      * go to the far function in chunks of `chunk`, under the far side's
@@ -421,12 +421,12 @@ object Foreign {
      */
     def feeding[I: ToPy](in: Iterator[I], chunk: Int = 64): StreamOf[O] =
       require(chunk >= 1, "a fed chunk holds at least one element")
-      StreamOf[O](address, credit, Some(in.grouped(chunk).map(c => PyValue.Arr(c.map(ToPy(_)).toVector))))
+      StreamOf[O](address, credit, Some(in.grouped(chunk).map(c => Value.Arr(c.map(ToPy(_)).toVector))))
     def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)
     def apply[A: ToPy](a: A): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy](a: A, b: B): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a), ToPy(b)))
     def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a), ToPy(b), ToPy(c)))
-    private def go(args: Vector[PyValue]): Unit ! PyStream.SourceRow[O] =
+    private def go(args: Vector[Value]): Unit ! PyStream.SourceRow[O] =
       PyStream.driven[O](address, args, credit, () => runIds.incrementAndGet(), input)
 
   /** the scope a source runs in: whatever it still holds when the program
@@ -438,7 +438,7 @@ object Foreign {
     def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)
     def apply[A: ToPy](a: A): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a)))
     def apply[A: ToPy, B: ToPy](a: A, b: B): Unit ! PyStream.SourceRow[O] = go(Vector(ToPy(a), ToPy(b)))
-    private def go(args: Vector[PyValue]): Unit ! PyStream.SourceRow[O] =
+    private def go(args: Vector[Value]): Unit ! PyStream.SourceRow[O] =
       PyStream.pulled[O](ForeignEval.Call(address, args, held = true),
         r => ForeignEval.Call(Address.Method(r, "__next__"), Vector.empty),
         _.kind == "StopIteration", _ => false)
@@ -446,7 +446,7 @@ object Foreign {
   /** a Python function over a LIST as an okay stage over chunks
    * (foreign-streaming): see `PyStream` */
   def stage[I: ToPy, O: Schema](address: String, chunk: Int = 64): Unit ! PyStream.Row[I, O] =
-    PyStream.chunked[I, O](chunk, buf => ForeignEval.Call(address, Vector(PyValue.Arr(buf))), None)
+    PyStream.chunked[I, O](chunk, buf => ForeignEval.Call(address, Vector(Value.Arr(buf))), None)
 
   /**
    * Python source beside the Scala that calls it (foreign-inline-modules):
@@ -466,13 +466,13 @@ object Foreign {
   def hold(address: String)(using Shape): Hold = Hold(address)
 
   final class Hold(address: String)(using shape: Shape):
-    def apply(): Either[Condition, PyRef] ! ForeignEval = go(Vector.empty)
-    def apply[A: ToPy](a: A): Either[Condition, PyRef] ! ForeignEval = go(Vector(ToPy(a)))
-    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, PyRef] ! ForeignEval = go(Vector(ToPy(a), ToPy(b)))
-    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, PyRef] ! ForeignEval =
+    def apply(): Either[Condition, Handle] ! ForeignEval = go(Vector.empty)
+    def apply[A: ToPy](a: A): Either[Condition, Handle] ! ForeignEval = go(Vector(ToPy(a)))
+    def apply[A: ToPy, B: ToPy](a: A, b: B): Either[Condition, Handle] ! ForeignEval = go(Vector(ToPy(a), ToPy(b)))
+    def apply[A: ToPy, B: ToPy, C: ToPy](a: A, b: B, c: C): Either[Condition, Handle] ! ForeignEval =
       go(Vector(ToPy(a), ToPy(b), ToPy(c)))
-    private def go(args: Vector[PyValue]): Either[Condition, PyRef] ! ForeignEval =
-      effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(address, args, held = true))
+    private def go(args: Vector[Value]): Either[Condition, Handle] ! ForeignEval =
+      effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(address, args, held = true))
         .map(_.flatMap(Wire.asRef).map(_.copy(shape = shape)))
 
   /**
@@ -496,16 +496,16 @@ object Foreign {
     def apply[F[+_]](f: Arg => Res ! F): Callback[F] = Callback(name, args =>
       val in = args match
         case Vector(one) => shape.decode[Arg](one)
-        case many => shape.decode[Arg](PyValue.Arr(many))
+        case many => shape.decode[Arg](Value.Arr(many))
       in match
-        case Left(c) => pure[F, Either[Condition, PyValue]](Left(c))
+        case Left(c) => pure[F, Either[Condition, Value]](Left(c))
         case Right(i) => f(i).map(o => Right(shape.encode(o))),
       Some((summon[Schema[Arg]], summon[Schema[Res]])))
 
   /** `types`: the argument's and the answer's Schemas, when the callback was
    * made by `callback[Arg, Res]` — what `Ts.ops` writes a TypeScript
    * signature from (typescript-types T12) */
-  final class Callback[F[+_]](val name: String, val run: Vector[PyValue] => Either[Condition, PyValue] ! F,
+  final class Callback[F[+_]](val name: String, val run: Vector[Value] => Either[Condition, Value] ! F,
                               val types: Option[(Schema[?], Schema[?])] = None)
 
   final class Callbacks[F[+_]](val all: Vector[Callback[F]]):
@@ -523,8 +523,8 @@ object Foreign {
     def apply[A: ToPy, B: ToPy, C: ToPy, D: ToPy](a: A, b: B, c: C, d: D): Either[Condition, Out] ! ForeignEval =
       call(Vector(ToPy(a), ToPy(b), ToPy(c), ToPy(d)))
 
-    private def call(args: Vector[PyValue]): Either[Condition, Out] ! ForeignEval =
-      effect[ForeignEval, Either[Condition, PyValue]](ForeignEval.Call(address, args))
+    private def call(args: Vector[Value]): Either[Condition, Out] ! ForeignEval =
+      effect[ForeignEval, Either[Condition, Value]](ForeignEval.Call(address, args))
         .map(_.flatMap(shape.decode[Out](_)))
 
     /** this function, offered `cbs` to call back into (foreign-callbacks) */
@@ -547,16 +547,16 @@ object Foreign {
        * function answers. Each step is an okay node, so a function that
        * calls back a million times is a loop, not a million frames.
        */
-      private def dialogue(args: Vector[PyValue]): Either[Condition, Out] ! F + ForeignEval =
+      private def dialogue(args: Vector[Value]): Either[Condition, Out] ! F + ForeignEval =
         type R = F + ForeignEval
         val run = runIds.incrementAndGet()
         def go(node: Either[Condition, PyNode]): Either[Condition, Out] ! R = node match
           case Left(c) => pure[R, Either[Condition, Out]](Left(c))
           case Right(PyNode.Done(v)) => pure[R, Either[Condition, Out]](shape.decode[Out](v))
           case Right(PyNode.Perform(name, as, k, _)) =>
-            val answered: Either[Condition, PyValue] ! R = cbs.get(name) match
+            val answered: Either[Condition, Value] ! R = cbs.get(name) match
               case Some(cb) => cb.run(as).plus[ForeignEval]
-              case None => pure[R, Either[Condition, PyValue]](Left(Condition("NoCallback",
+              case None => pure[R, Either[Condition, Value]](Left(Condition("NoCallback",
                 s"'$name' is not among this call's callbacks (${cbs.names.mkString(", ")})")))
             answered.flatMap(a => effect[R, Either[Condition, PyNode]](ForeignEval.Continue(run, k, a))).flatMap(go)
         effect[R, Either[Condition, PyNode]](ForeignEval.Program(run, address, args, cbs.names, direct = true)).flatMap(go)

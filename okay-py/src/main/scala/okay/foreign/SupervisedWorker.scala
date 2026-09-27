@@ -89,18 +89,18 @@ final class SupervisedWorker private[foreign] (open: () => ForeignWorker):
     Condition("LookupError", s"$what $id belongs to a worker that is gone (restarted since): ask the fresh one again")
 
   /** a value going OUT: its refs must belong to the current worker */
-  private def out(v: PyValue): Either[Condition, PyValue] = PyValue.rebuildE(v) {
-    case PyValue.Ref(r) =>
-      if genOf(r.id) == generation && current.exists(_.alive) then Right(PyValue.Ref(r.copy(id = localOf(r.id))))
+  private def out(v: Value): Either[Condition, Value] = Value.rebuildE(v) {
+    case Value.Ref(r) =>
+      if genOf(r.id) == generation && current.exists(_.alive) then Right(Value.Ref(r.copy(id = localOf(r.id))))
       else Left(gone("the held object", r.id))
     case other => Right(other)
   }
 
-  private def outAll(xs: Vector[PyValue]): Either[Condition, Vector[PyValue]] =
+  private def outAll(xs: Vector[Value]): Either[Condition, Vector[Value]] =
     Walk.sequence(xs.map(out))
 
-  private def outRef(r: PyRef): Either[Condition, PyRef] =
-    out(PyValue.Ref(r)).map { case PyValue.Ref(l) => l; case _ => r }
+  private def outRef(r: Handle): Either[Condition, Handle] =
+    out(Value.Ref(r)).map { case Value.Ref(l) => l; case _ => r }
 
   /** an address going OUT: a held object's ref must be the current worker's */
   private def outAt(fn: Address): Either[Condition, Address] = fn match
@@ -109,8 +109,8 @@ final class SupervisedWorker private[foreign] (open: () => ForeignWorker):
     case other => Right(other)
 
   /** a value coming IN: its refs are renamed into this generation */
-  private def in(v: PyValue): PyValue = PyValue.rebuild(v) {
-    case PyValue.Ref(r) => PyValue.Ref(r.copy(id = expose(r.id)))
+  private def in(v: Value): Value = Value.rebuild(v) {
+    case Value.Ref(r) => Value.Ref(r.copy(id = expose(r.id)))
     case other => other
   }
 
@@ -118,20 +118,20 @@ final class SupervisedWorker private[foreign] (open: () => ForeignWorker):
 
   /** a continuation the CALLER holds: its run, the path of answers from the
    * program's start, the operation it stands at, and where it lives now */
-  private final case class Kont(run: Long, path: Vector[PyValue], op: String, args: Vector[PyValue],
+  private final case class Kont(run: Long, path: Vector[Value], op: String, args: Vector[Value],
                                 var local: Long, var gen: Long,
                                 /** a parked frame (the direct style): continued once, never replayed */
                                 once: Boolean = false)
 
-  private val runs = scala.collection.mutable.Map.empty[Long, (String, Vector[PyValue], Vector[String])]
+  private val runs = scala.collection.mutable.Map.empty[Long, (String, Vector[Value], Vector[String])]
   private val konts = scala.collection.mutable.Map.empty[Long, Kont]
   private var nextK = 0L
 
   /** a node from the worker, its `k` renamed to one the caller can keep */
-  private def node(run: Long, path: Vector[PyValue], n: PyNode): PyNode = synchronized(nodeAt(run, path, n, generation))
+  private def node(run: Long, path: Vector[Value], n: PyNode): PyNode = synchronized(nodeAt(run, path, n, generation))
 
   /** a node from the worker of generation `gen`: its continuation lives THERE */
-  private def nodeAt(run: Long, path: Vector[PyValue], n: PyNode, gen: Long): PyNode = synchronized(n match
+  private def nodeAt(run: Long, path: Vector[Value], n: PyNode, gen: Long): PyNode = synchronized(n match
     case PyNode.Done(v) => PyNode.Done(in(v))
     case PyNode.Perform(op, args, k, once) =>
       nextK += 1
@@ -140,12 +140,12 @@ final class SupervisedWorker private[foreign] (open: () => ForeignWorker):
 
   /** on the CURRENT worker: the program re-run and `path` replayed, to the
    * continuation standing at `op(args)`; its local k */
-  private def replay(w: ForeignWorker, run: Long, path: Vector[PyValue], op: String,
-                     args: Vector[PyValue]): Either[Condition, Long] =
+  private def replay(w: ForeignWorker, run: Long, path: Vector[Value], op: String,
+                     args: Vector[Value]): Either[Condition, Long] =
     val (fn, fnArgs, cbs) = synchronized(runs(run))
     // one loop over the recorded path, not a frame per answer: a
     // durable run replays as many steps as it journaled (stack-safety-py-r)
-    def step(n0: Either[Condition, PyNode], rest0: Vector[PyValue]): Either[Condition, Long] =
+    def step(n0: Either[Condition, PyNode], rest0: Vector[Value]): Either[Condition, Long] =
       var n = n0
       var rest = rest0
       var result: Option[Either[Condition, Long]] = None
@@ -165,7 +165,7 @@ final class SupervisedWorker private[foreign] (open: () => ForeignWorker):
 
   /** continue `k` with `answer`, recovering a lost worker by replay; one
    * restart per step, so a far side that dies every time still answers */
-  private def continue(k: Long, answer: Either[Condition, PyValue]): Either[Condition, PyNode] =
+  private def continue(k: Long, answer: Either[Condition, Value]): Either[Condition, PyNode] =
     synchronized(konts.get(k)) match
       case None => Left(Condition("LookupError", s"continuation $k is not held (forgotten?)"))
       case Some(c) if c.once =>
@@ -234,7 +234,7 @@ final class SupervisedWorker private[foreign] (open: () => ForeignWorker):
 
   /** a replayed node: a Perform's continuation, kept under the journal's
    * own id, standing on no live worker */
-  private def rebuilt[X](run: Long, path: Vector[PyValue], node: X): Unit = node match
+  private def rebuilt[X](run: Long, path: Vector[Value], node: X): Unit = node match
     case Right(PyNode.Perform(op, args, k, once)) =>
       konts(k) = Kont(run, path, op, args, local = -1L, gen = -1L, once = once)
       nextK = math.max(nextK, k)

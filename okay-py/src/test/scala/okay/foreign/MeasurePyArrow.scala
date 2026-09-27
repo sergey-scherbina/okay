@@ -1,6 +1,6 @@
 package okay.foreign
 
-import PyValue.*
+import Value.*
 import okay.arrow.OkayArrow
 import okay.codec.Json
 
@@ -15,7 +15,7 @@ class MeasurePyArrow extends munit.FunSuite:
   override def munitIgnore: Boolean = PyArrow.python.isEmpty
   override val munitTimeout = scala.concurrent.duration.Duration(20, "min")
 
-  private def frameOf(rows: Int) = PyFrame(Vector(
+  private def frameOf(rows: Int) = Frame(Vector(
     "a" -> Vector.tabulate(rows)(i => F64(i + 0.5)),
     "b" -> Vector.tabulate(rows)(i => I64(i.toLong)),
     "s" -> Vector.tabulate(rows)(i => Str("row" + i))))

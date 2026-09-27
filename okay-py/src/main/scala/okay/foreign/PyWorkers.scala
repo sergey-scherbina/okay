@@ -83,7 +83,7 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
           try w.handler.handle(ForeignEval.Cancel(s)) finally l.release(!w.alive))
       case ForeignEval.Release(r) =>
         Option(refs.remove(r.id)).foreach { (w, local) =>
-          w.synchronized(w.handler.handle(ForeignEval.Release(PyRef(local, r.pyType))))
+          w.synchronized(w.handler.handle(ForeignEval.Release(Handle(local, r.pyType))))
         }
       case other =>
         owner(named(other)) match
@@ -108,7 +108,7 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
       val answer = w.synchronized(w.handler.handle(ForeignEval.Call(localAt(fn), args.map(local), held)))
       // a held answer is a ref of THIS worker: known pool-wide from now on
       if held then answer.map {
-        case PyValue.Ref(r) => PyValue.Ref(register(w, r))
+        case Value.Ref(r) => Value.Ref(register(w, r))
         case v => v
       } else answer
     case ForeignEval.Frame(fn, f, args) => w.synchronized(w.handler.handle(ForeignEval.Frame(fn, f, args.map(local))))
@@ -156,7 +156,7 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
     case ForeignEval.Release(_) | ForeignEval.Continue(_, _, _) | ForeignEval.Forget(_) |
          ForeignEval.Stream(_, _, _, _, _) | ForeignEval.Pull(_) | ForeignEval.Cancel(_) => Vector.empty
 
-  private def refsIn(v: PyValue): Vector[Long] = PyValue.refs(v)
+  private def refsIn(v: Value): Vector[Long] = Value.refs(v)
 
   /** the one worker holding every ref named, or none named at all */
   private def owner(ids: Vector[Long]): Option[ForeignWorker] =
@@ -168,7 +168,7 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
       case _ => throw IllegalArgumentException(
         s"okay.foreign: refs ${ids.distinct.mkString(", ")} live in different workers; one call reaches one process")
 
-  private def localRef(r: PyRef): PyRef = PyRef(refs.get(r.id)._2, r.pyType)
+  private def localRef(r: Handle): Handle = Handle(refs.get(r.id)._2, r.pyType)
 
   /** the ref an address names (a held object's method or attribute) */
   private def atRefs(fn: Address): Vector[Long] = fn match
@@ -181,15 +181,15 @@ final class PyWorkers private (val pool: Pool[ForeignWorker]):
     case Address.Attr(r, n) => Address.Attr(localRef(r), n)
     case other => other
 
-  private def local(v: PyValue): PyValue = PyValue.rebuild(v) {
-    case PyValue.Ref(r) => PyValue.Ref(localRef(r))
+  private def local(v: Value): Value = Value.rebuild(v) {
+    case Value.Ref(r) => Value.Ref(localRef(r))
     case other => other
   }
 
-  private def register(w: ForeignWorker, r: PyRef): PyRef =
+  private def register(w: ForeignWorker, r: Handle): Handle =
     val g = nextRef.incrementAndGet()
     refs.put(g, (w, r.id)): Unit
-    PyRef(g, r.pyType)
+    Handle(g, r.pyType)
 
   /** a dead worker's refs and runs die with it (a later use is refused by
    * name); the pool itself closes it and opens a fresh one on demand */

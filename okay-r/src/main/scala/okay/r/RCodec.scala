@@ -8,7 +8,7 @@ import RValue.*
 /**
  * A Scala value as an R value and back, through its `Schema`
  * (foreign-typed-calls, specs/foreign-highlevel.md stage 2) — okay-py's
- * `PyCodec` in R's vocabulary.
+ * `ValueCodec` in R's vocabulary.
  *
  * A product is a NAMED LIST of its fields; a sum is the case's named list
  * with a `type` element naming the case; `None` is NULL (a typed NA where
@@ -23,7 +23,7 @@ import RValue.*
  *    double while the double is exact (|x| <= 2^53), and its digits
  *    beyond; it decodes from any of the three. `BigInt` is its digits.
  *
- * TYPED, like `PyCodec`: both directions match the `Schema` GADT, and the
+ * TYPED, like `ValueCodec`: both directions match the `Schema` GADT, and the
  * product and sum kernels hold the only casts. Decoding refuses by path.
  */
 object RCodec {
@@ -50,7 +50,7 @@ object RCodec {
 
   // Both roads recurse once per level of the VALUE: below
   // `Codecs.NativeThreshold` a direct call per level, at it the rest of
-  // the value on the Cont trampoline (okay-py's PyCodec, over RValue;
+  // the value on the Cont trampoline (okay-py's ValueCodec, over RValue;
   // stack-safety-py-r)
 
   private def enc[X](s: Schema[X], x: X, depth: Int): RValue =
@@ -93,7 +93,7 @@ object RCodec {
     case i: Schema.SIso[X, b] => enc(i.under(), i.from(x), depth + 1)
 
   /** a field's schema and value at ONE type, held for the trampoline
-   * without a cast (PyCodec's Held) */
+   * without a cast (ValueCodec's Held) */
   private final class Held[Y](sc: Schema[Y], y: Y):
     def encC[Ans]: RValue /> Ans = RCodec.encC(sc, y)
 
@@ -248,7 +248,7 @@ object RCodec {
       case _ => no(s"a named list with a '$TypeField' naming a case of ${su.name}")
 
   /** the road past the threshold: the same decisions as `decNative`,
-   * each child a `Cont.defer` (PyCodec's decC, over RValue) */
+   * each child a `Cont.defer` (ValueCodec's decC, over RValue) */
   private def decC[X, Ans](s: Schema[X], v: RValue, at: At): Either[String, X] /> Ans =
     def no(what: String): Either[String, X] = Left(s"${at.where}: expected $what, got ${describe(v)}")
     s match

@@ -1,6 +1,6 @@
 package okay.foreign
 
-import PyValue.*
+import Value.*
 
 object ArrowConf:
   val mod = Foreign.module("arrowconf", """
@@ -36,15 +36,15 @@ class TestArrowFrames extends munit.FunSuite:
 
   lazy val engine: ForeignWorker = ForeignWorker.start(PyArrow.python.get, modules = Seq(ArrowConf.mod))
   override def afterAll(): Unit = if !munitIgnore then engine.close()
-  private def frame(fn: String, f: PyFrame, w: ForeignWorker = engine) =
+  private def frame(fn: String, f: Frame, w: ForeignWorker = engine) =
     w.handler.handle(ForeignEval.Frame(s"arrowconf:$fn", f, Vector.empty))
 
-  private val mixed = PyFrame(Vector(
-    "id" -> Vector(I64(1), I64(-2), PyNone),
-    "temp" -> Vector(F64(0.5), PyNone, F64(1e300)),
-    "site" -> Vector(Str("kyiv"), Str("чай ☕"), PyNone),
-    "ok" -> Vector(Bool(true), PyNone, Bool(false)),
-    "nothing" -> Vector(PyNone, PyNone, PyNone)))
+  private val mixed = Frame(Vector(
+    "id" -> Vector(I64(1), I64(-2), Null),
+    "temp" -> Vector(F64(0.5), Null, F64(1e300)),
+    "site" -> Vector(Str("kyiv"), Str("чай ☕"), Null),
+    "ok" -> Vector(Bool(true), Null, Bool(false)),
+    "nothing" -> Vector(Null, Null, Null)))
 
   test("with no import, a worker with pyarrow takes frames as Arrow") {
     assertEquals(engine.wire, "json/none+arrow")
@@ -62,21 +62,21 @@ class TestArrowFrames extends munit.FunSuite:
   }
 
   test("@okay.arrow hands the function the pyarrow.Table itself") {
-    assertEquals(frame("what", mixed), Right(PyFrame(Vector("kind" -> Vector(Str("Table")), "rows" -> Vector(I64(3))))))
+    assertEquals(frame("what", mixed), Right(Frame(Vector("kind" -> Vector(Str("Table")), "rows" -> Vector(I64(3))))))
   }
 
   test("an answer in other Arrow types is normalised: int32 to int64, float32 to float64") {
-    assertEquals(frame("narrow", mixed), Right(PyFrame(Vector("x" -> Vector(I64(1), I64(2)), "y" -> Vector(F64(0.5), PyNone)))))
+    assertEquals(frame("narrow", mixed), Right(Frame(Vector("x" -> Vector(I64(1), I64(2)), "y" -> Vector(F64(0.5), Null)))))
   }
 
   test("an answer Arrow cannot carry here comes back as the JSON frame it always was") {
     val (out, in) = engine.arrowFrames
-    assertEquals(frame("lists", mixed), Right(PyFrame(Vector("xs" -> Vector(Arr(Vector(I64(1))), Arr(Vector(I64(2), I64(3))))))))
+    assertEquals(frame("lists", mixed), Right(Frame(Vector("xs" -> Vector(Arr(Vector(I64(1))), Arr(Vector(I64(2), I64(3))))))))
     assertEquals(engine.arrowFrames, (out + 1, in))
   }
 
   test("a request Arrow cannot carry takes the JSON road by default, and is refused by name under the strict given") {
-    val odd = PyFrame(Vector("n" -> Vector(I64(1), F64(2.5))))
+    val odd = Frame(Vector("n" -> Vector(I64(1), F64(2.5))))
     val before = engine.arrowFrames
     assertEquals(frame("identity", odd), Right(odd))
     assertEquals(engine.arrowFrames, before)

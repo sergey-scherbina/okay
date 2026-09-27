@@ -306,8 +306,8 @@ can still say "Python" — but they are the same code.
 | `ForeignWorker` | **fold** → the engine of `WireRuntime[L]`; loses `Frame`/`Start`/`Resume`/`Hold`/`Method`/`Attr` |
 | `ForeignEval` (11 ops) | **fold** → `Foreign[L, +A]` (5 ops) |
 | `PyStep.Done/Ask` + `Node` | **fold** → one `Node` |
-| `PyValue`, `RValue`, `Wire` enc/dec, `Walk` | **fold** → one `Value` tree with the escapes; `Walk` stays (stack safety) |
-| `PyCodec`, `RCodec`, `Shape`, `ToPy` | **fold** → one `Codec` at a `Shape[L]`; `ToPy` → `Arg[L]` (it already took Schema values and refs) |
+| `Value`, `RValue`, `Wire` enc/dec, `Walk` | **fold** → one `Value` tree with the escapes; `Walk` stays (stack safety) |
+| `ValueCodec`, `RCodec`, `Shape`, `ToPy` | **fold** → one `Codec` at a `Shape[L]`; `ToPy` → `Arg[L]` (it already took Schema values and refs) |
 | `okay.py.Condition`, `okay.r.Condition`, `Batcher.Failed` | **fold** → `Refused` |
 | `PyWorkers`, cluster `Pool`/`PyPool`/`RPool`, `Holds.pyWorkers`, `SupervisedWorker` | **fold** → one `Pool` (use, lease, route by ref, perWorker, supervise) |
 | `RSubprocess`, shim.R's own protocol | **delete** — R is a `Language[R]` on the engine; shim.R speaks the transcript |
@@ -449,7 +449,7 @@ more than it adds (the line count of what it removed goes in Results).
       tree (`RValue`, the `na` escape, `RCodec`) moves to stage 2 and R's
       REPLAY (its `Kont` beside `SupervisedWorker`'s) to stage 3.
 - [x] Stage 2a — **foreign-one-value** (2026-09-26): R on the one value
-      tree, effect, API and handler. `PyValue` carries R's typed `NA`;
+      tree, effect, API and handler. `Value` carries R's typed `NA`;
       shim.R v9 speaks the shared tags; frames cross in the COLUMNAR shape
       wherever the hello says so (Python, TypeScript and R do) and a frame
       CARRIES the value rules it is read by; `Shape` owns a language's
@@ -631,7 +631,7 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
 
 12. **Stage 1 is the ENGINE, not the values** (foreign-one-r,
     2026-09-26). The first text of stage 1 also deleted `RValue` and
-    `RCodec`. Measured against the code, that is a change to `PyValue` —
+    `RCodec`. Measured against the code, that is a change to `Value` —
     a new case (R's typed NA) in an enum every codec, walk and facade
     matches on — in the same lane as the engine, two risks behind one
     gate, and exactly what stage 2's "one `Value` tree" is. So stage 1
@@ -844,7 +844,7 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     contacts the far side, so it has nothing to feed.
 
 28. **A frame is a VALUE too** (pyvalue-table, 2026-09-27, the
-    operator's "Делай а"). `PyValue.Table(frame)`: a `{"t": "frame"}`
+    operator's "Делай а"). `Value.Table(frame)`: a `{"t": "frame"}`
     object is read as a table wherever it sits in a value — among a
     call's arguments, inside an answered dict, an element of a list —
     and written back the same, where before it was read only as a frame
@@ -912,7 +912,7 @@ streams of tables take the zero-copy road from the first; 7 and 8 close.
     got a list of 1" until each took the caller's `Shape`; and a frame
     read by whatever `Shape` was in scope would read an R frame by
     Python's rules in the cluster's R stages — so a frame now CARRIES its
-    rules (`PyFrame.shape`, outside equality), tagged by the worker that
+    rules (`Frame.shape`, outside equality), tagged by the worker that
     answered it, by `RFrame.of`, and on replay by its request.
   - The columnar frame (R's v2) is the frame on the wire wherever the far
     side's hello claims it (`"frames": ["columnar"]`: Python, TypeScript,

@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.{Choose, effect, runChoice, given}
-import PyValue.*
+import Value.*
 
 /**
  * The program-as-data walker without an interpreter (remote-foreign):
@@ -13,10 +13,10 @@ class TestPyProgramShape extends munit.FunSuite {
   /** `choose [1,2]` then `choose [10,20]`, then their sum: kept by id */
   private final class Far extends okay.Handler[PyEval]:
     var continued = Vector.empty[Long]
-    private val konts = scala.collection.mutable.Map.empty[Long, PyValue => PyNode]
+    private val konts = scala.collection.mutable.Map.empty[Long, Value => PyNode]
     private var next = 0L
     private def node(n: PyNode): Either[Condition, PyNode] = Right(n)
-    private def step(name: String, args: Vector[PyValue], k: PyValue => PyNode): PyNode =
+    private def step(name: String, args: Vector[Value], k: Value => PyNode): PyNode =
       next += 1
       konts(next) = k
       PyNode.Perform(name, args, next)

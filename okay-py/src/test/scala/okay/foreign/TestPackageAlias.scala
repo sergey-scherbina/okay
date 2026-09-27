@@ -7,8 +7,8 @@ package okay.foreign
  */
 class TestPackageAlias extends munit.FunSuite:
   test("okay.py's names are okay.foreign's: types, companions and patterns") {
-    val v: okay.py.PyValue = PyValue.I64(1)
-    assert(v match { case okay.py.PyValue.I64(n) => n == 1L; case _ => false })
+    val v: okay.py.Value = Value.I64(1)
+    assert(v match { case okay.py.Value.I64(n) => n == 1L; case _ => false })
     val op: ForeignEval[Unit] = okay.py.ForeignEval.Forget(1L)
     assertEquals(op, ForeignEval.Forget(1L))
     assert(okay.py.Py eq Py)

@@ -2,11 +2,11 @@ package okay.foreign.workflow
 
 import okay.{!, +, At, Delim, Wf, effect}
 import okay.codec.Schema
-import okay.foreign.{Condition, ForeignEval, PyNode, PyValue, Shape, ToPy, Wire}
+import okay.foreign.{Condition, ForeignEval, PyNode, Value, Shape, ToPy, Wire}
 
 /** a foreign call as a workflow QUESTION: the function's address and its
  * arguments (specs/foreign-workflow.md) */
-final case class ForeignCall(address: String, args: Vector[PyValue])
+final case class ForeignCall(address: String, args: Vector[Value])
 
 /**
  * Foreign calls as workflow ACTIVITIES (foreign-workflow stage 1). An
@@ -16,7 +16,7 @@ final case class ForeignCall(address: String, args: Vector[PyValue])
  * versioning and races of the durable layers apply as they are.
  *
  * The journalled answer is the wire's own written form of
- * `Either[Condition, PyValue]` — the format `Durable` journals a foreign
+ * `Either[Condition, Value]` — the format `Durable` journals a foreign
  * call in — so a FAILURE (an exception, a timeout, a dead worker) is a
  * recorded answer too, and a replay does not call the far side again.
  *
@@ -65,24 +65,24 @@ object ForeignActivity:
     // okay_call from the far side is ANSWERED with a refusal — its frame
     // must not be left waiting — and the function's own answer is the
     // activity's. DIRECT: a start that died is the retry loop's to redo.
-    def settle(run: Long)(node: Either[Condition, PyNode]): Either[Condition, PyValue] ! ForeignEval = node match
-      case Left(cond) => okay.pure[ForeignEval, Either[Condition, PyValue]](Left(cond))
-      case Right(PyNode.Done(v)) => okay.pure[ForeignEval, Either[Condition, PyValue]](Right(v))
+    def settle(run: Long)(node: Either[Condition, PyNode]): Either[Condition, Value] ! ForeignEval = node match
+      case Left(cond) => okay.pure[ForeignEval, Either[Condition, Value]](Left(cond))
+      case Right(PyNode.Done(v)) => okay.pure[ForeignEval, Either[Condition, Value]](Right(v))
       case Right(PyNode.Perform(cb, _, k, _)) =>
         effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Continue(run, k, Left(Condition("NoCallback",
           s"the activity '${c.address}' called okay_call('$cb'), and an activity offers no callbacks")))).flatMap(settle(run))
-    def attempt(left: Int): Either[Condition, PyValue] ! ForeignEval =
+    def attempt(left: Int): Either[Condition, Value] ! ForeignEval =
       val run = runs.incrementAndGet()
       effect[ForeignEval, Either[Condition, PyNode]](ForeignEval.Program(run, c.address, c.args, Vector.empty, direct = true))
         .flatMap(settle(run)).flatMap {
           case Left(cond) if transport(cond.kind) =>
             if left > 1 then attempt(left - 1) else throw Unreachable(c.address, cond)
-          case answer => okay.pure[ForeignEval, Either[Condition, PyValue]](answer)
+          case answer => okay.pure[ForeignEval, Either[Condition, Value]](answer)
         }
     attempt(math.max(1, attempts)).map(answer => Wire.written(answer.map(Wire.enc)))
 
   /** what a journalled answer says, back as a value or a condition */
-  def answer(written: String): Either[Condition, PyValue] = Wire.read(written).map(Wire.dec)
+  def answer(written: String): Either[Condition, Value] = Wire.read(written).map(Wire.dec)
 
   /** a TYPED activity: the call is journalled, the answer decoded by
    * `Out`'s Schema; a far answer of the wrong shape is a `Left` */
@@ -96,6 +96,6 @@ object ForeignActivity:
     def apply[A: ToPy, B: ToPy, R, F[+_]](a: A, b: B)
                                          (using Wf.Asks[ForeignCall, String, R, F], At): Either[Condition, Out] ! Delim + F =
       go(Vector(ToPy(a), ToPy(b)))
-    private def go[R, F[+_]](args: Vector[PyValue])
+    private def go[R, F[+_]](args: Vector[Value])
                             (using w: Wf.Asks[ForeignCall, String, R, F], at: At): Either[Condition, Out] ! Delim + F =
       w.perform(ForeignCall(address, args)).map(s => answer(s).flatMap(shape.decode[Out]))

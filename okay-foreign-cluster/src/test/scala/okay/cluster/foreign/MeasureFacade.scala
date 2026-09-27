@@ -51,10 +51,10 @@ class MeasureFacade extends munit.FunSuite:
     val ownFrame = okay.foreign.ArrowFrames.frame(table)
 
     val callFacade = median(5)(Road.value[okay.foreign.PyModule, Rec, Rec](py, "echo")(one))
-    val callOwn = median(5)(PyPool.call(pool, python, "facademeasure:echo", Vector(okay.foreign.PyCodec.encode(one))))
+    val callOwn = median(5)(PyPool.call(pool, python, "facademeasure:echo", Vector(okay.foreign.ValueCodec.encode(one))))
     val frameFacade = median(5)(Road.rows[okay.foreign.PyModule, Rec, Rec](py, "fecho")(rs))
-    // the own road for a caller with ROWS: rows to a PyFrame, over, its rows back (PyStage's)
-    val frameOwn = median(5)(okay.foreign.PyFrame.of(rs).flatMap(f => PyPool.frame(pool, python, "facademeasure:fecho", f, Vector.empty)).flatMap(_.rows[Rec]))
+    // the own road for a caller with ROWS: rows to a Frame, over, its rows back (PyStage's)
+    val frameOwn = median(5)(okay.foreign.Frame.of(rs).flatMap(f => PyPool.frame(pool, python, "facademeasure:fecho", f, Vector.empty)).flatMap(_.rows[Rec]))
     val frameBare = median(5)(PyPool.frame(pool, python, "facademeasure:fecho", ownFrame, Vector.empty))
     val tableFacade = median(5)(summon[Frames[okay.foreign.PyModule]].frame(py, "fecho")(table))
     val streamFacade = median(3)(Flows.collect(Road.flow[okay.foreign.PyModule, Rec, Rec](py, "fecho", 4096)(Flow.slices(rs, 1))).runWith)

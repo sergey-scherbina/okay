@@ -2,7 +2,7 @@ package okay.foreign.workflow
 
 import okay.Wf
 import okay.codec.Schema
-import okay.foreign.{Condition, PyValue, Shape, ToPy}
+import okay.foreign.{Condition, Value, Shape, ToPy}
 
 /**
  * Foreign calls as leaves of a static `Proc` (foreign-workflow stage 2):
@@ -39,7 +39,7 @@ object ForeignProc:
 
   /** for proc-notation: the QUESTION a helper hands to `!`, the helper's
    * name being what the picture shows */
-  def ask(address: String)(args: PyValue*): Wf.Question[ForeignCall, String, String] =
+  def ask(address: String)(args: Value*): Wf.Question[ForeignCall, String, String] =
     Wf.Question.Ask(ForeignCall(address, args.toVector))
 
   /** a journalled answer, read as `Out` */

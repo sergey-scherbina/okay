@@ -26,7 +26,7 @@ What exists, and what this spec is built FROM rather than beside:
 - **The data.** `Schema`-typed values cross as JSON; `okay.arrow.Table`
   (typed, nested columns; Arrow IPC) is the bulk road, and only Python,
   R and TypeScript serve the `frame` op today (backlog
-  foreign-frame-op-rust-hs-go). `PyValue` and `RValue` are two enums
+  foreign-frame-op-rust-hs-go). `Value` and `RValue` are two enums
   saying the same thing twice. Measured (specs/r.md, r-arrow): our share
   of a 100 000-row R round trip is 0.3% — the tree road is the ceiling
   and the columnar road the floor, and today a language gets whichever
@@ -120,7 +120,7 @@ of tier-2 frames driven from the Scala side (what `mapIn` does today at
 `Speaks` reports, never a fallback a shim quietly took — and a strict
 given (`FrameFormat.Arrow.given`) still refuses by name.
 
-`PyValue` and `RValue` stop being the facade's vocabulary: the facade
+`Value` and `RValue` stop being the facade's vocabulary: the facade
 speaks `Schema` (a value) and `Table` (a frame); a language's own value
 enum is its codec's business, behind its instances. One `Schema`
 describes a value on every side, and okay-codec's `JsonSchema` is what
@@ -183,7 +183,7 @@ believed):
 | language | tier 1 value | tier 2 frame | tier 3 stream | instrument |
 |---|---|---|---|---|
 | Scala (`JvmModule`) | facade 0.001 ms a call | by reference 0.001 ms; 100 000 rows in and out through `Rows.table`/`Rows.rows` 19.8 ms; 1M rows map: 6–12 ms | — | MeasureFacade, MeasureForeignMapReduce |
-| Python, pipes | facade 0.217 ms a call, own road 0.130 ms (the difference is `PyCodec` encode+decode at `Schema`) | 100 000 rows one frame, columnar JSON: rows through the facade 182 ms, rows on the own road 176 ms (the same road since facade-frame-seam), a `Table` through `Frames.frame` 152 ms, the bare frame 140 ms; 1M rows map, JSON: ~200 ms; Arrow: ~95 ms; `@okay.arrow` vectorised: ~88 ms; reduce in Python: +70 ms. ARROW (pyarrow 25.0.1, 2026-09-26): rows through the facade 51–54 ms (own road 53 ms: no overhead), a `Table` through `Frames.frame` 11.5–12.5 ms, the bare frame 17–18 ms — beside 157–170 / 124–130 / 106–123 ms on columnar JSON in the same session | 100 000 rows in 4096-row frames: 194 ms — the same as one frame; on Arrow 70–87 ms (JSON 153–163 ms that session) | MeasureFacade, MeasureForeignMapReduce, MeasurePyArrow |
+| Python, pipes | facade 0.217 ms a call, own road 0.130 ms (the difference is `ValueCodec` encode+decode at `Schema`) | 100 000 rows one frame, columnar JSON: rows through the facade 182 ms, rows on the own road 176 ms (the same road since facade-frame-seam), a `Table` through `Frames.frame` 152 ms, the bare frame 140 ms; 1M rows map, JSON: ~200 ms; Arrow: ~95 ms; `@okay.arrow` vectorised: ~88 ms; reduce in Python: +70 ms. ARROW (pyarrow 25.0.1, 2026-09-26): rows through the facade 51–54 ms (own road 53 ms: no overhead), a `Table` through `Frames.frame` 11.5–12.5 ms, the bare frame 17–18 ms — beside 157–170 / 124–130 / 106–123 ms on columnar JSON in the same session | 100 000 rows in 4096-row frames: 194 ms — the same as one frame; on Arrow 70–87 ms (JSON 153–163 ms that session) | MeasureFacade, MeasureForeignMapReduce, MeasurePyArrow |
 | R, pipes | — | 100 000 rows round trip: 13.7 s as JSON records, 180 ms columnar JSON (r-frame-columnar-wire); Arrow 61.8 ms beside columnar JSON 169.5 ms, arms alternating (2.7x; 10 000 rows: equal, 21 ms) — R with arrow 25 in its own container | — | MeasureRFrame |
 | TypeScript (`TsModule`) | every facade instance since foreign-more-languages, Holds and Methods included | columnar JSON; no Arrow | frames driven from here | TestTsFacadeConformance; timings to measure |
 | Haskell, Go, Rust (`WorkerModule`) | Calls, Frames, Streams, Programs, Speaks, Engine, Reduces since foreign-more-languages; Holds and Models since foreign-held-values (values, no Methods or Stateful) | Rust in process, 1M rows through a function: Arrow C Data 20.7 ms, columnar JSON 119.8 ms (foreign-arrow-ffm) | — | MeasureRustTable; Test{Go,Rust,Hs}FacadeConformance |
@@ -241,7 +241,7 @@ with its date, load and sha (the `performance` skill).
       what `Speaks.stream` will say once a shim grows it.
 - [x] Stage 4 — `Programs[M]` (foreign-facade-4, 2026-09-25): one
       `Cb[F]` callback over `Schema` types where okay-py and okay-r each
-      had their own over `PyValue`/`RValue`; `Programs[-M]` with the
+      had their own over `Value`/`RValue`; `Programs[-M]` with the
       language's effect as a type member (`Op`: `ForeignEval`, `REval`),
       `program` answering `Out ! (F + Op)` and `run` keeping the whole
       dialogue on ONE pooled worker, since that worker holds the
@@ -298,7 +298,7 @@ with its date, load and sha (the `performance` skill).
    says which one was taken, and a strict given refuses rather than
    degrades. A language never chooses a slower road than its best,
    because the rule is one place and the table measures it.
-3. **`Schema` and `Table` are the vocabulary; `PyValue`/`RValue` are
+3. **`Schema` and `Table` are the vocabulary; `Value`/`RValue` are
    codecs.** Two enums that say the same thing are two places to be
    wrong; the third language would have made a third.
 4. **The zero-cost tier is the design test.** If `JvmModule` cannot
@@ -394,10 +394,10 @@ with its date, load and sha (the `performance` skill).
 - **Stage 5 (2026-09-25, load 4.9, python3 3.14 without pyarrow,
   100 000 rows of `Rec(Int, Double, String)`).** Tier 1 over Python:
   0.217 ms through the facade against 0.130 ms on the own road — the
-  0.09 ms is `PyCodec` encoding and decoding at `Schema`, which the own
+  0.09 ms is `ValueCodec` encoding and decoding at `Schema`, which the own
   road skipped; the pipe is the rest. Tier 2: 188 ms against 137 ms —
   the 51 ms is the seam, `Rows.table` (rows → Table, ~10 ms) and
-  `ArrowFrames.frame` (Table → PyFrame) in, `ArrowFrames.table` and
+  `ArrowFrames.frame` (Table → Frame) in, `ArrowFrames.table` and
   `Rows.rows` out; a cell 37% worse than the language's own road, which
   the spec calls a defect: backlog facade-frame-seam names the fix (a
   Table that goes to the wire as itself where Arrow is spoken, and a
@@ -408,14 +408,14 @@ with its date, load and sha (the `performance` skill).
   100 000, the price of tier 2 for a language that needs no wire at all.
 - **facade-frame-seam (2026-09-25, load 42.7 — a busy box, so the
   numbers are relative).** The first measurement's "own road" was a
-  PRE-BUILT PyFrame with no rows on either side, which no caller has;
-  the honest own road for a caller with rows is `PyFrame.of(rows)`, the
+  PRE-BUILT Frame with no rows on either side, which no caller has;
+  the honest own road for a caller with rows is `Frame.of(rows)`, the
   frame over, `.rows[B]` back (PyStage's), and it reads 176 ms. `Frames`
   now has `rows` beside `frame` — by default through `frame` and the
   Rows codec, and Python overrides it with exactly that road — so
   `Road.rows` through the facade reads 182 ms: the same road, and the
   37% was the comparison, not the facade. What WAS a seam is the Table
-  road: `Frames.frame` built a PyFrame from the Table and the worker
+  road: `Frames.frame` built a Frame from the Table and the worker
   built a Table from it again on the Arrow road, two conversions of the
   same columns; `ForeignWorker.frameTable` sends a Table as itself where
   Arrow is spoken and converts once where it is not — 152 ms against the

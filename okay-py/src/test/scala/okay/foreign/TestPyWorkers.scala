@@ -1,7 +1,7 @@
 package okay.foreign
 
 import okay.Handler
-import PyValue.*
+import Value.*
 
 /**
  * Stage 1: the pool dispatches across N real processes (pids, not
@@ -24,7 +24,7 @@ class TestPyWorkers extends munit.FunSuite {
     p
   override def afterAll(): Unit = pools.foreach(_.close())
 
-  def call(h: Handler[PyEval], fn: String, args: PyValue*) =
+  def call(h: Handler[PyEval], fn: String, args: Value*) =
     h.handle(PyEval.Call(fn, args.toVector))
 
   test("N workers are N real processes: concurrent calls land on distinct pids") {
@@ -77,7 +77,7 @@ class TestPyWorkers extends munit.FunSuite {
       out += call(h, "math:sqrt", F64(9)).toString
       out += call(h, "no_such:f").left.map(_.kind).toString
       out += h.handle(PyEval.Frame("copy:deepcopy",
-        PyFrame(Vector("x" -> Vector(I64(1), PyNone))), Vector.empty))
+        Frame(Vector("x" -> Vector(I64(1), Null))), Vector.empty))
         .map(_.cols.toMap.apply("x")).toString
       out.result()
 

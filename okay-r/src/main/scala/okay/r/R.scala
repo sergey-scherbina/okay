@@ -2,7 +2,7 @@ package okay.r
 
 import okay.!
 import okay.codec.Schema
-import okay.foreign.{ForeignEval, Foreign, PyFrame, PyNode, PyRef, PyStream, PyValue, Shape, ToPy}
+import okay.foreign.{ForeignEval, Foreign, Frame, PyNode, Handle, PyStream, Value, Shape, ToPy}
 
 /*
  * R as a handler (specs/r.md): calls are OPERATIONS — journalled by
@@ -12,7 +12,7 @@ import okay.foreign.{ForeignEval, Foreign, PyFrame, PyNode, PyRef, PyStream, PyV
  *
  * Since foreign-one-value (specs/foreign-one.md, stage 2a) R has no value
  * tree, effect, API or engine of its own: an R value IS the one tree
- * (`PyValue`, which carries R's typed NA), an R call IS a `ForeignEval`, and
+ * (`Value`, which carries R's typed NA), an R call IS a `ForeignEval`, and
  * `R` is the one API at R's value rules (`R.shape`). What stays R's is what
  * is R's: the NAMES an R user thinks in (a vector, NULL, a typed NA, a named
  * list), the rules a Scala value becomes an R value by (`RCodec`: no
@@ -21,7 +21,7 @@ import okay.foreign.{ForeignEval, Foreign, PyFrame, PyNode, PyRef, PyStream, PyV
 
 /** an R value: the one value tree (foreign-one-value), in R's names — see
  * `object RValue` */
-type RValue = PyValue
+type RValue = Value
 
 /**
  * R's names for the one value tree. `RNull` is R's NULL (the absence of an
@@ -32,33 +32,33 @@ type RValue = PyValue
  * data.frame (a record).
  */
 object RValue:
-  val RNull: PyValue.PyNone.type = PyValue.PyNone
-  val Bool: PyValue.Bool.type = PyValue.Bool
-  val F64: PyValue.F64.type = PyValue.F64
-  val Str: PyValue.Str.type = PyValue.Str
-  val Bytes: PyValue.Bytes.type = PyValue.Bytes
-  val Vec: PyValue.Arr.type = PyValue.Arr
-  val Named: PyValue.Dict.type = PyValue.Dict
+  val RNull: Value.Null.type = Value.Null
+  val Bool: Value.Bool.type = Value.Bool
+  val F64: Value.F64.type = Value.F64
+  val Str: Value.Str.type = Value.Str
+  val Bytes: Value.Bytes.type = Value.Bytes
+  val Vec: Value.Arr.type = Value.Arr
+  val Named: Value.Dict.type = Value.Dict
 
   /** R's integer: 32 bits, an integral number on the wire */
   object I32:
-    def apply(v: Int): PyValue = PyValue.I64(v.toLong)
-    def unapply(v: PyValue): Option[Int] = v match
-      case PyValue.I64(n) if n.isValidInt => Some(n.toInt)
+    def apply(v: Int): Value = Value.I64(v.toLong)
+    def unapply(v: Value): Option[Int] = v match
+      case Value.I64(n) if n.isValidInt => Some(n.toInt)
       case _ => None
 
   /** a missing value of an R type */
   object NA:
-    def apply(of: RType): PyValue = PyValue.NA(of.rName)
-    def unapply(v: PyValue): Option[RType] = v match
-      case PyValue.NA(t) => Some(RType.byName(t).getOrElse(RType.Logical))
+    def apply(of: RType): Value = Value.NA(of.rName)
+    def unapply(v: Value): Option[RType] = v match
+      case Value.NA(t) => Some(RType.byName(t).getOrElse(RType.Logical))
       case _ => None
 
   /** an object held in the R process, as an argument */
   object Ref:
-    def apply(r: RRef): PyValue = PyValue.Ref(r.py)
-    def unapply(v: PyValue): Option[RRef] = v match
-      case PyValue.Ref(p) => Some(RRef.of(p))
+    def apply(r: RRef): Value = Value.Ref(r.py)
+    def unapply(v: Value): Option[RRef] = v match
+      case Value.Ref(p) => Some(RRef.of(p))
       case _ => None
 
 /**
@@ -67,10 +67,10 @@ object RValue:
  * a ref is used as an argument: `R.fn[Vector[Double]]("stats::predict")(fit, newdata)`.
  * It names state in ONE process, so a recovery onto a fresh process meets a
  * ref it never held and is refused by name. On the wire it is the one
- * handle (`PyRef`), read by R's rules.
+ * handle (`Handle`), read by R's rules.
  */
 final case class RRef(id: Long, rClass: String):
-  private[r] def py: PyRef = PyRef(id, rClass, R.shape)
+  private[r] def py: Handle = Handle(id, rClass, R.shape)
   /** drop the object in the R process; idempotent */
   def release: Unit ! REval = okay.effect[REval, Unit](ForeignEval.Release(py))
   /** this held CLOSURE as a stateful stage over chunks (foreign-streaming);
@@ -81,17 +81,17 @@ final case class RRef(id: Long, rClass: String):
       finish.map(f => RStream.viaClosure(f, Vector.empty)))
 
 object RRef:
-  def of(p: PyRef): RRef = RRef(p.id, p.pyType)
+  def of(p: Handle): RRef = RRef(p.id, p.pyType)
   /** a handle is an argument like any other */
   given ToPy[RRef] with
-    def py(a: RRef)(using Shape): PyValue = PyValue.Ref(a.py)
+    def py(a: RRef)(using Shape): Value = Value.Ref(a.py)
 
 /** how an argument becomes an R value: through its `Schema` by R's rules,
  * or as the handle it is — the one `ToPy`, at `R.shape` */
 type ToR[A] = ToPy[A]
 
 object ToR:
-  def apply[A](a: A)(using t: ToPy[A]): PyValue = t.py(a)(using R.shape)
+  def apply[A](a: A)(using t: ToPy[A]): Value = t.py(a)(using R.shape)
 
 enum RType:
   case Logical, Integer, Double, Character
@@ -107,21 +107,21 @@ object RType:
     RType.values.find(_.rName == s)
 
 /** a data.frame as columns: the one frame, read by R's rules */
-type RFrame = PyFrame
+type RFrame = Frame
 
 object RFrame:
   /** a frame of these columns, read by R's rules */
-  def apply(cols: Vector[(String, Vector[PyValue])]): PyFrame = PyFrame(cols, R.shape)
+  def apply(cols: Vector[(String, Vector[Value])]): Frame = Frame(cols, R.shape)
 
   /** every row, decoded at `A` by R's rules — fields match columns BY
    * NAME, and a mismatch either way is a `Condition` naming it */
-  def rowsOf[A](f: PyFrame)(using Schema[A]): Either[Condition, Vector[A]] = R.shape.rows[A](f)
+  def rowsOf[A](f: Frame)(using Schema[A]): Either[Condition, Vector[A]] = R.shape.rows[A](f)
 
   /** the rows as a frame: the field order IS the column order */
-  def of[A](rows: Seq[A])(using Schema[A]): Either[Condition, PyFrame] = R.shape.frame(rows)
+  def of[A](rows: Seq[A])(using Schema[A]): Either[Condition, Frame] = R.shape.frame(rows)
 
   /** its columns, whatever rules read it */
-  def unapply(f: PyFrame): Some[Vector[(String, Vector[PyValue])]] = Some(f.cols)
+  def unapply(f: Frame): Some[Vector[(String, Vector[Value])]] = Some(f.cols)
 
 /**
  * R's view of the one wire codec (`okay.foreign.Wire`): a value's tree, and a
@@ -129,10 +129,10 @@ object RFrame:
  * rules. There is no second codec behind it (foreign-one-value).
  */
 private[r] object Wire:
-  def enc(v: PyValue): okay.codec.Json = okay.foreign.Wire.enc(v)
-  def dec(j: okay.codec.Json): PyValue = okay.foreign.Wire.dec(j)
-  def encFrame(f: PyFrame): okay.codec.Json = okay.foreign.Wire.encFrameColumnar(f)
-  def decFrame(j: okay.codec.Json): Either[Condition, PyFrame] = okay.foreign.Wire.decFrame(j).map(_.ruledBy(R.shape))
+  def enc(v: Value): okay.codec.Json = okay.foreign.Wire.enc(v)
+  def dec(j: okay.codec.Json): Value = okay.foreign.Wire.dec(j)
+  def encFrame(f: Frame): okay.codec.Json = okay.foreign.Wire.encFrameColumnar(f)
+  def decFrame(j: okay.codec.Json): Either[Condition, Frame] = okay.foreign.Wire.decFrame(j).map(_.ruledBy(R.shape))
 
 /** what a failing call answers: the R condition's class and its message —
  * data, and the process survives to take the next call */
@@ -154,10 +154,10 @@ val RNode: PyNode.type = PyNode
  * or its digits), and a frame's rows by name, NA and NULL both absent.
  */
 object RShape extends Shape:
-  def encode[A](a: A)(using Schema[A]): PyValue = RCodec.encode(a)
-  def decode[A](v: PyValue)(using Schema[A]): Either[Condition, A] = RCodec.decode[A](v)
+  def encode[A](a: A)(using Schema[A]): Value = RCodec.encode(a)
+  def decode[A](v: Value)(using Schema[A]): Either[Condition, A] = RCodec.decode[A](v)
 
-  override def rows[A](f: PyFrame)(using s: Schema[A]): Either[Condition, Vector[A]] =
+  override def rows[A](f: Frame)(using s: Schema[A]): Either[Condition, Vector[A]] =
     product(s).flatMap { p =>
       val names = p.fields.map(_._1)
       val cols = f.cols.toMap
@@ -186,10 +186,10 @@ object RShape extends Shape:
         bad.toLeft(out)
     }
 
-  override def frame[A](rows: Seq[A])(using s: Schema[A]): Either[Condition, PyFrame] =
+  override def frame[A](rows: Seq[A])(using s: Schema[A]): Either[Condition, Frame] =
     product(s).map { p =>
       val cells = rows.toVector.map(a => p.parts(a).toVector)
-      PyFrame(p.fields.zipWithIndex.map { case ((name, sc), i) =>
+      Frame(p.fields.zipWithIndex.map { case ((name, sc), i) =>
         name -> cells.map(row => encodeCell(sc(), row(i)))
       }, this)
     }
@@ -201,7 +201,7 @@ object RShape extends Shape:
   /** an R cell at a field's type. R has no 64-bit integer and no nesting
    * inside a data.frame column, so the vocabulary is small and stated: the
    * four scalars, raw bytes, and Option for NA/NULL. */
-  private def cell[X](s: Schema[X], v: PyValue): Either[String, Any] =
+  private def cell[X](s: Schema[X], v: Value): Either[String, Any] =
     import RValue.*
     (s, v) match
       case (_: Schema.SOption[?], NA(_) | RNull) => Right(None)
@@ -226,7 +226,7 @@ object RShape extends Shape:
           case Left(why) => Left(why))
       case (sc, other) => Left(s"$other does not fit $sc")
 
-  @scala.annotation.tailrec private def encodeCell[X](s: Schema[X], v: Any): PyValue =
+  @scala.annotation.tailrec private def encodeCell[X](s: Schema[X], v: Any): Value =
     import RValue.*
     (s, v) match
       case (o: Schema.SOption[?], None) => naOf(o.of())
@@ -244,7 +244,7 @@ object RShape extends Shape:
 
   /** an absent cell keeps its COLUMN's type: R's four NAs are four
    * values, and a column of NA_character_ is not a logical column */
-  private def naOf[X](s: Schema[X]): PyValue =
+  private def naOf[X](s: Schema[X]): Value =
     import RValue.*
     s match
       case Schema.SInt | Schema.SLong => NA(RType.Integer)
@@ -301,10 +301,10 @@ object R:
     def apply(): Unit ! PyStream.SourceRow[O] = go(Vector.empty)
     def apply[A: ToR](a: A): Unit ! PyStream.SourceRow[O] = go(Vector(ToR(a)))
     def apply[A: ToR, B: ToR](a: A, b: B): Unit ! PyStream.SourceRow[O] = go(Vector(ToR(a), ToR(b)))
-    private def go(args: Vector[PyValue]): Unit ! PyStream.SourceRow[O] =
+    private def go(args: Vector[Value]): Unit ! PyStream.SourceRow[O] =
       PyStream.pulled[O](ForeignEval.Call(address, args, held = true),
-        r => ForeignEval.Call("base::do.call", Vector(PyValue.Ref(r), PyValue.Arr(Vector.empty))),
-        _ => false, v => v == PyValue.PyNone || v == PyValue.Arr(Vector.empty))
+        r => ForeignEval.Call("base::do.call", Vector(Value.Ref(r), Value.Arr(Vector.empty))),
+        _ => false, v => v == Value.Null || v == Value.Arr(Vector.empty))
 
   /** R source beside the Scala that calls it (foreign-inline-modules):
    * a compile-time constant, shipped when R starts —

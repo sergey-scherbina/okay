@@ -801,9 +801,9 @@ worker up. The conformance suite proves it with a call that can only
 finish once a second call has run on the same worker:
 
 ```scala
-val opened = Future(engine.handler.handle(ForeignEval.Call(address("open"), Vector(PyValue.Str(name)))))
-assertEquals(Await.result(opened, 30.seconds), Right(PyValue.Str(name)))
-assertEquals(Await.result(waiting, 30.seconds), Right(PyValue.Str(name)))
+val opened = Future(engine.handler.handle(ForeignEval.Call(address("open"), Vector(Value.Str(name)))))
+assertEquals(Await.result(opened, 30.seconds), Right(Value.Str(name)))
+assertEquals(Await.result(waiting, 30.seconds), Right(Value.Str(name)))
 ```
 
 Nothing is asked of the caller: `ForeignWorker.speaking` reads the claim,

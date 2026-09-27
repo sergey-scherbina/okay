@@ -35,17 +35,17 @@ of the workflow machinery.
 
 ```scala
 /** a foreign call as a workflow question: its address, its arguments */
-final case class ForeignCall(address: String, args: Vector[PyValue])
+final case class ForeignCall(address: String, args: Vector[Value])
 
 object ForeignActivity:
   /** the oracle: each question a `start` on whatever ForeignEval handler
    * is installed (a worker, a supervised worker, a pool), answered in the
-   * wire's written form of Either[Condition, PyValue]; a transport failure
+   * wire's written form of Either[Condition, Value]; a transport failure
    * is retried `attempts` times, then thrown as `Unreachable` */
   def oracle: ForeignCall => String ! ForeignEval
   def oracle(attempts: Int): ForeignCall => String ! ForeignEval
   /** a journalled answer, back as a value or a condition */
-  def answer(written: String): Either[Condition, PyValue]
+  def answer(written: String): Either[Condition, Value]
   /** a TYPED activity inside a workflow, decoded by Out's Schema:
    * `!ForeignActivity.call[Double]("shop:price")(sku)` */
   def call[Out: Schema](address: String): Call[Out]   // apply(args...)(using Wf.Asks[ForeignCall, String, R, F], At)

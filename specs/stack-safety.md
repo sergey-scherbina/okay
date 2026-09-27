@@ -270,7 +270,7 @@ deleted.
       peer's data.
 - [x] Stage 4 — data codecs over values: okay-py, okay-r, okay-sql,
       okay-pg, okay-jdbc, okay-r2dbc. Two known suspects:
-      - `PyCodec.enc`/`dec` and `RCodec.enc`/`dec` recurse per level
+      - `ValueCodec.enc`/`dec` and `RCodec.enc`/`dec` recurse per level
         of a recursive VALUE;
       - [x] `Query.eval`/`collect` recurse per `And`/`Or` of a predicate
         built by a fold (stack-safety-query, 2026-09-25). CONFIRMED in both
@@ -322,9 +322,9 @@ deleted.
         okay-r (4b).
       - [x] 4b — okay-py and okay-r (stack-safety-py-r, 2026-09-25). The
         VALUE walks were the holes, and every one was red first at
-        200 000 levels: `PyCodec.enc`/`dec` and `RCodec.enc`/`dec` recursed
+        200 000 levels: `ValueCodec.enc`/`dec` and `RCodec.enc`/`dec` recursed
         per level of a value of a recursive type (`Link(next:
-        Option[Link])`), and `Shape.json`'s Json <-> PyValue conversions
+        Option[Link])`), and `Shape.json`'s Json <-> Value conversions
         per level of what a worker sent. The codecs take the threshold-
         then-`Cont` road now (a direct call below `Codecs.NativeThreshold`,
         `encC`/`decC` past it, a `Held[Y]` pair carrying a field's schema
@@ -336,10 +336,10 @@ deleted.
         before it ran out of stack — it is a linked `At` now, rendered
         only into a message; and a refusal printed the value it met with
         `toString`, which recurses on a deep one — `describe` says "a dict
-        of N keys" instead. The Json/PyValue conversions and the workers'
+        of N keys" instead. The Json/Value conversions and the workers'
         ref renamings (`in`, `out`, `local`, `refsIn`) share one bottom-up
         walk on an explicit stack, `Walk.up`, behind
-        `PyValue.refs`/`rebuild`/`rebuildE` (TestPyValueWalk). The replay
+        `Value.refs`/`rebuild`/`rebuildE` (TestValueWalk). The replay
         loops of `SupervisedWorker` and `RSubprocess` are loops (a durable
         run replays as many steps as it journaled), and
         `PyFacade.scalaType` peels an annotation's wrappers in a loop.

@@ -2,7 +2,7 @@ package okay.foreign
 
 import okay.Handler
 import okay.agent.Durable
-import PyValue.*
+import Value.*
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -20,15 +20,15 @@ class TestPyJournal extends munit.FunSuite {
         ran.incrementAndGet(): Unit
         fn match
           case "statistics:median" => Right(F64(2.0))
-          case "m:edges" => Right(Arr(Vector(PyNone, F64(Double.NaN), Bytes(Array[Byte](1, 2)), F64(3.0))))
+          case "m:edges" => Right(Arr(Vector(Null, F64(Double.NaN), Bytes(Array[Byte](1, 2)), F64(3.0))))
           case "m:fails" => Left(Condition("ZeroDivisionError", "division by zero"))
           case other => Left(Condition("NameError", s"$other with ${args.size} args"))
       case PyEval.Frame(fn, in, _) =>
         ran.incrementAndGet(): Unit
-        Right(PyFrame(in.cols :+ ("n" -> Vector(I64(in.cols.headOption.fold(0)(_._2.size).toLong)))))
+        Right(Frame(in.cols :+ ("n" -> Vector(I64(in.cols.headOption.fold(0)(_._2.size).toLong)))))
       case PyEval.Call(Address.Fn(fn), _, true) =>
         ran.incrementAndGet(): Unit
-        Right(Ref(PyRef(1, fn)))
+        Right(Ref(Handle(1, fn)))
       case PyEval.Call(Address.Method(_, name), Vector(I64(x)), _) =>
         ran.incrementAndGet(): Unit
         Right(I64(x * 10))
@@ -58,7 +58,7 @@ class TestPyJournal extends munit.FunSuite {
     val ran = AtomicInteger()
     val _ = Durable.over[PyEval](canned(ran), j)().handle(PyEval.Call("m:edges", Vector.empty))
     Durable.replayingOver[PyEval](j).handle(PyEval.Call("m:edges", Vector.empty)) match
-      case Right(Arr(Vector(PyNone, F64(nan), Bytes(b), F64(three)))) =>
+      case Right(Arr(Vector(Null, F64(nan), Bytes(b), F64(three)))) =>
         assert(nan.isNaN, "NaN stays a NaN, not None")
         assertEquals(b.toVector, Vector[Byte](1, 2))
         assertEquals(three, 3.0)
@@ -68,7 +68,7 @@ class TestPyJournal extends munit.FunSuite {
   test("a frame operation round-trips through the journal") {
     val j = Durable.MemoryJournal()
     val ran = AtomicInteger()
-    val in = PyFrame(Vector("x" -> Vector(I64(1), I64(2))))
+    val in = Frame(Vector("x" -> Vector(I64(1), I64(2))))
     val first = Durable.over[PyEval](canned(ran), j)().handle(PyEval.Frame("m:count", in, Vector.empty))
     val again = Durable.replayingOver[PyEval](j).handle(PyEval.Frame("m:count", in, Vector.empty))
     assertEquals(again, first)

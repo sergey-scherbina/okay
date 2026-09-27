@@ -17,7 +17,7 @@ import okay.codec.Json
  *
  * The wire itself — handshake, negotiation, deadline, the Arrow road,
  * death — is the language-neutral `WireSession` (foreign-one-r), which R
- * shares; this class is the handler that speaks `PyValue` over it.
+ * shares; this class is the handler that speaks `Value` over it.
  */
 final class ForeignWorker private (session: WireSession,
                                    /** the far side's frames as Arrow tables and back */
@@ -50,18 +50,18 @@ final class ForeignWorker private (session: WireSession,
   /**
    * A TABLE through `fn` (facade-frame-seam): where this worker speaks
    * Arrow the Table goes to the wire as itself and the answer comes back
-   * as the Table it read — no PyFrame in between; where it does not, the
+   * as the Table it read — no Frame in between; where it does not, the
    * Table is converted once each way. What `ForeignEval.Frame` does for a
-   * PyFrame, for a caller whose frame is already a Table.
+   * Frame, for a caller whose frame is already a Table.
    */
-  def frameTable(fn: String, table: okay.arrow.Table, args: Vector[PyValue],
+  def frameTable(fn: String, table: okay.arrow.Table, args: Vector[Value],
                  /** the answer's table EXACTLY as the far side made it (okay-arrow
                   * stage 8): dictionary-encoded columns kept as `Column.Dictionary` —
                   * an R factor's levels, a pandas category's categories — and no
                   * narrowing to the frame's five kinds (int32, dates, timestamps stay);
                   * only on the Arrow road */
                  exact: Boolean = false): Either[Condition, okay.arrow.Table] = timed:
-    def asTable(f: PyFrame): Either[Condition, okay.arrow.Table] = tables.table(f).left.map(Condition("Frame", _))
+    def asTable(f: Frame): Either[Condition, okay.arrow.Table] = tables.table(f).left.map(Condition("Frame", _))
     if arrow then
       val head = tableCall(fn, None, args) ++ (if exact then Vector("exact" -> Json.JBool(true)) else Vector.empty)
       val (j, got) = session.exchangeArrow(head, table, keepDictionaries = exact)
@@ -77,7 +77,7 @@ final class ForeignWorker private (session: WireSession,
    * Arrow stream itself on the Arrow road (`in` = None) — and `table` asks
    * for a table back.
    */
-  private def tableCall(fn: String, in: Option[PyFrame], args: Vector[PyValue]): Vector[(String, Json)] =
+  private def tableCall(fn: String, in: Option[Frame], args: Vector[Value]): Vector[(String, Json)] =
     Vector("op" -> Json.JStr("call"), "fn" -> Json.JStr(fn),
       "args" -> Json.JArr(in.map(frameOut).toVector ++ args.map(Wire.enc)), "table" -> Json.JBool(true))
 
@@ -92,7 +92,7 @@ final class ForeignWorker private (session: WireSession,
   /** a frame on the wire: columnar where the far side reads it (every
    * shim this jar ships, since foreign-one-value), the per-cell v1
    * otherwise */
-  private def frameOut(f: PyFrame): Json =
+  private def frameOut(f: Frame): Json =
     if session.columnar then Wire.encFrameColumnar(f) else Wire.encFrame(f)
 
   /**
@@ -103,7 +103,7 @@ final class ForeignWorker private (session: WireSession,
    * the far side while the far side waits for it (Decision 27). A cancel,
    * a link that ends, or a failing chunk stops it.
    */
-  private def feeder(s: Long, it: Iterator[PyValue]): Unit =
+  private def feeder(s: Long, it: Iterator[Value]): Unit =
     val t = Thread(() =>
       try
         var open = true

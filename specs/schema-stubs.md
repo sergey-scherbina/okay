@@ -14,7 +14,7 @@ declaration is only true if it matches the wire:
 
 | target | carried by | a product | a sum | `None` | `BigInt` | bytes |
 |---|---|---|---|---|---|---|
-| Python `TypedDict` | okay-py's `PyCodec` | a dict of its fields | the case's dict plus `"type": Literal["Case"]` | `None` | `int` | `bytes` |
+| Python `TypedDict` | okay-py's `ValueCodec` | a dict of its fields | the case's dict plus `"type": Literal["Case"]` | `None` | `int` | `bytes` |
 | TypeScript `.d.ts` | okay-codec's `Json` | an object | `{ "Case": {...} }`, externally tagged | `null` | a string of digits | a base64 string |
 
 ## Behavior
@@ -33,7 +33,7 @@ declaration is only true if it matches the wire:
       Python function that reads the generated `TypedDict` correctly and
       REJECTS one that reads a field that does not exist; `tsc` does the
       same for the `.d.ts`. And the value okay actually sends is the value
-      the declaration describes: PyCodec's encoding of a sample passes
+      the declaration describes: ValueCodec's encoding of a sample passes
       mypy's check as a literal of the declared type, and Json's encoding
       of the same sample is assignable to the TypeScript type.
 - [x] R, Clojure and Frege are left out, and said so: R has no types to
@@ -62,8 +62,8 @@ declaration is only true if it matches the wire:
   the shapes. TestStubsTsc (Live, `tsc --strict`) and TestPyStubs (Live,
   `uvx mypy --strict`) check what the codecs SEND against the
   declarations, and a read of a field that does not exist is refused.
-- The mypy check failed on its first run, correctly. PyCodec sent a
+- The mypy check failed on its first run, correctly. ValueCodec sent a
   `BigInt` past a Long as a `str` (`Str(digits)`), where the declaration
   says `int`. The wire already carried unbounded ints (the `"int"` tag),
-  but the host had no value for one. `PyValue.BigI` now carries it: the
+  but the host had no value for one. `Value.BigI` now carries it: the
   codec was fixed, not the stub.

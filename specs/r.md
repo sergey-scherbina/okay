@@ -74,7 +74,7 @@ final case class RFrame(cols: Vector[(String, RColumn)])
 
 ### R's two absences (written while building it, 2026-09-07)
 
-Python has one `None`, and okay-py's `PyValue` has one case for it.
+Python has one `None`, and okay-py's `Value` has one case for it.
 R has TWO, and flattening them would be the "papered over" this
 spec's own behaviour list forbids:
 
