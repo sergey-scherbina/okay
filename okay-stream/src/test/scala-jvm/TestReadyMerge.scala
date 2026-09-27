@@ -25,10 +25,12 @@ class TestReadyMerge extends munit.FunSuite {
     @volatile private var cb: (Either[Throwable, Int] => Unit) | Null = null
     val registered = CountDownLatch(1)
     val cancelled = AtomicBoolean(false)
+    /** counted down by the canceller, whichever thread calls it */
+    val gone = CountDownLatch(1)
     def await: Int ! R = okay.effect[R, Int](Async.Await[Int] { k =>
       cb = k
       registered.countDown()
-      () => cancelled.set(true)
+      () => { cancelled.set(true); gone.countDown() }
     })
     def fire(x: Int): Unit = cb.nn(Right(x))
     def fail(e: Throwable): Unit = cb.nn(Left(e))
@@ -158,6 +160,28 @@ class TestReadyMerge extends munit.FunSuite {
     f.cancel()
     assert(f.joinEither().isLeft, "a cancelled merge answers with a failure")
     assert(a.cancelled.get && b.cancelled.get, s"cancelled: a=${a.cancelled.get} b=${b.cancelled.get}")
+  }
+
+  test("a cancel between the consumer's operation and the merge's park reaches every parked source, on own and on Loom") {
+    // ready-merge-own-cancel-window: the fiber cancels ITSELF inside
+    // the consumer's operation for the first element, so the stop lands
+    // deterministically between two operations — after `a` and `b` have
+    // registered (their turns come right after the tell) and before the
+    // merge's park is performed. On `own` (a DriveTask) the drive then
+    // stops without running the park and, before the fix, nothing
+    // called the merge's canceller: 0 of 200 cancelled. The drive's
+    // cancel answers the fiber at once, so a join proves nothing about
+    // the sources: the law waits on the cancellers themselves, bounded.
+    val schedulers = List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build)
+    for (name, sch) <- schedulers; round <- 0 until 200 do
+      val a, b = Gate()
+      val self = java.util.concurrent.CompletableFuture[Fiber[Unit]]()
+      val m = ReadyMerge(Seq(list(1), a.source, b.source))
+      val f = sch.fork(() => m.runForeach(_ => okay.effect[Async, Unit](Async.Run(() => self.get().cancel()))))
+      self.complete(f): Unit
+      assert(f.joinEither().isLeft, s"$name round $round: a cancelled merge answers with a failure")
+      val seen = a.gone.await(5, java.util.concurrent.TimeUnit.SECONDS) && b.gone.await(5, java.util.concurrent.TimeUnit.SECONDS)
+      assert(seen, s"$name round $round: cancelled a=${a.cancelled.get} b=${b.cancelled.get}")
   }
 
   test("stack-safe over 10^6 elements") {

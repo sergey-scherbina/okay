@@ -85,6 +85,11 @@ every side whether it needs one or not.
       the first cut failed at once and cancelled the parked ones
 - [x] cancelling the merged program while it is parked cancels every
       parked source's registration
+- [ ] a cancel that stops the drive BETWEEN two operations, with the
+      merge's park the next one, cancels every parked source's
+      registration — on `own` as on Loom (ready-merge-own-cancel-window:
+      the park's registration is a `Discontinue` whose `discontinue` is
+      `cancelAll`)
 - [x] stack-safe: 10^6 elements, and 10^5 synchronous wake-ups
 - [x] parallelism by buffering: a `Channel.buffer`ed side keeps its
       order and merges with an unbuffered one
@@ -168,6 +173,42 @@ waker then reads the queue — at least one side sees the other.
   registering the sources' Awaits only when the merge itself parks —
   that delays a parked source's timer or read while the others are
   busy, which is what a readiness merge exists not to do.
+- **The window, located and closed where it can be**
+  (ready-merge-own-cancel-window, 2026-09-27). A probe, 400 rounds on
+  `own`, cancelling right after the fork as the law of 2026-09-26 did:
+  missed AT THE JOIN 400/400, and of the rounds whose sources had
+  registered, never cancelled once waited on 0/400. So the "2 of 200
+  before the park" was the join reading a cancel still in flight: a
+  `DriveTask`'s `cancel()` answers the fiber AT ONCE (`done(Left)`),
+  while its drive is still running the merge's first step on a worker;
+  that drive then reaches the park's `op`, which registers it, reads
+  `stopped` and calls the park's canceller — `cancelAll`. Not a leak.
+  The REAL window is one step over: a cancel that the drive sees
+  BETWEEN two operations — `looping = !stopped` after an op — stops
+  it before the next op without running it. When that next op is the
+  merge's park (a consumer's operation for one element, then the merge
+  registers its parked sources and parks), the park is never
+  registered and nothing reaches the sources: 0 of 200 cancelled on
+  `own`, deterministic, the fiber cancelling ITSELF inside the
+  consumer's operation. The drive's door for exactly that is
+  `discontinue` (drive-discontinue): it descends to the LEFTMOST node,
+  which there is the park's `Inject(Await(reg))`, and calls
+  `discontinue()` on a `reg` that is a `Discontinue`. So the park's
+  registration is one object per merge that is also a `Discontinue`,
+  its `discontinue` being `cancelAll`. The sprint item's first idea —
+  a `Run` carrying the `Discontinue` at the merge's START — does not
+  work: at the start nothing is registered yet, and once that `Run` is
+  performed it is no longer the leftmost node.
+  STILL OPEN (backlog `ready-merge-cancel-under-consumer-ops`): a
+  source parked while the others keep telling, and a consumer that
+  performs an operation per element. The drive stops before the
+  CONSUMER'S next op; the merge's code is inside the consumer's
+  continuation, a function the drive must not call, and the merge
+  never parks — 50 of 50 leaked on `own` (probe, 20 M-element ready
+  side plus a gate, `runForeach` with an `Async.Run` per element).
+  Nothing the merge builds is reachable there; it needs the drive, or
+  the Writer handlers, to carry a cancel hook. The same shape as
+  "early stop is not cancellation" above, reached through a cancel.
 
 ## Results
 
