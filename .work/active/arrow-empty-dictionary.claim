@@ -1,1 +1,0 @@
-arrow-empty-dictionary — a zero-row table keeps its dictionary column (both shims write one batch; the reader keeps the type)
