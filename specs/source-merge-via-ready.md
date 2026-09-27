@@ -194,3 +194,40 @@ in the first. A fix is a design change, not a knob: a STANDING receiver
 per side that accumulates sends into a buffer of its own, instead of a
 one-shot park per element (backlog `ring-standing-receiver`).
 
+
+## Stage: a notifying receive for the ring's sides (ring-standing-receiver + ready-merge-chunk-forward, 2026-09-27)
+
+The one lane the operator unpaused: first the standing receiver, then —
+only if it removes the slow regime — the chunked roads onto the ring.
+
+**The receive.** `SentinelChannel.receiveManyOrWatch(max)(k)`: what is
+buffered is answered at once as a chunk (or the end); when nothing is,
+a waiter is registered whose wake-up only NOTIFIES — `k(Right(null))`,
+"look again" — and the elements stay in the ring. A send to an empty
+side therefore does no receive work on the producer's thread (no pop,
+no hand-over of ONE element); the side's reader takes EVERYTHING
+buffered when the merge's drive comes back to it. Re-armed only when
+that take finds nothing. `drained` reads through it; any other channel
+falls back to `receiveManyAsync`.
+
+- [ ] order: a side's elements arrive in the order sent, across
+      notify / take cycles
+- [ ] end: a close while the watch is armed notifies, and the look
+      that follows answers the end (after everything buffered)
+- [ ] failure: a failed channel answers its failure once drained,
+      through the watch as through `receiveManyAsync`
+- [ ] cancel: a cancelled watch is never called, and the element that
+      would have woken it is still received by the next reader
+- [ ] the existing laws unchanged: TestChannel*, TestSentinel*,
+      TestReadyMerge*, TestSourceMerge*/TestMergeOrder/TestMergeEnds,
+      TestChannelFailure, TestDrain
+- [ ] THE REGIME CHECK: the chunked ring road (f0f355bd4's, rebuilt)
+      over `okayChunked`, -f 10, one-shot receive against the notifying
+      one, slow forks counted and the per-fork side wakes read. If the
+      slow regime stays, STOP: stage 2 is not run.
+
+**Stage 2 (conditional).** `Source.merge(chunked = true)`,
+`mergeFlushing`, `either` onto `ReadyMerge[Chunk[A]]` over a chunk
+channel per side plus `Writer.expand`; BAR: no arm slower than the
+shared channel at any k on `ChunkFlushBenchmark`, no bimodality; then
+the shared-channel chunked road is deleted.
