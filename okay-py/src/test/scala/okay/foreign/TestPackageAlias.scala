@@ -7,14 +7,29 @@ package okay.foreign
  */
 class TestPackageAlias extends munit.FunSuite:
   test("okay.py's names are okay.foreign's: types, companions and patterns") {
-    val v: okay.py.Value = Value.I64(1)
-    assert(v match { case okay.py.Value.I64(n) => n == 1L; case _ => false })
+    val v: okay.py.PyValue = Value.I64(1)
+    assert(v match { case okay.py.PyValue.I64(n) => n == 1L; case _ => false })
     val op: ForeignEval[Unit] = okay.py.ForeignEval.Forget(1L)
     assertEquals(op, ForeignEval.Forget(1L))
     assert(okay.py.Py eq Py)
     assert(okay.py.Shape.python eq Shape.python)
     val c: okay.py.Condition = okay.py.Condition("Kind", "message")
     assertEquals(c, Condition("Kind", "message"))
+  }
+
+  test("the old value names are the new ones (foreign-value-rename): PyValue/PyFrame/PyRef/PyCodec and PyNone, as aliases") {
+    val v: PyValue = Value.Str("x")
+    assert(v match { case PyValue.Str(s) => s == "x"; case _ => false })
+    assert(PyValue eq Value)
+    assert(PyFrame eq Frame)
+    assert(PyRef eq Handle)
+    assert(PyCodec eq ValueCodec)
+    val f: PyFrame = Frame(Vector("a" -> Vector(Value.I64(1))))
+    val h: PyRef = Handle(1L, "int")
+    assertEquals((f.cols.length, h.id), (1, 1L))
+    // the old name of Null: a stable identifier that still matches, by equality
+    assert(Value.Null match { case Value.PyNone => true; case _ => false })
+    assertEquals(Value.PyNone, Value.Null)
   }
 
   test("Py is Foreign (foreign-api-name): the same object, and a type through one is the other's") {
