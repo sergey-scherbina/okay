@@ -40,7 +40,7 @@ chooses where NOT to wake one.
   | `forkJoin(pool)` | a pool task, Loom-free | holds a pool thread | ~230 | nothing | a JVM without Loom |
   | `threads` | a platform thread | free | heavy (a thread start) | nothing | Native's default; a JVM that must not use Loom |
   | JS `given` | a PromiseDrive on the event loop | a compile error (no CanBlock) | — | nothing | the only one there |
-  | `adaptive` | `own` plus overflow workers: a fiber that blocks through `CanBlock` says so and a spare runs the rest (managed blocking, below); a third-party blocking call is found by the monitor/stuck-check. Nothing moves a fiber to `loom` — NOT BUILT, a running platform-thread stack cannot move | holds its worker; the others keep running, up to `overflow` spares | `own`'s | nothing | when the program's shape is not known where the scheduler is chosen |
+  | `adaptive` | `own` plus overflow workers: a fiber that blocks through `CanBlock` says so and a spare runs the rest (managed blocking, below); a third-party blocking call is found by the monitor/stuck-check. Nothing moves a fiber to `loom` — NOT BUILT, a running platform-thread stack cannot move | holds its worker; the others keep running, up to `overflow` spares | `own`'s | nothing | fork/join and cancel-heavy programs whose blocked fibers stay under `n + overflow`; not the default — measured ("The default", below) |
 
 - **The facade** (`Schedulers`, scala-jvm), LANDED 2026-09-07 and
   shaped like `Queues`: `loom`, `threads`, `forkJoin(pool)` and
@@ -523,15 +523,15 @@ managed blocking's.
   Wrocław row must not move down.
 
 ### Behavior
-- [ ] the table below, every row a matched pair
-- [ ] laws under `adaptive` as the given: TestSchedulerLaws,
+- [x] the table below, every row a matched pair
+- [x] laws under `adaptive` as the given: TestSchedulerLaws,
       TestAdaptiveScheduler, TestManagedBlocking, TestReadyMerge
-- [ ] THE BOUND, as a law: `n + overflow + 1` fibers blocked at once on
+- [x] THE BOUND, as a law: `n + overflow + 1` fibers blocked at once on
       the library's own door, with the fiber that would release them
       forked after — on `loom` they all finish; on `adaptive` the bound is
       exactly `n + overflow` (that many finish, one more wedges until
       someone outside the scheduler releases it) (TestManagedBlocking)
-- [ ] the decision, with the table as its reason
+- [x] the decision, with the table as its reason (Decision, below)
 
 ### Results, part 1 (2026-09-27) — the reduced run, one round
 Worktree on master 625316caa + this lane's lane and laws; each arm its own
@@ -579,3 +579,70 @@ deadlock when the fiber that would release them is queued behind it. A
 default that is 2.2x slower and can wedge on the program shape Loom makes
 free is the wrong trade for the default; `adaptive` stays one import away.
 Part 2 (second round, §4, Wrocław) decides.
+
+### Results, part 2 (2026-09-27) — the second round, §4, Wrocław
+Same worktree rebased on master f43cb700e (no main-code change in between);
+the AdversarialBenchmark lanes pinned to `-p shape=4x4` this time. Rows:
+`src/jmh/history.d/2026-09-27T192315Z-scheduler-default-decision.tsv`.
+
+| lane | loom r1 / r2 | adaptive r1 / r2 | adaptive / loom (time) |
+|---|---:|---:|---:|
+| §4b 10k OUTSIDE, work=100 (us) | 3 279 / 3 098 | 1 773 / 1 903 | 0.58 |
+| §4b 10k OUTSIDE, work=10 000 | 3 214 / 3 405 | 3 020 / 3 075 | 0.92 |
+| §4b 10k INSIDE, work=100 | 3 249 / 3 360 | 2 948 / 2 788 * | 0.87 |
+| §4b 10k INSIDE, work=10 000 | 3 258 / 3 790 | 3 231 / 3 292 * | 0.93 |
+| cancel 1 000 parked | 1 010 / 1 025 | 670 / 699 | 0.67 |
+| `parallel8` | 10.33 / 10.23 | 6.71 / 6.81 | 0.66 |
+| §4, 100 fibers OUTSIDE (one round) | 20.4 | 12.6 | 0.62 |
+| §4, 100 fibers INSIDE (one round) | 29.6 | 14.4 | 0.49 |
+| **Wrocław, okay 8 fibres, ms wall (best of 5)** | **106 / 111** | **355 / 605** | **4.4** |
+
+\* flagged again by the end quiet check (same reason as part 1). §4 got one
+round each: the arms differ by 1.6x and 2.1x, well past the 10% that would
+have asked for a second.
+
+**Wrocław is the row that decides it, and it went the wrong way by 3.3-5.5x.**
+Eight ~70 ms CPU fibers forked from outside the scheduler (`main`) and
+joined: on Loom each is a virtual thread on the JDK's carrier pool and all
+eight run at once; on `adaptive` they do not spread. Filed as backlog
+`adaptive-outside-long-fibers-serial` (a hypothesis there: the monitor
+watches the workers' deques, not the submission queue these land in).
+Part 2 confirms part 1 and adds a reason: the headline is the one row the
+item said must not move down.
+
+**Laws with `adaptive` as the given** (`-Dokay.scheduler=adaptive` in the
+test fork of okay-platform and okay-stream): TestSchedulerLaws +
+TestManagedBlocking 54/54, TestReadyMerge 15/15 (its cancel laws
+included), TestAdaptiveScheduler 2/3 — the one red asserts the property is
+UNSET ("the default given Scheduler is auto's pick, unset"), which is the
+arm itself, not a defect. So correctness is not what stands in the way.
+
+### Decision (2026-09-27): the default stays `loom`
+- **Kept: `Schedulers.auto` is `loom` where virtual threads exist.** The
+  table says `adaptive` is the faster scheduler for fork/join and cancel
+  (0.49-0.92 of Loom's time; 26x on five-way sequential spawn/join) and
+  the slower one for two program shapes the default must serve: blocking
+  (five-way TCP blocking 0.45x — 64 blocked fibers over `n + overflow` = 28
+  threads) and a few long CPU fibers forked from outside (Wrocław 3.3-5.5x
+  slower). A default is what a program gets without choosing, and it must
+  not turn a program that was fast and correct on Loom into a slow or
+  wedged one.
+- **The bound, priced.** `adaptive` survives exactly `n + overflow`
+  fibers blocked at once in the library's doors (the TestManagedBlocking
+  law; default `n` = cores, `overflow` = cores, so 28 on this box); one
+  more, with the fiber that would release them queued behind, is a
+  deadlock until something outside the scheduler releases one — Loom has
+  no such number. Third-party blocking (JDBC, a raw socket) is worse: it
+  passes no door and costs a monitor tick or a stuck-check interval before
+  a spare starts, within the same bound. Growing past the bound for door
+  blocking was NOT built: an unbounded platform-thread count is the
+  `threads` member's cost model, and bounded growth only moves the number.
+- **What would reopen it**: `adaptive-outside-long-fibers-serial` fixed
+  AND the blocking rows answered — i.e. Wrocław within noise of Loom and
+  the TCP blocking lane within 10%, with the deadlock bound still stated.
+  Until then the fast member is one line away and documented as the
+  choice for fork/join-heavy, non-blocking programs:
+  `given Scheduler = Schedulers.adaptive.build`.
+- Rejected, as the item said in advance: deciding on spawn/join alone.
+  On spawn/join alone the flip reads 26x; on the full table it is a loss
+  on the two rows a default cannot afford.

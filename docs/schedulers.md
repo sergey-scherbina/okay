@@ -32,7 +32,7 @@ cores without you saying when.
 |---|---|---|---|
 | `Schedulers.loom` | a virtual thread | free — the thread parks | the default; anything that may block: I/O, `join()`, channels |
 | `Schedulers.own` | a task on a thread the scheduler owns | holds one of the workers | short CPU-bound fibers, fork/join as throughput |
-| `Schedulers.adaptive` | the same, watched | costs latency, not the program | `own`'s speed when you are not certain nothing blocks |
+| `Schedulers.adaptive` | the same, watched | costs latency, not the program — up to `workers + overflow` blocked at once | `own`'s speed when blocking is rare and bounded |
 | `Schedulers.drive(pool)` | a task on a JDK pool | holds a pool thread | when the pool is given to you — a container's, a framework's |
 | `Schedulers.forkJoin(pool)` | a pool task, no Loom | holds a pool thread | a JVM without virtual threads |
 | `Schedulers.threads` | one platform thread | free | Native's default; a JVM that must not use Loom |
@@ -40,6 +40,33 @@ cores without you saying when.
 On JS there is exactly one and it is given: a fiber is a continuation
 walked by the event loop, and a blocking `join()` is a compile error
 rather than a frozen page.
+
+## Why the default is Loom, measured
+
+`adaptive` is the faster scheduler for fork/join, so making it the
+default was measured rather than assumed (2026-09-27; the table is in
+specs/schedulers.md, "The default"). Same code, only
+`-Dokay.scheduler` changed, two alternating rounds:
+
+- **`adaptive` wins** every fork/join and cancel lane: 100 fibers
+  forked and joined in 0.49-0.62 of Loom's time, 10 000 in 0.58-0.93,
+  1 000 parked fibers cancelled in 0.67, an eight-way direct `parallel`
+  block in 0.66, and sequential spawn/join in someone else's harness
+  26 times over.
+- **`adaptive` loses** the two shapes a default cannot afford to lose:
+  64 fibers in blocking 1 ms calls run at 0.45 of Loom's throughput
+  (64 blocked fibers over 28 threads), and the Wrocław benchmark's
+  headline, eight long CPU fibers forked from `main`, takes 355-605 ms
+  where Loom takes 106-111.
+- **And it has a number Loom does not**: `workers + overflow` fibers
+  blocked at once (28 on a 14-core machine by default) is where it
+  stops. One more, if the fiber that would release them is queued
+  behind them, waits until something outside the scheduler lets one go.
+
+So the default is the scheduler under which a correct program stays
+correct and never gets slower, and the fast one is a line away when you
+know your fibers are short and rarely block:
+`given Scheduler = Schedulers.adaptive.build`.
 
 ## Choosing and tuning, the way a queue is chosen
 
