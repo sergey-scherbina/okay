@@ -47,6 +47,48 @@ class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     finally sch.close()
   }
 
+  /** adaptive-outside-long-fibers-serial: the Wrocław shape. Eight long
+   * fibers forked from OUTSIDE (this thread, not a worker) onto parked
+   * workers, then joined: the fewest threads any round used, and the
+   * greatest number of them running at once in that round. */
+  private def outsideBurst(sch: Schedulers.Running): (Int, Int) =
+    given Scheduler = sch
+    var fewest = Int.MaxValue
+    var leastOverlap = Int.MaxValue
+    for _ <- 1 to 5 do
+      Thread.sleep(20) // every worker parked, as after a program's own setup
+      val ids = ConcurrentHashMap.newKeySet[Long]()
+      val running = AtomicInteger()
+      val peak = AtomicInteger()
+      val fs = (0 until 8).map { _ =>
+        Async.spawn(async {
+          val _ = ids.add(Thread.currentThread().threadId())
+          val _ = peak.accumulateAndGet(running.incrementAndGet(), math.max)
+          busy(20000000L)
+          val _ = running.decrementAndGet()
+        })
+      }
+      fs.foreach(_.join())
+      fewest = math.min(fewest, ids.size)
+      leastOverlap = math.min(leastOverlap, peak.get)
+    (fewest, leastOverlap)
+
+  test("own: eight long fibers forked from outside run on more than one thread, at once") {
+    val sch = Schedulers.own.workers(4).build
+    try
+      val (threads, overlap) = outsideBurst(sch)
+      assert(threads >= 2 && overlap >= 2, s"a round used $threads thread(s), $overlap at once, on four workers")
+    finally sch.close()
+  }
+
+  test("adaptive: eight long fibers forked from outside run on more than one thread, at once") {
+    val sch = Schedulers.adaptive.workers(4).build
+    try
+      val (threads, overlap) = outsideBurst(sch)
+      assert(threads >= 2 && overlap >= 2, s"a round used $threads thread(s), $overlap at once, on four workers")
+    finally sch.close()
+  }
+
   /** peak number of `calls` blocking at once when `n` fibers forked inside
    * a fiber each block `calls` times for 1 ms */
   private def blockingPeak(n: Int, calls: Int)(using Scheduler): Int =
