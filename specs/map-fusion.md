@@ -152,3 +152,26 @@ so no map is ever built), the second is the language's.
   node of `Free` (−16 B a map, against `resume`'s inline budget) and
   the build-time safe fusion (two objects a step, a type test on every
   `flatMap`) are both priced above and NOT taken.
+
+## foldEach: one bind a step by construction (fold-each, 2026-09-27)
+
+`!.foldEach(xs)(z)(x => prog(x))(combine)` splits foldM's step into the
+element's program and a PURE combine, so a step is one bind without
+relying on `step`'s Mapped fusion. BuildShapeBenchmark, N = 1000, one
+lane per `Jmh/run` through jmh-lane.sh, `-prof gc`:
+
+| lane | µs/op | B/op |
+|---|---|---|
+| stateFoldM | 20.9 ± 1.3 | 191 704 |
+| stateFoldEach | 17.3 ± 0.2 | 143 712 |
+| stateOneBind (hand-written ceiling) | 9.6 ± 0.7 | 111 816 |
+
+- [x] foldEach is 1.21x faster than foldM and allocates 48 B less per
+  element.
+- The gap to the hand-written ceiling is NOT closed, and it is not the
+  bind count (both are one bind a step): 32 B/element more (two Integer
+  boxes, the generic accumulator and the answer through `combine`) cannot
+  account for 7.7 µs on its own. The rest is presumably the generic
+  `Function1`/`Function2` calls and the indexed read. Not measured
+  further; the next step is to split these apart in a specialised lane
+  before any change.

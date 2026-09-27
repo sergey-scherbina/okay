@@ -1,0 +1,3 @@
+2026-09-27T21:40:36Z	b57e03286	-	stateFoldEach vs stateFoldM us/op	17.3	20.9	0.83	BuildShapeBenchmark N=1000 -f 2 jmh-lane
+2026-09-27T21:40:36Z	b57e03286	-	stateFoldEach vs stateOneBind us/op	17.3	9.6	1.80	hand-written ceiling not reached
+2026-09-27T21:40:36Z	b57e03286	-	stateFoldEach vs stateFoldM B/op	143712	191704	0.75	-prof gc -f 1
