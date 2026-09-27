@@ -318,6 +318,8 @@ API reference, gotchas.
 | [`okay-blob`](modules/okay-blob.md) | the object-store seam: fs and S3 engines, OWN SigV4 pinned by the AWS vectors, persist backups |
 | [`okay-obs`](modules/okay-obs.md) | tracing without a framework: spans as values on a topic, W3C traceparent, capability routes, OTLP export as a consumer |
 | [`okay-compress`](modules/okay-compress.md) | LZ4 (frame and block) and ZSTD (RFC 8878), both ways, pure Scala on JVM, Scala.js and Native with no dependency; Arrow's compressed IPC bodies use them |
+| [`okay-diagnose`](modules/okay-diagnose.md) | failure diagnosis with no dependency: flight recorder, lazy state snapshots, `Diagnosable`, late-vs-lost thread joins, attached to the exception that leaves |
+| [`okay-test`](modules/okay-test.md) | test tooling over okay-diagnose: `Munit.Diagnosed` prints each failing test's diagnosis; `Stress`, `Load`; munit optional |
 | [`okay-arrow`](modules/okay-arrow.md) | Apache Arrow IPC behind one facade: `OkayArrow`, ours, on JVM, Scala.js and Native with no dependency (what the wire to Python uses), and `ApacheArrow`, the same facade over Arrow Java, an optional dependency |
 | [`okay-parquet`](modules/okay-parquet.md) | Parquet without Spark or Hadoop: `OkayParquet`, ours, over okay-arrow's `Table` row group by row group on JVM, Scala.js and Native, and `ParquetJava`, the same facade over parquet-java, an optional dependency — each reads the other's files |
 | [`okay-lake`](modules/okay-lake.md) | Object storage and Parquet as the cluster engine's source and sink: a partition per row group, whole output objects, a manifest as the commit |
