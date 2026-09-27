@@ -180,7 +180,7 @@ say "10. the bench window: a queued benchmark holds the gate's start; a --read t
 sleep 3 & lane=$!
 mkdir -p "$OKAY_BENCH_DIR/want"; : > "$OKAY_BENCH_DIR/want/$lane"
 start=$(date +%s)
-GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/bw.log" OKAY_BENCH_GATE_MAX_WAIT=30 \
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/bw.log" OKAY_BENCH_GATE_MAX_WAIT=30 OKAY_BENCH_DEMOTE=off \
   run_gate "okayJVM/testOnly A" > "$tmp/bw.out" 2>&1
 rc9=$?; took=$(( $(date +%s) - start ))
 grep -q "a benchmark is queued (pid $lane" "$tmp/bw.out" && ok "said it was held for the benchmark" || bad "did not: $(cat "$tmp/bw.out")"

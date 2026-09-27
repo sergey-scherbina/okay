@@ -109,8 +109,9 @@ printf '%s\n' "$out" | grep -q "queued behind it" && ok "said it was queued" || 
 printf '%s\n' "$out" | grep -q "trust this number" && ok "then ran the lane" || bad "did not run: $out"
 rm -rf "$tmp"
 
-say "4c. a live gate token holds the lane's start; it runs once the gate is gone (bench-window)"
+say "4c. demotion off: a live gate token holds the lane's start; it runs once the gate is gone (bench-window)"
 new_fixture
+export OKAY_BENCH_DEMOTE=off
 sleep 3 & gatepid=$!
 mkdir -p "$tmp/.work/bench/gates"; : > "$tmp/.work/bench/gates/$gatepid"
 start=$(date +%s)
@@ -120,6 +121,31 @@ took=$(( $(date +%s) - start ))
 printf '%s\n' "$out" | grep -q "gates=$gatepid" && ok "named the gate it waited for" || bad "did not wait on the gate: $out"
 [ "$took" -ge 2 ] && ok "started only after the gate ended (${took}s)" || bad "started while the gate ran (${took}s)"
 rm -rf "$tmp"
+unset OKAY_BENCH_DEMOTE
+
+if command -v taskpolicy > /dev/null 2>&1; then
+say "4e. demotion on (stage 2): a live gate is demoted, not waited for, and restored after the lane"
+new_fixture
+sh -c 'perl -e "sleep 20" & wait' & gatepid=$!
+sleep 1
+gchild=$(pgrep -P "$gatepid" | head -1)
+mkdir -p "$tmp/.work/bench/gates"; : > "$tmp/.work/bench/gates/$gatepid"
+cat > "$tmp/scripts/fake-sbt.sh" <<EOF2
+#!/bin/sh
+ps -o pri= -p $gchild > "$tmp/.work/pri-during-run"
+exit 0
+EOF2
+chmod +x "$tmp/scripts/fake-sbt.sh"
+start=$(date +%s)
+out=$(run "Bench.thing" 5 2>&1); rc=$?
+took=$(( $(date +%s) - start ))
+[ "$rc" -eq 0 ] && ok "exit 0" || bad "exit $rc: $out"
+[ "$took" -lt 10 ] && ok "did not wait for the gate (${took}s)" || bad "waited ${took}s"
+[ "$(tr -d ' ' < "$tmp/.work/pri-during-run")" = 4 ] && ok "the gate's child ran demoted during the lane" || bad "pri during the run: $(cat "$tmp/.work/pri-during-run")"
+[ "$(ps -o pri= -p "$gchild" | tr -d ' ')" -gt 4 ] && ok "restored after the lane" || bad "still demoted: $(ps -o pri= -p "$gchild")"
+for c in $(pgrep -P "$gatepid"); do kill "$c" 2>/dev/null; done; kill "$gatepid" 2>/dev/null; wait "$gatepid" 2>/dev/null
+rm -rf "$tmp"
+fi
 
 say "4d. while a lane is queued its request is filed; after it, the request is gone"
 new_fixture

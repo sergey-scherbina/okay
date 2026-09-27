@@ -143,11 +143,21 @@ until take_lock quiet; do
   sleep "$lock_poll"
   waited=$((waited + lock_poll))
 done
-trap 'release_lock; bw_unwant' EXIT
+trap 'release_lock; bw_unwant; bw_restore_gates' EXIT
 
 # quiet, AND no gate token live: a gate between two of its tasks burns
-# no CPU and reads quiet, but it is about to (bench-window)
+# no CPU and reads quiet, but it is about to (bench-window). With
+# demotion on (stage 2) the live gates are demoted instead of waited
+# for, and only the foreground has to be quiet.
 lane_quiet() {
+  if [ "$BW_DEMOTE" = on ]; then
+    bw_demote_gates
+    QUIET_FOREGROUND=1
+    quiet; _q=$?
+    QUIET_FOREGROUND=
+    G="(demoted)"
+    return $_q
+  fi
   quiet || return 1
   G=$(bw_live gates | tr '\n' ' ')
   [ -z "$G" ]

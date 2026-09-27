@@ -18,6 +18,9 @@ for shell in sh bash; do
   say "== under $shell"
   export OKAY_BENCH_DIR="$(mktemp -d -t bench-window-selftest)"
   export OKAY_BENCH_POLL=1
+  # cases 1-7 are the stage-1 protocol (a held gate WAITS); stage 2's
+  # demotion has its own cases, 9 and 10
+  export OKAY_BENCH_DEMOTE=off
   # a "gate": sources the library, enters, reports, leaves on EXIT
   gate() { "$shell" -c ". '$here/bench-window.sh'; bw_gate_enter; echo entered; ls \"\$OKAY_BENCH_DIR/gates\" | grep -qx \$\$ && echo token; trap bw_gate_leave EXIT; $1"; }
   deadpid() { d=99999; while kill -0 "$d" 2>/dev/null; do d=$((d + 1)); done; echo "$d"; }
@@ -107,13 +110,50 @@ kill_tree() { for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; ki
 QEOF
 sleep 150 & lane=$!
 : > "$fx/bench/want/$lane"
-( cd "$fx/wt" && OKAY_BENCH_DIR="$fx/bench" OKAY_BENCH_POLL=5 GATE_STALL_MIN=1 GATE_RECSCAN=0 \
+( cd "$fx/wt" && OKAY_BENCH_DEMOTE=off OKAY_BENCH_DIR="$fx/bench" OKAY_BENCH_POLL=5 GATE_STALL_MIN=1 GATE_RECSCAN=0 \
     GATE_SBT="$fx/scripts/fake-sbt-args.sh" sh "$fx/scripts/gate-retry.sh" "$fx/wt" "$fx/retry.log" 1 "okayJVM/testOnly A" > "$fx/retry.out" 2>&1 )
 rc=$?
 kill "$lane" 2>/dev/null; wait "$lane" 2>/dev/null
 ! grep -q "STALLED" "$fx/retry.log" && ok "not killed as STALLED" || bad "killed as STALLED: $(grep STALLED "$fx/retry.log")"
 grep -q "gate: GREEN" "$fx/retry.log" && ok "reached its verdict (GREEN)" || bad "no verdict (rc $rc): $(tail -5 "$fx/retry.log")"
 rm -rf "$fx"
+
+# 9-10. STAGE 2 (bench-window-demote-measure): a gate that meets a
+# benchmark DEMOTES itself to the background QoS class and runs on; the
+# lane demotes running gates and restores them. macOS only (taskpolicy).
+if command -v taskpolicy > /dev/null 2>&1; then
+  export OKAY_BENCH_DIR="$(mktemp -d -t bench-window-demote)" OKAY_BENCH_POLL=1 OKAY_BENCH_DEMOTE=on
+  mkdir -p "$OKAY_BENCH_DIR/want" "$OKAY_BENCH_DIR/gates"
+
+  say "9. demotion on: a gate meeting a queued benchmark enters AT ONCE, on the efficiency cores"
+  sleep 30 & lane=$!
+  : > "$OKAY_BENCH_DIR/want/$lane"
+  start=$(date +%s)
+  out=$(sh -c ". '$here/bench-window.sh'; bw_gate_enter; echo \"pri=\$(ps -o pri= -p \$\$ | tr -d ' ')\"; ls \"\$OKAY_BENCH_DIR/demoted\" | grep -qx \$\$ && echo marked; trap bw_gate_leave EXIT")
+  took=$(( $(date +%s) - start ))
+  [ "$took" -lt 5 ] && ok "did not wait (${took}s)" || bad "waited ${took}s: $out"
+  printf '%s\n' "$out" | grep -q "efficiency cores" && ok "said it runs on the efficiency cores" || bad "did not say: $out"
+  printf '%s\n' "$out" | grep -q "pri=4" && ok "its own priority is the background band (4)" || bad "not demoted: $out"
+  printf '%s\n' "$out" | grep -q marked && ok "marked for the restore" || bad "not marked: $out"
+  kill "$lane" 2>/dev/null; wait "$lane" 2>/dev/null
+  rm -f "$OKAY_BENCH_DIR/want/"* "$OKAY_BENCH_DIR/demoted/"*
+
+  say "10. the lane's side: a running gate's whole tree demoted, then restored"
+  sh -c 'perl -e "sleep 30" & wait' & g=$!
+  sleep 1
+  child=$(pgrep -P "$g" | head -1)
+  : > "$OKAY_BENCH_DIR/gates/$g"
+  sh -c ". '$here/bench-window.sh'; bw_demote_gates"
+  [ "$(ps -o pri= -p "$child" | tr -d ' ')" = 4 ] && ok "the gate's CHILD demoted (pri 4)" || bad "child pri $(ps -o pri= -p "$child")"
+  sh -c ". '$here/bench-window.sh'; bw_restore_gates"
+  [ "$(ps -o pri= -p "$child" | tr -d ' ')" -gt 4 ] && ok "restored (pri $(ps -o pri= -p "$child" | tr -d ' '))" || bad "still pri $(ps -o pri= -p "$child")"
+  [ -z "$(ls "$OKAY_BENCH_DIR/demoted" 2>/dev/null)" ] && ok "the mark is gone" || bad "mark left"
+  kill_tree_local() { for c in $(pgrep -P "$1"); do kill_tree_local "$c"; done; kill "$1" 2>/dev/null; }
+  kill_tree_local "$g"; wait "$g" 2>/dev/null
+  rm -rf "$OKAY_BENCH_DIR"
+else
+  say "9-10. skipped: no taskpolicy on this box (demotion is off there)"
+fi
 
 say ""
 if [ "$fail" -eq 0 ]; then say "bench-window-selftest: PASS"; else say "bench-window-selftest: FAIL"; fi

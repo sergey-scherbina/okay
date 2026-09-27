@@ -58,8 +58,17 @@
 # guard's script rather than by a kill.)
 quiet() {
   L=$(sysctl -n vm.loadavg | awk '{print int($2)}')
-  H=$(ps -eo pcpu,rss,args | grep "sbt.script" | grep -v grep | awk '$1 > 20 && $2 > 1000000' | wc -l | tr -d ' ')
   F=$(vm_stat | awk '/Pages free|Pages inactive|Pages speculative/ {gsub("\\.","",$NF); s+=$NF} END {print int(s*16384/1073741824)}')
+  # QUIET_FOREGROUND=1 (bench-window stage 2): the lane has demoted the
+  # gates to the background QoS class (PRI 4, the efficiency cores), so
+  # only a busy sbt still in the FOREGROUND counts, and the load average
+  # — which the demoted gates keep high — is not read
+  if [ "${QUIET_FOREGROUND:-}" = 1 ]; then
+    H=$(ps -eo pcpu,rss,pri,args | grep "sbt.script" | grep -v grep | awk '$1 > 20 && $2 > 1000000 && $3 > 4' | wc -l | tr -d ' ')
+    [ "$H" -eq 0 ] && [ "$F" -ge 10 ]
+    return
+  fi
+  H=$(ps -eo pcpu,rss,args | grep "sbt.script" | grep -v grep | awk '$1 > 20 && $2 > 1000000' | wc -l | tr -d ' ')
   [ "$H" -eq 0 ] && [ "$L" -lt 15 ] && [ "$F" -ge 10 ]
 }
 

@@ -68,7 +68,7 @@ When no benchmark is queued nothing changes: a gate's cost is one
 - [x] `--read` replays take no token (no sbt runs)
 - [x] both selftests green under `sh` and `bash`
 
-## Stage 2 — draining versus demoting (a measurement, not yet a decision; backlog `bench-window-demote-measure`)
+## Stage 2 — draining versus demoting: DEMOTING, measured and landed (bench-window-demote-measure, 2026-09-27)
 
 On Apple silicon `taskpolicy -b -p <pid>` moves a running process to
 the background QoS class, which the scheduler keeps on the efficiency
@@ -134,3 +134,33 @@ alone in 12 s on master and on this branch; filed as
 - P. J. Courtois, F. Heymans, D. L. Parnas. *Concurrent control with
   "readers" and "writers".* Communications of the ACM 14(10):667–668,
   1971. https://doi.org/10.1145/362759.362813
+
+**Stage 2, 2026-09-27 — demote instead of wait.** The experiment the
+stage-2 section named, with the JMH lane lock held throughout, on this
+10P+4E box, control lane `MergeBenchmark.okaySourceSingleDrain`:
+
+| beside | round 1 | round 2 |
+|---|---|---|
+| nothing | 44.8 ±2.4 | 44.2 ±1.1 |
+| 14 CPU burners, background QoS (`taskpolicy -b`) | **44.4 ±1.6** | **42.7 ±2.6** |
+| 14 CPU burners, as they come | 69.3 ±10.7 | 84.2 ±39.0 |
+| a real `okayJVM/test` gate, demoted / as it comes | 44.7 / 44.6 | 44.7 / 45.2 |
+
+A saturating load in the background class does not reach the lane, the
+same load in the foreground costs 1.5-1.9x; an ordinary gate (~3 of 14
+cores) does not reach it either way. By the stage's own rule ((b) within
+(a)'s error), the window DEMOTES: a gate that meets a queued or running
+benchmark demotes itself (`taskpolicy -b -p $$` — sbt and every fork
+inherit the class, checked) and runs on; the lane, before each attempt,
+demotes the gates already running (their whole trees) and judges quiet
+by the FOREGROUND only (`QUIET_FOREGROUND=1`: busy sbt at PRI > 4, no
+load average, which the demoted gates keep high); when the lane ends it
+puts every marked gate back (`taskpolicy -B`). Gates no longer wait at
+all while benchmarks run. `OKAY_BENCH_DEMOTE=off`, or a box without
+`taskpolicy`, is stage 1. Caveats, kept open: the burners do not press
+on memory bandwidth as a JVM gate does, and a demoted gate runs on 4
+cores — a test with a tight timeout inside it may feel that (the flake
+list is where it would show). Selftests: bench-window-selftest 9-10,
+jmh-lane-selftest 4e; the stage-1 cases now set `OKAY_BENCH_DEMOTE=off`.
+Rows in `src/jmh/history.d/…-bench-window-demote-measure.tsv`.
+
