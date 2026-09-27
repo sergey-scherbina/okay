@@ -720,6 +720,24 @@ object Schedulers {
           if woken < waiting && overflow > 0 then grow(waiting - woken)
         w.seenThiefEnd = end
         i += 1
+      // THE SUBMISSION QUEUE, by the same question
+      // (adaptive-outside-long-fibers-serial, 2026-09-27). A fork from
+      // outside wakes a worker only when nobody is awake, so eight long
+      // fibers forked from `main` woke ONE and the other seven waited in
+      // this queue while it worked: 560 ms for eight 70 ms fibers. Work
+      // there has waited a whole tick when the same task is still at its
+      // head — a worker taking tiny submissions changes the head
+      // constantly, so they stay with the workers already awake.
+      val head = submissions.peek()
+      if head != null && (head eq seenHead) then
+        val waiting = submissionsSize.get
+        val woken = wakeUpTo(waiting)
+        if woken < waiting && overflow > 0 then grow(waiting - woken)
+      seenHead = head
+
+    /** the submission queue's head at the monitor's last look: read and
+     * written by the monitor thread only */
+    private var seenHead: DriveTask[?] | Null = null
 
     /** unpark up to `k` distinct parked workers; how many were */
     private def wakeUpTo(k: Int): Int =
