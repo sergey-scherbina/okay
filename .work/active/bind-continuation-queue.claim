@@ -1,1 +1,0 @@
-bind-continuation-queue — PROTOTYPE: Bind holding a queue of continuations (type-aligned sequence), resume folds it at the head; A/B on the map-cost lanes (operator: продолжай)
