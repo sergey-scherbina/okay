@@ -214,7 +214,19 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
         c.close()
         ps.foreach(_.join())
         if !q.join(java.time.Duration.ofSeconds(5)) then
-          hung.add(s"runner $k round $round (finished=${c.finished})"): Unit
+          // A LATE consumer is not a LOST one (sentinel-single-consumer-
+          // lost-end, 2026-09-27). In a loaded whole-build JVM a runnable
+          // virtual thread can go unscheduled past 5 s, and that read as
+          // the lost wakeup this law exists to catch: 240 000 rounds alone
+          // under every core burning never hung. So the state is taken at
+          // 5 s: WAITING means parked on the channel, RUNNABLE means starved.
+          // The law fails only if the consumer still has not seen the end
+          // a minute later, and then the failure carries the diagnosis.
+          val at5s = s"thread=${q.getState} ${c match { case sc: SentinelChannel[?] => sc.debugState; case _ => s"finished=${c.finished}" }}"
+          val where = q.getStackTrace.take(12).mkString(" <- ")
+          if !q.join(java.time.Duration.ofSeconds(60)) then
+            hung.add(s"runner $k round $round: at 5 s $at5s; stack: $where"): Unit
+          else System.err.println(s"$n: runner $k round $round: the consumer saw the end LATE (>5 s, <65 s); at 5 s $at5s")
     val runners = (0 until 6).map(k => Thread.ofPlatform().start(() => runner(k)))
     runners.foreach(_.join())
     assert(hung.isEmpty, s"$n: a consumer never saw the end of a closed channel: ${hung.asScala.toList}")

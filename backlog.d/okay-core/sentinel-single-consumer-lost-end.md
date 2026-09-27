@@ -17,3 +17,19 @@
       (okay-gate.1ya5OvIuUv, a State-only change): "SentinelChannel: a
       consumer never saw the end of a closed channel: runner 2 round 190
       (finished=true)". The same shape as 2026-09-25.
+      WORKED 2026-09-27 (operator: flaky gates). NOT reproduced alone:
+      the law in a loop, 12 runners, 20 000 rounds each (240 000 closes
+      racing offers), every core burning beside it: 0 hangs. Both
+      sightings were inside a whole-build JVM with many suites at once,
+      and `finished=true` means the consumer had drained everything and
+      needed only the end mark. That fits a starved RUNNABLE virtual
+      thread as well as a lost wakeup. The law now tells them apart: at
+      5 s it records the consumer's thread state (WAITING = parked on
+      the channel, RUNNABLE = starved), its stack, and
+      `SentinelChannel.debugState` (closing/endPending/ended/marks/size/
+      receivers). It then waits up to 60 s more. LATE is logged to stderr
+      and does not fail. LOST fails, carrying the diagnosis. NEXT: when it
+      fails again, read the message. `endPending=true` with `size=0` and
+      thread WAITING is the placeEnd-never-retried path (close could not
+      seal a full ring and nothing re-tried after the last pop); anything
+      else points at the handoff.

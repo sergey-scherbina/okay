@@ -476,6 +476,13 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
   private[okay] def finished: Boolean =
     ended.get || (closing.get && ring.size <= marks.get)
 
+  /** the channel's own flags and counts, for a test that caught it
+   * hanging (sentinel-single-consumer-lost-end) */
+  private[okay] def debugState: String =
+    s"closing=${closing.get} endPending=${endPending.get} ended=${ended.get} partsSealed=${partsSealed.get} " +
+      s"metEnds=${metEnds.get} marks=${marks.get} size=${ring.size} hasReady=${ring.hasReady} " +
+      s"receivers=${receivers.size} reached=${reached.get != null} parts=${ring.parts}"
+
   private[okay] def cancelSend(cb: Accepted): Unit = ()
   private[okay] def cancelReceive(k: End => Unit): Unit = ()
 }
