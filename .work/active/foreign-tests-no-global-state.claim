@@ -1,0 +1,6 @@
+feature/foreign-tests-no-global-state 2026-09-27T19:12:48Z
+agent: claude-fable-5-1
+heartbeat: 2026-09-27T19:12:48Z
+status: in-progress
+done-so-far: reading Scope/Owned
+next: per-test jobs in the two suites; Stateful over Owned; Engine over Frames
