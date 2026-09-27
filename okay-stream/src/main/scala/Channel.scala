@@ -252,6 +252,13 @@ trait Channel[A] {
     // an implementation that can do better says so by overriding
     receiveAsync(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
 
+  /** up to `max` buffered elements NOW, without registering anything:
+   * what `receiveManyAsync` would answer in place, or null when it would
+   * have to register. The default knows nothing without registering;
+   * `SentinelChannel` answers its ring. A merge with other work asks
+   * this instead of registering (poll-then-park, specs/ready-merge.md) */
+  private[okay] def receiveManyNow(@annotation.unused max: Int): Either[Throwable, Chunk[A]] | Null = null
+
   /** up to `max` buffered elements as a program; an empty answer is
    * the end of the stream */
   private[okay] def receiveMany(max: Int): Chunk[A] ! Async =
@@ -514,9 +521,14 @@ extension [A](c: Channel[A])
     // what is buffered, parks for one when nothing is, and a failed
     // channel answers its failure once drained.
     type R = Writer % A + Async
+    // ONE registration and ONE poll per drained source, not per pull:
+    // both close over the channel alone. The poll is what lets a merge
+    // with other work look without registering (poll-then-park)
+    val reg: (Either[Throwable, Chunk[A]] => Unit) => (() => Unit) =
+      k => { c.receiveManyAsync(Drain.Batch)(k); () => () }
+    val now: () => (Either[Throwable, Chunk[A]] | Null) = () => c.receiveManyNow(Drain.Batch)
     def pull: Source[A] =
-      okay.effect[R, Chunk[A]](
-        Async.Await[Chunk[A]](k => { c.receiveManyAsync(Drain.Batch)(k); () => () })).flatMap: got =>
+      okay.effect[R, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
         if got.isEmpty then okay.pure(()) else tellFrom(got, 0)
     def tellFrom(got: Chunk[A], i: Int): Source[A] =
       okay.effect[R, Unit](Writer(got(i))).flatMap: _ =>
@@ -534,9 +546,11 @@ extension [A](c: Channel[A])
    * batches with nothing re-done to them.
    */
   def drainedChunks: Source[Chunk[A]] =
+    val reg: (Either[Throwable, Chunk[A]] => Unit) => (() => Unit) =
+      k => { c.receiveManyAsync(Drain.Batch)(k); () => () }
+    val now: () => (Either[Throwable, Chunk[A]] | Null) = () => c.receiveManyNow(Drain.Batch)
     def go: Source[Chunk[A]] =
-      okay.effect[Writer % Chunk[A] + Async, Chunk[A]](
-        Async.Await[Chunk[A]](k => { c.receiveManyAsync(Drain.Batch)(k); () => () })).flatMap: got =>
+      okay.effect[Writer % Chunk[A] + Async, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
         if got.isEmpty then okay.pure(())
         else okay.effect[Writer % Chunk[A] + Async, Unit](Writer(got)).flatMap(_ => go)
     okay.pure[Writer % Chunk[A] + Async, Unit](()).flatMap(_ => go)

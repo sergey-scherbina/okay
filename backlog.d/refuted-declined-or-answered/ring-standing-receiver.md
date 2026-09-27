@@ -20,4 +20,11 @@
       and `…-ring-standing-receiver-notify.tsv`; specs/source-merge-via-ready.md
       (the stage). REOPEN only with a design that changes the RELATIVE
       speed (the producer's side, or a merge that does not run caught
-      up), not the receive.
+      up), not the receive. ADDENDUM 2026-09-28 (ready-merge-chunk-forward):
+      "no receive-side design" was too strong by one — WHEN a side
+      registers was never varied. Registering only when the merge has
+      nothing else to do (poll-then-park, LANDED in `ReadyMerge`) took
+      the registration storm to zero and the fast forks to 188-197 us,
+      and still left a 2-4/10 tail at 215-247 against the shared
+      channel's 195-204: the residual is a caught-up consumer waiting on
+      the producers, in that entry.

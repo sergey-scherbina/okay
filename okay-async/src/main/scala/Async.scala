@@ -25,8 +25,16 @@ enum Async[+A] derives Effect:
   /** the universal, callback-form suspension: register a continuation
    * (timers, I/O completions, promise adapters) and answer with the
    * canceller that unregisters it. The callback's Left is the error
-   * channel: it fails the whole program at this operation. */
-  case Await[A](register: (Either[Throwable, A] => Unit) => (() => Unit)) extends Async[A]
+   * channel: it fails the whole program at this operation.
+   *
+   * `poll`, when given, answers what `register` would answer AT ONCE,
+   * or null when it would have to register. A runner that has other
+   * work to do asks it instead of registering (`ReadyMerge`,
+   * poll-then-park, specs/ready-merge.md); every other runner ignores
+   * it, and a wrapper that changes the answer (a guard, a recovery)
+   * drops it — an operation without a poll is registered, as always. */
+  case Await[A](register: (Either[Throwable, A] => Unit) => (() => Unit),
+                poll: (() => (Either[Throwable, A] | Null)) | Null = null) extends Async[A]
 
 /** The class IS the whole identity here: `Async` has no parameter but
  * its (erased) answer type, so splitting a row on it is a TOTAL test
@@ -100,7 +108,7 @@ trait Timer:
 given (using cb: CanBlock): Handler[Async] = new:
   def handle[A](e: Async[A]): A = e match
     case Async.Run(f) => f()
-    case Async.Await(reg) => cb.block(reg).fold(e => throw e, identity)
+    case Async.Await(reg, _) => cb.block(reg).fold(e => throw e, identity)
 
 /**
  * A fiber: a computation already running on its own thread of
@@ -157,7 +165,7 @@ object Async {
     relay[A, A, Async, F](prog)(pure(_)):
       [X, Y] => e => e match
         case Run(f) => Cont.Pure(f())
-        case Await(reg) => Cont.Pure(cb.block(reg).fold(e => throw e, identity))
+        case Await(reg, _) => Cont.Pure(cb.block(reg).fold(e => throw e, identity))
 
   /**
    * The universal terminal: drive the tree through callbacks — Run
@@ -297,7 +305,7 @@ object Async {
     @tailrec private def discontinue(p: Free[Async, ?]): Unit = p match
       case Free.Bind(a, _) => discontinue(a)
       case Free.Inject(Run(d: Discontinue)) => d.discontinue()
-      case Free.Inject(Await(d: Discontinue)) => d.discontinue()
+      case Free.Inject(Await(d: Discontinue, _)) => d.discontinue()
       case _ => ()
 
     /** one operation: the continuation to drive next when the answer
@@ -309,7 +317,7 @@ object Async {
           case m: ScopeMark => marked(m)
           case _ => ()
         k(f())
-      case Await(reg) =>
+      case Await(reg, _) =>
         // the cell holds the answer, the "moved on" marker, or nothing:
         // typed, so what comes out is the operation's Either
         val cell = AtomicReference[Got[X] | Moved.type | Null](null)

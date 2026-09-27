@@ -305,7 +305,8 @@ same material with the measurements attached.
   is two fibers meeting, and pacing. READINESS alone it can:
   `Source.mergeReady` (specs/ready-merge.md) steps a ring of sources
   on one thread of control, an `Async.Await` being "not ready yet",
-  with no channel at all. `merge` feeds one channel from two sources
+  with no channel at all; an Await that carries a `poll` is asked,
+  not registered, while the merge has other work (poll-then-park). `merge` feeds one channel from two sources
   by readiness, a fiber per source; `buffer` runs a producer ahead of
   its consumer. `fail` records a producer's error WITHOUT closing (the
   other source is still feeding) and `close` then ends the stream

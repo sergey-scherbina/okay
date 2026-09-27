@@ -287,3 +287,92 @@ The control (`okaySourceSingleDrain`, one source, no merge) read 44.31
 Before this, over an hour of `jmh-lane.sh` attempts (101 tries) never
 got the lane lock and a quiet box at once; the protocol that made the
 window is `bench-window`.
+
+## Stage: poll, then park (ready-merge-chunk-forward, 2026-09-27)
+
+WHY. On the chunked ring road (merge-chunked-via-ready, reverted) the
+forks were bimodal, and two receive-side fixes were refuted before the
+cause was counted: `operate`'s `Await` arm REGISTERS a side the moment
+its channel is empty, whatever the other side holds. Counted on that
+road (`src/jmh/history.d/…-ready-merge-chunk-forward-probe.tsv`,
+`okayChunked`, 10 forks): a slow fork makes ~205 registrations per op,
+160 of them while another side was in the ring or `woken`, and 99 of
+them are answered asynchronously — a hand-over of ONE chunk on the
+producer's thread each; a fast fork registers 85 times, 78 with work,
+16 async. The shared channel of today's chunked road makes ~1 per op,
+because one queue registers only when BOTH producers are behind. The
+merge's own parks are 8 and 1.2 per op: the registrations were never
+needed to park on. So: a side that finds nothing while the merge has
+other work is not registered — it is POLLED again later, and registered
+only when the ring runs dry and the poll still finds nothing.
+
+HOW. A registration function that can be asked without registering is
+a `Pollable[X]` (`poll(): Either[Throwable, X] | Null`, null = nothing
+now) — the `Discontinue` idiom, a marker on the function the source
+already passes. `Channel.drained`/`drainedChunks` pass one over a new
+non-registering `receiveManyNow(max)` (`SentinelChannel`: the first
+half of `receiveManyAsync`, which now calls it; the `Channel` default
+answers null, so every other channel behaves as before). In the merge,
+an `Await` whose registration is pollable, met while `size > 0` or
+`woken` is non-empty, goes to an `idle` set with its operation and
+continuation held typed (`Held[X]`, no cast); idle sides are polled
+when a turn passes (the streak ends — once per quantum, which keeps
+`mergeReady`'s round-robin at its own granularity) and when the ring
+runs dry; an idle side still empty when the ring is dry is registered
+then, as today, and the merge parks as today. `PollSpins` (a written
+bound) re-polls a dry ring that many times before registering, so a
+producer about to send is met by a poll and not by a hand-over.
+
+- [x] a pollable side that finds nothing while another source is ready
+      is not registered (`onRegister`, the test hook, never fires), and
+      its later data is taken by a poll
+- [x] a pollable side is registered only when the ring is dry and its
+      poll found nothing (the hook fires with the ready side's three
+      elements already consumed); the merge then parks ONCE, as before
+- [x] fairness kept: `mergeReady` (quantum 1) over a ready source and a
+      pollable side whose data arrives later interleaves the side's
+      element within TWO turns of its arrival — the poll runs when a
+      turn passes, before that turn's element is consumed, so data the
+      consumer itself produces is seen at the next turn's end
+- [x] an idle side whose poll answers the end ends like any; one whose
+      poll answers a failure drops out — drain, then fail
+- [x] cancel: an idle side holds no registration; the existing cancel
+      laws (non-pollable `Gate`s) are unchanged, and a pollable side is
+      registered — hence cancellable — before the merge parks
+- [x] a non-pollable registration (any other channel, a timer) is
+      registered as before — the 15 earlier laws unchanged
+- [x] THE REGIME CHECK: `okayChunked` k=16, 10 forks, chunked ring road:
+      registrations-with-work 0.0 in every fork — but forks above 225 us
+      REMAIN (Results), so the bar is not met
+- [x] the elementwise road (`Source.merge`, `MergeCapBenchmark` cap
+      64/256/1024) takes the same path: 1.01x / 0.96x / 0.98x against
+      registering as before, same JVM code, 5 forks per arm alternating
+- [ ] stage 2 of specs/source-merge-via-ready.md: NOT RUN — the bar
+      above (no fork > 225 us, no arm slower than the shared channel)
+      was not met, twice (backlog: ready-merge-chunk-forward, refuted)
+
+**Results (2026-09-28).** Rows in
+`src/jmh/history.d/2026-09-27T201816Z-ready-merge-chunk-forward-probe.tsv`.
+On the chunked ring road, `okayChunked` k=16, 10 forks per arm:
+
+| arm | slow forks (>225 us) | reg / with-work / wakes / parks per op, slow fork | mean |
+|---|---|---|---|
+| one-shot registration (before) | 3/10 at 252-257 | 205 / 160 / 99 / 8 | 212.9 |
+| poll-then-park, PollSpins 0 | 4/10 at 235-255 | 28-45 / 0.0 / 19-31 / 9-14 | 213.3 |
+| PollSpins 100 | 2-4/10 at 215-247 | 2.5-3.5 / 0.0 / 2.5-3.3 / 1.1-2.0 | 205-211 |
+| PollSpins 1000 | 1-3/10 at 230-244 | 0.0-1.5 / 0.0 / 0.0-1.3 / 0.0-0.6 | 203.6-212.5 |
+| shared channel (control, same session) | 0/10, 195-204 | — | 200.0 ± 2.0 |
+
+The registration storm is gone and the fast ring forks (188-197)
+beat every shared-channel fork; the tail is a caught-up consumer
+waiting on the producers (2000-3000 polls per op against ~300),
+plus plain fork variance (one 228-us fork at 570 polls). REFUTED by
+a counter: the merge living on the sending producer's thread after a
+park (0.0 of 4000 elements per op on a virtual thread, every fork).
+`onSpinWait` or `Thread.yield` between polls narrowed the tail
+(4/10 → 2/10) within noise and did not land: `PollSpins = 100` with
+a plain poll is the frozen shape, cross-platform. The elementwise
+road, `MergeCapBenchmark`, poll-then-park against
+`-Dokay.merge.poll=off` in the same JVM: cap 64 84.4 vs 83.6, cap
+256 65.9 vs 68.6, cap 1024 60.0 vs 61.1 — kept.
+

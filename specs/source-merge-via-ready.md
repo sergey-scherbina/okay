@@ -247,3 +247,18 @@ backlog without a candidate fix.
 channel per side plus `Writer.expand`; BAR: no arm slower than the
 shared channel at any k on `ChunkFlushBenchmark`, no bimodality; then
 the shared-channel chunked road is deleted.
+
+**Stage 2 NOT RUN a second time (ready-merge-chunk-forward,
+2026-09-28).** The third attempt on the receive side found what the
+first two had not varied — WHEN a side registers — and landed it as
+poll-then-park in `ReadyMerge` (specs/ready-merge.md, the stage and
+its Results): registrations made while the other side had work went
+from 160 per op to 0.0, wakes from 99 to 2, and the fast ring forks
+(188-197 us) beat every shared-channel fork. The tail did not go:
+2-4 of 10 forks at 215-247 in every configuration against the shared
+channel's 195-204 (same JVM code, same session, 0/10), mean 205-211
+against 200.0 ± 2.0. The residual is a caught-up consumer waiting on
+the producers — the ring's consumer is cheaper than this road's and
+catches up; this road's never does. The chunked roads stay here.
+Backlog: `ready-merge-chunk-forward` (refuted, with the reopen
+condition).

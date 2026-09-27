@@ -1017,6 +1017,26 @@ val offCore = Channel.buffer(64)(LazyList.range(0, 1000)).drained
 val both = offCore mergeReady Source.of(List(-1, -2))
 ```
 
+A source that is not ready is not registered the moment it says so.
+Since poll-then-park (specs/ready-merge.md, the stage) an `Async.Await`
+may carry a second function, `poll`, that answers at once what the
+registration would answer or says "nothing yet" without registering
+anything — `Channel.drained` passes one over the channel's ring — and
+the merge, while it has other sources to step, only POLLS such a side:
+when a turn passes, and when the ring runs dry, a hundred more times;
+it registers the side, and then parks, only when every poll came back
+empty. The reason is measured rather than stylistic: on a chunked
+two-sided merge a slow fork registered a side 160 times per op while
+the other side still had work, each registration turning the
+producer's next send into a hand-over on the producer's own thread,
+and the counter went to zero with the change (ready-merge-chunk-forward).
+This is the spin-then-block of Karlin, Manasse, McGeoch and Owicki
+("Competitive randomized algorithms for non-uniform problems",
+Algorithmica 1994): spin for about the cost of a block before blocking,
+and no strategy that decides without seeing the future does better
+than twice the optimum — here the "spin" is a poll of two volatile
+reads and the "block" is a registration plus a wake-up.
+
 `source merge source` IS that composition since
 source-merge-via-ready: each side buffered onto a fiber of its own,
 joined by `mergeReady` — one merge mechanism, 0.73-0.93x of the

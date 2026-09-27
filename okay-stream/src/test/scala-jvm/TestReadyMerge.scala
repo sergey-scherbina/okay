@@ -246,6 +246,87 @@ class TestReadyMerge extends munit.FunSuite {
     assertEquals(pipe(m)(sum(0)).runWith, 36)
   }
 
+  // ── poll, then park (specs/ready-merge.md, the stage) ─────────────
+  // A `Channel.drained` side is POLLABLE: its Await carries a poll that
+  // answers the ring without registering. These laws hold the channel
+  // in the test's hand — sends and the close happen from inside the
+  // consumer, at a known element — so nothing depends on timing.
+
+  test("a pollable side that finds nothing while another source is ready is not registered") {
+    val ch = Channel[Int](16)
+    val registered = AtomicInteger(0)
+    val busy = Source.of(LazyList.range(0, 1000))
+    var out = Vector.empty[Int]
+    ReadyMerge(Seq(ch.drained, busy), onRegister = () => registered.incrementAndGet(): Unit)
+      .runForeach { x =>
+        okay.async {
+          out :+= x
+          // the busy side is spent: the ring runs dry, and the side's
+          // data is there for the POLL that follows
+          if x == 999 then { (1 to 5).foreach(i => assert(ch.offer(-i))); ch.close() }
+        }
+      }.runWith
+    assertEquals(out, Vector.range(0, 1000) ++ Vector(-1, -2, -3, -4, -5))
+    assertEquals(registered.get, 0)
+  }
+
+  test("a pollable side is registered only once the ring ran dry") {
+    val ch = Channel[Int](16)
+    val registered = CountDownLatch(1)
+    val seen = AtomicInteger(0)
+    // read on the merge's own thread AT the registration, not after it
+    @volatile var seenAtRegister = -1
+    @volatile var out = Vector.empty[Int]
+    val t = Thread.ofVirtual().start { () =>
+      ReadyMerge(Seq(ch.drained, list(1, 2, 3)),
+        onRegister = () => { seenAtRegister = seen.get; registered.countDown() })
+        .runForeach(x => okay.async { seen.incrementAndGet(); out :+= x }).runWith
+    }
+    registered.await()
+    // registered AFTER the ready side was consumed, not at the first look
+    assertEquals(seenAtRegister, 3)
+    assert(ch.offer(7)); ch.close()
+    t.join()
+    assertEquals(out, Vector(1, 2, 3, 7))
+  }
+
+  test("fairness kept: a pollable side's element arriving mid-run is told within two turns of its arrival") {
+    val ch = Channel[Int](16)
+    var out = Vector.empty[Int]
+    ReadyMerge(Seq(ch.drained, Source.of(LazyList.range(0, 100)))).runForeach { x =>
+      okay.async {
+        out :+= x
+        if x == 10 then assert(ch.offer(-42))
+        if x == 99 then ch.close()
+      }
+    }.runWith
+    assertEquals(out.filter(_ != -42), Vector.range(0, 100))
+    // offered while 10 is being CONSUMED, after that turn's poll; seen by
+    // the poll when 11's turn passes, told after 12 — two turns, not one
+    assert(out.indexOf(-42) <= out.indexOf(10) + 3, out.take(15).toString)
+  }
+
+  test("an idle side whose poll answers the end ends; one whose poll answers a failure drops out — drain, then fail") {
+    val busy = Source.of(LazyList.range(0, 1000))
+    val ch = Channel[Int](16)
+    var out = Vector.empty[Int]
+    ReadyMerge(Seq(ch.drained, busy)).runForeach { x =>
+      okay.async { out :+= x; if x == 500 then ch.close() }
+    }.runWith
+    assertEquals(out, Vector.range(0, 1000))
+
+    val boom = RuntimeException("boom")
+    val ch2 = Channel[Int](16)
+    var out2 = Vector.empty[Int]
+    val e = intercept[RuntimeException] {
+      ReadyMerge(Seq(ch2.drained, busy)).runForeach { x =>
+        okay.async { out2 :+= x; if x == 500 then { ch2.fail(boom); ch2.close() } }
+      }.runWith
+    }
+    assert(e eq boom)
+    assertEquals(out2, Vector.range(0, 1000))
+  }
+
   test("a merged source is a value: running it twice merges twice") {
     val m = Source.mergeReady(list(1, 2), list(3))
     assertEquals(collect(m), Vector(1, 3, 2))

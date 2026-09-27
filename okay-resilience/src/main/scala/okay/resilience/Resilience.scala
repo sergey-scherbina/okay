@@ -118,7 +118,7 @@ object Attempt:
         case Right(x) => continueIn(k, x)
         case Left(t) => Return(Left(t))
       }
-    case Async.Await(reg) =>
+    case Async.Await(reg, _) =>
       okay.effect[F + Async, Either[Throwable, X]](
         Async.Await(cb => reg(r => cb(Right(r))))).flatMap {
         case Right(x) => continueIn(k, x)
@@ -133,7 +133,7 @@ object Attempt:
           case Right(x) => continue(k, x)
           case Left(t) => Return(Left(t))
         }
-    case Async.Await(reg) =>
+    case Async.Await(reg, _) =>
       okay.effect[Async, Either[Throwable, X]](Async.Await(cb => reg(r => cb(Right(r)))))
         .flatMap {
           case Right(x) => continue(k, x)

@@ -72,7 +72,7 @@ object AsyncFailing extends FailingLow:
       val release = Release(onFailure)
       e match
         case Async.Run(f) => Async.Run(GuardedRun(f, release))
-        case Async.Await(reg) => Async.Await(GuardedAwait(reg, release))
+        case Async.Await(reg, _) => Async.Await(GuardedAwait(reg, release))
 
 /**
  * A GUARDED OPERATION'S RELEASE, REACHABLE WITHOUT RUNNING IT

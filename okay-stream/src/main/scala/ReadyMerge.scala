@@ -32,7 +32,11 @@ private[okay] object ReadyMerge:
    * before its turn passes. 1 (`mergeReady`) is the strict round-robin
    * its law states; `Source.merge`, which promises no order between its
    * sides, passes a batch's worth (source-merge-via-ready, Results). */
-  def apply[A](sources: Seq[Source[A]], onPark: () => Unit = () => (), quantum: Int = 1): Source[A] =
+  /** `onRegister` runs each time the merge registers a SIDE's callback —
+   * a test's way to know a pollable side was registered, and when
+   * (poll-then-park: only once the ring ran dry) */
+  def apply[A](sources: Seq[Source[A]], onPark: () => Unit = () => (), quantum: Int = 1,
+               onRegister: () => Unit = () => ()): Source[A] =
     // the state is built per RUN, inside the program: a Source is a
     // value, and running it twice must merge twice
     // the merge OPENS A CANCEL SCOPE with its drive first, and closes it
@@ -41,14 +45,23 @@ private[okay] object ReadyMerge:
     // sources it has parked even while its code sits inside the
     // consumer's continuation and it never parks itself
     okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
-      val r = new Run[A](sources, onPark, quantum)
+      val r = new Run[A](sources, onPark, quantum, onRegister)
       okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(r.scope))).flatMap(_ => r.again())
+
+  /** POLL, THEN PARK (specs/ready-merge.md, the stage): how many more
+   * times a dry ring polls its idle sides before registering them, so
+   * a producer about to send is met by a poll and not by a hand-over
+   * on its own thread. 100 measured (ready-merge-chunk-forward): at 0
+   * the chunked ring road's slow forks parked 9-14 times per op; at
+   * 100 every fork parks ~1; 1000 never parked and was no faster. A
+   * poll is two volatile reads. */
+  private final val PollSpins = 100
 
   /** a registration's answer, when it came before the drive moved on */
   private final class Answer[X](val r: Either[Throwable, X])
   private object Moved
 
-  private final class Run[A](sources: Seq[Source[A]], onPark: () => Unit, quantum: Int):
+  private final class Run[A](sources: Seq[Source[A]], onPark: () => Unit, quantum: Int, onRegister: () => Unit):
     private type R = Writer % A + Async
     private val n = sources.length
 
@@ -99,11 +112,55 @@ private[okay] object ReadyMerge:
     private var last = -1
     private var streak = 0
 
+
     private def pop(): Int =
       val i = ring(head)
       head = if head == n - 1 then 0 else head + 1
       size -= 1
       i
+
+    /** an IDLE side (poll-then-park): an Await whose registration can
+     * be asked without registering, met while the merge had other work.
+     * Held TYPED, so the poll's answer meets the continuation without
+     * a cast; polled when a turn passes and when the ring runs dry,
+     * registered only when the ring is dry and the poll found nothing */
+    private final class Held[X](val i: Int, reg: (Either[Throwable, X] => Unit) => (() => Unit),
+                                p: () => (Either[Throwable, X] | Null), k: X => Source[A]):
+      /** true when the poll answered — the side is out of `idle` either
+       * way: back in the ring, or dropped (drain, then fail) */
+      def poll(): Boolean =
+        try
+          val r = p()
+          if r == null then false
+          else
+            r match
+              case Right(x) => slot(i) = k(x); pushBack(i)
+              case Left(e) => failed(e)
+            true
+        catch case e: Throwable => { failed(e); true }
+      def register(): Unit = try registerNow(i, reg, k) catch case e: Throwable => failed(e)
+
+    private val idle = new Array[Held[?]](math.max(n, 1))
+    private var idleN = 0
+
+    /** every idle side asked once; an answered one leaves `idle` */
+    private def pollIdle(): Unit =
+      var j = 0
+      while j < idleN do
+        if idle(j).poll() then
+          idleN -= 1
+          idle(j) = idle(idleN)
+        else j += 1
+
+    /** the ring is dry: poll what is idle (`PollSpins` more times), and
+     * register what is still empty — as many as it takes for the ring
+     * to hold something, or all of them, and then the merge parks */
+    private def settleIdle(): Unit =
+      var s = 0
+      while idleN > 0 && size == 0 && s <= PollSpins do { pollIdle(); s += 1 }
+      while idleN > 0 && size == 0 do
+        idleN -= 1
+        idle(idleN).register()
 
     private def drainWoken(): Unit =
       var x = woken.poll()
@@ -137,6 +194,7 @@ private[okay] object ReadyMerge:
     @tailrec private def step(): Unit ! R =
       import !.*
       drainWoken()
+      if size == 0 && idleN > 0 then settleIdle()
       if size == 0 then
         if live > 0 then park()
         else
@@ -177,7 +235,12 @@ private[okay] object ReadyMerge:
                     if i != last then { last = i; streak = 0 }
                     streak += 1
                     if streak < quantum then pushFront(i)
-                    else { streak = 0; pushBack(i) }
+                    else
+                      streak = 0
+                      pushBack(i)
+                      // a turn passed: the idle sides get their look,
+                      // so a side with data waits at most one turn
+                      if idleN > 0 then pollIdle()
                   catch case e: Throwable => failed(e)
                   inj.flatMap(resumeMerge) }
             { g =>
@@ -197,7 +260,18 @@ private[okay] object ReadyMerge:
       case Async.Run(f) =>
         slot(i) = k(f())
         pushFront(i)
-      case Async.Await(reg) =>
+      case Async.Await(reg, poll) =>
+        // a pollable side is never registered from here: it is polled
+        // when a turn passes, and on a dry ring `settleIdle` polls it
+        // once more and registers it only then
+        if poll != null then
+          idle(idleN) = Held(i, reg, poll, k)
+          idleN += 1
+        else registerNow(i, reg, k)
+
+    private def registerNow[X](i: Int, reg: (Either[Throwable, X] => Unit) => (() => Unit),
+                               k: X => Source[A]): Unit =
+        onRegister()
         val cell = AtomicReference[Answer[X] | Moved.type | Null](null)
         val c = reg { r =>
           if !cell.compareAndSet(null, Answer(r)) then

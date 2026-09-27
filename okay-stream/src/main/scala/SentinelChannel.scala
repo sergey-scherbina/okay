@@ -407,8 +407,24 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
    */
   private[okay] override def receiveManyAsync(max: Int)
                                              (k: Either[Throwable, Chunk[A]] => Unit): Unit =
+    val now = receiveManyNow(max)
+    if now != null then k(now)
+    // nothing but voids, or nothing at all: the honest single
+    // receive, its one element handed over as a chunk of one
+    else receiveAsync(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
+
+  /** the bulk receive's first half — what is buffered, answered without
+   * registering; null when the ring holds nothing (or only voids, which
+   * are stepped over here as there). `receiveManyAsync` is this and then
+   * the single receive; a merge with other work is this alone
+   * (poll-then-park, specs/ready-merge.md) */
+  private[okay] override def receiveManyNow(max: Int): Either[Throwable, Chunk[A]] | Null =
     val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
-    if ended.get then k(endAnswer.map(_ => Chunks.emptyChunk[A]))
+    if ended.get then endAnswer.map(_ => Chunks.emptyChunk[A])
+    // a POLL on an empty ring is two reads and no allocation: a merge
+    // polls its idle sides once per turn (poll-then-park), and the
+    // buffer below was 272 bytes of garbage per empty look
+    else if !buffer.hasReady && reached.get == null then null
     else
       val room = if max < buffer.capacity then max else buffer.capacity
       val out = ChunkBuf[A](room)
@@ -424,18 +440,16 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
         var i = 0
         while i < took do { wakeSender(); i += 1 }
         placeEnd()
-        k(Right(out.take(n)))
+        Right(out.take(n))
       else
         val m = reached.get
-        if m != null then k(endReached().map(_ => Chunks.emptyChunk[A]))
+        if m != null then endReached().map(_ => Chunks.emptyChunk[A])
         else
           if took > 0 then
             var i = 0
             while i < took do { wakeSender(); i += 1 }
             placeEnd()
-          // nothing but voids, or nothing at all: the honest single
-          // receive, its one element handed over as a chunk of one
-          receiveAsync(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
+          null
 
   def offer(a: A): Boolean =
     val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
