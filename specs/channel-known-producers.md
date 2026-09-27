@@ -188,3 +188,62 @@ buys the exact per-source order as a law instead of an exception.
 The question this leaves for `Channel.apply` (out of scope) is the
 mirror image: growing's whole advantage is a producer count it does
 not know, and the actor mailbox is where that is real.
+
+**The ring's head and tail, padded apart (ring-head-tail-padding,
+2026-09-27).** `Ring` kept `head` and `tail` as two bare `AtomicLong`s
+allocated one after the other. Each is 24 bytes, so both sat on one
+cache line: every pop's head move invalidated the line that every
+push's tail CAS reads, and every push invalidated it for the popper.
+They are now `Ring.Padded`, an `AtomicLong` subclass carrying fifteen
+longs. A subclass's fields are laid out after its superclass's, and
+`Unsafe.objectFieldOffset` on JDK 26 confirmed it: the value is at 16,
+the pads at 24..136, and the object is 144 bytes. Fifteen longs rather
+than the textbook seven because this box's line is 128 bytes
+(`hw.cachelinesize`, Apple silicon). `@Contended` was not used: it is
+ignored outside the JDK unless `-XX:-RestrictContended` is set.
+
+How it was measured. Two worktrees, A = master c60ec26e7 and B = A
+plus the padding. Each lane ran as its own `jmh-lane.sh` invocation,
+5 forks each, arms alternating A/B/A/B, and each arm is the median of
+its 10 forks. Rows are in
+`src/jmh/history.d/2026-09-27T103356Z-ring-head-tail-padding.tsv`.
+All figures are in us/op.
+
+| lane | A (bare) | B (padded) | B/A | fork ranges |
+|---|---|---|---|---|
+| `oneRing_elem` p=1 | 443.9 | **137.2** | 0.31 | 352-478 vs 128-152 |
+| `oneRing_elem` p=4 | 926.3 | **721.9** | 0.78 | 896-1057 vs 691-795 |
+| `oneRing_elem` p=16 | 3 309 | **2 358** | 0.71 | 3247-3422 vs 2319-2445 |
+| `oneRing_chunk` p=16 | 3 167 | 3 044 | 0.96 | no verdict, see below |
+| `BufferPushBenchmark.ring_fillDrain` (one thread) | 8.17 | 8.16 | 1.00 | control |
+
+What the numbers say.
+
+- **The hypothesis was 5-15% on contended producers. The effect is
+  larger, and it is largest where the item expected none.** At one
+  producer the tail is not contended among producers at all. But the
+  producer and the consumer are two threads writing two words on one
+  line, once per element each: this is the classic SPSC ping-pong, and
+  padding removed two thirds of the lane's time. At four and sixteen
+  producers the tails still fight each other over one word, and the
+  padding removes only the consumer's half of the traffic (-22%, -29%).
+  In every elementwise lane the fork ranges of the two arms do not
+  overlap.
+- **The single-thread control is flat** (8.17 against 8.16): one core
+  touches both words, nothing is shared, and the larger object costs
+  nothing a benchmark can see.
+- **The chunked lane gives no verdict, and it was never the control it
+  was filed as.** Its producers still `sendBlocking` one element at a
+  time; only the consumer takes chunks. So the tail is exactly as
+  contended as in the elementwise lane, and it is not "one CAS per
+  batch". Arm B's forks came out bimodal (2 384 to 4 242), and
+  `jmh-lane.sh` discarded all ten of B's attempts for error above 10%
+  while A stayed within it. The medians are 3 044 against 3 167. The
+  bimodality looks like the regime switch that ring-chunk-bimodal-forks
+  found on the merge road (producers ahead in batches, or a consumer
+  that has caught up and is handed one element per wake). It is
+  recorded here as unexplained, not claimed.
+- Growing.Counter's seven longs clear a 64-byte line, not this box's
+  128-byte one, and AdaptiveFifo's `Cells` are bare `AtomicInteger`s
+  allocated back to back. Both are filed, unmeasured, as backlog
+  `stream-padding-128-byte-lines`.

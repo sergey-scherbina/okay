@@ -424,6 +424,14 @@ channel — minimum of several rounds, us:
 | 4 producers, 1 consumer (elementwise) | 877 | **472** |
 | 4 producers, 4 consumers | 2 305 | **893** |
 
+The ring's elementwise row has moved since (2026-09-27,
+ring-head-tail-padding). The ring's head and tail used to share one
+cache line, and padding them apart took `oneRing_elem` at four
+producers from 926 to 722 us, at sixteen from 3 309 to 2 358, and at
+one producer from 444 to 137. Those are medians of ten forks, A/B on
+the same afternoon. The chunked rows above did not move beyond noise.
+See specs/channel-known-producers.md, Results.
+
 The one-producer row is the buffer's PRICE, and it was measured
 against rather than argued away: five causes were tried and refuted
 (the part lookup, the consumer-side thread-local, the extra layer of

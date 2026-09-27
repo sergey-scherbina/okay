@@ -94,8 +94,14 @@ final class Ring[A](requested: Int, singleConsumer: Boolean = false) extends Buf
   // exactly the cast this design refuses)
   private val slots = AtomicReferenceArray[A | Null](capacity)
   private val stamp = AtomicLongArray(capacity)
-  private val head = AtomicLong(0L)   // next position to pop
-  private val tail = AtomicLong(0L)   // next position to push
+  // PADDED apart (ring-head-tail-padding): two bare AtomicLongs
+  // allocated back to back share one cache line, so every head move
+  // invalidates the line every pusher's tail CAS is reading. Measured
+  // (specs/channel-known-producers.md, Results): elementwise producers
+  // into one ring read 3.2x faster at one producer, 1.3x at four,
+  // 1.4x at sixteen; a single thread pushing and popping, unchanged
+  private val head = Ring.Padded()   // next position to pop
+  private val tail = Ring.Padded()   // next position to push
 
   // a slot's stamp starts at its own index: the state a push at that
   // position is waiting for
@@ -308,4 +314,22 @@ final class Ring[A](requested: Int, singleConsumer: Boolean = false) extends Buf
       sink(a.nn)
       j += 1
     n
+}
+
+object Ring {
+
+  /**
+   * An `AtomicLong` that owns the cache line its value sits on.
+   *
+   * A subclass's fields are laid out AFTER its superclass's, so the
+   * value stays at the front and the fifteen longs follow it: probed
+   * on JDK 26 with `Unsafe.objectFieldOffset`, value at 16, pads at
+   * 24..136, a 144-byte object. Fifteen and not the textbook seven
+   * because this machine's line is 128 bytes (`hw.cachelinesize`,
+   * Apple silicon); seven only clears a 64-byte one. `@Contended`
+   * would do it without the fields but is ignored outside the JDK
+   * unless `-XX:-RestrictContended` is set.
+   */
+  private[okay] final class Padded extends AtomicLong(0L):
+    var p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15: Long = 0L
 }
