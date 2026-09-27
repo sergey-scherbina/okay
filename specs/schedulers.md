@@ -487,3 +487,48 @@ door; TestSchedulerLaws, TestOwnMonitor and TestParkInterruptOrder hold
   on a `watched` scheduler is the one place it could still show, and it
   was not measured. The global counter stays until a lane shows it.
 
+
+## The default: loom or adaptive (2026-09-27, scheduler-default-decision)
+
+The question: should `Schedulers.auto` hand `adaptive` rather than `loom`
+to every `spawn`/`par`/`supervised` user on a JVM that has virtual
+threads? The case FOR is the fork/join rows (five-way spawn/join 472
+ops/s on the default against 14 486 on `own`; §4 24.0 against kyo's
+18.5). The case AGAINST is the bound: Loom's blocking is free and
+unbounded, `adaptive`'s is `n + overflow` threads, and a fiber blocked in
+a third-party call gets the monitor's and stuck-check's latency, not
+managed blocking's.
+
+### How it is measured
+- ONE switch for the arms: `-Dokay.scheduler=adaptive` (the `given`'s own
+  override) through JMH's `-jvmArgsAppend`, so every lane is the SAME
+  code and only the default differs — a matched pair by construction.
+  `okay.AbSwitchProbe` proves the property reaches a forked JVM. The
+  five-way harness pairs its `okay` runtime (the default) with
+  `okayAdaptive` (`Schedulers.adaptive.build`, what the flip would hand
+  out); the Wrocław lane is `runMain` forked with and without the
+  property.
+- Lanes: §4 (100 fibers, outside and inside), §4b (10 000, outside and
+  inside — `forkJoin10k_okayInside` is added on the default for the
+  pair; work=100 and 10 000), cancel 1 000 parked, `DirectParallelBenchmark
+  .parallel8`, five-way (spawn/join, workers work=0/64, TCP blocking,
+  runtime entry), Wrocław okay 8 fibres.
+- 2 forks, 2 alternating rounds (loom, adaptive, loom, adaptive), each
+  lane its own `scripts/jmh-lane.sh`; more only where the verdict hinges.
+- Expected before measuring: `adaptive` wins every fork/join-inside lane
+  by 2x or more and cancel by ~1.5x (§4b's `own` rows); it LOSES blocking
+  TCP (five-way 2026-09-26: 51 against 117, the 28-thread ceiling); §4
+  outside, `parallel8` and Wrocław (a few long CPU fibers forked from
+  OUTSIDE, which land in the submission queue) are unknown, and the
+  Wrocław row must not move down.
+
+### Behavior
+- [ ] the table below, every row a matched pair
+- [ ] laws under `adaptive` as the given: TestSchedulerLaws,
+      TestAdaptiveScheduler, TestManagedBlocking, TestReadyMerge
+- [ ] THE BOUND, as a law: `n + overflow + 1` fibers blocked at once on
+      the library's own door, with the fiber that would release them
+      forked after — on `loom` they all finish; on `adaptive` the bound is
+      exactly `n + overflow` (that many finish, one more wedges until
+      someone outside the scheduler releases it) (TestManagedBlocking)
+- [ ] the decision, with the table as its reason
