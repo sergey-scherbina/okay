@@ -118,7 +118,19 @@ release_lock() { rm -rf "$LOCKDIR"; }
 # times. JMH_LANE_LOCK_WAIT seconds (default an hour); 0 refuses as
 # before.
 bw_want
-trap bw_unwant EXIT INT TERM
+# EXIT does the cleanup; INT/TERM must EXIT, which runs it. A handler on
+# INT/TERM that only cleans up lets `sh` carry on with the script after
+# it: a queued lane survived SIGTERM and needed a kill -KILL
+# (jmh-lane-term-exits). A running attempt's tree goes too — the run is
+# waited on in the background so a signal is handled at once, not when
+# sbt happens to finish
+stop() {
+  for c in $(pgrep -P $$ 2>/dev/null); do kill_tree "$c"; done
+  exit "$1"
+}
+trap bw_unwant EXIT
+trap 'stop 130' INT
+trap 'stop 143' TERM
 lock_wait="${JMH_LANE_LOCK_WAIT:-3600}"
 lock_poll="${JMH_LANE_LOCK_POLL:-10}"
 waited=0
@@ -131,7 +143,7 @@ until take_lock quiet; do
   sleep "$lock_poll"
   waited=$((waited + lock_poll))
 done
-trap 'release_lock; bw_unwant' EXIT INT TERM
+trap 'release_lock; bw_unwant' EXIT
 
 # quiet, AND no gate token live: a gate between two of its tasks burns
 # no CPU and reads quiet, but it is about to (bench-window)
@@ -166,7 +178,8 @@ while [ "$i" -le "$ATTEMPTS" ]; do
   # tee's (memory pipe-masks-exit-status)
   runlog=$(mktemp); rcfile=$(mktemp)
   # shellcheck disable=SC2086
-  { $SBT -batch "$CMD"; echo $? > "$rcfile"; } 2>&1 | tee "$runlog"
+  { $SBT -batch "$CMD"; echo $? > "$rcfile"; } 2>&1 | tee "$runlog" &
+  wait $!
   rc=$(cat "$rcfile"); rm -f "$rcfile"
   # ANOTHER JMH HOLDS JMH'S OWN LOCK (jmh-lane-foreign-jmh-lock): a run
   # started outside this script (a bare Jmh/run, an A/B script) owns

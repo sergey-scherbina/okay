@@ -47,7 +47,10 @@ quiet() {
     return 0
   fi
 }
-kill_tree() { :; }
+kill_tree() {
+  for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done
+  kill "$1" 2>/dev/null
+}
 EOF
   : > "$tmp/.work/queue"
 }
@@ -224,6 +227,40 @@ chmod +x "$tmp/scripts/fake-sbt.sh"
 out=$(run "Bench.thing" 5 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "exit 0" || bad "exit $rc: $out"
 ! printf '%s\n' "$out" | grep -q "attempt 2/" && ok "no retry for secondary noise" || bad "retried on a secondary metric: $out"
+rm -rf "$tmp"
+
+say "12. one SIGTERM ends a lane QUEUED behind a held lock (jmh-lane-term-exits)"
+new_fixture
+# a sh trap on INT/TERM that does not exit runs its handler and the
+# script CARRIES ON: a queued lane survived SIGTERM and took a kill -KILL
+# (ring-head-tail-padding, 2026-09-27)
+sleep 60 & holder=$!
+mkdir -p "$JMH_LANE_LOCK" && echo "$holder" > "$JMH_LANE_LOCK/pid"
+( cd "$tmp" && SBT="$tmp/scripts/fake-sbt.sh" exec sh scripts/jmh-lane.sh "Bench.thing" 5 > "$tmp/out12" 2>&1 ) & lane=$!
+i=0; until grep -q "queued behind it" "$tmp/out12" 2>/dev/null || [ $i -ge 50 ]; do sleep 0.1; i=$((i + 1)); done
+kill -TERM "$lane"
+i=0; while kill -0 "$lane" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+if kill -0 "$lane" 2>/dev/null; then bad "still running 5 s after SIGTERM: $(cat "$tmp/out12")"; kill -KILL "$lane" 2>/dev/null; else ok "exited on one SIGTERM"; fi
+wait "$lane" 2>/dev/null
+[ -z "$(ls "$OKAY_BENCH_DIR/want" 2>/dev/null)" ] && ok "its bench-window request is withdrawn" || bad "a want token was left: $(ls "$OKAY_BENCH_DIR/want")"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+rm -rf "$tmp"
+
+say "13. one SIGTERM ends a lane HOLDING the lock, and releases it"
+new_fixture
+printf '#!/bin/sh
+sleep 30
+' > "$tmp/scripts/fake-sbt.sh"; chmod +x "$tmp/scripts/fake-sbt.sh"
+( cd "$tmp" && SBT="$tmp/scripts/fake-sbt.sh" exec sh scripts/jmh-lane.sh "Bench.thing" 5 > "$tmp/out13" 2>&1 ) & lane=$!
+i=0; until [ -f "$JMH_LANE_LOCK/pid" ] || [ $i -ge 50 ]; do sleep 0.1; i=$((i + 1)); done
+sleep 0.5
+kill -TERM "$lane"
+i=0; while kill -0 "$lane" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+if kill -0 "$lane" 2>/dev/null; then bad "still running 5 s after SIGTERM: $(cat "$tmp/out13")"; kill -KILL "$lane" 2>/dev/null; else ok "exited on one SIGTERM"; fi
+wait "$lane" 2>/dev/null
+[ ! -d "$JMH_LANE_LOCK" ] && ok "the lock is released" || bad "the lock was left behind"
+sleep 0.3
+if pgrep -f "$tmp/scripts/fake-sbt.sh" >/dev/null; then bad "the run it started is still alive"; pkill -f "$tmp/scripts/fake-sbt.sh"; else ok "the run it started is gone"; fi
 rm -rf "$tmp"
 
 say ""
