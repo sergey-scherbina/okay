@@ -72,6 +72,54 @@ object Free {
     _ => throw new IllegalStateException(
       "Direct auto-coloring escaped macro rewriting — this call belongs inside direct { ... }")
 
+  /**
+   * A CONTINUATION THAT ONLY MAPS (map-flatmap-pair-cost, 2026-09-27).
+   * `p.map(f).flatMap(g)`, the commonest step there is, used to build
+   * `Bind(Bind(p, x => Return(f(x))), g)`: two binds nested LEFT, which
+   * `resume` rotates on every step, plus the `Return` and the
+   * `Bind(Return, g)` it resolves through. Measured on the same
+   * right-nested 1000-operation program under two handlers: 28.6 µs /
+   * 306 KB with a map + flatMap per step, against 12.6 µs / 138 KB with
+   * one flatMap (BuildShapeBenchmark rowFoldM / rowOneBind). `map` now
+   * leaves a `Mapped` as the continuation, and a bind or a map on top
+   * of it composes the functions and keeps ONE Bind over `p`.
+   *
+   * Nothing runs early: `f` is still applied when the interpreter
+   * answers `p`, and a program built once runs it again on every run.
+   */
+  final class Mapped[F[+_], X, A](val f: X => A, val depth: Int) extends (X => Free[F, A]):
+    def apply(x: X): Free[F, A] = Return(f(x))
+
+  /** how many maps one `Mapped` composes: the composed function is a
+   * chain of `andThen` applies ON THE JVM STACK, so the depth is bounded
+   * here (no unbounded stack recursion, AGENTS.md). Past the bound a new
+   * `Bind` is nested and `resume` rotates it, as every map used to. */
+  inline val MaxFusedMaps = 32
+
+  /*
+   * The two type tests below are the ONE claim these builders make, and
+   * it is made here only. The continuation of a `Bind[F, x, A]` has the
+   * static type `x => Free[F, A]`, and `Mapped` extends exactly that. An
+   * object of class `Mapped` found there is therefore a
+   * `Mapped[F, x, A]`: its type arguments are erased, but they are
+   * fixed by where it sits.
+   */
+
+  /** `m.flatMap(g)`, fused through a `Mapped` continuation */
+  def bind[F[+_], A, B](m: Free[F, A], g: A => Free[F, B]): Free[F, B] = m match
+    case b: Bind[F, x, A] @unchecked => b.f match
+      case k: Mapped[F, x, A] @unchecked => Bind(b.a, (y: x) => g(k.f(y)))
+      case _ => Bind(m, g)
+    case _ => Bind(m, g)
+
+  /** `m.map(f)`, fused into a `Mapped` continuation below the bound */
+  def mapped[F[+_], A, B](m: Free[F, A], f: A => B): Free[F, B] = m match
+    case b: Bind[F, x, A] @unchecked => b.f match
+      case k: Mapped[F, x, A] @unchecked if k.depth < MaxFusedMaps =>
+        Bind(b.a, Mapped[F, x, B](k.f.andThen(f), k.depth + 1))
+      case _ => Bind(m, Mapped[F, A, B](f, 1))
+    case _ => Bind(m, Mapped[F, A, B](f, 1))
+
   /** Free[F, *] is a Monad for every signature F, with no constraint on F */
   given [F[+_]]: Monad[Free[F, *]] with
     override inline def pure[A](a: A): Free[F, A] = Return(a)
@@ -99,10 +147,13 @@ enum Free[F[+_], +A] {
    * the half an interpreter needs. */
   case Delay(thunk: () => Free[F, A])
 
-  /** sequencing is a data node: nothing runs until an interpreter walks the tree */
-  inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = Bind(this, f)
+  /** sequencing is a data node: nothing runs until an interpreter walks
+   * the tree. A bind over a `map` FUSES into it (`Free.bind`). */
+  inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = Free.bind(this, f)
 
-  inline def map[B](f: A => B): Free[F, B] = flatMap(a => Return(f(a)))
+  /** a `Bind` whose continuation only maps (`Free.Mapped`), so that the
+   * next `flatMap`/`map` composes into it instead of nesting (`Free.mapped`) */
+  inline def map[B](f: A => B): Free[F, B] = Free.mapped(this, f)
 
   /**
    * THE rotation, and the only one on this side of the library:

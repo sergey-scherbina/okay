@@ -60,4 +60,19 @@ class BuildShapeBenchmark {
   def rowFoldM(): Int =
     val p = !.foldM(items)(0)((acc, i) => op(i, acc))
     State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](p))._2._2
+
+  /** map-flatmap-pair-cost: the SAME right-nested program as rowFoldM,
+   * built per call, but each step is ONE bind (the operation flatMapped
+   * straight into the next step, as FusionBenchmark's rightSW) instead of
+   * `op.map(acc + _)` and then foldM's flatMap */
+  private def oneBind(i: Int, acc: Int): Int ! SW =
+    if i >= N then pure(acc)
+    else (i % 3) match
+      case 0 => State.get[Int].at[SW].flatMap(x => oneBind(i + 1, acc + x))
+      case 1 => State.set[Int](i).at[SW].flatMap(x => oneBind(i + 1, acc + x))
+      case _ => Writer.tell("w").at[SW].flatMap(_ => oneBind(i + 1, acc + 1))
+
+  @Benchmark
+  def rowOneBind(): Int =
+    State.run[Int, (Seq[String], Int)](0)(Writer.run[String, Int, State % Int](oneBind(0, 0)))._2._2
 }
