@@ -14,10 +14,19 @@ import java.net.ServerSocket
  * would call through a real okay-persist-backed one */
 final class SharedStore:
   private val cps = scala.collection.mutable.Map.empty[String, Checkpoint]
+  /** every save, in order, as a failure's history (okay-diagnose;
+   * pool-repeat-post-early-status: a wrong Done said nothing of how) */
+  val saves: okay.diagnose.Flight = okay.diagnose.Flight(512)
+  private final class Recorded(name: String) extends Checkpoint:
+    private val in = Checkpoint.Memory()
+    def save(epoch: Int, bytes: Array[Byte]): Unit =
+      saves.note(s"$name e=$epoch ${bytes.length} B")
+      in.save(epoch, bytes)
+    def latest: Option[(Int, Array[Byte])] = in.latest
   def apply(name: String): (Checkpoint, Lease) =
-    synchronized(cps.getOrElseUpdate(name, Checkpoint.Memory())) -> Lease.solitary
+    synchronized(cps.getOrElseUpdate(name, Recorded(name))) -> Lease.solitary
 
-class TestPool extends munit.FunSuite {
+class TestPool extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   CountJobs.install()
 
   val noPeers: Discovery = Discovery.static(Map.empty)
@@ -119,6 +128,7 @@ class TestPool extends munit.FunSuite {
 
   test("submit: a repeat POST of the same journal reuses the stored record") {
     val store = SharedStore()
+    onFailure(s"checkpoint saves, in order:\n${store.saves.dump}")
     val id = "myrun"
     val first = Pool.submit(CountJob.name, Json.JNum(10), 0, 0, id, confOf(), noPeers, store(_)).runWith
     // the second body disagrees with the first -- it must be ignored

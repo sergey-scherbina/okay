@@ -23,4 +23,20 @@ class TestDiagnosed extends munit.FunSuite with Munit.Diagnosed {
     assert(!snapshotTaken, "the snapshot of a PASSING test was evaluated")
     assert(!recorded.contains("from test A"), recorded)
   }
+
+  test("end to end: a SYNCHRONOUS test body that fails leaves with the diagnosis") {
+    val sub = new munit.FunSuite with Munit.Diagnosed {}
+    sub.note("saved e=1")
+    val failing = new munit.Test("x", () => throw new munit.FailException("boom", munit.Location.empty))
+    val transformed = sub.munitTestTransforms.last(failing)
+    // a Future-answering test: Await does not exist on Scala.js
+    transformed.body().failed.map { boxed =>
+      // the Future boxes the AssertionError again on the way out; munit unboxes it
+      val out = boxed match
+        case x: java.util.concurrent.ExecutionException if x.getCause != null => x.getCause
+        case other => other
+      assert(out.isInstanceOf[munit.FailException], out.getClass)
+      assert(out.getMessage.startsWith("boom") && out.getMessage.contains("saved e=1"), out.getMessage)
+    }(using munitExecutionContext)
+  }
 }

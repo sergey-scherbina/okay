@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * threads on `adaptive`. The assertions are on threads and concurrency
  * with wide margins, never on time.
  */
-class TestOwnMonitor extends munit.FunSuite {
+class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   override val munitTimeout = scala.concurrent.duration.Duration(2, "min")
 
   private def busy(nanos: Long): Unit =
@@ -41,6 +41,7 @@ class TestOwnMonitor extends munit.FunSuite {
         // CPU burners: 7 of 60 law runs failed at 0.5 ms, 0 of 60 at 5 ms.
         // The law is unchanged: the monitor spreads a burst.
         burst(8) { () => { val _ = ids.add(Thread.currentThread().threadId()); busy(5000000L) } }
+        note(s"a run used ${ids.size} thread(s)")
         fewest = math.min(fewest, ids.size)
       assert(fewest >= 2, s"a run used $fewest thread(s) for eight 5 ms fibers on four workers")
     finally sch.close()

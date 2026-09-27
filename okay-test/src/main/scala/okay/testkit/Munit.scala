@@ -43,10 +43,24 @@ object Munit:
     override def munitTestTransforms: List[TestTransform] =
       super.munitTestTransforms :+ new TestTransform("okay.testkit.Munit.Diagnosed", t =>
         t.withBody(() =>
-          t.body().transform {
-            case Failure(e) => Failure(failures.extend(e, current.report))
+          // a SYNCHRONOUS test throws out of `body()` itself rather than
+          // answering a failed Future: without the `try` its failures went
+          // past the transform and printed no diagnosis (found by the
+          // okay-test lane's end-to-end check on TestPool)
+          val body = try t.body() catch case e: Throwable => scala.concurrent.Future.failed(e)
+          body.transform {
+            case Failure(e) => Failure(failures.extend(unboxed(e), current.report))
             case ok => ok
           }(using munitExecutionContext)))
+
+  /** a Future BOXES an `Error` (every munit assertion is an AssertionError)
+   * as `ExecutionException("Boxed Exception", e)` — read, not assumed: the
+   * first cut matched "Boxed Error" and missed, and the diagnosis went on
+   * the box; it belongs on the assertion inside, which munit unboxes */
+  private def unboxed(e: Throwable): Throwable = e match
+    case x: java.util.concurrent.ExecutionException
+        if x.getCause != null && Option(x.getMessage).exists(_.startsWith("Boxed")) => x.getCause
+    case other => other
 
   /** one spelling of the Live tag (AGENTS.md: a suite reaching outside the
    * JVM is `Live`-tagged and out of `sbt test`) */

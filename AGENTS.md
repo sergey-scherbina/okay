@@ -381,6 +381,30 @@ force, all already practiced, none previously written down:
   it holds Arrow, LZ4/ZSTD (`Compression`/`Aircompressor`) and Keccak-256
   (`Keccak`/`BouncyCastleKeccak`). Everything else in crypto is the
   platform's already (specs/tls.md's rule) — nothing to choose against.
+- EVERY DEPENDENCY BEHIND AN ABSTRACTION, OPTIONAL (operator,
+  2026-09-27: "Все зависимости делаем через абстракции опциональными").
+  This widens OURS OR THE STANDARD ONE (above) from our reimplementations
+  to EVERY third-party jar, test frameworks included. A module's core
+  names none of them. It names a facade trait or typeclass of ours, with
+  our own default where one makes sense. The library's adapter is an
+  object behind an import over an `% "optional;test"` dependency, refused
+  BY NAME when the jar is absent (a `missing` method, JVM; on JS/Native a
+  linked program has what it uses). The first module built this way is
+  okay-test: `FailureFormat` is the abstraction, and `okay.testkit.Munit`
+  is the only place munit is named. Before adding a Compile-scope
+  `libraryDependencies` line, design the facade.
+- A TEST'S FAILURE CARRIES ITS DIAGNOSIS (operator, 2026-09-27;
+  specs/okay-diagnose.md). A NEW suite mixes in
+  `okay.testkit.Munit.Diagnosed` (module okay-test, `% "test->compile"`)
+  and records as it goes: `note(...)` into the flight recorder,
+  `onFailure(snapshot)` or `snapshot(x)` for a `Diagnosable` component.
+  An existing suite adopts it when it is next edited. A tool invented
+  while debugging goes into okay-diagnose (no dependencies, usable in
+  main code: `Flight`, `Diagnostics`, `Diagnosable`, `Threads`,
+  `LateOrLost`) or okay-test (test-only: `Stress`, `Load`, framework
+  adapters), NOT into the one test that needed it. Two gates' worth of
+  flakes on 2026-09-27 had to be re-run to be understood, because their
+  tests said only "expected 10, got 6".
 - NO CAST WITHOUT A REAL NECESSITY (operator, 2026-09-02). An
   `asInstanceOf`, an `@unchecked` pattern, an `Any` where a type
   parameter would do, is a claim the compiler cannot check — and

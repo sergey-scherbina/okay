@@ -535,7 +535,7 @@ lazy val okayDirect = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayPlatform = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-platform"))
-  .dependsOn(okayAsync)
+  .dependsOn(okayAsync, okayTest % "test->compile")
   .settings(
     name := "okay-platform",
   )
@@ -605,7 +605,9 @@ lazy val okayPlatformJdk25 = versioned("okayPlatformJdk25", "jdk25", 25, "okayPl
 lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-stream"))
-  .dependsOn(okayAsync % "compile->compile;test->test", okayPlatform % "compile->compile;test->test", okayStm % "test->compile")
+  .dependsOn(okayAsync % "compile->compile;test->test", okayPlatform % "compile->compile;test->test", okayStm % "test->compile",
+    // okay-diagnose: SentinelChannel is Diagnosable; okay-test: the laws' diagnosis
+    okayDiagnose, okayTest % "test->compile")
   .settings(
     name := "okay-stream",
   )
@@ -3265,7 +3267,7 @@ lazy val okayPool = (project in file("okay-pool"))
   // okaySecurity: the capability at the submission door
   // okayObs: a run's trace as OTLP JSON (specs/dataflow.md, stage 15)
   .dependsOn(okayCluster.jvm, okayHttp.jvm, okayOps.jvm, okayResilience.jvm, okayConf.jvm, okayJetty,
-    okayTls, okaySecurity.jvm, okayObs.jvm)
+    okayTls, okaySecurity.jvm, okayObs.jvm, okayTest.jvm % "test->compile")
   .settings(
     name := "okay-pool",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

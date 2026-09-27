@@ -488,6 +488,10 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
 }
 
 object SentinelChannel {
+  /** its flags and counts as a failure's snapshot (okay-diagnose;
+   * sentinel-single-consumer-lost-end is why it exists) */
+  given diagnosable: okay.diagnose.Diagnosable[SentinelChannel[?]] = okay.diagnose.Diagnosable.of(_.debugState)
+
 
   /**
    * A channel over a buffer of the caller's choosing.
