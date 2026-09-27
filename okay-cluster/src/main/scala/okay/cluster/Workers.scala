@@ -956,8 +956,8 @@ object Cluster {
     // none — the property TestResume pins.)
     val rescaling: Boolean = resuming.exists(_.seen.length != parts)
     val base =
-      if rescaling then System.nanoTime()
-      else resuming.fold(System.nanoTime())(_.base)
+      if rescaling then Sessions.mint(parts)
+      else resuming.fold(Sessions.mint(parts))(_.base)
     val sessions = Vector.tabulate(parts)(i => base + i)
     /**
      * WHERE A SESSION OPENS — and it is the same question on a resume

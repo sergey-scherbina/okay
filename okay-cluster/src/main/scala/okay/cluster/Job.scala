@@ -289,6 +289,22 @@ trait Session:
 /** the sessions this worker is holding */
 object Sessions {
   private val open = scala.collection.mutable.LongMap.empty[Session]
+
+  /**
+   * A BLOCK OF `n` SESSION IDS NO OTHER RUN IN THIS PROCESS HOLDS
+   * (pool-repeat-post-early-status, 2026-09-27). Ids were
+   * `System.nanoTime() + i`, and this table is process-wide: two runs
+   * starting in one tick (concurrent pool submissions, suites in one JVM)
+   * got the SAME ids, the second `Open` replaced the first run's session,
+   * and both runs advanced one state. Done came back with 0, 1, 5, 6, 9
+   * or 20 for a count of 10. A counter under this lock makes them
+   * disjoint in-process. The starting point is the clock plus a random
+   * salt, so ids stay unlikely to meet a REMOTE worker's live sessions
+   * from another coordinator process, which is what the clock was for.
+   */
+  private var next: Long = System.nanoTime() ^ (java.util.concurrent.ThreadLocalRandom.current().nextLong() << 20)
+  def mint(n: Int): Long = synchronized { val b = next; next += n.max(1); b }
+
   def put(id: Long, s: Session): Unit = synchronized(open.update(id, s))
   def get(id: Long): Option[Session] = synchronized(open.get(id))
   def drop(id: Long): Unit = synchronized(open.remove(id): Unit)

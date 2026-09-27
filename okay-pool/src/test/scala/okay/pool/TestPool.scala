@@ -130,6 +130,30 @@ class TestPool extends munit.FunSuite {
     assertEquals(status.value, "10")
   }
 
+  // pool-repeat-post-early-status (2026-09-27): runs with DIFFERENT ids and
+  // stores, concurrent in one JVM, finished Done with 5, 6, 9, 20 for a
+  // count of 10. Their session ids were System.nanoTime()-based, and the
+  // in-process worker's session table is process-wide: two runs that
+  // started in one tick shared a session.
+  test("concurrent runs with distinct ids each answer their own count") {
+    val bad = java.util.concurrent.ConcurrentLinkedQueue[String]()
+    val threads = (0 until 8).map { t =>
+      val th = new Thread(() => {
+        var r = 0
+        while r < 300 && bad.isEmpty do
+          r += 1
+          val store = SharedStore()
+          val id = s"concurrent-$t-$r"
+          val _ = Pool.submit(CountJob.name, Json.JNum(10), 0, 0, id, confOf(), noPeers, store(_)).runWith
+          val v = waitDone(id, confOf(), noPeers, store(_)).value
+          if v != "10" then bad.add(s"$id answered $v"): Unit
+      })
+      th.start(); th
+    }
+    threads.foreach(_.join())
+    assert(bad.isEmpty, s"a run answered another run's count: ${bad.toArray.mkString(", ")}")
+  }
+
   test("submit: the same id under a different job name is a named conflict") {
     val store = SharedStore()
     val id = "onerun"

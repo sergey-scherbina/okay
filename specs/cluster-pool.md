@@ -936,3 +936,20 @@ one behind, killed by pid), and the `Live` run is 7/7 green against
 the real cluster with the count back at 98 after `afterAll`. The
 survey of the other 30 `munitIgnore` overrides found no second case:
 they probe with a socket connect or a short-lived `--version` process.
+
+### pool-repeat-post-early-status — concurrent runs shared a session (2026-09-27)
+
+Runs with distinct ids and distinct stores, run concurrently in one JVM,
+finished `Done` with 0, 1, 5, 6, 9 or 20 for a count of 10. The cause:
+`Cluster.stream` minted session ids as `System.nanoTime() + i`, and the
+in-process worker's `Sessions` table is process-wide, so two runs that
+started in one tick opened the SAME session ids. The second `Open`
+replaced the first run's session, and both advanced one state. It was
+verified by instrumenting `Sessions.put`: 6 overwrites against 4 wrong
+answers in 4 800 runs, and one run answered 20, two runs' counts. Fix:
+`Sessions.mint(n)`, a block of ids from a counter under the table's
+lock, which is disjoint in-process. It starts from the clock XOR a random
+salt, so ids stay unlikely to meet a remote worker's live sessions from
+another coordinator. TestPool's "concurrent runs with distinct ids each
+answer their own count" failed 3 of 3 before the fix and passes after;
+the probe went from 4/4800 bad to 0/4800.
