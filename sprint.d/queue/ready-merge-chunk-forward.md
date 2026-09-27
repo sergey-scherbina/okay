@@ -36,3 +36,11 @@
       go, as the elementwise old road went. Spec:
       specs/source-merge-via-ready.md (its "chunked roads wait"
       decision is what this closes). (2026-09-27, perf-plan)
+      NOTE 2026-09-27 (ring-standing-receiver, operator decision): the
+      chunk-on-ring work is PAUSED ("потом вернемся"), and its blocker is
+      back in the backlog. One candidate fix was already REFUTED —
+      zero-allocation side wakes did not move the slow regime (6/10
+      forks ~250 us) — so "that lane fixes it" above is a hypothesis, not
+      a result; the remaining candidate is a standing receiver inside
+      `SentinelChannel`, for a reward of parity (~200 us), not a win.
+

@@ -15,3 +15,16 @@
       will at another speed ratio. TRIGGER: the operator's one-mechanism
       ask for the chunked road, or the regime seen on the elementwise
       merge. (2026-09-27, ring-chunk-bimodal-forks)
+      PAUSED 2026-09-27 by the operator ("делай пока так, потом еще
+      вернемся"), after ONE design tried and refuted: zero-allocation
+      side wakes (a `Pending` per registration, an int ring of wake-ups,
+      the source's continuation applied by the drive) left the chunk
+      road's slow regime exactly as it was (okayChunked 6/10 forks
+      ~250 us) and gave the elementwise merge parity, so it was dropped.
+      The wake WORK was therefore not the cost: what remains is the
+      channel handing a parked receiver ONE element per wake — the
+      standing receiver proper, inside `SentinelChannel`. Weigh it
+      against its reward first: the chunked road on the ring can reach
+      the shared channel's ~200 us (its fast forks do), not beat it.
+      Rows: `src/jmh/history.d/…-ring-standing-receiver.tsv`.
+
