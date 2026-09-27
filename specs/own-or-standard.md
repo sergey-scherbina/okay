@@ -89,3 +89,11 @@ seven points above.
 - **`byName` lives on the JVM** (`Compressions`, `Keccaks`): the cross
   companion cannot name JVM-only objects, and picking by a config string
   is a JVM application's concern.
+- **A facade is measured where it runs, not only in JMH**
+  (foreign-measure-stateful-models-compression, 2026-09-27).
+  `CompressBench` prices the codec on a 4 MiB buffer; `MeasureArrowCompression`
+  and `MeasureRemote`'s implementation column price the SAME choice inside
+  an Arrow body and on a cluster wire, where buffer sizes, allocation and
+  the reader's copy differ. The bytes agree with the bench (ours within
+  0.1% of aircompressor, smaller on CBOR chunks, every cross-read green);
+  the times await a quiet box (specs/okay-compress.md, Results).

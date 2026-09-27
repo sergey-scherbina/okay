@@ -466,3 +466,22 @@ What it says:
 - the reduce in Python costs ~+70 ms: `sum` over 1M ints in Python plus
   three merges; `Wire.fold` on the JVM is free by comparison. Move the
   reduce across only when the reduction is not one the JVM has.
+
+### The model and the stateful lanes (foreign-measure-stateful-models-compression, 2026-09-27)
+
+`MeasureForeignMapReduce` gained two lanes beside the plain Arrow map,
+same rows, same four partitions: `measure.py.arrow.model` (a `Model`
+fit once per interpreter from `Factor(2)`, `scale(frame, model)` the map)
+and `measure.py.arrow.stateful` (`open`/`step`/`finish`, the running sum
+per partition, a leased interpreter each). Two runs, both on a box the
+siblings were benchmarking and gating on — load 46 and 74 at the start on
+14 cores — and both DISCARDED as prices: the plain map read 583/559 and
+364/270 ms (fan / 3 workers) where the quiet baseline above is ~95, and
+`arrow.64k` read 605/620 then 283/770. What held in both runs, as a
+RATIO under load and nothing more: the stateful lane ran at or under the
+plain map's time (333/389 and 280/283 ms) — one interpreter per partition
+means no pool contention and no per-chunk lease — and the model lane
+about the plain map plus ~100 ms (476/680 and 488/469), the held model's
+`hold` per interpreter and the second argument per chunk. A quiet-box
+re-run is backlog `foreign-measure-quiet-rerun`; `gate-retry`'s quiet
+test (sbt count, free RAM) let the second run start at load 24.

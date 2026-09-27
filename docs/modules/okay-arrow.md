@@ -160,6 +160,12 @@ it loads buffers as they are and makes no object per row, where the
 model holds a `String` per row. Reading as views over the bytes is the
 spec's deferred item for that.
 
+A compressed body costs the same bytes under either `Compression`
+(`MeasureArrowCompression`, 500k rows: ZSTD 1 465 832 B ours vs
+1 465 864 B aircompressor, LZ4 2 048 016 vs 2 048 088), and each reads
+the other's; the speed of the two inside a body is not yet priced on a
+quiet box (docs/modules/okay-compress.md, "In place").
+
 ## Literature
 
 - Apache Arrow. *[Arrow columnar format](https://arrow.apache.org/docs/format/Columnar.html)*, and its IPC streaming format: what both implementations write and read.

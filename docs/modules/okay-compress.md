@@ -150,6 +150,25 @@ The hash chain stays for levels 4 and up. Compression went from 16.5 to
 7.54 ms (aircompressor 6.45), and the ratio moved by 2% at most
 (okay-compress-zstd-speed-2).
 
+In place — inside an Arrow body and on a cluster wire, not a bare
+buffer (foreign-measure-stateful-models-compression): the two
+implementations write bodies of the same size to within 0.1% and each
+reads the other's, in okay-arrow (`MeasureArrowCompression`, 500k rows,
+12.79 MB raw) and on `Remote` (`MeasureRemote`, ZSTD both ends):
+
+| where | ours | aircompressor |
+|---|---|---|
+| Arrow body, ZSTD per buffer | 1 465 832 B | 1 465 864 B |
+| Arrow body, LZ4 per buffer | 2 048 016 B | 2 048 088 B |
+| wire, Arrow + ZSTD, chunks of 1000 / 10000 | 1 139 232 / 970 696 B | 1 141 072 / 956 040 B |
+| wire, CBOR + ZSTD, chunks of 1000 / 10000 | 1 258 143 / 1 005 688 B | 1 258 255 / 1 059 076 B |
+
+The times from those runs are not quoted: the box was at load 20–47 on
+14 cores and the columns swung 2–4x between two runs
+(specs/okay-compress.md, Results). Run the two suites on a quiet box
+(`--include-tags=Live`) before choosing by speed; choose by dependency
+and platform until then.
+
 ## Literature
 
 - Yann Collet, Murray Kucherawy. *[Zstandard Compression and the 'application/zstd' Media Type](https://www.rfc-editor.org/rfc/rfc8878)*. RFC 8878, 2021. The format decoded and written here.

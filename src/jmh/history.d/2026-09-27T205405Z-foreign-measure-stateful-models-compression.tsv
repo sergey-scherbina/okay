@@ -1,0 +1,8 @@
+2026-09-27	cec1cf059	20.42	arrow-body-500k-zstd-bytes	1465832	1465864	1.000	MeasureArrowCompression: ours vs aircompressor, bytes; times discarded (load 20 and 46)
+2026-09-27	cec1cf059	20.42	arrow-body-500k-lz4-bytes	2048016	2048088	1.000	MeasureArrowCompression: bytes; times discarded
+2026-09-27	cec1cf059	20.42	remote-arrow-zstd-10000-bytes	970696	956040	1.015	MeasureRemote: ours vs aircompressor on the wire, bytes; times discarded (load 20 and 47)
+2026-09-27	cec1cf059	20.42	remote-cbor-zstd-10000-bytes	1005688	1059076	0.950	MeasureRemote: bytes; times discarded
+2026-09-27	cec1cf059	46.18	py-arrow-stateful-vs-map-fan-ms	333	583	0.57	MeasureForeignMapReduce run 1, DISCARDED as a price (load 46): ratio only
+2026-09-27	cec1cf059	73.73	py-arrow-stateful-vs-map-fan-ms	280	364	0.77	MeasureForeignMapReduce run 2, DISCARDED (load 74): ratio only
+2026-09-27	cec1cf059	46.18	py-arrow-model-vs-map-fan-ms	476	583	0.82	run 1, DISCARDED (load 46)
+2026-09-27	cec1cf059	73.73	py-arrow-model-vs-map-fan-ms	488	364	1.34	run 2, DISCARDED (load 74)

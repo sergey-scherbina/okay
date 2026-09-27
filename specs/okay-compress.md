@@ -236,3 +236,27 @@ native bindings (lz4-java, zstd-jni) and a pure-Java port
       bytes is its own defect, filed as zstd-level6-worse-than-3.
     - Left from the lead list: FSE packed decode entries and the Native
       timing, as okay-compress-zstd-speed-3.
+
+- foreign-measure-stateful-models-compression (2026-09-27): the
+  library against ours WHERE THE CODEC RUNS, not in JMH. Two new
+  instruments, both Live: `MeasureArrowCompression` (okay-arrow, a
+  500k-row body — float64, int64, utf8, 12.79 MB raw — compressed per
+  buffer by `Compression.Okay` and by `Aircompressor`, each reading the
+  other's body, `Tables.same` asserted) and `MeasureRemote`'s
+  implementation column (ZSTD on the wire, Arrow and CBOR chunks of 1000
+  and 10000, both ends on each implementation).
+  - Bytes, deterministic and landed: Arrow body ZSTD 1 465 832 (ours) vs
+    1 465 864 (aircompressor); LZ4 2 048 016 vs 2 048 088. On the wire,
+    Arrow+ZSTD 1 139 232 / 970 696 (chunk 1000 / 10000) vs 1 141 072 /
+    956 040; CBOR+ZSTD 1 258 143 / 1 005 688 vs 1 258 255 / 1 059 076.
+    Ours is never larger by more than 0.1% and is smaller on the CBOR
+    chunks; every cross-read passed.
+  - Times, two runs at load 20 and 46 (Arrow body) and 20 and 47 (wire)
+    on 14 cores, DISCARDED: columns swung 2–4x between the runs and the
+    two implementations traded places between chunk sizes inside one
+    run (Arrow+ZSTD ours 257 vs 195 ms at chunk 1000, then 172 vs 275 at
+    10000). The one direction both runs agree on is the Arrow body's
+    ZSTD: aircompressor wrote and read it faster (26/15 and 33/25 ms
+    against 75/103 and 169/150) — consistent in sign with
+    `CompressBench`'s decompress gap (4.28 vs 2.29 ms) but not in size,
+    so it is a lead, not a number. Backlog `foreign-measure-quiet-rerun`.
