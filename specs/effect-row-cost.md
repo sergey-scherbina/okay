@@ -80,7 +80,7 @@ matter in time.
   written once — the excluded middle `split` already makes — and every
   forwarding arm that sends the operation to the REST of the row uses
   it: `relay`, `handle` and `translate` in Effects, Writer's
-  `loopWith`/`foldUntil`/`uncons`/`widen`, State, Supply, Chronicle,
+  `loopWith`/`foldUntil`/`uncons`, State, Supply, Chronicle,
   Refs, Once, Logic, Generate. The compiler refused it — correctly —
   at the six arms whose operation goes to a DIFFERENT row (Lexical's
   `R`, `State.zoomWith`, Writer's `map`/`expand`/`listen`): reusing the

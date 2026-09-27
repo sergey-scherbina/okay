@@ -6,7 +6,7 @@ it although the node it had just matched IS that `Inject`. Now one named
 door, `forwarded[F, G](i)` beside `split` (Handler.scala), carries the
 one type claim — the excluded middle `split` already makes — and every
 arm that forwards to the REST of the row uses it: `relay`, `handle`,
-`translate`, Writer's `loopWith`/`foldUntil`/`uncons`/`widen`, State,
+`translate`, Writer's `loopWith`/`foldUntil`/`uncons`, State,
 Supply, Chronicle, Refs, Once, Logic, Generate. The compiler refused it
 at the six arms that forward into a DIFFERENT row (Lexical, `State.zoomWith`,
 Writer's `map`/`expand`/`listen`) — a second claim, not written. Measured:
