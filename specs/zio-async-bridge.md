@@ -33,15 +33,15 @@ for programs containing potentially blocking `Async.Run` work.
 
 ## Behavior
 
-- [ ] A callback-only `Async.await` program becomes a successful `Task` without
+- [x] A callback-only `Async.await` program becomes a successful `Task` without
       using the blocking `runWith` path.
-- [ ] A failure supplied to an `Async.await` callback fails the `Task` with the
+- [x] A failure supplied to an `Async.await` callback fails the `Task` with the
       same throwable.
-- [ ] Interrupting the ZIO fiber invokes the active `Await` canceller exactly
+- [x] Interrupting the ZIO fiber invokes the active `Await` canceller exactly
       once and prevents a later callback from resuming the program.
-- [ ] Cancelling `Async.runAsyncCancellable` unregisters its pending callback
+- [x] Cancelling `Async.runAsyncCancellable` unregisters its pending callback
       and fails its future with `CancellationException`.
-- [ ] `toZIO` retains its `attemptBlocking` implementation and contract.
+- [x] `toZIO` retains its `attemptBlocking` implementation and contract.
 
 ## Out of scope
 
@@ -73,4 +73,7 @@ does not occupy ZIO's blocking executor while an `Await` is pending.
 
 ## Results
 
-Pending implementation.
+`Async.runAsyncCancellable` exposes the callback driver's cancellation door;
+`ZioInterop.toZIOAsync` maps it into `ZIO.asyncInterrupt`. Focused gates
+passed: `okayPlatformJVM/testOnly okay.TestAsyncCross` (20 results) and
+`okayZio/testOnly okay.zio.TestZioInterop` (7 results).

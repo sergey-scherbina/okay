@@ -187,14 +187,26 @@ object Async {
    * loop runner; on the JVM it is a non-blocking alternative to run.
    */
   def runAsync[A](prog: A ! Async): Future[A] =
+    runAsyncCancellable(prog).future
+
+  /** The callback terminal with an explicit cancellation door. Unlike
+   * `runWith`, this never parks a thread while an Await is pending. */
+  def runAsyncCancellable[A](prog: A ! Async): Running[A] =
     val p = Promise[A]()
-    PromiseDrive(p)(prog)
-    p.future
+    val d = PromiseDrive(p)
+    d(prog)
+    Running(p.future, () => d.cancel())
 
   /** the callback may fire during registration, on this thread or
    * another: whoever loses the atomic exchange continues the drive */
   private final class Got[X](val x: Either[Throwable, X])
   private object Moved
+
+  /** A callback-driven Async program together with its cancellation door.
+   * `cancel` is idempotent: it unregisters a pending Await, releases open
+   * scopes, and fails the future when the program has not already answered. */
+  final class Running[+A] private[okay] (val future: Future[A], cancel0: () => Unit):
+    def cancel(): Unit = cancel0()
 
   /**
    * One driving of one tree: a while-loop while answers arrive
@@ -323,10 +335,12 @@ object Async {
     private def releaseScopes(): Unit =
       scopes.foreach(s => try s.released() catch case _: Throwable => ())
 
-    def cancel(): Unit =
-      stopped = true
-      unregister()
-      releaseScopes()
+    def cancel(): Unit = synchronized {
+      if !stopped then
+        stopped = true
+        unregister()
+        releaseScopes()
+    }
 
     /** whether this drive was cancelled — for a platform's slice hooks */
     protected final def cancelled: Boolean = stopped

@@ -48,6 +48,22 @@ class TestAsyncCross extends munit.FunSuite {
     f.map(v => assertEquals(v, 42))
   }
 
+  test("runAsyncCancellable unregisters a pending Await and fails its future") {
+    var cancelled = 0
+    var resume: (Either[Throwable, Int] => Unit) | Null = null
+    val running = Async.runAsyncCancellable(Async.await[Int] { k =>
+      resume = k
+      () => cancelled += 1
+    }.map(_ + 1))
+    running.cancel()
+    running.cancel()
+    assertEquals(cancelled, 1)
+    resume.nn(Right(41))
+    running.future.failed.map { e =>
+      assert(e.isInstanceOf[java.util.concurrent.CancellationException])
+    }
+  }
+
   test("race answers the one that finishes, without waiting for the other") {
     // no clock: the loser is a registration that NEVER fires, so a
     // busy machine cannot invert the outcome (two sleeps 90ms apart

@@ -4,6 +4,7 @@ import okay.{!, Async, Chunks, async}
 import okay.given
 import _root_.zio.{Runtime, Scope, Task, Unsafe, ZIO}
 import _root_.zio.stream.ZStream
+import scala.concurrent.ExecutionContext.parasitic
 
 /**
  * Interop with ZIO (specs/interop.md): the effect bridge runs each
@@ -39,6 +40,19 @@ object ZioInterop {
 
   /** run an okay Async program as a ZIO (it may park — attemptBlocking) */
   def toZIO[A](p: => A ! Async): Task[A] = ZIO.attemptBlocking(p.runWith)
+
+  /** Run a callback-driven Okay Async program as a ZIO without parking a
+   * thread while Await is pending. Interruption unregisters the active Await.
+   * Async.Run may block, so programs containing it belong at [[toZIO]]. */
+  def toZIOAsync[A](p: => A ! Async): Task[A] =
+    ZIO.asyncInterrupt { done =>
+      val running = Async.runAsyncCancellable(p)
+      running.future.onComplete {
+        case scala.util.Success(a) => done(ZIO.succeed(a))
+        case scala.util.Failure(e) => done(ZIO.fail(e))
+      }(using parasitic)
+      Left(ZIO.succeed(running.cancel()))
+    }
 
   /** a ZIO as an Async operation: the virtual thread parks for it */
   def fromZIO[A](z: Task[A], runtime: Runtime[Any] = Runtime.default): A ! Async =

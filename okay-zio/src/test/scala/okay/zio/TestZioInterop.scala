@@ -5,6 +5,7 @@ import okay.given
 import ZioInterop.*
 import _root_.zio.{Runtime, Unsafe, ZIO}
 import _root_.zio.stream.ZStream
+import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 class TestZioInterop extends munit.FunSuite {
 
@@ -14,6 +15,43 @@ class TestZioInterop extends munit.FunSuite {
       Runtime.default.unsafe.run(z).getOrThrowFiberFailure())
     assertEquals(r, 42)
     assertEquals(fromZIO(ZIO.attempt(21).map(_ * 2)).runWith, 42)
+  }
+
+  test("callback Async becomes ZIO without the blocking runner") {
+    var resume: Either[Throwable, Int] => Unit = null
+    val registered = CountDownLatch(1)
+    val task = toZIOAsync(Async.await[Int] { k => resume = k; registered.countDown(); () => () }.map(_ * 2))
+    val fiber = Unsafe.unsafe(implicit u => Runtime.default.unsafe.fork(task))
+    assert(registered.await(5, TimeUnit.SECONDS))
+    resume(Right(21))
+    val out = Unsafe.unsafe(implicit u =>
+      Runtime.default.unsafe.run(fiber.join).getOrThrowFiberFailure())
+    assertEquals(out, 42)
+  }
+
+  test("callback failure crosses to ZIO") {
+    val boom = RuntimeException("boom")
+    val task = toZIOAsync(Async.await[Int] { k => k(Left(boom)); () => () })
+    val out = Unsafe.unsafe(implicit u => Runtime.default.unsafe.run(task.either).getOrThrowFiberFailure())
+    assertEquals(out, Left(boom))
+  }
+
+  test("ZIO interruption cancels the active Okay Await") {
+    var cancelled = 0
+    var resume: Either[Throwable, Int] => Unit = null
+    var resumed = false
+    val registered = CountDownLatch(1)
+    val task = toZIOAsync(Async.await[Int] { k =>
+      resume = k
+      registered.countDown()
+      () => cancelled += 1
+    }.map { n => resumed = true; n })
+    val fiber = Unsafe.unsafe(implicit u => Runtime.default.unsafe.fork(task))
+    assert(registered.await(5, TimeUnit.SECONDS))
+    val _ = Unsafe.unsafe(implicit u => Runtime.default.unsafe.run(fiber.interrupt).getOrThrowFiberFailure())
+    assertEquals(cancelled, 1)
+    resume(Right(21))
+    assert(!resumed)
   }
 
   test("chunked streams cross to ZStream chunk for chunk") {

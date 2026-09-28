@@ -7,12 +7,17 @@ Depends on: `okay` (JVM), zio, zio-streams.
 
 ## Guide
 
-**Values cross by parking.** `toZIO` wraps a program as
+**Values cross by parking or callbacks.** `toZIO` wraps a program as
 `ZIO.attemptBlocking` — ZIO's blocking pool runs it and a virtual
 thread parks wherever the program blocks. `fromZIO` runs a ZIO to
 completion inside ONE Okay async operation (`unsafe.run` — again, a
 parked virtual thread). Neither side simulates the other's runtime;
 each waits its own native way.
+
+`toZIOAsync` is the callback road for an `Async` program whose waits are
+`Await`s: it runs no thread while an Await is pending, and ZIO interruption
+calls the Await registration's canceller. It deliberately does not replace
+`toZIO`: an `Async.Run` may block and belongs on ZIO's blocking executor.
 
 **Streams cross chunk for chunk.** `toZStream` unfolds our pure
 `Chunks.pull` with `ZStream.unfoldChunk` — chunk boundaries are
@@ -54,6 +59,7 @@ Async.par(async(1), async(2)).runWith
 | member | signature | meaning |
 |---|---|---|
 | `ZioInterop.toZIO` | `(=> A ! Async) => Task[A]` | run as attemptBlocking |
+| `ZioInterop.toZIOAsync` | `(=> A ! Async) => Task[A]` | callback drive; ZIO interruption cancels Await |
 | `ZioInterop.fromZIO` | `(Task[A], runtime = default) => A ! Async` | a ZIO as one async op |
 | `ZioInterop.toZStream` | `Chunks[A] => ZStream[Any, Nothing, A]` | unfoldChunk over pure pull |
 | `ZioInterop.fromZStream` | `ZStream[Any, Throwable, A] => Chunks[A]` | scoped iterator, lazy, linear |
