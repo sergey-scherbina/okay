@@ -186,7 +186,7 @@ label with no lifetime attaching one sentence to twenty-five turns
 
 1. DONE 2026-09-28 (dlm-learning): `Teaching`, `Ledger`, `Governed` over the memory fold with ours by default; `Explanation`; `Exemplars.hash`; a test per behavior line, eleven of them.
 2. DONE 2026-09-28 (okay-chat `learning-doors`): `Teaching` over its admin/teacher lists, `OKAY_CHAT_LEARNING` as the switch on every channel, the journal as the ledger (the door writes the chat's own record shapes, refusals as `refused` records), `POST /v1/explain`, `GET/POST /v1/lessons`, `POST /v1/lessons/forget` under a partner token or the admin token.
-3. The table hash and `Rebuilt` in `Compile`; revert by hash — §9.
+3. DONE 2026-09-28 (dlm-shelf, library 71390de; okay-chat `Tables`): the shelf, `Retention`, `Pruned`, `Ledger.File` here; there `Compile` writes every head through the shelf and the ledger beside it, `Tables revert`, `OKAY_CHAT_TABLES` (a pin by hash at boot), `OKAY_CHAT_TABLES_KEEP`, `GET /v1/tables` — §9.
 
 ## 9. Stage 3 — the shelf: every table kept by hash, dropped only by a policy
 
@@ -257,8 +257,8 @@ is audited, and reverted, exactly like a build.
 - [x] `Retention.all` drops nothing; `latest(n)` keeps the newest n; `within` keeps the young; `any` keeps what either keeps; `of` reads each spelling and refuses a wrong one by name
 - [x] `prune` never drops the newest table of an artifact nor a serving one, whatever the policy; each drop is a `Pruned` entry naming the policy
 - [x] a ledger written to a file reads back entry for entry, `Pruned` included
-- [ ] (okay-chat) a build records `Rebuilt` with the hash before and after and the corpus by content hash, and keeps the old table; the same build twice records nothing
-- [ ] (okay-chat) a revert serves the shelf's table and records a `Rebuilt` from `shelf:H`; a pin by hash at boot serves it, and a pin to a hash not on the shelf refuses to boot
+- [x] (okay-chat) a build records `Rebuilt` with the hash before and after and the corpus by content hash, and keeps the old table; the same build twice records nothing
+- [x] (okay-chat) a revert serves the shelf's table and records a `Rebuilt` from `shelf:H`; a pin by hash at boot serves it, and a pin to a hash not on the shelf refuses to boot
 
 ## Results — dlm-learning (2026-09-28)
 
@@ -284,3 +284,25 @@ none, lesson: none». `Route.Missing` carries no `Support` by design, and
 `noticed`, which already holds every layer's reading of every intent it
 saw. No type changed, so no consumer's pattern match moved. Two tests: a
 Missing decided by a rule, and one decided by a lesson.
+
+## Results — dlm-shelf (2026-09-28)
+
+Stage 3. The library: `Shelf` (`directory`, `memory`, `resource`),
+`Kept`, `Retention` (`all` ours, `latest`, `within`, `any`, `of`),
+`Shelf.prune`, `Ledger.Entry.Pruned`, `Ledger.File`,
+`Exemplars.stored`, `Checkpoint.meta`; five tests. The consumer:
+`Compile` shelves every head, a revert is a rebuild from `shelf:H`, a
+pin serves a hash at boot; five tests there.
+
+What the tests decided. THE HASH HAD TO BE OF THE ROUNDED TABLE: a
+build holds F32 and ships F16, so `Exemplars.hash` over what the build
+held named a table no boot ever served, and the shelf, `Rebuilt` and
+the explanation would have disagreed about the same file.
+`Exemplars.stored` rounds once, and rounding again changes nothing.
+A REBUILD THAT CHANGED NOTHING IS NOT AN ENTRY: the service commits
+its build outputs, so an entry per run would have made every build a
+diff. THE OLD TABLE IS SHELVED A MILLISECOND BEFORE THE NEW ONE: both
+go on the shelf in one step, and «the newest» that no policy may drop
+has to be the new one. A SHELF'S FILE IS CHECKED AGAINST ITS NAME on
+every read, because a file renamed or replaced under a hash is
+otherwise a table served under the wrong name.
