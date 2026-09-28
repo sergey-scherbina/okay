@@ -28,6 +28,9 @@ is the caller's, passed in.**
 | `Fuzzy` / `Script` / `Alphabet` | bounded Levenshtein over a vocabulary mined from the rules; which script, and which languages a word could be written in |
 | `ModelChain` / `Lane` | the door: lanes in order, timeout, strikes and cooldown, a daily cap seeded from a journal, events for the caller's log |
 | `Calibration` | reliability per layer, Brier where a probability exists, a rule's correction rate with people and sentences beside it |
+| `Embedder` | the encoder as a seam — ours (`hashing`) by default, `static` for the distilled table, `of` for a model on disk, a remote one from `okay-dlm-remote` |
+| `Judge` | the judge as a seam — which of these options is this text, with probabilities and a confidence; ours (`probe`) by default, `Fit` as the configuration seam, `orElse` and `guarded` around one that leaves the process |
+| `Language.Detector` | the detector as a seam — `Trigrams` (ours) or `Judged` (a judge asked which language) |
 
 **Depends on:** `okay-intent` (the probe, centroids, `Taxon`),
 `okay-agent` (`ToolCall` for a lane's tool table); through them
@@ -52,10 +55,38 @@ model.head("acts").of("спасибо большое")     // Some("social"), or
 Decision.decide(State("ann", "ru"), evidence) // Action.Act(route) | AskPlainly | Menu | …
 ```
 
+## Backends: ours by default, any other by a given
+
+Three functions are all the model asks of a "model": embed a
+sentence, choose among named options, name a language. Each is a
+trait whose companion holds our implementation as the `given`, so the
+line below reaches no network and needs no file:
+
+```scala
+val model = Dlm.of(intents, Some(vectors), heads = Map("acts" -> (acts, 0.5f)))
+```
+
+…and one `given` at the composition root changes what every head and
+the router's vector layer run on, with nothing else moving:
+
+```scala
+import okay.dlm.remote.*
+given Embedder = Embedder.of("minilm-l12", 384, onnx.embed)            // the model on disk
+given Judge.Fit = Judge.Fit.constant(Judge.orElse(                      // Jev first, ours behind it
+  Jev.judge(sys.env("TYPESAFE_API_KEY")), Judge.probe(acts)))
+val model = Dlm.of(intents, Some(vectors), heads = Map("acts" -> (acts, 0.5f)))
+```
+
+Jev (TypeSafe AI, hosted) and Laya (Convai, open, a container of your
+own) speak one wire, so [`okay-dlm-remote`](okay-dlm-remote.md) is one
+client and two configurations. A table compiled by another encoder
+than the one in scope is refused by name at the door.
+
 ## Further
 
 | | |
 |---|---|
 | [`specs/dlm.md`](../../specs/dlm.md) | the design, its decisions, and what stayed in the service |
+| [`okay-dlm-remote`](okay-dlm-remote.md) | Jev and Laya as judges, a remote encoder, the wire seam |
 | [`okay-intent`](okay-intent.md) | the tiers a head and the router are built from |
 | [`okay-frame`](okay-frame.md), [`okay-agent`](okay-agent.md) | the form and the suspension the decision hands an intake to |

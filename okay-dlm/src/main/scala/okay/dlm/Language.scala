@@ -55,8 +55,45 @@ object Language:
         case _ => None
 
   /**
-   * THE TRIGRAM LAYER: a detector built from the authored phrasings
-   * themselves.
+   * THE DETECTOR, AS A SEAM: which language a message is in, or
+   * `None` when the evidence is not there — a caller then falls back
+   * to what this person wrote last, and never guesses. Ours is the
+   * trigram nearest neighbour over the authored phrasings
+   * (`Trigrams`); a remote judge answers the same question as a
+   * choice among the languages a caller names (`Judged`).
+   */
+  trait Detector:
+    def name: String
+    /** every language with its evidence, best first */
+    def scores(text: String): Vector[(String, Float)]
+    def of(text: String): Option[String]
+    /** an empty detector claims nothing; the caller falls back */
+    def nonEmpty: Boolean = true
+
+  object Detector:
+    /** ours, from the authored phrasings by language */
+    def of(byLang: Map[String, Vector[String]],
+           margin: Float = 0.03f, floor: Float = 0.5f,
+           strong: Float = 0.9f, minLetters: Int = 12,
+           alphabet: Alphabet = Alphabet.none): Trigrams =
+      Trigrams(Profiles.rows(byLang), margin, floor, strong, minLetters, alphabet)
+
+    /** ours, from profiles read back out of an artifact */
+    def apply(profiles: Vector[(String, Embedding)],
+              margin: Float = 0.03f, floor: Float = 0.5f,
+              strong: Float = 0.9f, minLetters: Int = 12,
+              alphabet: Alphabet = Alphabet.none): Trigrams =
+      Trigrams(profiles, margin, floor, strong, minLetters, alphabet)
+
+    /** a detector that says nothing, for a caller with no phrasings yet */
+    val none: Detector = new Detector:
+      val name = "none"
+      def scores(text: String) = Vector.empty
+      def of(text: String) = None
+      override def nonEmpty = false
+
+  /**
+   * OURS: a detector built from the authored phrasings themselves.
    *
    * `Vectors.hashing` is a character-trigram stand-in embedder. It is
    * useless for MEANING, which is why nothing routes on it — and it is
@@ -66,13 +103,13 @@ object Language:
    * single profile lets the biggest class win on shared trigrams
    * alone.
    */
-  final class Detector(val profiles: Vector[(String, Embedding)],
+  final class Trigrams(val profiles: Vector[(String, Embedding)],
                        margin: Float = 0.03f, floor: Float = 0.5f,
                        strong: Float = 0.9f, minLetters: Int = 12,
-                       alphabet: Alphabet = Alphabet.none):
+                       alphabet: Alphabet = Alphabet.none) extends Detector:
 
-    /** an empty detector claims nothing; the caller falls back */
-    def nonEmpty: Boolean = profiles.nonEmpty
+    val name = "trigrams"
+    override def nonEmpty: Boolean = profiles.nonEmpty
     private val f = Vectors.hashing()
 
     def scores(text: String): Vector[(String, Float)] =
@@ -108,12 +145,22 @@ object Language:
         said.filter(l => alphabet.agrees(l, text))
       case _ => None
 
-  object Detector:
-    def of(byLang: Map[String, Vector[String]],
-           margin: Float = 0.03f, floor: Float = 0.5f,
-           strong: Float = 0.9f, minLetters: Int = 12,
-           alphabet: Alphabet = Alphabet.none): Detector =
-      Detector(Profiles.rows(byLang), margin, floor, strong, minLetters, alphabet)
+  /**
+   * A JUDGE AS THE DETECTOR: the languages a caller names, each with
+   * a description the judge reads («Russian», «polski»…), answered as
+   * one choice. Held to a margin like any head, and to the alphabet
+   * gate like ours: a judge that calls Cyrillic text Polish is refused
+   * the same way.
+   */
+  final class Judged(judge: Judge, languages: Vector[(String, String)],
+                     margin: Float = 0.3f, alphabet: Alphabet = Alphabet.none,
+                     instructions: String = "Which language is this text written in?") extends Detector:
+    val name = s"judged:${judge.name}"
+    private val question = Judge.Question(languages, instructions)
+    def scores(text: String): Vector[(String, Float)] =
+      judge.choose(text, question).map(_.probabilities.map((l, p) => l -> p.toFloat)).getOrElse(Vector.empty)
+    def of(text: String): Option[String] =
+      judge.choose(text, question).filter(_.margin >= margin).map(_.best).filter(l => alphabet.agrees(l, text))
 
   /**
    * The detector as an ARTIFACT: one hashed vector per authored

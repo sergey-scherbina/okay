@@ -39,8 +39,11 @@ class TestHead extends FunSuite:
   test("the model as one value: named heads, live tiers") {
     val intents = Intents(Vector(Intent("need", rules = Vector("(?iU)\\b(?:нужен)\\b"),
       byLang = Map("ru" -> Vector("нужен сантехник")))))
-    val m = Dlm.of(intents, embed, heads = Map("acts" -> (acts, 0.2f)))
+    given Embedder = Embedder.of("hashing-256", 256, embed)
+    val m = Dlm.of(intents, heads = Map("acts" -> (acts, 0.2f))).toOption.get
     assertEquals(m.head("acts").of("спасибо большое"), Some("social"))
+    // a table another encoder compiled is refused by name, not read
+    assert(Dlm.of(intents, heads = Map("acts" -> (acts.copy(encoder = "other"), 0.2f))).left.exists(_.contains("refused")))
     assertEquals(m.head("none").of("спасибо большое"), None)
     assertEquals(m.tiers, Vector("rules", "typos", "acts", "language"))
     assertEquals(Dlm.rules(intents).tiers, Vector("rules", "typos"))
