@@ -153,6 +153,15 @@ final class CoreAsyncChannel[A](val chan: AnyRef)(using ct: ClassTag[A]) extends
   def failed: Option[Throwable] = failure
   def isClosed: Boolean = lock.synchronized(closing)
 
+  /** the channel's own flags and counts, for a law that caught it
+   * hanging (sentinel-single-consumer-lost-end, 2026-09-28): which of
+   * the two phases of close was reached, whether a take is in flight,
+   * and what is queued on either side */
+  private[okay] def debugState: String = lock.synchronized {
+    s"closing=$closing closedCore=$closedCore drained=$drained taking=$taking putting=$putting " +
+      s"waiters=${waiters.size} stash=${stash.size} sends=${sends.size} failed=${failure.isDefined}"
+  }
+
   /**
    * Closed AND empty, answered without a receiver waiting: once core.async
    * is closed (our own sends done), a `poll!` that answers nil means no

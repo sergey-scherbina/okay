@@ -49,6 +49,14 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
 
   private def drains(name: String): Boolean = impls.find(_._1 == name).exists(_._2)
 
+  /** an implementation's own flags and counts, for the diagnosis a
+   * liveness law takes when a consumer is late: a suite that brings a
+   * channel from another module overrides this with that channel's own
+   * (sentinel-single-consumer-lost-end, 2026-09-28) */
+  protected def describe(c: Channel[?]): String = c match
+    case sc: SentinelChannel[?] => okay.diagnose.Diagnosable.describe(sc)
+    case _ => s"finished=${c.finished}"
+
   /** a law of the core tier: every implementation answers for it */
   private def each(name: String)(law: (String, Int => Channel[Int]) => Unit): Unit =
     impls.foreach((n, _, mk) => test(s"$name — $n")(law(n, mk)))
@@ -228,10 +236,7 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
         // alone under every core burning never hung. okay-diagnose's
         // LateOrLost takes the thread's state at 5 s (WAITING = parked,
         // RUNNABLE = starved) and the channel's, and waits a minute more.
-        val state = c match
-          case sc: SentinelChannel[?] => okay.diagnose.Diagnosable.describe(sc)
-          case _ => s"finished=${c.finished}"
-        okay.diagnose.LateOrLost.join(q, java.time.Duration.ofSeconds(5), java.time.Duration.ofSeconds(60))(state) match
+        okay.diagnose.LateOrLost.join(q, java.time.Duration.ofSeconds(5), java.time.Duration.ofSeconds(60))(describe(c)) match
           case okay.diagnose.LateOrLost.Outcome.OnTime => ()
           case okay.diagnose.LateOrLost.Outcome.Late(at) =>
             System.err.println(s"$n: runner $k round $round: the consumer saw the end LATE; $at")

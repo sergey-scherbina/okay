@@ -11,4 +11,8 @@ import okay.ChannelLawsSuite
  */
 class TestCoreAsyncChannelLaws extends ChannelLawsSuite(List(
   ("CoreAsyncChannel", true, cap => CoreAsync.channel[Int](math.max(1, cap))),
-))
+)) {
+  override protected def describe(c: okay.Channel[?]): String = c match
+    case cc: CoreAsyncChannel[?] => cc.debugState
+    case other => super.describe(other)
+}
