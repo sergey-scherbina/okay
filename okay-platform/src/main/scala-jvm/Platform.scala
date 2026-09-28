@@ -291,7 +291,7 @@ object Schedulers {
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val f = CompletableFuture[A]()
       val t = Thread.startVirtualThread: () =>
-        try { val _ = f.complete(prog().runWith) }
+        try { val _ = f.complete(Async.runFiber(prog())) }
         catch case e: Throwable => { val _ = f.completeExceptionally(e) }
       fiberOf(f, () => t.interrupt())
 
@@ -316,7 +316,7 @@ object Schedulers {
       val runner = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
       val task: Runnable = () =>
         runner.set(Thread.currentThread())
-        try { val _ = f.complete(prog().runWith) }
+        try { val _ = f.complete(Async.runFiber(prog())) }
         catch case e: Throwable => { val _ = f.completeExceptionally(e) }
         finally lock.synchronized { runner.set(null) }
       val fut = pool.submit(task)
@@ -995,7 +995,7 @@ object Schedulers {
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val f = CompletableFuture[A]()
       val r: Runnable = () =>
-        try { val _ = f.complete(prog().runWith) }
+        try { val _ = f.complete(Async.runFiber(prog())) }
         catch case e: Throwable => { val _ = f.completeExceptionally(e) }
       val t = Thread(r)
       t.start()

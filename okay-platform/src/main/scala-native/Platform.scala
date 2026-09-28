@@ -90,7 +90,7 @@ object Schedulers {
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val cell = FiberCell[A]()
       val t = Thread(() =>
-        try cell.complete(Right(prog().runWith))
+        try cell.complete(Right(Async.runFiber(prog())))
         catch case e: Throwable => cell.complete(Left(e)))
       t.start()
       new Fiber[A]:
@@ -112,7 +112,7 @@ object Schedulers {
       val cell = FiberCell[A]()
       val task = new Task(
         () =>
-          try cell.complete(Right(prog().runWith))
+          try cell.complete(Right(Async.runFiber(prog())))
           catch case e: Throwable => cell.complete(Left(e)),
         // cancel ANSWERS the fiber (specs/cross-platform-async.md,
         // supervised-waits-on-failure): a task skipped for being

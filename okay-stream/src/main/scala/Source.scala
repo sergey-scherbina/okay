@@ -235,6 +235,25 @@ object Source {
    */
   def mergeReady[A](sources: Source[A]*)(using Wait, Pause): Source[A] = ReadyMerge(sources)
 
+  /** merges released by a cancel or an early stop — a test's view of it
+   * (merge-scopes-everywhere); a normal end releases nothing */
+  private[okay] val mergeReleases = java.util.concurrent.atomic.AtomicLong()
+
+  /**
+   * `s` inside a cancel scope whose release is `release`
+   * (merge-scopes-everywhere): run by a cancel, or when the program ends
+   * with `s` unfinished (a consumer that stopped early), on every
+   * scheduler — the drive's scopes, or the blocking handler's frame. The
+   * scope closes when `s` ends, by a flatMap after it: one rotation per
+   * node of `s`, so wrap a CHUNK source, not an element source.
+   */
+  private[okay] def releasing[A](release: () => Unit)(s: Source[A]): Source[A] =
+    okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
+      val scope = Async.CancelScope(release)
+      okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope)))
+        .flatMap(_ => s)
+        .flatMap(_ => okay.effect[Writer % A + Async, Unit](Async.Run(Async.Exit(scope))))
+
 
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart

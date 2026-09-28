@@ -229,7 +229,43 @@ object Async {
   /** the two markers share a class, so the drive's `Run` arm asks ONE
    * class test of every operation (+1.5% on a pure-Run chain with two) */
   private[okay] sealed abstract class ScopeMark(val scope: CancelScope, val entering: Boolean) extends (() => Unit):
+    /** an empty operation to any handler but a drive's and a fiber's
+     * own (`runFiber`), which read the mark by its class */
     def apply(): Unit = ()
+
+  /**
+   * THE BLOCKING SCHEDULERS' SIDE OF CANCEL SCOPES (merge-scopes-everywhere,
+   * 2026-09-28). A fiber on Loom, `forkJoin` or `threads` runs its whole
+   * program with `runWith` on one thread; `runFiber` gives that run a
+   * handler of its OWN, which keeps the scopes the program opens and, however
+   * the program leaves — its answer, a throw, an interrupt (a cancel) —
+   * releases every one still open: the blocking twin of the drive's release
+   * at a cancel or an early end. One object per fiber and a list only once a
+   * scope opens: the first cut kept the frame in a ThreadLocal and paid
+   * ~150 B on EVERY Loom fork for the ThreadLocalMap a fresh virtual thread
+   * creates (7.49 MB against 5.97 per 10 000 fork/joins).
+   */
+  private final class FiberHandler(cb: CanBlock) extends Handler[Async]:
+    private var open: List[CancelScope] = Nil
+    def handle[X](e: Async[X]): X = e match
+      case Run(f) =>
+        f match
+          case m: ScopeMark =>
+            open = if m.entering then m.scope :: open else open.filterNot(_ eq m.scope)
+          case _ => ()
+        f()
+      case Await(reg) => cb.block(reg).fold(e => throw e, identity)
+    def releaseAll(): Unit =
+      val l = open
+      open = Nil
+      l.foreach(s => try s.released() catch case _: Throwable => ())
+
+  /** a fiber's whole program on a blocking scheduler, with its cancel
+   * scopes released when it leaves by any road */
+  def runFiber[A](prog: A ! Async)(using cb: CanBlock): A =
+    val h = FiberHandler(cb)
+    try prog.runWith(using h)
+    finally h.releaseAll()
   private[okay] final class Enter(s: CancelScope) extends ScopeMark(s, true)
   private[okay] final class Exit(s: CancelScope) extends ScopeMark(s, false)
 

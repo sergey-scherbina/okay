@@ -39,7 +39,8 @@ private[okay] object ReadyMerge:
    * a dry ring waits before it registers its idle sides — the strategy
    * and the platform's rungs, both givens a caller may swap */
   def apply[A](sources: Seq[Source[A]], onPark: () => Unit = () => (), quantum: Int = 1,
-               onRegister: () => Unit = () => ())(using waiting: Wait, pause: Pause): Source[A] =
+               onRegister: () => Unit = () => (), release: () => Unit = () => ())
+              (using waiting: Wait, pause: Pause): Source[A] =
     // the state is built per RUN, inside the program: a Source is a
     // value, and running it twice must merge twice
     // the merge OPENS A CANCEL SCOPE with its drive first, and closes it
@@ -48,7 +49,7 @@ private[okay] object ReadyMerge:
     // sources it has parked even while its code sits inside the
     // consumer's continuation and it never parks itself
     okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
-      val r = new Run[A](sources, onPark, quantum, onRegister, waiting, pause)
+      val r = new Run[A](sources, onPark, quantum, onRegister, waiting, pause, release)
       okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(r.scope))).flatMap(_ => r.again())
 
   /** a registration's answer, when it came before the drive moved on */
@@ -56,7 +57,7 @@ private[okay] object ReadyMerge:
   private object Moved
 
   private final class Run[A](sources: Seq[Source[A]], onPark: () => Unit, quantum: Int, onRegister: () => Unit,
-                             waiting: Wait, pause: Pause):
+                             waiting: Wait, pause: Pause, release: () => Unit):
     private given Pause = pause
     private type R = Writer % A + Async
     private val n = sources.length
@@ -179,7 +180,7 @@ private[okay] object ReadyMerge:
 
     /** this run's cancel scope: its release is `cancelAll`, idempotent
      * (every slot is taken once) and safe from any thread */
-    val scope: Async.CancelScope = Async.CancelScope(() => cancelAll())
+    val scope: Async.CancelScope = Async.CancelScope(() => { cancelAll(); release() })
 
     /** the re-entry `step` takes through `flatMap`, so `@tailrec` still
      * checks the loop */

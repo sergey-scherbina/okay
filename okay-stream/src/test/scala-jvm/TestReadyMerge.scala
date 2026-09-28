@@ -209,6 +209,33 @@ class TestReadyMerge extends munit.FunSuite {
         s"$name round $round: the parked source was never cancelled (registered=${g.registered.getCount == 0})")
   }
 
+  test("an early stop releases a parked source when the program ends, on Loom too (the blocking handler's frame)") {
+    // merge-scopes-everywhere: a Loom fiber runs its program inside
+    // `Async.runFiber`, so the scope the merge never exited is
+    // released when the fiber's program ends
+    for round <- 0 until 20 do
+      val g = Gate()
+      val m = ReadyMerge(Seq(Source.of(LazyList.range(0, 200000)), g.source))
+      val f = summon[Scheduler].fork(() => m.runFoldUntil(using FoldUntil.take[Int](3)))
+      assertEquals(f.joinEither().map(_.size), Right(3), s"round $round")
+      assert(g.gone.await(10, java.util.concurrent.TimeUnit.SECONDS), s"round $round: the parked source outlived the program")
+  }
+
+  test("Source.merge stopped early releases its sides (their channels close, their feeders end), and a full run releases nothing") {
+    // merge-scopes-everywhere: before, an early-stopped merge left both
+    // feeder fibers parked on a full buffer for good
+    for (name, sch) <- List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build) do
+      val before = Source.mergeReleases.get
+      val m = Source.of(LazyList.from(0)).merge(Source.of(LazyList.from(0)), capacity = 4)
+      val f = sch.fork(() => m.runFoldUntil(using FoldUntil.take[Int](5)))
+      assertEquals(f.joinEither().map(_.size), Right(5), name)
+      assertEquals(Source.mergeReleases.get - before, 1L, s"$name: the early stop released the merge once")
+      val full = Source.of(List(1, 2, 3)).merge(Source.of(List(4, 5)))
+      val before2 = Source.mergeReleases.get
+      assertEquals(sch.fork(() => full.runCollect).joinEither().map(_.sorted), Right(Vector(1, 2, 3, 4, 5)), name)
+      assertEquals(Source.mergeReleases.get - before2, 0L, s"$name: a merge that ran to its end released nothing")
+  }
+
   test("an EARLY STOP releases a parked source when the program ends, on own") {
     // the consumer takes three elements and finishes; the gate is still
     // parked. On a drive (own, JS) the program's end runs the merge's

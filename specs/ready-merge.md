@@ -165,7 +165,25 @@ waker then reads the queue — at least one side sees the other.
   markers are empty `Run`s: a cancel is an interrupt seen at the next
   wait, whose own canceller releases; an early stop there still leaves
   parked sources registered (below).
-- **Early stop is not cancellation (Loom)** — a consumer that stops reading
+- **…and on the BLOCKING schedulers too, and a merge's producers stop**
+  (merge-scopes-everywhere, 2026-09-28). A fiber on Loom, `forkJoin` or
+  `threads` runs its program through `Async.runFiber`: a handler of its
+  own that keeps the scopes the program opens and releases every one still
+  open however the program leaves (answer, throw, interrupt). And
+  `Source.merge`'s release also CLOSES its sides' channels (in `Merge.Ready`,
+  all three joins; in `Merge.Shared` the chunked joins' shared channel,
+  through `Source.releasing` — its ELEMENT join is not wrapped, that would
+  cost a rotation per element), so a merge that is cancelled or stopped
+  early ends its feeder fibers — before, each
+  filled its buffer and parked for good. Laws: TestReadyMerge "…on Loom
+  too" and "Source.merge stopped early releases its sides…" (Loom and
+  own), each turned red by its mutant. Cost: the first cut kept the scopes
+  in a ThreadLocal and paid +152 B on EVERY Loom fork; the fiber's own
+  handler is parity (forkJoin10k_okay 5.97 MB either way per 10 000
+  fork/joins). A plain `runWith` on a thread of the caller's own still sees
+  no scopes: that is the one road left where an early stop releases
+  nothing.
+- **Early stop is not cancellation (a bare `runWith`)** — a consumer that stops reading
   (`take`, `runFoldUntil`) drops the merged program without running it,
   so a PARKED source's registration stays registered and its answer is
   dropped when it fires. `Source.merge` has the same property (its
