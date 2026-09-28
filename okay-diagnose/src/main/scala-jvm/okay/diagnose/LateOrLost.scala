@@ -15,6 +15,7 @@ object LateOrLost:
     case OnTime
     case Late(at: String)
     case Lost(at: String)
+    case Starved(at: String)
 
   def join(t: Thread, first: Duration, grace: Duration)(snapshot: => String): Outcome =
     // join(millis) and isAlive, not join(Duration): that one is JDK 19,
