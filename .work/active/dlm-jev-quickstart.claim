@@ -1,5 +1,0 @@
-task: dlm-jev-quickstart
-agent: codex
-branch: feature/dlm-jev-quickstart
-started: 2026-09-28
-scope: deterministic DLM counterpart of kataras/jev quickstart
