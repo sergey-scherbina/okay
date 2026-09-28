@@ -18,21 +18,21 @@ the public Jev examples, not their provider-specific SDK calls.
 
 ## Behaviour
 
-- [ ] There is one suite, `TestDlmJevExamples`, and one test,
+- [x] There is one suite, `TestDlmJevExamples`, and one test,
       `showcase`, rather than separate quickstart and refund smoke suites.
-- [ ] Each section calls `clue` before assertions so a failure names its
+- [x] Each section carries an assertion message so a failure names its
       public-example behaviour.
-- [ ] The quickstart ticket yields billing, Billing and Today from exact
+- [x] The quickstart ticket yields billing, Billing and Today from exact
       authored evidence.
-- [ ] A technical ticket yields Technical and ThisWeek; an unowned ticket is
+- [x] A technical ticket yields Technical and ThisWeek; an unowned ticket is
       Unclear with no urgency result.
-- [ ] The Russian duplicate-charge dialogue records/replays its action and
+- [x] The Russian duplicate-charge dialogue records/replays its action and
       reads the scoped confirmation as pending.
-- [ ] A claim for an order with no payment yields `NoPayment` and zero refund
+- [x] A claim for an order with no payment yields `NoPayment` and zero refund
       calls.
-- [ ] No network, key, model, Python runtime, remote probability, or SDK is
+- [x] No network, key, model, Python runtime, remote probability, or SDK is
       needed to run the showcase.
-- [ ] The two predecessor test files are removed and the guide points at the
+- [x] The two predecessor test files are removed and the guide points at the
       one command that runs all examples.
 
 ## Design
@@ -51,4 +51,8 @@ scripts/gate.sh "okayDlm/testOnly okay.dlm.TestDlmJevExamples"
 
 ## Results
 
-Pending implementation.
+Implemented in `TestDlmJevExamples` and
+`docs/guides/dlm-jev-examples-showcase.md`.
+
+Verified 2026-09-28: `scripts/gate.sh "okayDlm/testOnly
+okay.dlm.TestDlmJevExamples"` — 1 passed, 0 failed.
