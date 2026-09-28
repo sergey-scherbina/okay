@@ -1,1 +1,0 @@
-claude session_01LZNspDq7ZU8TRfNoTnpRMD, 2026-09-28, operator: continue — the Native pool Task never resets its runner, so a late cancel interrupts an unrelated task
