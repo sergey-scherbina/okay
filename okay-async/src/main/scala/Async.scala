@@ -254,7 +254,7 @@ object Async {
             open = if m.entering then m.scope :: open else open.filterNot(_ eq m.scope)
           case _ => ()
         f()
-      case Await(reg) => cb.block(reg).fold(e => throw e, identity)
+      case Await(reg, _) => cb.block(reg).fold(e => throw e, identity)
     def releaseAll(): Unit =
       val l = open
       open = Nil
