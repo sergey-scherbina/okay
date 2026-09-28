@@ -80,7 +80,7 @@ object Judge:
 
   object Fit:
     /** OURS BY DEFAULT: the probe over the table, with the encoder in scope */
-    given ours(using e: Embedder): Fit = exemplars => probe(exemplars, e)
+    given ours(using e: Embedder): Fit = exemplars => probe(exemplars, e(_))
     /** a judge that does not read the table: the remote ones */
     def constant(j: Judge): Fit = _ => j
     def apply(f: Exemplars => Judge): Fit = f(_)
@@ -107,7 +107,7 @@ object Judge:
         }
 
   /** the same, with the encoder from scope */
-  def probe(exemplars: Exemplars)(using e: Embedder): Judge = probe(exemplars, e, "probe")
+  def probe(exemplars: Exemplars)(using e: Embedder): Judge = probe(exemplars, e(_), "probe")
 
   /** a judge that never answers: what a head with nothing behind it holds */
   val silent: Judge = new Judge:

@@ -252,11 +252,11 @@ is audited, and reverted, exactly like a build.
 
 ### Behavior (stage 3)
 
-- [ ] a table put on the shelf and read back hashes the same, F16 included; putting it twice keeps one
-- [ ] a shelf refuses a table of another encoder by name, like a checkpoint
-- [ ] `Retention.all` drops nothing; `latest(n)` keeps the newest n; `within` keeps the young; `any` keeps what either keeps; `of` reads each spelling and refuses a wrong one by name
-- [ ] `prune` never drops the newest table of an artifact nor a serving one, whatever the policy; each drop is a `Pruned` entry naming the policy
-- [ ] a ledger written to a file reads back entry for entry, `Pruned` included
+- [x] a table put on the shelf and read back hashes the same, F16 included; putting it twice keeps one
+- [x] a shelf refuses a table of another encoder by name, like a checkpoint
+- [x] `Retention.all` drops nothing; `latest(n)` keeps the newest n; `within` keeps the young; `any` keeps what either keeps; `of` reads each spelling and refuses a wrong one by name
+- [x] `prune` never drops the newest table of an artifact nor a serving one, whatever the policy; each drop is a `Pruned` entry naming the policy
+- [x] a ledger written to a file reads back entry for entry, `Pruned` included
 - [ ] (okay-chat) a build records `Rebuilt` with the hash before and after and the corpus by content hash, and keeps the old table; the same build twice records nothing
 - [ ] (okay-chat) a revert serves the shelf's table and records a `Rebuilt` from `shelf:H`; a pin by hash at boot serves it, and a pin to a hash not on the shelf refuses to boot
 
