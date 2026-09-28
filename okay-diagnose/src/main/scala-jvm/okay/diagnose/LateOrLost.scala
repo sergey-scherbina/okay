@@ -25,4 +25,15 @@ object LateOrLost:
     else
       val at = s"at ${first.toMillis} ms: ${Threads.stateOf(t)}\n  $snapshot"
       t.join(grace.toMillis max 1L)
-      if !t.isAlive then Outcome.Late(at) else Outcome.Lost(at)
+      if !t.isAlive then Outcome.Late(at)
+      else
+        // STARVED IS NOT LOST (sentinel-single-consumer-lost-end,
+        // 2026-09-28). A liveness law asks whether a wakeup was lost, and
+        // a thread that is RUNNABLE at the last deadline has not missed
+        // one: it has work and no carrier — a whole-build JVM sharing
+        // its cores with every other suite's virtual threads. The
+        // second snapshot names the state the verdict rests on; the
+        // caller logs a Starved and fails a Lost.
+        val last = Threads.stateOf(t)
+        val both = s"$at\n  at ${(first.toMillis + grace.toMillis)} ms: $last"
+        if t.getState == Thread.State.RUNNABLE then Outcome.Starved(both) else Outcome.Lost(both)

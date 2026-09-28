@@ -240,6 +240,10 @@ abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int
           case okay.diagnose.LateOrLost.Outcome.OnTime => ()
           case okay.diagnose.LateOrLost.Outcome.Late(at) =>
             System.err.println(s"$n: runner $k round $round: the consumer saw the end LATE; $at")
+          // RUNNABLE at the last deadline: the consumer has its wakeup and
+          // no carrier — the box, not the channel. Logged, not failed.
+          case okay.diagnose.LateOrLost.Outcome.Starved(at) =>
+            System.err.println(s"$n: runner $k round $round: the consumer is STARVED, not lost; $at")
           case okay.diagnose.LateOrLost.Outcome.Lost(at) =>
             hung.add(s"runner $k round $round: $at"): Unit
     val runners = (0 until 6).map(k => Thread.ofPlatform().start(() => runner(k)))

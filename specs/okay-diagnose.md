@@ -41,7 +41,7 @@ trait Diagnosable[-A]:                            // a component describes its s
 extension (d: Diagnostics) def snapshot[A: Diagnosable](a: A): Unit
 // JVM
 object Threads:    stateOf(t), dump(filter)
-object LateOrLost: join(t, first, grace)(snapshot): OnTime | Late(at) | Lost(at)
+object LateOrLost: join(t, first, grace)(snapshot): OnTime | Late(at) | Starved(at) | Lost(at)
 ```
 
 **okay-test** (package `okay.testkit`, cross) depends on okay-diagnose,
@@ -69,9 +69,15 @@ object Stress: repeat(n, parallel)(round => Option[diagnosis]): Report
 - [ ] the recorder is per test: a note from test A never appears in test
       B's failure
 - [ ] `Flight` keeps the newest `capacity` notes, in order, from many threads
-- [ ] `LateOrLost`: a thread that ends inside `first` is OnTime, one that
+- [x] `LateOrLost`: a thread that ends inside `first` is OnTime, one that
       ends inside `grace` is Late (with the snapshot taken at `first`), one
       that does not end at all is Lost
+- [x] `LateOrLost`: a thread still RUNNABLE at the last deadline is
+      Starved, not Lost (sentinel-single-consumer-lost-end, 2026-09-28):
+      a liveness law asks whether a wakeup was lost, and a runnable
+      thread has not missed one — it has no carrier, which is the
+      whole-build JVM's condition, not the channel's. `at` carries both
+      snapshots, the first deadline's and the last's.
 - [ ] `Stress.repeat` counts failed rounds and keeps the first diagnoses
 - [ ] `Load.burners` stops its threads when the body ends, even by a throw
 
@@ -88,6 +94,14 @@ object Stress: repeat(n, parallel)(round => Option[diagnosis]): Report
   into okay-test, not into the test that needed it.
 
 ## Decisions
+
+- 2026-09-28 (sentinel-single-consumer-lost-end): `Starved` is its own
+  outcome, not a `Late` with a flag and not a `Lost`: the six-channels
+  channel law fails on `Lost` only, so a starved consumer in a loaded
+  whole build is logged with its two snapshots and the channel's own
+  flags instead of turning a gate red with a bare munit timeout — which
+  is what every sighting of that law had been, three in one night,
+  because the law's own 65 s wait never fit munit's 30 s.
 
 - 2026-09-27: munit is OPTIONAL (`optional;test`) and is named only by
   `okay.testkit.Munit`. The first draft had it as a compile dependency,
