@@ -14,7 +14,7 @@
   whole-build JVM's condition, not the channel's — with both snapshots;
   `Lost` is a parked thread only. The law logs a Starved and fails a
   Lost. TestLateOrLost pins it, red first. specs/okay-diagnose.md.
-- REPRODUCTION REFUTED: the tree a sibling saw hang 2/2 (a9aa44111) ran
+- REPRODUCTION REFUTED: the tree a sibling saw hang 2/2 (the ready-merge-chunk-forward branch before it landed, base 3826e2e8c) ran
   the suite 2/2 green with the diagnosis in, no LATE at all — the box,
   not the tree, as the item's 240 000 quiet rounds already said. The
   item goes back to the backlog at MEDIUM with what the next red will

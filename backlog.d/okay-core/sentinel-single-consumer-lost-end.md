@@ -67,7 +67,7 @@
       `LateOrLost` tells a STARVED consumer (RUNNABLE at the last
       deadline: a wakeup it has, a carrier it lacks) from a LOST one
       (parked): the law logs the first and fails the second. The sibling's
-      2/2 tree (a9aa44111) ran 2/2 green with all that in — the box, not
+      2/2 tree (the ready-merge-chunk-forward branch before it landed, base 3826e2e8c) ran 2/2 green with all that in — the box, not
       the tree. The "placeEnd never retried after the last pop" path
       predicted above is refuted by reading: `Ring.push` decides fullness
       by the slot's STAMP, which `pop` publishes after moving the head,
