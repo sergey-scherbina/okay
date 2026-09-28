@@ -49,4 +49,11 @@
       and it can reproduce deterministically for a given class layout.
       If it recurs after that fix, the six-runner law itself is the
       reproducer: it hung 2/2 on one tree and 0/3 on its neighbours.
-
+      A THIRD sighting the same quarter hour (supervised-waits-on-failure's
+      whole-build gate, 02:19, base BEFORE 09036dd58; 3/3 green alone on
+      that tree; the law drives raw `Thread.ofVirtual`/`ofPlatform`, no
+      Scheduler, no cancel, so nothing in that lane's diff reaches it) —
+      consistent with the scheduling reading above. The CoreAsync variant
+      carries no LATE/LOST diagnosis yet — it fails as a bare munit
+      timeout — so the diagnosis the SentinelChannel variants got belongs
+      in the SHARED law, not in one channel's suite.
