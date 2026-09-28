@@ -32,19 +32,19 @@ fact.
 
 ## Behaviour
 
-- [ ] `okay-dlm` has a self-contained smoke suite for the transcript.
-- [ ] The first line routes through `Support.Exact` and decides
+- [x] `okay-dlm` has a self-contained smoke suite for the transcript.
+- [x] The first line routes through `Support.Exact` and decides
       `Action.Act`; its record round-trips and recalls the same action.
-- [ ] The confirmation line in `Pending.Answer` decides
+- [x] The confirmation line in `Pending.Answer` decides
       `Action.AnswerPending`, even though it contains more than a bare
       yes/no token. The suite records the pending action supplied by the
       caller.
-- [ ] The suite asserts the visible evidence: rule, slot, state, action and
+- [x] The suite asserts the visible evidence: rule, slot, state, action and
       record — no timing or model-quality number is invented.
-- [ ] A pure caller-side payment fixture proves that a routed refund claim is
+- [x] A pure caller-side payment fixture proves that a routed refund claim is
       only a review until ledger evidence authorises it; a nonexistent payment
       yields `NoPayment` and records zero refund operations.
-- [ ] Documentation gives the trace and the comparison boundary for a later
+- [x] Documentation gives the trace and the comparison boundary for a later
       Laya lane: DLM decides an action from explicit state and authored data;
       a future Laya run may only judge the same typed question.
 
@@ -72,4 +72,9 @@ scripts/gate.sh "okayDlm/testOnly okay.dlm.TestDlmLayaSmoke"
 
 ## Results
 
-Pending implementation.
+Implemented in `TestDlmLayaSmoke` and `docs/guides/dlm-smoke.md`. The test
+does not execute an actual payment provider; its `PaymentLedger` is a small,
+pure proof of the required caller-side authority boundary.
+
+Verified 2026-09-28: `scripts/gate.sh "okayDlm/testOnly
+okay.dlm.TestDlmLayaSmoke"` — 2 passed, 0 failed.
