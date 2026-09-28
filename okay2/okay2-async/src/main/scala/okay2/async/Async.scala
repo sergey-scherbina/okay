@@ -284,6 +284,13 @@ object Async {
   private[okay2] final class PromiseDrive[A](p: Promise[A]) extends Drive[A] {
     protected def succeed(a: A): Unit = { val _ = p.trySuccess(a) }
     protected def fail(e: Throwable): Unit = { val _ = p.tryFailure(e) }
+    /** cancel ANSWERS the fiber (okay2-supervised-waits-on-failure): a
+     * stopped drive parked in an Await never resumes, so nothing else
+     * would settle this promise, and a join on it waited forever */
+    override def cancel(): Unit = {
+      super.cancel()
+      val _ = p.tryFailure(new java.util.concurrent.CancellationException("fiber cancelled"))
+    }
   }
 
   /** run the program on its own fiber */
@@ -344,14 +351,26 @@ object Async {
     await[A] { k =>
       val n = new Nursery(S)
       val settled = new AtomicBoolean(false)
+      val first = new AtomicReference[Throwable](null)
       def done(r: Either[Throwable, A]): Unit = if (!settled.getAndSet(true)) k(r)
 
-      n.onFirstFailure = e => { n.cancelAll(); done(Left(e)) }
+      // the FAILURE answer waits for the children as the success answer
+      // does (okay2-supervised-waits-on-failure, the twin of the Scala 3
+      // core's fix): safe because cancel answers the fiber everywhere.
+      // The FIRST failure is kept, so a body failing or succeeding later
+      // cannot replace it
+      def failWith(e: Throwable): Unit =
+        if (first.compareAndSet(null, e)) { n.cancelAll(); n.whenIdle(() => done(Left(e))) }
+
+      n.onFirstFailure = failWith
 
       val main = spawn(body(n))
       main.onComplete {
-        case Left(e) => n.cancelAll(); done(Left(e))
-        case Right(a) => n.whenIdle(() => done(Right(a)))
+        case Left(e) => failWith(e)
+        case Right(a) => n.whenIdle(() => done(first.get() match {
+          case null => Right(a)
+          case e => Left(e)
+        }))
       }
       () => { n.cancelAll(); main.cancel() }
     }

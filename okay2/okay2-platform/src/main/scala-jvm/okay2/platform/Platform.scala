@@ -212,11 +212,28 @@ object Schedulers {
   def forkJoin(pool: ExecutorService = ForkJoinPool.commonPool()): Scheduler = new Scheduler {
     def fork[A](prog: () => A ! Async): Fiber[A] = {
       val f = new CompletableFuture[A]()
-      val task: Runnable = () =>
+      // THE RUNNING THREAD, tracked under a monitor: `Future.cancel(true)`
+      // never interrupts a running ForkJoinTask, so a cancelled child ran
+      // on; and a task cancelled while QUEUED never ran, so nothing
+      // completed `f`. Both answered now (okay2-supervised-waits-on-failure)
+      val lock = new Object
+      val runner = new java.util.concurrent.atomic.AtomicReference[Thread](null)
+      val task: Runnable = () => {
+        runner.set(Thread.currentThread())
         try { val _ = f.complete(Effects.runFree(prog())) }
         catch { case e: Throwable => val _ = f.completeExceptionally(e) }
+        finally lock.synchronized { runner.set(null) }
+      }
       val fut = pool.submit(task)
-      fiberOf(f, () => { val _ = fut.cancel(true) })
+      fiberOf(f, () => {
+        val _ = fut.cancel(false)
+        lock.synchronized {
+          runner.get() match {
+            case null => val _ = f.completeExceptionally(new java.util.concurrent.CancellationException("fiber cancelled"))
+            case t => t.interrupt()
+          }
+        }
+      })
     }
   }
 

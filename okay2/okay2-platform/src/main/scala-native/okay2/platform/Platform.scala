@@ -125,9 +125,12 @@ object Schedulers {
 
     def fork[A](prog: () => A ! Async): Fiber[A] = {
       val cell = new FiberCell[A]
-      val task = new Task(() =>
-        try cell.complete(Right(Effects.runFree(prog())(Async.handler(Platform.canBlock))))
-        catch { case e: Throwable => cell.complete(Left(e)) })
+      val task = new Task(
+        () =>
+          try cell.complete(Right(Effects.runFree(prog())(Async.handler(Platform.canBlock))))
+          catch { case e: Throwable => cell.complete(Left(e)) },
+        // cancel ANSWERS the fiber: a task skipped as cancelled answers
+        () => cell.complete(Left(new java.util.concurrent.CancellationException("fiber cancelled"))))
       q.offer(task)
       new Fiber[A] {
         def onComplete(k: Either[Throwable, A] => Unit): Unit = cell.subscribe(k)
@@ -140,18 +143,27 @@ object Schedulers {
 }
 
 /** one queued unit of work, cancellable while queued or running — the
- * runner is set only for the task actually executing on it */
-private final class Task(body: () => Unit) {
-  @volatile private var cancelled = false
-  @volatile private var runner: Thread = null
+ * runner is held only WHILE the body runs, under this monitor, and the
+ * finally consumes the task's own interrupt, so a stale cancel never
+ * reaches a later task (the Scala 3 core's native-pool-stale-interrupt) */
+private final class Task(body: () => Unit, skipped: () => Unit) {
+  private var cancelled = false
+  private var runner: Thread = null
 
-  def run(): Unit =
-    if (!cancelled) {
-      runner = Thread.currentThread()
-      if (!cancelled) body()
+  def run(): Unit = {
+    val go = synchronized {
+      if (cancelled) false else { runner = Thread.currentThread(); true }
     }
+    if (go)
+      try body()
+      finally synchronized {
+        runner = null
+        val _ = Thread.interrupted()
+      }
+    else skipped()
+  }
 
-  def cancel(): Unit = {
+  def cancel(): Unit = synchronized {
     cancelled = true
     val r = runner
     if (r != null) r.interrupt()
