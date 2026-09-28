@@ -76,4 +76,7 @@ does not occupy ZIO's blocking executor while an `Await` is pending.
 `Async.runAsyncCancellable` exposes the callback driver's cancellation door;
 `ZioInterop.toZIOAsync` maps it into `ZIO.asyncInterrupt`. Focused gates
 passed: `okayPlatformJVM/testOnly okay.TestAsyncCross` (20 results) and
-`okayZio/testOnly okay.zio.TestZioInterop` (7 results).
+`okayZio/testOnly okay.zio.TestZioInterop` (7 results). The affected gate's
+only initial failure was the newly added board item's malformed heading;
+`scripts/board.sh --check` and `okayDeploy/testOnly okay.deploy.TestBoardEntries`
+(7 results) pass after its correction.

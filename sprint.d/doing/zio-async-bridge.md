@@ -1,6 +1,4 @@
-## Non-blocking cancellable ZIO bridge
-
-Add an `okay-zio` conversion that drives `A ! Async` through callbacks instead
+- [ ] zio-async-bridge — add an `okay-zio` conversion that drives `A ! Async` through callbacks instead
 of parking a ZIO blocking-pool thread. The bridge must propagate ZIO
 interruption to the active Okay `Await` registration's canceller, preserve
 success and failure values, and leave the existing `toZIO` blocking bridge
