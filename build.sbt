@@ -3015,6 +3015,24 @@ lazy val okayAdmin = project
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * The deterministic dialogue language model (specs/dlm.md): the
+ * four-layer router (what the person taught, a rule, a typo of a
+ * rule's word, a probability), one `Head` per question over a table
+ * of exemplars, the pure turn decision with its journal record, the
+ * memory fold, the language detector and the safetensors checkpoint.
+ * It is the MECHANISM a chat service keeps its data out of: every
+ * rule, phrase, word and slot is the caller's and is passed in.
+ * JVM only: the checkpoint maps a file and the door runs on threads.
+ */
+lazy val okayDlm = project
+  .in(file("okay-dlm"))
+  .dependsOn(okayIntent.jvm, okayAgent.jvm)
+  .settings(
+    name := "okay-dlm",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayChat = project
   .in(file("okay-chat"))
   .dependsOn(okayLlm.jvm, okayHttp.jvm, okayConf.jvm)
@@ -3472,7 +3490,7 @@ lazy val root = (project in file("."))
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
-    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
+    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDlm, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js,
     okayKernel.jvm, okayKernel.js, okayKernel.native, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
