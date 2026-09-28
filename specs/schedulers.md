@@ -898,3 +898,51 @@ mount or unmount. That is a hypothesis: it was not measured.
   PLATFORM threads, and it no longer caps how many fibers can block.
   Where Loom is absent (JDK 17-20) nothing can spill, and the old bound
   stands.
+
+
+## The default, re-run (2026-09-28, scheduler-default-rerun)
+
+Both conditions in "What would reopen it" are met: Wrocław on `adaptive`
+reads Loom's time (adaptive-outside-long-fibers-serial) and five-way TCP
+blocking reads 1.31x Loom (adaptive-blocking-io). So the table of "The
+default" is measured again on today's code, and the default is decided
+again from it.
+
+### How it is measured
+The same matched pairs as "The default": ONE switch, `-Dokay.scheduler=
+loom|adaptive` through JMH's `-jvmArgsAppend` (and through `run /
+javaOptions` for Wrocław, `runMain` forked), so both arms are the same
+code. Five-way pairs its `okay` runtime (the default given) with
+`okayAdaptive`, in the harness clone at 82ac6f1 patched by
+`compare/five-way/apply.py`, okay published at a private version
+(`0.2.0-sdr`), run by `compare/five-way/run.sh`. JMH lanes `-f 2 -wi 3
+-i 5`, AdversarialBenchmark pinned to `-p work=100 -p shape=4x4`, every
+lane its own `scripts/jmh-lane.sh`; five-way at his settings (`-f 3 -wi
+3 -i 3`). Wrocław: `OkayBench 8 5 1 8`, best of 5, ms wall.
+
+- PART 1, one round, arms alternating loom then adaptive per lane:
+  fork/join 10k outside and inside (work=100), cancel 1 000,
+  `DirectParallelBenchmark.parallel8`, Wrocław 8 fibres, five-way TCP
+  blocking. Table and a preliminary verdict committed before part 2.
+- PART 2: a second round of every part-1 lane (adaptive first), §4 100
+  fibers outside and inside (`okaySpawn`, `okaySpawnInside`), and the
+  rest of five-way (spawn/join, workers work=0/64, TCP callback, runtime
+  entry). A third pair only where two rounds disagree in sign.
+- Correctness with `adaptive` as the given: TestSchedulerLaws,
+  TestManagedBlocking, TestOwnMonitor, TestReadyMerge,
+  TestAdaptiveScheduler (its property-unset assertion is expected red:
+  it asserts the arm itself away).
+
+Expected before measuring, from the three lanes' rows: `adaptive` at
+0.5-0.9 of Loom's time on fork/join, cancel, `parallel8` and §4; 20x+
+on five-way spawn/join; Wrocław within noise (~110 ms both); TCP
+blocking ~1.3x Loom. The disqualifying evidence: any row where
+`adaptive` is worse than Loom beyond the lane's noise.
+
+### Behavior
+- [ ] part 1 table + preliminary verdict
+- [ ] part 2 table
+- [ ] correctness column under `adaptive` as the given
+- [ ] the decision: flip `Schedulers.auto` to `adaptive` where virtual
+      threads exist ONLY if no row loses beyond noise; JDK 17-20 keep
+      `platform` (no spill there, so no `adaptive` by default either)
