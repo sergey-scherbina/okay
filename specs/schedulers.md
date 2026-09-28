@@ -645,6 +645,14 @@ arm itself, not a defect. So correctness is not what stands in the way.
   ms against Loom's 111/113 ("Outside bursts", below). Blocking is now the
   ONLY open condition: five-way TCP blocking at 0.45x and the `n +
   overflow` bound.
+  **Both met (2026-09-28, adaptive-blocking-io):** five-way TCP blocking
+  reads 151.8-153.9 ops/s on `adaptive` against Loom's 114-121, 1.31x
+  ("Blocking past the bound", below). The deadlock bound is still
+  stated, in its new form: `n + overflow` fibers blocked on platform
+  threads, with any more waiting work spilled to virtual threads where
+  Loom exists; with no Loom, or `overflow = 0`, the old number holds.
+  The default question can now be re-run with the table in "The
+  default". This lane did not flip it.
   Until then the fast member is one line away and documented as the
   choice for fork/join-heavy, non-blocking programs:
   `given Scheduler = Schedulers.adaptive.build`.
@@ -812,17 +820,81 @@ sees.
 - (c) keep the bound and say so.
 
 ### Behavior
-- [ ] reproduce on master: five-way TCP blocking, `okay` (Loom) vs
+- [x] reproduce on master: five-way TCP blocking, `okay` (Loom) vs
       `okayAdaptive`, his settings
-- [ ] (b0) priced
-- [ ] (a) priced. If it lands: the bound law changes. `n + overflow`
+- [x] (b0) priced
+- [x] (a) priced. If it lands: the bound law changes. `n + overflow`
       door-blocked fibers plus their queued releaser FINISH on
       `adaptive` where Loom exists (red first on master). The old bound
       still holds where nothing can spill (no Loom, or `overflow = 0`),
       and that is pinned too (TestManagedBlocking)
-- [ ] TestSchedulerLaws, TestOwnMonitor, TestAdaptiveScheduler green
-- [ ] must not regress: AdversarialBenchmark forkJoin10k_okay and
-      forkJoin10k_okayInside on `adaptive`, OwnMonitorBenchmark
-      spawnJoinSeq, Wrocław 8 fibres on `adaptive` (~110 ms)
-- [ ] BAR: TCP blocking within 10% of Loom. Met: "What would reopen it"
+- [x] the TCP shape as a law: eight fibers in a raw 300 ms call on
+      `workers(2).watched(overflow = 2)` are all in the call at once (red
+      on the base: 4 = `n + overflow`) (TestManagedBlocking)
+- [x] TestSchedulerLaws, TestOwnMonitor, TestAdaptiveScheduler green
+- [x] must not regress: AdversarialBenchmark forkJoin10k_okay and
+      forkJoin10k_okayInside on `adaptive`, Wrocław 8 fibres on
+      `adaptive` (~110 ms). OwnMonitorBenchmark spawnJoinSeq runs on
+      plain `own`, where every changed line is behind `overflow > 0`, so
+      it was not run.
+- [x] BAR: TCP blocking within 10% of Loom. Met: "What would reopen it"
       says both conditions are met. The default is NOT flipped here.
+
+### Results (2026-09-28)
+Harness: his repository cloned at 82ac6f1 into the lane's `.work/`,
+patched by `compare/five-way/apply.py`, okay published locally at a
+private version per arm (`0.2.0-abi-*`, so no sibling's `SNAPSHOT`
+moved), run by `compare/five-way/run.sh` with `FIVE_WAY_LANES=tcp`. His
+settings, `-f 3 -wi 3 -i 3`. Rows:
+`src/jmh/history.d/2026-09-28T023204Z-adaptive-blocking-io.tsv`.
+
+| TCP, 64 lanes x 1 ms (ops/s, higher better) | Loom (`okay`) | `adaptive` | adaptive / Loom |
+|---|---:|---:|---:|
+| master, 3 rounds (two bases) | 118.8 / 114.4 / 117.1 | 51.8 / 51.5 / 51.7 | 0.44 |
+| (b0) `own.watched(overflow = 64)`, no code | — | 139.3 | 1.19 |
+| **(a) spill, 3 rounds** | 120.5 / 114.3 / 114.5 | **151.8 / 153.9 / 153.0** | **1.31** |
+| callback transport, master / (a) | — | 147.3 / 149.4 (medians) | untouched |
+
+A batch takes 19.3 ms on master's `adaptive`, 6.5 ms with the spill,
+and 8.6 ms on Loom. `adaptive` now beats Loom here. The likely reason is
+that 28 of the 64 fibers read on platform threads with no virtual-thread
+mount or unmount. That is a hypothesis: it was not measured.
+
+- **(b0) says the thread count is the whole story.** 78 platform
+  threads reach Loom too. But that is candidate (b): threads that are
+  started for one burst and never retire (`live` only grows). (a) beats
+  it without adding any platform thread, so (b) was not built.
+- **(a) LANDS.** The law was red on master first ("a blocker never
+  started": the fifth door-blocked fiber had no thread for 10 s), and
+  the raw-blocking law read 4 fibers in the call at once, which is
+  exactly `n + overflow`. Both are green with the spill. TestSchedulerLaws,
+  TestOwnMonitor and TestAdaptiveScheduler hold (64 tests).
+- **Guards**, lane against its base 9ea842d62 with `-Dokay.scheduler=
+  adaptive`, alternating base, lane, lane, base, each lane its own
+  `scripts/jmh-lane.sh`:
+
+| lane | base | lane | lane / base |
+|---|---:|---:|---:|
+| forkJoin10k_okay OUTSIDE, work=100 (us, pooled median of 6 attempts each) | 2 422 | 2 160 | 0.89 |
+| forkJoin10k_okayInside, work=100 (us, pooled median) | 3 196 | 3 215 | 1.01 |
+| Wrocław, okay 8 fibres, ms wall (best of 5) | 115 / 112 | 115 / 115 | 1.01 |
+| Wrocław on Loom, the lane build | — | 111 | — |
+
+  The outside lane read +-10-90% within a run on both builds, and
+  jmh-lane gave up on it every round. Its pooled medians are inside the
+  noise. The short-task lanes never reach the bound, so the spill never
+  runs there. The rows say only that nothing else moved.
+- **Where it resumes.** The rule came with the code, so there was
+  nothing to measure. A spilled fiber stays on its virtual thread until
+  its drive parks on an `Await`. After that it continues on whichever
+  thread delivers the answer, as on every member. "Return to an owned
+  worker after the block" cannot be built for a raw call, because
+  nothing announces when the call ends. For a door it would put a
+  submission and a wake on every resumed fiber, and it has no lane
+  that needs it.
+- **Not covered, said so:** a fiber that has already STARTED on a worker
+  and then blocks still holds that worker. The spill moves only waiting
+  work. So `n + overflow` is now the number of fibers that can block on
+  PLATFORM threads, and it no longer caps how many fibers can block.
+  Where Loom is absent (JDK 17-20) nothing can spill, and the old bound
+  stands.

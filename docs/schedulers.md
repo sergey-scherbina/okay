@@ -32,7 +32,7 @@ cores without you saying when.
 |---|---|---|---|
 | `Schedulers.loom` | a virtual thread | free — the thread parks | the default; anything that may block: I/O, `join()`, channels |
 | `Schedulers.own` | a task on a thread the scheduler owns | holds one of the workers | short CPU-bound fibers, fork/join as throughput |
-| `Schedulers.adaptive` | the same, watched | costs latency, not the program — up to `workers + overflow` blocked at once | `own`'s speed when blocking is rare and bounded |
+| `Schedulers.adaptive` | the same, watched | costs latency, not the program — `workers + overflow` block on platform threads, and waiting work past that runs on virtual threads | `own`'s speed, and blocking that is survivable |
 | `Schedulers.drive(pool)` | a task on a JDK pool | holds a pool thread | when the pool is given to you — a container's, a framework's |
 | `Schedulers.forkJoin(pool)` | a pool task, no Loom | holds a pool thread | a JVM without virtual threads |
 | `Schedulers.threads` | one platform thread | free | Native's default; a JVM that must not use Loom |
@@ -53,17 +53,26 @@ specs/schedulers.md, "The default"). Same code, only
   1 000 parked fibers cancelled in 0.67, an eight-way direct `parallel`
   block in 0.66, and sequential spawn/join in someone else's harness
   26 times over.
-- **`adaptive` loses** the two shapes a default cannot afford to lose:
-  64 fibers in blocking 1 ms calls run at 0.45 of Loom's throughput
-  (64 blocked fibers over 28 threads), and the Wrocław benchmark's
-  headline, eight long CPU fibers forked from `main`, took 355-605 ms
-  where Loom took 106-111. That second loss is FIXED (2026-09-28, the
-  monitor below now also watches forks from outside): 110-112 ms
-  against Loom's 111-113. Blocking is the reason that remains.
-- **And it has a number Loom does not**: `workers + overflow` fibers
-  blocked at once (28 on a 14-core machine by default) is where it
-  stops. One more, if the fiber that would release them is queued
-  behind them, waits until something outside the scheduler lets one go.
+- **`adaptive` lost** the two shapes a default cannot afford to lose,
+  and both losses are now FIXED (2026-09-28). Eight long CPU fibers
+  forked from `main` (the Wrocław headline) took 355-605 ms where Loom
+  took 106-111. The monitor now also watches forks from outside, and they
+  take 110-115 ms. 64 fibers in blocking 1 ms calls ran at 0.44 of Loom's
+  throughput, because 64 blocked fibers shared 28 threads. Waiting work
+  past that point now runs on virtual threads (below), and the lane
+  reads 1.31x Loom.
+- **It still has a number Loom does not**, but the number now means
+  something smaller. `workers + overflow` (28 on a 14-core machine by
+  default) is how many fibers can block on PLATFORM threads. Work that
+  is still waiting when all of them are taken goes to a virtual thread
+  instead of waiting. On a JVM without virtual threads, nothing can
+  spill: one fiber more than the bound, if the fiber that would release
+  them is queued behind them, waits until something outside the
+  scheduler lets one go.
+
+The default has not been re-decided yet. With both losses answered,
+the question is open again (specs/schedulers.md, "What would reopen
+it").
 
 So the default is the scheduler under which a correct program stays
 correct and never gets slower, and the fast one is a line away when you
@@ -173,10 +182,12 @@ at all has completed since the last look? If so it starts another
 worker. Blocking then costs latency instead of the program. Since the
 monitor (above), fibers that block inside a worker are also spread
 within a tick onto sleeping workers and then overflow workers — up to
-`overflow`, which defaults to one per core. That bound is the ceiling:
-64 fibers each making 1 ms blocking calls reach 28 at once on 14 cores
-(17.6 ms a batch); `watched(overflow = 64)` reaches 64 (7.4 ms, Loom's
-8.5).
+`overflow`, which defaults to one per core. That bound is the ceiling
+for PLATFORM threads. When every worker it may own exists and work is
+still waiting behind blocked ones, the waiting work runs on virtual
+threads (2026-09-28). 64 fibers each making 1 ms blocking calls used to
+reach 28 at once on 14 cores (19.3 ms a batch). Now all 64 are in their
+call at once (6.5 ms, against Loom's 8.6).
 
 A fiber that blocks through the library's own doors — `join()`,
 `receiveBlocking`, a blocking send, `Nio` — does not wait for a tick at
@@ -192,9 +203,12 @@ count is its contract — so a sibling left behind a blocked fiber runs on
 a sleeping worker, but blocking on every worker at once still stops it.
 A blocking call that does not go through a door (JDBC, a raw
 `Thread.sleep`) is still found by the monitor and the stuck-check.
-Nothing moves a fiber to a virtual thread: a running platform-thread
-stack cannot move, and `Schedulers.loom` is the member where blocking
-is free.
+A fiber that has already STARTED on a worker stays there: a running
+platform-thread stack cannot move. Only work that has not started
+spills to a virtual thread. Once spilled, a fiber runs there until it
+waits on an answer, and then it continues on whichever thread delivers
+the answer, as on every member. Spilling needs Loom and `overflow > 0`,
+so plain `own` never spills.
 
 ```scala
 given Scheduler = Schedulers.adaptive.workers(1).build
