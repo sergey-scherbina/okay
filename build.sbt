@@ -3080,6 +3080,21 @@ lazy val okayDlm = project
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * The model's remote backends (specs/dlm.md, "Backends"): the System
+ * One wire that TypeSafe's Jev and Convai's Laya both speak, each as a
+ * `Judge`; an OpenAI-shaped embeddings wire as an `Embedder`; and the
+ * `Wire` seam they all post through, faked in every test. Ours stays
+ * the default in okay-dlm; this module is what a `given` names.
+ */
+lazy val okayDlmRemote = project
+  .in(file("okay-dlm-remote"))
+  .dependsOn(okayDlm)
+  .settings(
+    name := "okay-dlm-remote",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayChat = project
   .in(file("okay-chat"))
   .dependsOn(okayLlm.jvm, okayHttp.jvm, okayConf.jvm)
@@ -3538,7 +3553,7 @@ lazy val root = (project in file("."))
     okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
-    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDlm, okayDeploy, okayLive, okayScript,
+    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDlm, okayDlmRemote, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js,
     okayKernel.jvm, okayKernel.js, okayKernel.native, okayUi.jvm, okayUi.js, okayUi.native,
     okayDesktop,

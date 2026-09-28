@@ -28,7 +28,13 @@ import okay.rag.Embedding
  * ask about it is the caller's, in the caller's language.
  */
 final class Router(val intents: Intents,
-                   exemplars: Option[Exemplars] = None,
+                   /** the vector layer's judge: ours over the compiled
+                    * exemplars by default (`Router.apply`), a remote one
+                    * by `Router.judged`; `None` is a router on rules and
+                    * typos alone, which is a supported deployment */
+                   val judge: Option[Judge] = None,
+                   /** the encoder the near band compares lessons with;
+                    * `None` leaves the band off whatever `nearBar` says */
                    embed: Option[String => Embedding] = None,
                    /** how much daylight the winner needs: a difference
                     * of PROBABILITIES between the top two. Being wrong
@@ -57,6 +63,11 @@ final class Router(val intents: Intents,
                     * word of another. `Alphabet.none` isolates nothing */
                    val alphabet: Alphabet = Alphabet.none):
 
+  /** the one question the vector layer asks: which of the intents
+   * that opted in — a command with an exact argument is never among
+   * the options, so a judge cannot reach it however it reads */
+  val question: Judge.Question = Judge.Question.of(intents.semantic.map(_.name))
+
   private val rules: Vector[(Intent, Vector[scala.util.matching.Regex])] =
     intents.intents.map(i => i -> i.rules.map(_.r))
 
@@ -77,13 +88,12 @@ final class Router(val intents: Intents,
   private val fuzzyByLang: Map[String, Vector[(String, Set[String])]] =
     fuzzyVocab.map((n, ws) => n -> ws.map(w => w -> alphabet.languagesOf(w)))
 
-  /** the semantic layer is live only when BOTH halves are present */
-  val semantic: Boolean = exemplars.exists(_.rows.nonEmpty) && embed.isDefined
+  /** the semantic layer is live when a judge is, and there is
+   * something to ask it about */
+  val semantic: Boolean = judge.isDefined && question.options.nonEmpty
 
-  /** the probe, fitted from the artifact — `lazy` so a router built
-   * without vectors pays nothing, and the cost lands once */
-  private lazy val fitted: Option[okay.intent.Probe.Trained] =
-    exemplars.filter(_.rows.nonEmpty).map(e => okay.intent.Probe.train(e.labelled))
+  private def judged(t: String): Option[Judge.Choice] =
+    if !semantic then None else judge.flatMap(_.choose(t, question))
 
   def slotsOf(intent: String, text: String): Map[String, String] =
     slotPatterns.getOrElse(intent, Vector.empty).flatMap { (slot, re) =>
@@ -97,9 +107,7 @@ final class Router(val intents: Intents,
   /** scores per intent, best first — exposed because an operator
    * tuning a threshold needs to SEE the numbers, not guess them */
   def scores(text: String): Vector[(String, Float)] =
-    (fitted, embed) match
-      case (Some(t), Some(f)) => okay.intent.Probe.ranked(t, f(text)).map((i, p) => i -> p.toFloat)
-      case _ => Vector.empty
+    judged(text).map(_.probabilities.map((i, p) => i -> p.toFloat)).getOrElse(Vector.empty)
 
   private def complete(i: Intent, text: String, support: Support): Route =
     val got = slotsOf(i.name, text)
@@ -158,12 +166,11 @@ final class Router(val intents: Intents,
       else fuzzyRoute(t, lang).toVector.map((name, d) => name -> Support.Typo(d))
     val bySemantic: Vector[(String, Support)] =
       if byRule.nonEmpty || byTypo.nonEmpty || t.count(_.isLetter) < minSemanticLetters then Vector.empty
-      else (fitted, embed) match
-        case (Some(trained), Some(f)) =>
-          val ranked = okay.intent.Probe.ranked(trained, f(t)).take(2)
-          ranked.zipWithIndex.map { case ((name, p), k) =>
-            name -> Support.Semantic(p.toFloat, ranked.lift(k + 1).map(_._1)) }
-        case _ => Vector.empty
+      else judged(t).map { c =>
+        val ranked = c.probabilities.take(2)
+        ranked.zipWithIndex.map { case ((name, p), k) =>
+          name -> Support.Semantic(p.toFloat, ranked.lift(k + 1).map(_._1)) }
+      }.getOrElse(Vector.empty)
     (byMemory ++ byRule ++ byTypo ++ bySemantic).distinctBy(_._1)
 
   /**
@@ -209,18 +216,15 @@ final class Router(val intents: Intents,
           // too little to route on, and asking is the honest answer
           nearRoute(memory, who, t).getOrElse(Route.Unclear(scores(t).take(2).map(_._1), 0f))
         case None =>
-          nearRoute(memory, who, t).getOrElse((fitted, embed) match
-            case (Some(trained), Some(f)) =>
-              okay.intent.Probe.score(trained, f(t)) match
-                case Some(v) if v.margin >= margin =>
-                  intents.byName(v.best).map(complete(_, t, Support.Semantic(v.probability.toFloat, v.runnerUp)))
-                    .getOrElse(Route.Unclear(Vector.empty, v.probability.toFloat))
-                case Some(v) =>
-                  // the two it could not separate, which is what a
-                  // clarifying question is FOR
-                  Route.Unclear(Vector(v.best) ++ v.runnerUp, v.probability.toFloat)
-                case None => Route.Unclear(Vector.empty, 0f)
-            case _ => Route.Unclear(Vector.empty, 0f))
+          nearRoute(memory, who, t).getOrElse(judged(t) match
+            case Some(v) if v.margin >= margin =>
+              intents.byName(v.best).map(complete(_, t, Support.Semantic(v.probability.toFloat, v.runnerUp)))
+                .getOrElse(Route.Unclear(Vector.empty, v.probability.toFloat))
+            case Some(v) =>
+              // the two it could not separate, which is what a
+              // clarifying question is FOR
+              Route.Unclear(Vector(v.best) ++ v.runnerUp, v.probability.toFloat)
+            case None => Route.Unclear(Vector.empty, 0f))
 
   /**
    * AN EXACT COMMAND: an intent that carries an exact argument (it
@@ -235,3 +239,42 @@ final class Router(val intents: Intents,
       case Route.Fires(i, _, Support.Exact(_) | Support.Remembered(_, _))
         if intents.byName(i).exists(!_.semantic) => Some(i)
       case _ => None
+
+object Router:
+
+  /**
+   * OURS: the vector layer as a probe over the compiled exemplars,
+   * through the encoder given — the shape the first consumer wrote.
+   * Without exemplars or an encoder the layer is off and the router
+   * runs on its rules, which is a supported deployment.
+   */
+  def apply(intents: Intents,
+            exemplars: Option[Exemplars] = None,
+            embed: Option[String => Embedding] = None,
+            margin: Float = 0.5f,
+            minSemanticLetters: Int = 12,
+            nearBar: Option[Float] = None,
+            alphabet: Alphabet = Alphabet.none): Router =
+    val judge = for e <- exemplars if e.rows.nonEmpty; f <- embed yield Judge.probe(e, f)
+    new Router(intents, judge, embed, margin, minSemanticLetters, nearBar, alphabet)
+
+  /**
+   * ANY JUDGE for the vector layer — a remote one, or ours behind a
+   * remote one (`Judge.orElse`) — and the encoder from scope for the
+   * near band. The rules and the typos decide first exactly as
+   * before: a judge is only ever asked what a rule could not place.
+   */
+  def judged(intents: Intents, judge: Judge,
+             margin: Float = 0.5f, minSemanticLetters: Int = 12,
+             nearBar: Option[Float] = None, alphabet: Alphabet = Alphabet.none)
+            (using e: Embedder): Router =
+    new Router(intents, Some(judge), Some(e(_)), margin, minSemanticLetters, nearBar, alphabet)
+
+  /** the model's own configuration: the exemplars judged as the scope
+   * says (`Judge.Fit`), the near band over the encoder in scope */
+  def of(intents: Intents, exemplars: Option[Exemplars],
+         margin: Float = 0.5f, minSemanticLetters: Int = 12,
+         nearBar: Option[Float] = None, alphabet: Alphabet = Alphabet.none)
+        (using fit: Judge.Fit, e: Embedder): Router =
+    new Router(intents, exemplars.filter(_.rows.nonEmpty).map(fit(_)), Some(e(_)),
+      margin, minSemanticLetters, nearBar, alphabet)

@@ -46,6 +46,10 @@ object Exemplars:
     val entries = rows.toVector.map((label, p) => Exemplar(label, p, embed(p)))
     Exemplars(encoder, entries.headOption.map(_.vec.length).getOrElse(0), entries)
 
+  /** the same, through the encoder in scope, under its own name */
+  def compile(rows: Seq[(String, String)])(using e: Embedder): Exemplars =
+    compile(rows, e(_), e.name)
+
   // ---- the JSON artifact: the one a person can open and diff ----------
 
   /**
