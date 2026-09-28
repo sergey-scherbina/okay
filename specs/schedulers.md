@@ -765,3 +765,64 @@ slower in scheduler-default-decision, and 2.4-3.2x in this lane's master
 arm). One of the two conditions in "What would reopen it" is met. The
 other, blocking TCP within 10% of Loom, is not, so the default stays
 `loom` (see the note there).
+
+
+## Blocking past the bound (2026-09-28, adaptive-blocking-io)
+
+**Symptom.** Five-way TCP blocking, 64 lanes x 1 ms
+(`bench.io.IoBench.requests`, `transport=blocking`): `adaptive` 58
+ops/s against Loom's 128-132, 0.45x (scheduler-default-decision). And
+the bound law: `n + overflow` fibers blocked in the library's doors,
+with their releaser queued behind them, wedge until something outside
+the scheduler releases one.
+
+**What kind of blocking the lane is — read before pricing anything.**
+The five-way okay backend makes the call as `async(io.blocking(lane,
+index))`: a RAW socket read inside a `Run`, not a library door. So
+managed blocking never hears of it. Only the monitor sees it: the 64
+lane fibers are forked from one fiber onto one worker's deque, and the
+monitor spreads them to parked workers and then overflow workers, up to
+`n + overflow` = 28 threads. The other 36 wait until a thread comes
+back. Each lane fiber makes its four calls one after another, so the
+batch runs in about three waves of ~5 ms: 17.2 ms against Loom's 7.7.
+Candidate (b) as the item names it (growth for DOOR blocking only)
+cannot move this lane. Whatever moves it must act on what the monitor
+sees.
+
+**Candidates, each priced alone, in this order:**
+- (b0) a knob, no code: `Schedulers.own.watched(overflow = 64)` in the
+  harness. It prices "is it only the thread count?" before anything is
+  built.
+- (a) SPILL TO VIRTUAL THREADS AT THE BOUND. When the monitor, the
+  stuck-check or the door wants to start a worker and `live` is already
+  `n + overflow`, the waiting task (from the stuck worker's deque or the
+  submission queue) runs on its own virtual thread instead of waiting.
+  That is only on a JVM with Loom and only on a `watched` scheduler. A
+  fiber that started on a worker cannot move: its stack is there. What
+  moves is work that has not STARTED. A spilled fiber runs on its
+  virtual thread until its drive parks on an `Await`. It then resumes
+  wherever its answer arrives, which is the Drive's rule on every
+  member. So neither "it stays on the virtual thread" nor "it returns to
+  a worker" is a policy to choose: the existing rule decides. A raw
+  socket read on the virtual thread unmounts. A door parks it. Its forks
+  go to the submission queue (it is not a worker). Nothing is added to
+  the per-task or per-fork path.
+- (b) growth past `overflow` with a retire rule. Priced by (b0). It is
+  built only if (b0) reaches Loom and (a) does not.
+- (c) keep the bound and say so.
+
+### Behavior
+- [ ] reproduce on master: five-way TCP blocking, `okay` (Loom) vs
+      `okayAdaptive`, his settings
+- [ ] (b0) priced
+- [ ] (a) priced. If it lands: the bound law changes. `n + overflow`
+      door-blocked fibers plus their queued releaser FINISH on
+      `adaptive` where Loom exists (red first on master). The old bound
+      still holds where nothing can spill (no Loom, or `overflow = 0`),
+      and that is pinned too (TestManagedBlocking)
+- [ ] TestSchedulerLaws, TestOwnMonitor, TestAdaptiveScheduler green
+- [ ] must not regress: AdversarialBenchmark forkJoin10k_okay and
+      forkJoin10k_okayInside on `adaptive`, OwnMonitorBenchmark
+      spawnJoinSeq, Wrocław 8 fibres on `adaptive` (~110 ms)
+- [ ] BAR: TCP blocking within 10% of Loom. Met: "What would reopen it"
+      says both conditions are met. The default is NOT flipped here.
