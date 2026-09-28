@@ -222,10 +222,13 @@ given Timer = new:
     () => { f.cancel(false); () }
 
 /**
- * The JVM schedulers. The default given is Loom — one virtual thread
- * per fiber, which is what makes blocking free. For a JVM without
- * Loom, Schedulers.forkJoin runs fibers on a pool (do not park long
- * there), and Schedulers.threads pays one honest platform thread per
+ * The JVM schedulers. The default given is `adaptive` where the JVM has
+ * Loom (`auto`, since 2026-09-28): owned workers for speed, watched so a
+ * fiber that blocks costs latency and not the program, and waiting work
+ * past its bound spilled onto virtual threads. `Schedulers.loom` — one
+ * virtual thread per fiber, blocking free — is a `given` away. For a JVM
+ * without Loom, Schedulers.forkJoin runs fibers on a pool (do not park
+ * long there), and Schedulers.threads pays one honest platform thread per
  * fiber.
  */
 object Schedulers {
@@ -237,11 +240,32 @@ object Schedulers {
   val hasVirtualThreads: Boolean = Runtime.version().feature() >= 21
 
   /** the right default for THIS JVM, with no property and no `given`
-   * needed to get it: `loom` where virtual threads exist, `platform`
+   * needed to get it: `adaptive` where virtual threads exist, `platform`
    * where they don't. `given Scheduler` below is exactly this, plus
    * `-Dokay.scheduler` as an override; call `auto` directly from code
-   * that wants the adaptive pick without going through either. */
-  def auto: Scheduler = if hasVirtualThreads then loom else platform
+   * that wants the pick without going through either.
+   *
+   * ADAPTIVE, NOT LOOM, SINCE 2026-09-28 (scheduler-default-flip). The
+   * re-run of the table left no performance reason for Loom: fork/join
+   * from outside 0.65 of Loom's time, cancel 0.68, `parallel8` 0.67,
+   * spawn/join 35x, Wrocław 1.00, blocking TCP 1.33x Loom's throughput
+   * (specs/schedulers.md, "The default, re-run"). What kept Loom was a
+   * livelock under `adaptive` — a channel sender spinning behind another
+   * sender's waiter — fixed the same day (adaptive-merge-early-stop-
+   * livelock, abrupt-sender-head-recheck), and the whole JVM family was
+   * run under the new default before this line changed. On a Loom JVM
+   * `adaptive` also spills waiting work past its bound onto virtual
+   * threads, which is what makes it safe as a default; on 17-20 there
+   * is no spill, so `platform` stays the pick there.
+   *
+   * ONE instance, built on first use and shared: `auto` is called by
+   * the `given` and may be called by code, and a scheduler per call
+   * would be a pool of threads per call. Its workers are daemon
+   * threads, and nothing closes it. */
+  def auto: Scheduler = if hasVirtualThreads then sharedAdaptive else platform
+
+  /** the `adaptive` scheduler `auto` hands out where Loom exists */
+  private lazy val sharedAdaptive: Running = adaptive.build
 
   /** the pick for a JVM WITHOUT Loom: `own` — the fastest
    * platform-thread scheduler measured here, see its doc below — with
@@ -1142,13 +1166,11 @@ object Threads:
       t.start()
       t
 
-/** The default scheduler is Loom — a fiber IS a virtual thread, which
- * is the design and stays it, on a JVM that HAS Loom (JDK 21+).
- * `okay.scheduler` selects another for the A/B that prices that choice
- * (`Schedulers.own` reads 750us per 10 000 fork/joins against kyo's
- * 880, where the Loom default reads 2715); `loom` is the shipped
- * behaviour and the only value a released build should see there.
- * scripts/ab-defaults.sh drives both arms.
+/** The default scheduler is `Schedulers.auto`: `adaptive` on a JVM that
+ * HAS Loom (JDK 21+), since scheduler-default-flip (2026-09-28) — Loom
+ * before that. `okay.scheduler` selects another for the A/B that prices
+ * that choice (`loom`, `own`, `adaptive`, `drive`, `threads`); unset is
+ * the shipped behaviour. scripts/ab-defaults.sh drives both arms.
  *
  * jdk-adaptive-scheduler (2026-09-19): on a JVM WITHOUT Loom, none of
  * that is available to ask for, property or no property — asking for
