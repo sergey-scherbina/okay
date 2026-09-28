@@ -53,7 +53,12 @@ rung without a registration (poll 121), registered after the whole
 ladder (157 polls), `Register` at once, `Spin(10)` in 13, a counting
 platform sees 100/50/4/1 and 400/200/4/1, `Merge.Shared` joins the
 same multiset, the chunked failure law holds on both mechanisms, JS
-registers at once. The bar of the second stage: below. Rows in
+registers at once. THE BAR: `okayChunked` ring 209.7 vs shared 202.8
+(1.03x, within the accepted 1.06x); `okayChunkedFlush` 238.1 vs 212.0
+(1.12x — over, one round, wide bars: a flusher fiber per side on the
+ring against one on the shared road; open as `merge-flush-on-ring-gap`,
+the operator asked for the landing with the numbers as they are);
+`okayChunkedFlushShort` shared arm only, ±91 us — timing-bound. Rows in
 `src/jmh/history.d/…-ready-merge-chunk-forward-hybrid.tsv`;
 specs/ready-merge.md (the second stage); docs/guide.md §6, typepedia.
 

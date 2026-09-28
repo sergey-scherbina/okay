@@ -396,7 +396,7 @@ purpose" of the first landing's reopen condition, for free. `Wait` is a
 platform seam: JVM and Native climb the rungs; JS, with no producer
 threads, registers at once.
 
-- [ ] the rungs, as a CYCLE (the operator's refinement of the straight
+- [x] the rungs, as a CYCLE (the operator's refinement of the straight
       ladder): (`PollSpins` polls, `PollYields` yields with a poll each,
       one brief park) × `PollSleeps`, then register — after a park the
       data has most likely arrived or is about to, and a spin catches it
@@ -404,9 +404,9 @@ threads, registers at once.
       COUNT, not time: a side answering on the 121st poll is told on the
       first cycle's yield rung without a registration; one that never
       answers a poll is registered after 3 + 4 × (101 + 50) polls
-- [ ] JS: a dry ring registers at once (`Wait.Threads` false); the
+- [x] JS: a dry ring registers at once (`Pause.threads` false); the
       cross laws unchanged
-- [ ] THE WAIT IS A GIVEN (operator, 2026-09-28: "вынеси в тайпкласс и
+- [x] THE WAIT IS A GIVEN (operator, 2026-09-28: "вынеси в тайпкласс и
       имплисит чтобы можно было ее менять", then "можно вообще Wait а
       не только Merge"): `trait Wait { def until(ready: () => Boolean):
       Boolean }` — not the merge's, ANY consumer's: asked to wait for a
@@ -423,7 +423,7 @@ threads, registers at once.
       existing call compiles unchanged. Laws: `Register` given → the JVM
       polls 3 times and registers, as JS does; `Spin(10)` → 3 + 10
       polls; the default → 3 + 4 × (100 + 50).
-- [ ] THE MERGE MECHANISM IS A GIVEN TOO (operator, 2026-09-28:
+- [x] THE MERGE MECHANISM IS A GIVEN TOO (operator, 2026-09-28:
       "стратегию самого Merge тоже можно вынести в тайпкласс и имплиситы
       — Ready vs Channel vs whatever else"): `trait Merge` with the three
       shapes `merge` has — `elements(l, r, capacity)`, `chunks(l, r,
@@ -442,16 +442,16 @@ threads, registers at once.
       Disruptor's `WaitStrategy` (BusySpin / Yielding / Sleeping /
       Blocking) made a value the caller chooses, and Karlin et al.'s
       spin-then-block bound on any fixed choice.
-- [ ] the chunked ring road (f0f355bd4's, rebuilt) on the hybrid:
+- [x] the chunked ring road (f0f355bd4's, rebuilt) on the hybrid:
       `okayChunked` k=16, 10 forks — slow forks, polls, parks per fork
       against the first landing's rows (spin-only: 2-4/10 at 215-247,
       mean 205-211); does the tail move, and does the fork that waits
       2000-3000 polls now sleep instead
-- [ ] STAGE 2, the bar as accepted: `okayChunked`, `okayChunkedFlush`,
+- [~] STAGE 2, the bar as accepted (PARTLY, Results below): `okayChunked`, `okayChunkedFlush`,
       `okayChunkedFlushShort` at k = 16/256/1024, ring road against
       today's shared-channel road, 5 forks per arm alternating — mean
       within 1.06x at every lane, no arm's tail worse than 1.2x
-- [ ] the shared-channel chunked road STAYS, as a door by choice
+- [x] the shared-channel chunked road STAYS, as a door by choice
       (operator, 2026-09-28: "пусть останутся опционально на выбор"):
       `Channel.mergeChunked` and `Channel.mergeFlushing` keep the one
       queue two producers feed — one mode in every fork, a consumer
@@ -462,10 +462,37 @@ threads, registers at once.
       `chunkedMerge` is not deleted; docs name both doors and when each
       is the one to take; `TestChannelFailure`'s chunked laws (the
       failAfterTail ones) green on both
-- [ ] `ChunkFlushBenchmark` keeps the shared road as a permanent arm
+- [x] `ChunkFlushBenchmark` keeps the shared road as a permanent arm
       (`okayChunkedShared`, `Channel.mergeChunked` called directly) —
       the control beside `okayChunked`, no switch in the library
-- [ ] the elementwise road on the hybrid: `MergeCapBenchmark` cap
+- [~] the elementwise road on the hybrid (not re-measured before the landing, the operator's ask): `MergeCapBenchmark` cap
       64/256/1024 against the first landing's frozen rows (84.8 / 68.3 /
       63.0), no regression
+
+**Results (2026-09-28, the second landing).** Rows in
+`src/jmh/history.d/…-ready-merge-chunk-forward-hybrid.tsv`. The
+straight ladder against the cycle, `okayChunked` k=16, 10 forks each:
+ladder 200.4 ± 3.8 with no fork above 225; cycle 208.0 ± 7.8 with 3 of
+10 at 220-247 — the ladder is the default `Wait`, the cycle a choice.
+The bar, ring (`Merge.Ready`, `Wait.Ladder(100, 50, 4)`) against shared
+(`Merge.Shared`), 5 forks per arm alternating:
+
+| lane | ring | shared | ratio | accepted 1.06x |
+|---|---|---|---|---|
+| `okayChunked` | 209.7 ± 6.3 | 202.8 ± 4.0 | 1.03 | yes |
+| `okayChunkedFlush` (1000 ms) | 238.1 ± 13.8 | 212.0 ± 7.0 | **1.12** | **no** |
+| `okayChunkedFlushShort` (1 ms) | not run | 277.4 ± 90.9 | — | timing-bound |
+
+The flushing road on the ring runs a flusher fiber PER SIDE where the
+shared road runs one, and reads 12% over with wide bars in one round;
+the operator asked for the landing with the numbers as they are, so
+the default for `flushAfter` merges stays `Merge.Ready` with this gap
+named: backlog `merge-flush-on-ring-gap` (re-measure with more forks;
+if it holds, one flusher for both sides, or `Merge.Shared` by default
+for the flushing shape). The elementwise lanes on the ladder were not
+re-measured before the landing (the operator's ask); the first
+landing's spin-100 rows stand as the last reading (84.8 / 68.3 / 63.0),
+and the ladder differs from it only on a dry ring, which the
+elementwise road reaches ~1-2 times per op. The open door — the
+runners honouring `Await.poll` — is the lane `drive-poll-then-park`.
 
