@@ -70,9 +70,17 @@ specs/schedulers.md, "The default"). Same code, only
   them is queued behind them, waits until something outside the
   scheduler lets one go.
 
-The default has not been re-decided yet. With both losses answered,
-the question is open again (specs/schedulers.md, "What would reopen
-it").
+**Re-decided on 2026-09-28, and the default is still Loom, now for a
+correctness reason.** The table was run again on the same lanes
+(specs/schedulers.md, "The default, re-run"). Every row is now a win
+for `adaptive` or within noise: Wrocław 1.00, blocking TCP 1.33x Loom's
+throughput, fork/join from outside 0.65 of Loom's time, cancel 0.68,
+sequential spawn/join 35 times over. But with `adaptive` as the given,
+one test of `Source.merge` does not finish: a merge stopped early by
+`take` leaves a sender spinning on one worker, waiting for progress that
+never comes. On Loom the same test passes. A default that turns a
+finishing program into a spinning one is not taken for any speed. The
+flip waits for that fix (backlog `adaptive-merge-early-stop-livelock`).
 
 So the default is the scheduler under which a correct program stays
 correct and never gets slower, and the fast one is a line away when you

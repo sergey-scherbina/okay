@@ -653,6 +653,11 @@ arm itself, not a defect. So correctness is not what stands in the way.
   Loom exists; with no Loom, or `overflow = 0`, the old number holds.
   The default question can now be re-run with the table in "The
   default". This lane did not flip it.
+  **Re-run (2026-09-28, scheduler-default-rerun):** every performance
+  row now allows the flip, and a correctness row does not. TestReadyMerge
+  livelocks with `adaptive` as the given. The default stays `loom` until
+  backlog `adaptive-merge-early-stop-livelock` is fixed ("The default,
+  re-run", below).
   Until then the fast member is one line away and documented as the
   choice for fork/join-heavy, non-blocking programs:
   `given Scheduler = Schedulers.adaptive.build`.
@@ -941,9 +946,9 @@ blocking ~1.3x Loom. The disqualifying evidence: any row where
 
 ### Behavior
 - [x] part 1 table + preliminary verdict
-- [ ] part 2 table
-- [ ] correctness column under `adaptive` as the given
-- [ ] the decision: flip `Schedulers.auto` to `adaptive` where virtual
+- [x] part 2 table
+- [x] correctness column under `adaptive` as the given
+- [x] the decision: flip `Schedulers.auto` to `adaptive` where virtual
       threads exist ONLY if no row loses beyond noise; JDK 17-20 keep
       `platform` (no spill there, so no `adaptive` by default either)
 
@@ -976,3 +981,82 @@ and TCP blocking reads 1.32x Loom's ops/s (it was 0.45x). Every other
 row is `adaptive` at 0.66-0.94 of Loom's time, the same side as the
 first decision. Part 2 (a second round of these, §4, the rest of
 five-way) decides.
+
+### Results, part 2 (2026-09-28) — the second round, §4, the rest of five-way
+The same build (9ec45ca40). Round 2 ran adaptive first. Rows:
+`src/jmh/history.d/2026-09-28T080018Z-scheduler-default-rerun.tsv`.
+
+| lane | loom r1 / r2 (/ r3) | adaptive r1 / r2 (/ r3) | adaptive / loom (time) |
+|---|---:|---:|---:|
+| §4b 10k OUTSIDE, work=100 (us) | 3 257 / 3 175 | 2 135 * / 2 019 | 0.65 |
+| §4b 10k INSIDE, work=100 (us) | 3 515 / 3 358 / 3 355 | 3 294 / 3 546 / 2 797 | 0.98 (medians 3 294 / 3 358) |
+| cancel 1 000 parked (us) | 1 023 / 1 033 | 697 / 706 | 0.68 |
+| `parallel8` (us) | 10.08 / 10.27 | 6.86 / 6.89 | 0.67 |
+| §4, 100 fibers OUTSIDE (us, one round) | 19.39 ± 0.15 | 18.83 ± 1.08 | 0.97 |
+| §4, 100 fibers INSIDE (us, one round) | 31.77 | 16.24 | 0.51 |
+| **Wrocław, okay 8 fibres (ms wall, best of 5)** | **114 / 110** | **113 / 112** | **1.00** |
+
+Five-way, ops/s (higher better), his settings:
+
+| lane | loom (`okay`) | `okayAdaptive` | adaptive / loom (ops/s) |
+|---|---:|---:|---:|
+| **TCP blocking, 64 lanes x 1 ms** | **117.3 / 116.4** | **155.2 / 155.0** | **1.33** |
+| TCP callback, 64 lanes x 1 ms | 117.6 / 116.6 | 150.4 / 151.0 | 1.29 |
+| sequential spawn/join, 1 000 (one round) | 448.8 ± 52 | 15 680 ± 141 | 35x |
+| 8 workers x 4 096, work 0 (one round) | 3 959 ± 100 | 4 188 ± 164 | 1.06 |
+| 8 workers x 4 096, work 64 (one round) | 3 406 ± 57 | 3 376 ± 154 | 0.99 |
+| runtime entry (one round) | 155 365 ± 7 601 | 143 790 ± 16 861 | 0.93 |
+
+\* part 1's median of five noisy attempts (see part 1).
+
+- The inside fork/join lane disagreed in sign between rounds (0.94, then
+  1.06), so it got a third pair, loom first: 3 355 against 2 797. The
+  medians read 0.98, within noise.
+- §4 outside moved from 0.62 (625316caa) to 0.97. Loom got faster there
+  (20.4 to 19.4), and `adaptive` got slower (12.6 to 18.8, ± 1.1). The
+  lane is one round, and both arms fall within the other's error.
+  It is the one row that is not a clear win, and it is not a loss.
+- Runtime entry reads 0.93 of Loom's ops/s. `adaptive`'s ± 12% covers
+  Loom's number, and 625316caa read 0.95. Within noise, not a loss.
+- **Neither of the old table's losses is left.** Wrocław reads 1.00
+  (was 4.4x slower) and TCP blocking 1.33x Loom (was 0.45x).
+
+### Correctness with `adaptive` as the given
+`-Dokay.scheduler=adaptive` in the test fork of okay-platform and
+okay-stream:
+
+| suite | result |
+|---|---|
+| TestSchedulerLaws + TestManagedBlocking + TestOwnMonitor + TestAdaptiveScheduler | 63 / 64. The one red is TestAdaptiveScheduler's "the default given Scheduler is auto's pick, unset", which asserts that the property is unset. That is the arm itself, not a defect |
+| **TestReadyMerge** | **HANGS: no result after 32 min, and again after 4 min.** Loom on the same tree: 29 / 29 green |
+
+The hang is a LIVELOCK, not a slow test. In two thread dumps 6 s apart,
+the given's worker `okay-own-1-0` had used 243 s of CPU in 247 s. It was
+in `SentinelChannel.attemptSend:351`, sending into the early-stopped
+`merge` of TestReadyMerge.scala:239, which a receiver had resumed
+inline. The send loop enqueues, sees room, claims its own waiter back,
+removes it and retries, for as long as another waiter sits at the head
+of `sendersAt(route)`. That is a busy-wait that relies on another
+carrier. The other 13 workers were parked. Filed as backlog
+`adaptive-merge-early-stop-livelock` (okay-core), with both stacks. In
+scheduler-default-decision (625316caa) this suite was 15 / 15 green
+under `adaptive`, so the shape has appeared since.
+
+### Decision (2026-09-28): the default stays `loom`, and correctness is the reason
+- **Performance allows the flip.** Every row is a win or within noise.
+  Wrocław 1.00, TCP blocking 1.33x Loom's ops/s, fork/join outside
+  0.65, cancel 0.68, `parallel8` 0.67, §4 inside 0.51, spawn/join 35x.
+  §4 outside (0.97), fork/join inside (0.98), workers work=64 (0.99)
+  and runtime entry (0.93 ops/s) are all inside their error bars.
+- **Correctness does not.** A default must not turn a program that
+  finishes on Loom into one that spins forever. TestReadyMerge does
+  exactly that under `adaptive`, deterministically, on a library
+  combinator (`merge` stopped early by `take`). The flip is NOT made.
+- **What would reopen it:** `adaptive-merge-early-stop-livelock` fixed,
+  with TestReadyMerge green under `-Dokay.scheduler=adaptive`. The
+  performance table above then stands, unless the fix touches the
+  channel's send path. In that case re-run the rows it could move:
+  TCP, Wrocław, and the fork/join lanes.
+- The flip, when made, keeps JDK 17-20 as it is (`platform`). There is
+  no spill there, so `adaptive`'s old `n + overflow` bound would come
+  back.
