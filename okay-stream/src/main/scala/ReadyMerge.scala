@@ -57,14 +57,16 @@ private[okay] object ReadyMerge:
    * poll is two volatile reads. */
   private final val PollSpins = 100
   /** the rungs above the spin (the HYBRID, ready-merge-chunk-forward's
-   * second landing): `PollYields` polls each after a `Thread.yield`,
-   * then `PollSleeps` polls each after a brief park — the consumer
-   * waiting at its own expense, the producer still paying nothing.
-   * Read once per JVM for the lane's A/B; frozen after it */
-  private val PollYields: Int =
-    try System.getProperty("okay.merge.pollyields", "50").toInt catch case _: Throwable => 50
-  private val PollSleeps: Int =
-    try System.getProperty("okay.merge.pollsleeps", "4").toInt catch case _: Throwable => 4
+   * second landing): `PollYields` polls each after a `Thread.yield`
+   * (~125 ns here), then `PollSleeps` polls each after a brief park
+   * (`parkNanos`, 10-12 us here: the timer's floor, and the window in
+   * which two producers make ~50 chunks) — the consumer waiting at its
+   * own expense, the producer still paying nothing. Measured as 50/4 on
+   * the chunked ring road: 200.4 us against the shared channel's 200.0,
+   * no fork above 225, where every spin-only wait left 2-4 of 10 at
+   * 215-247 (specs/ready-merge.md, the second stage). */
+  private final val PollYields = 50
+  private final val PollSleeps = 4
 
   /** a registration's answer, when it came before the drive moved on */
   private final class Answer[X](val r: Either[Throwable, X])

@@ -629,6 +629,10 @@ lazy val okayStream = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
   )
   .jsSettings(
+    // the JS side of a seam the JVM/Native side keeps in scala-jvm-native
+    // (`Wait`, ready-merge-chunk-forward: no producer threads on JS)
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
     Test / unmanagedSourceDirectories :=
       Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

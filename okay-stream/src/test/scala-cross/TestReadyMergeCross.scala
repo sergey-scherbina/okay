@@ -37,4 +37,20 @@ class TestReadyMergeCross extends munit.FunSuite {
       assert(cancelled, "the parked source outlived the program")
     }
   }
+
+  test("a dry ring climbs the wait only where producers are threads: JS registers at once") {
+    type R = Writer % Int + Async
+    val polls = java.util.concurrent.atomic.AtomicInteger(0)
+    val registered = java.util.concurrent.atomic.AtomicInteger(0)
+    val side: Source[Int] =
+      okay.effect[R, Int](Async.Await[Int](
+        k => { registered.incrementAndGet(); k(Right(7)); () => () },
+        () => { polls.incrementAndGet(); null })).flatMap(x => okay.effect[R, Unit](Writer(x)))
+    Async.runAsync(Source.mergeReady(side, Source.of(List(1, 2, 3))).runCollect).map { out =>
+      assertEquals(out, Vector(1, 2, 3, 7))
+      assertEquals(registered.get, 1)
+      // 3 polls as the ready side's turns pass; the ladder only with threads
+      assertEquals(polls.get, if Wait.Threads then 3 + 101 + 50 + 4 else 3)
+    }
+  }
 }

@@ -327,6 +327,34 @@ class TestReadyMerge extends munit.FunSuite {
     assertEquals(out2, Vector.range(0, 1000))
   }
 
+  /** a hand-made pollable source: its poll says "nothing yet" `misses`
+   * times and then answers; its registration answers at once. What it
+   * counts is the LADDER a dry ring climbs before it registers */
+  private final class Counted(misses: Int, x: Int):
+    val polls = AtomicInteger(0)
+    val registered = AtomicInteger(0)
+    def source: Source[Int] =
+      okay.effect[R, Int](Async.Await[Int](
+        k => { registered.incrementAndGet(); k(Right(x)); () => () },
+        () => if polls.incrementAndGet() > misses then Right(x) else null)).flatMap(say)
+
+  test("the hybrid wait: data arriving on the yield rung is told without a registration") {
+    // 3 polls as the ready side's turns pass, then the dry ring's ladder:
+    // 101 spins, then the yields — the 120th poll answers there
+    val c = Counted(120, 7)
+    assertEquals(collect(ReadyMerge(Seq(c.source, list(1, 2, 3)))), Vector(1, 2, 3, 7))
+    assertEquals(c.registered.get, 0)
+    assertEquals(c.polls.get, 121)
+  }
+
+  test("the hybrid wait: data that never comes by a poll is registered after the whole ladder") {
+    val c = Counted(Int.MaxValue, 7)
+    assertEquals(collect(ReadyMerge(Seq(c.source, list(1, 2, 3)))), Vector(1, 2, 3, 7))
+    assertEquals(c.registered.get, 1)
+    // 3 turn-end polls + 101 spins + 50 yields + 4 brief parks
+    assertEquals(c.polls.get, 3 + 101 + 50 + 4)
+  }
+
   test("a merged source is a value: running it twice merges twice") {
     val m = Source.mergeReady(list(1, 2), list(3))
     assertEquals(collect(m), Vector(1, 3, 2))
