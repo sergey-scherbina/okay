@@ -2424,6 +2424,23 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
  * protection as a route wrapper. Zero dependencies — the JDK carries
  * the primitives. JVM-first; the JS crypto seam is a stage.
  */
+lazy val okayTelegram = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-telegram"))
+  // the Bot API over okay-http; the keyboard vocabulary and the chat host
+  // are okay-ui's `Telegram` — one vocabulary, not two (specs/telegram-bot.md)
+  .dependsOn(okayHttp, okayUi)
+  .settings(
+    name := "okay-telegram",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    // the effectful suites run programs (CanBlock), so they are JVM-only;
+    // the parse of an update is pure and shared
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-security"))
@@ -3470,6 +3487,7 @@ lazy val root = (project in file("."))
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,

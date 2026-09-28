@@ -411,6 +411,10 @@ module with its own page under docs/modules:
   against an explorer, a number is compared down a column) so each
   host sets it in its own idiom, and a client claims the nodes it
   draws natively — a browser draws a real table.
+- **telegram** (`okay-telegram`) — the Bot API over `okay-http`: calls
+  whose refusals are values, updates as a total enum, long polling as
+  one loop, Stars invoices, and `Chats` — okay-ui's chat host per chat,
+  so an application runs in Telegram with nothing but a token.
 - **security** (`okay-security`) — authorization once: claims as
   values, JWT over a crypto seam, policies as an algebra, protection
   as a route wrapper the type system enforces, OAuth2 client flows —
