@@ -140,3 +140,102 @@ object SystemOne:
             val ranked = ps.filterNot(_._1 == a.choice).sortBy(-_._2)
             val chosen = ps.find(_._1 == a.choice).getOrElse(a.choice -> 1.0)
             Some(Judge.Choice(chosen +: ranked, a.confidence))
+
+  // ---- the server: our model on the same wire -----------------------------
+
+  /**
+   * OUR MODEL ON THE SAME WIRE. A request as a client of Jev or Laya
+   * would send it, answered by OUR judges — so a client written against
+   * either vendor runs against this model unchanged, and three judges
+   * are measured through one client.
+   *
+   * Which judge answers a question is decided by its OPTIONS: the first
+   * judge that can rank them does — a head's judge knows its own
+   * classes and abstains on any other set, which is how a `choice`
+   * over acts reaches the act head and a `choice` over frames the
+   * frame head. A question no judge can rank is answered with an
+   * `error` in its own slot, never a guess; the other questions in the
+   * same request are still answered. `noul` is a choice between «yes»
+   * and «no», `score` a choice over the levels with an expected value
+   * under the option order.
+   *
+   * WHAT WE DO NOT SAY: a `confidence` our judge does not have. The
+   * probe has a margin and no calibration; the field is present only
+   * where the judge answered one (a remote judge behind ours, or a
+   * calibrated one later). A number invented here would be the one
+   * thing that spoils the protocol.
+   */
+  object Service:
+
+    final case class Asked(key: String, kind: String, instructions: String, options: Vector[(String, String)])
+
+    /** the state's text: `text`, else `body`, else every string field
+     * of the state joined — or the state itself when it is a string */
+    def textOf(state: Json): String = state match
+      case JStr(s) => s
+      case JObj(fs) =>
+        fs.collectFirst { case ("text", JStr(s)) => s }
+          .orElse(fs.collectFirst { case ("body", JStr(s)) => s })
+          .getOrElse(fs.collect { case (_, JStr(s)) => s }.mkString("\n"))
+      case _ => ""
+
+    def decode(raw: String): Either[String, (String, Vector[Asked])] =
+      val j = try Json.parse(raw) catch case e: Exception => JStr(s"broken: ${e.getMessage}")
+      j match
+        case JObj(fs) =>
+          val text = fs.collectFirst { case ("state", s) => textOf(s) }.getOrElse("")
+          fs.collectFirst { case ("questions", JObj(qs)) => qs }.toRight("no \"questions\" object").map(qs => text -> qs.flatMap {
+            case (key, JObj(q)) =>
+              val kind = q.collectFirst { case ("type", JStr(t)) => t }.getOrElse("choice")
+              val instructions = q.collectFirst { case ("instructions", JStr(i)) => i }.getOrElse("")
+              val options = q.collectFirst {
+                case ("criteria", JObj(cs)) => cs.map((n, d) => n -> (d match { case JStr(s) => s; case _ => "" }))
+                case ("criteria", JArr(ns)) => ns.collect { case JStr(n) => n -> "" }
+                case ("options", JArr(ns)) => ns.collect { case JStr(n) => n -> "" }
+              }.getOrElse(Vector.empty)
+              Some(Asked(key, kind, instructions, options))
+            case _ => None
+          })
+        case _ => Left("not a JSON object")
+
+    private def first(judges: Seq[Judge], text: String, q: Judge.Question): Option[(Judge, Judge.Choice)] =
+      judges.iterator.flatMap(j => j.choose(text, q).map(j -> _)).nextOption()
+
+    private def withConfidence(fields: Vector[(String, Json)], c: Judge.Choice, who: Judge): Json =
+      JObj(fields ++
+        Vector("probabilities" -> JObj(c.probabilities.map((n, p) => n -> JNum(p)))) ++
+        c.confidence.map(v => "confidence" -> JNum(v)) ++
+        Vector("judge" -> JStr(who.name)))
+
+    /** one question answered, or its error */
+    def answer(judges: Seq[Judge], text: String, a: Asked): Json = a.kind match
+      case "choice" if a.options.nonEmpty =>
+        first(judges, text, Judge.Question(a.options, a.instructions)) match
+          case Some((who, c)) => withConfidence(Vector("choice" -> JStr(c.best)), c, who)
+          case None => JObj(Vector("error" -> JStr(s"no judge here ranks: ${a.options.map(_._1).mkString(", ")}")))
+      case "noul" =>
+        val q = Judge.Question(Vector("yes" -> a.instructions, "no" -> s"not: ${a.instructions}"), a.instructions)
+        first(judges, text, q) match
+          case Some((who, c)) =>
+            val p = c.probabilities.find(_._1 == "yes").map(_._2).getOrElse(0.0)
+            withConfidence(Vector("noul" -> JNum(p)), c, who)
+          case None => JObj(Vector("error" -> JStr("no judge here answers yes or no")))
+      case "score" if a.options.nonEmpty =>
+        first(judges, text, Judge.Question(a.options, a.instructions)) match
+          case Some((who, c)) =>
+            // the expected level under the option order, 1-based, as
+            // the vendors count them — or by the level's own number
+            // where the level is one
+            val index = a.options.map(_._1).zipWithIndex.map((n, i) => n -> n.toDoubleOption.getOrElse(i + 1.0)).toMap
+            val expected = c.probabilities.map((n, p) => index.getOrElse(n, 0.0) * p).sum
+            withConfidence(Vector("score" -> JNum(expected)), c, who)
+          case None => JObj(Vector("error" -> JStr(s"no judge here ranks: ${a.options.map(_._1).mkString(", ")}")))
+      case other => JObj(Vector("error" -> JStr(s"unknown question type «$other», or no options")))
+
+    /** the whole request: a status and a body, ready for a route */
+    def serve(raw: String, judges: Seq[Judge]): (Int, Json) = decode(raw) match
+      case Left(why) => (400, JObj(Vector("error" -> JStr(why))))
+      case Right((text, asked)) =>
+        (200, JObj(Vector(
+          "answers" -> JObj(asked.map(a => a.key -> answer(judges, text, a))),
+          "usage" -> JObj(Vector("input_tokens" -> JNum(text.length.toDouble), "output_tokens" -> JNum(0))))))

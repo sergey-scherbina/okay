@@ -108,3 +108,61 @@ class TestSystemOne extends FunSuite:
     val broken: Wire = Wire.failing("refused")
     intercept[IllegalStateException](Embeddings.openAi("https://x.test", "m")(using broken)("x"))
   }
+
+/** our model on the same wire */
+class TestServing extends FunSuite:
+  import SystemOne.Service
+
+  val embed = okay.rag.Vectors.hashing(256)
+  val acts = okay.dlm.Exemplars.compile(Vector(
+    "answer" -> "Вроцлав", "answer" -> "программист на Scala",
+    "social" -> "спасибо большое", "social" -> "хорошего дня",
+    "correct" -> "ты меня не понял", "correct" -> "не так, исправь"), embed, "hashing-256")
+  val answers = okay.dlm.Exemplars.compile(Vector(
+    "yes" -> "да", "yes" -> "конечно", "no" -> "нет", "no" -> "не надо", "tell" -> "а что там?"), embed, "hashing-256")
+  val judges = Vector(Judge.probe(acts, embed, "acts"), Judge.probe(answers, embed, "answers"))
+
+  test("a choice over the classes a head knows is answered by that head, by name, with no invented confidence") {
+    val (status, body) = Service.serve("""{"state":{"text":"спасибо большое"},
+      "questions":{"kind":{"type":"choice","instructions":"what kind of move?","criteria":{"answer":"an answer","social":"a pleasantry","correct":"a correction"}}}}""", judges)
+    assertEquals(status, 200)
+    val printed = Json.print(body)
+    assert(printed.contains("\"choice\":\"social\""), printed)
+    assert(printed.contains("\"judge\":\"acts\""), printed)
+    assert(!printed.contains("confidence"), printed)
+    // …and our own client reads our own answer: the wire is one
+    assertEquals(SystemOne.decodeChoice(printed, "kind").map(_.choice), Right("social"))
+  }
+
+  test("noul is a choice between yes and no; score an expectation over the levels; several questions ride one request") {
+    val (_, body) = Service.serve("""{"state":"да, конечно",
+      "questions":{"agreed":{"type":"noul","instructions":"did they agree?"},
+                   "mood":{"type":"score","instructions":"how sure?","criteria":{"no":"refuses","tell":"asks","yes":"agrees"}},
+                   "kind":{"type":"choice","criteria":["social","answer"]}}}""", judges)
+    val printed = Json.print(body)
+    assertEquals(SystemOne.decodeNoul(printed, "agreed").map(p => p > 0.5), Right(true))
+    val scored = SystemOne.decodeScore(printed, "mood").toOption.get
+    assert(scored.score > 2.0 && scored.score <= 3.0, scored.toString)
+    assertEquals(SystemOne.decodeChoice(printed, "kind").map(_.probabilities.keySet), Right(Set("social", "answer")))
+  }
+
+  test("a question no judge can rank is an error in its own slot, and the others are still answered") {
+    val (status, body) = Service.serve("""{"state":{"body":"x"},
+      "questions":{"colour":{"type":"choice","criteria":{"red":"","blue":""}},
+                   "kind":{"type":"choice","criteria":{"social":"","answer":""}},
+                   "odd":{"type":"guess"}}}""", judges)
+    assertEquals(status, 200)
+    val printed = Json.print(body)
+    assert(printed.contains("\"colour\":{\"error\":\"no judge here ranks: red, blue\"}"), printed)
+    assert(printed.contains("\"odd\":{\"error\":"), printed)
+    assert(SystemOne.decodeChoice(printed, "kind").isRight)
+    assertEquals(Service.serve("not json", judges)._1, 400)
+    assertEquals(Service.serve("""{"state":"x"}""", judges)._1, 400)
+  }
+
+  test("the state's text: text, else body, else every string field, else the string itself") {
+    assertEquals(Service.textOf(JObj(Vector("body" -> JStr("b"), "text" -> JStr("t")))), "t")
+    assertEquals(Service.textOf(JObj(Vector("subject" -> JStr("s"), "body" -> JStr("b")))), "b")
+    assertEquals(Service.textOf(JObj(Vector("a" -> JStr("1"), "n" -> JNum(2), "b" -> JStr("2")))), "1\n2")
+    assertEquals(Service.textOf(JStr("plain")), "plain")
+  }

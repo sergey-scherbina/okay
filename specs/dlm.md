@@ -290,3 +290,15 @@ codec, pure, and the client), `Jev`, `Laya`, `Embeddings.openAi`.
 89 + 8 tests, every remote one over a canned wire that asserts on the
 request it saw. The old constructors kept: the consumer compiled
 against the new pin without a change to its model code.
+
+## Results — dlm-serving (2026-09-28)
+
+Stage 4: our model on the same wire. `SystemOne.Service` in
+okay-dlm-remote — `decode` of the vendors' request shape (`state` as
+text, body, every string field or a bare string; `questions` with
+`criteria` as an object or a list), `answer` per question by the
+first judge that can rank its options, `serve` as a status and a body
+for any route. Four tests, one of them the round trip: our client
+reads our server's answer, so the wire is one. The consumer mounts it
+as `/v1/systemone` beside `/route`. The learning mode is
+specs/dlm-learning.md, written before its code.
