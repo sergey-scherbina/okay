@@ -184,6 +184,14 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   trades, the builder, recipes, the measured table, and the
   literature: Vyukov, Michael & Scott, Okasaki, Koch–Sanders–Williams
   on relaxed FIFO, Herlihy & Shavit.
+- **[Merge mechanisms and wait strategies](merge-and-wait.md)** — the
+  three givens a `merge` and a blocking runner take: `Merge` (a ring of
+  streams by readiness, or one shared queue), `Wait` (register at
+  once, spin, the spin/yield/park ladder, the cycle) and `Pause` (the
+  platform's rungs, or your own for a test); which calls take them,
+  what each rung costs as measured, when to pick which, and the
+  literature: LMAX Disruptor's WaitStrategy, Karlin et al.'s
+  spin-then-block bound, Rust's select_all.
 - **[Schedulers](schedulers.md)** — the family (Loom, owned workers,
   a given pool, platform threads), the builder that chooses and tunes
   one, the single decision the owned-worker scheduler makes for itself

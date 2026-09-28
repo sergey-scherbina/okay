@@ -1048,6 +1048,10 @@ given Merge = Merge.Shared           // one queue for both sides, the road befor
 val joined = Source.of(List(1, 2, 3)) merge Source.of(List(10, 20))
 ```
 
+The full API of the three — every strategy, who asks the wait, the
+measured cost of each rung and when to pick which — is its own page,
+[Merge mechanisms and wait strategies](merge-and-wait.md).
+
 The reason is measured rather than stylistic: on a chunked two-sided
 merge a slow fork registered a side 160 times per op while the other
 side still had work, each registration turning the producer's next
