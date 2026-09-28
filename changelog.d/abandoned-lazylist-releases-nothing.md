@@ -16,4 +16,10 @@ deterministic stop: end the program (`runFoldUntil`) for one you can
 time. Law: take 5 of a merged `toLazyList`, drop it, `System.gc()`
 until the release is counted, on `Merge.Ready` and `Merge.Shared` —
 red with the Cleaner door stubbed. specs/ready-merge.md (the stage),
-docs/guide.md §6.
+docs/guide.md §6. Found on the way,
+by a four-case probe: a scope reachable from its own cleaner is never
+collected — `ReadyMerge`'s release closed over the run (so the
+collector's door is now `onCollected`, the channels' close alone), and
+a lambda in the class body captured `this` through its fields (so the
+action is built by a helper from its parameters).
+

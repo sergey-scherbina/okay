@@ -180,7 +180,11 @@ private[okay] object ReadyMerge:
 
     /** this run's cancel scope: its release is `cancelAll`, idempotent
      * (every slot is taken once) and safe from any thread */
-    val scope: Async.CancelScope = Async.CancelScope(() => { cancelAll(); release() })
+    // the collector's door is `release` alone (the channels' close):
+    // `cancelAll` is this run's, and a run the collector can reach has
+    // no registrations left to cancel — a door that held the run would
+    // keep the scope reachable for good (abandoned-lazylist-releases-nothing)
+    val scope: Async.CancelScope = Async.CancelScope(() => { cancelAll(); release() }, release)
 
     /** the re-entry `step` takes through `flatMap`, so `@tailrec` still
      * checks the loop */

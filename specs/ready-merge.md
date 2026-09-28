@@ -581,12 +581,27 @@ the program still touches and must be idempotent against the other
 doors; JEP 421 deprecating `finalize` in favour of `Cleaner`, whose
 action runs on its own thread and cannot resurrect its object.
 
-- [ ] take 5 of a merged `toLazyList`, drop it, `System.gc()` until the
+- [x] take 5 of a merged `toLazyList`, drop it, `System.gc()` until the
       release is counted (≤ 10 s) — on `Merge.Ready` and `Merge.Shared`;
       RED with `Unreachable.onCollected` a no-op (the mutant), green with
       the Cleaner
-- [ ] a program that ends normally releases exactly once, still (the
+- [x] a program that ends normally releases exactly once, still (the
       existing "a full run releases nothing" law and the early-stop laws)
+
+**Results (2026-09-28).** The door worked on the first try for a plain
+source, a buffered channel and a bare scope, and NOT for the merge —
+a probe of four cases told them apart in one run. TWO WAYS A SCOPE
+STAYS REACHABLE FROM ITS OWN CLEANER, both met here:
+1. `ReadyMerge`'s release was `() => { cancelAll(); release() }` — a
+   closure over the run, which holds the scope. So the collector gets
+   its own door, `onCollected`, given the channels' close alone; a run
+   the collector can reach has no registration left to cancel.
+2. A lambda written in the class body — `() => once.run(onCollected)` —
+   reads `once` and `onCollected` as FIELDS, through `this`, and the
+   first fix collected nothing at all, not even the bare scope. The
+   action is built by a companion helper from its own parameters
+   (`CancelScope.arm`), so nothing in it names the scope.
+Both are Boehm's point made concrete: a finalizer's closure is a root.
 - [ ] cost: one `Cleaner.register` per scope — per merge RUN, not per
       element (a PhantomReference and a queue entry); measured on
       `okaySourceMerge` beside master if it moves the number

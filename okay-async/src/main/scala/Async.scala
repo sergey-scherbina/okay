@@ -219,27 +219,42 @@ object Async {
    * there a cancel is an interrupt, seen at the next wait, whose own
    * canceller does the releasing.
    */
-  final class CancelScope(release: () => Unit):
+  final class CancelScope(release: () => Unit, onCollected: () => Unit):
+    /** the one-door form: the collector runs the same release */
+    def this(release: () => Unit) = this(release, release)
     // the release runs ONCE, through whichever door reaches it first:
     // the drive's end or cancel, a fiber's own handler, or — for a
     // program ABANDONED mid-way, its `toLazyList` dropped with the scope
     // entered and never exited, which no handler sees end — the
     // collector (abandoned-lazylist-releases-nothing: `Unreachable`, a
-    // Cleaner on the JVM, nothing elsewhere). The action holds `once`
-    // and not this scope, so the scope can become unreachable at all
-    private val once = CancelScope.Once(release)
-    Unreachable.onCollected(this, once)
-    private[okay] def released(): Unit = once.run()
+    // Cleaner on the JVM, nothing elsewhere). THE COLLECTOR'S DOOR MUST
+    // NOT REACH THIS SCOPE: the Cleaner holds its action, the action
+    // holds what it closes over, and a scope reachable from its own
+    // cleaner is never collected (Boehm, POPL 2003). So `onCollected`
+    // is a separate function — `ReadyMerge` passes the channels' close
+    // alone, where its `release` also cancels through the run that
+    // owns the scope — and the action holds `once`, never `this`
+    private val once = CancelScope.Once()
+    // built by a helper from ITS parameters: a lambda written here would
+    // read `once`/`onCollected` as fields, through `this`, and hold the
+    // scope from its own cleaner (measured: nothing was ever collected)
+    CancelScope.arm(this, once, onCollected)
+    private[okay] def released(): Unit = once.run(release)
     /** the operation that opens the scope */
     def enter[F[+_]]: Unit ! Async + F = okay.effect(Run(Enter(this)))
     /** the operation that closes it */
     def exit[F[+_]]: Unit ! Async + F = okay.effect(Run(Exit(this)))
 
   object CancelScope:
-    /** a release that runs once, from any thread */
-    private[okay] final class Once(release: () => Unit) extends Runnable:
+    /** the collector's action, closing over the helper's parameters
+     * alone — never the scope */
+    private def arm(scope: AnyRef, once: Once, action: () => Unit): Unit =
+      Unreachable.onCollected(scope, () => once.run(action))
+
+    /** a release that runs once, from any thread and any door */
+    private[okay] final class Once:
       private val done = AtomicBoolean(false)
-      def run(): Unit = if !done.getAndSet(true) then release()
+      def run(action: () => Unit): Unit = if !done.getAndSet(true) then action()
 
   /** the two markers share a class, so the drive's `Run` arm asks ONE
    * class test of every operation (+1.5% on a pure-Run chain with two) */

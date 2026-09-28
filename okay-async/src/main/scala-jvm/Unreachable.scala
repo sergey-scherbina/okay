@@ -9,5 +9,5 @@ import java.lang.ref.Cleaner
  * must not reference the object, or it never becomes unreachable. */
 private[okay] object Unreachable:
   private val cleaner = Cleaner.create()
-  def onCollected(o: AnyRef, action: Runnable): Unit =
-    cleaner.register(o, action): Unit
+  def onCollected(o: AnyRef, action: () => Unit): Unit =
+    cleaner.register(o, () => action()): Unit
