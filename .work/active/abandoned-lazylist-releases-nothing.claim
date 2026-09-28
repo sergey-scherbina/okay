@@ -1,0 +1,1 @@
+claude session_01Ujs4BYPBFq2gS7CRRxyACd, 2026-09-28, operator ask: a cancel scope whose program is ABANDONED (a dropped toLazyList) is released when it becomes unreachable — a Cleaner backstop on CancelScope (JVM), no-op elsewhere (backlog abandoned-lazylist-releases-nothing)
