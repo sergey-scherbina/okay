@@ -38,13 +38,20 @@ import scala.sys.process._
  * test` at the root runs — a project the family deliberately keeps
  * out of the gate stays out.
  *
+ * A file the doc tests read — docs/, specs/, a README, the boards,
+ * changelog.d (affected-docs-run-no-doc-tests) — is okay-deploy's:
+ * its doc suites run, and nobody's dependents.
+ *
  * The closure is seeded by MAIN changes only (ci-affected-tests-only,
  * 2026-09-19): a project's own `Test` sources cannot break a
  * dependent — a dependent only ever sees what `Compile` built — so a
  * lane that edited nothing but a test still runs THAT project's own
  * tests (it stays in `direct`) but does not sweep in everything
  * downstream of it. Measured before the fix: one test-only line in
- * okay-lex (one dependent, okay-parse) pulled in 52 projects.
+ * okay-lex (one dependent, okay-parse) pulled in 52 projects. The one
+ * exception is a `test->test` dependent — a project whose tests EXTEND
+ * a suite of the changed project (affected-test-only-shared-suites) —
+ * which a changed test source does reach, and only over such edges.
  *
  * Both commands run their projects through sbt's own `all`, so the
  * tasks run in parallel exactly as they do under `sbt test`.
@@ -55,6 +62,34 @@ object Affected extends AutoPlugin {
 
   private def under(f: File, d: File): Boolean =
     f.getAbsoluteFile.toPath.normalize.startsWith(d.getAbsoluteFile.toPath.normalize)
+
+  /**
+   * THE FILES okay-deploy's DOC TESTS READ (affected-docs-run-no-doc-tests,
+   * 2026-09-28). A lane that changes only docs/, specs/, a README, the
+   * boards or changelog.d lies under no project's source directory, so it
+   * mapped to NONE — `affected master` ran 0 tests for scala2-docs-overview
+   * (2026-09-23) — while TestDocLinks, TestDocsIndex, TestDocSnippets,
+   * TestBoardEntries, TestChangelogEntries and TestHistoryEntries read
+   * exactly those files. So they map to `okayDeploy`, as a CHANGED project
+   * (its own tests run) with no dependents (nothing compiles against a
+   * page). The list is what those suites open: the doc trees, every
+   * README/ROADMAP, AGENTS.md and the ledgers, the board and changelog
+   * directories (okay2's backlog included), the history directory, and
+   * the scripts the suites shell out to (board.sh, changelog.sh,
+   * history.sh) with the hooks that guard the boards' shape.
+   */
+  private val docTestedDirs = Seq("docs/", "specs/", "sprint.d/", "backlog.d/", "changelog.d/",
+    "okay2/backlog.d/", "src/jmh/history.d/", "scripts/githooks/")
+  private val docTestedFiles = Set("scripts/board.sh", "scripts/changelog.sh", "scripts/history.sh",
+    "scripts/check-citations.sh", "src/jmh/history.tsv", "docs/snippet-debt.txt")
+  private val docTestedNames = Set("README.md", "ROADMAP.md", "AGENTS.md", "CHANGELOG.md", "BACKLOG.md",
+    "BACKLOG-ARCHIVE.md", "WORKFLOW.md", "BUGS.md")
+  private def docTested(f: File, root: File): Boolean = {
+    val rel = root.getAbsoluteFile.toPath.normalize.relativize(f.getAbsoluteFile.toPath.normalize)
+      .toString.replace('\\', '/')
+    docTestedDirs.exists(rel.startsWith) || docTestedFiles(rel) || docTestedNames(f.getName)
+  }
+  private val docTestsProject = "okayDeploy"
 
   /** the directories the META-BUILD compiles from source: the .sbt files in project/ name them by
    * `RootProject(file("..."))` (okay-deploy's and okay-frege's sbt plugins) */
@@ -134,10 +169,28 @@ object Affected extends AutoPlugin {
       refs.flatMap(p => resolved(p).toSeq.flatMap(_.dependencies.map(d => d.project -> p)))
         .groupBy(_._1).map { case (d, ps) => d -> ps.map(_._2).toSet }
 
-    def closeOverDependents(s: Set[ProjectRef]): Set[ProjectRef] = {
-      val next = s ++ s.flatMap(p => dependents.getOrElse(p, Set.empty[ProjectRef]))
-      if (next == s) s else closeOverDependents(next)
+    /** the same, over `test->test` edges only: the projects whose TESTS
+     * are compiled against another project's tests — a shared suite
+     * (affected-test-only-shared-suites, 2026-09-28). A law added to
+     * okay-stream's `ChannelLawsSuite` ran over okay-stream's own
+     * channels and not over okay-clojure's `CoreAsyncChannel`, whose
+     * `TestCoreAsyncChannelLaws` extends the same suite through
+     * `okayStream.jvm % "compile->compile;test->test"`; it had to be
+     * run by hand (channel-law-racing-offers, 2026-09-24). A change to
+     * a project's tests reaches exactly these, transitively, and no
+     * one else — the rule that a test-only edit sweeps in no plain
+     * dependent (ci-affected-tests-only) stands for every other edge. */
+    val testDependents: Map[ProjectRef, Set[ProjectRef]] =
+      refs.flatMap(p => resolved(p).toSeq.flatMap(_.dependencies.collect {
+        case d if d.configuration.exists(_.split(';').map(_.trim).contains("test->test")) => d.project -> p
+      })).groupBy(_._1).map { case (d, ps) => d -> ps.map(_._2).toSet }
+
+    def closeOver(edges: Map[ProjectRef, Set[ProjectRef]])(s: Set[ProjectRef]): Set[ProjectRef] = {
+      val next = s ++ s.flatMap(p => edges.getOrElse(p, Set.empty[ProjectRef]))
+      if (next == s) s else closeOver(edges)(next)
     }
+    def closeOverDependents(s: Set[ProjectRef]): Set[ProjectRef] = closeOver(dependents)(s)
+    def closeOverTestDependents(s: Set[ProjectRef]): Set[ProjectRef] = closeOver(testDependents)(s)
 
     /** what `sbt test` at the root runs: the aggregate, transitively */
     val gate: Set[ProjectRef] = {
@@ -223,9 +276,13 @@ object Affected extends AutoPlugin {
           state.log.error(why); state.fail
         case Right(changed) =>
           val buildChanged = Affected.buildChanged(changed, g.root)
+          // the doc tests' own project, when a changed file is one they read
+          val docs: Set[ProjectRef] =
+            if (changed.exists(f => docTested(f, g.root))) g.refs.filter(_.project == docTestsProject).toSet
+            else Set.empty
           val direct: Set[ProjectRef] =
             if (buildChanged) g.gate
-            else g.refs.filter { r => val ds = g.dirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
+            else g.refs.filter { r => val ds = g.dirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet ++ docs
           // a project whose diff touched only its TESTS cannot have
           // broken a dependent (ci-affected-tests-only): nothing under
           // Compile moved for it, so the dependent closure is seeded by
@@ -235,15 +292,22 @@ object Affected extends AutoPlugin {
           val mainChanged: Set[ProjectRef] =
             if (buildChanged) g.gate
             else g.refs.filter { r => val ds = g.mainDirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
+          // a project whose TESTS changed reaches the projects compiled
+          // against those tests (affected-test-only-shared-suites): the
+          // `test->test` edges, closed, and nothing further
+          val testChanged: Set[ProjectRef] =
+            if (buildChanged) Set.empty
+            else g.refs.filter { r => val ds = g.testDirs(r); changed.exists(f => ds.exists(d => under(f, d))) }.toSet
           val chosen = (r: ProjectRef) => g.gate(r) && onPlatform(r.project, platform)
           val own = direct.filter(chosen)
-          val downstream = (g.closeOverDependents(mainChanged) -- direct).filter(chosen)
-          val outside = changed.filterNot(f => g.refs.exists(r => g.dirs(r).exists(d => under(f, d))))
+          val downstream = (g.closeOverDependents(mainChanged) ++ g.closeOverTestDependents(testChanged) -- direct).filter(chosen)
+          val outside = changed.filterNot(f => docTested(f, g.root) || g.refs.exists(r => g.dirs(r).exists(d => under(f, d))))
           val shape =
             if (buildChanged) " — the BUILD changed, so every project is"
             else if (scope == "staged") s": ${own.size} project(s) directly, then ${downstream.size} dependents"
             else s": ${direct.size} project(s) directly, ${(own ++ downstream).size} with dependents"
-          state.log.info(s"affected: ${changed.size} file(s) changed since $base" + shape +
+          val docNote = if (docs.nonEmpty && !buildChanged) s"; a doc, board or ledger file changed, so $docTestsProject's doc tests run" else ""
+          state.log.info(s"affected: ${changed.size} file(s) changed since $base" + shape + docNote +
             (if (outside.nonEmpty && !buildChanged) s"; ${outside.size} file(s) belong to no project" else ""))
           if (buildChanged || scope == "closed") g.run(state, task, Seq(("affected", own ++ downstream)), plan)
           else g.run(state, task, Seq(("changed", own), ("dependent", downstream)), plan)

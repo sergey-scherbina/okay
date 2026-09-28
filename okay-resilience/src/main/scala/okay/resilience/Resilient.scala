@@ -34,6 +34,15 @@ object Resilient:
    * the two is what the call gets and what the outgoing header says.
    * A 5xx counts as a breaker failure, a 4xx does not — the far end
    * answered. Hedging applies to `hedgeable` requests only.
+   *
+   * `clock` reads the budget and `budgetTimer` ENFORCES it (faults-
+   * replay-wall-clock, 2026-09-28): the deadline is armed on a timer
+   * for what the clock says is left, so a frozen clock alone still
+   * left the given platform timer to cut a call after a real second —
+   * which under a loaded whole build it did, in a session meant to
+   * replay another by seed. A test that wants the budget PRESENT but
+   * never on the wall clock hands both: a frozen clock and a timer it
+   * fires itself. Absent, the given timer is the one, as before.
    */
   def http(inner: Http,
            budgetMillis: Option[Long] = None,
@@ -43,8 +52,9 @@ object Resilient:
            hedge: Option[(Long, Int)] = None,
            hedgeable: Request => Boolean = safeMethods,
            balanced: Option[Balanced] = None,
-           clock: () => Long = wall)
-          (using Scheduler, Timer): Http = new Http:
+           clock: () => Long = wall,
+           budgetTimer: Option[Timer] = None)
+          (using S: Scheduler, T: Timer): Http = new Http:
     def send(r: Request): Response ! Async =
       val now = clock()
       val carried = Deadline.read(r, clock)
@@ -66,7 +76,7 @@ object Resilient:
       def bulk: Response ! Async = bulkhead.fold(limited)(_.limit(limited))
       def broken: Response ! Async =
         breaker.fold(bulk)(_.protect(bulk)(_.fold(_ => true, _.status >= 500)))
-      deadline.fold(broken)(d => Deadline.enforce(d, clock)(broken))
+      deadline.fold(broken)(d => Deadline.enforce(d, clock)(broken)(using S, budgetTimer.getOrElse(T)))
 
   /**
    * A server. The wrapped routes stay defined exactly where they

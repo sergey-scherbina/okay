@@ -2,8 +2,9 @@
       `okay.clojure.TestCoreAsync` "okay produces, a Clojure `into` consumes"
       timed out after 30 s in a full `affected master` gate at load 35-62
       (lexical-tagged-walk, 2026-09-25), and passed twice at once in isolation
-      at load 62. Its second sighting: ci-runner-lock-bypass records the same
-      load-induced timeout. The repository's policy is that a test whose result
+      at load 62. Its second sighting: changelog.d/ci-runner-lock-bypass records
+      the same load-induced timeout (that entry landed 2026-09-28; the timeout
+      it saw was an orphaned whole build's, under a second one). The repository's policy is that a test whose result
       depends on timing it cannot control is not in the default gate. THE LANE:
       read what the test waits on, then decide whether it is a real wait on a
       slow box (widen nothing, move the timing out of the assertion) or a hang

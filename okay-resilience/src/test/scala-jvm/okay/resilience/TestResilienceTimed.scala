@@ -2,7 +2,7 @@ package okay.resilience
 
 import okay.*
 import okay.given
-import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The pieces that need a real timer or a real fiber: hedging, a
@@ -21,28 +21,9 @@ class TestResilienceTimed extends munit.FunSuite {
 
   def run[A](prog: A ! Async): A = Async.run(prog).runWith
 
-  /**
-   * A timer the TEST fires (hedge-timed-flake). The three assertions
-   * below that say "nothing else started" used to say it by sleeping
-   * past the hedge delay on the real timer — which asserts the BOX's
-   * speed, not the hedge's contract: under load the first attempt
-   * takes longer than the delay, the timer fires exactly as designed,
-   * and the count is 2 (measured 2026-09-09, nine sbt JVMs).
-   *
-   * With this one, no wall clock is involved: after the run has
-   * settled, `fireAll` runs whatever is still armed, and the contract
-   * is that nothing starts, because `start()` is guarded by `done`.
-   */
-  final class ManualTimer extends Timer:
-    private val armed = AtomicReference(Vector.empty[() => Unit])
-    def after(millis: Long)(k: () => Unit): () => Unit =
-      armed.updateAndGet(_ :+ k)
-      () => { armed.updateAndGet(_.filterNot(_ eq k)); () }
-    /** run every callback still armed; answers how many there were */
-    def fireAll(): Int =
-      val ks = armed.getAndSet(Vector.empty)
-      ks.foreach(_())
-      ks.size
+  // the timer the tests fire by hand is the module's `ManualTimer`
+  // (hedge-timed-flake: "nothing else started" is asserted against the
+  // timer firing as late as it can, not against the box's speed)
 
   /** a program that answers after `ms` on the platform timer */
   def after[A](ms: Long)(a: => A): A ! Async =

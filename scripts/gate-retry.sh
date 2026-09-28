@@ -14,7 +14,8 @@
 # one gate.sh already makes: a run that reaches a verdict (`gate: RED`
 # or `gate: GREEN`) has SAID something about the tree, and its word
 # stands -- the exit code is passed straight through. Only a run that
-# said nothing, or said `gate: KILLED`, is started again. Retrying a
+# said nothing, or said `gate: KILLED` (`STALLED`, `DEMOTED`: the same
+# family, a run the box and not the tree decided), is started again. Retrying a
 # red would be a machine for landing broken trees, which is the
 # opposite of what a gate is for.
 #
@@ -63,6 +64,8 @@ verdict() {
   elif grep -q "gate: RED" "$1"; then echo red
   elif grep -q "gate: KILLED" "$1"; then echo killed
   elif grep -q "gate: STALLED" "$1"; then echo stalled
+  elif grep -q "gate: DEMOTED" "$1"; then echo demoted
+  elif grep -q "gate: LOCKED" "$1"; then echo locked
   else echo none
   fi
 }
@@ -74,6 +77,8 @@ if [ "${1:-}" = "--read" ]; then
     red)    echo "$L: gate: RED — done, the gate's exit code stands; NOT retried" ;;
     killed) echo "$L: gate: KILLED — a signal, not a verdict; retry" ;;
     stalled) echo "$L: gate: STALLED — the watchdog killed a silent, idle run; retry, and READ the dump beside the log first" ;;
+    demoted) echo "$L: gate: DEMOTED — a run on the efficiency cores that lost only to munit timeouts; not a verdict; retry" ;;
+    locked) echo "$L: gate: LOCKED — a whole build already holds this checkout's ci lock; done, the gate's exit code stands; NOT retried" ;;
     none)   echo "$L: no verdict — the box took it; retry" ;;
   esac
   exit 0
@@ -217,6 +222,10 @@ while [ "$i" -le "$N" ]; do
       fi
       echo "GATE EXIT=0"   >> "$LOG"; exit 0 ;;
     red)   echo "GATE EXIT=$rc" >> "$LOG"; exit "$rc" ;;
+    # a whole build already holds the checkout's lock (ci-runner-lock-
+    # bypass): six refusals in a row are not six attempts, and the
+    # holder is the run whose verdict counts — stop, code passed through
+    locked) echo "GATE EXIT=$rc  (the ci lock is held; not retried)" >> "$LOG"; exit "$rc" ;;
   esac
 
   echo "== attempt $i produced no verdict (rc=$rc) — the box took it; retrying" >> "$LOG"

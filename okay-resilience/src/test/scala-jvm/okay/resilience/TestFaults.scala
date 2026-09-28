@@ -14,15 +14,15 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class TestFaults extends munit.FunSuite {
 
-  // Live since flaky-faults-replay-live (2026-09-28): the composite's
-  // replay-by-seed law went red in a ci-runner whole build under load
-  // (line "the same seed, the same story") and held the push. The run is
-  // not a pure function of the seed: a 1 s budget and 2 ms slow calls run
-  // on the wall clock, so a starved second session meets a deadline the
-  // first did not. Backlog okay-core/faults-replay-wall-clock.
-  override def munitTests(): Seq[Test] =
-    super.munitTests().map(t =>
-      if t.name.startsWith("the composite under a drawn plan") then t.tag(new munit.Tag("Live")) else t)
+  // Back in the default gate (faults-replay-wall-clock, 2026-09-28).
+  // The replay-by-seed law was `Live` for a day (flaky-faults-replay-
+  // live): it went red in a ci-runner whole build under load and held
+  // the push, because the composite's 1 s budget ran on the wall clock
+  // — a frozen `clock` alone reads the budget as never spent, but
+  // `Deadline.enforce` still ARMS the given platform timer for the
+  // second it says is left, and a starved session met that timer where
+  // the first had not. The session below hands the budget its own
+  // timer, fired by nobody, so the run is a pure function of the seed.
 
   def run[A](prog: A ! Async): A = Async.run(prog).runWith
 
@@ -94,11 +94,23 @@ class TestFaults extends munit.FunSuite {
       // first had not, and broke its own replay (the full-matrix gate
       // caught it; the scoped run had not)
       val limiter = Limiter("c", ratePerSecond = 1_000, burst = 100, clock = () => 0L)
+      // and a FROZEN BUDGET: the deadline is read on the same frozen
+      // clock (never spent) and armed on a timer only this test could
+      // fire (never cut) — the budget is present, in the composite's
+      // shape, and the wall clock has no say in what the 40 calls meet.
+      // The wire's 2 ms slow calls stay on the platform timer: they
+      // only ever finish later, never differently.
+      val budget = ManualTimer()
       val client = Resilient.http(wire, budgetMillis = Some(1_000), breaker = Some(breaker),
-        bulkhead = Some(bulkhead), limiter = Some((limiter, _ => "k")))
+        bulkhead = Some(bulkhead), limiter = Some((limiter, _ => "k")),
+        clock = () => 0L, budgetTimer = Some(budget))
       val outs = (1 to 40).toVector.map { _ =>
         outcome(client.send(Request.get("http://x/"))).left.map(_.getClass.getSimpleName)
       }
+      // every call that ran under the budget disarmed its deadline on
+      // completion; a deadline still armed would be a call that never
+      // settled, which is a hang this law would otherwise wait for
+      assertEquals(budget.pending, 0)
       (outs, wire.stats, breaker.stats, limiter.stats)
 
     val (outs, wire, breaker, limiter) = session(11)

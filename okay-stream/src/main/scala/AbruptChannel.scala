@@ -84,26 +84,60 @@ final class AbruptChannel[A](buf: Buffer[A]) extends Channel[A] {
    */
   // a LOOP, never recursion: a thread that claims its own waiter would
   // otherwise resume on its own stack and overflow it under load
+  //
+  // THE SAME TWO RULES AS `SentinelChannel.attemptSend`
+  // (abrupt-sender-head-recheck, 2026-09-28; adaptive-merge-early-stop-
+  // livelock is the finding). One branch used to hold two cases that
+  // need different rechecks, so they are told apart by `pushed` — did
+  // this attempt get to push at all:
+  //   FULL (it pushed and the ring refused): nobody is ahead of us whose
+  //     wake is in flight, so room seen after the enqueue is ours to take
+  //     back, as it always was;
+  //   BEHIND (another sender's waiter kept us from pushing): room seen
+  //     after the enqueue is ours only once our waiter is the OLDEST —
+  //     with one still ahead of us, that slot's wake is going to it, and
+  //     retrying was a busy-wait for a sender that, under a callback
+  //     drive, only this thread could resume (TestSendBehindWaiter: the
+  //     consumer never took 200 elements, on `own` and on `adaptive`).
+  // And a waiter taken back OWNS the wake it was skipped for: `own` makes
+  // the next turn push without asking the queue again. Without it, the
+  // taken-back sender met a waiter enqueued behind it, went BEHIND and
+  // parked with the slot empty — the rule above alone deadlocked
+  // TestChannelLaws' two-producer law, which is how this was found.
   private def attemptSend(a: A, granted0: Boolean)(k: Accepted): Unit =
-    val granted = granted0
+    var own = granted0
     var go = true
     while go do
       go = false
       if closed.get then k(false)
-      else if (granted || senders.get.isEmpty) && ring.push(a) then
-        k(true)
-        val _ = wakeOne(receivers)
       else
-        val w = Waiter(() => attemptSend(a, granted0 = true)(k))
-        enqueue(senders, w)
-        // check-register-recheck: a pop between the failed push and the
-        // enqueue leaves space no one will wake us for. Ask `hasRoom`,
-        // not `size < capacity`: `size` is tail - head, which counts a
-        // position already popped whose stamp has not been republished,
-        // so a subtraction can promise room the next push cannot take.
-        if (ring.hasRoom || closed.get) && w.claim() then
-          val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
-          go = true
+        val pushed = own || senders.get.isEmpty
+        if pushed && ring.push(a) then
+          k(true)
+          val _ = wakeOne(receivers)
+        else
+          val w = Waiter(() => attemptSend(a, granted0 = true)(k))
+          enqueue(senders, w)
+          // check-register-recheck: a pop between the failed push and the
+          // enqueue leaves space no one will wake us for. Ask `hasRoom`,
+          // not `size < capacity`: `size` is tail - head, which counts a
+          // position already popped whose stamp has not been republished,
+          // so a subtraction can promise room the next push cannot take.
+          if (ring.hasRoom || closed.get) && (pushed || oldest(w)) && w.claim() then
+            val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
+            own = true
+            go = true
+
+  /** is `w` the oldest waiter still waiting? `enqueue` conses at the
+   * head, so the oldest is the LAST unclaimed one (`wakeOne` takes
+   * `last` and skips claimed ones the same way). A waiter another
+   * thread has claimed and not yet swept out is not "ahead of us": its
+   * owner is taking its own slot, and counting it would park us beside
+   * room nobody else is coming for. Empty (a close's `wakeAll` took the
+   * list) answers false, and the `closed` check on the next turn ends
+   * the send. The list is only as long as the senders parked on it. */
+  private def oldest(w: Waiter): Boolean =
+    senders.get.reverseIterator.find(!_.claimed.get).exists(_ eq w)
 
   def receiveAsync(k: End => Unit): Unit =
     var go = true

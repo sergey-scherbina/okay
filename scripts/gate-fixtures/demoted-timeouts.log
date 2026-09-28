@@ -1,0 +1,11 @@
+[info] Passed: Total 112, Failed 0, Errors 0, Passed 112, Ignored 1
+==> X okay.platform.TestGenerate.stack safety: 1M produced values  254.1s java.util.concurrent.TimeoutException: test timed out after 120 seconds
+[error] Failed: Total 12, Failed 1, Errors 0, Passed 11
+[error] Failed tests:
+[error] 	okay.platform.TestGenerate
+[error] (okayPlatformJVM / Test / test) sbt.TestsFailedException: Tests unsuccessful
+==> X okay.TestCoreAsync.okay produces, a Clojure `into` consumes  30.0s java.util.concurrent.TimeoutException: test timed out after 30 seconds
+[error] Failed: Total 9, Failed 1, Errors 0, Passed 8
+[error] (okayClojure / Test / test) sbt.TestsFailedException: Tests unsuccessful
+[error] Total time: 900 s (0:15:00.0), completed Sep 27, 2026, 11:02:18 PM
+gate: this run was demoted to the efficiency cores by the bench window (OKAY_BENCH_DEMOTE=on)

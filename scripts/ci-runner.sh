@@ -72,24 +72,24 @@ is_board_only_commit() {
 }
 
 # ---- the lock: mkdir, holding the pid, taken over from a dead holder -
+# The protocol is scripts/ci-lock.sh since ci-runner-lock-bypass
+# (2026-09-28): gate.sh takes the SAME lock for a whole build
+# (`test`, `family …`) whoever starts it, and reads a holder above it
+# in its own process tree — this runner — as its own. What this file
+# keeps is the runner's own words for the two outcomes the selftest
+# reads ("held by pid", "taking it over"), which the shared function
+# prints under CI_LOCK_WHO.
+. "$here/ci-lock.sh"
 take_lock() {
-  if mkdir "$LOCKDIR" 2>/dev/null; then
-    echo $$ > "$LOCKDIR/pid"
-    return 0
-  fi
-  holder=$(cat "$LOCKDIR/pid" 2>/dev/null || echo "")
-  if [ -n "$holder" ] && ps -p "$holder" >/dev/null 2>&1; then
-    echo "ci-runner: lock held by pid $holder — another run is in progress"
-    return 1
-  fi
-  echo "ci-runner: lock dir exists but its pid ($holder) is dead — taking it over"
-  rm -rf "$LOCKDIR"
-  mkdir "$LOCKDIR" 2>/dev/null || { echo "ci-runner: lost the race for the lock"; return 1; }
-  echo $$ > "$LOCKDIR/pid"
-  return 0
+  CI_LOCK_WHO=ci-runner ci_lock_take "$LOCKDIR"
+  case $? in
+    0) return 0 ;;
+    2) echo "ci-runner: lock held by pid $(ci_lock_holder "$LOCKDIR") — this run's own ancestor; refusing to nest a runner under one"; return 1 ;;
+    *) return 1 ;;
+  esac
 }
 
-release_lock() { rm -rf "$LOCKDIR"; }
+release_lock() { ci_lock_release "$LOCKDIR"; }
 
 # ---- the push, one place (ci-runner-push-after-flake) -----------------
 # GREEN pushes; so does a red the runner ITSELF judged a flake (its

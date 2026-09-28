@@ -310,21 +310,37 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
     // what carried it. It also parked the sender on the waiter queue
     // of a part it was not pushing to.
     val route = if granted0 then route0 else buffer.route()
-    val granted = granted0
+    // A SPENT WAKE IS OWNED (adaptive-merge-early-stop-livelock,
+    // 2026-09-28). `own` is true for a sender we PARKED and are now
+    // resuming — the pop that woke it freed a slot FOR it — and, below,
+    // for a sender that CLAIMED ITS OWN WAITER BACK on seeing room: the
+    // slot's wake found that waiter claimed and moved on, so this sender
+    // is the one holding it. Either way it pushes without asking the
+    // queue again. Before, a self-claimed sender looped back to the
+    // `isEmpty` gate, met a waiter that had arrived behind it, and went
+    // to the else branch instead of pushing — the wake was spent and the
+    // slot stayed empty. The old else branch's retry-until-the-head-
+    // leaves papered over that (two senders each re-enqueueing behind
+    // the other's waiter until one caught the queue momentarily empty);
+    // once that retry PARKS instead (below), the state is a deadlock:
+    // TestChannelLaws' two-producer law hung 3 whole runs in 3 with the
+    // park alone, and 439/439 with the ownership rule beside it.
+    var own = granted0
     var go = true
     while go do
       go = false
       if closing.get then k(false)
-      else if granted || sendersAt(route).isEmpty then
+      else if own || sendersAt(route).isEmpty then
         // the decision rides INSIDE the claim: what comes back is
         // what the ring published at the position just won.
-        // `granted` means this is a sender we PARKED and are now
+        // `granted0` means this is a sender we PARKED and are now
         // resuming, and the thread running it is the one that freed
         // the slot, not the producer — so the buffer is told, or a
         // buffer that reads its caller's identity learns a lie
-        // (growing-onep, 2026-09-08)
+        // (growing-onep, 2026-09-08). A self-claimed sender is on its
+        // own thread and pushes as itself.
         val pushed =
-          if granted then buffer.pushDecidingAtOnBehalf(route, a, closing, void)
+          if granted0 then buffer.pushDecidingAtOnBehalf(route, a, closing, void)
           else buffer.pushDecidingAt(route, a, closing, void)
         pushed match
           case null =>
@@ -334,6 +350,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
             enqueue(sendersAt(route), w)
             if (buffer.hasRoomAt(route) || closing.get) && w.claim() then
               val _ = sendersAt(route).remove(w)
+              own = true
               go = true
           case _: Mark =>
             // close landed between the open check and the claim; the
@@ -345,10 +362,27 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
             k(true)
             val _ = wakeOne(receivers)
       else
+        // ANOTHER SENDER IS AHEAD: queue up behind it, and retry only
+        // when this waiter has become the HEAD (adaptive-merge-early-
+        // stop-livelock, 2026-09-28). The recheck exists for the one
+        // lost wakeup — the queue drained between the `isEmpty` test
+        // and this enqueue, so the slot's wake found nobody and only
+        // we are left to take it. With a waiter still ahead of us that
+        // slot's wake is IN FLIGHT to it, and every later pop wakes one
+        // more head; retrying here instead was a busy-wait for the
+        // sender ahead to move, which under a callback drive (`own`,
+        // `adaptive`) is the very thread we are running on: a receiver
+        // that woke us resumed our fiber inline, and the sender ahead
+        // waits for that receiver's next wake — one worker at 100% in
+        // this loop for 32 minutes, on a `merge` two producers fed
+        // (Merge.Shared, capacity 4). Loom hid it: there the wake is
+        // an unpark and the sender ahead runs on its own carrier.
+        val q = sendersAt(route)
         val w = Waiter(() => attemptSend(a, granted0 = true, route)(k))
-        enqueue(sendersAt(route), w)
-        if (buffer.hasRoomAt(route) || closing.get) && w.claim() then
-          val _ = sendersAt(route).remove(w)
+        enqueue(q, w)
+        if (buffer.hasRoomAt(route) || closing.get) && (q.peek() eq w) && w.claim() then
+          val _ = q.remove(w)
+          own = true
           go = true
 
   def receiveAsync(k: End => Unit): Unit =
