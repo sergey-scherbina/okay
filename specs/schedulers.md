@@ -940,9 +940,39 @@ blocking ~1.3x Loom. The disqualifying evidence: any row where
 `adaptive` is worse than Loom beyond the lane's noise.
 
 ### Behavior
-- [ ] part 1 table + preliminary verdict
+- [x] part 1 table + preliminary verdict
 - [ ] part 2 table
 - [ ] correctness column under `adaptive` as the given
 - [ ] the decision: flip `Schedulers.auto` to `adaptive` where virtual
       threads exist ONLY if no row loses beyond noise; JDK 17-20 keep
       `platform` (no spill there, so no `adaptive` by default either)
+
+### Results, part 1 (2026-09-28) — one round, loom then adaptive
+Worktree on master 9ec45ca40, the same build for both arms. JMH lanes
+us/op (lower better); five-way ops/s (higher better); Wrocław ms wall,
+best of 5. Every lane its own `scripts/jmh-lane.sh` (five-way: run.sh's
+own quiet-gated lock), and every one finished on a quiet box.
+
+| lane | loom | adaptive | adaptive / loom (time) |
+|---|---:|---:|---:|
+| §4b fork/join 10k OUTSIDE, work=100 | 3 257 | 2 135 * | 0.66 |
+| §4b fork/join 10k INSIDE, work=100 | 3 515 | 3 294 ** | 0.94 |
+| cancel 1 000 parked | 1 023 | 697 | 0.68 |
+| `DirectParallelBenchmark.parallel8` | 10.08 | 6.86 | 0.68 |
+| **Wrocław, okay 8 fibres, ms wall** | **114** | **113** | **0.99** |
+| **five-way TCP blocking, 64 x 1 ms, ops/s** | **117.3** | **155.2** | **0.76 (1.32x ops/s)** |
+| five-way TCP callback (same run), ops/s | 117.6 | 150.4 | 0.78 (1.28x ops/s) |
+
+\* the adaptive outside arm never came out within jmh-lane's 10% error
+bar: five attempts read 2 485 / 2 135 / 1 894 / 1 975 / 2 416 (errors
+14-31%), each on a box quiet at both ends. The median is shown, as in
+adaptive-outside-long-fibers-serial and adaptive-blocking-io; even the
+worst attempt is 0.76 of Loom's time. \*\* first attempt 3 050 was
+discarded at 14%; the kept one is shown (pooled median 3 172, 0.90).
+
+**Preliminary verdict: flip.** Neither of the old table's losses is
+there. Wrocław reads 113 against Loom's 114 (it was 3.3-5.5x slower),
+and TCP blocking reads 1.32x Loom's ops/s (it was 0.45x). Every other
+row is `adaptive` at 0.66-0.94 of Loom's time, the same side as the
+first decision. Part 2 (a second round of these, §4, the rest of
+five-way) decides.
