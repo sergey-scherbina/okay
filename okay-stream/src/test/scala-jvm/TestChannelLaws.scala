@@ -37,6 +37,15 @@ import scala.jdk.CollectionConverters.*
  */
 abstract class ChannelLawsSuite(impls: List[(String, Boolean, Int => Channel[Int])]) extends munit.ScalaCheckSuite {
 
+  /** LONGER THAN THE LAWS' OWN WAIT (sentinel-single-consumer-lost-end,
+   * 2026-09-28). The six-channels law joins a consumer for 5 s, takes
+   * its diagnosis, and waits 60 s more before calling it LOST; munit's
+   * default is 30 s, so every LOST — and every LATE past 30 s — surfaced
+   * as a bare `TimeoutException` with the diagnosis it had taken thrown
+   * away, three times in one night. The verdict must be the law's, not
+   * the harness's. */
+  override def munitTimeout: scala.concurrent.duration.Duration = scala.concurrent.duration.Duration(3, "min")
+
 
   private def drains(name: String): Boolean = impls.find(_._1 == name).exists(_._2)
 
