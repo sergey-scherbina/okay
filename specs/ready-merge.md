@@ -407,20 +407,38 @@ threads, registers at once.
 - [ ] JS: a dry ring registers at once (`Wait.Threads` false); the
       cross laws unchanged
 - [ ] THE WAIT IS A GIVEN (operator, 2026-09-28: "вынеси в тайпкласс и
-      имплисит чтобы можно было ее менять"): `trait MergeWait { def
-      wait(ready: () => Boolean): Boolean }` — asked to wait on a dry
-      ring, it polls `ready` on its own schedule and answers whether
-      something arrived (false: the merge registers and parks).
-      `MergeWait.Register` never polls (JS's shape, and the road before
-      the hybrid); `MergeWait.Spin(n)`; `MergeWait.Cycle(spins, yields,
-      cycles)` — the operator's `(spin 100 → yield 50 → parkNanos) × 4`.
-      The default `given` in the companion is `Cycle(100, 50, 4)` where
-      producers are threads and `Register` on JS; `ReadyMerge`,
+      имплисит чтобы можно было ее менять", then "можно вообще Wait а
+      не только Merge"): `trait Wait { def until(ready: () => Boolean):
+      Boolean }` — not the merge's, ANY consumer's: asked to wait for a
+      condition before it blocks, it polls `ready` on its own schedule
+      and answers whether the condition came (false: the caller
+      registers and parks). `Wait.Register` never polls (JS's shape,
+      and the road before the hybrid); `Wait.Spin(polls)`;
+      `Wait.Cycle(spins, yields, cycles)` — the operator's `(spin 100 →
+      yield 50 → parkNanos) × 4`. The default `given` in the companion
+      is `Cycle(100, 50, 4)` where producers are threads and `Register`
+      on JS (the platform seam behind it is private); `ReadyMerge`,
       `Source.mergeReady`, `merge`, `mergeFlushing` and `either` take it
       `using`, so a caller swaps it with one `given` in scope and every
       existing call compiles unchanged. Laws: `Register` given → the JVM
-      polls 3 times and registers, as JS does; `Spin(10)` → 3 + 11
-      polls; the default → the cycle's count. Literature: this is LMAX
+      polls 3 times and registers, as JS does; `Spin(10)` → 3 + 10
+      polls; the default → 3 + 4 × (100 + 50).
+- [ ] THE MERGE MECHANISM IS A GIVEN TOO (operator, 2026-09-28:
+      "стратегию самого Merge тоже можно вынести в тайпкласс и имплиситы
+      — Ready vs Channel vs whatever else"): `trait Merge` with the three
+      shapes `merge` has — `elements(l, r, capacity)`, `chunks(l, r,
+      slots, size, within)`, `flushing(l, r, slots, size, within)` —
+      and two objects: `Merge.Ready` (a channel per side joined on the
+      ring, the default `given`) and `Merge.Shared` (one queue two
+      producers feed: `Channel.merge`, `Channel.mergeChunked`,
+      `Channel.mergeFlushing` — one mode in every fork, a consumer that
+      never catches up). `Source.merge`, `mergeFlushing` and `either`
+      (built on `merge`) dispatch to the given; `Channel.merge*` stay
+      callable by name. This is specs/own-or-standard.md's shape for a
+      choice between two of OUR mechanisms. Laws: the chunked failure
+      law (`TestChannelFailure`, failAfterTail) under both givens; the
+      elementwise merge's multiset law under `Merge.Shared`. The
+      benchmark's control arms become `given Merge = Merge.Shared`. Literature: this is LMAX
       Disruptor's `WaitStrategy` (BusySpin / Yielding / Sleeping /
       Blocking) made a value the caller chooses, and Karlin et al.'s
       spin-then-block bound on any fixed choice.
