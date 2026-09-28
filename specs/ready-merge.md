@@ -378,3 +378,49 @@ road, `MergeCapBenchmark`, poll-then-park against
 `-Dokay.merge.poll=off` in the same JVM: cap 64 84.4 vs 83.6, cap
 256 65.9 vs 68.6, cap 1024 60.0 vs 61.1 — kept.
 
+## Stage: the hybrid wait, and the chunked roads onto the ring (ready-merge-chunk-forward, second landing, 2026-09-28)
+
+The operator's decision after the first landing: a 1.06x mean with a
+1.15-1.2x tail in 2-4 forks of 10 is ACCEPTED for one merge mechanism,
+and the consumer's wait becomes the HYBRID first — spin, then
+`Thread.yield` with a poll each, then `parkNanos` with a poll each,
+then register and block. Each rung is the consumer's own cost; the
+producer's one check (`wakeOne` on an empty waiter queue) stays, and it
+pays only when the consumer truly blocks. Measured on this box:
+`Thread.yield` 125 ns, `parkNanos(1)` 10-12 us on a platform thread
+and 10 us on a virtual one (the timer's floor — the argument stops
+mattering below ~10 us), `parkNanos(100 000)` 150-158 us. One brief
+park is the window in which two producers make ~50 chunks, so a merge
+that slept wakes into batches: the "merge that runs behind on
+purpose" of the first landing's reopen condition, for free. `Wait` is a
+platform seam: JVM and Native climb the rungs; JS, with no producer
+threads, registers at once.
+
+- [ ] the rungs: a dry ring polls `PollSpins` times, yields `PollYields`
+      times with a poll each, parks briefly `PollSleeps` times with a
+      poll each, then registers — a law with a channel side whose data
+      arrives during the yields (told without a registration) and one
+      whose data arrives after the sleeps (registered, `onRegister`
+      fires)
+- [ ] JS: a dry ring registers at once (`Wait.Threads` false); the
+      cross laws unchanged
+- [ ] the chunked ring road (f0f355bd4's, rebuilt) on the hybrid:
+      `okayChunked` k=16, 10 forks — slow forks, polls, parks per fork
+      against the first landing's rows (spin-only: 2-4/10 at 215-247,
+      mean 205-211); does the tail move, and does the fork that waits
+      2000-3000 polls now sleep instead
+- [ ] STAGE 2, the bar as accepted: `okayChunked`, `okayChunkedFlush`,
+      `okayChunkedFlushShort` at k = 16/256/1024, ring road against
+      today's shared-channel road, 5 forks per arm alternating — mean
+      within 1.06x at every lane, no arm's tail worse than 1.2x
+- [ ] then the shared-channel chunked road is deleted: `chunkedMerge`,
+      `Channel.mergeChunked`, `Channel.mergeFlushing`'s channel road;
+      `Source.merge(chunked = true)`, `mergeFlushing`, `either` go
+      through `ReadyMerge[Chunk[A]]` over a chunk channel per side
+      (`chunkedSideOf` / `chunkedSideFlushing`) and `Writer.expand`;
+      `TestChannelFailure`'s chunked laws (the failAfterTail ones) still
+      green
+- [ ] the elementwise road on the hybrid: `MergeCapBenchmark` cap
+      64/256/1024 against the first landing's frozen rows (84.8 / 68.3 /
+      63.0), no regression
+

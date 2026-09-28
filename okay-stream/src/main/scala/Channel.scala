@@ -1021,12 +1021,44 @@ object Channel {
         sch.fork(() => tick())
 
   /**
+   * ONE SIDE of a chunked merge as a channel of its own
+   * (merge-chunked-via-ready): `feed` accumulates into `buf` and sends
+   * full chunks, a timed flusher — when there is a window — sends what
+   * has waited too long, and the channel closes when the feed completes
+   * (a failure recorded first, so it is read after the side's chunks).
+   * The flusher is a second sender, so a windowed side gets two parts;
+   * without a window it is the single-producer ring `buffer` uses.
+   * `Source.merge(chunked = true)` and `Source.mergeFlushing` join two of
+   * these with `Source.mergeReady`, as the elementwise merge joins two
+   * `buffer`s.
+   */
+  private def chunkedSide[A](capacity: Int, size: Int, within: Option[Long])
+                            (feed: (Channel[Chunk[A]], TRef[ChunkBuffer[A]]) => Unit ! Async)
+                            (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
+    val c = forProducers[Chunk[A]](if within.isDefined then 2 else 1, capacity)
+    val buf = TRef.bare(ChunkBuffer[A](Vector.empty))
+    val done = AtomicInteger(1)
+    // referred to by name before it is forced, as in `chunkedMerge`: a
+    // feed that finishes at once still cancels the flusher
+    lazy val fl: Fiber[Unit] | Null = flusherFor(c, buf, size, within, done)
+    sch.fork(() => feed(c, buf)).onComplete { r =>
+      done.set(0)
+      val t = fl
+      if t != null then t.nn.cancel()
+      r match
+        case Right(_) => c.close()
+        case Left(e) => failAfterTail(c, buf, size, e)(c.close())
+    }
+    val _ = fl
+    c
+
+  /**
    * A chunking feed FAILED: what it had accumulated was told by its
    * source, so it goes out before the failure does (merge-chunked-via-
    * ready). Until then a side that failed with a partial chunk in hand
-   * lost it — `Source.merge(chunked = true)` and `Channel.mergeChunked`
-   * over a source telling 1, 2, 3 and then throwing delivered the other
-   * side and the failure, and none of the three. `c.fail` records at once (a consumer hears it
+   * lost it — `Source.merge(chunked = true)` over a source telling 1, 2, 3
+   * and then throwing delivered the other side and the failure, and
+   * none of the three. `c.fail` records at once (a consumer hears it
    * only after reading what is left); the tail is sent from a fiber of
    * its own, since the channel may be full; `after` runs once it is out.
    */
@@ -1036,6 +1068,17 @@ object Channel {
     takeChunk(buf, size, full = true) match
       case Some(ch) => sch.fork(() => c.send(ch)).onComplete(_ => after)
       case None => after
+
+  /** a chunked side over an ordinary stream (`feedChunked`) */
+  private[okay] def chunkedSideOf[A, S[_], F[+_]](s: S[A], capacity: Int, size: Int, within: Option[Long])
+                                                 (using Stream[S, F], Handler[F])
+                                                 (using Scheduler, Timer): Channel[Chunk[A]] =
+    chunkedSide(capacity, size, within)((c, buf) => feedChunked(c, s, size, buf))
+
+  /** a chunked side over a source that marks its own boundaries */
+  private[okay] def chunkedSideFlushing[A](p: Flushing[A], capacity: Int, size: Int, within: Option[Long])
+                                          (using Scheduler, Timer): Channel[Chunk[A]] =
+    chunkedSide(capacity, size, within)((c, buf) => feedFlushing(c, p, size, buf))
 
   /** the chunking merge for ordinary sources: the common path, fed
    * through `feedChunked` rather than the flushing walk because that

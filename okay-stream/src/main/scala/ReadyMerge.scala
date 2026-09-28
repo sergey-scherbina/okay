@@ -56,6 +56,15 @@ private[okay] object ReadyMerge:
    * 100 every fork parks ~1; 1000 never parked and was no faster. A
    * poll is two volatile reads. */
   private final val PollSpins = 100
+  /** the rungs above the spin (the HYBRID, ready-merge-chunk-forward's
+   * second landing): `PollYields` polls each after a `Thread.yield`,
+   * then `PollSleeps` polls each after a brief park — the consumer
+   * waiting at its own expense, the producer still paying nothing.
+   * Read once per JVM for the lane's A/B; frozen after it */
+  private val PollYields: Int =
+    try System.getProperty("okay.merge.pollyields", "50").toInt catch case _: Throwable => 50
+  private val PollSleeps: Int =
+    try System.getProperty("okay.merge.pollsleeps", "4").toInt catch case _: Throwable => 4
 
   /** a registration's answer, when it came before the drive moved on */
   private final class Answer[X](val r: Either[Throwable, X])
@@ -152,12 +161,19 @@ private[okay] object ReadyMerge:
           idle(j) = idle(idleN)
         else j += 1
 
-    /** the ring is dry: poll what is idle (`PollSpins` more times), and
-     * register what is still empty — as many as it takes for the ring
-     * to hold something, or all of them, and then the merge parks */
+    /** the ring is dry: climb the wait — poll `PollSpins` times, then
+     * `PollYields` yields, then `PollSleeps` brief parks, each rung a
+     * poll — and register what is still empty: as many as it takes for
+     * the ring to hold something, or all of them, and then the merge
+     * parks. On JS there are no rungs: nothing arrives while we wait */
     private def settleIdle(): Unit =
-      var s = 0
-      while idleN > 0 && size == 0 && s <= PollSpins do { pollIdle(); s += 1 }
+      if Wait.Threads then
+        var s = 0
+        while idleN > 0 && size == 0 && s <= PollSpins do { pollIdle(); s += 1 }
+        s = 0
+        while idleN > 0 && size == 0 && s < PollYields do { Wait.yieldNow(); pollIdle(); s += 1 }
+        s = 0
+        while idleN > 0 && size == 0 && s < PollSleeps do { Wait.sleepBriefly(); pollIdle(); s += 1 }
       while idleN > 0 && size == 0 do
         idleN -= 1
         idle(idleN).register()
