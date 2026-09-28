@@ -56,7 +56,7 @@ cross-build lands so nothing has to be broken later.
       REGISTRATION itself (unregistering the timer/IO completion)
       would need the register to answer with a canceller — open box
       below.
-- [ ] **cancel ANSWERS the fiber, on every platform and every
+- [x] **cancel ANSWERS the fiber, on every platform and every
       scheduler** (supervised-waits-on-failure, 2026-09-28): after
       `cancel()`, the fiber's `onComplete` fires — a `Left` — whether it
       was parked in an `Await` that will never fire (JS's `PromiseDrive`
@@ -68,7 +68,7 @@ cross-build lands so nothing has to be broken later.
       for an answer that will never come"); this box makes it the
       contract. A fiber blocked where interruption cannot reach it
       answers when it next can — best effort, as `cancel` always was.
-- [ ] **a supervised scope's failure answer comes after every child has
+- [x] **a supervised scope's failure answer comes after every child has
       answered**: `supervised` cancels the children and answers `Left`
       from `whenIdle`, as it answers `Right` — the header's "the scope
       does not finish while a child is still running" holds on the
@@ -78,6 +78,19 @@ cross-build lands so nothing has to be broken later.
       instead of leaving it early.
 
 ## Decisions
+- 2026-09-28 (supervised-waits-on-failure): `supervised` answers a
+  failure from `whenIdle`, and the answer WAITS for an uninterruptible
+  child exactly as the success answer always did — that is the header's
+  contract, and the old early answer was the lie. What the wait exposed:
+  `Future.cancel(true)` never interrupts a running `ForkJoinTask`
+  (`ForkJoinTask.cancel` documents the flag as having no effect), so
+  `Schedulers.forkJoin` had never cancelled a running child at all —
+  TestSupervised's ten-child scope answered in time only because it left
+  its siblings sleeping. `forkJoin` now interrupts its running task
+  itself, under a monitor the task's `finally` shares, so a stale
+  interrupt cannot reach the worker's next task. Cross tests pin the
+  three boxes on JVM, JS and Native; the forkJoin queued case was watched
+  red first.
 - **Await(register) over a Promise/Future-shaped op** — no dependency,
   no platform type in the core signature; adapters live at the edges.
 - **Capabilities over subsetting**: JS does not get a crippled Fiber
