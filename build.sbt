@@ -479,11 +479,14 @@ lazy val okayAsync = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jvmSettings(
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    // the JVM-only side of `Unreachable` (a Cleaner; Native and JS have none)
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
   .nativeSettings(
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
     // the shared src/test/scala leans on platform defaults (Comonad/
     // Handler[Async]) this module deliberately does not supply — see
     // okay-platform, which is what has them. Only the cross suite runs here.

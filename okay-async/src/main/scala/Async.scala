@@ -220,11 +220,26 @@ object Async {
    * canceller does the releasing.
    */
   final class CancelScope(release: () => Unit):
-    private[okay] def released(): Unit = release()
+    // the release runs ONCE, through whichever door reaches it first:
+    // the drive's end or cancel, a fiber's own handler, or — for a
+    // program ABANDONED mid-way, its `toLazyList` dropped with the scope
+    // entered and never exited, which no handler sees end — the
+    // collector (abandoned-lazylist-releases-nothing: `Unreachable`, a
+    // Cleaner on the JVM, nothing elsewhere). The action holds `once`
+    // and not this scope, so the scope can become unreachable at all
+    private val once = CancelScope.Once(release)
+    Unreachable.onCollected(this, once)
+    private[okay] def released(): Unit = once.run()
     /** the operation that opens the scope */
     def enter[F[+_]]: Unit ! Async + F = okay.effect(Run(Enter(this)))
     /** the operation that closes it */
     def exit[F[+_]]: Unit ! Async + F = okay.effect(Run(Exit(this)))
+
+  object CancelScope:
+    /** a release that runs once, from any thread */
+    private[okay] final class Once(release: () => Unit) extends Runnable:
+      private val done = AtomicBoolean(false)
+      def run(): Unit = if !done.getAndSet(true) then release()
 
   /** the two markers share a class, so the drive's `Run` arm asks ONE
    * class test of every operation (+1.5% on a pure-Run chain with two) */

@@ -244,6 +244,25 @@ class TestReadyMerge extends munit.FunSuite {
       assertEquals(Source.mergeReleases.get - before2, 0L, s"$name: a merge that ran to its end released nothing")
   }
 
+  test("an ABANDONED toLazyList releases its merge once the collector finds it, on both mechanisms") {
+    // abandoned-lazylist-releases-nothing: `toLazyList` steps a program
+    // by its own `runWith` per element, so no handler ever sees the
+    // program END when the list is dropped — the scope's last door is
+    // the collector. GC timing is not ours: ask for it, wait up to 10 s
+    for (name, mechanism) <- List("ready" -> Merge.Ready, "shared" -> Merge.Shared) do
+      given Merge = mechanism
+      val before = Source.mergeReleases.get
+      def takeFive(): Int =
+        val ll = Source.of(LazyList.from(0)).merge(Source.of(LazyList.from(0)), capacity = 4).toLazyList
+        ll.take(5).toList.size   // the list is dropped when this returns
+      assertEquals(takeFive(), 5, name)
+      val deadline = System.nanoTime() + 10_000_000_000L
+      while Source.mergeReleases.get == before && System.nanoTime() < deadline do
+        System.gc()
+        Thread.sleep(50)
+      assertEquals(Source.mergeReleases.get - before, 1L, s"$name: the abandoned merge was never released")
+  }
+
   test("an EARLY STOP releases a parked source when the program ends, on own") {
     // the consumer takes three elements and finishes; the gate is still
     // parked. On a drive (own, JS) the program's end runs the merge's
