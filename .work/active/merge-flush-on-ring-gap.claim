@@ -1,0 +1,1 @@
+claude session_013hkJA4B7z8s2CRHjfv668p, 2026-09-28, operator ask ("merge-flush-on-ring-gap"): re-measure the ring flushing road (10 forks/arm, alternating, + FlushShort), then close the gap — candidates (a) Shared for the flushing shape, (b) flusher signals the feed, (c) consumer flushes the partial chunk (sprint.d/doing/merge-flush-on-ring-gap.md)
