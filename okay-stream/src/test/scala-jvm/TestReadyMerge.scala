@@ -263,6 +263,33 @@ class TestReadyMerge extends munit.FunSuite {
       assertEquals(Source.mergeReleases.get - before, 1L, s"$name: the abandoned merge was never released")
   }
 
+  test("Merge.Shared on a callback scheduler: a woken producer that meets another's waiter parks, it does not spin (own and adaptive)") {
+    // adaptive-merge-early-stop-livelock (2026-09-28): with `adaptive` as
+    // the given, the early-stop law below never finished — one worker at
+    // 100% CPU in `SentinelChannel.attemptSend`, 32 minutes. The shape:
+    // ONE ring (Merge.Shared) fed by two producers, both parked on it
+    // full; the consumer pops and wakes the first, whose callback drive
+    // resumes INLINE on the consumer's thread (Loom would unpark a
+    // carrier of its own). That producer's next send meets the second's
+    // waiter at the head of the queue, sees room, and retried — waiting
+    // for the second producer to move, which only the thread it is
+    // running on could wake. Both callback schedulers, bounded: a merge
+    // that does not answer in 10 s is the livelock, not a slow box.
+    given Merge = Merge.Shared
+    for (name, sch) <- List("own" -> Schedulers.own.build, "adaptive" -> Schedulers.adaptive.build); round <- 0 until 20 do
+      given Scheduler = sch   // the feeders fork here too: that is the shape
+      val m = Source.of(LazyList.from(0)).merge(Source.of(LazyList.from(0)), capacity = 4)
+      val f = sch.fork(() => m.runFoldUntil(using FoldUntil.take[Int](5)))
+      val done = java.util.concurrent.CompletableFuture[Either[Throwable, ?]]()
+      f.onComplete(r => { done.complete(r): Unit })
+      val r =
+        try done.get(10, java.util.concurrent.TimeUnit.SECONDS)
+        catch case _: java.util.concurrent.TimeoutException =>
+          f.cancel()
+          fail(s"$name round $round: the merge never answered — a producer is spinning in attemptSend (adaptive-merge-early-stop-livelock)")
+      assertEquals(r.map(_.asInstanceOf[Iterable[?]].size), Right(5), s"$name round $round")
+  }
+
   test("an EARLY STOP releases a parked source when the program ends, on own") {
     // the consumer takes three elements and finishes; the gate is still
     // parked. On a drive (own, JS) the program's end runs the merge's
