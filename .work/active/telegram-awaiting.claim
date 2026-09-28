@@ -1,1 +1,0 @@
-claude session_019ikxNQsLNoKyBmNgq5Jh5P, 2026-09-28: Chats.awaiting — a chat whose screen asked for a typed value, so a consumer with its own text understanding does not steal the field it asked for, and an unfocused message is not silently dropped (sprint.d/doing/telegram-awaiting.md)
