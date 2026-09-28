@@ -396,14 +396,34 @@ purpose" of the first landing's reopen condition, for free. `Wait` is a
 platform seam: JVM and Native climb the rungs; JS, with no producer
 threads, registers at once.
 
-- [ ] the rungs: a dry ring polls `PollSpins` times, yields `PollYields`
-      times with a poll each, parks briefly `PollSleeps` times with a
-      poll each, then registers — a law with a channel side whose data
-      arrives during the yields (told without a registration) and one
-      whose data arrives after the sleeps (registered, `onRegister`
-      fires)
+- [ ] the rungs, as a CYCLE (the operator's refinement of the straight
+      ladder): (`PollSpins` polls, `PollYields` yields with a poll each,
+      one brief park) × `PollSleeps`, then register — after a park the
+      data has most likely arrived or is about to, and a spin catches it
+      at 41 ns where a second park would cost 10 us more. Laws by poll
+      COUNT, not time: a side answering on the 121st poll is told on the
+      first cycle's yield rung without a registration; one that never
+      answers a poll is registered after 3 + 4 × (101 + 50) polls
 - [ ] JS: a dry ring registers at once (`Wait.Threads` false); the
       cross laws unchanged
+- [ ] THE WAIT IS A GIVEN (operator, 2026-09-28: "вынеси в тайпкласс и
+      имплисит чтобы можно было ее менять"): `trait MergeWait { def
+      wait(ready: () => Boolean): Boolean }` — asked to wait on a dry
+      ring, it polls `ready` on its own schedule and answers whether
+      something arrived (false: the merge registers and parks).
+      `MergeWait.Register` never polls (JS's shape, and the road before
+      the hybrid); `MergeWait.Spin(n)`; `MergeWait.Cycle(spins, yields,
+      cycles)` — the operator's `(spin 100 → yield 50 → parkNanos) × 4`.
+      The default `given` in the companion is `Cycle(100, 50, 4)` where
+      producers are threads and `Register` on JS; `ReadyMerge`,
+      `Source.mergeReady`, `merge`, `mergeFlushing` and `either` take it
+      `using`, so a caller swaps it with one `given` in scope and every
+      existing call compiles unchanged. Laws: `Register` given → the JVM
+      polls 3 times and registers, as JS does; `Spin(10)` → 3 + 11
+      polls; the default → the cycle's count. Literature: this is LMAX
+      Disruptor's `WaitStrategy` (BusySpin / Yielding / Sleeping /
+      Blocking) made a value the caller chooses, and Karlin et al.'s
+      spin-then-block bound on any fixed choice.
 - [ ] the chunked ring road (f0f355bd4's, rebuilt) on the hybrid:
       `okayChunked` k=16, 10 forks — slow forks, polls, parks per fork
       against the first landing's rows (spin-only: 2-4/10 at 215-247,
