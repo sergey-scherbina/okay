@@ -394,7 +394,10 @@ module with its own page under docs/modules:
   mid-stream (`okay-llm`); retrieval with provenance by construction,
   the index an Aggregator (`okay-rag`); agents as programs — a tool
   call is an effect, context is a fold, policy lives in handlers
-  (`okay-agent`).
+  (`okay-agent`); a deterministic dialogue language model — a
+  four-layer router, heads over exemplar tables, a pure turn decision
+  that replays from its record, a memory fold, a safetensors
+  checkpoint — with every word and rule the caller's (`okay-dlm`).
 - **MCP** (`okay-mcp`) — both ends of the Model Context Protocol: a
   server is another `Handler[Tool]`, our tools are another server,
   resources are documents, prompts are conversation openings,
