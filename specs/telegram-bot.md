@@ -119,6 +119,10 @@ two.
       a `Message` is `(chat, Said(text))`, everything else is `None` — a
       payment or a pre-checkout is the consumer's, before or beside the
       host.
+- [x] **`Chats.open(chat)`** opens a chat's application without hearing a
+      word: for a consumer that understood the message itself (a
+      sentence with an address in it is not the field's value) and
+      wants the screen drawn; opening an open chat does nothing.
 - [x] **one host per chat**: the first update from a chat builds
       `Telegram.host(perform(bot, chat))`, spawns `open(chat, host)` (the
       consumer's `Ui.run`), and hands the host every later update of

@@ -47,21 +47,30 @@ final class Chats(bot: Bot, open: (Long, Host) => Unit ! Async,
   /** the chats with an application open */
   def opened: Set[Long] = lock.synchronized(doors.keySet)
 
+  /** the chat's door, opening its application first when this is the
+   * chat's first word — the one place a host is made */
+  private def doorOf(chat: Long): (Telegram.Update => Unit ! Async) ! Async =
+    async {
+      lock.synchronized {
+        doors.get(chat) match
+          case Some(door) => (door, None)
+          case None =>
+            val (host, door) = Telegram.host(Chats.perform(bot, chat, refused))
+            doors += chat -> door
+            (door, Some(host))
+      }
+    }.map { (door, opened) =>
+      opened.foreach(host => Async.spawn(open(chat, host)))
+      door
+    }
+
+  /** the application of a chat, opened if it was not — for a consumer
+   * that understood a message itself and wants the screen, not the
+   * host's reading of the text (a sentence is not a field's value) */
+  def open(chat: Long): Unit ! Async = doorOf(chat).map(_ => ())
+
   /** a press or a message: the chat's host hears it; the first from a
    * chat opens its application */
   def hear(u: Update): Unit ! Async = Chats.heard(u) match
     case None => pure(())
-    case Some((chat, heard)) =>
-      async {
-        lock.synchronized {
-          doors.get(chat) match
-            case Some(door) => (door, None)
-            case None =>
-              val (host, door) = Telegram.host(Chats.perform(bot, chat, refused))
-              doors += chat -> door
-              (door, Some(host))
-        }
-      }.flatMap { (door, opened) =>
-        opened.foreach(host => Async.spawn(open(chat, host)))
-        door(heard)
-      }
+    case Some((chat, heard)) => doorOf(chat).flatMap(_(heard))

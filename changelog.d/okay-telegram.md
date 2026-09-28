@@ -27,3 +27,5 @@ client is one small module.
   `TestBot`, `TestChats` with the gate — a counter application pressed
   through `Chats` sends one message and edits it — and `TestReadme`, the
   README's examples compiled.
+- `Chats.open(chat)` (the same day, for okay-watch's bot): a chat's
+  application opened by the consumer, without a message heard.
