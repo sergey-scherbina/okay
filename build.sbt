@@ -2424,6 +2424,23 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
  * protection as a route wrapper. Zero dependencies — the JDK carries
  * the primitives. JVM-first; the JS crypto seam is a stage.
  */
+lazy val okayTelegram = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-telegram"))
+  // the Bot API over okay-http; the keyboard vocabulary and the chat host
+  // are okay-ui's `Telegram` — one vocabulary, not two (specs/telegram-bot.md)
+  .dependsOn(okayHttp, okayUi)
+  .settings(
+    name := "okay-telegram",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    // the effectful suites run programs (CanBlock), so they are JVM-only;
+    // the parse of an update is pure and shared
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-security"))
@@ -2505,6 +2522,36 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // under Node — the raw-DOM backend against its fake document
     Test / unmanagedSourceDirectories :=
       Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-js"),
+  )
+
+/**
+ * THE APP'S OWN WINDOW (specs/app-host.md): JavaFX's WebView over a
+ * product's local service, its menus as data, a Save dialog for every
+ * download, the launch — what okay-watch's Window.scala and
+ * Desktop.scala were, for any product. JavaFX to COMPILE against only:
+ * the installed app's Java carries its modules (jlink), a server never
+ * has them, and a product's jar stays one file for every system. Its
+ * jars are per system; any one compiles the window.
+ */
+lazy val fxClassifier: String = {
+  val os = sys.props("os.name").toLowerCase
+  val arm = sys.props("os.arch").contains("aarch64") || sys.props("os.arch").contains("arm")
+  if (os.contains("mac")) { if (arm) "mac-aarch64" else "mac" }
+  else if (os.contains("win")) "win"
+  else if (arm) "linux-aarch64" else "linux"
+}
+
+lazy val okayDesktop = project
+  .in(file("okay-desktop"))
+  .settings(
+    name := "okay-desktop",
+    // the launch runs the service on a platform thread and the window's
+    // fetches on virtual ones (`Thread.ofPlatform`/`ofVirtual`, JDK 21);
+    // the installed app's Java is 25 (JavaFX 26 asks for 22 at run time)
+    jdkFloor(21),
+    libraryDependencies ++= Seq("javafx-base", "javafx-graphics", "javafx-controls", "javafx-web").map(m =>
+      "org.openjfx" % m % "26.0.2" % Provided classifier fxClassifier),
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
 /**
@@ -3033,6 +3080,21 @@ lazy val okayDlm = project
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * The model's remote backends (specs/dlm.md, "Backends"): the System
+ * One wire that TypeSafe's Jev and Convai's Laya both speak, each as a
+ * `Judge`; an OpenAI-shaped embeddings wire as an `Embedder`; and the
+ * `Wire` seam they all post through, faked in every test. Ours stays
+ * the default in okay-dlm; this module is what a `given` names.
+ */
+lazy val okayDlmRemote = project
+  .in(file("okay-dlm-remote"))
+  .dependsOn(okayDlm)
+  .settings(
+    name := "okay-dlm-remote",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayChat = project
   .in(file("okay-chat"))
   .dependsOn(okayLlm.jvm, okayHttp.jvm, okayConf.jvm)
@@ -3488,11 +3550,13 @@ lazy val root = (project in file("."))
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayArrow.jvm, okayArrow.js, okayArrow.native, okayParquet.jvm, okayParquet.js, okayParquet.native, okayLake, okayCompress.jvm, okayCompress.js, okayCompress.native, okayDiagnose.jvm, okayDiagnose.js, okayDiagnose.native, okayTest.jvm, okayTest.js, okayTest.native, okayForeignWorkflow, okayR, okayForeignCluster,
+    okayTelegram.jvm, okayTelegram.js,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2, okayRust.jvm,
     okayFrame.jvm, okayFrame.js,
-    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDlm, okayDeploy, okayLive, okayScript,
+    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDlm, okayDlmRemote, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js,
     okayKernel.jvm, okayKernel.js, okayKernel.native, okayUi.jvm, okayUi.js, okayUi.native,
+    okayDesktop,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
     okayOutbox.jvm, okayOutbox.js, okayOutbox.native,

@@ -37,6 +37,9 @@ final class Lifecycle(clock: () => Long = () => System.currentTimeMillis):
 
   /** the routes, counted; while draining a new request is answered
     * 503 `Connection: close` and the route is not run */
+  /** the wrapped route is built when the answer runs, inside the
+   * admission — not when the request is matched: the route-wrapper law
+   * `Red.route` states (specs/app-host.md) */
   def route(routes: PartialFunction[Request, Response ! Async])
   : PartialFunction[Request, Response ! Async] = {
     case r if routes.isDefinedAt(r) =>

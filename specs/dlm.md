@@ -67,6 +67,9 @@ final case class Dlm(intents: Intents, router: Router,
 | `Fuzzy`, `Script`, `Alphabet` | bounded edit distance over a vocabulary mined from the rules; which script a word is in and which languages it could belong to | the languages spoken |
 | `ModelChain`, `Lane` | the door: lanes in order, timeouts, strikes and a cooldown, a daily cap seeded from the journal, events for the caller's log | the lanes as plain functions |
 | `Calibration` | when it said 0.9, how often was it right — per layer, never across them; Brier only where a probability exists | the `Seen` rows read from its journal |
+| `Embedder` | THE ENCODER, as a seam: a name, a width, a function — ours by default (`hashing`), a static table, any model on disk (`of`), a remote one (`okay-dlm-remote`) | a `given Embedder`, or nothing |
+| `Judge` with `Question`, `Choice`, `Fit` | THE JUDGE, as a seam: which of these options is this text, with probabilities and a confidence — ours by default (a probe over the exemplars), Jev or Laya over the wire; `orElse` and `guarded` around one that leaves the process | a `given Judge.Fit`, or nothing |
+| `Language.Detector` with `Trigrams`, `Judged` | THE DETECTOR, as a seam: ours over the authored phrasings, or a judge asked which language | the phrasings, or the judge |
 
 Languages are CODES, as in `okay.frame`: a caller with an enum passes
 its code, and a code can be written down in a journal, which an
@@ -105,6 +108,15 @@ opaque type cannot.
 - [x] the door skips a lane that throws, times out or answers empty,
       retires it after `retireAfter` strikes, and closes it at the
       daily cap
+- [x] every model backend is a seam with ours behind it by default: the
+      encoder (`Embedder`), the judge (`Judge`), the language detector
+      (`Language.Detector`); a `given` at the composition root replaces
+      one everywhere it is summoned and nothing else moves
+- [x] a remote judge or encoder plugs in through one wire (`Wire`),
+      faked in every test; a remote judge that fails abstains, a run of
+      failures retires it, and ours behind it keeps answering
+- [x] a table compiled by another encoder than the one in scope is
+      refused by name at the model's door (`Dlm.of`)
 - [ ] the memory's near band served by default — waits on a bar a
       consumer has measured on its own rows (the source keeps it OFF)
 - [ ] a compile door that takes a corpus directory and writes every
@@ -163,6 +175,36 @@ eight bytes, a JSON header and tensor bytes; what the library adds is
 Strings ride as an Arrow-style UTF-8 column so it stays one file and
 one parser, and `tools/read-checkpoint.py` in the source repository
 is an independent reader written from the specification.
+
+**Backends: an abstract core, pluggable implementations, ours by
+default, alternatives by a `given`** (the operator, 2026-09-28: «все
+компоненты сразу делай так — абстрактное ядро как набор интерфейсов
+и подключаемые реализации и дефолтная конфигурация с перегружаемыми
+через имплиситы альтернативами»). Three functions are all a
+deterministic model ever asks of a "model": embed a sentence, choose
+among named options, name a language. Each is a trait with our
+implementation as the `given` in its companion — the lowest-priority
+place a given can live, so any `given` a caller writes wins without an
+import to shadow. The doors that build the model (`Dlm.of`,
+`Router.of`, `Head.of`) summon them; the doors the first consumer
+wrote (`Router.apply`, `Head.apply` with a plain function) stay and
+are ours by construction. A remote implementation never sees the
+exemplars: `Judge.Fit.constant` ignores the table, and what the judge
+is told instead is the `Question` — the option names with a
+description each and an instruction — which ours ignores. So one
+head is built the same way whatever answers it, and the journal says
+who did.
+
+**Jev and Laya are one protocol, so one client and two configurations.**
+Laya documents its wire as identical to Jev's (`POST /v1/systemone`,
+`choice`/`score`/`noul`, `answers` with `probabilities` and
+`confidence`), which is what lets a caller measure the hosted model
+and the open one against the same rows through the same code. Built
+against the vendors' documentation of 2026-09 and measured against
+nothing here: the source implementation read Laya and declined it as
+its default (okay-chat specs/model.md §7), and a caller that switches
+its judge owes itself the same measurement on its own held-out rows
+first. The hosted endpoint's host is a `Config` field, not a promise.
 
 **JVM only, for now.** The checkpoint maps a file and the door runs on
 a thread pool; everything else is portable and a JS leg is an
@@ -235,3 +277,28 @@ deletes its copies — `Router`, `Fuzzy`, `Acts`/`Answering`/`Presence`/
 `CompiledIntents`, `Lang.Detector`/`Profiles`, `Phrasing`, `ModelChain`
 and `Calibration`'s arithmetic — about 3 300 lines, keeping its corpus,
 its `Catalog`, its `Phrases`, its readers and its `Executor`.
+
+## Results — dlm-backends (2026-09-28)
+
+Stage 3: the seams. `Embedder` (ours: hashing; `of` for a model on
+disk; `static` for the distilled table), `Judge` (ours: the probe;
+`Question`/`Choice`; `Fit` as the configuration seam; `orElse`,
+`guarded`), `Language.Detector` (ours: `Trigrams`; `Judged`), and
+`Dlm.of`/`Router.of`/`Head.of` summoning them. `okay-dlm-remote`:
+`Wire` (ours: java.net.http; `Canned` for a suite), `SystemOne` (the
+codec, pure, and the client), `Jev`, `Laya`, `Embeddings.openAi`.
+89 + 8 tests, every remote one over a canned wire that asserts on the
+request it saw. The old constructors kept: the consumer compiled
+against the new pin without a change to its model code.
+
+## Results — dlm-serving (2026-09-28)
+
+Stage 4: our model on the same wire. `SystemOne.Service` in
+okay-dlm-remote — `decode` of the vendors' request shape (`state` as
+text, body, every string field or a bare string; `questions` with
+`criteria` as an object or a list), `answer` per question by the
+first judge that can rank its options, `serve` as a status and a body
+for any route. Four tests, one of them the round trip: our client
+reads our server's answer, so the wire is one. The consumer mounts it
+as `/v1/systemone` beside `/route`. The learning mode is
+specs/dlm-learning.md, written before its code.

@@ -1,7 +1,5 @@
 package okay.dlm
 
-import okay.rag.Embedding
-
 /**
  * A DETERMINISTIC DIALOGUE LANGUAGE MODEL, as one value (specs/dlm.md).
  *
@@ -52,17 +50,31 @@ object Dlm:
    * test that needs no encoder builds */
   def rules(intents: Intents): Dlm = Dlm(intents, Router(intents))
 
-  /** the whole of it, over one encoder: the same `embed` for the
-   * router and every head, because two artifacts fitted by different
-   * encoders is a mismatch nobody notices until a live turn */
+  /**
+   * THE WHOLE OF IT, AS THE SCOPE SAYS. The encoder and the judge come
+   * from the givens in scope — ours by default, so this line with
+   * nothing imported is a model that needs nothing and reaches no
+   * network; a `given Embedder` for a model on disk and a `given
+   * Judge.Fit` for a remote judge change what every head and the
+   * router's vector layer run on, and nothing else moves.
+   *
+   * One encoder for the router and every head, because two tables
+   * fitted by different encoders is a mismatch nobody notices until a
+   * live turn — and a table compiled by another encoder than the one
+   * in scope is refused by name, not read.
+   */
   def of(intents: Intents,
-         embed: String => Embedding,
          exemplars: Option[Exemplars] = None,
          heads: Map[String, (Exemplars, Float)] = Map.empty,
          margin: Float = 0.5f,
          alphabet: Alphabet = Alphabet.none,
-         nearBar: Option[Float] = None): Dlm =
-    Dlm(intents,
-      Router(intents, exemplars, Some(embed), margin = margin, nearBar = nearBar, alphabet = alphabet),
-      heads.map((n, e) => n -> Head(Some(e._1), Some(embed), e._2)),
-      Some(Language.Detector.of(intents.byLang, alphabet = alphabet)))
+         nearBar: Option[Float] = None,
+         detector: Option[Language.Detector] = None)
+        (using e: Embedder, fit: Judge.Fit): Either[String, Dlm] =
+    val foreign = (exemplars.toVector ++ heads.values.map(_._1)).filter(x => x.rows.nonEmpty && x.encoder != e.name)
+    if foreign.nonEmpty then
+      Left(s"a table compiled by «${foreign.head.encoder}», this model runs «${e.name}» — refused")
+    else Right(Dlm(intents,
+      Router.of(intents, exemplars, margin = margin, nearBar = nearBar, alphabet = alphabet),
+      heads.map((n, h) => n -> Head.of(Some(h._1), h._2)),
+      Some(detector.getOrElse(Language.Detector.of(intents.byLang, alphabet = alphabet)))))

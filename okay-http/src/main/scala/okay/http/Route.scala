@@ -349,6 +349,35 @@ final class Headed[A <: Tuple, Hs <: Tuple] private[http] (
     route.described.copy(headers = headers, security = security)
 
 object Route:
+  /**
+   * A CAPABILITY FROM THE REQUEST, AMBIENT IN THE ROUTE (specs/app-host.md).
+   *
+   * A route written against `using E` serves under `provided(env)`:
+   * `env` reads the value from the request — who is asking, what its
+   * page is drawn with, a span for it — and the route sees it as a
+   * given, for definedness and for the answer alike. The shape
+   * `Traced.route` (okay-obs) and `Secure.granted` (okay-security)
+   * each had for their one value, for any value.
+   *
+   * WHY A CAPABILITY AND NOT THE THREAD: a wrapper around a route may
+   * build the route it wraps late — okay-ops's `Red.route` and
+   * `Lifecycle.route` build it inside their own effect, when the
+   * answer RUNS — so a thread-local set around MATCHING the request is
+   * gone before the answer is built (okay-watch bug app-frame-lost,
+   * 2026-09-28). A given is captured by the closure the route builds,
+   * and holds whenever and wherever that closure runs.
+   *
+   * A `PartialFunction` is a closure, so rebuilding it per request is
+   * a call; a `Router` is a trie built once, and its handlers take the
+   * form `Router.provided` instead.
+   */
+  def provided[E](env: Request => E)
+                 (route: E ?=> PartialFunction[Request, Response ! Async])
+  : PartialFunction[Request, Response ! Async] =
+    new PartialFunction[Request, Response ! Async]:
+      def isDefinedAt(r: Request): Boolean = route(using env(r)).isDefinedAt(r)
+      def apply(r: Request): Response ! Async = route(using env(r))(r)
+
 
   /** a segment of the description.
    *
@@ -1529,6 +1558,20 @@ object Router:
   /** the zero: what a fold over several tables starts from, and what a
    * module answers when it contributes no routes */
   val empty: Router = new Router(Vector.empty)
+
+  /**
+   * A CAPABILITY FROM THE REQUEST, AMBIENT IN ONE HANDLER (specs/app-host.md;
+   * `Route.provided` is the same for a whole PartialFunction route). A
+   * table is built once, so the value cannot be a given of the table:
+   * it is computed from the request INSIDE the handler and captured by
+   * what the handler builds — which is why it holds however late a
+   * wrapper builds the answer and on whichever thread it runs.
+   *
+   *   .at(Method.Get, Route.lit("ui") / "trace")(Router.provided(chromeFor)((_, r) =>
+   *     pure(page(...))))                       // `page` takes `(using Chrome)`
+   */
+  def provided[E, A, X](env: Request => E)(h: E ?=> (A, Request) => X): (A, Request) => X =
+    (a, r) => provide(env(r))(h)(a, r)
 
   /** start a table from the companion, as `Route / "users"` starts a
    * path — so a declaration never opens with `.empty.` */
