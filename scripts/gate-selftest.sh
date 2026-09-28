@@ -30,6 +30,10 @@ tmp="$(mktemp -d -t gate-selftest)"
 # the fixture's own bench window (specs/bench-window.md): a JMH lane
 # really queued on this box must not hold the selftest's gates
 export OKAY_BENCH_DIR="$tmp/bench" OKAY_BENCH_POLL=1
+# and its own ci lock (ci-runner-lock-bypass): a whole build (`test`,
+# `family …`) takes .work/ci/lock, and a real runner on this box must
+# neither hold these fakes back nor be held back by them
+export OKAY_CI_LOCK_DIR="$tmp/cilock"
 fail=0
 say() { printf '%s\n' "$*"; }
 ok()  { say "  ok   — $*"; }
@@ -120,6 +124,18 @@ GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/single.log" \
 got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/single.log" | tr '\n' '|')
 [ "$got" = 'fake-sbt-arg: <okayJVM/testOnly A>|' ] && ok "a plain command is untouched" || bad "sbt was handed: $got"
 
+say "6b. \`affected <ref> [staged]\` inside a chain is expanded IN PLACE, the rest of the chain intact"
+# gate-affected-short-form-in-chain: the expansion matched the WHOLE
+# argument, so inside a chain `affected master staged` reached sbt raw
+# and was refused ("Not a valid key: staged") — foreign-one-r, 2026-09-26
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/chain-affected.log" \
+  run_gate "affected master staged; okayDeploy/testOnly X; affected master" > "$tmp/chain-affected.out" 2>&1
+rc6b=$?
+got=$(grep -o 'fake-sbt-arg: <[^>]*>' "$tmp/chain-affected.log" | tr '\n' '|')
+want='fake-sbt-arg: <affected master test jvm staged>|fake-sbt-arg: <affected master test rest staged>|fake-sbt-arg: <okayDeploy/testOnly X>|fake-sbt-arg: <affected master test jvm>|fake-sbt-arg: <affected master test rest>|'
+[ "$got" = "$want" ] && ok "both affected parts expanded, in order, around the plain one" || bad "sbt was handed: $got"
+[ "$rc6b" -eq 0 ] && ok "exit 0" || bad "exit was $rc6b, expected 0"
+
 say "7. a chain with NO command in it is refused, not handed to sbt"
 # With zero arguments real sbt opens its INTERACTIVE shell and the gate
 # waits on it for ever — found by trying `gate.sh "; ;"` on this lane.
@@ -174,6 +190,48 @@ grep -q "gate: KILLED" "$tmp/accept.out" && ! grep -q "gate: RED" "$tmp/accept.o
   && ok "a rerun lost to the same accept timeout is KILLED, not RED" || bad "rc=$rc, $(grep '^gate:' "$tmp/accept.out" | tail -1)"
 [ "$(sh "$here/gate-retry.sh" --read "$tmp/accept.out")" = "$tmp/accept.out: gate: KILLED — a signal, not a verdict; retry" ] \
   && ok "and gate-retry retries it" || bad "gate-retry reads it as: $(sh "$here/gate-retry.sh" --read "$tmp/accept.out")"
+
+say "11. a DEMOTED run whose only failures are munit timeouts is no verdict; anything else stays RED"
+# gate-demote-timeouts: nine timeouts in seven modules on a tree that was
+# green undemoted (2026-09-27); the run's own marker line is the key
+rc=$(read_gate demoted-timeouts.log)
+grep -q "gate: DEMOTED" "$tmp/demoted-timeouts.log.out" && ! grep -q "gate: RED" "$tmp/demoted-timeouts.log.out" \
+  && [ "$rc" -eq 122 ] && ok "demoted + only timeouts: DEMOTED, exit 122, not RED" || bad "rc=$rc, $(grep '^gate:' "$tmp/demoted-timeouts.log.out" | head -1)"
+[ "$(sh "$here/gate-retry.sh" --read "$tmp/demoted-timeouts.log.out")" = "$tmp/demoted-timeouts.log.out: gate: DEMOTED — a run on the efficiency cores that lost only to munit timeouts; not a verdict; retry" ] \
+  && ok "and gate-retry retries it" || bad "gate-retry reads it as: $(sh "$here/gate-retry.sh" --read "$tmp/demoted-timeouts.log.out")"
+rc=$(read_gate demoted-beside-a-real-failure.log)
+grep -q "gate: RED — tests failed" "$tmp/demoted-beside-a-real-failure.log.out" && ! grep -q "gate: DEMOTED" "$tmp/demoted-beside-a-real-failure.log.out" \
+  && [ "$rc" -ne 0 ] && ok "a real failure beside the timeouts stays RED" || bad "a real failure was excused by the demotion: rc=$rc"
+grep -v "demoted to the efficiency cores" "$fx/demoted-timeouts.log" > "$tmp/undemoted-timeouts.log"
+run_gate --read "$tmp/undemoted-timeouts.log" > "$tmp/undemoted.out" 2>&1; rc=$?
+grep -q "gate: RED — tests failed" "$tmp/undemoted.out" && ! grep -q "gate: DEMOTED" "$tmp/undemoted.out" && [ "$rc" -ne 0 ] \
+  && ok "the same timeouts in a run that was NOT demoted are RED" || bad "timeouts were excused without a demotion: rc=$rc"
+
+say "12. a whole build takes the checkout's ci lock; a scoped command takes nothing"
+# ci-runner-lock-bypass: a hand-run `family all` raced a `ci-runner.sh
+# once` in the same checkout, two sbts on one target/ tree (2026-09-25)
+sleep 30 & other=$!
+mkdir -p "$OKAY_CI_LOCK_DIR"; echo "$other" > "$OKAY_CI_LOCK_DIR/pid"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/lock-foreign.log" run_gate "family all" > "$tmp/lock-foreign.out" 2>&1; rc=$?
+[ "$rc" -eq 3 ] && grep -q "gate: LOCKED" "$tmp/lock-foreign.out" && ok "held by another live run: LOCKED, exit 3" || bad "rc=$rc: $(cat "$tmp/lock-foreign.out")"
+grep -q "held by pid $other" "$tmp/lock-foreign.out" && ok "named the holder's pid" || bad "did not name the pid"
+grep -q "fake-sbt-arg" "$tmp/lock-foreign.log" 2>/dev/null && bad "sbt was started beside the holder" || ok "sbt was not started"
+[ "$(sh "$here/gate-retry.sh" --read "$tmp/lock-foreign.out")" = "$tmp/lock-foreign.out: gate: LOCKED — a whole build already holds this checkout's ci lock; done, the gate's exit code stands; NOT retried" ] \
+  && ok "and gate-retry does not retry it" || bad "gate-retry reads it as: $(sh "$here/gate-retry.sh" --read "$tmp/lock-foreign.out")"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/lock-scoped.log" run_gate "okayJVM/testOnly A" > "$tmp/lock-scoped.out" 2>&1; rc=$?
+[ "$rc" -eq 0 ] && grep -q "fake-sbt-arg" "$tmp/lock-scoped.log" && ok "a scoped command runs beside the holder" || bad "a scoped command was held: rc=$rc"
+kill "$other" 2>/dev/null; wait "$other" 2>/dev/null
+# the holder is THIS shell, an ancestor of the gate: the runner's own gate
+echo $$ > "$OKAY_CI_LOCK_DIR/pid"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/lock-ours.log" run_gate test > "$tmp/lock-ours.out" 2>&1; rc=$?
+[ "$rc" -eq 0 ] && grep -q "own ancestor" "$tmp/lock-ours.out" && ok "held by an ancestor: it is ours, the gate runs" || bad "rc=$rc: $(grep '^gate:' "$tmp/lock-ours.out" | head -2)"
+[ "$(cat "$OKAY_CI_LOCK_DIR/pid" 2>/dev/null)" = "$$" ] && ok "and the ancestor's lock is left in place" || bad "the gate released a lock it did not take"
+# a dead holder is taken over, and the lock is gone when the run ends
+deadpid=99999; while kill -0 "$deadpid" 2>/dev/null; do deadpid=$((deadpid + 1)); done
+echo "$deadpid" > "$OKAY_CI_LOCK_DIR/pid"
+GATE_SBT="$here/fake-sbt-args.sh" GATE_LOG="$tmp/lock-dead.log" run_gate "family jvm" > "$tmp/lock-dead.out" 2>&1; rc=$?
+[ "$rc" -eq 0 ] && grep -q "taking it over" "$tmp/lock-dead.out" && ok "a dead holder's lock is taken over" || bad "rc=$rc: $(grep '^gate:' "$tmp/lock-dead.out" | head -2)"
+[ ! -d "$OKAY_CI_LOCK_DIR" ] && ok "and released when the run ends" || bad "lock left behind: $(cat "$OKAY_CI_LOCK_DIR/pid" 2>/dev/null)"
 
 say "10. the bench window: a queued benchmark holds the gate's start; a --read takes no token"
 # a request whose owner lives 3 s: the gate waits for it, then runs

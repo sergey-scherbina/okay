@@ -1057,6 +1057,26 @@ under `adaptive`, so the shape has appeared since.
   performance table above then stands, unless the fix touches the
   channel's send path. In that case re-run the rows it could move:
   TCP, Wrocław, and the fork/join lanes.
+- **FIXED the same day (adaptive-merge-early-stop-livelock).** The
+  spin was `attemptSend`'s else branch — a sender queued behind
+  another's waiter rechecking room and retrying until the head left —
+  which under a callback drive waits for a fiber only the thread it
+  spins on could resume (the receiver that woke it inline). It retries
+  only when its own waiter has become the head now; with a waiter
+  ahead, the freed slot's wake is in flight to that one and the sender
+  parks — and a sender that claimed its own waiter back on seeing room
+  OWNS that wake and pushes at once (the head rule alone deadlocked
+  TestChannelLaws' two-producer law: the self-claimed sender re-asked
+  the queue, met a later waiter, and parked behind it with the slot
+  empty). Red first (TestReadyMerge, "Merge.Shared on a callback
+  scheduler …": `adaptive round 13` hung at the 10 s bound), then
+  30/30 under Loom and **30/30 under `-Dokay.scheduler=adaptive`**.
+  The fix IS on the channel's send path (one `peek` per queued-behind
+  send, no new allocation), so by the rule above TCP, Wrocław and the
+  fork/join rows are re-run before the flip; the flip itself is not
+  made by that lane. `AbruptChannel` got the same two halves the same
+  day (abrupt-sender-head-recheck); TestSendBehindWaiter holds the law
+  for both channels on `own` and `adaptive`.
 - The flip, when made, keeps JDK 17-20 as it is (`platform`). There is
   no spill there, so `adaptive`'s old `n + overflow` bound would come
   back.

@@ -310,6 +310,8 @@ API reference, gotchas.
 | [`okay-crypto`](modules/okay-crypto.md) | the primitive crypto seam — MAC, hash, KDF, randomness on the platform's own crypto, so okay-pg's SCRAM need not cycle through the security stack |
 | [`okay-ui`](modules/okay-ui.md) | the toolkit that is not a toolkit: the view is a value, the renderer is a seam — terminal, React, test host, one application; forms derived from Schema |
 | [`okay-ui-gtk`](modules/okay-ui-gtk.md) | GTK 4 on Scala Native over the same Backend seam; aggregated only where pkg-config finds gtk4; one live backend per process, patches marshalled through g_idle_add |
+| [`okay-desktop`](modules/okay-desktop.md) | the app's own window for an installed product: its pages in the system's web engine, its menus as data, a Save dialog for downloads, the system browser for outside links, one copy running; JavaFX provided |
+| [`okay-telegram`](modules/okay-telegram.md) | the Telegram Bot API over okay-http as values: a call answers `Either[Refused, Json]`, an update is one total enum, long polling one loop, `Chats` the performer for okay-ui's chat host, Stars payments |
 | [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Handler[Tool]`, our tools are a server, and the protocol is a pure Stage |
 | [`okay-mcp-http`](modules/okay-mcp-http.md) | MCP over okay-http's wires: a socket IS a `Link` (`WsLink`, `NioLink`), streamable HTTP (`McpHttp`) and its OAuth door (`McpAuth`) |
 | [`okay-persist`](modules/okay-persist.md) | the durable log: one primitive, staged — segments and recovery, offsets, compaction, replication's core, Sql/Kafka store engines, the Doctor |

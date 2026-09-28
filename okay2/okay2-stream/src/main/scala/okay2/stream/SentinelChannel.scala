@@ -195,14 +195,20 @@ final class SentinelChannel[A](buf: Buffer[Any]) extends Channel[A] {
   private def attemptSend(a: A, granted0: Boolean, route0: Int)(k: Accepted): Unit = {
     val buffer = ring
     val route = if (granted0) route0 else buffer.route()
-    val granted = granted0
+    // A SPENT WAKE IS OWNED (the Scala 3 core's adaptive-merge-early-stop-
+    // livelock, 2026-09-28): a resumed sender, and one that took its own
+    // waiter back on seeing room, pushes without asking the queue again —
+    // the slot's wake already passed that waiter by. Without it the rule
+    // below deadlocks the two-producer law (a taken-back sender met a
+    // waiter enqueued behind it and parked with the slot empty)
+    var own = granted0
     var go = true
     while (go) {
       go = false
       if (closing.get) k(false)
-      else if (granted || sendersAt(route).isEmpty) {
+      else if (own || sendersAt(route).isEmpty) {
         val pushed =
-          if (granted) buffer.pushDecidingAtOnBehalf(route, a, closing, void)
+          if (granted0) buffer.pushDecidingAtOnBehalf(route, a, closing, void)
           else buffer.pushDecidingAt(route, a, closing, void)
         pushed match {
           case null =>
@@ -211,6 +217,7 @@ final class SentinelChannel[A](buf: Buffer[Any]) extends Channel[A] {
             enqueue(sendersAt(route), w)
             if ((buffer.hasRoomAt(route) || closing.get) && w.claim()) {
               val _ = sendersAt(route).remove(w)
+              own = true
               go = true
             }
           case _: Mark =>
@@ -223,10 +230,18 @@ final class SentinelChannel[A](buf: Buffer[Any]) extends Channel[A] {
             val _ = wakeOne(receivers)
         }
       } else {
+        // ANOTHER SENDER IS AHEAD: take room back only once this waiter is
+        // the HEAD. With one still ahead, the freed slot's wake is on its
+        // way to it; retrying was a busy-wait for a sender that, under a
+        // callback drive (`own`, `adaptive`), only this thread could
+        // resume — the Scala 3 core spun one worker at 100% for 32 minutes
+        // on a two-producer `merge` of capacity 4 (TestSendBehindWaiter)
+        val q = sendersAt(route)
         val w = new Waiter(() => attemptSend(a, granted0 = true, route)(k))
-        enqueue(sendersAt(route), w)
-        if ((buffer.hasRoomAt(route) || closing.get) && w.claim()) {
-          val _ = sendersAt(route).remove(w)
+        enqueue(q, w)
+        if ((buffer.hasRoomAt(route) || closing.get) && (q.peek() eq w) && w.claim()) {
+          val _ = q.remove(w)
+          own = true
           go = true
         }
       }

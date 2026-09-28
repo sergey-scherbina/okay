@@ -81,6 +81,10 @@ one test of `Source.merge` does not finish: a merge stopped early by
 never comes. On Loom the same test passes. A default that turns a
 finishing program into a spinning one is not taken for any speed. The
 flip waits for that fix (backlog `adaptive-merge-early-stop-livelock`).
+That fix landed the same day: the spinning sender was a channel's
+send handshake retrying behind another parked sender, and it parks now
+(the test is 30/30 under `adaptive`). What is left before the flip is a
+re-run of the rows the send path could move (specs/schedulers.md).
 
 So the default is the scheduler under which a correct program stays
 correct and never gets slower, and the fast one is a line away when you

@@ -180,3 +180,11 @@ can see — e.g. only while a lane is actually RUNNING, restored the moment
 its attempt ends, and never for a gate already past some share of its
 run — measured against the timeout-bound suites, not assumed.
 
+**The gate reads its own demotion (gate-demote-timeouts, 2026-09-28).**
+Until a bounded demotion exists, the verdict is made honest instead:
+`gate.sh` appends a marker to its log when it ran demoted, and a demoted
+run whose every `==> X` is a munit `TimeoutException` ends
+`gate: DEMOTED` (exit 122) — a no-verdict `gate-retry.sh` retries like
+KILLED or STALLED — while a real failure beside the timeouts, or the same
+timeouts undemoted, stay RED. Fixtures `scripts/gate-fixtures/demoted-*.log`,
+gate-selftest case 11.

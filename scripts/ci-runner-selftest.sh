@@ -36,6 +36,7 @@ new_fixture() {
     git config user.email t@t.test; git config user.name selftest
     mkdir -p scripts changelog.d .work/active
     cp "$here/ci-runner.sh" scripts/ci-runner.sh
+    cp "$here/ci-lock.sh" scripts/ci-lock.sh
     cat > scripts/quiet.sh <<'EOF'
 #!/bin/sh
 # fake quiet.sh: always quiet, immediately — this selftest is about

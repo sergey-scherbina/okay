@@ -61,7 +61,16 @@ argument, the ORDER:
   over the changed projects, then `all` over the dependents minus them.
   sbt stops at the first command that fails, so the second never runs
   on a red first. A lane whose diff touched only TEST sources has no
-  second stage (ci-affected-tests-only: a test cannot break a dependent).
+  second stage (ci-affected-tests-only: a test cannot break a dependent)
+  — except the projects whose tests are compiled AGAINST those tests, a
+  `test->test` dependency (affected-test-only-shared-suites,
+  2026-09-28): a shared suite's change reaches every project that
+  extends it, over those edges only, transitively.
+- A file the doc suites read — `docs/`, `specs/`, a README or ledger,
+  the boards, `changelog.d/`, the history directory, the board scripts
+  — is okayDeploy's (affected-docs-run-no-doc-tests, 2026-09-28): its
+  tests are the first stage, and nothing is a dependent of a page. Until
+  then a docs-only lane mapped to no project and ran 0 tests.
 - The BUILD changing (`buildChanged`: root `*.sbt`, `project/`, the
   meta-build's sources) collapses the two into one: every project
   changed, nothing is "first".
@@ -117,7 +126,14 @@ box's, as the claims are):
 - `.work/ci/lock/` — a directory, taken with `mkdir` (O_EXCL on every
   filesystem here), holding the runner's pid. A second runner reads the
   pid, checks it is alive (`ps -p`), and exits saying so; a dead holder's
-  lock is stale and is taken over — named in the log.
+  lock is stale and is taken over — named in the log. The protocol is
+  `scripts/ci-lock.sh` since ci-runner-lock-bypass (2026-09-28), and
+  `gate.sh` takes the same lock for a WHOLE build (`test`, `family …`)
+  whoever starts it: a hand-run one beside a live runner is refused
+  (`gate: LOCKED`, exit 3, not retried by gate-retry), the runner's own
+  gate reads the runner above it as its own and runs on. A scoped gate
+  (`affected …`) takes nothing — sharing the box with the runner is its
+  design (stage A).
 - `.work/ci/kick` — touched by `kick`; the loop removes it before a run,
   so a landing DURING a run leaves a kick behind and the loop runs again.
   No landing is lost to a run already in flight.
@@ -507,6 +523,15 @@ the same 128 `affected master` ran before. The pre-merge gate for THIS
 LANE (build files changed — `project/Affected.scala`, `scripts/`)
 was, correctly, the whole family under `staged`: 7441 tests, 330
 module compiles, GREEN.
+
+2026-09-28 (affected-docs-run-no-doc-tests, affected-test-only-shared-
+suites), `affected-selftest.sh` on a Linux box: `docs/tutorial.md` is
+1 project (okayDeploy) then 0 dependents, where before it was 0 and
+"1 file(s) belong to no project"; okay-stream's `TestChannelLaws.scala`
+(a JVM test source) is okayStreamJVM then 2 dependents, okayClojure and
+okayLexJVM — the two whose tests are `test->test` on okayStream.jvm —
+where before it was okayStreamJVM alone. Every earlier shape held
+unchanged (14 checks).
 
 Stage B/C, `ci-runner-selftest.sh`, 11 cases, fixture repo (never the
 real okay repo): every case in the spec's Behavior list passed except

@@ -496,3 +496,13 @@ accounts for every call (`breaker.calls + rejected == 40`,
 `breaker.failures == wire.dropped + wire.failed`, a first refusal is
 final) and replays by seed. Adaptive concurrency stays deferred, see
 the box above.
+
+**The replay law off the wall clock (faults-replay-wall-clock,
+2026-09-28).** The law went red in a loaded whole build and was `Live`
+for a day. Freezing the budget's clock was half the fix: `Deadline.enforce`
+arms the given timer for what the frozen clock says is left, a real
+second. `Resilient.http(budgetTimer = Some(…))` names the timer its
+deadlines are armed on; the session hands it a `ManualTimer` nobody
+fires and a clock stuck at 0, so the budget is in the composite's shape
+and the wall clock has no say in what the 40 calls meet. Untagged;
+`budget.pending == 0` after the run is the new assertion.
