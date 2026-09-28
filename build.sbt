@@ -2496,6 +2496,36 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
 
 /**
+ * THE APP'S OWN WINDOW (specs/app-host.md): JavaFX's WebView over a
+ * product's local service, its menus as data, a Save dialog for every
+ * download, the launch — what okay-watch's Window.scala and
+ * Desktop.scala were, for any product. JavaFX to COMPILE against only:
+ * the installed app's Java carries its modules (jlink), a server never
+ * has them, and a product's jar stays one file for every system. Its
+ * jars are per system; any one compiles the window.
+ */
+lazy val fxClassifier: String = {
+  val os = sys.props("os.name").toLowerCase
+  val arm = sys.props("os.arch").contains("aarch64") || sys.props("os.arch").contains("arm")
+  if (os.contains("mac")) { if (arm) "mac-aarch64" else "mac" }
+  else if (os.contains("win")) "win"
+  else if (arm) "linux-aarch64" else "linux"
+}
+
+lazy val okayDesktop = project
+  .in(file("okay-desktop"))
+  .settings(
+    name := "okay-desktop",
+    // the launch runs the service on a platform thread and the window's
+    // fetches on virtual ones (`Thread.ofPlatform`/`ofVirtual`, JDK 21);
+    // the installed app's Java is 25 (JavaFX 26 asks for 22 at run time)
+    jdkFloor(21),
+    libraryDependencies ++= Seq("javafx-base", "javafx-graphics", "javafx-controls", "javafx-web").map(m =>
+      "org.openjfx" % m % "26.0.2" % Provided classifier fxClassifier),
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
+/**
  * The Model Context Protocol (specs/mcp.md): an MCP server is another
  * `Tool` handler and our tools are another MCP server. The protocol
  * layer is pure — cross-built; only the stdio transport is platform.
@@ -3416,6 +3446,7 @@ lazy val root = (project in file("."))
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayMcpHttp.jvm, okayMcpHttp.js,
     okayKernel.jvm, okayKernel.js, okayKernel.native, okayUi.jvm, okayUi.js, okayUi.native,
+    okayDesktop,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayResilience.jvm, okayResilience.js,
     okayOutbox.jvm, okayOutbox.js, okayOutbox.native,

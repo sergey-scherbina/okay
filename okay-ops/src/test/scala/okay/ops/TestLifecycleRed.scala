@@ -26,6 +26,24 @@ class TestLifecycleRed extends munit.FunSuite:
 
   def body(r: Response): String = run(Http.text(r))
 
+  // ── the route-wrapper law (specs/app-host.md) ─────────────────────
+
+  test("Red.route and Lifecycle.route build the wrapped route when the answer runs, not when the request is matched") {
+    var built = 0
+    val routes: PartialFunction[Request, Response ! Async] =
+      case r if r.url == "/work" => built += 1; ok("done")
+    val red = Red("http", clock).route(_.url)(routes)
+    val effect = red(Request.get("/work"))
+    assertEquals(built, 0, "matched, and nothing built yet")
+    assertEquals(body(run(effect)), "done")
+    assertEquals(built, 1, "built when the answer ran")
+    val guarded = Lifecycle(clock).route(routes)
+    val effect2 = guarded(Request.get("/work"))
+    assertEquals(built, 1)
+    assertEquals(body(run(effect2)), "done")
+    assertEquals(built, 2)
+  }
+
   // ── lifecycle ────────────────────────────────────────────────────
 
   test("route: counts in flight, releases on answer and on throw; draining refuses new ones without running them") {

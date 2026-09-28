@@ -37,6 +37,17 @@ final class Red(val name: String, clock: () => Long = () => System.currentTimeMi
     }
 
   /** a server's routes, measured; defined exactly where `routes` is */
+  /**
+   * THE WRAPPED ROUTE IS BUILT WHEN THE ANSWER RUNS, not when the request
+   * is matched (specs/app-host.md, the route-wrapper law): `measured`
+   * takes it by name and evaluates it under `Attempt`, inside the
+   * effect — that is what counts a route that throws while building as
+   * `exception`. So nothing set on the thread around matching (a
+   * ThreadLocal, okay-platform's `Scoped`) reaches the build; a value
+   * the answer needs is a capability the handler captures
+   * (`Route.provided`, `Router.provided`). `Lifecycle.route` is the
+   * same; okay-obs's `Traced.route` owns the run instead.
+   */
   def route(label: Request => String)(routes: PartialFunction[Request, Response ! Async])
   : PartialFunction[Request, Response ! Async] = {
     case r if routes.isDefinedAt(r) => measured(label(r))(routes(r))
