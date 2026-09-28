@@ -26,15 +26,15 @@ which rule decided and returns `Unclear` when no authored route applies.
 
 ## Behaviour
 
-- [ ] A self-contained DLM smoke fixture reads the exact English ticket.
-- [ ] The ticket routes to the billing team by an exact duplicate-charge rule;
+- [x] A self-contained DLM smoke fixture reads the exact English ticket.
+- [x] The ticket routes to the billing team by an exact duplicate-charge rule;
       `billing` follows from that route and carries the same support.
-- [ ] `ASAP` routes urgency to `Today` through an explicit urgency rule.
-- [ ] A technical ticket routes to `Technical`; a ticket without any owned
+- [x] `ASAP` routes urgency to `Today` through an explicit urgency rule.
+- [x] A technical ticket routes to `Technical`; a ticket without any owned
       rule returns `Unclear`, rather than selecting a team or urgency.
-- [ ] The fixture never calls Jev, Laya, a remote embedding service, or a
+- [x] The fixture never calls Jev, Laya, a remote embedding service, or a
       payment provider.
-- [ ] A guide puts the two contracts side by side and preserves the payment
+- [x] A guide puts the two contracts side by side and preserves the payment
       authority boundary: neither a Jev result nor a DLM route proves money
       moved.
 
@@ -57,4 +57,8 @@ scripts/gate.sh "okayDlm/testOnly okay.dlm.TestDlmJevQuickstart"
 
 ## Results
 
-Pending implementation.
+Implemented in `TestDlmJevQuickstart` and
+`docs/guides/dlm-jev-quickstart.md`.
+
+Verified 2026-09-28: `scripts/gate.sh "okayDlm/testOnly
+okay.dlm.TestDlmJevQuickstart"` — 2 passed, 0 failed.
