@@ -30,5 +30,5 @@
   met. The default is still `loom`; the question can be re-run.
 - Rows: `src/jmh/history.d/2026-09-28T023204Z-adaptive-blocking-io.tsv`.
   Docs: docs/schedulers.md.
-- Commits: spec 34437a172, the door law 619dbb5e6, the spill c9dd7cb8e,
-  the raw-blocking law 890d16cd7.
+- Commits: spec 0c0afa184, the door law bbda6aa62, the spill eea6657c4,
+  the raw-blocking law 106fe0acf.
