@@ -15,4 +15,15 @@ class TestLateOrLost extends munit.FunSuite {
       case LateOrLost.Outcome.Lost(at) => assert(at.contains("WAITING"), at)
       case other => fail(s"expected Lost: $other")
   }
+
+  test("LateOrLost: a thread still RUNNABLE at the last deadline is Starved, not Lost (sentinel-single-consumer-lost-end)") {
+    @volatile var stop = false
+    val spinning = new Thread(() => while !stop do ())
+    spinning.setDaemon(true); spinning.start()
+    try
+      LateOrLost.join(spinning, Duration.ofMillis(20), Duration.ofMillis(50))("snap") match
+        case LateOrLost.Outcome.Starved(at) => assert(at.contains("RUNNABLE") && at.contains("snap"), at)
+        case other => fail(s"expected Starved: $other")
+    finally stop = true
+  }
 }
