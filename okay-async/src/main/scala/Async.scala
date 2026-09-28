@@ -105,10 +105,10 @@ trait Timer:
 
 /** execute each operation on the current (ideally virtual) thread;
  * an Await parks it until the callback fires */
-given (using cb: CanBlock): Handler[Async] = new:
+given (using cb: CanBlock, w: Wait, p: Pause): Handler[Async] = new:
   def handle[A](e: Async[A]): A = e match
     case Async.Run(f) => f()
-    case Async.Await(reg, _) => cb.block(reg).fold(e => throw e, identity)
+    case Async.Await(reg, poll) => Async.pollThenBlock(reg, poll).fold(e => throw e, identity)
 
 /**
  * A fiber: a computation already running on its own thread of
@@ -161,11 +161,24 @@ object Async {
 
   /** handle by executing each operation in place, forwarding the
    * effects F; an Await parks (hence the evidence) */
-  def run[A, F[+_]](prog: A ! Async + F)(using cb: CanBlock): A ! F =
+  def run[A, F[+_]](prog: A ! Async + F)(using cb: CanBlock, w: Wait, p: Pause): A ! F =
     relay[A, A, Async, F](prog)(pure(_)):
       [X, Y] => e => e match
         case Run(f) => Cont.Pure(f())
-        case Await(reg, _) => Cont.Pure(cb.block(reg).fold(e => throw e, identity))
+        case Await(reg, poll) => Cont.Pure(pollThenBlock(reg, poll).fold(e => throw e, identity))
+
+  /** POLL, THEN PARK for a blocking runner (drive-poll-then-park): an
+   * Await that carries a poll is asked by the given `Wait` on THIS
+   * thread — the runner's own, which no producer needs — and parks only
+   * when the wait gave up. An Await without a poll parks as always */
+  private[okay] def pollThenBlock[A](reg: (Either[Throwable, A] => Unit) => (() => Unit),
+                                     poll: (() => (Either[Throwable, A] | Null)) | Null)
+                                    (using cb: CanBlock, w: Wait, p: Pause): Either[Throwable, A] =
+    if poll == null then cb.block(reg)
+    else
+      var got: Either[Throwable, A] | Null = null
+      if w.until(() => { got = poll(); got != null }) then got.nn
+      else cb.block(reg)
 
   /**
    * The universal terminal: drive the tree through callbacks — Run
@@ -317,25 +330,38 @@ object Async {
           case m: ScopeMark => marked(m)
           case _ => ()
         k(f())
-      case Await(reg, _) =>
-        // the cell holds the answer, the "moved on" marker, or nothing:
-        // typed, so what comes out is the operation's Either
-        val cell = AtomicReference[Got[X] | Moved.type | Null](null)
-        val cancelReg = reg { r =>
-          if !cell.compareAndSet(null, Got(r)) then
-            if !stopped then r match
-              case Right(x) => apply(k(x))
-              case Left(e) => { releaseScopes(); fail(e) }
-        }
-        cell.getAndSet(Moved) match
-          case g: Got[X] =>
-            g.x match
-              case Right(x) => k(x)
-              case Left(e) => { releaseScopes(); fail(e); null }
-          case _ =>
-            unregister = cancelReg
-            if stopped then cancelReg()
-            null
+      case Await(reg, poll) =>
+        // ONE poll, no wait (drive-poll-then-park): after its first
+        // callback this drive runs on whoever woke it — a producer's
+        // thread, as often as not — and a wait there would stall the
+        // very producer it waits for. So a callback drive asks once,
+        // takes an answer in place, and otherwise registers as always;
+        // the wait by the given `Wait` is the BLOCKING runner's, whose
+        // thread is its own (`pollThenBlock`)
+        val now = if poll == null then null else poll()
+        if now != null then
+          now match
+            case Right(x) => k(x)
+            case Left(e) => { releaseScopes(); fail(e); null }
+        else
+          // the cell holds the answer, the "moved on" marker, or nothing:
+          // typed, so what comes out is the operation's Either
+          val cell = AtomicReference[Got[X] | Moved.type | Null](null)
+          val cancelReg = reg { r =>
+            if !cell.compareAndSet(null, Got(r)) then
+              if !stopped then r match
+                case Right(x) => apply(k(x))
+                case Left(e) => { releaseScopes(); fail(e) }
+          }
+          cell.getAndSet(Moved) match
+            case g: Got[X] =>
+              g.x match
+                case Right(x) => k(x)
+                case Left(e) => { releaseScopes(); fail(e); null }
+            case _ =>
+              unregister = cancelReg
+              if stopped then cancelReg()
+              null
   }
 
   /** the Drive that answers into a Promise (JS's scheduler, `toFuture`) */

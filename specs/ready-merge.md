@@ -495,4 +495,40 @@ landing's spin-100 rows stand as the last reading (84.8 / 68.3 / 63.0),
 and the ladder differs from it only on a dry ring, which the
 elementwise road reaches ~1-2 times per op. The open door — the
 runners honouring `Await.poll` — is the lane `drive-poll-then-park`.
+## Stage: poll-then-park at the runners (drive-poll-then-park, 2026-09-28)
+
+The open door of the second stage, opened on the operator's question
+("а что там насчет полл и вейт у шаред мержа?"): `Await.poll` was
+honoured by `ReadyMerge` alone, so `Merge.Shared`'s consumer — a
+`drained` over one queue, run by the plain drive — took `Wait` and
+`Pause` and used neither, as did every `drained` consumed without a
+merge. `Wait` and `Pause` move DOWN to okay-async, where the runners
+live (the `PlatformPause` seam with them; okay-async gains a
+`scala-js` source dir). Two runners, two rules:
+
+- the BLOCKING runner (`Async.run`, the `Handler[Async]` under
+  `runWith`, `toLazyList`): its thread is its own, so an Await with a
+  poll is asked by the given `Wait` on it and parks only when the wait
+  gave up (`Async.pollThenBlock`);
+- the CALLBACK drive (`runAsync`, fibers): after its first callback it
+  runs on whoever woke it — a producer's thread as often as not — and
+  a wait there would stall the very producer it waits for. It polls
+  ONCE, takes an answer in place, and otherwise registers as always.
+
+- [ ] blocking runner: a poll answered on the yield rung is taken with
+      nothing registered (121 polls); one never answered climbs the whole
+      ladder (100/50/4 rungs on a counting platform, 154 polls) and then
+      parks; `Register` parks at once (0 polls), `Spin(10)` after 10
+- [ ] callback drive: one poll — an answer in place is taken (0
+      registrations), a miss registers (1 poll, 1 registration)
+- [ ] a drained channel under the blocking runner takes what was sent
+      before its wait ended without a registration
+- [ ] the ring merge's own laws unchanged (its wait stays in
+      `ReadyMerge`; the runner's poll never sees a side's Await, which the
+      merge holds)
+- [ ] MEASURE: `okayChunkedShared` (its consumer, `toLazyList`, is the
+      blocking runner) with this against the second landing's row —
+      expected parity, its consumer never catches up; `bufferDrained`
+      (one `buffer(1024)(s).drained`, no merge) with and without — the
+      lane where a catch-up was a registration
 
