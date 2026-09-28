@@ -140,6 +140,22 @@ class TestAsync extends munit.FunSuite {
     assert(finished.get() < 9)
   }
 
+  test("forkJoin: a fiber cancelled while still QUEUED answers (okay2-supervised-waits-on-failure)") {
+    val one = java.util.concurrent.Executors.newFixedThreadPool(1)
+    try {
+      implicit val S: Scheduler = Schedulers.forkJoin(one)
+      val gate = new CountDownLatch(1)
+      val occupying = Async.spawn(Async { gate.await(); 0 })
+      val queued = Async.spawn(Async(1))
+      val answered = new CountDownLatch(1)
+      queued.onComplete(_ => answered.countDown())
+      queued.cancel()
+      assert(answered.await(2, TimeUnit.SECONDS), "a fiber cancelled while queued never answered")
+      gate.countDown()
+      val _ = occupying
+    } finally one.shutdown()
+  }
+
   test("supervised: no failure waits for every child; the body's failure cancels the children") {
     implicit val S: Scheduler = Schedulers.forkJoin()
     val done = new java.util.concurrent.atomic.AtomicInteger(0)
