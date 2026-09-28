@@ -117,6 +117,7 @@ what was declined cannot see an attack.
 - [x] `forget` by the person, or by a steward, removes the lesson and unshares a pair only they held
 - [x] `share` by a teacher makes one person's pair everyone's; by anybody else it is refused
 - [x] `explain` names the layer, the rule verbatim, the lesson and its owner, the judge and the encoder — for a turn a rule decided, a lesson decided, a judge decided, and one nobody could
+- [x] `explain` of a route stopped by a MISSING SLOT still names the layer that decided the intent, the rule verbatim and the lesson — the route carries no support, `noticed` does (dlm-explain-missing, found by okay-watch)
 - [x] the ledger replays: the fold over `Learned`/`Forgotten` entries is the same `Memory` the live process holds
 - [x] a rebuilt table is an entry with the hash before and after and the corpus it came from, so a wrong build is named and reverted by hash, not by memory
 - [x] with learning off, a replay of the journal reaches the same decisions as were recorded — the model does not drift while nobody is teaching it
@@ -273,3 +274,13 @@ whom separately, because a steward refused for somebody else is not
 that somebody's refusal. And `share` is `teach` in the teacher's own
 name — the fold already shares a teacher's pair, so a second mechanism
 would have been a second truth.
+
+## Results — dlm-explain-missing (2026-09-28)
+
+Found by okay-watch's check bot, whose `/why` explained a sentence a
+LESSON had routed to `check` — its address slot missing — as «layer:
+none, lesson: none». `Route.Missing` carries no `Support` by design, and
+`Explanation.of` read support out of `Fires` alone; it now falls back to
+`noticed`, which already holds every layer's reading of every intent it
+saw. No type changed, so no consumer's pattern match moved. Two tests: a
+Missing decided by a rule, and one decided by a lesson.

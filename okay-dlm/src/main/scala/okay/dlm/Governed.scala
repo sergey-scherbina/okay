@@ -63,7 +63,9 @@ final class Governed(val router: Router,
     history.append(e); sink.append(e); e
 
   private def refuse(by: String, who: String, what: String, why: String): Either[String, Entry] =
-    write(Entry.Refused(who, what, why, now(), by)); Left(why)
+    // the entry is the audit's; the caller is answered with the reason
+    write(Entry.Refused(who, what, why, now(), by)): Unit
+    Left(why)
 
   private def maySpeakFor(by: String, who: String): Boolean = by == who || teaching.steward(by)
 

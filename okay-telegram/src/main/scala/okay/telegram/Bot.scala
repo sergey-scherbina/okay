@@ -1,7 +1,6 @@
 package okay.telegram
 
 import okay.*
-import okay.given
 import okay.codec.Json
 import okay.codec.Json.*
 import okay.http.{Body, Http, Request, Response}

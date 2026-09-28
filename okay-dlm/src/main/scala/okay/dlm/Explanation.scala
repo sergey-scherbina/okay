@@ -35,15 +35,23 @@ object Explanation:
   def of(router: Router, text: String, who: String, memory: Memory = Memory.empty,
          lang: Option[String] = None, encoder: String = "", tables: Map[String, String] = Map.empty): Explanation =
     val route = router.route(text, lang, memory, who)
+    val noticed = router.noticed(text, lang, memory, who)
+    // A MISSING SLOT STILL HAD A LAYER DECIDE ITS INTENT (dlm-explain-missing,
+    // found by okay-watch): `Route.Missing` carries no `Support` — what to ask
+    // is the caller's, and the route says only that a value is absent — so the
+    // support is taken from `noticed`, where every layer's reading of every
+    // intent it saw already is. Without this an audit reads «layer: none» for a
+    // turn a lesson decided, which is the opposite of what learning must show.
     val support = route match
       case Route.Fires(_, _, s) => Some(s)
+      case Route.Missing(intent, _) => noticed.collectFirst { case (`intent`, s) => s }
       case _ => None
     val rule = support.collect { case Support.Exact(Some(r)) => r }
     val lesson = support.collect { case Support.Remembered(offset, _) =>
       memory.forPerson(who).find(_.offset == offset) }.flatten
     val judge = support.collect { case Support.Semantic(_, _) => router.judge.map(_.name) }.flatten
     Explanation(text, route, support.map(_.layer), rule, lesson,
-      router.noticed(text, lang, memory, who), router.scores(text), judge, encoder, tables, lang)
+      noticed, router.scores(text), judge, encoder, tables, lang)
 
   def encode(e: Explanation): Json = JObj(Vector(
     "text" -> JStr(e.text),

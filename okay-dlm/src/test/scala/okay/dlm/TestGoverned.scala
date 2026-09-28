@@ -163,3 +163,27 @@ class TestGoverned extends FunSuite:
     val warm = Governed(router, initial = Ledger.replay(sink.entries))
     assertEquals(texts.map(t => warm.route(t, "ann")), recorded)
   }
+
+  test("AN EXPLANATION OF A MISSING SLOT still names the layer that decided the intent — a rule's, and a lesson's") {
+    // the intent is clear, the value it cannot work without is not: the
+    // route carries no support, and without the fallback to `noticed` the
+    // audit reads «layer: none» for a turn a layer decided
+    val asks = Intent("asks", rules = Vector("(?iU)\\b(?:проверь)\\b"),
+      byLang = Map("ru" -> Vector("проверь адрес")),
+      slots = Vector(Slot("address", "(?iU)(0x[0-9a-fA-F]{40})")), require = Vector("address"))
+    val set = Intents(Vector(asks, offer))
+    val r = Router(set, alphabet = Alphabet.of("ru", "en").toOption.get)
+    val g = Governed(r, now = () => { clock += 1; clock })
+    val byRule = g.explain("проверь это", "ann")
+    assertEquals(byRule.route, Route.Missing("asks", "address"))
+    assertEquals(byRule.layer, Some(Layer.Rule))
+    assertEquals(byRule.rule, Some("(?iU)\\b(?:проверь)\\b"))
+    // and by a LESSON, which is the case learning must be able to show
+    assert(g.teach("ann", "ann", "а это вообще надёжно", "asks").isRight)
+    val byLesson = g.explain("а это вообще надёжно", "ann")
+    assertEquals(byLesson.route, Route.Missing("asks", "address"))
+    assertEquals(byLesson.layer, Some(Layer.Memory))
+    assertEquals(byLesson.lesson.map(l => l.text -> l.who), Some("а это вообще надёжно" -> "ann"))
+    // a route that names no intent still names no layer, which is honest
+    assertEquals(g.explain("qwzx", "ann").layer, None)
+  }

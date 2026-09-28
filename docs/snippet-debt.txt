@@ -935,7 +935,6 @@ docs/schedulers.md	filler.join(); got
 docs/schedulers.md	finally crunch.close()
 docs/schedulers.md	given Scheduler = Schedulers.adaptive.workers(1).build
 docs/schedulers.md	given Scheduler = Schedulers.drive(containerPool)
-docs/schedulers.md	given Scheduler = Schedulers.loom      // the JVM default, already given
 docs/schedulers.md	try   items.map(i => Async.spawn(async(heavy(i)))(using crunch)).map(_.join())
 docs/schedulers.md	val crunch = Schedulers.own.workers(6).build
 docs/schedulers.md	val crunch = Schedulers.own.workers(6).forLongTasks.build

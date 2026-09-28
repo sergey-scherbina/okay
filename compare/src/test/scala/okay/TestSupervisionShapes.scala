@@ -111,7 +111,17 @@ class TestSupervisionShapes extends munit.FunSuite {
         val _ = n.fork(neverUnlessCancelled(cancelled, registered))
         okay.pure[Async, Int](0))))
     assert(out.isFailure, s"the scope did not fail: $out")
-    assertEquals(arrived(cancelled, 1), 1, "a child forked after the failure was never cancelled")
+    // CANCELLED, OR NEVER STARTED — both mean "not left running for good"
+    // (scheduler-default-flip, 2026-09-28). On Loom a cancelled child is
+    // a started virtual thread that meets its interrupt at the park, so
+    // its canceler runs. On a drive (`adaptive`, the default since) a
+    // child the scope cancels before it first runs never runs at all:
+    // it never registers, so there is no canceler to call, and this law
+    // read 0 though the shape was right — the supervision-shapes-race
+    // reading above, by a different road.
+    val n = arrived(cancelled, 1)
+    assert(n == 1 || registered.getCount == 1,
+      s"a child forked after the failure registered and was never cancelled (cancelled=$n)")
   }
 
   test("Par.traverse DOES cancel — it is built on par") {

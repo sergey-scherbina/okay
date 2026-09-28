@@ -1080,3 +1080,46 @@ under `adaptive`, so the shape has appeared since.
 - The flip, when made, keeps JDK 17-20 as it is (`platform`). There is
   no spill there, so `adaptive`'s old `n + overflow` bound would come
   back.
+
+## The flip (2026-09-28, scheduler-default-flip)
+
+`Schedulers.auto` hands out ONE shared `adaptive` where the JVM has Loom
+(`platform` on 17-20, unchanged); `given Scheduler` is `auto` unless
+`-Dokay.scheduler` says otherwise. `loom` is a `given` away. The
+performance table of "The default, re-run" stands; what this section
+records is the correctness gate, which found three defects the Loom
+default had been hiding and one test that read a drive's semantics as
+a failure.
+
+### The gate: the whole JVM family under the new default
+`scripts/gate.sh "family jvm"` on a 4-core Linux box, twice. The first
+run (5 475 results) named what follows; the second (4 710, after the
+fixes; okay-intent now compiled under a UTF-8 locale) had no red that
+reproduces on its own suite under `adaptive` and not under Loom:
+
+| red | cause | outcome |
+|---|---|---|
+| TestAsync "a bracket cancelled by timeout releases its resource" | a drive stopped only BETWEEN operations; Loom interrupts | **fixed**: drive-interrupts-blocking-run |
+| TestPoolElastic (okay-pool), 0/3 on own, drive, adaptive; 3/3 Loom | a late continuation's throw escaped the drive (`apply(k(x))`) | **fixed**: drive-resume-throw-lost |
+| TestSupervisionShapes "a child forked AFTER the scope failed" | a drive cancels a not-yet-started child by never starting it: no canceler to count | the law accepts "never started" as well as "cancelled" |
+| TestAdaptiveFifo "what it keeps" hung the okay-stream fork | producers had no deadline; the consumer's ran out under full-build load | producers share the consumer's deadline |
+| TestStackBytes, TestCmd (stm-ui-close) | load: green alone under both schedulers | none |
+| TestDelta, TestModels | red under Loom too on this box (Hadoop on JDK 25; a stored artifact) | not this flip's |
+
+### Semantics a user sees change
+- A cancel reaches a fiber's blocking `Run` (an interrupt), as it did
+  on Loom — now on every drive, not only the default.
+- A cancelled fiber that had not started never runs. On Loom it started
+  and met its interrupt at the first park.
+- A fiber's blocking call holds a platform worker until `adaptive`'s
+  watch adds one (`workers + overflow`, then virtual threads); on Loom
+  it held nothing. `given Scheduler = Schedulers.loom` is the answer
+  for a program whose fibers spend their lives blocked.
+
+### Not measured here
+The slice hooks add a volatile write, a monitor exit and a thread-local
+read and write per drive slice, and a late resumption allocates one
+`Bind`. The fork/join rows of the re-run table were measured without
+them, on the operator's machine; re-run `AdversarialBenchmark.forkJoin10k_*`
+and `spawnJoinSeq` there (`scripts/jmh-lane.sh`) before quoting the table
+for this code.
