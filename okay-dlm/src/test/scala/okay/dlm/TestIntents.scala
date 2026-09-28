@@ -75,6 +75,12 @@ class TestIntents extends FunSuite:
     assertEquals(a.languagesOf("42"), Set("ru", "uk", "pl", "en"))
     assert(a.agrees("pl", "szukam pracy"))
     assert(!a.agrees("pl", "ищу работу"))
+    // Latin rides inside any other script: an address does not make a
+    // Russian sentence Latin, and a Russian word makes a sentence Cyrillic
+    assert(a.agrees("ru", "сценарий deal seeker=anna@example.org provider=bob@example.org"))
+    assert(!a.agrees("en", "моя почта anna@example.org"))
+    assertEquals(Script.native("моя почта anna@example.org"), Some(java.lang.Character.UnicodeScript.CYRILLIC))
+    assertEquals(Script.native("anna@example.org"), Some(java.lang.Character.UnicodeScript.LATIN))
     assert(Alphabet.none.agrees("pl", "ищу работу"))
     assertEquals(Alphabet.of("ru", "xx").left.map(_.contains("xx")), Left(true))
   }

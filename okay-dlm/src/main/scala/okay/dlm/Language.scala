@@ -44,7 +44,7 @@ object Language:
     def of(text: String): Option[String] =
       val t = ignore.fold(text.toLowerCase)(_.replaceAllIn(text.toLowerCase, " "))
       val ws = t.split("[^\\p{L}]+").toVector.filter(_.nonEmpty)
-      val candidates = Script.dominant(t) match
+      val candidates = Script.native(t) match
         case Some(script) if !alphabet.isEmpty => alphabet.of(script)
         case _ => alphabet.languages.keySet ++ words.keySet
       val scored = candidates.toVector.map { l =>

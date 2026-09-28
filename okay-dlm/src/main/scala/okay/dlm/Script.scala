@@ -36,6 +36,21 @@ object Script:
   /** the script most of the letters are in, if any letter is */
   def dominant(text: String): Option[UnicodeScript] = scripts(text).headOption.map(_._1)
 
+  /**
+   * THE SCRIPT A TEXT IS WRITTEN IN, which is not the script most of
+   * its letters are in. Latin is the script of the world's
+   * identifiers — an email, a brand, a language's name, a command's
+   * argument — and it rides inside a message written in any other
+   * script: «сценарий deal seeker=anna@example.org» is a Russian
+   * sentence with eight Cyrillic letters and twenty-two Latin ones.
+   * So a text is in its most frequent NON-LATIN script when it has
+   * one, and in Latin only when it has nothing else. Measured on the
+   * source implementation: counting instead of this rule answered a
+   * Russian speaker in English the moment they typed an address.
+   */
+  def native(text: String): Option[UnicodeScript] =
+    scripts(text).find(_._1 != UnicodeScript.LATIN).map(_._1).orElse(dominant(text))
+
   /** a WORD in two scripts at once is a typo, always */
   def mixed(word: String): Boolean = scripts(word).length > 1
 
@@ -68,7 +83,7 @@ final case class Alphabet(languages: Map[String, UnicodeScript],
    * speaks when nothing narrows it */
   def languagesOf(word: String): Set[String] =
     if isEmpty then Set.empty
-    else Script.dominant(word) match
+    else Script.native(word) match
       case None => languages.keySet
       case Some(script) =>
         val candidates = of(script)
@@ -79,7 +94,7 @@ final case class Alphabet(languages: Map[String, UnicodeScript],
   /** does the text's alphabet agree with the language's? `true` when
    * either side is unknown — the gate refuses only a contradiction */
   def agrees(lang: String, text: String): Boolean =
-    (scriptOf(lang), Script.dominant(text)) match
+    (scriptOf(lang), Script.native(text)) match
       case (Some(a), Some(b)) => a == b
       case _ => true
 

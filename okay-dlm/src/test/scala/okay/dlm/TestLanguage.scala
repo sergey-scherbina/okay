@@ -21,6 +21,7 @@ class TestLanguage extends FunSuite:
     assertEquals(cues.of("szukam pracy"), Some("pl"))
     assertEquals(cues.of("I need the plumber"), Some("en"))
     assertEquals(cues.of("берусь 1"), None)                // no evidence: never a guess
+    assertEquals(cues.of("привет, моя почта anna@example.org"), Some("ru"))   // an address is not Latin evidence
     assertEquals(cues.of("praca"), None)                   // Latin, and nothing decides
   }
 
