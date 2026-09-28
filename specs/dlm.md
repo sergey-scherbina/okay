@@ -54,7 +54,7 @@ final case class Dlm(intents: Intents, router: Router,
 
 | part | answers | the caller supplies |
 |---|---|---|
-| `Intents`, `Intent`, `Slot` | the authored set: rules, phrasings by language, slots, `require`, `semantic`, help, rank | the file |
+| `Intents`, `Intent`, `Slot` | the authored set: rules, phrasings by language, slots, `require`, `semantic`, help, rank; `menu(lang)` selects what may be offered, in order, and `menuHoles` names what a language is missing | the file |
 | `Router` → `Route` with `Support` | which intent, and WHY: `Exact(rule)`, `Typo(d)`, `Semantic(p, runnerUp)`, `Remembered(lesson, near)`; `Missing(intent, slot)`; `Unclear(candidates, score)` | the intents, optionally `Exemplars` and an encoder, a margin, an `Alphabet` |
 | `Head` | one question by vectors or not at all: which act, yes/no/tell, remote or present, which frame — with a margin and a `quiet` class | the `Exemplars` per head, the bar |
 | `Exemplars` | the compiled table: `(label, vector)` rows and the encoder that made them; JSON to diff, checkpoint to boot from | the `(label, phrase)` rows and the encoder |
@@ -87,6 +87,10 @@ opaque type cannot.
 - [x] the vector layer needs enough letters; a fragment is asked about
 - [x] `noticed` reports every intent the layers saw while `route`
       acts on the first, so a second fact is never dropped in silence
+- [x] the menu is selected by the library and worded by the caller:
+      `internal` out, `rank` then name in order, the `help` cell of the
+      language asked, and `menuHoles` names the intents a language
+      describes nowhere
 - [x] a head answers above a margin of probabilities and is silent
       below it, and silence means the caller's own default
 - [x] the same exemplar table ships as JSON and as a checkpoint, the
@@ -302,3 +306,12 @@ for any route. Four tests, one of them the round trip: our client
 reads our server's answer, so the wire is one. The consumer mounts it
 as `/v1/systemone` beside `/route`. The learning mode is
 specs/dlm-learning.md, written before its code.
+
+## Results — dlm-menu (2026-09-28)
+
+`Intents.menu(lang)` and `Intents.menuHoles(languages)`: the selection
+and the order of the capability menu, which three consumers had each
+re-derived from `help`, `rank` and `internal` — okay-chat's "what can
+you do", okay-watch's bot offering a choice after a miss, and this
+module's own doc example. Four tests. No words moved: the cell is the
+caller's `Intent.Help`, and what frames it stays the caller's.

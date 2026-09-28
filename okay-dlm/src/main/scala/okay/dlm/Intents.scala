@@ -97,6 +97,38 @@ final case class Intents(intents: Vector[Intent]):
   def byLang: Map[String, Vector[String]] =
     intents.flatMap(_.byLang.toVector).groupBy(_._1).map((k, vs) => k -> vs.flatMap(_._2))
 
+  /**
+   * THE MENU, SELECTED: what this model can be asked to do, in the
+   * language asked — the answer to "what can you do?", and the choices
+   * a caller offers after an `Unclear`.
+   *
+   * Three lines every consumer had written for itself: an intent with a
+   * reason not to be offered (`internal`) is not in it; the order is
+   * `rank`, then the name, so it is stable across builds and a caller
+   * moving a rule does not move the menu; and the cell taken is the
+   * `help` of the language asked, absent when this intent was never
+   * described in it.
+   *
+   * NO WORDS ARE ADDED. `Intent.Help` is the caller's own sentence, and
+   * what frames it — «I can:», a button, a numbered list — is the
+   * caller's too.
+   */
+  def menu(lang: String): Vector[(String, Intent.Help)] =
+    intents.filter(_.internal.isEmpty)
+      .sortBy(i => (i.rank, i.name))
+      .flatMap(i => i.help.get(lang).map(i.name -> _))
+
+  /**
+   * WHAT THE MENU IS MISSING: per language, the intents that would be
+   * offered and carry no help cell in it. A menu that silently shrinks
+   * in one language is the failure a caller cannot see from `menu`
+   * alone — `Phrasing.holes` exists for the same reason.
+   */
+  def menuHoles(languages: Set[String]): Map[String, Vector[String]] =
+    val offerable = intents.filter(_.internal.isEmpty)
+    languages.toVector.sorted.map(l =>
+      l -> offerable.filterNot(_.help.contains(l)).map(_.name)).filter(_._2.nonEmpty).toMap
+
 object Intents:
 
   val empty: Intents = Intents(Vector.empty)
