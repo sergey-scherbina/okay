@@ -13,6 +13,6 @@
 - Tests: TestAsyncCross covers a cancelled parked fiber that still
   completes, and a failing scope that answers after its children with
   the first failure winning. TestAsync covers the forkJoin queued cancel.
-  That test failed first on the tests-only commit cfd5c613b.
+  That test failed first on the tests-only commit 09752fc60.
 - Result: 69 tests green on JVM, JS and Native. The whole okay2 build
   is the gate.
