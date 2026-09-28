@@ -1,1 +1,0 @@
-merge-scopes-everywhere — a merge's early stop / cancel stops its producer fibers (side channels closed) on every scheduler: CancelScope on the blocking handler (Loom/forkJoin/threads) too (operator: продолжай со стримами)
