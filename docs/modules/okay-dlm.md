@@ -40,9 +40,9 @@ file and the door runs on threads.
 import okay.dlm.*
 
 val intents = Intents.parse(json).toOption.get          // the caller's file
-val embed: String => okay.rag.Embedding = …             // any encoder, or hashing for a test
+val embed: String => okay.rag.Embedding = okay.rag.Vectors.hashing(256)   // any encoder; hashing for a test
 val vectors = Exemplars.compile(intents.rows, embed, "minilm-l12")
-Exemplars.write(Path.of("resources/intents.vec.json"), vectors)   // JSON and safetensors
+Exemplars.write(dir.resolve("intents.vec.json"), vectors)   // JSON and safetensors
 
 val model = Dlm.of(intents, embed, Some(vectors),
   heads = Map("acts" -> (acts, 0.5f)), alphabet = Alphabet.of("ru", "uk", "pl", "en").toOption.get)
