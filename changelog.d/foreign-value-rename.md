@@ -22,4 +22,4 @@ specs that name them, and the stack inventory's rows for
 `TestValueCodecDepth`, `TestValueWalk`, `TestValueTable`,
 `TestFrameInValue`. Decision 29 in specs/foreign-one.md.
 
-Commits: 9b5816a73 5cf924462 48a07c9b2 (the landing adds this line).
+Commits: 71ab89edf 9c8f01013 b274f205f, and 4ce3a7325 (this line). The first version of this line cited the pre-rebase shas: `land.sh` rebased the lane and `check-citations.sh` did not see them — it read 8-hex words only, while `%h` here is 9 (check-citations-nine-hex).

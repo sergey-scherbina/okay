@@ -35,8 +35,12 @@ bad=0
 for f in $files; do
   [ -f "$f" ] || continue
   # shas appear as "Landed as <sha>", "Commits: <sha> (...)", "DONE (date, <sha>)"
-  for h in $(grep -oE '\b[0-9a-f]{8}\b' "$f" | sort -u); do
+  for h in $(grep -oE '\b[0-9a-f]{8,40}\b' "$f" | sort -u); do
     git cat-file -e "$h^{commit}" 2>/dev/null || continue   # not a commit: a hex word
+    # the TIP of a local branch is a parked lane, not a landing (a backlog
+    # entry saying "preserved on feature/x (sha)"), and is not expected
+    # to be an ancestor — check-citations-nine-hex, 2026-09-28
+    [ -z "$(git branch --points-at "$h" 2>/dev/null)" ] || continue
     if ! git merge-base --is-ancestor "$h" HEAD 2>/dev/null; then
       echo "$f: $h is a commit but is NOT an ancestor of HEAD"
       bad=1
