@@ -78,31 +78,31 @@ two.
 
 ## Behavior
 
-- [ ] **a call is a POST of JSON** to `<base>/bot<token>/<method>`, its
+- [x] **a call is a POST of JSON** to `<base>/bot<token>/<method>`, its
       answer read whole: `{"ok":true,"result":…}` is `Right(result)`;
       `{"ok":false,"error_code":n,"description":s}` is
       `Left(Refused(method, n, s))`; a transport failure or a body that
       is not the API's shape is `Left(Refused(method, status, body))`.
       No exception crosses the seam: the API's refusal is data, as
       okay-http's 4xx is.
-- [ ] **the token never appears in a `Refused`**: the method is named,
+- [x] **the token never appears in a `Refused`**: the method is named,
       the URL is not.
-- [ ] **`Update.parse` is total**: a text message, a callback press, a
+- [x] **`Update.parse` is total**: a text message, a callback press, a
       pre-checkout query and a successful payment become their case;
       an edited message, a join, a photo, a channel post become
       `Other(kind)` with the update's own key as the kind — so a consumer
       can count what it ignores. A message whose `text` is absent is
       `Other("message")`, not a `Message("")`.
-- [ ] **`poll` answers the offset after the highest `update_id` it saw**,
+- [x] **`poll` answers the offset after the highest `update_id` it saw**,
       and the offset it was given when the round was empty — the
       Bot API's contract for acknowledging updates. `serve` starts from
       `from`, keeps that offset, and on a `Refused` waits `retryMs` and
       asks again with the SAME offset; it ends when `stop` says so,
       answering the offset to resume from.
-- [ ] **`send`/`edit` carry the keyboard as `reply_markup.inline_keyboard`**
+- [x] **`send`/`edit` carry the keyboard as `reply_markup.inline_keyboard`**
       row by row, `parse_mode: "HTML"` when `html`, and `force_reply`
       when asked (the host's `Ask`); `send` answers the new message's id.
-- [ ] **Stars**: `invoice` sends `sendInvoice` with `currency: "XTR"`,
+- [x] **Stars**: `invoice` sends `sendInvoice` with `currency: "XTR"`,
       an EMPTY `provider_token` and one price line in Stars;
       `answerPreCheckout` answers `answerPreCheckoutQuery` (`ok`, and
       `error_message` when refusing); `refundStars` calls
@@ -110,16 +110,16 @@ two.
       `telegram_payment_charge_id`. This module knows the shape, never
       the rule of what may be sold — Telegram's terms say digital goods
       only, and the consumer's spec says so where it applies.
-- [ ] **`Chats.perform` is the host's other half**: `Send(m)` →
+- [x] **`Chats.perform` is the host's other half**: `Send(m)` →
       `send(chat, m.text, m.keyboard)` and its id; `Edit(id, m)` → `edit`;
       `Answer(cb, notice)` → `answerCallback`; `Ask(prompt)` → `send`
       with `force_reply`. A `Refused` reaches `refused` and the act
       answers `None`; the host is not stopped by one failed call.
-- [ ] **`Chats.heard`**: a `Callback` is `(chat, Pressed(data, callbackId))`,
+- [x] **`Chats.heard`**: a `Callback` is `(chat, Pressed(data, callbackId))`,
       a `Message` is `(chat, Said(text))`, everything else is `None` — a
       payment or a pre-checkout is the consumer's, before or beside the
       host.
-- [ ] **one host per chat**: the first update from a chat builds
+- [x] **one host per chat**: the first update from a chat builds
       `Telegram.host(perform(bot, chat))`, spawns `open(chat, host)` (the
       consumer's `Ui.run`), and hands the host every later update of
       that chat. The gate is the seam's claim: a counter application
@@ -169,4 +169,28 @@ so this module stays free of both.
 
 ## Results
 
-(filled by the lane)
+2026-09-28, the lane. `okayTelegramJVM/testOnly okay.telegram.*`: 12 tests,
+all green, none on the network —
+
+- `TestUpdate` (shared, pure): the four cases and `Other` for an edit, a
+  join, a photo; damaged input is a value.
+- `TestBot`: the POST's URL and header; `Right(result)`, the API's
+  refusal as `Refused(method, 403, words)` without the token, a gateway's
+  HTML as `Refused(method, 500, …)`; `poll` answers 12 after updates 10
+  and 11 and the given offset on an empty round; `serve` re-asks a 429'd
+  round with the SAME offset (offsets asked: 0, 21, 21) and stops when
+  told; the keyboard, `parse_mode`, `force_reply` and the message id;
+  the Stars road (`XTR`, empty `provider_token`, one price line, the
+  pre-checkout refusal's words, the refund's charge id).
+- `TestChats`: `perform` for all four acts, a refused act told and
+  answering None; `heard`; THE GATE — a counter application opened by a
+  chat's first message sends `count: 0` with a `+` button, and the press
+  (its callback data read off the recorded keyboard) is answered and
+  EDITS message 1 to `count: 1`; a second chat opens its own application
+  at `count: 0`.
+- `TestReadme`: both README examples compiled and the plain one run.
+
+The JS leg (`okayTelegramJS`) is declared and its sources are the JVM's;
+its compile was not run in this lane's container, where Maven Central
+throttled the Scala.js toolchain's first resolution (HTTP 429) — the
+nightly runner compiles it.
