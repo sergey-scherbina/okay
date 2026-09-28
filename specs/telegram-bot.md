@@ -190,7 +190,5 @@ all green, none on the network —
   at `count: 0`.
 - `TestReadme`: both README examples compiled and the plain one run.
 
-The JS leg (`okayTelegramJS`) is declared and its sources are the JVM's;
-its compile was not run in this lane's container, where Maven Central
-throttled the Scala.js toolchain's first resolution (HTTP 429) — the
-nightly runner compiles it.
+The JS leg: `okayTelegramJS/Test/compile` green — the same sources and
+the shared `TestUpdate`; the effectful suites are JVM-only by placement.
