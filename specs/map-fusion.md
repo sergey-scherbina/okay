@@ -267,3 +267,32 @@ remains is (1) and, for a `.map`-written step, (2).
   through): 1.21x at +4 KB per 1000 elements. The erased accumulator
   stays (the inline-specialised road is filed, ceiling 1.24x); the
   `Map` node of `Free` stays NOT taken.
+
+## The inline road, one rung each (fold-erased-accumulator, 2026-09-28)
+
+`fold-erased-accumulator` was filed with a measured ceiling (D1, 14.04
+µs: `foldEach`'s `go` with `B = Int`) and a trigger, and the operator
+asked for the number of the road itself rather than its ceiling. The
+road is `inline def foldEach`/`foldM` with `inline` step functions: the
+local `go` is expanded AT THE CALL SITE, compiled with the caller's
+concrete `B` (no `Integer.valueOf` a step), and the step lambda is
+beta-reduced into `go`'s own body. Two rungs in BuildShapeBenchmark, the
+library's `go` verbatim under `inline`, each its own `jmh-lane.sh` run
+beside the same series' controls (`stateFoldEach`, `stateFoldM`,
+`stateOneBind`; `-f 2 -wi 3 -w 1 -i 5 -r 1 -prof gc`):
+
+- [ ] `stateFoldEachInline`: does the expanded `go` take the erased
+      accumulator's 3.3 µs / 16 B a step on the library's own road —
+      i.e. read ~1.2-1.3x over `stateFoldEach`'s 14.85, D1's Δ on top
+      of the ArraySeq read?
+- [ ] `stateFoldMInline`: with `op.map(f)` built AND matched inside the
+      one compiled `go`, does the JIT scalar-replace the `Bind` +
+      `Mapped` the step builds and `foldM` discards (−32 B a step,
+      up to ~6 µs)? A hypothesis (escape-analysis-box-elimination-
+      boundary: the allocation and its consumer must share a compiled
+      unit), and `-prof gc` answers it: bytes a step fall or they do
+      not.
+
+The price of the road, whatever the number: a copy of `go` per call
+site and its inline budget on every caller. Landing it in `Effects` is
+a separate decision, taken on the numbers below.
