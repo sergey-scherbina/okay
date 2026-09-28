@@ -105,19 +105,30 @@ class TestManagedBlocking extends munit.FunSuite {
     assert(releaserRuns(blocked = 2 + 2 + 1, within = 3000))
   }
 
-  test("bound: on adaptive, n + overflow blocked fibers are survivable and one more is not") {
-    // stuck-check every 20 ms: fifteen looks inside the 300 ms window, so a
-    // wedge here is the bound, not a check that has not looked yet
-    val build = () => Schedulers.own.workers(2).watched(scala.concurrent.duration.Duration(20, "ms"), overflow = 2).build
-    val a = build()
+  // adaptive-blocking-io (2026-09-28): at the bound, work that has not
+  // started is handed to a virtual thread instead of waiting, so the
+  // releaser runs. What still wedges is a scheduler with nothing to spill
+  // to: plain `own` (no overflow) keeps its thread count as its contract.
+  test("bound: on adaptive, n + overflow + 1 blocked fibers finish — the releaser spills to a virtual thread") {
+    // unmonitored: the stuck-check (20 ms) is the one that finds the queued
+    // releaser here; the monitor's own path is the same helper
+    val a = Schedulers.own.workers(2).unmonitored.watched(scala.concurrent.duration.Duration(20, "ms"), overflow = 2).build
     try
       given Scheduler = a
-      assert(releaserRuns(blocked = 2 + 2 - 1, within = 3000), "n + overflow - 1 blocked: the releaser has the last thread")
+      assert(releaserRuns(blocked = 2 + 2 + 1, within = 3000), "the releaser waited behind n + overflow blocked fibers")
     finally a.close()
-    val b = build()
+    val m = Schedulers.own.workers(2).watched(scala.concurrent.duration.Duration(10, "s"), overflow = 2).build
     try
-      given Scheduler = b
-      assert(!releaserRuns(blocked = 2 + 2, within = 300), "n + overflow blocked: the scheduler grew past its bound")
-    finally b.close()
+      given Scheduler = m
+      assert(releaserRuns(blocked = 2 + 2 + 1, within = 3000), "the monitor did not spill the queued releaser")
+    finally m.close()
+  }
+
+  test("bound: plain own (nothing to spill to) still wedges at n") {
+    val o = Schedulers.own.workers(2).build
+    try
+      given Scheduler = o
+      assert(!releaserRuns(blocked = 2, within = 300), "own grew past its workers")
+    finally o.close()
   }
 }
