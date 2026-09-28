@@ -606,3 +606,53 @@ Both are Boehm's point made concrete: a finalizer's closure is a root.
       element (a PhantomReference and a queue entry); measured on
       `okaySourceMerge` beside master if it moves the number
 
+
+## Stage: the flushing road's gap (merge-flush-on-ring-gap, 2026-09-28)
+
+The second landing left one lane over the accepted 1.06x:
+`okayChunkedFlush` (`flushAfter = 1000 ms`, a timer that never fires
+in a 240 us op) read 238.1 ± 13.8 on the ring against 212.0 ± 7.0 on
+the shared road — 1.12x, five forks per arm, one round. WHERE THE
+COST IS, read from the code rather than the earlier guess ("a flusher
+per side against one" — `chunkedMerge` runs a flusher per source
+too): a side WITH a window has two senders, its feed and its flusher,
+so `chunkedSide` builds it `forProducers(2, …)` — `SentinelChannel`
+over an `AdaptiveFifo` of two eager parts — and every look the
+consumer takes at it is `hasReadyScanning` over both parts and
+`popManyScanning` with a claim CAS, where a side without a window is
+the single-producer ring `buffer` uses. The shared road has ONE such
+two-part channel; the ring road has one PER SIDE and looks at both on
+every turn and every poll of the wait ladder.
+
+- [ ] RE-MEASURE before anything moves: `okayChunkedFlush` against
+      `okayChunkedFlushShared`, 10 rounds of one fork per lane
+      (`-f 1`, the arms alternating A/B/A/B across rounds), the
+      unwindowed pair `okayChunked`/`okayChunkedShared` in every round
+      as the control (the box moved ⇒ the round is out), through
+      `scripts/jmh-lane.sh`, k = 16 pinned — mean and per-fork spread
+      per arm; the gap HOLDS if the 10-fork means stay ≥ 1.06x apart
+      with the control pair within its own 1.03x
+- [ ] `okayChunkedFlushShort` (1 ms) on BOTH arms, 5 rounds, with
+      jmh-lane's noise discard raised to 100%: its shared arm read
+      ± 91 us on 277 — a 1 ms flusher inside a ~250 us op makes the
+      lane timing-bound by construction, so the row says so (and
+      what the ring arm reads beside it) rather than pretending a ratio
+- [ ] the elementwise road on `Wait.Ladder`, unmeasured since the
+      second landing: `MergeCapBenchmark.sourceMergeAtCapacity` at
+      64 / 256 / 1024, 5 forks, against the frozen spin-100 reading
+      (84.8 / 68.3 / 63.0) — no regression past the bars
+- [ ] IF the gap holds, the decision, with the candidates the backlog
+      item ordered and the reason each is or is not taken written into
+      Decisions: (a) `Merge.Shared`'s shape for the windowed join;
+      (b) the flusher signals the feed (refused before it is built: a
+      feed parked in its source's pull answers late, the window is not
+      honoured); (c) the consumer takes the partial chunk itself when
+      its ring runs dry (changes the batching a slow producer sees —
+      every element its own chunk once the consumer outruns it — so
+      not a flush bound but an eager flush; refused unless measured
+      otherwise); the SPSC-keeping variants (the flusher PUBLISHES into
+      the `ChunkBuffer` cell and a parked consumer is woken through a
+      one-shot registration with a late-answer slot) costed here as
+      design, built only if (a) is refused
+- [ ] IF the gap does not hold at 10 forks: the item closes as a
+      five-fork reading, the rows say so, nothing in the library moves
