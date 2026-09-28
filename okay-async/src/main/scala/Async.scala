@@ -328,6 +328,24 @@ object Async {
       unregister()
       releaseScopes()
 
+    /** whether this drive was cancelled — for a platform's slice hooks */
+    protected final def cancelled: Boolean = stopped
+
+    /**
+     * The platform's hooks around one SLICE of this drive: a run of
+     * `apply` on the calling thread, from its entry until it parks or
+     * ends (drive-interrupts-blocking-run, 2026-09-28). The token the
+     * first answers is handed to the second, so a slice nested inside
+     * another drive's slice on the same thread (a wake resumed inline)
+     * restores what it found. The JVM's `DriveTask` uses them so a cancel
+     * INTERRUPTS the thread while this drive's own code runs on it — the
+     * way Loom's cancel interrupts a fiber's virtual thread, so a use
+     * blocked in a `Run` is released at the cancel and not when the call
+     * returns by itself. The default does nothing: JS has no threads.
+     */
+    protected def sliceStarted(): AnyRef | Null = null
+    protected def sliceEnded(@scala.annotation.unused token: AnyRef | Null): Unit = ()
+
     /**
      * A direct loop over the tree's cases, the shape `runFree` and
      * Stm's runner have: the rotation and the `Bind(Pure, f)` step as
@@ -340,6 +358,7 @@ object Async {
     def apply(prog: A ! Async): Unit =
       var cur: A ! Async = prog
       var looping = !stopped
+      val slice = sliceStarted()
       try
         while looping do
           looping = false
@@ -370,6 +389,7 @@ object Async {
                 looping = !stopped
                 if !looping then { discontinue(cur); releaseScopes() }
       catch case e: Throwable => { releaseScopes(); fail(e) }
+      finally sliceEnded(slice)
 
     /**
      * CANCELLED BETWEEN TWO OPERATIONS (drive-discontinue, 2026-09-26):
@@ -416,7 +436,13 @@ object Async {
           val cancelReg = reg { r =>
             if !cell.compareAndSet(null, Got(r)) then
               if !stopped then r match
-                case Right(x) => apply(k(x))
+                // the continuation is the FIBER'S code, so it runs inside
+                // `apply` — its try, its slice — and never as `apply`'s
+                // argument (drive-resume-throw-lost, 2026-09-28): `k(x)`
+                // evaluated on the way in threw at whoever answered the
+                // callback, and the fiber never answered at all. One Bind
+                // per late resumption, rotated by `resume` like any other
+                case Right(x) => apply(Free.Return(x).flatMap(k))
                 case Left(e) => { releaseScopes(); fail(e) }
           }
           cell.getAndSet(Moved) match

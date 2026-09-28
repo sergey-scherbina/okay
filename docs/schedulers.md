@@ -13,10 +13,12 @@ trait Scheduler:
 It takes the PROGRAM, not a computed answer, which is what lets an
 event loop be a scheduler as easily as a thread pool does.
 
-Most code never chooses one. The default is right almost always:
+Most code never chooses one. The default is right almost always, and it
+is already given: on a JVM with virtual threads it is ONE shared
+`Schedulers.adaptive` (`Schedulers.auto`), and on JDK 17-20 a watched
+`own`.
 
 ```scala
-given Scheduler = Schedulers.loom      // the JVM default, already given
 val f = Async.spawn(async(work()))
 f.join()                               // blocking here is free
 ```
@@ -30,9 +32,9 @@ cores without you saying when.
 
 | member | a fiber is | blocking inside a fiber | for |
 |---|---|---|---|
-| `Schedulers.loom` | a virtual thread | free — the thread parks | the default; anything that may block: I/O, `join()`, channels |
+| `Schedulers.loom` | a virtual thread | free — the thread parks | fibers that spend their lives blocked: I/O-bound servers, long `join()` chains; the default until 2026-09-28 |
 | `Schedulers.own` | a task on a thread the scheduler owns | holds one of the workers | short CPU-bound fibers, fork/join as throughput |
-| `Schedulers.adaptive` | the same, watched | costs latency, not the program — `workers + overflow` block on platform threads, and waiting work past that runs on virtual threads | `own`'s speed, and blocking that is survivable |
+| `Schedulers.adaptive` | the same, watched | costs latency, not the program — `workers + overflow` block on platform threads, and waiting work past that runs on virtual threads | the default where the JVM has Loom: `own`'s speed, and blocking that is survivable |
 | `Schedulers.drive(pool)` | a task on a JDK pool | holds a pool thread | when the pool is given to you — a container's, a framework's |
 | `Schedulers.forkJoin(pool)` | a pool task, no Loom | holds a pool thread | a JVM without virtual threads |
 | `Schedulers.threads` | one platform thread | free | Native's default; a JVM that must not use Loom |
@@ -41,12 +43,13 @@ On JS there is exactly one and it is given: a fiber is a continuation
 walked by the event loop, and a blocking `join()` is a compile error
 rather than a frozen page.
 
-## Why the default is Loom, measured
+## Why the default is `adaptive`, measured
 
 `adaptive` is the faster scheduler for fork/join, so making it the
-default was measured rather than assumed (2026-09-27; the table is in
-specs/schedulers.md, "The default"). Same code, only
-`-Dokay.scheduler` changed, two alternating rounds:
+default was measured rather than assumed, twice (2026-09-27 and 09-28;
+the tables are in specs/schedulers.md, "The default" and "The default,
+re-run"). Same code, only `-Dokay.scheduler` changed, alternating rounds.
+The first round, which kept Loom:
 
 - **`adaptive` wins** every fork/join and cancel lane: 100 fibers
   forked and joined in 0.49-0.62 of Loom's time, 10 000 in 0.58-0.93,
@@ -70,26 +73,22 @@ specs/schedulers.md, "The default"). Same code, only
   them is queued behind them, waits until something outside the
   scheduler lets one go.
 
-**Re-decided on 2026-09-28, and the default is still Loom, now for a
-correctness reason.** The table was run again on the same lanes
-(specs/schedulers.md, "The default, re-run"). Every row is now a win
-for `adaptive` or within noise: Wrocław 1.00, blocking TCP 1.33x Loom's
-throughput, fork/join from outside 0.65 of Loom's time, cancel 0.68,
-sequential spawn/join 35 times over. But with `adaptive` as the given,
-one test of `Source.merge` does not finish: a merge stopped early by
-`take` leaves a sender spinning on one worker, waiting for progress that
-never comes. On Loom the same test passes. A default that turns a
-finishing program into a spinning one is not taken for any speed. The
-flip waits for that fix (backlog `adaptive-merge-early-stop-livelock`).
-That fix landed the same day: the spinning sender was a channel's
-send handshake retrying behind another parked sender, and it parks now
-(the test is 30/30 under `adaptive`). What is left before the flip is a
-re-run of the rows the send path could move (specs/schedulers.md).
+**Re-decided on 2026-09-28: the default is `adaptive` now.** The table
+was run again on the same lanes. Every row is a win for `adaptive` or
+within noise: Wrocław 1.00, blocking TCP 1.33x Loom's throughput,
+fork/join from outside 0.65 of Loom's time, cancel 0.68, sequential
+spawn/join 35 times over. One thing held the flip for a day: with
+`adaptive` as the given, a `Source.merge` stopped early by `take` left a
+channel sender spinning on one worker. The sender retried behind another
+parked sender whose wake only the spinning thread could deliver. It
+parks now, on both bounded channels, and the whole JVM build was run
+under the new default before the default changed (specs/schedulers.md,
+"The flip").
 
-So the default is the scheduler under which a correct program stays
-correct and never gets slower, and the fast one is a line away when you
-know your fibers are short and rarely block:
-`given Scheduler = Schedulers.adaptive.build`.
+Loom is a line away, and it is still the right choice for a program
+whose fibers spend their lives blocked:
+`given Scheduler = Schedulers.loom`, or `-Dokay.scheduler=loom` for a
+whole run.
 
 ## Choosing and tuning, the way a queue is chosen
 

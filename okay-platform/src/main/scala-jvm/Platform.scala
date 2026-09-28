@@ -222,10 +222,13 @@ given Timer = new:
     () => { f.cancel(false); () }
 
 /**
- * The JVM schedulers. The default given is Loom — one virtual thread
- * per fiber, which is what makes blocking free. For a JVM without
- * Loom, Schedulers.forkJoin runs fibers on a pool (do not park long
- * there), and Schedulers.threads pays one honest platform thread per
+ * The JVM schedulers. The default given is `adaptive` where the JVM has
+ * Loom (`auto`, since 2026-09-28): owned workers for speed, watched so a
+ * fiber that blocks costs latency and not the program, and waiting work
+ * past its bound spilled onto virtual threads. `Schedulers.loom` — one
+ * virtual thread per fiber, blocking free — is a `given` away. For a JVM
+ * without Loom, Schedulers.forkJoin runs fibers on a pool (do not park
+ * long there), and Schedulers.threads pays one honest platform thread per
  * fiber.
  */
 object Schedulers {
@@ -237,11 +240,32 @@ object Schedulers {
   val hasVirtualThreads: Boolean = Runtime.version().feature() >= 21
 
   /** the right default for THIS JVM, with no property and no `given`
-   * needed to get it: `loom` where virtual threads exist, `platform`
+   * needed to get it: `adaptive` where virtual threads exist, `platform`
    * where they don't. `given Scheduler` below is exactly this, plus
    * `-Dokay.scheduler` as an override; call `auto` directly from code
-   * that wants the adaptive pick without going through either. */
-  def auto: Scheduler = if hasVirtualThreads then loom else platform
+   * that wants the pick without going through either.
+   *
+   * ADAPTIVE, NOT LOOM, SINCE 2026-09-28 (scheduler-default-flip). The
+   * re-run of the table left no performance reason for Loom: fork/join
+   * from outside 0.65 of Loom's time, cancel 0.68, `parallel8` 0.67,
+   * spawn/join 35x, Wrocław 1.00, blocking TCP 1.33x Loom's throughput
+   * (specs/schedulers.md, "The default, re-run"). What kept Loom was a
+   * livelock under `adaptive` — a channel sender spinning behind another
+   * sender's waiter — fixed the same day (adaptive-merge-early-stop-
+   * livelock, abrupt-sender-head-recheck), and the whole JVM family was
+   * run under the new default before this line changed. On a Loom JVM
+   * `adaptive` also spills waiting work past its bound onto virtual
+   * threads, which is what makes it safe as a default; on 17-20 there
+   * is no spill, so `platform` stays the pick there.
+   *
+   * ONE instance, built on first use and shared: `auto` is called by
+   * the `given` and may be called by code, and a scheduler per call
+   * would be a pool of threads per call. Its workers are daemon
+   * threads, and nothing closes it. */
+  def auto: Scheduler = if hasVirtualThreads then sharedAdaptive else platform
+
+  /** the `adaptive` scheduler `auto` hands out where Loom exists */
+  private lazy val sharedAdaptive: Running = adaptive.build
 
   /** the pick for a JVM WITHOUT Loom: `own` — the fastest
    * platform-thread scheduler measured here, see its doc below — with
@@ -1042,10 +1066,71 @@ object Schedulers {
      * `join()` on a cancelled fiber must return rather than wait for
      * an answer that will never come. The drive stops at its next
      * operation and a late answer is ignored (`done` keeps the first
-     * one), so this is the fiber's answer and nothing else can be. */
+     * one), so this is the fiber's answer and nothing else can be.
+     *
+     * AND IT INTERRUPTS the thread running this drive's code, if one is
+     * (drive-interrupts-blocking-run, 2026-09-28): Loom's cancel
+     * interrupts the fiber's thread, so a use blocked in a `Run` —
+     * `Thread.sleep`, a JDBC call, a `CanBlock` park — throws and its
+     * bracket releases at the cancel. A drive used to stop only between
+     * operations, and TestAsync's "a bracket cancelled by timeout
+     * releases its resource" failed the moment `adaptive` became the
+     * default. The interrupt is sent under this task's monitor while
+     * `runner` names the thread, and the slice clears it under the same
+     * monitor before it leaves, so it never outlives this drive's code
+     * on a pooled worker (whose `park` an interrupt flag would turn into
+     * a spin). */
     override def cancel(): Unit =
       super[Drive].cancel()
+      synchronized:
+        val t = runner
+        if t != null then t.interrupt()
       done(Left(java.util.concurrent.CancellationException("fiber cancelled")))
+
+    /** the thread running this drive's code right now, or null — set
+     * by the slice, cleared by the slice, read by `cancel`; a slice of
+     * ANOTHER drive nested inside one of ours on the same thread (a wake
+     * resumed inline) suspends it, so our cancel never interrupts code
+     * that is not ours */
+    @volatile private var runner: Thread | Null = null
+
+    override protected def sliceStarted(): AnyRef | Null =
+      val me = Thread.currentThread()
+      val outer = DriveTask.running.get
+      if outer != null then outer.suspend(me)
+      DriveTask.running.set(this)
+      runner = me
+      outer
+
+    override protected def sliceEnded(token: AnyRef | Null): Unit =
+      val me = Thread.currentThread()
+      synchronized { if runner eq me then runner = null }
+      // our cancel's interrupt is ours to take back, not the thread's
+      if cancelled then { val _ = Thread.interrupted() }
+      token match
+        case outer: DriveTask[?] =>
+          DriveTask.running.set(outer)
+          outer.resume(me)
+        case _ => DriveTask.running.set(null)
+
+    /** a nested slice starts on `me`: this drive's code is not running.
+     * An interrupt our cancel already sent is taken back here, so the
+     * nested code does not meet it, and `resume` sends it again */
+    private def suspend(me: Thread): Unit = synchronized:
+      if runner eq me then
+        runner = null
+        if cancelled then { val _ = Thread.interrupted() }
+
+    /** the nested slice is over: this drive's code runs on `me` again,
+     * and a cancel that landed meanwhile is delivered now */
+    private def resume(me: Thread): Unit = synchronized:
+      if runner == null then
+        runner = me
+        if cancelled then me.interrupt()
+
+  private[okay] object DriveTask:
+    /** the drive whose slice is running on this thread, if any */
+    val running: ThreadLocal[DriveTask[?] | Null] = new ThreadLocal[DriveTask[?] | Null]
 
   /** one honest platform thread per fiber: heavy, but works anywhere */
   val threads: Scheduler = new:
@@ -1081,13 +1166,11 @@ object Threads:
       t.start()
       t
 
-/** The default scheduler is Loom — a fiber IS a virtual thread, which
- * is the design and stays it, on a JVM that HAS Loom (JDK 21+).
- * `okay.scheduler` selects another for the A/B that prices that choice
- * (`Schedulers.own` reads 750us per 10 000 fork/joins against kyo's
- * 880, where the Loom default reads 2715); `loom` is the shipped
- * behaviour and the only value a released build should see there.
- * scripts/ab-defaults.sh drives both arms.
+/** The default scheduler is `Schedulers.auto`: `adaptive` on a JVM that
+ * HAS Loom (JDK 21+), since scheduler-default-flip (2026-09-28) — Loom
+ * before that. `okay.scheduler` selects another for the A/B that prices
+ * that choice (`loom`, `own`, `adaptive`, `drive`, `threads`); unset is
+ * the shipped behaviour. scripts/ab-defaults.sh drives both arms.
  *
  * jdk-adaptive-scheduler (2026-09-19): on a JVM WITHOUT Loom, none of
  * that is available to ask for, property or no property — asking for

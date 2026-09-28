@@ -172,7 +172,7 @@ class TestReadyMerge extends munit.FunSuite {
     // called the merge's canceller: 0 of 200 cancelled. The drive's
     // cancel answers the fiber at once, so a join proves nothing about
     // the sources: the law waits on the cancellers themselves, bounded.
-    val schedulers = List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build)
+    val schedulers = List("loom" -> Schedulers.loom, "own" -> Schedulers.own.build)
     for (name, sch) <- schedulers; round <- 0 until 200 do
       val a, b = Gate()
       val self = java.util.concurrent.CompletableFuture[Fiber[Unit]]()
@@ -195,7 +195,7 @@ class TestReadyMerge extends munit.FunSuite {
     // `own` (the probe that filed the item). On Loom the interrupt is seen
     // at the merge's first park, after the ready side ends — late, but it
     // arrives.
-    val schedulers = List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build)
+    val schedulers = List("loom" -> Schedulers.loom, "own" -> Schedulers.own.build)
     for (name, sch) <- schedulers; round <- 0 until 20 do
       val g = Gate()
       val self = java.util.concurrent.CompletableFuture[Fiber[Unit]]()
@@ -216,7 +216,7 @@ class TestReadyMerge extends munit.FunSuite {
     for round <- 0 until 20 do
       val g = Gate()
       val m = ReadyMerge(Seq(Source.of(LazyList.range(0, 200000)), g.source))
-      val f = summon[Scheduler].fork(() => m.runFoldUntil(using FoldUntil.take[Int](3)))
+      val f = Schedulers.loom.fork(() => m.runFoldUntil(using FoldUntil.take[Int](3)))
       assertEquals(f.joinEither().map(_.size), Right(3), s"round $round")
       assert(g.gone.await(10, java.util.concurrent.TimeUnit.SECONDS), s"round $round: the parked source outlived the program")
   }
@@ -229,7 +229,7 @@ class TestReadyMerge extends munit.FunSuite {
     // closed by then)
     for
       (mname, mechanism) <- List("ready" -> Merge.Ready, "shared" -> Merge.Shared)
-      (sname, sch) <- List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build)
+      (sname, sch) <- List("loom" -> Schedulers.loom, "own" -> Schedulers.own.build)
     do
       given Merge = mechanism
       val name = s"$mname/$sname"

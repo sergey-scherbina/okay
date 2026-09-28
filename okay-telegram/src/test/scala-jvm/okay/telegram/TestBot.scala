@@ -3,7 +3,6 @@ package okay.telegram
 import okay.*
 import okay.given
 import okay.codec.Json
-import okay.codec.Json.*
 import okay.http.{Http, Request, Response}
 import okay.ui.Telegram.Key
 
@@ -87,7 +86,7 @@ class TestBot extends munit.FunSuite:
     assertEquals(Js.str(body, "parse_mode"), "HTML")
     assertEquals(Js.field(body, "reply_markup"), Some(Json.parse(
       """{"inline_keyboard":[[{"text":"+","callback_data":"f1.0"},{"text":"-","callback_data":"f1.1"}],[{"text":"site","url":"https://x.y"}]]}""")))
-    run(bot.send(5, "Name?", forceReply = true))
+    assertEquals(run(bot.send(5, "Name?", forceReply = true)), Right(77L))   // the fake answers one id
     assertEquals(Js.field(api.of("sendMessage")(1), "reply_markup"), Some(Json.parse("""{"force_reply":true}""")))
     assertEquals(run(bot.edit(5, 77, "hi again")), Right(()))
     assertEquals(Js.long(api.of("editMessageText").head, "message_id"), 77L)

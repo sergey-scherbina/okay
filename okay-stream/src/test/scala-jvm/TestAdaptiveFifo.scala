@@ -84,13 +84,20 @@ class TestAdaptiveFifo extends munit.FunSuite {
     for _ <- 1 to 5 do
       val b = AdaptiveFifo[Int](4, () => Ring[Int](64), eager = true)
       val per = 500
+      // ONE deadline for both sides (adaptive-fifo-producers-deadline,
+      // 2026-09-28): only the consumer had one, so a consumer that gave
+      // up — a whole JVM build on four cores, the round starved past 15 s
+      // — left four producers spinning on a full buffer for ever, and the
+      // join below hung the suite's fork until a watchdog killed it. Now
+      // the producers stop at the same instant and the counts below say
+      // what arrived.
+      val deadline = System.currentTimeMillis() + 15000
       val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
         var i = 0
-        while i < per do
+        while i < per && System.currentTimeMillis() < deadline do
           if b.push(w * per + i) then i += 1 else Thread.`yield`()
       })
       val got = scala.collection.mutable.ArrayBuffer.empty[Int]
-      val deadline = System.currentTimeMillis() + 15000
       val q = Thread.ofVirtual().start { () =>
         while got.length < 4 * per && System.currentTimeMillis() < deadline do
           b.pop() match
