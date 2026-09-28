@@ -30,7 +30,8 @@
 #
 # Usage: scripts/gate.sh [sbt-command]          (default: test)
 #        scripts/gate.sh "a; b; c"              several commands, run in
-#          sequence in one sbt, stopping at the first that fails
+#          sequence in one sbt, stopping at the first that fails; an
+#          `affected <ref> [staged]` part is expanded in place
 #        scripts/gate.sh --read <log>           read a gate log that
 #          already exists and say what it would have done — which is
 #          how the three branches below are tested without waiting for
@@ -257,6 +258,8 @@ else
   . "$(cd "$(dirname "$0")" && pwd)/bench-window.sh"
   bw_gate_enter
   trap bw_gate_leave EXIT
+  demoted=""
+  [ -e "$BW_DIR/demoted/$$" ] && demoted=1
 
   # JVM FIRST, AND THE OTHER PLATFORMS ONLY IF IT IS GREEN
   # (gate-jvm-first, 2026-09-18). MEASURED: sampling one full gate's
@@ -280,64 +283,95 @@ else
   # JVM-first order — the order is the fourth sbt argument, so it rides
   # on the end of both: changed-JVM, dependents-JVM, changed-rest,
   # dependents-rest.
-  phase2=""
-  case "$cmd" in
-    "affected "*)
-      ref="${cmd#affected }"
-      scope=""
-      case "$ref" in
-        *" staged") case "${ref% staged}" in
-                      *" "*) : ;;        # `<ref> <task> <platform> staged`: the caller means it
-                      *) scope=staged; ref="${ref% staged}" ;;
-                    esac ;;
-      esac
-      if [ -n "$scope" ]; then
-        cmd="affected $ref test jvm staged"; phase2="affected $ref test rest staged"
-      else
+  # ONE COMMAND IS A CHAIN OF ONE. Every element is read on its own
+  # (gate-affected-short-form-in-chain, 2026-09-28): until then the
+  # `affected` expansion below matched the WHOLE argument, so inside a
+  # `;` chain `affected master staged` reached sbt raw and was refused
+  # ("Not a valid key: staged") — loud, so it cost a run, not a verdict
+  # (foreign-one-r, 2026-09-26). Now the chain is split FIRST and each
+  # part expanded, so `affected master staged; okayDeploy/testOnly X` is
+  # the two staged phases followed by the testOnly, in that order.
+  expand_affected() {
+    case "$1" in
+      "affected "*)
+        ref="${1#affected }"
+        scope=""
         case "$ref" in
-          *" "*) : ;;                      # a task or platform was given: the caller means it
-          *) cmd="affected $ref test jvm"; phase2="affected $ref test rest" ;;
+          *" staged") case "${ref% staged}" in
+                        *" "*) : ;;        # `<ref> <task> <platform> staged`: the caller means it
+                        *) scope=staged; ref="${ref% staged}" ;;
+                      esac ;;
         esac
-      fi ;;
-  esac
+        if [ -n "$scope" ]; then
+          printf '%s\n' "affected $ref test jvm staged" "affected $ref test rest staged"
+        else
+          case "$ref" in
+            *" "*) printf '%s\n' "$1" ;;   # a task or platform was given: the caller means it
+            *) printf '%s\n' "affected $ref test jvm" "affected $ref test rest" ;;
+          esac
+        fi ;;
+      *) printf '%s\n' "$1" ;;
+    esac
+  }
   # A ";"-CHAIN IS SEVERAL COMMANDS (gate-command-chain, 2026-09-23).
   # Handed to sbt as ONE argument, `"a; b"` ran `a` and dropped `b`
   # without a word — twice in one day, and "0 test results" in the
   # verdict line was the only tell. sbt's own spelling for a sequence
   # is one argument per command, so the chain is split into exactly
   # that: in order, trimmed, empty parts dropped, and sbt still stops
-  # at the first that fails. The JVM-first split above applies only to
-  # a single `affected <ref>`; a chain is passed as the caller wrote it.
-  chained=""
-  case "$cmd" in
-    *";"*)
-      chained=1
-      set --
-      rest="$cmd"
-      while :; do
-        part=$(printf '%s' "${rest%%;*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-        [ -n "$part" ] && set -- "$@" "$part"
-        case "$rest" in *";"*) rest="${rest#*;}" ;; *) break ;; esac
-      done
-      # zero commands: real sbt with no argument opens its INTERACTIVE
-      # shell and the gate would wait on it for ever
-      if [ "$#" -eq 0 ]; then
-        echo "gate: \"$cmd\" names no command — refusing to start an interactive sbt" >&2
-        exit 2
-      fi
-      phase2="" ;;
-  esac
-  if [ -n "$chained" ]; then
-    echo "gate: sbt$(for c in "$@"; do printf ' "%s"' "$c"; done)  (log: $log)"
-    sbt_run "$log" "$@"
-  elif [ -n "$phase2" ]; then
-    echo "gate: sbt \"$cmd\" \"$phase2\"  (log: $log)"
-    sbt_run "$log" "$cmd" "$phase2"
-  else
-    echo "gate: sbt $cmd  (log: $log)"
-    sbt_run "$log" "$cmd"
+  # at the first that fails. The parts go through a FILE and not a
+  # here-document: an unquoted here-document expands backslashes, and
+  # a pipe would run the `set --` in a subshell that forgets it.
+  cmds="$log.cmds"
+  : > "$cmds"
+  rest="$cmd"
+  while :; do
+    part=$(printf '%s' "${rest%%;*}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    [ -n "$part" ] && expand_affected "$part" >> "$cmds"
+    case "$rest" in *";"*) rest="${rest#*;}" ;; *) break ;; esac
+  done
+  set --
+  while IFS= read -r c; do [ -n "$c" ] && set -- "$@" "$c"; done < "$cmds"
+  rm -f "$cmds"
+  # zero commands: real sbt with no argument opens its INTERACTIVE
+  # shell and the gate would wait on it for ever
+  if [ "$#" -eq 0 ]; then
+    echo "gate: \"$cmd\" names no command — refusing to start an interactive sbt" >&2
+    exit 2
   fi
+  # A WHOLE BUILD TAKES THE CI LOCK, WHOEVER STARTS IT (ci-runner-lock-
+  # bypass, 2026-09-28). `.work/ci/lock` used to stop only a second
+  # `ci-runner.sh`; a hand-run `gate.sh "family all"` in the same
+  # checkout raced a legitimate `ci-runner.sh once` mid-run — two sbt
+  # processes writing one `target/` tree, which read as a real RED
+  # (`NoClassDefFoundError` on core classes) and was not (2026-09-25).
+  # So the shapes that ARE a whole build — `test` (the whole matrix)
+  # and `family …` — take the same lock, by the same protocol
+  # (scripts/ci-lock.sh): held by a live pid that is not this run's
+  # own ancestor, the gate REFUSES and names it; held by the runner
+  # above us, it is ours already; a dead holder's lock is taken over.
+  # Everything scoped (`affected …`, a testOnly, a compile) shares a
+  # box with the runner by design and takes nothing.
+  ci_lock=""
+  for c in "$@"; do
+    case "$c" in test|"family "*) ci_lock="${OKAY_CI_LOCK_DIR:-$(cd "$(dirname "$0")/.." && pwd)/.work/ci/lock}" ;; esac
+  done
+  if [ -n "$ci_lock" ]; then
+    . "$(cd "$(dirname "$0")" && pwd)/ci-lock.sh"
+    CI_LOCK_WHO=gate ci_lock_take "$ci_lock"
+    case $? in
+      0) trap 'bw_gate_leave; ci_lock_release "$ci_lock"' EXIT ;;
+      2) echo "gate: the ci lock is held by this run's own ancestor — a whole build under scripts/ci-runner.sh" ;;
+      *) echo "gate: LOCKED — a whole build is already running in this checkout ($ci_lock); refusing to start a second one beside it (ci-runner-lock-bypass)"
+         exit 3 ;;
+    esac
+  fi
+  echo "gate: sbt$(for c in "$@"; do printf ' "%s"' "$c"; done)  (log: $log)"
+  sbt_run "$log" "$@"
   status=$?
+  # A DEMOTED RUN SAYS SO IN ITS OWN LOG (gate-demote-timeouts, below),
+  # so a `--read` of it later classifies the same way this run does
+  [ -n "$demoted" ] && echo "gate: this run was demoted to the efficiency cores by the bench window (OKAY_BENCH_DEMOTE=on)" >> "$log"
 fi
 # ONE stripped copy, then plain greps over the FILE. Not a pipeline:
 # `set -o pipefail` plus `grep -q` reports failure even on a match,
@@ -362,6 +396,25 @@ echo "gate: sbt exited $status, $tests test results"
 # 1. A REAL TEST FAILURE ENDS IT, whatever the exit status was: a
 # suite that failed and was then killed is red, not killed.
 if grep -q "==> X" "$clean"; then
+  # 1b. UNLESS THE RUN WAS DEMOTED AND EVERY FAILURE IS A TIMEOUT
+  # (gate-demote-timeouts, 2026-09-28). With OKAY_BENCH_DEMOTE=on a gate
+  # that meets a queued benchmark runs on the 4 efficiency cores
+  # (bench-window.sh, `taskpolicy -b`), and heavy tests then miss
+  # their munit timeouts: okay-platform's TestGenerate "1M produced
+  # values" took 6.3 s on the performance cores and 74.6 s / 254 s
+  # (TIMEOUT at 120) demoted — nine timeouts in seven modules on one
+  # tree, every one green undemoted (2026-09-27). A demoted run's
+  # timeout is a verdict on the CORES, not the tree, so it is not RED:
+  # it is its own word, DEMOTED, which gate-retry.sh retries like a
+  # kill. One real failure beside the timeouts and the run is RED as
+  # before — a timeout excuses nothing but itself.
+  if grep -q "demoted to the efficiency cores" "$clean" \
+     && [ "$(grep "==> X" "$clean" | grep -vcE "TimeoutException|timed out after")" -eq 0 ]; then
+    echo "gate: DEMOTED — every failure is a munit timeout in a run the bench window moved to the efficiency cores:"
+    grep "==> X" "$clean" | head -20
+    echo "gate: this is NOT a verdict about the tree; run it again once the benchmark is done (OKAY_BENCH_DEMOTE=off waits instead)"
+    exit 122
+  fi
   echo "gate: RED — tests failed:"
   grep "==> X" "$clean" | head -20
   exit "${status:-1}"
