@@ -218,6 +218,14 @@ per 1000 elements here). **14.40 ± 0.17 µs, 147 816 B/op: 1.21x over
 the library's 17.35 at +4 104 B/op** — the copy costs what the walk
 cost on one step out of a thousand.
 
+LANDED in `Effects.foldM` and `foldEach` (`each` goes through `foldM`),
+re-read on the library itself in the same series: **stateFoldEach
+17.35 → 14.85 ± 0.22 µs (1.17x), stateFoldM 18.22 → 16.76 ± 0.21
+(1.09x)**, both +4 112 B/op. foldM gains less because its `.map`-written
+step still builds and discards the map node (below, item 2), so the
+read was a smaller share of it. The library's generic `go` reads 0.45
+µs behind the rung that predicted it.
+
 ### What is left in the fold path, and whose it is
 
 After the flat read lands, a `foldEach`/`foldM` step over a primitive
