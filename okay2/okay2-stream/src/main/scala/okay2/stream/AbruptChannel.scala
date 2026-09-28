@@ -72,25 +72,45 @@ final class AbruptChannel[A](buf: Buffer[Any]) extends Channel[A] {
   /** `granted` is the wakeup being spent: a woken sender must NOT
    * re-queue behind the gate, or the wakeup is lost. A LOOP, never
    * recursion, so a thread that claims its own waiter cannot overflow */
+  //
+  // THE SAME TWO RULES AS `SentinelChannel.attemptSend` (the Scala 3
+  // core's abrupt-sender-head-recheck, 2026-09-28). `pushed` tells the two
+  // cases one branch used to fold together: a FULL ring (it pushed and was
+  // refused) rechecks as before; a sender BEHIND another's waiter takes
+  // room back only as the oldest unclaimed waiter, or it busy-waits for a
+  // sender only this thread could resume under a callback drive. And a
+  // waiter taken back OWNS its wake (`own`): the next turn pushes without
+  // asking the queue, or the head rule alone deadlocks two producers.
   private def attemptSend(a: A, granted0: Boolean)(k: Accepted): Unit = {
-    val granted = granted0
+    var own = granted0
     var go = true
     while (go) {
       go = false
       if (closed.get) k(false)
-      else if ((granted || senders.get.isEmpty) && ring.push(a)) {
-        k(true)
-        val _ = wakeOne(receivers)
-      } else {
-        val w = new Waiter(() => attemptSend(a, granted0 = true)(k))
-        enqueue(senders, w)
-        if ((ring.hasRoom || closed.get) && w.claim()) {
-          val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
-          go = true
+      else {
+        val pushed = own || senders.get.isEmpty
+        if (pushed && ring.push(a)) {
+          k(true)
+          val _ = wakeOne(receivers)
+        } else {
+          val w = new Waiter(() => attemptSend(a, granted0 = true)(k))
+          enqueue(senders, w)
+          if ((ring.hasRoom || closed.get) && (pushed || oldest(w)) && w.claim()) {
+            val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
+            own = true
+            go = true
+          }
         }
       }
     }
   }
+
+  /** is `w` the oldest waiter still waiting? `enqueue` conses at the head,
+   * so the oldest is the LAST unclaimed one; a waiter another thread took
+   * back is its owner's, not ahead of us. An empty list (a close took it)
+   * answers false, and the `closed` check ends the send next turn */
+  private def oldest(w: Waiter): Boolean =
+    senders.get.reverseIterator.find(!_.claimed.get).exists(_ eq w)
 
   def receiveAsync(k: End => Unit): Unit = {
     var go = true
