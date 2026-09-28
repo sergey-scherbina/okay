@@ -131,4 +131,26 @@ class TestManagedBlocking extends munit.FunSuite {
       assert(!releaserRuns(blocked = 2, within = 300), "own grew past its workers")
     finally o.close()
   }
+
+  // the five-way TCP shape (adaptive-blocking-io): fibers blocked in a RAW
+  // call, which passes no door, more of them than `n + overflow`. Only the
+  // monitor sees them; at the bound the ones still waiting spill to
+  // virtual threads, so all of them are in their call at once.
+  test("bound: more raw-blocking fibers than n + overflow all block at once on adaptive") {
+    val a = Schedulers.own.workers(2).watched(overflow = 2).build
+    val inCall = java.util.concurrent.atomic.AtomicInteger()
+    val most = java.util.concurrent.atomic.AtomicInteger()
+    try
+      given Scheduler = a
+      Async.spawn(async {
+        Vector.fill(8)(Async.spawn(async {
+          val now = inCall.incrementAndGet()
+          most.accumulateAndGet(now, math.max): Unit
+          Thread.sleep(300)
+          inCall.decrementAndGet(): Unit
+        }))
+      }).join().foreach(_.join())
+      assertEquals(most.get, 8, "raw-blocking fibers waited for a worker past the bound")
+    finally a.close()
+  }
 }
