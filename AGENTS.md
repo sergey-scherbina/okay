@@ -88,8 +88,11 @@ force, all already practiced, none previously written down:
   `sh scripts/ci-runner.sh kick`, not `git push origin master` — no
   lane pushes directly. `scripts/ci-runner.sh` is the one process that
   pushes, gating `origin/master..master` with `family all` under a
-  `mkdir` lock at `.work/ci/`; on RED it bisects with `affected
-  <ref>..HEAD` and reverts the culprit before the next turn pushes.
+  `mkdir` lock at `.work/ci/`; on RED it re-runs the named suites
+  alone and, green there, PUSHES anyway (its own flake verdict,
+  recorded in `.work/ci/flakes/`; ci-runner-push-after-flake); a red
+  that reproduces it bisects with `affected <ref>..HEAD` and reverts
+  the culprit before the next turn pushes.
   `kick` returns at once — landing does not block on the whole build.
   UNTIL `scripts/ci-runner.sh` EXISTS ON YOUR CHECKOUT (a checkout
   predating ci-staged has no such script): fall back to the old

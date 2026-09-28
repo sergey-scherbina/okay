@@ -214,22 +214,18 @@ out2=$(CI_TEST_VERDICT=green run once); rc2=$?
 [ "$(origin_sha)" = "$(sha master)" ] && ok "the revert reached origin" || bad "revert not pushed"
 rm -rf "$tmp"
 
-say "10b. RED with ONE landing commit, GREEN on the confirmation re-run: a flake, NOT reverted, NOT pushed"
+say "10b. RED with ONE landing commit, GREEN on the confirmation re-run: a flake, NOT reverted, PUSHED (ci-runner-push-after-flake)"
 new_fixture
 commit_file src.txt one
 target=$(sha master)
-before_origin=$(origin_sha)
 # whole build red, its suites alone red again, the culprit's confirmation green
 queue red red green
 out=$(run once); rc=$?
-[ "$rc" -ne 0 ] && ok "nonzero exit (still not pushed this turn)" || bad "exit 0"
-[ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed" || bad "origin moved"
-printf '%s\n' "$out" | grep -q "a flake, not a regression; NOT reverting" && ok "said it was a flake, not reverting" || bad "did not say so: $out"
+[ "$rc" -eq 0 ] && ok "exit 0 (pushed this turn)" || bad "exit $rc: $out"
+printf '%s\n' "$out" | grep -q "a flake, not a regression; NOT reverting, PUSHING" && ok "said it was a flake, not reverting, pushing" || bad "did not say so: $out"
 [ "$(cd "$work" && git rev-parse master)" = "$target" ] && ok "no revert commit — master unchanged" || bad "master moved despite the flake verdict"
-say "    (the next turn, genuinely green, pushes the ORIGINAL commit — nothing was lost)"
-out2=$(CI_TEST_VERDICT=green run once); rc2=$?
-[ "$rc2" -eq 0 ] && ok "next turn exits 0" || bad "next turn exit $rc2: $out2"
-[ "$(origin_sha)" = "$target" ] && ok "the original (never-guilty) commit reached origin" || bad "origin at $(origin_sha), wanted $target"
+[ "$(origin_sha)" = "$target" ] && ok "the original (never-guilty) commit reached origin THIS turn" || bad "origin at $(origin_sha), wanted $target"
+[ -s "$work/.work/ci/flakes/"* ] 2>/dev/null && ok "the flake sighting is recorded" || bad "no flake record under .work/ci/flakes"
 rm -rf "$tmp"
 
 say "11. RED with SEVERAL landing commits: bisect finds the one that introduced BAD_MARKER"
@@ -287,20 +283,28 @@ printf '%s\n' "$out" | grep -q "CONFLICTED — aborted" && ok "the revert was at
   && ok "no revert in progress, a clean tree" || bad "left mid-revert or dirty: $(cd "$work" && git status --short | head -5)"
 rm -rf "$tmp"
 
-say "14. a whole-build red whose named suites pass ALONE is a flake: no bisect, no revert"
+say "14. a whole-build red whose named suites pass ALONE is a flake: no bisect, no revert, PUSHED, and recorded"
 new_fixture
 commit_file a.txt one
 commit_file b.txt two
 target=$(sha master)
-before_origin=$(origin_sha)
 # the whole build red, the named suites re-run alone green
 queue red green
 out=$(run once); rc=$?
-[ "$rc" -ne 0 ] && ok "nonzero exit (not pushed this turn)" || bad "exit 0"
+[ "$rc" -eq 0 ] && ok "exit 0 (pushed this turn)" || bad "exit $rc: $out"
 printf '%s\n' "$out" | grep -q "did not reproduce" && ok "said the red did not reproduce" || bad "did not say so: $out"
 printf '%s\n' "$out" | grep -q "bisect over\|reproduced alone — bisecting" && bad "a bisect ran over a flake: $out" || ok "no bisect ran"
 [ "$(cd "$work" && git rev-parse master)" = "$target" ] && ok "master unchanged" || bad "master moved"
-[ "$(origin_sha)" = "$before_origin" ] && ok "nothing pushed" || bad "origin moved"
+[ "$(origin_sha)" = "$target" ] && ok "the range reached origin this turn" || bad "origin at $(origin_sha), wanted $target"
+[ -s "$work/.work/ci/flakes/"* ] 2>/dev/null && ok "the flake sighting is recorded" || bad "no flake record under .work/ci/flakes"
+say "    (a third sighting of the same suite names it a repeat offender)"
+commit_file c.txt three
+queue red green
+out=$(run once) || true
+commit_file d.txt four
+queue red green
+out=$(run once) || true
+printf '%s\n' "$out" | grep -q "REPEAT OFFENDER" && ok "the third sighting is named in the log" || bad "no repeat-offender line after three sightings: $out"
 rm -rf "$tmp"
 
 say "15. a red that is red BEFORE the lane too predates it: not reverted"

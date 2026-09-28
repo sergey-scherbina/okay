@@ -186,9 +186,13 @@ filter as step 3):
    `jmh-lane.sh` use — a re-run on the same noisy box just repeats the
    same false red), then run `sh scripts/gate.sh "affected $from..C"`
    ONCE MORE, alone. GREEN here means a flake: log it, do NOT revert
-   and do NOT push — the next whole-build turn re-tests `from..to`
-   fresh, on (hopefully) a quieter box, and if the range really is fine
-   nothing was lost by not reverting. Only a SECOND red confirms `C`;
+   — and PUSH (ci-runner-push-after-flake, 2026-09-28: until then the
+   turn ended without a push and the next whole-build turn re-tested
+   `from..to` fresh, which on a shared box met a DIFFERENT suite timing
+   out four turns in a row and held origin 75 commits behind; the
+   runner's own verdict "a flake" is what a push waits for, and the
+   sighting is recorded under `.work/ci/flakes/<suite>` so a repeat
+   offender is named). Only a SECOND red confirms `C`;
 3. the first bad commit `C` is reverted on master: `git revert --no-edit
    C`; the revert commit's message names `C`, its lane (from the
    `release-claim` that follows it, when one does) and the runner's log;
@@ -384,8 +388,14 @@ file and a fake `sbt` that always succeeds):
       sibling's `merge --ff-only` until a human ran `git revert --abort`
 - [x] a whole-build red is REPRODUCED before any bisect: the suites its
       `==> X` lines name are re-run alone on HEAD, and green there is a
-      flake — no bisect, no revert, the next turn re-tests the range
-      (ci-runner-flake-before-bisect, 2026-09-26; selftest case 14).
+      flake — no bisect, no revert, and SINCE ci-runner-push-after-flake
+      (2026-09-28) the range is PUSHED that turn, the sighting recorded
+      per suite in `.work/ci/flakes/`, a third sighting named a repeat
+      offender in the log (ci-runner-flake-before-bisect, 2026-09-26;
+      selftest cases 10b and 14). THE RISK, accepted by the operator: a
+      real intermittent regression that shows only under load is pushed
+      as a flake — the record and the nightly full run are the second
+      gate behind this one.
       Both incidents were flakes at HEAD: a 2 h 40 min bisect converging
       anywhere (2026-09-25), and parquet-codec's intermediate commit
       reverted (2026-09-26)
