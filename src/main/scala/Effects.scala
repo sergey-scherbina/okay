@@ -2,6 +2,7 @@ package okay
 
 import okay.Row.{at, plus}
 import scala.annotation.tailrec
+import scala.collection.immutable.ArraySeq
 
 /**
  * Extensible effects, founded on the continuation paramonad.
@@ -409,9 +410,14 @@ object Effects {
    * indexed, not iterated, so the program runs again from the start.
    */
   def foldM[X, B, F[+_]](xs: Iterable[X])(z: B)(f: (B, X) => B ! F): B ! F =
-    // indexed, so the program is a value that runs again; a Vector's
-    // `toIndexedSeq` is the Vector itself, a List is copied once
-    val v = xs.toIndexedSeq
+    // indexed, so the program is a value that runs again — and FLAT
+    // (fold-each-residual-split, 2026-09-28): `v(i)` runs once a step,
+    // and a Vector's radix walk there was 3.3 µs of foldEach's 7.3 over
+    // the hand-written loop at N = 1000, as much as the boxed
+    // accumulator; an `ArraySeq` reads by a bounds check and a load.
+    // An `ArraySeq` passes through, anything else is copied once (a
+    // Vector of 1000 boxed Ints: 4 KB, and 1.21x on the fold).
+    val v = ArraySeq.untagged.from(xs)
     val n = v.length
     // The step's `flatMap` into the NEXT step, with a trailing `map`
     // folded in (one-bind-hot-steps, 2026-09-27): a step written
@@ -456,7 +462,7 @@ object Effects {
    * element's answer arrives. Delayed, indexed and stack-safe as `foldM`.
    */
   def foldEach[X, A, B, F[+_]](xs: Iterable[X])(z: B)(f: X => A ! F)(combine: (B, A) => B): B ! F =
-    val v = xs.toIndexedSeq
+    val v = ArraySeq.untagged.from(xs) // flat, as foldM's: the read is per step
     val n = v.length
     def go(i: Int, acc: B): B ! F =
       if i >= n then Return(acc)
