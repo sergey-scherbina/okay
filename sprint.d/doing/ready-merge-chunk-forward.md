@@ -16,8 +16,10 @@
       producer's cache line (a sleep removes the pressure) or the
       producers' own fork-to-fork speed. THEN stage 2: the chunked
       roads onto `ReadyMerge[Chunk[A]]` (the f0f355bd4 road, rebuilt
-      once already in this lane), `chunkedMerge`/`Channel.mergeChunked`
-      deleted, `okayChunked`/`okayChunkedFlush`/`okayChunkedFlushShort`
+      once already in this lane); `chunkedMerge`/`Channel.mergeChunked`
+      STAY as a door by choice (operator 2026-09-28: "пусть останутся
+      опционально на выбор для любителей") — the default goes to the
+      ring, the shared channel is called by name; `okayChunked`/`okayChunkedFlush`/`okayChunkedFlushShort`
       at k = 16/256/1024 measured against today's road, 5 forks per arm
       alternating. LANDED FIRST, on its own (this lane's first landing):
       poll-then-park in `ReadyMerge` — the mechanism in the trail below,

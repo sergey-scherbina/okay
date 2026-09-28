@@ -413,13 +413,20 @@ threads, registers at once.
       `okayChunkedFlushShort` at k = 16/256/1024, ring road against
       today's shared-channel road, 5 forks per arm alternating — mean
       within 1.06x at every lane, no arm's tail worse than 1.2x
-- [ ] then the shared-channel chunked road is deleted: `chunkedMerge`,
-      `Channel.mergeChunked`, `Channel.mergeFlushing`'s channel road;
-      `Source.merge(chunked = true)`, `mergeFlushing`, `either` go
-      through `ReadyMerge[Chunk[A]]` over a chunk channel per side
+- [ ] the shared-channel chunked road STAYS, as a door by choice
+      (operator, 2026-09-28: "пусть останутся опционально на выбор"):
+      `Channel.mergeChunked` and `Channel.mergeFlushing` keep the one
+      queue two producers feed — one mode in every fork, a consumer
+      that never catches up — and `Source.merge(chunked = true)`,
+      `mergeFlushing`, `either` go by default through
+      `ReadyMerge[Chunk[A]]` over a chunk channel per side
       (`chunkedSideOf` / `chunkedSideFlushing`) and `Writer.expand`;
-      `TestChannelFailure`'s chunked laws (the failAfterTail ones) still
-      green
+      `chunkedMerge` is not deleted; docs name both doors and when each
+      is the one to take; `TestChannelFailure`'s chunked laws (the
+      failAfterTail ones) green on both
+- [ ] `ChunkFlushBenchmark` keeps the shared road as a permanent arm
+      (`okayChunkedShared`, `Channel.mergeChunked` called directly) —
+      the control beside `okayChunked`, no switch in the library
 - [ ] the elementwise road on the hybrid: `MergeCapBenchmark` cap
       64/256/1024 against the first landing's frozen rows (84.8 / 68.3 /
       63.0), no regression
