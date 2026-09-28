@@ -211,4 +211,46 @@ class BuildShapeBenchmark {
   def stateFoldEachArr(): Int =
     val p = foldEachArr(items)(0)(i => State.modify[Int](_ + i))(_ + _)
     !.run(State.handle[Int](0)(p))._2
+
+  // ---- fold-erased-accumulator: the inline road. The library's `go`
+  // verbatim (ArraySeq read, erased signature, the lot), but the method
+  // and its step functions are `inline`, so `go` is expanded AT THE
+  // CALL SITE: compiled with the caller's `B` (`Int` here — no
+  // `Integer.valueOf` a step, D1's rung on the library's own road) and
+  // with the step lambda beta-reduced into its body, so a `.map`-written
+  // step's `Bind` + `Mapped` are built and matched inside ONE compiled
+  // unit, where escape analysis can see both ends.
+
+  /** `Effects.foldEach` under `inline` */
+  private inline def foldEachInline[X, A, B, F[+_]](xs: Iterable[X])(z: B)(inline f: X => A ! F)(inline combine: (B, A) => B): B ! F =
+    val v = scala.collection.immutable.ArraySeq.untagged.from(xs)
+    val n = v.length
+    def go(i: Int, acc: B): B ! F =
+      if i >= n then pure(acc) else f(v(i)).flatMap(a => go(i + 1, combine(acc, a)))
+    Free.delay(() => go(0, z))
+
+  @Benchmark
+  def stateFoldEachInline(): Int =
+    val p = foldEachInline(items)(0)(i => State.modify[Int](_ + i))(_ + _)
+    !.run(State.handle[Int](0)(p))._2
+
+  /** `Effects.foldM` under `inline`: the same match that folds a
+   * trailing `map` into the next step, now over a node the same method
+   * just built */
+  private inline def foldMInline[X, B, F[+_]](xs: Iterable[X])(z: B)(inline f: (B, X) => B ! F): B ! F =
+    val v = scala.collection.immutable.ArraySeq.untagged.from(xs)
+    val n = v.length
+    def go(i: Int, acc: B): B ! F =
+      if i >= n then pure(acc)
+      else f(acc, v(i)) match
+        case b: Free.Bind[F, x, B] @unchecked => b.f match
+          case k: Free.Mapped[F, x, B] @unchecked => Free.Bind(b.a, (y: x) => go(i + 1, k.f(y)))
+          case _ => Free.Bind(b, (y: B) => go(i + 1, y))
+        case m => Free.Bind(m, (y: B) => go(i + 1, y))
+    Free.delay(() => go(0, z))
+
+  @Benchmark
+  def stateFoldMInline(): Int =
+    val p = foldMInline(items)(0)((acc, i) => State.modify[Int](_ + i).map(acc + _))
+    !.run(State.handle[Int](0)(p))._2
 }

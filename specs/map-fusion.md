@@ -281,18 +281,61 @@ library's `go` verbatim under `inline`, each its own `jmh-lane.sh` run
 beside the same series' controls (`stateFoldEach`, `stateFoldM`,
 `stateOneBind`; `-f 2 -wi 3 -w 1 -i 5 -r 1 -prof gc`):
 
-- [ ] `stateFoldEachInline`: does the expanded `go` take the erased
+- [x] `stateFoldEachInline`: does the expanded `go` take the erased
       accumulator's 3.3 µs / 16 B a step on the library's own road —
       i.e. read ~1.2-1.3x over `stateFoldEach`'s 14.85, D1's Δ on top
-      of the ArraySeq read?
-- [ ] `stateFoldMInline`: with `op.map(f)` built AND matched inside the
+      of the ArraySeq read? **Yes, exactly: 1.24x.**
+- [x] `stateFoldMInline`: with `op.map(f)` built AND matched inside the
       one compiled `go`, does the JIT scalar-replace the `Bind` +
       `Mapped` the step builds and `foldM` discards (−32 B a step,
       up to ~6 µs)? A hypothesis (escape-analysis-box-elimination-
       boundary: the allocation and its consumer must share a compiled
       unit), and `-prof gc` answers it: bytes a step fall or they do
-      not.
+      not. **They do not: REFUTED.**
 
 The price of the road, whatever the number: a copy of `go` per call
 site and its inline budget on every caller. Landing it in `Effects` is
 a separate decision, taken on the numbers below.
+
+### Results (history.d `…-fold-erased-accumulator.tsv`, sha 75a396995)
+
+| lane | µs/op | B/op | Δ a step |
+|---|---:|---:|---|
+| stateFoldEach (the library) | 15.16 ± 0.13 | 147 824 | — |
+| **stateFoldEachInline** | **12.27 ± 0.32** | 123 968 | **−24 B: 1.24x** |
+| stateFoldM (the library) | 16.81 ± 0.11 | 179 816 | — |
+| **stateFoldMInline** | **15.15 ± 0.14** | 155 968 | **−24 B: 1.11x** |
+| stateOneBind (the hand loop) | 9.67 ± 0.79 | 111 816 | ceiling |
+
+- **foldEach: the road reads its ceiling.** −24 B a step is the 16 B
+  `Integer` box plus 8 B off the continuation closure, which no longer
+  captures `f` and `combine` (they are beta-reduced into `go`). 1.24x
+  is D1's number on the library's own road; what remains over the hand
+  loop (1.27x, ~2.6 µs) is the ArraySeq copy (4 KB a program), the
+  closure that still captures `n`/`v`/`i`/`acc`, and the ±0.8 of the
+  ceiling lane itself.
+- **foldM: the map node is NOT scalar-replaced.** The inline lane
+  saves the SAME 24 B a step as foldEach's — the box and the closure —
+  and not the 32 B of `Bind` + `Mapped` on top, so the node the step
+  builds and `go` discards is still allocated, inside one compiled
+  method whose match consumes it two lines later. Why C2 keeps it is
+  not measured here; a candidate is the match's own shape — the
+  fall-through arms (`case _ => Bind(b, …)`, `case m => Bind(m, …)`)
+  store the scrutinee into a NEW node, an escape on a path C2 has to
+  prove dead before its flow-insensitive EA runs — and a
+  compile-time cut would be an `inline match` on the constructor the
+  beta-reduced step is (`Bind(a, Mapped(g))`), which the inliner can
+  reduce without any JIT. Neither is taken: the answer for a
+  `.map`-written step is `foldEach`, which builds no node to remove.
+
+## Decisions
+
+- 2026-09-28 (fold-erased-accumulator): the inline road is measured,
+  1.24x on `foldEach` and 1.11x on `foldM`, and NOT landed — a copy of
+  `go` per call site and inline budget on every caller of a library
+  fold, for the accumulator's box alone. The map-node scalar
+  replacement hypothesis is refuted by bytes. The item moves to
+  refuted-declined-or-answered with its original trigger (a profiled
+  consumer with a primitive hot fold); on that trigger, `inline` the
+  ONE consumer's fold, or land an `inline` `foldEach` beside the
+  non-inline one.
