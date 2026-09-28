@@ -20,8 +20,13 @@ object Chats:
 
   /** the performer of one chat's acts; a Send answers its message id. A
    * `Refused` reaches `refused` and the act answers `None` — one failed
-   * call does not stop the host */
-  def perform(bot: Bot, chat: Long, refused: Refused => Unit ! Async = _ => pure(())): Act => Option[Long] ! Async =
+   * call does not stop the host.
+   *
+   * `asked` hears the one act that puts the chat in a waiting state: an
+   * `Ask` is the screen requesting a typed value, and whoever owns the
+   * next message needs to know (see `Chats.awaiting`). */
+  def perform(bot: Bot, chat: Long, refused: Refused => Unit ! Async = _ => pure(()),
+              asked: () => Unit = () => ()): Act => Option[Long] ! Async =
     def told[A](r: Either[Refused, A]): Option[A] ! Async = r match
       case Right(a) => pure(Some(a))
       case Left(x) => refused(x).map(_ => None)
@@ -29,7 +34,9 @@ object Chats:
       case Act.Send(m) => bot.send(chat, m.text, m.keyboard).flatMap(told)
       case Act.Edit(id, m) => bot.edit(chat, id, m.text, m.keyboard).flatMap(told).map(_ => None)
       case Act.Answer(cb, notice) => bot.answerCallback(cb, notice).flatMap(told).map(_ => None)
-      case Act.Ask(prompt) => bot.send(chat, prompt, forceReply = true).flatMap(told).map(_ => None)
+      case Act.Ask(prompt) =>
+        asked()
+        bot.send(chat, prompt, forceReply = true).flatMap(told).map(_ => None)
     }
 
   /** an update as what a chat's host hears, and which chat: a press, a
@@ -42,10 +49,24 @@ object Chats:
 final class Chats(bot: Bot, open: (Long, Host) => Unit ! Async,
                   refused: Refused => Unit ! Async = _ => pure(()))(using Scheduler):
   private var doors = Map.empty[Long, Telegram.Update => Unit ! Async]
+  private var asked = Set.empty[Long]
   private val lock = new Object
 
   /** the chats with an application open */
   def opened: Set[Long] = lock.synchronized(doors.keySet)
+
+  /**
+   * IS THIS CHAT'S SCREEN WAITING FOR A TYPED VALUE? Its `Input` was
+   * focused (the pencil pressed), the screen sent its prompt with
+   * ForceReply, and the answer has not arrived.
+   *
+   * A consumer that also understands text itself must ask: the next
+   * message is either the value the screen asked for or a sentence of
+   * its own, and the two roads are not interchangeable. Without this the
+   * choice is made blind — steal the value, or hand the screen a message
+   * it has no focus for, which is no event, no act and no reply at all.
+   */
+  def awaiting(chat: Long): Boolean = lock.synchronized(asked.contains(chat))
 
   /** the chat's door, opening its application first when this is the
    * chat's first word — the one place a host is made */
@@ -55,7 +76,8 @@ final class Chats(bot: Bot, open: (Long, Host) => Unit ! Async,
         doors.get(chat) match
           case Some(door) => (door, None)
           case None =>
-            val (host, door) = Telegram.host(Chats.perform(bot, chat, refused))
+            val (host, door) = Telegram.host(
+              Chats.perform(bot, chat, refused, () => lock.synchronized { asked += chat }))
             doors += chat -> door
             (door, Some(host))
       }
@@ -73,4 +95,8 @@ final class Chats(bot: Bot, open: (Long, Host) => Unit ! Async,
    * chat opens its application */
   def hear(u: Update): Unit ! Async = Chats.heard(u) match
     case None => pure(())
-    case Some((chat, heard)) => doorOf(chat).flatMap(_(heard))
+    case Some((chat, heard)) =>
+      // the value the screen asked for has arrived (or the person pressed
+      // instead of typing, which abandons the question either way)
+      lock.synchronized { asked -= chat }
+      doorOf(chat).flatMap(_(heard))
