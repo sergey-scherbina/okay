@@ -65,4 +65,10 @@ class TestChats extends munit.FunSuite:
     go(chats.hear(Update.Message(3, 6, 43, 1, "hi")))
     until(api.of("sendMessage").size >= 2)
     assertEquals(Js.str(api.of("sendMessage")(1), "text"), "count: 0")
+    // a chat OPENED by the consumer, with no message heard: the screen, and nothing read as a value
+    go(chats.open(7))
+    until(api.of("sendMessage").size >= 3)
+    assertEquals(chats.opened, Set(5L, 6L, 7L))
+    go(chats.open(7))
+    assertEquals(api.of("sendMessage").size, 3, "opening an open chat opens nothing twice")
   }
