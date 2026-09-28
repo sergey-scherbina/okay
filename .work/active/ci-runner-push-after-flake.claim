@@ -1,1 +1,0 @@
-claude session_01Ujs4BYPBFq2gS7CRRxyACd, 2026-09-28, operator ask: the runner pushes after a green re-run alone (its own flake verdict), records flake sightings, blocks only a red that reproduces (backlog.d/build/ci-runner-push-after-flake.md)
