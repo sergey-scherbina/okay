@@ -217,3 +217,45 @@ input passes through; a `Vector` is copied through its iterator, 4 KB
 per 1000 elements here). **14.40 ± 0.17 µs, 147 816 B/op: 1.21x over
 the library's 17.35 at +4 104 B/op** — the copy costs what the walk
 cost on one step out of a thousand.
+
+### What is left in the fold path, and whose it is
+
+After the flat read lands, a `foldEach`/`foldM` step over a primitive
+accumulator pays, over the hand-written one-bind loop, exactly:
+
+1. **The erased accumulator — the language's, ~3.3 µs per 1000 steps.**
+   `B` is erased, Scala 3 has no `@specialized`, and every sum past
+   `Integer`'s cache is a 16 B box on its way into the next `go`. The
+   ladder's D1 (14.04 µs) is what a `go` compiled with `B = Int` reads,
+   so it is the ceiling of the ONE road a library has: an `inline`
+   `foldEach` whose local `go` is expanded, and so specialised, at the
+   call site — a copy of `go` per call site for 1.24x on a primitive
+   fold. Not taken here; filed as `fold-erased-accumulator` with that
+   number and that trigger.
+2. **The map node a `.map` step builds and `foldM` discards — the
+   syntax's, 48 B and ~6.3 µs per 1000 steps** (map-cost-residual's
+   rung 1). `Free.map` does what it must: `op.map(f)` must build
+   something for `foldM` to read `f` out of, and the only smaller
+   something is a `Map(a, f)` case of `Free` itself, −16 of the 48 B,
+   which is an enum change against `resume`'s 325-byte inline budget
+   (`TestInlineBudget`) — priced in Decisions (2026-09-27) and NOT
+   taken. The answer that exists is `foldEach`: the step given as the
+   element's program and a pure combine builds no map at all.
+3. **The generic calls — nothing measurable.** `f` and `combine`
+   through `Function1`/`Function2` are 0.7 µs inside a ±0.9 error.
+   Do not chase them; filed as answered.
+
+`Free.map` itself carries no defect in any of the three: (1) is
+erasure, (2) is what a map must build to be read later, (3) is not
+there. The 1.8x of 2026-09-27 is now 1.43x (14.40 / 10.02), and what
+remains is (1) and, for a `.map`-written step, (2).
+
+## Decisions
+
+- 2026-09-28 (fold-each-residual-split): the fold-each diagnosis is
+  corrected — the residual was the boxed accumulator AND the per-step
+  `Vector.apply`, not the generic calls. `foldM`/`foldEach` index a
+  flat `ArraySeq` (one copy per program, an `ArraySeq` input passes
+  through): 1.21x at +4 KB per 1000 elements. The erased accumulator
+  stays (the inline-specialised road is filed, ceiling 1.24x); the
+  `Map` node of `Free` stays NOT taken.
