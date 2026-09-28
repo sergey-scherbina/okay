@@ -1,1 +1,0 @@
-claude session_01Ujs4BYPBFq2gS7CRRxyACd, 2026-09-28, operator ask: the drive and the blocking runner honour Await.poll through Wait/Pause — poll-then-park for Merge.Shared and every drained consumer (backlog.d/okay-core/drive-poll-then-park.md on feature/ready-merge-chunk-forward; branch based on that lane, lands after it)
