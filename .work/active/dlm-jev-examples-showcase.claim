@@ -1,0 +1,5 @@
+task: dlm-jev-examples-showcase
+agent: codex
+branch: feature/dlm-jev-examples-showcase
+started: 2026-09-28
+scope: one offline DLM showcase for Jev examples
