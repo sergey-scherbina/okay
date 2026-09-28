@@ -88,7 +88,10 @@ force, all already practiced, none previously written down:
   `sh scripts/ci-runner.sh kick`, not `git push origin master` — no
   lane pushes directly. `scripts/ci-runner.sh` is the one process that
   pushes, gating `origin/master..master` with `family all` under a
-  `mkdir` lock at `.work/ci/`; on RED it re-runs the named suites
+  `mkdir` lock at `.work/ci/` (the protocol is `scripts/ci-lock.sh`,
+  and since ci-runner-lock-bypass a hand-run `gate.sh test`/`family …`
+  in the same checkout takes the SAME lock or refuses with
+  `gate: LOCKED`); on RED it re-runs the named suites
   alone and, green there, PUSHES anyway (its own flake verdict,
   recorded in `.work/ci/flakes/`; ci-runner-push-after-flake); a red
   that reproduces it bisects with `affected <ref>..HEAD` and reverts
@@ -347,9 +350,10 @@ force, all already practiced, none previously written down:
   deleted — `OKAY_SNIPPET_DEBT=write scripts/gate.sh
   "okayDeploy/testOnly okay.deploy.TestDocSnippets"` does that and can
   never add a line. The first pass found five examples that did not
-  compile or were stale, on pages that had passed every gate. NOTE:
-  `affected master` maps a docs-only diff to no project, so run that
-  command yourself on a docs lane (backlog: affected-docs-run-no-doc-tests).
+  compile or were stale, on pages that had passed every gate. Since
+  affected-docs-run-no-doc-tests (2026-09-28) `affected master` maps a
+  docs, specs, README, board or changelog.d change to okayDeploy, so a
+  docs lane's `affected master staged` runs those suites itself.
 
 ## Code rules the operator has set
 - NO UNBOUNDED STACK RECURSION (operator, 2026-09-25). A recursive
@@ -665,7 +669,10 @@ force, all already practiced, none previously written down:
   queue of lanes never emptied ran demoted end to end and lost nine
   tests to timeouts in seven modules (bench-window-demote-opt-in). If
   a gate log begins "runs on the efficiency cores meanwhile" and its
-  reds are TimeoutExceptions, that is why. `sh
+  reds are TimeoutExceptions, that is why — and since
+  gate-demote-timeouts (2026-09-28) `gate.sh` says so itself: a
+  demoted run whose only reds are munit timeouts ends `gate: DEMOTED`
+  (exit 122, retried by `gate-retry.sh`), never RED. `sh
   scripts/bench-window.sh --status` names who holds what. `jmh-lane.sh`
   QUEUES behind a held lock instead of refusing, so do not wrap it in a
   retry loop. Measured why: before this, 101 lane attempts in an hour
