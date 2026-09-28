@@ -1,6 +1,0 @@
-feature/zio-async-bridge 2026-09-28T20:01:06Z
-agent: codex
-heartbeat: 2026-09-28T20:03:00Z
-status: in-progress
-done-so-far: managed worktree created; inspected Async callback drive and ZIO bridge
-next: write and commit the cancellable callback-driver feature spec
