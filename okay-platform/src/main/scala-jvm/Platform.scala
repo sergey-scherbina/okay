@@ -490,6 +490,11 @@ object Schedulers {
     // DEBUG-PROBE (schedulers-family): what actually happened
     private[okay] val activations = java.util.concurrent.atomic.AtomicLong()
     private[okay] val stepDowns = java.util.concurrent.atomic.AtomicLong()
+    // DEBUG-PROBE (adaptive-blocking-io): tasks handed to a virtual thread
+    private[okay] val spills = java.util.concurrent.atomic.AtomicLong()
+    /** whether `spill` may hand work to a virtual thread: here, before the
+     * workers start, so none reads it uninitialised */
+    private val canSpill: Boolean = overflow > 0 && Schedulers.hasVirtualThreads
     private[okay] def stats: String =
       val sb = StringBuilder()
       var i = 0
@@ -649,7 +654,7 @@ object Schedulers {
       w.blockDepth += 1
       if w.blockDepth == 1 then
         val _ = awake.decrementAndGet()
-        if workPending() && !activateNext() && overflow > 0 then grow(1)
+        if workPending() && !activateNext() && overflow > 0 && grow(1) == 0 then spill(1, w)
 
     /** is work waiting anywhere — the submission queue or ANY worker's
      * deque, not only the blocking worker's: a woken worker that steals
@@ -743,7 +748,9 @@ object Schedulers {
         val waiting = w.size
         if waiting > 0 && end == w.seenThiefEnd && !w.parked then
           val woken = wakeUpTo(waiting)
-          if woken < waiting && overflow > 0 then grow(waiting - woken)
+          if woken < waiting && overflow > 0 then
+            val left = waiting - woken - grow(waiting - woken)
+            if left > 0 then spill(left, w)
         w.seenThiefEnd = end
         i += 1
       // THE SUBMISSION QUEUE, by the same question
@@ -758,7 +765,9 @@ object Schedulers {
       if head != null && (head eq seenHead) then
         val waiting = submissionsSize.get
         val woken = wakeUpTo(waiting)
-        if woken < waiting && overflow > 0 then grow(waiting - woken)
+        if woken < waiting && overflow > 0 then
+          val left = waiting - woken - grow(waiting - woken)
+          if left > 0 then spill(left, null)
       seenHead = head
 
     /** the submission queue's head at the monitor's last look: read and
@@ -779,9 +788,11 @@ object Schedulers {
         i += 1
       woken
 
-    /** start up to `k` overflow workers, never past `n + overflow` */
-    private def grow(k: Int): Unit =
+    /** start up to `k` overflow workers, never past `n + overflow`; how
+     * many were */
+    private def grow(k: Int): Int =
       var left = k
+      var started = 0
       while left > 0 do
         val next = live.get
         if next >= n + overflow then left = 0
@@ -789,6 +800,51 @@ object Schedulers {
           val _ = activations.incrementAndGet()
           startWorker(next)
           left -= 1
+          started += 1
+      started
+
+    /**
+     * SPILL AT THE BOUND (adaptive-blocking-io, 2026-09-28;
+     * specs/schedulers.md "Blocking past the bound"). Every worker the
+     * scheduler may own exists and work is still waiting behind blocked
+     * ones: up to `k` tasks that have NOT STARTED run each on its own
+     * virtual thread instead of waiting for a worker to come back. A
+     * fiber that started cannot move (its stack is on the worker); one
+     * that has not can run anywhere. On its virtual thread a raw socket
+     * read unmounts and a door parks, so neither holds a platform thread;
+     * its forks go to the submission queue (it is not a worker), and
+     * after an `Await` it resumes where its answer arrives, the Drive's
+     * rule on every member. Only where Loom exists and only on a
+     * `watched` scheduler: plain `own` keeps its thread count. Called only
+     * after `grow` came back short, so the per-task and per-fork paths
+     * gain nothing. Taken from `from`'s deque first (the stuck worker's
+     * waiting siblings), then the submission queue, then any deque.
+     */
+    private def spill(k: Int, from: Worker | Null): Unit =
+      if canSpill then
+        var left = k
+        while left > 0 do
+          val t = spillTake(from)
+          if t == null then left = 0
+          else
+            val _ = spills.incrementAndGet()
+            val _ = Thread.startVirtualThread: () =>
+              val _ = t.exec()
+              if stuckAfterMillis > 0L then { val _ = completed.incrementAndGet() }
+            left -= 1
+
+    private def spillTake(from: Worker | Null): DriveTask[?] | Null =
+      val mine = if from != null then from.taken() else null
+      if mine != null then mine
+      else
+        val s = fromSubmissions()
+        if s != null then s
+        else
+          val alive = live.get
+          var i = 0
+          var t: DriveTask[?] | Null = null
+          while t == null && i < alive do { t = workers(i).taken(); i += 1 }
+          t
 
     if monitor != null then monitor.start()
 
@@ -822,6 +878,7 @@ object Schedulers {
           if next < n + overflow && live.compareAndSet(next, next + 1) then
             val _ = activations.incrementAndGet()
             startWorker(next)
+          else if next >= n + overflow then spill(1, null)
         lastCompleted = done
       watchdog = timerWheel.scheduleWithFixedDelay(check, stuckAfterMillis, stuckAfterMillis,
         java.util.concurrent.TimeUnit.MILLISECONDS)
