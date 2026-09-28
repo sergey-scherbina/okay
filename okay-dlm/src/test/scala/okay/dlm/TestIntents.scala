@@ -84,3 +84,27 @@ class TestIntents extends FunSuite:
     assert(Alphabet.none.agrees("pl", "ищу работу"))
     assertEquals(Alphabet.of("ru", "xx").left.map(_.contains("xx")), Left(true))
   }
+
+  test("THE MENU IS SELECTED BY THE LIBRARY: internal out, rank then name in order, the help cell of the language asked") {
+    val set = Intents.parse(raw).toOption.get
+    assertEquals(set.menu("ru").map(_._1), Vector("need"), "accept is internal; other was never described")
+    assertEquals(set.menu("ru").head._2, Intent.Help("нужен сантехник", "ищет мастера"))
+    assertEquals(set.menu("pl"), Vector.empty, "described in no other language, so offered in none")
+  }
+
+  test("the order is rank then NAME, so a build that moves a rule does not move the menu") {
+    def one(name: String, rank: Int) =
+      Intent(name, help = Map("en" -> Intent.Help(name, s"does $name")), rank = rank)
+    val set = Intents(Vector(one("zulu", 10), one("alpha", 10), one("mid", 5),
+      Intent("hidden", help = Map("en" -> Intent.Help("h", "h")), internal = Some("carries a number"))))
+    assertEquals(set.menu("en").map(_._1), Vector("mid", "alpha", "zulu"))
+  }
+
+  test("menuHoles names what a language describes nowhere — a menu that shrinks in silence is the failure") {
+    val set = Intents(Vector(
+      Intent("a", help = Map("en" -> Intent.Help("a", "a"), "ru" -> Intent.Help("а", "а"))),
+      Intent("b", help = Map("en" -> Intent.Help("b", "b"))),
+      Intent("c", internal = Some("not offered"))))
+    assertEquals(set.menuHoles(Set("en", "ru", "pl")), Map("ru" -> Vector("b"), "pl" -> Vector("a", "b")))
+    assertEquals(set.menuHoles(Set("en")), Map.empty[String, Vector[String]], "nothing missing is no entry")
+  }

@@ -30,6 +30,14 @@ final case class Exemplars(encoder: String, dim: Int, rows: Vector[Exemplar]):
   def labels: Vector[String] = rows.map(_.label).distinct
   /** what a tier is fitted from */
   def labelled: Vector[(Embedding, String)] = rows.map(e => (e.vec, e.label))
+  /** THE TABLE BY HASH: SHA-256 of its checkpoint bytes, which are a
+   * pure function of the numbers — so two builds of the same corpus
+   * under the same encoder hash the same, and an audit names the
+   * table a decision was made with (specs/dlm-learning.md) */
+  lazy val hash: String =
+    val bytes = Checkpoint.bytes(encoder, dim, rows.map(_.label), rows.map(_.vec.toArray))
+    val arr = new Array[Byte](bytes.remaining()); bytes.get(arr)
+    java.security.MessageDigest.getInstance("SHA-256").digest(arr).take(16).map(b => f"${b & 0xff}%02x").mkString
 
 object Exemplars:
 

@@ -35,6 +35,35 @@ class TestChats extends munit.FunSuite:
     assertEquals(Chats.heard(Update.Other(4, "edited_message")), None)
   }
 
+  test("AWAITING: between the screen's question and the answer, the chat is the screen's — and then it is not") {
+    import Ui.*
+    val api = FakeApi { case "sendMessage" => FakeApi.ok("""{"message_id":1}"""); case "editMessageText" => FakeApi.ok("true")
+      case "answerCallbackQuery" => FakeApi.ok("true") }
+    val bot = Bot(api, token)
+    def view(s: String): Ui = Column(Vector(Input(s, "name", "Name"), Button("go", "go")))
+    def update(s: String, e: Event): String = e match { case Event.Edited("name", v) => v; case _ => s }
+    val chats = Chats(bot, (_, host) => Ui.run("")(view)(update)(host).map(_ => ()))
+    def until(what: => Boolean, ms: Int = 5000): Unit =
+      val end = System.currentTimeMillis + ms
+      while !what && System.currentTimeMillis < end do Thread.sleep(10)
+      assert(what, s"waited ${ms}ms: ${api.calls.map(_._1).toList}")
+    assert(!chats.awaiting(5), "nothing asked yet")
+    go(chats.hear(Update.Message(1, 5, 42, 9, "hi")))
+    until(api.of("sendMessage").nonEmpty)
+    // the pencil beside the Input: the screen asks, with ForceReply
+    val markup = Js.field(api.of("sendMessage").head, "reply_markup").get
+    val pencil = Js.arr(Js.arr(markup, "inline_keyboard").head, "").headOption
+      .orElse(Js.arr(markup, "inline_keyboard").headOption.flatMap { case Json.JArr(row) => row.headOption; case _ => None })
+      .map(k => Js.str(k, "callback_data")).getOrElse(fail(s"no keyboard in ${Json.print(markup)}"))
+    go(chats.hear(Update.Callback(2, 5, 42, 1, pencil, "cb-1")))
+    until(chats.awaiting(5))
+    assert(Js.field(api.of("sendMessage")(1), "reply_markup").exists(j => Json.print(j).contains("force_reply")))
+    // the typed value: the screen's, and the chat is free again
+    go(chats.hear(Update.Message(3, 5, 42, 10, "ada")))
+    until(api.of("editMessageText").exists(j => Js.str(j, "text").contains("ada")))
+    assert(!chats.awaiting(5), "the question was answered")
+  }
+
   test("THE GATE: a counter application, pressed through Chats, sends one message and then edits it") {
     import Ui.*
     val api = FakeApi { case "sendMessage" => FakeApi.ok("""{"message_id":1}"""); case "editMessageText" => FakeApi.ok("true")

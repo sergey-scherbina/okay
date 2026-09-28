@@ -119,6 +119,12 @@ two.
       a `Message` is `(chat, Said(text))`, everything else is `None` — a
       payment or a pre-checkout is the consumer's, before or beside the
       host.
+- [x] **`Chats.awaiting(chat)`** is true between the screen's `Ask` (an
+      `Input` focused) and the next message or press of that chat: the
+      one fact a consumer that understands text ITSELF needs before it
+      decides whose the next message is. Without it the consumer either
+      takes the value the screen asked for or hands the screen a sentence
+      it has no focus for, which is no event, no act and no reply.
 - [x] **`Chats.open(chat)`** opens a chat's application without hearing a
       word: for a consumer that understood the message itself (a
       sentence with an address in it is not the field's value) and
@@ -193,6 +199,10 @@ all green, none on the network —
   EDITS message 1 to `count: 1`; a second chat opens its own application
   at `count: 0`.
 - `TestReadme`: both README examples compiled and the plain one run.
+
+`Chats.awaiting` (2026-09-28, telegram-awaiting): the flag is kept where
+the fact already passes — `perform` sees the `Ask` — so no okay-ui change
+was needed and the pure host stayed pure.
 
 The JS leg: `okayTelegramJS/Test/compile` green — the same sources and
 the shared `TestUpdate`; the effectful suites are JVM-only by placement.

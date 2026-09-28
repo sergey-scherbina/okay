@@ -30,6 +30,10 @@ is the caller's, passed in.**
 | `Calibration` | reliability per layer, Brier where a probability exists, a rule's correction rate with people and sentences beside it |
 | `Embedder` | the encoder as a seam — ours (`hashing`) by default, `static` for the distilled table, `of` for a model on disk, a remote one from `okay-dlm-remote` |
 | `Judge` | the judge as a seam — which of these options is this text, with probabilities and a confidence; ours (`probe`) by default, `Fit` as the configuration seam, `orElse` and `guarded` around one that leaves the process |
+| `Teaching` | who may teach what: own lessons, teachers, stewards, a kill switch per channel — ours the narrowest ([specs/dlm-learning.md](../../specs/dlm-learning.md)) |
+| `Ledger` | every change to what the model knows, refusals included; append-only, `replay` is the fold, a JSON wire for a service's journal |
+| `Explanation` | why a decision: the layer, the rule verbatim, the lesson and whose, everything noticed, the judge's ranking and name, the encoder, the tables by hash |
+| `Governed` | the model read and corrected under rights: `explain`, `lessons`, `teach`, `forget`, `share`, `ledger` — learning never creates a class, edits a rule or moves a threshold, by the type |
 | `Language.Detector` | the detector as a seam — `Trigrams` (ours) or `Judged` (a judge asked which language) |
 
 **Depends on:** `okay-intent` (the probe, centroids, `Taxon`),
