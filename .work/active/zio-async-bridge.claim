@@ -1,6 +1,6 @@
-feature/zio-async-bridge 2026-09-28T00:00:00Z
+feature/zio-async-bridge 2026-09-28T20:01:06Z
 agent: codex
-heartbeat: 2026-09-28T00:00:00Z
-status: planning
-done-so-far: queued bridge design; inspecting existing Async drive and ZIO interop
-next: create isolated worktree and write the feature spec before implementation
+heartbeat: 2026-09-28T20:03:00Z
+status: in-progress
+done-so-far: managed worktree created; inspected Async callback drive and ZIO bridge
+next: write and commit the cancellable callback-driver feature spec
