@@ -78,6 +78,13 @@ cross-build lands so nothing has to be broken later.
       instead of leaving it early.
 
 ## Decisions
+- 2026-09-28 (native-pool-stale-interrupt): Native's `pool` Task holds
+  its runner under a monitor only while the body runs, clears it in
+  `finally` and consumes an interrupt meant for the finished task there
+  — the JVM `forkJoin` shape of supervised-waits-on-failure. Before, a
+  cancel of a finished fiber interrupted the worker's current task, and
+  an interrupt set after the body would have killed the worker in
+  `TaskQueue.take`. TestNativeScheduler pins it, red first.
 - 2026-09-28 (supervised-waits-on-failure): `supervised` answers a
   failure from `whenIdle`, and the answer WAITS for an uninterruptible
   child exactly as the success answer always did — that is the header's

@@ -134,22 +134,36 @@ object Schedulers {
 given Scheduler = Schedulers.threads
 
 /** one queued unit of work, cancellable while queued or running —
- * the runner reference is set only for the task actually executing
- * on it, so a stale cancel() can never reach a later task */
+ * the runner reference is held only WHILE the task executes, under
+ * this object's monitor, so a stale cancel() can never reach a later
+ * task (native-pool-stale-interrupt, 2026-09-28: the first cut set
+ * `runner` and never cleared it, so cancelling a fiber that had
+ * finished interrupted whatever its worker was running by then — and
+ * an interrupt left set after the body would have thrown the worker
+ * out of `TaskQueue.take`'s wait). The `finally` clears the runner
+ * and CONSUMES an interrupt meant for this task, both under the
+ * monitor `cancel` takes to deliver one. */
 private final class Task(body: () => Unit, skipped: () => Unit):
-  @volatile private var cancelled = false
-  @volatile private var runner: Thread = null
+  private var cancelled = false
+  private var runner: Thread = null
 
   def run(): Unit =
-    if !cancelled then
-      runner = Thread.currentThread()
-      if !cancelled then body() else skipped()
+    val go = synchronized {
+      if cancelled then false else { runner = Thread.currentThread(); true }
+    }
+    if go then
+      try body()
+      finally synchronized {
+        runner = null
+        val _ = Thread.interrupted()
+      }
     else skipped()
 
-  def cancel(): Unit =
+  def cancel(): Unit = synchronized {
     cancelled = true
     val r = runner
     if r != null then r.interrupt()
+  }
 
 /** a plain FIFO queue, hand-rolled: workers block in wait() (a real
  * park — pool workers are meant to be few and long-lived, not the
