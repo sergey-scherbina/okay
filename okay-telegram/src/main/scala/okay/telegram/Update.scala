@@ -30,9 +30,6 @@ enum Update:
 
 object Update:
 
-  /** the kinds this module reads, in the order the API distinguishes them */
-  private val kinds = Vector("message", "callback_query", "pre_checkout_query")
-
   def parse(u: Json): Update =
     val id = Js.long(u, "update_id")
     val kind = u match

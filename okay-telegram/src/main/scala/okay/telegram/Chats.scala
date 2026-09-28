@@ -1,7 +1,6 @@
 package okay.telegram
 
 import okay.*
-import okay.given
 import okay.ui.{Host, Telegram}
 import okay.ui.Telegram.Act
 

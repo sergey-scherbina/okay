@@ -3,7 +3,7 @@ package okay.telegram
 import okay.*
 import okay.given
 import okay.codec.Json
-import okay.ui.{Event, Host, Telegram, Ui}
+import okay.ui.{Event, Telegram, Ui}
 import okay.ui.Telegram.{Act, Message}
 import okay.ui.Telegram.Key
 
@@ -85,7 +85,12 @@ class TestChats extends munit.FunSuite:
       case Json.JArr(row) => row.head; case _ => Json.JNull, "callback_data")
     // the press: answered, and the ONE message edited with the new count
     go(chats.hear(Update.Callback(2, 5, 42, 1, data, "cb-1")))
-    until(api.of("editMessageText").nonEmpty)
+    // BOTH calls, in either order (scheduler-default-flip): the press is
+    // an event for the application, whose re-render on its own fiber is
+    // the edit, and an `Answer` act the door performs — two independent
+    // calls. Waiting for the edit alone and then asserting the answer
+    // read their order; on `adaptive` the edit sometimes came first
+    until(api.of("editMessageText").nonEmpty && api.of("answerCallbackQuery").nonEmpty)
     assertEquals(Js.str(api.of("editMessageText").head, "text"), "count: 1")
     assertEquals(Js.long(api.of("editMessageText").head, "message_id"), 1L)
     assertEquals(api.of("answerCallbackQuery").map(Js.str(_, "callback_query_id")), Vector("cb-1"))
