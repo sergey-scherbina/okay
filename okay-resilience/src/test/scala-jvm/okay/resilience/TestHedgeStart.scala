@@ -18,17 +18,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReferenc
  */
 class TestHedgeStart extends munit.FunSuite {
 
-  /** a timer the test fires */
-  final class ManualTimer extends Timer:
-    private val armed = AtomicReference(Vector.empty[() => Unit])
-    def after(millis: Long)(k: () => Unit): () => Unit =
-      armed.updateAndGet(_ :+ k)
-      () => { armed.updateAndGet(_.filterNot(_ eq k)); () }
-    def fireAll(): Int =
-      val ks = armed.getAndSet(Vector.empty)
-      ks.foreach(_())
-      ks.size
-    def pending: Int = armed.get.size
+  // the timer the test fires is the module's `ManualTimer`
 
   /**
    * Which attempt the running fiber IS, decided when it was FORKED
