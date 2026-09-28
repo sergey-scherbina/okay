@@ -178,3 +178,42 @@ top of map-cost-residual's in-place foldM:
   and the generic calls. It is not bind count.
 - Use it for MEMORY, where a fold is long and its step is `prog.map(g)`;
   for time, foldM is the same.
+
+## The 1.8x named: boxing, the Vector read, and not the calls (fold-each-residual-split, 2026-09-28)
+
+fold-each left `stateFoldEach` at 1.8x the hand-written `stateOneBind`
+and named the residual "the boxed accumulator and the generic calls"
+without a number for either. A ladder TOP-DOWN from the library's
+`foldEach` to the hand loop, each rung removing ONE thing the library
+does that `stateOne` does not, in BuildShapeBenchmark, N = 1000, every
+lane its own `jmh-lane.sh` run (`-f 2 -wi 3 -w 1 -i 5 -r 1 -prof gc`,
+box quiet throughout, two lanes retried by the script after a sibling's
+gate started mid-run; history.d `…-fold-each-residual-split.tsv`):
+
+| rung | lane | µs/op | B/op | removes |
+|---|---|---:|---:|---|
+| D0 | stateFoldEach | 17.35 ± 0.21 | 143 712 | — (the library: erased `B`, `f`/`combine` Function values, `v(i)`) |
+| D1 | stateFoldEachInt | 14.04 ± 0.10 | 127 864 | the erased accumulator: `foldEach`'s `go` verbatim with `B`, `A` = `Int` and `X` still generic — **−3.3 µs, −16 B a step** (the `Integer.valueOf` of every sum past 127) |
+| D2 | stateOneVecBind | 13.31 ± 0.93 / 13.35 ± 0.88 (re-read) | 111 816 | the two generic calls (`f`, `combine`) and the closure over them — **−0.7 µs, −16 B a step**; the closure was the bytes, the calls are inside the error |
+| D3 | stateOneBind | 10.02 ± 0.12 | 111 816 | `items(i)`: the Vector's radix walk and the unbox, a step — **−3.3 µs, 0 B** |
+
+**The residual is two things of ~3.3 µs each, and the generic calls are
+not one of them.** The boxed accumulator is what fold-each guessed (and
+map-cost-residual's `Acc` pair had priced at ~2), and the language's:
+Scala 3 has no `@specialized`, `B` is erased, and a step's sum is boxed
+on its way into the next `go`. The other half nobody had named: `v(i)`
+on the `IndexedSeq` foldM/foldEach index into, a `Vector.apply` per
+step — two radix levels, three bounds checks and an unbox — reads 3.3 ns
+against a loop variable. The calls through `Function1`/`Function2`
+cost nothing measurable in a fork where they are monomorphic; D2's
+fork-to-fork split (12.6 / 13.9, the same in both reads) is wider than
+that rung's whole Δ.
+
+The Vector read is the library's to remove, and one rung priced the
+road: `stateFoldEachArr` is `foldEach` verbatim with `xs.toIndexedSeq`
+replaced by `ArraySeq.untagged.from(xs)` — a flat `Array[AnyRef]` read
+by a bounds check and a load, copied ONCE per program (an `ArraySeq`
+input passes through; a `Vector` is copied through its iterator, 4 KB
+per 1000 elements here). **14.40 ± 0.17 µs, 147 816 B/op: 1.21x over
+the library's 17.35 at +4 104 B/op** — the copy costs what the walk
+cost on one step out of a thousand.

@@ -156,4 +156,59 @@ class BuildShapeBenchmark {
   def stateFoldEach(): Int =
     val p = !.foldEach(items)(0)(i => State.modify[Int](_ + i))(_ + _)
     !.run(State.handle[Int](0)(p))._2
+
+  // ---- fold-each-residual-split: the ladder from stateFoldEach DOWN to
+  // stateOneBind. fold-each named its 1.8x over the hand loop as "the
+  // boxed accumulator and the generic calls" without a number for
+  // either. Each rung below removes ONE thing the library's foldEach
+  // does that stateOne does not.
+
+  /** rung D1: `Effects.foldEach`'s `go` verbatim, with the accumulator
+   * and the element's answer fixed to `Int` and only the element type
+   * still generic — so `v(i)` still hands `f` the Vector's own boxed
+   * element (no re-box the library does not pay), `f` and `combine` are
+   * still Function values called through their interfaces, and the
+   * closure captures the same six things. What is gone is the erased
+   * `B`: no `Integer.valueOf` of the sum a step, no unbox on the way in. */
+  private def foldEachInt[X](xs: IndexedSeq[X])(f: X => Int ! State % Int)(combine: (Int, Int) => Int): Int ! State % Int =
+    val n = xs.length
+    def go(i: Int, acc: Int): Int ! State % Int =
+      if i >= n then pure(acc) else f(xs(i)).flatMap(a => go(i + 1, combine(acc, a)))
+    Free.delay(() => go(0, 0))
+
+  @Benchmark
+  def stateFoldEachInt(): Int =
+    val p = foldEachInt(items)(i => State.modify[Int](_ + i))(_ + _)
+    !.run(State.handle[Int](0)(p))._2
+
+  /** rung D2: stateOne's loop, the step and the combine written inline
+   * (no Function values, no interface calls), but the element still
+   * read out of the Vector as foldEach reads it. What is left over
+   * stateOneBind is `items(i)`: the radix walk and the unbox. */
+  private def stateOneVec(i: Int, acc: Int): Int ! State % Int =
+    if i >= N then pure(acc)
+    else
+      val x = items(i)
+      State.modify[Int](_ + x).flatMap(s => stateOneVec(i + 1, acc + s))
+
+  @Benchmark
+  def stateOneVecBind(): Int =
+    !.run(State.handle[Int](0)(stateOneVec(0, 0)))._2
+
+  /** the road a rung named: `Effects.foldEach` verbatim (erased `B`,
+   * Function values, the lot), with the ONE line changed — the
+   * elements copied into a flat `ArraySeq` once per program instead of
+   * read out of the Vector by its radix walk on every step. The copy is
+   * paid inside the measured method, as the library would pay it. */
+  private def foldEachArr[X, A, B](xs: Iterable[X])(z: B)(f: X => A ! State % Int)(combine: (B, A) => B): B ! State % Int =
+    val v = scala.collection.immutable.ArraySeq.untagged.from(xs)
+    val n = v.length
+    def go(i: Int, acc: B): B ! State % Int =
+      if i >= n then pure(acc) else f(v(i)).flatMap(a => go(i + 1, combine(acc, a)))
+    Free.delay(() => go(0, z))
+
+  @Benchmark
+  def stateFoldEachArr(): Int =
+    val p = foldEachArr(items)(0)(i => State.modify[Int](_ + i))(_ + _)
+    !.run(State.handle[Int](0)(p))._2
 }
