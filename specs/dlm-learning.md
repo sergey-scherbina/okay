@@ -110,16 +110,16 @@ what was declined cannot see an attack.
 
 ## 4. Behavior
 
-- [ ] a lesson to a class the model does not have is refused, and the refusal is in the ledger
-- [ ] a lesson never changes a rule, a slot, a threshold or a table — asserted over the model's own data before and after any sequence of lessons
-- [ ] a person's lesson routes only that person's words until the sharing bar; a stranger's same words are unchanged
-- [ ] `Teaching.enabled(Lesson) == false` makes every `teach` a refusal and leaves the fold as it was — the kill switch works without a redeploy
-- [ ] `forget` by the person, or by a steward, removes the lesson and unshares a pair only they held
-- [ ] `share` by a teacher makes one person's pair everyone's; by anybody else it is refused
-- [ ] `explain` names the layer, the rule verbatim, the lesson and its owner, the judge and the encoder — for a turn a rule decided, a lesson decided, a judge decided, and one nobody could
-- [ ] the ledger replays: the fold over `Learned`/`Forgotten` entries is the same `Memory` the live process holds
-- [ ] a rebuilt table is an entry with the hash before and after and the corpus it came from, so a wrong build is named and reverted by hash, not by memory
-- [ ] with learning off, a replay of the journal reaches the same decisions as were recorded — the model does not drift while nobody is teaching it
+- [x] a lesson to a class the model does not have is refused, and the refusal is in the ledger
+- [x] a lesson never changes a rule, a slot, a threshold or a table — asserted over the model's own data before and after any sequence of lessons
+- [x] a person's lesson routes only that person's words until the sharing bar; a stranger's same words are unchanged
+- [x] `Teaching.enabled(Lesson) == false` makes every `teach` a refusal and leaves the fold as it was — the kill switch works without a redeploy
+- [x] `forget` by the person, or by a steward, removes the lesson and unshares a pair only they held
+- [x] `share` by a teacher makes one person's pair everyone's; by anybody else it is refused
+- [x] `explain` names the layer, the rule verbatim, the lesson and its owner, the judge and the encoder — for a turn a rule decided, a lesson decided, a judge decided, and one nobody could
+- [x] the ledger replays: the fold over `Learned`/`Forgotten` entries is the same `Memory` the live process holds
+- [x] a rebuilt table is an entry with the hash before and after and the corpus it came from, so a wrong build is named and reverted by hash, not by memory
+- [x] with learning off, a replay of the journal reaches the same decisions as were recorded — the model does not drift while nobody is teaching it
 
 ## 5. Design
 
@@ -183,6 +183,21 @@ label with no lifetime attaching one sentence to twenty-five turns
 
 ## 8. Staging
 
-1. `Teaching`, `Ledger`, `Governed` over the memory fold with ours by default; the explain value; tests for every behavior line — library only.
+1. DONE 2026-09-28 (dlm-learning): `Teaching`, `Ledger`, `Governed` over the memory fold with ours by default; `Explanation`; `Exemplars.hash`; a test per behavior line, eleven of them.
 2. Okay!Chat: `Teaching` over its admin/teacher lists, the ledger over its journal, `/explain` and `/v1/lessons` under its rights, the explanation under `/route`.
 3. The table hash and `Rebuilt` in `Compile`; revert by hash.
+
+## Results — dlm-learning (2026-09-28)
+
+Stage 1, library only. `Teaching` (`roles`, `off`, `switched`; ours
+the narrowest), `Ledger` (`Entry` with `Refused`, `Sink`, `Recorded`,
+`replay`, the JSON wire), `Explanation` (`of` a router and a memory;
+`encode`), `Governed` (`route`, `explain`, `lessons`, `shared`,
+`ledger`; `teach`, `forget`, `share`, `rebuilt`), `Exemplars.hash`.
+Eleven tests, one per behavior line; 100 in the module.
+
+Two things the tests decided. A `Refused` names WHO was refused and BY
+whom separately, because a steward refused for somebody else is not
+that somebody's refusal. And `share` is `teach` in the teacher's own
+name — the fold already shares a teacher's pair, so a second mechanism
+would have been a second truth.
