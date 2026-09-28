@@ -143,13 +143,21 @@ class TestResilient extends munit.FunSuite {
         }
       }
 
+    // THE BUDGET IS VIRTUAL, THE TIMER IS NOT (sentinel-single-consumer-
+    // lost-end's gate, 2026-09-28): `Deadline.enforce` arms a REAL
+    // `Timer.after(left)` for what the virtual clock says is left, so a
+    // budget of 100 gave hop 2's call 80 wall-clock milliseconds — and a
+    // loaded whole-build JVM took longer than that to fork the fiber and
+    // answer the Fake: 504 where 200 was expected, green 3/3 alone. The
+    // numbers below say the same thing a thousand times larger, where
+    // no box is slow enough to matter.
     now = 0
-    val fast = run(hop1(20)(Request.get("http://hop1/", Seq((Deadline.header, "100")))))
+    val fast = run(hop1(20000)(Request.get("http://hop1/", Seq((Deadline.header, "100000")))))
     assertEquals(fast.status, 200)
-    assertEquals(header(far.last, Deadline.header), Some("80"))   // what was left after the work
+    assertEquals(header(far.last, Deadline.header), Some("80000"))   // what was left after the work
 
     now = 0
-    val slow = run(hop1(120)(Request.get("http://hop1/", Seq((Deadline.header, "100")))))
+    val slow = run(hop1(120000)(Request.get("http://hop1/", Seq((Deadline.header, "100000")))))
     assertEquals(slow.status, 504)
     assertEquals(far.calls.get, 1)                                 // hop 2 was never asked
   }

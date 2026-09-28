@@ -24,3 +24,8 @@
   that frees a slot calls `placeEnd`).
 - Gate: TestLateOrLost, TestChannelLaws, TestCoreAsyncChannelLaws 128
   green, 0 warnings.
+- Also, found by this lane's affected gate and fixed: TestResilient's
+  two-hops test gave hop 2 an 80 ms WALL-CLOCK timer (`Deadline.enforce`
+  arms a real `Timer.after` for the virtual clock's remainder), which a
+  loaded whole-build JVM overran once (504 for 200; 3/3 green alone).
+  The budget is a thousand times larger now, the assertions with it.
