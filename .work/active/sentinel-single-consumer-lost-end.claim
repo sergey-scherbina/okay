@@ -1,0 +1,1 @@
+claude session_01LZNspDq7ZU8TRfNoTnpRMD, 2026-09-28, operator: fix the flakes — the six-channels end law (SentinelChannel/single-consumer, CoreAsyncChannel): the diagnosis must outlive munit timeout, then the cause
