@@ -27,4 +27,5 @@
       the registration storm to zero and the fast forks to 188-197 us,
       and still left a 2-4/10 tail at 215-247 against the shared
       channel's 195-204: the residual is a caught-up consumer waiting on
-      the producers, in that entry.
+      the producers — see the sprint item, which now carries the
+      operator's decision to accept it.

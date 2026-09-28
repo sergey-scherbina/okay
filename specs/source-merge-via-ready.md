@@ -259,6 +259,7 @@ from 160 per op to 0.0, wakes from 99 to 2, and the fast ring forks
 channel's 195-204 (same JVM code, same session, 0/10), mean 205-211
 against 200.0 ± 2.0. The residual is a caught-up consumer waiting on
 the producers — the ring's consumer is cheaper than this road's and
-catches up; this road's never does. The chunked roads stay here.
-Backlog: `ready-merge-chunk-forward` (refuted, with the reopen
-condition).
+catches up; this road's never does. The chunked roads stay here for
+this landing; the operator accepted the 1.06x mean for one mechanism
+and the next landing brings them over on the hybrid wait (sprint:
+`ready-merge-chunk-forward`).

@@ -1,8 +1,28 @@
-- [ ] ready-merge-chunk-forward — REFUTED A THIRD TIME 2026-09-28, and
-      this time the mechanism it named LANDED: the chunked merge roads
+- [ ] ready-merge-chunk-forward — the chunked merge roads
       (`Source.merge(chunked = true)`, `flushAfter`, `mergeFlushing`,
-      `either`) stay on the shared channel; `ReadyMerge` gained
-      poll-then-park (specs/ready-merge.md, the stage). THE TRAIL. The
+      `either`) onto the ring join, so there is ONE merge mechanism.
+      OPERATOR DECISION 2026-09-28: (1) the bar moves — a 1.06x mean
+      with a 1.15-1.2x tail in 2-4 forks of 10 is ACCEPTED for one
+      mechanism; (2) before stage 2, the consumer's wait becomes the
+      HYBRID — spin, then a micro-sleep (`parkNanos`; measured on this
+      box: `parkNanos(1)` sleeps 12 us p50 on a platform thread, 10 us
+      on a virtual one, so the producers get ~20-50 chunks ahead per
+      sleep and the consumer takes batches), then register and park; the
+      producer keeps its one check (`wakeOne` on an empty waiter queue is
+      one read) and pays nothing until the consumer truly blocks. On JS
+      there are no producer threads: spin and sleep are 0 there and the
+      side registers at once (a platform hook). That lane also answers
+      whether the residual tail is the polling consumer bouncing the
+      producer's cache line (a sleep removes the pressure) or the
+      producers' own fork-to-fork speed. THEN stage 2: the chunked
+      roads onto `ReadyMerge[Chunk[A]]` (the f0f355bd4 road, rebuilt
+      once already in this lane), `chunkedMerge`/`Channel.mergeChunked`
+      deleted, `okayChunked`/`okayChunkedFlush`/`okayChunkedFlushShort`
+      at k = 16/256/1024 measured against today's road, 5 forks per arm
+      alternating. LANDED FIRST, on its own (this lane's first landing):
+      poll-then-park in `ReadyMerge` — the mechanism in the trail below,
+      measured at parity on the elementwise road.
+      THE TRAIL. The
       two refuted receive-side fixes (ring-standing-receiver) changed
       HOW a side wakes; this lane counted WHEN a side registers and
       found the storm: on the chunked ring road (f0f355bd4's, rebuilt)
@@ -34,10 +54,9 @@
       fork variance. REFUTED on the way, by a counter: the merge
       resuming on the sending producer's thread after a park and
       staying there (0.0 of 4000 elements per op on a virtual thread,
-      every fork). REOPEN only with a design in which a caught-up
-      consumer costs the producers NOTHING (a producer-side batch
-      signal, or a merge that runs behind on purpose), or the operator
-      accepting a 1.06x mean with a 1.15-1.2x tail for one mechanism.
+      every fork). Both roads out of the tail are now the plan above: the operator
+      accepted the 1.06x, and the hybrid wait IS the merge that runs
+      behind on purpose.
       The mechanism itself is worth having on its own: the elementwise
       road measured 1.01x / 0.96x / 0.98x at capacity 64 / 256 / 1024
       against registering as before (same JVM code, arms alternating).

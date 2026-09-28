@@ -347,9 +347,11 @@ producer about to send is met by a poll and not by a hand-over.
 - [x] the elementwise road (`Source.merge`, `MergeCapBenchmark` cap
       64/256/1024) takes the same path: 1.01x / 0.96x / 0.98x against
       registering as before, same JVM code, 5 forks per arm alternating
-- [ ] stage 2 of specs/source-merge-via-ready.md: NOT RUN — the bar
-      above (no fork > 225 us, no arm slower than the shared channel)
-      was not met, twice (backlog: ready-merge-chunk-forward, refuted)
+- [ ] stage 2 of specs/source-merge-via-ready.md: not run in this
+      landing — the bar above (no fork > 225 us, no arm slower than the
+      shared channel) was not met twice; the operator then accepted a
+      1.06x mean for one mechanism and asked for the hybrid wait first
+      (sprint: ready-merge-chunk-forward, next landing)
 
 **Results (2026-09-28).** Rows in
 `src/jmh/history.d/2026-09-27T201816Z-ready-merge-chunk-forward-probe.tsv`.

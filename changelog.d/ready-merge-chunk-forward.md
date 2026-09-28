@@ -19,8 +19,11 @@ elementwise road 1.01x / 0.96x / 0.98x at capacity 64 / 256 / 1024
 against registering as before, same JVM code. NOT landed: the chunked
 roads onto the ring — 2-4 of 10 forks stayed at 215-247 against the
 shared channel's 195-204 (control, same session, 0/10), a caught-up
-consumer waiting on the producers; the bar was not met twice, stage 2
-was not run, the item is refuted with its reopen condition. Refuted on
+consumer waiting on the producers; the bar as written was not met
+twice, so stage 2 waits for the next landing: the operator accepted
+the 1.06x mean for one mechanism and asked for the hybrid wait (spin,
+micro-sleep, block) first — the item stays on the sprint with the
+plan. Refuted on
 the way, by a counter: the merge living on a producer's thread after a
 park. Rows in
 `src/jmh/history.d/2026-09-27T201816Z-ready-merge-chunk-forward-probe.tsv`;
