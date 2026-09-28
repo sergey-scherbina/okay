@@ -133,7 +133,11 @@ screen stays one message however many times it changes.
 
 - The Bot API is the consumer's. okay has no Telegram client and this
   lane does not add one: the consumer already has a transport, retries
-  and a token, and the acts are few and plain.
+  and a token, and the acts are few and plain. **Reversed 2026-09-28**
+  (operator: general-purpose platform code belongs in okay): the client
+  is [okay-telegram](telegram-bot.md), and its `Chats` is the consumer
+  this bullet spoke of — the acts are still few and plain, which is why
+  it is one small module rather than three copies.
 - Text above, keyboard below — a chat cannot interleave them. A tree
   that puts a button between two paragraphs draws both paragraphs, then
   the button. Recorded, not hidden.
