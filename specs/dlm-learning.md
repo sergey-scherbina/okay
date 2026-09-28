@@ -184,7 +184,7 @@ label with no lifetime attaching one sentence to twenty-five turns
 ## 8. Staging
 
 1. DONE 2026-09-28 (dlm-learning): `Teaching`, `Ledger`, `Governed` over the memory fold with ours by default; `Explanation`; `Exemplars.hash`; a test per behavior line, eleven of them.
-2. Okay!Chat: `Teaching` over its admin/teacher lists, the ledger over its journal, `/explain` and `/v1/lessons` under its rights, the explanation under `/route`.
+2. DONE 2026-09-28 (okay-chat `learning-doors`): `Teaching` over its admin/teacher lists, `OKAY_CHAT_LEARNING` as the switch on every channel, the journal as the ledger (the door writes the chat's own record shapes, refusals as `refused` records), `POST /v1/explain`, `GET/POST /v1/lessons`, `POST /v1/lessons/forget` under a partner token or the admin token.
 3. The table hash and `Rebuilt` in `Compile`; revert by hash.
 
 ## Results — dlm-learning (2026-09-28)
