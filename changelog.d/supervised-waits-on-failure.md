@@ -22,3 +22,9 @@
   wins), TestSupervised's forkJoin queued case (watched red first),
   TestNativeScheduler's skipped task answers. 66 green on JVM, JS and
   Native. okay2's twin filed as okay2-supervised-waits-on-failure.
+- Gate: `affected master staged` 5004 tests, one red — TestCoreAsyncChannelLaws'
+  "six channels at once", which failed the same way in two of a sibling's
+  whole-build gates the same quarter hour on an unrelated tree, drives
+  raw threads (no Scheduler, no cancel — not on this diff's path), and
+  ran 3/3 green alone on this tree; sighted in
+  sentinel-single-consumer-lost-end.
