@@ -1,5 +1,0 @@
-task: dlm-laya-smoke
-agent: sergiy
-branch: feature/dlm-laya-smoke
-started: 2026-09-28
-scope: deterministic DLM and optional Laya smoke demonstration
