@@ -1042,10 +1042,71 @@ object Schedulers {
      * `join()` on a cancelled fiber must return rather than wait for
      * an answer that will never come. The drive stops at its next
      * operation and a late answer is ignored (`done` keeps the first
-     * one), so this is the fiber's answer and nothing else can be. */
+     * one), so this is the fiber's answer and nothing else can be.
+     *
+     * AND IT INTERRUPTS the thread running this drive's code, if one is
+     * (drive-interrupts-blocking-run, 2026-09-28): Loom's cancel
+     * interrupts the fiber's thread, so a use blocked in a `Run` —
+     * `Thread.sleep`, a JDBC call, a `CanBlock` park — throws and its
+     * bracket releases at the cancel. A drive used to stop only between
+     * operations, and TestAsync's "a bracket cancelled by timeout
+     * releases its resource" failed the moment `adaptive` became the
+     * default. The interrupt is sent under this task's monitor while
+     * `runner` names the thread, and the slice clears it under the same
+     * monitor before it leaves, so it never outlives this drive's code
+     * on a pooled worker (whose `park` an interrupt flag would turn into
+     * a spin). */
     override def cancel(): Unit =
       super[Drive].cancel()
+      synchronized:
+        val t = runner
+        if t != null then t.interrupt()
       done(Left(java.util.concurrent.CancellationException("fiber cancelled")))
+
+    /** the thread running this drive's code right now, or null — set
+     * by the slice, cleared by the slice, read by `cancel`; a slice of
+     * ANOTHER drive nested inside one of ours on the same thread (a wake
+     * resumed inline) suspends it, so our cancel never interrupts code
+     * that is not ours */
+    @volatile private var runner: Thread | Null = null
+
+    override protected def sliceStarted(): AnyRef | Null =
+      val me = Thread.currentThread()
+      val outer = DriveTask.running.get
+      if outer != null then outer.suspend(me)
+      DriveTask.running.set(this)
+      runner = me
+      outer
+
+    override protected def sliceEnded(token: AnyRef | Null): Unit =
+      val me = Thread.currentThread()
+      synchronized { if runner eq me then runner = null }
+      // our cancel's interrupt is ours to take back, not the thread's
+      if cancelled then { val _ = Thread.interrupted() }
+      token match
+        case outer: DriveTask[?] =>
+          DriveTask.running.set(outer)
+          outer.resume(me)
+        case _ => DriveTask.running.set(null)
+
+    /** a nested slice starts on `me`: this drive's code is not running.
+     * An interrupt our cancel already sent is taken back here, so the
+     * nested code does not meet it, and `resume` sends it again */
+    private def suspend(me: Thread): Unit = synchronized:
+      if runner eq me then
+        runner = null
+        if cancelled then { val _ = Thread.interrupted() }
+
+    /** the nested slice is over: this drive's code runs on `me` again,
+     * and a cancel that landed meanwhile is delivered now */
+    private def resume(me: Thread): Unit = synchronized:
+      if runner == null then
+        runner = me
+        if cancelled then me.interrupt()
+
+  private[okay] object DriveTask:
+    /** the drive whose slice is running on this thread, if any */
+    val running: ThreadLocal[DriveTask[?] | Null] = new ThreadLocal[DriveTask[?] | Null]
 
   /** one honest platform thread per fiber: heavy, but works anywhere */
   val threads: Scheduler = new:

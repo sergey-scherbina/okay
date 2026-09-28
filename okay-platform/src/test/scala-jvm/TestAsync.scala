@@ -11,8 +11,11 @@ class TestAsync extends munit.FunSuite {
     assertEquals(prog.runWith, 42)
   }
 
-  test("spawn runs on a virtual thread; blocking parks it") {
-    assume(Schedulers.hasVirtualThreads, "this JVM has no virtual threads; auto is Schedulers.platform there")
+  test("spawn on loom runs on a virtual thread; blocking parks it") {
+    assume(Schedulers.hasVirtualThreads, "this JVM has no virtual threads")
+    // loom BY NAME since scheduler-default-flip: the default given is
+    // adaptive now, whose fibers run on its own workers
+    given Scheduler = Schedulers.loom
     val f = Async.spawn:
       async(Thread.currentThread().isVirtual).flatMap: v =>
         async { Thread.sleep(10); v }
@@ -89,16 +92,83 @@ class TestAsync extends munit.FunSuite {
     assert((System.nanoTime() - t0) / 1e9 < 3, "the sleeper did not hold us")
   }
 
-  test("a bracket cancelled by timeout releases its resource, as ZIO's interruption does") {
+  test("a bracket cancelled by timeout releases its resource, as ZIO's interruption does — on loom, adaptive and own") {
     import java.util.concurrent.{CountDownLatch, TimeUnit}
-    val parked = CountDownLatch(1)
-    val onAwait = bracket("r")(_ => parked.countDown())(_ => Async.sleep(5000).map(_ => 1))
-    assertEquals(Async.timeout(50)(onAwait).runWith, None)
-    assert(parked.await(2, TimeUnit.SECONDS), "a use parked on an Await leaked its resource when cancelled")
-    val blocked = CountDownLatch(1)
-    val onRun = bracket("r")(_ => blocked.countDown())(_ => async { Thread.sleep(5000); 1 })
-    assertEquals(Async.timeout(50)(onRun).runWith, None)
-    assert(blocked.await(2, TimeUnit.SECONDS), "a use blocked in a Run leaked its resource when cancelled")
+    // ON EVERY MEMBER A FIBER CAN BE CANCELLED ON (drive-interrupts-
+    // blocking-run, 2026-09-28): this law ran on the default given only,
+    // which was Loom, whose cancel interrupts the fiber's thread. On a
+    // drive (`own`, `adaptive`) a cancel only stopped the drive between
+    // operations, so the use blocked in a Run kept its resource for its
+    // whole five seconds — red the moment `adaptive` became the default.
+    // One worker, so the fiber after the cancel runs on the SAME thread
+    // and would meet an interrupt the drive failed to take back.
+    val owned = List("adaptive" -> Schedulers.adaptive.workers(1).build, "own" -> Schedulers.own.workers(1).build)
+    try
+      for (name, sch) <- ("loom" -> Schedulers.loom) :: owned do
+        given Scheduler = sch
+        val parked = CountDownLatch(1)
+        val onAwait = bracket("r")(_ => parked.countDown())(_ => Async.sleep(5000).map(_ => 1))
+        assertEquals(Async.timeout(50)(onAwait).runWith, None, name)
+        assert(parked.await(2, TimeUnit.SECONDS), s"$name: a use parked on an Await leaked its resource when cancelled")
+        val blocked = CountDownLatch(1)
+        val onRun = bracket("r")(_ => blocked.countDown())(_ => async { Thread.sleep(5000); 1 })
+        assertEquals(Async.timeout(50)(onRun).runWith, None, name)
+        assert(blocked.await(2, TimeUnit.SECONDS), s"$name: a use blocked in a Run leaked its resource when cancelled")
+        assertEquals(Async.spawn(async { Thread.sleep(20); 7 }).joinEither(), Right(7),
+          s"$name: the next fiber on the worker met an interrupt the cancel left behind")
+    finally owned.foreach(_._2.close())
+  }
+
+  test("a continuation that throws after an Await answered LATER fails its own fiber, on every drive") {
+    import java.util.concurrent.{CompletableFuture, TimeUnit, TimeoutException}
+    // drive-resume-throw-lost (2026-09-28): a drive resumed by a callback
+    // ran `apply(k(x))`, and `k(x)` — the fiber's own code — was evaluated
+    // as the ARGUMENT, before `apply`'s try. A throw there went to
+    // whoever called the callback (a finishing child fiber, a timer, a
+    // producer) and was lost with it: the fiber never answered, nothing
+    // parked, no thread ran it. Found by the default flip: okay-pool's
+    // elastic run threw `Cluster.Rescale` in such a continuation and its
+    // attempt stayed "running" for good (TestPoolElastic, 0 of 3 on own,
+    // drive and adaptive; 3 of 3 on Loom, whose continuation runs inside
+    // the blocking handler's loop).
+    val owned = List("adaptive" -> Schedulers.adaptive.workers(1).build, "own" -> Schedulers.own.workers(1).build)
+    try
+      for (name, sch) <- ("drive" -> Schedulers.drive()) :: owned do
+        val k = CompletableFuture[Either[Throwable, Int] => Unit]()
+        val f = sch.fork(() => Async.await[Int] { cb => k.complete(cb): Unit; () => () }
+          .map(x => if x > 0 then throw IllegalStateException(s"thrown after $x") else x))
+        val answered = CompletableFuture[Either[Throwable, Int]]()
+        f.onComplete(r => { answered.complete(r): Unit })
+        // the answer arrives LATER, from this thread: the callback path
+        val toCaller = scala.util.Try(k.get(5, TimeUnit.SECONDS)(Right(1)))
+        assert(toCaller.isSuccess, s"$name: the fiber's own failure was thrown at the thread that answered it: $toCaller")
+        val r = try answered.get(5, TimeUnit.SECONDS) catch case _: TimeoutException => fail(s"$name: the fiber never answered")
+        assertEquals(r.left.map(_.getMessage), Left("thrown after 1"), name)
+    finally owned.foreach(_._2.close())
+  }
+
+  test("a cancel interrupts only its own drive's code: a fiber resumed inline on its thread runs on") {
+    import java.util.concurrent.{CountDownLatch, TimeUnit}
+    // drive-interrupts-blocking-run: fiber A's Run wakes fiber B, whose
+    // continuation then runs INLINE on A's thread — a slice nested inside
+    // A's. A is cancelled while B's code sleeps there. The interrupt is
+    // A's, and B must not meet it: A's slice is suspended while B's runs,
+    // and the cancel reaches A when B's slice is over.
+    val sch = Schedulers.adaptive.workers(1).build
+    try
+      @volatile var wakeB: (Either[Throwable, Int] => Unit) | Null = null
+      val bParked, bSleeping = CountDownLatch(1)
+      val b = sch.fork(() => Async.await[Int] { k => wakeB = k; bParked.countDown(); () => () }
+        .flatMap(x => async { bSleeping.countDown(); Thread.sleep(300); x + 1 }))
+      assert(bParked.await(5, TimeUnit.SECONDS))
+      val a = sch.fork(() => async { wakeB.nn(Right(41)); "a" })
+      assert(bSleeping.await(5, TimeUnit.SECONDS))
+      a.cancel()
+      assertEquals(b.joinEither(), Right(42), "the fiber resumed inline was interrupted by another fiber's cancel")
+      assert(a.joinEither().isLeft, "a cancelled fiber answers with a failure")
+      assertEquals(sch.fork(() => async { Thread.sleep(20); 7 }).joinEither(), Right(7),
+        "the worker kept an interrupt the cancel should have taken back")
+    finally sch.close()
   }
 
   test("a bracket cancelled between two non-blocking steps on the callback drive releases") {
