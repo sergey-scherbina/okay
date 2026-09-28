@@ -556,3 +556,38 @@ live (the `PlatformPause` seam with them; okay-async gains a
       (one `buffer(1024)(s).drained`, no merge) with and without — the
       lane where a catch-up was a registration
 
+## Stage: the collector as the last door (abandoned-lazylist-releases-nothing, 2026-09-28)
+
+A merge read through `toLazyList` (Stream.scala:83, `LazyList.unfold`,
+each step its own `runWith`) and ABANDONED partway never ends: no
+drive and no fiber handler sees a program end, so the scope entered in
+front is never released and the feeder fibers stay parked on full
+channels for good — every road, not one mechanism (found by
+merge-scopes-everywhere's review). A close the caller can reach is
+`runFoldUntil` (the program ends, the drive releases); what a dropped
+LazyList needs is a door nobody has to call: the COLLECTOR. A
+`CancelScope` registers itself with `Unreachable` at construction — a
+`java.lang.ref.Cleaner` on the JVM, nothing on Native and JS, which
+have no such API — and the release runs ONCE through whichever door
+comes first (`CancelScope.Once`: the drive's end or cancel, the fiber's
+handler, the Cleaner). The action holds `once`, never the scope, so the
+scope can become unreachable. What keeps a live program's scope
+reachable is the program itself: the LazyList's tail thunk holds the
+rest, the rest holds the `Exit` node, the node holds the scope. Timing
+is the collector's, not ours — a backstop against a leak, not a
+deterministic stop. Literature: Boehm, "Destructors, finalizers, and
+synchronization" (POPL 2003) on why a finalizer must not touch what
+the program still touches and must be idempotent against the other
+doors; JEP 421 deprecating `finalize` in favour of `Cleaner`, whose
+action runs on its own thread and cannot resurrect its object.
+
+- [ ] take 5 of a merged `toLazyList`, drop it, `System.gc()` until the
+      release is counted (≤ 10 s) — on `Merge.Ready` and `Merge.Shared`;
+      RED with `Unreachable.onCollected` a no-op (the mutant), green with
+      the Cleaner
+- [ ] a program that ends normally releases exactly once, still (the
+      existing "a full run releases nothing" law and the early-stop laws)
+- [ ] cost: one `Cleaner.register` per scope — per merge RUN, not per
+      element (a PhantomReference and a queue entry); measured on
+      `okaySourceMerge` beside master if it moves the number
+

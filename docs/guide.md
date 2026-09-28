@@ -1063,6 +1063,14 @@ algorithms for non-uniform problems", Algorithmica 1994): spin for
 about the cost of a block before blocking, and no strategy that decides
 without seeing the future does better than twice the optimum.
 
+A merge you stop early — `take`, `runFoldUntil` — releases its sides
+(their channels close, their feeder fibers end); a merge you ABANDON,
+its `toLazyList` dropped mid-way, is released when the collector finds
+it: every `CancelScope` registers with a `Cleaner` on the JVM, and its
+release runs once through whichever door comes first. That is a
+backstop against a leak, on the collector's clock — for a stop you
+can time, end the program (`runFoldUntil`) instead of dropping it.
+
 `source merge source` IS that composition since
 source-merge-via-ready: each side buffered onto a fiber of its own,
 joined by `mergeReady` — one merge mechanism, 0.73-0.93x of the
