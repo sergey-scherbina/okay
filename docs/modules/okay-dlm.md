@@ -35,6 +35,8 @@ is the caller's, passed in.**
 | `Explanation` | why a decision: the layer, the rule verbatim, the lesson and whose, everything noticed, the judge's ranking and name, the encoder, the tables by hash |
 | `Governed` | the model read and corrected under rights: `explain`, `lessons`, `teach`, `forget`, `share`, `ledger` — learning never creates a class, edits a rule or moves a threshold, by the type |
 | `Language.Detector` | the detector as a seam — `Trigrams` (ours) or `Judged` (a judge asked which language) |
+| `Shelf` / `Kept` | every table a model has served, kept by the hash of the table as served (`Exemplars.stored`); ours a directory of checkpoints or memory; `get` refuses another encoder and a file whose content no longer hashes to its name |
+| `Retention` | which old tables may leave the shelf — ours `all` (none), `latest(n)`, `within(ms)`, `any`, `of("last:5,days:30")`; `Shelf.prune` spares the newest and the serving whatever a policy says, and returns a `Pruned` entry per drop |
 
 **Depends on:** `okay-intent` (the probe, centroids, `Taxon`),
 `okay-agent` (`ToolCall` for a lane's tool table); through them
@@ -84,6 +86,23 @@ Jev (TypeSafe AI, hosted) and Laya (Convai, open, a container of your
 own) speak one wire, so [`okay-dlm-remote`](okay-dlm-remote.md) is one
 client and two configurations. A table compiled by another encoder
 than the one in scope is refused by name at the door.
+
+## Tables by hash: kept, reverted, dropped by a policy
+
+A rebuild does not replace a table. It puts the new one on a `Shelf`
+beside the old, both named by one hash: the hash of the table as a
+boot will read it back, F16 rounding included. That is the string an
+`Explanation` names, the string a `Ledger.Entry.Rebuilt` carries
+before and after, and the name of the file on the shelf. A rebuild
+that changed nothing hashes the same and records nothing.
+
+A revert is a rebuild from the shelf: its entry's corpus is
+`shelf:<hash>`, so it is audited and reverted like any build. Tables
+leave the shelf only through `Shelf.prune` under a `Retention`. Ours
+keeps everything, and no policy can drop the newest table of an
+artifact or one being served. Each drop is a `Pruned` entry naming
+the policy. `Ledger.File` keeps the entries as JSON lines beside the
+shelf ([specs/dlm-learning.md](../../specs/dlm-learning.md) §9).
 
 ## Further
 

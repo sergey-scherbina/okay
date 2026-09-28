@@ -237,6 +237,27 @@ object Checkpoint:
         val raw = try in.readAllBytes() finally in.close()
         of(ByteBuffer.wrap(raw), expect, name)
 
+  /** the `__metadata__` alone, without reading a vector — what a
+   * listing of many checkpoints needs to say which is which */
+  def meta(path: Path): Either[String, Map[String, String]] =
+    if !Files.exists(path) then Left(s"$path: no checkpoint")
+    else
+      val ch = FileChannel.open(path, StandardOpenOption.READ)
+      try
+        val len = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
+        if ch.read(len, 0L) < 8 then Left(s"$path: shorter than a header length")
+        else
+          val n = len.getLong(0)
+          if n <= 0 || n > maxHeader || 8 + n > ch.size() then Left(s"$path: header length $n is not in the file")
+          else
+            val head = ByteBuffer.allocate(n.toInt)
+            ch.read(head, 8L): Unit
+            (try Json.parse(new String(head.array(), "UTF-8")) catch case _: Exception => JNull) match
+              case JObj(fs) => Right(fs.collectFirst { case ("__metadata__", JObj(m)) =>
+                m.collect { case (k, JStr(v)) => k -> v }.toMap }.getOrElse(Map.empty))
+              case _ => Left(s"$path: the header is not a JSON object")
+      finally ch.close()
+
   /** a refusal that means «there is no such file», as opposed to one
    * that names a disagreement — a caller falls back silently on the
    * first and says so on the second */

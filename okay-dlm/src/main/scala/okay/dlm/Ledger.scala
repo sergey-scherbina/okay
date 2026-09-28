@@ -26,6 +26,8 @@ object Ledger:
     case Rebuilt(artifact: String, encoder: String, before: Option[String], after: String, corpus: String, at: Long, by: String)
     /** a door that said no, and why */
     case Refused(who: String, what: String, why: String, at: Long, by: String)
+    /** a table let go from the shelf, and the policy that let it go */
+    case Pruned(artifact: String, hash: String, policy: String, at: Long, by: String)
 
     def at: Long
     def by: String
@@ -41,6 +43,26 @@ object Ledger:
     def entries: Vector[Entry] = all
 
   val silent: Sink = _ => ()
+
+  /** A LEDGER ON DISK: one JSON object per line, appended — what a build
+   * step writes beside the tables it builds, and what a boot reads back */
+  final class File(path: java.nio.file.Path) extends Sink:
+    import java.nio.file.{Files, StandardOpenOption}
+    def append(e: Entry): Unit = synchronized {
+      Files.createDirectories(path.toAbsolutePath.getParent)
+      Files.writeString(path, line(e) + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND): Unit
+    }
+    def entries: Vector[Entry] =
+      if !Files.exists(path) then Vector.empty else parse(Files.readString(path))
+
+  /** one entry as one line */
+  def line(e: Entry): String = Json.print(encode(e))
+
+  /** lines back to entries; a line this reader does not know is skipped,
+   * because a newer writer may know more kinds than it */
+  def parse(text: String): Vector[Entry] =
+    text.linesIterator.map(_.trim).filter(_.nonEmpty)
+      .flatMap(l => scala.util.Try(Json.parse(l)).toOption.flatMap(decode)).toVector
 
   /** several sinks as one */
   def tee(sinks: Sink*): Sink = e => sinks.foreach(_.append(e))
@@ -82,6 +104,9 @@ object Ledger:
     case Entry.Refused(who, what, why, at, by) => JObj(Vector(
       "entry" -> JStr("refused"), "who" -> JStr(who), "what" -> JStr(what), "why" -> JStr(why),
       "at" -> JNum(at.toDouble), "by" -> JStr(by)))
+    case Entry.Pruned(artifact, hash, policy, at, by) => JObj(Vector(
+      "entry" -> JStr("pruned"), "artifact" -> JStr(artifact), "hash" -> JStr(hash), "policy" -> JStr(policy),
+      "at" -> JNum(at.toDouble), "by" -> JStr(by)))
 
   def decode(j: Json): Option[Entry] = j match
     case JObj(fs) =>
@@ -97,6 +122,8 @@ object Ledger:
           yield Entry.Rebuilt(a, enc, s("before"), after, c, at, by)
         case "refused" => for who <- s("who"); w <- s("what"); why <- s("why"); at <- n("at"); by <- s("by")
           yield Entry.Refused(who, w, why, at, by)
+        case "pruned" => for a <- s("artifact"); h <- s("hash"); p <- s("policy"); at <- n("at"); by <- s("by")
+          yield Entry.Pruned(a, h, p, at, by)
         case _ => None
       }
     case _ => None

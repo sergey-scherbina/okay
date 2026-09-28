@@ -185,7 +185,79 @@ label with no lifetime attaching one sentence to twenty-five turns
 
 1. DONE 2026-09-28 (dlm-learning): `Teaching`, `Ledger`, `Governed` over the memory fold with ours by default; `Explanation`; `Exemplars.hash`; a test per behavior line, eleven of them.
 2. DONE 2026-09-28 (okay-chat `learning-doors`): `Teaching` over its admin/teacher lists, `OKAY_CHAT_LEARNING` as the switch on every channel, the journal as the ledger (the door writes the chat's own record shapes, refusals as `refused` records), `POST /v1/explain`, `GET/POST /v1/lessons`, `POST /v1/lessons/forget` under a partner token or the admin token.
-3. The table hash and `Rebuilt` in `Compile`; revert by hash.
+3. The table hash and `Rebuilt` in `Compile`; revert by hash — §9.
+
+## 9. Stage 3 — the shelf: every table kept by hash, dropped only by a policy
+
+The operator, 2026-09-28: *«старые чекпойнты храним, но можем их
+потом удалять согласно политике».* A rebuild does not replace a table;
+it puts a new one beside the old on a SHELF, both named by hash, and
+says so in the ledger. A policy — a seam, ours keeps everything —
+says which old tables may go; every one that goes is an entry too.
+
+```scala
+package okay.dlm
+
+/** one table on the shelf */
+final case class Kept(artifact: String, hash: String, encoder: String, at: Long, size: Long)
+
+/** the tables a model has served, by hash — ours: a directory, or memory */
+trait Shelf:
+  def put(artifact: String, table: Exemplars, at: Long): Kept   // idempotent by hash
+  def get(artifact: String, hash: String, expect: Option[(String, Int)] = None): Either[String, Exemplars]
+  def kept(artifact: String): Vector[Kept]                      // oldest first
+  def artifacts: Vector[String]
+  def drop(artifact: String, hash: String): Boolean
+
+/** which old tables may go — ours keeps everything */
+trait Retention:
+  def name: String
+  def expired(kept: Vector[Kept], now: Long): Vector[Kept]
+
+object Retention:
+  given ours: Retention = all
+  val all: Retention
+  def latest(n: Int): Retention            // the newest n stay
+  def within(ms: Long): Retention          // what is younger than ms stays
+  def any(keep: Retention*): Retention     // a table any of them keeps, stays
+  def of(spec: String): Either[String, Retention]   // "all", "last:5", "days:30", "last:5,days:30"
+
+object Shelf:
+  /** what a policy lets go — never the newest of an artifact, never one serving; an entry each */
+  def prune(shelf: Shelf, keep: Retention, serving: Set[(String, String)], now: Long, by: String): Vector[Ledger.Entry]
+
+enum Ledger.Entry:
+  case Pruned(artifact: String, hash: String, policy: String, at: Long, by: String)   // new
+```
+
+**THE HASH IS OF THE TABLE AS SERVED.** A build writes F16; a boot
+reads F16 back as floats. `Exemplars.stored(f16)` is the table a
+checkpoint of it reads back, and the shelf keys by ITS hash, so the
+hash an explanation names, the hash in `Rebuilt` and the hash of the
+file on the shelf are one string.
+
+**A REBUILD THAT CHANGED NOTHING WRITES NOTHING.** The ledger records
+changes; a build of the same corpus under the same encoder hashes the
+same, and an entry per run would make every build a diff.
+
+**NOTHING ON THE SHELF GOES BUT BY A POLICY, AND THE POLICY IS NAMED.**
+`Pruned` carries the policy's `name`, so an audit reads which rule
+dropped a table as well as who ran it. The newest table of an artifact
+and any table serving are never dropped, whatever a policy says.
+
+**REVERT IS A REBUILD FROM THE SHELF.** «Serve the table with hash H»
+is a `Rebuilt` whose corpus is `shelf:H` — the same entry, so a revert
+is audited, and reverted, exactly like a build.
+
+### Behavior (stage 3)
+
+- [ ] a table put on the shelf and read back hashes the same, F16 included; putting it twice keeps one
+- [ ] a shelf refuses a table of another encoder by name, like a checkpoint
+- [ ] `Retention.all` drops nothing; `latest(n)` keeps the newest n; `within` keeps the young; `any` keeps what either keeps; `of` reads each spelling and refuses a wrong one by name
+- [ ] `prune` never drops the newest table of an artifact nor a serving one, whatever the policy; each drop is a `Pruned` entry naming the policy
+- [ ] a ledger written to a file reads back entry for entry, `Pruned` included
+- [ ] (okay-chat) a build records `Rebuilt` with the hash before and after and the corpus by content hash, and keeps the old table; the same build twice records nothing
+- [ ] (okay-chat) a revert serves the shelf's table and records a `Rebuilt` from `shelf:H`; a pin by hash at boot serves it, and a pin to a hash not on the shelf refuses to boot
 
 ## Results — dlm-learning (2026-09-28)
 

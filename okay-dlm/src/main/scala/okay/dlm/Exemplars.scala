@@ -39,6 +39,16 @@ final case class Exemplars(encoder: String, dim: Int, rows: Vector[Exemplar]):
     val arr = new Array[Byte](bytes.remaining()); bytes.get(arr)
     java.security.MessageDigest.getInstance("SHA-256").digest(arr).take(16).map(b => f"${b & 0xff}%02x").mkString
 
+  /** THE TABLE AS A CHECKPOINT OF IT READS BACK. F16 rounds every
+   * number, and what a boot serves is the rounded table — so this, not
+   * the full-precision one a build holds, is what the shelf, `Rebuilt`
+   * and an explanation name by hash (specs/dlm-learning.md §9).
+   * Rounding twice rounds nothing: every half is exact as a float. */
+  def stored(f16: Boolean = true): Exemplars =
+    if !f16 then this
+    else copy(rows = rows.map(r => r.copy(vec = embedding(
+      r.vec.toArray.map(x => Checkpoint.halfToFloat(Checkpoint.floatToHalf(x)))))))
+
 object Exemplars:
 
   val empty: Exemplars = Exemplars("", 0, Vector.empty)
