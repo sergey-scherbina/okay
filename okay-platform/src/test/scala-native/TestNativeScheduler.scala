@@ -49,4 +49,14 @@ class TestNativeScheduler extends munit.FunSuite {
     // supervised-waits-on-failure: skipped, but ANSWERED — a join on it returns
     assert(answered, "a task cancelled while still queued never answered")
   }
+
+  test("pool: cancelling a FINISHED fiber does not interrupt the task its worker runs now (native-pool-stale-interrupt)") {
+    given Scheduler = Schedulers.pool(1)
+    val done = Async.spawn(async(1))
+    assertEquals(done.join(), 1)                       // its task is over; its worker moves on
+    val next = Async.spawn(async { Thread.sleep(300); 2 })
+    Thread.sleep(50)                                   // the one worker is inside `next` by now
+    done.cancel()                                      // a stale cancel: nothing of `done` is running
+    assertEquals(next.joinEither(), Right(2), "the cancel of a finished task reached the worker's current task")
+  }
 }
