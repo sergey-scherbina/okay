@@ -171,11 +171,17 @@ waker then reads the queue — at least one side sees the other.
   own that keeps the scopes the program opens and releases every one still
   open however the program leaves (answer, throw, interrupt). And
   `Source.merge`'s release also CLOSES its sides' channels (in `Merge.Ready`,
-  all three joins; in `Merge.Shared` the chunked joins' shared channel,
-  through `Source.releasing` — its ELEMENT join is not wrapped, that would
-  cost a rotation per element), so a merge that is cancelled or stopped
+  all three joins; in `Merge.Shared` the chunked joins' shared channel
+  through `Source.releasing`, and the ELEMENT join through a scope
+  ENTERED in front and never exited — `releasing`'s trailing `flatMap`
+  would be a Bind over the whole element program, a rotation per
+  element, while a scope the drive releases at the program's end costs
+  one Bind in front; at a normal end the channel is closed already and
+  the release counts nothing), so a merge that is cancelled or stopped
   early ends its feeder fibers — before, each
-  filled its buffer and parked for good. Laws: TestReadyMerge "…on Loom
+  filled its buffer and parked for good. Uncovered on every road: an
+  ABANDONED `toLazyList` — the program never ends, so no scope is
+  released (an iterator close is its own item). Laws: TestReadyMerge "…on Loom
   too" and "Source.merge stopped early releases its sides…" (Loom and
   own), each turned red by its mutant. Cost: the first cut kept the scopes
   in a ThreadLocal and paid +152 B on EVERY Loom fork; the fiber's own

@@ -7,7 +7,7 @@ program opens and releases every one still open however it leaves — so an
 early stop or a cancel releases a `mergeReady`'s parked sources on the
 default scheduler as well. And `Source.merge`'s release now CLOSES its
 sides' channels (every `Merge.Ready` join; `Merge.Shared`'s chunked
-joins via `Source.releasing`, its element join not): a merge that is cancelled or stopped early (`take`,
+joins via `Source.releasing`, its element join via a scope entered in front and never exited — one Bind, no rotation per element): a merge that is cancelled or stopped early (`take`,
 `runFoldUntil`) ends its feeder fibers, where each used to fill its buffer
 and park for good. Laws in TestReadyMerge on Loom and own, each watched
 red under its mutant. The first cut kept the scopes in a ThreadLocal and

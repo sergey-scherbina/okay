@@ -34,8 +34,13 @@ object Merge:
    * producer parked on a full one wakes and ends
    * (merge-scopes-everywhere); a merge that ran to its end never calls it */
   private def closing(cs: Channel[?]*): () => Unit = () =>
-    Source.mergeReleases.incrementAndGet(): Unit
-    cs.foreach(_.close())
+    // only a channel still OPEN is a release: the Shared element join's
+    // scope is never exited (below), so the drive releases it at a
+    // normal end too, when its channel is closed already
+    val open = cs.filterNot(_.isClosed)
+    if open.nonEmpty then
+      Source.mergeReleases.incrementAndGet(): Unit
+      open.foreach(_.close())
 
   /** by READINESS: a fiber per side into a ring of its own, read in
    * batches (`drained`), joined on the consumer's thread of control. A
@@ -62,13 +67,19 @@ object Merge:
   /** ONE QUEUE both producers feed — the road before the ring, kept as
    * a door by choice (operator, 2026-09-28) */
   object Shared extends Merge:
-    // NOT released on an early stop: `Source.releasing` costs a rotation
-    // per node, which an ELEMENT source pays per element — so a stopped
-    // Shared element merge leaves its producers parked on a full queue
-    // (merge-scopes-everywhere; the chunked joins below are released)
+    // released on an early stop like every other join, but NOT through
+    // `Source.releasing`: its trailing `flatMap(_ => Exit)` is a Bind
+    // over the whole element program, a rotation per element told. The
+    // scope is ENTERED in front and never exited — one Bind, in front —
+    // and the drive releases it when the program ends, early or not;
+    // at a normal end the channel is closed already and `closing`
+    // counts nothing (merge-scopes-everywhere)
     def elements[A](l: Source[A], r: Source[A], capacity: Int)
                    (using Scheduler, CanBlock, Timer, Wait, Pause): Source[A] =
-      Channel.merge[A, S, Async, S, Async](l, r, capacity).drained
+      okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
+        val ch = Channel.merge[A, S, Async, S, Async](l, r, capacity)
+        val scope = Async.CancelScope(closing(ch))
+        okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => ch.drained)
     def chunks[A](l: Source[A], r: Source[A], slots: Int, size: Int, within: Option[Long])
                  (using Scheduler, CanBlock, Timer, Wait, Pause): Source[Chunk[A]] =
       val ch = Channel.mergeChunked[A, S, Async, S, Async](l, r, slots, size, within)

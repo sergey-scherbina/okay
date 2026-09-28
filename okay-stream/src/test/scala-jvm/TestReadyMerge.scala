@@ -221,10 +221,18 @@ class TestReadyMerge extends munit.FunSuite {
       assert(g.gone.await(10, java.util.concurrent.TimeUnit.SECONDS), s"round $round: the parked source outlived the program")
   }
 
-  test("Source.merge stopped early releases its sides (their channels close, their feeders end), and a full run releases nothing") {
+  test("Source.merge stopped early releases its sides (their channels close, their feeders end), and a full run releases nothing — on both mechanisms") {
     // merge-scopes-everywhere: before, an early-stopped merge left both
-    // feeder fibers parked on a full buffer for good
-    for (name, sch) <- List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build) do
+    // feeder fibers parked on a full buffer for good. The Shared ELEMENT
+    // join was the last one out (its scope is entered and never exited,
+    // so the normal end releases nothing only because the channel is
+    // closed by then)
+    for
+      (mname, mechanism) <- List("ready" -> Merge.Ready, "shared" -> Merge.Shared)
+      (sname, sch) <- List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build)
+    do
+      given Merge = mechanism
+      val name = s"$mname/$sname"
       val before = Source.mergeReleases.get
       val m = Source.of(LazyList.from(0)).merge(Source.of(LazyList.from(0)), capacity = 4)
       val f = sch.fork(() => m.runFoldUntil(using FoldUntil.take[Int](5)))
