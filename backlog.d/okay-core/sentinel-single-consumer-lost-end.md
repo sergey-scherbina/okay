@@ -33,3 +33,20 @@
       thread WAITING is the placeEnd-never-retried path (close could not
       seal a full ring and nothing re-tried after the last pop); anything
       else points at the handoff.
+      SIGHTING 2026-09-28 (ready-merge-chunk-forward), a different
+      channel, the same law: `TestCoreAsyncChannelLaws` "the end is
+      delivered when close races offers on six channels at once —
+      CoreAsyncChannel" hung to munit's 30 s timeout (the law's own
+      5 s + 60 s wait ran to 65.1 s) TWICE, alone and in the whole
+      build, on a branch based on master 3826e2e8c — while that base
+      alone, in a fresh worktree, was green, and the same branch rebased
+      onto 09036dd58 (after adaptive-outside-long-fibers-serial's
+      scheduler fix, "outside forks that waited a tick wake parked
+      workers") was green. The branch touches nothing on that law's path
+      (offer/receiveBlocking/close on a core.async-backed channel). So
+      the hang depends on scheduling, not on the channel: a starved
+      consumer, the RUNNABLE reading this entry's diagnosis predicts —
+      and it can reproduce deterministically for a given class layout.
+      If it recurs after that fix, the six-runner law itself is the
+      reproducer: it hung 2/2 on one tree and 0/3 on its neighbours.
+
