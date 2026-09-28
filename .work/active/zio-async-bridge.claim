@@ -1,0 +1,6 @@
+feature/zio-async-bridge 2026-09-28T00:00:00Z
+agent: codex
+heartbeat: 2026-09-28T00:00:00Z
+status: planning
+done-so-far: queued bridge design; inspecting existing Async drive and ZIO interop
+next: create isolated worktree and write the feature spec before implementation
