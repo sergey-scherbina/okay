@@ -1074,7 +1074,9 @@ under `adaptive`, so the shape has appeared since.
   The fix IS on the channel's send path (one `peek` per queued-behind
   send, no new allocation), so by the rule above TCP, Wrocław and the
   fork/join rows are re-run before the flip; the flip itself is not
-  made by that lane.
+  made by that lane. `AbruptChannel` got the same two halves the same
+  day (abrupt-sender-head-recheck); TestSendBehindWaiter holds the law
+  for both channels on `own` and `adaptive`.
 - The flip, when made, keeps JDK 17-20 as it is (`platform`). There is
   no spill there, so `adaptive`'s old `n + overflow` bound would come
   back.

@@ -47,7 +47,8 @@
   alone over its waiter LIST hung the same law for AbruptChannel twice —
   the same deadlock, found there first, before half (2) was understood.
   Reverted there; filed as backlog okay-core/abrupt-sender-head-recheck
-  with the two-half rule to port. No merge runs on it.
+  with the two-half rule to port. No merge runs on it. (Ported the same
+  day: changelog.d/abrupt-sender-head-recheck.md.)
 - NOT DONE HERE: the default flip. specs/schedulers.md's rule says the
   fix touches the channel's send path, so TCP, Wrocław and the fork/join
   rows are re-run before `Schedulers.auto` moves — a JMH lane on the
