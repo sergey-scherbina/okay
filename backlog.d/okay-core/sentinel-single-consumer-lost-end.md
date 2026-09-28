@@ -1,5 +1,6 @@
-- [ ] sentinel-single-consumer-lost-end — PRIORITY: HIGH (a liveness
-      defect, not a flake). The ci-runner's whole build of 2026-09-25
+- [ ] sentinel-single-consumer-lost-end — PRIORITY: MEDIUM since 2026-09-28
+      (was HIGH: "a liveness defect, not a flake" — no sighting has yet
+      shown a PARKED consumer; see the end of this entry). The ci-runner's whole build of 2026-09-25
       19:27 (range 42861945..041e25ac, gate log okay-gate.qziCWtKoMA)
       failed TestChannelLaws "the end is delivered when close races
       offers on six channels at once — SentinelChannel/single-consumer":
@@ -57,3 +58,20 @@
       carries no LATE/LOST diagnosis yet — it fails as a bare munit
       timeout — so the diagnosis the SentinelChannel variants got belongs
       in the SHARED law, not in one channel's suite.
+      WORKED 2026-09-28 (operator: fix the flakes; changelog.d/
+      sentinel-single-consumer-lost-end.md). What was wrong with every
+      sighting: `ChannelLawsSuite` had munit's 30 s timeout and the law
+      waits 65 s, so each red was a bare TimeoutException and the
+      diagnosis never surfaced — fixed (3 min), and the diagnosis is per
+      implementation now (`describe` hook, `CoreAsyncChannel.debugState`).
+      `LateOrLost` tells a STARVED consumer (RUNNABLE at the last
+      deadline: a wakeup it has, a carrier it lacks) from a LOST one
+      (parked): the law logs the first and fails the second. The sibling's
+      2/2 tree (a9aa44111) ran 2/2 green with all that in — the box, not
+      the tree. The "placeEnd never retried after the last pop" path
+      predicted above is refuted by reading: `Ring.push` decides fullness
+      by the slot's STAMP, which `pop` publishes after moving the head,
+      and every consumer path that frees a slot calls `placeEnd`. NEXT:
+      the next red of this law is a `Lost` carrying two thread snapshots
+      and the channel's flags — read those; a `Starved` line on stderr in
+      a whole-build log is the box and needs nothing.
