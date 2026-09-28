@@ -339,8 +339,9 @@ class TestReadyMerge extends munit.FunSuite {
         () => if polls.incrementAndGet() > misses then Right(x) else null)).flatMap(say)
 
   test("the hybrid wait: data arriving on the yield rung is told without a registration") {
-    // 3 polls as the ready side's turns pass, then the dry ring's ladder:
-    // 101 spins, then the yields — the 120th poll answers there
+    // 3 polls as the ready side's turns pass, then the dry ring's wait:
+    // the default ladder's 100 spins, then its yields — the 120th poll
+    // answers on that rung, so nothing was registered
     val c = Counted(120, 7)
     assertEquals(collect(ReadyMerge(Seq(c.source, list(1, 2, 3)))), Vector(1, 2, 3, 7))
     assertEquals(c.registered.get, 0)
@@ -351,8 +352,60 @@ class TestReadyMerge extends munit.FunSuite {
     val c = Counted(Int.MaxValue, 7)
     assertEquals(collect(ReadyMerge(Seq(c.source, list(1, 2, 3)))), Vector(1, 2, 3, 7))
     assertEquals(c.registered.get, 1)
-    // 3 turn-end polls + 101 spins + 50 yields + 4 brief parks
-    assertEquals(c.polls.get, 3 + 101 + 50 + 4)
+    // 3 turn-end polls + the default ladder: 100 spins, 50 yields, 4 sleeps
+    assertEquals(c.polls.get, 3 + 100 + 50 + 4)
+  }
+
+  test("the wait is a given: Register polls nothing and registers at once; Spin(10) polls ten times") {
+    locally {
+      given Wait = Wait.Register
+      val c = Counted(Int.MaxValue, 7)
+      assertEquals(collect(ReadyMerge(Seq(c.source, list(1, 2, 3)))), Vector(1, 2, 3, 7))
+      assertEquals((c.registered.get, c.polls.get), (1, 3))
+    }
+    locally {
+      given Wait = Wait.Spin(10)
+      val c = Counted(Int.MaxValue, 7)
+      assertEquals(collect(ReadyMerge(Seq(c.source, list(1, 2, 3)))), Vector(1, 2, 3, 7))
+      assertEquals((c.registered.get, c.polls.get), (1, 3 + 10))
+    }
+  }
+
+  /** a test's platform: the rungs counted, none of them slept */
+  private final class Counting extends Pause:
+    var spins, yields, nanos, blocks = 0
+    def threads = true
+    def spin(): Unit = spins += 1
+    def yieldNow(): Unit = yields += 1
+    def nano(): Unit = nanos += 1
+    def block(): Unit = blocks += 1
+
+  test("the rungs are a given too: a counting platform sees the ladder's and the cycle's exact steps") {
+    val ladder = Counting()
+    locally {
+      given Pause = ladder
+      val c = Counted(Int.MaxValue, 7)
+      assertEquals(collect(ReadyMerge(Seq(c.source, list(1, 2, 3)))), Vector(1, 2, 3, 7))
+      assertEquals((ladder.spins, ladder.yields, ladder.nanos, ladder.blocks), (100, 50, 4, 1))
+    }
+    val cycle = Counting()
+    locally {
+      given Pause = cycle
+      given Wait = Wait.Cycle(100, 50, 4)
+      val c = Counted(Int.MaxValue, 7)
+      assertEquals(collect(ReadyMerge(Seq(c.source, list(1, 2, 3)))), Vector(1, 2, 3, 7))
+      assertEquals((cycle.spins, cycle.yields, cycle.nanos, cycle.blocks), (400, 200, 4, 1))
+      assertEquals(c.polls.get, 3 + 4 * (100 + 50) + 1)
+    }
+  }
+
+  test("the mechanism is a given: Merge.Shared joins the same multiset through one queue") {
+    given Merge = Merge.Shared
+    val out = (Source.of(LazyList.range(0, 500)) merge Source.of(LazyList.range(500, 1000))).runCollect.runWith
+    assertEquals(out.sorted, Vector.range(0, 1000))
+    val chunked = Source.of(LazyList.range(0, 500)).merge(Source.of(LazyList.range(500, 1000)), chunked = true)
+      .runCollect.runWith
+    assertEquals(chunked.sorted, Vector.range(0, 1000))
   }
 
   test("a merged source is a value: running it twice merges twice") {

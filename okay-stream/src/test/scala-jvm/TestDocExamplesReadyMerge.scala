@@ -15,4 +15,11 @@ class TestDocExamplesReadyMerge extends munit.FunSuite {
     assertEquals(all.filter(_ >= 0), Vector.range(0, 1000))
     assertEquals(all.filter(_ < 0), Vector(-1, -2))
   }
+
+  test("guide §6: the wait and the mechanism are givens a caller swaps") {
+    given Wait = Wait.Spin(1000)         // poll a thousand times, then register
+    given Merge = Merge.Shared           // one queue for both sides, the road before the ring
+    val joined = Source.of(List(1, 2, 3)) merge Source.of(List(10, 20))
+    assertEquals(joined.runCollect.runWith.sorted, Vector(1, 2, 3, 10, 20))
+  }
 }

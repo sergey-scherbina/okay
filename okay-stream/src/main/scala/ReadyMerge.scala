@@ -35,8 +35,11 @@ private[okay] object ReadyMerge:
   /** `onRegister` runs each time the merge registers a SIDE's callback —
    * a test's way to know a pollable side was registered, and when
    * (poll-then-park: only once the ring ran dry) */
+  /** `wait`/`pause` (poll-then-park's hybrid, specs/ready-merge.md): how
+   * a dry ring waits before it registers its idle sides — the strategy
+   * and the platform's rungs, both givens a caller may swap */
   def apply[A](sources: Seq[Source[A]], onPark: () => Unit = () => (), quantum: Int = 1,
-               onRegister: () => Unit = () => ()): Source[A] =
+               onRegister: () => Unit = () => ())(using waiting: Wait, pause: Pause): Source[A] =
     // the state is built per RUN, inside the program: a Source is a
     // value, and running it twice must merge twice
     // the merge OPENS A CANCEL SCOPE with its drive first, and closes it
@@ -45,34 +48,16 @@ private[okay] object ReadyMerge:
     // sources it has parked even while its code sits inside the
     // consumer's continuation and it never parks itself
     okay.pure[Writer % A + Async, Unit](()).flatMap: _ =>
-      val r = new Run[A](sources, onPark, quantum, onRegister)
+      val r = new Run[A](sources, onPark, quantum, onRegister, waiting, pause)
       okay.effect[Writer % A + Async, Unit](Async.Run(Async.Enter(r.scope))).flatMap(_ => r.again())
-
-  /** POLL, THEN PARK (specs/ready-merge.md, the stage): how many more
-   * times a dry ring polls its idle sides before registering them, so
-   * a producer about to send is met by a poll and not by a hand-over
-   * on its own thread. 100 measured (ready-merge-chunk-forward): at 0
-   * the chunked ring road's slow forks parked 9-14 times per op; at
-   * 100 every fork parks ~1; 1000 never parked and was no faster. A
-   * poll is two volatile reads. */
-  private final val PollSpins = 100
-  /** the rungs above the spin (the HYBRID, ready-merge-chunk-forward's
-   * second landing): `PollYields` polls each after a `Thread.yield`
-   * (~125 ns here), then `PollSleeps` polls each after a brief park
-   * (`parkNanos`, 10-12 us here: the timer's floor, and the window in
-   * which two producers make ~50 chunks) — the consumer waiting at its
-   * own expense, the producer still paying nothing. Measured as 50/4 on
-   * the chunked ring road: 200.4 us against the shared channel's 200.0,
-   * no fork above 225, where every spin-only wait left 2-4 of 10 at
-   * 215-247 (specs/ready-merge.md, the second stage). */
-  private final val PollYields = 50
-  private final val PollSleeps = 4
 
   /** a registration's answer, when it came before the drive moved on */
   private final class Answer[X](val r: Either[Throwable, X])
   private object Moved
 
-  private final class Run[A](sources: Seq[Source[A]], onPark: () => Unit, quantum: Int, onRegister: () => Unit):
+  private final class Run[A](sources: Seq[Source[A]], onPark: () => Unit, quantum: Int, onRegister: () => Unit,
+                             waiting: Wait, pause: Pause):
+    private given Pause = pause
     private type R = Writer % A + Async
     private val n = sources.length
 
@@ -163,19 +148,14 @@ private[okay] object ReadyMerge:
           idle(j) = idle(idleN)
         else j += 1
 
-    /** the ring is dry: climb the wait — poll `PollSpins` times, then
-     * `PollYields` yields, then `PollSleeps` brief parks, each rung a
-     * poll — and register what is still empty: as many as it takes for
-     * the ring to hold something, or all of them, and then the merge
-     * parks. On JS there are no rungs: nothing arrives while we wait */
+    /** the ring is dry: WAIT by the given strategy, each look a poll of
+     * every idle side, and register what is still empty — as many as
+     * it takes for the ring to hold something, or all of them, and
+     * then the merge parks. A look answers true when the ring holds
+     * something, or when no side is left to wait for */
     private def settleIdle(): Unit =
-      if Wait.Threads then
-        var s = 0
-        while idleN > 0 && size == 0 && s <= PollSpins do { pollIdle(); s += 1 }
-        s = 0
-        while idleN > 0 && size == 0 && s < PollYields do { Wait.yieldNow(); pollIdle(); s += 1 }
-        s = 0
-        while idleN > 0 && size == 0 && s < PollSleeps do { Wait.sleepBriefly(); pollIdle(); s += 1 }
+      if idleN > 0 && size == 0 then
+        val _ = waiting.until(() => { pollIdle(); size > 0 || idleN == 0 })
       while idleN > 0 && size == 0 do
         idleN -= 1
         idle(idleN).register()

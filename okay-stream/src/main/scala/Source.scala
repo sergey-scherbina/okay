@@ -233,7 +233,7 @@ object Source {
    * — and the merge reads it like any other not-yet-ready source.
    * `Source.merge` is the case that buffers every side.
    */
-  def mergeReady[A](sources: Source[A]*): Source[A] = ReadyMerge(sources)
+  def mergeReady[A](sources: Source[A]*)(using Wait, Pause): Source[A] = ReadyMerge(sources)
 
 
   /** what `merge(chunked = true)` batches by. Not a parameter: the
@@ -315,7 +315,7 @@ extension [A](s: Source[A])
 
   /** `Source.mergeReady` of two sources: by readiness, on this
    * program's own thread of control, no fiber per side */
-  infix def mergeReady[B](t: Source[B]): Source[A | B] =
+  infix def mergeReady[B](t: Source[B])(using Wait, Pause): Source[A | B] =
     ReadyMerge[A | B](Seq(Writer.widen[A, A | B, Unit, Async](s), Writer.widen[B, A | B, Unit, Async](t)))
 
   /**
@@ -447,46 +447,27 @@ extension [A](s: Source[A])
    */
   infix def merge[B](t: Source[B], capacity: Int = 64, chunked: Boolean = false,
                      flushAfter: Option[Long] = None)
-                    (using Scheduler, CanBlock, Timer): Source[A | B] =
-    type S[W] = Unit ! Writer % W + Async
+                    (using Scheduler, CanBlock, Timer, Merge, Wait, Pause): Source[A | B] =
     val sw = Writer.widen[A, A | B, Unit, Async](s)
     val tw = Writer.widen[B, A | B, Unit, Async](t)
+    val m = summon[Merge]
+    // the mechanism is the given `Merge` (Ready by default, Shared by
+    // choice); the sides' fibers start HERE, at the first pull, as they
+    // always did — a Source is a value, and running it twice merges twice
     if !chunked then
-      pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
-        // a fiber per side into a ring of its own, read in batches
-        // (`drained`), joined by readiness; the fibers start HERE, at
-        // the first pull, as they always did. A ready side tells up to
-        // a batch in a row: measured 2-3% better than one per turn
-        // (source-merge-via-ready, Results), and merge promises no
-        // order BETWEEN its sides, only within each
-        ReadyMerge[A | B](Seq(
-          Channel.buffer[A | B, S, Async](capacity)(sw).drained,
-          Channel.buffer[A | B, S, Async](capacity)(tw).drained),
-          quantum = Drain.Batch)
+      pure[Writer % (A | B) + Async, Unit](()).flatMap(_ => m.elements[A | B](sw, tw, capacity))
     else
       // capacity counts ELEMENTS, so the channel gets that many
       // divided by what each of its slots now holds
       val slots = math.max(1, capacity / Source.ChunkSize)
-      // NOT `through(...)(Stage.unchunk)` any more (same reason as
-      // `Source.unchunked`, merge-chunk-size-curve-inverted): that
-      // paired two coroutines and made every element of every chunk
-      // cross the handshake, at a cost that GREW with the chunk it
-      // came from — this is the exact lane the entry's numbers were
-      // taken on. `Writer.expand` walks the chunked program once and
-      // re-tells the elements into a plain Free chain, which is what
-      // `Source.unchunked` already does; this path had been left on
-      // the old road when that fix landed.
-      //
-      // Since merge-chunked-via-ready the two sides are chunk channels of
-      // their own — each with its own feed and, with a window, its own
-      // flusher — joined by `mergeReady` as the elementwise merge joins
-      // two `buffer`s: one merge mechanism for both roads.
+      // NOT `through(...)(Stage.unchunk)` (same reason as
+      // `Source.unchunked`, merge-chunk-size-curve-inverted): that paired
+      // two coroutines and made every element of every chunk cross the
+      // handshake. `Writer.expand` walks the chunked program once and
+      // re-tells the elements into a plain Free chain
       pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
         Writer.expand[Chunk[A | B], A | B, Unit, Async](
-          ReadyMerge[Chunk[A | B]](Seq(
-            Channel.chunkedSideOf[A | B, S, Async](sw, slots, Source.ChunkSize, flushAfter).drained,
-            Channel.chunkedSideOf[A | B, S, Async](tw, slots, Source.ChunkSize, flushAfter).drained),
-            quantum = Drain.Batch))(c => c)
+          m.chunks[A | B](sw, tw, slots, Source.ChunkSize, flushAfter))(c => c)
 
   /**
    * `merge`, but keeping which side each element came from instead of
@@ -499,7 +480,7 @@ extension [A](s: Source[A])
    */
   infix def either[B](t: Source[B], capacity: Int = 64, chunked: Boolean = false,
                       flushAfter: Option[Long] = None)
-                     (using Scheduler, CanBlock, Timer): Source[Either[A, B]] =
+                     (using Scheduler, CanBlock, Timer, Merge, Wait, Pause): Source[Either[A, B]] =
     Writer.map[A, Either[A, B], Unit, Async](s)(a => Left(a))
       .merge(Writer.map[B, Either[A, B], Unit, Async](t)(b => Right(b)), capacity, chunked, flushAfter)
 
@@ -590,18 +571,15 @@ extension [A](s: Flushing[A])
    */
   infix def mergeFlushing[B](t: Flushing[B], capacity: Int = 64,
                              flushAfter: Option[Long] = None)
-                            (using Scheduler, Timer): Source[A | B] =
+                            (using Scheduler, Timer, Merge, Wait, Pause): Source[A | B] =
     val slots = math.max(1, capacity / Source.ChunkSize)
     val sw = !.widen[Unit, Flush + (Writer % A + Async), Writer % (A | B)](s)
     val tw = !.widen[Unit, Flush + (Writer % B + Async), Writer % (A | B)](t)
-    // a chunk channel per side joined by `mergeReady`, unchunked by
-    // `Writer.expand` — the chunked merge's road (merge-chunked-via-ready)
+    val m = summon[Merge]
+    // the given mechanism's flushing join, unchunked by `Writer.expand`
     pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
       Writer.expand[Chunk[A | B], A | B, Unit, Async](
-        ReadyMerge[Chunk[A | B]](Seq(
-          Channel.chunkedSideFlushing[A | B](sw, slots, Source.ChunkSize, flushAfter).drained,
-          Channel.chunkedSideFlushing[A | B](tw, slots, Source.ChunkSize, flushAfter).drained),
-          quantum = Drain.Batch))(c => c)
+        m.flushing[A | B](sw, tw, slots, Source.ChunkSize, flushAfter))(c => c)
 
   /**
    * `mergeFlushing`, but tagging which side each element came from —
@@ -611,7 +589,7 @@ extension [A](s: Flushing[A])
    */
   infix def eitherFlushing[B](t: Flushing[B], capacity: Int = 64,
                               flushAfter: Option[Long] = None)
-                             (using Scheduler, Timer): Source[Either[A, B]] =
+                             (using Scheduler, Timer, Merge, Wait, Pause): Source[Either[A, B]] =
     mapFlushing[A, Either[A, B]](s)(a => Left(a))
       .mergeFlushing(mapFlushing[B, Either[A, B]](t)(b => Right(b)), capacity, flushAfter)
 

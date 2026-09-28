@@ -1018,24 +1018,50 @@ val both = offCore mergeReady Source.of(List(-1, -2))
 ```
 
 A source that is not ready is not registered the moment it says so.
-Since poll-then-park (specs/ready-merge.md, the stage) an `Async.Await`
-may carry a second function, `poll`, that answers at once what the
-registration would answer or says "nothing yet" without registering
-anything — `Channel.drained` passes one over the channel's ring — and
-the merge, while it has other sources to step, only POLLS such a side:
-when a turn passes, and when the ring runs dry, a hundred more times;
-it registers the side, and then parks, only when every poll came back
-empty. The reason is measured rather than stylistic: on a chunked
-two-sided merge a slow fork registered a side 160 times per op while
-the other side still had work, each registration turning the
-producer's next send into a hand-over on the producer's own thread,
-and the counter went to zero with the change (ready-merge-chunk-forward).
-This is the spin-then-block of Karlin, Manasse, McGeoch and Owicki
-("Competitive randomized algorithms for non-uniform problems",
-Algorithmica 1994): spin for about the cost of a block before blocking,
-and no strategy that decides without seeing the future does better
-than twice the optimum — here the "spin" is a poll of two volatile
-reads and the "block" is a registration plus a wake-up.
+Since poll-then-park (specs/ready-merge.md, its two stages) an
+`Async.Await` may carry a second function, `poll`, that answers at once
+what the registration would answer or says "nothing yet" without
+registering anything — `Channel.drained` passes one over the channel's
+ring — and the merge, while it has other sources to step, only POLLS
+such a side. When the ring runs dry it WAITS before it registers, and
+the wait is three layers, each a `given` a caller may swap:
+
+- `Pause` — the platform's primitives, the rungs: `spin`, `yieldNow`,
+  `nano` (a `parkNanos`, 10-12 us on a Mac: the timer's floor, and the
+  window in which two producers make ~50 chunks), `block`, and the fact
+  `threads`. A debugger or a test substitutes its own — counting the
+  rungs, refusing to sleep.
+- `Wait` — the strategy, a closed loop over the rungs: `Register`
+  (never wait: JS's shape), `Spin(polls)`, `Ladder(spins, yields,
+  sleeps)` — the default, `100/50/4`, which took the chunked ring
+  road's tail away (200.4 us against the shared channel's 200.0, no
+  fork above 225) — and `Cycle(spins, yields, cycles)`, which re-spins
+  after every sleep and measured 208.0 with a tail, because it brings
+  the consumer back to the producer's cache line too soon.
+- `Merge` — the mechanism itself: `Ready`, a channel per side joined on
+  the ring (the default), or `Shared`, one queue both producers feed —
+  never bimodal, because its consumer never catches up.
+
+```scala
+given Wait = Wait.Spin(1000)         // poll a thousand times, then register
+given Merge = Merge.Shared           // one queue for both sides, the road before the ring
+val joined = Source.of(List(1, 2, 3)) merge Source.of(List(10, 20))
+```
+
+The reason is measured rather than stylistic: on a chunked two-sided
+merge a slow fork registered a side 160 times per op while the other
+side still had work, each registration turning the producer's next
+send into a hand-over on the producer's own thread — a claimed waiter,
+the consumer's callback, an `unpark` — and the counter went to zero
+with the change (ready-merge-chunk-forward). What a caught-up consumer
+then cost the producers was its polling of the index they write, and
+the sleep rung is what takes it away: a merge that sleeps wakes into
+batches. This is LMAX Disruptor's `WaitStrategy` (BusySpin / Yielding
+/ Sleeping / Blocking) made a value, under the spin-then-block bound of
+Karlin, Manasse, McGeoch and Owicki ("Competitive randomized
+algorithms for non-uniform problems", Algorithmica 1994): spin for
+about the cost of a block before blocking, and no strategy that decides
+without seeing the future does better than twice the optimum.
 
 `source merge source` IS that composition since
 source-merge-via-ready: each side buffered onto a fiber of its own,

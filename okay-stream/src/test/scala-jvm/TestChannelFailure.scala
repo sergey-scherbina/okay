@@ -74,8 +74,9 @@ class TestChannelFailure extends munit.FunSuite {
     assertEquals(failure, Some("the producer failed"), "a merge with a failed side ended as if all was well")
   }
 
-  test("Source.merge(chunked = true) over a failing side: what the side told before failing still arrives, then the failure") {
-    for window <- Seq(None, Some(5L)) do
+  test("Source.merge(chunked = true) over a failing side: what the side told before failing still arrives, then the failure — on both mechanisms") {
+    for (mechanism, window) <- Seq(Merge.Ready, Merge.Shared).flatMap(m => Seq(None, Some(5L)).map(w => (m, w))) do
+      given Merge = mechanism
       var got = Vector.empty[Int]
       var failure = Option.empty[String]
       try Source.of(Boom[Int](0)).merge(Source.of(LazyList(10, 20)), chunked = true, flushAfter = window)

@@ -51,28 +51,25 @@ class ChunkFlushBenchmark {
     l.merge(r, capacity = 1024, chunked = true).toLazyList.foldLeft(0L)(_ + _)
 
   /** THE SHARED-CHANNEL chunked road, kept as a door by choice
-   * (ready-merge-chunk-forward, second landing): two producers feed
-   * ONE queue, so its consumer never catches up and every fork sits
-   * in one mode — the permanent control beside `okayChunked`, whose
-   * default road is a chunk channel per side joined on the ring */
-  private def shared(within: Option[Long]): Source[Long] =
-    type S[W] = Unit ! Writer % W + Async
-    val slots = math.max(1, 1024 / Source.ChunkSize)
-    okay.pure[Writer % Long + Async, Unit](()).flatMap: _ =>
-      Writer.expand[Chunk[Long], Long, Unit, Async](
-        Writer.of(Channel.mergeChunked[Long, S, Async, S, Async](l, r, slots, Source.ChunkSize, within)))(c => c)
-
+   * (ready-merge-chunk-forward, second landing): `given Merge =
+   * Merge.Shared` — two producers feed ONE queue, so its consumer never
+   * catches up and every fork sits in one mode — the permanent control
+   * beside `okayChunked`, whose default road is a chunk channel per
+   * side joined on the ring */
   @Benchmark
   def okayChunkedShared(): Long =
-    shared(None).toLazyList.foldLeft(0L)(_ + _)
+    given Merge = Merge.Shared
+    l.merge(r, capacity = 1024, chunked = true).toLazyList.foldLeft(0L)(_ + _)
 
   @Benchmark
   def okayChunkedFlushShared(): Long =
-    shared(Some(1000)).toLazyList.foldLeft(0L)(_ + _)
+    given Merge = Merge.Shared
+    l.merge(r, capacity = 1024, chunked = true, flushAfter = Some(1000)).toLazyList.foldLeft(0L)(_ + _)
 
   @Benchmark
   def okayChunkedFlushShortShared(): Long =
-    shared(Some(1)).toLazyList.foldLeft(0L)(_ + _)
+    given Merge = Merge.Shared
+    l.merge(r, capacity = 1024, chunked = true, flushAfter = Some(1)).toLazyList.foldLeft(0L)(_ + _)
 
   /** the same, composed from the orthogonal combinators instead of
    * the fused flag — the API question, measured */

@@ -50,7 +50,7 @@ class TestReadyMergeCross extends munit.FunSuite {
       assertEquals(out, Vector(1, 2, 3, 7))
       assertEquals(registered.get, 1)
       // 3 polls as the ready side's turns pass; the ladder only with threads
-      assertEquals(polls.get, if Wait.Threads then 3 + 101 + 50 + 4 else 3)
+      assertEquals(polls.get, if summon[Pause].threads then 3 + 100 + 50 + 4 else 3)
     }
   }
 }
