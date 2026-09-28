@@ -11,6 +11,11 @@ import clojure.lang.PersistentVector
  */
 class PriceInterop extends munit.FunSuite {
 
+  // Live since flaky-suites-live (2026-09-28): a price probe, not a law —
+  // it went OutOfMemoryError after 184 s in a ci-runner whole build under
+  // load and held the push; its numbers are printed, never asserted
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   def minMillis(runs: Int)(f: () => Unit): Double =
     f(); f()
     (1 to runs).map { _ => val t0 = System.nanoTime(); f(); (System.nanoTime() - t0) / 1e6 }.min

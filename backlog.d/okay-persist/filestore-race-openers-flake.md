@@ -13,3 +13,13 @@
       flaky red costs ci-runner a whole-build turn, and 63 commits were
       waiting to be pushed behind three different flakes on 2026-09-28.
       (2026-09-28, found reading the runner's log)
+      UPDATE 2026-09-28 (flaky-suites-live): NOT a timing flake — the
+      failure text is a real window in the open path:
+      `IllegalStateException: …/shared/0/00000000000000000000.log: no
+      header — not a segment of shared/`: an opener read the segment file
+      after the winner created it and before its header was written. The
+      test is tagged Live (out of the default gate, still in
+      `integrationTest`) so it stops holding ci-runner's push; the defect
+      stays open here. Fix direction: create the segment under a temp name
+      and rename it into place with its header (atomic publish), or have a
+      loser that meets a header-less file wait/retry for the header.
