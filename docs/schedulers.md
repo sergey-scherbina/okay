@@ -190,7 +190,9 @@ the stream's whole life, so it forks them with
 one sleeping worker woken at once (one no other `forkLong` is already
 waking); on every other scheduler it is `fork`. The chunked merge now
 reads 185 µs against Loom's 197-229, and `fork` itself is unchanged
-(sequential spawn/join 112.4 against 112.8, same session). Use it for
+(sequential spawn/join 112.4 against 112.8, same session — a number that
+was itself 1.7x too high that day, from the per-slice cancel hooks, and
+is 64 µs again since spawnjoin-rise-bisect). Use it for
 your own long-lived producers; a short fiber forked with it only wakes
 a worker for nothing. The elementwise `buffer` keeps `fork`: with a
 64-slot ring the spread feeds block each other, and it measured 1.25x

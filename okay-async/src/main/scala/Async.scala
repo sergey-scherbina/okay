@@ -376,39 +376,48 @@ object Async {
      * it — measured at 12.6 us of a 4000-bind chain on the JVM
      * (docs/benchmarks.md §18b/§18c).
      */
-    def apply(prog: A ! Async): Unit =
-      var cur: A ! Async = prog
+    def apply(prog: A ! Async): Unit = drive(prog, (), null)
+
+    /** the loop, entered either with a program or with a late answer and
+     * the continuation it resumes. The continuation is applied INSIDE the
+     * try and the slice (drive-resume-throw-lost: a throw there fails the
+     * fiber), and without building a `Bind` around it first — one
+     * allocation and one rotation per late resumption, which every
+     * `spawn`/`join` pays (spawnjoin-rise-bisect) */
+    private def drive[X](prog: (A ! Async) | Null, x: X, k: (X => A ! Async) | Null): Unit =
       var looping = !stopped
       val slice = sliceStarted()
       try
-        while looping do
-          looping = false
-          // the rotation is `Free.resume`'s, so this loop is three
-          // cases and turns once per OPERATION rather than once per
-          // node. The `stopped` check therefore no longer falls
-          // between two rotation steps — which changes nothing a
-          // canceller can observe: rotating reassociates nodes and
-          // runs no user code, and the check that matters, the one
-          // before the next operation, is exactly where it was.
-          (cur.resume: @unchecked) match
-            case Free.Return(a) =>
-              // a scope still open at the END was never exited: its
-              // program stopped early (a consumer that took what it
-              // needed) — release what it holds
-              releaseScopes()
-              succeed(a)
-            case Free.Bind(Free.Inject(e), f) =>
-              val next = op(e, f)
-              if next != null then
-                cur = next
-                looping = !stopped
-                if !looping then { discontinue(cur); releaseScopes() }
-            case Free.Inject(e) =>
-              val next = op(e, Free.Return(_))
-              if next != null then
-                cur = next
-                looping = !stopped
-                if !looping then { discontinue(cur); releaseScopes() }
+        if looping then
+          var cur: A ! Async = if k != null then k(x) else prog.nn
+          while looping do
+            looping = false
+            // the rotation is `Free.resume`'s, so this loop is three
+            // cases and turns once per OPERATION rather than once per
+            // node. The `stopped` check therefore no longer falls
+            // between two rotation steps — which changes nothing a
+            // canceller can observe: rotating reassociates nodes and
+            // runs no user code, and the check that matters, the one
+            // before the next operation, is exactly where it was.
+            (cur.resume: @unchecked) match
+              case Free.Return(a) =>
+                // a scope still open at the END was never exited: its
+                // program stopped early (a consumer that took what it
+                // needed) — release what it holds
+                releaseScopes()
+                succeed(a)
+              case Free.Bind(Free.Inject(e), f) =>
+                val next = op(e, f)
+                if next != null then
+                  cur = next
+                  looping = !stopped
+                  if !looping then { discontinue(cur); releaseScopes() }
+              case Free.Inject(e) =>
+                val next = op(e, Free.Return(_))
+                if next != null then
+                  cur = next
+                  looping = !stopped
+                  if !looping then { discontinue(cur); releaseScopes() }
       catch case e: Throwable => { releaseScopes(); fail(e) }
       finally sliceEnded(slice)
 
@@ -463,7 +472,7 @@ object Async {
                 // evaluated on the way in threw at whoever answered the
                 // callback, and the fiber never answered at all. One Bind
                 // per late resumption, rotated by `resume` like any other
-                case Right(x) => apply(Free.Return(x).flatMap(k))
+                case Right(x) => drive(null, x, k)
                 case Left(e) => { releaseScopes(); fail(e) }
           }
           cell.getAndSet(Moved) match

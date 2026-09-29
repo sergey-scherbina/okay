@@ -63,6 +63,11 @@ private final class BoolSlot:
  * park, `unblocked()` after it, on the owner thread, in pairs.
  */
 private[okay] final class ManagedWorker(val hooks: ManagedWorker.Hooks, name: String) extends Thread(hooks, name):
+  /** the drive whose slice runs on this worker, if any — `DriveTask.running`
+   * for our own threads, as a plain field: only this thread reads or
+   * writes it, and a ThreadLocal's lookup on every slice of every fiber
+   * was a third of what the slice hooks cost (spawnjoin-rise-bisect) */
+  var drive: Schedulers.DriveTask[?] | Null = null
   // here rather than at the construction site: a worker makes its thread
   // in its own constructor, and the init checker (rightly) flags handing
   // a thread that holds the half-built worker to an external method there
@@ -1128,34 +1133,51 @@ object Schedulers {
 
     override protected def sliceStarted(): AnyRef | Null =
       val me = Thread.currentThread()
-      val outer = DriveTask.running.get
+      val outer = DriveTask.current(me)
       if outer != null then outer.suspend(me)
-      DriveTask.running.set(this)
+      DriveTask.setCurrent(me, this)
       runner = me
       outer
 
+    /**
+     * THE HANDSHAKE WITH `cancel`, without the monitor on the way out
+     * (spawnjoin-rise-bisect: a monitor enter and exit on every slice of
+     * every fiber cost `own` spawn/join most of 1.7x). `cancel` writes
+     * `stopped` and THEN reads `runner`, under its monitor; a slice
+     * leaving writes `runner = null` and THEN reads `stopped`. Both are
+     * volatile, so they cannot both miss: either `cancel` read null and
+     * sends nothing, or the slice sees the cancel — and then waits out
+     * `cancel`'s critical section (an empty `synchronized`) before taking
+     * the interrupt back, so an interrupt sent to `me` is never left on
+     * a pooled worker. A slice never cancelled touches no monitor.
+     */
+    private def leave(me: Thread): Unit =
+      if runner eq me then
+        runner = null
+        if cancelled then
+          synchronized { () }
+          val _ = Thread.interrupted()
+
     override protected def sliceEnded(token: AnyRef | Null): Unit =
       val me = Thread.currentThread()
-      synchronized { if runner eq me then runner = null }
       // our cancel's interrupt is ours to take back, not the thread's
-      if cancelled then { val _ = Thread.interrupted() }
+      leave(me)
       token match
         case outer: DriveTask[?] =>
-          DriveTask.running.set(outer)
+          DriveTask.setCurrent(me, outer)
           outer.resume(me)
-        case _ => DriveTask.running.set(null)
+        case _ => DriveTask.setCurrent(me, null)
 
     /** a nested slice starts on `me`: this drive's code is not running.
      * An interrupt our cancel already sent is taken back here, so the
      * nested code does not meet it, and `resume` sends it again */
-    private def suspend(me: Thread): Unit = synchronized:
-      if runner eq me then
-        runner = null
-        if cancelled then { val _ = Thread.interrupted() }
+    private def suspend(me: Thread): Unit = leave(me)
 
     /** the nested slice is over: this drive's code runs on `me` again,
      * and a cancel that landed meanwhile is delivered now */
-    private def resume(me: Thread): Unit = synchronized:
+    private def resume(me: Thread): Unit =
+      // the same handshake the other way: `runner` written, then `stopped`
+      // read — a cancel that read null is seen here and delivered by us
       if runner == null then
         runner = me
         if cancelled then me.interrupt()
@@ -1163,6 +1185,14 @@ object Schedulers {
   private[okay] object DriveTask:
     /** the drive whose slice is running on this thread, if any */
     val running: ThreadLocal[DriveTask[?] | Null] = new ThreadLocal[DriveTask[?] | Null]
+    /** the drive running on `t` (the current thread): a field on our own
+     * workers, the ThreadLocal on any other thread */
+    def current(t: Thread): DriveTask[?] | Null = t match
+      case w: ManagedWorker => w.drive
+      case _ => running.get
+    def setCurrent(t: Thread, d: DriveTask[?] | Null): Unit = t match
+      case w: ManagedWorker => w.drive = d
+      case _ => running.set(d)
 
   /** one honest platform thread per fiber: heavy, but works anywhere */
   val threads: Scheduler = new:
