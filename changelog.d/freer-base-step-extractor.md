@@ -31,7 +31,8 @@ R, X] =>> (X => S) => R`, the shift body stored at its own type.
   base, with `ContMacro` summoning `S <:< R` at the call site for
   `tailShift`/`tailPure`. Seven `split(e) { case Say(w) => … }` sites
   in Writer and Chronicle are `(w0: @unchecked) match` now, as their
-  `Bind` twins were.
+  `Bind` twins were, and the same site in compare's
+  `WriterFoldUntilBoxBenchmark` (`compare/Jmh/compile` is its gate).
 - `TestInlineBudget` reads `Freer.resume`; `ProbeRowInference`'s
   shape 3 flipped from pinning a refusal to pinning an acceptance (an
   argument typed as the expanded union satisfies `R ! Delim + F`
