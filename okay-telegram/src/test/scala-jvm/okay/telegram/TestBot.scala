@@ -64,6 +64,30 @@ class TestBot extends munit.FunSuite:
     assertEquals(Js.long(asked, "offset"), 3L); assertEquals(Js.long(asked, "timeout"), 25L)
   }
 
+  test("A LOOP THAT CANNOT POLL SAYS SO, and waits as long as the API asked — the two silent deaths of a live bot") {
+    var rounds = 0
+    val api = FakeApi { case "getUpdates" =>
+      rounds += 1
+      if rounds == 1 then """{"ok":false,"error_code":409,"description":"Conflict: terminated by other getUpdates request"}"""
+      else if rounds == 2 then """{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 3","parameters":{"retry_after":3}}"""
+      else if rounds == 3 then """{"ok":false,"error_code":401,"description":"Unauthorized"}"""
+      else FakeApi.ok("[]")
+    }
+    val told = scala.collection.mutable.ListBuffer.empty[Refused]
+    val slept = scala.collection.mutable.ListBuffer.empty[Long]
+    given Timer = new Timer:
+      def after(ms: Long)(k: () => Unit) = { slept += ms; k(); () => () }
+    run(Bot(api, token).serve(_ => pure(()), from = 0, retryMs = 2000,
+      stop = () => rounds >= 4, onRefused = r => async { told += r }))
+    // every refusal reached the consumer, with the code that says which it was
+    assertEquals(told.map(_.code).toList, List(409, 429, 401))
+    assert(told.exists(_.description.contains("terminated by other getUpdates")), told.toString)
+    assertEquals(told.find(_.code == 429).flatMap(_.retryAfter), Some(3), "the API's own retry_after, read")
+    assertEquals(told.find(_.code == 401).exists(_.fatal), true, "a wrong token is not something waiting fixes")
+    // and it waited what the API asked where the API asked: 3s, not our 2s
+    assertEquals(slept.toList, List(2000L, 3000L, 2000L))
+  }
+
   test("serve keeps the offset across a refused round and stops when told") {
     var rounds = 0
     val api = FakeApi { case "getUpdates" =>
@@ -98,7 +122,9 @@ class TestBot extends munit.FunSuite:
     val bot = Bot(api, token)
     assertEquals(run(bot.invoice(5, "Check Pass", "30 days of unlimited checks", "check-pass-30", 250, "Check Pass, 30 days")), Right(9L))
     val inv = api.of("sendInvoice").head
-    assertEquals(Js.str(inv, "currency"), "XTR"); assertEquals(Js.str(inv, "provider_token"), "")
+    assertEquals(Js.str(inv, "currency"), "XTR")
+    assertEquals(Js.field(inv, "provider_token"), None,
+      "OMITTED for Stars, not empty: the Bot API changelog says must be omitted")
     assertEquals(Js.field(inv, "prices"), Some(Json.parse("""[{"label":"Check Pass, 30 days","amount":250}]""")))
     assertEquals(run(bot.answerPreCheckout("q-9", ok = false, "sold out")), Right(()))
     val pre = api.of("answerPreCheckoutQuery").head
