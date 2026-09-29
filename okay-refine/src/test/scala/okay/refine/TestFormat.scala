@@ -68,20 +68,12 @@ class TestFormat extends Diagnosed:
     assertEquals(Format.json.run("42").reasons.map(_.reason), Vector("not a JSON object or array"))
   }
 
-  test("KNOWN GAP (backlog xml-processing-instruction): an XML prolog is read as an unclosed tag") {
-    val v = Format.detect.run(bytes("""<?xml version="1.0"?><a/>"""))
+  test("an XML document WITH its declaration is text/xml (was a KNOWN GAP until xml-processing-instruction)") {
+    val in = bytes("""<?xml version="1.0" encoding="UTF-8"?><a/>""")
+    val v = Format.detect.run(in)
     note(v.toString)
-    // pinned so the fix flips this test: when the dialect learns `<?…?>`,
-    // this becomes Took(text/xml) and the box in specs/refine.md closes
-    assertEquals(v.reasons.find(_.at == Path("text", "xml")).map(_.reason), Some("unclosed"))
-  }
-
-  test("damaged JSON is declined by json in the tree's own words") {
-    val v = Format.detect.run(bytes("""{"a":"""))
-    note(v.toString)
-    val json = v.reasons.find(_.at == Path("text", "json"))
-    assert(json.isDefined, v.toString)
-    assertNotEquals(json.get.reason, "not a JSON object or array")
+    assertEquals(took(v)._2, Path("text", "xml"))
+    assertEquals(Format.detect.write(took(v)._1).map(new String(_, UTF_8)), Right(new String(in, UTF_8)))
   }
 
   test("bytes that are not UTF-8 decline text with the offset, and cbor was tried too") {

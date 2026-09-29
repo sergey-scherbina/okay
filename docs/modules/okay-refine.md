@@ -101,10 +101,11 @@ val no   = num.write(true)             // Left("int|decimal: no alternative writ
   a scalar beside a mapping; `Format.yaml` declines a root-level scalar
   for exactly that reason. When flow style lands, the same input
   becomes `Unclear` naming both — by design.
-- **The XML declaration.** `<?xml version="1.0"?>` is read by the XML
-  dialect as an unclosed tag today (backlog `xml-processing-instruction`),
-  so a real FpML file is declined with `unclosed` until that lands;
-  `TestFormat` pins it as a known gap.
+- **The XML declaration** was read by the XML dialect as an unclosed
+  tag until `xml-processing-instruction` (2026-09-29): every real FpML
+  file was declined with `unclosed`. `<?…?>` and `<!DOCTYPE …>` are one
+  token each now, and `TestFormat` reads a declared document as
+  `text/xml`.
 - **`write` is `Either` on a tree.** A step's prism review is total; an
   `Or` into a sum cannot know which alternative a case belongs to
   without asking, so the tree's `write` is partial and says so.

@@ -22,6 +22,14 @@ object Xml {
 
   enum K:
     case Open, Close, SelfClose, Name, Attr, Text, Comment, Cdata, Ws
+    /** `<?…?>` — the XML declaration and any processing instruction:
+     * ONE token, never a frame. Until xml-processing-instruction
+     * (2026-09-29) it read as an Open nobody closed, so every document
+     * beginning `<?xml version="1.0"?>` ended in an `unclosed` error */
+    case Pi
+    /** `<!DOCTYPE …>` and any other `<!…>` declaration: one token, no
+     * frame (an internal subset with `>` inside is out of scope) */
+    case Decl
 
   type T = Token[K]
 
@@ -34,7 +42,7 @@ object Xml {
       if c == '\n' then P(off + 1, line + 1, 0) else P(off + 1, line, col + 1)
 
   enum Mode:
-    case Text, InTag, InComment, InCdata
+    case Text, InTag, InComment, InCdata, InPi
     case InQuote(quote: Char)
 
   final case class S(mode: Mode, buf: String, start: P, at: P)
@@ -60,6 +68,8 @@ object Xml {
     private def kindOf(buf: String): K =
       if buf.startsWith("<!--") then K.Comment
       else if buf.startsWith("<![CDATA[") then K.Cdata
+      else if buf.startsWith("<?") then K.Pi
+      else if buf.startsWith("<!") then K.Decl
       else if buf.startsWith("</") then K.Close
       else if buf.endsWith("/>") then K.SelfClose
       else if buf.startsWith("<") then K.Open
@@ -99,6 +109,16 @@ object Xml {
             S(Mode.Text, "", next, next)
           else keep
 
+        case Mode.InPi =>
+          // a processing instruction ends at `?>` and nowhere else:
+          // quotes and `>` inside it are its own business — and the
+          // closing `?` is not the opening one (`<?>` stays open)
+          val b = s.buf + c
+          if b.length >= 4 && b.endsWith("?>") then
+            tokInto(s.copy(buf = b), K.Pi, out)
+            S(Mode.Text, "", next, next)
+          else keep
+
         case Mode.InQuote(q) =>
           if c == q then keep.copy(mode = Mode.InTag) else keep
 
@@ -119,6 +139,7 @@ object Xml {
             // swallows everything up to its own terminator
             if b == "<!--" then S(Mode.InComment, b, s.start, next)
             else if b == "<![CDATA[" then S(Mode.InCdata, b, s.start, next)
+            else if b == "<?" then S(Mode.InPi, b, s.start, next)
             else keep
 
         case Mode.Text =>
@@ -178,6 +199,8 @@ object Xml {
     private def kindOf(b: String): K =
       if b.startsWith("<!--") then K.Comment
       else if b.startsWith("<![CDATA[") then K.Cdata
+      else if b.startsWith("<?") then K.Pi
+      else if b.startsWith("<!") then K.Decl
       else if b.startsWith("</") then K.Close
       else if b.endsWith("/>") then K.SelfClose
       else if b.startsWith("<") then K.Open
@@ -211,6 +234,10 @@ object Xml {
         case Mode.InCdata =>
           buf.append(c)
           if endsWith3(']', ']', '>') then after(c, K.Cdata)
+        case Mode.InPi =>
+          buf.append(c)
+          val n = buf.length
+          if n >= 4 && buf.charAt(n - 2) == '?' && c == '>' then after(c, K.Pi)
         case Mode.InQuote(q) =>
           buf.append(c)
           if c == q then mode = Mode.InTag
@@ -220,6 +247,7 @@ object Xml {
           else if c == '>' then after(c, null)
           else if is("<!--") then mode = Mode.InComment
           else if is("<![CDATA[") then mode = Mode.InCdata
+          else if is("<?") then mode = Mode.InPi
         case Mode.Text =>
           if c == '<' then
             emitAs(null)

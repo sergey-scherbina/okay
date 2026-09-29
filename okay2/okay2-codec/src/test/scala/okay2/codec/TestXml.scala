@@ -65,6 +65,16 @@ class TestXml extends munit.FunSuite {
     assertEquals(Xml.elements(tree, "c").length, 0, "a tag inside CDATA closed")
   }
 
+  test("the XML declaration, a processing instruction and a DOCTYPE are one token each, never a frame") {
+    val s = """<?xml version="1.0"?><!DOCTYPE a><a><?php if (1 > 0) echo "x"; ?><b/></a>"""
+    val tree = Xml.cst(s)
+    assertEquals(Xml.render(tree), s)
+    assertEquals(Cst.errors(tree), Vector.empty)
+    assertEquals(Xml.elements(tree, "a").length, 1)
+    assertEquals(Xml.elements(tree, "b").length, 1)
+    assertEquals(Xml.render(Xml.cst("<?xml version=\"1.0\"")), "<?xml version=\"1.0\"")
+  }
+
   test("an incremental reparse of markup equals a full one") {
     val session = Xml.parse(doc, 16)
     val at = doc.indexOf("world")

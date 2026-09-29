@@ -29,6 +29,10 @@ object Xml {
     case object Comment extends K
     case object Cdata extends K
     case object Ws extends K
+    /** `<?…?>`: one token, never a frame (xml-processing-instruction) */
+    case object Pi extends K
+    /** `<!DOCTYPE …>` and any `<!…>` declaration: one token, no frame */
+    case object Decl extends K
   }
 
   type T = Token[K]
@@ -47,6 +51,7 @@ object Xml {
     case object InTag extends Mode
     case object InComment extends Mode
     case object InCdata extends Mode
+    case object InPi extends Mode
     final case class InQuote(quote: Char) extends Mode
   }
 
@@ -65,6 +70,8 @@ object Xml {
     private def kindOf(buf: String): K =
       if (buf.startsWith("<!--")) K.Comment
       else if (buf.startsWith("<![CDATA[")) K.Cdata
+      else if (buf.startsWith("<?")) K.Pi
+      else if (buf.startsWith("<!")) K.Decl
       else if (buf.startsWith("</")) K.Close
       else if (buf.endsWith("/>")) K.SelfClose
       else if (buf.startsWith("<")) K.Open
@@ -104,6 +111,14 @@ object Xml {
             S(Mode.Text, "", next, next)
           } else keep
 
+        case Mode.InPi =>
+          // a processing instruction ends at `?>` and nowhere else
+          val b = s.buf + c
+          if (b.length >= 4 && b.endsWith("?>")) {
+            tokInto(s.copy(buf = b), K.Pi, out)
+            S(Mode.Text, "", next, next)
+          } else keep
+
         case Mode.InQuote(q) =>
           if (c == q) keep.copy(mode = Mode.InTag) else keep
 
@@ -119,6 +134,7 @@ object Xml {
             // everything up to its own terminator
             if (b == "<!--") S(Mode.InComment, b, s.start, next)
             else if (b == "<![CDATA[") S(Mode.InCdata, b, s.start, next)
+            else if (b == "<?") S(Mode.InPi, b, s.start, next)
             else keep
           }
 

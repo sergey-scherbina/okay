@@ -149,10 +149,10 @@ Stage 1 — the vocabulary and the format level:
       held on the vocabulary (TestRefine: 4 is `even` and `small`); NOT
       observable at the format level today, see Results: the YAML
       dialect is block-only, so `{"a": 1}` is json alone here
-- [ ] KNOWN GAP, pinned by TestFormat: `<?xml version="1.0"?><a/>` is
-      declined by xml with `unclosed` — the dialect has no processing
-      instruction (backlog `xml-processing-instruction`); closes when it
-      lands and the pinned test flips
+- [x] `<?xml version="1.0"?><a/>` is `text/xml` and writes back — a
+      KNOWN GAP pinned by TestFormat for a day: the dialect had no
+      processing instruction (xml-processing-instruction, 2026-09-29,
+      `K.Pi` and `K.Decl`, one token each, no frame; okay2 in step)
 
 Stage 2 — the document level and the open registry:
 - [ ] `Refine.schema[A](using Schema[A]): Refine[Json, A]` — a derived
@@ -225,10 +225,12 @@ TestFormat — three things the dialects said that a sniff would not have:
   comments, CDATA, close and self-close and then calls every other `<`
   an Open, so `<?xml version="1.0"?>` opens a frame nobody closes and
   every real FpML document is declined with `unclosed`. Filed as
-  backlog `xml-processing-instruction` (a `K.Pi` kind, a scanner
-  change, the full gate); TestFormat pins the current answer so the
-  fix is seen. The format prover uses a document without a declaration
-  meanwhile.
+  backlog `xml-processing-instruction` and landed the same day: `K.Pi`
+  (`<?…?>`, its own scanner mode, since a PI may hold quotes and `>`)
+  and `K.Decl` (`<!DOCTYPE …>`), one token each, never a frame; the
+  streaming tokenizer in step with the scanner (the random-input oracle
+  caught the one divergence, `<?>`: the closing `?` must not be the
+  opening one). TestFormat's pinned test flipped to `Took(text/xml)`.
 - **The parser's own words are better than ours.** `hello` is declined
   by json as "unexpected 'hello' at Span(0,0,0,5)" — the tree's error
   leaf — where the first test expected a generic "not a JSON object or

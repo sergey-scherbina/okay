@@ -5,6 +5,12 @@ import okay.parse.Cst
 /** The nesting prover: named tags, where a close can be wrong. */
 class TestXml extends munit.FunSuite {
 
+  def scanned(s: String): Vector[Xml.T] = okay.lex.Scan.all(Xml.scan)(s).tokens
+  def streamed(s: String): Vector[Xml.T] =
+    val out = Vector.newBuilder[Xml.T]
+    Xml.tokens(java.io.StringReader(s))(out += _)
+    out.result()
+
   val doc =
     """<html>
       |  <!-- a note -->
@@ -65,6 +71,35 @@ class TestXml extends munit.FunSuite {
     assertEquals(Xml.render(tree), s)
     assertEquals(Xml.elements(tree, "b").length, 0, "a tag inside a comment opened")
     assertEquals(Xml.elements(tree, "c").length, 0, "a tag inside CDATA closed")
+  }
+
+  test("the XML declaration and a processing instruction are one token each, never a frame") {
+    // before xml-processing-instruction (2026-09-29) `<?xml …?>` was an
+    // Open nobody closed, so every real document ended in `unclosed`
+    val s = """<?xml version="1.0" encoding="UTF-8"?><a><?php if (1 > 0) echo "x"; ?><b/></a>"""
+    val tree = Xml.cst(s)
+    assertEquals(Xml.render(tree), s)
+    assertEquals(Cst.errors(tree), Vector.empty)
+    val kinds = scanned(s).map(_.kind)
+    assertEquals(kinds.count(_ == Xml.K.Pi), 2)
+    assertEquals(Xml.elements(tree, "a").length, 1)
+    assertEquals(Xml.elements(tree, "b").length, 1)
+    // the streaming tokenizer agrees with the scanner, token for token
+    assertEquals(scanned(s), streamed(s))
+  }
+
+  test("a DOCTYPE is one token, no frame") {
+    val s = "<!DOCTYPE html><html><body/></html>"
+    val tree = Xml.cst(s)
+    assertEquals(Xml.render(tree), s)
+    assertEquals(Cst.errors(tree), Vector.empty)
+    assertEquals(scanned(s).map(_.kind).head, Xml.K.Decl)
+    assertEquals(scanned(s), streamed(s))
+  }
+
+  test("an unterminated processing instruction at end of input is still a token") {
+    for s <- Seq("<?xml version=\"1.0\"", "<?xml ?", "<!DOCTYPE html") do
+      assertEquals(Xml.render(Xml.cst(s)), s, s)
   }
 
   test("an incremental reparse of markup equals a full one") {
