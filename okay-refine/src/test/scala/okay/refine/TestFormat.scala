@@ -124,6 +124,9 @@ class TestFormat extends Diagnosed:
     // text before the root element is not a well-formed XML document
     assertEquals(reasons("hello <a/>")("xml"), "begins with 'h', not <")
     assertEquals(reasons("   ")("json"), "empty")
+    // a byte-order mark before the declaration: the XML parser accepts it, so the first-character test must too
+    // (format-lead-bom: okay-fin's corpus cds-index-tranche.xml declined under format-cheap-decline)
+    assertEquals(reasons("\uFEFF<?xml version=\"1.0\"?>\n<a>1</a>")("took"), "text/xml")
     // a YAML mapping whose first key begins with '<' is still YAML
     assertEquals(reasons("<<: x\nb: 1\n").get("yaml"), None)
   }

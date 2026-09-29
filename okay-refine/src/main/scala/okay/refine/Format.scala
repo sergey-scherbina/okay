@@ -33,7 +33,9 @@ object Format:
       _.getBytes(java.nio.charset.StandardCharsets.UTF_8))
 
   /**
-   * The first character that is not blank, or
+   * The first character that is not blank (a byte-order mark skipped — the
+   * XML parser accepts one, and a real ISDA document begins with it:
+   * format-lead-bom), or
    * -1 — what each dialect asks BEFORE its total parser runs
    * (format-cheap-decline, 2026-09-29): a total parser reads a document of
    * another dialect to its end before its tree says "damage", and okay-fin
@@ -44,7 +46,7 @@ object Format:
    * only the reason is sooner.
    */
   private def lead(s: String): Int =
-    var i = 0
+    var i = if s.startsWith("\uFEFF") then 1 else 0
     while i < s.length && Character.isWhitespace(s.charAt(i)) do i += 1
     if i < s.length then s.charAt(i).toInt else -1
 
@@ -86,7 +88,7 @@ object Format:
       // flow style is outside the block dialect's scope (it reads `{`/`[` as a root scalar and declines after the
       // parse), and `<?`/`<!` begin an XML prolog, never a YAML mapping key
       val c = lead(s)
-      val t = s.dropWhile(Character.isWhitespace(_))
+      val t = s.dropWhile(ch => ch == '\uFEFF' || Character.isWhitespace(ch))
       if c == '{' || c == '[' then Left(s"begins with '${c.toChar}': flow style is not the block dialect")
       else if t.startsWith("<?") || t.startsWith("<!") then Left("begins with an XML prolog")
       else
