@@ -70,3 +70,26 @@ Rows: src/jmh/history.d/2026-09-29T174904Z-adaptive-elementwise-small-ring.tsv. 
 The default is now FASTER than Loom at cap 64: the consumer does only
 its own work, and a producer woken through `forkLong` gets a worker at
 once.
+
+## Correction: `fork`, not `forkLong` (2026-09-29, resume-late-small-ring-cost)
+
+The landed hook sent a foreign answer home with `forkLong`, which wakes
+a sleeping worker EVERY time. A `Source.zip` at capacity 7 resumes a
+side every few elements, and it paid an unpark each: 3709 us an op, and
+the zip's own lost-pairs race (a scope released by the collector,
+source-zip-lost-pairs) met ~6x more often, the handoff's allocation
+bringing collections forward. Measured on ONE build, the mode a
+temporary property, two rounds each (ZipCapBenchmark, MergeCapBenchmark):
+
+| handoff | merge cap 7 | merge cap 64 | zip cap 7 | zip cap 64 |
+|---|---:|---:|---:|---:|
+| `forkLong` (landed) | 271 | 73.6 | 3709 | 2558 |
+| **`fork`** | **92** | **60.8** | 1383 | **370** |
+| inline (before this spec) | 130 | 91.3 | 483 | 472 |
+| Loom | 312 | 82.2 | 2396 | 793 |
+
+`fork` wakes a worker only when none is awake, and wins three of four;
+it is faster than Loom everywhere. The one loss is a tiny-ring zip
+against inline (1383 vs 483): there the consumer running the producer
+costs less than any handoff. Not special-cased — the drive cannot see a
+ring's size, and the default capacity (64) is where `fork` wins.

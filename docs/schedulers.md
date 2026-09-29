@@ -206,9 +206,15 @@ consumer taking from a channel frees a slot and answers the producer
 waiting on it — and it then ran the PRODUCER's code instead of its own:
 31% of a consumer's time in the 64-slot merge. On `own`/`adaptive` a
 late answer from a thread that is not one of the scheduler's workers
-now sends the fiber home (`forkLong`), and an answer from a worker still
-runs it in place. The 64-slot elementwise merge went from 1.12x Loom to
-0.92x (74.5 µs against 81.4), with nothing else moving
+now sends the fiber home with a plain `fork`, and an answer from a
+worker still runs it in place. The first cut sent it home with
+`forkLong` and woke a sleeper every time: right for a 64-slot merge,
+2.7x too slow for a 7-slot `zip`, where a resume comes every few
+elements. With `fork`, on the same build: merge at capacity 7 / 64 92 /
+61 µs (Loom 312 / 82), `zip` 1383 / 370 (Loom 2396 / 793). The one shape
+that pays is a `zip` with a tiny ring: 1383 against 483 when the
+consumer ran the producers itself; at the default capacity (64) the
+handoff wins, 370 against 472
 ([specs/adaptive-elementwise-small-ring.md](../specs/adaptive-elementwise-small-ring.md)).
 
 ## What `own` costs you, and what `adaptive` buys back

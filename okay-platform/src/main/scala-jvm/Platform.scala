@@ -1086,12 +1086,15 @@ object Schedulers {
      * scheduler, so that thread returns to its own work instead of doing
      * this fiber's. Measured: a consumer outside the pool freeing slots
      * of a 64-slot ring spent 31% of its time running the producers
-     * (specs/adaptive-elementwise-small-ring.md). `forkLong`, because the
-     * resumed fiber may run long and a sleeper should take it at once */
+     * (specs/adaptive-elementwise-small-ring.md). Plain `fork`, NOT
+     * `forkLong`: a resume from a small ring comes every few elements,
+     * and waking a sleeper each time (an unpark) made a 7-slot zip 2.7x
+     * slower than `fork`, which wakes only when nobody is awake
+     * (resume-late-small-ring-cost) */
     override protected def resumeLate[X](x: X, k: X => A ! Async): Unit =
       val h = home
       if h == null || Thread.currentThread().isInstanceOf[ManagedWorker] then resumeHere(x, k)
-      else { val _ = h.forkLong(() => async(resumeHere(x, k))) }
+      else { val _ = h.fork(() => async(resumeHere(x, k))) }
 
     protected def succeed(a: A): Unit = done(Right(a))
     protected def fail(e: Throwable): Unit = done(Left(e))

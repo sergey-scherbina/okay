@@ -74,8 +74,8 @@ Two mechanisms implement them:
   185 us against Loom's 197-229 (adaptive-chunked-merge-cost,
   [schedulers.md](schedulers.md)). The elementwise join at capacity 64,
   1.12x Loom on `adaptive` until a fiber woken by a foreign thread was
-  sent home instead of run by it, now reads 74.5 us against Loom's 81.4
-  (adaptive-elementwise-small-ring).
+  sent home instead of run by it, now reads 61 us against Loom's 82
+  (adaptive-elementwise-small-ring, resume-late-small-ring-cost).
 - `Merge.Shared` — one queue both producers feed (`Channel.merge`,
   `Channel.mergeChunked`, `Channel.mergeFlushing`). The road before
   the ring, kept as a door by choice. Its consumer never catches up,
