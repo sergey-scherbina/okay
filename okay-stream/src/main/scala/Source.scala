@@ -310,18 +310,27 @@ object Source {
     okay.pure[R, Unit](()).flatMap: _ =>
       val cl = Channel.buffer[A, Source, Async](capacity)(s)
       val cr = Channel.buffer[B, Source, Async](capacity)(t)
-      // entered in front and never exited, as `Merge.Shared.elements`:
-      // an exit after the loop would be a Bind over the whole element
-      // program, a rotation per pair. The drive releases it when the
-      // program ends, early or not; at a normal end both channels are
-      // closed already and `closing` counts nothing
+      // entered in front, EXITED where the zip ends (one Exit a run, in
+      // the end branches — not a Bind after the loop, a rotation per
+      // pair). The exit is also what keeps the scope REACHABLE while the
+      // program runs: `go` names it, so every continuation of the loop
+      // holds it. Entered and never named again, it was held by nothing
+      // on a plain `runWith` (no drive, no fiber handler), and a
+      // collection mid-run released it through its collector door —
+      // the backstop for an ABANDONED program — closing both sides: the
+      // zip ended early and silently (source-zip-lost-pairs). An early
+      // stop never reaches the exit; the drive, a fiber's handler or,
+      // abandoned, the collector releases it then
       val scope = Async.CancelScope(Merge.closing(cl, cr))
+      def end(other: Channel[?]): Unit ! R =
+        other.close()
+        okay.effect[R, Unit](Async.Run(Async.Exit(scope)))
       def go: Unit ! R =
         receive(cl).flatMap:
-          case None => cr.close(); okay.pure(())
+          case None => end(cr)
           case Some(a) =>
             receive(cr).flatMap:
-              case None => cl.close(); okay.pure(())
+              case None => end(cl)
               case Some(b) => okay.effect[R, Unit](Writer((a, b))).flatMap(_ => go)
       okay.effect[R, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => go)
 

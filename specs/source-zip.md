@@ -124,3 +124,20 @@ extension [A](p: Chunks[A])
   Taken over 2026-09-29 by another session (the first stopped
   uncommitted on 2026-09-28): the Loom pin, the okay2 port.
   Gate: the lane's suites plus `affected master Test/compile`.
+
+- source-zip-lost-pairs (2026-09-29): the ci-runner's whole build got
+  1600 pairs of 2000 from the order law, with no error, and filed it as
+  a flake. It was the zip's cancel scope, released by the COLLECTOR mid-run.
+  The scope was entered and never named again, so on a plain `runWith`
+  nothing held it. Once the consumer's loop is compiled (the interpreter
+  keeps the dead local), a collection released it: the stack was
+  `Merge.closing` <- `CancelScope.Once.run` <- `Unreachable.onCollected`
+  <- `CleanerImpl` on `Cleaner-0`. Alone it went bad in 14 (loom) and
+  26 (own) rounds of 400. Every bad round had `releases=1`, and the
+  short sizes were uniform. Fixed: the zip EXITS the scope in its end
+  branches, and `go` names it, so every continuation holds it. Red first:
+  "a collection mid-run does not end the zip" (a thread collecting beside
+  3000 rounds) went red at round 385 before the fix. The decision above
+  ("entered in front and never exited, as `Merge.Shared.elements`") was
+  the defect. Shared has it too: backlog merge-shared-scope-gc-release.
+
