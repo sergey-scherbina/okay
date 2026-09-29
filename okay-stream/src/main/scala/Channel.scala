@@ -511,7 +511,16 @@ extension [A](c: Channel[A])
    * Nothing is delayed for a batch: `receiveMany` takes only what is
    * already buffered and parks for a single element when nothing is.
    */
-  def drained: Source[A] =
+  def drained: Source[A] = drainedThen(okay.pure(()))
+
+  /** `drained`, running `last` where the channel ends instead of
+   * nothing. A join that entered a cancel scope passes its EXIT here,
+   * which is also what keeps the scope reachable while the join runs:
+   * the loop names `last`, so every continuation holds it. Without it a
+   * collection mid-run released the scope through its collector door and
+   * closed the channel under running producers
+   * (merge-shared-scope-gc-release) */
+  private[okay] def drainedThen(last: Source[A]): Source[A] =
     // A HAND LOOP over the batch, not `Writer.of(Drain(c))`
     // (merge-cap256-gap, 2026-09-26): the generic road built, per
     // element, the `Stream[Drain]` observation — a `Some`, a tuple, a
@@ -529,7 +538,7 @@ extension [A](c: Channel[A])
     val now: () => (Either[Throwable, Chunk[A]] | Null) = () => c.receiveManyNow(Drain.Batch)
     def pull: Source[A] =
       okay.effect[R, Chunk[A]](Async.Await[Chunk[A]](reg, now)).flatMap: got =>
-        if got.isEmpty then okay.pure(()) else tellFrom(got, 0)
+        if got.isEmpty then last else tellFrom(got, 0)
     def tellFrom(got: Chunk[A], i: Int): Source[A] =
       okay.effect[R, Unit](Writer(got(i))).flatMap: _ =>
         if i + 1 < got.length then tellFrom(got, i + 1) else pull
