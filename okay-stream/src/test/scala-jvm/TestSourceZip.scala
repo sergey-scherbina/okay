@@ -46,7 +46,7 @@ class TestSourceZip extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
   }
 
   test("two infinite sources zip lazily under an early stop, which releases both sides once; a full run releases nothing") {
-    for (sname, sch) <- List("loom" -> summon[Scheduler], "own" -> Schedulers.own.build) do
+    for (sname, sch) <- List("loom" -> Schedulers.loom, "own" -> Schedulers.own.build, "default" -> summon[Scheduler]) do
       val before = Source.mergeReleases.get
       val z = Source.of(LazyList.from(0)).zip(Source.of(LazyList.from(100)), capacity = 4)
       val f = sch.fork(() => z.runFoldUntil(using FoldUntil.take[(Int, Int)](5)))
@@ -60,10 +60,15 @@ class TestSourceZip extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
 
   test("the side that outlives the other is closed at the end: its feeder, parked on the full buffer, ends") {
     // the right side is endless and its feeder parks on a buffer of 4;
-    // the left side ends after one element. The feeder is a virtual
-    // thread on the default scheduler — remembered by a Run at the
-    // source's front, which executes on the feeder's own fiber — and
-    // the proof it ended is that the thread is gone
+    // the left side ends after one element. On LOOM the feeder is a
+    // virtual thread of its own — remembered by a Run at the source's
+    // front, which executes on the feeder's own fiber — and the proof it
+    // ended is that the thread is gone. Pinned to Loom: since
+    // scheduler-default-flip (fd6eba1d8) the default is adaptive, whose
+    // fibers run on pooled workers that outlive them, so a live thread
+    // proves nothing there; the second proof below (the endless side
+    // has stopped producing) holds on any scheduler
+    given Scheduler = Schedulers.loom
     val produced = AtomicInteger(0)
     @volatile var feeder: Thread | Null = null
     val endless: Source[Int] =
@@ -80,6 +85,9 @@ class TestSourceZip extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     // freed and refilled, and the element the full ring then refused:
     // 7, measured exactly that on the first run — not the endless rest
     assert(produced.get <= 1 + 4 + 1 + 1, s"the endless side ran on after the zip ended: ${produced.get}")
+    val settled = produced.get
+    Thread.sleep(50)
+    assertEquals(produced.get, settled, "the endless side is still producing after its feeder ended")
   }
 
   test("a side that fails fails the zip, after every pair told before the failure") {

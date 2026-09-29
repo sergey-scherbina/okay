@@ -330,5 +330,7 @@ object Chunks {
     def elements: Iterator[A] = Stream.feedStream[Unit].iterator(p).flatMap(_.iterator)
     /** the chunks, memoized */
     def toLazyList: LazyList[Chunk[A]] = LazyList.from(Stream.feedStream[Unit].iterator(p))
+    /** `Chunks.zip(p, q)`, read like the rest of the chunk API (source-zip) */
+    def zip[B](q: Chunks[B]): Chunks[(A, B)] = Chunks.zip(p, q)
   }
 }

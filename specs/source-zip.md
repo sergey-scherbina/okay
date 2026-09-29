@@ -62,9 +62,22 @@ extension [A](p: Chunks[A])
   before the failure, so a failing side fails the zip at the pair its
   failure reached and every pair before it is delivered — `merge`'s
   promise, inherited rather than re-implemented.
-- **No okay2 port.** The item asked for one; okay2 has neither
-  `Chunks` nor `Source` (no okay-stream twin), so there is nothing to
-  keep in parity. Dropped, not deferred.
+- **The okay2 port, without the early-stop release.** The first cut of
+  this spec said okay2 had no `Source` or `Chunks` and dropped the port;
+  wrong — `okay2/okay2-stream` has both (Source.scala, Chunks.scala), and
+  the port landed with the lane: `SourceOps.zip`/`zipWith` and
+  `ChunksOps.zip`, the same pairing loop, the survivor closed at the
+  end. What okay2 cannot port is the EARLY-stop release: it has no
+  cancel scope for a drive to release, and its `merge` leaves both
+  feeders parked on their bounded buffers too. Its zip says so.
+- **The feeder's death is proved on Loom.** The feeder-ends test reads
+  `!thread.isAlive`, which proves a fiber ended only where a fiber IS a
+  thread. Since scheduler-default-flip (fd6eba1d8) the default is
+  adaptive, whose fibers run on pooled workers — the test went red on
+  a rebase with no change to zip. It is pinned to `Schedulers.loom`, and
+  a second, scheduler-free proof sits beside it: the endless side has
+  stopped producing. The early-stop release test runs on loom, own and
+  the default.
 
 ## Behavior
 
@@ -84,9 +97,14 @@ extension [A](p: Chunks[A])
 - [x] a side that fails fails the zip, after every pair told before
       the failure
 - [x] `p zip q` on `Chunks` equals `Chunks.zip(p, q)`
+- [x] okay2: the same laws (TestSourceZip, TestChunks) — lockstep at
+      every buffer size, order, zipWith, lazy early stop, the survivor
+      closed, failure after the pairs before it
 
 ## Results
 
 - Additive lane (source-zip, 2026-09-28): new methods only, no
   existing body changed; `Merge.closing` widened to `private[okay]`.
+  Taken over 2026-09-29 by another session (the first stopped
+  uncommitted on 2026-09-28): the Loom pin, the okay2 port.
   Gate: the lane's suites plus `affected master Test/compile`.
