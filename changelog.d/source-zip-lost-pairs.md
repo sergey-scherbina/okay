@@ -18,3 +18,10 @@
   `Freer?\$` fixes it.
 - Same shape still open: `Merge.Shared.elements`, filed as
   backlog.d/okay-core/merge-shared-scope-gc-release.md.
+- Found beside it: this lane's `affected master staged` went red on
+  `TestMergeOrder` "Channel.merge: each side arrives in exactly the order
+  it sent" (a ring's worth of one side after the next). Bisected at
+  OKAY_MERGE_ROUNDS=400: 5da64e406 green, f50932cbe (resumeLate on
+  `forkLong`) red by round 9. Already cured on master by ebdfd0ec7
+  (resume-late-small-ring-cost: `fork`, not `forkLong`), which is green
+  at 400 rounds. Kept here so the next red of that law knows where to look.
