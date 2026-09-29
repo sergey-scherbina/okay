@@ -1,6 +1,0 @@
-feature/inproc-redirect-elsewhere 2026-09-29T11:53:48Z
-agent: claude-code (okay-watch acceptance)
-heartbeat: 2026-09-29T11:53:48Z
-status: in-progress
-done-so-far: claimed; worktree next
-next: InProcess.Conn answers a redirect elsewhere as a page that opens the system browser and steps back; Bridge.external; TestInProcess; specs/app-in-process.md
