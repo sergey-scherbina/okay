@@ -16,6 +16,36 @@ the ZIO fiber (its finalizers run; a late result resumes nothing).
 Neither side simulates the other's runtime; each waits its own native
 way. `p.asZIO` and `z.asOkay` are the same two doors as extensions.
 
+**The whole `ZIO[R, E, A]`.** `Task` crosses with `fromZIO`/`toZIO`; a
+ZIO with an environment and a typed error crosses with
+`fromZIOTyped`/`toZIOTyped`, each channel onto its okay effect —
+`ZioRow[R, E] = Reader % ZEnvironment[R] + Throws % E + Async`:
+
+| ZIO | okay |
+|---|---|
+| environment `R` | `Reader % ZEnvironment[R]` — `Reader.run(env)` provides it |
+| typed failure `E` | `Throws % E` — `raise(e)`, `runEither` |
+| defect, interruption | the `Async` run fails, cancel interrupts |
+
+```scala
+type Row = Reader % ZEnvironment[Greeting] + Throws % String + Async
+val z: ZIO[Greeting, String, String] = ZIO.serviceWith[Greeting](_.word + "!")
+val p: String ! Row = Reader.ask[ZEnvironment[Greeting]].at[Row].map(_.get[Greeting].word)
+val q: Int ! Row = raise[String, Int]("bad").at[Row]
+```
+
+`fromZIOTyped(z)` is a program over that row; `toZIOTyped(p)` is a
+`ZIO[Greeting, String, String]` that reads `Greeting` from ZIO's
+environment, and `toZIOTyped(q)` fails with `"bad"` in ZIO's typed
+channel. A throwable escaping an okay program is a ZIO DEFECT, never a
+typed failure — the same line ZIO draws itself. The round trip answers as
+the original ZIO for a success, a typed failure and a read environment.
+
+One spelling note: `.at[...]` needs the row written out, as above. Through
+the alias, `.at[ZioRow[Greeting, String]]` finds no membership (the search
+does not see through a parameterised alias), while `ZioRow` in a
+signature is fine.
+
 **ZIO in direct style.** `import okay.zio.given` makes any `ZIO[R, E, _]`
 okay's `Monad`, so a `direct` block binds ZIO values with okay's own marks
 — the block is a `Task`, nothing runs until ZIO runs it, a failure skips
@@ -88,6 +118,9 @@ Async.par(async(1), async(2)).runWith
 | `ZioInterop.toZIOAsync` | `(=> A ! Async) => Task[A]` | callback drive; ZIO interruption cancels Await |
 | `ZioInterop.fromZIO` | `(Task[A], runtime = default) => A ! Async` | an Await on a forked fiber; cancel interrupts it |
 | `p.asZIO` / `z.asOkay` | extensions | `toZIO` / `fromZIO` |
+| `ZioInterop.fromZIOTyped` | `(ZIO[R, E, A], runtime = default) => A ! ZioRow[R, E]` | environment from Reader, `E` as Throws |
+| `ZioInterop.toZIOTyped` | `(=> A ! ZioRow[R, E]) => ZIO[R, E, A]` | Reader from the environment, raise as fail |
+| `ZioRow[R, E]` | `Reader % ZEnvironment[R] + Throws % E + Async` | ZIO's three channels |
 | `given zioMonad[R, E]` | `okay.Monad[[A] =>> ZIO[R, E, A]]` | `direct[Task] { z.? }` |
 | `ZioInterop.toZStream` | `Chunks[A] => ZStream[Any, Nothing, A]` | unfoldChunk over pure pull |
 | `ZioInterop.fromZStream` | `ZStream[Any, Throwable, A] => Chunks[A]` | scoped iterator, lazy, linear |

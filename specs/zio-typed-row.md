@@ -1,6 +1,6 @@
 # The whole ZIO[R, E, A] as an okay row
 
-Status: in progress, 2026-09-29. Owner lane: `zio-typed-row`.
+Status: done, 2026-09-29. Owner lane: `zio-typed-row`.
 Follows `specs/zio-direct-cancel.md`, which crosses `Task[A]` only.
 
 ## Goal
@@ -27,20 +27,20 @@ object ZioInterop:
 
 ## Behaviour
 
-- [ ] `fromZIOTyped` reads the environment from the Reader: the same ZIO
+- [x] `fromZIOTyped` reads the environment from the Reader: the same ZIO
       run under two `Reader.run` values sees each.
-- [ ] A typed ZIO failure `e` is `raise(e)` on the okay side:
+- [x] A typed ZIO failure `e` is `raise(e)` on the okay side:
       `runEither` answers `Left(e)`.
-- [ ] A ZIO defect (`die`) is not a typed failure: it fails the `Async`
+- [x] A ZIO defect (`die`) is not a typed failure: it fails the `Async`
       run with the same throwable.
-- [ ] `toZIOTyped` takes its Reader from ZIO's environment
+- [x] `toZIOTyped` takes its Reader from ZIO's environment
       (`provideEnvironment`), and an okay `raise(e)` is ZIO's `fail(e)`:
       `.either` answers `Left(e)`.
-- [ ] A throwable escaping the okay program is a ZIO defect, not a typed
+- [x] A throwable escaping the okay program is a ZIO defect, not a typed
       failure.
-- [ ] Round trip: `toZIOTyped(fromZIOTyped(z))` answers as `z` for a
+- [x] Round trip: `toZIOTyped(fromZIOTyped(z))` answers as `z` for a
       success, a typed failure and a read environment.
-- [ ] Cancellation crosses as in `fromZIO`: cancelling the okay side
+- [x] Cancellation crosses as in `fromZIO`: cancelling the okay side
       interrupts the ZIO fiber.
 
 ## Decisions
@@ -53,3 +53,17 @@ object ZioInterop:
   the second. Folding a defect into `E` would need `E >: Throwable`.
 - `toZIOTyped` runs the okay side through `toZIO` (blocking pool): it must
   be right for any program, including a blocking `Async.Run`.
+- Rows are widened by NAME inside the bridge (`!.widen`), not with `.at`:
+  `.at[ZioRow[R, E]]` found no `Row.In` at abstract `R`, `E` (the rule in
+  AGENTS.md: an obligation over a row is carried, never searched for).
+- Observed: `.at[ZioRow[Greeting, String]]` fails even for CONCRETE
+  arguments, while the same row spelled out
+  (`Reader % ZEnvironment[Greeting] + Throws % String + Async`) resolves.
+  The implicit search does not see through the parameterised alias. The
+  docs say to spell the row out for `.at`; `ZioRow` stays for signatures.
+
+## Results
+
+- `scripts/gate.sh "okayZio/testOnly okay.zio.TestZioTypedRow"`: 7 passed.
+- Mutant: a typed failure turned into a defect in `toZIOTyped` failed two
+  tests ("raise is fail", "round trip"); restored.

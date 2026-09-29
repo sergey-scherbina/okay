@@ -1,8 +1,8 @@
 package okay.zio
 
-import okay.{!, Async, Chunks}
+import okay.{!, %, +, Async, Chunks, Reader, Throws, raise, runEither}
 import okay.given
-import _root_.zio.{Exit, Runtime, Scope, Task, Unsafe, ZIO}
+import _root_.zio.{Exit, Runtime, Scope, Task, Unsafe, ZEnvironment, ZIO}
 import _root_.zio.stream.ZStream
 import scala.concurrent.ExecutionContext.parasitic
 
@@ -12,6 +12,9 @@ import scala.concurrent.ExecutionContext.parasitic
  * ZIO; ZIO blocks for okay), the stream bridge moves CHUNK FOR CHUNK —
  * both sides are chunked, so nothing is re-buffered.
  */
+/** ZIO's three channels as okay's effects (specs/zio-typed-row.md) */
+type ZioRow[R, E] = Reader % ZEnvironment[R] + Throws % E + Async
+
 object ZioInterop {
 
   /**
@@ -71,6 +74,37 @@ object ZioInterop {
         }
         () => { val _ = runtime.unsafe.fork(fiber.interrupt) }
       }
+    }
+
+  /**
+   * The whole `ZIO[R, E, A]` as an okay program (specs/zio-typed-row.md):
+   * the environment is read from the Reader, a typed failure is
+   * `raise(e)`, a defect or an interruption fails the Async run, and
+   * cancelling the okay side interrupts the fiber — as [[fromZIO]].
+   */
+  def fromZIOTyped[R, E, A](z: ZIO[R, E, A], runtime: Runtime[Any] = Runtime.default): A ! ZioRow[R, E] =
+    // widened by name, not `.at`: membership is not searchable at a row
+    // whose arguments are abstract (AGENTS.md, "an obligation over a row
+    // is carried"), and each of the three names its own place
+    !.widen[ZEnvironment[R], Reader % ZEnvironment[R], Throws % E + Async](Reader.ask[ZEnvironment[R]])
+      .flatMap { env =>
+        !.widen[Either[E, A], Async, Reader % ZEnvironment[R] + Throws % E](
+          fromZIO(z.provideEnvironment(env).either, runtime)).flatMap {
+          case Right(a) => okay.pure(a)
+          case Left(e) => !.widen[A, Throws % E, Reader % ZEnvironment[R] + Async](raise[E, A](e))
+        }
+      }
+
+  /**
+   * An okay program over [[ZioRow]] as the whole `ZIO[R, E, A]`: its
+   * Reader is ZIO's environment, `raise(e)` is `fail(e)`, and a
+   * throwable escaping the program is a defect. Run as [[toZIO]]
+   * (the blocking pool), so any program is safe here.
+   */
+  def toZIOTyped[R, E, A](p: => A ! ZioRow[R, E]): ZIO[R, E, A] =
+    ZIO.environmentWithZIO[R] { env =>
+      toZIO(runEither[A, Async, E](Reader.run[ZEnvironment[R], A, Throws % E + Async](env)(p)))
+        .orDie.flatMap(ZIO.fromEither(_))
     }
 
   /** a chunked okay stream as a ZStream, chunk for chunk (the pull is pure) */
