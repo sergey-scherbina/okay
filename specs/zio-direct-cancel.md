@@ -1,0 +1,65 @@
+# ZIO in direct style, and a cancellable way back
+
+Status: in progress, 2026-09-29. Owner lane: `zio-direct-cancel`.
+Follows `specs/zio-async-bridge.md` (okay → ZIO without a parked thread).
+Next lanes: `direct-foreign-mark` (`!z` inside a block over an okay
+program), `zio-typed-row` (the whole `ZIO[R, E, A]`).
+
+## Goal
+
+A ZIO value is bound in a `direct` block with okay's own marks, and the
+two sides cross in both directions with cancellation carried across.
+
+```scala
+import okay.Direct.*
+import okay.zio.given
+
+val t: Task[Int] = direct[Task] {
+  val a = ZIO.attempt(20).?
+  val b = !ZIO.attempt(22)
+  a + b
+}
+```
+
+## Interface
+
+```scala
+package okay.zio
+
+given zioMonad[R, E]: okay.Monad[[A] =>> ZIO[R, E, A]]
+
+object ZioInterop:
+  def fromZIO[A](z: Task[A], runtime: Runtime[Any] = Runtime.default): A ! Async
+
+extension [A](p: => A ! Async) def zio: Task[A]          // = toZIO(p)
+extension [A](z: Task[A]) def okay: A ! Async            // = fromZIO(z)
+```
+
+## Behaviour
+
+- [ ] `direct[Task]` binds ZIO values with `.?`, `!` and `.reflect`; the
+      block is a `Task` and nothing runs until ZIO runs it.
+- [ ] A ZIO failure inside the block fails the whole `Task` and skips the
+      rest of the block.
+- [ ] The instance is ZIO's own `flatMap`: a block binding in a loop of
+      100 000 iterations does not overflow the stack.
+- [ ] `fromZIO` is an `Async.await`: under `Async.runAsyncCancellable` no
+      thread is parked while the ZIO runs.
+- [ ] Cancelling the okay drive interrupts the ZIO fiber (its finalizer
+      runs), and a late ZIO result does not resume the program.
+- [ ] A ZIO failure crosses as the same throwable; `runWith` still works.
+- [ ] `p.zio` and `z.okay` are `toZIO` and `fromZIO`.
+
+## Decisions
+
+- `fromZIO` CHANGES rather than gaining an async twin. It used to block the
+  okay thread in `runtime.unsafe.run`; there is no case where the blocking
+  form is better (under `runWith` an `Await` parks exactly as before), and
+  the old one could not be cancelled. `toZIO` keeps its blocking twin for
+  the opposite reason: an okay `Async.Run` may block, and only
+  `attemptBlocking` is safe for it.
+- `p.zio` is `toZIO`, not `toZIOAsync`: it must be right for every
+  program, including ones with blocking `Async.Run`. The non-blocking road
+  stays a named choice.
+- The Monad is ZIO's `flatMap`/`succeed`, `fmap` is ZIO's `map`: stack
+  safety is ZIO's trampoline, so no recursion of ours to bound.
