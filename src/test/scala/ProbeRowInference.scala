@@ -46,18 +46,22 @@ class ProbeRowInference extends munit.FunSuite:
     assertEquals(State.run(0)(runEither[Int, State % Int, String](p)), (5, Left("x")))
   }
 
-  // ---------------------------------------------------------- shape 3: a union-typed argument does not recover F + G
+  // ---------------------------------------------------------- shape 3: a union-typed argument DOES recover F + G now
 
-  test("a method taking `R ! Delim + F` does not recover F from an argument ALREADY typed as the expanded union, without explicit type args") {
+  test("a method taking `R ! Delim + F` recovers F from an argument ALREADY typed as the expanded union, since the indexed base") {
     // Delim.Stacked.delimited's own construction (Delim.scala) needed
     // `push[R, F](...)`/`run[R, F](...)` spelled explicitly for exactly
-    // this reason; reproduced minimally here rather than asserted from
-    // memory
+    // this reason, and until freer-base-step-extractor (2026-09-29) this
+    // probe pinned the refusal. The base's row is `Lifted[F]#L`, a class
+    // projection, and the two rows now meet as `Lifted[Delim + F]` against
+    // `Lifted[[A] =>> Delim[A] | F[A]]`, which dotty solves; on the old
+    // enum `Free[Delim + F, R]` against the expanded union did not. The
+    // explicit spellings still compile (the next probe) and may stay.
     val e = compileErrors("""
       def wants[R, F[+_]](p: R ! okay.Delim + F): Unit = ()
       def has[R, F[+_]](p: R ! ([A] =>> okay.Delim[A] | F[A])): Unit = wants(p)
     """)
-    assert(e.nonEmpty, "an argument typed as the expanded union satisfied Delim + F with no explicit type args")
+    assert(e.isEmpty, s"an argument typed as the expanded union no longer satisfies Delim + F without type args — the base changed under this probe:\n$e")
   }
 
   test("...spelling the type arguments at the call site fixes it") {

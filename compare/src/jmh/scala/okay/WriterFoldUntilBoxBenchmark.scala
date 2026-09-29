@@ -51,8 +51,10 @@ class WriterFoldUntilBoxBenchmark {
       if K.doneLong(s) then Return(K.endLong(s))
       else (x.resume: @unchecked) match
         case Return(_) => Return(K.endLong(s))
-        case Inject(e) => split[Writer % W, F](e) {
-            case Writer.Say(v) => Return(K.endLong(K.addLong(s, v))): R ! F
+        case Inject(e) => split[Writer % W, F](e) { w0 =>
+            // `@unchecked` as in the Bind case: Writer.scala says why
+            (w0: @unchecked) match
+              case Writer.Say(v) => Return(K.endLong(K.addLong(s, v))): R ! F
           } { e => Inject(e).map(_ => K.endLong(s)) }
         case Bind(Inject(e), k) => split[Writer % W, F](e) { w0 =>
             (w0: @unchecked) match

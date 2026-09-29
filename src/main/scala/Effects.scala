@@ -152,7 +152,7 @@ given Effects[Free] with
   extension [F[+_], A](m: Free[F, A])
     override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
     override def foldCont[S](h: F !> S): A /> S =
-      m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
+      Free.fold(m)(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
     /** the same answer as the foldCont definition, in one pass instead of two */
     override def runWith(using Handler[F]): A = runFree(m)
 
@@ -298,12 +298,10 @@ def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
   // already syntax, so it folds straight into the target with no
   // continuation reified on the way (this was `fromFree`, the same
   // function under a second name — core-cleanup)
-  m.fold(M.pure)([X] => e => k => M.perform(e).flatMap(x => reflect[M, F, A](k(x))))
+  Free.fold(m)(M.pure)([X] => e => k => M.perform(e).flatMap(x => reflect[M, F, A](k(x))))
 
 object Effects {
   export Free.*
-
-  import Free.*
 
   /** the staging entry for effect programs, as staged is for Control:
    * `Effects[Free]`, `Effects[Eager]`, `Effects[M]` for any M with an
@@ -437,8 +435,8 @@ object Effects {
     def go(i: Int, acc: B): B ! F =
       if i >= n then Return(acc)
       else f(acc, v(i)) match
-        case b: Bind[F, x, B] @unchecked => b.f match
-          case k: Free.Mapped[F, x, B] @unchecked => Bind(b.a, (y: x) => go(i + 1, k.f(y)))
+        case b: Freer.Bind[Freer.Lift[F], Unit, Unit, Unit, x, B] @unchecked => b.f match
+          case k: Freer.Mapped[Freer.Lift[F], Unit, x, B] @unchecked => Bind(b.a, (y: x) => go(i + 1, k.f(y)))
           case _ => Bind(b, (y: B) => go(i + 1, y))
         case m => Bind(m, (y: B) => go(i + 1, y))
     // DELAYED, so `f` runs only when the program does, as it does in a

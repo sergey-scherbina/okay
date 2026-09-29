@@ -50,7 +50,7 @@ class TestOkaySpring extends munit.FunSuite {
     assertEquals(Mono.from(adapter.toPublisher[Int](prog)).block(), 42)
     assertEquals(OkayReactive.fromPublisher(Mono.just("y")).runWith, "y")
     adapter.fromPublisher(Mono.just("x")) match
-      case p: Free[?, ?] => assertEquals(p.getClass.getSimpleName.isEmpty, false)
+      case p: Freer[?, ?, ?, ?] => assertEquals(p.getClass.getSimpleName.isEmpty, false)
       case other => fail(s"not a program: $other")
   }
 

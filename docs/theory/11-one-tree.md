@@ -41,13 +41,14 @@ signature `F` of a freer tree the type constructor "a function of the
 continuation":
 
 ```scala
-// Cont.scala:103 — the leaf, as the tree stores it
-private[okay] type Shift[+X] = (X => Nothing) => Any
-// Cont.scala:146 — the representation: the freer tree at that signature
-opaque type Rep[A, S, R] = Free[Shift, A]
+// Cont.scala — the leaf, as the tree stores it: the shift body itself
+private[okay] type Shift = [S, R, X] =>> (X => S) => R
+// Cont.scala — the representation: the freer tree at that signature
+opaque type Rep[A, S, R] = Freer[Shift, S, R, A]
 ```
 
-and `Cont` **is** `Free[Shift, A]`. There is nothing to convert
+and `Cont` **is** `Freer[Shift, S, R, A]`, the same enum `Free[F, A]`
+is (`Freer[Lift[F], Unit, Unit, A]`). There is nothing to convert
 between them, because there is nothing between them. `Cont.Pure` is
 `Free.Return` (`Cont.scala:151`); `Cont.shift(f)` is `Free.Inject`
 of the leaf (`Cont.scala:155`); `flatMap` is `Free.Bind`, with one
@@ -65,70 +66,76 @@ effect, so the *tree of a program* need contain nothing a
 continuation-manipulating leaf cannot express, and the same tree can
 serve both.
 
-## Where the answer types went, and why they cannot come back
+## Where the answer types live, and what it took to put them there
 
 The obvious objection: `Cont[A, S, R]` has three type parameters and
 `Free[F, A]` has one that is not `F`. Where are `S` and `R`?
 
-On the facade, and only there. `Rep[A, S, R] = Free[Shift, A]` treats
-`S` and `R` as **phantom**: every combinator's *signature* threads
-them — `shift[A, S, R](f: (A => S) => R): Rep[A, S, R]`,
-`flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R]`,
-`run(c: Rep[A, S, R])(k: A => S): R` — while the *tree* carries none
-of them. The leaf is stored at the one type every `(X => S) => R`
-conforms to, `(X => Nothing) => Any` (a function is contravariant in
-its argument and `Nothing <: S`, covariant in its result and
-`R <: Any`), so storing a typed shift is an upcast and costs no cast;
-the types come back at exactly one place, the runner, through the
-one door `Shift.at` (`Cont.scala:133`), which is the only
-`asInstanceOf` on a leaf in the library and is documented as the
-place where "the answer-type discipline is trusted rather than
-checked".
+**On the nodes, since 2026-09-29** (freer-base-step-extractor). The
+one enum is `Freer[G, S, R, A]`: `Return(a)` is a `Freer[G, R, R, A]`,
+a leaf `Inject(a: G[S, R, A])`, and `Bind(a: Freer[G, T, R, A], f: A
+=> Freer[G, S, T, B])` is a `Freer[G, S, R, B]` — a left side answering
+`T => R` joined to a continuation answering `S => T`, which is answer-
+type modification written on the node. `Cont` is that enum at `Shift
+= [S, R, X] =>> (X => S) => R`: the leaf is the shift body at its own
+type, and the runner is typed by the GADT end to end — `Return` says
+`S <: R`, so `k(a): S` is an `R`; the leaf under a `Bind(Inject(s), f)`
+is a `(X => T) => R` and `f` is the `X => Cont[B, S, T]` it needs. No
+cast on the tree. `Free[F, A]` is the same enum at `Lift[F]`, a
+signature that ignores the two indexes, with both fixed at `Unit`.
 
-Why not put `S` and `R` on the nodes and have the compiler check
-them? Because it was tried, twice, and the compiler answered both
-times (specs/freer-base.md, stages 0 and 1).
+It was not always so, and the two refusals on the way are why the
+shape is what it is (specs/freer-base.md, stages 0 and 1):
 
 - **On the leaf's signature** — `Free[[X] =>> (X => S) => R, A]`.
   A freer `Bind` joins a left tree and a continuation over ONE `F`.
   Answer-type modification joins a left `(X => S) => R` with a right
   `(X => S2) => S`: two different `F`s under one `Bind`. The only `S`
-  at which both sides live under one `F` is `Nothing`, which is the
-  erased leaf again. `PState.set` changes its state type; `Loop`'s
-  open recursion changes its answer; so the diagonal `S = R` is not
-  enough, and a per-tree `S` is a per-tree `Nothing`.
-- **On the nodes, as an indexed enum** — `Freer[G, A, S, R]` with
-  `Bind[…, T, …](a: Freer[G, A, T, R], f: A => Freer[G, B, S, T])`.
-  This types the runner perfectly, and it was built (stage 0) and
-  measured at parity or better. It fails at the *other* user of the
-  tree: pattern matching. `Bind` carries its left side's answer
-  index `T`, and a match makes that index **existential** — every
-  one of the effect layer's 89 match sites on a `Free` would see a
-  continuation at an index no type could pin back, and a pinning
-  extractor is refuted by the compiler inferring its free parameter
-  as `Nothing` rather than skolemizing it. Stage 1 — `Free` as
-  `Freer` at a pinned `Unit` — was REFUTED by exactly that, with the
-  mechanism in the spec.
+  at which both sides live under one `F` is `Nothing`, which is an
+  erased leaf. That is why the indexes had to go on the *nodes*.
+- **On the nodes, matched everywhere** — stage 1 put them there and
+  was refuted at the other user of the tree, pattern matching: a
+  `Bind` carries its left side's answer index `T`, a match makes it
+  existential, and the effect layer's hundred-odd match sites want the
+  continuation as `X => Free[F, A]`. The extractor that stage tried
+  put the type variable only in `unapply`'s RESULT, which dotty infers
+  as `Nothing`. For a year the answer was a facade: the tree unindexed
+  (`Free[Shift, A]`, the leaf stored at `(X => Nothing) => Any`), `S`
+  and `R` phantom on the signatures, and two casts in the runner
+  (`Shift.at`, `pinned`) where the facade's discipline was trusted
+  rather than checked.
 
-So the principle that settled it, and it carries into the typestate
-work that follows: **the tree is syntax; an index is a claim about
-syntax; claims live on facades; facades are never pattern-matched.**
-An indexed program for a protocol is one more opaque facade over
-`Free[F, A]`, and the leak that killed stage 1 cannot reach it,
-because nobody matches a facade.
+What closed it is one extractor, `Free.Bind`, whose pattern-bound type
+variables sit in its PARAMETER type — `unapply[G, T, R, X, A](b:
+Bind[G, Unit, T, R, X, A]): Bind[G, Unit, Unit, R, X, A]` — so the
+compiler inserts the type test that binds them, and whose result is
+the node itself, a Product, so the match allocates nothing. Its one
+cast says a constant thing: a `Lift` tree is built with every index
+`Unit`, so the middle index a match forgot is `Unit` too. Every
+`case Bind(Inject(e), k)` in the library goes through it unchanged.
+The casts moved from two (trusted at two nodes of every `Cont` run)
+to one (a constant claim at the effect tree), and `Cont`'s runner is
+checked by the compiler again, as the separate `Cont` enum's was
+before the trees were one.
 
-Three spellings the operator asked about afterwards — `(X => ?) =>
-Any`, `Shift[+X, -S] = (X => S) => Any`, and a leaf enum `case
-Shift[A, S, R](k: (A => S) => R)` — were each settled by compiling
-rather than arguing (the comment above `Shift` in `Cont.scala`
-records the verdicts): the wildcard is a supertype where the argument
-slot needs a subtype; the binary alias compiles but the tree can only
-hold it at `S = Nothing`, so the parameter is decoration; the enum
-reads best and changes nothing, since its `S`, `R` are existential
-under the tree's wildcard, the cast stays, and a raw shift gains a
-wrapper object stage 0 had measured and refused. The honest form is
-the erased leaf, written once, behind two named doors: `Shift.of`
-forgets (an upcast), `Shift.at` remembers (the cast).
+Two details are load-bearing and worth knowing. The value type `A`
+comes LAST in `Freer[G, S, R, A]`, because a unary constructor
+inferred from a program value — `Monad[M]` from an `A ! F` — is the
+type abstracted over its last parameter, and `[A] =>> Free[F, A]` is
+what every instance is written for. And `Lift[F]` is a projection on
+a class, `Lifted[F]#L`, not a bare type lambda: applied to a row
+`Users + F` a lambda beta-reduces to a union when two are compared,
+and a union has no structure to solve `F1 + G` from, where the
+projection compares by its prefix and the row's `+` is matched
+application to application. Both were found by the compiler saying
+so, not by design.
+
+So the principle that settled stage 1 stands, sharpened: **the tree is
+syntax; an index is a claim about syntax; a claim the tree can carry
+belongs on the tree, and the one place a match cannot see it is
+answered once, by name.** An indexed program for a protocol (`Prog`)
+is still an opaque facade over `Free[F, A]`: its indexes say nothing
+the nodes could check, so they stay where nobody matches them.
 
 ## The one refinement: absorption, exactly once
 
@@ -167,7 +174,7 @@ it normalizes any tree to one of three head forms, `Return(a)`,
 `Inject(e)`, `Bind(Inject(e), k)`, in constant stack:
 
 ```scala
-@tailrec final def resume: Free[F, A] = this match
+@tailrec final def resume: Freer[G, S, R, A] = this match
   case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).resume   // associativity
   case Bind(Pure(a), f)    => f(a).resume                       // left identity
   case Delay(t)            => t().resume                        // force, continue AS IS

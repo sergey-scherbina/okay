@@ -2,7 +2,7 @@ package okay.lex
 
 import scala.annotation.unused
 import scala.collection.mutable.Growable
-import okay.{+, Aggregator, Chunks, Stage, Writer, pure}
+import okay.{Aggregator, Chunks, Stage, Writer, pure}
 
 /** an exact source position; length in chars */
 final case class Span(offset: Int, line: Int, column: Int, length: Int)

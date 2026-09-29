@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.{!, %, +, Chunk}
+import okay.{!, %, Chunk}
 import okay.Row.plus
 import okay.codec.Schema
 import okay.given

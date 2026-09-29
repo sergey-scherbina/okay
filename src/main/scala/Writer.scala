@@ -125,11 +125,15 @@ object Writer {
     // `split`, not `<|>` (split-without-either): no Either per tell.
     @tailrec def loop(s: S)(x: A ! Writer % W + F): R ! F = (x.resume: @unchecked) match
       case Return(a) => Return(finish(s, a))
-      case i @ Inject(e) => split[Writer % W, F](e) {
+      case i @ Inject(e) => split[Writer % W, F](e) { w0 =>
           // matching the constructor refines the answer type to Unit:
           // the program ends here, and a tell ends it with nothing —
-          // the ascription is where the refined value meets the loop
-          case Say(v) => Return(finish(step(s, v), ())): R ! F
+          // the ascription is where the refined value meets the loop.
+          // `@unchecked` as in the Bind case below (freer-base-step-
+          // extractor): `e` is typed at the program's answer type now,
+          // and the checker cannot see `Say` is the only constructor
+          (w0: @unchecked) match
+            case Say(v) => Return(finish(step(s, v), ())): R ! F
         } { _ => forwarded[Writer % W, F](i).map(finish(s, _)) }
       case Bind(i @ Inject(e), k) => split[Writer % W, F](e) { w0 =>
           // here it refines the CONTINUATION's domain, so this is an
@@ -162,8 +166,9 @@ object Writer {
       if K.done(s) then Return(K.end(s))
       else (x.resume: @unchecked) match
         case Return(_) => Return(K.end(s))
-        case i @ Inject(e) => split[Writer % W, F](e) {
-            case Say(v) => Return(K.end(K.add(s, v))): R ! F
+        case i @ Inject(e) => split[Writer % W, F](e) { w0 =>
+            (w0: @unchecked) match
+              case Say(v) => Return(K.end(K.add(s, v))): R ! F
           } { _ => forwarded[Writer % W, F](i).map(_ => K.end(s)) }
         case Bind(i @ Inject(e), k) => split[Writer % W, F](e) { w0 =>
             (w0: @unchecked) match
@@ -230,7 +235,8 @@ object Writer {
     case Inject(e) => split[Writer % W, G](e)
       // the constructor refines the answer type to Unit on both
       // sides, so the re-told operation types with nothing asserted
-      { case Say(w) => Inject(Writer(f(w))): A ! Writer % V + G }
+      { w0 => (w0: @unchecked) match
+          case Say(w) => Inject(Writer(f(w))): A ! Writer % V + G }
       (g => Inject(g): A ! Writer % V + G)
     case Bind(Inject(e), k) => split[Writer % W, G](e)
       { w0 => (w0: @unchecked) match
@@ -271,7 +277,8 @@ object Writer {
       case Free.Return(x) => Free.Return(x)
       // Writer tested first, for `map`'s reason (above)
       case Inject(e) => split[Writer % W, G](e)
-        { case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! Writer % V + G] }
+        { w0 => (w0: @unchecked) match
+            case Say(w) => tellAll(f(w), 0).asInstanceOf[A ! Writer % V + G] }
         (g => Inject(g): A ! Writer % V + G)
       case Bind(Inject(e), k) => split[Writer % W, G](e)
         { w0 => (w0: @unchecked) match
@@ -298,7 +305,8 @@ object Writer {
       case Free.Return(v) => Free.Return((v, heard.reverse))
       // Writer tested first, for `map`'s reason (above)
       case Inject(e) => split[Writer % W, G](e)
-        { case Say(w) => Inject[Writer % W + G, Unit](Writer(w)).map(u => (u, (w :: heard).reverse)): (A, Seq[W]) ! Writer % W + G }
+        { w0 => (w0: @unchecked) match
+            case Say(w) => Inject[Writer % W + G, Unit](Writer(w)).map(u => (u, (w :: heard).reverse)): (A, Seq[W]) ! Writer % W + G }
         (g => Inject[Writer % W + G, A](g).map(v => (v, heard.reverse)))
       case Bind(Inject(e), k) => split[Writer % W, G](e)
         { w0 => (w0: @unchecked) match
@@ -428,7 +436,8 @@ object Writer {
     // as the Writer itself, a rest-first split sent every Say to G and
     // answered Left — no elements, the told values escaped (TestDistinct)
     case i @ Inject(e) => split[Writer % W, G](e)
-      { case Say(w) => okay.pure(Right((w, Free.Return(())))): Either[A, (W, A ! Writer % W + G)] ! G }
+      { w0 => (w0: @unchecked) match
+          case Say(w) => okay.pure(Right((w, Free.Return(())))): Either[A, (W, A ! Writer % W + G)] ! G }
       (_ => forwarded[Writer % W, G](i).map(Left(_)): Either[A, (W, A ! Writer % W + G)] ! G)
     case Bind(i @ Inject(e), k) => split[Writer % W, G](e)
       { w0 => (w0: @unchecked) match

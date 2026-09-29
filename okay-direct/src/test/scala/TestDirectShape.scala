@@ -1,7 +1,6 @@
 package okay
 
 import okay.Direct.*
-import okay.!.*
 
 /** direct-one-bind-steps (2026-09-27): a direct block's program, as it
  * runs, never has a LEFT-nested pair of binds at its head (the shape

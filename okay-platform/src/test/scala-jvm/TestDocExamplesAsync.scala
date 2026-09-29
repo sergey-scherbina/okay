@@ -1,7 +1,5 @@
 package okay
 
-import !.*
-
 /**
  * docs/effects/async.md, VERBATIM (doc-snippet-debt): the page's example
  * lines as it prints them, answer comment included, then asserted. The
