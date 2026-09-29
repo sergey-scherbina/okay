@@ -1,6 +1,6 @@
 # DLM rules as keywords
 
-Status: planned, 2026-09-29. Owner lane: `dlm-rule-keywords`.
+Status: implemented, 2026-09-29. Owner lane: `dlm-rule-keywords`.
 
 ## Goal
 
@@ -10,28 +10,28 @@ The author should write the WORDS, and the library writes the regex.
 
 ## Behaviour
 
-- [ ] `Rule.keywords(words*)` returns the rules for the words given,
+- [x] `Rule.keywords(words*)` returns the rules for the words given,
       as `Vector[String]`, so it goes straight into `Intent(rules = …)`
       and can be combined with hand-written regexes by `++`.
-- [ ] A plain word matches a whole word, case-insensitively, in any
+- [x] A plain word matches a whole word, case-insensitively, in any
       script: `bug` matches “Bug” and not “debugger”; `ошибка` matches
       “Ошибка”.
-- [ ] A word ending in `*` matches as a word PREFIX: `payout*` matches
+- [x] A word ending in `*` matches as a word PREFIX: `payout*` matches
       “payout” and “payouts”, `crash*` matches “crashes”.
-- [ ] A keyword containing spaces is a PHRASE: its words in order,
+- [x] A keyword containing spaces is a PHRASE: its words in order,
       separated by any whitespace (`charged twice` matches
       “charged  twice”); the last word may carry `*`.
-- [ ] Regex metacharacters in a keyword are literal (`c++` matches
+- [x] Regex metacharacters in a keyword are literal (`c++` matches
       “c++” only).
-- [ ] Plain words and prefix words compile to the canonical shape
+- [x] Plain words and prefix words compile to the canonical shape
       `(?iU)\b(?:w1|w2)\b` / `(?iU)\b(?:w1|w2)\w*\b`, which
       `Fuzzy.literalTriggers` mines, so a typo of a keyword reaches the
       typo layer exactly like a hand-written trigger rule.
-- [ ] An empty or blank keyword is refused (IllegalArgumentException
+- [x] An empty or blank keyword is refused (IllegalArgumentException
       naming it) — it would match nothing, silently.
-- [ ] Intents JSON accepts `"keywords": [...]` beside `"rules"`; the
+- [x] Intents JSON accepts `"keywords": [...]` beside `"rules"`; the
       compiled rules are appended to the regex rules.
-- [ ] The Jev showcase (`TestDlmJevExamples`) is authored with keywords
+- [x] The Jev showcase (`TestDlmJevExamples`) is authored with keywords
       only, and its guide shows that.
 
 ## Design
@@ -49,3 +49,23 @@ scripts/gate.sh "okayDlm/testOnly okay.dlm.TestRuleKeywords okay.dlm.TestDlmJevE
 ```
 
 ## Results
+
+Implemented as `okay-dlm` `Rule.keywords` (Rule.scala) and the
+`"keywords"` key of `Intents.parse`; covered by `TestRuleKeywords`
+(seven tests, one per behaviour above) and the rewritten
+`TestDlmJevExamples`. `okay-dlm` now depends on okay-test at test scope,
+for the new suite's `Munit.Diagnosed`.
+
+A word with anything but letters and digits (`c++`, `help!`) cannot use
+`\b` — there is no word boundary beside a `+` — so it and every phrase
+are their own rules bounded by `(?<!\w)`/`(?!\w)`. The typo layer skips
+those, as it skips every structural rule; only plain and prefix words
+are typo-tolerant.
+
+Slots are still regexes: a slot captures a value, and a keyword names
+no value to capture.
+
+Verified 2026-09-29: `scripts/gate.sh "okayDlm/testOnly
+okay.dlm.TestRuleKeywords okay.dlm.TestDlmJevExamples okay.dlm.TestIntents
+okay.dlm.TestFuzzy; okayDeploy/testOnly okay.deploy.TestDocSnippets"` —
+GREEN, 27 tests, no warnings.

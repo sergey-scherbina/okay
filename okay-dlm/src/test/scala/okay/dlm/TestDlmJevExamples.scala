@@ -13,11 +13,13 @@ object TestDlmJevExamples:
     enum Team:
       case Billing, Technical, Sales
 
+    /** Rules are written as keywords: `payout*` is a word prefix, a
+     * keyword with a space is a phrase (specs/dlm-rule-keywords.md). */
     val model: Dlm = Dlm.rules(Intents(Vector(
-      Intent("billing", rules = Vector("(?i)\\b(?:payouts?|invoices?)\\b"), semantic = false),
-      Intent("technical", rules = Vector("(?i)\\b(?:crash\\w*|outage|bug)\\b"), semantic = false),
-      Intent("sales", rules = Vector("(?i)\\b(?:pricing|upgrade)\\b"), semantic = false),
-      Intent("refund", rules = Vector("(?i)\\bcharged\\s+twice\\b"),
+      Intent("billing", rules = Rule.keywords("payout*", "invoice*"), semantic = false),
+      Intent("technical", rules = Rule.keywords("crash*", "outage", "bug"), semantic = false),
+      Intent("sales", rules = Rule.keywords("pricing", "upgrade"), semantic = false),
+      Intent("refund", rules = Rule.keywords("charged twice"),
         slots = Vector(Slot("order", "(?i)\\border\\s+(\\d+)")), require = Vector("order"),
         ask = Map("en" -> "Which order was charged twice?"), semantic = false))))
 
@@ -29,8 +31,9 @@ object TestDlmJevExamples:
       case Route.Fires("sales", _, _) => Some(Team.Sales)
       case _ => None
 
-    def isUrgent(message: String): Boolean =
-      "(?i)\\b(?:help!|asap|urgent)|\\bfor\\s+\\d+\\s+days\\b".r.findFirstIn(message).nonEmpty
+    private val urgent = Rule.keywords("help!", "asap", "urgent").map(_.r)
+
+    def isUrgent(message: String): Boolean = urgent.exists(_.findFirstIn(message).nonEmpty)
 
     val message: String = "Help! My payouts have been failing for 3 days and nobody has replied."
 
@@ -63,6 +66,7 @@ class TestDlmJevExamples extends FunSuite:
     assertEquals(department("The app crashes when I open settings."), Some(Team.Technical))
     assertEquals(department("Is there a discount if we upgrade to the annual plan?"), Some(Team.Sales))
     assertEquals(department("What is the weather like?"), None, "no rule owns it: no team is invented")
+    assert(!isUrgent("The app crashes when I open settings."))
 
     val ledger = Ledger(Map("4411" -> 2))
     assertEquals(ledger.refund("I was charged twice for order 4411."), Some(Refund.Started("4411")))

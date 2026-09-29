@@ -3074,7 +3074,7 @@ lazy val okayAdmin = project
  */
 lazy val okayDlm = project
   .in(file("okay-dlm"))
-  .dependsOn(okayIntent.jvm, okayAgent.jvm)
+  .dependsOn(okayIntent.jvm, okayAgent.jvm, okayTest.jvm % "test->compile")
   .settings(
     name := "okay-dlm",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

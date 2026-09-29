@@ -148,7 +148,9 @@ object Intents:
       case JObj(fs) =>
         fs.collectFirst { case ("name", JStr(x)) => x }.map { name =>
           Intent(name,
-            fs.collectFirst { case ("rules", v) => strs(v) }.getOrElse(Vector.empty),
+            // `keywords` are the same rules, written as words
+            fs.collectFirst { case ("rules", v) => strs(v) }.getOrElse(Vector.empty) ++
+              fs.collectFirst { case ("keywords", v) => Rule.keywords(strs(v)*) }.getOrElse(Vector.empty),
             fs.collectFirst {
               // an object keys the phrasings by language; a bare array
               // is legal and means "language not declared"
@@ -178,12 +180,14 @@ object Intents:
             fs.collectFirst { case ("rank", JNum(n)) => n.toInt }.getOrElse(Intent.defaultRank))
         }
       case _ => None
-    Json.parse(raw) match
+    // a blank keyword is refused by `Rule.keywords`; here it is a Left
+    try Json.parse(raw) match
       case JObj(fs) =>
         fs.collectFirst { case ("intents", JArr(xs)) => xs.flatMap(intentOf) }
           .map(Intents(_)).toRight("no \"intents\" array")
       case JArr(xs) => Right(Intents(xs.flatMap(intentOf)))
       case _ => Left("not a JSON object")
+    catch case e: IllegalArgumentException => Left(e.getMessage)
 
   /** the set shipped as a resource of the caller's jar, absent when
    * there is none */
