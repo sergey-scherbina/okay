@@ -199,6 +199,18 @@ a worker for nothing. The elementwise `buffer` keeps `fork`: with a
 Loom with `forkLong` against 1.13x without
 ([specs/adaptive-chunked-merge-cost.md](../specs/adaptive-chunked-merge-cost.md)).
 
+**Who runs a fiber that was woken** (2026-09-29). A fiber parked in an
+`Await` resumes on whoever answers it: inside the pool that saves a
+wake. But the thread answering is often not ours — the caller's own
+consumer taking from a channel frees a slot and answers the producer
+waiting on it — and it then ran the PRODUCER's code instead of its own:
+31% of a consumer's time in the 64-slot merge. On `own`/`adaptive` a
+late answer from a thread that is not one of the scheduler's workers
+now sends the fiber home (`forkLong`), and an answer from a worker still
+runs it in place. The 64-slot elementwise merge went from 1.12x Loom to
+0.92x (74.5 µs against 81.4), with nothing else moving
+([specs/adaptive-elementwise-small-ring.md](../specs/adaptive-elementwise-small-ring.md)).
+
 ## What `own` costs you, and what `adaptive` buys back
 
 A worker is a real thread, and a fiber that BLOCKS inside one holds

@@ -134,6 +134,45 @@ class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     assertEquals(forked, 1)
   }
 
+  /** adaptive-elementwise-small-ring (specs/adaptive-elementwise-small-ring.md):
+   * a fiber on `own` parks in an Await; `answer` is handed its callback
+   * once the drive has parked, and answers it from wherever it likes.
+   * The result is the thread the fiber's continuation ran on. */
+  private def resumedOn(answer: (Either[Throwable, Int] => Unit) => Unit): Thread =
+    val sch = Schedulers.own.workers(2).build
+    try
+      given Scheduler = sch
+      val cb = java.util.concurrent.atomic.AtomicReference[(Either[Throwable, Int] => Unit) | Null](null)
+      val ranOn = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
+      val f = Async.spawn(Async.await[Int] { k => cb.set(k); () => () }.map { _ => ranOn.set(Thread.currentThread()); () })
+      while cb.get == null do Thread.onSpinWait()
+      Thread.sleep(20) // the drive has parked: this answer is a LATE one
+      answer(cb.get.nn)
+      f.join()
+      note(s"resumed on ${ranOn.get}")
+      ranOn.get.nn
+    finally sch.close()
+
+  test("own: a fiber answered LATE by a foreign thread resumes on a worker, not on the answering thread") {
+    val answering = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
+    val ran = resumedOn { k =>
+      val t = Thread(() => { answering.set(Thread.currentThread()); k(Right(1)) }, "foreign-answerer")
+      t.start(); t.join()
+    }
+    assert(ran ne answering.get, s"the foreign thread ${answering.get} ran the fiber's continuation")
+    assert(ran.isInstanceOf[ManagedWorker], s"resumed on $ran, not on one of the scheduler's workers")
+  }
+
+  test("own: answered from inside a worker, a fiber still resumes inline on that worker") {
+    val answering = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
+    val ran = resumedOn { k =>
+      val other = Schedulers.own.workers(1).build
+      try other.fork(() => async { answering.set(Thread.currentThread()); k(Right(1)) }).join()
+      finally other.close()
+    }
+    assert(ran eq answering.get, s"resumed on $ran, answered on ${answering.get}: a worker's answer should run it in place")
+  }
+
   /** peak number of `calls` blocking at once when `n` fibers forked inside
    * a fiber each block `calls` times for 1 ms */
   private def blockingPeak(n: Int, calls: Int)(using Scheduler): Int =

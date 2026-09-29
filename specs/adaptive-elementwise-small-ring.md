@@ -1,6 +1,6 @@
 # A fiber resumed by a foreign thread goes home
 
-Status: in progress, 2026-09-29. Owner lane: `adaptive-elementwise-small-ring`.
+Status: implemented, 2026-09-29. Owner lane: `adaptive-elementwise-small-ring`.
 
 ## Symptom
 
@@ -38,11 +38,35 @@ which then does the woken fiber's work instead of its own.
 
 ## Behaviour
 
-- [ ] LAW, red first: a fiber on `own` awaiting a callback that a FOREIGN
+- [x] LAW, red first: a fiber on `own` awaiting a callback that a FOREIGN
       thread answers resumes on a worker thread, not on the answering one
-- [ ] LAW: answered from inside a worker, it still resumes inline (on
+- [x] LAW: answered from inside a worker, it still resumes inline (on
       that worker)
-- [ ] the drive laws hold (TestAsync, TestSchedulerLaws, TestOwnMonitor,
+- [x] the drive laws hold (TestAsync, TestSchedulerLaws, TestOwnMonitor,
       TestManagedBlocking) and the stream's merge laws (TestReadyMerge)
-- [ ] cap 64 on the default within 1.06x of Loom; cap 256/1024, the
+- [x] cap 64 on the default within 1.06x of Loom; cap 256/1024, the
       chunked lanes and spawnJoinSeq not worse (alternating arms)
+
+## Results (2026-09-29)
+
+Rows: src/jmh/history.d/2026-09-29T174904Z-adaptive-elementwise-small-ring.tsv. All through `jmh-lane.sh`.
+
+- LAW red first: before the hook, the continuation of a fiber answered
+  late by `foreign-answerer` ran on `foreign-answerer`; after it, on a
+  `ManagedWorker`. Answered from a worker, it still runs inline there.
+- TestAsync, TestSchedulerLaws, TestOwnMonitor, TestManagedBlocking:
+  83/83. The stack-recursion inventory names the two new members of the
+  drive/callback cycle (`resumeLate`, `resumeHere`) with `drive`'s bound.
+
+| lane | default (3 rounds) | Loom (3 rounds) | ratio |
+|---|---|---|---:|
+| MergeCapBenchmark cap 64 | 73.8 / 74.0 / 75.8 | 81.0 / 81.1 / 82.1 | **0.92** (was 1.12) |
+| cap 256 | 63.9 / 61.8 / 63.6 | 65.4 / 64.5 / 64.6 | 0.97 |
+| cap 1024 | 62.8 / 63.9 / 61.7 | 60.6 / 61.0 / 61.2 | 1.03 |
+| ChunkFlushBenchmark.okayChunked k=16 | 186.7 | 198.7 | 0.94 |
+| okayChunkedShared k=16 | 199.9 | 202.2 | 0.99 |
+| OwnMonitorBenchmark.spawnJoinSeq (own) | 66.9 | — | 64.4 in spawnjoin-rise-bisect |
+
+The default is now FASTER than Loom at cap 64: the consumer does only
+its own work, and a producer woken through `forkLong` gets a worker at
+once.
