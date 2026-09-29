@@ -1,1 +1,0 @@
-claude session_01YMmUap8wenmYUk1yBt9Gzm (nadia-fable), 2026-09-29, operator ask ("Продолжай"): implement specs/agent-fleet.md — Fleet (agents as children of a root actor, Control messages, Status as a value, the record on a topic, restore), Runner + Ctx.checkpoint, delegate as a Toolbox tool; okay-agent gains dependsOn(okayActor) in build.sbt (sprint.d/doing/agent-fleet.md)
