@@ -16,6 +16,20 @@ import java.sql.DriverManager
  */
 class TestDelta extends munit.FunSuite:
 
+  // A RUNTIME THIS SUITE CANNOT RUN ON SAYS SO (delta-jdk-skip, 2026-09-29).
+  // delta-kernel resolves paths through Hadoop, which calls
+  // `Subject.getSubject` -- unsupported from JDK 24 (JEP 486). build.sbt pins
+  // this suite's fork to a JDK 21 where the box has one; where it has none,
+  // the fork runs on the ambient JDK, and every test used to fail with
+  // "getSubject is not supported", which a whole-build gate cannot tell from
+  // a defect. Skipped instead, with the reason, and green on a JDK <= 23.
+  override def munitIgnore: Boolean =
+    val v = Runtime.version().feature()
+    if v >= 24 then
+      System.err.println(s"TestDelta: skipped on JDK $v -- delta-kernel's Hadoop needs JDK <= 23 " +
+        "(Subject.getSubject, JEP 486); build.sbt runs it on JDK 21 where one is installed")
+    v >= 24
+
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
   def collectChunks[A](s: Source[Chunk[A]]): List[Chunk[A]] =

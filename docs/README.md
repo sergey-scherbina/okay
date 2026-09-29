@@ -84,38 +84,31 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   libraries), a Scala 3 / Scala 2 phrasebook, and every compiler error the setup can produce
   with its cause. Every snippet compiles under scalac 2.13 with
   `-Werror` in the gate.
-- **[okay with TypeScript](typescript.md)** — Scala and TypeScript in
-  the three places they meet: a Scala backend with a TypeScript frontend
-  (a typed `client.ts`, live documents typed by path), both in the
-  browser (Scala.js exports with their `.d.ts`, the `@okay/ts` npm
-  package, durable flows in IndexedDB, `Direct.ts { }`), and both on the
-  backend (a Node worker, a generated Scala facade). Types are written
-  once, in either language, and every generated file is checked by
-  `tsc --strict`.
-- **[Foreign languages](foreign-languages.md)** — the one model under
-  every language okay runs: what crosses (a value, a table, an object, a
-  stream, a program), one program in every language over the same Scala,
-  who carries what, the two runtimes, the wire's five operations, and
-  adding a language in four steps; the pages below are its chapters.
-- **[Rust and Go as okay](one-language.md)** — one program in either
-  language, reached over a pipe, TCP, FFM or WebAssembly by the same Scala;
-  one conformance suite over every link.
-- **[okay with Go](go.md)** — Go programs as okay programs on a worker
-  process: programs as data, multi-shot continuations, typed operations
-  generated from the Scala callbacks, panics as conditions.
-- **[okay with Rust](rust.md)** — Rust kernels as okay effects: a
-  crate over the C ABI, bound through FFM, answering the same bytes as
-  the JVM implementation (Argon2id); and why Go is a subprocess or Wasm,
-  not in-process.
-- **[okay with Python and R](python-and-r.md)** — Python and R
-  functions as typed Scala functions, and their code calling back into
-  okay's effects by name, with diagrams; held models, inline modules,
-  streams, declared environments, a journal.
-- **[okay with other JVM languages](jvm-languages.md)** — Java streams,
-  Clojure and Frege together with okay: a stage IS a JDK gatherer and a
-  Clojure transducer, okay's effects enter Clojure and Frege as a small
-  program-as-data library in THAT language (never as lazy IO), lazy data
-  crosses both ways, and the rules, costs and literature behind it.
+- **[Foreign languages](foreign-languages.md)** — code in other
+  languages taking part in okay's effects, under one model: what crosses
+  (a value, a table, an object, a stream, a program), one program in
+  every language over the same Scala, who carries what, the wire's five
+  operations, and adding a language in four steps. Its chapters, one per
+  language or layer:
+  - [TypeScript](typescript.md) — a Scala backend with a TypeScript
+    frontend, both in the browser, or both on the backend; types written
+    once and every generated file checked by `tsc --strict`.
+  - [Python and R](python-and-r.md) — their functions as typed Scala
+    functions, their code calling back into okay's effects by name; held
+    models, streams, declared environments, a journal.
+  - [Go](go.md) — Go programs as okay programs on a worker process:
+    multi-shot continuations, typed operations generated from Scala.
+  - [Rust](rust.md) — Rust kernels as okay effects over the C ABI and FFM,
+    byte-equal to the JVM implementation (Argon2id).
+  - [Rust and Go as one language](one-language.md) — one program reached
+    over a pipe, TCP, FFM or WebAssembly by the same Scala; one
+    conformance suite over every link.
+  - [Java, Clojure and Frege](jvm-languages.md) — a stage IS a JDK
+    gatherer and a Clojure transducer; okay's effects enter Clojure and
+    Frege as a program-as-data library in that language.
+  - [One facade over every foreign language](foreign-facade.md) — a job
+    names a module and a function, and a typeclass says who runs it and
+    how the data crosses; what a language cannot do does not compile.
 - **[The theory of Okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
@@ -250,9 +243,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   five supporting findings each with its own table, and links to
   every lane's source. Curated from [benchmarks.md](benchmarks.md)
   §20, which carries the full derivation.
-- **[Releasing](releasing.md)** — what reaches Maven Central (the first
-  wave), under which coordinates, the one-time account and key setup,
-  and the steps of a release.
+- **[Releasing](releasing.md)** — what is published (the first wave),
+  under which coordinates, and where: a Maven repository on this
+  repository's GitHub Pages, needing no account, or Maven Central, with
+  its one-time account and key setup; the steps of a release.
 
 ## The modules
 

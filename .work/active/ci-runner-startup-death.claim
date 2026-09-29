@@ -1,6 +1,0 @@
-feature/ci-runner-startup-death 2026-09-28T20:45:00Z
-agent: codex
-heartbeat: 2026-09-28T20:45:00Z
-status: in-progress
-done-so-far: runner log ends immediately after launching sbt; no test or gate verdict was recorded
-next: inspect process/signal evidence and reproduce with gate sentinels

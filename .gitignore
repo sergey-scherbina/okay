@@ -12,6 +12,8 @@ target/
 # .work/active/*.claim stays TRACKED; this rule does not reach it (an
 # ignore rule never un-tracks a path already committed).
 .work/ci/
+# the gh-pages worktree scripts/pages-publish.sh keeps (pages-maven-repo)
+.work/pages/
 okay-chat*.db
 okay-chat.log/
 # the demo board and the two-node log are FileStore DIRECTORIES the

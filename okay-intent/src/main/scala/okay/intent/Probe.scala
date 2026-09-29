@@ -33,7 +33,9 @@ object Probe {
 
   private def softmax(z: Array[Double]): Array[Double] =
     val m = z.max
-    val e = z.map(x => math.exp(x - m))
+    // `Exp`, as in CharGrams.softmax: a fitted model must re-derive
+    // to the same bytes on every CPU (intent-model-reproducible)
+    val e = z.map(x => Exp(x - m))
     val s = e.sum
     if s == 0.0 then e else e.map(_ / s)
 

@@ -101,6 +101,13 @@ class TestFleet extends munit.FunSuite:
     t.tick("a"); t.tick("b")
     until(f.status(a).exists(_.step == 1) && f.status(b).exists(_.step == 1))
     assert(go(f.send(a, Control.Stop)))
+    // `send` answers that the mailbox TOOK the Stop, not that the actor has
+    // applied it (fleet-stop-race, 2026-09-29): tick before it has, and the
+    // runner's checkpoint 2 can read "go on", park for a third tick nobody
+    // sends, and never end -- a whole gate and a lone run each met it once,
+    // at this line. The Pause case above waits for its phase for the same
+    // reason; "at the current tool" means the next checkpoint AFTER it lands
+    until(f.status(a).exists(_.phase == Phase.Stopping))
     t.tick("a")
     until(f.status(a).exists(_.phase == Phase.Interrupted))
     assertEquals(f.status(a).map(_.result), Some(Some("stopped at 2")))
