@@ -894,3 +894,41 @@ today.
 - Nothing here is measured. The indexes are phantom and the facade
   erases, so the expectation is allocation identical to the byte, the
   way `cont-on-free` measured — but an expectation is not a number.
+
+### The dual placement, PROBED (2026-09-29, freer-base-step-extractor)
+
+Stage 1 said where the index may not live — on the nodes — because a
+match makes it existential. The question the operator put back
+(2026-09-29): the old separate `Cont` was an indexed enum and worked
+without a cast; can one base be indexed like it and still serve
+`Free`? The answer is yes, with ONE cast, and the probe that compiles
+it is `src/test/scala/ProbeFreerStep.scala` (kept compiling, like
+ProbeRowCrash). What stage 1's extractor lacked is exact:
+
+- `unapply[F, X, A, T](b: Bind[Lift[F], X, A, Unit, T, Unit]): Bind[Lift[F], X, A, Unit, Unit, Unit]`
+  — the pattern-bound type variables in the PARAMETER type, so the
+  compiler inserts the type test that binds them (stage 1 put `X`
+  only in the result, and dotty infers a result-only variable as
+  `Nothing`); the result is the node itself, a Product, so the match
+  allocates nothing (bytecode `aload_1; areturn`).
+- `Lift[F] = [X, S, R] =>> F[X]`, a type lambda in the signature slot:
+  `Op(g: G[A, S, R])` reduces to `F[A]` at a match, the existential
+  is gone by beta-reduction, and `F` is inferred through it at an
+  abstract `F` (`runFree[F[+_], A]`) — the shape row-membership-crash
+  made suspect, and it did not crash.
+- `resume` once, index-polymorphic, no cast: `Bind(Bind(a, f), g)`
+  types through the two intermediates as the old Cont's runner did.
+- Cont's runner typed by the GADT: `Return` gives `S = R`, the leaf is
+  `(A => S) => R` — `Shift.at` and `pinned` both go.
+
+Casts: two on the facade (trusted at two nodes) against one on the
+erased side (a constant claim: every Lift tree is built at Unit).
+Refused by the compiler: answer types that do not meet in a bind, a
+continuation of the wrong answer type, `Step` on a concrete Cont
+(E030), `Step` on an abstract-G tree (E092 — red under "no
+warnings"). Let through: `Step` on `Cont[A, R, R]` with R a method
+type parameter, which the GADT may bind to Unit — so `Step` is
+`object !`'s and is applied to `Free[F, A]` scrutinees, the standing
+of `(x.resume: @unchecked)` today. Not measured, and not expected to
+move: the nodes are the same objects. The lane is
+backlog.d/okay-core/freer-base-step-extractor.md.
