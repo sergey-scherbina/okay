@@ -292,12 +292,22 @@ object Xml {
    * says so on the error channel); a close with no matching ancestor
    * is an error leaf on its own. Void elements never open.
    */
-  val step: Parse.Step[K, D] = (d, t) =>
+  /** the driver with the HTML void set: `<br>` and `<img>` never open */
+  val step: Parse.Step[K, D] = stepWith(void)
+
+  /** STRICT XML: no element is void — every open waits for its close.
+   * `<source>Coal</source>` is an XML element; under the HTML set it
+   * never opened and its close "closed nothing" (xml-strict-void,
+   * found by okay-fin's FpML corpus, 2026-09-29) */
+  val strict: Set[String] = Set.empty
+
+  /** the driver over a chosen void set: HTML's (`void`, the default) or none (`strict`) */
+  def stepWith(voids: Set[String]): Parse.Step[K, D] = (d, t) =>
     val out = Vector.newBuilder[Instr[K]]
     t.kind match
       case K.Open =>
         val n = nameOf(t.lexeme)
-        if void(n) then
+        if voids(n) then
           out += Instr.Open(n, Some(t))
           out += Instr.Close(None)
           (d, out.result())
@@ -331,8 +341,11 @@ object Xml {
    * to be spelled: an empty default infers Instr[Nothing] */
   val finish: D => Vector[Instr[K]] = _ => Vector.empty[Instr[K]]
 
-  def cst(input: String): Cst[K] =
-    Parse.fullWith(scan, step, initD, finish)(input).tree
+  def cst(input: String): Cst[K] = cst(input, void)
+
+  /** text to CST under a chosen void set — `Xml.strict` for XML data */
+  def cst(input: String, voids: Set[String]): Cst[K] =
+    Parse.fullWith(scan, stepWith(voids), initD, finish)(input).tree
 
   /** render = the lossless law */
   def render(c: Cst[K]): String = Cst.lexemes(c)

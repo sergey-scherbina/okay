@@ -110,6 +110,14 @@ class TestXml extends munit.FunSuite {
     assertEquals(Xml.value(Xml.cst("just text")), Json.JStr("just text"))
   }
 
+  test("strict: no element is void, so <source>Coal</source> opens and closes; the HTML set still makes <br> void") {
+    val s = "<a><source>Coal</source><br></a>"
+    assertEquals(Cst.errors(Xml.cst(s, Xml.strict)).map(_._2), Vector("<br> was never closed"))
+    assertEquals(Xml.elements(Xml.cst(s, Xml.strict), "source").length, 1)
+    assertEquals(Cst.errors(Xml.cst(s)).map(_._2), Vector("</source> closes nothing"))
+    assertEquals(Xml.render(Xml.cst(s, Xml.strict)), s)
+  }
+
   test("an incremental reparse of markup equals a full one") {
     val session = Xml.parse(doc, 16)
     val at = doc.indexOf("world")

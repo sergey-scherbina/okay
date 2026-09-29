@@ -38,10 +38,14 @@ object Format:
       structured(Json.cst(s), Set("object", "array"), "a JSON object or array").map(Doc.Json(_)))(
       d => Json.render(d.tree))
 
-  /** an XML document with at least one element and no damage */
+  /** an XML document with at least one element and no damage — STRICT
+   * XML, no HTML void elements: this detects data documents, and an
+   * HTML page's `<br>` declining as "never closed" is the right answer
+   * here (xml-strict-void: FpML's `<source>Coal</source>` was "closing
+   * nothing" under the HTML set) */
   val xml: Refine[String, Doc.Xml] =
     Refine.step[String, Doc.Xml]("xml")(s =>
-      val tree = Xml.cst(s)
+      val tree = Xml.cst(s, Xml.strict)
       firstError(tree).toLeft(()).flatMap(_ =>
         if hasElement(tree) then Right(Doc.Xml(tree))
         else Left("no element")))(

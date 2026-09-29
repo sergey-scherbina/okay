@@ -53,6 +53,13 @@ class TestFormat extends Diagnosed:
     assertEquals(v.reasons.map(_.at), Vector(Path("text")))
   }
 
+  test("xml is STRICT: <source>Coal</source> is an element, and an HTML page's <br> is declined as never closed") {
+    val coal = bytes("""<swap><source>Coal</source></swap>""")
+    assertEquals(took(Format.detect.run(coal))._2, Path("text", "xml"))
+    val html = Format.detect.run(bytes("""<p>a<br>b</p>"""))
+    assertEquals(html.reasons.find(_.at == Path("text", "xml")).map(_.reason), Some("<br> was never closed"))
+  }
+
   test("a bare scalar is declined by all three text formats, each with its reason") {
     val v = Format.detect.run(bytes("hello"))
     note(v.toString)

@@ -176,10 +176,15 @@ object Xml {
    * says so on the error channel); a close with no matching ancestor is
    * an error leaf on its own. Void elements never open.
    */
-  val step: Parse.Step[K, D] = (d, t) => t.kind match {
+  val step: Parse.Step[K, D] = stepWith(void)
+
+  /** STRICT XML: no element is void (the Scala 3 twin's `Xml.strict`) */
+  val strict: Set[String] = Set.empty
+
+  def stepWith(voids: Set[String]): Parse.Step[K, D] = (d, t) => t.kind match {
     case K.Open =>
       val n = nameOf(t.lexeme)
-      if (void(n)) (d, Vector(Instr.Open[K](n, Some(t)), Instr.Close[K](None)))
+      if (voids(n)) (d, Vector(Instr.Open[K](n, Some(t)), Instr.Close[K](None)))
       else (D(n :: d.open), Vector(Instr.Open[K](n, Some(t))))
 
     case K.SelfClose =>
@@ -206,7 +211,8 @@ object Xml {
   val finish: D => Vector[Instr[K]] = _ => Vector.empty[Instr[K]]
 
   /** text to CST: total, lossless, nesting by name */
-  def cst(input: String): Cst[K] = Parse.fullWith(scan, step, initD, finish)(input).tree
+  def cst(input: String): Cst[K] = cst(input, void)
+  def cst(input: String, voids: Set[String]): Cst[K] = Parse.fullWith(scan, stepWith(voids), initD, finish)(input).tree
 
   /** the lossless law */
   def render(c: Cst[K]): String = Cst.lexemes(c)
