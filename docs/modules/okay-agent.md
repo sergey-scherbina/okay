@@ -34,6 +34,10 @@ allow)`: the service follows the topic and applies each command `allow` lets
 through, else `Event.Refused(seq, by, why)` goes on the record. A screen in
 another process appends through a `RemoteStore` and reads the answer on the
 feed it already watches.
+**Approvals:** `ctx.ask(step, call)` puts the ask on the record and parks the
+runner until `Control.Approve(seq, yes)` — from any host, through the
+mailbox or the commands topic; a stop or a kill answers no. `Status.asking`
+shows what an agent waits on. Which calls to ask about is the runner's policy.
 
 
 **Three effects, no message list.** `Model` (complete, count),

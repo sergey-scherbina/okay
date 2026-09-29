@@ -26,7 +26,7 @@ class TestFleetCommands extends munit.FunSuite:
   test("command JSON round-trips for every kind; what is not a command is None") {
     val spawn = Command.Spawn(Spec("t", "/w", Budget(3, 1000), Some(AgentId(2)), Some("m")), "ada")
     assertEquals(Fleet.command(Fleet.commandJson(spawn)), Some(spawn))
-    for c <- List(Control.Tell("go"), Control.Pause, Control.Resume, Control.Stop, Control.Kill) do
+    for c <- List(Control.Tell("go"), Control.Pause, Control.Resume, Control.Stop, Control.Kill, Control.Approve(3, true), Control.Approve(4, false)) do
       val cmd = Command.Send(AgentId(5), c, "bob")
       assertEquals(Fleet.command(Fleet.commandJson(cmd)), Some(cmd))
     assertEquals(Fleet.command(Json.parse("""{"c":"dance","by":"x"}""")), None)

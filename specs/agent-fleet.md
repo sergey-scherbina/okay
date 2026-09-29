@@ -144,6 +144,30 @@ final class Fleet:
       live agent, and a non-command each put a `Refused(seq, by, why)` on the record, in order;
       `applied` hears every offset; a fresh fold of the record is not confused by refusals
 
+## Approvals
+
+The REPL's `y / n / a` (nadia `SPEC.md` §3.3) answered from any host (NAD-21):
+
+```scala
+final case class Ask(seq: Long, tool: String, args: Json)
+enum Control: … case Approve(seq: Long, yes: Boolean)
+enum Event: … case Asked(id, ask: Ask, at) · case Answered(id, seq, yes, at)
+final case class Status(…, asking: Option[Ask] = None)
+final class Ctx:
+  /** on the record at once; parked until Approve(step, yes) — false on a stop or a kill */
+  def ask(step: Int, call: ToolCall): Boolean ! Async
+```
+
+The policy — which calls to ask about, and whether "always" was said — is the
+runner's; a runner that never asks is auto-approve. The `approve` command is
+`Send(id, Approve(seq, yes), by)`.
+
+- [x] an ask goes on the record and parks the runner; `Approve` with the wrong seq changes
+      nothing; the right one lets it through and is recorded
+- [x] a no is a no; a stop while asking answers no, and the runner is not left parked
+- [x] the approve command reaches the ask through the commands topic; a fleet restored over
+      an unanswered ask shows it `Interrupted`, the ask still visible
+
 ## Behavior
 
 - [x] `spawn` returns at once with an id; `status(id)` is `Running` with step 0
@@ -259,3 +283,9 @@ sender already watches. The principal is a string the SERVICE checks (`allow`
 over `okay.security.Roster`); the fleet trusts its caller, as before. A
 command's `seq` is its offset: nothing to allocate, and the sender knows it
 before the service does. `TestFleetCommands`, 2 tests.
+
+**Approvals (lane `fleet-approvals`, 2026-09-29):** an ask is a record and a
+parked channel; the answer is a control message like any other, so it comes
+from the console, a chat or a browser alike. A stop or a kill declines an open
+ask rather than leaving the runner parked forever — the case the first cut
+missed until the test asked. `TestFleetApprovals`, 3 tests.
