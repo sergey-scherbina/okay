@@ -40,18 +40,22 @@ object Desktop:
       try s.connect(java.net.InetSocketAddress("127.0.0.1", port), 800) finally s.close()
     }.isSuccess
 
-  /** nothing holds `port`, on every address nor on the loopback alone — a
-   * Docker copy publishes `127.0.0.1:8099`, and a bind with the JVM's
-   * default `SO_REUSEADDR` succeeds beside another process's (okay-watch's
-   * `Desktop.free`, 2026-09-29, moved here) */
+  /** NOTHING LISTENS ON `port`, on every address nor on the loopback alone —
+   * a Docker copy publishes `127.0.0.1:8099`, and a bind with the JVM's
+   * default `SO_REUSEADDR` succeeds beside another process's, so both are
+   * tried without it. A bind refused by nothing but the last process's
+   * closed connections (TIME_WAIT, after a restart into a new version) is
+   * not a holder: nothing answers a connect there (okay-watch's
+   * `Desktop.free`, 2026-09-29, with its TIME_WAIT fix the same day) */
   def free(port: Int): Boolean =
-    Vector(java.net.InetSocketAddress(port), java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress, port))
+    val bindable = Vector(java.net.InetSocketAddress(port), java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress, port))
       .forall { at =>
         val s = java.net.ServerSocket()
         try { s.setReuseAddress(false); s.bind(at, 1); true }
         catch case _: java.io.IOException => false
         finally s.close()
       }
+    bindable || !listening(port)
 
   /** the preferred port when nothing holds it, else one the system gives */
   def freePort(preferred: Int): Int =

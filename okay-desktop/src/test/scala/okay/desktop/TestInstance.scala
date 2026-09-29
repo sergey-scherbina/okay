@@ -44,6 +44,17 @@ class TestFreePort extends okay.testkit.Munit.Diagnosed:
     try assert(!Desktop.free(all.getLocalPort), s"${all.getLocalPort} is held") finally all.close()
   }
 
+  test("a port nothing listens on is free even when a strict bind is refused (TIME_WAIT after a restart)") {
+    // a closed connection leaves the port in TIME_WAIT on the side that closed first
+    val held = java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress)
+    val port = held.getLocalPort
+    val c = java.net.Socket(java.net.InetAddress.getLoopbackAddress, port)
+    val a = held.accept()
+    a.close(); c.close(); held.close()
+    assert(!Desktop.listening(port), "nothing listens after the holder closed")
+    assert(Desktop.free(port), "free, whatever the strict bind says")
+  }
+
   test("the preferred port when free, another when something holds it") {
     val held = java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))
     try
