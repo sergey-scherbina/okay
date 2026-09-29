@@ -1,0 +1,1 @@
+claude session_01YMmUap8wenmYUk1yBt9Gzm (nadia-fable), 2026-09-29, operator ask ("Продолжай"): implement specs/identity-roster.md — Channel, Binding, Grant, Roster over a persist Topic, Roster.role as a Policy, Roster.owned; okay-security gains a dependsOn(okayPersist) in build.sbt (sprint.d/doing/identity-roster.md)
