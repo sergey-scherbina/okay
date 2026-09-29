@@ -1,0 +1,169 @@
+# agent-fleet — agents as supervised actors, a hierarchy the parent grows
+
+## Overview
+
+okay-agent has the loop (`Agent.converse`), tools as an effect, the
+conversation as a fold, durable tool journals and a paused intake. It has
+**no notion of a second agent**: nothing spawns one, steers one, reports
+one's status, or lets an agent hand part of its task to another. The first
+consumer that needs exactly that is `../nadia`'s okay implementation
+(nadia `docs/specs/app.md`, its `SPEC.md` §6): an operator drives a
+hierarchy of coding agents from a chat and a console, and a parent agent
+delegates the independent halves of its task to children whose steps come
+out of its own budget.
+
+The operator's rule for where this lives (2026-09-29): general-purpose
+platform code is okay's, shown rather than hidden; the leaf keeps its
+business logic. A supervisor has no nadia in it. This module is that
+supervisor, built from what okay already has: an agent is an **okay-actor**
+(typed mailbox, `spawnChild`, `Supervise`), its status is a **value**, its
+transcript is a **topic** (okay-persist), and delegation is a **tool** in
+the parent's toolbox — so a hierarchy costs the parent nothing it does not
+already know how to do.
+
+## Interface
+
+```scala
+package okay.agent
+
+/** what an agent is asked to do, and within what */
+final case class Spec(task: String, workspace: String, budget: Budget,
+                      parent: Option[AgentId] = None, model: Option[String] = None)
+final case class Budget(steps: Int, wallMs: Long)
+
+opaque type AgentId = Long
+
+enum Phase:
+  case Running, Paused, Stopping, Done, Failed, Killed, Interrupted
+
+/** one agent, as the operator and a screen see it — a value, so a chat
+ * card, an HTTP body and a test read the same thing */
+final case class Status(id: AgentId, parent: Option[AgentId], task: String,
+                        workspace: String, phase: Phase, step: Int,
+                        lastTool: Option[String], elapsedMs: Long,
+                        children: Vector[AgentId], result: Option[String],
+                        report: Option[Json])
+
+/** what an agent can be told — the messages of nadia SPEC §6 */
+enum Control:
+  case Tell(message: String)     // delivered at the agent's next turn
+  case Pause, Resume
+  case Stop                      // finish the current tool, then halt
+  case Kill                      // now; the workspace is released
+
+final class Fleet(store: Store, run: Runner)(using Scheduler):
+  def spawn(spec: Spec): AgentId ! Async
+  def send(id: AgentId, c: Control): Boolean ! Async   // false: no such agent
+  def status(id: AgentId): Option[Status]
+  def all: Vector[Status]
+  /** the log's projection, on start: running agents come back Interrupted
+   * with their transcript; ids continue from the last */
+  def restore(): Int
+  /** an agent's transcript so far, as recorded */
+  def transcript(id: AgentId): Seq[Turn]
+
+/** what runs ONE agent: the consumer's loop, tools and gate — the
+ * fleet supplies the mailbox, the budget and the record, nothing else */
+trait Runner:
+  def run(id: AgentId, spec: Spec, inbox: () => Vector[String],
+          control: () => Option[Control]): Outcome ! Async
+final case class Outcome(text: String, report: Option[Json], phase: Phase)
+
+object Fleet:
+  /** `delegate(task, subdir?, budget?)` for a parent's Toolbox: runs a
+   * child to completion in the parent's workspace (or under it) and
+   * returns its text and report; the child's steps are deducted from the
+   * parent's remaining budget, and a child that crashes is a tool error */
+  def delegate(fleet: Fleet, parent: AgentId): Toolbox.In[Async]
+```
+
+The events the fleet appends to its topic, one JSON record each, keyed by
+agent id:
+
+```
+Spawned(id, spec, at)
+Phased(id, phase, at)
+Stepped(id, step, tool, at)
+Turned(id, turn)            // one Turn of the transcript
+Finished(id, text, report, at)
+```
+
+`Status` is the fold of those; `restore()` folds the topic on start.
+
+## Behavior
+
+- [ ] `spawn` returns at once with an id; `status(id)` is `Running` with step 0
+- [ ] `send(id, Pause)` holds the agent at its next tool call; `Resume` continues it;
+      a paused agent's `elapsedMs` still grows (wall clock, not work)
+- [ ] `send(id, Stop)` lets the current tool finish and ends the run with phase `Done`
+      when the model had a final answer, `Interrupted` otherwise; `Kill` ends it now with
+      `Killed` and no further record from that agent reaches the topic
+- [ ] `Tell` is delivered as the next user turn, once, and appears in `transcript(id)`
+- [ ] a step past `budget.steps`, or a wall clock past `budget.wallMs`, ends the run with
+      `Interrupted` and a partial result — never a hang
+- [ ] `delegate` from a parent with 10 steps left, whose child uses 4, leaves the parent 6;
+      a child asked for more than the parent has is refused as a tool error naming both numbers
+- [ ] a child whose runner throws leaves the parent `Running`, and the parent's next turn
+      carries the failure as a tool result — `Supervise.Stop` on the child, never on the parent
+- [ ] `all` lists children under their parent (`parent` set, and the parent's `children`
+      contains the id), so a screen can draw the tree without a second query
+- [ ] `restore()` after two `Running` agents and a process exit: both are `Interrupted`, their
+      transcripts are intact, and the next `spawn` gets an id greater than either
+- [ ] a `Turned` record is appended per turn as it happens, not at the end, so a kill loses
+      at most the turn in flight
+- [ ] a scripted `Runner` drives the whole suite: no model, no gateway, no filesystem
+
+## Out of scope
+
+- The tools, the prompt, the gate, the sandbox: the consumer's `Runner`. The fleet
+  never reads or writes a workspace.
+- Cross-process fleets (an agent on another machine). An `ActorRef` over an
+  okay-cluster channel is remote already; a fleet spanning stores is its own spec.
+- Streaming tokens to a screen. `Stepped` is per tool call; token streaming stays at
+  okay-llm.
+- Who may spawn or steer. That is `okay-security`'s `Policy`, consulted by the caller
+  (specs/identity-roster.md); the fleet trusts its caller.
+
+## Design
+
+- **Fleet is an actor; each agent is its child.** `Actor.spawn` for the fleet,
+  `spawnChild` per agent with `Supervise.Stop`: a failed message is dropped and the
+  child stops, which is exactly "a crashed child is a tool error, not a cascade".
+  Delegation is `spawnChild` from the agent's own ref, so the tree is the actor tree.
+- **The runner is a function, not a subclass.** `Runner.run` receives the inbox and
+  the control poll as closures and calls them between tool calls; the fleet does not
+  know what a step is. This is what keeps nadia's six tools out of okay and lets the
+  test suite run on a scripted runner.
+- **Budget deduction is arithmetic on `Spec`.** `delegate` reads the parent's
+  remaining steps from its status, spawns the child with `min(asked, remaining)`, and
+  on the child's finish debits the parent by the steps the child used. No shared
+  counter, no lock beyond the fleet actor's own mailbox.
+- **The topic is the truth.** `Status` is a fold; `Fleet` keeps the fold in memory
+  and appends before it applies, so a crash between the two loses nothing that was
+  acknowledged. This is the same shape as `TopicJournal` for tool calls; the two are
+  separate topics so a run's tool journal (replayable) and its record (readable) do
+  not share a key space.
+
+## Decisions
+
+- **`delegate` is a tool, not an operator command** — chosen because a hierarchy an
+  operator assembles by hand is a list; and the consumer's spec (nadia `SPEC.md` §2)
+  has a bar for a seventh tool that this is the one case to meet. Rejected: spawn
+  only from the surface (the Rust nadia does this; fine for a batch runner, not a
+  hierarchy).
+- **Control is polled between tool calls, not preempted** — chosen because a tool
+  call is the only point where the model's state is consistent; `Kill` is the one
+  preemptive message and it says so in its name. Rejected: interrupting a
+  completion mid-stream — the transcript would hold half a reply.
+- **One topic per fleet, keyed by agent** — chosen so `restore()` is one fold.
+  Rejected: a file per agent (the Rust nadia's `~/.nadia/.agents/<id>.json`) —
+  restores, but cannot be replicated or shared without a second mechanism.
+
+## Implementation lane
+
+`agent-fleet` — okay-agent, additive (new file `Fleet.scala`, new suite
+`TestFleet`); touches no existing signature. Consumer: `../nadia` `app/`.
+
+## Results
+
+Not implemented yet.
