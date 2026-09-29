@@ -179,6 +179,24 @@ wakes sleeping workers too, and the same eight run at once, as on Loom.
 Short fibers from outside leave the head moving and stay with the
 workers already awake.
 
+**A fork that says it is long** (2026-09-29). The monitor needs a
+whole look to see a waiting task, and it can only see it twice in a
+row: 100-200 µs. For a 70 ms fiber that is nothing. A chunked
+`merge` of two 2 000-element streams is over in ~200 µs, and its second
+feed waited that long every time: 351 µs on `adaptive` against Loom's
+201. The merge knows what the scheduler cannot, that its feeds run for
+the stream's whole life, so it forks them with
+`Scheduler.forkLong(prog)`. On `own`/`adaptive` that is `fork` plus
+one sleeping worker woken at once (one no other `forkLong` is already
+waking); on every other scheduler it is `fork`. The chunked merge now
+reads 185 µs against Loom's 197-229, and `fork` itself is unchanged
+(sequential spawn/join 112.4 against 112.8, same session). Use it for
+your own long-lived producers; a short fiber forked with it only wakes
+a worker for nothing. The elementwise `buffer` keeps `fork`: with a
+64-slot ring the spread feeds block each other, and it measured 1.25x
+Loom with `forkLong` against 1.13x without
+([specs/adaptive-chunked-merge-cost.md](../specs/adaptive-chunked-merge-cost.md)).
+
 ## What `own` costs you, and what `adaptive` buys back
 
 A worker is a real thread, and a fiber that BLOCKS inside one holds

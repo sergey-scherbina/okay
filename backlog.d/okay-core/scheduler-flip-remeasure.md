@@ -13,4 +13,9 @@
       that moved. PRIORITY: MEDIUM — the default's speed claim rests on a
       table this code has not been measured under. (2026-09-28) ADD the
       chunked merge: it has no lane in the re-run table and pays the flip
-      1.5-1.9x (backlog adaptive-chunked-merge-cost, 2026-09-29).
+      1.5-1.9x — FIXED by adaptive-chunked-merge-cost (2026-09-29,
+      `Scheduler.forkLong`; 185 vs Loom's 197-229). ALSO: spawnJoinSeq
+      (own, monitor 100us) reads ~112 us on master on 2026-09-29 against
+      86.8 on 2026-09-27 (same-session A/B in that lane: master 112.4, lane
+      112.8) — a 1.3x rise between the two dates that nobody measured; the
+      drive hooks of cda0a94 are the first suspect this item already names.

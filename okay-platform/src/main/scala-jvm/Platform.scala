@@ -557,6 +557,12 @@ object Schedulers {
       /** true from the moment the worker decides to park until it runs
        * again: what a submitter reads to wake it */
       @volatile var parked = false
+      /** claimed by a `forkLong` that is waking this worker, cleared by
+       * the worker once awake: `parked` stays true until the worker
+       * RUNS, so two wakes in a row read the same sleeper, and a merge
+       * forking two feeds woke one worker twice
+       * (specs/adaptive-chunked-merge-cost.md) */
+      val waking = java.util.concurrent.atomic.AtomicBoolean(false)
       var ran = 0L   // diagnostics only: plain, so the hot path has no fence
       var stolen = 0L
       val thread: Thread = ManagedWorker(this, s"okay-own-${Owned.this.id}-$id")   // a daemon
@@ -651,6 +657,7 @@ object Schedulers {
             val _ = awake.decrementAndGet()
             if size == 0 && submissions.isEmpty && !stopped then java.util.concurrent.locks.LockSupport.park(this)
             parked = false
+            waking.set(false)
             val _ = awake.incrementAndGet()
             // a worker woke: the monitor parks when nobody is awake, so
             // it may be asleep. Off the per-task path — once per park.
@@ -918,6 +925,31 @@ object Schedulers {
         // has grown past what one worker should be left with
         if awake.get == 0 || submissionsSize.get > wakeAbove then { val _ = activateNext() }
       t
+
+    /** a fiber the caller declares long (a channel's feed): forked as
+     * `fork` does, then ONE parked worker woken, if there is one, to take
+     * it — the thief of the forking worker's deque or of the submission
+     * queue. Without it the second feed of a merge forked from outside
+     * waits for the monitor to see it at the queue's head a whole tick
+     * (100-200 us), which a ~200 us merge pays in full
+     * (specs/adaptive-chunked-merge-cost.md). `fork` gains nothing. */
+    override def forkLong[A](prog: () => A ! Async): Fiber[A] =
+      val t = fork(prog)
+      val _ = activateUnclaimed()
+      t
+
+    /** wake one parked worker no other `forkLong` is already waking */
+    private def activateUnclaimed(): Boolean =
+      val alive = live.get
+      var i = 0
+      while i < alive do
+        val w = workers(i)
+        if w.parked && w.waking.compareAndSet(false, true) then
+          val _ = activations.incrementAndGet()
+          java.util.concurrent.locks.LockSupport.unpark(w.thread)
+          return true
+        i += 1
+      false
 
     private[okay] def fromSubmissions(): DriveTask[?] | Null =
       val t = submissions.poll()

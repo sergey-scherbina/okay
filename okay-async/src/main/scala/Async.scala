@@ -144,6 +144,13 @@ trait Fiber[A]:
  */
 trait Scheduler:
   def fork[A](prog: () => A ! Async): Fiber[A]
+  /** a fork the caller declares LONG — a fiber that runs for a stream's
+   * whole life, such as a channel's feed. A scheduler that keeps a new
+   * fiber where it was forked until it has watched it run long (`own`,
+   * `adaptive`) may spread this one at once; the caller knows what the
+   * scheduler could only learn a monitor tick later
+   * (specs/adaptive-chunked-merge-cost.md). By default, `fork`. */
+  def forkLong[A](prog: () => A ! Async): Fiber[A] = fork(prog)
 
 object Async {
 

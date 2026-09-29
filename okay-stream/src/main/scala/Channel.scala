@@ -998,8 +998,8 @@ object Channel {
     // flusher rather than racing past a `null`
     lazy val fs: Fiber[Unit] | Null = flusher(bs, ds)
     lazy val ft: Fiber[Unit] | Null = flusher(bt, dt)
-    watch(sch.fork(() => feedS(c, bs)), ds, bs, fs); val _ = fs
-    watch(sch.fork(() => feedT(c, bt)), dt, bt, ft); val _ = ft
+    watch(sch.forkLong(() => feedS(c, bs)), ds, bs, fs); val _ = fs
+    watch(sch.forkLong(() => feedT(c, bt)), dt, bt, ft); val _ = ft
     c
 
   /** the timed flusher of one chunking feed: sleeps `within` and TAKES
@@ -1041,7 +1041,7 @@ object Channel {
     // referred to by name before it is forced, as in `chunkedMerge`: a
     // feed that finishes at once still cancels the flusher
     lazy val fl: Fiber[Unit] | Null = flusherFor(c, buf, size, within, done)
-    sch.fork(() => feed(c, buf)).onComplete { r =>
+    sch.forkLong(() => feed(c, buf)).onComplete { r =>
       done.set(0)
       val t = fl
       if t != null then t.nn.cancel()
@@ -1132,7 +1132,7 @@ object Channel {
                                    (using Stream[S, F], Handler[F])
                                    (using sch: Scheduler): Channel[Chunk[A]] =
     val c = forProducers[Chunk[A]](1, capacity)
-    sch.fork(() => feedBatched(c, s, size)).onComplete { r =>
+    sch.forkLong(() => feedBatched(c, s, size)).onComplete { r =>
       r.left.foreach(c.fail)
       c.close()
     }
@@ -1141,6 +1141,10 @@ object Channel {
   def buffer[A, S[_], F[+_]](capacity: Int)(s: S[A])
                             (using Stream[S, F], Handler[F])(using sch: Scheduler): Channel[A] =
     val c = forProducers[A](1, capacity)
+    // `fork`, not `forkLong`: the elementwise feed on `adaptive` read
+    // 1.25x Loom at capacity 64 with `forkLong` against 1.16x without —
+    // a small ring blocks both spread feeds at once, and a callback
+    // drive's resume costs more than Loom's (adaptive-chunked-merge-cost)
     sch.fork(() => feed(c, s)).onComplete { r =>
       r.left.foreach(c.fail)
       c.close()

@@ -89,6 +89,51 @@ class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     finally sch.close()
   }
 
+  /** adaptive-chunked-merge-cost (specs/adaptive-chunked-merge-cost.md):
+   * two fibers forked from OUTSIDE, the second after the first's worker
+   * is awake and busy, each spinning until the other has started (at
+   * most `patience`). Whether they MET says whether the second got a
+   * worker of its own while the first still ran. The monitor is off,
+   * so nothing but the fork itself can wake a second worker. */
+  private def outsidePairMeets(sch: Scheduler, long: Boolean, patience: Long): Boolean =
+    val started = AtomicInteger()
+    val met = AtomicInteger()
+    def body(): Unit =
+      val _ = started.incrementAndGet()
+      val end = System.nanoTime() + patience
+      while started.get < 2 && System.nanoTime() < end do Thread.onSpinWait()
+      if started.get >= 2 then { val _ = met.incrementAndGet() }
+    def go(): Fiber[Unit] = if long then sch.forkLong(() => async(body())) else sch.fork(() => async(body()))
+    Thread.sleep(20) // every worker parked
+    val a = go()
+    Thread.sleep(10) // a's worker is awake and inside `body`
+    val b = go()
+    a.join(); b.join()
+    note(s"long=$long started=${started.get} met=${met.get}")
+    met.get == 2
+
+  test("own: a long fiber forked from outside beside a busy one gets a worker at once (forkLong)") {
+    val sch = Schedulers.own.workers(4).unmonitored.build
+    try assert(outsidePairMeets(sch, long = true, patience = 2_000_000_000L), "forkLong: the second fiber waited behind the first")
+    finally sch.close()
+  }
+
+  test("own: the same pair forked with plain fork does not meet (the case forkLong exists for)") {
+    val sch = Schedulers.own.workers(4).unmonitored.build
+    try assert(!outsidePairMeets(sch, long = false, patience = 300_000_000L), "fork alone woke a second worker: the law above proves nothing")
+    finally sch.close()
+  }
+
+  test("forkLong is fork on a scheduler that does not override it") {
+    var forked = 0
+    val plain = new Scheduler:
+      def fork[A](prog: () => A ! Async): Fiber[A] =
+        forked += 1
+        Schedulers.loom.fork(prog)
+    assertEquals(plain.forkLong(() => pure(7)).join(), 7)
+    assertEquals(forked, 1)
+  }
+
   /** peak number of `calls` blocking at once when `n` fibers forked inside
    * a fiber each block `calls` times for 1 ms */
   private def blockingPeak(n: Int, calls: Int)(using Scheduler): Int =
