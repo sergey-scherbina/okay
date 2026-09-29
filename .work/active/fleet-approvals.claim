@@ -1,0 +1,1 @@
+claude session_01YMmUap8wenmYUk1yBt9Gzm (nadia-fable), 2026-09-29, nadia NAD-14/NAD-21: Ctx.ask(step, call) parks the runner until Control.Approve(seq, yes); Event.Asked/Answered on the record; Status.asking; the approve command. Additive in okay-agent, on top of fleet-commands (sprint.d/doing/fleet-approvals.md)
