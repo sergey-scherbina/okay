@@ -28,6 +28,17 @@ object Ledger:
     case Refused(who: String, what: String, why: String, at: Long, by: String)
     /** a table let go from the shelf, and the policy that let it go */
     case Pruned(artifact: String, hash: String, policy: String, at: Long, by: String)
+    /**
+     * A PERSON'S OWN WORDS TAKEN OUT (dlm-erasure, §10). The content is
+     * gone from the ledger; this is what stays in its place — the
+     * subject (a digest by default, since the identifier is the
+     * person's data too), how many entries went, why, and who did it.
+     *
+     * An `Erased` entry is never itself erased: it is the evidence that
+     * a request was honoured, and a ledger that can lose that cannot
+     * show it ever happened.
+     */
+    case Erased(subject: String, entries: Int, why: String, at: Long, by: String)
 
     def at: Long
     def by: String
@@ -36,24 +47,62 @@ object Ledger:
   trait Sink:
     def append(e: Entry): Unit
 
+  /**
+   * A LEDGER THAT CAN TAKE A PERSON'S WORDS BACK OUT (§10).
+   *
+   * Append-only is the audit's claim, and a person's right to have their
+   * data removed is the law's; they reconcile in one place and only one —
+   * the CONTENT goes, the FACT stays (`Entry.Erased`). A sink that cannot
+   * do it (a broadcast, somebody else's topic) simply is not one of
+   * these, and `Governed.erase` says so rather than pretending.
+   */
+  trait Erasable extends Sink:
+    /** every entry this ledger holds, oldest first */
+    def entries: Vector[Entry]
+    /** remove every entry that is this person's; answers how many went */
+    def erase(who: String): Int
+
   /** OURS: a vector, for a suite and for a `Governed` that keeps its own history */
-  final class Recorded extends Sink:
+  final class Recorded extends Erasable:
     @volatile private var all = Vector.empty[Entry]
     def append(e: Entry): Unit = synchronized { all :+= e }
     def entries: Vector[Entry] = all
+    def erase(who: String): Int = synchronized {
+      val (stays, gone) = Ledger.erase(all, who)
+      all = stays; gone
+    }
 
   val silent: Sink = _ => ()
 
   /** A LEDGER ON DISK: one JSON object per line, appended — what a build
    * step writes beside the tables it builds, and what a boot reads back */
-  final class File(path: java.nio.file.Path) extends Sink:
-    import java.nio.file.{Files, StandardOpenOption}
+  final class File(path: java.nio.file.Path) extends Erasable:
+    import java.nio.file.{Files, StandardCopyOption, StandardOpenOption}
     def append(e: Entry): Unit = synchronized {
       Files.createDirectories(path.toAbsolutePath.getParent)
       Files.writeString(path, line(e) + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND): Unit
     }
     def entries: Vector[Entry] =
       if !Files.exists(path) then Vector.empty else parse(Files.readString(path))
+    /**
+     * REWRITTEN WITHOUT THAT PERSON, and by a move, not in place: a
+     * process that dies halfway through an erasure must leave either
+     * the old file or the new one, never half of either. The lines a
+     * reader did not understand are NOT carried over — this reader
+     * cannot tell whose they are, and a line whose subject is unknown
+     * is exactly what an erasure may not leave behind.
+     */
+    def erase(who: String): Int = synchronized {
+      if !Files.exists(path) then 0
+      else
+        val (stays, gone) = Ledger.erase(entries, who)
+        if gone == 0 then 0
+        else
+          val tmp = path.resolveSibling(path.getFileName.toString + ".erasing")
+          Files.writeString(tmp, stays.map(line).mkString("", "\n", if stays.isEmpty then "" else "\n"))
+          Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING): Unit
+          gone
+    }
 
   /** one entry as one line */
   def line(e: Entry): String = Json.print(encode(e))
@@ -85,6 +134,41 @@ object Ledger:
       case _ => None
     }, rules.copy(teacher = w => rules.teacher(w) || teaching.teacher(w)))
 
+  /**
+   * WHAT STAYS WHEN A PERSON IS ERASED, and how many entries went (§10).
+   *
+   * An entry is that person's when it NAMES them: their lessons, their
+   * withdrawals, the refusals they were given — and a `Shared` entry
+   * they themselves shared, whose `earlier` is their sentence. An entry
+   * that only acts on tables (`Rebuilt`, `Pruned`) is nobody's words.
+   *
+   * `Erased` entries always stay, whoever they name: they are the record
+   * that erasures happened, including this one.
+   */
+  def erase(entries: Iterable[Entry], who: String): (Vector[Entry], Int) =
+    val all = entries.toVector
+    val stays = all.filter {
+      case Entry.Erased(_, _, _, _, _) => true
+      case Entry.Learned(w, _, _, _, _, _) => w != who
+      case Entry.Forgotten(w, _, _, _) => w != who
+      case Entry.Refused(w, _, _, _, b) => w != who && b != who
+      case Entry.Shared(_, _, _, _, b) => b != who
+      case _ => true
+    }
+    (stays, all.length - stays.length)
+
+  /**
+   * A SUBJECT THAT IS NOT THE PERSON. The identifier is the person's
+   * data as much as their sentence is, so the record of an erasure names
+   * them by a digest of it — enough to count erasures and to answer «was
+   * my request honoured», not enough to be the identifier again.
+   *
+   * SHA-256, the first sixteen bytes, as `Exemplars.hash` does it.
+   */
+  def digest(who: String): String =
+    "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+      .digest(who.getBytes("UTF-8")).take(16).map(b => f"${b & 0xff}%02x").mkString
+
   // ---- the wire: a service journals these as JSON ------------------------
 
   def encode(e: Entry): Json = e match
@@ -107,6 +191,9 @@ object Ledger:
     case Entry.Pruned(artifact, hash, policy, at, by) => JObj(Vector(
       "entry" -> JStr("pruned"), "artifact" -> JStr(artifact), "hash" -> JStr(hash), "policy" -> JStr(policy),
       "at" -> JNum(at.toDouble), "by" -> JStr(by)))
+    case Entry.Erased(subject, entries, why, at, by) => JObj(Vector(
+      "entry" -> JStr("erased"), "subject" -> JStr(subject), "entries" -> JNum(entries.toDouble),
+      "why" -> JStr(why), "at" -> JNum(at.toDouble), "by" -> JStr(by)))
 
   def decode(j: Json): Option[Entry] = j match
     case JObj(fs) =>
@@ -124,6 +211,8 @@ object Ledger:
           yield Entry.Refused(who, w, why, at, by)
         case "pruned" => for a <- s("artifact"); h <- s("hash"); p <- s("policy"); at <- n("at"); by <- s("by")
           yield Entry.Pruned(a, h, p, at, by)
+        case "erased" => for sub <- s("subject"); e <- n("entries"); why <- s("why"); at <- n("at"); by <- s("by")
+          yield Entry.Erased(sub, e.toInt, why, at, by)
         case _ => None
       }
     case _ => None

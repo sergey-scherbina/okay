@@ -187,3 +187,73 @@ class TestGoverned extends FunSuite:
     // a route that names no intent still names no layer, which is honest
     assertEquals(g.explain("qwzx", "ann").layer, None)
   }
+
+  // ---- §10, dlm-erasure: a person's own words out of the ledger
+
+  test("ERASURE: the person's sentences go from the ledger and the memory; the FACT stays, by a digest, and is never itself erased") {
+    val store = Ledger.Recorded()
+    val g = governed(sink = store)
+    assert(g.teach("ann", "ann", "мои заявки", "listings").isRight)
+    assert(g.teach("ann", "ann", "нужен покой", "offer").isRight)
+    assert(g.teach("bob", "bob", "мои объявления сейчас", "listings").isRight)
+    assertEquals(g.teach("ann", "ann", "мои заявки", "orders").isLeft, true)   // a refusal names her too
+    val erased = g.erase("ann", "ann", "the person asked").toOption.get
+    // nothing of hers is left anywhere: the sink, this value's own history, the memory
+    val left = (store.entries ++ g.ledger()).distinct
+    assert(!left.exists(e => Ledger.line(e).contains("мои заявки")), left.map(Ledger.line).mkString("\n"))
+    assert(!left.exists(e => Ledger.line(e).contains("\"ann\"")) , "not even her identifier, except as a digest")
+    assertEquals(g.lessons("ann"), Vector.empty)
+    // bob is untouched — erasing one person is not forgetting everybody
+    assertEquals(g.lessons("bob").map(_.intent), Vector("listings"))
+    // and the record: how many entries went, why, who did it, and the subject as a digest
+    erased match
+      case Entry.Erased(subject, n, "the person asked", _, actor) =>
+        assertEquals(subject, Ledger.digest("ann"))
+        assert(subject.startsWith("sha256:") && !subject.contains("ann"), subject)
+        assertEquals(actor, subject, "she erased herself: recorded as the subject, not by name")
+        assertEquals(n, 3, "her two lessons and the refusal she was given; nothing of hers was shared, so there is no Shared to take")
+      case other => fail(s"$other")
+    // a second erasure does not take the first record away
+    assert(g.erase("ann", "ann", "again").isRight)
+    assertEquals(g.ledger().count { case Entry.Erased(_, _, _, _, _) => true; case _ => false }, 2)
+  }
+
+  test("erasure works with LEARNING SWITCHED OFF, and only for oneself or by a steward") {
+    val store = Ledger.Recorded()
+    val g = governed(sink = store)
+    assert(g.teach("ann", "ann", "мои заявки", "listings").isRight)
+    // a stranger may not
+    assertEquals(g.erase("eve", "ann", "curious"), Left("eve may not erase for ann"))
+    assert(g.lessons("ann").nonEmpty, "and nothing of hers moved")
+    // a steward may, for somebody else
+    val steward = Governed(router, Teaching.roles(stewards = _ == "root"), store, now = () => { clock += 1; clock })
+    steward.erase("root", "ann", "a request by mail") match
+      case Right(Entry.Erased(subject, _, _, _, "root")) => assertEquals(subject, Ledger.digest("ann"),
+        "the steward is named — an operator is not the data subject — and she is not")
+      case other => fail(s"$other")
+    assertEquals(Ledger.replay(store.entries).forPerson("ann"), Vector.empty)
+    // AND WITH THE KILL SWITCH THROWN: a system that cannot learn must still forget
+    val off = Governed(router, Teaching.off, Ledger.Recorded(), now = () => { clock += 1; clock })
+    assertEquals(off.teach("ann", "ann", "мои заявки", "listings").isLeft, true, "learning is off")
+    assert(off.erase("ann", "ann", "the person asked").isRight, "erasure is not")
+  }
+
+  test("the pure erase: whose entry is whose, and a table's entry is nobody's words") {
+    val entries = Vector[Entry](
+      Entry.Learned("ann", "мои заявки", "listings", 1, 10, "ann"),
+      Entry.Learned("bob", "мои объявления", "listings", 2, 11, "bob"),
+      Entry.Forgotten("ann", "мои заявки", 12, "ann"),
+      Entry.Shared("мои заявки", "listings", 3, 13, "ann"),
+      Entry.Refused("ann", "teach x", "no such class: x", 14, "root"),
+      Entry.Refused("bob", "teach y", "no such class: y", 15, "ann"),
+      Entry.Rebuilt("intents", "hashing-256", None, "h2", "corpus", 16, "root"),
+      Entry.Pruned("intents", "h1", "last:5", 17, "root"),
+      Entry.Erased("sha256:whoever", 3, "asked", 18, "root"))
+    val (stays, gone) = Ledger.erase(entries, "ann")
+    assertEquals(gone, 5, "her lessons, her withdrawal, what she shared, the refusal to her, the refusal she caused")
+    assertEquals(stays.size, 4)
+    assert(stays.exists { case Entry.Learned("bob", _, _, _, _, _) => true; case _ => false })
+    assert(stays.exists { case Entry.Erased(_, _, _, _, _) => true; case _ => false }, "the evidence of an erasure always stays")
+    assert(stays.exists { case Entry.Rebuilt(_, _, _, _, _, _, _) => true; case _ => false }, "a table's entry is nobody's words")
+    assertEquals(Ledger.erase(entries, "nobody")._2, 0)
+  }
