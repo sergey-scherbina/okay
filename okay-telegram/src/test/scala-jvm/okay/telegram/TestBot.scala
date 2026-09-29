@@ -77,7 +77,7 @@ class TestBot extends munit.FunSuite:
     val slept = scala.collection.mutable.ListBuffer.empty[Long]
     given Timer = new Timer:
       def after(ms: Long)(k: () => Unit) = { slept += ms; k(); () => () }
-    run(Bot(api, token).serve(_ => pure(()), from = 0, retryMs = 2000,
+    val _ = run(Bot(api, token).serve(_ => pure(()), from = 0, retryMs = 2000,
       stop = () => rounds >= 4, onRefused = r => async { told += r }))
     // every refusal reached the consumer, with the code that says which it was
     assertEquals(told.map(_.code).toList, List(409, 429, 401))
@@ -99,7 +99,7 @@ class TestBot extends munit.FunSuite:
     val slept = scala.collection.mutable.ListBuffer.empty[Long]
     given Timer = new Timer:
       def after(ms: Long)(k: () => Unit) = { slept += ms; k(); () => () }
-    run(Bot(api, token).serve(_ => pure(()), retryMs = 2000, fatalCapMs = 10_000, stop = () => rounds >= 7))
+    val _ = run(Bot(api, token).serve(_ => pure(()), retryMs = 2000, fatalCapMs = 10_000, stop = () => rounds >= 7))
     // 2s, 4s, 8s, then the cap of 10s — not two seconds forever
     assertEquals(slept.take(5).toList, List(2000L, 4000L, 8000L, 10_000L, 10_000L))
     // the good sixth poll reset it: the next fatal starts over at 2s
