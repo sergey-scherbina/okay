@@ -140,9 +140,11 @@ Stage 1 — the vocabulary and the format level:
       (TestFormat; the XML one without a declaration — see the gap below)
 - [x] a bare scalar (`hello`) is `Declined` with three reasons; a
       damaged JSON (`{"a":`) is declined by json with the tree's own
-      error message, not a generic one — and so is `hello` itself
-      ("unexpected 'hello' at Span(0,0,0,5)"); a bare `42`, a valid
-      JSON value, is "not a JSON object or array"
+      error message, not a generic one; `hello` and `42` are declined
+      by their first character before any parse ("begins with 'h', not
+      { or [" — format-cheap-decline, 2026-09-29; before it, `hello` read
+      "unexpected 'hello' at Span(0,0,0,5)" and `42` "not a JSON object
+      or array")
 - [x] bytes that are not UTF-8 decline `text` with the offset, and the
       verdict shows `cbor` was tried too
 - [x] a document two formats both take is `Unclear` and names both —
@@ -257,6 +259,16 @@ TestFormat — three things the dialects said that a sniff would not have:
   streaming tokenizer in step with the scanner (the random-input oracle
   caught the one divergence, `<?>`: the closing `?` must not be the
   opening one). TestFormat's pinned test flipped to `Took(text/xml)`.
+- **A necessary condition before a total parser (format-cheap-decline,
+  2026-09-29).** Every alternative runs on every document, and a total
+  parser reads another dialect's document to its end before its tree
+  says "damage": measured in okay-fin, 60% of detection went to dialects
+  that then declined. Each dialect now asks its first character first
+  (JSON `{`/`[`, XML `<`, block YAML not `{`, `[`, `<?`, `<!`). The
+  conditions are necessary, so no verdict moves except one on purpose:
+  text before an XML root is declined, as XML itself says. The
+  parser's-own-words rule below still holds for a document that passes
+  the gate and is damaged inside.
 - **The parser's own words are better than ours.** `hello` is declined
   by json as "unexpected 'hello' at Span(0,0,0,5)" — the tree's error
   leaf — where the first test expected a generic "not a JSON object or
