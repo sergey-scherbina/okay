@@ -1,1 +1,0 @@
-claude session_01YRJ5EcKY1FwNaufrBB3ArS, 2026-09-29, operator ask ("1": check TestSourceZip): the zip lost 400 of 2000 pairs in a whole-build run on the adaptive default — reproduce, bisect against today's scheduler lanes, fix (sprint.d/doing/zip-lost-pairs.md)
