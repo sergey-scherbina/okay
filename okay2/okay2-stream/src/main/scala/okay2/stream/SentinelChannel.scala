@@ -126,6 +126,13 @@ final class SentinelChannel[A](buf: Buffer[Any]) extends Channel[A] {
       if (placed > 0) {
         marks.addAndGet(placed)
         if (partsSealed.addAndGet(placed) >= buffer.parts) endPending.set(false)
+        // a placed mark wakes, like every other publish into the ring: a
+        // resumed receive answers `k` on the waker's thread BEFORE it gets
+        // here, and the consumer may register on the still-empty ring in
+        // between (sentinel-single-consumer-lost-end, the Scala 3 core,
+        // 2026-09-29; TestEndPlacedAfterHandoff). Bounded by the parts:
+        // a woken receive places again only while `endPending` holds
+        val _ = wakeOne(receivers)
       }
     }
   }

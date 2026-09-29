@@ -5,7 +5,7 @@
 // (see README.md), which is what a user's own build depends on as well.
 
 ThisBuild / scalaVersion := "3.9.0"
-ThisBuild / organization := "dev.okay"
+ThisBuild / organization := "io.github.sergey-scherbina"
 
 val okayVersion = "0.2.0-SNAPSHOT"
 
@@ -29,8 +29,8 @@ lazy val root = (project in file("."))
     stMinimize := Selection.AllExcept("okay-pricing"),
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     libraryDependencies ++= Seq(
-      "dev.okay" %%% "okay" % okayVersion,
-      "dev.okay" %%% "okay-async" % okayVersion,
+      "io.github.sergey-scherbina" %%% "okay" % okayVersion,
+      "io.github.sergey-scherbina" %%% "okay-async" % okayVersion,
       "org.scalameta" %%% "munit" % "1.1.1" % Test,
     ),
   )

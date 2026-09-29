@@ -9,8 +9,10 @@ staged-pipelines (P6), cluster (P7).
 Decisions in force: the core module is plain `okay` (no suffix) — every
 satellite carries one (`okay-cats`, `okay-kafka`, ...). Modules are
 kept SMALL — the smaller the better, rare exceptions aside. groupId
-`dev.okay` (build.sbt is the decision in force; it was
-`io.sergiy-shcherbyna` until c2c6d87, and this line lagged behind). Scala: latest (3.7+). License: Apache-2.0. ScalaCheck allowed in
+`io.github.sergey-scherbina` (build.sbt is the decision in force; it was
+`io.sergiy-shcherbyna` until c2c6d87, then `dev.okay` until 2026-09-29,
+changed because Central verifies an `io.github` namespace without a
+domain — specs/modules-infra.md, "Publishing"). Scala: latest (3.7+). License: Apache-2.0. ScalaCheck allowed in
 test scope only; the core stays dependency-free.
 
 ## The cross-platform policy

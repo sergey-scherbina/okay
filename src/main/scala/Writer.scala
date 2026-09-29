@@ -311,7 +311,7 @@ object Writer {
    * (specs/core-gaps.md stage 2): `f` sees everything the scope told
    * and answers what to tell in its place.
    *
-   *     Writer.censor(step)(ws => if ws.size > 1 then Seq(s"${ws.size} steps") else ws)
+   *     Writer.censor(step)(ws => if ws.size > 1 then Seq(s"\${ws.size} steps") else ws)
    *
    * Seeing it all means WAITING for all of it: the scope's tells are
    * held back and told at the scope's END, as `f` of them — so a raise

@@ -17,7 +17,7 @@ import okay.Row.at
  * the program still finished, `Failed` where it halted.
  *
  *     def host(s: String): String ! Chronicle % String =
- *       if s.contains("_") then Chronicle.dictate(s"'$s' has an underscore").map(_ => s) else pure(s)
+ *       if s.contains("_") then Chronicle.dictate(s"'\$s' has an underscore").map(_ => s) else pure(s)
  *
  * The name and the operations are from Haskell's `these` package
  * (`MonadChronicle`: dictate, confess, condemn). The same idea is cats'

@@ -197,12 +197,12 @@ project that writes Frege against okay-frege:
 <!-- not-a-test: sbt build configuration -->
 ```scala
 // project/plugins.sbt
-addSbtPlugin("dev.okay" % "okay-frege-sbt" % okayVersion)
+addSbtPlugin("io.github.sergey-scherbina" % "okay-frege-sbt" % okayVersion)
 
 // build.sbt
 lazy val app = project
   .enablePlugins(OkayFrege)
-  .settings(libraryDependencies += "dev.okay" %% "okay-frege" % okayVersion)
+  .settings(libraryDependencies += "io.github.sergey-scherbina" %% "okay-frege" % okayVersion)
   .settings(OkayFrege.before(Compile))     // src/main/frege, read by src/main/scala
 ```
 
