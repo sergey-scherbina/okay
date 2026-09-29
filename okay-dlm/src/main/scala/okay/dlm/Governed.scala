@@ -115,6 +115,57 @@ final class Governed(val router: Router,
     if !teaching.teacher(by) then refuse(by, by, s"share «${earlier.take(48)}» → $intent", s"$by is not a teacher")
     else teach(by, by, earlier, intent)
 
+  /**
+   * A PERSON ERASED (§10): their words out of the ledger, their lessons
+   * out of the memory, and an `Erased` entry in their place.
+   *
+   * THE RIGHTS ARE THE ONES ALREADY THERE: the person themselves, or a
+   * steward. And it is NOT gated by `Teaching.enabled` — a system with
+   * learning switched off must still be able to forget somebody, and a
+   * kill switch that also switches off erasure would be the worst
+   * possible reading of a kill switch.
+   *
+   * The memory is re-folded from what the ledger now holds rather than
+   * edited, so the model after an erasure is exactly the model a boot
+   * would reach from the file: the fold stays the only truth.
+   *
+   * @param subject what the record names them by — a digest of `who` by
+   *                default, because the identifier is their data too. A
+   *                person erasing themselves is recorded as having done
+   *                it themselves rather than by name, for the same reason
+   */
+  def erase(by: String, who: String, why: String, subject: String = ""): Either[String, Entry] =
+    val what = s"erase everything of $who"
+    if !maySpeakFor(by, who) then refuse(by, who, what, s"$by may not erase for $who")
+    else synchronized {
+      val named = if subject.trim.nonEmpty then subject.trim else Ledger.digest(who)
+      // WHO DID IT, WITHOUT NAMING THE SUBJECT AGAIN: a person erasing
+      // themselves is recorded as the subject — which says «they did it
+      // themselves» and nothing more — while a steward is named, because
+      // an operator is not the data subject. Found by the test that asked
+      // whether the identifier was really gone: `by` had kept it.
+      val actor = if by == who then named else by
+      // THIS VALUE'S OWN HISTORY IS A LEDGER TOO (`ledger()` reads it),
+      // so an erasure that only rewrote the sink would leave the person's
+      // sentences in the process that erased them
+      val here = history.erase(who)
+      sink match
+        case e: Ledger.Erasable =>
+          val gone = e.erase(who)
+          // re-folded from what the ledger NOW holds, rather than edited:
+          // the model after an erasure is the model a boot would reach
+          held = Ledger.replay(e.entries, folding, teaching)
+          Right(write(Entry.Erased(named, gone, why, now(), actor)))
+        case _ =>
+          // nothing of ours to rewrite (a broadcast, somebody else's
+          // topic): only THIS person leaves the memory — erasing one
+          // person is not a reason to forget everybody — and the count
+          // is honest about the entries WE took out
+          held = held.mine.getOrElse(who, Vector.empty)
+            .foldLeft(held)((m, l) => Memory.forget(m, who, l.text, folding))
+          Right(write(Entry.Erased(named, here, why, now(), actor)))
+    }
+
   /** a rebuilt table, recorded: the hash before and after and where it came from */
   def rebuilt(by: String, artifact: String, before: Option[String], after: String, corpus: String): Entry =
     write(Entry.Rebuilt(artifact, encoder, before, after, corpus, now(), by))

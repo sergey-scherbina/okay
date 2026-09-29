@@ -275,6 +275,81 @@ that somebody's refusal. And `share` is `teach` in the teacher's own
 name — the fold already shares a teacher's pair, so a second mechanism
 would have been a second truth.
 
+## 10. Stage 4 — erasure: a person's own words out of the ledger
+
+Found 2026-09-29 by okay-watch's check bot, the first consumer whose
+model learns from the people who use it: a lesson IS the person's
+sentence in our ledger, `Retention` (§9) drops old TABLES, and nothing
+took a person's words back out. Two claims have to hold together —
+
+- the ledger is append-only and the model is its fold (§1);
+- a person may have their data removed.
+
+They reconcile in one way and only one: **the CONTENT goes, the FACT of
+erasure stays.**
+
+```scala
+enum Ledger.Entry:
+  case Erased(subject: String, entries: Int, why: String, at: Long, by: String)   // new
+
+/** a ledger that can take a person's words back out; a sink that cannot is not one */
+trait Ledger.Erasable extends Ledger.Sink:
+  def entries: Vector[Entry]
+  def erase(who: String): Int
+
+object Ledger:
+  /** what stays, and how many went — pure */
+  def erase(entries: Iterable[Entry], who: String): (Vector[Entry], Int)
+  /** a subject that is not the person: sha256 of the identifier, sixteen bytes */
+  def digest(who: String): String
+
+trait Governed:
+  def erase(by: String, who: String, why: String, subject: String = ""): Either[String, Ledger.Entry]
+```
+
+### Behavior
+
+- [x] an erasure takes every entry that NAMES the person — their lessons,
+      their withdrawals, refusals they were given or caused, a pair they
+      themselves shared — and leaves a table's entries, which are nobody's
+      words
+- [x] nothing of the person is left in the sink OR in the `Governed`'s own
+      history, and their lessons leave the memory while everybody else's stay
+- [x] the memory after an erasure is RE-FOLDED from what the ledger now
+      holds, so it equals the model a boot would reach: the fold stays the
+      only truth
+- [x] an `Erased` entry is never itself erased, and a second erasure of the
+      same person does not take the first record away
+- [x] the subject is a DIGEST by default, and a person erasing themselves is
+      recorded as having done it themselves rather than by name — a steward
+      is named, because an operator is not the data subject
+- [x] the rights are the ones `Teaching` already has: the person themselves,
+      or a steward; a stranger is refused and the refusal is an entry
+- [x] erasure is NOT gated by the kill switch: a system with learning
+      switched off must still be able to forget somebody
+- [x] `Ledger.File` rewrites by a MOVE, so a process that dies halfway
+      leaves either the old file or the new one, and a line it could not
+      parse is not carried over — a line whose subject is unknown is exactly
+      what an erasure may not leave behind
+
+### Design
+
+**The digest, and what it is for.** The identifier is the person's data
+as much as their sentence is, so the record names them by a digest: enough
+to count erasures and to answer «was my request honoured», not enough to be
+the identifier again. The test that asked whether the identifier was really
+gone is what found the hole — `by` had kept it, because the person had
+erased themselves.
+
+**A sink that cannot erase says so.** `Governed.erase` over a sink that is
+not `Erasable` (a broadcast, somebody else's topic) clears that person from
+the memory, records an entry whose count is honest about what WE took out —
+none — and leaves the consumer to erase where their journal actually is.
+
+**What erasure is not.** It is not a retention policy (§9 is, for tables),
+not a snapshot, and not a way to rewrite history: only entries that are a
+person's own go, and the fact that they went is permanent.
+
 ## Results — dlm-explain-missing (2026-09-28)
 
 Found by okay-watch's check bot, whose `/why` explained a sentence a
@@ -306,3 +381,17 @@ go on the shelf in one step, and «the newest» that no policy may drop
 has to be the new one. A SHELF'S FILE IS CHECKED AGAINST ITS NAME on
 every read, because a file renamed or replaced under a hash is
 otherwise a table served under the wrong name.
+
+## Results — dlm-erasure (2026-09-29)
+
+Stage 4, library only. `Ledger.Entry.Erased`, `Ledger.Erasable` (both
+`Recorded` and `File`, the file by an atomic move), the pure
+`Ledger.erase`, `Ledger.digest`, and `Governed.erase` over the rights
+`Teaching` already had. Three tests, one per group of behaviour lines;
+122 in the module.
+
+Two things the tests decided, both by failing first. The subject's own
+identifier survived in `by` when they erased themselves — so a
+self-erasure is recorded as the subject, not by name. And the memory in
+the branch where the sink cannot erase was cleared for EVERYBODY in the
+first draft: erasing one person is not forgetting the rest.
