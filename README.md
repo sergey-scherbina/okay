@@ -97,11 +97,22 @@ index above lists them all with one-line summaries.
 
 ## Architecture
 
+- `Free[F, A]` (Free.scala) — the base of everything: the freer monad
+  (Kiselyov–Ishii 2015), free over ANY signature `F` with no Functor
+  required, because a bind keeps its continuation as a plain function.
+  Four cases: `Return` a value, `Inject` one operation of `F`, `Bind` a
+  program to a continuation, `Delay` a subprogram. A program is data,
+  `A ! F` is `Free[F, A]`, and nothing runs until a handler walks the
+  tree. Left-nested binds are rebalanced by tail-recursive rotations, so
+  a walk is stack-safe and stepping one operation at a time costs about
+  what running in bulk does, with no type-aligned queue.
 - `Cont[A, S, R]` (Cont.scala) — the parameterised continuation monad
-  (answer-type modification, shift/reset), defunctionalized AS `Free`:
-  an opaque `Free[Shift, A]` whose leaf is a function of the
-  continuation, so a program and its meaning are one tree, and running
-  a flatMap chain is stack-safe ([theory ch. 11](docs/theory/11-one-tree.md)).
+  (answer-type modification, shift/reset), and it is an effect inside
+  `Free` like any other: an opaque `Free[Shift, A]` whose one operation,
+  `Shift`, is a function of the continuation. Running a `Cont` handles
+  that one effect, so a program and its meaning are one tree, a flatMap
+  chain is stack-safe, and the same walk serves both
+  ([theory ch. 11](docs/theory/11-one-tree.md)).
 - `Control[M[_, _, _]]` (Cont.scala) — final tagless interface of
   delimited control; instances: `Cont` (stack-safe data) and `Func`
   (the function encoding, the reference).
@@ -128,8 +139,14 @@ index above lists them all with one-line summaries.
 
 ## Effects
 
-- `Reader` — the environment, handled at relay speed (Reader.scala).
-- `Writer` — telling IS streaming: a one-constructor GADT
+From the everyday to the rare; each name links to its own page, with examples. The last two are about effects in general.
+
+- [`Reader`](docs/effects/reader.md) — the environment, handled at relay speed (Reader.scala).
+- [`State`](docs/effects/state.md) — get/set with a bespoke tail-recursive handler; `PState` —
+  type-changing (typestate) state on the paramonad (State.scala). A
+  row holds ONE `State % S`, since `Get()` carries no runtime trace of
+  S.
+- [`Writer`](docs/effects/writer.md) — telling IS streaming: a one-constructor GADT
   (`Say(w): Writer[W, Unit]` — a tell answers NOTHING, and matching
   the constructor recovers that, so nothing casts), the element type
   separate from the answer (`A ! Writer % W` computes A telling W);
@@ -137,11 +154,54 @@ index above lists them all with one-line summaries.
   `Writer.of` turns any stream back into the program shape, `Writer.map`
   re-tells at another type (Writer.scala; the five encodings tried
   before this one: docs/existentials.md).
-- `State` — get/set with a bespoke tail-recursive handler; `PState` —
-  type-changing (typestate) state on the paramonad (State.scala). A
-  row holds ONE `State % S`, since `Get()` carries no runtime trace of
-  S.
-- **Several instances of one effect** — `Tag.Of["small", State % Int]`
+- [`Throws`](docs/effects/throws.md) — typed errors: abort, runEither, the `throws` union; and
+  `Abort` (= `Throws % Unit`), failure with nothing to say, handled by
+  `runOption` (Throws.scala).
+- [`Maybe`](docs/effects/maybe.md) — a value that may not be there:
+  `option.maybe` answers it or stops, `Maybe.run` gives the `Option` back.
+  Unlike `Abort` it shares a row with `Throws` (Maybe.scala).
+- [`Chronicle`](docs/effects/chronicle.md) — errors that accumulate while
+  the program goes on: `dictate` records, `halt` stops, and the handler
+  answers `Clean`, `Warned` or `Failed` (Chronicle.scala).
+- [`Resource`](docs/effects/resource.md) — the region: acquires release at the end of the scope in
+  reverse order, surviving handled aborts and mid-step exceptions;
+  `bracket` over any Handler-able row (Resource.scala).
+- [`Async`](docs/effects/async.md) — cross-platform: `Run` (a possibly blocking thunk —
+  blocking is a JVM/Native ability that parks a virtual thread) and
+  `Await` (the universal callback form: an error channel in, a
+  canceller out). Blocking is `CanBlock` evidence — absent on JS,
+  where `runAsync` drives the same programs through the event loop
+  and a blocking join is a compile error. `spawn`/`par`/`race`/
+  `timeout`/`sleep` are cross-platform; `Fiber` is
+  onComplete/cancel/joinAsync everywhere, parking join under the
+  evidence; `Scheduler` takes the program: on the JVM an adaptive
+  pool of owned workers by default, Loom a `given` away; the event loop
+  on JS; one OS thread per fiber on Native
+  ([schedulers](docs/schedulers.md); Async.scala + Platform.scala per
+  platform).
+- [`Supply` and `Fresh`](docs/effects/supply.md) — fresh values, one per
+  draw: ids and names, with no `set` to rewind them (Supply.scala).
+- [`Once`](docs/effects/once.md) — call-by-need for programs: a shared
+  sub-program runs at most once, its answer memoised in the handler
+  (Once.scala).
+- [`Choice`](docs/effects/choice.md) — nondeterminism with a genuinely multi-shot handler; the
+  canonical MonadPlus (Choice.scala). `Logic` — fair backtracking
+  search on top of it: interleave, once, ifte (Logic.scala,
+  specs/backtracking.md).
+- [`Gen`](docs/effects/gen.md) — generators, Python's `yield`: a
+  `Writer` that can stop early, read only as far as asked (Gen.scala).
+- [`Prob`](docs/effects/prob.md) — probabilistic programming: weighted
+  choice, `observe`, and exact inference as a multi-shot handler
+  (Prob.scala).
+- [`Delim`](docs/continuations/10-prompts.md) — delimited control as an effect, multi-prompt in the shape
+  of Dybvig, Peyton Jones and Sabry (2007): a `Prompt` is a first-class
+  tag carrying its delimiter's answer type, `push` installs one and
+  `shift` captures up to a NAMED prompt, not the nearest. shift, control,
+  shift0 and control0 are one operation with two flags. It is `Cont`'s
+  shift/reset as an operation in a row, so it composes with the other
+  effects, and one machine owns the prompt stack (Delim.scala,
+  [continuations book](docs/continuations/index.md)).
+- **[Several instances of one effect](docs/many-instances.md)** — `Tag.Of["small", State % Int]`
   names them in the row, for ANY signature; `tag` puts a finished
   program's operations under a key (so a function written against a
   plain `State % Int` runs twice at two states), and `untag` hands the
@@ -149,10 +209,7 @@ index above lists them all with one-line summaries.
   instances are made rather than named, `Refs` keeps a heap: cells
   created at run time, one row member however many, one stated cast
   (Refs.scala).
-- `Throws` — typed errors: abort, runEither, the `throws` union; and
-  `Abort` (= `Throws % Unit`), failure with nothing to say, handled by
-  `runOption` (Throws.scala).
-- **Your own effect** ([the tutorial](docs/your-own-effect.md)), in
+- **[Your own effect](docs/your-own-effect.md)**, in
   three lines: `enum Users[+A] derives Effect`
   and the cases carry their answer types. `derives Effect` writes the
   row-split test and registers the signature for direct style;
@@ -163,24 +220,6 @@ index above lists them all with one-line summaries.
   makes any handler a recording one (Throws.scala, Row.scala,
   docs/guide.md §2, and the worked example in
   `okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`).
-- `Choice` — nondeterminism with a genuinely multi-shot handler; the
-  canonical MonadPlus (Choice.scala). `Logic` — fair backtracking
-  search on top of it: interleave, once, ifte (Logic.scala,
-  specs/backtracking.md).
-- `Async` — cross-platform: `Run` (a possibly blocking thunk —
-  blocking is a JVM/Native ability that parks a virtual thread) and
-  `Await` (the universal callback form: an error channel in, a
-  canceller out). Blocking is `CanBlock` evidence — absent on JS,
-  where `runAsync` drives the same programs through the event loop
-  and a blocking join is a compile error. `spawn`/`par`/`race`/
-  `timeout`/`sleep` are cross-platform; `Fiber` is
-  onComplete/cancel/joinAsync everywhere, parking join under the
-  evidence; `Scheduler` takes the program (Loom / the event loop /
-  one OS thread per fiber) (Async.scala + Platform.scala per
-  platform).
-- `Resource` — the region: acquires release at the end of the scope in
-  reverse order, surviving handled aborts and mid-step exceptions;
-  `bracket` over any Handler-able row (Resource.scala).
 
 ## Streams
 
