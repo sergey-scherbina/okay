@@ -1,0 +1,1 @@
+claude session_01YMmUap8wenmYUk1yBt9Gzm (nadia-fable), 2026-09-29, operator ask ("Продолжай"): implement specs/llm-models.md — Models.Catalog/Residency/Store as capabilities, ModelId equality, adapters openAi/anthropic/ollama/rozum, a Fetch (get/delete) beside Transport in okay-llm; additive (sprint.d/doing/llm-models.md)
