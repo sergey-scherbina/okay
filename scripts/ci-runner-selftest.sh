@@ -74,6 +74,8 @@ EOF
     cat > scripts/gate-retry.sh <<'EOF'
 #!/bin/sh
 WT="${1:?}"; LOG="${2:?}"; CMD="${4:-test}"
+# a whole build that takes a while, so a test can signal the runner mid-gate
+[ -n "${CI_TEST_SLEEP:-}" ] && sleep "$CI_TEST_SLEEP"
 ( cd "$WT" && sh scripts/gate.sh "$CMD" ) >> "$LOG" 2>&1
 exit $?
 EOF
@@ -180,6 +182,34 @@ CI_TEST_VERDICT=green run kick >/dev/null
 w=0
 while [ "$(origin_sha)" != "$target" ] && [ "$w" -lt 20 ]; do sleep 0.5; w=$((w + 1)); done
 [ "$(origin_sha)" = "$target" ] && ok "the detached run pushed within 10s" || bad "origin at $(origin_sha) after waiting, wanted $target"
+rm -rf "$tmp"
+
+say "9c. a detached run is in its OWN session, and a signal to its group is written down (ci-runner-startup-death)"
+new_fixture
+commit_file src.txt one
+before=$(origin_sha)
+( cd "$work" && CI_TEST_SLEEP=30 CI_TEST_QUEUE="$work/.work/gate-queue" sh scripts/ci-runner.sh kick >/dev/null )
+w=0; rpid=""
+while [ -z "$rpid" ] && [ "$w" -lt 20 ]; do
+  rpid=$(cat "$work/.work/ci/lock/pid" 2>/dev/null || true)
+  [ -n "$rpid" ] && ps -p "$rpid" >/dev/null 2>&1 || rpid=""
+  sleep 0.25; w=$((w + 1))
+done
+if [ -z "$rpid" ]; then bad "no detached runner took the lock"
+else
+  rsid=$(ps -o sess= -p "$rpid" | tr -d ' '); mysid=$(ps -o sess= -p $$ | tr -d ' ')
+  if [ "$rsid" != "$mysid" ]; then ok "runner session $rsid is not the kicker's $mysid"
+  elif ! command -v setsid >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then ok "(no setsid and no perl here: same session, as documented)"
+  else bad "runner shares the kicker's session $mysid"; fi
+  w=0; until grep -q "gating" "$work"/.work/ci/log/*.log 2>/dev/null || [ "$w" -ge 20 ]; do sleep 0.25; w=$((w + 1)); done
+  rpg=$(ps -o pgid= -p "$rpid" | tr -d ' ')
+  kill -s TERM -- "-$rpg" 2>/dev/null   # -s: dash reads "-TERM --" as an illegal number
+  w=0; while ps -p "$rpid" >/dev/null 2>&1 && [ "$w" -lt 40 ]; do sleep 0.25; w=$((w + 1)); done
+  grep -hq "got SIGTERM during 'family all" "$work"/.work/ci/log/*.log 2>/dev/null && ok "the log names SIGTERM and the phase" || bad "no signal line (runner $(ps -p "$rpid" >/dev/null 2>&1 && echo alive || echo gone)): $(cat "$work"/.work/ci/log/*.log 2>/dev/null | tail -3)"
+  grep -hq "ci-runner: pid $rpid pgid" "$work"/.work/ci/log/*.log 2>/dev/null && ok "the log names the runner's pid, group and session" || bad "no whoami line"
+  [ ! -d "$work/.work/ci/lock" ] && ok "the lock was released" || bad "the lock is still held"
+  [ "$(origin_sha)" = "$before" ] && ok "nothing pushed" || bad "a killed run pushed"
+fi
 rm -rf "$tmp"
 
 say "9b. a RED with no ==> X (infrastructure noise) is never bisected or reverted"
