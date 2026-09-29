@@ -16,19 +16,35 @@ shape, and the `Chunks.zip` extension so a chunk stream reads
 ## Interface
 
 ```scala
-extension [A](s: Source[A])
+object Source:
   /** pairs in lockstep until EITHER side ends; each side on a fiber of
    * its own, `capacity` elements buffered a side */
-  infix def zip[B](t: Source[B], capacity: Int = 64)
-                  (using Scheduler, CanBlock, Wait, Pause): Source[(A, B)]
-  def zipWith[B, C](t: Source[B], capacity: Int = 64)(f: (A, B) => C)
-                   (using Scheduler, CanBlock, Wait, Pause): Source[C]
+  def zip[A, B](s: Source[A], t: Source[B], capacity: Int = 64)
+               (using Scheduler, CanBlock, Wait, Pause): Source[(A, B)]
+  def zipWith[A, B, C](s: Source[A], t: Source[B], capacity: Int = 64)(f: (A, B) => C)
+                      (using Scheduler, CanBlock, Wait, Pause): Source[C]
 
 extension [A](p: Chunks[A])
   infix def zip[B](q: Chunks[B]): Chunks[(A, B)]      // = Chunks.zip(p, q)
 ```
 
 ## Decisions
+
+- **`Source.zip(s, t)`, a companion function — not `s zip t`.** The
+  first cut was an extension, and the additive gate
+  (`affected master Test/compile`) caught what it cost: an extension in
+  okay-stream is a TOP-LEVEL `zip` in package `okay`, and the core's
+  Stream.scala already has one (the lazy `s.zip(that)` on any stream).
+  A split package does not overload across its files: a dependent that
+  sees both warns "Toplevel definition zip is defined in
+  .../Source$package.tasty and also in .../Stream$package.tasty —
+  Keeping only the definition in Source$package" and silently loses the
+  core's (okay-codec's TestJsonOptic said so, three platforms). Supply's
+  `Fresh` stepped around DI's `fresh` for the same reason
+  (core-maybe-supply). An extension inside a top-level `given` would
+  resolve without the clash, but only under `import okay.given`, which
+  `import okay.*` does not bring. The companion is `Chunks.zip(p, q)`'s
+  spelling already; okay2 keeps the same one for parity.
 
 - **`merge`'s shape, not a new one.** Each side is `Channel.buffer`ed
   onto a fiber of its own and the pairing runs on the consumer's thread

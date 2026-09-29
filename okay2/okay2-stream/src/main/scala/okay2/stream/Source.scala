@@ -55,6 +55,45 @@ object Source {
     b.result()
   }
 
+  /**
+   * Pair `s` with `t` element for element, in LOCKSTEP, until
+   * EITHER side ends — the Scala 3 core's `Source.zip`
+   * (specs/source-zip.md), in `merge`'s shape: each side buffered onto
+   * a fiber of its own (`Channel.buffer`, `capacity` elements deep),
+   * the pairing on the consumer's thread, one receive per side per
+   * pair. Lazy at the seam: the fibers start at the first pull.
+   *
+   * The side that ends first ends the zip and CLOSES the other's
+   * channel, so its feeder, parked on the full buffer, wakes and ends;
+   * what it had buffered is dropped. A side that fails fails the zip
+   * after every pair told before the failure. An EARLY stop by the
+   * consumer leaves both feeders parked on their bounded buffers, as it
+   * leaves `merge`'s: okay2 has no cancel scope for a drive to release
+   * (the Scala 3 core closes both there, through `Merge.closing`).
+   * A companion function, as in the Scala 3 core, where an extension
+   * would clash with the core's top-level `zip` (specs/source-zip.md).
+   */
+  def zip[A, B](s: Source[A], t: Source[B], capacity: Int = 64)(implicit sch: Scheduler, cb: CanBlock): Source[(A, B)] = {
+    type R = Writer[(A, B)] + Async
+    type L[W] = Unit ! (Writer[W] + Async)
+    pure[R, Unit](()).flatMap { _ =>
+      val cl = Channel.buffer[A, L, Async](capacity)(s)(Stream.writerStreamIn[Unit, Async], Async.handler(cb), sch)
+      val cr = Channel.buffer[B, L, Async](capacity)(t)(Stream.writerStreamIn[Unit, Async], Async.handler(cb), sch)
+      def go: Source[(A, B)] = cl.receive.at[R].flatMap {
+        case None => cr.close(); pure[R, Unit](())
+        case Some(a) => cr.receive.at[R].flatMap {
+          case None => cl.close(); pure[R, Unit](())
+          case Some(b) => Writer.tell((a, b)).at[R].flatMap(_ => go)
+        }
+      }
+      go
+    }
+  }
+
+  /** `zip`, the pair folded by `f` as it is told */
+  def zipWith[A, B, C](s: Source[A], t: Source[B], capacity: Int = 64)(f: (A, B) => C)(implicit sch: Scheduler, cb: CanBlock): Source[C] =
+    Writer.mapAt[(A, B), C, Unit, Async](zip(s, t, capacity))(f.tupled)
+
   /** what `merge(chunked = true)` batches by: not a parameter, since
    * exposing it would quietly break `capacity`, which counts ELEMENTS */
   private[stream] val ChunkSize = 16
@@ -123,43 +162,6 @@ object Source {
                  (implicit sch: Scheduler, cb: CanBlock, timer: Timer): Source[Either[A, B]] =
       new SourceOps(Writer.mapAt[A, Either[A, B], Unit, Async](s)(a => Left(a)))
         .merge[Either[A, B]](Writer.mapAt[B, Either[A, B], Unit, Async](t)(b => Right(b)), capacity, chunked, flushAfter)
-
-    /**
-     * Pair this source with `t` element for element, in LOCKSTEP, until
-     * EITHER side ends — the Scala 3 core's `Source.zip`
-     * (specs/source-zip.md), in `merge`'s shape: each side buffered onto
-     * a fiber of its own (`Channel.buffer`, `capacity` elements deep),
-     * the pairing on the consumer's thread, one receive per side per
-     * pair. Lazy at the seam: the fibers start at the first pull.
-     *
-     * The side that ends first ends the zip and CLOSES the other's
-     * channel, so its feeder, parked on the full buffer, wakes and ends;
-     * what it had buffered is dropped. A side that fails fails the zip
-     * after every pair told before the failure. An EARLY stop by the
-     * consumer leaves both feeders parked on their bounded buffers, as it
-     * leaves `merge`'s: okay2 has no cancel scope for a drive to release
-     * (the Scala 3 core closes both there, through `Merge.closing`).
-     */
-    def zip[B](t: Source[B], capacity: Int = 64)(implicit sch: Scheduler, cb: CanBlock): Source[(A, B)] = {
-      type R = Writer[(A, B)] + Async
-      type L[W] = Unit ! (Writer[W] + Async)
-      pure[R, Unit](()).flatMap { _ =>
-        val cl = Channel.buffer[A, L, Async](capacity)(s)(Stream.writerStreamIn[Unit, Async], Async.handler(cb), sch)
-        val cr = Channel.buffer[B, L, Async](capacity)(t)(Stream.writerStreamIn[Unit, Async], Async.handler(cb), sch)
-        def go: Source[(A, B)] = cl.receive.at[R].flatMap {
-          case None => cr.close(); pure[R, Unit](())
-          case Some(a) => cr.receive.at[R].flatMap {
-            case None => cl.close(); pure[R, Unit](())
-            case Some(b) => Writer.tell((a, b)).at[R].flatMap(_ => go)
-          }
-        }
-        go
-      }
-    }
-
-    /** `zip`, the pair folded by `f` as it is told */
-    def zipWith[B, C](t: Source[B], capacity: Int = 64)(f: (A, B) => C)(implicit sch: Scheduler, cb: CanBlock): Source[C] =
-      Writer.mapAt[(A, B), C, Unit, Async](zip(t, capacity))(f.tupled)
 
     /** chunking as a property of the STREAM: a pure transducer, one
      * Chunk per `size` elements plus a short final one */
