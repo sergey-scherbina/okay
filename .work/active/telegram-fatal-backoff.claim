@@ -1,1 +1,0 @@
-claude session_019ikxNQsLNoKyBmNgq5Jh5P, 2026-09-29, found by running the real okay-watch server against real Telegram with a bad token: serve retries a FATAL refusal (401) every 2 seconds forever — log spam and hammering Telegram with an invalid token; back off, reset on success (sprint.d/doing/telegram-fatal-backoff.md)
