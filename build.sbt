@@ -224,9 +224,18 @@ ThisBuild / scmInfo := Some(ScmInfo(
 ThisBuild / developers := List(Developer(
   "sergey-scherbina", "Sergiy Shcherbyna", "sergey.scherbina@gmail.com",
   url("https://github.com/sergey-scherbina")))
+// OKAY_PAGES_REPO set: a Maven repository in that directory instead
+// (pages-maven-repo, 2026-09-29). scripts/pages-publish.sh points it at
+// the `maven/` folder of a gh-pages worktree, and GitHub Pages serves it
+// as https://sergey-scherbina.github.io/okay/maven -- a repository a user
+// adds with one resolver line and no token, unsigned, Central not needed.
 ThisBuild / publishTo := {
-  if (isSnapshot.value) Some("central-snapshots" at "https://central.sonatype.com/repository/maven-snapshots/")
-  else localStaging.value
+  sys.env.get("OKAY_PAGES_REPO").filter(_.nonEmpty) match {
+    case Some(dir) => Some(MavenCache("okay-pages", file(dir)))
+    case None =>
+      if (isSnapshot.value) Some("central-snapshots" at "https://central.sonatype.com/repository/maven-snapshots/")
+      else localStaging.value
+  }
 }
 ThisBuild / publishMavenStyle := true
 // a POM names where ITS dependencies live, not where this machine fetched

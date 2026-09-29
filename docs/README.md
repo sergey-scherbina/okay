@@ -243,9 +243,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   five supporting findings each with its own table, and links to
   every lane's source. Curated from [benchmarks.md](benchmarks.md)
   §20, which carries the full derivation.
-- **[Releasing](releasing.md)** — what reaches Maven Central (the first
-  wave), under which coordinates, the one-time account and key setup,
-  and the steps of a release.
+- **[Releasing](releasing.md)** — what is published (the first wave),
+  under which coordinates, and where: a Maven repository on this
+  repository's GitHub Pages, needing no account, or Maven Central, with
+  its one-time account and key setup; the steps of a release.
 
 ## The modules
 
