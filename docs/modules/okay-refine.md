@@ -184,6 +184,13 @@ belongs here.
 
 ## Gotchas
 
+- **A dialect declines by its first character before it parses.** JSON
+  needs `{` or `[`, XML `<`, the block YAML dialect anything but `{`, `[`,
+  `<?`, `<!` — necessary conditions, so the verdicts are the ones the full
+  parse would give, only sooner: every alternative runs on every
+  document, and before this each declining dialect read the whole file
+  (60% of detection on okay-fin's corpora). Text before an XML root
+  element is declined (`begins with 'h', not <`): it is not well-formed.
 - **A bare scalar is no document.** `hello` and `42` are declined by
   every text format: a level whose answer is "a string" has learnt
   nothing about what to ask next. Write the step if you want scalars.

@@ -66,13 +66,12 @@ class TestFormat extends Diagnosed:
     v match
       case Verdict.Declined(tried) =>
         assertEquals(tried.map(_.at), Vector(Path("cbor"), Path("text", "json"), Path("text", "xml"), Path("text", "yaml")))
-        // the JSON tree's own words for a bare word; a bare NUMBER is a
-        // valid JSON value and is declined as no document instead
-        assertEquals(tried.find(_.at == Path("text", "json")).map(_.reason), Some("unexpected 'hello' at Span(0,0,0,5)"))
-        assertEquals(tried.find(_.at == Path("text", "xml")).map(_.reason), Some("no element"))
+        // since format-cheap-decline JSON and XML say it by the first character, before any parse
+        assertEquals(tried.find(_.at == Path("text", "json")).map(_.reason), Some("begins with 'h', not { or ["))
+        assertEquals(tried.find(_.at == Path("text", "xml")).map(_.reason), Some("begins with 'h', not <"))
         assertEquals(tried.find(_.at == Path("text", "yaml")).map(_.reason), Some("not a YAML mapping or sequence"))
       case other => fail(s"expected Declined, got $other")
-    assertEquals(Format.json.run("42").reasons.map(_.reason), Vector("not a JSON object or array"))
+    assertEquals(Format.json.run("42").reasons.map(_.reason), Vector("begins with '4', not { or ["))
   }
 
   test("an XML document WITH its declaration is text/xml (was a KNOWN GAP until xml-processing-instruction)") {
@@ -102,7 +101,31 @@ class TestFormat extends Diagnosed:
     val v = Format.detect.run(bytes("""{"a": 1}"""))
     note(v.toString)
     assertEquals(took(v)._2, Path("text", "json"))
-    assertEquals(v.reasons.find(_.at == Path("text", "yaml")).map(_.reason), Some("not a YAML mapping or sequence"))
+    // since format-cheap-decline the block dialect says so before parsing: the verdict is the same, the reason sooner
+    assertEquals(v.reasons.find(_.at == Path("text", "yaml")).map(_.reason), Some("begins with '{': flow style is not the block dialect"))
+  }
+
+  test("format-cheap-decline: each dialect declines by its first character before parsing, with the same verdicts as before") {
+    def reasons(s: String) = Format.detect.run(s.getBytes("UTF-8")) match
+      case Verdict.Declined(tried) => tried.map(r => r.at.steps.last -> r.reason).toMap
+      case Verdict.Took(_, by, declined) => declined.map(r => r.at.steps.last -> r.reason).toMap + ("took" -> by.toString)
+      case other => fail(other.toString)
+    val xml = reasons("<?xml version=\"1.0\"?>\n<a>1</a>")
+    assertEquals(xml("took"), "text/xml")
+    assertEquals(xml("json"), "begins with '<', not { or [")
+    assertEquals(xml("yaml"), "begins with an XML prolog")
+    val json = reasons("  {\"a\": [1, 2]}")
+    assertEquals(json("took"), "text/json")
+    assertEquals(json("xml"), "begins with '{', not <")
+    assertEquals(json("yaml"), "begins with '{': flow style is not the block dialect")
+    val yaml = reasons("a: 1\nb:\n  - x\n")
+    assertEquals(yaml("took"), "text/yaml")
+    assertEquals(yaml("json"), "begins with 'a', not { or [")
+    // text before the root element is not a well-formed XML document
+    assertEquals(reasons("hello <a/>")("xml"), "begins with 'h', not <")
+    assertEquals(reasons("   ")("json"), "empty")
+    // a YAML mapping whose first key begins with '<' is still YAML
+    assertEquals(reasons("<<: x\nb: 1\n").get("yaml"), None)
   }
 
   test("UTF-8 validity: ASCII, multi-byte, a lone continuation byte, a truncated sequence") {

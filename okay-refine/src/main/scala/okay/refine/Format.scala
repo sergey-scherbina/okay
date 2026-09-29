@@ -32,10 +32,29 @@ object Format:
         case at => Left(s"not UTF-8 at byte $at"))(
       _.getBytes(java.nio.charset.StandardCharsets.UTF_8))
 
+  /**
+   * The first character that is not blank, or
+   * -1 — what each dialect asks BEFORE its total parser runs
+   * (format-cheap-decline, 2026-09-29): a total parser reads a document of
+   * another dialect to its end before its tree says "damage", and okay-fin
+   * measured detection paying that for every declining dialect on every
+   * document (XML read by JSON and YAML, JSON by XML and YAML: 60% of it).
+   * The conditions are NECESSARY ones — a document failing one would have
+   * been declined after the parse as well — so the verdicts do not move;
+   * only the reason is sooner.
+   */
+  private def lead(s: String): Int =
+    var i = 0
+    while i < s.length && Character.isWhitespace(s.charAt(i)) do i += 1
+    if i < s.length then s.charAt(i).toInt else -1
+
   /** a JSON object or array with no damage */
   val json: Refine[String, Doc.Json] =
     Refine.step[String, Doc.Json]("json")(s =>
-      structured(Json.cst(s), Set("object", "array"), "a JSON object or array").map(Doc.Json(_)))(
+      lead(s) match
+        case '{' | '[' => structured(Json.cst(s), Set("object", "array"), "a JSON object or array").map(Doc.Json(_))
+        case -1 => Left("empty")
+        case c => Left(s"begins with '${c.toChar}', not { or ["))(
       d => Json.render(d.tree))
 
   /** an XML document with at least one element and no damage — STRICT
@@ -45,10 +64,13 @@ object Format:
    * nothing" under the HTML set) */
   val xml: Refine[String, Doc.Xml] =
     Refine.step[String, Doc.Xml]("xml")(s =>
-      val tree = Xml.cst(s, Xml.strict)
-      firstError(tree).toLeft(()).flatMap(_ =>
-        if hasElement(tree) then Right(Doc.Xml(tree))
-        else Left("no element")))(
+      // a well-formed document's prolog and root all begin with `<`: text before the root is not XML
+      if lead(s) != '<' then Left(if lead(s) == -1 then "empty" else s"begins with '${lead(s).toChar}', not <")
+      else
+        val tree = Xml.cst(s, Xml.strict)
+        firstError(tree).toLeft(()).flatMap(_ =>
+          if hasElement(tree) then Right(Doc.Xml(tree))
+          else Left("no element")))(
       d => Xml.render(d.tree))
 
   /**
@@ -61,10 +83,17 @@ object Format:
    */
   val yaml: Refine[String, Doc.Yaml] =
     Refine.step[String, Doc.Yaml]("yaml")(s =>
-      val tree = Yaml.cst(s)
-      firstError(tree).toLeft(()).flatMap(_ =>
-        if rootKinds(tree).exists(Set("map", "seq")) && !rootScalar(tree) then Right(Doc.Yaml(tree))
-        else Left("not a YAML mapping or sequence")))(
+      // flow style is outside the block dialect's scope (it reads `{`/`[` as a root scalar and declines after the
+      // parse), and `<?`/`<!` begin an XML prolog, never a YAML mapping key
+      val c = lead(s)
+      val t = s.dropWhile(Character.isWhitespace(_))
+      if c == '{' || c == '[' then Left(s"begins with '${c.toChar}': flow style is not the block dialect")
+      else if t.startsWith("<?") || t.startsWith("<!") then Left("begins with an XML prolog")
+      else
+        val tree = Yaml.cst(s)
+        firstError(tree).toLeft(()).flatMap(_ =>
+          if rootKinds(tree).exists(Set("map", "seq")) && !rootScalar(tree) then Right(Doc.Yaml(tree))
+          else Left("not a YAML mapping or sequence")))(
       d => Yaml.render(d.tree))
 
   /** exactly one well-formed CBOR item */
