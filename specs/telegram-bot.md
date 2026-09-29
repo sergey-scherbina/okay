@@ -100,6 +100,13 @@ two.
       process running looks like — and a 401, a token wrong or revoked; both
       look exactly like «the bot does not answer» from outside. `Refused.fatal`
       says which of them waiting cannot fix.
+- [x] **a FATAL refusal backs off** (telegram-fatal-backoff): a 401 or 404
+      doubles the wait each time up to `fatalCapMs` (five minutes), and the
+      first good poll resets it. The loop still does not die, so a token the
+      operator fixes is picked up without a restart. Found by running the
+      real okay-watch server against the real Bot API with a bad token: it
+      said «waiting will not fix this» and then asked again every two
+      seconds, forever.
 - [x] **how long it waits is the API's answer where the API gave one**: a 429
       carries `parameters.retry_after`, read into `Refused.retryAfter`, and
       `retryMs` is only the fallback — answering a rate limit at our own

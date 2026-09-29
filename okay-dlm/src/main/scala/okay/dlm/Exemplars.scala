@@ -32,8 +32,11 @@ final case class Exemplars(encoder: String, dim: Int, rows: Vector[Exemplar]):
   def labelled: Vector[(Embedding, String)] = rows.map(e => (e.vec, e.label))
   /** THE TABLE BY HASH: SHA-256 of its checkpoint bytes, which are a
    * pure function of the numbers — so two builds of the same corpus
-   * under the same encoder hash the same, and an audit names the
-   * table a decision was made with (specs/dlm-learning.md) */
+   * under the same encoder ON THE SAME PLATFORM hash the same, and an
+   * audit names the table a decision was made with
+   * (specs/dlm-learning.md). Not across CPUs: an int8 encoder's numbers
+   * move with the kernels that run it (measured by the first consumer,
+   * 2026-09-29: cosine 0.97–0.99, every table a new hash) */
   lazy val hash: String =
     val bytes = Checkpoint.bytes(encoder, dim, rows.map(_.label), rows.map(_.vec.toArray))
     val arr = new Array[Byte](bytes.remaining()); bytes.get(arr)

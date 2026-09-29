@@ -86,15 +86,28 @@ final class Bot(http: Http, token: String, base: String = "https://api.telegram.
    */
   def serve(handle: Update => Unit ! Async, from: Long = 0, retryMs: Long = 2000,
             stop: () => Boolean = () => false, timeoutSeconds: Int = 25,
-            onRefused: Refused => Unit ! Async = _ => pure(()))(using Timer): Long ! Async =
-    def loop(offset: Long): Long ! Async =
+            onRefused: Refused => Unit ! Async = _ => pure(()),
+            /** the longest a FATAL refusal is waited out between asks */
+            fatalCapMs: Long = 300_000)(using Timer): Long ! Async =
+    // A FATAL REFUSAL BACKS OFF (telegram-fatal-backoff). A wrong or revoked
+    // token is not fixed by asking again in two seconds — found by running a
+    // real server against the real API: thirty log lines a minute and an
+    // invalid token hammered at Telegram. The loop still does not die of it,
+    // so a token the operator fixes is picked up without a restart; it
+    // doubles its wait instead, to `fatalCapMs`, and a good poll resets it.
+    def loop(offset: Long, fatalWait: Long): Long ! Async =
       if stop() then pure(offset)
       else poll(offset, handle, timeoutSeconds).flatMap {
-        case Right(next) => loop(next)
-        case Left(r) => onRefused(r).flatMap(_ =>
-          Async.sleep(r.retryAfter.fold(retryMs)(_ * 1000L)).flatMap(_ => loop(offset)))
+        case Right(next) => loop(next, 0L)
+        case Left(r) =>
+          val (wait, next) =
+            if r.fatal then
+              val w = if fatalWait == 0L then retryMs else math.min(fatalWait * 2, fatalCapMs)
+              (w, w)
+            else (r.retryAfter.fold(retryMs)(_ * 1000L), 0L)
+          onRefused(r).flatMap(_ => Async.sleep(wait).flatMap(_ => loop(offset, next)))
       }
-    loop(from)
+    loop(from, 0L)
 
   /** a message; answers its id */
   def send(chat: Long, text: String, keyboard: Vector[Vector[Key]] = Vector.empty,

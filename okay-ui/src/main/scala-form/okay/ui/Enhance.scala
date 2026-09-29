@@ -16,7 +16,12 @@ import okay.js.Js.*
  *   the frame's content is replaced — the scroll stays;
  * - `<meta name="okay-refresh" content="N">` keeps a page fresh by
  *   fetching it, not by a reload that repaints and jumps;
- * - on the live road a pressed button spins until the mount's next patch.
+ * - on the live road a pressed button spins until the mount's next patch;
+ * - in an app's own window (`window.okayApp.send`, okay-desktop's bridge —
+ *   specs/app-in-process.md) every request goes through the bridge, not
+ *   `fetch`: the page is `app://…`, which the embedded engine will not
+ *   `fetch` or `pushState` to, so an answer from another page is a real
+ *   navigation there (`okayApp.open`), answered with what was already got.
  *
  * A page without the script is the same page: every one of these is
  * a road the plain HTML already has.
@@ -106,14 +111,27 @@ object Enhance:
         does(b.dot("insertAdjacentElement").of(Str("afterend"), v("s"))),
         Stmt.Return(Some(v("s"))))),
       let("timer", Null),
+      Stmt.Comment("in an app's own window: its bridge sends, not fetch (specs/app-in-process.md)"),
+      Stmt.Comment("asked at each call: the window installs its bridge after the page loads"),
+      let("app", fun()(Stmt.Return(Some(win.dot("okayApp") && win.dot("okayApp").dot("send"))))),
+      Stmt.Comment("ONE STEP SENDS: [the answer's html, the url it came from]"),
+      let("send", fun("method", "url", "body")(
+        when(v("app").of())(Stmt.Return(Some(New(v("Promise"), Vector(fun("ok")(
+          does(win.dot("okayApp").dot("send").of(v("method"), v("url"), v("body"), fun("j")(
+            let("r", Name("JSON").dot("parse").of(v("j"))),
+            does(v("ok").of(arr(v("r").dot("body"), v("r").dot("url"))))))))))))),
+        Stmt.Return(Some(Ternary(v("method") === Str("GET"),
+          v("fetch").of(v("url"), obj("cache" -> Str("no-store"))),
+          v("fetch").of(v("url"), obj("method" -> v("method"),
+            "headers" -> obj("content-type" -> Str("application/x-www-form-urlencoded")),
+            "body" -> v("body")))).dot("then").of(texted))))),
       Stmt.Comment("a page that keeps itself fresh: fetched again, not reloaded"),
       let("fresh", fun("d")(
         does(v("clearTimeout").of(v("timer"))),
         let("m", q(d, """meta[name="okay-refresh"]""")),
         when(m)(set(v("timer"), v("setTimeout").of(fun()(
-          does(v("fetch").of(Name("location").dot("href"), obj("cache" -> Str("no-store")))
-            .dot("then").of(fun("x")(Stmt.Return(Some(v("x").dot("text").of()))))
-            .dot("then").of(fun("h")(does(v("swap").of(v("h"), Null, Bool(true)))))
+          does(v("send").of(Str("GET"), Name("location").dot("href"), Str(""))
+            .dot("then").of(fun("r")(does(v("swap").of(v("r").at(Num(0)), Null, Bool(true)))))
             .dot("catch").of(fun()(does(v("fresh").of(d)))))),
           Bin("*", Bin("||", Unary("+", m.dot("content")), Num(5)), Num(1000))))))),
       Stmt.Comment("the answer's content in place of this one's; the scroll kept on the same page"),
@@ -148,12 +166,10 @@ object Enhance:
         let("get", Bin("===", Bin("||", f.dot("getAttribute").of(Str("method")), Str("get")).dot("toLowerCase").of(), Str("get"))),
         let("to", f.dot("action")),
         let("req", Ternary(v("get"),
-          v("fetch").of(v("to") + Ternary(Bin("<", v("to").dot("indexOf").of(Str("?")), Num(0)), Str("?"), Str("&")) +
-            v("body").dot("toString").of()),
-          v("fetch").of(v("to"), obj("method" -> Str("POST"),
-            "headers" -> obj("content-type" -> Str("application/x-www-form-urlencoded")),
-            "body" -> v("body").dot("toString").of())))),
-        does(v("req").dot("then").of(texted).dot("then").of(answered).dot("catch").of(failed))),
+          v("send").of(Str("GET"), v("to") + Ternary(Bin("<", v("to").dot("indexOf").of(Str("?")), Num(0)), Str("?"), Str("&")) +
+            v("body").dot("toString").of(), Str("")),
+          v("send").of(Str("POST"), v("to"), v("body").dot("toString").of()))),
+        does(v("req").dot("then").of(answered).dot("catch").of(failed))),
       does(win.dot("addEventListener").of(Str("popstate"), fun()(does(Name("location").dot("reload").of())))),
       does(v("fresh").of(doc)))
 
@@ -162,10 +178,13 @@ object Enhance:
     fun("x")(Stmt.Return(Some(v("x").dot("text").of().dot("then").of(
       fun("h")(Stmt.Return(Some(arr(v("h"), v("x").dot("url")))))))))
 
-  /** swapped in — after at least 450 ms, so the spinner is seen */
+  /** swapped in — after at least 450 ms, so the spinner is seen; in an
+   * app's window, an answer from another page is a navigation there */
   private val answered: Js =
     val base = (u: Js) => u.dot("split").of(Str("?")).at(Num(0))
     val later = fun()(
+      when(v("app").of() && (v("r").at(Num(1)) !== Name("location").dot("href")))(
+        does(win.dot("okayApp").dot("open").of(v("r").at(Num(1)))), done),
       let("same", base(v("r").at(Num(1))) === base(Name("location").dot("href"))),
       does(v("swap").of(v("r").at(Num(0)), v("r").at(Num(1)), v("same"))))
     val wait = v("Math").dot("max").of(Num(0), Bin("-", Num(450), Bin("-", Name("Date").dot("now").of(), v("t0"))))

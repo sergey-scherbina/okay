@@ -33,8 +33,10 @@ object Window:
   def focus(): Unit = stage.foreach(s => Platform.runLater(() => { s.setIconified(false); s.show(); s.toFront() }))
 
   /** the window, at the app's `base`, until it is closed; `state` is
-   * where its size and place are kept */
-  def open(app: App, state: Path): Unit =
+   * where its size and place are kept; `transport` is how the window
+   * itself asks its service (in the process, or over the browser road's
+   * port — specs/app-in-process.md) */
+  def open(app: App, state: Path, transport: Transport): Unit =
     val closed = java.util.concurrent.CountDownLatch(1)
     Platform.setImplicitExit(true)
     Platform.startup { () =>
@@ -43,17 +45,11 @@ object Window:
       // the sharpest text the engine draws (LCD where the screen allows it)
       view.setFontSmoothingType(javafx.scene.text.FontSmoothingType.LCD)
       val engine = view.getEngine
-      // THE ENGINE'S OWN COOKIES (it installs them as the default on its
-      // first view): the window's own requests share the session
-      val cookies = Option(java.net.CookieHandler.getDefault).getOrElse {
-        val c = java.net.CookieManager(null, java.net.CookiePolicy.ACCEPT_ALL); java.net.CookieHandler.setDefault(c); c }
-      val http = java.net.http.HttpClient.newBuilder().cookieHandler(cookies)
-        .followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build()
       engine.setUserAgent(s"${engine.getUserAgent} ${app.name}-app")
       val here = WindowState.read(state)
       s.setTitle(app.name)
       val _ = scala.util.Try(app.icon().foreach(in => try s.getIcons.add(javafx.scene.image.Image(in)) finally in.close()))
-      bridge = Bridge(app, s, http)
+      bridge = Bridge(app, s, transport)
       bridge.engine = Some(engine)
 
       // OUTSIDE LINKS go to the system browser; the page stays
@@ -85,12 +81,12 @@ object Window:
       }
 
       val root = BorderPane(view)
-      val bar = menus(app, s, view, http, state)
+      val bar = menus(app, s, view, transport, state)
       bar.setUseSystemMenuBar(true)
       root.setTop(bar)
       s.setScene(Scene(root, here.w, here.h))
       if here.x >= 0 then { s.setX(here.x); s.setY(here.y) }
-      s.setOnCloseRequest { e => if !mayClose(app, s, http, state) then e.consume() }
+      s.setOnCloseRequest { e => if !mayClose(app, s, transport, state) then e.consume() }
       s.setOnHidden(_ => closed.countDown())
       // ⌘Q from the system's app menu ends JavaFX without a close request
       Thread.ofPlatform().daemon(true).start { () =>
@@ -117,15 +113,15 @@ object Window:
     off.load(url)
 
   /** closing quits — after the app's question when it says it is busy */
-  private def mayClose(app: App, s: Stage, http: java.net.http.HttpClient, state: Path): Boolean =
-    val go = !busy(app, http) || ask(app.quit._1, app.quit._2)
+  private def mayClose(app: App, s: Stage, transport: Transport, state: Path): Boolean =
+    val go = !busy(app, transport) || ask(app.quit._1, app.quit._2)
     if go then WindowState(s.getX, s.getY, s.getWidth, s.getHeight).write(state)
     go
 
   /** THE MENUS: the product's, as data, between the window's own —
    * File gets Print… and Close Window at its end, Edit and View are the
    * window's unless the product gave its own, Help ends with About */
-  private def menus(app: App, s: Stage, view: WebView, http: java.net.http.HttpClient, state: Path): MenuBar =
+  private def menus(app: App, s: Stage, view: WebView, transport: Transport, state: Path): MenuBar =
     val engine = view.getEngine
     def item(label: String, keys: String, act: => Unit): MenuItem =
       val m = MenuItem(label)
@@ -139,14 +135,13 @@ object Window:
       case App.Act.Go(path) => go(path)
       case App.Act.External(url) => external(url)
       case App.Act.Js(code) => js(code)
-      case App.Act.Save(url, orSay) => url(location) match
+      case App.Act.Save(url, orSay) => url(location).map(abs(app, _)) match
         case Some(u) => bridge.save(u)
         case None => note(s, orSay._1, orSay._2)
       case App.Act.Post(path, next) =>
-        val _ = scala.util.Try(http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(app.base + path))
-          .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(), java.net.http.HttpResponse.BodyHandlers.discarding()))
+        val _ = transport.send("POST", path)
         go(next)
-      case App.Act.Pick(p) => bridge.pick(p)
+      case App.Act.Pick(p) => bridge.choose(p)
       case App.Act.Run(run) => run()
     def entries(es: Vector[App.Entry]): Vector[MenuItem] = es.map {
       case App.Item(label, act, keys) => item(label, keys, perform(act))
@@ -159,7 +154,7 @@ object Window:
     val own = app.menus.map(m => m.title -> m.entries).toMap
     // PRINT is what the app names for the shown page (a report rather
     // than the page around it), else the page itself
-    def print(): Unit = app.printing(location) match
+    def print(): Unit = app.printing(location).map(abs(app, _)) match
       case Some(url) => printPage(s, url)
       case None =>
         val job = javafx.print.PrinterJob.createPrinterJob()
@@ -168,7 +163,7 @@ object Window:
       (if own.contains("File") then Vector(SeparatorMenuItem()) else Vector.empty) ++ Vector(
       item("Print…", "Shortcut+P", print()),
       SeparatorMenuItem(),
-      item("Close Window", "Shortcut+W", if mayClose(app, s, http, state) then s.close())))
+      item("Close Window", "Shortcut+W", if mayClose(app, s, transport, state) then s.close())))
     val edit = own.get("Edit").map(es => menu("Edit", entries(es))).getOrElse(menu("Edit", Vector(
       item("Cut", "Shortcut+X", js("document.execCommand('cut')")),
       item("Copy", "Shortcut+C", js("document.execCommand('copy')")),
@@ -263,9 +258,12 @@ object Window:
   /** in the person's own browser */
   def external(url: String): Unit = Desktop.browse(url)
 
-  private def busy(app: App, http: java.net.http.HttpClient): Boolean = app.busy.exists { path =>
-    scala.util.Try(http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(app.base + path)).build(),
-      java.net.http.HttpResponse.BodyHandlers.ofString()).body.trim).toOption.exists(b => b.nonEmpty && b != "0")
+  /** a path of the service's, as the URL a page or an engine loads */
+  private def abs(app: App, u: String): String = if u.startsWith("/") then app.base + u else u
+
+  private def busy(app: App, transport: Transport): Boolean = app.busy.exists { path =>
+    val a = transport.send("GET", path)
+    a.status == 200 && { val b = a.text.trim; b.nonEmpty && b != "0" }
   }
 
   private def ask(title: String, text: String): Boolean =
@@ -279,53 +277,78 @@ object Window:
     a.setHeaderText(title)
     a.showAndWait(): Unit
 
-  /** what the page may ask of the window (`window.okayApp`, `App.script`):
-   * to save a file, to open one */
-  final class Bridge(app: App, s: Stage, http: java.net.http.HttpClient):
+  /**
+   * WHAT THE PAGE MAY ASK OF THE WINDOW (`window.okayApp`, `App.script`,
+   * okay-ui's `Enhance`): to send a request to the service and to show
+   * where it landed (specs/app-in-process.md — the embedded engine will
+   * not POST or `fetch` to `app://`), to save a file, to open one.
+   * Every request goes through the window's `Transport`.
+   */
+  final class Bridge(app: App, s: Stage, transport: Transport):
     /** the page's engine, to show what the service answered */
     @volatile var engine: Option[javafx.scene.web.WebEngine] = None
+    /** the last answer `send` got, by the URL it landed on — for `open` */
+    private val answered = java.util.concurrent.ConcurrentHashMap[String, Answer]()
+
+    /**
+     * A REQUEST FROM THE PAGE, off the UI thread: `done` is called with
+     * `{"status":…,"url":…,"body":…}` — the final answer after redirects,
+     * and where it came from. Always called, a failure included, so a
+     * button's spinner never waits forever.
+     */
+    def send(method: String, url: String, body: String, done: netscape.javascript.JSObject): Unit =
+      Thread.ofVirtual().start { () =>
+        val a = scala.util.Try(transport.send(method, url,
+          if body.isEmpty then Nil else Seq("content-type" -> "application/x-www-form-urlencoded"),
+          body.getBytes(java.nio.charset.StandardCharsets.UTF_8))).getOrElse(
+          Answer(503, Seq("content-type" -> "text/plain"), "the service did not answer".getBytes("UTF-8"), url))
+        answered.clear()
+        answered.put(a.url, a): Unit
+        val json = s"""{"status":${a.status},"url":${Bridge.quote(a.url)},"body":${Bridge.quote(a.text)}}"""
+        Platform.runLater(() => { val _ = scala.util.Try(done.call("call", null, json)) })
+      }: Unit
+
+    /** SHOW WHERE A REQUEST LANDED: a real navigation to `url`, answered
+     * with what `send` already got for it — not asked again */
+    def open(url: String): Unit =
+      val to = Option(answered.remove(url)).fold(url)(transport.open)
+      Platform.runLater(() => engine.foreach(_.load(to)))
 
     /** a GET, saved where the person says */
-    def save(url: String): Unit =
-      fetch(java.net.http.HttpRequest.newBuilder(java.net.URI.create(url)).build(), url)
+    def save(url: String): Unit = fetch("GET", url, Nil, Array.empty)
 
     /** a form's POST (a table as CSV), saved where the person says */
     def savePost(url: String, form: String): Unit =
-      fetch(java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
-        .header("content-type", "application/x-www-form-urlencoded")
-        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(form)).build(), url)
+      fetch("POST", url, Seq("content-type" -> "application/x-www-form-urlencoded"), form.getBytes("UTF-8"))
 
     /** the i-th pick's dialog (the page's script names it by index) */
-    def pick(i: Int): Unit = app.picks.lift(i).foreach(pick)
+    def pick(i: Int): Unit = app.picks.lift(i).foreach(choose)
 
     /** THE OPEN DIALOG, the file to this computer's service, and the page
-     * it answers with (a redirect under `base`) shown */
-    def pick(p: App.Pick): Unit =
+     * it answers with shown */
+    private[desktop] def choose(p: App.Pick): Unit =
       val chooser = FileChooser()
       chooser.setTitle(p.title)
       chooser.getExtensionFilters.add(FileChooser.ExtensionFilter(p.filter._1, p.filter._2))
       Option(chooser.showOpenDialog(s)).foreach { f =>
         Thread.ofVirtual().start { () =>
-          val sent = scala.util.Try(http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(app.base + p.post))
-            .header("content-type", p.media)
-            .POST(java.net.http.HttpRequest.BodyPublishers.ofFile(f.toPath)).build(),
-            java.net.http.HttpResponse.BodyHandlers.discarding()))
+          val sent = scala.util.Try(transport.send("POST", p.post, Seq("content-type" -> p.media), Files.readAllBytes(f.toPath)))
           Platform.runLater { () =>
-            sent.toOption.map(_.uri.toString).filter(_.startsWith(app.base)) match
-              case Some(to) => engine.foreach(_.load(to))
+            sent.toOption.filter(a => a.status < 400 && a.url.startsWith(transport.base)) match
+              case Some(a) => val to = transport.open(a); engine.foreach(_.load(to))
               case None => note(s, p.failed._1, p.failed._2)
           }
         }: Unit
       }
 
-    private def fetch(req: java.net.http.HttpRequest, url: String): Unit =
+    private def fetch(method: String, url: String, headers: Seq[(String, String)], body: Array[Byte]): Unit =
       Thread.ofVirtual().start { () =>
-        val got = scala.util.Try(http.send(req, java.net.http.HttpResponse.BodyHandlers.ofByteArray()))
+        val got = scala.util.Try(transport.send(method, url, headers, body))
         Platform.runLater { () =>
-          got.toOption.filter(_.statusCode == 200) match
+          got.toOption.filter(_.status == 200) match
             case None => note(s, "It could not be saved", s"${app.name} did not give the file: $url")
             case Some(res) =>
-              val name = res.headers.firstValue("content-disposition").orElse("")
+              val name = res.header("content-disposition").getOrElse("")
                 .split("filename=").drop(1).headOption.map(_.trim.stripPrefix("\"").takeWhile(_ != '"'))
                 .filter(_.nonEmpty).getOrElse(url.takeWhile(_ != '?').split('/').last)
               val chooser = FileChooser()
@@ -339,6 +362,21 @@ object Window:
               }
         }
       }: Unit
+
+  object Bridge:
+    /** a string as a JSON literal */
+    def quote(s: String): String =
+      val b = StringBuilder("\"")
+      s.foreach {
+        case '"' => b ++= "\\\""
+        case '\\' => b ++= "\\\\"
+        case '\n' => b ++= "\\n"
+        case '\r' => b ++= "\\r"
+        case '\t' => b ++= "\\t"
+        case c if c < ' ' || c == '\u2028' || c == '\u2029' => b ++= f"\\u${c.toInt}%04x"
+        case c => b += c
+      }
+      (b += '"').toString
 
   /**
    * A TOUR, for the one who builds it (`-D<app.tour>=<dir>:<step>,…`):
@@ -358,7 +396,14 @@ object Window:
         pause.setOnFinished { _ =>
           shot(s, dir.resolve(f"$n%02d.png"))
           steps.lift(n) match
-            case Some("submit") => val _ = scala.util.Try(engine.executeScript("document.forms[0].submit()"))
+            // a press as a person makes it: `requestSubmit` fires `submit`,
+            // which the bridge and Enhance listen for (`submit()` does not)
+            case Some("submit") => press(app, s, engine, "document.forms[0]")
+            case Some(p) if p.startsWith("submit:") =>
+              val (sel, value) = p.stripPrefix("submit:").span(_ != '=')
+              val q = (x: String) => x.replace("\\", "\\\\").replace("'", "\\'")
+              press(app, s, engine, s"(function(){var e=document.querySelector('${q(sel)}');e.value='${q(value.drop(1))}';" +
+                "e.dispatchEvent(new Event('input',{bubbles:true}));return e.form})()")
             case Some("quit") =>
               javafx.application.Platform.exit()
               System.exit(0)
@@ -376,6 +421,17 @@ object Window:
         }
         pause.play()
       }
+
+    /** a form sent; when no page loads after it (Enhance put the answer
+     * in place), the tour goes on anyway */
+    private def press(app: App, s: Stage, engine: javafx.scene.web.WebEngine, form: String): Unit =
+      val at = i
+      // with its first button as the submitter, as a click would name it
+      val _ = scala.util.Try(engine.executeScript(s"(function(f){var b=f.querySelector('button:not([type]),[type=submit]');" +
+        "if(f.requestSubmit)f.requestSubmit(b||undefined);else f.submit()})(" + form + ")"))
+      val later = javafx.animation.PauseTransition(javafx.util.Duration.millis(4000))
+      later.setOnFinished(_ => if i == at then next(app, s, engine))
+      later.play()
 
     private def shot(s: Stage, to: Path): Unit =
       val img = s.getScene.snapshot(null)
