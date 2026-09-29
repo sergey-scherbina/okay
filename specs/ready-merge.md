@@ -689,6 +689,9 @@ same build, arms alternating by `-Dokay.scheduler`, 5 rounds:
 Both roads pay it, so it is the scheduler and not the ring. Filed as
 backlog `adaptive-chunked-merge-cost` (okay-core) beside
 `scheduler-flip-remeasure`, whose lanes did not include a chunked merge.
+FIXED the same day (specs/adaptive-chunked-merge-cost.md): the second
+feed waited a monitor tick; `Scheduler.forkLong` brought `okayChunked`
+on the default to 185 us against Loom's 197-229.
 
 **Elementwise, on `Wait.Ladder`:** under loom 83.1 / 64.3 / 60.8 at cap
 64 / 256 / 1024 against the frozen spin-100 reading 84.8 / 68.3 / 63.0 —
