@@ -26,8 +26,9 @@ the public Jev examples, not their provider-specific SDK calls.
       authored evidence.
 - [x] A technical ticket yields Technical and ThisWeek; an unowned ticket is
       Unclear with no urgency result.
-- [x] The Russian duplicate-charge dialogue records/replays its action and
-      reads the scoped confirmation as pending.
+- [x] The duplicate-charge dialogue records/replays its action and
+      reads the scoped confirmation as pending (superseded by
+      `specs/dlm-jev-examples-english.md`).
 - [x] A claim for an order with no payment yields `NoPayment` and zero refund
       calls.
 - [x] No network, key, model, Python runtime, remote probability, or SDK is

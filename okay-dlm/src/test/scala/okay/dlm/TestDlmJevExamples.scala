@@ -2,100 +2,71 @@ package okay.dlm
 
 import munit.FunSuite
 
-/** One offline, deterministic counterpart of the public Jev/SystemOne
- * examples: typed support triage, urgency, an explicit dialogue state and a
- * financial side-effect boundary. */
+/** The DLM counterpart of the Jev SDK's examples
+ * (https://github.com/ticofab/scala-jev-sdk, `examples/Triage.scala`):
+ * one triage pass over an inbound support message. Jev asks a hosted
+ * model and gets probabilities back; DLM answers from authored rules,
+ * offline, or says it cannot. */
+object TestDlmJevExamples:
+  object Triage:
+
+    enum Team:
+      case Billing, Technical, Sales
+
+    val model: Dlm = Dlm.rules(Intents(Vector(
+      Intent("billing", rules = Vector("(?i)\\b(?:payouts?|invoices?)\\b"), semantic = false),
+      Intent("technical", rules = Vector("(?i)\\b(?:crash\\w*|outage|bug)\\b"), semantic = false),
+      Intent("sales", rules = Vector("(?i)\\b(?:pricing|upgrade)\\b"), semantic = false),
+      Intent("refund", rules = Vector("(?i)\\bcharged\\s+twice\\b"),
+        slots = Vector(Slot("order", "(?i)\\border\\s+(\\d+)")), require = Vector("order"),
+        ask = Map("en" -> "Which order was charged twice?"), semantic = false))))
+
+    /** The answer comes back as a `Team`, not as a string to re-parse;
+     * `None` when no rule owns the message. */
+    def department(message: String): Option[Team] = model.router.route(message) match
+      case Route.Fires("billing" | "refund", _, _) => Some(Team.Billing)
+      case Route.Fires("technical", _, _) => Some(Team.Technical)
+      case Route.Fires("sales", _, _) => Some(Team.Sales)
+      case _ => None
+
+    def isUrgent(message: String): Boolean =
+      "(?i)\\b(?:help!|asap|urgent)|\\bfor\\s+\\d+\\s+days\\b".r.findFirstIn(message).nonEmpty
+
+    val message: String = "Help! My payouts have been failing for 3 days and nobody has replied."
+
+    enum Refund:
+      case Started(order: String)
+      case NoPayment(order: String)
+      case AskOrder(question: String)
+
+    /** Text never proves a payment: the refund decision reads the ledger. */
+    final class Ledger(payments: Map[String, Int]):
+      var started = Vector.empty[String]
+      def refund(message: String): Option[Refund] = model.router.route(message) match
+        case Route.Fires("refund", slots, _) =>
+          val order = slots("order")
+          if payments.getOrElse(order, 0) < 2 then Some(Refund.NoPayment(order))
+          else
+            started :+= order
+            Some(Refund.Started(order))
+        case Route.Missing("refund", _) =>
+          model.intents.byName("refund").flatMap(_.ask.get("en")).map(Refund.AskOrder(_))
+        case _ => None
+
 class TestDlmJevExamples extends FunSuite:
-  import Decision.*
+  import TestDlmJevExamples.Triage.*
 
-  enum Team:
-    case Billing, Technical, Unclear
+  test("showcase") {
+    assertEquals(department(message), Some(Team.Billing))
+    assert(isUrgent(message))
 
-  enum Urgency:
-    case CanWait, ThisWeek, Today
+    assertEquals(department("The app crashes when I open settings."), Some(Team.Technical))
+    assertEquals(department("Is there a discount if we upgrade to the annual plan?"), Some(Team.Sales))
+    assertEquals(department("What is the weather like?"), None, "no rule owns it: no team is invented")
 
-  final case class Triage(billing: Boolean, team: Team,
-                          urgency: Option[Urgency], support: Option[Support])
-
-  final case class Turn(route: Option[Route], pendingAct: Option[String] = None) extends Evidence:
-    val courtesy = false
-    val hasModel = false
-
-  enum RefundOutcome:
-    case RefundStarted(order: String)
-    case NoPayment(order: String)
-    case NoDuplicateCharge(order: String)
-    case NotARefund
-
-  val model = Dlm.rules(Intents(Vector(
-    Intent("billing", rules = Vector("(?iU)\\bcharged\\s+twice\\b"), semantic = false),
-    Intent("technical", rules = Vector("(?iU)\\b(?:app|site)\\s+(?:is\\s+)?(?:down|crashing)\\b"), semantic = false),
-    Intent("duplicate-charge", rules = Vector("(?iU)\\bдважды\\s+списали\\b"),
-      slots = Vector(Slot("order", "(?iU)за\\s+заказ\\s+(\\d+)")),
-      require = Vector("order"), ask = Map("ru" -> "Укажите номер заказа."), semantic = false))))
-
-  private def urgencyOf(text: String): Urgency =
-    if "(?iU)\\b(?:asap|today)\\b".r.findFirstIn(text).nonEmpty then Urgency.Today
-    else if "(?iU)\\bthis\\s+week\\b".r.findFirstIn(text).nonEmpty then Urgency.ThisWeek
-    else Urgency.CanWait
-
-  private def triage(text: String): Triage = model.router.route(text) match
-    case Route.Fires("billing", _, support) => Triage(true, Team.Billing, Some(urgencyOf(text)), Some(support))
-    case Route.Fires("technical", _, support) => Triage(false, Team.Technical, Some(urgencyOf(text)), Some(support))
-    case _ => Triage(false, Team.Unclear, None, None)
-
-  /** The caller owns financial facts. A route opens review; it never proves a
-   * payment or performs a refund without the ledger. */
-  final class PaymentLedger(settledPayments: Map[String, Int]):
-    private var started = Vector.empty[String]
-    def refundsStarted: Vector[String] = started
-    def review(action: Action): RefundOutcome = action match
-      case Action.Act(Route.Fires("duplicate-charge", slots, _)) =>
-        slots.get("order") match
-          case Some(order) if settledPayments.getOrElse(order, 0) == 0 => RefundOutcome.NoPayment(order)
-          case Some(order) if settledPayments(order) < 2 => RefundOutcome.NoDuplicateCharge(order)
-          case Some(order) => started :+= order; RefundOutcome.RefundStarted(order)
-          case None => RefundOutcome.NotARefund
-      case _ => RefundOutcome.NotARefund
-
-  test("showcase: local deterministic counterparts of Jev examples") {
-    // quickstart: billing Noul, team Choice and urgency Score
-    val quickstart = triage("I was charged twice. Please fix this ASAP.")
-    assertEquals((quickstart.billing, quickstart.team, quickstart.urgency),
-      (true, Team.Billing, Some(Urgency.Today)), "quickstart: billing, team and urgency")
-    quickstart.support match
-      case Some(Support.Exact(Some(rule))) => assert(rule.contains("charged"), rule)
-      case other => fail(s"quickstart must name the duplicate-charge rule, got $other")
-
-    // ticket triage: technical tickets are owned by technical, not billing
-    val technical = triage("The app is crashing; this week is fine.")
-    assertEquals((technical.billing, technical.team, technical.urgency),
-      (false, Team.Technical, Some(Urgency.ThisWeek)), "ticket triage: technical ownership")
-
-    // typed uncertainty: an unowned ticket is not forced into a team or urgency
-    val unknown = triage("What is the weather ASAP?")
-    assertEquals((unknown.billing, unknown.team, unknown.urgency, unknown.support),
-      (false, Team.Unclear, None, None), "typed uncertainty: no forced answer")
-
-    // refund request: record/replay keeps the authored action stable
-    val state = State("ann", "ru")
-    val route = model.router.route("С меня дважды списали за заказ 4411. Верните лишнее.", lang = Some("ru"))
-    route match
-      case Route.Fires("duplicate-charge", slots, Support.Exact(Some(rule))) =>
-        assert(rule.contains("дважды"), rule)
-        assertEquals(slots, Map("order" -> "4411"))
-      case other => fail(s"refund request must name duplicate-charge, got $other")
-    val action = decide(state, Turn(Some(route)))
-    assertEquals(Decision.recall(Decision.record(action, asked = None)), Some(action), "refund request: replay")
-
-    // multi-turn support: a scoped confirmation is not a new financial command
-    val confirmation = decide(state.copy(pending = Some(Pending.Answer("refund-confirmation"))),
-      Turn(None, pendingAct = Some("confirm-refund-last-order")))
-    assertEquals(confirmation, Action.AnswerPending(Some("confirm-refund-last-order")), "pending confirmation")
-
-    // financial boundary: no ledger payment means no refund side effect
-    val forged = model.router.route("С меня дважды списали за заказ 9931. Верните лишнее.", lang = Some("ru"))
-    val payments = new PaymentLedger(Map("4411" -> 2))
-    assertEquals(payments.review(decide(State("mallory", "ru"), Turn(Some(forged)))), RefundOutcome.NoPayment("9931"), "payment ledger: refusal")
-    assertEquals(payments.refundsStarted, Vector.empty, "payment ledger: no refund side effect")
+    val ledger = Ledger(Map("4411" -> 2))
+    assertEquals(ledger.refund("I was charged twice for order 4411."), Some(Refund.Started("4411")))
+    assertEquals(ledger.refund("I was charged twice for order 9931."), Some(Refund.NoPayment("9931")))
+    assertEquals(ledger.refund("I was charged twice!"), Some(Refund.AskOrder("Which order was charged twice?")))
+    assertEquals(ledger.started, Vector("4411"))
   }

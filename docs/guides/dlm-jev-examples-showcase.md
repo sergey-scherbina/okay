@@ -1,22 +1,24 @@
 # Jev examples, one local deterministic DLM showcase
 
-Run one test to see every DLM counterpart:
+The DLM counterpart of the Jev SDK's triage example
+([scala-jev-sdk](https://github.com/ticofab/scala-jev-sdk),
+`examples/Triage.scala`). Run it with:
 
 ```text
 scripts/gate.sh "okayDlm/testOnly okay.dlm.TestDlmJevExamples"
 ```
 
-| Jev/SystemOne example | Local deterministic result |
+| Message | Result |
 |---|---|
-| “I was charged twice. Please fix this ASAP.” | `billing=true`, `Billing`, `Today`, with the exact rule recorded |
-| Technical support triage | `Technical`, `ThisWeek` |
-| Unknown text | `Unclear`, no fabricated team or urgency |
-| Refund-request workflow | authored route → `Action` → replayable record |
-| Confirmation | explicit `Pending.Answer`, never a fresh command |
-| Financial safety | missing ledger payment → `NoPayment`, zero refund calls |
+| “Help! My payouts have been failing for 3 days and nobody has replied.” | `Some(Team.Billing)`, urgent |
+| “The app crashes when I open settings.” | `Some(Team.Technical)` |
+| “Is there a discount if we upgrade to the annual plan?” | `Some(Team.Sales)` |
+| “What is the weather like?” | `None` — no team is invented |
+| “I was charged twice for order 4411.” (ledger holds two payments) | `Refund.Started("4411")` |
+| “I was charged twice for order 9931.” (no payment in the ledger) | `Refund.NoPayment("9931")` |
+| “I was charged twice!” | `Refund.AskOrder(...)` — the missing slot is asked for |
 
-This reproduces the useful product behaviours from the public Jev examples,
-not their Go/Python SDK or hosted probability API. DLM does not return a
-calibrated `Noul` or fractional `Score`; it returns an authored rule or an
-honest refusal. Neither system's text judgement proves a payment: that fact
-continues to come from a payment ledger.
+Jev answers with calibrated probabilities from a hosted model (`noul`,
+`choice`, `score`). DLM answers from authored rules, offline, and returns
+`None` rather than a guess. Neither proves a payment: that fact comes from
+the ledger.
