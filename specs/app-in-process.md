@@ -92,22 +92,40 @@ already holds.
 
 ## Behavior
 
-- [ ] `Server.send`: a GET answered; a POST that redirects lands on the
+- [x] `Server.send`: a GET answered; a POST that redirects lands on the
       GET of the target; cookies set by one answer go with the next
-- [ ] a request through the server carries peer `127.0.0.1`
-- [ ] `hold`: the next GET of that URL is the held answer, once
-- [ ] the scheme's handler: a page, a redirect as a going-on page, bytes
+- [x] a request through the server carries peer `127.0.0.1`
+- [x] `hold`: the next GET of that URL is the held answer, once
+- [x] the scheme's handler: a page, a redirect as a going-on page, bytes
       with their content type; an unknown host is a 404 page
-- [ ] `Transport.inProcess` saves the bytes a route gives, with its
+- [x] `Transport.inProcess` saves the bytes a route gives, with its
       file name
-- [ ] `Instance`: the first claim holds; a second claim in the same data
+- [x] `Instance`: the first claim holds; a second claim in the same data
       folder is refused and its `front` reaches the first
-- [ ] `freePort`: the preferred port when free, another when taken
-- [ ] `App.script` sends every form through the bridge in the app
-- [ ] `Enhance.script` sends through the bridge when there is one, by
+- [x] `freePort`: the preferred port when free, another when taken
+- [x] `App.script` sends every form through the bridge in the app
+- [x] `Enhance.script` sends through the bridge when there is one, by
       `fetch` otherwise, and navigates rather than `pushState` in the app
-- [ ] under Xvfb, the app's window with no port: the first screen, a
+- [x] under Xvfb, the app's window with no port: the first screen, a
       form posted, a page after a redirect — screenshots
+
+## Results (2026-09-29)
+
+- okay-desktop: `TestInProcess` (6), `TestInstance` (2), `TestDesktop`
+  (5); `TestFreePort` (2, Live — it binds ports). okay-ui: `TestChrome`
+  (Enhance's two roads), `TestAppShell` (the script parses in Node).
+- The window under Xvfb (JavaFX 26, okay-watch's desktop jar): sign in by
+  key (a POST through the bridge, a 303 with a cookie, the trace page with
+  its sidebar), Check (a POST in the frame: Enhance → the bridge, the
+  answer put in place, the chain asked for real), Earlier checks — five
+  screenshots, and **no TCP socket listening** in the process, sampled
+  every 2 s; `app.lock` and `app.sock` in the data folder.
+- A second start on the same data folder ended in 1 s, the first still
+  running.
+- `Tour`'s `submit` presses with `requestSubmit(button)`, so the page's
+  `submit` listeners run (a bare `form.submit()` fires none, and a tour
+  that used it would test a road no person takes); `submit:<sel>=<value>`
+  fills a field first.
 
 ## Decisions
 

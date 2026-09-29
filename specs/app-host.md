@@ -101,10 +101,11 @@ the bug found it:
   double-click; About in the system's application menu; the system
   browser.
 - `WindowState(x, y, w, h)` in `<state>/window.txt`, with a floor.
-- `Desktop.dataDir(name)`, `Desktop.running(port)`, `Desktop.windowed`,
-  `Desktop.front(port)`, `Desktop.launch(app, port, data, serve, quiet)`
-  — where the system keeps an application's data; one copy running;
-  JavaFX and a screen; the service on its thread, the window (or the
+- `Desktop.dataDir(name)`, `Desktop.windowed`, `Desktop.free(port)`,
+  `Desktop.freePort(preferred)`, `Desktop.launch(app, data, serve, …)`
+  — where the system keeps an application's data; JavaFX and a screen;
+  the launch — one copy per data folder (`Instance`), the service in the
+  window's process or on a free port (specs/app-in-process.md).
   small "running" window and the browser) once it answers.
 - `App.script(app)` — the bridge the window installs on every page:
   clicks on `a[download]` and on the `saves` paths go to a Save
