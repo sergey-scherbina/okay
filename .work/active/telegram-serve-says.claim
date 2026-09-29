@@ -1,1 +1,0 @@
-claude session_019ikxNQsLNoKyBmNgq5Jh5P, 2026-09-29, checked against the Bot API docs before okay-watch goes live: the poll loop swallows every refusal, so a 409 (two instances on one token) or a wrong token is a bot that is silently dead; 429 sends retry_after and we ignore it; provider_token must be OMITTED for Stars, not empty (sprint.d/doing/telegram-serve-says.md)
