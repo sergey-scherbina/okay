@@ -110,6 +110,13 @@ the bug found it:
   clicks on `a[download]` and on the `saves` paths go to a Save
   dialog, a form sent `as=csv` too, a `pick` link to its dialog.
 
+### Since app-in-process (2026-09-29)
+
+The window reaches its service without a port (specs/app-in-process.md):
+the `app://` scheme and the bridge in okay-desktop, `Transport` for
+everything the window asks, one copy by a lock and a Unix-domain socket
+in the data folder; `App.base` is filled in by the launch.
+
 ## Behavior
 - [ ] `Route.provided`: two requests get two values; definedness is the
       inner route's; the value is the request's inside a wrapper that
