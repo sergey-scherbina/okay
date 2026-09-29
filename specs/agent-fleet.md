@@ -90,6 +90,33 @@ Finished(id, text, report, at)
 
 `Status` is the fold of those; `restore()` folds the topic on start.
 
+## Events
+
+What a screen folds instead of asking (nadia `BACKLOG.md` NAD-14, NAD-19):
+
+```scala
+object Fleet:
+  enum Event:
+    case Spawned(id: AgentId, spec: Spec, at: Long)
+    case Phased(id: AgentId, phase: Phase, at: Long)
+    case Stepped(id: AgentId, step: Int, tool: String, at: Long)
+    case Turned(id: AgentId, turn: Turn)
+    case Finished(id: AgentId, phase: Phase, text: String, report: Option[Json], at: Long)
+  /** THE decoder of a record; restore folds through it */
+  def event(j: Json): Option[Event]
+  /** the log followed as events, from an offset, in any process that can read the topic */
+  def events(topic: Topic, from: Long = 0, pollMillis: Long = 25)(using Timer): Source[Event]
+final class Fleet:
+  /** every record from now on, as it is written; a listener that falls
+   * `capacity` behind is dropped, never the fleet held */
+  def events(capacity: Int = 1024): Source[Event]
+```
+
+- [x] an in-process listener sees `Spawned`, `Turned`, `Stepped`, `Finished` in the order written
+- [x] `Fleet.events(topic)` tails the log from the start and from an offset; a fleet folded from
+      the same topic agrees with what the feed said
+- [x] `event` decodes every kind; an unknown kind or a non-record is `None`, never a throw
+
 ## Behavior
 
 - [x] `spawn` returns at once with an id; `status(id)` is `Running` with step 0
@@ -190,3 +217,10 @@ written:
 Records are plain JSON keyed by id (`spawned`, `phased`, `stepped`, `turned`,
 `finished`); a `Turn` has its own small codec here, since `Turn` derives no
 `Schema` and carries a raw `Json`.
+
+**Events (lane `fleet-events`, 2026-09-29):** the record became a typed `Event`
+with ONE decoder, `Fleet.event`, which `restore` now folds through as well —
+so a feed and a restart cannot read the same bytes two ways. `Fleet.events(topic)`
+is `Streams.tail` mapped through it; in-process `fleet.events()` is a channel per
+listener, offered under the fleet's lock (never parked: a slow screen loses
+events, the fleet loses nothing). `TestFleetEvents`, 3 tests.

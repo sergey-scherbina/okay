@@ -1,11 +1,12 @@
 package okay.agent
 
 import okay.*
+import okay.given
 import okay.actor.{Actor, ActorRef, Behavior}
 import Fleet.Control
 import okay.codec.{Json, Schema}
 import okay.codec.Json.*
-import okay.persist.{Ack, Store, Topic}
+import okay.persist.{Ack, Record, Store, Streams, Topic}
 
 /**
  * AGENTS AS SUPERVISED ACTORS, A HIERARCHY THE PARENT GROWS
@@ -67,6 +68,7 @@ final class Fleet private (store: Store, runner: Runner, now: () => Long, root: 
   private val lock = new Object
   private var entries = Map.empty[Long, Entry]
   private var nextId = 1L
+  private var listeners = Vector.empty[Channel[Event]]
 
   // ---- the operator's side ------------------------------------------------
 
@@ -113,7 +115,17 @@ final class Fleet private (store: Store, runner: Runner, now: () => Long, root: 
       case None => pure(status(id))
 
   /** stop every agent (children first, the actor tree's order) and the root */
-  def close(): Unit ! Async = root.stop()
+  def close(): Unit ! Async =
+    lock.synchronized { listeners.foreach(_.close()); listeners = Vector.empty }
+    root.stop()
+
+  /** every record this fleet writes from now on, as it is written — a
+   * screen in the same process folds these instead of asking; a slow
+   * listener is dropped after `capacity` unread, never the fleet held */
+  def events(capacity: Int = 1024): Source[Event] =
+    val ch = Channel[Event](capacity)
+    lock.synchronized { listeners :+= ch }
+    Writer.of(ch)
 
   /**
    * The log's projection: fold the topic from the start. An agent that was
@@ -235,28 +247,27 @@ final class Fleet private (store: Store, runner: Runner, now: () => Long, root: 
       case JObj(fs) if !fs.exists(_._1 == "id") => JObj(fs.take(1) ++ Vector("id" -> JNum(id.toDouble)) ++ fs.drop(1))
       case other => other
     topic.append(id.toString.getBytes("UTF-8"), Json.print(withId).getBytes("UTF-8"), Ack.Durable): Unit
+    Fleet.event(withId).foreach { e =>
+      // offer, never park: the fleet's lock is held; a full listener loses this one
+      listeners = listeners.filter(ch => { ch.offer(e): Unit; !ch.finished })
+    }
 
-  private def fold(j: Json): Boolean =
-    val id = J.long(j, "id").getOrElse(-1L)
-    val at = J.long(j, "at").getOrElse(0L)
-    J.str(j, "kind") match
-      case Some("spawned") =>
-        val spec = Spec(J.str(j, "task").getOrElse(""), J.str(j, "workspace").getOrElse(""),
-          Budget(J.long(j, "steps").getOrElse(0L).toInt, J.long(j, "wallMs").getOrElse(0L)),
-          J.long(j, "parent").map(AgentId(_)), J.str(j, "model"))
-        val e = new Entry(id, spec, at)
-        entries += id -> e
-        spec.parent.flatMap(p => entries.get(p.n)).foreach(pe => pe.children :+= id)
-        true
-      case Some("phased") => entries.get(id).exists { e => e.phase = Phase.parse(J.str(j, "phase").getOrElse("")); e.endedAt = Some(at); true }
-      case Some("stepped") => entries.get(id).exists { e => e.step = J.long(j, "step").getOrElse(0L).toInt; e.lastTool = J.str(j, "tool"); e.endedAt = Some(at); true }
-      case Some("turned") => entries.get(id).exists { e => J.field(j, "turn").flatMap(turnOf).foreach(t => e.transcript :+= t); true }
-      case Some("finished") => entries.get(id).exists { e =>
-        e.phase = Phase.parse(J.str(j, "phase").getOrElse("")); e.result = J.str(j, "text")
-        e.report = J.field(j, "report").filter(_ != JNull); e.endedAt = Some(at)
-        e.spec.parent.flatMap(p => entries.get(p.n)).foreach(pe => pe.childSteps += e.step)
-        true }
-      case _ => false
+  private def fold(j: Json): Boolean = Fleet.event(j).exists(apply)
+
+  /** one event into the maps — restore's step, and what a screen does with `events` */
+  private def apply(ev: Event): Boolean = ev match
+    case Event.Spawned(id, spec, at) =>
+      val e = new Entry(id.n, spec, at)
+      entries += id.n -> e
+      spec.parent.flatMap(p => entries.get(p.n)).foreach(pe => pe.children :+= id.n)
+      true
+    case Event.Phased(id, phase, at) => entries.get(id.n).exists { e => e.phase = phase; e.endedAt = Some(at); true }
+    case Event.Stepped(id, step, tool, at) => entries.get(id.n).exists { e => e.step = step; e.lastTool = Some(tool); e.endedAt = Some(at); true }
+    case Event.Turned(id, turn) => entries.get(id.n).exists { e => e.transcript :+= turn; true }
+    case Event.Finished(id, phase, text, report, at) => entries.get(id.n).exists { e =>
+      e.phase = phase; e.result = Some(text); e.report = report; e.endedAt = Some(at)
+      e.spec.parent.flatMap(p => entries.get(p.n)).foreach(pe => pe.childSteps += e.step)
+      true }
 
   private def statusOf(e: Entry): Status =
     Status(AgentId(e.id), e.spec.parent, e.spec.task, e.spec.workspace, e.phase, e.step, e.lastTool,
@@ -273,6 +284,48 @@ object Fleet:
     case Pause, Resume
     case Stop     // finish the current tool, then halt
     case Kill     // now
+
+  /** what the fleet writes, typed — the record of specs/agent-fleet.md as
+   * values, so a feed folds these and not JSON */
+  enum Event:
+    case Spawned(id: AgentId, spec: Spec, at: Long)
+    case Phased(id: AgentId, phase: Phase, at: Long)
+    case Stepped(id: AgentId, step: Int, tool: String, at: Long)
+    case Turned(id: AgentId, turn: Turn)
+    case Finished(id: AgentId, phase: Phase, text: String, report: Option[Json], at: Long)
+
+  /** THE decoder of a record: `restore` folds through it, `events` tells
+   * through it; `None` for a kind this version does not read */
+  def event(j: Json): Option[Event] =
+    val id = AgentId(J.long(j, "id").getOrElse(-1L))
+    val at = J.long(j, "at").getOrElse(0L)
+    J.str(j, "kind").flatMap {
+      case "spawned" => Some(Event.Spawned(id, Spec(J.str(j, "task").getOrElse(""), J.str(j, "workspace").getOrElse(""),
+        Budget(J.long(j, "steps").getOrElse(0L).toInt, J.long(j, "wallMs").getOrElse(0L)),
+        J.long(j, "parent").map(AgentId(_)), J.str(j, "model")), at))
+      case "phased" => Some(Event.Phased(id, Phase.parse(J.str(j, "phase").getOrElse("")), at))
+      case "stepped" => Some(Event.Stepped(id, J.long(j, "step").getOrElse(0L).toInt, J.str(j, "tool").getOrElse(""), at))
+      case "turned" => J.field(j, "turn").flatMap(turnOf).map(Event.Turned(id, _))
+      case "finished" => Some(Event.Finished(id, Phase.parse(J.str(j, "phase").getOrElse("")), J.str(j, "text").getOrElse(""),
+        J.field(j, "report").filter(_ != JNull), at))
+      case _ => None
+    }
+
+  /** the log followed as events, from an offset, in ANY process that can
+   * read the topic (a `RemoteStore` over okay-persist's wire included):
+   * a feed that never asks the agent. It does not end; the consumer stops
+   * pulling. */
+  def events(topic: Topic, from: Long = 0L, pollMillis: Long = 25)(using Timer): Source[Event] =
+    type F = Writer % Event + Async
+    def go(src: Source[Chunk[Record]]): Unit ! F =
+      okay.!.widen[Either[Unit, (Chunk[Record], Source[Chunk[Record]])], Async, Writer % Event](
+        Writer.uncons[Chunk[Record], Unit, Async](src)).flatMap {
+        case Left(_) => pure(())
+        case Right((chunk, more)) =>
+          val evs = chunk.iterator.flatMap(r => event(Json.parse(new String(r.value, "UTF-8")))).toList
+          okay.!.each(evs)(e => effect[F, Unit](Writer(e))).flatMap(_ => go(more))
+      }
+    go(Streams.tail(topic, 0, from, pollMillis = pollMillis))
 
   /** the fleet: its root actor, and the log folded */
   def open(store: Store, runner: Runner, now: () => Long = () => System.currentTimeMillis())

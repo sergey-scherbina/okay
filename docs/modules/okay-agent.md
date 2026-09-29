@@ -23,6 +23,11 @@ a `Toolbox.In[Async]` with one tool: the parent runs a child to completion
 and reads its text and report; the child's steps come out of the parent's,
 and a child that crashes is a tool error, not the parent's end. The whole
 suite runs on a scripted runner — no model, no gateway, no filesystem.
+**Events:** the record is typed — `Fleet.Event` (Spawned | Phased | Stepped |
+Turned | Finished), `Fleet.event(json)` the one decoder; `Fleet.events(topic)`
+follows the log as events in any process that can read it (a `RemoteStore`
+over okay-persist's wire included), and `fleet.events()` is the in-process
+feed — what a workspace screen folds instead of polling an agent.
 
 
 **Three effects, no message list.** `Model` (complete, count),
