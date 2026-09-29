@@ -41,7 +41,15 @@ class TestCoreAsync extends munit.FunSuite {
     assertEquals(drain(c).map(_.longValue), (0L until 200L).toList)
   }
 
-  test("okay produces, a Clojure `into` consumes") {
+  // INTEGRATION scope too (clojure-coreasync-load-timeout, 2026-09-29),
+  // for the go block's reason above: `into` is a go block, so each of the
+  // 100 sends through the 4-slot buffer is a handoff between core.async's
+  // go pool and a parked virtual thread. It crossed munit's 30 s twice in
+  // whole-build gates at load 35-62 and passed alone at the same load.
+  // Read for a hang first, as the backlog item asked: one `put!` is in
+  // flight at a time and its callback resumes the sender, so there is no
+  // wakeup to lose on this path -- the wait is the OS scheduler's.
+  test("okay produces, a Clojure `into` consumes".tag(new munit.Tag("Live"))) {
     val c = CoreAsync.channel[java.lang.Long](4)
     val collected = fn("clojure.core.async", "into").invoke(clj("[]"), c.chan)   // a channel of one vector
     val t = Thread.ofVirtual().start { () =>

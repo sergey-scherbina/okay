@@ -221,6 +221,23 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
         // a FULL part cannot take its mark now; keep asking, or the
         // stream never ends and the producers behind it never move
         if partsSealed.addAndGet(placed) >= buffer.parts then endPending.set(false)
+        // A PLACED MARK WAKES, like every other publish into the ring
+        // (sentinel-single-consumer-lost-end, 2026-09-29). This used to
+        // wake nobody, which is right only while it runs on the
+        // consumer's own path before the consumer looks again. After a
+        // HANDOFF it does not: a resumed receive runs on the waker's
+        // thread, answers `k` and only then gets here, and in between
+        // the consumer can take its answer, find the ring empty,
+        // register and park -- its recheck ran before this mark was in,
+        // and close's wake ran before it registered. A whole-build
+        // gate caught it parked for good with the mark at its head
+        // (`hasReady=true receivers=1 metEnds=0`);
+        // TestEndPlacedAfterHandoff makes that gap deterministic. On the
+        // consumer's own path nothing is registered, so this is one
+        // empty poll per placement, and placements happen once per part
+        // per channel. A woken receive may place again only while
+        // `endPending` holds, so the chain is bounded by the parts.
+        val _ = wakeOne(receivers)
 
   private def endAnswer: End =
     val e = failure.get
