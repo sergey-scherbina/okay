@@ -210,6 +210,29 @@ ThisBuild / organization := "io.github.sergey-scherbina"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / homepage := Some(url("https://github.com/sergey-scherbina/okay"))
 ThisBuild / versionScheme := Some("early-semver")
+// WHAT MAVEN CENTRAL ASKS OF A POM, and where it goes (release-first-wave,
+// 2026-09-29; docs/releasing.md). Central refuses a bundle without an
+// SCM, a developer and a license, so they are set once here. A release
+// is staged locally by `publishSigned` and handed to the Central Portal
+// by sbt's own `sonaRelease` (sbt 1.11+), so no Sonatype plugin is
+// needed; a snapshot goes straight to Central's snapshot repository.
+// WHAT is published is project/ReleaseWave.scala's first wave; every
+// other module is `publish / skip` and keeps `publishLocal`.
+ThisBuild / scmInfo := Some(ScmInfo(
+  url("https://github.com/sergey-scherbina/okay"),
+  "scm:git:https://github.com/sergey-scherbina/okay.git"))
+ThisBuild / developers := List(Developer(
+  "sergey-scherbina", "Sergiy Shcherbyna", "sergey.scherbina@gmail.com",
+  url("https://github.com/sergey-scherbina")))
+ThisBuild / publishTo := {
+  if (isSnapshot.value) Some("central-snapshots" at "https://central.sonatype.com/repository/maven-snapshots/")
+  else localStaging.value
+}
+ThisBuild / publishMavenStyle := true
+// a POM names where ITS dependencies live, not where this machine fetched
+// them: a resolver override (a mirror in ~/.sbt/repositories) otherwise
+// lands in every published POM as a <repositories> block
+ThisBuild / pomIncludeRepository := { _ => false }
 
 /**
  * integration-test-gate: a test tagged `Live` (a LIVE model gateway,
