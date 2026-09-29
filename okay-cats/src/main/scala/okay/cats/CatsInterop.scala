@@ -1,6 +1,6 @@
 package okay.cats
 
-import okay.{!, %, +, Async, Free, Throws, async, effect, runEither}
+import okay.{!, %, +, Async, Free, Throws, effect, runEither}
 import okay.!.*
 import okay.given
 import _root_.cats.effect.IO
@@ -71,9 +71,32 @@ object CatsInterop {
   /** run an okay Async program as an IO (it may park — IO.blocking) */
   def toIO[A](p: => A ! Async): IO[A] = IO.blocking(p.runWith)
 
-  /** an IO as an Async operation: the virtual thread parks for it */
+  /** Run a callback-driven okay Async program as an IO without parking a
+   * thread while an Await is pending (specs/cats-io-async.md); cancelling
+   * the IO cancels the drive. Async.Run may block, so programs containing
+   * it belong at [[toIO]]. */
+  def toIOAsync[A](p: => A ! Async): IO[A] =
+    IO.async[A] { cb =>
+      IO {
+        val running = Async.runAsyncCancellable(p)
+        running.future.onComplete(t => cb(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
+        Some(IO(running.cancel()))
+      }
+    }
+
+  /**
+   * An IO as an Async operation (specs/cats-io-async.md): an `Await` on
+   * `unsafeToFutureCancelable`. The callback runner parks no thread while
+   * it runs (`runWith` parks as for any Await), a failure crosses as the
+   * same throwable, and cancelling the okay side cancels the IO — its
+   * finalizers run, and a late result resumes nothing.
+   */
   def fromIO[A](io: IO[A])(using rt: IORuntime): A ! Async =
-    async(io.unsafeRunSync())
+    Async.await[A] { k =>
+      val (done, cancel) = io.unsafeToFutureCancelable()
+      done.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
+      () => { val _ = cancel() }
+    }
 
   /** an okay Free program as a cats free monad, operation for operation */
   def toCats[F[+_], A](p: A ! F): _root_.cats.free.Free[F, A] =
