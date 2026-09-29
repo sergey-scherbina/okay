@@ -134,10 +134,12 @@ class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     assertEquals(forked, 1)
   }
 
-  /** adaptive-elementwise-small-ring (specs/adaptive-elementwise-small-ring.md):
-   * a fiber on `own` parks in an Await; `answer` is handed its callback
+  /** a fiber on `own` parks in an Await; `answer` is handed its callback
    * once the drive has parked, and answers it from wherever it likes.
-   * The result is the thread the fiber's continuation ran on. */
+   * The result is the thread the fiber's continuation ran on. (A foreign
+   * answerer's resume was once sent home instead — withdrawn: it moved
+   * producers between threads, and a partitioned channel's per-producer
+   * order rides on the thread; specs/adaptive-elementwise-small-ring.md) */
   private def resumedOn(answer: (Either[Throwable, Int] => Unit) => Unit): Thread =
     val sch = Schedulers.own.workers(2).build
     try
@@ -152,16 +154,6 @@ class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
       note(s"resumed on ${ranOn.get}")
       ranOn.get.nn
     finally sch.close()
-
-  test("own: a fiber answered LATE by a foreign thread resumes on a worker, not on the answering thread") {
-    val answering = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
-    val ran = resumedOn { k =>
-      val t = Thread(() => { answering.set(Thread.currentThread()); k(Right(1)) }, "foreign-answerer")
-      t.start(); t.join()
-    }
-    assert(ran ne answering.get, s"the foreign thread ${answering.get} ran the fiber's continuation")
-    assert(ran.isInstanceOf[ManagedWorker], s"resumed on $ran, not on one of the scheduler's workers")
-  }
 
   test("own: answered from inside a worker, a fiber still resumes inline on that worker") {
     val answering = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)

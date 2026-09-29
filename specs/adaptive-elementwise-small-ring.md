@@ -1,6 +1,6 @@
 # A fiber resumed by a foreign thread goes home
 
-Status: implemented, 2026-09-29. Owner lane: `adaptive-elementwise-small-ring`.
+Status: WITHDRAWN, 2026-09-29 (resume-late-withdraw). Owner lane: `adaptive-elementwise-small-ring`.
 
 ## Symptom
 
@@ -93,3 +93,26 @@ it is faster than Loom everywhere. The one loss is a tiny-ring zip
 against inline (1383 vs 483): there the consumer running the producer
 costs less than any handoff. Not special-cased — the drive cannot see a
 ring's size, and the default capacity (64) is where `fork` wins.
+
+## Withdrawn (2026-09-29, resume-late-withdraw)
+
+`TestMergeOrder` "Channel.merge: each side arrives in exactly the order
+it sent" went red on master (a sibling's gate; bisected with
+`OKAY_MERGE_ROUNDS=400`: 5da64e406 green 400/400, f50932cbe red at round
+9): a run of about a ring's capacity from one side arrived after the
+next run. The mechanism is the buffer's, not the drive's:
+`AdaptiveFifo.route()` is per THREAD (a ThreadLocal home part), so a
+side's order holds only while its producer writes from one thread, and
+this hook moved a resumed producer to another worker on every resume.
+With `fork` instead of `forkLong` (ebdfd0ec7) the order law passed
+5000/5000 rounds on master — rarer, not impossible — and a guarantee
+does not ship on a rate. The hook is gone (`drive(null, x, k)` as
+before); `resumeLate`, `resumeHere` and `DriveTask`'s `home` with it, the
+foreign-thread law removed, the worker-inline law kept. The cap-64
+elementwise merge is back to 1.12x Loom (90.9 vs 81.2, measured on this
+code before the hook). THE WAY BACK: a route per PRODUCER, not per
+thread — a merge's two feeds each own a part — which makes the order
+independent of where a fiber resumes, and then the handoff can return
+(backlog `channel-route-per-producer`). Note the inline resume moves a
+producer too (worker to consumer thread), once per park; that path
+passed 400/400 and is what the law has always run on.

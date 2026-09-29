@@ -72,10 +72,11 @@ Two mechanisms implement them:
   default a chunked merge was 1.5-1.9x slower than on Loom, on both
   roads, until its feeds were forked with `Scheduler.forkLong`: now
   185 us against Loom's 197-229 (adaptive-chunked-merge-cost,
-  [schedulers.md](schedulers.md)). The elementwise join at capacity 64,
-  1.12x Loom on `adaptive` until a fiber woken by a foreign thread was
-  sent home instead of run by it, now reads 61 us against Loom's 82
-  (adaptive-elementwise-small-ring, resume-late-small-ring-cost).
+  [schedulers.md](schedulers.md)). The elementwise join at capacity 64
+  reads 1.12x Loom on `adaptive`: its consumer runs the producers it
+  wakes. Sending them home fixed that and broke per-side order (the
+  buffer routes by thread), so it was withdrawn; backlog
+  `channel-route-per-producer` is the way back.
 - `Merge.Shared` — one queue both producers feed (`Channel.merge`,
   `Channel.mergeChunked`, `Channel.mergeFlushing`). The road before
   the ring, kept as a door by choice. Its consumer never catches up,

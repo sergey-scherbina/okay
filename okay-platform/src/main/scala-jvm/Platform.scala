@@ -920,7 +920,7 @@ object Schedulers {
         java.util.concurrent.TimeUnit.MILLISECONDS)
 
     def fork[A](prog: () => A ! Async): Fiber[A] =
-      val t = DriveTask[A](prog, this)
+      val t = DriveTask[A](prog)
       val mine = current.get
       if mine != null then mine.pushLocal(t)   // the owner's own end: no CAS, no signal
       else
@@ -1069,7 +1069,7 @@ object Schedulers {
    * answer lands in, and the Fiber a caller holds. The cell is
    * `null` (running, nobody waiting), a `Waiters` stack, or the
    * answer; the answer is written once. */
-  private[okay] final class DriveTask[A](prog: () => A ! Async, home: Scheduler | Null = null)
+  private[okay] final class DriveTask[A](prog: () => A ! Async)
       extends java.util.concurrent.ForkJoinTask[Unit] with Async.Drive[A] with Fiber[A]:
     private val cell = java.util.concurrent.atomic.AtomicReference[Waiters[A] | Either[Throwable, A] | Null](null)
 
@@ -1079,22 +1079,6 @@ object Schedulers {
       true
     def getRawResult(): Unit = ()
     def setRawResult(v: Unit): Unit = ()
-
-    /** a late answer from one of OUR workers runs the fiber in place, as
-     * every callback drive does; one from any other thread — the caller's
-     * own consumer, a foreign callback — goes back to the fiber's home
-     * scheduler, so that thread returns to its own work instead of doing
-     * this fiber's. Measured: a consumer outside the pool freeing slots
-     * of a 64-slot ring spent 31% of its time running the producers
-     * (specs/adaptive-elementwise-small-ring.md). Plain `fork`, NOT
-     * `forkLong`: a resume from a small ring comes every few elements,
-     * and waking a sleeper each time (an unpark) made a 7-slot zip 2.7x
-     * slower than `fork`, which wakes only when nobody is awake
-     * (resume-late-small-ring-cost) */
-    override protected def resumeLate[X](x: X, k: X => A ! Async): Unit =
-      val h = home
-      if h == null || Thread.currentThread().isInstanceOf[ManagedWorker] then resumeHere(x, k)
-      else { val _ = h.fork(() => async(resumeHere(x, k))) }
 
     protected def succeed(a: A): Unit = done(Right(a))
     protected def fail(e: Throwable): Unit = done(Left(e))

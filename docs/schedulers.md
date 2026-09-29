@@ -199,23 +199,18 @@ a worker for nothing. The elementwise `buffer` keeps `fork`: with a
 Loom with `forkLong` against 1.13x without
 ([specs/adaptive-chunked-merge-cost.md](../specs/adaptive-chunked-merge-cost.md)).
 
-**Who runs a fiber that was woken** (2026-09-29). A fiber parked in an
-`Await` resumes on whoever answers it: inside the pool that saves a
-wake. But the thread answering is often not ours — the caller's own
-consumer taking from a channel frees a slot and answers the producer
-waiting on it — and it then ran the PRODUCER's code instead of its own:
-31% of a consumer's time in the 64-slot merge. On `own`/`adaptive` a
-late answer from a thread that is not one of the scheduler's workers
-now sends the fiber home with a plain `fork`, and an answer from a
-worker still runs it in place. The first cut sent it home with
-`forkLong` and woke a sleeper every time: right for a 64-slot merge,
-2.7x too slow for a 7-slot `zip`, where a resume comes every few
-elements. With `fork`, on the same build: merge at capacity 7 / 64 92 /
-61 µs (Loom 312 / 82), `zip` 1383 / 370 (Loom 2396 / 793). The one shape
-that pays is a `zip` with a tiny ring: 1383 against 483 when the
-consumer ran the producers itself; at the default capacity (64) the
-handoff wins, 370 against 472
-([specs/adaptive-elementwise-small-ring.md](../specs/adaptive-elementwise-small-ring.md)).
+**Who runs a fiber that was woken** (2026-09-29, tried and withdrawn).
+A fiber parked in an `Await` resumes on whoever answers it. When that is
+the caller's own consumer, it runs the producer's code instead of its
+own — 31% of a consumer's time in a 64-slot merge, and why that merge
+reads 1.12x Loom on `adaptive`. Sending such a resume home instead
+(`fork` from the foreign thread) fixed the number and broke a promise:
+`Channel.merge` keeps each side's order because a partitioned buffer
+routes a send by its THREAD, and a producer moved to another worker on
+every resume writes its next run into another part — `TestMergeOrder`
+went red. Withdrawn the same day; the way back is a route per producer
+rather than per thread (backlog `channel-route-per-producer`,
+[specs/adaptive-elementwise-small-ring.md](../specs/adaptive-elementwise-small-ring.md)).
 
 ## What `own` costs you, and what `adaptive` buys back
 
