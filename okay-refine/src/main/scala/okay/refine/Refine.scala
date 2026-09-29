@@ -1,7 +1,8 @@
 package okay.refine
 
 import scala.reflect.ClassTag
-import okay.Prism
+import okay.{!, Choose, Prism, choose, effect, pure}
+import okay.codec.{Json, Schema}
 
 /**
  * A PATTERN: from what is known about a document (`A`) to what is
@@ -32,6 +33,19 @@ sealed trait Refine[A, B]:
    * `Left` for a value no branch would have (specs/refine.md, Decisions) */
   final def write(b: B): Either[String, A] = Refine.write(this, b)
 
+  /**
+   * The pattern as a SEARCH (specs/refine.md, stage 2; pattern-binds):
+   * a taker is the answer, `Unclear` is a choice point over its
+   * candidates, `Declined` kills the branch — so `runChoice` lists the
+   * readings, `Logic.ifte` writes "if this is a swap then … else …"
+   * without losing the others, and `for case` prunes. The reasons are
+   * the verdict's; a search that needs them runs `run`.
+   */
+  final def search(a: A): B ! Choose = run(a) match
+    case Verdict.Took(b, _, _) => pure(b)
+    case Verdict.Unclear(cs, _) => choose(cs.map(_._2)*)
+    case Verdict.Declined(_) => effect(Choose(Seq.empty))
+
   /** a path: the second pattern over what the first learnt */
   infix def andThen[C](next: Refine[B, C]): Refine[A, C] = Refine.AndThen(this, next)
 
@@ -57,6 +71,18 @@ object Refine:
   /** a step: the prism's two halves, under a name */
   def step[A, B](name: String)(read: A => Either[String, B])(write: B => A): Refine[A, B] =
     Step(name, read, write)
+
+  /**
+   * A derived `Schema` IS a pattern (specs/refine.md, stage 2): the
+   * codec's decode is the read, declining in the codec's own words, and
+   * its encode the write. The reified type is data, so a new instrument
+   * is a new Schema and a registration, and nothing existing is edited.
+   * The write goes through the text encoder and back to a value — the
+   * codec has no value-level `A => Json`; one round trip per write,
+   * priced when a consumer shows it in a profile.
+   */
+  def schema[A](name: String)(using s: Schema[A]): Refine[Json, A] =
+    Step(name, j => Json.decode(s)(j), a => Json.parse(Json.encode(s)(a)))
 
   /** the `<|>` of many */
   def first[A, B](alts: Refine[A, B]*): Refine[A, B] =

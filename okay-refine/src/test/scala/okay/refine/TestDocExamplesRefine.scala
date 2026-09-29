@@ -1,6 +1,8 @@
 package okay.refine
 
 import java.nio.charset.StandardCharsets.UTF_8
+import okay.{!, runChoice}
+import okay.codec.{Json, Schema}
 
 /** the snippets in docs/modules/okay-refine.md, VERBATIM */
 class TestDocExamplesRefine extends munit.FunSuite:
@@ -50,4 +52,24 @@ class TestDocExamplesRefine extends munit.FunSuite:
     assertEquals(half, Some(4.5))
     assertEquals(i42, Right("42"))
     assertEquals(no, Left("int|decimal: no alternative writes this value"))
+  }
+
+  test("docs: a Schema is a pattern, a path is a conversion, a pattern is a search") {
+    // ---- snippet begins
+    final case class Swap(id: String, notional: Double, fixedRate: Double)
+    given Schema[Swap] = Schema.derived
+    val swap: Refine[Json, Swap] = Refine.schema[Swap]("swap")
+    val fromBytes: Refine[Array[Byte], Swap] = Format.detect andThen Format.value andThen swap
+    val read = fromBytes.run("id: s1\nnotional: 1000000.0\nfixedRate: 0.03\n".getBytes(UTF_8))
+    val where = read match
+      case Verdict.Took(_, by, _) => by.toString                // "text/yaml/value/swap"
+      case other => other.toString
+    val asJson = fromBytes.write(Swap("s1", 1000000.0, 0.03)).map(new String(_, UTF_8))
+    // Right("{\"id\":\"s1\",\"notional\":1000000,\"fixedRate\":0.03}") — read from YAML, written as JSON: a conversion
+    val readings = !.run(runChoice[Swap, okay.Pure](swap.search(Json.parse("""{"id": "s1", "notional": 1.0, "fixedRate": 0.03}"""))))
+    // Seq(Swap("s1", 1.0, 0.03)) — a pattern is a search: Unclear is a choice point, Declined an empty one
+    // ---- snippet ends
+    assertEquals(where, "text/yaml/value/swap")
+    assertEquals(asJson, Right("""{"id":"s1","notional":1000000,"fixedRate":0.03}"""))
+    assertEquals(readings, Seq(Swap("s1", 1.0, 0.03)))
   }

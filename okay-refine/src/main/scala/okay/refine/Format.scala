@@ -82,6 +82,23 @@ object Format:
   val detect: Refine[Array[Byte], Doc] =
     cbor.widen[Doc] <|> (text andThen (json.widen[Doc] <|> xml.widen[Doc] <|> yaml.widen[Doc]))
 
+  /**
+   * The bridge from a detected document to a VALUE, so a Schema pattern
+   * can follow: JSON and YAML project into the same `Json` (the one
+   * decode algebra, specs/codecs.md); XML and CBOR have no value
+   * projection here and decline saying so. The write renders the value
+   * as JSON text and re-reads its tree — a document written back
+   * through this bridge is JSON, whatever it was read from, which is
+   * what makes a path through it a CONVERSION.
+   */
+  val value: Refine[Doc, Json] =
+    Refine.step[Doc, Json]("value") {
+      case Doc.Json(tree) => Right(Json.value(tree))
+      case Doc.Yaml(tree) => Right(Yaml.parse(Yaml.render(tree)))
+      case Doc.Xml(_) => Left("no value projection for xml")
+      case Doc.Cbor(_) => Left("no value projection for cbor without a schema")
+    }(j => Doc.Json(Json.cst(Json.print(j))))
+
   /** the tree's first error, as the reason — the parser's own words */
   private def firstError[K](tree: Cst[K]): Option[String] =
     Cst.errors(tree).headOption.map((t, m) => t.fold(m)(x => s"$m at ${x.span}"))

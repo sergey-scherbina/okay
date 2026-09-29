@@ -76,6 +76,27 @@ val i42  = num.write(42)               // Right("42")
 val no   = num.write(true)             // Left("int|decimal: no alternative writes this value")
 ```
 
+The DOCUMENT level (stage 2): a derived `Schema` is a pattern, so
+bytes → format → value → instrument is one path; read through YAML and
+written back through the same path it comes out as JSON, which is what
+makes a path a conversion; and `search` makes any pattern a `Choose`
+program, so `Logic.ifte` writes "if this is a swap then … else …":
+
+```scala
+final case class Swap(id: String, notional: Double, fixedRate: Double)
+given Schema[Swap] = Schema.derived
+val swap: Refine[Json, Swap] = Refine.schema[Swap]("swap")
+val fromBytes: Refine[Array[Byte], Swap] = Format.detect andThen Format.value andThen swap
+val read = fromBytes.run("id: s1\nnotional: 1000000.0\nfixedRate: 0.03\n".getBytes(UTF_8))
+val where = read match
+  case Verdict.Took(_, by, _) => by.toString                // "text/yaml/value/swap"
+  case other => other.toString
+val asJson = fromBytes.write(Swap("s1", 1000000.0, 0.03)).map(new String(_, UTF_8))
+// Right("{\"id\":\"s1\",\"notional\":1000000,\"fixedRate\":0.03}") — read from YAML, written as JSON: a conversion
+val readings = !.run(runChoice[Swap, okay.Pure](swap.search(Json.parse("""{"id": "s1", "notional": 1.0, "fixedRate": 0.03}"""))))
+// Seq(Swap("s1", 1.0, 0.03)) — a pattern is a search: Unclear is a choice point, Declined an empty one
+```
+
 ## API reference
 
 | | |
@@ -88,6 +109,9 @@ val no   = num.write(true)             // Left("int|decimal: no alternative writ
 | `r.run(a): Verdict[B]` | `Took` / `Unclear` / `Declined`, each with its `Refusal`s |
 | `r.write(b): Either[String, A]` | the way back along the path |
 | `Refine.Step(…).prism` | the step as an optics `Prism`, for the laws |
+| `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
+| `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
+| `Format.value` | `Refine[Doc, Json]`: JSON and YAML project to a value, XML and CBOR decline; writes JSON |
 | `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <|> (text andThen (json <|> xml <|> yaml))` |
 | `Doc.Json / Xml / Yaml / Cbor` | the detected document, as the dialect's own tree (or the bytes) |
 
@@ -106,6 +130,10 @@ val no   = num.write(true)             // Left("int|decimal: no alternative writ
   file was declined with `unclosed`. `<?…?>` and `<!DOCTYPE …>` are one
   token each now, and `TestFormat` reads a declared document as
   `text/xml`.
+- **There is no registry type.** An `Or` is flat, so `Refine.first(a, b,
+  c)` IS the registry: one more alternative is one more element, in
+  order, and nothing existing is edited. A `Judge` that re-orders the
+  alternatives waits for a second orderer to exist (specs/refine.md).
 - **`write` is `Either` on a tree.** A step's prism review is total; an
   `Or` into a sum cannot know which alternative a case belongs to
   without asking, so the tree's `write` is partial and says so.

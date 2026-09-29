@@ -155,16 +155,25 @@ Stage 1 — the vocabulary and the format level:
       `K.Pi` and `K.Decl`, one token each, no frame; okay2 in step)
 
 Stage 2 — the document level and the open registry:
-- [ ] `Refine.schema[A](using Schema[A]): Refine[Json, A]` — a derived
-      Schema is a pattern (decode declines with the codec's message)
-- [ ] a registry: `Refine[A, B]` values registered by name under a
-      level, `Or`-ed in registration order, so a new format or product is
-      one registration and no edit
+- [x] `Refine.schema[A](name)(using Schema[A]): Refine[Json, A]` — a derived
+      Schema is a pattern (decode declines with the codec's message);
+      `Format.value: Refine[Doc, Json]` bridges a detected JSON or YAML
+      document to the value, so bytes → format → value → instrument is one
+      path, and its write is JSON — a conversion (TestSchemaPattern)
+- [x] a registry — DECIDED AWAY, not built: an `Or` is flat, so
+      `Refine.first(a, b, c)` is the registry; one more alternative is one
+      more element in order and no edit. A type for it would be an
+      abstraction over one `Vector`
 - [ ] `Judge` seam: an ORDERING of the alternatives (ours: registration
       order; DLM-shaped: by a judge's ranking), which never adds a taker
-      and never removes one — only which is tried first under `cut`
-- [ ] `Logic` integration: a `Refine` as a program under `Choose`, so a
-      caller writes `for case Took(swap, _, _) <- …` and `ifte`
+      and never removes one — only which is tried first under `cut`.
+      DEFERRED (2026-09-29): with every alternative run, order changes no
+      verdict; the seam earns a type when a `cut`-ing consumer and a second
+      orderer both exist (the FpML prover is the first candidate)
+- [x] `Logic` integration: `r.search(a): B ! Choose` — Took one answer,
+      Unclear a choice point over the candidates, Declined an empty one;
+      `runChoice` lists the readings, `Logic.ifte` is the soft cut
+      (TestSchemaPattern)
 
 Stage 3 — lessons:
 - [ ] "this file is a swap" from a person is a journal record; the fold
