@@ -73,6 +73,10 @@ extension [A](p: Chunks[A])
   `Merge.Shared.elements` does and for its reason: an exit after the
   loop is a Bind over the whole element program, a rotation per pair.
   The drive releases it when the program ends, early or not.
+  SUPERSEDED 2026-09-29 (source-zip-lost-pairs, then
+  merge-shared-scope-gc-release for Shared): a scope named by nothing
+  is released by the collector mid-run. Both now EXIT in their end step,
+  which also keeps the scope reachable (Results).
 - **Failure after what was buffered.** `Channel.fail` keeps the
   elements the feeder had already pushed and `receive` answers them
   before the failure, so a failing side fails the zip at the pair its

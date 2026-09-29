@@ -173,7 +173,10 @@ waker then reads the queue — at least one side sees the other.
   `Source.merge`'s release also CLOSES its sides' channels (in `Merge.Ready`,
   all three joins; in `Merge.Shared` the chunked joins' shared channel
   through `Source.releasing`, and the ELEMENT join through a scope
-  ENTERED in front and never exited — `releasing`'s trailing `flatMap`
+  ENTERED in front and exited by the drain's own last step
+  (`Channel.drainedThen`, since merge-shared-scope-gc-release: "never
+  exited" left the scope held by nothing, and a collection mid-run
+  released it) — `releasing`'s trailing `flatMap`
   would be a Bind over the whole element program, a rotation per
   element, while a scope the drive releases at the program's end costs
   one Bind in front; at a normal end the channel is closed already and
