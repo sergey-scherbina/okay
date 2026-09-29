@@ -1,5 +1,0 @@
-task: dlm-jev-examples-english
-agent: codex
-branch: feature/dlm-jev-examples-english
-started: 2026-09-28
-scope: English-only DLM Jev examples showcase
