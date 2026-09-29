@@ -28,6 +28,12 @@ Turned | Finished), `Fleet.event(json)` the one decoder; `Fleet.events(topic)`
 follows the log as events in any process that can read it (a `RemoteStore`
 over okay-persist's wire included), and `fleet.events()` is the in-process
 feed — what a workspace screen folds instead of polling an agent.
+**Commands:** the control plane as a topic — `Fleet.Command` (Spawn | Send,
+with a principal), `commandJson`/`command`, and `fleet.commands(topic,
+allow)`: the service follows the topic and applies each command `allow` lets
+through, else `Event.Refused(seq, by, why)` goes on the record. A screen in
+another process appends through a `RemoteStore` and reads the answer on the
+feed it already watches.
 
 
 **Three effects, no message list.** `Model` (complete, count),

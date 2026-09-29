@@ -23,7 +23,7 @@ class TestFleetEvents extends munit.FunSuite:
     go(f.await(id)): Unit
     val seen = take(feed, 4)
     assertEquals(seen.map(_.productPrefix), List("Spawned", "Turned", "Stepped", "Finished"))
-    assertEquals(seen.head, Fleet.Event.Spawned(id, Spec("t", "/w", Budget(3, 1000), None, None), 7L))
+    assertEquals(seen.head, Fleet.Event.Spawned(id, Spec("t", "/w", Budget(3, 1000), None, None), None, 7L))
     assertEquals(seen(1), Fleet.Event.Turned(id, Turn.Assistant("hi", Nil)))
     assertEquals(seen(2), Fleet.Event.Stepped(id, 1, "read_file", 7L))
     assertEquals(seen(3), Fleet.Event.Finished(id, Phase.Done, "done", Some(Json.JObj(Vector("ok" -> Json.JBool(true)))), 7L))

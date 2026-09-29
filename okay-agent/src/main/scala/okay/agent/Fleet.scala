@@ -73,7 +73,7 @@ final class Fleet private (store: Store, runner: Runner, now: () => Long, root: 
   // ---- the operator's side ------------------------------------------------
 
   /** returns at once with an id; the run is a fiber under an actor of its own */
-  def spawn(spec: Spec): AgentId ! Async =
+  def spawn(spec: Spec, by: Option[String] = None): AgentId ! Async =
     val e = lock.synchronized {
       val e = new Entry(nextId, spec, now())
       nextId += 1
@@ -82,7 +82,7 @@ final class Fleet private (store: Store, runner: Runner, now: () => Long, root: 
       write(e.id, rec("spawned", "task" -> JStr(spec.task), "workspace" -> JStr(spec.workspace),
         "steps" -> JNum(spec.budget.steps.toDouble), "wallMs" -> JNum(spec.budget.wallMs.toDouble),
         "parent" -> spec.parent.fold[Json](JNull)(p => JNum(p.n.toDouble)),
-        "model" -> spec.model.fold[Json](JNull)(JStr(_))))
+        "model" -> spec.model.fold[Json](JNull)(JStr(_)), "by" -> by.fold[Json](JNull)(JStr(_))))
       e
     }
     root.spawnChild[Entry, Control](e)(behaviour).map { ref =>
@@ -118,6 +118,37 @@ final class Fleet private (store: Store, runner: Runner, now: () => Long, root: 
   def close(): Unit ! Async =
     lock.synchronized { listeners.foreach(_.close()); listeners = Vector.empty }
     root.stop()
+
+  /**
+   * THE SERVICE'S SIDE OF THE CONTROL PLANE: follow the `commands` topic as
+   * it grows and apply each command — after `allow(by, command)` said so —
+   * or put a `Refused(seq, by, why)` on the agents record, where the screen
+   * that appended the command is already listening. `applied` hears every
+   * offset once it is settled either way; the caller keeps it, and starts
+   * from it next time. Never ends; the caller's fiber is the lifetime.
+   */
+  def commands(topic: Topic, allow: (String, Command) => Either[String, Unit], from: Long = 0L,
+               pollMillis: Long = 25, applied: Long => Unit = _ => ())(using Timer): Unit ! Async =
+    def refuse(seq: Long, by: String, why: String): Unit = lock.synchronized {
+      write(-1L, rec("refused", "seq" -> JNum(seq.toDouble), "by" -> JStr(by), "why" -> JStr(why)))
+    }
+    def one(r: Record): Unit ! Async =
+      val seq = r.offset
+      Fleet.command(Json.parse(new String(r.value, "UTF-8"))) match
+        case None => async(refuse(seq, "", "not a command"))
+        case Some(c) => allow(c.principal, c) match
+          case Left(why) => async(refuse(seq, c.principal, why))
+          case Right(()) => c match
+            case Command.Spawn(spec, by) => spawn(spec, Some(by)).map(_ => ())
+            case Command.Send(id, control, by) =>
+              send(id, control).map(ok => if !ok then refuse(seq, by, s"no live agent ${id.n}"))
+    def go(src: Source[Chunk[Record]]): Unit ! Async =
+      Writer.uncons[Chunk[Record], Unit, Async](src).flatMap {
+        case Left(_) => pure(())
+        case Right((chunk, more)) =>
+          okay.!.each(chunk.toVector)(r => one(r).map(_ => applied(r.offset))).flatMap(_ => go(more))
+      }
+    go(Streams.tail(topic, 0, from, pollMillis = pollMillis))
 
   /** every record this fleet writes from now on, as it is written — a
    * screen in the same process folds these instead of asking; a slow
@@ -256,7 +287,8 @@ final class Fleet private (store: Store, runner: Runner, now: () => Long, root: 
 
   /** one event into the maps — restore's step, and what a screen does with `events` */
   private def apply(ev: Event): Boolean = ev match
-    case Event.Spawned(id, spec, at) =>
+    case Event.Refused(_, _, _, _) => false   // on the record for the screen, not state
+    case Event.Spawned(id, spec, _, at) =>
       val e = new Entry(id.n, spec, at)
       entries += id.n -> e
       spec.parent.flatMap(p => entries.get(p.n)).foreach(pe => pe.children :+= id.n)
@@ -288,11 +320,54 @@ object Fleet:
   /** what the fleet writes, typed — the record of specs/agent-fleet.md as
    * values, so a feed folds these and not JSON */
   enum Event:
-    case Spawned(id: AgentId, spec: Spec, at: Long)
+    case Spawned(id: AgentId, spec: Spec, by: Option[String], at: Long)
     case Phased(id: AgentId, phase: Phase, at: Long)
     case Stepped(id: AgentId, step: Int, tool: String, at: Long)
     case Turned(id: AgentId, turn: Turn)
     case Finished(id: AgentId, phase: Phase, text: String, report: Option[Json], at: Long)
+    /** a command the service would not apply — on the record, so the screen
+     * that sent it sees why (`seq` is the command's offset) */
+    case Refused(seq: Long, by: String, why: String, at: Long)
+
+  /** THE CONTROL PLANE AS DATA (nadia NAD-14/NAD-20): what a screen appends to
+   * a `commands` topic — through a RemoteStore from another process — and the
+   * service folds with `fleet.commands`. `by` is the principal; the service's
+   * `allow` decides. */
+  enum Command:
+    case Spawn(spec: Spec, by: String)
+    case Send(id: AgentId, control: Control, by: String)
+    /** the principal who appended it */
+    def principal: String = this match
+      case Spawn(_, b) => b
+      case Send(_, _, b) => b
+
+  def commandJson(c: Command): Json = c match
+    case Command.Spawn(spec, by) => JObj(Vector("c" -> JStr("spawn"), "task" -> JStr(spec.task), "workspace" -> JStr(spec.workspace),
+      "steps" -> JNum(spec.budget.steps.toDouble), "wallMs" -> JNum(spec.budget.wallMs.toDouble),
+      "parent" -> spec.parent.fold[Json](JNull)(p => JNum(p.n.toDouble)), "model" -> spec.model.fold[Json](JNull)(JStr(_)), "by" -> JStr(by)))
+    case Command.Send(id, control, by) =>
+      val (name, extra) = control match
+        case Control.Tell(m) => ("tell", Vector("message" -> JStr(m)))
+        case Control.Pause => ("pause", Vector.empty)
+        case Control.Resume => ("resume", Vector.empty)
+        case Control.Stop => ("stop", Vector.empty)
+        case Control.Kill => ("kill", Vector.empty)
+      JObj(Vector("c" -> JStr(name), "id" -> JNum(id.n.toDouble)) ++ extra :+ ("by" -> JStr(by)))
+
+  /** total: what is not a command is `None`, and the service refuses it by offset */
+  def command(j: Json): Option[Command] =
+    val by = J.str(j, "by").getOrElse("")
+    J.str(j, "c").flatMap {
+      case "spawn" => Some(Command.Spawn(Spec(J.str(j, "task").getOrElse(""), J.str(j, "workspace").getOrElse(""),
+        Budget(J.long(j, "steps").getOrElse(0L).toInt, J.long(j, "wallMs").getOrElse(0L)),
+        J.long(j, "parent").map(AgentId(_)), J.str(j, "model")), by))
+      case "tell" => J.long(j, "id").map(id => Command.Send(AgentId(id), Control.Tell(J.str(j, "message").getOrElse("")), by))
+      case "pause" => J.long(j, "id").map(id => Command.Send(AgentId(id), Control.Pause, by))
+      case "resume" => J.long(j, "id").map(id => Command.Send(AgentId(id), Control.Resume, by))
+      case "stop" => J.long(j, "id").map(id => Command.Send(AgentId(id), Control.Stop, by))
+      case "kill" => J.long(j, "id").map(id => Command.Send(AgentId(id), Control.Kill, by))
+      case _ => None
+    }
 
   /** THE decoder of a record: `restore` folds through it, `events` tells
    * through it; `None` for a kind this version does not read */
@@ -302,7 +377,8 @@ object Fleet:
     J.str(j, "kind").flatMap {
       case "spawned" => Some(Event.Spawned(id, Spec(J.str(j, "task").getOrElse(""), J.str(j, "workspace").getOrElse(""),
         Budget(J.long(j, "steps").getOrElse(0L).toInt, J.long(j, "wallMs").getOrElse(0L)),
-        J.long(j, "parent").map(AgentId(_)), J.str(j, "model")), at))
+        J.long(j, "parent").map(AgentId(_)), J.str(j, "model")), J.str(j, "by"), at))
+      case "refused" => Some(Event.Refused(J.long(j, "seq").getOrElse(-1L), J.str(j, "by").getOrElse(""), J.str(j, "why").getOrElse(""), at))
       case "phased" => Some(Event.Phased(id, Phase.parse(J.str(j, "phase").getOrElse("")), at))
       case "stepped" => Some(Event.Stepped(id, J.long(j, "step").getOrElse(0L).toInt, J.str(j, "tool").getOrElse(""), at))
       case "turned" => J.field(j, "turn").flatMap(turnOf).map(Event.Turned(id, _))

@@ -117,6 +117,33 @@ final class Fleet:
       the same topic agrees with what the feed said
 - [x] `event` decodes every kind; an unknown kind or a non-record is `None`, never a throw
 
+## Commands
+
+The control plane as data (nadia `BACKLOG.md` NAD-14, NAD-20): a screen in
+another process appends to a `commands` topic through a `RemoteStore`, the
+service folds it.
+
+```scala
+object Fleet:
+  enum Command:
+    case Spawn(spec: Spec, by: String)
+    case Send(id: AgentId, control: Control, by: String)
+    def principal: String
+  def commandJson(c: Command): Json
+  def command(j: Json): Option[Command]            // total
+  enum Event: … case Refused(seq: Long, by: String, why: String, at: Long)   // on the agents record
+final class Fleet:
+  def spawn(spec: Spec, by: Option[String] = None): AgentId ! Async   // Spawned carries `by`
+  /** follow the commands topic; apply after `allow(by, command)`, else Refused(seq = the offset) */
+  def commands(topic: Topic, allow: (String, Command) => Either[String, Unit],
+               from: Long = 0, pollMillis: Long = 25, applied: Long => Unit = _ => ())(using Timer): Unit ! Async
+```
+
+- [x] command JSON round-trips for every kind; what is not a command is `None`
+- [x] an allowed spawn runs and its `Spawned` carries `by`; a denied command, a command to no
+      live agent, and a non-command each put a `Refused(seq, by, why)` on the record, in order;
+      `applied` hears every offset; a fresh fold of the record is not confused by refusals
+
 ## Behavior
 
 - [x] `spawn` returns at once with an id; `status(id)` is `Running` with step 0
@@ -224,3 +251,11 @@ so a feed and a restart cannot read the same bytes two ways. `Fleet.events(topic
 is `Streams.tail` mapped through it; in-process `fleet.events()` is a channel per
 listener, offered under the fleet's lock (never parked: a slow screen loses
 events, the fleet loses nothing). `TestFleetEvents`, 3 tests.
+
+**Commands (lane `fleet-commands`, 2026-09-29):** the control plane is a
+topic, so any process that can append to the store can drive the fleet, and
+the fleet's answer to a command it would not apply is a record on the feed the
+sender already watches. The principal is a string the SERVICE checks (`allow`
+over `okay.security.Roster`); the fleet trusts its caller, as before. A
+command's `seq` is its offset: nothing to allocate, and the sender knows it
+before the service does. `TestFleetCommands`, 2 tests.
