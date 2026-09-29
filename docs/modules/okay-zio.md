@@ -9,10 +9,36 @@ Depends on: `okay` (JVM), zio, zio-streams.
 
 **Values cross by parking or callbacks.** `toZIO` wraps a program as
 `ZIO.attemptBlocking` — ZIO's blocking pool runs it and a virtual
-thread parks wherever the program blocks. `fromZIO` runs a ZIO to
-completion inside ONE Okay async operation (`unsafe.run` — again, a
-parked virtual thread). Neither side simulates the other's runtime;
-each waits its own native way.
+thread parks wherever the program blocks. `fromZIO` forks the ZIO and
+waits for it as ONE `Async.await`: the callback runner parks no thread,
+`runWith` parks as for any Await, and cancelling the okay side interrupts
+the ZIO fiber (its finalizers run; a late result resumes nothing).
+Neither side simulates the other's runtime; each waits its own native
+way. `p.asZIO` and `z.asOkay` are the same two doors as extensions.
+
+**ZIO in direct style.** `import okay.zio.given` makes any `ZIO[R, E, _]`
+okay's `Monad`, so a `direct` block binds ZIO values with okay's own marks
+— the block is a `Task`, nothing runs until ZIO runs it, a failure skips
+the rest, and the binds are ZIO's own `flatMap` (stack-safe on its
+trampoline):
+
+```scala
+import okay.Direct.*
+import okay.zio.given
+
+val t: Task[Int] = direct[Task] {
+  val a = ZIO.attempt(20).?
+  val b = ZIO.attempt(22).reflect
+  a + b
+}
+```
+
+The prefix mark `!z` is the one spelling that cannot work here: ZIO
+declares its own `unary_!` (deprecated negation of a `ZIO[_, _, Boolean]`),
+and a class member always wins over an extension. Use `.?` or `.reflect`.
+The design is Filinski's monadic reflection (*Representing Monads*, POPL
+1994) — see [direct style](../direct-style.md); ZIO's own take on the
+same idea is the separate `zio-direct` library (`defer { x.run }`).
 
 `toZIOAsync` is the callback road for an `Async` program whose waits are
 `Await`s: it runs no thread while an Await is pending, and ZIO interruption
@@ -60,7 +86,9 @@ Async.par(async(1), async(2)).runWith
 |---|---|---|
 | `ZioInterop.toZIO` | `(=> A ! Async) => Task[A]` | run as attemptBlocking |
 | `ZioInterop.toZIOAsync` | `(=> A ! Async) => Task[A]` | callback drive; ZIO interruption cancels Await |
-| `ZioInterop.fromZIO` | `(Task[A], runtime = default) => A ! Async` | a ZIO as one async op |
+| `ZioInterop.fromZIO` | `(Task[A], runtime = default) => A ! Async` | an Await on a forked fiber; cancel interrupts it |
+| `p.asZIO` / `z.asOkay` | extensions | `toZIO` / `fromZIO` |
+| `given zioMonad[R, E]` | `okay.Monad[[A] =>> ZIO[R, E, A]]` | `direct[Task] { z.? }` |
 | `ZioInterop.toZStream` | `Chunks[A] => ZStream[Any, Nothing, A]` | unfoldChunk over pure pull |
 | `ZioInterop.fromZStream` | `ZStream[Any, Throwable, A] => Chunks[A]` | scoped iterator, lazy, linear |
 | `ZioInterop.scheduler` | `(runtime = default) => okay.Scheduler` | ZIO runtime under Okay fibers |

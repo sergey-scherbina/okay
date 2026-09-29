@@ -850,7 +850,9 @@ lazy val okayCats = (project in file("okay-cats"))
 
 /** interop with ZIO: Async <-> ZIO, ZStream <-> Chunks (P3) */
 lazy val okayZio = (project in file("okay-zio"))
-  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile")
+  // okay-direct for the tests only: ZIO's Monad is core's, and direct
+  // blocks over it are the user's choice (specs/zio-direct-cancel.md)
+  .dependsOn(okay.jvm, okayStream.jvm, compare % "test->compile", okayDirect.jvm % "test->compile")
   .settings(
     name := "okay-zio",
     libraryDependencies ++= Seq(

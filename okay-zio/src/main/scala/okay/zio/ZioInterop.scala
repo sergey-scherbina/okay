@@ -1,8 +1,8 @@
 package okay.zio
 
-import okay.{!, Async, Chunks, async}
+import okay.{!, Async, Chunks}
 import okay.given
-import _root_.zio.{Runtime, Scope, Task, Unsafe, ZIO}
+import _root_.zio.{Exit, Runtime, Scope, Task, Unsafe, ZIO}
 import _root_.zio.stream.ZStream
 import scala.concurrent.ExecutionContext.parasitic
 
@@ -54,9 +54,24 @@ object ZioInterop {
       Left(ZIO.succeed(running.cancel()))
     }
 
-  /** a ZIO as an Async operation: the virtual thread parks for it */
+  /**
+   * A ZIO as an Async operation (specs/zio-direct-cancel.md): an
+   * `Await` on a forked fiber. The callback runner parks no thread while
+   * it runs (`runWith` parks as it does for any Await), a failure crosses
+   * as the same throwable, and cancelling the okay side interrupts the
+   * fiber — its finalizers run, and a late result resumes nothing.
+   */
   def fromZIO[A](z: Task[A], runtime: Runtime[Any] = Runtime.default): A ! Async =
-    async(Unsafe.unsafe(implicit u => runtime.unsafe.run(z).getOrThrowFiberFailure()))
+    Async.await[A] { k =>
+      Unsafe.unsafe { implicit u =>
+        val fiber = runtime.unsafe.fork(z)
+        fiber.unsafe.addObserver {
+          case Exit.Success(a) => k(Right(a))
+          case Exit.Failure(c) => k(Left(c.squash))
+        }
+        () => { val _ = runtime.unsafe.fork(fiber.interrupt) }
+      }
+    }
 
   /** a chunked okay stream as a ZStream, chunk for chunk (the pull is pure) */
   def toZStream[A](p: Chunks[A]): ZStream[Any, Nothing, A] =
