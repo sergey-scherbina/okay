@@ -239,7 +239,12 @@ file on the shelf are one string.
 
 **A REBUILD THAT CHANGED NOTHING WRITES NOTHING.** The ledger records
 changes; a build of the same corpus under the same encoder hashes the
-same, and an entry per run would make every build a diff.
+same, and an entry per run would make every build a diff. ON THE SAME
+PLATFORM (the first consumer measured it on 2026-09-29): the same
+int8 encoder over the same corpus on another CPU gave vectors at
+cosine 0.97–0.99 and a new hash for every table, so a `Rebuilt` whose
+corpus did not move names a platform, not a mistake — and a table is
+compiled where it will be served.
 
 **NOTHING ON THE SHELF GOES BUT BY A POLICY, AND THE POLICY IS NAMED.**
 `Pruned` carries the policy's `name`, so an audit reads which rule
