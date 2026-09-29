@@ -1,6 +1,6 @@
 package okay.ui
 
-import okay.{!, +, Pure, Cont, reset, />}
+import okay.{!, Pure, Cont, reset, />}
 import okay.given
 import okay.codec.{Codecs, Json, Schema}
 import scala.annotation.tailrec

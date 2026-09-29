@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Resource, Source}
+import okay.{!, Async, Chunk, Resource, Source}
 import okay.given
 import okay.sql.{Isolation, Pool, Sql, SqlValue}
 import java.sql.DriverManager

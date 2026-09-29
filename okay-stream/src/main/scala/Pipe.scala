@@ -481,7 +481,7 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
       case Inject(e) => split[Take % I, Writer % M](e)
         // a final await tells nothing more: the upstream is done
         { case Take.Await() => cont(None, u) }
-        { case Writer.Say(w) => cont(Some(w), Free.Return(())) }
+        { w0 => (w0: @unchecked) match { case Writer.Say(w) => cont(Some(w), Free.Return(())) } }
       case Bind(Inject(e), k) => split[Take % I, Writer % M](e)
         { case Take.Await() => effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont)) }
         { w0 => (w0: @unchecked) match
@@ -556,7 +556,7 @@ def through[I, M, O, G[+_], A, B](up: A ! (Take % I + (Writer % M + G)))
       case Inject(e) => split[Take % I, Writer % M + G](e)
         { case Take.Await() => cont(None, u) }
         (rest => split[Writer % M, G](rest)
-          { case Writer.Say(w) => cont(Some(w), Free.Return(())) }
+          { w0 => (w0: @unchecked) match { case Writer.Say(w) => cont(Some(w), Free.Return(())) } }
           (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
             .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A])))))
       case Bind(Inject(e), k) => split[Take % I, Writer % M + G](e)
@@ -602,7 +602,7 @@ def through[W, M, G[+_], A, B](p: A ! Writer % W + G)
       case Return(_) => cont(None, rest)
       // Writer tested first, for Writer.map's reason (distinct-on-handlers)
       case Inject(e) => split[Writer % W, G](e)
-        { case Writer.Say(w) => cont(Some(w), Free.Return(())) }
+        { w0 => (w0: @unchecked) match { case Writer.Say(w) => cont(Some(w), Free.Return(())) } }
         (g => effect[Res, Any](Erased.reinject[Res[Any]](g))
           .flatMap(_ => cont(None, Free.Return(Erased.unreachable[A]))))
       case Bind(Inject(e), k) => split[Writer % W, G](e)

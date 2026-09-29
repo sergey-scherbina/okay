@@ -33,7 +33,8 @@ object Push {
       case Return(_) => Pos.Done()
       case Inject(e) => split[Take % I, Writer % O](e)
         { case Take.Await() => Pos.Done[I, O, A]() }
-        { case Writer.Say(o) => emit(o): Unit; Pos.Done[I, O, A]() }
+        // `@unchecked` as in the Bind case below: Writer.scala says why
+        { w0 => (w0: @unchecked) match { case Writer.Say(o) => emit(o): Unit; Pos.Done[I, O, A]() } }
       case Bind(Inject(e), k) => split[Take % I, Writer % O](e)
         { case Take.Await() =>
             if ended then drive(k(None), emit, ended) else Pos.Waiting[I, O, A](k) }
