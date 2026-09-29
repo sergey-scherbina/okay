@@ -4,5 +4,5 @@
 // the renderers, and nothing deploy-shaped sits at the repository root.
 sbtPlugin := true
 name := "okay-deploy-sbt"
-organization := "dev.okay"
+organization := "io.github.sergey-scherbina"
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.3.0")

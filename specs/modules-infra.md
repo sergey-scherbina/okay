@@ -19,8 +19,14 @@ forever; ScalaCheck is allowed in test scope only.
 - `compare` — internal benchmark module, never published.
 
 ## Publishing
-- groupId `io.sergiy-shcherbyna` (domain verification settled by
-  publication time — deliberately NOT tied to GitHub).
+- groupId `io.github.sergey-scherbina` (operator, 2026-09-29: "Делай пока
+  везде io.github.sergey-scherbina - потом будем думать про dev.okay").
+  Maven Central verifies an `io.github.<user>` namespace through the
+  GitHub account itself, so it needs no domain; `dev.okay` would need
+  proof of owning `okay.dev`, and `io.sergiy-shcherbyna` before it had
+  the same problem. Revisited when a domain is settled — a groupId move
+  after a public release is a relocation POM per artifact, so the
+  cheaper moment is before 0.2.0 reaches Central.
 - Scala: the LTS line, 3.9+ — a deliberate decision, RETAKEN
   2026-09-07 (scala-3-9). It read "latest (3.7+), not LTS" while LTS
   meant 3.3 and was two years behind; 3.9 opened the new LTS line as

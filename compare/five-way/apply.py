@@ -36,7 +36,7 @@ def main():
     edit(root / "build.sbt", [
         ('ThisBuild / scalaVersion := "3.8.4"', 'ThisBuild / scalaVersion := "3.9.0"'),
         ('"com.softwaremill.ox" %% "core" % "1.0.6"',
-         '"com.softwaremill.ox" %% "core" % "1.0.6",\n            "dev.okay" %% "okay-platform" % "0.2.0-SNAPSHOT"'),
+         '"com.softwaremill.ox" %% "core" % "1.0.6",\n            "io.github.sergey-scherbina" %% "okay-platform" % "0.2.0-SNAPSHOT"'),
     ])
     direct = root / "io-bench/src/main/scala/bench/direct/Benchmarks.scala"
     run = "bench.okay.OkayFiveWay.run(runtime)"

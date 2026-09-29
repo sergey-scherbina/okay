@@ -206,7 +206,7 @@ def multiRelease(variantId: String, n: Int): Seq[Setting[_]] = Seq(
   },
 )
 
-ThisBuild / organization := "dev.okay"
+ThisBuild / organization := "io.github.sergey-scherbina"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / homepage := Some(url("https://github.com/sergey-scherbina/okay"))
 ThisBuild / versionScheme := Some("early-semver")
@@ -3587,7 +3587,7 @@ lazy val root = (project in file("."))
     // missing from this list, so `publishLocal` never published them
     // and a consumer of okay-ui or okay-script failed to resolve
     // (pom-jmh-and-chat-version, 2026-09-23: the chat guide's own
-    // build stopped at "Error downloading dev.okay:okay-js_3:0.1.1").
+    // build stopped at "Error downloading dev.okay:okay-js_3:0.1.1" -- the organization was dev.okay then).
     // okay-acme's network suites are Live-tagged, so the default gate
     // runs none of them.
     okayJs.jvm, okayJs.js, okayJs.native, okayTs.js, okayTsNpm.js, okayAcme,

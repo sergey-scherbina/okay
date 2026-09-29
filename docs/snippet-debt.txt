@@ -19,9 +19,9 @@ docs/arrows.md	def id[X, R, A]: Zooming[X, R][A, A] = shift(k => a => k(???)(a))
 docs/arrows.md	eachLine.foldMap((l: Line) => Vector(describe(l)))(order)
 docs/arrows.md	eachLine.traverseOf(check)(order)
 docs/benchmarks.md	apply(List.empty[A])((s, a: A) => keep(a :: s))(...)
-docs/building-a-chat-app.md	"dev.okay" %% "okay-chat" % okay,
-docs/building-a-chat-app.md	"dev.okay" %% "okay-jetty" % okay,
-docs/building-a-chat-app.md	"dev.okay" %%% "okay-ui" % okay,
+docs/building-a-chat-app.md	"io.github.sergey-scherbina" %% "okay-chat" % okay,
+docs/building-a-chat-app.md	"io.github.sergey-scherbina" %% "okay-jetty" % okay,
+docs/building-a-chat-app.md	"io.github.sergey-scherbina" %%% "okay-ui" % okay,
 docs/building-a-chat-app.md	"org.scalameta" %% "munit" % "1.1.1" % Test,
 docs/building-a-chat-app.md	"org.scalameta" %%% "munit" % "1.1.1" % Test,
 docs/building-a-chat-app.md	"ui/.js/target/scala-3.9.0/chat-ui-fastopt/main.js"))).filter(Files.exists(_))
@@ -815,7 +815,7 @@ docs/modules/okay-resilience.md	val discovery = Discovery.chain(DiscoveryJvm.env
 docs/modules/okay-resilience.md	val guarded: Response ! Async =
 docs/modules/okay-resilience.md	val guardedTransport: Transport = new Transport:
 docs/modules/okay-resilience.md	val limiter  = Limiter("payments", ratePerSecond = 200, burst = 50)
-docs/modules/okay-scala2.md	("dev.okay" %% "okay-scala2" % "0.2.0-SNAPSHOT")
+docs/modules/okay-scala2.md	("io.github.sergey-scherbina" %% "okay-scala2" % "0.2.0-SNAPSHOT")
 docs/modules/okay-scala2.md	.cross(CrossVersion.for2_13Use3)
 docs/modules/okay-scala2.md	.exclude("org.scala-lang", "scala-library")
 docs/modules/okay-scala2.md	Seq(Compile, Runtime, Test).flatMap(c => Seq(
@@ -909,8 +909,8 @@ docs/queues.md	val reports = Queues.strong[Report].adaptive.each(128).build
 docs/queues.md	val total = c.drained.through(Chunks.fold(0)(_ + _)).runLast
 docs/queues.md	val ui = Queues.weak[Event].bounded(256).build
 docs/queues.md	val work = Queues.composable[Job](1024).build
-docs/scala2.md	("dev.okay" %% "okay-scala2" % "0.2.0-SNAPSHOT")
-docs/scala2.md	("dev.okay" %% m % "0.2.0-SNAPSHOT").cross(CrossVersion.for2_13Use3).exclude("org.scala-lang", "scala-library"))
+docs/scala2.md	("io.github.sergey-scherbina" %% "okay-scala2" % "0.2.0-SNAPSHOT")
+docs/scala2.md	("io.github.sergey-scherbina" %% m % "0.2.0-SNAPSHOT").cross(CrossVersion.for2_13Use3).exclude("org.scala-lang", "scala-library"))
 docs/scala2.md	.cross(CrossVersion.for2_13Use3)
 docs/scala2.md	.exclude("org.scala-lang", "scala-library")
 docs/scala2.md	Seq(Compile, Runtime, Test).flatMap(c => Seq(

@@ -45,7 +45,7 @@ scalaVersion := "2.13.18"
 scalacOptions += "-Ytasty-reader"
 
 libraryDependencies +=
-  ("dev.okay" %% "okay-scala2" % "0.2.0-SNAPSHOT")
+  ("io.github.sergey-scherbina" %% "okay-scala2" % "0.2.0-SNAPSHOT")
     .cross(CrossVersion.for2_13Use3)
     .exclude("org.scala-lang", "scala-library")
 
