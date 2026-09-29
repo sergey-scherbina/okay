@@ -511,7 +511,8 @@ The flushing road on the ring runs a flusher fiber PER SIDE where the
 shared road runs one, and reads 12% over with wide bars in one round;
 the operator asked for the landing with the numbers as they are, so
 the default for `flushAfter` merges stays `Merge.Ready` with this gap
-named: backlog `merge-flush-on-ring-gap` (re-measure with more forks;
+named: backlog `merge-flush-on-ring-gap` (CLOSED 2026-09-29: the gap did
+not hold — the gap stage's Results; re-measure with more forks;
 if it holds, one flusher for both sides, or `Merge.Shared` by default
 for the flushing shape). The elementwise lanes on the ladder were not
 re-measured before the landing (the operator's ask); the first
@@ -624,7 +625,7 @@ the single-producer ring `buffer` uses. The shared road has ONE such
 two-part channel; the ring road has one PER SIDE and looks at both on
 every turn and every poll of the wait ladder.
 
-- [ ] RE-MEASURE before anything moves: `okayChunkedFlush` against
+- [x] RE-MEASURE before anything moves: `okayChunkedFlush` against
       `okayChunkedFlushShared`, 10 rounds of one fork per lane
       (`-f 1`, the arms alternating A/B/A/B across rounds), the
       unwindowed pair `okayChunked`/`okayChunkedShared` in every round
@@ -632,16 +633,16 @@ every turn and every poll of the wait ladder.
       `scripts/jmh-lane.sh`, k = 16 pinned — mean and per-fork spread
       per arm; the gap HOLDS if the 10-fork means stay ≥ 1.06x apart
       with the control pair within its own 1.03x
-- [ ] `okayChunkedFlushShort` (1 ms) on BOTH arms, 5 rounds, with
+- [x] `okayChunkedFlushShort` (1 ms) on BOTH arms, 5 rounds, with
       jmh-lane's noise discard raised to 100%: its shared arm read
       ± 91 us on 277 — a 1 ms flusher inside a ~250 us op makes the
       lane timing-bound by construction, so the row says so (and
       what the ring arm reads beside it) rather than pretending a ratio
-- [ ] the elementwise road on `Wait.Ladder`, unmeasured since the
+- [x] the elementwise road on `Wait.Ladder`, unmeasured since the
       second landing: `MergeCapBenchmark.sourceMergeAtCapacity` at
       64 / 256 / 1024, 5 forks, against the frozen spin-100 reading
       (84.8 / 68.3 / 63.0) — no regression past the bars
-- [ ] IF the gap holds, the decision, with the candidates the backlog
+- [x] NOT REACHED, the gap did not hold (Results below): IF the gap holds, the decision, with the candidates the backlog
       item ordered and the reason each is or is not taken written into
       Decisions: (a) `Merge.Shared`'s shape for the windowed join;
       (b) the flusher signals the feed (refused before it is built: a
@@ -654,5 +655,47 @@ every turn and every poll of the wait ladder.
       the `ChunkBuffer` cell and a parked consumer is woken through a
       one-shot registration with a late-answer slot) costed here as
       design, built only if (a) is refused
-- [ ] IF the gap does not hold at 10 forks: the item closes as a
+- [x] IF the gap does not hold at 10 forks: the item closes as a
       five-fork reading, the rows say so, nothing in the library moves
+
+### Results (2026-09-29, taken over from a silent session by the operator's ask)
+
+Rows: `src/jmh/history.d/2026-09-29T115453Z-merge-flush-on-ring-gap.tsv`.
+Every lane through `scripts/jmh-lane.sh`, box quiet at both ends, arms
+alternating across rounds, k = 16.
+
+**THE GAP DOES NOT HOLD.** On the conditions of 2026-09-28
+(`-Dokay.scheduler=loom`, 5 alternating rounds) `okayChunkedFlush` reads
+219.0 on the ring against 208.6 on the shared road: 1.05x, inside the
+accepted 1.06x. The 1.12x was a one-round, five-fork reading, and the
+ring arm's own spread (197-257) is wider than the gap was. On today's
+default scheduler the ring is the FASTER road: 331.9 against 378.6
+(0.88x, 10 rounds), with the unwindowed control at 0.86x. Nothing in
+the library moves; candidates (a)-(c) stay unbuilt, their analysis above
+kept for the day a gap reappears.
+
+**WHAT THE CONTROL FOUND INSTEAD.** The control pair was 0.86x, not
+within its 1.03x, so the setup had moved since 2026-09-28 — and it had:
+the default scheduler became `adaptive` that afternoon (c29a5820d). The
+same build, arms alternating by `-Dokay.scheduler`, 5 rounds:
+
+| lane | adaptive (default) | loom | adaptive / loom |
+|---|---:|---:|---:|
+| `okayChunked` (ring) | 351.0 | 201.5 | 1.74 |
+| `okayChunkedShared` | 380.5 | 203.2 | 1.87 |
+| `okayChunkedFlush` (ring) | 329.7 | 219.0 | 1.51 |
+| `okayChunkedFlushShared` | 376.6 | 208.6 | 1.81 |
+
+Both roads pay it, so it is the scheduler and not the ring. Filed as
+backlog `adaptive-chunked-merge-cost` (okay-core) beside
+`scheduler-flip-remeasure`, whose lanes did not include a chunked merge.
+
+**Elementwise, on `Wait.Ladder`:** under loom 83.1 / 64.3 / 60.8 at cap
+64 / 256 / 1024 against the frozen spin-100 reading 84.8 / 68.3 / 63.0 —
+no regression. Under adaptive 96.6 / 62.7 / 63.9: the flip costs the
+elementwise road 1.16x at the smallest ring only.
+
+**`okayChunkedFlushShort` (1 ms):** ring 359.7 ± 30.1, shared 430.5 ±
+116.4 (-f 5, adaptive, noise discard off). Timing-bound by construction
+— a 1 ms flusher inside a ~350 us op — so this row is a reading, not a
+ratio to quote.
