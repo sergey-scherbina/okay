@@ -91,6 +91,37 @@ take_lock() {
 
 release_lock() { ci_lock_release "$LOCKDIR"; }
 
+# ---- a death is written down (ci-runner-startup-death, 2026-09-29) --------
+# A detached `once` was seen to vanish mid `family all` with nothing in its
+# log after sbt started. Whoever killed it, the log now says: each turn
+# records its pid, process group and session at the start, and a caught
+# signal is written with the phase it arrived in before the lock goes. A
+# turn whose log stops with NO such line was killed by SIGKILL, which no
+# script can catch -- then read ~/Library/Logs/kill-stale-builders.log
+# (AGENTS.md, "THE 143, SOLVED"), whose guard kills by name.
+phase="starting"
+died() { # $1 = signal name, $2 = exit status
+  echo "ci-runner: got SIG$1 during '$phase' ($(date -u +%Y-%m-%dT%H:%M:%SZ)); releasing the lock" | tee -a "${log:-$LOGDIR/kick-detached.log}"
+  release_lock; trap - EXIT HUP INT TERM
+  exit "$2"
+}
+whoami_line() {
+  echo "ci-runner: pid $$ pgid $(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ') sid $(ps -o sess= -p $$ 2>/dev/null | tr -d ' ') ppid $PPID ($(ps -o args= -p $PPID 2>/dev/null | cut -c1-80))"
+}
+
+# Start a command in a NEW SESSION where the platform can, so it is in no
+# caller's process group: `nohup` alone only ignores SIGHUP, and a harness
+# that ends a tool call by signalling the call's whole group (AGENTS.md,
+# "Exit 143 is SIGTERM", sender 1) took the runner with it. Linux has
+# setsid(1); macOS has none, and perl's POSIX::setsid is the portable road
+# (perl ships with macOS). Neither present: plain, as before.
+in_new_session() {
+  if command -v setsid >/dev/null 2>&1; then setsid "$@"
+  elif command -v perl >/dev/null 2>&1; then perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "exec: $!"' "$@"
+  else "$@"
+  fi
+}
+
 # ---- the push, one place (ci-runner-push-after-flake) -----------------
 # GREEN pushes; so does a red the runner ITSELF judged a flake (its
 # named suites green alone, or the culprit green on its own tree): a
@@ -305,14 +336,18 @@ AMENDMSG
 # ---- one turn ----------------------------------------------------------
 run_once() {
   take_lock || return 1
-  trap release_lock EXIT INT TERM
+  trap release_lock EXIT
+  trap 'died HUP 129' HUP
+  trap 'died INT 130' INT
+  trap 'died TERM 143' TERM
+  whoami_line
 
   git fetch origin >/dev/null 2>&1
   from=$(git rev-parse origin/master)
   to=$(git rev-parse master)
   if [ "$from" = "$to" ]; then
     echo "ci-runner: origin/master == master, nothing to do"
-    release_lock; trap - EXIT INT TERM
+    release_lock; trap - EXIT HUP INT TERM
     return 0
   fi
   # ORIGIN GENUINELY AHEAD (edits on GitHub, AGENTS.md's own exception):
@@ -322,7 +357,7 @@ run_once() {
     echo "ci-runner: origin/master is not an ancestor of master — merging (never rebasing)"
     if ! git merge origin/master --no-edit >/dev/null 2>&1; then
       echo "ci-runner: merge of origin/master CONFLICTED — leaving it for a human"
-      release_lock; trap - EXIT INT TERM
+      release_lock; trap - EXIT HUP INT TERM
       return 1
     fi
     to=$(git rev-parse master)
@@ -335,16 +370,18 @@ run_once() {
     echo "ci-runner: $from..$to is board-only — pushing without a gate" | tee -a "$log"
     if git push origin master >>"$log" 2>&1; then
       echo "ci-runner: pushed $from..$to (board-only)"
-      release_lock; trap - EXIT INT TERM
+      release_lock; trap - EXIT HUP INT TERM
       return 0
     else
       echo "ci-runner: push REJECTED — origin moved during this turn; the next turn re-reads it"
-      release_lock; trap - EXIT INT TERM
+      release_lock; trap - EXIT HUP INT TERM
       return 1
     fi
   fi
 
+  whoami_line >>"$log"
   echo "ci-runner: gating $from..$to (whole build)" | tee -a "$log"
+  phase="family all over $from..$to"
   sh scripts/gate-retry.sh "$root" "$log" 6 "family all"
   rc=$?
   touches_okay2=0
@@ -361,12 +398,12 @@ run_once() {
     0)
       echo "ci-runner: GREEN — pushing $from..$to" | tee -a "$log"
       push_range "$from" "$to" "$log"; prc=$?
-      release_lock; trap - EXIT INT TERM
+      release_lock; trap - EXIT HUP INT TERM
       return $prc
       ;;
     99)
       echo "ci-runner: no verdict after gate-retry's attempts — the box took it; not pushing, will retry on the next kick" | tee -a "$log"
-      release_lock; trap - EXIT INT TERM
+      release_lock; trap - EXIT HUP INT TERM
       return 1
       ;;
     *)
@@ -386,7 +423,7 @@ run_once() {
       # that could quietly stop matching what gate.sh actually prints
       if ! grep -q "==> X" "$log"; then
         echo "ci-runner: RED (exit $rc) with no test named in the log — infrastructure noise, not a verdict; not bisecting, will retry on the next kick" | tee -a "$log"
-        release_lock; trap - EXIT INT TERM
+        release_lock; trap - EXIT HUP INT TERM
         return 1
       fi
       # DOES THE RED REPRODUCE? (ci-runner-flake-before-bisect, 2026-09-26)
@@ -404,13 +441,13 @@ run_once() {
         echo "ci-runner: the red did not reproduce on its suites alone — a flake, not a regression; not bisecting, PUSHING $from..$to (ci-runner-push-after-flake; the sighting is recorded)" | tee -a "$log"
         record_flakes "$suites" "$from" "$to" "$log"
         push_range "$from" "$to" "$log"; prc=$?
-        release_lock; trap - EXIT INT TERM
+        release_lock; trap - EXIT HUP INT TERM
         return $prc
       fi
       cat "$log.suites" >> "$log" 2>/dev/null; rm -f "$log.suites"
       echo "ci-runner: RED (exit $rc) reproduced alone — bisecting $from..$to" | tee -a "$log"
       bisect_and_revert "$from" "$to" "$log" "$suites"; brc=$?
-      release_lock; trap - EXIT INT TERM
+      release_lock; trap - EXIT HUP INT TERM
       # 2 = the culprit was a flake on its own tree and the range was pushed
       [ "$brc" -eq 2 ] && return 0
       return 1
@@ -444,7 +481,10 @@ case "$cmd" in
       # a background job started INSIDE a tool call's shell dies with
       # that shell (AGENTS.md, "Exit 143 is SIGTERM", sender 1) — the
       # double subshell and </dev/null/nohup keep this one alive past it
-      ( nohup sh "$0" once </dev/null >>"$LOGDIR/kick-detached.log" 2>&1 & )
+      # ...and in a NEW SESSION (ci-runner-startup-death): nohup alone
+      # leaves it in the caller's process group, which a harness may
+      # signal as a whole when the tool call ends
+      ( in_new_session nohup sh "$0" once </dev/null >>"$LOGDIR/kick-detached.log" 2>&1 & )
     fi
     ;;
   status)

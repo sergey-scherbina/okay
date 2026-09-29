@@ -32,6 +32,13 @@ files="$*"
 # nothing on an older tree, and `[ -f ]` below skips a literal pattern.
 [ -n "$files" ] || files="CHANGELOG.md BACKLOG.md changelog.d/*.md backlog.d/*/*.md sprint.d/*/*.md"
 bad=0
+# A SHALLOW clone cannot answer (check-citations-shallow, 2026-09-29): its
+# history stops at a graft, so a commit from before the graft that IS on
+# master reads as "not an ancestor" -- a cloud session's clone reported
+# `12120c2a` (2026-08-31, inside v0.1.1's history) that way. There a
+# non-ancestor is said, not failed: the full clone is where the verdict is.
+shallow=$(git rev-parse --is-shallow-repository 2>/dev/null || echo false)
+unsure=0
 for f in $files; do
   [ -f "$f" ] || continue
   # shas appear as "Landed as <sha>", "Commits: <sha> (...)", "DONE (date, <sha>)"
@@ -42,10 +49,16 @@ for f in $files; do
     # to be an ancestor — check-citations-nine-hex, 2026-09-28
     [ -z "$(git branch --points-at "$h" 2>/dev/null)" ] || continue
     if ! git merge-base --is-ancestor "$h" HEAD 2>/dev/null; then
-      echo "$f: $h is a commit but is NOT an ancestor of HEAD"
-      bad=1
+      if [ "$shallow" = true ]; then
+        unsure=$((unsure + 1))
+      else
+        echo "$f: $h is a commit but is NOT an ancestor of HEAD"
+        bad=1
+      fi
     fi
   done
 done
-if [ "$bad" -eq 0 ]; then echo "citations: all reachable from HEAD"; fi
+if [ "$unsure" -gt 0 ]; then echo "citations: $unsure cited commit(s) lie beyond this SHALLOW clone's history -- not judged here; run in a full clone"; fi
+if [ "$bad" -eq 0 ] && [ "$unsure" -gt 0 ]; then echo "citations: none dangling among what this clone can see"
+elif [ "$bad" -eq 0 ]; then echo "citations: all reachable from HEAD"; fi
 exit $bad

@@ -121,9 +121,10 @@ class TestStackBytes extends munit.FunSuite:
    * in every round.
    */
   def needsWarm(door: () => Boolean, rounds: Int = 2000): Int =
-    val t = new Thread(null, () => { var i = 0; while i < rounds do { door(): Unit; i += 1 } },
-      "warmup", 8L * 1024 * 1024)
-    t.start(); t.join()
+    def warm(): Unit =
+      val t = new Thread(null, () => { var i = 0; while i < rounds do { door(): Unit; i += 1 } },
+        "warmup", 8L * 1024 * 1024)
+      t.start(); t.join()
     // MIN of 3, where `needs` takes the max, and the asymmetry is the
     // point. A door sitting near the floor of what a host will give a
     // thread flaps: measured here, the SHALLOW door answered 64 KB in
@@ -131,7 +132,27 @@ class TestStackBytes extends munit.FunSuite:
     // that can be true. For "what can this door ever need" a flap is
     // the answer you must keep; for "does the trampoline engage" it
     // is noise about the host, and the settled round is the evidence.
-    (1 to 3).map(_ => ladder.find(kb => onStack(kb)(door) == Some(true)).getOrElse(16384)).min
+    def reading(): Int =
+      (1 to 3).map(_ => ladder.find(kb => onStack(kb)(door) == Some(true)).getOrElse(16384)).min
+    // WARM IS A CONDITION, NOT A COUNT (stack-bytes-warm-flake,
+    // 2026-09-29). On a loaded box 2000 rounds had not compiled the door
+    // yet: a whole affected gate read Cbor.read[Tree] at 256 KB for 100
+    // levels -- its COLD figure -- and 16 for 400, and the flat-past-the-
+    // threshold law failed on the JIT, not on the trampoline. So warm
+    // again until two readings in a row agree, at most five times, and
+    // keep the least: a compiled frame only ever makes the answer smaller.
+    var best = Int.MaxValue
+    var last = -1
+    var tries = 0
+    var settled = false
+    while !settled && tries < 5 do
+      warm()
+      val r = reading()
+      settled = r == last
+      if r < best then best = r
+      last = r
+      tries += 1
+    best
 
   test("every door fits in 2 MB at a full-depth document") {
     val measured = doors.map((name, door) => (name, needs(door)))

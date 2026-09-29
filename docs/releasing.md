@@ -7,6 +7,10 @@ left is account setup, done once, and a short procedure per release.
 
 ## What is published
 
+Two places can serve it: Maven Central (below) and a Maven repository on
+this repository's GitHub Pages (the next section). The build is the same
+for both.
+
 The **first wave**, named in `project/ReleaseWave.scala`: `okay`,
 `okay-async`, `okay-platform`, `okay-stream`, `okay-direct`,
 `okay-optics`, `okay-diagnose`, `okay-test`, `okay-lex`, `okay-parse`,
@@ -31,6 +35,47 @@ The groupId is decided in specs/modules-infra.md, "Publishing". Central
 verifies an `io.github.<user>` namespace through the GitHub account, so
 no domain is needed. `dev.okay` stays possible later, at the price of a
 relocation POM per artifact once something is public.
+
+## GitHub Pages: a Maven repository without Central
+
+The same wave can be served as a Maven repository from the `gh-pages`
+branch of this repository. No account, token or signing key is needed, on
+either side. A user adds one resolver line:
+
+```
+resolvers += "okay" at "https://sergey-scherbina.github.io/okay/maven"
+libraryDependencies += "io.github.sergey-scherbina" %% "okay" % "0.2.0"
+```
+
+`scripts/pages-publish.sh` builds it:
+
+1. It keeps a worktree of `gh-pages` at `.work/pages/`, and makes the
+   branch on the first run if origin has none.
+2. It runs `releaseWaveCheck` and `publish` with `OKAY_PAGES_REPO`
+   pointing at that worktree's `maven/` folder, so the jars, sources,
+   javadoc, POMs and checksums land there in Maven layout.
+3. It writes an `index.html` naming each artifact and its versions, and
+   commits on `gh-pages`.
+4. It pushes only with `--push`. Without it, look first:
+
+```
+sh scripts/pages-publish.sh
+git -C .work/pages show --stat
+sh scripts/pages-publish.sh --push
+```
+
+Two refusals are deliberate. A release already in the repository is never
+overwritten: move the version on. A `-SNAPSHOT` version is refused unless
+`--snapshot` is passed, because each publish is a commit of about 64 MB of
+jars and the branch keeps every one.
+
+Once, in the repository's Settings, Pages: serve the `gh-pages` branch
+from its root. The URL above works a minute or two after the first push.
+
+Verified before the first push (2026-09-29): the repository built this way
+and served over plain HTTP was resolved by a separate sbt project that saw
+only that server and a Maven Central mirror. It compiled the tutorial's
+State example against `okay` and printed `(40,42)`.
 
 ## Once: accounts and keys
 

@@ -224,9 +224,18 @@ ThisBuild / scmInfo := Some(ScmInfo(
 ThisBuild / developers := List(Developer(
   "sergey-scherbina", "Sergiy Shcherbyna", "sergey.scherbina@gmail.com",
   url("https://github.com/sergey-scherbina")))
+// OKAY_PAGES_REPO set: a Maven repository in that directory instead
+// (pages-maven-repo, 2026-09-29). scripts/pages-publish.sh points it at
+// the `maven/` folder of a gh-pages worktree, and GitHub Pages serves it
+// as https://sergey-scherbina.github.io/okay/maven -- a repository a user
+// adds with one resolver line and no token, unsigned, Central not needed.
 ThisBuild / publishTo := {
-  if (isSnapshot.value) Some("central-snapshots" at "https://central.sonatype.com/repository/maven-snapshots/")
-  else localStaging.value
+  sys.env.get("OKAY_PAGES_REPO").filter(_.nonEmpty) match {
+    case Some(dir) => Some(MavenCache("okay-pages", file(dir)))
+    case None =>
+      if (isSnapshot.value) Some("central-snapshots" at "https://central.sonatype.com/repository/maven-snapshots/")
+      else localStaging.value
+  }
 }
 ThisBuild / publishMavenStyle := true
 // a POM names where ITS dependencies live, not where this machine fetched
@@ -2333,6 +2342,11 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
   // (intent-jmh-row).
   .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
+    // `Exp` per platform (intent-model-reproducible): StrictMath on the
+    // JVM, so a fitted model re-derives to the same bytes on every CPU;
+    // Scala.js has no StrictMath, and nothing is re-derived there
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     // the live suites are JVM-only: they hold an HTTP connection to a
     // gateway, and the tiers themselves are portable
     Test / unmanagedSourceDirectories +=
@@ -2343,6 +2357,8 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "jmh" / "scala",
   )
   .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
     // The MAIN sources cross; most of the tests do not, and this
     // mirrors what okay-agent already does. Several suites summon a
     // Handler[Async], which needs a CanBlock that only the JVM has —
