@@ -58,7 +58,7 @@ scalaVersion := "2.13.18"
 scalacOptions += "-Ytasty-reader"
 
 libraryDependencies +=
-  ("dev.okay" %% "okay-scala2" % "0.2.0-SNAPSHOT")
+  ("io.github.sergey-scherbina" %% "okay-scala2" % "0.2.0-SNAPSHOT")
     .cross(CrossVersion.for2_13Use3)
     .exclude("org.scala-lang", "scala-library")
 
@@ -76,7 +76,7 @@ And the prelude — okay's top-level names (`+`, `!`, `%`, `Pure`,
 2.13 artifact, so it is an ordinary `%%` line:
 
 ```sbt
-libraryDependencies += "dev.okay" %% "okay-scala2-prelude" % "0.2.0-SNAPSHOT"
+libraryDependencies += "io.github.sergey-scherbina" %% "okay-scala2-prelude" % "0.2.0-SNAPSHOT"
 ```
 
 **okay is not on Maven Central yet.** Until it is, publish it to your
@@ -95,7 +95,7 @@ Scala 3 stdlib block above is needed once:
 
 ```scala
 libraryDependencies ++= Seq("okay-scala2-http", "okay-scala2-sql", "okay-scala2-optics").map(m =>
-  ("dev.okay" %% m % "0.2.0-SNAPSHOT").cross(CrossVersion.for2_13Use3).exclude("org.scala-lang", "scala-library"))
+  ("io.github.sergey-scherbina" %% m % "0.2.0-SNAPSHOT").cross(CrossVersion.for2_13Use3).exclude("org.scala-lang", "scala-library"))
 ```
 
 | module | section | wraps |
@@ -122,7 +122,7 @@ every module with its dependencies.
 The version is `ThisBuild / version` in okay's build.sbt (0.2.0-SNAPSHOT
 at the time of writing: the next release, as a snapshot). A snapshot
 you re-publish is not always noticed by a build that already resolved
-it: `sbt reload`, or delete `~/.ivy2/local/dev.okay/<module>` and publish
+it: `sbt reload`, or delete `~/.ivy2/local/io.github.sergey-scherbina/<module>` and publish
 again.
 
 This setup was checked twice. The first check is this repository's own

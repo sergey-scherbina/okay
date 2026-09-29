@@ -40,7 +40,7 @@ sbt publishLocal
 ```
 
 Measured on this machine (re-run 2026-09-23): **about a minute,
-138 modules**, into `~/.ivy2/local/dev.okay/`. It publishes every module for every
+138 modules**, into `~/.ivy2/local/io.github.sergey-scherbina/`. It publishes every module for every
 platform it cross-builds — JVM (`okay_3`), Scala.js (`okay_sjs1_3`)
 and Native (`okay_native0.5_3`) — which is why one command is enough
 for both halves of an application. Nothing is downloaded from the
@@ -50,11 +50,11 @@ The coordinates you then depend on:
 
 | | |
 |---|---|
-| organization | `dev.okay` |
+| organization | `io.github.sergey-scherbina` |
 | version | `0.2.0-SNAPSHOT` (`ThisBuild / version` in okay's build.sbt — read it there, it moves: the next release, as a snapshot) |
 | Scala | 3.9.0 — use this or newer; 3.6 is the floor for the syntax the library uses |
-| JVM artifact | `"dev.okay" %% "okay-jetty" % "0.2.0-SNAPSHOT"` |
-| JS artifact | `"dev.okay" %%% "okay-ui" % "0.2.0-SNAPSHOT"` (`%%%` picks `_sjs1_3`) |
+| JVM artifact | `"io.github.sergey-scherbina" %% "okay-jetty" % "0.2.0-SNAPSHOT"` |
+| JS artifact | `"io.github.sergey-scherbina" %%% "okay-ui" % "0.2.0-SNAPSHOT"` (`%%%` picks `_sjs1_3`) |
 
 Two things bite here. Your Scala version must be **at least** the one
 the library was built with (TASTy is forward-, not backward-,
@@ -64,7 +64,7 @@ crossProject you always want `%%%`.
 
 If you re-publish after changing okay, your build will not always
 notice that a SNAPSHOT has moved: `sbt reload` in your project, or
-delete `~/.ivy2/local/dev.okay/<module>` and publish again.
+delete `~/.ivy2/local/io.github.sergey-scherbina/<module>` and publish again.
 
 **Two other roads**, worth knowing but not what this tutorial uses:
 
@@ -131,7 +131,7 @@ lazy val ui = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "chat-ui",
     libraryDependencies ++= Seq(
-      "dev.okay" %%% "okay-ui" % okay,
+      "io.github.sergey-scherbina" %%% "okay-ui" % okay,
       "org.scalameta" %%% "munit" % "1.1.1" % Test,
     ),
   )
@@ -147,8 +147,8 @@ lazy val app = project
   .settings(
     name := "chat-app",
     libraryDependencies ++= Seq(
-      "dev.okay" %% "okay-jetty" % okay,
-      "dev.okay" %% "okay-chat" % okay,
+      "io.github.sergey-scherbina" %% "okay-jetty" % okay,
+      "io.github.sergey-scherbina" %% "okay-chat" % okay,
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
     run / fork := true,
@@ -621,11 +621,11 @@ wrong place. Either set `run / baseDirectory := (ThisBuild /
 baseDirectory).value` as the build above does, or pass an absolute
 `APP_JS`.
 
-**`not found: dev.okay#okay-jetty_3;0.2.0-SNAPSHOT`** — `publishLocal`
+**`not found: io.github.sergey-scherbina#okay-jetty_3;0.2.0-SNAPSHOT`** — `publishLocal`
 has not run, or it ran from a different okay checkout than you think.
-Check `ls ~/.ivy2/local/dev.okay/`.
+Check `ls ~/.ivy2/local/io.github.sergey-scherbina/`.
 
-**`Error downloading dev.okay:okay-js_3:<version>`** — your okay checkout
+**`Error downloading io.github.sergey-scherbina:okay-js_3:<version>`** — your okay checkout
 predates 2026-09-23. Until then `okay-js` (and `okay-acme`) were not in
 okay's root build, so `publishLocal` skipped them while `okay-ui`
 depended on `okay-js`. Update the checkout and publish again.

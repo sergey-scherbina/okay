@@ -20,7 +20,7 @@
  * in this build: cats-effect, fs2 and zio all publish for 2.13. kyo
  * does not (Scala 3 only), so there is no okay2-kyo.
  */
-ThisBuild / organization := "dev.okay"
+ThisBuild / organization := "io.github.sergey-scherbina"
 ThisBuild / scalaVersion := "2.13.18"
 
 /**

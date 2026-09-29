@@ -3,7 +3,7 @@
 okay for **Scala 2.13**: the facade modules, all in package `okay.scala2`,
 and the Scala 2.13 probe that proves them from a real 2.13 compiler.
 Each module is a Scala 3 project whose API scalac 2.13 reads through
-`-Ytasty-reader`; its artifact is `dev.okay:okay-scala2-<name>_3`.
+`-Ytasty-reader`; its artifact is `io.github.sergey-scherbina:okay-scala2-<name>_3`.
 
 | directory | wraps |
 |---|---|
