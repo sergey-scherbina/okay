@@ -28,6 +28,11 @@ as `IO.blocking` via `unsafeToFutureCancelable`, completion callbacks
 ride the future, cancel is the IO canceler. One `given`, and Okay
 fibers, `parMap`, `merge` and supervision run on cats-effect.
 
+**An IO inside a direct block.** With `import okay.cats.given` and an
+`IORuntime` in scope, a `direct` block over an okay row binds an `IO` with
+`io.?`, `io.reflect` or `!io` — one `Async` operation, `fromIO`
+(specs/direct-foreign-mark.md; docs/direct-style.md, "Foreign effects").
+
 **Laws.** cats-laws' Monad and MonadError rule sets run against the
 instances — 90 properties. Programs are compared BY RUNNING them
 (the only observation a program-as-value offers) and the generators
@@ -63,6 +68,7 @@ Async.par(async(1), async(2)).runWith          // fibers on cats-effect
 | `given MonadError[[A] =>> A ! Throws % E + F, E]` | needs `TypeableK[Throws % E]` | typed errors, cats-style |
 | `CatsInterop.toIO` | `(=> A ! Async) => IO[A]` | run as blocking IO |
 | `CatsInterop.fromIO` | `(IO[A])(using IORuntime) => A ! Async` | an IO as one async op |
+| `given ioForeign` | `(using IORuntime) okay.ForeignEffect[IO]` | `io.?`, `io.reflect`, `!io` inside a `direct` block over an okay row |
 | `CatsInterop.toCats` | `A ! F => cats.free.Free[F, A]` | operation for operation |
 | `CatsInterop.fromCats` | `cats.free.Free[F, A] => A ! F` | foldMap by initiality |
 | `CatsInterop.scheduler` | `(using IORuntime) => okay.Scheduler` | their runtime under our fibers |

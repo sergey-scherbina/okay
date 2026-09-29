@@ -836,7 +836,9 @@ lazy val okayStm = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 /** interop with cats: instances and conversions, nothing more (P3) */
 lazy val okayCats = (project in file("okay-cats"))
-  .dependsOn(okayAsync.jvm, okayPlatform.jvm)
+  // okay-direct for the tests only: an IO marked inside a direct block
+  // (specs/direct-foreign-mark.md)
+  .dependsOn(okayAsync.jvm, okayPlatform.jvm, okayDirect.jvm % "test->compile")
   .settings(
     name := "okay-cats",
     libraryDependencies ++= Seq(

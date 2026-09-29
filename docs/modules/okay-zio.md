@@ -63,6 +63,23 @@ val t: Task[Int] = direct[Task] {
 }
 ```
 
+**ZIO values inside a block over an okay program.** The same import
+lets a `direct` block over an okay row bind ZIO values
+(specs/direct-foreign-mark.md). Each ZIO lands on the narrowest row its
+type allows — a `Task` (or any ZIO with no environment and a Throwable
+error) is one `Async` operation, a typed error adds `Throws % E`, an
+environment makes it the whole `ZioRow[R, E]`:
+
+```scala
+val p: Int ! Async = direct {
+  val a = ZIO.attempt(20).?
+  val b = ZIO.succeed(22).reflect
+  a + b
+}
+```
+
+A ZIO whose effect is not in the block's row is refused at compile time.
+
 The prefix mark `!z` is the one spelling that cannot work here: ZIO
 declares its own `unary_!` (deprecated negation of a `ZIO[_, _, Boolean]`),
 and a class member always wins over an extension. Use `.?` or `.reflect`.
@@ -122,6 +139,7 @@ Async.par(async(1), async(2)).runWith
 | `ZioInterop.toZIOTyped` | `(=> A ! ZioRow[R, E]) => ZIO[R, E, A]` | Reader from the environment, raise as fail |
 | `ZioRow[R, E]` | `Reader % ZEnvironment[R] + Throws % E + Async` | ZIO's three channels |
 | `given zioMonad[R, E]` | `okay.Monad[[A] =>> ZIO[R, E, A]]` | `direct[Task] { z.? }` |
+| `given zioForeign*` | `okay.ForeignEffect[[X] =>> ZIO[R, E, X]]` | `z.?` in a block over an okay row: `Async`, `Throws % E + Async` or `ZioRow[R, E]` |
 | `ZioInterop.toZStream` | `Chunks[A] => ZStream[Any, Nothing, A]` | unfoldChunk over pure pull |
 | `ZioInterop.fromZStream` | `ZStream[Any, Throwable, A] => Chunks[A]` | scoped iterator, lazy, linear |
 | `ZioInterop.scheduler` | `(runtime = default) => okay.Scheduler` | ZIO runtime under Okay fibers |

@@ -325,7 +325,10 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
                   s"is a Delim capture, but this block's row ${row.show} has no Delim: " +
                   "write the block at a row with Delim (the layer's reify needs one anyway)", at)
             narrowRow(reflected, elem, row, at)
-          case None => narrowRow(m, elem, row, at)
+          case None =>
+            foreignTerm(m) match
+              case Some(lifted) => narrowRow(lifted, elem, row, at)
+              case None => narrowRow(m, elem, row, at)
       case _ =>
         report.errorAndAbort(
           s"the marked value has type ${m.tpe.show} — neither this block's ${fT.show}" +
@@ -360,6 +363,38 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
                 Some(Ref(layeredModule).select(reflect).appliedToTypes(List(tycon, x)).appliedTo(m)
                   .appliedToTypes(List(r, TypeRepr.of[okay.Pure])).appliedTo(found.tree, at.tree))
               case _ => None
+          case _ => None
+      ).collectFirst { case Some(t) => t }
+
+  lazy val foreignClass = Symbol.requiredClass("okay.ForeignEffect")
+
+  /**
+   * `ev.lift(m)` when `m: M[X]` is not a program and a
+   * `ForeignEffect[M]` is in the implicit scope at the mark
+   * (specs/direct-foreign-mark.md): a Future, a ZIO, a cats IO as an
+   * `X ! G`, which `narrowRow` then widens into this block's row by
+   * subtyping. For a type of several arguments the candidate constructor
+   * fixes all but the LAST — `ZIO[R, E, A]` asks for `ZIO[R, E, _]`, as
+   * `discardedMonadic` does. `None` when nothing is found, and the mark
+   * falls to the refusal it always had.
+   */
+  def foreignTerm(m: Term): Option[Term] =
+    val mt = m.tpe.widen.dealias
+    if mt.derivesFrom(freeClass) then None
+    else
+      val candidates = mt.baseClasses.iterator.flatMap(c => mt.baseType(c) match
+        case AppliedType(g, args) if args.nonEmpty =>
+          val lam =
+            if args.lengthIs == 1 then g
+            else TypeLambda(List("X"), _ => List(TypeBounds.empty),
+              tl => g.appliedTo(args.init :+ tl.param(0)))
+          Some((lam, args.last))
+        case _ => None)
+      candidates.map((lam, x) =>
+        Implicits.search(foreignClass.typeRef.appliedTo(lam)) match
+          case found: ImplicitSearchSuccess =>
+            val lift = foreignClass.methodMember("lift").head
+            Some(found.tree.select(lift).appliedToType(x).appliedTo(m))
           case _ => None
       ).collectFirst { case Some(t) => t }
 

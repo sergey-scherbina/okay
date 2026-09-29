@@ -20,3 +20,8 @@ lazy val myModule = (project in file("my-module"))
 Reach for it when a program reads more naturally as straight-line
 code than as an explicit `flatMap` chain. Everything it expands to is
 ordinary `okay` — nothing here is a separate runtime.
+
+A mark also binds a FOREIGN effect — a `Future`, a ZIO (`import
+okay.zio.given`), a cats `IO` (`import okay.cats.given`) — through a
+`ForeignEffect` instance (okay-async); see docs/direct-style.md,
+"Foreign effects". The module itself names no foreign library.

@@ -312,8 +312,9 @@ its position and its workaround in the message:
 - **`try` around marks** — a v2 road (reification into the Throws
   error channel), named, not promised. (`while` and the
   foreach/map loops below graduated out of this list.)
-- a mark on a value that is **neither the block's `F[T]` nor an
-  operation of its row** — see the next section.
+- a mark on a value that is **neither the block's `F[T]`, nor an
+  operation of its row, nor a foreign effect with a `ForeignEffect`
+  given** — see the next section.
 
 A clear refusal beats a wrong capture: that sentence is the entire
 design philosophy of the macro, and it is why it stays ~300 lines.
@@ -365,6 +366,42 @@ arriving at the same point of the design space (see
 with it: in boolean-heavy code `!x` is negation on a `Boolean` and
 a mark on an `F[Boolean]` — mechanically unambiguous (members beat
 extensions), but readers parse by type; prefer `.reflect` there.
+
+**Foreign effects: a `Future`, a ZIO, a cats `IO`.** A block over an okay
+program also binds a value of ANOTHER library's effect, with the same
+marks, when a `ForeignEffect[M]` is in scope for its type
+(specs/direct-foreign-mark.md). The instance says which okay effect the
+value becomes — a `Future` becomes one `Async` operation, waiting by
+callback — and the macro then widens it into the block's row by the same
+subtyping proof a narrower program gets:
+
+```scala
+val p: Int ! Async = direct {
+  val a = Future(20).?
+  val b = Future(2).reflect
+  val c = !Future(20)
+  a + b + c
+}
+```
+
+| value | instance, import | becomes |
+|---|---|---|
+| `Future[A]` | `ForeignEffect.future`, always in scope | `A ! Async` |
+| `ZIO[Any, E <: Throwable, A]` | `import okay.zio.given` | `A ! Async` |
+| `ZIO[Any, E, A]` | `import okay.zio.given` | `A ! Throws % E + Async` |
+| `ZIO[R, E, A]` | `import okay.zio.given` | `A ! ZioRow[R, E]` (`Reader % ZEnvironment[R] + Throws % E + Async`) |
+| cats `IO[A]` | `import okay.cats.given` + an `IORuntime` | `A ! Async` |
+
+The most specific ZIO instance wins, so a `Task` needs only `Async` in
+the row. When the effect the value becomes is not in the block's row
+(`ZIO[Any, String, Int]` in a block over `Async` alone, which has no
+`Throws % String`), the block is refused at compile time naming the row.
+One spelling does not reach a ZIO: `!z` is ZIO's own `unary_!` (a
+deprecated negation of `ZIO[_, _, Boolean]`), and a class member always
+wins over an extension — write `z.?` or `z.reflect`. `Future` and `IO`
+have no such member, so all three spellings work on them. A library of
+your own joins by writing its instance: `type G[+X]` names the effect,
+`lift` builds the program.
 
 ## Layer 2½ — the staged block: the handler known at the call site
 

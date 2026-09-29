@@ -1,6 +1,6 @@
 # A foreign effect marked inside a direct block
 
-Status: in progress, 2026-09-29. Owner lane: `direct-foreign-mark`.
+Status: done, 2026-09-29. Owner lane: `direct-foreign-mark`.
 Follows `specs/zio-direct-cancel.md` (ZIO inside `direct[Task]`) and
 `specs/zio-typed-row.md` (the whole `ZIO[R, E, A]` as a row).
 
@@ -27,11 +27,12 @@ refuses anything else.
 ```scala
 package okay   // okay-async: no dependency on any foreign library
 
-trait ForeignEffect[M[_], G[+_]]:
+trait ForeignEffect[M[_]]:
+  type G[+X]
   def lift[A](m: M[A]): A ! G
 
 object ForeignEffect:
-  given future: ForeignEffect[Future, Async]       // an Await on completion
+  given future: ForeignEffect[Future]              // G = Async, an Await on completion
 
 package okay.zio     // import okay.zio.given
   ZIO[Any, E <: Throwable, _]  -> Async                       (fromZIO)
@@ -43,7 +44,7 @@ package okay.cats    // import okay.cats.given, an IORuntime in scope
 ```
 
 The macro's new case: the marked value is not a program, has no
-`Layered` layer, and a `ForeignEffect[M, G]` is found for its type
+`Layered` layer, and a `ForeignEffect[M]` is found for its type
 constructor (for a type with several arguments, all but the last fixed:
 `ZIO[R, E, _]`). The mark binds `lift(m)`, which is then widened into the
 block's row by the same subtyping proof a narrower program gets
@@ -52,17 +53,17 @@ refused naming both.
 
 ## Behaviour
 
-- [ ] `Future(20).?` inside `direct` over `Async` binds 20; nothing runs
+- [x] `Future(20).?` inside `direct` over `Async` binds 20; nothing runs
       before the program does (the Future's own eagerness aside).
-- [ ] A failed Future fails the program with the same throwable.
-- [ ] A ZIO `Task` is marked with `.?` and `.reflect` inside a block over
+- [x] A failed Future fails the program with the same throwable.
+- [x] A ZIO `Task` is marked with `.?` and `.reflect` inside a block over
       `Async`; a ZIO with a typed error inside a block over
       `Throws % E + Async` raises `E`; a ZIO with an environment inside a
       block over `ZioRow[R, E]` reads it from the Reader.
-- [ ] A cats `IO` is marked with `.?`, `.reflect` and `!io`.
-- [ ] A foreign value whose `G` is not in the block's row is refused at
+- [x] A cats `IO` is marked with `.?`, `.reflect` and `!io`.
+- [x] A foreign value whose `G` is not in the block's row is refused at
       compile time, naming the row.
-- [ ] Without the given (no `import okay.zio.given`), the old refusal
+- [x] Without the given (no `import okay.zio.given`), the old refusal
       stands.
 
 ## Decisions
@@ -77,3 +78,20 @@ refused naming both.
 - ZIO has three instances, most specific first: without an environment
   and with a Throwable error it is a plain `Async` operation; without an
   environment it adds `Throws % E`; otherwise the whole `ZioRow[R, E]`.
+- `G` is a type MEMBER, not a parameter. The first cut had
+  `ForeignEffect[M[_], G[+_]]` and the macro searched
+  `ForeignEffect[M, ?]` with an empty-bounds wildcard for `G`: the search
+  found nothing, even for `Future` with its given in the companion (the
+  three Future tests stayed red with the old refusal). With `G` a member
+  the search is `ForeignEffect[M]`, and `lift`'s `A ! found.G` dealiases
+  through the given's own `type G[+X] = Async[X]`.
+- A ZIO's error type must MATCH the row's `Throws`: `Throws` is invariant
+  in `E`, so a `ZIO[R, Nothing, A]` (as `ZIO.serviceWith` infers) lands on
+  `Throws % Nothing` and does not fit a row at `Throws % String`. Ascribe
+  the ZIO (`ZIO[Greeting, String, String]`), as the test does.
+
+## Results
+
+- okay-direct TestDirectForeign (Future): 5 passed, watched red first
+  (the old refusal on all three marked Futures).
+- okay-zio TestZioForeign: 4 passed; okay-cats TestCatsForeign: 2 passed.

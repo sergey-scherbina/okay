@@ -41,6 +41,15 @@ given [E, F[+_]](using okay.TypeableK[Throws % E])
           case Left(e) => f(e)
         }
 
+/**
+ * A cats `IO` marked inside a `direct` block over an okay program
+ * (specs/direct-foreign-mark.md) — `io.?`, `io.reflect` or `!io` — as one
+ * `Async` operation, [[CatsInterop.fromIO]]; needs an `IORuntime` at the mark.
+ */
+given ioForeign(using rt: IORuntime): okay.ForeignEffect[IO] with
+  type G[+X] = Async[X]
+  def lift[A](m: IO[A]): A ! Async = CatsInterop.fromIO(m)
+
 object CatsInterop {
 
   /**
