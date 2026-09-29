@@ -1,5 +1,0 @@
-task: zio-direct-cancel
-agent: claude session_01EpHeM4HTPNHdPJjvCNaWHg
-branch: feature/zio-direct-cancel
-started: 2026-09-29
-scope: Monad for ZIO (direct[Task]), fromZIO through Async.await with interrupt, .zio/.okay extensions
