@@ -50,7 +50,9 @@ class TestCont extends munit.FunSuite {
     val s = Cont.shiftLeaf[Int, Int, Int](k => k(0))
     def succ(x: Int): Int /> Int = Cont.Pure(x + 1)
     def isOp(c: Any) = c match { case Free.Inject(_) => true; case _ => false }
-    def isBind(c: Any) = c match { case Free.Bind(_, _) => true; case _ => false }
+    // the enum's own pattern, not `Free.Bind`: that one claims the effect
+    // tree's `Unit` indexes, which `Any` (and a Cont) cannot answer for
+    def isBind(c: Any) = c match { case Freer.Bind(_, _) => true; case _ => false }
 
     assert(isOp(s), "a bare shift is a leaf")
     assert(isOp(s.flatMap(succ)), "the first bind is absorbed into the leaf")
@@ -78,7 +80,7 @@ class TestCont extends munit.FunSuite {
 
     assert(isOp(leaf(1)) && isOp(leaf(2)), "each leaf absorbed its own bind")
     val joined = leaf(1).flatMap(x => leaf(2).map(_ + x))
-    assert(joined match { case Free.Bind(a, _) => isOp(a); case _ => false },
+    assert(joined match { case Freer.Bind(a, _) => isOp(a); case _ => false },
            "joining is a node over the still-absorbed left leaf")
     assertEquals(reset(joined), 6)
   }

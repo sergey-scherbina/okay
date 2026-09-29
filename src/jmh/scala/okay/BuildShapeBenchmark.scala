@@ -113,8 +113,8 @@ class BuildShapeBenchmark {
   private def unwrap(i: Int, acc: Int): Int ! SW =
     if i >= N then pure(acc)
     else op(i, acc) match
-      case b: Free.Bind[SW, x, Int] @unchecked => b.f match
-        case k: Free.Mapped[SW, x, Int] @unchecked => Free.Bind(b.a, (y: x) => unwrap(i + 1, k.f(y)))
+      case b: Freer.Bind[Freer.Lift[SW], Unit, Unit, Unit, x, Int] @unchecked => b.f match
+        case k: Freer.Mapped[Freer.Lift[SW], Unit, x, Int] @unchecked => Free.Bind(b.a, (y: x) => unwrap(i + 1, k.f(y)))
         case _ => Free.Bind(op(i, acc), (y: Int) => unwrap(i + 1, y))
       case m => Free.Bind(m, (y: Int) => unwrap(i + 1, y))
 

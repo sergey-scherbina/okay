@@ -24,7 +24,7 @@ final class OkayResultHandler(delegate: ResponseBodyResultHandler) extends Handl
   override def getOrder: Int = delegate.getOrder - 1
 
   override def supports(result: HandlerResult): Boolean =
-    classOf[Free[?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
+    classOf[Freer[?, ?, ?, ?]].isAssignableFrom(result.getReturnTypeSource.getParameterType) && delegate.supports(result)
 
   override def handleResult(exchange: ServerWebExchange, result: HandlerResult): Mono[Void] =
     val elem = ResolvableType.forMethodParameter(result.getReturnTypeSource).getGeneric(1).resolve(classOf[AnyRef])

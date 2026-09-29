@@ -122,9 +122,9 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     Symbol.requiredModule("okay.Free.Return").methodMember("apply").head
   lazy val bindApply: Symbol =
     Symbol.requiredModule("okay.Free.Bind").methodMember("apply").head
-  /** `map`'s continuation (one-bind-hot-steps): `new Free.Mapped(f)` runs
+  /** `map`'s continuation (one-bind-hot-steps): `new Freer.Mapped(f)` runs
    * as `a => Free.Return(f(a))`, and the stager reads it as that */
-  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.Free.Mapped")
+  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.Freer.Mapped")
 
   /**
    * THE INLINER'S PROXIES, SUBSTITUTED. An inline method's by-value

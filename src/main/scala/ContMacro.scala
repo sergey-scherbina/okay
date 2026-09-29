@@ -249,14 +249,25 @@ object ContMacro:
         })
       catch case Opaque => None
 
+    // A TAIL BODY'S TYPES SAY `S <: R` — `k(v): S` was the body's `R` —
+    // and `tailShift`/`tailPure` need that said as evidence, because the
+    // value they emit is a `Cont[A, S, S]` on a base covariant in `R`
+    // (freer-base-step-extractor). Searched HERE, at the call site, where
+    // `S` and `R` are the user's concrete types; the macro's own `S` and
+    // `R` are abstract and could not carry a bound. Not found — an
+    // answer-type-modifying shift whose body happens to be tail-shaped —
+    // the body stays a leaf, which is always right.
+    lazy val tailEvidence: Option[Expr[S <:< R]] = Expr.summon[S <:< R]
+
     f.asTerm.underlyingArgument match
       case Lambda(List(p), body) =>
         given Symbol = p.symbol
         rewrite(body) match
-          case Some(v) if eager(v) =>
-            '{ Cont.tailPure[A, S, R](${ v.asExprOf[A] }) }
-          case Some(v) =>
-            '{ Cont.tailShift[A, S, R](() => ${ v.changeOwner(Symbol.spliceOwner).asExprOf[A] }) }
+          case Some(v) if eager(v) && tailEvidence.isDefined =>
+            '{ Cont.tailPure[A, S, R](${ v.asExprOf[A] })(using ${ tailEvidence.get }) }
+          case Some(v) if tailEvidence.isDefined =>
+            '{ Cont.tailShift[A, S, R](() => ${ v.changeOwner(Symbol.spliceOwner).asExprOf[A] })(using ${ tailEvidence.get }) }
+          case Some(_) => fallback
           case None if !mentions(p.symbol, body) => fallback
           case None => cpsBody(body) match
             case Some(b) => '{ Cont.cps[A, S, R]($b) }
