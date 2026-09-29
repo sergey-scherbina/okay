@@ -75,6 +75,10 @@ class TestInProcess extends okay.testkit.Munit.Diagnosed:
     assertEquals(read("app://t-scheme/page")._1, "<p>page</p>")
     assertEquals(pages.get, before + 1, "the going-on page is answered from what the redirect already got")
     assertEquals(read("app://t-scheme/report.csv"), ("a,b\n1,2\n", "text/csv"))
+    // ELSEWHERE (okay-watch's Go Pro): a page that asks the window for the system browser and steps back
+    val (away, awayType) = read("app://t-scheme/away")
+    assert(awayType.startsWith("text/html"), awayType)
+    assert(away.contains("window.okayApp.external('https://example.org/x')") && away.contains("history.back()"), away)
     assert(read("app://nobody-here/page")._1.contains("Nothing here answers nobody-here"))
   }
 

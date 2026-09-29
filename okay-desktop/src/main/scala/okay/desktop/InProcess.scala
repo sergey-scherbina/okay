@@ -151,6 +151,20 @@ object InProcess:
     s"""<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=$u">""" +
       s"""<script>location.replace('$js')</script></head><body></body></html>"""
 
+  /** A REDIRECT ELSEWHERE — a checkout on the maker's site, a page on the
+   * web — is not a page of ours: the embedded engine does not follow a
+   * 303 through a URLConnection, and nothing would happen (okay-watch's
+   * BUGS go-pro-does-nothing-in-window, 2026-09-29). So it is answered as
+   * a page that asks the window to open the URL in the system browser
+   * (`okayApp.external`) and steps back to the page it came from — never
+   * a navigation the window would have to catch and undo. The bridge is
+   * set on the page once it has loaded, so the page waits for it. */
+  def goOutside(url: String): String =
+    val js = url.replace("\\", "\\\\").replace("'", "\\'")
+    s"""<!doctype html><html><head><meta charset="utf-8"><script>(function t(){""" +
+      s"""if(window.okayApp&&window.okayApp.external){window.okayApp.external('$js');history.back();}""" +
+      s"""else setTimeout(t,50);})()</script></head><body></body></html>"""
+
   private final class Conn(u: URL) extends URLConnection(u):
     private lazy val answer: Answer =
       val url = u.toString
@@ -159,7 +173,11 @@ object InProcess:
           s"<!doctype html><p>Nothing here answers ${u.getHost}.</p>".getBytes(UTF_8), url)
         case Some(s) =>
           val a = s.take(url).getOrElse(s.send("GET", url))
-          if s.target(a.url) == s.target(url) || !a.url.startsWith(s.base) then a
+          if s.target(a.url) == s.target(url) then a
+          else if !a.url.startsWith(s.base) then
+            if Set(301, 302, 303, 307, 308)(a.status) then
+              Answer(200, Seq("content-type" -> "text/html; charset=utf-8"), goOutside(a.url).getBytes(UTF_8), url)
+            else a
           else
             // a redirect: its answer held for the page it went to, and a page that goes there
             s.hold(a.url, a)
