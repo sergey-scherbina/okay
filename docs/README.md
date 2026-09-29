@@ -12,6 +12,15 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Tutorial](tutorial.md)** — the same layers by use, twenty-five
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
+- **The effects, one page each** — what each is for, its operations and
+  handlers, and a compiled example: [Reader](effects/reader.md),
+  [State](effects/state.md), [Writer](effects/writer.md),
+  [Throws and Abort](effects/throws.md), [Maybe](effects/maybe.md),
+  [Chronicle](effects/chronicle.md), [Resource](effects/resource.md),
+  [Async](effects/async.md), [Supply and Fresh](effects/supply.md),
+  [Once](effects/once.md), [Choice and Logic](effects/choice.md),
+  [Gen](effects/gen.md), [Prob](effects/prob.md), and Delim in
+  [the continuations book](continuations/10-prompts.md).
 - **[Your own effect](your-own-effect.md)** — one worked effect from
   the enum to four interpretations of the same program: `derives
   Effect` and what it writes, constructors or `perform`, rows

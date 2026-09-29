@@ -139,14 +139,14 @@ index above lists them all with one-line summaries.
 
 ## Effects
 
-From the everyday to the rare; the last two are about effects in general.
+From the everyday to the rare; each name links to its own page, with examples. The last two are about effects in general.
 
-- `Reader` — the environment, handled at relay speed (Reader.scala).
-- `State` — get/set with a bespoke tail-recursive handler; `PState` —
+- [`Reader`](docs/effects/reader.md) — the environment, handled at relay speed (Reader.scala).
+- [`State`](docs/effects/state.md) — get/set with a bespoke tail-recursive handler; `PState` —
   type-changing (typestate) state on the paramonad (State.scala). A
   row holds ONE `State % S`, since `Get()` carries no runtime trace of
   S.
-- `Writer` — telling IS streaming: a one-constructor GADT
+- [`Writer`](docs/effects/writer.md) — telling IS streaming: a one-constructor GADT
   (`Say(w): Writer[W, Unit]` — a tell answers NOTHING, and matching
   the constructor recovers that, so nothing casts), the element type
   separate from the answer (`A ! Writer % W` computes A telling W);
@@ -154,13 +154,19 @@ From the everyday to the rare; the last two are about effects in general.
   `Writer.of` turns any stream back into the program shape, `Writer.map`
   re-tells at another type (Writer.scala; the five encodings tried
   before this one: docs/existentials.md).
-- `Throws` — typed errors: abort, runEither, the `throws` union; and
+- [`Throws`](docs/effects/throws.md) — typed errors: abort, runEither, the `throws` union; and
   `Abort` (= `Throws % Unit`), failure with nothing to say, handled by
   `runOption` (Throws.scala).
-- `Resource` — the region: acquires release at the end of the scope in
+- [`Maybe`](docs/effects/maybe.md) — a value that may not be there:
+  `option.maybe` answers it or stops, `Maybe.run` gives the `Option` back.
+  Unlike `Abort` it shares a row with `Throws` (Maybe.scala).
+- [`Chronicle`](docs/effects/chronicle.md) — errors that accumulate while
+  the program goes on: `dictate` records, `halt` stops, and the handler
+  answers `Clean`, `Warned` or `Failed` (Chronicle.scala).
+- [`Resource`](docs/effects/resource.md) — the region: acquires release at the end of the scope in
   reverse order, surviving handled aborts and mid-step exceptions;
   `bracket` over any Handler-able row (Resource.scala).
-- `Async` — cross-platform: `Run` (a possibly blocking thunk —
+- [`Async`](docs/effects/async.md) — cross-platform: `Run` (a possibly blocking thunk —
   blocking is a JVM/Native ability that parks a virtual thread) and
   `Await` (the universal callback form: an error channel in, a
   canceller out). Blocking is `CanBlock` evidence — absent on JS,
@@ -173,11 +179,21 @@ From the everyday to the rare; the last two are about effects in general.
   on JS; one OS thread per fiber on Native
   ([schedulers](docs/schedulers.md); Async.scala + Platform.scala per
   platform).
-- `Choice` — nondeterminism with a genuinely multi-shot handler; the
+- [`Supply` and `Fresh`](docs/effects/supply.md) — fresh values, one per
+  draw: ids and names, with no `set` to rewind them (Supply.scala).
+- [`Once`](docs/effects/once.md) — call-by-need for programs: a shared
+  sub-program runs at most once, its answer memoised in the handler
+  (Once.scala).
+- [`Choice`](docs/effects/choice.md) — nondeterminism with a genuinely multi-shot handler; the
   canonical MonadPlus (Choice.scala). `Logic` — fair backtracking
   search on top of it: interleave, once, ifte (Logic.scala,
   specs/backtracking.md).
-- `Delim` — delimited control as an effect, multi-prompt in the shape
+- [`Gen`](docs/effects/gen.md) — generators, Python's `yield`: a
+  `Writer` that can stop early, read only as far as asked (Gen.scala).
+- [`Prob`](docs/effects/prob.md) — probabilistic programming: weighted
+  choice, `observe`, and exact inference as a multi-shot handler
+  (Prob.scala).
+- [`Delim`](docs/continuations/10-prompts.md) — delimited control as an effect, multi-prompt in the shape
   of Dybvig, Peyton Jones and Sabry (2007): a `Prompt` is a first-class
   tag carrying its delimiter's answer type, `push` installs one and
   `shift` captures up to a NAMED prompt, not the nearest. shift, control,
@@ -185,7 +201,7 @@ From the everyday to the rare; the last two are about effects in general.
   shift/reset as an operation in a row, so it composes with the other
   effects, and one machine owns the prompt stack (Delim.scala,
   [continuations book](docs/continuations/index.md)).
-- **Several instances of one effect** — `Tag.Of["small", State % Int]`
+- **[Several instances of one effect](docs/many-instances.md)** — `Tag.Of["small", State % Int]`
   names them in the row, for ANY signature; `tag` puts a finished
   program's operations under a key (so a function written against a
   plain `State % Int` runs twice at two states), and `untag` hands the
@@ -193,7 +209,7 @@ From the everyday to the rare; the last two are about effects in general.
   instances are made rather than named, `Refs` keeps a heap: cells
   created at run time, one row member however many, one stated cast
   (Refs.scala).
-- **Your own effect** ([the tutorial](docs/your-own-effect.md)), in
+- **[Your own effect](docs/your-own-effect.md)**, in
   three lines: `enum Users[+A] derives Effect`
   and the cases carry their answer types. `derives Effect` writes the
   row-split test and registers the signature for direct style;
