@@ -1,1 +1,0 @@
-claude session_01YRJ5EcKY1FwNaufrBB3ArS, 2026-09-29, operator ask ("чтобы в рулах не нужно было писать регулярные выражения а вместо них были просто ключевые слова"): Rule.keywords for okay-dlm intents + "keywords" in intents JSON (sprint.d/doing/dlm-rule-keywords.md)
