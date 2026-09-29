@@ -52,7 +52,7 @@ object Window:
       engine.setUserAgent(s"${engine.getUserAgent} ${app.name}-app")
       val here = WindowState.read(state)
       s.setTitle(app.name)
-      scala.util.Try(app.icon().foreach(in => try s.getIcons.add(javafx.scene.image.Image(in)) finally in.close()))
+      val _ = scala.util.Try(app.icon().foreach(in => try s.getIcons.add(javafx.scene.image.Image(in)) finally in.close()))
       bridge = Bridge(app, s, http)
       bridge.engine = Some(engine)
 
@@ -75,7 +75,7 @@ object Window:
       // SAVING IS A SAVE DIALOG: every `a[download]`, and what the app names
       engine.getLoadWorker.stateProperty.addListener { (_, _, st) =>
         if st == Worker.State.SUCCEEDED then
-          scala.util.Try {
+          val _ = scala.util.Try {
             engine.executeScript("window").asInstanceOf[netscape.javascript.JSObject].setMember("okayApp", bridge)
             engine.executeScript(App.script(app))
           }
@@ -110,7 +110,7 @@ object Window:
     off.getLoadWorker.stateProperty.addListener { (_, _, st) =>
       if st == Worker.State.SUCCEEDED then
         val job = javafx.print.PrinterJob.createPrinterJob()
-        if job != null && job.showPrintDialog(owner) then { off.print(job); job.endJob() }
+        if job != null && job.showPrintDialog(owner) then { off.print(job); val _ = job.endJob() }
       else if st == Worker.State.FAILED then
         note(owner, "It could not be printed", "The page to print did not open.")
     }
@@ -143,7 +143,7 @@ object Window:
         case Some(u) => bridge.save(u)
         case None => note(s, orSay._1, orSay._2)
       case App.Act.Post(path, next) =>
-        scala.util.Try(http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(app.base + path))
+        val _ = scala.util.Try(http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(app.base + path))
           .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(), java.net.http.HttpResponse.BodyHandlers.discarding()))
         go(next)
       case App.Act.Pick(p) => bridge.pick(p)
@@ -163,7 +163,7 @@ object Window:
       case Some(url) => printPage(s, url)
       case None =>
         val job = javafx.print.PrinterJob.createPrinterJob()
-        if job != null && job.showPrintDialog(s) then { engine.print(job); job.endJob() }
+        if job != null && job.showPrintDialog(s) then { engine.print(job); val _ = job.endJob() }
     val file = menu("File", entries(own.getOrElse("File", Vector.empty)) ++
       (if own.contains("File") then Vector(SeparatorMenuItem()) else Vector.empty) ++ Vector(
       item("Print…", "Shortcut+P", print()),
@@ -358,12 +358,12 @@ object Window:
         pause.setOnFinished { _ =>
           shot(s, dir.resolve(f"$n%02d.png"))
           steps.lift(n) match
-            case Some("submit") => scala.util.Try(engine.executeScript("document.forms[0].submit()"))
+            case Some("submit") => val _ = scala.util.Try(engine.executeScript("document.forms[0].submit()"))
             case Some("quit") =>
               javafx.application.Platform.exit()
               System.exit(0)
             case Some(p) if p.startsWith("pick:") =>
-              scala.util.Try(engine.executeScript("document.querySelector('select').dispatchEvent(" +
+              val _ = scala.util.Try(engine.executeScript("document.querySelector('select').dispatchEvent(" +
                 "new MouseEvent('mousedown',{bubbles:true,cancelable:true}))"))
               val after = javafx.animation.PauseTransition(javafx.util.Duration.millis(500))
               after.setOnFinished { _ =>
