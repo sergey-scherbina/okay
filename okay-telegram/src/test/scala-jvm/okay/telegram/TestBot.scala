@@ -88,6 +88,24 @@ class TestBot extends munit.FunSuite:
     assertEquals(slept.toList, List(2000L, 3000L, 2000L))
   }
 
+  test("A FATAL REFUSAL BACKS OFF, doubling to a cap, and a good poll resets it — found by running a real server") {
+    var rounds = 0
+    val api = FakeApi { case "getUpdates" =>
+      rounds += 1
+      // five bad-token rounds, one good one, then bad again
+      if rounds <= 5 || rounds == 7 then """{"ok":false,"error_code":401,"description":"Unauthorized"}"""
+      else FakeApi.ok("[]")
+    }
+    val slept = scala.collection.mutable.ListBuffer.empty[Long]
+    given Timer = new Timer:
+      def after(ms: Long)(k: () => Unit) = { slept += ms; k(); () => () }
+    run(Bot(api, token).serve(_ => pure(()), retryMs = 2000, fatalCapMs = 10_000, stop = () => rounds >= 7))
+    // 2s, 4s, 8s, then the cap of 10s — not two seconds forever
+    assertEquals(slept.take(5).toList, List(2000L, 4000L, 8000L, 10_000L, 10_000L))
+    // the good sixth poll reset it: the next fatal starts over at 2s
+    assertEquals(slept.last, 2000L)
+  }
+
   test("serve keeps the offset across a refused round and stops when told") {
     var rounds = 0
     val api = FakeApi { case "getUpdates" =>

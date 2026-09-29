@@ -34,6 +34,15 @@ class TestChrome extends munit.FunSuite {
     assert(!none.contains("<meta name=\"okay-refresh\"") && !none.contains("http-equiv"), "no refresh at 0")
   }
 
+  test("Enhance sends through an app's bridge when there is one, by fetch otherwise, and navigates rather than pushState in the app") {
+    val js = Enhance.script
+    assertEquals(okay.js.Js.raws(Enhance.program), 0, "still typed, no escape hatch")
+    for hook <- Vector("window.okayApp", ".send(", "new Promise", "JSON.parse", ".open(", "fetch(", "pushState") do
+      assert(js.contains(hook), hook)
+    assert(js.indexOf("window.okayApp.open(") > 0 && js.indexOf("window.okayApp.open(") < js.indexOf("pushState") ||
+      js.indexOf("pushState") < js.indexOf("window.okayApp.open("), "both roads are in the program")
+  }
+
   test("every class the app's face styles is one the frame, the ways or the tree's own sheet write") {
     val styled = """\.okay-[a-z-]+""".r.findAllIn(Chrome.css).map(_.drop(1)).toSet
     val written = (Shell.html(shell, "/", "") + Enhance.script + Enhance.css + Shell.css + Html.css).linesIterator

@@ -2586,6 +2586,9 @@ lazy val fxClassifier: String = {
 
 lazy val okayDesktop = project
   .in(file("okay-desktop"))
+  // okay-http: the service's routes, served IN THE PROCESS to the window
+  // (specs/app-in-process.md); okay-test: the suites' Diagnosed
+  .dependsOn(okayHttp.jvm, okayTest.jvm % "test->compile")
   .settings(
     name := "okay-desktop",
     // the launch runs the service on a platform thread and the window's

@@ -45,6 +45,12 @@ class TestDesktop extends munit.FunSuite:
     assert(plain.startsWith("(function(){if(window.__okayApp)return;"), "idempotent on a page that has it")
   }
 
+  test("on the app's own pages every POST form goes through the bridge; a form Enhance took is left to it") {
+    val s = App.script(App("x", "app://x", "/"))
+    assert(s.contains("location.protocol!=='app:'") && s.contains("e.defaultPrevented"), s)
+    assert(s.contains("window.okayApp.send('POST',f.action") && s.contains("window.okayApp.open(r.url)"), s)
+  }
+
   test("a quote in a pick's link is escaped in the script") {
     val s = App.script(App("x", "http://127.0.0.1:1", "/", picks = Vector(App.Pick("/it's", "t", "a" -> "*", "/p", "f" -> "g"))))
     assert(s.contains("a.pathname==='/it\\'s'"), s)

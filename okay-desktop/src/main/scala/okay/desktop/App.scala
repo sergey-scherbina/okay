@@ -12,7 +12,9 @@ import java.io.InputStream
  * through a Save dialog, and whether quitting should ask.
  *
  * @param name     the window's title, the user agent's suffix, About
- * @param base     this computer's service, `http://127.0.0.1:8099`
+ * @param base     where the service's pages are — filled in by the launch:
+ *                 `app://<host>` in the window (no port), `http://127.0.0.1:<port>`
+ *                 on the browser road
  * @param start    the first page, `/ui/trace`
  * @param version  `Version 1.0.412 (abc1234)` — a line under the name
  * @param icon     the icon, as a stream when there is one (a resource)
@@ -24,7 +26,8 @@ import java.io.InputStream
  *                 are saved through a dialog, as every `a[download]` is
  * @param printing the page to print APART from the one shown, from the
  *                 shown page's location — a report rather than the page
- *                 around it; `None` prints the page
+ *                 around it; `None` prints the page. A path (`/…`) is the
+ *                 service's, wherever it is reached (so is a `Save`'s)
  * @param busy     a path that answers `0` when nothing is running; any
  *                 other answer makes closing ask `quit` first
  * @param quit     the question, and its second line
@@ -86,8 +89,13 @@ object App:
   /** THE BRIDGE the window installs on every page: clicks on
    * `a[download]` and on links whose path matches `saves` go to a Save
    * dialog; a form sent by a button `as=csv` (or `__press=csv`) too; a
-   * pick's link opens its dialog. `window.okayApp` is the window's
-   * `Bridge`. Idempotent: a page that already has it keeps it. */
+   * pick's link opens its dialog; and on the app's own pages
+   * (`app://`, specs/app-in-process.md) EVERY form the page would POST
+   * — the embedded engine will not POST to a scheme of ours — goes
+   * through `okayApp.send`, then `okayApp.open` of where it landed. A form
+   * `Enhance` already took (it prevents the default) is left to it.
+   * `window.okayApp` is the window's `Bridge`. Idempotent: a page that
+   * already has it keeps it. */
   def script(app: App): String =
     val picks = app.picks.zipWithIndex.map { (p, i) =>
       s" if(a&&a.pathname==='${js(p.link)}'){e.preventDefault();window.okayApp.pick($i);return;}\n"
@@ -99,7 +107,12 @@ object App:
       " e.preventDefault();window.okayApp.save(a.href);},true);\n" +
       "document.addEventListener('submit',function(e){var b=e.submitter;if(!b||b.value!=='csv'||(b.name!=='as'&&b.name!=='__press'))return;\n" +
       " e.preventDefault();var d=new URLSearchParams(new FormData(e.target));d.set(b.name,'csv');\n" +
-      " window.okayApp.savePost(e.target.action,d.toString());},true);})();"
+      " window.okayApp.savePost(e.target.action,d.toString());},true);\n" +
+      "document.addEventListener('submit',function(e){\n" +
+      s" if(e.defaultPrevented||location.protocol!=='${InProcess.Scheme}:'||!window.okayApp||!window.okayApp.send)return;\n" +
+      " var f=e.target;if((f.getAttribute('method')||'get').toLowerCase()!=='post')return;\n" +
+      " e.preventDefault();var d=new URLSearchParams(new FormData(f));var b=e.submitter;if(b&&b.name)d.set(b.name,b.value);\n" +
+      " window.okayApp.send('POST',f.action,d.toString(),function(j){var r=JSON.parse(j);window.okayApp.open(r.url);});},false);})();"
 
   /** a string inside a single-quoted JavaScript literal */
   private def js(s: String): String =

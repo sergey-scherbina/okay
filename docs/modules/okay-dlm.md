@@ -114,7 +114,9 @@ beside the old, both named by one hash: the hash of the table as a
 boot will read it back, F16 rounding included. That is the string an
 `Explanation` names, the string a `Ledger.Entry.Rebuilt` carries
 before and after, and the name of the file on the shelf. A rebuild
-that changed nothing hashes the same and records nothing.
+that changed nothing hashes the same and records nothing — on the same
+platform: the same int8 encoder on another CPU gives other numbers,
+so a table is best compiled where it will be served.
 
 A revert is a rebuild from the shelf: its entry's corpus is
 `shelf:<hash>`, so it is audited and reverted like any build. Tables
