@@ -11,4 +11,6 @@
       commit before cda0a94 against it) for the hooks' own price. DONE WHEN
       specs/schedulers.md "The flip" carries the rows, or names the lane
       that moved. PRIORITY: MEDIUM — the default's speed claim rests on a
-      table this code has not been measured under. (2026-09-28)
+      table this code has not been measured under. (2026-09-28) ADD the
+      chunked merge: it has no lane in the re-run table and pays the flip
+      1.5-1.9x (backlog adaptive-chunked-merge-cost, 2026-09-29).

@@ -56,6 +56,13 @@ already holds.
 - The scheme's handler answers a GET from the server; a redirect it
   answers with a page that goes on (`<meta http-equiv=refresh>` and
   `location.replace`), so the document's URL is always the page's own.
+- A redirect ELSEWHERE (not `app://<host>`) is not a page of ours and the
+  embedded engine would not follow it through a URLConnection — nothing
+  happened when okay-watch's *Go Pro* sent the page to the registry's
+  checkout (2026-09-29). It is answered as a page that asks the window
+  to open the URL in the system browser (`okayApp.external`) and steps
+  back (`history.back()`) to the page it came from; the page waits for
+  the bridge, which is set once the page has loaded.
 - **The held answer**: `Server.hold(url, answer)` — the next GET of
   exactly that URL is answered with it, once. That is how a POST whose
   answer is another page becomes a navigation without asking twice.

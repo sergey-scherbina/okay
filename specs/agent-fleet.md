@@ -90,6 +90,84 @@ Finished(id, text, report, at)
 
 `Status` is the fold of those; `restore()` folds the topic on start.
 
+## Events
+
+What a screen folds instead of asking (nadia `BACKLOG.md` NAD-14, NAD-19):
+
+```scala
+object Fleet:
+  enum Event:
+    case Spawned(id: AgentId, spec: Spec, at: Long)
+    case Phased(id: AgentId, phase: Phase, at: Long)
+    case Stepped(id: AgentId, step: Int, tool: String, at: Long)
+    case Turned(id: AgentId, turn: Turn)
+    case Finished(id: AgentId, phase: Phase, text: String, report: Option[Json], at: Long)
+  /** THE decoder of a record; restore folds through it */
+  def event(j: Json): Option[Event]
+  /** the log followed as events, from an offset, in any process that can read the topic */
+  def events(topic: Topic, from: Long = 0, pollMillis: Long = 25)(using Timer): Source[Event]
+final class Fleet:
+  /** every record from now on, as it is written; a listener that falls
+   * `capacity` behind is dropped, never the fleet held */
+  def events(capacity: Int = 1024): Source[Event]
+```
+
+- [x] an in-process listener sees `Spawned`, `Turned`, `Stepped`, `Finished` in the order written
+- [x] `Fleet.events(topic)` tails the log from the start and from an offset; a fleet folded from
+      the same topic agrees with what the feed said
+- [x] `event` decodes every kind; an unknown kind or a non-record is `None`, never a throw
+
+## Commands
+
+The control plane as data (nadia `BACKLOG.md` NAD-14, NAD-20): a screen in
+another process appends to a `commands` topic through a `RemoteStore`, the
+service folds it.
+
+```scala
+object Fleet:
+  enum Command:
+    case Spawn(spec: Spec, by: String)
+    case Send(id: AgentId, control: Control, by: String)
+    def principal: String
+  def commandJson(c: Command): Json
+  def command(j: Json): Option[Command]            // total
+  enum Event: … case Refused(seq: Long, by: String, why: String, at: Long)   // on the agents record
+final class Fleet:
+  def spawn(spec: Spec, by: Option[String] = None): AgentId ! Async   // Spawned carries `by`
+  /** follow the commands topic; apply after `allow(by, command)`, else Refused(seq = the offset) */
+  def commands(topic: Topic, allow: (String, Command) => Either[String, Unit],
+               from: Long = 0, pollMillis: Long = 25, applied: Long => Unit = _ => ())(using Timer): Unit ! Async
+```
+
+- [x] command JSON round-trips for every kind; what is not a command is `None`
+- [x] an allowed spawn runs and its `Spawned` carries `by`; a denied command, a command to no
+      live agent, and a non-command each put a `Refused(seq, by, why)` on the record, in order;
+      `applied` hears every offset; a fresh fold of the record is not confused by refusals
+
+## Approvals
+
+The REPL's `y / n / a` (nadia `SPEC.md` §3.3) answered from any host (NAD-21):
+
+```scala
+final case class Ask(seq: Long, tool: String, args: Json)
+enum Control: … case Approve(seq: Long, yes: Boolean)
+enum Event: … case Asked(id, ask: Ask, at) · case Answered(id, seq, yes, at)
+final case class Status(…, asking: Option[Ask] = None)
+final class Ctx:
+  /** on the record at once; parked until Approve(step, yes) — false on a stop or a kill */
+  def ask(step: Int, call: ToolCall): Boolean ! Async
+```
+
+The policy — which calls to ask about, and whether "always" was said — is the
+runner's; a runner that never asks is auto-approve. The `approve` command is
+`Send(id, Approve(seq, yes), by)`.
+
+- [x] an ask goes on the record and parks the runner; `Approve` with the wrong seq changes
+      nothing; the right one lets it through and is recorded
+- [x] a no is a no; a stop while asking answers no, and the runner is not left parked
+- [x] the approve command reaches the ask through the commands topic; a fleet restored over
+      an unanswered ask shows it `Interrupted`, the ask still visible
+
 ## Behavior
 
 - [x] `spawn` returns at once with an id; `status(id)` is `Running` with step 0
@@ -190,3 +268,24 @@ written:
 Records are plain JSON keyed by id (`spawned`, `phased`, `stepped`, `turned`,
 `finished`); a `Turn` has its own small codec here, since `Turn` derives no
 `Schema` and carries a raw `Json`.
+
+**Events (lane `fleet-events`, 2026-09-29):** the record became a typed `Event`
+with ONE decoder, `Fleet.event`, which `restore` now folds through as well —
+so a feed and a restart cannot read the same bytes two ways. `Fleet.events(topic)`
+is `Streams.tail` mapped through it; in-process `fleet.events()` is a channel per
+listener, offered under the fleet's lock (never parked: a slow screen loses
+events, the fleet loses nothing). `TestFleetEvents`, 3 tests.
+
+**Commands (lane `fleet-commands`, 2026-09-29):** the control plane is a
+topic, so any process that can append to the store can drive the fleet, and
+the fleet's answer to a command it would not apply is a record on the feed the
+sender already watches. The principal is a string the SERVICE checks (`allow`
+over `okay.security.Roster`); the fleet trusts its caller, as before. A
+command's `seq` is its offset: nothing to allocate, and the sender knows it
+before the service does. `TestFleetCommands`, 2 tests.
+
+**Approvals (lane `fleet-approvals`, 2026-09-29):** an ask is a record and a
+parked channel; the answer is a control message like any other, so it comes
+from the console, a chat or a browser alike. A stop or a kill declines an open
+ask rather than leaving the runner parked forever — the case the first cut
+missed until the test asked. `TestFleetApprovals`, 3 tests.

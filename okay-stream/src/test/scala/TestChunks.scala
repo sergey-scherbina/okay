@@ -58,6 +58,12 @@ class TestChunks extends munit.FunSuite {
       List((0, 0L), (1, 1L), (2, 1L), (3, 2L), (4, 3L), (5, 5L)))
   }
 
+  test("zip as an extension reads like the rest of the chunk API (source-zip)") {
+    assertEquals(
+      (Chunks.range(0, 10, 3) zip Chunks.range(100, 110, 4)).elements.toList,
+      Chunks.zip(Chunks.range(0, 10, 3), Chunks.range(100, 110, 4)).elements.toList)
+  }
+
   test("rechunk preserves content and normalizes sizes, tail shorter") {
     val r = Chunks.rechunk(Chunks.range(0, 20, 3))(8)
     assertEquals(r.toLazyList.map(_.length).toList, List(8, 8, 4))

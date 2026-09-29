@@ -289,6 +289,37 @@ object Xml {
     out.result()
   }
 
+  /** the five predefined entities and numeric references decoded; unknown
+   * ones left as written (the Scala 3 twin's `Xml.unescape`) */
+  def unescape(s: String): String =
+    if (s.indexOf('&') < 0) s
+    else {
+      val out = new StringBuilder(s.length)
+      var i = 0
+      while (i < s.length) {
+        val c = s.charAt(i)
+        if (c != '&') { out += c; i += 1 }
+        else {
+          val semi = s.indexOf(';', i)
+          val name = if (semi > i && semi - i <= 10) s.substring(i + 1, semi) else ""
+          val decoded: Option[String] = name match {
+            case "amp" => Some("&"); case "lt" => Some("<"); case "gt" => Some(">")
+            case "quot" => Some("\""); case "apos" => Some("'")
+            case n if n.startsWith("#x") || n.startsWith("#X") =>
+              scala.util.Try(Integer.parseInt(n.drop(2), 16)).toOption.filter(Character.isValidCodePoint).map(Character.toChars(_).mkString)
+            case n if n.startsWith("#") =>
+              scala.util.Try(n.drop(1).toInt).toOption.filter(Character.isValidCodePoint).map(Character.toChars(_).mkString)
+            case _ => None
+          }
+          decoded match {
+            case Some(d) => out ++= d; i = semi + 1
+            case None => out += c; i += 1
+          }
+        }
+      }
+      out.result()
+    }
+
   /** the document as a VALUE (the Scala 3 twin's `Xml.value`): elements
    * as objects, attributes as `@name`, repeats as arrays, text as
    * strings, mixed text under `#text`; comments and the declaration
@@ -311,8 +342,8 @@ object Xml {
         val vs = fs.collect { case (k, v) if k == n => v }
         (n, if (vs.length == 1) vs.head else Json.JArr(vs))
       }
-      val attrs = f.attrs.map { case (k, v) => ("@" + k, Json.JStr(v)) }
-      val txt = f.text.result().trim
+      val attrs = f.attrs.map { case (k, v) => ("@" + k, Json.JStr(unescape(v))) }
+      val txt = unescape(f.text.result().trim)
       if (!f.hasChild && attrs.isEmpty) Json.JStr(txt)
       else if (!f.hasChild) Json.JObj(attrs :+ (("#text", Json.JStr(txt))))
       else if (txt.isEmpty) Json.JObj(attrs ++ folded)
@@ -346,12 +377,82 @@ object Xml {
       } else {
         stack = stack.tail
         if (stack.isEmpty) {
-          result = if (f.hasChild) Json.JObj(f.fields.result()) else Json.JStr(f.text.result().trim)
+          result = if (f.hasChild) Json.JObj(f.fields.result()) else Json.JStr(unescape(f.text.result().trim))
           done = true
         } else stack.head.fields += ((f.name, finish(f)))
       }
     }
     result
+  }
+
+  /** the five characters as entities (`"` in an attribute too) — the Scala 3 twin's `Xml.escape` */
+  def escape(s: String, attribute: Boolean = false): String =
+    if (!s.exists(c => c == '&' || c == '<' || c == '>' || (attribute && c == '"'))) s
+    else {
+      val out = new StringBuilder(s.length + 8)
+      var i = 0
+      while (i < s.length) {
+        s.charAt(i) match {
+          case '&' => out ++= "&amp;"
+          case '<' => out ++= "&lt;"
+          case '>' => out ++= "&gt;"
+          case '"' if attribute => out ++= "&quot;"
+          case c => out += c
+        }
+        i += 1
+      }
+      out.result()
+    }
+
+  /** a value written as a document, the inverse of `value` (the Scala 3
+   * twin's `Xml.fromValue`): fields as elements, `@name` as attributes,
+   * `#text` as text, arrays as repeated elements; an explicit worklist */
+  def fromValue(j: Json): String = {
+    sealed trait Work
+    final case class Lit(s: String) extends Work
+    final case class Elem(name: String, v: Json) extends Work
+    def raw(v: Json): String = v match {
+      case Json.JStr(s) => s
+      case Json.JNull => ""
+      case Json.JErr(m) => m
+      case other => Json.print(other)
+    }
+    def leaf(v: Json): String = escape(raw(v))
+    val sb = new StringBuilder
+    var work: List[Work] = j match {
+      case Json.JObj(fs) => fs.toList.map { case (n, v) => Elem(n, v) }
+      case other => Lit(leaf(other)) :: Nil
+    }
+    while (work.nonEmpty) {
+      val here = work.head
+      work = work.tail
+      here match {
+        case Lit(s) => sb ++= s
+        case Elem(name, Json.JArr(vs)) =>
+          work = vs.toList.map(v => Elem(name, v)) ::: work
+        case Elem(name, Json.JObj(fs)) =>
+          sb += '<'; sb ++= name
+          val kids = List.newBuilder[Work]
+          var text = ""
+          fs.foreach { case (k, v) =>
+            if (k.startsWith("@")) {
+              sb += ' '; sb ++= k.drop(1); sb ++= "=\""; sb ++= escape(raw(v), attribute = true); sb += '"'
+            } else if (k == "#text") text = leaf(v)
+            else kids += Elem(k, v)
+          }
+          val inner = kids.result()
+          if (inner.isEmpty && text.isEmpty) sb ++= "/>"
+          else {
+            sb += '>'
+            work = inner ::: Lit(text) :: Lit(s"</$name>") :: work
+          }
+        case Elem(name, v) =>
+          val t = leaf(v)
+          if (t.isEmpty) { sb += '<'; sb ++= name; sb ++= "/>" }
+          else { sb += '<'; sb ++= name; sb += '>'; sb ++= t; sb ++= "</"; sb ++= name; sb += '>' }
+      }
+    }
+    sb.result()
   }
 
   def elements(c: Cst[K], name: String): Vector[Cst[K]] = {

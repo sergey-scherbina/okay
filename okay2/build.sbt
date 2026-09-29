@@ -112,7 +112,7 @@ lazy val jvmSuitesOnly = Test / unmanagedSources / excludeFilter := HiddenFileFi
   "TestChannelLaws.scala" || "TestChannel.scala" || "TestGrowing.scala" || "TestGrowingSeal.scala" ||
   "TestRing.scala" || "TestBulk.scala" || "TestPlan.scala" || "TablesFixtures.scala" ||
   "TestFlush.scala" || "TestFlushDepth.scala" || "TestParallelChunks.scala" || "TestSchedulerLawsChannel.scala" ||
-  "TestSendBehindWaiter.scala"
+  "TestSendBehindWaiter.scala" || "TestSourceZip.scala"
 
 /** the aggregate, and nothing else: its own `src` is the core's shared
  * sources, which the crossProject compiles */

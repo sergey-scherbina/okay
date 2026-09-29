@@ -66,8 +66,12 @@ Two mechanisms implement them:
   the given `Wait` before it registers. Measured on the elementwise
   join 0.73-0.93x of the shared queue at every capacity (64, 256,
   1024) with 12-14% fewer bytes; on the chunked join 1.03x, at parity;
-  on the flushing join 1.12x in one round, an open item
-  (backlog `merge-flush-on-ring-gap`).
+  on the flushing join 1.05x under Loom over five alternating rounds,
+  and 0.88x on the `adaptive` default, where the ring is the faster
+  road (merge-flush-on-ring-gap, 2026-09-29). Those rows were taken
+  under Loom; on the `adaptive` default a chunked merge is 1.5-1.9x
+  slower on both roads, an open item (backlog
+  `adaptive-chunked-merge-cost`).
 - `Merge.Shared` — one queue both producers feed (`Channel.merge`,
   `Channel.mergeChunked`, `Channel.mergeFlushing`). The road before
   the ring, kept as a door by choice. Its consumer never catches up,

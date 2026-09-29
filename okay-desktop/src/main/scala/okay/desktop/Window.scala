@@ -317,6 +317,10 @@ object Window:
     /** a GET, saved where the person says */
     def save(url: String): Unit = fetch("GET", url, Nil, Array.empty)
 
+    /** AN OUTSIDE URL in the system browser — a page that a route sent
+     * elsewhere asks for it (`InProcess.goOutside`); the page stays */
+    def external(url: String): Unit = Desktop.browse(url)
+
     /** a form's POST (a table as CSV), saved where the person says */
     def savePost(url: String, form: String): Unit =
       fetch("POST", url, Seq("content-type" -> "application/x-www-form-urlencoded"), form.getBytes("UTF-8"))

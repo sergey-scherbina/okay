@@ -104,6 +104,65 @@ and `…/fxForward`, each verdict naming the other branch's refusal. The
 patterns are the SHAPE of domain work, not the domain: every further
 product and version is a private module's.
 
+## Writing a document level
+
+What a whole domain built on this looks like — the private repository
+that reads ISDA's FpML and CDM did it in a day and this is its shape,
+recorded here because the shape is the mechanism's, not the domain's:
+
+- **One pattern per document element, named after it.** A product is
+  `traded(element, terms)`: a step that reads the trade's header, hands
+  `terms` the product ELEMENT, and is named `element` — so the verdict's
+  path reads `dataDocument/trade/swap` and every refusal names the
+  element it was about. The terms of an element are their own pattern,
+  REUSED where the element recurs (a swaption's underlying `swap`, a
+  credit option's `creditDefaultSwap`).
+- **The smallest value that says what the document is.** A swap is its
+  legs; a leg is a notional and a rate or an index. Fields are added the
+  day a document in hand needs them, never ahead: `Option` where a
+  document may not say, a refusal in the element's name where it must.
+- **`req` and `opt`.** `req(step, json, what)` turns a step's refusal
+  into "no `what` (its reason)"; `opt` reads an optional part, and
+  `None` is not a refusal. Every product is a `for` over these.
+- **The registry is `Refine.first(a, b, c, …)`.** One more product is
+  one more alternative, in order, nothing existing edited — and the
+  alternatives at one level must be DISJOINT by construction, because
+  every one of them runs. The corpus run below is what shows when they
+  are not: the one `Unclear` that domain ever met was a named basket
+  taken by both a `basket` and an unnamed-`pool` alternative, fixed by
+  making `pool` decline a name.
+- **Events beside instruments.** A message that carries no trade — a
+  termination naming the trade by id — is not a product; it is a
+  second level `<|>`-ed beside the first, disjoint because a
+  termination that carries its trade is the instrument's.
+
+**The corpus method.** Vendor the standard's own published examples,
+verbatim, pinned to a commit, with the licence beside them; write ONE
+test that reads every file through the whole path and prints the table
+— took / declined by document element, and for an element you have a
+pattern for, why it still declined — and asserts `declined == 0` once
+that is true. Then the table is the measure of coverage, every new
+pattern's effect is a number, and a document that stops reading is a
+regression with its reasons in the diagnosis. On 801 FpML documents the
+first run read 123, the same evening 801; two of the refusals on the
+way were defects of okay's XML dialect that no unit test had seen — the
+XML declaration read as an unclosed tag, HTML's void elements applied
+to XML — and both are landed here, because a domain corpus is the
+sharpest test a dialect gets.
+
+**The cross-format law.** When a second format describes the same
+things (CDM's `TradeState` JSON beside FpML's XML), read it to the SAME
+value type, and hold `readB.run(docB) == readA.run(docA)` on the pairs
+the standard itself publishes. It is the prism law one level up: a
+document read through one level and written through the other is a
+conversion, and the law says the conversion loses nothing that the
+value keeps.
+
+**What lives where.** A combinator, a Json step, a dialect fix, a
+verdict shape — here. What a swap IS — in the domain's repository.
+The test of the boundary: a file that mentions no term of the domain
+belongs here.
+
 ## API reference
 
 | | |
@@ -118,7 +177,7 @@ product and version is a private module's.
 | `Refine.Step(…).prism` | the step as an optics `Prism`, for the laws |
 | `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
-| `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON |
+| `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON — for XML text, `Xml.fromValue` on the written value |
 | `Refine.json.field(name)`, `.str`, `.num`, `.each(name)` | the steps a document-level pattern is written in; a path of them names itself in the verdict |
 | `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <|> (text andThen (json <|> xml <|> yaml))` |
 | `Doc.Json / Xml / Yaml / Cbor` | the detected document, as the dialect's own tree (or the bytes) |
@@ -138,6 +197,16 @@ product and version is a private module's.
   file was declined with `unclosed`. `<?…?>` and `<!DOCTYPE …>` are one
   token each now, and `TestFormat` reads a declared document as
   `text/xml`.
+- **HTML's void elements are not XML's.** `Format.xml` reads STRICT
+  XML (`Xml.cst(s, Xml.strict)`, since `xml-strict-void`): under the
+  HTML default `<source>Coal</source>` never opened, because `source`
+  is an HTML void, and its close "closed nothing". An HTML page's `<br>`
+  now declines as "never closed" here — the right answer for a data
+  document detector. Found by a domain corpus, not a unit test.
+- **`field` on a repeated element hands back an array.** Two
+  `versionedTradeId`s under one identifier declined a trade twice in a
+  day; `each(name)` reads all, and a `first(name)` over it is the step
+  for "the first of".
 - **There is no registry type.** An `Or` is flat, so `Refine.first(a, b,
   c)` IS the registry: one more alternative is one more element, in
   order, and nothing existing is edited. A `Judge` that re-orders the

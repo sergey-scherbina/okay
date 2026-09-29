@@ -108,6 +108,28 @@ class TestXml extends munit.FunSuite {
       """{"Doc":{"@v":"5-10","a":["1","2"],"b":{"@k":"x","#text":"t"},"c":{"d":"","#text":"tail"},"e":""}}""")
     assertEquals(Xml.attributes("""<x a="1" b='2' c d = "e f"/>"""), Vector("a" -> "1", "b" -> "2", "c" -> "", "d" -> "e f"))
     assertEquals(Xml.value(Xml.cst("just text")), Json.JStr("just text"))
+    // entities decode in the VALUE, never in the lossless tree
+    val e = """<a x="&lt;&amp;&gt;">S&amp;P &#169; &#x41; &unknown; &</a>"""
+    assertEquals(Json.print(Xml.value(Xml.cst(e))), """{"a":{"@x":"<&>","#text":"S&P © A &unknown; &"}}""")
+    assertEquals(Xml.render(Xml.cst(e)), e)
+    assertEquals(Xml.unescape("&#x1F600;"), "😀")
+  }
+
+  test("fromValue: the inverse of value — attributes, repeats, mixed text, entities, and the law value(cst(fromValue(v))) == v") {
+    val s = """<Doc v="5-10"><a>1</a><a>2</a><b k='x'>t</b><c><d/>tail</c><e/></Doc>"""
+    val v = Xml.value(Xml.cst(s, Xml.strict))
+    assertEquals(Xml.fromValue(v), """<Doc v="5-10"><a>1</a><a>2</a><b k="x">t</b><c><d/>tail</c><e/></Doc>""")
+    assertEquals(Xml.value(Xml.cst(Xml.fromValue(v), Xml.strict)), v)
+    val e = Xml.value(Xml.cst("""<a x="&lt;&amp;&gt;&quot;">S&amp;P &#169; &lt;b&gt;</a>""", Xml.strict))
+    assertEquals(Xml.fromValue(e), """<a x="&lt;&amp;&gt;&quot;">S&amp;P © &lt;b&gt;</a>""")
+    assertEquals(Xml.value(Xml.cst(Xml.fromValue(e), Xml.strict)), e)
+    // what value never produces still writes: numbers and booleans as text, null empty, a bare root as text
+    assertEquals(Xml.fromValue(Json.JObj(Vector("n" -> Json.JNum(2.5), "t" -> Json.JBool(true), "z" -> Json.JNull))), "<n>2.5</n><t>true</t><z/>")
+    assertEquals(Xml.fromValue(Json.JStr("a < b")), "a &lt; b")
+    assertEquals(Xml.escape("\"&\"", attribute = true), "&quot;&amp;&quot;")
+    // deep: a chain of 100 000 nested elements writes without a stack
+    val deep = (1 to 100000).foldLeft(Json.JStr("x"): Json)((acc, _) => Json.JObj(Vector("d" -> acc)))
+    assertEquals(Xml.fromValue(deep).length, 100000 * 7 + 1)
   }
 
   test("strict: no element is void, so <source>Coal</source> opens and closes; the HTML set still makes <br> void") {
