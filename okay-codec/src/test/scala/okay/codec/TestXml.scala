@@ -115,6 +115,23 @@ class TestXml extends munit.FunSuite {
     assertEquals(Xml.unescape("&#x1F600;"), "😀")
   }
 
+  test("fromValue: the inverse of value — attributes, repeats, mixed text, entities, and the law value(cst(fromValue(v))) == v") {
+    val s = """<Doc v="5-10"><a>1</a><a>2</a><b k='x'>t</b><c><d/>tail</c><e/></Doc>"""
+    val v = Xml.value(Xml.cst(s, Xml.strict))
+    assertEquals(Xml.fromValue(v), """<Doc v="5-10"><a>1</a><a>2</a><b k="x">t</b><c><d/>tail</c><e/></Doc>""")
+    assertEquals(Xml.value(Xml.cst(Xml.fromValue(v), Xml.strict)), v)
+    val e = Xml.value(Xml.cst("""<a x="&lt;&amp;&gt;&quot;">S&amp;P &#169; &lt;b&gt;</a>""", Xml.strict))
+    assertEquals(Xml.fromValue(e), """<a x="&lt;&amp;&gt;&quot;">S&amp;P © &lt;b&gt;</a>""")
+    assertEquals(Xml.value(Xml.cst(Xml.fromValue(e), Xml.strict)), e)
+    // what value never produces still writes: numbers and booleans as text, null empty, a bare root as text
+    assertEquals(Xml.fromValue(Json.JObj(Vector("n" -> Json.JNum(2.5), "t" -> Json.JBool(true), "z" -> Json.JNull))), "<n>2.5</n><t>true</t><z/>")
+    assertEquals(Xml.fromValue(Json.JStr("a < b")), "a &lt; b")
+    assertEquals(Xml.escape("\"&\"", attribute = true), "&quot;&amp;&quot;")
+    // deep: a chain of 100 000 nested elements writes without a stack
+    val deep = (1 to 100000).foldLeft(Json.JStr("x"): Json)((acc, _) => Json.JObj(Vector("d" -> acc)))
+    assertEquals(Xml.fromValue(deep).length, 100000 * 7 + 1)
+  }
+
   test("strict: no element is void, so <source>Coal</source> opens and closes; the HTML set still makes <br> void") {
     val s = "<a><source>Coal</source><br></a>"
     assertEquals(Cst.errors(Xml.cst(s, Xml.strict)).map(_._2), Vector("<br> was never closed"))

@@ -530,6 +530,84 @@ object Xml {
         else stack.head.fields += ((f.name, finish(f)))
     result
 
+  /**
+   * The five characters XML cannot carry as written, as entities: `&`,
+   * `<`, `>` always, `"` in an attribute value too. The inverse of
+   * `unescape` on what `unescape` decodes to (an entity `unescape` left
+   * as written — `&unknown;` — comes back doubled, as the text it is).
+   */
+  def escape(s: String, attribute: Boolean = false): String =
+    if !s.exists(c => c == '&' || c == '<' || c == '>' || (attribute && c == '"')) then s
+    else
+      val out = new StringBuilder(s.length + 8)
+      var i = 0
+      while i < s.length do
+        s.charAt(i) match
+          case '&' => out ++= "&amp;"
+          case '<' => out ++= "&lt;"
+          case '>' => out ++= "&gt;"
+          case '"' if attribute => out ++= "&quot;"
+          case c => out += c
+        i += 1
+      out.result()
+
+  /**
+   * A value written as a document — the inverse of `value` (xml-from-value,
+   * 2026-09-29): a field is an element of that name, an `@name` field an
+   * attribute of the element it sits in, `#text` its text, an array a
+   * repeated element (an array inside an array flattens: `value` never
+   * produces one), a string, number or boolean its text, `null` an empty
+   * element. Attributes come first, then the children in their order,
+   * then the text — the order `value` reads them in — so the law holds:
+   * `value(cst(fromValue(v), strict)) == v` for every `v` that `value`
+   * produced. A root that is not an object is written as text alone. No
+   * declaration, no whitespace: this is the value, not a pretty print.
+   * Built on an explicit worklist, like every walk in this file.
+   */
+  def fromValue(j: Json): String =
+    // a step of the worklist: text to append, or an element to open
+    enum Work:
+      case Lit(s: String)
+      case Elem(name: String, v: Json)
+    // a scalar's text, unescaped; escaped once where it is written
+    def raw(v: Json): String = v match
+      case Json.JStr(s) => s
+      case Json.JNull => ""
+      case Json.JErr(m) => m
+      case other => Json.print(other)
+    def leaf(v: Json): String = escape(raw(v))
+    val sb = new StringBuilder
+    var work: List[Work] = j match
+      case Json.JObj(fs) => fs.toList.map((n, v) => Work.Elem(n, v))
+      case other => Work.Lit(leaf(other)) :: Nil
+    while work.nonEmpty do
+      val here = work.head
+      work = work.tail
+      here match
+        case Work.Lit(s) => sb ++= s
+        case Work.Elem(name, Json.JArr(vs)) =>
+          work = vs.toList.map(v => Work.Elem(name, v)) ::: work
+        case Work.Elem(name, Json.JObj(fs)) =>
+          sb += '<'; sb ++= name
+          val kids = List.newBuilder[Work]
+          var text = ""
+          fs.foreach { (k, v) =>
+            if k.startsWith("@") then
+              sb += ' '; sb ++= k.drop(1); sb ++= "=\""; sb ++= escape(raw(v), attribute = true); sb += '"'
+            else if k == "#text" then text = leaf(v)
+            else kids += Work.Elem(k, v)
+          }
+          val inner = kids.result()
+          if inner.isEmpty && text.isEmpty then sb ++= "/>"
+          else
+            sb += '>'
+            work = inner ::: Work.Lit(text) :: Work.Lit(s"</$name>") :: work
+        case Work.Elem(name, v) =>
+          val t = leaf(v)
+          if t.isEmpty then { sb += '<'; sb ++= name; sb ++= "/>" }
+          else { sb += '<'; sb ++= name; sb += '>'; sb ++= t; sb ++= "</"; sb ++= name; sb += '>' }
+    sb.result()
+
   /** every element of a given name, in document order */
   def elements(c: Cst[K], name: String): Vector[Cst[K]] =
     val out = Vector.newBuilder[Cst[K]]

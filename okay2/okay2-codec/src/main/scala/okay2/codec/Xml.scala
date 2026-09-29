@@ -385,6 +385,76 @@ object Xml {
     result
   }
 
+  /** the five characters as entities (`"` in an attribute too) — the Scala 3 twin's `Xml.escape` */
+  def escape(s: String, attribute: Boolean = false): String =
+    if (!s.exists(c => c == '&' || c == '<' || c == '>' || (attribute && c == '"'))) s
+    else {
+      val out = new StringBuilder(s.length + 8)
+      var i = 0
+      while (i < s.length) {
+        s.charAt(i) match {
+          case '&' => out ++= "&amp;"
+          case '<' => out ++= "&lt;"
+          case '>' => out ++= "&gt;"
+          case '"' if attribute => out ++= "&quot;"
+          case c => out += c
+        }
+        i += 1
+      }
+      out.result()
+    }
+
+  /** a value written as a document, the inverse of `value` (the Scala 3
+   * twin's `Xml.fromValue`): fields as elements, `@name` as attributes,
+   * `#text` as text, arrays as repeated elements; an explicit worklist */
+  def fromValue(j: Json): String = {
+    sealed trait Work
+    final case class Lit(s: String) extends Work
+    final case class Elem(name: String, v: Json) extends Work
+    def raw(v: Json): String = v match {
+      case Json.JStr(s) => s
+      case Json.JNull => ""
+      case Json.JErr(m) => m
+      case other => Json.print(other)
+    }
+    def leaf(v: Json): String = escape(raw(v))
+    val sb = new StringBuilder
+    var work: List[Work] = j match {
+      case Json.JObj(fs) => fs.toList.map { case (n, v) => Elem(n, v) }
+      case other => Lit(leaf(other)) :: Nil
+    }
+    while (work.nonEmpty) {
+      val here = work.head
+      work = work.tail
+      here match {
+        case Lit(s) => sb ++= s
+        case Elem(name, Json.JArr(vs)) =>
+          work = vs.toList.map(v => Elem(name, v)) ::: work
+        case Elem(name, Json.JObj(fs)) =>
+          sb += '<'; sb ++= name
+          val kids = List.newBuilder[Work]
+          var text = ""
+          fs.foreach { case (k, v) =>
+            if (k.startsWith("@")) {
+              sb += ' '; sb ++= k.drop(1); sb ++= "=\""; sb ++= escape(raw(v), attribute = true); sb += '"'
+            } else if (k == "#text") text = leaf(v)
+            else kids += Elem(k, v)
+          }
+          val inner = kids.result()
+          if (inner.isEmpty && text.isEmpty) sb ++= "/>"
+          else {
+            sb += '>'
+            work = inner ::: Lit(text) :: Lit(s"</$name>") :: work
+          }
+        case Elem(name, v) =>
+          val t = leaf(v)
+          if (t.isEmpty) { sb += '<'; sb ++= name; sb ++= "/>" }
+          else { sb += '<'; sb ++= name; sb += '>'; sb ++= t; sb ++= "</"; sb ++= name; sb += '>' }
+      }
+    }
+    sb.result()
+  }
+
   def elements(c: Cst[K], name: String): Vector[Cst[K]] = {
     val out = Vector.newBuilder[Cst[K]]
     preorder(c) {

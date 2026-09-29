@@ -322,6 +322,7 @@ the wire sees.
 | `Validate.decode` / `Validate.errors` | `Schema[A] => Json => Either[Vector[(path, msg)], A]` | `Json.decode`'s applicative twin: EVERY refusal, each at its dotted path, the typed value when there is none — same rules, read off the same decoder; a fold on `Schema.Step` |
 | `Schema.fold` / `Schema.Algebra` / `Schema.Step` | the catamorphism, its algebra, the depth-aware value walk | how every algebra over `Schema` is written since schema-fold: no `match` on the GADT, no depth logic in the algebra |
 | `Codecs.NativeThreshold` | `Int` (24) | native recursion below this, `Cont.defer` trampoline at/above it — every recursive door; no depth cap (`Codecs.maxDepth` removed, remove-codecs-maxdepth) |
+| `Xml.value` / `Xml.fromValue` | `Cst[Xml.K] => Json` / `Json => String` | the document as a value (elements as objects, `@name` attributes, `#text`, repeats as arrays, entities decoded) and the value written back as a document: `Xml.value(Xml.cst(Xml.fromValue(v), Xml.strict)) == v` for every `v` that `value` produced |
 | `Markdown.parse` | `String => Cst[Markdown.K]` | the reframing dialect (headings, paragraphs, `*`/`_` emphasis, code spans) |
 | `Markdown.scan` / `Markdown.instructions` | the dialect's Scan and its instruction fold | reuse or extend |
 
