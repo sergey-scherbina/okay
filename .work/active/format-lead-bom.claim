@@ -1,1 +1,0 @@
-claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-09-29: format-cheap-decline declined an XML document beginning with a byte-order mark (okay-fin corpus cds-index-tranche.xml); lead() skips it again (sprint.d/doing/format-lead-bom.md)
