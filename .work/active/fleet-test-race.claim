@@ -1,0 +1,1 @@
+claude session_01YMmUap8wenmYUk1yBt9Gzm (nadia-fable), 2026-09-29: TestFleet — two tests share one tick channel between two agents and time out under load (the full gate of agent-fleet was RED on exactly these two and was landed by mistake as 654a4f98b); one channel per agent. Test-only.
