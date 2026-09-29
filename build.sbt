@@ -1918,6 +1918,22 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
 
+/** reading anything out of anything: patterns as prisms whose read may
+ * decline, composed into a typed hierarchy — a path reads and writes
+ * back, a choice runs every alternative and says `Unclear` rather than
+ * first-wins; the format level (cbor/json/xml/yaml) is the first prover
+ * (specs/refine.md) */
+lazy val okayRefine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-refine"))
+  .dependsOn(okay, okayCodec, okayOptics, okayTest % "test->compile")
+  .settings(
+    name := "okay-refine",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 /** the document seam: get/put/delete by key with CAS as data,
  * declared-index queries, per-item atomicity — the one new seam of
  * specs/data.md; the own engine is a fold of a compacted topic */
@@ -3546,6 +3562,7 @@ lazy val root = (project in file("."))
     okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native, okayChain.jvm, okayChain.js, okayChain.native, okayScalus, okayScalusSpark, okayScalusFlink, okayX402.jvm, okayX402.js, okayX402Evm, okayX402Cdp, okayX402Signers, okayX402Mcp.jvm, okayX402Mcp.js,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
+    okayRefine.jvm, okayRefine.js, okayRefine.native,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
     okaySql.jvm, okaySql.js, okaySql.native, okayPg.jvm, okayPg.js,
     okayCrypto.jvm, okayCrypto.js, okayMail,

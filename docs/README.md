@@ -298,6 +298,7 @@ API reference, gotchas.
 | [`okay-crdt`](modules/okay-crdt.md) | state that merges without a coordinator: the three laws as a runnable check, then GCounter, PNCounter, GSet, OrSet and an Hlc-stamped LwwRegister |
 | [`okay-parse`](modules/okay-parse.md) | total lossless parsing; incremental reparse with reference reuse |
 | [`okay-codec`](modules/okay-codec.md) | the Schema algebra; JSON, CBOR and Markdown dialects |
+| [`okay-refine`](modules/okay-refine.md) | reading anything out of anything: patterns as prisms in a typed hierarchy, verdicts that say which took and which declined; the format level (cbor/json/xml/yaml) first |
 | [`okay-llm`](modules/okay-llm.md) | language models as streams; two protocols over one seam; structured output that cuts generation |
 | [`okay-agent`](modules/okay-agent.md) | agents as programs: tools as operations, context as a fold, search as Logic |
 | [`okay-frame`](modules/okay-frame.md) | what a form is: named slots, typed answers, the language of the exchange, and what is still missing |

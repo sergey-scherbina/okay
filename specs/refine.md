@@ -70,12 +70,12 @@ object Refine:
 
 /** what a run says — never "the first won" silently */
 enum Verdict[+B]:
-  case Took(value: B, by: Path, declined: Vector[Declined])
-  case Unclear(candidates: Vector[(Path, B)], declined: Vector[Declined])
-  case Declined(tried: Vector[Declined])
+  case Took(value: B, by: Path, declined: Vector[Refusal])
+  case Unclear(candidates: Vector[(Path, B)], declined: Vector[Refusal])
+  case Declined(tried: Vector[Refusal])
 
 final case class Path(steps: Vector[String])          // the names taken
-final case class Declined(at: Path, reason: String)   // a name and why
+final case class Refusal(at: Path, reason: String)    // a name and why
 ```
 
 A `Verdict` is the `Route`/`Support` of specs/dlm.md at the level of
@@ -122,28 +122,37 @@ lossless law made a function), so `write(read(bytes)) == bytes`.
 ## 3. Behavior
 
 Stage 1 — the vocabulary and the format level:
-- [ ] a step that reads takes: `Took(value, Path(name), Vector.empty)`
-- [ ] a step that refuses declines with its reason under its name
-- [ ] `andThen`: the path is both names; a refusal in the second step is
+- [x] a step that reads takes: `Took(value, Path(name), Vector.empty)`
+- [x] a step that refuses declines with its reason under its name
+- [x] `andThen`: the path is both names; a refusal in the second step is
       reported under the composed path
-- [ ] `<|>`: exactly one taker is `Took` with the others in `declined`;
+- [x] `<|>`: exactly one taker is `Took` with the others in `declined`;
       two takers is `Unclear` naming both paths; none is `Declined`
       naming every reason
-- [ ] `write` follows the path back: `step.write ∘ read` is the input
+- [x] `write` follows the path back: `step.write ∘ read` is the input
       where the step is lossless; `Or.write` asks the alternatives in
       order and takes the first that accepts
-- [ ] the prism laws hold for a step's `.prism` (review-then-preview is
+- [x] the prism laws hold for a step's `.prism` (review-then-preview is
       identity; preview-then-review is identity where it previews)
-- [ ] `Format.detect` on a JSON, an XML, a YAML and a CBOR document
+- [x] `Format.detect` on a JSON, an XML, a YAML and a CBOR document
       answers `Took` with the right case and the path `text/json`,
       `text/xml`, `text/yaml`, `cbor`, and `write` reproduces the bytes
-- [ ] a bare scalar (`hello`) is `Declined` with three reasons; a
+      (TestFormat; the XML one without a declaration — see the gap below)
+- [x] a bare scalar (`hello`) is `Declined` with three reasons; a
       damaged JSON (`{"a":`) is declined by json with the tree's own
-      error message, not a generic one
-- [ ] bytes that are not UTF-8 decline `text` with the offset, and the
+      error message, not a generic one — and so is `hello` itself
+      ("unexpected 'hello' at Span(0,0,0,5)"); a bare `42`, a valid
+      JSON value, is "not a JSON object or array"
+- [x] bytes that are not UTF-8 decline `text` with the offset, and the
       verdict shows `cbor` was tried too
-- [ ] a document two formats both take is `Unclear` and names both
-      (a YAML mapping that is also valid JSON: `{"a": 1}` is both)
+- [x] a document two formats both take is `Unclear` and names both —
+      held on the vocabulary (TestRefine: 4 is `even` and `small`); NOT
+      observable at the format level today, see Results: the YAML
+      dialect is block-only, so `{"a": 1}` is json alone here
+- [ ] KNOWN GAP, pinned by TestFormat: `<?xml version="1.0"?><a/>` is
+      declined by xml with `unclosed` — the dialect has no processing
+      instruction (backlog `xml-processing-instruction`); closes when it
+      lands and the pinned test flips
 
 Stage 2 — the document level and the open registry:
 - [ ] `Refine.schema[A](using Schema[A]): Refine[Json, A]` — a derived
@@ -199,7 +208,36 @@ Stage 3 — lessons:
 
 ## 5. Results
 
-(stage 1 measurements and findings go here as they land)
+Stage 1 (2026-09-29, lane okay-refine), found by the first run of
+TestFormat — three things the dialects said that a sniff would not have:
+
+- **YAML claimed every JSON object.** okay-codec's YAML is the block
+  dialect (specs/codecs.md: flow style out of scope); it reads
+  `{"a": [1, 2]}` as a scalar `{` followed by a mapping of pairs, with
+  NO error node, so the structural test alone ("has a map") let it take
+  the input and `Format.detect` answered `Unclear(json, yaml)` on plain
+  JSON. The tell is a scalar at the ROOT beside the structure — a block
+  document has none — and `Format.yaml` declines on it. Recorded rather
+  than hidden because it will reverse: when the dialect learns flow
+  style, `{"a": 1}` is a YAML mapping and a JSON object and the honest
+  verdict is `Unclear`, which is exactly what the design says.
+- **The XML declaration is an unclosed tag.** `Xml.kindOf` knows
+  comments, CDATA, close and self-close and then calls every other `<`
+  an Open, so `<?xml version="1.0"?>` opens a frame nobody closes and
+  every real FpML document is declined with `unclosed`. Filed as
+  backlog `xml-processing-instruction` (a `K.Pi` kind, a scanner
+  change, the full gate); TestFormat pins the current answer so the
+  fix is seen. The format prover uses a document without a declaration
+  meanwhile.
+- **The parser's own words are better than ours.** `hello` is declined
+  by json as "unexpected 'hello' at Span(0,0,0,5)" — the tree's error
+  leaf — where the first test expected a generic "not a JSON object or
+  array"; that phrase is now what a bare NUMBER gets, since `42` is a
+  valid JSON value and the tree has no error to quote. The test was
+  wrong, the design was right, and the test now says both.
+
+Sizes: `Refine.scala` 130 lines, `Format.scala` 150 (UTF-8 validator
+included, by hand so JS and Native run the same check), 18 tests JVM.
 
 ## 6. Open questions
 
