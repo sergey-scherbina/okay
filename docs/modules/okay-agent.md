@@ -8,6 +8,23 @@ Depends on: `okay-llm` (and through it the whole total text stack).
 
 ## Guide
 
+**A fleet of agents, a hierarchy the parent grows** (specs/agent-fleet.md).
+`Fleet.open(store, runner)` is a root actor whose children are agents:
+`spawn(spec)` answers an id at once, `send(id, Fleet.Control.Tell |
+Pause | Resume | Stop | Kill)` is the mailbox, `status`/`all` are values,
+`transcript(id)` the turns so far, `await(id)` a child's end. Everything
+is appended to the store's `agents` topic and folded back by `restore()`
+— a process that died leaves its agents `Interrupted` with their
+transcripts, and ids continue. What runs ONE agent is the consumer's
+`Runner`: between tool calls it asks `ctx.checkpoint(step, tool)`, which
+records the step, waits while paused, and answers `Stop` for a stop or an
+exhausted budget (steps or wall clock). `Fleet.delegate(fleet, parent)` is
+a `Toolbox.In[Async]` with one tool: the parent runs a child to completion
+and reads its text and report; the child's steps come out of the parent's,
+and a child that crashes is a tool error, not the parent's end. The whole
+suite runs on a scripted runner — no model, no gateway, no filesystem.
+
+
 **Three effects, no message list.** `Model` (complete, count),
 `Tool` (call), `Context` (remember / recall / mark / restore). The
 agent program never holds a conversation — it performs Context

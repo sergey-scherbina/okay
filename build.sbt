@@ -2346,6 +2346,7 @@ lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
   // suspension and okay-frame owns the slots, which is the split that
   // ended two slot models living in one repository.
   .dependsOn(okayLlm, okayRag, okayPersist, okayFrame)
+  .dependsOn(okayActor)   // agents as supervised actors (specs/agent-fleet.md)
   .settings(
     name := "okay-agent",
     libraryDependencies ++= Seq(

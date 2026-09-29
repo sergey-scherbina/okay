@@ -92,26 +92,26 @@ Finished(id, text, report, at)
 
 ## Behavior
 
-- [ ] `spawn` returns at once with an id; `status(id)` is `Running` with step 0
-- [ ] `send(id, Pause)` holds the agent at its next tool call; `Resume` continues it;
+- [x] `spawn` returns at once with an id; `status(id)` is `Running` with step 0
+- [x] `send(id, Pause)` holds the agent at its next tool call; `Resume` continues it;
       a paused agent's `elapsedMs` still grows (wall clock, not work)
-- [ ] `send(id, Stop)` lets the current tool finish and ends the run with phase `Done`
+- [x] `send(id, Stop)` lets the current tool finish and ends the run with phase `Done`
       when the model had a final answer, `Interrupted` otherwise; `Kill` ends it now with
       `Killed` and no further record from that agent reaches the topic
-- [ ] `Tell` is delivered as the next user turn, once, and appears in `transcript(id)`
-- [ ] a step past `budget.steps`, or a wall clock past `budget.wallMs`, ends the run with
+- [x] `Tell` is delivered as the next user turn, once, and appears in `transcript(id)`
+- [x] a step past `budget.steps`, or a wall clock past `budget.wallMs`, ends the run with
       `Interrupted` and a partial result — never a hang
-- [ ] `delegate` from a parent with 10 steps left, whose child uses 4, leaves the parent 6;
+- [x] `delegate` from a parent with 10 steps left, whose child uses 4, leaves the parent 6;
       a child asked for more than the parent has is refused as a tool error naming both numbers
-- [ ] a child whose runner throws leaves the parent `Running`, and the parent's next turn
+- [x] a child whose runner throws leaves the parent `Running`, and the parent's next turn
       carries the failure as a tool result — `Supervise.Stop` on the child, never on the parent
-- [ ] `all` lists children under their parent (`parent` set, and the parent's `children`
+- [x] `all` lists children under their parent (`parent` set, and the parent's `children`
       contains the id), so a screen can draw the tree without a second query
-- [ ] `restore()` after two `Running` agents and a process exit: both are `Interrupted`, their
+- [x] `restore()` after two `Running` agents and a process exit: both are `Interrupted`, their
       transcripts are intact, and the next `spawn` gets an id greater than either
-- [ ] a `Turned` record is appended per turn as it happens, not at the end, so a kill loses
+- [x] a `Turned` record is appended per turn as it happens, not at the end, so a kill loses
       at most the turn in flight
-- [ ] a scripted `Runner` drives the whole suite: no model, no gateway, no filesystem
+- [x] a scripted `Runner` drives the whole suite: no model, no gateway, no filesystem
 
 ## Out of scope
 
@@ -166,4 +166,27 @@ Finished(id, text, report, at)
 
 ## Results
 
-Not implemented yet.
+Implemented 2026-09-29 (lane `agent-fleet`): `Fleet.scala`, `TestFleet` (7,
+JVM), okay-agent now depends on okay-actor. Against the interface as first
+written:
+
+- **`Control` is `Fleet.Control`.** okay's core exports a `Control` (the
+  final tagless interface of delimited control), and in a file that imports
+  `okay.*` — every test does — that one outranks a package member defined in
+  another file. Nesting it is the fix that needs no rename.
+- **The runner sees a `Ctx`, not two closures.** `inbox()`, `checkpoint(step,
+  tool)`, `turned(turn)`, `stepsLeft`: the checkpoint is where a pause waits
+  (a channel the resume closes), where a stop or an exhausted budget is
+  learned, and where the step is recorded — one call between tool calls.
+- **`finish` runs inside the agent's fiber**, not in an `onComplete`. A parent
+  awaiting a child joins the fiber, and a join can resolve before a
+  completion callback runs; the first cut of the delegate test saw a child
+  "running" after it had returned.
+- **The step past the budget is the one refused** (`left < 0`), so a budget
+  of two steps runs two.
+- **Kill** ends the record at once (`Killed`, written) and cancels the fiber;
+  a runner parked on its own channel is told `Kill` at its next checkpoint.
+
+Records are plain JSON keyed by id (`spawned`, `phased`, `stepped`, `turned`,
+`finished`); a `Turn` has its own small codec here, since `Turn` derives no
+`Schema` and carries a raw `Json`.
