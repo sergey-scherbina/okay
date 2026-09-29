@@ -401,7 +401,8 @@ deprecated negation of `ZIO[_, _, Boolean]`), and a class member always
 wins over an extension — write `z.?` or `z.reflect`. `Future` and `IO`
 have no such member, so all three spellings work on them. A library of
 your own joins by writing its instance: `type G[+X]` names the effect,
-`lift` builds the program.
+`lift` builds the program. The guide [Effect interop](effect-interop.md)
+has every direction, cancellation and a worked instance.
 
 ## Layer 2½ — the staged block: the handler known at the call site
 

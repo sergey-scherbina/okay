@@ -46,6 +46,9 @@ the alias, `.at[ZioRow[Greeting, String]]` finds no membership (the search
 does not see through a parameterised alias), while `ZioRow` in a
 signature is fine.
 
+The whole story, with every direction side by side, is the guide
+[Effect interop](../effect-interop.md).
+
 **ZIO in direct style.** `import okay.zio.given` makes any `ZIO[R, E, _]`
 okay's `Monad`, so a `direct` block binds ZIO values with okay's own marks
 — the block is a `Task`, nothing runs until ZIO runs it, a failure skips

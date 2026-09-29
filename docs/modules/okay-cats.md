@@ -33,6 +33,9 @@ as `IO.blocking` via `unsafeToFutureCancelable`, completion callbacks
 ride the future, cancel is the IO canceler. One `given`, and Okay
 fibers, `parMap`, `merge` and supervision run on cats-effect.
 
+The whole story, with every direction side by side, is the guide
+[Effect interop](../effect-interop.md).
+
 **An IO inside a direct block.** With `import okay.cats.given` and an
 `IORuntime` in scope, a `direct` block over an okay row binds an `IO` with
 `io.?`, `io.reflect` or `!io` — one `Async` operation, `fromIO`

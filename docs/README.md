@@ -21,6 +21,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   interpreting one effect INTO others, several instances of one
   signature (`Tag`, `Refs`) — and the four things that bite, each with
   the measurement behind it.
+- **[Effect interop: ZIO, cats-effect and Future](effect-interop.md)** —
+  okay beside the effect system you already run: every door in both
+  directions and what it waits by, ZIO's environment and typed error as
+  okay effects, ZIO written in okay's direct style, a `Future`, a ZIO or
+  an `IO` marked inside an okay block, cancellation both ways, blocking
+  or callback, and your own effect type with one `ForeignEffect` given.
 - **[Building a chat application](building-a-chat-app.md)** — from an
   EMPTY DIRECTORY to a running streaming chat, outside this
   repository: how to depend on a library that is not published yet

@@ -1,1 +1,0 @@
-- [ ] effect-interop-guide — docs/effect-interop.md: one guide for okay with ZIO, cats IO and Future — every direction, channel mapping, cancellation, blocking vs callback, your own ForeignEffect (CompletableFuture, tested), pitfalls, literature.
