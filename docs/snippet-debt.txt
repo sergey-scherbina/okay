@@ -501,7 +501,6 @@ docs/modules/okay-cats.md	(a, b).mapN(_ + _)                      // cats syntax
 docs/modules/okay-cats.md	.handleErrorWith(effect(Throws("boom")))(_ => pure(42))
 docs/modules/okay-cats.md	Async.par(async(1), async(2)).runWith          // fibers on cats-effect
 docs/modules/okay-cats.md	given okay.Scheduler = CatsInterop.scheduler   // needs an IORuntime
-docs/modules/okay-cats.md	import okay.cats.given
 docs/modules/okay-cats.md	type R = Throws % String + Pure
 docs/modules/okay-cats.md	val a: Int ! State % Int = State.get[Int]
 docs/modules/okay-cats.md	val b: Int ! State % Int = pure(2)
