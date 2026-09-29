@@ -157,8 +157,8 @@ private[okay] final class DirectCompiler[F[_]](val q: Quotes, val fT: Type[F],
    * continuation handler — answers at the row it was written in.
    */
   def programLambda(params: List[ValDef], body: Term): Option[Out] =
-    body.tpe.widen.dealias.baseType(freeClass) match
-      case AppliedType(_, List(_, e))
+    programOf(body.tpe.widen.dealias.baseType(freeClass)) match
+      case Some((_, e))
         if body.tpe.widen <:< TypeRepr.of[F].appliedTo(e.widen) =>
         // the body is an expression ANSWERING a program, so compiling
         // it gives `F[F[T]]` — one flatMap brings it back to the

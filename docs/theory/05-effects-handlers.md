@@ -200,7 +200,7 @@ route agrees.
 
 ```scala
 override def foldCont[S](h: F !> S): A /> S =
-  m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
+  Free.fold(m)(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
 ```
 
 Three parts, and each does one thing.

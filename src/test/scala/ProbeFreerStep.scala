@@ -4,8 +4,12 @@ import scala.annotation.tailrec
 
 /**
  * ONE INDEXED BASE FOR `Free` AND `Cont`, PROBED (freer-base-step-
- * extractor, 2026-09-29). Kept compiling, like ProbeRowCrash, so the
- * next Scala says by turning red whether the shapes below still type.
+ * extractor, 2026-09-29) — AND LANDED the same day: `okay.Freer` is
+ * this enum with `A` last and `Lift` a class projection (specs/
+ * freer-base.md, "The dual placement, LANDED", says what the compiler
+ * added). Kept compiling, like ProbeRowCrash, so the next Scala says by
+ * turning red whether the shapes below still type; its own `Freer`
+ * shadows the library's inside this object on purpose.
  *
  * specs/freer-base.md stage 1 wanted `Free[F, A]` to be an indexed
  * `Freer[Lift[F], A, Unit, Unit]` and was REFUTED: matching `Bind`

@@ -103,15 +103,17 @@ index above lists them all with one-line summaries.
   Four cases: `Return` a value, `Inject` one operation of `F`, `Bind` a
   program to a continuation, `Delay` a subprogram. A program is data,
   `A ! F` is `Free[F, A]`, and nothing runs until a handler walks the
-  tree. Left-nested binds are rebalanced by tail-recursive rotations, so
+  tree. The enum is `Freer[G, S, R, A]`, indexed by the answer types a
+  `Cont` needs (below); `Free` is it at a signature that ignores them. Left-nested binds are rebalanced by tail-recursive rotations, so
   a walk is stack-safe and stepping one operation at a time costs about
   what running in bulk does, with no type-aligned queue.
 - `Cont[A, S, R]` (Cont.scala) — the parameterised continuation monad
   (answer-type modification, shift/reset), and it is an effect inside
-  `Free` like any other: an opaque `Free[Shift, A]` whose one operation,
-  `Shift`, is a function of the continuation. Running a `Cont` handles
-  that one effect, so a program and its meaning are one tree, a flatMap
-  chain is stack-safe, and the same walk serves both
+  the same tree: an opaque `Freer[Shift, S, R, A]` whose one operation
+  is the shift body `(A => S) => R` itself, answer types on the nodes,
+  so the runner is typed by the GADT with no cast. Running a `Cont`
+  handles that one effect, so a program and its meaning are one tree,
+  a flatMap chain is stack-safe, and the same walk serves both
   ([theory ch. 11](docs/theory/11-one-tree.md)).
 - `Control[M[_, _, _]]` (Cont.scala) — final tagless interface of
   delimited control; instances: `Cont` (stack-safe data) and `Func`

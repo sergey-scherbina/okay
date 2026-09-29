@@ -417,7 +417,7 @@ object Direct:
       ++ directSym.methodMember("?") ++ directSym.methodMember("unary_!")).toSet
     val colorSyms = (directSym.methodMember("selfColor") ++
       directSym.methodMember("opColor") ++
-      Symbol.requiredModule("okay.Free").methodMember("directColor")).toSet
+      Symbol.requiredModule("okay.Freer").methodMember("directColor")).toSet
 
     def calleeRoot(t: Term): Symbol = t match
       case Apply(f, _) => calleeRoot(f)

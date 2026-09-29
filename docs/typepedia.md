@@ -8,9 +8,9 @@ same material with the measurements attached.
 
 - **`Cont[A, S, R]`** — the parameterised continuation monad,
   `(A => S) => R` defunctionalized — as the freer tree itself: an
-  opaque `Free[Shift, A]` inside `object Cont`, a shift being a leaf
-  whose payload is a function of the continuation, `S` and `R`
-  phantom to the tree and carried by the facade's signatures
+  opaque `Freer[Shift, S, R, A]` inside `object Cont`, a shift being a
+  leaf whose payload is a function of the continuation at its own
+  answer types, which the nodes carry and the runner is typed by
   (theory ch. 11). Running is `Cont.step`, tail-recursive with
   left-nested binds rebalanced and `Delay` forced; a fresh leaf
   absorbs its first `flatMap` (`Leaf.Absorbed`/`Mapped`), exactly

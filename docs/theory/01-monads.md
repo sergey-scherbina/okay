@@ -83,10 +83,11 @@ inline def effect[F[+_], A](a: F[A]): A ! F
 ```
 
 `A ! F` reads "an `A`, computed with effects `F`". The monad operations
-live on `Free` (`Free.scala:41–43`):
+live on the tree (`Free.scala`; the `S2`/`S`/`R` are the answer-type
+indexes chapter 11 explains, `Unit` for an effect program):
 
 ```scala
-inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = Bind(this, f)
+inline def flatMap[B, S2](f: A => Freer[G, S2, S, B]): Freer[G, S2, R, B] = Bind(this, f)
 inline def map[B](f: A => B): Free[F, B] = flatMap(a => Pure(f(a)))
 ```
 

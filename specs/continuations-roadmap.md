@@ -291,8 +291,8 @@ Recorded so that nobody mistakes "possible" for "planned".
   the cost; the roads that pay are the ones that walk it fewer times
   (1), skip building it where the shape is static (2), or say more
   about it at compile time (3).
-- **Every road keeps the one-tree invariant**: `Cont` stays
-  `Free[Shift, A]`; a fused walker or a staged block emits the same
+- **Every road keeps the one-tree invariant**: `Cont` stays the one
+  freer tree (`Freer[Shift, S, R, A]`); a fused walker or a staged block emits the same
   nodes or none, never a second kind.
 
 ## Results

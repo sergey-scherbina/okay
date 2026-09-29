@@ -43,27 +43,32 @@ inline def reset[A, R](c: A ^ R): R = c / identity
  * tree: `Cont[A, S, R]` computes A and, applied by `/` to a
  * continuation A => S, makes an answer R — it means (A => S) => R.
  *
- * `S` and `R` are PHANTOM to the tree. The tree is `Free[Shift, A]`,
- * the same `Return | Inject | Bind | Delay` every effect program is
- * made of, and it carries no answer type at all. Danvy and Filinski's
+ * `S` and `R` are ON THE TREE (freer-base-step-extractor, 2026-09-29).
+ * The tree is `Freer[Shift, S, R, A]`, the same `Return | Inject |
+ * Bind | Delay` every effect program is made of, indexed by the answer
+ * types: a `Bind` joins a left side answering `T => R` to a
+ * continuation answering `S => T`, which is Danvy and Filinski's
  * answer-type modification — `PState` changing its state type,
- * `Loop`'s open recursion — lives entirely in the signatures of this
- * companion: `shift`, `bind`, `run` say what the tree may not.
+ * `Loop`'s open recursion — written on the node. The signatures of
+ * this companion (`shift`, `bind`, `run`) say the same thing the tree
+ * does, and the runner below is typed by the GADT: no cast.
  *
- * WHY THE INDEXES ARE NOT ON THE TREE (specs/freer-base.md, the
- * stage-1 refutation): they were, and it cost the shared base its
- * other half. An indexed `Bind` carries its left side's answer type,
- * and a pattern match makes that an existential — so every one of
- * the library's 89 match sites on a `Free` would have seen a
- * continuation at an index no type could pin back, and a pinning
- * extractor is refuted by the compiler inferring its free parameter
- * as `Nothing`. Indexes belong on facades, which are never matched.
- * That is also what lets stage 2 put a protocol state on an effect
- * program: the same move, one more facade.
+ * WHY THE INDEXES WERE NOT ON THE TREE FOR A YEAR, and what changed
+ * (specs/freer-base.md, the stage-1 refutation and "The dual placement,
+ * LANDED"): an indexed `Bind` carries its left side's answer type, and
+ * a pattern match makes that an existential — so every one of the
+ * library's hundred-odd match sites on a `Free` would have seen a
+ * continuation at an index no type could pin back, and the pinning
+ * extractor stage 1 tried put its type variable only in the RESULT,
+ * which dotty infers as `Nothing`. `Free.Bind` (Free.scala) puts it in
+ * the PARAMETER, so the type test binds it, and answers the effect
+ * tree's constant claim — every index `Unit` — once, for every site.
+ * Stage 2's protocol state (`Prog`) is still a facade: its index says
+ * nothing the nodes could check.
  *
- * So `Cont` is `Free` with a function in the leaf and its types on
- * the outside — and, seen the other way, Free is Cont whose shift
- * body the handler chooses rather than the program.
+ * So `Cont` is `Free` with a function in the leaf and its answer types
+ * carried where `Free` carries `Unit` — and, seen the other way, Free
+ * is Cont whose shift body the handler chooses rather than the program.
  */
 type Cont[A, S, R] = Cont.Rep[A, S, R]
 
@@ -90,7 +95,7 @@ object Cont:
    * The representation, opaque HERE rather than at top level — and
    * that placement is load-bearing, not style. A top-level `opaque
    * type` is transparent to its whole PACKAGE, so declared there a
-   * `Cont` would still be plainly `Free[Shift, A]` everywhere in
+   * `Cont` would still be plainly `Freer[Shift, S, R, A]` everywhere in
    * `okay`, and every extension written for a program carrier would
    * apply to it: Generate.scala's for-comprehension picked up
    * `Stream`'s `map`, which takes a function INTO a program, and the

@@ -280,7 +280,7 @@ program:
   a type-aligned queue (measured: stepping one-by-one costs only ~8%
   over bulk, so the queue is unneeded, with evidence).
 - `Cont` is the same discipline one level down — and since 2026-09-15
-  the same TREE: an opaque `Free[Shift, A]` whose runner is one
+  the same TREE: an opaque `Freer[Shift, S, R, A]` whose runner is one
   tail-recursive loop, plus one step of closure absorption (a fresh
   leaf takes its first flatMap/map into itself; a depth budget of 128
   was re-measured and one step was the whole −12..25% win, rows
