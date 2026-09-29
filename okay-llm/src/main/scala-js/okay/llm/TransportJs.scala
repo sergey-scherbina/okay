@@ -17,8 +17,15 @@ import scala.scalajs.js
  */
 object Transports:
 
-  def fetch: Transport = new Transport:
+  def fetch: Transport & Fetch = new Transport with Fetch:
     def post(url: String, headers: Map[String, String], body: String)
+    : Unit ! Writer % String + Async = send("POST", url, headers, Some(body))
+    def get(url: String, headers: Map[String, String]): Unit ! Writer % String + Async =
+      send("GET", url, headers, None)
+    def delete(url: String, headers: Map[String, String], body: String): Unit ! Writer % String + Async =
+      send("DELETE", url, headers, Some(body))
+
+    private def send(method: String, url: String, headers: Map[String, String], body: Option[String])
     : Unit ! Writer % String + Async =
       type F = Writer % String + Async
       // Async.await, not the success-only `await`: a rejected fetch
@@ -28,9 +35,9 @@ object Transports:
       // which is where a failed request belongs.
       val request = Async.await[String] { k =>
         val opts = new Web.RequestInit {}
-        opts.method = "POST"
+        opts.method = method
         opts.headers = js.Dictionary(headers.toSeq*)
-        opts.body = body
+        body.foreach(b => opts.body = b)
         Web.Global.fetch(url, opts)
           .`then`[String]((r: Web.Response) => r.text())
           .`then`((t: String) => { k(Right(t)); () }: Unit)

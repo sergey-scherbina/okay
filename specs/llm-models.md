@@ -85,35 +85,35 @@ stream of lines); a `get` is added for the catalog reads.
 ## Behavior
 
 Catalog:
-- [ ] `openAi(...).list` decodes `{object:"list", data:[{id, owned_by, created}]}` into
+- [x] `openAi(...).list` decodes `{object:"list", data:[{id, owned_by, created}]}` into
       `Model`s with `contextTokens` and `maxOutput` `None`
-- [ ] `anthropic(...).list` carries `max_input_tokens` → `contextTokens`, `max_tokens` →
+- [x] `anthropic(...).list` carries `max_input_tokens` → `contextTokens`, `max_tokens` →
       `maxOutput`, `capabilities` → the set; pagination (`has_more`, `after_id`) is followed
-- [ ] `rozum(...).list` and `ollama(...).list` decode the same OpenAI form; `ollama` also
+- [x] `rozum(...).list` and `ollama(...).list` decode the same OpenAI form; `ollama` also
       reads `/api/tags` for `Weights` in `local`
-- [ ] `info(id)` on a spelling that differs from the catalog's (`org:repo` against `org/repo`)
+- [x] `info(id)` on a spelling that differs from the catalog's (`org:repo` against `org/repo`)
       finds the model
 
 Residency:
-- [ ] `rozum(...).running` reads `/control/status`; `load(id)` posts `/control/switch` and
+- [x] `rozum(...).running` reads `/control/status`; `load(id)` posts `/control/switch` and
       returns `Right` once the reply says resident, `Left(Refused)` with the gateway's words
       otherwise; `unload` posts `/control/unload`
-- [ ] `ollama(...).load(id)` posts an empty-prompt generate; `unload` posts it with
+- [x] `ollama(...).load(id)` posts an empty-prompt generate; `unload` posts it with
       `keep_alive: 0`; `running` reads `/api/ps` (`expires_at`, `size_vram`)
-- [ ] the type of `openAi(...)` and `anthropic(...)` is `Catalog` alone: a call to `.load`
+- [x] the type of `openAi(...)` and `anthropic(...)` is `Catalog` alone: a call to `.load`
       does not compile (asserted with a `compileErrors` test)
 
 Store:
-- [ ] `ollama(...).pull(id)` tells `Progress.Bytes` as the streamed status lines arrive and
+- [x] `ollama(...).pull(id)` tells `Progress.Bytes` as the streamed status lines arrive and
       `Done` at the end; a `Failed` carries the daemon's error line
-- [ ] `rozum(...).pull` shells nothing: it posts the gateway's control route, and where the
+- [x] `rozum(...).pull` shells nothing: it posts the gateway's control route, and where the
       gateway has none, the adapter's type says so (`Catalog & Residency` only, decided at
       implementation against the gateway of the day)
 
 Identity:
-- [ ] `ModelId.same("mlx-community:Qwen3.5-4B-MLX-4bit", "hf:mlx-community/Qwen3.5-4B-MLX-4bit")`
+- [x] `ModelId.same("mlx-community:Qwen3.5-4B-MLX-4bit", "hf:mlx-community/Qwen3.5-4B-MLX-4bit")`
       is true; `show` of either is `mlx-community/Qwen3.5-4B-MLX-4bit`
-- [ ] a catalog with `org/repo` and a residency answering `org:repo` mark the same model resident
+- [x] a catalog with `org/repo` and a residency answering `org:repo` mark the same model resident
 
 All of it on a scripted `Transport`: no network in the suite. One live test per
 adapter behind an env var (`OKAY_LLM_URL` for rozum, `OLLAMA_URL`), skipped loudly
@@ -161,4 +161,29 @@ suite `TestModels`). Consumer: `../nadia` `app/` Models screen.
 
 ## Results
 
-Not implemented yet.
+Implemented 2026-09-29 (lane `llm-models`), with four things decided
+against the interface as first written, each for a reason found in the
+code or the vendor's wire:
+
+- **`Fetch` beside `Transport`, not `Transport.get`.** `Transport` has one
+  abstract method and nine implementations in this repository's tests; a
+  second abstract method would have made an additive lane a change to
+  every one of them. `Fetch` (`get`, `delete`) is a second trait; the two
+  real transports return `Transport & Fetch`, a test writes what it needs.
+- **`ModelId` is a class, not an opaque type.** Equality had to hold across
+  spellings, which an opaque type over `String` cannot give; and Ollama's
+  ids are `name:tag`, so the canonical `org/repo` form is the KEY the
+  identity compares by, while `spelling` — what the provider said — is
+  what goes back on the wire. `show` is the key.
+- **rozum's residency is read off `/v1/models`, not `/control/status`.**
+  The gateway's own list marks its resident row (`resident: true`) and
+  carries the real spec in `display_name` behind a Claude-shaped alias
+  `id`; `/control/status` reports the HOST's residents across gateways,
+  which is a different question. The adapter calls a model by its spec.
+- **rozum is `Catalog & Residency`.** `rozum models pull|rm` is a CLI with
+  no route; the type says so rather than a `Store` whose methods fail.
+
+`TestModels`, 9 tests, cross (JVM and JS): a scripted wire answers by
+verb and path; the compile-error test proves `.load` on a hosted
+provider does not exist. `Iso.epochMs` parses Ollama's `expires_at` on
+every platform (no java.time on JS).

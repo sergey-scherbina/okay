@@ -88,7 +88,13 @@ pipeline, so a body cut mid-string still yields the text it carried.
 | member | signature | meaning |
 |---|---|---|
 | `Transport` | `post(url, headers, body): Unit ! Writer % String + Async` | the seam: lines stream back |
-| `Transport.http` | `(client = default) => Transport` | java.net.http, streaming lines |
+| `Transport.http` | `(client = default) => Transport & Fetch` | java.net.http, streaming lines; `Fetch` adds `get` and `delete` for the catalog's reads |
+| `Fetch` | `get(url, headers)`, `delete(url, headers, body)` | the verbs beside `post`; both real transports carry them |
+| `ModelId` | `spelling`, `key`; `ModelId.same`, `ModelId.show` | one model under `org:repo`, `org/repo`, `hf:org/repo`: equality by the canonical key, the provider's spelling kept for the wire |
+| `Models.Catalog` / `Residency` / `Store` | `list`/`info`; `running`/`load`/`unload`; `local`/`pull`/`remove` | capabilities a provider has or lacks — a missing one is a missing method, not a failing one (specs/llm-models.md) |
+| `Models.openAi` / `anthropic` | `(fetch, key, base?) => Catalog` | the OpenAI list form; Anthropic's limits and capabilities carried, pages followed |
+| `Models.ollama` | `(transport, base?) => Catalog & Residency & Store` | `/v1/models`, `/api/tags`, `/api/ps`, keep_alive load/unload, streamed `/api/pull`, `/api/delete` |
+| `Models.rozum` | `(transport, base) => Catalog & Residency` | `/v1/models` with the resident row called by its real spec and marked; `/control/switch`, `/control/unload`; no store route yet |
 | `Sse.events` | `Stage[String, String, Unit]` | SSE framing: lines in, event payloads out, trailing event flushed |
 | `Anthropic.Request/Message` | case classes with derived Schemas | the request body |
 | `Anthropic.Event/Delta` | derived Schemas | the streaming events that matter |
