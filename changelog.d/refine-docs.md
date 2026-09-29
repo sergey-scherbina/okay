@@ -8,3 +8,7 @@
   documents went 123 → 801 in a day and found two dialect defects), "The
   cross-format law" (one value from two formats), "What lives where";
   two gotchas (strict XML; `field` on a repeated element).
+
+- Re-landed 2026-09-29 after ci-runner reverted it (63c5ffe87) on a
+  TestFleet timing flake bisected to a docs-only commit; see backlog
+  `ci-runner-docs-only-culprit`.
