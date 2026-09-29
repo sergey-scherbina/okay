@@ -1,4 +1,4 @@
-- [ ] sentinel-single-consumer-lost-end — PRIORITY: MEDIUM since 2026-09-28
+- [ ] sentinel-single-consumer-lost-end — PRIORITY: HIGH again since 2026-09-29 (a PARKED Lost with hasReady=true, the last sighting); MEDIUM 2026-09-28
       (was HIGH: "a liveness defect, not a flake" — no sighting has yet
       shown a PARKED consumer; see the end of this entry). The ci-runner's whole build of 2026-09-25
       19:27 (range 42861945..041e25ac, gate log okay-gate.qziCWtKoMA)
@@ -75,3 +75,14 @@
       the next red of this law is a `Lost` carrying two thread snapshots
       and the channel's flags — read those; a `Starved` line on stderr in
       a whole-build log is the box and needs nothing.
+      SIGHTING 2026-09-29 ~03:35 — the LOST the entry asked for (lane
+      direct-foreign-mark's `affected master staged`, base 0bae0355a, a
+      tree that does not touch channels; the suite alone then 111/111):
+      "runner 4 round 258", the consumer PARKED (WAITING in
+      `Channel.receiveBlocking` -> `Platform.await`, Channel.scala:206) at
+      5000 ms AND at 65000 ms, with the channel at
+      `closing=true endPending=false ended=false partsSealed=2 metEnds=0
+      marks=2 size=2 hasReady=true receivers=1 reached=false parts=1`.
+      Two items READY and a receiver registered, and nobody woke it: a
+      lost wakeup on the READY path, not the end path (`ended=false`,
+      `endPending=false`).

@@ -371,8 +371,8 @@ extensions), but readers parse by type; prefer `.reflect` there.
 program also binds a value of ANOTHER library's effect, with the same
 marks, when a `ForeignEffect[M]` is in scope for its type
 (specs/direct-foreign-mark.md). The instance says which okay effect the
-value becomes — a `Future` becomes one `Async` operation, waiting by
-callback — and the macro then widens it into the block's row by the same
+value becomes — a `Future`, a ZIO or an `IO` becomes one `Async`
+operation, waiting by callback — and the macro then widens it into the block's row by the same
 subtyping proof a narrower program gets:
 
 ```scala

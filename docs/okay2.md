@@ -652,8 +652,8 @@ blocking pool; `fromIO`/`fromZIO` put one of theirs in an `Async`
 program; `scheduler` is okay2's `Scheduler` on their runtime, so `par`,
 `race` and `supervised` run there. `fromIO`/`fromZIO` wait by CALLBACK
 and are cancelled when the waiting side gives up (a timeout, a lost
-race) — the Scala 3 core parks a virtual thread in `unsafeRunSync`
-instead:
+race) — and so, since 2026-09-29, do the Scala 3 core's
+(specs/zio-direct-cancel.md, specs/cats-io-async.md):
 
 ```scala
     val p: Int ! Async = fromIO(IO.pure(20)).flatMap(a => Async(a + 22))

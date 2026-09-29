@@ -17,8 +17,13 @@ into the union.
 
 **Conversions outward.** Loom is the meeting point with cats-effect:
 `toIO` wraps a program as `IO.blocking` (their blocking pool runs it,
-a virtual thread parks inside), `fromIO` runs an IO inside one async
-op (our virtual thread parks for it). The free-monad bridge is by
+a virtual thread parks inside). `fromIO` waits for an IO by CALLBACK —
+one `Async.await` on `unsafeToFutureCancelable`, so the callback runner
+parks no thread, and cancelling the okay side cancels the IO (its
+`onCancel` finalizers run). `toIOAsync` is the callback road the other
+way, through `IO.async`, for a program whose waits are `Await`s:
+cancelling the IO fiber cancels the okay drive. It does not replace
+`toIO`, because an `Async.Run` may block (specs/cats-io-async.md). The free-monad bridge is by
 initiality: `toCats` walks operations into `cats.free.Free`,
 `fromCats` is `foldMap` through the injecting `FunctionK`.
 
@@ -67,7 +72,8 @@ Async.par(async(1), async(2)).runWith          // fibers on cats-effect
 | `given StackSafeMonad[[A] =>> A ! F]` | for every `F` | cats Monad on programs |
 | `given MonadError[[A] =>> A ! Throws % E + F, E]` | needs `TypeableK[Throws % E]` | typed errors, cats-style |
 | `CatsInterop.toIO` | `(=> A ! Async) => IO[A]` | run as blocking IO |
-| `CatsInterop.fromIO` | `(IO[A])(using IORuntime) => A ! Async` | an IO as one async op |
+| `CatsInterop.toIOAsync` | `(=> A ! Async) => IO[A]` | callback drive via IO.async; IO cancel cancels the Await |
+| `CatsInterop.fromIO` | `(IO[A])(using IORuntime) => A ! Async` | an Await on the IO; okay cancel cancels the IO |
 | `given ioForeign` | `(using IORuntime) okay.ForeignEffect[IO]` | `io.?`, `io.reflect`, `!io` inside a `direct` block over an okay row |
 | `CatsInterop.toCats` | `A ! F => cats.free.Free[F, A]` | operation for operation |
 | `CatsInterop.fromCats` | `cats.free.Free[F, A] => A ! F` | foldMap by initiality |
