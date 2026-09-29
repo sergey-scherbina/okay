@@ -2333,6 +2333,11 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
   // (intent-jmh-row).
   .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
+    // `Exp` per platform (intent-model-reproducible): StrictMath on the
+    // JVM, so a fitted model re-derives to the same bytes on every CPU;
+    // Scala.js has no StrictMath, and nothing is re-derived there
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     // the live suites are JVM-only: they hold an HTTP connection to a
     // gateway, and the tiers themselves are portable
     Test / unmanagedSourceDirectories +=
@@ -2343,6 +2348,8 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "jmh" / "scala",
   )
   .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
     // The MAIN sources cross; most of the tests do not, and this
     // mirrors what okay-agent already does. Several suites summon a
     // Handler[Async], which needs a CanBlock that only the JVM has —

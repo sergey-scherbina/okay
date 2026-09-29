@@ -69,7 +69,13 @@ object CharGrams {
 
   private def softmax(z: Array[Double]): Array[Double] =
     val m = z.max
-    val e = z.map(x => math.exp(x - m))
+    // `Exp`, StrictMath on the JVM, not Math (intent-model-reproducible, 2026-09-29): the
+    // shipped model is re-derived in a test, byte for byte, and `Math.exp`
+    // may differ by an ulp between CPUs (an intrinsic on one, fdlibm on
+    // another). Fitted on an ARM Mac, it re-fitted one bit apart on x86.
+    // StrictMath is fdlibm everywhere; `sqrt` above needs nothing, IEEE
+    // already rounds it exactly.
+    val e = z.map(x => Exp(x - m))
     val s = e.sum
     if s == 0.0 then e else e.map(_ / s)
 

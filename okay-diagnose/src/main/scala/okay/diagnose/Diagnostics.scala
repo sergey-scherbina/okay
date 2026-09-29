@@ -6,7 +6,7 @@ package okay.diagnose
  *
  *     val d = Diagnostics()
  *     Diagnostics.around(d) {
- *       d.note(s"round $r")
+ *       d.note(s"round \$r")
  *       d.onFailure(channel.debugState)
  *       ...
  *     }
