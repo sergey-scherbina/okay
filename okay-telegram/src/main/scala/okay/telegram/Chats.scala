@@ -2,7 +2,7 @@ package okay.telegram
 
 import okay.*
 import okay.ui.{Host, Telegram}
-import okay.ui.Telegram.Act
+import okay.ui.Telegram.{Act, Message}
 
 /**
  * okay-ui's HOST, PER CHAT, OVER A BOT (specs/telegram-bot.md).
@@ -38,6 +38,56 @@ object Chats:
         bot.send(chat, prompt, forceReply = true).flatMap(told).map(_ => None)
     }
 
+  /**
+   * `perform`, WITH EDITS TO ONE MESSAGE COALESCED (specs/telegram-live.md).
+   *
+   * A screen that watches a running agent changes faster than the Bot API
+   * lets a message be edited. The first edit of a message goes out at
+   * once and opens a window of `everyMs`; edits within the window are
+   * held and the LAST one is sent when it closes, which opens the next
+   * window; a window that closes with nothing held simply closes, so a
+   * quiet card is still instant. An edit equal to the last one sent is
+   * dropped (the API refuses "message is not modified" as an error).
+   *
+   * Sends, answers and asks are never held: a new message is not an
+   * edit, and a press must be answered now or the person's client spins.
+   * Edits to different messages do not hold each other.
+   */
+  def performThrottled(bot: Bot, chat: Long, everyMs: Long = 2000,
+                       refused: Refused => Unit ! Async = _ => pure(()),
+                       asked: () => Unit = () => ())
+                      (using T: Timer, S: Scheduler): Act => Option[Long] ! Async =
+    val inner = perform(bot, chat, refused, asked)
+    val lock = new Object
+    var last = Map.empty[Long, Message]              // the newest text+keyboard sent, per message
+    var held = Map.empty[Long, Option[Message]]      // an open window, and what it holds
+
+    def send(id: Long, m: Message): Unit ! Async =
+      inner(Act.Edit(id, m)).map(_ => ())
+
+    def arm(id: Long): Unit =
+      T.after(everyMs)(() => close(id)): Unit
+
+    // the window closes: send what it held and open the next, or just close
+    def close(id: Long): Unit =
+      val next = lock.synchronized {
+        held.get(id).flatten match
+          case Some(m) => held += id -> None; last += id -> m; Some(m)
+          case None => held -= id; None
+      }
+      next.foreach(m => Async.spawn(send(id, m).map(_ => arm(id))): Unit)
+
+    {
+      case Act.Edit(id, m) =>
+        val now = lock.synchronized {
+          if last.get(id).contains(m) && !held.get(id).exists(_.exists(_ != m)) then false   // nothing new
+          else if held.contains(id) then { held += id -> Some(m); false }                     // held: last wins
+          else { held += id -> None; last += id -> m; true }                                  // first: at once
+        }
+        if now then send(id, m).map { _ => arm(id); None } else pure(None)
+      case other => inner(other)
+    }
+
   /** an update as what a chat's host hears, and which chat: a press, a
    * message; a payment or a pre-checkout is the consumer's, not the host's */
   def heard(u: Update): Option[(Long, Telegram.Update)] = u match
@@ -46,7 +96,8 @@ object Chats:
     case _ => None
 
 final class Chats(bot: Bot, open: (Long, Host) => Unit ! Async,
-                  refused: Refused => Unit ! Async = _ => pure(()))(using Scheduler):
+                  refused: Refused => Unit ! Async = _ => pure(()),
+                  everyMs: Long = 0)(using Scheduler, Timer):
   private var doors = Map.empty[Long, Telegram.Update => Unit ! Async]
   private var asked = Set.empty[Long]
   private val lock = new Object
@@ -75,8 +126,10 @@ final class Chats(bot: Bot, open: (Long, Host) => Unit ! Async,
         doors.get(chat) match
           case Some(door) => (door, None)
           case None =>
+            val tell = () => lock.synchronized { asked += chat }
             val (host, door) = Telegram.host(
-              Chats.perform(bot, chat, refused, () => lock.synchronized { asked += chat }))
+              if everyMs > 0 then Chats.performThrottled(bot, chat, everyMs, refused, tell)
+              else Chats.perform(bot, chat, refused, tell))
             doors += chat -> door
             (door, Some(host))
       }

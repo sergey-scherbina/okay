@@ -45,20 +45,20 @@ object Command:
 
 ## Behavior
 
-- [ ] three `Edit`s of one message within 100 ms produce ONE `editMessageText` call, with the
+- [x] three `Edit`s of one message within 100 ms produce ONE `editMessageText` call, with the
       third's text and keyboard (scripted `Bot`: the calls are recorded, the clock is a test
       timer)
-- [ ] an `Edit` after the window closes goes out at once — the throttle is per burst, not a
+- [x] an `Edit` after the window closes goes out at once — the throttle is per burst, not a
       fixed cadence, so a quiet card is still instant
-- [ ] edits to two different messages do not hold each other
-- [ ] `Send` and `Answer` are never held; an `Answer` arriving during a held edit is sent
+- [x] edits to two different messages do not hold each other
+- [x] `Send` and `Answer` are never held; an `Answer` arriving during a held edit is sent
       before the edit
-- [ ] an `Edit` whose text and keyboard equal the last sent is dropped (the API answers
+- [x] an `Edit` whose text and keyboard equal the last sent is dropped (the API answers
       "message is not modified" with an error otherwise)
-- [ ] a held edit that is refused by the API reaches `refused` once, with the method name
-- [ ] `Command.install` with a name `Agents` (capital) is `Left(Refused("setMyCommands", 400,
+- [x] a held edit that is refused by the API reaches `refused` once, with the method name
+- [x] `Command.install` with a name `Agents` (capital) is `Left(Refused("setMyCommands", 400,
       …))` naming the command, without a network call
-- [ ] `Command.dispatch(cmds, "/agents")` and `"/agents@botname"` both give `agents`;
+- [x] `Command.dispatch(cmds, "/agents")` and `"/agents@botname"` both give `agents`;
       `"/agents now"` gives `agents`; `"agents"` gives `None`
 
 ## Out of scope
@@ -96,4 +96,9 @@ object Command:
 
 ## Results
 
-Not implemented yet.
+Implemented 2026-09-29 (lane `telegram-live`): `Chats.performThrottled`, a
+window length on `Chats` (`everyMs`, 0 = the plain performer), `Command`.
+`TestLive` drives the throttle with a manual `Timer` — a window closes when
+the test says so, so no test sleeps on the wall clock. Two rows in
+`specs/stack-safety-okay.tsv`: the `arm`/`close` cycle is a timer re-arm,
+each hop a fresh frame.

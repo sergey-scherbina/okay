@@ -23,12 +23,13 @@ the client is one small module and not three copies.
 | `Bot` | `call`, `getMe`, `getUpdates`/`poll`/`serve`, `send`/`edit`/`answerCallback`/`setCommands`, `invoice`/`answerPreCheckout`/`refundStars` |
 | `Refused` | the method, the API's error code and its words — never the URL, which carries the token |
 | `Update` | `Message`, `Callback`, `PreCheckout`, `Paid`, `Other(kind)` |
-| `Chats` | `perform(bot, chat)` for okay-ui's `Telegram.Act`, `heard(update)` to the chat's `Telegram.Update`, and the class that keeps one host per chat |
+| `Chats` | `perform(bot, chat)` for okay-ui's `Telegram.Act`, `performThrottled(bot, chat, everyMs)` — the same with edits to one message coalesced (first at once, then the last held one per window; specs/telegram-live.md), `heard(update)` to the chat's `Telegram.Update`, and the class that keeps one host per chat (`everyMs > 0` picks the throttled performer) |
+| `Command` | `(name, description, screen)`: `install(bot, table)` is `setMyCommands` with a bad name refused here by name; `dispatch(table, text)` reads `/name`, `/name@bot`, `/name args` to the screen it opens |
 
 ## What it is not
 
-Not a framework: no command dispatcher, no conversation state, no
-middleware. An application is `Ui.run` or a function of `Update`; this
+Not a framework: no conversation state, no middleware; `Command.dispatch`
+only names the screen a `/command` opens. An application is `Ui.run` or a function of `Update`; this
 module carries messages. Webhooks are an okay-http route the consumer
 writes; file uploads, inline mode and Mini Apps are out of scope
 (specs/telegram-bot.md).
