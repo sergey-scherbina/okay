@@ -62,7 +62,8 @@ object Fused {
             case State.Set(s2) => ((s2, w), s2): ((S, Vector[W]), A)
             case State.Modify(f) => { val s2 = f(s); ((s2, w), s2): ((S, Vector[W]), A) }
             case State.Update(f) => { val (b, s2) = f(s); ((s2, w), b): ((S, Vector[W]), A) }
-          } { case Writer.Say(v) => ((s, w :+ v), ()): ((S, Vector[W]), A) }
+          } { w0 => (w0: @unchecked) match   // Say is the one constructor; the checker cannot see it at the program's answer type (Writer.scala says why)
+              case Writer.Say(v) => ((s, w :+ v), ()): ((S, Vector[W]), A) }
         case Bind(Inject(e), k) => split[State % S, Writer % W](e) {
             case State.Get() => loop(s, w)(k(s))
             case State.Set(s2) => loop(s2, w)(k(s2))
@@ -103,7 +104,8 @@ object Fused {
             case State.Set(s2) => Right(((s2, w), s2)): Either[E, ((S, Vector[W]), A)]
             case State.Modify(f) => { val s2 = f(s); Right(((s2, w), s2)): Either[E, ((S, Vector[W]), A)] }
             case State.Update(f) => { val (b, s2) = f(s); Right(((s2, w), b)): Either[E, ((S, Vector[W]), A)] }
-          } { case Writer.Say(v) => Right(((s, w :+ v), ())): Either[E, ((S, Vector[W]), A)] } }
+          } { w0 => (w0: @unchecked) match
+              case Writer.Say(v) => Right(((s, w :+ v), ())): Either[E, ((S, Vector[W]), A)] } }
         case Bind(Inject(e), k) => split[Throws % E, State % S + Writer % W](e) {
             case Throws(err) => Left(err)
           } { e => split[State % S, Writer % W](e) {

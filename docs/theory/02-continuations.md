@@ -46,12 +46,12 @@ engineering is that `Cont` is **defunctionalized**: rather than being
 the function type it means, it is a data type with one interpreter,
 `/`. And since 2026-09-15 that data type is not its own: `Cont` is
 the freer tree of chapter 4 at the signature "a function of the
-continuation" — `opaque type Rep[A, S, R] = Free[Shift, A]`
-(`Cont.scala:146`), a `shift` being a leaf `Inject(f)` and a bind a
-`Bind`, with `S` and `R` phantom to the tree and carried by the
-facade's signatures alone. Chapter 11 tells that story in full, with
-the two attempts to put the answer types on the nodes and why the
-compiler refused both. Three consequences, all load-bearing:
+continuation" — `opaque type Rep[A, S, R] = Freer[Shift, S, R, A]`
+(`Cont.scala`), a `shift` being a leaf `Inject(f)` and a bind a
+`Bind`, with `S` and `R` on the nodes since 2026-09-29 so the runner
+is typed by the GADT. Chapter 11 tells that story in full: the two
+attempts to put the answer types on the nodes that the compiler
+refused, and the third that it accepted. Three consequences, all load-bearing:
 
 **Stack safety.** A directly-encoded continuation monad overflows the
 stack on long `flatMap` chains — the classic problem Rúnar Bjarnason

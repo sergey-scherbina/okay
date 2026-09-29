@@ -375,6 +375,16 @@ Stage 2 — the index as typestate, Delim first (lane freer-base-stage2, 2026-09
   runner types `k(a): R` from the GADT equality `S = R` that matching
   `Pure` provides; with variance that equality is gone and the line
   becomes a cast. No casts without necessity (operator, 2026-09-02).
+  SUPERSEDED IN HALF (freer-base-step-extractor, 2026-09-29): the base
+  is `Freer[G, S, +R, +A]`. `+A` the effect tree always had; `+R` is
+  what lets a tail-shaped shift body — `k => k(v)`, typed `(A => S) =>
+  R` with `S <: R` at its site — become the `Return(v): Cont[A, S, S]`
+  the macro emits, and it costs the runner nothing: matching `Return`
+  now says `S <: R`, and `k(a): S` is an `R` by subtyping, no cast.
+  `S` stays invariant, for this decision's reason: contravariance
+  would let a continuation of the wrong answer type into a bind by
+  upcast. The opaque facade `Rep[A, S, R]` stays invariant in all
+  three (backlog: cont-variance).
 - **`resume` is the single rotation; an eliminator may inline the
   four lines only under the law.** Free's `runFree` was measured
   within 8% of stepping through `resume` (HandlerBenchmark
@@ -430,7 +440,12 @@ Stage 2 — the index as typestate, Delim first (lane freer-base-stage2, 2026-09
   signature's leaf; `Shift.Absorbed` for the fused function, nested
   because `okay.Fused` (handler-fusion loops) and `okay.Fuse` (optics)
   are taken; the `!` alias and `Effect` extractor keep their names so
-  the 89 match sites do not move.
+  the 89 match sites do not move. AS LANDED (2026-09-29): the leaf
+  kept the name `Inject` after all — `Freer.Inject` holds an `F[A]` or
+  a shift body alike, and `object Free` keeps `Return`/`Inject`/`Bind`/
+  `Delay` at the old arities as constructors and patterns, so no match
+  site and no `direct`-macro symbol lookup moved; `Lift` is as named;
+  the fused function stayed `Cont.Leaf.Absorbed`, where it was.
 
 ## Results
 
@@ -894,3 +909,108 @@ today.
 - Nothing here is measured. The indexes are phantom and the facade
   erases, so the expectation is allocation identical to the byte, the
   way `cont-on-free` measured — but an expectation is not a number.
+
+### The dual placement, PROBED (2026-09-29, freer-base-step-extractor)
+
+Stage 1 said where the index may not live — on the nodes — because a
+match makes it existential. The question the operator put back
+(2026-09-29): the old separate `Cont` was an indexed enum and worked
+without a cast; can one base be indexed like it and still serve
+`Free`? The answer is yes, with ONE cast, and the probe that compiles
+it is `src/test/scala/ProbeFreerStep.scala` (kept compiling, like
+ProbeRowCrash). What stage 1's extractor lacked is exact:
+
+- `unapply[F, X, A, T](b: Bind[Lift[F], X, A, Unit, T, Unit]): Bind[Lift[F], X, A, Unit, Unit, Unit]`
+  — the pattern-bound type variables in the PARAMETER type, so the
+  compiler inserts the type test that binds them (stage 1 put `X`
+  only in the result, and dotty infers a result-only variable as
+  `Nothing`); the result is the node itself, a Product, so the match
+  allocates nothing (bytecode `aload_1; areturn`).
+- `Lift[F] = [X, S, R] =>> F[X]`, a type lambda in the signature slot:
+  `Op(g: G[A, S, R])` reduces to `F[A]` at a match, the existential
+  is gone by beta-reduction, and `F` is inferred through it at an
+  abstract `F` (`runFree[F[+_], A]`) — the shape row-membership-crash
+  made suspect, and it did not crash.
+- `resume` once, index-polymorphic, no cast: `Bind(Bind(a, f), g)`
+  types through the two intermediates as the old Cont's runner did.
+- Cont's runner typed by the GADT: `Return` gives `S = R`, the leaf is
+  `(A => S) => R` — `Shift.at` and `pinned` both go.
+
+Casts: two on the facade (trusted at two nodes) against one on the
+erased side (a constant claim: every Lift tree is built at Unit).
+Refused by the compiler: answer types that do not meet in a bind, a
+continuation of the wrong answer type, `Step` on a concrete Cont
+(E030), `Step` on an abstract-G tree (E092 — red under "no
+warnings"). Let through: `Step` on `Cont[A, R, R]` with R a method
+type parameter, which the GADT may bind to Unit — so `Step` is
+`object !`'s and is applied to `Free[F, A]` scrutinees, the standing
+of `(x.resume: @unchecked)` today. Not measured, and not expected to
+move: the nodes are the same objects. The lane is
+backlog.d/okay-core/freer-base-step-extractor.md.
+
+### The dual placement, LANDED (2026-09-29, freer-base-step-extractor)
+
+The probe above is the base now. `src/main/scala/Free.scala` holds
+`enum Freer[G[_, +_, +_], S, +R, +A]` — `Return | Inject | Bind |
+Delay`, one `resume`, index-polymorphic, no cast — and
+`type Free[F[+_], +A] = Freer[Lift[F], Unit, Unit, A]` beside an
+`object Free` whose `Return`, `Inject`, `Bind` and `Delay` are the four
+names at their old arities, constructors and patterns both. `Cont`'s
+`Rep[A, S, R]` is `Freer[Shift, S, R, A]` with `Shift = [S, R, X] =>>
+(X => S) => R`; `Shift.of`, `Shift.at` and `pinned` are gone from
+`Cont.scala`, and `Cps.walkWith` with them.
+
+What the probe did not predict, each found by the compiler:
+
+- **`A` last.** The probe's `Freer[G, A, S, R]` broke every place a
+  unary constructor is inferred from a program value (`Monad[M]` from
+  an `A ! F`, `Stream[S, F]`, `Applicative`): dotty abstracts an
+  applied type over its LAST parameter, and after dealiasing `Free`
+  that was `R`. `Freer[G, S, R, A]` puts `A` last and every instance
+  infers as before.
+- **`Lift` is a class projection, `Lifted[F]#L`.** As a bare lambda,
+  `Lift[Users + F]` against `Lift[F1 + G]` beta-reduced to `Users[X] |
+  F[X]` against `F1[X] | G[X]`, and dotty solved `F1 := Users + F`:
+  `!.tracing(p)([X] => (e: Users[X]) => …)` stopped typing. A
+  projection compares by its prefix, `Lifted[Users + F]` against
+  `Lifted[F1 + G]`, and the row's `+` matches application to
+  application as it did on the old enum. Side effect, recorded in
+  `ProbeRowInference`: an argument typed as the EXPANDED union `[A]
+  =>> Delim[A] | F[A]` now satisfies `R ! Delim + F` without explicit
+  type arguments, which the old enum refused (shape 3 there pinned the
+  refusal; it pins the acceptance now).
+- **`+R`.** `Cont.tailShift[A, S, R]` emits `Return(v): Cont[A, S, S]`
+  for a body whose own typing said `S <: R`; on an invariant base that
+  is not a `Cont[A, S, R]`. The base is covariant in `R` (the Variance
+  decision, above), and the macro summons `S <:< R` at the call site
+  (`Expr.summon`, where the types are concrete) and hands it to
+  `tailShift`/`tailPure`, which `liftCo` through the tree; a body
+  where the evidence is not found stays a leaf.
+- **Two class tests stay `@unchecked`.** An absorbed `Leaf[A, S, R]`
+  and a `Cps[A, S, R]` are subclasses of the leaf type `(A => S) => R`
+  at the same arguments; a type test with bound variables (`case l:
+  Leaf[a, s, r]`) does not derive them through a function type, so
+  they are `Leaf[A, S, R] @unchecked` — the one claim a class boundary
+  keeps, and a smaller one than `Shift.at`'s, which trusted the
+  arguments of EVERY leaf.
+- **Seven `split(e) { case Say(w) => … }` sites** in Writer and
+  Chronicle needed `(w0: @unchecked) match`, as their `Bind` twins
+  already had: `Free.Inject`'s pattern types `e` at the program's own
+  answer type rather than a GADT skolem, and the exhaustivity checker
+  then cannot see that `Say` is the only constructor.
+- **The Layer 1 B walk keeps one cast**, renamed `walked`: the pending
+  stack's typing is dynamic (a body being walked answers through the
+  parts pushed for it, while the loop's `c`/`k`/`R` are the step's),
+  which is about `Pending`, not the tree, exactly as the item said.
+- **`Prog` is untouched.** It stays an opaque facade over `Free[F, A]`
+  with identity doors (`diag`, `transition`, `free`); the probe's
+  third signature `Typed[F] = [S, R, X] =>> (F[X], S => R)` would put
+  a transition FUNCTION on every leaf — a different, allocating design
+  — and the item's step (4) is closed as "not this lane".
+
+Casts on the tree: two to one. Gate: the core on JVM, Scala.js and
+Scala Native (612 / 10 / 14), then `affected origin/master staged`
+over the family. Not measured here: `scripts/jmh-lane.sh` needs the
+Mac; the lanes to re-read are the item's, and any movement is a
+defect, since every node is the same object.
+

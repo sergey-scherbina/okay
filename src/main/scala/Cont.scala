@@ -1,6 +1,6 @@
 package okay
 
-import okay.Free.{Return, Inject, Bind, Delay}
+import okay.Freer.{Return, Inject, Bind, Delay}
 
 /**
  * Final tagless interface of delimited control: the parameterised
@@ -43,112 +43,69 @@ inline def reset[A, R](c: A ^ R): R = c / identity
  * tree: `Cont[A, S, R]` computes A and, applied by `/` to a
  * continuation A => S, makes an answer R — it means (A => S) => R.
  *
- * `S` and `R` are PHANTOM to the tree. The tree is `Free[Shift, A]`,
- * the same `Return | Inject | Bind | Delay` every effect program is
- * made of, and it carries no answer type at all. Danvy and Filinski's
+ * `S` and `R` are ON THE TREE (freer-base-step-extractor, 2026-09-29).
+ * The tree is `Freer[Shift, S, R, A]`, the same `Return | Inject |
+ * Bind | Delay` every effect program is made of, indexed by the answer
+ * types: a `Bind` joins a left side answering `T => R` to a
+ * continuation answering `S => T`, which is Danvy and Filinski's
  * answer-type modification — `PState` changing its state type,
- * `Loop`'s open recursion — lives entirely in the signatures of this
- * companion: `shift`, `bind`, `run` say what the tree may not.
+ * `Loop`'s open recursion — written on the node. The signatures of
+ * this companion (`shift`, `bind`, `run`) say the same thing the tree
+ * does, and the runner below is typed by the GADT: no cast.
  *
- * WHY THE INDEXES ARE NOT ON THE TREE (specs/freer-base.md, the
- * stage-1 refutation): they were, and it cost the shared base its
- * other half. An indexed `Bind` carries its left side's answer type,
- * and a pattern match makes that an existential — so every one of
- * the library's 89 match sites on a `Free` would have seen a
- * continuation at an index no type could pin back, and a pinning
- * extractor is refuted by the compiler inferring its free parameter
- * as `Nothing`. Indexes belong on facades, which are never matched.
- * That is also what lets stage 2 put a protocol state on an effect
- * program: the same move, one more facade.
+ * WHY THE INDEXES WERE NOT ON THE TREE FOR A YEAR, and what changed
+ * (specs/freer-base.md, the stage-1 refutation and "The dual placement,
+ * LANDED"): an indexed `Bind` carries its left side's answer type, and
+ * a pattern match makes that an existential — so every one of the
+ * library's hundred-odd match sites on a `Free` would have seen a
+ * continuation at an index no type could pin back, and the pinning
+ * extractor stage 1 tried put its type variable only in the RESULT,
+ * which dotty infers as `Nothing`. `Free.Bind` (Free.scala) puts it in
+ * the PARAMETER, so the type test binds it, and answers the effect
+ * tree's constant claim — every index `Unit` — once, for every site.
+ * Stage 2's protocol state (`Prog`) is still a facade: its index says
+ * nothing the nodes could check.
  *
- * So `Cont` is `Free` with a function in the leaf and its types on
- * the outside — and, seen the other way, Free is Cont whose shift
- * body the handler chooses rather than the program.
+ * So `Cont` is `Free` with a function in the leaf and its answer types
+ * carried where `Free` carries `Unit` — and, seen the other way, Free
+ * is Cont whose shift body the handler chooses rather than the program.
  */
 type Cont[A, S, R] = Cont.Rep[A, S, R]
 
 object Cont:
 
   /**
-   * The leaf, as the tree stores it: a shift with its answer types
-   * FORGOTTEN. `(X => S) => R <: (X => Nothing) => Any` for every S and
-   * R — a function is contravariant in its argument and `Nothing <: S`,
-   * covariant in its result and `R <: Any` — so this is the one
-   * supertype every typed shift conforms to, and it is written HERE
-   * and nowhere else. (Any other spelling fails on that variance: a
-   * wildcard is a supertype, and the argument slot needs a subtype of
-   * every `X => S` — measured by compiling, specs/freer-base.md.)
-   *
-   * Why the types cannot stay on the leaf while `Cont` is `Free`:
-   * `Free.Bind` joins a left tree and a continuation over ONE `F`, and
-   * answer-type modification joins a `(X => S) => R` on the left with
-   * a `(X => S2) => S` on the right — so the tree's `F` cannot name S
-   * and R, and the facade's signatures are the only place they live.
-   * Three spellings the operator asked about, settled by scalac 3.9.9
-   * on 2026-09-15 (cont-shift-doors): `(X => ?) => Any` is REFUSED
-   * ("Found: (X => S) => R, Required: Shift[X]" — a wildcard is a
-   * supertype, and the argument slot needs a subtype); a binary
-   * `Shift[+X, -S] = (X => S) => Any` compiles, but the tree can only
-   * hold it at `S = Nothing` (the two sides of a `Bind` disagree on S
-   * under answer-type modification), so the second parameter would be
-   * decoration; and a leaf enum `case Shift[A, S, R](k: (A => S) => R)`
-   * reads best and changes nothing — S and R are existential under the
-   * tree's wildcard, the cast stays, and a raw shift gains a wrapper
-   * object that stage 0 measured and refused (`once-*`).
-   *
-   * So the type has two named doors, and the ugly spelling is behind
-   * them: `Shift.of` forgets (an upcast, free), `at` remembers (THE
-   * cast, below).
+   * The leaf, as the tree stores it: the shift body ITSELF, answer
+   * types and all — `(X => S) => R` at the indexes the node carries
+   * (freer-base-step-extractor, 2026-09-29). Until then the tree was
+   * `Free[Shift, A]` with no answer type on it, so the leaf had to be
+   * stored at the one supertype every typed shift conforms to,
+   * `(X => Nothing) => Any`, behind `Shift.of` (an upcast) and read
+   * back through `Shift.at` (THE cast) — the facade's signatures were
+   * the only place S and R lived. Now `Freer`'s `Bind` joins a left
+   * side answering `T => R` to a continuation answering `S => T`, which
+   * is exactly answer-type modification, so the leaf keeps its own
+   * type and the runner below is typed by the GADT end to end. The two
+   * casts (`Shift.at`, `pinned`) and the paragraph that justified the
+   * spelling went with them.
    */
-  private[okay] type Shift[+X] = (X => Nothing) => Any
-
-  // Not `private`: `shift` is inline and reaches this object, and a
-  // private member behind an inline body makes the compiler
-  // synthesize an accessor with an unstable name (E192 — the
-  // `DiagonalMonad` finding, Effects.scala); `private[okay]` still
-  // does, measured 2026-09-15. The alias above is package-private so
-  // `of`'s signature may name it; `Rep` stays opaque, so nothing
-  // outside this companion can put a leaf in a `Cont` anyway.
-  object Shift:
-    /** the door in: a typed shift, its answer types forgotten — an
-     * upcast, no cast at all */
-    inline def of[X, S, R](f: (X => S) => R): Shift[X] = f
-
-    extension [X](s: Shift[X])
-      /**
-       * THE ONE CAST, and what makes it right: the door out.
-       *
-       * The facade typed this leaf when it was built — `shift(f: (X =>
-       * S) => R)` — and every combinator since has threaded those types
-       * through its own signature, so a runner that has been handed a
-       * `Cont[A, S, R]` and a `k: A => S` knows the leaf it reaches is
-       * the function the facade said it was. Nothing else can put a
-       * leaf in a `Cont`: the alias is opaque and this companion is the
-       * only place that sees through it. The cast is erased on the JVM
-       * and costs nothing at run time; what it costs is that this line,
-       * and no other, is where the answer-type discipline is trusted
-       * rather than checked. Same standing as `Writer`'s phantom
-       * equation and `Delim`'s two claims.
-       */
-      inline def at[S, R](k: X => S): R = s.asInstanceOf[(X => S) => R](k)
+  private[okay] type Shift = [S, R, X] =>> (X => S) => R
 
   /**
    * The representation, opaque HERE rather than at top level — and
    * that placement is load-bearing, not style. A top-level `opaque
    * type` is transparent to its whole PACKAGE, so declared there a
-   * `Cont` would still be plainly `Free[Shift, A]` everywhere in
+   * `Cont` would still be plainly `Freer[Shift, S, R, A]` everywhere in
    * `okay`, and every extension written for a program carrier would
    * apply to it: Generate.scala's for-comprehension picked up
    * `Stream`'s `map`, which takes a function INTO a program, and the
    * absorption below would have been bypassed wholesale. Inside an
    * object the scope is the object, which is what a facade needs.
    */
-  opaque type Rep[A, S, R] = Free[Shift, A]
-
-  import Shift.at
+  opaque type Rep[A, S, R] = Freer[Shift, S, R, A]
 
   /** a finished value (named where the 200-odd call sites already look for it) */
-  def Pure[A, R](a: A): Rep[A, R, R] = Free.Return(a)
+  def Pure[A, R](a: A): Rep[A, R, R] = Return(a)
 
   /** a computation as a function of its continuation — the shift of
    * Danvy and Filinski. A body that only calls `k` in tail position is
@@ -156,18 +113,23 @@ object Cont:
    * specs/cont-stack.md Layer 1 A); any other body is `shiftLeaf`. */
   inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
 
-  /** the leaf every non-tail body becomes, through `Shift.of` */
-  inline def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Free.Inject(Shift.of(f))
+  /** the leaf every non-tail body becomes: the function, as it is */
+  inline def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject(f)
 
   /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
    * `v` computed when the runner reaches it, in the runner's own loop.
-   * The indexes are the facade's: `S` flows to `R` exactly as `k`'s
-   * answer did, which the runner's `Return` case already trusts. */
-  def tailShift[A, S, R](v: () => A): Rep[A, S, R] = Free.delay(() => Free.Return(v()))
+   * `S <:< R` is what the body's own typing gave the macro — `k(v): S`
+   * was its `R`, and `ContMacro` summons the evidence at the call site —
+   * and it is what lets `Return(v): Cont[A, S, S]` be a `Cont[A, S, R]`
+   * on a base covariant in `R` (`liftCo` through the tree, which the
+   * opaque facade, invariant on purpose, would not do by itself). */
+  def tailShift[A, S, R](v: () => A)(using ev: S <:< R): Rep[A, S, R] =
+    ev.liftCo[[r] =>> Freer[Shift, S, r, A]](Freer.delay[Shift, S, S, A](() => Return[Shift, S, A](v())))
 
   /** the same when `v` is a literal or a stable name and nothing runs
    * before it: no thunk at all */
-  def tailPure[A, S, R](v: A): Rep[A, S, R] = Free.Return(v)
+  def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] =
+    ev.liftCo[[r] =>> Freer[Shift, S, r, A]](Return[Shift, S, A](v))
 
   /**
    * LAYER 1 B (specs/cont-stack.md plan stage E, cont-stack-layer1-b):
@@ -206,23 +168,27 @@ object Cont:
   abstract class Cps[A, S, R] extends ((A => S) => R):
     def body(k: A => S): Body[R]
     final def apply(k: A => S): R = walk(body(k))
-    /** `Shift.at`'s door out, for the runner: the continuation it
-     * built for this leaf is the one the facade typed the leaf with */
-    private[Cont] def walkWith[X](k: X => Any): Body[?] = body(k.asInstanceOf[A => S])
+
+  /** a CPS body found under a `Bind`, at the leaf's own arguments: the
+   * leaf is `(X => T) => R` and the continuation the bind built for it
+   * is the `X => T` — the class test is `@unchecked` for the reason the
+   * `Inject` case gives, and the body's `R` is the step's */
+  private def cpsBody[X, T, R](c: Cps[?, ?, ?])(k: X => T): Body[R] =
+    c.asInstanceOf[Cps[X, T, R]].body(k)
 
   /** the leaf an answer-using body becomes */
-  def cps[A, S, R](c: Cps[A, S, R]): Rep[A, S, R] = Free.Inject(Shift.of(c))
+  def cps[A, S, R](c: Cps[A, S, R]): Rep[A, S, R] = Inject(c)
 
   /** the runner's loop from a body: what a `Cps` does when applied as
    * the function it means */
   private def walk[R](b: Body[R]): R =
-    step[Any, Any, R](noProgram)(noK)(StackSwitch.firstRoom)(Pending.None)(b)
+    step[Any, Nothing, R](noProgram)(noK)(StackSwitch.firstRoom)(Pending.None)(b)
 
   /** the program and continuation a walk starts with — never looked
    * at: a walked body answers through its pending parts, and a program
    * it continues carries its own */
-  private val noProgram: Rep[Any, Any, Any] = Free.Return(())
-  private val noK: Any => Any =
+  private val noProgram: Rep[Any, Nothing, Nothing] = Return[Shift, Nothing, Unit](())
+  private val noK: Any => Nothing =
     _ => throw IllegalStateException("a walked body answers through its pending parts, never through k")
 
   /**
@@ -232,9 +198,9 @@ object Cont:
    * the empty stack; a run with no CPS body never allocates one.
    */
   private final class Pending[S, R](val rest: S => Body[R], val next: Pending[?, ?]):
-    /** `Shift.at`'s claim once more: the answer the runner reached is
-     * the `S` the facade typed this part for */
-    def deliver(s: Any): Body[R] = rest(pinned[Any, S](s))
+    /** the walk's own claim (see `walked`): the answer the runner
+     * reached is the `S` this part was pushed for */
+    def deliver(s: Any): Body[R] = rest(walked[S](s))
   private object Pending:
     val None: Pending[?, ?] = Pending[Any, Nothing](_ => throw IllegalStateException("empty"), null)
 
@@ -249,12 +215,12 @@ object Cont:
    * bind and rotates like one.
    */
   def defer[A, B, S, T, R](thunk: () => Rep[A, T, R])(f: A => Rep[B, S, T]): Rep[B, S, R] =
-    Free.defer(thunk)(f)
+    Freer.defer(thunk)(f)
 
   /** `defer` with nothing to do afterwards — `Free.delay` on this
    * side, and the same reason: `defer(t)(Return)` would push a rotated
    * `Return` continuation down the deferred subprogram (delay-node) */
-  def delay[A, S, R](thunk: () => Rep[A, S, R]): Rep[A, S, R] = Free.delay(thunk)
+  def delay[A, S, R](thunk: () => Rep[A, S, R]): Rep[A, S, R] = Freer.delay(thunk)
 
   /**
    * A leaf that has ALREADY absorbed one continuation.
@@ -276,11 +242,9 @@ object Cont:
    * That lane has the sharpest response in the suite; price any
    * change here against it.
    *
-   * The type parameters are the facade's, and inside this companion
-   * `Cont[B, S, T]` is plainly `Free[Shift, B]` whatever S and T are,
-   * so a `bind` may build an `Absorbed` at whatever indexes inference
-   * finds — the tree will not remember them and the facade already
-   * checked them.
+   * The type parameters are the tree's own now: an `Absorbed` is a
+   * `(B => S) => R`, which is the leaf type at the indexes `bind`'s
+   * result carries, so the compiler checks the pair it is built from.
    */
   private enum Leaf[A, S, R] extends ((A => S) => R):
     /** flatMap's absorption: the continuation enters the leaf */
@@ -327,9 +291,9 @@ object Cont:
   def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] =
     c match
       case Inject(s) => s match
-        case _: Leaf[?, ?, ?] | _: Cps[?, ?, ?] => Bind(c, a => Free.Return(f(a)))
+        case _: Leaf[?, ?, ?] | _: Cps[?, ?, ?] => Bind(c, a => Return(f(a)))
         case _ => Inject(Leaf.Mapped(s, f))
-      case _ => Bind(c, a => Free.Return(f(a)))
+      case _ => Bind(c, a => Return(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)(Pending.None)(null)
@@ -440,6 +404,13 @@ object Cont:
     case r: Reentry[x, ?, ?, t] => a => r.enter(g(a), room)
     case _ => a => k(g(a))
 
+  /** the continuation a `Bind(Inject(s), f)` hands its leaf: CURRIED, so
+   * `B` is fixed by `f` before `k` is checked against it — the tree's
+   * `+A` makes the bind's continuation domain a subtype of the step's
+   * `A`, and `A => S` is a `B => S` by contravariance, which one
+   * parameter list would not let inference see */
+  private def reenter[X, B, S, T](f: X => Rep[B, S, T])(k: B => S)(room: Int): X => T = Reentry(f, k, room)
+
   /** call a continuation from inside the runner, with the room HERE */
   private def callK[A, S](k: A => S, a: A, room: Int): S = k match
     case r: Reentry[x, ?, ?, t] => r.enter(a, room)
@@ -476,12 +447,17 @@ object Cont:
       case Return(a) => ifAnswer(a)
       case _ => otherwise
 
-  /** `Shift.at`'s claim at the other node the tree cannot type: a `Return`
-   * reached through a `Cont[A, S, R]` was built by `Cont.Pure[A, R']`,
-   * whose signature is `Cont[A, R', R']` — so the facade already fixed
-   * S = R' = R, and the tree, which keeps no answer type, cannot say
-   * it. Both claims are the one invariant named above. */
-  private inline def pinned[S, R](s: S): R = s.asInstanceOf[R]
+  /**
+   * THE WALK'S ONE CLAIM, and it is about the pending stack, not the
+   * tree (freer-base-step-extractor left it as it was): a body being
+   * walked answers through the parts pushed for it, and the loop's
+   * `c`/`k`/`R` are the STEP's, not the body's, while it walks (`b ne
+   * null` — `noProgram`, `noK`). So a `Done(r)` and a delivered answer
+   * arrive typed by whoever pushed the part, which the loop's signature
+   * does not carry. The tree's two claims of the same shape (`Shift.at`
+   * at the leaf, `pinned` at `Return`) are gone: the GADT types them.
+   */
+  private inline def walked[R](s: Any): R = s.asInstanceOf[R]
 
   /**
    * The loop: rotation and elimination interleaved, as the original
@@ -509,10 +485,9 @@ object Cont:
    * own call of `k` — starts with nothing pending and returns as
    * before; its answer lands in this loop's `answer`.
    *
-   * The leaf's class cast is `Shift.at`'s claim at the leaf's class: a
-   * leaf is built only by `bind`/`mapped`, at the facade's indexes;
-   * a CPS body's is `Cps.walkWith`. The `Any` at the walk's answer is
-   * `pinned`'s.
+   * A leaf is `(A => S) => R` on the tree now; an absorbed `Leaf` and a
+   * `Cps` are its subclasses at the same arguments, found by class (see
+   * the `Inject` case). The `Any` at the walk's answer is `walked`'s.
    * Until this stage the room reached an absorbed leaf through a
    * `leafAt` helper, for the reason still true of `applyAt`: a leaf
    * re-enters the runner through ITS continuation, not the one it is
@@ -527,25 +502,32 @@ object Cont:
       if pending eq Pending.None then r
       else step[A, S, R](c)(k)(room)(pending.next)(pending.deliver(r))
     if b ne null then b match
-      case Body.Done(r) => answer(pinned[Any, R](r))
+      case Body.Done(r) => answer(walked[R](r))
       case Body.Call(kk, e, rest) => kk match
-        case re: Reentry[x, b2, s2, ?] => step[b2, s2, R](re.f(e))(re.k)(room)(Pending(rest, pending))(null)
+        // `walked`'s claim on a PROGRAM: the answer of this nested run
+        // goes to the part just pushed, not to this step's `R` — the
+        // loop's result type is the step's, and the pending stack's
+        // typing is dynamic (see `walked`)
+        case re: Reentry[x, b2, s2, ?] => step[b2, s2, R](walked[Rep[b2, s2, R]](re.f(e)))(re.k)(room)(Pending(rest, pending))(null)
         case _ => step[A, S, R](c)(k)(room)(pending)(rest(kk(e)))
     else c match
-      case Return(a) => answer(pinned[S, R](callK(k, a, room)))
+      case Return(a) => answer(callK(k, a, room))
+      // an absorbed leaf and a CPS body are found by CLASS: the leaf's
+      // type on the tree is `(A => S) => R`, the classes extend it at
+      // their own arguments, and those are the same three — nothing
+      // else builds either (`bind`, `mapped`, `cps`) — which a type
+      // test cannot see through a function type, so the arguments are
+      // `@unchecked`: the one claim the class boundary keeps
       case Inject(s) => s match
-        case l: Leaf[?, ?, ?] => answer(l.asInstanceOf[Leaf[A, S, R]].applyAt(k, room))
-        case cps: Cps[?, ?, ?] => step[A, S, R](c)(k)(room)(pending)(cps.walkWith(k))
-        case _ => answer(s.at[S, R](k))
-      // the leaf's inner answer is the Bind's existential — `Any` names
-      // "whatever it is". Left to inference it came out `Nothing`, and a
-      // lambda whose body is typed `Nothing` carries a checkcast to
-      // Nothing$ that throws (ClassCastException: null, four TestFree
-      // rotation laws, 2026-09-15). `typed(s)(...)` never hit this only
-      // because its two argument lists resolved the variable differently.
+        case l: Leaf[A, S, R] @unchecked => answer(l.applyAt(k, room))
+        case cps: Cps[A, S, R] @unchecked => step[A, S, R](c)(k)(room)(pending)(cps.body(k))
+        case _ => answer(s(k))
+      // the leaf's inner answer is the Bind's middle index, bound by the
+      // match: `Reentry(f, k, room - 1)` is exactly the `X => T` the
+      // leaf `(X => T) => R` takes, and nothing names `Any` any more
       case Bind(Inject(s), f) => s match
-        case cps: Cps[?, ?, ?] => step[A, S, R](c)(k)(room)(pending)(cps.walkWith(Reentry(f, k, room - 1)))
-        case _ => answer(s.at[Any, R](Reentry(f, k, room - 1)))
+        case cps: Cps[?, ?, ?] => step[A, S, R](c)(k)(room)(pending)(cpsBody(cps)(reenter(f)(k)(room - 1)))
+        case _ => answer(s(reenter(f)(k)(room - 1)))
       case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)(room)(pending)(null)
       case Bind(Return(a), f) => step(f(a))(k)(room)(pending)(null)
       case Delay(t) => step(t())(k)(room)(pending)(null)

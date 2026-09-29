@@ -20,16 +20,18 @@ that operations must be *shaped* to carry their continuation. Their
 **freer** monad stores the continuation *beside* the operation instead:
 
 ```scala
-// Free.scala:82
-enum Free[F[+_], +A] {
-  case Return(a: A)
+// Free.scala — the one enum; `Free[F, A]` is it at `Lift[F]` with the
+// two answer-type indexes S and R fixed at Unit (chapter 11 says why
+// they are there: the same tree is `Cont`)
+enum Freer[G[_, +_, +_], S, +R, +A] {
+  case Return[G[_, +_, +_], R, A](a: A) extends Freer[G, R, R, A]
   // an operation, bare
-  case Inject(a: F[A])
-  case Bind[F[+_], A, B](a: Free[F, A],
-                         f: A => Free[F, B]) extends Free[F, B]
-  case Delay(thunk: () => Free[F, A])
+  case Inject[G[_, +_, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
+  case Bind[G[_, +_, +_], S, T, R, A, B](a: Freer[G, T, R, A],
+                                        f: A => Freer[G, S, T, B]) extends Freer[G, S, R, B]
+  case Delay[G[_, +_, +_], S, R, A](thunk: () => Freer[G, S, R, A]) extends Freer[G, S, R, A]
 }
-// Free.scala:75 — the point, in one comment:
+// Free.scala — the point, in one comment:
 // "Free[F, *] is a Monad for every signature F, with no constraint on F"
 ```
 

@@ -38,7 +38,9 @@ A 200-line probe under scala-cli, Scala 2.13.18, `-Xlint -Werror`, no
 plugin, no library: the tree (`Return | Inject | Bind | Delay`), the
 four rotation cases, a phantom row, membership as an implicit, split
 by class, State and Console relay-style handlers, and Cont as a
-facade over `Free[Shift, *]` with shift and answer-type modification.
+facade over `Free[Shift, *]` with shift and answer-type modification
+(okay's own is on the indexed `Freer` since 2026-09-29; okay2 keeps
+the facade).
 Right answer; the operation of a union row printed its own class
 (`State$Get`, no wrapper); 100 000 left-nested binds without a stack
 frame per bind; a program landing in a row without its effect is a

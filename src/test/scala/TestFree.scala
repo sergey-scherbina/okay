@@ -101,7 +101,9 @@ class TestFree extends munit.FunSuite {
     def headForm(c: Any): Boolean = c match
       case Return(_) => true
       case Inject(_) => true
-      case Bind(a, _) => a match { case Inject(_) => true; case _ => false }
+      // `Freer.Bind`, the enum's own pattern: `Free.Bind` claims the effect
+      // tree's `Unit` indexes, which an `Any` cannot answer for
+      case Freer.Bind(a, _) => a match { case Inject(_) => true; case _ => false }
       case _ => false
 
     def op(i: Int): Int ! Produce = effect(i)

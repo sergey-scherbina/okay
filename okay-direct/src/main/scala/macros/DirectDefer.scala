@@ -96,11 +96,15 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
         /** the element type of a self-call at this block's program type */
         def selfProgram(app: Term): Option[TypeRepr] =
           if calleeRoot(app) != self || mentionsLazy(app) || hasMark(app) then None
-          else app.tpe.widen.dealias match
-            case AppliedType(f, List(r, elem)) if f.typeSymbol == freeClass && r =:= row => Some(elem)
+          else programOf(app.tpe) match
+            case Some((r, elem)) if r =:= row => Some(elem)
             case _ => None
         lazy val delayApply = Symbol.requiredModule("okay.Free").methodMember("delay").head
-        lazy val reflectSym = directSym.methodMember("reflect").head
+        // the `[F, A]` overload, BY SHAPE: `methodMember` answers every
+        // `reflect` (a generator's `[W]` one among them) in an order that
+        // moved under freer-base-step-extractor, and `.head` picked the
+        // wrong one; DirectMarks selects the same way
+        lazy val reflectSym = directSym.methodMember("reflect").find(_.paramSymss.headOption.exists(_.sizeIs == 2)).get
         /**
          * `Free.delay[row, elem](() => app)`, the thunk built as a term
          * under the owner it is being placed under — `at`, not
@@ -186,9 +190,8 @@ private[okay] trait DirectDefer[F[_]] extends DirectMarks[F] with DirectRow[F]:
          */
         def anyProgram(app: Term): Option[TypeRepr] =
           if !isCall(app) || carriesDefinitions(app) || mentionsLazy(app) || hasMark(app) then None
-          else app.tpe.widen.dealias match
-            case AppliedType(f, List(r, elem))
-              if f.typeSymbol == freeClass && r =:= row && !alreadyDefers(app) => Some(elem)
+          else programOf(app.tpe) match
+            case Some((r, elem)) if r =:= row && !alreadyDefers(app) => Some(elem)
             case _ => None
 
         /** the block's tail positions: what it finally hands back. A

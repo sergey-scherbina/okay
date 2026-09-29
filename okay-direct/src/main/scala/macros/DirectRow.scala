@@ -15,13 +15,40 @@ import scala.quoted.*
 private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
   import q.reflect.*
 
-  lazy val freeClass = Symbol.requiredClass("okay.Free")
+  /** the tree's class: `Freer` since freer-base-step-extractor (2026-09-29),
+   * `A ! Row` being `Freer[Lift[Row], Unit, Unit, A]` */
+  lazy val freeClass = Symbol.requiredClass("okay.Freer")
+  private lazy val liftedClass = TypeRepr.of[okay.Freer.Lifted[Option]].typeSymbol
+  private lazy val liftAlias = TypeRepr.of[okay.Freer.Lift[Option]].typeSymbol
+
+  /**
+   * A PROGRAM TYPE, TAKEN APART: `(row, elem)` of an `A ! Row`, or None.
+   * One place for the shape, because the base is indexed now:
+   * `Freer[G, S, R, A]` with the value LAST and the row inside `G`,
+   * which arrives in three spellings depending on how far the compiler
+   * has dealiased it — `Lift[Row]` (the alias applied),
+   * `Lifted[Row]#L` (the projection it stands for), or the lambda
+   * `[S, R, X] =>> Row[X]` the projection reduces to. The last is
+   * eta-expanded back to a unary row, so `=:=` against a block's row
+   * holds either way.
+   */
+  def programOf(tpe: TypeRepr): Option[(TypeRepr, TypeRepr)] =
+    def rowOfSig(g: TypeRepr): Option[TypeRepr] = g match
+      case AppliedType(l, List(row)) if l.typeSymbol == liftAlias => Some(row)
+      case TypeRef(AppliedType(l, List(row)), _) if l.typeSymbol == liftedClass => Some(row)
+      case tl: TypeLambda if tl.paramNames.length == 3 =>
+        val unit = TypeRepr.of[scala.Unit]
+        Some(TypeLambda(List("A"), _ => List(TypeBounds.empty), l => tl.appliedTo(List(unit, unit, l.param(0)))))
+      case other =>
+        val d = other.dealias
+        if d == other then None else rowOfSig(d)
+    tpe.widen.dealias match
+      case AppliedType(f, List(g, _, _, elem)) if f.typeSymbol == freeClass => rowOfSig(g).map(row => (row, elem))
+      case _ => None
 
   /** the block's effect row, if its F is the program monad A ! Row */
   lazy val rowOf: Option[TypeRepr] =
-    TypeRepr.of[F].appliedTo(TypeRepr.of[scala.Unit]).dealias match
-      case AppliedType(f, List(row, _)) if f.typeSymbol == freeClass => Some(row)
-      case _ => None
+    programOf(TypeRepr.of[F].appliedTo(TypeRepr.of[scala.Unit])).map(_._1)
 
   lazy val stagedType: Symbol = Symbol.requiredModule("okay.Handled").typeMember("Handled")
 
@@ -99,8 +126,10 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
    * same val by different owners' spellings) */
   def sharedKey(sym: Symbol): String = sym.fullName.replace("$", "")
 
-  /** the element a program term answers: `A` of `A ! F` */
+  /** the element a program term answers: `A` of `A ! F` — the LAST
+   * argument of the tree; any other two-argument carrier its second */
   def elemOf(t: Term): Option[TypeRepr] = t.tpe.widen.dealias match
+    case AppliedType(f, args) if f.typeSymbol == freeClass && args.nonEmpty => Some(args.last)
     case AppliedType(_, List(_, a)) => Some(a)
     case _ => None
 
@@ -122,9 +151,19 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     Symbol.requiredModule("okay.Free.Return").methodMember("apply").head
   lazy val bindApply: Symbol =
     Symbol.requiredModule("okay.Free.Bind").methodMember("apply").head
-  /** `map`'s continuation (one-bind-hot-steps): `new Free.Mapped(f)` runs
+  /** THE SAME NODES BY THEIR OTHER NAMES (freer-base-step-extractor,
+   * 2026-09-29): `Free.Inject`/`Return`/`Bind` are wrapper objects over
+   * the enum `Freer`, and an INLINE door — `effect`, `pure`,
+   * `flatMap`, `map` — expands to the enum case's own `apply`, so a
+   * staged program reaches the reader as `Freer.Inject.apply[G, S, R,
+   * A](op)` as often as `Free.Inject.apply[F, A](op)`. Both spell one
+   * node; the element is the LAST type argument in either */
+  lazy val injectApplies: Set[Symbol] = Set(injectApply, Symbol.requiredModule("okay.Freer.Inject").methodMember("apply").head)
+  lazy val pureApplies: Set[Symbol] = Set(pureApply, Symbol.requiredModule("okay.Freer.Return").methodMember("apply").head)
+  lazy val bindApplies: Set[Symbol] = Set(bindApply, Symbol.requiredModule("okay.Freer.Bind").methodMember("apply").head)
+  /** `map`'s continuation (one-bind-hot-steps): `new Freer.Mapped(f)` runs
    * as `a => Free.Return(f(a))`, and the stager reads it as that */
-  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.Free.Mapped")
+  lazy val mappedClass: Symbol = Symbol.requiredClass("okay.Freer.Mapped")
 
   /**
    * THE INLINER'S PROXIES, SUBSTITUTED. An inline method's by-value
@@ -151,7 +190,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
         // a shared operation node (effect-op-cost D2) is a stable val:
         // substituting it keeps the operation visible to the stager
         case r: Ref if sharedNodes.contains(sharedKey(r.symbol)) => true
-        case Apply(TypeApply(f, _), _) if Set(injectApply, pureApply, bindApply)(f.symbol) => true
+        case Apply(TypeApply(f, _), _) if injectApplies(f.symbol) || pureApplies(f.symbol) || bindApplies(f.symbol) => true
         case x => x.tpe.widen <:< row.appliedTo(TypeRepr.of[Any])
     def substitutable(v: ValDef): Boolean = v.rhs.exists(pureRhs)
     /** bindings split into (kept, substituted-into-the-rest) */
@@ -212,7 +251,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     def walk(t: Term): Option[Term] =
       val (bs, core) = unwrap(t)
       core match
-        case Apply(TypeApply(f, targs), List(op)) if f.symbol == injectApply =>
+        case Apply(TypeApply(f, targs), List(op)) if injectApplies(f.symbol) =>
           val elem = targs.last.tpe.widen
           if stripped(op).tpe.widen <:< row.appliedTo(elem) then Some(wrap(bs, liftOp(op, elem, row))) else None
         case ref: Ref if sharedNodes.contains(sharedKey(ref.symbol)) =>
@@ -220,11 +259,13 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
             val op = sharedNodes(sharedKey(ref.symbol))(elem.asType)
             if op.tpe.widen <:< row.appliedTo(elem) then Some(wrap(bs, liftOp(op, elem, row))) else None
           }
-        case Apply(TypeApply(f, targs), List(a)) if f.symbol == pureApply =>
+        case Apply(TypeApply(f, targs), List(a)) if pureApplies(f.symbol) =>
           Some(wrap(bs, pureF(Typed(a, Inferred(targs.last.tpe.widen)))))
-        case Apply(TypeApply(f, targs), List(m, k)) if f.symbol == bindApply =>
-          val aT = targs(1).tpe.widen
-          val bT = targs(2).tpe.widen
+        case Apply(TypeApply(f, targs), List(m, k)) if bindApplies(f.symbol) =>
+          // `Free.Bind[F, A, B]` or `Freer.Bind[G, S, T, R, A, B]`: A and B
+          // are the last two either way
+          val aT = targs(targs.length - 2).tpe.widen
+          val bT = targs.last.tpe.widen
           // `map`'s continuation, `new Free.Mapped(x => body)`: a bind whose
           // continuation is the pure `x => Return(body)` (one-bind-hot-steps)
           def mappedFn(t: Term): Option[Term] = t match
@@ -406,8 +447,8 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     // the element by SUBTYPING, not equality (free-answer-variance,
     // 2026-09-23): `Free[F, +A]`, so an inlined `raise[E, Unit](e)` is
     // an `Inject[Throws % E, Nothing]`, and `Nothing ! r` IS a `Unit ! r`
-    val narrow: Option[TypeRepr] = m.tpe.widen.dealias.baseType(freeClass) match
-      case AppliedType(_, List(r, e)) if e.widen <:< elem.widen => Some(r)
+    val narrow: Option[TypeRepr] = programOf(m.tpe.widen.dealias.baseType(freeClass)) match
+      case Some((r, e)) if e.widen <:< elem.widen => Some(r)
       case _ => None
     narrow match
       case None => refuse
@@ -454,7 +495,7 @@ private[okay] trait DirectRow[F[_]] extends DirectPhase[F]:
     if genRow && genOf(tpe0).isDefined then return Some(TypeRepr.of[Unit])
     val w = tpe0.widen.dealias
     val fromFree = w.baseType(freeClass) match
-      case AppliedType(_, List(_, t)) => List(t)
+      case AppliedType(_, args) if args.nonEmpty => List(args.last)
       case _ => Nil
     val fromArgs = w match
       case AppliedType(_, args) => args.reverse

@@ -17,7 +17,10 @@ private[okay] trait DirectMarks[F[_]] extends DirectPhase[F]:
    * tree questions over them are MarkSyntax's, shared with the arrow road */
   lazy val colorSyms: Set[Symbol] = (directSym.methodMember("selfColor") ++
     directSym.methodMember("opColor") ++
-    Symbol.requiredModule("okay.Free").methodMember("directColor")).toSet
+    // in `Freer`'s companion since freer-base-step-extractor: `Free` is an
+    // alias now, and a `given` is found through the implicit scope of what
+    // an alias dealiases to
+    Symbol.requiredModule("okay.Freer").methodMember("directColor")).toSet
 
   /** the GENERIC mark `reflect[F[_], A]` — by arity, since `reflect[W]`
    * on a generator value (specs/generators.md) shares the name */

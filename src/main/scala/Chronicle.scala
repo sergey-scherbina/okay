@@ -71,9 +71,13 @@ object Chronicle:
     // record has to be threaded through it
     @tailrec def loop(errs: List[E])(x: A ! Chronicle % E + F): Verdict[E, A] ! F = (x.resume: @unchecked) match
       case Return(a) => Return(verdict(errs, a))
-      case i @ Inject(e) => split[Chronicle % E, F](e) {
-          case Dictate(err) => Return(verdict(err :: errs, ())): Verdict[E, A] ! F
-          case Halt() => Return(Failed(errs.reverse.toVector)): Verdict[E, A] ! F
+      case i @ Inject(e) => split[Chronicle % E, F](e) { c =>
+          // `@unchecked` as the Bind case below explains: under the
+          // indexed base `e` is typed at the program's answer type, and
+          // the checker cannot see both constructors are all there is
+          (c: @unchecked) match
+            case Dictate(err) => Return(verdict(err :: errs, ())): Verdict[E, A] ! F
+            case Halt() => Return(Failed(errs.reverse.toVector)): Verdict[E, A] ! F
         } { _ => forwarded[Chronicle % E, F](i).map(verdict(errs, _)) }
       case Bind(i @ Inject(e), k) => split[Chronicle % E, F](e) { c =>
           // the constructor refines the CONTINUATION's domain here; the

@@ -96,8 +96,10 @@ class TestInlineBudget extends munit.FunSuite {
       s"$what is $bytes bytes, over FreqInlineSize ($FreqInlineSize): HotSpot will stop inlining it " +
       s"into its callers. Re-measure $remeasure before landing (Effects.scala, the comment on Effects[Free].handle).")
 
-  test("Free.resume fits FreqInlineSize: every interpreter loop inlines it") {
-    within("Free.resume", sizeOf("Free", "resume"),
+  test("Freer.resume fits FreqInlineSize: every interpreter loop inlines it") {
+    // `Freer` since freer-base-step-extractor: one rotation for the effect
+    // tree and for Cont, index-polymorphic, the same bytecode either way
+    within("Freer.resume", sizeOf("Freer", "resume"),
       "relayPrebuilt AND handlePrebuilt/handleCapture — a resume crossing the line re-decides both")
   }
 
@@ -114,6 +116,6 @@ class TestInlineBudget extends munit.FunSuite {
     // the instrument's own control: a method known to be tiny reads tiny,
     // and the measured hot methods are in the range Effects.scala records (resume 323, handle loop 318)
     assert(sizeOf("Effects$", "relay") < 20, "relay is a one-call wrapper around its loop")
-    assert(sizeOf("Free", "resume") > 250, "resume read implausibly small: is this the right method?")
+    assert(sizeOf("Freer", "resume") > 250, "resume read implausibly small: is this the right method?")
   }
 }

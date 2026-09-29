@@ -264,7 +264,6 @@ docs/continuations/appendix-a-if-you-really-want.md	case Mark[F[+_], X, Z](p: Pr
 docs/continuations/appendix-a-if-you-really-want.md	case Pure(a: A)                                   // a value
 docs/continuations/appendix-a-if-you-really-want.md	def leaves: Vector[F[Any]]    // every operation the program MAY perform,
 docs/continuations/appendix-a-if-you-really-want.md	f.app(x)     =  e => f(e)(x(e))           //  S
-docs/continuations/appendix-a-if-you-really-want.md	f: A => Free[F, B])        // ...and a function
 docs/continuations/appendix-a-if-you-really-want.md	for _ <- 1 to nights do !w.pause("which room?")
 docs/continuations/appendix-a-if-you-really-want.md	identity     =  e => e                    //  I
 docs/continuations/appendix-a-if-you-really-want.md	pure(a)      =  _ => a                    //  K
