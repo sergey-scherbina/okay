@@ -289,6 +289,37 @@ object Xml {
     out.result()
   }
 
+  /** the five predefined entities and numeric references decoded; unknown
+   * ones left as written (the Scala 3 twin's `Xml.unescape`) */
+  def unescape(s: String): String =
+    if (s.indexOf('&') < 0) s
+    else {
+      val out = new StringBuilder(s.length)
+      var i = 0
+      while (i < s.length) {
+        val c = s.charAt(i)
+        if (c != '&') { out += c; i += 1 }
+        else {
+          val semi = s.indexOf(';', i)
+          val name = if (semi > i && semi - i <= 10) s.substring(i + 1, semi) else ""
+          val decoded: Option[String] = name match {
+            case "amp" => Some("&"); case "lt" => Some("<"); case "gt" => Some(">")
+            case "quot" => Some("\""); case "apos" => Some("'")
+            case n if n.startsWith("#x") || n.startsWith("#X") =>
+              scala.util.Try(Integer.parseInt(n.drop(2), 16)).toOption.filter(Character.isValidCodePoint).map(Character.toChars(_).mkString)
+            case n if n.startsWith("#") =>
+              scala.util.Try(n.drop(1).toInt).toOption.filter(Character.isValidCodePoint).map(Character.toChars(_).mkString)
+            case _ => None
+          }
+          decoded match {
+            case Some(d) => out ++= d; i = semi + 1
+            case None => out += c; i += 1
+          }
+        }
+      }
+      out.result()
+    }
+
   /** the document as a VALUE (the Scala 3 twin's `Xml.value`): elements
    * as objects, attributes as `@name`, repeats as arrays, text as
    * strings, mixed text under `#text`; comments and the declaration
@@ -311,8 +342,8 @@ object Xml {
         val vs = fs.collect { case (k, v) if k == n => v }
         (n, if (vs.length == 1) vs.head else Json.JArr(vs))
       }
-      val attrs = f.attrs.map { case (k, v) => ("@" + k, Json.JStr(v)) }
-      val txt = f.text.result().trim
+      val attrs = f.attrs.map { case (k, v) => ("@" + k, Json.JStr(unescape(v))) }
+      val txt = unescape(f.text.result().trim)
       if (!f.hasChild && attrs.isEmpty) Json.JStr(txt)
       else if (!f.hasChild) Json.JObj(attrs :+ (("#text", Json.JStr(txt))))
       else if (txt.isEmpty) Json.JObj(attrs ++ folded)
@@ -346,7 +377,7 @@ object Xml {
       } else {
         stack = stack.tail
         if (stack.isEmpty) {
-          result = if (f.hasChild) Json.JObj(f.fields.result()) else Json.JStr(f.text.result().trim)
+          result = if (f.hasChild) Json.JObj(f.fields.result()) else Json.JStr(unescape(f.text.result().trim))
           done = true
         } else stack.head.fields += ((f.name, finish(f)))
       }

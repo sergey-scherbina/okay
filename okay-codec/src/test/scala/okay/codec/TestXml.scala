@@ -108,6 +108,11 @@ class TestXml extends munit.FunSuite {
       """{"Doc":{"@v":"5-10","a":["1","2"],"b":{"@k":"x","#text":"t"},"c":{"d":"","#text":"tail"},"e":""}}""")
     assertEquals(Xml.attributes("""<x a="1" b='2' c d = "e f"/>"""), Vector("a" -> "1", "b" -> "2", "c" -> "", "d" -> "e f"))
     assertEquals(Xml.value(Xml.cst("just text")), Json.JStr("just text"))
+    // entities decode in the VALUE, never in the lossless tree
+    val e = """<a x="&lt;&amp;&gt;">S&amp;P &#169; &#x41; &unknown; &</a>"""
+    assertEquals(Json.print(Xml.value(Xml.cst(e))), """{"a":{"@x":"<&>","#text":"S&P © A &unknown; &"}}""")
+    assertEquals(Xml.render(Xml.cst(e)), e)
+    assertEquals(Xml.unescape("&#x1F600;"), "😀")
   }
 
   test("strict: no element is void, so <source>Coal</source> opens and closes; the HTML set still makes <br> void") {

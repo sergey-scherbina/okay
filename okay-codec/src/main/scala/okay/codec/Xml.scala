@@ -426,6 +426,36 @@ object Xml {
     out.result()
 
   /**
+   * The five predefined entities and numeric character references
+   * decoded; an unknown entity, or a `&` that begins none, left as
+   * written (xml-value-entities: `S&amp;P` read as five characters too
+   * many and failed a cross-format comparison against JSON's `S&P`)
+   */
+  def unescape(s: String): String =
+    if s.indexOf('&') < 0 then s
+    else
+      val out = new StringBuilder(s.length)
+      var i = 0
+      while i < s.length do
+        val c = s.charAt(i)
+        if c != '&' then { out += c; i += 1 }
+        else
+          val semi = s.indexOf(';', i)
+          val name = if semi > i && semi - i <= 10 then s.substring(i + 1, semi) else ""
+          val decoded: Option[String] = name match
+            case "amp" => Some("&") case "lt" => Some("<") case "gt" => Some(">")
+            case "quot" => Some("\"") case "apos" => Some("'")
+            case n if n.startsWith("#x") || n.startsWith("#X") =>
+              scala.util.Try(Integer.parseInt(n.drop(2), 16)).toOption.filter(Character.isValidCodePoint).map(Character.toChars(_).mkString)
+            case n if n.startsWith("#") =>
+              n.drop(1).toIntOption.filter(Character.isValidCodePoint).map(Character.toChars(_).mkString)
+            case _ => None
+          decoded match
+            case Some(d) => out ++= d; i = semi + 1
+            case None => out += c; i += 1
+      out.result()
+
+  /**
    * The document as a VALUE, in the one `Json` every dialect projects
    * into (refine-fpml-prover, 2026-09-29): an element is an object, its
    * attributes fields named `@name`, its child elements fields named as
@@ -435,8 +465,9 @@ object Xml {
    * non-blank text keeps the text under `#text`. Comments, whitespace
    * between elements and the XML declaration are dropped: this is the
    * value, not the lossless tree (`cst` is that). The root is a one-field
-   * object naming the document element. Built on an EXPLICIT stack, like
-   * every walk in this file: a document is as deep as its tags nest.
+   * object naming the document element. Text and attribute values are
+   * `unescape`d. Built on an EXPLICIT stack, like every walk in this
+   * file: a document is as deep as its tags nest.
    */
   def value(c: Cst[K]): Json =
     // one open element under construction
@@ -457,8 +488,8 @@ object Xml {
         val vs = fs.collect { case (k, v) if k == n => v }
         (n, if vs.length == 1 then vs.head else Json.JArr(vs))
       }
-      val attrs = f.attrs.map((k, v) => ("@" + k, Json.JStr(v)))
-      val txt = f.text.result().trim
+      val attrs = f.attrs.map((k, v) => ("@" + k, Json.JStr(unescape(v))))
+      val txt = unescape(f.text.result().trim)
       if !f.hasChild && attrs.isEmpty then Json.JStr(txt)
       else if !f.hasChild then Json.JObj(attrs :+ ("#text", Json.JStr(txt)))
       else if txt.isEmpty then Json.JObj(attrs ++ folded)
@@ -494,7 +525,7 @@ object Xml {
         if stack.isEmpty then
           // the root: its child elements are the document's, and a
           // document with no element is its text
-          result = if f.hasChild then Json.JObj(f.fields.result()) else Json.JStr(f.text.result().trim)
+          result = if f.hasChild then Json.JObj(f.fields.result()) else Json.JStr(unescape(f.text.result().trim))
           done = true
         else stack.head.fields += ((f.name, finish(f)))
     result
