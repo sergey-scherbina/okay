@@ -175,6 +175,23 @@ Stage 2 — the document level and the open registry:
       `runChoice` lists the readings, `Logic.ifte` is the soft cut
       (TestSchemaPattern)
 
+Stage 2b — the public prover (refine-fpml-prover, 2026-09-29):
+- [x] `Xml.value: Cst → Json` (okay-codec, okay2 in step): elements as
+      objects, attributes `@name`, repeats as arrays, text as strings,
+      mixed text `#text`, names as the token spells them (case kept);
+      `Format.value` projects XML through it
+- [x] `Refine.json.{field, str, num, each}` — the steps a document-level
+      pattern is written in; a path of them names itself in the verdict
+- [x] ISDA's ird-ex01 (vanilla swap) and fx-ex03 (FX forward), FpML 5.10,
+      read `text/xml/value/dataDocument/trade/{swap|fxForward}` with the
+      other branch's refusal named; a non-FpML document declined at the
+      root by name; `read(write(x)) == x` for both; the whole path's
+      write comes out as JSON and reads back by the json branch
+      (TestFpmlProver; the patterns are TEST scope — the prover, not the
+      product)
+- [x] `search` over both under `Logic.ifte`: swap's legs, else the
+      forward's pair
+
 Stage 3 — lessons:
 - [ ] "this file is a swap" from a person is a journal record; the fold
       of the journal is an ordering; structure never changes
@@ -250,11 +267,28 @@ TestFormat — three things the dialects said that a sniff would not have:
 Sizes: `Refine.scala` 130 lines, `Format.scala` 150 (UTF-8 validator
 included, by hand so JS and Native run the same check), 18 tests JVM.
 
+Stage 2b (2026-09-29, refine-fpml-prover): ISDA's two public FpML 5.10
+examples (from the FINOS CDM repository) read end to end on the first
+run of the real documents — the four things found were all on the way:
+- `Xml.value` dropped the whitespace INSIDE text (`just text` →
+  `justtext`): a Ws token between words is text; the trim belongs at
+  the edges only.
+- a skeleton must carry what the read requires: `document.write` had to
+  put `@fpmlVersion` back, or `read(write(x))` declined its own output.
+- no ambiguity was met: `swap` declines the forward ("no field `swap`")
+  and `fxForward` the swap ("no exchangedCurrency1 currency"), so the
+  `Judge` seam's trigger did not fire; it stays deferred.
+- the XML dialect lower-cases the driver's node KINDS (HTML-tolerant),
+  so `Xml.elements(tree, "swapStream")` would not match — `Xml.value`
+  takes the name from the token's spelling instead, and the patterns
+  are written over the value, never the tree.
+
 ## 6. Open questions
 
-- Corpus for stage 2: ISDA's public FpML examples (IRS, FX forward)
-  and CDM's JSON samples — which versions to pin (FpML 5.12 confirmation
-  view; CDM 5.x) is decided when the private repository is opened.
+- Corpus: FpML 5.10 confirmation view for the public prover (ISDA's
+  examples as carried by FINOS CDM, `ird-ex01-vanilla-swap-versioned`,
+  `fx-ex03-fx-fwd`); the private repository decides its own versions
+  and CDM's.
 - Ambiguity policy above the format level: `Unclear` is the answer at
   stage 1; whether a `Judge` may resolve it, or only order it, is
   stage 2's decision — the design holds that it orders only.

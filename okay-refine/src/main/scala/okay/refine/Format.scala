@@ -85,8 +85,9 @@ object Format:
   /**
    * The bridge from a detected document to a VALUE, so a Schema pattern
    * can follow: JSON and YAML project into the same `Json` (the one
-   * decode algebra, specs/codecs.md); XML and CBOR have no value
-   * projection here and decline saying so. The write renders the value
+   * decode algebra, specs/codecs.md), XML through `Xml.value` (elements
+   * as objects, attributes as `@name`, repeats as arrays); CBOR has no
+   * value projection without a schema and declines saying so. The write renders the value
    * as JSON text and re-reads its tree — a document written back
    * through this bridge is JSON, whatever it was read from, which is
    * what makes a path through it a CONVERSION.
@@ -95,7 +96,7 @@ object Format:
     Refine.step[Doc, Json]("value") {
       case Doc.Json(tree) => Right(Json.value(tree))
       case Doc.Yaml(tree) => Right(Yaml.parse(Yaml.render(tree)))
-      case Doc.Xml(_) => Left("no value projection for xml")
+      case Doc.Xml(tree) => Right(Xml.value(tree))
       case Doc.Cbor(_) => Left("no value projection for cbor without a schema")
     }(j => Doc.Json(Json.cst(Json.print(j))))
 

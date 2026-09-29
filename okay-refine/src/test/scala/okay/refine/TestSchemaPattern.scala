@@ -52,9 +52,11 @@ class TestSchemaPattern extends Diagnosed:
     assertEquals(instrument.run(back.toOption.get.getBytes(UTF_8)).toOption, Some(Forward("f1", 500.0, 101.5)))
   }
 
-  test("XML and CBOR have no value projection, and say so") {
-    val v = (Format.detect andThen Format.value).run(bytes("<a/>"))
-    assertEquals(v.reasons.find(_.at == Path("text", "xml", "value")).map(_.reason), Some("no value projection for xml"))
+  test("XML projects to a value too; CBOR has none without a schema, and says so") {
+    val v = (Format.detect andThen Format.value).run(bytes("""<a x="1"><b>t</b><b>u</b></a>"""))
+    assertEquals(v.toOption.map(Json.print), Some("""{"a":{"@x":"1","b":["t","u"]}}"""))
+    val c = (Format.detect andThen Format.value).run(Array[Byte](0xA1.toByte, 0x61, 0x61, 0x01))
+    assertEquals(c.reasons.find(_.at == Path("cbor", "value")).map(_.reason), Some("no value projection for cbor without a schema"))
   }
 
   test("search: Took is one answer, Unclear is a choice point, Declined kills the branch") {

@@ -97,6 +97,13 @@ val readings = !.run(runChoice[Swap, okay.Pure](swap.search(Json.parse("""{"id":
 // Seq(Swap("s1", 1.0, 0.03)) — a pattern is a search: Unclear is a choice point, Declined an empty one
 ```
 
+The public prover — ISDA's two FpML 5.10 examples read end to end —
+lives in the module's tests (`okay.refine.fpml`, `TestFpmlProver`): a
+vanilla swap and an FX forward, `text/xml/value/dataDocument/trade/swap`
+and `…/fxForward`, each verdict naming the other branch's refusal. The
+patterns are the SHAPE of domain work, not the domain: every further
+product and version is a private module's.
+
 ## API reference
 
 | | |
@@ -111,7 +118,8 @@ val readings = !.run(runChoice[Swap, okay.Pure](swap.search(Json.parse("""{"id":
 | `Refine.Step(…).prism` | the step as an optics `Prism`, for the laws |
 | `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
-| `Format.value` | `Refine[Doc, Json]`: JSON and YAML project to a value, XML and CBOR decline; writes JSON |
+| `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON |
+| `Refine.json.field(name)`, `.str`, `.num`, `.each(name)` | the steps a document-level pattern is written in; a path of them names itself in the verdict |
 | `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <|> (text andThen (json <|> xml <|> yaml))` |
 | `Doc.Json / Xml / Yaml / Cbor` | the detected document, as the dialect's own tree (or the bytes) |
 

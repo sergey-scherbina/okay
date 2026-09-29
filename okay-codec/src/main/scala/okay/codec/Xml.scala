@@ -373,6 +373,119 @@ object Xml {
     }
     out.result()
 
+  /**
+   * The attributes of an Open or SelfClose token's lexeme, in order:
+   * `name="v"` and `name='v'`; a bare `name` is `""`. Written by hand
+   * because the scanner keeps a tag as ONE token (lossless, and the
+   * driver needs only its name) — this is the one place that looks
+   * inside.
+   */
+  def attributes(lexeme: String): Vector[(String, String)] =
+    val out = Vector.newBuilder[(String, String)]
+    val n = lexeme.length
+    // past the name
+    var i = 1
+    while i < n && (lexeme.charAt(i) == '/' || lexeme.charAt(i) == '?' || lexeme.charAt(i) == '!') do i += 1
+    while i < n && !lexeme.charAt(i).isWhitespace && lexeme.charAt(i) != '>' && lexeme.charAt(i) != '/' do i += 1
+    while i < n do
+      while i < n && lexeme.charAt(i).isWhitespace do i += 1
+      val nameStart = i
+      while i < n && !lexeme.charAt(i).isWhitespace && lexeme.charAt(i) != '=' && lexeme.charAt(i) != '>' && lexeme.charAt(i) != '/' && lexeme.charAt(i) != '?' do i += 1
+      val name = lexeme.substring(nameStart, i)
+      while i < n && lexeme.charAt(i).isWhitespace do i += 1
+      if name.nonEmpty then
+        if i < n && lexeme.charAt(i) == '=' then
+          i += 1
+          while i < n && lexeme.charAt(i).isWhitespace do i += 1
+          if i < n && (lexeme.charAt(i) == '"' || lexeme.charAt(i) == '\'') then
+            val q = lexeme.charAt(i)
+            val vStart = i + 1
+            var j = vStart
+            while j < n && lexeme.charAt(j) != q do j += 1
+            out += ((name, lexeme.substring(vStart, j)))
+            i = j + 1
+          else
+            val vStart = i
+            while i < n && !lexeme.charAt(i).isWhitespace && lexeme.charAt(i) != '>' && lexeme.charAt(i) != '/' do i += 1
+            out += ((name, lexeme.substring(vStart, i)))
+        else out += ((name, ""))
+      else i += 1
+    out.result()
+
+  /**
+   * The document as a VALUE, in the one `Json` every dialect projects
+   * into (refine-fpml-prover, 2026-09-29): an element is an object, its
+   * attributes fields named `@name`, its child elements fields named as
+   * written (the TOKEN's spelling, not the driver's lower-cased kind — XML
+   * is case-sensitive), a repeated child an array, and its text — when it
+   * has no child elements — a string; an element with children AND
+   * non-blank text keeps the text under `#text`. Comments, whitespace
+   * between elements and the XML declaration are dropped: this is the
+   * value, not the lossless tree (`cst` is that). The root is a one-field
+   * object naming the document element. Built on an EXPLICIT stack, like
+   * every walk in this file: a document is as deep as its tags nest.
+   */
+  def value(c: Cst[K]): Json =
+    // one open element under construction
+    final class Frame(val name: String, val attrs: Vector[(String, String)], val kids: Vector[Cst[K]]):
+      var at = 0
+      val text = new StringBuilder
+      val fields = Vector.newBuilder[(String, Json)]
+      var hasChild = false
+    def openOf(kids: Vector[Cst[K]]): Option[Token[K]] =
+      kids.headOption.collect { case Cst.Leaf(t) if t.kind == K.Open || t.kind == K.SelfClose => t }
+    def spelled(t: Token[K]): String =
+      t.lexeme.drop(1).takeWhile(ch => !ch.isWhitespace && ch != '>' && ch != '/')
+    def finish(f: Frame): Json =
+      val fs = f.fields.result()
+      // repeated names fold into arrays, first occurrence's position kept
+      val names = fs.map(_._1).distinct
+      val folded = names.map { n =>
+        val vs = fs.collect { case (k, v) if k == n => v }
+        (n, if vs.length == 1 then vs.head else Json.JArr(vs))
+      }
+      val attrs = f.attrs.map((k, v) => ("@" + k, Json.JStr(v)))
+      val txt = f.text.result().trim
+      if !f.hasChild && attrs.isEmpty then Json.JStr(txt)
+      else if !f.hasChild then Json.JObj(attrs :+ ("#text", Json.JStr(txt)))
+      else if txt.isEmpty then Json.JObj(attrs ++ folded)
+      else Json.JObj(attrs ++ folded :+ ("#text", Json.JStr(txt)))
+    // the frame for a node whose first leaf is its own tag; other nodes
+    // (none today) would read as anonymous containers
+    def frameOf(kids: Vector[Cst[K]]): Frame = openOf(kids) match
+      case Some(t) => new Frame(spelled(t), attributes(t.lexeme), kids)
+      case None => new Frame("", Vector.empty, kids)
+    val root = new Frame("", Vector.empty, c match
+      case Cst.Node(_, kids) => kids
+      case leaf => Vector(leaf))
+    var stack: List[Frame] = root :: Nil
+    var result: Json = Json.JNull
+    var done = false
+    while !done && stack.nonEmpty do
+      val f = stack.head
+      if f.at < f.kids.length then
+        val kid = f.kids(f.at)
+        f.at += 1
+        kid match
+          case Cst.Node(_, kids) =>
+            f.hasChild = true
+            stack = frameOf(kids) :: stack
+          // whitespace is part of the text (`just text`); the trim at the
+          // end removes only what surrounds it
+          case Cst.Leaf(t) if t.kind == K.Text || t.kind == K.Ws => f.text ++= t.lexeme
+          case Cst.Leaf(t) if t.kind == K.Cdata =>
+            f.text ++= t.lexeme.stripPrefix("<![CDATA[").stripSuffix("]]>")
+          case _ => ()
+      else
+        stack = stack.tail
+        if stack.isEmpty then
+          // the root: its child elements are the document's, and a
+          // document with no element is its text
+          result = if f.hasChild then Json.JObj(f.fields.result()) else Json.JStr(f.text.result().trim)
+          done = true
+        else stack.head.fields += ((f.name, finish(f)))
+    result
+
   /** every element of a given name, in document order */
   def elements(c: Cst[K], name: String): Vector[Cst[K]] =
     val out = Vector.newBuilder[Cst[K]]

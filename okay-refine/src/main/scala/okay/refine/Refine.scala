@@ -88,6 +88,42 @@ object Refine:
   def first[A, B](alts: Refine[A, B]*): Refine[A, B] =
     alts.reduceLeft(_ <|> _)
 
+  /**
+   * Patterns over the one `Json` value every dialect projects into
+   * (refine-fpml-prover): a field, a string, a number, every element of
+   * a repeated field. Each is a step, so a path of them names itself in
+   * the verdict (`trade/swap/swapStream`) and writes back a skeleton.
+   */
+  object json:
+    /** the field, or "no field `name`" — writes a one-field object */
+    def field(name: String): Refine[Json, Json] =
+      step[Json, Json](name) {
+        case Json.JObj(fs) => fs.collectFirst { case (n, v) if n == name => v }.toRight(s"no field `$name`")
+        case other => Left(s"not an object: ${other.getClass.getSimpleName}")
+      }(v => Json.JObj(Vector(name -> v)))
+
+    /** the string a field holds */
+    val str: Refine[Json, String] =
+      step[Json, String]("string") {
+        case Json.JStr(s) => Right(s)
+        case other => Left(s"not a string: ${Json.print(other)}")
+      }(Json.JStr(_))
+
+    /** a number, or a string that reads as one — XML text is text */
+    val num: Refine[Json, Double] =
+      step[Json, Double]("number") {
+        case Json.JNum(n) => Right(n)
+        case Json.JStr(s) => s.trim.toDoubleOption.toRight(s"not a number: '$s'")
+        case other => Left(s"not a number: ${Json.print(other)}")
+      }(Json.JNum(_))
+
+    /** a field's elements: an array's, or the one value alone — an XML
+     * child that happens to occur once is not an array */
+    def each(name: String): Refine[Json, Vector[Json]] =
+      field(name).map("each")(
+        { case Json.JArr(vs) => vs; case one => Vector(one) },
+        { case Vector(one) => one; case vs => Json.JArr(vs) })
+
   final case class Step[A, B](name: String, read: A => Either[String, B], back: B => A) extends Refine[A, B]:
     /** the step as the optics prism it is, so specs/optics.md's laws apply */
     def prism: Prism[A, A, B, B] = Prism(a => read(a).left.map(_ => a), back)

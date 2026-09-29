@@ -102,6 +102,14 @@ class TestXml extends munit.FunSuite {
       assertEquals(Xml.render(Xml.cst(s)), s, s)
   }
 
+  test("value: elements as objects, attributes as @name, repeats as arrays, text as strings, case kept") {
+    val s = """<?xml version="1.0"?><Doc v="5-10"><!-- c --><a>1</a><a>2</a><b k='x'>t</b><c><d/>tail</c><e/></Doc>"""
+    assertEquals(Json.print(Xml.value(Xml.cst(s))),
+      """{"Doc":{"@v":"5-10","a":["1","2"],"b":{"@k":"x","#text":"t"},"c":{"d":"","#text":"tail"},"e":""}}""")
+    assertEquals(Xml.attributes("""<x a="1" b='2' c d = "e f"/>"""), Vector("a" -> "1", "b" -> "2", "c" -> "", "d" -> "e f"))
+    assertEquals(Xml.value(Xml.cst("just text")), Json.JStr("just text"))
+  }
+
   test("an incremental reparse of markup equals a full one") {
     val session = Xml.parse(doc, 16)
     val at = doc.indexOf("world")

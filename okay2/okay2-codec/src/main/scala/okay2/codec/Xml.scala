@@ -247,6 +247,107 @@ object Xml {
   }
 
   /** every element of a given name, in document order */
+  /** the attributes of a tag token's lexeme, in order (the Scala 3 twin's
+   * `Xml.attributes`, refine-fpml-prover) */
+  def attributes(lexeme: String): Vector[(String, String)] = {
+    val out = Vector.newBuilder[(String, String)]
+    val n = lexeme.length
+    var i = 1
+    while (i < n && (lexeme.charAt(i) == '/' || lexeme.charAt(i) == '?' || lexeme.charAt(i) == '!')) i += 1
+    while (i < n && !lexeme.charAt(i).isWhitespace && lexeme.charAt(i) != '>' && lexeme.charAt(i) != '/') i += 1
+    while (i < n) {
+      while (i < n && lexeme.charAt(i).isWhitespace) i += 1
+      val nameStart = i
+      while (i < n && !lexeme.charAt(i).isWhitespace && lexeme.charAt(i) != '=' && lexeme.charAt(i) != '>' && lexeme.charAt(i) != '/' && lexeme.charAt(i) != '?') i += 1
+      val name = lexeme.substring(nameStart, i)
+      while (i < n && lexeme.charAt(i).isWhitespace) i += 1
+      if (name.nonEmpty) {
+        if (i < n && lexeme.charAt(i) == '=') {
+          i += 1
+          while (i < n && lexeme.charAt(i).isWhitespace) i += 1
+          if (i < n && (lexeme.charAt(i) == '"' || lexeme.charAt(i) == '\'')) {
+            val q = lexeme.charAt(i)
+            val vStart = i + 1
+            var j = vStart
+            while (j < n && lexeme.charAt(j) != q) j += 1
+            out += ((name, lexeme.substring(vStart, j)))
+            i = j + 1
+          } else {
+            val vStart = i
+            while (i < n && !lexeme.charAt(i).isWhitespace && lexeme.charAt(i) != '>' && lexeme.charAt(i) != '/') i += 1
+            out += ((name, lexeme.substring(vStart, i)))
+          }
+        } else out += ((name, ""))
+      } else i += 1
+    }
+    out.result()
+  }
+
+  /** the document as a VALUE (the Scala 3 twin's `Xml.value`): elements
+   * as objects, attributes as `@name`, repeats as arrays, text as
+   * strings, mixed text under `#text`; comments and the declaration
+   * dropped. An explicit stack, like every walk here. */
+  def value(c: Cst[K]): Json = {
+    final class Frame(val name: String, val attrs: Vector[(String, String)], val kids: Vector[Cst[K]]) {
+      var at = 0
+      val text = new StringBuilder
+      val fields = Vector.newBuilder[(String, Json)]
+      var hasChild = false
+    }
+    def openOf(kids: Vector[Cst[K]]): Option[Token[K]] =
+      kids.headOption.collect { case Cst.Leaf(t) if t.kind == K.Open || t.kind == K.SelfClose => t }
+    def spelled(t: Token[K]): String =
+      t.lexeme.drop(1).takeWhile(ch => !ch.isWhitespace && ch != '>' && ch != '/')
+    def finish(f: Frame): Json = {
+      val fs = f.fields.result()
+      val names = fs.map(_._1).distinct
+      val folded = names.map { n =>
+        val vs = fs.collect { case (k, v) if k == n => v }
+        (n, if (vs.length == 1) vs.head else Json.JArr(vs))
+      }
+      val attrs = f.attrs.map { case (k, v) => ("@" + k, Json.JStr(v)) }
+      val txt = f.text.result().trim
+      if (!f.hasChild && attrs.isEmpty) Json.JStr(txt)
+      else if (!f.hasChild) Json.JObj(attrs :+ (("#text", Json.JStr(txt))))
+      else if (txt.isEmpty) Json.JObj(attrs ++ folded)
+      else Json.JObj(attrs ++ folded :+ (("#text", Json.JStr(txt))))
+    }
+    def frameOf(kids: Vector[Cst[K]]): Frame = openOf(kids) match {
+      case Some(t) => new Frame(spelled(t), attributes(t.lexeme), kids)
+      case None => new Frame("", Vector.empty, kids)
+    }
+    val root = new Frame("", Vector.empty, c match {
+      case Cst.Node(_, kids) => kids
+      case leaf => Vector(leaf)
+    })
+    var stack: List[Frame] = root :: Nil
+    var result: Json = Json.JNull
+    var done = false
+    while (!done && stack.nonEmpty) {
+      val f = stack.head
+      if (f.at < f.kids.length) {
+        val kid = f.kids(f.at)
+        f.at += 1
+        kid match {
+          case Cst.Node(_, kids) =>
+            f.hasChild = true
+            stack = frameOf(kids) :: stack
+          case Cst.Leaf(t) if t.kind == K.Text || t.kind == K.Ws => f.text ++= t.lexeme
+          case Cst.Leaf(t) if t.kind == K.Cdata =>
+            f.text ++= t.lexeme.stripPrefix("<![CDATA[").stripSuffix("]]>")
+          case _ => ()
+        }
+      } else {
+        stack = stack.tail
+        if (stack.isEmpty) {
+          result = if (f.hasChild) Json.JObj(f.fields.result()) else Json.JStr(f.text.result().trim)
+          done = true
+        } else stack.head.fields += ((f.name, finish(f)))
+      }
+    }
+    result
+  }
+
   def elements(c: Cst[K], name: String): Vector[Cst[K]] = {
     val out = Vector.newBuilder[Cst[K]]
     preorder(c) {
