@@ -93,6 +93,17 @@ two.
       `Other(kind)` with the update's own key as the kind — so a consumer
       can count what it ignores. A message whose `text` is absent is
       `Other("message")`, not a `Message("")`.
+- [x] **a refused poll is REPORTED and retried, in that order** (`serve`'s
+      `onRefused`): the loop never dies of one, and never swallows one. The
+      two failures a live bot meets are a 409 — Telegram refusing a second
+      `getUpdates` on one token, which is what a redeploy that left the old
+      process running looks like — and a 401, a token wrong or revoked; both
+      look exactly like «the bot does not answer» from outside. `Refused.fatal`
+      says which of them waiting cannot fix.
+- [x] **how long it waits is the API's answer where the API gave one**: a 429
+      carries `parameters.retry_after`, read into `Refused.retryAfter`, and
+      `retryMs` is only the fallback — answering a rate limit at our own
+      interval is hammering.
 - [x] **`poll` answers the offset after the highest `update_id` it saw**,
       and the offset it was given when the round was empty — the
       Bot API's contract for acknowledging updates. `serve` starts from
@@ -103,7 +114,8 @@ two.
       row by row, `parse_mode: "HTML"` when `html`, and `force_reply`
       when asked (the host's `Ask`); `send` answers the new message's id.
 - [x] **Stars**: `invoice` sends `sendInvoice` with `currency: "XTR"`,
-      an EMPTY `provider_token` and one price line in Stars;
+      an OMITTED `provider_token` (the Bot API changelog: it must be omitted
+      for payments in Telegram Stars) and one price line in Stars;
       `answerPreCheckout` answers `answerPreCheckoutQuery` (`ok`, and
       `error_message` when refusing); `refundStars` calls
       `refundStarPayment` with `user_id` and
@@ -199,6 +211,13 @@ all green, none on the network —
   EDITS message 1 to `count: 1`; a second chat opens its own application
   at `count: 0`.
 - `TestReadme`: both README examples compiled and the plain one run.
+
+Checked against the Bot API's own documentation, 2026-09-29
+(telegram-serve-says), before the first consumer went live: every
+parameter name this module sends matches the current documentation, and
+three things did not — `serve` swallowed its refusals, `retry_after` was
+ignored, and `provider_token` was sent empty where the changelog says it
+must be omitted. All three fixed, each with a test.
 
 `Chats.awaiting` (2026-09-28, telegram-awaiting): the flag is kept where
 the fact already passes — `perform` sees the `Ask` — so no okay-ui change
