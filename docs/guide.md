@@ -1075,6 +1075,32 @@ release runs once through whichever door comes first. That is a
 backstop against a leak, on the collector's clock — for a stop you
 can time, end the program (`runFoldUntil`) instead of dropping it.
 
+`zip` is the other join, and the one `merge` cannot express: merge
+answers whichever side is ready, zip answers BOTH — the pair of the
+two sides' next elements, in lockstep, until either side ends
+(specs/source-zip.md). It has merge's shape underneath: a fiber per
+side, `capacity` elements buffered a side, the pairing on the
+consumer's own thread. The side that ends first ends the zip and
+closes the other, so a feeder parked on a full buffer wakes and ends;
+an early stop releases both sides, exactly as it does a merge.
+
+```scala
+val ticks = Source.of(LazyList.from(0))                      // endless
+val named = Source.of(List("a", "b", "c"))
+val z = ticks zip named
+assertEquals(z.runCollect.runWith, Vector((0, "a"), (1, "b"), (2, "c")))
+val sums = Source.of(List(1, 2, 3)).zipWith(Source.of(List(10, 20, 30)))(_ + _)
+assertEquals(sums.runCollect.runWith, Vector(11, 22, 33))
+```
+
+Chunked streams had `Chunks.zip(p, q)` already — pairs across chunk
+boundaries, one overlap window at a time — and now read it as `p zip
+q` like the rest of their API. This is the `zip` of every stream
+library (fs2's `zip`, ZIO's `zip`, Akka's `zip` stage) with one thing
+said out loud that they leave to the reader: what happens to the
+survivor. Ours closes it, drops what it had buffered, and counts the
+release where a test can read it.
+
 `source merge source` IS that composition since
 source-merge-via-ready: each side buffered onto a fiber of its own,
 joined by `mergeReady` — one merge mechanism, 0.73-0.93x of the

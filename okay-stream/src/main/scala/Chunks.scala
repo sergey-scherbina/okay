@@ -548,4 +548,10 @@ object Chunks {
     /** the chunks, memoized (first-order: see merge) */
     def toLazyList: LazyList[Chunk[A]] =
       LazyList.from(feedStream[Unit].iterator(p))
+
+    /** `Chunks.zip(p, q)`, read like the rest of the chunk API
+     * (source-zip). The target name: both zips erase to
+     * `(Free, Free): Free` inside this one object */
+    @scala.annotation.targetName("zipExtension")
+    infix def zip[B](q: Chunks[B]): Chunks[(A, B)] = Chunks.zip(p, q)
 }

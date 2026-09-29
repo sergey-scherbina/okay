@@ -503,6 +503,74 @@ extension [A](s: Source[A])
     Writer.map[A, Either[A, B], Unit, Async](s)(a => Left(a))
       .merge(Writer.map[B, Either[A, B], Unit, Async](t)(b => Right(b)), capacity, chunked, flushAfter)
 
+  /**
+   * Pair this source with `t` element for element, in LOCKSTEP, back
+   * into a source: the pair of the two sides' next elements, until
+   * EITHER side ends (specs/source-zip.md). Where `merge` answers
+   * whichever side is ready, `zip` answers both — `Chunks.zip`'s law
+   * on the live carrier, which had `merge`, `concat` and `either` and
+   * no zip at all.
+   *
+   * The same shape as `merge`: each side buffered onto a fiber of its
+   * own (`Channel.buffer`, `capacity` elements deep), the pairing on
+   * the consumer's thread of control — one receive per side per pair,
+   * so the two sides' pulls overlap through their buffers while the
+   * consumer walks them in step. Lazy at the seam: the fibers start at
+   * the first pull, not when this is called.
+   *
+   * ENDS. The side that ends first ends the zip, and the other side's
+   * channel is CLOSED right there: its feeder fiber, parked on the
+   * full buffer, wakes and ends (one still inside its source's own
+   * pull ends at the next element it offers — a channel's close does
+   * not reach into a source's Await, for `merge` either), and whatever
+   * it had buffered is dropped — a zip has no use for an unpaired
+   * element. A consumer that stops EARLY (`take`, `runFoldUntil`)
+   * closes both, through the same cancel scope `merge` uses
+   * (`Merge.closing`, `mergeReleases` counting it); a zip that ran to
+   * its end has closed both sides already and releases nothing.
+   *
+   * A side that FAILS fails the zip at the pair its failure reached —
+   * its channel carries the failure behind what it had buffered
+   * (`Channel.fail` keeps the elements) — so every pair produced
+   * before the failure is delivered first, as `merge` promises.
+   *
+   * Not on `mergeReady`'s ring: readiness is the wrong question for a
+   * zip, which needs BOTH sides and waits for the slower one whatever
+   * the other has ready.
+   */
+  infix def zip[B](t: Source[B], capacity: Int = 64)
+                  (using Scheduler, CanBlock, Wait, Pause): Source[(A, B)] =
+    type R = Writer % (A, B) + Async
+    // one receive as a program on THIS row, the way `Channel.drained`
+    // spells its await — `receive` answers `! Async` alone
+    def receive[X](c: Channel[X]): Option[X] ! R =
+      okay.effect[R, Option[X]](Async.Await[Option[X]] { k => c.receiveAsync(k); () => c.cancelReceive(k) })
+    // the sides' fibers start HERE, at the first pull (a Source is a
+    // value, and running it twice zips twice)
+    okay.pure[R, Unit](()).flatMap: _ =>
+      val cl = Channel.buffer[A, Source, Async](capacity)(s)
+      val cr = Channel.buffer[B, Source, Async](capacity)(t)
+      // entered in front and never exited, as `Merge.Shared.elements`:
+      // an exit after the loop would be a Bind over the whole element
+      // program, a rotation per pair. The drive releases it when the
+      // program ends, early or not; at a normal end both channels are
+      // closed already and `closing` counts nothing
+      val scope = Async.CancelScope(Merge.closing(cl, cr))
+      def go: Unit ! R =
+        receive(cl).flatMap:
+          case None => cr.close(); okay.pure(())
+          case Some(a) =>
+            receive(cr).flatMap:
+              case None => cl.close(); okay.pure(())
+              case Some(b) => okay.effect[R, Unit](Writer((a, b))).flatMap(_ => go)
+      okay.effect[R, Unit](Async.Run(Async.Enter(scope))).flatMap(_ => go)
+
+  /** `zip`, the pair folded by `f` as it is told — one `Writer.map`
+   * walk over the zipped program, not a second join */
+  def zipWith[B, C](t: Source[B], capacity: Int = 64)(f: (A, B) => C)
+                   (using Scheduler, CanBlock, Wait, Pause): Source[C] =
+    Writer.map[(A, B), C, Unit, Async](s.zip(t, capacity))(f.tupled)
+
 extension [A](s: Source[A])
   /**
    * Chunking as a property of the STREAM rather than a parameter of

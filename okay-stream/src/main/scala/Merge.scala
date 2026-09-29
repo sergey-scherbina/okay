@@ -32,8 +32,9 @@ object Merge:
 
   /** a merge cancelled or stopped early closes its channels, so every
    * producer parked on a full one wakes and ends
-   * (merge-scopes-everywhere); a merge that ran to its end never calls it */
-  private def closing(cs: Channel[?]*): () => Unit = () =>
+   * (merge-scopes-everywhere); a merge that ran to its end never calls it.
+   * `Source.zip` releases its sides through the same door (source-zip) */
+  private[okay] def closing(cs: Channel[?]*): () => Unit = () =>
     // only a channel still OPEN is a release: the Shared element join's
     // scope is never exited (below), so the drive releases it at a
     // normal end too, when its channel is closed already
