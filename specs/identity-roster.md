@@ -68,20 +68,20 @@ Revoked(principal, role, scope, at)
 
 ## Behavior
 
-- [ ] `owned(topic, Telegram, "123")` yields a roster whose `whoIs(Telegram, "123")` is a
+- [x] `owned(topic, Telegram, "123")` yields a roster whose `whoIs(Telegram, "123")` is a
       principal with role `owner`; `whoIs(Telegram, "124")` is `None`
-- [ ] `bind` then `whoIs` round-trips; a second `bind` of the same address to another
+- [x] `bind` then `whoIs` round-trips; a second `bind` of the same address to another
       principal replaces the first (`addressesOf` the first no longer lists it)
-- [ ] `grant(p, "operator", Some("/work/x"))` then `Roster.role(r, "operator")(p, "run",
+- [x] `grant(p, "operator", Some("/work/x"))` then `Roster.role(r, "operator")(p, "run",
       "/work/x")` is `Permit`, `(p, "run", "/work/y")` is `Deny`; an unscoped grant permits
       every resource
-- [ ] `revoke` of a role a principal does not hold is `false` and appends nothing
-- [ ] a roster reloaded from its topic (`load()`) equals the one that wrote it: same
+- [x] `revoke` of a role a principal does not hold is `false` and appends nothing
+- [x] a roster reloaded from its topic (`load()`) equals the one that wrote it: same
       bindings, same grants, in a property over random sequences of operations
-- [ ] `Roster.role` composes with the existing `Policy.allOf`/`anyOf`: `anyOf(role(r,
+- [x] `Roster.role` composes with the existing `Policy.allOf`/`anyOf`: `anyOf(role(r,
       "owner"), role(r, "operator"))` behaves as the disjunction
-- [ ] the console channel: `whoIs(Console, "")` is the owner — the process is the owner's
-- [ ] no record ever carries a secret: the topic's bytes for every test contain no token
+- [x] the console channel: `whoIs(Console, "")` is the owner — the process is the owner's
+- [x] no record ever carries a secret: the topic's bytes for every test contain no token
 
 ## Out of scope
 
@@ -122,4 +122,9 @@ okay-chat may later replace its `Identity` internals with it, as its own lane.
 
 ## Results
 
-Not implemented yet.
+Implemented 2026-09-29 (lane `identity-roster`): `Roster.scala` in the cross
+source set of okay-security, which now depends on okay-persist (no cycle:
+persist depends on core, workflow and codec). `TestRoster`, 7 tests, JVM and
+JS: the reload property runs 20 rounds of 40 random operations. The console
+binding is written by `owned`, so `whoIs(Console, "")` is a fold like any
+other, not a special case in `whoIs`.

@@ -2465,6 +2465,7 @@ lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-security"))
   .dependsOn(okayHttp, okayData, okayCrypto)   // the four primitives are okay-crypto's (security-crypto-dedup)
+  .dependsOn(okayPersist)                        // the roster is a fold of a topic (specs/identity-roster.md)
   // TestReadmes runs the README's agent-with-a-principal example; the
   // agent came through okay-http until http-mcp-agent-edge
   .dependsOn(okayAgent % Test)

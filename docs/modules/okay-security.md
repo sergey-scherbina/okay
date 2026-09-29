@@ -13,6 +13,7 @@ reason. Zero dependencies — the JDK carries the primitives.
 | `Password` | PBKDF2 with the stored form carrying its parameters — iterations rise without a flag day; constant-time |
 | `ApiKey` | hand out the key, store the digest: a leaked table cannot be presented |
 | `Policy` | `(principal, action, resource) => Permit / Deny(why)`; `scoped`, `role`, `allOf`, `anyOf` — an algebra, not a rules engine |
+| `Roster` | who an address on a channel IS and what they may do (specs/identity-roster.md): `Channel`, `Binding`, `Grant`; `bind`/`unbind`/`whoIs`/`addressesOf`, `grant`/`revoke`/`rolesOf`, all appended to an okay-persist topic and folded back by `load()`; `Roster.role(r, role)` is a `Policy` (a scoped grant permits its resource prefix); `Roster.owned(topic, channel, address)` makes the configured address — and the console — the owner, never whoever wrote first |
 | `Secure.bearer` | the route wrapper: the protected route is `Principal => PartialFunction`, so it CANNOT be reached without a principal — the type system holds the door; 401/403 with WWW-Authenticate |
 | `OAuth2` | the client flows over `trait Http`: code+PKCE (S256), refresh, client credentials; a token-endpoint error is a Left |
 
