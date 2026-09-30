@@ -23,7 +23,7 @@ import okay2.codec.{Json, Schema}
  * `<|>` runs every alternative. A choice that stopped at the first
  * taker could never say `Unclear`.
  */
-sealed trait Refine[A, B] {
+sealed trait Refine[A, B] extends Serializable {
   /** the name a verdict's path is written in */
   def name: String
 
@@ -162,7 +162,7 @@ object Refine {
   }
 
   /** how `and` puts two written skeletons back into one input */
-  trait Merge[A] {
+  trait Merge[A] extends Serializable {
     def merge(x: A, y: A): Either[String, A]
   }
 

@@ -284,6 +284,11 @@ Stage 3 — lessons:
   unstable accessor (E192). Refuted: per-lane re-recognition (a pattern
   per lane per document), and a Spark-specific writer — `Bulk` already
   is the seam.
+  Ported to okay2-refine the same day (okay2-refine-bulk): `route[X]` on a
+  `ClassTag`; `Binding` a plain class (a case class inside the table is an
+  unchecked outer reference under -Xlint); `Documents.files[D](dir)` since
+  okay2's `Bulk` has no `read(path, Format)`; TestSparkRoutes in okay2-spark
+  agrees with one JVM on 400 documents.
 
 ## 5. Results
 

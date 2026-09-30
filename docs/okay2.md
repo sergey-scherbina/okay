@@ -2218,6 +2218,26 @@ Scala 2 has no union types, so `route[X]` tests the class of `X` (a
 are a pattern with alternatives, as above. An `Unclear` document is
 never routed, and nothing is dropped silently.
 
+And the table as a value, run on any `Bulk` — one JVM or okay2-spark's
+`SparkBulk` — is `Routes` (docs/modules/okay-refine.md, "Routes"): lanes
+are typed handles declared in an `object`, `split` recognises every
+document once, and `run` binds the same lanes to channels:
+
+```scala
+  object Kinds extends Routes(fromBytes) {
+    val swaps = route[Swap]
+    val rates = route("rates") { case d @ (_: Fx | _: Cds) => d }
+    val out = Kinds.split[Chunks](Documents.files[Chunks](folder()))
+    val s = Kinds.split[Rows](Documents.files[Rows](folder)(onSpark))(onSpark)
+    val r = go(Kinds.run(src)(Kinds.swaps ~> swapsCh, Kinds.rejected ~> dead))
+```
+
+okay2's `Bulk` has no `read(path, Format)`, so `Documents.files[D](dir)`
+spreads the listing with `of` and reads each file in a `flatMap` — what
+okay's `Bulk.read` does inside. TestSparkRoutes (okay2-spark) runs 400
+documents on Spark `local[4]` and in one JVM and asserts every lane, the
+rejects and the counts agree.
+
 What is different from Scala 3: dispatch is the trait's own methods
 rather than a match over the tree, because Scala 2 does not refine a
 generic case class's existential type across a match (`case AndThen(f,

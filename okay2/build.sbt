@@ -312,8 +312,8 @@ lazy val okay2Refine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // the Router's JVM suite blocks on a scheduler (src/test/scala-jvm)
     okay2Platform % "test->compile")
   .settings(name := "okay2-refine", common)
-  // its tests derive a Schema (okay2-codec's macro)
-  .jvmSettings(reflect(None), jvmOnlyTests)
+  // its tests derive a Schema (okay2-codec's macro); `Documents` reads files (scala-jvm)
+  .jvmSettings(reflect(None), jvmOnlyTests, platformSources("scala-jvm"))
   .jsSettings(jsTests, reflect(Some(Provided)))
   .nativeSettings(reflect(Some(Provided)))
   .jvmConfigure(_.withId("okay2Refine"))
@@ -431,7 +431,9 @@ lazy val okay2Zio: Project = (project in file("okay2-zio"))
  */
 lazy val okay2Spark: Project = (project in file("okay2-spark"))
   .dependsOn(LocalProject("okay2") % "compile->compile;test->test", okay2Stream.jvm % "compile->compile;test->test",
-    okay2Codec.jvm % "compile->compile;test->test")
+    okay2Codec.jvm % "compile->compile;test->test",
+    // TestSparkRoutes: a Refine routing table on SparkBulk (okay2-refine-bulk)
+    okay2Refine.jvm % "test->compile")
   .settings(
     name := "okay2-spark",
     common,
