@@ -169,7 +169,7 @@ belongs here.
 |---|---|
 | `Refine.step(name)(read)(write)` | a pattern: `A => Either[String, B]` and `B => A` |
 | `r andThen s` | a path; the verdict's path is both names |
-| `r <|> s`, `Refine.first(a, b, …)` | a choice; every alternative runs |
+| `r <\|> s`, `Refine.first(a, b, …)` | a choice; every alternative runs |
 | `r.map(name)(to, from)` | an iso on what is learnt |
 | `r.widen[C]` | into a sum; `write` accepts this branch's case only |
 | `r.run(a): Verdict[B]` | `Took` / `Unclear` / `Declined`, each with its `Refusal`s |
@@ -179,7 +179,7 @@ belongs here.
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
 | `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON — for XML text, `Xml.fromValue` on the written value |
 | `Refine.json.field(name)`, `.str`, `.num`, `.each(name)` | the steps a document-level pattern is written in; a path of them names itself in the verdict |
-| `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <|> (text andThen (json <|> xml <|> yaml))` |
+| `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <\|> (text andThen (json <\|> xml <\|> yaml))` |
 | `Doc.Json / Xml / Yaml / Cbor` | the detected document, as the dialect's own tree (or the bytes) |
 
 ## Gotchas
