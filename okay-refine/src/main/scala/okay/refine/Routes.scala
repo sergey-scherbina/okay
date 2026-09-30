@@ -2,8 +2,7 @@ package okay.refine
 
 import scala.collection.mutable
 import scala.reflect.TypeTest
-import okay.{!, Aggregator, Async, Bulk, Channel, Scheduler, Source, effect, pure, runForeach}
-import okay.Bulk.{aggregate, cache, flatMap, map}
+import okay.{!, Aggregator, Async, Channel, Scheduler, Source, effect, pure, runForeach}
 
 /**
  * A ROUTING TABLE AS A VALUE, run anywhere (specs/refine.md,
@@ -104,26 +103,25 @@ abstract class Routes[A, B](val pattern: Refine[A, B]) extends Serializable:
   /** the name of the lane `a` goes to, or why none */
   def decide(a: A): Either[Rejected[A, B], String] = tag(a).map((i, _) => table(i).name)
 
-  /** THE TABLE OVER ANY `Bulk`: each document recognised once, cached */
-  def split[D[_]](docs: D[A])(using Bulk[D]): Split[D] = Split(docs.map(tag).cache)
+  /** THE TABLE OVER ANY CARRIER — a `Vector`, a `Bulk` collection (Chunks,
+   * `SparkBulk`), a `Source` stream: whatever has a `Routable`. Each input
+   * is tagged once; each lane comes back as the carrier's own kind */
+  def split[C, O[_], D[_]](c: C)(using r: Routable.Aux[C, A, O, D]): Split[O, D] =
+    Split[O, D](r.fan(c, table.length)(tag),
+      [T, X] => (o: O[T], f: T => Option[X]) => r.select(o)(f),
+      [X, Y] => (d: D[X], f: X => Y) => r.done(d)(f))
 
-  /** a table's answer over a `Bulk`: each lane's values, the rejects, the counts */
-  final class Split[D[_]] private[Routes] (val tagged: D[Either[Rejected[A, B], (Int, B)]])(using Bulk[D]):
+  /** a table's answer over a carrier: each lane's values, the rejects, the counts */
+  final class Split[O[_], D[_]] private[Routes] (fanned: Routable.Fanned[O, D, Rejected[A, B], B],
+                                                select: [T, X] => (O[T], T => Option[X]) => O[X],
+                                                done: [X, Y] => (D[X], X => Y) => D[Y]):
     /** the values of one lane, as the lane types them */
-    def apply[X](l: Lane[X]): D[X] =
-      val i = l.index
-      tagged.flatMap {
-        case Right((j, b)) if j == i => l.project(b)
-        case _ => None
-      }
-
+    def apply[X](l: Lane[X]): O[X] = select(fanned.lane(l.index), l.project)
     /** everything no lane took, with why */
-    def rejected: D[Rejected[A, B]] = tagged.flatMap(_.left.toOption)
-
-    /** how many went down each lane, and how many were rejected — ONE pass */
-    def counts: Routed =
-      val (per, rj) = tagged.aggregate(Routes.counting[Rejected[A, B], B](table.length))
-      Routed(lanes.map(_.name).zip(per), rj)
+    def rejected: O[Rejected[A, B]] = fanned.rejected
+    /** how many went down each lane, and how many were rejected (for a
+     * stream: the program that moves the data — run it beside the readers) */
+    def counts: D[Routed] = done(fanned.counts, (per, rj) => Routed(lanes.map(_.name).zip(per), rj))
 
   /** THE TABLE INTO CHANNELS: `Kinds.run(source)(Kinds.swaps ~> c1, Kinds.rejected ~> dead)`.
    * Every channel given is closed once at the end, failed with the input's error */

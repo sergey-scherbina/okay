@@ -308,26 +308,48 @@ val rates = route[Fx | Cds]
 val usdSwaps = route("usdSwaps") { case s: Swap if s.ccy == "USD" => s }
 ```
 
-Over a `Bulk`, `split` recognises every document ONCE and caches (lane,
-value); a lane is then a filter on an `Int`, typed as its route types it,
-and the counts are one aggregate. `Documents.files` reads a directory as
-(name, bytes), one split per file, wherever the split lands:
+`split` runs the table over ANY CARRIER that has a `Routable` — the
+typeclass of what can be routed: a `Vector`, any `Bulk` collection
+(`Chunks` in one JVM, `SparkBulk`'s rows on a cluster), a `Source`
+stream. It asks exactly what routing needs — every input tagged once,
+each lane's values handed out as the carrier's own kind, the counts — so
+the table is written once and one call routes every carrier:
 
 ```scala
-val out = Kinds.split[Chunks](localBulk.read(folder(), Documents.files))
-val swaps: Vector[Swap] = all(out(Kinds.swaps))
-assertEquals(out.counts, Router.Routed(Vector("Swap" -> 2, "Fx | Cds" -> 4, "usdSwaps" -> 0), rejected = 1))
+val v = Kinds.split(inputs)
+val c = Kinds.split(localBulk.of(inputs))
+val s = Kinds.split(Source(inputs*))
+assertEquals(all(c(Kinds.swaps)), swapsV)
+assertEquals(swapsS, swapsV)
+assertEquals(routed, v.counts)
 ```
 
-The same table on Spark is the same line with another `Bulk` — nothing
-in okay-refine names Spark. TestSparkRoutes runs 400 documents through
-`local[4]` and one JVM and asserts every lane, the rejects and the counts
-agree:
+Over a `Bulk`, each document is recognised once and CACHED; a lane is a
+filter on an `Int`, and the counts are one aggregate. `Documents.files`
+reads a directory as (name, bytes), one split per file, wherever the
+split lands. On Spark it is the same call — TestSparkRoutes runs 400
+documents through `local[4]` and one JVM and asserts they agree:
 
 ```scala
-val s = Kinds.split[Rows](onSpark.read(folder, Documents.files))(using onSpark)
+val s = { given Bulk[Rows] = onSpark; Kinds.split(onSpark.read(folder, Documents.files)) }
 assertEquals(s.counts, l.counts)
 ```
+
+Over a `Source`, read once, every lane is a channel and `counts` is the
+PROGRAM that reads, tags and sends; unbounded lanes (the default) let it
+run first, and `Routable.stream(capacity)` bounds them, when the readers
+must run beside it:
+
+```scala
+val s = Kinds.split(Source(inputs*))(using Routable.stream(capacity = 4))
+Async.par(s.counts, s(Kinds.swaps).runCollect),
+```
+
+A new carrier — a Kafka topic, a Flink stream — is one more
+`Routable` instance (`fan`, `select`, `done`), and no table changes. The
+typeclass is on the carrier VALUE, `Routable[Source[A]]`, not on a type
+constructor, so an alias (`Source`, `Chunks`) or an opaque type
+(`SparkBulk.Rows`) is found by the type as written.
 
 Into channels, a lane binds with `~>`; a lane left unbound rejects its
 values as "not bound here", so a partial binding drops nothing:
@@ -365,7 +387,8 @@ reference instead of copying.
 | `Router(r).route[X](c)`, `.route { case … }(c)`, `.byName(n)(c)`, `.tap(c)`, `.otherwise(c)`, `.run(source)` | routing: a stream per kind; `Routed` counts; every channel closed (or failed) at the end |
 | `r.routed(key)` | the synchronous twin: one `Stage` of `Either[Rejected, (K, B)]` |
 | `object T extends Routes(r)`: `route[X]`, `route(name){ case … }`, `byName`, `routeAs` | a routing table as a value; lanes are typed handles |
-| `T.split(docs)`: `out(lane)`, `out.rejected`, `out.counts` | the table over any `Bulk` (Chunks, SparkBulk): one recognition per document |
+| `T.split(c)`: `out(lane)`, `out.rejected`, `out.counts` | the table over any `Routable` carrier: Vector, Bulk (Chunks, SparkBulk), Source |
+| `Routable[C]`: `fan`, `select`, `done`; `Routable.stream(capacity)` | what can be routed; a new carrier is one instance |
 | `T.run(source)(lane ~> c, T.rejected ~> c)` | the same table into channels |
 | `Documents.files` (JVM) | a directory of whole files as a `Bulk.Format` |
 | `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON — for XML text, `Xml.fromValue` on the written value |

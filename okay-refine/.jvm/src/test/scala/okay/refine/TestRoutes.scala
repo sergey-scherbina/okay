@@ -4,7 +4,7 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, 
 import java.nio.file.Files
 import okay.{Bulk, Channel, Chunks, Source, drained, localBulk, runCollect}
 import okay.Chunks.elements
-import okay.given
+import okay.{Async, given}
 import okay.testkit.Munit.Diagnosed
 
 /** the fixtures and the table live at the top level: a table is an
@@ -55,7 +55,7 @@ class TestRoutes extends Diagnosed:
   test("split over a Bulk (one JVM): each lane typed, the rejects with why, the counts in one pass") {
     given Bulk[Chunks] = localBulk
     def all[X](c: Chunks[X]): Vector[X] = c.elements.toVector
-    val out = Kinds.split[Chunks](localBulk.read(folder(), Documents.files))
+    val out = Kinds.split(localBulk.read(folder(), Documents.files))
     val swaps: Vector[Swap] = all(out(Kinds.swaps))
     assertEquals(swaps, Vector(Swap("s1", "EUR"), Swap("s2", "USD")))
     assertEquals(all(out(Kinds.rates)), Vector(Fx("f1", "EURUSD"), Cds("c1", "EUR"), Cds("c2", "USD"), Fx("f2", "GBPUSD")))
@@ -94,4 +94,37 @@ class TestRoutes extends Diagnosed:
     val lane = roundTrip(Kinds.rates)
     assertEquals(lane.project(Cds("c", "EUR")), Some(Cds("c", "EUR")))
     assertEquals(lane.project(Swap("s", "EUR")), None, "the union's test travels exact")
+  }
+
+  test("ONE table, every carrier: a Vector, a Bulk collection, a Source stream — the same lanes, rejects and counts") {
+    given Bulk[Chunks] = localBulk
+    val inputs = docs.map(d => (d, d.getBytes("UTF-8")))
+    def all[X](c: Chunks[X]): Vector[X] = c.elements.toVector
+    // a Vector, now
+    val v = Kinds.split(inputs)
+    val swapsV: Vector[Swap] = v(Kinds.swaps)
+    // a Bulk collection (Chunks here; SparkBulk's rows the same way, TestSparkRoutes)
+    val c = Kinds.split(localBulk.of(inputs))
+    // a Source, read once: the lanes are channels, `counts` is the program that fills them
+    val s = Kinds.split(Source(inputs*))
+    val routed = s.counts.runWith
+    val swapsS: Vector[Swap] = s(Kinds.swaps).runCollect.runWith
+    assertEquals(swapsV, Vector(Swap("s1", "EUR"), Swap("s2", "USD")))
+    assertEquals(all(c(Kinds.swaps)), swapsV)
+    assertEquals(swapsS, swapsV)
+    assertEquals(s(Kinds.rates).runCollect.runWith, v(Kinds.rates))
+    assertEquals(s.rejected.runCollect.runWith.map(_.input._1), v.rejected.map(_.input._1))
+    assertEquals(routed, v.counts)
+    assertEquals(c.counts, v.counts)
+    assertEquals(v.counts, Router.Routed(Vector("Swap" -> 2, "Fx | Cds" -> 4, "usdSwaps" -> 0), rejected = 1))
+  }
+
+  test("a bounded stream: the readers run WITH the driver, the slowest paces the source, nothing lost") {
+    val inputs = (0 until 300).map(i => (s"d$i", (if i % 3 == 0 then s"swap:s$i,EUR" else if i % 3 == 1 then s"fx:f$i,EURUSD" else "junk").getBytes("UTF-8")))
+    val s = Kinds.split(Source(inputs*))(using Routable.stream(capacity = 4))
+    val ((routed, swaps), (rates, rejected)) = Async.par(
+      Async.par(s.counts, s(Kinds.swaps).runCollect),
+      Async.par(s(Kinds.rates).runCollect, s.rejected.runCollect)).runWith
+    assertEquals((swaps.length, rates.length, rejected.length), (100, 100, 100))
+    assertEquals(routed.rejected, 100)
   }

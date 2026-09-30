@@ -51,8 +51,8 @@ class TestSparkRoutes extends munit.FunSuite:
   test("split on SparkBulk equals split in one JVM: every lane, the rejects, the counts") {
     val onSpark = SparkBulk(spark)
     val local: Bulk[Chunks] = localBulk
-    val s = Kinds.split[Rows](onSpark.read(folder, Documents.files))(using onSpark)
-    val l = Kinds.split[Chunks](local.read(folder, Documents.files))(using local)
+    val s = { given Bulk[Rows] = onSpark; Kinds.split(onSpark.read(folder, Documents.files)) }
+    val l = { given Bulk[Chunks] = local; Kinds.split(local.read(folder, Documents.files)) }
     def all[X](d: Chunks[X]): Vector[X] = d.elements.toVector
     def fromSpark[X](d: Rows[X]): Vector[X] = all(onSpark.toChunks(d))
     assertEquals(fromSpark(s(Kinds.swaps)).sortBy(_.id), all(l(Kinds.swaps)).sortBy(_.id))

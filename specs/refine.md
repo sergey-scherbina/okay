@@ -290,6 +290,24 @@ Stage 3 — lessons:
   okay2's `Bulk` has no `read(path, Format)`; TestSparkRoutes in okay2-spark
   agrees with one JVM on 400 documents.
 
+- **refine-routable (2026-09-30, operator ask: "a typeclass for everything
+  that can be routed through refining, so the routing table is one and
+  the same").** `Routable[C]`: what routing needs from a carrier — `fan`
+  (every input tagged once; a lane per index; the rejects; the counts),
+  `select` (a lane's values as the lane types them), `done` (the counts'
+  shape). Instances: `Vector`, any `Bulk` (Chunks by name — the generic
+  `D[A]` cannot see through the alias; SparkBulk's opaque `Rows` found
+  as written), `Source` (a channel per lane; `counts` IS the driving
+  program; `Routable.stream(capacity)` bounds the lanes). `Routes.split`
+  takes any of them and replaces the Bulk-only split; the answer's lane
+  and count shapes come from `Routable.Aux`. The typeclass is on the
+  carrier VALUE, not a type constructor: higher-kinded unification
+  through an alias fails (found in refine-bulk, `Chunks` needing
+  `split[Chunks]`). Proved: one table over a Vector, Chunks and a Source
+  answers the same lanes, rejects and counts; a bounded stream (capacity
+  4, 300 documents) with the readers beside the driver loses nothing;
+  SparkBulk still agrees with one JVM.
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of
