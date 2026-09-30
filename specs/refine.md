@@ -295,6 +295,18 @@ run of the real documents — the four things found were all on the way:
   takes the name from the token's spelling instead, and the patterns
   are written over the value, never the tree.
 
+okay2 (2026-09-30, lane okay2-refine): the module ported to the Scala 2
+core as `okay2/okay2-refine` — `Refine`/`Verdict`/`Path`/`Refusal`,
+`Format` over JSON and XML (the two dialects okay2-codec has; YAML and
+CBOR join `detect` as one more alternative each when it reads them),
+`Refine.schema`, `Refine.json`, `search`. One shape difference: `run` and
+`write` are the trait's own methods per case (`runAt`, `writeBack`),
+because Scala 2 cannot connect `AndThen`'s existential `X` across a
+match. The three suites ported hold; found on the way that a derived
+Schema over XML declines a numeric element ("expected SDouble, got
+JStr") — XML text is text, and a document-level pattern reads numbers
+with `json.num`, which okay-fin's patterns already do.
+
 ## 6. Open questions
 
 - Corpus: FpML 5.10 confirmation view for the public prover (ISDA's

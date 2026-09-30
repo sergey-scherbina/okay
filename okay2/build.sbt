@@ -124,6 +124,7 @@ lazy val root: Project = (project in file("."))
     okay2Lex.jvm, okay2Lex.js, okay2Lex.native,
     okay2Parse.jvm, okay2Parse.js, okay2Parse.native,
     okay2Codec.jvm, okay2Codec.js, okay2Codec.native,
+    okay2Refine.jvm, okay2Refine.js, okay2Refine.native,
     okay2Sql.jvm, okay2Sql.js, okay2Sql.native,
     okay2Http.jvm, okay2Http.js, okay2Http.native,
     okay2Workflow.jvm, okay2Workflow.js, okay2Workflow.native,
@@ -298,6 +299,21 @@ lazy val okay2Codec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(jsTests, reflect(Some(Provided)))
   .nativeSettings(reflect(Some(Provided)))
   .jvmConfigure(_.withId("okay2Codec"))
+
+/** okay-refine for the Scala 2 core: a typed hierarchy of patterns
+ * (prisms whose read may decline) that recognise a document level by
+ * level and say why; the format level over okay2-codec's own trees
+ * (JSON, XML — YAML and CBOR when the codec has them) */
+lazy val okay2Refine = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay2-refine"))
+  .dependsOn(okay2Codec, okay2Optics)
+  .settings(name := "okay2-refine", common)
+  // its tests derive a Schema (okay2-codec's macro)
+  .jvmSettings(reflect(None), jvmOnlyTests)
+  .jsSettings(jsTests, reflect(Some(Provided)))
+  .nativeSettings(reflect(Some(Provided)))
+  .jvmConfigure(_.withId("okay2Refine"))
 
 /** okay-sql for the Scala 2 core: the relational seam over okay2-codec's
  * Schema — values, the typed layer, transactions, Query, Pool. No

@@ -2140,3 +2140,46 @@ compare values.
 - docs/theory/ and specs/freer-base.md, specs/scala2-facade.md — the
   Scala 3 core's own account of the same machine, and the facade this
   module is the other road beside.
+
+## 31. Reading a document nobody told you about: patterns with a verdict
+
+`okay2-refine` is okay-refine (docs/modules/okay-refine.md) for the Scala
+2 core. A pattern is a value of type `Refine[A, B]`: from what is known
+to what is learnt, or a refusal that says why. A step is a prism given
+as its two halves — `read` partial, `write` total — a path is `andThen`,
+a choice is `<|>`, and a choice runs EVERY alternative: the answer is a
+`Verdict`, never a bare value, with the path of names that took the
+input and every sibling that declined in its own words.
+
+```scala
+  val even: Refine[Int, Int] =
+    Refine.step[Int, Int]("even")(n => if (n % 2 == 0) Right(n) else Left(s"$n is odd"))(identity)
+    assertEquals((int andThen even).run("42"), Verdict.Took(42, Path("int", "even"), Vector.empty))
+    assertEquals((small <|> big).run(4), Verdict.Took(4, Path("small"), Vector(Refusal(Path("big"), "4 is not big"))))
+    assertEquals(choice.run(11), Verdict.Declined(Vector(
+      Refusal(Path("even"), "11 is odd"), Refusal(Path("small"), "11 is not small"), Refusal(Path("big"), "11 is not big"))))
+```
+
+Because every step writes back, a path reads AND writes, and a derived
+`Schema` is a pattern (`Refine.schema`): bytes → format → value →
+instrument is one path, and what it writes back is JSON whatever it read
+— a conversion, for free:
+
+```scala
+    val instrument: Refine[Array[Byte], Product] =
+      Format.detect andThen Format.value andThen (swap.widen[Product] <|> forward.widen[Product])
+    val back = instrument.write(Forward("f1", 500.0, 101.5)).map(new String(_, UTF_8))
+    assertEquals(back, Right("""{"id":"f1","notional":500,"forwardPrice":101.5}"""))
+```
+
+`Format.detect` is `json <|> xml` over the codec's own lossless trees —
+YAML and CBOR join it when okay2-codec reads them, as one more
+alternative each. A pattern is also a search (`search`: `Took` the
+answer, `Unclear` a choice point, `Declined` an empty one), so
+`runChoice` lists the readings.
+
+What is different from Scala 3: dispatch is the trait's own methods
+rather than a match over the tree, because Scala 2 does not refine a
+generic case class's existential type across a match (`case AndThen(f,
+s)` cannot connect `f`'s output to `s`'s input). Same tests, same
+verdicts.
