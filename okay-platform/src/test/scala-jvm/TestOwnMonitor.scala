@@ -163,14 +163,22 @@ class TestOwnMonitor extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
     assert(ran.isInstanceOf[ManagedWorker], s"resumed on $ran, not on one of the scheduler's workers")
   }
 
-  test("own: answered from inside a worker, a fiber still resumes inline on that worker") {
+  test("own: answered from inside ANOTHER FIBER's code, a fiber resumes on its own scheduler, not on that fiber's stack") {
+    // ready-merge-side-starves (2026-09-30) reversed what this test used to
+    // pin ("answered from inside a worker, a fiber still resumes inline on
+    // that worker"): resumed inline inside the answering fiber's slice, a
+    // consumer that never parked again held that fiber's thread for good —
+    // a merge starved its second side on every scheduler with owned
+    // workers. The answer now goes home; measured, merge cap 64 63.5 us
+    // (62.9 before), zip cap 7 1443 (1400), cap 64 351 (370)
     val answering = java.util.concurrent.atomic.AtomicReference[Thread | Null](null)
     val ran = resumedOn { k =>
       val other = Schedulers.own.workers(1).build
       try other.fork(() => async { answering.set(Thread.currentThread()); k(Right(1)) }).join()
       finally other.close()
     }
-    assert(ran eq answering.get, s"resumed on $ran, answered on ${answering.get}: a worker's answer should run it in place")
+    assert(ran ne answering.get, s"resumed on $ran, the answering fiber's own thread: its stack was borrowed")
+    assert(ran.isInstanceOf[ManagedWorker], s"resumed on $ran, not on one of the scheduler's workers")
   }
 
   /** peak number of `calls` blocking at once when `n` fibers forked inside
