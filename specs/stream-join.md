@@ -179,36 +179,36 @@ of the smaller keys and before anything of a greater key.
 
 Stage 1 (this lane):
 
-- [ ] `SortMerge`: inner join of two sorted lists is the same multiset
+- [x] `SortMerge`: inner join of two sorted lists is the same multiset
       of pairs as `Bulk.local.join` (a hash join) on the same input, in
       key order, for random sorted inputs with runs on both sides
-- [ ] `SortMerge`: a run of m left and n right rows at one key produces
+- [x] `SortMerge`: a run of m left and n right rows at one key produces
       m × n pairs, left-major, and holds n rows while it does
-- [ ] `SortMerge`: the unmatched side per variant — inner drops, left
+- [x] `SortMerge`: the unmatched side per variant — inner drops, left
       answers `None` on the right, full answers `None` on either; a
       right run no left row reaches is told when released
-- [ ] `SortMerge`: an empty side — inner and left of an empty right are
+- [x] `SortMerge`: an empty side — inner and left of an empty right are
       what they should be, full of an empty side is the other side
       wrapped
-- [ ] `SortMerge`: a key out of order on either side fails with the
+- [x] `SortMerge`: a key out of order on either side fails with the
       side and both keys named
-- [ ] `Chunks.joinSorted` agrees with `Bulk.local.join` on a chunked
+- [x] `Chunks.joinSorted` agrees with `Bulk.local.join` on a chunked
       sorted input across chunk boundaries of different sizes; one
       output chunk per left chunk; lazy (a prefix of an endless sorted
       side)
-- [ ] `Chunks.leftJoinSorted` / `fullJoinSorted` on the same inputs
-- [ ] `Source.joinSorted` gives the same pairs as `Chunks.joinSorted`
+- [x] `Chunks.leftJoinSorted` / `fullJoinSorted` on the same inputs
+- [x] `Source.joinSorted` gives the same pairs as `Chunks.joinSorted`
       at buffer sizes 1, 4 and 64, each side on its own fiber
-- [ ] `Source.joinSorted` ends at either side's end and closes the
+- [x] `Source.joinSorted` ends at either side's end and closes the
       other (the endless side stops producing); `leftJoinSorted` ends
       at the left's end; `fullJoinSorted` drains both
-- [ ] an early stop (`runFoldUntil`) on two endless sorted sources
+- [x] an early stop (`runFoldUntil`) on two endless sorted sources
       releases both sides once; a join that ran to its end releases
       nothing — on Loom and own
-- [ ] a side that fails fails the join after every pair told before it
-- [ ] a key out of order fails the `Source` join, after the pairs
+- [x] a side that fails fails the join after every pair told before it
+- [x] a key out of order fails the `Source` join, after the pairs
       before it
-- [ ] docs: guide §6 example pinned (`TestDocExamplesStreamJoin`)
+- [x] docs: guide §6 example pinned (`TestDocExamplesStreamJoin`)
 
 Stage 2 (follow-on, backlog `stream-join-windowed`):
 
@@ -219,4 +219,27 @@ Stage 2 (follow-on, backlog `stream-join-windowed`):
 
 ## Results
 
-(filled as the lane lands)
+- stream-key-join (2026-09-30, stage 1): ADDITIVE — `SortMerge` new,
+  three companion functions each on `Chunks` and `Source`, no existing
+  body changed. Gate: `TestSortMerge` (9, JVM + JS + Native — it lives
+  in okay-stream's `src/test/scala-cross`, since `src/test/scala` there
+  is JVM-only), `TestSourceJoin` (6, JVM), `TestDocExamplesStreamJoin`,
+  `TestDocSnippets`, then `affected master Test/compile` (303 module
+  compiles, no warnings); recscan: the drivers' recursions are inside
+  `defer`/`flatMap` lambdas, so the inventory did not grow.
+- What the tests decided that the ask had not said: a row is matched
+  only against a CLOSED run, so a right side that FAILS or breaks order
+  while a run is still open loses that run's matches — the failure
+  reached the run first (`TestSourceJoin`, the failing side: `(1, "y")`
+  received but never told). A `Chunks` join tells the rows decided
+  before an out-of-order key, including rows of GREATER key already
+  decided (the row at 3 before the bad row at 2) — "after everything
+  decided before it", not "after every smaller key".
+- The inner join ends when EITHER side ends without asking the other
+  side for another row (`TestSortMerge`, the empty-side case), so an
+  endless right side under a finite left costs the run in flight, the
+  buffer and the refused row — measured as at most 9 rows produced,
+  the same bound `Source.zip`'s survivor test reads.
+- okay2 has no port yet (source-zip's did land one): the machine is
+  plain Scala and `okay2-stream` has `Chunks` and `Source`; filed with
+  the stage-2 follow-on.
