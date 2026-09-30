@@ -167,5 +167,6 @@ final class Governed(val router: Router,
     }
 
   /** a rebuilt table, recorded: the hash before and after and where it came from */
-  def rebuilt(by: String, artifact: String, before: Option[String], after: String, corpus: String): Entry =
-    write(Entry.Rebuilt(artifact, encoder, before, after, corpus, now(), by))
+  def rebuilt(by: String, artifact: String, before: Option[String], after: String, corpus: String,
+              origin: String = ""): Entry =
+    write(Entry.Rebuilt(artifact, encoder, before, after, corpus, now(), by, origin))

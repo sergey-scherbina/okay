@@ -118,6 +118,18 @@ that changed nothing hashes the same and records nothing — on the same
 platform: the same int8 encoder on another CPU gives other numbers,
 so a table is best compiled where it will be served.
 
+So a table has two names. `hash` is its numbers, what the shelf files
+it under and what a pin serves. `origin` is what it was built from —
+the encoder's name, its `fingerprint`, and the digest of exactly the
+`(label, phrase)` rows it embedded (`Exemplars.Provenance`) — and it is
+the same on every processor. `Rebuilt` and `Kept` carry both.
+`Exemplars.agrees` says whether two tables are the same by meaning
+(same labels in order, every row at cosine ≥ 0.9999), which is what a
+build gate asks of the table it is about to ship against the committed
+one; `Exemplars.accept` refuses a table by name and, when both sides
+carry one, by fingerprint — the case a name misses when an int8 file
+replaces an fp32 file of the same model ([specs/dlm-learning.md](../../specs/dlm-learning.md) §11).
+
 A revert is a rebuild from the shelf: its entry's corpus is
 `shelf:<hash>`, so it is audited and reverted like any build. Tables
 leave the shelf only through `Shelf.prune` under a `Retention`. Ours
