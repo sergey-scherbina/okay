@@ -5,7 +5,9 @@ import scala.jdk.CollectionConverters.*
 
 /** one table on the shelf: which artifact, its hash, the encoder that
  * made it, when it was put there, and what it weighs */
-final case class Kept(artifact: String, hash: String, encoder: String, at: Long, size: Long)
+final case class Kept(artifact: String, hash: String, encoder: String, at: Long, size: Long,
+                      /** what the table was built from (`Exemplars.origin`); "" for one that did not say */
+                      origin: String = "")
 
 /**
  * THE TABLES A MODEL HAS SERVED, KEPT BY HASH (specs/dlm-learning.md §9).
@@ -62,7 +64,7 @@ object Shelf:
       held.get((artifact, t.hash)) match
         case Some((_, k)) => k
         case None =>
-          val k = Kept(artifact, t.hash, t.encoder, at, sizeOf(t, f16))
+          val k = Kept(artifact, t.hash, t.encoder, at, sizeOf(t, f16), t.origin)
           held += (artifact, t.hash) -> (t, k); k
     }
     def get(artifact: String, hash: String, expect: Option[(String, Int)]): Either[String, Exemplars] =
@@ -95,7 +97,7 @@ object Shelf:
         val (artifact, hash) = (name.take(dot), name.drop(dot + 1))
         check(artifact, hash).toOption.flatMap(_ => Checkpoint.meta(p).toOption).map(m =>
           Kept(artifact, hash, m.getOrElse("encoder", ""), m.get("shelved").flatMap(_.toLongOption).getOrElse(0L),
-            Files.size(p)))
+            Files.size(p), m.getOrElse("origin", "")))
     private def files: Vector[Path] =
       if !Files.isDirectory(root) then Vector.empty
       else
@@ -109,7 +111,7 @@ object Shelf:
       val p = file(artifact, t.hash)
       if !Files.exists(p) then
         Checkpoint.write(p, t.encoder, t.dim, t.rows.map(_.label), t.rows.map(_.vec.toArray),
-          Map("artifact" -> artifact, "shelved" -> at.toString), f16 = f16)
+          Exemplars.provenanceMeta(t) ++ Map("artifact" -> artifact, "shelved" -> at.toString), f16 = f16)
       keptOf(p).getOrElse(throw IllegalStateException(s"$p: written and not readable"))
     }
     def get(artifact: String, hash: String, expect: Option[(String, Int)]): Either[String, Exemplars] =

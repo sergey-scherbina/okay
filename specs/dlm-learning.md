@@ -187,6 +187,8 @@ label with no lifetime attaching one sentence to twenty-five turns
 1. DONE 2026-09-28 (dlm-learning): `Teaching`, `Ledger`, `Governed` over the memory fold with ours by default; `Explanation`; `Exemplars.hash`; a test per behavior line, eleven of them.
 2. DONE 2026-09-28 (okay-chat `learning-doors`): `Teaching` over its admin/teacher lists, `OKAY_CHAT_LEARNING` as the switch on every channel, the journal as the ledger (the door writes the chat's own record shapes, refusals as `refused` records), `POST /v1/explain`, `GET/POST /v1/lessons`, `POST /v1/lessons/forget` under a partner token or the admin token.
 3. DONE 2026-09-28 (dlm-shelf, library 71390de; okay-chat `Tables`): the shelf, `Retention`, `Pruned`, `Ledger.File` here; there `Compile` writes every head through the shelf and the ledger beside it, `Tables revert`, `OKAY_CHAT_TABLES` (a pin by hash at boot), `OKAY_CHAT_TABLES_KEEP`, `GET /v1/tables` — §9.
+4. DONE 2026-09-29 (dlm-erasure): §10.
+5. DONE 2026-09-30 (dlm-origin): a table named by what it was built from — `Embedder.fingerprint`, `Exemplars.Provenance`/`origin`, `agrees`, `accept`, the origin on `Rebuilt` and `Kept` — §11.
 
 ## 9. Stage 3 — the shelf: every table kept by hash, dropped only by a policy
 
@@ -355,6 +357,79 @@ none — and leaves the consumer to erase where their journal actually is.
 not a snapshot, and not a way to rewrite history: only entries that are a
 person's own go, and the fact that they went is permanent.
 
+## 11. Stage 5 — a table named by what it was built from
+
+The first consumer measured it (Okay!Chat, 2026-09-29): the same corpus
+through the same encoder on two CPUs gives numbers apart by 1e-7 in
+fp32 and by up to 3e-2 in an int8 encoder, so `Exemplars.hash` — over
+the NUMBERS — names a different table on every platform, and «rebuilt,
+corpus unchanged» is a ledger entry about a processor. The operator
+asked for the platform's half (2026-09-30, «Окей начинай»): name a
+table by what it was built FROM, keep the bytes' hash beside it as a
+fact, and tell two tables apart by meaning, not by bits.
+
+```scala
+trait Embedder:
+  def name: String
+  def dim: Int
+  def apply(text: String): Embedding
+  /** WHICH NUMBERS the name stands for — a model's tensors, an
+   * algorithm and its parameters; "" when the caller cannot know */
+  def fingerprint: String = ""
+
+final case class Exemplars(encoder: String, dim: Int, rows: Vector[Exemplar],
+                           provenance: Exemplars.Provenance = Exemplars.Provenance.unknown):
+  lazy val hash: String     // the numbers, as before — a fact about one build
+  lazy val origin: String   // encoder + fingerprint + corpus — the same on every CPU
+
+object Exemplars:
+  /** what a table was built from: its rows by digest, the encoder's fingerprint */
+  final case class Provenance(corpus: String, fingerprint: String)
+  /** the same table by meaning: one encoder, the same labels in order,
+   * every row at cosine ≥ min; Right(the lowest cosine) */
+  def agrees(a: Exemplars, b: Exemplars, min: Double = 0.9999): Either[String, Double]
+  /** a table this encoder may serve: refused by name, and by fingerprint when both know one */
+  def accept(table: Exemplars, by: Embedder): Either[String, Exemplars]
+
+enum Ledger.Entry:
+  case Rebuilt(…, origin: String = "")   // new, last
+final case class Kept(…, origin: String = "")   // new, last
+```
+
+**THE CORPUS IS THE ROWS, NOT A FILE.** `Provenance.corpus` is a digest
+of exactly the `(label, phrase)` pairs the build embedded, in order —
+not of the files they came from, which carry comments, other heads'
+rows and formatting. Two builds that embedded the same pairs name the
+same corpus; a pair added, dropped, relabelled or reordered names
+another. The phrases never travel (the artifact still carries none);
+their digest does.
+
+**THE BYTES' HASH STAYS, BESIDE IT.** `hash` is still what the shelf
+files a table under and what a pin names, because a pin must serve the
+exact numbers it named. `origin` is what an audit and a rebuild
+compare: a consumer that finds the same `origin` has rebuilt nothing,
+whatever the last bits did.
+
+**AGREEMENT IS A GATE, NOT A GUESS.** `agrees` answers «may this build
+stand for that one» with the lowest cosine or the first row that fell
+below it. A consumer's build gate calls it on the table it is about to
+ship against the committed one; the shelf does not decide by it.
+
+**A FINGERPRINT IS OPTIONAL, AND COUNTS WHEN BOTH SIDES HAVE ONE.** A
+remote API cannot tell us its weights; ours (`hashing`) can. `accept`
+refuses on a name that differs, and on a fingerprint that differs when
+the table and the encoder both carry one — the case the name missed
+when an int8 file replaced an fp32 one under the same model name.
+
+### Behavior (stage 5)
+
+- [x] the same rows through the same encoder name the same `origin` whatever the numbers came out as; a row added, dropped, relabelled or reordered, another encoder or another fingerprint names another
+- [x] `provenance` travels through the checkpoint, the JSON artifact and `stored`, and a table from before this stage reads with none
+- [x] `agrees` gives the lowest cosine for two builds of one table and refuses, by name, another encoder, other labels, and a row below the bar
+- [x] `accept` refuses another encoder by name and another fingerprint when both carry one, and takes a table with none
+- [x] `hashing` carries a fingerprint; `Embedder.of` carries the one it is given
+- [x] `Rebuilt` carries the origin through the JSON wire, and an entry written before this stage reads with none; the shelf names what it keeps by origin too
+
 ## Results — dlm-explain-missing (2026-09-28)
 
 Found by okay-watch's check bot, whose `/why` explained a sentence a
@@ -400,3 +475,17 @@ identifier survived in `by` when they erased themselves — so a
 self-erasure is recorded as the subject, not by name. And the memory in
 the branch where the sink cannot erase was cleared for EVERYBODY in the
 first draft: erasing one person is not forgetting the rest.
+
+## Results — dlm-origin (2026-09-30)
+
+Stage 5, library only; six tests, one per behavior line of §11, and
+128 in the module. Two things the tests decided. THE CORPUS DIGEST
+LENGTH-PREFIXES EACH PART: a digest of the rows joined by a separator
+would name («a b», «c») and («a», «b c») the same corpus, and a
+relabelled row could collide with a reworded one. And A FINGERPRINT
+COUNTS ONLY WHEN BOTH SIDES HAVE ONE: a remote encoder cannot know its
+weights and a table from before this stage never recorded any, so
+`accept` refusing on a missing fingerprint would have refused every
+artifact already shipped. The consumer's half — Okay!Chat's encoder
+fingerprinted by its converted tensors, its build gate on `agrees`, its
+`Compile` writing `Rebuilt` by origin — is that repository's.

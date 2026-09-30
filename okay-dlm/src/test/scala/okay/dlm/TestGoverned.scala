@@ -254,6 +254,6 @@ class TestGoverned extends FunSuite:
     assertEquals(stays.size, 4)
     assert(stays.exists { case Entry.Learned("bob", _, _, _, _, _) => true; case _ => false })
     assert(stays.exists { case Entry.Erased(_, _, _, _, _) => true; case _ => false }, "the evidence of an erasure always stays")
-    assert(stays.exists { case Entry.Rebuilt(_, _, _, _, _, _, _) => true; case _ => false }, "a table's entry is nobody's words")
+    assert(stays.exists { case Entry.Rebuilt(_, _, _, _, _, _, _, _) => true; case _ => false }, "a table's entry is nobody's words")
     assertEquals(Ledger.erase(entries, "nobody")._2, 0)
   }
