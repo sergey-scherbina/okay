@@ -70,17 +70,22 @@ class TestFlowBulk extends munit.FunSuite {
     assertEquals(reads.size, 8, "and never again")
   }
 
-  test("the right side of a join is collected once however many partitions the left has") {
+  test("a join reads its right side once per run; a broadcastJoin collects it once for good") {
     val pulls = java.util.concurrent.atomic.AtomicInteger(0)
     val counting = new Bulk.Format[(Int, String)]:
       def name = "counting"
       def splits(path: String): Vector[Int] = Vector(0)
       def read(path: String, split: Int): Iterator[(Int, String)] = { pulls.incrementAndGet(); Iterator.tabulate(10)(i => (i, s"r$i")) }
-    val B = engine(4)
+    val B = FlowBulk(4)
     val joined = B.join(B.map(B.of(List.range(0, 100)))(i => (i % 10, i)), B.read("r", counting))
     assertEquals(B.toChunks(joined).elements.size, 100)
     assertEquals(B.toChunks(joined).elements.size, 100)
-    assertEquals(pulls.get, 1, "the right side was read more than once")
+    assertEquals(pulls.get, 2, "the exchanged join reads its right side once per run")
+    pulls.set(0)
+    val broadcast = B.broadcastJoin(B.map(B.of(List.range(0, 100)))(i => (i % 10, i)), B.read("r", counting))
+    assertEquals(B.toChunks(broadcast).elements.size, 100)
+    assertEquals(B.toChunks(broadcast).elements.size, 100)
+    assertEquals(pulls.get, 1, "the broadcast right side was read more than once")
   }
 
   test("csv prunes at the parser as the local instance does") {

@@ -20,13 +20,18 @@ import okay.Chunks.elements
  * given at construction — `Bulk` answers plain values, so the instance
  * is where the program's `Async` ends.
  *
- * `join` is the seam's hash join (specs/bulk.md: "the equi-join only"):
- * the right side collected ONCE on first demand into a map, shared by
- * every partition of the left, which streams against it — Spark's
- * broadcast join, the road `SparkBulk` takes for a small right side.
- * `Tables`' rewrite turns the smaller side right by size. A
- * co-partitioned join of two large sides needs a binary node `Flow`
- * does not have; that is lane 2's `Flow.Join`, not this.
+ * `join` is the engine's own `Flow.Join` (lane 2): both sides exchanged
+ * by key hash into `parts` buckets, each joined by its reducer — the
+ * co-partitioned hash join. Lane 1's road, the right side collected once
+ * and shared by every partition of the left (Spark's broadcast join), is
+ * `broadcastJoin` below, for a right side known small.
+ *
+ * `streamed` answers the `Streamed` signatures NATIVELY: the sort-merge
+ * and windowed joins as `Flow.Join`s, a window as `Flow.Windowed` with
+ * the seeded watermark and `Finish.Auto`; `zip` alone goes through
+ * `collect`, because a positional zip of two partitioned collections is
+ * defined only when both are partitioned alike, which the seam cannot
+ * promise.
  */
 final class FlowBulk(parts: Int,
                      lines: String => Iterator[String] = _ => Iterator.empty,
@@ -55,11 +60,13 @@ final class FlowBulk(parts: Int,
   def filter[A](d: Flow[A])(p: A => Boolean): Flow[A] = d.filter(p)
 
   def join[K, A, B](l: Flow[(K, A)], r: Flow[(K, B)]): Flow[(K, (A, B))] =
-    // collected on the first partition's demand, once for every partition
-    // of the left and every run: the right side of a hash join is held
-    // whole by contract, and holding it once is what `cache` promises
+    Flow.Join(l, r, parts, JoinHow.Hash())
+
+  /** the broadcast road: the right side collected once, on the first
+   * partition's demand, and shared by every partition of the left */
+  def broadcastJoin[K, A, B](l: Flow[(K, A)], r: Flow[(K, B)]): Flow[(K, (A, B))] =
     lazy val right: Map[K, Seq[B]] = force(Flows.collect(r)).groupMap(_._1)(_._2)
-    Flow.Local(l, "join", (c: Chunks[(K, A)]) =>
+    Flow.Local(l, "broadcastJoin", (c: Chunks[(K, A)]) =>
       Chunks.fromIterator(c.elements.flatMap((k, a) => right.getOrElse(k, Nil).iterator.map(b => (k, (a, b))))))
 
   def cache[A](d: Flow[A]): Flow[A] = Flow.slices(force(Flows.collect(d)), parts)
@@ -69,3 +76,29 @@ final class FlowBulk(parts: Int,
   /** deferred: the flow runs when this is pulled, once per run */
   def toChunks[A](d: Flow[A]): Chunks[A] =
     Chunks.defer(Chunks.fromIterator(force(Flows.collect(d)).iterator))
+
+  /**
+   * The `Streamed` signatures answered by the engine, over the heap
+   * `Tables.via` threads (the shape of okay-spark's `SparkBulk.sort`):
+   * `FlowBulk(4).streamed(Tables.via(B)(p))` for a program in
+   * `Tables + Streamed`, or `run(p)` below.
+   */
+  def streamed[A, F[+_]](p: A ! Streamed + F): A ! State % Tables.Heap[Flow] + F =
+    import Row.plus
+    type H = Tables.Heap[Flow]
+    !.interpret(p):
+      [X] => (e: Streamed[X]) => e match
+        case Streamed.JoinSorted(l, r, ord) =>
+          State.update[H, X](h => h.hold(Flow.Join(h.force(l)(this), h.force(r)(this), parts, JoinHow.Sorted(ord)))).plus[F]
+        case Streamed.JoinWithin(l, r, within, lateness, atL, atR) =>
+          State.update[H, X](h => h.hold(Flow.Join(h.force(l)(this), h.force(r)(this), parts,
+            JoinHow.Within(within, lateness, atL, atR)))).plus[F]
+        case Streamed.Windowed(t, size, slide, lateness, key, at, agg) =>
+          State.update[H, X](h => h.hold(Flow.Windowed(h.force(t)(this), size, slide, lateness, key, at, agg,
+            seeded = true, finish = Finish.Auto))).plus[F]
+        case Streamed.Zip(l, r) =>
+          State.update[H, X](h => h.hold(of(Chunks.zip(toChunks(h.force(l)(this)), toChunks(h.force(r)(this))).elements.toVector))).plus[F]
+
+  /** a program in `Tables + Streamed`, run on the engine */
+  def run[A](p: A ! Tables + Streamed): A =
+    State.run(Tables.Heap.empty[Flow])(streamed(Tables.via(this)(p)))._2

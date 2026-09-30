@@ -149,11 +149,12 @@ file's splits (a Parquet file's row groups) one partition per slice
 and reads each where it lands. The engine runs where the seam asks
 for a value: `aggregate` folds through `Flows.fold`, `collect` and
 `cache` through `Flows.collect`, under the scheduler given at
-construction. The join is the seam's hash join — the right side
-collected once and shared by every partition of the left, the
-broadcast join Spark picks for a small side; `Tables` turns the
-smaller side right by size. A co-partitioned join of two large sides
-is a binary node `Flow` does not have yet (lane 2).
+construction. The join is the engine's `Flow.Join` since lane 2: both
+sides exchanged by key hash into `parts` buckets, each joined on its
+reducer; `broadcastJoin` is the other road — the right side collected
+once and shared by every partition of the left, the broadcast join
+Spark picks for a small side. `Tables` turns the smaller side right
+by size either way.
 
 ```scala
 val B = FlowBulk(4, lines, sizes)                                    // four partitions, files read by name
@@ -162,6 +163,28 @@ val rows = Tables.run(B):
   val big = read("big.csv").select(r => r("k") -> r("b"))
   big.join(small).select { case (k, (b, s)) => (k, b, s) }.collect.map(_.elements.toVector.sorted)
 assertEquals(rows, Tables.run(Bulk.local(lines, sizes))(sameProgram))    // the agreement law
+```
+
+**The stream operators on the engine** (streams-seam, lane 2). `Streamed`
+is a signature in the row beside `Tables` and `Sort` — `joinSorted`,
+`joinWithin`, `windowed`, `zip` — with `Streamed.viaTables` as the
+platform-free answer through `collect` and the local machines, and
+`FlowBulk.streamed` as the engine's own: a `Flow.Join` exchanges both
+sides by key hash into `parts` buckets and joins each on its reducer
+(hash, `SortMerge` or `WindowJoin`), a window is `Flow.Windowed` with
+the seeded watermark. `FlowBulk(4).run(p)` runs a `Tables + Streamed`
+program; the agreement law says it answers what `viaTables` answers in
+one JVM, at any parallelism. On a bounded table `joinWithin` is the
+interval join and `lateness` changes nothing — each side is fed in its
+own time order, so no row is late; `windowed` keeps the table's order
+and drops as `Windows` drops.
+
+```scala
+val clicks = Vector(("u1", (0L, "home")), ("u2", (3L, "cart")), ("u1", (30L, "pay")))
+val buys = Vector(("u1", (8L, 9.99)), ("u2", (50L, 4.50)))
+val paid = Tables.of(clicks).plus[Streamed].joinWithin(Tables.of(buys).plus[Streamed], 10L, 0L)(_._1, _._1)
+  .collect.map(_.elements.toVector)
+assertEquals(FlowBulk(4).run(paid), Vector(("u1", ((0L, "home"), (8L, 9.99)))))
 ```
 
 **Across processes.** A `Job[P, R]` is what a worker can be asked for

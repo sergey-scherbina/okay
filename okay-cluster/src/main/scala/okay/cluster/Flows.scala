@@ -2,6 +2,7 @@ package okay.cluster
 
 import okay.*
 import okay.given
+import okay.Chunks.elements
 import scala.collection.mutable
 
 /**
@@ -469,6 +470,7 @@ object Flows {
     case Flow.Keyed(in, key, agg, finish) => keyed(shape(in), key, agg, finish)
     case Flow.Windowed(in, size, slide, lateness, key, at, agg, seeded, finish) =>
       windowed(shape(in), size, slide, lateness, key, at, agg, seeded, finish)
+    case Flow.Join(l, r, buckets, how) => joined(shape(l), shape(r), buckets, how)
 
   private def one[X, A](in: Shape[X], what: String): (Int, Scope) => Chunks[X] =
     val at = in.source
@@ -597,6 +599,65 @@ object Flows {
    * it would have meant restructuring the plan to save memory the
    * measurement says is not the problem.
    */
+  /**
+   * THE JOIN AS A `Wide` (specs/streams-seam.md, lane 2): the map side
+   * is every partition of BOTH inputs — the left's first, then the
+   * right's — each folding its rows into `buckets` by key hash, tagged
+   * with its side; the reduce side owns a range of buckets and joins
+   * each with `how`: the hash join, or `Chunks.joinSorted` over the two
+   * sides' rows (in partition order, so a globally key-ordered input
+   * sliced into contiguous partitions stays ordered per bucket, and
+   * anything else fails as unsorted, by name), or the interval join
+   * with each side fed in its time order (`Streamed.joinWithinLocal`).
+   * A keyed input is refused as a keyed stage's is: it needs its own
+   * exchange first.
+   */
+  private def joined[K, A, B](l: Shape[(K, A)], r: Shape[(K, B)], buckets: Int,
+                              how: JoinHow[K, A, B]): Shape[(K, (A, B))] =
+    require(buckets >= 1, "a join has at least one bucket")
+    val atL = one(l, "a join's left side")
+    val atR = one(r, "a join's right side")
+    val ln = l.parts
+    val rn = r.parts
+    val b = buckets
+    new Wide[(K, (A, B))]:
+      type P = Either[Array[mutable.ArrayBuffer[(K, A)]], Array[mutable.ArrayBuffer[(K, B)]]]
+      def parts: Int = ln + rn
+      def prepass: (Int => Extent) | Null = null
+      def buckets: Int = b
+      def work(i: Int, bounds: Bounds): P =
+        if i < ln then
+          val bs = Array.fill(b)(mutable.ArrayBuffer.empty[(K, A)])
+          Scope.using(sc => Chunks.foldLeft(atL(i, sc))(())((_, x) => { bs(bucketOf(x._1.##, b)) += x; () }))
+          Left(bs)
+        else
+          val bs = Array.fill(b)(mutable.ArrayBuffer.empty[(K, B)])
+          Scope.using(sc => Chunks.foldLeft(atR(i - ln, sc))(())((_, x) => { bs(bucketOf(x._1.##, b)) += x; () }))
+          Right(bs)
+      def reducers(ps: Vector[P]): Int = b
+      def out(ps: Vector[P], lo: Int, hi: Int, sc: Scope): Chunks[(K, (A, B))] =
+        val lefts = ps.collect { case Left(bs) => bs }
+        val rights = ps.collect { case Right(bs) => bs }
+        Chunks.fromIterator(Iterator.range(lo, hi).flatMap { j =>
+          val ls = lefts.iterator.flatMap(_(j).iterator)
+          val rs = rights.iterator.flatMap(_(j).iterator)
+          how match
+            case JoinHow.Hash() =>
+              val right = rs.toVector.groupMap(_._1)(_._2)
+              ls.flatMap((k, a) => right.getOrElse(k, Nil).iterator.map(bb => (k, (a, bb))))
+            case JoinHow.Sorted(ord) =>
+              Chunks.joinSorted(Chunks.fromIterator(ls), Chunks.fromIterator(rs))(using ord).elements
+            case JoinHow.Within(within, lateness, tl, tr) =>
+              Streamed.joinWithinLocal(ls.toVector, rs.toVector, within, lateness, tl, tr).iterator
+        })
+      def drops(ps: Vector[P]): Long = 0L
+      def merged(ps: Vector[P]): Long =
+        var t = 0L
+        for p <- ps do p match
+          case Left(bs) => for x <- bs do t += x.length
+          case Right(bs) => for x <- bs do t += x.length
+        t
+
   private final case class Panes[K, Acc, O](panes: Array[mutable.HashMap[(Long, K), Acc]],
                                             done: Array[mutable.ArrayBuffer[Pane[K, O]]],
                                             late: Long)
