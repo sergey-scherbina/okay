@@ -815,7 +815,7 @@ object Frames:
   /** the prompts installed on a stack, innermost first — `NoPrompt`'s list */
   @tailrec def installed[F[_, _, +_]](fs: Frames[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = fs match
     case Frame(_, rest) => installed(rest, acc)
-    case Reset(p, _, _, _, rest) => installed(rest, p.label :: acc)
+    case Reset(p, _, _, _, rest) => installed(rest, if p eq Cont0.boundary[Any] then acc else p.label :: acc)
     case _ => acc.reverse
 
   /**
@@ -833,8 +833,11 @@ object Frames:
     /** cut the stack at the `Reset` naming `sh.p`: `k` is the segment
      * with it (without it when bare), the body takes the delimiter's place */
     @tailrec def cut[X, Y, T, T2, C](sh: Cont0.Shift0[F, Y, T, R, X], all: Frames[F, X, S0, T, Z], fs: Frames[F, C, S0, T2, Z], rev: Rev[F, X, T, T2, C]): Next[?, ?] = fs match
-      case Frames.End() => throw NoPrompt(sh.at, sh.p.label, installed(all))
+      // no delimiter answers, and no boundary: the capture goes OUT as an
+      // operation, for a machine outside this one (Delim.runNested)
+      case Frames.End() => null
       case fr: Frames.Frame[F, C, S0, ?, T2, ?, Z] => cut(sh, all, fr.rest, Rev.Snoc(rev, fr.f))
+      case d: Frames.Reset[F, C, S0, T2, y2, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Frames.Reset[F, C, S0, T2, y2, Z] => Delim.given_Same_Prompt.same(sh.p, d.p) match
         case Some(ey) =>
           val k: Frames[F, X, T, T, Y] =
@@ -882,6 +885,7 @@ object Frames:
           if rs.shots != null then rs.shots.enter()
           loop[a, T](rs.body, Frames.Reset(rs.p, rs.ret, rs.plain, rs.shots, fs))
         case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => cut(sh, fs, fs, Rev.Nil[F, X, T]()) match
+          case null => Bind(focus, fs)
           case n: Next[x, t] => loop[x, t](n.focus, n.fs)
         case _ => Bind(focus, fs)
       case Diag(e) => e match
@@ -889,6 +893,7 @@ object Frames:
           if rs.shots != null then rs.shots.enter()
           loop[a, T](rs.body, Frames.Reset(rs.p, rs.ret, rs.plain, rs.shots, fs))
         case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => cut(sh, fs, fs, Rev.Nil[F, X, T]()) match
+          case null => Bind(focus, fs)
           case n: Next[x, t] => loop[x, t](n.focus, n.fs)
         case _ => Bind(focus, fs)
 
@@ -927,6 +932,15 @@ object Cont0:
 
   /** a fresh delimiter tag, labelled with the line that asked for it */
   def prompt[Y](using at: At): Prompt[Y] = new Prompt[Y]("prompt", at.where)
+
+  /** THE BOUNDARY: a root delimiter nobody can name, installed by
+   * `Delim.run`. A cut that walks into it has passed every delimiter of
+   * the machine and found none: `NoPrompt`, with the ones it passed. A
+   * run without it (`Delim.runNested`) lets such a capture out as an
+   * operation, for a machine outside to answer. */
+  private val theBoundary = new Prompt[Any]("boundary", "Delim.run")
+  /** at any answer type: it is compared by `eq` and never answers anything */
+  def boundary[Y]: Prompt[Y] = theBoundary.asInstanceOf[Prompt[Y]]
 
   /** `ret $ body`: the body under the delimiter — an operation, so it
    * reaches the machine through any handler loop between them */

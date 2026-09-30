@@ -207,10 +207,40 @@ Stage 1, the probe (`src/main/scala/kont/Kont.scala`, package
       the frame machine against the Delim machine, and two pure shapes
       (left- and right-nested) against the rotation — RESULTS below
 
-Stage 2 (a decision, not this lane): migrate — `Freer.resume` becomes
-this loop, the Delim machine and `Cont.step`'s own runner are expressed
-over it, `Prompt` gains its `S` index — or stay. Stage 3, if wanted and
-measured: handlers with state as marks.
+Stage 2, the migration (`freer-kont-migrate`, decided by the probe's
+numbers; the operator: "Мигрируй"):
+
+- [x] `Frames`, `Cont0`, `Frames.run` in package `okay` (Cont.scala),
+      `Freer` untouched and keeping its `resume`
+- [x] `Cont0` in its final shape: `Prompt[Y]` is Delim's (identity by
+      `Same`), `Reset0` carries `plain` and `shots`, `Shift0` carries
+      `bare`; the doors `dollar`/`dollarResumed`/`reset`/`shift0`/
+      `control0`/`shift`/`control`/`abort`
+- [x] `Delim` over the machine: `type Delim[+A] = Cont0[?, ?, ?, A]`,
+      every unstacked door a re-typing over a `Cont0` door (`in`/`out`,
+      the one claim), `run` under a BOUNDARY reset that turns an
+      unanswered capture into `NoPrompt` with the delimiters passed,
+      `runNested` without one so it goes out as an operation; the
+      `Stacked` doors over `Cont0` with `rebase` as their one claim,
+      `contShift` a strict `k` forcing the resumption; `Op`, `Segs`,
+      `Frames`(Delim's), `Hole`, `Cut`, `Step`, `loop`/`split`/`copy`/
+      `reify` deleted (~450 lines); Lexical's deep instance a `Reset0`
+- [x] the oracle: TestDollar, TestDollarProbe, TestDelim,
+      TestDelimForward, TestStackedShift0, TestLexical, TestLayered,
+      TestHandlersAsDollar, TestContOnMachine, TestProg,
+      TestStackSafetyCore, TestContStack, TestKont — 97 tests, green on
+      the first run of the ported machine
+- [ ] `affected master staged` green (a change of behaviour: every
+      dependent's tests)
+- [ ] DelimBenchmark's lanes re-measured on the migrated machine
+      against the probe's rows
+- [x] Delim.scala's header rewritten: the "opaque forwarding" reason
+      for `push` as an operation refuted, the two real reasons named
+- [ ] `Cont.step` (the strict runner with its `StackSwitch` rooms):
+      decide by measurement whether `Shift` becomes `Shift0` with a
+      strict `k` on `Frames.run`, or stays — a later lane
+
+Stage 3, if wanted and measured: handlers with state as marks.
 
 ## Decisions
 

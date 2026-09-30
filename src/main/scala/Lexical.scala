@@ -331,7 +331,7 @@ object Lexical:
    * (TestLexicalStacked), the way the body already names it.
    */
   object Stacked:
-    import Delim.Stacked.{In, Stack, Under, Has, Op}
+    import Delim.Stacked.{In, Stack, Under, Has}
 
     /** the program type of a stacked instance's clauses: under `St`,
      * the stack below its prompt */
@@ -350,7 +350,7 @@ object Lexical:
                                 (body: (i: Deep[F, R, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                 (using at: At): Under[G, R, st.S] =
       val i = new Deep[F, R, G, st.S](Delim.prompt[R], c)
-      Freer.Inject(Op.Dollar[G, st.S, A, R, i.p.type](i.p, c.ret, body(i)))
+      Freer.Inject(Cont0.Reset0[Freer.Lift[G], R, A, st.S, st.S](i.p, c.ret, Delim.Stacked.rebase(body(i)), false, null))
 
     /** a stacked TAIL instance: it answers in place, and the stack check
      * is what makes holding it safe */
