@@ -1,0 +1,1 @@
+claude session_01FeSfUJ4Z4YBWrEERDnoghu, 2026-09-30, found while measuring: okay.WindowJoin.trim spins for ever in TestWindowJoin's fifth test and hangs the CI runner's family gate; the ledger entry (okay-stream/BUGS.md, new) — the fix is the stream-join-windowed owner's (sprint.d/doing/windowjoin-livelock-ledger.md)
