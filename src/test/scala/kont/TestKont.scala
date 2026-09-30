@@ -1,7 +1,7 @@
 package okay.kont
 
 import okay.Freer
-import okay.Freer.{Bind, Delay, Inject, Return}
+import okay.Freer.{Bind, Delay, Diag, Return}
 
 /**
  * specs/freer-kont.md, the oracle: the `($v)` and `($/S0)` rules of
@@ -147,16 +147,42 @@ class TestKont extends munit.FunSuite:
 
   // ------------------------------------------------ the head form
 
-  test("a foreign operation comes out as Bind(Inject(e), fs); fed twice, two different answers") {
+  /** a unary operation enters an indexed row on the DIAGONAL (`Freer.Diag`),
+   * which is what lets a handler loop keep its indexes (State.handleIndexed) */
+  val ask: P[String, String, Int] = Freer.diag[Row[F], String, Int](Ask.Get())
+
+  test("a foreign operation comes out as Bind(Inject(e), k); k fed twice gives two answers, the shift0 after it handled") {
     val p = Cont0.prompt[String, String]
-    val ask: P[String, String, Int] = Inject[Row[F], String, String, Int](Ask.Get())
     val body: Str = ask.flatMap(n => shift0(p)(k => k(n.toString).map(_ + "!")))
     Machine.run[F, String, String, String](dollar(p)(angle)(body)) match
-      case Bind(Inject(_: Ask[?]), k) =>
+      case Bind(Diag(_: Ask[?]), k) =>
         val fs = k.asInstanceOf[Int => P[String, String, String]]
         assertEquals(run(fs(1)), "<1>!")
         assertEquals(run(fs(2)), "<2>!")
       case other => fail(s"not the head form: $other")
+  }
+
+  /**
+   * A HANDLER LOOP OF TODAY'S SHAPE, over the real `Freer.resume` (the
+   * rotation), answering `Ask` and forwarding everything else — the
+   * outer interpreter the machine's head form is handed to. It knows
+   * nothing of frames; what it gets as `k` must bring the machine back.
+   */
+  def answer[S, T, A](n: Int)(p: P[S, T, A]): P[S, T, A] =
+    @scala.annotation.tailrec def loop(x: P[S, T, A]): P[S, T, A] = (x.resume: @unchecked) match
+      case _: Return[?, ?, ?] => x
+      case b: Bind[Row[F], S, t, T, x0, A] => b.a match
+        case Diag(_: Ask[?]) => loop(b.f.asInstanceOf[Int => P[S, T, A]](n))
+        case i => Bind(i, (v: x0) => answer[S, t, A](n)(b.f(v)))
+      case i => i
+    loop(p)
+
+  test("orthogonal: a loop handler over Freer.resume OUTSIDE the machine; its k re-enters the machine, shift0 still finds the delimiter") {
+    val p = Cont0.prompt[String, String]
+    // the ask is answered by the loop outside; the shift0 after it is the machine's, and its k is resumed twice
+    val body: Str = ask.flatMap(n => shift0(p)(k => k(n.toString).flatMap(a => k((n + 1).toString).map(b => a + b))))
+    val prog = answer[String, String, String](7)(Machine.run[F, String, String, String](dollar(p)(angle)(body)))
+    assertEquals(run(prog), "<7><8>")
   }
 
   test("a shift0 with no dollar for its prompt fails by name and lists the installed delimiters") {

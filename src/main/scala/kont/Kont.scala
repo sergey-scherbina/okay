@@ -43,17 +43,28 @@ enum Frames[G[_, _, +_], A, S, T, Z] extends (A => Freer[G, S, T, Z]):
    * rule. Answer-type modification is `Bind`'s: body `Freer[G, T, R,
    * A]`, `ret: A => Freer[G, S2, T, Y]`, the delimited program
    * `Freer[G, S2, R, Y]` — today's `Cont.run(c)(k)` with a lazy `ret`.
-   * `reset` is this with `ret = pure`. Installing one is a SPLICE of
-   * the one-frame stack `Reset(p, ret, End())`, the same road a
-   * resumed `k` takes.
+   * `reset` is this with `ret = pure`. A program asks for one with the
+   * OPERATION `Cont0.Reset0`, never by building this frame: an
+   * operation passes through a handler loop between the program and
+   * the machine (the loop forwards what it does not own), a frame does
+   * not — `Freer.resume`'s rotation folds a `Bind(body, Reset(..))`
+   * into a closure, and a cut on the machine's stack would not see it.
    */
   case Reset[G[_, _, +_], A, S, S2, T, Y, Z](p: Prompt[S2, Y], ret: A => Freer[G, S2, T, Y],
                                               rest: Frames[G, Y, S, S2, Z]) extends Frames[G, A, S, T, Z]
 
-  /** a lazy node, never a run: the machine splices it (see `Machine.run`) */
+  /**
+   * ONE FRAME PER STEP. Applied as a plain function — by ANY
+   * interpreter of the tree, `Freer.resume`'s rotation included — the
+   * stack applies its first frame and leaves the rest as an ordinary
+   * right-nested continuation, so `Freer` needs to know nothing of it
+   * and never loops on it. The machine of `Machine.run` never calls
+   * this: meeting `Bind(a, ks: Frames)` it SPLICES `ks` onto its stack.
+   */
   def apply(a: A): Freer[G, S, T, Z] = this match
     case End() => Return(a)
-    case _ => Bind(Return(a), this)
+    case Frame(f, rest) => Bind(f(a), rest)
+    case Reset(_, ret, rest) => Bind(ret(a), rest)
 
 object Frames:
   /**
@@ -81,7 +92,8 @@ final class Prompt[S, Y](val label: String):
   override def toString: String = label
 
 /**
- * THE ONE OPERATION. `f` takes the stack up to and including the
+ * THE TWO OPERATIONS: the delimiter and the capture. `Shift0`'s `f`
+ * takes the stack up to and including the
  * delimiter named `p` — a `Frames[Row[F], X, S, T, Y]`, from the
  * operation's value `X` through the `Reset` to its answer `Y` — and answers a
  * program that stands in the delimiter's place: `Freer[Row[F], S, R,
@@ -89,6 +101,14 @@ final class Prompt[S, Y](val label: String):
  * the body answers); `(S, Y)` are the prompt's.
  */
 enum Cont0[F[_, _, +_], T, R, +X]:
+  /** `ret $ body`: the body at `T`, `ret` modifies `T` to `S`, the
+   * delimiter answers `Y`; the machine turns it into a `Frames.Reset`
+   * on ITS stack — an operation reaches the machine through any
+   * handler loop in between, which is why the delimiter is asked for
+   * this way and not built as a frame */
+  case Reset0[F[_, _, +_], S, Y, A, T, R](p: Prompt[S, Y],
+                                          ret: A => Freer[Row[F], S, T, Y],
+                                          body: Freer[Row[F], T, R, A]) extends Cont0[F, S, R, Y]
   case Shift0[F[_, _, +_], S, Y, T, R, X](p: Prompt[S, Y],
                                           f: Frames[Row[F], X, S, T, Y] => Freer[Row[F], S, R, Y],
                                           at: String) extends Cont0[F, T, R, X]
@@ -103,9 +123,10 @@ final class NoReset(val at: String, val wanted: String, val installed: List[Stri
     s"$at: shift0 to '$wanted', which is not on the stack; installed, innermost first: ${installed.mkString("[", ", ", "]")}")
 
 object Cont0:
-  /** `ret $ body`: the body under the delimiter, `ret` as its frame */
+  /** `ret $ body`: the body under the delimiter — an operation, so it
+   * reaches the machine through any handler loop between them */
   def dollar[F[_, _, +_], S, Y, A, T, R](p: Prompt[S, Y])(ret: A => Freer[Row[F], S, T, Y])(body: Freer[Row[F], T, R, A]): Freer[Row[F], S, R, Y] =
-    Bind(body, Frames.Reset[Row[F], A, S, S, T, Y, Y](p, ret, Frames.End[Row[F], Y, S]()))
+    Inject[Row[F], S, R, Y](Cont0.Reset0[F, S, Y, A, T, R](p, ret, body))
 
   /** `$` with `ret = pure`: reset, whose `S = A` requirement is `Return`'s diagonal */
   def reset[F[_, _, +_], S, R, A](p: Prompt[S, A])(body: Freer[Row[F], S, R, A]): Freer[Row[F], S, R, A] =
@@ -150,9 +171,23 @@ private object Rev:
 
 object Machine:
   /**
-   * The one loop: run `p` to a head form — `Return(x)`, or `Bind(Inject(e), fs)`
-   * for the first operation no delimiter on the stack answers, `fs` the
-   * stack as the continuation. `S0`, `R`, `Z` are the run's; every arm
+   * THE HEAD FORM'S CONTINUATION RE-ENTERS THE MACHINE. An operation
+   * nobody on the stack answers goes out as `Bind(Inject(e), k)` to
+   * whoever runs this program — a handler loop over `Freer.resume`,
+   * which knows nothing of frames. Its `k(x)` must bring the machine
+   * back with its stack, not hand the frames to the loop's rotation:
+   * a `Cont0` operation met later would then have no machine. So `k`
+   * is this — a plain function, one JVM call that returns the next
+   * head form (`Delim`'s `Out(inject(g).flatMap(x => loop(..)))`, the
+   * same shape). Bounded: each re-entry returns before the next.
+   */
+  private final class Reenter[F[_, _, +_], X, S0, T, Z](fs: Frames[Row[F], X, S0, T, Z]) extends (X => Freer[Row[F], S0, T, Z]):
+    def apply(x: X): Freer[Row[F], S0, T, Z] = run[F, S0, T, Z](Bind(Return[Row[F], T, X](x), fs))
+
+  /**
+   * The one loop: run `p` to a head form — `Return(x)`, or `Bind(Inject(e), k)`
+   * for the first operation no delimiter on the stack answers, `k` the
+   * stack re-entering this loop. `S0`, `R`, `Z` are the run's; every arm
    * is typed by GADT refinement of the two registers.
    */
   def run[F[_, _, +_], S0, R, Z](p: Freer[Row[F], S0, R, Z]): Freer[Row[F], S0, R, Z] =
@@ -187,7 +222,7 @@ object Machine:
           // the head form already — an operation nobody here answers,
           // one frame, empty stack: hand it back as it is, no push
           case _: Frames.End[G, X, S0] => b.a match
-            case Inject(e) if !e.isInstanceOf[Cont0.Shift0[?, ?, ?, ?, ?, ?]] => focus
+            case Inject(e) if !e.isInstanceOf[Cont0[?, ?, ?, ?]] => focus
             case a => loop[x0, t2](a, Frames.Frame(b.f, fs))
           case _ => loop[x0, t2](b.a, Frames.Frame(b.f, fs))
         case ks => loop[x0, t2](b.a, Rev.splice(ks, fs))
@@ -198,12 +233,15 @@ object Machine:
         case d: Frames.Reset[G, X, S0, s2, T, ?, Z] => loop(d.ret(r.a), d.rest)
       case d: Delay[G, T, R, X] => loop(d.thunk(), fs)
       case Inject(e) => e match
+        // the delimiter, asked for as an operation, becomes a frame
+        case rs: Cont0.Reset0[F, T, X, a, t, R] @unchecked => loop[a, t](rs.body, Frames.Reset(rs.p, rs.ret, fs))
         case sh: Cont0.Shift0[F, ?, ?, T, R, X] @unchecked => cut(sh, fs, fs, Rev.Nil[G, X, T]()) match
           case n: Next[x, t] => loop[x, t](n.focus, n.fs)
-        case _ => Bind(focus, fs)
+        case _ => Bind(focus, Reenter(fs))
       case Diag(e) => e match
+        case rs: Cont0.Reset0[F, T, X, a, t, R] @unchecked => loop[a, t](rs.body, Frames.Reset(rs.p, rs.ret, fs))
         case sh: Cont0.Shift0[F, ?, ?, T, R, X] @unchecked => cut(sh, fs, fs, Rev.Nil[G, X, T]()) match
           case n: Next[x, t] => loop[x, t](n.focus, n.fs)
-        case _ => Bind(focus, fs)
+        case _ => Bind(focus, Reenter(fs))
 
     loop(p, Frames.End[G, Z, S0]())

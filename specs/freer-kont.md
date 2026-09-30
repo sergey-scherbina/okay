@@ -13,12 +13,16 @@ each thing that was dropped was dropped.
 
 **The design, in one sentence: the machine's stack is a type-aligned
 list of frames that is ITSELF a continuation (`Frames <: A => Freer`),
-the delimiter `$` is a FRAME (`Frames.Reset`: the prompt and its `ret`
-on the stack), and `shift0` is the one operation — it cuts the stack
-at the first `Reset` naming its prompt and hands the cut, as a
-function, to its body.** The tree does not change: `Freer`'s five
-cases stay, and `Freer` knows nothing of the stack — the machine
-recognises a `Frames` in a `Bind`'s continuation by class. What
+the delimiter `$` is a FRAME on it (`Frames.Reset`: the prompt and its
+`ret`), and `Cont0 = Shift0 | Reset0` are the two operations — `Reset0`
+asks for that frame, `Shift0` cuts the stack at it and hands the cut,
+as a function, to its body.** The tree does not change: `Freer`'s five
+cases stay, `Freer` keeps its own `resume`, and it knows nothing of the
+stack — the machine recognises a `Frames` in a `Bind`'s continuation by
+class, and a `Frames` applied as a plain function by any other
+interpreter applies ONE frame per step, so it is a continuation for
+`Freer.resume` too. `Freer` is self-sufficient; `Cont` is orthogonal
+(operator, 2026-09-30). What
 changes is `resume`: the rotation `Bind(Bind(a, f), g) ⇒ Bind(a,
 f(_).flatMap(g))` (a closure per left-nesting, re-pushed down every
 step, the JIT-mode lead of `freer-rotation-closure-jit-modes`) becomes
@@ -41,13 +45,16 @@ enum Frames[G[_, _, +_], A, S, T, Z] extends (A => Freer[G, S, T, Z]):
                                    rest: Frames[G, Y, S, S2, Z]) extends Frames[G, A, S, T, Z]
   case Reset[G, A, S, S2, T, Y, Z](p: Prompt[S2, Y], ret: A => Freer[G, S2, T, Y],
                                    rest: Frames[G, Y, S, S2, Z]) extends Frames[G, A, S, T, Z]
-  apply(a) = End: Return(a)  |  else: Bind(Return(a), this)      -- a LAZY node: the machine splices it
+  apply(a) = End: Return(a) | Frame(f, rest): Bind(f(a), rest) | Reset(_, ret, rest): Bind(ret(a), rest)
+                                                          -- ONE FRAME PER STEP: valid under any interpreter of the tree;
+                                                          -- the machine never calls it, it splices `rest`
 
-enum Cont0[F, T, R, +X]:                                          -- an enum only for the `+X` (Delim.Op's shape)
+enum Cont0[F, T, R, +X]:                                          -- an enum for the `+X` (Delim.Op's shape)
+  case Reset0[F, S, Y, A, T, R](p: Prompt[S, Y], ret: A => Freer[Row[F], S, T, Y], body: Freer[Row[F], T, R, A])
   case Shift0[F, S, Y, T, R, X](p: Prompt[S, Y], f: Frames[Row[F], X, S, T, Y] => Freer[Row[F], S, R, Y], at)
 type Row[F] = [T, R, X] =>> Cont0[F, T, R, X] | F[T, R, X]
 
-dollar(p)(ret)(body) = Bind(body, Reset(p, ret, End()))  -- a constructor, not an operation: a one-frame stack, SPLICED
+dollar(p)(ret)(body) = Inject(Reset0(p, ret, body))       -- an OPERATION; the machine turns it into the frame
 reset(p)(body)       = dollar(p)(Return(_))(body)
 shift(p)(f)          = shift0(p)(k => reset(p)(f(k)))
 ```
@@ -89,12 +96,13 @@ checked by GADT refinement, nothing casts:
 
 ```
 loop[X, T](focus: Freer[G, T, R, X], fs: Frames[G, X, S0, T, Z]): Freer[G, S0, R, Z]
-  Bind(a, ks: Frames) → loop(a, ks ++ fs)          -- a resumed k, a delimiter installed, or re-entry from outside; fs = End: ks itself
+  Bind(a, ks: Frames) → loop(a, ks ++ fs)          -- a resumed k, or re-entry from outside; fs = End: ks itself
   Bind(a, f)          → loop(a, Frame(f, fs))      -- push
   Return(x)           → End: focus  |  Frame(f, rest): loop(f(x), rest)  |  Reset(p, ret, rest): loop(ret(x), rest)   -- ($v) is a pop
   Delay(t)            → loop(t(), fs)
+  Inject(Reset0)      → loop(body, Reset(p, ret, fs))                                 -- the operation becomes the frame
   Inject(Shift0)      → cut fs at the first Reset(p): k, below; loop(f(k), below)   -- ($/S0)
-  Inject(e)           → Bind(focus, fs)            -- the head form; fs is already a function: no allocation for k
+  Inject(e)           → Bind(focus, Reenter(fs))   -- the head form: k RE-ENTERS the machine with its stack
 ```
 
 `++` and the cut are two `@tailrec` walks over a reversed list `Rev`
@@ -103,6 +111,18 @@ prefix up to the `Reset` and links it onto `End`; a splice reverses
 `ks` and links it onto `fs`. Both are O(|segment|) and amortised free:
 every frame copied is a frame about to be run. A splice onto `End` is
 the segment itself — the re-entry from an outer handler costs nothing.
+
+**The head form's `k` re-enters the machine.** An operation nobody on
+the stack answers goes out to whoever runs the program — a handler
+loop over `Freer.resume`, which knows nothing of frames. If its `k`
+were the raw `Frames`, the loop's rotation would apply the frames
+itself and the machine would be gone: a `Cont0` operation met later
+would have no stack to cut. So `k` is `Reenter(fs)`, a plain function
+`x => run(Bind(Return(x), fs))` — `Delim`'s `Out(inject(g).flatMap(x =>
+loop(..)))`, the same shape — one JVM call per re-entry, each returning
+the next head form before the next. The ordering this fixes is the
+library's rule already ("one machine, innermost": `State.handle(
+delimited(..))`, never a loop between a program and its machine).
 
 ## What is NOT in the foundation, and why
 
@@ -113,24 +133,31 @@ the segment itself — the re-entry from an outer handler costs nothing.
   smart frame plus a tail-resumption rule — measured on their own if
   ever wanted. The 112 `case Bind(Inject(e), k)` handler loops of the
   library consume the same head form as today and do not move.
-- **No `$` OPERATION and no handler for `Cont0`**: the delimiter is
-  found ON THE STACK. `Cont0`'s signature is `Shift0` alone.
+- **No handler for `Cont0`**: the delimiter is found ON THE STACK by
+  the machine; `Reset0` is the operation that asks for it (an operation
+  is forwarded by a loop that does not own it, a frame is not — the
+  same reason `Delim.Push` is one), `Shift0` the one that cuts.
 - **No separate Delim machine**: Delim's family is this plus prompt
   tags and two bits over the same cut — take the `Reset` frame into
   `k` or stop one frame short (`shift0`/`control0`), run the body under
   a fresh `reset(p)` or bare (`shift`/`shift0`). `push(p) =
   dollar(p)(pure) = reset(p)`.
-- **Nothing in `Freer`**: the stack, the delimiter, the operation and
-  the loop live in one file of their own (`Cont.scala` after the
-  migration, `kont/Kont.scala` in the probe). `Freer` stays pure data
-  — five cases, `flatMap`, `map`, `Mapped`. At migration `resume`
-  LEAVES `Freer` and becomes the machine there, an extension in
-  package `okay` that the 112 sites reach as they reach the member
-  today; `Cont` (`Shift0` with a strict `k`) is defined beside it.
+- **Nothing in `Freer`, and `Freer` keeps its `resume`** (operator:
+  "Freer самодостаточный, Cont ортогональный"). The stack, the
+  delimiter, the operations and the machine live in one file of their
+  own (`Cont.scala` after the migration, `kont/Kont.scala` in the
+  probe); `Freer` is usable without them exactly as today, the 112
+  handler loops keep calling `Freer.resume`, and the machine is a
+  second interpreter, `Cont.run`, that the head form's `Reenter`
+  brings back. `Cont` (`Shift0` with a strict `k`) is defined beside
+  it. The rotation-free descent is therefore the machine's, not every
+  loop's — making `Freer.resume` the frame machine is a separate,
+  later decision, not this one.
 ## Behavior
 
 Stage 1, the probe (`src/main/scala/kont/Kont.scala`, package
-`okay.kont`, ADDITIVE — nothing in `Freer`, `Delim`, `Cont` moves;
+`okay.kont`, ADDITIVE — nothing in `Freer`, `Delim`, `Cont` moves, and
+`Freer.resume` is not touched;
 `src/test/scala/kont/TestKont.scala` is the oracle):
 
 - [x] `Frames` as an enum over the indexed `Freer` — `End | Frame | Reset`,
@@ -154,9 +181,13 @@ Stage 1, the probe (`src/main/scala/kont/Kont.scala`, package
 - [x] left-nested binds: a 100 000-step `foldLeft` of `flatMap`s runs
       in constant stack with no rotation
 - [x] the head form: a foreign operation inside a `$` comes out as
-      `Bind(Inject(e), fs)`; `fs` applied to an answer and run again
-      completes; applied to two different answers gives two different
-      results (the frames are shared immutably, multi-shot re-entry)
+      `Bind(Inject(e), k)`; `k` applied to an answer completes; applied
+      to two different answers gives two different results (the frames
+      are shared immutably, multi-shot re-entry)
+- [x] orthogonal: a handler loop of today's shape, over the real
+      `Freer.resume`, OUTSIDE the machine — it answers its operation,
+      its `k` re-enters the machine, and a `shift0` after it still finds
+      the delimiter and resumes twice
 - [x] a `shift0` with no `$` for its prompt fails by name with the
       installed delimiters listed
 - [ ] the four lanes of the backlog item measured through `jmh-lane.sh`
@@ -170,11 +201,16 @@ measured: handlers with state as marks.
 
 ## Decisions
 
-- **`Reset` is a frame, not an operation.** A `Return` at it is the
-  ordinary pop — `ret(x)` — so `($v)` needs no rule. The backlog's
-  `Dollar` operation would have needed a handler to interpret it into a
-  mark; the frame IS the mark. Named `Reset`, not `Dollar` (operator):
-  `$` is reset with a `ret`, `reset` is `$` with `pure`.
+- **`Reset` is a frame; `Reset0` is the operation that asks for it.**
+  A `Return` at the frame is the ordinary pop — `ret(x)` — so `($v)`
+  needs no rule; the operation becomes the frame in one arm. A first
+  cut built the frame directly (`Bind(body, Reset(.., End()))`, a
+  one-frame stack spliced in); the operation form is uniform with
+  `Delim.Push` and forwardable by a loop that does not own `Cont0`
+  (`relay`), at one `Inject` per delimiter — what `push` pays today.
+  Named `Reset`/`Reset0`, not `Dollar` (operator): `$` is reset with a
+  `ret`, `reset` is `$` with `pure`; `shift0`/`reset0` is the pair of
+  the literature.
 - **Three enum cases, the delimiter a case of its own** (operator,
   after a first cut kept it inside `Frame.f` as a smart function
   `Dollar`). As a case the cut and the pop are typed by the GADT and
@@ -197,7 +233,7 @@ measured: handlers with state as marks.
 
 ## Results
 
-**Stage 1 landed as the probe: 15/15 oracles green through the gate,
+**Stage 1 landed as the probe: 16/16 oracles green through the gate,
 no warnings, `recscan` holds** (`okayJVM/testOnly okay.kont.TestKont`; green again with `Reset` as a
 case of the enum and the delimiter installed by splice).
 Every rule of TestDollar gives the same answer on the frame machine
