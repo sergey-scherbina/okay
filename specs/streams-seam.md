@@ -99,7 +99,9 @@ numbers.
   fibre per partition, in parallel.
 
 - **`join` is the seam's hash join, the right side collected once and
-  shared by every partition of the left.** The seam's contract
+  shared by every partition of the left** (lane 1; SUPERSEDED by lane 2:
+  `join` is `Flow.Join` with `JoinHow.Hash`, the broadcast road kept as
+  `broadcastJoin`). The seam's contract
   (specs/bulk.md, "`join` is the equi-join only") is a hash join with the
   right side whole, and `Tables`' rewrite turns the smaller side right
   by size; on this engine the right side is `Flows.collect`ed on first
@@ -126,7 +128,33 @@ numbers.
   flow when pulled, so a `Tables` program's `collect` reads the engine's
   answer per run, and a re-read source is re-read.
 
-- **No `Exchange` yet.** Lane 1 adds no node to `Flow`. A `Keyed`
+- **`Flow.Join` is the one binary node, a `Wide` over both inputs**
+  (lane 2). Its map side is every partition of both inputs — the left's
+  first, then the right's — each folding its rows into `buckets` by key
+  hash, tagged with its side; its reduce side owns a range of buckets
+  and joins each with `JoinHow`: the hash join (the bucket's right rows
+  hashed, the left streamed), `Chunks.joinSorted` over the two sides'
+  rows in partition order (a globally key-ordered input sliced into
+  contiguous partitions stays ordered per bucket; anything else fails
+  as unsorted, by name — on the side still being read, since an inner
+  join ends at the other side's end), or the interval join with each
+  side fed in its time order. The partials are held in memory, as a
+  keyed stage's are; a keyed input is refused by name, as a second
+  keyed stage is. What this is not: a streaming exchange with
+  backpressure between partitions — the engine has none yet, and a
+  join that needs one is a lane of its own.
+
+- **`Streamed`'s bounded semantics are the local machines', stated
+  once** (lane 2, the class doc of `Streamed`): `JoinWithin` on a table
+  is the interval join, each side fed in its time order, so `lateness`
+  changes nothing there; `Windowed` keeps the table's order and drops
+  as `Windows` drops, which the engine's seeded partitions reproduce at
+  any parallelism; `Zip` is positional and goes through `collect` on
+  the engine, since two partitioned collections are zippable only when
+  partitioned alike. `FlowBulk.streamed` composes as `SparkBulk.sort`
+  does — `streamed(Tables.via(B)(p))` — and `FlowBulk.run(p)` is that.
+
+- **No general `Exchange` node.** Lane 1 added none; A `Keyed`
   aggregation is not in `Bulk`'s algebra (its `aggregate` is the whole
   collection's), so the engine's keyed roads (`Finish`, `Sequential`) are
   not reached from `Tables` here; they are reached by `Streamed.Windowed`
@@ -159,10 +187,25 @@ Lane 1 (streams-seam-1-bulk-flow):
 - [x] docs: docs/modules/okay-cluster.md, "A Bulk over the engine",
       example pinned
 
-Lane 2 (streams-seam-2-streamed): `Streamed` with `viaTables` defaults;
-`Flow.Join` (co-partitioned, `SortMerge`/`WindowJoin` per partition,
-watermark seeded per partition); Spark's native answers; the agreement
-law across Chunks, Spark local, Flow at parallelism 4.
+Lane 2 (streams-seam-2-streamed):
+
+- [x] `Streamed.viaTables`: `joinSorted` answers the hash join's multiset
+      on key-ordered sides; `joinWithin` the interval predicate whatever
+      the sides' order, at lateness 0, 5 and 1000 alike; `windowed`
+      `Windows`' panes over the table's order with its drops; `zip` is
+      `Chunks.zip`
+- [x] `Flow.Join`: hash, sort-merge and windowed answer the local law at
+      1 and 4 buckets over 1 and 3 partitions a side; an unordered side
+      fails by name; a keyed input is refused by name
+- [x] a `Tables + Streamed` program answers on `FlowBulk(1)` and
+      `FlowBulk(4)` what `viaTables` answers in one JVM — all four
+      signatures in one program
+- [x] `FlowBulk.join` reads its right side once per run (exchanged);
+      `broadcastJoin` once for good
+- [x] docs: okay-cluster.md "The stream operators on the engine", pinned
+- [ ] Spark's native answers (sort-merge join, windows, Structured
+      Streaming's stream-stream join) — a lane of its own, after the
+      structural sub-language (lane 5) that makes them Catalyst-visible
 
 Lane 3 (bulk-flink): `Bulk[DataStream]`, optional, refused by name;
 `Streamed` answered natively.
@@ -186,3 +229,16 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
   consumptions (`pulls == 1`), `read` reads each of eight splits once
   per consumption and `cache` once ever — the deferred/eager split of
   the Decisions holds as written.
+
+- streams-seam-2-streamed (2026-09-30): NOT additive — `FlowBulk.join`
+  changed body (broadcast → `Flow.Join`), `Flows.shape` gained a case;
+  gate `affected master staged`. Two test expectations corrected on the
+  way, both about semantics worth stating: an inner sort-merge join ENDS
+  at the other side's end, so an unordered row after that end is never
+  read — the sortedness failure is on the side still being read; and
+  an exchanged join reads its right side once per RUN, the broadcast
+  road once for good. `Windowed` on the engine at parallelism 4 gave
+  `viaTables`' panes including the drops, the seeding claim of
+  specs/dataflow.md holding for a table sliced contiguously. Spark's
+  native answers deferred: without the structural sub-language a
+  Catalyst-side answer would be object mode, which lane 5 is about.
