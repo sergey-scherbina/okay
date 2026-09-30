@@ -1,1 +1,0 @@
-claude session_01FeSfUJ4Z4YBWrEERDnoghu, 2026-09-30, the runner's REPEAT OFFENDER notice on my own suite: TestMergeScopeReachable times out at 30 s under a whole-build gate (47-51 s measured), green alone — a suite timeout, as ChannelLawsSuite's (sprint.d/doing/merge-scope-reachable-timeout.md)
