@@ -547,10 +547,63 @@ the compiler said:
 pins the core examples verbatim, `TestTxData` the transaction's;
 TestDocSnippets and TestDocsIndex green.
 
-### Deferred measurements
+### The measurement pass — LANDED (indexed-effects-measure-2), the arc priced
 
-DONE for stage 6 (above). Still to read, from the earlier stages: `stateThreaded` after the shared node
-(expected 244 904 B, the State count), a `Tx.Data` interpretation
-against `Tx`'s facade (expected within noise: the same driver
-programs), the row's `splitI` against `split` on a forwarding handler,
-and the Delim lanes (`DelimBenchmark`) before and after stage 4.
+One pass after stage 9, every question the stages deferred, master
+e574034d8 against the arc's base d31fc94f1 (the old Delim machine, the
+unshared Get, the facade), alternating arms, one lane per `jmh-lane.sh`
+(`scripts/history.sh indexed-effects-measure-2`):
+
+| lane | arc | base | ratio | bytes |
+|---|---|---|---|---|
+| delimGenerator | 68.80 | 68.13 | 1.010 | same |
+| delimPushOnly | 17.18 | 17.44 | 0.985 | same |
+| delimDollarResume | 38.58 | 39.12 | 0.986 | same |
+| writerTellUnderDelim | 25.36 | 25.47 | 0.996 | same |
+| stateLexDeep | multi-modal, see below | 100.1 | 1.01-1.02 (common mode) | same |
+| stateThreaded | 16.52 | 18.05 | 0.915 | 244 832 vs 276 904 |
+| stateEffect (control) | 16.97 | 17.31 | 0.980 | same |
+| stateIndexedForward vs stateForward | 32.85 | 31.37 | 1.047 | 369 128 vs 368 280 |
+| Tx.Data vs the facade (facade's last tree) | 1.680 | 1.261 | 1.332 | 20 560 vs 13 032 |
+
+- **The one machine costs nothing on four of five Delim lanes** (0.985-1.010,
+  bytes identical). `stateLexDeep` is the one that MOVES, and it moves PER
+  JVM FORK: master reads one of {91.7, 100.5, 101.5, 103.6, 109.9} us/op,
+  each fork tight (±0.3), where the base reads 99.7-101.5 over twelve
+  forks. Two fixes were tried in the lane. Slimming `step` back to the
+  old machine's size (the typed `Op` arms moved to `typed`, 1282 -> 672
+  bytes) changed nothing but removed the 91.7 mode. A `PrintInlining`
+  probe of four forks per tree found the cause: the ONE fast fork is the
+  one where `Freer.resume`'s rotation closure (`f(_).flatMap(g)`) was
+  NOT inlined into the loop ("already compiled into a medium method");
+  every base fork and every slow fork inlines it. That is a base-tree
+  design lead, not a machine defect — backlog
+  `freer-rotation-closure-jit-modes` carries the evidence and the road
+  (the rotation as a node the loops walk). Kept: the slimmed `step` (the
+  old shape, no worse, one fewer thing to blame).
+- **The shared Get is the number pstate-threaded promised**: -32 B per
+  step, 244 832 B = the untyped State's count minus 72, and 0.915x the
+  base's time — `stateThreaded` now reads 0.973x `stateEffect`. The typed
+  protocol on the data road is no longer 1.07x the untyped effect; it is
+  under it.
+- **`splitI` against `split` on a forwarding handler: 1.047x, and it is
+  not the test.** Two fixes landed here: `handleIndexed` forwards the
+  NODE it holds (`forwardedI`, the indexed `forwarded`) instead of
+  rebuilding it (-16 B per forwarded operation, measured), and
+  `TypeableI.derived` emits a constant-class `instanceof` where
+  `byClass` read a field and called `Class.isInstance` (the residual
+  `TypeableK.derived` removed on the unary side). Time did not move:
+  `stateIndexedForward` is multi-modal per fork (32.2/32.6/33.1/33.7/35.1)
+  where `stateForward` is stable (30.8-31.7) — the same shape as
+  `stateLexDeep`, the same closure, the same backlog item. The 848 B
+  that remain are per run, not per operation.
+- **`Tx.Data` against the facade: 1.33x and +74 B per statement, and that
+  is the tree.** The facade was an identity over the driver programs'
+  own `Async` chain; the data road builds one node, one bind and one
+  closure per operation on top of that chain, and `interpret` walks
+  them. Against a driver round trip (tens of microseconds at best) four
+  nanoseconds per statement is noise, and the facade is gone (stage 8)
+  because the tree is what checks the protocol. Refuted alternative: a
+  fast path in `interpret` for a driver program that is already a
+  `Return` — it would collapse the residue only for a silent Sql, which
+  no caller has.
