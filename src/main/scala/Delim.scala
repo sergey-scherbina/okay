@@ -1,6 +1,5 @@
 package okay
 
-import okay.!.*
 import scala.annotation.{implicitNotFound, tailrec}
 import scala.util.NotGiven
 
@@ -783,330 +782,40 @@ object Delim {
   given Same[Prompt] = Same.byIdentity
 
   /**
-   * The machine's continuation, TYPED: a chain from the current
-   * answer A to the run's answer Z. `K` is one Bind's continuation
-   * (types chain through it), `Mark` a delimiter carrying its
-   * prompt — and so the answer type of the program under it.
-   */
-  private enum Segs[F[+_], A, Z]:
-    case Done[F[+_], Z]() extends Segs[F, Z, Z]
-    case K[F[+_], X, Y, Z](f: X => Y ! Delim + F, rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
-    /** a delimiter: the prompt's X, which `up` carries to the Y the
-     * operation that installed it answers — the witness the compiler
-     * already holds at the `Push` (`r <: X`), kept on the frame instead
-     * of an identity `K` under it (delim-machine-allocs) */
-    case Mark[F[+_], X, Y, Z](p: Prompt[X], up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X, Z]
-    /** a `dollar` delimiter: the body's X0 leaves through `ret` into
-     * the prompt's X, and `up` carries that on as Mark's does */
-    case Ret[F[+_], X0, X, Y, Z](p: Prompt[X], ret: X0 => X ! Delim + F, up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X0, Z]
-    /** a watched `dollar` (`dollarResumed`): a `Ret` with its count.
-     * Matched LAST wherever the chain is walked, so the plain frames
-     * pay no type test for it */
-    case Watch[F[+_], X0, X, Y, Z](p: Prompt[X], ret: X0 => X ! Delim + F, shots: Shots, up: X <:< Y, rest: Segs[F, Y, Z]) extends Segs[F, X0, Z]
-
-  /**
-   * A CAPTURED part of the chain: the frames `split` copied, which only
-   * `reify` ever reads (delim-split-wrap-free). Its own type, not
-   * `Segs`, because it is built FRONT TO BACK: each copy's `rest` is a
-   * `var`, set exactly once by `split`'s loop into the hole the
-   * previous copy left, while the copy is still unpublished. The
-   * machine's own frames stay immutable case classes — a first cut gave
-   * every frame the `var` and read 3-4% slower on lanes that never
-   * capture (delimDollarOnly, delimDollarResume).
-   */
-  private sealed trait Frames[F[+_], A, Z]
-
-  /** a frame with a successor, and so the place the next copy goes */
-  private sealed abstract class Hole[F[+_], Y, Z](var rest: Frames[F, Y, Z])
-
-  private object Frames:
-    final case class End[F[+_], Z]() extends Frames[F, Z, Z]
-    final class K[F[+_], X, Y, Z](val f: X => Y ! Delim + F)
-      extends Hole[F, Y, Z](null), Frames[F, X, Z]
-    final class Mark[F[+_], X, Y, Z](val p: Prompt[X], val up: X <:< Y)
-      extends Hole[F, Y, Z](null), Frames[F, X, Z]
-    final class Ret[F[+_], X0, X, Y, Z](val p: Prompt[X], val ret: X0 => X ! Delim + F, val up: X <:< Y)
-      extends Hole[F, Y, Z](null), Frames[F, X0, Z]
-    final class Watch[F[+_], X0, X, Y, Z](val p: Prompt[X], val ret: X0 => X ! Delim + F, val shots: Shots, val up: X <:< Y)
-      extends Hole[F, Y, Z](null), Frames[F, X0, Z]
-    /** the first hole of a copy: where its head goes, one per capture */
-    final class Head[F[+_], A, E] extends Hole[F, A, E](null)
-
-  /** the copy of a `Watch` a capture takes with it: a FRESH count, one
-   * per capture, so the count is "runs of this captured context"
-   * (`Shots`). A plain `Ret` is copied as it is: nothing in it is
-   * per-capture */
-  private def retake[F[+_], X0, X, Y, Q](r: Segs.Watch[F, X0, X, ?, ?], up: X <:< Y): Frames.Watch[F, X0, X, Y, Q] =
-    Frames.Watch(r.p, r.ret, Shots(r.shots.resumed), up)
-
-  /**
-   * The stack cut at a prompt: what was captured and what lies outside
-   * it. TWO SHAPES, because a `dollar` delimiter changes the answer
-   * type and a plain one does not, and the plain one is the hot path.
-   * An earlier cut had one shape for both, which carried the delimiter
-   * as a frame and its plainness as evidence. It cost 104 B and 7-9%
-   * per capture on delimGenerator, which never meets a dollar
-   * (specs/shift0-dollar.md, Results).
-   */
-  private sealed trait Cut[F[+_], A, P, Z]
-
-  /** no mark of the prompt on this stack: allocated only on the path
-   * that forwards or throws `NoPrompt`, so a found cut costs no
-   * `Option` per frame */
-  private final case class NotFound[F[+_], A, P, Z]() extends Cut[F, A, P, Z]
-
-
-  /** a plain mark: the chain up to it, answering the prompt's P */
-  private final case class Plain[F[+_], A, P, Q, Z](captured: Frames[F, A, P], up: P <:< Q, outer: Segs[F, Q, Z])
-    extends Cut[F, A, P, Z]
-
-  /** a `dollar`: the chain up to it WITH a copy of the dollar's own
-   * frame at its end, so it answers the prompt's P through `ret`. A
-   * delimited continuation is the captured part then `ret` (`$/S0`),
-   * and `reify` is a left fold, so one chain ending in the dollar's
-   * frame reifies to exactly `ret $ E[v]`. (Until
-   * delim-split-wrap-free this was two chains linked by an existential
-   * type member, and the capture reified them one after the other.) */
-  private final case class AtDollar[F[+_], A, P, Q, Z](whole: Frames[F, A, P], up: P <:< Q, outer: Segs[F, Q, Z])
-    extends Cut[F, A, P, Z]
-
-  /** the machine's state between steps: a program and the stack it
-   * continues into (`Next`), or the machine is done (`Out`). ONE
-   * answer from `step` and not an `Either` of them
-   * (delim-machine-allocs): a Delim operation allocates its `Next` and
-   * nothing around it; only the foreign path, which builds a residual
-   * program anyway, pays the `Out` */
-  private sealed trait Step[F[+_], Z]
-  private final case class Next[F[+_], A, Z](prog: A ! Delim + F, kont: Segs[F, A, Z]) extends Step[F, Z]
-  private final case class Out[F[+_], Z](answer: Z ! F) extends Step[F, Z]
-
-  /**
-   * The machine. Our Bind nodes already reify continuations as plain
+   * THE MACHINE IS `Stacked`'s (indexed-effects stage 6, 2026-09-30).
+   * An unstacked program enters it on the diagonal of the EMPTY stack
+   * (`Stacked.at`, a `Diag` node per operation as the machine reaches
+   * it), and its operations run there at the two claims this object's
+   * operations always made — a `Push`'s body and a `Capture`'s `f` are
+   * `Any` on this signature, because a unary signature cannot name the
+   * row's other half — beside `Stacked.Op`'s typed operations at their
+   * own types. One machine, one chain, one cut, for both doors; the
+   * loop that used to stand here, the same machine over `Delim` alone,
+   * is gone. Our Bind nodes already reify continuations as plain
    * functions, so the freer tree IS the control stack — the machine
-   * only has to keep the segment chain and the prompt markers in it.
-   * A captured segment is turned back INTO A PROGRAM (reify below),
-   * which is why the continuation is an ordinary value: multi-shot
-   * comes for free, and nothing is a closure over interpreter state.
-   *
-   * Two claims and no other cast (cast-free-delim): a Push's body
-   * and a Capture's f are programs in this machine's row, erased at
-   * the operation because the row's other half F is not the
-   * operation's to name — re-typed here, at their two lines, where F
-   * is known. Everything else the chain's types carry.
+   * only keeps the segment chain and the prompt markers in it, and a
+   * captured segment is turned back into a program (multi-shot for
+   * free, nothing a closure over interpreter state).
    */
   def run[R, F[+_]](prog: R ! Delim + F)(using OneMachine[F]): R ! F =
-    machine(prog, forward = false)
+    Stacked.machine(Stacked.at[F, R, EmptyTuple](prog), forward = false)
 
   /**
    * THE MACHINE THAT FORWARDS INSTEAD OF THROWING (delim-forward,
    * 2026-09-17) — for a row that still has a `Delim` in it, i.e. one
-   * running inside another machine.
-   *
-   * When a capture names a prompt this machine does not hold, `run`
-   * throws `NoPrompt`. It has another option, and the machinery for
-   * it is already here: re-emit the operation into the residual
-   * program and resume THIS machine with the same stack when the
-   * answer arrives — which is exactly what the foreign-operation path
-   * does for any effect it does not own. The outer machine, which
-   * does hold the prompt, then captures across this machine's frames.
-   *
-   * The evidence is what makes it well-typed: forwarding puts a
-   * `Delim` operation into `F`, so `F` must have one. That is the
-   * case this exists for, and asking for it keeps `run`'s meaning
-   * unchanged — a caller who wants forwarding says so.
+   * running inside another machine. When a capture names a prompt this
+   * machine does not hold, `run` throws `NoPrompt`; this re-emits the
+   * operation into the residual program and resumes THIS machine with
+   * the same stack when the answer arrives — exactly what the
+   * foreign-operation path does for any effect it does not own. The
+   * outer machine, which does hold the prompt, then captures across
+   * this machine's frames. The evidence is what makes it well-typed:
+   * forwarding puts a `Delim` operation into `F`, so `F` must have one.
+   * A TYPED capture (`Stacked.Op.Capture`) is never forwarded: its
+   * `Has` says the prompt is installed on this machine's stack.
    */
   def runNested[R, F[+_]](prog: R ! Delim + F)(using Row.In[Delim, F]): R ! F =
-    machine(prog, forward = true)
-
-  private def machine[R, F[+_]](prog: R ! Delim + F, forward: Boolean): R ! F = {
-    type Row = Delim + F
-    type Prog[A] = A ! Row
-
-    /** frames back into a program: binds become flatMaps, markers
-     * become pushes — the continuation re-installs its delimiter */
-    @tailrec def reify[A, P](segs: Frames[F, A, P], start: Prog[A]): Prog[P] = segs match
-      case Frames.End() => start
-      case k: Frames.K[F, A, y, P] => reify(k.rest, start.flatMap(k.f))
-      case m: Frames.Mark[F, A, y, P] => reify(m.rest, m.up.liftCo[Prog](effect[Row, A](Push(m.p, start))))
-      case r: Frames.Ret[F, A, x, ?, P] => reify(r.rest, r.up.liftCo[Prog](effect[Row, x](Dollar[A, x](r.p, r.ret, start))))
-      case r: Frames.Watch[F, A, x, ?, P] => reify(r.rest, r.up.liftCo[Prog](effect[Row, x](Watched[A, x](r.p, r.ret, start, r.shots))))
-
-    /** the delimiters this machine has installed, innermost first —
-     * what `NoPrompt` prints instead of saying nothing
-     * (delim-diagnostics). It walks the same chain `split` does, and
-     * only ever runs on the failing path. */
-    def installed[A, Z](kont: Segs[F, A, Z]): List[String] =
-      @tailrec def go(k: Segs[F, ?, Z], acc: List[String]): List[String] = k match
-        case Segs.Done() => acc.reverse
-        case Segs.Mark(q, _, rest) => go(rest, q.label :: acc)
-        case Segs.Ret(q, _, _, rest) => go(rest, q.label :: acc)
-        case Segs.K(_, rest) => go(rest, acc)
-        case Segs.Watch(q, _, _, _, rest) => go(rest, q.label :: acc)
-      go(kont, Nil)
-
-    /** cut the chain at the delimiter of p: the delimiter's prompt IS
-     * p by identity, and Same's witness makes its type P's.
-     *
-     * A LOOP, not recursion (specs/stack-safety.md): a shift under
-     * 20 000 other delimiters overflowed the recursive version, which
-     * rebuilt the prefix on the way back up. ONE pass
-     * (delim-split-wrap-free): the prefix is copied FRONT TO BACK
-     * while it is walked, each copy's `rest` set once into the hole
-     * the previous copy left, and the delimiter's own witness (`===`)
-     * closes the copy — with `Done` at a plain mark, with a copy of
-     * the dollar's frame at a dollar. The first loop version pushed a
-     * frame closure and a node per segment onto a type-aligned stack
-     * and unwound it, +32 B per capture on delimGenerator. */
-    def split[A, P](kont: Segs[F, A, R], p: Prompt[P]): Cut[F, A, P, R] =
-      val head = Frames.Head[F, A, P]()
-      copy(kont, head, head, p)
-
-    /** a missing delimiter drops the copy made so far: that path
-     * forwards or throws `NoPrompt`, and never runs hot */
-    @tailrec def copy[A, X, P](cur: Segs[F, X, R], hole: Hole[F, X, P], head: Frames.Head[F, A, P], p: Prompt[P]): Cut[F, A, P, R] = cur match
-      case k: Segs.K[F, X, y, R] =>
-        val c = Frames.K[F, X, y, P](k.f)
-        hole.rest = c
-        copy(k.rest, c, head, p)
-      case m: Segs.Mark[F, X, y, R] =>
-        (m.p === p) match
-          case Some(ev) =>
-            hole.rest = ev.liftCo[[t] =>> Frames[F, X, t]](Frames.End[F, X]())
-            Plain(head.rest, ev.liftCo[[t] =>> t <:< y](m.up), m.rest)
-          case None =>
-            val c = Frames.Mark[F, X, y, P](m.p, m.up)
-            hole.rest = c
-            copy(m.rest, c, head, p)
-      case r: Segs.Ret[F, X, x, y, R] =>
-        (r.p === p) match
-          case Some(ev) =>
-            val c = Frames.Ret[F, X, x, x, x](r.p, r.ret, <:<.refl[x])
-            c.rest = Frames.End[F, x]()
-            hole.rest = ev.liftCo[[t] =>> Frames[F, X, t]](c)
-            AtDollar(head.rest, ev.liftCo[[t] =>> t <:< y](r.up), r.rest)
-          case None =>
-            val c = Frames.Ret[F, X, x, y, P](r.p, r.ret, r.up)
-            hole.rest = c
-            copy(r.rest, c, head, p)
-      case Segs.Done() => NotFound()
-      case r: Segs.Watch[F, X, x, y, R] =>
-        (r.p === p) match
-          case Some(ev) =>
-            val c = retake[F, X, x, x, x](r, <:<.refl[x])
-            c.rest = Frames.End[F, x]()
-            hole.rest = ev.liftCo[[t] =>> Frames[F, X, t]](c)
-            AtDollar(head.rest, ev.liftCo[[t] =>> t <:< y](r.up), r.rest)
-          case None =>
-            val c = retake[F, X, x, y, P](r, r.up)
-            hole.rest = c
-            copy(r.rest, c, head, p)
-
-    // ONE tail-recursive loop: an earlier version split it into
-    // loop/onOp, and mutual recursion is not tail-optimised, so every
-    // operation cost frames and a thousand nested captures blew the
-    // stack. Merged, only a FOREIGN operation suspends (under a
-    // flatMap closure, as State.handle does) and the Delim ops
-    // themselves are flat.
-    @tailrec def loop(state: Next[F, ?, R]): R ! F = state match
-      case n: Next[F, a, R] => (n.prog.resume: @unchecked) match
-        case Return(x) => n.kont match
-          case Segs.Done() => okay.pure(x)
-          case Segs.K(f, rest) => loop(Next(f(x), rest))
-          // the delimited block finished normally: drop its marker
-          case Segs.Mark(_, up, rest) => loop(Next(okay.pure(up(x)), rest))
-          // a `dollar` finished normally: leave it, through its return
-          case r: Segs.Ret[F, a, ?, ?, R] => loop(Next(r.up.liftCo[Prog](r.ret(x)), r.rest))
-          case r: Segs.Watch[F, a, ?, ?, R] => loop(Next(r.up.liftCo[Prog](r.ret(x)), r.rest))
-
-        // the Step is read HERE and not by passing it back into
-        // loop: `loop(step(..))` made the foreign path one loop entry
-        // longer and writerTellUnderDelim 4% slower (1.041x, three
-        // alternating rounds; delim-machine-allocs)
-        case Inject(e) => step(e, n.kont) match
-          case next: Next[F, ?, R] => loop(next)
-          case o: Out[F, R] => o.answer
-
-        case Bind(Inject(e), k) => step(e, Segs.K(k, n.kont)) match
-          case next: Next[F, ?, R] => loop(next)
-          case o: Out[F, R] => o.answer
-
-    /** one operation: either the machine is done (`Out`) or it
-     * continues with a new program and stack (`Next`) */
-    def step[X](e: Row[X], kont: Segs[F, X, R]): Step[F, R] =
-      // `okay.split`, not this object's own `split` (the segment stack)
-      okay.split[Delim, F](e) { c => c match
-          case pu: Push[r] =>
-            // claim 1: the pushed body answers the prompt's r in this
-            // row; r is an X (the op's answer), which the mark carries up
-            val body = pu.body.asInstanceOf[Prog[r]]
-            Next(body, Segs.Mark(pu.prompt, <:<.refl[r]: r <:< X, kont))
-
-          case cap: Capture[p, a] =>
-            // claim 2: f takes a continuation into the prompt's answer and
-            // gives back a program at it, in this row; shift/control put the
-            // body back under the delimiter, the 0-variants have consumed it
-            def resume[Q](k: a => Prog[p], up: p <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
-              val body = cap.f.asInstanceOf[(a => Prog[p]) => Prog[p]](k)
-              if cap.underPrompt then Next(up.liftCo[Prog](effect[Row, p](Push(cap.prompt, body))), outer)
-              else Next(up.liftCo[Prog](body), outer)
-            // shift/shift0 re-install the delimiter (a dollar's with its
-            // return function, `$/S0`); control/control0 hand back the bare
-            // segment, which answers the prompt's type only at a plain mark
-            split(kont, cap.prompt) match
-              case Plain(captured, up, outer) =>
-                resume((v: a) => {
-                  val seg = reify(captured, okay.pure[Row, X](v))
-                  if cap.delimitK then effect[Row, p](Push(cap.prompt, seg)) else seg
-                }, up, outer)
-              case AtDollar(whole, up, outer) =>
-                if cap.delimitK then resume((v: a) => reify(whole, okay.pure[Row, X](v)), up, outer)
-                else throw new UnsupportedOperationException(
-                  s"${cap.at}: a control-capture to ${cap.prompt.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
-              case NotFound() =>
-                if forward then
-                  // THE ONE CAST forwarding needs, and what makes it
-                  // right: `runNested` asked for `In[Delim, F]`, so an
-                  // operation of this machine's own signature IS an
-                  // operation of the residual row. The shape below is
-                  // the foreign-operation path, verbatim: re-emit, and
-                  // resume this machine with the same stack. `kont` is
-                  // immutable, so a multi-shot outer capture may
-                  // re-enter it as often as it likes.
-                  Out(Inject(c.asInstanceOf[F[X]])
-                    .flatMap(x => loop(Next(okay.pure[Row, X](x), kont))))
-                else throw NoPrompt(cap.at, cap.prompt.label, installed(kont))
-
-          // after Capture, so a capture pays no extra type test
-          case d: Dollar[r0, r] =>
-            // claims 1b and 1c, the same as Push's: the body answers r0
-            // and ret leads from r0 to the prompt's r, in this row
-            val body = d.body.asInstanceOf[Prog[r0]]
-            val ret = d.ret.asInstanceOf[r0 => Prog[r]]
-            Next(body, Segs.Ret(d.prompt, ret, <:<.refl[r]: r <:< X, kont))
-
-          // last: only `dollarResumed` makes one
-          case d: Watched[r0, r] =>
-            // the same two claims as Dollar's, for the same reason
-            val body = d.body.asInstanceOf[Prog[r0]]
-            val ret = d.ret.asInstanceOf[r0 => Prog[r]]
-            // told it is being entered — here, when the program is RUN,
-            // so a continuation built and dropped does not count
-            // (lexical-tail-guard-abort)
-            val shots = d.shots
-            shots.n += 1
-            shots.resumed(shots.n)
-            Next(body, Segs.Watch(d.prompt, ret, shots, <:<.refl[r]: r <:< X, kont))
-        }
-        // a foreign operation suspends the machine: the residual
-        // program performs it and resumes with the same stack — at
-        // the head frame's program when it is a bind, not at a `pure`
-        // the loop would pop into it one step later (delim-machine-allocs)
-        (g => Out(Inject(g).flatMap(kont match
-          case k: Segs.K[F, X, ?, R] => x => loop(Next(k.f(x), k.rest))
-          case _ => x => loop(Next(okay.pure(x), kont)))))
-
-    loop(Next(prog, Segs.Done()))
-  }
+    Stacked.machine(Stacked.at[F, R, EmptyTuple](prog), forward = true)
 
   /** abort to a prompt with a value: a shift that drops the
    * continuation (the 0-variant, so the delimiter goes with it) */
@@ -1237,55 +946,47 @@ object Delim {
 
     // ---- the two embeddings
 
-    /** an unstacked program, under the stack in force: its operations
-     * enter on the diagonal, one `Diag` node each as the machine
-     * reaches it (`Indexed.lift`) — the diagonal is a conversion, with
-     * the index read from the given rather than from an expected type
-     * (which a for-comprehension head does not have) */
+    /**
+     * THE TWO EMBEDDINGS ARE IDENTITIES (stage 6). An unstacked program
+     * `A ! Delim + F` and a stacked one `Under[F, A, S]` are the same
+     * nodes: `Freer`'s cases at two signatures, and every operation of
+     * the first (`Delim[X] | F[X]`) IS a member of the second's row
+     * (`Op | Delim | F`). This machine reads both node kinds alike —
+     * an `Inject` or a `Diag`, a typed operation or an embedded one —
+     * so a program may cross between the two types without a node
+     * being touched. The first cut rewrote them lazily, a node per
+     * operation each way (`Indexed.lift`, an `erase` to the twin
+     * case), and Lexical's depth test showed why that cannot be:
+     * every capture's continuation went out through one and came back
+     * through the other, each resumption wrapped the rest of the
+     * program in one more layer, and 10 000 performs walked a
+     * quadratic number of nodes into an OutOfMemoryError. `.free` on
+     * the facade was an identity; these are the same identity, said
+     * with the argument above. `Indexed.lift` stays for rows whose
+     * handler needs `Diag` to mean "diagonal" (`Tx.Data.async`); here
+     * both node kinds mean one thing.
+     *
+     * The claim each cast makes: the value's nodes conform to the
+     * target row's members. Going in, by the union. Coming out, an
+     * `Op` node is not a `Delim` case — and nothing but this machine
+     * ever interprets a `Delim` program (`OneMachine` is the only
+     * handler of the signature), while a handler of another effect
+     * forwards what it does not own by class, and an `Op` is not its
+     * class either. The row's types are the machine's discipline, and
+     * the machine is one.
+     */
     inline def under[F[+_], A](p: A ! Delim + F)(using st: Stack[?]): Under[F, A, st.S] = at[F, A, st.S](p)
 
     /** the same at a stack named by the caller */
-    def at[F[+_], A, S <: Tuple](p: A ! Delim + F): Under[F, A, S] =
-      Indexed.lift[Row[F], Delim + F, S, A](p)([X] => (e: Delim[X] | F[X]) => e)
+    def at[F[+_], A, S <: Tuple](p: A ! Delim + F): Under[F, A, S] = p.asInstanceOf[Under[F, A, S]]
 
-    /**
-     * A typed program as an unstacked one — LOSSY ON PURPOSE. Lexical's
-     * clauses (`Ops.op`) are written over `A ! Delim + F`, and a typed
-     * door that hands them its continuation must hand it in that row;
-     * every typed operation becomes its unstacked twin, its payloads
-     * erased as `Delim`'s are, and the machine — which handles both —
-     * runs it exactly as before. The stack index is dropped, never
-     * changed: an erased program still runs under the prompts it was
-     * typed under. One node per operation, lazily; the bodies are
-     * deferred (`Free.delay`), so nested resets erase in constant stack.
-     */
-    def erase[F[+_], A, S <: Tuple](p: Under[F, A, S]): A ! Delim + F = eraseAny(p)
+    /** a typed program as an unstacked one, for a clause written over
+     * `A ! Delim + F` (Lexical's `Ops`): the same nodes, run by the same
+     * machine */
+    def erase[F[+_], A, S <: Tuple](p: Under[F, A, S]): A ! Delim + F = p.asInstanceOf[A ! Delim + F]
 
-    /** the same at any pair of indexes: a `Bind`'s continuation is at
-     * an existential middle index, so the recursion cannot stay on the
-     * diagonal alias */
-    private def eraseAny[F[+_], A, S, R](p: Freer[Row[F], S, R, A]): A ! Delim + F =
-      (p.resume: @unchecked) match
-        case Return(a) => okay.pure(a)
-        case Diag(e) => eraseOp(e)
-        case Inject(o) => eraseOp(o)
-        case Bind(Diag(e), k) => eraseOp(e).flatMap(x => eraseAny(k(x)))
-        case Bind(Inject(o), k) => eraseOp(o).flatMap(x => eraseAny(k(x)))
-
-    /** one operation, erased: a typed one to its unstacked twin, the
-     * others as they are. THE CAST is `split`'s excluded middle: after
-     * the class test for `Op` the value is the union's other two
-     * members, which `split` then tells apart by `Delim`'s total test. */
-    private def eraseOp[F[+_], S, R, X](o: Row[F][S, R, X]): X ! Delim + F = o match
-      case op: Op[F, S, R, X] @unchecked => op match
-        case pu: Op.Push[F, ?, r, ?] =>
-          effect[Delim + F, r](Push[r](pu.p, Free.delay(() => erase(pu.body))))
-        case d: Op.Dollar[F, ?, r0, r, ?] =>
-          effect[Delim + F, r](Delim.Dollar[r0, r](d.p, (x: r0) => erase(d.ret(x)), Free.delay(() => erase(d.body))))
-        case c: Op.Capture[F, ?, r, ?, ?, s0, a] =>
-          val f: (a => r ! Delim + F) => r ! Delim + F = k => erase(c.f(x => at[F, r, s0](k(x))))
-          effect[Delim + F, a](Capture[r, a](c.p, f, c.underPrompt, c.delimitK, c.at.where))
-      case other => okay.split[Delim, F](other.asInstanceOf[Delim[X] | F[X]])(d => effect[Delim + F, X](d))(g => effect[Delim + F, X](g))
+    /** the same at any pair of indexes (a `Bind`'s continuation has two) */
+    private def eraseAt[F[+_], A, S, R](p: Freer[Row[F], S, R, A]): A ! Delim + F = p.asInstanceOf[A ! Delim + F]
 
     /**
      * A segment RE-BASED: the one claim of this machine, and its
@@ -1303,6 +1004,13 @@ object Delim {
      */
     private def rebase[F[+_], A, S1, R1, S2, R2](p: Freer[Row[F], S1, R1, A]): Freer[Row[F], S2, R2, A] =
       p.asInstanceOf[Freer[Row[F], S2, R2, A]]
+
+    /** the same for a continuation — the FUNCTION re-based, never
+     * wrapped: a wrapper per `reify` nested one closure per capture
+     * around a dollar's `ret`, and a deep instance's 10 000 performs
+     * unwound them all at its end (TestLexical's depth test) */
+    private def rebaseF[F[+_], A, B, S1, R1, S2, R2](f: A => Freer[Row[F], S1, R1, B]): A => Freer[Row[F], S2, R2, B] =
+      f.asInstanceOf[A => Freer[Row[F], S2, R2, B]]
 
     // ---- the machine, ported from the unstacked one above: the same
     // chain, the same cut, the same loop — over the indexed row, the
@@ -1341,9 +1049,10 @@ object Delim {
     /** run a program written under the EMPTY stack: what `delimited`
      * builds; the machine is this one and not the unstacked one, so a
      * typed operation runs at its own types */
-    def run[R, F[+_]](prog: Under[F, R, EmptyTuple])(using OneMachine[F]): R ! F = machine(prog)
+    def run[R, F[+_]](prog: Under[F, R, EmptyTuple])(using OneMachine[F]): R ! F = machine(prog, forward = false)
 
-    private def machine[R, F[+_]](prog: Under[F, R, EmptyTuple]): R ! F = {
+    /** the one machine (stage 6): `Delim.run`/`runNested` enter it through `at` */
+    private[Delim] def machine[R, F[+_]](prog: Under[F, R, EmptyTuple], forward: Boolean): R ! F = {
       type Row0 = Row[F]
 
       /** frames back into a program: binds become flatMaps, markers
@@ -1360,12 +1069,12 @@ object Delim {
             Inject(Op.Push[F, EmptyTuple, A, m.p.type](m.p, rebase[F, A, S1, S2, m.p.type *: EmptyTuple, m.p.type *: EmptyTuple](start))))))
         case r: Frames.Ret[F, A, x, ?, P, s1, s2] =>
           reify(r.rest, r.up.liftCo[[t] =>> Freer[Row0, S1, S2, t]](rebase[F, x, EmptyTuple, EmptyTuple, S1, S2](
-            Inject(Op.Dollar[F, EmptyTuple, A, x, r.p.type](r.p, (v: A) => rebase[F, x, s1, s2, EmptyTuple, EmptyTuple](r.ret(v)),
+            Inject(Op.Dollar[F, EmptyTuple, A, x, r.p.type](r.p, rebaseF[F, A, x, s1, s2, EmptyTuple, EmptyTuple](r.ret),
               rebase[F, A, S1, S2, r.p.type *: EmptyTuple, r.p.type *: EmptyTuple](start))))))
         case r: Frames.Watch[F, A, x, ?, P, ?, ?] =>
           // a watched dollar has no typed twin: the unstacked node, with its count, brought back through `at`
           reify(r.rest, r.up.liftCo[[t] =>> Freer[Row0, S1, S2, t]](rebase[F, x, S1, S1, S1, S2](
-            at[F, x, S1 & Tuple](effect[Delim + F, x](Watched[A, x](r.p, (v: A) => eraseAny(r.ret(v)), eraseAny(start), r.shots))).asInstanceOf[Freer[Row0, S1, S1, x]])))
+            at[F, x, S1 & Tuple](effect[Delim + F, x](Watched[A, x](r.p, r.ret.asInstanceOf[A => x ! Delim + F], eraseAt(start), r.shots))).asInstanceOf[Freer[Row0, S1, S1, x]])))
 
       def installed[A, Z](kont: Segs[F, A, Z]): List[String] =
         @tailrec def go(k: Segs[F, ?, Z], acc: List[String]): List[String] = k match
@@ -1503,18 +1212,28 @@ object Delim {
                   if cap.delimitK then resume((v: a) => erase(reify[X, p, EmptyTuple, EmptyTuple](whole, Return[Row0, EmptyTuple, X](v))), up, outer)
                   else throw new UnsupportedOperationException(
                     s"${cap.at}: a control-capture to ${cap.prompt.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
-                case NotFound() => throw NoPrompt(cap.at, cap.prompt.label, installed(kont))
+                case NotFound() =>
+                  if forward then
+                    // THE ONE CAST forwarding needs, and what makes it
+                    // right: `runNested` asked for `In[Delim, F]`, so an
+                    // operation of the unstacked signature IS an operation
+                    // of the residual row. The foreign-operation path,
+                    // verbatim: re-emit, and resume this machine with the
+                    // same stack; `kont` is immutable, so a multi-shot
+                    // outer capture may re-enter it as often as it likes.
+                    Out(okay.Free.inject(d.asInstanceOf[F[X]]).flatMap(x => loop(Next[F, X, R, EmptyTuple, EmptyTuple](Return(x), kont))))
+                  else throw NoPrompt(cap.at, cap.prompt.label, installed(kont))
             case d: Dollar[r0, r] =>
               val body = at[F, r0, EmptyTuple](d.body.asInstanceOf[r0 ! Delim + F])
               val ret = d.ret.asInstanceOf[r0 => r ! Delim + F]
-              Next(body, Segs.Ret[F, r0, r, X, R, EmptyTuple, EmptyTuple](d.prompt, (x: r0) => at[F, r, EmptyTuple](ret(x)), <:<.refl[r]: r <:< X, kont))
+              Next(body, Segs.Ret[F, r0, r, X, R, EmptyTuple, EmptyTuple](d.prompt, ret.asInstanceOf[r0 => Under[F, r, EmptyTuple]], <:<.refl[r]: r <:< X, kont))
             case d: Watched[r0, r] =>
               val body = at[F, r0, EmptyTuple](d.body.asInstanceOf[r0 ! Delim + F])
               val ret = d.ret.asInstanceOf[r0 => r ! Delim + F]
               val shots = d.shots
               shots.n += 1
               shots.resumed(shots.n)
-              Next(body, Segs.Watch[F, r0, r, X, R, EmptyTuple, EmptyTuple](d.prompt, (x: r0) => at[F, r, EmptyTuple](ret(x)), shots, <:<.refl[r]: r <:< X, kont))
+              Next(body, Segs.Watch[F, r0, r, X, R, EmptyTuple, EmptyTuple](d.prompt, ret.asInstanceOf[r0 => Under[F, r, EmptyTuple]], shots, <:<.refl[r]: r <:< X, kont))
           }
           // a foreign operation suspends the machine: the residual program
           // performs it and resumes with the same stack

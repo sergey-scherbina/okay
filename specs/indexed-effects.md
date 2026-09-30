@@ -100,6 +100,16 @@ typed instead of `Any` where the signature can say it, and
 than a facade over `Prog`; the machine's continuation stack (`Segs`)
 is out of scope.
 
+Stage 6 — one machine (the follow-up stage 4 named):
+
+```scala
+object Delim:
+  def run[R, F[+_]](prog: R ! Delim + F)(using OneMachine[F]): R ! F =
+    Stacked.machine(Stacked.at[F, R, EmptyTuple](prog), forward = false)   // the unstacked door enters the typed machine
+  def runNested[R, F[+_]](prog: R ! Delim + F)(using Row.In[Delim, F]): R ! F   // forward = true, embedded captures only
+  // Segs, Frames, Cut, split/copy, reify, loop, step over `Delim` alone: DELETED
+```
+
 Stage 5 — the user page:
 
 `docs/typestate.md`: what an indexed effect is, the two readings, when
@@ -156,6 +166,19 @@ Stage 4:
       construction), `rebase`, and `erase`'s excluded middle.
 - [x] TestDelim and TestProg are green unchanged (TestProg's stacked
       shapes run on the new machine; its facade tests on `Prog`).
+
+Stage 6:
+- [x] `Delim.run` and `runNested` run on `Stacked.machine` through
+      `Stacked.at`; the unstacked machine's chain, cut, reify and loop
+      are gone from Delim.scala; `runNested` forwards an EMBEDDED
+      capture whose prompt is not on this machine (a typed one is never
+      forwarded: its `Has` says the prompt is here).
+- [x] Every Delim consumer runs unchanged on the one machine: TestDelim
+      and its family, collect/resumable/pausing, okay-ui's Scope and
+      Screen, okay-agent's Stepper, okay-llm's Cut — the full `affected
+      master staged`, both stages.
+- [x] The measurement lane's first question is restated (Results):
+      `at` is an identity; the one machine's shape is what to price.
 
 Stage 5:
 - [x] `docs/typestate.md` exists, every example line pinned
@@ -228,6 +251,42 @@ compiler said:
   under `flatMap`.
 - The caveat holds and is asserted: a failure inside the body drops
   the `commit`; the log ends at `begin`.
+
+### Stage 6 — LANDED (indexed-effects-6-one-machine): one machine
+
+`Delim.run` and `runNested` enter `Stacked.machine` through `at`; the
+unstacked machine — 326 lines of Delim.scala: its `Segs`, `Frames`,
+`Cut`, `split`/`copy`, `reify`, `loop`, `step` over `Delim` alone —
+is deleted. What the run found, each a red before it was green:
+
+- **The embeddings must be identities.** The first cut's `at` and
+  `erase` were lazy rewrites, a node per operation each way; every
+  capture's continuation went out through one and came back through
+  the other, each resumption wrapped the rest of the program in one
+  more layer, and Lexical's depth test (10 000 performs through one
+  deep instance) walked a quadratic number of nodes into an
+  OutOfMemoryError. The facade's `.free` had been an identity. Both
+  are casts now, with the argument in `Stacked`: the nodes are the
+  same classes, an unstacked operation is a member of the indexed
+  row, this machine reads `Inject` and `Diag` alike, and nothing but
+  this machine interprets a `Delim` program. `Indexed.lift` stays for
+  `Tx.Data.async`, whose handler needs `Diag` to mean diagonal.
+- **A function is re-based, never wrapped.** `reify`'s dollar arm
+  wrapped the frame's `ret` in a closure to move its index; a deep
+  instance's 10 000 performs nested 10 000 of them around one `ret`,
+  unwound on the stack at the end (StackOverflowError, the same test).
+  `rebaseF` casts the function value; the embedded dollar arms pass
+  their `ret` through as the old machine did.
+- **`runNested` forwards embedded captures only**, with the one cast
+  the old machine had for it; a typed capture is never forwarded.
+- Gate: the Delim family (TestDelim and its suites, TestDollarProbe,
+  TestProg, TestStackedShift0, TestLexical, TestLexicalStacked,
+  TestLexicalTail, TestLayered, ProbeRowInference) 79/79, no
+  warnings; the full `affected master staged`.
+
+Not measured, by the arc's rule; the deferred lane's first question
+is now moot in its stated form (`at` costs nothing) and becomes: the
+one machine's own shape against the old one on `DelimBenchmark`.
 
 ### Stage 4 — LANDED (indexed-effects-4-delim-signature): the typed Delim machine
 
@@ -331,7 +390,11 @@ TestDocSnippets and TestDocsIndex green.
 
 ### Deferred measurements
 
-The lane to run after stage 5: `stateThreaded` after the shared node
+The lane to run after stage 6, and its first question: `DelimBenchmark`
+before and after stage 6 — the one machine's own shape against the
+old one (`at` and `erase` are identities, so the embedding costs
+nothing; what could move is the loop's extra `Diag`/`Op` type tests
+and the two-index `Segs`). Then, from the earlier stages: `stateThreaded` after the shared node
 (expected 244 904 B, the State count), a `Tx.Data` interpretation
 against `Tx`'s facade (expected within noise: the same driver
 programs), the row's `splitI` against `split` on a forwarding handler,
