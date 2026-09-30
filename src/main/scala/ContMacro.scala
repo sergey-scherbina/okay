@@ -251,8 +251,10 @@ object ContMacro:
 
     // A TAIL BODY'S TYPES SAY `S <: R` — `k(v): S` was the body's `R` —
     // and `tailShift`/`tailPure` need that said as evidence, because the
-    // value they emit is a `Cont[A, S, S]` on a base covariant in `R`
-    // (freer-base-step-extractor). Searched HERE, at the call site, where
+    // value they emit is a `Cont[A, S, S]` claimed as a `Cont[A, S, R]`
+    // by one cast the evidence justifies (`Cont.tailAt`, since
+    // freer-consumed-index; `liftCo` on a `+R` base before). Searched
+    // HERE, at the call site, where
     // `S` and `R` are the user's concrete types; the macro's own `S` and
     // `R` are abstract and could not carry a bound. Not found — an
     // answer-type-modifying shift whose body happens to be tail-shaped —

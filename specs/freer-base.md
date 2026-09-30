@@ -385,6 +385,16 @@ Stage 2 — the index as typestate, Delim first (lane freer-base-stage2, 2026-09
   would let a continuation of the wrong answer type into a bind by
   upcast. The opaque facade `Rep[A, S, R]` stays invariant in all
   three (backlog: cont-variance).
+  SUPERSEDED AGAIN, THE OTHER WAY (freer-consumed-index, 2026-09-30,
+  the operator's decision: "делаем S и R инвариантными"): the base is
+  `Freer[G[_, _, +_], S, R, +A]`. `+R` had exactly one reader,
+  `tailShift`/`tailPure`'s `liftCo`, and it cost the other reading of
+  the indexes — a state the handler CONSUMES — every arm that reads the
+  state (the probe below, "McBride's reading is refused by the variance
+  ALONE"). Invariance serves both readings; the tail-shift macro pays
+  one cast in `Cont.tailAt`, justified by the `S <:< R` it already
+  summons at the site. `cont-variance` keeps `+A` on the facade as its
+  question and loses `+R`.
 - **`resume` is the single rotation; an eliminator may inline the
   four lines only under the law.** Free's `runFree` was measured
   within 8% of stepping through `resume` (HandlerBenchmark
@@ -1207,3 +1217,42 @@ Not measured — a probe, not a lane. The lane, if the trade is wanted,
 is backlog `freer-consumed-index`; it is in tension with
 `cont-variance`, which asks for MORE covariance on the facade, and one
 of the two has to be chosen.
+
+### The indexes INVARIANT — both readings on the library's base (2026-09-30, freer-consumed-index, the operator's decision)
+
+"Делаем S и R инвариантными." `enum Freer[G[_, _, +_], S, R, +A]`:
+`+A` stays, `+R` and the covariant bound on the signature's second
+parameter go. What the compiler then said, each a round:
+
+- **`+R` had TWO readers, not one.** `tailShift`/`tailPure`'s `liftCo`
+  (known) and `Cont.noProgram`, the placeholder a CPS walk starts from,
+  a `Return` at index `Nothing` that rode the covariance into every
+  walk's `R`. The first is one cast in `Cont.tailAt`, the evidence as
+  its parameter; the second is a `Delay` that throws, at the walk's own
+  index, no cast — it is never matched (a walked body answers through
+  its pending parts).
+- **A signature with an INVARIANT value parameter silently switches
+  the GADT off.** `enum St[S, R, X]` against the bound `G[_, _, +_]`
+  typed its doors and then derived NOTHING in the handler's match —
+  not `S = R` at `Return`, not even `A0 <: A` — eight errors that read
+  like the variance decision had not happened. Bound conformance is
+  checked after typing, so the kind mismatch never surfaced as itself.
+  `St[S, R, +X]` and every arm typed. A signature's value parameter is
+  `+X`, and a handler that derives nothing from a match should check
+  the signature's kind before anything else.
+- **Doors on an invariant signature spell their type arguments.**
+  `Inject(St.Get())` no longer infers `G` from the expected `Freer[St,
+  S, S, S]`; `Inject[St, S, S, S](St.Get())` does. The library's own
+  doors (`Free.inject`, `Cont.shiftLeaf`) already spell them.
+- **The row probe's `At` and `PSt` are invariant in `R` too**: with
+  `+R` on the signature the GADT gave `T <: R` where the loop owes an
+  `R`-indexed program, and on an invariant base that is no longer
+  enough. A signature's variance is now exactly the base's.
+
+The reading-2 pin flipped: `runSt[S, R, A](p: Freer[St, S, R, A])(r:
+R): (S, A)`, `@tailrec`, no continuation object, runs `Int -> String ->
+List[String]` on the library's `Freer` and still refuses a `Put` from
+the wrong state and a run from the wrong state. TestCont, TestContMacro,
+TestContStack, TestState and TestProg are green unchanged, so the
+Cont side lost nothing to the cast it now carries. Not measured: the
+nodes are the same objects; `tailAt` is erased.

@@ -10,7 +10,8 @@ import okay.Freer.{Return, Inject, Bind}
  * bodies — under which reading of `S`/`R` does a handler for it type
  * on this base?
  *
- * Two readings of `Freer[G, S, R, A]`, and the base admits ONE:
+ * Two readings of `Freer[G, S, R, A]`, and the base admits BOTH since
+ * its indexes are invariant:
  *
  *  - ANSWER TYPES (Cont's, PState's): a leaf is `(X => S) => R`, `R`
  *    is what the handler PRODUCES. A handler for an indexed signature
@@ -21,13 +22,12 @@ import okay.Freer.{Return, Inject, Bind}
  *    `PState` as data, run exactly so.
  *  - BEFORE/AFTER STATE (McBride's `IxFree`): `R` is the state the
  *    program CONSUMES, `S` the one it leaves. A handler threading a
- *    value of `R` cannot type the arms that READ it: matching `Return`
- *    on a base covariant in `R` says `S <: R` where the arm needs an
- *    `S` from an `R`, and matching `Get` binds the continuation's
- *    argument as a supertype of the case's state rather than as `R`.
- *    The variance `+R` came for `tailShift` and is the continuation's
- *    — a consumed index is the wrong way round. Pinned by
- *    `compileErrors`, so the next base change re-asks it.
+ *    value of `R` — `State.handle`'s loop with the type moving — types
+ *    since the indexes are INVARIANT (freer-consumed-index, 2026-09-30):
+ *    `Return` gives `S = R`, `Get` gives its state's type to the
+ *    continuation. On the `+R` base before it, both arms were refused
+ *    (`S <: R` where an `S` was owed; a supertype where `R` was), and
+ *    that refusal was pinned here until the decision flipped it.
  */
 class TestFreerPara extends munit.FunSuite:
 
@@ -66,7 +66,7 @@ class TestFreerPara extends munit.FunSuite:
    * state's type, `Put` moves it from `S` to `T`; `Z` is the final
    * answer, threaded as `PState` threads it.
    */
-  enum PSt[S, +R, +X]:
+  enum PSt[S, R, +X]:
     case Get[S, Z]() extends PSt[S => Z, S => Z, S]
     case Put[S, T, Z](t: T) extends PSt[T => Z, S => Z, S]
 
@@ -96,7 +96,7 @@ class TestFreerPara extends munit.FunSuite:
    * so `k(a): S` IS the `R`. The re-entry is direct style's own frame,
    * as in the library's runner; a probe, not a production loop.
    */
-  def run[G[_, +_, +_], S, R, A](p: Freer[G, S, R, A])
+  def run[G[_, _, +_], S, R, A](p: Freer[G, S, R, A])
                                  (h: [s, r, x] => G[s, r, x] => (x => s) => r)
                                  (k: A => S): R =
     (p.resume: @unchecked) match
@@ -139,12 +139,13 @@ class TestFreerPara extends munit.FunSuite:
    * makes the middle index existential, and an answer built from
    * `k`'s program sits at that index where the loop owes one at `R`.
    * `Op` says the operation moves nothing — `T = R`, read off the GADT
-   * — so the continuation's program IS an `R`-indexed one by `+R`. One
+   * on the invariant base — so the continuation's program IS an
+   * `R`-indexed one. One
    * wrapper per unary operation; the allocation-free twin is `Free.
    * Bind`'s trade — an extractor claiming "a unary op is diagonal" by
    * ONE cast, as it claims `Unit` today.
    */
-  enum At[F[+_], S, +R, +X]:
+  enum At[F[+_], S, R, +X]:
     case Op[F[+_], R, X](e: F[X]) extends At[F, R, R, X]
 
   /** the row: the indexed effect beside an ordinary `State % Int` */
@@ -159,7 +160,7 @@ class TestFreerPara extends munit.FunSuite:
    * from the threaded `Int`, every other operation FORWARDED WITH THE
    * INDEX IT CAME WITH — the shape every handler in the library has,
    * at indexes that are no longer `Unit`. Typed by the GADT: a `State`
-   * arm continues at `T <: R`, a forwarded `PSt` op keeps `(T, R)` and
+   * arm continues at `T = R`, a forwarded `PSt` op keeps `(T, R)` and
    * the continuation closes `(S, T)`.
    */
   def counted[S, R, A](s: Int)(p: Freer[Row, S, R, A]): Freer[PSt, S, R, (Int, A)] =
@@ -200,31 +201,48 @@ class TestFreerPara extends munit.FunSuite:
     assert(ProbeMcBride.refusedRun.contains("Required"), ProbeMcBride.refusedRun)
   }
 
-  // ------------------- reading 2: the index is a CONSUMED state (refused)
+  // ---------- reading 2: the index is a CONSUMED state — on the library's base
 
-  /** McBride's shape: `R` the state before, `S` the state after */
-  enum St[S, +R, +X]:
+  /** McBride's shape: `R` the state before, `S` the state after; the
+   * signature INVARIANT in its indexes, as the base is now */
+  enum St[S, R, +X]:
     case Get[S]() extends St[S, S, S]
     case Put[S, T](t: T) extends St[T, S, Unit]
 
-  test("a handler that CONSUMES the index cannot type its Return arm on a base covariant in R") {
-    val errors = compileErrors("""
-      def runSt[S, R, A](p: Freer[St, S, R, A])(r: R): (S, A) =
-        (p.resume: @unchecked) match
-          case Return(a) => (r, a)
-          case Bind(Inject(St.Get()), k) => runSt(k(r))(r)
-          case Bind(Inject(St.Put(t)), k) => runSt(k(()))(t)
-    """)
-    // EVERY arm that READS the state fails, and only those: `Return`
-    // holds an R and owes an S with `S <: R`; `Get` hands `r: R` to a
-    // continuation whose argument the match bound as a SUPERtype of the
-    // case's own state, not R itself (the signature is covariant in R
-    // and X because the base's bound says so, so the GADT gives bounds
-    // where an invariant enum gave equalities). `Put`, which PRODUCES
-    // the next state, types. Predicted before compiling: the Return arm
-    // alone; the compiler added Get.
-    assert(errors.contains("Required: S"), errors)
-    assert(errors.contains("case Bind(Inject(St.Get()), k)"), errors)
-    assert(!errors.contains("St.Put"), s"the producing arm failed too:\n$errors")
-    assertEquals(errors.linesIterator.count(_.startsWith("error")), 2, errors)
+  def sget[S]: Freer[St, S, S, S] = Inject[St, S, S, S](St.Get())
+  def sput[S, T](t: T): Freer[St, T, S, Unit] = Inject[St, T, S, Unit](St.Put(t))
+
+  /**
+   * The handler that CONSUMES its index: `State.handle`'s loop with the
+   * type moving, no continuation object, `@tailrec` with the type
+   * arguments changing per call. Until freer-consumed-index (2026-09-30)
+   * this did not type on the library's base — `+R` gave `S <: R` at
+   * `Return` where an `S` was owed, and bound `Get`'s continuation
+   * argument as a supertype of the state — and the refusal was pinned
+   * here; with the indexes invariant the GADT gives equalities and the
+   * loop is what ProbeMcBride showed on the invariant copy.
+   */
+  @scala.annotation.tailrec
+  private def runSt[S, R, A](p: Freer[St, S, R, A])(r: R): (S, A) =
+    (p.resume: @unchecked) match
+      case Return(a) => (r, a)
+      case Inject(St.Get()) => (r, r)
+      case Inject(St.Put(t)) => (t, ())
+      case Bind(Inject(St.Get()), k) => runSt(k(r))(r)
+      case Bind(Inject(St.Put(t)), k) => runSt(k(()))(t)
+
+  test("a handler that CONSUMES the index types on the invariant base: the state threaded, the type moving") {
+    val p: Freer[St, List[String], Int, Int] =
+      for
+        n <- sget[Int]
+        _ <- sput[Int, String]((n * 2).toString)
+        s <- sget[String]
+        _ <- sput[String, List[String]](List(s, s))
+      yield n + s.length
+    assertEquals(runSt(p)(21), (List("42", "42"), 23))
+  }
+
+  test("the consumed index still refuses a Put from the wrong state and a run from the wrong state") {
+    assert(compileErrors("sget[Int].flatMap(n => sput[String, Int](n))").nonEmpty)
+    assert(compileErrors("runSt(sget[Int])(\"not an Int\")").nonEmpty)
   }

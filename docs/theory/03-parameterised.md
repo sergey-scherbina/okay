@@ -151,11 +151,15 @@ exactly one way to read them on this base: as answer types, the way
 `PState` reads them. A `Get`/`Put` enum indexed `S => Z` is `PState`
 as data, its handler an indexed natural transformation into shift
 bodies, and Cont's runner runs it typed by the GADT. The other
-reading — McBride's, the index a state the handler CONSUMES — does
-not type: the base is covariant in `R` for the continuation's sake,
-and a consumed index needs the opposite variance. `TestFreerPara`
-holds both, the second as a `compileErrors` pin;
-specs/freer-base.md ("Freer as the ParaMonad") has the argument.
+reading — McBride's, the index a state the handler CONSUMES, `R`
+before and `S` after, threaded by a `State.handle`-shaped loop with
+the type moving — types as well, since the same day's decision made
+the indexes INVARIANT: the two readings want opposite variances on
+both indexes, and invariance is what both can live with (the base was
+covariant in `R` for one reader, the tail-shift macro, which now pays
+one evidence-justified cast instead). `TestFreerPara` holds both;
+specs/freer-base.md ("Freer as the ParaMonad", "McBride's reading")
+has the argument.
 
 
 **The production consumer.** The two-state degenerate form of this

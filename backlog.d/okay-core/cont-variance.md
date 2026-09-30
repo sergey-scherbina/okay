@@ -21,3 +21,9 @@
       Honest note: no `shift[Nothing, …]` exists in the repository
       today, so this is API room, not a measured saving. Changes a type
       signature: the gate is the full `affected master staged`.
+      NARROWED 2026-09-30 (freer-consumed-index): the base is invariant
+      in `S` AND `R` now, by the operator's decision, so `Rep[+A, S, R]`
+      is all this lane can ask — `+R` on the facade over an invariant
+      base would be a cast, and the reason the base is invariant (a
+      consumed index) is the reason not to. `Control[M[_, _, _]]` is
+      unaffected by `+A` alone.

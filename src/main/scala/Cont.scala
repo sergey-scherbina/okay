@@ -119,17 +119,28 @@ object Cont:
   /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
    * `v` computed when the runner reaches it, in the runner's own loop.
    * `S <:< R` is what the body's own typing gave the macro — `k(v): S`
-   * was its `R`, and `ContMacro` summons the evidence at the call site —
-   * and it is what lets `Return(v): Cont[A, S, S]` be a `Cont[A, S, R]`
-   * on a base covariant in `R` (`liftCo` through the tree, which the
-   * opaque facade, invariant on purpose, would not do by itself). */
+   * was its `R`, and `ContMacro` summons the evidence at the call site.
+   * THE ONE CAST on the Cont side, and its argument (freer-consumed-index,
+   * 2026-09-30): the value is a `Return(v): Cont[A, S, S]`, the leaf
+   * `k => k(v)` at answer type `S`, owed as a `Cont[A, S, R]`. With
+   * `S <: R` every answer `k(v): S` IS an `R`, so the node runs as the
+   * type claims; the base used to be covariant in `R` and `liftCo`
+   * said the same thing for free, and invariance — which lets the tree
+   * carry a CONSUMED index (Free.scala's header) — took that road away.
+   * Isolated here and in `tailPure`, the evidence as the parameter. */
   def tailShift[A, S, R](v: () => A)(using ev: S <:< R): Rep[A, S, R] =
-    ev.liftCo[[r] =>> Freer[Shift, S, r, A]](Freer.delay[Shift, S, S, A](() => Return[Shift, S, A](v())))
+    tailAt[A, S, R](Freer.delay[Shift, S, S, A](() => Return[Shift, S, A](v())))
 
   /** the same when `v` is a literal or a stable name and nothing runs
    * before it: no thunk at all */
   def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] =
-    ev.liftCo[[r] =>> Freer[Shift, S, r, A]](Return[Shift, S, A](v))
+    tailAt[A, S, R](Return[Shift, S, A](v))
+
+  /** the cast, once: a `Cont[A, S, S]` whose every answer is an `S`
+   * conforms to `Cont[A, S, R]` when `S <: R` — the evidence is the
+   * parameter, so no caller can reach this without it */
+  private def tailAt[A, S, R](c: Rep[A, S, S])(using S <:< R): Rep[A, S, R] =
+    c.asInstanceOf[Rep[A, S, R]]
 
   /**
    * LAYER 1 B (specs/cont-stack.md plan stage E, cont-stack-layer1-b):
@@ -182,12 +193,16 @@ object Cont:
   /** the runner's loop from a body: what a `Cps` does when applied as
    * the function it means */
   private def walk[R](b: Body[R]): R =
-    step[Any, Nothing, R](noProgram)(noK)(StackSwitch.firstRoom)(Pending.None)(b)
+    step[Any, Nothing, R](noProgram[R])(noK)(StackSwitch.firstRoom)(Pending.None)(b)
 
   /** the program and continuation a walk starts with — never looked
    * at: a walked body answers through its pending parts, and a program
-   * it continues carries its own */
-  private val noProgram: Rep[Any, Nothing, Nothing] = Return[Shift, Nothing, Unit](())
+   * it continues carries its own. A `Delay` because it must sit at the
+   * walk's OWN answer index on a base invariant in `R`
+   * (freer-consumed-index): `Return` is diagonal, and the `Nothing`-indexed
+   * value this was until then rode the covariance that is gone */
+  private def noProgram[R]: Rep[Any, Nothing, R] =
+    Delay(() => throw IllegalStateException("a walked body answers through its pending parts, never through its program"))
   private val noK: Any => Nothing =
     _ => throw IllegalStateException("a walked body answers through its pending parts, never through k")
 

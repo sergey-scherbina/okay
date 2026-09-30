@@ -39,31 +39,37 @@ import scala.annotation.tailrec
  * (HandlerBenchmark), so the type-aligned queue of that paper is not
  * needed.
  */
-enum Freer[G[_, +_, +_], S, +R, +A] {
+enum Freer[G[_, _, +_], S, R, +A] {
   /**
-   * The variances, and why `R` has one and `S` does not: a `Cont` means
-   * `(A => S) => R`, covariant in `A` and `R`, contravariant in `S`.
-   * `+A` the effect tree always had. `+R` is what lets a tail-shaped
-   * shift body `k => k(v)`, typed `(A => S) => R` with `S <: R` at its
-   * site, become the `Return(v): Cont[A, S, S]` the macro emits
-   * (`Cont.tailShift`), and it costs the runner nothing: matching
-   * `Return` on a `Freer[G, A, S, R]` now says `S <: R`, and `k(a): S`
-   * is an `R`. `S` stays invariant: contravariance would let a
-   * continuation of the wrong answer type into a bind by upcast, and
-   * specs/freer-base.md's "Variance is out" was about exactly that
-   * hole; here it is closed on one side and open on the other by the
-   * function type's own arithmetic.
+   * THE INDEXES ARE INVARIANT, and that is the decision that lets the
+   * tree serve TWO readings (freer-consumed-index, 2026-09-30, the
+   * operator's: "делаем S и R инвариантными"). Read as a continuation,
+   * `(A => S) => R`, `R` is produced and would be covariant; read as a
+   * state transition, `R => (S, A)`, `R` is consumed and would be
+   * contravariant — the two readings want OPPOSITE variances on both
+   * indexes, and invariance is what both can live with. `+A` the
+   * effect tree always had and keeps. Until this decision the base was
+   * `+R`, for one reader: `Cont.tailShift`/`tailPure`'s `liftCo` of a
+   * `Return(v): Cont[A, S, S]` into the `Cont[A, S, R]` a tail-shaped
+   * shift body is owed. That is now one cast there, justified by the
+   * `S <:< R` the macro summons at the site. What invariance buys: a
+   * handler that CONSUMES its index — a type-changing state threaded
+   * by `State.handle`'s loop, a held resource typed by the index — is
+   * typed by the GADT (`Return` gives `S = R`, an operation gives its
+   * state's type to the continuation), where `+R` gave only `S <: R`
+   * and refused every arm that reads the state (TestFreerPara pins
+   * both directions; specs/freer-base.md "McBride's reading").
    */
   /** a finished computation: the inner answer IS the outer one */
-  case Return[G[_, +_, +_], R, A](a: A) extends Freer[G, R, R, A]
+  case Return[G[_, _, +_], R, A](a: A) extends Freer[G, R, R, A]
 
   /** a single operation of the signature: for an effect, `F[A]`; for
    * `Cont`, the shift body `(A => S) => R` itself */
-  case Inject[G[_, +_, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
+  case Inject[G[_, _, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
 
   /** sequencing: run a, then feed its value to the plain-function
    * continuation f; the answer types meet at `T` */
-  case Bind[G[_, +_, +_], S, T, R, A, B](a: Freer[G, T, R, A],
+  case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
                                         f: A => Freer[G, S, T, B]) extends Freer[G, S, R, B]
 
   /** a deferred subprogram: forced by the interpreter's loop and
@@ -73,7 +79,7 @@ enum Freer[G[_, +_, +_], S, +R, +A] {
    * `step`), and hiding a case whose smart constructor is public would
    * stop nobody from building one — only from matching it, which is
    * the half an interpreter needs. */
-  case Delay[G[_, +_, +_], S, R, A](thunk: () => Freer[G, S, R, A]) extends Freer[G, S, R, A]
+  case Delay[G[_, _, +_], S, R, A](thunk: () => Freer[G, S, R, A]) extends Freer[G, S, R, A]
 
   /** sequencing is a data node: nothing runs until an interpreter walks the tree */
   inline def flatMap[B, S2](f: A => Freer[G, S2, S, B]): Freer[G, S2, R, B] = Bind(this, f)
@@ -150,7 +156,7 @@ object Freer {
    * is applied, so nothing else sees the difference.
    */
   sealed trait Lifted[F[+_]]:
-    type L[S, +R, +X] = F[X]
+    type L[S, R, +X] = F[X]
 
   /**
    * A CONTINUATION THAT ONLY MAPS, left by `map` (one-bind-hot-steps,
@@ -166,7 +172,7 @@ object Freer {
    * calling it directly chained Delim's composed continuations 20 000
    * deep (map-fusion, refuted).
    */
-  final class Mapped[G[_, +_, +_], S, X, A](val f: X => A) extends (X => Freer[G, S, S, A]):
+  final class Mapped[G[_, _, +_], S, X, A](val f: X => A) extends (X => Freer[G, S, S, A]):
     def apply(x: X): Freer[G, S, S, A] = Return(f(x))
 
   /** a bind whose LEFT side is deferred: the thunk is not forced at
@@ -176,7 +182,7 @@ object Freer {
    * each other in tail position without nesting a JVM stack frame per
    * call (`!.tailcall` is the sugar; `Cont.defer` is the same door on
    * the Cont side). */
-  def defer[G[_, +_, +_], S, T, R, A, B](thunk: () => Freer[G, T, R, A])(f: A => Freer[G, S, T, B]): Freer[G, S, R, B] =
+  def defer[G[_, _, +_], S, T, R, A, B](thunk: () => Freer[G, T, R, A])(f: A => Freer[G, S, T, B]): Freer[G, S, R, B] =
     // `Bind(Delay(t), f)`, not a node of its own: a `Defer(t, f)` case
     // used to hold the pair, and the runner handled it exactly as it
     // handles this shape — one node more here at construction, two
@@ -192,7 +198,7 @@ object Freer {
    * a closure and a `Bind` per bind, then a chain of `Bind(Return(a),
    * g)` of the same length at the end. `Delay` has no continuation to
    * push. */
-  def delay[G[_, +_, +_], S, R, A](thunk: () => Freer[G, S, R, A]): Freer[G, S, R, A] = Delay(thunk)
+  def delay[G[_, _, +_], S, R, A](thunk: () => Freer[G, S, R, A]): Freer[G, S, R, A] = Delay(thunk)
 
   /**
    * A program value as its answer, INSIDE a `direct` block: the
@@ -233,7 +239,7 @@ object Freer {
    * so the instance is on this lambda, and a program written against
    * an abstract `ParaMonad[M]` runs at `Freer.Para[G]` for any `G`.
    */
-  type Para[G[_, +_, +_]] = [A, S, R] =>> Freer[G, S, R, A]
+  type Para[G[_, _, +_]] = [A, S, R] =>> Freer[G, S, R, A]
 
   /**
    * Freer IS Atkey's parameterised monad, for every signature: `Return`
@@ -248,7 +254,7 @@ object Freer {
    * the `Mapped` one `!.foldM` can read back, not the default's
    * `flatMap` into a `pure`.
    */
-  given [G[_, +_, +_]]: ParaMonad[Para[G]] with
+  given [G[_, _, +_]]: ParaMonad[Para[G]] with
     override def pure[A, R](a: A): Freer[G, R, R, A] = Return(a)
     extension [A, S, R](m: Freer[G, S, R, A])
       override def flatMap[B, S2](f: A => Freer[G, S2, S, B]): Freer[G, S2, R, B] = Bind(m, f)
@@ -306,15 +312,15 @@ object Free {
    */
   object Return:
     def apply[F[+_], A](a: A): Free[F, A] = Freer.Return(a)
-    def unapply[G[_, +_, +_], R, A](r: Freer.Return[G, R, A]): Freer.Return[G, R, A] = r
+    def unapply[G[_, _, +_], R, A](r: Freer.Return[G, R, A]): Freer.Return[G, R, A] = r
 
   object Inject:
     def apply[F[+_], A](a: F[A]): Free[F, A] = Freer.Inject[Lift[F], Unit, Unit, A](a)
-    def unapply[G[_, +_, +_], S, R, A](i: Freer.Inject[G, S, R, A]): Freer.Inject[G, S, R, A] = i
+    def unapply[G[_, _, +_], S, R, A](i: Freer.Inject[G, S, R, A]): Freer.Inject[G, S, R, A] = i
 
   object Delay:
     def apply[F[+_], A](thunk: () => Free[F, A]): Free[F, A] = Freer.Delay(thunk)
-    def unapply[G[_, +_, +_], S, R, A](d: Freer.Delay[G, S, R, A]): Freer.Delay[G, S, R, A] = d
+    def unapply[G[_, _, +_], S, R, A](d: Freer.Delay[G, S, R, A]): Freer.Delay[G, S, R, A] = d
 
   /**
    * THE ONE CAST of the effect side, and the argument for it.
@@ -340,6 +346,6 @@ object Free {
    */
   object Bind:
     def apply[F[+_], A, B](a: Free[F, A], f: A => Free[F, B]): Free[F, B] = Freer.Bind(a, f)
-    def unapply[G[_, +_, +_], T, R, X, A](b: Freer.Bind[G, Unit, T, R, X, A]): Freer.Bind[G, Unit, Unit, R, X, A] =
+    def unapply[G[_, _, +_], T, R, X, A](b: Freer.Bind[G, Unit, T, R, X, A]): Freer.Bind[G, Unit, Unit, R, X, A] =
       b.asInstanceOf[Freer.Bind[G, Unit, Unit, R, X, A]]
 }
