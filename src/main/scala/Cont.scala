@@ -729,7 +729,7 @@ given Control[Func] with
  * around it in its DOORS, with `rebase` as their claim (specs/freer-kont.md,
  * Results).
  */
-enum Frames[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
+enum Frames[F[_, _, +_], A, S, T, Z] extends Frames.Known, (A => Freer[Cont0.Row[F], S, T, Z]):
   /** the empty segment: the identity, on the diagonal like `Return` */
   case End[F[_, _, +_], A, S]() extends Frames[F, A, S, S, A]
 
@@ -754,7 +754,7 @@ enum Frames[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z])
  * nodes instead of forcing it: a clause's `k(x)` is lazy, so 100 000
  * resumptions from 100 000 clauses nest no JVM frame (TestKont).
  */
-enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
+enum Stack[F[_, _, +_], A, S, T, Z] extends Frames.Known, (A => Freer[Cont0.Row[F], S, T, Z]):
   /** the bottom: the identity */
   case Done[F[_, _, +_], A, S]() extends Stack[F, A, S, S, A]
 
@@ -795,6 +795,10 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
 
 object Frames:
   import Stack.{Done, Run, Reset}
+
+  /** what the machine's two stacks share: the one class test a bind's
+   * continuation takes to be told from a plain function */
+  sealed trait Known
 
   /** a resumption: the value and the stack it enters, as the thunk of a
    * `Delay` — run by whoever forces it, pushed by the machine */
@@ -838,8 +842,12 @@ object Frames:
    * `null` for any other function.
    */
   def as[F[_, _, +_], A, S, T, Z](f: A => Freer[Cont0.Row[F], S, T, Z]): Stack[F, A, S, T, Z] = f match
-    case st: Stack[?, ?, ?, ?, ?] => st.asInstanceOf[Stack[F, A, S, T, Z]]
-    case fs: Frames[?, ?, ?, ?, ?] => Run(fs.asInstanceOf[Frames[F, A, S, T, Z]], noStack[F, Z, S])
+    // one test for the common answer — a plain function is neither — and
+    // the two classes told apart only past it (a test per class on every
+    // bind was part of delimPushOnly's gap)
+    case k: Known => k match
+      case st: Stack[?, ?, ?, ?, ?] => st.asInstanceOf[Stack[F, A, S, T, Z]]
+      case fs: Frames[?, ?, ?, ?, ?] => Run(fs.asInstanceOf[Frames[F, A, S, T, Z]], noStack[F, Z, S])
     case _ => null
 
   def resume[F[_, _, +_], S, T, Z](t: () => Freer[Cont0.Row[F], S, T, Z]): Resume[F, ?, S, T, Z] = t match
@@ -972,12 +980,13 @@ object Frames:
       case r: Return[G, R, X] => fs match
         case fr: Frame[F, X, S1, s2, T, ?, Y] => loop(fr.f(r.a), fr.rest, st)
         case _: End[F, X, S1] @unchecked => st match
-          case _: Done[F, Y, S0] @unchecked => focus
+          // the ($v) rule: a delimiter is popped like any frame — and the
+          // segment it carries is the frames register again, in the same
+          // step; tested FIRST, the common node under an empty segment
+          case d: Reset[F, Y, S0, S1, y, ?, ?, Z] => loop(d.ret(r.a), d.frames, d.below)
           // the next segment, unpacked into the frames register
           case rn: Run[F, Y, S0, ?, S1, ?, Z] => loop(focus, rn.frames, rn.below)
-          // the ($v) rule: a delimiter is popped like any frame — and the
-          // segment it carries is the frames register again, in the same step
-          case d: Reset[F, Y, S0, S1, y, ?, ?, Z] => loop(d.ret(r.a), d.frames, d.below)
+          case _: Done[F, Y, S0] @unchecked => focus
       case d: Delay[G, T, R, X] => Frames.resume[F, T, R, X](d.thunk) match
         // a resumption: the value at the top of its stack, pushed — never forced
         case null => loop(d.thunk(), fs, st)
