@@ -100,10 +100,11 @@ alone, the seeds that hang are the ones to find — the test's own
 `note(s"seed …")` lines name them once a flight recorder is read.
 
 ## ready-merge-side-starves — a ready merge of two endless sides stops delivering one of them; the hot side's ring ends "full" to its pusher and "empty" to its popper
-<!-- status: open
+<!-- status: fixed
+     fixed-in: 12d56fb2a
      lane: jvm (`Schedulers.own.build` and the adaptive default; not seen on Loom)
      area: okay-stream ReadyMerge.scala / SentinelChannel.scala / Ring.scala — the merge's poll-then-park over a single-consumer ring
-     gate: none — `ProbeReadyMergeStarve` (ignored) reproduces in ~20 rounds of 300, under 11 s
+     gate: TestMergeSideStarves (own, default, loom — 300 rounds each)
      found-by: windowjoin-spin-fix (2026-09-30), chasing windowjoin-trim-spins
      reporter: claude session_01UkcD4rZuMcWszYis8fWcGN
      owner: claude session_01UkcD4rZuMcWszYis8fWcGN (ready-merge-side-starves lane, 2026-09-30)
@@ -151,4 +152,29 @@ waits for a specific side — `Source.joinWithin`, a `zip` over a merge,
 a fold for one tag — can wait for ever on the default scheduler when
 the other side is hot. `TestSourceJoinWithin` runs its endless-sides
 tests on Loom until this closes.
+
+**Fixed (owner, 2026-09-30).** The "ring thirty laps ahead of its
+stamps" above was MY MISREADING: `debugRing` read the stamps before
+`head`/`tail`, and the left ring was live — 120 positions went by between
+the two reads. The left side was flowing; the RIGHT side's feeder had
+stopped. The second sighting's own dump says why:
+`SentinelChannel.offerOn ← Channel.feed ← … ← DriveTask.exec` at the
+bottom, `ReadyMerge.fire ← wakeOne` above it — the right feeder's
+`offer` woke the parked merge, and `DriveTask.resumeLate`, called on a
+managed worker, resumed the merge INLINE on the feeder's own stack. The
+merge never parked again (its left side is always ready), so the feeder
+under it never ran again and a fold waiting for the third `Right` waited
+for ever. Loom never did it: there a late answer from a foreign thread is
+forked home. A per-operation budget in `Async.Drive` was tried first and
+REFUTED — the whole endless consumption happens inside ONE drive
+operation (the fold's `Writer.foldUntil` loop over the merge's tells), so
+there is nothing to count. The fix is at the hijack: `resumeLate` resumes
+in place only on a worker that is running no fiber right now; from inside
+another fiber the answer goes home (`pushLocal` from a worker: no CAS, no
+wake). Measured on a quiet box, no cost: merge cap 64 63.5 us (62.9
+before), zip cap 7 1443 (1400), cap 64 351 (370). Two tests that pinned
+the old inline rule (TestOwnMonitor, TestAsync's nested-cancel) are
+restated for the new one; `TestSourceJoinWithin`'s endless-sides tests
+run on every scheduler again; okay-telegram's `FakeApi` log was a data
+race the old timing hid, now read and written under one monitor.
 
