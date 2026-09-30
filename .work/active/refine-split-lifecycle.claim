@@ -1,0 +1,1 @@
+claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-09-30, operator ask ("Сделай"): Split lifecycle in okay and okay2 — a stream lane reads once (a second run fails by name), Bulk.uncache (default no-op, SparkBulk unpersists) and Split.release(), Vector lanes grouped once
