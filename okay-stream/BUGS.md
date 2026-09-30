@@ -50,6 +50,30 @@ on the box waits for. A rerun of the named suite would spin the same
 way, so the runner's flake road does not apply either; the fix or a
 revert of cd91b05ee is what frees the box.
 
+**Second sighting, 2026-09-30 12:00, the other road.** The runner's
+next family gate (pid 56588) ran `TestWindowJoin` GREEN, all six tests
+(the agreement test in 0.051 s), and froze half an hour later after
+`TestFeedCancel`'s last line: the fork's pool worker `okay-own-1-0`
+(pid 73993, 101% CPU, 34 min) was RUNNABLE in the same loop, reached
+this time from the Source/Writer road —
+
+    okay.WindowJoin.trim(WindowJoin.scala:65)
+    okay.WindowJoin.arrive(WindowJoin.scala:102)
+    okay.WindowJoin.left(WindowJoin.scala:110)
+    okay.WindowJoin$.$anonfun$3(WindowJoin.scala:157)
+    okay.Pipe$package$.loop$5 / pull$3 (Pipe.scala:624 / 610) … deep
+    okay.Freer.resume(Free.scala:152)
+    okay.Writer$.loop$6(Writer.scala:167)
+
+— dump at `.work/ci/diag/20260930-stream-spin-73993.threads.txt`.
+So the machine test is not the only entry, and a green `TestWindowJoin`
+does not clear it: a `Source.joinWithin`-driven program (the suites
+around that point are `TestDocExamplesWindowJoin` and
+`TestSourceJoinWithin`) leaves the join spinning on the ONE pool
+worker, and every later suite that needs the pool waits for ever.
+Killed by PID again on the operator's standing word; the runner cannot
+push the range 5e587d84f..98fab9c2e until this is fixed or reverted.
+
 **Repro.** `scripts/gate.sh "okayStreamJVM/testOnly okay.TestWindowJoin"`
 on master at ebffb4a8a or later; watch the fifth test. If it passes
 alone, the seeds that hang are the ones to find — the test's own
