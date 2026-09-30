@@ -15,6 +15,17 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class TestMergeScopeReachable extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
 
+  /** THREE MINUTES, not munit's 30 s (merge-scope-reachable-timeout,
+   * 2026-09-30): 3000 rounds beside a thread that collects without pause
+   * take under 10 s on a quiet box and 47-51 s inside a whole-build gate
+   * — the CI runner recorded three timeouts in one morning, every one
+   * green alone, no assertion ever failed. The outcome is deterministic;
+   * only the duration is the box's, so the budget is the fix, as
+   * ChannelLawsSuite's is (sentinel-single-consumer-lost-end), not a
+   * `Live` tag that would take a law guarding a real defect out of the
+   * gate. */
+  override val munitTimeout = scala.concurrent.duration.Duration(3, "min")
+
   /** `rounds` runs of `run` beside a thread that collects without pause:
    * enough rounds for the consumer's loop to be compiled (the interpreter
    * keeps a dead local that holds the scope; compiled code does not) */
