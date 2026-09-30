@@ -63,8 +63,8 @@ inline def reset[A, R](c: A ^ R): R = c / identity
  * which dotty infers as `Nothing`. `Free.Bind` (Free.scala) puts it in
  * the PARAMETER, so the type test binds it, and answers the effect
  * tree's constant claim — every index `Unit` — once, for every site.
- * Stage 2's protocol state (`Prog`) is still a facade: its index says
- * nothing the nodes could check.
+ * A protocol's state is on the nodes since indexed-effects (stage 2,
+ * `okay.sql.TxOp`): the signature says the transition, the tree checks it.
  *
  * So `Cont` is `Free` with a function in the leaf and its answer types
  * carried where `Free` carries `Unit` — and, seen the other way, Free

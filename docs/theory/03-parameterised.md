@@ -121,17 +121,18 @@ present, and the specialized fast path exists *because a benchmark
 said so*, not instead of the theory.
 
 A THIRD instance carries the same index without touching `Cont` at
-all: `Prog[F, A, S, R]` (freer-base stage 2, specs/freer-base.md) is
-an opaque facade over the ordinary `Free[F, A]` tree with the SAME
-two phantom indices, checking a protocol written as smart
-constructors (`okay-sql`'s `Tx.begin: Idle -> Open`) at compile time
-for zero bytes and zero time — because the tree underneath carries no
-index at all, only the facade's TYPE does. Where `PState` earns its
-index by construction (`shift`'s own typing enforces it, even under
-an abort), `Prog`'s index is a claim its author makes once, in one
-named function (`Prog.transition`), and the compiler checks only what
-is BUILT FROM smart constructors that call it — the same trade every
-phantom-typed protocol makes, stated rather than glossed over.
+all: the indexed SIGNATURE (specs/indexed-effects.md). `Freer[G, S,
+R, A]` is the tree `Cont` is built from, and its two indexes are open
+to any signature `G[S, R, X]` — `okay-sql`'s `TxOp` puts `Begin:
+Idle -> Open` and `Commit: Open -> Idle` on its cases, the tree
+carries them along every bind, and the handler holds the connection
+at the type the index says (`Conn[S]`). Where `PState` earns its
+index through `shift`'s own typing, this road earns it through the
+constructor's: nothing is claimed at a call site, nothing is erased,
+and a program that types is well-bracketed. (An earlier `Prog`
+facade — the same index as a phantom claim over the untyped tree,
+sealed by one named `transition` — was the first cut, and is gone:
+the data road checks the same protocol with the nodes themselves.)
 
 ## Why a paramonad at the foundation
 
@@ -144,7 +145,7 @@ paramonad at the bottom out of necessity, and Atkey's diagonal theorem
 is the ramp back down to the ordinary monads everything else is
 written in. One trait (`ParaMonad`), one theorem (the diagonal), THREE
 instances (`Cont`'s answer-type modification, `PState`'s typestate,
-`Prog`'s phantom protocol on `Free`) — the chapter is short because
+the indexed signature's protocol on `Freer`) — the chapter is short because
 the design followed the paper closely enough that there is little
 else to say.
 

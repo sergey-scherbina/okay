@@ -765,41 +765,40 @@ the primitive, because of the five stages written here NONE are
 one-output-per-input: conditional emission has to say "nothing here"
 with an `Option` that `transduce` never allocates.
 
-**Typestate on a program: `Prog`.** `PState` puts a state's TYPE in a
-continuation's answer; `Prog[F, A, S, R]` puts one on any program — the
-same `Free` tree behind an opaque facade with two phantom indexes, "`S`
-before, `R` after", so that `flatMap` joins a step ending at `R` only to
-one starting at `R`. Nothing is allocated and nothing is matched:
-`Prog.diag(p)` enters at any index, `p.free` leaves at the diagonal
-(a move left open has no way out), and a protocol is written as smart
-constructors that call `Prog.transition` once each and keep it
-private. okay-sql's transaction is the first, over any `Sql`:
+**Typestate on a program: the indexed signature.** `PState` puts a
+state's TYPE in a continuation's answer; an indexed signature puts one
+on any program's operations — `Freer[G, S, R, A]` is the same tree with
+two indexes, "`R` before, `S` after", carried along every `flatMap`, so
+that a step ending at `R` joins only one starting at `R`. The
+transitions are said ONCE, on the signature's cases, and the handler
+holds the state typed by the index: nothing is claimed at a call site,
+and nothing is erased. okay-sql's transaction is written this way, over
+any `Sql`:
 
 ```scala
-val tx = Tx(db)
-val n = Tx.run(
-  tx.begin().flatMap { g =>
-    tx.update("insert into t values (1)").flatMap(_ => tx.commit()).map(_ => g.granted)
-  }).runWith
+import Tx.{begin, commit, update, async, interpret}
+val n = interpret(
+  begin().flatMap { g =>
+    update[Tx.Open]("insert into t values (1)").flatMap(_ => commit()).map(_ => g.granted)
+  })(db).runWith
 ```
 
-`tx.begin().flatMap(_ => tx.begin())` does not compile — the
+`begin().flatMap(_ => begin())` does not compile — the
 `IllegalStateException("nested transaction")` that `PgSql.begin` throws
-is unrepresentable — nor does `Tx.run(tx.commit())`, nor a program that
-ends inside a transaction, nor `tx.begin().free`. The same facade puts
-`Delim`'s prompt stack in the type, so a `shift` to a prompt that is
-not installed is a compile error rather than `NoPrompt`
-([continuations in practice](continuations-in-practice.md#the-stack-in-the-type)).
-One trap: write `import okay.Prog.{flatMap, map}` where you sequence
-`Prog`s. Found only through the facade's companion, `flatMap` does not
-infer the next step's index (`Required: Prog.Rep[Async, B, R, T]` with
-`B` and `T` uninstantiated); imported, it does. (This was once blamed
-on a package-level `Comonad[Id]` capturing `.map` — that instance now
-lives in `Comonad`'s companion, and the import is still needed.)
+is unrepresentable — nor does `interpret(commit())`, nor a program that
+ends inside a transaction. The connection the handler holds is `Conn[S]`
+with the same index, so closing an idle one or opening an open one does
+not type INSIDE the handler either. The same tree puts `Delim`'s prompt
+stack in the type, so a `shift` to a prompt that is not installed is a
+compile error rather than `NoPrompt`
+([continuations in practice](continuations-in-practice.md#the-stack-in-the-type)),
+and [typestate](typestate.md) is the page for the two readings of the
+index and when to take which.
 
 > Atkey, *Parameterised notions of computation*, JFP 19(3–4), 2009,
 > [doi:10.1017/S095679680900728X](https://doi.org/10.1017/S095679680900728X)
-> — the parameterised monad `PState` and `Prog` are two instances of.
+> — the parameterised monad `PState` and the indexed `Freer` are two
+> instances of.
 
 A stage whose STEP may end it is `Stage.transduceUntil(z)(step, end)`
 (specs/fold-until.md, stage 3): the step answers `Left(next)` to go on

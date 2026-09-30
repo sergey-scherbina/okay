@@ -275,7 +275,11 @@ Recorded so that nobody mistakes "possible" for "planned".
       `okay.Prog`, `Delim.Stacked` (the three throwing shapes refused
       by the compiler, the escaped prompt included), okay-sql's `Tx`
       (nested begin / orphan commit / a program left open do not
-      compile). specs/freer-base.md, "Stage 2 — BUILT".
+      compile). specs/freer-base.md, "Stage 2 — BUILT". The `Prog`
+      facade itself was REMOVED by indexed-effects stage 8
+      (2026-09-30): the same three refusals hold on the indexed tree
+      (`Delim.Stacked` typed, `okay.sql.Tx` as data), where the nodes
+      carry the index the facade only claimed.
 - [ ] Road 4: a spike with a verdict, not an implementation.
 
 ## Decisions

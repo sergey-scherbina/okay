@@ -136,9 +136,9 @@ the compiler: a shift with no reset, a shift to a prompt another reset
 made, and a prompt that ESCAPED its reset into a `var` and is shifted
 to after it returned — once the reset has returned, the stack in force
 is the outer one, and the leaked prompt is not on it. The machinery
-underneath is the ordinary machine (`push`, `run`, the same prompts);
-the stack is a claim about the program and erases entirely (`okay.Prog`,
-specs/freer-base.md stage 2).
+underneath is the one machine, and the stack is the program's own
+index on the indexed tree (specs/indexed-effects.md, stages 4 and 6):
+the operations carry their types, and the stack erases.
 
 **What a capture's body may reach.** A capture takes its prompt AND
 every delimiter installed inside it, so its body runs on a smaller

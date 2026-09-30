@@ -3,11 +3,6 @@ package okay
 import okay.Delim.Stacked
 import okay.Delim.Stacked.{abort, delimited, reset, shift, under}
 import okay.Row.at
-// NOT for the old `Comonad[Id]` capture (gone, comonad-id-map-capture):
-// found through `Prog`'s companion, the extension's `flatMap` leaves the
-// lambda's argument an uninferred `A` in the stacked shapes below
-// (`a + 1`: "value + is not a member of A"); imported, it infers.
-import okay.Prog.flatMap
 
 /**
  * specs/freer-base.md, stage 2: the indexed facade, and `Delim`'s
@@ -137,40 +132,3 @@ class TestProg extends munit.FunSuite:
     assert(e.contains("not on the prompt stack"), s"the message is not ours: $e")
   }
 
-  // ---------------------------------------------------------- the facade itself
-
-  sealed trait A
-  sealed trait B
-
-  test("the caveat: an abort inside a block promising a transition drops it — the type is not a run-time guarantee") {
-    var moved = false
-    val move: Prog[Throws % String, Unit, A, B] =
-      Prog.transition[A, B, Throws % String, Unit](Free.delay { () => moved = true; pure(()) })
-    val p: Prog[Throws % String, Unit, A, B] =
-      Prog.diag[A, Throws % String, Unit](raise[String, Unit]("no")).flatMap(_ => move)
-    // the type says B is reached; the abort says otherwise
-    val closed: Prog[Throws % String, Unit, A, A] = p.flatMap(_ => Prog.transition[B, A, Throws % String, Unit](pure(())))
-    assertEquals(!.run(runEither[Unit, okay.Pure, String](closed.free)), Left("no"))
-    assert(!moved, "the transition ran after an abort")
-  }
-
-  test("zero cost: the facade is the tree — diag/free are identity, flatMap is the same Bind") {
-    val p: Int ! Writer % String = Writer.tell("x").map(_ => 1)
-    assert(Prog.diag[A, Writer % String, Int](p).free eq p, "diag then free is not the same object")
-    val f: Int => Prog[Writer % String, Int, A, A] = n => Prog.pure(n + 1)
-    Prog.diag[A, Writer % String, Int](p).flatMap(f).free match
-      case Free.Bind(a, _) => assert(a eq p, "flatMap did not build a Bind over the same head")
-      case other => fail(s"flatMap built $other")
-    // and it runs as the tree it is
-    assertEquals(!.run(Writer.run[String, Int, okay.Pure](Prog.diag[A, Writer % String, Int](p).flatMap(f).free)), (Seq("x"), 2))
-  }
-
-  test("a move left open has no `free`, and continuations start where the last step ended") {
-    assert(compileErrors("""
-      okay.Prog.transition[TestProg#A, TestProg#B, okay.Writer % String, Unit](okay.Writer.tell("x")).free""").nonEmpty,
-      "an open move unlifted")
-    assert(compileErrors("""
-      okay.Prog.transition[TestProg#A, TestProg#B, okay.Writer % String, Unit](okay.Writer.tell("x"))
-        .flatMap(_ => okay.Prog.transition[TestProg#A, TestProg#B, okay.Writer % String, Unit](okay.Writer.tell("y")))""").nonEmpty,
-      "a step starting at A was joined to one ending at B")
-  }

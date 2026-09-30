@@ -26,7 +26,7 @@ class TestTxData extends munit.FunSuite:
     def rollback(): Unit ! Async = { log += "rollback"; pure(()) }
     def cancel(): Unit = ()
 
-  import Tx.Data.{begin, commit, update, async, interpret}
+  import Tx.{begin, commit, update, async, interpret}
 
   test("a well-bracketed program runs its steps in the order the type promised, the connection moved by the handler") {
     val db = Recording()
@@ -56,11 +56,11 @@ class TestTxData extends munit.FunSuite:
   }
 
   test("the run-time refusals are compile errors on the data road: nested begin, commit with no begin, a program left open") {
-    assert(compileErrors("okay.sql.Tx.Data.begin().flatMap(_ => okay.sql.Tx.Data.begin())").nonEmpty, "a nested begin compiled")
-    assert(compileErrors("okay.sql.Tx.Data.interpret(okay.sql.Tx.Data.commit())(new okay.sql.TestTxData().Recording())").nonEmpty,
+    assert(compileErrors("okay.sql.Tx.begin().flatMap(_ => okay.sql.Tx.begin())").nonEmpty, "a nested begin compiled")
+    assert(compileErrors("okay.sql.Tx.interpret(okay.sql.Tx.commit())(new okay.sql.TestTxData().Recording())").nonEmpty,
       "a commit with no begin compiled")
-    assert(compileErrors("""okay.sql.Tx.Data.interpret(
-      okay.sql.Tx.Data.begin().flatMap(_ => okay.sql.Tx.Data.update[okay.sql.Tx.Open]("insert")))(new okay.sql.TestTxData().Recording())""").nonEmpty,
+    assert(compileErrors("""okay.sql.Tx.interpret(
+      okay.sql.Tx.begin().flatMap(_ => okay.sql.Tx.update[okay.sql.Tx.Open]("insert")))(new okay.sql.TestTxData().Recording())""").nonEmpty,
       "a program that ends inside a transaction compiled")
   }
 
