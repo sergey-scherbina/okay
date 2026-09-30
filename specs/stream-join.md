@@ -285,8 +285,10 @@ Stage 2 (stream-join-windowed):
       sides releases both once; a finite side against an endless one
       ends and releases it
 - [x] okay2: stage 1 ported (`TestSortMerge` on three platforms,
-      `TestSourceJoin`); stage 2 not ported — okay2's `Source` has no
-      `either`
+      `TestSourceJoin`); stage 2 ported too (okay2-join-within:
+      `WindowJoin`, `WindowJoin.stage`, `Source.joinWithin` over okay2's
+      own `either`; `TestWindowJoin` on three platforms,
+      `TestSourceJoinWithin` minus the release law okay2 has no scope for)
 
 ## Results
 
@@ -334,3 +336,16 @@ Stage 2 (stream-join-windowed):
   min-watermark decision), and ending the join at EITHER side's end
   (wrong for the windowed join: the held rows of the ended side can
   still be reached by the other side's rows; only `exhausted` is safe).
+
+- okay2-join-within (2026-09-30): the okay2 port of stage 2. CORRECTION
+  of the entry above: okay2's `Source` DOES have `either` (SourceOps,
+  over its `merge` with `Writer.mapAt` tags) — "no `either` yet" was
+  written without looking, the one thing AGENTS.md's "a guess about the
+  build is a hypothesis" forbids. The port is the core's line for line
+  under `Pipe.intoIn` (the shape `chunked` uses), with one Scala 2
+  difference worth knowing: `new WindowJoin(within, …)` inside a
+  null-or-instance `if` infers `K` as an existential `_1 <: K` and the
+  invariant class then refuses itself — pin the type argument and the
+  val's type. Gate: `TestWindowJoin` (6, three platforms),
+  `TestSourceJoinWithin` (3, JVM), okay2 `Test/compile` (80), recscan
+  unchanged. ADDITIVE.
