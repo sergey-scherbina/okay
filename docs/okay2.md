@@ -2178,6 +2178,28 @@ alternative each. A pattern is also a search (`search`: `Took` the
 answer, `Unclear` a choice point, `Declined` an empty one), so
 `runChoice` lists the readings.
 
+The algebra is okay's (docs/modules/okay-refine.md, "The algebra"):
+`>>>` and `or` are second names for `andThen` and `<|>`; `orElse` is a
+fallback that consults the second pattern only when the first declines;
+`Refine.id` and `>>>` make a category (`implicit val Refine.category`,
+okay2-optics' `Optic.Category`), `Refine.empty` is the unit of `or` and
+of `orElse`; `***`, `+++` and `and` are the products, `and` reading a
+record from one input and writing it back through `Refine.Merge`:
+
+```scala
+    val money = (field("amount") >>> num) and (field("currency") >>> str)
+    assertEquals(money.write((5.0, "EUR")).map(Json.print), Right("""{"amount":5,"currency":"EUR"}"""))
+```
+
+Into programs and streams: `orRaise` raises the whole verdict through
+`Throws`, and `verdicts` / `taken` are okay2-stream `Stage`s — `taken`
+answers what it did not take:
+
+```scala
+    val (values, missed) = !.run(Writer.run(into(inputs)(choice.taken)))
+    assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
+```
+
 What is different from Scala 3: dispatch is the trait's own methods
 rather than a match over the tree, because Scala 2 does not refine a
 generic case class's existential type across a match (`case AndThen(f,

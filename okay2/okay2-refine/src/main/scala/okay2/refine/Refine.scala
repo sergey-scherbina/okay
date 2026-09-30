@@ -1,8 +1,9 @@
 package okay2.refine
 
 import scala.reflect.ClassTag
-import okay2.{!, Choose, pure}
+import okay2.{!, Choose, Optic, Throws, pure}
 import okay2.Optic.Prism
+import okay2.stream.Stage
 import okay2.codec.{Json, Schema}
 
 /**
@@ -48,6 +49,9 @@ sealed trait Refine[A, B] {
   /** a path: the second pattern over what the first learnt */
   def andThen[C](next: Refine[B, C]): Refine[A, C] = Refine.AndThen(this, next)
 
+  /** `andThen` in the arrow glyph (Hughes; `Control.Category`) */
+  final def >>>[C](next: Refine[B, C]): Refine[A, C] = andThen(next)
+
   /** a choice: both run, and two takers are `Unclear` */
   final def <|>(alt: Refine[A, B]): Refine[A, B] = (this, alt) match {
     case (Refine.Or(xs), Refine.Or(ys)) => Refine.Or(xs ++ ys)
@@ -55,6 +59,51 @@ sealed trait Refine[A, B] {
     case (x, Refine.Or(ys)) => Refine.Or(x +: ys)
     case (x, y) => Refine.Or(Vector(x, y))
   }
+
+  /** `<|>` as a word: EVERY alternative runs, two takers are `Unclear` */
+  final def or(alt: Refine[A, B]): Refine[A, B] = this <|> alt
+
+  /**
+   * A FALLBACK, in the sense Scala's `orElse` has everywhere (Option,
+   * Either, PartialFunction): `alt` is consulted only when this pattern
+   * DECLINES. When this takes (or is `Unclear`), `alt` is not run and
+   * cannot make the answer `Unclear`; when it declines, its refusals stay
+   * in the verdict, before `alt`'s. Deliberately NOT `<|>` — that is `or`
+   * (okay's specs/refine.md, refine-algebra). Write: this pattern's,
+   * else `alt`'s.
+   */
+  final def orElse(alt: Refine[A, B]): Refine[A, B] = Refine.OrElse(this, alt)
+
+  /** two patterns side by side on a pair; the path is the left's, then the right's */
+  final def ***[C, D](that: Refine[C, D]): Refine[(A, C), (B, D)] = Refine.Both(this, that)
+
+  /** two patterns on an `Either`, each case through its own side */
+  final def +++[C, D](that: Refine[C, D]): Refine[Either[A, C], Either[B, D]] = Refine.Sum(this, that)
+
+  /** both patterns over the SAME input, both answers as a pair — a record
+   * read field by field; the way back MERGES the two written skeletons
+   * (`Refine.Merge`: for `Json`, objects whose fields agree) */
+  final def and[C](that: Refine[A, C])(implicit m: Refine.Merge[A]): Refine[A, (B, C)] = Refine.And(this, that, m)
+
+  /** the read as an EFFECT: the value, or the whole non-`Took` verdict
+   * raised through `Throws` — `Throws.runEither` hands it back */
+  final def orRaise(a: A): B ! Throws[Verdict[B]] = run(a) match {
+    case Verdict.Took(b, _, _) => pure[Throws[Verdict[B]], B](b)
+    case other => Throws.raise[Verdict[B], B](other)
+  }
+
+  /** the pattern over a STREAM: every input becomes its verdict, nothing dropped */
+  final def verdicts: okay2.stream.Stage[A, Verdict[B], Unit] =
+    Stage.mapAccumulate[A, Verdict[B], Unit](())((u, a) => (u, run(a)))
+
+  /** the values only — and what was NOT taken is not silent: the stage
+   * answers how many inputs declined and how many were `Unclear` */
+  final def taken: okay2.stream.Stage[A, B, Refine.Missed] =
+    Stage.transduce[A, B, Refine.Missed](Refine.Missed(0, 0))((m, a) => run(a) match {
+      case Verdict.Took(b, _, _) => Stage.tell[A, B](b).map(_ => m)
+      case Verdict.Unclear(_, _) => pure[okay2.stream.Take[A] with okay2.Writer[B], Refine.Missed](m.copy(unclear = m.unclear + 1))
+      case Verdict.Declined(_) => pure[okay2.stream.Take[A] with okay2.Writer[B], Refine.Missed](m.copy(declined = m.declined + 1))
+    }, m => pure[okay2.stream.Take[A] with okay2.Writer[B], Refine.Missed](m))
 
   /** an iso on what is learnt, both ways, so the path still writes */
   final def map[C](name: String)(to: B => C, from: C => B): Refine[A, C] =
@@ -87,6 +136,60 @@ object Refine {
   /** the `<|>` of many */
   def first[A, B](alts: Refine[A, B]*): Refine[A, B] =
     alts.reduceLeft(_ <|> _)
+
+  /** the identity pattern: takes every input and adds NO name to the
+   * path, so `id >>> r`, `r >>> id` and `r` answer the same verdict */
+  def id[A]: Refine[A, A] = Id[A]()
+
+  /** the choice of no alternatives: the unit of `or` and of `orElse` */
+  def empty[A, B]: Refine[A, B] = Or[A, B](Vector.empty)
+
+  /** a pattern's patterns compose: `id` and `>>>` (okay2-optics' `Category`) */
+  implicit val category: Optic.Category[Refine] = new Optic.Category[Refine] {
+    def id[A]: Refine[A, A] = Refine.id[A]
+    def compose[A, B, C](g: Refine[B, C], f: Refine[A, B]): Refine[A, C] = f >>> g
+  }
+
+  /** how `and` puts two written skeletons back into one input */
+  trait Merge[A] {
+    def merge(x: A, y: A): Either[String, A]
+  }
+
+  object Merge {
+    /** two JSON objects become one; a field both write must agree; a
+     * non-object is merged only with an equal value */
+    implicit val json: Merge[Json] = new Merge[Json] {
+      def merge(x: Json, y: Json): Either[String, Json] = (x, y) match {
+        case (Json.JObj(xs), Json.JObj(ys)) =>
+          ys.collectFirst { case (k, v) if xs.exists { case (k2, v2) => k2 == k && v2 != v } => k } match {
+            case Some(k) => Left(s"both halves write field `$k`, differently")
+            case None => Right(Json.JObj(xs ++ ys.filterNot { case (k, _) => xs.exists(_._1 == k) }))
+          }
+        case _ if x == y => Right(x)
+        case _ => Left(s"cannot merge ${Json.print(x).take(40)} with ${Json.print(y).take(40)}")
+      }
+    }
+  }
+
+  /** what `taken` did not emit: inputs that declined, inputs that were `Unclear` */
+  final case class Missed(declined: Int, unclear: Int)
+
+  /** two verdicts side by side: every pairing of their readings; the
+   * pair's path is the left's, then the right's steps below `at` */
+  private def product[B, C](x: Verdict[B], y: Verdict[C], at: Path): Verdict[(B, C)] = {
+    def readings[T](v: Verdict[T]): Vector[(Path, T)] = v match {
+      case Verdict.Took(t, by, _) => Vector((by, t))
+      case Verdict.Unclear(cs, _) => cs
+      case Verdict.Declined(_) => Vector.empty
+    }
+    val pairs = for ((p1, b) <- readings(x); (p2, c) <- readings(y)) yield (Path(p1.steps ++ p2.steps.drop(at.steps.length)), (b, c))
+    val declined = x.reasons ++ y.reasons
+    pairs match {
+      case Vector((by, bc)) => Verdict.Took(bc, by, declined)
+      case Vector() => Verdict.Declined(declined)
+      case many => Verdict.Unclear(many, declined)
+    }
+  }
 
   /**
    * Patterns over the one `Json` value every dialect projects into: a
@@ -154,7 +257,10 @@ object Refine {
   // nesting of `andThen`/`<|>`/`map` in the authoring source, which a
   // registry only widens (one `Or` of many is one level), never deepens
   final case class AndThen[A, X, B](first: Refine[A, X], second: Refine[X, B]) extends Refine[A, B] {
-    def name: String = first.name
+    def name: String = first match {
+      case _: Id[_] => second.name
+      case _ => first.name
+    }
 
     protected[refine] def runAt(a: A, at: Path): Verdict[B] = first.runAt(a, at) match {
       case Verdict.Took(x, by, declined) => second.runAt(x, by) match {
@@ -198,5 +304,61 @@ object Refine {
       case Verdict.Declined(d) => Verdict.Declined(d)
     }
     protected[refine] def writeBack(b: B): Either[String, A] = from(b).flatMap(under.writeBack)
+  }
+
+  final case class Id[A]() extends Refine[A, A] {
+    def name: String = "id"
+    protected[refine] def runAt(a: A, at: Path): Verdict[A] = Verdict.Took(a, at, Vector.empty)
+    protected[refine] def writeBack(b: A): Either[String, A] = Right(b)
+  }
+
+  final case class OrElse[A, B](first: Refine[A, B], second: Refine[A, B]) extends Refine[A, B] {
+    def name: String = s"${first.name} orElse ${second.name}"
+    protected[refine] def runAt(a: A, at: Path): Verdict[B] = first.runAt(a, at) match {
+      case Verdict.Declined(d) => second.runAt(a, at) match {
+        case Verdict.Took(b, by, d2) => Verdict.Took(b, by, d ++ d2)
+        case Verdict.Unclear(cs, d2) => Verdict.Unclear(cs, d ++ d2)
+        case Verdict.Declined(d2) => Verdict.Declined(d ++ d2)
+      }
+      case taken => taken
+    }
+    protected[refine] def writeBack(b: B): Either[String, A] = first.writeBack(b) match {
+      case Left(_) => second.writeBack(b)
+      case ok => ok
+    }
+  }
+
+  final case class Both[A, B, C, D](left: Refine[A, B], right: Refine[C, D]) extends Refine[(A, C), (B, D)] {
+    def name: String = s"${left.name}*${right.name}"
+    protected[refine] def runAt(a: (A, C), at: Path): Verdict[(B, D)] = product(left.runAt(a._1, at), right.runAt(a._2, at), at)
+    protected[refine] def writeBack(b: (B, D)): Either[String, (A, C)] =
+      for { x <- left.writeBack(b._1); y <- right.writeBack(b._2) } yield (x, y)
+  }
+
+  final case class Sum[A, B, C, D](left: Refine[A, B], right: Refine[C, D]) extends Refine[Either[A, C], Either[B, D]] {
+    def name: String = s"${left.name}+${right.name}"
+    protected[refine] def runAt(a: Either[A, C], at: Path): Verdict[Either[B, D]] = a match {
+      case Left(x) => left.runAt(x, at) match {
+        case Verdict.Took(b, by, d) => Verdict.Took(Left(b), by, d)
+        case Verdict.Unclear(cs, d) => Verdict.Unclear(cs.map { case (by, b) => (by, Left(b)) }, d)
+        case Verdict.Declined(d) => Verdict.Declined(d)
+      }
+      case Right(y) => right.runAt(y, at) match {
+        case Verdict.Took(b, by, d) => Verdict.Took(Right(b), by, d)
+        case Verdict.Unclear(cs, d) => Verdict.Unclear(cs.map { case (by, b) => (by, Right(b)) }, d)
+        case Verdict.Declined(d) => Verdict.Declined(d)
+      }
+    }
+    protected[refine] def writeBack(b: Either[B, D]): Either[String, Either[A, C]] = b match {
+      case Left(x) => left.writeBack(x).map(Left(_))
+      case Right(y) => right.writeBack(y).map(Right(_))
+    }
+  }
+
+  final case class And[A, B, C](left: Refine[A, B], right: Refine[A, C], merge: Merge[A]) extends Refine[A, (B, C)] {
+    def name: String = s"${left.name}&${right.name}"
+    protected[refine] def runAt(a: A, at: Path): Verdict[(B, C)] = product(left.runAt(a, at), right.runAt(a, at), at)
+    protected[refine] def writeBack(b: (B, C)): Either[String, A] =
+      for { x <- left.writeBack(b._1); y <- right.writeBack(b._2); xy <- merge.merge(x, y) } yield xy
   }
 }

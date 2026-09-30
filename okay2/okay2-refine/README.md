@@ -6,9 +6,11 @@ and say why. `Refine[A, B]`, `Verdict` (`Took` / `Unclear` / `Declined`
 with every `Refusal`), `Path`; `Format.detect` over okay2-codec's own
 lossless trees — JSON and XML today, YAML and CBOR the day the codec has
 them (one more `<|>` each, nothing here edited); `Format.value` into the
-one `Json` a Schema pattern reads; `Refine.schema`, `Refine.json.*`.
+one `Json` a Schema pattern reads; `Refine.schema`, `Refine.json.*`; the algebra — `>>>`, `or`, `orElse`,
+`Refine.id` + `Category`, `Refine.empty`, `***` / `+++` / `and` with
+`Refine.Merge`, `orRaise` (Throws), `verdicts` / `taken` (Stages).
 
-**Depends on:** `okay2` (core), `okay2-codec`, `okay2-optics`. Pure
+**Depends on:** `okay2` (core), `okay2-codec`, `okay2-optics`, `okay2-stream`. Pure
 Scala — cross-built for JVM, JS and Native.
 
 The one difference from okay-refine: dispatch is the trait's own

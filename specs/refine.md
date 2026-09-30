@@ -249,6 +249,9 @@ Stage 3 — lessons:
   `orRaise` (Throws) beside `search` (Choose); an effectful READ refused
   — it could be neither written back nor replayed. Streams: `verdicts`,
   `taken` (which answers `Missed`, so dropping is never silent).
+  Ported to okay2-refine the same day (okay2-refine-algebra): the same
+  ten law tests hold on JVM, JS and Native; okay2-refine now depends on
+  okay2-stream for the Stages.
 
 ## 5. Results
 
