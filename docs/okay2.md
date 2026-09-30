@@ -2200,6 +2200,24 @@ answers what it did not take:
     assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
 ```
 
+Routing is okay's too (docs/modules/okay-refine.md, "Routing"): a
+`Router` is a pattern and a routing table read like a `match`, and `run`
+sends every document of a `Source` to the channel of its kind, closing
+every channel once at the end:
+
+```scala
+    val routed = go(Router(any)
+      .route[Swap](swaps)
+      .route { case c: Cds if c.ccy == "EUR" => c }(eurCds)
+      .otherwise(rejected)
+    val u = go(Router(any).route { case d @ (_: Swap | _: Cds) => d }(rates).route[Fx](rest).run(Source(docs: _*)))
+```
+
+Scala 2 has no union types, so `route[X]` tests the class of `X` (a
+`ClassTag`, exact for a class or a case); several kinds into one stream
+are a pattern with alternatives, as above. An `Unclear` document is
+never routed, and nothing is dropped silently.
+
 What is different from Scala 3: dispatch is the trait's own methods
 rather than a match over the tree, because Scala 2 does not refine a
 generic case class's existential type across a match (`case AndThen(f,

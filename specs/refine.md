@@ -265,7 +265,10 @@ Stage 3 — lessons:
   `otherwise`); every channel is closed once at the end, failed on an
   input failure. Refuted: a heterogeneous `Stage` with one output per
   route (Stage has one output type; the typed routes need channels), and
-  a `route[X]` on `ClassTag`.
+  a `route[X]` on `ClassTag`. Ported to okay2-refine the same day
+  (okay2-refine-route): Scala 2 has no unions, so there `route[X]` on a
+  `ClassTag` IS exact for a class; several kinds into one stream are a
+  pattern with alternatives; TestRouter (8) on the JVM.
 
 ## 5. Results
 

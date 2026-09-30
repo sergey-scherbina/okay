@@ -8,7 +8,9 @@ lossless trees — JSON and XML today, YAML and CBOR the day the codec has
 them (one more `<|>` each, nothing here edited); `Format.value` into the
 one `Json` a Schema pattern reads; `Refine.schema`, `Refine.json.*`; the algebra — `>>>`, `or`, `orElse`,
 `Refine.id` + `Category`, `Refine.empty`, `***` / `+++` / `and` with
-`Refine.Merge`, `orRaise` (Throws), `verdicts` / `taken` (Stages).
+`Refine.Merge`, `orRaise` (Throws), `verdicts` / `taken` (Stages); routing — `Router`
+(`route[X]`, `route { case … }`, `byName`, `tap`, `otherwise`, `run`),
+`decide`, `Refine.routed`.
 
 **Depends on:** `okay2` (core), `okay2-codec`, `okay2-optics`, `okay2-stream`. Pure
 Scala — cross-built for JVM, JS and Native.
