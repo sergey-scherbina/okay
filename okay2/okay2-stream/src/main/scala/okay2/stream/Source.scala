@@ -112,6 +112,26 @@ object Source {
                                        (implicit sch: Scheduler, cb: CanBlock): Source[(K, (Option[A], Option[B]))] =
     SortMerge.source(l, r, capacity)(() => SortMerge.full[K, A, B])
 
+  /** the event-time WINDOWED join by key of two unbounded, UNORDERED
+   * sources (specs/stream-join.md, stage 2; `WindowJoin` is the
+   * machine): a row matches on arrival every row of the other side with
+   * its key within `within` of its event time, is held until the joint
+   * watermark (the smaller side's greatest event time minus `lateness`)
+   * passes its reach; a row behind that watermark is dropped and
+   * counted. The sides are `either`-merged with each side's end marked */
+  def joinWithin[K, A, B](l: Source[(K, A)], r: Source[(K, B)], within: Long, lateness: Long, capacity: Int = 64)
+                         (atL: A => Long, atR: B => Long)
+                         (implicit sch: Scheduler, cb: CanBlock, timer: Timer): Source[(K, (A, B))] = {
+    type Ev = WindowJoin.Event[K, A, B]
+    type Out = (K, (A, B))
+    def ended[X](s: Source[X]): Source[Option[X]] =
+      Writer.mapAt[X, Option[X], Unit, Async](s)(x => Some(x))
+        .flatMap(_ => Writer.tell[Option[X]](None).at[Writer[Option[X]] + Async])
+    val merged: Source[Ev] = new SourceOps(ended(l)).either(ended(r), capacity)
+    Pipe.intoIn[Ev, Out, Async, Unit, Unit](merged)(
+      WindowJoin.stage[K, A, B](within, lateness)(atL, atR).at[Take[Ev] + (Writer[Out] + Async)])
+  }
+
   /** what `merge(chunked = true)` batches by: not a parameter, since
    * exposing it would quietly break `capacity`, which counts ELEMENTS */
   private[stream] val ChunkSize = 16
