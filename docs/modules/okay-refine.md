@@ -163,6 +163,85 @@ verdict shape — here. What a swap IS — in the domain's repository.
 The test of the boundary: a file that mentions no term of the domain
 belongs here.
 
+## The algebra: glyphs, classes, effects, streams
+
+**Two names each, and one new combinator.** `>>>` is `andThen`; `or` is
+`<|>` — every alternative runs, two takers are `Unclear`. `orElse` is NOT
+another name for `<|>`: it keeps the meaning Scala gives the word in
+Option, Either and PartialFunction — the second pattern is consulted only
+when the first DECLINES, so it can never make the answer `Unclear`, and
+the refusal that sent the read to the fallback stays in the verdict:
+
+```scala
+assert((even or small).run(4).isInstanceOf[Verdict.Unclear[?]])
+assertEquals((even orElse counting).run(4), Verdict.Took(4, Path("even"), Vector.empty))
+assertEquals((even orElse counting).run(7), Verdict.Took(7, Path("small"), Vector(Refusal(Path("even"), "7 is odd"))))
+```
+
+**What a pattern IS an instance of**, each law run by
+`TestRefineAlgebra` on Took, Unclear and Declined inputs:
+
+- a **category** — `Refine.id` (which adds no name to the path, so
+  `id >>> r` answers exactly what `r` does) and `>>>`, associative;
+  `given Refine.category` is okay-optics' `Optic.Category`;
+- a **monoid under `or`**, and another **under `orElse`**, both with
+  `Refine.empty` (declines everything, writes nothing) as the unit;
+- an **invariant functor** — `map(name)(to, from)` is `imap`: a pattern
+  can only learn a new type it can also write back;
+- **monoidal, two ways** — `***` runs two patterns on the halves of a
+  pair, `+++` on the two sides of an `Either`; and `and` reads a RECORD
+  from one input and writes it back by merging the two skeletons
+  (`Refine.Merge`, given for `Json`) — Rendel and Ostermann's
+  `ProductFunctor`, for trees:
+
+```scala
+val money = (field("amount") >>> num) and (field("currency") >>> str)
+assertEquals(money.run(j), Verdict.Took((5.0, "EUR"), Path("amount", "number", "currency", "string"), Vector.empty))
+assertEquals(money.write((5.0, "EUR")).map(Json.print), Right("""{"amount":5,"currency":"EUR"}"""))
+```
+
+**What it cannot be, and why** — each is the way back refusing:
+
+- not a `Functor`, `Applicative` or `Monad`: `B` is the read's OUTPUT and
+  the write's INPUT, so a plain `B => C` has no way back; `pure(b)` has no
+  input to write `b` into; and a `flatMap` choosing the next pattern from
+  the value read leaves the write not knowing which pattern to write
+  through;
+- not a `Profunctor` (so not `Strong`/`Choice` in the optics sense): `A`
+  is the read's input and the write's output — the same invariance on the
+  other side;
+- not an `Arrow` or `ArrowChoice`: `arr(f)` would need a way back for an
+  arbitrary function. A pattern is a PARTIAL ISOMORPHISM — a category with
+  products and sums, and no `arr`;
+- `or` is not commutative: the readings and refusals come back in the
+  order written, though whether the answer is `Unclear` does not depend on
+  it.
+
+The read half on its own IS a Kleisli arrow — of the `Verdict` monad
+(readings with a log of refusals) — which is why `>>>` is associative.
+
+**Effects.** A read is pure on purpose: a read that performed effects
+could not be written back or replayed. A pattern enters a program three
+ways — `run` inside it (a value), `orRaise` (the value, or the whole
+non-`Took` verdict through `Throws`, handed back by `runEither`), and
+`search` (a `Choose` program: `Unclear` is a choice point, `Declined` an
+empty one):
+
+```scala
+val both = for a <- int.orRaise("4"); b <- int.orRaise("five") yield a + b
+assertEquals(readings("4"), Seq(4, 4))
+```
+
+**Streams.** `verdicts` is a `Stage` with one verdict per input and
+nothing dropped; `taken` emits only the values and ANSWERS what it did
+not take, so a stream that read nine of ten documents cannot pass for one
+that read ten:
+
+```scala
+assertEquals(values, Seq(7, 200))
+assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
+```
+
 ## API reference
 
 | | |
@@ -177,6 +256,13 @@ belongs here.
 | `Refine.Step(…).prism` | the step as an optics `Prism`, for the laws |
 | `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
+| `r >>> s`, `r or s` | `andThen` and `<\|>` by other names |
+| `r orElse s` | a fallback: `s` only when `r` declines; never `Unclear` from `s` |
+| `Refine.id`, `Refine.empty` | the category's unit (no name in the path); the unit of `or` and `orElse` |
+| `r *** s`, `r +++ s` | on the halves of a pair; on the sides of an `Either` |
+| `r and s` | a record: both over one input, written back through `Refine.Merge` |
+| `r.orRaise(a): B ! Throws % Verdict[B]` | the read as an effect |
+| `r.verdicts`, `r.taken` | `Stage`s: every verdict; the values, answering `Missed(declined, unclear)` |
 | `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON — for XML text, `Xml.fromValue` on the written value |
 | `Refine.json.field(name)`, `.str`, `.num`, `.each(name)` | the steps a document-level pattern is written in; a path of them names itself in the verdict |
 | `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <\|> (text andThen (json <\|> xml <\|> yaml))` |
@@ -235,6 +321,12 @@ belongs here.
 - Hutton, Meijer, *Monadic Parser Combinators* (1996) — parsers as
   values composed by choice and sequence, the shape this borrows for a
   grammar that is not fixed in advance.
+- Rendel, Ostermann, *Invertible Syntax Descriptions: Unifying Parsing
+  and Pretty Printing* (Haskell Symposium 2010) — partial isomorphisms,
+  and why a reader-writer pair is an invariant functor with products and
+  choice rather than an applicative: `map`, `and`, `or` here.
+- Hughes, *Generalising Monads to Arrows* (SCP 2000) — the `>>>` glyph,
+  and the `arr` a pattern cannot have.
 - ISDA, *FpML* (Financial products Markup Language) and *Common Domain
   Model* — the two public corpora the private domain modules read; this
   module's format level is what they stand on.

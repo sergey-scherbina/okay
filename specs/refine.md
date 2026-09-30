@@ -234,6 +234,22 @@ Stage 3 — lessons:
   hand-written `match`: the reader sees what was considered.
   specs/dlm.md's `Support` made the same call for utterances.
 
+- **refine-algebra (2026-09-30, operator ask).** `>>>` and `or` are
+  second names for `andThen` and `<|>`. `orElse` was asked for as a third
+  name of `<|>` and was given its Scala meaning instead, on the operator's
+  choice: in Option, Either, PartialFunction and Try it is first-wins, and
+  a `<|>` spelled `orElse` would teach exactly the silent first-wins this
+  module removes. So `orElse` is a new combinator — the fallback runs only
+  when the first declines — and `or` is `<|>`'s word. Classes that hold,
+  with their laws tested: Category (`id` with no path name), two monoids
+  (`or`, `orElse`; unit `empty`), invariant functor (`map`), monoidal
+  products `***` / `+++`, and `and` over a `Merge`. Refuted, each because
+  the way back refuses: Functor/Applicative/Monad (B is in and out),
+  Profunctor (A is in and out), Arrow (`arr` needs an inverse). Effects:
+  `orRaise` (Throws) beside `search` (Choose); an effectful READ refused
+  — it could be neither written back nor replayed. Streams: `verdicts`,
+  `taken` (which answers `Missed`, so dropping is never silent).
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of
