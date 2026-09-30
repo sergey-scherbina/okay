@@ -274,4 +274,49 @@ object PState {
    */
   type Zooming[X, R] = [A, B] =>> Cont[X, B => R, A => R]
 
+  /**
+   * THE THREADED ROAD (pstate-threaded, 2026-09-30): the same typestate
+   * as DATA on the indexed tree, run by `State.handle`'s loop with the
+   * TYPE moving. `get` and `set` above are shift bodies — the state
+   * rides in the answer type (`S => R`), the runner is Cont's, and every
+   * operation is a re-entry through a `Reentry`, which is the 1.29x
+   * against `State.handle` that the header of this object records.
+   * With the base's indexes invariant (freer-consumed-index) the other
+   * reading types: `Op[S, R, X]` is an operation that moves the state
+   * from `R` to `S` and answers `X`, the tree `Freer[Op, S, R, A]` is
+   * the program, and `Threaded.run` holds the state in its hand and
+   * continues at the type the operation gives it — `@tailrec`, no
+   * continuation object, no room, nodes only. The compiler enforces
+   * the protocol order exactly as it does for the shift road: `Put`
+   * from a state the program is not in does not type.
+   *
+   * `Put` answers the OLD state, as `set` above does, so a program is
+   * spelt the same on both roads and the two benchmark lanes fold the
+   * same accumulator (HandlerBenchmark `statePara` / `stateThreaded`).
+   */
+  enum Op[S, R, +X]:
+    /** read the state, leaving its type */
+    case Get[S]() extends Op[S, S, S]
+    /** replace the state, moving its type from `S` to `T`; the old state is the answer */
+    case Put[S, T](t: T) extends Op[T, S, S]
+
+  /** a typestate program on the threaded road: `A` computed, the state
+   * moved from `R` to `S` */
+  type Threaded[A, S, R] = Freer[Op, S, R, A]
+
+  object Threaded:
+    inline def get[S]: Threaded[S, S, S] = Freer.Inject[Op, S, S, S](Op.Get())
+    inline def put[S, T](t: T): Threaded[S, T, S] = Freer.Inject[Op, T, S, S](Op.Put(t))
+
+    /** run from an initial state to (final state, value): the loop
+     * threads the state, typed by the GADT at every arm — `Return` gives
+     * `S = R`, `Get` gives its state's type to the continuation, `Put`
+     * hands the new state on */
+    @tailrec def run[A, S, R](p: Threaded[A, S, R])(r: R): (S, A) =
+      (p.resume: @unchecked) match
+        case Freer.Return(a) => (r, a)
+        case Freer.Inject(Op.Get()) => (r, r)
+        case Freer.Inject(Op.Put(t)) => (t, r)
+        case Freer.Bind(Freer.Inject(Op.Get()), k) => run(k(r))(r)
+        case Freer.Bind(Freer.Inject(Op.Put(t)), k) => run(k(r))(t)
 }

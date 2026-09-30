@@ -152,4 +152,13 @@ class HandlerBenchmark {
     PState.run(0L):
       (1 to M).foldLeft(PState.get[Long, (Long, Long)]): (m, _) =>
         m.flatMap(_ => PState.get.flatMap(s => PState.set(s + 1)))
+
+  /** the SAME M-step workload as `statePara`, the state moved by the
+   * indexed DATA signature and threaded by the tail-recursive loop
+   * (pstate-threaded): typestate at `stateEffect`'s cost, or not */
+  @Benchmark
+  def stateThreaded(): (Long, Long) =
+    PState.Threaded.run(
+      (1 to M).foldLeft(PState.Threaded.get[Long]): (m, _) =>
+        m.flatMap(_ => PState.Threaded.get[Long].flatMap(s => PState.Threaded.put[Long, Long](s + 1))))(0L)
 }
