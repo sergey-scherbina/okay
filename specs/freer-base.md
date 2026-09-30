@@ -1301,3 +1301,30 @@ box beside this lane all morning. The one thing that could move is
 the JIT's view of `Freer`'s sealed hierarchy (five cases now), and no
 loop tests for `Diag`; if any core lane moves at the next reading,
 this is the change to bisect to.
+
+### Re-measured: the invariant indexes and the diagonal leaf cost nothing (2026-09-30, freer-base-remeasure)
+
+Two base changes landed unmeasured on 2026-09-30 because the CI runner
+gated the box beside them. Read afterwards on a quiet box: `mine` =
+78f8dfec2 (freer-consumed-index + freer-diag-leaf) against `ref` =
+7ae9a6aa9 (master just before them; the arms differ in Free.scala,
+Cont.scala, ContMacro.scala and Effects.scala only), three alternating
+rounds, MIN per lane, `jmh-lane.sh -f2 -wi3 -i5 -prof gc`, JDK 26,
+load 2.6-4.9, all 24 lanes with the script's "box stayed quiet"
+verdict (history.d `2026-09-30T095512Z-freer-base-remeasure.tsv`):
+
+| lane | mine | ref | ratio | B/op |
+|---|---|---|---|---|
+| `fib100` | 2277 ns | 2268 ns | 1.004 | 21 552 both |
+| `statePara` | 30.88 µs | 30.57 µs | 1.010 | 301 408 both |
+| `relayForward` | 168.0 µs | 167.9 µs | 1.001 | 1 995 617 both |
+| `stepBulk` | 192.5 µs | 193.4 µs | 0.996 | 2 319 825 both |
+
+UNCHANGED, as predicted: the nodes are the same objects, `tailAt`'s
+cast is erased, and the fifth enum case did not change the JIT's view
+of the `Inject`/`Bind` type tests on the Free side (`relayForward`,
+`stepBulk`) or of the leaf loop (`fib100`, `statePara`). Round 1 read
+`fib100` at 1.019 and rounds 2-3 at 1.000 and 0.978 — the inlining
+lottery this spec has met before, and why a single round is a
+hypothesis. The lanes the freer-consumed-index and freer-diag-leaf
+entries named as "the change to bisect to" need no bisecting.
