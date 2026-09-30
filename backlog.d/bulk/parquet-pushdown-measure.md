@@ -1,6 +1,6 @@
-- [ ] parquet-pushdown-measure — the measurement that decides whether
-      streams-seam lane 5 (the structural sub-language + `Bulk[DataFrame]`)
-      is built. On CSV the gap is 1.32x (MeasureGtfsFrames, 2026-09-30:
+- [ ] parquet-pushdown-measure — (lane 5 was BUILT on the operator's
+      reasons, 2026-09-30; this stays as the measurement of what pushdown
+      buys, for the docs, not as a gate.) On CSV the gap is 1.32x (MeasureGtfsFrames, 2026-09-30:
       our seam on Spark 708 ms vs a hand DataFrame 536 ms over the GTFS
       three joins), which does not earn a second plan language. Where a
       closure is structurally worse is PARQUET with a selective
