@@ -6,9 +6,8 @@ import okay.codec.Schema
 import okay.sql.{Query, SqlValue, Structured}
 import okay.spark.SparkBulk.{Rows, SparkBulk}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{Column, DataFrame, Row as SRow, SparkSession}
+import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 import org.apache.spark.sql.functions.{col, lit, struct}
-import org.apache.spark.sql.types.*
 
 /**
  * DATAFRAMES IN A `Tables` PROGRAM (specs/streams-seam.md, lane 5): the

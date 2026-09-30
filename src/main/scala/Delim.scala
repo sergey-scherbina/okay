@@ -1178,7 +1178,7 @@ object Delim {
        * modes per fork (91.7 or 101-103 us against a stable 100); an
        * unstacked program never reaches these arms, so they cost its
        * hot path nothing but the size */
-      def typed[X, S1, S2](op: Op[F, S1, S2, X], kont: Segs[F, X, R]): Step[F, R] = op match
+      def typed[X, S1, S2](op: Op[F, S1, S2, X], kont: Segs[F, X, R]): Step[F, R] = (op: @unchecked) match
         case pu: Op.Push[F, ?, r, ?] =>
           Next(pu.body, Segs.Mark[F, r, X, R](pu.p, <:<.refl[r]: r <:< X, kont))
         case d: Op.Dollar[F, st, r0, r, ?] =>
