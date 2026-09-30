@@ -192,6 +192,14 @@ class TestFreerPara extends munit.FunSuite:
     assertEquals(value, 3)
   }
 
+  // ------- reading 2 on an INVARIANT base: ProbeMcBride, the loop that types
+
+  test("on an invariant base the consumed-state loop types, @tailrec, with no continuation object") {
+    assertEquals(ProbeMcBride.answers, (List("21", "21"), 23))
+    assert(ProbeMcBride.refusedPut.contains("Required"), ProbeMcBride.refusedPut)
+    assert(ProbeMcBride.refusedRun.contains("Required"), ProbeMcBride.refusedRun)
+  }
+
   // ------------------- reading 2: the index is a CONSUMED state (refused)
 
   /** McBride's shape: `R` the state before, `S` the state after */

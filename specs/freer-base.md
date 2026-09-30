@@ -1144,3 +1144,66 @@ extractor. Handlers stay Cont-valued (`F !> S` is `X /> S`); what
 moves is only that a handler of an INDEXED effect answers `Cont[X, S,
 R]` off the diagonal, which is `PState`'s `getAt`/`setAt` given a
 data operation to read.
+
+### McBride's reading is refused by the variance ALONE — probed on the invariant base (2026-09-30, freer-mcbride-probe)
+
+The operator asked what the problem with the consumed-state index is,
+what is lost without it, and what it would give. `src/test/scala/
+ProbeMcBride.scala` writes the SAME `St` signature and the SAME loop
+TestFreerPara pins as refused, against `ProbeFreerStep`'s invariant
+copy of the enum, and it types — kept compiling, exercised by
+TestFreerPara:
+
+- **No continuation object at all.** `run[A, S, R](p: Freer[St, A, S,
+  R])(r: R): (S, A)` is `State.handle`'s loop with the type moving:
+  `Return` gives `S = R` so `(r, a)` is the pair owed; `Get` gives
+  `X = T = R` so the continuation takes the state held; `Put` hands
+  `t: T` on. No `k`, no `Reentry`, no room, no switch — the whole of
+  Cont's stack machinery exists because a shift body CALLS `k`, and
+  this handler calls nothing.
+- **`@tailrec` with the type arguments changing per call.** Every
+  recursive call is at a different index; Scala 2 refused that
+  ("called recursively with different type arguments") and Scala 3
+  accepts it, so the loop is the fast shape, not an erased inner loop.
+- **The type still refuses** a `Put` from the wrong state and a run
+  from a state of the wrong type (`typeCheckErrors`, in the test).
+
+So the obstacle is `+R` and the bound `G[_, +_, +_]`, and nothing
+deeper. What `+R` is FOR, by grep: `Cont.tailShift`/`tailPure`'s
+`liftCo` — the macro's tail-shaped body emitted as a `Return(v):
+Cont[A, S, S]` where a `Cont[A, S, R]` is owed, with `S <:< R`
+summoned at the site. Nothing else reads the base's covariance in `R`
+(`Delim`'s `liftCo[Prog]` is on the value; the facade `Rep` is
+invariant, backlog `cont-variance`). The price of McBride's reading on
+the library's base is therefore exact: `S` and `R` invariant on
+`Freer`, `G[_, _, +_]`, and `tailShift` placing its `Return` at
+`(S, R)` by ONE cast justified by the evidence it already holds (or a
+`Return` case carrying the evidence, +8 B on every `pure`). Both
+readings then live on one invariant tree, each as its own signature.
+
+**What is lost without it.** A type-changing state — and any effect
+whose handler CONSUMES its index: a held resource typed `Handle[R]`,
+a session's channel at its protocol state — can be handled only
+through the answer type, which is CPS: `PState` costs a frame per
+operation, a `Reentry` per bind and the room/switch bookkeeping, and
+measures 1.29x `State.handle` on the same workload (State.scala's
+header, 21.23 vs 27.42 µs). McBride's loop is `State.handle`'s own
+shape, tail-recursive over `resume`, nodes only. The typed protocol
+would then cost what the untyped one costs.
+
+**What McBride's index gives beyond Atkey's, and what this tree cannot
+express.** In "Kleisli arrows of outrageous fortune" the value is a
+FAMILY over the index, `a : I -> Set`, so the state after an operation
+may depend on the VALUE it answers — `tryOpen` answering `Opened` at
+`Open` or `Failed` at `Closed`, the continuation typed for both. That
+needs `Bind`'s continuation polymorphic in the index, `[j] => A[j] =>
+M[B, j]`; this tree's `f: A => Freer[G, S, T, B]` fixes `T`. Atkey's
+encoding of the same is a sum-typed STATE, `Either[Open, Closed]`,
+which `Stage.phased` already runs (`S1 -> Either[S1, S2]`), the next
+operation matching on it. So: the value-dependent post-state stays
+encoded, the consumed index is one variance decision away.
+
+Not measured — a probe, not a lane. The lane, if the trade is wanted,
+is backlog `freer-consumed-index`; it is in tension with
+`cont-variance`, which asks for MORE covariance on the facade, and one
+of the two has to be chosen.
