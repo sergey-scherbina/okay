@@ -256,11 +256,8 @@ docs/continuations/26-cancellable-flows-in-a-ui.md	test("Dialog itself is untouc
 docs/continuations/26-cancellable-flows-in-a-ui.md	test("a scope cancels as a unit: no Option threading between its steps")
 docs/continuations/26-cancellable-flows-in-a-ui.md	test("multi-prompt: an inner scope aborts ACROSS its boundary to the outer one")
 docs/continuations/appendix-a-if-you-really-want.md	case Delay(thunk: () => Free[F, A])               // ...and a thunk
-docs/continuations/appendix-a-if-you-really-want.md	case Done[F[+_], Z]()
 docs/continuations/appendix-a-if-you-really-want.md	case Inject(a: F[A])                              // one operation
 docs/continuations/appendix-a-if-you-really-want.md	case Iter(body: Proc[F, X, Either[X, Y]])   // Left goes round, Right leaves
-docs/continuations/appendix-a-if-you-really-want.md	case K[F[+_], X, Y, Z](f: X => Y ! (Delim + F), rest: Segs[F, Y, Z])
-docs/continuations/appendix-a-if-you-really-want.md	case Mark[F[+_], X, Z](p: Prompt[X], rest: Segs[F, X, Z])
 docs/continuations/appendix-a-if-you-really-want.md	case Pure(a: A)                                   // a value
 docs/continuations/appendix-a-if-you-really-want.md	def leaves: Vector[F[Any]]    // every operation the program MAY perform,
 docs/continuations/appendix-a-if-you-really-want.md	f.app(x)     =  e => f(e)(x(e))           //  S

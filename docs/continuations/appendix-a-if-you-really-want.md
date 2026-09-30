@@ -212,19 +212,19 @@ The reflex is to blame delimited control, and it is wrong. In this
 implementation a captured continuation is **already a data structure**:
 
 ```scala
-private enum Segs[F[+_], A, Z]:
-  case Done[F[+_], Z]()
-  case K[F[+_], X, Y, Z](f: X => Y ! (Delim + F), rest: Segs[F, Y, Z])
-  case Mark[F[+_], X, Z](p: Prompt[X], rest: Segs[F, X, Z])
+enum Frames[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
+  case End[F[_, _, +_], A, S]() extends Frames[F, A, S, S, A]
+  case Frame[F[_, _, +_], A, S, S2, T, Y, Z](f: A => Freer[Cont0.Row[F], S2, T, Y],
+  case Reset[F[_, _, +_], A, S, T, Y, Z](p: Prompt[Y], ret: A => Freer[Cont0.Row[F], T, T, Y],
 ```
 
 A list of frames. You can walk it, count the frames, and see which
-prompts are installed — `Mark` is a delimiter, sitting in the
+prompts are installed — `Reset` is a delimiter, sitting in the
 continuation as an ordinary node. A continuation here is **more**
 inspectable than a native stack, not less, and that is exactly why it
 is multi-shot (chapter 13).
 
-The opacity is `K`'s `f`. An ordinary host function — the same one
+The opacity is `Frame`'s `f`. An ordinary host function — the same one
 `Bind` was already carrying before `Delim` existed.
 
 > **The problem was never continuations. It is `flatMap`.** Captures
@@ -771,7 +771,7 @@ serialisability is a property of the heap at one instant.
 
 **Four — the checkpoint does not remove the term problem.**
 
-To continue you must know *where* to continue. `Segs` hands you the
+To continue you must know *where* to continue. `Frames` hands you the
 frames as data, and `Mark` even shows the installed prompts — but each
 `K` frame still carries a host function. Saving the state relocates the
 problem; it does not dissolve it. Everything earlier in this appendix

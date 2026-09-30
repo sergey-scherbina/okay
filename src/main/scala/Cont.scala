@@ -812,6 +812,21 @@ object Frames:
   private def rebaseP[F[_, _, +_], S1, R1, S2, R2, A](p: Freer[Cont0.Row[F], S1, R1, A]): Freer[Cont0.Row[F], S2, R2, A] =
     p.asInstanceOf[Freer[Cont0.Row[F], S2, R2, A]]
 
+  /**
+   * THE COUNT IS A FRAME. A `dollarResumed` is told each time the
+   * delimiter is ENTERED: at the operation, and at each run of a
+   * capture that took it. A cut puts this identity frame on top of the
+   * captured segment, holding the segment's fresh counts, and it is
+   * popped exactly when the resumed segment is stepped — once per
+   * `k(x)`, never on a head form's re-entry (the live stack has no
+   * such frame), never for a `k` built and dropped. `splice` counts
+   * nothing.
+   */
+  final class Enter[F[_, _, +_], X, T](val shots: List[Cont0.Shots]) extends (X => Freer[Cont0.Row[F], T, T, X]):
+    def apply(x: X): Freer[Cont0.Row[F], T, T, X] =
+      shots.foreach(_.enter())
+      Return(x)
+
   /** the prompts installed on a stack, innermost first — `NoPrompt`'s list */
   @tailrec def installed[F[_, _, +_]](fs: Frames[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = fs match
     case Frame(_, rest) => installed(rest, acc)
@@ -832,11 +847,15 @@ object Frames:
 
     /** cut the stack at the `Reset` naming `sh.p`: `k` is the segment
      * with it (without it when bare), the body takes the delimiter's place */
-    @tailrec def cut[X, Y, T, T2, C](sh: Cont0.Shift0[F, Y, T, R, X], all: Frames[F, X, S0, T, Z], fs: Frames[F, C, S0, T2, Z], rev: Rev[F, X, T, T2, C]): Next[?, ?] = fs match
+    /** a captured segment's count for a delimiter: fresh, and listed for the `Enter` frame */
+    def fresh(shots: Cont0.Shots | Null, acc: List[Cont0.Shots]): (Cont0.Shots | Null, List[Cont0.Shots]) =
+      if shots == null then (null, acc) else { val s = Cont0.Shots(shots.resumed); (s, s :: acc) }
+
+    @tailrec def cut[X, Y, T, T2, C](sh: Cont0.Shift0[F, Y, T, R, X], all: Frames[F, X, S0, T, Z], fs: Frames[F, C, S0, T2, Z], rev: Rev[F, X, T, T2, C], counts: List[Cont0.Shots]): Next[?, ?] = fs match
       // no delimiter answers, and no boundary: the capture goes OUT as an
       // operation, for a machine outside this one (Delim.runNested)
       case Frames.End() => null
-      case fr: Frames.Frame[F, C, S0, ?, T2, ?, Z] => cut(sh, all, fr.rest, Rev.Snoc(rev, fr.f))
+      case fr: Frames.Frame[F, C, S0, ?, T2, ?, Z] => cut(sh, all, fr.rest, Rev.Snoc(rev, fr.f), counts)
       case d: Frames.Reset[F, C, S0, T2, y2, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Frames.Reset[F, C, S0, T2, y2, Z] => Delim.given_Same_Prompt.same(sh.p, d.p) match
         case Some(ey) =>
@@ -845,13 +864,19 @@ object Frames:
               if !d.plain then throw new UnsupportedOperationException(
                 s"${sh.at}: a control-capture to ${d.p.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
               // plain: the body's type IS the prompt's — the claim `plain` makes
-              rebase(Rev.link(rev, Frames.End[F, C, T2]())).asInstanceOf[Frames[F, X, T, T, Y]]
+              rebase(entered(Rev.link(rev, Frames.End[F, C, T2]()), counts)).asInstanceOf[Frames[F, X, T, T, Y]]
             else
               // the segment WITH the delimiter: `k` carries `ret` (the $/S0 rule), a fresh count
-              val shots = if d.shots == null then null else Cont0.Shots(d.shots.resumed)
-              rebase(ey.flip.liftCo[[y] =>> Frames[F, X, T2, T, y]](Rev.link(Rev.SnocReset(rev, d.p, d.ret, d.plain, shots), Frames.End[F, y2, T2]())))
+              val (shots, counted) = fresh(d.shots, counts)
+              rebase(ey.flip.liftCo[[y] =>> Frames[F, X, T2, T, y]](entered(Rev.link(Rev.SnocReset(rev, d.p, d.ret, d.plain, shots), Frames.End[F, y2, T2]()), counted)))
           Next(rebaseP(ey.liftCo[[y] =>> Freer[G, T, R, y]](sh.f(k))), d.rest)
-        case None => cut(sh, all, d.rest, Rev.SnocReset(rev, d.p, d.ret, d.plain, d.shots))
+        case None =>
+          val (shots, counted) = fresh(d.shots, counts)
+          cut(sh, all, d.rest, Rev.SnocReset(rev, d.p, d.ret, d.plain, shots), counted)
+
+    /** the captured segment under its `Enter` frame, when it has counts */
+    def entered[X, S, T, Y](seg: Frames[F, X, S, T, Y], counts: List[Cont0.Shots]): Frames[F, X, S, T, Y] =
+      if counts.isEmpty then seg else Frames.Frame[F, X, S, T, T, X, Y](Enter[F, X, T](counts), seg)
 
     @tailrec def loop[X, T](focus: Freer[G, T, R, X], fs: Frames[F, X, S0, T, Z]): Freer[G, S0, R, Z] = focus match
       case b: Bind[G, T, t2, R, x0, X] => Frames.as(b.f) match
@@ -884,7 +909,7 @@ object Frames:
         case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
           if rs.shots != null then rs.shots.enter()
           loop[a, T](rs.body, Frames.Reset(rs.p, rs.ret, rs.plain, rs.shots, fs))
-        case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => cut(sh, fs, fs, Rev.Nil[F, X, T]()) match
+        case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => cut(sh, fs, fs, Rev.Nil[F, X, T](), Nil) match
           case null => Bind(focus, fs)
           case n: Next[x, t] => loop[x, t](n.focus, n.fs)
         case _ => Bind(focus, fs)
@@ -892,7 +917,7 @@ object Frames:
         case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
           if rs.shots != null then rs.shots.enter()
           loop[a, T](rs.body, Frames.Reset(rs.p, rs.ret, rs.plain, rs.shots, fs))
-        case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => cut(sh, fs, fs, Rev.Nil[F, X, T]()) match
+        case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => cut(sh, fs, fs, Rev.Nil[F, X, T](), Nil) match
           case null => Bind(focus, fs)
           case n: Next[x, t] => loop[x, t](n.focus, n.fs)
         case _ => Bind(focus, fs)
@@ -991,23 +1016,12 @@ private object Rev:
     case Snoc(prev, f) => link(prev, Frames.Frame(f, fs))
     case SnocReset(prev, p, ret, plain, shots) => link(prev, Frames.Reset(p, ret, plain, shots, fs))
 
-  /** reversed, and every delimiter in the segment ENTERED: a splice is a
-   * resumption, which is what a `dollarResumed` counts */
   @tailrec def reverse[F[_, _, +_], A, S2, T0, T, X, Y](ks: Frames[F, X, S2, T, Y], acc: Rev[F, A, T0, T, X]): Rev[F, A, T0, S2, Y] = ks match
     case Frames.End() => acc
     case Frames.Frame(f, rest) => reverse(rest, Snoc(acc, f))
-    case Frames.Reset(p, ret, plain, shots, rest) =>
-      if shots != null then shots.enter()
-      reverse(rest, SnocReset(acc, p, ret, plain, shots))
+    case Frames.Reset(p, ret, plain, shots, rest) => reverse(rest, SnocReset(acc, p, ret, plain, shots))
 
-  @tailrec def enter[F[_, _, +_]](ks: Frames[F, ?, ?, ?, ?]): Unit = ks match
-    case Frames.Frame(_, rest) => enter(rest)
-    case Frames.Reset(_, _, _, shots, rest) =>
-      if shots != null then shots.enter()
-      enter(rest)
-    case _ => ()
-
-  /** `ks ++ fs`: the segment on top of the stack */
+  /** `ks ++ fs`: the segment on top of the stack; onto an empty one, the segment itself */
   def splice[F[_, _, +_], A, S, T, S2, Y, Z](ks: Frames[F, A, S2, T, Y], fs: Frames[F, Y, S, S2, Z]): Frames[F, A, S, T, Z] = fs match
-    case Frames.End() => enter(ks); ks
+    case Frames.End() => ks
     case _ => link(reverse(ks, Nil[F, A, T]()), fs)
