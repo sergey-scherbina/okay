@@ -1116,10 +1116,28 @@ reproduces on its own suite under `adaptive` and not under Loom:
   it held nothing. `given Scheduler = Schedulers.loom` is the answer
   for a program whose fibers spend their lives blocked.
 
-### Not measured here
-The slice hooks add a volatile write, a monitor exit and a thread-local
-read and write per drive slice, and a late resumption allocates one
-`Bind`. The fork/join rows of the re-run table were measured without
-them, on the operator's machine; re-run `AdversarialBenchmark.forkJoin10k_*`
-and `spawnJoinSeq` there (`scripts/jmh-lane.sh`) before quoting the table
-for this code.
+### Re-measured on this code (2026-09-30, scheduler-flip-remeasure)
+The re-run table below ("The default, re-run") was taken before the
+slice hooks (drive-interrupts-blocking-run) and the late-resume `Bind`
+(drive-resume-throw-lost). The same lanes on master of 2026-09-30 —
+the hooks as made cheap again by spawnjoin-rise-bisect, `forkLong`
+(adaptive-chunked-merge-cost), per-producer routes and the foreign-resume
+handoff (channel-route-per-producer) — one lane per `jmh-lane.sh`, two
+rounds each with the arms alternating by `-Dokay.scheduler`, `-f 2`:
+
+| lane | default | Loom | ratio | 2026-09-28 |
+|---|---:|---:|---:|---:|
+| AdversarialBenchmark.forkJoin10k_okay (outside, work 100) | 2102 (1988.5 / 2215.4) | 3111 (3074.1 / 3148.7) | 0.68 | 0.65 |
+| forkJoin10k_okayInside (work 100) | 3140 (3220.6 / 3060.0) | 3249 (3266.3 / 3231.5) | 0.97 | 0.98 |
+| cancel1k_okay (parameters do not enter it; 4 rows each) | 716 | 1017 | 0.70 | 0.68 |
+| AsyncBenchmark.okaySpawn (100 outside) | 10.61 (10.62 / 10.61) | 19.31 (19.38 / 19.24) | **0.55** | 0.97 |
+| AsyncBenchmark.okaySpawnInside (100 inside) | 16.92 (16.87 / 16.96) | 31.32 (31.87 / 30.78) | 0.54 | 0.51 |
+| DirectParallelBenchmark.parallel8 | 7.01 (6.91 / 7.12) | 10.18 (10.15 / 10.20) | 0.69 | 0.67 |
+
+Every row holds; the one that moved moved FOR the default — spawn from
+outside, 0.97 to 0.55, the per-slice price paid back. The lanes this
+table never had are measured in their own lanes: the chunked merge
+(adaptive-chunked-merge-cost, 185 against Loom's 197-229), sequential
+spawn/join on `own` (spawnjoin-rise-bisect, 64.4 against 64.2 before the
+hooks), the elementwise merge and zip (channel-route-per-producer, every
+capacity under Loom). Rows: src/jmh/history.d/2026-09-30T131624Z-scheduler-flip-remeasure.tsv.
