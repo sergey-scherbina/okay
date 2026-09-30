@@ -48,6 +48,34 @@
          benchmark's job, docs/wroclaw-streams-benchmark.md, is the
          candidate: today its three versions are hand-written per
          platform).
+      5. SPARK DATAFRAMES (operator's question, 2026-09-30) — not a
+         `Bulk[DataFrame]` instance as such: the seam sits at the RDD
+         level on purpose (specs/bulk.md, Out of scope), and it costs
+         what it costs — the Wrocław GTFS join reads 18 s through the RDD
+         seam against 7 s through DataFrames (docs/modules/okay-spark.md),
+         because a `map(f)`/`where(p)` carrying a Scala closure is
+         OPAQUE to Catalyst, and a `Dataset.map(f)` on a typed Dataset
+         is object mode (deserialise, call, serialise), often slower
+         than the RDD. Catalyst pays only for what it can SEE. So the
+         lane is a STRUCTURAL sub-language in the plan, typed by
+         `Schema[A]`'s field names (the named-rows measurement in
+         specs/bulk.md is the typing; okay-sql's `Query.Pred` —
+         And/Or/Not over field comparisons — is the predicate language
+         already written, engine-free): `select(fields)`, `where(pred)`,
+         join ON a named key field, `groupBy(field)(agg)`, `sortBy(field)`
+         as plan DATA beside the opaque `select(f)` that stays as the
+         escape hatch. Then a `Bulk[DataFrame]` instance is honest: a
+         structural plan compiles to column expressions end to end
+         (`SparkSchema` already maps `Schema[A]` to a `StructType` and
+         rows), Catalyst prunes, pushes, broadcasts and codegens, and
+         [[join-strategy-auto]]'s `Auto` DELEGATES to Catalyst on that
+         backend rather than second-guessing it; an opaque function in
+         the middle drops that segment to object mode and `Plan.show`
+         says where. Flink's Table API and our `Tables` rewrite read the
+         same structural nodes (the `Columns(Read)` pruning rewrite is
+         the first of them, landed). Measure the GTFS job three ways
+         before and after: the 18 s must approach the 7 s, or the lane
+         has not earned the surface.
       Refuted in advance: making `Flow` the one program and writing Spark
       and Flink interpreters for it — `Flow` is our engine's plan and
       carries our engine's decisions (Finish, Sequential, seeding); the
