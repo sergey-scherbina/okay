@@ -162,7 +162,7 @@ class TestKont extends munit.FunSuite:
   test("a shift0 with no dollar for its prompt fails by name and lists the installed delimiters") {
     val p = Cont0.prompt[String, String]
     val q = Cont0.prompt[String, String]
-    val e = intercept[NoDollar](run(dollar(p)(angle)(shift0(q)(_ => pure("x")))))
+    val e = intercept[NoReset](run(dollar(p)(angle)(shift0(q)(_ => pure("x")))))
     assertEquals(e.wanted, q.label)
     assertEquals(e.installed, List(p.label))
   }
