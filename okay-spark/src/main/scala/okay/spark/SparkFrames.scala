@@ -2,7 +2,7 @@ package okay.spark
 
 import okay.*
 import okay.Tables.{Heap, Table}
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 import okay.sql.{Query, SqlValue, Structured}
 import okay.spark.SparkBulk.{Rows, SparkBulk}
 import org.apache.spark.rdd.RDD
@@ -36,10 +36,9 @@ import org.apache.spark.sql.types.*
  * whose plan is exactly that held slot gets the same RDD back, so the
  * registry answers; any opaque step compiles a new RDD, which it does not.
  *
- * DECODING is Spark Row → okay `Json` → `Json.decode(Schema[A])`: exact
- * for products of numbers, text, booleans, options and sequences, which
- * is where `Columns` (the encoder) and the JSON codec agree; a sum type,
- * a `BigInt` or a JSON-typed field is refused by name at `load`.
+ * DECODING is `SparkValues`: Schema-driven straight over Spark's values,
+ * exact for numbers, reading a recursive type from its CBOR, a VARIANT
+ * typed and a MAP as its entries (spark-values-exact).
  */
 final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
   private type H = Heap[Rows]
@@ -47,7 +46,7 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
   private val born = java.util.Collections.synchronizedMap(new java.util.IdentityHashMap[RDD[Any], DataFrame]())
 
   private def rowsOf[A](df: DataFrame)(using Schema[A]): RDD[Any] =
-    val dec = SparkFrames.decoder[A](df.schema)
+    val dec = SparkValues.decoder[A](df.schema)
     val r: RDD[Any] = df.rdd.map(row => dec(row): Any)(using scala.reflect.ClassTag.Any)
     born.put(r, df): Unit
     r
@@ -127,10 +126,14 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
       val df = born.get(r)
       if df != null then df
       else
-        // encoded on the executors as value -> Json -> Row by the struct:
-        // `Columns.table`'s row function is not serializable, the schema is
-        val st = SparkFrames.checked(SparkSchema.structOf[A])
-        val rows = r.map(x => SparkFrames.row(Json.parse(Json.encode(s)(x.asInstanceOf[A])), st))
+        // encoded by `Columns` ON THE EXECUTORS, one table per partition:
+        // exact (a Long stays a Long, a recursive value its (cbor, json)),
+        // and only the schema — serializable — crosses to them
+        val st = SparkSchema.structOf[A]
+        val rows = r.mapPartitions { it =>
+          val (fs, toRow) = okay.codec.Columns.table[A](using s)
+          it.map(x => SparkSchema.rowOf(fs, toRow(SparkFrames.elem[A](x))))
+        }
         spark.createDataFrame(rows, st)
 
   // ------------------------------------------------------------ the handler
@@ -149,7 +152,7 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
     val r = SparkBulk.rdd(h.force(t)(bulk))
     val df = born.get(r)
     if df != null then h.hold[A](SparkBulk.rows[A](rowsOf[A](df.filter(column(w.pred)))))
-    else h.hold[A](SparkBulk.rows[A](r.filter(x => w.test(x.asInstanceOf[A]))))
+    else h.hold[A](SparkBulk.rows[A](r.filter(x => w.test(SparkFrames.elem[A](x)))))
 
   private def joinOn[A, B](h: H, l: Table[A], r: Table[B], lf: String, rf: String, li: Int, ri: Int)
                           (using sa: Schema[A], sb: Schema[B]): (Table[(A, B)], H) =
@@ -162,15 +165,15 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
       val (a, b) = (dl.alias("l"), dr.alias("r"))
       val j = a.join(b, col(s"l.$lf") === col(s"r.$rf"))
         .select(struct(dl.columns.map(c => col(s"l.`$c`"))*).as("_1"), struct(dr.columns.map(c => col(s"r.`$c`"))*).as("_2"))
-      val (decA, decB) = (SparkFrames.decoder[A](dl.schema), SparkFrames.decoder[B](dr.schema))
+      val (decA, decB) = (SparkValues.decoder[A](dl.schema), SparkValues.decoder[B](dr.schema))
       val out: RDD[Any] = j.rdd.map(row => (decA(row.getStruct(0)), decB(row.getStruct(1))): Any)
       born.put(out, j): Unit
       h.hold[(A, B)](SparkBulk.rows[(A, B)](out))
     else
       val kl = okay.sql.Structured.key(sa, li)
       val kr = okay.sql.Structured.key(sb, ri)
-      val lp: RDD[(Any, Any)] = rl.map(x => (kl(x.asInstanceOf[A]): Any, x))
-      val rp: RDD[(Any, Any)] = rr.map(x => (kr(x.asInstanceOf[B]): Any, x))
+      val lp: RDD[(Any, Any)] = rl.map(x => (kl(SparkFrames.elem[A](x)): Any, x))
+      val rp: RDD[(Any, Any)] = rr.map(x => (kr(SparkFrames.elem[B](x)): Any, x))
       h.hold[(A, B)](SparkBulk.rows[(A, B)](RDD.rddToPairRDDFunctions(lp).join(rp).map((_, ab) => ab: Any)))
 
   /** a program in `Tables + Structured`, run on Spark; it may also use
@@ -178,70 +181,8 @@ final class SparkFrames(spark: SparkSession, bulk: SparkBulk):
   def run[A](p: A ! Tables + Structured + State % H): A =
     State.run(Heap.empty[Rows])(structured(Tables.via(bulk)(p)))._2
 
-/** the decoding, as functions of a serializable object: a closure an
- * executor runs must not capture the `SparkFrames` that holds the session */
-object SparkFrames extends Serializable:
-  // ------------------------------------------------------------ decoding
-  private[spark] def json(v: Any, t: DataType): Json = (v, t) match
-    case (null, _) => Json.JNull
-    case (b: Boolean, _) => Json.JBool(b)
-    case (n: Int, _) => Json.JNum(n.toDouble)
-    case (n: Long, _) => Json.JNum(n.toDouble)
-    case (n: Double, _) => Json.JNum(n)
-    case (n: Float, _) => Json.JNum(n.toDouble)
-    case (n: Short, _) => Json.JNum(n.toDouble)
-    case (d: java.math.BigDecimal, _) => Json.JNum(d.doubleValue)
-    case (s: String, _) => Json.JStr(s)
-    case (r: SRow, st: StructType) => obj(r, st)
-    case (xs: scala.collection.Seq[?], ArrayType(e, _)) => Json.JArr(xs.iterator.map(json(_, e)).toVector)
-    case (other, _) => Json.JErr(s"a ${other.getClass.getSimpleName} value is not decoded by SparkFrames")
-
-  private[spark] def obj(r: SRow, st: StructType): Json =
-    Json.JObj(st.fields.toVector.zipWithIndex.map((f, i) => f.name -> json(r.get(i), f.dataType)))
-
-  /** how deep a Spark type nests: the walks below go one frame per level,
-   * so every door refuses a type deeper than `SparkSchema.MaxNesting` */
-  private def depth(t: DataType): Int =
-    var deepest = 0
-    val todo = scala.collection.mutable.Stack[(DataType, Int)]((t, 1))
-    while todo.nonEmpty do
-      val (d, n) = todo.pop()
-      if n > deepest then deepest = n
-      d match
-        case st: StructType => st.fields.foreach(f => todo.push((f.dataType, n + 1)))
-        case ArrayType(e, _) => todo.push((e, n + 1))
-        case _ => ()
-    deepest
-
-  private[spark] def checked(st: StructType): StructType =
-    if depth(st) > SparkSchema.MaxNesting then
-      throw IllegalArgumentException(s"SparkFrames: a type nested deeper than ${SparkSchema.MaxNesting} is refused")
-    st
-
-  private[spark] def decoder[A](st0: StructType)(using s: Schema[A]): SRow => A =
-    val st = checked(st0)
-    val refuse = st.fields.find(f => f.dataType.isInstanceOf[VariantType] || f.dataType.isInstanceOf[MapType])
-    refuse.foreach(f => throw IllegalArgumentException(s"SparkFrames: column `${f.name}` (${f.dataType.simpleString}) is not decoded"))
-    r => Json.decode(s)(obj(r, st)).fold(why => throw IllegalStateException(s"SparkFrames: a row is not a ${s}: $why"), identity)
-
-  /** a JSON value as a Spark Row of `st`, the decoder's inverse: fields
-   * by name, numbers to the column's own type, a missing field null */
-  private[spark] def row(j: Json, st: StructType): SRow =
-    val fs = j match
-      case Json.JObj(fs) => fs.toMap
-      case other => throw IllegalArgumentException(s"SparkFrames: a row is an object, not $other")
-    SRow.fromSeq(st.fields.toSeq.map(f => cell(fs.getOrElse(f.name, Json.JNull), f.dataType)))
-
-  private def cell(j: Json, t: DataType): Any = (j, t) match
-    case (Json.JNull, _) => null
-    case (Json.JBool(b), _) => b
-    case (Json.JNum(n), LongType) => n.toLong
-    case (Json.JNum(n), IntegerType) => n.toInt
-    case (Json.JNum(n), ShortType) => n.toShort
-    case (Json.JNum(n), FloatType) => n.toFloat
-    case (Json.JNum(n), _: DecimalType) => java.math.BigDecimal.valueOf(n)
-    case (Json.JNum(n), _) => n
-    case (Json.JStr(v), _) => v
-    case (Json.JArr(vs), ArrayType(e, _)) => vs.map(cell(_, e))
-    case (o: Json.JObj, s: StructType) => row(o, s)
-    case (other, _) => throw IllegalArgumentException(s"SparkFrames: $other is not a ${t.simpleString}")
+object SparkFrames:
+  /** THE ONE CAST, as `SparkBulk`'s: the seam's RDD holds `Any`, and an
+   * element of a `Rows[A]` is an `A` by construction (specs/bulk.md, "No
+   * per-element evidence") */
+  private[spark] def elem[A](x: Any): A = x.asInstanceOf[A]

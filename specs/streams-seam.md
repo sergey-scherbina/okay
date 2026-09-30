@@ -291,10 +291,26 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
   by the struct instead. Over rows already in memory Catalyst's
   optimizer evaluates a Filter itself and leaves a `LocalRelation`, so
   the test reads the ANALYZED plan; the Parquet test reads the executed
-  plan's `PushedFilters`. Decoding is Row → Json → `Json.decode(Schema)`:
-  exact where `Columns` and the JSON codec agree (products of numbers,
-  text, booleans, options, sequences); a `Long` above 2^53 through
-  `JNum` is not, and a VARIANT or MAP column is refused by name.
+  plan's `PushedFilters`. Decoding was Row → Json → `Json.decode(Schema)`,
+  which lost a `Long` above 2^53 and refused VARIANT and MAP columns —
+  SUPERSEDED by spark-values-exact (below).
   `column` walks the predicate with an explicit stack as `Query.eval`
   does; the row walks are bounded by `SparkSchema.MaxNesting`, checked at
   every door. Not additive: gate `affected master staged`.
+
+- spark-values-exact (2026-09-30, operator: "Нужно это исправить"): the
+  two named limits of tables-structural-2 removed. `SparkValues` decodes
+  by `Schema[A]` straight over Spark's values — no `Json` in between: a
+  `Long` at 2^53+1, `Long.MaxValue` and `Long.MinValue`, a 38-digit
+  `BigInt` arrive exactly; a recursive type (a 40-level tree) is read
+  from the CBOR half of the `(cbor, json)` struct `Columns` writes, at
+  the root as well as in a field; a MAP column is read as its entries
+  into a sequence of (key, value) products; a VARIANT is read TYPED
+  through Spark's `Variant` — an object into a product by key, a long
+  exactly, and any value into a `String` field as its JSON text.
+  `frame`'s RDD side is encoded by `Columns` on the executors
+  (`mapPartitions`, only the schema crossing), which is exact — the
+  value → Json → Row road it replaced lost the same longs. Every walk is
+  bounded by `SparkSchema.MaxNesting` through a depth parameter. What the
+  first run taught: a recursive ROOT is its `(cbor, json)` struct itself,
+  with no `value` field around it (`Columns.fields`).

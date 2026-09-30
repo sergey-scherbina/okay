@@ -21,9 +21,21 @@ import org.apache.spark.sql.SparkSession
  * would have to ship the suite to an executor with every row */
 final case class FrameTrip(id: Long, route: String, tram: Boolean)
 final case class FrameStop(trip: Long, time: String, seq: Int)
+final case class Wide(id: Long, big: BigInt, name: String)
+final case class Tree(label: String, kids: List[Tree])
+final case class Entry(key: String, value: Long)
+final case class Tagged(id: Long, tags: List[Entry])
+final case class Inner(id: Long, tags: List[String])
+final case class Doc(v: Inner, raw: String)
 object FrameRows:
   given Schema[FrameTrip] = Schema.derived
   given Schema[FrameStop] = Schema.derived
+  given Schema[Wide] = Schema.derived
+  given Schema[Tree] = Schema.derived
+  given Schema[Entry] = Schema.derived
+  given Schema[Tagged] = Schema.derived
+  given Schema[Inner] = Schema.derived
+  given Schema[Doc] = Schema.derived
 
 class TestSparkFrames extends munit.FunSuite {
   import FrameRows.given
@@ -100,4 +112,51 @@ class TestSparkFrames extends munit.FunSuite {
     assertEquals(got._1, trips.filter(_.route == "r4").map(x => x.copy(route = "R4")))
     assertEquals(got._2, got._1.length, "frame of a table that is not DataFrame-born encodes its rows")
   }
+
+  // ------------------------------------------------ exact values (spark-values-exact)
+
+  private type H = State % Tables.Heap[SparkBulk.Rows]
+  /** load, then out through `frame` of an RDD-side copy and back: the
+   * decoder and the executor-side encoder, both ways */
+  private def roundTrip[A: Schema](df: org.apache.spark.sql.DataFrame): (Vector[A], Vector[A]) = frames.run(for
+    t <- frames.load[A](df).plus[Tables + Structured]
+    rows <- t.collect.plus[Structured + H]
+    copy <- t.select(identity).plus[Structured + H]
+    out <- frames.frame[A](copy).plus[Tables + Structured]
+    back <- frames.load[A](out).plus[Tables + Structured]
+    again <- back.collect.plus[Structured + H]
+  yield (rows.elements.toVector, again.elements.toVector))
+
+  test("a Long above 2^53 and a BigInt of 38 digits arrive exactly, both ways") {
+    val xs = Vector(Wide(9007199254740993L, BigInt("12345678901234567890123456789012345678"), "a"),
+                    Wide(Long.MaxValue, BigInt(-1), "b"), Wide(Long.MinValue, BigInt(0), "c"))
+    val (in, out) = roundTrip[Wide](SparkSchema.dataFrame(spark, xs))
+    assertEquals(in.sortBy(_.name), xs)
+    assertEquals(out.sortBy(_.name), xs)
+  }
+
+  test("a recursive type arrives through its CBOR, exactly") {
+    val deep = (1 to 40).foldLeft(Tree("leaf", Nil))((t, i) => Tree(s"n$i", List(t, Tree(s"x$i", Nil))))
+    val xs = Vector(deep, Tree("solo", Nil))
+    val (in, out) = roundTrip[Tree](SparkSchema.dataFrame(spark, xs))
+    assertEquals(in.sortBy(_.label), xs.sortBy(_.label))
+    assertEquals(out.sortBy(_.label), xs.sortBy(_.label))
+  }
+
+  test("a MAP column is read as the list of its entries") {
+    val df = spark.sql("select 7L as id, map('a', 9007199254740993L, 'b', 2L) as tags")
+    val got = frames.run(frames.load[Tagged](df).plus[Tables + Structured].flatMap(_.collect.plus[Structured + H]))
+      .elements.toVector
+    assertEquals(got.map(t => t.copy(tags = t.tags.sortBy(_.key))),
+      Vector(Tagged(7L, List(Entry("a", 9007199254740993L), Entry("b", 2L)))))
+  }
+
+  test("a VARIANT column is read typed: an object into a product, a long exactly, anything into a String as JSON") {
+    val df = spark.sql("""select parse_json('{"id": 9007199254740993, "tags": ["a", "b"]}') as v, parse_json('{"x": [1, 2]}') as raw""")
+    val got = frames.run(frames.load[Doc](df).plus[Tables + Structured].flatMap(_.collect.plus[Structured + H]))
+      .elements.toVector
+    assertEquals(got.map(_.v), Vector(Inner(9007199254740993L, List("a", "b"))))
+    assertEquals(got.map(_.raw.replace(" ", "")), Vector("""{"x":[1,2]}"""))
+  }
 }
+
