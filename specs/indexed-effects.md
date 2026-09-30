@@ -206,7 +206,7 @@ Stage 8:
       the stacked shapes.
 
 Stage 9:
-- [ ] `Ops`/`Clauses`/`ShallowClauses` take the program type `P[_]`;
+- [x] `Ops`/`Clauses`/`ShallowClauses` take the program type `P[_]`;
       the unstacked instances are unchanged in behaviour (TestLexical
       green), the stacked ones take clauses over `Under[G, *, St]` with
       no `erase` on their road (TestLexicalStacked green on typed
@@ -278,6 +278,32 @@ Stage 5:
 
 ## Results
 
+### Stage 9 — LANDED (indexed-effects-9-lexical-typed): clauses over the program type
+
+`Lexical.Ops[F, R, P[_]]`, `Clauses[F, A, R, P[_]]` and
+`ShallowClauses[F, A, R, P[_]]` answer in `P[R]`; the unstacked
+instances are `P = Lexical.Unstacked[G]` (`[X] =>> X ! G`) and behave
+as before (TestLexical, TestLexicalTail, TestLexicalDefault,
+TestLexicalWalk green unchanged; `Lexical.State.deep/shallow` and the
+three test clause objects moved to the new spelling — the one visible
+change to a caller is the fourth type argument, `Unstacked[Delim + G]`
+for `Delim + G`). The stacked deep instance takes
+`Clauses[F, A, R, Lexical.Stacked.Below[G, St]]` (`[X] =>> Under[G, X,
+St]`, St the stack below the instance's prompt): `perform` asks
+`Has.Aux[st.S, p.type, S]` with `S` FIXED to the class's stack, so the
+evidence proves the stack below rather than finding it, and hands the
+clause the stacked `k` as it is; the installation is one `Op.Dollar`
+over `c.ret` and the body. `at` and `erase` are gone from that road
+(both stay in `Delim.Stacked` for `Lexical.Stacked.Tail`'s guard, which
+is the unstacked `dollarResumed`, and for `Layered.Stacked`). The price:
+stacked clauses name their stack, written `def deep[St <: Tuple]` and
+instantiated by the installation (inference finds `St = st.S` from the
+expected clause type, so the call is `Lexical.Stacked.deep(clauses)`
+with no type arguments), and a clause object typed at another stack is
+refused at the installation (TestLexicalStacked, 3 tests). Full
+`affected master staged`. Performance: not measured here; the stacked
+road lost two identity casts per operation and gained nothing, and the
+one pass after this stage prices everything (Deferred measurements).
 ### Stage 8 — LANDED (indexed-effects-8-prog-facade): the facade removed
 
 Prog.scala is deleted, with its `Prog[F, A, S, R]` opaque type,

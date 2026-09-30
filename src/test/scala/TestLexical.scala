@@ -101,7 +101,7 @@ class TestLexical extends munit.FunSuite:
     case Coin() extends Flip[Boolean]
 
   test("a NON-tail-resumptive handler from user clauses: every answer of two coin flips, k called twice") {
-    val all = new Lexical.Clauses[Flip, (Boolean, Boolean), List[(Boolean, Boolean)], Delim + Pure]:
+    val all = new Lexical.Clauses[Flip, (Boolean, Boolean), List[(Boolean, Boolean)], Lexical.Unstacked[Delim + Pure]]:
       def ret(a: (Boolean, Boolean)): List[(Boolean, Boolean)] ! Delim + Pure = okay.pure(List(a))
       def op[X](e: Flip[X], k: X => List[(Boolean, Boolean)] ! Delim + Pure): List[(Boolean, Boolean)] ! Delim + Pure =
         e match
@@ -215,14 +215,17 @@ class TestLexicalStacked extends munit.FunSuite:
   type P = okay.Pure
 
   object StateClauses:
-    type Ans = Int => (Int, Int) ! Delim + P
-    val deep = new Lexical.Clauses[State % Int, Int, Ans, Delim + P]:
-      def ret(a: Int): Ans ! Delim + P = okay.pure((s: Int) => okay.pure((s, a)))
-      def op[X](e: State[Int, X], k: X => Ans ! Delim + P): Ans ! Delim + P = e match
-        case State.Get() => okay.pure((s: Int) => k(s).flatMap(f => f(s)))
-        case State.Set(s1) => okay.pure((_: Int) => k(s1).flatMap(f => f(s1)))
-        case State.Modify(g) => okay.pure((s: Int) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) })
-        case State.Update(g) => okay.pure((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
+    import okay.Delim.Stacked.Under
+    /** the answer is itself a stacked program at the clauses' stack:
+     * nothing on this road is erased (indexed-effects stage 9) */
+    type Ans[St <: Tuple] = Int => Under[P, (Int, Int), St]
+    def deep[St <: Tuple] = new Lexical.Clauses[State % Int, Int, Ans[St], Lexical.Stacked.Below[P, St]]:
+      def ret(a: Int): Under[P, Ans[St], St] = Freer.Return((s: Int) => Freer.Return((s, a)))
+      def op[X](e: State[Int, X], k: X => Under[P, Ans[St], St]): Under[P, Ans[St], St] = e match
+        case State.Get() => Freer.Return((s: Int) => k(s).flatMap(f => f(s)))
+        case State.Set(s1) => Freer.Return((_: Int) => k(s1).flatMap(f => f(s1)))
+        case State.Modify(g) => Freer.Return((s: Int) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) })
+        case State.Update(g) => Freer.Return((s: Int) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
     val tail = new Lexical.TailClauses[State % Int, Int]:
       def op[X](e: State[Int, X], s: Int): (Int, X) = e match
         case State.Get() => (s, s)
@@ -235,17 +238,29 @@ class TestLexicalStacked extends munit.FunSuite:
       import root.given
       Lexical.Stacked.tail[State % Int, Int, Int, P](0)(StateClauses.tail) { a =>
         import a.given
-        Lexical.Stacked.deep[State % Int, Int, StateClauses.Ans, P](StateClauses.deep) { b =>
+        Lexical.Stacked.deep(StateClauses.deep) { b =>
           import b.given
           for
             x <- a.perform(State.Get[Int, Int]())
             y <- b.perform(State.Get[Int, Int]())
             _ <- a.perform(State.Set[Int, Int](x + 5))
           yield x + y
-        }.flatMap(f => okay.Delim.Stacked.under(f(10))).map(_._2)
+        }.flatMap(f => f(10)).map(_._2)
       }
     })
     assertEquals(r, (5, 10))
+  }
+
+  test("stacked clauses are typed at the stack below their prompt: clauses over another stack are refused at the installation") {
+    val e = compileErrors("""
+      okay.Delim.Stacked.delimited[Int, okay.Pure] { root =>
+        import root.given
+        okay.Lexical.Stacked.deep(okay.TestLexicalStacked.StateClauses.deep[EmptyTuple]) { b =>
+          import b.given
+          b.perform(okay.State.Get[Int, Int]())
+        }.flatMap(f => f(0)).map(_._2)
+      }""")
+    assert(e.contains("Found:") || e.contains("Required:"), s"compiled, or not a type error: $e")
   }
 
   test("a stacked instance used AFTER its installation returned does not compile") {
@@ -287,7 +302,7 @@ class TestLexicalDefault extends munit.FunSuite:
     case Coin() extends Flip[Boolean]
 
   test("Lexical.handle picks by clause kind: general clauses run deep (multi-shot works), tail clauses run tail") {
-    val all = new Lexical.Clauses[Flip, Boolean, List[Boolean], Delim + Pure]:
+    val all = new Lexical.Clauses[Flip, Boolean, List[Boolean], Lexical.Unstacked[Delim + Pure]]:
       def ret(a: Boolean): List[Boolean] ! Delim + Pure = okay.pure(List(a))
       def op[X](e: Flip[X], k: X => List[Boolean] ! Delim + Pure): List[Boolean] ! Delim + Pure = e match
         case Flip.Coin() => k(true).flatMap(xs => k(false).map(xs ++ _))

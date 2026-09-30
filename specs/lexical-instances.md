@@ -89,7 +89,12 @@ and not an ambiguous implicit.
 - [x] The guard counts RESUMPTIONS, not returns: a second run of a
       captured context that leaves the body by `abort` is refused too
       (lexical-tail-guard-abort, TestLexicalTail "leaving by abort").
-- [x] Stage 2: stacked `deep` and `tail` instances (`Lexical.Stacked`),
+- [x] Stage 2: stacked `deep` and `tail` instances (`Lexical.Stacked`) —
+      since indexed-effects stage 9 (2026-09-30) the deep instance's
+      clauses are typed at the stack below its prompt
+      (`Clauses[F, A, R, Lexical.Stacked.Below[G, St]]`), and the clause
+      traits take the program type `P[_]` (`Lexical.Unstacked[G]` for the
+      unstacked instances),
       so an instance used outside its installation is a compile error.
 - [x] Stage 3: `Lexical.handle` picks by clause kind (TailClauses →
       tail, Clauses → deep, ShallowClauses → shallow), and

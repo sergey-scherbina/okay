@@ -42,20 +42,29 @@ object Lexical:
     /** the operation, to THIS installation and no other */
     def perform[X](e: F[X]): X ! G
 
-  /** a deep handler's operation clauses over the row `G`: `k` resumes
+  /** THE PROGRAM TYPE a clause answers in (indexed-effects stage 9):
+   * an unstacked instance's clauses answer `X ! G` over the row `G`
+   * (`Unstacked[G]`); a stacked instance's answer `Under[G, X, St]` at
+   * the stack BELOW its prompt (`Stacked.Below[G, St]`), so a stacked
+   * instance's clauses are typed on the indexed tree and nothing on
+   * that road is erased. The clause traits take the program type, not
+   * the row, and the two roads are the two instantiations. */
+  type Unstacked[G[+_]] = [X] =>> X ! G
+
+  /** a deep handler's operation clauses, answering in `P`: `k` resumes
    * the body WITH the handler re-installed */
-  trait Ops[F[+_], R, G[+_]]:
-    def op[X](e: F[X], k: X => R ! G): R ! G
+  trait Ops[F[+_], R, P[_]]:
+    def op[X](e: F[X], k: X => P[R]): P[R]
 
   /** a deep handler: its operation clauses and its return clause */
-  trait Clauses[F[+_], A, R, G[+_]] extends Ops[F, R, G]:
-    def ret(a: A): R ! G
+  trait Clauses[F[+_], A, R, P[_]] extends Ops[F, R, P]:
+    def ret(a: A): P[R]
 
   /** a shallow handler's clauses: `k` is BARE (the handler is gone
    * after this operation); `again` re-installs it around a program */
-  trait ShallowClauses[F[+_], A, R, G[+_]]:
-    def ret(a: A): R ! G
-    def op[X](e: F[X], k: X => R ! G, again: (R ! G) => R ! G): R ! G
+  trait ShallowClauses[F[+_], A, R, P[_]]:
+    def ret(a: A): P[R]
+    def op[X](e: F[X], k: X => P[R], again: P[R] => P[R]): P[R]
 
   /** `Delim + G` read as `G` when `G` already has `Delim`: the union
    * collapses, and `liftCo` over `x | G` builds the witness from the
@@ -69,7 +78,7 @@ object Lexical:
    * shift0 to a `dollar` takes the return function along, `$/S0`).
    * The row must hold `Delim`: every operation is a capture.
    */
-  def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, G])(body: Inst[F, G] => A ! G)
+  def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
                               (using ev: Delim[Any] <:< G[Any], at: At): R ! G =
     given Row.Sub[Delim + G, G] = collapse(ev)
     val p = Delim.prompt[R]
@@ -84,7 +93,7 @@ object Lexical:
    * plain `push` as a map, so the bare segment already answers `R`
    * (specs/shift0-dollar.md, stage 3).
    */
-  def shallow[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, G])(body: Inst[F, G] => A ! G)
+  def shallow[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
                                  (using ev: Delim[Any] <:< G[Any], at: At): R ! G =
     given Row.Sub[Delim + G, G] = collapse(ev)
     val p = Delim.prompt[R]
@@ -230,9 +239,9 @@ object Lexical:
    */
   def handle[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])(body: Inst[F, G] => A ! G)
                                 (using Closing[G], At): (S, A) ! G = tail(s0)(c)(body)
-  def handle[F[+_], A, R, G[+_]](c: Clauses[F, A, R, G])(body: Inst[F, G] => A ! G)
+  def handle[F[+_], A, R, G[+_]](c: Clauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
                                 (using Delim[Any] <:< G[Any], At): R ! G = deep(c)(body)
-  def handle[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, G])(body: Inst[F, G] => A ! G)
+  def handle[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
                                 (using Delim[Any] <:< G[Any], At): R ! G = shallow(c)(body)
 
   /** State as instances: the worked example, every strategy */
@@ -243,7 +252,7 @@ object Lexical:
 
     def deep[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)
                          (using Delim[Any] <:< G[Any], At): (S, A) ! G =
-      Lexical.deep(new Clauses[okay.State % S, A, Ans[S, A, G], G]:
+      Lexical.deep(new Clauses[okay.State % S, A, Ans[S, A, G], Unstacked[G]]:
         def ret(a: A): Ans[S, A, G] ! G = okay.pure((s: S) => okay.pure((s, a)))
         def op[X](e: okay.State[S, X], k: X => Ans[S, A, G] ! G): Ans[S, A, G] ! G = e match
           case okay.State.Get() => okay.pure((s: S) => k(s).flatMap(f => f(s)))
@@ -254,7 +263,7 @@ object Lexical:
 
     def shallow[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)
                             (using Delim[Any] <:< G[Any], At): (S, A) ! G =
-      Lexical.shallow(new ShallowClauses[okay.State % S, A, Ans[S, A, G], G]:
+      Lexical.shallow(new ShallowClauses[okay.State % S, A, Ans[S, A, G], Unstacked[G]]:
         def ret(a: A): Ans[S, A, G] ! G = okay.pure((s: S) => okay.pure((s, a)))
         def op[X](e: okay.State[S, X], k: X => Ans[S, A, G] ! G,
                   again: (Ans[S, A, G] ! G) => Ans[S, A, G] ! G): Ans[S, A, G] ! G = e match
@@ -309,22 +318,39 @@ object Lexical:
    * force for the body, exactly as for `Delim.Stacked.reset`. `shallow`
    * is not stacked, for the reason `control0` is not
    * (specs/shift0-dollar.md, stage 2).
+   *
+   * THE CLAUSES ARE TYPED ON THE TREE (indexed-effects stage 9): a deep
+   * instance's clauses answer `Below[G, St]` — `Under[G, X, St]` at the
+   * stack `St` below the instance's own prompt, which is where a
+   * `shift0` to it runs its body and where its `dollar`'s `ret` runs.
+   * So `perform` hands the clause the stacked `k` as it is, and the
+   * installation is one `Op.Dollar` node over the clauses' `ret` and
+   * the body: no `at`, no `erase`, no cast on this road. The price is
+   * that clauses name the stack they are installed over — written as
+   * a `def deep[St <: Tuple]` and instantiated by the installation
+   * (TestLexicalStacked), the way the body already names it.
    */
   object Stacked:
-    import Delim.Stacked.{In, Stack, Under, Has}
+    import Delim.Stacked.{In, Stack, Under, Has, Op}
 
-    /** a stacked DEEP instance: the delimiter on the stack, and its clauses */
-    final class Deep[F[+_], R, G[+_], S <: Tuple] private[Lexical] (p0: Prompt[R], ops: Ops[F, R, Delim + G])
+    /** the program type of a stacked instance's clauses: under `St`,
+     * the stack below its prompt */
+    type Below[G[+_], St <: Tuple] = [X] =>> Under[G, X, St]
+
+    /** a stacked DEEP instance: the delimiter on the stack, and its
+     * clauses, typed at the stack `S` below it */
+    final class Deep[F[+_], R, G[+_], S <: Tuple] private[Lexical] (p0: Prompt[R], ops: Ops[F, R, Below[G, S]])
         extends In[R, S](p0):
-      /** the operation, to THIS installation, which must be on the stack */
-      def perform[X](e: F[X])(using st: Stack[?])[B <: Tuple](using Has.Aux[st.S, p.type, B], At): Under[G, X, st.S] =
-        Delim.Stacked.shift0[R, X, G](p)(k => Delim.Stacked.at[G, R, B](ops.op(e, x => Delim.Stacked.erase(k(x)))))
+      /** the operation, to THIS installation, which must be on the
+       * stack — with `S` below it, which `Has` proves rather than finds */
+      def perform[X](e: F[X])(using st: Stack[?])(using Has.Aux[st.S, p.type, S], At): Under[G, X, st.S] =
+        Delim.Stacked.shift0[R, X, G](p)(using st)(k => ops.op(e, k))
 
-    def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, Delim + G])(using st: Stack[?])
+    def deep[F[+_], A, R, G[+_]](using st: Stack[?])(c: Clauses[F, A, R, Below[G, st.S]])
                                 (body: (i: Deep[F, R, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                 (using at: At): Under[G, R, st.S] =
       val i = new Deep[F, R, G, st.S](Delim.prompt[R], c)
-      Delim.Stacked.at[G, R, st.S](Delim.dollar[A, R, G](i.p)(c.ret)(Delim.Stacked.erase(body(i))))
+      Freer.Inject(Op.Dollar[G, st.S, A, R, i.p.type](i.p, c.ret, body(i)))
 
     /** a stacked TAIL instance: it answers in place, and the stack check
      * is what makes holding it safe */
