@@ -17,3 +17,6 @@ package okay
 object SharedOps:
   val getNode: Any ! State % Any = effect(State.Get[Any, Any]())
   val askNode: Any ! Reader % Any = effect(Reader.Ask[Any, Any]())
+  /** the threaded road's read, one node for every state type
+   * (indexed-effects stage 1): `PState.Op.Get` has no fields either */
+  val getT: Freer[PState.Op, Any, Any, Any] = Freer.Inject[PState.Op, Any, Any, Any](PState.Op.Get[Any]())

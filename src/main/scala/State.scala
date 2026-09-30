@@ -305,9 +305,11 @@ object PState {
    * a quiet box): `stateThreaded` 18.07 us / 276 904 B against
    * `stateEffect` 16.96 / 244 904 and `statePara` 30.39 / 301 407 per
    * M = 1000 steps — 1.07x the untyped State, 0.59x the shift road.
-   * The 32 B a step over State is `Inject(Get())` allocated per read
-   * where `State.get` shares one node (SharedOps); sharing it here is
-   * the same one cast and the next rung, priced separately.
+   * The 32 B a step over State was `Inject(Get())` allocated per read
+   * where `State.get` shares one node (SharedOps); `get` shares
+   * `SharedOps.getT` the same way since indexed-effects stage 1 — the
+   * byte count after it is a deferred measurement (specs/
+   * indexed-effects.md).
    */
   enum Op[S, R, +X]:
     /** read the state, leaving its type */
@@ -320,7 +322,11 @@ object PState {
   type Threaded[A, S, R] = Freer[Op, S, R, A]
 
   object Threaded:
-    inline def get[S]: Threaded[S, S, S] = Freer.Inject[Op, S, S, S](Op.Get())
+    // THE CAST, the same one `State.get` makes and for the same reason:
+    // `Get` has no fields, so after erasure every `Get[S]` is one object,
+    // and a program node is immutable — sharing it across every S changes
+    // nothing a program can observe (indexed-effects stage 1)
+    inline def get[S]: Threaded[S, S, S] = SharedOps.getT.asInstanceOf[Threaded[S, S, S]]
     inline def put[S, T](t: T): Threaded[S, T, S] = Freer.Inject[Op, T, S, S](Op.Put(t))
 
     /** run from an initial state to (final state, value): the loop

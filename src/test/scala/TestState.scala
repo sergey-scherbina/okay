@@ -59,6 +59,11 @@ class TestState extends munit.FunSuite {
     assertEquals(r, (true, "42!42"))
   }
 
+  test("PState.Threaded.get is ONE shared node for every state type") {
+    assert(PState.Threaded.get[Int] eq PState.Threaded.get[String])
+    assert(PState.Threaded.get[Int] eq SharedOps.getT)
+  }
+
   test("PState.Threaded: a Put from a state the program is not in does not type") {
     val errors = compileErrors("PState.Threaded.get[Int].flatMap(n => PState.Threaded.put[String, Int](n))")
     assert(errors.nonEmpty, "String put after an Int get must be refused")
