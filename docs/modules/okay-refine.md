@@ -242,6 +242,57 @@ assertEquals(values, Seq(7, 200))
 assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
 ```
 
+## Routing: one stream in, a stream per kind out
+
+A `Router` is a value — a pattern and a routing table, read top to
+bottom like a `match` — and `run` sends every document of a `Source` to
+the channel of its kind:
+
+```scala
+val routed = Router(any)
+.route[Swap](swaps)
+.route[Fx](fxs)
+.route { case c: Cds if c.ccy == "EUR" => c }(eurCds)
+.otherwise(rejected)
+.run(Source(docs*)).runWith
+assertEquals(routed, Router.Routed(Vector("Swap" -> 2, "Fx" -> 2, "case #3" -> 1), rejected = 2))
+```
+
+- `route[X](channel)` takes every recognised value of type `X` — a class,
+  a case, or a union: `route[Swap | Cds](rates)` takes exactly swaps and
+  CDSs. The test is the compiler's `TypeTest`; a `ClassTag` would have
+  been the union's least upper bound and taken every sibling as well
+  (found by the first run of TestRouter).
+- `route { case … }(channel)` routes by pattern matching — a guard, a
+  union of cases, a projection to another type.
+- `byName("fxForward")(channel)` routes by the pattern that TOOK the
+  document, for kinds that share a value type.
+- `tap(channel)` gets a copy of everything recognised; `routeAs(name,
+  channel)` names a route for the `Routed` count.
+- `otherwise(channel)` gets every `Rejected(input, verdict, why)`: a
+  document that declined, one that was `Unclear` (never routed — the
+  pattern could not decide what it is), and a recognised value no rule
+  fits ("no route for …"). Without an `otherwise` they are still counted.
+
+The first rule that fits wins, as in a `match`: the TABLE is the
+author's, written in order. The RECOGNITION is not — that is still the
+pattern's `Verdict`, and an `Unclear` document is rejected, not routed by
+whichever rule comes first. When the input ends, `run` closes every
+channel it was given, once each (two rules may share one); when the
+input fails, it fails them with the same error, so no consumer waits for
+a stream that will not come. The capacity of the channels is the
+backpressure policy: a bounded one slows the router, and every route
+with it.
+
+`decide(a)` says where one document would go without running anything,
+and `r.routed(key)` is the synchronous twin — one `Stage`, each element
+tagged with its key, the rest `Left` with why:
+
+```scala
+assertEquals(r.decide("fx:f1,EURUSD"), Right("Fx"))
+assertEquals(out.collect { case Right((k, _)) => k }, Seq("Swap", "Fx", "Cds", "Cds", "Swap", "Fx"))
+```
+
 ## API reference
 
 | | |
@@ -263,6 +314,8 @@ assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
 | `r and s` | a record: both over one input, written back through `Refine.Merge` |
 | `r.orRaise(a): B ! Throws % Verdict[B]` | the read as an effect |
 | `r.verdicts`, `r.taken` | `Stage`s: every verdict; the values, answering `Missed(declined, unclear)` |
+| `Router(r).route[X](c)`, `.route { case … }(c)`, `.byName(n)(c)`, `.tap(c)`, `.otherwise(c)`, `.run(source)` | routing: a stream per kind; `Routed` counts; every channel closed (or failed) at the end |
+| `r.routed(key)` | the synchronous twin: one `Stage` of `Either[Rejected, (K, B)]` |
 | `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON — for XML text, `Xml.fromValue` on the written value |
 | `Refine.json.field(name)`, `.str`, `.num`, `.each(name)` | the steps a document-level pattern is written in; a path of them names itself in the verdict |
 | `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <\|> (text andThen (json <\|> xml <\|> yaml))` |

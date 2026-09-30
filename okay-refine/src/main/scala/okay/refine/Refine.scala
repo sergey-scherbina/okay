@@ -116,6 +116,17 @@ sealed trait Refine[A, B]:
       case Verdict.Unclear(_, _) => pure(m.copy(unclear = m.unclear + 1))
       case Verdict.Declined(_) => pure(m.copy(declined = m.declined + 1)), pure)
 
+  /** routing without channels: one stream out, each element tagged with
+   * its route `key(b)` — or `Left` with the input, the verdict and why
+   * (an `Unclear` or `Declined` document is never given a key). The
+   * synchronous twin of `Router.run`: deterministic, one consumer, every
+   * route at one pace */
+  final def routed[K](key: B => K): Stage[A, Either[Router.Rejected[A, B], (K, B)], Unit] =
+    Stage.mapAccumulate[A, Either[Router.Rejected[A, B], (K, B)], Unit](())((u, a) => (u, run(a) match
+      case Verdict.Took(b, _, _) => Right((key(b), b))
+      case v @ Verdict.Unclear(cs, _) => Left(Router.Rejected(a, v, s"unclear: ${cs.map(_._1).mkString(" | ")}"))
+      case v @ Verdict.Declined(_) => Left(Router.Rejected(a, v, "declined by every pattern"))))
+
   /** an iso on what is learnt, both ways, so the path still writes */
   final def map[C](name: String)(to: B => C, from: C => B): Refine[A, C] =
     Refine.Map(this, name, to, c => Right(from(c)))

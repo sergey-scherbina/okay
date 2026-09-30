@@ -253,6 +253,20 @@ Stage 3 — lessons:
   ten law tests hold on JVM, JS and Native; okay2-refine now depends on
   okay2-stream for the Stages.
 
+- **refine-route (2026-09-30, operator ask: "each kind of document to its
+  own stream, convenient and idiomatic").** A `Router` is a pattern plus a
+  routing table read like a `match`: `route[X]` by type (a `TypeTest` —
+  a union's `ClassTag` is its least upper bound, and the first cut took
+  `Fx` into a `Swap | Cds` route: TestRouter's first run), `route {
+  case … }` by pattern, `byName` by the pattern that took the document,
+  `tap`, `otherwise`. First rule wins in the TABLE (the author's order);
+  the RECOGNITION stays the pattern's verdict, so `Unclear` is rejected,
+  never routed. Nothing is dropped silently (counted without an
+  `otherwise`); every channel is closed once at the end, failed on an
+  input failure. Refuted: a heterogeneous `Stage` with one output per
+  route (Stage has one output type; the typed routes need channels), and
+  a `route[X]` on `ClassTag`.
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of
