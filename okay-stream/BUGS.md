@@ -106,7 +106,7 @@ alone, the seeds that hang are the ones to find — the test's own
      gate: none — `ProbeReadyMergeStarve` (ignored) reproduces in ~20 rounds of 300, under 11 s
      found-by: windowjoin-spin-fix (2026-09-30), chasing windowjoin-trim-spins
      reporter: claude session_01UkcD4rZuMcWszYis8fWcGN
-     owner: unassigned — source-merge-via-ready / ready-merge's author, or the next lane in the channel
+     owner: claude session_01UkcD4rZuMcWszYis8fWcGN (ready-merge-side-starves lane, 2026-09-30)
      confirmed: yes, on master at ebffb4a8a and on a01fcf9c7 (before channel-route-per-producer) -->
 
 **Seen.** `Source.of(LazyList.from(0)).either(Source.of(LazyList.from(1000000)), capacity = 4)`
