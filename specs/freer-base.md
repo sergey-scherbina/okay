@@ -1256,3 +1256,48 @@ the wrong state and a run from the wrong state. TestCont, TestContMacro,
 TestContStack, TestState and TestProg are green unchanged, so the
 Cont side lost nothing to the cast it now carries. Not measured: the
 nodes are the same objects; `tailAt` is erased.
+
+### The diagonal leaf as a case of the node (2026-09-30, freer-diag-leaf, the operator's "Да")
+
+The first item of the from-scratch list in freer-consumed-index's
+answer, built: `Freer.Diag[G, R, A](a: G[R, R, A]) extends Freer[G, R,
+R, A]`, the fifth case, and `Freer.diag` as its door. It says on the
+NODE what `Lift`'s phantom index cannot: the operation moves nothing.
+Matching `Bind(Diag(e), k)` gives `T = R` by the GADT on the invariant
+base, so a handler's loop over a mixed row continues at `R` — which is
+what the row probe needed and had from a wrapper (`At.Op`, one
+allocation per unary operation) or would have had from an extractor
+claiming the diagonal by one cast, `Free.Bind`'s trade. Neither now:
+the row is `[S, R, X] =>> PSt[S, R, X] | State[Int, X]`, the unary
+member BARE, `tick[R] = Freer.diag[Row, R, Int](State.Modify(_ + 1))`,
+and `counted` answers `State` under `Diag` and forwards `PSt` under
+`Inject` with its index. A lone `Diag` and one under a `Bind` both run.
+
+What the compiler asked for, each a round:
+
+- **One exhaustive match over the erased tree exists**, `!.peek`
+  (Effects.scala); every other site is `(x.resume: @unchecked)`. It
+  gained a real arm — at `Unit` a `Diag` holds the same `F[A]` an
+  `Inject` does — through `Freer.Diag`, since `object Free` keeps only
+  the four old names on purpose (the `direct` macro looks them up by
+  symbol) and `Diag` is not one of them.
+- **Cont's `step` is `(c: @unchecked) match` now**, not a dead arm: a
+  Cont never holds a `Diag` — the companion builds every leaf, as
+  `Inject`, so it can be absorbed — and bytes in that loop are what
+  the Fib lanes price (cont-stack-fastpath, "callee is too large").
+- **`Free`'s doors at `Unit` keep building `Inject`.** The 112
+  `Bind(Inject(e), k)` sites across the family do not move, and at
+  `Unit` the two nodes mean the same thing. `Diag` is the door of an
+  INDEXED row only; the discipline is a door's, as `Free.Bind`'s
+  constant claim is, and a handler of a unary effect in an indexed
+  row matches `Diag`. What the type does not refuse: a unary
+  operation put under `Inject` at a moving index by hand. The row
+  probe's `moving` arm throws on it by name; closing it at the type
+  is the three-ary row algebra's job (a `+` whose unary member is a
+  match type reducing only on the diagonal is the road, untried).
+
+Not measured, and the reason is honest: the CI runner was gating the
+box beside this lane all morning. The one thing that could move is
+the JIT's view of `Freer`'s sealed hierarchy (five cases now), and no
+loop tests for `Diag`; if any core lane moves at the next reading,
+this is the change to bisect to.

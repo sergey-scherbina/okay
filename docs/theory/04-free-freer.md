@@ -27,6 +27,8 @@ enum Freer[G[_, _, +_], S, R, +A] {
   case Return[G[_, _, +_], R, A](a: A) extends Freer[G, R, R, A]
   // an operation, bare
   case Inject[G[_, _, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
+  // an operation that moves no index, said on the node (an indexed row's unary member)
+  case Diag[G[_, _, +_], R, A](a: G[R, R, A]) extends Freer[G, R, R, A]
   case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
                                         f: A => Freer[G, S, T, B]) extends Freer[G, S, R, B]
   case Delay[G[_, _, +_], S, R, A](thunk: () => Freer[G, S, R, A]) extends Freer[G, S, R, A]

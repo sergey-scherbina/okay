@@ -344,6 +344,11 @@ object Effects {
     @tailrec def peek: Handler[F] ?=> ? = self match
       case Bind(a, _) => a.peek
       case Inject(e) => summon[Handler[F]].handle(e)
+      // at `Unit` a diagonal node holds the same `F[A]` an `Inject` does
+      // (freer-diag-leaf); no door here builds one, and this is the one
+      // match over the erased tree that is exhaustive rather than
+      // `@unchecked`, so it says so
+      case Freer.Diag(e) => summon[Handler[F]].handle(e)
       case Return(a) => a
       // a peek forces the thunk too, same as `Bind(a, _) => a.peek`
       // discards its own continuation without applying it

@@ -525,7 +525,11 @@ object Cont:
         // typing is dynamic (see `walked`)
         case re: Reentry[x, b2, s2, ?] => step[b2, s2, R](walked[Rep[b2, s2, R]](re.f(e)))(re.k)(room)(Pending(rest, pending))(null)
         case _ => step[A, S, R](c)(k)(room)(pending)(rest(kk(e)))
-    else c match
+    // `@unchecked`: `Diag` is a case of the base a Cont never holds —
+    // this companion builds every Cont leaf, as `Inject`, so it can be
+    // absorbed — and a dead arm for it here would be bytes in the loop
+    // whose inlining the Fib lanes price (freer-diag-leaf)
+    else (c: @unchecked) match
       case Return(a) => answer(callK(k, a, room))
       // an absorbed leaf and a CPS body are found by CLASS: the leaf's
       // type on the tree is `(A => S) => R`, the classes extend it at

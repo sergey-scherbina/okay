@@ -1,6 +1,6 @@
 package okay
 
-import okay.Freer.{Return, Inject, Bind}
+import okay.Freer.{Return, Inject, Diag, Bind}
 
 /**
  * `Freer` as Atkey's parameterised monad (freer-paramonad, 2026-09-30),
@@ -133,51 +133,52 @@ class TestFreerPara extends munit.FunSuite:
   // ------------------ reading 1 INSIDE THE EFFECT SYSTEM: a row, a handler
 
   /**
-   * A UNARY effect on the DIAGONAL of an indexed row. `Lift[F]` puts a
-   * unary operation at ANY index, and that is exactly what a handler's
-   * loop over a mixed row cannot use: matching `Bind(Inject(op), k)`
-   * makes the middle index existential, and an answer built from
-   * `k`'s program sits at that index where the loop owes one at `R`.
-   * `Op` says the operation moves nothing — `T = R`, read off the GADT
-   * on the invariant base — so the continuation's program IS an
-   * `R`-indexed one. One
-   * wrapper per unary operation; the allocation-free twin is `Free.
-   * Bind`'s trade — an extractor claiming "a unary op is diagonal" by
-   * ONE cast, as it claims `Unit` today.
+   * The row: the indexed effect beside an ordinary `State % Int`, the
+   * unary member BARE. Its operations enter on the diagonal by their
+   * NODE (`Freer.Diag`, freer-diag-leaf): no wrapper allocated per
+   * operation, no extractor cast — the two roads this probe had before
+   * the case existed (`At.Op` here until 2026-09-30, `Free.Bind`'s
+   * one cast at `Unit`). The discipline is the door's: a unary
+   * operation enters an indexed row through `Freer.diag`, and a
+   * handler of one matches `Diag`.
    */
-  enum At[F[+_], S, R, +X]:
-    case Op[F[+_], R, X](e: F[X]) extends At[F, R, R, X]
-
-  /** the row: the indexed effect beside an ordinary `State % Int` */
-  type Row = [S, R, X] =>> PSt[S, R, X] | At[State[Int, *], S, R, X]
+  type Row = [S, R, X] =>> PSt[S, R, X] | State[Int, X]
 
   def rget[S, Z]: Freer[Row, S => Z, S => Z, S] = Inject(PSt.Get())
   def rput[S, T, Z](t: T): Freer[Row, T => Z, S => Z, S] = Inject(PSt.Put(t))
-  def tick[R]: Freer[Row, R, R, Int] = Inject(At.Op[State[Int, *], R, Int](State.Modify[Int, Int](_ + 1)))
+  def tick[R]: Freer[Row, R, R, Int] = Freer.diag[Row, R, Int](State.Modify[Int, Int](_ + 1))
 
   /**
    * `State.handle` over the indexed row: its own operations answered
    * from the threaded `Int`, every other operation FORWARDED WITH THE
    * INDEX IT CAME WITH — the shape every handler in the library has,
-   * at indexes that are no longer `Unit`. Typed by the GADT: a `State`
-   * arm continues at `T = R`, a forwarded `PSt` op keeps `(T, R)` and
-   * the continuation closes `(S, T)`.
+   * at indexes that are no longer `Unit`. Typed by the GADT: a `Diag`
+   * arm continues at `R` (the node says `T = R`), a forwarded `PSt` op
+   * under `Inject` keeps `(T, R)` and the continuation closes `(S, T)`.
    */
   def counted[S, R, A](s: Int)(p: Freer[Row, S, R, A]): Freer[PSt, S, R, (Int, A)] =
-    def step[T, X](o: Row[T, R, X], k: X => Freer[Row, S, T, A]): Freer[PSt, S, R, (Int, A)] = o match
-      case At.Op(e) => e match
-        case State.Get() => counted(s)(k(s))
-        case State.Set(n) => counted(n)(k(n))
-        case State.Modify(f) => val n = f(s); counted(n)(k(n))
-        case State.Update(f) => val (b, n) = f(s); counted(n)(k(b))
-      // the library's `split` does this by `TypeableK`; a probe tests the class
+    // on the diagonal: a State operation is answered and the program
+    // continues at R; a PSt one that happens to sit there is forwarded
+    // as the diagonal node it is
+    def unary[X](e: Row[R, R, X], k: X => Freer[Row, S, R, A]): Freer[PSt, S, R, (Int, A)] = e match
+      case State.Get() => counted(s)(k(s))
+      case State.Set(n) => counted(n)(k(n))
+      case State.Modify(f) => val n = f(s); counted(n)(k(n))
+      case State.Update(f) => val (b, n) = f(s); counted(n)(k(b))
+      case o: PSt[R, R, X] @unchecked => Diag(o).flatMap(x => counted(s)(k(x)))
+    // off the diagonal: only PSt can move the index, and it is forwarded
+    // with it; a unary operation under `Inject` is a door misused
+    def moving[T, X](o: Row[T, R, X], k: X => Freer[Row, S, T, A]): Freer[PSt, S, R, (Int, A)] = o match
       case o: PSt[T, R, X] @unchecked => Inject(o).flatMap(x => counted(s)(k(x)))
+      case _ => throw IllegalStateException("a unary operation off the diagonal: built by `Inject` where `Freer.diag` is the door")
     (p.resume: @unchecked) match
       case Return(a) => Return((s, a))
-      case Inject(o) => step(o, x => Return(x))
-      case Bind(Inject(o), k) => step(o, k)
+      case Diag(e) => unary(e, x => Return(x))
+      case Inject(o) => moving(o, x => Return(x))
+      case Bind(Diag(e), k) => unary(e, k)
+      case Bind(Inject(o), k) => moving(o, k)
 
-  test("an indexed effect in a ROW beside State: State's handler forwards the index it does not own") {
+  test("an indexed effect in a ROW beside State, the unary member bare: State's handler forwards the index it does not own") {
     type Z = (List[String], (Int, Int))
     val p: Freer[Row, List[String] => Z, Int => Z, Int] =
       for
@@ -193,12 +194,10 @@ class TestFreerPara extends munit.FunSuite:
     assertEquals(value, 3)
   }
 
-  // ------- reading 2 on an INVARIANT base: ProbeMcBride, the loop that types
-
-  test("on an invariant base the consumed-state loop types, @tailrec, with no continuation object") {
-    assertEquals(ProbeMcBride.answers, (List("21", "21"), 23))
-    assert(ProbeMcBride.refusedPut.contains("Required"), ProbeMcBride.refusedPut)
-    assert(ProbeMcBride.refusedRun.contains("Required"), ProbeMcBride.refusedRun)
+  test("a lone diagonal operation, and one under a Bind, both continue at R") {
+    type Z = (Int, (Int, Int))
+    val lone: Freer[Row, Int => Z, Int => Z, Int] = tick
+    assertEquals(run(counted(4)(lone))(toShift)(a => s => (s, a))(9), (9, (5, 5)))
   }
 
   // ---------- reading 2: the index is a CONSUMED state — on the library's base

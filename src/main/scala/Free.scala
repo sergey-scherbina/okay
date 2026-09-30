@@ -67,6 +67,32 @@ enum Freer[G[_, _, +_], S, R, +A] {
    * `Cont`, the shift body `(A => S) => R` itself */
   case Inject[G[_, _, +_], S, R, A](a: G[S, R, A]) extends Freer[G, S, R, A]
 
+  /**
+   * A DIAGONAL OPERATION: one that moves no index, and says so ON THE
+   * NODE (freer-diag-leaf, 2026-09-30). `Inject` holds an operation at
+   * the indexes the signature gives it; for a unary effect lifted into
+   * an indexed row (`[S, R, X] =>> PSt[S, R, X] | State[Int, X]`) the
+   * signature gives it ANY indexes, and a handler's loop over a mixed
+   * row cannot use that: matching `Bind(Inject(op), k)` makes the
+   * middle index an existential `T`, and the program the handler
+   * continues with sits at `T` where the loop owes one at `R`. A
+   * `Diag` matched under a `Bind` gives `T = R` by the GADT, so the
+   * continuation IS at `R`: a unary effect enters an indexed row bare,
+   * through `Freer.diag`, with no wrapper allocated per operation and
+   * no extractor cast — the two roads TestFreerPara's row probe had
+   * before this case existed.
+   *
+   * NEVER built by the erased effect tree or by `Cont`: `Free`'s doors
+   * at `Unit` build `Inject` (the 112 `Bind(Inject(e), k)` sites across
+   * the family do not move, and at `Unit` the two nodes mean the same),
+   * and `Cont`'s companion builds leaves it can absorb. Their loops
+   * say so with `@unchecked` rather than a dead arm in the hottest
+   * loop of the library. The discipline is a door's, as `Free.Bind`'s
+   * constant claim is: a unary operation enters an INDEXED row through
+   * `diag`, and a handler of one matches `Diag`.
+   */
+  case Diag[G[_, _, +_], R, A](a: G[R, R, A]) extends Freer[G, R, R, A]
+
   /** sequencing: run a, then feed its value to the plain-function
    * continuation f; the answer types meet at `T` */
   case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
@@ -92,7 +118,8 @@ enum Freer[G[_, _, +_], S, R, +A] {
   /**
    * THE rotation, and the only one on this side of the library:
    * normalize to a head form — `Return(a)`, `Inject(e)` or
-   * `Bind(Inject(e), k)` — in constant stack. Written ONCE, for every
+   * `Bind(Inject(e), k)`, and on an indexed row `Diag(e)` or
+   * `Bind(Diag(e), k)` likewise — in constant stack. Written ONCE, for every
    * signature and every index: nothing here casts.
    *
    * Sound by the monad associativity law, and linear-time amortized
@@ -189,6 +216,11 @@ object Freer {
     // cases fewer in every loop that walks the tree (defer-eff-removal,
     // with the codec trampoline lane as the price it was measured on)
     Bind(Delay(thunk), f)
+
+  /** a unary operation into an INDEXED row, on the diagonal by its
+   * node — see `Diag`. The effect tree at `Unit` does not use this door;
+   * `Free.inject` builds `Inject` there, and the two coincide. */
+  def diag[G[_, _, +_], R, A](a: G[R, R, A]): Freer[G, R, R, A] = Diag(a)
 
   /** a deferred call with NOTHING to do afterwards — `!.tailcall`'s
    * node. Not `defer(thunk)(pure)`, and the difference is the whole
