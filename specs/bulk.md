@@ -59,6 +59,20 @@ trait Bulk[D[_]]:
   resolves to the program's own monadic `map`, not the seam's; concrete
   local code calls `B.map(d)(f)`. Generic code (`[D[_]: Bulk]`) reads as
   a collection, and that is the code the seam is for.
+- **How a join runs is chosen by the plan, and can be said**
+  (join-strategy-auto, 2026-10-01). `Plan.Join` carries a typed
+  `JoinStrategy[K]`: `Auto` (the default) becomes `SortMerge(ord)` when
+  `Plan.orderedBy` finds BOTH sides sorted by key under the same
+  ordering (a `SortByKey`, or an `OrderedByKey` — the caller's word,
+  checked row by row by the merge — seen through `Where`, lost at any
+  function), and `Hash` otherwise, the smaller side turned right as
+  before. `Bulk.joinSorted` and `Bulk.sortByKey` are DEFAULTS any
+  instance has (hash; sort in memory through `toChunks`): the local
+  instance merges (`Chunks.joinSorted`), the engine merges per bucket,
+  Spark sorts natively. Not yet: a memory budget that sends two large
+  unsorted sides through `Chunks.sortBy` (the external sort) — `Sort`
+  and `Plan` carry no `RunCodec`, and a plan cannot summon one for an
+  erased element.
 - **`join` is the equi-join only.** It is what the demo needs and what
   every platform has natively; anything richer is a program over it.
 

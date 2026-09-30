@@ -26,12 +26,12 @@ class TestPlan extends munit.FunSuite {
     val small = Select(Read("small.csv", None), (r: Csv.Row) => r("k") -> r("s"))
     val big = Select(Read("big.csv", None), (r: Csv.Row) => r("k") -> r("b"))
     optimize(Join(small, big), sized) match
-      case Select(Join(l, r), _) => assert(l == big && r == small, s"sides: $l, $r")
+      case Select(Join(l, r, _), _) => assert(l == big && r == small, s"sides: $l, $r")
       case other => fail(s"not turned: ${show(other)}")
     // and a join already the right way round is left alone
-    assertEquals(optimize(Join(big, small), sized), Join(big, small))
+    assertEquals(optimize(Join(big, small), sized), Join(big, small, JoinStrategy.Hash()))
     // unknown sizes: no guess
-    assertEquals(optimize(Join(small, Held[(String, String)](3)), sized), Join(small, Held(3)))
+    assertEquals(optimize(Join(small, Held[(String, String)](3)), sized), Join(small, Held(3), JoinStrategy.Hash()))
   }
 
   test("the turned join answers exactly what the written one does") {

@@ -62,6 +62,10 @@ final class FlowBulk(parts: Int,
   def join[K, A, B](l: Flow[(K, A)], r: Flow[(K, B)]): Flow[(K, (A, B))] =
     Flow.Join(l, r, parts, JoinHow.Hash())
 
+  /** merged per bucket: the co-partitioned sort-merge join */
+  override def joinSorted[K, A, B](l: Flow[(K, A)], r: Flow[(K, B)])(using ord: Ordering[K]): Flow[(K, (A, B))] =
+    Flow.Join(l, r, parts, JoinHow.Sorted(ord))
+
   /** the broadcast road: the right side collected once, on the first
    * partition's demand, and shared by every partition of the left */
   def broadcastJoin[K, A, B](l: Flow[(K, A)], r: Flow[(K, B)]): Flow[(K, (A, B))] =

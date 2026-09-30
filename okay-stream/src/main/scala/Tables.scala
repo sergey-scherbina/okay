@@ -33,7 +33,13 @@ enum Tables[+A] derives Effect:
   case Select[A, B](t: Tables.Table[A], f: A => B) extends Tables[Tables.Table[B]]
   case Expand[A, B](t: Tables.Table[A], f: A => IterableOnce[B]) extends Tables[Tables.Table[B]]
   case Where[A](t: Tables.Table[A], p: A => Boolean) extends Tables[Tables.Table[A]]
-  case Join[K, A, B](l: Tables.Table[(K, A)], r: Tables.Table[(K, B)]) extends Tables[Tables.Table[(K, (A, B))]]
+  case Join[K, A, B](l: Tables.Table[(K, A)], r: Tables.Table[(K, B)], how: JoinStrategy[K]) extends Tables[Tables.Table[(K, (A, B))]]
+  /** sorted by key: the fact a sort-merge join can use */
+  case SortByKey[K, A](t: Tables.Table[(K, A)], ord: Ordering[K]) extends Tables[Tables.Table[(K, A)]]
+  /** the caller's word that `t` is already sorted by key under `ord` —
+   * checked, not trusted: a sort-merge join fails by name at a row out
+   * of order */
+  case OrderedByKey[K, A](t: Tables.Table[(K, A)], ord: Ordering[K]) extends Tables[Tables.Table[(K, A)]]
   case Cache[A](t: Tables.Table[A]) extends Tables[Tables.Table[A]]
   case Aggregate[A, Acc, Out](t: Tables.Table[A], agg: Aggregator[A, Acc, Out]) extends Tables[Out]
   case Collect[A](t: Tables.Table[A]) extends Tables[Chunks[A]]
@@ -60,7 +66,9 @@ object Tables:
     case Select[A, B](p: Plan[A], f: A => B) extends Plan[B]
     case Expand[A, B](p: Plan[A], f: A => IterableOnce[B]) extends Plan[B]
     case Where[A](p: Plan[A], q: A => Boolean) extends Plan[A]
-    case Join[K, A, B](l: Plan[(K, A)], r: Plan[(K, B)]) extends Plan[(K, (A, B))]
+    case Join[K, A, B](l: Plan[(K, A)], r: Plan[(K, B)], how: JoinStrategy[K] = JoinStrategy.Auto[K]()) extends Plan[(K, (A, B))]
+    case SortByKey[K, A](p: Plan[(K, A)], ord: Ordering[K]) extends Plan[(K, A)]
+    case OrderedByKey[K, A](p: Plan[(K, A)], ord: Ordering[K]) extends Plan[(K, A)]
     /** a table the platform already holds — a materialised boundary */
     case Held[A](slot: Int) extends Plan[A]
 
@@ -75,7 +83,9 @@ object Tables:
         case Select(q, _) => s"${pad}Select\n" + show(q, depth + 1)
         case Expand(q, _) => s"${pad}Expand\n" + show(q, depth + 1)
         case Where(q, _) => s"${pad}Where\n" + show(q, depth + 1)
-        case Join(l, r) => s"${pad}Join\n" + show(l, depth + 1) + "\n" + show(r, depth + 1)
+        case Join(l, r, how) => s"${pad}Join(${how.name})\n" + show(l, depth + 1) + "\n" + show(r, depth + 1)
+        case SortByKey(q, _) => s"${pad}SortByKey\n" + show(q, depth + 1)
+        case OrderedByKey(q, _) => s"${pad}OrderedByKey\n" + show(q, depth + 1)
         case Held(slot) => s"${pad}Held#$slot"
 
     /**
@@ -91,7 +101,9 @@ object Tables:
       case Select(q, _) => estimate(q, size)
       case Expand(q, _) => estimate(q, size)
       case Where(q, _) => estimate(q, size)
-      case Join(l, r) => for a <- estimate(l, size); b <- estimate(r, size) yield a max b
+      case Join(l, r, _) => for a <- estimate(l, size); b <- estimate(r, size) yield a max b
+      case SortByKey(q, _) => estimate(q, size)
+      case OrderedByKey(q, _) => estimate(q, size)
       case Held(_) => None
 
     /**
@@ -113,12 +125,37 @@ object Tables:
       case Select(q, f) => Select(optimize(q, size), f)
       case Expand(q, f) => Expand(optimize(q, size), f)
       case Where(q, f) => Where(optimize(q, size), f)
-      case Join(l, r) =>
+      case SortByKey(q, o) => SortByKey(optimize(q, size), o)
+      case OrderedByKey(q, o) => OrderedByKey(optimize(q, size), o)
+      case Join(l, r, how) =>
         val (l2, r2) = (optimize(l, size), optimize(r, size))
-        (estimate(l2, size), estimate(r2, size)) match
-          case (Some(a), Some(b)) if a < b => turned(Join(r2, l2))
-          case _ => Join(l2, r2)
+        how match
+          case JoinStrategy.SortMerge(o) => Join(l2, r2, JoinStrategy.SortMerge(o))
+          case JoinStrategy.Hash() => hashed(l2, r2, size)
+          case JoinStrategy.Auto() =>
+            // THE RULE (join-strategy-auto): both sides KNOWN sorted by
+            // key under one ordering — a sort, or the caller's word —
+            // join by merging, holding a run; anything else hashes the
+            // smaller side, as before. A fact is known through a `Where`
+            // (a filter keeps order) and lost at anything that runs a
+            // function over the rows
+            (orderedBy(l2), orderedBy(r2)) match
+              case (Some(a), Some(b)) if a eq b => Join(l2, r2, JoinStrategy.SortMerge(a))
+              case _ => hashed(l2, r2, size)
       case leaf => leaf
+
+    /** a hash join, the smaller side turned right when the sizes are known */
+    private def hashed[K, X, Y](l2: Plan[(K, X)], r2: Plan[(K, Y)], size: String => Option[Long]): Plan[(K, (X, Y))] =
+      (estimate(l2, size), estimate(r2, size)) match
+        case (Some(a), Some(b)) if a < b => turned(Join(r2, l2, JoinStrategy.Hash()))
+        case _ => Join(l2, r2, JoinStrategy.Hash())
+
+    /** the ordering a plan's rows are known to be sorted by key under */
+    def orderedBy[K, X](p: Plan[(K, X)]): Option[Ordering[K]] = p match
+      case SortByKey(_, o) => Some(o)
+      case OrderedByKey(_, o) => Some(o)
+      case Where(q, _) => orderedBy(q)
+      case _ => None
 
     /** a join taken the other way round, its answer turned back: the
      * types do the bookkeeping, so no cast is needed for the swap */
@@ -148,7 +185,10 @@ object Tables:
       case Plan.Select(q, f) => B.map(compile(B)(q))(f)
       case Plan.Expand(q, f) => B.flatMap(compile(B)(q))(f)
       case Plan.Where(q, f) => B.filter(compile(B)(q))(f)
-      case Plan.Join(l, r) => B.join(compile(B)(l), compile(B)(r))
+      case Plan.Join(l, r, JoinStrategy.SortMerge(o)) => B.joinSorted(compile(B)(l), compile(B)(r))(using o)
+      case Plan.Join(l, r, _) => B.join(compile(B)(l), compile(B)(r))
+      case Plan.SortByKey(q, o) => B.sortByKey(compile(B)(q))(using o)
+      case Plan.OrderedByKey(q, _) => compile(B)(q)
       case Plan.Held(slot) => held(slot).asInstanceOf[D[A]]
   object Heap:
     def empty[D[_]]: Heap[D] = Heap(0, Map.empty, Map.empty)
@@ -172,7 +212,12 @@ object Tables:
     inline def aggregate[Acc, Out](agg: Aggregator[A, Acc, Out]): Out ! Tables = effect(Aggregate(t, agg))
     inline def collect: Chunks[A] ! Tables = effect(Collect(t))
   extension [K, A](l: Table[(K, A)])
-    inline def join[B](r: Table[(K, B)]): Table[(K, (A, B))] ! Tables = effect(Join(l, r))
+    /** the equi-join; the plan picks how (`JoinStrategy.Auto`) */
+    inline def join[B](r: Table[(K, B)]): Table[(K, (A, B))] ! Tables = effect(Join(l, r, JoinStrategy.Auto()))
+    /** the equi-join, the way the program says */
+    inline def join[B](r: Table[(K, B)], how: JoinStrategy[K]): Table[(K, (A, B))] ! Tables = effect(Join(l, r, how))
+    inline def sortByKey(using ord: Ordering[K]): Table[(K, A)] ! Tables = effect(SortByKey(l, ord))
+    inline def assumeSortedByKey(using ord: Ordering[K]): Table[(K, A)] ! Tables = effect(OrderedByKey(l, ord))
 
   // ------------------------- on a program: any row that has Tables
   extension [A, F[+_]](p: Table[A] ! F)(using In[Tables, F])
@@ -185,6 +230,10 @@ object Tables:
   extension [K, A, F[+_]](l: Table[(K, A)] ! F)(using In[Tables, F])
     def join[B](r: Table[(K, B)] ! F): Table[(K, (A, B))] ! F =
       l.flatMap(lt => r.flatMap(rt => lt.join(rt).at[F]))
+    def join[B](r: Table[(K, B)] ! F, how: JoinStrategy[K]): Table[(K, (A, B))] ! F =
+      l.flatMap(lt => r.flatMap(rt => lt.join(rt, how).at[F]))
+    def sortByKey(using Ordering[K]): Table[(K, A)] ! F = l.flatMap(t => t.sortByKey.at[F])
+    def assumeSortedByKey(using Ordering[K]): Table[(K, A)] ! F = l.flatMap(t => t.assumeSortedByKey.at[F])
     /** the right side already a handle — a table bound earlier in direct style */
     def join[B](r: Table[(K, B)]): Table[(K, (A, B))] ! F =
       l.flatMap(lt => lt.join(r).at[F])
@@ -211,7 +260,9 @@ object Tables:
         case Select(t, f) => State.update[Heap[D], X](h => h.put(Plan.Select(h.plan(t), f))).plus[F]
         case Expand(t, f) => State.update[Heap[D], X](h => h.put(Plan.Expand(h.plan(t), f))).plus[F]
         case Where(t, q) => State.update[Heap[D], X](h => h.put(Plan.Where(h.plan(t), q))).plus[F]
-        case Join(l, r) => State.update[Heap[D], X](h => h.put(Plan.Join(h.plan(l), h.plan(r)))).plus[F]
+        case Join(l, r, how) => State.update[Heap[D], X](h => h.put(Plan.Join(h.plan(l), h.plan(r), how))).plus[F]
+        case SortByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.SortByKey(h.plan(t), o))).plus[F]
+        case OrderedByKey(t, o) => State.update[Heap[D], X](h => h.put(Plan.OrderedByKey(h.plan(t), o))).plus[F]
         case Cache(t) => State.update[Heap[D], X](h => h.hold(B.cache(forced(h, t)))).plus[F]
         case Aggregate(t, agg) => State.get[Heap[D]].map(h => B.aggregate(forced(h, t))(agg)).plus[F]
         case Collect(t) => State.get[Heap[D]].map(h => B.toChunks(forced(h, t))).plus[F]
@@ -246,3 +297,25 @@ object Sort:
           // `X >: Table[A]` is what the match refines under covariance; `!` is
           // invariant in its answer, so the widening is spelled as a map
           t.collect.plus[G].flatMap(c => Tables.of(c.elements.toVector.sortBy(key)(using ord)).plus[G].map(t => t: X))
+
+/**
+ * HOW A JOIN RUNS (join-strategy-auto): `Auto` — the default — lets the
+ * plan decide: both sides known sorted by key under one ordering merge
+ * (`Bulk.joinSorted`, a run held, not a side), anything else hashes the
+ * smaller side (`Bulk.join`). `Hash` and `SortMerge` say it outright; a
+ * `SortMerge` over sides that are not sorted fails by name at the first
+ * row out of order. `Plan.show` prints the choice.
+ */
+enum JoinStrategy[K]:
+  case Auto()
+  case Hash()
+  case SortMerge(ord: Ordering[K])
+
+  def name: String = this match
+    case Auto() => "auto"
+    case Hash() => "hash"
+    case SortMerge(_) => "sort-merge"
+
+object JoinStrategy:
+  def sortMerge[K](using ord: Ordering[K]): JoinStrategy[K] = SortMerge(ord)
+

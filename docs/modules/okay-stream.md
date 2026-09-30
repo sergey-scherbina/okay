@@ -77,6 +77,26 @@ val got = Chunks.sortBy(Chunks.fromIterator(xs.iterator, 13), budget)(_._1).elem
 assertEquals(got, xs.sortBy(_._1), s"seed $seed budget $budget")
 ```
 
+## How a join runs: chosen, or said
+
+A `Tables` join picks its road by default (`JoinStrategy.Auto`): when
+both sides are KNOWN sorted by key under one ordering — `sortByKey`, or
+the caller's word `assumeSortedByKey`, which a merge checks row by row
+— it merges them, holding one run (`Bulk.joinSorted`); otherwise it
+hashes the smaller side (`Bulk.join`), as before. A filter keeps the
+fact; a function over the rows drops it. The program can say instead:
+`l.join(r, JoinStrategy.Hash())` or `l.join(r, JoinStrategy.sortMerge[K])`.
+`Plan.show` prints the choice — `Join(sort-merge)`, `Join(hash)` —
+so a test reads the decision. Every road answers the same pairs; on
+Spark `sortByKey` is Spark's own range sort, on the engine a sort-merge
+join is merged per bucket.
+
+```scala
+val (merged, p1) = traced(Tables.of(l).sortByKey.join(Tables.of(r).sortByKey).collect.map(_.elements.toVector.sorted))
+assertEquals(merged, expected)
+assert(p1.exists(_.contains("Join(sort-merge)")), p1.mkString("\n"))
+```
+
 ## What stayed in the core, and why
 
 Two things, both interfaces rather than machinery:

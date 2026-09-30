@@ -49,6 +49,8 @@ object BulkParallel:
       def filter[A](d: Chunks[A])(p: A => Boolean): Chunks[A] = base.filter(d)(p)
       def cache[A](d: Chunks[A]): Chunks[A] = base.cache(d)
       def toChunks[A](d: Chunks[A]): Chunks[A] = d
+      override def joinSorted[K, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)])(using Ordering[K]): Chunks[(K, (A, B))] =
+        base.joinSorted(l, r)
 
       /** the splits on fibres, `parallelism` ahead, in split order */
       override def read[A](path: String, format: Bulk.Format[A]): Chunks[A] = Chunks.defer:

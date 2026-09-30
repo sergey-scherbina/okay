@@ -131,6 +131,13 @@ object SparkBulk:
         val rp: RDD[(Any, Any)] = r.map(x => elem[(Any, Any)](x))
         RDD.rddToPairRDDFunctions(lp).join(rp).map(x => x)
 
+    /** Spark's own sort by key (join-strategy-auto): a range partition and
+     * a sort per partition, the order Spark keeps */
+    override def sortByKey[K, A](d: Rows[(K, A)])(using ord: Ordering[K]): Rows[(K, A)] =
+      val keyed: RDD[(Any, Any)] = d.map(x => { val kv = elem[(K, A)](x); (kv._1: Any, x) })
+      val byKey = Ordering.fromLessThan[Any]((a, b) => ord.lt(elem[K](a), elem[K](b)))
+      RDD.rddToOrderedRDDFunctions(keyed)(using byKey, scala.reflect.ClassTag.Any, scala.reflect.ClassTag.Any).sortByKey().values
+
     def cache[A](d: Rows[A]): Rows[A] = d.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
 
     override def uncache[A](d: Rows[A]): Unit = d.unpersist(blocking = false): Unit
