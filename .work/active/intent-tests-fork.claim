@@ -1,0 +1,1 @@
+claude session_01YRJ5EcKY1FwNaufrBB3ArS, 2026-09-30, operator ask ("Бери": the sbt heap / TestCoreAsync flakes): okay-intent's model-fitting suites exhaust sbt's in-process heap in the whole build (sprint.d/doing/intent-tests-fork.md)
