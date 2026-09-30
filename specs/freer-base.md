@@ -1014,3 +1014,87 @@ over the family. Not measured here: `scripts/jmh-lane.sh` needs the
 Mac; the lanes to re-read are the item's, and any movement is a
 defect, since every node is the same object.
 
+
+### Freer as the ParaMonad, and the two readings of an indexed signature (2026-09-30, freer-paramonad)
+
+The operator asked for `Freer` to be the `ParaMonad` instance, and
+behind it the question this base had not been asked: an effect whose
+SIGNATURE carries the indexes — typestate as a `Get`/`Put` enum a
+handler can look at, not `PState`'s shift bodies — how is it handled
+on this tree, and does "erase to `Unit` in `Free`, reintroduce in
+`PState`" have to be the road?
+
+**The instance** is one `given` in `object Freer`: `ParaMonad[Freer.
+Para[G]]` for every `G`, with `Para[G] = [A, S, R] =>> Freer[G, S, R,
+A]` because the trait reads value-first and the tree keeps `A` last
+for inference. `pure` is `Return`, `flatMap` is a prefix `Bind` (the
+extension-in-override self-recursion `Cont.bind` documents), `map` is
+the `Mapped` bind so builders keep reading it. `Control[Cont]` is the
+same structure at `Shift` with absorption, and `Cont` is opaque, so
+no search meets both; the effect row's `Monad[Free[F, *]]` still
+resolves beside the diagonal bridge — TestFreerPara pins both.
+
+**Where PState already stands.** Since the dual placement landed
+(2026-09-29) `PState` is NOT the erased road: `Cont.Rep[A, S, R]` is
+`Freer[Shift, S, R, A]`, so `PState.get: Cont[S, S => R, S => R]` is a
+leaf of the indexed tree with the state's type ON the node. What is
+erased to `Unit` is only the unary effect row, `A ! F`, because a
+unary `F[X]` has no answer type to put there.
+
+**Two readings of `Freer[G, S, R, A]` for a three-ary signature,
+compiled** (src/test/scala/TestFreerPara.scala):
+
+1. *The index is an ANSWER TYPE* — Cont's, PState's. `enum PSt[S, +R,
+   +X]` with `Get[S, Z]() extends PSt[S => Z, S => Z, S]` and `Put[S,
+   T, Z](t) extends PSt[T => Z, S => Z, S]` is `PState` as data, the
+   same signatures its `get`/`set` carry. A handler is an INDEXED
+   NATURAL TRANSFORMATION `[s, r, x] => G[s, r, x] => (x => s) => r`
+   — it chooses the shift body (`getAt`/`setAt`), which is the one
+   sentence this spec has carried since its overview — and the runner
+   is Cont's at any `G`, typed by the GADT end to end (`Return` gives
+   `S <: R`, `k(a): S` is the `R`). A program moving `Int -> String ->
+   List[String]` runs; a `Put` whose index does not meet the
+   continuation's is E007. This reading is what the base's variance
+   was designed for, and it is how an indexed effect is made here:
+   write the signature with the answer types, hand its handler to
+   Cont's runner (or `translate` it into `Cont` and absorb).
+
+2. *The index is a CONSUMED state* — McBride's `IxFree`, `R` the state
+   before, `S` after, `enum St[S, +R, +X]` with `Get[S]() extends
+   St[S, S, S]`, `Put[S, T](t) extends St[T, S, Unit]`, the handler a
+   loop `runSt(p)(r: R): (S, A)`. REFUSED, and by more than predicted:
+   the `Return` arm holds an `R` and owes an `S` with only `S <: R`
+   (the covariance `+R` that `tailShift` needed), and the `Get` arm
+   hands `r: R` to a continuation whose argument the match bound as a
+   SUPERtype of the case's own state, not as `R` — the signature is
+   covariant in `R` and `X` because the base's bound `G[_, +_, +_]`
+   says so, so the GADT yields bounds where an invariant enum gave
+   equalities. Only the `Put` arm, which PRODUCES the next state,
+   types. Pinned by `compileErrors` (two errors, both `Found: r: R`),
+   so the next change to the base's variance re-asks it.
+
+The principle, stated once: **on this base an index is something a
+handler PRODUCES, never something it consumes.** Threading a state
+through the answer type (`S => Z`) is not PState's trick around a
+missing feature; it is the only reading `Freer[G, S, +R, +A]` admits,
+and the reason is the same function-type arithmetic that put `+R`
+there. A consumed-state base would need `-R`/`+S` — the opposite
+variances — which is to say a different tree, and `Cont` would not
+fit it. Two consequences for the open items:
+
+- `Prog`'s phantom index and `Delim.Stacked` stay as they are. Their
+  index is a protocol CLAIM (a prompt stack, `Idle -> Open`) that the
+  machine reads at run time from prompt VALUES; nothing on the tree
+  could check it, and moving it onto the nodes would put a consumed
+  index under `+R`. The three-ary row algebra this spec lists as out
+  of scope is still out of scope: reading 1 needs no row — a
+  three-ary signature is handled by ONE natural transformation into
+  `Shift`, and combining it with a unary row is `PState`'s existing
+  road (a `Cont` program handling `A ! F` operations by `reflect`).
+- backlog `cont-variance` (`Rep[+A, S, +R]` on the facade) is
+  consistent with reading 1 and gains nothing for reading 2.
+
+Not measured: nothing on a hot path changed. The instance builds the
+nodes the tree's own `flatMap`/`map` build, and the runner in the test
+is a probe, not a production loop (its re-entry is direct style's
+frame, as `ProbeFreerStep`'s).

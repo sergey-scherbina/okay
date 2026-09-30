@@ -329,7 +329,8 @@ same material with the measurements attached.
 - **`Functor` → `Applicative` → `Selective` → `Monad`**, plus
   **`Alternative` → `MonadPlus`** and **`Comonad`** (the basis of
   per-operation handlers: `given [F: Comonad]: Handler[F]`).
-  `ParaMonad` founds the Cont layer; every diagonal is a `Monad`.
+  `ParaMonad` founds the Cont layer; every diagonal is a `Monad`, and
+  the tree `Freer` is the instance for every signature (`Freer.Para`).
 - The GENERIC combinators the classes exist for — written once, they
   run over programs, LazyList, Choose searches: **`traverse`** /
   **`sequence`** / **`replicateA`** (Applicative), **`guard`**

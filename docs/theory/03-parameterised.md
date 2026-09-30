@@ -142,6 +142,21 @@ instances (`Cont`'s answer-type modification, `PState`'s typestate,
 the design followed the paper closely enough that there is little
 else to say.
 
+Since 2026-09-30 the tree itself is the instance: `Freer[G, S, R, A]`
+(Free.scala), the one base under `Cont` and `Free`, is a `ParaMonad`
+for every signature `G` — `Return` on the diagonal, `Bind` composing
+the indexes — as `Freer.Para[G]`, the same tree read value-first. So
+an EFFECT may carry the indexes in its own signature, and there is
+exactly one way to read them on this base: as answer types, the way
+`PState` reads them. A `Get`/`Put` enum indexed `S => Z` is `PState`
+as data, its handler an indexed natural transformation into shift
+bodies, and Cont's runner runs it typed by the GADT. The other
+reading — McBride's, the index a state the handler CONSUMES — does
+not type: the base is covariant in `R` for the continuation's sake,
+and a consumed index needs the opposite variance. `TestFreerPara`
+holds both, the second as a `compileErrors` pin;
+specs/freer-base.md ("Freer as the ParaMonad") has the argument.
+
 
 **The production consumer.** The two-state degenerate form of this
 chapter's typestate ships in okay-sql: `Typed.region` (Typed.scala)

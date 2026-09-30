@@ -225,6 +225,34 @@ object Freer {
     override inline def pure[A](a: A): Free[F, A] = Return(a)
     extension [A](a: Free[F, A])
       override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = a.flatMap(f)
+
+  /**
+   * The tree in `ParaMonad`'s order — value first, then the indexes
+   * (freer-paramonad, 2026-09-30). `Freer` keeps `A` LAST for inference
+   * (the header says why); `ParaMonad[M[_, _, _]]` reads `M[A, S, R]`,
+   * so the instance is on this lambda, and a program written against
+   * an abstract `ParaMonad[M]` runs at `Freer.Para[G]` for any `G`.
+   */
+  type Para[G[_, +_, +_]] = [A, S, R] =>> Freer[G, S, R, A]
+
+  /**
+   * Freer IS Atkey's parameterised monad, for every signature: `Return`
+   * on the diagonal, `Bind` composing the indexes end to end — the
+   * instance only says so. `Control[Cont]` (Cont.scala) is the same
+   * structure at the `Shift` signature with absorption on top, and
+   * `Cont` is opaque, so the two never meet in a search.
+   *
+   * PREFIX `Bind`, not `m.flatMap(f)`: extension syntax inside an
+   * override resolves to the override being defined (the self-recursion
+   * `Cont.bind`'s comment records). `map` is overridden so the node is
+   * the `Mapped` one `!.foldM` can read back, not the default's
+   * `flatMap` into a `pure`.
+   */
+  given [G[_, +_, +_]]: ParaMonad[Para[G]] with
+    override def pure[A, R](a: A): Freer[G, R, R, A] = Return(a)
+    extension [A, S, R](m: Freer[G, S, R, A])
+      override def flatMap[B, S2](f: A => Freer[G, S2, S, B]): Freer[G, S2, R, B] = Bind(m, f)
+      override def map[B](f: A => B): Freer[G, S, R, B] = Bind(m, Mapped[G, S, A, B](f))
 }
 
 /**
