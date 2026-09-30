@@ -251,16 +251,37 @@ class TestLexicalStacked extends munit.FunSuite:
     assertEquals(r, (5, 10))
   }
 
+  // the same clause object at two stacks (munit's macro wants literals, so
+  // twice): at the installation's own it compiles, at another it is
+  // refused — the twin is what makes the refusal a proof rather than a typo
   test("stacked clauses are typed at the stack below their prompt: clauses over another stack are refused at the installation") {
+    assertEquals(compileErrors("""
+      okay.Delim.Stacked.delimited[Int, okay.Pure] { root =>
+        import root.given
+        val c = new okay.Lexical.Clauses[okay.State % Int, Int, Int, okay.Lexical.Stacked.Below[okay.Pure, root.p.type *: EmptyTuple]]:
+          def ret(a: Int) = okay.Freer.Return(a)
+          def op[X](e: okay.State[Int, X], k: X => okay.Delim.Stacked.Under[okay.Pure, Int, root.p.type *: EmptyTuple]) = e match
+            case okay.State.Get() => k(0)
+            case _ => okay.Freer.Return(0)
+        okay.Lexical.Stacked.deep(c) { b =>
+          import b.given
+          b.perform(okay.State.Get[Int, Int]())
+        }
+      }"""), "")
     val e = compileErrors("""
       okay.Delim.Stacked.delimited[Int, okay.Pure] { root =>
         import root.given
-        okay.Lexical.Stacked.deep(okay.TestLexicalStacked.StateClauses.deep[EmptyTuple]) { b =>
+        val c = new okay.Lexical.Clauses[okay.State % Int, Int, Int, okay.Lexical.Stacked.Below[okay.Pure, EmptyTuple]]:
+          def ret(a: Int) = okay.Freer.Return(a)
+          def op[X](e: okay.State[Int, X], k: X => okay.Delim.Stacked.Under[okay.Pure, Int, EmptyTuple]) = e match
+            case okay.State.Get() => k(0)
+            case _ => okay.Freer.Return(0)
+        okay.Lexical.Stacked.deep(c) { b =>
           import b.given
           b.perform(okay.State.Get[Int, Int]())
-        }.flatMap(f => f(0)).map(_._2)
+        }
       }""")
-    assert(e.contains("Found:") || e.contains("Required:"), s"compiled, or not a type error: $e")
+    assert(e.contains("Required:"), s"compiled, or not a type error: $e")
   }
 
   test("a stacked instance used AFTER its installation returned does not compile") {
