@@ -470,6 +470,12 @@ object Chunks {
   def joinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (A, B))] =
     SortMerge.chunks(l, r)(() => SortMerge.inner)
 
+  /** sorted by `key`, the input held one run of `budget` elements at a
+   * time and the runs spilled (`ExternalSort`, chunks-external-sort) */
+  def sortBy[A, K](p: Chunks[A], budget: Int = 1_000_000)(key: A => K)
+                  (using Ordering[K], RunCodec[A], Spill): Chunks[A] =
+    ExternalSort.sortBy(p, budget)(key)
+
   /** `joinSorted`, every left row kept: `None` where the right side has no such key */
   def leftJoinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (A, Option[B]))] =
     SortMerge.chunks(l, r)(() => SortMerge.left)

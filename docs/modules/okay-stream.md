@@ -57,6 +57,26 @@ val p = Tables.of(Vector.range(0, 1000)).select(i => (i % 7, i)).join(Tables.of(
 assertEquals(Tables.run(B)(p), Tables.run(local)(p))
 ```
 
+## Sorting what does not fit: `Chunks.sortBy`
+
+`Chunks.sortBy(p, budget)(key)` sorts a chunked stream holding one RUN
+of `budget` elements at a time: each run is sorted in memory and
+spilled, then the runs are merged by a heap over one cursor per run
+(Knuth vol. 3 §5.4). Memory is one run while reading and one element
+per run while merging; a stream that fits in one run is never spilled.
+The sort is stable. Where the runs go is a `Spill`: temporary files by
+default on JVM and Native (deleted when the output is read to its end,
+and at exit otherwise), `Spill.memory` for a platform without a disk.
+An element becomes bytes through a `RunCodec`: numbers, strings and
+pairs have one, and any type with a `Schema` gets one from okay-codec
+through CBOR (`import okay.codec.RunCodecs.given`).
+
+```scala
+given spill: Spill.Memory = Spill.memory
+val got = Chunks.sortBy(Chunks.fromIterator(xs.iterator, 13), budget)(_._1).elements.toVector
+assertEquals(got, xs.sortBy(_._1), s"seed $seed budget $budget")
+```
+
 ## What stayed in the core, and why
 
 Two things, both interfaces rather than machinery:
