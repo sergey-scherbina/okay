@@ -211,6 +211,45 @@ object State {
     loop(p)
   }
 
+  /**
+   * THE STATE HANDLER OVER AN INDEXED ROW (specs/indexed-effects.md,
+   * stage 3): the reference shape of a unary handler beside a
+   * typestate. The row is `F +~ Unary[State[S, *]]` — an indexed
+   * signature `F` that moves the index, and this effect on the
+   * diagonal (Indexed.scala says why the member is a match type). Its
+   * own operations are answered from the threaded `s` and the program
+   * continues at the SAME indexes (a `Diag` node moves nothing, so the
+   * loop is one `@tailrec` method at fixed `T`, `R`); an `F` operation
+   * is forwarded WITH THE INDEX IT CAME WITH — under `Diag` as the
+   * diagonal node it is, under `Inject` with its `(T', R)` and the
+   * continuation closing `(T, T')`, which is why that arm recurses
+   * through `flatMap` at other indexes (trampolined, not a frame). A
+   * `State` operation under `Inject` cannot be built through the doors
+   * and is `Indexed.offDiagonal`'s.
+   */
+  def handleIndexed[S](s: S)[F[_, _, +_], T, R, A](p: Freer[F +~ Unary[State[S, *]], T, R, A])(using TypeableI[F]): Freer[F, T, R, (S, A)] = {
+    type Row = F +~ Unary[State[S, *]]
+    type Un = Unary[State[S, *]]
+    def again(s: S)(x: Freer[Row, T, R, A]): Freer[F, T, R, (S, A)] = loop(s)(x)
+
+    @tailrec def loop(s: S)(x: Freer[Row, T, R, A]): Freer[F, T, R, (S, A)] = (x.resume: @unchecked) match
+      case Freer.Return(a) => Freer.Return((s, a))
+      // a lone operation is a bind with a pure continuation (zoomWith's
+      // reading): one node, and the arm below already knows the case
+      case Freer.Diag(e) => loop(s)(Freer.Diag[Row, R, A](e).flatMap(v => Freer.Return(v)))
+      case Freer.Inject(o) => loop(s)(Freer.Inject[Row, T, R, A](o).flatMap(v => Freer.Return(v)))
+      case Freer.Bind(Freer.Diag(e), k) => splitI[F, Un](e)(f => Freer.Diag(f).flatMap(v => again(s)(k(v)))) {
+          case Get() => loop(s)(k(s))
+          case Set(n) => loop(n)(k(n))
+          case Modify(f) => { val n = f(s); loop(n)(k(n)) }
+          case Update(f) => { val (b, n) = f(s); loop(n)(k(b)) }
+        }
+      case Freer.Bind(Freer.Inject(o), k) =>
+        splitI[F, Un](o)(f => Freer.Inject(f).flatMap(v => handleIndexed(s)(k(v))))(Indexed.offDiagonal)
+
+    loop(s)(p)
+  }
+
   /** number the elements of a sequence, as a State program */
   def index[A](seq: Seq[A], from: Long = 0): (Long, Seq[(Long, A)]) = run(from):
     seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
