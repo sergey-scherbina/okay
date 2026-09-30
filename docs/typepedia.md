@@ -215,8 +215,10 @@ same material with the measurements attached.
   recover the type anyway; [existentials.md](existentials.md) records
   each, what the compiler said, and the bytecode.
 - **`State % S`** — bespoke tailrec handler; **`PState`** — the
-  type-changing (typestate) variant on the paramonad, ~1.7x the
-  price — no longer only an exhibit: `Stage.phased`/`phased3`
+  type-changing (typestate) variant on the paramonad, 1.79x the
+  price through the shift road and 1.07x through `PState.Threaded`,
+  the same protocol as data run by the tailrec loop (pstate-threaded,
+  2026-09-30) — no longer only an exhibit: `Stage.phased`/`phased3`
   execute their phase switches through it, and the typed
   transaction region (sql-typestate) is its second consumer.
 - **`Blocking[A]`** — `CanBlock ?=> A`: parks-a-thread as a

@@ -1328,3 +1328,37 @@ of the `Inject`/`Bind` type tests on the Free side (`relayForward`,
 lottery this spec has met before, and why a single round is a
 hypothesis. The lanes the freer-consumed-index and freer-diag-leaf
 entries named as "the change to bisect to" need no bisecting.
+
+### PState as data through the threading loop — the payoff, measured (2026-09-30, pstate-threaded)
+
+Item 2 of the from-scratch list, and the number the invariance
+decision was for. `PState.Op[S, R, +X]` (`Get[S]` at `(S, S)`,
+`Put[S, T](t)` from `S` to `T`, answering the old state as `set`
+does), `PState.Threaded[A, S, R] = Freer[Op, S, R, A]`, doors
+`Threaded.get`/`put`, and `Threaded.run` — `State.handle`'s loop with
+the type moving, `@tailrec`, no continuation object. TestState pins
+the protocol (`Int -> String -> Boolean`) and the refusal of a `Put`
+from the wrong state. HandlerBenchmark `stateThreaded` is the same
+M = 1000 workload as `statePara`. Three lanes on one tree, order
+rotated per round, MIN of 3, `jmh-lane.sh -f2 -wi3 -i5 -prof gc`,
+every lane quiet (history.d `2026-09-30T104006Z-pstate-threaded.tsv`):
+
+| lane | µs/op | B/op | vs `stateEffect` |
+|---|---|---|---|
+| `stateEffect` (untyped `State`) | 16.96 | 244 904 | 1.00 |
+| `stateThreaded` (typed, data road) | 18.07 | 276 904 | **1.07** |
+| `statePara` (typed, shift road) | 30.39 | 301 407 | 1.79 |
+
+The typed protocol costs 7% over the untyped State on the data road
+and 79% on the shift road, so the data road is 0.59x of what `PState`
+paid. What the invariance bought is exactly this loop: a handler that
+CONSUMES its index and continues at the type the operation gives it.
+The 32 000 B the data road still carries over State are one
+`Inject(Get())` allocated per read, where `State.get` shares one node
+through a cast (`SharedOps.getNode`); the same cast here would close
+the bytes and is the next rung, priced on its own. The shift road's
+own ratio moved from the 1.29x State.scala's header quoted on
+2026-09-17 to 1.79x today — the re-entry road's cost is the JIT's
+inlining decision, not a constant — and the header says so now.
+Which road: the shift road for what only it can do (a body that uses
+`k`, the profunctor `Zooming`), the data road for a protocol.

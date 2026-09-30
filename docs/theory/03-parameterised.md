@@ -104,15 +104,21 @@ protocol's stages become index transitions and skipping a stage fails
 to compile.
 
 The price was measured rather than assumed: the typestate variant
-costs about 1.7x the plain `State` handler (`docs/benchmarks.md`), so
-Okay keeps both — `State % S` for the common case where the type never
-changes, `PState` where the protocol is the point — and since
+through the shift road costs 1.79x the plain `State` handler
+(HandlerBenchmark, 2026-09-30; 1.29x and ~1.7x at earlier readings),
+so Okay keeps both — `State % S` for the common case where the type
+never changes, `PState` where the protocol is the point — and since
 stage-phased it is no longer only an exhibit: `Stage.phased`
 (Pipe.scala) executes its per-input phase switch as a PState run,
-the type change S1 -> Either[S1, S2] doing streaming work. This is the
-recurring house pattern: the more general theory is present, and the
-specialized fast path exists *because a benchmark said so*, not
-instead of the theory.
+the type change S1 -> Either[S1, S2] doing streaming work. Since the
+tree's indexes became invariant (the same day, see below) the protocol
+also runs as DATA: `PState.Threaded` is `Get`/`Put` as an indexed
+signature threaded by a tail-recursive loop with the type moving, and
+it measures 1.07x the plain handler — the typed protocol at the
+untyped one's cost, which is what the invariance decision bought.
+This is the recurring house pattern: the more general theory is
+present, and the specialized fast path exists *because a benchmark
+said so*, not instead of the theory.
 
 A THIRD instance carries the same index without touching `Cont` at
 all: `Prog[F, A, S, R]` (freer-base stage 2, specs/freer-base.md) is
