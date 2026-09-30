@@ -1,0 +1,1 @@
+claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-09-30, operator ask ("А мы можем портировать refine в okay2?"): okay-refine ported to the Scala 2.13 core as okay2/okay2-refine — Refine/Verdict/Format (json <|> xml: okay2 has no Yaml/Cbor codec yet), tests ported; spec note in specs/refine.md
