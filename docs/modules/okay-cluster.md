@@ -138,6 +138,32 @@ reorder its partials. Flink answers the same stage with a
 `KeyedProcessFunction` over `ValueState`, which must have every
 record of a key on one machine.
 
+**A Bulk over the engine** (streams-seam, lane 1; [specs/streams-seam.md](../../specs/streams-seam.md)).
+`FlowBulk(parts)` is our engine as a platform behind the `Bulk` seam,
+so a `Tables` program that names no platform — read, select, where,
+join, aggregate, collect — runs here unchanged, beside `localBulk` in
+one JVM and `SparkBulk` on a cluster. Inside the plan nothing runs:
+`of` slices rows into `parts` partitions, `map`/`filter`/`flatMap` are
+`Local` transformers per partition, `read(path, format)` spreads a
+file's splits (a Parquet file's row groups) one partition per slice
+and reads each where it lands. The engine runs where the seam asks
+for a value: `aggregate` folds through `Flows.fold`, `collect` and
+`cache` through `Flows.collect`, under the scheduler given at
+construction. The join is the seam's hash join — the right side
+collected once and shared by every partition of the left, the
+broadcast join Spark picks for a small side; `Tables` turns the
+smaller side right by size. A co-partitioned join of two large sides
+is a binary node `Flow` does not have yet (lane 2).
+
+```scala
+val B = FlowBulk(4, lines, sizes)                                    // four partitions, files read by name
+val rows = Tables.run(B):
+  val small = read("small.csv").select(r => r("k") -> r("s"))
+  val big = read("big.csv").select(r => r("k") -> r("b"))
+  big.join(small).select { case (k, (b, s)) => (k, b, s) }.collect.map(_.elements.toVector.sorted)
+assertEquals(rows, Tables.run(Bulk.local(lines, sizes))(sameProgram))    // the agreement law
+```
+
 **Across processes.** A `Job[P, R]` is what a worker can be asked for
 by NAME: it carries a `Schema` for its parameters and builds the plan
 itself, so nothing that crosses is a function. `Cluster.run(job,
