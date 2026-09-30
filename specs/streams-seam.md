@@ -211,7 +211,10 @@ Lane 3 (bulk-flink): `Bulk[DataStream]`, optional, refused by name;
 `Streamed` answered natively.
 
 Lane 5 (tables-structural): the structural sub-language, `Bulk[DataFrame]`,
-the GTFS job measured three ways — 18 s must approach 7 s.
+the GTFS job measured three ways. MEASURED FIRST (tables-structural,
+2026-09-30): the premise "18 s vs 7 s" was stale, and the real gap on
+the three joins is 708 ms (our seam on Spark) against 536 ms (a hand
+DataFrame), 1.32x — see Results.
 
 Lane 4 (streams-seam-docs): the one-job page with the numbers.
 
@@ -242,3 +245,22 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
   specs/dataflow.md holding for a table sliced contiguously. Spark's
   native answers deferred: without the structural sub-language a
   Catalyst-side answer would be object mode, which lane 5 is about.
+
+- tables-structural, the measure (2026-09-30): `MeasureGtfsFrames`
+  (okay-spark, Live) — the three joins of `Gtfs.departures` without the
+  expand, three arms alternating, best of three: our seam on Spark
+  (`SparkBulk`, the RDD level, columns pruned at the parser) 708 ms, a
+  hand-written DataFrame (`spark.read.csv`, select, three `join` on
+  column names, count) 536 ms, `localBulk` in one JVM 803 ms; 1,158,821
+  rows in every arm; box load 9-24, so the ratio is the claim, not the
+  milliseconds. The "18 s vs 7 s" that this spec, the arc's backlog item
+  and docs/modules/okay-spark.md quoted had no DataFrame version behind
+  it anywhere in the repository, and TestWroclawStages (bulk-rewrite,
+  2026-09-09) had already shown the 18 s was `cache` under Java
+  serialization — the record outlived the truth by three weeks and was
+  copied forward by this arc. VERDICT for lane 5: on a CSV job Catalyst
+  buys 1.32x, which does not earn a second plan language by itself. What
+  could: Parquet, where a structural `where` becomes row-group skipping
+  and column pruning at the reader (Catalyst's pushdown), which a Scala
+  closure can never get — the next measurement before any surface is
+  built, on a Parquet table with a selective predicate.

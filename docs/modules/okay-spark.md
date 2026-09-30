@@ -39,8 +39,13 @@ this instance or on the local `Chunks` one unchanged. The instance is
 an opaque `RDD[Any]` — Spark stores objects anyway — so no `ClassTag`
 is asked per intermediate type; the price is one documented cast at the
 element boundary and a boxed element where Spark boxes it too. It is
-the RDD level, not Catalyst: the Wrocław GTFS join reads 18 s here
-against 7 s through DataFrames, and 4 s in one JVM through `Chunks`.
+the RDD level, not Catalyst, and on the Wrocław GTFS job that costs
+little: the three joins (1.16M stop times against trips, routes and
+calendar, counted) read 708 ms here against 536 ms as a hand-written
+DataFrame and 803 ms in one JVM through `Chunks` (MeasureGtfsFrames,
+2026-09-30, best of three alternating rounds). The "18 s against 7 s"
+this page used to quote was `cache` under Java serialization
+(TestWroclawStages), not the RDD level.
 
 **ADTs as DataFrames.** `SparkSchema` turns an okay `Schema[A]` into a
 Spark `StructType` and rows — the Catalyst side, where Spark's own

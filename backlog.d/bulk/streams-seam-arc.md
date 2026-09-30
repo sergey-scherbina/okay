@@ -50,10 +50,11 @@
          platform).
       5. SPARK DATAFRAMES (operator's question, 2026-09-30) — not a
          `Bulk[DataFrame]` instance as such: the seam sits at the RDD
-         level on purpose (specs/bulk.md, Out of scope), and it costs
-         what it costs — the Wrocław GTFS join reads 18 s through the RDD
-         seam against 7 s through DataFrames (docs/modules/okay-spark.md),
-         because a `map(f)`/`where(p)` carrying a Scala closure is
+         level on purpose (specs/bulk.md, Out of scope), and on the
+         GTFS CSV job it costs 1.32x (708 ms vs 536 ms for a hand
+         DataFrame, MeasureGtfsFrames 2026-09-30; the "18 s vs 7 s" once
+         quoted here was stale — cache under Java serialization), because
+         a `map(f)`/`where(p)` carrying a Scala closure is
          OPAQUE to Catalyst, and a `Dataset.map(f)` on a typed Dataset
          is object mode (deserialise, call, serialise), often slower
          than the RDD. Catalyst pays only for what it can SEE. So the
@@ -74,8 +75,9 @@
          says where. Flink's Table API and our `Tables` rewrite read the
          same structural nodes (the `Columns(Read)` pruning rewrite is
          the first of them, landed). Measure the GTFS job three ways
-         before and after: the 18 s must approach the 7 s, or the lane
-         has not earned the surface.
+         before and after — and FIRST a Parquet table with a selective
+         predicate, where pushdown (row-group skipping) is what a closure
+         can never get: 1.32x on CSV does not earn the surface alone.
       Refuted in advance: making `Flow` the one program and writing Spark
       and Flink interpreters for it — `Flow` is our engine's plan and
       carries our engine's decisions (Finish, Sequential, seeding); the
