@@ -20,9 +20,10 @@ as a function, to its body.** The tree does not change: `Freer`'s five
 cases stay, `Freer` keeps its own `resume`, and it knows nothing of the
 stack — the machine recognises a `Frames` in a `Bind`'s continuation by
 class, and a `Frames` applied as a plain function by any other
-interpreter applies ONE frame per step, so it is a continuation for
-`Freer.resume` too. `Freer` is self-sufficient; `Cont` is orthogonal
-(operator, 2026-09-30). What
+interpreter RUNS THE MACHINE ON ITSELF — the continuation carries its
+own interpreter — so it is a continuation for `Freer.resume` too, with
+the `Cont0` inside it handled. `Freer` is self-sufficient; `Cont` is
+orthogonal (operator, 2026-09-30). What
 changes is `resume`: the rotation `Bind(Bind(a, f), g) ⇒ Bind(a,
 f(_).flatMap(g))` (a closure per left-nesting, re-pushed down every
 step, the JIT-mode lead of `freer-rotation-closure-jit-modes`) becomes
@@ -45,9 +46,10 @@ enum Frames[G[_, _, +_], A, S, T, Z] extends (A => Freer[G, S, T, Z]):
                                    rest: Frames[G, Y, S, S2, Z]) extends Frames[G, A, S, T, Z]
   case Reset[G, A, S, S2, T, Y, Z](p: Prompt[S2, Y], ret: A => Freer[G, S2, T, Y],
                                    rest: Frames[G, Y, S, S2, Z]) extends Frames[G, A, S, T, Z]
-  apply(a) = End: Return(a) | Frame(f, rest): Bind(f(a), rest) | Reset(_, ret, rest): Bind(ret(a), rest)
-                                                          -- ONE FRAME PER STEP: valid under any interpreter of the tree;
-                                                          -- the machine never calls it, it splices `rest`
+  apply(a) = End: Return(a)  |  else: Delay(Resume(a, this))
+                              -- Resume: () => Freer, apply() = Machine.run(Bind(Return(a), fs)): forced by an outer
+                              -- interpreter it runs the frames WITH their Cont0 and answers a head form; the
+                              -- machine never forces it — meeting Delay(r: Resume) it splices r.fs (lazy k)
 
 enum Cont0[F, T, R, +X]:                                          -- an enum for the `+X` (Delim.Op's shape)
   case Reset0[F, S, Y, A, T, R](p: Prompt[S, Y], ret: A => Freer[Row[F], S, T, Y], body: Freer[Row[F], T, R, A])
@@ -102,7 +104,8 @@ loop[X, T](focus: Freer[G, T, R, X], fs: Frames[G, X, S0, T, Z]): Freer[G, S0, R
   Delay(t)            → loop(t(), fs)
   Inject(Reset0)      → loop(body, Reset(p, ret, fs))                                 -- the operation becomes the frame
   Inject(Shift0)      → cut fs at the first Reset(p): k, below; loop(f(k), below)   -- ($/S0)
-  Inject(e)           → Bind(focus, Reenter(fs))   -- the head form: k RE-ENTERS the machine with its stack
+  Delay(r: Resume)    → loop(Return(r.a), r.fs ++ fs)   -- a clause's k(x), spliced, never forced
+  Inject(e)           → Bind(focus, fs)            -- the head form: fs is the continuation, and it re-enters by itself
 ```
 
 `++` and the cut are two `@tailrec` walks over a reversed list `Rev`
@@ -112,15 +115,23 @@ prefix up to the `Reset` and links it onto `End`; a splice reverses
 every frame copied is a frame about to be run. A splice onto `End` is
 the segment itself — the re-entry from an outer handler costs nothing.
 
-**The head form's `k` re-enters the machine.** An operation nobody on
-the stack answers goes out to whoever runs the program — a handler
-loop over `Freer.resume`, which knows nothing of frames. If its `k`
-were the raw `Frames`, the loop's rotation would apply the frames
-itself and the machine would be gone: a `Cont0` operation met later
-would have no stack to cut. So `k` is `Reenter(fs)`, a plain function
-`x => run(Bind(Return(x), fs))` — `Delim`'s `Out(inject(g).flatMap(x =>
-loop(..)))`, the same shape — one JVM call per re-entry, each returning
-the next head form before the next. The ordering this fixes is the
+**The continuation carries its own interpreter** (operator: "чтобы
+Frames.apply сам себя правильно интерпретировал вместе с эффектом Cont0
+внутри"). An operation nobody on the stack answers goes out as
+`Bind(Inject(e), fs)` to whoever runs the program — a handler loop over
+`Freer.resume`, which knows nothing of frames. If `fs(x)` handed that
+loop the frames one by one, the loop's rotation would run them and the
+machine would be gone: a `Cont0` operation met later would have no
+stack to cut. So `fs(x)` is `Delay(Resume(x, fs))`, and `Resume`'s
+thunk runs the machine on the stack with `x` at its top — forced by
+the outer loop it interprets its own `Cont0` and hands back the next
+head form, one JVM call that returns before the next (`Delim`'s
+`Out(inject(g).flatMap(x => loop(..)))`, the same shape). Inside the
+machine the same node is a clause's `k(x)`, and there it must be LAZY
+or 100 000 clauses each calling `k` would nest 100 000 machines: the
+loop meets `Delay(r: Resume)` and splices `r.fs`, never forcing it —
+the second class test of the file, on a `Delay`'s thunk as `Frames.as`
+is on a `Bind`'s continuation. The ordering this serves is the
 library's rule already ("one machine, innermost": `State.handle(
 delimited(..))`, never a loop between a program and its machine).
 
@@ -148,8 +159,10 @@ delimited(..))`, never a loop between a program and its machine).
   own (`Cont.scala` after the migration, `kont/Kont.scala` in the
   probe); `Freer` is usable without them exactly as today, the 112
   handler loops keep calling `Freer.resume`, and the machine is a
-  second interpreter, `Cont.run`, that the head form's `Reenter`
-  brings back. `Cont` (`Shift0` with a strict `k`) is defined beside
+  second interpreter, `Cont.run`, that a forced `Resume` brings back;
+  `Frames` is the stack OF THIS MACHINE, over `Row[F]`, not a stack
+  over any signature — its `apply` names the machine. `Cont` (`Shift0`
+  with a strict `k`) is defined beside
   it. The rotation-free descent is therefore the machine's, not every
   loop's — making `Freer.resume` the frame machine is a separate,
   later decision, not this one.
