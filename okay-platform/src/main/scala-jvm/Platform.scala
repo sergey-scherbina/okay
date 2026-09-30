@@ -1101,7 +1101,17 @@ object Schedulers {
      * resume anywhere writes to it */
     override protected def resumeLate[X](x: X, k: X => A ! Async): Unit =
       val h = home
-      if h == null || Thread.currentThread().isInstanceOf[ManagedWorker] then resumeHere(x, k)
+      val me = Thread.currentThread()
+      // NOT inline when this thread is running ANOTHER fiber right now
+      // (ready-merge-side-starves, 2026-09-30): a producer's `offer` woke
+      // this consumer, and resumed here the consumer ran on the producer's
+      // stack — a merge whose other side is always ready never parked
+      // again, so the producer under it never ran again and a fold waiting
+      // for its side waited for ever. Sent home instead; from a worker
+      // that is `pushLocal`, no CAS and no wake, the cheap road
+      // (resume-late-small-ring-cost). A callback on a worker between
+      // fibers still resumes in place.
+      if h == null || (me.isInstanceOf[ManagedWorker] && DriveTask.current(me) == null) then resumeHere(x, k)
       else { val _ = h.fork(() => async(resumeHere(x, k))) }
 
     protected def succeed(a: A): Unit = done(Right(a))

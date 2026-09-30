@@ -32,17 +32,10 @@ class TestSourceJoinWithin extends munit.FunSuite with okay.testkit.Munit.Diagno
   }
 
   test("two endless sides join lazily under an early stop, which releases both once; a full run releases nothing") {
-    // TWO ENDLESS SIDES RUN ON LOOM ONLY (windowjoin-spin-fix, 2026-09-30;
-    // okay-stream/BUGS.md `ready-merge-side-starves`): on a scheduler with
-    // owned workers (`own`, the adaptive default) the `either` merge under
-    // this join stops delivering one side within ~20 runs — the hot side's
-    // ring ends with its head and tail thirty laps ahead of every stamp —
-    // and a fold waiting for the pair (2, 2) then waits for ever. The CI
-    // runner's family gate hung twice on exactly this line. The join's
-    // own laws are pinned by `TestWindowJoin` (a list, no scheduler) and
-    // the bounded cases below on every scheduler; the reproducer is
-    // `ProbeReadyMergeStarve`. Widen this list back when that bug closes.
-    for (sname, sch) <- List("loom" -> Schedulers.loom) do
+    // on every scheduler again: the starvation that pinned this to Loom
+    // was the merge resumed inline on a producer's thread for good, fixed
+    // in Async.Drive (ready-merge-side-starves)
+    for (sname, sch) <- List("loom" -> Schedulers.loom, "own" -> Schedulers.own.build, "default" -> summon[Scheduler]) do
       val before = Source.mergeReleases.get
       val ticks = Source.of(LazyList.from(0).map(i => ("k", (i.toLong, s"l$i"))))
       val tocks = Source.of(LazyList.from(0).map(i => ("k", (i.toLong, s"r$i"))))
