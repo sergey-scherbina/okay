@@ -318,27 +318,27 @@ object Lexical:
         extends In[R, S](p0):
       /** the operation, to THIS installation, which must be on the stack */
       def perform[X](e: F[X])(using st: Stack[?])[B <: Tuple](using Has.Aux[st.S, p.type, B], At): Under[G, X, st.S] =
-        Delim.Stacked.shift0[R, X, G](p)(k => Prog.diag[B, Delim + G, R](ops.op(e, x => k(x).free)))
+        Delim.Stacked.shift0[R, X, G](p)(k => Delim.Stacked.at[G, R, B](ops.op(e, x => Delim.Stacked.erase(k(x)))))
 
     def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, Delim + G])(using st: Stack[?])
                                 (body: (i: Deep[F, R, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                 (using at: At): Under[G, R, st.S] =
       val i = new Deep[F, R, G, st.S](Delim.prompt[R], c)
-      Prog.diag[st.S, Delim + G, R](Delim.dollar[A, R, G](i.p)(c.ret)(body(i).free))
+      Delim.Stacked.at[G, R, st.S](Delim.dollar[A, R, G](i.p)(c.ret)(Delim.Stacked.erase(body(i))))
 
     /** a stacked TAIL instance: it answers in place, and the stack check
      * is what makes holding it safe */
     final class Tail[F[+_], S0, A, G[+_], S <: Tuple] private[Lexical] (
         p0: Prompt[(S0, A)], answer: [X] => F[X] => X ! Delim + G) extends In[(S0, A), S](p0):
       def perform[X](e: F[X])(using st: Stack[?])[B <: Tuple](using Has.Aux[st.S, p.type, B]): Under[G, X, st.S] =
-        Prog.diag[st.S, Delim + G, X](answer(e))
+        Delim.Stacked.at[G, X, st.S](answer(e))
 
     /** `Lexical.tail`, stacked: the cell and the guard per run, the
      * guard's delimiter being the instance itself */
     def tail[F[+_], S0, A, G[+_]](s0: S0)(c: TailClauses[F, S0])(using st: Stack[?])
                                  (body: (i: Tail[F, S0, A, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                  (using at: At): Under[G, (S0, A), st.S] =
-      Prog.diag[st.S, Delim + G, (S0, A)](Free.delay { () =>
+      Delim.Stacked.at[G, (S0, A), st.S](Free.delay { () =>
         var cell = s0
         val i = new Tail[F, S0, A, G, st.S](Delim.prompt[(S0, A)], [X] => (e: F[X]) => Free.delay { () =>
           val (s1, x) = c.op(e, cell)
@@ -348,5 +348,5 @@ object Lexical:
         // the guard counts runs of a captured context, as Closing.guarded's does
         Delim.dollarResumed[A, (S0, A), G](i.p)(
           a => okay.pure[Delim + G, (S0, A)]((cell, a)),
-          n => if n > 1 then throw MultiShotAcrossTail(at.where))(body(i).free)
+          n => if n > 1 then throw MultiShotAcrossTail(at.where))(Delim.Stacked.erase(body(i)))
       })

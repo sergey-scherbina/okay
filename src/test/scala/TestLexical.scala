@@ -211,7 +211,6 @@ class TestLexicalTail extends munit.FunSuite:
 /** specs/lexical-instances.md stage 2: stacked instances */
 class TestLexicalStacked extends munit.FunSuite:
   import okay.Delim.Stacked.delimited
-  import okay.Prog.{flatMap, map}
 
   type P = okay.Pure
 
@@ -243,7 +242,7 @@ class TestLexicalStacked extends munit.FunSuite:
             y <- b.perform(State.Get[Int, Int]())
             _ <- a.perform(State.Set[Int, Int](x + 5))
           yield x + y
-        }.flatMap(f => okay.Prog.diag(f(10))).map(_._2)
+        }.flatMap(f => okay.Delim.Stacked.under(f(10))).map(_._2)
       }
     })
     assertEquals(r, (5, 10))
@@ -257,7 +256,7 @@ class TestLexicalStacked extends munit.FunSuite:
         okay.Lexical.Stacked.tail[okay.State % Int, Int, Int, okay.Pure](0)(null) { a =>
           import a.given
           leaked = a
-          okay.Prog.pure(1)
+          okay.Freer.Return(1)
         }.flatMap(_ => leaked.nn.perform(okay.State.Get[Int, Int]()).map(v => (v, v)))
       }""")
     assert(e.contains("not on the prompt stack"), s"compiled, or not our message: $e")

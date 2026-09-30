@@ -7,7 +7,7 @@ import okay.Row.at
 // found through `Prog`'s companion, the extension's `flatMap` leaves the
 // lambda's argument an uninferred `A` in the stacked shapes below
 // (`a + 1`: "value + is not a member of A"); imported, it infers.
-import okay.Prog.{flatMap, map}
+import okay.Prog.flatMap
 
 /**
  * specs/freer-base.md, stage 2: the indexed facade, and `Delim`'s

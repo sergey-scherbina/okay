@@ -147,11 +147,15 @@ Stage 3:
       `direct` suite is the pin (Results).
 
 Stage 4:
-- [ ] The spike's outcome recorded in Decisions with the compiler's
-      words; what landed listed in Results.
-- [ ] Every `Any` payload the signature can type is typed; every cast
-      the machine keeps is named with its invariant.
-- [ ] TestDelim and TestProg are green unchanged.
+- [x] The spike's outcome recorded (Results): the positional witness
+      refuted by `shift`'s re-installation, the segments typed by
+      answer types, `rebase` the one claim.
+- [x] Every `Any` payload the signature can type is typed (`Op`'s
+      three cases); the casts the machine keeps are named: the two on
+      embedded unstacked operations (their payloads are `Any` by
+      construction), `rebase`, and `erase`'s excluded middle.
+- [x] TestDelim and TestProg are green unchanged (TestProg's stacked
+      shapes run on the new machine; its facade tests on `Prog`).
 
 Stage 5:
 - [x] `docs/typestate.md` exists, every example line pinned
@@ -224,6 +228,71 @@ compiler said:
   under `flatMap`.
 - The caveat holds and is asserted: a failure inside the body drops
   the `commit`; the log ends at `begin`.
+
+### Stage 4 — LANDED (indexed-effects-4-delim-signature): the typed Delim machine
+
+The operator's word ("Да ок"): `Delim.Stacked` is a real machine over
+the indexed tree, not a facade over `Prog`; `Lexical.Stacked` and
+`Layered.Stacked` moved with it; the unstacked `Delim` and its machine
+are untouched. What was built, and what the compiler and the
+semantics said on the way:
+
+- **The signature, with its types.** `Delim.Stacked.Op[F, S, R, +X]`
+  — `Push[St, R, P0 <: Prompt[R]](p: P0 & Prompt[R], body: Under[F, R,
+  P0 *: St])`, `Dollar`, `Capture[St, R, P0, B, S0, A](p, f: (A =>
+  Under[F, R, S0]) => Under[F, R, S0], underPrompt, delimitK, at)` —
+  parameterised by the rest of the row `F` (fixed at `run`, so it may
+  be named), every operation on the DIAGONAL: the tree's index is the
+  stack the operation runs under, and a `Push` nests its body one
+  deeper through the payload's own index. The two casts the unstacked
+  machine makes (a `Push`'s body and a `Capture`'s `f` erased to
+  `Any`) do not exist for these operations; the row is `Op[F] | Delim
+  | F`, the unstacked operations embedded on the diagonal, and
+  `Under[F, A, S] = Freer[Row[F], S, S, A]` IS the tree.
+- **The positional witness is REFUTED for the machine**, by `shift`'s
+  semantics rather than by the compiler (ProbeDelimTyped, question
+  3): `reset(E[shift f]) = reset(f(x => reset E[x]))` keeps the outer
+  reset while `k` installs an inner one, so when `E` runs again the
+  stack is one prompt deeper than when `E`'s witnesses were built —
+  a positional witness is a de Bruijn index and re-installation
+  shifts it. The machine keeps the identity search (`===` with
+  `Same`) as its cut; `Has` stays what it was, compile-time evidence
+  of presence, unchanged in shape so Lexical and Layered keep their
+  `Has.Aux`. Question 4 fell the same way: `P0 <: Prompt[x]` and `P0
+  <: Prompt[R]` do not make `x = R` for dotty.
+- **The segments are typed by answer types, not by the stack**, for
+  the same reason: a re-installed segment runs under more prompts
+  than it was typed at. The stack index is evidence of presence, and
+  presence is monotone under the identity search, so a segment may
+  run at any stack extending its own — said ONCE, in `rebase`, the
+  machine's one claim (erased, costs nothing), used in `reify` and at
+  a capture's re-push. `Segs.K` carries its continuation at the two
+  indexes a `Bind`'s continuation has (the middle one is existential),
+  and the loop is index-polymorphic.
+- **Two embeddings meet Lexical's clauses**, which are written over
+  `A ! Delim + F` with answer types that embed unstacked programs:
+  `Delim.Stacked.at`/`under` lift an unstacked program onto the
+  diagonal (`Indexed.lift`, a `Diag` per operation as the machine
+  reaches it), and `erase` turns a typed program into its unstacked
+  twin — lossy on purpose, each typed operation to the `Delim` case
+  the machine handles alike, bodies deferred so nested resets erase
+  in constant stack. `Prog.diag` became `at`/`under`, `.free` became
+  `erase`, `Prog.pure` became `Freer.Return` (index-polymorphic); the
+  facade `Prog` itself stays for its own consumers (`Tx`, TestProg's
+  facade tests).
+- **A matched case's singleton loses its bound**: `case pu: Op.Push[F,
+  st, r, p0]` binds `p0 <: Prompt[?]`, so the fields are `p: P0 &
+  Prompt[R]` and a re-push names `c.p.type`, the value's own singleton,
+  which carries `<: Prompt[r]`.
+- Gate: TestProg, TestStackedShift0, TestLexical, TestLexicalStacked,
+  TestLayered, TestDelim, ProbeRowInference, ProbeDelimTyped 48/48,
+  no warnings; the full `affected master staged`.
+
+Not done, and named: routing the unstacked `Delim.run` through this
+machine (via `at`) and deleting the old one — the unification the
+arc points at, a lane of its own with the full matrix as its gate,
+and the first thing the deferred measurement should price. And
+`control0` stays unstacked, for specs/shift0-dollar.md's reason.
 
 ### Stage 3 — LANDED (indexed-effects-3-row)
 

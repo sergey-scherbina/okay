@@ -108,12 +108,12 @@ object Layered:
     def reify[M[_], R, F[+_]](using st: Stack[?])
                              (body: (l: In[M[R], st.S]) => Under[F, R, l.p.type *: st.S])
                              (using L: Layer[M], at: At): Under[F, M[R], st.S] =
-      Delim.Stacked.dollar[R, M[R], F]((r: R) => Prog.pure[Delim + F, M[R], st.S](L.pure(r)))(body)
+      Delim.Stacked.dollar[R, M[R], F]((r: R) => Freer.Return(L.pure(r)))(body)
 
     extension [M[_], X](m: M[X])
       /** μ, stacked: a `shift0` to the layer, which must be on the stack */
       def reflect[R, F[+_]](layer: In[M[R], ?])(using st: Stack[?])[B <: Tuple]
                            (using Has.Aux[st.S, layer.p.type, B], Layer[M], At): Under[F, X, st.S] =
         Delim.Stacked.shift0[M[R], X, F](layer.p)(k =>
-          Prog.diag[B, Delim + F, M[R]](summon[Layer[M]].bind(m)(x => k(x).free)))
+          Delim.Stacked.at[F, M[R], B](summon[Layer[M]].bind(m)(x => Delim.Stacked.erase(k(x)))))
 

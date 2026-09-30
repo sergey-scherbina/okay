@@ -111,7 +111,6 @@ class TestLayered extends munit.FunSuite:
 class TestLayeredStacked extends munit.FunSuite:
   import okay.Delim.Stacked.delimited
   import okay.Layered.Stacked.{reify, reflect}
-  import okay.Prog.{flatMap, map}
 
   type P = okay.Pure
 
@@ -157,7 +156,7 @@ class TestLayeredStacked extends munit.FunSuite:
         okay.Layered.Stacked.reify[Option, Int, okay.Pure] { opt =>
           import opt.given
           leaked = opt
-          okay.Prog.pure(1)
+          okay.Freer.Return(1)
         }.flatMap(_ => okay.Layered.Stacked.reflect(Option(2))[Int, okay.Pure](leaked.nn).map(Option(_)))
       }""")
     assert(e.contains("not on the prompt stack"), s"compiled, or not our message: $e")

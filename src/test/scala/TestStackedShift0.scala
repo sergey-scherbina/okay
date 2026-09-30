@@ -1,7 +1,6 @@
 package okay
 
 import okay.Delim.Stacked.{delimited, dollar, reset, shift, shift0}
-import okay.Prog.{flatMap, map}
 
 /**
  * specs/shift0-dollar.md STAGE 2: shift0 and dollar in `Delim.Stacked`,
@@ -96,7 +95,7 @@ class TestStackedShift0 extends munit.FunSuite:
   test("dollar, stacked: ret runs outside, k carries it, and R0 differs from R: n=10|n=20") {
     val r = !.run(delimited[String, P] { s =>
       import s.given
-      dollar[Int, String, P](i => Prog.pure(s"n=$i")) { d =>
+      dollar[Int, String, P](i => Freer.Return(s"n=$i")) { d =>
         import d.given
         shift0[String, Int, P](d.p)(k => k(1).flatMap(a => k(2).map(b => s"$a|$b"))).map(_ * 10)
       }
@@ -119,7 +118,7 @@ class TestStackedShift0 extends munit.FunSuite:
     val e = compileErrors("""
       okay.Delim.Stacked.delimited[String, okay.Pure] { s =>
         import s.given
-        okay.Delim.Stacked.dollar[Int, String, okay.Pure](i => okay.Prog.pure(s"n=$i")) { d =>
+        okay.Delim.Stacked.dollar[Int, String, okay.Pure](i => okay.Freer.Return(s"n=$i")) { d =>
           import d.given
           okay.Delim.Stacked.control[String, Int, okay.Pure](d.p)(k => k(1))
         }
@@ -132,10 +131,10 @@ class TestStackedShift0 extends munit.FunSuite:
       okay.Delim.Stacked.delimited[Int, okay.Pure] { s =>
         import s.given
         var leaked: okay.Prompt[Int] | Null = null
-        okay.Delim.Stacked.dollar[Int, Int, okay.Pure](i => okay.Prog.pure(i)) { d =>
+        okay.Delim.Stacked.dollar[Int, Int, okay.Pure](i => okay.Freer.Return(i)) { d =>
           import d.given
           leaked = d.p
-          okay.Prog.pure(1)
+          okay.Freer.Return(1)
         }.flatMap(_ => okay.Delim.Stacked.shift[Int, Int, okay.Pure](leaked.nn)(k => k(1)))
       }""")
     assert(e.contains("not on the prompt stack"), s"compiled, or not our message: $e")
