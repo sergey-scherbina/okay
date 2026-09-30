@@ -314,3 +314,21 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
   bounded by `SparkSchema.MaxNesting` through a depth parameter. What the
   first run taught: a recursive ROOT is its `(cbor, json)` struct itself,
   with no `value` field around it (`Columns.fields`).
+
+- spark-deep-values (2026-09-30, operator: "Делай"): the nesting bound
+  lifted. MEASURED first (`ProbeSparkDepth`, Spark 4.2.0, ignored by
+  default): Spark's own stack is not the limit — a 512-level alternating
+  struct/array type builds and collects, and the first refusal is
+  Jackson's JSON nesting limit (1000) on the SCHEMA's JSON when Parquet
+  writes it (at 512 levels; 400 wrote) and on `parse_json`'s input (at
+  1024; 768 parsed), both a named `StreamConstraintsException` of
+  Spark's. So the 64 SparkSchema refused at was Arrow's limit in a module
+  that is not Arrow, and it is gone: `SparkSchema`'s walks (`typeOf`,
+  `structAt`, `valueAt`, `rowOf`) and every `SparkValues` walk are
+  TRAMPOLINED — a descent is a `!.tailcall` in a program `! Pure`, run by
+  `!.run` — and refuse no depth. Proven on a 256 KB stack: a 5000-level
+  type and a value of it convert (TestSparkDepth), a 300-level array
+  value decodes, a VARIANT 900 levels deep loads into a `String` field
+  (TestSparkFrames). Past what Spark itself takes, Spark's own named
+  exception is the answer. Arrow's 64 stays okay-arrow's.
+

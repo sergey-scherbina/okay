@@ -27,6 +27,8 @@ final case class Entry(key: String, value: Long)
 final case class Tagged(id: Long, tags: List[Entry])
 final case class Inner(id: Long, tags: List[String])
 final case class Doc(v: Inner, raw: String)
+final case class Deep(v: List[List[List[Long]]], j: String)
+final case class Raw(v: String)
 object FrameRows:
   given Schema[FrameTrip] = Schema.derived
   given Schema[FrameStop] = Schema.derived
@@ -36,6 +38,8 @@ object FrameRows:
   given Schema[Tagged] = Schema.derived
   given Schema[Inner] = Schema.derived
   given Schema[Doc] = Schema.derived
+  given Schema[Deep] = Schema.derived
+  given Schema[Raw] = Schema.derived
 
 class TestSparkFrames extends munit.FunSuite {
   import FrameRows.given
@@ -157,6 +161,51 @@ class TestSparkFrames extends munit.FunSuite {
       .elements.toVector
     assertEquals(got.map(_.v), Vector(Inner(9007199254740993L, List("a", "b"))))
     assertEquals(got.map(_.raw.replace(" ", "")), Vector("""{"x":[1,2]}"""))
+  }
+
+  test("a VARIANT 900 levels deep decodes: no depth is refused on our side") {
+    // a String field takes it as JSON text; the list-of-list field walks it
+    val json = "[" * 900 + "7" + "]" * 900
+    val df = spark.sql(s"select parse_json('$json') as v")
+    val got = frames.run(frames.load[Raw](df).plus[Tables + Structured].flatMap(_.collect.plus[Structured + H]))
+      .elements.toVector
+    assertEquals(got.map(_.v.replace(" ", "")), Vector(json))
+  }
+
+  test("a struct/array value 300 levels deep decodes through the trampoline") {
+    import org.apache.spark.sql.Row
+    import org.apache.spark.sql.types.*
+    import scala.jdk.CollectionConverters.*
+    // Deep(v: List[List[List[Long]]]) at the top, then the rest carried in a VARIANT-free
+    // nesting of arrays: the decoder descends each level as a deferred step
+    var t: DataType = LongType
+    var v: Any = 7L
+    for _ <- 1 to 3 do { t = ArrayType(t, true); v = Seq(v) }
+    val st = StructType(Seq(StructField("v", t, true), StructField("j", StringType, true)))
+    val df = spark.createDataFrame(List(Row(v, "x")).asJava, st)
+    val got = frames.run(frames.load[Deep](df).plus[Tables + Structured].flatMap(_.collect.plus[Structured + H]))
+      .elements.toVector
+    assertEquals(got, Vector(Deep(List(List(List(7L))), "x")))
+    // and the decoder itself, 300 levels of arrays, on a small stack
+    var tt: DataType = LongType
+    var vv: Any = 7L
+    for _ <- 1 to 300 do { tt = ArrayType(tt, true); vv = Seq(vv) }
+    // a Schema 300 lists deep, built by value: its type is not writable, so
+    // it is held existentially and the decoder's own type parameter is
+    // captured at the call
+    var sc: Schema[?] = Schema.SLong
+    for _ <- 1 to 300 do { val inner = sc; sc = Schema.SList(() => inner) }
+    def decode[X](s: Schema[X]): Any = okay.!.run(SparkValues.value(s, vv, tt, Set.empty))
+    var out: Any = null
+    val th = Thread(null, () => out = decode(sc), "small", 256 * 1024)
+    th.start(); th.join()
+    var x: Any = out
+    var levels = 0
+    var more = true
+    while more do x match
+      case l: List[?] => x = l.head; levels += 1
+      case _ => more = false
+    assertEquals((levels, x), (300, 7L))
   }
 }
 
