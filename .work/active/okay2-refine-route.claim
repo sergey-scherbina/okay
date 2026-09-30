@@ -1,0 +1,1 @@
+claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-09-30, operator ask ("Портируй"): refine-route (0f1e7200f) ported to okay2-refine — Router (route[X] by ClassTag: exact in Scala 2, no unions; route{case}; byName; routeAs; tap; otherwise; run closing/failing every channel), decide, Refine.routed; TestRouter JVM-only (src/test/scala-jvm)
