@@ -321,6 +321,14 @@ Stage 3 — lessons:
   full pass per call). Refuted: memoizing a lane's `Source` — a `Source`
   is a program, and running the same value twice is still two readers.
 
+- **refine-path (2026-10-01, operator ask: "steps.foldLeft(id)(_ >>> _)
+  as a combinator").** `Refine.path(steps*)` — the category's fold, for
+  steps of one type; `path()` is `id`, and no name is added to the
+  verdict. Named `path`, the word the module already uses for `>>>`;
+  `joinAll` was the suggestion, declined because `join` is taken twice in
+  okay (`Bulk.join`, monadic join). `Refine.json.at(names*)` is its
+  commonest case. In okay and okay2.
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of

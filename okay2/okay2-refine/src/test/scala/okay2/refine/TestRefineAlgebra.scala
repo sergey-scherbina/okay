@@ -132,4 +132,23 @@ class TestRefineAlgebra extends munit.FunSuite {
     assertEquals(values, Seq(7, 200))
     assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
   }
+
+  test("path: the category's fold, named — path() is id, path(a, b, c) is a >>> b >>> c, no name added") {
+    val double: Refine[Int, Int] = Refine.step[Int, Int]("double")(n => Right(n * 2))(_ / 2)
+    same(Refine.path[Int](), Refine.id[Int], ints, ints)
+    same(Refine.path(even, double, half), even >>> double >>> half, ints, ints)
+    assertEquals(Refine.path(even, double).run(4), Verdict.Took(8, Path("even", "double"), Vector.empty))
+    assertEquals(Refine.path(even, double).write(8), Right(4))
+  }
+
+  test("json.at: a descent through fields, each field a step of the verdict's path, written back as a skeleton") {
+    import Refine.json._
+    val deep = Json.parse("""{"dataDocument": {"trade": {"swap": {"id": "s1"}}}}""")
+    assertEquals(at("dataDocument", "trade", "swap").run(deep).toOption, Some(Json.parse("""{"id": "s1"}""")))
+    assertEquals(at("dataDocument", "trade", "swap").run(deep) match { case Verdict.Took(_, by, _) => by; case _ => Path.empty },
+      Path("dataDocument", "trade", "swap"))
+    assertEquals((at("dataDocument", "trade", "fx") >>> str).run(deep).reasons.map(_.reason), Vector("no field `fx`"))
+    assertEquals(at("a", "b").write(Json.JStr("x")).map(Json.print), Right("""{"a":{"b":"x"}}"""))
+    assertEquals(at().run(deep).toOption, Some(deep))
+  }
 }

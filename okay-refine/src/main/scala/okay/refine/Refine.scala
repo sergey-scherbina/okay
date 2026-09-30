@@ -163,6 +163,15 @@ object Refine:
     alts.reduceLeft(_ <|> _)
 
   /**
+   * A PATH of steps that each keep the type — `path(a, b, c)` is
+   * `a >>> b >>> c`, and `path()` is `id`: the category's fold, named
+   * (refine-path; the verdict's path is the steps' names in order, no
+   * name added). For steps of different types, write the `>>>`s.
+   */
+  def path[A](steps: Refine[A, A]*): Refine[A, A] =
+    steps.foldLeft(id[A])(_ >>> _)
+
+  /**
    * The identity pattern: takes every input and adds NO name to the path,
    * so `id >>> r`, `r >>> id` and `r` answer the same verdict — the
    * category's unit (the laws are TestRefineAlgebra's). A step named
@@ -212,6 +221,10 @@ object Refine:
         case Json.JObj(fs) => fs.collectFirst { case (n, v) if n == name => v }.toRight(s"no field `$name`")
         case other => Left(s"not an object: ${other.getClass.getSimpleName}")
       }(v => Json.JObj(Vector(name -> v)))
+
+    /** a descent through fields: `at("dataDocument", "trade", "swap")`,
+     * each field a step of the path, named as the field */
+    def at(names: String*): Refine[Json, Json] = path(names.map(field)*)
 
     /** the string a field holds */
     val str: Refine[Json, String] =

@@ -148,6 +148,11 @@ object Refine {
   def first[A, B](alts: Refine[A, B]*): Refine[A, B] =
     alts.reduceLeft(_ <|> _)
 
+  /** a PATH of steps that each keep the type — `path(a, b, c)` is
+   * `a >>> b >>> c`, `path()` is `id` (okay's refine-path) */
+  def path[A](steps: Refine[A, A]*): Refine[A, A] =
+    steps.foldLeft(id[A])(_ >>> _)
+
   /** the identity pattern: takes every input and adds NO name to the
    * path, so `id >>> r`, `r >>> id` and `r` answer the same verdict */
   def id[A]: Refine[A, A] = Id[A]()
@@ -215,6 +220,9 @@ object Refine {
         case Json.JObj(fs) => fs.collectFirst { case (n, v) if n == name => v }.toRight(s"no field `$name`")
         case other => Left(s"not an object: ${other.getClass.getSimpleName}")
       }(v => Json.JObj(Vector(name -> v)))
+
+    /** a descent through fields: `at("dataDocument", "trade", "swap")` */
+    def at(names: String*): Refine[Json, Json] = path(names.map(field): _*)
 
     /** the string a field holds */
     val str: Refine[Json, String] =

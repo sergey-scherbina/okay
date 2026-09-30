@@ -200,6 +200,16 @@ assertEquals(money.run(j), Verdict.Took((5.0, "EUR"), Path("amount", "number", "
 assertEquals(money.write((5.0, "EUR")).map(Json.print), Right("""{"amount":5,"currency":"EUR"}"""))
 ```
 
+**The category's fold, named.** `Refine.path(a, b, c)` is `a >>> b >>> c`
+for steps that keep one type, and `Refine.path()` is `id`;
+`Refine.json.at(…)` is its commonest case, a descent through fields,
+each a step of the verdict's path:
+
+```scala
+same(Refine.path(even, double, half), even >>> double >>> half, ints, ints)
+assertEquals(at("a", "b").write(Json.JStr("x")).map(Json.print), Right("""{"a":{"b":"x"}}"""))
+```
+
 **What it cannot be, and why** — each is the way back refusing:
 
 - not a `Functor`, `Applicative` or `Monad`: `B` is the read's OUTPUT and
@@ -393,6 +403,7 @@ reference instead of copying.
 | `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
 | `r >>> s`, `r or s` | `andThen` and `<\|>` by other names |
+| `Refine.path(steps*)`, `Refine.json.at(names*)` | the fold of `>>>` over same-typed steps (`id` when empty); a descent through fields |
 | `r orElse s` | a fallback: `s` only when `r` declines; never `Unclear` from `s` |
 | `Refine.id`, `Refine.empty` | the category's unit (no name in the path); the unit of `or` and `orElse` |
 | `r *** s`, `r +++ s` | on the halves of a pair; on the sides of an `Either` |
