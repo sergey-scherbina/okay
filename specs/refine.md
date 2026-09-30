@@ -270,6 +270,21 @@ Stage 3 — lessons:
   `ClassTag` IS exact for a class; several kinds into one stream are a
   pattern with alternatives; TestRouter (8) on the JVM.
 
+- **refine-bulk (2026-09-30, operator ask: refine and route documents in
+  Spark, "prettier, more convenient, more efficient").** `Router` could
+  not go to Spark (channels and fibers are one process), so the TABLE
+  was separated from its sinks: `Routes` is an `object` whose lanes are
+  typed handles; `split` runs it over any `Bulk` — one recognition per
+  document, cached as (lane, value), lanes as Int filters, counts as one
+  `Aggregator` — and `run` binds lanes to channels with `~>`. No Spark
+  code: TestSparkRoutes asserts `SparkBulk` and one JVM agree on 400
+  documents. `Refine` and `Merge` became `Serializable`; a lane's test is a
+  `TypeTest`, which is. `route[X]` takes its name as given evidence
+  (`TypeName.Named`) — an `inline` route reaching a protected method is an
+  unstable accessor (E192). Refuted: per-lane re-recognition (a pattern
+  per lane per document), and a Spark-specific writer — `Bulk` already
+  is the seam.
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of

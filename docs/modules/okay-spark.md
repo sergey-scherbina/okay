@@ -47,6 +47,14 @@ DataFrame and 803 ms in one JVM through `Chunks` (MeasureGtfsFrames,
 this page used to quote was `cache` under Java serialization
 (TestWroclawStages), not the RDD level.
 
+**Documents, recognised and routed** (refine-bulk). okay-refine's `Routes`
+is written against `Bulk`, so a routing table of document patterns runs
+on `SparkBulk` unchanged: `Documents.files` spreads a directory one file
+per split, the pattern runs on the executors, each document is
+recognised once and cached, and every lane is a filter over that
+(TestSparkRoutes: 400 documents, the same lanes, rejects and counts as in
+one JVM). See docs/modules/okay-refine.md, "Routes".
+
 **DataFrames in a program, and operators Catalyst can see** (streams-seam,
 lane 5; [specs/streams-seam.md](../../specs/streams-seam.md)). `Structured`
 (okay-sql) adds two operators a platform can read, beside the opaque

@@ -34,7 +34,8 @@ class TestDocSnippets extends munit.FunSuite:
     "docs/foreign-facade.md" -> Vector("okay-foreign-cluster/src/test"),
     "docs/rust.md" -> Vector("okay-rust", "okay-py/src/test", "okay-rust/.jvm/src/test"),
     // TestRouter blocks on runWith, so it lives in the JVM-only tree (refine-route)
-    "docs/modules/okay-refine.md" -> Vector("okay-refine/src/test", "okay-refine/.jvm/src/test", "okay-refine/src/main"),
+    "docs/modules/okay-refine.md" -> Vector("okay-refine/src/test", "okay-refine/.jvm/src/test", "okay-refine/src/main",
+      "okay-spark/src/test"),
     "docs/go.md" -> Vector("okay-py/src/test", "okay-rust/kernels"),
     "docs/one-language.md" -> Vector("okay-py/src/test", "okay-rust/.jvm/src/test", "okay-r/src/test",
       "okay-foreign-workflow/src/test"),

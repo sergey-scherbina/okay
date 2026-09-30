@@ -293,6 +293,54 @@ assertEquals(r.decide("fx:f1,EURUSD"), Right("Fx"))
 assertEquals(out.collect { case Right((k, _)) => k }, Seq("Swap", "Fx", "Cds", "Cds", "Swap", "Fx"))
 ```
 
+## Routes: one table, any platform
+
+`Router` binds each rule to a channel as it is written. `Routes` keeps
+the TABLE apart from where its results go: a table is an `object` whose
+LANES are typed handles, declared like the cases of a `match`, and the
+same table runs over any `Bulk` — `Chunks` in one JVM, `SparkBulk` on a
+cluster — or into channels:
+
+```scala
+object Kinds extends Routes(fromBytes):
+val swaps = route[Swap]
+val rates = route[Fx | Cds]
+val usdSwaps = route("usdSwaps") { case s: Swap if s.ccy == "USD" => s }
+```
+
+Over a `Bulk`, `split` recognises every document ONCE and caches (lane,
+value); a lane is then a filter on an `Int`, typed as its route types it,
+and the counts are one aggregate. `Documents.files` reads a directory as
+(name, bytes), one split per file, wherever the split lands:
+
+```scala
+val out = Kinds.split[Chunks](localBulk.read(folder(), Documents.files))
+val swaps: Vector[Swap] = all(out(Kinds.swaps))
+assertEquals(out.counts, Router.Routed(Vector("Swap" -> 2, "Fx | Cds" -> 4, "usdSwaps" -> 0), rejected = 1))
+```
+
+The same table on Spark is the same line with another `Bulk` — nothing
+in okay-refine names Spark. TestSparkRoutes runs 400 documents through
+`local[4]` and one JVM and asserts every lane, the rejects and the counts
+agree:
+
+```scala
+val s = Kinds.split[Rows](onSpark.read(folder, Documents.files))(using onSpark)
+assertEquals(s.counts, l.counts)
+```
+
+Into channels, a lane binds with `~>`; a lane left unbound rejects its
+values as "not bound here", so a partial binding drops nothing:
+
+```scala
+val r = Kinds.run(src)(Kinds.swaps ~> swapsCh, Kinds.rejected ~> dead).runWith
+```
+
+A pattern is `Serializable` (so is a `Merge`, and a lane — a `TypeTest`
+is too, so `route[Fx | Cds]`'s exact test travels to an executor);
+declare the table as an `object`, which an executor re-creates by
+reference instead of copying.
+
 ## API reference
 
 | | |
@@ -316,6 +364,10 @@ assertEquals(out.collect { case Right((k, _)) => k }, Seq("Swap", "Fx", "Cds", "
 | `r.verdicts`, `r.taken` | `Stage`s: every verdict; the values, answering `Missed(declined, unclear)` |
 | `Router(r).route[X](c)`, `.route { case … }(c)`, `.byName(n)(c)`, `.tap(c)`, `.otherwise(c)`, `.run(source)` | routing: a stream per kind; `Routed` counts; every channel closed (or failed) at the end |
 | `r.routed(key)` | the synchronous twin: one `Stage` of `Either[Rejected, (K, B)]` |
+| `object T extends Routes(r)`: `route[X]`, `route(name){ case … }`, `byName`, `routeAs` | a routing table as a value; lanes are typed handles |
+| `T.split(docs)`: `out(lane)`, `out.rejected`, `out.counts` | the table over any `Bulk` (Chunks, SparkBulk): one recognition per document |
+| `T.run(source)(lane ~> c, T.rejected ~> c)` | the same table into channels |
+| `Documents.files` (JVM) | a directory of whole files as a `Bulk.Format` |
 | `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON — for XML text, `Xml.fromValue` on the written value |
 | `Refine.json.field(name)`, `.str`, `.num`, `.each(name)` | the steps a document-level pattern is written in; a path of them names itself in the verdict |
 | `Format.detect` | `Refine[Array[Byte], Doc]`: `cbor <\|> (text andThen (json <\|> xml <\|> yaml))` |

@@ -17,12 +17,15 @@ import okay.codec.{Json, Schema}
  * worth over a hand-written `match` is that the reader sees what was
  * considered.
  *
+ * SERIALIZABLE (refine-bulk): a pattern is a pure value, and a
+ * distributed `Bulk` ships it to where the documents are.
+ *
  * `<|>` runs every alternative. A choice that stopped at the first
  * taker could never say `Unclear`, and for a document a risk system
  * is about to price, a silent first-wins is the defect this module
  * exists to remove.
  */
-sealed trait Refine[A, B]:
+sealed trait Refine[A, B] extends Serializable:
   /** the name a verdict's path is written in */
   def name: String
 
@@ -177,7 +180,7 @@ object Refine:
     def compose[A, B, C](g: Refine[B, C], f: Refine[A, B]): Refine[A, C] = f >>> g
 
   /** how `and` puts two written skeletons back into one input */
-  trait Merge[A]:
+  trait Merge[A] extends Serializable:
     def merge(x: A, y: A): Either[String, A]
 
   object Merge:
