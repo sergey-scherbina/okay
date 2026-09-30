@@ -147,6 +147,33 @@ class TestKont extends munit.FunSuite:
     assertEquals(run(Cont0.reset[F, Int, Int, Int](p)(deep(100_000))), 200_001)
   }
 
+  // ------------------------------------------------ the two costs the segmented stack pays O(1)
+
+  test("depth: 20 000 captures to ONE delimiter from under 20 000 frames — each capture takes the segment, copies no frame") {
+    // left-nested: at the i-th shift0 the n - i binds still to run sit
+    // between it and the reset; the single-list machine copied them per
+    // capture (O(n²)), the segmented one takes the segment as it is
+    val n = 20_000
+    val p = Cont0.prompt[Int]
+    val prog = (1 to n).foldLeft(pure[Int, Int](0))((m, _) =>
+      m.flatMap(x => Cont0.shift0[F, Int, Int, Int, Int](p)(k => k(x + 1))))
+    val t0 = System.nanoTime()
+    assertEquals(run(Cont0.reset[F, Int, Int, Int](p)(prog)), n)
+    assert(System.nanoTime() - t0 < 5_000_000_000L, "20 000 captures took seconds: a capture is copying frames")
+  }
+
+  test("depth: 100 000 NESTED resumptions, k(v) + 1 at every level — each pushes k's nodes, copies no frame") {
+    // each body waits on its k, and each k holds every frame below it:
+    // the single-list machine copied them per resumption (O(n²))
+    val n = 100_000
+    val p = Cont0.prompt[Int]
+    val prog = (1 to n).foldLeft(pure[Int, Int](0))((m, _) =>
+      m.flatMap(x => Cont0.shift0[F, Int, Int, Int, Int](p)(k => k(x + 1).map(_ + 1))))
+    val t0 = System.nanoTime()
+    assertEquals(run(Cont0.reset[F, Int, Int, Int](p)(prog)), 2 * n)
+    assert(System.nanoTime() - t0 < 5_000_000_000L, "100 000 nested resumptions took seconds: a resumption is copying frames")
+  }
+
   // ------------------------------------------------ the head form
 
   /** a unary operation enters an indexed row on the DIAGONAL (`Freer.Diag`),

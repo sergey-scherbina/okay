@@ -200,8 +200,8 @@ object Delim {
   def in[F[+_], A](p: A ! Delim + F): U[F, A] = p.asInstanceOf[U[F, A]]
   def out[F[+_], A](p: U[F, A]): A ! Delim + F = p.asInstanceOf[A ! Delim + F]
   private def inF[F[+_], A, B](f: A => B ! Delim + F): A => U[F, B] = f.asInstanceOf[A => U[F, B]]
-  private def clause[F[+_], A, R](f: (A => R ! Delim + F) => R ! Delim + F): Frames[Freer.Lift[F], A, Unit, Unit, R] => U[F, R] =
-    f.asInstanceOf[Frames[Freer.Lift[F], A, Unit, Unit, R] => U[F, R]]
+  private def clause[F[+_], A, R](f: (A => R ! Delim + F) => R ! Delim + F): Stack[Freer.Lift[F], A, Unit, Unit, R] => U[F, R] =
+    f.asInstanceOf[Stack[Freer.Lift[F], A, Unit, Unit, R] => U[F, R]]
 
   /** run the body under the delimiter — reset, as an operation */
   def push[R, F[+_]](p: Prompt[R])(body: R ! Delim + F): R ! Delim + F =
@@ -420,7 +420,7 @@ object Delim {
                           (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                           (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
     okay.effect[rw.R, A](Cont0.Shift0[Freer.Lift[Pure], in.Res, Unit, Unit, A](in.prompt,
-      f.asInstanceOf[Frames[Freer.Lift[Pure], A, Unit, Unit, in.Res] => Freer[Ro[Pure], Unit, Unit, in.Res]],
+      f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => Freer[Ro[Pure], Unit, Unit, in.Res]],
       false, at.where).asInstanceOf[rw.R[A]])
 
   /** the continuation does not re-install the delimiter */
