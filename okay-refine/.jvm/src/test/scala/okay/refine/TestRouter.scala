@@ -5,7 +5,9 @@ import okay.given
 import okay.testkit.Munit.Diagnosed
 import scala.util.chaining.*
 
-/** specs/refine.md, refine-route: one stream of documents in, one stream per kind out */
+/** specs/refine.md, refine-route: one stream of documents in, one stream per kind out.
+ * JVM-only (.jvm/src/test): the suite BLOCKS on `runWith`; the Router
+ * itself is cross-platform, and JS/Native drive it through their schedulers */
 class TestRouter extends Diagnosed:
 
   // a small domain: three kinds of "document", recognised from text
