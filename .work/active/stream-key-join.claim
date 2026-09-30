@@ -1,1 +1,0 @@
-claude session_01UkcD4rZuMcWszYis8fWcGN, 2026-09-30, operator ask ("да"): join by key over streams — spec specs/stream-join.md, then stage 1 sort-merge join on key-ordered Chunks/Source, then stage 2 event-time windowed join (sprint.d/doing/stream-key-join.md)
