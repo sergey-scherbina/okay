@@ -365,6 +365,27 @@ object Source {
                                        (using Scheduler, CanBlock, Wait, Pause): Source[(K, (Option[A], Option[B]))] =
     SortMerge.source(l, r, capacity)(() => SortMerge.full)
 
+  /**
+   * The event-time WINDOWED join by key of two unbounded, UNORDERED
+   * sources (specs/stream-join.md, stage 2; `WindowJoin` is the
+   * machine): a row matches on arrival every row of the other side
+   * with its key within `within` of its event time (`atL`/`atR`), is
+   * held until the joint watermark — the smaller side's greatest event
+   * time minus `lateness` — passes its reach, and a row behind that
+   * watermark is dropped and counted, never joined. The two sides are
+   * `either`-merged, each side's end marked, and the merge's release
+   * law is the join's: an early stop releases both sides.
+   */
+  def joinWithin[K, A, B](l: Source[(K, A)], r: Source[(K, B)], within: Long, lateness: Long, capacity: Int = 64)
+                         (atL: A => Long, atR: B => Long)
+                         (using Scheduler, CanBlock, Timer, Merge, Wait, Pause): Source[(K, (A, B))] =
+    type Ev = WindowJoin.Event[K, A, B]
+    def ended[X](s: Source[X]): Source[Option[X]] =
+      Writer.map[X, Option[X], Unit, Async](s)(x => Some(x))
+        .flatMap(_ => okay.effect[Writer % Option[X] + Async, Unit](Writer(None)))
+    through(ended(l).either(ended(r), capacity))(
+      !.widen[Unit, Take % Ev + Writer % (K, (A, B)), Async](WindowJoin.stage[K, A, B](within, lateness)(atL, atR)))
+
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart
    * across a 4x span) and exposing it would quietly break

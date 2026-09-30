@@ -1131,11 +1131,35 @@ assertEquals(c.elements.toList, List((3, ("c", "x"))))
 ```
 
 The same three on `Chunks` step once per left chunk and tell that
-chunk's pairs as one chunk. Flink's interval join and Kafka Streams'
-KStream-KStream join are the answer for streams that are NOT ordered
-by key — event-time windows on each side, matched on arrival; that is
-the follow-on on the landed `Windows` machinery, and the spec says
-what it will be.
+chunk's pairs as one chunk.
+
+`Source.joinWithin` is the join for streams that are NOT ordered by
+key — clicks and purchases, each in its own arrival order — and it is
+Flink's interval join and Kafka Streams' KStream-KStream join in one:
+a row matches, on arrival, every row of the other side with its key
+whose EVENT time is within `within` of its own, is held for the rows
+still to come, and leaves once the watermark has passed its reach. The
+watermark is `Windows`' (the greatest event time seen minus
+`lateness`), taken over the SMALLER of the two sides, Flink's rule for
+a two-input operator — so a side racing ahead cannot make the other
+side's rows late, and the interleaving of two live sides changes no
+pair. A row behind the watermark is dropped and counted (`dropped`),
+never joined; `held` is the live state. Nothing reads a clock, which is
+why a test of it is a list. The symmetric hash join (Wilschut & Apers
+1991) is this machine without the eviction.
+
+```scala
+val clicks = Source.of(List(("u1", (0L, "home")), ("u2", (3L, "cart")), ("u1", (30L, "pay"))))   // (user, (time, page))
+val buys = Source.of(List(("u1", (8L, 9.99)), ("u2", (50L, 4.50))))
+val paid = Source.joinWithin(clicks, buys, within = 10L, lateness = 0L)(_._1, _._1)
+assertEquals(paid.runCollect.runWith, Vector(("u1", ((0L, "home"), (8L, 9.99)))))
+```
+
+The two sides are `either`-merged with each side's end marked, and the
+join is a `Stage` over that merge (`WindowJoin.stage`), so the merge's
+release law is the join's, and a join that can produce nothing more —
+a side ended and every row that could still have reached it gone —
+returns and releases the other side.
 
 `source merge source` IS that composition since
 source-merge-via-ready: each side buffered onto a fiber of its own,
