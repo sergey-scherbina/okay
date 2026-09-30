@@ -4,14 +4,34 @@ Defects owned by this module. Status lives in the machine-readable
 header, never in prose.
 
 ## windowjoin-trim-spins — `TestWindowJoin`'s agreement test never returns; the CI runner's family gate hangs on it
-<!-- status: open
+<!-- status: fixed
+     fixed-in: e946de3e4
      lane: jvm (WindowJoin.scala, the machine; seen on the JVM fork, the Native run had not reached it)
      area: okay-stream/src/main/scala/WindowJoin.scala `trim`/`arrive`, from Source/Pipe pulls
-     gate: none yet — the test that hangs IS the gate, and a hang is not a red the runner can bisect
+     gate: TestSourceJoinWithin (the endless-sides tests on Loom), TestWindowJoin (three platforms)
      found-by: freer-base-remeasure (2026-09-30), waiting for the box to go quiet
      reporter: claude session_01FeSfUJ4Z4YBWrEERDnoghu, room seq 2026-09-30/28
      owner: stream-join-windowed (cd91b05ee), told in the room
-     confirmed: no -->
+     confirmed: yes — windowjoin-spin-fix (claude session_01UkcD4rZuMcWszYis8fWcGN), 2026-09-30 13:20 -->
+
+**Owner's reading (windowjoin-spin-fix).** Both dumps had the munit
+thread at `TestSourceJoinWithin.scala:41` — the early-stop test's
+`joinEither()` on the `own` iteration — not in `TestWindowJoin`, whose
+six tests are a list and had already passed. The loop `trim` was found
+in was not stuck: it was RUNNING, one left row after another, because
+the join's RIGHT side had stopped arriving and the join was told 25
+million left rows for three right ones (`ProbeReadyMergeStarve`, the
+ring's positions). Two defects, one in this file, one not:
+(1) `trim` filtered the whole per-key buffer on EVERY arrival; with the
+watermark standing still (the right side silent) nothing ever expired
+and each arrival rescanned a buffer one row longer — quadratic, which
+is the 286 s of CPU. Fixed here: eviction from the front only,
+amortised O(1), the full filter once per `within` of watermark advance.
+(2) The right side stopped because the `either` merge under it starves
+a side on a scheduler with owned workers — `ready-merge-side-starves`
+below, older than this lane. The endless-sides tests are pinned to Loom
+until it closes; the join's laws are pinned by `TestWindowJoin` (no
+scheduler) and the bounded `Source` cases on every scheduler.
 
 **Seen.** The CI runner's `scripts/gate.sh family all` (pid 48118,
 started 10:28 on 2026-09-30, gating stream-join-windowed and the lanes
@@ -78,3 +98,57 @@ push the range 5e587d84f..98fab9c2e until this is fixed or reverted.
 on master at ebffb4a8a or later; watch the fifth test. If it passes
 alone, the seeds that hang are the ones to find — the test's own
 `note(s"seed …")` lines name them once a flight recorder is read.
+
+## ready-merge-side-starves — a ready merge of two endless sides stops delivering one of them; the hot side's ring ends "full" to its pusher and "empty" to its popper
+<!-- status: open
+     lane: jvm (`Schedulers.own.build` and the adaptive default; not seen on Loom)
+     area: okay-stream ReadyMerge.scala / SentinelChannel.scala / Ring.scala — the merge's poll-then-park over a single-consumer ring
+     gate: none — `ProbeReadyMergeStarve` (ignored) reproduces in ~20 rounds of 300, under 11 s
+     found-by: windowjoin-spin-fix (2026-09-30), chasing windowjoin-trim-spins
+     reporter: claude session_01UkcD4rZuMcWszYis8fWcGN
+     owner: unassigned — source-merge-via-ready / ready-merge's author, or the next lane in the channel
+     confirmed: yes, on master at ebffb4a8a and on a01fcf9c7 (before channel-route-per-producer) -->
+
+**Seen.** `Source.of(LazyList.from(0)).either(Source.of(LazyList.from(1000000)), capacity = 4)`
+folded until the THIRD `Right`, under `Schedulers.own.build` or the
+default scheduler, each round a fresh merge under `sch.fork`: rounds
+16–27 of 300 never return (8 s watchdog), five runs in five. Under Loom
+the same 300 rounds pass. `TestReadyMerge`'s endless-merge test never
+saw it because it takes N elements of EITHER side.
+
+**State at the starvation** (the sides' channels caught by hand,
+`SentinelChannel.debugState` plus the ring's positions and stamps,
+instrumentation not landed):
+
+    left:  size=1 hasReady=false receivers=0 senders=0 head=24259162 tail=24259163
+           stamps=[24259008,24259042,24259043,24259047] cap=4
+    right: size=0 hasReady=false receivers=1 senders=0 head=1 tail=1 stamps=[4,1,2,3] cap=4
+
+The right side pushed ONE element ever, it was popped, the merge is
+registered on it (`receivers=1`) and its feeder is neither parked as a
+sender nor running on any worker. The left ring's head and tail are
+consistent with each other and some thirty laps AHEAD of every stamp:
+slot 0's stamp says "free for a push at …008" though tail passed …008
+long ago, slots 1–2 say "published at …041/…042" though head passed
+them, slot 3 "free at …047". So the pusher reads d < 0 (full) and the
+popper reads d < 0 (empty) and both wait for ever; the merge consumer
+polls both idle sides in `settleIdle`'s ladder, every other worker is
+parked. Ruled out with the ring instrumented: no two pops and no two
+pushes ever overlapped (a nesting counter in `pop`/`popMany` and
+`push`/`pushDeciding`), and the left feeder's own code never ran on two
+threads (a counter in the source's `map`). Not seen: what moves `head`
+and `tail` past four slots without republishing their stamps, given
+one popper and one pusher at a time. A `popMany` whose `sink` throws
+leaves exactly such holes, one lap deep; thirty laps is something else.
+
+**Repro.** Un-ignore `ProbeReadyMergeStarve` and
+`scripts/gate.sh "okayStreamJVM/testOnly okay.ProbeReadyMergeStarve"`.
+It prints the scheduler's counters, both channels' state, the
+feeder-overlap verdict and the live worker stacks.
+
+**Why it matters.** Any `either`/`merge`-built operator whose consumer
+waits for a specific side — `Source.joinWithin`, a `zip` over a merge,
+a fold for one tag — can wait for ever on the default scheduler when
+the other side is hot. `TestSourceJoinWithin` runs its endless-sides
+tests on Loom until this closes.
+
