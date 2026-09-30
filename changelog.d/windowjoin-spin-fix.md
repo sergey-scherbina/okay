@@ -17,5 +17,13 @@
 - `TestSourceJoinWithin`'s two endless-sides tests run on Loom until that
   bug closes; the bounded cases still run on every scheduler, and the
   join's laws are a list (`TestWindowJoin`, three platforms).
+- Two more test flakes the staged gate surfaced and this lane removed:
+  `Source.mergeReleases` is one counter per JVM and this module's suites
+  run beside each other in the fork, so a "full run releases nothing"
+  delta of 0 read 1 — the early-stop checks now assert at least one, the
+  full-run delta is not asserted (TestReadyMerge's merge law covers it);
+  and "the endless side stops producing" by sleep-and-compare read one
+  element more under load — both survivor tests now run on Loom and join
+  the feeder's thread, as TestSourceZip's does.
 - Not additive (a body changed): gate `affected master staged`.
 - Commits: e946de3e4.

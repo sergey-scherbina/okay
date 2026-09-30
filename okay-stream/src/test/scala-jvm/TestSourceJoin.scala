@@ -1,6 +1,7 @@
 package okay
 
 import Chunks.elements
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import scala.util.Random
 
@@ -37,17 +38,27 @@ class TestSourceJoin extends munit.FunSuite with okay.testkit.Munit.Diagnosed {
              (3, (None, Some("y"))), (3, (None, Some("z"))), (4, (Some("d"), Some("w")))))
   }
 
-  test("an inner join ends at the left's end and closes the endless right, whose feeder stops producing") {
+  test("an inner join ends at the left's end and closes the endless right, whose feeder ends") {
+    // on Loom, as `TestSourceZip`'s survivor test: the feeder is a virtual
+    // thread of its own, remembered by a Run at the source's front, and the
+    // proof it ended is that the thread is gone. A sleep-and-compare of
+    // the count read one element more under the staged gate's load: the
+    // feeder had not yet met the closed channel when the count was taken
+    given Scheduler = Schedulers.loom
     val produced = AtomicInteger(0)
-    val endless: Source[(Int, Int)] = Source.of(LazyList.from(0).map(i => { produced.incrementAndGet(); (i, i) }))
+    @volatile var feeder: Thread | Null = null
+    val endless: Source[(Int, Int)] =
+      okay.effect[Writer % (Int, Int) + Async, Unit](Async.Run(() => feeder = Thread.currentThread()))
+        .flatMap(_ => Source.of(LazyList.from(0).map(i => { produced.incrementAndGet(); (i, i) })))
     val out = rows(Source.joinSorted(Source.of(List((1, "a"))), endless, capacity = 4))
     assertEquals(out, Vector((1, ("a", 1))))
+    val t = feeder
+    assert(t != null, "the feeder never ran")
+    t.nn.join(TimeUnit.SECONDS.toMillis(10))
+    assert(!t.nn.isAlive, "the survivor's feeder is still parked after the join ended")
     onFailure(s"produced ${produced.get} on the endless side")
     // the run at 1 closed by the row at 2, the buffer of 4, a refill and the refused one
     assert(produced.get <= 3 + 4 + 1 + 1, s"the endless side ran on after the join ended: ${produced.get}")
-    val settled = produced.get
-    Thread.sleep(50)
-    assertEquals(produced.get, settled, "the endless side is still producing after the join ended")
   }
 
   test("an inner join ends at the right's end too; a left join ends at the left's; a full join drains both") {
