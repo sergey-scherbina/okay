@@ -943,6 +943,15 @@ object Delim {
        * consumed); the door that builds one holds the `Has` */
       case Capture[F[+_], St <: Tuple, R, P0 <: Prompt[R], B <: Tuple, S0 <: Tuple, A](
         p: P0 & Prompt[R], f: (A => Under[F, R, S0]) => Under[F, R, S0], underPrompt: Boolean, delimitK: Boolean, at: At) extends Op[F, St, St, A]
+      /** CONT'S LEAF, on this machine (indexed-effects stage 7): a shift
+       * to `p` whose body gets `k` as a FUNCTION into the prompt's
+       * answer, computed at once — Cont's direct style, `k` a re-entry —
+       * and gives that answer back; multi-shot, since the segment is
+       * rebuilt per call. At the DIAGONAL only: a mark's answer type is
+       * its prompt's, so a body that answered a different type than its
+       * continuation (Danvy–Filinski's answer-type modification) has no
+       * mark to sit under here; that fragment stays on Cont's runner. */
+      case Shift[F[+_], St <: Tuple, R, P0 <: Prompt[R], X](p: P0 & Prompt[R], body: (X => R) => R, at: At) extends Op[F, St, St, X]
 
     // ---- the two embeddings
 
@@ -1242,6 +1251,27 @@ object Delim {
               // for the one way here — a segment `erase`d and re-run
               // outside the stack it was typed under
               case NotFound() => throw NoPrompt(c.at.where, c.p.label, installed(kont))
+          case sh: Op.Shift[F, ?, r, ?, x] =>
+            // the segment run TO THE PROMPT'S ANSWER, at once: a nested
+            // machine on the reified segment under a fresh push of `p`,
+            // its residual forced — a foreign operation in the segment
+            // cannot be performed here and is refused by name, which is
+            // Cont's own setting (a Cont program has no foreign effects)
+            def sync(seg: Freer[Row0, EmptyTuple, EmptyTuple, r]): r =
+              (machine[r, F](seg, forward = false).resume: @unchecked) match
+                case Return(a) => a
+                case _ => throw new UnsupportedOperationException(
+                  s"${sh.at}: the continuation of a Cont shift to ${sh.p.label} met a foreign operation: a synchronous `k` runs a segment with none (specs/indexed-effects.md, stage 7)")
+            def answer[Q](k: x => r, up: r <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
+              Next[F, Q, R, EmptyTuple, EmptyTuple](up.liftCo[[t] =>> Freer[Row0, EmptyTuple, EmptyTuple, t]](Return(sh.body(k))), outer)
+            split(kont, sh.p) match
+              case PlainCut(captured, up, outer) =>
+                answer((v: x) => sync(Inject(Op.Push[F, EmptyTuple, r, sh.p.type](sh.p,
+                  rebase[F, r, EmptyTuple, EmptyTuple, sh.p.type *: EmptyTuple, sh.p.type *: EmptyTuple](
+                    reify[X, r, EmptyTuple, EmptyTuple](captured, Return[Row0, EmptyTuple, X](v)))))), up, outer)
+              case AtDollar(whole, up, outer) =>
+                answer((v: x) => sync(reify[X, r, EmptyTuple, EmptyTuple](whole, Return[Row0, EmptyTuple, X](v))), up, outer)
+              case NotFound() => throw NoPrompt(sh.at.where, sh.p.label, installed(kont))
         // a foreign operation suspends the machine: the residual program
         // performs it and resumes with the same stack — the excluded
         // middle, licensed by the two tests above
@@ -1318,6 +1348,19 @@ object Delim {
     def abort[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
                           (value: R)(using at: At): Under[F, A, st.S] =
       Inject(Op.Capture[F, st.S, R, p.type, B, B, A](p, _ => Return(value), false, true, at))
+
+    /**
+     * Cont's `shift` on this machine (stage 7): the body gets `k` as a
+     * function into the prompt's answer, computed at once and callable
+     * as often as it likes — `reset(shift(k => k(1) + k(10)))` is 11
+     * here as it is on Cont's runner. Typed at the diagonal (`(A => R)
+     * => R` for the prompt's `R`), which is where the two runners meet;
+     * see `Op.Shift`. The segment `k` runs may hold every Delim
+     * operation and no foreign one.
+     */
+    def contShift[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
+                              (f: (A => R) => R)(using at: At): Under[F, A, st.S] =
+      Inject(Op.Shift[F, st.S, R, p.type, A](p, f, at))
 
     /**
      * `Delim.dollar`, stacked: a fresh prompt on the stack in force for

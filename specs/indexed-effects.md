@@ -110,6 +110,27 @@ object Delim:
   // Segs, Frames, Cut, split/copy, reify, loop, step over `Delim` alone: DELETED
 ```
 
+Stage 7 — Cont's leaf on the machine:
+
+```scala
+object Delim.Stacked:
+  enum Op[F[+_], S, R, +X]:
+    case Shift[F[+_], St <: Tuple, R, P0 <: Prompt[R], X](p: P0 & Prompt[R], body: (X => R) => R, at: At) extends Op[F, St, St, X]
+  def contShift[R, A, F[+_]](p: Prompt[R])(using Stack[?])[B <: Tuple](using Has.Aux[st.S, p.type, B])(f: (A => R) => R)(using At): Under[F, A, st.S]
+```
+
+Stage 8 — the `Prog` facade removed: `Tx.Data` becomes `Tx` (`Tx.begin/
+commit/rollback/update/batch/describe/async`, `Tx.interpret`), Prog.scala
+deleted, the guide's section rewritten over it.
+
+Stage 9 — Lexical's clauses over the program type:
+
+```scala
+trait Ops[F[+_], R, P[_]]:    def op[X](e: F[X], k: X => P[R]): P[R]
+trait Clauses[F[+_], A, R, P[_]] extends Ops[F, R, P]:    def ret(a: A): P[R]
+// unstacked instances at P = [A] =>> A ! Delim + G; stacked ones at P = [A] =>> Under[G, A, St]
+```
+
 Stage 5 — the user page:
 
 `docs/typestate.md`: what an indexed effect is, the two readings, when
@@ -167,6 +188,30 @@ Stage 4:
 - [x] TestDelim and TestProg are green unchanged (TestProg's stacked
       shapes run on the new machine; its facade tests on `Prog`).
 
+Stage 7:
+- [x] `contShift(p)(k => k(1) + k(10))` under a `delimited` answers 11
+      on the machine; a list reflected through a shift called once per
+      element; a typed `shift0` inside the segment a synchronous `k`
+      runs; a segment holding a foreign operation refused by name.
+- [x] Decisions carry the two refutations: answer-type modification
+      cannot sit under a mark (its answer is its prompt's), and a
+      `Cont[A, R, R]` VALUE cannot be converted (a leaf's inner answer
+      type is erased, and a diagonal-typed program may hold
+      non-diagonal binds).
+
+Stage 8:
+- [ ] Prog.scala is gone; `okay.sql.Tx` is the data road; TestTx's
+      shapes hold on it; docs/guide.md's "Typestate on a program" is
+      rewritten over `Tx` with its lines pinned; TestProg keeps only
+      the stacked shapes.
+
+Stage 9:
+- [ ] `Ops`/`Clauses`/`ShallowClauses` take the program type `P[_]`;
+      the unstacked instances are unchanged in behaviour (TestLexical
+      green), the stacked ones take clauses over `Under[G, *, St]` with
+      no `erase` on their road (TestLexicalStacked green on typed
+      clauses).
+
 Stage 6:
 - [x] `Delim.run` and `runNested` run on `Stacked.machine` through
       `Stacked.at`; the unstacked machine's chain, cut, reify and loop
@@ -207,6 +252,20 @@ Stage 5:
 - **Additive everywhere**: `Tx` keeps its `Prog` facade beside
   `Tx.Data`; `Delim.Stacked`'s doors keep their spelling where the
   spike keeps them; `!` is untouched and `!!` is beside it.
+- **Cont on the machine is the diagonal fragment, and a door, not a
+  conversion** (stage 7). A mark's answer type is its prompt's, fixed
+  when it is pushed; Danvy–Filinski's answer-type modification makes
+  the same reset answer `S` without a shift and `R` with one, which no
+  frame of the machine can carry — so the full `Cont[A, S, R]` stays on
+  Cont's runner, and what the machine hosts is `(A => R) => R` at the
+  prompt's `R`. And a `Cont[A, R, R]` VALUE is not converted, even
+  though its outer type is diagonal: a bind's middle index is
+  existential, a leaf `(X => T) => R` with `T ≠ R` is invisible after
+  erasure, and a program composed of two answer-type-modifying halves
+  types as diagonal — the conversion would hand its body a `k` of the
+  wrong type and the error would be a `ClassCastException` at run
+  time. The door `contShift` is typed diagonal at its site, which is
+  where the two runners meet.
 - **The unary member of an indexed row is a match type**, not a
   wrapper (`At`, refuted by freer-diag-leaf) and not a claim: the type
   reduces only on the diagonal, so the door refuses what the handler
@@ -216,6 +275,35 @@ Stage 5:
   the decision is recorded.
 
 ## Results
+
+### Stage 7 — LANDED (indexed-effects-7-cont-on-machine): Cont's leaf on the machine
+
+`Op.Shift[F, St, R, P0, X](p, body: (X => R) => R, at)` is a fourth
+case of the typed signature, diagonal (`Op[F, St, St, X]`) at the
+prompt's own answer type, and `contShift(p)(f)` is its door beside
+`shift`/`control`/`shift0`. The machine's arm splits the stack at the
+prompt like `Capture` does and answers with `body(k)` where `k` is
+SYNCHRONOUS: it reifies the captured segment at the value and runs it
+on a nested `machine(_, forward = false)` to its `Return`, so the body
+may call it zero, one or many times (`k(1) + k(10)` answers 11; a list
+reflected by calling `k` once per element). The nested run is one
+machine frame per `k` call, nested only where the body nests its calls
+(`k(k(v))`): the program's text, never its data — that is the bound the
+four inventory rows carry (specs/stack-safety-okay.tsv, `loop`,
+`machine`, `step`, `sync` mutual through `answer`). A segment that
+performs a FOREIGN operation cannot be run by a synchronous `k`, and
+the machine refuses it by name (`UnsupportedOperationException` naming
+the site and the prompt) rather than losing the operation — the fourth
+test pins it; a typed `shift0` inside the segment is a machine
+operation, not foreign, and runs. The runner is one: Cont's own
+`Cont.run` still exists for the full `Cont[A, S, R]` (Decisions: the
+answer-type-modifying fragment cannot sit under a mark), and everything
+diagonal runs where Delim runs. TestContOnMachine (4 tests); the delim
+family (TestDelim*, TestProg, TestStackedShift0, TestLexical*,
+TestLayered, TestCont) green unchanged; additive gate. Performance: not
+measured in this lane — the arm is a new `case` in `step` that an
+unstacked program never reaches, and the one measurement pass after
+stages 8 and 9 prices the machine as a whole (Deferred measurements).
 
 ### Stage 1 — LANDED (indexed-effects-1-shared-get)
 
