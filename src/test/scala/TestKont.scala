@@ -26,65 +26,65 @@ class TestKont extends munit.FunSuite:
     case Return(a) => a
     case other => fail(s"not a value: $other")
 
-  def shift0(p: Cont0.Prompt[String, String])(f: (String => Str) => Str): Str =
-    Cont0.shift0[F, String, String, String, String, String](p)(f)
+  def shift0(p: Prompt[String])(f: (String => Str) => Str): Str =
+    Cont0.shift0[F, String, String, String, String](p)(f)
 
-  def shift(p: Cont0.Prompt[String, String])(f: (String => Str) => Str): Str =
-    Cont0.shift[F, String, String, String, String, String](p)(f)
+  def shift(p: Prompt[String])(f: (String => Str) => Str): Str =
+    Cont0.shift[F, String, String, String, String](p)(f)
 
-  def dollar(p: Cont0.Prompt[String, String])(v: String => Str)(e: Str): Str =
-    Cont0.dollar[F, String, String, String, String, String](p)(v)(e)
+  def dollar(p: Prompt[String])(v: String => Str)(e: Str): Str =
+    Cont0.dollar[F, String, String, String, String](p)(v)(e)
 
-  def reset(p: Cont0.Prompt[String, String])(e: Str): Str = Cont0.reset[F, String, String, String](p)(e)
+  def reset(p: Prompt[String])(e: Str): Str = Cont0.reset[F, String, String, String](p)(e)
 
   val angle: String => Str = x => pure(s"<$x>")
 
   // ------------------------------------------------ the two rules
 
   test("($v): a body that returns runs ret once") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     assertEquals(run(dollar(p)(angle)(pure("x"))), "<x>")
   }
 
   test("($/S0): k dropped — ret never runs") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     assertEquals(run(dollar(p)(angle)(shift0(p)(_ => pure("dropped")).map(_ + "!"))), "dropped")
   }
 
   test("($/S0): k called twice — ret runs per call") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     val body = shift0(p)(k => k("a").flatMap(x => k("b").map(y => x + y))).map(_ + "!")
     assertEquals(run(dollar(p)(angle)(body)), "<a!><b!>")
   }
 
   test("($/S0): k once, then the rest of the clause") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     val body = shift0(p)(k => k("a").map(_ + "|after")).map(_ + "!")
     assertEquals(run(dollar(p)(angle)(body)), "<a!>|after")
   }
 
   test("shift under a dollar: the body runs under a PLAIN delimiter, k carries ret") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     val body = shift(p)(k => k("a").map(_ + "|body")).map(_ + "!")
     assertEquals(run(dollar(p)(angle)(body)), "<a!>|body")
   }
 
   test("k RE-INSTALLS the dollar: a second shift0 inside the continuation is caught by it") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     val body = shift0(p)(k => k("a")).flatMap(s => shift0(p)(_ => pure(s + "-second")))
     assertEquals(run(dollar(p)(angle)(body)), "a-second")
   }
 
   test("ret runs OUTSIDE the re-installed dollar: a shift0 in ret escapes to the next delimiter") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     val ret: String => Str = _ => shift0(p)(_ => pure("R"))
     val body = shift0(p)(k => k("a").map(_ + "|f"))
     assertEquals(run(reset(p)(dollar(p)(ret)(body))), "R")
   }
 
   test("nested delimiters: an inner prompt's shift0 does not reach the outer one, and the other way about") {
-    val p = Cont0.prompt[String, String]
-    val q = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
+    val q = Cont0.prompt[String]
     // the inner shift0 names q: its k is the inner segment only; the outer $ still runs its ret
     val inner = dollar(q)(x => pure(s"[$x]"))(shift0(q)(k => k("i")).map(_ + "!"))
     assertEquals(run(dollar(p)(angle)(inner)), "<[i!]>")
@@ -99,32 +99,32 @@ class TestKont extends munit.FunSuite:
     // Cont0.Prompt[S, Y]: Y = String is what the delimiter answers, the body's value is Int;
     // the index S stays one type through the run — see the spec's Results on why the lazy
     // machine's (S, R) pair cannot carry an ESCAPE type the way Cont's strict k can
-    val p = Cont0.prompt[Int, String]
+    val p = Cont0.prompt[String]
     val ret: Int => P[Int, Int, String] = n => pure(s"n=$n")
     val body: P[Int, Int, Int] =
-      Cont0.shift0[F, Int, String, Int, Int, Int](p)(k => k(1).flatMap(s => k(2).map(t => s + t)))
-    val prog: P[Int, Int, String] = Cont0.dollar[F, Int, String, Int, Int, Int](p)(ret)(body)
+      Cont0.shift0[F, String, Int, Int, Int](p)(k => k(1).flatMap(s => k(2).map(t => s + t)))
+    val prog: P[Int, Int, String] = Cont0.dollar[F, String, Int, Int, Int](p)(ret)(body)
     assertEquals(run(prog), "n=1n=2")
   }
 
   // ------------------------------------------------ depth
 
   test("depth: 100 000 dollars nested, each ret run once on the way out, in constant stack") {
-    val p = Cont0.prompt[Int, Int]
+    val p = Cont0.prompt[Int]
     def nest(n: Int): P[Int, Int, Int] =
       if n == 0 then pure(0)
-      else Cont0.dollar[F, Int, Int, Int, Int, Int](p)(x => pure(x + 1))(Delay(() => nest(n - 1)))
+      else Cont0.dollar[F, Int, Int, Int, Int](p)(x => pure(x + 1))(Delay(() => nest(n - 1)))
     assertEquals(run(nest(100_000)), 100_000)
   }
 
   test("depth: a generator of 100 000 yields, each clause resuming k — lazy resumptions, one loop") {
     type L = List[Int]
-    val p = Cont0.prompt[L, L]
+    val p = Cont0.prompt[L]
     def emit(i: Int): P[L, L, Unit] =
-      Cont0.shift0[F, L, L, L, L, Unit](p)(k => k(()).map(i :: _))
+      Cont0.shift0[F, L, L, L, Unit](p)(k => k(()).map(i :: _))
     def body(i: Int, n: Int): P[L, L, Unit] =
       if i > n then pure(()) else emit(i).flatMap(_ => Delay(() => body(i + 1, n)))
-    val prog = Cont0.dollar[F, L, L, Unit, L, L](p)(_ => pure(Nil))(body(1, 100_000))
+    val prog = Cont0.dollar[F, L, Unit, L, L](p)(_ => pure(Nil))(body(1, 100_000))
     val got = run(prog)
     assertEquals(got.length, 100_000)
     assertEquals(got.take(3), List(1, 2, 3))
@@ -136,10 +136,10 @@ class TestKont extends munit.FunSuite:
   }
 
   test("depth: a k of 100 000 frames, resumed twice") {
-    val p = Cont0.prompt[Int, Int]
+    val p = Cont0.prompt[Int]
     // the frames pile up under the shift0: each recursive step adds a map
     def deep(n: Int): P[Int, Int, Int] =
-      if n == 0 then Cont0.shift0[F, Int, Int, Int, Int, Int](p)(k => k(0).flatMap(a => k(1).map(b => a + b)))
+      if n == 0 then Cont0.shift0[F, Int, Int, Int, Int](p)(k => k(0).flatMap(a => k(1).map(b => a + b)))
       else Delay(() => deep(n - 1)).map(_ + 1)
     assertEquals(run(Cont0.reset[F, Int, Int, Int](p)(deep(100_000))), 200_001)
   }
@@ -151,7 +151,7 @@ class TestKont extends munit.FunSuite:
   val ask: P[String, String, Int] = Freer.diag[Cont0.Row[F], String, Int](Ask.Get())
 
   test("a foreign operation comes out as Bind(Inject(e), k); k fed twice gives two answers, the shift0 after it handled") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     val body: Str = ask.flatMap(n => shift0(p)(k => k(n.toString).map(_ + "!")))
     Frames.run[F, String, String, String](dollar(p)(angle)(body)) match
       case Bind(Diag(_: Ask[?]), k) =>
@@ -177,7 +177,7 @@ class TestKont extends munit.FunSuite:
     loop(p)
 
   test("orthogonal: a loop handler over Freer.resume OUTSIDE the machine; its k re-enters the machine, shift0 still finds the delimiter") {
-    val p = Cont0.prompt[String, String]
+    val p = Cont0.prompt[String]
     // the ask is answered by the loop outside; the shift0 after it is the machine's, and its k is resumed twice
     val body: Str = ask.flatMap(n => shift0(p)(k => k(n.toString).flatMap(a => k((n + 1).toString).map(b => a + b))))
     val prog = answer[String, String, String](7)(Frames.run[F, String, String, String](dollar(p)(angle)(body)))
@@ -185,9 +185,9 @@ class TestKont extends munit.FunSuite:
   }
 
   test("a shift0 with no dollar for its prompt fails by name and lists the installed delimiters") {
-    val p = Cont0.prompt[String, String]
-    val q = Cont0.prompt[String, String]
-    val e = intercept[Cont0.NoReset](run(dollar(p)(angle)(shift0(q)(_ => pure("x")))))
+    val p = Cont0.prompt[String]
+    val q = Cont0.prompt[String]
+    val e = intercept[NoPrompt](run(dollar(p)(angle)(shift0(q)(_ => pure("x")))))
     assertEquals(e.wanted, q.label)
     assertEquals(e.installed, List(p.label))
   }

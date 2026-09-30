@@ -42,12 +42,12 @@ class KontBenchmark {
 
   type L = List[Int]
 
-  def emit(p: Cont0.Prompt[L, L])(a: Int): P[L, L, Unit] =
-    Cont0.shift[Nil, L, L, L, L, Unit](p)(k => k(()).map(a :: _))
+  def emit(p: Prompt[L])(a: Int): P[L, L, Unit] =
+    Cont0.shift[Nil, L, L, L, Unit](p)(k => k(()).map(a :: _))
 
   @Benchmark
   def kontGenerator(): Int =
-    val p = Cont0.prompt[L, L]
+    val p = Cont0.prompt[L]
     def go(i: Int): P[L, L, Unit] =
       if i >= N then pure(())
       else emit(p)(i).flatMap(_ => go(i + 1))
@@ -59,7 +59,7 @@ class KontBenchmark {
   def kontResetOnly(): Int =
     def go(i: Int): P[Int, Int, Int] =
       if i >= N then pure(i)
-      else Cont0.reset[Nil, Int, Int, Int](Cont0.prompt[Int, Int])(pure(i)).flatMap(_ => go(i + 1))
+      else Cont0.reset[Nil, Int, Int, Int](Cont0.prompt[Int])(pure(i)).flatMap(_ => go(i + 1))
     run(go(0))
 
   // ---- DelimBenchmark.delimDollarOnly: N `$` with a return function
@@ -68,7 +68,7 @@ class KontBenchmark {
   def kontDollarOnly(): Int =
     def go(i: Int): P[Int, Int, Int] =
       if i >= N then pure(i)
-      else Cont0.dollar[Nil, Int, Int, Int, Int, Int](Cont0.prompt[Int, Int])(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
+      else Cont0.dollar[Nil, Int, Int, Int, Int](Cont0.prompt[Int])(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
     run(go(0))
 
   // ---- DelimBenchmark.delimDollarResume: one shift0 per `$`, resumed once
@@ -78,9 +78,9 @@ class KontBenchmark {
     def go(i: Int): P[Int, Int, Int] =
       if i >= N then pure(i)
       else
-        val p = Cont0.prompt[Int, Int]
-        Cont0.dollar[Nil, Int, Int, Int, Int, Int](p)(x => pure(x + 1))(
-          Cont0.shift0[Nil, Int, Int, Int, Int, Int](p)(k => k(i))).flatMap(_ => go(i + 1))
+        val p = Cont0.prompt[Int]
+        Cont0.dollar[Nil, Int, Int, Int, Int](p)(x => pure(x + 1))(
+          Cont0.shift0[Nil, Int, Int, Int, Int](p)(k => k(i))).flatMap(_ => go(i + 1))
     run(go(0))
 
   // ---- no continuations at all: what the descent costs against the rotation
