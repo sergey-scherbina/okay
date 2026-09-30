@@ -21,7 +21,7 @@ The reason a monadic program cannot be written down is one line of
 `Free`:
 
 ```scala
-case Bind[G[_, +_, +_], S, T, R, A, B](a: Freer[G, T, R, A],
+case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
                                       f: A => Freer[G, S, T, B]) extends Freer[G, S, R, B]
 ```
 
@@ -191,7 +191,7 @@ cases:
 ```scala
 case Pure(a: A)                                   // a value
 case Inject(a: F[A])                              // one operation
-case Bind[G[_, +_, +_], S, T, R, A, B](a: Freer[G, T, R, A],
+case Bind[G[_, _, +_], S, T, R, A, B](a: Freer[G, T, R, A],
                                       f: A => Freer[G, S, T, B]) extends Freer[G, S, R, B]
 case Delay(thunk: () => Free[F, A])               // ...and a thunk
 ```
