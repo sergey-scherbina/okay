@@ -10,7 +10,7 @@ import okay.Freer.Return
  * (specs/freer-kont.md, the last box). The Delim shapes are
  * DelimBenchmark's own, one to one — `delimGenerator`, `delimPushOnly`,
  * `delimDollarOnly`, `delimDollarResume` — written on `Cont0` and run by
- * `Machine.run`; the two "nested" pairs are pure programs (no
+ * `Frames.run`; the two "nested" pairs are pure programs (no
  * delimiter, no capture) run by the machine and by today's
  * `Freer.resume`, which is what code that uses no continuations pays.
  * Same N, same annotations, so a lane here and its twin there are read
@@ -32,7 +32,7 @@ class KontBenchmark {
 
   def pure[S, A](a: A): P[S, S, A] = Return(a)
 
-  def run[S, A](p: P[S, S, A]): A = (Machine.run[Nil, S, S, A](p): @unchecked) match
+  def run[S, A](p: P[S, S, A]): A = (Frames.run[Nil, S, S, A](p): @unchecked) match
     case Return(a) => a
 
   /** today's interpreter of a pure program: `resume` alone reaches the value */

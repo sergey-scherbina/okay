@@ -23,7 +23,7 @@ class TestKont extends munit.FunSuite:
 
   def pure[S, A](a: A): P[S, S, A] = Return(a)
 
-  def run[S, A](p: P[S, S, A]): A = Machine.run[F, S, S, A](p) match
+  def run[S, A](p: P[S, S, A]): A = Frames.run[F, S, S, A](p) match
     case Return(a) => a
     case other => fail(s"not a value: $other")
 
@@ -154,7 +154,7 @@ class TestKont extends munit.FunSuite:
   test("a foreign operation comes out as Bind(Inject(e), k); k fed twice gives two answers, the shift0 after it handled") {
     val p = Cont0.prompt[String, String]
     val body: Str = ask.flatMap(n => shift0(p)(k => k(n.toString).map(_ + "!")))
-    Machine.run[F, String, String, String](dollar(p)(angle)(body)) match
+    Frames.run[F, String, String, String](dollar(p)(angle)(body)) match
       case Bind(Diag(_: Ask[?]), k) =>
         val fs = k.asInstanceOf[Int => P[String, String, String]]
         assertEquals(run(fs(1)), "<1>!")
@@ -181,7 +181,7 @@ class TestKont extends munit.FunSuite:
     val p = Cont0.prompt[String, String]
     // the ask is answered by the loop outside; the shift0 after it is the machine's, and its k is resumed twice
     val body: Str = ask.flatMap(n => shift0(p)(k => k(n.toString).flatMap(a => k((n + 1).toString).map(b => a + b))))
-    val prog = answer[String, String, String](7)(Machine.run[F, String, String, String](dollar(p)(angle)(body)))
+    val prog = answer[String, String, String](7)(Frames.run[F, String, String, String](dollar(p)(angle)(body)))
     assertEquals(run(prog), "<7><8>")
   }
 
