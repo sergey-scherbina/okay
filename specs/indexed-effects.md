@@ -284,9 +284,34 @@ is deleted. What the run found, each a red before it was green:
   TestLexicalTail, TestLayered, ProbeRowInference) 79/79, no
   warnings; the full `affected master staged`.
 
-Not measured, by the arc's rule; the deferred lane's first question
-is now moot in its stated form (`at` costs nothing) and becomes: the
-one machine's own shape against the old one on `DelimBenchmark`.
+MEASURED (indexed-effects-measure, the same day, the operator's word
+that a regression is fixed at once): the one machine against the old
+on the five `DelimBenchmark` lanes that exercise it, alternating
+rounds, MIN, `jmh-lane.sh -f2 -wi3 -i5 -prof gc`, every lane quiet,
+bytes identical to the byte on every lane (history.d
+`2026-09-30T134711Z-indexed-effects-measure.tsv`). The first cut read
+level on four lanes (0.990 / 0.993 / 1.000 / 1.007) and 1.035-1.044
+on `stateLexDeep`, two rounds, bars 1-2 µs: one type test more per
+operation — `step` tested the typed `Op` before `Delim`, the loop
+tested `Diag` before `Inject` — on the lane with the most operations
+per capture. REORDERED in the lane: Delim's total class test first
+(one test per unstacked operation, what the old machine paid), `Op`
+second, `F` by exclusion; `Inject` before `Diag` (no Delim program
+builds a `Diag` since the embeddings are identities). After it:
+
+| lane | one machine | old | ratio |
+|---|---|---|---|
+| `stateLexDeep` (MIN of 3) | 100.98 µs | 100.00 µs | 1.010 |
+| `delimGenerator` | 69.06 µs | 69.23 µs | 0.997 |
+| `delimPushOnly` | 17.16 µs | 17.67 µs | 0.971 |
+| `delimDollarResume` | 39.09 µs | 38.98 µs | 1.003 |
+| `writerTellUnderDelim` | 25.28 µs | 25.63 µs | 0.986 |
+
+Inside the bars on every lane. The lesson is the one
+delim-machine-allocs already recorded for this loop: on a lane that
+does thousands of operations per capture, the ORDER of the type tests
+in the dispatch is a measurable quantity, and the common case goes
+first.
 
 ### Stage 4 — LANDED (indexed-effects-4-delim-signature): the typed Delim machine
 
@@ -390,11 +415,7 @@ TestDocSnippets and TestDocsIndex green.
 
 ### Deferred measurements
 
-The lane to run after stage 6, and its first question: `DelimBenchmark`
-before and after stage 6 — the one machine's own shape against the
-old one (`at` and `erase` are identities, so the embedding costs
-nothing; what could move is the loop's extra `Diag`/`Op` type tests
-and the two-index `Segs`). Then, from the earlier stages: `stateThreaded` after the shared node
+DONE for stage 6 (above). Still to read, from the earlier stages: `stateThreaded` after the shared node
 (expected 244 904 B, the State count), a `Tx.Data` interpretation
 against `Tx`'s facade (expected within noise: the same driver
 programs), the row's `splitI` against `split` on a forwarding handler,

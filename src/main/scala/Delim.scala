@@ -1137,16 +1137,21 @@ object Delim {
             case m: Segs.Mark[F, a, y, R] => loop(Next[F, y, R, EmptyTuple, EmptyTuple](Return(m.up(x)), m.rest))
             case r: Segs.Ret[F, a, ?, ?, R, t1, t2] => loop(Next(r.up.liftCo[[t] =>> Freer[Row0, t1, t2, t]](r.ret(x)), r.rest))
             case r: Segs.Watch[F, a, ?, ?, R, t1, t2] => loop(Next(r.up.liftCo[[t] =>> Freer[Row0, t1, t2, t]](r.ret(x)), r.rest))
-          case Diag(e) => step(e, n.kont) match
-            case next: Next[F, ?, R, ?, ?] => loop(next)
-            case o: Out[F, R] => o.answer
+          // `Inject` first: every node of an unstacked program is one, and
+          // no Delim program builds a `Diag` since the embeddings became
+          // identities — the `Diag` arms are `Indexed.unary`'s door, kept
+          // for a row that uses it (indexed-effects-measure: the extra
+          // type test per node read 4% on stateLexDeep)
           case Inject(e) => step(e, n.kont) match
             case next: Next[F, ?, R, ?, ?] => loop(next)
             case o: Out[F, R] => o.answer
-          case Bind(Diag(e), k) => step(e, Segs.K(k, n.kont)) match
+          case Bind(Inject(e), k) => step(e, Segs.K(k, n.kont)) match
             case next: Next[F, ?, R, ?, ?] => loop(next)
             case o: Out[F, R] => o.answer
-          case Bind(Inject(e), k) => step(e, Segs.K(k, n.kont)) match
+          case Diag(e) => step(e, n.kont) match
+            case next: Next[F, ?, R, ?, ?] => loop(next)
+            case o: Out[F, R] => o.answer
+          case Bind(Diag(e), k) => step(e, Segs.K(k, n.kont)) match
             case next: Next[F, ?, R, ?, ?] => loop(next)
             case o: Out[F, R] => o.answer
 
@@ -1158,37 +1163,11 @@ object Delim {
        * unstacked machine makes, at the same two lines; a foreign one
        * suspends the machine into the residual program. */
       def step[X, S1, S2](e: Row0[S1, S2, X], kont: Segs[F, X, R]): Step[F, R] = e match
-        case op: Op[F, S1, S2, X] @unchecked => op match
-          case pu: Op.Push[F, ?, r, ?] =>
-            Next(pu.body, Segs.Mark[F, r, X, R](pu.p, <:<.refl[r]: r <:< X, kont))
-          case d: Op.Dollar[F, st, r0, r, ?] =>
-            Next(d.body, Segs.Ret[F, r0, r, X, R, st, st](d.p, d.ret, <:<.refl[r]: r <:< X, kont))
-          case c: Op.Capture[F, ?, r, ?, b, s0, a] =>
-            def resume[Q](k: a => Under[F, r, s0], up: r <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
-              val body: Under[F, r, s0] = c.f(k)
-              if c.underPrompt then
-                // the body runs under `p` again: a fresh push at the stack
-                // below it, the body re-based to sit on that push
-                Next(up.liftCo[[t] =>> Under[F, t, b]](Inject(Op.Push[F, b, r, c.p.type](c.p, rebase[F, r, s0, s0, c.p.type *: b, c.p.type *: b](body)))), outer)
-              else Next(up.liftCo[[t] =>> Under[F, t, s0]](body), outer)
-            split(kont, c.p) match
-              case PlainCut(captured, up, outer) =>
-                resume((v: a) => {
-                  val seg: Under[F, r, s0] = reify[X, r, s0, s0](captured, Return[Row0, s0, X](v))
-                  if c.delimitK then rebase[F, r, b, b, s0, s0](Inject(Op.Push[F, b, r, c.p.type](c.p, rebase[F, r, s0, s0, c.p.type *: b, c.p.type *: b](seg)))) else seg
-                }, up, outer)
-              case AtDollar(whole, up, outer) =>
-                if c.delimitK then resume((v: a) => reify[X, r, s0, s0](whole, Return[Row0, s0, X](v)), up, outer)
-                else throw new UnsupportedOperationException(
-                  s"${c.at}: a control-capture to ${c.p.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
-              // a typed capture holds `Has`: the delimiter is installed by
-              // the type, and the search finds it. Kept as the diagnosis
-              // for the one way here — a segment `erase`d and re-run
-              // outside the stack it was typed under
-              case NotFound() => throw NoPrompt(c.at.where, c.p.label, installed(kont))
-        // the excluded middle, as `erase` reads it: not an `Op`, so one
-        // of the row's other two members, told apart by Delim's total test
-        case other => okay.split[Delim, F](other.asInstanceOf[Delim[X] | F[X]]) { d => d match
+        // the unstacked signature FIRST: its test is total (the class is the
+        // whole identity, Delim's own note), and every operation of an
+        // unstacked program is one — one test per operation, as the old
+        // machine paid; the typed operations second, `F` by exclusion
+        case d: Delim[X] @unchecked => d match
             case pu: Push[r] =>
               // claim 1, the unstacked machine's: the pushed body is a
               // program of this row, answering the prompt's r
@@ -1234,12 +1213,42 @@ object Delim {
               shots.n += 1
               shots.resumed(shots.n)
               Next(body, Segs.Watch[F, r0, r, X, R, EmptyTuple, EmptyTuple](d.prompt, ret.asInstanceOf[r0 => Under[F, r, EmptyTuple]], shots, <:<.refl[r]: r <:< X, kont))
-          }
-          // a foreign operation suspends the machine: the residual program
-          // performs it and resumes with the same stack
-          (g => Out(okay.Free.inject(g).flatMap(kont match
+          
+        case op: Op[F, S1, S2, X] @unchecked => op match
+          case pu: Op.Push[F, ?, r, ?] =>
+            Next(pu.body, Segs.Mark[F, r, X, R](pu.p, <:<.refl[r]: r <:< X, kont))
+          case d: Op.Dollar[F, st, r0, r, ?] =>
+            Next(d.body, Segs.Ret[F, r0, r, X, R, st, st](d.p, d.ret, <:<.refl[r]: r <:< X, kont))
+          case c: Op.Capture[F, ?, r, ?, b, s0, a] =>
+            def resume[Q](k: a => Under[F, r, s0], up: r <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
+              val body: Under[F, r, s0] = c.f(k)
+              if c.underPrompt then
+                // the body runs under `p` again: a fresh push at the stack
+                // below it, the body re-based to sit on that push
+                Next(up.liftCo[[t] =>> Under[F, t, b]](Inject(Op.Push[F, b, r, c.p.type](c.p, rebase[F, r, s0, s0, c.p.type *: b, c.p.type *: b](body)))), outer)
+              else Next(up.liftCo[[t] =>> Under[F, t, s0]](body), outer)
+            split(kont, c.p) match
+              case PlainCut(captured, up, outer) =>
+                resume((v: a) => {
+                  val seg: Under[F, r, s0] = reify[X, r, s0, s0](captured, Return[Row0, s0, X](v))
+                  if c.delimitK then rebase[F, r, b, b, s0, s0](Inject(Op.Push[F, b, r, c.p.type](c.p, rebase[F, r, s0, s0, c.p.type *: b, c.p.type *: b](seg)))) else seg
+                }, up, outer)
+              case AtDollar(whole, up, outer) =>
+                if c.delimitK then resume((v: a) => reify[X, r, s0, s0](whole, Return[Row0, s0, X](v)), up, outer)
+                else throw new UnsupportedOperationException(
+                  s"${c.at}: a control-capture to ${c.p.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
+              // a typed capture holds `Has`: the delimiter is installed by
+              // the type, and the search finds it. Kept as the diagnosis
+              // for the one way here — a segment `erase`d and re-run
+              // outside the stack it was typed under
+              case NotFound() => throw NoPrompt(c.at.where, c.p.label, installed(kont))
+        // a foreign operation suspends the machine: the residual program
+        // performs it and resumes with the same stack — the excluded
+        // middle, licensed by the two tests above
+        case g =>
+          Out(okay.Free.inject(g.asInstanceOf[F[X]]).flatMap(kont match
             case k: Segs.K[F, X, ?, R, ?, ?] => x => loop(Next(k.f(x), k.rest))
-            case _ => x => loop(Next[F, X, R, EmptyTuple, EmptyTuple](Return(x), kont)))))
+            case _ => x => loop(Next[F, X, R, EmptyTuple, EmptyTuple](Return(x), kont))))
 
       loop(Next[F, R, R, EmptyTuple, EmptyTuple](prog, Segs.Done()))
     }
