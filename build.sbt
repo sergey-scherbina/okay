@@ -2347,6 +2347,19 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
     // Scala.js has no StrictMath, and nothing is re-derived there
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    // THE TESTS FORK, with a heap of their own (intent-tests-fork,
+    // 2026-09-30). The suites refit models (TestOfflineGate: 8 splits x
+    // 5 gates, MeasureAutonomy, TestSlavicRows) and ran INSIDE sbt's JVM,
+    // sharing its 6g with every other in-process module running beside
+    // them: in the runner's whole builds that day 7 of 13 logged GC
+    // pressure (up to 55% of the time in GC), 5 threw OutOfMemoryError in
+    // these suites, and in-process neighbours timed out as victims —
+    // TestCoreAsync four times — and were recorded as flakes. The working
+    // directory stays the REPO ROOT: the suites read
+    // `okay-agent/src/test/resources/...` relative to it.
+    Test / fork := true,
+    Test / baseDirectory := (ThisBuild / baseDirectory).value,
+    Test / javaOptions += "-Xmx1g",
     // the live suites are JVM-only: they hold an HTTP connection to a
     // gateway, and the tiers themselves are portable
     Test / unmanagedSourceDirectories +=
