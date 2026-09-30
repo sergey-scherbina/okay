@@ -145,18 +145,18 @@ agreement law below.
 
 Lane 1 (streams-seam-1-bulk-flow):
 
-- [ ] `FlowBulk(4)` answers what `Bulk.local` answers on the same
+- [x] `FlowBulk(4)` answers what `Bulk.local` answers on the same
       `Tables` program (`TestPlan`'s join job): the same rows
-- [ ] `of`, `map`, `flatMap`, `filter`, `join`, `aggregate`, `toChunks`
+- [x] `of`, `map`, `flatMap`, `filter`, `join`, `aggregate`, `toChunks`
       each agree with the local instance on random input, at parallelism
       1 and 4, and on an empty side
-- [ ] `read(path, format)` reads every split exactly once, one partition
+- [x] `read(path, format)` reads every split exactly once, one partition
       per slice of the splits, and `toChunks` consumed twice reads the
       file twice (deferred); `cache` reads it once
-- [ ] the right side of a join is collected once however many
+- [x] the right side of a join is collected once however many
       partitions the left has
-- [ ] `csv` and `csv(path, columns)` prune as the local instance does
-- [ ] docs: docs/modules/okay-cluster.md, "A Bulk over the engine",
+- [x] `csv` and `csv(path, columns)` prune as the local instance does
+- [x] docs: docs/modules/okay-cluster.md, "A Bulk over the engine",
       example pinned
 
 Lane 2 (streams-seam-2-streamed): `Streamed` with `viaTables` defaults;
@@ -174,4 +174,15 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
 
 ## Results
 
-(filled as the lanes land)
+- streams-seam-1-bulk-flow (2026-09-30): ADDITIVE — `FlowBulk` new in
+  okay-cluster, two suites, a docs section; no existing body changed.
+  Gate: `TestFlowBulk` (5), `TestDocExamplesFlowBulk`, `TestDocSnippets`,
+  `affected master Test/compile`. What the tests fixed in the design:
+  `runWith` on a `! Async` is the `Effects` instance's extension and
+  needs `import okay.given`, not a selective import; `Flow.slices` of an
+  empty input at four partitions answers empty (the empty-side law
+  passed with no special case); the join's right side is collected on
+  the first partition's demand and read exactly once across two
+  consumptions (`pulls == 1`), `read` reads each of eight splits once
+  per consumption and `cache` once ever — the deferred/eager split of
+  the Decisions holds as written.
