@@ -230,10 +230,13 @@ numbers; the operator: "Мигрируй"):
       TestHandlersAsDollar, TestContOnMachine, TestProg,
       TestStackSafetyCore, TestContStack, TestKont — 97 tests, green on
       the first run of the ported machine
-- [ ] `affected master staged` green (a change of behaviour: every
-      dependent's tests)
-- [ ] DelimBenchmark's lanes re-measured on the migrated machine
-      against the probe's rows
+- [x] `affected master staged` green (a change of behaviour: every
+      dependent's tests) — after two findings it made: a `dollarResumed`
+      counted on a head form's re-entry (the count became a frame,
+      `Enter`, popped once per resumption), and an appendix quoting
+      the deleted `Segs`
+- [x] DelimBenchmark's lanes re-measured on the migrated machine
+      against the probe's rows — Results
 - [x] Delim.scala's header rewritten: the "opaque forwarding" reason
       for `push` as an operation refuted, the two real reasons named
 - [ ] `Cont.step` (the strict runner with its `StackSwitch` rooms):
@@ -309,6 +312,29 @@ one arm added after measuring: without it, one `Frame` pushed and
 popped per value read 1.26x and +24 B a step). The generator's +8%
 bytes is the lazy `k(x)` node (`Delay` + `Resume`) and the `Rev` walk of
 a splice — 56 B per emit, bought back in time.
+
+**Stage 2, the migration** (`src/jmh/history.d/…-freer-kont-migrate.tsv`,
+sha 782778fa9, DelimBenchmark's own lanes unchanged, on the frame
+machine against the Delim machine's rows of the same day):
+
+| DelimBenchmark lane | Delim machine | frame machine | time | bytes |
+|---|---:|---:|---:|---:|
+| delimGenerator (shift per emit) | 67.7 us, 726 KB | 63.7 us, 838 KB | **0.94** | 1.15 |
+| delimPushOnly | 17.06, 278 KB | 13.39, 222 KB | **0.79** | 0.80 |
+| delimDollarOnly | 18.80, 300 KB | 14.33, 236 KB | **0.76** | 0.79 |
+| delimDollarResume | 39.21, 572 KB | 32.29, 540 KB | **0.82** | 0.94 |
+| stateLexDeep (Lexical deep, a capture per op) | 100.2 (base d31fc94f1) | 87.4 | **0.87** | — |
+| stateDeep ($ + shift0 per op) | 133.9 (2026-09-25 base) | 96.9 | 0.72 (a bound) | — |
+
+Read: every Delim shape is faster on the frame machine, delimiter
+installation by a fifth to a quarter (the machine's `Next`, `Segs.Mark`
+and the typed `Op` node are gone: a `Reset0` operation and one `Reset`
+frame), capture-and-resume by a fifth (no reify), and the deep-handler
+lanes — Lexical's, where the old machine read one of two JIT modes per
+fork — by 13% with two tight forks. The generator pays +112 B per emit
+for a 6% gain: the lazy `k(x)` node, the `Rev` walk of a splice, and
+the door's `reset` around the body as an operation of its own. The
+whole migrated machine is 245 lines where the Delim machine was 459.
 
 **Answer-type modification in the LAZY machine is not Cont's `(S, R)`.**
 Found by the typed test, before any code was written for it: Cont's
