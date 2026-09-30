@@ -1,1 +1,0 @@
-claude session_01YRJ5EcKY1FwNaufrBB3ArS, 2026-09-30, operator ask ("Бери"): a partitioned channel routes by producer, not by thread; then the foreign-resume handoff can come back (sprint.d/doing/channel-route-per-producer.md)
