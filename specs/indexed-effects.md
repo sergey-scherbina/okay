@@ -189,7 +189,11 @@ Stage 5:
 
 ## Results
 
-(filled per stage)
+### Stage 1 — LANDED (indexed-effects-1-shared-get)
+
+`SharedOps.getT`, `PState.Threaded.get` under the same cast as
+`State.get`, `TestState` pinning `get[Int] eq get[String]`. The
+measurement is deferred (below).
 
 ### Deferred measurements
 
