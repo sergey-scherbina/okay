@@ -115,19 +115,20 @@ Stage 1:
       protocol test is unchanged and green.
 
 Stage 2:
-- [ ] `TxOp` and `Tx.Data`: `begin.flatMap(_ => begin)` is a compile
+- [x] `TxOp` and `Tx.Data`: `begin.flatMap(_ => begin)` is a compile
       error, `commit()` alone cannot be interpreted (`Idle -> Idle` is
       the only shape `interpret` takes), a well-bracketed program runs
       against the recording fake `Sql` in the order the type promised
-      (TestTx's shapes, on the data road).
-- [ ] `interpret` threads `Conn[S]`: `Begin` is answered only from a
+      (TestTx's shapes, on the data road), and an `Async` program runs
+      inside the body.
+- [x] `interpret` threads `Conn[S]`: `Begin` is answered only from a
       `Conn[Idle]` and yields a `Conn[Open]`; `Commit`/`Rollback` only
-      from `Conn[Open]`. A handler arm that commits from `Conn[Idle]`
-      does not type (a `compileErrors` pin on a copy of the arm).
-- [ ] A `Throws` abort inside a data-road transaction drops the
-      continuation and the transition does not happen — the caveat
-      stage 2 of freer-base asserts for the facade, asserted here for
-      the data road.
+      from `Conn[Open]`. `closed` on a `Conn[Idle]` and `opened` on a
+      `Conn[Open]` do not type (`compileErrors` pins).
+- [x] A failure inside a data-road transaction drops the continuation
+      and the transition does not happen — the caveat stage 2 of
+      freer-base asserts for the facade, asserted here for the data
+      road (the log ends at `begin`).
 
 Stage 3:
 - [x] `+~` and `Unary`: a program over `PSt +~ Unary[State[Int, *]]`
@@ -194,6 +195,35 @@ Stage 5:
 `SharedOps.getT`, `PState.Threaded.get` under the same cast as
 `State.get`, `TestState` pinning `get[Int] eq get[String]`. The
 measurement is deferred (below).
+
+### Stage 2 — LANDED (indexed-effects-2-tx-data), on the row
+
+Built on `TxOp +~ Unary[Async]` from the start (the operator's answer
+to "is the row worth building": a transaction body wants effects
+inside it, and `reflect` is not a way out — it needs a Cont). What the
+compiler said:
+
+- **The alias reads left to right and the tree the other way.**
+  `Data[A, From, To] = Freer[Row, To, From, A]`: the first cut wrote
+  `Data[Granted, Idle, Open]` for `begin` over `Freer[Row, S, R, A]`
+  and got `Open -> Idle`; the alias is where the readable order and
+  the tree's meet, once.
+- **A match type with provably disjoint indexes WARNS, E184** ("Match
+  type reduction failed since selector Open matches none of the
+  cases") at every door whose two indexes are different concrete
+  types. `Unary` gained `case _ => Nothing`: `Nothing` where the
+  indexes are disjoint, stuck where they are abstract, `F[X]` on the
+  diagonal — the refusal holds in all three.
+- **The connection's moves are found lexically.** `opened`/`closed`
+  as extensions in `Conn`'s companion were not applied to the
+  GADT-refined `c: Conn[R]` (the companion's implicit scope does not
+  try the refinement); `import Conn.{opened, closed}` inside the
+  handler does, and the wrong arm is a compile error as the box asks.
+- **`Indexed.lift`** (core): a unary program onto the diagonal, one
+  `Diag` per operation as the interpreter reaches it, the recursion
+  under `flatMap`.
+- The caveat holds and is asserted: a failure inside the body drops
+  the `commit`; the log ends at `begin`.
 
 ### Stage 3 — LANDED (indexed-effects-3-row)
 

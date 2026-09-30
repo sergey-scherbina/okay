@@ -24,8 +24,12 @@ import scala.annotation.implicitNotFound
  * index the handler cannot reach), so the handler threw. `Unary[F]`
  * closes it at the type: `[S, R, X] =>> S match { case R => F[X] }`
  * REDUCES to `F[X]` only when the two indexes are the same type — the
- * diagonal, where `Diag`'s door puts it — and stays a stuck match
- * type off it, which no value of `F[X]` conforms to. So `Indexed.
+ * diagonal, where `Diag`'s door puts it — and off it is `Nothing`
+ * where the two indexes are provably different types (the second
+ * case; without it dotty WARNS at every door whose indexes are
+ * disjoint, E184 "matches none of the cases") and a stuck match type
+ * where they are abstract, which no value of `F[X]` conforms to
+ * either. So `Indexed.
  * unary` accepts a `State` operation and `Indexed.effect` at `(Int =>
  * Z, String => Z)` refuses it, both by the compiler (TestFreerPara
  * pins the refusal). What the match type cannot do is tell a HANDLER
@@ -48,7 +52,9 @@ infix type +~[F[_, _, +_], G[_, _, +_]] = [S, R, X] =>> F[S, R, X] | G[S, R, X]
 
 /** a unary effect as a member of an indexed row: `F[X]` on the
  * diagonal, and nothing off it — see the header */
-type Unary[F[+_]] = [S, R, X] =>> S match { case R => F[X] }
+type Unary[F[+_]] = [S, R, X] =>> S match
+  case R => F[X]
+  case _ => Nothing
 
 /** ∀S R X, the runtime test for F[S, R, X] — `TypeableK` at three
  * parameters; by class, since the indexes are erased and a row may
@@ -87,6 +93,21 @@ object Indexed:
   /** an operation that moves nothing, on the diagonal by its node — the
    * door of a `Unary` member, and of any diagonal operation */
   inline def unary[G[_, _, +_], R, X](e: G[R, R, X]): Freer[G, R, R, X] = Freer.diag(e)
+
+  /**
+   * A whole UNARY PROGRAM inside an indexed one, on the diagonal
+   * (indexed-effects stage 2, for `Tx.Data`'s `async`): every operation
+   * becomes the `Diag` node `unary` would build for it, through `into`
+   * — which at a `Unary` member is the identity, since the match type
+   * reduces to `F[X]` there. Lazy, one node per operation as the
+   * interpreter reaches it, and the recursion is under `flatMap`
+   * (trampolined): a program of any depth lifts in constant stack.
+   */
+  def lift[G[_, _, +_], F[+_], R, A](p: Free[F, A])(into: [X] => F[X] => G[R, R, X]): Freer[G, R, R, A] =
+    (p.resume: @unchecked) match
+      case Freer.Return(a) => Freer.Return(a)
+      case Freer.Inject(e) => Freer.Diag(into(e))
+      case Free.Bind(Free.Inject(e), k) => Freer.Diag(into(e)).flatMap(x => lift(k(x))(into))
 
   /**
    * The exclusion arm no door can reach: a `Unary` member's operation
