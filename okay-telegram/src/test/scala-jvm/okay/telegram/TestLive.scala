@@ -59,7 +59,7 @@ class TestLive extends munit.FunSuite:
     go(perform(Act.Edit(1, m("a2")))): Unit // held
     assertEquals(go(perform(Act.Send(m("new")))), Some(9L))
     go(perform(Act.Answer("cb", "ok"))): Unit
-    assertEquals(a.calls.map(_._1).toList.takeRight(2), List("sendMessage", "answerCallbackQuery"))
+    assertEquals(a.snapshot.map(_._1).toList.takeRight(2), List("sendMessage", "answerCallbackQuery"))
     t.close()
     until(a.of("editMessageText").size == 3)
     assertEquals(Js.str(a.of("editMessageText").last, "text"), "a2")
@@ -82,7 +82,7 @@ class TestLive extends munit.FunSuite:
     val cmds = Vector(Command("start", "Home", "home"), Command("agents", "Agents", "agents"))
     assertEquals(go(Command.install(Bot(a, token), cmds :+ Command("Agents", "x", "x"))),
       Left(Refused("setMyCommands", 400, "command 'Agents' is not [a-z0-9_]{1,32}")))
-    assertEquals(a.calls.size, 0)
+    assertEquals(a.snapshot.size, 0)
     val a2 = FakeApi { case "setMyCommands" => FakeApi.ok("true") }
     assertEquals(go(Command.install(Bot(a2, token), cmds)), Right(()))
     assertEquals(Js.arr(a2.of("setMyCommands").head, "commands").size, 2)

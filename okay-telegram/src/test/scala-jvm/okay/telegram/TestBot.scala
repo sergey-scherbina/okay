@@ -16,11 +16,15 @@ final class FakeApi(answers: PartialFunction[String, String]) extends Http:
   def method(r: Request): String = r.url.substring(r.url.lastIndexOf('/') + 1)
   def send(r: Request): Response ! Async = async {
     val m = method(r)
-    calls += ((m, Json.parse(new String(r.body.bytes, "UTF-8")), r))
+    calls.synchronized { calls += ((m, Json.parse(new String(r.body.bytes, "UTF-8")), r)); () }
     val (status, body) = answers.lift(m).fold(500 -> "<html>bad gateway</html>")(200 -> _)
     Response(status, Nil, Http.one(body.getBytes("UTF-8")))
   }
-  def of(m: String): Vector[Json] = calls.toVector.collect { case (`m`, j, _) => j }
+  /** a snapshot under the same monitor the fibres append under: the test
+   * thread polls this while a fibre is sending (the race surfaced in the
+   * staged gate of ready-merge-side-starves as a ConcurrentModification) */
+  def of(m: String): Vector[Json] = snapshot.collect { case (`m`, j, _) => j }
+  def snapshot: Vector[(String, Json, Request)] = calls.synchronized(calls.toVector)
 
 object FakeApi:
   def ok(result: String): String = s"""{"ok":true,"result":$result}"""
@@ -36,7 +40,7 @@ class TestBot extends munit.FunSuite:
     }
     val bot = Bot(api, token)
     assertEquals(run(bot.getMe).map(Js.str(_, "username")), Right("okay_bot"))
-    val (_, _, req) = api.calls.head
+    val (_, _, req) = api.snapshot.head
     assertEquals(req.url, s"https://api.telegram.org/bot$token/getMe")
     assert(req.headers.exists((k, v) => k == "content-type" && v == "application/json"), req.headers.toString)
     val refused = run(bot.send(7, "hi"))
