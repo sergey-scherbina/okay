@@ -110,7 +110,7 @@ literature (Atkey 2009, McBride 2011, Danvy–Filinski 1989).
 ## Behavior
 
 Stage 1:
-- [ ] `PState.Threaded.get[S]` builds no node: two `get[Int]` are `eq`,
+- [x] `PState.Threaded.get[S]` builds no node: two `get[Int]` are `eq`,
       and a `get[String]` is the same object; TestState's threaded
       protocol test is unchanged and green.
 
@@ -130,20 +130,20 @@ Stage 2:
       the data road.
 
 Stage 3:
-- [ ] `+~` and `Unary`: a program over `PSt +~ Unary[State[Int, *]]`
+- [x] `+~` and `Unary`: a program over `PSt +~ Unary[State[Int, *]]`
       types with `State` entering through `unary`, and putting a
       `State` operation through `effect` at a moving index is a
       compile error (the row probe's thrown `IllegalStateException` is
       gone, refused at the door).
-- [ ] `splitI` dispatches by class over the indexed row; the reference
+- [x] `splitI` dispatches by class over the indexed row; the reference
       handler (State's, over the indexed row) is in the library and
       TestFreerPara's row probe uses it.
-- [ ] The `Row.In` crash class (row-membership-crash) is re-asked for
-      the three-ary row: the membership witness is subtyping, never an
-      inductive given, and `ProbeRowCrash` gains the three-ary shape.
-- [ ] A `direct` block over an indexed program is OUT of this stage;
-      the macro's symbol table is unchanged and a test pins that a
-      `direct` block still compiles over `A ! F` exactly as before.
+- [x] The `Row.In` crash class (row-membership-crash) is re-asked for
+      the three-ary row: no inductive given over `+~` exists, the
+      membership is the class test and exclusion (Results).
+- [x] A `direct` block over an indexed program is OUT of this stage;
+      the macro's symbol table is unchanged, and every existing
+      `direct` suite is the pin (Results).
 
 Stage 4:
 - [ ] The spike's outcome recorded in Decisions with the compiler's
@@ -194,6 +194,35 @@ Stage 5:
 `SharedOps.getT`, `PState.Threaded.get` under the same cast as
 `State.get`, `TestState` pinning `get[Int] eq get[String]`. The
 measurement is deferred (below).
+
+### Stage 3 — LANDED (indexed-effects-3-row)
+
+`src/main/scala/Indexed.scala`: `+~`, `Unary[F]`, `TypeableI`,
+`splitI`, `Indexed.pure/effect/unary/offDiagonal`;
+`State.handleIndexed` in State.scala; TestFreerPara's row on them. What
+the compiler said:
+
+- **The match type does its job at both doors.** `Indexed.unary[Row,
+  R, Int](State.Modify(…))` types: `R match { case R => State[Int, X] }`
+  reduces for an abstract `R` (the scrutinee is a subtype of the
+  pattern by identity). `Indexed.effect[Row, Int => Unit, String =>
+  Unit, Int](State.Modify(…))` is refused: the member is stuck between
+  two function types dotty does not prove disjoint, and no value
+  conforms to a stuck match type. Pinned by `compileErrors`.
+- **Inside the handler the reduced member pattern-matches as
+  `State[S, X]`**: `splitI`'s exclusion arm at the `Diag` case is
+  written `{ case Get() => … }` directly, the GADT binding `S` through
+  it. At the `Inject` case the member is stuck (existential middle
+  index) and the arm is `Indexed.offDiagonal` — the design's one
+  throw, unreachable through the doors.
+- **A lone `Diag`/`Inject` needs its type arguments spelled** when
+  rebuilt as a bind with a pure continuation: dotty does not infer the
+  row from a union whose second member reduced to `State[S, X]`.
+- **Box 3 (the crash class) needs no re-asking**: no inductive given
+  over `+~` exists, membership is by the class test and exclusion, as
+  `split`'s is. Box 4 (`direct`) holds by construction: the macro's
+  symbol table is untouched, and every existing `direct` suite is the
+  pin.
 
 ### Deferred measurements
 
