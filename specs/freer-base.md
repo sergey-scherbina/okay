@@ -1098,3 +1098,49 @@ Not measured: nothing on a hot path changed. The instance builds the
 nodes the tree's own `flatMap`/`map` build, and the runner in the test
 is a probe, not a production loop (its re-entry is direct style's
 frame, as `ProbeFreerStep`'s).
+
+### The indexes INSIDE the effect system — a row and a handler (2026-09-30, freer-paramonad-row)
+
+The operator's follow-up: not one three-ary signature, but WHERE in
+the effect system — rows, handlers, forwarding — the indexes are used.
+Compiled, in TestFreerPara, and green at the first typing:
+
+- **A mixed row.** `Row = [S, R, X] =>> PSt[S, R, X] | At[State[Int,
+  *], S, R, X]`: the indexed effect beside an ordinary `State % Int`.
+  The union's `+` is the unary one written at three parameters;
+  nothing else changes — `split`-by-class is index-blind.
+- **A unary effect enters ON THE DIAGONAL, and that is the one new
+  thing.** `Lift[F]` puts a unary operation at any index, and a
+  handler's loop over a mixed row cannot use that: matching
+  `Bind(Inject(op), k)` makes the middle index `T` existential, and
+  the answer the handler builds from `k`'s program is `T`-indexed
+  where it owes an `R`-indexed one. `enum At[F, S, +R, +X]` with
+  `Op[F, R, X](e: F[X]) extends At[F, R, R, X]` says the operation
+  moves nothing; the GADT gives `T <: R` and `+R` makes the
+  continuation's program an `R` one. Price: one wrapper per unary
+  operation. The allocation-free twin is `Free.Bind`'s trade at
+  `Unit` — an extractor that claims "a unary operation is diagonal"
+  by one cast, applied after the class test says the op is unary.
+  Which to take is a measurement, not taken here.
+- **State's handler, unchanged in shape, over the indexed row.**
+  `counted(s)(p: Freer[Row, S, R, A]): Freer[PSt, S, R, (Int, A)]`:
+  its own operations answered from the threaded `Int` and continued
+  at `T <: R`; a `PSt` operation FORWARDED with the index it came with
+  — `Inject(o).flatMap(x => counted(s)(k(x)))`, `(T, R)` then `(S,
+  T)`, closing at `(S, R)` — exactly the forwarding arm every handler
+  in the library has, at indexes that are no longer `Unit`. A program
+  ticking the counter around a `PSt` move `Int -> List[String]` runs
+  through `counted` then the indexed natural transformation and
+  answers `(List("x", "x"), (3, 3))`.
+
+So the answer to "where": in every handler's forwarding arm, which
+already has the right shape, and in the doors — an indexed effect's
+smart constructors carry their answer types, a unary effect's carry
+the diagonal. What production would add, all of it mechanical and none
+of it taken here: `+` at three parameters, `split`/`TypeableK` over
+three-ary constructors, `!`'s doors at a non-`Unit` index, and the
+diagonal claim for unary operations chosen between `At` and the
+extractor. Handlers stay Cont-valued (`F !> S` is `X /> S`); what
+moves is only that a handler of an INDEXED effect answers `Cont[X, S,
+R]` off the diagonal, which is `PState`'s `getAt`/`setAt` given a
+data operation to read.

@@ -130,6 +130,68 @@ class TestFreerPara extends munit.FunSuite:
     assert(errors.nonEmpty, "a Put from String after a Get of Int must not type")
   }
 
+  // ------------------ reading 1 INSIDE THE EFFECT SYSTEM: a row, a handler
+
+  /**
+   * A UNARY effect on the DIAGONAL of an indexed row. `Lift[F]` puts a
+   * unary operation at ANY index, and that is exactly what a handler's
+   * loop over a mixed row cannot use: matching `Bind(Inject(op), k)`
+   * makes the middle index existential, and an answer built from
+   * `k`'s program sits at that index where the loop owes one at `R`.
+   * `Op` says the operation moves nothing — `T = R`, read off the GADT
+   * — so the continuation's program IS an `R`-indexed one by `+R`. One
+   * wrapper per unary operation; the allocation-free twin is `Free.
+   * Bind`'s trade — an extractor claiming "a unary op is diagonal" by
+   * ONE cast, as it claims `Unit` today.
+   */
+  enum At[F[+_], S, +R, +X]:
+    case Op[F[+_], R, X](e: F[X]) extends At[F, R, R, X]
+
+  /** the row: the indexed effect beside an ordinary `State % Int` */
+  type Row = [S, R, X] =>> PSt[S, R, X] | At[State[Int, *], S, R, X]
+
+  def rget[S, Z]: Freer[Row, S => Z, S => Z, S] = Inject(PSt.Get())
+  def rput[S, T, Z](t: T): Freer[Row, T => Z, S => Z, S] = Inject(PSt.Put(t))
+  def tick[R]: Freer[Row, R, R, Int] = Inject(At.Op[State[Int, *], R, Int](State.Modify[Int, Int](_ + 1)))
+
+  /**
+   * `State.handle` over the indexed row: its own operations answered
+   * from the threaded `Int`, every other operation FORWARDED WITH THE
+   * INDEX IT CAME WITH — the shape every handler in the library has,
+   * at indexes that are no longer `Unit`. Typed by the GADT: a `State`
+   * arm continues at `T <: R`, a forwarded `PSt` op keeps `(T, R)` and
+   * the continuation closes `(S, T)`.
+   */
+  def counted[S, R, A](s: Int)(p: Freer[Row, S, R, A]): Freer[PSt, S, R, (Int, A)] =
+    def step[T, X](o: Row[T, R, X], k: X => Freer[Row, S, T, A]): Freer[PSt, S, R, (Int, A)] = o match
+      case At.Op(e) => e match
+        case State.Get() => counted(s)(k(s))
+        case State.Set(n) => counted(n)(k(n))
+        case State.Modify(f) => val n = f(s); counted(n)(k(n))
+        case State.Update(f) => val (b, n) = f(s); counted(n)(k(b))
+      // the library's `split` does this by `TypeableK`; a probe tests the class
+      case o: PSt[T, R, X] @unchecked => Inject(o).flatMap(x => counted(s)(k(x)))
+    (p.resume: @unchecked) match
+      case Return(a) => Return((s, a))
+      case Inject(o) => step(o, x => Return(x))
+      case Bind(Inject(o), k) => step(o, k)
+
+  test("an indexed effect in a ROW beside State: State's handler forwards the index it does not own") {
+    type Z = (List[String], (Int, Int))
+    val p: Freer[Row, List[String] => Z, Int => Z, Int] =
+      for
+        _ <- tick[Int => Z]
+        n <- rget[Int, Z]
+        _ <- tick[Int => Z]
+        _ <- rput[Int, List[String], Z](List.fill(n)("x"))
+        c <- tick[List[String] => Z]
+      yield c
+    val (state, (counter, value)) = run(counted(0)(p))(toShift)(a => s => (s, a))(2)
+    assertEquals(state, List("x", "x"))
+    assertEquals(counter, 3)
+    assertEquals(value, 3)
+  }
+
   // ------------------- reading 2: the index is a CONSUMED state (refused)
 
   /** McBride's shape: `R` the state before, `S` the state after */
