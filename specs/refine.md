@@ -329,6 +329,18 @@ Stage 3 — lessons:
   okay (`Bulk.join`, monadic join). `Refine.json.at(names*)` is its
   commonest case. In okay and okay2.
 
+- **refine-laws (2026-10-01, operator ask).** `RefineLaws.check` /
+  `checkNamed`: read→write→read to the same VALUE (not bytes — a
+  conversion path writes JSON whatever it read), write→read for sample
+  values, nothing throws, determinism; `Expect.Corpus` adds every
+  not-taken input (declined with refusals, unclear with readings) — the
+  corpus method's "declined must be 0". In main code, framework-free (the
+  every-dependency-behind-an-abstraction rule): it answers a `Report`,
+  the caller's framework asserts. TestRefineLaws holds the checker to
+  finding each way of breaking a pattern — a lossy write, a refused
+  write, a throw in read and in write, a drifting read — and passing
+  ISDA's two FpML examples. In okay and okay2.
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of

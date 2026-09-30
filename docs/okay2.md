@@ -2178,6 +2178,10 @@ alternative each. A pattern is also a search (`search`: `Took` the
 answer, `Unclear` a choice point, `Declined` an empty one), so
 `runChoice` lists the readings.
 
+`RefineLaws.check(pattern, inputs, values, expect)` checks any pattern's
+laws on any samples, as in okay (docs/modules/okay-refine.md, "Checking a
+pattern's laws").
+
 The algebra is okay's (docs/modules/okay-refine.md, "The algebra";
 `Refine.path(steps: _*)` and `Refine.json.at(names: _*)` included):
 `>>>` and `or` are second names for `andThen` and `<|>`; `orElse` is a

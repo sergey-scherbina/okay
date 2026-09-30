@@ -252,6 +252,39 @@ assertEquals(values, Seq(7, 200))
 assertEquals(missed, Refine.Missed(declined = 2, unclear = 1))
 ```
 
+## Checking a pattern's laws: RefineLaws
+
+Every pattern promises the same things, and a domain repository's
+patterns should be held to them as this module's are. `RefineLaws.check`
+runs them on any pattern and any samples and answers a `Report` — no test
+framework named, so a munit test, a ScalaTest one or a CLI over a corpus
+asserts `report.ok` and prints the report when it is not:
+
+- READ, WRITE, READ: every input the pattern takes writes back, and what
+  it wrote reads back to the SAME value (not the same bytes: a path
+  through `Format.value` writes JSON whatever it read — the same VALUE is
+  what makes a path a conversion);
+- WRITE, READ: every sample value writes and reads back to itself;
+- nothing throws — a read declines in words, a write refuses with `Left`;
+- the same input reads the same verdict twice.
+
+`Expect.Corpus` adds the corpus method's rule: every input not taken —
+declined, with its refusals, or `Unclear`, with its readings — is a
+finding. ISDA's two FpML examples, through every level:
+
+```scala
+val r = RefineLaws.checkNamed(fromBytes,
+Seq("ird-ex01" -> fpml.Samples.vanillaSwap.getBytes(UTF_8), "fx-ex03" -> fpml.Samples.fxForward.getBytes(UTF_8)),
+expect = Expect.Corpus)
+assert(r.ok, r)
+```
+
+and a write that loses what it read is found, by the sample it broke on:
+
+```scala
+case Vector(Finding.ReadBackDiffers("input #2", "5", "0")) => ()
+```
+
 ## Routing: one stream in, a stream per kind out
 
 A `Router` is a value — a pattern and a routing table, read top to
@@ -403,6 +436,7 @@ reference instead of copying.
 | `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
 | `r >>> s`, `r or s` | `andThen` and `<\|>` by other names |
+| `RefineLaws.check(r, inputs, values, expect)`, `.checkNamed` | the laws of any pattern on any samples: a `Report` of `Finding`s |
 | `Refine.path(steps*)`, `Refine.json.at(names*)` | the fold of `>>>` over same-typed steps (`id` when empty); a descent through fields |
 | `r orElse s` | a fallback: `s` only when `r` declines; never `Unclear` from `s` |
 | `Refine.id`, `Refine.empty` | the category's unit (no name in the path); the unit of `or` and `orElse` |
