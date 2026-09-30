@@ -309,7 +309,11 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
   def sendAsync(a: A)(k: Accepted): Unit =
     attemptSend(a, granted0 = false, route0 = 0)(k)
 
-  private def attemptSend(a: A, granted0: Boolean, route0: Int)(k: Accepted): Unit =
+  private[okay] override def claimRoute(): Int = ring.claimRoute()
+  private[okay] override def sendAsyncFrom(route: Int, a: A)(k: Accepted): Unit =
+    attemptSend(a, granted0 = false, route0 = 0, fixed = route)(k)
+
+  private def attemptSend(a: A, granted0: Boolean, route0: Int, fixed: Int = -1)(k: Accepted): Unit =
     val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
     // THE ROUTE IS TAKEN HERE, on the producer's own thread, and
     // carried through every retry: a parked send resumes on the
@@ -326,7 +330,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
     // earlier ones and the rule that fixed merge-chunked-order was
     // what carried it. It also parked the sender on the waiter queue
     // of a part it was not pushing to.
-    val route = if granted0 then route0 else buffer.route()
+    val route = if granted0 then route0 else if fixed >= 0 then fixed else buffer.route()
     // A SPENT WAKE IS OWNED (adaptive-merge-early-stop-livelock,
     // 2026-09-28). `own` is true for a sender we PARKED and are now
     // resuming — the pop that woke it freed a slot FOR it — and, below,
@@ -502,10 +506,14 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
             placeEnd()
           null
 
-  def offer(a: A): Boolean =
+  def offer(a: A): Boolean = offerOn(-1, a)
+  private[okay] override def offerFrom(route: Int, a: A): Boolean = offerOn(route, a)
+
+  private def offerOn(fixed: Int, a: A): Boolean =
     val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
-    // offer never parks, so it takes its route here and now
-    val r = buffer.route()
+    // offer never parks, so it takes its route here and now — the
+    // producer's own when it named one (channel-route-per-producer)
+    val r = if fixed >= 0 then fixed else buffer.route()
     if closing.get || !sendersAt(r).isEmpty then false
     else
       buffer.pushDecidingAt(r, a, closing, void) match

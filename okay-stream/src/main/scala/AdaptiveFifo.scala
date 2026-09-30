@@ -323,6 +323,12 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * would be sized for a single part */
   override def maxParts: Int = cap
   override def route(): Int = mine.get.idx
+  /** a part of its own for a producer that names itself, as a new
+   * thread's home is claimed (channel-route-per-producer) */
+  override def claimRoute(): Int =
+    val i = claimPart().intValue
+    val _ = slotAt(i)   // published before anyone pushes to it
+    i
 
   private def eachOpen(f: Buffer[A] => Unit): Unit =
     var i = 0

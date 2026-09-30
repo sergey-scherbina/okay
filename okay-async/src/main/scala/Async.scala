@@ -378,6 +378,14 @@ object Async {
      */
     def apply(prog: A ! Async): Unit = drive(prog, (), null)
 
+    /** a LATE answer resumes the fiber: by default right here, on whoever
+     * answered — which inside a pool saves a wake. A platform whose
+     * fibers have a home overrides it to send a foreign answerer's
+     * resumption home instead (adaptive-elementwise-small-ring) */
+    protected def resumeLate[X](x: X, k: X => A ! Async): Unit = resumeHere(x, k)
+    /** resume on the calling thread, inside this drive's loop */
+    protected final def resumeHere[X](x: X, k: X => A ! Async): Unit = drive(null, x, k)
+
     /** the loop, entered either with a program or with a late answer and
      * the continuation it resumes. The continuation is applied INSIDE the
      * try and the slice (drive-resume-throw-lost: a throw there fails the
@@ -472,7 +480,7 @@ object Async {
                 // evaluated on the way in threw at whoever answered the
                 // callback, and the fiber never answered at all. One Bind
                 // per late resumption, rotated by `resume` like any other
-                case Right(x) => drive(null, x, k)
+                case Right(x) => resumeLate(x, k)
                 case Left(e) => { releaseScopes(); fail(e) }
           }
           cell.getAndSet(Moved) match

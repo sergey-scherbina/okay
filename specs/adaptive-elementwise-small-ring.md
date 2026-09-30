@@ -1,6 +1,6 @@
 # A fiber resumed by a foreign thread goes home
 
-Status: WITHDRAWN, 2026-09-29 (resume-late-withdraw). Owner lane: `adaptive-elementwise-small-ring`.
+Status: implemented again, 2026-09-30 (channel-route-per-producer); withdrawn 2026-09-29 in between. Owner lane: `adaptive-elementwise-small-ring`.
 
 ## Symptom
 
@@ -116,3 +116,12 @@ independent of where a fiber resumes, and then the handoff can return
 (backlog `channel-route-per-producer`). Note the inline resume moves a
 producer too (worker to consumer thread), once per park; that path
 passed 400/400 and is what the law has always run on.
+
+## Back (2026-09-30, channel-route-per-producer)
+
+The library's multi-producer channels now route each feed by the
+producer, not the thread (specs/channel-route-per-producer.md), so a
+resumed feed writes to its own part wherever it runs. The handoff is
+back, through `fork`: cap-64 elementwise merge 62.9 us against Loom's
+80.8, and `TestMergeOrder` green 400/400 even with the `forkLong`
+handoff that had put it red at round 9.
