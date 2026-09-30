@@ -5,7 +5,7 @@ header, never in prose.
 
 ## windowjoin-trim-spins — `TestWindowJoin`'s agreement test never returns; the CI runner's family gate hangs on it
 <!-- status: fixed
-     fixed-in: e946de3e4
+     fixed-in: aa7ca9f5e
      lane: jvm (WindowJoin.scala, the machine; seen on the JVM fork, the Native run had not reached it)
      area: okay-stream/src/main/scala/WindowJoin.scala `trim`/`arrive`, from Source/Pipe pulls
      gate: TestSourceJoinWithin (the endless-sides tests on Loom), TestWindowJoin (three platforms)
