@@ -200,7 +200,7 @@ Stage 7:
       non-diagonal binds).
 
 Stage 8:
-- [ ] Prog.scala is gone; `okay.sql.Tx` is the data road; TestTx's
+- [x] Prog.scala is gone; `okay.sql.Tx` is the data road; TestTx's
       shapes hold on it; docs/guide.md's "Typestate on a program" is
       rewritten over `Tx` with its lines pinned; TestProg keeps only
       the stacked shapes.
@@ -249,9 +249,11 @@ Stage 5:
   lands on its tests; the measurement of the whole arc is one later
   lane, so the numbers are read once, on a quiet box, against one
   base.
-- **Additive everywhere**: `Tx` keeps its `Prog` facade beside
-  `Tx.Data`; `Delim.Stacked`'s doors keep their spelling where the
-  spike keeps them; `!` is untouched and `!!` is beside it.
+- **Additive everywhere, until the facade had no consumer**: stages
+  1-7 kept `Tx`'s `Prog` facade beside `Tx.Data`; stage 8 removed it
+  once both of its consumers (okay-sql's `Tx`, the stacked `Delim`)
+  ran on the indexed tree. `Delim.Stacked`'s doors keep their spelling
+  where the spike keeps them; `!` is untouched and `!!` is beside it.
 - **Cont on the machine is the diagonal fragment, and a door, not a
   conversion** (stage 7). A mark's answer type is its prompt's, fixed
   when it is pushed; Danvy–Filinski's answer-type modification makes
@@ -275,6 +277,24 @@ Stage 5:
   the decision is recorded.
 
 ## Results
+
+### Stage 8 — LANDED (indexed-effects-8-prog-facade): the facade removed
+
+Prog.scala is deleted, with its `Prog[F, A, S, R]` opaque type,
+`diag`/`pure`/`transition`/`.free` and the `flatMap` import trap.
+`okay.sql.Tx` is the data road alone: the doors `Tx.Data.begin/commit/
+rollback/update/batch/describe/async/interpret` are `Tx.begin` etc.
+(`Tx.Data[A, From, To]` stays as the program type's name, `TxOp`,
+`Conn`, `Row` unchanged); the facade class `Tx(db)`, `Tx.Step` and
+`Tx.run` are gone, and TestTx with them — its shapes (nested begin,
+orphan commit, a program left open, all compile errors) were already
+TestTxData's. TestProg keeps the stacked shapes only. docs/guide.md's
+"Typestate on a program" is rewritten over `Tx` with every line pinned
+by TestTxData; docs/theory/03 names the indexed signature as the third
+instance; the roadmap's Road 3 record says the facade is gone.
+Nothing is faster or slower by this: the facade was an identity over
+the untyped tree, and `Tx` was already measured on the data road
+(Deferred measurements).
 
 ### Stage 7 — LANDED (indexed-effects-7-cont-on-machine): Cont's leaf on the machine
 
