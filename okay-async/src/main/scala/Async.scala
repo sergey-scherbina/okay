@@ -125,6 +125,16 @@ trait Fiber[A]:
    * interruptible, or between operations, to notice) */
   def cancel(): Unit
 
+  /** whether the fiber has its answer — a value, a failure, or the
+   * cancellation it answers with — so a `join` now returns at once. A
+   * snapshot: `true` never turns back to `false`, `false` may be stale
+   * the moment it is read. For a wait, `onComplete`/`joinAsync`; this is
+   * for a watchdog, a test, a progress line (fiber-is-done). Read as
+   * `f.isDone`, the extension in `object Fiber`: the JVM's pooled fiber
+   * is a `ForkJoinTask`, whose own final `isDone` means "the pool task
+   * returned" — which a parked fiber's has, before its answer */
+  def answered: Boolean
+
   /** join as an operation: awaits the fiber, fails if it failed */
   def joinAsync: A ! Async = Async.await(k => { onComplete(k); () => () })
 
@@ -134,6 +144,11 @@ trait Fiber[A]:
   /** park until finished; a failure as a value */
   def joinEither()(using cb: CanBlock): Either[Throwable, A] =
     cb.block(k => { onComplete(k); () => () })
+
+object Fiber:
+  extension [A](f: Fiber[A])
+    /** `f.answered` (fiber-is-done): whether the fiber has its answer */
+    def isDone: Boolean = f.answered
 
 /**
  * The scheduler: how a program gets its own thread of control. It

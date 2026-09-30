@@ -308,6 +308,7 @@ object Schedulers {
       f.whenComplete((v, e) => k(if e == null then Right(v) else Left(unwrap(e))))
       ()
     def cancel(): Unit = interrupt()
+    def answered: Boolean = f.isDone
     // TRIED AND REFUTED (close-the-gaps, 2026-09-06): overriding
     // joinEither to park on `f.get()` directly instead of through
     // onComplete -> Slot -> park. Alternating A/B, three rounds,
@@ -1121,6 +1122,11 @@ object Schedulers {
         case r: Either[Throwable, A] @unchecked => k(r) // the cell only ever holds this task's own answer
         case w: Waiters[A] @unchecked => if !cell.compareAndSet(w, Waiters(k, w)) then onComplete(k)
         case null => if !cell.compareAndSet(null, Waiters(k, null)) then onComplete(k)
+
+    /** answered: the cell holds an Either once, and only then */
+    def answered: Boolean = cell.get match
+      case _: Either[?, ?] => true
+      case _ => false
 
     /** cancel ANSWERS the fiber, as every other member does: a
      * `join()` on a cancelled fiber must return rather than wait for

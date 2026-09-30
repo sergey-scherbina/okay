@@ -929,7 +929,8 @@ JS the SAME programs run through the event loop by
 error, not a frozen loop. `Fiber` is onComplete/cancel everywhere
 plus `joinAsync` (the effect-world join — itself an Await, good on
 every platform); the parking `join`/`joinEither` exist only under the
-evidence. `Scheduler` takes the PROGRAM — which is exactly what lets
+evidence; `f.isDone` answers, without waiting, whether the fiber has
+its answer yet — for a watchdog or a test, never for a wait. `Scheduler` takes the PROGRAM — which is exactly what lets
 the event loop be a scheduler (`Schedulers.adaptive` by default on a
 JVM with Loom and `Schedulers.loom` a `given` away, a watched `own` on
 JDK 17-20, one OS thread per fiber on Native; the cats-effect and ZIO runtimes plug in as

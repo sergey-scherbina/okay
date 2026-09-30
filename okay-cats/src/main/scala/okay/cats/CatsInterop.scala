@@ -67,6 +67,7 @@ object CatsInterop {
         def onComplete(k: Either[Throwable, A] => Unit): Unit =
           fut.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
         def cancel(): Unit = { val _ = cancelIO() }
+        def answered: Boolean = fut.isCompleted
 
   /** run an okay Async program as an IO (it may park — IO.blocking) */
   def toIO[A](p: => A ! Async): IO[A] = IO.blocking(p.runWith)

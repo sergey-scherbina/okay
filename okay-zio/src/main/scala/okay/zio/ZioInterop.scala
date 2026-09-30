@@ -40,6 +40,8 @@ object ZioInterop {
           runtime.unsafe.run(fiber.interruptFork).getOrThrowFiberFailure()
           ()
         }
+        /** ZIO's own non-blocking look at the fiber's exit */
+        def answered: Boolean = Unsafe.unsafe(implicit u => fiber.unsafe.poll.isDefined)
 
   /** run an okay Async program as a ZIO (it may park — attemptBlocking) */
   def toZIO[A](p: => A ! Async): Task[A] = ZIO.attemptBlocking(p.runWith)
