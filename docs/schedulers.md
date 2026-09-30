@@ -199,18 +199,22 @@ a worker for nothing. The elementwise `buffer` keeps `fork`: with a
 Loom with `forkLong` against 1.13x without
 ([specs/adaptive-chunked-merge-cost.md](../specs/adaptive-chunked-merge-cost.md)).
 
-**Who runs a fiber that was woken** (2026-09-29, tried and withdrawn).
-A fiber parked in an `Await` resumes on whoever answers it. When that is
-the caller's own consumer, it runs the producer's code instead of its
-own — 31% of a consumer's time in a 64-slot merge, and why that merge
-reads 1.12x Loom on `adaptive`. Sending such a resume home instead
-(`fork` from the foreign thread) fixed the number and broke a promise:
+**Who runs a fiber that was woken** (2026-09-29/30). A fiber parked in
+an `Await` resumes on whoever answers it. When that is the caller's own
+consumer, it runs the producer's code instead of its own — 31% of a
+consumer's time in a 64-slot merge, 1.12x Loom. On `own`/`adaptive` a
+late answer from a thread that is not one of the scheduler's workers
+now sends the fiber home with `fork`; a worker's answer still runs it in
+place. The first try broke a promise and was withdrawn for a day:
 `Channel.merge` keeps each side's order because a partitioned buffer
-routes a send by its THREAD, and a producer moved to another worker on
-every resume writes its next run into another part — `TestMergeOrder`
-went red. Withdrawn the same day; the way back is a route per producer
-rather than per thread (backlog `channel-route-per-producer`,
-[specs/adaptive-elementwise-small-ring.md](../specs/adaptive-elementwise-small-ring.md)).
+gives each producer a part, and it knew a producer by its THREAD, so a
+feed moved by the handoff wrote its next run into another part. The
+library's feeds now claim their part once and carry it
+(`Channel.routed`), so their order does not depend on where they run —
+and the handoff is back: the 64-slot merge 62.9 µs against Loom's
+80.8, `zip` at capacity 64 370 against 753. Your own senders into a
+partitioned channel still route by thread, as documented
+([specs/channel-route-per-producer.md](../specs/channel-route-per-producer.md)).
 
 ## What `own` costs you, and what `adaptive` buys back
 

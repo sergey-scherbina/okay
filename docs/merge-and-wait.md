@@ -73,10 +73,10 @@ Two mechanisms implement them:
   roads, until its feeds were forked with `Scheduler.forkLong`: now
   185 us against Loom's 197-229 (adaptive-chunked-merge-cost,
   [schedulers.md](schedulers.md)). The elementwise join at capacity 64
-  reads 1.12x Loom on `adaptive`: its consumer runs the producers it
-  wakes. Sending them home fixed that and broke per-side order (the
-  buffer routes by thread), so it was withdrawn; backlog
-  `channel-route-per-producer` is the way back.
+  reads 62.9 us against Loom's 80.8 on `adaptive`: a producer woken by
+  the consumer goes home instead of running on it, and each feed writes
+  to the part it claimed, so per-side order holds wherever it runs
+  (channel-route-per-producer).
 - `Merge.Shared` — one queue both producers feed (`Channel.merge`,
   `Channel.mergeChunked`, `Channel.mergeFlushing`). The road before
   the ring, kept as a door by choice. Its consumer never catches up,
