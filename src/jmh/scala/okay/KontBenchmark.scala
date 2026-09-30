@@ -1,8 +1,7 @@
-package okay.kont
+package okay
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
-import okay.Freer
 import okay.Freer.Return
 
 /**
@@ -28,7 +27,7 @@ class KontBenchmark {
 
   /** no other effect: the row is `Cont0` alone */
   type Nil[S, R, +X] = Nothing
-  type P[S, R, A] = Freer[Row[Nil], S, R, A]
+  type P[S, R, A] = Freer[Cont0.Row[Nil], S, R, A]
 
   def pure[S, A](a: A): P[S, S, A] = Return(a)
 
@@ -43,7 +42,7 @@ class KontBenchmark {
 
   type L = List[Int]
 
-  def emit(p: Prompt[L, L])(a: Int): P[L, L, Unit] =
+  def emit(p: Cont0.Prompt[L, L])(a: Int): P[L, L, Unit] =
     Cont0.shift[Nil, L, L, L, L, Unit](p)(k => k(()).map(a :: _))
 
   @Benchmark

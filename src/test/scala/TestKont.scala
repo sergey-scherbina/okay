@@ -1,6 +1,5 @@
-package okay.kont
+package okay
 
-import okay.Freer
 import okay.Freer.{Bind, Delay, Diag, Return}
 
 /**
@@ -17,7 +16,7 @@ class TestKont extends munit.FunSuite:
     case Get() extends Ask[Int]
 
   type F = Freer.Lift[Ask]
-  type P[S, R, A] = Freer[Row[F], S, R, A]
+  type P[S, R, A] = Freer[Cont0.Row[F], S, R, A]
   /** every index the same: the shape of an unmodified program */
   type Str = P[String, String, String]
 
@@ -27,16 +26,16 @@ class TestKont extends munit.FunSuite:
     case Return(a) => a
     case other => fail(s"not a value: $other")
 
-  def shift0(p: Prompt[String, String])(f: (String => Str) => Str): Str =
+  def shift0(p: Cont0.Prompt[String, String])(f: (String => Str) => Str): Str =
     Cont0.shift0[F, String, String, String, String, String](p)(f)
 
-  def shift(p: Prompt[String, String])(f: (String => Str) => Str): Str =
+  def shift(p: Cont0.Prompt[String, String])(f: (String => Str) => Str): Str =
     Cont0.shift[F, String, String, String, String, String](p)(f)
 
-  def dollar(p: Prompt[String, String])(v: String => Str)(e: Str): Str =
+  def dollar(p: Cont0.Prompt[String, String])(v: String => Str)(e: Str): Str =
     Cont0.dollar[F, String, String, String, String, String](p)(v)(e)
 
-  def reset(p: Prompt[String, String])(e: Str): Str = Cont0.reset[F, String, String, String](p)(e)
+  def reset(p: Cont0.Prompt[String, String])(e: Str): Str = Cont0.reset[F, String, String, String](p)(e)
 
   val angle: String => Str = x => pure(s"<$x>")
 
@@ -97,7 +96,7 @@ class TestKont extends munit.FunSuite:
   // ------------------------------------------------ answer-type modification
 
   test("the delimiter changes the VALUE type: the body answers Int, ret and the $ answer String, k twice") {
-    // Prompt[S, Y]: Y = String is what the delimiter answers, the body's value is Int;
+    // Cont0.Prompt[S, Y]: Y = String is what the delimiter answers, the body's value is Int;
     // the index S stays one type through the run — see the spec's Results on why the lazy
     // machine's (S, R) pair cannot carry an ESCAPE type the way Cont's strict k can
     val p = Cont0.prompt[Int, String]
@@ -149,7 +148,7 @@ class TestKont extends munit.FunSuite:
 
   /** a unary operation enters an indexed row on the DIAGONAL (`Freer.Diag`),
    * which is what lets a handler loop keep its indexes (State.handleIndexed) */
-  val ask: P[String, String, Int] = Freer.diag[Row[F], String, Int](Ask.Get())
+  val ask: P[String, String, Int] = Freer.diag[Cont0.Row[F], String, Int](Ask.Get())
 
   test("a foreign operation comes out as Bind(Inject(e), k); k fed twice gives two answers, the shift0 after it handled") {
     val p = Cont0.prompt[String, String]
@@ -171,7 +170,7 @@ class TestKont extends munit.FunSuite:
   def answer[S, T, A](n: Int)(p: P[S, T, A]): P[S, T, A] =
     @scala.annotation.tailrec def loop(x: P[S, T, A]): P[S, T, A] = (x.resume: @unchecked) match
       case _: Return[?, ?, ?] => x
-      case b: Bind[Row[F], S, t, T, x0, A] => b.a match
+      case b: Bind[Cont0.Row[F], S, t, T, x0, A] => b.a match
         case Diag(_: Ask[?]) => loop(b.f.asInstanceOf[Int => P[S, T, A]](n))
         case i => Bind(i, (v: x0) => answer[S, t, A](n)(b.f(v)))
       case i => i
@@ -188,7 +187,7 @@ class TestKont extends munit.FunSuite:
   test("a shift0 with no dollar for its prompt fails by name and lists the installed delimiters") {
     val p = Cont0.prompt[String, String]
     val q = Cont0.prompt[String, String]
-    val e = intercept[NoReset](run(dollar(p)(angle)(shift0(q)(_ => pure("x")))))
+    val e = intercept[Cont0.NoReset](run(dollar(p)(angle)(shift0(q)(_ => pure("x")))))
     assertEquals(e.wanted, q.label)
     assertEquals(e.installed, List(p.label))
   }
