@@ -33,6 +33,30 @@ lazy val myModule = (project in file("my-module"))
 | chunked collections | `Chunks`, `Bulk`, `Tables`, `Windows` |
 | parallelism over chunks | `parMap`, `retryChunks` |
 
+## A parallel `Bulk` in one process
+
+`localBulk` is sequential: the reference, the same on JVM, JS and
+Native. On the platforms with threads, `parallelBulk(n)` (or
+`BulkParallel(n, lines, bytes)`) is the same `Bulk[Chunks]` with the
+three operations that parallelise for real spread over `n` fibres: a
+file's splits read ahead in split order (a Parquet file's row groups),
+`aggregate` folded in batches of chunks and merged in input order — so
+an associative, non-commutative `Sequential` stays right — and `join`
+with the right side folded in parallel and the left streamed through a
+window of fibres, in the left side's order. `map`, `filter` and the
+CSV reader stay the local ones: a CSV's bottleneck is its one line
+iterator. A `Tables` program runs on it unchanged. JS has no such
+instance — one thread — rather than a parameter that does nothing
+there. For partitions, a key exchange and many processes, see
+`FlowBulk` (okay-cluster).
+
+```scala
+val B = BulkParallel(4)
+val p = Tables.of(Vector.range(0, 1000)).select(i => (i % 7, i)).join(Tables.of(Vector.tabulate(7)(k => (k, s"k$k"))))
+  .collect.map(_.elements.toVector.sorted)
+assertEquals(Tables.run(B)(p), Tables.run(local)(p))
+```
+
 ## What stayed in the core, and why
 
 Two things, both interfaces rather than machinery:
