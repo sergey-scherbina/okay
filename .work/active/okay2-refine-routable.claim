@@ -1,1 +1,0 @@
-claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-09-30, operator ask ("Делай"): refine-routable (bfeabb586) ported to okay2-refine — Routable[C] with Aux, instances for Vector, any Bulk (Chunks by name, SparkBulk Rows), Source (channels + driver, stream(capacity)); Routes.split over Routable
