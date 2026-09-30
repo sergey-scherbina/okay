@@ -225,10 +225,17 @@ object State {
  * flatMap already composes the transitions S -> S2 -> S3 (typestate:
  * the compiler enforces the protocol order). Unlike the State effect
  * above, whose handler loop is tail-recursive, running costs a stack
- * frame per operation, and it measures 1.29x slower on the same
- * workload (HandlerBenchmark: 21.23 vs 27.42 us/op, 3 forks,
- * re-measured 2026-09-17; this comment said ~1.7x, which no longer
- * held) — the typed protocol is what you buy.
+ * frame per operation, and it measures 1.79x slower on the same
+ * workload (HandlerBenchmark `statePara` 30.39 vs `stateEffect` 16.96
+ * us/op, MIN of 3 rounds, JDK 26, 2026-09-30; 1.29x on 2026-09-17,
+ * ~1.7x before that — the ratio moves with the JIT's inlining of the
+ * re-entry road, and the typed protocol was what you bought). SINCE
+ * pstate-threaded (2026-09-30) the same protocol as DATA, `Threaded`
+ * below, runs through `State.handle`'s own loop shape at 1.07x
+ * (`stateThreaded` 18.07 us/op): the type moves, and the price is one
+ * unshared `Get` node a step. Buy the shift road for what only it can
+ * do — a body that uses `k`, the profunctor `Zooming` — and the data
+ * road for a protocol.
  */
 object PState {
   /** read the state, leaving its type unchanged */
@@ -279,7 +286,7 @@ object PState {
    * as DATA on the indexed tree, run by `State.handle`'s loop with the
    * TYPE moving. `get` and `set` above are shift bodies — the state
    * rides in the answer type (`S => R`), the runner is Cont's, and every
-   * operation is a re-entry through a `Reentry`, which is the 1.29x
+   * operation is a re-entry through a `Reentry`, which is the 1.79x
    * against `State.handle` that the header of this object records.
    * With the base's indexes invariant (freer-consumed-index) the other
    * reading types: `Op[S, R, X]` is an operation that moves the state
@@ -293,6 +300,14 @@ object PState {
    * `Put` answers the OLD state, as `set` above does, so a program is
    * spelt the same on both roads and the two benchmark lanes fold the
    * same accumulator (HandlerBenchmark `statePara` / `stateThreaded`).
+   *
+   * MEASURED (history.d 2026-09-30 pstate-threaded, MIN of 3 rounds on
+   * a quiet box): `stateThreaded` 18.07 us / 276 904 B against
+   * `stateEffect` 16.96 / 244 904 and `statePara` 30.39 / 301 407 per
+   * M = 1000 steps — 1.07x the untyped State, 0.59x the shift road.
+   * The 32 B a step over State is `Inject(Get())` allocated per read
+   * where `State.get` shares one node (SharedOps); sharing it here is
+   * the same one cast and the next rung, priced separately.
    */
   enum Op[S, R, +X]:
     /** read the state, leaving its type */
