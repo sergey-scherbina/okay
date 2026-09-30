@@ -1,1 +1,0 @@
-claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-09-30, operator ask ("Портируй это в окей2"): refine-algebra (344940f87) ported to okay2-refine — >>>, or, orElse, id + Category, empty, *** / +++ / and + Merge, orRaise (Throws), verdicts/taken (okay2-stream Stage); okay2-refine gains a dependency on okay2-stream
