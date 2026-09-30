@@ -73,19 +73,33 @@ object Source:
                                        (using Scheduler, CanBlock, Wait, Pause): Source[(K, (Option[A], Option[B]))]
 ```
 
-Stage 2, the windowed join (not built by this lane; the shape it
-leaves room for):
+Stage 2, the windowed join (stream-join-windowed):
 
 ```scala
+/** the machine: no pulling, one arrival at a time, either side */
+final class WindowJoin[K, A, B](within: Long, lateness: Long, atL: A => Long, atR: B => Long):
+  def left(k: K, a: A)(emit: ((K, (A, B))) => Unit): Unit
+  def right(k: K, b: B)(emit: ((K, (A, B))) => Unit): Unit
+  def leftEnd(): Unit
+  def rightEnd(): Unit
+  def watermark: Long      // the smaller side's: max seen minus lateness; everything once ended
+  def dropped: Long        // rows behind the watermark, counted
+  def held: Int            // rows held now, both sides
+  def exhausted: Boolean   // a side ended and nothing of the other can still reach it
+
+object WindowJoin:
+  type Event[K, A, B] = Either[Option[(K, A)], Option[(K, B)]]   // a row, or a side's end
+  def stage[K, A, B](within: Long, lateness: Long)(atL: A => Long, atR: B => Long)
+  : Stage[Event[K, A, B], (K, (A, B)), Unit]
+
 object Source:
   /** rows of either side matched by key against what the other side's
    * window holds ON ARRIVAL; a row is held for `within` of event time
-   * past its own `at`, evicted as the watermark (max seen minus
-   * `lateness`) passes it; a row arriving behind the watermark is
-   * dropped and counted, never joined */
-  def joinWithin[K, A, B](l: Source[(K, A)], r: Source[(K, B)], within: Long, lateness: Long)
+   * past its own `at`, evicted as the watermark passes that; a row
+   * arriving behind the watermark is dropped and counted, never joined */
+  def joinWithin[K, A, B](l: Source[(K, A)], r: Source[(K, B)], within: Long, lateness: Long, capacity: Int = 64)
                          (atL: A => Long, atR: B => Long)
-                         (using Scheduler, CanBlock, Wait, Pause): Source[(K, (A, B))]
+                         (using Scheduler, CanBlock, Timer, Merge, Wait, Pause): Source[(K, (A, B))]
 ```
 
 ## What a key-ordered stream promises
@@ -175,6 +189,50 @@ of the smaller keys and before anything of a greater key.
   monotone), late rows are dropped and counted. The test is then a
   list, deterministic, like `Windows`' own.
 
+- **The windowed join's watermark is the MIN of the two sides'** (Flink's
+  rule for a two-input operator), a side's being its greatest event time
+  minus `lateness`, nothing before its first row and EVERYTHING once it
+  has ended. One watermark over both sides was the first thought and is
+  wrong on a live carrier: the merge interleaves the sides freely, so a
+  side racing ahead in event time would make the other side's rows late
+  by accident of scheduling, and the set of pairs would depend on the
+  interleaving. Under the min, a row is late only when its OWN side has
+  already passed it by `lateness` and the other side has too — and with
+  each side sorted by time nothing is ever late, which is what makes
+  `TestSourceJoinWithin`'s pair set exact at every buffer size. The
+  price is Flink's idle-source problem: a silent side holds the
+  watermark, and the other side's rows, until it speaks or ends. Named,
+  not solved.
+
+- **Eviction is per key on arrival, plus a sweep per `within` of
+  watermark advance.** Matching a row scans its key's buffer on the
+  other side anyway, so expired rows of that key leave in the same
+  scan, exactly when the watermark passes them; a key that never
+  returns is caught by the sweep, at most `within` late. A sweep on
+  every watermark advance would be O(held) per row.
+
+- **A side's end frees the OTHER side's store, and `exhausted` ends the
+  stage.** After `leftEnd` no right row can ever be matched (nothing
+  will arrive on the left to match it), so the right store is cleared
+  on the spot; the left store stays for the right rows still to come
+  and drains as the (now right-only) watermark evicts it. Once it is
+  empty the join can produce nothing, the stage returns, and `through`
+  ends the program — so a finite side against an endless one ENDS,
+  and under a drive releases the endless side through the merge's own
+  scope. Without that rule the join would consume the endless side for
+  ever, producing nothing.
+
+- **`Source.joinWithin` is `through` over `either`, not a driver of its
+  own.** Stage 1's driver receives from a chosen side because the
+  sort-merge needs a specific one; the windowed join takes rows from
+  whichever side has one, which is exactly what `either` (a merge by
+  readiness, tagged) already is. Each side's end is marked with a
+  `None` told after the side (`Writer.map` to `Some`, then one tell),
+  so the machine hears per-side ends through the one merged stream.
+  The merge's release law comes with it, and `WindowJoin.stage` is a
+  `Stage` like `Windows.stage`, so it composes under `through` in a
+  pipeline with no `Async` at all.
+
 ## Behavior
 
 Stage 1 (this lane):
@@ -210,12 +268,25 @@ Stage 1 (this lane):
       before it
 - [x] docs: guide §6 example pinned (`TestDocExamplesStreamJoin`)
 
-Stage 2 (follow-on, backlog `stream-join-windowed`):
+Stage 2 (stream-join-windowed):
 
-- [ ] a row matches what the other side's window holds on arrival
-- [ ] a held row is evicted as the watermark moves past `at + within`
-- [ ] a row behind the watermark is dropped and counted, never joined
-- [ ] the test is a list of timestamped rows, no clock
+- [x] a row matches what the other side's window holds on arrival
+- [x] a held row is evicted as the watermark moves past `at + within`
+- [x] a row behind the watermark is dropped and counted, never joined
+- [x] the test is a list of timestamped rows, no clock
+- [x] the watermark is the smaller side's; a side far ahead cannot make
+      the other side's rows late; an end frees the other store
+- [x] agreement with `joinSorted` on a bounded input whose timestamps
+      all fall within reach, the sides shuffled together
+- [x] the stage form gives the machine's pairs, the same value drives
+      twice, and it ends when nothing can be produced
+- [x] `Source.joinWithin`: the interval's pairs at buffer sizes 1, 4
+      and 64 whatever the interleaving; an early stop on two endless
+      sides releases both once; a finite side against an endless one
+      ends and releases it
+- [x] okay2: stage 1 ported (`TestSortMerge` on three platforms,
+      `TestSourceJoin`); stage 2 not ported — okay2's `Source` has no
+      `either`
 
 ## Results
 
@@ -243,3 +314,23 @@ Stage 2 (follow-on, backlog `stream-join-windowed`):
 - okay2 has no port yet (source-zip's did land one): the machine is
   plain Scala and `okay2-stream` has `Chunks` and `Source`; filed with
   the stage-2 follow-on.
+
+- stream-join-windowed (2026-09-30, stage 2 + the okay2 port of stage
+  1): ADDITIVE. `WindowJoin` and `WindowJoin.stage` new, `Source.joinWithin`
+  new; okay2 `SortMerge` and six companion functions new, one filename
+  added to okay2's `jvmSuitesOnly`. Gate: `TestWindowJoin` (6, three
+  platforms), `TestSourceJoinWithin` (3), `TestDocExamplesWindowJoin`,
+  `TestDocSnippets`, `affected master Test/compile` (303 module
+  compiles); okay2 `TestSortMerge` (5, three platforms), `TestSourceJoin`
+  (3), okay2 `Test/compile` (64); both recscan inventories unchanged.
+- The release is counted only under a DRIVE: the first cut of the
+  finite-vs-endless test ran `runCollect.runWith` bare, saw the right
+  five pairs and zero releases. A plain `runWith` has no fiber handler;
+  the scope the merge entered is released by the collector then, not by
+  the end of the program. `TestSourceZip`'s early stop forks for the
+  same reason, and so does this test now, with the endless side's
+  production checked to have settled.
+- Refuted while writing: one watermark over both sides (above, the
+  min-watermark decision), and ending the join at EITHER side's end
+  (wrong for the windowed join: the held rows of the ended side can
+  still be reached by the other side's rows; only `exhausted` is safe).
