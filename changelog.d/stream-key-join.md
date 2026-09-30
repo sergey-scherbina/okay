@@ -26,4 +26,4 @@
   `Windows` watermark (Flink interval join, Kafka Streams KStream-KStream) —
   is specified in the same spec and filed as backlog `stream-join-windowed`,
   with the okay2 port of stage 1.
-- Commits: a56f3ff6a (spec), 960d5e109 (code, tests, docs).
+- Commits: c22c675be (spec), 6814c5ecb (code, tests, docs).
