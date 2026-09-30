@@ -78,7 +78,7 @@ through `Indexed.unary`, the door that moves no index, and
 
 ```scala
   type Row = PSt +~ Unary[State[Int, *]]
-  given TypeableI[PSt] = TypeableI.byClass(classOf[PSt[?, ?, ?]])
+  given TypeableI[PSt] = TypeableI.derived
   def rget[S, Z]: Freer[Row, S => Z, S => Z, S] = Indexed.effect[Row, S => Z, S => Z, S](PSt.Get())
   def rput[S, T, Z](t: T): Freer[Row, T => Z, S => Z, S] = Indexed.effect[Row, T => Z, S => Z, S](PSt.Put(t))
   def tick[R]: Freer[Row, R, R, Int] = Indexed.unary[Row, R, Int](State.Modify[Int, Int](_ + 1))

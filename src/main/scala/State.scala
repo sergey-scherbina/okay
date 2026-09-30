@@ -238,14 +238,17 @@ object State {
       // reading): one node, and the arm below already knows the case
       case Freer.Diag(e) => loop(s)(Freer.Diag[Row, R, A](e).flatMap(v => Freer.Return(v)))
       case Freer.Inject(o) => loop(s)(Freer.Inject[Row, T, R, A](o).flatMap(v => Freer.Return(v)))
-      case Freer.Bind(Freer.Diag(e), k) => splitI[F, Un](e)(f => Freer.Diag(f).flatMap(v => again(s)(k(v)))) {
+      // a forwarded operation goes as the NODE it came in, not a rebuilt
+      // one (indexed-effects-measure-2: the rebuild was +24 B and 1.047x
+      // per forwarded operation against State.handle's `forwarded`)
+      case Freer.Bind(d @ Freer.Diag(e), k) => splitI[F, Un](e)(_ => forwardedI[F, Un](d).flatMap(v => again(s)(k(v)))) {
           case Get() => loop(s)(k(s))
           case Set(n) => loop(n)(k(n))
           case Modify(f) => { val n = f(s); loop(n)(k(n)) }
           case Update(f) => { val (b, n) = f(s); loop(n)(k(b)) }
         }
-      case Freer.Bind(Freer.Inject(o), k) =>
-        splitI[F, Un](o)(f => Freer.Inject(f).flatMap(v => handleIndexed(s)(k(v))))(Indexed.offDiagonal)
+      case Freer.Bind(n @ Freer.Inject(o), k) =>
+        splitI[F, Un](o)(_ => forwardedI[F, Un](n).flatMap(v => handleIndexed(s)(k(v))))(Indexed.offDiagonal)
 
     loop(s)(p)
   }

@@ -61,7 +61,7 @@ object Tx:
     case Batch[S](sql: String, rows: Chunk[Vector[SqlValue]]) extends TxOp[S, S, Long]
     case Describe[S](sql: String) extends TxOp[S, S, Vector[Col]]
 
-  given TypeableI[TxOp] = TypeableI.byClass(classOf[TxOp[?, ?, ?]])
+  given TypeableI[TxOp] = TypeableI.derived
 
   /** the transaction row: the protocol, and any `Async` beside it on the diagonal */
   type Row = TxOp +~ Unary[Async]

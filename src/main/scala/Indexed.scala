@@ -1,6 +1,7 @@
 package okay
 
 import scala.annotation.implicitNotFound
+import scala.quoted.*
 
 /**
  * THE ROW OF INDEXED SIGNATURES (specs/indexed-effects.md, stage 3).
@@ -59,15 +60,49 @@ type Unary[F[+_]] = [S, R, X] =>> S match
 /** ∀S R X, the runtime test for F[S, R, X] — `TypeableK` at three
  * parameters; by class, since the indexes are erased and a row may
  * hold one of a signature (many-instances is `Tag`'s, as for `State`) */
-@implicitNotFound("no TypeableI[${F}].\nSplitting an indexed row needs a runtime test for ${F}'s operations: `given TypeableI[YourOp] = TypeableI.byClass(classOf[YourOp[?, ?, ?]])` beside the signature.")
+@implicitNotFound("no TypeableI[${F}].\nSplitting an indexed row needs a runtime test for ${F}'s operations: `given TypeableI[YourOp] = TypeableI.derived` beside the signature (or `TypeableI.byClass(classOf[...])` for a class known only at run time).")
 trait TypeableI[F[_, _, +_]]:
   def test(x: Any): Boolean
 
 object TypeableI:
-  /** the test by the operations' runtime class: complete for a
-   * signature whose only parameters are its indexes and its answer */
+  /** the test by the operations' runtime class, READ FROM A FIELD and
+   * asked of `Class.isInstance`: for a class that is a run-time value.
+   * For a signature written in the source, `derived` (below) is the
+   * same test as a constant-class `instanceof`, which is what the JIT
+   * folds; measured on a forwarding handler (indexed-effects-measure-2,
+   * `stateIndexedForward` against `stateForward`), the field-and-call
+   * form read 1.045x on a lane that is nothing but dispatch — the same
+   * residual `TypeableK.derived` removed on the unary side
+   * (typeablek-instanceof). A member that is a MATCH TYPE (`Unary[F]`)
+   * erases to no class: write its instance by hand as
+   * `new TypeableI[Unary[F]] { def test(x: Any) = x.isInstanceOf[F[?]] }`. */
   def byClass[F[_, _, +_]](cls: Class[?]): TypeableI[F] = new TypeableI[F]:
     def test(x: Any): Boolean = cls.isInstance(x)
+
+  /** `TypeableK.derived`'s twin for a three-ary signature: the
+   * signature's class with every argument a wildcard, emitted as a
+   * class of its own per site so the test is a constant `instanceof` */
+  inline def derived[F[_, _, +_]]: TypeableI[F] = ${ derivedImpl[F] }
+
+  def derivedImpl[F[_, _, +_] : Type](using Quotes): Expr[TypeableI[F]] =
+    import quotes.reflect.*
+    val body = TypeRepr.of[F].dealias match
+      case tl: TypeLambda => tl.resType.dealias
+      case other => other.appliedTo(List(TypeRepr.of[Any], TypeRepr.of[Any], TypeRepr.of[Any])).dealias
+    body match
+      case OrType(_, _) =>
+        report.errorAndAbort(
+          "TypeableI.derived is for ONE signature, and this is a row (F +~ G).\n" +
+          "The erasure of a union is its LUB, a class every operation matches; let each\n" +
+          "signature derive its own instance, and splitI will find it.")
+      case _ =>
+        val erased = body match
+          case AppliedType(tycon, args) => AppliedType(tycon, args.map(_ => TypeBounds.empty))
+          case other => other
+        if !erased.typeSymbol.isClassDef then
+          report.errorAndAbort(s"TypeableI.derived needs a class to test for, and ${erased.show} is not one (a match-typed member such as Unary[F] has none: write `new TypeableI[...] { def test(x: Any) = x.isInstanceOf[F[?]] }`)")
+        erased.asType match
+          case '[t] => '{ new TypeableI[F] { def test(x: Any): Boolean = x.isInstanceOf[t] } }
 
 /**
  * `split` over an indexed row: the left member by its test, the right
@@ -82,6 +117,17 @@ inline def splitI[F[_, _, +_], G[_, _, +_]](using T: TypeableI[F])[S, R, X, B]
   if T.test(e) then onF(e.asInstanceOf[F[S, R, X]]) else onG(e.asInstanceOf[G[S, R, X]])
 
 /** the doors of an indexed program, beside `!`'s */
+/**
+ * THE INDEXED `forwarded` (Handler.scala): a node whose operation
+ * `splitI` has just proven to be `F`'s, read at `F` — the row narrowed
+ * by the test that was made a line above, the same cast for the same
+ * reason. A handler that forwards the node it holds allocates nothing
+ * for the forwarding (indexed-effects-measure-2: rebuilding the node
+ * read +24 B and 1.047x per forwarded operation on `stateIndexedForward`).
+ */
+inline def forwardedI[F[_, _, +_], G[_, _, +_]](using DummyImplicit)[S, R, X](n: Freer[F +~ G, S, R, X]): Freer[F, S, R, X] =
+  n.asInstanceOf[Freer[F, S, R, X]]
+
 object Indexed:
   /** a value, at any index, moving nothing */
   inline def pure[G[_, _, +_], R, A](a: A): Freer[G, R, R, A] = Freer.Return(a)

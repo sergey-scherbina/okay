@@ -142,7 +142,7 @@ class TestFreerPara extends munit.FunSuite:
    * the row probe this file carried until indexed-effects stage 3.
    */
   type Row = PSt +~ Unary[State[Int, *]]
-  given TypeableI[PSt] = TypeableI.byClass(classOf[PSt[?, ?, ?]])
+  given TypeableI[PSt] = TypeableI.derived
 
   def rget[S, Z]: Freer[Row, S => Z, S => Z, S] = Indexed.effect[Row, S => Z, S => Z, S](PSt.Get())
   def rput[S, T, Z](t: T): Freer[Row, T => Z, S => Z, S] = Indexed.effect[Row, T => Z, S => Z, S](PSt.Put(t))

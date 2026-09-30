@@ -1171,6 +1171,63 @@ object Delim {
        * one (`Delim`, brought in by `under`) makes the two claims the
        * unstacked machine makes, at the same two lines; a foreign one
        * suspends the machine into the residual program. */
+      /** the TYPED operations, out of `step`'s body on purpose
+       * (indexed-effects-measure-2): with them inline, `step` was 1282
+       * bytes of bytecode against the old machine's 641, and on
+       * stateLexDeep the JIT's inlining inside it landed in one of two
+       * modes per fork (91.7 or 101-103 us against a stable 100); an
+       * unstacked program never reaches these arms, so they cost its
+       * hot path nothing but the size */
+      def typed[X, S1, S2](op: Op[F, S1, S2, X], kont: Segs[F, X, R]): Step[F, R] = op match
+        case pu: Op.Push[F, ?, r, ?] =>
+          Next(pu.body, Segs.Mark[F, r, X, R](pu.p, <:<.refl[r]: r <:< X, kont))
+        case d: Op.Dollar[F, st, r0, r, ?] =>
+          Next(d.body, Segs.Ret[F, r0, r, X, R, st, st](d.p, d.ret, <:<.refl[r]: r <:< X, kont))
+        case c: Op.Capture[F, ?, r, ?, b, s0, a] =>
+          def resume[Q](k: a => Under[F, r, s0], up: r <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
+            val body: Under[F, r, s0] = c.f(k)
+            if c.underPrompt then
+              // the body runs under `p` again: a fresh push at the stack
+              // below it, the body re-based to sit on that push
+              Next(up.liftCo[[t] =>> Under[F, t, b]](Inject(Op.Push[F, b, r, c.p.type](c.p, rebase[F, r, s0, s0, c.p.type *: b, c.p.type *: b](body)))), outer)
+            else Next(up.liftCo[[t] =>> Under[F, t, s0]](body), outer)
+          split(kont, c.p) match
+            case PlainCut(captured, up, outer) =>
+              resume((v: a) => {
+                val seg: Under[F, r, s0] = reify[X, r, s0, s0](captured, Return[Row0, s0, X](v))
+                if c.delimitK then rebase[F, r, b, b, s0, s0](Inject(Op.Push[F, b, r, c.p.type](c.p, rebase[F, r, s0, s0, c.p.type *: b, c.p.type *: b](seg)))) else seg
+              }, up, outer)
+            case AtDollar(whole, up, outer) =>
+              if c.delimitK then resume((v: a) => reify[X, r, s0, s0](whole, Return[Row0, s0, X](v)), up, outer)
+              else throw new UnsupportedOperationException(
+                s"${c.at}: a control-capture to ${c.p.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
+            // a typed capture holds `Has`: the delimiter is installed by
+            // the type, and the search finds it. Kept as the diagnosis
+            // for the one way here — a segment `erase`d and re-run
+            // outside the stack it was typed under
+            case NotFound() => throw NoPrompt(c.at.where, c.p.label, installed(kont))
+        case sh: Op.Shift[F, ?, r, ?, x] =>
+          // the segment run TO THE PROMPT'S ANSWER, at once: a nested
+          // machine on the reified segment under a fresh push of `p`,
+          // its residual forced — a foreign operation in the segment
+          // cannot be performed here and is refused by name, which is
+          // Cont's own setting (a Cont program has no foreign effects)
+          def sync(seg: Freer[Row0, EmptyTuple, EmptyTuple, r]): r =
+            (machine[r, F](seg, forward = false).resume: @unchecked) match
+              case Return(a) => a
+              case _ => throw new UnsupportedOperationException(
+                s"${sh.at}: the continuation of a Cont shift to ${sh.p.label} met a foreign operation: a synchronous `k` runs a segment with none (specs/indexed-effects.md, stage 7)")
+          def answer[Q](k: x => r, up: r <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
+            Next[F, Q, R, EmptyTuple, EmptyTuple](up.liftCo[[t] =>> Freer[Row0, EmptyTuple, EmptyTuple, t]](Return(sh.body(k))), outer)
+          split(kont, sh.p) match
+            case PlainCut(captured, up, outer) =>
+              answer((v: x) => sync(Inject(Op.Push[F, EmptyTuple, r, sh.p.type](sh.p,
+                rebase[F, r, EmptyTuple, EmptyTuple, sh.p.type *: EmptyTuple, sh.p.type *: EmptyTuple](
+                  reify[X, r, EmptyTuple, EmptyTuple](captured, Return[Row0, EmptyTuple, X](v)))))), up, outer)
+            case AtDollar(whole, up, outer) =>
+              answer((v: x) => sync(reify[X, r, EmptyTuple, EmptyTuple](whole, Return[Row0, EmptyTuple, X](v))), up, outer)
+            case NotFound() => throw NoPrompt(sh.at.where, sh.p.label, installed(kont))
+
       def step[X, S1, S2](e: Row0[S1, S2, X], kont: Segs[F, X, R]): Step[F, R] = e match
         // the unstacked signature FIRST: its test is total (the class is the
         // whole identity, Delim's own note), and every operation of an
@@ -1223,55 +1280,7 @@ object Delim {
               shots.resumed(shots.n)
               Next(body, Segs.Watch[F, r0, r, X, R, EmptyTuple, EmptyTuple](d.prompt, ret.asInstanceOf[r0 => Under[F, r, EmptyTuple]], shots, <:<.refl[r]: r <:< X, kont))
           
-        case op: Op[F, S1, S2, X] @unchecked => op match
-          case pu: Op.Push[F, ?, r, ?] =>
-            Next(pu.body, Segs.Mark[F, r, X, R](pu.p, <:<.refl[r]: r <:< X, kont))
-          case d: Op.Dollar[F, st, r0, r, ?] =>
-            Next(d.body, Segs.Ret[F, r0, r, X, R, st, st](d.p, d.ret, <:<.refl[r]: r <:< X, kont))
-          case c: Op.Capture[F, ?, r, ?, b, s0, a] =>
-            def resume[Q](k: a => Under[F, r, s0], up: r <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
-              val body: Under[F, r, s0] = c.f(k)
-              if c.underPrompt then
-                // the body runs under `p` again: a fresh push at the stack
-                // below it, the body re-based to sit on that push
-                Next(up.liftCo[[t] =>> Under[F, t, b]](Inject(Op.Push[F, b, r, c.p.type](c.p, rebase[F, r, s0, s0, c.p.type *: b, c.p.type *: b](body)))), outer)
-              else Next(up.liftCo[[t] =>> Under[F, t, s0]](body), outer)
-            split(kont, c.p) match
-              case PlainCut(captured, up, outer) =>
-                resume((v: a) => {
-                  val seg: Under[F, r, s0] = reify[X, r, s0, s0](captured, Return[Row0, s0, X](v))
-                  if c.delimitK then rebase[F, r, b, b, s0, s0](Inject(Op.Push[F, b, r, c.p.type](c.p, rebase[F, r, s0, s0, c.p.type *: b, c.p.type *: b](seg)))) else seg
-                }, up, outer)
-              case AtDollar(whole, up, outer) =>
-                if c.delimitK then resume((v: a) => reify[X, r, s0, s0](whole, Return[Row0, s0, X](v)), up, outer)
-                else throw new UnsupportedOperationException(
-                  s"${c.at}: a control-capture to ${c.p.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
-              // a typed capture holds `Has`: the delimiter is installed by
-              // the type, and the search finds it. Kept as the diagnosis
-              // for the one way here — a segment `erase`d and re-run
-              // outside the stack it was typed under
-              case NotFound() => throw NoPrompt(c.at.where, c.p.label, installed(kont))
-          case sh: Op.Shift[F, ?, r, ?, x] =>
-            // the segment run TO THE PROMPT'S ANSWER, at once: a nested
-            // machine on the reified segment under a fresh push of `p`,
-            // its residual forced — a foreign operation in the segment
-            // cannot be performed here and is refused by name, which is
-            // Cont's own setting (a Cont program has no foreign effects)
-            def sync(seg: Freer[Row0, EmptyTuple, EmptyTuple, r]): r =
-              (machine[r, F](seg, forward = false).resume: @unchecked) match
-                case Return(a) => a
-                case _ => throw new UnsupportedOperationException(
-                  s"${sh.at}: the continuation of a Cont shift to ${sh.p.label} met a foreign operation: a synchronous `k` runs a segment with none (specs/indexed-effects.md, stage 7)")
-            def answer[Q](k: x => r, up: r <:< Q, outer: Segs[F, Q, R]): Step[F, R] =
-              Next[F, Q, R, EmptyTuple, EmptyTuple](up.liftCo[[t] =>> Freer[Row0, EmptyTuple, EmptyTuple, t]](Return(sh.body(k))), outer)
-            split(kont, sh.p) match
-              case PlainCut(captured, up, outer) =>
-                answer((v: x) => sync(Inject(Op.Push[F, EmptyTuple, r, sh.p.type](sh.p,
-                  rebase[F, r, EmptyTuple, EmptyTuple, sh.p.type *: EmptyTuple, sh.p.type *: EmptyTuple](
-                    reify[X, r, EmptyTuple, EmptyTuple](captured, Return[Row0, EmptyTuple, X](v)))))), up, outer)
-              case AtDollar(whole, up, outer) =>
-                answer((v: x) => sync(reify[X, r, EmptyTuple, EmptyTuple](whole, Return[Row0, EmptyTuple, X](v))), up, outer)
-              case NotFound() => throw NoPrompt(sh.at.where, sh.p.label, installed(kont))
+        case op: Op[F, S1, S2, X] @unchecked => typed(op, kont)
         // a foreign operation suspends the machine: the residual program
         // performs it and resumes with the same stack — the excluded
         // middle, licensed by the two tests above
