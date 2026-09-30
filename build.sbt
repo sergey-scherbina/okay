@@ -1605,8 +1605,10 @@ lazy val okayFlink = (project in file("okay-flink"))
       // Scala 3 — Flink's own advice since 1.18 is to call the Java API,
       // which is what the lanes do (explicit `.returns(...)` everywhere a
       // Scala lambda erases the type Flink would have extracted).
-      "org.apache.flink" % "flink-streaming-java" % "1.20.0" % Test,
-      "org.apache.flink" % "flink-clients" % "1.20.0" % Test,
+      // And FlinkBulk's engine (bulk-flink): OPTIONAL for users, refused by
+      // name (FlinkBulk.missing) where they did not add it.
+      "org.apache.flink" % "flink-streaming-java" % "1.20.0" % "optional;test",
+      "org.apache.flink" % "flink-clients" % "1.20.0" % "optional;test",
       // §20's three in-process stream libraries. TEST only, and they
       // are here rather than in `compare` because the lane they serve
       // is this job: none of them has an event-time window, so each

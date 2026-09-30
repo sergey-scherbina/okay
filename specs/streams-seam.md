@@ -332,3 +332,17 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
   (TestSparkFrames). Past what Spark itself takes, Spark's own named
   exception is the answer. Arrow's 64 stays okay-arrow's.
 
+- bulk-flink (2026-10-01, lane 3): `FlinkBulk` in okay-flink — a `Bulk`
+  over DataStream in BATCH mode; elements as `AnyRef` under generic type
+  information; `join` a `coGroup` in `GlobalWindows.createWithEndOfStreamTrigger()`
+  (Flink 1.20 has no public `EndOfStreamWindows`), `aggregate` the okay
+  `Aggregator` through `AggregateFunction` over the whole stream; the
+  functions are top-level classes so the job graph does not capture the
+  environment. `flink-streaming-java`/`flink-clients` became
+  `optional;test`, refused by name (`FlinkBulk.missing`). Flink 1.20's
+  `fromData` over an EMPTY collection generates one record and fails;
+  an empty table is a placeholder filtered at once. Tested against the
+  local instance on a MiniCluster (`TestFlinkBulk`, Live, as the Wrocław
+  Flink lane is). Not yet: `Streamed` answered natively on Flink
+  (interval join, event-time windows) — they run through `viaTables`.
+
