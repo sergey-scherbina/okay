@@ -1,0 +1,1 @@
+claude session_01FeSfUJ4Z4YBWrEERDnoghu, 2026-09-30, operator ask ("потом будешь проверять перфоменс опять сразу всё"): the one measurement pass after stages 7-9 — Delim lanes, stateThreaded bytes, splitI vs split (new forwarding lanes), Tx.Data vs the facade; regressions fixed in the lane (specs/indexed-effects.md, Deferred measurements)
