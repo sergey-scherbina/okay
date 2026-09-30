@@ -340,6 +340,31 @@ object Source {
                       (using Scheduler, CanBlock, Wait, Pause): Source[C] =
     Writer.map[(A, B), C, Unit, Async](zip(s, t, capacity))(f.tupled)
 
+  /**
+   * The sort-merge join by key of two live sources NON-DECREASING in
+   * key (specs/stream-join.md), in `zip`'s shape: a fiber per side,
+   * `capacity` elements buffered a side, the merge on the consumer's
+   * thread, the right run of equal keys held and nothing beyond it.
+   * Inner: every pair sharing a key; it ends when EITHER side ends and
+   * closes the other. A key out of order fails the join after the pairs
+   * before it. `SortMerge` is the machine.
+   */
+  def joinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                   (using Scheduler, CanBlock, Wait, Pause): Source[(K, (A, B))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.inner)
+
+  /** `joinSorted`, every left row kept (`None` where the right has no
+   * such key); ends when the left side ends */
+  def leftJoinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                       (using Scheduler, CanBlock, Wait, Pause): Source[(K, (A, Option[B]))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.left)
+
+  /** `joinSorted`, every row of either side kept (`None` on the side
+   * that lacks the key); ends when both sides have */
+  def fullJoinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                       (using Scheduler, CanBlock, Wait, Pause): Source[(K, (Option[A], Option[B]))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.full)
+
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart
    * across a 4x span) and exposing it would quietly break

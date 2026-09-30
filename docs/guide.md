@@ -1103,6 +1103,40 @@ release where a test can read it. It is spelled `Source.zip(s, t)`, not
 `s zip t`, because the core's lazy `zip` on any stream already owns the
 top-level name in package `okay`.
 
+`Source.joinSorted` is zip that SKIPS: the join by key of two live
+streams that are already non-decreasing in key (specs/stream-join.md).
+It has zip's shape — a fiber per side, a buffer per side, the merge on
+the consumer's thread, both sides closed at the end — and the
+sort-merge join's arithmetic (Blasgen & Eswaran 1977): one cursor a
+side advancing the smaller key, a run of equal keys on the right held
+while the left streams against it, and nothing held beyond that run.
+So it joins two UNBOUNDED streams in bounded memory, which is what no
+hash join can do — `Bulk.join` (specs/bulk.md) holds its right side
+whole, and that is the join for a table, not for a feed. `left` keeps
+every left row with `None` where the right has no such key; `full`
+keeps every row of either side. A key out of order on either side
+fails the join naming both keys, after the pairs told before it —
+a join that silently misplaced rows would be a wrong answer that
+looks like a small one.
+
+```scala
+val orders = Source.of(List((1, "book"), (2, "pen"), (2, "ink"), (4, "lamp")))   // by customer
+val names = Source.of(List((1, "Ann"), (2, "Bob"), (3, "Cid")))
+val j = Source.joinSorted(orders, names)
+assertEquals(j.runCollect.runWith, Vector((1, ("book", "Ann")), (2, ("pen", "Bob")), (2, ("ink", "Bob"))))
+val all = Source.leftJoinSorted(orders, names)
+assertEquals(all.runCollect.runWith.last, (4, ("lamp", None)))
+val c = Chunks.joinSorted(Chunks.fromIterator(Iterator((1, "a"), (3, "c"))), Chunks.fromIterator(Iterator((3, "x"))))
+assertEquals(c.elements.toList, List((3, ("c", "x"))))
+```
+
+The same three on `Chunks` step once per left chunk and tell that
+chunk's pairs as one chunk. Flink's interval join and Kafka Streams'
+KStream-KStream join are the answer for streams that are NOT ordered
+by key — event-time windows on each side, matched on arrival; that is
+the follow-on on the landed `Windows` machinery, and the spec says
+what it will be.
+
 `source merge source` IS that composition since
 source-merge-via-ready: each side buffered onto a fiber of its own,
 joined by `mergeReady` — one merge mechanism, 0.73-0.93x of the

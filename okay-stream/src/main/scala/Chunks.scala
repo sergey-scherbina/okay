@@ -461,6 +461,24 @@ object Chunks {
     go(emptyChunk, 0, pa, emptyChunk, 0, pb)
 
   /**
+   * The sort-merge join by key of two chunk streams NON-DECREASING in
+   * key (specs/stream-join.md): the right run of equal keys held, the
+   * left side streamed against it, one output chunk per left chunk.
+   * Inner: every pair sharing a key. A key out of order on either side
+   * fails the join, naming both keys. `SortMerge` is the machine.
+   */
+  def joinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (A, B))] =
+    SortMerge.chunks(l, r)(() => SortMerge.inner)
+
+  /** `joinSorted`, every left row kept: `None` where the right side has no such key */
+  def leftJoinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (A, Option[B]))] =
+    SortMerge.chunks(l, r)(() => SortMerge.left)
+
+  /** `joinSorted`, every row of either side kept: `None` on the side that lacks the key */
+  def fullJoinSorted[K: Ordering, A, B](l: Chunks[(K, A)], r: Chunks[(K, B)]): Chunks[(K, (Option[A], Option[B]))] =
+    SortMerge.chunks(l, r)(() => SortMerge.full)
+
+  /**
    * Normalize chunk sizes (the content unchanged, the tail shorter):
    * filter shrinks chunks and merge mixes sizes — rechunk restores the
    * amortization downstream. A full buffer is handed off, not copied.
