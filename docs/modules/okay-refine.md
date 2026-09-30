@@ -345,6 +345,21 @@ val s = Kinds.split(Source(inputs*))(using Routable.stream(capacity = 4))
 Async.par(s.counts, s(Kinds.swaps).runCollect),
 ```
 
+What `out(lane)` does, per carrier: the input was tagged ONCE, by
+`split` (a Vector: at once; a `Bulk`: at the first action, then cached;
+a `Source`: while `counts` runs), and a lane only takes its share of that
+tagging and types it — the pattern is never run again. A Vector's lanes
+are grouped on first use, so a lane is a lookup. A `Bulk`'s tagging stays
+pinned (on Spark, persisted) until `out.release()`. A STREAM's lane is a
+channel with one reader, so it is read ONCE; a second run is refused by
+name rather than left to split the channel's elements between two
+readers:
+
+```scala
+val again = intercept[IllegalStateException](lane.runCollect.runWith)
+s.release()
+```
+
 A new carrier — a Kafka topic, a Flink stream — is one more
 `Routable` instance (`fan`, `select`, `done`), and no table changes. The
 typeclass is on the carrier VALUE, `Routable[Source[A]]`, not on a type
@@ -389,6 +404,7 @@ reference instead of copying.
 | `object T extends Routes(r)`: `route[X]`, `route(name){ case … }`, `byName`, `routeAs` | a routing table as a value; lanes are typed handles |
 | `T.split(c)`: `out(lane)`, `out.rejected`, `out.counts` | the table over any `Routable` carrier: Vector, Bulk (Chunks, SparkBulk), Source |
 | `Routable[C]`: `fan`, `select`, `done`; `Routable.stream(capacity)` | what can be routed; a new carrier is one instance |
+| `out.release()` | let go of the tagging (Spark: unpersist); a stream lane reads once |
 | `T.run(source)(lane ~> c, T.rejected ~> c)` | the same table into channels |
 | `Documents.files` (JVM) | a directory of whole files as a `Bulk.Format` |
 | `Format.value` | `Refine[Doc, Json]`: JSON, YAML and XML (`Xml.value`: elements as objects, `@attr`, repeats as arrays) project to a value, CBOR declines; writes JSON — for XML text, `Xml.fromValue` on the written value |

@@ -312,6 +312,15 @@ Stage 3 — lessons:
   through its alias with the generic `D[A]`, so a `Chunks` instance there
   is AMBIGUOUS and was dropped — the one difference.
 
+- **refine-split-lifecycle (2026-09-30, operator ask).** What `out(lane)`
+  costs and holds, made explicit in both cores: a STREAM lane is read once
+  — two runs were two readers of one channel, splitting its elements
+  silently — and a second run is now refused by name; `Bulk.uncache`
+  (default no-op, `SparkBulk` unpersists) and `Split.release()` let the
+  persisted tagging go; a Vector's lanes are grouped once (a lane was a
+  full pass per call). Refuted: memoizing a lane's `Source` — a `Source`
+  is a program, and running the same value twice is still two readers.
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of

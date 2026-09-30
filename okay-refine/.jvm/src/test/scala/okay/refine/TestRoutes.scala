@@ -128,3 +128,24 @@ class TestRoutes extends Diagnosed:
     assertEquals((swaps.length, rates.length, rejected.length), (100, 100, 100))
     assertEquals(routed.rejected, 100)
   }
+
+  test("a stream lane is read ONCE: the second run is refused by name, not left to split the channel") {
+    val inputs = docs.map(d => (d, d.getBytes("UTF-8")))
+    val s = Kinds.split(Source(inputs*))
+    val lane = s(Kinds.swaps)
+    assertEquals(s.counts.runWith.rejected, 1)
+    assertEquals(lane.runCollect.runWith, Vector(Swap("s1", "EUR"), Swap("s2", "USD")))
+    val again = intercept[IllegalStateException](lane.runCollect.runWith)
+    assert(again.getMessage.contains("read ONCE"), again.getMessage)
+    assert(intercept[IllegalStateException](s(Kinds.swaps).runCollect.runWith).getMessage.contains("lane #0"))
+    assertEquals(s.rejected.runCollect.runWith.length, 1)
+    assert(intercept[IllegalStateException](s.rejected.runCollect.runWith).getMessage.contains("the rejects"))
+  }
+
+  test("a Vector's lanes are grouped once; release is harmless where nothing is pinned") {
+    val v = Kinds.split(docs.map(d => (d, d.getBytes("UTF-8"))))
+    assertEquals(v(Kinds.swaps), v(Kinds.swaps))
+    v.release()
+    assertEquals(v(Kinds.rates).length, 4)
+  }
+

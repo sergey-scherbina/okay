@@ -69,6 +69,11 @@ trait Bulk[D[_]]:
   /** materialise, because what follows reads this more than once */
   def cache[A](d: D[A]): D[A]
 
+  /** let go of what `cache` holds, when nothing will read it again — a
+   * DEFAULT that does nothing (one JVM's cache is an ordinary value the
+   * collector takes); a platform that pins it (Spark's persist) frees it */
+  def uncache[A](d: D[A]): Unit = ()
+
   /** the P1 contract: (init, add, merge) the platform's way, presented */
   def aggregate[A, Acc, Out](d: D[A])(agg: Aggregator[A, Acc, Out]): Out
 

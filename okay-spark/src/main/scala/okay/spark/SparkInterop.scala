@@ -133,6 +133,8 @@ object SparkBulk:
 
     def cache[A](d: Rows[A]): Rows[A] = d.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
 
+    override def uncache[A](d: Rows[A]): Unit = d.unpersist(blocking = false): Unit
+
     def aggregate[A, Acc, Out](d: Rows[A])(agg: Aggregator[A, Acc, Out]): Out =
       val acc: Any = d.aggregate[Any](agg.init)(
         (acc, x) => agg.add(elem[Acc](acc), elem[A](x)),

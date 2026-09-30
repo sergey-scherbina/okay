@@ -2245,6 +2245,10 @@ each lane comes back as the carrier's own kind, and for a stream
     assertEquals(swapsS, swapsV)
 ```
 
+As in okay: a stream's lane is read once (a second run is refused by
+name), a Vector's lanes are grouped once, and `out.release()` lets a
+`Bulk`'s tagging go (`Bulk.uncache`; on Spark, `unpersist`).
+
 Unlike Scala 3, Scala 2 sees `Chunks[A]` through its alias as the
 generic `D[A]`, so there is no separate `Chunks` instance (a second one
 was ambiguous). okay2's `Bulk` has no `read(path, Format)`, so `Documents.files[D](dir)`

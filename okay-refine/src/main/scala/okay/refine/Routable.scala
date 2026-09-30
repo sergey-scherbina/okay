@@ -1,6 +1,6 @@
 package okay.refine
 
-import okay.{!, Async, Bulk, Channel, Chunks, Scheduler, Source, Writer, drained, effect, pure, runForeach}
+import okay.{!, %, Async, Bulk, Channel, Chunks, Scheduler, Source, Writer, drained, effect, pure, runForeach}
 import okay.Bulk.{aggregate, cache, flatMap, map}
 
 /**
@@ -45,6 +45,8 @@ object Routable:
     def lane(i: Int): Out[T]
     def rejected: Out[R]
     def counts: Done[(Vector[Int], Int)]
+    /** let go of what the tagging holds (Spark's persisted rows); nothing for a Vector or a stream */
+    def release(): Unit = ()
 
   private def count[R, T](n: Int, tags: IterableOnce[Either[R, (Int, T)]]): (Vector[Int], Int) =
     val per = Array.fill(n)(0)
@@ -62,8 +64,10 @@ object Routable:
     type Done[X] = X
     def fan[R, T](c: Vector[A], lanes: Int)(tag: A => Either[R, (Int, T)]): Fanned[Vector, Id, R, T] =
       val tagged = c.map(tag)
+      // the lanes grouped ONCE, when the first is asked for: `out(lane)` is then a lookup
+      lazy val byLane: Map[Int, Vector[T]] = tagged.collect { case Right(it) => it }.groupMap(_._1)(_._2)
       new Fanned[Vector, Id, R, T]:
-        def lane(i: Int): Vector[T] = tagged.collect { case Right((j, t)) if j == i => t }
+        def lane(i: Int): Vector[T] = byLane.getOrElse(i, Vector.empty)
         def rejected: Vector[R] = tagged.collect { case Left(r) => r }
         def counts: (Vector[Int], Int) = count(lanes, tagged)
     def select[T, X](o: Vector[T])(f: T => Option[X]): Vector[X] = o.flatMap(f)
@@ -84,6 +88,7 @@ object Routable:
         }
         def rejected: D[R] = tagged.flatMap(_.left.toOption)
         def counts: (Vector[Int], Int) = tagged.aggregate(Routes.counting[R, T](lanes))
+        override def release(): Unit = B.uncache(tagged)
     def select[T, X](o: D[T])(f: T => Option[X]): D[X] = o.flatMap(f)
     def done[X, Y](d: X)(f: X => Y): Y = f(d)
 
@@ -108,9 +113,18 @@ object Routable:
       val chans = Vector.fill(lanes)(Channel[T](capacity))
       val rejects = Channel[R](capacity)
       val all: Vector[Channel[?]] = chans :+ rejects
+      // A LANE OF A STREAM IS READ ONCE: two runs of one lane would be two
+      // readers of one channel, and they would SPLIT its elements between
+      // them, silently. The second run is refused by name instead.
+      val read = java.util.concurrent.atomic.AtomicReferenceArray[String](lanes + 1)
+      def once[X](i: Int, what: String, s: Source[X]): Source[X] =
+        !.widen[Unit, Async, Writer % X](okay.async {
+          if !read.compareAndSet(i, null, what) then
+            throw IllegalStateException(s"$what of a stream split is read ONCE, and was already read: its channel has one reader")
+        }).flatMap(_ => s)
       new Fanned[Source, [X] =>> X ! Async, R, T]:
-        def lane(i: Int): Source[T] = chans(i).drained
-        def rejected: Source[R] = rejects.drained
+        def lane(i: Int): Source[T] = once(i, s"lane #$i", chans(i).drained)
+        def rejected: Source[R] = once(lanes, "the rejects", rejects.drained)
         def counts: (Vector[Int], Int) ! Async =
           val per = Array.fill(lanes)(0)
           var rj = 0

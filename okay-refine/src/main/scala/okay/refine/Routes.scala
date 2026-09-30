@@ -122,6 +122,9 @@ abstract class Routes[A, B](val pattern: Refine[A, B]) extends Serializable:
     /** how many went down each lane, and how many were rejected (for a
      * stream: the program that moves the data — run it beside the readers) */
     def counts: D[Routed] = done(fanned.counts, (per, rj) => Routed(lanes.map(_.name).zip(per), rj))
+    /** let go of what the tagging holds, when no lane will be read again
+     * (on Spark: the persisted rows); a no-op for a Vector or a stream */
+    def release(): Unit = fanned.release()
 
   /** THE TABLE INTO CHANNELS: `Kinds.run(source)(Kinds.swaps ~> c1, Kinds.rejected ~> dead)`.
    * Every channel given is closed once at the end, failed with the input's error */

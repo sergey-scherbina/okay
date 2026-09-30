@@ -39,6 +39,10 @@ trait Bulk[D[_]] {
   /** materialise, because what follows reads this more than once */
   def cache[A](d: D[A]): D[A]
 
+  /** let go of what `cache` holds — a DEFAULT that does nothing; a
+   * platform that pins it (Spark's persist) frees it */
+  def uncache[A](d: D[A]): Unit = ()
+
   /** the aggregation contract: (init, add, merge) the platform's way */
   def aggregate[A, Acc, Out](d: D[A])(agg: Aggregator[A, Acc, Out]): Out
 

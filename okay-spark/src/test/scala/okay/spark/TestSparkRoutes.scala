@@ -61,4 +61,9 @@ class TestSparkRoutes extends munit.FunSuite:
     assertEquals(fromSpark(s.rejected).map(_.input._1).sorted, all(l.rejected).map(_.input._1).sorted)
     assertEquals(s.counts, Router.Routed(Vector("Swap" -> 100, "Fx | Cds" -> 200), rejected = 100))
     assertEquals(s.counts, l.counts)
+    // the tagging is PERSISTED while lanes are read, and release lets it go
+    val pinned = spark.sparkContext.getPersistentRDDs.size
+    assert(pinned >= 1, s"the tagged rows are persisted: $pinned")
+    s.release()
+    assertEquals(spark.sparkContext.getPersistentRDDs.size, pinned - 1)
   }
