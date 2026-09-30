@@ -71,6 +71,11 @@ object SparkBulk:
   /** the one cast: an element of `Rows[A]` is an `A` by construction */
   private inline def elem[A](x: Any): A = x.asInstanceOf[A]
 
+  /** the seam's value and the RDD under it, for `SparkFrames` (lane 5),
+   * which holds DataFrame-born tables on the same heap */
+  private[spark] def rows[A](r: RDD[Any]): Rows[A] = r
+  private[spark] def rdd[A](d: Rows[A]): RDD[Any] = d
+
   /** right sides up to this many rows are broadcast rather than shuffled */
   val broadcastRows: Int = 100_000
 

@@ -68,7 +68,7 @@ object SparkSchema:
     case (ColType.Struct(fs), r: Columns.Row) => rowOf(fs, r)
     case (_, other) => other
 
-  private def rowOf(fs: Vector[Columns.Field], r: Columns.Row): Row =
+  private[spark] def rowOf(fs: Vector[Columns.Field], r: Columns.Row): Row =
     Row.fromSeq(fs.iterator.zip(r.values).map((f, v) => valueAt(f.tpe, v)).toSeq)
 
   /** `t`, refused when it nests past MaxNesting. The levels are counted

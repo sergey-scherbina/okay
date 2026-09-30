@@ -210,11 +210,23 @@ Lane 2 (streams-seam-2-streamed):
 Lane 3 (bulk-flink): `Bulk[DataStream]`, optional, refused by name;
 `Streamed` answered natively.
 
-Lane 5 (tables-structural): the structural sub-language, `Bulk[DataFrame]`,
-the GTFS job measured three ways. MEASURED FIRST (tables-structural,
-2026-09-30): the premise "18 s vs 7 s" was stale, and the real gap on
-the three joins is 708 ms (our seam on Spark) against 536 ms (a hand
-DataFrame), 1.32x — see Results.
+Lane 5 (tables-structural, then tables-structural-2): MEASURED FIRST —
+the premise "18 s vs 7 s" was stale, the real gap on the GTFS joins is
+1.32x (Results) — and BUILT on the operator's reasons, convenience and
+compatibility (2026-09-30), not on speed:
+
+- [x] `Structured` (okay-sql): `matching(Query.Where[A])`, `joinOn(r)(lf, rf)`
+      answer through `viaTables` what the hand-written filter and key join
+      answer, alone and composed with an opaque step — JVM, JS, Native
+- [x] `SparkFrames.load` / `frame`: a DataFrame in and out of a program;
+      `read(path, "parquet")` pruned to A's fields
+- [x] `matching` on a DataFrame-born table is in Catalyst's analyzed
+      plan; on Parquet it is a `PushedFilters` entry at the reader
+- [x] `joinOn` of two DataFrame-born tables is a DataFrame join and
+      answers the local join
+- [x] after an opaque step a structural operator answers through the RDD,
+      the same answer; `frame` of such a table encodes its rows
+- [x] docs: okay-spark.md "DataFrames in a program", example pinned
 
 Lane 4 (streams-seam-docs): the one-job page with the numbers.
 
@@ -264,3 +276,25 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
   and column pruning at the reader (Catalyst's pushdown), which a Scala
   closure can never get — the next measurement before any surface is
   built, on a Parquet table with a selective predicate.
+
+- tables-structural-2 (2026-09-30): `Structured` in okay-sql (the
+  predicate is okay-sql's `Query.Where`, which is why it lives there and
+  not beside `Tables`: okay-stream cannot see okay-sql), `SparkFrames` in
+  okay-spark (okay-spark now depends on okay-sql). Named `matching` and
+  `joinOn`, not `where`/`join`: two objects' extensions of one name
+  imported together are ambiguous, not overloaded. What the Spark tests
+  taught: every closure an executor runs must be free of the session's
+  holder (the row codec lives in `object SparkFrames`), a row type
+  declared inside a suite ships the suite (`$outer`), `Query.Where` had to
+  become `Serializable`, and `Columns.table`'s row function is not
+  serializable — `frame` of an RDD-side table encodes value → Json → Row
+  by the struct instead. Over rows already in memory Catalyst's
+  optimizer evaluates a Filter itself and leaves a `LocalRelation`, so
+  the test reads the ANALYZED plan; the Parquet test reads the executed
+  plan's `PushedFilters`. Decoding is Row → Json → `Json.decode(Schema)`:
+  exact where `Columns` and the JSON codec agree (products of numbers,
+  text, booleans, options, sequences); a `Long` above 2^53 through
+  `JNum` is not, and a VARIANT or MAP column is refused by name.
+  `column` walks the predicate with an explicit stack as `Query.eval`
+  does; the row walks are bounded by `SparkSchema.MaxNesting`, checked at
+  every door. Not additive: gate `affected master staged`.

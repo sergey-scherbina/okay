@@ -47,6 +47,30 @@ DataFrame and 803 ms in one JVM through `Chunks` (MeasureGtfsFrames,
 this page used to quote was `cache` under Java serialization
 (TestWroclawStages), not the RDD level.
 
+**DataFrames in a program, and operators Catalyst can see** (streams-seam,
+lane 5; [specs/streams-seam.md](../../specs/streams-seam.md)). `Structured`
+(okay-sql) adds two operators a platform can read, beside the opaque
+`where(p)` and `join` of `Tables`: `matching(w)` with a `Query.Where` built
+from field names checked against `Schema[A]`, and `joinOn(r)(lf, rf)` with
+a `Query.Field` on each side. On any platform they run through
+`Structured.viaTables`. On Spark, `SparkFrames` brings a DataFrame into the
+program (`load[A](df)`, or `read[A](path, "parquet")` pruned to A's fields),
+hands a table back (`frame[A](t)`), and keeps a DataFrame-born table in
+Catalyst for as long as it meets only structural operators: the predicate
+becomes a `Column` (on Parquet a pushed filter at the reader), the join a
+DataFrame join. The first opaque step leaves Catalyst, and the same
+operators then answer through the RDD with the same result.
+
+```scala
+val w = (route === "r1" or route === "r3") and (tram === true)
+val got = frames.run(for
+  t <- frames.load[Trip](SparkSchema.dataFrame(spark, trips)).plus[Tables + Structured]
+  m <- t.matching(w).plus[Tables + State % Tables.Heap[SparkBulk.Rows]]
+  df <- frames.frame[Trip](m).plus[Tables + Structured]
+  rows <- m.collect.plus[Structured + State % Tables.Heap[SparkBulk.Rows]]
+yield (rows.elements.toVector.sortBy(_.id), df.queryExecution.analyzed.toString))
+```
+
 **ADTs as DataFrames.** `SparkSchema` turns an okay `Schema[A]` into a
 Spark `StructType` and rows — the Catalyst side, where Spark's own
 `ExpressionEncoder` (Scala 2 `TypeTag` reflection) sees no Scala 3

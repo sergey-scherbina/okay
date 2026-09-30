@@ -1415,7 +1415,8 @@ lazy val sparkTestSettings: Seq[Setting[_]] = Seq(
 lazy val okaySpark = (project in file("okay-spark"))
   // okay-codec for `Schema` (SparkSchema: the DataFrame encoder is a fold of it)
   // okayParquet (test): the taxi demo reads its month through Bulk.read (bulk-parquet)
-  .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm, compare % "test->compile", okayParquet.jvm % "test->compile")
+  // okay-sql: `Structured`'s predicate is okay-sql's `Query.Where`, compiled to a Column by SparkFrames (tables-structural-2)
+  .dependsOn(okay.jvm, okayStream.jvm, okayCodec.jvm, okaySql.jvm, compare % "test->compile", okayParquet.jvm % "test->compile")
   .settings(
     name := "okay-spark",
     libraryDependencies ++= Seq(
