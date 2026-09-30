@@ -203,9 +203,9 @@ Stage 1, the probe (`src/main/scala/kont/Kont.scala`, package
       the delimiter and resumes twice
 - [x] a `shift0` with no `$` for its prompt fails by name with the
       installed delimiters listed
-- [ ] the four lanes of the backlog item measured through `jmh-lane.sh`
-      against the Delim machine (DelimBenchmark) and the rotation
-      (`Fib`, `BuildShapeBenchmark.rowFoldM`) — RESULTS below
+- [x] measured through `jmh-lane.sh`: DelimBenchmark's four shapes on
+      the frame machine against the Delim machine, and two pure shapes
+      (left- and right-nested) against the rotation — RESULTS below
 
 Stage 2 (a decision, not this lane): migrate — `Freer.resume` becomes
 this loop, the Delim machine and `Cont.step`'s own runner are expressed
@@ -252,6 +252,33 @@ case of the enum and the delimiter installed by splice).
 Every rule of TestDollar gives the same answer on the frame machine
 that it gives on the Delim machine; the four depth tests run in
 constant stack; the head form re-enters twice with two answers.
+
+**The lanes** (`src/jmh/history.d/2026-09-30T185549Z-freer-kont-frames-probe.tsv`;
+`KontBenchmark` beside `DelimBenchmark`, same N, same annotations, one
+`jmh-lane.sh` run per lane, 2 forks x 5, every lane "box quiet
+throughout"; sha 488d75ef8, the nested pair and dollarResume re-run on
+9b4623bca after the `Bind(Return(x), f)` arm):
+
+| shape | Delim / resume | frame machine | time | bytes |
+|---|---:|---:|---:|---:|
+| generator, a shift per emit | 67.7 us, 726 KB | 60.2 us, 782 KB | **0.89** | 1.08 |
+| N delimiters, nothing captured | 17.06, 278 KB | 17.21, 270 KB | 1.01 | 0.97 |
+| N `$` with a ret | 18.80, 300 KB | 18.93, 300 KB | 1.01 | 1.00 |
+| one shift0 per `$`, resumed once | 39.21, 572 KB | 35.14, 564 KB | **0.90** | 0.99 |
+| 1000 left-nested flatMaps, no delimiter | 13.47, 142 KB | 7.66, 94 KB | **0.57** | 0.66 |
+| 1000 right-nested `pure >>= f` | 4.90, 78 KB | 4.62, 78 KB | 0.94 | 1.00 |
+
+Read: installing a delimiter costs what it costs today (parity, two
+lanes); capturing and resuming is 10% cheaper (the cut is a walk and a
+link, no tree reified); and the shape the rotation was written for —
+left-nested binds — is 1.76x faster and a third the bytes, because a
+frame is consed once where the rotation re-associates with a closure
+and a `Bind` per step. Code with no continuations pays nothing on the
+right-nested shape once `Bind(Return(x), f)` applies `f` directly (the
+one arm added after measuring: without it, one `Frame` pushed and
+popped per value read 1.26x and +24 B a step). The generator's +8%
+bytes is the lazy `k(x)` node (`Delay` + `Resume`) and the `Rev` walk of
+a splice — 56 B per emit, bought back in time.
 
 **Answer-type modification in the LAZY machine is not Cont's `(S, R)`.**
 Found by the typed test, before any code was written for it: Cont's
