@@ -30,8 +30,9 @@ final class WindowJoin[K, A, B](within: Long, lateness: Long, atL: A => Long, at
   require(within >= 0 && lateness >= 0, "a window's reach and lateness are not negative")
 
   private final class Held[X](val at: Long, val x: X)
-  private val lefts = mutable.HashMap.empty[K, mutable.ArrayBuffer[Held[A]]]
-  private val rights = mutable.HashMap.empty[K, mutable.ArrayBuffer[Held[B]]]
+  // per key, in ARRIVAL order — a deque, so eviction leaves from the front
+  private val lefts = mutable.HashMap.empty[K, mutable.ArrayDeque[Held[A]]]
+  private val rights = mutable.HashMap.empty[K, mutable.ArrayDeque[Held[B]]]
   private var maxL = Long.MinValue
   private var maxR = Long.MinValue
   private var endedL = false
@@ -58,15 +59,31 @@ final class WindowJoin[K, A, B](within: Long, lateness: Long, atL: A => Long, at
    * of the other side that could still have matched it is gone */
   def exhausted: Boolean = (endedL && lefts.isEmpty) || (endedR && rights.isEmpty)
 
-  /** the rows of one key that no future row can reach, out */
-  private def trim[X](buf: mutable.ArrayBuffer[Held[X]], wm: Long): Unit =
+  /**
+   * The rows of one key that no future row can reach, out — FROM THE
+   * FRONT ONLY, amortised O(1) per arrival. The first cut filtered the
+   * whole buffer on every arrival (windowjoin-trim-spins,
+   * okay-stream/BUGS.md): with one side hot and the other starved the
+   * watermark stood still, nothing was ever expired, and every arrival
+   * rescanned a buffer one row longer — quadratic, and 286 s of CPU on
+   * a pool worker before anyone looked. A row behind a not-yet-expired
+   * head (arrived later, with an earlier time, within `lateness`) is
+   * caught by the sweep below, at most `within` of watermark late.
+   */
+  private def trim[X](buf: mutable.ArrayDeque[Held[X]], wm: Long): Unit =
     if wm != Long.MinValue then
+      while buf.nonEmpty && buf.head.at + within < wm do
+        buf.removeHead(): Unit
+        live -= 1
+
+  /** the whole store, every row: once per `within` of watermark advance */
+  private def trimAll[X](store: mutable.HashMap[K, mutable.ArrayDeque[Held[X]]], wm: Long): Unit =
+    store.filterInPlace((_, buf) => {
       val before = buf.length
       buf.filterInPlace(h => h.at + within >= wm)
       live -= before - buf.length
-
-  private def trimAll[X](store: mutable.HashMap[K, mutable.ArrayBuffer[Held[X]]], wm: Long): Unit =
-    store.filterInPlace((_, buf) => { trim(buf, wm); buf.nonEmpty })
+      buf.nonEmpty
+    })
 
   /** a sweep of every key once per `within` of watermark advance: a
    * key that never returns must not keep its rows for ever */
@@ -75,12 +92,12 @@ final class WindowJoin[K, A, B](within: Long, lateness: Long, atL: A => Long, at
       trimAll(lefts, wm); trimAll(rights, wm)
       swept = wm
 
-  private def clear[X](store: mutable.HashMap[K, mutable.ArrayBuffer[Held[X]]]): Unit =
+  private def clear[X](store: mutable.HashMap[K, mutable.ArrayDeque[Held[X]]]): Unit =
     for (_, buf) <- store do live -= buf.length
     store.clear()
 
-  private def arrive[X, Y](k: K, t: Long, x: X, mine: mutable.HashMap[K, mutable.ArrayBuffer[Held[X]]],
-                           theirs: mutable.HashMap[K, mutable.ArrayBuffer[Held[Y]]], theirsEnded: Boolean)
+  private def arrive[X, Y](k: K, t: Long, x: X, mine: mutable.HashMap[K, mutable.ArrayDeque[Held[X]]],
+                           theirs: mutable.HashMap[K, mutable.ArrayDeque[Held[Y]]], theirsEnded: Boolean)
                           (emit: Y => Unit): Unit =
     val wm = watermark
     if t < wm then late += 1
@@ -98,7 +115,7 @@ final class WindowJoin[K, A, B](within: Long, lateness: Long, atL: A => Long, at
         case None => ()
       // held for the other side's rows to come — unless none can
       if !theirsEnded then
-        val buf = mine.getOrElseUpdate(k, mutable.ArrayBuffer.empty)
+        val buf = mine.getOrElseUpdate(k, mutable.ArrayDeque.empty)
         trim(buf, wm)
         buf += new Held(t, x)
         live += 1
