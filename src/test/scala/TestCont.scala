@@ -40,48 +40,44 @@ class TestCont extends munit.FunSuite {
     assertEquals(check[Func], 20)
   }
 
-  test("absorption: the FIRST bind enters the leaf, the second is a node") {
-    // the structural half of the one-step rule (specs/freer-base.md).
-    // The leaf is built with `shiftLeaf`: `shift` would rewrite this
-    // tail-shaped body to a Return at compile time (ContMacro).
-    // `Cont` is an opaque facade over `Free[Shift, A]`, so from here
-    // the nodes are reached by a class test on `Any` — which is all a
-    // structural probe needs, and all the facade allows.
+  test("no absorption: a bind on a leaf is a node — the frame machine pushes it (cont-step-on-frames)") {
+    // until cont-step-on-frames a leaf ABSORBED its first bind (the old
+    // runner's `Leaf.Absorbed`, a Fib-lane optimisation for `step`); on
+    // the frame machine a bind is always a node and the machine pushes
+    // it as a frame, so there is nothing to absorb. The leaf is built
+    // with `shiftLeaf`: `shift` would rewrite this tail-shaped body to a
+    // Return at compile time (ContMacro). `Cont` is an opaque facade, so
+    // the nodes are reached by a class test on `Any`.
     val s = Cont.shiftLeaf[Int, Int, Int](k => k(0))
     def succ(x: Int): Int /> Int = Cont.Pure(x + 1)
-    def isOp(c: Any) = c match { case Free.Inject(_) => true; case _ => false }
-    // the enum's own pattern, not `Free.Bind`: that one claims the effect
-    // tree's `Unit` indexes, which `Any` (and a Cont) cannot answer for
+    def isOp(c: Any) = c match { case Freer.Inject(_) => true; case _ => false }
     def isBind(c: Any) = c match { case Freer.Bind(_, _) => true; case _ => false }
 
     assert(isOp(s), "a bare shift is a leaf")
-    assert(isOp(s.flatMap(succ)), "the first bind is absorbed into the leaf")
-    assert(isBind(s.flatMap(succ).flatMap(succ)), "the second bind is a node")
-    assert(isBind(Cont.Pure(0).flatMap(succ)), "a Pure receiver never absorbs")
+    assert(isBind(s.flatMap(succ)), "a bind on a leaf is a node")
+    assert(isBind(s.flatMap(succ).flatMap(succ)), "and so is the next")
+    assert(isBind(Cont.Pure(0).flatMap(succ)), "a Pure receiver is a node too")
     assertEquals(reset(s.flatMap(succ).flatMap(succ)), 2)
   }
 
-  test("absorption is bounded: a leading shift, then 1M binds, stack-safe") {
-    // the behavioural half: if absorption were unbounded the run would
-    // nest 1M closure calls. It stops after one, and the rest are Bind
-    // nodes the tail-recursive `resume` rotates.
+  test("a leading shift, then 1M binds, stack-safe") {
+    // 1M binds after one leaf: the machine pushes each as a frame and
+    // pops it in its loop; no bind nests a closure call.
     val n = 1000000
     val m = (1 to n).foldLeft(Cont.shiftLeaf[Int, Int, Int](k => k(0))): (m, _) =>
       m.flatMap(x => Cont.Pure(x + 1))
     assertEquals(reset(m), n)
   }
 
-  test("absorption is per leaf, not per program") {
-    // each leaf absorbs its OWN first bind; joining two absorbed
-    // leaves makes a node and leaves both absorptions intact
+  test("leaves joined by binds: every bind a node, the answer unchanged") {
     def leaf(i: Int) = Cont.shiftLeaf[Int, Int, Int](k => k(i)).flatMap(x => Cont.Pure(x * 2))
-    // a structural probe on Any: the facade is opaque from here
-    def isOp(c: Any) = c match { case Free.Inject(_) => true; case _ => false }
+    def isOp(c: Any) = c match { case Freer.Inject(_) => true; case _ => false }
+    def isBind(c: Any) = c match { case Freer.Bind(_, _) => true; case _ => false }
 
-    assert(isOp(leaf(1)) && isOp(leaf(2)), "each leaf absorbed its own bind")
+    assert(isBind(leaf(1)) && isBind(leaf(2)), "a leaf's own bind is a node")
     val joined = leaf(1).flatMap(x => leaf(2).map(_ + x))
-    assert(joined match { case Freer.Bind(a, _) => isOp(a); case _ => false },
-           "joining is a node over the still-absorbed left leaf")
+    assert(joined match { case Freer.Bind(a, _) => isBind(a) && (a match { case Freer.Bind(l, _) => isOp(l); case _ => false }); case _ => false },
+           "joining is a node over the left leaf's node")
     assertEquals(reset(joined), 6)
   }
 

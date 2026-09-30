@@ -103,7 +103,7 @@ object Cont:
    * absorption below would have been bypassed wholesale. Inside an
    * object the scope is the object, which is what a facade needs.
    */
-  opaque type Rep[A, S, R] = Freer[Shift, S, R, A]
+  opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
 
   /** a finished value (named where the 200-odd call sites already look for it) */
   def Pure[A, R](a: A): Rep[A, R, R] = Return(a)
@@ -115,7 +115,7 @@ object Cont:
   inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
 
   /** the leaf every non-tail body becomes: the function, as it is */
-  inline def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = Inject(f)
+  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = opaqueLeaf(f)
 
   /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
    * `v` computed when the runner reaches it, in the runner's own loop.
@@ -130,12 +130,12 @@ object Cont:
    * carry a CONSUMED index (Free.scala's header) — took that road away.
    * Isolated here and in `tailPure`, the evidence as the parameter. */
   def tailShift[A, S, R](v: () => A)(using ev: S <:< R): Rep[A, S, R] =
-    tailAt[A, S, R](Freer.delay[Shift, S, S, A](() => Return[Shift, S, A](v())))
+    tailAt[A, S, R](Freer.delay[Sig, S, S, A](() => Return[Sig, S, A](v())))
 
   /** the same when `v` is a literal or a stable name and nothing runs
    * before it: no thunk at all */
   def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] =
-    tailAt[A, S, R](Return[Shift, S, A](v))
+    tailAt[A, S, R](Return[Sig, S, A](v))
 
   /** the cast, once: a `Cont[A, S, S]` whose every answer is an `S`
    * conforms to `Cont[A, S, R]` when `S <: R` — the evidence is the
@@ -179,47 +179,10 @@ object Cont:
   /** a CPS-transformed body, as the `(A => S) => R` it still means */
   abstract class Cps[A, S, R] extends ((A => S) => R):
     def body(k: A => S): Body[R]
-    final def apply(k: A => S): R = walk(body(k))
-
-  /** a CPS body found under a `Bind`, at the leaf's own arguments: the
-   * leaf is `(X => T) => R` and the continuation the bind built for it
-   * is the `X => T` — the class test is `@unchecked` for the reason the
-   * `Inject` case gives, and the body's `R` is the step's */
-  private def cpsBody[X, T, R](c: Cps[?, ?, ?])(k: X => T): Body[R] =
-    c.asInstanceOf[Cps[X, T, R]].body(k)
+    final def apply(k: A => S): R = runBody[R](body(k))
 
   /** the leaf an answer-using body becomes */
-  def cps[A, S, R](c: Cps[A, S, R]): Rep[A, S, R] = Inject(c)
-
-  /** the runner's loop from a body: what a `Cps` does when applied as
-   * the function it means */
-  private def walk[R](b: Body[R]): R =
-    step[Any, Nothing, R](noProgram[R])(noK)(StackSwitch.firstRoom)(Pending.None)(b)
-
-  /** the program and continuation a walk starts with — never looked
-   * at: a walked body answers through its pending parts, and a program
-   * it continues carries its own. A `Delay` because it must sit at the
-   * walk's OWN answer index on a base invariant in `R`
-   * (freer-consumed-index): `Return` is diagonal, and the `Nothing`-indexed
-   * value this was until then rode the covariance that is gone */
-  private def noProgram[R]: Rep[Any, Nothing, R] =
-    Delay(() => throw IllegalStateException("a walked body answers through its pending parts, never through its program"))
-  private val noK: Any => Nothing =
-    _ => throw IllegalStateException("a walked body answers through its pending parts, never through k")
-
-  /**
-   * The explicit stack of pending body parts (Layer 1 B): what is left
-   * to do with the answer of a call of `k`, pushed when the call is
-   * made, popped and fed when the program's answer arrives. `None` is
-   * the empty stack; a run with no CPS body never allocates one.
-   */
-  private final class Pending[S, R](val rest: S => Body[R], val next: Pending[?, ?]):
-    /** the walk's own claim (see `walked`): the answer the runner
-     * reached is the `S` this part was pushed for */
-    def deliver(s: Any): Body[R] = rest(walked[S](s))
-  private object Pending:
-    val None: Pending[?, ?] = Pending[Any, Nothing](_ => throw IllegalStateException("empty"), null)
-
+  def cps[A, S, R](c: Cps[A, S, R]): Rep[A, S, R] = leaf(k => bodyProgram(c.asInstanceOf[Cps[Any, Any, Any]].body(k)))
   /**
    * A bind whose LEFT side is deferred into the runner's own loop: the
    * thunk is not forced at construction, only when `step` reaches the
@@ -239,80 +202,130 @@ object Cont:
   def delay[A, S, R](thunk: () => Rep[A, S, R]): Rep[A, S, R] = Freer.delay(thunk)
 
   /**
-   * A leaf that has ALREADY absorbed one continuation.
-   *
-   * Absorption is a single bit, so the state is the CASE and there is
-   * no depth field. An enum here costs no allocation — a case IS a
-   * case class with the same two fields — and `apply` written ONCE
-   * gives both cases a shared vtable entry, so the runner's call has a
-   * single target the JIT inlines. That was worth 3.2–4.5% on every
-   * Fib lane against two classes with two bodies (history.tsv
-   * `once-*`), while making the same call site merely bimorphic was
-   * worth nothing: the JIT counts call TARGETS, not receiver types.
-   *
-   * WHY EXACTLY ONE absorption, swept rather than argued (history.tsv
-   * `fuse0-*`, `fuse1-*`, `freer0b-absorb-sweep`): absorption itself
-   * pays 12–25%, one step is the whole of that, and depth COSTS —
-   * `statePara` reads 0.861 at depth 1 against 1.15–1.19 deeper,
-   * because each further step nests one more closure call per run.
-   * That lane has the sharpest response in the suite; price any
-   * change here against it.
-   *
-   * The type parameters are the tree's own now: an `Absorbed` is a
-   * `(B => S) => R`, which is the leaf type at the indexes `bind`'s
-   * result carries, so the compiler checks the pair it is built from.
-   */
-  private enum Leaf[A, S, R] extends ((A => S) => R):
-    /** flatMap's absorption: the continuation enters the leaf */
-    case Absorbed[A, B, S, T, R](s: (A => T) => R, g: A => Rep[B, S, T]) extends Leaf[B, S, R]
-
-    /**
-     * the same for `map`, its own case rather than `Absorbed` over
-     * `a => Return(f(a))`: that spelling allocates a `Pure` per element
-     * at RUN time, which measured +24 B/op and 8-19% on every Fib lane
-     * — the generator maps once per element, so this is its hot path.
-     */
-    case Mapped[A, B, S, R](s: (A => S) => R, g: A => B) extends Leaf[B, S, R]
-
-    def apply(k: A => S): R = k match
-      case r: Reentry[?, ?, ?, ?] => applyAt(k, r.room)
-      case _ => applyAt(k, StackSwitch.firstRoom)
-
-    /** the leaf re-enters the runner with the room the runner has left
-     * (specs/stack-safety.md stage 1c) */
-    def applyAt(k: A => S, room: Int): R = this match
-      case Absorbed(s, g) => s(Reentry(g, k, room - 1))
-      case Mapped(s, g) => s(mappedK(k, g, room - 1))
-
-  /**
    * flatMap, in prefix form. The extension below and the
    * `Control[Cont]` instance BOTH call this, so neither can resolve
    * into the other — the self-recursion that the ParaMonad bridge in
    * Monad.scala documents (extension syntax inside an override
    * resolves to the override being defined).
    */
-  def bind[A, B, S, S2, R](c: Rep[A, S, R])(f: A => Rep[B, S2, S]): Rep[B, S2, R] =
-    c match
-      case Inject(s) => s match
-        // already absorbed one — see `Leaf` for why never twice; a CPS
-        // body is walked by the runner, never applied, so never absorbed
-        case _: Leaf[?, ?, ?] | _: Cps[?, ?, ?] => Bind(c, f)
-        case _ => Inject(Leaf.Absorbed(s, f))
-      // Pure receivers build a node too: fusing `pure(a).flatMap(f)` at
-      // CONSTRUCTION would run `def forever = pure(()).flatMap(_ =>
-      // forever)` at construction and diverge (interpreter-optimization)
-      case _ => Bind(c, f)
+  def bind[A, B, S, S2, R](c: Rep[A, S, R])(f: A => Rep[B, S2, S]): Rep[B, S2, R] = Bind(c, f)
 
-  /** map, absorbed in its own right — see `Mapped` */
-  def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] =
-    c match
-      case Inject(s) => s match
-        case _: Leaf[?, ?, ?] | _: Cps[?, ?, ?] => Bind(c, a => Return(f(a)))
-        case _ => Inject(Leaf.Mapped(s, f))
-      case _ => Bind(c, a => Return(f(a)))
+  /** map: `Freer.map`'s node, the `Mapped` continuation a builder can read */
+  def mapped[A, B, S, R](c: Rep[A, S, R])(f: A => B): Rep[B, S, R] = c.map(f)
 
   /** apply to a continuation, as the function (A => S) => R it means */
-  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R = step(c)(k)(StackSwitch.firstRoom)(Pending.None)(null)
+  def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
+    value(Inject(Cont0.Reset0[NoEffect, Any, Any, Any, Any](root, Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom), erased(c), false, null))).asInstanceOf[R]
+
+  // ==================================================================
+  // THE RUNNER IS THE FRAME MACHINE (cont-step-on-frames, 2026-09-30;
+  // specs/freer-kont.md, stage 3). A Cont program is a `Cont0` program
+  // of one ROOT prompt: `run` installs a `Reset` of it whose `ret` is
+  // the user's `k`, and every leaf is a `Shift0` to the nearest — the
+  // run it is in, since a `k(x)` re-installs its root with it. Two roads,
+  // the ones the macro already separates:
+  //   an answer-using body (`Cps`, the macro's selective CPS transform:
+  //     `k(1) + k(10)`) is a program over a LAZY `k` — `Call(k, a, rest)`
+  //     is `k(a).flatMap(rest)`, pushed by the machine, no JVM frame;
+  //   an opaque body (`k` where the macro cannot see it) gets a STRICT
+  //     `k`: `x => force(k, x)`, a nested run to a value — direct style's
+  //     own cost — at one level less of room, moved to a fresh stack at
+  //     zero (`StackSwitch`, Layer 3).
+  // What this replaces: `step`, the `Reentry` chain, the `Pending` stack
+  // of Layer 1 B, and the absorbed leaves — one machine for Delim and
+  // Cont, where there were two.
+  // ==================================================================
+
+  /** a Cont program has no effect but its own */
+  private[okay] type NoEffect = [S, R, X] =>> Nothing
+  private[okay] type Sig = Cont0.Row[NoEffect]
+
+  private type P = Freer[Sig, Any, Any, Any]
+  private type K = Stack[NoEffect, Any, Any, Any, Any]
+
+  /** THE ROOT PROMPT: one for every run — runs nest by the stack, and a
+   * leaf's cut stops at the nearest `Reset` of it */
+  private val root: Prompt[Any] = new Prompt[Any]("Cont.run", "Cont.scala")
+
+  /** the root's `ret`: the user's `k`, and the room this run has on its
+   * stack — where a strict `k` reads it (`force`) */
+  private final class Root(val k: Any => Any, val room: Int) extends (Any => P):
+    def apply(x: Any): P = Return(k(x))
+
+  /**
+   * THE CLAIM of this runner, and its argument. Cont's answer types are
+   * the FACADE's: `Rep` is opaque and every node is built in this
+   * companion, so a Cont program is a `Cont0` program at erased
+   * indexes. A body answering `R` where its `k` answers `S` (answer-type
+   * modification with escape) stands in the root's place, which is the
+   * run's answer: the erasure is the whole of it — the machine's join
+   * index cannot carry an escape type, and Cont's strict `k` is where it
+   * is real (specs/freer-kont.md, Results).
+   */
+  private def erased[A, S, R](c: Rep[A, S, R]): P = c.asInstanceOf[P]
+  private def typed[A, S, R](p: P): Rep[A, S, R] = p.asInstanceOf[Rep[A, S, R]]
+
+  /** a leaf: a `Shift0` to the root, its clause given the stack up to it */
+  private def leaf[A, S, R](clause: K => P): Rep[A, S, R] =
+    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, clause, false, "Cont.shift")))
+
+  /** road 3: the body gets a STRICT `k` and answers a value */
+  private def opaqueLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
+    leaf(k => Return(f.asInstanceOf[(Any => Any) => Any](x => force(k, x))))
+
+  /** road 2: a transformed body as a program over the lazy `k` */
+  private def bodyProgram(b: Body[?]): P = b match
+    case Body.Done(r) => Return(r)
+    case Body.Call(kk, a, rest) =>
+      val next: Any => P = s => bodyProgram(rest.asInstanceOf[Any => Body[?]](s))
+      Frames.as[NoEffect, Any, Any, Any, Any](kk.asInstanceOf[Any => P]) match
+        case null => Delay(() => next(kk.asInstanceOf[Any => Any](a)))
+        case ks => Bind(ks(a), next)
+
+  /** a walked body, applied as the function it means: its program run */
+  private def runBody[R](b: Body[R]): R = value(bodyProgram(b)).asInstanceOf[R]
+
+  /** a run to its value: a Cont program has no other effect, so the head
+   * form is a `Return` */
+  private def value(p: P): Any = Frames.run[NoEffect, Any, Any, Any](p) match
+    case Return(v) => v
+    case _ => throw IllegalStateException("a Cont program answered an operation: it has none")
+
+  /**
+   * THE STRICT `k`: the rest of the run, run NOW to its value — nested,
+   * so counted. The root of `k` carries the room of the run it was
+   * captured from; the nested run gets one level less, and at zero the
+   * stack is asked (Layer 3), and a stack with none left switches.
+   */
+  private def force(k: K, x: Any): Any =
+    val here = roomOf(k) - 1
+    if here > 0 then value(Bind(Return(x), withRoom(k, here)))
+    else
+      val more = StackSwitch.more(Gauge())
+      if more > 0 then value(Bind(Return(x), withRoom(k, more)))
+      else StackSwitch.fresh(fresh => value(Bind(Return(x), withRoom(k, fresh))))
+
+  /** the room of `k`'s root: the last `Reset` of `k` is the root it was cut at */
+  @annotation.tailrec
+  private def roomOf(k: Stack[NoEffect, ?, ?, ?, ?]): Int = k match
+    case Stack.Reset(p, r: Root, _, _, below) => if p eq root then r.room else roomOf(below)
+    case Stack.Reset(_, _, _, _, below) => roomOf(below)
+    case Stack.Run(_, below) => roomOf(below)
+    case _ => StackSwitch.firstRoom
+
+  /** `k` with its root's room replaced: its nodes rebuilt, its frames shared */
+  private def withRoom(k: K, room: Int): K =
+    @annotation.tailrec def down(st: K, acc: List[K]): K = st match
+      case Stack.Reset(p, r: Root, pl, sh, below) if p eq root => up(acc, Stack.Reset(p, Root(r.k, room), pl, sh, below))
+      case n: Stack.Run[?, ?, ?, ?, ?, ?, ?] => down(n.below.asInstanceOf[K], n.asInstanceOf[K] :: acc)
+      case n: Stack.Reset[?, ?, ?, ?, ?, ?] => down(n.below.asInstanceOf[K], n.asInstanceOf[K] :: acc)
+      case _ => throw IllegalStateException("a Cont continuation without its root")
+    @annotation.tailrec def up(acc: List[K], st: K): K = acc match
+      case Nil => st
+      case (n: Stack.Run[?, ?, ?, ?, ?, ?, ?]) :: rest => up(rest, Stack.Run(n.frames.asInstanceOf[Frames[NoEffect, Any, Any, Any, Any]], st))
+      case (n: Stack.Reset[?, ?, ?, ?, ?, ?]) :: rest => up(rest, Stack.Reset(n.p.asInstanceOf[Prompt[Any]], n.ret.asInstanceOf[Any => P], n.plain, n.shots, st))
+      case _ :: rest => up(rest, st)
+    down(k, Nil)
 
   /**
    * What a run's stack looked like at its last GRANT (specs/cont-stack.md
@@ -345,93 +358,6 @@ object Cont:
 
   /** the root of a run's continuation chain once it has a gauge: the
    * user's `k`, and the run's gauge behind it */
-  private final class Gauged[B, S](val k: B => S, val gauge: Gauge) extends (B => S):
-    def apply(b: B): S = k(b)
-
-  /** the gauge behind a continuation: the one at the chain's root, or
-   * one attached there now; a fresh, unattached one for a chain that
-   * has no `Reentry` at all (a `Mapped` leaf's lambda): a fresh gauge
-   * only makes the next grant conservative — `worst` starts cold —
-   * never wrong */
-  @annotation.tailrec
-  private def gaugeOf(k: Any): Gauge = k match
-    case r: Reentry[?, ?, ?, ?] => r.k match
-      case inner: Reentry[?, ?, ?, ?] => gaugeOf(inner)
-      case _ => r.gauge
-    case g: Gauged[?, ?] => g.gauge
-    case _ => Gauge()
-
-  /**
-   * THE CONTINUATION A SHIFT'S BODY RECEIVES, when calling it re-enters
-   * this runner — and the room left on this stack, carried as a FIELD
-   * rather than in a ThreadLocal (specs/stack-safety.md stage 1c).
-   *
-   * Direct style's own cost: a body gets `k`'s VALUE, so `k` runs the
-   * rest of the program inside the body's call, and shifts in a row
-   * nest one level each. `room` counts the levels this stack still
-   * takes; at zero the rest continues on a FRESH stack
-   * (`StackSwitch.fresh`) and this one waits for its answer. No
-   * exception unwinds anything and nothing runs twice: the body's frame
-   * simply stays where it is, on the stack below, until the answer
-   * comes back.
-   */
-  private final class Reentry[X, B, S, T](val f: X => Rep[B, S, T], var k: B => S, val room: Int) extends (X => T):
-    def apply(x: X): T = enter(x, room)
-
-    /** this chain root's gauge, attached on the first ask: `k` is the
-     * user's function here (see `gaugeOf`), wrapped once */
-    def gauge: Gauge = k match
-      case g: Gauged[?, ?] => g.gauge
-      case _ =>
-        val g = Gauge()
-        k = Gauged(k, g)
-        g
-
-    /** enter from a place with `here` levels of room left: a
-     * continuation may be called DEEPER than it was made (the runner
-     * hands an answer to an outer continuation from inside an inner
-     * segment), so the room is the smaller of the two. At ZERO the
-     * stack is asked how much it really has left (Layer 3): a grant
-     * continues here, and only a stack with no room switches. */
-    def enter(x: X, here: Int): T =
-      val r = if here < room then here else room
-      if r > 0 then step(f(x))(k)(r)(Pending.None)(null) else exhausted(x)
-
-    /** the rare road, OUT of `enter` so `enter` stays small enough to
-     * inline (cont-stack-fastpath round 2, PrintInlining on fib100:
-     * `enter` at 106 bytes read "callee is too large" and `callK`
-     * through it "callee uses too much stack", and the `Mapped` lambda
-     * that the base scalar-replaced then escaped) */
-    private def exhausted(x: X): T =
-      val more = StackSwitch.more(gaugeOf(k))
-      if more > 0 then step(f(x))(k)(more)(Pending.None)(null)
-      else StackSwitch.fresh(fresh => step(f(x))(k)(fresh)(Pending.None)(null))
-
-  /**
-   * A `Mapped` leaf's continuation: `callK`'s type test taken ONCE, when
-   * the leaf is applied, rather than inside the lambda on every call
-   * (cont-stack-fastpath round 3). A plain `k` gets the base's own
-   * two-capture lambda, `a => k(g(a))`, which the JIT inlines into the
-   * shift's body and scalar-replaces; a `Reentry` gets one that enters
-   * it directly. Same meaning as `a => callK(k, g(a), room)`: `k` is
-   * fixed for the leaf's life.
-   */
-  private def mappedK[A, B, S](k: B => S, g: A => B, room: Int): A => S = k match
-    case r: Reentry[x, ?, ?, t] => a => r.enter(g(a), room)
-    case _ => a => k(g(a))
-
-  /** the continuation a `Bind(Inject(s), f)` hands its leaf: CURRIED, so
-   * `B` is fixed by `f` before `k` is checked against it — the tree's
-   * `+A` makes the bind's continuation domain a subtype of the step's
-   * `A`, and `A => S` is a `B => S` by contravariance, which one
-   * parameter list would not let inference see */
-  private def reenter[X, B, S, T](f: X => Rep[B, S, T])(k: B => S)(room: Int): X => T = Reentry(f, k, room)
-
-  /** call a continuation from inside the runner, with the room HERE */
-  private def callK[A, S](k: A => S, a: A, room: Int): S = k match
-    case r: Reentry[x, ?, ?, t] => r.enter(a, room)
-    case _ => k(a)
-
   /**
    * Is this program already an ANSWER — and if so, continue on the
    * answer itself instead of applying a continuation to it.
@@ -462,96 +388,6 @@ object Cont:
     c match
       case Return(a) => ifAnswer(a)
       case _ => otherwise
-
-  /**
-   * THE WALK'S ONE CLAIM, and it is about the pending stack, not the
-   * tree (freer-base-step-extractor left it as it was): a body being
-   * walked answers through the parts pushed for it, and the loop's
-   * `c`/`k`/`R` are the STEP's, not the body's, while it walks (`b ne
-   * null` — `noProgram`, `noK`). So a `Done(r)` and a delivered answer
-   * arrive typed by whoever pushed the part, which the loop's signature
-   * does not carry. The tree's two claims of the same shape (`Shift.at`
-   * at the leaf, `pinned` at `Return`) are gone: the GADT types them.
-   */
-  private inline def walked[R](s: Any): R = s.asInstanceOf[R]
-
-  /**
-   * The loop: rotation and elimination interleaved, as the original
-   * `Cont./` had them. The single non-tail case re-enters through
-   * `run`, because a shift's body may invoke its continuation, and
-   * that frame is direct style's own cost rather than the runner's.
-   *
-   * Composing the rotated continuation through `bind` rather than a
-   * raw `Bind` lets it be absorbed by the leaf it lands on; measured
-   * to move nothing on the Fib lanes (their programs are right-nested,
-   * so the case barely fires) and kept because it is the shape the
-   * original runner had. Delegating to `!.resume` and a three-case
-   * match instead is indistinguishable on `relayForward` and loses
-   * `statePara` (0.845 vs 0.900) — history.tsv `freer0b-runner-shape`.
-   *
-   * WITH LAYER 1 B'S PENDING STACK (cont-stack-layer1-b): every exit that used
-   * to RETURN an answer — the `Return` case's `callK`, an opaque leaf,
-   * an opaque body under a `Bind` — now `answer`s it, which is the
-   * return when nothing is pending and otherwise feeds the part on
-   * top and walks on. The body being walked is the loop's fifth
-   * parameter (`null` when none — a wrapper node per step cost an
-   * allocation), so the loop stays one `@tailrec` method: `Call`
-   * continues the program through the `Reentry`'s fields in-loop, at
-   * the room THIS stack has (no frame was spent). A nested runner — `Reentry.enter`, from an opaque body's
-   * own call of `k` — starts with nothing pending and returns as
-   * before; its answer lands in this loop's `answer`.
-   *
-   * A leaf is `(A => S) => R` on the tree now; an absorbed `Leaf` and a
-   * `Cps` are its subclasses at the same arguments, found by class (see
-   * the `Inject` case). The `Any` at the walk's answer is `walked`'s.
-   * Until this stage the room reached an absorbed leaf through a
-   * `leafAt` helper, for the reason still true of `applyAt`: a leaf
-   * re-enters the runner through ITS continuation, not the one it is
-   * given, so read off the continuation it would only ever see the
-   * program's outermost one, and shifts in a row would never count
-   * down (measured: a 20 000 shift program overflowed with the room
-   * in `k` alone).
-   */
-  @annotation.tailrec
-  private def step[A, S, R](c: Rep[A, S, R])(k: A => S)(room: Int)(pending: Pending[?, ?])(b: Body[?]): R =
-    inline def answer(r: R): R =
-      if pending eq Pending.None then r
-      else step[A, S, R](c)(k)(room)(pending.next)(pending.deliver(r))
-    if b ne null then b match
-      case Body.Done(r) => answer(walked[R](r))
-      case Body.Call(kk, e, rest) => kk match
-        // `walked`'s claim on a PROGRAM: the answer of this nested run
-        // goes to the part just pushed, not to this step's `R` — the
-        // loop's result type is the step's, and the pending stack's
-        // typing is dynamic (see `walked`)
-        case re: Reentry[x, b2, s2, ?] => step[b2, s2, R](walked[Rep[b2, s2, R]](re.f(e)))(re.k)(room)(Pending(rest, pending))(null)
-        case _ => step[A, S, R](c)(k)(room)(pending)(rest(kk(e)))
-    // `@unchecked`: `Diag` is a case of the base a Cont never holds —
-    // this companion builds every Cont leaf, as `Inject`, so it can be
-    // absorbed — and a dead arm for it here would be bytes in the loop
-    // whose inlining the Fib lanes price (freer-diag-leaf)
-    else (c: @unchecked) match
-      case Return(a) => answer(callK(k, a, room))
-      // an absorbed leaf and a CPS body are found by CLASS: the leaf's
-      // type on the tree is `(A => S) => R`, the classes extend it at
-      // their own arguments, and those are the same three — nothing
-      // else builds either (`bind`, `mapped`, `cps`) — which a type
-      // test cannot see through a function type, so the arguments are
-      // `@unchecked`: the one claim the class boundary keeps
-      case Inject(s) => s match
-        case l: Leaf[A, S, R] @unchecked => answer(l.applyAt(k, room))
-        case cps: Cps[A, S, R] @unchecked => step[A, S, R](c)(k)(room)(pending)(cps.body(k))
-        case _ => answer(s(k))
-      // the leaf's inner answer is the Bind's middle index, bound by the
-      // match: `Reentry(f, k, room - 1)` is exactly the `X => T` the
-      // leaf `(X => T) => R` takes, and nothing names `Any` any more
-      case Bind(Inject(s), f) => s match
-        case cps: Cps[?, ?, ?] => step[A, S, R](c)(k)(room)(pending)(cpsBody(cps)(reenter(f)(k)(room - 1)))
-        case _ => answer(s(reenter(f)(k)(room - 1)))
-      case Bind(Bind(a, f), g) => step(Bind(a, x => bind(f(x))(g)))(k)(room)(pending)(null)
-      case Bind(Return(a), f) => step(f(a))(k)(room)(pending)(null)
-      case Delay(t) => step(t())(k)(room)(pending)(null)
-      case Bind(Delay(t), g) => step(Bind(t(), g))(k)(room)(pending)(null)
 
   extension [A, S, R](c: Cont[A, S, R])
     def flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R] = bind(c)(f)
