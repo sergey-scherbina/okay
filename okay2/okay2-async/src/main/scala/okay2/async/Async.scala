@@ -157,7 +157,15 @@ trait Fiber[A] {
 
 /** the scheduler: how a program gets its own thread of control. It
  * takes the PROGRAM, not a computed answer */
-trait Scheduler { def fork[A](prog: () => A ! Async): Fiber[A] }
+trait Scheduler {
+  def fork[A](prog: () => A ! Async): Fiber[A]
+  /** a fork the caller declares LONG — a fiber that runs for a stream's
+   * whole life, such as a channel's feed. A scheduler that keeps a new
+   * fiber where it was forked (`own`, `adaptive`) may give it a worker
+   * at once; the caller knows what the scheduler cannot
+   * (specs/adaptive-chunked-merge-cost.md). By default, `fork`. */
+  def forkLong[A](prog: () => A ! Async): Fiber[A] = fork(prog)
+}
 
 object Async {
   sealed trait Op[+A]

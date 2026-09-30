@@ -468,8 +468,10 @@ object Channel {
     val dt = new AtomicInteger(1)
     lazy val fs: Fiber[Unit] = flusher(bs, ds)
     lazy val ft: Fiber[Unit] = flusher(bt, dt)
-    watch(sch.fork(() => feedS(c, bs)), ds, fs); val _ = fs
-    watch(sch.fork(() => feedT(c, bt)), dt, ft); val _ = ft
+    // the feeds run for the stream's whole life: `forkLong` gives each a
+    // worker at once (okay2-forklong)
+    watch(sch.forkLong(() => feedS(c, bs)), ds, fs); val _ = fs
+    watch(sch.forkLong(() => feedT(c, bt)), dt, ft); val _ = ft
     c
   }
 
@@ -565,7 +567,7 @@ object Channel {
   def bufferChunked[A, S[_], F <: Row](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
                                      (implicit SS: Stream[S, F], HF: Handler[F], sch: Scheduler): Channel[Chunk[A]] = {
     val c = Channel[Chunk[A]](capacity)
-    sch.fork(() => feedBatched(c, s, size)).onComplete { r =>
+    sch.forkLong(() => feedBatched(c, s, size)).onComplete { r =>
       r.left.foreach(c.fail)
       c.close()
     }

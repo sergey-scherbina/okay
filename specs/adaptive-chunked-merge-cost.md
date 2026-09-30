@@ -125,3 +125,13 @@ noted in `scheduler-flip-remeasure`. `AdversarialBenchmark.forkJoin10k_okay`
 (`forLongTasks` 331 against the default's 331) and a resumed feed
 running on the consumer's thread (no producer frame on the benchmark
 thread's CPU profile).
+
+## okay2 (2026-09-30, okay2-forklong)
+
+Ported: `Scheduler.forkLong` (default `fork`), the claimed wake on
+`own`/`adaptive` (`Worker.waking`, `activateUnclaimed`), and the chunked
+feeds (`chunkedMerge`, `bufferChunked`) on it. okay2's `own` has NO
+monitor, so there the case is starker than here: a second long fiber
+forked from outside waited for the first to END, not a tick
+(`TestForkLong`, red first: 2 s waited; green after). okay2's default is
+still Loom, so this is for a program that picks `own`/`adaptive`.
