@@ -22,3 +22,7 @@
       would also drop the closure allocation per rotation. Price it on
       `stateLexDeep`, `stateIndexedForward` and the Fib/relay lanes
       (`free-tree-is-not-the-cost`: the fused Free loop is the bar).
+      RELATED (2026-09-30): freer-kont-frames-probe removes the rotation
+      closure altogether (the continuation becomes a queue), so it prices
+      this lead as a side effect — measure the modes there before a
+      separate lane here.
