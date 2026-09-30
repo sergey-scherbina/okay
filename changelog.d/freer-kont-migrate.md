@@ -8,7 +8,7 @@
   `shots`, `Shift0` carries `bare`; `Frames.apply` answers
   `Delay(Resume(a, fs))` — the continuation carries its own interpreter
   (forced by an outer loop it runs the machine, met by the machine it is
-  spliced). Commits 8b3b50620..782778fa9, specs/freer-kont.md stage 2.
+  spliced). Commits e33df450d..f217262ee, specs/freer-kont.md stage 2.
 - `Delim` over the machine: `type Delim[+A] = Cont0[?, ?, ?, A]`, every
   unstacked door a re-typing over a `Cont0` door (`in`/`out`, the one
   claim), `run` under a BOUNDARY reset that turns an unanswered capture

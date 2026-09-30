@@ -314,7 +314,7 @@ bytes is the lazy `k(x)` node (`Delay` + `Resume`) and the `Rev` walk of
 a splice — 56 B per emit, bought back in time.
 
 **Stage 2, the migration** (`src/jmh/history.d/…-freer-kont-migrate.tsv`,
-sha 782778fa9, DelimBenchmark's own lanes unchanged, on the frame
+sha f217262ee, DelimBenchmark's own lanes unchanged, on the frame
 machine against the Delim machine's rows of the same day):
 
 | DelimBenchmark lane | Delim machine | frame machine | time | bytes |
