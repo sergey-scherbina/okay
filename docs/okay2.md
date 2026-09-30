@@ -2227,12 +2227,27 @@ document once, and `run` binds the same lanes to channels:
   object Kinds extends Routes(fromBytes) {
     val swaps = route[Swap]
     val rates = route("rates") { case d @ (_: Fx | _: Cds) => d }
-    val out = Kinds.split[Chunks](Documents.files[Chunks](folder()))
-    val s = Kinds.split[Rows](Documents.files[Rows](folder)(onSpark))(onSpark)
+    val out = Kinds.split(Documents.files[Chunks](folder()))
+    val s = { implicit val B: Bulk[Rows] = onSpark; Kinds.split(Documents.files[Rows](folder)) }
     val r = go(Kinds.run(src)(Kinds.swaps ~> swapsCh, Kinds.rejected ~> dead))
 ```
 
-okay2's `Bulk` has no `read(path, Format)`, so `Documents.files[D](dir)`
+`split` takes any carrier with a `Routable` — the typeclass of what can
+be routed: a `Vector`, any `Bulk` collection (`Chunks`, okay2-spark's
+`Rows`), a `Source` stream — so the table is one and the call is one;
+each lane comes back as the carrier's own kind, and for a stream
+`counts` is the program that fills the lanes' channels:
+
+```scala
+    val v = Kinds.split(inputs)
+    val c = Kinds.split(B.of(inputs))
+    val s = Kinds.split(Source(inputs: _*))
+    assertEquals(swapsS, swapsV)
+```
+
+Unlike Scala 3, Scala 2 sees `Chunks[A]` through its alias as the
+generic `D[A]`, so there is no separate `Chunks` instance (a second one
+was ambiguous). okay2's `Bulk` has no `read(path, Format)`, so `Documents.files[D](dir)`
 spreads the listing with `of` and reads each file in a `flatMap` — what
 okay's `Bulk.read` does inside. TestSparkRoutes (okay2-spark) runs 400
 documents on Spark `local[4]` and in one JVM and asserts every lane, the

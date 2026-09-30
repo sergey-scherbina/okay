@@ -55,8 +55,8 @@ class TestSparkRoutes extends munit.FunSuite {
   test("split on SparkBulk equals split in one JVM: every lane, the rejects, the counts") {
     val onSpark = SparkBulk(spark)
     val local: Bulk[Chunks] = Bulk.local(p => Files.lines(java.nio.file.Path.of(p)).iterator().asScala)
-    val s = Kinds.split[Rows](Documents.files[Rows](folder)(onSpark))(onSpark)
-    val l = Kinds.split[Chunks](Documents.files[Chunks](folder)(local))(local)
+    val s = { implicit val B: Bulk[Rows] = onSpark; Kinds.split(Documents.files[Rows](folder)) }
+    val l = { implicit val B: Bulk[Chunks] = local; Kinds.split(Documents.files[Chunks](folder)) }
     def fromSpark[X](d: Rows[X]): Vector[X] = onSpark.toChunks(d).elements.toVector
     assertEquals(fromSpark(s(Kinds.swaps)).sortBy(_.id), l(Kinds.swaps).elements.toVector.sortBy(_.id))
     assertEquals(fromSpark(s(Kinds.rates)).length, 200)

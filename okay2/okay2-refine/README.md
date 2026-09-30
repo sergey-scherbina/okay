@@ -11,7 +11,7 @@ one `Json` a Schema pattern reads; `Refine.schema`, `Refine.json.*`; the algebra
 `Refine.Merge`, `orRaise` (Throws), `verdicts` / `taken` (Stages); routing — `Router`
 (`route[X]`, `route { case … }`, `byName`, `tap`, `otherwise`, `run`),
 `decide`, `Refine.routed`; `Routes` — a routing table as a value over any
-`Bulk` (Chunks or okay2-spark's `SparkBulk`) or into channels, and
+`Routable` carrier (Vector, Bulk — Chunks or okay2-spark's `Rows` —, Source) or into channels, and
 `Documents.files[D]` (JVM).
 
 **Depends on:** `okay2` (core), `okay2-codec`, `okay2-optics`, `okay2-stream`. Pure

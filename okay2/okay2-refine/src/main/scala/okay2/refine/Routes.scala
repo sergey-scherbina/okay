@@ -4,7 +4,7 @@ import scala.collection.mutable
 import scala.reflect.ClassTag
 import okay2.{!, Aggregator, pure}
 import okay2.async.{Async, Scheduler}
-import okay2.stream.{Bulk, Channel, Source}
+import okay2.stream.{Channel, Source}
 import okay2.stream.Source.SourceOps
 
 /**
@@ -102,28 +102,22 @@ abstract class Routes[A, B](val pattern: Refine[A, B]) extends Serializable {
   /** the name of the lane `a` goes to, or why none */
   def decide(a: A): Either[Rejected[A, B], String] = tag(a).map { case (i, _) => table(i).name }
 
-  /** THE TABLE OVER ANY `Bulk`: each document recognised once, cached */
-  def split[D[_]](docs: D[A])(implicit B: Bulk[D]): Split[D] = new Split[D](B.cache(B.map(docs)(tag)))
+  /** THE TABLE OVER ANY CARRIER — a `Vector`, a `Bulk` collection (Chunks,
+   * okay2-spark's `Rows`), a `Source` stream: whatever has a `Routable`.
+   * Each input is tagged once; each lane comes back as the carrier's own kind */
+  def split[C, O[_], D[_]](c: C)(implicit r: Routable.Aux[C, A, O, D]): Split[O, D] =
+    new Split[O, D](r.fan(c, table.length)(tag), r)
 
-  /** a table's answer over a `Bulk`: each lane's values, the rejects, the counts */
-  final class Split[D[_]] private[Routes] (val tagged: D[Either[Rejected[A, B], (Int, B)]])(implicit B: Bulk[D]) {
+  /** a table's answer over a carrier: each lane's values, the rejects, the counts */
+  final class Split[O[_], D[_]] private[Routes] (fanned: Routable.Fanned[O, D, Rejected[A, B], B],
+                                                r: Routable.Aux[_, A, O, D]) {
     /** the values of one lane, as the lane types them */
-    def apply[X](l: Lane[X]): D[X] = {
-      val i = l.index
-      B.flatMap(tagged) {
-        case Right((j, b)) if j == i => l.project(b)
-        case _ => None
-      }
-    }
-
+    def apply[X](l: Lane[X]): O[X] = r.select(fanned.lane(l.index))(l.project)
     /** everything no lane took, with why */
-    def rejected: D[Rejected[A, B]] = B.flatMap(tagged)(_.left.toOption)
-
-    /** how many went down each lane, and how many were rejected — ONE pass */
-    def counts: Routed = {
-      val (per, rj) = B.aggregate(tagged)(Routes.counting[Rejected[A, B], B](table.length))
-      Routed(lanes.map(_.name).zip(per), rj)
-    }
+    def rejected: O[Rejected[A, B]] = fanned.rejected
+    /** how many went down each lane, and how many were rejected (for a
+     * stream: the program that moves the data — run it beside the readers) */
+    def counts: D[Routed] = r.done(fanned.counts) { case (per, rj) => Routed(lanes.map(_.name).zip(per), rj) }
   }
 
   /** THE TABLE INTO CHANNELS; every channel given is closed once at the

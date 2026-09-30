@@ -307,6 +307,10 @@ Stage 3 — lessons:
   answers the same lanes, rejects and counts; a bounded stream (capacity
   4, 300 documents) with the readers beside the driver loses nothing;
   SparkBulk still agrees with one JVM.
+  Ported to okay2-refine the same day (okay2-refine-routable): `Aux` with
+  higher-kinded refinements works in 2.13; Scala 2 unifies `Chunks[A]`
+  through its alias with the generic `D[A]`, so a `Chunks` instance there
+  is AMBIGUOUS and was dropped — the one difference.
 
 ## 5. Results
 

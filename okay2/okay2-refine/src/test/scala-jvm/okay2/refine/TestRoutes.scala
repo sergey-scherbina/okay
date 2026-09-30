@@ -61,7 +61,7 @@ class TestRoutes extends munit.FunSuite {
 
   test("split over a Bulk (one JVM): each lane typed, the rejects with why, the counts in one pass") {
     implicit val B: Bulk[Chunks] = localBulk
-    val out = Kinds.split[Chunks](Documents.files[Chunks](folder()))
+    val out = Kinds.split(Documents.files[Chunks](folder()))
     val swaps: Vector[Swap] = out(Kinds.swaps).elements.toVector
     assertEquals(swaps, Vector(Swap("s1", "EUR"), Swap("s2", "USD")))
     assertEquals(out(Kinds.rates).elements.toVector, Vector(Fx("f1", "EURUSD"), Cds("c1", "EUR"), Cds("c2", "USD"), Fx("f2", "GBPUSD")))
@@ -98,5 +98,34 @@ class TestRoutes extends munit.FunSuite {
     assert(roundTrip(Kinds) eq Kinds, "a table object comes back as itself")
     assertEquals(roundTrip(Kinds.swaps).project(Swap("s", "EUR")), Some(Swap("s", "EUR")))
     assertEquals(roundTrip(Kinds.swaps).project(Cds("c", "EUR")), None)
+  }
+
+  test("ONE table, every carrier: a Vector, a Bulk collection, a Source stream — the same lanes, rejects and counts") {
+    implicit val B: Bulk[Chunks] = localBulk
+    val inputs = docs.map(d => (d, d.getBytes("UTF-8")))
+    val v = Kinds.split(inputs)
+    val swapsV: Vector[Swap] = v(Kinds.swaps)
+    val c = Kinds.split(B.of(inputs))
+    val s = Kinds.split(Source(inputs: _*))
+    val routed = go(s.counts)
+    val swapsS: Vector[Swap] = go(s(Kinds.swaps).runCollect)
+    assertEquals(swapsV, Vector(Swap("s1", "EUR"), Swap("s2", "USD")))
+    assertEquals(c(Kinds.swaps).elements.toVector, swapsV)
+    assertEquals(swapsS, swapsV)
+    assertEquals(go(s(Kinds.rates).runCollect), v(Kinds.rates))
+    assertEquals(go(s.rejected.runCollect).map(_.input._1), v.rejected.map(_.input._1))
+    assertEquals(routed, v.counts)
+    assertEquals(c.counts, v.counts)
+    assertEquals(v.counts, Router.Routed(Vector("Swap" -> 2, "rates" -> 4, "usdSwaps" -> 0), rejected = 1))
+  }
+
+  test("a bounded stream: the readers run WITH the driver, the slowest paces the source, nothing lost") {
+    val inputs = (0 until 300).map(i => (s"d$i", (if (i % 3 == 0) s"swap:s$i,EUR" else if (i % 3 == 1) s"fx:f$i,EURUSD" else "junk").getBytes("UTF-8")))
+    val s = Kinds.split(Source(inputs: _*))(Routable.stream[(String, Array[Byte])](capacity = 4))
+    val ((routed, swaps), (rates, rejected)) = go(Async.par(
+      Async.par(s.counts, s(Kinds.swaps).runCollect),
+      Async.par(s(Kinds.rates).runCollect, s.rejected.runCollect)))
+    assertEquals((swaps.length, rates.length, rejected.length), (100, 100, 100))
+    assertEquals(routed.rejected, 100)
   }
 }
