@@ -1,1 +1,0 @@
-claude session_01UkcD4rZuMcWszYis8fWcGN, 2026-09-30, operator ask ("Продолжай"): stage 2 of specs/stream-join.md — Source.joinWithin, the event-time windowed join on the Windows watermark; plus the okay2 port of stage 1 (sprint.d/doing/stream-join-windowed.md)
