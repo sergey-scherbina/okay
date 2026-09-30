@@ -1,0 +1,1 @@
+claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-09-30, operator ask ("Портируй"): refine-bulk (fc093a2dc) ported to okay2-refine — Routes (typed lanes by ClassTag / pattern / byName; split over okay2 Bulk; run into channels), Documents.files[D] (JVM; okay2 Bulk has no Format), Refine/Merge Serializable; TestRoutes (scala-jvm), TestSparkRoutes in okay2-spark
