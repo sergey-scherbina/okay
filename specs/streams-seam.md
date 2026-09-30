@@ -346,3 +346,15 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
   Flink lane is). Not yet: `Streamed` answered natively on Flink
   (interval join, event-time windows) — they run through `viaTables`.
 
+- streams-seam-docs (2026-10-01, lane 4): docs/one-job-everywhere.md —
+  `okay.wroclaw.OneJob.departures` (compare), the GTFS three joins + count,
+  written once and run on `Bulk.local` 508 ms, `BulkParallel(4)` 365,
+  `FlowBulk(4)` 558, Spark local[4] 1,647, Flink MiniCluster 29,802 —
+  1,158,821 rows on every one (best of 3, load 9-17). The page FOUND a
+  defect of lane 2: a join fed by another join failed on the engine
+  ("a join's left side follows another keyed stage") and nowhere else;
+  `FlowBulk` now passes a keyed side through a lazy materialised
+  boundary. Flink's 59x is the generic-Kryo seam plus a windowed coGroup;
+  a typed road (FlinkSchema rows, Flink's own join) is the known fix, not
+  built. The arc's five lanes are done.
+

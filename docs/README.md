@@ -251,6 +251,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   table, WHY the Okay number is what it is, why the competitors'
   numbers differ, and where the honest limits are. Raw history with
   protocols and refuted experiments: [history.tsv](../src/jmh/history.tsv).
+- **[One job, written once, run everywhere](one-job-everywhere.md)** —
+  the Wrocław timetable's joins as one `Tables` program, run unchanged on
+  one JVM, four fibres, our cluster engine, Spark and Flink, with the cost
+  of each.
 - **[The Wrocław streams benchmark](wroclaw-streams-benchmark.md)** —
   okay against Flink, Spark, java.util.stream, fs2, zio-streams and
   kyo on one real streaming job: event time, watermarks, keyed

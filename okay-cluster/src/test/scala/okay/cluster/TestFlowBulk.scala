@@ -95,4 +95,15 @@ class TestFlowBulk extends munit.FunSuite {
     assertEquals(B.toChunks(B.csv("small.csv")).elements.toVector, local.csv("small.csv").elements.toVector)
     assertEquals(B.size("big.csv"), sizes("big.csv"))
   }
+
+  test("a chain of joins runs on the engine: a joined side feeds the next join through a boundary") {
+    val a = Vector.tabulate(200)(i => (i % 10, i))
+    val b = Vector.tabulate(10)(k => (k, s"b$k"))
+    val c = Vector.tabulate(10)(k => (s"b$k", k * 100))
+    def prog[D[_]](B: Bulk[D]): Vector[(String, (Int, Int))] =
+      val ab = B.map(B.join(B.of(a), B.of(b)))({ case (_, (i, s)) => (s, i) })
+      B.toChunks(B.join(ab, B.of(c))).elements.toVector.sorted
+    for parts <- List(1, 4) do assertEquals(prog(engine(parts)), prog(local), s"parts $parts")
+  }
 }
+

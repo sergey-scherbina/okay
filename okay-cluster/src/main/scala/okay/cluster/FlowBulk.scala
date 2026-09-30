@@ -60,11 +60,37 @@ final class FlowBulk(parts: Int,
   def filter[A](d: Flow[A])(p: A => Boolean): Flow[A] = d.filter(p)
 
   def join[K, A, B](l: Flow[(K, A)], r: Flow[(K, B)]): Flow[(K, (A, B))] =
-    Flow.Join(l, r, parts, JoinHow.Hash())
+    Flow.Join(bounded(l), bounded(r), parts, JoinHow.Hash())
+
+  /**
+   * A side that is itself a keyed stage (a join, a keyed or windowed
+   * aggregation) cannot feed a `Flow.Join` directly: two keyed stages
+   * need an exchange between them, which the in-process engine does not
+   * have (`Flows` refuses it by name). Such a side becomes a MATERIALISED
+   * BOUNDARY — run once, on first demand, its rows sliced into `parts`
+   * partitions — the in-process stand-in for the shuffle between two
+   * stages (streams-seam-docs, found by the one-job page: a chain of
+   * three joins failed on the engine and nowhere else).
+   */
+  private def bounded[X](f: Flow[X]): Flow[X] =
+    if !keyed(f) then f
+    else
+      lazy val rows: Vector[X] = force(Flows.collect(f))
+      Flow.of(Vector.tabulate(parts)(i => () => {
+        val (lo, hi) = (rows.length.toLong * i / parts, rows.length.toLong * (i + 1) / parts)
+        Chunks.fromIterator(rows.iterator.slice(lo.toInt, hi.toInt))
+      }))
+
+  /** whether a flow ends in a keyed stage, through its local stages */
+  @scala.annotation.tailrec private def keyed(f: Flow[?]): Boolean = f match
+    case Flow.Src(_) => false
+    case Flow.Local(in, _, _) => keyed(in)
+    case Flow.Owned(in, _, _) => keyed(in)
+    case _ => true
 
   /** merged per bucket: the co-partitioned sort-merge join */
   override def joinSorted[K, A, B](l: Flow[(K, A)], r: Flow[(K, B)])(using ord: Ordering[K]): Flow[(K, (A, B))] =
-    Flow.Join(l, r, parts, JoinHow.Sorted(ord))
+    Flow.Join(bounded(l), bounded(r), parts, JoinHow.Sorted(ord))
 
   /** the broadcast road: the right side collected once, on the first
    * partition's demand, and shared by every partition of the left */
