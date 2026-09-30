@@ -94,6 +94,24 @@ object Source {
   def zipWith[A, B, C](s: Source[A], t: Source[B], capacity: Int = 64)(f: (A, B) => C)(implicit sch: Scheduler, cb: CanBlock): Source[C] =
     Writer.mapAt[(A, B), C, Unit, Async](zip(s, t, capacity))(f.tupled)
 
+  /** the sort-merge join by key of two live sources NON-DECREASING in
+   * key (specs/stream-join.md), in `zip`'s shape: a fiber per side, the
+   * right run held; inner — ends when EITHER side ends and closes the
+   * other. `SortMerge` is the machine */
+  def joinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                   (implicit sch: Scheduler, cb: CanBlock): Source[(K, (A, B))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.inner[K, A, B])
+
+  /** `joinSorted`, every left row kept; ends when the left side ends */
+  def leftJoinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                       (implicit sch: Scheduler, cb: CanBlock): Source[(K, (A, Option[B]))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.left[K, A, B])
+
+  /** `joinSorted`, every row of either side kept; ends when both have */
+  def fullJoinSorted[K: Ordering, A, B](l: Source[(K, A)], r: Source[(K, B)], capacity: Int = 64)
+                                       (implicit sch: Scheduler, cb: CanBlock): Source[(K, (Option[A], Option[B]))] =
+    SortMerge.source(l, r, capacity)(() => SortMerge.full[K, A, B])
+
   /** what `merge(chunked = true)` batches by: not a parameter, since
    * exposing it would quietly break `capacity`, which counts ELEMENTS */
   private[stream] val ChunkSize = 16
