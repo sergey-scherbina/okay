@@ -154,7 +154,7 @@ Stage 4:
 - [ ] TestDelim and TestProg are green unchanged.
 
 Stage 5:
-- [ ] `docs/typestate.md` exists, every example line pinned
+- [x] `docs/typestate.md` exists, every example line pinned
       (`TestDocExamplesTypestate`), `TestDocSnippets` green, the page
       indexed where the docs index lives.
 
@@ -253,6 +253,12 @@ the compiler said:
   `split`'s is. Box 4 (`direct`) holds by construction: the macro's
   symbol table is untouched, and every existing `direct` suite is the
   pin.
+
+### Stage 5 — LANDED (indexed-effects-5-docs)
+
+`docs/typestate.md`, linked from docs/README.md; `TestDocExamplesTypestate`
+pins the core examples verbatim, `TestTxData` the transaction's;
+TestDocSnippets and TestDocsIndex green.
 
 ### Deferred measurements
 

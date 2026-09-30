@@ -138,6 +138,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   numbers, what it must not be asked to do, and the production systems
   in this repository that are built from nothing else. Self-contained;
   it repeats what it needs.
+- **[Typestate](typestate.md)** — effects with the state's TYPE on the
+  tree: the two readings of the program's indexes, a type-changing
+  state as data run by a tail-recursive handler (`PState.Threaded`),
+  a protocol beside ordinary effects (the indexed row, `Unary`), and
+  okay-sql's transaction with the connection typed by the index
+  (`Tx.Data`). The theory is [theory/3](theory/03-parameterised.md).
 - **[Continuations in practice](continuations-in-practice.md)** — the
   four shapes that earn a capture in ordinary code (`exit`, `collect`
   / `emit`, `resumable` / `pause`, `onReturn`), each beside the way it
