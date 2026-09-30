@@ -1,1 +1,0 @@
-claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-09-30, operator ask ("Сделай и придумай ... комбинаторы для роутинга ... каждый тип документа в свой поток"): okay-refine Router — route[X](channel) by type, route{case ...}(channel) by pattern, byName, tap, otherwise(Rejected), run(Source) with every channel closed (failed on error); Refine.routed(key) as a pure Stage
