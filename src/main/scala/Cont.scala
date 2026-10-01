@@ -958,8 +958,26 @@ object Frames:
           case None => null
       case _ => null
 
+    /** a capture: to the delimiter at the head of the stack without a
+     * walk (`nearest`), else by the walk (`cut`); `null` when no delimiter
+     * on this machine answers it */
+    def capture[X, T, S1, Y](sh: Cont0.Shift0[F, ?, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] =
+      nearest(sh, fs, st) match
+        case null =>
+          val all = runOf(fs, st)
+          cut(sh, all, all, Rev.nil[F, X, T], Nil)
+        case n => n
+
+    /** a resumption's registers: `focus` over the stack `k`'s nodes were
+     * pushed onto (`Rev.onto`), its head segment unpacked into the frames
+     * register — the one place both resuming arms (a `k` as a bind's
+     * continuation, a `Resume` as a delay's thunk) go through */
+    def pushed[X, T](focus: Freer[G, T, R, X], k: Stack[F, X, S0, T, Z]): Next[?, ?, ?, ?] = k match
+      case rn: Run[F, X, S0, s2, T, y, Z] => Next[X, T, s2, y](focus, rn.frames, rn.below)
+      case sp => Next[X, T, T, X](focus, noFrames[F, X, T], sp)
+
     @tailrec def loop[X, T, S1, Y](focus: Freer[G, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] = focus match
-      case b: Bind[G, T, t2, R, x0, X] => Frames.as(b.f) match
+      case b: Bind[G, T, ?, R, ?, X] => Frames.as(b.f) match
         case null => b.a match
           // a value under a Bind: apply, no frame — what `Freer.resume`'s
           // `Bind(Return(a), f) => f(a)` does, and a right-nested chain is
@@ -975,9 +993,9 @@ object Frames:
             case _ => loop(a, Frame(b.f, fs), st)
         // a stack as the continuation — a resumed `k`, or the head form
         // fed back: its nodes pushed, never its frames copied
-        case ks => Rev.onto(ks, fs, st) match
-          case rn: Run[F, x0, S0, ?, ?, ?, Z] => loop(b.a, rn.frames, rn.below)
-          case sp => loop(b.a, noFrames[F, x0, t2], sp)
+        case ks =>
+          val n = pushed(b.a, Rev.onto(ks, fs, st))
+          loop(n.focus, n.fs, n.st)
       case r: Return[G, R, X] => fs match
         case fr: Frame[F, X, S1, s2, T, ?, Y] => loop(fr.f(r.a), fr.rest, st)
         case _: End[F, X, S1] @unchecked => st match
@@ -994,9 +1012,9 @@ object Frames:
       case d: Delay[G, T, R, X] => Frames.resume[F, T, R, X](d.thunk) match
         // a resumption: the value at the top of its stack, pushed — never forced
         case null => loop(d.thunk(), fs, st)
-        case r: Resume[F, a, T, R, X] => Rev.onto(r.k, fs, st) match
-          case rn: Run[F, a, S0, ?, R, ?, Z] => loop(Return[G, R, a](r.a), rn.frames, rn.below)
-          case sp => loop(Return[G, R, a](r.a), noFrames[F, a, R], sp)
+        case r: Resume[F, a, T, R, X] =>
+          val n = pushed(Return[G, R, a](r.a), Rev.onto(r.k, fs, st))
+          loop(n.focus, n.fs, n.st)
       // the operations, in the loop: a `Next` per `Reset0` and a union
       // result's type test cost the first cut of step 1 its install lane.
       // Either node carries one — `Diag` is `Inject` on the diagonal, its
@@ -1012,13 +1030,10 @@ object Frames:
           case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
             if rs.shots != null then rs.shots.enter()
             loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, rs.shots, fs, st))
-          case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => nearest(sh, fs, st) match
+          case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => capture(sh, fs, st) match
             case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
-            case null =>
-              val all = runOf(fs, st)
-              cut(sh, all, all, Rev.nil[F, X, T], Nil) match
-                case null => Bind(focus, all)
-                case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
+            // nobody here answers it: out, as an operation over the stack
+            case null => Bind(focus, runOf(fs, st))
           case _ => Bind(focus, runOf(fs, st))
 
     loop(p, noFrames[F, Z, S0], noStack[F, Z, S0])
