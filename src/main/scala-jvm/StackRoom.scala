@@ -3,7 +3,8 @@ package okay
 /**
  * What the JVM can say about the stack it is running on — NOTHING, on
  * this side of JDK 22 (specs/cont-stack.md Layer 3). Every method
- * answers −1, and `StackSwitch.more` turns −1 into "no grant: switch".
+ * answers −1. Since cont-core-design (2026-10-01) Cont's runner counts
+ * levels and never reads the stack; the reader is kept, unused by it.
  *
  * THE OTHER SIDE is `jdk22/StackRoom.scala` — the same object, compiled
  * with `-java-output-version 22` against `java.lang.foreign` and

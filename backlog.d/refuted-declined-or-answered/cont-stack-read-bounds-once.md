@@ -1,4 +1,7 @@
-- [ ] cont-stack-read-bounds-once — the exact road's price per read,
+- cont-stack-read-bounds-once — MOOT 2026-10-01 (cont-core-design):
+      Cont's runner no longer reads the stack (`StackSwitch.more` and
+      `Cont.Gauge` gone, the room is counted); `StackRoom` itself kept
+      (operator). Was: the exact road's price per read,
       found by cont-stack-jmh-native-access (2026-09-26, history.d
       `cont-stack-jmh-native-access`): at the tests' room of 64,
       statePara's exact road is 1.53x the count road (+19.5 KB a run);

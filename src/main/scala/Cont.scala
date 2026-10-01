@@ -303,36 +303,7 @@ object Cont:
     case Stack.Run(_, below) => rootOf(below)
     case _ => null
 
-  /**
-   * What a run's stack looked like at its last GRANT (specs/cont-stack.md
-   * Layer 3): the stack it was on, the stack pointer then, the levels
-   * granted, and the most bytes one level has ever taken in this run.
-   * `StackSwitch.more` reads the pointer again at the next exhaustion,
-   * and the difference over the levels between is a measured
-   * bytes-per-level — opaque bodies' frames included — kept as a
-   * maximum, since a body deeper down may be fatter than the ones seen.
-   * `worst` starts at the cold constant (interpreted frames) and only
-   * rises. A different `top` means a different stack (a segment thread,
-   * or a virtual thread moved to another carrier): the mark is dropped.
-   *
-   * One per run, and NOTHING allocated for it until a run's first
-   * exhaustion (plan stage C, C1): the gauge is attached THEN, to the
-   * run's root delimiter (`Root.gauge`), and found there at every
-   * exhaustion after. The first cut wrapped the
-   * user's `k` at `run`, two allocations for every run whether or not
-   * it ever went deep, and fib100 (a run per element) paid +1 664 B/op
-   * and 1.17x for it (history.d cont-stack-ab). A chain called from
-   * two threads at once may attach two gauges and keep one: a lost
-   * measurement, never a wrong one — `worst` starts cold either way.
-   */
-  private[okay] final class Gauge:
-    var top: Long = 0L
-    var mark: Long = 0L
-    var granted: Int = 0
-    var worst: Long = StackSwitch.coldBytesPerLevel
 
-  /** the root of a run's continuation chain once it has a gauge: the
-   * user's `k`, and the run's gauge behind it */
   /**
    * Is this program already an ANSWER — and if so, continue on the
    * answer itself instead of applying a continuation to it.
