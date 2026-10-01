@@ -1,4 +1,4 @@
-2026-10-01	5533239ac	-	DelimBenchmark.delimGenerator round1	66.1	44.6	1.48	rerun of the two that regressed, confirmed vs master; bytes 518277 vs 438229
-2026-10-01	5533239ac	-	DelimBenchmark.delimGenerator round2	62.8	43.1	1.46	rerun of the two that regressed, confirmed vs master; bytes 518276 vs 438228
-2026-10-01	5533239ac	-	DelimBenchmark.stateLexDeep round1	111.6	77.3	1.44	rerun of the two that regressed, confirmed vs master; bytes 894704 vs 798653
-2026-10-01	5533239ac	-	DelimBenchmark.stateLexDeep round2	112.3	78.1	1.44	rerun of the two that regressed, confirmed vs master; bytes 894710 vs 798653
+2026-10-01	34d20bb51	-	DelimBenchmark.delimGenerator round1	66.1	44.6	1.48	rerun of the two that regressed, confirmed vs master; bytes 518277 vs 438229
+2026-10-01	34d20bb51	-	DelimBenchmark.delimGenerator round2	62.8	43.1	1.46	rerun of the two that regressed, confirmed vs master; bytes 518276 vs 438228
+2026-10-01	34d20bb51	-	DelimBenchmark.stateLexDeep round1	111.6	77.3	1.44	rerun of the two that regressed, confirmed vs master; bytes 894704 vs 798653
+2026-10-01	34d20bb51	-	DelimBenchmark.stateLexDeep round2	112.3	78.1	1.44	rerun of the two that regressed, confirmed vs master; bytes 894710 vs 798653

@@ -147,8 +147,8 @@ Libraries on top keep their API and move to the core's: `Delim`'s doors
 - [x] Cont's leaf body gets a `Resumption`; nested opaque bodies bounded by levels + `StackSwitch.fresh`
 - [x] TestKont, TestCont, TestContOnMachine, TestContStack, TestContMacro (its 1M nested case included), TestDelim*, TestDollar*, TestHandlersAsDollar, TestLexical*, TestStackedShift0, TestLayered, TestBookFourCaptures, TestScopedEffects, TestStackSafetyCore, TestHandleForward, TestCollectUntil green
 - [x] the linear cases stay linear: n captures from a deep stack, n nested resumptions (TestKont's depth tests)
-- [ ] `affected master staged` green
-- [ ] A/B against master recorded in history.d — a number, not a gate: this lane's verdict is the design
+- [x] `affected master staged` green
+- [x] A/B against master recorded in history.d — a number, not a gate: this lane's verdict is the design
 
 ## Decisions
 
@@ -176,20 +176,39 @@ Libraries on top keep their API and move to the core's: `Delim`'s doors
 
 Nine steps, each a commit with the 24 continuation suites green (238
 tests). One slip: step 2's Lexical half was left out of its commit
-(6c222e806) and landed as 63f4cc84c, so the commits from step 2 to
+(4206edf01) and landed as d956f6892, so the commits from step 2 to
 step 7 do not compile one by one; the branch tip does.
 
-1. Lexical `tail` in a Delim row is installed deep (4c4917ac9).
-2. The re-entry count left the machine: `Shots`, `Enter`, `dollarResumed` (6c222e806, 63f4cc84c).
-3. `shift`/`control` derived; `Shift0.under` gone (6331f4cf6).
-4. Cont's strict leaf an ordinary clause; `Shift0.strict` gone (d8a5d600a).
-5. `Kept`, `nearest`, `close`, `relinkOrSplice` gone (e97c291b5).
-6. One entry `Frames.run`; Cont's `Resumption`, levels + `fresh`, the gauge no longer asked (c5ce9fb9d).
-7. The runner's stack reader gone: `StackSwitch.more`, `Cont.Gauge`, Native's `ThreadInfo` probe, `ContStackRoad`; `StackRoom` and `okayJdk22` KEPT (operator) (dc04840bc).
-8. `Reset` unfused: `Reset(p, ret, below)`, DPJS's `EmptyS | PushSeg | PushP` (e05a3c943).
-9. `rebase` gone from the machine: `Cont0.Delimiter[Y, I]` (84c9e2eb5).
+1. Lexical `tail` in a Delim row is installed deep (6f622fc94).
+2. The re-entry count left the machine: `Shots`, `Enter`, `dollarResumed` (4206edf01, d956f6892).
+3. `shift`/`control` derived; `Shift0.under` gone (9374af977).
+4. Cont's strict leaf an ordinary clause; `Shift0.strict` gone (676928da9).
+5. `Kept`, `nearest`, `close`, `relinkOrSplice` gone (b94bfd9b1).
+6. One entry `Frames.run`; Cont's `Resumption`, levels + `fresh`, the gauge no longer asked (4742d8f80).
+7. The runner's stack reader gone: `StackSwitch.more`, `Cont.Gauge`, Native's `ThreadInfo` probe, `ContStackRoad`; `StackRoom` and `okayJdk22` KEPT (operator) (a0b41e6cc).
+8. `Reset` unfused: `Reset(p, ret, below)`, DPJS's `EmptyS | PushSeg | PushP` (494ce8210).
+9. `rebase` gone from the machine: `Cont0.Delimiter[Y, I]` (a8f39c3b5).
 10. `plainly` gone: the plain `reset` is its own operation (`Reset0(p, body)`) and node (`Reset(p, below)`, DPJS's `PushP`), `$` is `Dollar0`/`Dollar`; a bare capture to a plain delimiter is typed by the node, a bare capture to a `$` refused by its case, and `Cont0.identity`/`plain` (the eq-trick) gone. `Stack = Done | Run | Reset | Dollar`.
 11. `control`/`control0` gone (operator: "Удаляй"), and with them `Lexical.shallow`, `ShallowClauses`, `Delim.Stacked.Plain`, the `bare` flag — and the separate plain node of step 10, whose one reason was a typed bare capture: the core is λ$ exactly, `Dollar0` and `Shift0`, `Stack = Done | Run | Dollar`, a `reset` is `pure $ ·` (a non-capturing lambda, one object per call site). Book chapter 11 rewritten as "Two captures"; TestBookFourCaptures, TestDollar, TestDelim, TestHandlersAsDollar, TestLexical, TestStackedShift0 and DelimBenchmark.stateShallow lose their control/shallow cases.
+
+12. The Cont facade tidied (17bd906f1): one private `leaf` (a `shift0` to the run's root) that `shiftLeaf` and `lazyLeaf` hand their clause; `tailAt`'s cast folded into the facade's erasure claim, the `S <:< R` evidence kept as the gate; `rootOf` total. The macro stays an optimization over the one leaf (operator).
+
+### Optimizations measured back in
+
+The minimal core of step 11 against master 4759dbff7: 1.00-1.91x
+(2a7076f1c: contAnswer 1.9, delimGenerator 1.8, statePara 1.6-1.7,
+layered 1.56). Each return below is its own commit with its rows in
+history.d; allocation profiles (async-profiler, event=alloc) chose them.
+
+13. `Cat(k, below)` — van der Ploeg & Kiselyov's catenation: a resumption is one node, O(1), where `k`'s nodes were reversed and relinked. v1 (cbed178d6) built a shell a node when taking it apart and LOST (dollarResume 1.84x against 1.40x, +24 B/op: 5 objects a usual `k` where reverse+link made 4; 717b77556). v2 (3374215bf) takes it apart in the loop, in place: 2 objects; dollarResume 1.15x, layered 1.25x, generator 1.42x (61088965e).
+14. `nearest` and `enterAt` (7758001e7): a capture to the delimiter right under the live segment builds `k` as that segment over a copy of it, no walk and no `Rev` (statePara's ~100 KB/op); a forced resumption and Cont's strict `k` enter the registers directly, no `Delay` + `Resume`. statePara 1.05x, fib100 1.03x, writerTell 0.95-0.98x (7ce89efd0).
+15. `nearest` at the head of a resumed `k` (34d20bb51): after a resumption the delimiter sits in a `Cat`'s head, so every capture after the first had walked. As a method called from two arms C2 refused to inline it at one ("already compiled into a medium method") and generator/stateLexDeep READ WORSE with fewer bytes, 1.46x/1.44x; `inline` (83a303a8f) — generator 1.23-1.26x, stateLexDeep 0.99x, stateDeep 1.03x, contAnswer 1.21x, layered 1.17x (feb655547).
+
+NOT returned, measured why: a separate plain-reset node (the bare
+install lanes allocate as much as master; what they pay, 1.24-1.28x,
+is the `Run` a segment is now and its own pop step), the fused
+delimiter, and the `strict`/`under` flags. backlog
+cont-core-remaining-costs.
 
 ### What the machine still claims, and why each stays
 
