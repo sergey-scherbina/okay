@@ -3,47 +3,10 @@ package okay
 import scala.quoted.*
 
 /**
- * `shift`'s compile-time layer (specs/cont-stack.md Layer 1 A, plan
- * stage B). A body whose every use of its continuation `k` is a TAIL
- * call `k(v)`, with `v` not mentioning `k`, has nothing left to do
- * after the call: it IS `pure(v)`, computed when the runner reaches the
- * shift. So it is rewritten to exactly that, `Cont.tailShift(() => v)`
- * (a `Delay` the runner's loop walks), or to `Cont.tailPure(v)` when `v` is
- * a literal or a stable name and there are no statements before it.
- * No leaf, no capture, no nested run, no room counted, no switch.
- *
- * Tail positions are followed through a block's result, both branches
- * of an `if`, every case of a `match`, an ascription and an inlined
- * call's expansion. Anything else — `k` in a statement, a condition, a
- * scrutinee, a guard, a nested lambda, an argument, under `try` (whose
- * `finally` would run BEFORE the rest instead of after), a branch that
- * answers without calling `k` — leaves the body as it was:
- * `Free.Inject(Shift.of(f))`, the runtime layer's case, byte for byte
- * the tree `shift` built before this macro existed.
- *
- * LAYER 1 B (cont-stack-layer1-b, plan stage E): a body that USES the
- * answer — `k(1) + k(10)`, `a :: k(x)`, `s"${k(a)}"`, `PState`'s
- * `s => k(s)(s2)` — is CPS-transformed SELECTIVELY (Rompf, Maier &
- * Odersky, ICFP 2009) into a program over a lazy `k`: each `k(e)`
- * becomes a `Cont.call` naming what is left, `k`'s nodes pushed by the
- * frame machine (Cont.scala, `lazyLeaf`). NOT a function answer —
- * `PState`'s `s => k(s)(s2)` — which measured 2.8x the direct road
- * on statePara and stays opaque (specs/cont-stack.md, stage E). What ran
- * before a call still runs before it: every k-free part evaluated
- * ahead of a call is bound to a val first (A-normal form), unless it
- * is a literal, a stable name or a lambda. The transform follows a
- * block's statements and result, an `if` or `match` in tail
- * position, an application's function part and arguments in order,
- * an ascription, an inlined expansion; a by-name argument is left
- * as it is. Where `k` flows anywhere else — into a by-name argument,
- * a conditional that is not in tail position, a lambda, a `try`, a
- * loop, a value position (`xs.map(k)`) —
- * the body stays opaque, as before, and Layer 2 keeps it safe. The
- * rest of Layer 1 B (known higher-order functions, visible user
- * functions, `direct`) is backlog cont-stack-layer1-c.
- *
- * Public because an expansion at a user's call site calls it (the
- * same standing as `Distinct.impl`); not an API.
+ * `shift`'s compile-time layer, an optimization over the one leaf (specs/cont-stack.md Layer 1):
+ * a body calling `k` only in tail position is the value it passes (`tailShift`/`tailPure`); a body using
+ * `k`'s answer is CPS-transformed selectively (Rompf, Maier & Odersky, ICFP 2009) into a program over a lazy
+ * `k` (`lazyLeaf`); anything else stays the opaque leaf (`shiftLeaf`). Public for the expansions; not an API.
  */
 object ContMacro:
 
@@ -239,24 +202,15 @@ object ContMacro:
           else cps(sc, Kont(kont.rt, Some(s2 => feed(kont, Match.copy(t)(s2, cases)))))
         case _ => throw Opaque
 
-    /** the whole body as a program over a lazy `k`, or None where the
-     * transform cannot read it */
+    /** the body as a program over a lazy `k`, or None where the transform cannot read it */
     def cpsBody(body: Term)(using k: Symbol): Option[Expr[(A => S) => Cont.Lazy[R]]] =
       try
         val b = cps(body, Kont(TypeRepr.of[R], None))
         Some('{ (k2: A => S) => ${ subst(b, k, 'k2.asTerm).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[R]] } })
       catch case Opaque => None
 
-    // A TAIL BODY'S TYPES SAY `S <: R` — `k(v): S` was the body's `R` —
-    // and `tailShift`/`tailPure` need that said as evidence, because the
-    // value they emit is a `Cont[A, S, S]` claimed as a `Cont[A, S, R]`
-    // by one cast the evidence justifies (`Cont.tailAt`, since
-    // freer-consumed-index; `liftCo` on a `+R` base before). Searched
-    // HERE, at the call site, where
-    // `S` and `R` are the user's concrete types; the macro's own `S` and
-    // `R` are abstract and could not carry a bound. Not found — an
-    // answer-type-modifying shift whose body happens to be tail-shaped —
-    // the body stays a leaf, which is always right.
+    // a tail body's types say `S <: R`; searched here, where `S` and `R` are concrete. Not found: the body
+    // stays a leaf, which is always right
     lazy val tailEvidence: Option[Expr[S <:< R]] = Expr.summon[S <:< R]
 
     f.asTerm.underlyingArgument match

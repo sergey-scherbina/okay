@@ -2,17 +2,7 @@ package okay
 
 import java.util.concurrent.atomic.AtomicLong
 
-/**
- * A FRESH STACK for the rest of a direct-style Cont program, and the
- * room a stack is counted for (specs/cont-stack.md Layer 2), on Scala
- * Native. The stack is COUNTED, never read (cont-core-design,
- * 2026-10-01): the exact road that read the runtime's `ThreadInfo` and
- * granted more levels left the runner.
- *
- * The fresh stack is a platform thread with a 1 GB stack: the javalib
- * passes the size to `pthread_attr_setstacksize` (page-aligned, plus
- * its guard pages), and pages are committed only as touched.
- */
+/** A fresh stack for a deep direct-style Cont program, on Scala Native: counted levels, then a 1 GB thread. */
 private[okay] object StackSwitch:
 
   /** bytes one level takes cold — the JVM's measured constant, kept

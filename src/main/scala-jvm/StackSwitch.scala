@@ -3,32 +3,9 @@ package okay
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * A FRESH STACK for the rest of a direct-style Cont program, and the
- * room a stack is counted for (specs/cont-stack.md Layer 2), on the JVM.
- *
- * `Cont`'s runner counts how many more nested levels the current stack
- * takes; at zero it calls `fresh`, which runs the rest on a new thread
- * and waits for the answer. No exception, no replay: the waiting frames,
- * the bodies' own included, stay where they are. The stack is COUNTED,
- * never read (cont-core-design, 2026-10-01): the exact road that read
- * it through `StackRoom` and granted more levels left the runner.
- *
- * The fresh stack is a PLATFORM thread with a 1 GB stack, on every
- * JDK (Decision 8). The first cut used a virtual thread on 21+, and
- * measured on one JDK it costs 15–20x more a level: a waiting virtual
- * thread freezes its frames into a heap chunk that HotSpot refuses
- * when humongous, which caps a segment at 64 levels, and the price is
- * the hop (park, unpark, thaw — 14 µs), paid every 64 levels instead
- * of every ~500 000. A platform thread starts and joins in 33 µs at
- * 1 MB and at 1 GB alike: the reservation costs nothing until touched.
- *
- * THE FIRST ROOM is what the CALLER's stack is asked to hold before
- * the switch: the VM's default thread stack (`ThreadStackSize`,
- * 2 MB on macOS arm64, 1 MB on Linux x64) over the cold constant,
- * halved for the caller's own frames. It holds for every thread of the
- * default size, the launcher's main thread included. The WRITTEN
- * BOUND: a thread made with an explicit SMALLER stack must set
- * `-Dokay.cont.room`; the count cannot see its size.
+ * A fresh stack for a deep direct-style Cont program (specs/cont-stack.md Layer 2): the runner counts
+ * levels per stack and, at zero, runs the rest on a parked worker's 1 GB platform thread. The first room is
+ * the VM's default thread stack over a cold level, halved; a smaller explicit stack sets `-Dokay.cont.room`.
  */
 private[okay] object StackSwitch:
 

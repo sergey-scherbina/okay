@@ -3,74 +3,33 @@ package okay
 import okay.Row.up
 
 /**
- * HANDLER INSTANCES AS PROMPTS (specs/lexical-instances.md).
- *
- * A row routes an operation by its CLASS, so a row holds one handler
- * per signature and a handler cannot tell whose operation it was
- * forwarded. Here a handler INSTALLATION is a fresh prompt, and the
- * body reaches it through the instance value the installation hands
- * it: Biernacki, Piróg, Polesiuk & Sieczkowski, "Binders by day,
- * labels by night: effect instances via lexically scoped handlers"
- * (POPL 2020). Two instances of one effect are two names. An operation
- * addressed to an outer instance passes through an inner one of the
- * same effect untouched, because it names its prompt: there is no
- * accidental handling (Zhang & Myers, POPL 2019).
- *
- * The effect `F` never enters the row. A program using instances is
- * `A ! Delim + G`, so there is no `TypeableK` and no `Distinct`, and
- * nothing to misroute.
- *
- * EVERY STRATEGY IS A PRIMITIVE YOU CAN NAME (the operator's rule for
- * this arc). `deep` runs the clauses with shift0 under a `dollar`
- * whose return function is the return clause, the FSCD 2019
- * correspondence. `row` (today's handlers) and `tail` (evidence
- * passing, stage 1) are the others. A default that picks among them
- * comes later and never replaces the manual choice. The price of
- * `deep` against `row` on State is 3.8x (handlers-as-dollar): it is
- * for what `row` cannot do, not for what it does. (`shallow`, on
- * control0, left with control0 itself: cont-core-design.)
+ * HANDLER INSTANCES AS PROMPTS (Biernacki, Piróg, Polesiuk & Sieczkowski, POPL 2020): an installation is a
+ * fresh prompt, reached through its instance value, so two instances of one effect are two names.
+ * Strategies by name: `deep` (`$` + `shift0`), `tail` (evidence passing, Xie et al. ICFP 2020), `walk`.
  */
 object Lexical:
 
-  /** an installed handler of `F` in a program whose row is `G` (the
-   * WHOLE row the body uses, `Delim` included when the strategy needs
-   * it): the value a body performs operations through. Only an
-   * installation makes one. A body written against `Inst[F, G]` runs
-   * under any strategy that accepts its row. */
+  /** an installed handler of `F` in a program over the row `G`; only an installation makes one */
   abstract class Inst[F[+_], G[+_]] private[Lexical] ():
-    /** the operation, to THIS installation and no other */
+    /** the operation, to this installation */
     def perform[X](e: F[X]): X ! G
 
-  /** THE PROGRAM TYPE a clause answers in (indexed-effects stage 9):
-   * an unstacked instance's clauses answer `X ! G` over the row `G`
-   * (`Unstacked[G]`); a stacked instance's answer `Under[G, X, St]` at
-   * the stack BELOW its prompt (`Stacked.Below[G, St]`), so a stacked
-   * instance's clauses are typed on the indexed tree and nothing on
-   * that road is erased. The clause traits take the program type, not
-   * the row, and the two roads are the two instantiations. */
+  /** the program type a clause answers in: unstacked here, `Stacked.Below` on the stacked road */
   type Unstacked[G[+_]] = [X] =>> X ! G
 
-  /** a deep handler's operation clauses, answering in `P`: `k` resumes
-   * the body WITH the handler re-installed */
+  /** deep clauses: `k` resumes with the handler re-installed */
   trait Ops[F[+_], R, P[_]]:
     def op[X](e: F[X], k: X => P[R]): P[R]
 
-  /** a deep handler: its operation clauses and its return clause */
+  /** deep clauses with a return clause */
   trait Clauses[F[+_], A, R, P[_]] extends Ops[F, R, P]:
     def ret(a: A): P[R]
 
-  /** `Delim + G` read as `G` when `G` already has `Delim`: the union
-   * collapses, and `liftCo` over `x | G` builds the witness from the
-   * membership alone, so no cast (the `Row.Sub` shape, Row.scala) */
+  /** `Delim + G` read as `G` when `G` has `Delim` */
   private def collapse[G[+_]](ev: Delim[Any] <:< G[Any]): Row.Sub[Delim + G, G] =
     ev.liftCo[[x] =>> x | G[Any]]
 
-  /**
-   * DEEP: `ret $ body`, and every operation a `shift0` to this
-   * installation whose clause gets `k` with the handler in it (a
-   * shift0 to a `dollar` takes the return function along, `$/S0`).
-   * The row must hold `Delim`: every operation is a capture.
-   */
+  /** DEEP: `ret $ body`, every operation a `shift0` to the installation (FSCD 2019) */
   def deep[F[+_], A, R, G[+_]](c: Clauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
                               (using ev: Delim[Any] <:< G[Any], at: At): R ! G =
     given Row.Sub[Delim + G, G] = collapse(ev)
@@ -80,30 +39,13 @@ object Lexical:
         Delim.shift0[R, X, G](p)(k => c.op(e, x => k(x).up[G]).up[Delim + G])(using at).up[G]
     Delim.dollar[A, R, G](p)(a => c.ret(a).up[Delim + G])(body(i).up[Delim + G]).up[G]
 
-  /** a TAIL-RESUMPTIVE handler with state `S`: each clause answers in
-   * place with the new state and the resumption value. It cannot drop,
-   * store or repeat the continuation, which is what makes answering
-   * without a capture possible. */
+  /** tail-resumptive clauses: answer in place with the new state */
   trait TailClauses[F[+_], S]:
     def op[X](e: F[X], s: S): (S, X)
 
   /**
-   * HOW A TAIL INSTALLATION IS MADE, decided by the ROW at compile time
-   * (lexical-tail-allocs, pay-as-you-go; cont-core-design).
-   *
-   * A body whose row has no `Delim` cannot be resumed twice from
-   * outside, because nothing in it can capture: the state lives in a
-   * CELL, the operations answer in place, and the body ends with a walk
-   * rather than a `map`. No machine, no capture.
-   *
-   * A body whose row HAS `Delim` can be: a capture from outside the
-   * installation may run its body twice, and a cell would be shared by
-   * both runs. Such an installation is made DEEP — the state carried by
-   * the continuation, `s => k(x)(s1)` — which is right under multi-shot
-   * by construction. Until cont-core-design it kept the cell and the
-   * machine counted every re-entry of a captured context so that a
-   * guard could throw; correct by design replaced detected at run
-   * time, and the machine lost the count.
+   * how a tail installation is made, by the row: no `Delim`, a cell and a walk; with `Delim`, deep
+   * (a capture from outside may run the body twice, which a cell cannot survive)
    */
   sealed trait Closing[G[+_]]:
     def install[F[+_], S, A](s0: S, c: TailClauses[F, S], body: Inst[F, G] => A ! G, at: At): (S, A) ! G
@@ -119,14 +61,7 @@ object Lexical:
               cell = s1
               okay.pure[G, X](x)
             }
-          /* WALK the body rather than `map` over it. A `map` at the root
-           * is a `Bind` over the whole body, and `resume` then
-           * re-associates every step of it into a fresh closure and
-           * `Bind`: measured +36 B per operation (lexical-tail-allocs;
-           * "never map over a residual"). The walk is `State.handle`'s
-           * loop with nothing to handle: the tail operations are `Delay`
-           * nodes that `resume` forces in place, and a foreign operation
-           * is re-emitted with the walk as its continuation. */
+          /** walk the body instead of mapping over it: no rotation per step */
           def walk(x: A ! G): (S, A) ! G = (x.resume: @unchecked) match
             case Free.Return(a) => okay.pure((cell, a))
             case Free.Inject(e) => Free.Inject(e).flatMap(a => okay.pure((cell, a)))
@@ -146,39 +81,12 @@ object Lexical:
             }
         )(body)(using ev, at).flatMap(f => f(s0))
 
-  /**
-   * TAIL: evidence passing (Xie, Brachthäuser, Hillerström, Schuster &
-   * Leijen, "Effect handlers, evidently", ICFP 2020). An operation
-   * calls its clause IN PLACE through the instance, and the handler's
-   * state lives in a cell made fresh on every run of the program.
-   * Nothing is captured. Where a capture from outside could run the
-   * body twice (a row with `Delim`) the installation is deep instead:
-   * see `Closing`.
-   */
+  /** TAIL: operations answered in place, the state in a cell (deep when the row can capture) */
   def tail[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])(body: Inst[F, G] => A ! G)
                               (using closing: Closing[G], at: At): (S, A) ! G =
     closing.install(s0, c, body, at)
 
-  /**
-   * WALK, an OPTIONAL strategy (lexical-tagged-walk; never the default),
-   * built on `Instances` (instances-unify). The installation makes a
-   * fresh `Instances.Handle` and walks its body the way a row handler
-   * does, with the state threaded purely: no cell, no guard, no capture,
-   * no `Delay` per operation. An operation is an inert
-   * `Inject(Instances(handle, e))`, typed by its signature, so there is no
-   * cast. The walk answers its own handle's operations and forwards the
-   * rest, other instances of the same effect included. The row carries
-   * `Instances.Of[F]` once per effect signature, and `Instances.exhausted`
-   * at the top turns an escaped operation into `Instances.Survived`.
-   *
-   * THE SPINE RULE. A walk sees the program's spine. An instance
-   * operation inside a `Delim` delimiter's body (a `reset`, a `dollar`,
-   * a `Layered.reify`) reaches the machine, not the walk, and survives to
-   * `exhausted`, which throws. Put `Delim.run` INSIDE the walk and the
-   * machine's suspended operations come back along the spine, where the
-   * walk answers them in order. It never answers silently differently
-   * from `deep` (TestLexicalWalk).
-   */
+  /** WALK: the body walked like a row handler, state threaded, no cell, no capture; never the default */
   def walk[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])
                               (body: Inst[F, Instances.Of[F] + G] => A ! Instances.Of[F] + G)
                               (using TypeableK[Instances.Of[F]]): (S, A) ! Instances.Of[F] + G =
@@ -187,8 +95,7 @@ object Lexical:
       val handle = Instances.handle("walk")
       val i = new Inst[F, R]:
         def perform[X](e: F[X]): X ! R = Free.Inject(Instances[F, X](handle, e))
-      // a resumption from a forwarded operation re-enters here: a call
-      // inside a closure is not a tail call (State.handle's `_loop`)
+      // a resumption from a forwarded operation re-enters here
       def again(s: S)(x: A ! R): (S, A) ! R = loop(s)(x)
       @scala.annotation.tailrec
       def loop(s: S)(x: A ! R): (S, A) ! R = (x.resume: @unchecked) match
@@ -204,21 +111,15 @@ object Lexical:
       loop(s0)(body(i))
     }
 
-  /**
-   * THE DEFAULT: pick the strategy from what the clauses ARE. Every
-   * strategy stays callable by name. TailClauses → `tail` (deep when
-   * the row can capture), Clauses → `deep`. The row handlers stay the library's default for ONE
-   * handler of a kind.
-   */
+  /** the default by clause kind: tail clauses run `tail`, others `deep` */
   def handle[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])(body: Inst[F, G] => A ! G)
                                 (using Closing[G], At): (S, A) ! G = tail(s0)(c)(body)
   def handle[F[+_], A, R, G[+_]](c: Clauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
                                 (using Delim[Any] <:< G[Any], At): R ! G = deep(c)(body)
 
-  /** State as instances: the worked example, every strategy */
+  /** State as instances, every strategy */
   object State:
-    /** the answer of a deep state handler over a body
-     * answering `A`: a state-passing function */
+    /** a deep state handler's answer: state-passing */
     type Ans[S, A, G[+_]] = S => (S, A) ! G
 
     def deep[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)
@@ -232,11 +133,11 @@ object Lexical:
           case okay.State.Update(g) => okay.pure((s: S) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
       )(body).flatMap(f => f(s0))
 
-    /** the DEFAULT for State: its clauses are tail-resumptive, so `tail` */
+    /** the default: tail */
     def apply[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)(using Closing[G], At): (S, A) ! G =
       tail(s0)(body)
 
-    /** TAIL, for State: the state in the installation's cell */
+    /** tail, for State */
     def tail[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)(using Closing[G], At): (S, A) ! G =
       Lexical.tail[okay.State % S, S, A, G](s0)(new TailClauses[okay.State % S, S]:
         def op[X](e: okay.State[S, X], s: S): (S, X) = e match
@@ -246,7 +147,7 @@ object Lexical:
           case okay.State.Update(g) => { val (b, s1) = g(s); (s1, b) }
       )(body)
 
-    /** WALK, for State (optional, never the default) */
+    /** walk, for State */
     def walk[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, Instances.Of[okay.State % S] + G] => A ! Instances.Of[okay.State % S] + G)
         : (S, A) ! Instances.Of[okay.State % S] + G =
       Lexical.walk[okay.State % S, S, A, G](s0)(new TailClauses[okay.State % S, S]:
@@ -260,46 +161,25 @@ object Lexical:
     extension [S, G[+_]](i: Inst[okay.State % S, G])
       def get: S ! G = i.perform(okay.State.Get[S, S]())
       def set(s: S): S ! G = i.perform(okay.State.Set[S, S](s))
-      /** one operation, as `State.modify` (specs/effect-row-cost.md D1) */
+      /** `modify` */
       def modify(f: S => S): S ! G = i.perform(okay.State.Modify[S, S](f))
-      /** `set` as a STATEMENT: the same operation, answering `Unit`, so a
-       * marked `s.put(v).?` on its own line leaves nothing unused (what
-       * `tell` is for Writer) */
+      /** `set` as a statement */
       def put(s: S): Unit ! G = i.perform(okay.State.Set[S, S](s)).map(_ => ())
 
   /**
-   * STACKED INSTANCES (stage 2): the same strategies over
-   * `Delim.Stacked`, so an instance used outside its installation does
-   * not compile. The instance IS the installation's delimiter (a
-   * subclass of `Delim.Stacked.In`), so its prompt is the singleton on
-   * the stack, and `perform` asks for the same `Has` evidence a stacked
-   * `shift0` does. `import i.given` puts the installation's stack in
-   * force for the body, exactly as for `Delim.Stacked.reset`.
-   *
-   * THE CLAUSES ARE TYPED ON THE TREE (indexed-effects stage 9): a deep
-   * instance's clauses answer `Below[G, St]` — `Under[G, X, St]` at the
-   * stack `St` below the instance's own prompt, which is where a
-   * `shift0` to it runs its body and where its `dollar`'s `ret` runs.
-   * So `perform` hands the clause the stacked `k` as it is, and the
-   * installation is one `Op.Dollar` node over the clauses' `ret` and
-   * the body: no `at`, no `erase`, no cast on this road. The price is
-   * that clauses name the stack they are installed over — written as
-   * a `def deep[St <: Tuple]` and instantiated by the installation
-   * (TestLexicalStacked), the way the body already names it.
+   * STACKED INSTANCES: the instance is its delimiter on the typed stack, so using it outside its
+   * installation does not compile; clauses are typed at the stack below it.
    */
   object Stacked:
     import Delim.Stacked.{In, Stack, Under, Has}
 
-    /** the program type of a stacked instance's clauses: under `St`,
-     * the stack below its prompt */
+    /** the program type of stacked clauses */
     type Below[G[+_], St <: Tuple] = [X] =>> Under[G, X, St]
 
-    /** a stacked DEEP instance: the delimiter on the stack, and its
-     * clauses, typed at the stack `S` below it */
+    /** a stacked deep instance */
     final class Deep[F[+_], R, G[+_], S <: Tuple] private[Lexical] (p0: Prompt[R], ops: Ops[F, R, Below[G, S]])
         extends In[R, S](p0):
-      /** the operation, to THIS installation, which must be on the
-       * stack — with `S` below it, which `Has` proves rather than finds */
+      /** the operation; `Has` proves the instance is on the stack with `S` below */
       def perform[X](e: F[X])(using st: Stack[?])(using Has.Aux[st.S, p.type, S], At): Under[G, X, st.S] =
         Delim.Stacked.shift0[R, X, G](p)(using st)(k => ops.op(e, k))
 
@@ -309,10 +189,7 @@ object Lexical:
       val i = new Deep[F, R, G, st.S](Delim.prompt[R], c)
       Delimited.machine[Freer.Lift[G]].dollar[R, A, st.S, st.S](Cont0.delimiter(i.p))(c.ret)(Delim.Stacked.rebase(body(i)))
 
-    /** a stacked TAIL instance. Stacked means the row has `Delim`, so a
-     * capture from outside may run its body twice: it is installed DEEP,
-     * the state carried by the continuation (see `Closing`), and the
-     * stack check is what makes holding it safe */
+    /** a stacked tail instance: installed deep, the state threaded */
     final class Tail[F[+_], S0, A, G[+_], S <: Tuple] private[Lexical] (
         p0: Prompt[S0 => Under[G, (S0, A), S]], c: TailClauses[F, S0]) extends In[S0 => Under[G, (S0, A), S], S](p0):
       def perform[X](e: F[X])(using st: Stack[?])(using Has.Aux[st.S, p.type, S], At): Under[G, X, st.S] =
@@ -322,7 +199,7 @@ object Lexical:
             k(x).flatMap(f => f(s1))
           }))
 
-    /** `Lexical.tail`, stacked: deep, the state threaded */
+    /** `tail`, stacked */
     def tail[F[+_], S0, A, G[+_]](s0: S0)(c: TailClauses[F, S0])(using st: Stack[?])
                                  (body: (i: Tail[F, S0, A, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                  (using at: At): Under[G, (S0, A), st.S] =
