@@ -398,6 +398,14 @@ object Delim {
   // over `shift` — the value is the name and the evidence, not the
   // code.
   //
+  // They capture with `shift0`, not `shift` (delim-internal-shift0,
+  // 2026-10-01): the two differ only when the body captures to the same
+  // prompt AGAIN, and these bodies never do — they call `k`, which
+  // brings the delimiter back with it, and work on its answer — so the
+  // `reset` that `shift` wraps its body in (an `Inject`, a `Dollar0`, a
+  // closure and a step a capture) would buy nothing. `Emitting` is
+  // sealed: every `onEmit` is one of these.
+  //
   // Each takes NO type arguments at the call site: the types are read
   // off the evidence (`in.Res`, `e.Elem`, `s.Qst`) and off the
   // block's `DirectCtx`, the trick delim-one-type introduced for
@@ -424,7 +432,7 @@ object Delim {
   inline def exit(using in: Prompted[?])[F[_]]
                  (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                  (value: in.Res): Unit ! rw.R =
-    shift[Unit](using in)(_ => okay.pure(value))
+    shift0[Unit](using in)(_ => okay.pure(value))
 
   /**
    * 2 · A PUSH API, READ AS A PULL.
@@ -562,7 +570,7 @@ object Delim {
   inline def emit(using e: Emitting[?])[F[_]]
                  (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                  (a: e.Elem): Unit ! rw.R =
-    shift[Unit](using e.in)(k => e.onEmit(a)(k))
+    shift0[Unit](using e.in)(k => e.onEmit(a)(k))
 
   /**
    * 3 · STOP IN THE MIDDLE, CARRY ON LATER.
@@ -752,7 +760,7 @@ object Delim {
   inline def onReturn(using in: Prompted[?])[F[_]]
                      (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                      (f: in.Res => in.Res): Unit ! rw.R =
-    shift[Unit](using in)(k => k(()).map(f))
+    shift0[Unit](using in)(k => k(()).map(f))
 
   /** a prompt is its own typed token: the same prompt has the same
    * answer type — for code that compares prompts generically; the
