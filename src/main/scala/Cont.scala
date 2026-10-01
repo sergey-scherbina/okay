@@ -8,6 +8,15 @@ import scala.annotation.tailrec
  * continuation monad (ParaMonad) with the shift operator of Danvy
  * and Filinski, with answer-type modification. M[A, S, R] means
  * (A => S) => R, which `/` (run) eliminates.
+ *
+ * ONE PROMPT, and the user's level: write a program once, pick the
+ * carrier — `Cont` (data, stack-safe) or `Func` (closures, partially
+ * evaluated by `Staged`). The MACHINE's interface is `Delimited`
+ * (Delimited.scala): many named prompts, `$`, `shift0`, `resume` — and
+ * `Control[Cont]` is implemented over it (a root `$` per run, every
+ * leaf a `shift0` to it). The two are not one class: closures have no
+ * stack on which a named delimiter could be found, so `Func` cannot be
+ * a `Delimited`, and `Control` alone has neither names nor `$`.
  */
 trait Control[M[_, _, _]] extends ParaMonad[M]:
   def shift[A, S, R](f: (A => S) => R): M[A, S, R]

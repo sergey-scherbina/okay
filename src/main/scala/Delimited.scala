@@ -23,6 +23,11 @@ import okay.Freer.{Return, Inject, Bind}
  * it back; with `$` the delimiter carries `ret`, which that derivation
  * would have to hand back beside `k`. Ours keeps it in `k`, λ$'s
  * `($/S0)` rule — the machine as it is.
+ *
+ * NOT `Control` (Cont.scala): that is Danvy and Filinski's ONE-prompt
+ * `shift`/`reset` with answer-type modification, the user's level, with
+ * a closure instance (`Func`) this trait cannot have. `Control[Cont]` is
+ * built on this one.
  */
 trait Delimited[M[_, _, _]]:
 
