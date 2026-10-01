@@ -197,7 +197,10 @@ object Cont:
 
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
-    answerOf(Frames.runUnder[NoEffect, Any, Any](erased(c), root, Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom))).asInstanceOf[R]
+    val r = Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom)
+    val node: K = Stack.Reset[NoEffect, Any, Any, Any, Any, Any, Any, Any](root, r, null, Frames.noFrames, Frames.noStack)
+    r.node = node
+    answerOf(Frames.runOn[NoEffect, Any, Any, Any](erased(c), node)).asInstanceOf[R]
 
   // ==================================================================
   // THE RUNNER IS THE FRAME MACHINE (cont-step-on-frames, 2026-09-30;
@@ -232,6 +235,10 @@ object Cont:
   /** the root's `ret`: the user's `k`, and the room this run has on its
    * stack — where a strict `k` reads it (`force`) */
   private final class Root(val k: Any => Any, var room: Int) extends (Any => P):
+    /** this run's root delimiter as a node — empty segment, nothing below
+     * — built once: a strict `k` (a `Kept` up to it) re-enters with it
+     * instead of a copy per call */
+    var node: K | Null = null
     /** this run's stack gauge, attached at its first exhaustion (Layer 3):
      * one per run, so a grant reads the stack it measured last, where a
      * fresh gauge per exhaustion asked the OS for the stack every time */
@@ -309,7 +316,14 @@ object Cont:
     try enter(k, x) finally r.room = saved
 
   /** `k` run now to its value, entered at the machine's registers */
-  private def enter(k: K, x: Any): Any = answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
+  private def enter(k: K, x: Any): Any = k match
+    // the usual `k`, captured up to its run's root: its segment over the
+    // root node the run already has
+    case kp: Stack.Kept[NoEffect, Any, Any, Any, Any, Any] @unchecked => kp.ret match
+      case r: Root if r.node ne null =>
+        answerOf(Frames.enterIn[NoEffect, Any, Any, Any, Any, Any, Any](x, kp.frames, r.node.nn))
+      case _ => answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
+    case _ => answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
 
   /** the root delimiter at the bottom of `k`: the run it was captured from */
   @annotation.tailrec
@@ -747,7 +761,7 @@ object Frames:
    * and the stack below them. `S0`, `R`, `Z` are the run's; every arm is
    * typed by GADT refinement.
    */
-  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] = machine[F, S0, R, Z, Any](p, null, null, noStack[F, Z, S0])
+  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] = machine[F, S0, R, Z, Z, S0, S0, Z](p, noFrames[F, Z, S0], noStack[F, Z, S0], null)
 
   /** `p` under the delimiter `ret $_p0`, installed as the run's FIRST
    * stack rather than asked for by a `Reset0` operation the loop's first
@@ -757,7 +771,17 @@ object Frames:
    * `Reset0` and a step each time */
   private[okay] def runUnder[F[_, _, +_], S0, Z](p: Freer[Cont0.Row[F], S0, S0, Z], p0: Prompt[Z],
                                                 ret: Z => Freer[Cont0.Row[F], S0, S0, Z]): Freer[Cont0.Row[F], S0, S0, Z] =
-    machine[F, S0, S0, Z, Any](p, null, null, Reset[F, Z, S0, S0, Z, S0, Z, Z](p0, ret, null, noFrames[F, Z, S0], noStack[F, Z, S0]))
+    runOn(p, Reset[F, Z, S0, S0, Z, S0, Z, Z](p0, ret, null, noFrames[F, Z, S0], noStack[F, Z, S0]))
+
+  /** `p` over a stack already built — a delimiter node a caller keeps for
+   * a whole run (Cont's root) */
+  private[okay] def runOn[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z], st: Stack[F, Z, S0, S0, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+    machine[F, S0, R, Z, Z, S0, S0, Z](p, noFrames[F, Z, S0], st, null)
+
+  /** `a` fed to the segment `fs` over the stack `st`, run now: a strict
+   * `k` of Cont's entered with its run's own root node, no node built */
+  private[okay] def enterIn[F[_, _, +_], A, S0, R, Z, S1, Y](a: A, fs: Frames[F, A, S1, R, Y], st: Stack[F, Y, S0, S1, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+    machine[F, S0, R, Z, A, R, S1, Y](Return(a), fs, st, null)
 
   /** the machine, entered at a program (`run`) or at a resumption forced
    * by an outer interpreter (`Resume.apply`): the second goes to the
@@ -767,11 +791,14 @@ object Frames:
   /** `k` applied to `a` and run now — a forced resumption's entry, with
    * no `Resume` node built for it (a strict `k` of Cont's enters here) */
   private[okay] def enterAt[F[_, _, +_], A, S0, R, Z](a: A, k: Stack[F, A, S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
-    machine[F, S0, R, Z, A](null, a, k, noStack[F, Z, S0])
+    machine[F, S0, R, Z, A, R, R, A](Return(a), noFrames[F, A, R], k, k)
 
-  private def machine[F[_, _, +_], S0, R, Z, A](p: Freer[Cont0.Row[F], S0, R, Z] | Null,
-                                                a: A, k: Stack[F, A, S0, R, Z] | Null,
-                                                st0: Stack[F, Z, S0, S0, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+  /** the machine, started at given registers — a program over a stack
+   * (`run`, `runUnder`, `enterIn`), or a value pushed onto `k`'s nodes
+   * (`enterAt`) */
+  private def machine[F[_, _, +_], S0, R, Z, X, T, S1, Y](focus0: Freer[Cont0.Row[F], T, R, X],
+                                                         fs0: Frames[F, X, S1, T, Y], st0: Stack[F, Y, S0, S1, Z],
+                                                         k: Stack[F, X, S0, T, Z] | Null): Freer[Cont0.Row[F], S0, R, Z] =
     type G = Cont0.Row[F]
 
     final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
@@ -937,9 +964,9 @@ object Frames:
           case _ => Bind(focus, runOf(fs, st))
 
     if k ne null then
-      val n = pushed(Return[G, R, A](a), k)
+      val n = pushed(focus0, k)
       loop(n.focus, n.fs, n.st)
-    else loop(p.nn, noFrames[F, Z, S0], st0)
+    else loop(focus0, fs0, st0)
 
 /**
  * THE TWO OPERATIONS: the delimiter and the capture, both on the join
