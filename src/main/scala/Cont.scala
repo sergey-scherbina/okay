@@ -293,9 +293,9 @@ object Cont:
     r.room = room
     try enter(k, x) finally r.room = saved
 
-  /** `k` run now to its value: the resumption `k(x)`, run */
+  /** `k` run now to its value: `x` at the top of `k`'s nodes */
   private def enter(k: K, x: Any): Any =
-    answerOf(Frames.run[NoEffect, Any, Any, Any](k(x)))
+    answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
 
   /** the root delimiter at the bottom of `k`: the run it was captured
    * from. Always there: a strict `k` is made only by a leaf, and a leaf
@@ -601,8 +601,7 @@ object Frames:
    * `k(a)` again under `Freer.resume`, forever.
    */
   final class Resume[F[_, _, +_], A, S, T, Z](val a: A, val k: Stack[F, A, S, T, Z]) extends (() => Freer[Cont0.Row[F], S, T, Z]):
-    def apply(): Freer[Cont0.Row[F], S, T, Z] =
-      Frames.run[F, S, T, Z](Bind[Cont0.Row[F], S, T, T, A, Z](Return[Cont0.Row[F], T, A](a), k))
+    def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.enterAt[F, A, S, T, Z](a, k)
 
   /**
    * THE EMPTY SEGMENT AND THE EMPTY STACK, ONE OBJECT EACH. `End()` and
@@ -689,10 +688,20 @@ object Frames:
    * and the stack below them. `S0`, `R`, `Z` are the run's; every arm is
    * typed by GADT refinement.
    */
-  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] = machine[F, S0, R, Z](p)
+  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+    machine[F, S0, R, Z, Z, S0](p, noStack[F, Z, S0])
 
-  /** the machine: a program over the empty registers */
-  private def machine[F[_, _, +_], S0, R, Z](focus0: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+  /** `k(a)`, run now: the value at the top of `k`'s nodes, put straight
+   * into the registers — a forced resumption (`Resume`) and Cont's
+   * strict `k`, where `run(k(a))` built a `Delay` and a `Resume` for the
+   * loop's first step to take apart */
+  private[okay] def enterAt[F[_, _, +_], A, S0, R, Z](a: A, k: Stack[F, A, S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+    machine[F, S0, R, Z, A, R](Return[Cont0.Row[F], R, A](a), k)
+
+  /** the machine: a focus over a stack, the stack's head segment
+   * unpacked into the frames register (`run`: a program over nothing;
+   * `enterAt`: a value over `k`) */
+  private def machine[F[_, _, +_], S0, R, Z, X, T](focus0: Freer[Cont0.Row[F], T, R, X], st0: Stack[F, X, S0, T, Z]): Freer[Cont0.Row[F], S0, R, Z] =
     type G = Cont0.Row[F]
 
     final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
@@ -735,9 +744,23 @@ object Frames:
 
     /** a capture: the walk to the delimiter it names; `null` when no
      * delimiter on this machine answers it */
-    def capture[X, T, S1, Y](sh: Cont0.Shift0[F, ?, ?, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] =
-      val all = runOf(fs, st)
-      cut(sh, all, all, Rev.nil[F, X, T])
+    def capture[Y0, I0, X, T, S1, Y](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] = st match
+      // THE NEAREST DELIMITER (the usual capture: an `emit`, a handler's
+      // operation, every leaf of Cont's): the one right under the live
+      // segment. `k` is that segment over a copy of the delimiter — two
+      // nodes, no walk and no `Rev` — and the body goes on over what was
+      // under it. The walk's own rule, at its first node.
+      case d: Dollar[F, Y, S0, S1, y2, Z] if sh.p eq d.p =>
+        val same = identical(sh.p, d.p)
+        val y = same.answer.flip
+        val i = same.index.flip
+        val k = y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](
+          runOf(fs, Dollar[F, Y, S1, S1, y2, y2](d.p, d.ret, noStack[F, y2, S1]))))
+        Next[Y0, I0, I0, Y0](sh.f(k), noFrames[F, Y0, I0],
+          y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](d.below)))
+      case _ =>
+        val all = runOf(fs, st)
+        cut(sh, all, all, Rev.nil[F, X, T])
 
     /** a resumption's registers: `focus` over the stack `k`'s nodes were
      * catenated onto (`Rev.onto`), its head segment unpacked into the frames
@@ -814,7 +837,8 @@ object Frames:
             case null => Bind(focus, runOf(fs, st))
           case _ => Bind(focus, runOf(fs, st))
 
-    loop[Z, S0, S0, Z](focus0, noFrames[F, Z, S0], noStack[F, Z, S0])
+    val n = pushed(focus0, st0)
+    loop(n.focus, n.fs, n.st)
 
 /**
  * THE TWO OPERATIONS, λ$'s two (Materzok & Biernacki): the delimiter
