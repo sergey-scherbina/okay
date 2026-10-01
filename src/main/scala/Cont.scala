@@ -848,7 +848,7 @@ object Frames:
    * whole test (`Free.Bind`'s constant claim, in the same spirit).
    * `null` for any other function.
    */
-  def as[F[_, _, +_], A, S, T, Z](f: A => Freer[Cont0.Row[F], S, T, Z]): Stack[F, A, S, T, Z] = f match
+  private def as[F[_, _, +_], A, S, T, Z](f: A => Freer[Cont0.Row[F], S, T, Z]): Stack[F, A, S, T, Z] = f match
     // ONE test per bind: a segment never stands as a continuation (a
     // captured `k` and a head form's continuation are both `Stack`s), so
     // `Frames` is not a function and there is no second class to tell
@@ -857,7 +857,7 @@ object Frames:
     case st: Stack[?, ?, ?, ?, ?] => st.asInstanceOf[Stack[F, A, S, T, Z]]
     case _ => null
 
-  def resume[F[_, _, +_], S, T, Z](t: () => Freer[Cont0.Row[F], S, T, Z]): Resume[F, ?, S, T, Z] = t match
+  private def resume[F[_, _, +_], S, T, Z](t: () => Freer[Cont0.Row[F], S, T, Z]): Resume[F, ?, S, T, Z] = t match
     case r: Resume[?, ?, ?, ?, ?] => r.asInstanceOf[Resume[F, ?, S, T, Z]]
     case _ => null
 
@@ -872,11 +872,27 @@ object Frames:
     st.asInstanceOf[Stack[F, A, S2, T2, Z]]
 
   /** the same claim for a segment handed back from under a delimiter */
+  /** THE CLAIM `plain` MAKES, in one place: a plain delimiter's `ret` is
+   * the identity, so the segment under it answers the prompt's own type —
+   * a bare cut's `k` (the frames above the delimiter, WITHOUT it: the
+   * control family) answers `Y` where its nodes say the segment's `C`,
+   * and at the run's one index, as `rebase` says for the rest. Only a
+   * `control` to a plain delimiter reaches it: `cut` refuses a `dollar`
+   * by name first. */
+  private def plainly[F[_, _, +_], A, S1, T1, C, T2, Y](k: Stack[F, A, S1, T1, C]): Stack[F, A, T2, T2, Y] =
+    k.asInstanceOf[Stack[F, A, T2, T2, Y]]
+
   private def rebaseF[F[_, _, +_], A, S, T1, T2, Z](fs: Frames[F, A, S, T1, Z]): Frames[F, A, S, T2, Z] =
     fs.asInstanceOf[Frames[F, A, S, T2, Z]]
 
   /** a segment on top of a stack; an empty segment is the stack itself */
-  def runOf[F[_, _, +_], A, S, S2, T, Y, Z](fs: Frames[F, A, S2, T, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = fs match
+  /** a `Kept`'s delimiter as the node it stands for — the `Reset` over an
+   * empty segment and nothing below — for a `k` that became the live
+   * stack (`pushed`, the loop's pop) or that a walk passes (`cut`) */
+  private def delimiterOf[F[_, _, +_], A, S, T, Y, Z](kp: Kept[F, A, S, T, Y, Z]): Stack[F, Y, S, S, Z] =
+    Reset[F, Y, S, S, Z, S, Z, Z](kp.p, kp.ret, kp.shots, noFrames[F, Z, S], noStack[F, Z, S])
+
+  private[okay] def runOf[F[_, _, +_], A, S, S2, T, Y, Z](fs: Frames[F, A, S2, T, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = fs match
     case _: End[F, A, S2] @unchecked => st
     case _ => Run(fs, st)
 
@@ -939,7 +955,7 @@ object Frames:
       // a `k` pushed onto an empty machine stands as the stack itself
       // (`Rev.onto`): its two nodes, spelled out, are walked as any
       case kp: Kept[F, C, S0, T2, y, Z] @unchecked =>
-        cut(sh, all, Run(kp.frames, Reset[F, y, S0, S0, Z, S0, Z, Z](kp.p, kp.ret, kp.shots, noFrames[F, Z, S0], noStack[F, Z, S0])), rev, counts)
+        cut(sh, all, Run(kp.frames, delimiterOf(kp)), rev, counts)
       case d: Reset[F, C, S0, T2, ?, ?, ?, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Reset[F, C, S0, T2, y2, s2, w, Z] => Delim.samePrompt.same(sh.p, d.p) match
         case Some(ey) =>
@@ -947,8 +963,7 @@ object Frames:
             if sh.bare then
               if !Cont0.plain(d.ret) then throw new UnsupportedOperationException(
                 s"${sh.at}: a control-capture to ${d.p.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
-              // plain: the body's type IS the prompt's — the claim `plain` makes
-              rebase(entered(Rev.link(rev, noStack[F, C, T2]), counts)).asInstanceOf[Stack[F, X, T, T, Y]]
+              plainly(entered(Rev.link(rev, noStack[F, C, T2]), counts))
             else
               // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule), a fresh count
               val shots = fresh(d.shots)
@@ -1004,7 +1019,7 @@ object Frames:
       // a `k` that became the whole stack: its segment into the frames
       // register, its delimiter the stack (the empty machine's re-entry)
       case kp: Kept[F, X, S0, T, y, Z] @unchecked =>
-        Next[X, T, S0, y](focus, kp.frames, Reset[F, y, S0, S0, Z, S0, Z, Z](kp.p, kp.ret, kp.shots, noFrames[F, Z, S0], noStack[F, Z, S0]))
+        Next[X, T, S0, y](focus, kp.frames, delimiterOf(kp))
       case sp => Next[X, T, T, X](focus, noFrames[F, X, T], sp)
 
     @tailrec def loop[X, T, S1, Y](focus: Freer[G, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] = focus match
@@ -1041,7 +1056,7 @@ object Frames:
           case rn: Run[F, Y, S0, ?, S1, ?, Z] => loop(focus, rn.frames, rn.below)
           // never live (`pushed` unpacks one), spelled out for the match
           case kp: Kept[F, Y, S0, S1, y, Z] @unchecked =>
-            loop(focus, kp.frames, Reset[F, y, S0, S0, Z, S0, Z, Z](kp.p, kp.ret, kp.shots, noFrames[F, Z, S0], noStack[F, Z, S0]))
+            loop(focus, kp.frames, delimiterOf(kp))
           case _: Done[F, Y, S0] @unchecked => focus
       case d: Delay[G, T, R, X] => Frames.resume[F, T, R, X](d.thunk) match
         // a resumption: the value at the top of its stack, pushed — never forced
