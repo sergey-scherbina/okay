@@ -9,5 +9,5 @@
   capture builds ends in one and `Rev.onto` resumes it typed; `relink`,
   `emptied` and the last two casts of `Rev` are deleted (a
   `dollarResumed` k, an `Enter` frame over a `Kept`, goes through
-  `keptUnder`). Commit b133dbd66; history.d and specs/freer-kont.md
+  `keptUnder`). Commit b332406d9; history.d and specs/freer-kont.md
   Results.
