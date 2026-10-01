@@ -1,0 +1,2 @@
+2026-10-01	3cccebfbe	-	CollectBenchmark.collectEmit round1	44.3	57.8	0.77	delim-internal-shift0 vs master (the lane added to both): emit as shift0; bytes 502278 vs 606282
+2026-10-01	3cccebfbe	-	CollectBenchmark.collectEmit round2	44.2	57.5	0.77	delim-internal-shift0 vs master (the lane added to both): emit as shift0; bytes 502278 vs 606282
