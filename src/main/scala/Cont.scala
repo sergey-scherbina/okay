@@ -300,19 +300,12 @@ object Cont:
     try enter(k, x) finally r.room = saved
 
   /** `k` run now to its value, entered at the machine's registers */
-  private def enter(k: K, x: Any): Any = k match
-    // the usual `k`, captured up to its run's root: its segment over the
-    // root node the run already has
-    case kp: Stack.Kept[NoEffect, Any, Any, Any, Any, Any] @unchecked => kp.ret match
-      case r: Root if r.node ne null =>
-        answerOf(Frames.enterIn[NoEffect, Any, Any, Any, Any, Any, Any](x, kp.frames, r.node.nn))
-      case _ => answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
-    case _ => answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
+  private def enter(k: K, x: Any): Any =
+    answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
 
   /** the root delimiter at the bottom of `k`: the run it was captured from */
   @annotation.tailrec
   private def rootOf(k: Stack[NoEffect, ?, ?, ?, ?]): Root | Null = k match
-    case Stack.Kept(_, p, r: Root) if p eq root => r
     case Stack.Reset(p, r: Root, _, below) if p eq root => r
     case Stack.Reset(_, _, _, below) => rootOf(below)
     case Stack.Run(_, below) => rootOf(below)
@@ -609,26 +602,12 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
                                                  frames: Frames[F, Y, S2, T, W],
                                                  below: Stack[F, W, S, S2, Z]) extends Stack[F, A, S, T, Z]
 
-  /**
-   * THE USUAL `k`, ONE NODE: a segment and the delimiter it was cut at,
-   * nothing below — `Run(frames, Reset(p, ret, End, Done))`, whose
-   * indexes those two empties fix (the delimiter's segment is `End`, so
-   * its answer is the stack's `Z`; nothing below, so its `S` is the
-   * segment's). A capture to the delimiter at the head of the stack
-   * (`nearest`: every `shift`, `emit`, a generator's step) builds this
-   * and nothing else, where it built the `Run` and the `Reset` copy; a
-   * resumption relinks it over the live registers TYPED (`Rev.onto`),
-   * where the two-node shape needed `relink`'s claim.
-   */
-  case Kept[F[_, _, +_], A, S, T, Y, Z](frames: Frames[F, A, S, T, Y], p: Prompt[Z],
-                                        ret: Y => Freer[Cont0.Row[F], S, S, Z]) extends Stack[F, A, S, T, Z]
-
   def apply(a: A): Freer[Cont0.Row[F], S, T, Z] = this match
     case Done() => Return(a)
     case _ => Delay(Frames.Resume(a, this))
 
 object Frames:
-  import Stack.{Done, Run, Reset, Kept}
+  import Stack.{Done, Run, Reset}
 
   /** a resumption: the value and the stack it enters, as the thunk of a
    * `Delay` — run by whoever forces it, pushed by the machine */
@@ -702,13 +681,6 @@ object Frames:
   private def rebaseF[F[_, _, +_], A, S, T1, T2, Z](fs: Frames[F, A, S, T1, Z]): Frames[F, A, S, T2, Z] =
     fs.asInstanceOf[Frames[F, A, S, T2, Z]]
 
-  /** a segment on top of a stack; an empty segment is the stack itself */
-  /** a `Kept`'s delimiter as the node it stands for — the `Reset` over an
-   * empty segment and nothing below — for a `k` that became the live
-   * stack (`pushed`, the loop's pop) or that a walk passes (`cut`) */
-  private def delimiterOf[F[_, _, +_], A, S, T, Y, Z](kp: Kept[F, A, S, T, Y, Z]): Stack[F, Y, S, S, Z] =
-    Reset[F, Y, S, S, Z, S, Z, Z](kp.p, kp.ret, noFrames[F, Z, S], noStack[F, Z, S])
-
   private[okay] def runOf[F[_, _, +_], A, S, S2, T, Y, Z](fs: Frames[F, A, S2, T, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = fs match
     case _: End[F, A, S2] @unchecked => st
     case _ => Run(fs, st)
@@ -717,7 +689,6 @@ object Frames:
   @tailrec def installed[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = st match
     case Run(_, below) => installed(below, acc)
     case Reset(p, _, _, below) => installed(below, if p eq Cont0.boundary[Any] then acc else p.label :: acc)
-    case Kept(_, p, _) => (if p eq Cont0.boundary[Any] then acc else p.label :: acc).reverse
     case _ => acc.reverse
 
   /**
@@ -783,10 +754,6 @@ object Frames:
       // operation, for a machine outside this one (Delim.runNested)
       case Done() => null
       case r: Run[F, C, S0, ?, T2, ?, Z] => cut(sh, all, r.below, Rev.SnocRun(rev, r.frames))
-      // a `k` pushed onto an empty machine stands as the stack itself
-      // (`Rev.onto`): its two nodes, spelled out, are walked as any
-      case kp: Kept[F, C, S0, T2, y, Z] @unchecked =>
-        cut(sh, all, Run(kp.frames, delimiterOf(kp)), rev)
       case d: Reset[F, C, S0, T2, ?, ?, ?, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Reset[F, C, S0, T2, y2, s2, w, Z] =>
         if sh.p eq d.p then
@@ -798,7 +765,7 @@ object Frames:
               plainly(Rev.link(rev, noStack[F, C, T2]))
             else
               // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule)
-              rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](Rev.close(rev, d.p, d.ret)))
+              rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](Rev.link(Rev.SnocReset(rev, d.p, d.ret), noStack[F, y2, T2])))
           // the body in the delimiter's place, over the segment that waited for it
           started(sh.f(k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, T2, w]](d.frames)), d.below)
         else
@@ -809,32 +776,11 @@ object Frames:
       case Inject(e) => !e.isInstanceOf[Cont0[?, ?, ?, ?]]
       case _ => false
 
-    /**
-     * THE COMMON CAPTURE, without the walk: the delimiter named is the
-     * head of the stack below the current segment, uncounted, not the
-     * boundary, and the capture takes it (not bare) — a generator's
-     * `emit`, a deep handler's operation. `k` is the segment and a copy
-     * of that one node: two objects, where the walk built a `Run` of
-     * the segment, a reversed prefix and its relinking. `null` when the
-     * shape is anything else, and the walk decides.
-     */
-    def nearest[X, Y, T, S1, Y1](sh: Cont0.Shift0[F, Y, T, R, X], fs: Frames[F, X, S1, T, Y1], st: Stack[F, Y1, S0, S1, Z]): Next[?, ?, ?, ?] = st match
-      case d: Reset[F, Y1, S0, S1, y2, s2, w, Z] if (sh.p eq d.p) && !sh.bare && !(d.p eq Cont0.boundary[Any]) =>
-        val ey = identical(sh.p, d.p)
-        val seg: Stack[F, X, S1, T, y2] = Kept[F, X, S1, T, Y1, y2](fs, d.p, d.ret)
-        val k: Stack[F, X, T, T, Y] = rebase(ey.flip.liftCo[[y] =>> Stack[F, X, S1, T, y]](seg))
-        started(sh.f(k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, S1, w]](d.frames)), d.below)
-      case _ => null
-
-    /** a capture: to the delimiter at the head of the stack without a
-     * walk (`nearest`), else by the walk (`cut`); `null` when no delimiter
-     * on this machine answers it */
+    /** a capture: the walk to the delimiter it names; `null` when no
+     * delimiter on this machine answers it */
     def capture[X, T, S1, Y](sh: Cont0.Shift0[F, ?, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] =
-      nearest(sh, fs, st) match
-        case null =>
-          val all = runOf(fs, st)
-          cut(sh, all, all, Rev.nil[F, X, T])
-        case n => n
+      val all = runOf(fs, st)
+      cut(sh, all, all, Rev.nil[F, X, T])
 
     /** a resumption's registers: `focus` over the stack `k`'s nodes were
      * pushed onto (`Rev.onto`), its head segment unpacked into the frames
@@ -842,10 +788,6 @@ object Frames:
      * continuation, a `Resume` as a delay's thunk) go through */
     def pushed[X, T](focus: Freer[G, T, R, X], k: Stack[F, X, S0, T, Z]): Next[?, ?, ?, ?] = k match
       case rn: Run[F, X, S0, s2, T, y, Z] => Next[X, T, s2, y](focus, rn.frames, rn.below)
-      // a `k` that became the whole stack: its segment into the frames
-      // register, its delimiter the stack (the empty machine's re-entry)
-      case kp: Kept[F, X, S0, T, y, Z] @unchecked =>
-        Next[X, T, S0, y](focus, kp.frames, delimiterOf(kp))
       case sp => Next[X, T, T, X](focus, noFrames[F, X, T], sp)
 
     @tailrec def loop[X, T, S1, Y](focus: Freer[G, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] = focus match
@@ -880,9 +822,6 @@ object Frames:
           case d: Reset[F, Y, S0, S1, y, ?, ?, Z] => loop(d.ret(r.a), d.frames, d.below)
           // the next segment, unpacked into the frames register
           case rn: Run[F, Y, S0, ?, S1, ?, Z] => loop(focus, rn.frames, rn.below)
-          // never live (`pushed` unpacks one), spelled out for the match
-          case kp: Kept[F, Y, S0, S1, y, Z] @unchecked =>
-            loop(focus, kp.frames, delimiterOf(kp))
           case _: Done[F, Y, S0] @unchecked => focus
       case d: Delay[G, T, R, X] => Frames.resume[F, T, R, X](d.thunk) match
         // a resumption: the value at the top of its stack, pushed — never forced
@@ -1014,25 +953,12 @@ private object Rev:
     case SnocRun(prev, frames) => link(prev, Stack.Run(frames, st))
     case SnocReset(prev, p, ret) => link(prev, Stack.Reset(p, ret, Frames.noFrames, st))
 
-  /**
-   * A cut's `k`, closed: the reversed prefix linked down to the delimiter
-   * the cut stopped at, the bottom as ONE `Kept` (the last segment and that
-   * delimiter, nothing below) — what `link(SnocReset(rev, …), Done)` built
-   * as a `Run` over an emptied `Reset`, the shape `relink` needed a claim
-   * to resume. An empty last segment is `Kept(End, …)`.
-   */
-  def close[F[_, _, +_], A, T, S2, Y0, Y](rev: Rev[F, A, T, S2, Y0], p: Prompt[Y],
-                                         ret: Y0 => Freer[Cont0.Row[F], S2, S2, Y]): Stack[F, A, S2, T, Y] = rev match
-    case r: SnocRun[F, A, T, ?, S2, ?, Y0] @unchecked => link(r.prev, Stack.Kept(r.frames, p, ret))
-    case _ => link(rev, Stack.Kept(Frames.noFrames[F, Y0, S2], p, ret))
-
   @tailrec def reverse[F[_, _, +_], A, S2, T0, T, X, Y](ks: Stack[F, X, S2, T, Y], acc: Rev[F, A, T0, T, X]): Rev[F, A, T0, S2, Y] = ks match
     case Stack.Done() => acc
     case Stack.Run(frames, below) => reverse(below, SnocRun(acc, frames))
     case d: Stack.Reset[F, X, S2, T, y, ?, ?, Y] => d.frames match
       case _: Frames.End[F, y, ?] @unchecked => reverse(d.below, SnocReset(acc, d.p, d.ret))
       case fr => reverse(d.below, SnocRun(SnocReset(acc, d.p, d.ret), fr))
-    case kp: Stack.Kept[F, X, S2, T, y, Y] @unchecked => SnocReset(SnocRun(acc, kp.frames), kp.p, kp.ret)
 
   /** the empty prefix, one object (as `Frames.noFrames`: no field, phantom indexes) */
   private val theNil: Nil[Nothing, Any, Any] = Nil()
@@ -1045,27 +971,14 @@ private object Rev:
 
   /**
    * A RESUMPTION onto the live registers — the segment and the stack
-   * under it. The usual `k` is one segment and the delimiter it was cut
-   * at, a copy with an empty segment and nothing below: that delimiter
-   * now carries the live segment, so the relinked stack is that ONE
-   * node (and the head segment the loop unpacks). Anything else is
-   * reversed and relinked.
+   * under it: `k`'s nodes reversed and relinked over them, O(nodes of
+   * `k`), frames shared.
    */
   def onto[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = fs match
     // an EMPTY machine first: a `k` re-entering from outside (a handler of
-    // another effect resuming the head form it was handed — every
-    // operation of `writerTellUnderDelim`) is pushed onto nothing, so it IS
-    // the stack; the two tests refine the indexes, no claim needed
+    // another effect resuming the head form it was handed) is pushed onto
+    // nothing, so it IS the stack; the two tests refine the indexes
     case _: Frames.End[F, Y, S1] @unchecked => st match
       case _: Stack.Done[F, W, S] @unchecked => ks
-      case _ => relinkOrSplice(ks, fs, st)
-    case _ => relinkOrSplice(ks, fs, st)
-
-  private def relinkOrSplice[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = ks match
-    // the usual `k`: its delimiter over the live registers, typed — the
-    // segment stays shared, the delimiter is the one node built. Every `k`
-    // a capture builds ends in a `Kept` (`nearest`, `close`), so this is
-    // the one a resumption meets; anything else (a head form fed back) is
-    // reversed and relinked
-    case kp: Stack.Kept[F, A, S2, T, y, Y] @unchecked => Stack.Run(kp.frames, Stack.Reset(kp.p, kp.ret, fs, st))
+      case _ => splice(ks, Frames.runOf(fs, st))
     case _ => splice(ks, Frames.runOf(fs, st))
