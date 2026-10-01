@@ -438,6 +438,19 @@ down again on each (stateLexDeep 895 → 799 KB, stateDeep 1024 → 928 KB).
 A `st` held in a per-run cell instead of a register was tried the same
 day and refuted (write barriers; backlog cont-frames-register-pressure).
 
+### cont-frames-reentry-and-close: re-entry at the registers, every `k` closed as `Kept` (2026-10-01)
+
+A resumption forced by an outer interpreter (`Resume.apply`) enters the
+machine at its registers through `pushed`, without the `Bind(Return(a),
+k)` the first step took apart: writerTellUnderDelim 1.155 → **1.13x**, and
+its bytes BELOW the single list's (270 vs 286 KB/op). A cut closes its
+`k` as a `Kept` too (`Rev.close`), so every captured continuation ends in
+one and `Rev.onto` resumes it typed: `relink`, `emptied` and their two
+casts are gone; generator, stateLexDeep and delimDollarResume unchanged
+(history.d 2026-10-01T…-cont-frames-reentry-and-close.tsv). Starting a
+`Delim.run` with the boundary as the initial stack (two nodes per run)
+was left out: no lane measures a per-run cost.
+
 ## Literature
 
 - Materzok & Biernacki, "A Dynamic Interpretation of the CPS
