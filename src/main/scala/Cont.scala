@@ -96,8 +96,11 @@ object Cont:
    * specs/cont-stack.md Layer 1 A); any other body is `shiftLeaf`. */
   inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
 
-  /** the leaf every non-tail body becomes: the function, as it is */
-  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] = opaqueLeaf(f)
+  /** the leaf an opaque body becomes (one the macro can neither make a
+   * value nor CPS-transform): the body runs as it is, given a STRICT `k`
+   * — the rest of the run forced as a nested run (`force`) */
+  def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
+    leaf(k => Return(f.asInstanceOf[(Any => Any) => Any](x => force(k, x))))
 
   /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
    * `v` computed when the runner reaches it, in the runner's own loop.
@@ -194,8 +197,7 @@ object Cont:
 
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
-    (Frames.runUnder[NoEffect, Any, Any](erased(c), root, Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom)): @unchecked) match
-      case Return(v) => v.asInstanceOf[R]
+    answerOf(Frames.runUnder[NoEffect, Any, Any](erased(c), root, Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom))).asInstanceOf[R]
 
   // ==================================================================
   // THE RUNNER IS THE FRAME MACHINE (cont-step-on-frames, 2026-09-30;
@@ -233,7 +235,10 @@ object Cont:
     /** this run's stack gauge, attached at its first exhaustion (Layer 3):
      * one per run, so a grant reads the stack it measured last, where a
      * fresh gauge per exhaustion asked the OS for the stack every time */
-    var gauge: Gauge | Null = null
+    private var gauge: Gauge | Null = null
+    def gaugeNow: Gauge = gauge match
+      case null => val g = Gauge(); gauge = g; g
+      case g: Gauge => g
     def apply(x: Any): P = Return(k(x))
 
   /**
@@ -253,10 +258,6 @@ object Cont:
   private def leaf[A, S, R](clause: K => P): Rep[A, S, R] =
     typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, clause, false, false, "Cont.shift")))
 
-  /** road 3: the body gets a STRICT `k` and answers a value */
-  private def opaqueLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
-    leaf(k => Return(f.asInstanceOf[(Any => Any) => Any](x => force(k, x))))
-
   /** road 2: a transformed body as a program over the lazy `k` */
   private def bodyProgram(b: Body[?]): P = b match
     case Body.Done(r) => Return(r)
@@ -271,7 +272,11 @@ object Cont:
 
   /** a run to its value: a Cont program has no other effect, so the head
    * form is a `Return` */
-  private def value(p: P): Any = Frames.run[NoEffect, Any, Any, Any](p) match
+  private def value(p: P): Any = answerOf(Frames.run[NoEffect, Any, Any, Any](p))
+
+  /** a run's head form, which for a Cont program is its value: it has no
+   * operation but its own, so the machine answers a `Return` */
+  private def answerOf(head: P): Any = head match
     case Return(v) => v
     case _ => throw IllegalStateException("a Cont program answered an operation: it has none")
 
@@ -290,27 +295,21 @@ object Cont:
       // goes on, on this stack or on a fresh one it waits for), so a
       // saved value restored in `finally` is exact — where rebuilding `k`
       // with the room in its root cost a node walk and two nodes a call
-      val saved = r.room
-      val here = saved - 1
-      if here > 0 then
-        r.room = here
-        try enter(k, x) finally r.room = saved
+      val here = r.room - 1
+      if here > 0 then nested(r, here, k, x)
       else
-        val g = r.gauge match
-          case null => val g = Gauge(); r.gauge = g; g
-          case g: Gauge => g
-        val more = StackSwitch.more(g)
-        if more > 0 then
-          r.room = more
-          try enter(k, x) finally r.room = saved
-        else StackSwitch.fresh: fresh =>
-          r.room = fresh
-          try enter(k, x) finally r.room = saved
+        val more = StackSwitch.more(r.gaugeNow)
+        if more > 0 then nested(r, more, k, x)
+        else StackSwitch.fresh(fresh => nested(r, fresh, k, x))
+
+  /** `k` run nested with `room` levels, the run's own room restored after */
+  private def nested(r: Root, room: Int, k: K, x: Any): Any =
+    val saved = r.room
+    r.room = room
+    try enter(k, x) finally r.room = saved
 
   /** `k` run now to its value, entered at the machine's registers */
-  private def enter(k: K, x: Any): Any = Frames.Resume[NoEffect, Any, Any, Any, Any](x, k)() match
-    case Return(v) => v
-    case _ => throw IllegalStateException("a Cont program answered an operation: it has none")
+  private def enter(k: K, x: Any): Any = answerOf(Frames.Resume[NoEffect, Any, Any, Any, Any](x, k)())
 
   /** the root delimiter at the bottom of `k`: the run it was captured from */
   @annotation.tailrec

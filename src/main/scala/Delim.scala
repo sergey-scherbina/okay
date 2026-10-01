@@ -800,7 +800,9 @@ object Delim {
     shift[Unit](using in)(k => k(()).map(f))
 
   /** a prompt is its own typed token: the same prompt has the same
-   * answer type — the witness the machine uses to split its stack */
+   * answer type — for code that compares prompts generically; the
+   * machine itself compares by `eq` with one shared evidence
+   * (`Frames.identical`), without this given's `Option` */
   given samePrompt: Same[Prompt] = Same.byIdentity
 
   /** `Delim`'s operations are `Cont0`'s: the class is the whole test */
