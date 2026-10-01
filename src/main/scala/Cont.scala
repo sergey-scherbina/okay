@@ -668,6 +668,12 @@ object Frames:
       case i: Cat[F, A, `s2`, T, ?, ?, `y`] => uncat(Cat(i.k, Cat(i.below, c.below)))
     case _ => st
 
+  /** `k` over `below`: `below` itself when `k` is empty, so the loop
+   * never meets a `Cat` of nothing */
+  private[okay] def cat[F[_, _, +_], A, S, T, Y, S2, Z](k: Stack[F, A, S2, T, Y], below: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = k match
+    case _: Done[F, A, T] @unchecked => below
+    case _ => Cat(k, below)
+
   /** the prompts installed on a stack, innermost first — `NoPrompt`'s list */
   @tailrec def installed[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = st match
     case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => installed(uncat(c), acc)
@@ -737,8 +743,13 @@ object Frames:
      * catenated onto (`Rev.onto`), its head segment unpacked into the frames
      * register — the one place both resuming arms (a `k` as a bind's
      * continuation, a `Resume` as a delay's thunk) go through */
-    def pushed[X, T](focus: Freer[G, T, R, X], k: Stack[F, X, S0, T, Z]): Next[?, ?, ?, ?] = uncat(k) match
+    def pushed[X, T](focus: Freer[G, T, R, X], k: Stack[F, X, S0, T, Z]): Next[?, ?, ?, ?] = k match
       case rn: Run[F, X, S0, s2, T, y, Z] => Next[X, T, s2, y](focus, rn.frames, rn.below)
+      // a resumed `k` over the live stack: its head segment straight into
+      // the frames register, no shell — the rest of `k` stays catenated
+      case c: Cat[F, X, S0, T, y, s2, Z] => c.k match
+        case kr: Run[F, X, `s2`, s3, T, y1, `y`] => Next[X, T, s3, y1](focus, kr.frames, cat(kr.below, c.below))
+        case _ => Next[X, T, T, X](focus, noFrames[F, X, T], c)
       case sp => Next[X, T, T, X](focus, noFrames[F, X, T], sp)
 
     @tailrec def loop[X, T, S1, Y](focus: Freer[G, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] = focus match
@@ -768,8 +779,14 @@ object Frames:
           case d: Dollar[F, Y, S0, S1, y, Z] => loop(d.ret(r.a), noFrames[F, y, S1], d.below)
           // the next segment, unpacked into the frames register
           case rn: Run[F, Y, S0, ?, S1, ?, Z] => loop(focus, rn.frames, rn.below)
-          // a resumed `k` over the rest: its next node, reached now
-          case c: Cat[F, Y, S0, S1, ?, ?, Z] => loop(focus, fs, uncat(c))
+          // a resumed `k` over the rest: its next node, taken apart in
+          // place — a segment into the register, a `$` popped — with no
+          // shell built for it (cont-cat v1 built one a node and lost)
+          case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
+            case _: Done[F, Y, S1] @unchecked => loop(focus, fs, c.below)
+            case kr: Run[F, Y, `s2`, ?, S1, ?, `y`] => loop(focus, kr.frames, cat(kr.below, c.below))
+            case d: Dollar[F, Y, `s2`, S1, y1, `y`] => loop(d.ret(r.a), noFrames[F, y1, S1], cat(d.below, c.below))
+            case i: Cat[F, Y, `s2`, S1, ?, ?, `y`] => loop(focus, fs, Cat(i.k, Cat(i.below, c.below)))
           case _: Done[F, Y, S0] @unchecked => focus
       case d: Delay[G, T, R, X] => Frames.resume[F, T, R, X](d.thunk) match
         // a resumption: the value at the top of its stack, pushed — never forced
