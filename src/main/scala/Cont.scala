@@ -134,37 +134,34 @@ object Cont:
    * `s"${k(a)}"` — cannot become a value the way a tail body does:
    * something is left to do after each call. `ContMacro` CPS-transforms
    * such a body SELECTIVELY (Rompf, Maier & Odersky, ICFP 2009): every
-   * `k(e)` becomes a `Call` naming what is left. The body is then DATA,
-   * turned into a program over a LAZY `k` (`bodyProgram`): a call of `k`
-   * is `k`'s nodes pushed by the frame machine, its rest a frame under
-   * them. No body frame, no room counted, no switch, `k` multi-shot as
-   * before. (Until cont-on-frames-probe the old runner walked it with a
-   * `Pending` stack of its own; the frame machine's stack is that stack.)
+   * `k(e)` becomes `Cont.call(k, e, rest)` — the PROGRAM over a lazy `k`
+   * (cont-frames-strict-k): `k`'s nodes pushed by the frame machine,
+   * `rest` the frame under them, and the body's answer `Cont.done`. No
+   * body frame, no room counted, no switch, `k` multi-shot as before.
+   * Until then the macro built a `Body` tree (`Done`/`Call`) inside an
+   * anonymous `Cps` class, and the runner converted it to these nodes on
+   * every call — the old runner's walked data, kept past the runner.
    *
    * NOT a function answer (`PState`'s `s => k(s)(s2)`): measured at
-   * 2.8x the direct road on statePara (specs/cont-stack.md, stage E),
-   * where Layer 3's exact room already runs the same program with no
-   * switch; such a body stays the opaque leaf.
+   * 2.8x the direct road on statePara on the old runner (specs/
+   * cont-stack.md, stage E); such a body stays the opaque leaf.
    *
-   * A `Cps` is a `Shift` on the tree, extending the function type
-   * exactly as `Leaf` does so `Inject` takes it; applied as one by code
-   * that is not the runner, it runs the same loop from the top. Public
-   * because a macro expansion at the user's call site builds it (an
-   * anonymous subclass, one allocation per shift); not an API.
+   * Public because a macro expansion at the user's call site builds it;
+   * not an API.
    */
-  enum Body[R]:
-    /** the body's answer */
-    case Done[R](r: R) extends Body[R]
-    /** `k(a)`, then `rest` of the answer */
-    case Call[A, S, R](k: A => S, a: A, rest: S => Body[R]) extends Body[R]
+  opaque type Lazy[R] = Freer[Sig, Any, Any, Any]
 
-  /** a CPS-transformed body, as the `(A => S) => R` it still means */
-  abstract class Cps[A, S, R] extends ((A => S) => R):
-    def body(k: A => S): Body[R]
-    final def apply(k: A => S): R = runBody[R](body(k))
+  /** the body's answer */
+  def done[R](r: R): Lazy[R] = Return(r)
+
+  /** `k(a)`, then `rest` of its answer: `k` is the captured stack (a
+   * lazy leaf's body is only ever given one), applied as a program the
+   * machine pushes, `rest` the bind's continuation */
+  def call[A, S, R](k: A => S, a: A, rest: S => Lazy[R]): Lazy[R] =
+    Bind(k.asInstanceOf[K](a), rest.asInstanceOf[Any => P])
 
   /** the leaf an answer-using body becomes */
-  def cps[A, S, R](c: Cps[A, S, R]): Rep[A, S, R] = leaf(k => bodyProgram(c.asInstanceOf[Cps[Any, Any, Any]].body(k)))
+  def lazyLeaf[A, S, R](body: (A => S) => Lazy[R]): Rep[A, S, R] = leaf(k => body(k.asInstanceOf[A => S]))
   /**
    * A bind whose LEFT side is deferred into the runner's own loop: the
    * thunk is not forced at construction, only when `step` reaches the
@@ -209,7 +206,7 @@ object Cont:
   // the user's `k`, and every leaf is a `Shift0` to the nearest — the
   // run it is in, since a `k(x)` re-installs its root with it. Two roads,
   // the ones the macro already separates:
-  //   an answer-using body (`Cps`, the macro's selective CPS transform:
+  //   an answer-using body (`lazyLeaf`, the macro's selective CPS transform:
   //     `k(1) + k(10)`) is a program over a LAZY `k` — `Call(k, a, rest)`
   //     is `k(a).flatMap(rest)`, pushed by the machine, no JVM frame;
   //   an opaque body (`k` where the macro cannot see it) gets a STRICT
@@ -264,22 +261,6 @@ object Cont:
   /** a leaf: a `Shift0` to the root, its clause given the stack up to it */
   private def leaf[A, S, R](clause: K => P): Rep[A, S, R] =
     typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, clause, false, false, "Cont.shift")))
-
-  /** road 2: a transformed body as a program over the lazy `k` */
-  private def bodyProgram(b: Body[?]): P = b match
-    case Body.Done(r) => Return(r)
-    case Body.Call(kk, a, rest) =>
-      val next: Any => P = s => bodyProgram(rest.asInstanceOf[Any => Body[?]](s))
-      Frames.as[NoEffect, Any, Any, Any, Any](kk.asInstanceOf[Any => P]) match
-        case null => Delay(() => next(kk.asInstanceOf[Any => Any](a)))
-        case ks => Bind(ks(a), next)
-
-  /** a walked body, applied as the function it means: its program run */
-  private def runBody[R](b: Body[R]): R = value(bodyProgram(b)).asInstanceOf[R]
-
-  /** a run to its value: a Cont program has no other effect, so the head
-   * form is a `Return` */
-  private def value(p: P): Any = answerOf(Frames.run[NoEffect, Any, Any, Any](p))
 
   /** a run's head form, which for a Cont program is its value: it has no
    * operation but its own, so the machine answers a `Return` */

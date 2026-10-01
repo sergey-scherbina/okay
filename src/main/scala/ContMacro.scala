@@ -24,9 +24,9 @@ import scala.quoted.*
  * LAYER 1 B (cont-stack-layer1-b, plan stage E): a body that USES the
  * answer — `k(1) + k(10)`, `a :: k(x)`, `s"${k(a)}"`, `PState`'s
  * `s => k(s)(s2)` — is CPS-transformed SELECTIVELY (Rompf, Maier &
- * Odersky, ICFP 2009) into a `Cont.Body`: each `k(e)` becomes a `Call`
- * naming what is left; the runner walks the body in its own loop
- * (Cont.scala, `step`'s pending stack). NOT a function answer —
+ * Odersky, ICFP 2009) into a program over a lazy `k`: each `k(e)`
+ * becomes a `Cont.call` naming what is left, `k`'s nodes pushed by the
+ * frame machine (Cont.scala, `lazyLeaf`). NOT a function answer —
  * `PState`'s `s => k(s)(s2)` — which measured 2.8x the direct road
  * on statePara and stays opaque (specs/cont-stack.md, stage E). What ran
  * before a call still runs before it: every k-free part evaluated
@@ -107,16 +107,16 @@ object ContMacro:
     case class Kont(rt: TypeRepr, rest: Option[Term => Term])
 
     def done(rt: TypeRepr, v: Term): Term = rt.asType match
-      case '[r] => '{ Cont.Body.Done[r](${ v.asExprOf[r] }) }.asTerm
+      case '[r] => '{ Cont.done[r](${ v.asExprOf[r] }) }.asTerm
 
     def feed(kont: Kont, v: Term): Term = kont.rest match
       case None => done(kont.rt, v)
       case Some(f) => f(v)
 
-    /** a fresh `name => rest(name)` of type `in => Body[rt]` */
+    /** a fresh `name => rest(name)` of type `in => Lazy[rt]` */
     def lam(name: String, in: TypeRepr, rt: TypeRepr)(rest: Term => Term): Term =
       val out = rt.asType match
-        case '[r] => TypeRepr.of[Cont.Body[r]]
+        case '[r] => TypeRepr.of[Cont.Lazy[r]]
       Lambda(Symbol.spliceOwner, MethodType(List(name))(_ => List(in), _ => out),
         (meth, ps) => rest(Ref(ps.head.symbol)).changeOwner(meth))
 
@@ -158,11 +158,11 @@ object ContMacro:
         case Apply(i: Ident, List(e)) if i.symbol == k => Some(e)
         case _ => None
 
-    /** `Call(k, e, s => rest)` */
+    /** `Cont.call(k, e, s => rest)` */
     def call(e: Term, kont: Kont)(using k: Symbol): Term = kont.rt.asType match
       case '[r] =>
-        '{ Cont.Body.Call[A, S, r](${ Ref(k).asExprOf[A => S] }, ${ e.asExprOf[A] },
-             ${ lam("s", TypeRepr.of[S], kont.rt)(sv => feed(kont, sv)).asExprOf[S => Cont.Body[r]] }) }.asTerm
+        '{ Cont.call[A, S, r](${ Ref(k).asExprOf[A => S] }, ${ e.asExprOf[A] },
+             ${ lam("s", TypeRepr.of[S], kont.rt)(sv => feed(kont, sv)).asExprOf[S => Cont.Lazy[r]] }) }.asTerm
 
     /** the parameter types a function term's arguments are matched against */
     def params(fun: Term): List[TypeRepr] = fun.tpe.widen match
@@ -239,14 +239,12 @@ object ContMacro:
           else cps(sc, Kont(kont.rt, Some(s2 => feed(kont, Match.copy(t)(s2, cases)))))
         case _ => throw Opaque
 
-    /** the whole body as a `Cps`, or None where the transform cannot read it */
-    def cpsBody(body: Term)(using k: Symbol): Option[Expr[Cont.Cps[A, S, R]]] =
+    /** the whole body as a program over a lazy `k`, or None where the
+     * transform cannot read it */
+    def cpsBody(body: Term)(using k: Symbol): Option[Expr[(A => S) => Cont.Lazy[R]]] =
       try
         val b = cps(body, Kont(TypeRepr.of[R], None))
-        Some('{
-          new Cont.Cps[A, S, R]:
-            def body(k2: A => S): Cont.Body[R] = ${ subst(b, k, 'k2.asTerm).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Body[R]] }
-        })
+        Some('{ (k2: A => S) => ${ subst(b, k, 'k2.asTerm).changeOwner(Symbol.spliceOwner).asExprOf[Cont.Lazy[R]] } })
       catch case Opaque => None
 
     // A TAIL BODY'S TYPES SAY `S <: R` — `k(v): S` was the body's `R` —
@@ -272,6 +270,6 @@ object ContMacro:
           case Some(_) => fallback
           case None if !mentions(p.symbol, body) => fallback
           case None => cpsBody(body) match
-            case Some(b) => '{ Cont.cps[A, S, R]($b) }
+            case Some(b) => '{ Cont.lazyLeaf[A, S, R]($b) }
             case None => fallback
       case _ => fallback
