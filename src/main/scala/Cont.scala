@@ -105,7 +105,7 @@ object Cont:
    * user's body. */
   def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
     val body = f.asInstanceOf[(Any => Any) => Any]
-    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, (k: K) => Return(body(Resumption(k))), false, "Cont.shift")))
+    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any, Any](rootAt, (k: K) => Return(body(Resumption(k))), false, "Cont.shift")))
 
   /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
    * `v` computed when the runner reaches it, in the runner's own loop.
@@ -168,7 +168,7 @@ object Cont:
   /** the leaf an answer-using body becomes */
   def lazyLeaf[A, S, R](body: (A => S) => Lazy[R]): Rep[A, S, R] =
     // the body IS the clause: given the captured stack as its `k`
-    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, body.asInstanceOf[K => P], false, "Cont.shift")))
+    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any, Any](rootAt, body.asInstanceOf[K => P], false, "Cont.shift")))
   /**
    * A bind whose LEFT side is deferred into the runner's own loop: the
    * thunk is not forced at construction, only when `step` reaches the
@@ -202,7 +202,7 @@ object Cont:
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
     val r = Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom)
-    answerOf(Frames.run[NoEffect, Any, Any, Any](Inject(Cont0.Reset0[NoEffect, Any, Any, Any, Any](root, r, erased(c))))).asInstanceOf[R]
+    answerOf(Frames.run[NoEffect, Any, Any, Any](Inject(Cont0.Reset0[NoEffect, Any, Any, Any, Any](rootAt, r, erased(c))))).asInstanceOf[R]
 
   // ==================================================================
   // THE RUNNER IS THE FRAME MACHINE (cont-step-on-frames, 2026-09-30;
@@ -233,6 +233,9 @@ object Cont:
   /** THE ROOT PROMPT: one for every run — runs nest by the stack, and a
    * leaf's cut stops at the nearest `Reset` of it */
   private val root: Prompt[Any] = new Prompt[Any]("Cont.run", "Cont.scala")
+  /** the root as the machine's delimiter: at Cont's one index, `Any` —
+   * every node of a Cont program is built at it (`erased`) */
+  private val rootAt: Cont0.Delimiter[Any, Any] = Cont0.delimiter(root)
 
   /** the root's `ret`: the user's `k`, and the room this run has on its
    * stack — where a strict `k` reads it (`force`) */
@@ -559,7 +562,7 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
    * delimiter heading its segment), which saved a node per install and
    * made every rule that touches a delimiter touch a segment too.
    */
-  case Reset[F[_, _, +_], A, S, T, Y, Z](p: Prompt[Y], ret: A => Freer[Cont0.Row[F], T, T, Y],
+  case Reset[F[_, _, +_], A, S, T, Y, Z](p: Cont0.Delimiter[Y, T], ret: A => Freer[Cont0.Row[F], T, T, Y],
                                          below: Stack[F, Y, S, T, Z]) extends Stack[F, A, S, T, Z]
 
   def apply(a: A): Freer[Cont0.Row[F], S, T, Z] = this match
@@ -617,33 +620,25 @@ object Frames:
     case r: Resume[?, ?, ?, ?, ?] => r.asInstanceOf[Resume[F, ?, S, T, Z]]
     case _ => null
 
-  /**
-   * THE ONE CLAIM OF THE MACHINE, Delim's `rebase` verbatim: a captured
-   * stack's nodes were typed at the join index of the delimiter that
-   * bounded them and are handed to a clause typed at the leaf's own;
-   * the two are the run's one index, and only the construction knows
-   * it. Erased, it costs nothing.
-   */
-  private def rebase[F[_, _, +_], A, S1, T1, S2, T2, Z](st: Stack[F, A, S1, T1, Z]): Stack[F, A, S2, T2, Z] =
-    st.asInstanceOf[Stack[F, A, S2, T2, Z]]
-
   /** THE CLAIM `plain` MAKES, in one place: a plain delimiter's `ret` is
    * the identity, so the segment under it answers the prompt's own type —
    * a bare cut's `k` (the frames above the delimiter, WITHOUT it: the
-   * control family) answers `Y` where its nodes say the segment's `C`,
-   * and at the run's one index, as `rebase` says for the rest. Only a
-   * `control` to a plain delimiter reaches it: `cut` refuses a `dollar`
-   * by name first. */
-  private def plainly[F[_, _, +_], A, S1, T1, C, T2, Y](k: Stack[F, A, S1, T1, C]): Stack[F, A, T2, T2, Y] =
-    k.asInstanceOf[Stack[F, A, T2, T2, Y]]
+   * control family) answers `Y` where its nodes say the segment's `C`.
+   * Only a `control` to a plain delimiter reaches it: `cut` refuses a
+   * `dollar` by name first. The answer type only — the index is typed. */
+  private def plainly[F[_, _, +_], A, S, T, C, Y](k: Stack[F, A, S, T, C]): Stack[F, A, S, T, Y] =
+    k.asInstanceOf[Stack[F, A, S, T, Y]]
 
-  /** TWO PROMPTS THAT ARE ONE OBJECT ARE ONE TYPE — `Same.byIdentity`'s
-   * axiom, taken here without its `Option` and without the lazy given
-   * behind `Delim.samePrompt` (3.4% of a capture-heavy lane's samples,
-   * read off async-profiler): the caller tests `eq`, this is the claim
-   * for the pair it tested, one shared evidence */
-  private def identical[A, B](@annotation.unused a: Prompt[A], @annotation.unused b: Prompt[B]): A =:= B =
-    <:<.refl[A].asInstanceOf[A =:= B]
+  /** TWO DELIMITERS THAT ARE ONE OBJECT ARE ONE TYPE — answer and index
+   * alike: `Same.byIdentity`'s axiom, the generative prompt's (DPJS's
+   * `eqPrompt` is the same `unsafeCoerce`), taken here without its
+   * `Option` and without the lazy given behind `Delim.samePrompt` (3.4%
+   * of a capture-heavy lane's samples, read off async-profiler): the
+   * caller tests `eq`, this is the claim for the pair it tested */
+  private final class Ident[Y, I, Y2, I2](val answer: Y =:= Y2, val index: I =:= I2)
+  private val theSame = new Ident[Any, Any, Any, Any](<:<.refl, <:<.refl)
+  private def identical[Y, I, Y2, I2](@annotation.unused a: Cont0.Delimiter[Y, I], @annotation.unused b: Cont0.Delimiter[Y2, I2]): Ident[Y, I, Y2, I2] =
+    theSame.asInstanceOf[Ident[Y, I, Y2, I2]]
 
   private[okay] def runOf[F[_, _, +_], A, S, S2, T, Y, Z](fs: Frames[F, A, S2, T, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = fs match
     case _: End[F, A, S2] @unchecked => st
@@ -652,7 +647,7 @@ object Frames:
   /** the prompts installed on a stack, innermost first — `NoPrompt`'s list */
   @tailrec def installed[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = st match
     case Run(_, below) => installed(below, acc)
-    case Reset(p, _, below) => installed(below, if p eq Cont0.boundary[Any] then acc else p.label :: acc)
+    case Reset(p, _, below) => installed(below, if p eq Cont0.boundary[Any, Any] then acc else p.label :: acc)
     case _ => acc.reverse
 
   /**
@@ -674,7 +669,7 @@ object Frames:
     /** cut the stack at the `Reset` naming `sh.p`, walking its NODES:
      * `k` is the nodes above it with it (without it when bare), the
      * body takes the delimiter's place with the stack below it */
-    @tailrec def cut[X, Y, T, T2, C](sh: Cont0.Shift0[F, Y, T, R, X], all: Stack[F, X, S0, T, Z], st: Stack[F, C, S0, T2, Z], rev: Rev[F, X, T, T2, C]): Next[?, ?, ?, ?] = st match
+    @tailrec def cut[X, Y, I, T, T2, C](sh: Cont0.Shift0[F, Y, I, T, R, X], all: Stack[F, X, S0, T, Z], st: Stack[F, C, S0, T2, Z], rev: Rev[F, X, T, T2, C]): Next[?, ?, ?, ?] = st match
       // no delimiter answers, and no boundary: the capture goes OUT as an
       // operation, for a machine outside this one (Delim.runNested)
       case Done() => null
@@ -685,20 +680,26 @@ object Frames:
       // every `k` and a run of `k` started by an outer interpreter meets
       // it too — which is why the check is the machine's and not the
       // door's: the door returns before those runs happen
-      case d: Reset[F, C, S0, T2, ?, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
+      case d: Reset[F, C, S0, T2, ?, Z] if d.p eq Cont0.boundary[Any, Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Reset[F, C, S0, T2, y2, Z] =>
         if sh.p eq d.p then
-          val ey = identical(sh.p, d.p)
-          val k: Stack[F, X, T, T, Y] =
+          // the delimiter's own answer `y2` and index `T2` ARE the leaf's
+          // `Y` and `I`: the shift named this delimiter, which carries both
+          val same = identical(sh.p, d.p)
+          val y = same.answer.flip
+          val i = same.index.flip
+          val k: Stack[F, X, I, T, Y] =
             if sh.bare then
               if !Cont0.plain(d.ret) then throw new UnsupportedOperationException(
                 s"${sh.at}: a control-capture to ${d.p.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
-              plainly(Rev.link(rev, noStack[F, C, T2]))
+              plainly(i.liftCo[[t] =>> Stack[F, X, t, T, C]](Rev.link(rev, noStack[F, C, T2])))
             else
               // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule)
-              rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](Rev.link(Rev.SnocReset(rev, d.p, d.ret), noStack[F, y2, T2])))
-          // the body in the delimiter's place, over the stack under it
-          Next[Y, T, T, Y](sh.f(k), noFrames[F, Y, T], rebase[F, Y, S0, T2, S0, T, Z](ey.flip.liftCo[[y] =>> Stack[F, y, S0, T2, Z]](d.below)))
+              y.liftCo[[a] =>> Stack[F, X, I, T, a]](
+                i.liftCo[[t] =>> Stack[F, X, t, T, y2]](Rev.link(Rev.SnocReset(rev, d.p, d.ret), noStack[F, y2, T2])))
+          // the body in the delimiter's place, at its index, over the stack under it
+          Next[Y, I, I, Y](sh.f(k), noFrames[F, Y, I],
+            y.liftCo[[a] =>> Stack[F, a, S0, I, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](d.below)))
         else
           cut(sh, all, d.below, Rev.SnocReset(rev, d.p, d.ret))
 
@@ -709,7 +710,7 @@ object Frames:
 
     /** a capture: the walk to the delimiter it names; `null` when no
      * delimiter on this machine answers it */
-    def capture[X, T, S1, Y](sh: Cont0.Shift0[F, ?, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] =
+    def capture[X, T, S1, Y](sh: Cont0.Shift0[F, ?, ?, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] =
       val all = runOf(fs, st)
       cut(sh, all, all, Rev.nil[F, X, T])
 
@@ -772,7 +773,7 @@ object Frames:
           // the delimiter, asked for as an operation, becomes a node — entered
           case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
             loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, runOf(fs, st)))
-          case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => capture(sh, fs, st) match
+          case sh: Cont0.Shift0[F, ?, ?, T, R, X] @unchecked => capture(sh, fs, st) match
             case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
             // nobody here answers it: out, as an operation over the stack
             case null => Bind(focus, runOf(fs, st))
@@ -791,12 +792,12 @@ object Frames:
  * enum, for the `+X` a `Freer` signature needs (Delim.Op's shape).
  */
 enum Cont0[F[_, _, +_], T, R, +X]:
-  case Reset0[F[_, _, +_], Y, A, T, R](p: Prompt[Y],
+  case Reset0[F[_, _, +_], Y, A, T, R](p: Cont0.Delimiter[Y, T],
                                        ret: A => Freer[Cont0.Row[F], T, T, Y],
                                        body: Freer[Cont0.Row[F], T, R, A]) extends Cont0[F, T, R, Y]
-  case Shift0[F[_, _, +_], Y, T, R, X](p: Prompt[Y],
-                                       f: Stack[F, X, T, T, Y] => Freer[Cont0.Row[F], T, R, Y],
-                                       bare: Boolean, at: String) extends Cont0[F, T, R, X]
+  case Shift0[F[_, _, +_], Y, I, T, R, X](p: Cont0.Delimiter[Y, I],
+                                          f: Stack[F, X, I, T, Y] => Freer[Cont0.Row[F], I, R, Y],
+                                          bare: Boolean, at: String) extends Cont0[F, T, R, X]
 
 object Cont0:
   /** the row: `Cont0` beside any indexed signature `F`; the effect tree's
@@ -805,6 +806,27 @@ object Cont0:
 
   /** a fresh delimiter tag, labelled with the line that asked for it */
   def prompt[Y](using at: At): Prompt[Y] = new Prompt[Y]("prompt", at.where)
+
+  /**
+   * A PROMPT AS THE MACHINE SEES IT: the delimiter's answer `Y` AND the
+   * index `I` it is installed at (cont-core-design step 9). A capture
+   * names its delimiter by this, so finding the `Reset` by identity
+   * types both — the `k` it cuts and the stack the body runs on — where
+   * the machine used to claim the leaf's index for the delimiter's
+   * (`rebase`). The prompt itself, so `eq`, `label` and every
+   * `Prompt[Y]` use stay as they were.
+   */
+  opaque type Delimiter[Y, I] <: Prompt[Y] = Prompt[Y]
+
+  /**
+   * THE CLAIM, made where the index is KNOWN: "this prompt's delimiter is
+   * installed at `I`". A door knows it by construction — every unstacked
+   * Delim program is at `Unit` (`Delim.atUnit`), every Cont program at
+   * `Any`, a stacked prompt's delimiter at the stack below it (`Has`) —
+   * and says so once, at the door, instead of the machine claiming at
+   * every capture that two indexes it cannot relate are one.
+   */
+  def delimiter[Y, I](p: Prompt[Y]): Delimiter[Y, I] = p
 
   /**
    * A PLAIN DELIMITER IS ONE WHOSE `ret` IS THIS OBJECT. `reset` is `$`
@@ -828,38 +850,39 @@ object Cont0:
    * run without it (`Delim.runNested`) lets such a capture out as an
    * operation, for a machine outside to answer. */
   private val theBoundary = new Prompt[Any]("boundary", "Delim.run")
-  /** at any answer type: it is compared by `eq` and never answers anything */
-  def boundary[Y]: Prompt[Y] = theBoundary.asInstanceOf[Prompt[Y]]
+  /** at any answer type and index: it is compared by `eq` and never
+   * answers anything */
+  def boundary[Y, I]: Delimiter[Y, I] = theBoundary.asInstanceOf[Delimiter[Y, I]]
 
   /** `ret $ body`: the body under the delimiter — an operation, so it
    * reaches the machine through any handler loop between them */
-  def dollar[F[_, _, +_], Y, A, T, R](p: Prompt[Y])(ret: A => Freer[Row[F], T, T, Y])(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, Y] =
+  def dollar[F[_, _, +_], Y, A, T, R](p: Delimiter[Y, T])(ret: A => Freer[Row[F], T, T, Y])(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, Y] =
     Inject[Row[F], T, R, Y](Cont0.Reset0[F, Y, A, T, R](p, ret, body))
 
   /** `$` with `ret = pure`: reset, a PLAIN delimiter */
-  def reset[F[_, _, +_], T, R, A](p: Prompt[A])(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, A] =
+  def reset[F[_, _, +_], T, R, A](p: Delimiter[A, T])(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, A] =
     Inject[Row[F], T, R, A](Cont0.Reset0[F, A, A, T, R](p, identity[F, T, A], body))
 
-  def shift0[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, false, at.where))
+  def shift0[F[_, _, +_], Y, I, T, R, X](p: Delimiter[Y, I])(f: Stack[F, X, I, T, Y] => Freer[Row[F], I, R, Y])(using at: At): Freer[Row[F], T, R, X] =
+    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, I, T, R, X](p, f, false, at.where))
 
-  def control0[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, true, at.where))
+  def control0[F[_, _, +_], Y, I, T, R, X](p: Delimiter[Y, I])(f: Stack[F, X, I, T, Y] => Freer[Row[F], I, R, Y])(using at: At): Freer[Row[F], T, R, X] =
+    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, I, T, R, X](p, f, true, at.where))
 
   /** `shift`: `shift0` whose body runs under a fresh plain delimiter of
    * the same prompt, `k` still carrying `ret` — APLAS 2012's
    * `S k.e = S0 k.⟨e⟩`, derived, not a case of the machine */
-  def shift[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    shift0[F, Y, T, R, X](p)(k => reset[F, T, R, Y](p)(f(k)))
+  def shift[F[_, _, +_], Y, I, T, R, X](p: Delimiter[Y, I])(f: Stack[F, X, I, T, Y] => Freer[Row[F], I, R, Y])(using at: At): Freer[Row[F], T, R, X] =
+    shift0[F, Y, I, T, R, X](p)(k => reset[F, I, R, Y](p)(f(k)))
 
   /** `control`: `control0` with the body under a fresh plain delimiter, the same way */
-  def control[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    control0[F, Y, T, R, X](p)(k => reset[F, T, R, Y](p)(f(k)))
+  def control[F[_, _, +_], Y, I, T, R, X](p: Delimiter[Y, I])(f: Stack[F, X, I, T, Y] => Freer[Row[F], I, R, Y])(using at: At): Freer[Row[F], T, R, X] =
+    control0[F, Y, I, T, R, X](p)(k => reset[F, I, R, Y](p)(f(k)))
 
   /** leave the delimiter with a value: a shift0 that drops `k` — a
    * `Return` in the delimiter's place, so at the diagonal */
-  def abort[F[_, _, +_], Y, T, X](p: Prompt[Y])(value: Y)(using At): Freer[Row[F], T, T, X] =
-    shift0[F, Y, T, T, X](p)(_ => Return[Row[F], T, Y](value))
+  def abort[F[_, _, +_], Y, T, X](p: Delimiter[Y, T])(value: Y)(using At): Freer[Row[F], T, T, X] =
+    shift0[F, Y, T, T, T, X](p)(_ => Return[Row[F], T, Y](value))
 
 /**
  * The reversed stack of NODES: the same type-aligned discipline,
@@ -871,7 +894,7 @@ object Cont0:
 private enum Rev[F[_, _, +_], A, T, S2, Y]:
   case Nil[F[_, _, +_], A, T]() extends Rev[F, A, T, T, A]
   case SnocRun[F[_, _, +_], A, T, S3, S2, Y0, Y](prev: Rev[F, A, T, S3, Y0], frames: Frames[F, Y0, S2, S3, Y]) extends Rev[F, A, T, S2, Y]
-  case SnocReset[F[_, _, +_], A, T, S2, Y0, Y](prev: Rev[F, A, T, S2, Y0], p: Prompt[Y], ret: Y0 => Freer[Cont0.Row[F], S2, S2, Y]) extends Rev[F, A, T, S2, Y]
+  case SnocReset[F[_, _, +_], A, T, S2, Y0, Y](prev: Rev[F, A, T, S2, Y0], p: Cont0.Delimiter[Y, S2], ret: Y0 => Freer[Cont0.Row[F], S2, S2, Y]) extends Rev[F, A, T, S2, Y]
 
 private object Rev:
   @tailrec def link[F[_, _, +_], A, S, T, S2, Y, Z](rev: Rev[F, A, T, S2, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = rev match
