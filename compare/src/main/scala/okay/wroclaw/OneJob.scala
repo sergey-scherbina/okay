@@ -1,7 +1,7 @@
 package okay.wroclaw
 
 import okay.*
-import okay.Tables.{read, collect, join, select}
+import okay.Tables.{read, join, select}
 
 /**
  * ONE JOB, WRITTEN ONCE (streams-seam lane 4; docs/one-job-everywhere.md):
