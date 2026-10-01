@@ -215,7 +215,8 @@ object Cont:
 
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
-    value(Inject(Cont0.Reset0[NoEffect, Any, Any, Any, Any](root, Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom), erased(c), null))).asInstanceOf[R]
+    (Frames.runUnder[NoEffect, Any, Any](erased(c), root, Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom)): @unchecked) match
+      case Return(v) => v.asInstanceOf[R]
 
   // ==================================================================
   // THE RUNNER IS THE FRAME MACHINE (cont-step-on-frames, 2026-09-30;
@@ -660,7 +661,7 @@ object Frames:
   /** a resumption: the value and the stack it enters, as the thunk of a
    * `Delay` — run by whoever forces it, pushed by the machine */
   final class Resume[F[_, _, +_], A, S, T, Z](val a: A, val k: Stack[F, A, S, T, Z]) extends (() => Freer[Cont0.Row[F], S, T, Z]):
-    def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.machine[F, S, T, Z](null, this)
+    def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.machine[F, S, T, Z](null, this, Frames.noStack[F, Z, S])
 
   /**
    * THE COUNT IS A FRAME. A `dollarResumed` is told each time the
@@ -761,7 +762,17 @@ object Frames:
    * and the stack below them. `S0`, `R`, `Z` are the run's; every arm is
    * typed by GADT refinement.
    */
-  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] = machine(p, null)
+  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] = machine(p, null, noStack[F, Z, S0])
+
+  /** `p` under the delimiter `ret $_p0`, installed as the run's FIRST
+   * stack rather than asked for by a `Reset0` operation the loop's first
+   * step turns into the same node: a `Cont` run (its root, `ret` the
+   * user's `k`) and `Delim.run` (its boundary) start every run with one,
+   * and a run per element (a generator over `Cont`) paid an `Inject`, a
+   * `Reset0` and a step each time */
+  private[okay] def runUnder[F[_, _, +_], S0, Z](p: Freer[Cont0.Row[F], S0, S0, Z], p0: Prompt[Z],
+                                                ret: Z => Freer[Cont0.Row[F], S0, S0, Z]): Freer[Cont0.Row[F], S0, S0, Z] =
+    machine(p, null, Reset[F, Z, S0, S0, Z, S0, Z, Z](p0, ret, null, noFrames[F, Z, S0], noStack[F, Z, S0]))
 
   /** the machine, entered at a program (`run`) or at a resumption forced
    * by an outer interpreter (`Resume.apply`): the second goes to the
@@ -769,7 +780,8 @@ object Frames:
    * built `Bind(Return(a), k)` for the loop's first step to take apart, two
    * nodes and a step per operation of an effect handled outside */
   private def machine[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z] | Null,
-                                             resume: Resume[F, ?, S0, R, Z] | Null): Freer[Cont0.Row[F], S0, R, Z] =
+                                             resume: Resume[F, ?, S0, R, Z] | Null,
+                                             st0: Stack[F, Z, S0, S0, Z]): Freer[Cont0.Row[F], S0, R, Z] =
     type G = Cont0.Row[F]
 
     final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
@@ -939,7 +951,7 @@ object Frames:
       val n = pushed(Return[G, R, A](r.a), r.k)
       loop(n.focus, n.fs, n.st)
 
-    if resume ne null then resumed(resume) else loop(p.nn, noFrames[F, Z, S0], noStack[F, Z, S0])
+    if resume ne null then resumed(resume) else loop(p.nn, noFrames[F, Z, S0], st0)
 
 /**
  * THE TWO OPERATIONS: the delimiter and the capture, both on the join
