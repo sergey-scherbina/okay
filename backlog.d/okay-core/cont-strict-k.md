@@ -18,5 +18,11 @@
       them opaque was the old runner's); (3) contAnswer lost 11% when the
       macro began emitting the program itself (less work, fewer bytes:
       the continuation is now the macro's lambda, inlined into `loop$1`;
-      a `Rest` wrapper class made it 1.35x) — read `loop$1` under hsdis
-      before and after. Rows: history.d 2026-10-01T…-cont-strict-k.tsv.
+      a `Rest` wrapper class made it 1.35x) — READ under hsdis
+      (2026-10-01): `loop$1` on contAnswer went from 62 loads from `sp`
+      to 103 (1356 -> 1286 instructions): the macro's continuation,
+      inlined into the loop, raised the register pressure — the same
+      cause as cont-frames-register-pressure, now in its third place.
+      Done since: (1) the leaf as one operation (cont-strict-k-2:
+      statePara 1.63-1.66x, fib100 2.44-2.51x, contAnswer 1.21x, bytes
+      down on all three). Rows: history.d 2026-10-01T…-cont-strict-k*.tsv.
