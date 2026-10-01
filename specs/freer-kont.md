@@ -474,6 +474,20 @@ porting `PState` to the machine's own state idioms (stateLexDeep 80 us,
 stateDeep 90 us against the probe's statePara 58). Operator decision:
 merged, optimize from here.
 
+### cont-strict-k: the strict `k`'s entry, and the lazy body as a program (2026-10-01)
+
+A Cont run builds its root delimiter node once (`Root.node`) and a
+strict `k` captured up to it re-enters with that node (`Frames.enterIn`;
+`Frames.machine` now starts at given registers, `run`/`runOn`/`enterIn`/
+`enterAt` its typed cases): statePara 1.85 → **1.64–1.71x** the old
+runner, fib100 2.70 → **2.41–2.44x**. The macro emits a lazy body as the
+program itself (`Cont.call`, `Cont.done`, `Cont.lazyLeaf`); `Body`,
+`Cps` and their per-call conversion are deleted — 16 KB less on
+contAnswer and 11% more time (1.09 → 1.20x), kept on the operator's call
+for the simpler code. Both slow lanes call `k` after its run ended, so a
+strict call that stays in the machine does not apply to them (backlog
+cont-strict-k).
+
 ## Literature
 
 - Materzok & Biernacki, "A Dynamic Interpretation of the CPS
