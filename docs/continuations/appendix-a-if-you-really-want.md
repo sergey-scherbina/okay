@@ -212,15 +212,21 @@ The reflex is to blame delimited control, and it is wrong. In this
 implementation a captured continuation is **already a data structure**:
 
 ```scala
-enum Frames[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
+enum Frames[F[_, _, +_], A, S, T, Z]:
   case End[F[_, _, +_], A, S]() extends Frames[F, A, S, S, A]
   case Frame[F[_, _, +_], A, S, S2, T, Y, Z](f: A => Freer[Cont0.Row[F], S2, T, Y],
-  case Reset[F[_, _, +_], A, S, T, Y, Z](p: Prompt[Y], ret: A => Freer[Cont0.Row[F], T, T, Y],
+
+enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
+  case Done[F[_, _, +_], A, S]() extends Stack[F, A, S, S, A]
+  case Run[F[_, _, +_], A, S, S2, T, Y, Z](frames: Frames[F, A, S2, T, Y],
+  case Reset[F[_, _, +_], A, S, T, Y, S2, W, Z](p: Prompt[Y], ret: A => Freer[Cont0.Row[F], T, T, Y],
 ```
 
-A list of frames. You can walk it, count the frames, and see which
-prompts are installed — `Reset` is a delimiter, sitting in the
-continuation as an ordinary node. A continuation here is **more**
+Lists of frames, split at the delimiters: a `Frames` is one segment, a
+`Stack` is the segments and the delimiters between them, and the
+`Stack` is what a captured continuation is. You can walk it, count the
+frames, and see which prompts are installed — `Reset` is a delimiter,
+sitting in the continuation as an ordinary node. A continuation here is **more**
 inspectable than a native stack, not less, and that is exactly why it
 is multi-shot (chapter 13).
 
