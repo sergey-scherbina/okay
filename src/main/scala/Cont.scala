@@ -764,8 +764,12 @@ object Frames:
       cut(sh, all, all, Rev.nil[F, X, T])
 
     /** `k` is the live segment over a copy of the delimiter — two nodes,
-     * no walk, no `Rev` — and the body goes on over `below` */
-    def nearest[Y0, I0, X, T, S1, Y, y2](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y],
+     * no walk, no `Rev` — and the body goes on over `below`. INLINE, and
+     * measured: as a method called from `capture`'s two arms, C2 compiled
+     * it on its own and then refused to inline it at the first ("already
+     * compiled into a medium method"), and delimGenerator and stateLexDeep
+     * read 1.46x and 1.44x where one arm alone read 1.35x and 1.21x */
+    inline def nearest[Y0, I0, X, T, S1, Y, y2](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y],
                                          p: Cont0.Delimiter[y2, S1], ret: Y => Freer[G, S1, S1, y2],
                                          below: Stack[F, y2, S0, S1, Z]): Next[?, ?, ?, ?] =
       val same = identical(sh.p, p)
