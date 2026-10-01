@@ -733,6 +733,14 @@ object Frames:
   private def plainly[F[_, _, +_], A, S1, T1, C, T2, Y](k: Stack[F, A, S1, T1, C]): Stack[F, A, T2, T2, Y] =
     k.asInstanceOf[Stack[F, A, T2, T2, Y]]
 
+  /** TWO PROMPTS THAT ARE ONE OBJECT ARE ONE TYPE — `Same.byIdentity`'s
+   * axiom, taken here without its `Option` and without the lazy given
+   * behind `Delim.samePrompt` (3.4% of a capture-heavy lane's samples,
+   * read off async-profiler): the caller tests `eq`, this is the claim
+   * for the pair it tested, one shared evidence */
+  private def identical[A, B](@annotation.unused a: Prompt[A], @annotation.unused b: Prompt[B]): A =:= B =
+    <:<.refl[A].asInstanceOf[A =:= B]
+
   private def rebaseF[F[_, _, +_], A, S, T1, T2, Z](fs: Frames[F, A, S, T1, Z]): Frames[F, A, S, T2, Z] =
     fs.asInstanceOf[Frames[F, A, S, T2, Z]]
 
@@ -819,8 +827,9 @@ object Frames:
       case kp: Kept[F, C, S0, T2, y, Z] @unchecked =>
         cut(sh, all, Run(kp.frames, delimiterOf(kp)), rev, counts)
       case d: Reset[F, C, S0, T2, ?, ?, ?, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
-      case d: Reset[F, C, S0, T2, y2, s2, w, Z] => Delim.samePrompt.same(sh.p, d.p) match
-        case Some(ey) =>
+      case d: Reset[F, C, S0, T2, y2, s2, w, Z] =>
+        if sh.p eq d.p then
+          val ey = identical(sh.p, d.p)
           val k: Stack[F, X, T, T, Y] =
             if sh.bare then
               if !Cont0.plain(d.ret) then throw new UnsupportedOperationException(
@@ -833,7 +842,7 @@ object Frames:
               rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](entered(Rev.close(rev, d.p, d.ret, shots), counted)))
           // the body in the delimiter's place, over the segment that waited for it
           started(sh, sh.f(k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, T2, w]](d.frames)), d.below)
-        case None =>
+        else
           val shots = fresh(d.shots)
           val counted = count(shots, counts)
           cut(sh, all, runOf(d.frames, d.below), Rev.SnocReset(rev, d.p, d.ret, shots), counted)
@@ -853,13 +862,11 @@ object Frames:
      * shape is anything else, and the walk decides.
      */
     def nearest[X, Y, T, S1, Y1](sh: Cont0.Shift0[F, Y, T, R, X], fs: Frames[F, X, S1, T, Y1], st: Stack[F, Y1, S0, S1, Z]): Next[?, ?, ?, ?] = st match
-      case d: Reset[F, Y1, S0, S1, y2, s2, w, Z] if !sh.bare && (d.shots == null) && !(d.p eq Cont0.boundary[Any]) =>
-        Delim.samePrompt.same(sh.p, d.p) match
-          case Some(ey) =>
-            val seg: Stack[F, X, S1, T, y2] = Kept[F, X, S1, T, Y1, y2](fs, d.p, d.ret, null)
-            val k: Stack[F, X, T, T, Y] = rebase(ey.flip.liftCo[[y] =>> Stack[F, X, S1, T, y]](seg))
-            started(sh, sh.f(k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, S1, w]](d.frames)), d.below)
-          case None => null
+      case d: Reset[F, Y1, S0, S1, y2, s2, w, Z] if (sh.p eq d.p) && !sh.bare && (d.shots == null) && !(d.p eq Cont0.boundary[Any]) =>
+        val ey = identical(sh.p, d.p)
+        val seg: Stack[F, X, S1, T, y2] = Kept[F, X, S1, T, Y1, y2](fs, d.p, d.ret, null)
+        val k: Stack[F, X, T, T, Y] = rebase(ey.flip.liftCo[[y] =>> Stack[F, X, S1, T, y]](seg))
+        started(sh, sh.f(k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, S1, w]](d.frames)), d.below)
       case _ => null
 
     /** a capture: to the delimiter at the head of the stack without a
