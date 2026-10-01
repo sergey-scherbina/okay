@@ -100,7 +100,7 @@ object Cont:
    * value nor CPS-transform): the body runs as it is, given a STRICT `k`
    * — the rest of the run forced as a nested run (`force`) */
   def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
-    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, f.asInstanceOf[K => P], false, false, true, "Cont.shift")))
+    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, f.asInstanceOf[K => P], false, true, "Cont.shift")))
 
   /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
    * `v` computed when the runner reaches it, in the runner's own loop.
@@ -163,7 +163,7 @@ object Cont:
   /** the leaf an answer-using body becomes */
   def lazyLeaf[A, S, R](body: (A => S) => Lazy[R]): Rep[A, S, R] =
     // the body IS the clause: given the captured stack as its `k`
-    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, body.asInstanceOf[K => P], false, false, false, "Cont.shift")))
+    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, body.asInstanceOf[K => P], false, false, "Cont.shift")))
   /**
    * A bind whose LEFT side is deferred into the runner's own loop: the
    * thunk is not forced at construction, only when `step` reaches the
@@ -776,10 +776,6 @@ object Frames:
 
     final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
 
-    /** the capture's body in the delimiter's place, over the segment that
-     * waited for the delimiter — and, for `shift`/`control` (`under`), under
-     * a fresh plain delimiter of the same prompt, installed here as one
-     * node: the `⟨e⟩` of `S k.e = S0 k.⟨e⟩` */
     /** the capture's body run on its `k`: the clause itself, or — for a
      * STRICT leaf of Cont's (`strict`) — the user's body given `k` as a
      * function that runs the rest now (`Cont.strictBody`): the clause
@@ -787,10 +783,10 @@ object Frames:
     def bodyOf[X, Y, T](sh: Cont0.Shift0[F, Y, T, R, X], k: Stack[F, X, T, T, Y]): Freer[G, T, R, Y] =
       if sh.strict then Cont.strictBody[G, T, R, Y](sh.f, k) else sh.f(k)
 
-    def started[Y, T, S1, W](sh: Cont0.Shift0[F, Y, T, R, ?], body: Freer[G, T, R, Y],
-                             frames: Frames[F, Y, S1, T, W], below: Stack[F, W, S0, S1, Z]): Next[?, ?, ?, ?] =
-      if sh.under then Next[Y, T, T, Y](body, noFrames[F, Y, T], Reset[F, Y, S0, T, Y, S1, W, Z](sh.p, Cont0.identity[F, T, Y], frames, below))
-      else Next[Y, T, S1, W](body, frames, below)
+    /** the capture's body in the delimiter's place, over the segment that
+     * waited for the delimiter */
+    def started[Y, T, S1, W](body: Freer[G, T, R, Y], frames: Frames[F, Y, S1, T, W], below: Stack[F, W, S0, S1, Z]): Next[?, ?, ?, ?] =
+      Next[Y, T, S1, W](body, frames, below)
 
     /** cut the stack at the `Reset` naming `sh.p`, walking its NODES:
      * `k` is the nodes above it with it (without it when bare), the
@@ -817,7 +813,7 @@ object Frames:
               // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule)
               rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](Rev.close(rev, d.p, d.ret)))
           // the body in the delimiter's place, over the segment that waited for it
-          started(sh, bodyOf(sh, k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, T2, w]](d.frames)), d.below)
+          started(bodyOf(sh, k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, T2, w]](d.frames)), d.below)
         else
           cut(sh, all, runOf(d.frames, d.below), Rev.SnocReset(rev, d.p, d.ret))
 
@@ -840,7 +836,7 @@ object Frames:
         val ey = identical(sh.p, d.p)
         val seg: Stack[F, X, S1, T, y2] = Kept[F, X, S1, T, Y1, y2](fs, d.p, d.ret)
         val k: Stack[F, X, T, T, Y] = rebase(ey.flip.liftCo[[y] =>> Stack[F, X, S1, T, y]](seg))
-        started(sh, bodyOf(sh, k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, S1, w]](d.frames)), d.below)
+        started(bodyOf(sh, k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, S1, w]](d.frames)), d.below)
       case _ => null
 
     /** a capture: to the delimiter at the head of the stack without a
@@ -948,7 +944,7 @@ enum Cont0[F[_, _, +_], T, R, +X]:
                                        body: Freer[Cont0.Row[F], T, R, A]) extends Cont0[F, T, R, Y]
   case Shift0[F[_, _, +_], Y, T, R, X](p: Prompt[Y],
                                        f: Stack[F, X, T, T, Y] => Freer[Cont0.Row[F], T, R, Y],
-                                       bare: Boolean, under: Boolean, strict: Boolean, at: String) extends Cont0[F, T, R, X]
+                                       bare: Boolean, strict: Boolean, at: String) extends Cont0[F, T, R, X]
 
 object Cont0:
   /** the row: `Cont0` beside any indexed signature `F`; the effect tree's
@@ -993,22 +989,20 @@ object Cont0:
     Inject[Row[F], T, R, A](Cont0.Reset0[F, A, A, T, R](p, identity[F, T, A], body))
 
   def shift0[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, false, false, false, at.where))
+    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, false, false, at.where))
 
   def control0[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, true, false, false, at.where))
+    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, true, false, at.where))
 
-  /** `shift`: the body under a fresh plain delimiter; `k` still carries
-   * `ret`. APLAS 2012's `S k.e = S0 k.⟨e⟩`, with the `⟨⟩` installed by the
-   * machine (`under`) where the body starts, not asked for by a `reset`
-   * the body is wrapped in — that spelling cost a closure, a `Reset0`, an
-   * `Inject` and a loop step per capture */
+  /** `shift`: `shift0` whose body runs under a fresh plain delimiter of
+   * the same prompt, `k` still carrying `ret` — APLAS 2012's
+   * `S k.e = S0 k.⟨e⟩`, derived, not a case of the machine */
   def shift[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, false, true, false, at.where))
+    shift0[F, Y, T, R, X](p)(k => reset[F, T, R, Y](p)(f(k)))
 
   /** `control`: `control0` with the body under a fresh plain delimiter, the same way */
   def control[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, true, true, false, at.where))
+    control0[F, Y, T, R, X](p)(k => reset[F, T, R, Y](p)(f(k)))
 
   /** leave the delimiter with a value: a shift0 that drops `k` — a
    * `Return` in the delimiter's place, so at the diagonal */
