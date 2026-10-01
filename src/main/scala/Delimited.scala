@@ -39,6 +39,13 @@ trait Delimited[M[_, _, _]]:
   /** a value */
   def pure[R, A](a: A): M[R, R, A]
 
+  /** sequencing, with the answer type moving as `Bind` moves it */
+  def bind[A, B, S, T, R](m: M[T, R, A])(f: A => M[S, T, B]): M[S, R, B]
+
+  /** run to a value — DPJS's `runCC`: every capture must find its
+   * delimiter inside `m` (else `NoPrompt`) */
+  def run[A](m: M[A, A, A]): A
+
   /** `ret $ body`: the body under the delimiter, `ret` run OUTSIDE it on
    * the body's value, and carried by a capture to it */
   def dollar[Y, A, T, R](d: Delimiter[Y, T])(ret: A => M[T, T, Y])(body: M[T, R, A]): M[T, R, Y]
@@ -82,6 +89,17 @@ object Delimited:
     def delimiter[Y, I](using at: At): Cont0.Delimiter[Y, I] = Cont0.delimiter(Cont0.prompt[Y])
 
     def pure[R, A](a: A): Freer[Cont0.Row[F], R, R, A] = Return(a)
+
+    def bind[A, B, S, T, R](m: Freer[Cont0.Row[F], T, R, A])(f: A => Freer[Cont0.Row[F], S, T, B]): Freer[Cont0.Row[F], S, R, B] =
+      Bind(m, f)
+
+    /** under the barrier, as `Delim.run`; a machine with only `Cont0`'s
+     * operations answers a value, and any other head form is a program
+     * that performed an operation of `F` nobody handled */
+    def run[A](m: Freer[Cont0.Row[F], A, A, A]): A =
+      Frames.run[F, A, A, A](reset[A, A, A](Cont0.boundary[A, A])(m)) match
+        case Return(a) => a
+        case _ => throw IllegalStateException("Delimited.machine.run: an operation of F was left unhandled")
 
     def dollar[Y, A, T, R](d: Cont0.Delimiter[Y, T])(ret: A => Freer[Cont0.Row[F], T, T, Y])
                           (body: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, Y] =
