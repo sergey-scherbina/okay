@@ -309,7 +309,7 @@ object Cont:
     try enter(k, x) finally r.room = saved
 
   /** `k` run now to its value, entered at the machine's registers */
-  private def enter(k: K, x: Any): Any = answerOf(Frames.Resume[NoEffect, Any, Any, Any, Any](x, k)())
+  private def enter(k: K, x: Any): Any = answerOf(Frames.enterAt[NoEffect, Any, Any, Any, Any](x, k))
 
   /** the root delimiter at the bottom of `k`: the run it was captured from */
   @annotation.tailrec
@@ -638,7 +638,7 @@ object Frames:
   /** a resumption: the value and the stack it enters, as the thunk of a
    * `Delay` — run by whoever forces it, pushed by the machine */
   final class Resume[F[_, _, +_], A, S, T, Z](val a: A, val k: Stack[F, A, S, T, Z]) extends (() => Freer[Cont0.Row[F], S, T, Z]):
-    def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.machine[F, S, T, Z](null, this, Frames.noStack[F, Z, S])
+    def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.enterAt[F, A, S, T, Z](a, k)
 
   /**
    * THE COUNT IS A FRAME. A `dollarResumed` is told each time the
@@ -747,7 +747,7 @@ object Frames:
    * and the stack below them. `S0`, `R`, `Z` are the run's; every arm is
    * typed by GADT refinement.
    */
-  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] = machine(p, null, noStack[F, Z, S0])
+  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] = machine[F, S0, R, Z, Any](p, null, null, noStack[F, Z, S0])
 
   /** `p` under the delimiter `ret $_p0`, installed as the run's FIRST
    * stack rather than asked for by a `Reset0` operation the loop's first
@@ -757,16 +757,21 @@ object Frames:
    * `Reset0` and a step each time */
   private[okay] def runUnder[F[_, _, +_], S0, Z](p: Freer[Cont0.Row[F], S0, S0, Z], p0: Prompt[Z],
                                                 ret: Z => Freer[Cont0.Row[F], S0, S0, Z]): Freer[Cont0.Row[F], S0, S0, Z] =
-    machine(p, null, Reset[F, Z, S0, S0, Z, S0, Z, Z](p0, ret, null, noFrames[F, Z, S0], noStack[F, Z, S0]))
+    machine[F, S0, S0, Z, Any](p, null, null, Reset[F, Z, S0, S0, Z, S0, Z, Z](p0, ret, null, noFrames[F, Z, S0], noStack[F, Z, S0]))
 
   /** the machine, entered at a program (`run`) or at a resumption forced
    * by an outer interpreter (`Resume.apply`): the second goes to the
    * registers directly — `k`'s nodes and the value at its top — where it
    * built `Bind(Return(a), k)` for the loop's first step to take apart, two
    * nodes and a step per operation of an effect handled outside */
-  private def machine[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z] | Null,
-                                             resume: Resume[F, ?, S0, R, Z] | Null,
-                                             st0: Stack[F, Z, S0, S0, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+  /** `k` applied to `a` and run now — a forced resumption's entry, with
+   * no `Resume` node built for it (a strict `k` of Cont's enters here) */
+  private[okay] def enterAt[F[_, _, +_], A, S0, R, Z](a: A, k: Stack[F, A, S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+    machine[F, S0, R, Z, A](null, a, k, noStack[F, Z, S0])
+
+  private def machine[F[_, _, +_], S0, R, Z, A](p: Freer[Cont0.Row[F], S0, R, Z] | Null,
+                                                a: A, k: Stack[F, A, S0, R, Z] | Null,
+                                                st0: Stack[F, Z, S0, S0, Z]): Freer[Cont0.Row[F], S0, R, Z] =
     type G = Cont0.Row[F]
 
     final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
@@ -931,11 +936,10 @@ object Frames:
             case null => Bind(focus, runOf(fs, st))
           case _ => Bind(focus, runOf(fs, st))
 
-    def resumed[A](r: Resume[F, A, S0, R, Z]): Freer[G, S0, R, Z] =
-      val n = pushed(Return[G, R, A](r.a), r.k)
+    if k ne null then
+      val n = pushed(Return[G, R, A](a), k)
       loop(n.focus, n.fs, n.st)
-
-    if resume ne null then resumed(resume) else loop(p.nn, noFrames[F, Z, S0], st0)
+    else loop(p.nn, noFrames[F, Z, S0], st0)
 
 /**
  * THE TWO OPERATIONS: the delimiter and the capture, both on the join
