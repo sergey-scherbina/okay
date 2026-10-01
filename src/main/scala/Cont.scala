@@ -298,8 +298,8 @@ object Cont:
   /** the root delimiter at the bottom of `k`: the run it was captured from */
   @annotation.tailrec
   private def rootOf(k: Stack[NoEffect, ?, ?, ?, ?]): Root | Null = k match
-    case Stack.Reset(p, r: Root, _, below) if p eq root => r
-    case Stack.Reset(_, _, _, below) => rootOf(below)
+    case Stack.Reset(p, r: Root, _) if p eq root => r
+    case Stack.Reset(_, _, below) => rootOf(below)
     case Stack.Run(_, below) => rootOf(below)
     case _ => null
 
@@ -522,9 +522,11 @@ enum Frames[F[_, _, +_], A, S, T, Z]:
                                               rest: Frames[F, Y, S, S2, Z]) extends Frames[F, A, S, T, Z]
 
 /**
- * THE STACK: segments and the delimiters between them, the same join.
- * A captured `k` is one of these — `Run(frames, Reset(p, ret, …, Done))`
- * for a capture to the nearest delimiter — and so is the continuation
+ * THE STACK: segments and the delimiters between them, the same join —
+ * Dybvig, Peyton Jones & Sabry's `Seq = EmptyS | PushSeg | PushP`, one
+ * constructor a role (cont-core-design). A captured `k` is one of these
+ * — `Run(frames, Reset(p, ret, Done))` for a capture to the nearest
+ * delimiter — and so is the continuation
  * of a head form. Applied as a plain function by ANY interpreter of the
  * tree it answers a `Delay` whose thunk runs the machine on itself with
  * `a` at its top — the continuation carries its own interpreter (the
@@ -552,18 +554,13 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
    * passes through a handler loop between the program and the machine,
    * a node on the machine's stack does not.
    *
-   * IT CARRIES THE SEGMENT UNDER IT (Dybvig, Peyton Jones & Sabry's
-   * layout: each prompt heads the frames that wait for its answer).
-   * Installing one is then ONE node over the live segment, and popping
-   * it hands that segment straight back to the frames register;
-   * measured, the `Run` a separate segment node cost per delimiter was
-   * the last half of `delimPushOnly`'s gap. A copy in a captured `k`
-   * has an empty segment and nothing below: what waits for its answer
-   * is not captured.
+   * The segment waiting for its answer is the `Run` BELOW it, not a
+   * field of it: until cont-core-design the two were one node (a
+   * delimiter heading its segment), which saved a node per install and
+   * made every rule that touches a delimiter touch a segment too.
    */
-  case Reset[F[_, _, +_], A, S, T, Y, S2, W, Z](p: Prompt[Y], ret: A => Freer[Cont0.Row[F], T, T, Y],
-                                                 frames: Frames[F, Y, S2, T, W],
-                                                 below: Stack[F, W, S, S2, Z]) extends Stack[F, A, S, T, Z]
+  case Reset[F[_, _, +_], A, S, T, Y, Z](p: Prompt[Y], ret: A => Freer[Cont0.Row[F], T, T, Y],
+                                         below: Stack[F, Y, S, T, Z]) extends Stack[F, A, S, T, Z]
 
   def apply(a: A): Freer[Cont0.Row[F], S, T, Z] = this match
     case Done() => Return(a)
@@ -630,7 +627,6 @@ object Frames:
   private def rebase[F[_, _, +_], A, S1, T1, S2, T2, Z](st: Stack[F, A, S1, T1, Z]): Stack[F, A, S2, T2, Z] =
     st.asInstanceOf[Stack[F, A, S2, T2, Z]]
 
-  /** the same claim for a segment handed back from under a delimiter */
   /** THE CLAIM `plain` MAKES, in one place: a plain delimiter's `ret` is
    * the identity, so the segment under it answers the prompt's own type —
    * a bare cut's `k` (the frames above the delimiter, WITHOUT it: the
@@ -649,9 +645,6 @@ object Frames:
   private def identical[A, B](@annotation.unused a: Prompt[A], @annotation.unused b: Prompt[B]): A =:= B =
     <:<.refl[A].asInstanceOf[A =:= B]
 
-  private def rebaseF[F[_, _, +_], A, S, T1, T2, Z](fs: Frames[F, A, S, T1, Z]): Frames[F, A, S, T2, Z] =
-    fs.asInstanceOf[Frames[F, A, S, T2, Z]]
-
   private[okay] def runOf[F[_, _, +_], A, S, S2, T, Y, Z](fs: Frames[F, A, S2, T, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = fs match
     case _: End[F, A, S2] @unchecked => st
     case _ => Run(fs, st)
@@ -659,7 +652,7 @@ object Frames:
   /** the prompts installed on a stack, innermost first — `NoPrompt`'s list */
   @tailrec def installed[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = st match
     case Run(_, below) => installed(below, acc)
-    case Reset(p, _, _, below) => installed(below, if p eq Cont0.boundary[Any] then acc else p.label :: acc)
+    case Reset(p, _, below) => installed(below, if p eq Cont0.boundary[Any] then acc else p.label :: acc)
     case _ => acc.reverse
 
   /**
@@ -678,11 +671,6 @@ object Frames:
 
     final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
 
-    /** the capture's body in the delimiter's place, over the segment that
-     * waited for the delimiter */
-    def started[Y, T, S1, W](body: Freer[G, T, R, Y], frames: Frames[F, Y, S1, T, W], below: Stack[F, W, S0, S1, Z]): Next[?, ?, ?, ?] =
-      Next[Y, T, S1, W](body, frames, below)
-
     /** cut the stack at the `Reset` naming `sh.p`, walking its NODES:
      * `k` is the nodes above it with it (without it when bare), the
      * body takes the delimiter's place with the stack below it */
@@ -691,8 +679,14 @@ object Frames:
       // operation, for a machine outside this one (Delim.runNested)
       case Done() => null
       case r: Run[F, C, S0, ?, T2, ?, Z] => cut(sh, all, r.below, Rev.SnocRun(rev, r.frames))
-      case d: Reset[F, C, S0, T2, ?, ?, ?, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
-      case d: Reset[F, C, S0, T2, y2, s2, w, Z] =>
+      // THE BARRIER (Flatt, Yu, Findler & Felleisen, ICFP 2007's
+      // continuation barrier): `Delim.run`'s root delimiter, which no
+      // capture may cross. It is a node of the stack, so it travels in
+      // every `k` and a run of `k` started by an outer interpreter meets
+      // it too — which is why the check is the machine's and not the
+      // door's: the door returns before those runs happen
+      case d: Reset[F, C, S0, T2, ?, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
+      case d: Reset[F, C, S0, T2, y2, Z] =>
         if sh.p eq d.p then
           val ey = identical(sh.p, d.p)
           val k: Stack[F, X, T, T, Y] =
@@ -703,10 +697,10 @@ object Frames:
             else
               // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule)
               rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](Rev.link(Rev.SnocReset(rev, d.p, d.ret), noStack[F, y2, T2])))
-          // the body in the delimiter's place, over the segment that waited for it
-          started(sh.f(k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, T2, w]](d.frames)), d.below)
+          // the body in the delimiter's place, over the stack under it
+          Next[Y, T, T, Y](sh.f(k), noFrames[F, Y, T], rebase[F, Y, S0, T2, S0, T, Z](ey.flip.liftCo[[y] =>> Stack[F, y, S0, T2, Z]](d.below)))
         else
-          cut(sh, all, runOf(d.frames, d.below), Rev.SnocReset(rev, d.p, d.ret))
+          cut(sh, all, d.below, Rev.SnocReset(rev, d.p, d.ret))
 
     /** an operation of `F`, not of `Cont0`: what the head form hands out */
     def foreign(a: Freer[G, ?, ?, ?]): Boolean = a match
@@ -750,13 +744,11 @@ object Frames:
       case r: Return[G, R, X] => fs match
         case fr: Frame[F, X, S1, s2, T, ?, Y] => loop(fr.f(r.a), fr.rest, st)
         case _: End[F, X, S1] @unchecked => st match
-          // the ($v) rule: a delimiter is popped like any frame — and the
-          // segment it carries is the frames register again, in the same
-          // step; tested FIRST, the common node under an empty segment
-          // a plain one too: skipping `ret` when it is the identity
-          // (`Cont0.plain`) bought a plain pop ~0.5 ns and cost every `$`
-          // ~3 ns on DelimBenchmark (1h, history.d) — one call for all
-          case d: Reset[F, Y, S0, S1, y, ?, ?, Z] => loop(d.ret(r.a), d.frames, d.below)
+          // the ($v) rule: a delimiter is popped like any frame, its `ret`
+          // applied — a plain one too: skipping `ret` when it is the
+          // identity (`Cont0.plain`) bought a plain pop ~0.5 ns and cost
+          // every `$` ~3 ns on DelimBenchmark (1h, history.d)
+          case d: Reset[F, Y, S0, S1, y, Z] => loop(d.ret(r.a), noFrames[F, y, S1], d.below)
           // the next segment, unpacked into the frames register
           case rn: Run[F, Y, S0, ?, S1, ?, Z] => loop(focus, rn.frames, rn.below)
           case _: Done[F, Y, S0] @unchecked => focus
@@ -779,7 +771,7 @@ object Frames:
         e match
           // the delimiter, asked for as an operation, becomes a node — entered
           case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
-            loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, fs, st))
+            loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, runOf(fs, st)))
           case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => capture(sh, fs, st) match
             case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
             // nobody here answers it: out, as an operation over the stack
@@ -885,14 +877,12 @@ private object Rev:
   @tailrec def link[F[_, _, +_], A, S, T, S2, Y, Z](rev: Rev[F, A, T, S2, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = rev match
     case Nil() => st
     case SnocRun(prev, frames) => link(prev, Stack.Run(frames, st))
-    case SnocReset(prev, p, ret) => link(prev, Stack.Reset(p, ret, Frames.noFrames, st))
+    case SnocReset(prev, p, ret) => link(prev, Stack.Reset(p, ret, st))
 
   @tailrec def reverse[F[_, _, +_], A, S2, T0, T, X, Y](ks: Stack[F, X, S2, T, Y], acc: Rev[F, A, T0, T, X]): Rev[F, A, T0, S2, Y] = ks match
     case Stack.Done() => acc
     case Stack.Run(frames, below) => reverse(below, SnocRun(acc, frames))
-    case d: Stack.Reset[F, X, S2, T, y, ?, ?, Y] => d.frames match
-      case _: Frames.End[F, y, ?] @unchecked => reverse(d.below, SnocReset(acc, d.p, d.ret))
-      case fr => reverse(d.below, SnocRun(SnocReset(acc, d.p, d.ret), fr))
+    case d: Stack.Reset[F, X, S2, T, y, Y] => reverse(d.below, SnocReset(acc, d.p, d.ret))
 
   /** the empty prefix, one object (as `Frames.noFrames`: no field, phantom indexes) */
   private val theNil: Nil[Nothing, Any, Any] = Nil()
