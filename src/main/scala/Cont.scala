@@ -76,31 +76,13 @@ type Cont[A, S, R] = Cont.Rep[A, S, R]
 object Cont:
 
   /**
-   * The leaf, as the tree stores it: the shift body ITSELF, answer
-   * types and all — `(X => S) => R` at the indexes the node carries
-   * (freer-base-step-extractor, 2026-09-29). Until then the tree was
-   * `Free[Shift, A]` with no answer type on it, so the leaf had to be
-   * stored at the one supertype every typed shift conforms to,
-   * `(X => Nothing) => Any`, behind `Shift.of` (an upcast) and read
-   * back through `Shift.at` (THE cast) — the facade's signatures were
-   * the only place S and R lived. Now `Freer`'s `Bind` joins a left
-   * side answering `T => R` to a continuation answering `S => T`, which
-   * is exactly answer-type modification, so the leaf keeps its own
-   * type and the runner below is typed by the GADT end to end. The two
-   * casts (`Shift.at`, `pinned`) and the paragraph that justified the
-   * spelling went with them.
-   */
-  private[okay] type Shift = [S, R, X] =>> (X => S) => R
-
-  /**
    * The representation, opaque HERE rather than at top level — and
    * that placement is load-bearing, not style. A top-level `opaque
    * type` is transparent to its whole PACKAGE, so declared there a
-   * `Cont` would still be plainly `Freer[Shift, S, R, A]` everywhere in
+   * `Cont` would still be plainly `Freer[Sig, S, R, A]` everywhere in
    * `okay`, and every extension written for a program carrier would
    * apply to it: Generate.scala's for-comprehension picked up
-   * `Stream`'s `map`, which takes a function INTO a program, and the
-   * absorption below would have been bypassed wholesale. Inside an
+   * `Stream`'s `map`, which takes a function INTO a program. Inside an
    * object the scope is the object, which is what a facade needs.
    */
   opaque type Rep[A, S, R] = Freer[Sig, S, R, A]
@@ -149,15 +131,12 @@ object Cont:
    * `s"${k(a)}"` — cannot become a value the way a tail body does:
    * something is left to do after each call. `ContMacro` CPS-transforms
    * such a body SELECTIVELY (Rompf, Maier & Odersky, ICFP 2009): every
-   * `k(e)` becomes a `Call` naming what is left. The body is then DATA
-   * the runner walks in its own loop, with the pending parts on an
-   * explicit stack (`Pending`) instead of the JVM's: a call of `k`
-   * continues the program in-loop through the `Reentry`'s fields, and
-   * the answer, when the program reaches it, is fed to the part on
-   * top. No body frame, no `enter`, no room counted, no switch — at a
-   * `Call`, its rest and a `Pending` per call of `k`, with `k`
-   * multi-shot as before (the rest of the program is a tree, rebuilt
-   * per call).
+   * `k(e)` becomes a `Call` naming what is left. The body is then DATA,
+   * turned into a program over a LAZY `k` (`bodyProgram`): a call of `k`
+   * is `k`'s nodes pushed by the frame machine, its rest a frame under
+   * them. No body frame, no room counted, no switch, `k` multi-shot as
+   * before. (Until cont-on-frames-probe the old runner walked it with a
+   * `Pending` stack of its own; the frame machine's stack is that stack.)
    *
    * NOT a function answer (`PState`'s `s => k(s)(s2)`): measured at
    * 2.8x the direct road on statePara (specs/cont-stack.md, stage E),
@@ -355,10 +334,9 @@ object Cont:
    * or a virtual thread moved to another carrier): the mark is dropped.
    *
    * One per run, and NOTHING allocated for it until a run's first
-   * exhaustion (plan stage C, C1): the gauge is attached THEN, at the
-   * root of the continuation chain — the outermost `Reentry`'s `k`,
-   * the user's own function, wrapped in a `Gauged` — and found by the
-   * same walk at every exhaustion after. The first cut wrapped the
+   * exhaustion (plan stage C, C1): the gauge is attached THEN, to the
+   * run's root delimiter (`Root.gauge`), and found there at every
+   * exhaustion after. The first cut wrapped the
    * user's `k` at `run`, two allocations for every run whether or not
    * it ever went deep, and fib100 (a run per element) paid +1 664 B/op
    * and 1.17x for it (history.d cont-stack-ab). A chain called from

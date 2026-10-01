@@ -13,6 +13,20 @@ bounds are. The design and its measurements are in
 
 ## Three kinds of body, three prices
 
+**Since 2026-10-01 Cont runs on the frame machine** (cont-on-frames,
+[specs/freer-kont.md](../specs/freer-kont.md)): a run is one root
+delimiter whose `ret` is your `k`, and every leaf a `shift0` to it — the
+same machine `Delim` runs on, with its stack on the heap. The three
+kinds below are unchanged in what they cost the *stack*. What changed
+is who interprets them: the second kind is a program over a lazy `k`
+the machine pushes (no pending stack of the runner's own any more), and
+the third forces `k` as a nested run of the machine, counted and
+switched exactly as below. Against the runner this replaced, measured
+the day it landed: the second kind (`HandlerBenchmark.contAnswer`) at
+1.09x, `PState` (statePara) at 1.85–1.90x, a generator over `Cont`
+(`FibBenchmark.fib100`) at 2.62x — the third kind's strict `k` is where
+the work is.
+
 **A body that only ever calls `k` last** — `k => k(v)`, also under
 `if`/`match` and after statements that do not mention `k` — is the
 value it passes, decided at compile time: `shift` is a macro, and such a
@@ -29,8 +43,8 @@ reset(deep) // 1000000 — no frame per level: the body is the value it passes
 `a :: k(x)`, `s"${k(a)}"`, a block with `val a = k(1)`, an `if` or
 `match` in tail position with calls in its branches — is CPS-transformed at compile time (since
 `cont-stack-layer1-b`): each call of `k` becomes a step naming what is
-left to do with its answer, and the runner keeps those pending parts on
-an explicit stack of its own instead of the JVM's. Still no frame per
+left to do with its answer, and those pending parts live on the
+machine's own stack (a frame each) instead of the JVM's. Still no frame per
 level, on any platform; what ran before a call still runs before it;
 `k` is multi-shot as before. A million of these run on a 128 KB stack
 too. The price, measured on a thousand-level program of exactly this

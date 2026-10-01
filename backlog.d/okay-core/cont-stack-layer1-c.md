@@ -1,4 +1,12 @@
 - [ ] cont-stack-layer1-c — the rest of Layer 1 B, after
+      RESTATED 2026-10-01 (cont-on-frames-probe): the runner this item
+      was written against is gone — Cont runs on the frame machine, and
+      there the transform's value is LARGER: a transformed body is a
+      program over a lazy `k` (contAnswer 1.09x the old runner), while
+      every shape still left opaque takes the strict `k`, a nested run
+      of the machine (statePara 1.85-1.90x, fib100 2.62x). Item (0)
+      below priced the old walk and is moot; the list of opaque shapes
+      is the work, now worth more.
       cont-stack-layer1-b landed the answer-using bodies (`k(1) + k(10)`,
       `a :: k(x)`, interpolation, a block with `val x = k(1)`, a tail
       `if`/`match` with `k` in its branches, PState's `s => k(s)(s2)` as

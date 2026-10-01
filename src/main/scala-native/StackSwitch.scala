@@ -55,10 +55,14 @@ private[okay] object StackSwitch:
    * and a first room derived from the thread this object initialises
    * on (the main thread's 8 MB) is wrong for every other thread. The
    * JVM cannot afford that, its read is a syscall. `okay.cont.room`
-   * overrides. */
+   * overrides. 16 since Cont runs on the frame machine (cont-on-frames,
+   * 2026-10-01): a strict `k` is a nested machine run — `force`, the
+   * machine's entry, its loop, the clause — several frames a level where
+   * the old runner took one, and 64 cold levels overflowed a 128 KB
+   * thread before the first read (TestContStackNative). */
   val firstRoom: Int =
     val fromProperty = System.getProperty("okay.cont.room")
-    if fromProperty != null then fromProperty.toInt else 64
+    if fromProperty != null then fromProperty.toInt else 16
 
   private val bigStack = 1L << 30
   private val bigRoom = (bigStack / 2048).toInt

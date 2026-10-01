@@ -85,7 +85,7 @@ enum Freer[G[_, _, +_], S, R, +A] {
    * NEVER built by the erased effect tree or by `Cont`: `Free`'s doors
    * at `Unit` build `Inject` (the 112 `Bind(Inject(e), k)` sites across
    * the family do not move, and at `Unit` the two nodes mean the same),
-   * and `Cont`'s companion builds leaves it can absorb. Their loops
+   * and `Cont`'s companion builds `Shift0` leaves as `Inject`. Their loops
    * say so with `@unchecked` rather than a dead arm in the hottest
    * loop of the library. The discipline is a door's, as `Free.Bind`'s
    * constant claim is: a unary operation enters an INDEXED row through
@@ -204,7 +204,7 @@ object Freer {
 
   /** a bind whose LEFT side is deferred: the thunk is not forced at
    * construction, only when an interpreter's own loop (`fold`,
-   * `runFree`, `resume`, `Cont.step`) reaches this node — which is
+   * `runFree`, `resume`, `Frames.run`) reaches this node — which is
    * what lets two mutually-recursive functions returning `A ! F` call
    * each other in tail position without nesting a JVM stack frame per
    * call (`!.tailcall` is the sugar; `Cont.defer` is the same door on

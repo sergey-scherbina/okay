@@ -262,9 +262,16 @@ numbers; the operator: "Мигрируй"):
 - [x] Delim.scala's header rewritten: the "opaque forwarding" reason
       for `push` as an operation refuted, the two real reasons named
 - [x] `Cont.step` (the strict runner with its `StackSwitch` rooms):
-      decided by measurement — it STAYS. Cont on the frame machine read
-      4.3–6.3x `Cont.step` on fib/statePara/contAnswer (cont-step-on-frames
-      step 2, reverted; history.d 2026-09-30T221639Z)
+      first decided by measurement to STAY (step 2 read 4.3–6.3x on the
+      unoptimized segmented machine; history.d 2026-09-30T221639Z), then
+      REVERSED by the operator on 2026-10-01 (cont-on-frames-probe): Cont
+      runs on the frame machine — one root `$` per run whose `ret` is the
+      user's `k`, every leaf a `Shift0` to it, a `Cps` body a program over a
+      lazy `k`, an opaque body a strict `k` forced as a nested run with the
+      room and gauge in the run's `Root`; `step`, `Reentry`, `Pending` and
+      the absorbed leaves deleted. Landed at contAnswer 1.09x, statePara
+      1.85–1.90x, fib100 2.62x the old runner (history.d
+      2026-10-01T…-cont-on-frames-probe.tsv); the strict `k` is the work left
 - [x] the stack segmented at its delimiters (cont-step-on-frames): the
       two O(n²) of the single list linear (TestKont), Results
 
@@ -450,6 +457,22 @@ casts are gone; generator, stateLexDeep and delimDollarResume unchanged
 (history.d 2026-10-01T…-cont-frames-reentry-and-close.tsv). Starting a
 `Delim.run` with the boundary as the initial stack (two nodes per run)
 was left out: no lane measures a per-run cost.
+
+### cont-on-frames-probe: Cont on the machine (2026-10-01)
+
+Step 2 re-applied to the optimized segmented machine, then four steps
+measured one by one against `Cont.step`: the strict `k` without
+rebuilding `k` (room and gauge in the run's `Root`, scoped around the
+nested run; one gauge per run — a fresh one per exhaustion asked the OS
+for the stack pointer, 12% of statePara), `Frames.runUnder` (a run
+starts with its root as the first stack), prompts compared by `eq` with
+one shared evidence (`identical`, in place of `Delim.samePrompt`'s lazy
+given and `Option`). Result: contAnswer 2.73 → **1.09x**, statePara
+4.3–5.2 → **1.85–1.90x**, fib100 4.73 → **2.62x**. Refuted on the way:
+caching a `Kept`'s delimiter node (no gain for a `k` forced once),
+porting `PState` to the machine's own state idioms (stateLexDeep 80 us,
+stateDeep 90 us against the probe's statePara 58). Operator decision:
+merged, optimize from here.
 
 ## Literature
 

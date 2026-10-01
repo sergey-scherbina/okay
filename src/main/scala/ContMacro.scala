@@ -10,7 +10,7 @@ import scala.quoted.*
  * shift. So it is rewritten to exactly that, `Cont.tailShift(() => v)`
  * (a `Delay` the runner's loop walks), or to `Cont.tailPure(v)` when `v` is
  * a literal or a stable name and there are no statements before it.
- * No leaf, no `Reentry`, no nested frame, no room counted, no switch.
+ * No leaf, no capture, no nested run, no room counted, no switch.
  *
  * Tail positions are followed through a block's result, both branches
  * of an `if`, every case of a `match`, an ascription and an inlined
