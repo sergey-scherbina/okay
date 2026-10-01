@@ -910,7 +910,7 @@ object Frames:
       case Done() => null
       case r: Run[F, C, S0, ?, T2, ?, Z] => cut(sh, all, r.below, Rev.SnocRun(rev, r.frames), counts)
       case d: Reset[F, C, S0, T2, ?, ?, ?, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
-      case d: Reset[F, C, S0, T2, y2, s2, w, Z] => Delim.given_Same_Prompt.same(sh.p, d.p) match
+      case d: Reset[F, C, S0, T2, y2, s2, w, Z] => Delim.samePrompt.same(sh.p, d.p) match
         case Some(ey) =>
           val k: Stack[F, X, T, T, Y] =
             if sh.bare then
@@ -947,7 +947,7 @@ object Frames:
      */
     def nearest[X, Y, T, S1, Y1](sh: Cont0.Shift0[F, Y, T, R, X], fs: Frames[F, X, S1, T, Y1], st: Stack[F, Y1, S0, S1, Z]): Next[?, ?, ?, ?] = st match
       case d: Reset[F, Y1, S0, S1, y2, s2, w, Z] if !sh.bare && (d.shots == null) && !(d.p eq Cont0.boundary[Any]) =>
-        Delim.given_Same_Prompt.same(sh.p, d.p) match
+        Delim.samePrompt.same(sh.p, d.p) match
           case Some(ey) =>
             val seg: Stack[F, X, S1, T, y2] =
               runOf(fs, Reset[F, Y1, S1, S1, y2, S1, y2, y2](d.p, d.ret, d.plain, null, noFrames[F, y2, S1], noStack[F, y2, S1]))
@@ -994,32 +994,28 @@ object Frames:
           case rn: Run[F, a, S0, ?, R, ?, Z] => loop(Return[G, R, a](r.a), rn.frames, rn.below)
           case sp => loop(Return[G, R, a](r.a), noFrames[F, a, R], sp)
       // the operations, in the loop: a `Next` per `Reset0` and a union
-      // result's type test cost the first cut of step 1 its install lane
-      case i: Inject[G, T, R, X] => i.a match
-        // the delimiter, asked for as an operation, becomes a node — entered
-        case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
-          if rs.shots != null then rs.shots.enter()
-          loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, rs.plain, rs.shots, fs, st))
-        case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => nearest(sh, fs, st) match
-          case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
-          case null =>
-            val all = runOf(fs, st)
-            cut(sh, all, all, Rev.nil[F, X, T], Nil) match
-              case null => Bind(focus, all)
-              case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
-        case _ => Bind(focus, runOf(fs, st))
-      case i: Diag[G, R, X] => i.a match
-        case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
-          if rs.shots != null then rs.shots.enter()
-          loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, rs.plain, rs.shots, fs, st))
-        case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => nearest(sh, fs, st) match
-          case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
-          case null =>
-            val all = runOf(fs, st)
-            cut(sh, all, all, Rev.nil[F, X, T], Nil) match
-              case null => Bind(focus, all)
-              case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
-        case _ => Bind(focus, runOf(fs, st))
+      // result's type test cost the first cut of step 1 its install lane.
+      // Either node carries one — `Diag` is `Inject` on the diagonal, its
+      // `T = R` refined by the match — and the machine treats them alike:
+      // the operation is read out by the same two class tests the two
+      // arms used to make, then dispatched once
+      case _ =>
+        val e: G[T, R, X] = (focus: @unchecked) match
+          case i: Inject[G, T, R, X] => i.a
+          case i: Diag[G, R, X] => i.a
+        e match
+          // the delimiter, asked for as an operation, becomes a node — entered
+          case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
+            if rs.shots != null then rs.shots.enter()
+            loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, rs.plain, rs.shots, fs, st))
+          case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => nearest(sh, fs, st) match
+            case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
+            case null =>
+              val all = runOf(fs, st)
+              cut(sh, all, all, Rev.nil[F, X, T], Nil) match
+                case null => Bind(focus, all)
+                case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
+          case _ => Bind(focus, runOf(fs, st))
 
     loop(p, noFrames[F, Z, S0], noStack[F, Z, S0])
 
@@ -1140,22 +1136,28 @@ private object Rev:
    * reversed and relinked.
    */
   def onto[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = ks match
-    case r: Stack.Run[?, ?, ?, ?, ?, ?, ?] => r.below match
-      case d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] if (d.frames eq Frames.noFrames) && (d.below eq Frames.noStack) => relink(r.frames, d, fs, st)
+    case r: Stack.Run[F, A, S2, s, T, y, Y] @unchecked => r.below match
+      case d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] if emptied(d) => Stack.Run(r.frames, relink[F, y, S, s, S2, Y, S1, W, Z](d, fs, st))
       case _ => splice(ks, Frames.runOf(fs, st))
-    case d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] if (d.frames eq Frames.noFrames) && (d.below eq Frames.noStack) => relink(null, d, fs, st)
+    case d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] if emptied(d) => relink[F, A, S, T, S2, Y, S1, W, Z](d, fs, st)
     case _ => splice(ks, Frames.runOf(fs, st))
+
+  /** a delimiter as a cut leaves it: an empty segment, nothing below */
+  private def emptied(d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?]): Boolean =
+    (d.frames eq Frames.noFrames) && (d.below eq Frames.noStack)
 
   /**
    * THE CLAIM of the relinking, isolated: `k`'s delimiter was cut with an
    * empty segment and nothing below, so its indexes are the diagonal the
-   * live segment continues from — the same node with those two fields
-   * filled. A pattern cannot recover that from `eq` on two shared empties,
-   * so the node is rebuilt at erased indexes and the result read back at
-   * the resumption's own.
+   * live segment continues from — the delimiter answers the live
+   * segment's `Y`, and the resumption's `T` is the live segment's `S2`.
+   * A pattern cannot recover either from `eq` on two shared empties (the
+   * existentials are skolems, which GADT matching does not refine), so
+   * both are said here and nowhere else: the node read at the live
+   * indexes, and the segment's `S2` read as `T`. Six casts at `Any` until
+   * this was typed; two now, and the `Run` on top is built typed.
    */
-  private def relink[F[_, _, +_], A, S, T, Z](top: Frames[?, ?, ?, ?, ?] | Null, d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?], fs: Frames[?, ?, ?, ?, ?], st: Stack[?, ?, ?, ?, ?]): Stack[F, A, S, T, Z] =
-    type E[X] = Freer[Cont0.Row[F], Any, Any, X]
-    val re = Stack.Reset[F, Any, Any, Any, Any, Any, Any, Any](d.p.asInstanceOf[Prompt[Any]], d.ret.asInstanceOf[Any => E[Any]], d.plain, d.shots,
-      fs.asInstanceOf[Frames[F, Any, Any, Any, Any]], st.asInstanceOf[Stack[F, Any, Any, Any, Any]])
-    (if top == null then re else Stack.Run(top.asInstanceOf[Frames[F, Any, Any, Any, Any]], re)).asInstanceOf[Stack[F, A, S, T, Z]]
+  private def relink[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?],
+                                                           fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] =
+    val live = d.asInstanceOf[Stack.Reset[F, A, S, T, Y, S1, W, Z]]
+    Stack.Reset(live.p, live.ret, live.plain, live.shots, fs.asInstanceOf[Frames[F, Y, S1, T, W]], st)

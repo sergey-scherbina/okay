@@ -805,7 +805,7 @@ object Delim {
 
   /** a prompt is its own typed token: the same prompt has the same
    * answer type — the witness the machine uses to split its stack */
-  given Same[Prompt] = Same.byIdentity
+  given samePrompt: Same[Prompt] = Same.byIdentity
 
   /** `Delim`'s operations are `Cont0`'s: the class is the whole test */
   given Effect[Delim] = new Effect[Delim]:
