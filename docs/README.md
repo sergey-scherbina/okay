@@ -150,6 +150,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   is usually written, the rule for when to reach for an effect
   instead, and the cases where a capture makes code worse. The theory
   is [theory/2](theory/02-continuations.md).
+- **[Delimited: the machine as an interface](delimited.md)** — the
+  four primitives every control operator is built from (`delimiter`,
+  `dollar`, `shift0`, `resume`), Dybvig, Peyton Jones and Sabry's
+  framework in λ$'s variant; writing against the trait; resuming a
+  continuation with a computation, not just a value.
 - **[Cont and the stack](cont-stack.md)** — what nests and what does
   not: a body that only calls `k` last is the value it passes (no
   frame, decided at compile time); one that uses the answer is a frame
