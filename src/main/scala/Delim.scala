@@ -874,7 +874,7 @@ object Delim {
     // A stacked program is `Freer` over the same row the unstacked one
     // runs in — `Cont0` beside `F` — at the prompt stack `S` as its
     // index. Every operation is on the DIAGONAL: it runs at the stack it
-    // was written under, a `Reset0` nests its body one deeper through
+    // was written under, a `Dollar0` nests its body one deeper through
     // its own payload's index, and the machine's stack is what moves.
     // `Under[F, A, S]` IS the tree; no facade carries the stack.
     // ================================================================

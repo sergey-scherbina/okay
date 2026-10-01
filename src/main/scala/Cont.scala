@@ -782,18 +782,27 @@ object Frames:
       Next[Y0, I0, I0, Y0](sh.f(k), noFrames[F, Y0, I0],
         y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](below)))
 
-    /** a resumption's registers: `focus` over the stack `k`'s nodes were
-     * catenated onto (`Rev.onto`), its head segment unpacked into the frames
-     * register — the one place both resuming arms (a `k` as a bind's
-     * continuation, a `Resume` as a delay's thunk) go through */
-    def pushed[X, T](focus: Freer[G, T, R, X], k: Stack[F, X, S0, T, Z]): Next[?, ?, ?, ?] = k match
-      case rn: Run[F, X, S0, s2, T, y, Z] => Next[X, T, s2, y](focus, rn.frames, rn.below)
-      // a resumed `k` over the live stack: its head segment straight into
-      // the frames register, no shell — the rest of `k` stays catenated
-      case c: Cat[F, X, S0, T, y, s2, Z] => c.k match
-        case kr: Run[F, X, `s2`, s3, T, y1, `y`] => Next[X, T, s3, y1](focus, kr.frames, cat(kr.below, c.below))
-        case _ => Next[X, T, T, X](focus, noFrames[F, X, T], c)
-      case sp => Next[X, T, T, X](focus, noFrames[F, X, T], sp)
+    /**
+     * A RESUMPTION's registers: `focus` over `k`, `k` over the live
+     * segment and stack. `k`'s head segment goes straight into the frames
+     * register and the rest of `k` is catenated over the live stack (ONE
+     * `Cat`, O(1), its nodes reached as the loop pops) — over nothing, it
+     * is the stack itself. The one place a `k` enters: a `k` as a bind's
+     * continuation, a `Resume` as a delay's thunk, and the machine's
+     * start. (Until cont-machine-resume a `Cat` of all of `k` was built
+     * first and taken apart at once into a second one.)
+     */
+    def resume[A, T, S2, Y, S1, W](focus: Freer[G, T, R, A], k: Stack[F, A, S2, T, Y],
+                                   fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S0, S1, Z]): Next[?, ?, ?, ?] =
+      val live = runOf(fs, st)
+      k match
+        case kr: Run[F, A, S2, s3, T, y1, Y] => Next[A, T, s3, y1](focus, kr.frames, over(kr.below, live))
+        case _ => Next[A, T, T, A](focus, noFrames[F, A, T], over(k, live))
+
+    /** `k` over the live stack: `k` itself over nothing, else catenated */
+    def over[A, S2, T, Y](k: Stack[F, A, S2, T, Y], live: Stack[F, Y, S0, S2, Z]): Stack[F, A, S0, T, Z] = live match
+      case _: Done[F, Y, S0] @unchecked => k
+      case _ => cat(k, live)
 
     @tailrec def loop[X, T, S1, Y](focus: Freer[G, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] = focus match
       case b: Bind[G, T, ?, R, ?, X] => Frames.as(b.f) match
@@ -813,7 +822,7 @@ object Frames:
         // a stack as the continuation — a resumed `k`, or the head form
         // fed back: its nodes pushed, never its frames copied
         case ks =>
-          val n = pushed(b.a, Rev.onto(ks, fs, st))
+          val n = resume(b.a, ks, fs, st)
           loop(n.focus, n.fs, n.st)
       case r: Return[G, R, X] => fs match
         case fr: Frame[F, X, S1, s2, T, ?, Y] => loop(fr.f(r.a), fr.rest, st)
@@ -835,7 +844,7 @@ object Frames:
         // a resumption: the value at the top of its stack, pushed — never forced
         case null => loop(d.thunk(), fs, st)
         case r: Resume[F, a, T, R, X] =>
-          val n = pushed(Return[G, R, a](r.a), Rev.onto(r.k, fs, st))
+          val n = resume(Return[G, R, a](r.a), r.k, fs, st)
           loop(n.focus, n.fs, n.st)
       // the operations, in the loop: a `Next` per `Dollar0` and a union
       // result's type test cost the first cut of step 1 its install lane.
@@ -857,7 +866,7 @@ object Frames:
             case null => Bind(focus, runOf(fs, st))
           case _ => Bind(focus, runOf(fs, st))
 
-    val n = pushed(focus0, st0)
+    val n = resume(focus0, st0, noFrames[F, Z, S0], noStack[F, Z, S0])
     loop(n.focus, n.fs, n.st)
 
 /**
@@ -927,10 +936,10 @@ object Cont0:
 
 /**
  * The reversed stack of NODES: the same type-aligned discipline,
- * outermost first. A cut walks the nodes down to the delimiter building
- * one of these and links it onto `Done` — O(delimiters and segments
- * crossed), frames shared; a resumption reverses `k`'s nodes and links
- * them onto the live stack — O(nodes of `k`), usually two.
+ * outermost first. A cut that walks (a capture past another delimiter:
+ * `nearest` takes the usual one without it) builds one of these down to
+ * the delimiter and links it onto `Done` — O(delimiters and segments
+ * crossed), frames shared. A resumption needs none: it is a `Cat`.
  */
 private enum Rev[F[_, _, +_], A, T, S2, Y]:
   case Nil[F[_, _, +_], A, T]() extends Rev[F, A, T, T, A]
@@ -946,17 +955,3 @@ private object Rev:
   /** the empty prefix, one object (as `Frames.noFrames`: no field, phantom indexes) */
   private val theNil: Nil[Nothing, Any, Any] = Nil()
   def nil[F[_, _, +_], A, T]: Rev[F, A, T, T, A] = theNil.asInstanceOf[Rev[F, A, T, T, A]]
-
-  /**
-   * A RESUMPTION onto the live registers — the segment and the stack
-   * under it: ONE `Cat`, `k` over them, O(1); `k`'s nodes are reached
-   * one at a time as the machine pops (`Frames.uncat`), frames shared.
-   */
-  def onto[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = fs match
-    // an EMPTY machine first: a `k` re-entering from outside (a handler of
-    // another effect resuming the head form it was handed) is pushed onto
-    // nothing, so it IS the stack; the two tests refine the indexes
-    case _: Frames.End[F, Y, S1] @unchecked => st match
-      case _: Stack.Done[F, W, S] @unchecked => ks
-      case _ => Stack.Cat(ks, Frames.runOf(fs, st))
-    case _ => Stack.Cat(ks, Frames.runOf(fs, st))
