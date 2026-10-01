@@ -249,7 +249,11 @@ object Cont:
 
   /** the root's `ret`: the user's `k`, and the room this run has on its
    * stack — where a strict `k` reads it (`force`) */
-  private final class Root(val k: Any => Any, val room: Int) extends (Any => P):
+  private final class Root(val k: Any => Any, var room: Int) extends (Any => P):
+    /** this run's stack gauge, attached at its first exhaustion (Layer 3):
+     * one per run, so a grant reads the stack it measured last, where a
+     * fresh gauge per exhaustion asked the OS for the stack every time */
+    var gauge: Gauge | Null = null
     def apply(x: Any): P = Return(k(x))
 
   /**
@@ -298,37 +302,44 @@ object Cont:
    * stack is asked (Layer 3), and a stack with none left switches.
    */
   private def force(k: K, x: Any): Any =
-    val here = roomOf(k) - 1
-    if here > 0 then value(Bind(Return(x), withRoom(k, here)))
+    val r = rootOf(k)
+    if r eq null then enter(k, x)
     else
-      val more = StackSwitch.more(Gauge())
-      if more > 0 then value(Bind(Return(x), withRoom(k, more)))
-      else StackSwitch.fresh(fresh => value(Bind(Return(x), withRoom(k, fresh))))
+      // the room is the RUN's, scoped dynamically around the nested run:
+      // forces nest strictly (a nested run returns before its caller
+      // goes on, on this stack or on a fresh one it waits for), so a
+      // saved value restored in `finally` is exact — where rebuilding `k`
+      // with the room in its root cost a node walk and two nodes a call
+      val saved = r.room
+      val here = saved - 1
+      if here > 0 then
+        r.room = here
+        try enter(k, x) finally r.room = saved
+      else
+        val g = r.gauge match
+          case null => val g = Gauge(); r.gauge = g; g
+          case g: Gauge => g
+        val more = StackSwitch.more(g)
+        if more > 0 then
+          r.room = more
+          try enter(k, x) finally r.room = saved
+        else StackSwitch.fresh: fresh =>
+          r.room = fresh
+          try enter(k, x) finally r.room = saved
 
-  /** the room of `k`'s root: the last `Reset` of `k` is the root it was cut at */
+  /** `k` run now to its value, entered at the machine's registers */
+  private def enter(k: K, x: Any): Any = Frames.Resume[NoEffect, Any, Any, Any, Any](x, k)() match
+    case Return(v) => v
+    case _ => throw IllegalStateException("a Cont program answered an operation: it has none")
+
+  /** the root delimiter at the bottom of `k`: the run it was captured from */
   @annotation.tailrec
-  private def roomOf(k: Stack[NoEffect, ?, ?, ?, ?]): Int = k match
-    case Stack.Kept(_, p, r: Root, _) if p eq root => r.room
-    case Stack.Reset(p, r: Root, _, _, below) if p eq root => r.room
-    case Stack.Reset(_, _, _, _, below) => roomOf(below)
-    case Stack.Run(_, below) => roomOf(below)
-    case _ => StackSwitch.firstRoom
-
-  /** `k` with its root's room replaced: its nodes rebuilt, its frames shared */
-  private def withRoom(k: K, room: Int): K =
-    @annotation.tailrec def down(st: K, acc: List[K]): K = st match
-      case Stack.Kept(fr, p, r: Root, sh) if p eq root => up(acc, Stack.Kept(fr, p, Root(r.k, room), sh).asInstanceOf[K])
-      case Stack.Reset(p, r: Root, sh, fr, below) if p eq root => up(acc, Stack.Reset(p, Root(r.k, room), sh, fr, below).asInstanceOf[K])
-      case n: Stack.Run[?, ?, ?, ?, ?, ?, ?] => down(n.below.asInstanceOf[K], n.asInstanceOf[K] :: acc)
-      case n: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] => down(n.below.asInstanceOf[K], n.asInstanceOf[K] :: acc)
-      case _ => throw IllegalStateException("a Cont continuation without its root")
-    @annotation.tailrec def up(acc: List[K], st: K): K = acc match
-      case Nil => st
-      case (n: Stack.Run[?, ?, ?, ?, ?, ?, ?]) :: rest => up(rest, Stack.Run(n.frames.asInstanceOf[Frames[NoEffect, Any, Any, Any, Any]], st))
-      case (n: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?]) :: rest =>
-        up(rest, Stack.Reset(n.p.asInstanceOf[Prompt[Any]], n.ret.asInstanceOf[Any => P], n.shots, n.frames.asInstanceOf[Frames[NoEffect, Any, Any, Any, Any]], st))
-      case _ :: rest => up(rest, st)
-    down(k, Nil)
+  private def rootOf(k: Stack[NoEffect, ?, ?, ?, ?]): Root | Null = k match
+    case Stack.Kept(_, p, r: Root, _) if p eq root => r
+    case Stack.Reset(p, r: Root, _, _, below) if p eq root => r
+    case Stack.Reset(_, _, _, _, below) => rootOf(below)
+    case Stack.Run(_, below) => rootOf(below)
+    case _ => null
 
   /**
    * What a run's stack looked like at its last GRANT (specs/cont-stack.md
