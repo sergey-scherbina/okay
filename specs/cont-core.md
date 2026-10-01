@@ -141,12 +141,12 @@ Libraries on top keep their API and move to the core's: `Delim`'s doors
 
 ## Behavior
 
-- [ ] the five rules are the loop's only arms (plus `Delay` and the head form)
-- [ ] `Stack` has three cases, `Frames` two, `Cont0` two, `Shift0` one flag
-- [ ] shift/control/abort/reset are derived in `Cont0`'s companion, not matched in the loop
-- [ ] Cont's leaf body gets a `Resumption`; nested opaque bodies bounded by levels + `StackSwitch.fresh`
-- [ ] TestKont, TestCont, TestContOnMachine, TestContStack, TestContMacro (its 1M nested case included), TestDelim*, TestDollar*, TestHandlersAsDollar, TestLexical*, TestStackedShift0, TestLayered, TestBookFourCaptures, TestScopedEffects, TestStackSafetyCore, TestHandleForward, TestCollectUntil green
-- [ ] the linear cases stay linear: n captures from a deep stack, n nested resumptions (TestKont's depth tests)
+- [x] the five rules are the loop's only arms (plus `Delay` and the head form)
+- [x] `Stack` has three cases, `Frames` two, `Cont0` two, `Shift0` one flag
+- [x] shift/control/abort/reset are derived in `Cont0`'s companion, not matched in the loop
+- [x] Cont's leaf body gets a `Resumption`; nested opaque bodies bounded by levels + `StackSwitch.fresh`
+- [x] TestKont, TestCont, TestContOnMachine, TestContStack, TestContMacro (its 1M nested case included), TestDelim*, TestDollar*, TestHandlersAsDollar, TestLexical*, TestStackedShift0, TestLayered, TestBookFourCaptures, TestScopedEffects, TestStackSafetyCore, TestHandleForward, TestCollectUntil green
+- [x] the linear cases stay linear: n captures from a deep stack, n nested resumptions (TestKont's depth tests)
 - [ ] `affected master staged` green
 - [ ] A/B against master recorded in history.d — a number, not a gate: this lane's verdict is the design
 
@@ -171,6 +171,59 @@ Libraries on top keep their API and move to the core's: `Delim`'s doors
   at run time.
 - **Optimizations return one at a time**, each its own lane with an A/B:
   `Kept`/`nearest` (capture), `under`, the entries, the gauge.
+
+## Results
+
+Nine steps, each a commit with the 24 continuation suites green (238
+tests). One slip: step 2's Lexical half was left out of its commit
+(6c222e806) and landed as 63f4cc84c, so the commits from step 2 to
+step 7 do not compile one by one; the branch tip does.
+
+1. Lexical `tail` in a Delim row is installed deep (4c4917ac9).
+2. The re-entry count left the machine: `Shots`, `Enter`, `dollarResumed` (6c222e806, 63f4cc84c).
+3. `shift`/`control` derived; `Shift0.under` gone (6331f4cf6).
+4. Cont's strict leaf an ordinary clause; `Shift0.strict` gone (d8a5d600a).
+5. `Kept`, `nearest`, `close`, `relinkOrSplice` gone (e97c291b5).
+6. One entry `Frames.run`; Cont's `Resumption`, levels + `fresh`, the gauge no longer asked (c5ce9fb9d).
+7. The runner's stack reader gone: `StackSwitch.more`, `Cont.Gauge`, Native's `ThreadInfo` probe, `ContStackRoad`; `StackRoom` and `okayJdk22` KEPT (operator) (dc04840bc).
+8. `Reset` unfused: `Reset(p, ret, below)`, DPJS's `EmptyS | PushSeg | PushP` (e05a3c943).
+9. `rebase` gone from the machine: `Cont0.Delimiter[Y, I]` (84c9e2eb5).
+
+### What the machine still claims, and why each stays
+
+| claim | why |
+|---|---|
+| `as`, `resume` | a class test on a function: JVM erasure |
+| `noFrames`, `noStack`, `Rev.nil`, `identity`, `boundary` | one empty value at every phantom index, `Nil`'s pattern; the alternative allocates per use |
+| `identical` | two prompts that are one object are one type: the generative-prompt axiom (DPJS's `eqPrompt` is the same `unsafeCoerce`) |
+| `plainly` (answer type only) | a bare `k` to a plain `reset` answers the prompt's type because `ret` is the identity, a run-time fact; typed only by a separate plain operation AND stack node — open, below |
+| `splice`'s `Done` case | GADT refinement does not reach through the `@unchecked` test; small, open |
+
+### Found on the way
+
+- **`Resume` is the core's, not an optimization.** A resumption must be
+  pushed by the machine (it stays in the run) and run by an outer
+  interpreter that is handed `k`; a bare `Bind(Return(a), k)` loops
+  under `Freer.resume` (`k(a)` again, forever).
+- **The boundary stays in `cut`.** It is a node of the stack, so it
+  travels in every `k`, and a run of `k` started by an outer
+  interpreter meets it after the door has returned. It is the
+  continuation barrier of Flatt et al. (ICFP 2007).
+- **The index belongs to the delimiter.** `rebase` existed because the
+  machine could not relate the leaf's index to the delimiter's; a
+  prompt that carries its index makes `eq` type both. The claim is now
+  a statement at each door about the index it installs at.
+- **`$` is not `reset ∘ map`.** `ret $ v` runs `ret` OUTSIDE the
+  delimiter, `⟨ret v⟩` inside: a return clause that captures to its
+  own prompt tells them apart. So `$` stays a primitive with `ret`.
+
+### Open
+
+- `plainly`: a plain `reset` as its own operation and stack node
+  (`Done | Run | Reset | Dollar`) would type a bare capture and drop
+  the `identity` eq-trick; the price is a fourth constructor.
+- The full `affected master staged` gate, and the A/B against master
+  (a number for the record; the verdict of this lane is the design).
 
 ## Literature
 
