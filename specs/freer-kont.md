@@ -424,6 +424,20 @@ compiled loop against the single list's 34, which kept `focus` in a
 register and spilled only on the slow path. It is the price of the
 layout (a segment and the stack under it, the two the sharing needs).
 
+### cont-frames-relink-two-nodes: the usual `k` is one node (2026-10-01)
+
+`Stack.Kept(frames, p, ret, shots)` is `Run(frames, Reset(p, ret, shots,
+End, Done))` as one node: what `nearest` captures (every `shift`, `emit`,
+a generator's step), relinked over the live registers by `Rev.onto`
+fully typed — the two-node shape needed `relink`'s claim, which now
+serves only a `k` the walk (`cut`) built. Against the single list
+(history.d 2026-10-01T…-cont-frames-kept.tsv): delimGenerator 0.72 →
+**0.68**, layeredViaDollar 0.86 → **0.82**, stateLexDeep 1.00 → **0.89–0.91**,
+stateDeep 1.03–1.05 → **0.95**, delimDollarResume 1.11 → 1.07–1.08; bytes
+down again on each (stateLexDeep 895 → 799 KB, stateDeep 1024 → 928 KB).
+A `st` held in a per-run cell instead of a register was tried the same
+day and refuted (write barriers; backlog cont-frames-register-pressure).
+
 ## Literature
 
 - Materzok & Biernacki, "A Dynamic Interpretation of the CPS
