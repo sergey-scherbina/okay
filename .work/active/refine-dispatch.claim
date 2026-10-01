@@ -1,0 +1,1 @@
+claude session_01EpHeM4HTPNHdPJjvCNaWHg, 2026-10-01, operator ask (hierarchical routing by document type in streams/Spark/Flink/Kafka, as pattern matching): specs/refine-dispatch.md; stage 1 — Dispatch: a Scala match as the routing table (typed lanes, exhaustiveness, sub-tables), over every Routable carrier
