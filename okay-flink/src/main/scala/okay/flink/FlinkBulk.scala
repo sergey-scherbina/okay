@@ -2,7 +2,9 @@ package okay.flink
 
 import okay.*
 import org.apache.flink.api.common.RuntimeExecutionMode
-import org.apache.flink.api.common.functions.{AggregateFunction, CoGroupFunction, FilterFunction, FlatMapFunction, MapFunction}
+import org.apache.flink.api.common.functions.{AggregateFunction, CoGroupFunction, FilterFunction, FlatMapFunction, MapFunction, OpenContext}
+import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}
+import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.streaming.api.datastream.DataStream
@@ -53,8 +55,34 @@ object FlinkBulk:
     val env = StreamExecutionEnvironment.createLocalEnvironment(parallelism)
     FlinkBulk(env)
 
-  final class FlinkBulk(env: StreamExecutionEnvironment) extends Bulk[Rows]:
-    env.setRuntimeMode(RuntimeExecutionMode.BATCH): Unit
+  /** how a join runs on Flink */
+  enum JoinBy:
+    /** keyed on both sides, every key's rows buffered in keyed state and
+     * paired when the key ends — BATCH mode sorts by key, so state holds
+     * one key at a time */
+    case Process
+    /** a `coGroup` in an end-of-stream global window: the first cut */
+    case WindowedCoGroup
+
+  /**
+   * `csvInTask`: a CSV is read by a task, not by the client (the first cut
+   * read it on the client and shipped every row inside the job graph);
+   * `objectReuse`: Flink's own switch, safe because no function here
+   * mutates its input; `joinBy`: above; `mode`: STREAMING by default —
+   * the sources are bounded either way, and BATCH SORTS every keyed input
+   * (each record serialized through generic Kryo into the sorter), which
+   * was half of the one-job page's cost. STREAMING holds a join's two
+   * sides in heap state instead, as the other instances' hash join holds
+   * one; BATCH stays the choice for sides larger than memory, since its
+   * sort spills. MEASURED (ProbeFlinkRoads, the GTFS three joins, best of
+   * 2): first cut 21.8 s, csv in task 17.8, + object reuse 16.2, + keyed
+   * state join 16.3, + STREAMING 8.8 (flink-typed-road).
+   */
+  final class FlinkBulk(env: StreamExecutionEnvironment, csvInTask: Boolean = true,
+                        objectReuse: Boolean = true, joinBy: JoinBy = JoinBy.Process,
+                        mode: RuntimeExecutionMode = RuntimeExecutionMode.STREAMING) extends Bulk[Rows]:
+    env.setRuntimeMode(mode): Unit
+    if objectReuse then env.getConfig.enableObjectReuse(): Unit
 
     def of[A](xs: Iterable[A]): Rows[A] =
       val v = xs.iterator.map(x => x.asInstanceOf[AnyRef]).toVector
@@ -68,8 +96,10 @@ object FlinkBulk:
      * a bounded job, and Flink's file source is another connector */
     def csv(path: String): Rows[Csv.Row] = csv(path, None)
     override def csv(path: String, columns: Option[Set[String]]): Rows[Csv.Row] =
-      val lines = java.nio.file.Files.readAllLines(java.nio.file.Path.of(path)).asScala.iterator
-      of(Csv.rows(lines, columns).toVector)
+      if csvInTask then of(Vector(path)).flatMap(FlinkCsv(columns), any)
+      else
+        val lines = java.nio.file.Files.readAllLines(java.nio.file.Path.of(path)).asScala.iterator
+        of(Csv.rows(lines, columns).toVector)
 
     override def size(path: String): Option[Long] =
       val f = java.io.File(path)
@@ -79,8 +109,11 @@ object FlinkBulk:
     def flatMap[A, B](d: Rows[A])(f: A => IterableOnce[B]): Rows[B] = d.flatMap(FlinkFlatMap(f), any)
     def filter[A](d: Rows[A])(p: A => Boolean): Rows[A] = d.filter(FlinkFilter(p))
 
-    def join[K, A, B](l: Rows[(K, A)], r: Rows[(K, B)]): Rows[(K, (A, B))] =
-      l.coGroup(r).where(FlinkKey[K, A](), any).equalTo(FlinkKey[K, B](), any)
+    def join[K, A, B](l: Rows[(K, A)], r: Rows[(K, B)]): Rows[(K, (A, B))] = joinBy match
+      case JoinBy.Process =>
+        l.connect(r).keyBy(FlinkKey[K, A](), FlinkKey[K, B](), any).process(FlinkJoinState[K, A, B](), any)
+      case JoinBy.WindowedCoGroup =>
+        l.coGroup(r).where(FlinkKey[K, A](), any).equalTo(FlinkKey[K, B](), any)
         .window(GlobalWindows.createWithEndOfStreamTrigger())
         .apply(FlinkPairs[K, A, B](), any)
 
@@ -99,6 +132,30 @@ object FlinkBulk:
       try it.asScala.map(x => elem[A](x)).toVector finally it.close()
 
 // ------------------------------------------------ the functions, top-level
+private final class FlinkCsv(columns: Option[Set[String]]) extends FlatMapFunction[AnyRef, AnyRef]:
+  def flatMap(path: AnyRef, out: Collector[AnyRef]): Unit =
+    val lines = java.nio.file.Files.lines(java.nio.file.Path.of(path.toString))
+    try Csv.rows(lines.iterator().asScala, columns).foreach(r => out.collect(r))
+    finally lines.close()
+
+/** a key's left and right rows in keyed state, paired when the key ends:
+ * the timer at the end of time fires per key in BATCH mode */
+private final class FlinkJoinState[K, A, B] extends KeyedCoProcessFunction[AnyRef, AnyRef, AnyRef, AnyRef]:
+  @transient private var lefts: ListState[AnyRef] = null
+  @transient private var rights: ListState[AnyRef] = null
+  override def open(ctx: OpenContext): Unit =
+    lefts = getRuntimeContext.getListState(ListStateDescriptor[AnyRef]("lefts", FlinkBulk.any))
+    rights = getRuntimeContext.getListState(ListStateDescriptor[AnyRef]("rights", FlinkBulk.any))
+  def processElement1(x: AnyRef, ctx: KeyedCoProcessFunction[AnyRef, AnyRef, AnyRef, AnyRef]#Context, out: Collector[AnyRef]): Unit =
+    lefts.add(x); ctx.timerService.registerEventTimeTimer(Long.MaxValue)
+  def processElement2(x: AnyRef, ctx: KeyedCoProcessFunction[AnyRef, AnyRef, AnyRef, AnyRef]#Context, out: Collector[AnyRef]): Unit =
+    rights.add(x); ctx.timerService.registerEventTimeTimer(Long.MaxValue)
+  override def onTimer(t: Long, ctx: KeyedCoProcessFunction[AnyRef, AnyRef, AnyRef, AnyRef]#OnTimerContext, out: Collector[AnyRef]): Unit =
+    val rs = rights.get.asScala.map(x => FlinkBulk.elem[(K, B)](x)).toVector
+    for x <- lefts.get.asScala do
+      val (k, a) = FlinkBulk.elem[(K, A)](x)
+      rs.foreach((_, b) => out.collect((k, (a, b))))
+    lefts.clear(); rights.clear()
 private final class FlinkMap[A, B](f: A => B) extends MapFunction[AnyRef, AnyRef]:
   def map(x: AnyRef): AnyRef = f(FlinkBulk.elem[A](x)).asInstanceOf[AnyRef]
 

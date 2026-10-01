@@ -41,8 +41,8 @@ platform prunes at its own parser; each `join` is chosen by the plan
 - Flink, a MiniCluster of four: `FlinkBulk.local(4)`
 
 Every platform answered the same 1,158,821 rows. Best of three runs,
-2026-10-01, on a shared 14-core machine (load 9–17, so read the ratios,
-not the milliseconds):
+2026-10-01, on a shared 14-core machine (load 1–17, so read the ratios,
+not the milliseconds; the Flink row is after flink-typed-road):
 
 | platform | time | vs one JVM |
 |---|---|---|
@@ -50,7 +50,7 @@ not the milliseconds):
 | `BulkParallel(4)` | 365 ms | 0.72 |
 | `FlowBulk(4)` (our engine) | 558 ms | 1.10 |
 | `SparkBulk` (Spark local[4]) | 1,647 ms | 3.24 |
-| `FlinkBulk` (Flink MiniCluster, 4) | 29,802 ms | 58.7 |
+| `FlinkBulk` (Flink MiniCluster, 4) | 8,513 ms | 16.8 |
 
 What the numbers say:
 
@@ -63,12 +63,17 @@ What the numbers say:
   materialised boundary (the in-process stand-in for a shuffle between
   stages — this page found the chained join failing on the engine, and
   the boundary is how it runs now).
-- **Flink is slow through this seam, and why is known.** The seam carries
-  elements as `AnyRef` (no per-element evidence — specs/bulk.md), which on
-  Flink means generic Kryo serialization of every Scala tuple and map, and
-  a join is a `coGroup` in an end-of-stream window that buffers each key's
-  groups. A typed road — rows from a `Schema` through `FlinkSchema`, and
-  Flink's own join — is what would close most of it.
+- **Flink costs most, and where it went is measured.** The first cut took
+  29.8 s. Road by road (`ProbeFlinkRoads`, best of 2): reading the CSV in
+  a task instead of shipping its rows in the job graph 17.8 s, Flink's
+  object reuse 16.2, a join on keyed state instead of a windowed coGroup
+  16.3, and STREAMING mode instead of BATCH 8.8 — BATCH sorts every keyed
+  input, each record serialized through generic Kryo into the sorter.
+  STREAMING holds a join's two sides in heap state, as the other
+  instances' hash join holds one; BATCH stays an option for sides larger
+  than memory. What is left is the seam's own price on Flink: elements
+  travel as `AnyRef` under generic Kryo serialization across every
+  shuffle, because the seam asks no per-element evidence (specs/bulk.md).
 
 The measurements are `MeasureOneJob` (compare), `MeasureOneJobSpark`
 (okay-spark) and `MeasureOneJobFlink` (okay-flink), `Live`-tagged because

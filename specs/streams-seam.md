@@ -358,3 +358,14 @@ Lane 4 (streams-seam-docs): the one-job page with the numbers.
   a typed road (FlinkSchema rows, Flink's own join) is the known fix, not
   built. The arc's five lanes are done.
 
+- flink-typed-road (2026-10-01): FlinkBulk on the one-job page 29.8 s ->
+  8.5 s. Measured road by road (ProbeFlinkRoads, ignored by default):
+  csv read in a task 17.8, object reuse 16.2, keyed-state join (a
+  `KeyedCoProcessFunction`, rows paired at the per-key end-of-time timer)
+  16.3, STREAMING instead of BATCH 8.8 — BATCH's sort of every keyed input
+  through generic Kryo was the largest single cost. STREAMING is the
+  default now; BATCH (`mode = BATCH`) for sides larger than memory. The
+  residual 17x one JVM is generic Kryo per record per shuffle — the price
+  of the seam's no-per-element-evidence rule on Flink; a typed road would
+  need evidence the seam refuses, and is not filed.
+
