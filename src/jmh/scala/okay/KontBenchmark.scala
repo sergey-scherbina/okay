@@ -43,7 +43,7 @@ class KontBenchmark {
   type L = List[Int]
 
   def emit(p: Prompt[L])(a: Int): P[L, L, Unit] =
-    Cont0.shift[Nil, L, L, L, L, Unit](Cont0.delimiter(p))(k => k(()).map(a :: _))
+    Delimited.machine[Nil].shift[L, L, L, L, Unit](Cont0.delimiter(p))(k => k(()).map(a :: _))
 
   @Benchmark
   def kontGenerator(): Int =
@@ -51,7 +51,7 @@ class KontBenchmark {
     def go(i: Int): P[L, L, Unit] =
       if i >= N then pure(())
       else emit(p)(i).flatMap(_ => go(i + 1))
-    run(Cont0.reset[Nil, L, L, L](Cont0.delimiter(p))(go(0).map(_ => Nil))).length
+    run(Delimited.machine[Nil].reset[L, L, L](Cont0.delimiter(p))(go(0).map(_ => Nil))).length
 
   // ---- DelimBenchmark.delimPushOnly: N delimiters, nothing captured
 
@@ -59,7 +59,7 @@ class KontBenchmark {
   def kontResetOnly(): Int =
     def go(i: Int): P[Int, Int, Int] =
       if i >= N then pure(i)
-      else Cont0.reset[Nil, Int, Int, Int](Cont0.delimiter(Cont0.prompt[Int]))(pure(i)).flatMap(_ => go(i + 1))
+      else Delimited.machine[Nil].reset[Int, Int, Int](Cont0.delimiter(Cont0.prompt[Int]))(pure(i)).flatMap(_ => go(i + 1))
     run(go(0))
 
   // ---- DelimBenchmark.delimDollarOnly: N `$` with a return function
@@ -68,7 +68,7 @@ class KontBenchmark {
   def kontDollarOnly(): Int =
     def go(i: Int): P[Int, Int, Int] =
       if i >= N then pure(i)
-      else Cont0.dollar[Nil, Int, Int, Int, Int](Cont0.delimiter(Cont0.prompt[Int]))(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
+      else Delimited.machine[Nil].dollar[Int, Int, Int, Int](Cont0.delimiter(Cont0.prompt[Int]))(x => pure(x + 1))(pure(i)).flatMap(_ => go(i + 1))
     run(go(0))
 
   // ---- DelimBenchmark.delimDollarResume: one shift0 per `$`, resumed once
@@ -79,8 +79,8 @@ class KontBenchmark {
       if i >= N then pure(i)
       else
         val p = Cont0.prompt[Int]
-        Cont0.dollar[Nil, Int, Int, Int, Int](Cont0.delimiter(p))(x => pure(x + 1))(
-          Cont0.shift0[Nil, Int, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(i))).flatMap(_ => go(i + 1))
+        Delimited.machine[Nil].dollar[Int, Int, Int, Int](Cont0.delimiter(p))(x => pure(x + 1))(
+          Delimited.machine[Nil].shift0[Int, Int, Int, Int, Int](Cont0.delimiter(p))(k => k(i))).flatMap(_ => go(i + 1))
     run(go(0))
 
   // ---- no continuations at all: what the descent costs against the rotation

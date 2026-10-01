@@ -209,7 +209,7 @@ object Delim {
 
   /** run the body under the delimiter — reset, as an operation */
   def push[R, F[+_]](p: Prompt[R])(body: R ! Delim + F): R ! Delim + F =
-    out(Cont0.reset[Freer.Lift[F], Unit, Unit, R](atUnit(p))(in(body)))
+    out(Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](atUnit(p))(in(body)))
 
   /**
    * `ret $ body` at the delimiter `p`: the body answers `R0`, the
@@ -219,7 +219,7 @@ object Delim {
    * 2012's `S k.e = S0 k.⟨e⟩` (TestDollarProbe).
    */
   def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Delim + F): R ! Delim + F =
-    out(Cont0.dollar[Freer.Lift[F], R, R0, Unit, Unit](atUnit(p))(inF(ret))(in(body)))
+    out(Delimited.machine[Freer.Lift[F]].dollar[R, R0, Unit, Unit](atUnit(p))(inF(ret))(in(body)))
 
 
   /**
@@ -234,13 +234,13 @@ object Delim {
    */
   def shift[R, A, F[+_]](p: Prompt[R])
                         (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
-    out(Cont0.shift[Freer.Lift[F], R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
+    out(Delimited.machine[Freer.Lift[F]].shift[R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
 
   /** the body CONSUMES the delimiter (a further shift to `p` escapes
    * outward), the continuation still re-installs it */
   def shift0[R, A, F[+_]](p: Prompt[R])
                          (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
-    out(Cont0.shift0[Freer.Lift[F], R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
+    out(Delimited.machine[Freer.Lift[F]].shift0[R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
 
   /** the common shape: a fresh prompt, a block under it, run */
   def reset[R, F[+_]](body: Prompt[R] => R ! Delim + F)
@@ -367,7 +367,7 @@ object Delim {
   inline def shift[A](using in: Prompted[?])[F[_]]
                          (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    Cont0.shift[Freer.Lift[Pure], in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
+    Delimited.machine[Freer.Lift[Pure]].shift[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
       f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
 
   /** the 0-variant: the body consumes the delimiter */
@@ -381,7 +381,7 @@ object Delim {
   inline def shift0[A](using in: Prompted[?])[F[_]]
                           (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                           (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    Cont0.shift0[Freer.Lift[Pure], in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
+    Delimited.machine[Freer.Lift[Pure]].shift0[in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
       f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
 
   /** abort to the delimiter in force with a value */
@@ -791,7 +791,7 @@ object Delim {
   /** abort to a prompt with a value: a shift that drops the
    * continuation (the 0-variant, so the delimiter goes with it) */
   def abort[R, A, F[+_]](p: Prompt[R])(value: R)(using At): A ! Delim + F =
-    out(Cont0.abort[Freer.Lift[F], R, Unit, A](atUnit(p))(value))
+    out(Delimited.machine[Freer.Lift[F]].abort[R, Unit, A](atUnit(p))(value))
 
 
   // ==================================================================
@@ -826,7 +826,7 @@ object Delim {
   // spelling (specs/freer-base.md, Decisions).
   object Stacked:
     import scala.annotation.unused
-    import okay.Freer.{Return, Inject}
+    import okay.Freer.Return
 
     /** the stack in force, as a lexical given. A type MEMBER, so no
      * call site spells it and no method has a stack type parameter
@@ -948,7 +948,7 @@ object Delim {
      * name, so a capture that finds no delimiter walks into it and is
      * refused by name — `NoPrompt`, with the delimiters it passed */
     private[okay] def bounded[R, F[+_]](prog: Freer[Row[F], Unit, Unit, R]): R ! F =
-      residual[R, F](Frames.run[Freer.Lift[F], Unit, Unit, R](Cont0.reset[Freer.Lift[F], Unit, Unit, R](Cont0.boundary[R, Unit])(prog)))
+      residual[R, F](Frames.run[Freer.Lift[F], Unit, Unit, R](Delimited.machine[Freer.Lift[F]].reset[Unit, Unit, R](Cont0.boundary[R, Unit])(prog)))
 
     /** the head form as the residual program: `F`'s operations, by the
      * claim `out` makes — every `Cont0` one was answered or, with a
@@ -972,7 +972,7 @@ object Delim {
     def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
                            (using om: OneMachine[F], at: At): R ! F =
       val s = new Reset[R, EmptyTuple](named[R]("delimited")(using at))
-      run[R, F](Cont0.reset[Freer.Lift[F], EmptyTuple, EmptyTuple, R](Cont0.delimiter(s.p))(rebase(body(s))))(using om)
+      run[R, F](Delimited.machine[Freer.Lift[F]].reset[EmptyTuple, EmptyTuple, R](Cont0.delimiter(s.p))(rebase(body(s))))(using om)
 
     /**
      * A fresh prompt pushed on the stack in force, for the body only:
@@ -984,7 +984,7 @@ object Delim {
                        (body: (s: Reset[R, st.S]) => Under[F, R, s.p.type *: st.S])
                        (using at: At): Under[F, R, st.S] =
       val s = new Reset[R, st.S](named[R]("reset")(using at))
-      Cont0.reset[Freer.Lift[F], st.S, st.S, R](Cont0.delimiter(s.p))(rebase(body(s)))
+      Delimited.machine[Freer.Lift[F]].reset[st.S, st.S, R](Cont0.delimiter(s.p))(rebase(body(s)))
 
     /**
      * Capture up to `p` — REQUIRES `p` on the stack in force. The body
@@ -996,7 +996,7 @@ object Delim {
                           (f: Stack[p.type *: B] ?=> (A => Under[F, R, p.type *: B]) => Under[F, R, p.type *: B])
                           (using at: At): Under[F, A, st.S] =
       given Stack[p.type *: B] = new Stack[p.type *: B]
-      Cont0.shift[Freer.Lift[F], R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(f(rebaseF(k))))
+      Delimited.machine[Freer.Lift[F]].shift[R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(f(rebaseF(k))))
 
     /**
      * `Delim.shift0`, stacked: the body runs with `p` CONSUMED, under the
@@ -1009,12 +1009,12 @@ object Delim {
                            (f: Stack[B] ?=> (A => Under[F, R, B]) => Under[F, R, B])
                            (using at: At): Under[F, A, st.S] =
       given Stack[B] = new Stack[B]
-      Cont0.shift0[Freer.Lift[F], R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(f(rebaseF(k))))
+      Delimited.machine[Freer.Lift[F]].shift0[R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(f(rebaseF(k))))
 
     /** drop the continuation and answer `value` at `p` */
     def abort[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B])
                           (value: R)(using at: At): Under[F, A, st.S] =
-      Cont0.shift0[Freer.Lift[F], R, B, st.S, st.S, A](Cont0.delimiter(p))(_ => rebase(Return[Row[F], B, R](value)))
+      Delimited.machine[Freer.Lift[F]].shift0[R, B, st.S, st.S, A](Cont0.delimiter(p))(_ => rebase(Return[Row[F], B, R](value)))
 
     /**
      * Cont's `shift` on this machine (stage 7): the body gets `k` as a
@@ -1033,7 +1033,7 @@ object Delim {
         case Return(a) => a
         case _ => throw new UnsupportedOperationException(
           s"${at.where}: the continuation of a Cont shift to ${p.label} met a foreign operation: a synchronous `k` runs a segment with none (specs/indexed-effects.md, stage 7)")
-      Cont0.shift0[Freer.Lift[F], R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(Return[Row[F], B, R](f(x => sync(k(x))))))
+      Delimited.machine[Freer.Lift[F]].shift0[R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(Return[Row[F], B, R](f(x => sync(k(x))))))
 
     /**
      * `Delim.dollar`, stacked: a fresh prompt on the stack in force for
@@ -1044,7 +1044,7 @@ object Delim {
                             (body: (s: In[R, st.S]) => Under[F, R0, s.p.type *: st.S])
                             (using at: At): Under[F, R, st.S] =
       val s = new In[R, st.S](named[R]("dollar")(using at))
-      Inject(Cont0.Dollar0[Freer.Lift[F], R, R0, st.S, st.S](Cont0.delimiter(s.p), ret, rebase(body(s))))
+      Delimited.machine[Freer.Lift[F]].dollar[R, R0, st.S, st.S](Cont0.delimiter(s.p))(ret)(rebase(body(s)))
 }
 
 /**

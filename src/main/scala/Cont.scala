@@ -114,7 +114,7 @@ object Cont:
    * clause takes the captured stack. `shiftLeaf` and `lazyLeaf` differ
    * only in the clause they hand it. */
   private def leaf[A, S, R](clause: K => P): Rep[A, S, R] =
-    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any, Any](rootAt, clause, "Cont.shift")))
+    typed(Delimited.machine[NoEffect].shift0[Any, Any, Any, Any, Any](rootAt)(clause)(using leafAt))
 
   /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
    * `v` computed when the runner reaches it, in the runner's own loop.
@@ -203,7 +203,7 @@ object Cont:
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
     val r = Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom)
-    answerOf(Frames.run[NoEffect, Any, Any, Any](Inject(Cont0.Dollar0[NoEffect, Any, Any, Any, Any](rootAt, r, erased(c))))).asInstanceOf[R]
+    answerOf(Frames.run[NoEffect, Any, Any, Any](Delimited.machine[NoEffect].dollar[Any, Any, Any, Any](rootAt)(r)(erased(c)))).asInstanceOf[R]
 
   // ==================================================================
   // THE RUNNER IS THE FRAME MACHINE (cont-step-on-frames, 2026-09-30;
@@ -237,6 +237,8 @@ object Cont:
   /** the root as the machine's delimiter: at Cont's one index, `Any` —
    * every node of a Cont program is built at it (`erased`) */
   private val rootAt: Cont0.Delimiter[Any, Any] = Cont0.delimiter(root)
+  /** where a leaf's capture says it was made: the facade, one constant */
+  private val leafAt: At = At("Cont.shift")
 
   /** the root's `ret`: the user's `k`, and the room this run has on its
    * stack — where a strict `k` reads it (`force`) */
@@ -919,30 +921,9 @@ object Cont0:
    * answers anything */
   def boundary[Y, I]: Delimiter[Y, I] = theBoundary.asInstanceOf[Delimiter[Y, I]]
 
-  /** `ret $ body`: the body under the delimiter — an operation, so it
-   * reaches the machine through any handler loop between them */
-  def dollar[F[_, _, +_], Y, A, T, R](p: Delimiter[Y, T])(ret: A => Freer[Row[F], T, T, Y])(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, Y] =
-    Inject[Row[F], T, R, Y](Cont0.Dollar0[F, Y, A, T, R](p, ret, body))
-
-  /** `⟨body⟩`: reset, the PLAIN delimiter — `pure $ body` (λ$'s own
-   * definition). The lambda captures nothing, so it is one object per
-   * call site, not one per reset */
-  def reset[F[_, _, +_], T, R, A](p: Delimiter[A, T])(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, A] =
-    Inject[Row[F], T, R, A](Cont0.Dollar0[F, A, A, T, R](p, (a: A) => Return[Row[F], T, A](a), body))
-
-  def shift0[F[_, _, +_], Y, I, T, R, X](p: Delimiter[Y, I])(f: Stack[F, X, I, T, Y] => Freer[Row[F], I, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, I, T, R, X](p, f, at.where))
-
-  /** `shift`: `shift0` whose body runs under a fresh plain delimiter of
-   * the same prompt, `k` still carrying `ret` — APLAS 2012's
-   * `S k.e = S0 k.⟨e⟩`, derived, not a case of the machine */
-  def shift[F[_, _, +_], Y, I, T, R, X](p: Delimiter[Y, I])(f: Stack[F, X, I, T, Y] => Freer[Row[F], I, R, Y])(using at: At): Freer[Row[F], T, R, X] =
-    shift0[F, Y, I, T, R, X](p)(k => reset[F, I, R, Y](p)(f(k)))
-
-  /** leave the delimiter with a value: a shift0 that drops `k` — a
-   * `Return` in the delimiter's place, so at the diagonal */
-  def abort[F[_, _, +_], Y, T, X](p: Delimiter[Y, T])(value: Y)(using At): Freer[Row[F], T, T, X] =
-    shift0[F, Y, T, T, T, X](p)(_ => Return[Row[F], T, Y](value))
+  // the operators over these two operations — `dollar`, `reset`,
+  // `shift0`, `shift`, `abort` — are `Delimited`'s (Delimited.scala):
+  // the machine is one instance of that interface (specs/delimited.md)
 
 /**
  * The reversed stack of NODES: the same type-aligned discipline,
