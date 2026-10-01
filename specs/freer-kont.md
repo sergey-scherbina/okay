@@ -29,6 +29,14 @@ f(_).flatMap(g))` (a closure per left-nesting, re-pushed down every
 step, the JIT-mode lead of `freer-rotation-closure-jit-modes`) becomes
 a PUSH onto the stack, and the stack is what a handler receives as `k`.
 
+SINCE cont-step-on-frames (2026-10-01) the stack is TWO type-aligned
+lists, segmented at the delimiters: `Frames` is one segment's frames
+(no longer a function, no longer holding `Reset`), and `Stack = Done |
+Run | Reset` is the list of segments, the delimiter carrying the
+segment under it — `Stack` is the continuation now. The Types block
+below is stage 1's single list, kept as the record; "The machine" is
+current.
+
 The smart-object idiom is the one `Freer.Mapped` already uses — a
 function that knows what it is: `Mapped` is a frame that only maps and
 a builder can read its function; `Frames` is a frame that is a whole
@@ -92,28 +100,42 @@ leaf, same machine; only how the clause applies `k` differs.
 
 ## The machine
 
-The invariant: the program is `Bind(focus, fs)`; `S0`, `R`, `Z` are
-fixed for the whole run (the outermost delimiter's), every step is
-checked by GADT refinement, nothing casts:
+THE STACK IS SEGMENTED AT ITS DELIMITERS (cont-step-on-frames,
+2026-10-01; Dybvig, Peyton Jones & Sabry, JFP 2007). Three registers:
+`focus`, `fs` — the frames of the CURRENT segment, the binds pushed
+since the last delimiter (`Frames = End | Frame`) — and `st`, the rest
+of the stack (`Stack = Done | Run(frames, below) | Reset(p, ret, shots,
+frames, below)`): a `Reset` carries the segment that waits for its
+answer. `S0`, `R`, `Z` are fixed for the run, every step is checked by
+GADT refinement:
 
 ```
-loop[X, T](focus: Freer[G, T, R, X], fs: Frames[G, X, S0, T, Z]): Freer[G, S0, R, Z]
-  Bind(a, ks: Frames) → loop(a, ks ++ fs)          -- a resumed k, or re-entry from outside; fs = End: ks itself
-  Bind(a, f)          → loop(a, Frame(f, fs))      -- push
-  Return(x)           → End: focus  |  Frame(f, rest): loop(f(x), rest)  |  Reset(p, ret, rest): loop(ret(x), rest)   -- ($v) is a pop
-  Delay(t)            → loop(t(), fs)
-  Inject(Reset0)      → loop(body, Reset(p, ret, fs))                                 -- the operation becomes the frame
-  Inject(Shift0)      → cut fs at the first Reset(p): k, below; loop(f(k), below)   -- ($/S0)
-  Delay(r: Resume)    → loop(Return(r.a), r.fs ++ fs)   -- a clause's k(x), spliced, never forced
-  Inject(e)           → Bind(focus, fs)            -- the head form: fs is the continuation, and it re-enters by itself
+loop[X, T, S1, Y](focus: Freer[G, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z])
+  Bind(Return(x), f)  → loop(f(x), fs, st)                         -- a value under a bind: no frame
+  Bind(a, f)          → loop(a, Frame(f, fs), st)                  -- push
+  Bind(a, k: Stack)   → loop(a, k's nodes onto (fs, st))           -- a resumed k, or re-entry from outside (an empty machine: k IS the stack)
+  Return(x)           → Frame(f, rest): loop(f(x), rest, st)
+                      | End: st = Reset(_, ret, frames, below): loop(ret(x), frames, below)   -- ($v) is a pop
+                      |      st = Run(frames, below): loop(focus, frames, below)
+                      |      st = Done: focus
+  Delay(t)            → loop(t(), fs, st)
+  Delay(r: Resume)    → loop(Return(r.a), r.k's nodes onto (fs, st))  -- a clause's k(x), pushed, never forced
+  Inject(Reset0)      → loop(body, End, Reset(p, ret, shots, fs, st))  -- ONE node over the live segment
+  Inject(Shift0)      → nearest | cut: k = the nodes up to and with the Reset(p); the body in its place
+                        (under a fresh plain Reset of p for shift/control: `under`)
+  Inject(e)           → Bind(focus, Run(fs, st))                   -- the head form
 ```
 
-`++` and the cut are two `@tailrec` walks over a reversed list `Rev`
-(the same type-aligned discipline, outermost first): a cut reverses the
-prefix up to the `Reset` and links it onto `End`; a splice reverses
-`ks` and links it onto `fs`. Both are O(|segment|) and amortised free:
-every frame copied is a frame about to be run. A splice onto `End` is
-the segment itself — the re-entry from an outer handler costs nothing.
+A capture to the delimiter at the head of the stack (`nearest`) takes
+the live segment AS IT IS, with one copied `Reset` shell under it; a
+deeper one (`cut`) walks the stack's NODES into a reversed `Rev` and
+links them, sharing every segment's frames. A resumption pushes `k`'s
+nodes (`Rev.onto`) — usually two, and the common `k` (a segment and
+its delimiter) is relinked as one node over the live registers. No
+frame is ever copied, which is what makes 20 000 captures under a deep
+stack and 100 000 nested resumptions linear (TestKont pins both; the
+single list before this was O(n²) in each). `plain` is not a field: a
+plain delimiter's `ret` is `Cont0.identity`.
 
 **The continuation carries its own interpreter** (operator: "чтобы
 Frames.apply сам себя правильно интерпретировал вместе с эффектом Cont0
@@ -129,7 +151,7 @@ head form, one JVM call that returns before the next (`Delim`'s
 `Out(inject(g).flatMap(x => loop(..)))`, the same shape). Inside the
 machine the same node is a clause's `k(x)`, and there it must be LAZY
 or 100 000 clauses each calling `k` would nest 100 000 machines: the
-loop meets `Delay(r: Resume)` and splices `r.fs`, never forcing it —
+loop meets `Delay(r: Resume)` and pushes `r.k`'s nodes, never forcing it —
 the second class test of the file, on a `Delay`'s thunk as `Frames.as`
 is on a `Bind`'s continuation. The ordering this serves is the
 library's rule already ("one machine, innermost": `State.handle(
@@ -239,9 +261,12 @@ numbers; the operator: "Мигрируй"):
       against the probe's rows — Results
 - [x] Delim.scala's header rewritten: the "opaque forwarding" reason
       for `push` as an operation refuted, the two real reasons named
-- [ ] `Cont.step` (the strict runner with its `StackSwitch` rooms):
-      decide by measurement whether `Shift` becomes `Shift0` with a
-      strict `k` on `Frames.run`, or stays — a later lane
+- [x] `Cont.step` (the strict runner with its `StackSwitch` rooms):
+      decided by measurement — it STAYS. Cont on the frame machine read
+      4.3–6.3x `Cont.step` on fib/statePara/contAnswer (cont-step-on-frames
+      step 2, reverted; history.d 2026-09-30T221639Z)
+- [x] the stack segmented at its delimiters (cont-step-on-frames): the
+      two O(n²) of the single list linear (TestKont), Results
 
 Stage 3, if wanted and measured: handlers with state as marks.
 
@@ -268,6 +293,10 @@ Stage 3, if wanted and measured: handlers with state as marks.
   `Freer` signature is `G[_, _, +_]`, `X` sits invariantly inside
   `Frames[…, X, …] =>`, so the case cannot be `+X` but its parent can —
   `Delim.Op`'s shape. Nothing else is implied by the enum.
+- **SUPERSEDED by the segmented stack (cont-step-on-frames)**: the
+  list is still immutable, but cut and resume move NODES and share
+  frames — the copy below was O(n²) for captures under a deep stack and
+  for nested resumptions. Kept as the record:
 - **Immutable, copy-on-cut, splice-on-resume**, not a shared chain with
   a stop marker: O(1) capture is possible with underflow records, but a
   capture that crosses a splice boundary then spans two chains and the
@@ -354,6 +383,46 @@ that unchanged (a `Frame` goes from one stack to another); `Prompt`
 then needs no `S`, only the tuple index. That is stage 2's typing, and
 the reason `Cont` keeps `(S, R)`: it is the strict, one-delimiter case
 where the escape type is real.
+
+### cont-step-on-frames: the segmented stack, measured (2026-10-01)
+
+Decided by the operator: the segmented stack is THE machine; the work
+after it is speed, never a revert. Against the single-list machine
+(base 42541ef7e), DelimBenchmark, two rounds with the arms alternated,
+`jmh-lane.sh` (history.d 2026-10-01T050417Z-…-step1.tsv and
+2026-10-01T053245Z-…-1h.tsv):
+
+| lane | step 1 (1f) | landed | bytes landed / single list |
+|---|---:|---:|---:|
+| delimGenerator | 1.07–1.09 | **0.72** | 462 / 838 KB |
+| layeredViaDollar | — | **0.86** | 394 / 490 KB |
+| stateLexDeep | 1.02–1.03 | 1.00 | 895 / 1359 KB |
+| layeredViaPush | — | 1.03 | 410 / 554 KB |
+| stateDeep | 1.07–1.08 | 1.03–1.05 | 1024 / 1393 KB |
+| delimDollarResume | 1.16–1.19 | 1.11 | 404 / 540 KB |
+| writerTellUnderDelim | — | 1.155 | 294 / 286 KB |
+| delimPushOnly, delimDollarOnly | 1.36–1.45 | 1.36–1.39 | equal |
+
+Pure binds (KontBenchmark right/left-nested) are at parity, 1.00–1.04.
+What moved them: `shift`/`control` install their delimiter in the
+machine (`Shift0.under`) instead of wrapping the body in a `reset`
+operation — a closure, a `Reset0`, an `Inject` and a loop step per
+capture; `Frames` is not a function (one class test per bind);
+`Rev.onto` tests an empty machine first (a foreign handler's re-entry).
+
+REFUTED, in history.d: skipping `ret` on a plain delimiter's pop (+0.5
+ns for `reset`, −3 ns for every `$`: the branch in the pop arm), and a
+hot core with a driver for the cold arms (neutral, +24..48 KB/op).
+
+WHY INSTALL/POP STAYS ~1.36x, read off the machine code (hsdis,
+`kontResetOnly`): the steps, the inlining (PrintInlining), GC and the
+profile's shape are all the same as the single list's; the difference
+is register allocation. Three loop registers instead of two, and every
+allocation's slow path a runtime call they must survive: C2 keeps all
+three in stack slots on the FAST path — 74 loads from `sp` in the
+compiled loop against the single list's 34, which kept `focus` in a
+register and spilled only on the slow path. It is the price of the
+layout (a segment and the stack under it, the two the sharing needs).
 
 ## Literature
 
