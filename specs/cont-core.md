@@ -188,6 +188,7 @@ step 7 do not compile one by one; the branch tip does.
 7. The runner's stack reader gone: `StackSwitch.more`, `Cont.Gauge`, Native's `ThreadInfo` probe, `ContStackRoad`; `StackRoom` and `okayJdk22` KEPT (operator) (dc04840bc).
 8. `Reset` unfused: `Reset(p, ret, below)`, DPJS's `EmptyS | PushSeg | PushP` (e05a3c943).
 9. `rebase` gone from the machine: `Cont0.Delimiter[Y, I]` (84c9e2eb5).
+10. `plainly` gone: the plain `reset` is its own operation (`Reset0(p, body)`) and node (`Reset(p, below)`, DPJS's `PushP`), `$` is `Dollar0`/`Dollar`; a bare capture to a plain delimiter is typed by the node, a bare capture to a `$` refused by its case, and `Cont0.identity`/`plain` (the eq-trick) gone. `Stack = Done | Run | Reset | Dollar`.
 
 ### What the machine still claims, and why each stays
 
@@ -196,7 +197,6 @@ step 7 do not compile one by one; the branch tip does.
 | `as`, `resume` | a class test on a function: JVM erasure |
 | `noFrames`, `noStack`, `Rev.nil`, `identity`, `boundary` | one empty value at every phantom index, `Nil`'s pattern; the alternative allocates per use |
 | `identical` | two prompts that are one object are one type: the generative-prompt axiom (DPJS's `eqPrompt` is the same `unsafeCoerce`) |
-| `plainly` (answer type only) | a bare `k` to a plain `reset` answers the prompt's type because `ret` is the identity, a run-time fact; typed only by a separate plain operation AND stack node — open, below |
 | `splice`'s `Done` case | GADT refinement does not reach through the `@unchecked` test; small, open |
 
 ### Found on the way
@@ -219,9 +219,6 @@ step 7 do not compile one by one; the branch tip does.
 
 ### Open
 
-- `plainly`: a plain `reset` as its own operation and stack node
-  (`Done | Run | Reset | Dollar`) would type a bare capture and drop
-  the `identity` eq-trick; the price is a fourth constructor.
 - The full `affected master staged` gate, and the A/B against master
   (a number for the record; the verdict of this lane is the design).
 

@@ -12,7 +12,7 @@ import scala.util.NotGiven
  *
  * THE MACHINE IS `Frames.run` (Cont.scala; specs/freer-kont.md,
  * freer-kont-migrate 2026-09-30). `Delim` is `Cont0` — the two
- * operations `Reset0` (`$`, the delimiter) and `Shift0` (the capture)
+ * operations `Reset0` (`⟨⟩`) or `Dollar0` (`$`), the delimiter, and `Shift0` (the capture)
  * — seen from a UNARY row: the type alias below is the bridge between
  * `R ! Delim + F` and the indexed row the machine runs, and this file
  * is the door layer on top of the calculus: prompts with their labels,
@@ -90,7 +90,7 @@ final class Prompt[R](val what: String, val where: String):
  * `Cont0.Row[Lift[F]]`, the row the machine runs, and re-type the
  * program by the one claim `Delim.at` makes. The four cases that used
  * to stand here (`Push`, `Capture` with two flags, `Dollar`, `Watched`)
- * are `Reset0` (plain, or with `ret`) and `Shift0` (with
+ * are `Reset0` (plain), `Dollar0` (with `ret`) and `Shift0` (with
  * `bare`); the machine that interpreted them is `Frames.run`
  * (Cont.scala, specs/freer-kont.md).
  */
@@ -1006,7 +1006,7 @@ object Delim {
     def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
                            (using om: OneMachine[F], at: At): R ! F =
       val s = new Reset[R, EmptyTuple](named[R]("delimited")(using at))
-      run[R, F](Inject(Cont0.Reset0[Freer.Lift[F], R, R, EmptyTuple, EmptyTuple](Cont0.delimiter(s.p), Cont0.identity, rebase(body(s)))))(using om)
+      run[R, F](Inject(Cont0.Reset0[Freer.Lift[F], R, EmptyTuple, EmptyTuple](Cont0.delimiter(s.p), rebase(body(s)))))(using om)
 
     /**
      * A fresh prompt pushed on the stack in force, for the body only:
@@ -1018,7 +1018,7 @@ object Delim {
                        (body: (s: Reset[R, st.S]) => Under[F, R, s.p.type *: st.S])
                        (using at: At): Under[F, R, st.S] =
       val s = new Reset[R, st.S](named[R]("reset")(using at))
-      Inject(Cont0.Reset0[Freer.Lift[F], R, R, st.S, st.S](Cont0.delimiter(s.p), Cont0.identity, rebase(body(s))))
+      Inject(Cont0.Reset0[Freer.Lift[F], R, st.S, st.S](Cont0.delimiter(s.p), rebase(body(s))))
 
     /**
      * Capture up to `p` — REQUIRES `p` on the stack in force. The body
@@ -1089,7 +1089,7 @@ object Delim {
                             (body: (s: In[R, st.S]) => Under[F, R0, s.p.type *: st.S])
                             (using at: At): Under[F, R, st.S] =
       val s = new In[R, st.S](named[R]("dollar")(using at))
-      Inject(Cont0.Reset0[Freer.Lift[F], R, R0, st.S, st.S](Cont0.delimiter(s.p), ret, rebase(body(s))))
+      Inject(Cont0.Dollar0[Freer.Lift[F], R, R0, st.S, st.S](Cont0.delimiter(s.p), ret, rebase(body(s))))
 
     // `control0` is NOT here, deliberately: its continuation is a bare
     // segment run where `p` is gone, but the code inside that segment was

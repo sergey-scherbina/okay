@@ -347,7 +347,7 @@ object Lexical:
                                 (body: (i: Deep[F, R, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                 (using at: At): Under[G, R, st.S] =
       val i = new Deep[F, R, G, st.S](Delim.prompt[R], c)
-      Freer.Inject(Cont0.Reset0[Freer.Lift[G], R, A, st.S, st.S](Cont0.delimiter(i.p), c.ret, Delim.Stacked.rebase(body(i))))
+      Freer.Inject(Cont0.Dollar0[Freer.Lift[G], R, A, st.S, st.S](Cont0.delimiter(i.p), c.ret, Delim.Stacked.rebase(body(i))))
 
     /** a stacked TAIL instance. Stacked means the row has `Delim`, so a
      * capture from outside may run its body twice: it is installed DEEP,
@@ -367,6 +367,6 @@ object Lexical:
                                  (body: (i: Tail[F, S0, A, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                  (using at: At): Under[G, (S0, A), st.S] =
       val i = new Tail[F, S0, A, G, st.S](Delim.prompt[S0 => Under[G, (S0, A), st.S]], c)
-      Freer.Inject(Cont0.Reset0[Freer.Lift[G], S0 => Under[G, (S0, A), st.S], A, st.S, st.S](
+      Freer.Inject(Cont0.Dollar0[Freer.Lift[G], S0 => Under[G, (S0, A), st.S], A, st.S, st.S](
         Cont0.delimiter(i.p), a => Freer.Return((s: S0) => Freer.Return((s, a))), Delim.Stacked.rebase(body(i))))
         .flatMap(f => f(s0))
