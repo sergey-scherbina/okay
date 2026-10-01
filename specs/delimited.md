@@ -83,12 +83,12 @@ delimiter type, `prompt`, `boundary`); the derived operators move to
 
 ## Behavior
 
-- [ ] `trait Delimited[M]` with `Delimiter`, `SubCont`, `delimiter`, `dollar`, `shift0`, `resume`, `pure`; `reset`, `shift`, `abort` derived in it
-- [ ] `Delimited.machine[F]` is the frame machine; one object for every `F`
-- [ ] `Cont0`'s derived helpers gone; `Delim`, `Lexical`, `TestKont`, `KontBenchmark` call the instance
-- [ ] `resume(k)(m)` with a computation: a test (stage 3)
-- [ ] the 24 continuation suites green; `affected master staged` green
-- [ ] no lane slower than master by more than noise (an interface over the same nodes: no new allocation, no new step)
+- [x] `trait Delimited[M]` with `Delimiter`, `SubCont`, `delimiter`, `pure`, `bind`, `run`, `dollar`, `shift0`, `resume`; `reset`, `shift`, `abort` derived in it
+- [x] `Delimited.machine[F]` is the frame machine; one object for every `F`
+- [x] `Cont0`'s derived helpers gone; `Delim`, `Lexical`, `TestKont`, `KontBenchmark` call the instance
+- [x] `resume(k)(m)` with a computation: a test (stage 3)
+- [x] the 24 continuation suites green; `affected master staged` green
+- [x] no lane slower than master by more than noise (an interface over the same nodes: no new allocation, no new step)
 
 ## Decisions
 
@@ -104,3 +104,19 @@ delimiter type, `prompt`, `boundary`); the derived operators move to
   for delimited continuations.* JFP 17(6), 2007.
 - Marek Materzok, Dariusz Biernacki. *A dynamic interpretation of the
   CPS hierarchy.* APLAS 2012 (λ$).
+
+## Results
+
+- Stage 1 (0c78b00c8): the trait, the machine instance, the clients.
+  The trait gained `bind` and `run` in stage 2 (DPJS's class is a monad
+  and has `runCC`).
+- Stage 2 (45a5b4d69): `DelimitedReference` in the tests — a list
+  context, ~40 lines, not stack-safe; TestDelimited's seven laws are
+  written against `Delimited[M]` alone and agree on both instances.
+- Stage 3 (985bdb4ef, 45a5b4d69): resuming with a computation needs no
+  operation — `Bind(m, k)` is the machine's resumption rule. An abort
+  to a delimiter only `k` carries, and a capture to it resumed twice,
+  both answer inside `k`.
+- A/B against master (history.d `delimited-trait`): delimPushOnly,
+  delimGenerator, contAnswer, statePara 0.98-1.01x at identical bytes.
+
