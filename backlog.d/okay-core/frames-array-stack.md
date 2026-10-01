@@ -1,4 +1,12 @@
-- [ ] frames-array-stack — PRIORITY: MEDIUM, a DECISION before code. The
+- [ ] frames-array-stack — PRIORITY: LOW, PARKED 2026-10-01 (operator:
+      design first, optimize later). PROBED on feature/frames-array-stack
+      (57c7c2259 flat/segmented, b0a1cbc8d hybrid; rows in that branch's
+      history.d): bare install/pop 0.78-0.90x, everything that captures
+      LOSES — hybrid contAnswer 1.75x, statePara 1.70x, writerTell 1.51x,
+      layered 1.27x, with more bytes: a capture seals the top array. And
+      the typing degrades to `Any => Any` cells, which the operator
+      rejected. Kept for the record; the original item follows.
+      Was: a DECISION before code. The
       segmented frame machine's remaining limit is C2's register pressure
       in `loop$1` (three loop registers in stack slots: install/pop 1.36x,
       contAnswer 1.21x — backlog cont-frames-register-pressure). Two
