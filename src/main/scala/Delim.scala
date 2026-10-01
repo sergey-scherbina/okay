@@ -1002,7 +1002,7 @@ object Delim {
      * refused by name — `NoPrompt`, with the delimiters it passed */
     private[okay] def bounded[R, F[+_]](prog: Freer[Row[F], Unit, Unit, R]): R ! F =
       residual[R, F](Frames.run[Freer.Lift[F], Unit, Unit, R](
-        Inject(Cont0.Reset0[Freer.Lift[F], R, R, Unit, Unit](Cont0.boundary[R], Return[Row[F], Unit, R](_), prog, true, null))))
+        Inject(Cont0.Reset0[Freer.Lift[F], R, R, Unit, Unit](Cont0.boundary[R], Cont0.identity, prog, null))))
 
     /** the head form as the residual program: `F`'s operations, by the
      * claim `out` makes — every `Cont0` one was answered or, with a
@@ -1026,7 +1026,7 @@ object Delim {
     def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
                            (using om: OneMachine[F], at: At): R ! F =
       val s = new Reset[R, EmptyTuple](named[R]("delimited")(using at))
-      run[R, F](Inject(Cont0.Reset0[Freer.Lift[F], R, R, EmptyTuple, EmptyTuple](s.p, Return(_), rebase(body(s)), true, null)))(using om)
+      run[R, F](Inject(Cont0.Reset0[Freer.Lift[F], R, R, EmptyTuple, EmptyTuple](s.p, Cont0.identity, rebase(body(s)), null)))(using om)
 
     /**
      * A fresh prompt pushed on the stack in force, for the body only:
@@ -1038,7 +1038,7 @@ object Delim {
                        (body: (s: Reset[R, st.S]) => Under[F, R, s.p.type *: st.S])
                        (using at: At): Under[F, R, st.S] =
       val s = new Reset[R, st.S](named[R]("reset")(using at))
-      Inject(Cont0.Reset0[Freer.Lift[F], R, R, st.S, st.S](s.p, Return(_), rebase(body(s)), true, null))
+      Inject(Cont0.Reset0[Freer.Lift[F], R, R, st.S, st.S](s.p, Cont0.identity, rebase(body(s)), null))
 
     /**
      * Capture up to `p` — REQUIRES `p` on the stack in force. The body
@@ -1109,7 +1109,7 @@ object Delim {
                             (body: (s: In[R, st.S]) => Under[F, R0, s.p.type *: st.S])
                             (using at: At): Under[F, R, st.S] =
       val s = new In[R, st.S](named[R]("dollar")(using at))
-      Inject(Cont0.Reset0[Freer.Lift[F], R, R0, st.S, st.S](s.p, ret, rebase(body(s)), false, null))
+      Inject(Cont0.Reset0[Freer.Lift[F], R, R0, st.S, st.S](s.p, ret, rebase(body(s)), null))
 
     // `control0` is NOT here, deliberately: its continuation is a bare
     // segment run where `p` is gone, but the code inside that segment was

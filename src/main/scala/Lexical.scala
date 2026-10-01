@@ -350,7 +350,7 @@ object Lexical:
                                 (body: (i: Deep[F, R, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                 (using at: At): Under[G, R, st.S] =
       val i = new Deep[F, R, G, st.S](Delim.prompt[R], c)
-      Freer.Inject(Cont0.Reset0[Freer.Lift[G], R, A, st.S, st.S](i.p, c.ret, Delim.Stacked.rebase(body(i)), false, null))
+      Freer.Inject(Cont0.Reset0[Freer.Lift[G], R, A, st.S, st.S](i.p, c.ret, Delim.Stacked.rebase(body(i)), null))
 
     /** a stacked TAIL instance: it answers in place, and the stack check
      * is what makes holding it safe */
