@@ -71,9 +71,8 @@ cost, so it is left direct on purpose), `k` passed into Java or an
 abstract method, a body passed to `shift` as a value rather than a
 literal — runs direct, and each level is a frame. The
 runner counts the levels the current stack has room for; when the
-count runs out it either *reads* how much stack is really left (below)
-and continues here, or hands the rest of the program to a fresh stack —
-a parked worker thread with a 1 GB stack — and waits for the answer. No
+count runs out it hands the rest of the program to a fresh stack — a
+parked worker thread with a 1 GB stack — and waits for the answer. No
 exception unwinds anything and nothing runs twice: the frames below
 stay where they are until the answer comes back. Multi-shot bodies
 keep working across the switch.
@@ -85,36 +84,23 @@ reset(opaque) // 20000 — `k` handed to `map`: each level a frame; past the roo
 
 ## How much room, per platform
 
-| platform | how the room is known | first look | what a switch costs |
-|---|---|---|---|
-| JVM 22+ **with** `--enable-native-access=ALL-UNNAMED` | exactly: the stack pointer and the thread's bounds through the FFM API (macOS arm64, and Linux aarch64 and x86_64 on glibc; macOS x86_64 and musl/Alpine count) | after ~870 levels on a 2 MB thread (1.2 KB a level, cold) — then the exact reading grants the rest | never, while the stack has room: a 1000-level program on a default thread switches **zero** times |
-| JVM 17–25 **without** the flag (a library on a classpath, by default) | counted: the VM's default thread stack over a cold level, halved for the caller | ~870 levels | one switch per ~870 levels on the caller's stack, then ~500 000 per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
-| Scala Native | exactly, from the runtime's own thread info, always | 64 levels | as the JVM's |
-| Scala.js | not at all: no thread to switch to | — | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
+The stack is COUNTED, never read: a fixed number of levels per stack,
+then a switch. (Until 2026-10-01 a JVM 22+ with native access, and
+Scala Native always, READ the stack pointer and granted more levels on
+the caller's thread; the runner gave that up for one rule on every
+platform — specs/cont-core.md, step 7.)
 
-*Native access decides WHERE a deep program runs, not how fast.*
-Measured on `HandlerBenchmark.statePara` (a state-passing program of
-~2 000 levels, 2026-09-26, both roads on the same lane): with the flag
-it never leaves the caller's thread, and it costs what the counted
-road's one hand-off to a parked worker costs — 0.99x the time, +0.9%
-the bytes, at the default first room. What the flag buys is the
-caller's own thread for the whole run: its thread-locals, its stack
-traces, no second thread involved. A library cannot enable it for you — a JVM
-prints warnings on the first restricted call unless the launcher said
-`--enable-native-access` — so the flag is yours to pass:
-
-```
-java --enable-native-access=ALL-UNNAMED -jar your-service.jar
-```
-
-Without it `okay` never touches the native API and never prints the
-warning; it counts.
+| platform | first room | what a switch costs |
+|---|---|---|
+| JVM 17+ | the VM's default thread stack over a cold level (1.2 KB), halved for the caller: ~870 levels on a 2 MB thread | one switch per first room on the caller's stack, then ~500 000 levels per segment: ~4 µs to hand off to a parked worker, ~0.01 µs a level after |
+| Scala Native | 16 levels (a first room derived from the main thread's 8 MB would be wrong for every other thread) | as the JVM's |
+| Scala.js | — no thread to switch to | **the bound**: nested bodies of the second kind are limited by the engine's stack (~10 800 frames on Node's default; `node --stack-size` raises it) |
 
 ## The knobs
 
 - `-Dokay.cont.room=N` — the levels the caller's stack is asked to hold
-  before the first look (default: the VM's `ThreadStackSize` over
-  1.2 KB, halved; 64 on Native).
+  before the switch (default: the VM's `ThreadStackSize` over 1.2 KB,
+  halved; 16 on Native).
 - `-Dokay.cont.idleWorkers=N` (2), `-Dokay.cont.idleMillis=N` (30 000)
   — parked workers kept for the next switch, and how long.
 - `-Dokay.cont.spinMicros=N` (50) — how long a caller and a worker spin
@@ -123,15 +109,12 @@ warning; it counts.
 ## The written bounds
 
 - **A thread with an explicit stack smaller than the VM default** (say
-  `new Thread(…, 256 KB)`) on the counted road: the count assumes the
-  default size and may overflow before its first look. Set
-  `-Dokay.cont.room` for such threads, or enable native access, where
-  the reading sees the real size.
-- **One frame more than twice the fattest seen so far** within one
-  64 KB slice of stack, on the exact road: the grant is sized to the
-  worst level measured, with the slice's own margin absorbing a 2x
-  overshoot; a body whose single frame is larger than that can still
-  overflow.
+  `new Thread(…, 256 KB)`): the count assumes the default size and may
+  overflow before the switch. Set `-Dokay.cont.room` for such threads.
+- **A level fatter than ~2.4 KB** (twice the cold constant): the first
+  room is halved for exactly that margin; an opaque body whose own
+  frames take more than that per level can overflow before the switch.
+  Lower `-Dokay.cont.room` for such a program.
 - **Scala.js**: the engine's stack, as above.
 
 ## What it costs when it does not switch

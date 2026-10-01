@@ -153,10 +153,9 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Cont and the stack](cont-stack.md)** — what nests and what does
   not: a body that only calls `k` last is the value it passes (no
   frame, decided at compile time); one that uses the answer is a frame
-  a level, counted, read exactly where the platform allows, and past
-  the room continued on a parked worker's stack. The per-platform
-  table, `--enable-native-access` as the one flag that matters for
-  deep programs, the knobs, the written bounds, the measured costs.
+  a level, counted, and past the room continued on a parked worker's
+  stack. The per-platform table, the knobs, the written bounds, the
+  measured costs.
 - **[Reading a blockchain](cardano.md)** — Cardano from a relay to
   typed tables with no node, no API key and no Spark: follow the chain
   to confirmed blocks (rollbacks said, never papered over), explode each
