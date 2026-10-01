@@ -85,7 +85,7 @@ releases run at the scope's end, in reverse, surviving handled aborts).
 The floor of the library is available as an effect too: **`Delim`**
 is multi-prompt delimited control — `Prompt[R]` tags a delimiter and
 carries its answer type, `push` installs one, and
-`shift`/`shift0`/`control`/`control0` capture the continuation up to
+`shift`/`shift0` capture the continuation up to
 a NAMED prompt (so a capture can cross an intervening delimiter,
 which nested handlers cannot express). The captured continuation
 comes back as a PROGRAM, hence multi-shot for free. This is the door

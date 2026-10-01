@@ -11,10 +11,9 @@ import okay.Row.at
  *
  *   deep handler     = ret $ body, an operation = shift0 to its prompt
  *                      (k carries the handler back with it)
- *   shallow handler  = an operation = control0 (k is BARE, so the
- *                      clause re-installs the handler around k)
  *
- * Both are checked against `State.handle` with `Bisim.check` on the
+ * (The shallow half — control0, k BARE — left with control0 itself,
+ * cont-core-design 2026-10-01.) Checked against `State.handle` with `Bisim.check` on the
  * residual Writer row, which is the only thing a caller can observe.
  */
 class TestHandlersAsDollar extends munit.FunSuite:
@@ -48,25 +47,6 @@ class TestHandlersAsDollar extends munit.FunSuite:
     val ret: A => Ans ! Delim + W = a => okay.pure((s: Int) => okay.pure((s, a)))
     Delim.run[(Int, A), W](Delim.dollar[A, Ans, W](p)(ret)(rewrite(op)(prog)).flatMap(f => f(s0)))
 
-  /** SHALLOW: k is bare, so the clause re-installs the handler around
-   * k's result. The return clause rides INSIDE the delimiter as a map,
-   * so the bare segment still answers the handler's type */
-  def shallow[A](s0: Int)(prog: A ! Row): (Int, A) ! W =
-    type Ans = Int => (Int, A) ! Delim + W
-    val p = Delim.prompt[Ans]
-    val op = [X] => (e: State[Int, X]) => (e match
-      case State.Get() =>
-        Delim.control0[Ans, Int, W](p)(k => okay.pure((s: Int) => Delim.push(p)(k(s)).flatMap(f => f(s))))
-      case State.Set(s1) =>
-        Delim.control0[Ans, Int, W](p)(k => okay.pure((_: Int) => Delim.push(p)(k(s1)).flatMap(f => f(s1))))
-      case State.Modify(g) =>
-        Delim.control0[Ans, Int, W](p)(k => okay.pure((s: Int) => { val s1 = g(s); Delim.push(p)(k(s1)).flatMap(f => f(s1)) }))
-      case State.Update(g) =>
-        Delim.control0[Ans, X, W](p)(k => okay.pure((s: Int) => { val (b, s1) = g(s); Delim.push(p)(k(b)).flatMap(f => f(s1)) }))
-    ): X ! Delim + W
-    val body = rewrite(op)(prog).map(a => (s: Int) => okay.pure[Delim + W, (Int, A)]((s, a)))
-    Delim.run[(Int, A), W](Delim.push(p)(body).flatMap(f => f(s0)))
-
   val counter: Int ! Row = for
     a <- State.get[Int].at[Row]
     _ <- Writer.tell(s"a=$a").at[Row]
@@ -93,11 +73,6 @@ class TestHandlersAsDollar extends munit.FunSuite:
     assertEquals(Bisim.check(deep(0)(loop(20)), State.handle[Int](0)(loop(20)), depth = 64), Verdict.Same(1, 0))
   }
 
-  test("SHALLOW: control0 operations with the handler re-installed around k IS State.handle") {
-    assertEquals(Bisim.check(shallow(1)(counter), State.handle[Int](1)(counter)), Verdict.Same(1, 0))
-    assertEquals(Bisim.check(shallow(0)(loop(20)), State.handle[Int](0)(loop(20)), depth = 64), Verdict.Same(1, 0))
-  }
-
   test("the values, not only the trees: (22, 12) and the two tells") {
     assertEquals(!.run(Writer.run[String, (Int, Int), Pure](deep(1)(counter))), (List("a=1", "b=11"), (22, 12)))
   }
@@ -120,10 +95,9 @@ class TestHandlersAsDollar extends munit.FunSuite:
       case v => fail(s"expected Differ, got $v")
   }
 
-  test("depth: 10 000 operations through the deep and the shallow encodings, in constant stack") {
+  test("depth: 10 000 operations through the deep encoding, in constant stack") {
     def spin(n: Int): Int ! Row =
       if n == 0 then State.get[Int].at[Row]
       else State.get[Int].at[Row].flatMap(s => State.set(s + 1).at[Row]).flatMap(_ => spin(n - 1))
     assertEquals(!.run(Writer.run[String, (Int, Int), Pure](deep(0)(spin(10_000))))._2, (10_000, 10_000))
-    assertEquals(!.run(Writer.run[String, (Int, Int), Pure](shallow(0)(spin(10_000))))._2, (10_000, 10_000))
   }

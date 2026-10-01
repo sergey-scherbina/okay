@@ -249,7 +249,7 @@ that is not tail-resumptive:
 case Flip.Coin() => k(true).flatMap(xs => k(false).map(xs ++ _))
 ```
 
-**The strategy is yours to name, and there is a default.** Three
+**The strategy is yours to name, and there is a default.** Two
 strategies run the same body, because the body only sees `Inst[F, G]`:
 
 - `Lexical.tail` answers each operation IN PLACE (evidence passing,
@@ -262,11 +262,9 @@ strategies run the same body, because the body only sees `Inst[F, G]`:
   return function is the return clause. It suits anything, including
   clauses that call `k` twice or never. It costs about 4x a row
   handler.
-- `Lexical.shallow` uses control0, and the clause re-installs the
-  handler if it wants to.
 
 **You pay for what the row can do.** The instance's type carries the
-body's whole row, `Inst[F, G]`. `deep` and `shallow` need `Delim` in it.
+body's whole row, `Inst[F, G]`. `deep` needs `Delim` in it.
 `tail` on a row WITHOUT `Delim` cannot be crossed by a capture, so it
 keeps its cell and needs no machine, and the program is an ordinary one:
 
@@ -299,7 +297,7 @@ the default because of that rule and because `Instances.Of[F]` has to
 appear in the row.
 
 `Lexical.handle` picks by what the clauses are: `TailClauses` run tail,
-`Clauses` run deep, `ShallowClauses` run shallow. `Lexical.State(s0)`
+`Clauses` run deep. `Lexical.State(s0)`
 is tail. `Lexical.Stacked` has deep and tail instances whose use
 outside their installation does not compile. Details and numbers are
 in specs/lexical-instances.md. A row handler stays the right choice for
@@ -319,7 +317,7 @@ lexically. The row handler is what you use when there is one of a kind.
 | made at run time from data, one handler choosing by handle | any | `Instances` | the handle | `Instances.Of[F]` | a wrapper per operation, no cast |
 | installed where they are used, nested, or reached past a handler of the same effect | any | `Lexical.State(s0)` / `Lexical.handle` (tail) | the installation | nothing | 1.65x |
 | the same, cheapest, on the spine only | tail-resumptive | `Lexical.walk` (by name) | a fresh `Instances` handle | `Instances.Of[F]` | 1.29x |
-| the same, with multi-shot, dropped or stored `k` | any | `Lexical.deep` / `shallow` (by name) | a prompt | nothing (needs `Delim`) | ~7x bytes, ~4x time |
+| the same, with multi-shot, dropped or stored `k` | any | `Lexical.deep` (by name) | a prompt | nothing (needs `Delim`) | ~7x bytes, ~4x time |
 | any of those, and use outside the installation must not compile | deep or tail | `Lexical.Stacked` | a prompt on the typed stack | nothing | as unstacked |
 
 The compiler enforces the first row's condition: `Distinct` refuses a row

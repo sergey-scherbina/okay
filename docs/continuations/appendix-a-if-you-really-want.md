@@ -219,16 +219,15 @@ enum Frames[F[_, _, +_], A, S, T, Z]:
 enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
   case Done[F[_, _, +_], A, S]() extends Stack[F, A, S, S, A]
   case Run[F[_, _, +_], A, S, S2, T, Y, Z](frames: Frames[F, A, S2, T, Y],
-  case Reset[F[_, _, +_], A, S, T, Z](p: Cont0.Delimiter[A, T], below: Stack[F, A, S, T, Z]) extends Stack[F, A, S, T, Z]
   case Dollar[F[_, _, +_], A, S, T, Y, Z](p: Cont0.Delimiter[Y, T], ret: A => Freer[Cont0.Row[F], T, T, Y],
 ```
 
 Lists of frames, split at the delimiters: a `Frames` is one segment, a
 `Stack` is the segments and the delimiters between them, and the
 `Stack` is what a captured continuation is. You can walk it, count the
-frames, and see which prompts are installed — `Reset` (a plain
-delimiter) and `Dollar` (one with a return function) sit in the
-continuation as ordinary nodes. A continuation here is **more**
+frames, and see which prompts are installed — `Dollar` is a delimiter
+(a plain `reset` is `pure $ ·`), sitting in the continuation as an
+ordinary node. A continuation here is **more**
 inspectable than a native stack, not less, and that is exactly why it
 is multi-shot (chapter 13).
 

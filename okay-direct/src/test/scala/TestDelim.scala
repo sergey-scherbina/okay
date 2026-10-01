@@ -149,7 +149,7 @@ class TestDelim extends munit.FunSuite {
     }
   }
 
-  test("shift0 vs control0: does the continuation re-install it?") {
+  test("shift0: the continuation re-installs the delimiter") {
     // the captured continuation contains a shift to the same prompt.
     // shift0's k re-installs the delimiter, so that shift finds one
     val ok = !.run(reset[Int, okay.Pure] { p =>
@@ -157,21 +157,6 @@ class TestDelim extends munit.FunSuite {
         .flatMap(x => Delim.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(x + 40)))
     })
     assertEquals(ok, 41)
-
-    // control0 hands back a BARE segment: nothing re-installs it
-    intercept[NoPrompt] {
-      !.run(reset[Int, okay.Pure] { p =>
-        Delim.control0[Int, Int, okay.Pure](p)(k => k(1))
-          .flatMap(x => Delim.control0[Int, Int, okay.Pure](p)(_ => okay.pure(x)))
-      })
-    }
-  }
-
-  test("control: the body keeps the delimiter, the continuation does not") {
-    val r = !.run(reset[Int, okay.Pure] { p =>
-      Delim.control[Int, Int, okay.Pure](p)(k => k(1)).map(_ + 10)
-    })
-    assertEquals(r, 11)
   }
 
   test("a new effect defined in USER code: yield, with no signature") {

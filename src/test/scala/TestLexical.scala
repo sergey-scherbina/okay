@@ -6,7 +6,7 @@ import okay.Row.at
 
 /**
  * specs/lexical-instances.md stage 0: handler instances as prompts,
- * `deep` and `shallow` as named strategies.
+ * `deep` as a named strategy.
  */
 class TestLexical extends munit.FunSuite:
 
@@ -28,20 +28,6 @@ class TestLexical extends munit.FunSuite:
       }.map(_._2).flatMap(r => a.get.map(sa => (r, sa)))
     }
     // a: 0 -> 10; b: 10 -> 20; body answers 10; a is read after b's handler returned
-    assertEquals(run(prog), (10, (10, 10)))
-  }
-
-  test("the same two instances through `shallow`: the same answer") {
-    val prog = Lexical.State.shallow[Int, (Int, Int), Delim + Pure](0) { a =>
-      Lexical.State.shallow[Int, Int, Delim + Pure](10) { b =>
-        for
-          x <- a.get
-          y <- b.get
-          _ <- a.set(x + y)
-          _ <- b.set(y * 2)
-        yield x + y
-      }.map(_._2).flatMap(r => a.get.map(sa => (r, sa)))
-    }
     assertEquals(run(prog), (10, (10, 10)))
   }
 
@@ -87,12 +73,10 @@ class TestLexical extends munit.FunSuite:
     _ <- Writer.tell(s"b=$b").at[State % Int + W]
   yield a + b
 
-  test("ONE instance, deep and shallow, is Bisim-equivalent to State.handle on the Writer row") {
+  test("ONE instance, deep, is Bisim-equivalent to State.handle on the Writer row") {
     val row = State.handle[Int](1)(counterRow)
     val deep = Delim.run[(Int, Int), W](Lexical.State.deep[Int, Int, Delim + W](1)(counter))
-    val shallow = Delim.run[(Int, Int), W](Lexical.State.shallow[Int, Int, Delim + W](1)(counter))
     assertEquals(Bisim.check(deep, row), Verdict.Same(1, 0))
-    assertEquals(Bisim.check(shallow, row), Verdict.Same(1, 0))
   }
 
   // ------------------------------------------------ what `tail` cannot run

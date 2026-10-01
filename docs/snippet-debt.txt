@@ -195,7 +195,6 @@ docs/continuations/10-prompts.md	assert(e.getMessage.contains("is not on the sta
 docs/continuations/10-prompts.md	p.label      // "prompt @ TestBookPrompts.scala:29"
 docs/continuations/10-prompts.md	val e = intercept[NoPrompt](...)
 docs/continuations/10-prompts.md	val n = !Delim.scope[Int, Pure]:      // an Int boundary inside a String one
-docs/continuations/11-four-captures.md	.flatMap(s => Delim.shift(p)(_ => okay.pure(s + "-second"))))
 docs/continuations/11-four-captures.md	Delim.push(p)(
 docs/continuations/11-four-captures.md	Delim.push(p)(capture(c, p)(k => k("a")).map(s => s"[$s]"))
 docs/continuations/11-four-captures.md	capture(c, p)(_ => capture("shift", p)(_ => okay.pure("inner-caught"))))

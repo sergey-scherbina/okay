@@ -23,13 +23,12 @@ import okay.Row.up
  * EVERY STRATEGY IS A PRIMITIVE YOU CAN NAME (the operator's rule for
  * this arc). `deep` runs the clauses with shift0 under a `dollar`
  * whose return function is the return clause, the FSCD 2019
- * correspondence. `shallow` runs them with control0 under a `push`,
- * and the clause decides whether to re-install. `row` (today's
- * handlers) and `tail` (evidence passing, stage 1) are the others. A
- * default that picks among them comes later and never replaces the
- * manual choice. The price of `deep`/`shallow` against `row` on State
- * is 3.8x/4.7x (handlers-as-dollar): they are for what `row` cannot
- * do, not for what it does.
+ * correspondence. `row` (today's handlers) and `tail` (evidence
+ * passing, stage 1) are the others. A default that picks among them
+ * comes later and never replaces the manual choice. The price of
+ * `deep` against `row` on State is 3.8x (handlers-as-dollar): it is
+ * for what `row` cannot do, not for what it does. (`shallow`, on
+ * control0, left with control0 itself: cont-core-design.)
  */
 object Lexical:
 
@@ -60,12 +59,6 @@ object Lexical:
   trait Clauses[F[+_], A, R, P[_]] extends Ops[F, R, P]:
     def ret(a: A): P[R]
 
-  /** a shallow handler's clauses: `k` is BARE (the handler is gone
-   * after this operation); `again` re-installs it around a program */
-  trait ShallowClauses[F[+_], A, R, P[_]]:
-    def ret(a: A): P[R]
-    def op[X](e: F[X], k: X => P[R], again: P[R] => P[R]): P[R]
-
   /** `Delim + G` read as `G` when `G` already has `Delim`: the union
    * collapses, and `liftCo` over `x | G` builds the witness from the
    * membership alone, so no cast (the `Row.Sub` shape, Row.scala) */
@@ -86,22 +79,6 @@ object Lexical:
       def perform[X](e: F[X]): X ! G =
         Delim.shift0[R, X, G](p)(k => c.op(e, x => k(x).up[G]).up[Delim + G])(using at).up[G]
     Delim.dollar[A, R, G](p)(a => c.ret(a).up[Delim + G])(body(i).up[Delim + G]).up[G]
-
-  /**
-   * SHALLOW: every operation a `control0` to this installation, whose
-   * clause gets the BARE continuation. The return clause rides inside a
-   * plain `push` as a map, so the bare segment already answers `R`
-   * (specs/shift0-dollar.md, stage 3).
-   */
-  def shallow[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
-                                 (using ev: Delim[Any] <:< G[Any], at: At): R ! G =
-    given Row.Sub[Delim + G, G] = collapse(ev)
-    val p = Delim.prompt[R]
-    val again: (R ! G) => R ! G = prog => Delim.push[R, G](p)(prog.up[Delim + G]).up[G]
-    val i = new Inst[F, G]:
-      def perform[X](e: F[X]): X ! G =
-        Delim.control0[R, X, G](p)(k => c.op(e, x => k(x).up[G], again).up[Delim + G])(using at).up[G]
-    Delim.push[R, G](p)(body(i).flatMap(c.ret).up[Delim + G]).up[G]
 
   /** a TAIL-RESUMPTIVE handler with state `S`: each clause answers in
    * place with the new state and the resumption value. It cannot drop,
@@ -229,21 +206,18 @@ object Lexical:
 
   /**
    * THE DEFAULT: pick the strategy from what the clauses ARE. Every
-   * strategy stays callable by name. TailClauses → `tail` (guarded
-   * only if the row can capture), Clauses → `deep`, ShallowClauses →
-   * `shallow`. The row handlers stay the library's default for ONE
+   * strategy stays callable by name. TailClauses → `tail` (deep when
+   * the row can capture), Clauses → `deep`. The row handlers stay the library's default for ONE
    * handler of a kind.
    */
   def handle[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])(body: Inst[F, G] => A ! G)
                                 (using Closing[G], At): (S, A) ! G = tail(s0)(c)(body)
   def handle[F[+_], A, R, G[+_]](c: Clauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
                                 (using Delim[Any] <:< G[Any], At): R ! G = deep(c)(body)
-  def handle[F[+_], A, R, G[+_]](c: ShallowClauses[F, A, R, Unstacked[G]])(body: Inst[F, G] => A ! G)
-                                (using Delim[Any] <:< G[Any], At): R ! G = shallow(c)(body)
 
   /** State as instances: the worked example, every strategy */
   object State:
-    /** the answer of a deep or shallow state handler over a body
+    /** the answer of a deep state handler over a body
      * answering `A`: a state-passing function */
     type Ans[S, A, G[+_]] = S => (S, A) ! G
 
@@ -256,18 +230,6 @@ object Lexical:
           case okay.State.Set(s1) => okay.pure((_: S) => k(s1).flatMap(f => f(s1)))
           case okay.State.Modify(g) => okay.pure((s: S) => { val s1 = g(s); k(s1).flatMap(f => f(s1)) })
           case okay.State.Update(g) => okay.pure((s: S) => { val (b, s1) = g(s); k(b).flatMap(f => f(s1)) })
-      )(body).flatMap(f => f(s0))
-
-    def shallow[S, A, G[+_]](s0: S)(body: Inst[okay.State % S, G] => A ! G)
-                            (using Delim[Any] <:< G[Any], At): (S, A) ! G =
-      Lexical.shallow(new ShallowClauses[okay.State % S, A, Ans[S, A, G], Unstacked[G]]:
-        def ret(a: A): Ans[S, A, G] ! G = okay.pure((s: S) => okay.pure((s, a)))
-        def op[X](e: okay.State[S, X], k: X => Ans[S, A, G] ! G,
-                  again: (Ans[S, A, G] ! G) => Ans[S, A, G] ! G): Ans[S, A, G] ! G = e match
-          case okay.State.Get() => okay.pure((s: S) => again(k(s)).flatMap(f => f(s)))
-          case okay.State.Set(s1) => okay.pure((_: S) => again(k(s1)).flatMap(f => f(s1)))
-          case okay.State.Modify(g) => okay.pure((s: S) => { val s1 = g(s); again(k(s1)).flatMap(f => f(s1)) })
-          case okay.State.Update(g) => okay.pure((s: S) => { val (b, s1) = g(s); again(k(b)).flatMap(f => f(s1)) })
       )(body).flatMap(f => f(s0))
 
     /** the DEFAULT for State: its clauses are tail-resumptive, so `tail` */
@@ -312,9 +274,7 @@ object Lexical:
    * subclass of `Delim.Stacked.In`), so its prompt is the singleton on
    * the stack, and `perform` asks for the same `Has` evidence a stacked
    * `shift0` does. `import i.given` puts the installation's stack in
-   * force for the body, exactly as for `Delim.Stacked.reset`. `shallow`
-   * is not stacked, for the reason `control0` is not
-   * (specs/shift0-dollar.md, stage 2).
+   * force for the body, exactly as for `Delim.Stacked.reset`.
    *
    * THE CLAUSES ARE TYPED ON THE TREE (indexed-effects stage 9): a deep
    * instance's clauses answer `Below[G, St]` — `Under[G, X, St]` at the

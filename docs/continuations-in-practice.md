@@ -142,7 +142,7 @@ the operations carry their types, and the stack erases.
 
 **What a capture's body may reach.** A capture takes its prompt AND
 every delimiter installed inside it, so its body runs on a smaller
-stack. The body of `shift` and `control` runs under the prompt and what
+stack. The body of `shift` runs under the prompt and what
 is below it. The body of `shift0` runs below the prompt: the prompt is
 consumed, which is Materzok and Biernacki's typing rule for shift0
 \[ICFP 2011\]. Each body gets that stack as its own given, so a shift
@@ -157,9 +157,7 @@ capture took, is a compile error. The first version of this door typed
 bodies under the whole stack, and that second case compiled and threw
 `NoPrompt` (stacked-shift0). `dollar` is stacked too: it pushes a
 prompt for its body and runs its return function under the stack it
-was called from. `control0` is not stacked. Its continuation runs
-where its prompt is gone, while the code inside it was typed with the
-prompt present, and the index cannot express that. The index is also
+was called from. The index is also
 conservative: ICFP 2011's own example calls a continuation where its
 prompt has been consumed, the paper accepts it because that
 continuation never captures to the prompt, and the index refuses it.

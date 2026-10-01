@@ -1,6 +1,6 @@
 package okay
 
-import okay.Freer.{Bind, Delay, Diag, Inject, Return}
+import okay.Freer.{Bind, Delay, Diag, Return}
 
 /**
  * specs/freer-kont.md, the oracle: the `($v)` and `($/S0)` rules of
@@ -25,7 +25,7 @@ class TestKont extends munit.FunSuite:
   /** run under a boundary, as `Delim.run` does: a capture that finds no
    * delimiter is `NoPrompt` by name, not an operation let out */
   def run[S, A](p: P[S, S, A]): A =
-    Frames.run[F, S, S, A](Inject(Cont0.Reset0[F, A, S, S](Cont0.boundary[A, S], p))) match
+    Frames.run[F, S, S, A](Cont0.reset[F, S, S, A](Cont0.boundary[A, S])(p)) match
       case Return(a) => a
       case other => fail(s"not a value: $other")
 

@@ -400,10 +400,9 @@ Delim.reset[List[Int], Pure] { p =>
 `Prompt[R]` is a first-class tag carrying the delimiter's answer
 type, so several delimiters of DIFFERENT answer types live in one
 row, and a `shift` can capture past an intervening one — which is
-what multi-prompt means and what nested handlers cannot express. All
-four classic operators are there: `shift`, `shift0`, `control`,
-`control0` (they are two independent bits — does the body keep the
-delimiter, does the continuation re-install it).
+what multi-prompt means and what nested handlers cannot express. The
+two captures of λ$ are there: `shift` and `shift0` (one bit — does the
+handler's body keep the delimiter).
 
 The library names the shapes people actually write, so a raw `shift`
 is rarely needed. `collect`/`emit` is the generator above with the

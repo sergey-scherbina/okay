@@ -139,10 +139,10 @@ class DelimBenchmark {
         Delim.shift0[List[Int], Int, Pure](p)(k => listBind(layerXs)(k)).map(_ + 1).map(r => List(r))))).length
 
   // ---- handlers AS delimited control (specs/shift0-dollar.md stage 3,
-  // FSCD 2019): the State handler three ways over the same N get/set
+  // FSCD 2019): the State handler two ways over the same N get/set
   // pairs. `stateHandle` is the library's loop; `stateDeep` is ret $ body
-  // with every operation a shift0; `stateShallow` is control0 with the
-  // handler re-installed around k. The construction is TestHandlersAsDollar's,
+  // with every operation a shift0 (`stateShallow`, control0, left with
+  // control0: cont-core-design). The construction is TestHandlersAsDollar's,
   // copied, with the residual row Pure.
 
   type SRow = okay.State % Int
@@ -174,19 +174,6 @@ class DelimBenchmark {
     ): X ! Row
     val ret: Int => Ans ! Row = a => pure((s: Int) => pure((s, a)))
     !.run(Delim.run[(Int, Int), Pure](Delim.dollar[Int, Ans, Pure](p)(ret)(rewriteState(op)(stateProg(N))).flatMap(f => f(0))))._2
-
-  @Benchmark
-  def stateShallow(): Int =
-    type Ans = Int => (Int, Int) ! Row
-    val p = Delim.prompt[Ans]
-    val op = [X] => (e: okay.State[Int, X]) => (e match
-      case okay.State.Get() => Delim.control0[Ans, Int, Pure](p)(k => pure((s: Int) => push[Ans, Pure](p)(k(s)).flatMap(f => f(s))))
-      case okay.State.Set(s1) => Delim.control0[Ans, Int, Pure](p)(k => pure((_: Int) => push[Ans, Pure](p)(k(s1)).flatMap(f => f(s1))))
-      case okay.State.Modify(f1) => Delim.control0[Ans, Int, Pure](p)(k => pure((s: Int) => { val s1 = f1(s); push[Ans, Pure](p)(k(s1)).flatMap(f => f(s1)) }))
-      case okay.State.Update(f1) => Delim.control0[Ans, X, Pure](p)(k => pure((s: Int) => { val (b, s1) = f1(s); push[Ans, Pure](p)(k(b)).flatMap(f => f(s1)) }))
-    ): X ! Row
-    val body = rewriteState(op)(stateProg(N)).map(a => (s: Int) => pure[Row, (Int, Int)]((s, a)))
-    !.run(Delim.run[(Int, Int), Pure](push[Ans, Pure](p)(body).flatMap(f => f(0))))._2
 
   // ---- handler INSTANCES (specs/lexical-instances.md): the same N get/set
   // pairs as stateHandle, through one `Lexical` instance, by strategy.

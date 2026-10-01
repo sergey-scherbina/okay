@@ -97,10 +97,11 @@ chapter 11 measures:
   invoked?
 
 `shift`, `shift0`, `control`, `control0` are the four combinations.
-Chapter 11's honest finding is worth repeating here: on an ordinary
-capture all four do the same thing, and it takes a second capture — in
-the handler body, or inside the continuation — to separate them. The
-distinctions are real and they are narrow.
+On an ordinary capture all four do the same thing, and it takes a
+second capture — in the handler body, or inside the continuation — to
+separate them. The distinctions are real and they are narrow; okay
+keeps the pair λ$ is built on, `shift` and `shift0`, and chapter 11
+says why the other two went.
 
 And in the same decade, Filinski's theorem (1994): **given delimited
 control, any monad can be embedded in direct style**. Chapter 16 is

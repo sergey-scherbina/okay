@@ -225,9 +225,10 @@ not what the composition means. If the monad's `flatMap` is wrong, the
 direct block is wrong in exactly the same way — and the chapter's test
 asserts the agreement rather than assuming it.
 
-It also does not make everything a monad. Chapter 11's four captures
-include `control`/`control0`, which are not monadic operators at all,
-and chapter 13's multi-shot answers a question monads answer badly.
+It also does not make everything a monad. The dynamic captures
+`control`/`control0` (chapter 11, and why the library dropped them)
+are not monadic operators at all, and chapter 13's multi-shot answers
+a question monads answer badly.
 Filinski's result is a lower bound on what delimited control can do,
 not a ceiling.
 

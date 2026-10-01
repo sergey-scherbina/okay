@@ -276,7 +276,7 @@ same material with the measurements attached.
   carrying the delimiter's answer type, `push` installs one (an
   OPERATION, not a handler — one machine must own the whole prompt
   stack, or a capture cannot cross an intervening delimiter), and
-  `shift`/`shift0`/`control`/`control0` capture up to a NAMED prompt.
+  `shift`/`shift0` capture up to a NAMED prompt.
   The tags are what let several answer types share one row. `Delim.run`
   is the machine; the captured continuation is turned back into a
   PROGRAM, so it is an ordinary value and multi-shot is free. With it

@@ -189,6 +189,7 @@ step 7 do not compile one by one; the branch tip does.
 8. `Reset` unfused: `Reset(p, ret, below)`, DPJS's `EmptyS | PushSeg | PushP` (e05a3c943).
 9. `rebase` gone from the machine: `Cont0.Delimiter[Y, I]` (84c9e2eb5).
 10. `plainly` gone: the plain `reset` is its own operation (`Reset0(p, body)`) and node (`Reset(p, below)`, DPJS's `PushP`), `$` is `Dollar0`/`Dollar`; a bare capture to a plain delimiter is typed by the node, a bare capture to a `$` refused by its case, and `Cont0.identity`/`plain` (the eq-trick) gone. `Stack = Done | Run | Reset | Dollar`.
+11. `control`/`control0` gone (operator: "Удаляй"), and with them `Lexical.shallow`, `ShallowClauses`, `Delim.Stacked.Plain`, the `bare` flag — and the separate plain node of step 10, whose one reason was a typed bare capture: the core is λ$ exactly, `Dollar0` and `Shift0`, `Stack = Done | Run | Dollar`, a `reset` is `pure $ ·` (a non-capturing lambda, one object per call site). Book chapter 11 rewritten as "Two captures"; TestBookFourCaptures, TestDollar, TestDelim, TestHandlersAsDollar, TestLexical, TestStackedShift0 and DelimBenchmark.stateShallow lose their control/shallow cases.
 
 ### What the machine still claims, and why each stays
 

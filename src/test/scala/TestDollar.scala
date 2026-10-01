@@ -141,16 +141,6 @@ class TestDollar extends munit.FunSuite:
     assertEquals(run(r), "n=10|n=20")
   }
 
-  test("a control-capture to a dollar is refused: its bare continuation answers the body's type") {
-    for ctl <- List("control", "control0") do
-      val p = Delim.prompt[String]
-      val body =
-        if ctl == "control" then Delim.control[String, String, Pure](p)(k => k("a"))
-        else Delim.control0[String, String, Pure](p)(k => k("a"))
-      val e = intercept[UnsupportedOperationException](run(dollar(p)(angle)(body)))
-      assert(e.getMessage.contains("dollar"), e.getMessage)
-  }
-
   test("depth: 100 000 dollars nested, each ret run once on the way out, in constant stack") {
     val p = Delim.prompt[Int]
     def nest(n: Int): Int ! Row =

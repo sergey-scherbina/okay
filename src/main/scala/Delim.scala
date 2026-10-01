@@ -12,7 +12,7 @@ import scala.util.NotGiven
  *
  * THE MACHINE IS `Frames.run` (Cont.scala; specs/freer-kont.md,
  * freer-kont-migrate 2026-09-30). `Delim` is `Cont0` — the two
- * operations `Reset0` (`⟨⟩`) or `Dollar0` (`$`), the delimiter, and `Shift0` (the capture)
+ * operations `Dollar0` (`$`, the delimiter; `reset` is `pure $`) and `Shift0` (the capture)
  * — seen from a UNARY row: the type alias below is the bridge between
  * `R ! Delim + F` and the indexed row the machine runs, and this file
  * is the door layer on top of the calculus: prompts with their labels,
@@ -83,15 +83,15 @@ final class Prompt[R](val what: String, val where: String):
 
 /**
  * THE ERASED ROW (freer-kont-migrate, 2026-09-30). A `Delim` operation
- * is a `Cont0` operation — `Reset0`, the delimiter, or `Shift0`, the
+ * is a `Cont0` operation — `Dollar0`, the delimiter, or `Shift0`, the
  * capture — over SOME indexed row at SOME index: a unary signature can
  * name neither the row's other half nor the machine's index, so the
  * type says "any", and the doors below build each operation at
  * `Cont0.Row[Lift[F]]`, the row the machine runs, and re-type the
  * program by the one claim `Delim.at` makes. The four cases that used
  * to stand here (`Push`, `Capture` with two flags, `Dollar`, `Watched`)
- * are `Reset0` (plain), `Dollar0` (with `ret`) and `Shift0` (with
- * `bare`); the machine that interpreted them is `Frames.run`
+ * are `Dollar0` (a plain reset is `pure $`) and `Shift0`; the machine
+ * that interprets them is `Frames.run`
  * (Cont.scala, specs/freer-kont.md).
  */
 type Delim[+A] = Cont0[?, ?, ?, A]
@@ -215,11 +215,8 @@ object Delim {
    * `ret $ body` at the delimiter `p`: the body answers `R0`, the
    * delimiter answers `R`, and a `shift0` to `p` captures `ret` along
    * with the delimiter. `push(p)(body)` is `dollar(p)(pure)(body)`.
-   * The under-prompt captures (`shift`, `control`) run their body
-   * under a PLAIN delimiter, which is APLAS 2012's `S k.e = S0 k.⟨e⟩`
-   * (TestDollarProbe). The control-variants need the bare segment,
-   * which answers `R0` and not `R`, and are refused at a `dollar`
-   * whose `R0` differs (see the machine).
+   * `shift` runs its body under a PLAIN delimiter, which is APLAS
+   * 2012's `S k.e = S0 k.⟨e⟩` (TestDollarProbe).
    */
   def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Delim + F): R ! Delim + F =
     out(Cont0.dollar[Freer.Lift[F], R, R0, Unit, Unit](atUnit(p))(inF(ret))(in(body)))
@@ -244,17 +241,6 @@ object Delim {
   def shift0[R, A, F[+_]](p: Prompt[R])
                          (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
     out(Cont0.shift0[Freer.Lift[F], R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
-
-  /** the body runs under the delimiter, the continuation does NOT
-   * re-install it — a bare segment, spliced where it is invoked */
-  def control[R, A, F[+_]](p: Prompt[R])
-                          (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
-    out(Cont0.control[Freer.Lift[F], R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
-
-  /** neither: the delimiter is consumed and the continuation is bare */
-  def control0[R, A, F[+_]](p: Prompt[R])
-                           (f: (A => R ! Delim + F) => R ! Delim + F)(using at: At): A ! Delim + F =
-    out(Cont0.control0[Freer.Lift[F], R, Unit, Unit, Unit, A](atUnit(p))(clause(f)))
 
   /** the common shape: a fresh prompt, a block under it, run */
   def reset[R, F[+_]](body: Prompt[R] => R ! Delim + F)
@@ -397,16 +383,6 @@ object Delim {
                           (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
     Cont0.shift0[Freer.Lift[Pure], in.Res, Unit, Unit, Unit, A](Cont0.delimiter[in.Res, Unit](in.prompt))(
       f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
-
-  /** the continuation does not re-install the delimiter */
-  def control[R, A, F[+_]](using in: Prompted[R])
-                            (f: (A => R ! Delim + F) => R ! Delim + F)(using At): A ! Delim + F =
-    control[R, A, F](in.prompt)(f)
-
-  /** neither */
-  def control0[R, A, F[+_]](using in: Prompted[R])
-                             (f: (A => R ! Delim + F) => R ! Delim + F)(using At): A ! Delim + F =
-    control0[R, A, F](in.prompt)(f)
 
   /** abort to the delimiter in force with a value */
   def abort[R, A, F[+_]](using in: Prompted[R])(value: R)(using At): A ! Delim + F =
@@ -866,19 +842,9 @@ object Delim {
     class In[R, S <: Tuple](val p: Prompt[R]):
       given stack: Stack[p.type *: S] = new Stack[p.type *: S]
 
-    /** "p is a PLAIN delimiter" — what `control` asks for, since a
-     * control-capture's bare segment answers the body's type, which at
-     * a `dollar` is not the prompt's (specs/shift0-dollar.md). Only a
-     * `Reset` puts it in scope: a `dollar`, a layer or a Lexical
-     * instance hands a bare `In`, and a `control` to it is refused
-     * here instead of by the machine (dollar-doors). */
-    @implicitNotFound("prompt ${P} is a `dollar` (or a layer, or a handler instance), not a plain reset: a control-capture's bare continuation answers the body's type, not the prompt's — use shift/shift0/abort, or a Delim.Stacked.reset (specs/shift0-dollar.md)")
-    final class Plain[P]
-
     /** what `reset` and `delimited` hand their body: a plain delimiter,
      * which every capture may name */
-    final class Reset[R, S <: Tuple](p0: Prompt[R]) extends In[R, S](p0):
-      given plain: Plain[p.type] = new Plain[p.type]
+    final class Reset[R, S <: Tuple](p0: Prompt[R]) extends In[R, S](p0)
 
     /** "p is on the stack" — the using clause that replaces the throw.
      * EVIDENCE OF PRESENCE, not a path (ProbeDelimTyped, question 3): a
@@ -1006,7 +972,7 @@ object Delim {
     def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
                            (using om: OneMachine[F], at: At): R ! F =
       val s = new Reset[R, EmptyTuple](named[R]("delimited")(using at))
-      run[R, F](Inject(Cont0.Reset0[Freer.Lift[F], R, EmptyTuple, EmptyTuple](Cont0.delimiter(s.p), rebase(body(s)))))(using om)
+      run[R, F](Cont0.reset[Freer.Lift[F], EmptyTuple, EmptyTuple, R](Cont0.delimiter(s.p))(rebase(body(s))))(using om)
 
     /**
      * A fresh prompt pushed on the stack in force, for the body only:
@@ -1018,7 +984,7 @@ object Delim {
                        (body: (s: Reset[R, st.S]) => Under[F, R, s.p.type *: st.S])
                        (using at: At): Under[F, R, st.S] =
       val s = new Reset[R, st.S](named[R]("reset")(using at))
-      Inject(Cont0.Reset0[Freer.Lift[F], R, st.S, st.S](Cont0.delimiter(s.p), rebase(body(s))))
+      Cont0.reset[Freer.Lift[F], st.S, st.S, R](Cont0.delimiter(s.p))(rebase(body(s)))
 
     /**
      * Capture up to `p` — REQUIRES `p` on the stack in force. The body
@@ -1031,17 +997,6 @@ object Delim {
                           (using at: At): Under[F, A, st.S] =
       given Stack[p.type *: B] = new Stack[p.type *: B]
       Cont0.shift[Freer.Lift[F], R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(f(rebaseF(k))))
-
-    /** `Delim.control`, stacked: the continuation is a bare segment,
-     * spliced where `f` invokes it — inside `f`, under `p` and what is
-     * below it, the same stack as `shift`'s body. Only to a PLAIN
-     * reset (`Plain`): at a `dollar` the bare segment answers the
-     * body's type, which the machine used to refuse at run time. */
-    def control[R, A, F[+_]](p: Prompt[R])(using st: Stack[?])[B <: Tuple](using @unused ev: Has.Aux[st.S, p.type, B], @unused pl: Plain[p.type])
-                            (f: Stack[p.type *: B] ?=> (A => Under[F, R, p.type *: B]) => Under[F, R, p.type *: B])
-                            (using at: At): Under[F, A, st.S] =
-      given Stack[p.type *: B] = new Stack[p.type *: B]
-      Cont0.control[Freer.Lift[F], R, B, st.S, st.S, A](Cont0.delimiter(p))(k => rebase(f(rebaseF(k))))
 
     /**
      * `Delim.shift0`, stacked: the body runs with `p` CONSUMED, under the
@@ -1090,12 +1045,6 @@ object Delim {
                             (using at: At): Under[F, R, st.S] =
       val s = new In[R, st.S](named[R]("dollar")(using at))
       Inject(Cont0.Dollar0[Freer.Lift[F], R, R0, st.S, st.S](Cont0.delimiter(s.p), ret, rebase(body(s))))
-
-    // `control0` is NOT here, deliberately: its continuation is a bare
-    // segment run where `p` is gone, but the code inside that segment was
-    // typed with `p` on its stack, so a capture to `p` in it would pass
-    // the index and throw. The index cannot say "this k needs p"; the
-    // unstacked door remains (specs/shift0-dollar.md, Decisions).
 }
 
 /**

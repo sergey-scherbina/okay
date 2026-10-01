@@ -146,11 +146,12 @@ abort ACROSS its own boundary to an outer one — the thing nested
 handlers cannot express — and it is why this library has `Delim` at
 all.
 
-### [11. Four captures: `shift`, `shift0`, `control`, `control0`](11-four-captures.md) ✓
+### [11. Two captures: `shift` and `shift0`](11-four-captures.md) ✓
 
-**Thesis.** They differ in what they do to the delimiter, and the
-difference is visible in three-line programs. A table nobody has to
-memorise, plus which one every recipe in Part II actually uses.
+**Thesis.** They differ in one thing — whether the handler's body runs
+under the delimiter — and the difference is visible in a three-line
+program. Which one every recipe in Part II uses, and why `control` and
+`control0` left the library.
 
 ### [12. One machine, one prompt stack](12-one-machine.md) ✓
 
