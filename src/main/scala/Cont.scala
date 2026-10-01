@@ -810,7 +810,7 @@ object Frames:
   /** a resumption: the value and the stack it enters, as the thunk of a
    * `Delay` — run by whoever forces it, pushed by the machine */
   final class Resume[F[_, _, +_], A, S, T, Z](val a: A, val k: Stack[F, A, S, T, Z]) extends (() => Freer[Cont0.Row[F], S, T, Z]):
-    def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.run[F, S, T, Z](Bind(Return[Cont0.Row[F], T, A](a), k))
+    def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.machine[F, S, T, Z](null, this)
 
   /**
    * THE COUNT IS A FRAME. A `dollarResumed` is told each time the
@@ -895,7 +895,15 @@ object Frames:
    * and the stack below them. `S0`, `R`, `Z` are the run's; every arm is
    * typed by GADT refinement.
    */
-  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
+  def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] = machine(p, null)
+
+  /** the machine, entered at a program (`run`) or at a resumption forced
+   * by an outer interpreter (`Resume.apply`): the second goes to the
+   * registers directly — `k`'s nodes and the value at its top — where it
+   * built `Bind(Return(a), k)` for the loop's first step to take apart, two
+   * nodes and a step per operation of an effect handled outside */
+  private def machine[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z] | Null,
+                                             resume: Resume[F, ?, S0, R, Z] | Null): Freer[Cont0.Row[F], S0, R, Z] =
     type G = Cont0.Row[F]
 
     final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
@@ -945,7 +953,7 @@ object Frames:
               // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule), a fresh count
               val shots = fresh(d.shots)
               val counted = count(shots, counts)
-              rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](entered(Rev.link(Rev.SnocReset(rev, d.p, d.ret, shots), noStack[F, y2, T2]), counted)))
+              rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](entered(Rev.close(rev, d.p, d.ret, shots), counted)))
           // the body in the delimiter's place, over the segment that waited for it
           started(sh, sh.f(k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, T2, w]](d.frames)), d.below)
         case None =>
@@ -1062,7 +1070,11 @@ object Frames:
             case null => Bind(focus, runOf(fs, st))
           case _ => Bind(focus, runOf(fs, st))
 
-    loop(p, noFrames[F, Z, S0], noStack[F, Z, S0])
+    def resumed[A](r: Resume[F, A, S0, R, Z]): Freer[G, S0, R, Z] =
+      val n = pushed(Return[G, R, A](r.a), r.k)
+      loop(n.focus, n.fs, n.st)
+
+    if resume ne null then resumed(resume) else loop(p.nn, noFrames[F, Z, S0], noStack[F, Z, S0])
 
 /**
  * THE TWO OPERATIONS: the delimiter and the capture, both on the join
@@ -1177,6 +1189,19 @@ private object Rev:
     case SnocRun(prev, frames) => link(prev, Stack.Run(frames, st))
     case SnocReset(prev, p, ret, shots) => link(prev, Stack.Reset(p, ret, shots, Frames.noFrames, st))
 
+  /**
+   * A cut's `k`, closed: the reversed prefix linked down to the delimiter
+   * the cut stopped at, the bottom as ONE `Kept` (the last segment and that
+   * delimiter, nothing below) — what `link(SnocReset(rev, …), Done)` built
+   * as a `Run` over an emptied `Reset`, the shape `relink` needed a claim
+   * to resume. An empty last segment is `Kept(End, …)`.
+   */
+  def close[F[_, _, +_], A, T, S2, Y0, Y](rev: Rev[F, A, T, S2, Y0], p: Prompt[Y],
+                                         ret: Y0 => Freer[Cont0.Row[F], S2, S2, Y],
+                                         shots: Cont0.Shots | Null): Stack[F, A, S2, T, Y] = rev match
+    case r: SnocRun[F, A, T, ?, S2, ?, Y0] @unchecked => link(r.prev, Stack.Kept(r.frames, p, ret, shots))
+    case _ => link(rev, Stack.Kept(Frames.noFrames[F, Y0, S2], p, ret, shots))
+
   @tailrec def reverse[F[_, _, +_], A, S2, T0, T, X, Y](ks: Stack[F, X, S2, T, Y], acc: Rev[F, A, T0, T, X]): Rev[F, A, T0, S2, Y] = ks match
     case Stack.Done() => acc
     case Stack.Run(frames, below) => reverse(below, SnocRun(acc, frames))
@@ -1214,30 +1239,18 @@ private object Rev:
 
   private def relinkOrSplice[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = ks match
     // the usual `k`: its delimiter over the live registers, typed — the
-    // segment stays shared, the delimiter is the one node built
+    // segment stays shared, the delimiter is the one node built. Every `k`
+    // a capture builds ends in a `Kept` (`nearest`, `close`), so this and
+    // the counted shape under it are the two a resumption meets; anything
+    // else (a head form fed back) is reversed and relinked
     case kp: Stack.Kept[F, A, S2, T, y, Y] @unchecked => Stack.Run(kp.frames, Stack.Reset(kp.p, kp.ret, kp.shots, fs, st))
-    case r: Stack.Run[F, A, S2, s, T, y, Y] @unchecked => r.below match
-      case d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] if emptied(d) => Stack.Run(r.frames, relink[F, y, S, s, S2, Y, S1, W, Z](d, fs, st))
-      case _ => splice(ks, Frames.runOf(fs, st))
-    case d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] if emptied(d) => relink[F, A, S, T, S2, Y, S1, W, Z](d, fs, st)
+    // a `dollarResumed` capture: its `Enter` frame over the `Kept`
+    case r: Stack.Run[F, A, S2, ?, T, ?, Y] @unchecked => keptUnder(r, fs, st) match
+      case null => splice(ks, Frames.runOf(fs, st))
+      case k => k
     case _ => splice(ks, Frames.runOf(fs, st))
 
-  /** a delimiter as a cut leaves it: an empty segment, nothing below */
-  private def emptied(d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?]): Boolean =
-    (d.frames eq Frames.noFrames) && (d.below eq Frames.noStack)
-
-  /**
-   * THE CLAIM of the relinking, isolated: `k`'s delimiter was cut with an
-   * empty segment and nothing below, so its indexes are the diagonal the
-   * live segment continues from — the delimiter answers the live
-   * segment's `Y`, and the resumption's `T` is the live segment's `S2`.
-   * A pattern cannot recover either from `eq` on two shared empties (the
-   * existentials are skolems, which GADT matching does not refine), so
-   * both are said here and nowhere else: the node read at the live
-   * indexes, and the segment's `S2` read as `T`. Six casts at `Any` until
-   * this was typed; two now, and the `Run` on top is built typed.
-   */
-  private def relink[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?],
-                                                           fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] =
-    val live = d.asInstanceOf[Stack.Reset[F, A, S, T, Y, S1, W, Z]]
-    Stack.Reset(live.p, live.ret, live.shots, fs.asInstanceOf[Frames[F, Y, S1, T, W]], st)
+  private def keptUnder[F[_, _, +_], A, S, T, S2, S3, Y1, Y, S1, W, Z](r: Stack.Run[F, A, S2, S3, T, Y1, Y], fs: Frames[F, Y, S1, S2, W],
+                                                                      st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] | Null = r.below match
+    case kp: Stack.Kept[F, Y1, S2, S3, ?, Y] @unchecked => Stack.Run(r.frames, Stack.Run(kp.frames, Stack.Reset(kp.p, kp.ret, kp.shots, fs, st)))
+    case _ => null
