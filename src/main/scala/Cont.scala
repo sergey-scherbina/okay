@@ -1175,7 +1175,17 @@ private object Rev:
    * node (and the head segment the loop unpacks). Anything else is
    * reversed and relinked.
    */
-  def onto[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = ks match
+  def onto[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = fs match
+    // an EMPTY machine first: a `k` re-entering from outside (a handler of
+    // another effect resuming the head form it was handed — every
+    // operation of `writerTellUnderDelim`) is pushed onto nothing, so it IS
+    // the stack; the two tests refine the indexes, no claim needed
+    case _: Frames.End[F, Y, S1] @unchecked => st match
+      case _: Stack.Done[F, W, S] @unchecked => ks
+      case _ => relinkOrSplice(ks, fs, st)
+    case _ => relinkOrSplice(ks, fs, st)
+
+  private def relinkOrSplice[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = ks match
     case r: Stack.Run[F, A, S2, s, T, y, Y] @unchecked => r.below match
       case d: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] if emptied(d) => Stack.Run(r.frames, relink[F, y, S, s, S2, Y, S1, W, Z](d, fs, st))
       case _ => splice(ks, Frames.runOf(fs, st))
