@@ -91,9 +91,12 @@ object Cont:
   def Pure[A, R](a: A): Rep[A, R, R] = Return(a)
 
   /** a computation as a function of its continuation — the shift of
-   * Danvy and Filinski. A body that only calls `k` in tail position is
-   * rewritten at compile time to the value it passes (`ContMacro`,
-   * specs/cont-stack.md Layer 1 A); any other body is `shiftLeaf`. */
+   * Danvy and Filinski. For the machine every one is ONE leaf, a
+   * `shift0` to the run's root (`leaf`); `ContMacro` is an optimization
+   * over it that picks, at compile time, how the body is given its `k`:
+   * a tail body becomes the value it passes and captures nothing
+   * (`tailShift`/`tailPure`), an answer-using body a program over the
+   * lazy `k` (`lazyLeaf`), anything else the strict `k` (`shiftLeaf`). */
   inline def shift[A, S, R](inline f: (A => S) => R): Rep[A, S, R] = ${ ContMacro.shift('f) }
 
   /** the leaf an opaque body becomes (one the macro can neither make a
@@ -105,33 +108,31 @@ object Cont:
    * user's body. */
   def shiftLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
     val body = f.asInstanceOf[(Any => Any) => Any]
-    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any, Any](rootAt, (k: K) => Return(body(Resumption(k))), "Cont.shift")))
+    leaf((k: K) => Return(body(Resumption(k))))
+
+  /** THE LEAF, the one there is: a `shift0` to the run's root whose
+   * clause takes the captured stack. `shiftLeaf` and `lazyLeaf` differ
+   * only in the clause they hand it. */
+  private def leaf[A, S, R](clause: K => P): Rep[A, S, R] =
+    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any, Any](rootAt, clause, "Cont.shift")))
 
   /** a tail-shaped body `k => { stats; k(v) }`, as the value it passes:
    * `v` computed when the runner reaches it, in the runner's own loop.
    * `S <:< R` is what the body's own typing gave the macro — `k(v): S`
    * was its `R`, and `ContMacro` summons the evidence at the call site.
-   * THE ONE CAST on the Cont side, and its argument (freer-consumed-index,
-   * 2026-09-30): the value is a `Return(v): Cont[A, S, S]`, the leaf
-   * `k => k(v)` at answer type `S`, owed as a `Cont[A, S, R]`. With
-   * `S <: R` every answer `k(v): S` IS an `R`, so the node runs as the
-   * type claims; the base used to be covariant in `R` and `liftCo`
-   * said the same thing for free, and invariance — which lets the tree
-   * carry a CONSUMED index (Free.scala's header) — took that road away.
-   * Isolated here and in `tailPure`, the evidence as the parameter. */
-  def tailShift[A, S, R](v: () => A)(using ev: S <:< R): Rep[A, S, R] =
-    tailAt[A, S, R](Freer.delay[Sig, S, S, A](() => Return[Sig, S, A](v())))
+   * The value is a `Return(v)`, the leaf `k => k(v)` at answer type `S`,
+   * owed as a `Cont[A, S, R]`: with `S <: R` every answer `k(v): S` IS
+   * an `R`, so the node runs as the type claims. That is the facade's
+   * erasure claim (`typed`) — the evidence is the parameter, so only a
+   * body whose own typing gave `S <: R` reaches it (freer-consumed-index,
+   * 2026-09-30, on why the invariant base cannot say it for free). */
+  def tailShift[A, S, R](v: () => A)(using @annotation.unused ev: S <:< R): Rep[A, S, R] =
+    typed(Freer.delay[Sig, Any, Any, Any](() => Return[Sig, Any, Any](v())))
 
   /** the same when `v` is a literal or a stable name and nothing runs
    * before it: no thunk at all */
-  def tailPure[A, S, R](v: A)(using ev: S <:< R): Rep[A, S, R] =
-    tailAt[A, S, R](Return[Sig, S, A](v))
-
-  /** the cast, once: a `Cont[A, S, S]` whose every answer is an `S`
-   * conforms to `Cont[A, S, R]` when `S <: R` — the evidence is the
-   * parameter, so no caller can reach this without it */
-  private def tailAt[A, S, R](c: Rep[A, S, S])(using S <:< R): Rep[A, S, R] =
-    c.asInstanceOf[Rep[A, S, R]]
+  def tailPure[A, S, R](v: A)(using @annotation.unused ev: S <:< R): Rep[A, S, R] =
+    typed(Return[Sig, Any, Any](v))
 
   /**
    * LAYER 1 B (specs/cont-stack.md plan stage E, cont-stack-layer1-b):
@@ -168,7 +169,7 @@ object Cont:
   /** the leaf an answer-using body becomes */
   def lazyLeaf[A, S, R](body: (A => S) => Lazy[R]): Rep[A, S, R] =
     // the body IS the clause: given the captured stack as its `k`
-    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any, Any](rootAt, body.asInstanceOf[K => P], "Cont.shift")))
+    leaf(body.asInstanceOf[K => P])
   /**
    * A bind whose LEFT side is deferred into the runner's own loop: the
    * thunk is not forced at construction, only when `step` reaches the
@@ -212,12 +213,12 @@ object Cont:
   // run it is in, since a `k(x)` re-installs its root with it. Two roads,
   // the ones the macro already separates:
   //   an answer-using body (`lazyLeaf`, the macro's selective CPS transform:
-  //     `k(1) + k(10)`) is a program over a LAZY `k` — `Call(k, a, rest)`
+  //     `k(1) + k(10)`) is a program over a LAZY `k` — `call(k, a, rest)`
   //     is `k(a).flatMap(rest)`, pushed by the machine, no JVM frame;
   //   an opaque body (`k` where the macro cannot see it) gets a STRICT
-  //     `k`: `x => force(k, x)`, a nested run to a value — direct style's
-  //     own cost — at one level less of room, moved to a fresh stack at
-  //     zero (`StackSwitch`, Layer 3).
+  //     `k`: a `Resumption`, whose `apply` is a nested run to a value —
+  //     direct style's own cost — at one level less of room, moved to a
+  //     fresh stack at zero (`StackSwitch`).
   // What this replaces: `step`, the `Reentry` chain, the `Pending` stack
   // of Layer 1 B, and the absorbed leaves — one machine for Delim and
   // Cont, where there were two.
@@ -277,16 +278,14 @@ object Cont:
    */
   private def force(k: K, x: Any): Any =
     val r = rootOf(k)
-    if r eq null then enter(k, x)
-    else
-      // the room is the RUN's, scoped dynamically around the nested run:
-      // forces nest strictly (a nested run returns before its caller
-      // goes on, on this stack or on a fresh one it waits for), so a
-      // saved value restored in `finally` is exact — where rebuilding `k`
-      // with the room in its root cost a node walk and two nodes a call
-      val here = r.room - 1
-      if here > 0 then nested(r, here, k, x)
-      else StackSwitch.fresh(fresh => nested(r, fresh, k, x))
+    // the room is the RUN's, scoped dynamically around the nested run:
+    // forces nest strictly (a nested run returns before its caller goes
+    // on, on this stack or on a fresh one it waits for), so a saved value
+    // restored in `finally` is exact — where rebuilding `k` with the room
+    // in its root cost a node walk and two nodes a call
+    val here = r.room - 1
+    if here > 0 then nested(r, here, k, x)
+    else StackSwitch.fresh(fresh => nested(r, fresh, k, x))
 
   /** `k` run nested with `room` levels, the run's own room restored after */
   private def nested(r: Root, room: Int, k: K, x: Any): Any =
@@ -298,13 +297,15 @@ object Cont:
   private def enter(k: K, x: Any): Any =
     answerOf(Frames.run[NoEffect, Any, Any, Any](k(x)))
 
-  /** the root delimiter at the bottom of `k`: the run it was captured from */
+  /** the root delimiter at the bottom of `k`: the run it was captured
+   * from. Always there: a strict `k` is made only by a leaf, and a leaf
+   * cuts to its run's root, so `k` ends at it */
   @annotation.tailrec
-  private def rootOf(k: Stack[NoEffect, ?, ?, ?, ?]): Root | Null = k match
+  private def rootOf(k: Stack[NoEffect, ?, ?, ?, ?]): Root = k match
     case Stack.Dollar(p, r: Root, _) if p eq root => r
     case Stack.Dollar(_, _, below) => rootOf(below)
     case Stack.Run(_, below) => rootOf(below)
-    case _ => null
+    case _ => throw IllegalStateException("a strict k without its run's root: only a leaf makes one, and a leaf cuts to the root")
 
 
   /**
