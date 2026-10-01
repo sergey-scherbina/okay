@@ -984,11 +984,10 @@ object Frames:
           // the ($v) rule: a delimiter is popped like any frame — and the
           // segment it carries is the frames register again, in the same
           // step; tested FIRST, the common node under an empty segment
-          // a PLAIN one answers what the body answered: no call through
-          // `ret`, no new `Return` — the value goes on as it is
-          case d: Reset[F, Y, S0, S1, y, ?, ?, Z] =>
-            if Cont0.plain(d.ret) then loop(Cont0.answered[G, S1, X, y](r), d.frames, d.below)
-            else loop(d.ret(r.a), d.frames, d.below)
+          // a plain one too: skipping `ret` when it is the identity
+          // (`Cont0.plain`) bought a plain pop ~0.5 ns and cost every `$`
+          // ~3 ns on DelimBenchmark (1h, history.d) — one call for all
+          case d: Reset[F, Y, S0, S1, y, ?, ?, Z] => loop(d.ret(r.a), d.frames, d.below)
           // the next segment, unpacked into the frames register
           case rn: Run[F, Y, S0, ?, S1, ?, Z] => loop(focus, rn.frames, rn.below)
           case _: Done[F, Y, S0] @unchecked => focus
@@ -1062,8 +1061,9 @@ object Cont0:
    * A PLAIN DELIMITER IS ONE WHOSE `ret` IS THIS OBJECT. `reset` is `$`
    * with `ret = pure`, and every door that builds one hands over this
    * value, so "plain" is `ret eq identity` and needs no field: a `Reset`
-   * is 32 bytes, not 40 (the boolean pushed it over the line), and popping
-   * a plain one calls nothing (`answered`). `Return(_)` written anywhere
+   * is 32 bytes, not 40 (the boolean pushed it over the line). It is
+   * asked only by a bare cut (`control`); the pop calls `ret` either way
+   * (see the loop's `Reset` arm for what testing it there cost). `Return(_)` written anywhere
    * else is a `$` like any other — correct, just not recognised as plain.
    * One object at every index, as `noFrames` is: the cast is that sentence.
    */
@@ -1072,12 +1072,6 @@ object Cont0:
     theIdentity.asInstanceOf[A => Freer[Row[F], T, T, A]]
   /** is this delimiter plain — its `ret` the identity */
   def plain(ret: AnyRef): Boolean = ret eq theIdentity
-
-  /** THE CLAIM `plain` MAKES, in one place: a plain delimiter's body
-   * answers the delimiter's own type, so the `Return` the body reached IS
-   * the delimiter's answer — the node reused, never rebuilt */
-  def answered[G[_, _, +_], T, X, Y](r: Return[G, ?, X]): Freer[G, T, T, Y] =
-    r.asInstanceOf[Freer[G, T, T, Y]]
 
   /** THE BOUNDARY: a root delimiter nobody can name, installed by
    * `Delim.run`. A cut that walks into it has passed every delimiter of
