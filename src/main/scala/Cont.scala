@@ -305,6 +305,7 @@ object Cont:
     case Stack.Dollar(p, r: Root, _) if p eq root => r
     case Stack.Dollar(_, _, below) => rootOf(below)
     case Stack.Run(_, below) => rootOf(below)
+    case c: Stack.Cat[NoEffect, ?, ?, ?, ?, ?, ?] @unchecked => rootOf(Frames.uncat(c))
     case _ => throw IllegalStateException("a strict k without its run's root: only a leaf makes one, and a leaf cuts to the root")
 
 
@@ -569,12 +570,26 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
   case Dollar[F[_, _, +_], A, S, T, Y, Z](p: Cont0.Delimiter[Y, T], ret: A => Freer[Cont0.Row[F], T, T, Y],
                                           below: Stack[F, Y, S, T, Z]) extends Stack[F, A, S, T, Z]
 
+  /**
+   * A RESUMPTION'S STACK, O(1): `k` then `below` — the catenation that
+   * van der Ploeg & Kiselyov's type-aligned sequences give a free monad
+   * ("Reflection without Remorse", Haskell 2014), on the machine's
+   * stack. Resuming `k` over the live registers is this one node, where
+   * it was `k`'s nodes reversed and relinked (two objects a node). The
+   * machine takes it apart only when it reaches it (`Frames.uncat`), one
+   * node of `k` at a time — so a `k` resumed and dropped early costs
+   * nothing for the nodes it never reached. A capture walks through it
+   * the same way, so a captured `k` never holds one.
+   */
+  case Cat[F[_, _, +_], A, S, T, Y, S2, Z](k: Stack[F, A, S2, T, Y],
+                                           below: Stack[F, Y, S, S2, Z]) extends Stack[F, A, S, T, Z]
+
   def apply(a: A): Freer[Cont0.Row[F], S, T, Z] = this match
     case Done() => Return(a)
     case _ => Delay(Frames.Resume(a, this))
 
 object Frames:
-  import Stack.{Done, Run, Dollar}
+  import Stack.{Done, Run, Dollar, Cat}
 
   /**
    * A RESUMPTION `k(a)`, as the thunk of a `Delay`. Two readers, two
@@ -639,8 +654,23 @@ object Frames:
     case _: End[F, A, S2] @unchecked => st
     case _ => Run(fs, st)
 
+  /**
+   * A stack whose head is a `Cat`, as one whose head is not: `k`'s head
+   * node over `k`'s rest catenated with `below` — a shell for that one
+   * node, the rest still a `Cat` until it is reached. Left-nested `Cat`s
+   * re-associate to the right, one step a turn of this loop.
+   */
+  @tailrec private[okay] def uncat[F[_, _, +_], A, S, T, Z](st: Stack[F, A, S, T, Z]): Stack[F, A, S, T, Z] = st match
+    case c: Cat[F, A, S, T, y, s2, Z] => c.k match
+      case _: Done[F, A, T] @unchecked => uncat(c.below)
+      case r: Run[F, A, `s2`, ?, T, ?, `y`] => Run(r.frames, Cat(r.below, c.below))
+      case d: Dollar[F, A, `s2`, T, y1, `y`] => Dollar(d.p, d.ret, Cat(d.below, c.below))
+      case i: Cat[F, A, `s2`, T, ?, ?, `y`] => uncat(Cat(i.k, Cat(i.below, c.below)))
+    case _ => st
+
   /** the prompts installed on a stack, innermost first — `NoPrompt`'s list */
   @tailrec def installed[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = st match
+    case c: Cat[F, ?, ?, ?, ?, ?, ?] @unchecked => installed(uncat(c), acc)
     case Run(_, below) => installed(below, acc)
     case Dollar(p, _, below) => installed(below, if p eq Cont0.boundary[Any, Any] then acc else p.label :: acc)
     case _ => acc.reverse
@@ -668,6 +698,7 @@ object Frames:
       // no delimiter answers, and no boundary: the capture goes OUT as an
       // operation, for a machine outside this one (Delim.runNested)
       case Done() => null
+      case c: Cat[F, C, S0, T2, ?, ?, Z] => cut(sh, all, uncat(c), rev)
       case r: Run[F, C, S0, ?, T2, ?, Z] => cut(sh, all, r.below, Rev.SnocRun(rev, r.frames))
       // THE BARRIER (Flatt, Yu, Findler & Felleisen, ICFP 2007's
       // continuation barrier): `Delim.run`'s root delimiter, which no
@@ -703,10 +734,10 @@ object Frames:
       cut(sh, all, all, Rev.nil[F, X, T])
 
     /** a resumption's registers: `focus` over the stack `k`'s nodes were
-     * pushed onto (`Rev.onto`), its head segment unpacked into the frames
+     * catenated onto (`Rev.onto`), its head segment unpacked into the frames
      * register — the one place both resuming arms (a `k` as a bind's
      * continuation, a `Resume` as a delay's thunk) go through */
-    def pushed[X, T](focus: Freer[G, T, R, X], k: Stack[F, X, S0, T, Z]): Next[?, ?, ?, ?] = k match
+    def pushed[X, T](focus: Freer[G, T, R, X], k: Stack[F, X, S0, T, Z]): Next[?, ?, ?, ?] = uncat(k) match
       case rn: Run[F, X, S0, s2, T, y, Z] => Next[X, T, s2, y](focus, rn.frames, rn.below)
       case sp => Next[X, T, T, X](focus, noFrames[F, X, T], sp)
 
@@ -737,6 +768,8 @@ object Frames:
           case d: Dollar[F, Y, S0, S1, y, Z] => loop(d.ret(r.a), noFrames[F, y, S1], d.below)
           // the next segment, unpacked into the frames register
           case rn: Run[F, Y, S0, ?, S1, ?, Z] => loop(focus, rn.frames, rn.below)
+          // a resumed `k` over the rest: its next node, reached now
+          case c: Cat[F, Y, S0, S1, ?, ?, Z] => loop(focus, fs, uncat(c))
           case _: Done[F, Y, S0] @unchecked => focus
       case d: Delay[G, T, R, X] => Frames.resume[F, T, R, X](d.thunk) match
         // a resumption: the value at the top of its stack, pushed — never forced
@@ -870,24 +903,14 @@ private object Rev:
     case SnocRun(prev, frames) => link(prev, Stack.Run(frames, st))
     case SnocDollar(prev, p, ret) => link(prev, Stack.Dollar(p, ret, st))
 
-  @tailrec def reverse[F[_, _, +_], A, S2, T0, T, X, Y](ks: Stack[F, X, S2, T, Y], acc: Rev[F, A, T0, T, X]): Rev[F, A, T0, S2, Y] = ks match
-    case Stack.Done() => acc
-    case Stack.Run(frames, below) => reverse(below, SnocRun(acc, frames))
-    case d: Stack.Dollar[F, X, S2, T, y, Y] => reverse(d.below, SnocDollar(acc, d.p, d.ret))
-
   /** the empty prefix, one object (as `Frames.noFrames`: no field, phantom indexes) */
   private val theNil: Nil[Nothing, Any, Any] = Nil()
   def nil[F[_, _, +_], A, T]: Rev[F, A, T, T, A] = theNil.asInstanceOf[Rev[F, A, T, T, A]]
 
-  /** `ks ++ st`: `k`'s nodes on top of the stack; onto an empty one, `k` itself */
-  def splice[F[_, _, +_], A, S, T, S2, Y, Z](ks: Stack[F, A, S2, T, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = st match
-    case _: Stack.Done[F, Y, S] @unchecked => ks.asInstanceOf[Stack[F, A, S, T, Z]] // Y = Z, S2 = S: st is the identity
-    case _ => link(reverse(ks, nil[F, A, T]), st)
-
   /**
    * A RESUMPTION onto the live registers — the segment and the stack
-   * under it: `k`'s nodes reversed and relinked over them, O(nodes of
-   * `k`), frames shared.
+   * under it: ONE `Cat`, `k` over them, O(1); `k`'s nodes are reached
+   * one at a time as the machine pops (`Frames.uncat`), frames shared.
    */
   def onto[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = fs match
     // an EMPTY machine first: a `k` re-entering from outside (a handler of
@@ -895,5 +918,5 @@ private object Rev:
     // nothing, so it IS the stack; the two tests refine the indexes
     case _: Frames.End[F, Y, S1] @unchecked => st match
       case _: Stack.Done[F, W, S] @unchecked => ks
-      case _ => splice(ks, Frames.runOf(fs, st))
-    case _ => splice(ks, Frames.runOf(fs, st))
+      case _ => Stack.Cat(ks, Frames.runOf(fs, st))
+    case _ => Stack.Cat(ks, Frames.runOf(fs, st))
