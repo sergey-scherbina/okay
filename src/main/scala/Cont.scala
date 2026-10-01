@@ -215,7 +215,7 @@ object Cont:
 
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
-    value(Inject(Cont0.Reset0[NoEffect, Any, Any, Any, Any](root, Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom), erased(c), false, null))).asInstanceOf[R]
+    value(Inject(Cont0.Reset0[NoEffect, Any, Any, Any, Any](root, Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom), erased(c), null))).asInstanceOf[R]
 
   // ==================================================================
   // THE RUNNER IS THE FRAME MACHINE (cont-step-on-frames, 2026-09-30;
@@ -267,7 +267,7 @@ object Cont:
 
   /** a leaf: a `Shift0` to the root, its clause given the stack up to it */
   private def leaf[A, S, R](clause: K => P): Rep[A, S, R] =
-    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, clause, false, "Cont.shift")))
+    typed(Inject(Cont0.Shift0[NoEffect, Any, Any, Any, Any](root, clause, false, false, "Cont.shift")))
 
   /** road 3: the body gets a STRICT `k` and answers a value */
   private def opaqueLeaf[A, S, R](f: (A => S) => R): Rep[A, S, R] =
@@ -308,7 +308,8 @@ object Cont:
   /** the room of `k`'s root: the last `Reset` of `k` is the root it was cut at */
   @annotation.tailrec
   private def roomOf(k: Stack[NoEffect, ?, ?, ?, ?]): Int = k match
-    case Stack.Reset(p, r: Root, _, _, below) => if p eq root then r.room else roomOf(below)
+    case Stack.Kept(_, p, r: Root, _) if p eq root => r.room
+    case Stack.Reset(p, r: Root, _, _, below) if p eq root => r.room
     case Stack.Reset(_, _, _, _, below) => roomOf(below)
     case Stack.Run(_, below) => roomOf(below)
     case _ => StackSwitch.firstRoom
@@ -316,14 +317,16 @@ object Cont:
   /** `k` with its root's room replaced: its nodes rebuilt, its frames shared */
   private def withRoom(k: K, room: Int): K =
     @annotation.tailrec def down(st: K, acc: List[K]): K = st match
-      case Stack.Reset(p, r: Root, pl, sh, below) if p eq root => up(acc, Stack.Reset(p, Root(r.k, room), pl, sh, below))
+      case Stack.Kept(fr, p, r: Root, sh) if p eq root => up(acc, Stack.Kept(fr, p, Root(r.k, room), sh).asInstanceOf[K])
+      case Stack.Reset(p, r: Root, sh, fr, below) if p eq root => up(acc, Stack.Reset(p, Root(r.k, room), sh, fr, below).asInstanceOf[K])
       case n: Stack.Run[?, ?, ?, ?, ?, ?, ?] => down(n.below.asInstanceOf[K], n.asInstanceOf[K] :: acc)
-      case n: Stack.Reset[?, ?, ?, ?, ?, ?] => down(n.below.asInstanceOf[K], n.asInstanceOf[K] :: acc)
+      case n: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?] => down(n.below.asInstanceOf[K], n.asInstanceOf[K] :: acc)
       case _ => throw IllegalStateException("a Cont continuation without its root")
     @annotation.tailrec def up(acc: List[K], st: K): K = acc match
       case Nil => st
       case (n: Stack.Run[?, ?, ?, ?, ?, ?, ?]) :: rest => up(rest, Stack.Run(n.frames.asInstanceOf[Frames[NoEffect, Any, Any, Any, Any]], st))
-      case (n: Stack.Reset[?, ?, ?, ?, ?, ?]) :: rest => up(rest, Stack.Reset(n.p.asInstanceOf[Prompt[Any]], n.ret.asInstanceOf[Any => P], n.plain, n.shots, st))
+      case (n: Stack.Reset[?, ?, ?, ?, ?, ?, ?, ?]) :: rest =>
+        up(rest, Stack.Reset(n.p.asInstanceOf[Prompt[Any]], n.ret.asInstanceOf[Any => P], n.shots, n.frames.asInstanceOf[Frames[NoEffect, Any, Any, Any, Any]], st))
       case _ :: rest => up(rest, st)
     down(k, Nil)
 
@@ -684,7 +687,7 @@ object Frames:
    * whole test (`Free.Bind`'s constant claim, in the same spirit).
    * `null` for any other function.
    */
-  private def as[F[_, _, +_], A, S, T, Z](f: A => Freer[Cont0.Row[F], S, T, Z]): Stack[F, A, S, T, Z] = f match
+  private[okay] def as[F[_, _, +_], A, S, T, Z](f: A => Freer[Cont0.Row[F], S, T, Z]): Stack[F, A, S, T, Z] = f match
     // ONE test per bind: a segment never stands as a continuation (a
     // captured `k` and a head form's continuation are both `Stack`s), so
     // `Frames` is not a function and there is no second class to tell
