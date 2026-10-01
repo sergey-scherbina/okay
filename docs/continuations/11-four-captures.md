@@ -202,15 +202,6 @@ fresh delimiter, runs `body` with `Prompted[R]` in scope, and leaves
 through `ret`. Inside a `direct` block, `!Delim.shift0[A](k => …)` is
 the one-type-argument spelling of the 0-capture, beside `!Delim.shift[A]`.
 
-One more thing `ret` cannot tell you: how many times it was RESUMED.
-A resumption that leaves the body by `abort` drops its continuation,
-so `ret` never runs for it, yet the body did run again. A delimiter
-that must refuse that (a handler keeping its state in a cell, as
-`Lexical.tail` does) uses `Delim.dollarResumed(p)(ret, resumed)(body)`,
-and the machine calls `resumed(n)` each time it enters the delimiter
-with `n` counting the runs of one captured context. `n > 1` is a
-second resumption, whether or not the first returned.
-
 ## Why the library offers all four
 
 Two reasons, and neither is completeness for its own sake.

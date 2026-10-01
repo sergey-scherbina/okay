@@ -90,7 +90,7 @@ final class Prompt[R](val what: String, val where: String):
  * `Cont0.Row[Lift[F]]`, the row the machine runs, and re-type the
  * program by the one claim `Delim.at` makes. The four cases that used
  * to stand here (`Push`, `Capture` with two flags, `Dollar`, `Watched`)
- * are `Reset0` (plain, with `ret`, with `shots`) and `Shift0` (with
+ * are `Reset0` (plain, or with `ret`) and `Shift0` (with
  * `bare`); the machine that interpreted them is `Frames.run`
  * (Cont.scala, specs/freer-kont.md).
  */
@@ -218,32 +218,6 @@ object Delim {
    */
   def dollar[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F)(body: R0 ! Delim + F): R ! Delim + F =
     out(Cont0.dollar[Freer.Lift[F], R, R0, Unit, Unit](p)(inF(ret))(in(body)))
-
-
-  /**
-   * How many times the machine has entered a watched `dollar` through
-   * ONE capture: the count a `dollarResumed` hook is called with. A
-   * capture that takes the delimiter gets a fresh count, so `n > 1`
-   * means "this same captured context has been RUN a second time",
-   * which is what a handler keeping its state in a cell must refuse
-   * (`Lexical.tail`'s guard, lexical-tail-guard-abort). Counted when
-   * the reified program is stepped, not when `k` builds it, so a
-   * continuation built and dropped is not a resumption.
-   */
-  type Shots = Cont0.Shots
-
-
-  /**
-   * `dollar`, told each time the machine enters it: `resumed(1)` at
-   * the call itself and at the first run of each capture that took the
-   * delimiter, `resumed(2)` at that capture's second run, and so on.
-   * The one thing a `ret` cannot see: a resumption that leaves the body
-   * by `abort` or a `shift0` outward never returns through `ret`, and
-   * this hook fires before the body runs.
-   */
-  def dollarResumed[R0, R, F[+_]](p: Prompt[R])(ret: R0 => R ! Delim + F, resumed: Int => Unit)
-                                 (body: R0 ! Delim + F): R ! Delim + F =
-    out(Cont0.dollarResumed[Freer.Lift[F], R, R0, Unit, Unit](p)(inF(ret), resumed)(in(body)))
 
 
   /**
@@ -1027,7 +1001,7 @@ object Delim {
     def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
                            (using om: OneMachine[F], at: At): R ! F =
       val s = new Reset[R, EmptyTuple](named[R]("delimited")(using at))
-      run[R, F](Inject(Cont0.Reset0[Freer.Lift[F], R, R, EmptyTuple, EmptyTuple](s.p, Cont0.identity, rebase(body(s)), null)))(using om)
+      run[R, F](Inject(Cont0.Reset0[Freer.Lift[F], R, R, EmptyTuple, EmptyTuple](s.p, Cont0.identity, rebase(body(s)))))(using om)
 
     /**
      * A fresh prompt pushed on the stack in force, for the body only:
@@ -1039,7 +1013,7 @@ object Delim {
                        (body: (s: Reset[R, st.S]) => Under[F, R, s.p.type *: st.S])
                        (using at: At): Under[F, R, st.S] =
       val s = new Reset[R, st.S](named[R]("reset")(using at))
-      Inject(Cont0.Reset0[Freer.Lift[F], R, R, st.S, st.S](s.p, Cont0.identity, rebase(body(s)), null))
+      Inject(Cont0.Reset0[Freer.Lift[F], R, R, st.S, st.S](s.p, Cont0.identity, rebase(body(s))))
 
     /**
      * Capture up to `p` — REQUIRES `p` on the stack in force. The body
@@ -1110,7 +1084,7 @@ object Delim {
                             (body: (s: In[R, st.S]) => Under[F, R0, s.p.type *: st.S])
                             (using at: At): Under[F, R, st.S] =
       val s = new In[R, st.S](named[R]("dollar")(using at))
-      Inject(Cont0.Reset0[Freer.Lift[F], R, R0, st.S, st.S](s.p, ret, rebase(body(s)), null))
+      Inject(Cont0.Reset0[Freer.Lift[F], R, R0, st.S, st.S](s.p, ret, rebase(body(s))))
 
     // `control0` is NOT here, deliberately: its continuation is a bare
     // segment run where `p` is gone, but the code inside that segment was

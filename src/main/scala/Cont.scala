@@ -197,7 +197,7 @@ object Cont:
   /** apply to a continuation, as the function (A => S) => R it means */
   def run[A, S, R](c: Rep[A, S, R])(k: A => S): R =
     val r = Root(k.asInstanceOf[Any => Any], StackSwitch.firstRoom)
-    val node: K = Stack.Reset[NoEffect, Any, Any, Any, Any, Any, Any, Any](root, r, null, Frames.noFrames, Frames.noStack)
+    val node: K = Stack.Reset[NoEffect, Any, Any, Any, Any, Any, Any, Any](root, r, Frames.noFrames, Frames.noStack)
     r.node = node
     answerOf(Frames.runOn[NoEffect, Any, Any, Any](erased(c), node)).asInstanceOf[R]
 
@@ -318,9 +318,9 @@ object Cont:
   /** the root delimiter at the bottom of `k`: the run it was captured from */
   @annotation.tailrec
   private def rootOf(k: Stack[NoEffect, ?, ?, ?, ?]): Root | Null = k match
-    case Stack.Kept(_, p, r: Root, _) if p eq root => r
-    case Stack.Reset(p, r: Root, _, _, below) if p eq root => r
-    case Stack.Reset(_, _, _, _, below) => rootOf(below)
+    case Stack.Kept(_, p, r: Root) if p eq root => r
+    case Stack.Reset(p, r: Root, _, below) if p eq root => r
+    case Stack.Reset(_, _, _, below) => rootOf(below)
     case Stack.Run(_, below) => rootOf(below)
     case _ => null
 
@@ -597,8 +597,7 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
    * loop — and a `shift0` cuts the stack at the first `Reset` naming
    * its prompt, so its `k` carries `ret` — the `($/S0)` rule. `plain`
    * says `ret` is the identity (a `reset`, not a `$`): what a bare cut
-   * (`control`, `control0`) needs. `shots` is a `dollarResumed`'s
-   * counter, fresh per capture. A program asks for one with the
+   * (`control`, `control0`) needs. A program asks for one with the
    * OPERATION `Cont0.Reset0`, never by building this node: an operation
    * passes through a handler loop between the program and the machine,
    * a node on the machine's stack does not.
@@ -613,13 +612,12 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
    * is not captured.
    */
   case Reset[F[_, _, +_], A, S, T, Y, S2, W, Z](p: Prompt[Y], ret: A => Freer[Cont0.Row[F], T, T, Y],
-                                                 shots: Cont0.Shots | Null,
                                                  frames: Frames[F, Y, S2, T, W],
                                                  below: Stack[F, W, S, S2, Z]) extends Stack[F, A, S, T, Z]
 
   /**
    * THE USUAL `k`, ONE NODE: a segment and the delimiter it was cut at,
-   * nothing below — `Run(frames, Reset(p, ret, shots, End, Done))`, whose
+   * nothing below — `Run(frames, Reset(p, ret, End, Done))`, whose
    * indexes those two empties fix (the delimiter's segment is `End`, so
    * its answer is the stack's `Z`; nothing below, so its `S` is the
    * segment's). A capture to the delimiter at the head of the stack
@@ -629,8 +627,7 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
    * where the two-node shape needed `relink`'s claim.
    */
   case Kept[F[_, _, +_], A, S, T, Y, Z](frames: Frames[F, A, S, T, Y], p: Prompt[Z],
-                                        ret: Y => Freer[Cont0.Row[F], S, S, Z],
-                                        shots: Cont0.Shots | Null) extends Stack[F, A, S, T, Z]
+                                        ret: Y => Freer[Cont0.Row[F], S, S, Z]) extends Stack[F, A, S, T, Z]
 
   def apply(a: A): Freer[Cont0.Row[F], S, T, Z] = this match
     case Done() => Return(a)
@@ -643,20 +640,6 @@ object Frames:
    * `Delay` — run by whoever forces it, pushed by the machine */
   final class Resume[F[_, _, +_], A, S, T, Z](val a: A, val k: Stack[F, A, S, T, Z]) extends (() => Freer[Cont0.Row[F], S, T, Z]):
     def apply(): Freer[Cont0.Row[F], S, T, Z] = Frames.enterAt[F, A, S, T, Z](a, k)
-
-  /**
-   * THE COUNT IS A FRAME. A `dollarResumed` is told each time the
-   * delimiter is ENTERED: at the operation, and at each run of a
-   * capture that took it. A cut puts this identity frame on top of the
-   * captured stack, holding the capture's fresh counts, and it is
-   * popped exactly when the resumed segment is stepped — once per
-   * `k(x)`, never on a head form's re-entry, never for a `k` built and
-   * dropped.
-   */
-  final class Enter[F[_, _, +_], X, T](val shots: List[Cont0.Shots]) extends (X => Freer[Cont0.Row[F], T, T, X]):
-    def apply(x: X): Freer[Cont0.Row[F], T, T, X] =
-      shots.foreach(_.enter())
-      Return(x)
 
   /**
    * THE EMPTY SEGMENT AND THE EMPTY STACK, ONE OBJECT EACH. `End()` and
@@ -730,7 +713,7 @@ object Frames:
    * empty segment and nothing below — for a `k` that became the live
    * stack (`pushed`, the loop's pop) or that a walk passes (`cut`) */
   private def delimiterOf[F[_, _, +_], A, S, T, Y, Z](kp: Kept[F, A, S, T, Y, Z]): Stack[F, Y, S, S, Z] =
-    Reset[F, Y, S, S, Z, S, Z, Z](kp.p, kp.ret, kp.shots, noFrames[F, Z, S], noStack[F, Z, S])
+    Reset[F, Y, S, S, Z, S, Z, Z](kp.p, kp.ret, noFrames[F, Z, S], noStack[F, Z, S])
 
   private[okay] def runOf[F[_, _, +_], A, S, S2, T, Y, Z](fs: Frames[F, A, S2, T, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = fs match
     case _: End[F, A, S2] @unchecked => st
@@ -739,8 +722,8 @@ object Frames:
   /** the prompts installed on a stack, innermost first — `NoPrompt`'s list */
   @tailrec def installed[F[_, _, +_]](st: Stack[F, ?, ?, ?, ?], acc: List[String] = Nil): List[String] = st match
     case Run(_, below) => installed(below, acc)
-    case Reset(p, _, _, _, below) => installed(below, if p eq Cont0.boundary[Any] then acc else p.label :: acc)
-    case Kept(_, p, _, _) => (if p eq Cont0.boundary[Any] then acc else p.label :: acc).reverse
+    case Reset(p, _, _, below) => installed(below, if p eq Cont0.boundary[Any] then acc else p.label :: acc)
+    case Kept(_, p, _) => (if p eq Cont0.boundary[Any] then acc else p.label :: acc).reverse
     case _ => acc.reverse
 
   /**
@@ -761,7 +744,7 @@ object Frames:
    * `Reset0` and a step each time */
   private[okay] def runUnder[F[_, _, +_], S0, Z](p: Freer[Cont0.Row[F], S0, S0, Z], p0: Prompt[Z],
                                                 ret: Z => Freer[Cont0.Row[F], S0, S0, Z]): Freer[Cont0.Row[F], S0, S0, Z] =
-    runOn(p, Reset[F, Z, S0, S0, Z, S0, Z, Z](p0, ret, null, noFrames[F, Z, S0], noStack[F, Z, S0]))
+    runOn(p, Reset[F, Z, S0, S0, Z, S0, Z, Z](p0, ret, noFrames[F, Z, S0], noStack[F, Z, S0]))
 
   /** `p` over a stack already built — a delimiter node a caller keeps for
    * a whole run (Cont's root) */
@@ -793,14 +776,6 @@ object Frames:
 
     final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
 
-    /** a capture's fresh count for a delimiter it copies (listed for `Enter`
-     * by the caller: a pair here was a `Tuple2` per delimiter crossed) */
-    def fresh(shots: Cont0.Shots | Null): Cont0.Shots | Null =
-      if shots == null then null else Cont0.Shots(shots.resumed)
-    def count(shots: Cont0.Shots | Null, counts: List[Cont0.Shots]): List[Cont0.Shots] =
-      if shots == null then counts else shots :: counts
-
-    /** the captured stack under its `Enter` frame, when it has counts */
     /** the capture's body in the delimiter's place, over the segment that
      * waited for the delimiter — and, for `shift`/`control` (`under`), under
      * a fresh plain delimiter of the same prompt, installed here as one
@@ -814,24 +789,21 @@ object Frames:
 
     def started[Y, T, S1, W](sh: Cont0.Shift0[F, Y, T, R, ?], body: Freer[G, T, R, Y],
                              frames: Frames[F, Y, S1, T, W], below: Stack[F, W, S0, S1, Z]): Next[?, ?, ?, ?] =
-      if sh.under then Next[Y, T, T, Y](body, noFrames[F, Y, T], Reset[F, Y, S0, T, Y, S1, W, Z](sh.p, Cont0.identity[F, T, Y], null, frames, below))
+      if sh.under then Next[Y, T, T, Y](body, noFrames[F, Y, T], Reset[F, Y, S0, T, Y, S1, W, Z](sh.p, Cont0.identity[F, T, Y], frames, below))
       else Next[Y, T, S1, W](body, frames, below)
-
-    def entered[X, S, T, Y](k: Stack[F, X, S, T, Y], counts: List[Cont0.Shots]): Stack[F, X, S, T, Y] =
-      if counts.isEmpty then k else Run(Frame[F, X, T, T, T, X, X](Enter[F, X, T](counts), noFrames[F, X, T]), k)
 
     /** cut the stack at the `Reset` naming `sh.p`, walking its NODES:
      * `k` is the nodes above it with it (without it when bare), the
      * body takes the delimiter's place with the stack below it */
-    @tailrec def cut[X, Y, T, T2, C](sh: Cont0.Shift0[F, Y, T, R, X], all: Stack[F, X, S0, T, Z], st: Stack[F, C, S0, T2, Z], rev: Rev[F, X, T, T2, C], counts: List[Cont0.Shots]): Next[?, ?, ?, ?] = st match
+    @tailrec def cut[X, Y, T, T2, C](sh: Cont0.Shift0[F, Y, T, R, X], all: Stack[F, X, S0, T, Z], st: Stack[F, C, S0, T2, Z], rev: Rev[F, X, T, T2, C]): Next[?, ?, ?, ?] = st match
       // no delimiter answers, and no boundary: the capture goes OUT as an
       // operation, for a machine outside this one (Delim.runNested)
       case Done() => null
-      case r: Run[F, C, S0, ?, T2, ?, Z] => cut(sh, all, r.below, Rev.SnocRun(rev, r.frames), counts)
+      case r: Run[F, C, S0, ?, T2, ?, Z] => cut(sh, all, r.below, Rev.SnocRun(rev, r.frames))
       // a `k` pushed onto an empty machine stands as the stack itself
       // (`Rev.onto`): its two nodes, spelled out, are walked as any
       case kp: Kept[F, C, S0, T2, y, Z] @unchecked =>
-        cut(sh, all, Run(kp.frames, delimiterOf(kp)), rev, counts)
+        cut(sh, all, Run(kp.frames, delimiterOf(kp)), rev)
       case d: Reset[F, C, S0, T2, ?, ?, ?, Z] if d.p eq Cont0.boundary[Any] => throw NoPrompt(sh.at, sh.p.label, installed(all))
       case d: Reset[F, C, S0, T2, y2, s2, w, Z] =>
         if sh.p eq d.p then
@@ -840,18 +812,14 @@ object Frames:
             if sh.bare then
               if !Cont0.plain(d.ret) then throw new UnsupportedOperationException(
                 s"${sh.at}: a control-capture to ${d.p.label}, which is a `dollar`: its bare continuation answers the body's type, not the prompt's (specs/shift0-dollar.md)")
-              plainly(entered(Rev.link(rev, noStack[F, C, T2]), counts))
+              plainly(Rev.link(rev, noStack[F, C, T2]))
             else
-              // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule), a fresh count
-              val shots = fresh(d.shots)
-              val counted = count(shots, counts)
-              rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](entered(Rev.close(rev, d.p, d.ret, shots), counted)))
+              // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule)
+              rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](Rev.close(rev, d.p, d.ret)))
           // the body in the delimiter's place, over the segment that waited for it
           started(sh, bodyOf(sh, k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, T2, w]](d.frames)), d.below)
         else
-          val shots = fresh(d.shots)
-          val counted = count(shots, counts)
-          cut(sh, all, runOf(d.frames, d.below), Rev.SnocReset(rev, d.p, d.ret, shots), counted)
+          cut(sh, all, runOf(d.frames, d.below), Rev.SnocReset(rev, d.p, d.ret))
 
     /** an operation of `F`, not of `Cont0`: what the head form hands out */
     def foreign(a: Freer[G, ?, ?, ?]): Boolean = a match
@@ -868,9 +836,9 @@ object Frames:
      * shape is anything else, and the walk decides.
      */
     def nearest[X, Y, T, S1, Y1](sh: Cont0.Shift0[F, Y, T, R, X], fs: Frames[F, X, S1, T, Y1], st: Stack[F, Y1, S0, S1, Z]): Next[?, ?, ?, ?] = st match
-      case d: Reset[F, Y1, S0, S1, y2, s2, w, Z] if (sh.p eq d.p) && !sh.bare && (d.shots == null) && !(d.p eq Cont0.boundary[Any]) =>
+      case d: Reset[F, Y1, S0, S1, y2, s2, w, Z] if (sh.p eq d.p) && !sh.bare && !(d.p eq Cont0.boundary[Any]) =>
         val ey = identical(sh.p, d.p)
-        val seg: Stack[F, X, S1, T, y2] = Kept[F, X, S1, T, Y1, y2](fs, d.p, d.ret, null)
+        val seg: Stack[F, X, S1, T, y2] = Kept[F, X, S1, T, Y1, y2](fs, d.p, d.ret)
         val k: Stack[F, X, T, T, Y] = rebase(ey.flip.liftCo[[y] =>> Stack[F, X, S1, T, y]](seg))
         started(sh, bodyOf(sh, k), rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, S1, w]](d.frames)), d.below)
       case _ => null
@@ -882,7 +850,7 @@ object Frames:
       nearest(sh, fs, st) match
         case null =>
           val all = runOf(fs, st)
-          cut(sh, all, all, Rev.nil[F, X, T], Nil)
+          cut(sh, all, all, Rev.nil[F, X, T])
         case n => n
 
     /** a resumption's registers: `focus` over the stack `k`'s nodes were
@@ -952,8 +920,7 @@ object Frames:
         e match
           // the delimiter, asked for as an operation, becomes a node — entered
           case rs: Cont0.Reset0[F, X, a, T, R] @unchecked =>
-            if rs.shots != null then rs.shots.enter()
-            loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, rs.shots, fs, st))
+            loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, fs, st))
           case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => capture(sh, fs, st) match
             case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
             // nobody here answers it: out, as an operation over the stack
@@ -978,8 +945,7 @@ object Frames:
 enum Cont0[F[_, _, +_], T, R, +X]:
   case Reset0[F[_, _, +_], Y, A, T, R](p: Prompt[Y],
                                        ret: A => Freer[Cont0.Row[F], T, T, Y],
-                                       body: Freer[Cont0.Row[F], T, R, A],
-                                       shots: Cont0.Shots | Null) extends Cont0[F, T, R, Y]
+                                       body: Freer[Cont0.Row[F], T, R, A]) extends Cont0[F, T, R, Y]
   case Shift0[F[_, _, +_], Y, T, R, X](p: Prompt[Y],
                                        f: Stack[F, X, T, T, Y] => Freer[Cont0.Row[F], T, R, Y],
                                        bare: Boolean, under: Boolean, strict: Boolean, at: String) extends Cont0[F, T, R, X]
@@ -988,13 +954,6 @@ object Cont0:
   /** the row: `Cont0` beside any indexed signature `F`; the effect tree's
    * signature is `Freer.Lift[Fx]` here */
   type Row[F[_, _, +_]] = [T, R, X] =>> Cont0[F, T, R, X] | F[T, R, X]
-
-  /** a `dollarResumed`'s count: told each time the machine ENTERS the
-   * delimiter — at the operation, and at each run of a capture that
-   * took it (a capture gets a fresh count) */
-  final class Shots(val resumed: Int => Unit):
-    var n: Int = 0
-    def enter(): Unit = { n += 1; resumed(n) }
 
   /** a fresh delimiter tag, labelled with the line that asked for it */
   def prompt[Y](using at: At): Prompt[Y] = new Prompt[Y]("prompt", at.where)
@@ -1027,15 +986,11 @@ object Cont0:
   /** `ret $ body`: the body under the delimiter — an operation, so it
    * reaches the machine through any handler loop between them */
   def dollar[F[_, _, +_], Y, A, T, R](p: Prompt[Y])(ret: A => Freer[Row[F], T, T, Y])(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, Y] =
-    Inject[Row[F], T, R, Y](Cont0.Reset0[F, Y, A, T, R](p, ret, body, null))
-
-  /** `$` told each time it is entered (see `Shots`) */
-  def dollarResumed[F[_, _, +_], Y, A, T, R](p: Prompt[Y])(ret: A => Freer[Row[F], T, T, Y], resumed: Int => Unit)(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, Y] =
-    Inject[Row[F], T, R, Y](Cont0.Reset0[F, Y, A, T, R](p, ret, body, Shots(resumed)))
+    Inject[Row[F], T, R, Y](Cont0.Reset0[F, Y, A, T, R](p, ret, body))
 
   /** `$` with `ret = pure`: reset, a PLAIN delimiter */
   def reset[F[_, _, +_], T, R, A](p: Prompt[A])(body: Freer[Row[F], T, R, A]): Freer[Row[F], T, R, A] =
-    Inject[Row[F], T, R, A](Cont0.Reset0[F, A, A, T, R](p, identity[F, T, A], body, null))
+    Inject[Row[F], T, R, A](Cont0.Reset0[F, A, A, T, R](p, identity[F, T, A], body))
 
   def shift0[F[_, _, +_], Y, T, R, X](p: Prompt[Y])(f: Stack[F, X, T, T, Y] => Freer[Row[F], T, R, Y])(using at: At): Freer[Row[F], T, R, X] =
     Inject[Row[F], T, R, X](Cont0.Shift0[F, Y, T, R, X](p, f, false, false, false, at.where))
@@ -1070,13 +1025,13 @@ object Cont0:
 private enum Rev[F[_, _, +_], A, T, S2, Y]:
   case Nil[F[_, _, +_], A, T]() extends Rev[F, A, T, T, A]
   case SnocRun[F[_, _, +_], A, T, S3, S2, Y0, Y](prev: Rev[F, A, T, S3, Y0], frames: Frames[F, Y0, S2, S3, Y]) extends Rev[F, A, T, S2, Y]
-  case SnocReset[F[_, _, +_], A, T, S2, Y0, Y](prev: Rev[F, A, T, S2, Y0], p: Prompt[Y], ret: Y0 => Freer[Cont0.Row[F], S2, S2, Y], shots: Cont0.Shots | Null) extends Rev[F, A, T, S2, Y]
+  case SnocReset[F[_, _, +_], A, T, S2, Y0, Y](prev: Rev[F, A, T, S2, Y0], p: Prompt[Y], ret: Y0 => Freer[Cont0.Row[F], S2, S2, Y]) extends Rev[F, A, T, S2, Y]
 
 private object Rev:
   @tailrec def link[F[_, _, +_], A, S, T, S2, Y, Z](rev: Rev[F, A, T, S2, Y], st: Stack[F, Y, S, S2, Z]): Stack[F, A, S, T, Z] = rev match
     case Nil() => st
     case SnocRun(prev, frames) => link(prev, Stack.Run(frames, st))
-    case SnocReset(prev, p, ret, shots) => link(prev, Stack.Reset(p, ret, shots, Frames.noFrames, st))
+    case SnocReset(prev, p, ret) => link(prev, Stack.Reset(p, ret, Frames.noFrames, st))
 
   /**
    * A cut's `k`, closed: the reversed prefix linked down to the delimiter
@@ -1086,18 +1041,17 @@ private object Rev:
    * to resume. An empty last segment is `Kept(End, …)`.
    */
   def close[F[_, _, +_], A, T, S2, Y0, Y](rev: Rev[F, A, T, S2, Y0], p: Prompt[Y],
-                                         ret: Y0 => Freer[Cont0.Row[F], S2, S2, Y],
-                                         shots: Cont0.Shots | Null): Stack[F, A, S2, T, Y] = rev match
-    case r: SnocRun[F, A, T, ?, S2, ?, Y0] @unchecked => link(r.prev, Stack.Kept(r.frames, p, ret, shots))
-    case _ => link(rev, Stack.Kept(Frames.noFrames[F, Y0, S2], p, ret, shots))
+                                         ret: Y0 => Freer[Cont0.Row[F], S2, S2, Y]): Stack[F, A, S2, T, Y] = rev match
+    case r: SnocRun[F, A, T, ?, S2, ?, Y0] @unchecked => link(r.prev, Stack.Kept(r.frames, p, ret))
+    case _ => link(rev, Stack.Kept(Frames.noFrames[F, Y0, S2], p, ret))
 
   @tailrec def reverse[F[_, _, +_], A, S2, T0, T, X, Y](ks: Stack[F, X, S2, T, Y], acc: Rev[F, A, T0, T, X]): Rev[F, A, T0, S2, Y] = ks match
     case Stack.Done() => acc
     case Stack.Run(frames, below) => reverse(below, SnocRun(acc, frames))
     case d: Stack.Reset[F, X, S2, T, y, ?, ?, Y] => d.frames match
-      case _: Frames.End[F, y, ?] @unchecked => reverse(d.below, SnocReset(acc, d.p, d.ret, d.shots))
-      case fr => reverse(d.below, SnocRun(SnocReset(acc, d.p, d.ret, d.shots), fr))
-    case kp: Stack.Kept[F, X, S2, T, y, Y] @unchecked => SnocReset(SnocRun(acc, kp.frames), kp.p, kp.ret, kp.shots)
+      case _: Frames.End[F, y, ?] @unchecked => reverse(d.below, SnocReset(acc, d.p, d.ret))
+      case fr => reverse(d.below, SnocRun(SnocReset(acc, d.p, d.ret), fr))
+    case kp: Stack.Kept[F, X, S2, T, y, Y] @unchecked => SnocReset(SnocRun(acc, kp.frames), kp.p, kp.ret)
 
   /** the empty prefix, one object (as `Frames.noFrames`: no field, phantom indexes) */
   private val theNil: Nil[Nothing, Any, Any] = Nil()
@@ -1129,17 +1083,8 @@ private object Rev:
   private def relinkOrSplice[F[_, _, +_], A, S, T, S2, Y, S1, W, Z](ks: Stack[F, A, S2, T, Y], fs: Frames[F, Y, S1, S2, W], st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] = ks match
     // the usual `k`: its delimiter over the live registers, typed — the
     // segment stays shared, the delimiter is the one node built. Every `k`
-    // a capture builds ends in a `Kept` (`nearest`, `close`), so this and
-    // the counted shape under it are the two a resumption meets; anything
-    // else (a head form fed back) is reversed and relinked
-    case kp: Stack.Kept[F, A, S2, T, y, Y] @unchecked => Stack.Run(kp.frames, Stack.Reset(kp.p, kp.ret, kp.shots, fs, st))
-    // a `dollarResumed` capture: its `Enter` frame over the `Kept`
-    case r: Stack.Run[F, A, S2, ?, T, ?, Y] @unchecked => keptUnder(r, fs, st) match
-      case null => splice(ks, Frames.runOf(fs, st))
-      case k => k
+    // a capture builds ends in a `Kept` (`nearest`, `close`), so this is
+    // the one a resumption meets; anything else (a head form fed back) is
+    // reversed and relinked
+    case kp: Stack.Kept[F, A, S2, T, y, Y] @unchecked => Stack.Run(kp.frames, Stack.Reset(kp.p, kp.ret, fs, st))
     case _ => splice(ks, Frames.runOf(fs, st))
-
-  private def keptUnder[F[_, _, +_], A, S, T, S2, S3, Y1, Y, S1, W, Z](r: Stack.Run[F, A, S2, S3, T, Y1, Y], fs: Frames[F, Y, S1, S2, W],
-                                                                      st: Stack[F, W, S, S1, Z]): Stack[F, A, S, T, Z] | Null = r.below match
-    case kp: Stack.Kept[F, Y1, S2, S3, ?, Y] @unchecked => Stack.Run(r.frames, Stack.Run(kp.frames, Stack.Reset(kp.p, kp.ret, kp.shots, fs, st)))
-    case _ => null
