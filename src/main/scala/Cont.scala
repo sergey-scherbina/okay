@@ -882,11 +882,7 @@ object Frames:
   def run[F[_, _, +_], S0, R, Z](p: Freer[Cont0.Row[F], S0, R, Z]): Freer[Cont0.Row[F], S0, R, Z] =
     type G = Cont0.Row[F]
 
-    /** the machine's three registers, between the hot core and the
-     * driver: a cold event (a capture, a resumption) leaves `loop` as one
-     * of these, and `go` re-enters it typed at its own indexes */
-    final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z]):
-      def go(): Freer[G, S0, R, Z] | Next[?, ?, ?, ?] = loop(focus, fs, st)
+    final class Next[X, T, S1, Y](val focus: Freer[G, T, R, X], val fs: Frames[F, X, S1, T, Y], val st: Stack[F, Y, S0, S1, Z])
 
     /** a capture's fresh count for a delimiter it copies (listed for `Enter`
      * by the caller: a pair here was a `Tuple2` per delimiter crossed) */
@@ -980,17 +976,7 @@ object Frames:
       case rn: Run[F, X, S0, s2, T, y, Z] => Next[X, T, s2, y](focus, rn.frames, rn.below)
       case sp => Next[X, T, T, X](focus, noFrames[F, X, T], sp)
 
-    /**
-     * THE HOT CORE: binds, pops (a frame, a delimiter, a segment), a
-     * delimiter's install, a plain delay — and nothing else. A capture and
-     * a resumption LEAVE it as a `Next`, for `drive` to re-enter. The
-     * reason is the register allocator, read off the machine code (hsdis,
-     * kontResetOnly): with the cold arms' merges in the same loop, C2 kept
-     * all three registers in stack slots — 74 reloads from `sp` in the
-     * compiled loop against the single-list machine's 34, which kept
-     * `focus` in a register — and every step paid them.
-     */
-    @tailrec def loop[X, T, S1, Y](focus: Freer[G, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] | Next[?, ?, ?, ?] = focus match
+    @tailrec def loop[X, T, S1, Y](focus: Freer[G, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Freer[G, S0, R, Z] = focus match
       case b: Bind[G, T, ?, R, ?, X] => Frames.as(b.f) match
         case null => b.a match
           // a value under a Bind: apply, no frame — what `Freer.resume`'s
@@ -1008,7 +994,8 @@ object Frames:
         // a stack as the continuation — a resumed `k`, or the head form
         // fed back: its nodes pushed, never its frames copied
         case ks =>
-          pushed(b.a, Rev.onto(ks, fs, st))
+          val n = pushed(b.a, Rev.onto(ks, fs, st))
+          loop(n.focus, n.fs, n.st)
       case r: Return[G, R, X] => fs match
         case fr: Frame[F, X, S1, s2, T, ?, Y] => loop(fr.f(r.a), fr.rest, st)
         case _: End[F, X, S1] @unchecked => st match
@@ -1026,7 +1013,8 @@ object Frames:
         // a resumption: the value at the top of its stack, pushed — never forced
         case null => loop(d.thunk(), fs, st)
         case r: Resume[F, a, T, R, X] =>
-          pushed(Return[G, R, a](r.a), Rev.onto(r.k, fs, st))
+          val n = pushed(Return[G, R, a](r.a), Rev.onto(r.k, fs, st))
+          loop(n.focus, n.fs, n.st)
       // the operations, in the loop: a `Next` per `Reset0` and a union
       // result's type test cost the first cut of step 1 its install lane.
       // Either node carries one — `Diag` is `Inject` on the diagonal, its
@@ -1043,17 +1031,12 @@ object Frames:
             if rs.shots != null then rs.shots.enter()
             loop[a, T, T, a](rs.body, noFrames[F, a, T], Reset(rs.p, rs.ret, rs.shots, fs, st))
           case sh: Cont0.Shift0[F, ?, T, R, X] @unchecked => capture(sh, fs, st) match
+            case n: Next[x, ?, ?, ?] => loop(n.focus, n.fs, n.st)
             // nobody here answers it: out, as an operation over the stack
             case null => Bind(focus, runOf(fs, st))
-            case n => n
           case _ => Bind(focus, runOf(fs, st))
 
-    /** the driver: re-enter the core at each cold event's registers */
-    @tailrec def drive(r: Freer[G, S0, R, Z] | Next[?, ?, ?, ?]): Freer[G, S0, R, Z] = r match
-      case n: Next[?, ?, ?, ?] => drive(n.go())
-      case done: Freer[G, S0, R, Z] @unchecked => done
-
-    drive(loop(p, noFrames[F, Z, S0], noStack[F, Z, S0]))
+    loop(p, noFrames[F, Z, S0], noStack[F, Z, S0])
 
 /**
  * THE TWO OPERATIONS: the delimiter and the capture, both on the join
