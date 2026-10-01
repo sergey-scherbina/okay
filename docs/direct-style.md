@@ -68,17 +68,13 @@ monad with answer-type modification — types the construction
 object Monadic:
 
   extension [F[_] : Monad, A](m: F[A])
-    /** μ: the monadic value as a direct value — one definition, both
-     * spellings: `m.reflect` and `reflect(m)` (an extension is a
-     * method; the prefix form is its desugared call) */
+    /** the monadic value as a direct value */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ — the same glyph as Direct's mark and as
-     * `Throws.?` (specs/unwrap-glyph.md): the value, the context deals
-     * with what was around it */
+    /** the symbolic `reflect` */
     inline def ?[B]: Cont[A, F[B], F[B]] = reflect[B]
 
-  /** the delimiter: a direct-style block back into its monad */
+  /** back into the monad */
   inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =
     p / (a => M.pure(a))
 ```

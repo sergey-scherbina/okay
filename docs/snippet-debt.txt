@@ -984,8 +984,6 @@ docs/theory/05-effects-handlers.md	case OrElse[A](a: A ! Tx, b: A ! Tx)  extends
 docs/theory/05-effects-handlers.md	case Pure(a)             => pinned[S, R](k(a))
 docs/theory/05-effects-handlers.md	case Shift (f: (A => S) => R, depth) // Cont.scala
 docs/theory/05-effects-handlers.md	split[F, G](e)(e => h(e))(e => shift(k => perform(e).flatMap(k)))
-docs/theory/06-tagless-staging.md	* evaluates to plain nested closures. */
-docs/theory/06-tagless-staging.md	/** Staging via final tagless (Carette–Kiselyov–Shan, the partial
 docs/theory/06-tagless-staging.md	transparent inline def Control[M[_, _, _]]: Control[M] = summonInline[Control[M]]
 docs/theory/07-logic-streams.md	!.loop[Int, Int, Take % String](0) { n =>
 docs/theory/07-logic-streams.md	Take.await[String].map {

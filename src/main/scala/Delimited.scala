@@ -3,90 +3,57 @@ package okay
 import okay.Freer.{Return, Inject, Bind}
 
 /**
- * THE CONTINUATION MACHINE BEHIND AN INTERFACE (specs/delimited.md).
- *
- * Dybvig, Peyton Jones and Sabry's `MonadDelimitedCont` ("A monadic
- * framework for delimited continuations", JFP 2007) in our variant: a
- * few primitives over a carrier `M[S, R, A]` — the freer tree's
- * indexes, a program from answer `R` to `S` producing `A` — every
- * control operator derived over them, and the frame machine ONE
- * instance of the trait (`Delimited.machine`).
- *
- *   our primitive        DPJS           what it is
- *   `delimiter`          `newPrompt`    a fresh name (identity is allocation: no program)
- *   `dollar`             `pushPrompt`   `ret $ body` (λ$); `pushPrompt` is `pure $`
- *   `shift0`             `withSubCont`  capture to the delimiter: `k` WITH it and its `ret`
- *   `resume`             `pushSubCont`  run a COMPUTATION inside `k`; `k(a)` is `resume(k)(pure(a))`
- *
- * OUR VARIANT, decided (specs/delimited.md): DPJS's capture leaves the
- * prompt out of `k` (it is `control0`) and derive `shift0` by pushing
- * it back; with `$` the delimiter carries `ret`, which that derivation
- * would have to hand back beside `k`. Ours keeps it in `k`, λ$'s
- * `($/S0)` rule — the machine as it is.
- *
- * NOT `Control` (Cont.scala): that is Danvy and Filinski's ONE-prompt
- * `shift`/`reset` with answer-type modification, the user's level, with
- * a closure instance (`Func`) this trait cannot have. `Control[Cont]` is
- * built on this one.
+ * THE MACHINE'S INTERFACE: Dybvig, Peyton Jones & Sabry's `MonadDelimitedCont` (JFP 2007) in λ$'s variant.
+ * Primitives: `delimiter` (newPrompt), `dollar` (pushPrompt, with `ret`), `shift0` (withSubCont, but `k`
+ * keeps the delimiter and `ret`), `resume` (pushSubCont: a computation inside `k`). Derived: `reset`,
+ * `shift`, `abort`. Instances: `Delimited.machine` and the tests' reference. `Control` is the one-prompt
+ * user level, built on this.
  */
 trait Delimited[M[_, _, _]]:
 
-  /** a delimiter's name: its answer `Y`, and the index `I` it is installed at */
+  /** a delimiter's name: answer `Y`, installed at index `I` */
   type Delimiter[Y, I]
 
-  /** a captured stack: from `A` at `T` through the delimiter to its answer
-   * `Z` at `S` — and a function, applied as one: `k(a)` resumes */
+  /** a captured stack, applied as a function */
   type SubCont[A, S, T, Z] <: A => M[S, T, Z]
 
-  /** a fresh delimiter, labelled with the line that asked for it */
+  /** a fresh delimiter */
   def delimiter[Y, I](using At): Delimiter[Y, I]
 
   /** a value */
   def pure[R, A](a: A): M[R, R, A]
 
-  /** sequencing, with the answer type moving as `Bind` moves it */
+  /** sequencing */
   def bind[A, B, S, T, R](m: M[T, R, A])(f: A => M[S, T, B]): M[S, R, B]
 
-  /** run to a value — DPJS's `runCC`: every capture must find its
-   * delimiter inside `m` (else `NoPrompt`) */
+  /** run to a value (`runCC`); a capture without its delimiter is `NoPrompt` */
   def run[A](m: M[A, A, A]): A
 
-  /** `ret $ body`: the body under the delimiter, `ret` run OUTSIDE it on
-   * the body's value, and carried by a capture to it */
+  /** `ret $ body`: `ret` runs outside the delimiter and rides in `k` */
   def dollar[Y, A, T, R](d: Delimiter[Y, T])(ret: A => M[T, T, Y])(body: M[T, R, A]): M[T, R, Y]
 
-  /** capture to `d`: `f` gets the stack up to it WITH it (and its `ret`),
-   * and its answer stands in the delimiter's place, at its index */
+  /** capture to `d`, `k` with it; the body takes its place */
   def shift0[Y, I, T, R, X](d: Delimiter[Y, I])(f: SubCont[X, I, T, Y] => M[I, R, Y])(using At): M[T, R, X]
 
-  /** the computation `m` run inside `k`: its value fed to `k` */
+  /** run `m` inside `k`; `k(a)` is `resume(k)(pure(a))` */
   def resume[A, S, T, R, Z](k: SubCont[A, S, T, Z])(m: M[T, R, A]): M[S, R, Z]
 
-  // ---- derived, over any instance
 
-  /** `⟨body⟩`: `pure $ body` — λ$'s own definition of the plain delimiter */
+  /** `pure $ body` */
   def reset[T, R, A](d: Delimiter[A, T])(body: M[T, R, A]): M[T, R, A] =
     dollar[A, A, T, R](d)(a => pure[T, A](a))(body)
 
-  /** `shift`: `shift0` whose body runs under a fresh plain delimiter of
-   * the same name — APLAS 2012's `S k.e = S0 k.⟨e⟩` */
+  /** `shift0` with the body under `reset` (S k.e = S0 k.<e>) */
   def shift[Y, I, T, R, X](d: Delimiter[Y, I])(f: SubCont[X, I, T, Y] => M[I, R, Y])(using At): M[T, R, X] =
     shift0[Y, I, T, R, X](d)(k => reset[I, R, Y](d)(f(k)))
 
-  /** leave the delimiter with a value: a `shift0` that drops `k` */
+  /** leave `d` with a value */
   def abort[Y, T, X](d: Delimiter[Y, T])(value: Y)(using At): M[T, T, X] =
     shift0[Y, T, T, T, X](d)(_ => pure[T, Y](value))
 
 object Delimited:
 
-  /**
-   * THE FRAME MACHINE as an instance: its programs are the freer tree
-   * over `Cont0` beside `F`, its names `Cont0.Delimiter`, its captured
-   * stacks `Stack`. The primitives are the operations `Frames.run`
-   * already interprets, and `resume(k)(m)` is `Bind(m, k)` — a bind
-   * whose continuation is a `Stack` is the machine's resumption rule,
-   * so resuming with a whole computation needs no operation of its own.
-   */
+  /** the frame machine: `dollar`/`shift0` are its operations, `resume(k)(m)` is `Bind(m, k)` */
   final class Machine[F[_, _, +_]] private[Delimited] () extends Delimited[[S, R, A] =>> Freer[Cont0.Row[F], S, R, A]]:
     type Delimiter[Y, I] = Cont0.Delimiter[Y, I]
     type SubCont[A, S, T, Z] = Stack[F, A, S, T, Z]
@@ -98,9 +65,7 @@ object Delimited:
     def bind[A, B, S, T, R](m: Freer[Cont0.Row[F], T, R, A])(f: A => Freer[Cont0.Row[F], S, T, B]): Freer[Cont0.Row[F], S, R, B] =
       Bind(m, f)
 
-    /** under the barrier, as `Delim.run`; a machine with only `Cont0`'s
-     * operations answers a value, and any other head form is a program
-     * that performed an operation of `F` nobody handled */
+    /** under the barrier; any head form but a value is an unhandled operation of `F` */
     def run[A](m: Freer[Cont0.Row[F], A, A, A]): A =
       Frames.run[F, A, A, A](reset[A, A, A](Cont0.boundary[A, A])(m)) match
         case Return(a) => a
@@ -110,8 +75,7 @@ object Delimited:
                           (body: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, Y] =
       Inject[Cont0.Row[F], T, R, Y](Cont0.Dollar0[F, Y, A, T, R](d, ret, body))
 
-    /** the plain delimiter with a `ret` that captures nothing — one object
-     * per call site, where the trait's default closes over the instance */
+    /** a `ret` that captures nothing: one object per call site */
     override def reset[T, R, A](d: Cont0.Delimiter[A, T])(body: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], T, R, A] =
       Inject[Cont0.Row[F], T, R, A](Cont0.Dollar0[F, A, A, T, R](d, (a: A) => Return[Cont0.Row[F], T, A](a), body))
 
@@ -122,9 +86,6 @@ object Delimited:
     def resume[A, S, T, R, Z](k: Stack[F, A, S, T, Z])(m: Freer[Cont0.Row[F], T, R, A]): Freer[Cont0.Row[F], S, R, Z] =
       Bind[Cont0.Row[F], S, T, R, A, Z](m, k)
 
-  /** ONE MACHINE FOR EVERY `F`: it holds nothing, so the signature is
-   * phantom and one object serves every one of them, as `Frames.noFrames`
-   * serves every segment type — the cast is that sentence, and a call
-   * site pays no allocation for the interface */
+  /** one stateless machine for every `F` (phantom signature) */
   private val theMachine: Machine[[S, R, X] =>> Nothing] = Machine()
   def machine[F[_, _, +_]]: Machine[F] = theMachine.asInstanceOf[Machine[F]]
