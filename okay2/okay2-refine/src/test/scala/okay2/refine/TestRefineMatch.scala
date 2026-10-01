@@ -11,14 +11,14 @@ class TestRefineMatch extends munit.FunSuite {
   val fxForward: Refine[Json, String] = field("fxForward") >>> field("pair") >>> str
 
   def route(j: Json): String = j match {
-    case trade(swap((ccy, n))) if ccy == "EUR" => s"eur swap of $n"
+    case trade(swap((ccy, n))) if ccy == "EUR" => s"eur swap of ${n.toLong}"   // a Double prints "5.0" on the JVM, "5" on JS
     case trade(swap((ccy, _))) => s"$ccy swap"
     case trade(fxForward(pair)) => s"fx $pair"
     case _ => "unknown"
   }
 
   test("a pattern is a case: nested extractors are a path, guards work") {
-    assertEquals(route(Json.parse("""{"dataDocument": {"trade": {"swap": {"currency": "EUR", "notional": 5}}}}""")), "eur swap of 5.0")
+    assertEquals(route(Json.parse("""{"dataDocument": {"trade": {"swap": {"currency": "EUR", "notional": 5}}}}""")), "eur swap of 5")
     assertEquals(route(Json.parse("""{"dataDocument": {"trade": {"swap": {"currency": "USD", "notional": 7}}}}""")), "USD swap")
     assertEquals(route(Json.parse("""{"dataDocument": {"trade": {"fxForward": {"pair": "EURUSD"}}}}""")), "fx EURUSD")
     assertEquals(route(Json.parse("""{"letter": "hello"}""")), "unknown")

@@ -21,14 +21,14 @@ class TestRefineMatch extends Diagnosed:
 
   /** recognition and routing in ONE construct of the language: nested extractors are paths, guards are guards */
   def route(j: Json): String = j match
-    case trade(swap((ccy, n))) if ccy == "EUR" => s"eur swap of $n"
+    case trade(swap((ccy, n))) if ccy == "EUR" => s"eur swap of ${n.toLong}"   // a Double prints "5.0" on the JVM, "5" on JS
     case trade(swap((ccy, _))) => s"$ccy swap"
     case trade(fxForward(pair)) => s"fx $pair"
     case notADocument(_) => "a letter"
     case _ => "unknown"
 
   test("a pattern is a case: nested extractors are a path, guards work, the bound value is the pattern's value") {
-    assertEquals(route(eurSwap), "eur swap of 5.0")
+    assertEquals(route(eurSwap), "eur swap of 5")
     assertEquals(route(usdSwap), "USD swap")
     assertEquals(route(fx), "fx EURUSD")
     assertEquals(route(letter), "a letter")

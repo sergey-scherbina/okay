@@ -292,7 +292,7 @@ pattern a path, a guard a guard — recognition written in the language's
 own construct:
 
 ```scala
-case trade(swap((ccy, n))) if ccy == "EUR" => s"eur swap of $n"
+case trade(swap((ccy, n))) if ccy == "EUR" => s"eur swap of ${n.toLong}"   // a Double prints "5.0" on the JVM, "5" on JS
 case trade(fxForward(pair)) => s"fx $pair"
 ```
 
