@@ -25,7 +25,9 @@ switched exactly as below. Against the runner this replaced, measured
 the day it landed: the second kind (`HandlerBenchmark.contAnswer`) at
 1.09x, `PState` (statePara) at 1.85–1.90x, a generator over `Cont`
 (`FibBenchmark.fib100`) at 2.62x — the third kind's strict `k` is where
-the work is.
+the work is. The same day's next lane (cont-strict-k) brought statePara
+to 1.67–1.71x and fib100 to 2.45x, and had the macro emit the second
+kind's program itself — simpler, fewer bytes, contAnswer at 1.20x.
 
 **A body that only ever calls `k` last** — `k => k(v)`, also under
 `if`/`match` and after statements that do not mention `k` — is the
