@@ -722,14 +722,15 @@ given Control[Func] with
  *
  * The idiom is `Freer.Mapped`'s: a function that knows what it is,
  * sitting in a `Bind` as an ordinary `A => Freer`, callable as one,
- * and taken apart by the one loop that knows the class. `Freer` knows
+ * and taken apart by the one loop that knows the class — `Stack`'s; a
+ * segment is only ever a register or a field, never a continuation. `Freer` knows
  * nothing of either; this is a second interpreter, orthogonal to the
  * tree (the operator's ask). THE INDEX IS THE JOIN'S, NOT A STACK OF
  * PROMPTS: Delim.Stacked types a program by the prompts installed
  * around it in its DOORS, with `rebase` as their claim (specs/freer-kont.md,
  * Results).
  */
-enum Frames[F[_, _, +_], A, S, T, Z] extends Frames.Known, (A => Freer[Cont0.Row[F], S, T, Z]):
+enum Frames[F[_, _, +_], A, S, T, Z]:
   /** the empty segment: the identity, on the diagonal like `Return` */
   case End[F[_, _, +_], A, S]() extends Frames[F, A, S, S, A]
 
@@ -737,11 +738,6 @@ enum Frames[F[_, _, +_], A, S, T, Z] extends Frames.Known, (A => Freer[Cont0.Row
    * `S2`; the rest goes from `S2` to `S` — `Bind`'s join */
   case Frame[F[_, _, +_], A, S, S2, T, Y, Z](f: A => Freer[Cont0.Row[F], S2, T, Y],
                                               rest: Frames[F, Y, S, S2, Z]) extends Frames[F, A, S, T, Z]
-
-  /** as a function, a segment is a one-segment stack: see `Stack.apply` */
-  def apply(a: A): Freer[Cont0.Row[F], S, T, Z] = this match
-    case End() => Return(a)
-    case _ => Delay(Frames.Resume(a, Stack.Run(this, Frames.noStack[F, Z, S])))
 
 /**
  * THE STACK: segments and the delimiters between them, the same join.
@@ -754,7 +750,7 @@ enum Frames[F[_, _, +_], A, S, T, Z] extends Frames.Known, (A => Freer[Cont0.Row
  * nodes instead of forcing it: a clause's `k(x)` is lazy, so 100 000
  * resumptions from 100 000 clauses nest no JVM frame (TestKont).
  */
-enum Stack[F[_, _, +_], A, S, T, Z] extends Frames.Known, (A => Freer[Cont0.Row[F], S, T, Z]):
+enum Stack[F[_, _, +_], A, S, T, Z] extends (A => Freer[Cont0.Row[F], S, T, Z]):
   /** the bottom: the identity */
   case Done[F[_, _, +_], A, S]() extends Stack[F, A, S, S, A]
 
@@ -796,10 +792,6 @@ enum Stack[F[_, _, +_], A, S, T, Z] extends Frames.Known, (A => Freer[Cont0.Row[
 object Frames:
   import Stack.{Done, Run, Reset}
 
-  /** what the machine's two stacks share: the one class test a bind's
-   * continuation takes to be told from a plain function */
-  sealed trait Known
-
   /** a resumption: the value and the stack it enters, as the thunk of a
    * `Delay` — run by whoever forces it, pushed by the machine */
   final class Resume[F[_, _, +_], A, S, T, Z](val a: A, val k: Stack[F, A, S, T, Z]) extends (() => Freer[Cont0.Row[F], S, T, Z]):
@@ -835,19 +827,19 @@ object Frames:
 
   /**
    * THE TWO CLASS TESTS of the machine, and the claim they make: a
-   * stack sitting as a `Bind`'s continuation (a `Stack`, or a lone
-   * segment), or a `Resume` as a `Delay`'s thunk, is typed by that node
+   * stack sitting as a `Bind`'s continuation, or a `Resume` as a
+   * `Delay`'s thunk, is typed by that node
    * — the function type IS its type, so the test on the class is the
    * whole test (`Free.Bind`'s constant claim, in the same spirit).
    * `null` for any other function.
    */
   def as[F[_, _, +_], A, S, T, Z](f: A => Freer[Cont0.Row[F], S, T, Z]): Stack[F, A, S, T, Z] = f match
-    // one test for the common answer — a plain function is neither — and
-    // the two classes told apart only past it (a test per class on every
-    // bind was part of delimPushOnly's gap)
-    case k: Known => k match
-      case st: Stack[?, ?, ?, ?, ?] => st.asInstanceOf[Stack[F, A, S, T, Z]]
-      case fs: Frames[?, ?, ?, ?, ?] => Run(fs.asInstanceOf[Frames[F, A, S, T, Z]], noStack[F, Z, S])
+    // ONE test per bind: a segment never stands as a continuation (a
+    // captured `k` and a head form's continuation are both `Stack`s), so
+    // `Frames` is not a function and there is no second class to tell
+    // apart — the `Known` marker and its nested test were step 1e's
+    // answer to a question this removes
+    case st: Stack[?, ?, ?, ?, ?] => st.asInstanceOf[Stack[F, A, S, T, Z]]
     case _ => null
 
   def resume[F[_, _, +_], S, T, Z](t: () => Freer[Cont0.Row[F], S, T, Z]): Resume[F, ?, S, T, Z] = t match
@@ -896,6 +888,8 @@ object Frames:
      * by the caller: a pair here was a `Tuple2` per delimiter crossed) */
     def fresh(shots: Cont0.Shots | Null): Cont0.Shots | Null =
       if shots == null then null else Cont0.Shots(shots.resumed)
+    def count(shots: Cont0.Shots | Null, counts: List[Cont0.Shots]): List[Cont0.Shots] =
+      if shots == null then counts else shots :: counts
 
     /** the captured stack under its `Enter` frame, when it has counts */
     def entered[X, S, T, Y](k: Stack[F, X, S, T, Y], counts: List[Cont0.Shots]): Stack[F, X, S, T, Y] =
@@ -921,14 +915,14 @@ object Frames:
             else
               // the nodes WITH the delimiter: `k` carries `ret` (the $/S0 rule), a fresh count
               val shots = fresh(d.shots)
-              val counted = if shots == null then counts else shots :: counts
+              val counted = count(shots, counts)
               rebase(ey.flip.liftCo[[y] =>> Stack[F, X, T2, T, y]](entered(Rev.link(Rev.SnocReset(rev, d.p, d.ret, d.plain, shots), noStack[F, y2, T2]), counted)))
           // the body in the delimiter's place, over the segment that waited for it
           Next[Y, T, s2, w](sh.f(k),
                             rebaseF(ey.flip.liftCo[[y] =>> Frames[F, y, s2, T2, w]](d.frames)), d.below)
         case None =>
           val shots = fresh(d.shots)
-          val counted = if shots == null then counts else shots :: counts
+          val counted = count(shots, counts)
           cut(sh, all, runOf(d.frames, d.below), Rev.SnocReset(rev, d.p, d.ret, d.plain, shots), counted)
 
     /** an operation of `F`, not of `Cont0`: what the head form hands out */

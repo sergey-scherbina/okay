@@ -178,7 +178,6 @@ object Delim {
   private def named[R](what: String)(using at: At): Prompt[R] =
     new Prompt[R](what, at.where)
 
-  /** run the body under the delimiter — reset, as an operation */
   /** the row the machine runs an `A ! Delim + F` program in, and a
    * program of it: `Cont0` beside the lifted `F`, at the effect tree's
    * one index */
@@ -403,10 +402,8 @@ object Delim {
   inline def shift[A](using in: Prompted[?])[F[_]]
                          (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                          (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    okay.effect[rw.R, A](Cont0.Shift0[Freer.Lift[Pure], in.Res, Unit, Unit, A](in.prompt,
-      k => Cont0.reset[Freer.Lift[Pure], Unit, Unit, in.Res](in.prompt)(
-        f.asInstanceOf[(A => Freer[Ro[Pure], Unit, Unit, in.Res]) => Freer[Ro[Pure], Unit, Unit, in.Res]](k)),
-      false, at.where).asInstanceOf[rw.R[A]])
+    Cont0.shift[Freer.Lift[Pure], in.Res, Unit, Unit, A](in.prompt)(
+      f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
 
   /** the 0-variant: the body consumes the delimiter */
   def shift0[R, A, F[+_]](using in: Prompted[R])
@@ -419,9 +416,8 @@ object Delim {
   inline def shift0[A](using in: Prompted[?])[F[_]]
                           (using inline ctx: DirectCtx[F])(using rw: Reader.RowOf[F], at: At)
                           (f: (A => in.Res ! rw.R) => in.Res ! rw.R): A ! rw.R =
-    okay.effect[rw.R, A](Cont0.Shift0[Freer.Lift[Pure], in.Res, Unit, Unit, A](in.prompt,
-      f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => Freer[Ro[Pure], Unit, Unit, in.Res]],
-      false, at.where).asInstanceOf[rw.R[A]])
+    Cont0.shift0[Freer.Lift[Pure], in.Res, Unit, Unit, A](in.prompt)(
+      f.asInstanceOf[Stack[Freer.Lift[Pure], A, Unit, Unit, in.Res] => U[Pure, in.Res]]).asInstanceOf[A ! rw.R]
 
   /** the continuation does not re-install the delimiter */
   def control[R, A, F[+_]](using in: Prompted[R])
@@ -925,26 +921,17 @@ object Delim {
         new Has[Q *: S, P] { type Below = B }
 
     // ================================================================
-    // THE SIGNATURE, WITH ITS TYPES (indexed-effects stage 4)
+    // THE TREE'S INDEX IS THE PROMPT STACK (indexed-effects stage 4,
+    // restated by freer-kont-migrate)
     //
-    // `Delim[+A]` above erases a `Push`'s body and a `Capture`'s `f` to
-    // `Any`, because a unary signature cannot name the row's other half
-    // nor the answer types, and the machine re-types them at two casts.
-    // `Op` below is the same three operations on the INDEXED tree: the
-    // signature is parameterised by the rest of the row `F` (fixed at
-    // `run`, so it may be named), and the tree's index is the prompt
-    // stack the operation runs under — every Delim operation is on the
-    // DIAGONAL (it runs at the stack it was written under; a `Push`
-    // nests its body one deeper through the payload's own index), so
-    // the machine's state is what moves, not the tree's index. The
-    // payloads are exact, the two casts are gone for these operations,
-    // and the `Prog` facade that used to carry the stack as a phantom
-    // is not needed: `Under[F, A, S]` IS the tree.
+    // A stacked program is `Freer` over the same row the unstacked one
+    // runs in — `Cont0` beside `F` — at the prompt stack `S` as its
+    // index. Every operation is on the DIAGONAL: it runs at the stack it
+    // was written under, a `Reset0` nests its body one deeper through
+    // its own payload's index, and the machine's stack is what moves.
+    // `Under[F, A, S]` IS the tree; no facade carries the stack.
     // ================================================================
 
-    /** the row a stacked program runs in: the typed operations, the
-     * unstacked ones (an embedded `A ! Delim + F` brings them, through
-     * `under`), and `F` — the unary members on the diagonal */
     /** the row a stacked program runs in: `Cont0` beside `F`, the unary
      * members on the diagonal — `Delim.Ro` */
     type Row[F[+_]] = Ro[F]
@@ -987,8 +974,6 @@ object Delim {
      * `A ! Delim + F` (Lexical's `Ops`): the same nodes, run by the same
      * machine */
     def erase[F[+_], A, S <: Tuple](p: Under[F, A, S]): A ! Delim + F = p.asInstanceOf[A ! Delim + F]
-
-    /** the same at any pair of indexes (a `Bind`'s continuation has two) */
 
     /**
      * A PROGRAM RE-BASED: the one claim of the stacked doors, and its
@@ -1132,11 +1117,6 @@ object Delim {
     // the index and throw. The index cannot say "this k needs p"; the
     // unstacked door remains (specs/shift0-dollar.md, Decisions).
 }
-
-/** The class IS the whole identity: Delim has no parameter but its
- * (erased) answer type, so splitting a row on it is a TOTAL test —
- * said once here, rather than as a "cannot be checked at runtime"
- * warning at every use site of a test that is in fact complete. */
 
 /**
  * WHERE THIS WAS WRITTEN, as a compile-time constant
