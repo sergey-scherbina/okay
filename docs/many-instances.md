@@ -254,9 +254,10 @@ strategies run the same body, because the body only sees `Inst[F, G]`:
 
 - `Lexical.tail` answers each operation IN PLACE (evidence passing,
   Xie et al., ICFP 2020), with the handler's state in a cell made per
-  run. Its one unsafe shape is a capture from outside the installation
-  resuming its body twice. That shape throws `MultiShotAcrossTail`
-  rather than sharing the cell.
+  run. A cell would be wrong in one shape, a capture from outside the
+  installation resuming its body twice, and that shape needs `Delim` in
+  the row. So on a row WITH `Delim`, `tail` is installed deep instead,
+  the state carried by the continuation, and answers what `deep` does.
 - `Lexical.deep` runs the clauses with shift0 under a `dollar` whose
   return function is the return clause. It suits anything, including
   clauses that call `k` twice or never. It costs about 4x a row
@@ -267,7 +268,7 @@ strategies run the same body, because the body only sees `Inst[F, G]`:
 **You pay for what the row can do.** The instance's type carries the
 body's whole row, `Inst[F, G]`. `deep` and `shallow` need `Delim` in it.
 `tail` on a row WITHOUT `Delim` cannot be crossed by a capture, so it
-gets no guard and no machine, and the program is an ordinary one:
+keeps its cell and needs no machine, and the program is an ordinary one:
 
 ```scala
 val p: (Int, Int) ! Pure = Lexical.State[Int, Int, Pure](5)(s => s.get.flatMap(v => s.set(v * 3)))

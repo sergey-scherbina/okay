@@ -163,20 +163,19 @@ class TestLexicalTail extends munit.FunSuite:
     assertEquals(tail, deep)
   }
 
-  test("multi-shot ACROSS the installation: deep keeps a state per branch, tail refuses loudly instead of sharing its cell") {
+  test("multi-shot ACROSS the installation: tail in a Delim row is installed deep, a state per branch") {
     val deep = run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Delim + Pure](0)(s => pick(s))))
     assertEquals(deep, List((1, 0), (2, 0), (3, 0)))
-    val e = intercept[Lexical.MultiShotAcrossTail](
-      run(reify[List, (Int, Int), Pure](Lexical.State.tail[Int, Int, Delim + Pure](0)(s => pick(s)))))
-    assert(e.getMessage.contains("deep"), e.getMessage)
+    val tail = run(reify[List, (Int, Int), Pure](Lexical.State.tail[Int, Int, Delim + Pure](0)(s => pick(s))))
+    assertEquals(tail, deep)
   }
 
-  test("ACROSS, leaving by abort: a second resumption that never RETURNS through the guard still trips it") {
-    // lexical-tail-guard-abort: the guard is a dollar whose `ret` runs
-    // once per resumption — on a normal return. A resumption that leaves
-    // the body by `abort` to an outer prompt drops its k, so `ret` never
-    // runs, while the cell was already written by the first resumption.
-    // The guard has to count RESUMPTIONS, not returns.
+  test("ACROSS, leaving by abort: each resumption starts from the state the capture saw, never the other's") {
+    // lexical-tail-guard-abort found the shape: a resumption that leaves
+    // the body by `abort` to an outer prompt never returns through the
+    // installation, so a cell written by the first resumption would be
+    // read by the second. Installed deep (cont-core-design), there is no
+    // cell to share.
     val p0 = Delim.prompt[Int]
     val twice: Unit ! Delim + Pure =
       Delim.shift[Int, Unit, Pure](p0)(k => k(()).flatMap(a => k(()).map(b => a * 10 + b)))
@@ -190,13 +189,11 @@ class TestLexicalTail extends munit.FunSuite:
       yield r
     // deep: each resumption starts from the state the capture saw, 0 -> 1, twice
     assertEquals(run(Delim.push[Int, Pure](p0)(Lexical.State.deep[Int, Int, Delim + Pure](0)(body).map(_._2))), 11)
-    // tail: the second resumption would read the first's cell (1 -> 2, answer 12) — refused instead
-    val e = intercept[Lexical.MultiShotAcrossTail](
-      run(Delim.push[Int, Pure](p0)(Lexical.State.tail[Int, Int, Delim + Pure](0)(body).map(_._2))))
-    assert(e.getMessage.contains("deep"), e.getMessage)
+    // tail: the same — a cell would have answered 12 (1 -> 2 on the second resumption)
+    assertEquals(run(Delim.push[Int, Pure](p0)(Lexical.State.tail[Int, Int, Delim + Pure](0)(body).map(_._2))), 11)
   }
 
-  test("the same program run TWICE is not a multi-shot: the cell and the guard are made per run") {
+  test("the same program run TWICE is not a multi-shot: the state is made per run") {
     val once = Lexical.State.tail[Int, Int, Delim + Pure](5)(s => s.get.flatMap(v => s.set(v + 1)))
     assertEquals(run(once), (6, 6))
     assertEquals(run(once), (6, 6))
@@ -312,11 +309,10 @@ class TestLexicalDefault extends munit.FunSuite:
       _ <- s.set(v + x)
     yield v
 
-  test("Lexical.State(s0) is tail: the guard trips across a multi-shot capture, and naming `deep` is the way out") {
-    val e = intercept[Lexical.MultiShotAcrossTail](run(reify[List, (Int, Int), Pure](Lexical.State[Int, Int, Delim + Pure](0)(s => pick(s)))))
-    assert(e.getMessage.contains("deep"), "the refusal names the way out")
-    assertEquals(run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Delim + Pure](0)(s => pick(s)))),
-      List((1, 0), (2, 0), (3, 0)))
+  test("Lexical.State(s0) is tail: across a multi-shot capture in a Delim row it answers as deep does") {
+    val deep = run(reify[List, (Int, Int), Pure](Lexical.State.deep[Int, Int, Delim + Pure](0)(s => pick(s))))
+    assertEquals(deep, List((1, 0), (2, 0), (3, 0)))
+    assertEquals(run(reify[List, (Int, Int), Pure](Lexical.State[Int, Int, Delim + Pure](0)(s => pick(s)))), deep)
   }
 
   enum Flip[+A]:

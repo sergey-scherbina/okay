@@ -110,80 +110,77 @@ object Lexical:
   trait TailClauses[F[+_], S]:
     def op[X](e: F[X], s: S): (S, X)
 
-  /** a tail installation's body was resumed more than once by a
-   * capture from outside it: the cell cannot be in both branches */
-  final class MultiShotAcrossTail(at: String)
-    extends IllegalStateException(
-      s"$at: a `tail` handler's body was resumed twice by a capture from outside it, so its state cell would be shared by both branches. Install this handler with `deep`, which keeps the state in the continuation (specs/lexical-instances.md)")
-
   /**
-   * HOW A TAIL INSTALLATION CLOSES, decided by the ROW at compile time
-   * (lexical-tail-allocs, pay-as-you-go). A body whose row has no
-   * `Delim` cannot be resumed twice from outside, because nothing in it
-   * can capture. It needs no guard and no machine: it ends with a plain
-   * `map`, and the program stays `A ! G`, run by whatever runs `G`. A
-   * body whose row HAS `Delim` gets the guard: a `dollarResumed` that is
-   * told each time a captured context containing it is run again.
+   * HOW A TAIL INSTALLATION IS MADE, decided by the ROW at compile time
+   * (lexical-tail-allocs, pay-as-you-go; cont-core-design).
+   *
+   * A body whose row has no `Delim` cannot be resumed twice from
+   * outside, because nothing in it can capture: the state lives in a
+   * CELL, the operations answer in place, and the body ends with a walk
+   * rather than a `map`. No machine, no capture.
+   *
+   * A body whose row HAS `Delim` can be: a capture from outside the
+   * installation may run its body twice, and a cell would be shared by
+   * both runs. Such an installation is made DEEP — the state carried by
+   * the continuation, `s => k(x)(s1)` — which is right under multi-shot
+   * by construction. Until cont-core-design it kept the cell and the
+   * machine counted every re-entry of a captured context (`Shots`) so
+   * that a guard could throw; correct by design replaced detected at
+   * run time, and the machine lost the count.
    */
   sealed trait Closing[G[+_]]:
-    def close[S, A](body: A ! G, finish: A => (S, A), at: String): (S, A) ! G
+    def install[F[+_], S, A](s0: S, c: TailClauses[F, S], body: Inst[F, G] => A ! G, at: At): (S, A) ! G
 
   object Closing:
     given unguarded[G[+_]](using scala.util.NotGiven[Delim[Any] <:< G[Any]]): Closing[G] with
-      /** WALK the body rather than `map` over it. A `map` at the root is
-       * a `Bind` over the whole body, and `resume` then re-associates
-       * every step of it into a fresh closure and `Bind`: measured +36 B
-       * per operation (lexical-tail-allocs; "never map over a residual").
-       * The walk is `State.handle`'s loop with nothing to handle: the
-       * tail operations are `Delay` nodes that `resume` forces in place,
-       * and a foreign operation is re-emitted with the walk as its
-       * continuation. */
-      def close[S, A](body: A ! G, finish: A => (S, A), at: String): (S, A) ! G =
-        def walk(x: A ! G): (S, A) ! G = (x.resume: @unchecked) match
-          case Free.Return(a) => okay.pure(finish(a))
-          case Free.Inject(e) => Free.Inject(e).flatMap(a => okay.pure(finish(a)))
-          case Free.Bind(Free.Inject(e), k) => Free.Inject(e).flatMap(y => walk(k(y)))
-        walk(body)
+      def install[F[+_], S, A](s0: S, c: TailClauses[F, S], body: Inst[F, G] => A ! G, at: At): (S, A) ! G =
+        Free.delay { () =>
+          var cell = s0
+          val i = new Inst[F, G]:
+            def perform[X](e: F[X]): X ! G = Free.delay { () =>
+              val (s1, x) = c.op(e, cell)
+              cell = s1
+              okay.pure[G, X](x)
+            }
+          /* WALK the body rather than `map` over it. A `map` at the root
+           * is a `Bind` over the whole body, and `resume` then
+           * re-associates every step of it into a fresh closure and
+           * `Bind`: measured +36 B per operation (lexical-tail-allocs;
+           * "never map over a residual"). The walk is `State.handle`'s
+           * loop with nothing to handle: the tail operations are `Delay`
+           * nodes that `resume` forces in place, and a foreign operation
+           * is re-emitted with the walk as its continuation. */
+          def walk(x: A ! G): (S, A) ! G = (x.resume: @unchecked) match
+            case Free.Return(a) => okay.pure((cell, a))
+            case Free.Inject(e) => Free.Inject(e).flatMap(a => okay.pure((cell, a)))
+            case Free.Bind(Free.Inject(e), k) => Free.Inject(e).flatMap(y => walk(k(y)))
+          walk(body(i))
+        }
 
     given guarded[G[+_]](using ev: Delim[Any] <:< G[Any]): Closing[G] with
-      /** the guard counts RUNS of a captured context, not returns
-       * through `ret`: a resumption that leaves by `abort` never
-       * returns, and had already read the first one's cell
-       * (lexical-tail-guard-abort). `Free.delay` makes the count per
-       * run of the program. */
-      def close[S, A](body: A ! G, finish: A => (S, A), at: String): (S, A) ! G =
-        given Row.Sub[Delim + G, G] = collapse(ev)
-        Free.delay { () =>
-          val guard = Delim.prompt[(S, A)]
-          Delim.dollarResumed[A, (S, A), G](guard)(
-            a => okay.pure[Delim + G, (S, A)](finish(a)),
-            n => if n > 1 then throw MultiShotAcrossTail(at))(body.up[Delim + G]).up[G]
-        }
+      def install[F[+_], S, A](s0: S, c: TailClauses[F, S], body: Inst[F, G] => A ! G, at: At): (S, A) ! G =
+        type Ans = S => (S, A) ! G
+        Lexical.deep[F, A, Ans, G](new Clauses[F, A, Ans, Unstacked[G]]:
+          def ret(a: A): Ans ! G = okay.pure[G, Ans](s => okay.pure[G, (S, A)]((s, a)))
+          def op[X](e: F[X], k: X => Ans ! G): Ans ! G =
+            okay.pure[G, Ans] { s =>
+              val (s1, x) = c.op(e, s)
+              k(x).flatMap(f => f(s1))
+            }
+        )(body)(using ev, at).flatMap(f => f(s0))
 
   /**
    * TAIL: evidence passing (Xie, Brachthäuser, Hillerström, Schuster &
    * Leijen, "Effect handlers, evidently", ICFP 2020). An operation
    * calls its clause IN PLACE through the instance, and the handler's
    * state lives in a cell made fresh on every run of the program.
-   * Nothing is captured. The one shape where a cell and `deep`'s
-   * continuation-carried state disagree (a capture from outside the
-   * installation resuming its body twice) exists only if the row has
-   * `Delim`, and there `Closing.guarded` throws `MultiShotAcrossTail`
-   * instead of answering wrongly. Without `Delim` the installation costs
-   * nothing beyond its operations.
+   * Nothing is captured. Where a capture from outside could run the
+   * body twice (a row with `Delim`) the installation is deep instead:
+   * see `Closing`.
    */
   def tail[F[+_], S, A, G[+_]](s0: S)(c: TailClauses[F, S])(body: Inst[F, G] => A ! G)
                               (using closing: Closing[G], at: At): (S, A) ! G =
-    Free.delay { () =>
-      var cell = s0
-      val i = new Inst[F, G]:
-        def perform[X](e: F[X]): X ! G = Free.delay { () =>
-          val (s1, x) = c.op(e, cell)
-          cell = s1
-          okay.pure[G, X](x)
-        }
-      closing.close(body(i), a => (cell, a), at.where)
-    }
+    closing.install(s0, c, body, at)
 
   /**
    * WALK, an OPTIONAL strategy (lexical-tagged-walk; never the default),
@@ -352,27 +349,24 @@ object Lexical:
       val i = new Deep[F, R, G, st.S](Delim.prompt[R], c)
       Freer.Inject(Cont0.Reset0[Freer.Lift[G], R, A, st.S, st.S](i.p, c.ret, Delim.Stacked.rebase(body(i)), null))
 
-    /** a stacked TAIL instance: it answers in place, and the stack check
-     * is what makes holding it safe */
+    /** a stacked TAIL instance. Stacked means the row has `Delim`, so a
+     * capture from outside may run its body twice: it is installed DEEP,
+     * the state carried by the continuation (see `Closing`), and the
+     * stack check is what makes holding it safe */
     final class Tail[F[+_], S0, A, G[+_], S <: Tuple] private[Lexical] (
-        p0: Prompt[(S0, A)], answer: [X] => F[X] => X ! Delim + G) extends In[(S0, A), S](p0):
-      def perform[X](e: F[X])(using st: Stack[?])[B <: Tuple](using Has.Aux[st.S, p.type, B]): Under[G, X, st.S] =
-        Delim.Stacked.at[G, X, st.S](answer(e))
+        p0: Prompt[S0 => Under[G, (S0, A), S]], c: TailClauses[F, S0]) extends In[S0 => Under[G, (S0, A), S], S](p0):
+      def perform[X](e: F[X])(using st: Stack[?])(using Has.Aux[st.S, p.type, S], At): Under[G, X, st.S] =
+        Delim.Stacked.shift0[S0 => Under[G, (S0, A), S], X, G](p)(using st)(k =>
+          Freer.Return((s: S0) => {
+            val (s1, x) = c.op(e, s)
+            k(x).flatMap(f => f(s1))
+          }))
 
-    /** `Lexical.tail`, stacked: the cell and the guard per run, the
-     * guard's delimiter being the instance itself */
+    /** `Lexical.tail`, stacked: deep, the state threaded */
     def tail[F[+_], S0, A, G[+_]](s0: S0)(c: TailClauses[F, S0])(using st: Stack[?])
                                  (body: (i: Tail[F, S0, A, G, st.S]) => Under[G, A, i.p.type *: st.S])
                                  (using at: At): Under[G, (S0, A), st.S] =
-      Delim.Stacked.at[G, (S0, A), st.S](Free.delay { () =>
-        var cell = s0
-        val i = new Tail[F, S0, A, G, st.S](Delim.prompt[(S0, A)], [X] => (e: F[X]) => Free.delay { () =>
-          val (s1, x) = c.op(e, cell)
-          cell = s1
-          okay.pure[Delim + G, X](x)
-        })
-        // the guard counts runs of a captured context, as Closing.guarded's does
-        Delim.dollarResumed[A, (S0, A), G](i.p)(
-          a => okay.pure[Delim + G, (S0, A)]((cell, a)),
-          n => if n > 1 then throw MultiShotAcrossTail(at.where))(Delim.Stacked.erase(body(i)))
-      })
+      val i = new Tail[F, S0, A, G, st.S](Delim.prompt[S0 => Under[G, (S0, A), st.S]], c)
+      Freer.Inject(Cont0.Reset0[Freer.Lift[G], S0 => Under[G, (S0, A), st.S], A, st.S, st.S](
+        i.p, a => Freer.Return((s: S0) => Freer.Return((s, a))), Delim.Stacked.rebase(body(i)), null))
+        .flatMap(f => f(s0))
