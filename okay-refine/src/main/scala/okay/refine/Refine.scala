@@ -32,6 +32,18 @@ sealed trait Refine[A, B] extends Serializable:
   /** read: the value with the path that produced it, or every reason */
   final def run(a: A): Verdict[B] = Refine.run(this, a, Path.empty)
 
+  /**
+   * A PATTERN IS AN EXTRACTOR (refine-match): any pattern is a case of a
+   * plain Scala `match`, and a nested pattern is a path —
+   * `case Fpml.trade(Fpml.swap(s)) if s.ccy == "EUR" =>`. It matches when
+   * the pattern TAKES the input: `Unclear` and `Declined` match no case,
+   * so a `match` never takes one reading of an ambiguous document by
+   * accident. What a `match` cannot say is WHY a case did not match —
+   * for that, `run` (or `Refine.cases`, backlog refine-cases-macro). Each
+   * case runs its pattern: put the cheap cases first.
+   */
+  final def unapply(a: A): Option[B] = run(a).toOption
+
   /** the way back — total on what any branch of this pattern produced,
    * `Left` for a value no branch would have (specs/refine.md, Decisions) */
   final def write(b: B): Either[String, A] = Refine.write(this, b)

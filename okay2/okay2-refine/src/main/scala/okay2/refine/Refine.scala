@@ -30,6 +30,10 @@ sealed trait Refine[A, B] extends Serializable {
   /** read: the value with the path that produced it, or every reason */
   final def run(a: A): Verdict[B] = runAt(a, Path.empty)
 
+  /** A PATTERN IS AN EXTRACTOR (okay's refine-match): a case of a plain
+   * `match`, a nested pattern a path; `Unclear` and `Declined` match no case */
+  final def unapply(a: A): Option[B] = run(a).toOption
+
   /** the way back — total on what any branch of this pattern produced,
    * `Left` for a value no branch would have */
   final def write(b: B): Either[String, A] = writeBack(b)

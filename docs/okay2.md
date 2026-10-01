@@ -2178,6 +2178,10 @@ alternative each. A pattern is also a search (`search`: `Took` the
 answer, `Unclear` a choice point, `Declined` an empty one), so
 `runChoice` lists the readings.
 
+Every pattern is an extractor in a plain `match` too (`unapply`;
+okay's "Patterns in a match"): `case trade(swap((ccy, n))) if ccy ==
+"EUR" =>`.
+
 `RefineLaws.check(pattern, inputs, values, expect)` checks any pattern's
 laws on any samples, as in okay (docs/modules/okay-refine.md, "Checking a
 pattern's laws").

@@ -341,6 +341,17 @@ Stage 3 — lessons:
   write, a throw in read and in write, a drifting read — and passing
   ISDA's two FpML examples. In okay and okay2.
 
+- **refine-match (2026-10-01, operator ask: "unify pattern matching and
+  refining — without a macro for now").** `Refine.unapply`: every pattern
+  an extractor of a plain `match`, nested patterns a path; `Unclear` and
+  `Declined` match no case. In okay and okay2. Found: a `Dispatch` lane of
+  a tuple type is an unchecked `TypeTest` (E092) — a lane's type must be
+  checkable at run time; the warning makes the gate refuse it. The macro
+  that turns a match's CASES into named refine steps (verdicts per case,
+  write through the extractor, `Unclear` across overlapping cases) is
+  backlog refine-cases-macro; lanes AS refine, folding Routes, Dispatch
+  and Router into one "refine to a lane", is backlog refine-lanes-as-refine.
+
 ## 5. Results
 
 Stage 1 (2026-09-29, lane okay-refine), found by the first run of

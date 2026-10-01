@@ -285,6 +285,23 @@ and a write that loses what it read is found, by the sample it broke on:
 case Vector(Finding.ReadBackDiffers("input #2", "5", "0")) => ()
 ```
 
+## Patterns in a `match`
+
+Every pattern is an EXTRACTOR: a case of a plain Scala `match`, a nested
+pattern a path, a guard a guard — recognition written in the language's
+own construct:
+
+```scala
+case trade(swap((ccy, n))) if ccy == "EUR" => s"eur swap of $n"
+case trade(fxForward(pair)) => s"fx $pair"
+```
+
+A case matches when the pattern TAKES the input. `Unclear` and
+`Declined` match no case, so a `match` never takes one reading of an
+ambiguous document by accident. What a `match` cannot say is why a case
+did not match — `run` says that. Each case runs its pattern, so the cheap
+cases go first.
+
 ## Dispatch: the routing table as a `match`
 
 `Dispatch` makes the routing table the user's own Scala `match` over what
@@ -318,6 +335,13 @@ rest is routed:
 assertEquals(counts.under("rates"), 4)
 assert(rj.contains(("pay:p1,100", "the table threw RuntimeException: payments are not wired yet (p1)")), rj)
 ```
+
+The cases may be the patterns themselves (`case trade(swap((ccy, n))) if
+ccy == "EUR" => eur(n)`), recognising and routing in one `match`. A
+lane's type must be checkable at run time — a class, a case, a union of
+them — because its values come back out of a carrier that holds every
+lane: `lane[(String, Double)]` is warned unchecked (E092) and does not
+build.
 
 Overriding `table(b, by)` routes on the verdict's PATH — the same `Swap`
 read from FpML or from CDM to different lanes. The path names the steps
@@ -474,6 +498,7 @@ reference instead of copying.
 | `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
 | `r >>> s`, `r or s` | `andThen` and `<\|>` by other names |
+| `case pattern(x) =>` | every pattern is an extractor (`unapply`): takes, or matches no case |
 | `object T extends Dispatch(r)`: `lane[X](path)`, `def table(b) = b match …`, `unrouted(why)` | the routing table as a `match`: typed lanes, exhaustiveness, sub-tables; `split` over any `Routable` |
 | `Routed.under(prefix)` | a subtree's count, lanes named by path |
 | `RefineLaws.check(r, inputs, values, expect)`, `.checkNamed` | the laws of any pattern on any samples: a `Report` of `Finding`s |
