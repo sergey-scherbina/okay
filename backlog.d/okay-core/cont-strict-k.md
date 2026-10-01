@@ -26,3 +26,11 @@
       Done since: (1) the leaf as one operation (cont-strict-k-2:
       statePara 1.63-1.66x, fib100 2.44-2.51x, contAnswer 1.21x, bytes
       down on all three). Rows: history.d 2026-10-01T…-cont-strict-k*.tsv.
+      RESTATED by cont-core-design (2026-10-01): the machine was cut
+      to λ$ and three returns measured back in (Cat, nearest also at a
+      resumed k's head, enterAt for the strict k); `Kept` and the strict
+      flag are gone. Against master 4759dbff7 (the post-strict-k-2
+      machine): statePara 1.04-1.08x, fib100 1.03x, contAnswer 1.21x.
+      What the flag's removal costs is a clause lambda per `shiftLeaf`
+      (statePara ~49 KB/op in the alloc profile): see
+      cont-core-remaining-costs.

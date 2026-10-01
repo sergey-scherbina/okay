@@ -15,3 +15,7 @@
       raise the constant to the measured interpreted level (≈1 900 B)
       or derive the room from it, and re-measure statePara on the count
       road (a smaller first room can mean an earlier switch).
+      SHARPER since cont-core-design (2026-10-01): the exact road is gone
+      from the runner (`StackSwitch.more`, the gauge), so the count road
+      is now the ONLY road on every platform, and this underestimate is
+      the one bound a deep opaque program meets.
