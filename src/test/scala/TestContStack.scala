@@ -51,55 +51,20 @@ class TestContStack extends munit.FunSuite:
     val a = body
     (a, StackSwitch.switches.get() - before)
 
-  test("a program the stack can hold switches ZERO times where the stack is read, once at most where it is counted") {
-    // 600 levels on a default-size thread (2 MB here): far past the
-    // suite's first room of 64, and inside the stack whatever the JIT's
-    // state — 1.1 MB even interpreted (1 858 B a level) of the ~1.66 MB
-    // the reader reports usable. It was 1 000 levels until
-    // cont-stack-8mb-flake (2026-09-26): 1.86 MB interpreted, a switch
-    // under -Xint every time, and so under load whenever the code was
-    // still cold.
+  test("the bound is a level count: a fresh stack every first room, then the fresh stack's own room") {
+    // the suite runs with -Dokay.cont.room=64: 600 nested levels outgrow
+    // the caller's room once, and the fresh 1 GB stack holds the rest
+    // (cont-core-design: the stack is counted, never read — the exact
+    // road that read it through FFM and granted more is gone)
     val (answer, switches) = switchesDuring(SmallStack.run(2048)(reset(tail(600))))
     assertEquals(answer, 600)
-    if StackRoom.sp() >= 0 then assertEquals(switches, 0L, "exact road: the stack had room, and it switched")
-    else assert(switches <= 600 / 64 + 1, s"count road: $switches switches")
+    assert(switches >= 1 && switches <= 600 / 64 + 1, s"$switches switches")
   }
 
   test("a 256 KB thread still switches, and answers") {
     val (answer, switches) = switchesDuring(SmallStack.run(256)(reset(tail(2000))))
     assertEquals(answer, 2000)
     assert(switches >= 1, "a 256 KB stack cannot hold 2000 levels, and it never switched")
-  }
-
-  test("the exact road sees an explicit 8 MB thread: the reader reports its bounds, and a program that fits them switches zero times") {
-    assume(StackRoom.sp() >= 0, "the stack is not readable on this JVM")
-    // THE BOUNDS FIRST, because no switch count can prove them: a count
-    // depends on the bytes a level takes, and those are the JIT's —
-    // measured on this box (cont-stack-8mb-flake, 2026-09-26) 1 858 B a
-    // level under -Xint, 1 223 B under C1 only, ~288 B warm C2. The
-    // first version asserted "8 MB switches fewer times than 2 MB" on
-    // 20 000 levels: warm, 8 MB holds them (0 < 1); interpreted or C1,
-    // 20 000 levels are 24-37 MB and BOTH switch once (1 vs 1). Under
-    // load the C2 compiler threads fall behind, the code is still cold
-    // when the 8 MB run starts, and the assertion went red; -Xint and
-    // -XX:TieredStopAtLevel=1 make it red every time. What the reader
-    // reports is the thread's own stack, whatever the JIT is doing:
-    // top − floor is the stack less HotSpot's guard and shadow zones.
-    def usable(kb: Int): Long = SmallStack.run(kb)(StackRoom.top() - StackRoom.floor())
-    val (u8, u2) = (usable(8192), usable(2048))
-    assert(u8 > (7L << 20) && u8 <= (8L << 20), s"8 MB thread: the reader reports $u8 usable bytes")
-    assert(u2 > (1L << 20) && u2 <= (2L << 20), s"2 MB thread: the reader reports $u2 usable bytes")
-    // and the runner uses them: 3 500 opaque levels are 6.5 MB even
-    // interpreted (the fattest frame, 1 858 B), under the 8 MB thread's
-    // ~7.6 MB usable with a megabyte to spare, so a switch there means
-    // a grant ignored the room; 20 000 levels are 5.8 MB even warm
-    // (288 B), over 2 MB whatever the JIT's state.
-    val (a8, on8) = switchesDuring(SmallStack.run(8192)(reset(tail(3500))))
-    assertEquals(a8, 3500)
-    assertEquals(on8, 0L, "3 500 levels on 8 MB switched: a grant ignored the room the reader reported")
-    val (a2, on2) = switchesDuring(SmallStack.run(2048)(reset(tail(n))))
-    assertEquals(a2, n)
-    assert(on2 >= 1, s"20 000 levels on 2 MB never switched ($on2)")
   }
 
   test("the first room is derived from the VM's default stack when no property is set") {

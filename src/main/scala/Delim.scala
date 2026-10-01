@@ -977,7 +977,7 @@ object Delim {
      * name, so a capture that finds no delimiter walks into it and is
      * refused by name — `NoPrompt`, with the delimiters it passed */
     private[okay] def bounded[R, F[+_]](prog: Freer[Row[F], Unit, Unit, R]): R ! F =
-      residual[R, F](Frames.runUnder[Freer.Lift[F], Unit, R](prog, Cont0.boundary[R], Cont0.identity))
+      residual[R, F](Frames.run[Freer.Lift[F], Unit, Unit, R](Cont0.reset[Freer.Lift[F], Unit, Unit, R](Cont0.boundary[R])(prog)))
 
     /** the head form as the residual program: `F`'s operations, by the
      * claim `out` makes — every `Cont0` one was answered or, with a
