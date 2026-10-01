@@ -1,6 +1,6 @@
 # refine-dispatch — hierarchical routing by document kind, written as a `match`
 
-Status: specification, 2026-10-01 (operator ask: "hierarchical routing
+Status: stage 1 landed (2026-10-01); spec 2026-10-01 (operator ask: "hierarchical routing
 (dispatch) by document type in streams, Spark, Flink, Kafka — convenient,
 like pattern matching, or even using pattern matching itself"). Builds on
 specs/refine.md: `Refine` recognises, `Routable` is what a table runs over
@@ -53,22 +53,23 @@ Routed.under(prefix): Int               // a hierarchical count: everything unde
 ## 3. Behavior
 
 Stage 1 — Dispatch over every `Routable` carrier:
-- [ ] a table written as a `match` routes each recognised document to the
+- [x] a table written as a `match` routes each recognised document to the
       lane its case names; lane values are typed by the lane (`TypeTest`,
       no cast); `split` over a Vector, a `Bulk` (Chunks, SparkBulk,
       FlinkBulk) and a `Source` answers the same lanes, rejects and counts
-- [ ] a sub-table is a method; lane names are paths; `Routed.under("rates")`
+- [x] a sub-table is a method; lane names are paths; `Routed.under("rates")`
       sums every lane under that prefix
-- [ ] `unrouted(why)` rejects with the table's reason; a document the
+- [x] `unrouted(why)` rejects with the table's reason; a document the
       PATTERN did not take (declined, `Unclear`) never reaches the table and
       is rejected with the verdict's reasons
-- [ ] a table that throws for a document (a `MatchError` from a partial
+- [x] a table that throws for a document (a `MatchError` from a partial
       match over a non-sealed type) rejects THAT document, named, and the
       rest of the input is routed — a table bug costs one document, never
       the stream
-- [ ] over a `sealed` document type, a missing case is a compile warning
-      (pinned as a test that the warning text names the missing case)
-- [ ] `table(b, by)` can route on the verdict's path (the same `Swap` read
+- [x] over a `sealed` document type, a missing case is a compile warning
+      — verified by a probe, not pinned as a test: `compileErrors` sees
+      errors only, never warnings (Results)
+- [x] `table(b, by)` can route on the verdict's path (the same `Swap` read
       from FpML or from CDM to different lanes)
 
 Stage 2 — Kafka out: a split's lanes to topics:
@@ -103,6 +104,22 @@ the same, sealed traits).
    that turns it on — a domain decision, recorded here, made there.
 
 ## 5. Results
+
+Stage 1 (2026-10-01). TestDispatch (6): a two-level sealed domain
+(`Instrument` → `Rate` → `Swap | Cds`, `Fx`, `Payment`) through a table
+with a sub-table; lanes typed (a `Cds` case delivers the name, a
+`String` lane); `under("rates") == 4`; the same table over a Vector,
+Chunks and a Source agrees; routing on the path; a table that throws for
+payments rejects those two documents, named, and routes the other five.
+EXHAUSTIVENESS, by a probe compiled and deleted: a table forgetting `Cds`
+gave `[E029] Pattern Match Exhaustivity Warning … It would fail on
+pattern case: okay.refine.DispatchFixtures.Cds(_, _)`, and the gate went
+RED on it ("no warnings, ever") — a forgotten kind does not build. Not
+pinned as a test because munit's `compileErrors` reports errors only.
+Found on the way: the verdict's path names the STEPS that took the input,
+not a `map`'s name — a table routing on the path matches step names.
+FlinkBulk is covered by being a `Bulk` (proven for SparkBulk in
+TestSparkRoutes), not by a Flink test of its own.
 
 ## 6. Open questions
 

@@ -126,6 +126,10 @@ object Router:
   /** how many went down each route (in the table's order), and how many were rejected */
   final case class Routed(delivered: Vector[(String, Int)], rejected: Int):
     def total: Int = delivered.map(_._2).sum + rejected
+    /** a SUBTREE's count, lanes being named by path: `under("rates")` sums
+     * "rates", "rates/swaps", "rates/swaps/eur", … (not "ratesx") */
+    def under(prefix: String): Int =
+      delivered.collect { case (n, k) if n == prefix || n.startsWith(prefix + "/") => k }.sum
 
   /** one line of the table: which values it takes (`fit`), as what `X`,
    * and the channel of `X` they go to — the value never leaves the rule

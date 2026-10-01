@@ -285,6 +285,44 @@ and a write that loses what it read is found, by the sample it broke on:
 case Vector(Finding.ReadBackDiffers("input #2", "5", "0")) => ()
 ```
 
+## Dispatch: the routing table as a `match`
+
+`Dispatch` makes the routing table the user's own Scala `match` over what
+the pattern recognised (specs/refine-dispatch.md). A lane is declared
+with a path for a name and a type for its values; a case delivers with
+`lane(x)` — which compiles only when `x` has the lane's type — or says
+`unrouted(why)`; a sub-table is an ordinary method:
+
+```scala
+object Desk extends Dispatch(any):
+val eurSwaps = lane[Swap]("rates/swaps/eur")
+def table(i: Instrument): To = i match
+case r: Rate => rates(r)
+case f: Fx => fxs(f)
+case p: Payment => unrouted(s"payment ${p.id} has no positive amount")
+def rates(r: Rate): To = r match
+case s: Swap if s.ccy == "EUR" => eurSwaps(s)
+case c: Cds => credit(c.name)              // a lane may carry a projection, typed by the lane
+```
+
+Over a `sealed` document type the COMPILER checks the table: a forgotten
+case is "match may not be exhaustive. It would fail on pattern case:
+Cds(_, _)" — a warning, and okay builds with no warnings, so a table that
+forgets a kind of document does not build. The same table runs over
+every `Routable` carrier (`Desk.split(docs)`: a Vector, Chunks, Spark,
+Flink's `FlinkBulk`, a `Source`), lane names roll up by path, and a table
+that throws for one document rejects that document, named, while the
+rest is routed:
+
+```scala
+assertEquals(counts.under("rates"), 4)
+assert(rj.contains(("pay:p1,100", "the table threw RuntimeException: payments are not wired yet (p1)")), rj)
+```
+
+Overriding `table(b, by)` routes on the verdict's PATH — the same `Swap`
+read from FpML or from CDM to different lanes. The path names the steps
+that took the input, not a `map`'s name.
+
 ## Routing: one stream in, a stream per kind out
 
 A `Router` is a value — a pattern and a routing table, read top to
@@ -436,6 +474,8 @@ reference instead of copying.
 | `Refine.schema[A](name)` | a derived `Schema[A]` as a `Refine[Json, A]`: decode declines in the codec's words, encode writes |
 | `r.search(a): B ! Choose` | the pattern as a search: Took one answer, Unclear a choice point, Declined an empty one |
 | `r >>> s`, `r or s` | `andThen` and `<\|>` by other names |
+| `object T extends Dispatch(r)`: `lane[X](path)`, `def table(b) = b match …`, `unrouted(why)` | the routing table as a `match`: typed lanes, exhaustiveness, sub-tables; `split` over any `Routable` |
+| `Routed.under(prefix)` | a subtree's count, lanes named by path |
 | `RefineLaws.check(r, inputs, values, expect)`, `.checkNamed` | the laws of any pattern on any samples: a `Report` of `Finding`s |
 | `Refine.path(steps*)`, `Refine.json.at(names*)` | the fold of `>>>` over same-typed steps (`id` when empty); a descent through fields |
 | `r orElse s` | a fallback: `s` only when `r` declines; never `Unclear` from `s` |
