@@ -750,17 +750,31 @@ object Frames:
       // segment. `k` is that segment over a copy of the delimiter — two
       // nodes, no walk and no `Rev` — and the body goes on over what was
       // under it. The walk's own rule, at its first node.
-      case d: Dollar[F, Y, S0, S1, y2, Z] if sh.p eq d.p =>
-        val same = identical(sh.p, d.p)
-        val y = same.answer.flip
-        val i = same.index.flip
-        val k = y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](
-          runOf(fs, Dollar[F, Y, S1, S1, y2, y2](d.p, d.ret, noStack[F, y2, S1]))))
-        Next[Y0, I0, I0, Y0](sh.f(k), noFrames[F, Y0, I0],
-          y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](d.below)))
-      case _ =>
-        val all = runOf(fs, st)
-        cut(sh, all, all, Rev.nil[F, X, T])
+      case d: Dollar[F, Y, S0, S1, y2, Z] if sh.p eq d.p => nearest(sh, fs, d.p, d.ret, d.below)
+      // the same delimiter at the head of a resumed `k` (a `Cat`): the
+      // usual shape after a resumption, so a generator's next `emit` and
+      // a handler's next operation still take the short road
+      case c: Cat[F, Y, S0, S1, y, s2, Z] => c.k match
+        case d: Dollar[F, Y, `s2`, S1, y2, `y`] if sh.p eq d.p => nearest(sh, fs, d.p, d.ret, cat(d.below, c.below))
+        case _ => walk(sh, fs, st)
+      case _ => walk(sh, fs, st)
+
+    def walk[Y0, I0, X, T, S1, Y](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y], st: Stack[F, Y, S0, S1, Z]): Next[?, ?, ?, ?] =
+      val all = runOf(fs, st)
+      cut(sh, all, all, Rev.nil[F, X, T])
+
+    /** `k` is the live segment over a copy of the delimiter — two nodes,
+     * no walk, no `Rev` — and the body goes on over `below` */
+    def nearest[Y0, I0, X, T, S1, Y, y2](sh: Cont0.Shift0[F, Y0, I0, T, R, X], fs: Frames[F, X, S1, T, Y],
+                                         p: Cont0.Delimiter[y2, S1], ret: Y => Freer[G, S1, S1, y2],
+                                         below: Stack[F, y2, S0, S1, Z]): Next[?, ?, ?, ?] =
+      val same = identical(sh.p, p)
+      val y = same.answer.flip
+      val i = same.index.flip
+      val k = y.liftCo[[a] =>> Stack[F, X, I0, T, a]](i.liftCo[[t] =>> Stack[F, X, t, T, y2]](
+        runOf(fs, Dollar[F, Y, S1, S1, y2, y2](p, ret, noStack[F, y2, S1]))))
+      Next[Y0, I0, I0, Y0](sh.f(k), noFrames[F, Y0, I0],
+        y.liftCo[[a] =>> Stack[F, a, S0, I0, Z]](i.liftCo[[t] =>> Stack[F, y2, S0, t, Z]](below)))
 
     /** a resumption's registers: `focus` over the stack `k`'s nodes were
      * catenated onto (`Rev.onto`), its head segment unpacked into the frames
