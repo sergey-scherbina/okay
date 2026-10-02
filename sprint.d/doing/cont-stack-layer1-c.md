@@ -22,10 +22,11 @@
       hot loop) and either close the gap or make the expansion
       Scala.js-only (the platform where no switch exists), leaving the
       JVM and Native on the direct road Layer 2/3 already protect;
-      (1) conditionals NOT in tail position (`1 + (if c then k(1) else
-      2)`, a `match` feeding an expression): needs a join point — a
-      `Body` bind (`Then(body, x => rest)`) the walker rotates as
-      `Free` does, or a `Fun` for the rest applied in both branches;
+      (1) DONE 2026-10-02 (cont-stack-layer1-c, join points): a conditional
+      NOT in tail position (`1 + (if c then k(1) else 2)`, a `match`
+      feeding an expression) binds the rest ONCE as a local function and
+      every branch ends in it; a million on 128 KB with zero switches
+      (TestContMacro, red first: StackOverflowError);
       (2) the KNOWN higher-order functions — `k` passed to `map`,
       `foreach`, `flatMap`, `fold` on the standard collections, `Option`,
       `Either` (`List(1, 2).map(k).sum`) — substituted with trampolined

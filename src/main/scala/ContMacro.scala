@@ -195,6 +195,22 @@ object ContMacro:
         case _ => throw Opaque
       if before.isEmpty then tail else Block(before, tail)
 
+    /**
+     * A JOIN POINT (cont-stack-layer1-c (1)): a conditional whose branches call `k`, with something after it.
+     * The rest is bound ONCE as a local function `j` (a lambda: binding it runs nothing), and every branch ends
+     * in `j(value)` — the rest is not copied into each branch, so nested conditionals stay linear in size. In
+     * tail position there is no rest, and the branches end in the body's answer as before.
+     */
+    def joined(t: Term, kont: Kont)(branches: Kont => Term)(using k: Symbol): Term = kont.rest match
+      case None => branches(kont)
+      case Some(_) =>
+        fresh += 1
+        val in = t.tpe.widen
+        val j = lam(s"join$$$fresh", in, kont.rt)(v => feed(kont, v))
+        val sym = Symbol.newVal(Symbol.spliceOwner, s"join$$$fresh", j.tpe.widen, Flags.EmptyFlags, Symbol.noSymbol)
+        val toJ = Kont(kont.rt, Some(v => Select.unique(Ref(sym), "apply").appliedTo(v)))
+        Block(List(ValDef(sym, Some(j.changeOwner(sym)))), branches(toJ))
+
     /** the transform: `t` in value position, `kont` what follows its value */
     def cps(t: Term, kont: Kont)(using k: Symbol): Term =
       if !mentions(k, t) then value(t, kont)
@@ -209,15 +225,13 @@ object ContMacro:
         case Block(stats, e) => cpsStats(stats, e, kont)
         case If(c, a, b) =>
           if mentions(k, a) || mentions(k, b) then
-            if kont.rest.isDefined then throw Opaque
-            cps(c, Kont(kont.rt, Some(c2 => If.copy(t)(c2, cps(a, kont), cps(b, kont)))))
+            joined(t, kont)(kb => cps(c, Kont(kont.rt, Some(c2 => If.copy(t)(c2, cps(a, kb), cps(b, kb))))))
           else cps(c, Kont(kont.rt, Some(c2 => feed(kont, If.copy(t)(c2, a, b)))))
         case Match(sc, cases) =>
           if cases.exists(c => c.guard.exists(mentions(k, _))) then throw Opaque
           if cases.exists(c => mentions(k, c.rhs)) then
-            if kont.rest.isDefined then throw Opaque
-            cps(sc, Kont(kont.rt, Some(s2 =>
-              Match.copy(t)(s2, cases.map(c => CaseDef.copy(c)(c.pattern, c.guard, cps(c.rhs, kont)))))))
+            joined(t, kont)(kb => cps(sc, Kont(kont.rt, Some(s2 =>
+              Match.copy(t)(s2, cases.map(c => CaseDef.copy(c)(c.pattern, c.guard, cps(c.rhs, kb))))))))
           else cps(sc, Kont(kont.rt, Some(s2 => feed(kont, Match.copy(t)(s2, cases)))))
         case _ => throw Opaque
 

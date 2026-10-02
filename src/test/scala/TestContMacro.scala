@@ -119,8 +119,33 @@ class TestContMacro extends munit.FunSuite:
     assertEquals(log.toList, List("then 1"))
   }
 
-  test("bodies the transform cannot read stay opaque and keep their meaning") {
+  test("1M non-tail conditionals 1 + (if c then k(x + 1) else k(x + 1)) on a 128 KB stack: the answer and ZERO switches") {
+    // a JOIN POINT (cont-stack-layer1-c (1)): the rest after the conditional is one local function, each branch
+    // ends in it; until then the body was opaque and its strict k switched stacks
+    val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => 1 + (if x % 2 == 0 then k(x + 1) else k(x + 1)))))))
+    assertEquals(a, 2 * n)
+    assertEquals(s, 0L)
+  }
+
+  test("non-tail conditionals keep their meaning: if and match, k in some branches, the rest after them, order") {
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => 1 + (if true then k(1) else 2))), 2)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => 1 + (if false then k(1) else 2))), 3)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (if true then k(1) else k(2)) * 10 + k(3))), 13)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => 100 + (3 match { case 1 => k(1) case 3 => k(3) + 1 case _ => 0 }))), 104)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => 100 + (9 match { case 1 => k(1) case _ => 0 }))), 100)
+    // multi-shot across the join: both calls of k, the rest once per branch taken
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (if k(1) > 0 then k(2) else 0) + k(10))), 12)
+    // order: the condition, then the branch's call of k (the rest after the shift), then the rest of the body
+    val log = collection.mutable.ArrayBuffer.empty[String]
+    def cond(): Boolean = { log += "cond"; true }
+    val m = Cont.shift[Int, Int, Int](k => { val r = (if cond() then k(5) else 0); log += "after"; r + 1 })
+      .flatMap(x => { log += s"then $x"; Cont.Pure[Int, Int](x) })
+    assertEquals(Cont.reset(m), 6)
+    assertEquals(log.toList, List("cond", "then 5", "after"))
+  }
+
+  test("bodies the transform cannot read stay opaque and keep their meaning") {
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => try k(1) catch { case _: Exception => 0 })), 1)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option.empty[Int].getOrElse(k(4)))), 4)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { var i = 0; while i < 3 do i += k(1); i })), 3)
