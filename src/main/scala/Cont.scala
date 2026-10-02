@@ -95,6 +95,33 @@ object Cont:
   def call[A, S, R](k: A => S, a: A, rest: S => Lazy[R]): Lazy[R] =
     Bind(k.asInstanceOf[K](a), rest.asInstanceOf[Any => P])
 
+  /**
+   * `xs.map(f)` / `xs.foreach(f)` in an answer-using body whose `f` calls `k` (cont-stack-layer1-c (2)): `f` a
+   * program over the lazy `k`, the elements in order, each a bind the machine runs. On an immutable list: a `k`
+   * resumed twice traverses again from its own point, sharing no iterator. Public for the macro's expansion.
+   */
+  def traverse[X, B, R](xs: Iterable[X], f: X => Lazy[B], rest: List[B] => Lazy[R]): Lazy[R] =
+    traverseFrom[X, B, R](xs.toList, Nil, f, rest)
+
+  // recursion DEFERRED: the next step is a bind's continuation the machine runs, never a host call
+  private def traverseFrom[X, B, R](rem: List[X], acc: List[B], f: X => Lazy[B], rest: List[B] => Lazy[R]): Lazy[R] =
+    rem match
+      case Nil => rest(acc.reverse)
+      case x :: tl => Bind(f(x), (b: Any) => traverseFrom[X, B, R](tl, answered[B](b) :: acc, f, rest))
+
+  /** `xs.foldLeft(z)(f)` in an answer-using body, `f` a program over the lazy `k`, the same way */
+  def foldIn[X, B, R](xs: Iterable[X], z: B, f: (B, X) => Lazy[B], rest: B => Lazy[R]): Lazy[R] =
+    foldFrom[X, B, R](xs.toList, z, f, rest)
+
+  // recursion DEFERRED, as `traverseFrom`
+  private def foldFrom[X, B, R](rem: List[X], acc: B, f: (B, X) => Lazy[B], rest: B => Lazy[R]): Lazy[R] =
+    rem match
+      case Nil => rest(acc)
+      case x :: tl => Bind(f(acc, x), (b: Any) => foldFrom[X, B, R](tl, answered[B](b), f, rest))
+
+  /** THE CLAIM of `Lazy`: a step's program answers what its lambda's body answers, `B` (the macro built it so) */
+  private def answered[B](b: Any): B = b.asInstanceOf[B]
+
   /** the leaf of an answer-using body */
   def lazyLeaf[A, S, R](body: (A => S) => Lazy[R]): Rep[A, S, R] =
     leaf(body.asInstanceOf[K => P])

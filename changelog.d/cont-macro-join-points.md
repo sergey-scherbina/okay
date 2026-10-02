@@ -1,4 +1,4 @@
-## cont-macro-join-points - a conditional not in tail position no longer makes a Cont body opaque
+## cont-macro-join-points - a conditional not in tail position, and k inside map/foreach/foldLeft, no longer make a Cont body opaque
 
 cont-stack-layer1-c item (1), the operator's "Продолжай исправлять" ("keep
 fixing"). `ContMacro`'s CPS transform gave up on an `if` or `match` whose
@@ -16,5 +16,20 @@ whole body became the strict leaf, which nests the host stack.
   multi-shot across the join, and the order "condition, then `k`'s rest,
   then the body's own rest".
 
-Tests: TestContMacro. Backlog: cont-stack-layer1-c (item 1 done, items
-2-5 left).
+Item (2), in part: `k` called inside the lambda of `map`, `foreach` or
+`foldLeft` on a `List`, `Vector` or immutable `Seq`
+(`List(1, 2).map(x => k(x)).sum`).
+- **How.** The lambda's body becomes a program over the lazy `k`, and
+  the traversal becomes `Cont.traverse` / `Cont.foldIn`: binds the
+  machine runs, on an immutable list, so resuming `k` twice
+  re-traverses and shares no iterator.
+- **Depth.** A million on 128 KB with zero switches. The test failed
+  with StackOverflowError first.
+- **Meaning is kept.** Evaluation order is element by element, each
+  call of `k` running its rest before the next element. Multi-shot
+  works, and the collection type is kept (`Vector` stays `Vector`).
+- **No existing code changes form.** Neither shape occurs outside the
+  new tests, so no benchmark lane is touched.
+
+Tests: TestContMacro. Docs: docs/cont-stack.md. Backlog:
+cont-stack-layer1-c (item 1 done, item 2 in part, the rest left).

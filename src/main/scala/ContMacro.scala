@@ -211,11 +211,73 @@ object ContMacro:
         val toJ = Kont(kont.rt, Some(v => Select.unique(Ref(sym), "apply").appliedTo(v)))
         Block(List(ValDef(sym, Some(j.changeOwner(sym)))), branches(toJ))
 
+    /** a lambda term's parameters and body, under any wrapping */
+    @scala.annotation.tailrec
+    def lambdaOf(t: Term): Option[(List[ValDef], Term)] = t match
+      case Lambda(ps, body) => Some((ps, body))
+      case Inlined(_, Nil, e) => lambdaOf(e)
+      case Typed(e, _) => lambdaOf(e)
+      case Block(Nil, e) => lambdaOf(e)
+      case _ => None
+
+    /** the element type of an immutable `Seq` receiver, or None */
+    def elemOf(q: Term): Option[TypeRepr] =
+      val seq = TypeRepr.of[scala.collection.immutable.Seq[Any]].typeSymbol
+      q.tpe.widen.baseType(seq) match
+        case AppliedType(_, List(x)) => Some(x)
+        case _ => None
+
+    /** `bs: List[B]` as the type the original call answered (`List`, `Vector`, `Seq`), or None */
+    def asResult(bs: Term, want: TypeRepr, b: TypeRepr): Option[Term] =
+      b.asType match
+        case '[bt] =>
+          val list = bs.asExprOf[List[bt]]
+          List(bs, '{ $list.toVector }.asTerm).find(_.tpe.widen <:< want)
+
+    /**
+     * THE KNOWN TRAVERSALS (cont-stack-layer1-c (2)): `xs.map(f)`, `xs.foreach(f)`, `xs.foldLeft(z)(f)` on an
+     * immutable `Seq`, `xs` and `z` free of `k`, `f` a lambda whose body calls it — the body a program over the
+     * lazy `k`, the traversal `Cont.traverse`/`Cont.foldIn`. Anything else is not one of them (None).
+     */
+    def traversal(t: Term, kont: Kont)(using k: Symbol): Option[Term] =
+      def step(ps: List[ValDef], body: Term, ins: List[TypeRepr], out: TypeRepr): Term =
+        val mt = MethodType(ps.map(_.name))(_ => ins, _ => out.asType match { case '[o] => TypeRepr.of[Cont.Lazy[o]] })
+        Lambda(Symbol.spliceOwner, mt, (meth, args) =>
+          cps(ps.zip(args).foldLeft(body)((b, pa) => subst(b, pa._1.symbol, Ref(pa._2.symbol))), Kont(out, None)).changeOwner(meth))
+      t match
+        case Apply(TypeApply(Select(q, m @ ("map" | "foreach")), List(bt)), List(fn)) if !mentions(k, q) =>
+          for
+            x <- elemOf(q)
+            (ps, body) <- lambdaOf(fn) if ps.length == 1 && mentions(k, body)
+            b = bt.tpe
+            r <- if m == "foreach" then Some(None) else Some(Some(t.tpe.widen))
+          yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => b.asType match { case '[btp] =>
+              val f = step(ps, body, List(x), b).asExprOf[xt => Cont.Lazy[btp]]
+              val rest = lam("bs", TypeRepr.of[List[btp]], kont.rt)(bsv =>
+                r match
+                  case None => feed(kont, '{ () }.asTerm)
+                  case Some(want) => asResult(bsv, want, b) match
+                    case Some(res) => feed(kont, res)
+                    case None => throw Opaque).asExprOf[List[btp] => Cont.Lazy[rt]]
+              cps(q, Kont(kont.rt, Some(q2 =>
+                '{ Cont.traverse[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, $f, $rest) }.asTerm))) } } }
+        case Apply(Apply(TypeApply(Select(q, "foldLeft"), List(bt)), List(z)), List(fn)) if !mentions(k, q) && !mentions(k, z) =>
+          for
+            x <- elemOf(q)
+            (ps, body) <- lambdaOf(fn) if ps.length == 2 && mentions(k, body)
+          yield kont.rt.asType match { case '[rt] => x.asType match { case '[xt] => bt.tpe.asType match { case '[btp] =>
+              val f = step(ps, body, List(bt.tpe, x), bt.tpe).asExprOf[(btp, xt) => Cont.Lazy[btp]]
+              val rest = lam("acc", bt.tpe, kont.rt)(av => feed(kont, av)).asExprOf[btp => Cont.Lazy[rt]]
+              cps(q, Kont(kont.rt, Some(q2 => cps(z, Kont(kont.rt, Some(z2 =>
+                '{ Cont.foldIn[xt, btp, rt](${ q2.asExprOf[Iterable[xt]] }, ${ z2.asExprOf[btp] }, $f, $rest) }.asTerm)))))) } } }
+        case _ => None
+
     /** the transform: `t` in value position, `kont` what follows its value */
     def cps(t: Term, kont: Kont)(using k: Symbol): Term =
       if !mentions(k, t) then value(t, kont)
       else t match
         case KCall(e) => cps(e, Kont(kont.rt, Some(e2 => call(e2, kont))))
+        case _ if traversal(t, kont).isDefined => traversal(t, kont).get
         case Apply(fun, args) =>
           cpsFun(fun, Kont(kont.rt, Some(f2 => cpsArgs(args, params(fun), kont.rt)(as => feed(kont, Apply.copy(t)(f2, as))))))
         case Inlined(call0, bindings, e) =>

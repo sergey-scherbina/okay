@@ -27,10 +27,15 @@
       feeding an expression) binds the rest ONCE as a local function and
       every branch ends in it; a million on 128 KB with zero switches
       (TestContMacro, red first: StackOverflowError);
-      (2) the KNOWN higher-order functions — `k` passed to `map`,
-      `foreach`, `flatMap`, `fold` on the standard collections, `Option`,
-      `Either` (`List(1, 2).map(k).sum`) — substituted with trampolined
-      traversals the walker knows;
+      (2) PARTLY DONE 2026-10-02 (cont-stack-layer1-c): `k` called inside
+      the lambda of `map`, `foreach`, `foldLeft` on an immutable `Seq`
+      (`List`, `Vector`, `Seq`) — the lambda's body a program over the lazy
+      `k`, the traversal `Cont.traverse`/`Cont.foldIn` (binds the machine
+      runs, on an immutable list, multi-shot safe); a million on 128 KB
+      with zero switches (red first: StackOverflowError). LEFT: `k` passed
+      as a VALUE (`List(x).map(k)`), `flatMap`, `fold`, `Option`, `Either`,
+      and a lambda body the transform cannot read (an assignment:
+      `seen += k(x)`);
       (3) VISIBLE user functions along the path `k` flows (an `inline
       def`, a same-compilation `def` through `Symbol.tree`, TASTy with
       `-Yretain-trees`), rewritten and cached;

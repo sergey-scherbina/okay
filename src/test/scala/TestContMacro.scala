@@ -145,11 +145,40 @@ class TestContMacro extends munit.FunSuite:
     assertEquals(log.toList, List("cond", "then 5", "after"))
   }
 
+  test("1M bodies that call k inside List.map on a 128 KB stack: the answer and ZERO switches") {
+    // the known traversals (cont-stack-layer1-c (2)): the lambda's body a program over the lazy k, the
+    // traversal a chain of binds the machine runs; until then the body was opaque
+    val (a, s) = switchesDuring(SmallStack.run(128)(Cont.reset(row(n)(x =>
+      Cont.shift[Int, Int, Int](k => List(x).map(y => k(y + 1)).sum)))))
+    assertEquals(a, n)
+    assertEquals(s, 0L)
+  }
+
+  test("k inside map, foreach and foldLeft over List, Vector and Seq keeps its meaning: order, multi-shot, types") {
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => List(1, 2).map(x => k(x)).sum)), 3)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Vector(1, 2, 3).map(x => k(x) * 10).sum)), 60)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Seq(4, 5).map(x => k(x)).last)), 5)
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => List(1, 2, 3).foldLeft(0)((acc, x) => acc * 10 + k(x)))), 123)
+    var seen = 0
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { List(1, 2).foreach(x => seen += k(x)); seen })), 3)
+    // the result keeps its collection type
+    val v: Vector[Int] = Cont.reset(Cont.shift[Int, Vector[Int], Vector[Int]](k => Vector(1, 2).map(x => k(x).sum)).map(x => Vector(x, x)))
+    assertEquals(v, Vector(2, 4))
+    // order: elements in turn, each call of k running the rest after the shift before the next element
+    val log = collection.mutable.ArrayBuffer.empty[String]
+    val m = Cont.shift[Int, Int, Int](k => List(1, 2).map(x => { log += s"el $x"; k(x) }).sum)
+      .flatMap(x => { log += s"then $x"; Cont.Pure[Int, Int](x) })
+    assertEquals(Cont.reset(m), 3)
+    assertEquals(log.toList, List("el 1", "then 1", "el 2", "then 2"))
+    // multi-shot: the outer k resumed twice, each time traversing again
+    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k1 => k1(1) + k1(2)).flatMap(z =>
+      Cont.shift[Int, Int, Int](k => List(z, z).map(x => k(x)).sum))), 6)
+  }
+
   test("bodies the transform cannot read stay opaque and keep their meaning") {
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => try k(1) catch { case _: Exception => 0 })), 1)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => Option.empty[Int].getOrElse(k(4)))), 4)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => { var i = 0; while i < 3 do i += k(1); i })), 3)
-    assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => List(1, 2).map(x => k(x)).sum)), 3)
     assertEquals(Cont.reset(Cont.shift[Int, Int, Int](k => (() => k(1))())), 1)
   }
 

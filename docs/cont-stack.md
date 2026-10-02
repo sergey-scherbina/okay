@@ -62,9 +62,17 @@ val used = (1 to 1_000_000).foldLeft(Cont.Pure[Int, Int](0): Int /> Int)((m, _) 
 Cont.reset(used) // 2000000 — no frame per level either: the pending `+ 1`s live on the runner's own stack
 ```
 
+**Read since 2026-10-02 (cont-stack-layer1-c):** a call under a
+conditional that is not in tail position (`1 + (if c then k(1) else
+2)`, a `match` feeding an expression) — the rest after it becomes one
+local function every branch ends in, a join point — and a call inside
+the lambda of `map`, `foreach` or `foldLeft` on a `List`, `Vector` or
+immutable `Seq` (`List(1, 2).map(x => k(x)).sum`), the traversal a
+chain of binds the machine runs. Both are programs over a lazy `k`, no
+frame per level.
+
 **A body the macro cannot read, or should not** — `k` handed to `map`
-or any other function as a value, a call under a conditional that is
-not in tail position (`1 + (if c then k(1) else 2)`), in a by-name
+or any other function as a value, in a by-name
 argument, under `try`, in a loop, in a lambda (`PState`'s
 `s => k(s)(s2)`: a function answer walked measured 2.8x its direct
 cost, so it is left direct on purpose), `k` passed into Java or an
