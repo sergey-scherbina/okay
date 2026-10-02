@@ -196,6 +196,12 @@ one API, one suite over both:
   stack costs microseconds a reset; catching the overflow re-runs the
   user's side effects. Cost: `twoShot` 10.8 µs against 10.3, the bytes
   equal.
+  **SUPERSEDED 2026-10-02 (shift-stacked-key, specs/shift-merge.md):** the
+  alternative not weighed here was the machine ABSORBING a run: an
+  outermost run is `Delay(Frames.Own(program))`, which a running machine
+  steps into in its own loop and anything else forces once. Nested resets
+  are then one loop on any stack, Scala.js included (where the room's
+  `ThreadLocal.withInitial` did not link at all), and the room is gone.
 
 ## Results
 

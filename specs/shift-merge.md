@@ -1,6 +1,6 @@
 # shift-merge — Delim and Shift, one effect named `Shift`
 
-Status: stages 1, 2 and 4 and the one guard done, 2026-10-02; stage 3 next (sprint shift-stacked-key). Owner lane: `shift-merge`. Sprint
+Status: stages 1, 2 and 4 and the one guard done, 2026-10-02; the keyed reset without a room done (shift-stacked-key); stage 3 next (sprint shift-prompt-key). Owner lane: `shift-merge`. Sprint
 cont-js-depth, the design conversation after stage 3a.
 
 ## Why
@@ -177,9 +177,18 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
   compile error for the dynamic doors "because the nested spelling is
   explicit" — two spellings of one block, chosen by a row the compiler
   can read, is the confusion this spec removes.
-- **Noted, not changed here:** a keyed `reset` counts its nested runs in a
-  `ThreadLocal` room and switches stacks past it (`runReset`); the
-  cont-stack rule says a room is a value, never a `ThreadLocal`.
+- **A RUN IS A VALUE THE RUNNING MACHINE ABSORBS** (shift-stacked-key).
+  A keyed `reset` counted its nested runs in a `ThreadLocal` room and
+  switched stacks past it (`runReset`), against cont-stack's rule (a room
+  is a value, never a `ThreadLocal`), and the room did not link on
+  Scala.js. The machine already recognised one thunk class in a `Delay`
+  (`Frames.Resume`, a resumption pushed, never forced); `Frames.Own` is the
+  second: the program a run would start, stepped into by a running machine,
+  run once by anything else. So `Shift.run` answers a value, and a nested
+  run costs the loop nothing. What it does not reach: a run forced by
+  ANOTHER interpreter's loop (a `State.run` between two resets, eager at
+  construction) is still a nested call — that is cont-js-depth's opaque
+  case, not this one.
 
 - **The name is `Shift`** (operator), the dynamic form `Shift % ?` (the
   operator's glyph, its literal Scala spelling).
