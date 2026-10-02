@@ -213,6 +213,16 @@ Stage 5 — the rest of the book, one lane per chapter:
         true price against its closed form (a linear-Gaussian model)
   - [x] the book's showdown loss: the best bid falls as the risk of
         overbidding grows, and stays under the posterior mean
+- 5d. ch.5's data-heavy example, Kaggle's *Observing Dark Worlds*: a
+  dark-matter halo of unknown position and mass shears the ellipticity of
+  the galaxies around it tangentially, as m / max(r, 240); the book's
+  single-halo model on its skies. The data is a SIMULATION, so the truth
+  is known.
+  - [ ] Sky 3 (578 galaxies) by `adaptive` and by AD NUTS, against an exact
+        3-D grid posterior over (x, y, mass)
+  - [ ] the ten single-halo training skies: how often the true halo lies
+        inside the 95% posterior region, and the distance from posterior
+        mean to truth against the posterior's own spread — measured
 - 5c. ch.7, A/B testing by EXPECTED REVENUE: a visitor buys one of
   several tiers or nothing; the tier probabilities have a Dirichlet
   posterior (flat prior + counts), and the revenue per visitor is Σ vᵢ pᵢ.
