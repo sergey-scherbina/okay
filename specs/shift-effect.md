@@ -133,6 +133,19 @@ one API, one suite over both:
   behaviour. Overloading was not an option: both take a lambda `k => …`,
   and a lambda with no parameter types cannot pick an overload.
 
+- **In the core (shift-effect-core): (b) only.** `src/main/scala/Shift.scala`:
+  top-level `shift` (D-F), `shift0`, `reset`; `Shift` is a phantom (its
+  operations are Delim's `Cont0`), its `TypeableK.ByValue` compares the
+  prompt. `Shift.Key` interns one key per normalised type id in a
+  `ConcurrentHashMap` and holds that key's prompt, so a `shift` costs one
+  map read, not a TrieMap update. `Shift.Nesting` counts `Delim` as well
+  as `Shift`, so a `reset` inside Delim's own `delimited` pushes on that
+  machine. `Shift.cont`/`Shift.embed` are level 2's doors. The probe's
+  (a) and its suite are gone. Their numbers stay in Results.
+- **Direct style needs nothing of its own** (shift-effect-core): `reset(direct
+  { … })`, `shift(k => direct { … })`, with `.?` or with auto-colouring
+  (`Free.directColor`). The probe's `ShiftDirect` is gone.
+
 ## Results
 
 Probe: `okay-direct/src/test/scala/ShiftFx.scala`,
