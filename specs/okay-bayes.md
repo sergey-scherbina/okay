@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) and 2b (SMC) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC) and 2c (ch.3) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -108,17 +108,17 @@ factor needs.
 
 Stage 2c — *Bayesian Methods for Hackers* ch.3, a mixture and its
 convergence:
-- [ ] `Mixture(components)`: a weighted mixture of distributions, its log
+- [x] `Mixture(components)`: a weighted mixture of distributions, its log
       density the log-sum-exp of the components' (PyMC's `Mixture`); the
       assignments are summed out, not sampled
-- [ ] the book's two-cluster model on its `mixture_data.csv` (p, two
+- [x] the book's two-cluster model on its `mixture_data.csv` (p, two
       centres, two sds): four `adaptive` chains agree (split R-hat < 1.01)
       and agree with an INDEPENDENT oracle — importance sampling from a
       multivariate Student-t, whose estimate is unbiased whatever its
       proposal and whose error is its own ESS
-- [ ] the book's per-point question, P(x belongs to cluster 1), as a
+- [x] the book's per-point question, P(x belongs to cluster 1), as a
       posterior expectation over the draws
-- [ ] the book's convergence lesson, measured: chains kept from their
+- [x] the book's convergence lesson, measured: chains kept from their
       first draw (each starts at a prior draw, far from the others) read
       a split R-hat well above 1; the same chains after burn-in, under 1.01
 
@@ -216,6 +216,25 @@ y: a shared continuation, separate futures. No rejuvenation step yet: for a
 static parameter the particles only ever hold values drawn from the prior,
 so the posterior is as rich as 4000 prior draws can make it (resample-move,
 Chopin 2002, is the next step when a model needs it).
+
+Stage 2c (2026-10-02), TestHackersCh3 — four `adaptive` chains, 25 000
+draws each after 10 000 burn-in; the oracle 200 000 importance draws (ESS
+29 564):
+
+| ch.3 | adaptive (± posterior sd) | importance sampling |
+|---|---|---|
+| p | 0.376 ± 0.049 | 0.375 |
+| centre 0 | 120.19 ± 5.52 | 120.16 |
+| centre 1 | 199.60 ± 2.58 | 199.53 |
+| sd 0 | 30.19 ± 4.01 | 30.16 |
+| sd 1 | 22.84 ± 1.89 | 22.88 |
+| P(first cluster at x = 150, 175, 220) | 0.722, 0.149, 0.007 | 0.719, 0.147, 0.007 |
+
+Split R-hat over the four chains 1.0005–1.0020; the same sampler's first
+100 draws with no burn-in, from prior starts: 1.70. The book samples each
+point's assignment as its own Categorical site; summed out by `Mixture`
+the model has five sites instead of 305, and the assignment posterior is
+the expectation above, not a sample.
 
 ## 6. Open questions
 

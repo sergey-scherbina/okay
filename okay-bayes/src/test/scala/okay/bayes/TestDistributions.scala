@@ -65,3 +65,16 @@ class TestDistributions extends Diagnosed:
     assertEquals(Normal(0, 1).coerce(0.5), Some(0.5))
     assertEquals(Normal(0, 1).coerce("x"), None)
   }
+
+  test("a mixture's density sums its components out, and its sampler draws each component by its weight") {
+    val m = Mixture(Vector(0.3 -> Normal(0, 1), 0.7 -> Normal(10, 2)))
+    for x <- Seq(-3.0, 0.0, 5.0, 10.0, 40.0) do
+      assertEqualsDouble(m.logPdf(x), math.log(0.3 * math.exp(Normal(0, 1).logPdf(x)) + 0.7 * math.exp(Normal(10, 2).logPdf(x))), 1e-9)
+    assertEqualsDouble(Mixture(Vector(1.0 -> Normal(0, 1))).logPdf(2.5), Normal(0, 1).logPdf(2.5), 1e-12)
+    assert(m.logPdf(1e4) > Double.NegativeInfinity, "far in a tail the log-sum-exp still holds a finite density")
+    val rng = Random(3)
+    val xs = Vector.fill(100000)(m.sample(rng))
+    val near = xs.count(_ < 5).toDouble / xs.length
+    assert(math.abs(near - 0.3) < 0.01, s"the first component's share $near")
+    assertEqualsDouble(xs.sum / xs.length, 7.0, 0.05)
+  }

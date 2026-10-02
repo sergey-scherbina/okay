@@ -65,6 +65,24 @@ Same budget, effective sample size of β: 151 with `metropolis`, 6879 with
 on every draw here and answers β with the wrong sign; it agrees only after
 temperature is standardised by hand. `adaptive` needs no such rewrite.
 
+**Mixtures: `Mixture`.** Chapter 3's 300 points come from two clusters, and
+which point belongs to which is unknown. `Mixture(Vector(w1 -> d1, w2 ->
+d2))` is a distribution whose density sums the components out (log-sum-exp),
+so the model samples five parameters, not 300 assignments:
+
+```scala
+def clusters(p: Double, c0: Double, c1: Double, s0: Double, s1: Double): Mixture[Double] =
+Mixture(Vector(p -> Normal(c0, s0), (1 - p) -> Normal(c1, s1)))
+_ <- observeAll(data)(_ => clusters(p, c0, c1, s0, s1), identity)
+lazy val post = adaptive(mixture, samples = 25000, burn = 10000, chains = 4)
+```
+
+The posterior (centres 120.2 and 199.6, sds 30.2 and 22.8, p 0.376) agrees
+with an independent importance sampler, and a point's chance of belonging
+to the first cluster is an expectation over the draws: 0.149 at x = 175.
+Convergence reads the same way as in the book: split R-hat over four chains
+is 1.70 over their first 100 draws and 1.002 after burn-in.
+
 **Evidence: `smc`.** Sequential Monte Carlo runs many copies of the program
 side by side, each SUSPENDED at its next `observe`; at every observation the
 copies are reweighed and, when a few carry most of the weight, resampled —
@@ -112,6 +130,8 @@ Three oracles, none of them "close to the book":
 | ch.2 Challenger, E[β] (exact grid) | 0.2693 | 0.2677 |
 | ch.2 Challenger, sd(β) | 0.1163 | 0.1150 |
 | ch.2 Challenger, p(damage at 31°F) | 0.9874 | 0.9869 |
+| ch.3 mixture, centre 1 (importance sampling) | 199.53 | 199.60 |
+| ch.3 mixture, P(first cluster at x = 175) | 0.147 | 0.149 |
 
 The chapter-1 "exact" is exact: an `Exponential(α)` prior is `Gamma(1,
 α)`, conjugate to the Poisson, so both rates integrate out and τ's
@@ -125,7 +145,7 @@ by `uv` through okay-py, samples the same model as a Live test.
 
 | | |
 |---|---|
-| `Normal, Exponential, Gamma(shape, rate), Beta, Uniform, Poisson, Bernoulli, Binomial, DiscreteUniform(lo, hi)` | `logPdf`, `sample`, a symmetric `propose`, `coerce` (a trace value back as its own type) |
+| `Normal, Exponential, Gamma(shape, rate), Beta, Uniform, Poisson, Bernoulli, Binomial, DiscreteUniform(lo, hi), Mixture(components)` | `logPdf`, `sample`, a symmetric `propose`, `coerce` (a trace value back as its own type) |
 | `sample(name, d)`, `observe(d, x)`, `observeAll(xs)(d, value)`, `factor(logW)` | the `Model` effect |
 | `prior(p, rng)`, `weighted(p, n, rng)`, `metropolis(p, samples, burn, thin, chains, seed)` | handlers: a forward run, likelihood weighting, lightweight MH |
 | `adaptive(p, samples, burn, thin, chains, seed)` | MH with joint moves under a learnt covariance (Haario 2001) |

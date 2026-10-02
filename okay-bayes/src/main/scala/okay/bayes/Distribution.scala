@@ -192,3 +192,27 @@ object Distribution:
     def propose(k: Int, scale: Double, rng: Random): Int = step(k, scale * math.max(1.0, (hi - lo) / 20.0), rng)
     def coerce(v: Any): Option[Int] = int(v)
     def numeric(k: Int): Double = k.toDouble
+
+  /**
+   * a WEIGHTED MIXTURE: draw a component by its weight, then draw from it.
+   * The density sums the components out — log Σ w·p(x), by log-sum-exp — so
+   * a model observing through a mixture never samples which component a
+   * point came from (PyMC's `Mixture`). Proposals, `coerce` and `numeric`
+   * are the first component's: every component draws from one space.
+   */
+  final case class Mixture[A](components: Vector[(Double, Distribution[A])]) extends Distribution[A]:
+    require(components.nonEmpty && components.forall(_._1 >= 0) && math.abs(components.map(_._1).sum - 1) < 1e-9,
+      s"Mixture: weights must be non-negative and sum to 1, got ${components.map(_._1)}")
+    private val logWeights = components.map((w, _) => math.log(w))
+    def logPdf(x: A): Double =
+      val terms = components.indices.map(i => logWeights(i) + components(i)._2.logPdf(x))
+      val top = terms.max
+      if top == NegInf then NegInf else top + math.log(terms.iterator.map(t => math.exp(t - top)).sum)
+    def sample(rng: Random): A =
+      val u = rng.nextDouble()
+      val cum = components.map(_._1).scanLeft(0.0)(_ + _).tail
+      val i = cum.indexWhere(u < _)
+      components(if i < 0 then components.length - 1 else i)._2.sample(rng)
+    def propose(a: A, scale: Double, rng: Random): A = components.head._2.propose(a, scale, rng)
+    def coerce(v: Any): Option[A] = components.head._2.coerce(v)
+    def numeric(a: A): Double = components.head._2.numeric(a)
