@@ -20,6 +20,12 @@
       a lexically bound instance whose runtime label cannot be used
       outside its handler. See `effect-instances-tunnelling`, which
       would close this with the same mechanism.
+      UPDATE 2026-10-02 (shift-merge-guard): a nested `delimited` at a
+      `Shift` row now installs on the outer machine, so an outer evidence
+      used inside it works; what is left is a block typed at a row that
+      says no machine runs (`delimited[Int, Pure]` inside another block)
+      and evidence escaping its block (docs/continuations/12-one-machine.md,
+      "What is left of NoPrompt").
       UPDATE 2026-09-25: effect-instances-tunnelling closed through
       lexical-instances. Its STACKED instances (`Lexical.Stacked`) refuse
       use outside their installation at compile time, as `Delim.Stacked`
