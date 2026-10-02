@@ -39,3 +39,28 @@ class TestHackersNuts extends Diagnosed:
       assert(math.abs(mean(i) - exact) < 4 * Summary.sd(s) * math.sqrt(1 / ess + 1 / oess), s"${names(i)}: ${mean(i)} vs $exact")
     report(f"NUTS ch.3: divergent ${post.acceptance("(divergent)")}%.4f, tree depth ${post.acceptance("(tree depth)")}%.2f")
   }
+
+  test("Challenger written over Grad: AD NUTS against the grid, its log density the ordinary model's") {
+    import Smooth.{param, observeAll}
+    val sd = Ch2.sd
+    val challenger = for
+      beta <- param("beta", Smooth.Normal(0, sd))
+      alpha <- param("alpha", Smooth.Normal(0, sd))
+      _ <- observeAll(Ch2.flights)(f => Smooth.BernoulliLogit(-(beta * f._1 + alpha)), _._2)
+    yield (alpha.value, beta.value, Ch2.p(31, alpha.value, beta.value))
+    // the same density as Ch2.challenger, written with Distribution, at the grid's mean and away from it
+    val t = Smooth.target(challenger)
+    for (b, a) <- Seq((0.2693, -17.511), (-0.1, 3.0), (1.0, -60.0)) do
+      val plain = Distribution.Normal(0, sd).logPdf(b) + Distribution.Normal(0, sd).logPdf(a) +
+        Ch2.flights.map((tf, d) => Distribution.Bernoulli(Ch2.p(tf, a, b)).logPdf(d)).sum
+      assertEqualsDouble(t.logp(Array(b, a)), plain, 1e-9 * math.abs(plain))
+    val post = Smooth.nuts(challenger, samples = 4000, burn = 2000, chains = 2)
+    val (_, eb, ep, sdb, _) = Ch2.grid
+    val bs = post.site("beta")
+    val ess = Summary.ess(bs)
+    val p31 = Summary.mean(post.draws.map(_._3))
+    report(f"AD NUTS Challenger: E[β] ${Summary.mean(bs)}%.4f (grid $eb%.4f), sd(β) ${Summary.sd(bs)}%.4f (grid $sdb%.4f), p31 $p31%.4f (grid $ep%.4f); ESS(β) $ess%.0f of ${bs.length}, divergent ${post.acceptance("(divergent)")}%.4f")
+    assert(math.abs(Summary.mean(bs) - eb) < 4 * sdb / math.sqrt(ess))
+    assert(math.abs(Summary.sd(bs) - sdb) < 0.1 * sdb)
+    assert(math.abs(p31 - ep) < 0.005)
+  }

@@ -1,6 +1,6 @@
 # okay-bayes — Bayesian inference as effects, without Python
 
-Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6) and 3a (NUTS) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
+Status: stage 1 landed (2026-10-02); stage 2a (ch.2, adaptive Metropolis) 2b (SMC), 2c (ch.3), 2d (ch.6), 3a (NUTS) and 3b (AD) 2026-10-02; specification 2026-10-02 (operator ask: "Bayesian Methods for
 Hackers ... make okay-bayes so we can do without Python; is it very
 hard?"). Builds on the core's `Prob` effect (specs/prob-effect-hansei.md:
 discrete `dist`, boolean `observe`, exact enumeration, rejection).
@@ -162,12 +162,12 @@ sampler, the gradient from a source):
   `score` add differentiable log weights. `Smooth.target(p)` is a `Target`
   whose gradient costs ONE run of the program plus the sweep, against
   finite differences' 2d + 1; `Smooth.nuts(p, ...)` is `Nuts.sample` on it.
-  - [ ] every operation's derivative against a central difference
-  - [ ] the same model written both ways (Challenger) has the same log
+  - [x] every operation's derivative against a central difference
+  - [x] the same model written both ways (Challenger) has the same log
         density at every point, and the AD gradient equals the finite one
         to its truncation error
-  - [ ] conjugates through the three transforms, via `Smooth.nuts`
-  - [ ] the cost: at d = 100 a gradient by AD against one by differences,
+  - [x] conjugates through the three transforms, via `Smooth.nuts`
+  - [x] the cost: at d = 100 a gradient by AD against one by differences,
         measured (one run against 201) Stage 4 — `Inference` as a facade (specs/own-or-standard.md):
 ours by default, PyMC/Stan behind an import over an optional dependency.
 
@@ -313,6 +313,27 @@ draw (stage 2a). Per draw NUTS buys far more than single-site MH (ESS(β)
 512 of 8000 against 151 of 120 000) and less than `adaptive` per second on
 a two-parameter model; its case is dimension, which finite differences
 tax (2d + 1 program runs per gradient) and 3b's AD removes.
+
+Stage 3b (2026-10-02), TestSmooth (JVM, Scala.js, Native) and
+TestHackersNuts. Every operation's tape derivative equals a central
+difference to 1e-5 relative; a logistic regression written over `Grad` has
+the log density of the same model written with `Distribution` to 1e-9 at
+20 random points, and its gradient is the finite one. Challenger over
+`Grad`: E[β] 0.2727 (grid 0.2693), sd(β) 0.1181 (0.1163), p31 0.9878
+(0.9874), zero divergences. Conjugates: Normal–Normal 1.4363 ± 0.4417,
+Gamma–Poisson 3.3892 ± 0.6227, Beta–Bernoulli 0.6740 ± 0.0812, each within
+error of the closed form.
+
+The cost, one gradient at d = 100 (best of 7):
+
+| | AD | central differences | ratio |
+|---|---|---|---|
+| JVM | 0.13 ms | 4.89 ms | 37x |
+| Scala.js | 0.22 ms | 22.35 ms | 102x |
+| Native | 0.59 ms | 111.95 ms | 191x |
+
+Found on the way: the digamma series started at x = 6 was good to 9e-12
+only; started at 10 it is good to the double.
 
 ## 6. Open questions
 

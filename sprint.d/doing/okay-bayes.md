@@ -9,5 +9,6 @@
       Stage 1 landed 53219afcb; stage 2a (ch.2: A/B, Challenger,
       adaptive Metropolis) okay-bayes-ch2; 2b SMC okay-bayes-smc; 2c ch.3
       mixture okay-bayes-ch3; 2d ch.6 Thompson okay-bayes-ch6. Next:
-      stage 3: 3a NUTS + finite differences okay-bayes-nuts; next 3b
-      reverse-mode AD (`Real`) feeding the same `Nuts.sample`.
+      stage 3: 3a NUTS + finite differences okay-bayes-nuts; 3b
+      reverse-mode AD (`Real`, `Grad`, `Smooth`) okay-bayes-ad. Next:
+      stage 4, `Inference` as a facade (ours default, PyMC/Stan optional).

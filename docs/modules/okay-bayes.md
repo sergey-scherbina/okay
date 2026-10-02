@@ -101,6 +101,24 @@ site is refused by name; sample it with `metropolis`. Underneath is
 `Nuts.sample(target, ...)` over any `Target` — a dimension, a log density
 and its gradient on ℝᵈ — so a gradient from elsewhere plugs in unchanged.
 
+**Exact gradients: `Smooth`.** Finite differences run the program 2d + 1
+times per gradient. A model written over the `Grad` effect instead draws
+`param`s that are `Real`s — numbers recorded on a tape — and one backward
+sweep gives the whole gradient: reverse-mode automatic differentiation, the
+same as Stan's and PyMC's. The model reads as before, with `Smooth`'s
+densities:
+
+```scala
+beta <- param("beta", Smooth.Normal(0, sd))
+alpha <- param("alpha", Smooth.Normal(0, sd))
+_ <- observeAll(Ch2.flights)(f => Smooth.BernoulliLogit(-(beta * f._1 + alpha)), _._2)
+val post = Smooth.nuts(challenger, samples = 4000, burn = 2000, chains = 2)
+```
+
+`Smooth.target(p)` is the same `Target` `nuts` uses, so the sampler is the
+same one. At 100 parameters one gradient costs 0.13 ms against 4.9 ms by
+differences on the JVM, and 0.59 ms against 112 ms on Native.
+
 **Evidence: `smc`.** Sequential Monte Carlo runs many copies of the program
 side by side, each SUSPENDED at its next `observe`; at every observation the
 copies are reweighed and, when a few carry most of the weight, resampled —
@@ -186,6 +204,9 @@ by `uv` through okay-py, samples the same model as a Live test.
 | `Bandit(arms)`, `choose(rng)`, `observe(arm, won)`, `posterior(arm)`, `Bandit.play(b, pulls, rng)(pull)` | Thompson sampling over Bernoulli arms |
 | `nuts(p, samples, burn, chains, seed, delta)` | the No-U-Turn sampler, unconstrained through each site's `Support`, finite-difference gradient |
 | `Target`, `Target.finite(d)(f)`, `Nuts.sample(target, samples, burn, seed, delta, maxDepth)` | NUTS over any log density on ℝᵈ |
+| `Real`, `Tape`, `Real.exp / log / log1p / sqrt / pow / softplus / sigmoid / lgamma / logSumExp` | reverse-mode AD |
+| `Smooth.param(name, prior)`, `observe`, `observeAll`, `score`; `Smooth.Normal, HalfNormal, Exponential, Gamma, Beta, Uniform, Bernoulli, BernoulliLogit, Poisson, Mixture` | a model over `Grad`, differentiable densities |
+| `Smooth.target(p)`, `Smooth.nuts(p, samples, burn, chains, seed, delta)` | its exact-gradient `Target`, and NUTS on it |
 | `smc(p, particles, seed)`, `observeEach(xs)(d, value)` | sequential Monte Carlo: `Particles` with `expect`, `mean(site)`, `ess`, `logEvidence` |
 | `Posterior`: `draws`, `site(name)`, `rhat(name)`, `acceptance` | the posterior, typed |
 | `Summary.mean / sd / quantile / hdi / ess / rhat` | reading it |
@@ -208,6 +229,9 @@ by `uv` through okay-py, samples the same model as a Live test.
   Lengths in Hamiltonian Monte Carlo* (JMLR 2014); Neal, *MCMC Using
   Hamiltonian Dynamics* (Handbook of MCMC, 2011); the Stan Reference
   Manual, "MCMC Sampling" — warmup windows and the regularised metric.
+- Griewank, Walther, *Evaluating Derivatives* (SIAM, 2nd ed. 2008) —
+  reverse mode and the tape; Carpenter et al., *The Stan Math Library:
+  Reverse-Mode Automatic Differentiation in C++* (2015).
 - Del Moral, Doucet, Jasra, *Sequential Monte Carlo Samplers* (JRSS B
   2006); Wood, van de Meent, Mansinghka, *A New Approach to Probabilistic
   Programming Inference* (AISTATS 2014) — SMC as the inference of a
