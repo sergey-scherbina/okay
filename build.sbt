@@ -878,6 +878,10 @@ lazy val okayCats = (project in file("okay-cats"))
       "org.typelevel" %% "cats-effect" % "3.5.7",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
       "org.typelevel" %% "cats-laws" % "2.12.0" % Test,
+      // cats-effect-instances: the Async laws, the deterministic Ticker and
+      // the generic program generators the laws are run over
+      "org.typelevel" %% "cats-effect-laws" % "3.5.7" % Test,
+      "org.typelevel" %% "cats-effect-testkit" % "3.5.7" % Test,
       "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
     ),
   )

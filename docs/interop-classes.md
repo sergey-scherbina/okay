@@ -93,6 +93,31 @@ eager carrier, because each iteration's continuation is resumed by
 cats' `Monad` too, and cats' own laws hold for it, their `tailRecM`
 stack-safety law included.
 
+### An okay program as cats-effect's `F`
+
+Code written `F[_]: Async`, `Concurrent` or `Temporal` (http4s, doobie,
+fs2's effectful streams) runs at `CatsEffect.Program`. Its binds are
+okay's tree. cats-effect's primitives (`uncancelable`/`poll`,
+`canceled`, `onCancel`, `start`, `sleep`, `cont`, `Ref`, `Deferred`) are
+one effect, `CatsFx`, in the row. `CatsEffect.toIO` runs the whole
+program as one IO fiber, so masking and cancellation behave as they do
+in IO. cats-effect's own laws hold for it, every `AsyncTests` property.
+
+A function that knows only `Async`, called with `F = Program`:
+
+```scala
+def releasedOnCancel[F[_]](released: AtomicInteger)(using F: Async[F]): F[Outcome[F, Throwable, Unit]] =
+val oc = run(releasedOnCancel[Program](released))
+```
+
+`Program` is opaque, as `Par` is, so it has exactly one instance and
+needs no import. A plain okay `A ! Async` crosses in with
+`CatsEffect.lift`:
+
+```scala
+assertEquals(run(CatsEffect.lift(p)), 100000)
+```
+
 ## ZIO
 
 `import okay.zio.given`: `ZIO` and `ZStream` are okay `Monad`s. Over
