@@ -440,5 +440,16 @@ from 0.10 to 2.37.
 
 ## 6. Open questions
 
-- Vectorised sites (`sample("x", Normal(0, 1), size = n)`)? Stage 1 names
-  each scalar; a vector site when a model's runtime asks.
+- Vectorised sites (`sample("x", Normal(0, 1), size = n)`)? ANSWERED
+  (2026-10-02, okay-bayes-vector): no new kind of site. A vector is n
+  named scalars, `x[0]` … `x[n-1]`, so every sampler (MH, adaptive, NUTS,
+  AD, SMC) takes it unchanged; what was missing was only the writing and
+  the reading — `Bayes.sampleN(name, d, n)`, `Smooth.paramN(name, prior,
+  n)`, `Posterior.vector(name)`. A distribution over vectors as ONE site
+  (a Dirichlet, an LKJ correlation) would need a vector-valued trace and a
+  simplex transform: not built, and nothing in the book needs it as a site.
+  - [ ] `sampleN` / `paramN` name the elements `name[i]` and answer them
+        in order; `Posterior.vector` reads them back per element
+  - [ ] eight schools (Rubin 1981) with τ fixed — jointly Gaussian, so the
+        posterior of μ and of every θⱼ is exact — by `adaptive` and by
+        AD NUTS
