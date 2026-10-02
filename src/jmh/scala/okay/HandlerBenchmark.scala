@@ -173,7 +173,7 @@ class HandlerBenchmark {
   type FRow = State % Long + Ask
   val forwardProg: Long ! FRow =
     (1 to M).foldLeft(effect[FRow, Long](State.Get[Long, Long]())): (m, i) =>
-      m.flatMap(_ => effect[FRow, Long](State.Get[Long, Long]()).flatMap(s => effect[FRow, Long](State.Set[Long, Long](s + 1))))
+      m.flatMap(_ => effect[FRow, Long](State.Get[Long, Long]()).flatMap(s => effect[FRow, Long](State.Update[Long, Long](_ => (s + 1, s + 1)))))
        .flatMap(s => if i % 10 == 0 then effect[FRow, Long](Ask(s)) else pure[FRow, Long](s))
 
   type IRow = Unary[Ask] +~ Unary[State[Long, *]]
@@ -182,7 +182,7 @@ class HandlerBenchmark {
   given TypeableI[Unary[Ask]] = new TypeableI[Unary[Ask]] { def test(x: Any): Boolean = x.isInstanceOf[Ask[?]] }
   val indexedForwardProg: Freer[IRow, Unit, Unit, Long] =
     (1 to M).foldLeft(Indexed.unary[IRow, Unit, Long](State.Get[Long, Long]())): (m, i) =>
-      m.flatMap(_ => Indexed.unary[IRow, Unit, Long](State.Get[Long, Long]()).flatMap(s => Indexed.unary[IRow, Unit, Long](State.Set[Long, Long](s + 1))))
+      m.flatMap(_ => Indexed.unary[IRow, Unit, Long](State.Get[Long, Long]()).flatMap(s => Indexed.unary[IRow, Unit, Long](State.Update[Long, Long](_ => (s + 1, s + 1)))))
        .flatMap(s => if i % 10 == 0 then Indexed.unary[IRow, Unit, Long](Ask(s)) else Indexed.pure[IRow, Unit, Long](s))
 
   /** the residue's runner, over the tree's own nodes: a forwarded `Ask`

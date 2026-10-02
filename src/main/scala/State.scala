@@ -27,19 +27,11 @@ enum State[S, +A] derives Effect {
   /** read the current state */
   case Get() extends State[S, S]
 
-  /** replace the state, answering with the new one */
-  case Set(s: S) extends State[S, S]
-
-  /** replace the state by a function of it, answering the new one —
-   * `modify` as ONE operation rather than a get then a set: half the
-   * operations of every counter, and half the forwarding when another
-   * handler stands between it and State's (specs/effect-row-cost.md
-   * D1: 240 B a level against 96 for one set, measured exact) */
-  case Modify(f: S => S) extends State[S, S]
-
   /** transition the state and answer from the OLD one, as ONE operation
    * (op-map-constructors, 2026-09-27): `f` gives the answer and the new
-   * state. `update` and `swap` were a get, a set and a map. */
+   * state. `update` and `swap` were a get, a set and a map. Every write is
+   * this (state-get-update, 2026-10-02): `set` and `modify` build one, and
+   * `Set`/`Modify` are gone from the signature, which is two operations. */
   case Update[S, B](f: S => (B, S)) extends State[S, B]
 }
 
@@ -61,16 +53,15 @@ object State {
 
 
   /** replace the state */
-  inline def set[S](s: S): S ! State % S = effect(Set(s))
+  inline def set[S](s: S): S ! State % S = effect(Update[S, S](_ => (s, s)))
 
   /**
-   * apply f to the state, as ONE operation (`Modify`). It means a get
+   * apply f to the state, as ONE operation (an `Update`). It means a get
    * then a set, and until effect-row-recursion-cost (2026-09-26) it was
    * exactly that — two operations, a closure between them, and two
    * forwards through every handler standing between it and State's:
    * 240 B a level of a counting recursion against 96 now, measured
-   * exact (specs/effect-row-cost.md). A handler of State's operations
-   * answers `Modify(f)` with `f(s)` as the new state and the answer.
+   * exact (specs/effect-row-cost.md).
    *
    * It answers the NEW state, as both operations do — the file's one
    * convention, and worth keeping over the statement-shaped `Unit`
@@ -78,7 +69,7 @@ object State {
    * `.map(_ => ())`, and one who wants the state would otherwise have
    * to ask for it again.
    */
-  inline def modify[S](f: S => S): S ! State % S = effect(Modify(f))
+  inline def modify[S](f: S => S): S ! State % S = effect(Update[S, S](s => { val n = f(s); (n, n) }))
 
   /**
    * a transition that ANSWERS something computed from the old state:
@@ -149,14 +140,10 @@ object State {
       case Return(a) => Return((s, a))
       case i @ Inject(e) => split[State[S, *], F](e) {
           case Get() => Return((s, s)): (S, A) ! F
-          case Set(s) => Return((s, s)): (S, A) ! F
-          case Modify(f) => { val next = f(s); Return((next, next)): (S, A) ! F }
           case Update(f) => { val (b, next) = f(s); Return((next, b)): (S, A) ! F }
         } { _ => forwarded[State[S, *], F](i).map((s, _)) }
       case Bind(i @ Inject(e), k) => split[State[S, *], F](e) {
           case Get() => loop(s)(k(s))
-          case Set(s) => loop(s)(k(s))
-          case Modify(f) => { val next = f(s); loop(next)(k(next)) }
           case Update(f) => { val (b, next) = f(s); loop(next)(k(b)) }
         } { _ => forwarded[State[S, *], F](i).flatMap(x => _loop(s)(k(x))) }
 
@@ -170,8 +157,8 @@ object State {
    *
    * Not a handler — an INTERPRETATION of one effect into another, the
    * shape `docs/your-own-effect.md` names: every `Get` on the part
-   * becomes a `Get` on the whole read through `look`, every `Set`
-   * becomes a read, a `put` and a write. The forwarded arm carries
+   * becomes a `Get` on the whole read through `look`, every `Update`
+   * a read, a `put` and a write. The forwarded arm carries
    * the rest of the row untouched, as `handle`'s does.
    *
    * WHY TWO FUNCTIONS AND NOT A LENS (core-modules stage 4). This was
@@ -190,10 +177,6 @@ object State {
     // every operation on the part is ONE `Update` on the whole
     // (op-map-constructors): it was a get or a modify followed by a map
     def readPart: A ! State % S + F = !.widen[A, State % S, F](update[S, A](s => (look(s), s)))
-    def writePart(a: A): A ! State % S + F =
-      !.widen[A, State % S, F](update[S, A](s => (a, put(a)(s))))
-    def modifyPart(f: A => A): A ! State % S + F =
-      !.widen[A, State % S, F](update[S, A](s => { val s2 = put(f(look(s)))(s); (look(s2), s2) }))
     def updatePart[B](g: A => (B, A)): B ! State % S + F =
       !.widen[B, State % S, F](update[S, B](s => { val (b, a2) = g(look(s)); (b, put(a2)(s)) }))
 
@@ -208,8 +191,6 @@ object State {
       case Inject(e) => loop(Inject(e).flatMap(x => Return(x)))
       case Bind(Inject(e), k) => split[State[A, *], F](e) {
           case Get() => readPart.flatMap(a => _loop(k(a)))
-          case Set(a) => writePart(a).flatMap(x => _loop(k(x)))
-          case Modify(f) => modifyPart(f).flatMap(x => _loop(k(x)))
           case Update(g) => updatePart(g).flatMap(x => _loop(k(x)))
         } { e => Inject(e).flatMap(x => _loop(k(x))) }
 
@@ -248,8 +229,6 @@ object State {
       // per forwarded operation against State.handle's `forwarded`)
       case Freer.Bind(d @ Freer.Diag(e), k) => splitI[F, Un](e)(_ => forwardedI[F, Un](d).flatMap(v => again(s)(k(v)))) {
           case Get() => loop(s)(k(s))
-          case Set(n) => loop(n)(k(n))
-          case Modify(f) => { val n = f(s); loop(n)(k(n)) }
           case Update(f) => { val (b, n) = f(s); loop(n)(k(b)) }
         }
       case Freer.Bind(n @ Freer.Inject(o), k) =>

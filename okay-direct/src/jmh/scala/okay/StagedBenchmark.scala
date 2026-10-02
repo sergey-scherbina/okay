@@ -66,13 +66,13 @@ class StagedBenchmark {
     else
       val M = summon[Monad[Handled[Row, R, *]]]
       M.flatMap(sw.stage(State.Get()))(a =>
-      M.flatMap(sw.stage(State.Set(i)))(_ =>
+      M.flatMap(sw.stage(State.Update[Int, Int](_ => (i, i))))(_ =>
       M.flatMap(sw.stage(Writer.Say("w")))(_ =>
       M.flatMap(sw.stage(State.Get()))(b =>
-      M.flatMap(sw.stage(State.Set(i + 1)))(_ =>
+      M.flatMap(sw.stage(State.Update[Int, Int](_ => (i + 1, i + 1))))(_ =>
       M.flatMap(sw.stage(Writer.Say("w")))(_ =>
       M.flatMap(sw.stage(State.Get()))(c =>
-      M.flatMap(sw.stage(State.Set(i + 2)))(_ =>
+      M.flatMap(sw.stage(State.Update[Int, Int](_ => (i + 2, i + 2))))(_ =>
       M.flatMap(sw.stage(Writer.Say("w")))(_ =>
       M.flatMap(sw.stage(State.Get()))(d => handBlock(i + 1, acc + a + b + c + d)))))))))))
 

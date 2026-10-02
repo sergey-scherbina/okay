@@ -167,9 +167,6 @@ class DelimBenchmark {
     val p = Delim.prompt[Ans]
     val op = [X] => (e: okay.State[Int, X]) => (e match
       case okay.State.Get() => Delim.shift0[Ans, Int, Pure](p)(k => pure((s: Int) => k(s).flatMap(f => f(s))))
-      case okay.State.Set(s1) => Delim.shift0[Ans, Int, Pure](p)(k => pure((_: Int) => k(s1).flatMap(f => f(s1))))
-      // State.Modify since effect-row-recursion-cost; stateProg performs none
-      case okay.State.Modify(f1) => Delim.shift0[Ans, Int, Pure](p)(k => pure((s: Int) => { val s1 = f1(s); k(s1).flatMap(f => f(s1)) }))
       case okay.State.Update(f1) => Delim.shift0[Ans, X, Pure](p)(k => pure((s: Int) => { val (b, s1) = f1(s); k(b).flatMap(f => f(s1)) }))
     ): X ! Row
     val ret: Int => Ans ! Row = a => pure((s: Int) => pure((s, a)))

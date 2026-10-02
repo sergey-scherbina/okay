@@ -41,8 +41,6 @@ class HandlerFormsBenchmark {
   // `.poly`: Update answers a type its pattern binds, which the case form refuses
   val stateForm = Handler[State % Int].state[Int](0).poly { [X] => (s: Int, e: State[Int, X]) => e match
     case State.Get() => (s, s)
-    case State.Set(n) => (n, n)
-    case State.Modify(g) => { val n = g(s); (n, n) }
     case State.Update(g) => { val (b, n) = g(s); (n, b) }
   }
 

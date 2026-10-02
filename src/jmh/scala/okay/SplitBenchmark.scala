@@ -174,14 +174,10 @@ class SplitBenchmark {
       case Free.Return(a) => (s, a)
       case Inject(e) => <|>[State % Int, Produce](e) match
         case Left(State.Get()) => (s, s)
-        case Left(State.Set(s2)) => (s2, s2)
-        case Left(State.Modify(f)) => { val s2 = f(s); (s2, s2) }
         case Left(State.Update(f)) => { val (b, s2) = f(s); (s2, b) }
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
       case Bind(Inject(e), k) => <|>[State % Int, Produce](e) match
         case Left(State.Get()) => loop(s)(k(s))
-        case Left(State.Set(s2)) => loop(s2)(k(s2))
-        case Left(State.Modify(f)) => { val s2 = f(s); loop(s2)(k(s2)) }
         case Left(State.Update(f)) => { val (b, s2) = f(s); loop(s2)(k(b)) }
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
     loop(0)(sp)._2
@@ -200,14 +196,10 @@ class SplitBenchmark {
       case Free.Return(a) => (s, a)
       case Inject(e) => old(e) match
         case Left(State.Get()) => (s, s)
-        case Left(State.Set(s2)) => (s2, s2)
-        case Left(State.Modify(f)) => { val s2 = f(s); (s2, s2) }
         case Left(State.Update(f)) => { val (b, s2) = f(s); (s2, b) }
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
       case Bind(Inject(e), k) => old(e) match
         case Left(State.Get()) => loop(s)(k(s))
-        case Left(State.Set(s2)) => loop(s2)(k(s2))
-        case Left(State.Modify(f)) => { val s2 = f(s); loop(s2)(k(s2)) }
         case Left(State.Update(f)) => { val (b, s2) = f(s); loop(s2)(k(b)) }
         case Right(_) => throw new IllegalStateException("no Produce is performed here")
     loop(0)(sp)._2

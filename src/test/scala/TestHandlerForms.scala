@@ -11,6 +11,10 @@ enum Accounts[+A] derives Effect:
 enum Env[R, +A] derives Effect:
   case Get() extends Env[R, R]
 
+/** an effect whose operation answers its own field's type: beyond the case form */
+enum Box[V, +A] derives Effect:
+  case Put(v: V) extends Box[V, V]
+
 /** specs/handler-forms.md: the author's four forms, each a level-1 value */
 class TestHandlerForms extends munit.FunSuite:
   import Accounts.*
@@ -74,22 +78,27 @@ class TestHandlerForms extends munit.FunSuite:
     val p: Int ! State % Int = State.get[Int].flatMap(s => State.set(s + 1).map(_ => s * 2))
     val asState = Handler[State % Int].state[Int](5).poly { [X] => (s: Int, e: State[Int, X]) => e match
       case State.Get() => (s, s)
-      case State.Set(n) => (n, n)
-      case State.Modify(g) => { val n = g(s); (n, n) }
       case State.Update(g) => { val (b, n) = g(s); (n, b) }
     }
     assertEquals(p.handle(asState).run, p.handle(State(5)).run)
   }
 
-  test("where the case form stops: State's Set(s: S) answers the type its field has, pointing at .poly") {
-    val errs = compileErrors("""
-      Handler[State % Int].state[Int](5) {
-        case (s, State.Get()) => (s, s)
-        case (_, State.Set(n)) => (n, n)
-        case (s, State.Modify(g)) => (s, s)
-        case (s, State.Update(g)) => (s, s)
-      }""")
-    assert(errs.contains("Set answers the type its field `s` has"), errs)
+  test("State in the case form: Get and Update (state-get-update), the answer the caller's own") {
+    val p: Int ! State % Int = State.get[Int].flatMap(s => State.set(s + 1).map(_ => s * 2))
+    val asState = Handler[State % Int].state(5) {
+      case (s, State.Get()) => (s, s)
+      case (s, State.Update(g)) => { val (b, n) = g(s); (n, b) }
+    }
+    assertEquals(p.handle(asState).run, p.handle(State(5)).run)
+    val u: String ! State % Int = State.update[Int, String](n => (s"was $n", n + 1))
+    assertEquals(u.handle(asState).run, u.handle(State(5)).run)
+    assert(compileErrors("""Handler[State % Int].state(5) { case (s, State.Get()) => (s, s); case (s, State.Update(g)) => (s, "no") }""")
+      .contains("Update answers what its caller chose"))
+  }
+
+  test("where the case form stops: an operation whose answer is its own field's type, pointing at .poly") {
+    val errs = compileErrors("""Handler[Box % Int] { case Box.Put(v) => v }""")
+    assert(errs.contains("Put answers the type its field `v` has"), errs)
     assert(errs.contains(".poly"), errs)
   }
 
