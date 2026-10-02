@@ -22,7 +22,7 @@ free. These three earn their keep that way:
 |---|---|---|
 | `Replayable[F]` | a program you intend to replay may only hold effects whose re-execution nobody can observe | a restart that does not land where the first run stood |
 | `At` | where in the program's own structure this was written | a paused program with no useful stack trace |
-| `OneMachine[F]` | one machine per row | a nested delimiter that fails at runtime with `NoPrompt` |
+| `Shift.Machine[F]` | whether a machine already runs in the row | a nested delimiter on a second machine, which fails at run time with `NoPrompt` |
 
 ## `Replayable`: the sentence, as a constraint
 
@@ -130,27 +130,31 @@ the one their caller supplied. `Shift` does exactly that. If you build
 something like this, expect that constraint; it is not a bug and it has
 no workaround.
 
-## `OneMachine`: one machine per row
+## `Shift.Machine`: one machine per program
 
 Chapter 12's rule, as evidence:
 
 ```scala
-given fresh[F[+_]](using NotGiven[Shift[?, Any] <:< F[Any]]): OneMachine[F]
+inline given of[F[+_]]: Machine[F] = ${ machineImpl[F] }
 ```
 
-"Give me evidence that `F` does not already contain `Shift`." A second
-`delimited` in the same row is then a compile error that says
-`SECOND machine`, where it used to be a runtime `NoPrompt` for an
-ordinary nesting.
+"Tell me whether `F` already contains a `Shift`." The answer is read
+off the row at compile time, and every door that runs a machine acts
+on it: outermost it runs one, inside one it installs on it. So a second
+`delimited` inside a block is not a mistake any more. The rule is kept
+by the door, not by the person writing the block.
 
-Its hole is chapter 19's `THE LIMIT`, and it is the same hole
-`Replayable` has, for the same reason — which brings us to the thing
-the three share.
+It is the one of the three that is not a refusal, and the one that
+does NOT propagate silently. An abstract row is a compile error asking
+for the evidence as a parameter, because "I cannot read this row" is
+not an answer it is willing to guess. Chapter 19's `THE LIMIT` was that
+guess, and it is closed.
 
 ## What the three have in common
 
-All three state their property as **subtyping with the concrete row on
-the left**, and none of them is written the natural way. The natural
+`Replayable` (and, until shift-merge-guard, the old one-machine guard,
+`OneMachine`) states its property as **subtyping with the concrete row
+on the left**, and none of them is written the natural way. The natural
 way does not work, and the reason is worth knowing if you ever write a
 constraint over a row:
 
@@ -167,7 +171,7 @@ is stating the property as subtyping — `A | B <: C | D` decomposes the
 question out of `orDominator`, where an abstract row crashes dotty 3.9
 outright.
 
-And the consequence, which is the same for all three:
+And the consequence, for a guard built that way:
 
 > An **abstract** row is not proved and not refuted — it
 > **propagates**.
@@ -180,11 +184,12 @@ helper whose signature declares *no* witness is not asked for one, and
 for the helper to take the witness, which propagates the obligation to
 a call site that can discharge it.
 
-`specs/delim-safety.md` stage 2 would close it properly with region
-types — a scope tag, as `runST` has. It is open on purpose: the cost is
-a type parameter on every signature carrying evidence, including the
-inline doors whose entire design is that a call site writes as few type
-arguments as possible. Nothing has yet asked for it.
+`Shift.Machine` closed it for the machine by reading the row in a macro
+instead of searching for a `NotGiven`: a macro can SEE that the row is
+abstract and say so, where `NotGiven` can only fail to find. Region
+types (`specs/delim-safety.md` stage 2, a scope tag as `runST` has)
+would have closed it at the cost of a type parameter on every signature
+carrying evidence, and were not needed.
 
 ## The pattern, for your own constraints
 

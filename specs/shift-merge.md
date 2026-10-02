@@ -1,6 +1,6 @@
 # shift-merge — Delim and Shift, one effect named `Shift`
 
-Status: stages 1, 2 and 4 done, 2026-10-02; the one guard in progress (shift-merge-guard), stage 3 after it. Owner lane: `shift-merge`. Sprint
+Status: stages 1, 2 and 4 and the one guard done, 2026-10-02; stage 3 next (sprint shift-stacked-key). Owner lane: `shift-merge`. Sprint
 cont-js-depth, the design conversation after stage 3a.
 
 ## Why
@@ -88,22 +88,31 @@ different keys mix in one `flatMap`. `Shift.dynamic(p)` names it.
       TestShiftPatterns pass with `exit`/`emit` from the ONE evidence; a
       static program widened with `Shift.dynamic` mixes with a capture to
       a prompt by value in one program (TestShift)
-- [ ] the machine guard: ONE evidence, `Shift.Machine[F]`, for "a machine
+- [x] the machine guard: ONE evidence, `Shift.Machine[F]`, for "a machine
       already runs in F" (lane shift-merge-guard; `OneMachine` and
       `Nesting` both gone)
-- [ ] every machine-starting door (`run`, `delimited`, `collect`,
+- [x] every machine-starting door (`run`, `delimited`, `collect`,
       `collectUntil`, `resumable`, `drive`, `answer`, `replay`, the keyed
       `reset`, `Stacked.run`/`delimited`) NESTS when a machine runs
       outside: it pushes its delimiter on that machine instead of starting a
       second — what `scope`/`collecting`/`pausing` do, now chosen by the
       row, so the "SECOND machine" compile error is gone (TestBookOneMachine)
-- [ ] an ABSTRACT row is a compile error naming the fix, "take `using
+- [x] an ABSTRACT row is a compile error naming the fix, "take `using
       Shift.Machine[F]`": the hole chapter 12 demonstrated (`NotGiven`
       reading "unknown" as "absent", a generic helper swallowing the
       obligation) is closed (TestBookOneMachine)
-- [ ] a row with a `Shift` AND an abstract part reads as nested (the
+- [x] a row with a `Shift` AND an abstract part reads as nested (the
       `Shift` is certain); a row of only concrete non-`Shift` parts reads
-      as outermost
+      as outermost; an alias of a type lambda (`State % Int`,
+      `Instances.Of[G]`) is beta-reduced before it is read
+- **Found by the guard:** okay-persist's `Dialogue` class summoned the
+  evidence at its own abstract `F` inside `step` (`Shift.answer`), which
+  the old `NotGiven` granted silently — chapter 12's hole in library
+  code. The class now takes it with its `Schema[A]`.
+- **What the guard cannot see, written down (chapter 12):** a block typed
+  at a row that says no machine runs (`delimited[Int, Pure]` inside
+  another block) starts its own machine, and a capture through it to the
+  outer boundary is `NoPrompt` — the row is the only thing it reads.
 - [x] stage 2: the satellites' suites green; no `Delim` left in code
       (okay2, a separate Scala 2 build with its own `Delim`, untouched)
 - [x] the differential oracle and the machine's depth suite unchanged and

@@ -1,57 +1,62 @@
 # 9 · Composing the shapes
 
-> Compiled in `src/test/scala/TestBookComposing.scala`, including one
-> test that asserts something **does not compile**. This is the
-> chapter that matters most in a real codebase, because a real
-> codebase never wants exactly one shape.
+> Compiled in `okay-direct/src/test/scala/TestBookComposing.scala`.
+> This is the chapter that matters most in a real codebase, because a
+> real codebase never wants exactly one shape.
 
 ---
 
-## The four do not compose naively
+## Two boundaries, one machine
 
-Here is the mistake, and it is the obvious thing to write:
+Here is the obvious thing to write:
 
 ```scala
 Shift.delimited[String, Pure]:
   direct:
-    val x = !Shift.delimited[Int, Pure]:      // ← a second one, inside
+    val inner = !Shift.delimited[Int, Row]:
       direct:
-        !Shift.exit(7)
+        !Shift.exit(7)          // leaves the INNER boundary only
         0
-    s"inner said $x"
+    s"inner said $inner"
 ```
 
-Two boundaries, one inside the other. It reads correctly. It is wrong,
-and the compiler says so:
+Two boundaries, one inside the other, and it does what it says:
+`"inner said 7"`. `Row` is `Shift % ? + Pure`, the row of the outer
+block.
 
-```scala
-val e = compileErrors("""
-  okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))""")
-assert(e.contains("SECOND machine"))
-```
+**What happens underneath.** Each of `delimited`, `collect` and
+`resumable` does two jobs: it *installs a boundary*, and, if none is
+running yet, it *starts the machine* that interprets captures. A prompt
+lives in the machine that pushed it, so a second machine inside the
+first could not see the outer boundary. That used to be a runtime
+`NoPrompt`, then a compile error. Now the inner door reads its row,
+sees a `Shift` (a machine is running), and only installs. Chapter 12
+is the whole story.
 
-**Why it is wrong.** Each of `delimited`, `collect` and `resumable`
-does two jobs: it *installs a boundary* and it *runs the machine* that
-interprets captures. A second one inside the first starts a second
-machine — and a prompt lives in the machine that pushed it. An exit
-aimed at the outer boundary from inside the inner machine cannot find
-it, because it is looking at a different stack.
-
-Getting that as a compile error rather than a runtime surprise is not
-an accident; it is the reason the two halves have separate names.
+**The row you write is what it reads.** `delimited[Int, Row]` says
+"inside a machine". `delimited[Int, Pure]` says "nothing outside", and
+the door believes it and starts a machine of its own. That is harmless
+until a capture inside it is aimed at the outer boundary: the inner
+machine claims it and cannot find the prompt. Inside a block, write
+the block's row.
 
 ## The rule, in one line
 
 > **The outermost combinator runs the machine. Everything under it
 > installs only.**
 
-| runs the machine (outermost) | installs only (nested) |
+| runs the machine when outermost | installs only, always |
 |---|---|
 | `Shift.delimited` | `Shift.scope` |
 | `Shift.collect` | `Shift.collecting` |
 | `Shift.resumable` | `Shift.pausing` |
 
-Written correctly, the example above is:
+The left column nests by itself when its row says a machine runs. The
+right column says so explicitly, and its row needs no outer `Shift`:
+it keeps one in its result (`R ! Shift % ? + F`) for the machine outside
+to run.
+
+The example above, with the right column:
 
 ```scala
 Shift.delimited[String, Pure]:              // runs

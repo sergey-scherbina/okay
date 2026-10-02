@@ -183,10 +183,7 @@ docs/continuations/09-composing.md	!Shift.exit(using outer)("straight out")   //
 docs/continuations/09-composing.md	Shift.delimited[Int, Pure]:
 docs/continuations/09-composing.md	Shift.delimited[String, Pure]:              // runs
 docs/continuations/09-composing.md	Shift.delimited[String, Pure]: outer ?=>
-docs/continuations/09-composing.md	assert(e.contains("SECOND machine"))
-docs/continuations/09-composing.md	s"inner said $x"
 docs/continuations/09-composing.md	val inner = !Shift.scope[Int, Pure]:    // installs
-docs/continuations/09-composing.md	val x = !Shift.delimited[Int, Pure]:      // ← a second one, inside
 docs/continuations/10-prompts.md	Shift.delimited[String, Pure]: outer ?=>
 docs/continuations/10-prompts.md	assert(a ne b)
 docs/continuations/10-prompts.md	assert(e.getMessage.contains("Installed here"))
@@ -201,18 +198,13 @@ docs/continuations/11-four-captures.md	capture(c, p)(_ => capture("shift", p)(_ 
 docs/continuations/11-four-captures.md	capture(c, p)(k => k("a").flatMap(x => k("b").map(y => x + y)))
 docs/continuations/12-one-machine.md	Shift.collect[Int, F]:          // ...and also collect
 docs/continuations/12-one-machine.md	Shift.resumable[Q, A, R, F]:        // I want to pause...
-docs/continuations/12-one-machine.md	def run[R, F[+_]](prog: R ! (Shift % ? + F))(using OneMachine[F]): R ! F
 docs/continuations/13-multi-shot.md	Shift.delimited[List[Int], Pure]:
 docs/continuations/13-multi-shot.md	log = log :+ s"ran with $x"        // IN the continuation
 docs/continuations/13-multi-shot.md	opened += 1                        // NOT in the continuation
 docs/continuations/13-multi-shot.md	ran = true                                       // never happens
 docs/continuations/13-multi-shot.md	val x = !Shift.shift[Int](k => ...)
-docs/continuations/14-a-new-effect.md	(using Shift.OneMachine[F], At): R ! F
 docs/continuations/14-a-new-effect.md	Budget.within[String, Pure](100)("over budget")(shop)
-docs/continuations/14-a-new-effect.md	def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Shift % ? + F)
-docs/continuations/14-a-new-effect.md	def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Shift % ? + F))
 docs/continuations/14-a-new-effect.md	final class Budget[R] private (val left: AtomicInteger,
-docs/continuations/14-a-new-effect.md	final class Cap[R] private (state, fallback, prompt: Prompt[R]):
 docs/continuations/14-a-new-effect.md	val orElse: () => R,
 docs/continuations/14-a-new-effect.md	val prompt: Prompt[R]):
 docs/continuations/15-resumable-exceptions.md	assertEquals(parsed, 3)      // rows 1,2 not re-parsed; row 4 still reached
@@ -233,13 +225,11 @@ docs/continuations/18-what-belongs-in-a-library.md	stamped("hi").runWith        
 docs/continuations/19-what-a-capture-does.md	!Shift.exit(r * 2)          // log: acquire, release
 docs/continuations/19-what-a-capture-does.md	Shift.delimited[Int, P]:
 docs/continuations/19-what-a-capture-does.md	cleaned = true      // never runs
-docs/continuations/19-what-a-capture-does.md	okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))
 docs/continuations/19-what-a-capture-does.md	okay.bracket[Int, Int, okay.Shift % ? + okay.Pure](1)(_ => ())(r => okay.pure(r))
 docs/continuations/20-the-costs-measured.md	s"$what @ $where"
 docs/continuations/21-the-disciplines.md	Shift.delimited[Int, Pure](…)      // At("Booking.scala:31")
 docs/continuations/21-the-disciplines.md	def delimited[R, F[+_]](body: …)(using At): R ! F
 docs/continuations/21-the-disciplines.md	door    // "TestDelimDiagnostics.scala:36" -- the CALLER's line
-docs/continuations/21-the-disciplines.md	given fresh[F[+_]](using NotGiven[Shift[?, Any] <:< F[Any]]): OneMachine[F]
 docs/continuations/21-the-disciplines.md	given union[F, G](using Replayable[F], Replayable[G]): Replayable[F + G]
 docs/continuations/22-checkpoints.md	"the snapshot changed how much the PROGRAM ran")
 docs/continuations/23-durable-workflows.md	!w.sleep(24 * 3600 * 1000L)              // the run ENDS here, resumes tomorrow
@@ -1065,8 +1055,6 @@ docs/tutorial.md	Condition.run { case (Damaged(_), _) => Invoke("skip", ()) }(lo
 docs/tutorial.md	Condition.run { case (Damaged(_), _) => Resume(2) }(loop(in))       // Vector(1, 2, 3)
 docs/tutorial.md	Cst.errors(cst)                 // the diagnostics ARE in the tree
 docs/tutorial.md	Cst.lexemes(cst) == text        // lossless, damage included
-docs/tutorial.md	Shift.reset[List[Int], Pure] { p =>
-docs/tutorial.md	Shift.shift(p)(k => k(()).map(a :: _))
 docs/tutorial.md	Durable.tools(inner, journal)(policy = {
 docs/tutorial.md	Form(name, email, age)          // three problems, or a Form
 docs/tutorial.md	Json.read[Answer]("""{"city": "Kyiv", "country": "Ukraine"""")
@@ -1084,6 +1072,8 @@ docs/tutorial.md	Profile(u, o)
 docs/tutorial.md	Retrieve.keyword(repo.keyword)))                      // BM25
 docs/tutorial.md	Retrieve.symbols(repo.index, repo.corpus.sources),    // exact, no vectors
 docs/tutorial.md	Scan.all(bpe)("hello hell her").tokens.map(_.lexeme)
+docs/tutorial.md	Shift.reset[List[Int], Pure] { p =>
+docs/tutorial.md	Shift.shift(p)(k => k(()).map(a :: _))
 docs/tutorial.md	Some("/**"), Set('"'), triple = true,
 docs/tutorial.md	SparkInterop.aggregate(rdd)(stats)
 docs/tutorial.md	Symbols.project(files)          // language per file, from the path

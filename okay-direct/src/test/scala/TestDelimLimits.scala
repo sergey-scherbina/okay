@@ -159,7 +159,9 @@ class TestDelimLimits extends munit.FunSuite {
     // helper compiled and threw NoPrompt at a Shift row (the stages 1
     // and 2 of specs/delim-safety.md were for this line). The row
     // cannot be read, so the evidence is asked for instead of guessed.
-    val e = compileErrors("def generic[F[+_]](p: Int ! okay.Shift % ? + F): Int ! F = okay.Shift.run(p)")
+    val e = compileErrors("""
+      def generic[F[+_]](p: Int ! Shift % ? + F): Int ! F = Shift.run(p)
+      """)
     assert(e.contains("using Shift.Machine[F]"), s"the message does not name the fix: $e")
     def generic[F[+_]](p: Int ! Shift % ? + F)(using Shift.Machine[F]): Int ! F = Shift.run(p)
     val outer = Shift.prompt[Int]

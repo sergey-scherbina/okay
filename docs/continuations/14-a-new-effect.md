@@ -55,14 +55,17 @@ version instead.
 ```scala
 def within[R, F[+_]](limit: Int)(orElse: => R)
                     (body: Budget[R] ?=> R ! Shift % ? + F)
-                    (using Shift.OneMachine[F], At): R ! F =
+                    (using Shift.Machine[F], At): R ! F =
   val p = Shift.prompt[R]
   Shift.run(Shift.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
 ```
 
 This is the only place that mentions `Shift.run`, and it takes
-`OneMachine[F]` — chapter 12's rule, applied: *a library that starts a
-machine passes the obligation on to its caller.*
+`Machine[F]` — chapter 12's rule, applied: *a library that starts a
+machine passes the obligation on to its caller*, who knows whether a
+machine already runs (then `within` nests on it) or not (then it runs
+its own). Without the `using`, the row is abstract here and the
+compiler asks for it.
 
 **The operation** — the only thing users write:
 
@@ -134,7 +137,7 @@ Worth listing, because this is the actual return on the work:
 - They cannot **aim at the wrong boundary**: there is only one, and
   they never name it.
 - They cannot **start a second machine** by accident: `within` is the
-  only door, and it holds `OneMachine`.
+  only door, and its `Machine` makes it nest inside a running one.
 - They cannot **leave the prompt behind and use it later** — chapter
   10's open edge — because they never hold it.
 - They cannot **forget to install the boundary**: without a
@@ -162,14 +165,15 @@ parameters to the fallback, and none of which change the shape.
 
 ## The general recipe
 
+<!-- not-a-test: the shape, with `...` where each library puts its own parts -->
 ```scala
 // 1. evidence: what the block hands its body, with the answer type as a member
 final class Cap[R] private (state, fallback, prompt: Prompt[R]):
   type Res = R
 
-// 2. the boundary: the ONLY place that runs a machine, passing OneMachine on
+// 2. the boundary: the ONLY place that runs a machine, passing Machine on
 def within[R, F[+_]](...)(body: Cap[R] ?=> R ! (Shift % ? + F))
-                    (using Shift.OneMachine[F], At): R ! F
+                    (using Shift.Machine[F], At): R ! F
 
 // 3. the operations: named in the user's vocabulary, hiding the capture
 def op[F[+_]](...)(using c: Cap[?], at: At): A ! (Shift % ? + F)

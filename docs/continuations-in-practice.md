@@ -55,20 +55,24 @@ patterns people actually hit.
 
 ## The second rule: one machine
 
-> **One `Shift.run` per program. The outermost pattern runs the
+> **One machine per program. The outermost pattern runs the
 > machine; everything nested inside it only installs a delimiter.**
 
-`delimited`, `collect` and `resumable` each end by running the
-machine. A machine owns one prompt stack, and a capture can only
-reach a prompt on the stack of the machine that is running it — so
-two machines is two stacks, and a capture that crosses from one into
-the other dies with `NoPrompt` at run time. It is not a rare shape:
-"a producer that pauses for an answer" is `resumable` around
-`collect`, and written with those two names it throws.
+A machine owns one prompt stack, and a capture can only reach a prompt
+on the stack of the machine that is running it — so two machines is two
+stacks, and a capture that crosses from one into the other dies with
+`NoPrompt` at run time. It is not a rare shape: "a producer that pauses
+for an answer" is `resumable` around `collect`.
 
-Each of the three therefore has a half that does not run:
+So `delimited`, `collect` and `resumable` run a machine only when none
+runs yet. Each takes `Shift.Machine[F]`, read off its row at compile
+time: a row that holds a `Shift` says a machine runs outside, and the
+door then installs its delimiter on that machine and leaves the
+running to it. `resumable` around `collect` works as written. Each also
+has a half that only ever installs, for a block written at a row
+without the outer `Shift`:
 
-| runs the machine (outermost) | installs a delimiter (nested) |
+| runs the machine when outermost | installs a delimiter, always |
 |---|---|
 | `Shift.delimited` | `Shift.scope` |
 | `Shift.collect` | `Shift.collecting` |
@@ -89,15 +93,16 @@ def half(using Shift.Asking[String, Int, List[Int], Shift % ? + Pure]) =
 Under one machine the delimiters compose the way multi-prompt
 promises: the `pause` names the dialogue's prompt, the capture takes
 the collect's delimiter *with it*, and resuming re-installs it, so the
-emits after the answer land in the same list. Both halves are in
-`TestDelimNesting`, the wrong spelling pinned beside the right one.
+emits after the answer land in the same list. Both spellings are in
+`TestDelimNesting`, `collect` and `collecting`, with one answer.
 
-The type system catches the wrong spelling where the row is concrete:
-`collect[A, Shift % ? + F]` puts **two** `Shift` in one row, and the
-combinators that run a machine refuse that with a message naming the
-nested form. It cannot catch an ABSTRACT row — a row-polymorphic
-helper still compiles — so the failure is still reachable, and when
-it happens the error says everything it knows:
+An ABSTRACT row cannot be read, so a row-polymorphic helper that runs
+a machine is a compile error until it takes `(using Shift.Machine[F])`
+and lets its caller answer. What is left of the failure is a capture to
+a prompt that is gone or was never installed on this machine — kept
+past its block, or a block typed at a row that says no machine runs
+when one does — and when it happens the error says everything it
+knows:
 
 ```
 the capture at Booking.scala:31 named the prompt 'prompt @ Service.scala:12',
@@ -106,7 +111,8 @@ Installed here, innermost first:
   collecting @ Walk.scala:12
   delimited @ Job.scala:40
 
-ONE `Shift.run` PER PROGRAM. …
+A capture reaches a delimiter installed on the machine running it
+and not yet returned. …
 ```
 
 A prompt knows what made it and where; the machine knows which

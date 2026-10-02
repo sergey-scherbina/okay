@@ -105,9 +105,11 @@ and the outer/inner distinction is invisible at the call site.
 you meant.
 
 *Rule it out:* one machine per program — install scopes with `push`,
-erase the row with **one** `run` at the top. A guard can make this a
-compile error (`OneMachine`); if your system has one, put it in the
-signature so it propagates.
+erase the row with **one** `run` at the top. A guard can make the doors
+keep it by themselves: `Shift.Machine` reads the row, and a door inside
+a machine installs on it. If your system has one, put it in the
+signature of every generic helper so the caller, who knows the row,
+answers.
 
 ### B3. Identifying prompts by name or string
 

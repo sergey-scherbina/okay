@@ -55,7 +55,8 @@ class TestBookOneMachine extends munit.FunSuite {
 
   test("an ABSTRACT row is refused, and the message says to pass the evidence on") {
     val e = compileErrors("""
-      def runAnything[A, F[+_]](p: A ! okay.Shift % ? + F): A ! F = okay.Shift.run(p)""")
+      def runAnything[A, F[+_]](p: A ! Shift % ? + F): A ! F =
+        Shift.run(p)""")
     assert(e.nonEmpty, "an abstract row was guessed")
     assert(e.contains("using Shift.Machine[F]"), s"the message does not name the fix: $e")
   }

@@ -268,7 +268,7 @@ different shape.
 ### [21. The disciplines that make it safe](21-the-disciplines.md) ✓
 
 **Thesis.** Three constraints carry their weight in types rather than
-in prose — `Replayable`, `At`, `OneMachine` — and each exists because
+in prose — `Replayable`, `At`, `Shift.Machine` — and each exists because
 something went wrong without it.
 
 ### [22. Saving and restoring: checkpoints, and what cannot be one](22-checkpoints.md) ✓

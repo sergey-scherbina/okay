@@ -140,34 +140,36 @@ program. Its behaviour under a capture is also pinned: a raise from
 inside a captured continuation reaches the handler; a handler that
 raises instead of resuming leaves the rest of the block unrun.
 
-## A second machine is a compile error, with one hole
+## A second machine does not happen, and an unread row is refused
 
 ```scala
-okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))
-// error, mentioning: SECOND machine
+Shift.delimited[Int, Shift % ? + P](Shift.abort[Int, Int, Shift % ? + P](outer)(7)).map(_ + 1000)))
+// 7: the abort crossed the inner block to `outer`
 ```
 
 One machine, one prompt stack (chapter 12). Nesting two used to be a
-runtime `NoPrompt` and is now refused by the row guard.
+runtime `NoPrompt`, then a compile error. Now a machine-starting door
+reads its row (`Shift.Machine`), sees a machine running and installs on
+it, so the capture crosses.
 
-The hole, stated by its own test and named `THE LIMIT`:
+The old hole, stated by its own test and named `THE LIMIT`:
 
 ```scala
 def generic[F[+_]](p: Int ! Shift % ? + F): Int ! F = Shift.run(p)
 ```
 
-A row-polymorphic helper with **no witness in its signature** compiles,
-because `NotGiven` reads an unknown `F` as "absent". Instantiated at a
-`Shift` row it throws `NoPrompt` at runtime. The fix available today
-is for the helper to take `using Shift.OneMachine[F]`, which propagates
-the obligation so its call site is refused instead. Stages 1 and 2 of
-`specs/delim-safety.md` exist for this line, and stage 2 is open on
-purpose — the cost is a type parameter on every signature carrying
-evidence.
+A row-polymorphic helper with **no evidence in its signature** used to
+compile, because `NotGiven` reads an unknown `F` as "absent".
+Instantiated at a `Shift` row it threw `NoPrompt` at run time. Now the
+row cannot be read, so it is a compile error that names the fix:
 
-A book that only showed the guarantees would be selling something.
-This is the edge, it is known, it has a test that asserts the bad
-behaviour so that fixing it will break the test loudly.
+```scala
+def generic[F[+_]](p: Int ! Shift % ? + F)(using Shift.Machine[F]): Int ! F = Shift.run(p)
+```
+
+The caller, who knows the row, answers. The test that asserted the bad
+behaviour now asserts the error and the nesting, which is what it
+promised to do when the hole was fixed: break loudly.
 
 ## Depth: it is not a problem
 
@@ -213,13 +215,14 @@ outside the machine — chapter 17's rule, paying off.
 | `bracket` | compile error |
 | `try`/`finally` | compile error |
 | `try`/`catch` | compiles, catches nothing |
-| a second machine | compile error — unless the row is abstract |
+| a second machine | nests on the first; an abstract row is a compile error |
 | depth | not a problem |
 
-Three of those are compile errors and one is a known hole. That ratio
-is the actual claim of this chapter: the dangerous combinations were
-made unwritable rather than documented, and the one that escaped has a
-test with its name on it.
+Three of those are compile errors, and the one that used to be a known
+hole now nests by itself. That is the actual claim of this chapter: the
+dangerous combinations were made unwritable or harmless rather than
+documented, and the one that escaped kept a test with its name on it
+until it was closed.
 
 ---
 

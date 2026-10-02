@@ -81,8 +81,10 @@ One rule, and it is the whole of chapter 12 in a sentence:
 > top.
 
 Nested `run`s would be separate machines, and a prompt lives in the
-machine that pushed it. Get this wrong and the failure is `NoPrompt` at
-runtime — or, since chapter 21's `OneMachine`, a compile error instead.
+machine that pushed it. Since chapter 21's `Shift.Machine` a nested
+`run` reads its row and installs on the machine outside instead, so the
+remaining way to get it wrong is a row that says no machine runs when
+one does: the failure is then `NoPrompt` at run time.
 
 ## What it cost
 
