@@ -66,7 +66,11 @@ object Shift {
    * next one runs on a fresh stack, as Cont's strict `k` does (StackSwitch, specs/cont-stack.md Layer 2). A
    * level is taken as ~4 KB cold, Cont's ~1.2 KB scaled. The Scala 3 core's twin.
    */
-  private val room: Int = Integer.getInteger("okay.shift.room", math.max(32L, StackSwitch.firstRoom.toLong * 1200 / 4096).toInt)
+  private val room: Int = {
+    // `System.getProperty`, not `Integer.getInteger`: the shared source links on Scala.js and Native too
+    val p = System.getProperty("okay.shift.room")
+    if (p != null) p.toInt else math.max(32L, StackSwitch.firstRoom.toLong * 1200 / 4096).toInt
+  }
   private val left: ThreadLocal[Array[Int]] = new ThreadLocal[Array[Int]] { override def initialValue(): Array[Int] = Array(room) }
 
   /** run the machine for one `reset`, one level less of room; at zero on a fresh stack */
