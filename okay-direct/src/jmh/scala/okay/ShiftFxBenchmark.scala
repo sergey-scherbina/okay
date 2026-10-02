@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit
  * specs/shift-effect.md: one shape on four implementations. `seq`: N
  * captures in sequence under one delimiter, each body `k(1)` plus 0 (an
  * answer-using body, so `Cont`'s macro cannot take it as a value).
+ * `seqDF`: the same with Danvy-Filinski's `shift` (the body under its reset).
  * `twoShot`: 100 delimiters, each `shift(k => k(1) + k(10)) * 2`.
  * `fx*` is `Shift % R` (test sources: ShiftFx), (a) a handler,
  * (b) Delim's machine; `cont*` today's `Cont`; `delim*` today's `Delim`.
@@ -24,7 +25,11 @@ class ShiftFxBenchmark {
 
   def fxSeq(api: ShiftApi)(n: Int): Int ! Shift % Int =
     if n == 0 then pure(0)
-    else api.shift[Int, Int, P](k => k(1).map(_ + 0)).flatMap(x => !.tailcall(fxSeq(api)(n - 1)).map(_ + x))
+    else api.shift0[Int, Int, P](k => k(1).map(_ + 0)).flatMap(x => !.tailcall(fxSeq(api)(n - 1)).map(_ + x))
+
+  def fxSeqDF(api: ShiftApi)(n: Int): Int ! Shift % Int =
+    if n == 0 then pure(0)
+    else api.shift[Int, Int, P](k => k(1).map(_ + 0)).flatMap(x => !.tailcall(fxSeqDF(api)(n - 1)).map(_ + x))
 
   def contSeq(n: Int): Cont[Int, Int, Int] =
     if n == 0 then Cont.Pure(0)
@@ -35,13 +40,15 @@ class ShiftFxBenchmark {
     else Delim.shift0[Int, Int, P](p)(k => k(1).map(_ + 0)).flatMap(x => !.tailcall(delimSeq(p)(n - 1)).map(_ + x))
 
   def fxTwo(api: ShiftApi): Int ! P =
-    api.reset[Int, P](api.shift[Int, Int, P](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2))
+    api.reset[Int, P](api.shift0[Int, Int, P](k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2))
 
   def delimTwo: Int ! P =
     Delim.reset[Int, P](p => Delim.shift0[Int, Int, P](p)(k => for a <- k(1); b <- k(10) yield a + b).map(_ * 2))
 
   @Benchmark def fxHandled_seq(): Int = !.run(ShiftFx.Handled.reset[Int, P](fxSeq(ShiftFx.Handled)(N)))
   @Benchmark def fxDelim_seq(): Int = !.run(ShiftFx.OnDelim.reset[Int, P](fxSeq(ShiftFx.OnDelim)(N)))
+  @Benchmark def fxHandled_seqDF(): Int = !.run(ShiftFx.Handled.reset[Int, P](fxSeqDF(ShiftFx.Handled)(N)))
+  @Benchmark def fxDelim_seqDF(): Int = !.run(ShiftFx.OnDelim.reset[Int, P](fxSeqDF(ShiftFx.OnDelim)(N)))
   @Benchmark def cont_seq(): Int = okay.reset(contSeq(N))
   @Benchmark def delim_seq(): Int = !.run(Delim.reset[Int, P](p => delimSeq(p)(N)))
 
