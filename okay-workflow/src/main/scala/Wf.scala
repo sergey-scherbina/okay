@@ -400,7 +400,7 @@ object Wf:
 
   /** start a program that may ask the runtime as well as the world */
   def resumable[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
-                               (using Shift.OneMachine[F], At): Paused[Q, A, R, F] ! F =
+                               (using Shift.Machine[F], At): Paused[Q, A, R, F] ! F =
     Shift.resumable[Ask[Q], Ans[A], R, F](body(using Asks(summon)))
 
   /**
@@ -410,7 +410,7 @@ object Wf:
    * durable driver appends.
    */
   def drive[Q, A, R, F[+_]](p: Paused[Q, A, R, F])(oracle: Q => A ! F)
-                           (using rt: Runtime, om: Shift.OneMachine[F])
+                           (using rt: Runtime, om: Shift.Machine[F])
                            : (Step[Q, R], Journal[A]) ! F =
     loop(p, Nil)(q => Some(oracle(q)))
 
@@ -421,7 +421,7 @@ object Wf:
    * person, an HTTP call, a task queue.
    */
   def advance[Q, A, R, F[+_]](p: Paused[Q, A, R, F])
-                             (using rt: Runtime, om: Shift.OneMachine[F])
+                             (using rt: Runtime, om: Shift.Machine[F])
                              : (Step[Q, R], Journal[A]) ! F =
     loop(p, Nil)(_ => None)
 
@@ -429,7 +429,7 @@ object Wf:
    * author's questions have somebody to answer them */
   private def loop[Q, A, R, F[+_]](p: Paused[Q, A, R, F], acc: Journal[A])
                                   (own: Q => Option[A ! F])
-                                  (using rt: Runtime, om: Shift.OneMachine[F])
+                                  (using rt: Runtime, om: Shift.Machine[F])
                                   : (Step[Q, R], Journal[A]) ! F =
     p match
       case Shift.Paused.Done(r) => pure((Step.Done(r), acc))
@@ -460,7 +460,7 @@ object Wf:
    */
   def replay[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
                             (j: Journal[A])
-                            (using Shift.OneMachine[F], Replayable[Shift % ? + F], At)
+                            (using Shift.Machine[F], Replayable[Shift % ? + F], At)
                             : Paused[Q, A, R, F] ! F =
     replaying[Q, A, R, F](body)(j).map(_._1)
 
@@ -481,7 +481,7 @@ object Wf:
    */
   def replaying[Q, A, R, F[+_]](body: Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
                                (j: Journal[A])
-                               (using Shift.OneMachine[F], Replayable[Shift % ? + F], At)
+                               (using Shift.Machine[F], Replayable[Shift % ? + F], At)
                                : (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F =
     def go(p: Paused[Q, A, R, F], left: Journal[A], seen: List[(Ask[Q], Ans[A])])
           : (Paused[Q, A, R, F], List[(Ask[Q], Ans[A])]) ! F = p match

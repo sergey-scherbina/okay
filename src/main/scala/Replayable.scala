@@ -35,8 +35,8 @@ import scala.annotation.implicitNotFound
  * `[A] =>> F[A] | G[A]`, and matching a concrete row against it asks
  * the compiler to invert a union into halves; it leaves both
  * unsolved and reports every instance as ambiguous for both. What
- * works is the same trick that closed the second-machine hole in
- * `Shift.OneMachine`: state the property as SUBTYPING with the
+ * works is the trick the old second-machine guard (`OneMachine`, now
+ * `Shift.Machine`) used: state the property as SUBTYPING with the
  * concrete row on the LEFT. `A | B <: C | D` decomposes the left
  * side, which the compiler does happily — and it keeps the whole
  * question out of `orDominator`, where `Row.In` over an abstract
@@ -45,8 +45,8 @@ import scala.annotation.implicitNotFound
  * The consequence worth knowing: an ABSTRACT row is not proved and
  * not refuted, it PROPAGATES — a helper written over `F[+_]` takes
  * the obligation and hands it to its caller, where the row is
- * usually concrete. That is the same behaviour `OneMachine` has and
- * the same reason.
+ * usually concrete. `Shift.Machine` asks for the same at an abstract
+ * row, for the same reason.
  */
 @implicitNotFound("""this row holds an effect that REPLAY WOULD PERFORM AGAIN, so the program is not a pure function of its journal and a restart would not land where the first run stood.
 Everything a durable program is told by the outside world must enter through `pause`, whose answers the journal remembers.

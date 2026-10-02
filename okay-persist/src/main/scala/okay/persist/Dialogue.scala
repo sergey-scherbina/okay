@@ -115,7 +115,7 @@ final class Dialogue[Q, A, R, F[+_]] private (topic: Topic, val id: String,
                                       * so it is written once.
                                       */
                                      place: Shift.Journal[A] => Shift.Dialogue[Q, A, R, F] ! F)
-                                    (using Schema[A]):
+                                    (using Schema[A], Shift.Machine[F]):
 
   private val typed = Typed[Dialogue.Entry[A]](topic, version, upcasts)
   private val key = id.getBytes("UTF-8")
@@ -513,7 +513,7 @@ object Dialogue:
                             upcasts: Map[Int, Typed.Upcast] = Map.empty)
                            (body: Shift.Asking[Q, A, R, Shift % ? + F] ?=> R ! Shift % ? + F)
                            (using Schema[A], Replayable[Shift % ? + F],
-                            Shift.OneMachine[F], At): Dialogue[Q, A, R, F] =
+                            Shift.Machine[F], At): Dialogue[Q, A, R, F] =
     new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
       j => Shift.replay[Q, A, R, F](body)(j))
 
@@ -534,7 +534,7 @@ object Dialogue:
                                upcasts: Map[Int, Typed.Upcast] = Map.empty)
                               (body: Wf.Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
                               (using Schema[Wf.Ans[A]], Replayable[Shift % ? + F],
-                               Shift.OneMachine[F], At)
+                               Shift.Machine[F], At)
                               : Dialogue[Wf.Ask[Q], Wf.Ans[A], R, F] =
     new Dialogue(topic, id, program, snapshots, snapshotEvery, version, upcasts,
       j => Wf.replay[Q, A, R, F](body)(j))

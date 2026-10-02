@@ -154,7 +154,7 @@ class TestScopedEffects extends munit.FunSuite:
     val localized = Reader.local[Int, Int, Shift % ? + okay.Pure](_ * 10)(
       Shift.push(prompt)(body).at[Reader % Int + (Shift % ? + okay.Pure)])
     val driven: Int ! F =
-      Shift.run[Int, F](localized.at[Shift % ? + F])(using Shift.OneMachine.fresh[F])
+      Shift.run[Int, F](localized.at[Shift % ? + F])
     assertEquals(!.run(Reader.run[Int, Int, okay.Pure](1)(driven)), 5,
       "the *10 never reached body's asks at all: k(1)=1+1=2, k(2)=1+2=3, 2+3=5 — the TRUE ambient, unaffected by local")
   }

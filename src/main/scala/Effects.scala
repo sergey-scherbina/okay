@@ -174,7 +174,7 @@ trait Effects[M[_[+_], _]]:
       reify[M, F, R](f(a => reflect[M, F, R](kk(a))(using this)))(using this)))(using this)
 
   /** delimit (the top-level `reset`) */
-  def reset[R, F[+_]](body: M[Shift % R + F, R])(using Shift.Key[R], Distinct[Shift % R + F], Shift.Nesting[F]): M[F, R] =
+  def reset[R, F[+_]](body: M[Shift % R + F, R])(using Shift.Key[R], Distinct[Shift % R + F], Shift.Machine[F]): M[F, R] =
     reflect[M, F, R](okay.reset[R, F](reify[M, Shift % R + F, R](body)(using this)))(using this)
 
   /** take a ready handler's effect off the row (the program's `p.handle(h)`; two arguments in one list, so the
@@ -212,7 +212,7 @@ given Effects[Free] with
     okay.shift[R, A, F](f)
   override def shift0[R, A, F[+_]](f: (A => R ! F) => R ! F)(using k: Shift.Key[R], at: At): A ! Shift % R + F =
     okay.shift0[R, A, F](f)
-  override def reset[R, F[+_]](body: R ! Shift % R + F)(using Shift.Key[R], Distinct[Shift % R + F], Shift.Nesting[F]): R ! F =
+  override def reset[R, F[+_]](body: R ! Shift % R + F)(using Shift.Key[R], Distinct[Shift % R + F], Shift.Machine[F]): R ! F =
     okay.reset[R, F](body)
   override def run[A](m: A ! Pure): A = m.runWith
 

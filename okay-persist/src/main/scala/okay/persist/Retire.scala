@@ -130,7 +130,7 @@ object Retire:
    */
   def patches[Q, A, R, F[+_]](journals: List[(String, Shift.Journal[Wf.Ans[A]])])
                              (body: Wf.Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
-                             (using Shift.OneMachine[F], Replayable[Shift % ? + F], At)
+                             (using Shift.Machine[F], Replayable[Shift % ? + F], At)
                              : Map[String, Branch] ! F =
     def go(left: List[(String, Shift.Journal[Wf.Ans[A]])],
            acc: Map[String, Branch]): Map[String, Branch] ! F = left match

@@ -6,22 +6,26 @@ import scala.language.implicitConversions
 /**
  * THE BOOK'S CHAPTER 9, COMPILED (docs/continuations/09-composing.md).
  *
- * The chapter that shows the shapes DO NOT compose naively. The first
- * test is a compile error on purpose: it is the mistake, pinned, so
- * the page can promise that the wrong spelling is caught by the
- * compiler rather than by production.
+ * How the shapes compose: one machine, many delimiters. A
+ * machine-starting door written inside a machine nests on it
+ * (`Shift.Machine`, shift-merge-guard); `scope` says the same thing
+ * explicitly.
  */
 class TestBookComposing extends munit.FunSuite {
 
   type Row = Shift % ? + Pure
 
-  // ---- the mistake: a second machine inside the first
+  // ---- a machine-starting door inside a machine: it nests
 
-  test("the wrong spelling does not compile, and says why") {
-    val e = compileErrors("""
-      okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))""")
-    assert(e.nonEmpty, "a nested machine compiled")
-    assert(e.contains("SECOND machine"), s"the message does not say what is wrong: $e")
+  test("delimited inside delimited stands on the running machine") {
+    val r = Shift.delimited[String, Pure]:
+      direct:
+        val inner = !Shift.delimited[Int, Row]:
+          direct:
+            !Shift.exit(7)          // leaves the INNER boundary only
+            0
+        s"inner said $inner"
+    assertEquals(!.run(r), "inner said 7")
   }
 
   // ---- the right spelling: the outermost runs, the inner installs

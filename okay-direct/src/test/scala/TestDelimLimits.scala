@@ -142,31 +142,30 @@ class TestDelimLimits extends munit.FunSuite {
 
   // ==== A SECOND MACHINE ===========================================
 
-  test("a second machine in one row is a COMPILE error (delim-safety stage 0)") {
+  test("a door at a row where a machine runs NESTS on it (shift-merge-guard)") {
     // `Prompted` proves a delimiter was installed, not that THIS
     // machine holds it — which used to be a runtime NoPrompt for an
-    // ordinary nesting. The row guard refuses the shape instead.
-    val e = compileErrors("""
-      okay.Shift.delimited[Int, okay.Shift % ? + okay.Pure](okay.pure(1))""")
-    assert(e.nonEmpty, "a second machine compiled")
-    assert(e.contains("SECOND machine"), s"the message does not say what is wrong: $e")
+    // ordinary nesting, then a compile error (delim-safety stage 0).
+    // `Shift.Machine` reads the row, and the door pushes its delimiter
+    // on the machine already running: the capture crosses it.
+    val outer = Shift.prompt[Int]
+    val prog: Int ! P = Shift.run[Int, P](Shift.push[Int, P](outer)(
+      Shift.delimited[Int, Shift % ? + P](Shift.abort[Int, Int, Shift % ? + P](outer)(7)).map(_ + 1000)))
+    assertEquals(!.run(prog), 7)
   }
 
-  test("THE LIMIT: an ABSTRACT row is not caught, and still throws") {
-    // `NotGiven` reads an unknown F as "absent", so a row-polymorphic
-    // helper compiles — and NoPrompt is still what happens when it is
-    // instantiated at a Shift row. Stages 1 and 2 of
-    // specs/delim-safety.md exist for this line.
-    // no witness in ITS signature: the guard is summoned for an
-    // abstract F, where it succeeds — that is the hole. A helper that
-    // DOES take `using Shift.OneMachine[F]` propagates the obligation
-    // and its call site is refused, which is the fix available today.
-    def generic[F[+_]](p: Int ! Shift % ? + F): Int ! F = Shift.run(p)
+  test("an ABSTRACT row is a COMPILE error naming the fix; passed on, the helper nests") {
+    // `NotGiven` read an unknown F as "absent", so a row-polymorphic
+    // helper compiled and threw NoPrompt at a Shift row (the stages 1
+    // and 2 of specs/delim-safety.md were for this line). The row
+    // cannot be read, so the evidence is asked for instead of guessed.
+    val e = compileErrors("def generic[F[+_]](p: Int ! okay.Shift % ? + F): Int ! F = okay.Shift.run(p)")
+    assert(e.contains("using Shift.Machine[F]"), s"the message does not name the fix: $e")
+    def generic[F[+_]](p: Int ! Shift % ? + F)(using Shift.Machine[F]): Int ! F = Shift.run(p)
     val outer = Shift.prompt[Int]
-    def prog: Int ! P = Shift.delimited[Int, P]:
-      direct:
-        100 + !generic[Shift % ? + P](Shift.shift[Int, Int, Shift % ? + P](outer)(k => k(5)))
-    intercept[NoPrompt](!.run(prog))
+    def prog: Int ! P = Shift.run[Int, P](Shift.push[Int, P](outer)(
+      generic[Shift % ? + P](Shift.shift[Int, Int, Shift % ? + P](outer)(k => k(5))).map(100 + _)))
+    assertEquals(!.run(prog), 105)
   }
 
   // ==== DEPTH ======================================================

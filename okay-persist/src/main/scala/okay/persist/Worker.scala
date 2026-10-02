@@ -144,7 +144,7 @@ final class Worker[Q, A, R, F[+_], G[+_]](topic: Topic, program: String, timers:
                                    isolate: Option[Worker.Isolate[G]] = None)
                                   (body: Wf.Asks[Q, A, R, F] ?=> R ! Shift % ? + F)
                                   (using Schema[Wf.Ans[A]], Replayable[Shift % ? + F],
-                                   Shift.OneMachine[F], At, Wf.Runtime,
+                                   Shift.Machine[F], At, Wf.Runtime,
                                    Row.Sub[F, G]):
 
   /** the dialogue this worker drives, for an id */

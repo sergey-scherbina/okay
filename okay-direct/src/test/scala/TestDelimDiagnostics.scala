@@ -51,9 +51,10 @@ class TestDelimDiagnostics extends munit.FunSuite {
   // ---- NoPrompt: the message IS the documentation
 
   test("NoPrompt names the capture, the prompt it wanted, what IS installed, and the rule") {
-    // the hole delim-safety stage 0 cannot close: an abstract row, so
-    // a second machine is started inside one that already has a Shift
-    def generic[F[+_]](p: Int ! Shift % ? + F): Int ! F = Shift.run(p)
+    // a capture to a prompt no block installed: the generic helper
+    // nests on the delimited block's machine (`Shift.Machine` passed
+    // on), and that machine has only its own prompt
+    def generic[F[+_]](p: Int ! Shift % ? + F)(using Shift.Machine[F]): Int ! F = Shift.run(p)
     val outer = Shift.prompt[Int]
     def prog: Int ! P = Shift.delimited[Int, P]:
       direct:
@@ -69,9 +70,8 @@ class TestDelimDiagnostics extends munit.FunSuite {
     assert(e.wanted.startsWith("prompt @ TestDelimDiagnostics.scala:"), s"wanted=${e.wanted}")
     assert(msg.contains(e.wanted), msg)
     // and the RULE that explains the difference
-    assert(msg.contains("ONE `Shift.run` PER PROGRAM"), msg)
-    assert(msg.contains("scope"), msg)
-    assert(msg.contains("collecting"), msg)
+    assert(msg.contains("not yet returned"), msg)
+    assert(msg.contains("Shift.Machine"), msg)
   }
 
   test("NoPrompt lists the delimiters that ARE installed, innermost first") {

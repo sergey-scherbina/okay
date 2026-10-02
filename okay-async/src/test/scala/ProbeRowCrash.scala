@@ -48,7 +48,7 @@ import scala.util.NotGiven
  * THE RULE THAT FALLS OUT, and it is the practical one: an obligation
  * over a row is CARRIED AS A PARAMETER, never searched for at an
  * abstract row. `Shift.answer`, `replay` and `drive` all take their
- * `OneMachine` rather than summoning it, and that is why the core
+ * `Machine` rather than summoning it, and that is why the core
  * compiles at all.
  */
 object ProbeRowCrash:

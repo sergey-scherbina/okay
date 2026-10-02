@@ -13,7 +13,8 @@ import scala.language.implicitConversions
  *
  * `scope` / `collecting` / `pausing` install a delimiter and leave
  * the machine alone, so the outermost combinator is the only one that
- * runs. These tests are the difference, both directions.
+ * runs. Since shift-merge-guard the machine-starting spellings do the
+ * same when the row says a machine runs (`Shift.Machine`).
  */
 class TestDelimNesting extends munit.FunSuite {
 
@@ -42,17 +43,25 @@ class TestDelimNesting extends munit.FunSuite {
     assertEquals(back.finished, Some(List(1, 5, 3)))
   }
 
-  test("THE OLD SHAPE is now a COMPILE error, and the message names the fix") {
-    // `collect` (not `collecting`) runs its own machine, and its row
-    // would be `Shift % ? + (Shift % ? + P)` — two Shift in one row, the
-    // inner machine claiming the outer machine's pause. It used to
-    // typecheck and throw NoPrompt; delim-safety stage 0 refuses it.
-    val e = compileErrors("""
-      okay.Shift.collect[Int, okay.Shift % ? + okay.Pure](okay.Direct.direct {
-        !okay.Shift.emit(1)
-      })""")
-    assert(e.nonEmpty, "the second machine compiled")
-    assert(e.contains("collecting"), s"the message does not name the fix: $e")
+  /** THE OLD SHAPE: `collect`, not `collecting` — at this row a machine already runs, so it nests */
+  def halfOld(using Shift.Asking[String, Int, List[Int], Shift % ? + P]): List[Int] ! Shift % ? + P =
+    Shift.collect[Int, Shift % ? + P]:
+      direct:
+        !Shift.emit(1)
+        val more = !Shift.pause("more?")
+        !Shift.emit(more)
+        !Shift.emit(3)
+
+  test("THE OLD SHAPE now NESTS: collect at a Shift row stands on the running machine") {
+    // its row is `Shift % ? + (Shift % ? + P)`: it used to typecheck and
+    // throw NoPrompt (the inner machine claiming the outer pause), then
+    // was a compile error (delim-safety stage 0); since
+    // shift-merge-guard `Shift.Machine` reads the row and the door
+    // pushes its delimiter on the machine outside, as `collecting` does
+    val start = !.run(Shift.resumable[String, Int, List[Int], P](halfOld))
+    assertEquals(start.asking, Some("more?"))
+    assertEquals(!.run(Shift.drive(start)(_ => okay.pure(2))), List(1, 2, 3))
+    assertEquals(!.run(Shift.replay[String, Int, List[Int], P](halfOld)(List(5))).finished, Some(List(1, 5, 3)))
   }
 
   // ---- a capture crossing a NESTED SCOPE, through the named door

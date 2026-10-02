@@ -3,7 +3,6 @@ package okay
 import okay.Row.plus
 import scala.quoted.*
 import scala.annotation.implicitNotFound
-import scala.util.NotGiven
 
 /**
  * A continuation as an effect (specs/shift-effect.md): `Shift % R` in the row is a capture to the nearest
@@ -35,16 +34,16 @@ def shift0[A](using in: Shift.Prompted[?])(f: (A => in.Res ! in.F) => in.Res ! i
  * passes as it is.
  */
 def reset[R, F[+_]](body: Shift.Prompted.Aux[R, Shift % R, F] ?=> R ! Shift % R + F)
-                   (using k: Shift.Key[R], d: Distinct[Shift % R + F], n: Shift.Nesting[F]): R ! F =
+                   (using k: Shift.Key[R], d: Distinct[Shift % R + F], n: Shift.Machine[F]): R ! F =
   val pushed = Shift.push[R, F](k.prompt)(Shift.toDyn(body(using Shift.Prompted.keyed[R, F](k))))
   // a row that still holds a capture's effect is run by the machine outside
   if n.inner then Shift.innerDyn(pushed) else Shift.runReset[R, F](pushed)
 
 /** `reset` as a value: `p.handle(Reset[R])` */
 object Reset:
-  def apply[R](using k: Shift.Key[R]): Handler.Full[Shift % R, R, [A] =>> R, Shift.Nesting] =
-    new Handler.Full[Shift % R, R, [A] =>> R, Shift.Nesting]:
-      def run[A, F[+_]](p: A ! Shift % R + F)(using a: A <:< R, d: Distinct[Shift % R + F], n: Shift.Nesting[F]): R ! F =
+  def apply[R](using k: Shift.Key[R]): Handler.Full[Shift % R, R, [A] =>> R, Shift.Machine] =
+    new Handler.Full[Shift % R, R, [A] =>> R, Shift.Machine]:
+      def run[A, F[+_]](p: A ! Shift % R + F)(using a: A <:< R, d: Distinct[Shift % R + F], n: Shift.Machine[F]): R ! F =
         reset[R, F](a.substituteCo[[X] =>> X ! Shift % R + F](p))
 
 /** a delimiter's name: answer type `R`, identity by allocation, labelled for diagnostics */
@@ -68,14 +67,13 @@ object NoPrompt:
         |Installed here, innermost first:
         |$stack
         |
-        |ONE `Shift.run` PER PROGRAM. A machine owns one prompt stack,
-        |so a delimiter installed by an INNER run cannot be reached
-        |from the outer one, or the other way about. The combinators
-        |that run a machine are `delimited`, `collect`, `resumable`;
-        |the ones that install a delimiter on the machine already
-        |running are `scope`, `collecting`, `pausing`. See
-        |docs/continuations-in-practice.md, "The second rule: one
-        |machine".""".stripMargin
+        |A capture reaches a delimiter installed on the machine running it
+        |and not yet returned. A door that runs a machine (`delimited`,
+        |`collect`, `resumable`, `Shift.run`) nests on a machine already
+        |running in its row (`Shift.Machine`), so the prompt was never
+        |installed here, has returned (a continuation or a prompt kept
+        |past its block), or belongs to a program another machine ran.
+        |See docs/continuations/12-one-machine.md.""".stripMargin
 
 /** where a capture was written, as a compile-time constant: a resumed continuation has no useful JVM stack trace */
 final case class At(where: String) extends AnyVal:
@@ -107,14 +105,6 @@ object At:
  * the top-level `shift`/`reset` above do). Everything below the first half is what was `object Shift`.
  */
 object Shift {
-
-  /** evidence that the row has no `Shift` yet: a second machine in one row cannot see the first's prompts */
-  @implicitNotFound("this row already contains Shift, so this would start a SECOND machine, and a capture cannot cross from one machine's prompt stack to another's.\nUse the nested form, which installs a delimiter on the machine already running:\n  delimited -> scope,   collect -> collecting,   resumable -> pausing\n(docs/continuations-in-practice.md, \"The second rule: one machine\")")
-  final class OneMachine[F[+_]] private[Shift] ()
-  object OneMachine:
-    /** membership by `<:<` on a union, not `Row.In`: the latter crashes dotty on an abstract row */
-    given fresh[F[+_]](using NotGiven[Shift[?, Any] <:< F[Any]]): OneMachine[F] =
-      new OneMachine[F]()
 
   /** a fresh prompt, labelled with its line */
   def prompt[R](using at: At): Prompt[R] = named[R]("prompt")
@@ -158,7 +148,7 @@ object Shift {
 
   /** a fresh prompt, a block under it, run */
   def reset[R, F[+_]](body: Prompt[R] => R ! Shift % ? + F)
-                     (using om: OneMachine[F], at: At): R ! F =
+                     (using om: Machine[F], at: At): R ! F =
     val p = named[R]("reset")(using at)
     run(push(p)(body(p)))
 
@@ -204,7 +194,7 @@ object Shift {
 
   /** a fresh delimiter and the machine: the root of a `Prompted` block */
   def delimited[R, F[+_]](body: Prompted.Aux[R, Shift % ?, F] ?=> R ! Shift % ? + F)
-                         (using om: OneMachine[F], at: At): R ! F =
+                         (using om: Machine[F], at: At): R ! F =
     run(scopeAs("delimited")(body))(using om)
 
   /** `dollar` with the evidence in scope */
@@ -316,7 +306,7 @@ object Shift {
 
   /** everything the body emitted, in order */
   def collect[A, F[+_]](body: Emitting.Aux[A, F] ?=> Unit ! Shift % ? + F)
-                       (using om: OneMachine[F], at: At): List[A] ! F =
+                       (using om: Machine[F], at: At): List[A] ! F =
     run(collectAs("collect")(body))(using om)
 
   /** the nested half of `collect` */
@@ -333,7 +323,7 @@ object Shift {
   /** emit into a `FoldUntil` that may stop the producer early */
   def collectUntil[A, S, R, F[+_]](using fo: FoldUntil[A, S, R])
                                    (body: Emitting.Aux[A, F] ?=> Unit ! Shift % ? + F)
-                                   (using om: OneMachine[F], at: At): R ! F =
+                                   (using om: Machine[F], at: At): R ! F =
     if fo.done(fo.init) then okay.pure(fo.end(fo.init))
     else run(collectUntilAs("collectUntil")(fo)(body))(using om)
 
@@ -396,7 +386,7 @@ object Shift {
 
   /** run `body` until it pauses or finishes */
   def resumable[Q, A, R, F[+_]](body: Asking[Q, A, R, Shift % ? + F] ?=> R ! Shift % ? + F)
-                               (using om: OneMachine[F], at: At): Dialogue[Q, A, R, F] ! F =
+                               (using om: Machine[F], at: At): Dialogue[Q, A, R, F] ! F =
     run(pausingAs("resumable")(body))(using om)
 
   /** the nested half of `resumable` */
@@ -428,7 +418,7 @@ object Shift {
 
   /** answer every question with `answer`, to the end */
   def drive[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F])(answer: Q => A ! F)
-                           (using OneMachine[F]): R ! F =
+                           (using Machine[F]): R ! F =
     p match
       case Paused.Done(r) => okay.pure(r)
       case Paused.Ask(q, resume, _) =>
@@ -442,7 +432,7 @@ object Shift {
   type Journal[A] = List[A]
 
   /** one more answer, appended to the journal */
-  def answer[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)(using OneMachine[F])
+  def answer[Q, A, R, F[+_]](p: Dialogue[Q, A, R, F], j: Journal[A])(a: A)(using Machine[F])
                             : (Dialogue[Q, A, R, F], Journal[A]) ! F =
     p match
       case Paused.Ask(_, resume, _) => run(resume(a)).map(next => (next, j :+ a))
@@ -450,7 +440,7 @@ object Shift {
 
   /** where the dialogue stands, from its program and its journal */
   def replay[Q, A, R, F[+_]](body: Asking[Q, A, R, Shift % ? + F] ?=> R ! Shift % ? + F)
-                            (using OneMachine[F], Replayable[Shift % ? + F], At)
+                            (using Machine[F], Replayable[Shift % ? + F], At)
                             (j: Journal[A]): Dialogue[Q, A, R, F] ! F =
     j.foldLeft(resumable[Q, A, R, F](body)): (acc, a) =>
       acc.flatMap:
@@ -468,8 +458,9 @@ object Shift {
     def test(x: Any): Boolean = x.isInstanceOf[Cont0[?, ?, ?, ?]]
 
   /** run on the machine under the barrier: a capture with no delimiter is `NoPrompt` */
-  def run[R, F[+_]](prog: R ! Shift % ? + F)(using OneMachine[F]): R ! F =
-    Stacked.bounded[R, F](in(prog))
+  def run[R, F[+_]](prog: R ! Shift % ? + F)(using m: Machine[F]): R ! F =
+    // a machine outside runs the program, its captures included
+    if m.inner then innerDyn(prog) else Stacked.bounded[R, F](in(prog))
 
   /** run without the barrier: a capture with no delimiter goes out, for a machine outside */
   def runNested[R, F[+_]](prog: R ! Shift % ? + F)(using Row.In[Shift % ?, F]): R ! F =
@@ -543,13 +534,13 @@ object Shift {
       head.asInstanceOf[R ! F]
 
     /** run a program written under the empty stack */
-    def run[R, F[+_]](prog: Under[F, R, EmptyTuple])(using OneMachine[F]): R ! F =
-      bounded[R, F](rebase(prog))
+    def run[R, F[+_]](prog: Under[F, R, EmptyTuple])(using m: Machine[F]): R ! F =
+      if m.inner then innerDyn[R, F](erase(prog)) else bounded[R, F](rebase(prog))
 
 
     /** a fresh prompt on the empty stack, the body under it, run */
     def delimited[R, F[+_]](body: (s: Reset[R, EmptyTuple]) => Under[F, R, s.p.type *: EmptyTuple])
-                           (using om: OneMachine[F], at: At): R ! F =
+                           (using om: Machine[F], at: At): R ! F =
       val s = new Reset[R, EmptyTuple](named[R]("delimited")(using at))
       run[R, F](Delimited.machine[Freer.Lift[F]].reset[EmptyTuple, EmptyTuple, R](Cont0.delimiter(s.p))(rebase(body(s))))(using om)
 
@@ -607,12 +598,12 @@ object Shift {
     val here = cell(0)
     if here > 0 then
       cell(0) = here - 1
-      try Shift.run[R, F](pushed) finally cell(0) = here
+      try Shift.run[R, F](pushed)(using Machine.outermost[F]) finally cell(0) = here
     else StackSwitch.fresh { big =>
       val c = ResetRoom.left.get
       val saved = c(0)
       c(0) = big / 2
-      try Shift.run[R, F](pushed) finally c(0) = saved
+      try Shift.run[R, F](pushed)(using Machine.outermost[F]) finally c(0) = saved
     }
 
   /** a program keyed STATICALLY (by an answer type) as a dynamic one, to mix with captures to prompts by
@@ -641,7 +632,7 @@ object Shift {
       case _ => false
 
   /** level 2: the program as a `Cont` whose answers are programs: `c / k` is `reset(q >>= k)` */
-  def cont[A, R, F[+_]](q: A ! Shift % R + F)(using Key[R], Distinct[Shift % R + F], Nesting[F]): Cont[A, R ! F, R ! F] =
+  def cont[A, R, F[+_]](q: A ! Shift % R + F)(using Key[R], Distinct[Shift % R + F], Machine[F]): Cont[A, R ! F, R ! F] =
     Cont.shift[A, R ! F, R ! F](k => okay.reset[R, F](q.flatMap(a => k(a).plus[Shift % R])))
 
   /** level 2: a whole `Cont` as one capture */
@@ -688,22 +679,44 @@ object Shift {
     '{ Key.intern[R](${ Expr(norm(TypeRepr.of[R])) }) }
 
   /**
-   * Whether a row still holds a capture's effect (`Shift` or `Shift`), read off the row at compile time: a
-   * `reset` over such a row pushes its prompt on the machine an outer one runs. An abstract row reads as
-   * none, so code generic in the row and nested in another `reset` passes its `Nesting` on.
+   * THE ONE MACHINE GUARD (specs/shift-merge.md): whether a machine already runs in the row `F` — `F` holds a
+   * `Shift` of any key — read off the row at compile time. Every door that runs a machine takes it: outermost,
+   * it runs its own; inside one, it pushes its delimiter on the machine already running (what `scope`,
+   * `collecting` and `pausing` spell by hand), so a capture never meets a second machine's prompt stack. A row
+   * that cannot be read — an abstract part and no `Shift` — is a compile error asking for this evidence as a
+   * parameter, so a generic helper passes the obligation on to the caller who knows the row.
    */
-  final class Nesting[F[+_]] @scala.annotation.publicInBinary private[okay] (val inner: Boolean)
+  final class Machine[F[+_]] @scala.annotation.publicInBinary private[okay] (val inner: Boolean)
 
-  object Nesting:
-    inline given of[F[+_]]: Nesting[F] = ${ nestingImpl[F] }
+  object Machine:
+    inline given of[F[+_]]: Machine[F] = ${ machineImpl[F] }
+    /** for a door that has already read the row (a keyed `reset`'s own machine): no reading again */
+    private[okay] def outermost[F[+_]]: Machine[F] = new Machine[F](false)
 
-  def nestingImpl[F[+_]: Type](using q: Quotes): Expr[Nesting[F]] =
+  def machineImpl[F[+_]: Type](using q: Quotes): Expr[Machine[F]] =
     import q.reflect.*
     val shift = TypeRepr.of[Shift[Any, Any]].typeSymbol
     val delim = TypeRepr.of[Cont0[?, ?, ?, Any]].typeSymbol
+    // bounded by the row's own nesting, which the compiler has already walked
     def members(t: TypeRepr): List[TypeRepr] = t.dealias.simplified match
       case OrType(a, b) => members(a) ++ members(b)
       case other => List(other)
-    val inner = members(TypeRepr.of[F].appliedTo(TypeRepr.of[Any])).exists(m => m.typeSymbol == shift || m.typeSymbol == delim)
-    '{ new Nesting[F](${ Expr(inner) }) }
+    // an alias of a type lambda (`State % Int`, `Instances.Of[G]`) applied: one beta step per alias, at most
+    // as many as the source wrote
+    @scala.annotation.tailrec
+    def reduce(t: TypeRepr, fuel: Int): TypeRepr = t.dealias.simplified match
+      case r @ AppliedType(tc, args) if fuel > 0 =>
+        val d = tc.dealias
+        if d == tc then r else reduce(d.appliedTo(args), fuel - 1)
+      case other => other
+    val ms = members(TypeRepr.of[F].appliedTo(TypeRepr.of[Any])).map(reduce(_, 64)).flatMap(members)
+    val inner = ms.exists(m => m.typeSymbol == shift || m.typeSymbol == delim)
+    val unread = ms.filterNot(m => m.typeSymbol.isClassDef)
+    if !inner && unread.nonEmpty then
+      report.errorAndAbort(
+        s"whether a machine already runs in the row ${Type.show[F]} cannot be read here: " +
+          s"${unread.map(_.show).mkString(", ")} is abstract, and it may hold a Shift.\n" +
+          "Pass the obligation on to the caller, who knows the row: take `(using Shift.Machine[F])`\n" +
+          "(docs/continuations/12-one-machine.md)")
+    '{ new Machine[F](${ Expr(inner) }) }
 }

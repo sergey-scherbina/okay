@@ -9,7 +9,7 @@ import scala.quoted.*
  * A handler (Plotkin & Pretnar's sense, level 1, specs/api-levels.md): a VALUE that takes the effect `E` off
  * any program's row and answers `O[A]` — `p.handle(State(5))`, `p.handle(State(5)).handle(Throws.either).run`.
  * `Handler[E, O]` is the usual one: any answer, nothing needed of the rest of the row. `Handler.Full` bounds the
- * answer by `I` and needs `Needs[F]` of the rest `F` (`Reset[R]`: the answer is `R`, the rest's `Nesting`).
+ * answer by `I` and needs `Needs[F]` of the rest `F` (`Reset[R]`: the answer is `R`, the rest's `Shift.Machine`).
  * An answer per operation and no more, the old `Handler[F]`, is `Answers[F]`.
  */
 type Handler[E[+_], O[_]] = Handler.Full[E, Any, O, Handler.Nothing]

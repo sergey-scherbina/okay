@@ -36,7 +36,7 @@ class TestBookNewEffect extends munit.FunSuite {
      * with `orElse`, the rest of the body discarded. */
     def within[R, F[+_]](limit: Int)(orElse: => R)
                         (body: Budget[R] ?=> R ! Shift % ? + F)
-                        (using Shift.OneMachine[F], At): R ! F =
+                        (using Shift.Machine[F], At): R ! F =
       val p = Shift.prompt[R]
       Shift.run(Shift.push(p)(body(using new Budget(AtomicInteger(limit), () => orElse, p))))
 

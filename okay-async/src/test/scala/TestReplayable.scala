@@ -48,7 +48,7 @@ class TestReplayable extends munit.FunSuite {
     // abstract row: a property of a row, searched for at an abstract F
     val e = compileErrors("""
       def helper[F[+_]](j: List[Int])(body: okay.Shift.Asking[Int, Int, Int, okay.Shift % ? + F] ?=>
-        Int ! okay.Shift % ? + F)(using okay.Shift.OneMachine[F]) =
+        Int ! okay.Shift % ? + F)(using okay.Shift.Machine[F]) =
           okay.Shift.replay[Int, Int, Int, F](body)(j)""")
     assert(e.nonEmpty, "an abstract row satisfied Replayable out of nowhere")
     assert(!e.contains("Failure to join"),
@@ -57,7 +57,7 @@ class TestReplayable extends munit.FunSuite {
     // declared, it compiles — which is what a library author does
     val ok = compileErrors("""
       def helper[F[+_]](j: List[Int])(body: okay.Shift.Asking[Int, Int, Int, okay.Shift % ? + F] ?=>
-        Int ! okay.Shift % ? + F)(using okay.Shift.OneMachine[F],
+        Int ! okay.Shift % ? + F)(using okay.Shift.Machine[F],
                                       okay.Replayable[okay.Shift % ? + F], okay.At) =
           okay.Shift.replay[Int, Int, Int, F](body)(j)""")
     assert(ok.isEmpty, s"declaring the obligation did not help: $ok")
