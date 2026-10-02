@@ -150,16 +150,19 @@ object Handler:
    * resume, answered with no capture; otherwise each call is a program that enters the captured `k`, which
    * the capture fills in before any of them runs.
    */
-  private final class Resume[X, B, G[+_]] extends (X => B ! G):
+  private final class Resume[X, B, G[+_]] extends (X => B ! G), (() => B ! G):
     var k: X => B ! G = scala.compiletime.uninitialized
     var arg: X = scala.compiletime.uninitialized
     var last: B ! G = scala.compiletime.uninitialized
     var calls: Int = 0
     def apply(x: X): B ! G =
       calls += 1
-      arg = x
-      last = Free.delay[G, B](() => k(x))
+      // the first call's node defers to this object itself (its `arg` is that call's, and only a second call
+      // could change it, which gets a closure of its own): one allocation less a resumed operation
+      last = if calls == 1 then { arg = x; Free.delay[G, B](this) } else Free.delay[G, B](() => k(x))
       last
+    /** the first call's resumption */
+    def apply(): B ! G = k(arg)
 
   // THE CHECKS behind the `{ case … }` forms: each returns its cases unchanged, after proving that every case
   // answers what its operation answers (the pattern's constructor, read as an `F[T]`, answers `T`). A case
